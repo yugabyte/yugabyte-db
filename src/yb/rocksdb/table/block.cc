@@ -136,7 +136,7 @@ const KeyValueEntry& BlockIter::Next() {
   return Entry();
 }
 
-void BlockIter::Prev() {
+const KeyValueEntry& BlockIter::Prev() {
   assert(Valid());
 
   // Scan backwards to a restart point before current_
@@ -146,7 +146,7 @@ void BlockIter::Prev() {
       // No more entries
       current_ = restarts_;
       restart_index_ = num_restarts_;
-      return;
+      return Entry();
     }
     restart_index_--;
   }
@@ -155,6 +155,7 @@ void BlockIter::Prev() {
   do {
     // Loop until end of current entry hits the start of original entry
   } while (ParseNextKey() && NextEntryOffset() < original);
+  return Entry();
 }
 
 void BlockIter::Initialize(
@@ -176,11 +177,10 @@ void BlockIter::Initialize(
   prefix_index_ = prefix_index;
 }
 
-
-void BlockIter::Seek(const Slice& target) {
+const KeyValueEntry& BlockIter::Seek(Slice target) {
   PERF_TIMER_GUARD(block_seek_nanos);
   if (data_ == nullptr) {  // Not init yet
-    return;
+    return Entry();
   }
   uint32_t index = 0;
   bool ok = false;
@@ -192,34 +192,33 @@ void BlockIter::Seek(const Slice& target) {
   }
 
   if (!ok) {
-    return;
+    return Entry();
   }
   SeekToRestartPoint(index);
   // Linear search (within restart block) for first key >= target
 
-  while (true) {
-    if (!ParseNextKey() || Compare(key_.GetKey(), target) >= 0) {
-      return;
-    }
-  }
+  while (ParseNextKey() && Compare(key_.GetKey(), target) < 0) {}
+  return Entry();
 }
 
-void BlockIter::SeekToFirst() {
+const KeyValueEntry& BlockIter::SeekToFirst() {
   if (data_ == nullptr) {  // Not init yet
-    return;
+    return Entry();
   }
   SeekToRestartPoint(0);
   ParseNextKey();
+  return Entry();
 }
 
-void BlockIter::SeekToLast() {
+const KeyValueEntry& BlockIter::SeekToLast() {
   if (data_ == nullptr) {  // Not init yet
-    return;
+    return Entry();
   }
   SeekToRestartPoint(num_restarts_ - 1);
   while (ParseNextKey() && NextEntryOffset() < restarts_) {
     // Keep skipping
   }
+  return Entry();
 }
 
 void BlockIter::SeekToRestart(uint32_t index) {

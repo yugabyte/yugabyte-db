@@ -47,7 +47,6 @@
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
 #include "yb/util/flags.h"
-#include "yb/util/bytes_formatter.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
@@ -125,9 +124,6 @@ DEFINE_UNKNOWN_int32(memstore_size_mb, 128,
 
 DEFINE_UNKNOWN_bool(use_docdb_aware_bloom_filter, true,
             "Whether to use the DocDbAwareFilterPolicy for both bloom storage and seeks.");
-// Empirically 2 is a minimal value that provides best performance on sequential scan.
-DEFINE_UNKNOWN_int32(max_nexts_to_avoid_seek, 2,
-             "The number of next calls to try before doing resorting to do a rocksdb seek.");
 
 DEFINE_UNKNOWN_bool(use_multi_level_index, true, "Whether to use multi-level data index.");
 
@@ -249,122 +245,11 @@ using dockv::KeyBytes;
 
 std::shared_ptr<rocksdb::BoundaryValuesExtractor> DocBoundaryValuesExtractorInstance();
 
-void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter) {
-  SeekForward(key_bytes.AsSlice(), iter);
-}
-
 KeyBytes AppendDocHt(Slice key, const DocHybridTime& doc_ht) {
   char buf[kMaxBytesPerEncodedHybridTime + 1];
   buf[0] = dockv::KeyEntryTypeAsChar::kHybridTime;
   auto end = doc_ht.EncodedInDocDbFormat(buf + 1);
   return KeyBytes(key, Slice(buf, end));
-}
-
-void SeekPastSubKey(Slice key, rocksdb::Iterator* iter) {
-  char ch = dockv::KeyEntryTypeAsChar::kHybridTime + 1;
-  SeekForward(KeyBytes(key, Slice(&ch, 1)), iter);
-}
-
-void SeekOutOfSubKey(KeyBytes* key_bytes, rocksdb::Iterator* iter) {
-  key_bytes->AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
-  SeekForward(*key_bytes, iter);
-  key_bytes->RemoveKeyEntryTypeSuffix(dockv::KeyEntryType::kMaxByte);
-}
-
-namespace  {
-
-inline bool IsIterAfterOrAtKey(rocksdb::Iterator* iter, Slice key) {
-  if (PREDICT_FALSE(!iter->Valid())) {
-    if (PREDICT_FALSE(!iter->status().ok())) {
-      VLOG(3) << "Iterator " << iter << " error: " << iter->status();
-      // Caller should check Valid() after doing Seek*() and then check status() since
-      // Valid() == false.
-      // TODO(#16730): Add sanity check for RocksDB iterator Valid() to be checked after it is set.
-    }
-    return true;
-  }
-  return iter->key().compare(key) >= 0;
-}
-
-inline SeekStats SeekPossiblyUsingNext(
-    rocksdb::Iterator* iter, Slice seek_key, int max_nexts) {
-  SeekStats result;
-  for (int nexts = max_nexts; nexts-- > 0;) {
-    if (IsIterAfterOrAtKey(iter, seek_key)) {
-      VTRACE(3, "Did $0 Next(s) instead of a Seek", result.next);
-      return result;
-    }
-    VLOG(4) << "Skipping: " << dockv::SubDocKey::DebugSliceToString(iter->key());
-
-    iter->Next();
-    ++result.next;
-  }
-  if (IsIterAfterOrAtKey(iter, seek_key)) {
-    VTRACE(3, "Did $0 Next(s) instead of a Seek", result.next);
-    return result;
-  }
-
-  VTRACE(3, "Forced to do an actual Seek after $0 Next(s)", FLAGS_max_nexts_to_avoid_seek);
-  iter->Seek(seek_key);
-  ++result.seek;
-  return result;
-}
-
-} // namespace
-
-SeekStats SeekPossiblyUsingNext(rocksdb::Iterator* iter, Slice seek_key) {
-  return SeekPossiblyUsingNext(iter, seek_key, FLAGS_max_nexts_to_avoid_seek);
-}
-
-void PerformRocksDBSeek(rocksdb::Iterator* iter, Slice seek_key, const char* file_name, int line) {
-  SeekStats stats;
-  if (seek_key.size() == 0) {
-    iter->SeekToFirst();
-    ++stats.seek;
-  } else if (PREDICT_FALSE(!iter->Valid())) {
-    if (!iter->status().ok()) {
-      VLOG(3) << "Iterator " << iter << " error: " << iter->status();
-      // Caller should check Valid() after doing PerformRocksDBSeek() and then check status()
-      // since Valid() == false.
-      // TODO(#16730): Add sanity check for RocksDB iterator Valid() to be checked after it is set.
-      return;
-    }
-    iter->Seek(seek_key);
-    ++stats.seek;
-  } else {
-    const auto cmp = iter->key().compare(seek_key);
-    if (cmp > 0) {
-      iter->Seek(seek_key);
-      ++stats.seek;
-    } else if (cmp < 0) {
-      iter->Next();
-      stats = SeekPossiblyUsingNext(iter, seek_key, FLAGS_max_nexts_to_avoid_seek - 1);
-      ++stats.next;
-    }
-  }
-  VLOG(4) << Substitute(
-      "PerformRocksDBSeek at $0:$1:\n"
-      "    Seek key:         $2\n"
-      "    Seek key (raw):   $3\n"
-      "    Actual key:       $4\n"
-      "    Actual key (raw): $5\n"
-      "    Actual value:     $6\n"
-      "    Next() calls:     $7\n"
-      "    Seek() calls:     $8\n",
-      file_name, line,
-      dockv::BestEffortDocDBKeyToStr(seek_key),
-      FormatSliceAsStr(seek_key),
-      iter->Valid()         ? dockv::BestEffortDocDBKeyToStr(KeyBytes(iter->key()))
-      : iter->status().ok() ? "N/A"
-                            : iter->status().ToString(),
-      iter->Valid()         ? FormatSliceAsStr(iter->key())
-      : iter->status().ok() ? "N/A"
-                            : iter->status().ToString(),
-      iter->Valid()         ? FormatSliceAsStr(iter->value())
-      : iter->status().ok() ? "N/A"
-                            : iter->status().ToString(),
-      stats.next,
-      stats.seek);
 }
 
 namespace {
@@ -1064,15 +949,6 @@ std::shared_ptr<rocksdb::RateLimiter> CreateRocksDBRateLimiter() {
       rocksdb::NewGenericRateLimiter(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec));
   }
   return nullptr;
-}
-
-void SeekForward(Slice slice, rocksdb::Iterator *iter) {
-  if (IsIterAfterOrAtKey(iter, slice)) {
-    return;
-  }
-
-  iter->Next();
-  SeekPossiblyUsingNext(iter, slice);
 }
 
 } // namespace docdb

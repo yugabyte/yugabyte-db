@@ -28,52 +28,62 @@ BoundedRocksDbIterator::BoundedRocksDbIterator(
   VLOG(3) << "key_bounds_ = " << AsString(key_bounds_);
 }
 
-void BoundedRocksDbIterator::SeekToFirst() {
-  if (!key_bounds_->lower.empty()) {
-    iterator_->Seek(key_bounds_->lower);
-  } else {
-    iterator_->SeekToFirst();
+const rocksdb::KeyValueEntry& BoundedRocksDbIterator::SeekToFirst() {
+  if (key_bounds_->lower.empty()) {
+    return FilterEntry(iterator_->SeekToFirst());
   }
+
+  return FilterEntry(iterator_->Seek(key_bounds_->lower));
 }
 
-void BoundedRocksDbIterator::SeekToLast() {
-  if (!key_bounds_->upper.empty()) {
-    // TODO(tsplit): this code path is only used for post-split tablets, particularly during
-    // reverse scan for range-partitioned tables.
-    // Need to add unit-test for this scenario when adding unit-tests for tablet splitting of
-    // range-partitioned tables.
-    iterator_->Seek(key_bounds_->upper);
-    if (iterator_->Valid()) {
-      iterator_->Prev();
-    } else if (iterator_->status().ok()) {
-      iterator_->SeekToLast();
-    }
-  } else {
-    iterator_->SeekToLast();
+const rocksdb::KeyValueEntry& BoundedRocksDbIterator::SeekToLast() {
+  if (key_bounds_->upper.empty()) {
+    return FilterEntry(iterator_->SeekToLast());
   }
+  // TODO(tsplit): this code path is only used for post-split tablets, particularly during
+  // reverse scan for range-partitioned tables.
+  // Need to add unit-test for this scenario when adding unit-tests for tablet splitting of
+  // range-partitioned tables.
+  const auto& entry = iterator_->Seek(key_bounds_->upper);
+  if (entry) {
+    return FilterEntry(iterator_->Prev());
+  }
+  if (iterator_->status().ok()) {
+    return FilterEntry(iterator_->SeekToLast());
+  }
+  return entry;
 }
 
-void BoundedRocksDbIterator::Seek(const Slice& target) {
+const rocksdb::KeyValueEntry& BoundedRocksDbIterator::Seek(Slice target) {
   if (!key_bounds_->lower.empty() && target.compare(key_bounds_->lower) < 0) {
-    iterator_->Seek(key_bounds_->lower);
-  } else if (!key_bounds_->upper.empty() && target.compare(key_bounds_->upper) > 0) {
-    iterator_->Seek(key_bounds_->upper);
-  } else {
-    iterator_->Seek(target);
+    return FilterEntry(iterator_->Seek(key_bounds_->lower));
   }
+
+  if (!key_bounds_->upper.empty() && target.compare(key_bounds_->upper) > 0) {
+    return FilterEntry(iterator_->Seek(key_bounds_->upper));
+  }
+
+  return FilterEntry(iterator_->Seek(target));
 }
 
 const rocksdb::KeyValueEntry& BoundedRocksDbIterator::Next() {
-  return iterator_->Next();
+  return FilterEntry(iterator_->Next());
 }
 
-void BoundedRocksDbIterator::Prev() {
-  iterator_->Prev();
+const rocksdb::KeyValueEntry& BoundedRocksDbIterator::Prev() {
+  return FilterEntry(iterator_->Prev());
 }
 
 const rocksdb::KeyValueEntry& BoundedRocksDbIterator::Entry() const {
-  const auto& entry = iterator_->Entry();
-  if (!entry || !key_bounds_->IsWithinBounds(entry.key)) {
+  return FilterEntry(iterator_->Entry());
+}
+
+const rocksdb::KeyValueEntry& BoundedRocksDbIterator::FilterEntry(
+    const rocksdb::KeyValueEntry& entry) const {
+  if (!entry) {
+    return entry;
+  }
+  if (!key_bounds_->IsWithinBounds(entry.key)) {
     return rocksdb::KeyValueEntry::Invalid();
   }
   return entry;

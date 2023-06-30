@@ -87,18 +87,21 @@ class VectorRep : public MemTableRep {
 
     // Advances to the previous position.
     // REQUIRES: Valid()
-    void Prev() override;
+    const char* Prev() override;
 
     // Advance to the first entry with a key >= target
-    void Seek(const Slice& user_key, const char* memtable_key) override;
+    const char* Seek(Slice user_key) override;
+
+    // Advance to the first entry with a key >= target, using externally specified memtable_key.
+    const char* SeekMemTableKey(Slice user_key, const char* memtable_key) override;
 
     // Position at the first entry in collection.
     // Final state of iterator is Valid() iff collection is not empty.
-    void SeekToFirst() override;
+    const char* SeekToFirst() override;
 
     // Position at the last entry in collection.
     // Final state of iterator is Valid() iff collection is not empty.
-    void SeekToLast() override;
+    const char* SeekToLast() override;
   };
 
   // Return an iterator over the keys in this representation.
@@ -197,7 +200,7 @@ const char* VectorRep::Iterator::Next() {
 
 // Advances to the previous position.
 // REQUIRES: Valid()
-void VectorRep::Iterator::Prev() {
+const char* VectorRep::Iterator::Prev() {
   assert(sorted_);
   if (cit_ == bucket_->begin()) {
     // If you try to go back from the first element, the iterator should be
@@ -207,38 +210,43 @@ void VectorRep::Iterator::Prev() {
   } else {
     --cit_;
   }
+  return Entry();
 }
 
 // Advance to the first entry with a key >= target
-void VectorRep::Iterator::Seek(const Slice& user_key,
-                               const char* memtable_key) {
+const char* VectorRep::Iterator::Seek(Slice user_key) {
+  return SeekMemTableKey(user_key, EncodeKey(&tmp_, user_key));
+}
+
+const char* VectorRep::Iterator::SeekMemTableKey(Slice user_key, const char* memtable_key) {
   DoSort();
   // Do binary search to find first value not less than the target
-  const char* encoded_key =
-      (memtable_key != nullptr) ? memtable_key : EncodeKey(&tmp_, user_key);
   cit_ = std::equal_range(bucket_->begin(),
                           bucket_->end(),
-                          encoded_key,
+                          memtable_key,
                           [this] (const char* a, const char* b) {
                             return compare_(a, b) < 0;
                           }).first;
+  return Entry();
 }
 
 // Position at the first entry in collection.
 // Final state of iterator is Valid() iff collection is not empty.
-void VectorRep::Iterator::SeekToFirst() {
+const char* VectorRep::Iterator::SeekToFirst() {
   DoSort();
   cit_ = bucket_->begin();
+  return Entry();
 }
 
 // Position at the last entry in collection.
 // Final state of iterator is Valid() iff collection is not empty.
-void VectorRep::Iterator::SeekToLast() {
+const char* VectorRep::Iterator::SeekToLast() {
   DoSort();
   cit_ = bucket_->end();
   if (bucket_->size() != 0) {
     --cit_;
   }
+  return Entry();
 }
 
 void VectorRep::Get(const LookupKey& k, void* callback_args,
@@ -255,7 +263,7 @@ void VectorRep::Get(const LookupKey& k, void* callback_args,
   VectorRep::Iterator iter(vector_rep, immutable_ ? bucket_ : bucket, compare_);
   rwlock_.ReadUnlock();
 
-  for (iter.Seek(k.user_key(), k.memtable_key().cdata());; iter.Next()) {
+  for (iter.SeekMemTableKey(k.user_key(), k.memtable_key().cdata());; iter.Next()) {
     auto entry = iter.Entry();
     if (!entry || !callback_func(callback_args, entry)) {
       break;

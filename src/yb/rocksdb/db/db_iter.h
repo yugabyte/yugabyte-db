@@ -70,11 +70,11 @@ class ArenaWrappedDBIter final : public Iterator {
   virtual void SetIterUnderDBIter(InternalIterator* iter);
 
   const KeyValueEntry& Entry() const override;
-  void SeekToFirst() override;
-  void SeekToLast() override;
-  void Seek(const Slice& target) override;
+  const KeyValueEntry& SeekToFirst() override;
+  const KeyValueEntry& SeekToLast() override;
+  const KeyValueEntry& Seek(Slice target) override;
   const KeyValueEntry& Next() override;
-  void Prev() override;
+  const KeyValueEntry& Prev() override;
   Status status() const override;
   void UseFastNext(bool value) override;
 

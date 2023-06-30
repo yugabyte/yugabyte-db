@@ -95,23 +95,25 @@ class TestIterator : public InternalIterator {
     });
   }
 
-  void SeekToFirst() override {
+  const KeyValueEntry& SeekToFirst() override {
     assert(initialized_);
     valid_ = (data_.size() > 0);
     iter_ = 0;
+    return Entry();
   }
 
-  void SeekToLast() override {
+  const KeyValueEntry& SeekToLast() override {
     assert(initialized_);
     valid_ = (data_.size() > 0);
     iter_ = data_.size() - 1;
+    return Entry();
   }
 
-  void Seek(const Slice& target) override {
+  const KeyValueEntry& Seek(Slice target) override {
     assert(initialized_);
     SeekToFirst();
     if (!valid_) {
-      return;
+      return Entry();
     }
     while (iter_ < data_.size() &&
            (cmp.Compare(data_[iter_].first, target) < 0)) {
@@ -121,6 +123,7 @@ class TestIterator : public InternalIterator {
     if (iter_ == data_.size()) {
       valid_ = false;
     }
+    return Entry();
   }
 
   const KeyValueEntry& Next() override {
@@ -133,13 +136,14 @@ class TestIterator : public InternalIterator {
     return Entry();
   }
 
-  void Prev() override {
+  const KeyValueEntry& Prev() override {
     assert(initialized_);
     if (iter_ == 0) {
       valid_ = false;
     } else {
       --iter_;
     }
+    return Entry();
   }
 
   const KeyValueEntry& Entry() const override {

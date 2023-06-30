@@ -21,22 +21,27 @@
 #include "yb/common/transaction.pb.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/transaction_priority.h"
-#include "yb/dockv/doc_key.h"
+
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/dockv/intent.h"
+#include "yb/docdb/iter_util.h"
 #include "yb/docdb/shared_lock_manager.h"
 #include "yb/docdb/transaction_dump.h"
+
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/intent.h"
+
 #include "yb/gutil/stl_util.h"
+
 #include "yb/util/lazy_invoke.h"
 #include "yb/util/logging.h"
-#include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
+#include "yb/util/memory/memory.h"
 
 using namespace std::literals;
 using namespace std::placeholders;

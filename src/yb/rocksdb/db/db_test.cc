@@ -4743,7 +4743,7 @@ class ModelDB: public DB {
     return STATUS(NotSupported, "Not supported in Model DB");
   }
 
-  class ModelIter: public Iterator {
+  class ModelIter final : public Iterator {
    public:
     ModelIter(const KVMap* map, bool owned)
         : map_(map), owned_(owned), iter_(map_->end()) {
@@ -4751,27 +4751,33 @@ class ModelDB: public DB {
     ~ModelIter() {
       if (owned_) delete map_;
     }
-    void SeekToFirst() override { iter_ = map_->begin(); }
-    void SeekToLast() override {
+    const KeyValueEntry& SeekToFirst() override {
+      iter_ = map_->begin();
+      return Entry();
+    }
+    const KeyValueEntry& SeekToLast() override {
       if (map_->empty()) {
         iter_ = map_->end();
       } else {
         iter_ = map_->find(map_->rbegin()->first);
       }
+      return Entry();
     }
-    void Seek(const Slice& k) override {
+    const KeyValueEntry& Seek(Slice k) override {
       iter_ = map_->lower_bound(k.ToString());
+      return Entry();
     }
     const KeyValueEntry& Next() override {
       ++iter_;
       return Entry();
     }
-    void Prev() override {
+    const KeyValueEntry& Prev() override {
       if (iter_ == map_->begin()) {
         iter_ = map_->end();
-        return;
+        return Entry();
       }
       --iter_;
+      return Entry();
     }
 
     const KeyValueEntry& Entry() const override {

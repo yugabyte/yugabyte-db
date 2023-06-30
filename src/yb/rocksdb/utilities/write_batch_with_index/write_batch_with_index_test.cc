@@ -519,25 +519,33 @@ typedef std::map<std::string, std::string> KVMap;
 class KVIter : public Iterator {
  public:
   explicit KVIter(const KVMap* map) : map_(map), iter_(map_->end()) {}
-  void SeekToFirst() override { iter_ = map_->begin(); }
-  void SeekToLast() override {
+  const KeyValueEntry& SeekToFirst() override {
+    iter_ = map_->begin();
+    return Entry();
+  }
+  const KeyValueEntry& SeekToLast() override {
     if (map_->empty()) {
       iter_ = map_->end();
     } else {
       iter_ = map_->find(map_->rbegin()->first);
     }
+    return Entry();
   }
-  void Seek(const Slice& k) override { iter_ = map_->lower_bound(k.ToString()); }
+  const KeyValueEntry& Seek(Slice k) override {
+    iter_ = map_->lower_bound(k.ToString());
+    return Entry();
+  }
   const KeyValueEntry& Next() override {
     ++iter_;
     return Entry();
   }
-  void Prev() override {
+  const KeyValueEntry& Prev() override {
     if (iter_ == map_->begin()) {
       iter_ = map_->end();
-      return;
+      return Entry();
     }
     --iter_;
+    return Entry();
   }
 
   const KeyValueEntry& Entry() const override {

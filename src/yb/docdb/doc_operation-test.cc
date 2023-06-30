@@ -25,7 +25,7 @@
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_debug.h"
-#include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/iter_util.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
@@ -889,7 +889,7 @@ class DocOperationScanTest : public DocOperationTest {
     std::sort(ordered_rows.begin(), ordered_rows.end());
 
     for (const auto op : operators) {
-      LOG(INFO) << "Testing: " << QLOperator_Name(op);
+      LOG(INFO) << "Testing: " << QLOperator_Name(op) << ", is_forward_scan: " << is_forward_scan;
       for (const auto& row : rows_) {
         QLConditionPB condition;
         condition.add_operands()->set_column_id(1_ColId);

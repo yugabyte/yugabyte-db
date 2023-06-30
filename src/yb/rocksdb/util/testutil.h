@@ -161,22 +161,32 @@ class VectorIterator : public InternalIterator {
     assert(keys_.size() == values_.size());
   }
 
-  virtual void SeekToFirst() override { current_ = 0; }
-  virtual void SeekToLast() override { current_ = keys_.size() - 1; }
-
-  virtual void Seek(const Slice& target) override {
-    current_ = std::lower_bound(keys_.begin(), keys_.end(), target.ToBuffer()) -
-               keys_.begin();
+  const KeyValueEntry& SeekToFirst() override {
+    current_ = 0;
+    return Entry();
   }
 
-  virtual const KeyValueEntry& Next() override {
+  const KeyValueEntry& SeekToLast() override {
+    current_ = keys_.size() - 1;
+    return Entry();
+  }
+
+  const KeyValueEntry& Seek(Slice target) override {
+    current_ = std::lower_bound(keys_.begin(), keys_.end(), target.ToBuffer()) - keys_.begin();
+    return Entry();
+  }
+
+  const KeyValueEntry& Next() override {
     current_++;
     return Entry();
   }
 
-  virtual void Prev() override { current_--; }
+  const KeyValueEntry& Prev() override {
+    current_--;
+    return Entry();
+  }
 
-  virtual const KeyValueEntry& Entry() const override {
+  const KeyValueEntry& Entry() const override {
     if (current_ >= keys_.size()) {
       return KeyValueEntry::Invalid();
     }
@@ -187,7 +197,7 @@ class VectorIterator : public InternalIterator {
     return entry_;
   }
 
-  virtual Status status() const override { return Status::OK(); }
+  Status status() const override { return Status::OK(); }
 
  private:
   std::vector<std::string> keys_;
