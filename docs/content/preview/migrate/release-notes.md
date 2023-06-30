@@ -27,7 +27,7 @@ Included here are the release notes for the YugabyteDB Voyager v1 release series
 
 * The `--file-opts` CLI argument is now deprecated. Use the new [--escape-char](../../migrate/reference/yb-voyager-cli/#escape-char) and [--quote-char](../../migrate/reference/yb-voyager-cli/#quote-char) options.
 
-## Bug fixes
+### Bug fixes
 
 * Fixed the issue where, if a CSV file had empty lines, `import data status` would continue reporting the import status as MIGRATING even though the import was completed and successful.
 
