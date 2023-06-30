@@ -645,8 +645,6 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Active Universe History.
-  void PingPggate();
-
   Result<client::RpcsInfo> ActiveUniverseHistory();
 
  private:

@@ -356,7 +356,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   void setWaitEventInfo(uint32_t wait_event) {
     pg_callbacks_.SignalWaitStart(wait_event);
   }
-  void PingPggate();
 
   Result<client::RpcsInfo> ActiveUniverseHistory();
 

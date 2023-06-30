@@ -669,8 +669,6 @@ YBCStatus YBCPrefetchRegisteredSysTables();
 
 YBCStatus YBCPgCheckIfPitrActive(bool* is_active);
 
-void YBCPingPggate();
-
 YBCStatus YBCActiveUniverseHistory(YBCAuhDescriptor **rpcs, size_t* numrpcs);
 
 #ifdef __cplusplus

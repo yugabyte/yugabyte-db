@@ -897,10 +897,6 @@ Result<bool> PgSession::CheckIfPitrActive() {
   return pg_client_.CheckIfPitrActive();
 }
 
-void PgSession::PingPggate() {
-  LOG(INFO) << "Inside pggate from extension";
-}
-
 Result<client::RpcsInfo> PgSession::ActiveUniverseHistory() {
   return pg_client_.ActiveUniverseHistory();
 }

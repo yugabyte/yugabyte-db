@@ -919,8 +919,6 @@ letswait:
 			CommitTransactionCommand();
 			goto letswait;
 		}
-		// ereport(LOG, (errmsg("pg sentinel sampling now")));
-		// YBCPingPggate();
 
 		SPI_connect();
 

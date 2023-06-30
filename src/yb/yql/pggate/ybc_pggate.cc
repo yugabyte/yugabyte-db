@@ -1561,10 +1561,6 @@ YBCStatus YBCPgCheckIfPitrActive(bool* is_active) {
   return ToYBCStatus(res.status());
 }
 
-void YBCPingPggate() {
-  return pgapi->PingPggate();
-}
-
 YBCStatus YBCActiveUniverseHistory(YBCAuhDescriptor **rpcs, size_t* count) {
   const auto result = pgapi->ActiveUniverseHistory();
   if (!result.ok()) {

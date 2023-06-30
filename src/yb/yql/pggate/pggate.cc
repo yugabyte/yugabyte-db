@@ -1936,10 +1936,6 @@ Result<bool> PgApiImpl::CheckIfPitrActive() {
   return pg_session_->CheckIfPitrActive();
 }
 
-void PgApiImpl::PingPggate() {
-  return pg_session_->PingPggate();
-}
-
 Result<client::RpcsInfo> PgApiImpl::ActiveUniverseHistory() {
   return pg_session_->ActiveUniverseHistory();
 }
