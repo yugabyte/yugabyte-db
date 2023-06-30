@@ -1064,12 +1064,12 @@ public class TaskExecutor {
 
     @Override
     protected void getTaskWaitMetricLabels(TaskType taskType) {
-      writeTaskWaitMetric(taskType, taskScheduledTime, taskStartTime, null);
+      writeTaskWaitMetric(taskType, taskScheduledTime, taskStartTime);
     }
 
     @Override
     protected void getTaskStateMetricLabels(TaskType taskType) {
-      writeTaskStateMetric(taskType, taskStartTime, taskCompletionTime, getTaskState(), null);
+      writeTaskStateMetric(taskType, taskStartTime, taskCompletionTime, getTaskState());
     }
 
     @Override
