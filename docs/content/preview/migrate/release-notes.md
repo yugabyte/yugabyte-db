@@ -33,7 +33,7 @@ Included here are the release notes for the YugabyteDB Voyager v1 release series
 
 * yb-voyager now explicitly closes the source/target database connections when exiting.
 
-* For TEXT data types, yb-voyager now uses tab (\t) as the default delimiter instead of comma (,).
+* The `import data file` command now uses tab (\t) instead of comma (,) as the default delimiter when importing TEXT formatted files.
 
 ### Known issues
 
