@@ -104,7 +104,7 @@ However, in the general case the number of tablets for a table in the source uni
 
 This means that each target tablet may need the changes from multiple source tablets and multiple target tablets may need changes from the same source tablet.  To avoid multiple redundant cross-universe reads to the same source tablet, only one poller reads from each source tablet; in cases where a source tablet's changes are needed by multiple target tablets, the poller assigned to that source tablet distributes the changes to the relevant target tablets.
 
-The following illustrative diagram shows what this might look like for one table:
+The following illustration shows what this might look like for one table:
 
 ![distribution of pollers and where they pull data from and send it to](/images/architecture/replication/distribution-of-pollers-new.png)
 
