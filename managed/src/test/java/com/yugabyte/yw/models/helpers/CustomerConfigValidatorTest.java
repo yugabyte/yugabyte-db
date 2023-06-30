@@ -39,6 +39,7 @@ import com.yugabyte.yw.common.CloudUtil;
 import com.yugabyte.yw.common.CloudUtil.ExtraPermissionToValidate;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
 import com.yugabyte.yw.models.configs.StubbedCustomerConfigValidator;
@@ -73,7 +74,11 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
   public void setUp() {
     customerConfigValidator =
         new StubbedCustomerConfigValidator(
-            app.injector().instanceOf(BeanValidator.class), allowedBuckets, mockStorageUtilFactory);
+            app.injector().instanceOf(BeanValidator.class),
+            allowedBuckets,
+            mockStorageUtilFactory,
+            app.injector().instanceOf(RuntimeConfGetter.class),
+            mockAWSUtil);
     when(mockStorageUtilFactory.getCloudUtil("AZ")).thenReturn(mockAZUtil);
   }
 
