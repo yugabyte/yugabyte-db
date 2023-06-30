@@ -47,7 +47,8 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
-#include "yb/cdc/cdc_service.h"
+#include "yb/cdc/cdc_types.h"
+
 #include "yb/client/client_fwd.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/client-internal.h"
@@ -68,6 +69,7 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/common_util.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_type.h"

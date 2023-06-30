@@ -20,7 +20,7 @@
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/server/monitored_task.h"
 #include "yb/gutil/thread_annotations.h"
-#include "yb/cdc/cdc_util.h"
+#include "yb/cdc/cdc_types.h"
 
 namespace yb::master {
 class AddTableToXClusterTask : public server::RunnableMonitoredTask {

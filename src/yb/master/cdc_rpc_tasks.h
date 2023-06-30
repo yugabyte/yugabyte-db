@@ -17,7 +17,7 @@
 
 #include <google/protobuf/repeated_field.h>
 
-#include "yb/cdc/cdc_util.h"
+#include "yb/cdc/cdc_types.h"
 #include "yb/common/entity_ids.h"
 
 #include "yb/util/status_fwd.h"

@@ -15,7 +15,7 @@
 
 #include <memory>
 
-#include "yb/cdc/cdc_util.h"
+#include "yb/cdc/cdc_types.h"
 #include "yb/tserver/heartbeater.h"
 
 namespace yb {

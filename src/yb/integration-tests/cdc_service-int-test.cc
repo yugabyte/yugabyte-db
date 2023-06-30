@@ -11,6 +11,7 @@
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.proxy.h"
+#include "yb/cdc/cdc_state_table.h"
 #include "yb/client/error.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
@@ -110,8 +111,6 @@ using rpc::RpcController;
 const std::string kCDCTestKeyspace = "my_keyspace";
 const std::string kCDCTestTableName = "cdc_test_table";
 const client::YBTableName kTableName(YQL_DATABASE_CQL, kCDCTestKeyspace, kCDCTestTableName);
-const client::YBTableName kCdcStateTableName(
-    YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
 
 CDCServiceImpl* CDCService(tserver::TabletServer* tserver) {
   return down_cast<CDCServiceImpl*>(
@@ -224,62 +223,55 @@ void AssertChangeRecords(const google::protobuf::RepeatedPtrField<cdc::KeyValueP
 }
 
 void VerifyCdcStateNotEmpty(client::YBClient* client) {
-  client::TableHandle table;
-  client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(table.Open(cdc_state_table, client));
-  ASSERT_EQ(1, boost::size(client::TableRange(table)));
-  const auto& row = client::TableRange(table).begin();
-  string checkpoint = row->column(master::kCdcCheckpointIdx).string_value();
-  auto result = OpId::FromString(checkpoint);
-  ASSERT_OK(result);
-  OpId op_id = *result;
+  CDCStateTable cdc_state_table(client);
+  Status s;
+  auto table_range = ASSERT_RESULT(
+      cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
+  ASSERT_EQ(1, std::distance(table_range.begin(), table_range.end()));
+  ASSERT_OK(s);
+  auto row_result = *table_range.begin();
+  ASSERT_OK(row_result);
+  auto& row = *row_result;
+  ASSERT_OK(s);
   // Verify that op id index has been advanced and is not 0.
-  ASSERT_GT(op_id.index, 0);
+  ASSERT_GT(row.checkpoint->index, 0);
 }
 
-void VerifyCdcStateMatches(client::YBClient* client,
-                           const CDCStreamId& stream_id,
-                           const TabletId& tablet_id,
-                           uint64_t term,
-                           uint64_t index)  {
-  client::TableHandle table;
-  client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(table.Open(cdc_state_table, client));
-  auto session = client->NewSession();
-  auto row = ASSERT_RESULT(FetchCdcStreamInfo(
-      &table, session.get(), tablet_id, stream_id, {master::kCdcCheckpoint}));
-
+Status VerifyCdcStateMatches(
+    client::YBClient* client,
+    const CDCStreamId& stream_id,
+    const TabletId& tablet_id,
+    uint64_t term,
+    uint64_t index) {
   LOG(INFO) << strings::Substitute("Verifying tablet: $0, stream: $1, op_id: $2",
       tablet_id, stream_id, OpId(term, index).ToString());
 
-  string checkpoint = row.column(0).string_value();
-  auto result = OpId::FromString(checkpoint);
-  ASSERT_OK(result);
-  OpId op_id = *result;
+  CDCStateTable cdc_state_table(client);
+  auto row = VERIFY_RESULT(cdc_state_table.TryFetchEntry(
+      {tablet_id, stream_id}, CDCStateTableEntrySelector().IncludeCheckpoint()));
+  SCHECK(row, IllegalState, "CDC state row not found");
 
-  ASSERT_EQ(op_id.term, term);
-  ASSERT_EQ(op_id.index, index);
+  auto& op_id = *row->checkpoint;
+  SCHECK_EQ(op_id.term, term, IllegalState, "CDC state row term mismatch");
+  SCHECK_EQ(op_id.index, index, IllegalState, "CDC state row index mismatch");
+
+  return Status::OK();
 }
 
 void VerifyStreamDeletedFromCdcState(client::YBClient* client,
                                      const CDCStreamId& stream_id,
                                      const TabletId& tablet_id,
                                      int timeout_secs = 10) {
-  client::TableHandle table;
-  const client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(table.Open(cdc_state_table, client));
-  auto session = client->NewSession();
+  CDCStateTable cdc_state_table(client);
 
   // The deletion of cdc_state rows for the specified stream happen in an asynchronous thread,
   // so even if the request has returned, it doesn't mean that the rows have been deleted yet.
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    auto row = VERIFY_RESULT(FetchOptionalCdcStreamInfo(
-        &table, session.get(), tablet_id, stream_id, {master::kCdcCheckpoint}));
-    return !row;
-  }, MonoDelta::FromSeconds(timeout_secs) * kTimeMultiplier,
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto row = VERIFY_RESULT(cdc_state_table.TryFetchEntry({tablet_id, stream_id}));
+        return !row;
+      },
+      MonoDelta::FromSeconds(timeout_secs) * kTimeMultiplier,
       "Stream rows in cdc_state have been deleted."));
 }
 
@@ -558,7 +550,7 @@ TEST_F(CDCServiceTest, TestDeleteCDCStream) {
   ASSERT_OK(client_->GetTablets(table_.table()->name(), 0 /* max_tablets */, &tablet_ids, &ranges));
 
   for (const auto& tablet_id : tablet_ids) {
-    VerifyCdcStateMatches(client_.get(), stream_id_, tablet_id, 0, 0);
+    ASSERT_OK(VerifyCdcStateMatches(client_.get(), stream_id_, tablet_id, 0, 0));
   }
 
   {
@@ -1872,25 +1864,24 @@ TEST_F(CDCServiceTestDurableMinReplicatedIndex, TestBootstrapProducer) {
 
   // Verify that for each of the table's tablets, a new row in cdc_state table with the returned
   // id was inserted.
-  client::TableHandle table;
-  client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(table.Open(cdc_state_table, client_.get()));
-  ASSERT_EQ(1, boost::size(client::TableRange(table)));
+  CDCStateTable cdc_state_table(client_.get());
+  Status s;
+  auto table_range = ASSERT_RESULT(
+      cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
   int nrows = 0;
-  for (const auto& row : client::TableRange(table)) {
+  for (auto row_result : table_range) {
+    ASSERT_OK(row_result);
+    auto& row = *row_result;
     nrows++;
-    stream_id_ = row.column(master::kCdcStreamIdIdx).string_value();
+    stream_id_ = row.key.stream_id;
     ASSERT_EQ(stream_id_, bootstrap_id);
 
-    string checkpoint = row.column(master::kCdcCheckpointIdx).string_value();
-    auto s = OpId::FromString(checkpoint);
-    ASSERT_OK(s);
-    OpId op_id = *s;
+    ASSERT_TRUE(row.checkpoint.has_value());
     // When no writes are present, the checkpoint's index is 1. Plus two for the failed and
     // successful ALTER WAL RETENTION TIME that we issue when cdc is enabled on a table.
-    ASSERT_EQ(op_id.index, 3 + kNRows);
+    ASSERT_EQ(row.checkpoint->index, 3 + kNRows);
   }
+  ASSERT_OK(s);
 
   // This table only has one tablet.
   ASSERT_EQ(nrows, 1);
@@ -2132,20 +2123,13 @@ TEST_F(CDCLogAndMetaIndexReset, TestLogAndMetaCdcIndexAreReset) {
   // all the streams have index 5.
   WaitForCDCIndex(tablet_peer, 5, 4 * FLAGS_update_min_cdc_indices_interval_secs);
 
-  client::TableHandle table;
-  client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(table.Open(cdc_state_table, client_.get()));
+  CDCStateTable cdc_state_table(client_.get());
 
-  auto session = client_->NewSession();
+  std::vector<CDCStateTableKey> keys_to_delete;
   for (int i = 0; i < kNStreams; i++) {
-    const auto delete_op = table.NewDeleteOp();
-    auto* delete_req = delete_op->mutable_request();
-    QLAddStringHashValue(delete_req, tablet_id);
-    QLAddStringRangeValue(delete_req, stream_id[i]);
-    session->Apply(delete_op);
+    keys_to_delete.push_back({tablet_id, stream_id[i]});
   }
-  ASSERT_OK(session->TEST_Flush());
+  ASSERT_OK(cdc_state_table.DeleteEntries(keys_to_delete));
   LOG(INFO) << "Successfully deleted all streams from cdc_state";
 
   SleepFor(MonoDelta::FromSeconds(FLAGS_cdc_min_replicated_index_considered_stale_secs + 1));

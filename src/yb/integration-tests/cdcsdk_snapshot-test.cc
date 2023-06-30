@@ -12,6 +12,8 @@
 
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
+#include "yb/cdc/cdc_state_table.h"
+
 namespace yb {
 namespace cdc {
 
@@ -635,23 +637,21 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(InsertedRowInbetweenSnapshot)) {
   ASSERT_EQ(count, 100);
 
   // Read the cdc_state table veriy that checkpoint set is non-zero
-  client::TableHandle table_handle_cdc;
-  client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(table_handle_cdc.Open(cdc_state_table, test_client()));
-  for (const auto& row : client::TableRange(table_handle_cdc)) {
-    auto read_tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
-    auto read_stream_id = row.column(master::kCdcStreamIdIdx).string_value();
-    auto read_checkpoint = row.column(master::kCdcCheckpointIdx).string_value();
-    auto result = OpId::FromString(read_checkpoint);
-    ASSERT_OK(result);
-    if (read_tablet_id == tablets[0].tablet_id()) {
-      LOG(INFO) << "Read cdc_state table with tablet_id: " << read_tablet_id
-                << " stream_id: " << read_stream_id << " checkpoint is: " << read_checkpoint;
-      ASSERT_GT(result->term, 0);
-      ASSERT_GT(result->index, 0);
+  CDCStateTable cdc_state_table(test_client());
+  Status s;
+  for (auto row_result : ASSERT_RESULT(
+           cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s))) {
+    ASSERT_OK(row_result);
+    auto& row = *row_result;
+    auto checkpoint = *row.checkpoint;
+    if (row.key.tablet_id == tablets[0].tablet_id()) {
+      LOG(INFO) << "Read cdc_state table with tablet_id: " << row.key.tablet_id
+                << " stream_id: " << row.key.stream_id << " checkpoint is: " << checkpoint;
+      ASSERT_GT(checkpoint.term, 0);
+      ASSERT_GT(checkpoint.index, 0);
     }
   }
+  ASSERT_OK(s);
 
   set_resp = ASSERT_RESULT(SetCDCCheckpoint(
       stream_id, tablets,

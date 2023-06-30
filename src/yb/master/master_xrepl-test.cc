@@ -15,6 +15,7 @@
 
 #include "yb/cdc/cdc_service.h"
 
+#include "yb/cdc/cdc_state_table.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
@@ -70,7 +71,7 @@ Status MasterTestXRepl::CreateCDCStream(const TableId& table_id, CDCStreamId* st
     IsCreateTableDoneRequestPB is_create_req;
     IsCreateTableDoneResponsePB is_create_resp;
 
-    is_create_req.mutable_table()->set_table_name(master::kCdcStateTableName);
+    is_create_req.mutable_table()->set_table_name(cdc::kCdcStateTableName);
     is_create_req.mutable_table()->mutable_namespace_()->set_name(master::kSystemNamespaceName);
 
     auto s = proxy_ddl_->IsCreateTableDone(is_create_req, &is_create_resp, ResetAndGetController());
