@@ -39,15 +39,20 @@ class MapIterator : public InternalIterator {
  public:
   explicit MapIterator(const Data& data) : data_(data), pos_(data_.end()) {}
 
-  void SeekToFirst() override { pos_ = data_.begin(); }
-
-  void SeekToLast() override {
-    pos_ = data_.end();
-    --pos_;
+  const KeyValueEntry& SeekToFirst() override {
+    pos_ = data_.begin();
+    return Entry();
   }
 
-  void Seek(const Slice& target) override {
+  const KeyValueEntry& SeekToLast() override {
+    pos_ = data_.end();
+    --pos_;
+    return Entry();
+  }
+
+  const KeyValueEntry& Seek(Slice target) override {
     pos_ = data_.find(target.ToString());
+    return Entry();
   }
 
   const KeyValueEntry& Next() override {
@@ -55,7 +60,10 @@ class MapIterator : public InternalIterator {
     return Entry();
   }
 
-  void Prev() override { --pos_; }
+  const KeyValueEntry& Prev() override {
+    --pos_;
+    return Entry();
+  }
 
   const KeyValueEntry& Entry() const override {
     if (pos_ == data_.end()) {

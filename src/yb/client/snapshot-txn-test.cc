@@ -336,6 +336,7 @@ void SnapshotTxnTest::TestBankAccounts(
     }
     auto txn_id = txn->id();
     session->SetTransaction(txn);
+    LOG(INFO) << txn_id << ", read start: " << txn->read_point().GetReadTime().ToString();
     auto rows = SelectAllRows(session);
     if (!rows.ok()) {
       if (txn->IsRestartRequired()) {
@@ -356,7 +357,8 @@ void SnapshotTxnTest::TestBankAccounts(
     for (const auto& pair : *rows) {
       sum_balance += pair.second;
     }
-    LOG(INFO) << txn_id << ", read done, values: " << AsString(*rows);
+    LOG(INFO) << txn_id << ", read done, values: " << AsString(*rows)
+              << ", delta: " << sum_balance - kAccounts * kInitialAmount;
     ASSERT_EQ(sum_balance, kAccounts * kInitialAmount);
 
     if (options.Test(BankAccountsOption::kStepDown)) {

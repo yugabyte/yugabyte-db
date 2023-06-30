@@ -477,16 +477,21 @@ class LevelFileNumIterator final : public InternalIterator {
     return entry_;
   }
 
-  void Seek(const Slice& target) override {
+  const KeyValueEntry& Seek(Slice target) override {
     index_ = FindFile(icmp_, *flevel_, target);
+    return Entry();
   }
 
-  void SeekToFirst() override { index_ = 0; }
+  const KeyValueEntry& SeekToFirst() override {
+    index_ = 0;
+    return Entry();
+  }
 
-  void SeekToLast() override {
+  const KeyValueEntry& SeekToLast() override {
     index_ = (flevel_->num_files == 0)
                  ? 0
                  : static_cast<uint32_t>(flevel_->num_files) - 1;
+    return Entry();
   }
 
   const KeyValueEntry& Next() override {
@@ -495,13 +500,14 @@ class LevelFileNumIterator final : public InternalIterator {
     return Entry();
   }
 
-  void Prev() override {
+  const KeyValueEntry& Prev() override {
     assert(Valid());
     if (index_ == 0) {
       index_ = static_cast<uint32_t>(flevel_->num_files);  // Marks as invalid
     } else {
       index_--;
     }
+    return Entry();
   }
 
   Status status() const override { return Status::OK(); }

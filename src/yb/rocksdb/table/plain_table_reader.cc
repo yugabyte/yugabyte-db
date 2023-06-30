@@ -69,15 +69,15 @@ class PlainTableIterator final : public InternalIterator {
 
   const KeyValueEntry& Entry() const override;
 
-  void SeekToFirst() override;
+  const KeyValueEntry& SeekToFirst() override;
 
-  void SeekToLast() override;
+  const KeyValueEntry& SeekToLast() override;
 
-  void Seek(const Slice& target) override;
+  const KeyValueEntry& Seek(Slice target) override;
 
   const KeyValueEntry& Next() override;
 
-  void Prev() override;
+  const KeyValueEntry& Prev() override;
 
   Status status() const override;
 
@@ -633,21 +633,22 @@ const KeyValueEntry& PlainTableIterator::Entry() const {
   return KeyValueEntry::Invalid();
 }
 
-void PlainTableIterator::SeekToFirst() {
+const KeyValueEntry& PlainTableIterator::SeekToFirst() {
   next_offset_ = table_->data_start_offset_;
   if (next_offset_ >= table_->file_info_.data_end_offset) {
     next_offset_ = offset_ = table_->file_info_.data_end_offset;
-  } else {
-    Next();
+    return Entry();
   }
+  return Next();
 }
 
-void PlainTableIterator::SeekToLast() {
+const KeyValueEntry& PlainTableIterator::SeekToLast() {
   assert(false);
   status_ = STATUS(NotSupported, "SeekToLast() is not supported in PlainTable");
+  return Entry();
 }
 
-void PlainTableIterator::Seek(const Slice& target) {
+const KeyValueEntry& PlainTableIterator::Seek(Slice target) {
   // If the user doesn't set prefix seek option and we are not able to do a
   // total Seek(). assert failure.
   if (!use_prefix_seek_) {
@@ -655,14 +656,14 @@ void PlainTableIterator::Seek(const Slice& target) {
       status_ =
           STATUS(InvalidArgument, "Seek() is not allowed in full scan mode.");
       offset_ = next_offset_ = table_->file_info_.data_end_offset;
-      return;
+      return Entry();
     } else if (table_->GetIndexSize() > 1) {
       assert(false);
       status_ = STATUS(NotSupported,
           "PlainTable cannot issue non-prefix seek unless in total order "
           "mode.");
       offset_ = next_offset_ = table_->file_info_.data_end_offset;
-      return;
+      return Entry();
     }
   }
 
@@ -673,7 +674,7 @@ void PlainTableIterator::Seek(const Slice& target) {
     prefix_hash = GetSliceHash(prefix_slice);
     if (!table_->MatchBloom(prefix_hash)) {
       offset_ = next_offset_ = table_->file_info_.data_end_offset;
-      return;
+      return Entry();
     }
   }
   bool prefix_match;
@@ -681,7 +682,7 @@ void PlainTableIterator::Seek(const Slice& target) {
                               &prefix_match, &next_offset_);
   if (!status_.ok()) {
     offset_ = next_offset_ = table_->file_info_.data_end_offset;
-    return;
+    return Entry();
   }
 
   if (next_offset_ < table_->file_info_.data_end_offset) {
@@ -701,6 +702,7 @@ void PlainTableIterator::Seek(const Slice& target) {
   } else {
     offset_ = table_->file_info_.data_end_offset;
   }
+  return Entry();
 }
 
 const KeyValueEntry& PlainTableIterator::Next() {
@@ -718,8 +720,9 @@ const KeyValueEntry& PlainTableIterator::Next() {
   return Entry();
 }
 
-void PlainTableIterator::Prev() {
+const KeyValueEntry& PlainTableIterator::Prev() {
   assert(false);
+  return Entry();
 }
 
 Status PlainTableIterator::status() const {

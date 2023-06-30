@@ -84,16 +84,21 @@ class MockTableIterator : public InternalIterator {
     itr_ = table_.end();
   }
 
-  void SeekToFirst() override { itr_ = table_.begin(); }
-
-  void SeekToLast() override {
-    itr_ = table_.end();
-    --itr_;
+  const KeyValueEntry& SeekToFirst() override {
+    itr_ = table_.begin();
+    return Entry();
   }
 
-  void Seek(const Slice& target) override {
+  const KeyValueEntry& SeekToLast() override {
+    itr_ = table_.end();
+    --itr_;
+    return Entry();
+  }
+
+  const KeyValueEntry& Seek(Slice target) override {
     std::string str_target(target.cdata(), target.size());
     itr_ = table_.lower_bound(str_target);
+    return Entry();
   }
 
   const KeyValueEntry& Next() override {
@@ -101,12 +106,13 @@ class MockTableIterator : public InternalIterator {
     return Entry();
   }
 
-  void Prev() override {
+  const KeyValueEntry& Prev() override {
     if (itr_ == table_.begin()) {
       itr_ = table_.end();
     } else {
       --itr_;
     }
+    return Entry();
   }
 
   const KeyValueEntry& Entry() const override {

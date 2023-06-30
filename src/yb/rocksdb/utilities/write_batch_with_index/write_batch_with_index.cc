@@ -62,25 +62,25 @@ class BaseDeltaIterator final : public Iterator {
     return delta_iterator_->Entry();
   }
 
-  void SeekToFirst() override {
+  const KeyValueEntry& SeekToFirst() override {
     forward_ = true;
     base_iterator_->SeekToFirst();
     delta_iterator_->SeekToFirst();
-    UpdateCurrent();
+    return UpdateCurrent();
   }
 
-  void SeekToLast() override {
+  const KeyValueEntry& SeekToLast() override {
     forward_ = false;
     base_iterator_->SeekToLast();
     delta_iterator_->SeekToLast();
-    UpdateCurrent();
+    return UpdateCurrent();
   }
 
-  void Seek(const Slice& k) override {
+  const KeyValueEntry& Seek(Slice k) override {
     forward_ = true;
     base_iterator_->Seek(k);
     delta_iterator_->Seek(k);
-    UpdateCurrent();
+    return UpdateCurrent();
   }
 
   const KeyValueEntry& Next() override {
@@ -119,7 +119,7 @@ class BaseDeltaIterator final : public Iterator {
     return Entry();
   }
 
-  void Prev() override {
+  const KeyValueEntry& Prev() override {
     if (!Valid()) {
       status_ = STATUS(NotSupported, "Prev() on invalid iterator");
     }
@@ -153,6 +153,7 @@ class BaseDeltaIterator final : public Iterator {
     }
 
     Advance();
+    return Entry();
   }
 
   Status status() const override {
@@ -233,7 +234,7 @@ class BaseDeltaIterator final : public Iterator {
   }
   bool BaseValid() const { return base_iterator_->Valid(); }
   bool DeltaValid() const { return delta_iterator_->Valid(); }
-  void UpdateCurrent() {
+  const KeyValueEntry& UpdateCurrent() {
     while (true) {
       WriteEntry delta_entry;
       if (DeltaValid()) {
@@ -244,19 +245,19 @@ class BaseDeltaIterator final : public Iterator {
         // Base has finished.
         if (!DeltaValid()) {
           // Finished
-          return;
+          return KeyValueEntry::Invalid();
         }
         if (delta_entry.type == kDeleteRecord ||
             delta_entry.type == kSingleDeleteRecord) {
           AdvanceDelta();
         } else {
           current_at_base_ = false;
-          return;
+          return Entry();
         }
       } else if (!DeltaValid()) {
         // Delta has finished.
         current_at_base_ = true;
-        return;
+        return Entry();
       } else {
         int compare =
             (forward_ ? 1 : -1) *
@@ -268,7 +269,7 @@ class BaseDeltaIterator final : public Iterator {
           if (delta_entry.type != kDeleteRecord &&
               delta_entry.type != kSingleDeleteRecord) {
             current_at_base_ = false;
-            return;
+            return Entry();
           }
           // Delta is less advanced and is delete.
           AdvanceDelta();
@@ -277,12 +278,13 @@ class BaseDeltaIterator final : public Iterator {
           }
         } else {
           current_at_base_ = true;
-          return;
+          return Entry();
         }
       }
     }
 
     AssertInvariants();
+    return Entry();
   }
 
   bool forward_;

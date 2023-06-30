@@ -140,18 +140,18 @@ class InlineSkipList {
 
     // Advances to the previous position.
     // REQUIRES: Valid()
-    void Prev();
+    const char* Prev();
 
     // Advance to the first entry with a key >= target
-    void Seek(const char* target);
+    const char* Seek(const char* target);
 
     // Position at the first entry in list.
     // Final state of iterator is Valid() iff list is not empty.
-    void SeekToFirst();
+    const char* SeekToFirst();
 
     // Position at the last entry in list.
     // Final state of iterator is Valid() iff list is not empty.
-    void SeekToLast();
+    const char* SeekToLast();
 
    private:
     const InlineSkipList* list_;
@@ -320,32 +320,40 @@ inline const char* InlineSkipList<Comparator>::Iterator::Next() {
 }
 
 template <class Comparator>
-inline void InlineSkipList<Comparator>::Iterator::Prev() {
+inline const char* InlineSkipList<Comparator>::Iterator::Prev() {
   // Instead of using explicit "prev" links, we just search for the
   // last node that falls before key.
   assert(Entry());
   node_ = list_->FindLessThan(node_->Key());
-  if (node_ == list_->head_) {
-    node_ = nullptr;
+  if (node_ != list_->head_) {
+    return node_->Key();
   }
+
+  node_ = nullptr;
+  return nullptr;
 }
 
 template <class Comparator>
-inline void InlineSkipList<Comparator>::Iterator::Seek(const char* target) {
+inline const char* InlineSkipList<Comparator>::Iterator::Seek(const char* target) {
   node_ = list_->FindGreaterOrEqual(target);
+  return Entry();
 }
 
 template <class Comparator>
-inline void InlineSkipList<Comparator>::Iterator::SeekToFirst() {
+inline const char* InlineSkipList<Comparator>::Iterator::SeekToFirst() {
   node_ = list_->head_->Next(0);
+  return Entry();
 }
 
 template <class Comparator>
-inline void InlineSkipList<Comparator>::Iterator::SeekToLast() {
+inline const char* InlineSkipList<Comparator>::Iterator::SeekToLast() {
   node_ = list_->FindLast();
-  if (node_ == list_->head_) {
-    node_ = nullptr;
+  if (node_ != list_->head_) {
+    return node_->Key();
   }
+
+  node_ = nullptr;
+  return nullptr;
 }
 
 template <class Comparator>

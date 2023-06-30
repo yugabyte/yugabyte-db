@@ -162,18 +162,20 @@ class MemTableRep {
 
     // Advances to the previous position.
     // REQUIRES: Valid()
-    virtual void Prev() = 0;
+    virtual const char* Prev() = 0;
 
     // Advance to the first entry with a key >= target
-    virtual void Seek(const Slice& internal_key, const char* memtable_key) = 0;
+    virtual const char* Seek(Slice internal_key) = 0;
+
+    virtual const char* SeekMemTableKey(Slice internal_key, const char* memtable_key) = 0;
 
     // Position at the first entry in collection.
     // Final state of iterator is Valid() iff collection is not empty.
-    virtual void SeekToFirst() = 0;
+    virtual const char* SeekToFirst() = 0;
 
     // Position at the last entry in collection.
     // Final state of iterator is Valid() iff collection is not empty.
-    virtual void SeekToLast() = 0;
+    virtual const char* SeekToLast() = 0;
   };
 
   // Return an iterator over the keys in this representation.

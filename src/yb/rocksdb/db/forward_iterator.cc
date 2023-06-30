@@ -66,23 +66,23 @@ class LevelIterator : public InternalIterator {
         files_[file_index_]->fd, files_[file_index_]->UserFilter(), nullptr /* table_reader_ptr */,
         nullptr, false));
   }
-  void SeekToLast() override {
+  const KeyValueEntry& SeekToLast() override {
     status_ = STATUS(NotSupported, "LevelIterator::SeekToLast()");
-    entry_ = KeyValueEntry::Invalid();
+    return entry_ = KeyValueEntry::Invalid();
   }
-  void Prev() override {
+  const KeyValueEntry& Prev() override {
     status_ = STATUS(NotSupported, "LevelIterator::Prev()");
-    entry_ = KeyValueEntry::Invalid();
+    return entry_ = KeyValueEntry::Invalid();
   }
-  void SeekToFirst() override {
+  const KeyValueEntry& SeekToFirst() override {
     SetFileIndex(0);
     file_iter_->SeekToFirst();
-    entry_ = file_iter_->Entry();
+    return entry_ = file_iter_->Entry();
   }
-  void Seek(const Slice& internal_key) override {
+  const KeyValueEntry& Seek(Slice internal_key) override {
     assert(file_iter_ != nullptr);
     file_iter_->Seek(internal_key);
-    entry_ = file_iter_->Entry();
+    return entry_ = file_iter_->Entry();
   }
   const KeyValueEntry& Next() override {
     assert(entry_);
@@ -195,7 +195,7 @@ void ForwardIterator::Cleanup(bool release_sv) {
   }
 }
 
-void ForwardIterator::SeekToFirst() {
+const KeyValueEntry& ForwardIterator::SeekToFirst() {
   if (sv_ == nullptr) {
     RebuildIterators(true);
   } else if (sv_->version_number != cfd_->GetSuperVersionNumber()) {
@@ -204,6 +204,7 @@ void ForwardIterator::SeekToFirst() {
     ResetIncompleteIterators();
   }
   SeekInternal(Slice(), true);
+  return Entry();
 }
 
 bool ForwardIterator::IsOverUpperBound(const Slice& internal_key) const {
@@ -213,7 +214,7 @@ bool ForwardIterator::IsOverUpperBound(const Slice& internal_key) const {
                *read_options_.iterate_upper_bound) < 0);
 }
 
-void ForwardIterator::Seek(const Slice& internal_key) {
+const KeyValueEntry& ForwardIterator::Seek(Slice internal_key) {
   if (IsOverUpperBound(internal_key)) {
     entry_ = KeyValueEntry::Invalid();
   }
@@ -225,6 +226,7 @@ void ForwardIterator::Seek(const Slice& internal_key) {
     ResetIncompleteIterators();
   }
   SeekInternal(internal_key, false);
+  return Entry();
 }
 
 void ForwardIterator::SeekInternal(const Slice& internal_key,

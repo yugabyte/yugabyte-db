@@ -29,24 +29,24 @@ class DBIteratorWrapper : public Iterator {
     return wrapped_->Entry();
   }
 
-  void SeekToFirst() override {
-    wrapped_->SeekToFirst();
+  const KeyValueEntry& SeekToFirst() override {
+    return wrapped_->SeekToFirst();
   }
 
-  void SeekToLast() override {
-    wrapped_->SeekToLast();
+  const KeyValueEntry& SeekToLast() override {
+    return wrapped_->SeekToLast();
   }
 
-  void Seek(const Slice& target) override {
-    wrapped_->Seek(target);
+  const KeyValueEntry& Seek(Slice target) override {
+    return wrapped_->Seek(target);
   }
 
   const KeyValueEntry& Next() override {
     return wrapped_->Next();
   }
 
-  void Prev() override {
-    wrapped_->Prev();
+  const KeyValueEntry& Prev() override {
+    return wrapped_->Prev();
   }
 
   Status status() const override {
@@ -80,11 +80,11 @@ class TransitionLoggingIteratorWrapper : public DBIteratorWrapper {
       : DBIteratorWrapper(wrapped),
         rocksdb_log_prefix_(rocksdb_log_prefix) {}
 
-  void SeekToFirst() override;
-  void SeekToLast() override;
-  void Seek(const Slice& target) override;
+  const KeyValueEntry& SeekToFirst() override;
+  const KeyValueEntry& SeekToLast() override;
+  const KeyValueEntry& Seek(Slice target) override;
   const KeyValueEntry& Next() override;
-  void Prev() override;
+  const KeyValueEntry& Prev() override;
 
  private:
   std::string LogPrefix() const;
