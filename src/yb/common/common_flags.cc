@@ -77,6 +77,8 @@ DEFINE_RUNTIME_uint32(external_transaction_retention_window_secs, 60 * 60 * 24,
 namespace yb {
 
 void InitCommonFlags() {
+  // Note! Autoflags are in non-promoted state (are set to the initial value) during execution of
+  // this function. Be very careful in manipulations with such flags.
 }
 
 } // namespace yb

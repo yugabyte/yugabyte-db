@@ -67,10 +67,12 @@ DECLARE_bool(enable_load_balancing);
 DECLARE_bool(fail_on_out_of_range_clock_skew);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(rocksdb_disable_compactions);
+DECLARE_bool(enable_ondisk_compression);
 DECLARE_int32(TEST_delay_init_tablet_peer_ms);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_int32(remote_bootstrap_max_chunk_size);
 DECLARE_int64(transaction_rpc_timeout_ms);
+DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_uint64(TEST_transaction_delay_status_reply_usec_in_tests);
 DECLARE_uint64(aborted_intent_cleanup_ms);
 DECLARE_uint64(max_clock_skew_usec);
@@ -884,7 +886,9 @@ TEST_F(QLTransactionTest, CheckCompactionAbortCleanup) {
 class QLTransactionTestWithDisabledCompactions : public QLTransactionTest {
  public:
   void SetUp() override {
-    FLAGS_rocksdb_disable_compactions = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ondisk_compression) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_cache_size_bytes) = -2; // kDbCacheSizeCacheDisabled;
     QLTransactionTest::SetUp();
   }
 };
@@ -903,6 +907,9 @@ TEST_F_EX(QLTransactionTest, IntentsCleanupAfterRestart, QLTransactionTestWithDi
   // Empirically determined constant.
   constexpr int kBytesPerRow = 75;
   constexpr int kRequiredCompactedBytes = kTransactions * kNumRows * kBytesPerRow;
+  LOG(INFO) << "Required compact read bytes: " << kRequiredCompactedBytes
+            << ", num tablets: " << this->table_->GetPartitionCount()
+            << ", num transactions: " << kTransactions;
 
   LOG(INFO) << "Write values";
 
@@ -916,7 +923,7 @@ TEST_F_EX(QLTransactionTest, IntentsCleanupAfterRestart, QLTransactionTestWithDi
     ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kAsync));
 
     // Need some time for flush to be initiated.
-    std::this_thread::sleep_for(100ms);
+    std::this_thread::sleep_for(1s);
 
     txn->Abort();
   }
@@ -926,7 +933,7 @@ TEST_F_EX(QLTransactionTest, IntentsCleanupAfterRestart, QLTransactionTestWithDi
   LOG(INFO) << "Shutdown cluster";
   cluster_->Shutdown();
 
-  std::this_thread::sleep_for(FLAGS_aborted_intent_cleanup_ms * 1ms);
+  std::this_thread::sleep_for(1ms * ANNOTATE_UNPROTECTED_READ(FLAGS_aborted_intent_cleanup_ms));
 
   FLAGS_TEST_delay_init_tablet_peer_ms = 100;
   FLAGS_rocksdb_disable_compactions = false;
@@ -934,14 +941,18 @@ TEST_F_EX(QLTransactionTest, IntentsCleanupAfterRestart, QLTransactionTestWithDi
   LOG(INFO) << "Start cluster";
   ASSERT_OK(cluster_->StartSync());
 
-  ASSERT_OK(WaitFor([cluster = cluster_.get()] {
-    auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
-    int64_t bytes = 0;
+  ASSERT_OK(WaitFor([this, counter = 0UL]() mutable {
+    LOG(INFO) << "Wait iteration #" << ++counter;
+    const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), this->table_->id());
+    uint64_t bytes = 0;
     for (const auto& peer : peers) {
-      if (peer->tablet()) {
-        bytes +=
-            peer->tablet()->intentsdb_statistics()->getTickerCount(rocksdb::COMPACT_READ_BYTES);
+      uint64_t read_bytes = 0;
+      const auto tablet = peer->shared_tablet();
+      if (tablet) {
+        read_bytes = tablet->intentsdb_statistics()->getTickerCount(rocksdb::COMPACT_READ_BYTES);
       }
+      bytes += read_bytes;
+      LOG(INFO) << "T " << peer->tablet_id() << ": Compact read bytes: " << read_bytes;
     }
     LOG(INFO) << "Compact read bytes: " << bytes;
 
