@@ -82,7 +82,7 @@ The valid *arguments* for export schema are described in the following table:
 | [--source-ssl-crl](#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
 | [--source-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--source-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| [--start-clean](#start-clean) | Clean the schema data directories. |
+| [--start-clean](#start-clean) | Clears the exported schema. |
 | [--use-orafce](#use-orafce) | Use the Orafce extension. Oracle migrations only. |
 | [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
@@ -162,7 +162,7 @@ The valid *arguments* for export data are described in the following table:
 | [--source-ssl-crl](#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
 | [--source-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--source-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
+| [--start-clean](#start-clean) | Clears the exported data files. |
 | [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
 #### Example
@@ -227,7 +227,7 @@ The valid *arguments* for import schema are described in the following table:
 | [-h, --help](#command-line-help) | Command line help. |
 |  [--post-import-data](#post-import-data) | Imports indexes and triggers in the target YugabyteDB database after data import is complete. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
-| [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
+| [--start-clean](#start-clean) | Starts a fresh import of the schema on the target YugabyteDB database. |
 | [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
 | [--target-db-name](#target-db-name) <name> | Target database name. |
 | [--target-db-password](#target-db-password) <password>| Target database password. |
@@ -282,7 +282,7 @@ The valid *arguments* for import data are described in the following table:
 | [-h, --help](#command-line-help) | Command line help. |
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
-| [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
+| [--start-clean](#start-clean) | Starts a fresh import of data after clearing the previous state of import on the target YugabyteDB database. |
 | [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
 | [--target-db-name](#target-db-name) <name> | Target database name. |
 | [--target-db-password](#target-db-password) <password>| Target database password. |
@@ -316,7 +316,7 @@ yb-voyager import data --export-dir /path/to/yb/export/dir \
 
 ### import data file
 
-[Load all your data files](../../migrate-steps/#import-data-file) in CSV or text format directly to the target YugabyteDB. These data files can be located either on a local filesystem or an AWS S3 bucket.
+[Load all your data files](../../migrate-steps/#import-data-file) in CSV or text format directly to the target YugabyteDB. These data files can be located either on a local filesystem, an [AWS S3 bucket](../../migrate-steps/#import-data-file-from-aws-s3), [GCS bucket](../../migrate-steps/#import-data-file-from-gcs-buckets), or [Azure blob](../../migrate-steps/#import-data-file-from-azure-blob-storage-containers).
 
 #### Syntax
 
@@ -343,7 +343,7 @@ The valid *arguments* for import data file are described in the following table:
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
 | [--quote-char](#quote-char) | Character used to quote the values (default double quotes `"`) only applicable to CSV file format. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
-| [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
+| [--start-clean](#start-clean) | Starts a fresh import of a data file into a table in the target YugabyteDB database. |
 | [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
 | [--target-db-name](#target-db-name) <name> | Target database name. |
 | [--target-db-password](#target-db-password) <password>| Target database password. |
@@ -607,7 +607,13 @@ By default, answer yes to all questions during migration.
 
 ### --start-clean
 
-Cleans the data directories for already existing files and is applicable during all phases of migration, except [analyze-schema](../../migrate-steps/#analyze-schema). For the export phase, this implies cleaning the schema or data directories depending on the current phase of migration. For the import phase, it implies cleaning the contents of the target YugabyteDB database.
+For the export phase, cleans the exported schema/data in the export-dir.
+
+For the import phase, starts a fresh import of schema during import schema and clears the previous state of import data, and starts a fresh import of data on the target database.
+
+For import data file, starts a fresh import of a data file into a table in the target database.
+
+Note: Because Voyager uses upsert mode during data import, if the target tables are not empty and they have a Primary Key, you should have no problems when using this flag, as column values will be updated. For tables with no Primary Key, you should exclude them using `--exlcude-table-list` to avoid duplicate data, if any.
 
 ### --table-list
 
