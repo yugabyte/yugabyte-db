@@ -501,6 +501,7 @@ const constructDefaultFormValues = (
   regions: providerConfig.regions.map((region) => ({
     fieldId: generateLowerCaseAlphanumericId(),
     code: region.code,
+    name: region.name,
     vnet: region.details.cloudInfo.azu.vnet,
     securityGroupId: region.details.cloudInfo.azu.securityGroupId,
     ybImage: region.details.cloudInfo.azu.ybImage ?? '',
@@ -544,9 +545,11 @@ const constructProviderPayload = async (
           azuClientSecret: formValues.azuClientSecret,
           ...(formValues.azuHostedZoneId && { azuHostedZoneId: formValues.azuHostedZoneId }),
           azuRG: formValues.azuRG,
-          ...(formValues.azuNetworkRG && { azuNetworkRG: formValues.azuNetworkRG}),
+          ...(formValues.azuNetworkRG && { azuNetworkRG: formValues.azuNetworkRG }),
           azuSubscriptionId: formValues.azuSubscriptionId,
-          ...(formValues.azuNetworkSubscriptionId && { azuNetworkSubscriptionId: formValues.azuNetworkSubscriptionId}),
+          ...(formValues.azuNetworkSubscriptionId && {
+            azuNetworkSubscriptionId: formValues.azuNetworkSubscriptionId
+          }),
           azuTenantId: formValues.azuTenantId
         }
       },

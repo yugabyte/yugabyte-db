@@ -44,7 +44,6 @@ import { ACCEPTABLE_CHARS } from '../../../../config/constants';
 import { FormField } from '../components/FormField';
 import { FieldLabel } from '../components/FieldLabel';
 import { CreateInfraProvider } from '../../InfraProvider';
-import { GCP_REGIONS } from '../../providerRegionsData';
 import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { api, hostInfoQueryKey } from '../../../../../redesign/helpers/api';
 import { getYBAHost } from '../../utils';
@@ -267,13 +266,11 @@ export const GCPProviderCreateForm = ({
             }
           }
         },
-        zones: GCP_REGIONS[regionFormValues.code]?.zones.map<GCPAvailabilityZoneMutation>(
-          (zoneSuffix: string) => ({
-            code: `${regionFormValues.code}${zoneSuffix}`,
-            name: `${regionFormValues.code}${zoneSuffix}`,
-            subnet: regionFormValues.sharedSubnet ?? ''
-          })
-        )
+        zones: regionFormValues.zones.map<GCPAvailabilityZoneMutation>((zone) => ({
+          code: zone.code,
+          name: zone.code,
+          subnet: regionFormValues.sharedSubnet ?? ''
+        }))
       }))
     };
     try {

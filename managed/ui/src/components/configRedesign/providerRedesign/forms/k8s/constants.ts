@@ -11,10 +11,7 @@ import {
   KUBERNETES_PROVIDERS_MAP
 } from '../../constants';
 
-const convertToOptions = <KubernetesProviderType extends KubernetesProvider>(
-  kubernetesProvider: readonly KubernetesProviderType[],
-  isDisabled = false
-) =>
+const convertToOptions = (kubernetesProvider: readonly KubernetesProvider[], isDisabled = false) =>
   kubernetesProvider.map((kubernetesProvider) => ({
     value: kubernetesProvider,
     label: KubernetesProviderLabel[kubernetesProvider],
