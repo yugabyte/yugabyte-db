@@ -1210,7 +1210,6 @@ public class TaskExecutor {
   /** Runnable task for subtasks in a task. */
   public class RunnableSubTask extends AbstractRunnableTask {
     private RunnableTask parentRunnableTask;
-    private TaskInfo parentTaskInfo;
 
     RunnableSubTask(ITask task, TaskInfo taskInfo) {
       super(task, taskInfo);
