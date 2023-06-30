@@ -40,7 +40,7 @@ cascade:
 
   {{< sections/bottom-image-box
     title="Deploy dedicated clusters"
-    description="Deploy single- and multi-region production clusters on Google Cloud Platform (GCP) and Amazon Web Services (AWS)."
+    description="Deploy single- and multi-region production clusters on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP)."
     buttonText="Learn more"
     buttonUrl="cloud-basics/"
     imageAlt="Locally Laptop" imageUrl="/images/homepage/locally-laptop.svg"
