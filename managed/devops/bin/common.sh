@@ -610,6 +610,7 @@ activate_pex() {
   export PEX_EXTRA_SYS_PATH
   # Used by other devops scripts
   PEX_PATH="$yb_devops_home/pex/pexEnv"
+  export PEX_ROOT="$PEX_PATH"
   SCRIPT_PATH="$yb_devops_home/opscli/ybops/scripts/ybcloud.py"
   export SCRIPT_PATH
   mitogen_path=$($PYTHON_EXECUTABLE $PEX_PATH -c \
