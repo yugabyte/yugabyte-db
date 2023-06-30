@@ -430,6 +430,12 @@ extern int yb_index_state_flags_update_delay;
 extern bool yb_enable_expression_pushdown;
 
 /*
+ * Enables distinct pushdown.
+ * If true, send supported DISTINCT operations to DocDB
+ */
+extern bool yb_enable_distinct_pushdown;
+
+/*
  * YSQL guc variable that is used to enable the use of Postgres's selectivity
  * functions and YSQL table statistics.
  * e.g. 'SET yb_enable_optimizer_statistics = true'

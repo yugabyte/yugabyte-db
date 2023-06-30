@@ -2115,6 +2115,15 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 	{
+		{"yb_enable_distinct_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Push supported DISTINCT operations to DocDB."),
+			NULL
+		},
+		&yb_enable_distinct_pushdown,
+		true,
+		NULL, NULL, NULL
+	},
+	{
 		{"yb_enable_hash_batch_in", PGC_USERSET, QUERY_TUNING_METHOD,
 		gettext_noop("GUC variable that enables batching RPCs of generated for IN queries on hash "
 					 "keys issued to the same tablets."),
