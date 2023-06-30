@@ -26,7 +26,7 @@
 #include <gperftools/heap-profiler.h>
 #endif
 
-using yb::operator"" _KB;
+using yb::operator"" _MB;
 
 DEFINE_NON_RUNTIME_int64(server_tcmalloc_max_total_thread_cache_bytes, -1,
     "Total number of bytes to use for the thread cache for tcmalloc across all threads in the "
@@ -57,7 +57,10 @@ DEFINE_RUNTIME_string(heap_profile_path, "",
 TAG_FLAG(heap_profile_path, stable);
 TAG_FLAG(heap_profile_path, advanced);
 
-DEFINE_NON_RUNTIME_int64(profiler_sample_freq_bytes, 100_KB, "The frequency at which Google "
+// Assuming 30 lines per stack trace line * 20 bytes for the stack ptr, each sample costs 600 bytes.
+// With 1 MB sampling, a 64 GB server would have ~65536 samples, so the samples take ~39 MB, which
+// is a reasonable amount of overhead.
+DEFINE_NON_RUNTIME_int64(profiler_sample_freq_bytes, 1_MB, "The frequency at which Google "
     "TCMalloc should sample allocations (if enable_process_lifetime_heap_profiling is set to "
     "true).");
 
