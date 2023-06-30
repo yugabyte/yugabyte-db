@@ -45,7 +45,7 @@ In a single-region multi-zone cluster, the nodes of the YugabyteDB cluster are p
 
 ![Single cluster deployed across three zones in a region](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-1.png)
 
-**Resilience**: Cloud providers like AWS and Google Cloud design zones to minimize the risk of correlated failures caused by physical infrastructure outages like power, cooling, or networking. In other words, single failure events usually affect only a single zone. By deploying nodes across zones in a region, you get resilience to a zone failure as well as high availability.
+**Resilience**: Cloud providers design zones to minimize the risk of correlated failures caused by physical infrastructure outages like power, cooling, or networking. In other words, single failure events usually affect only a single zone. By deploying nodes across zones in a region, you get resilience to a zone failure as well as high availability.
 
 **Consistency**: YugabyteDB automatically shards the tables of the database, places the data across the nodes, and replicates all writes synchronously. The cluster ensures strong consistency of all I/O and distributed transactions.
 

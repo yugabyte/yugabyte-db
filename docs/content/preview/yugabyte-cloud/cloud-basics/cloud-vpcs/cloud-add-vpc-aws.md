@@ -32,7 +32,7 @@ type: docs
 
 </ul>
 
-YugabyteDB Managed supports virtual private cloud (VPC) networks on AWS and GCP.
+YugabyteDB Managed supports peering virtual private cloud (VPC) networks on AWS and GCP.
 
 Using YugabyteDB Managed, you can create a VPC on AWS, deploy clusters in the VPC, and peer the VPC with application VPCs hosted on AWS.
 
