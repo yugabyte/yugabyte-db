@@ -2,8 +2,8 @@
 title: Private service endpoints
 headerTitle:
 linkTitle: Private service endpoints
-description: Manage private service endpoints to your VPCs.
-headcontent: Manage private service endpoints for your VPCs
+description: Manage cluster private service endpoints.
+headcontent: Connect clusters to applications using a private link service
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-add-endpoint
@@ -12,15 +12,19 @@ menu:
 type: docs
 ---
 
-A private service endpoint (PSE) can be used to connect a YugabyteDB Managed cluster that is deployed in a VPC with other services on the same cloud provider - typically one that hosts an application that you want to have access to your cluster. Unlike VPC peering, when connected to a VPC using a private link, you do not need to add an IP allow list to your cluster.
+A private service endpoint (PSE) can be used to connect a YugabyteDB Managed cluster that is deployed in a VPC with other services on the same cloud provider - typically one that hosts an application that you want to have access to your cluster. The PSE connects to a private endpoint attached to a VPC hosting your application over a privately linked service. Unlike VPC peering, when connected to a VPC using a private link, you do not need to add an IP allow list to your cluster.
 
-You must create a VPC and deploy your cluster before you can configure a PSE.
+Setting up a private link to connect your cluster to your application VPC involves the following tasks:
 
-- To learn how to connect your cluster to an application over a private link using endpoints, refer to [Set up private link](../managed-endpoint-aws/).
+- Deploy your cluster in a VPC. You must create a VPC and deploy your cluster before you can configure a PSE.
+- Create a PSE in each region of your cluster. In the case of AWS, you grant access to one or more security principals in the form of Amazon resource names (ARNs); for Azure, you provide the subscription IDs of the services you want to have access.
+- Create a private endpoint on the cloud provider VPC (VNet).
+
+For more information on how to connect your cluster to an application over a private link using endpoints, refer to [Set up private link](../managed-endpoint-aws/).
 
 ## Limitations
 
-- Currently, PSEs are only supported for [AWS PrivateLink](https://docs.aws.amazon.com/vpc/latest/privatelink/what-is-privatelink.html) and [Azure Private Link](https://learn.microsoft.com/en-us/azure/private-link/).
+- Currently, PSEs are supported for [AWS PrivateLink](https://docs.aws.amazon.com/vpc/latest/privatelink/what-is-privatelink.html) and [Azure Private Link](https://learn.microsoft.com/en-us/azure/private-link/).
 - Currently, PSEs must be created and managed using [ybm CLI](../../../managed-automation/managed-cli/).
 
 ## Prerequisites
