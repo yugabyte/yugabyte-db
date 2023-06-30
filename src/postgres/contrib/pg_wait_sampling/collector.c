@@ -10,7 +10,6 @@
 #include "postgres.h"
 
 #include "catalog/pg_type.h"
-#include "pg_yb_utils.h"
 #if PG_VERSION_NUM >= 130000
 #include "common/hashfn.h"
 #endif
@@ -29,8 +28,6 @@
 
 #include "compat.h"
 #include "pg_wait_sampling.h"
-
-#include "yb/yql/pggate/ybc_pggate.h"
 
 static volatile sig_atomic_t shutdown_requested = false;
 
@@ -440,10 +437,6 @@ pgws_collector_main(Datum main_arg)
 			proc_exit(1);
 
 		ResetLatch(&MyProc->procLatch);
-
-		// ereport(LOG, (errmsg("pg_wait_sampling collector sampling")));
-		// YBCPingPggate();
-		// YBCActiveUniverseHistory();
 
 		/* Handle request if any */
 		if (pgws_collector_hdr->request != NO_REQUEST)

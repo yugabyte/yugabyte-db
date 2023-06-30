@@ -853,7 +853,6 @@ pgsentinel_main(Datum main_arg)
 {
 
 	ereport(LOG, (errmsg("starting bgworker pgsentinel")));
-	ereport(LOG, (errmsg("pgsentinel is background worker = %d", IsBackgroundWorker)));
 
 	/* Register functions for SIGTERM/SIGHUP management */
 	pqsignal(SIGHUP, pgsentinel_sighup);
@@ -919,8 +918,6 @@ letswait:
 			CommitTransactionCommand();
 			goto letswait;
 		}
-		// ereport(LOG, (errmsg("pg sentinel sampling now")));
-		// YBCPingPggate();
 
 		SPI_connect();
 
