@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Throwables;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
 import com.google.inject.Provider;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -177,20 +178,21 @@ public class TaskExecutor {
 
   // This writes the waiting time metric.
   private static void writeTaskWaitMetric(
-      TaskType taskType, Instant scheduledTime, Instant startTime, TaskType parentTaskType) {
+      Map<String, String> taskLabels, TaskType taskType, Instant scheduledTime, Instant startTime) {
     COMMISSIONER_TASK_WAITING_SEC
-        .labels(taskType.name(), parentTaskType == null ? "No parent" : parentTaskType.name())
+        .labels(taskType.name(), taskLabels.get("parentTaskType"))
         .observe(getDurationSeconds(scheduledTime, startTime));
   }
 
   // This writes the execution time metric.
   private static void writeTaskStateMetric(
-      TaskType taskType, Instant startTime, Instant endTime, State state, TaskType parentTaskType) {
+      Map<String, String> taskLabels,
+      TaskType taskType,
+      Instant startTime,
+      Instant endTime,
+      State state) {
     COMMISSIONER_TASK_EXECUTION_SEC
-        .labels(
-            taskType.name(),
-            state.name(),
-            parentTaskType == null ? "No parent" : parentTaskType.name())
+        .labels(taskType.name(), state.name(), taskLabels.get("parentTaskType"))
         .observe(getDurationSeconds(startTime, endTime));
   }
 
@@ -796,7 +798,7 @@ public class TaskExecutor {
       Throwable t = null;
       TaskType taskType = taskInfo.getTaskType();
       taskStartTime = Instant.now();
-      Map<String, TaskType> taskLables = this.getTaskMetricLabels();
+      Map<String, String> taskLables = this.getTaskMetricLabels();
 
       try {
         if (log.isDebugEnabled()) {
@@ -805,11 +807,7 @@ public class TaskExecutor {
               task.getName(),
               getDurationSeconds(taskScheduledTime, taskStartTime));
         }
-        writeTaskWaitMetric(
-            taskType,
-            taskScheduledTime,
-            taskStartTime,
-            taskLables.containsKey("parentTaskType") ? taskLables.get("parentTaskType") : null);
+        writeTaskWaitMetric(taskLables, taskType, taskScheduledTime, taskStartTime);
         publishBeforeTask();
         if (getAbortTime() != null) {
           throw new CancellationException("Task " + task.getName() + " is aborted");
@@ -844,11 +842,7 @@ public class TaskExecutor {
               getDurationSeconds(taskStartTime, taskCompletionTime));
         }
         writeTaskStateMetric(
-            taskType,
-            taskStartTime,
-            taskCompletionTime,
-            getTaskState(),
-            taskLables.containsKey("parentTaskType") ? taskLables.get("parentTaskType") : null);
+            taskLables, taskType, taskStartTime, taskCompletionTime, getTaskState());
         task.terminate();
         publishAfterTask(t);
       }
@@ -879,7 +873,7 @@ public class TaskExecutor {
       taskInfo.update();
     }
 
-    protected abstract Map<String, TaskType> getTaskMetricLabels();
+    protected abstract Map<String, String> getTaskMetricLabels();
 
     protected abstract Instant getAbortTime();
 
@@ -1072,9 +1066,8 @@ public class TaskExecutor {
 
     // Add extra labels here. Currently not required in RunnableTask
     @Override
-    protected Map<String, TaskType> getTaskMetricLabels() {
-      Map<String, TaskType> extraTaskLabels = new ConcurrentHashMap<>();
-      return extraTaskLabels;
+    protected Map<String, String> getTaskMetricLabels() {
+      return ImmutableMap.of("parentTaskType", "No parent");
     }
 
     @Override
@@ -1255,10 +1248,8 @@ public class TaskExecutor {
     }
 
     @Override
-    protected Map<String, TaskType> getTaskMetricLabels() {
-      Map<String, TaskType> extraTaskLabels = new ConcurrentHashMap<>();
-      extraTaskLabels.putIfAbsent("parentTaskType", parentRunnableTask.getTaskType());
-      return extraTaskLabels;
+    protected Map<String, String> getTaskMetricLabels() {
+      return ImmutableMap.of("parentTaskType", parentRunnableTask.getTaskType().name());
     }
 
     @Override
