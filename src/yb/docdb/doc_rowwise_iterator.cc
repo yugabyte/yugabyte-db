@@ -132,6 +132,21 @@ void DocRowwiseIterator::InitResult() {
   }
 }
 
+Result<bool> DocRowwiseIterator::PgFetchRow(Slice key, bool restart, dockv::PgTableRow* table_row) {
+  VLOG_WITH_FUNC(3) << "key: " << key << "/" << dockv::DocKey::DebugSliceToString(key)
+                    << ", restart: " << restart;
+  prev_doc_found_ = DocReaderResult::kNotFound;
+  done_ = false;
+
+  IntentAwareIteratorPrefixScope prefix_scope(key, db_iter_.get());
+  if (restart) {
+    db_iter_->Seek(key);
+  } else {
+    db_iter_->SeekForward(key);
+  }
+  return PgFetchNext(table_row);
+}
+
 inline void DocRowwiseIterator::Seek(Slice key) {
   VLOG_WITH_FUNC(3) << " Seeking to " << key << "/" << dockv::DocKey::DebugSliceToString(key);
 

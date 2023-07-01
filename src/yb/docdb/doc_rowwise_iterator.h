@@ -79,8 +79,11 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
 
   Result<HybridTime> RestartReadHt() override;
 
+  void Seek(Slice key) override;
+
   HybridTime TEST_MaxSeenHt() override;
 
+  Result<bool> PgFetchRow(Slice key, bool restart, dockv::PgTableRow* table_row);
   Result<bool> PgFetchNext(dockv::PgTableRow* table_row) override;
 
   bool TEST_is_flat_doc() const {
@@ -107,7 +110,6 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
   template <class TableRow>
   Result<bool> FetchNextImpl(TableRow table_row);
 
-  void Seek(Slice key) override;
   void PrevDocKey(Slice key) override;
 
   void ConfigureForYsql();

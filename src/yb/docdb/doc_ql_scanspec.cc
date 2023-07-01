@@ -363,12 +363,11 @@ Result<KeyBytes> DocQLScanSpec::Bound(const bool lower_bound) const {
 
   // If we have a start_doc_key, we need to use it as a starting point (lower bound for forward
   // scan, upper bound for reverse scan).
-  if (range_bounds() != nullptr &&
-      !KeyWithinRange(start_doc_key_, lower_doc_key_, upper_doc_key_)) {
-    return STATUS_FORMAT(
-        Corruption, "Invalid start_doc_key: $0. Range: $1, $2", start_doc_key_, lower_doc_key_,
-        upper_doc_key_);
-  }
+  RSTATUS_DCHECK(
+      range_bounds() == nullptr || KeyWithinRange(start_doc_key_, lower_doc_key_, upper_doc_key_),
+      Corruption, "Invalid start_doc_key: $0. Range: $1, $2",
+      start_doc_key_.AsSlice().ToDebugHexString(), lower_doc_key_.AsSlice().ToDebugHexString(),
+      upper_doc_key_.AsSlice().ToDebugHexString());
 
   // Paging state + forward scan.
   if (is_forward_scan()) {
