@@ -82,8 +82,6 @@ class Counter;
 
 namespace docdb {
 
-class DocOperation;
-
 // This function prepares the transaction by taking locks. The set of keys locked are returned to
 // the caller via the keys_locked argument (because they need to be saved and unlocked when the
 // transaction commits). A flag is also returned to indicate if any of the write operations

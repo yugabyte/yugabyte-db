@@ -65,7 +65,10 @@ Status ApplyWriteRequest(
   docdb::DocOperationApplyData apply_data{
       .doc_write_batch = write_batch,
       .read_operation_data = {},
-      .restart_read_ht = nullptr};
+      .restart_read_ht = nullptr,
+      .iterator = nullptr,
+      .restart_seek = true,
+  };
   qlexpr::IndexMap index_map;
   docdb::QLWriteOperation operation(
       write_request, write_request.schema_version(), doc_read_context, index_map, nullptr,

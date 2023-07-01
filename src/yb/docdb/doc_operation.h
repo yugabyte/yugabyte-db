@@ -31,6 +31,9 @@ struct DocOperationApplyData {
   DocWriteBatch* doc_write_batch;
   ReadOperationData read_operation_data;
   HybridTime* restart_read_ht;
+  DocRowwiseIterator* iterator;
+  // Whether we should restart seek while fetching entry from doc key.
+  bool restart_seek;
 
   CoarseTimePoint deadline() const {
     return read_operation_data.deadline;
@@ -78,6 +81,14 @@ class DocOperation {
   virtual Status Apply(const DocOperationApplyData& data) = 0;
   virtual Type OpType() = 0;
   virtual void ClearResponse() = 0;
+
+  virtual const dockv::DocKey* DocKey() { return nullptr; }
+
+  virtual Status CreateIterator(
+      const DocOperationApplyData& data, const dockv::DocKey* key,
+      std::optional<DocRowwiseIterator>* iterator) {
+    return Status::OK();
+  }
 
   virtual std::string ToString() const = 0;
 };

@@ -156,11 +156,11 @@ Status QLRocksDBStorage::GetIteratorForYbctid(
       projection, doc_read_context, txn_op_context, doc_db_, read_operation_data, pending_op,
       statistics);
 
-  dockv::KeyEntryValues empty_vec;
+  static const dockv::KeyEntryValues kEmptyVec;
   RETURN_NOT_OK(doc_iter->Init(
       DocPgsqlScanSpec(doc_read_context.get().schema(), stmt_id,
-        empty_vec, /* hashed_components */
-        empty_vec /* range_components */,
+        kEmptyVec, /* hashed_components */
+        kEmptyVec /* range_components */,
         nullptr /* condition */,
         boost::none /* hash_code */,
         boost::none /* max_hash_code */,
