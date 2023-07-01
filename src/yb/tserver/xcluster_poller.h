@@ -59,15 +59,19 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
       const std::vector<TabletId>& global_transaction_status_tablets,
       bool enable_replicate_transaction_status_table,
       SchemaVersion last_compatible_consumer_schema_version,
-      rocksdb::RateLimiter* rate_limiter);
+      rocksdb::RateLimiter* rate_limiter,
+      std::function<int64_t(const TabletId&)>
+          ger_leader_term);
   ~XClusterPoller();
 
   void Shutdown();
 
+  bool IsFailed() const { return is_failed_.load(); }
+
   // Begins poll process for a producer tablet.
   void Poll();
 
-  bool IsPolling() { return is_polling_; }
+  bool IsPolling() const { return is_polling_; }
 
   void SetSchemaVersion(SchemaVersion cur_version,
                         SchemaVersion last_compatible_consumer_schema_version);
@@ -77,7 +81,7 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
   void UpdateColocatedSchemaVersionMap(
       const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map);
 
-  std::string LogPrefixUnlocked() const;
+  std::string LogPrefix() const;
 
   HybridTime GetSafeTime() const EXCLUDES(safe_time_lock_);
 
@@ -99,9 +103,10 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
   void DoHandleApplyChanges(XClusterOutputClientResponse response);
   void UpdateSafeTime(int64 new_time) EXCLUDES(safe_time_lock_);
   void UpdateSchemaVersionsForApply();
+  bool IsLeaderTermValid() REQUIRES(data_mutex_);
 
-  cdc::ProducerTabletInfo producer_tablet_info_;
-  cdc::ConsumerTabletInfo consumer_tablet_info_;
+  const cdc::ProducerTabletInfo producer_tablet_info_;
+  const cdc::ConsumerTabletInfo consumer_tablet_info_;
 
   mutable rw_spinlock schema_version_lock_;
   cdc::XClusterSchemaVersionMap schema_version_map_ GUARDED_BY(schema_version_lock_);
@@ -114,10 +119,13 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
   std::mutex data_mutex_;
 
   std::atomic<bool> shutdown_ = false;
+  // In failed state we do not poll for changes and are awaiting shutdown.
+  std::atomic<bool> is_failed_ = false;
 
   OpIdPB op_id_ GUARDED_BY(data_mutex_);
   std::atomic<SchemaVersion> validated_schema_version_;
   std::atomic<SchemaVersion> last_compatible_consumer_schema_version_;
+  std::function<int64_t(const TabletId&)> get_leader_term_;
 
   Status status_ GUARDED_BY(data_mutex_);
 
@@ -136,6 +144,8 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
   int poll_failures_ GUARDED_BY(data_mutex_){0};
   int apply_failures_ GUARDED_BY(data_mutex_){0};
   int idle_polls_ GUARDED_BY(data_mutex_){0};
+
+  int64_t leader_term_ GUARDED_BY(data_mutex_) = OpId::kUnknownTerm;
 };
 
 } // namespace tserver

@@ -17,6 +17,8 @@
 #include <utility>
 #include <chrono>
 #include <boost/assign.hpp>
+#include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/util/flags.h"
 #include <gtest/gtest.h>
 
@@ -122,6 +124,9 @@ DECLARE_bool(use_node_to_node_encryption);
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_bool(TEST_enable_replicate_transaction_status_table);
+DECLARE_bool(TEST_xcluster_disable_delete_old_pollers);
+DECLARE_bool(enable_log_retention_by_op_idx);
+DECLARE_bool(TEST_xcluster_disable_poller_term_check);
 
 namespace yb {
 
@@ -581,6 +586,20 @@ class XClusterTest : public XClusterTestBase,
   }
  protected:
   std::shared_ptr<client::YBTable> producer_transaction_table_;
+
+  Status FlushProducerTabletsAndGCLog() {
+    // hk!!! remove
+    google::SetVLOGLevel("tablet_peer*", 4);
+    google::SetVLOGLevel("log*", 4);
+    RETURN_NOT_OK(producer_cluster()->FlushTablets());
+    RETURN_NOT_OK(producer_cluster()->CompactTablets());
+    for (size_t i = 0; i < producer_cluster()->num_tablet_servers(); ++i) {
+      for (const auto& tablet_peer : producer_cluster()->GetTabletPeers(i)) {
+        RETURN_NOT_OK(tablet_peer->RunLogGC());
+      }
+    }
+    return Status::OK();
+  }
 
  private:
   server::ClockPtr clock_{new server::HybridClock()};
@@ -1854,13 +1873,7 @@ TEST_P(XClusterTestTransactionalOnly, TransactionStatusTableWithBootstrap) {
   WriteTransactionalWorkload(10, 20, producer_client(), producer_txn_mgr(), producer_table->name());
 
   // 4. Flush the table and run log GC.
-  ASSERT_OK(producer_cluster()->FlushTablets());
-  ASSERT_OK(producer_cluster()->CompactTablets());
-  for (size_t i = 0; i < producer_cluster()->num_tablet_servers(); ++i) {
-    for (const auto& tablet_peer : producer_cluster()->GetTabletPeers(i)) {
-      ASSERT_OK(tablet_peer->RunLogGC());
-    }
-  }
+  ASSERT_OK(FlushProducerTabletsAndGCLog());
 
   // 5. Setup replication.
   FLAGS_TEST_enable_replicate_transaction_status_table = true;
@@ -3634,6 +3647,110 @@ TEST_P(XClusterTest, PausingAndResumingReplicationFromProducerMultiTable) {
     WriteWorkloadAndVerifyWrittenRows(producer_tables[i], consumer_tables[i], 40, 50);
   }
   ASSERT_OK(DeleteUniverseReplication());
+}
+
+TEST_P(XClusterTest, LeaderFailoverTest) {
+  // When the consumer tablet leader moves around (like during an upgrade) the pollers can start and
+  // stop on multiple nodes. This test makes sure that during such poller movement we do not get
+  // replication errors.
+  // 1. We start polling from node A and then failover the consumer leader to node B. We disable
+  // deletion of old pollers to simulate a slow xcluster consumer on node A.
+  // 2. Poller from node B gets some data and log on producer gets GCed.
+  // 3. We failback the consumer leader to node A. Now the same poller from step1 is reused. If this
+  // tries to reuse its old checkpoint OpId then it will get a REPLICATION_MISSING_OP_ID error. If
+  // it instead checks for its local leader term then it will detect the leader move and poisons
+  // itself, causing the xcluster consumer to delete and create a new poller. This new poller does
+  // not have any cached checkpoint so it will rely on the producer sending the correct data from
+  // the previous checkpoint OpId it received from node B.
+
+  // Dont remove pollers when leaders move.
+  FLAGS_TEST_xcluster_disable_delete_old_pollers = true;
+  // Dont increase Poll delay on failures as it is expected.
+  FLAGS_replication_failure_delay_exponent = 0;
+  // The below flags are required for fast log gc.
+  FLAGS_log_segment_size_bytes = 500;
+  FLAGS_log_min_segments_to_retain = 1;
+  FLAGS_log_min_seconds_to_retain = 0;
+  FLAGS_cdc_wal_retention_time_secs = 0;
+
+  const uint32_t kReplicationFactor = 3, kTabletCount = 1, kNumMasters = 1, kNumTservers = 3;
+  auto tables = ASSERT_RESULT(SetUpWithParams(
+      {kTabletCount}, {kTabletCount}, kReplicationFactor, kNumMasters, kNumTservers));
+  const auto& producer_table = tables[0];
+  const auto& consumer_table = tables[1];
+  ASSERT_OK(
+      SetupUniverseReplication({producer_table}, {LeaderOnly::kFalse, Transactional::kFalse}));
+  FLAGS_enable_load_balancing = false;
+
+  // After creating the cluster, make sure all tablets being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), kTabletCount));
+
+  auto tablet_ids = ListTabletIdsForTable(consumer_cluster(), consumer_table->id());
+  ASSERT_EQ(tablet_ids.size(), 1);
+  const auto tablet_id = *tablet_ids.begin();
+  const auto kTimeout = 10s * kTimeMultiplier;
+
+  auto leader_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
+  master::MasterClusterProxy master_proxy(
+      &consumer_client()->proxy_cache(), leader_master->bound_rpc_addr());
+  auto ts_map =
+      ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, &consumer_client()->proxy_cache()));
+
+  itest::TServerDetails* old_ts = nullptr;
+  ASSERT_OK(FindTabletLeader(ts_map, tablet_id, kTimeout, &old_ts));
+
+  itest::TServerDetails* new_ts = nullptr;
+  for (auto& [ts_id, ts_details] : ts_map) {
+    if (ts_id != old_ts->uuid()) {
+      new_ts = ts_details.get();
+      break;
+    }
+  }
+
+  constexpr int kNumWriteRecords = 100;
+  WriteWorkload(0, kNumWriteRecords, producer_client(), producer_table->name());
+  ASSERT_OK(VerifyNumRecords(consumer_table->name(), consumer_client(), kNumWriteRecords));
+
+  // Failover to new tserver.
+  FLAGS_TEST_xcluster_disable_poller_term_check = true;
+  ASSERT_OK(itest::LeaderStepDown(old_ts, tablet_id, new_ts, kTimeout));
+  ASSERT_OK(itest::WaitUntilLeader(new_ts, tablet_id, kTimeout));
+  auto new_tserver = FindTabletLeader(consumer_cluster(), tablet_id);
+
+  WriteWorkload(kNumWriteRecords, 2 * kNumWriteRecords, producer_client(), producer_table->name());
+  ASSERT_OK(VerifyNumRecords(consumer_table->name(), consumer_client(), 2 * kNumWriteRecords));
+
+  // GC log on producer.
+  // Note: Ideally cdc checkpoint should advance but we do not see that with our combination of
+  // flags so disable FLAGS_enable_log_retention_by_op_idx for the duration of the flush instead.
+  FLAGS_enable_log_retention_by_op_idx = false;
+  SleepFor(2s * kTimeMultiplier);
+  ASSERT_OK(FlushProducerTabletsAndGCLog());
+  FLAGS_enable_log_retention_by_op_idx = true;
+
+  // Failback to old tserver.
+  ASSERT_OK(itest::LeaderStepDown(new_ts, tablet_id, old_ts, kTimeout));
+  ASSERT_OK(itest::WaitUntilLeader(old_ts, tablet_id, kTimeout));
+
+  // Delete old pollers so that we can properly shutdown the servers.
+  FLAGS_TEST_xcluster_disable_delete_old_pollers = false;
+
+  ASSERT_OK(LoggedWaitFor(
+      [&new_tserver]() {
+        auto new_tserver_pollers = new_tserver->server()->GetXClusterConsumer()->TEST_ListPollers();
+        return new_tserver_pollers.size() == 0;
+      },
+      kTimeout, "Waiting for pollers from new tserver to stop"));
+
+  WriteWorkload(
+      2 * kNumWriteRecords, 3 * kNumWriteRecords, producer_client(), producer_table->name());
+
+  auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_table->id()));
+  VerifyReplicationError(
+      consumer_table->id(), stream_id, ReplicationErrorPb::REPLICATION_MISSING_OP_ID);
+
+  FLAGS_TEST_xcluster_disable_poller_term_check = false;
+  ASSERT_OK(VerifyNumRecords(consumer_table->name(), consumer_client(), 3 * kNumWriteRecords));
 }
 
 } // namespace yb
