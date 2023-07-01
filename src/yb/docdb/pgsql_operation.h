@@ -77,6 +77,11 @@ class PgsqlWriteOperation :
   // Execute write.
   Status Apply(const DocOperationApplyData& data) override;
 
+  const dockv::DocKey* DocKey() final;
+  Status CreateIterator(
+      const DocOperationApplyData& data, const dockv::DocKey* key,
+      std::optional<DocRowwiseIterator>* iterator) final;
+
  private:
   void ClearResponse() override {
     if (response_) {

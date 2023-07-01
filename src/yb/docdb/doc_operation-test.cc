@@ -194,7 +194,13 @@ class DocOperationTest : public DocDBTestBase {
     ASSERT_OK(ql_write_op.Init(ql_writeresp_pb));
     auto doc_write_batch = MakeDocWriteBatch();
     HybridTime restart_read_ht;
-    ASSERT_OK(ql_write_op.Apply({&doc_write_batch, ReadOperationData(), &restart_read_ht}));
+    ASSERT_OK(ql_write_op.Apply({
+      .doc_write_batch = &doc_write_batch,
+      .read_operation_data = ReadOperationData(),
+      .restart_read_ht = &restart_read_ht,
+      .iterator = nullptr,
+      .restart_seek = true
+    }));
     ASSERT_OK(WriteToRocksDB(doc_write_batch, hybrid_time));
   }
 
@@ -378,7 +384,10 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   ASSERT_OK(redis_write_operation.Apply(docdb::DocOperationApplyData{
       .doc_write_batch = &doc_write_batch,
       .read_operation_data = {},
-      .restart_read_ht = nullptr}));
+      .restart_read_ht = nullptr,
+      .iterator = nullptr,
+      .restart_seek = true
+  }));
 
   ASSERT_OK(WriteToRocksDB(doc_write_batch, HybridTime::FromMicros(1000)));
 
