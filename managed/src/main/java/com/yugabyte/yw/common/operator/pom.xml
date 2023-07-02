@@ -48,7 +48,7 @@
                 </executions>
                 <configuration>
                     <source>${project.basedir}/resources</source>
-                    <target>${project.basedir}/</target>
+                    <target>${outputDirectory}</target>
                 </configuration>
             </plugin>
             <plugin>
@@ -65,7 +65,7 @@
                     <configuration>
                         <filesets>
                             <fileset>
-                                <directory>${project.basedir}/</directory>
+                                <directory>${outputDirectory}</directory>
                                 <includes>
                                     <include>io/**</include>
                                 </includes>
