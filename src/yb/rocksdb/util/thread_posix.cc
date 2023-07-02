@@ -51,6 +51,7 @@ ThreadPool::ThreadPool() {
 
 ThreadPool::~ThreadPool() {
   DCHECK(bgthreads_.empty());
+  DCHECK(bg_wait_states_.empty());
 }
 
 void ThreadPool::JoinAllThreads() {
@@ -62,6 +63,7 @@ void ThreadPool::JoinAllThreads() {
   for (const auto& thread : bgthreads_) {
     thread->Join();
   }
+  bg_wait_states_.clear();
   bgthreads_.clear();
 }
 
@@ -91,6 +93,7 @@ void ThreadPool::BGThread(size_t thread_id) {
       // Current thread is the last generated one and is excessive.
       // We always terminate excessive thread in the reverse order of
       // generation time.
+      bg_wait_states_.pop_back();
       bgthreads_.pop_back();
       if (HasExcessiveThread()) {
         // There is still at least more excessive thread to terminate.
@@ -99,7 +102,7 @@ void ThreadPool::BGThread(size_t thread_id) {
       PthreadCall("unlock", pthread_mutex_unlock(&mu_));
       break;
     }
-    void (*function)(void*) = queue_.front().function;
+    void (*function)(void*, yb::util::WaitStateInfoPtr) = queue_.front().function;
     void* arg = queue_.front().arg;
     queue_.pop_front();
     queue_len_.store(static_cast<unsigned int>(queue_.size()),
@@ -130,7 +133,7 @@ void ThreadPool::BGThread(size_t thread_id) {
 #else
     (void)decrease_io_priority;  // avoid 'unused variable' error
 #endif
-    (*function)(arg);
+    (*function)(arg, bg_wait_states_[thread_id]);
   }
 }
 
@@ -172,12 +175,13 @@ void ThreadPool::StartBGThreads() {
     CHECK_OK(yb::Thread::Create(
         category_name, std::move(thread_name),
         [this, tid]() { this->BGThread(tid); }, &thread));
-
+    bg_wait_states_.push_back(std::make_shared<yb::util::WaitStateInfo>
+      (yb::util::AUHMetadata{.request_id = std::to_string(reinterpret_cast<uint64_t>(thread.get()))}));
     bgthreads_.push_back(thread);
   }
 }
 
-void ThreadPool::Schedule(void (*function)(void* arg1), void* arg, void* tag,
+void ThreadPool::Schedule(void (*function)(void* arg1, yb::util::WaitStateInfoPtr wait_state), void* arg, void* tag,
                           void (*unschedFunction)(void* arg)) {
   PthreadCall("lock", pthread_mutex_lock(&mu_));
 

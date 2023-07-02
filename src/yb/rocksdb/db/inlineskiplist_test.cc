@@ -415,7 +415,7 @@ class TestState {
   port::CondVar state_cv_;
 };
 
-static void ConcurrentReader(void* arg) {
+static void ConcurrentReader(void* arg, yb::util::WaitStateInfoPtr wait_state) {
   TestState* state = reinterpret_cast<TestState*>(arg);
   Random rnd(state->seed_);
   state->Change(TestState::RUNNING);
@@ -425,7 +425,7 @@ static void ConcurrentReader(void* arg) {
   state->Change(TestState::DONE);
 }
 
-static void ConcurrentWriter(void* arg) {
+static void ConcurrentWriter(void* arg, yb::util::WaitStateInfoPtr wait_state) {
   TestState* state = reinterpret_cast<TestState*>(arg);
   uint32_t k = state->next_writer_++ % ConcurrentTest::K;
   state->t_.ConcurrentWriteStep(k);

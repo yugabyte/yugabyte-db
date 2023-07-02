@@ -78,7 +78,7 @@ class EnvPosixTest : public RocksDBTest {
   EnvPosixTest() : env_(Env::Default()) { }
 };
 
-static void SetBool(void* ptr) {
+static void SetBool(void* ptr, yb::util::WaitStateInfoPtr wait_state) {
   reinterpret_cast<std::atomic<bool>*>(ptr)
       ->store(true, std::memory_order_relaxed);
 }
@@ -135,7 +135,7 @@ TEST_F(EnvPosixTest, RunMany) {
 
     CB(std::atomic<int>* p, int i) : last_id_ptr(p), id(i) {}
 
-    static void Run(void* v) {
+    static void Run(void* v, yb::util::WaitStateInfoPtr wait_state) {
       CB* cb = reinterpret_cast<CB*>(v);
       int cur = cb->last_id_ptr->load(std::memory_order_relaxed);
       ASSERT_EQ(cb->id - 1, cur);
@@ -201,7 +201,7 @@ TEST_F(EnvPosixTest, TwoPools) {
           pool_size_(pool_size),
           pool_name_(pool_name) { }
 
-    static void Run(void* v) {
+    static void Run(void* v, yb::util::WaitStateInfoPtr wait_state) {
       CB* cb = reinterpret_cast<CB*>(v);
       cb->Run();
     }

@@ -435,7 +435,7 @@ class TestState {
   port::CondVar state_cv_;
 };
 
-static void ConcurrentReader(void* arg) {
+static void ConcurrentReader(void* arg, yb::util::WaitStateInfoPtr wait_state) {
   TestState* state = reinterpret_cast<TestState*>(arg);
   Random rnd(state->seed_);
   state->Change(TestState::RUNNING);

@@ -78,7 +78,11 @@ YB_DEFINE_ENUM(
       (SubmittedChangeAutoFlagsConfigToPreparer)
       (SubmittedUnexpectedToPreparer)
     // Reads
-    (GetSafeTime)(GetSubDoc))
+    (GetSafeTime)(GetSubDoc)
+    // Flush
+    (StartFlush)
+    // Compaction
+    (StartCompaction))
 
 struct AUHMetadata {
   std::string request_id;

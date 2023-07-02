@@ -35,6 +35,7 @@
 #include "yb/rocksdb/file.h"
 
 #include "yb/util/faststring.h"
+#include "yb/util/wait_state.h"
 
 namespace yb {
 
@@ -56,7 +57,7 @@ class ThreadPool {
   void IncBackgroundThreadsIfNeeded(int num);
   void SetBackgroundThreads(int num);
   void StartBGThreads();
-  void Schedule(void (*function)(void* arg1), void* arg, void* tag,
+  void Schedule(void (*function)(void* arg1, yb::util::WaitStateInfoPtr wait_state), void* arg, void* tag,
                 void (*unschedFunction)(void* arg));
   int UnSchedule(void* arg);
 
@@ -97,7 +98,7 @@ class ThreadPool {
   // Entry per Schedule() call
   struct BGItem {
     void* arg;
-    void (*function)(void*);
+    void (*function)(void*, yb::util::WaitStateInfoPtr);
     void* tag;
     void (*unschedFunction)(void*);
   };
@@ -113,6 +114,7 @@ class ThreadPool {
   bool low_io_priority_ = false;
   Env::Priority priority_ = static_cast<Env::Priority>(0);
   Env* env_ = nullptr;
+  std::vector<yb::util::WaitStateInfoPtr> bg_wait_states_;
 
   void SetBackgroundThreadsInternal(int num, bool allow_reduce);
 };

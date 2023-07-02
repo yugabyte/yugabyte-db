@@ -362,7 +362,7 @@ class SleepingBackgroundTask {
     done_with_sleep_ = false;
   }
 
-  static void DoSleepTask(void* arg) {
+  static void DoSleepTask(void* arg, yb::util::WaitStateInfoPtr wait_state) {
     reinterpret_cast<SleepingBackgroundTask*>(arg)->DoSleep();
   }
 
