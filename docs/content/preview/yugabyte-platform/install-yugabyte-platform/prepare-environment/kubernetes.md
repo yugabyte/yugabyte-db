@@ -168,7 +168,7 @@ You need to perform the following steps:
 - Login to [quay.io](https://quay.io/) to access the YugabyteDB private registry using the user name and password provided in the secret YAML file. To find the `auth` field, use `base64 -d` to decode the data inside the `yaml` file twice. In this field, the user name and password are separated by a colon. For example, `yugabyte+<user-name>:ZQ66Z9C1K6AHD5A9VU28B06Q7N0AXZAQSR`.
 
   ```sh
-  docker login -u "your_yugabyte_username" -p "yugabyte_provided_password" quay.
+  docker login -u "your_yugabyte_username" -p "yugabyte_provided_password" quay.io
   docker search quay.io/yugabyte
   ```
 
@@ -250,30 +250,38 @@ You need to perform the following steps:
   docker pull nginxinc/nginx-unprivileged:1.23.3
   ```
 
-- Login to your target container registry, as per the following example that uses Google Container Registry (GCR):
+- Login to your target container registry, as per the following example that uses Google Artifact Registry:
+
+   **Note**: The "Service Account" and "Location" used in the below example have to be replaced as applicable.
 
   ```sh
-  docker login -u _json_key --password-stdin https://gcr.io < .ssh/my-service-account-key.json
+  gcloud auth activate-service-account yugabytedb-test@yugabytedb-test-384308.iam.gserviceaccount.com --key-file=key.json
+  gcloud auth configure-docker us-central1-docker.pkg.dev
+  
   ```
 
-- Tag the local images to your target registry, as follows:
+- Tag the local images to your target registry, as follows (Here format for GCP Artifact Registry ):
+
+  **Note**: The Location, Project Id, Repository, and Image used in the below example have to be replaced as applicable.
 
   ```sh
-  docker tag quay.io/yugabyte/yugaware:{{<yb-version version="preview" format="build">}} gcr.io/dataengineeringdemos/yugabyte/yugaware:{{<yb-version version="preview" format="build">}}
-  docker tag nginxinc/nginx-unprivileged:1.23.3 gcr.io/dataengineeringdemos/nginxinc/nginx-unprivileged:1.23.3
-  docker tag postgres:14.4 gcr.io/dataengineeringdemos/postgres:14.4
-  docker tag tianon/postgres-upgrade:11-to-14 gcr.io/dataengineeringdemos/tianon/postgres-upgrade:11-to-14
-  docker tag prom/prometheus:v2.41.0 gcr.io/dataengineeringdemos/prom/prometheus:v2.41.0
+  docker tag quay.io/yugabyte/yugaware:{{<yb-version version="preview" format="build">}} us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/yugabyte/yugaware:{{<yb-version version="preview" format="build">}}
+  docker tag nginxinc/nginx-unprivileged:1.23.3 us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/nginxinc/nginx-unprivileged:1.23.3
+  docker tag postgres:14.4 us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/postgres:14.4
+  docker tag tianon/postgres-upgrade:11-to-14 us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/tianon/postgres-upgrade:11-to-14
+  docker tag prom/prometheus:v2.41.0 us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/prom/prometheus:v2.41.0
   ```
 
 - Push images to the private container registry, as follows:
 
+  **Note**: The Location, Project Id, Repository, and Image used in the below example have to be replaced as applicable.
+
   ```sh
-  docker push gcr.io/dataengineeringdemos/yugabyte/yugaware:{{<yb-version version="preview" format="build">}}
-  docker push gcr.io/dataengineeringdemos/nginxinc/nginx-unprivileged:1.23.3
-  docker push gcr.io/dataengineeringdemos/postgres:14.4
-  docker push gcr.io/dataengineeringdemos/tianon/postgres-upgrade:11-to-14
-  docker push gcr.io/dataengineeringdemos/prom/prometheus:v2.41.0
+  docker push us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/yugabyte/yugaware:{{<yb-version version="preview" format="build">}}
+  docker push us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/nginxinc/nginx-unprivileged:1.23.3
+  docker push us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/postgres:14.4
+  docker push us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/tianon/postgres-upgrade:11-to-14
+  docker push us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/prom/prometheus:v2.41.0
   ```
 
   ![img](/images/yp/docker-image.png)
