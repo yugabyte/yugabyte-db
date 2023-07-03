@@ -1,0 +1,130 @@
+
+ create extension yb_auh;
+
+create extension yb_auh;
+
+-- # Create a view with the counts for each query-id/wait-class/wait-event/component combination.
+create view auh_query_id_details_with_counts 
+   as 
+select query_id, wait_event_component, wait_event_class,wait_event,
+       count(*) 
+from pg_active_universe_history 
+group by query_id,wait_event_component, wait_event_class, wait_event
+order by query_id,wait_event_component, wait_event_class, wait_event;
+
+-- # Create a view with the counts for each query-id/wait-class/wait-event/component combination.
+create view auh_query_id_details_with_counts_and_aux
+   as 
+select query_id, wait_event_component, wait_event_class,wait_event, wait_event_aux,
+       count(*) 
+from pg_active_universe_history 
+group by query_id,wait_event_component, wait_event_class, wait_event, wait_event_aux
+order by query_id,wait_event_component, wait_event_class, wait_event, wait_event_aux;
+
+-- # For each query-component combination find the number of times that combination is seen.
+-- # 
+create view count_per_query_component 
+as 
+select query_id, wait_event_component, count(*) 
+from pg_active_universe_history 
+group by query_id, wait_event_component;
+
+-- # For each query-id, shows as split of time spent in various "wait class" for each "component".
+-- # At any given point in time -- a query may show up in each of the various "components" (pg, tserver etc)
+-- # hence does not make sense to compare across different components.
+select 
+    auh_query_id_details_with_counts.*, 
+    count_per_query_component.count as total_count, 
+    100.0 * auh_query_id_details_with_counts.count / count_per_query_component.count as percentage
+ from auh_query_id_details_with_counts, count_per_query_component 
+ where auh_query_id_details_with_counts.query_id = count_per_query_component.query_id
+   and auh_query_id_details_with_counts.wait_event_component = count_per_query_component.wait_event_component
+order by query_id, wait_event_component, percentage desc;
+
+-- Similar to above, but easier to parse/compare visually.
+select 
+    auh_query_id_details_with_counts.*, 
+    count_per_query_component.count as total_count, 
+    100.0 * auh_query_id_details_with_counts.count / count_per_query_component.count as percentage,
+    REPEAT ( '*', cast (round ( 20.0 * auh_query_id_details_with_counts.count / count_per_query_component.count ) as integer)) as hist
+ from auh_query_id_details_with_counts, count_per_query_component 
+ where auh_query_id_details_with_counts.query_id = count_per_query_component.query_id
+   and auh_query_id_details_with_counts.wait_event_component = count_per_query_component.wait_event_component
+order by query_id, wait_event_component, percentage desc;
+
+-- Similar to above histogram across aux/tablet-id, but easier to parse/compare visually.
+select 
+    auh_query_id_details_with_counts_and_aux.*, 
+    auh_query_id_details_with_counts.count as total_count, 
+    100.0 * auh_query_id_details_with_counts_and_aux.count / auh_query_id_details_with_counts.count as percentage,
+    REPEAT ( '*', cast (round ( 20.0 * auh_query_id_details_with_counts_and_aux.count / auh_query_id_details_with_counts.count ) as integer)) as hist
+ from auh_query_id_details_with_counts_and_aux, auh_query_id_details_with_counts 
+ where auh_query_id_details_with_counts_and_aux.query_id = auh_query_id_details_with_counts.query_id
+   and auh_query_id_details_with_counts_and_aux.wait_event_component = auh_query_id_details_with_counts.wait_event_component
+   and auh_query_id_details_with_counts_and_aux.wait_event = auh_query_id_details_with_counts.wait_event
+   and auh_query_id_details_with_counts_and_aux.wait_event_component = 'TServer'
+   and auh_query_id_details_with_counts_and_aux.wait_event != 'nothing'
+order by query_id, wait_event_component, percentage desc;
+
+select 
+    auh_query_id_details_with_counts.*, 
+    count_per_query_component.count as total_count, 
+    100.0 * auh_query_id_details_with_counts.count / count_per_query_component.count as percentage,
+    REPEAT ( '*', cast (round ( 20.0 * auh_query_id_details_with_counts.count / count_per_query_component.count ) as integer)) as hist
+ from auh_query_id_details_with_counts, count_per_query_component 
+ where auh_query_id_details_with_counts.query_id = count_per_query_component.query_id
+   and auh_query_id_details_with_counts.wait_event_component = count_per_query_component.wait_event_component
+   and auh_query_id_details_with_counts.wait_event_component = 'TServer'
+order by query_id, wait_event_component, percentage desc;
+
+--------------------
+select auh.*, stmts.calls, stmts.mean_time, substring(stmts.query, 1, 50)  
+from (select query_id, wait_event_component, wait_event_class,wait_event, count(*) 
+        from pg_active_universe_history 
+        group by query_id,wait_event_component, wait_event_class, wait_event ) auh,  
+    pg_stat_statements stmts  
+where stmts.queryid = auh.query_id order by query_id, auh.wait_event_component;
+
+select stmts.queryid, substring(stmts.query, 1, 50)  
+    auh_query_id_details_with_counts as auh, pg_stat_statements as stmts  
+where stmts.queryid = auh.query_id;
+-------------------------------------------------------------
+
+Will be good to document/comment about what each wait-state is meant to show,
+and also change it to denote what is "the next state/current wait" instead of the
+"previous accomplished task". Created vs "waiting for handling".
+-------------------------------------------------------------
+
+Issues noted:
+ - A lot of queries are seen in "HandlingDone" phase. This is generally not expected.
+ I suspect something that plays into this is that the "DumpRunningRPC" method itself takes
+ a few "ms" to complete. Hence the wait-states collected for each of the rpc's is generally
+ a few-ms delayed from when the DumpRunningRPC started -- this could very well cause the
+ RPCs to move into their "HandlingDone" states.
+
+ On low-cores etc. We can only gather info when the "AUH rpc handler" is scheduled -- i.e
+ when other threads are not scheduled. Would that automatically mean that the states of various
+ threads/rpc's are biased towards points where they are not very CPU-active/intensive?
+
+ I don't see much data-points for "actively doing reads". This is on a RF-3 single node
+ configuration.
+
+
+-------------------------------------------------------------
+
+# Old code. Deprecated.
+# Does not distinguish across components.
+
+create view query_counts 
+as 
+select query_id, count(*) 
+from pg_active_universe_history 
+group by query_id;
+
+
+select 
+    auh_query_id_details_with_counts.*, 
+    query_counts.count as total_count, 
+    100.0 * auh_query_id_details_with_counts.count / query_counts.count as percentage
+ from auh_query_id_details_with_counts, query_counts 
+ where auh_query_id_details_with_counts.query_id = query_counts.query_id;
