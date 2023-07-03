@@ -88,6 +88,7 @@ public class KubernetesOperator {
                           client,
                           ybUniverseClient,
                           ybUniverseSharedIndexInformer,
+                          namespace,
                           universeCRUDHandler,
                           upgradeUniverseHandler,
                           cloudProviderHandler);
