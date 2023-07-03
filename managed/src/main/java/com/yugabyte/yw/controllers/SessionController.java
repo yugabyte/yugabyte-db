@@ -452,7 +452,7 @@ public class SessionController extends AbstractPlatformController {
                   .withHttpOnly(false)
                   .build());
     }
-    throw new PlatformServiceException(UNAUTHORIZED, "Insecure login unavailable.");
+    throw new PlatformServiceException(FORBIDDEN, "Insecure login unavailable.");
   }
 
   // Any changes to security should be authenticated.
