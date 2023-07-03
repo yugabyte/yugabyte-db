@@ -2,22 +2,26 @@
 
 package com.yugabyte.yw.commissioner;
 
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_NFS;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.CloudUtil;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.BackupHelper;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
-import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
@@ -57,13 +61,15 @@ public class BackupGarbageCollector {
 
   private final CustomerConfigService customerConfigService;
 
-  private final BackupUtil backupUtil;
+  private final BackupHelper backupHelper;
 
   private final RuntimeConfGetter confGetter;
 
   private final TaskInfoManager taskInfoManager;
 
   private final Commissioner commissioner;
+
+  private final StorageUtilFactory storageUtilFactory;
 
   private static final String YB_BACKUP_GARBAGE_COLLECTOR_INTERVAL = "yb.backupGC.gc_run_interval";
   private static final String AZ = Util.AZ;
@@ -82,18 +88,20 @@ public class BackupGarbageCollector {
       CustomerConfigService customerConfigService,
       RuntimeConfGetter confGetter,
       TableManagerYb tableManagerYb,
-      BackupUtil backupUtil,
+      BackupHelper backupHelper,
       YbcManager ybcManager,
       TaskInfoManager taskInfoManager,
-      Commissioner commissioner) {
+      Commissioner commissioner,
+      StorageUtilFactory storageUtilFactory) {
     this.platformScheduler = platformScheduler;
     this.customerConfigService = customerConfigService;
     this.confGetter = confGetter;
     this.tableManagerYb = tableManagerYb;
-    this.backupUtil = backupUtil;
+    this.backupHelper = backupHelper;
     this.ybcManager = ybcManager;
     this.taskInfoManager = taskInfoManager;
     this.commissioner = commissioner;
+    this.storageUtilFactory = storageUtilFactory;
   }
 
   public void start() {
@@ -285,7 +293,7 @@ public class BackupGarbageCollector {
       UUID storageConfigUUID = backup.getBackupInfo().storageConfigUUID;
       CustomerConfig customerConfig =
           customerConfigService.getOrBadRequest(backup.getCustomerUUID(), storageConfigUUID);
-      if (isCredentialUsable(customerConfig)) {
+      if (isCredentialUsable(customerConfig, backup.getUniverseUUID())) {
         List<String> backupLocations = null;
         log.info("Backup {} deletion started", backupUUID);
         backup.transitionState(BackupState.DeleteInProgress);
@@ -294,12 +302,11 @@ public class BackupGarbageCollector {
           case S3:
           case GCS:
           case AZ:
-            CloudUtil cloudUtil = CloudUtil.getCloudUtil(customerConfig.getName());
-            backupLocations = backupUtil.getBackupLocations(backup);
+            CloudUtil cloudUtil = storageUtilFactory.getCloudUtil(customerConfig.getName());
+            backupLocations = BackupUtil.getBackupLocations(backup);
             cloudUtil.deleteKeyIfExists(customerConfig.getDataObject(), backupLocations.get(0));
             cloudUtil.deleteStorage(customerConfig.getDataObject(), backupLocations);
             backup.delete();
-            deletedSuccessfully = true;
             log.info("Backup {} is successfully deleted", backupUUID);
             break;
           case NFS:
@@ -312,7 +319,6 @@ public class BackupGarbageCollector {
                 success = deleteScriptBackup(backupList);
               }
               if (success) {
-                deletedSuccessfully = true;
                 backup.delete();
                 log.info("Backup {} is successfully deleted", backupUUID);
               } else {
@@ -396,10 +402,21 @@ public class BackupGarbageCollector {
     }
   }
 
-  private Boolean isCredentialUsable(CustomerConfig config) {
+  private Boolean isCredentialUsable(CustomerConfig config, UUID universeUUID) {
     Boolean isValid = true;
     try {
-      backupUtil.validateStorageConfig(config);
+      if (config.getName().equals(NAME_NFS)) {
+        Optional<Universe> universeOpt = Universe.maybeGet(universeUUID);
+
+        if (universeOpt.isPresent()) {
+          storageUtilFactory
+              .getStorageUtil(config.getName())
+              .validateStorageConfigOnUniverse(config, universeOpt.get());
+        }
+
+      } else {
+        backupHelper.validateStorageConfig(config);
+      }
     } catch (Exception e) {
       isValid = false;
     }
@@ -408,7 +425,7 @@ public class BackupGarbageCollector {
 
   private boolean checkValidStorageConfig(Backup backup) {
     try {
-      backupUtil.validateBackupStorageConfig(backup);
+      backupHelper.validateStorageConfigOnBackup(backup);
     } catch (Exception e) {
       return false;
     }

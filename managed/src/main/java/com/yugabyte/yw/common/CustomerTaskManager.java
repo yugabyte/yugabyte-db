@@ -45,7 +45,6 @@ import play.libs.Json;
 @Singleton
 public class CustomerTaskManager {
 
-  private BackupUtil backupUtil;
   private Commissioner commissioner;
   private YBClientService ybService;
 
@@ -59,9 +58,7 @@ public class CustomerTaskManager {
   private static final String ALTER_LOAD_BALANCER = "alterLoadBalancer";
 
   @Inject
-  public CustomerTaskManager(
-      BackupUtil backupUtil, YBClientService ybService, Commissioner commissioner) {
-    this.backupUtil = backupUtil;
+  public CustomerTaskManager(YBClientService ybService, Commissioner commissioner) {
     this.ybService = ybService;
     this.commissioner = commissioner;
   }
@@ -148,7 +145,7 @@ public class CustomerTaskManager {
           unlockUniverse = true;
           RestoreBackupParams params =
               Json.fromJson(taskInfo.getDetails(), RestoreBackupParams.class);
-          if (backupUtil.isYbcBackup(params.backupStorageInfoList.get(0).storageLocation)) {
+          if (params.category.equals(BackupCategory.YB_CONTROLLER)) {
             isRestoreYbc = true;
           }
         }
@@ -156,7 +153,7 @@ public class CustomerTaskManager {
         unlockUniverse = true;
         RestoreBackupParams params =
             Json.fromJson(taskInfo.getDetails(), RestoreBackupParams.class);
-        if (backupUtil.isYbcBackup(params.backupStorageInfoList.get(0).storageLocation)) {
+        if (params.category.equals(BackupCategory.YB_CONTROLLER)) {
           resumeTask = true;
           isRestoreYbc = true;
         }

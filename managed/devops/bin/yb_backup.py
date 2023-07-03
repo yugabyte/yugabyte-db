@@ -1438,9 +1438,9 @@ class YBBackup:
             if not sas_token:
                 raise BackupException(
                     "Set SAS for Azure Storage in AZURE_STORAGE_SAS_TOKEN environment variable.")
-            if '?sv' not in sas_token:
+            if '?' not in sas_token:
                 raise BackupException(
-                    "SAS tokens must begin with '?sv'.")
+                    "SAS tokens must begin with '?'.")
 
         self.storage = BACKUP_STORAGE_ABSTRACTIONS[self.args.storage_type](options)
 

@@ -10,14 +10,12 @@ import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
-import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -39,17 +37,18 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Restore;
+import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
@@ -57,6 +56,7 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.TimeUnit;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -237,6 +237,21 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateScheduledBackupAsyncValidCron() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST22");
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
+    bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
+    bodyJson.put("cronExpression", "0 */2 * * *");
+    bodyJson.put("scheduleName", "schedule-1");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
+    Result r = createBackupScheduleAsync(bodyJson, null);
+    assertEquals(OK, r.status());
+  }
+
+  @Test
   public void testCreateScheduledBackupValidCron() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST22");
     ObjectNode bodyJson = Json.newObject();
@@ -246,6 +261,22 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("scheduleName", "schedule-1");
     bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     Result r = createBackupSchedule(bodyJson, null);
+    assertEquals(OK, r.status());
+  }
+
+  @Test
+  public void testCreateBackupScheduleAsyncWithTimeUnit() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST25");
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
+    bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
+    bodyJson.put("schedulingFrequency", 10000000L);
+    bodyJson.put("scheduleName", "schedule-1");
+    bodyJson.put("frequencyTimeUnit", "HOURS");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
+    Result r = createBackupScheduleAsync(bodyJson, null);
     assertEquals(OK, r.status());
   }
 
@@ -264,6 +295,20 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateScheduleBackupAsyncWithoutName() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST22");
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
+    bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
+    bodyJson.put("cronExpression", "0 */2 * * *");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
+    Result result = assertPlatformException(() -> createBackupScheduleAsync(bodyJson, null));
+    assertBadRequest(result, "Provide a name for the schedule");
+  }
+
+  @Test
   public void testCreateScheduleBackupWithoutName() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST22");
     ObjectNode bodyJson = Json.newObject();
@@ -273,6 +318,21 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     Result result = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
     assertBadRequest(result, "Provide a name for the schedule");
+  }
+
+  @Test
+  public void testCreateScheduleBackupAsyncWithoutTimeUnit() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST25");
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
+    bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
+    bodyJson.put("schedulingFrequency", 10000000L);
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
+    bodyJson.put("scheduleName", "schedule-1");
+    Result r = assertPlatformException(() -> createBackupScheduleAsync(bodyJson, null));
+    assertBadRequest(r, "Please provide time unit for scheduler frequency");
   }
 
   @Test
@@ -297,14 +357,66 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("cronExpression", "0 */2 * * *");
     bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
     bodyJson.put("scheduleName", "schedule-1");
-    Result r = createBackupSchedule(bodyJson, null);
-    assertEquals(OK, r.status());
+    bodyJson.put("frequencyTimeUnit", "HOURS");
+    bodyJson.put("schedulingFrequency", 1000000000L);
+    BackupRequestParams params = new BackupRequestParams();
+    Schedule.create(
+        defaultCustomer.getUuid(),
+        defaultUniverse.getUniverseUUID(),
+        params,
+        TaskType.CreateBackup,
+        1000000000L,
+        "0 */2 * * *",
+        TimeUnit.HOURS,
+        "schedule-1");
     Result result = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
     assertBadRequest(result, "Schedule with name schedule-1 already exist");
   }
 
   @Test
+  public void testCreateScheduleBackupAsyncWithDuplicateName() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST22");
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
+    bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
+    bodyJson.put("cronExpression", "0 */2 * * *");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
+    bodyJson.put("scheduleName", "schedule-1");
+    bodyJson.put("frequencyTimeUnit", "HOURS");
+    bodyJson.put("schedulingFrequency", 1000000000L);
+    BackupRequestParams params = new BackupRequestParams();
+    Schedule.create(
+        defaultCustomer.getUuid(),
+        defaultUniverse.getUniverseUUID(),
+        params,
+        TaskType.CreateBackup,
+        1000000000L,
+        "0 */2 * * *",
+        TimeUnit.HOURS,
+        "schedule-1");
+    Result result = assertPlatformException(() -> createBackupScheduleAsync(bodyJson, null));
+    assertBadRequest(result, "Schedule with name schedule-1 already exist");
+  }
+
+  @Test
   public void testCreateScheduledBackupInvalid() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST24");
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
+    bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
+    bodyJson.put("scheduleName", "schedule-1");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
+    Result r = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
+    JsonNode resultJson = Json.parse(contentAsString(r));
+    assertValue(resultJson, "error", "Provide Cron Expression or Scheduling frequency");
+    assertEquals(BAD_REQUEST, r.status());
+    verify(mockCommissioner, times(0)).submit(any(), any());
+  }
+
+  @Test
+  public void testCreateScheduledBackupAsyncInvalid() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST24");
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
@@ -313,7 +425,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
     bodyJson.put("scheduleName", "schedule-1");
     bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
-    Result r = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
+    Result r = assertPlatformException(() -> createBackupScheduleAsync(bodyJson, null));
     JsonNode resultJson = Json.parse(contentAsString(r));
     assertValue(resultJson, "error", "Provide Cron Expression or Scheduling frequency");
     assertEquals(BAD_REQUEST, r.status());
@@ -345,6 +457,32 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateIncrementalScheduleBackupAsyncSuccess() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    ObjectNode bodyJson = Json.newObject();
+    Universe universe =
+        ModelFactory.createUniverse(
+            "Test-Universe-1",
+            UUID.randomUUID(),
+            defaultCustomer.getId(),
+            CloudType.aws,
+            null,
+            null,
+            true);
+    bodyJson.put("universeUUID", universe.getUniverseUUID().toString());
+    bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
+    bodyJson.put("schedulingFrequency", 1000000000L);
+    bodyJson.put("scheduleName", "schedule-1");
+    bodyJson.put("frequencyTimeUnit", "HOURS");
+    bodyJson.put("incrementalBackupFrequency", 10000000L);
+    bodyJson.put("incrementalBackupFrequencyTimeUnit", "HOURS");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
+    Result r = createBackupScheduleAsync(bodyJson, null);
+    assertEquals(OK, r.status());
+  }
+
+  @Test
   public void testCreateIncrementalScheduleBackupWithOutFrequencyTimeUnit() {
     ObjectNode bodyJson = Json.newObject();
     Universe universe =
@@ -370,6 +508,33 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateIncrementalScheduleBackupAsyncWithOutFrequencyTimeUnit() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    ObjectNode bodyJson = Json.newObject();
+    Universe universe =
+        ModelFactory.createUniverse(
+            "Test-Universe-1",
+            UUID.randomUUID(),
+            defaultCustomer.getId(),
+            CloudType.aws,
+            null,
+            null,
+            true);
+    bodyJson.put("universeUUID", universe.getUniverseUUID().toString());
+    bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
+    bodyJson.put("schedulingFrequency", 1000000000L);
+    bodyJson.put("scheduleName", "schedule-1");
+    bodyJson.put("frequencyTimeUnit", "HOURS");
+    bodyJson.put("incrementalBackupFrequency", 10000000L);
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
+    Result r = assertPlatformException(() -> createBackupScheduleAsync(bodyJson, null));
+    JsonNode resultJson = Json.parse(contentAsString(r));
+    assertValue(resultJson, "error", "Please provide time unit for incremental backup frequency.");
+    assertEquals(BAD_REQUEST, r.status());
+  }
+
+  @Test
   public void testCreateIncrementalScheduleBackupOnNonYbcUniverse() {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
@@ -388,12 +553,32 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateIncrementalScheduleBackupAsyncOnNonYbcUniverse() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
+    bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
+    bodyJson.put("schedulingFrequency", 1000000000L);
+    bodyJson.put("scheduleName", "schedule-1");
+    bodyJson.put("frequencyTimeUnit", "HOURS");
+    bodyJson.put("incrementalBackupFrequency", 10000000L);
+    bodyJson.put("incrementalBackupFrequencyTimeUnit", "HOURS");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
+    Result r = assertPlatformException(() -> createBackupScheduleAsync(bodyJson, null));
+    JsonNode resultJson = Json.parse(contentAsString(r));
+    assertValue(
+        resultJson, "error", "Cannot create incremental backup schedules on non-ybc universes.");
+    assertEquals(BAD_REQUEST, r.status());
+  }
+
+  @Test
   public void testCreateIncrementalScheduleBackupWithInvalidIncrementalFrequency() {
     doThrow(
             new PlatformServiceException(
                 BAD_REQUEST,
                 "Incremental backup frequency should be lower than full backup frequency."))
-        .when(mockBackupUtil)
+        .when(mockBackupHelper)
         .validateIncrementalScheduleFrequency(anyLong(), anyLong(), any());
     ObjectNode bodyJson = Json.newObject();
     Universe universe =
@@ -433,6 +618,53 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateIncrementalScheduleBackupAsyncWithInvalidIncrementalFrequency() {
+    doThrow(
+            new PlatformServiceException(
+                BAD_REQUEST,
+                "Incremental backup frequency should be lower than full backup frequency."))
+        .when(mockBackupHelper)
+        .validateIncrementalScheduleFrequency(anyLong(), anyLong(), any());
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    ObjectNode bodyJson = Json.newObject();
+    Universe universe =
+        ModelFactory.createUniverse(
+            "Test-Universe-1",
+            UUID.randomUUID(),
+            defaultCustomer.getId(),
+            CloudType.aws,
+            null,
+            null,
+            true);
+    bodyJson.put("universeUUID", universe.getUniverseUUID().toString());
+    bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
+    bodyJson.put("cronExpression", "0 */2 * * *");
+    bodyJson.put("scheduleName", "schedule-1");
+    bodyJson.put("incrementalBackupFrequency", 10000000000L);
+    bodyJson.put("incrementalBackupFrequencyTimeUnit", "HOURS");
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
+    Result r = assertPlatformException(() -> createBackupScheduleAsync(bodyJson, null));
+    JsonNode resultJson = Json.parse(contentAsString(r));
+    assertValue(
+        resultJson,
+        "error",
+        "Incremental backup frequency should be lower than full backup frequency.");
+    assertEquals(BAD_REQUEST, r.status());
+    bodyJson.put("schedulingFrequency", 10000000000L);
+    bodyJson.put("frequencyTimeUnit", "HOURS");
+    bodyJson.remove("cronExpression");
+    System.out.println("***N Is: " + bodyJson);
+    r = assertPlatformException(() -> createBackupScheduleAsync(bodyJson, null));
+    resultJson = Json.parse(contentAsString(r));
+    assertValue(
+        resultJson,
+        "error",
+        "Incremental backup frequency should be lower than full backup frequency.");
+    assertEquals(BAD_REQUEST, r.status());
+  }
+
+  @Test
   public void testCreateIncrementalScheduleBackupWithBaseBackup() {
     ObjectNode bodyJson = Json.newObject();
     Universe universe =
@@ -460,12 +692,41 @@ public class BackupsControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateIncrementalScheduleBackupAsyncWithBaseBackup() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    ObjectNode bodyJson = Json.newObject();
+    Universe universe =
+        ModelFactory.createUniverse(
+            "Test-Universe-1",
+            UUID.randomUUID(),
+            defaultCustomer.getId(),
+            CloudType.aws,
+            null,
+            null,
+            true);
+    bodyJson.put("universeUUID", universe.getUniverseUUID().toString());
+    bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
+    bodyJson.put("schedulingFrequency", 1000000000L);
+    bodyJson.put("scheduleName", "schedule-1");
+    bodyJson.put("frequencyTimeUnit", "HOURS");
+    bodyJson.put("incrementalBackupFrequency", 10000000L);
+    bodyJson.put("incrementalBackupFrequencyTimeUnit", "HOURS");
+    bodyJson.put("baseBackupUUID", UUID.randomUUID().toString());
+    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
+    Result r = assertPlatformException(() -> createBackupScheduleAsync(bodyJson, null));
+    JsonNode resultJson = Json.parse(contentAsString(r));
+    assertValue(resultJson, "error", "Cannot assign base backup while creating backup schedules.");
+    assertEquals(BAD_REQUEST, r.status());
+  }
+
+  @Test
   public void testCreateBackupValidationFailed() {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST25");
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     doThrow(new PlatformServiceException(BAD_REQUEST, "error"))
-        .when(mockBackupUtil)
+        .when(mockBackupHelper)
         .validateBackupRequest(any(), any(), any());
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
@@ -596,6 +857,13 @@ public class BackupsControllerTest extends FakeDBApplication {
     String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
     String method = "POST";
     String url = "/api/customers/" + defaultCustomer.getUuid() + "/create_backup_schedule";
+    return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
+  }
+
+  private Result createBackupScheduleAsync(ObjectNode bodyJson, Users user) {
+    String authToken = user == null ? defaultUser.createAuthToken() : user.createAuthToken();
+    String method = "POST";
+    String url = "/api/customers/" + defaultCustomer.getUuid() + "/create_backup_schedule_async";
     return doRequestWithAuthTokenAndBody(method, url, authToken, bodyJson);
   }
 
@@ -735,139 +1003,6 @@ public class BackupsControllerTest extends FakeDBApplication {
     Result result = restoreBackup(defaultUniverse.getUniverseUUID(), bodyJson, null);
     verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
     assertEquals(TaskType.BackupUniverse, taskType.getValue());
-    assertOk(result);
-    JsonNode resultJson = Json.parse(contentAsString(result));
-    assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
-    CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
-    assertNotNull(ct);
-    assertEquals(CustomerTask.TaskType.Restore, ct.getType());
-    assertAuditEntry(1, defaultCustomer.getUuid());
-  }
-
-  @Test
-  public void testYbcRestoreCategory() {
-    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST12");
-    Universe u =
-        createUniverse(
-            "Test Universe12",
-            UUID.randomUUID(),
-            defaultCustomer.getId(),
-            CloudType.aws,
-            null,
-            null,
-            true);
-    BackupTableParams bp = new BackupTableParams();
-    bp.storageConfigUUID = customerConfig.getConfigUUID();
-    bp.setUniverseUUID(u.getUniverseUUID());
-    Backup b = Backup.create(defaultCustomer.getUuid(), bp);
-    ObjectNode bodyJson = Json.newObject();
-    JsonNode storageInfoParam =
-        Json.parse(
-            "{\"backupType\": \"PGSQL_TABLE_TYPE\","
-                + "\"keyspace\": \"bar\","
-                + "\"storageLocation\": \"s3://foo-1/"
-                + "univ-"
-                + u.getUniverseUUID().toString()
-                + "/ybc_backup/bar\"}");
-    ArrayNode storageArrayNode = Json.newArray();
-    storageArrayNode.add(storageInfoParam);
-    bodyJson.put("backupStorageInfoList", storageArrayNode);
-    bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
-    bodyJson.put("universeUUID", bp.getUniverseUUID().toString());
-    bodyJson.put("customerUUID", defaultCustomer.getUuid().toString());
-
-    ArgumentCaptor<TaskType> taskType = ArgumentCaptor.forClass(TaskType.class);
-    ArgumentCaptor<RestoreBackupParams> taskParams =
-        ArgumentCaptor.forClass(RestoreBackupParams.class);
-
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockBackupUtil.isYbcBackup(anyString())).thenCallRealMethod();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    Result result = restoreBackupYb(bodyJson, null);
-    verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
-    assertEquals(TaskType.RestoreBackup, taskType.getValue());
-    // Assert category is set to YB_CONTROLLER for YB-Controller backups.
-    assertEquals(BackupCategory.YB_CONTROLLER, taskParams.getValue().category);
-    assertOk(result);
-    JsonNode resultJson = Json.parse(contentAsString(result));
-    assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
-    CustomerTask ct = CustomerTask.findByTaskUUID(fakeTaskUUID);
-    assertNotNull(ct);
-    assertEquals(CustomerTask.TaskType.Restore, ct.getType());
-    assertAuditEntry(1, defaultCustomer.getUuid());
-  }
-
-  @Test
-  public void testYbcBackupRestoreWithYbcNotPresentOnTheUniverse() {
-    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST12");
-    BackupTableParams bp = new BackupTableParams();
-    bp.storageConfigUUID = customerConfig.getConfigUUID();
-    bp.setUniverseUUID(defaultUniverse.getUniverseUUID());
-    Backup b = Backup.create(defaultCustomer.getUuid(), bp);
-    ObjectNode bodyJson = Json.newObject();
-    JsonNode storageInfoParam =
-        Json.parse(
-            "{\"backupType\": \"PGSQL_TABLE_TYPE\","
-                + "\"keyspace\": \"bar\","
-                + "\"storageLocation\": \"s3://foo-1/"
-                + "univ-"
-                + defaultUniverse.getUniverseUUID().toString()
-                + "/ybc_backup/bar\"}");
-    ArrayNode storageArrayNode = Json.newArray();
-    storageArrayNode.add(storageInfoParam);
-    bodyJson.put("backupStorageInfoList", storageArrayNode);
-    bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
-    bodyJson.put("universeUUID", bp.getUniverseUUID().toString());
-    bodyJson.put("customerUUID", defaultCustomer.getUuid().toString());
-
-    when(mockBackupUtil.isYbcBackup(anyString())).thenCallRealMethod();
-
-    Result r = assertPlatformException(() -> restoreBackupYb(bodyJson, null));
-    JsonNode resultJson = Json.parse(contentAsString(r));
-    assertValue(
-        resultJson,
-        "error",
-        "Cannot restore the ybc backup as ybc is not installed on the universe");
-    assertEquals(BAD_REQUEST, r.status());
-    verify(mockCommissioner, times(0)).submit(any(), any());
-    assertBadRequest(r, "Cannot restore the ybc backup as ybc is not installed on the universe");
-  }
-
-  @Test
-  public void testYbcBackupCategoryNonYbc() {
-    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST15");
-    BackupTableParams bp = new BackupTableParams();
-    bp.storageConfigUUID = customerConfig.getConfigUUID();
-    bp.setUniverseUUID(defaultUniverse.getUniverseUUID());
-    Backup b = Backup.create(defaultCustomer.getUuid(), bp);
-    ObjectNode bodyJson = Json.newObject();
-    JsonNode storageInfoParam =
-        Json.parse(
-            "{\"backupType\": \"PGSQL_TABLE_TYPE\","
-                + "\"keyspace\": \"bar\","
-                + "\"storageLocation\": \"s3://foo/"
-                + "univ-"
-                + defaultUniverse.getUniverseUUID().toString()
-                + "/backup/bar\"}");
-    ArrayNode storageArrayNode = Json.newArray();
-    storageArrayNode.add(storageInfoParam);
-    bodyJson.put("backupStorageInfoList", storageArrayNode);
-    bodyJson.put("storageConfigUUID", bp.storageConfigUUID.toString());
-    bodyJson.put("universeUUID", bp.getUniverseUUID().toString());
-    bodyJson.put("customerUUID", defaultCustomer.getUuid().toString());
-
-    ArgumentCaptor<TaskType> taskType = ArgumentCaptor.forClass(TaskType.class);
-    ArgumentCaptor<RestoreBackupParams> taskParams =
-        ArgumentCaptor.forClass(RestoreBackupParams.class);
-
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockBackupUtil.isYbcBackup(anyString())).thenCallRealMethod();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    Result result = restoreBackupYb(bodyJson, null);
-    verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
-    assertEquals(TaskType.RestoreBackup, taskType.getValue());
-    // Assert category is set to YB_BACKUP_SCRIPT for Script backups.
-    assertEquals(BackupCategory.YB_BACKUP_SCRIPT, taskParams.getValue().category);
     assertOk(result);
     JsonNode resultJson = Json.parse(contentAsString(result));
     assertValue(resultJson, "taskUUID", fakeTaskUUID.toString());
@@ -1492,7 +1627,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     doThrow(
             new PlatformServiceException(
                 BAD_REQUEST, "Storage config TEST14 cannot access backup locations"))
-        .when(mockBackupUtil)
+        .when(mockBackupHelper)
         .validateStorageConfigOnBackup(any(), any());
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());

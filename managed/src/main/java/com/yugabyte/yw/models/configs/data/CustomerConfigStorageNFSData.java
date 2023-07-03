@@ -17,5 +17,9 @@ public class CustomerConfigStorageNFSData extends CustomerConfigStorageData {
   @JsonProperty("NFS_BUCKET")
   public String nfsBucket = "yugabyte_backup";
 
-  public static class RegionLocations extends RegionLocationsBase {}
+  public static class RegionLocations extends RegionLocationsBase {
+    @ApiModelProperty(value = "NFS bucket")
+    @JsonProperty("NFS_BUCKET")
+    public String nfsBucket = "yugabyte_backup";
+  }
 }

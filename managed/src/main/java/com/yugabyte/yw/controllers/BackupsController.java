@@ -7,14 +7,14 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.StorageUtil;
+import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.BackupHelper;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
-import com.yugabyte.yw.common.ybc.YbcBackupUtil;
-import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.DeleteBackupParams;
@@ -26,7 +26,8 @@ import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.PlatformResults.YBPTasks;
 import com.yugabyte.yw.forms.RestoreBackupParams;
-import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
+import com.yugabyte.yw.forms.RestorePreflightParams;
+import com.yugabyte.yw.forms.RestorePreflightResponse;
 import com.yugabyte.yw.forms.YbcThrottleParameters;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.forms.filters.BackupApiFilter;
@@ -65,12 +66,11 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -89,19 +89,22 @@ public class BackupsController extends AuthenticatedController {
 
   private final Commissioner commissioner;
   private final CustomerConfigService customerConfigService;
-  private final BackupUtil backupUtil;
+  private final BackupHelper backupHelper;
   private final YbcManager ybcManager;
+  private final StorageUtilFactory storageUtilFactory;
 
   @Inject
   public BackupsController(
       Commissioner commissioner,
       CustomerConfigService customerConfigService,
-      BackupUtil backupUtil,
-      YbcManager ybcManager) {
+      BackupHelper backupHelper,
+      YbcManager ybcManager,
+      StorageUtilFactory storageUtilFactory) {
     this.commissioner = commissioner;
     this.customerConfigService = customerConfigService;
-    this.backupUtil = backupUtil;
+    this.backupHelper = backupHelper;
     this.ybcManager = ybcManager;
+    this.storageUtilFactory = storageUtilFactory;
   }
 
   @Inject TaskInfoManager taskManager;
@@ -205,7 +208,7 @@ public class BackupsController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     Backup.getOrBadRequest(customerUUID, baseBackupUUID);
     List<CommonBackupInfo> incrementalBackupChain =
-        backupUtil.getIncrementalBackupList(baseBackupUUID, customerUUID);
+        BackupUtil.getIncrementalBackupList(baseBackupUUID, customerUUID);
 
     return PlatformResults.withData(incrementalBackupChain);
   }
@@ -271,7 +274,8 @@ public class BackupsController extends AuthenticatedController {
               universe.getUniverseUUID()));
     }
 
-    backupUtil.validateBackupRequest(taskParams.keyspaceTableList, universe, taskParams.backupType);
+    backupHelper.validateBackupRequest(
+        taskParams.keyspaceTableList, universe, taskParams.backupType);
 
     if (taskParams.timeBeforeDelete != 0L && taskParams.expiryTimeUnit == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Please provide time unit for backup expiry");
@@ -298,9 +302,9 @@ public class BackupsController extends AuthenticatedController {
         throw new PlatformServiceException(
             BAD_REQUEST, "No previous successful backup found, please trigger a new base backup.");
       }
-      backupUtil.validateStorageConfigOnBackup(customerConfig, previousBackup);
+      backupHelper.validateStorageConfigOnBackup(customerConfig, previousBackup);
     } else {
-      backupUtil.validateStorageConfig(customerConfig);
+      backupHelper.validateStorageConfig(customerConfig);
     }
 
     UUID taskUUID = commissioner.submit(TaskType.CreateBackup, taskParams);
@@ -310,6 +314,39 @@ public class BackupsController extends AuthenticatedController {
         taskParams.getUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.Backup,
+        CustomerTask.TaskType.Create,
+        universe.getName());
+    LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.getName());
+    auditService().createAuditEntry(request, Json.toJson(taskParams), taskUUID);
+    return new YBPTask(taskUUID).asResult();
+  }
+
+  @ApiOperation(
+      value = "Create Backup Schedule Async",
+      response = YBPTask.class,
+      nickname = "createBackupScheduleAsync")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "backup",
+          value = "Parameters of the backup to be restored",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.BackupRequestParams",
+          required = true))
+  public Result createBackupScheduleAsync(UUID customerUUID, Http.Request request) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+
+    BackupRequestParams taskParams = parseJsonAndValidate(request, BackupRequestParams.class);
+    validateScheduleTaskParams(taskParams, customerUUID);
+
+    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+
+    UUID taskUUID = commissioner.submit(TaskType.CreateBackupSchedule, taskParams);
+    LOG.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
+    CustomerTask.create(
+        customer,
+        taskParams.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Schedule,
         CustomerTask.TaskType.Create,
         universe.getName());
     LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.getName());
@@ -328,10 +365,31 @@ public class BackupsController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.BackupRequestParams",
           required = true))
+  @Deprecated
   public Result createBackupSchedule(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
     BackupRequestParams taskParams = parseJsonAndValidate(request, BackupRequestParams.class);
+    validateScheduleTaskParams(taskParams, customerUUID);
+
+    Schedule schedule =
+        Schedule.create(
+            customerUUID,
+            taskParams.getUniverseUUID(),
+            taskParams,
+            TaskType.CreateBackup,
+            taskParams.schedulingFrequency,
+            taskParams.cronExpression,
+            taskParams.frequencyTimeUnit,
+            taskParams.scheduleName);
+    UUID scheduleUUID = schedule.getScheduleUUID();
+    LOG.info(
+        "Created backup schedule for customer {}, schedule uuid = {}.", customerUUID, scheduleUUID);
+    auditService().createAuditEntryWithReqBody(request);
+    return PlatformResults.withData(schedule);
+  }
+
+  private void validateScheduleTaskParams(BackupRequestParams taskParams, UUID customerUUID) {
     if (taskParams.storageConfigUUID == null) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Missing StorageConfig UUID: " + taskParams.storageConfigUUID);
@@ -368,7 +426,7 @@ public class BackupsController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
     }
-    backupUtil.validateStorageConfig(customerConfig);
+    backupHelper.validateStorageConfig(customerConfig);
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
     taskParams.customerUUID = customerUUID;
@@ -378,11 +436,11 @@ public class BackupsController extends AuthenticatedController {
         if (keyspaceTable.tableUUIDList == null) {
           keyspaceTable.tableUUIDList = new ArrayList<UUID>();
         }
-        backupUtil.validateTables(
+        backupHelper.validateTables(
             keyspaceTable.tableUUIDList, universe, keyspaceTable.keyspace, taskParams.backupType);
       }
     } else {
-      backupUtil.validateTables(null, universe, null, taskParams.backupType);
+      backupHelper.validateTables(null, universe, null, taskParams.backupType);
     }
     if (taskParams.incrementalBackupFrequency != 0L) {
       if (taskParams.incrementalBackupFrequencyTimeUnit == null) {
@@ -402,24 +460,9 @@ public class BackupsController extends AuthenticatedController {
           (StringUtils.isEmpty(taskParams.cronExpression))
               ? taskParams.schedulingFrequency
               : BackupUtil.getCronExpressionTimeInterval(taskParams.cronExpression);
-      backupUtil.validateIncrementalScheduleFrequency(
+      backupHelper.validateIncrementalScheduleFrequency(
           taskParams.incrementalBackupFrequency, schedulingFrequency, universe);
     }
-    Schedule schedule =
-        Schedule.create(
-            customerUUID,
-            taskParams.getUniverseUUID(),
-            taskParams,
-            TaskType.CreateBackup,
-            taskParams.schedulingFrequency,
-            taskParams.cronExpression,
-            taskParams.frequencyTimeUnit,
-            taskParams.scheduleName);
-    UUID scheduleUUID = schedule.getScheduleUUID();
-    LOG.info(
-        "Created backup schedule for customer {}, schedule uuid = {}.", customerUUID, scheduleUUID);
-    auditService().createAuditEntryWithReqBody(request);
-    return PlatformResults.withData(schedule);
   }
 
   @ApiOperation(
@@ -454,10 +497,7 @@ public class BackupsController extends AuthenticatedController {
     if (CollectionUtils.isEmpty(taskParams.backupStorageInfoList)) {
       throw new PlatformServiceException(BAD_REQUEST, "Backup information not provided");
     }
-    if (backupUtil.isYbcBackup(taskParams.backupStorageInfoList.get(0).storageLocation)) {
-      taskParams.category = BackupCategory.YB_CONTROLLER;
-    }
-    backupUtil.validateRestoreOverwrites(
+    backupHelper.validateRestoreOverwrites(
         taskParams.backupStorageInfoList, universe, taskParams.category);
     CustomerConfig customerConfig =
         customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
@@ -465,19 +505,22 @@ public class BackupsController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot restore backup as config is queued for deletion.");
     }
-    // Even though we check with default location below(line 393), this is needed to validate
+    // Even though we check with default location below, this is needed to validate
     // regional locations, because their validity is not known to us when we send restore
     // request with a config.
-    backupUtil.validateStorageConfig(customerConfig);
+    backupHelper.validateStorageConfig(customerConfig);
     CustomerConfigStorageData configData =
         (CustomerConfigStorageData) customerConfig.getDataObject();
 
-    StorageUtil storageUtil = StorageUtil.getStorageUtil(customerConfig.getName());
-    Map<String, String> locationMap = new HashMap<>();
-    for (BackupStorageInfo storageInfo : taskParams.backupStorageInfoList) {
-      locationMap.put(YbcBackupUtil.DEFAULT_REGION_STRING, storageInfo.storageLocation);
-      storageUtil.validateStorageConfigOnLocations(configData, locationMap);
-    }
+    storageUtilFactory
+        .getStorageUtil(customerConfig.getName())
+        .validateStorageConfigOnLocationsList(
+            configData,
+            taskParams
+                .backupStorageInfoList
+                .parallelStream()
+                .map(bSI -> bSI.storageLocation)
+                .collect(Collectors.toSet()));
 
     if (taskParams.category.equals(BackupCategory.YB_CONTROLLER) && !universe.isYbcEnabled()) {
       throw new PlatformServiceException(
@@ -901,7 +944,7 @@ public class BackupsController extends AuthenticatedController {
               + " type config to the backup stored in "
               + backupConfigType);
     }
-    backupUtil.validateStorageConfigOnBackup(newConfig, backup);
+    backupHelper.validateStorageConfigOnBackup(newConfig, backup);
     backup.updateStorageConfigUUID(taskParams.storageConfigUUID);
   }
 
@@ -979,6 +1022,36 @@ public class BackupsController extends AuthenticatedController {
           String.format(
               "Got error getting throttle params for universe %s, error: %s",
               universeUUID.toString(), e.getMessage()));
+    }
+  }
+
+  @ApiOperation(
+      value = "Restore preflight checks",
+      nickname = "restorePreflight",
+      response = RestorePreflightResponse.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "restorePreflightParams",
+          value = "Parameters fr restore preflight check",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.RestorePreflightParams",
+          required = true))
+  public Result restorePreflight(UUID customerUUID, Http.Request request) {
+    // Validate customer
+    Customer.getOrBadRequest(customerUUID);
+
+    RestorePreflightParams preflightParams =
+        parseJsonAndValidate(request, RestorePreflightParams.class);
+    try {
+      RestorePreflightResponse restorePreflightResponse =
+          backupHelper.generateRestorePreflightAPIResponse(preflightParams, customerUUID);
+      return PlatformResults.withData(restorePreflightResponse);
+    } catch (RuntimeException e) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Running restore preflight failed for universe %s failed with error: %s",
+              preflightParams.getUniverseUUID().toString(), e.getMessage()));
     }
   }
 }

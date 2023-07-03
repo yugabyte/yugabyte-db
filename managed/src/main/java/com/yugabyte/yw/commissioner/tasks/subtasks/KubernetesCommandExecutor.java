@@ -26,6 +26,7 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
@@ -33,7 +34,6 @@ import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.certmgmt.providers.CertificateProviderInterface;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
-import com.yugabyte.yw.common.ybc.YbcBackupUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -138,18 +138,18 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
   private final KubernetesManagerFactory kubernetesManagerFactory;
   private final ReleaseManager releaseManager;
-  private final YbcBackupUtil ybcBackupUtil;
+  private final YbcManager ybcManager;
 
   @Inject
   protected KubernetesCommandExecutor(
       BaseTaskDependencies baseTaskDependencies,
       KubernetesManagerFactory kubernetesManagerFactory,
       ReleaseManager releaseManager,
-      YbcBackupUtil ybcBackupUtil) {
+      YbcManager ybcManager) {
     super(baseTaskDependencies);
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.releaseManager = releaseManager;
-    this.ybcBackupUtil = ybcBackupUtil;
+    this.ybcManager = ybcManager;
   }
 
   // Added constant to compute CPU burst limit
@@ -337,7 +337,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       case COPY_PACKAGE:
         u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
         NodeDetails nodeDetails = u.getNode(taskParams().ybcServerName);
-        ybcBackupUtil.copyYbcPackagesOnK8s(
+        ybcManager.copyYbcPackagesOnK8s(
             config, u, nodeDetails, taskParams().getYbcSoftwareVersion());
         break;
       case YBC_ACTION:
@@ -348,7 +348,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 "/bin/bash",
                 "-c",
                 String.format("/home/yugabyte/tools/k8s_ybc_parent.py %s", taskParams().command));
-        ybcBackupUtil.performActionOnYbcK8sNode(config, nodeDetails, commandArgs);
+        ybcManager.performActionOnYbcK8sNode(config, nodeDetails, commandArgs);
         break;
     }
   }

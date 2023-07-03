@@ -26,9 +26,10 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.ScheduleUtil;
+import com.yugabyte.yw.common.StorageUtilFactory;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
-import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
@@ -61,15 +62,18 @@ public class CreateBackup extends UniverseTaskBase {
 
   private final CustomerConfigService customerConfigService;
   private final YbcManager ybcManager;
+  private final StorageUtilFactory storageUtilFactory;
 
   @Inject
   protected CreateBackup(
       BaseTaskDependencies baseTaskDependencies,
       CustomerConfigService customerConfigService,
-      YbcManager ybcManager) {
+      YbcManager ybcManager,
+      StorageUtilFactory storageUtilFactory) {
     super(baseTaskDependencies);
     this.customerConfigService = customerConfigService;
     this.ybcManager = ybcManager;
+    this.storageUtilFactory = storageUtilFactory;
   }
 
   protected BackupRequestParams params() {
@@ -110,6 +114,10 @@ public class CreateBackup extends UniverseTaskBase {
         }
         // Clear any previous subtasks if any.
         getRunnableTask().reset();
+
+        storageUtilFactory
+            .getStorageUtil(customerConfig.getName())
+            .validateStorageConfigOnUniverse(customerConfig, universe);
 
         if (ybcBackup
             && universe.isYbcEnabled()

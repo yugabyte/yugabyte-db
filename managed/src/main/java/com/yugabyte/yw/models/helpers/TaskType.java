@@ -507,7 +507,9 @@ public enum TaskType {
   UpdateClusterUserIntent(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterUserIntent.class),
 
-  CloudProviderEdit(com.yugabyte.yw.commissioner.tasks.CloudProviderEdit.class);
+  CloudProviderEdit(com.yugabyte.yw.commissioner.tasks.CloudProviderEdit.class),
+
+  CreateBackupSchedule(com.yugabyte.yw.commissioner.tasks.CreateBackupSchedule.class);
 
   private final Class<? extends ITask> taskClass;
 
