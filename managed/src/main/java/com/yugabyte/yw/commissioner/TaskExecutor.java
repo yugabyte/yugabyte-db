@@ -178,21 +178,17 @@ public class TaskExecutor {
 
   // This writes the waiting time metric.
   private static void writeTaskWaitMetric(
-      Map<String, String> taskLabels, TaskType taskType, Instant scheduledTime, Instant startTime) {
+      Map<String, String> taskLabels, Instant scheduledTime, Instant startTime) {
     COMMISSIONER_TASK_WAITING_SEC
-        .labels(taskType.name(), taskLabels.get("parentTaskType"))
+        .labels(taskLabels.get("taskType"), taskLabels.get("parentTaskType"))
         .observe(getDurationSeconds(scheduledTime, startTime));
   }
 
   // This writes the execution time metric.
   private static void writeTaskStateMetric(
-      Map<String, String> taskLabels,
-      TaskType taskType,
-      Instant startTime,
-      Instant endTime,
-      State state) {
+      Map<String, String> taskLabels, Instant startTime, Instant endTime, State state) {
     COMMISSIONER_TASK_EXECUTION_SEC
-        .labels(taskType.name(), state.name(), taskLabels.get("parentTaskType"))
+        .labels(taskLabels.get("taskType"), state.name(), taskLabels.get("parentTaskType"))
         .observe(getDurationSeconds(startTime, endTime));
   }
 
@@ -807,7 +803,7 @@ public class TaskExecutor {
               task.getName(),
               getDurationSeconds(taskScheduledTime, taskStartTime));
         }
-        writeTaskWaitMetric(taskLables, taskType, taskScheduledTime, taskStartTime);
+        writeTaskWaitMetric(taskLables, taskScheduledTime, taskStartTime);
         publishBeforeTask();
         if (getAbortTime() != null) {
           throw new CancellationException("Task " + task.getName() + " is aborted");
@@ -841,8 +837,7 @@ public class TaskExecutor {
               task.getName(),
               getDurationSeconds(taskStartTime, taskCompletionTime));
         }
-        writeTaskStateMetric(
-            taskLables, taskType, taskStartTime, taskCompletionTime, getTaskState());
+        writeTaskStateMetric(taskLables, taskStartTime, taskCompletionTime, getTaskState());
         task.terminate();
         publishAfterTask(t);
       }
@@ -1064,10 +1059,10 @@ public class TaskExecutor {
       subTaskGroups.clear();
     }
 
-    // Add extra labels here. Currently not required in RunnableTask
     @Override
     protected Map<String, String> getTaskMetricLabels() {
-      return ImmutableMap.of("parentTaskType", "No parent");
+      return ImmutableMap.of(
+          "parentTaskType", "No parent", "taskType", taskInfo.getTaskType().name());
     }
 
     @Override
@@ -1249,7 +1244,9 @@ public class TaskExecutor {
 
     @Override
     protected Map<String, String> getTaskMetricLabels() {
-      return ImmutableMap.of("parentTaskType", parentRunnableTask.getTaskType().name());
+      return ImmutableMap.of(
+          "parentTaskType", parentRunnableTask.getTaskType().name(),
+          "taskType", taskInfo.getTaskType().name());
     }
 
     @Override
