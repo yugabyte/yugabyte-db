@@ -70,6 +70,7 @@ InboundCall::InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
                          CallProcessedListener* call_processed_listener)
     : trace_holder_(Trace::MaybeGetNewTrace()),
       trace_(trace_holder_.get()),
+      wait_state_(std::make_shared<util::WaitStateInfo>(util::AUHMetadata{.request_id = "request_id_tbd"})),
       conn_(std::move(conn)),
       rpc_metrics_(rpc_metrics ? rpc_metrics : &conn_->rpc_metrics()),
       call_processed_listener_(call_processed_listener) {
@@ -154,6 +155,8 @@ void InboundCall::RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_
   LOG_IF_WITH_PREFIX(DFATAL, timing_.time_handled.Initialized()) << "Already marked as started";
   timing_.time_handled = MonoTime::Now();
   VLOG_WITH_PREFIX(4) << "Handling";
+  // wait_state_.set_state(util::WaitStateCode::Created);
+  wait_state_->set_state(util::WaitStateCode::Created);
   incoming_queue_time->Increment(
       timing_.time_handled.GetDeltaSince(timing_.time_received).ToMicroseconds());
 }
@@ -195,6 +198,8 @@ bool InboundCall::ClientTimedOut() const {
 }
 
 void InboundCall::QueueResponse(bool is_success) {
+  // wait_state_.set_state(util::WaitStateCode::QueueingResponse);
+  wait_state_->set_state(util::WaitStateCode::QueueingResponse);
   TRACE_TO(trace(), is_success ? "Queueing success response" : "Queueing failure response");
   LogTrace();
   bool expected = false;
@@ -206,6 +211,7 @@ void InboundCall::QueueResponse(bool is_success) {
   } else {
     LOG_WITH_PREFIX(DFATAL) << "Response already queued";
   }
+  wait_state_->set_state(util::WaitStateCode::ResponseQueued);
 }
 
 std::string InboundCall::LogPrefix() const {

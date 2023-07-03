@@ -120,6 +120,13 @@ class WriteQuery {
 
   std::unique_ptr<WriteOperation> PrepareSubmit();
 
+  util::WaitStateInfoPtr wait_state() {
+    if (!rpc_context_) {
+      return nullptr;
+    }
+    return rpc_context_->wait_state();
+  }
+
  private:
   friend struct UpdateQLIndexesTask;
   enum class ExecuteMode;
