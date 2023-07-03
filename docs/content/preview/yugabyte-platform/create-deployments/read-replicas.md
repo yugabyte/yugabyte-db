@@ -14,7 +14,7 @@ type: docs
 
 If your user base is geographically distributed, you can add a read replica cluster to the universe to improve read latency in regions that are far from your primary region.
 
-Read replicas are a read-only extension to the primary cluster. With read replicas, the primary data of the cluster is copied across one or more nodes in a different region. Read replicas do not add to write latencies because writes aren't synchronously replicated to replicas - the data is replicated to the replicas asynchronously. To read data from a read replica, you need to enable follower reads.
+Read replicas are a read-only extension to the primary cluster. With read replicas, the primary data of the cluster is copied to one or more nodes in a different region. Read replicas do not add to write latencies because writes aren't synchronously replicated to replicas - the data is replicated to the replicas asynchronously. To read data from a read replica, you need to enable follower reads.
 
 For more information on read replicas and follower reads in YugabyteDB, see the following:
 
