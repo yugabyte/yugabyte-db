@@ -14,7 +14,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.FORBIDDEN;
+import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -130,7 +130,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
   public void testListWithInvalidCustomer() {
     UUID invalidCustomerUUID = UUID.randomUUID();
     Result r = listSchedules(invalidCustomerUUID);
-    assertEquals(FORBIDDEN, r.status());
+    assertEquals(UNAUTHORIZED, r.status());
     String resultString = contentAsString(r);
     assertEquals(resultString, "Unable To Authenticate User");
     assertAuditEntry(0, defaultCustomer.getUuid());
@@ -153,7 +153,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
     JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.getUuid())));
     assertEquals(1, resultJson.size());
     Result r = deleteSchedule(defaultSchedule.getScheduleUUID(), invalidCustomerUUID);
-    assertEquals(FORBIDDEN, r.status());
+    assertEquals(UNAUTHORIZED, r.status());
     String resultString = contentAsString(r);
     assertEquals(resultString, "Unable To Authenticate User");
     resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.getUuid())));
@@ -464,7 +464,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
   public void testDeleteInvalidCustomerUUIDYb() {
     UUID invalidCustomerUUID = UUID.randomUUID();
     Result r = deleteScheduleYb(defaultSchedule.getScheduleUUID(), invalidCustomerUUID);
-    assertEquals(FORBIDDEN, r.status());
+    assertEquals(UNAUTHORIZED, r.status());
     String resultString = contentAsString(r);
     assertEquals(resultString, "Unable To Authenticate User");
     assertAuditEntry(0, defaultCustomer.getUuid());
