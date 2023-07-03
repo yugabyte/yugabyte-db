@@ -27,7 +27,7 @@ You can delete, modify, and scale read replica clusters. Adding or removing node
 
 ## Limitations
 
-- Currently, YugabyteDB Anywhere supports one only one read replica cluster per Universe.
+- Currently, YugabyteDB Anywhere supports one only one read replica cluster per universe.
 - You can add up to 15 read replicas to the read replica cluster.
 
 ## Create a universe with a read replica cluster
