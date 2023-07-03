@@ -26,11 +26,19 @@ Let's say that you want to have your cluster be distributed across three regions
 
 Although you can have an **RF3** cluster, you should set it up as an **RF5** cluster so that you will have 2 copies within the preferred regions. When a leader fails, this would allow a local follower to be elected as a leader rather than a follower in a different region.
 
-{{<cluster-setup-tabs>}}
+<!-- begin: nav tabs -->
+{{<nav/tabs list="local,cloud,anywhere" active="local"/>}}
 
-{{<warning title="For local cluster">}}
-This example uses an RF5 cluster setup. When setting up a local cluster make sure you start 5 instances.
-{{</warning>}}
+{{<nav/panels>}}
+{{<nav/panel name="local" active="true">}}
+<!-- local cluster setup instructions -->
+{{<setup/local numnodes="5" rf="5" locations="aws.us-east-2.us-east-2a,aws.us-east-2.us-east-2b,aws.us-central-1.us-central-1a,aws.us-central-1.us-central-1b,aws.us-west-1.us-west-1a">}}
+{{</nav/panel>}}
+
+{{<nav/panel name="cloud">}} {{<setup/cloud>}} {{</nav/panel>}}
+{{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
+{{</nav/panels>}}
+<!-- end: nav tabs -->
 
 You would get a cluster as shown in the following illustration.
 

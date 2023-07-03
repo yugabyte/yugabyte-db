@@ -40,7 +40,7 @@ We can classify these patterns based on how multiple instances of the applicatio
 1. **Single Active** - The application is active in one region.
 1. **Multi-Active**  - Applications run in different regions and operate on all the cluster data.
 1. **Partitioned Multi-Active** - Multiple applications run in multiple regions and operate on just the local data.
-1. **Follow the workload** - Applications run closer to the leaders.
+1. **Follow the Application** - The application moves a different region on failure and the workload follows the application.
 1. **Geo-local dataset** - Applications read from geographically placed local data.
 1. **Data Access** - Applications either read from leaders for consistent reads or from local replicas for stale reads.
 
