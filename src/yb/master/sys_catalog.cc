@@ -42,6 +42,7 @@
 #include "yb/client/client.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/pg_catversions.h"
 #include "yb/qlexpr/index.h"
 #include "yb/dockv/partial_row.h"
 #include "yb/dockv/partition.h"
@@ -977,10 +978,14 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
     }
     if (versions) {
       // When 'versions' is set we read all rows.
+      const uint64_t current_version =
+        static_cast<uint64_t>(version_col_value->int64_value());
+      const uint64_t last_breaking_version =
+        static_cast<uint64_t>(last_breaking_version_col_value->int64_value());
       auto insert_result = versions->insert(
-        std::make_pair(db_oid_value->uint32_value(),
-                       std::make_pair(version_col_value->int64_value(),
-                                      last_breaking_version_col_value->int64_value())));
+        std::make_pair(db_oid_value->uint32_value(), PgCatalogVersion{
+            .current_version = current_version,
+            .last_breaking_version = last_breaking_version}));
       // There should not be any duplicate db_oid because it is a primary key.
       DCHECK(insert_result.second);
     } else {

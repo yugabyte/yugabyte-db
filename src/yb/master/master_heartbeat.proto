@@ -231,6 +231,8 @@ message TSHeartbeatRequestPB {
   repeated TabletLeaderMetricsPB leader_info = 19;
 
   repeated FullCompactionStatusPB full_compaction_statuses = 20;
+
+  optional uint64 ysql_db_catalog_versions_fingerprint = 21;
 }
 
 message TSHeartbeatResponsePB {
