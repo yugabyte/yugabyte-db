@@ -83,10 +83,10 @@ YB_DEFINE_ENUM(
       (SubmittedUnexpectedToPreparer)
     // Reads
     (GetSafeTime)(GetSubDoc)
-    // Flush
-    (StartFlush)
-    // Compaction
-    (StartCompaction))
+    // Flush and Compaction
+    (StartFlush)(StartCompaction)
+    (OpenFile)(CloseFile)(DeleteFile)(WriteToFile)
+    (StartSubcompactionThreads)(WaitOnSubcompactionThreads))
 
 struct AUHMetadata {
   std::string request_id;
