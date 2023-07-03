@@ -5157,7 +5157,7 @@ PostgresMain(int argc, char *argv[],
 		if (memcmp(&(beentry->st_clientaddr), &zero_clientaddr,
 					sizeof(zero_clientaddr)) == 0)
 		{
-			ereport(LOG, (errmsg("PG client ip and port not found")));
+			ereport(LOG, (errmsg("zeroed client addr found")));
 		}
 		else
 		{
@@ -5180,7 +5180,7 @@ PostgresMain(int argc, char *argv[],
 				}
 				else
 				{
-					ereport(LOG, (errmsg("PG client ip and port not found")));
+					ereport(LOG, (errmsg("non-zero pg_getnameinfo_all value")));
 				}
 			}
 			else if (beentry->st_clientaddr.addr.ss_family == AF_UNIX)
@@ -5191,19 +5191,17 @@ PostgresMain(int argc, char *argv[],
 						* connections we have no permissions to view, or with
 						* errors.
 						*/
-					ereport(LOG, (errmsg("PG client ip and port not found")));
+					ereport(LOG, (errmsg("client addr type is unix")));
 			}
 			else
 			{
 				/* Unknown address type, should never happen */
-				ereport(LOG, (errmsg("PG client ip and port not found")));
+				ereport(LOG, (errmsg("unknown addr type, should never happen")));
 			}
 		}
 
 		if (IsYugaByteEnabled())
 			HandleYBStatus(YBCPgSetAUHMetadata(remote_host, atoi(remote_port)));
-		else
-		 	ereport(LOG, (errmsg("yugabyte not enabled yet")));
 	}
 
 	/*
