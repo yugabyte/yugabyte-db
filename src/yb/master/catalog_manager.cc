@@ -83,6 +83,7 @@
 #include "yb/common/common_util.h"
 #include "yb/common/constants.h"
 #include "yb/common/key_encoder.h"
+#include "yb/common/pg_catversions.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_type_util.h"
 #include "yb/common/schema_pbutil.h"
@@ -9903,8 +9904,9 @@ Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap*
   return Status::OK();
 }
 
+// Note: versions and fingerprint are outputs.
 Status CatalogManager::GetYsqlAllDBCatalogVersions(
-    bool use_cache, DbOidToCatalogVersionMap* versions) {
+    bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint) {
   DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
   if (use_cache) {
     SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
@@ -9919,12 +9921,20 @@ Status CatalogManager::GetYsqlAllDBCatalogVersions(
     // make such unit tests happy.
     if (heartbeat_pg_catalog_versions_cache_) {
       *versions = *heartbeat_pg_catalog_versions_cache_;
+      if (fingerprint) {
+        *fingerprint = heartbeat_pg_catalog_versions_cache_fingerprint_;
+      }
       return Status::OK();
     }
   }
   // Cannot use cached data, or the cache has never been initialized yet, read
   // from pg_yb_catalog_version table.
-  return GetYsqlAllDBCatalogVersionsImpl(versions);
+  RETURN_NOT_OK(GetYsqlAllDBCatalogVersionsImpl(versions));
+  if (fingerprint) {
+    *fingerprint = FingerprintCatalogVersions<DbOidToCatalogVersionMap>(*versions);
+    VLOG_WITH_FUNC(2) << "databases: " << versions->size() << ", fingerprint: " << *fingerprint;
+  }
+  return Status::OK();
 }
 
 Status CatalogManager::InitializeTransactionTablesConfig(int64_t term) {
@@ -13378,31 +13388,35 @@ void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {
   DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
   DCHECK(FLAGS_enable_heartbeat_pg_catalog_versions_cache);
   DCHECK(pg_catalog_versions_bg_task_running_);
-  const bool is_inited_leader = [this] {
+
+  {
     SCOPED_LEADER_SHARED_LOCK(l, this);
-    return l.IsInitializedAndIsLeader();
-  }();
-  if (!is_inited_leader) {
-    VLOG(2) << "No longer the leader, skipping catalog versions task";
-    pg_catalog_versions_bg_task_running_ = false;
-    ResetCachedCatalogVersions();
-    return;
+    if (!l.IsInitializedAndIsLeader()) {
+      VLOG(2) << "No longer the leader, skipping catalog versions task";
+      pg_catalog_versions_bg_task_running_ = false;
+      ResetCachedCatalogVersions();
+      return;
+    }
   }
+
   // Refresh the catalog versions in memory.
-  VLOG(2) << "Running RefreshPgCatalogVersionInfoPeriodically task";
+  VLOG(2) << "Running " << __func__ << " task";
   DbOidToCatalogVersionMap versions;
   Status s = GetYsqlAllDBCatalogVersionsImpl(&versions);
   if (!s.ok()) {
     LOG(WARNING) << "Catalog versions refresh task failed: " << s.ToString();
     ResetCachedCatalogVersions();
   } else {
-    VLOG(2) << "Refreshed catalog versions in memory: " << yb::ToString(versions);
+    VLOG_WITH_FUNC(2) << "Refreshed " << versions.size() << " catalog versions in memory";
+    const auto fingerprint = yb::FingerprintCatalogVersions<DbOidToCatalogVersionMap>(versions);
+    VLOG_WITH_FUNC(2) << "fingerprint: " << fingerprint;
     LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
     if (heartbeat_pg_catalog_versions_cache_) {
       heartbeat_pg_catalog_versions_cache_->swap(versions);
     } else {
       heartbeat_pg_catalog_versions_cache_ = std::move(versions);
     }
+    heartbeat_pg_catalog_versions_cache_fingerprint_ = fingerprint;
   }
   ScheduleRefreshPgCatalogVersionsTask();
 }

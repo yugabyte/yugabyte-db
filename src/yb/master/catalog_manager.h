@@ -622,7 +622,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status GetYsqlCatalogVersion(
       uint64_t* catalog_version, uint64_t* last_breaking_version) override;
-  Status GetYsqlAllDBCatalogVersions(bool use_cache, DbOidToCatalogVersionMap* versions) override
+  Status GetYsqlAllDBCatalogVersions(
+      bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint) override
       EXCLUDES(heartbeat_pg_catalog_versions_cache_mutex_);
   Status GetYsqlDBCatalogVersion(
       uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) override;
@@ -2963,6 +2964,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   mutable MutexType heartbeat_pg_catalog_versions_cache_mutex_;
   std::optional<DbOidToCatalogVersionMap> heartbeat_pg_catalog_versions_cache_
     GUARDED_BY(heartbeat_pg_catalog_versions_cache_mutex_);
+  // Fingerprint is only used when heartbeat_pg_catalog_versions_cache_ contains
+  // a value.
+  uint64_t heartbeat_pg_catalog_versions_cache_fingerprint_
+    GUARDED_BY(heartbeat_pg_catalog_versions_cache_mutex_) = 0;
 
   std::unique_ptr<cdc::CDCStateTable> cdc_state_table_;
 
