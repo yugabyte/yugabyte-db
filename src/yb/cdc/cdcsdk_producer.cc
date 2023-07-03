@@ -1747,13 +1747,18 @@ void SetSafetimeFromRequestIfInvalid(
 void UpdateSafetimeForResponse(
     const std::shared_ptr<yb::consensus::LWReplicateMsg>& msg, const bool& update_safe_time,
     const int64_t& safe_hybrid_time_req, HybridTime* safe_hybrid_time_resp) {
-  if (!FLAGS_cdc_enable_consistent_records || update_safe_time) {
+  if (!FLAGS_cdc_enable_consistent_records) {
+    *safe_hybrid_time_resp = HybridTime(GetTransactionCommitTime(msg));
+    return;
+  }
+
+  if (update_safe_time) {
     const auto& commit_time = GetTransactionCommitTime(msg);
     if ((int64_t)commit_time >= safe_hybrid_time_req &&
         (!safe_hybrid_time_resp->is_valid() || safe_hybrid_time_resp->ToUint64() < commit_time)) {
       *safe_hybrid_time_resp = HybridTime(GetTransactionCommitTime(msg));
+      return;
     }
-    return;
   }
 
   SetSafetimeFromRequestIfInvalid(safe_hybrid_time_req, safe_hybrid_time_resp);
