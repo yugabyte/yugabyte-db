@@ -1337,6 +1337,51 @@ namespace cdc {
     return change_resp;
   }
 
+  CDCSDKYsqlTest::GetAllPendingChangesResponse CDCSDKYsqlTest::GetAllPendingChangesFromCdc(
+      const CDCStreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const CDCSDKCheckpointPB* cp,
+      int tablet_idx,
+      int64 safe_hybrid_time,
+      int wal_segment_index) {
+    GetAllPendingChangesResponse resp;
+
+    int prev_records = 0;
+    CDCSDKCheckpointPB prev_checkpoint;
+    int64 prev_safetime = safe_hybrid_time;
+    int prev_index = wal_segment_index;
+    const CDCSDKCheckpointPB* prev_checkpoint_ptr = cp;
+
+    do {
+      GetChangesResponsePB change_resp;
+      auto get_changes_result = GetChangesFromCDC(
+          stream_id, tablets, prev_checkpoint_ptr, tablet_idx, prev_safetime, prev_index);
+
+      if (get_changes_result.ok()) {
+        change_resp = *get_changes_result;
+      } else {
+        LOG(ERROR) << "Encountered error while calling GetChanges on tablet: "
+                   << tablets[tablet_idx].tablet_id()
+                   << ", status: " << get_changes_result.status();
+        break;
+      }
+
+      for (int i = 0; i < change_resp.cdc_sdk_proto_records_size(); i++) {
+        resp.records.push_back(change_resp.cdc_sdk_proto_records(i));
+      }
+
+      prev_checkpoint = change_resp.cdc_sdk_checkpoint();
+      prev_checkpoint_ptr = &prev_checkpoint;
+      prev_safetime = change_resp.has_safe_hybrid_time() ? change_resp.safe_hybrid_time() : -1;
+      prev_index = change_resp.wal_segment_index();
+      prev_records = change_resp.cdc_sdk_proto_records_size();
+    } while (prev_records != 0);
+
+    resp.checkpoint = prev_checkpoint;
+    resp.safe_hybrid_time = prev_safetime;
+    return resp;
+  }
+
   Result<GetChangesResponsePB> CDCSDKYsqlTest::GetChangesFromCDCWithExplictCheckpoint(
       const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
