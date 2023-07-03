@@ -373,7 +373,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 		MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_query_memory);
 
 	/* Set scan targets. */
-	if (node->yb_fdw_aggs == NIL)
+	if (node->yb_fdw_aggrefs == NIL)
 	{
 		/* Set non-aggregate column targets. */
 		bool target_added = false;
@@ -414,7 +414,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 	else
 	{
 		/* Set aggregate scan targets. */
-		foreach(lc, node->yb_fdw_aggs)
+		foreach(lc, node->yb_fdw_aggrefs)
 		{
 			Aggref *aggref = lfirst_node(Aggref, lc);
 			char *func_name = get_func_name(aggref->aggfnoid);
@@ -500,7 +500,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 		 * Setup the scan slot based on new tuple descriptor for the given targets. This is a dummy
 		 * tupledesc that only includes the number of attributes.
 		 */
-		TupleDesc target_tupdesc = CreateTemplateTupleDesc(list_length(node->yb_fdw_aggs),
+		TupleDesc target_tupdesc = CreateTemplateTupleDesc(list_length(node->yb_fdw_aggrefs),
 														   false /* hasoid */);
 		ExecInitScanTupleSlot(estate, &node->ss, target_tupdesc);
 
@@ -661,17 +661,6 @@ ybcEndForeignScan(ForeignScanState *node)
 	ybcFreeStatementObject(ybc_state);
 }
 
-/*
- * ybcExplainForeignScan
- *		Produce extra output for EXPLAIN of a ForeignScan on a foreign table
- */
-static void
-ybcExplainForeignScan(ForeignScanState *node, ExplainState *es)
-{
-	if (node->yb_fdw_aggs != NIL)
-		ExplainPropertyBool("Partial Aggregate", true, es);
-}
-
 /* ------------------------------------------------------------------------- */
 /*  FDW declaration */
 
@@ -691,9 +680,9 @@ ybc_fdw_handler()
 	fdwroutine->IterateForeignScan = ybcIterateForeignScan;
 	fdwroutine->ReScanForeignScan  = ybcReScanForeignScan;
 	fdwroutine->EndForeignScan     = ybcEndForeignScan;
-	fdwroutine->ExplainForeignScan = ybcExplainForeignScan;
 
 	/* TODO: These are optional but we should support them eventually. */
+	/* fdwroutine->ExplainForeignScan = ybcExplainForeignScan; */
 	/* fdwroutine->AnalyzeForeignTable = ybcAnalyzeForeignTable; */
 	/* fdwroutine->IsForeignScanParallelSafe = ybcIsForeignScanParallelSafe; */
 

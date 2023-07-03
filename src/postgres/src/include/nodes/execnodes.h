@@ -1750,7 +1750,7 @@ typedef struct ForeignScanState
 	void	   *fdw_state;		/* foreign-data wrapper can keep state here */
 
 	/* YB specific attributes. */
-	List	   *yb_fdw_aggs;	/* aggregate pushdown information */
+	List	   *yb_fdw_aggrefs;	/* aggregate pushdown information */
 } ForeignScanState;
 
 /* ----------------
