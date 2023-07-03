@@ -60,6 +60,7 @@
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/operations/operation.h"
 #include "yb/tablet/operation_filter.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/transaction_intent_applier.h"
 #include "yb/tablet/tablet_retention_policy.h"
@@ -428,6 +429,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
                int64_t ignore_if_flushed_after_tick = rocksdb::FlushOptions::kNeverIgnore);
 
   Status WaitForFlush();
+
+  Status FlushSuperblock(OnlyIfDirty only_if_dirty);
 
   // Prepares the transaction context for the alter schema operation.
   // An error will be returned if the specified schema is invalid (e.g.

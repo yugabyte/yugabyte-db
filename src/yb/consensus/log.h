@@ -110,6 +110,8 @@ YB_DEFINE_ENUM(
 
 YB_STRONGLY_TYPED_BOOL(SkipWalWrite);
 
+using NewSegmentAllocationCallback = std::function<Status(void)>;
+
 // Log interface, inspired by Raft's (logcabin) Log. Provides durability to YugaByte as a normal
 // Write Ahead Log and also plays the role of persistent storage for the consensus state machine.
 //
@@ -151,6 +153,7 @@ class Log : public RefCountedThreadSafe<Log> {
                              ThreadPool* background_sync_threadpool,
                              int64_t cdc_min_replicated_index,
                              scoped_refptr<Log> *log,
+                             NewSegmentAllocationCallback callback = {},
                              CreateNewSegment create_new_segment = CreateNewSegment::kTrue);
 
   ~Log();
@@ -360,6 +363,7 @@ class Log : public RefCountedThreadSafe<Log> {
       ThreadPool* append_thread_pool,
       ThreadPool* allocation_thread_pool,
       ThreadPool* background_sync_threadpool,
+      NewSegmentAllocationCallback callback,
       CreateNewSegment create_new_segment = CreateNewSegment::kTrue);
 
   Env* get_env() {
@@ -640,6 +644,8 @@ class Log : public RefCountedThreadSafe<Log> {
   int64_t log_copy_min_index_ GUARDED_BY(state_lock_) = std::numeric_limits<int64_t>::max();
 
   CreateNewSegment create_new_segment_at_start_;
+
+  NewSegmentAllocationCallback new_segment_allocation_callback_;
 
   DISALLOW_COPY_AND_ASSIGN(Log);
 };
