@@ -193,6 +193,7 @@ libraryDependencies ++= Seq(
   "org.unix4j" % "unix4j-command" % "0.6",
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
   "org.apache.directory.api" % "api-all" % "2.1.0",
+  "io.fabric8" % "crd-generator-apt" % "6.4.1",
   "io.fabric8" % "kubernetes-client" % "6.4.1",
   "io.fabric8" % "kubernetes-client-api" % "6.4.1",
   "io.fabric8" % "kubernetes-model" % "4.9.2",
