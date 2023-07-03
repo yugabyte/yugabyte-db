@@ -1,5 +1,7 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.api.client.util.Throwables;
@@ -129,6 +131,26 @@ public class RestoreBackupYbc extends YbcTaskBase {
                 + "-"
                 + Integer.toString(taskParams().index);
         try {
+          // For xcluster task, success marker is empty until task execution
+          if (taskParams().getSuccessMarker() == null) {
+            String dsmTaskId = taskId.concat(YbcBackupUtil.YBC_SUCCESS_MARKER_TASK_SUFFIX);
+            BackupServiceTaskCreateRequest downloadSuccessMarkerRequest =
+                ybcBackupUtil.createDsmRequest(
+                    taskParams().customerUUID,
+                    taskParams().storageConfigUUID,
+                    dsmTaskId,
+                    backupStorageInfo);
+            String successMarkerString =
+                ybcManager.downloadSuccessMarker(
+                    downloadSuccessMarkerRequest, taskParams().getUniverseUUID(), dsmTaskId);
+            if (StringUtils.isEmpty(successMarkerString)) {
+              throw new PlatformServiceException(
+                  INTERNAL_SERVER_ERROR, "Got empty success marker response, exiting.");
+            }
+            YbcBackupResponse successMarker =
+                YbcBackupUtil.parseYbcBackupResponse(successMarkerString);
+            taskParams().setSuccessMarker(successMarker);
+          }
           backupSize = Long.parseLong(taskParams().getSuccessMarker().backupSize);
           BackupServiceTaskCreateRequest restoreTaskCreateRequest =
               ybcBackupUtil.createYbcRestoreRequest(
