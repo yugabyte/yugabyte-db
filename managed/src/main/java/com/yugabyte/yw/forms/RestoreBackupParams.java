@@ -6,6 +6,7 @@ import com.yugabyte.yw.models.Backup.BackupCategory;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -49,7 +50,7 @@ public class RestoreBackupParams extends UniverseTaskParams {
   @JsonIgnore
   @Getter
   @Setter
-  private Map<String, YbcBackupResponse> successMarkerMap = null;
+  private Map<String, YbcBackupResponse> successMarkerMap = new HashMap<>();
 
   // Intermediate states to resume ybc backups
   public UUID prefixUUID;

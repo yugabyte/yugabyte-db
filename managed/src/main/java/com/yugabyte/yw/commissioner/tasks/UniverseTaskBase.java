@@ -2489,8 +2489,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     taskInfo.save();
   }
 
-  private void restoreActionPreflightCheck(RestoreBackupParams restoreParams) {
-    TaskInfo taskInfo = TaskInfo.getOrBadRequest(userTaskUUID);
+  private void restoreActionPreflightCheck(RestoreBackupParams restoreParams, TaskInfo taskInfo) {
     RestorePreflightResponse preflightResponse = getRestorePreflightResponse(restoreParams);
 
     saveRestoreBackupCategory(restoreParams, preflightResponse.getBackupCategory(), taskInfo);
@@ -2529,7 +2528,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected Restore createAllRestoreSubtasks(
       RestoreBackupParams restoreBackupParams, SubTaskGroupType subTaskGroupType) {
-    restoreActionPreflightCheck(restoreBackupParams);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(userTaskUUID);
+
+    // No validation for xcluster type tasks, since the backup
+    // itself is used for populating restore task.
+    if (taskInfo.getTaskType().equals(TaskType.RestoreBackup)) {
+      restoreActionPreflightCheck(restoreBackupParams, taskInfo);
+    }
     if (restoreBackupParams.alterLoadBalancer) {
       createLoadBalancerStateChangeTask(false).setSubTaskGroupType(subTaskGroupType);
     }
@@ -2570,7 +2575,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                   restoreBackupParams, backupStorageInfo, RestoreBackupParams.ActionType.RESTORE);
           String backupLocation = restoreDataParams.backupStorageInfoList.get(0).storageLocation;
           YbcBackupResponse successMarker =
-              restoreBackupParams.getSuccessMarkerMap().get(backupLocation);
+              restoreBackupParams.getSuccessMarkerMap().getOrDefault(backupLocation, null);
           createRestoreBackupYbcTask(restoreDataParams, successMarker, idx)
               .setSubTaskGroupType(subTaskGroupType);
         }
