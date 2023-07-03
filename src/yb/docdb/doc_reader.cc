@@ -1249,6 +1249,9 @@ Result<DocReaderResult> DocDBTableReader::GetFlat(
 
 Result<DocReaderResult> DocDBTableReader::GetFlat(
     Slice root_doc_key, const FetchedEntry& fetched_entry, dockv::PgTableRow* result) {
+  if (result) {
+    DCHECK_EQ(result->projection(), *projection_);
+  }
   return DoGetFlat(root_doc_key, fetched_entry, result);
 }
 

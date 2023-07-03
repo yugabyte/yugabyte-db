@@ -505,12 +505,14 @@ void PgTableRow::SetNull(size_t column_idx) {
 }
 
 Status PgTableRow::DecodeValue(size_t column_idx, Slice value) {
+  DCHECK_LT(column_idx, projection_->columns.size());
   return DoDecodeValue(
       value, projection_->columns[column_idx].data_type,
       &is_null_[column_idx], &values_[column_idx], &buffer_);
 }
 
 Status PgTableRow::DecodeKey(size_t column_idx, Slice* value) {
+  DCHECK_LT(column_idx, projection_->columns.size());
   return DoDecodeKey(
       value, projection_->columns[column_idx].data_type,
       &is_null_[column_idx], &values_[column_idx], &buffer_);

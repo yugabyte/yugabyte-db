@@ -77,9 +77,8 @@ class PgsqlWriteOperation :
   // Execute write.
   Status Apply(const DocOperationApplyData& data) override;
 
-  const dockv::DocKey* DocKey() final;
-  Status CreateIterator(
-      const DocOperationApplyData& data, const dockv::DocKey* key,
+  Status UpdateIterator(
+      DocOperationApplyData* data, DocOperation* prev, SingleOperation single_operation,
       std::optional<DocRowwiseIterator>* iterator) final;
 
  private:
@@ -127,7 +126,7 @@ class PgsqlWriteOperation :
   //------------------------------------------------------------------------------------------------
   // Context.
   DocReadContextPtr doc_read_context_;
-  mutable dockv::ReaderProjection projection_;
+  mutable std::optional<dockv::ReaderProjection> projection_;
   const TransactionOperationContext txn_op_context_;
 
   // Input arguments.
@@ -137,7 +136,7 @@ class PgsqlWriteOperation :
   // UPDATE, DELETE, INSERT operations should return total number of new or changed rows.
 
   // Doc key and encoded doc key for the primary key.
-  std::optional<dockv::DocKey> doc_key_;
+  dockv::DocKey doc_key_;
   RefCntPrefix encoded_doc_key_;
 
   // Rows result requested.
