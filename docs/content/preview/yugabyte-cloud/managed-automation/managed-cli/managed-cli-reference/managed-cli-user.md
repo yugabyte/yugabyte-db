@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Use the `user` resource to create and manage YugabyteDB Managed account [users](../../../../cloud-admin/manage-access/).
+Use the `user` resource to invite and manage YugabyteDB Managed account [users](../../../../cloud-admin/manage-access/).
 
 ## Syntax
 
@@ -29,16 +29,6 @@ ybm user list
 ```
 
 ## Commands
-
-### create
-
-Create a custom role.
-
-| Flag | Description |
-| :--- | :--- |
-| --role-name | Required. Name for the role. |
-| --permissions | Required. Permissions for the role, provided as key value pairs. <br>Arguments:<ul><li>resource-type=<resource-type></li><li>operation-group=<operation-group></li></ul>Both resource-type and operation-group are mandatory. Information about multiple permissions can be specified by using multiple --permissions arguments. |
-| --description | Description for the role. |
 
 ### delete
 
