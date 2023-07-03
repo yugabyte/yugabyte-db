@@ -658,6 +658,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   }
   options.set_trace_requested(pg_txn_manager_->ShouldEnableTracing());
 
+  FillAUHMetadata(*options.mutable_auh_metadata());
+
   if (ops_options.cache_options) {
     auto& cache_options = *ops_options.cache_options;
     auto& caching_info = *options.mutable_caching_info();
@@ -671,6 +673,13 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     promise->set_value(result);
   });
   return PerformFuture(promise->get_future(), this, std::move(ops.relations));
+}
+
+void PgSession::FillAUHMetadata(AUHMetadataPB& auh_metadata) {
+  auh_metadata.set_top_level_request_id(top_level_request_id_);
+  auh_metadata.set_client_node_ip(client_node_ip_);
+  auh_metadata.set_top_level_node_id(node_uuid_);
+  auh_metadata.set_query_id(query_id_);
 }
 
 void PgSession::ProcessPerformOnTxnSerialNo(
@@ -895,6 +904,22 @@ Result<PerformFuture> PgSession::RunAsync(
 
 Result<bool> PgSession::CheckIfPitrActive() {
   return pg_client_.CheckIfPitrActive();
+}
+
+Status PgSession::SetAUHMetadata(const char* remote_host, int remote_port) {
+  node_uuid_ = VERIFY_RESULT(pg_client_.GetTServerUUID());
+  client_node_ip_ = remote_host;
+  client_node_ip_ += ":";
+  client_node_ip_ += std::to_string(remote_port);
+  return Status::OK();
+}
+
+void PgSession::SetQueryId(uint64_t query_id) {
+  query_id_ = query_id;
+}
+
+void PgSession::SetTopLevelRequestId() {
+  top_level_request_id_ = GenerateObjectId();
 }
 
 }  // namespace pggate

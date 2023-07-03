@@ -1065,6 +1065,13 @@ Status YBClient::GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version) {
   return Status::OK();
 }
 
+Result<std::string> YBClient::GetTServerUUID() {
+  if (data_->meta_cache_->local_tserver())
+    return data_->meta_cache_->local_tserver()->permanent_uuid();
+
+  return "";
+}
+
 Status YBClient::GrantRevokePermission(GrantRevokeStatementType statement_type,
                                        const PermissionType& permission,
                                        const ResourceType& resource_type,
