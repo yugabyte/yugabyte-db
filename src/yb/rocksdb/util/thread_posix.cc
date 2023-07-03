@@ -175,8 +175,7 @@ void ThreadPool::StartBGThreads() {
     CHECK_OK(yb::Thread::Create(
         category_name, std::move(thread_name),
         [this, tid]() { this->BGThread(tid); }, &thread));
-    bg_wait_states_.push_back(std::make_shared<yb::util::WaitStateInfo>
-      (yb::util::AUHMetadata{.request_id = std::to_string(reinterpret_cast<uint64_t>(thread.get()))}));
+    bg_wait_states_.push_back(std::make_shared<yb::util::WaitStateInfo>());
     bgthreads_.push_back(thread);
   }
 }

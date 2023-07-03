@@ -47,6 +47,10 @@
 #define SCOPED_WAIT_STATUS(state) \
   SCOPED_WAIT_STATUS_FOR(yb::util::WaitStateInfo::CurrentWaitState(), (state))
 
+#define SET_WAIT_STATE_METADATA_TO(ptr, metadata) \
+  if (ptr) ptr->set_metadata(metadata)
+#define SET_WAIT_STATE_METADATA(metadata) \
+  SET_WAIT_STATE_METADATA_TO(yb::util::WaitStateInfo::CurrentWaitState(), (metadata))
 
 // For debugging purposes:
 // Uncomment the following line to track state changes in wait events.
@@ -98,11 +102,14 @@ class WaitStateInfo;
 typedef std::shared_ptr<WaitStateInfo> WaitStateInfoPtr;
 class WaitStateInfo {
  public:
+  WaitStateInfo() = default;
   WaitStateInfo(AUHMetadata meta);
 
   void set_state(WaitStateCode c);
 
   WaitStateCode get_state() const;
+
+  void set_metadata(AUHMetadata meta);
 
   std::string ToString() const;
 
@@ -110,7 +117,7 @@ class WaitStateInfo {
   static void SetCurrentWaitState(WaitStateInfoPtr);
 
  private:
-  const AUHMetadata metadata_;
+  AUHMetadata metadata_;
   WaitStateCode code_ = WaitStateCode::Unused;
 
 #ifdef TRACK_WAIT_HISTORY
