@@ -120,6 +120,10 @@ namespace cdc {
           if (!row) {
             return false;
           }
+
+          SCHECK(
+              row->checkpoint, IllegalState, "Checkpoint not set in cdc_state table row: $0",
+              row->ToString());
           auto& op_id = *row->checkpoint;
 
           switch (op_id_expected_value) {
