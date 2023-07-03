@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
@@ -28,6 +29,7 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
@@ -36,9 +38,12 @@ import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Cache;
 import io.fabric8.kubernetes.client.informers.cache.Lister;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.YcqlPassword;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.YsqlPassword;
 import java.lang.reflect.Field;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
@@ -50,7 +55,6 @@ import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.stream.Collectors;
-import org.modelmapper.ModelMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.Pair;
@@ -65,6 +69,7 @@ public class KubernetesOperatorController {
   // OperatorAction is CREATE, EDIT, or DELETE corresponding to CR action.
   private final BlockingQueue<Pair<String, OperatorAction>> workqueue;
   private final SharedIndexInformer<YBUniverse> ybUniverseInformer;
+  private final String namespace;
   private final Lister<YBUniverse> ybUniverseLister;
   private final MixedOperation<YBUniverse, KubernetesResourceList<YBUniverse>, Resource<YBUniverse>>
       ybUniverseClient;
@@ -88,6 +93,7 @@ public class KubernetesOperatorController {
       MixedOperation<YBUniverse, KubernetesResourceList<YBUniverse>, Resource<YBUniverse>>
           ybUniverseClient,
       SharedIndexInformer<YBUniverse> ybUniverseInformer,
+      String namespace,
       UniverseCRUDHandler universeCRUDHandler,
       UpgradeUniverseHandler upgradeUniverseHandler,
       CloudProviderHandler cloudProviderHandler) {
@@ -95,6 +101,7 @@ public class KubernetesOperatorController {
     this.ybUniverseClient = ybUniverseClient;
     this.ybUniverseLister = new Lister<>(ybUniverseInformer.getIndexer());
     this.ybUniverseInformer = ybUniverseInformer;
+    this.namespace = namespace;
     this.workqueue = new ArrayBlockingQueue<>(WORKQUEUE_CAPACITY);
     this.universeCRUDHandler = universeCRUDHandler;
     this.upgradeUniverseHandler = upgradeUniverseHandler;
@@ -512,16 +519,65 @@ public class KubernetesOperatorController {
     userIntent.ybSoftwareVersion = ybUniverse.getSpec().getYbSoftwareVersion();
     userIntent.accessKeyCode = "";
     userIntent.assignPublicIP = ybUniverse.getSpec().getAssignPublicIP();
-    // Deep copy from operator yaml to model
-    ModelMapper modelMapper = new ModelMapper();
-    userIntent.deviceInfo = modelMapper.map(ybUniverse.getSpec().getDeviceInfo(), DeviceInfo.class);
+
+    userIntent.deviceInfo = mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo());
+    LOG.debug("ui.deviceInfo : {}", userIntent.deviceInfo);
+    LOG.debug("given deviceInfo: {} ", ybUniverse.getSpec().getDeviceInfo());
+
     userIntent.useTimeSync = ybUniverse.getSpec().getUseTimeSync();
     userIntent.enableYSQL = ybUniverse.getSpec().getEnableYSQL();
     userIntent.enableYEDIS = ybUniverse.getSpec().getEnableYEDIS();
     userIntent.enableNodeToNodeEncrypt = ybUniverse.getSpec().getEnableNodeToNodeEncrypt();
     userIntent.enableClientToNodeEncrypt = ybUniverse.getSpec().getEnableClientToNodeEncrypt();
     userIntent.kubernetesOperatorVersion = ybUniverse.getMetadata().getGeneration();
+
+    // Handle Passwords
+    YsqlPassword ysqlPassword = ybUniverse.getSpec().getYsqlPassword();
+    if (ysqlPassword != null) {
+      Secret ysqlSecret = getSecret(ysqlPassword.getSecretName());
+      String password = parseSecretForKey(ysqlSecret, "ysqlPassword");
+      if (password == null) {
+        LOG.error("could not find ysqlPassword in secret {}", ysqlPassword.getSecretName());
+        throw new RuntimeException(
+            "could not find ysqlPassword in secret " + ysqlPassword.getSecretName());
+      }
+      userIntent.enableYSQLAuth = true;
+      userIntent.ysqlPassword = password;
+    }
+    YcqlPassword ycqlPassword = ybUniverse.getSpec().getYcqlPassword();
+    if (ycqlPassword != null) {
+      Secret ycqlSecret = getSecret(ycqlPassword.getSecretName());
+      String password = parseSecretForKey(ycqlSecret, "ycqlPassword");
+      if (password == null) {
+        LOG.error("could not find ycqlPassword in secret {}", ycqlPassword.getSecretName());
+        throw new RuntimeException(
+            "could not find ycqlPassword in secret " + ycqlPassword.getSecretName());
+      }
+      userIntent.enableYCQLAuth = true;
+      userIntent.ycqlPassword = password;
+    }
     return userIntent;
+  }
+
+  // getSecret find a secret in the namespace an operator is listening on.
+  private Secret getSecret(String name) {
+    if (!namespace.trim().isEmpty()) {
+      return kubernetesClient.secrets().inNamespace(namespace.trim()).withName(name).get();
+    }
+    return kubernetesClient.secrets().inNamespace("default").withName(name).get();
+  }
+
+  // parseSecretForKey checks secret data for the key. If not found, it will then check stringData.
+  // Returns null if the key is not found at all.
+  // Also handles null secret.
+  private String parseSecretForKey(Secret secret, String key) {
+    if (secret == null) {
+      return null;
+    }
+    if (secret.getData().get(key) != null) {
+      return new String(Base64.getDecoder().decode(secret.getData().get(key)));
+    }
+    return secret.getStringData().get(key);
   }
 
   private void addEventHandlersToSharedIndexInformers() {
@@ -673,5 +729,39 @@ public class KubernetesOperatorController {
 
   private String getProviderName(String universeName) {
     return ("prov-" + universeName);
+  }
+
+  private DeviceInfo mapDeviceInfo(io.yugabyte.operator.v1alpha1.ybuniversespec.DeviceInfo spec) {
+    DeviceInfo di = new DeviceInfo();
+
+    Long numVols = spec.getNumVolumes();
+    if (numVols != null) {
+      di.numVolumes = numVols.intValue();
+    }
+
+    Long diskIops = spec.getDiskIops();
+    if (diskIops != null) {
+      di.diskIops = diskIops.intValue();
+    }
+
+    Long throughput = spec.getThroughput();
+    if (throughput != null) {
+      di.throughput = throughput.intValue();
+    }
+
+    Long volSize = spec.getVolumeSize();
+    if (volSize != null) {
+      di.volumeSize = volSize.intValue();
+    }
+
+    io.yugabyte.operator.v1alpha1.ybuniversespec.DeviceInfo.StorageType st = spec.getStorageType();
+    if (st != null) {
+      di.storageType = StorageType.fromString(st.getValue());
+    }
+
+    di.mountPoints = spec.getMountPoints();
+    di.storageClass = spec.getStorageClass();
+
+    return di;
   }
 }
