@@ -541,7 +541,7 @@ Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
   response_ = response;
 
   doc_key_ = VERIFY_RESULT(FetchDocKey(doc_read_context_->schema(), request_));
-  encoded_doc_key_ = doc_key_->EncodeAsRefCntPrefix();
+  encoded_doc_key_ = doc_key_.EncodeAsRefCntPrefix();
 
   return Status::OK();
 }
@@ -563,7 +563,7 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(const DocOperatio
 
 Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValueBackward(
     const DocOperationApplyData& data) {
-  VLOG(2) << "Looking for collision while going backward. Trying to insert " << *doc_key_;
+  VLOG(2) << "Looking for collision while going backward. Trying to insert " << doc_key_;
 
   auto iter = CreateIntentAwareIterator(
       data.doc_write_batch->doc_db(),
@@ -574,11 +574,11 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValueBackward(
       data.read_operation_data.WithAlteredReadTime(ReadHybridTime::Max()));
 
   HybridTime oldest_past_min_ht = VERIFY_RESULT(FindOldestOverwrittenTimestamp(
-      iter.get(), SubDocKey(*doc_key_), data.read_time().read));
+      iter.get(), SubDocKey(doc_key_), data.read_time().read));
   const HybridTime oldest_past_min_ht_liveness =
       VERIFY_RESULT(FindOldestOverwrittenTimestamp(
           iter.get(),
-          SubDocKey(*doc_key_, KeyEntryValue::kLivenessColumn),
+          SubDocKey(doc_key_, KeyEntryValue::kLivenessColumn),
           data.read_time().read));
   oldest_past_min_ht.MakeAtMost(oldest_past_min_ht_liveness);
   if (!oldest_past_min_ht.is_valid()) {
@@ -591,7 +591,7 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValueBackward(
 Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
     const DocOperationApplyData& data, const ReadHybridTime& read_time) {
   // Set up the iterator to read the current primary key associated with the index key.
-  DocPgsqlScanSpec spec(doc_read_context_->schema(), request_.stmt_id(), *doc_key_);
+  DocPgsqlScanSpec spec(doc_read_context_->schema(), request_.stmt_id(), doc_key_);
   dockv::ReaderProjection projection(doc_read_context_->schema());
   auto iterator = DocRowwiseIterator(
       projection,
@@ -661,8 +661,8 @@ Result<HybridTime> PgsqlWriteOperation::FindOldestOverwrittenTimestamp(
     const SubDocKey& sub_doc_key,
     HybridTime min_read_time) {
   HybridTime result;
-  VLOG(3) << "Doing iter->Seek " << *doc_key_;
-  iter->Seek(*doc_key_);
+  VLOG(3) << "Doing iter->Seek " << doc_key_;
+  iter->Seek(doc_key_);
   if (VERIFY_RESULT_REF(iter->Fetch())) {
     const auto bytes = sub_doc_key.EncodeWithoutHt();
     const Slice& sub_key_slice = bytes.AsSlice();
@@ -670,7 +670,7 @@ Result<HybridTime> PgsqlWriteOperation::FindOldestOverwrittenTimestamp(
     VLOG(2) << "iter->FindOldestRecord returned " << result << " for "
             << SubDocKey::DebugSliceToString(sub_key_slice);
   } else {
-    VLOG(3) << "iter->Seek " << *doc_key_ << " turned out to be out of records";
+    VLOG(3) << "iter->Seek " << doc_key_ << " turned out to be out of records";
   }
   return result;
 }
@@ -1110,34 +1110,38 @@ Status PgsqlWriteOperation::ApplyFetchSequence(const DocOperationApplyData& data
 }
 
 const dockv::ReaderProjection& PgsqlWriteOperation::projection() const {
-  if (projection_.columns.empty() && doc_key_) {
-    InitProjection(doc_read_context_->schema(), request_, &projection_);
+  if (!projection_) {
+    projection_.emplace();
+    InitProjection(doc_read_context_->schema(), request_, &*projection_);
     VLOG_WITH_FUNC(4)
-        << "projection: " << projection_.ToString() << ", request: " << AsString(request_);
+        << "projection: " << projection_->ToString() << ", request: " << AsString(request_);
   }
 
-  return projection_;
+  return *projection_;
 }
 
-const dockv::DocKey* PgsqlWriteOperation::DocKey() {
-  return doc_key_ ? &*doc_key_ : nullptr;
-}
+Status PgsqlWriteOperation::UpdateIterator(
+    DocOperationApplyData* data, DocOperation* prev_op, SingleOperation single_operation,
+      std::optional<DocRowwiseIterator>* iterator) {
+  if (prev_op) {
+    auto* prev = down_cast<PgsqlWriteOperation*>(prev_op);
+    if (request_.table_id() == prev->request_.table_id() &&
+        projection() == prev->projection()) {
+      data->restart_seek = doc_key_ <= prev->doc_key_;
+      return Status::OK();
+    }
+  }
 
-Status PgsqlWriteOperation::CreateIterator(
-    const DocOperationApplyData& data, const dockv::DocKey* key,
-    std::optional<DocRowwiseIterator>* iterator) {
   iterator->emplace(
       projection(),
       *doc_read_context_,
       txn_op_context_,
-      data.doc_write_batch->doc_db(),
-      data.read_operation_data,
-      data.doc_write_batch->pending_op());
+      data->doc_write_batch->doc_db(),
+      data->read_operation_data,
+      data->doc_write_batch->pending_op());
 
   static const dockv::DocKey kEmptyDocKey;
-  if (!key) {
-    key = &kEmptyDocKey;
-  }
+  auto& key = single_operation ? doc_key_ : kEmptyDocKey;
   static const dockv::KeyEntryValues kEmptyVec;
   DocPgsqlScanSpec scan_spec(
       doc_read_context_->schema(),
@@ -1147,12 +1151,15 @@ Status PgsqlWriteOperation::CreateIterator(
       /* condition= */ nullptr ,
       /* hash_code= */ boost::none,
       /* max_hash_code= */ boost::none,
-      *key,
+      key,
       /* is_forward_scan= */ true ,
-      *key,
-      *key,
+      key,
+      key,
       0,
       AddHighestToUpperDocKey::kTrue);
+
+  data->iterator = &**iterator;
+  data->restart_seek = true;
 
   return (**iterator).Init(scan_spec, SkipSeek::kTrue);
 }
@@ -1160,10 +1167,6 @@ Status PgsqlWriteOperation::CreateIterator(
 Result<bool> PgsqlWriteOperation::ReadColumns(
     const DocOperationApplyData& data, dockv::PgTableRow* table_row) {
   // Filter the columns using primary key.
-  if (!doc_key_) {
-    return false;
-  }
-
   if (!VERIFY_RESULT(data.iterator->PgFetchRow(
           encoded_doc_key_.as_slice(), data.restart_seek, table_row))) {
     return false;

@@ -56,6 +56,7 @@ typedef boost::container::small_vector_base<RefCntPrefix> DocPathsToLock;
 YB_DEFINE_ENUM(GetDocPathsMode, (kLock)(kIntents));
 YB_DEFINE_ENUM(DocOperationType,
                (PGSQL_WRITE_OPERATION)(QL_WRITE_OPERATION)(REDIS_WRITE_OPERATION));
+YB_STRONGLY_TYPED_BOOL(SingleOperation);
 
 class DocOperation {
  public:
@@ -82,10 +83,12 @@ class DocOperation {
   virtual Type OpType() = 0;
   virtual void ClearResponse() = 0;
 
-  virtual const dockv::DocKey* DocKey() { return nullptr; }
-
-  virtual Status CreateIterator(
-      const DocOperationApplyData& data, const dockv::DocKey* key,
+  // Update iterator stored in iterator, and setup data to use it.
+  // prev - The operation before this one, that works with the current iterator.
+  //        Should be used to check whether iterators are compatible.
+  // single_operation - is this operation is the only operation in batch.
+  virtual Status UpdateIterator(
+      DocOperationApplyData* data, DocOperation* prev, SingleOperation single_operation,
       std::optional<DocRowwiseIterator>* iterator) {
     return Status::OK();
   }
