@@ -2028,6 +2028,14 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			break;
 	}
 
+	/* YB aggregate pushdown */
+	if (IsYugaByteEnabled())
+	{
+		List **aggrefs = YbPlanStateTryGetAggrefs(planstate);
+		if (aggrefs && *aggrefs != NIL)
+			ExplainPropertyBool("Partial Aggregate", true, es);
+	}
+
 	/* Show buffer usage */
 	if (es->buffers && planstate->instrument)
 		show_buffer_usage(es, &planstate->instrument->bufusage);
