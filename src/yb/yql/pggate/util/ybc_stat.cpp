@@ -11,9 +11,52 @@
 // under the License.
 
 #include "yb/yql/pggate/util/ybc_stat.h"
+#include "yb/util/wait_state.h"
+
+namespace yb {
+namespace pggate {
+
+const char* yb_stat_get_wait_event(uint32_t wait_event_info) {
+  auto enum_value = static_cast<yb::util::WaitStateCode>(wait_event_info);
+  return ToCString(enum_value);
+}
+
+}
+}
 
 extern "C" {
-static const char *ybcstat_get_wait_perform(YBPgWaitEventPerform w);
+
+/* ----------
+ * ybstat_get_wait_event_component() -
+ *
+ *	Return a string representing the current wait event component, YB is
+ *	waiting on.
+ */
+const char *
+ybcstat_get_wait_event_component(uint32_t wait_event_info) {
+    uint32_t    componentId;
+    const char *event_component;
+
+    /* report process as not waiting. */
+    if (wait_event_info == 0)
+        return NULL;
+
+    componentId = wait_event_info & 0xF0000000;
+
+    switch (componentId) {
+        case YB_PG:
+            event_component = "PG";
+            break;
+        case YB_TSERVER:
+            event_component = "TServer";
+            break;
+        default:
+            event_component = "???";
+            break;
+    }
+
+    return event_component;
+}
 
 /* ----------
  * ybstat_get_wait_event_type() -
@@ -36,6 +79,9 @@ ybcstat_get_wait_event_type(uint32_t wait_event_info) {
         case YB_PG_WAIT_PERFORM:
             event_type = "Perform";
             break;
+        case YB_TSERVER_WAIT_RPC:
+            event_type = "RPC Wait";
+            break;
         default:
             event_type = "???";
             break;
@@ -53,51 +99,7 @@ ybcstat_get_wait_event_type(uint32_t wait_event_info) {
 const char *
 ybcstat_get_wait_event(uint32_t wait_event_info)
 {
-    uint32_t classId;
-    const char *event_name;
-
-    /* report process as not waiting. */
-    if (wait_event_info == 0)
-        return NULL;
-
-    classId = wait_event_info & 0xFF000000;
-
-    switch (classId) {
-        case YB_PG_WAIT_PERFORM: {
-                YBPgWaitEventPerform w = (YBPgWaitEventPerform) wait_event_info;
-
-                event_name = ybcstat_get_wait_perform(w);
-                break;
-        }
-        default:
-            event_name = "unknown wait event";
-            break;
-    }
-
-    return event_name;
-}
-
-/* ----------
- * pgstat_get_wait_activity() -
- *
- * Convert WaitEventActivity to string.
- * ----------
- */
-static const char *
-ybcstat_get_wait_perform(YBPgWaitEventPerform w)
-{
-    const char *event_name = "unknown wait event";
-
-    switch (w){
-        case YB_PG_WAIT_EVENT_DML_READ:
-            event_name = "DML Read";
-            break;
-        case YB_PG_WAIT_EVENT_DML_WRITE:
-            event_name = "DML Write";
-            break;
-            // No default case so that the compiler warns.
-    }
-    return event_name;
+    return yb::pggate::yb_stat_get_wait_event(wait_event_info);
 }
 
 }
