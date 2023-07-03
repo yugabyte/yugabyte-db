@@ -536,6 +536,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void PollWaitingTxnRegistry();
 
+  void FlushDirtySuperblocks();
+
   const CoarseTimePoint start_time_;
 
   FsManager* const fs_manager_;
@@ -664,6 +666,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       GUARDED_BY(snapshot_schedule_allowed_history_cutoff_mutex_);
   int64_t snapshot_schedules_version_ = 0;
   HybridTime last_restorations_update_ht_;
+
+  // Background task for periodically flushing the superblocks.
+  std::unique_ptr<BackgroundTask> superblock_flush_bg_task_;
 
   std::unique_ptr<FullCompactionManager> full_compaction_manager_;
 
