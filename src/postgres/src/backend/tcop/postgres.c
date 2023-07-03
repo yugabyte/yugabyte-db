@@ -5682,8 +5682,6 @@ PostgresMain(int argc, char *argv[],
 
 				HandleFunctionRequest(&input_message);
 
-				ereport(LOG, (errmsg("Fastpath function call")));
-
 				/* commit the function-invocation transaction */
 				finish_xact_command();
 
