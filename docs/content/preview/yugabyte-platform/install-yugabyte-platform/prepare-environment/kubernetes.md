@@ -260,7 +260,7 @@ You need to perform the following steps:
   
   ```
 
-- Tag the local images to your target registry, as follows (Here format for GCP Artifact Registry ):
+- Tag the local images to your target registry. The following example uses Google Artifact Registry.
 
   **Note**: The Location, Project Id, Repository, and Image used in the below example have to be replaced as applicable.
 
