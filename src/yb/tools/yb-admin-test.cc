@@ -164,8 +164,8 @@ class AdminCliTest : public AdminTestBase {
 // 4. Wait until the new server bootstraps.
 // 5. Profit!
 TEST_F(AdminCliTest, TestChangeConfig) {
-  FLAGS_num_tablet_servers = 3;
-  FLAGS_num_replicas = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 2;
 
   std::vector<std::string> master_flags = {
     "--catalog_manager_wait_for_new_tablets_to_elect_leader=false"s,
@@ -260,8 +260,8 @@ TEST_F(AdminCliTest, TestChangeConfig) {
 }
 
 TEST_F(AdminCliTest, TestDeleteTable) {
-  FLAGS_num_tablet_servers = 1;
-  FLAGS_num_replicas = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
 
   vector<string> ts_flags, master_flags;
   master_flags.push_back("--replication_factor=1");
@@ -284,8 +284,8 @@ TEST_F(AdminCliTest, TestDeleteTable) {
 }
 
 TEST_F(AdminCliTest, TestDeleteIndex) {
-  FLAGS_num_tablet_servers = 1;
-  FLAGS_num_replicas = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
 
   vector<string> ts_flags, master_flags;
   master_flags.push_back("--replication_factor=1");
@@ -667,8 +667,8 @@ TEST_F(AdminCliTest, TestModifyPlacementPolicy) {
 
 TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
   // Start a cluster with 3 tservers, each corresponding to a different zone.
-  FLAGS_num_tablet_servers = 3;
-  FLAGS_num_replicas = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 2;
   std::vector<std::string> master_flags;
   master_flags.push_back("--enable_load_balancing=true");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
@@ -781,8 +781,8 @@ TEST_F(AdminCliTest, TestModifyTablePlacementPolicy) {
 
 TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
   // Start a cluster with 3 tservers, each corresponding to a different zone.
-  FLAGS_num_tablet_servers = 3;
-  FLAGS_num_replicas = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 3;
   std::vector<std::string> master_flags;
   master_flags.push_back("--enable_load_balancing=true");
   master_flags.push_back("--catalog_manager_wait_for_new_tablets_to_elect_leader=false");
@@ -864,8 +864,8 @@ TEST_F(AdminCliTest, TestCreateTransactionStatusTablesWithPlacements) {
 
 TEST_F(AdminCliTest, TestClearPlacementPolicy) {
   // Start a cluster with 3 tservers.
-  FLAGS_num_tablet_servers = 3;
-  FLAGS_num_replicas = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 2;
   std::vector<std::string> master_flags;
   master_flags.push_back("--enable_load_balancing=true");
   std::vector<std::string> ts_flags;
@@ -1119,8 +1119,8 @@ TEST_F_EX(AdminCliTest, CheckTableNameAndNamespaceUsage, AdminCliListTabletsTest
 }
 
 TEST_F_EX(AdminCliTest, ListTabletDefaultTenTablets, AdminCliListTabletsTest) {
-  FLAGS_num_tablet_servers = 1;
-  FLAGS_num_replicas = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
 
   ASSERT_NO_FATALS(BuildAndStart({}, {"--replication_factor=1"}));
 

@@ -141,6 +141,29 @@ paths:
           $ref: '#/components/responses/ApiError'
         '500':
           $ref: '#/components/responses/ApiError'
+  /activities:
+    parameters:
+      - name: activities
+        in: query
+        description: Which activities data to retrieve
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+    get:
+      summary: Get a activities data for a cluster
+      description: Get activities data for a Yugabyte cluster
+      operationId: getClusterActivities
+      tags:
+        - cluster-info
+      responses:
+        '200':
+          $ref: '#/components/responses/ActivityResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
   /tables:
     get:
       description: Get list of tables per YB API (YCQL/YSQL)
@@ -253,6 +276,20 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GflagsResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
+  /alerts:
+    get:
+      summary: Get any alerts for the cluster
+      description: Get any alerts for the cluster
+      operationId: getClusterAlerts
+      tags:
+        - cluster-info
+      responses:
+        '200':
+          $ref: '#/components/responses/AlertsResponse'
         '400':
           $ref: '#/components/responses/ApiError'
         '500':
@@ -643,6 +680,18 @@ components:
       required:
         - name
         - values
+    ActivityData:
+      title: Activity Data
+      description: Activity Data
+      type: object
+      properties:
+        name:
+          type: string
+        data:
+          type: object
+      required:
+        - name
+        - data
     YbApiEnum:
       title: Yb Api Enum
       description: Type of DB API (YSQL/YCQL)
@@ -749,6 +798,20 @@ components:
       properties:
         version:
           type: string
+    AlertsInfo:
+      title: Alerts Info
+      description: Alerts Info
+      type: object
+      properties:
+        name:
+          description: Name of alert
+          type: string
+        info:
+          description: Array of alerts
+          type: string
+      required:
+        - name
+        - info
     CloudEnum:
       title: Cloud Enum
       description: Which cloud the cluster is deployed in
@@ -1023,6 +1086,20 @@ components:
               - data
               - start_timestamp
               - end_timestamp
+    ActivityResponse:
+      description: Activities Response
+      content:
+        application/json:
+          schema:
+            title: Activities Response
+            type: object
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ActivityData'
+            required:
+              - data
     ClusterTableListResponse:
       description: List of cluster tables
       content:
@@ -1078,6 +1155,20 @@ components:
             required:
               - masterFlags
               - tserverFlags
+    AlertsResponse:
+      description: Alerts information
+      content:
+        application/json:
+          schema:
+            title: Alerts Response
+            type: object
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AlertsInfo'
+            required:
+              - data
     ClusterResponse:
       description: Cluster response
       content:

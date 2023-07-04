@@ -65,7 +65,9 @@ Status RemoteBootstrapAnchorClient::RegisterLogAnchor(const string& tablet_id,
                                                       const int64_t& log_index) {
   RegisterLogAnchorRequestPB req;
   req.set_tablet_id(tablet_id);
-  req.set_log_index(log_index);
+  auto* op_id_ptr = req.mutable_op_id();
+  op_id_ptr->set_term(-1 /* unused */);
+  op_id_ptr->set_index(log_index);
   req.set_owner_info(owner_info_);
 
   RegisterLogAnchorResponsePB resp;
@@ -112,7 +114,9 @@ Status RemoteBootstrapAnchorClient::UpdateLogAnchorAsync(const int64_t& log_inde
   RETURN_NOT_OK(ProcessLogAnchorRefreshStatus());
 
   UpdateLogAnchorRequestPB req;
-  req.set_log_index(log_index);
+  auto* op_id_ptr = req.mutable_op_id();
+  op_id_ptr->set_term(-1 /* unused */);
+  op_id_ptr->set_index(log_index);
   req.set_owner_info(owner_info_);
 
   const std::shared_ptr<UpdateLogAnchorResponsePB>

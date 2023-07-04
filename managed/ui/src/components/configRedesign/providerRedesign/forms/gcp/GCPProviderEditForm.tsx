@@ -44,7 +44,6 @@ import { FormContainer } from '../components/FormContainer';
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
 import { FormField } from '../components/FormField';
 import { FieldLabel } from '../components/FieldLabel';
-import { GCP_REGIONS } from '../../providerRegionsData';
 import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { api, hostInfoQueryKey } from '../../../../../redesign/helpers/api';
 import {
@@ -589,17 +588,17 @@ const constructDefaultFormValues = (
     ? ProviderCredentialType.HOST_INSTANCE_SERVICE_ACCOUNT
     : ProviderCredentialType.SPECIFIED_SERVICE_ACCOUNT,
   regions: providerConfig.regions.map((region) => ({
-    fieldId: generateLowerCaseAlphanumericId(),
     code: region.code,
-    ybImage: region.details.cloudInfo.gcp.ybImage ?? '',
+    fieldId: generateLowerCaseAlphanumericId(),
+    instanceTemplate: region.details.cloudInfo.gcp.instanceTemplate ?? '',
+    name: region.name,
     sharedSubnet: region.zones?.[0]?.subnet ?? '',
-    zones: GCP_REGIONS[region.code]?.zones.map<GCPAvailabilityZoneMutation>(
-      (zoneSuffix: string) => ({
-        code: `${region.code}${zoneSuffix}`,
-        name: `${region.code}${zoneSuffix}`,
-        subnet: region.zones?.[0]?.subnet ?? ''
-      })
-    )
+    ybImage: region.details.cloudInfo.gcp.ybImage ?? '',
+    zones: region.zones.map<GCPAvailabilityZoneMutation>((zone) => ({
+      code: zone.code,
+      name: zone.code,
+      subnet: zone.subnet
+    }))
   })),
   sshKeypairManagement: getLatestAccessKey(providerConfig.allAccessKeys)?.keyInfo.managementState,
   sshPort: providerConfig.details.sshPort ?? null,
@@ -714,7 +713,10 @@ const constructProviderPayload = async (
           details: {
             cloudInfo: {
               [ProviderCode.GCP]: {
-                ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage })
+                ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage }),
+                ...(regionFormValues.instanceTemplate && {
+                  instanceTemplate: regionFormValues.instanceTemplate
+                })
               }
             }
           },
@@ -726,13 +728,11 @@ const constructProviderPayload = async (
                 subnet: regionFormValues.sharedSubnet ?? '',
                 uuid: zone.uuid
               }))
-            : GCP_REGIONS[regionFormValues.code]?.zones.map<GCPAvailabilityZoneMutation>(
-                (zoneSuffix: string) => ({
-                  code: `${regionFormValues.code}${zoneSuffix}`,
-                  name: `${regionFormValues.code}${zoneSuffix}`,
-                  subnet: regionFormValues.sharedSubnet ?? ''
-                })
-              )
+            : regionFormValues.zones.map<GCPAvailabilityZoneMutation>((zone) => ({
+                code: zone.code,
+                name: zone.code,
+                subnet: regionFormValues.sharedSubnet ?? ''
+              }))
         };
       }),
       ...getDeletedRegions(providerConfig.regions, formValues.regions)

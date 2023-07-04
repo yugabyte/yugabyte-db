@@ -60,7 +60,7 @@ struct ColumnValue {
 
 template <class Col>
 auto GetColumnValue(const Col& col) {
-  CHECK_EQ(col.size(), 2);
+  CHECK_EQ(col.size(), 2) << yb::ToString(col);
   auto it = col.begin();
   using ResultType = ColumnValue<typename std::remove_reference<decltype(it->value())>::type>;
   if (it->expr_case() == decltype(it->expr_case())::kColumnId) {
@@ -651,9 +651,10 @@ std::vector<const QLValuePB*> GetTuplesSortedByOrdering(
           auto sorting_type =
               col_idxs[i] == kYbHashCodeColId ? SortingType::kAscending
                                               : schema.column(col_idxs[i]).sorting_type();
-          auto is_reverse_order = is_forward_scan ^ (sorting_type == SortingType::kAscending ||
-                                                     sorting_type == kAscendingNullsLast ||
-                                                     sorting_type == kNotSpecified);
+          auto is_reverse_order =
+               is_forward_scan ^ (sorting_type == SortingType::kAscending ||
+                                  sorting_type == SortingType::kAscendingNullsLast ||
+                                  sorting_type == SortingType::kNotSpecified);
           cmp ^= is_reverse_order;
         }
         return cmp;

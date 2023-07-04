@@ -13,10 +13,12 @@
 
 #include "yb/tablet/transaction_loader.h"
 
-#include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/dockv/doc_key.h"
-#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/dockv/intent.h"
+
+#include "yb/docdb/bounded_rocksdb_iterator.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/iter_util.h"
 
 #include "yb/tablet/transaction_status_resolver.h"
 

@@ -231,7 +231,8 @@ class BootstrapTest : public LogTestBase {
       .transaction_manager_provider = nullptr,
       .full_compaction_pool = nullptr,
       .admin_triggered_compaction_pool = nullptr,
-      .post_split_compaction_added = nullptr
+      .post_split_compaction_added = nullptr,
+      .metadata_cache = nullptr,
     };
     BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
@@ -883,7 +884,7 @@ TEST_F(BootstrapTest, RandomizedInput) {
 
   // This is to avoid non-deterministic time-based behavior in "bootstrap optimizer"
   // (skip_wal_rewrite mode).
-  FLAGS_retryable_request_timeout_secs = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_timeout_secs) = 0;
 
   const auto kNumIter = NonTsanVsTsan(400, 150);
   const auto kNumEntries = NonTsanVsTsan(1500, 500);

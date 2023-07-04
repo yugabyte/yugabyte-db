@@ -42,6 +42,7 @@
 #include "yb/dockv/partition.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/primitive_value_util.h"
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/qlexpr/ql_expr_util.h"
 
@@ -230,6 +231,44 @@ Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
   }
 
   return std::move(result);
+}
+
+template <class ColumnIds>
+Status VerifyNoColsMarkedForDeletion(const TableId& table_id,
+                                     const Schema& schema,
+                                     ColumnIds&& column_refs) {
+  for (const auto& col : column_refs) {
+    const auto& id = dockv::GetColumnId(col);
+    int idx = schema.find_column_by_id(id);
+    if (idx == -1) {
+      return STATUS_FORMAT(IllegalState, "Column not found: $0 in table $1", id, table_id);
+    }
+    SCHECK(!schema.IsColMarkedForDeletion(idx),
+           InvalidArgument,
+           "Column with id $0 marked for deletion in table $1",
+           id, table_id);
+  }
+  return Status::OK();
+}
+
+template<class PB>
+Status VerifyNoRefColsMarkedForDeletion(const Schema& schema, const PB& request) {
+  if (!request.col_refs().empty()) {
+    RETURN_NOT_OK(VerifyNoColsMarkedForDeletion(request.table_id(), schema, request.col_refs()));
+  }
+  // Compatibility: Either request indeed has no column refs, or it comes from a legacy node.
+  return VerifyNoColsMarkedForDeletion(request.table_id(), schema, request.column_refs().ids());
+}
+
+Status VerifyNoColsMarkedForDeletion(const Schema& schema, const PgsqlWriteRequestPB& request) {
+  // Verify that the request does not refer any columns marked for deletion.
+  RETURN_NOT_OK(VerifyNoRefColsMarkedForDeletion(schema, request));
+  // Verify columns being updated are not marked for deletion.
+  RETURN_NOT_OK(VerifyNoColsMarkedForDeletion(request.table_id(),
+                                              schema,
+                                              request.column_new_values()));
+  // Verify columns being inserted are not marked for deletion.
+  return VerifyNoColsMarkedForDeletion(request.table_id(), schema, request.column_values());
 }
 
 template<class PB>
@@ -502,7 +541,7 @@ Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
   response_ = response;
 
   doc_key_ = VERIFY_RESULT(FetchDocKey(doc_read_context_->schema(), request_));
-  encoded_doc_key_ = doc_key_->EncodeAsRefCntPrefix();
+  encoded_doc_key_ = doc_key_.EncodeAsRefCntPrefix();
 
   return Status::OK();
 }
@@ -524,22 +563,22 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(const DocOperatio
 
 Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValueBackward(
     const DocOperationApplyData& data) {
-  VLOG(2) << "Looking for collision while going backward. Trying to insert " << *doc_key_;
+  VLOG(2) << "Looking for collision while going backward. Trying to insert " << doc_key_;
 
   auto iter = CreateIntentAwareIterator(
       data.doc_write_batch->doc_db(),
       BloomFilterMode::USE_BLOOM_FILTER,
-      doc_key_->Encode().AsSlice(),
+      encoded_doc_key_.as_slice(),
       rocksdb::kDefaultQueryId,
       txn_op_context_,
       data.read_operation_data.WithAlteredReadTime(ReadHybridTime::Max()));
 
   HybridTime oldest_past_min_ht = VERIFY_RESULT(FindOldestOverwrittenTimestamp(
-      iter.get(), SubDocKey(*doc_key_), data.read_time().read));
+      iter.get(), SubDocKey(doc_key_), data.read_time().read));
   const HybridTime oldest_past_min_ht_liveness =
       VERIFY_RESULT(FindOldestOverwrittenTimestamp(
           iter.get(),
-          SubDocKey(*doc_key_, KeyEntryValue::kLivenessColumn),
+          SubDocKey(doc_key_, KeyEntryValue::kLivenessColumn),
           data.read_time().read));
   oldest_past_min_ht.MakeAtMost(oldest_past_min_ht_liveness);
   if (!oldest_past_min_ht.is_valid()) {
@@ -552,7 +591,7 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValueBackward(
 Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
     const DocOperationApplyData& data, const ReadHybridTime& read_time) {
   // Set up the iterator to read the current primary key associated with the index key.
-  DocPgsqlScanSpec spec(doc_read_context_->schema(), request_.stmt_id(), *doc_key_);
+  DocPgsqlScanSpec spec(doc_read_context_->schema(), request_.stmt_id(), doc_key_);
   dockv::ReaderProjection projection(doc_read_context_->schema());
   auto iterator = DocRowwiseIterator(
       projection,
@@ -622,23 +661,24 @@ Result<HybridTime> PgsqlWriteOperation::FindOldestOverwrittenTimestamp(
     const SubDocKey& sub_doc_key,
     HybridTime min_read_time) {
   HybridTime result;
-  VLOG(3) << "Doing iter->Seek " << *doc_key_;
-  iter->Seek(*doc_key_);
-  if (VERIFY_RESULT(iter->Fetch())) {
+  VLOG(3) << "Doing iter->Seek " << doc_key_;
+  iter->Seek(doc_key_);
+  if (VERIFY_RESULT_REF(iter->Fetch())) {
     const auto bytes = sub_doc_key.EncodeWithoutHt();
     const Slice& sub_key_slice = bytes.AsSlice();
-    result = VERIFY_RESULT(
-        iter->FindOldestRecord(sub_key_slice, min_read_time));
+    result = VERIFY_RESULT(iter->FindOldestRecord(sub_key_slice, min_read_time));
     VLOG(2) << "iter->FindOldestRecord returned " << result << " for "
             << SubDocKey::DebugSliceToString(sub_key_slice);
   } else {
-    VLOG(3) << "iter->Seek " << *doc_key_ << " turned out to be out of records";
+    VLOG(3) << "iter->Seek " << doc_key_ << " turned out to be out of records";
   }
   return result;
 }
 
 Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
   VLOG(4) << "Write, read time: " << data.read_time() << ", txn: " << txn_op_context_;
+
+  RETURN_NOT_OK(VerifyNoColsMarkedForDeletion(doc_read_context_->schema(), request_));
 
   auto scope_exit = ScopeExit([this] {
     if (write_buffer_) {
@@ -1070,35 +1110,68 @@ Status PgsqlWriteOperation::ApplyFetchSequence(const DocOperationApplyData& data
 }
 
 const dockv::ReaderProjection& PgsqlWriteOperation::projection() const {
-  if (projection_.columns.empty() && doc_key_) {
-    InitProjection(doc_read_context_->schema(), request_, &projection_);
+  if (!projection_) {
+    projection_.emplace();
+    InitProjection(doc_read_context_->schema(), request_, &*projection_);
     VLOG_WITH_FUNC(4)
-        << "projection: " << projection_.ToString() << ", request: " << AsString(request_);
+        << "projection: " << projection_->ToString() << ", request: " << AsString(request_);
   }
 
-  return projection_;
+  return *projection_;
+}
+
+Status PgsqlWriteOperation::UpdateIterator(
+    DocOperationApplyData* data, DocOperation* prev_op, SingleOperation single_operation,
+      std::optional<DocRowwiseIterator>* iterator) {
+  if (prev_op) {
+    auto* prev = down_cast<PgsqlWriteOperation*>(prev_op);
+    if (request_.table_id() == prev->request_.table_id() &&
+        projection() == prev->projection()) {
+      data->restart_seek = doc_key_ <= prev->doc_key_;
+      return Status::OK();
+    }
+  }
+
+  iterator->emplace(
+      projection(),
+      *doc_read_context_,
+      txn_op_context_,
+      data->doc_write_batch->doc_db(),
+      data->read_operation_data,
+      data->doc_write_batch->pending_op());
+
+  static const dockv::DocKey kEmptyDocKey;
+  auto& key = single_operation ? doc_key_ : kEmptyDocKey;
+  static const dockv::KeyEntryValues kEmptyVec;
+  DocPgsqlScanSpec scan_spec(
+      doc_read_context_->schema(),
+      request_.stmt_id(),
+      /* hashed_components= */ kEmptyVec,
+      /* range_components= */ kEmptyVec,
+      /* condition= */ nullptr ,
+      /* hash_code= */ boost::none,
+      /* max_hash_code= */ boost::none,
+      key,
+      /* is_forward_scan= */ true ,
+      key,
+      key,
+      0,
+      AddHighestToUpperDocKey::kTrue);
+
+  data->iterator = &**iterator;
+  data->restart_seek = true;
+
+  return (**iterator).Init(scan_spec, SkipSeek::kTrue);
 }
 
 Result<bool> PgsqlWriteOperation::ReadColumns(
     const DocOperationApplyData& data, dockv::PgTableRow* table_row) {
   // Filter the columns using primary key.
-  if (!doc_key_) {
+  if (!VERIFY_RESULT(data.iterator->PgFetchRow(
+          encoded_doc_key_.as_slice(), data.restart_seek, table_row))) {
     return false;
   }
-
-  DocPgsqlScanSpec spec(doc_read_context_->schema(), request_.stmt_id(), *doc_key_);
-  auto iterator = DocRowwiseIterator(
-      projection(),
-      *doc_read_context_,
-      txn_op_context_,
-      data.doc_write_batch->doc_db(),
-      data.read_operation_data,
-      data.doc_write_batch->pending_op());
-  RETURN_NOT_OK(iterator.Init(spec));
-  if (!VERIFY_RESULT(iterator.PgFetchNext(table_row))) {
-    return false;
-  }
-  data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
+  data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(data.iterator->RestartReadHt()));
 
   return true;
 }
@@ -1182,22 +1255,20 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
       break;
     }
     case GetDocPathsMode::kIntents: {
-      const google::protobuf::RepeatedPtrField<PgsqlColumnValuePB>* column_values = nullptr;
-      if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_INSERT ||
-          request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPSERT) {
-        column_values = &request_.column_values();
-      } else if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE) {
-        column_values = &request_.column_new_values();
+      if (request_.stmt_type() != PgsqlWriteRequestPB::PGSQL_UPDATE) {
+        break;
+      }
+      const auto& column_values = request_.column_new_values();
+
+      if (column_values.empty()) {
+        break;
       }
 
-      if (column_values != nullptr && !column_values->empty()) {
-        DocKeyColumnPathBuilder builder(encoded_doc_key_);
-        for (const auto& column_value : *column_values) {
-          paths->push_back(builder.Build(column_value.column_id()));
-        }
-        return Status::OK();
+      DocKeyColumnPathBuilder builder(encoded_doc_key_);
+      for (const auto& column_value : column_values) {
+        paths->push_back(builder.Build(column_value.column_id()));
       }
-      break;
+      return Status::OK();
     }
   }
   // Add row's doc key. Caller code will create strong intent for the whole row in this case.
@@ -1217,6 +1288,9 @@ Result<size_t> PgsqlReadOperation::Execute(
     WriteBuffer* result_buffer,
     HybridTime* restart_read_ht,
     const DocDBStatistics* statistics) {
+  // Verify that this request references no columns marked for deletion.
+  RETURN_NOT_OK(VerifyNoRefColsMarkedForDeletion(doc_read_context.schema(),
+                                                 request_));
   size_t fetched_rows = 0;
   auto num_rows_pos = result_buffer->Position();
   // Reserve space for fetched rows count.

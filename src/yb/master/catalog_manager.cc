@@ -71,6 +71,8 @@
 #include <boost/optional.hpp>
 #include <glog/logging.h>
 
+#include "yb/cdc/cdc_state_table.h"
+
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/universe_key_client.h"
@@ -356,10 +358,6 @@ TAG_FLAG(enable_transactional_ddl_gc, hidden);
 
 DECLARE_bool(ysql_ddl_rollback_enabled);
 
-DEFINE_test_flag(bool, disable_ysql_ddl_txn_verification, false,
-    "Simulates a condition where the background process that checks whether the YSQL transaction "
-    "was a success or a failure is indefinitely delayed");
-
 // TODO: should this be a test flag?
 DEFINE_RUNTIME_bool(hide_pg_catalog_table_creation_logs, false,
     "Whether to hide detailed log messages for PostgreSQL catalog table creation. "
@@ -408,12 +406,20 @@ DECLARE_CAPABILITY(TabletReportLimit);
 
 DEFINE_test_flag(int32, num_missing_tablets, 0, "Simulates missing tablets in a table");
 
-DEFINE_RUNTIME_int32(partitions_vtable_cache_refresh_secs, 0,
+DEFINE_RUNTIME_int32(partitions_vtable_cache_refresh_secs, 30,
     "Amount of time to wait before refreshing the system.partitions cached vtable. "
     "If generate_partitions_vtable_on_changes is true and this flag is > 0, then this background "
     "task will update the cached vtable using the internal map. "
     "If generate_partitions_vtable_on_changes is false and this flag is > 0, then this background "
     "task will be responsible for regenerating and updating the entire cached vtable.");
+
+DEFINE_RUNTIME_bool(invalidate_yql_partitions_cache_on_create_table, true,
+                    "Whether the YCQL system.partitions vtable cache should be invalidated "
+                    "on a create table. Note that this requires "
+                    "partitions_vtable_cache_refresh_secs > 0 and "
+                    "generate_partitions_vtable_on_changes = false in order to take effect. "
+                    "If set to true, then this will ensure that newly created tables will be seen "
+                    "immediately in system.partitions.");
 
 DEFINE_RUNTIME_int32(txn_table_wait_min_ts_count, 1,
     "Minimum Number of TS to wait for before creating the transaction status table."
@@ -555,9 +561,6 @@ METRIC_DEFINE_gauge_uint32(cluster, num_tablet_servers_dead,
                            "The number of tablet servers that have not responded or done a "
                            "heartbeat in the time interval defined by the gflag "
                            "FLAGS_tserver_unresponsive_timeout_ms.");
-
-DEFINE_test_flag(int32, delay_ysql_ddl_rollback_secs, 0,
-                 "Number of seconds to sleep before rolling back a failed ddl transaction");
 
 DEFINE_test_flag(bool, duplicate_addtabletotablet_request, false,
                  "Send a duplicate AddTableToTablet request to the tserver to simulate a retry.");
@@ -994,6 +997,8 @@ Status CatalogManager::Init() {
   metric_num_tablet_servers_dead_ =
     METRIC_num_tablet_servers_dead.Instantiate(master_->metric_entity_cluster(), 0);
 
+  cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(&master_->cdc_state_client_initializer());
+
   RETURN_NOT_OK(xcluster_safe_time_service_->Init());
 
   RETURN_NOT_OK_PREPEND(InitSysCatalogAsync(),
@@ -1054,7 +1059,7 @@ Status CatalogManager::ElectedAsLeaderCb() {
 Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
   string uuid = master_->fs_manager()->uuid();
   auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
-  Consensus* consensus = tablet_peer()->consensus();
+  auto consensus = VERIFY_RESULT(tablet_peer()->GetConsensus());
   ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_ACTIVE);
   if (!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid) {
     return STATUS_SUBSTITUTE(IllegalState,
@@ -1068,7 +1073,7 @@ Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
     RETURN_NOT_OK(tablet_peer()->operation_tracker()->WaitForAllToFinish(timeout));
   }
 
-  RETURN_NOT_OK(tablet_peer()->consensus()->WaitForLeaderLeaseImprecise(deadline));
+  RETURN_NOT_OK(consensus->WaitForLeaderLeaseImprecise(deadline));
   return Status::OK();
 }
 
@@ -1078,7 +1083,15 @@ void CatalogManager::LoadSysCatalogDataTask() {
               << " secs due to fault injection by test";
     SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_delay_sys_catalog_reload_secs));
   }
-  auto consensus = tablet_peer()->shared_consensus();
+  auto consensus_result = tablet_peer()->GetConsensus();
+  if (!consensus_result) {
+    // This could happen for e.g. during a shutdown.
+    LOG_WITH_PREFIX(WARNING) << "Could not get consensus for sys catalog tablet: "
+                             << consensus_result.status();
+    return;
+  }
+  auto& consensus = consensus_result.get();
+
   const int64_t term = consensus->ConsensusState(CONSENSUS_CONFIG_ACTIVE).current_term();
   Status s = WaitUntilCaughtUpAsLeader(
       MonoDelta::FromMilliseconds(FLAGS_master_failover_catchup_timeout_ms));
@@ -2041,10 +2054,7 @@ Status CatalogManager::CheckIsLeaderAndReady() const {
     return STATUS_SUBSTITUTE(IllegalState,
         "Catalog manager of $0 is in shell mode, not the leader", uuid);
   }
-  Consensus* consensus = tablet_peer()->consensus();
-  if (consensus == nullptr) {
-    return STATUS(IllegalState, "Consensus has not been initialized yet");
-  }
+  auto consensus = VERIFY_RESULT(tablet_peer()->GetConsensus());
   ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
   if (PREDICT_FALSE(!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid)) {
     return STATUS_SUBSTITUTE(IllegalState,
@@ -2072,7 +2082,12 @@ PeerRole CatalogManager::Role() const {
     return PeerRole::NON_PARTICIPANT;
   }
 
-  return tablet_peer()->consensus()->role();
+  auto consensus_result = tablet_peer()->GetConsensus();
+  if (!consensus_result) {
+    return PeerRole::NON_PARTICIPANT;
+  }
+
+  return consensus_result.get()->role();
 }
 
 bool CatalogManager::StartShutdown() {
@@ -2134,6 +2149,8 @@ void CatalogManager::CompleteShutdown() {
     copy = std::vector(std::begin(tables_it), std::end(tables_it));
   }
   AbortAndWaitForAllTasks(copy);
+
+  cdc_state_table_.reset();
 
   // Shut down the underlying storage for tables and tablets.
   if (sys_catalog_) {
@@ -4205,6 +4222,28 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   return Status::OK();
 }
 
+Status CatalogManager::CreateTableIfNotFound(
+    const std::string& namespace_name, const std::string& table_name,
+    std::function<Result<CreateTableRequestPB>()> generate_request, CreateTableResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  // If table exists do nothing, otherwise create it.
+  if (VERIFY_RESULT(TableExists(namespace_name, table_name))) {
+    return Status::OK();
+  }
+
+  auto req = VERIFY_RESULT(generate_request());
+  DCHECK_EQ(req.namespace_().name(), namespace_name);
+  DCHECK_EQ(req.name(), table_name);
+
+  Status s = CreateTable(&req, resp, /* RpcContext */ nullptr);
+  // We do not lock here so it is technically possible that the table was already created.
+  // If so, there is nothing to do so we just ignore the "AlreadyPresent" error.
+  if (!s.ok() && !s.IsAlreadyPresent()) {
+    return s;
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::VerifyTablePgLayer(scoped_refptr<TableInfo> table, bool rpc_success) {
   // Upon Transaction completion, check pg system table using OID to ensure SUCCESS.
 
@@ -4943,10 +4982,9 @@ Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
 
   // Sanity check that this table is present in system.partitions if it is a YCQL table.
   // Only check if we are automatically generating the vtable on changes. If we are creating via
-  // the bg task, then there may be a delay.
-  if (DCHECK_IS_ON() &&
-      IsYcqlTable(*table) &&
-      YQLPartitionsVTable::GeneratePartitionsVTableOnChanges() &&
+  // the bg task, then see below where we invalidate the cache.
+  if (DCHECK_IS_ON() && IsYcqlTable(*table) &&
+      YQLPartitionsVTable::ShouldGeneratePartitionsVTableOnChanges() &&
       FLAGS_TEST_catalog_manager_check_yql_partitions_exist_for_is_create_table_done) {
     Schema schema;
     RETURN_NOT_OK(table->GetSchema(&schema));
@@ -4954,6 +4992,14 @@ Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
     if (!FLAGS_TEST_create_table_in_running_state) {
       DCHECK(GetYqlPartitionsVtable().CheckTableIsPresent(table->id(), table->NumPartitions()));
     }
+  }
+
+  // On create table, invalidate the yql system.partitions cache - this will cause the next
+  // partitions query or the next bg thread rebuild to regenerate the cache and include the new
+  // table + tablets.
+  if (FLAGS_invalidate_yql_partitions_cache_on_create_table && IsYcqlTable(*table) &&
+      YQLPartitionsVTable::ShouldGeneratePartitionsVTableWithBgTask()) {
+    GetYqlPartitionsVtable().InvalidateCache();
   }
 
   // If this is a transactional table we are not done until the transaction status table is created.
@@ -6414,6 +6460,63 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
 }
 
 namespace {
+// Given the SysTablesEntryPB for a table and 'col_name', return whether the column can be directly
+// dropped or if it should be marked for deletion first and dropped later.
+Result<bool> NeedTwoPhaseDeleteForColumn(const SysTablesEntryPB& pb, const string& col_name) {
+  // If DDL Atomicity is disabled, or if the table is not a YSQL table, or if the table is
+  // colocated, then we can directly drop the column. Colocated tables will be supported by DDL
+  // Atomicity in a future change (Phase 4 of #13358).
+  if (!FLAGS_ysql_ddl_rollback_enabled || pb.table_type() != PGSQL_TABLE_TYPE || pb.colocated()) {
+    return false;
+  }
+
+  // In general, mark the column for deletion first and drop it only after the transaction commits
+  // to prevent data loss. However, if the table was created in the same transaction or if the
+  // column was added in this transaction, then we can safely skip 2-phase deletion because the
+  // column being dropped will not exist whether the transaction is a success or not, and no other
+  // clients can see this column.
+  if (pb.ysql_ddl_txn_verifier_state_size() == 0) {
+    return true;
+  }
+
+  // ysql_ddl_txn_verifier_state is a repeated field with as many entries as number of savepoints
+  // in the transaction so far. Since we don't support savepoints for DDL transactions today,
+  // default to picking the first entry.
+  const auto& state = pb.ysql_ddl_txn_verifier_state(0);
+  if (state.contains_create_table_op()) {
+    return false;
+  }
+  if (!state.contains_alter_table_op() || !state.has_previous_schema()) {
+    return true;
+  }
+
+  // Find whether this column was added in this transaction. This should be done by comparing the
+  // 'order' field which corresponds to postgres' attnum field. Comparing the name can result in
+  // erroneous conditions if the column was renamed in this transaction.
+  int order = -1;
+  // Find the order of column to be deleted. We can find the column based on the name, as columns
+  // are uniquely named.
+  for (const auto& col : pb.schema().columns()) {
+    if (col.name() == col_name) {
+      order = col.order();
+      break;
+    }
+  }
+
+  SCHECK(order != -1, NotFound, "Column for deletion not found", col_name);
+
+  // Find column with same order in previous schema.
+  for (const auto& col : state.previous_schema().columns()) {
+    if (col.order() == order) {
+      // This column already existed before the current transaction. Therefore it is not being
+      // added as part of this transaction and needs to be deleted using 2 phase deletion.
+      return true;
+    }
+  }
+  // This column was added as part of this transaction and need not be visible to any other
+  // transactions. It is safe to drop right away.
+  return false;
+}
 
 Status ApplyAlterSteps(server::Clock* clock,
                        const TableId& table_id,
@@ -6463,13 +6566,21 @@ Status ApplyAlterSteps(server::Clock* clock,
           return STATUS(InvalidArgument, "DROP_COLUMN missing column info");
         }
 
-        if (cur_schema.is_key_column(step.drop_column().name())) {
+        const string& col_name = step.drop_column().name();
+        if (cur_schema.is_key_column(col_name)) {
           return STATUS(InvalidArgument, "cannot remove a key column");
         }
 
-        RETURN_NOT_OK(builder.RemoveColumn(step.drop_column().name()));
-        ddl_log_entries->emplace_back(
-            time, table_id, current_pb, Format("Drop column $0", step.drop_column().name()));
+        if (VERIFY_RESULT(NeedTwoPhaseDeleteForColumn(current_pb, col_name))) {
+          RETURN_NOT_OK(builder.MarkColumnForDeletion(col_name));
+          ddl_log_entries->emplace_back(
+              time, table_id, current_pb,
+              Format("Mark column $0 for deletion", col_name));
+        } else {
+          RETURN_NOT_OK(builder.RemoveColumn(col_name));
+          ddl_log_entries->emplace_back(
+              time, table_id, current_pb, Format("Drop column $0", col_name));
+        }
         break;
       }
 
@@ -6821,181 +6932,7 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
   return Status::OK();
 }
 
-void CatalogManager::ScheduleYsqlTxnVerification(const scoped_refptr<TableInfo>& table,
-                                                 const TransactionMetadata& txn) {
-  // Add this transaction to the map containining all the transactions yet to be
-  // verified.
-  {
-    LockGuard lock(ddl_txn_verifier_mutex_);
-    ddl_txn_id_to_table_map_[txn.transaction_id].push_back(table);
-  }
 
-  if (FLAGS_TEST_disable_ysql_ddl_txn_verification) {
-    LOG(INFO) << "Skip scheduling table " << table->ToString() << " for transaction verification "
-              << "as TEST_disable_ysql_ddl_txn_verification is set";
-    return;
-  }
-
-  // Schedule transaction verification.
-  auto l = table->LockForRead();
-  LOG(INFO) << "Enqueuing table for DDL transaction Verification: " << table->name()
-            << " id: " << table->id() << " schema version: " << l->pb.version();
-  std::function<Status(bool)> when_done =
-    std::bind(&CatalogManager::YsqlTableSchemaChecker, this, table,
-              l->pb_transaction_id(), _1);
-  // For now, just print warning if submission to thread pool fails. Fix this as part of
-  // #13358.
-  WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
-    std::bind(&YsqlTransactionDdl::VerifyTransaction, ysql_transaction_.get(), txn, table,
-              true /* has_ysql_ddl_state */, when_done)),
-      "Could not submit VerifyTransaction to thread pool");
-}
-
-Status CatalogManager::YsqlTableSchemaChecker(scoped_refptr<TableInfo> table,
-                                            const string& txn_id_pb,
-                                            bool txn_rpc_success) {
-  if (!txn_rpc_success) {
-    return STATUS_FORMAT(IllegalState, "Failed to find Transaction Status for table $0",
-                         table->ToString());
-  }
-  bool is_committed = VERIFY_RESULT(ysql_transaction_->PgSchemaChecker(table));
-  return YsqlDdlTxnCompleteCallback(table, txn_id_pb, is_committed);
-}
-
-Status CatalogManager::YsqlDdlTxnCompleteCallback(scoped_refptr<TableInfo> table,
-                                                  const string& txn_id_pb,
-                                                  bool success) {
-  DCHECK(!txn_id_pb.empty());
-  DCHECK(table);
-  const auto& table_id = table->id();
-  const auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(txn_id_pb));
-  bool table_present = false;
-  {
-    LockGuard lock(ddl_txn_verifier_mutex_);
-    const auto iter = ddl_txn_id_to_table_map_.find(txn_id);
-    if (iter == ddl_txn_id_to_table_map_.end()) {
-      LOG(INFO) << "DDL transaction " << txn_id << " for table " << table->ToString()
-                << " is already verified, ignoring";
-      return Status::OK();
-    }
-
-    auto& tables = iter->second;
-    auto removed_elements_iter = std::remove_if(tables.begin(), tables.end(),
-        [&table_id](const scoped_refptr<TableInfo>& table) {
-      return table->id() == table_id;
-    });
-    if (removed_elements_iter != tables.end()) {
-      tables.erase(removed_elements_iter, tables.end());
-      table_present = true;
-      if (tables.empty()) {
-        ddl_txn_id_to_table_map_.erase(iter);
-      }
-    }
-  }
-  if (!table_present) {
-    LOG(INFO) << "DDL transaction " << txn_id << " for table " << table->ToString()
-              << " is already verified, ignoring";
-    return Status::OK();
-  }
-  return YsqlDdlTxnCompleteCallbackInternal(table.get(), txn_id, success);
-}
-
-Status CatalogManager::YsqlDdlTxnCompleteCallbackInternal(TableInfo *table,
-                                                          const TransactionId& txn_id,
-                                                          bool success) {
-  if (FLAGS_TEST_delay_ysql_ddl_rollback_secs > 0) {
-    LOG(INFO) << "YsqlDdlTxnCompleteCallbackInternal: Sleep for "
-              << FLAGS_TEST_delay_ysql_ddl_rollback_secs << " seconds";
-    SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_delay_ysql_ddl_rollback_secs));
-  }
-  const auto id = "table id: " + table->id();
-  auto l = table->LockForWrite();
-  LOG(INFO) << "YsqlDdlTxnCompleteCallback for " << id
-            << " for transaction " << txn_id
-            << ": Success: " << (success ? "true" : "false")
-            << " ysql_ddl_txn_verifier_state: "
-            << l->ysql_ddl_txn_verifier_state().DebugString();
-
-  if (!VERIFY_RESULT(l->is_being_modified_by_ddl_transaction(txn_id))) {
-    // Transaction verification completed for this table.
-    LOG(INFO) << "Verification of transaction " << txn_id << " for " << id
-              << " is already complete, ignoring";
-    return Status::OK();
-  }
-
-  if (success && !l->is_being_deleted_by_ysql_ddl_txn()) {
-    // This transaction was successful. We did not drop this table in this
-    // transaction. In that case, we have nothing else to do.
-    LOG(INFO) << "Clearing ysql_ddl_txn_verifier_state from " << id;
-    auto& pb = l.mutable_data()->pb;
-    pb.clear_ysql_ddl_txn_verifier_state();
-    pb.clear_transaction();
-    RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table));
-    l.Commit();
-    return Status::OK();
-  }
-
-  if ((success && l->is_being_deleted_by_ysql_ddl_txn()) ||
-      (!success && l->is_being_created_by_ysql_ddl_txn())) {
-    // This is either a successful DROP operation or a failed CREATE operation.
-    // In both cases, drop the table.
-    LOG(INFO) << "Dropping " << id;
-    l.Commit();
-    DeleteTableRequestPB dtreq;
-    DeleteTableResponsePB dtresp;
-
-    dtreq.mutable_table()->set_table_name(table->name());
-    dtreq.mutable_table()->set_table_id(table->id());
-    dtreq.set_is_index_table(false);
-    return DeleteTableInternal(&dtreq, &dtresp, nullptr /* rpc */);
-  }
-
-  auto& table_pb = l.mutable_data()->pb;
-  if (!success && l->ysql_ddl_txn_verifier_state().contains_alter_table_op()) {
-    LOG(INFO) << "Alter transaction " << txn_id << " for table " << table->ToString()
-              << " failed, rolling back its schema changes";
-    std::vector<DdlLogEntry> ddl_log_entries;
-    ddl_log_entries.emplace_back(
-        master_->clock()->Now(),
-        table->id(),
-        l->pb,
-        "Rollback of DDL Transaction");
-    table_pb.mutable_schema()->CopyFrom(table_pb.ysql_ddl_txn_verifier_state(0).previous_schema());
-    const string& new_table_name = table_pb.ysql_ddl_txn_verifier_state(0).previous_table_name();
-    l.mutable_data()->pb.set_name(new_table_name);
-    table_pb.set_version(table_pb.version() + 1);
-    table_pb.set_updates_only_index_permissions(false);
-    l.mutable_data()->set_state(
-        SysTablesEntryPB::ALTERING,
-        Substitute("Alter table version=$0 ts=$1", table_pb.version(), LocalTimeAsString()));
-
-    table_pb.clear_ysql_ddl_txn_verifier_state();
-    table_pb.clear_transaction();
-
-    // Update sys-catalog with the new table schema.
-    RETURN_NOT_OK(UpdateSysCatalogWithNewSchema(
-          table,
-          ddl_log_entries,
-          "" /* new_namespace_id */,
-          new_table_name,
-          nullptr /* resp */));
-    l.Commit();
-    LOG(INFO) << "Sending Alter Table request as part of rollback for table " << table->name();
-    return SendAlterTableRequestInternal(table, TransactionId::Nil());
-  }
-
-  // This must be a failed transaction with only a delete operation in it and no alter operations.
-  // Hence we don't need to do anything other than clear the transaction state.
-  DCHECK(!success && l->is_being_deleted_by_ysql_ddl_txn())
-    << "Unexpected state for table " << table->ToString() << " with transaction verification "
-    << "state " << l->ysql_ddl_txn_verifier_state().DebugString();
-
-  table_pb.clear_ysql_ddl_txn_verifier_state();
-  table_pb.clear_transaction();
-  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table));
-  l.Commit();
-  return Status::OK();
-}
 
 Status CatalogManager::RegisterNewTabletForSplit(
     TabletInfo* source_tablet_info, const TabletInfoPtr& new_tablet,
@@ -10412,8 +10349,8 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
   // Call VerifyChangeRoleSucceeded only after we have set shell mode to false. Otherwise,
   // CatalogManager::GetTabletPeer will always return an error, and the consensus will never get
   // updated.
-  auto status = rb_client->VerifyChangeRoleSucceeded(
-      sys_catalog_->tablet_peer()->shared_consensus());
+  auto consensus = VERIFY_RESULT(sys_catalog_->tablet_peer()->GetConsensus());
+  auto status = rb_client->VerifyChangeRoleSucceeded(consensus);
 
   if (!status.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Remote bootstrap finished. "
@@ -11845,11 +11782,8 @@ Status CatalogManager::GetTableLocations(
 
 Status CatalogManager::GetCurrentConfig(consensus::ConsensusStatePB* cpb) const {
   auto tablet_peer = sys_catalog_->tablet_peer();
-  auto consensus = tablet_peer ? tablet_peer->shared_consensus() : nullptr;
-  if (!consensus) {
-    std::string uuid = master_->fs_manager()->uuid();
-    return STATUS_FORMAT(IllegalState, "Node $0 peer not initialized.", uuid);
-  }
+  SCHECK(tablet_peer, IllegalState, "Node $0 peer not initialized.", master_->fs_manager()->uuid());
+  auto consensus = VERIFY_RESULT(tablet_peer->GetConsensus());
 
   *cpb = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
 
@@ -12672,21 +12606,15 @@ void CatalogManager::RebuildYQLSystemPartitions() {
   // This task will keep running, but only want it to do anything if
   // FLAGS_partitions_vtable_cache_refresh_secs is explicitly set to some value >0.
   const bool use_bg_thread_to_update_cache =
-      YQLPartitionsVTable::GeneratePartitionsVTableOnChanges() &&
+      YQLPartitionsVTable::ShouldGeneratePartitionsVTableOnChanges() &&
       FLAGS_partitions_vtable_cache_refresh_secs > 0;
 
-  if (YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask() || use_bg_thread_to_update_cache) {
+  if (YQLPartitionsVTable::ShouldGeneratePartitionsVTableWithBgTask() ||
+      use_bg_thread_to_update_cache) {
     SCOPED_LEADER_SHARED_LOCK(l, this);
     if (l.IsInitializedAndIsLeader()) {
       if (system_partitions_tablet_ != nullptr) {
-        Status s;
-        if (YQLPartitionsVTable::GeneratePartitionsVTableWithBgTask()) {
-          // If we are not generating the vtable on changes, then we need to do a full refresh.
-          s = ResultToStatus(GetYqlPartitionsVtable().GenerateAndCacheData());
-        } else {
-          // Otherwise, we can simply update the cached vtable with the internal map.
-          s = GetYqlPartitionsVtable().UpdateCache();
-        }
+        Status s = ResultToStatus(GetYqlPartitionsVtable().GenerateAndCacheData());
         if (!s.ok()) {
           LOG(ERROR) << "Error rebuilding system.partitions: " << s.ToString();
         }
@@ -12933,7 +12861,7 @@ Result<bool> CatalogManager::SysCatalogLeaderStepDown(const ServerEntryPB& maste
   req.set_new_leader_uuid(master.instance_id().permanent_uuid());
 
   consensus::LeaderStepDownResponsePB resp;
-  RETURN_NOT_OK(tablet_peer->consensus()->StepDown(&req, &resp));
+  RETURN_NOT_OK(VERIFY_RESULT(tablet_peer->GetConsensus())->StepDown(&req, &resp));
   if (resp.has_error()) {
     YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10)
         << "Step down failed: " << resp.error().status().message();
@@ -13147,48 +13075,6 @@ Status CatalogManager::PromoteAutoFlags(
 
   resp->set_new_config_version(new_config_version);
   resp->set_non_runtime_flags_promoted(non_runtime_flags_promoted);
-  return Status::OK();
-}
-
-Status CatalogManager::ReportYsqlDdlTxnStatus(const ReportYsqlDdlTxnStatusRequestPB* req,
-                                              ReportYsqlDdlTxnStatusResponsePB* resp,
-                                              rpc::RpcContext* rpc) {
-  DCHECK(req);
-  const auto& req_txn = req->transaction_id();
-  SCHECK(!req_txn.empty(), IllegalState,
-      "Received ReportYsqlDdlTxnStatus request without transaction id");
-  auto txn = VERIFY_RESULT(FullyDecodeTransactionId(req_txn));
-
-  const auto is_committed = req->is_committed();
-  LOG(INFO) << "Received ReportYsqlDdlTxnStatus request for transaction " << txn
-            << ". Status: " << (is_committed ? "Success" : "Aborted");
-  {
-    SharedLock lock(ddl_txn_verifier_mutex_);
-    const auto iter = ddl_txn_id_to_table_map_.find(txn);
-    if (iter == ddl_txn_id_to_table_map_.end()) {
-      // Transaction not found in the list of transactions to be verified. Ideally this means that
-      // the YB-Master background task somehow got to it before PG backend sent this report. However
-      // it is possible to receive this report BEFORE we added the transaction to the map if:
-      // 1. The transaction failed before performing any DocDB schema change.
-      // 2. Transaction failed and this report arrived in the small window between schema change
-      //    initiation and scheduling the verification task.
-      // We have to do nothing in case of (1). In case of (2), it is safe to do nothing as the
-      // background task will take care of it. This is not optimal but (2) is expected to be very
-      // rare.
-      LOG(INFO) << "DDL transaction " << txn << " not found in list of transactions to be "
-                << "verified, nothing to do";
-      return Status::OK();
-    }
-    for (const auto& table : iter->second) {
-      // Submit this table for transaction verification.
-      LOG(INFO) << "Enqueuing table " << table->ToString()
-                << " for verification of DDL transaction: " << txn;
-      WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc([this, table, req_txn, is_committed]() {
-        WARN_NOT_OK(YsqlDdlTxnCompleteCallback(table, req_txn, is_committed),
-                    "Transaction verification failed for table " + table->ToString());
-      }), "Could not submit YsqlDdlTxnCompleteCallback to thread pool");
-    }
-  }
   return Status::OK();
 }
 

@@ -431,10 +431,15 @@ IsYBReadCommitted()
 bool
 YBIsWaitQueueEnabled()
 {
+#ifdef NDEBUG
+  static bool kEnableWaitQueues = false;
+#else
+	static bool kEnableWaitQueues = true;
+#endif
 	static int cached_value = -1;
 	if (cached_value == -1)
 	{
-		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_wait_queues", false);
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_wait_queues", kEnableWaitQueues);
 	}
 	return IsYugaByteEnabled() && cached_value;
 }
@@ -1060,6 +1065,7 @@ PowerWithUpperLimit(double base, int exp, double upper_limit)
 bool yb_enable_create_with_table_oid = false;
 int yb_index_state_flags_update_delay = 1000;
 bool yb_enable_expression_pushdown = true;
+bool yb_enable_distinct_pushdown = true;
 bool yb_enable_optimizer_statistics = false;
 bool yb_bypass_cond_recheck = true;
 bool yb_make_next_ddl_statement_nonbreaking = false;
@@ -1460,6 +1466,34 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 *		  order to correctly invalidate negative cache entries
 			 */
 			*is_breaking_catalog_change = false;
+			if (node_tag == T_CreateRoleStmt) {
+				/*
+				 * If a create role statement does not reference another existing
+				 * role there is no need to increment catalog version.
+				 */
+				CreateRoleStmt *stmt = castNode(CreateRoleStmt, parsetree);
+				int nopts = list_length(stmt->options);
+				if (nopts == 0)
+					*is_catalog_version_increment = false;
+				else
+				{
+					bool reference_other_role = false;
+					ListCell   *lc;
+					foreach(lc, stmt->options)
+					{
+						DefElem *def = (DefElem *) lfirst(lc);
+						if (strcmp(def->defname, "rolemembers") == 0 ||
+							strcmp(def->defname, "adminmembers") == 0 ||
+							strcmp(def->defname, "addroleto") == 0)
+						{
+							reference_other_role = true;
+							break;
+						}
+					}
+					if (!reference_other_role)
+						*is_catalog_version_increment = false;
+				}
+			}
 			break;
 		}
 		case T_CreateStmt:
@@ -1572,7 +1606,6 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_AlterPolicyStmt:
 		case T_AlterPublicationStmt:
 		case T_AlterRoleSetStmt:
-		case T_AlterRoleStmt:
 		case T_AlterSeqStmt:
 		case T_AlterSubscriptionStmt:
 		case T_AlterSystemStmt:
@@ -1588,6 +1621,28 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		/* ALTER .. RENAME TO syntax gets parsed into a T_RenameStmt node. */
 		case T_RenameStmt:
 			break;
+
+		case T_AlterRoleStmt:
+		{
+			/*
+			 * If this is a simple alter role change password statement,
+			 * there is no need to increment catalog version. Password
+			 * is only used for authentication at connection setup time.
+			 * A new password does not affect existing connections that
+			 * were authenticated using the old password.
+			 */
+			AlterRoleStmt *stmt = castNode(AlterRoleStmt, parsetree);
+			if (list_length(stmt->options) == 1)
+			{
+				DefElem *def = (DefElem *) linitial(stmt->options);
+				if (strcmp(def->defname, "password") == 0)
+				{
+					*is_breaking_catalog_change = false;
+					*is_catalog_version_increment = false;
+				}
+			}
+			break;
+		}
 
 		case T_AlterTableStmt:
 		{

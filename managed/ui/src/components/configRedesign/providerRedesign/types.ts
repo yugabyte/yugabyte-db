@@ -375,8 +375,8 @@ export interface GCPRegion extends Region {
 
 export interface K8sRegionMutation extends RegionMutation {
   name: string; // This is required because the `name` field is not derived on the backend before inserting into the db
-  latitude: number;
-  longitude: number;
+  latitude?: number;
+  longitude?: number;
   details?: { cloudInfo: { [ProviderCode.KUBERNETES]: K8sRegionCloudInfoMutation } };
   zones: K8sAvailabilityZoneMutation[];
 }
@@ -426,6 +426,7 @@ interface AZURegionCloudInfo extends AZURegionCloudInfoBase {
 }
 
 interface GCPRegionCloudInfoBase {
+  instanceTemplate?: string;
   ybImage?: string;
 }
 type GCPRegionCloudInfoMutation = GCPRegionCloudInfoBase;
@@ -504,6 +505,20 @@ type NTPServerField = 'ntpServers' | 'setUpChrony';
 type SSHField = 'sshUser' | 'sshPort' | 'sshPrivateKeyContent' | 'keyPairName';
 
 // ---------------------------------------------------------------------------
+// Region metadata types
+// ---------------------------------------------------------------------------
+export interface RegionMetadataResponse {
+  regionMetadata: {
+    [regionCode: string]: {
+      name: string;
+      latitude: number;
+      longitude: number;
+      availabilityZones: string[];
+    };
+  };
+}
+
+// ---------------------------------------------------------------------------
 // File types
 // ---------------------------------------------------------------------------
 export interface K8sPullSecretFile {
@@ -535,7 +550,6 @@ export interface GCPServiceAccount {
 // ---------------------------------------------------------------------------
 // On Prem Instance Type
 // ---------------------------------------------------------------------------
-// TODO: Double check these types
 export interface InstanceTypeDetailsMutation {
   volumeDetailsList: { mountPath: string; volumeSizeGB: number; volumeType: string }[];
 }

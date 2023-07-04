@@ -11,6 +11,7 @@ import (
     "math"
     "net"
     "net/http"
+    "runtime"
     "sort"
     "strconv"
     "strings"
@@ -48,6 +49,25 @@ const READ_SUM_METRIC = "handler_latency_yb_tserver_TabletServerService_Read_sum
 const WRITE_SUM_METRIC = "handler_latency_yb_tserver_TabletServerService_Write_sum"
 
 const GRANULARITY_NUM_INTERVALS = 120
+
+var OS_NAME = runtime.GOOS
+
+var MAX_PROC = map[string]int{
+    "Linux" : 12000,
+    "Darwin" : 2500,
+}
+var WARNING_MSGS = map[string]string{
+    "open_files" :"open files ulimits value set low. Please set soft and hard limits to 1048576.",
+    "max_user_processes" :fmt.Sprintf("max user processes ulimits value set low." +
+        " Please set soft and hard limits to %d", MAX_PROC[OS_NAME]),
+    "transparent_hugepages" :"Transparent hugepages disabled. Please enable transparent_hugepages.",
+    "ntp/chrony" :"ntp/chrony package is missing for clock synchronization. For centos 7, " +
+        "we recommend installing either ntp or chrony package and for centos 8, " +
+        "we recommend installing chrony package.",
+    "insecure" :"Cluster started in an insecure mode without " +
+        "authentication and encryption enabled. For non-production use only, " +
+        "not to be used without firewalls blocking the internet traffic.",
+}
 
 type SlowQueriesFuture struct {
     Items []*models.SlowQueryResponseYsqlQueryItem
@@ -664,6 +684,80 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
     return ctx.JSON(http.StatusOK, metricResponse)
 }
 
+// GetClusterActivities - Get the cluster activities details
+func (c *Container) GetClusterActivities(ctx echo.Context) error {
+        response := models.ActivitiesResponse{
+                Data: []models.ActivityData{},
+        }
+
+        activityParam := strings.Split(ctx.QueryParam("activities"), ",")
+
+        for _, activity := range activityParam {
+                switch activity {
+                case "INDEX_BACKFILL":
+                        tablesFuture := make(chan helpers.TablesFuture)
+                        go helpers.GetTablesFuture(helpers.HOST, tablesFuture)
+                        tablesList := <-tablesFuture
+                        if tablesList.Error != nil {
+                                return ctx.String(http.StatusInternalServerError,
+                                        tablesList.Error.Error())
+                        }
+                        ysql_databases := make(map[string] struct{})
+                        for _, table := range tablesList.Tables {
+                                if table.IsYsql {
+                                        _, ok := ysql_databases[table.Keyspace]
+                                        if !ok {
+                                                ysql_databases[table.Keyspace] = struct{}{}
+                                        }
+                                }
+                        }
+
+                        indexBackFillInfofutures := []chan helpers.IndexBackFillInfoFuture{}
+
+                        for database := range ysql_databases {
+                                pgConnectionParams := helpers.PgClientConnectionParams{
+                                                User: helpers.DbYsqlUser,
+                                                Password: helpers.DbPassword,
+                                                Host: helpers.HOST,
+                                                Port: helpers.PORT,
+                                                Database: database,
+                                }
+
+                                pgClient, err := helpers.CreatePgClient(c.logger,
+                                        pgConnectionParams)
+                                if err != nil {
+                                        c.logger.Errorf("Error initializing the " +
+                                                "pgx client for database %s.", database)
+                                        return ctx.String(http.StatusInternalServerError,
+                                                err.Error())
+                                }
+                                indexBackFillInfoFuture := make(
+                                        chan helpers.IndexBackFillInfoFuture)
+                                indexBackFillInfofutures = append(indexBackFillInfofutures,
+                                        indexBackFillInfoFuture)
+                                go helpers.GetIndexBackFillInfo(pgClient, indexBackFillInfoFuture)
+                        }
+
+                        for _, future := range indexBackFillInfofutures {
+                                indexBackFillInfoResponse := <-future
+                                if indexBackFillInfoResponse.Error != nil {
+                                        return ctx.String(http.StatusInternalServerError,
+                                                indexBackFillInfoResponse.Error.Error())
+                                }
+                                for _, indexBackFillInfo := range
+                                                indexBackFillInfoResponse.IndexBackFillInfo {
+                                        response.Data = append(response.Data, models.ActivityData{
+                                                Name: activity,
+                                                Data: indexBackFillInfo,
+                                        })
+                                }
+
+                        }
+                }
+        }
+        return ctx.JSON(http.StatusOK, response)
+}
+
 // GetClusterNodes - Get the nodes for a cluster
 func (c *Container) GetClusterNodes(ctx echo.Context) error {
     response := models.ClusterNodesResponse{
@@ -1188,4 +1282,25 @@ func (c *Container) GetGflagsJson(ctx echo.Context) error {
         TserverFlags: tserverFlagsJson,
     })
 
+}
+
+// GetClusterAlerts - Get all cluster alerts info (If Any)
+func (c *Container) GetClusterAlerts(ctx echo.Context) error {
+
+    alertsResponse := models.AlertsResponse {
+        Data: []models.AlertsInfo{},
+    }
+
+    if helpers.Warnings != "" {
+        warnings := strings.Split(helpers.Warnings, "|")
+
+        for _, warning := range warnings {
+            alertsResponse.Data = append(alertsResponse.Data, models.AlertsInfo{
+                Name: warning,
+                Info: WARNING_MSGS[warning],
+            })
+        }
+    }
+
+    return ctx.JSON(http.StatusOK, alertsResponse)
 }

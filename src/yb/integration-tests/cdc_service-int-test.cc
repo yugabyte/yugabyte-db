@@ -11,6 +11,7 @@
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.proxy.h"
+#include "yb/cdc/cdc_state_table.h"
 #include "yb/client/error.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
@@ -54,6 +55,7 @@
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+using namespace std::chrono_literals;
 using std::string;
 
 DECLARE_bool(TEST_record_segments_violate_max_time_policy);
@@ -89,6 +91,7 @@ DECLARE_double(cdc_get_changes_free_rpc_ratio);
 DECLARE_int32(rpc_workers_limit);
 DECLARE_uint64(transaction_manager_workers_limit);
 DECLARE_bool(cdc_populate_end_markers_transactions);
+DECLARE_string(vmodule);
 
 METRIC_DECLARE_entity(cdc);
 METRIC_DECLARE_gauge_int64(last_read_opid_index);
@@ -108,8 +111,6 @@ using rpc::RpcController;
 const std::string kCDCTestKeyspace = "my_keyspace";
 const std::string kCDCTestTableName = "cdc_test_table";
 const client::YBTableName kTableName(YQL_DATABASE_CQL, kCDCTestKeyspace, kCDCTestTableName);
-const client::YBTableName kCdcStateTableName(
-    YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
 
 CDCServiceImpl* CDCService(tserver::TabletServer* tserver) {
   return down_cast<CDCServiceImpl*>(
@@ -119,6 +120,7 @@ CDCServiceImpl* CDCService(tserver::TabletServer* tserver) {
 class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster> {
  protected:
   void SetUp() override {
+    CHECK_OK(SET_FLAG(vmodule, "cdc*=4"));
     YBMiniClusterTestBase::SetUp();
 
     MiniClusterOptions opts;
@@ -221,62 +223,55 @@ void AssertChangeRecords(const google::protobuf::RepeatedPtrField<cdc::KeyValueP
 }
 
 void VerifyCdcStateNotEmpty(client::YBClient* client) {
-  client::TableHandle table;
-  client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(table.Open(cdc_state_table, client));
-  ASSERT_EQ(1, boost::size(client::TableRange(table)));
-  const auto& row = client::TableRange(table).begin();
-  string checkpoint = row->column(master::kCdcCheckpointIdx).string_value();
-  auto result = OpId::FromString(checkpoint);
-  ASSERT_OK(result);
-  OpId op_id = *result;
+  CDCStateTable cdc_state_table(client);
+  Status s;
+  auto table_range = ASSERT_RESULT(
+      cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
+  ASSERT_EQ(1, std::distance(table_range.begin(), table_range.end()));
+  ASSERT_OK(s);
+  auto row_result = *table_range.begin();
+  ASSERT_OK(row_result);
+  auto& row = *row_result;
+  ASSERT_OK(s);
   // Verify that op id index has been advanced and is not 0.
-  ASSERT_GT(op_id.index, 0);
+  ASSERT_GT(row.checkpoint->index, 0);
 }
 
-void VerifyCdcStateMatches(client::YBClient* client,
-                           const CDCStreamId& stream_id,
-                           const TabletId& tablet_id,
-                           uint64_t term,
-                           uint64_t index)  {
-  client::TableHandle table;
-  client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(table.Open(cdc_state_table, client));
-  auto session = client->NewSession();
-  auto row = ASSERT_RESULT(FetchCdcStreamInfo(
-      &table, session.get(), tablet_id, stream_id, {master::kCdcCheckpoint}));
-
+Status VerifyCdcStateMatches(
+    client::YBClient* client,
+    const CDCStreamId& stream_id,
+    const TabletId& tablet_id,
+    uint64_t term,
+    uint64_t index) {
   LOG(INFO) << strings::Substitute("Verifying tablet: $0, stream: $1, op_id: $2",
       tablet_id, stream_id, OpId(term, index).ToString());
 
-  string checkpoint = row.column(0).string_value();
-  auto result = OpId::FromString(checkpoint);
-  ASSERT_OK(result);
-  OpId op_id = *result;
+  CDCStateTable cdc_state_table(client);
+  auto row = VERIFY_RESULT(cdc_state_table.TryFetchEntry(
+      {tablet_id, stream_id}, CDCStateTableEntrySelector().IncludeCheckpoint()));
+  SCHECK(row, IllegalState, "CDC state row not found");
 
-  ASSERT_EQ(op_id.term, term);
-  ASSERT_EQ(op_id.index, index);
+  auto& op_id = *row->checkpoint;
+  SCHECK_EQ(op_id.term, term, IllegalState, "CDC state row term mismatch");
+  SCHECK_EQ(op_id.index, index, IllegalState, "CDC state row index mismatch");
+
+  return Status::OK();
 }
 
 void VerifyStreamDeletedFromCdcState(client::YBClient* client,
                                      const CDCStreamId& stream_id,
                                      const TabletId& tablet_id,
                                      int timeout_secs = 10) {
-  client::TableHandle table;
-  const client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(table.Open(cdc_state_table, client));
-  auto session = client->NewSession();
+  CDCStateTable cdc_state_table(client);
 
   // The deletion of cdc_state rows for the specified stream happen in an asynchronous thread,
   // so even if the request has returned, it doesn't mean that the rows have been deleted yet.
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    auto row = VERIFY_RESULT(FetchOptionalCdcStreamInfo(
-        &table, session.get(), tablet_id, stream_id, {master::kCdcCheckpoint}));
-    return !row;
-  }, MonoDelta::FromSeconds(timeout_secs) * kTimeMultiplier,
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto row = VERIFY_RESULT(cdc_state_table.TryFetchEntry({tablet_id, stream_id}));
+        return !row;
+      },
+      MonoDelta::FromSeconds(timeout_secs) * kTimeMultiplier,
       "Stream rows in cdc_state have been deleted."));
 }
 
@@ -524,7 +519,7 @@ TEST_F(CDCServiceTest, TestCreateCDCStream) {
 
 TEST_F(CDCServiceTest, TestCreateCDCStreamWithDefaultRententionTime) {
   // Set default WAL retention time to 10 hours.
-  FLAGS_cdc_wal_retention_time_secs = 36000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 36000;
 
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
@@ -539,7 +534,7 @@ TEST_F(CDCServiceTest, TestCreateCDCStreamWithDefaultRententionTime) {
 }
 
 TEST_F(CDCServiceTest, TestDeleteCDCStream) {
-  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
   NamespaceId ns_id;
@@ -555,7 +550,7 @@ TEST_F(CDCServiceTest, TestDeleteCDCStream) {
   ASSERT_OK(client_->GetTablets(table_.table()->name(), 0 /* max_tablets */, &tablet_ids, &ranges));
 
   for (const auto& tablet_id : tablet_ids) {
-    VerifyCdcStateMatches(client_.get(), stream_id_, tablet_id, 0, 0);
+    ASSERT_OK(VerifyCdcStateMatches(client_.get(), stream_id_, tablet_id, 0, 0));
   }
 
   {
@@ -846,7 +841,7 @@ TEST_F(CDCServiceTest, TestGetChanges) {
 }
 
 TEST_F(CDCServiceTest, TestGetChangesWithDeadline) {
-  FLAGS_cdc_populate_end_markers_transactions = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_populate_end_markers_transactions) = false;
   docdb::DisableYcqlPackedRow();
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
@@ -1637,7 +1632,7 @@ TEST_F(CDCServiceTest, TestCheckpointUpdatedForRemoteRows) {
 // in case the consumer does not send from checkpoint.
 TEST_F(CDCServiceTest, TestCheckpointUpdate) {
   docdb::DisableYcqlPackedRow();
-  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
 
   CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id_);
 
@@ -1742,17 +1737,17 @@ class CDCServiceTestMaxRentionTime : public CDCServiceTest {
  public:
   void SetUp() override {
     // Immediately write any index provided by a GetChanges request to cdc_state table.
-    FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
-    FLAGS_log_min_segments_to_retain = 1;
-    FLAGS_log_min_seconds_to_retain = 1;
-    FLAGS_cdc_wal_retention_time_secs = 1;
-    FLAGS_enable_log_retention_by_op_idx = true;
-    FLAGS_log_max_seconds_to_retain = kMaxSecondsToRetain;
-    FLAGS_TEST_record_segments_violate_max_time_policy = true;
-    FLAGS_update_min_cdc_indices_interval_secs = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_max_seconds_to_retain) = kMaxSecondsToRetain;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_record_segments_violate_max_time_policy) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
 
     // This will rollover log segments a lot faster.
-    FLAGS_log_segment_size_bytes = 100;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
     CDCServiceTest::SetUp();
   }
   const int kMaxSecondsToRetain = 30;
@@ -1816,9 +1811,9 @@ class CDCServiceTestDurableMinReplicatedIndex : public CDCServiceTest {
  public:
   void SetUp() override {
     // Immediately write any index provided by a GetChanges request to cdc_state table.
-    FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
-    FLAGS_update_min_cdc_indices_interval_secs = 1;
-    FLAGS_enable_log_retention_by_op_idx = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = true;
     CDCServiceTest::SetUp();
   }
 };
@@ -1869,25 +1864,24 @@ TEST_F(CDCServiceTestDurableMinReplicatedIndex, TestBootstrapProducer) {
 
   // Verify that for each of the table's tablets, a new row in cdc_state table with the returned
   // id was inserted.
-  client::TableHandle table;
-  client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(table.Open(cdc_state_table, client_.get()));
-  ASSERT_EQ(1, boost::size(client::TableRange(table)));
+  CDCStateTable cdc_state_table(client_.get());
+  Status s;
+  auto table_range = ASSERT_RESULT(
+      cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
   int nrows = 0;
-  for (const auto& row : client::TableRange(table)) {
+  for (auto row_result : table_range) {
+    ASSERT_OK(row_result);
+    auto& row = *row_result;
     nrows++;
-    stream_id_ = row.column(master::kCdcStreamIdIdx).string_value();
+    stream_id_ = row.key.stream_id;
     ASSERT_EQ(stream_id_, bootstrap_id);
 
-    string checkpoint = row.column(master::kCdcCheckpointIdx).string_value();
-    auto s = OpId::FromString(checkpoint);
-    ASSERT_OK(s);
-    OpId op_id = *s;
+    ASSERT_TRUE(row.checkpoint.has_value());
     // When no writes are present, the checkpoint's index is 1. Plus two for the failed and
     // successful ALTER WAL RETENTION TIME that we issue when cdc is enabled on a table.
-    ASSERT_EQ(op_id.index, 3 + kNRows);
+    ASSERT_EQ(row.checkpoint->index, 3 + kNRows);
   }
+  ASSERT_OK(s);
 
   // This table only has one tablet.
   ASSERT_EQ(nrows, 1);
@@ -1940,19 +1934,19 @@ TEST_F(CDCServiceTestDurableMinReplicatedIndex, TestLogCDCMinReplicatedIndexIsDu
 class CDCServiceTestMinSpace : public CDCServiceTest {
  public:
   void SetUp() override {
-    FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
-    FLAGS_log_min_segments_to_retain = 1;
-    FLAGS_log_min_seconds_to_retain = 1;
-    FLAGS_cdc_wal_retention_time_secs = 1;
-    FLAGS_enable_log_retention_by_op_idx = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = true;
     // We want the logs to be GCed because of space, not because they exceeded the maximum time to
     // be retained.
-    FLAGS_log_max_seconds_to_retain = 10 * 3600; // 10 hours.
-    FLAGS_log_stop_retaining_min_disk_mb = 1;
-    FLAGS_TEST_record_segments_violate_min_space_policy = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_max_seconds_to_retain) = 10 * 3600; // 10 hours.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_stop_retaining_min_disk_mb) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_record_segments_violate_min_space_policy) = true;
 
     // This will rollover log segments a lot faster.
-    FLAGS_log_segment_size_bytes = 500;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 500;
     CDCServiceTest::SetUp();
   }
 };
@@ -2013,10 +2007,10 @@ class CDCLogAndMetaIndex : public CDCServiceTest {
  public:
   void SetUp() override {
     // Immediately write any index provided by a GetChanges request to cdc_state table.
-    FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
-    FLAGS_update_min_cdc_indices_interval_secs = 1;
-    FLAGS_cdc_min_replicated_index_considered_stale_secs = 5;
-    FLAGS_enable_log_retention_by_op_idx = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 5;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = true;
     CDCServiceTest::SetUp();
   }
 };
@@ -2025,7 +2019,7 @@ TEST_F(CDCLogAndMetaIndex, TestLogAndMetaCdcIndex) {
   constexpr int kNStreams = 5;
 
   // This will rollover log segments a lot faster.
-  FLAGS_log_segment_size_bytes = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
 
   CDCStreamId stream_id[kNStreams];
 
@@ -2079,9 +2073,9 @@ TEST_F(CDCLogAndMetaIndex, TestLogAndMetaCdcIndex) {
 class CDCLogAndMetaIndexReset : public CDCLogAndMetaIndex {
  public:
   void SetUp() override {
-    FLAGS_cdc_min_replicated_index_considered_stale_secs = 5;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 5;
     // This will rollover log segments a lot faster.
-    FLAGS_log_segment_size_bytes = 100;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
     CDCLogAndMetaIndex::SetUp();
   }
 };
@@ -2092,7 +2086,7 @@ TEST_F(CDCLogAndMetaIndexReset, TestLogAndMetaCdcIndexAreReset) {
   constexpr int kNStreams = 5;
 
   // This will rollover log segments a lot faster.
-  FLAGS_log_segment_size_bytes = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
 
   CDCStreamId stream_id[kNStreams];
 
@@ -2129,20 +2123,13 @@ TEST_F(CDCLogAndMetaIndexReset, TestLogAndMetaCdcIndexAreReset) {
   // all the streams have index 5.
   WaitForCDCIndex(tablet_peer, 5, 4 * FLAGS_update_min_cdc_indices_interval_secs);
 
-  client::TableHandle table;
-  client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(table.Open(cdc_state_table, client_.get()));
+  CDCStateTable cdc_state_table(client_.get());
 
-  auto session = client_->NewSession();
+  std::vector<CDCStateTableKey> keys_to_delete;
   for (int i = 0; i < kNStreams; i++) {
-    const auto delete_op = table.NewDeleteOp();
-    auto* delete_req = delete_op->mutable_request();
-    QLAddStringHashValue(delete_req, tablet_id);
-    QLAddStringRangeValue(delete_req, stream_id[i]);
-    session->Apply(delete_op);
+    keys_to_delete.push_back({tablet_id, stream_id[i]});
   }
-  ASSERT_OK(session->TEST_Flush());
+  ASSERT_OK(cdc_state_table.DeleteEntries(keys_to_delete));
   LOG(INFO) << "Successfully deleted all streams from cdc_state";
 
   SleepFor(MonoDelta::FromSeconds(FLAGS_cdc_min_replicated_index_considered_stale_secs + 1));
@@ -2168,16 +2155,17 @@ class CDCServiceTestThreeServers : public CDCServiceTest {
  public:
   void SetUp() override {
     // We don't want the tablets to move in the middle of the test.
-    FLAGS_enable_load_balancing = false;
-    FLAGS_leader_failure_max_missed_heartbeat_periods = 12.0;
-    FLAGS_update_min_cdc_indices_interval_secs = 5;
-    FLAGS_enable_log_retention_by_op_idx = true;
-    FLAGS_client_read_write_timeout_ms = 20 * 1000 * kTimeMultiplier;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) = 12.0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 2;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 20 * 1000 * kTimeMultiplier;
 
     // Always update cdc_state table.
-    FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
 
-    FLAGS_follower_unavailable_considered_failed_sec = 20 * kTimeMultiplier;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_follower_unavailable_considered_failed_sec) =
+        20 * kTimeMultiplier;
 
     CDCServiceTest::SetUp();
   }
@@ -2310,10 +2298,10 @@ TEST_F(CDCServiceTestThreeServers, TestNewLeaderUpdatesLogCDCAppliedIndex) {
 class CDCServiceLowRpc: public CDCServiceTest {
  public:
   void SetUp() override {
-    FLAGS_rpc_workers_limit = 4;
-    FLAGS_transaction_manager_workers_limit = 4;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_workers_limit) = 4;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_manager_workers_limit) = 4;
     // Uncommenting below causes test to timeout. We stop throttling with a negative ratio.
-    // FLAGS_cdc_get_changes_free_rpc_ratio = -.5;
+    // ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_get_changes_free_rpc_ratio) = -.5;
 
     CDCServiceTest::SetUp();
   }
@@ -2385,11 +2373,11 @@ TEST_F(CDCServiceTestThreeServers, TestCheckpointIsMinOverMultipleStreams) {
   constexpr int kGettingLeaderTimeoutSecs = 20;
   TabletId tablet_id;
   // Index of the TS that is the leader for the selected tablet_id.
-  ssize_t leader_idx = -1;
-  GetFirstTabletIdAndLeaderPeer(&tablet_id, &leader_idx, kGettingLeaderTimeoutSecs);
+  ssize_t initial_leader_idx = -1;
+  GetFirstTabletIdAndLeaderPeer(&tablet_id, &initial_leader_idx, kGettingLeaderTimeoutSecs);
   ASSERT_FALSE(tablet_id.empty());
-  ASSERT_GE(leader_idx, 0);
-  const auto& proxy = cluster_->mini_tablet_server(leader_idx)->server()->proxy();
+  ASSERT_GE(initial_leader_idx, 0);
+  const auto& proxy = cluster_->mini_tablet_server(initial_leader_idx)->server()->proxy();
 
   std::vector<std::pair<GetChangesRequestPB, GetChangesResponsePB>> get_changes_req_resps;
   for (size_t i = 0; i < stream_ids.size(); ++i) {
@@ -2428,68 +2416,71 @@ TEST_F(CDCServiceTestThreeServers, TestCheckpointIsMinOverMultipleStreams) {
     }
   }
 
-  std::shared_ptr<tablet::TabletPeer> tablet_peer;
   // Check that the checkpoint is correct for each tablet peer.
-  auto verify_checkpoints = [this, &tablet_id, &tablet_peer, &get_changes_req_resps,
-                             &leader_idx](bool is_leader_shutdown) {
+  auto verify_checkpoints = [this, &tablet_id, &get_changes_req_resps,
+                             &initial_leader_idx](bool is_leader_shutdown) -> Status {
+    SleepFor(FLAGS_update_min_cdc_indices_interval_secs * 3s);
+
     // Lowest checkpoint is at the back of get_changes_req_resps, check that
-    // cdc_min_replicated_index
-    // is less than the lowest checkpoint out of all the streams.
+    // cdc_min_replicated_index is less than the lowest checkpoint out of all the streams.
+    auto lowest_checkpoint = get_changes_req_resps.back().second.checkpoint().op_id().index();
     for (int idx = 0; idx < server_count(); idx++) {
-      if (is_leader_shutdown && idx == leader_idx) {
+      if (is_leader_shutdown && idx == initial_leader_idx) {
         continue;
       }
-      auto new_tablet_peer =
+      auto tablet_peer =
           cluster_->mini_tablet_server(idx)->server()->tablet_manager()->LookupTablet(tablet_id);
-      if (new_tablet_peer) {
-        tablet_peer = new_tablet_peer;
-        ASSERT_LE(
-            tablet_peer->log()->cdc_min_replicated_index(),
-            get_changes_req_resps.back().second.checkpoint().op_id().index());
-        ASSERT_LE(
-            tablet_peer->tablet_metadata()->cdc_min_replicated_index(),
-            get_changes_req_resps.back().second.checkpoint().op_id().index());
+      if (tablet_peer) {
+        SCHECK_LE(
+            tablet_peer->log()->cdc_min_replicated_index(), lowest_checkpoint, IllegalState,
+            Format("Peer on node $0 has invalid log::cdc_min_replicated_index", idx + 1));
+        SCHECK_LE(
+            tablet_peer->tablet_metadata()->cdc_min_replicated_index(), lowest_checkpoint,
+            IllegalState,
+            Format(
+                "Peer on node $0 has invalid tablet_metadata::cdc_min_replicated_index", idx + 1));
       }
     }
+
+    return Status::OK();
   };
 
-  verify_checkpoints(false /* is_leader_shutdown */);
+  ASSERT_OK(verify_checkpoints(false /* is_leader_shutdown */));
 
   // Kill the tablet leader tserver so that another tserver becomes the leader.
-  cluster_->mini_tablet_server(leader_idx)->Shutdown();
-  LOG(INFO) << "tserver " << leader_idx << " was shutdown";
+  cluster_->mini_tablet_server(initial_leader_idx)->Shutdown();
+  LOG(INFO) << "tserver " << initial_leader_idx + 1 << " was shutdown";
 
   // CDC Proxy is pinned to the first TServer, so we need to update the proxy if we kill that one.
-  if (leader_idx == 0) {
+  if (initial_leader_idx == 0) {
     cdc_proxy_ = std::make_unique<CDCServiceProxy>(
         &client_->proxy_cache(),
         HostPort::FromBoundEndpoint(cluster_->mini_tablet_server(1)->bound_rpc_addr()));
   }
 
-  ASSERT_OK(WaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [&]() {
         for (int idx = 0; idx < server_count(); idx++) {
-          if (idx == leader_idx) {
+          if (idx == initial_leader_idx) {
             // This TServer is shutdown for now.
             continue;
           }
-          tablet_peer = cluster_->mini_tablet_server(idx)->server()->tablet_manager()->LookupTablet(
-              tablet_id);
+          auto tablet_peer =
+              cluster_->mini_tablet_server(idx)->server()->tablet_manager()->LookupTablet(
+                  tablet_id);
           if (tablet_peer &&
               tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
-            LOG(INFO) << "Found new leader for tablet " << tablet_id << " in TS " << idx;
+            LOG(INFO) << "Found new leader for tablet " << tablet_id << " in TS " << idx + 1;
             return true;
           }
         }
         return false;
       },
-      MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait until tablet has a leader."));
+      30s * kTimeMultiplier, "Wait until tablet has a leader."));
 
-  SleepFor(MonoDelta::FromSeconds((FLAGS_update_min_cdc_indices_interval_secs * 3)));
+  ASSERT_OK(verify_checkpoints(true /* is_leader_shutdown */));
 
-  verify_checkpoints(true /* is_leader_shutdown */);
-
-  ASSERT_OK(cluster_->mini_tablet_server(leader_idx)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(initial_leader_idx)->Start());
   ASSERT_OK(client_->DeleteCDCStream(stream_id1));
   ASSERT_OK(client_->DeleteCDCStream(stream_id2));
 }

@@ -55,7 +55,7 @@ class SequentialFileReader;
 class RocksDBTest : public ::testing::Test {
  public:
   RocksDBTest() {
-    FLAGS_never_fsync = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = true;
   }
 };
 
@@ -161,29 +161,51 @@ class VectorIterator : public InternalIterator {
     assert(keys_.size() == values_.size());
   }
 
-  virtual bool Valid() const override { return current_ < keys_.size(); }
-
-  virtual void SeekToFirst() override { current_ = 0; }
-  virtual void SeekToLast() override { current_ = keys_.size() - 1; }
-
-  virtual void Seek(const Slice& target) override {
-    current_ = std::lower_bound(keys_.begin(), keys_.end(), target.ToBuffer()) -
-               keys_.begin();
+  const KeyValueEntry& SeekToFirst() override {
+    current_ = 0;
+    return Entry();
   }
 
-  virtual void Next() override { current_++; }
-  virtual void Prev() override { current_--; }
+  const KeyValueEntry& SeekToLast() override {
+    current_ = keys_.size() - 1;
+    return Entry();
+  }
 
-  virtual Slice key() const override { return Slice(keys_[current_]); }
-  virtual Slice value() const override { return Slice(values_[current_]); }
+  const KeyValueEntry& Seek(Slice target) override {
+    current_ = std::lower_bound(keys_.begin(), keys_.end(), target.ToBuffer()) - keys_.begin();
+    return Entry();
+  }
 
-  virtual Status status() const override { return Status::OK(); }
+  const KeyValueEntry& Next() override {
+    current_++;
+    return Entry();
+  }
+
+  const KeyValueEntry& Prev() override {
+    current_--;
+    return Entry();
+  }
+
+  const KeyValueEntry& Entry() const override {
+    if (current_ >= keys_.size()) {
+      return KeyValueEntry::Invalid();
+    }
+    entry_ = KeyValueEntry {
+      .key = Slice(keys_[current_]),
+      .value = Slice(values_[current_]),
+    };
+    return entry_;
+  }
+
+  Status status() const override { return Status::OK(); }
 
  private:
   std::vector<std::string> keys_;
   std::vector<std::string> values_;
   size_t current_;
+  mutable KeyValueEntry entry_;
 };
+
 extern WritableFileWriter* GetWritableFileWriter(WritableFile* wf);
 
 extern RandomAccessFileReader* GetRandomAccessFileReader(RandomAccessFile* raf);

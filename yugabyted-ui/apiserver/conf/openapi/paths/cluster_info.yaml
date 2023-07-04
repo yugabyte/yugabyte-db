@@ -109,6 +109,29 @@
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
         $ref: '../responses/_index.yaml#/ApiError'
+'/activities':
+  parameters:
+    - name: activities
+      in: query
+      description: Which activities data to retrieve
+      required: true
+      style: form
+      explode: false
+      schema:
+        type: string
+  get:
+    summary: Get a activities data for a cluster
+    description: Get activities data for a Yugabyte cluster
+    operationId: getClusterActivities
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ActivityResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
 /tables:
   get:
     description: Get list of tables per YB API (YCQL/YSQL)
@@ -219,6 +242,20 @@
     responses:
       '200':
         $ref: '../responses/_index.yaml#/GflagsResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/alerts:
+  get:
+    summary: Get any alerts for the cluster
+    description: Get any alerts for the cluster
+    operationId: getClusterAlerts
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/AlertsResponse'
       '400':
         $ref: '../responses/_index.yaml#/ApiError'
       '500':

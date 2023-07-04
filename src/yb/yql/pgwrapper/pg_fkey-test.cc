@@ -113,7 +113,7 @@ Status CheckAddFKCorrectness(PGConn* conn, bool temp_tables) {
 class PgFKeyTestNoFKCache : public PgFKeyTest {
  protected:
   void SetUp() override {
-    FLAGS_TEST_ysql_ignore_add_fk_reference = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_ignore_add_fk_reference) = true;
     PgFKeyTest::SetUp();
   }
 };

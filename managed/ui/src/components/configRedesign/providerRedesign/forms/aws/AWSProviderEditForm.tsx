@@ -683,6 +683,7 @@ const constructDefaultFormValues = (
   regions: providerConfig.regions.map((region) => ({
     fieldId: generateLowerCaseAlphanumericId(),
     code: region.code,
+    name: region.name,
     vnet: region.details.cloudInfo.aws.vnet,
     securityGroupId: region.details.cloudInfo.aws.securityGroupId,
     ybImage: region.details.cloudInfo.aws.ybImage ?? '',

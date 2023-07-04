@@ -56,7 +56,7 @@
 
 using std::string;
 
-DEFINE_UNKNOWN_bool(enable_log_retention_by_op_idx, true,
+DEFINE_RUNTIME_bool(enable_log_retention_by_op_idx, true,
             "If true, logs will be retained based on an op id passed by the cdc service");
 
 DEFINE_UNKNOWN_int32(log_max_seconds_to_retain, 24 * 3600, "Log files that are older will be "
@@ -142,7 +142,7 @@ LogReader::LogReader(Env* env,
     bytes_read_ = METRIC_log_reader_bytes_read.Instantiate(tablet_metric_entity);
     entries_read_ = METRIC_log_reader_entries_read.Instantiate(tablet_metric_entity);
   }
-  if (PREDICT_FALSE(FLAGS_enable_log_retention_by_op_idx &&
+  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_enable_log_retention_by_op_idx) &&
                         (FLAGS_TEST_record_segments_violate_max_time_policy ||
                          FLAGS_TEST_record_segments_violate_min_space_policy))) {
     TEST_segments_violate_max_time_policy_ = std::make_unique<std::vector<ReadableLogSegmentPtr>>();
@@ -320,9 +320,8 @@ Status LogReader::GetSegmentPrefixNotIncluding(int64_t index, int64_t cdc_max_re
     // This log segment contains cdc unreplicated entries. Don't GC it unless the file is too old
     // (controlled by flag FLAGS_log_max_seconds_to_retain) or we don't have enough space for the
     // logs (controlled by flag FLAGS_log_stop_retaining_min_disk_mb).
-    if (FLAGS_enable_log_retention_by_op_idx &&
+    if (GetAtomicFlag(&FLAGS_enable_log_retention_by_op_idx) &&
         segment->footer().max_replicate_index() >= cdc_max_replicated_index) {
-
       // Since this log file contains cdc unreplicated entries, we don't want to GC it unless
       // it's too old, or we don't have enough space to store log files.
       if (!ViolatesMaxTimePolicy(segment) && !ViolatesMinSpacePolicy(segment, &reclaimed_space)) {

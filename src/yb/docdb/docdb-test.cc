@@ -2999,7 +2999,7 @@ TEST_F_EX(DocDBTest, BoundaryValuesMultiFiles, DocDBTestBoundaryValues) {
 
 TEST_P(DocDBTestWrapper, BloomFilterTest) {
   // Turn off "next instead of seek" optimization, because this test rely on DocDB to do seeks.
-  FLAGS_max_nexts_to_avoid_seek = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_nexts_to_avoid_seek) = 0;
   // Write batch and flush options.
   auto dwb = MakeDocWriteBatch();
   ASSERT_OK(FlushRocksDbAndWait());
@@ -3166,7 +3166,7 @@ TEST_P(DocDBTestWrapper, MergingIterator) {
   // Test for the case described in https://yugabyte.atlassian.net/browse/ENG-1677.
 
   // Turn off "next instead of seek" optimization, because this test rely on DocDB to do seeks.
-  FLAGS_max_nexts_to_avoid_seek = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_nexts_to_avoid_seek) = 0;
 
   HybridTime ht;
   ASSERT_OK(ht.FromUint64(1000));
@@ -3749,7 +3749,7 @@ std::string EncodeValue(const QLValuePB& value) {
 }
 
 TEST_P(DocDBTestWrapper, CompactionWithTransactions) {
-  FLAGS_TEST_docdb_sort_weak_intents = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_sort_weak_intents) = true;
 
   const auto doc_key = MakeDocKey("mydockey", kIntKey1);
   KeyBytes encoded_doc_key(doc_key.Encode());
@@ -4363,124 +4363,6 @@ TEST_P(DocDBTestWrapper, ScanForwardWithDuplicateKeys) {
     SubDocKey(DocKey([], ["row9", 99999]), [ColumnId(10); HT{ physical: 9000 }]) -> 9
     SubDocKey(DocKey([], ["row9", 99999]), [ColumnId(10); HT{ physical: 9000 }]) -> 9
   )#");
-}
-
-class DocDBPerfTest : public DocDBTest {
- public:
-  // Size of block cache for RocksDB, 0 means don't use block cache.
-  virtual size_t block_cache_size() const override { return 32_MB; }
-
-  virtual void GetSubDoc(
-      const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
-      const TransactionOperationContext& txn_op_context = TransactionOperationContext(),
-      const ReadHybridTime& read_time = ReadHybridTime::Max()) override {
-    FAIL() << "Unexpected call to GetSubDoc().";
-  };
-
-  template <class F>
-  void TestScanPerformance(
-      size_t expected_num_keys, const std::string& perf_test_string, const F& f) {
-    constexpr int kIteration = 3;
-
-    auto statistics = regular_db_options().statistics.get();
-    auto initial_block_cache_miss = statistics->getTickerCount(rocksdb::BLOCK_CACHE_MISS);
-
-    for (int i = 0; i < kIteration; i++) {
-      rocksdb::ReadOptions read_opts;
-      read_opts.query_id = rocksdb::kDefaultQueryId;
-      unique_ptr<rocksdb::Iterator> iter(rocksdb()->NewIterator(read_opts));
-      auto start = Env::Default()->NowNanos();
-      iter->SeekToFirst();
-      ASSERT_EQ(expected_num_keys, f(iter.get()));
-      ASSERT_OK(iter->status());
-      auto time_taken = (Env::Default()->NowNanos() - start);
-      auto current_block_cache_miss = statistics->getTickerCount(rocksdb::BLOCK_CACHE_MISS);
-      LOG(INFO) << "Test - " << perf_test_string << ", time_taken (in us) - " << (time_taken / 1000)
-                << ", Cache miss - " << (current_block_cache_miss - initial_block_cache_miss);
-      initial_block_cache_miss = current_block_cache_miss;
-    }
-  }
-
-  void TestScanForward(
-      size_t expected_num_keys, const std::string& perf_test_string, bool use_key_filter_callback,
-      Slice upperbound) {
-    TestScanPerformance(
-        expected_num_keys, perf_test_string,
-        [use_key_filter_callback, upperbound](auto* iter) -> size_t {
-          size_t scanned_keys = 0;
-          rocksdb::ScanCallback scan_callback = [&scanned_keys](
-                                                    const Slice& key, const Slice& value) -> bool {
-            scanned_keys++;
-            return true;
-          };
-
-          rocksdb::KeyFilterCallback kf_callback =
-              [](Slice prefixed_key, size_t shared_bytes,
-                 Slice delta) -> rocksdb::KeyFilterCallbackResult {
-            return rocksdb::KeyFilterCallbackResult{.skip_key = false, .cache_key = false};
-          };
-
-          auto key_filter_callback = use_key_filter_callback ? &kf_callback : nullptr;
-          EXPECT_TRUE(iter->ScanForward(upperbound, key_filter_callback, &scan_callback));
-
-          return scanned_keys;
-        });
-  }
-
-  void TestScanNext(
-      size_t expected_num_keys, const std::string& perf_test_string, bool use_fast_next = false) {
-    TestScanPerformance(expected_num_keys, perf_test_string, [use_fast_next](auto* iter) -> size_t {
-      size_t scanned_keys = 0;
-      iter->UseFastNext(use_fast_next);
-      for (; iter->Valid(); iter->Next()) {
-        /*const auto k =*/iter->key();
-        /*const auto v =*/iter->value();
-        ++scanned_keys;
-      }
-      return scanned_keys;
-    });
-  }
-};
-
-TEST_F(DocDBPerfTest, YB_DISABLE_TEST_IN_TSAN(ScanForwardVsNextVsFastNext)) {
-  constexpr int kNumKeys = RegularBuildVsDebugVsSanitizers(1000000, 100000, 10000);
-  for (int i = 1; i <= kNumKeys; ++i) {
-    ASSERT_OK(WriteSimple(i));
-  }
-
-  KeyBytes upperbound;
-  {
-    // Compute Upperbound.
-    rocksdb::ReadOptions read_opts;
-    read_opts.query_id = rocksdb::kDefaultQueryId;
-    unique_ptr<rocksdb::Iterator> iter(doc_db().regular->NewIterator(read_opts));
-    iter->SeekToLast();
-    if (!iter->Valid()) {
-      iter->Prev();
-    }
-    ASSERT_TRUE(iter->Valid());
-    ASSERT_OK(iter->status());
-
-    upperbound.Reset(iter->key());
-  }
-
-  upperbound.AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType::kHighest);
-
-  LOG(INFO) << "Wrote " << kNumKeys << ", validating performance";
-  TestScanNext(kNumKeys, "Next");
-  TestScanNext(kNumKeys, "FastNext", /* use_fast_next */ true);
-  TestScanForward(
-      kNumKeys, "ScanForward (no kf and no upperbound)", /* use_filter_callback = */ false,
-      Slice());
-  TestScanForward(
-      kNumKeys, "ScanForward (with kf and no upperbound)", /* use_filter_callback = */ true,
-      Slice());
-  TestScanForward(
-      kNumKeys, "ScanForward (with kf+upperbound)", /* use_filter_callback = */ true,
-      upperbound.AsSlice());
-  TestScanForward(
-      kNumKeys, "ScanForward (with upperbound and no kf)", /* use_filter_callback = */ false,
-      upperbound.AsSlice());
 }
 
 void Append(const char* a, const char* b, std::string* out) {

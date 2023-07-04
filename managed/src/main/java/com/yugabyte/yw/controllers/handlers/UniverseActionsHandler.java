@@ -277,6 +277,15 @@ public class UniverseActionsHandler {
 
   public UUID updateLoadBalancerConfig(
       Customer customer, Universe universe, UniverseDefinitionTaskParams taskParams) {
+    if (!taskParams.getUniverseUUID().equals(universe.getUniverseUUID())) {
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST,
+          "Invalid Universe UUID in json: "
+              + taskParams.getUniverseUUID().toString()
+              + " Expected UUID: "
+              + universe.getUniverseUUID().toString());
+    }
+
     LOG.info(
         "Update load balancer config, universe: {} [ {} ] ",
         universe.getName(),

@@ -299,15 +299,26 @@ public class GFlagsUtil {
   }
 
   /** Return the map of ybc flags which will be passed to the db nodes. */
-  public static Map<String, String> getYbcFlags(AnsibleConfigureServers.Params taskParam) {
+  public static Map<String, String> getYbcFlags(
+      AnsibleConfigureServers.Params taskParam, Config config) {
     Universe universe = Universe.getOrBadRequest(taskParam.getUniverseUUID());
     NodeDetails node = universe.getNode(taskParam.nodeName);
+    // Both for old clusters and new, binding to both IPs works.
+    boolean isDualNet =
+        config.getBoolean("yb.cloud.enabled")
+            && node.cloudInfo.secondary_private_ip != null
+            && !node.cloudInfo.secondary_private_ip.equals("null");
+    String serverAddresses =
+        isDualNet
+            ? String.format("%s,%s", node.cloudInfo.private_ip, node.cloudInfo.secondary_private_ip)
+            : node.cloudInfo.private_ip;
+
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
     String providerUUID = userIntent.provider;
     Map<String, String> ybcFlags = new TreeMap<>();
     ybcFlags.put("v", Integer.toString(1));
-    ybcFlags.put("server_address", node.cloudInfo.private_ip);
+    ybcFlags.put("server_address", serverAddresses);
     ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
     ybcFlags.put("log_dir", getYbHomeDir(providerUUID) + YBC_LOG_SUBDIR);
     ybcFlags.put("cores_dir", getYbHomeDir(providerUUID) + CORES_DIR_PATH);
@@ -315,6 +326,10 @@ public class GFlagsUtil {
     ybcFlags.put("yb_master_address", node.cloudInfo.private_ip);
     ybcFlags.put("yb_master_webserver_port", Integer.toString(node.masterHttpPort));
     ybcFlags.put("yb_tserver_webserver_port", Integer.toString(node.tserverHttpPort));
+
+    // For "yb_tserver_address", private_ip works for cloud cases,
+    // since pgsql_bind_address is set to 0.0.0.0 or private_ip.
+    // Also, /varz endpoint works, since webserver_interface is set to private_ip.
     ybcFlags.put("yb_tserver_address", node.cloudInfo.private_ip);
     ybcFlags.put("redis_cli", getYbHomeDir(providerUUID) + REDIS_CLI_PATH);
     ybcFlags.put("yb_admin", getYbHomeDir(providerUUID) + YB_ADMIN_PATH);

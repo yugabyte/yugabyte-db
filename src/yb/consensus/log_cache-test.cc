@@ -322,7 +322,7 @@ TEST_F(LogCacheTest, TestCacheEdgeCases) {
 
 
 TEST_F(LogCacheTest, TestMemoryLimit) {
-  FLAGS_log_cache_size_limit_mb = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_cache_size_limit_mb) = 1;
   CloseAndReopenCache(MinimumOpId());
 
   const int kPayloadSize = 400_KB;
@@ -386,8 +386,8 @@ TEST_F(LogCacheTest, TestGlobalMemoryLimitMB) {
 }
 
 TEST_F(LogCacheTest, TestGlobalMemoryLimitPercentage) {
-  FLAGS_global_log_cache_size_limit_mb = INT32_MAX;
-  FLAGS_global_log_cache_size_limit_percentage = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_global_log_cache_size_limit_mb) = INT32_MAX;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_global_log_cache_size_limit_percentage) = 5;
   const int64_t root_mem_limit = MemTracker::GetRootTracker()->limit();
 
   CloseAndReopenCache(MinimumOpId());

@@ -366,7 +366,7 @@ static void MemUsageHandler(const Webserver::WebRequest& req, Webserver::WebResp
 static void MemTrackersHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
   *output << "<h1>Memory usage by subsystem</h1>\n";
-  *output << "<table class='table table-striped'>\n";
+  *output << "<table class='table table-striped' id='memtrackerstable'>\n";
   *output << "  <tr><th>Id</th><th>Current Consumption</th>"
       "<th>Peak consumption</th><th>Limit</th></tr>\n";
 
@@ -380,8 +380,9 @@ static void MemTrackersHandler(const Webserver::WebRequest& req, Webserver::WebR
 
   std::vector<MemTrackerData> trackers;
   CollectMemTrackerData(MemTracker::GetRootTracker(), 0, &trackers);
-  for (const auto& data : trackers) {
+  for (auto it = trackers.begin(); it != trackers.end(); it++) {
     // If the data.depth >= max_depth, skip the info.
+    const auto data = *it;
     if (data.depth > max_depth) {
       continue;
     }
@@ -393,8 +394,21 @@ static void MemTrackersHandler(const Webserver::WebRequest& req, Webserver::WebR
     const std::string peak_consumption_str =
         HumanReadableNumBytes::ToString(tracker->peak_consumption());
     const std::string tracker_id = use_full_path ? tracker->ToString() : tracker->id();
-    *output << Format("  <tr data-depth=\"$0\" class=\"level$0\">\n", data.depth);
-    *output << "    <td>" << tracker_id << "</td>";
+    // GetPeakRootConsumption() in client-stress-test.cc depends on the HTML formatting.
+    // Update the test, in case this changes in future.
+    *output << Format(
+      "  <tr data-depth=\"$0\" class=\"level$0 collapse\" style=\"display: table-row;\">\n",
+      data.depth);
+    const auto next_tracker = std::next(it, 1);
+    if (next_tracker != trackers.end() && (*next_tracker).depth > data.depth && data.depth != 0) {
+      *output << "    <td><span class=\"toggle\"></span>" << tracker_id << "</td>";
+    } else if (next_tracker != trackers.end() && (*next_tracker).depth > data.depth
+               && data.depth == 0) {
+      *output << "    <td><span class=\"toggle collapse\"></span>" << tracker_id << "</td>";
+    } else {
+      *output << "    <td>" << tracker_id << "</td>";
+    }
+
     // UpdateConsumption returns true if consumption is taken from external source,
     // for instance tcmalloc stats. So we should show only it in this case.
     if (!data.consumption_excluded_from_ancestors || data.tracker->UpdateConsumption()) {

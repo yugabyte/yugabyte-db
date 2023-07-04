@@ -37,8 +37,8 @@ namespace yb {
 class CompressedStreamTest : public client::KeyValueTableTest<MiniCluster> {
  public:
   void SetUp() override {
-    FLAGS_enable_stream_compression = true;
-    FLAGS_stream_compression_algo = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_stream_compression) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_stream_compression_algo) = 1;
     KeyValueTableTest::SetUp();
   }
 

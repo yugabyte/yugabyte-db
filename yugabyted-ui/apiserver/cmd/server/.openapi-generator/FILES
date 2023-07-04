@@ -1,5 +1,9 @@
 .docs/api/openapi.yaml
 models/hello-world.go
+models/model_activities_response.go
+models/model_activity_data.go
+models/model_alerts_info.go
+models/model_alerts_response.go
 models/model_api_error.go
 models/model_api_error_error.go
 models/model_cloud_enum.go

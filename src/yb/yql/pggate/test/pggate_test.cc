@@ -110,7 +110,7 @@ struct varlena* PggateTestCStringToTextWithLen(const char* c, int size) {
 // Starting and ending routines.
 
 void PggateTest::SetUp() {
-  FLAGS_test_leave_files = "always";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_test_leave_files) = "always";
   YBTest::SetUp();
 }
 
@@ -129,9 +129,11 @@ void PggateTest::TearDown() {
   YBTest::TearDown();
 }
 
-Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
+Status PggateTest::Init(const char *test_name,
+                        int num_tablet_servers,
+                        int replication_factor) {
   // Create cluster before setting client API.
-  RETURN_NOT_OK(CreateCluster(num_tablet_servers));
+  RETURN_NOT_OK(CreateCluster(num_tablet_servers, replication_factor));
 
   // Init PgGate API.
   CHECK_YBC_STATUS(YBCInit(test_name, PggateTestAlloc, PggateTestCStringToTextWithLen));
@@ -156,7 +158,7 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
     CHECK_EQ(resp.data().size(), sizeof(*tserver_shared_object_));
     memcpy(pointer_cast<char*>(&*tserver_shared_object_), resp.data().c_str(), resp.data().size());
   }
-  FLAGS_pggate_tserver_shm_fd = tserver_shared_object_.GetFd();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_tserver_shm_fd) = tserver_shared_object_.GetFd();
 
   YBCInitPgGate(type_table, count, callbacks);
 
@@ -168,16 +170,19 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
   return Status::OK();
 }
 
-Status PggateTest::CreateCluster(int num_tablet_servers) {
+Status PggateTest::CreateCluster(int num_tablet_servers, int replication_factor) {
   // Start mini-cluster with given number of tservers (default: 3).
   ExternalMiniClusterOptions opts;
   opts.num_tablet_servers = num_tablet_servers;
   opts.data_root_counter = 0;
+  if (replication_factor > 0) {
+    opts.replication_factor = replication_factor;
+  }
   cluster_ = std::make_shared<ExternalMiniCluster>(opts);
   CHECK_OK(cluster_->Start());
 
   // Setup master address to construct YBClient.
-  FLAGS_pggate_master_addresses = cluster_->GetMasterAddresses();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_master_addresses) = cluster_->GetMasterAddresses();
 
   // Sleep to make sure the cluster is ready before accepting client messages.
   sleep(1);

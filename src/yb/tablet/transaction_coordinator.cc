@@ -446,7 +446,8 @@ class TransactionState {
         if (!status_ht) {
           status_ht = context_.coordinator_context().clock().Now();
         }
-        status_ht = std::min(status_ht, context_.coordinator_context().HtLeaseExpiration());
+        status_ht =
+            std::min(status_ht, VERIFY_RESULT(context_.coordinator_context().HtLeaseExpiration()));
         return TransactionStatusResult{TransactionStatus::PENDING, status_ht.Decremented()};
       }
       case TransactionStatus::CREATED: FALLTHROUGH_INTENDED;

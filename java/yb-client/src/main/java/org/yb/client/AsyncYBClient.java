@@ -3604,10 +3604,6 @@ public class AsyncYBClient implements AutoCloseable {
         .option(ChannelOption.TCP_NODELAY, true)
         .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, TCP_CONNECT_TIMEOUT_MILLIS)
         .option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT);
-      if (SystemUtil.IS_LINUX) {
-        // No support for TCP_KEEPIDLE on MacOs
-        bootstrap.option(EpollChannelOption.TCP_KEEPIDLE, TCP_KEEP_IDLE_INTERVALS);
-      }
       return bootstrap;
     }
 

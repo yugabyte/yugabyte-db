@@ -170,7 +170,7 @@ class LogTestBase : public YBTest {
     tablet_wal_path_ = fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet);
     clock_.reset(new server::HybridClock());
     ASSERT_OK(clock_->Init());
-    FLAGS_log_min_seconds_to_retain = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
     ASSERT_OK(ThreadPoolBuilder("log")
                  .unlimited_threads()
                  .Build(&log_thread_pool_));

@@ -294,8 +294,8 @@ Result<bool> YsqlTransactionDdl::PgSchemaChecker(const scoped_refptr<TableInfo>&
   const string fail_msg = "Alter transaction on " + table->ToString() + " failed.";
   if (table->name().compare(table_name) != 0) {
     // Table name does not match.
-    LOG(INFO) << fail_msg << Format(" Expected table name: $0 Table name in PG: $1",
-        table->name(), table_name);
+    LOG(INFO) << fail_msg << " Expected table name: " << table->name() << " Table name in PG: "
+              << table_name;
     CHECK_EQ(table_name, l->ysql_ddl_txn_verifier_state().previous_table_name());
     return false;
   }
@@ -342,22 +342,28 @@ bool YsqlTransactionDdl::MatchPgDocDBSchemaColumns(
       continue;
     }
 
+    if (col.marked_for_deletion() && i < pg_cols.size() && col.order() == pg_cols[i].order) {
+      LOG(INFO) << fail_msg << " Column " << col.name() << " is marked for deletion but found it "
+          "in PG catalog";
+      return false;
+    }
+
     if (i >= pg_cols.size()) {
-      LOG(INFO) << fail_msg << Format(" Expected num_columns: $0 num_columns in PG: $1",
-          columns.size(), pg_cols.size());
+      LOG(INFO) << fail_msg << " Expected num_columns: " << columns.size()
+                << " but found num_columns in PG: " << pg_cols.size();
       return false;
     }
 
     if (col.name().compare(pg_cols[i].attname) != 0) {
-      LOG(INFO) << fail_msg << Format(" Expected column name with attnum: $0 is :$1"
-          " but column name at PG is $2", pg_cols[i].order, col.name(), pg_cols[i].attname);
+      LOG(INFO) << fail_msg << " Expected column name for attnum: " << pg_cols[i].order
+                << " is :" << col.name() << " but column name at PG is " << pg_cols[i].attname;
       return false;
     }
 
     // Verify whether attnum matches.
     if (col.order() != pg_cols[i].order) {
-      LOG(INFO) << fail_msg << Format(" At index $0 expected attnum is $1 but actual attnum is $2",
-          i, col.order(), pg_cols[i].order);
+      LOG(INFO) << fail_msg << " At index " << i << " expected attnum is " << col.order()
+                << " but actual attnum is " << pg_cols[i].order;
       return false;
     }
     i++;

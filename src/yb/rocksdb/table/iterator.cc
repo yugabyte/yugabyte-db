@@ -71,23 +71,36 @@ Status Iterator::GetProperty(std::string prop_name, std::string* prop) {
 }
 
 namespace {
-class EmptyIterator : public Iterator {
+
+class EmptyIterator final : public Iterator {
  public:
   explicit EmptyIterator(const Status& s) : status_(s) { }
-  bool Valid() const override { return false; }
-  void Seek(const Slice& target) override {}
-  void SeekToFirst() override {}
-  void SeekToLast() override {}
-  void Next() override { assert(false); }
-  void Prev() override { assert(false); }
-  Slice key() const override {
-    assert(false);
-    return Slice();
+  const KeyValueEntry& Entry() const override {
+    return KeyValueEntry::Invalid();
   }
-  Slice value() const override {
-    assert(false);
-    return Slice();
+
+  const KeyValueEntry& Seek(Slice target) override {
+    return Entry();
   }
+
+  const KeyValueEntry& SeekToFirst() override {
+    return Entry();
+  }
+
+  const KeyValueEntry& SeekToLast() override {
+    return Entry();
+  }
+
+  const KeyValueEntry& Next() override {
+    assert(false);
+    return Entry();
+  }
+
+  const KeyValueEntry& Prev() override {
+    assert(false);
+    return Entry();
+  }
+
   Status status() const override { return status_; }
 
  private:
@@ -97,20 +110,31 @@ class EmptyIterator : public Iterator {
 class EmptyInternalIterator : public InternalIterator {
  public:
   explicit EmptyInternalIterator(const Status& s) : status_(s) {}
-  bool Valid() const override { return false; }
-  void Seek(const Slice& target) override {}
-  void SeekToFirst() override {}
-  void SeekToLast() override {}
-  void Next() override { assert(false); }
-  void Prev() override { assert(false); }
-  Slice key() const override {
-    assert(false);
-    return Slice();
+
+  const KeyValueEntry& Entry() const override { return KeyValueEntry::Invalid(); }
+
+  const KeyValueEntry& Seek(Slice target) override {
+    return Entry();
   }
-  Slice value() const override {
-    assert(false);
-    return Slice();
+
+  const KeyValueEntry& SeekToFirst() override {
+    return Entry();
   }
+
+  const KeyValueEntry& SeekToLast() override {
+    return Entry();
+  }
+
+  const KeyValueEntry& Next() override {
+    assert(false);
+    return Entry();
+  }
+
+  const KeyValueEntry& Prev() override {
+    assert(false);
+    return Entry();
+  }
+
   Status status() const override { return status_; }
 
  private:

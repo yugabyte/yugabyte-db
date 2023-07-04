@@ -289,9 +289,8 @@ Status Master::RegisterServices() {
   });
 #endif
 
-  std::unique_ptr<ServiceIf> master_backup_service(new MasterBackupServiceImpl(this));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_backup_svc_queue_length,
-                                                     std::move(master_backup_service)));
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_master_backup_svc_queue_length, std::make_shared<MasterBackupServiceImpl>(this)));
 
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterAdminService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterClientService(this)));
@@ -302,29 +301,27 @@ Status Master::RegisterServices() {
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterHeartbeatService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterReplicationService(this)));
 
-  std::unique_ptr<ServiceIf> master_tablet_service(
-      new MasterTabletServiceImpl(master_tablet_server_.get(), this));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_tserver_svc_queue_length,
-                                                     std::move(master_tablet_service)));
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_master_tserver_svc_queue_length,
+      std::make_shared<MasterTabletServiceImpl>(master_tablet_server_.get(), this)));
 
-  std::unique_ptr<ServiceIf> consensus_service(
-      new ConsensusServiceImpl(metric_entity(), catalog_manager_.get()));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_consensus_svc_queue_length,
-                                                     std::move(consensus_service),
-                                                     rpc::ServicePriority::kHigh));
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_master_consensus_svc_queue_length,
+      std::make_shared<ConsensusServiceImpl>(metric_entity(), catalog_manager_.get()),
+      rpc::ServicePriority::kHigh));
 
-  std::unique_ptr<ServiceIf> remote_bootstrap_service(new tserver::RemoteBootstrapServiceImpl(
-      fs_manager_.get(), catalog_manager_.get(), metric_entity(), opts_.MakeCloudInfoPB(),
-      &this->proxy_cache()));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_remote_bootstrap_svc_queue_length,
-                                                     std::move(remote_bootstrap_service)));
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_master_remote_bootstrap_svc_queue_length,
+      std::make_shared<tserver::RemoteBootstrapServiceImpl>(
+          fs_manager_.get(), catalog_manager_.get(), metric_entity(), opts_.MakeCloudInfoPB(),
+          &this->proxy_cache())));
 
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+  RETURN_NOT_OK(RegisterService(
       FLAGS_master_svc_queue_length,
-      std::make_unique<tserver::PgClientServiceImpl>(
+      std::make_shared<tserver::PgClientServiceImpl>(
           *master_tablet_server_, client_future(), clock(),
-          std::bind(&Master::TransactionPool, this), metric_entity(), &messenger()->scheduler(),
-          std::nullopt /* xcluster_context */)));
+          std::bind(&Master::TransactionPool, this), mem_tracker(), metric_entity(),
+          &messenger()->scheduler(), std::nullopt /* xcluster_context */)));
 
   return Status::OK();
 }

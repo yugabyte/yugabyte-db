@@ -188,14 +188,14 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     b.AddColumn("non_null_with_default")->Type(DataType::INT32)->NotNull();
     CHECK_OK(b.Build(&schema_));
 
-    FLAGS_enable_data_block_fsync = false; // Keep unit tests fast.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_data_block_fsync) = false; // Keep unit tests fast.
   }
 
   void SetUp() override {
     YBMiniClusterTestBase::SetUp();
 
     // Reduce the TS<->Master heartbeat interval
-    FLAGS_heartbeat_interval_ms = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 10;
 
     // Start minicluster and wait for tablet servers to connect to master.
     auto opts = MiniClusterOptions();
@@ -1190,7 +1190,7 @@ TEST_F(ClientTest, TestWriteTimeout) {
   LOG(INFO) << "Time out the lookup on the master side";
   {
     google::FlagSaver saver;
-    FLAGS_master_inject_latency_on_tablet_lookups_ms = 110;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_inject_latency_on_tablet_lookups_ms) = 110;
     session->SetTimeout(100ms);
     ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
     const auto flush_status = session->TEST_FlushAndGetOpsErrors();
@@ -2189,7 +2189,7 @@ TEST_F(ClientTest, CreateTableWithoutTservers) {
 }
 
 TEST_F(ClientTest, TestCreateTableWithTooManyTablets) {
-  FLAGS_max_create_tablets_per_ts = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_create_tablets_per_ts) = 1;
   auto many_tablets = FLAGS_replication_factor + 1;
 
   std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
@@ -2225,11 +2225,11 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
 
   // Reduce the service queue length of each tablet server in order to increase
   // the likelihood of ERROR_SERVER_TOO_BUSY.
-  FLAGS_tablet_server_svc_queue_length = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_server_svc_queue_length) = 1;
   // Set the backoff limits to be small for this test, so that we finish in a reasonable
   // amount of time.
-  FLAGS_min_backoff_ms_exponent = 0;
-  FLAGS_max_backoff_ms_exponent = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_min_backoff_ms_exponent) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_backoff_ms_exponent) = 3;
   for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     MiniTabletServer* ts = cluster_->mini_tablet_server(i);
     ASSERT_OK(ts->Restart());
@@ -2772,11 +2772,11 @@ class ColocationClientTest: public ClientTest {
   void SetUp() override {
     YBMiniClusterTestBase::SetUp();
 
-    FLAGS_enable_data_block_fsync = false; // Keep unit tests fast.
-    FLAGS_ysql_legacy_colocated_database_creation = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_data_block_fsync) = false; // Keep unit tests fast.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_legacy_colocated_database_creation) = false;
 
     // Reduce the TS<->Master heartbeat interval
-    FLAGS_heartbeat_interval_ms = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 10;
 
     // Start minicluster and wait for tablet servers to connect to master.
     master::SetDefaultInitialSysCatalogSnapshotFlags();
@@ -2815,7 +2815,7 @@ class ColocationClientTest: public ClientTest {
             pg_ts->server()->GetSharedMemoryFd()));
     pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
     pg_process_conf.force_disable_log_file = true;
-    FLAGS_pgsql_proxy_webserver_port = cluster_->AllocateFreePort();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) = cluster_->AllocateFreePort();
 
     LOG(INFO) << "Starting PostgreSQL server listening on " << pg_process_conf.listen_addresses
               << ":" << pg_process_conf.pg_port << ", data: " << pg_process_conf.data_dir
@@ -2889,7 +2889,7 @@ TEST_F(ColocationClientTest, ColocatedTablesLookupTablet) {
 // locations. When we ask for tablet lookup for other tables colocated with the first one we asked,
 // MetaCache should be able to respond without sending RPCs to master again.
 TEST_F(ClientTest, LegacyColocatedDBColocatedTablesLookupTablet) {
-  FLAGS_ysql_legacy_colocated_database_creation = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_legacy_colocated_database_creation) = true;
   const auto kTabletLookupTimeout = 10s;
   const auto kNumTables = 10;
 

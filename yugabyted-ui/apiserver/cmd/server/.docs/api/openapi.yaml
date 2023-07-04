@@ -191,6 +191,41 @@ paths:
       summary: Get a metric for a cluster
       tags:
       - cluster-info
+  /activities:
+    get:
+      description: Get activities data for a Yugabyte cluster
+      operationId: getClusterActivities
+      parameters:
+      - description: Which activities data to retrieve
+        explode: false
+        in: query
+        name: activities
+        required: true
+        schema:
+          type: string
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Activities_Response'
+          description: Activities Response
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get a activities data for a cluster
+      tags:
+      - cluster-info
   /tables:
     get:
       description: Get list of tables per YB API (YCQL/YSQL)
@@ -368,6 +403,32 @@ paths:
       summary: Get gflags of master and tserver process
       tags:
       - cluster-info
+  /alerts:
+    get:
+      description: Get any alerts for the cluster
+      operationId: getClusterAlerts
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Alerts_Response'
+          description: Alerts information
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get any alerts for the cluster
+      tags:
+      - cluster-info
   /cluster:
     delete:
       description: Submit task to delete a Yugabyte Cluster
@@ -481,6 +542,12 @@ components:
           schema:
             $ref: '#/components/schemas/Metric_Response'
       description: Metric response
+    ActivityResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Activities_Response'
+      description: Activities Response
     ClusterTableListResponse:
       content:
         application/json:
@@ -511,6 +578,12 @@ components:
           schema:
             $ref: '#/components/schemas/Gflags_Info'
       description: Gflags information
+    AlertsResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Alerts_Response'
+      description: Alerts information
     ClusterResponse:
       content:
         application/json:
@@ -1031,6 +1104,21 @@ components:
       - values
       title: Metric Data
       type: object
+    ActivityData:
+      description: Activity Data
+      example:
+        data: '{}'
+        name: name
+      properties:
+        name:
+          type: string
+        data:
+          type: object
+      required:
+      - data
+      - name
+      title: Activity Data
+      type: object
     YbApiEnum:
       description: Type of DB API (YSQL/YCQL)
       enum:
@@ -1159,6 +1247,23 @@ components:
         version:
           type: string
       title: YugabyteDB Version Info
+      type: object
+    AlertsInfo:
+      description: Alerts Info
+      example:
+        name: name
+        info: info
+      properties:
+        name:
+          description: Name of alert
+          type: string
+        info:
+          description: Array of alerts
+          type: string
+      required:
+      - info
+      - name
+      title: Alerts Info
       type: object
     CloudEnum:
       default: MANUAL
@@ -1585,6 +1690,22 @@ components:
       - start_timestamp
       title: Metric Response
       type: object
+    Activities_Response:
+      example:
+        data:
+        - data: '{}'
+          name: name
+        - data: '{}'
+          name: name
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/ActivityData'
+          type: array
+      required:
+      - data
+      title: Activities Response
+      type: object
     Cluster_table_list_response:
       example:
         data:
@@ -1669,6 +1790,22 @@ components:
       - masterFlags
       - tserverFlags
       title: Gflags Info
+      type: object
+    Alerts_Response:
+      example:
+        data:
+        - name: name
+          info: info
+        - name: name
+          info: info
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/AlertsInfo'
+          type: array
+      required:
+      - data
+      title: Alerts Response
       type: object
     Cluster_Response:
       example:

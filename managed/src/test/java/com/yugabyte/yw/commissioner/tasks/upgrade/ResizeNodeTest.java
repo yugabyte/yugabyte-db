@@ -15,10 +15,12 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
@@ -27,6 +29,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -64,6 +67,7 @@ import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.yb.client.ListMastersResponse;
+import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
 @Slf4j
@@ -85,12 +89,13 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   // Tasks for RF1 configuration do not create sub-tasks for
   // leader blacklisting. So create two PLACEHOLDER indexes
   // as well as two separate base task sequences
-  private static final int PLACEHOLDER_INDEX = 3;
-  private static final int PLACEHOLDER_INDEX_RF1 = 1;
+  private static final int PLACEHOLDER_INDEX = 4;
+  private static final int PLACEHOLDER_INDEX_RF1 = 2;
 
   private static final List<TaskType> TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
+          TaskType.CheckUnderReplicatedTablets,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.WaitForEncryptionKeyInMemory,
@@ -138,6 +143,10 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     createInstanceType(defaultProvider.getUuid(), DEFAULT_INSTANCE_TYPE);
     createInstanceType(defaultProvider.getUuid(), NEW_INSTANCE_TYPE);
     createInstanceType(defaultProvider.getUuid(), NEW_READ_ONLY_INSTANCE_TYPE);
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("underreplicated_tablets", Json.newArray());
+    when(mockNodeUIApiHelper.getRequest(anyString())).thenReturn(bodyJson);
   }
 
   @Override
@@ -898,7 +907,31 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertTasksSequence(0, subTasks, false, true, true, false, true, true);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(false, true);
-    assertGflags(true, true);
+    assertGflags(true, true, false);
+  }
+
+  @Test
+  public void testChangingOnlyInstanceWithSpecificGFlags() {
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        univ -> {
+          UniverseDefinitionTaskParams.UserIntent primaryIntent =
+              univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          primaryIntent.specificGFlags =
+              SpecificGFlags.construct(primaryIntent.masterGFlags, primaryIntent.tserverGFlags);
+        });
+    ResizeNodeParams taskParams = createResizeParamsForCloud();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.instanceType = NEW_INSTANCE_TYPE;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("masterFlag", "123"), ImmutableMap.of("tserverFlag", "123"));
+    TaskInfo taskInfo = submitTask(taskParams);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    assertTasksSequence(0, subTasks, false, true, true, false, true, true);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertUniverseData(false, true);
+    assertGflags(true, true, true);
   }
 
   @Test
@@ -913,7 +946,32 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertTasksSequence(0, subTasks, false, true, true, false, false, true);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(false, true);
-    assertGflags(false, true);
+    assertGflags(false, true, false);
+  }
+
+  @Test
+  public void testChangingOnlyInstanceWithTserverSpecificGFlags() {
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        univ -> {
+          UniverseDefinitionTaskParams.UserIntent primaryIntent =
+              univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          primaryIntent.specificGFlags =
+              SpecificGFlags.construct(primaryIntent.masterGFlags, primaryIntent.tserverGFlags);
+        });
+    ResizeNodeParams taskParams = createResizeParamsForCloud();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.instanceType = NEW_INSTANCE_TYPE;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            taskParams.getPrimaryCluster().userIntent.masterGFlags,
+            ImmutableMap.of("tserverFlag", "123"));
+    TaskInfo taskInfo = submitTask(taskParams);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    assertTasksSequence(0, subTasks, false, true, true, false, false, true);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertUniverseData(false, true);
+    assertGflags(false, true, true);
   }
 
   @Test
@@ -928,18 +986,54 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertTasksSequence(0, subTasks, false, true, true, false, true, false);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(false, true);
-    assertGflags(true, false);
+    assertGflags(true, false, false);
   }
 
-  private void assertGflags(boolean updateMasterGflags, boolean updateTserverGflags) {
+  @Test
+  public void testChangingOnlyInstanceWithMasterSpecificGFlags() {
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        univ -> {
+          UniverseDefinitionTaskParams.UserIntent primaryIntent =
+              univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          primaryIntent.specificGFlags =
+              SpecificGFlags.construct(primaryIntent.masterGFlags, primaryIntent.tserverGFlags);
+        });
+    ResizeNodeParams taskParams = createResizeParamsForCloud();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.instanceType = NEW_INSTANCE_TYPE;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("masterFlag", "123"),
+            taskParams.getPrimaryCluster().userIntent.tserverGFlags);
+    TaskInfo taskInfo = submitTask(taskParams);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    assertTasksSequence(0, subTasks, false, true, true, false, true, false);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertUniverseData(false, true);
+    assertGflags(true, false, true);
+  }
+
+  private void assertGflags(
+      boolean updateMasterGflags, boolean updateTserverGflags, boolean useSpecificGFlags) {
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent newIntent = primaryCluster.userIntent;
     if (updateMasterGflags) {
+      if (useSpecificGFlags) {
+        assertEquals(
+            newIntent.specificGFlags.getGFlags(null, MASTER),
+            new HashMap<>(ImmutableMap.of("masterFlag", "123")));
+      }
       assertEquals(newIntent.masterGFlags, ImmutableMap.of("masterFlag", "123"));
     }
     if (updateTserverGflags) {
+      if (useSpecificGFlags) {
+        assertEquals(
+            newIntent.specificGFlags.getGFlags(null, TSERVER),
+            new HashMap<>(ImmutableMap.of("tserverFlag", "123")));
+      }
       assertEquals(newIntent.tserverGFlags, ImmutableMap.of("tserverFlag", "123"));
     }
   }

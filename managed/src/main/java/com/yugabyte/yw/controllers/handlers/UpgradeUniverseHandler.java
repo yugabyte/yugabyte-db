@@ -13,6 +13,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
@@ -22,7 +23,6 @@ import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.common.gflags.GFlagsAuditPayload;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
-import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
@@ -51,6 +51,7 @@ import java.util.Map;
 import java.util.UUID;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.MapUtils;
 import play.mvc.Http.Status;
 
 @Slf4j
@@ -157,8 +158,8 @@ public class UpgradeUniverseHandler {
   public UUID upgradeGFlags(
       GFlagsUpgradeParams requestParams, Customer customer, Universe universe) {
     UserIntent userIntent;
-    if (requestParams.masterGFlags.isEmpty()
-        && requestParams.tserverGFlags.isEmpty()
+    if (MapUtils.isEmpty(requestParams.masterGFlags)
+        && MapUtils.isEmpty(requestParams.masterGFlags)
         && requestParams.getPrimaryCluster() != null) {
       // If user hasn't provided gflags in the top level params, get from primary cluster
       userIntent = requestParams.getPrimaryCluster().userIntent;

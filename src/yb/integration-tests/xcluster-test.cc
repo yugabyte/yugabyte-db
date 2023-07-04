@@ -30,6 +30,7 @@
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
+#include "yb/cdc/cdc_state_table.h"
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/meta_cache.h"
@@ -157,10 +158,10 @@ class XClusterTest : public XClusterTestBase,
       uint32_t replication_factor,
       uint32_t num_masters = 1,
       uint32_t num_tservers = 1) {
-    FLAGS_enable_ysql = false;
-    FLAGS_transaction_table_num_tablets = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) = 1;
     XClusterTestBase::SetUp();
-    FLAGS_yb_num_shards_per_tserver = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_num_shards_per_tserver) = 1;
     bool transactional_table = GetParam().transactional_table;
     num_tservers = std::max(num_tservers, replication_factor);
 
@@ -394,11 +395,12 @@ class XClusterTest : public XClusterTestBase,
       EnableTLSEncryption enable_tls_encryption,
       Transactional transactional = Transactional::kFalse) {
     if (enable_tls_encryption) {
-      FLAGS_use_node_to_node_encryption = true;
-      FLAGS_use_client_to_server_encryption = true;
-      FLAGS_allow_insecure_connections = false;
-      FLAGS_certs_dir = GetCertsDir();
-      FLAGS_certs_for_cdc_dir = JoinPathSegments(FLAGS_certs_dir, "xCluster");
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_node_to_node_encryption) = true;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_client_to_server_encryption) = true;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_insecure_connections) = false;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_dir) = GetCertsDir();
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_for_cdc_dir) =
+          JoinPathSegments(FLAGS_certs_dir, "xCluster");
       // XClusterTestBase::SetupUniverseReplication will copying the certs to the sub directories.
     }
 
@@ -482,9 +484,6 @@ class XClusterTest : public XClusterTestBase,
   }
 
   Status FlushProducerTabletsAndGCLog() {
-    // hk!!! remove
-    google::SetVLOGLevel("tablet_peer*", 4);
-    google::SetVLOGLevel("log*", 4);
     RETURN_NOT_OK(producer_cluster()->FlushTablets());
     RETURN_NOT_OK(producer_cluster()->CompactTablets());
     for (size_t i = 0; i < producer_cluster()->num_tablet_servers(); ++i) {
@@ -649,7 +648,6 @@ TEST_P(XClusterTest, SetupUniverseReplicationWithProducerBootstrapId) {
     WriteWorkload(0, 100, producer_client(), producer_table->name());
   }
 
-  SleepFor(MonoDelta::FromSeconds(10));
   cdc::BootstrapProducerRequestPB req;
   cdc::BootstrapProducerResponsePB resp;
 
@@ -673,26 +671,27 @@ TEST_P(XClusterTest, SetupUniverseReplicationWithProducerBootstrapId) {
 
   // Verify that for each of the table's tablets, a new row in cdc_state table with the returned
   // id was inserted.
-  client::TableHandle table;
-  client::YBTableName cdc_state_table(
-      YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-  ASSERT_OK(table.Open(cdc_state_table, producer_client()));
+  cdc::CDCStateTable cdc_state_table(producer_client());
+  Status s;
+  auto table_range = ASSERT_RESULT(
+      cdc_state_table.GetTableRange(cdc::CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
 
   // 2 tables with 8 tablets each.
-  ASSERT_EQ(tables_vector.size() * kNTabletsPerTable, boost::size(client::TableRange(table)));
-  for (const auto& row : client::TableRange(table)) {
-    string stream_id = row.column(0).string_value();
-    tablet_bootstraps[stream_id]++;
+  ASSERT_EQ(
+      tables_vector.size() * kNTabletsPerTable,
+      std::distance(table_range.begin(), table_range.end()));
 
-    string checkpoint = row.column(2).string_value();
-    auto s = OpId::FromString(checkpoint);
-    ASSERT_OK(s);
-    OpId op_id = *s;
-    ASSERT_GT(op_id.index, 0);
+  for (auto row_result : table_range) {
+    ASSERT_OK(row_result);
+    auto& row = *row_result;
+    tablet_bootstraps[row.key.stream_id]++;
+    ASSERT_TRUE(row.checkpoint);
+    ASSERT_GT(row.checkpoint->index, 0);
 
-    LOG(INFO) << "Bootstrap id " << stream_id
-              << " for tablet " << row.column(1).string_value();
+    LOG(INFO) << "Bootstrap id " << row.key.stream_id << " for tablet " << row.key.tablet_id << " "
+              << " has checkpoint " << *row.checkpoint;
   }
+  ASSERT_OK(s);
 
   ASSERT_EQ(tablet_bootstraps.size(), producer_tables.size());
   // Check that each bootstrap id has 8 tablets.
@@ -818,7 +817,7 @@ TEST_P(XClusterTest, SetupUniverseReplicationLargeTableCount) {
 
   // Setup the two clusters without any tables.
   auto tables = ASSERT_RESULT(SetUpWithParams({}, {}, 1));
-  FLAGS_enable_automatic_tablet_splitting = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
 
   // Create a large number of tables to test the performance of setup_replication.
   int table_count = 2;
@@ -841,8 +840,8 @@ TEST_P(XClusterTest, SetupUniverseReplicationLargeTableCount) {
       }
 
       // Add delays to all rpc calls to simulate live environment and ensure the test is IO bound.
-      FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms = 200;
-      FLAGS_rpc_throttle_threshold_bytes = 200;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms) = 200;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_throttle_threshold_bytes) = 200;
 
       auto start_time = CoarseMonoClock::Now();
 
@@ -862,7 +861,7 @@ TEST_P(XClusterTest, SetupUniverseReplicationLargeTableCount) {
       LOG(INFO) << "SetupReplication [" << a << "] took: " << setup_latency[a].ToSeconds() << "s";
 
       // Remove delays for cleanup and next setup.
-      FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms = 0;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms) = 0;
 
       ASSERT_OK(DeleteUniverseReplication());
     }
@@ -1011,7 +1010,7 @@ TEST_P(XClusterTest, BootstrapAndSetupLargeTableCount) {
   // Setup the two clusters without any tables.
   int replication_factor = 3;
   auto tables = ASSERT_RESULT(SetUpWithParams({}, {}, replication_factor, 1, tserver_count));
-  FLAGS_enable_automatic_tablet_splitting = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
 
   // Create a medium, then large number of tables to test the performance of our CLI commands.
   int amplification[2] = {1, 5};
@@ -1039,8 +1038,8 @@ TEST_P(XClusterTest, BootstrapAndSetupLargeTableCount) {
       ASSERT_OK(WaitForLoadBalancersToStabilize());
 
       // Add delays to all rpc calls to simulate live environment and ensure the test is IO bound.
-      FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms = rpc_delay_ms;
-      FLAGS_rpc_throttle_threshold_bytes = 200;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms) = rpc_delay_ms;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_throttle_threshold_bytes) = 200;
 
       // Performance test of IsBootstrapRequired.
       {
@@ -1147,7 +1146,7 @@ TEST_P(XClusterTest, BootstrapAndSetupLargeTableCount) {
       }
 
       // Remove delays for cleanup and next setup.
-      FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms = 0;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms) = 0;
 
       ASSERT_OK(DeleteUniverseReplication());
     }
@@ -1160,7 +1159,7 @@ TEST_P(XClusterTest, BootstrapAndSetupLargeTableCount) {
 
 TEST_P(XClusterTest, PollWithConsumerRestart) {
   // Avoid long delays with node failures so we can run with more aggressive test timing
-  FLAGS_replication_failure_delay_exponent = 7; // 2^7 == 128ms
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_failure_delay_exponent) = 7; // 2^7 == 128ms
 
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({4}, {4}, replication_factor));
@@ -1193,7 +1192,7 @@ TEST_P(XClusterTest, PollWithConsumerRestart) {
 
 TEST_P(XClusterTest, PollWithProducerNodesRestart) {
   // Avoid long delays with node failures so we can run with more aggressive test timing
-  FLAGS_replication_failure_delay_exponent = 7; // 2^7 == 128ms
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_failure_delay_exponent) = 7; // 2^7 == 128ms
 
   uint32_t replication_factor = 3, tablet_count = 4, master_count = 3;
   auto tables = ASSERT_RESULT(
@@ -1238,7 +1237,7 @@ TEST_P(XClusterTest, PollWithProducerNodesRestart) {
 
 TEST_P(XClusterTest, PollWithProducerClusterRestart) {
   // Avoid long delays with node failures so we can run with more aggressive test timing
-  FLAGS_replication_failure_delay_exponent = 7; // 2^7 == 128ms
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_failure_delay_exponent) = 7; // 2^7 == 128ms
 
   uint32_t replication_factor = 3, tablet_count = 4;
   auto tables = ASSERT_RESULT(
@@ -1759,7 +1758,7 @@ TEST_P(XClusterTest, TestExternalWriteHybridTime) {
   ASSERT_OK(VerifyWrittenRecords(tables[0]->name(), tables[1]->name()));
 
   // Delete 2nd record but replicate at a low timestamp (timestamp lower than insertion timestamp).
-  FLAGS_TEST_xcluster_write_hybrid_time = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_write_hybrid_time) = true;
   DeleteWorkload(1, 2, producer_client(), tables[0]->name());
 
   // Verify that record exists on consumer universe, but is deleted from producer universe.
@@ -1809,7 +1808,7 @@ TEST_P(XClusterTest, BiDirectionalWritesWithLargeBatches) {
   // the batches we read in GetChanges / ReadReplicatedMessagesForCDC.
   // We want to test that we don't get stuck if an entire batch messages read are all filtered out
   // (currently we only filter out external writes) and the checkpoint isn't updated.
-  FLAGS_consensus_max_batch_size_bytes = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_max_batch_size_bytes) = 1_KB;
   constexpr auto kNumRowsToWrite = 500;
   auto tables = ASSERT_RESULT(SetUpWithParams({2}, {2}, 1));
   auto& producer_table = tables[0];
@@ -2199,7 +2198,7 @@ TEST_P(XClusterTest, TestDeleteUniverse) {
 }
 
 TEST_P(XClusterTest, TestWalRetentionSet) {
-  FLAGS_cdc_wal_retention_time_secs = 8 * 3600;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 8 * 3600;
 
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   auto tables = ASSERT_RESULT(SetUpWithParams({8, 4, 4, 12}, {8, 4, 12, 8}, replication_factor));
@@ -2449,10 +2448,7 @@ TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
   ASSERT_OK(DeleteUniverseReplication(kReplicationGroupId));
 }
 
-
 TEST_P(XClusterTest, ApplyOperationsRandomFailures) {
-  SetAtomicFlag(0.25, &FLAGS_TEST_respond_write_failed_probability);
-
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   // Use unequal table count so we have M:N mapping and output to multiple tablets.
   auto tables = ASSERT_RESULT(SetUpWithParams({3}, {5}, replication_factor));
@@ -2473,6 +2469,8 @@ TEST_P(XClusterTest, ApplyOperationsRandomFailures) {
   // After creating the cluster, make sure all producer tablets are being polled for.
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 5));
   ASSERT_OK(CorrectlyPollingAllTablets(producer_cluster(), 3));
+
+  SetAtomicFlag(0.25, &FLAGS_TEST_respond_write_failed_probability);
 
   // Write 1000 entries to each cluster.
   std::thread t1([&]() { WriteWorkload(0, 1000, producer_client(), tables[0]->name()); });
@@ -3551,14 +3549,14 @@ TEST_P(XClusterTest, LeaderFailoverTest) {
   // the previous checkpoint OpId it received from node B.
 
   // Dont remove pollers when leaders move.
-  FLAGS_TEST_xcluster_disable_delete_old_pollers = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_disable_delete_old_pollers) = true;
   // Dont increase Poll delay on failures as it is expected.
-  FLAGS_replication_failure_delay_exponent = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_failure_delay_exponent) = 0;
   // The below flags are required for fast log gc.
-  FLAGS_log_segment_size_bytes = 500;
-  FLAGS_log_min_segments_to_retain = 1;
-  FLAGS_log_min_seconds_to_retain = 0;
-  FLAGS_cdc_wal_retention_time_secs = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 500;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 0;
 
   const uint32_t kReplicationFactor = 3, kTabletCount = 1, kNumMasters = 1, kNumTservers = 3;
   auto tables = ASSERT_RESULT(SetUpWithParams(
@@ -3567,7 +3565,7 @@ TEST_P(XClusterTest, LeaderFailoverTest) {
   const auto& consumer_table = tables[1];
   ASSERT_OK(
       SetupUniverseReplication({producer_table}, {LeaderOnly::kFalse, Transactional::kFalse}));
-  FLAGS_enable_load_balancing = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
 
   // After creating the cluster, make sure all tablets being polled for.
   ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), kTabletCount));
@@ -3599,7 +3597,7 @@ TEST_P(XClusterTest, LeaderFailoverTest) {
   ASSERT_OK(VerifyNumRecords(consumer_table->name(), consumer_client(), kNumWriteRecords));
 
   // Failover to new tserver.
-  FLAGS_TEST_xcluster_disable_poller_term_check = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_disable_poller_term_check) = true;
   ASSERT_OK(itest::LeaderStepDown(old_ts, tablet_id, new_ts, kTimeout));
   ASSERT_OK(itest::WaitUntilLeader(new_ts, tablet_id, kTimeout));
   auto new_tserver = FindTabletLeader(consumer_cluster(), tablet_id);
@@ -3610,17 +3608,17 @@ TEST_P(XClusterTest, LeaderFailoverTest) {
   // GC log on producer.
   // Note: Ideally cdc checkpoint should advance but we do not see that with our combination of
   // flags so disable FLAGS_enable_log_retention_by_op_idx for the duration of the flush instead.
-  FLAGS_enable_log_retention_by_op_idx = false;
+  SetAtomicFlag(false, &FLAGS_enable_log_retention_by_op_idx);
   SleepFor(2s * kTimeMultiplier);
   ASSERT_OK(FlushProducerTabletsAndGCLog());
-  FLAGS_enable_log_retention_by_op_idx = true;
+  SetAtomicFlag(true, &FLAGS_enable_log_retention_by_op_idx);
 
   // Failback to old tserver.
   ASSERT_OK(itest::LeaderStepDown(new_ts, tablet_id, old_ts, kTimeout));
   ASSERT_OK(itest::WaitUntilLeader(old_ts, tablet_id, kTimeout));
 
   // Delete old pollers so that we can properly shutdown the servers.
-  FLAGS_TEST_xcluster_disable_delete_old_pollers = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_disable_delete_old_pollers) = false;
 
   ASSERT_OK(LoggedWaitFor(
       [&new_tserver]() {
@@ -3636,7 +3634,7 @@ TEST_P(XClusterTest, LeaderFailoverTest) {
   VerifyReplicationError(
       consumer_table->id(), stream_id, ReplicationErrorPb::REPLICATION_MISSING_OP_ID);
 
-  FLAGS_TEST_xcluster_disable_poller_term_check = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_disable_poller_term_check) = false;
   ASSERT_OK(VerifyNumRecords(consumer_table->name(), consumer_client(), 3 * kNumWriteRecords));
 }
 

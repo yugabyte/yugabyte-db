@@ -221,7 +221,7 @@ foreach my $s (sort { $a->{oid} <=> $b->{oid} } @fmgr)
 }
 
 # Create the fmgr_builtins table, collect data for fmgr_builtin_oid_index
-print $tfh "\nconst FmgrBuiltin fmgr_builtins[] = {\n";
+print $tfh "\nFmgrBuiltin fmgr_builtins[] = {\n";
 my %bmap;
 $bmap{'t'} = 'true';
 $bmap{'f'} = 'false';

@@ -2,7 +2,8 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.common.BackupUtil;
+import com.yugabyte.yw.common.backuprestore.BackupHelper;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -14,16 +15,19 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class DeleteBackupYb extends AbstractTaskBase {
-  @Inject
-  public DeleteBackupYb(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
-  }
 
-  @Inject private BackupUtil backupUtil;
+  private final BackupHelper backupHelper;
+
+  @Inject
+  public DeleteBackupYb(BaseTaskDependencies baseTaskDependencies, BackupHelper backupHelper) {
+    super(baseTaskDependencies);
+    this.backupHelper = backupHelper;
+  }
 
   public static class Params extends AbstractTaskParams {
     public UUID customerUUID;
     public UUID backupUUID;
+    public boolean deleteForcefully;
   }
 
   public Params params() {
@@ -39,7 +43,7 @@ public class DeleteBackupYb extends AbstractTaskBase {
     }
     boolean updateState = true;
     try {
-      backupUtil.validateBackupStorageConfig(backup);
+      backupHelper.validateStorageConfigOnBackup(backup);
       Set<Backup> backupsToDelete = new HashSet<>();
       if (backup.isParentBackup()) {
         if (BackupUtil.checkInProgressIncrementalBackup(backup)) {
@@ -56,6 +60,11 @@ public class DeleteBackupYb extends AbstractTaskBase {
       backupsToDelete.add(backup);
       backupsToDelete.forEach(
           (backupToBeDeleted) -> backupToBeDeleted.transitionState(BackupState.QueuedForDeletion));
+      if (params().deleteForcefully) {
+        backupsToDelete.forEach(
+            (backupToBeDeleted) ->
+                backupToBeDeleted.transitionState(BackupState.QueuedForForcedDeletion));
+      }
     } catch (Exception e) {
       log.error("Errored out with: " + e);
       if (updateState) {

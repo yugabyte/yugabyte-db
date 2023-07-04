@@ -84,7 +84,7 @@ class CqlTest : public CqlTestBase<MiniCluster> {
 
 TEST_F(CqlTest, ProcessorsLimit) {
   constexpr int kSessions = 10;
-  FLAGS_cql_processors_limit = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_processors_limit) = 1;
 
   std::vector<CassandraSession> sessions;
   bool has_failures = false;
@@ -224,7 +224,7 @@ TEST_F(CqlTest, TestDeleteMapKey) {
 }
 
 TEST_F(CqlTest, Timeout) {
-  FLAGS_client_read_write_timeout_ms = 5000 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 5000 * kTimeMultiplier;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery(
@@ -232,7 +232,7 @@ TEST_F(CqlTest, Timeout) {
 
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   for (const auto& peer : peers) {
-    peer->raft_consensus()->TEST_DelayUpdate(100ms);
+    ASSERT_RESULT(peer->GetRaftConsensus())->TEST_DelayUpdate(100ms);
   }
 
   auto prepared =
@@ -300,7 +300,7 @@ TEST_F(CqlTest, RecreateTableWithInserts) {
 class CqlThreeMastersTest : public CqlTest {
  public:
   void SetUp() override {
-    FLAGS_partitions_vtable_cache_refresh_secs = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_partitions_vtable_cache_refresh_secs) = 0;
     CqlTest::SetUp();
   }
 
@@ -345,7 +345,7 @@ TEST_F_EX(CqlTest, HostnameResolutionFailureInYqlPartitionsTable, CqlThreeMaster
 }
 
 TEST_F_EX(CqlTest, NonRespondingMaster, CqlThreeMastersTest) {
-  FLAGS_TEST_timeout_non_leader_master_rpcs = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_timeout_non_leader_master_rpcs) = true;
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery("CREATE TABLE t1 (i INT PRIMARY KEY, j INT)"));
   ASSERT_OK(session.ExecuteQuery("INSERT INTO t1 (i, j) VALUES (1, 1)"));
@@ -357,7 +357,7 @@ TEST_F_EX(CqlTest, NonRespondingMaster, CqlThreeMastersTest) {
   auto peer = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->tablet_peer();
   ASSERT_OK(StepDown(peer, std::string(), ForceStepDown::kTrue));
   LOG(INFO) << "Insert";
-  FLAGS_client_read_write_timeout_ms = 5000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 5000;
   bool has_ok = false;
   for (int i = 0; i != 3; ++i) {
     auto stmt = prepared.Bind();
@@ -391,10 +391,10 @@ TEST_F(CqlTest, TestTruncateTable) {
 }
 
 TEST_F(CqlTest, CompactDeleteMarkers) {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
-  FLAGS_history_cutoff_propagation_interval_ms = 1;
-  FLAGS_TEST_transaction_ignore_applying_probability = 1.0;
-  FLAGS_cleanup_intents_sst_files = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_intents_sst_files) = false;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery(
@@ -405,7 +405,7 @@ TEST_F(CqlTest, CompactDeleteMarkers) {
       "END TRANSACTION;"));
   ASSERT_OK(session.ExecuteQuery("DELETE FROM t WHERE i = 42"));
   ASSERT_OK(cluster_->FlushTablets());
-  FLAGS_TEST_transaction_ignore_applying_probability = 0.0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
   ASSERT_OK(WaitFor([this] {
     auto list = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
     for (const auto& peer : list) {
@@ -737,7 +737,8 @@ TEST_F(CqlTest, AlteredSchemaVersion) {
 }
 
 void CqlTest::TestAlteredPrepare(bool metadata_in_exec_resp) {
-  FLAGS_cql_always_return_metadata_in_execute_response = metadata_in_exec_resp;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_always_return_metadata_in_execute_response) =
+      metadata_in_exec_resp;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery("CREATE TABLE t1 (i INT PRIMARY KEY, j INT)"));
@@ -837,8 +838,10 @@ TEST_F(CqlTest, TestCQLPreparedStmtStats) {
 
 void CqlTest::TestAlteredPrepareWithPaging(bool check_schema_in_paging,
                                            bool metadata_in_exec_resp) {
-  FLAGS_cql_check_table_schema_in_paging_state = check_schema_in_paging;
-  FLAGS_cql_always_return_metadata_in_execute_response = metadata_in_exec_resp;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_check_table_schema_in_paging_state) =
+      check_schema_in_paging;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_always_return_metadata_in_execute_response) =
+      metadata_in_exec_resp;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery(
@@ -963,21 +966,22 @@ void CqlTest::TestPrepareWithDropTableWithPaging() {
 }
 
 TEST_F(CqlTest, PrepareWithDropTableWithPaging) {
-  FLAGS_cql_check_table_schema_in_paging_state = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_check_table_schema_in_paging_state) = true;
   TestPrepareWithDropTableWithPaging();
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 TEST_F(CqlTest, PrepareWithDropTableWithPaging_NoSchemaCheck) {
-  FLAGS_cql_check_table_schema_in_paging_state = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_check_table_schema_in_paging_state) = false;
   TestPrepareWithDropTableWithPaging();
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 void CqlTest::TestAlteredPrepareForIndexWithPaging(
     bool check_schema_in_paging, bool metadata_in_exec_resp) {
-  FLAGS_cql_check_table_schema_in_paging_state = check_schema_in_paging;
-  FLAGS_cql_always_return_metadata_in_execute_response = metadata_in_exec_resp;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_check_table_schema_in_paging_state) = check_schema_in_paging;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_always_return_metadata_in_execute_response) =
+      metadata_in_exec_resp;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(
@@ -1094,7 +1098,7 @@ TEST_F(CqlTest, PasswordReset) {
   const string change_pwd = "ALTER ROLE cassandra WITH PASSWORD = 'updated_password'";
 
   // Password reset disallowed when ycql_allow_non_authenticated_password_reset = false.
-  FLAGS_use_cassandra_authentication = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = false;
   {
     ASSERT_FALSE(FLAGS_ycql_allow_non_authenticated_password_reset);
     auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
@@ -1104,15 +1108,15 @@ TEST_F(CqlTest, PasswordReset) {
   }
 
   // Password reset allowed when ycql_allow_non_authenticated_password_reset = true.
-  FLAGS_ycql_allow_non_authenticated_password_reset = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_allow_non_authenticated_password_reset) = true;
   {
     auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
     ASSERT_OK(session.ExecuteQuery(change_pwd));
   }
 
   // Login works with the updated password and the user is able to create a superuser.
-  FLAGS_ycql_allow_non_authenticated_password_reset = false;
-  FLAGS_use_cassandra_authentication = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_allow_non_authenticated_password_reset) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = true;
   driver_->SetCredentials("cassandra", "updated_password");
   {
     auto session = ASSERT_RESULT(EstablishSession(driver_.get()));

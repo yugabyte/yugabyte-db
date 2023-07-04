@@ -1,12 +1,15 @@
 package com.yugabyte.yw.common.rbac;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import java.util.List;
+import java.util.HashSet;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 @Data
+@AllArgsConstructor
+@NoArgsConstructor
 public class PermissionInfo {
 
   @AllArgsConstructor
@@ -36,14 +39,5 @@ public class PermissionInfo {
   public String description;
 
   @JsonProperty("prerequisite_permissions")
-  public List<PermissionInfoIdentifier> prerequisitePermissions;
-}
-
-@Data
-class PermissionInfoIdentifier {
-  @JsonProperty("resource_type")
-  public PermissionInfo.ResourceType resourceType;
-
-  @JsonProperty("permission")
-  public PermissionInfo.Permission permission;
+  public HashSet<PermissionInfoIdentifier> prerequisitePermissions;
 }

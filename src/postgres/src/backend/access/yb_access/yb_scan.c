@@ -496,7 +496,7 @@ static IndexTuple ybcFetchNextIndexTuple(YbScanDesc ybScan, Relation index, bool
 /*
  * Set up scan plan.
  * This function sets up target and bind columns for each type of scans.
- *    SELECT <Target_columns> FROM <Table> WHERE <Key_columns> op <Binds>
+ *    SELECT <Target_columns> FROM <Table> WHERE <Binds>
  *
  * 1. SequentialScan(Table) and PrimaryIndexScan(Table): index = 0
  *    - Table can be systable or usertable.
@@ -605,7 +605,7 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 	 * - The bind-attnum comes from the table that is being scan by the scan.
 	 *
 	 * Examples:
-	 * - For IndexScan(SysTable, Index), SysTable is used for targets, but Index is for binds.
+	 * - For IndexScan(Table, Index), Table is used for targets, but Index is for binds.
 	 * - For IndexOnlyScan(Table, Index), only Index is used to setup both target and bind.
 	 */
 	for (i = 0; i < ybScan->nkeys; i++)
@@ -638,8 +638,8 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 		else
 		{
 			/*
-			 * IndexScan(SysTable or UserTable, Index) returns HeapTuple.
-			 * Use SysTable attnum for targets. Use its index attnum for binds.
+			 * IndexScan(Table, Index) returns HeapTuple.
+			 * Use Table attnum for targets. Use its Index attnum for binds.
 			 */
 			scan_plan->bind_key_attnums[i] = key->sk_attno;
 			ybScan->target_key_attnums[i] =
@@ -757,30 +757,36 @@ YbGetLengthOfKey(ScanKey *key_ptr)
 }
 
 /*
- * Check whether the conditions lead to empty result regardless of the values
- * in the index because of always FALSE or UNKNOWN conditions.
- * Return true if the combined key conditions are unsatisfiable.
+ * Return whether the given conditions are unsatisfiable regardless of the
+ * values in the index because of always FALSE or UNKNOWN conditions.
  */
 static bool
-YbIsEmptyResultCondition(int nkeys, ScanKey keys[])
+YbIsUnsatisfiableCondition(int nkeys, ScanKey keys[])
 {
-	for (int i = 0; i < nkeys; i++)
+	for (int i = 0; i < nkeys; ++i)
 	{
 		ScanKey key = keys[i];
 
-		if (!((key->sk_flags & SK_ROW_MEMBER) && YbIsRowHeader(keys[i - 1])) ||
-			key->sk_strategy == BTEqualStrategyNumber)
+		/*
+		 * Look for two cases:
+		 * - = null
+		 * - row(a, b, c) op row(null, e, f)
+		 */
+		if ((key->sk_strategy == BTEqualStrategyNumber ||
+			 (i > 0 && YbIsRowHeader(keys[i - 1]) &&
+			  key->sk_flags & SK_ROW_MEMBER)) &&
+			YbIsNeverTrueNullCond(key))
 		{
-			if (YbIsNeverTrueNullCond(key))
-				return true;
+			elog(DEBUG1, "skipping a scan due to unsatisfiable condition");
+			return true;
 		}
 	}
 	return false;
 }
 
 static bool
-YbShouldPushdownScanPrimaryKey(Relation relation, YbScanPlan scan_plan,
-                               AttrNumber attnum, ScanKey key)
+YbShouldPushdownScanPrimaryKey(YbScanPlan scan_plan, AttrNumber attnum,
+							   ScanKey key)
 {
 	if (YbIsHashCodeSearch(key))
 	{
@@ -856,8 +862,7 @@ ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 		bool is_primary_key = bms_is_member(idx, scan_plan->primary_key);
 
 		if (is_primary_key &&
-		    YbShouldPushdownScanPrimaryKey(
-		    	ybScan->relation, scan_plan, attnum, ybScan->keys[i]))
+			YbShouldPushdownScanPrimaryKey(scan_plan, attnum, ybScan->keys[i]))
 		{
 			scan_plan->sk_cols = bms_add_member(scan_plan->sk_cols, idx);
 		}
@@ -1361,13 +1366,6 @@ static bool
 YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 {
 	Relation relation = ybScan->relation;
-
-	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-								  YbGetStorageRelid(relation),
-								  &ybScan->prepare_params,
-								  YBCIsRegionLocal(relation),
-								  &ybScan->handle));
-
 	ybScan->is_full_cond_bound = yb_bypass_cond_recheck &&
 								 yb_pushdown_strict_inequality &&
 								 yb_pushdown_is_not_null;
@@ -2018,20 +2016,26 @@ YbDmlAppendColumnRefs(List *colrefs, bool is_primary, YBCPgStatement handle)
 
 /*
  * Begin a scan for
- *   SELECT <Targets> FROM <Relation relation> USING <Relation index>
+ *   SELECT <Targets> FROM <relation> USING <index> WHERE <Binds>
  * NOTES:
- * - "relation" is the table being SELECTed.
- * - "index" identify the INDEX that will be used for scaning.
- * - "nkeys" and "key" identify which key columns are provided in the SELECT WHERE clause.
- *   nkeys = Number of key.
- *   keys[].sk_attno = the columns' attnum in the IndexTable or "index"
- *                     (This is not the attnum in UserTable or "relation")
- *
- * - If "xs_want_itup" is true, Postgres layer is expecting an IndexTuple that has ybctid to
- *   identify the desired row.
- * - "rel_pushdown" defines expressions to pushdown to remote relation scan
- * - "idx_pushdown" defines expressions to pushdown to remote secondary index
- *   scan. If the scan is not over a secondary index.
+ * - "relation" is the non-index table.
+ * - "index" is the index table, if applicable.
+ * - "nkeys" and "key" identify which key columns are provided in the SELECT
+ *   WHERE clause.
+ *   - nkeys = Number of keys.
+ *   - keys[].sk_attno = the column's attribute number with respect to
+ *     - "relation" if sequential scan
+ *     - "index" if index (only) scan
+ *     Easy way to tell between the two cases is whether index is NULL.
+ *     Note: ybc_systable_beginscan can call for either case.
+ * - If "xs_want_itup" is true, Postgres layer is expecting an IndexTuple that
+ *   has ybctid to identify the desired row.
+ * - "rel_pushdown" defines expressions to push down to the targeted relation.
+ *   - sequential scan: non-index table.
+ *   - index scan: non-index table.
+ *   - index only scan: index table.
+ * - "idx_pushdown" defines expressions to push down to the index in case of an
+ *   index scan.
  */
 YbScanDesc
 ybcBeginScan(Relation relation,
@@ -2048,7 +2052,7 @@ ybcBeginScan(Relation relation,
 				 errmsg("cannot use more than %d predicates in a table or index scan",
 						YB_MAX_SCAN_KEYS)));
 
-	/* Set up YugaByte scan description */
+	/* Set up Yugabyte scan description */
 	YbScanDesc ybScan = (YbScanDesc) palloc0(sizeof(YbScanDescData));
 	for (int i = 0; i < nkeys; ++i)
 	{
@@ -2073,35 +2077,41 @@ ybcBeginScan(Relation relation,
 			while (((current++)->sk_flags & SK_ROW_END) == 0);
 		}
 	}
+	if (YbIsUnsatisfiableCondition(ybScan->nkeys, ybScan->keys))
+	{
+		ybScan->quit_scan = true;
+		return ybScan;
+	}
 	ybScan->exec_params = NULL;
 	ybScan->relation = relation;
 	ybScan->index = index;
 	ybScan->quit_scan = false;
 
-	/* Setup the scan plan */
+	/* Set up the scan plan */
 	YbScanPlanData scan_plan;
 	ybcSetupScanPlan(xs_want_itup, ybScan, &scan_plan);
 	ybcSetupScanKeys(ybScan, &scan_plan);
 
-	if (!YbIsEmptyResultCondition(ybScan->nkeys, ybScan->keys) &&
-	    YbBindScanKeys(ybScan, &scan_plan) &&
-	    YbBindHashKeys(ybScan))
+	/* Create handle */
+	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
+								  YbGetStorageRelid(relation),
+								  &ybScan->prepare_params,
+								  YBCIsRegionLocal(relation),
+								  &ybScan->handle));
+
+	/* Set up binds */
+	if (!YbBindScanKeys(ybScan, &scan_plan) || !YbBindHashKeys(ybScan))
+		ybScan->quit_scan = true;
+	else
 	{
 		/*
-		 * Setup the scan targets with respect to postgres scan plan
+		 * Set up the scan targets with respect to postgres scan plan
 		 * (i.e. set only required targets)
 		 */
 		ybcSetupTargets(ybScan, &scan_plan, pg_scan_plan);
 
 		/*
 		* Set up pushdown expressions.
-		* Sequential, IndexOnly and primary key scans are refer only one
-		* relation, and all expression they push down are in the rel_pushdown.
-		* Secondary index scan may have pushable expressions that refer columns
-		* not included in the index, those go to the rel_pushdown as well.
-		* Secondary index scan's expressions that refer only columns available
-		* from the index are go to the idx_pushdown and pushed down when the
-		* index is scanned.
 		*/
 		if (rel_pushdown != NULL)
 		{
@@ -2110,7 +2120,6 @@ ybcBeginScan(Relation relation,
 			YbDmlAppendColumnRefs(rel_pushdown->colrefs, true /* is_primary */,
 								  ybScan->handle);
 		}
-
 		if (idx_pushdown != NULL)
 		{
 			YbDmlAppendQuals(idx_pushdown->quals, false /* is_primary */,
@@ -2120,18 +2129,16 @@ ybcBeginScan(Relation relation,
 		}
 
 		/*
-		* Set the current syscatalog version (will check that we are up to date).
-		* Avoid it for syscatalog tables so that we can still use this for
-		* refreshing the caches when we are behind.
-		* Note: This works because we do not allow modifying schemas (alter/drop)
-		* for system catalog tables.
+		* Set the current syscatalog version (will check that we are up to
+		* date). Avoid it for syscatalog tables so that we can still use this
+		* for refreshing the caches when we are behind.
+		* Note: This works because we do not allow modifying schemas
+		* (alter/drop) for system catalog tables.
 		*/
 		if (!IsSystemRelation(relation))
-			YbSetCatalogCacheVersion(
-				ybScan->handle, YbGetCatalogCacheVersion());
-	} else
-		ybScan->quit_scan = true;
-
+			YbSetCatalogCacheVersion(ybScan->handle,
+									 YbGetCatalogCacheVersion());
+	}
 
 	bms_free(scan_plan.hash_key);
 	bms_free(scan_plan.primary_key);

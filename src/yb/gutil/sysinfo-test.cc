@@ -33,7 +33,7 @@ TEST_F(SysInfoTest, NumCpusZeroTest) {
 
 // Test gflag value changes are reflected in NumCPUs function
 TEST_F(SysInfoTest, NumCpusChangedTest) {
-  FLAGS_num_cpus = 20;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_cpus) = 20;
   ASSERT_EQ(base::NumCPUs(), 20);
 }
 

@@ -9,6 +9,7 @@ import uuid
 import warnings
 import logging
 import json
+import os
 from ybops.utils.remote_shell import RemoteShell
 
 warnings.filterwarnings("ignore")
@@ -293,6 +294,81 @@ def handle_upload_file(args, client):
     client.exec_command(chmod_cmd)
 
 
+def add_bulk_check_files_exist_subparser(subparsers, command, parent):
+    parser = subparsers.add_parser(command, help='bulk check files exist',
+                                   parents=[parent])
+    parser.add_argument('--source_files_to_check_path', type=str,
+                        help='Local File containing file paths to check existence of',
+                        required=True)
+    parser.add_argument('--yb_dir', type=str,
+                        help='Target directory to use for file upload/download',
+                        required=True)
+    parser.add_argument('--target_local_file_path', type=str,
+                        help='Target local file path to save file_check output',
+                        required=True)
+
+
+def handle_bulk_check_files_exist(args, client):
+    if args.node_type == 'ssh' or args.node_type == 'rpc':
+        bulk_check_files_exist_node(args, client)
+    else:
+        bulk_check_files_exist_k8s(args, client)
+
+
+def bulk_check_files_exist_node(args, client):
+    uuid_str = str(uuid.uuid4())
+    # Upload file containing paths to check existence of to node
+    target_files_to_check_name = "bulk_check_files" + "-" + uuid_str
+    target_files_to_check_path = os.path.join(args.yb_dir, target_files_to_check_name)
+    client.put_file(args.source_files_to_check_path, target_files_to_check_path)
+
+    # Execute shell script on remote server and download script output file
+    file_check_output_filename = "bulk_check_files_output" + "-" + uuid_str
+    file_check_output_filepath = os.path.join(args.yb_dir, file_check_output_filename)
+    cmd = [file_check_output_filename]
+    cmd.insert(0, args.yb_dir)
+    cmd.insert(0, target_files_to_check_path)
+    script_output = client.exec_script("./bin/node_utils.sh", ["bulk_check_files_exist"] + cmd)
+    file_exists = client.exec_script("./bin/node_utils.sh",
+                                     ["check_file_exists",
+                                      file_check_output_filepath]).strip()
+
+    print(f"Shell script output : {script_output}")
+
+    check_file_exists_output = int(file_exists)
+    if check_file_exists_output:
+        rm_cmd = ['rm', target_files_to_check_path, file_check_output_filepath]
+        client.fetch_file(file_check_output_filepath, args.target_local_file_path)
+        client.exec_command(rm_cmd)
+
+
+def bulk_check_files_exist_k8s(args, client):
+    uuid_str = str(uuid.uuid4())
+    # Upload file containing paths to check existence of to node
+    target_files_to_check_name = "bulk_check_files" + "-" + uuid_str
+    target_files_to_check_path = os.path.join(args.yb_dir, target_files_to_check_name)
+    client.put_file(args.source_files_to_check_path, target_files_to_check_path)
+
+    # Execute shell script on remote server and download script output file
+    file_check_output_filename = "bulk_check_files_output" + "-" + uuid_str
+    file_check_output_filepath = os.path.join(args.yb_dir, file_check_output_filename)
+    cmd = [file_check_output_filename]
+    cmd.insert(0, args.yb_dir)
+    cmd.insert(0, target_files_to_check_path)
+    script_output = client.exec_script("./bin/node_utils.sh", ["bulk_check_files_exist"] + cmd)
+    file_exists = client.exec_script("./bin/node_utils.sh",
+                                     ["check_file_exists",
+                                      file_check_output_filepath]).strip()
+
+    print(f"Shell script output : {script_output}")
+
+    check_file_exists_output = int(file_exists)
+    if check_file_exists_output:
+        rm_cmd = ['rm', target_files_to_check_path, file_check_output_filepath]
+        client.get_file(file_check_output_filepath, args.target_local_file_path)
+        client.exec_command(rm_cmd)
+
+
 node_types = {
     'k8s': NodeTypeParser(add_k8s_subparser),
     'ssh': NodeTypeParser(add_ssh_subparser),
@@ -306,7 +382,9 @@ actions = {
     'download_file': ActionHandler(handle_download_file, add_download_file_subparser),
     'copy_file': ActionHandler(handle_copy_file, add_copy_file_subparser),
     'upload_file': ActionHandler(handle_upload_file, add_upload_file_subparser),
-    'test_directory': ActionHandler(handle_test_directory, add_test_directory_subparser)
+    'test_directory': ActionHandler(handle_test_directory, add_test_directory_subparser),
+    'bulk_check_files_exist': ActionHandler(handle_bulk_check_files_exist,
+                                            add_bulk_check_files_exist_subparser)
 }
 
 

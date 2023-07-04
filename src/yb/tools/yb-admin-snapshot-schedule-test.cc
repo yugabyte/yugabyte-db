@@ -3624,8 +3624,8 @@ class YbAdminRestoreAfterSplitTest : public YbAdminSnapshotScheduleTest {
   }
 
   void SetRf1Flags() {
-    FLAGS_num_tablet_servers = 1;
-    FLAGS_num_replicas = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
   }
 
   Result<int> GetRowCount(CassandraSession* conn) {
@@ -4162,8 +4162,8 @@ TEST_F_EX(
 TEST_F_EX(YbAdminSnapshotScheduleTest, CacheRefreshOnNewConnection,
           YbAdminSnapshotScheduleAutoSplitting) {
   // Setup an RF1 so that we are only dealing with one tserver and its cache.
-  FLAGS_num_tablet_servers = 1;
-  FLAGS_num_replicas = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
 
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -4235,8 +4235,8 @@ class YbAdminSnapshotScheduleTestWithYsqlAndManualSplitting
 
   void TestIOWithSnapshotScheduleAndSplit(bool test_write, bool perform_restore) {
     // Setup an RF1 so that we are only dealing with one tserver and its cache.
-    FLAGS_num_tablet_servers = 1;
-    FLAGS_num_replicas = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
 
     auto schedule_id = ASSERT_RESULT(PreparePg());
 

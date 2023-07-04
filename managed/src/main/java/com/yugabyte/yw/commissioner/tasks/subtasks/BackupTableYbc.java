@@ -8,20 +8,25 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.YbcTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupNodeRetriever;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.TablesMetadata;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.services.YbcClientService;
-import com.yugabyte.yw.common.ybc.YbcBackupNodeRetriever;
-import com.yugabyte.yw.common.ybc.YbcBackupUtil;
-import com.yugabyte.yw.common.ybc.YbcBackupUtil.YbcBackupResponse;
-import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.yb.CommonTypes.TableType;
 import org.yb.client.YbcClient;
 import org.yb.ybc.BackupServiceTaskCreateRequest;
 import org.yb.ybc.BackupServiceTaskCreateResponse;
@@ -36,7 +41,6 @@ public class BackupTableYbc extends YbcTaskBase {
   private YbcClient ybcClient;
   private TaskExecutor taskExecutor;
   private String baseLogMessage = null;
-  private Backup previousBackup = null;
   private BackupTableParams previousBackupParams = null;
 
   @Inject
@@ -134,8 +138,8 @@ public class BackupTableYbc extends YbcTaskBase {
           if (previousBackupParams != null) {
             // Fail if validation fails.
             YbcBackupResponse successMarker =
-                ybcBackupUtil.parseYbcBackupResponse(successMarkerString);
-            ybcBackupUtil.validateConfigWithSuccessMarker(
+                YbcBackupUtil.parseYbcBackupResponse(successMarkerString);
+            YbcBackupUtil.validateConfigWithSuccessMarker(
                 successMarker, backupServiceTaskCreateRequest.getCsConfig(), true);
           }
           BackupServiceTaskCreateResponse response =
@@ -240,7 +244,7 @@ public class BackupTableYbc extends YbcTaskBase {
         ybcClient.backupServiceTaskResult(backupServiceTaskResultRequest);
     if (backupServiceTaskResultResponse.getTaskStatus().equals(ControllerStatus.OK)) {
       YbcBackupUtil.YbcBackupResponse response =
-          ybcBackupUtil.parseYbcBackupResponse(backupServiceTaskResultResponse.getMetadataJson());
+          YbcBackupUtil.parseYbcBackupResponse(backupServiceTaskResultResponse.getMetadataJson());
       long backupSize = Long.parseLong(response.backupSize);
       Backup.BackupUpdater bUpdater =
           b -> {
@@ -250,6 +254,23 @@ public class BackupTableYbc extends YbcTaskBase {
               BackupTableParams tableParams = tableParamsOptional.get();
               tableParams.backupSizeInBytes = backupSize;
               tableParams.timeTakenPartial = backupServiceTaskResultResponse.getTimeTakenMs();
+              // Make tableNameList and tableUUIDList same as the actual snapshot content.
+              if (taskParams().backupType.equals(TableType.YQL_TABLE_TYPE)) {
+                TablesMetadata tablesMetadata =
+                    YbcBackupUtil.getTableListFromSuccessMarker(
+                        response, TableType.YQL_TABLE_TYPE, true);
+                List<String> tableNameList = new ArrayList<>();
+                List<UUID> tableUUIDList = new ArrayList<>();
+                tablesMetadata.getTableDetailsMap().entrySet().stream()
+                    .forEach(
+                        tE -> {
+                          tableNameList.add(tE.getKey());
+                          tableUUIDList.add(tE.getValue().getTableIdentifier());
+                        });
+                tableParams.tableNameList = tableNameList;
+                tableParams.tableUUIDList = tableUUIDList;
+                tableParams.setTablesWithIndexesMap(tablesMetadata.getTablesWithIndexesMap());
+              }
               // Add specific storage locations for regional backups
               if (MapUtils.isNotEmpty(response.responseCloudStoreSpec.regionLocations)) {
                 tableParams.regionLocations =

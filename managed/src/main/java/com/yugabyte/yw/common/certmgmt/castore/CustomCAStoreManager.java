@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.CustomTrustStoreListener;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.CustomCaCertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -38,6 +39,7 @@ import org.apache.commons.lang3.StringUtils;
 @Singleton
 @Slf4j
 public class CustomCAStoreManager {
+  private final String CUSTOM_CA_STORE_ENABLED = "yb.customCATrustStore.enabled";
   private final List<TrustStoreManager> trustStoreManagers = new ArrayList<>();
 
   // Reference to the listeners who want to get notified about updates in this custom trust-store.
@@ -46,9 +48,14 @@ public class CustomCAStoreManager {
   private final PemTrustStoreManager pemTrustStoreManager;
   private final Pkcs12TrustStoreManager pkcs12TrustStoreManager;
 
+  private final RuntimeConfigFactory runtimeConfigFactory;
+
   @Inject
   public CustomCAStoreManager(
-      Pkcs12TrustStoreManager pkcs12TrustStoreManager, PemTrustStoreManager pemTrustStoreManager) {
+      Pkcs12TrustStoreManager pkcs12TrustStoreManager,
+      PemTrustStoreManager pemTrustStoreManager,
+      RuntimeConfigFactory runtimeConfigFactory) {
+    this.runtimeConfigFactory = runtimeConfigFactory;
     trustStoreManagers.add(pkcs12TrustStoreManager);
     trustStoreManagers.add(pemTrustStoreManager);
     this.pemTrustStoreManager = pemTrustStoreManager;
@@ -423,6 +430,10 @@ public class CustomCAStoreManager {
   private char[] getTruststorePassword() {
     // TODO: remove hard coded password.
     return "global-truststore-password".toCharArray();
+  }
+
+  public boolean isEnabled() {
+    return runtimeConfigFactory.globalRuntimeConf().getBoolean(CUSTOM_CA_STORE_ENABLED);
   }
 
   // ---------------- methods for CA store observers ---------------

@@ -11,7 +11,7 @@
     margin-top: 30px;
   }
 }
-
+.node-agent-panel,
 .graph-panel {
   .filter-container {
     float: left;
@@ -55,6 +55,7 @@
   
   .live-queries-label,
   .universe-name,
+  .provider-name,
   .region-name,
   .node-type-label,
   .node-ip-address,
@@ -70,6 +71,7 @@
   }
 
   .universe-name,
+  .provider-name,
   .region-name,
   .node-name {
     float: left;
@@ -119,6 +121,7 @@
   }
 
   .region-filter-dropdown,
+  .provider-filter-dropdown,
   .universe-filter-dropdown {
     .dropdown-toggle-button {
       border-radius: 8px 0px 0px 8px;
@@ -131,6 +134,7 @@
     }
   }
 
+  .provider-filter-dropdown,
   .universe-filter-dropdown,
   .node-filter-dropdown,
   .node-type-filter-dropdown,
@@ -242,6 +246,7 @@
   }
 
   .universe-picker-container,
+  .provider-picker-container,
   .node-type-picker-container,
   .node-picker-container {
     float: left;

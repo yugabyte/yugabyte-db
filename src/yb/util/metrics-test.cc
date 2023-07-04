@@ -397,7 +397,7 @@ TEST_F(MetricsTest, JsonPrintTest) {
 
 // Test that metrics are retired when they are no longer referenced.
 TEST_F(MetricsTest, RetirementTest) {
-  FLAGS_metrics_retirement_age_ms = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_metrics_retirement_age_ms) = 100;
 
   const string kMetricName = "foo";
   scoped_refptr<Counter> counter = METRIC_reqs_pending.Instantiate(entity_);
@@ -439,7 +439,7 @@ TEST_F(MetricsTest, TestRetiringEntities) {
 // Test that we can mark a metric to never be retired.
 TEST_F(MetricsTest, NeverRetireTest) {
   entity_->NeverRetire(METRIC_test_hist.Instantiate(entity_));
-  FLAGS_metrics_retirement_age_ms = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_metrics_retirement_age_ms) = 0;
 
   for (int i = 0; i < 3; i++) {
     entity_->RetireOldMetrics();
@@ -620,9 +620,7 @@ TEST_F(MetricsTest, VerifyHelpAndTypeTags) {
       "# HELP t_hist_sum Test histogram description\n# TYPE t_hist_sum counter"));
   EXPECT_EQ(1, StringOccurence(output_str,
       "# HELP t_hist_count Test histogram description\n# TYPE t_hist_count counter"));
-  EXPECT_EQ(3, StringOccurence(output_str,
-      "# HELP t_hist Test histogram description\n# TYPE t_hist counter"));
-  EXPECT_EQ(2, StringOccurence(output_str,
+  EXPECT_EQ(5, StringOccurence(output_str,
       "# HELP t_hist Test histogram description\n# TYPE t_hist gauge"));
   // Check gauge output.
   EXPECT_EQ(1, StringOccurence(output_str,

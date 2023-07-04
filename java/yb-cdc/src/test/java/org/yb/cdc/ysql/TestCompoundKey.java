@@ -220,6 +220,7 @@ public class TestCompoundKey extends CDCBaseClass {
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT)
       };
 
+      setServerFlag(getTserverHostAndPort(), CDC_ENABLE_CONSISTENT_RECORDS, "false");
       executeScriptAssertRecords(expectedRecords, "compound_key_tests/cdc_cpk_long_script.sql");
     } catch (Exception e) {
       LOG.error("Test to execute a long script failed with exception: ", e);

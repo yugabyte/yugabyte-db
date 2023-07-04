@@ -93,7 +93,8 @@ int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
 
   // Set before ParseCommandLineFlags so that user provided override takes precedence.
-  FLAGS_TEST_promote_all_auto_flags = yb::ShouldTestPromoteAllAutoFlags();
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_promote_all_auto_flags) = yb::ShouldTestPromoteAllAutoFlags();
 
   yb::ParseCommandLineFlags(&argc, &argv, /* remove_flags */ true);
 

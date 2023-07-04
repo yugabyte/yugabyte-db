@@ -728,14 +728,14 @@ Status CatalogManager::RestoreEntry(const SysRowEntry& entry, const SnapshotId& 
 Status CatalogManager::DeleteSnapshot(const DeleteSnapshotRequestPB* req,
                                       DeleteSnapshotResponsePB* resp,
                                       RpcContext* rpc) {
-  LOG(INFO) << "Servicing DeleteSnapshot request: " << req->ShortDebugString();
-
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(req->snapshot_id());
   if (txn_snapshot_id) {
+    LOG(INFO) << "Servicing DeleteSnapshot request. id: " << txn_snapshot_id
+              << ", request: " << req->ShortDebugString();
     return snapshot_coordinator_.Delete(
         txn_snapshot_id, leader_ready_term(), rpc->GetClientDeadline());
   }
-
+  LOG(INFO) << "Servicing DeleteSnapshot request: " << req->ShortDebugString();
   return DeleteNonTransactionAwareSnapshot(req->snapshot_id());
 }
 
@@ -2623,11 +2623,11 @@ int64_t CatalogManager::LeaderTerm() {
   if (!peer) {
     return -1;
   }
-  auto consensus = peer->shared_consensus();
-  if (!consensus) {
+  auto consensus_result = peer->GetConsensus();
+  if (!consensus_result) {
     return -1;
   }
-  return consensus->GetLeaderState(/* allow_stale= */ true).term;
+  return consensus_result.get()->GetLeaderState(/* allow_stale= */ true).term;
 }
 
 void CatalogManager::HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) {
@@ -2853,9 +2853,32 @@ Status CatalogManager::CreateSnapshotSchedule(const CreateSnapshotScheduleReques
                                               CreateSnapshotScheduleResponsePB* resp,
                                               rpc::RpcContext* rpc) {
   LOG(INFO) << "Servicing CreateSnapshotSchedule " << req->ShortDebugString();
+  CreateSnapshotScheduleRequestPB req_with_ns_id;
+  req_with_ns_id.CopyFrom(*req);
+  // Filter should be namespace level and have the namespace id.
+  // Set namespace id if not already present in the request.
+  if (req->options().filter().tables().tables_size() != 1) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::INVALID_REQUEST,
+        STATUS(NotSupported, "Only one filter can be set on a snapshot schedule"));
+  }
+  auto& filter = req->options().filter().tables().tables(0).namespace_();
+  if (!filter.has_id()) {
+    NamespaceIdentifierPB ns_id;
+    ns_id.set_database_type(filter.database_type());
+    ns_id.set_name(filter.name());
+    auto ns = VERIFY_RESULT(FindNamespace(ns_id));
+    LOG_WITH_FUNC(INFO) << "Namespace info obtained on master " << ns->ToString();
+    TableIdentifierPB* ns_req =
+        req_with_ns_id.mutable_options()->mutable_filter()->mutable_tables()->mutable_tables(0);
+    ns_req->mutable_namespace_()->set_id(ns->id());
+    ns_req->mutable_namespace_()->set_name(ns->name());
+    ns_req->mutable_namespace_()->set_database_type(ns->database_type());
+    LOG_WITH_FUNC(INFO) << "Modified request " << req_with_ns_id.ShortDebugString();
+  }
 
   auto id = VERIFY_RESULT(snapshot_coordinator_.CreateSchedule(
-      *req, leader_ready_term(), rpc->GetClientDeadline()));
+      req_with_ns_id, leader_ready_term(), rpc->GetClientDeadline()));
   resp->set_snapshot_schedule_id(id.data(), id.size());
   return Status::OK();
 }

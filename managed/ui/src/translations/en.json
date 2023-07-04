@@ -329,6 +329,37 @@
           "ScanTime": "Last Scanned",
           "DBScanFailed": "Failed to scan the database. Try again later."
         },
+        "queryDetailsPanel": {
+          "title": "Query Details",
+          "label": {
+            "responseTimePercentile": "Response Time Percentile",
+            "details": "Details"
+          },
+          "aria": {
+            "queryInfoPanelTabs": "Query information panel tabs"
+          },
+          "field": {
+            "calls": "Total Count",
+            "datname": "Database",
+            "local_blks_hit": "Tmp tables RAM",
+            "local_blks_written": "Tmp tables On Disk",
+            "max_time": "Max Exec Time",
+            "mean_time": "Avg Exec Time",
+            "min_time": "Min Exec Time",
+            "P25": "P25 Latency",
+            "P50": "P50 Latency",
+            "P90": "P90 Latency",
+            "P95": "P95 Latency",
+            "P99": "P99 Latency",
+            "rows": "Rows",
+            "stddev_time": "Stdev Exec Time",
+            "total_time": "Total Time",
+            "userid": "User"
+          },
+          "slowQueryGraph": {
+            "title": "Query count by Response Time (ms)"
+          }
+        },
         "typeTag": {
           "IndexSuggestion": "INDEX SUGGESTION",
           "SchemaSuggestion": "SCHEMA SUGGESTION",
@@ -463,6 +494,22 @@
       "variableName": "Variable Name:",
       "variableValUpdateSuccess": "variable updated successfully for policy \"{{policy_name}}\""
     },
+    "nodeAgent": {
+      "title": "Node Agents",
+      "assignedNodesTitle": "Assigned Nodes",
+      "unassignedNodesTitle": "Unassigned Nodes",
+      "viewDetailsButton": "View Details",
+      "unreachableInstanceAgents": "Instance agents are unreachable",
+      "contactSupport": "Contact Support"
+    },
+    "universeSelector": {
+      "all": "All Universes",
+      "errorMessage": "Failed to fetch list of universes"
+    },
+    "providerSelector": {
+      "all": "All Providers",
+      "errorMessage": "Failed to fetch list of providers"
+    },
     "customCACerts": {
       "listing": {
         "header": "Trusted CA Certificates",
@@ -473,7 +520,7 @@
           "created": "Created",
           "validFrom": "Valid From",
           "validUntil": "Valid Until",
-          "moreActions":{
+          "moreActions": {
             "download": "Download",
             "updateCert": "Update Certificate"
           }
@@ -490,7 +537,7 @@
       "deleteCACertModal": {
         "title": "Delete CA Certificate",
         "info": "TLS connections using this CA Certificate will fail. Are you sure you want to delete your CA Certificate? ",
-        "successMsg" : "Certificate deleted successfully"
+        "successMsg": "Certificate deleted successfully"
       }
     }
   }

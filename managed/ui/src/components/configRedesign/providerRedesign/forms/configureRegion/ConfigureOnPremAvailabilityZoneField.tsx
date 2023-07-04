@@ -89,6 +89,7 @@ export const ConfigureOnPremAvailabilityZoneField = ({
           btnType="button"
           onClick={addZoneField}
           disabled={isFormDisabled}
+          data-testid="ConfigureOnPremAvailabilityZonField-AddZoneButton"
         />
       </div>
     </div>

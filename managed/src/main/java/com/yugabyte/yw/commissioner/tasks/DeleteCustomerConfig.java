@@ -12,10 +12,12 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.amazonaws.SDKGlobalConfiguration;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.CloudUtil;
+import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.BackupHelper;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Schedule;
@@ -36,11 +38,17 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
   private static final String S3 = Util.S3;
   private static final String NFS = Util.NFS;
 
-  @Inject BackupUtil backupUtil;
+  private final BackupHelper backupHelper;
+  private final CloudUtilFactory cloudUtilFactory;
 
   @Inject
-  public DeleteCustomerConfig(BaseTaskDependencies baseTaskDependencies) {
+  public DeleteCustomerConfig(
+      BaseTaskDependencies baseTaskDependencies,
+      BackupHelper backupHelper,
+      CloudUtilFactory cloudUtilFactory) {
     super(baseTaskDependencies);
+    this.backupHelper = backupHelper;
+    this.cloudUtilFactory = cloudUtilFactory;
   }
 
   public static class Params extends UniverseTaskParams {
@@ -84,8 +92,8 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
             case AZ:
               for (Backup backup : backupList) {
                 try {
-                  CloudUtil cloudUtil = CloudUtil.getCloudUtil(customerConfig.getName());
-                  backupLocations = backupUtil.getBackupLocations(backup);
+                  CloudUtil cloudUtil = cloudUtilFactory.getCloudUtil(customerConfig.getName());
+                  backupLocations = BackupUtil.getBackupLocations(backup);
                   cloudUtil.deleteKeyIfExists(
                       customerConfig.getDataObject(), backupLocations.get(0));
                   cloudUtil.deleteStorage(customerConfig.getDataObject(), backupLocations);
@@ -145,7 +153,7 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
   private Boolean isCredentialUsable(CustomerConfig config) {
     Boolean isValid = true;
     try {
-      backupUtil.validateStorageConfig(config);
+      backupHelper.validateStorageConfig(config);
     } catch (PlatformServiceException e) {
       isValid = false;
     }

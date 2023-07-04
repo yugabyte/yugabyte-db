@@ -86,7 +86,7 @@ class RemoteYsckTest : public YBTest {
     YBTest::SetUp();
 
     // Speed up testing, saves about 700ms per TEST_F.
-    FLAGS_heartbeat_interval_ms = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 10;
 
     MiniClusterOptions opts;
     opts.num_tablet_servers = 3;

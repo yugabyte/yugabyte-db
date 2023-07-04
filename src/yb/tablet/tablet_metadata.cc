@@ -91,7 +91,7 @@ DEFINE_test_flag(bool, invalidate_last_change_metadata_op, false,
 // The flag is non-runtime so that if it is changed from true to false, the node restarts and the
 // unflushed committed CHANGE_METADATA_OP WAL entries are applied and flushed during the tablet
 // bootstrap.
-DEFINE_NON_RUNTIME_bool(lazily_flush_superblock, false,
+DEFINE_NON_RUNTIME_bool(lazily_flush_superblock, true,
     "Flushes the superblock lazily on metadata update. Only used for colocated table creation "
     "currently.");
 
@@ -133,7 +133,7 @@ const std::string kSnapshotsDirSuffix = ".snapshots";
 
 TableInfo::TableInfo(const std::string& log_prefix_, TableType table_type, PrivateTag)
     : log_prefix(log_prefix_),
-      doc_read_context(new docdb::DocReadContext(log_prefix, table_type)),
+      doc_read_context(new docdb::DocReadContext(log_prefix, table_type, docdb::Index::kFalse)),
       index_map(std::make_shared<IndexMap>()) {
   CompleteInit();
 }
@@ -156,7 +156,8 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
       cotable_id(CHECK_RESULT(ParseCotableId(primary, table_id))),
       log_prefix(MakeTableInfoLogPrefix(tablet_log_prefix, primary, table_id)),
       doc_read_context(std::make_shared<docdb::DocReadContext>(
-          log_prefix, table_type, schema, schema_version)),
+          log_prefix, table_type, docdb::Index(index_info.has_value()), schema,
+          schema_version)),
       index_map(std::make_shared<IndexMap>(index_map)),
       index_info(index_info ? new IndexInfo(*index_info) : nullptr),
       schema_version(schema_version),

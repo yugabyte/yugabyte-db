@@ -44,7 +44,7 @@ YBTabletTest::YBTabletTest(const Schema& schema, TableType table_type)
   const_cast<Schema&>(schema_).InitColumnIdsByDefault();
   // Keep unit tests fast, but only if no one has set the flag explicitly.
   if (google::GetCommandLineFlagInfoOrDie("enable_data_block_fsync").is_default) {
-    FLAGS_enable_data_block_fsync = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_data_block_fsync) = false;
   }
 }
 

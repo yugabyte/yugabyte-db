@@ -33,6 +33,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.BackupUniverseKeys;
 import com.yugabyte.yw.commissioner.tasks.subtasks.BulkImport;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeAdminPassword;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
@@ -109,7 +110,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterConfig
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ResetXClusterConfigEntry;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigUpdateMasterAddresses;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterInfoPersist;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeAgentManager;
@@ -120,10 +120,13 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupNodeRetriever;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
-import com.yugabyte.yw.common.ybc.YbcBackupNodeRetriever;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
@@ -132,6 +135,8 @@ import com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
+import com.yugabyte.yw.forms.RestorePreflightParams;
+import com.yugabyte.yw.forms.RestorePreflightResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -142,6 +147,7 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -192,8 +198,8 @@ import java.util.stream.IntStream;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.MDC;
 import org.yb.ColumnSchema.SortOrder;
@@ -2336,18 +2342,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       List<Restore> restoreList,
       boolean isAbort,
       boolean isLoadBalancerAltered) {
-    if (backupList != null && CollectionUtils.isEmpty(backupList)) {
+    if (!CollectionUtils.isEmpty(backupList)) {
       for (Backup backup : backupList) {
-        if (!isAbort && backup.getState().equals(BackupState.InProgress)) {
+        if (backup != null && !isAbort && backup.getState().equals(BackupState.InProgress)) {
           backup.transitionState(BackupState.Failed);
           backup.setCompletionTime(new Date());
           backup.save();
         }
       }
     }
-    if (restoreList != null && !CollectionUtils.isEmpty(restoreList)) {
+    if (!CollectionUtils.isEmpty(restoreList)) {
       for (Restore restore : restoreList) {
-        if (!isAbort && restore.getState().equals(Restore.State.InProgress)) {
+        if (restore != null && !isAbort && restore.getState().equals(Restore.State.InProgress)) {
           restore.update(restore.getTaskUUID(), Restore.State.Failed);
         }
       }
@@ -2427,21 +2433,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         log.error(ex.getMessage());
       }
     }
-
     backup.setTaskUUID(userTaskUUID);
     backup.save();
     backupTableParams = backup.getBackupInfo();
     backupTableParams.backupUuid = backup.getBackupUUID();
     backupTableParams.baseBackupUUID = backup.getBaseBackupUUID();
-    backupTableParams.backupList.stream()
-        .forEach(
-            paramEntry ->
-                createEncryptedUniverseKeyBackupTask(paramEntry)
-                    .setSubTaskGroupType(subTaskGroupType));
     if (ybcBackup) {
       createTableBackupTasksYbc(backupTableParams, backupRequestParams.parallelDBBackups)
           .setSubTaskGroupType(subTaskGroupType);
     } else {
+      // Creating encrypted universe key file only needed for non-ybc backups.
+      backupTableParams.backupList.stream()
+          .forEach(
+              paramEntry ->
+                  createEncryptedUniverseKeyBackupTask(paramEntry)
+                      .setSubTaskGroupType(subTaskGroupType));
       createTableBackupTaskYb(backupTableParams).setSubTaskGroupType(subTaskGroupType);
     }
 
@@ -2457,14 +2463,85 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return backup;
   }
 
+  private RestorePreflightResponse getRestorePreflightResponse(RestoreBackupParams restoreParams) {
+    RestorePreflightParams preflightParams = new RestorePreflightParams();
+    preflightParams.setUniverseUUID(taskParams().getUniverseUUID());
+    preflightParams.setStorageConfigUUID(restoreParams.storageConfigUUID);
+    Set<String> backupLocations =
+        restoreParams
+            .backupStorageInfoList
+            .parallelStream()
+            .map(bSI -> bSI.storageLocation)
+            .collect(Collectors.toSet());
+    preflightParams.setBackupLocations(backupLocations);
+
+    return backupHelper.restorePreflightWithoutBackupObject(
+        restoreParams.customerUUID, preflightParams, false);
+  }
+
+  // Save restore category to task params.
+  private void saveRestoreBackupCategory(
+      RestoreBackupParams restoreParams, BackupCategory bCategory, TaskInfo taskInfo) {
+    restoreParams.category = bCategory;
+    // Update task params for this
+    ObjectMapper mapper = new ObjectMapper();
+    taskInfo.setDetails(mapper.valueToTree(restoreParams));
+    taskInfo.save();
+  }
+
+  private void restoreActionPreflightCheck(RestoreBackupParams restoreParams, TaskInfo taskInfo) {
+    RestorePreflightResponse preflightResponse = getRestorePreflightResponse(restoreParams);
+
+    saveRestoreBackupCategory(restoreParams, preflightResponse.getBackupCategory(), taskInfo);
+    restoreParams.setSuccessMarkerMap(preflightResponse.getSuccessMarkerMap());
+    // Validate common validation points like backup category, KMS, Table type etc.
+    BackupUtil.validateRestoreActionUsingBackupMetadata(restoreParams, preflightResponse);
+
+    // TODO: Arjav garg: Validate on each cloud dir of YBC backup location( READ, LIST )
+    if (restoreParams.category.equals(BackupCategory.YB_CONTROLLER)) {
+      backupHelper.validateStorageConfigForRestoreTask(
+          restoreParams.storageConfigUUID,
+          restoreParams.customerUUID,
+          preflightResponse.getSuccessMarkerMap().values());
+    }
+    // For first try( i.e. non-retries ) validate overwrite.
+    if (shouldValidateRestoreOverwrite(restoreParams, taskInfo.getTaskType())) {
+      // Verify non-repetitive restore request.
+      Map<TableType, Map<String, Set<String>>> mapToRestore =
+          YbcBackupUtil.generateMapToRestoreNonRedisYBC(
+              restoreParams.backupStorageInfoList, preflightResponse.getPerLocationBackupInfoMap());
+
+      backupHelper.validateMapToRestoreWithUniverseNonRedisYBC(
+          taskParams().getUniverseUUID(), mapToRestore);
+    }
+  }
+
+  // Return whether restore overwrite should be validated.
+  private boolean shouldValidateRestoreOverwrite(
+      RestoreBackupParams restoreParams, TaskType taskType) {
+    return restoreParams.category.equals(BackupCategory.YB_CONTROLLER)
+        && taskType.equals(TaskType.RestoreBackup)
+        && (isFirstTry()
+            || (restoreParams.currentIdx == 0
+                && StringUtils.isBlank(restoreParams.currentYbcTaskId)));
+  }
+
   protected Restore createAllRestoreSubtasks(
-      RestoreBackupParams restoreBackupParams, SubTaskGroupType subTaskGroupType, boolean isYbc) {
+      RestoreBackupParams restoreBackupParams, SubTaskGroupType subTaskGroupType) {
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(userTaskUUID);
+
+    // No validation for xcluster type tasks, since the backup
+    // itself is used for populating restore task.
+    if (taskInfo.getTaskType().equals(TaskType.RestoreBackup)) {
+      restoreActionPreflightCheck(restoreBackupParams, taskInfo);
+    }
     if (restoreBackupParams.alterLoadBalancer) {
       createLoadBalancerStateChangeTask(false).setSubTaskGroupType(subTaskGroupType);
     }
 
     Universe universe = Universe.getOrBadRequest(restoreBackupParams.getUniverseUUID());
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
+    boolean isYbc = restoreBackupParams.category.equals(BackupCategory.YB_CONTROLLER);
 
     if (!isYbc) {
       if (cloudType != CloudType.kubernetes) {
@@ -2496,7 +2573,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           RestoreBackupParams restoreDataParams =
               new RestoreBackupParams(
                   restoreBackupParams, backupStorageInfo, RestoreBackupParams.ActionType.RESTORE);
-          createRestoreBackupYbcTask(restoreDataParams, idx).setSubTaskGroupType(subTaskGroupType);
+          String backupLocation = restoreDataParams.backupStorageInfoList.get(0).storageLocation;
+          YbcBackupResponse successMarker =
+              restoreBackupParams.getSuccessMarkerMap().getOrDefault(backupLocation, null);
+          createRestoreBackupYbcTask(restoreDataParams, successMarker, idx)
+              .setSubTaskGroupType(subTaskGroupType);
         }
         idx++;
       }
@@ -2640,11 +2721,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  public SubTaskGroup createRestoreBackupYbcTask(RestoreBackupParams taskParams, int index) {
+  public SubTaskGroup createRestoreBackupYbcTask(
+      RestoreBackupParams taskParams, YbcBackupResponse successMarker, int index) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("RestoreBackupYbc");
     RestoreBackupYbc task = createTask(RestoreBackupYbc.class);
     RestoreBackupYbc.Params restoreParams = new RestoreBackupYbc.Params(taskParams);
     restoreParams.index = index;
+    restoreParams.setSuccessMarker(successMarker);
     task.initialize(restoreParams);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addSubTask(task);
@@ -3089,6 +3172,34 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Add it to the task list.
     subTaskGroup.addSubTask(modifyBlackList);
     // Add the task list to the task queue.
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected void createNodePrecheckTasks(
+      NodeDetails node, Set<ServerType> processTypes, SubTaskGroupType subGroupType) {
+
+    createCheckUnderReplicatedTabletsTask().setSubTaskGroupType(subGroupType);
+
+    // TODO: Add follower lag tablet level check.
+  }
+  /**
+   * Checks whether cluster contains any under replicated tablets before proceeding.
+   *
+   * @return the created task group.
+   */
+  protected SubTaskGroup createCheckUnderReplicatedTabletsTask() {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckUnderReplicatedTables");
+    Duration maxWaitTime =
+        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.underReplicatedTabletsTimeout);
+    CheckUnderReplicatedTablets.Params params = new CheckUnderReplicatedTablets.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.maxWaitTime = maxWaitTime;
+
+    CheckUnderReplicatedTablets checkUnderReplicatedTablets =
+        createTask(CheckUnderReplicatedTablets.class);
+    checkUnderReplicatedTablets.initialize(params);
+    subTaskGroup.addSubTask(checkUnderReplicatedTablets);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }

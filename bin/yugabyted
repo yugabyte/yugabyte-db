@@ -915,7 +915,7 @@ class ControlScript(object):
             masters_with_key[i] = master
 
         ret = True
-        if masters_with_key < len(master_ips):
+        if len(masters_with_key) < len(master_ips):
             ret = False
 
         for master in master_ips:
@@ -1319,6 +1319,7 @@ class ControlScript(object):
     # Checks whether the prerequisites are met or not
     def prereqs_check(self, ulimits=False):
         help_msg = ""
+        # Check pre-reqs as per machine OS
         if OS_NAME == "Linux":
             check = self.linux_prereqs_check()
             help_msg = "Please review the \'Quick start for Linux\' docs and rerun "\
@@ -1328,17 +1329,24 @@ class ControlScript(object):
             help_msg+="Please review the \'Quick start for macOS\' docs and rerun "\
                 "the start command: "+ Output.make_underline(QUICK_START_LINKS['mac'])+'\n'
 
+        # Get pre-req failures and warnings
         prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn = check
 
         msg = " System checks. Following pre-reqs are not met:\n"
+
+        # Display message for failures
         failed_msg = ""
         for prereq in prereqs_failed:
             failed_msg+=("- "+PREREQS_ERROR_MSGS[prereq]+"\n")
+
+        # Display message for warnings
         warning_msg = ""
-        warnings = []
+        warnings = dict()
         for prereq in prereqs_warn:
             warning_msg+=("- "+PREREQS_ERROR_MSGS[prereq]+"\n")
-            warnings.append(PREREQS_ERROR_MSGS[prereq])
+            warnings[str(prereq)] = str(PREREQS_ERROR_MSGS[prereq])
+
+        # Ulimits display message
         ulimit_msg = {
             'open_files' :"- "+PREREQS_ERROR_MSGS['open_files']+"\n",
             'max_user_processes' :"- "+PREREQS_ERROR_MSGS['max_user_processes']+"\n",
@@ -1346,6 +1354,7 @@ class ControlScript(object):
 
         final_msg = ""
         check_status = None
+        # Final display message in case of failures
         if prereqs_failed_flag:
             final_msg += (Output.ANIMATION_FAIL + " " + Output.make_red("FAILED") + ": " + msg)
             final_msg += (failed_msg+warning_msg)
@@ -1354,19 +1363,22 @@ class ControlScript(object):
                     final_msg+=ulimit_msg[ulimit]
             final_msg += ("\n"+help_msg+"\n")
             check_status = Output.ANIMATION_FAIL
+        # Final display message in case of warnings
         elif prereqs_warn_flag:
             final_msg = warnings
             if ulimits:
                 for ulimit in ulimits:
-                    final_msg.append(PREREQS_ERROR_MSGS[ulimit])
-            final_msg.append(help_msg)
+                    final_msg[str(ulimit)] = str(PREREQS_ERROR_MSGS[ulimit])
+            final_msg["help_msg"] = help_msg
             check_status = Output.ANIMATION_WARNING
+        # Final display message in case of Ulimits failures
         elif ulimits:
-            final_msg = []
+            final_msg = dict()
             for ulimit in ulimits:
-                final_msg.append(PREREQS_ERROR_MSGS[ulimit])
-            final_msg.append(help_msg)
+                final_msg[str(ulimit)] = str(PREREQS_ERROR_MSGS[ulimit])
+            final_msg["help_msg"] = help_msg
             check_status = Output.ANIMATION_WARNING
+        # All pre-reqs passsed
         else:
             final_msg = Output.ANIMATION_SUCCESS + " " + "System checks"
             check_status = Output.ANIMATION_SUCCESS
@@ -1544,6 +1556,7 @@ class ControlScript(object):
             if is_first_run:
                 # Output.init_animation("Running system checks...")
                 warnings = []
+                warnings_for_ui = []
                 warning_help_msg=""
                 ulimits_failed = self.script.set_rlimits(print_info=True)
                 if ulimits_failed:
@@ -1559,11 +1572,18 @@ class ControlScript(object):
                 if prereqs_check_result['status']==Output.ANIMATION_SUCCESS:
                     Output.print_out(prereqs_check_result['msg'])
                 elif prereqs_check_result['status']==Output.ANIMATION_WARNING:
-                    warnings.extend(prereqs_check_result['msg'][:-1])
-                    warning_help_msg = prereqs_check_result['msg'][-1]
+
+                    warnings.extend(list(prereqs_check_result['msg'].values())[:-1])
+                    warning_help_msg = prereqs_check_result['msg']["help_msg"]
+
+                    prereqs_check_result['msg'].pop("help_msg")
+                    warnings_for_ui = []
+                    for k in prereqs_check_result['msg'].keys():
+                        warnings_for_ui.extend([k])
                 elif prereqs_check_result['status']==Output.ANIMATION_FAIL:
                     Output.log(msg=prereqs_check_result['msg'],
                         level=logging.ERROR)
+
 
                 Output.init_animation("Starting the YugabyteDB Processes...")
 
@@ -1593,9 +1613,11 @@ class ControlScript(object):
                     Output.update_animation("Encryption in Transit and " +
                         "Password Authentication enabled")
                 else:
-                    warnings.append("Cluster started in an insecure mode without " +
-                        "authentication and encryption enabled. For non-production use only, " +
-                        "not to be used without firewalls blocking the internet traffic.")
+                    insecure_msg = "Cluster started in an insecure mode without " + \
+                        "authentication and encryption enabled. For non-production use only, " + \
+                        "not to be used without firewalls blocking the internet traffic."
+                    warnings.append(insecure_msg)
+                    warnings_for_ui.extend(["insecure"])
 
                 # Persist the config after successful start
                 self.configs.save_configs()
@@ -1620,7 +1642,8 @@ class ControlScript(object):
                             "-master_ui_port={}".format(self.configs.saved_data.
                                                         get("master_webserver_port")),
                             "-tserver_ui_port={}".format(self.configs.saved_data.
-                                                        get("tserver_webserver_port"))
+                                                        get("tserver_webserver_port")),
+                            "-warnings={}".format("\"" + "|".join(warnings_for_ui) + "\"")
                         ]
                     if self.configs.saved_data.get("secure"):
                         yugabyted_ui_cmd.extend(["-secure=true",
@@ -3834,7 +3857,7 @@ class ControlScript(object):
                     "node."+args.advertise_address+".key"]
 
         if args.certs_dir is not None:
-            args.certs_dir = os.path.expanduser(args.certs_path)
+            args.certs_dir = os.path.expanduser(args.certs_dir)
 
             if not os.path.exists(args.certs_dir):
                 # Case Scenario: When the directory provided by the user through

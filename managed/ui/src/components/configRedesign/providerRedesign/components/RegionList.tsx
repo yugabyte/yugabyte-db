@@ -65,7 +65,7 @@ export const RegionList = (props: RegionListProps) => {
     <>
       <div className={styles.bootstrapTableContainer}>
         <BootstrapTable tableContainerClass={styles.bootstrapTable} data={regions}>
-          <TableHeaderColumn dataField="code" isKey={true} dataSort={true}>
+          <TableHeaderColumn dataField="name" isKey={true} dataSort={true}>
             Region
           </TableHeaderColumn>
           <TableHeaderColumn dataField="zones" dataFormat={formatZones}>

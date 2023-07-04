@@ -98,7 +98,10 @@ Status DoDecodeValue(
   auto original_start = slice.data();
 
   const auto value_type = static_cast<ValueEntryType>(slice.consume_byte());
-  if (value_type == ValueEntryType::kNullLow) {
+  if (value_type == ValueEntryType::kNullLow ||
+      // Need to check tombstone case since we could have data from old releases that don't convert
+      // tombstone records to null during compaction.
+      value_type == ValueEntryType::kTombstone) {
     *is_null = true;
     return Status::OK();
   }
@@ -502,12 +505,14 @@ void PgTableRow::SetNull(size_t column_idx) {
 }
 
 Status PgTableRow::DecodeValue(size_t column_idx, Slice value) {
+  DCHECK_LT(column_idx, projection_->columns.size());
   return DoDecodeValue(
       value, projection_->columns[column_idx].data_type,
       &is_null_[column_idx], &values_[column_idx], &buffer_);
 }
 
 Status PgTableRow::DecodeKey(size_t column_idx, Slice* value) {
+  DCHECK_LT(column_idx, projection_->columns.size());
   return DoDecodeKey(
       value, projection_->columns[column_idx].data_type,
       &is_null_[column_idx], &values_[column_idx], &buffer_);
@@ -533,10 +538,11 @@ Status PgTableRow::SetValue(ColumnId column_id, const QLValuePB& value) {
   RETURN_NOT_OK(pggate::WriteColumn(value, &buffer_));
   const auto fixed_size = FixedSize(projection_->columns[idx].data_type);
   if (fixed_size != 0) {
-    values_[idx] = BigEndian::Load64VariableLength(buffer_.data() + old_size + 1, fixed_size);
+    values_[idx] = BigEndian::Load64VariableLength(
+        buffer_.data() + old_size + pggate::PgWireDataHeader::kSerializedSize, fixed_size);
     buffer_.Truncate(old_size);
   } else {
-    values_[idx] = old_size;
+    values_[idx] = old_size + pggate::PgWireDataHeader::kSerializedSize;
   }
   return Status::OK();
 }

@@ -287,6 +287,17 @@ typedef struct PgExecParameters {
   //   o ORDER BY clause is not processed by YugaByte. Similarly all rows must be fetched and sent
   //     to Postgres code layer.
   // For now we only support one rowmark.
+
+  // yb_can_pushdown_distinct is true only when the DISTINCT operation can be pushed down
+  // - Param can be false when the operation is SELECT DISTINCT and
+  //   the operation cannot be pushed down.
+  //   examples:
+  //   - yb_enable_distinct_pushdown is switched off
+  //   - aggregate queries (cannot push down DISTINCT)
+  // - The operation may not be pushed down even when the param is true.
+  //   examples:
+  //   - index is secondary
+  //   - non key columns referenced in the query
 #ifdef __cplusplus
   uint64_t limit_count = 0;
   uint64_t limit_offset = 0;
@@ -299,7 +310,7 @@ typedef struct PgExecParameters {
   char *partition_key = NULL;
   PgExecOutParam *out_param = NULL;
   bool is_index_backfill = false;
-  bool is_select_distinct = false;
+  bool yb_can_pushdown_distinct = false;
   int work_mem = 4096; // Default work_mem in guc.c
   int yb_fetch_row_limit = 1024; // Default yb_fetch_row_limit in guc.c
   int yb_fetch_size_limit = 0; // Default yb_fetch_size_limit in guc.c
@@ -315,7 +326,7 @@ typedef struct PgExecParameters {
   char *partition_key;
   PgExecOutParam *out_param;
   bool is_index_backfill;
-  bool is_select_distinct;
+  bool yb_can_pushdown_distinct;
   int work_mem;
   int yb_fetch_row_limit;
   int yb_fetch_size_limit;
@@ -360,7 +371,6 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_enable_read_request_caching;
   const bool*     ysql_enable_profile;
   const bool*     ysql_disable_global_impact_ddl_statements;
-  const bool*     ysql_disable_per_tuple_memory_context_in_update_relattrs;
   const bool*     ysql_minimal_catalog_caches_preload;
 } YBCPgGFlagsAccessor;
 

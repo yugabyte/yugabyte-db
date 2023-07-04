@@ -38,7 +38,7 @@
 
 #include <boost/bimap.hpp>
 
-#include "yb/cdc/cdc_util.h"
+#include "yb/cdc/cdc_types.h"
 #include "yb/common/entity_ids.h"
 #include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
@@ -467,6 +467,16 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
   bool is_being_created_by_ysql_ddl_txn() const {
     return has_ysql_ddl_txn_verifier_state() &&
       ysql_ddl_txn_verifier_state().contains_create_table_op();
+  }
+
+  std::vector<std::string> cols_marked_for_deletion() const {
+    std::vector<std::string> columns;
+    for (const auto& col : pb.schema().columns()) {
+      if (col.marked_for_deletion()) {
+        columns.push_back(col.name());
+      }
+    }
+    return columns;
   }
 
   Result<bool> is_being_modified_by_ddl_transaction(const TransactionId& txn) const;

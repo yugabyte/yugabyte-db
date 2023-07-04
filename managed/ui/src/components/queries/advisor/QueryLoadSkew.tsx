@@ -4,7 +4,7 @@ import { usePrevious } from 'react-use';
 import _ from 'lodash';
 
 import lightBulbIcon from '../images/lightbulb.svg';
-import { EXTERNAL_LINKS, CONST_VAR } from '../helpers/const';
+import { EXTERNAL_LINKS, CONST_VAR } from '../helpers/constants';
 import { QueryLoadRecommendation } from '../../../redesign/utils/dtos';
 import './styles.scss';
 

@@ -127,6 +127,9 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
     flags.put("ysql_sleep_before_retry_on_txn_conflict", "true");
     flags.put("ysql_max_write_restart_attempts", "5");
     flags.put("yb_enable_read_committed_isolation", "true");
+    // This test depends on fail-on-conflict concurrency control to perform its validation.
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17302
+    flags.put("enable_wait_queues", "false");
     return flags;
   }
 

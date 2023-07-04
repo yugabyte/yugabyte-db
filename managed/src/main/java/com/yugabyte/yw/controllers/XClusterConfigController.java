@@ -14,9 +14,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -78,7 +78,7 @@ public class XClusterConfigController extends AuthenticatedController {
 
   private final Commissioner commissioner;
   private final MetricQueryHelper metricQueryHelper;
-  private final BackupUtil backupUtil;
+  private final BackupHelper backupHelper;
   private final CustomerConfigService customerConfigService;
   private final YBClientService ybService;
   private final RuntimeConfGetter confGetter;
@@ -88,14 +88,14 @@ public class XClusterConfigController extends AuthenticatedController {
   public XClusterConfigController(
       Commissioner commissioner,
       MetricQueryHelper metricQueryHelper,
-      BackupUtil backupUtil,
+      BackupHelper backupHelper,
       CustomerConfigService customerConfigService,
       YBClientService ybService,
       RuntimeConfGetter confGetter,
       XClusterUniverseService xClusterUniverseService) {
     this.commissioner = commissioner;
     this.metricQueryHelper = metricQueryHelper;
-    this.backupUtil = backupUtil;
+    this.backupHelper = backupHelper;
     this.customerConfigService = customerConfigService;
     this.ybService = ybService;
     this.confGetter = confGetter;
@@ -1162,6 +1162,6 @@ public class XClusterConfigController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
     }
-    backupUtil.validateStorageConfig(customerConfig);
+    backupHelper.validateStorageConfig(customerConfig);
   }
 }

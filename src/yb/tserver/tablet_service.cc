@@ -278,12 +278,12 @@ using tablet::OperationCompletionCallback;
 namespace {
 
 Result<std::shared_ptr<consensus::RaftConsensus>> GetConsensus(const TabletPeerPtr& tablet_peer) {
-  auto result = tablet_peer->shared_raft_consensus();
+  auto result = tablet_peer->GetRaftConsensus();
   if (!result) {
-    Status s = STATUS(ServiceUnavailable, "Consensus unavailable. Tablet not running");
-    return s.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
+    return result.status().CloneAndAddErrorCode(
+        TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
   }
-  return result;
+  return *result;
 }
 
 template<class RespClass>
@@ -1755,12 +1755,11 @@ void TabletServiceAdminImpl::SplitTablet(
     }
   }
 
-  const auto consensus = leader_tablet_peer.peer->shared_consensus();
-  if (consensus == nullptr) {
+  const auto consensus_result = leader_tablet_peer.peer->GetConsensus();
+  if (!consensus_result) {
     SetupErrorAndRespond(
-        resp->mutable_error(),
-        STATUS_FORMAT(InvalidArgument, "Tablet $0 has no consensus", req->tablet_id()),
-        TabletServerErrorPB::TABLET_NOT_RUNNING, &context);
+        resp->mutable_error(), consensus_result.status(), TabletServerErrorPB::TABLET_NOT_RUNNING,
+        &context);
     return;
   }
 
@@ -2560,8 +2559,9 @@ void TabletServiceImpl::ListTabletsForTabletServer(const ListTabletsForTabletSer
     data_entry->set_table_name(status.table_name());
     data_entry->set_tablet_id(status.tablet_id());
 
-    std::shared_ptr<consensus::Consensus> consensus = peer->shared_consensus();
-    data_entry->set_is_leader(consensus && consensus->role() == PeerRole::LEADER);
+    auto consensus_result = peer->GetConsensus();
+    data_entry->set_is_leader(
+        consensus_result && consensus_result.get()->role() == PeerRole::LEADER);
     data_entry->set_state(status.state());
 
     auto tablet = peer->shared_tablet();

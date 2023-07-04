@@ -25,7 +25,7 @@
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_debug.h"
-#include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/iter_util.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
@@ -194,7 +194,13 @@ class DocOperationTest : public DocDBTestBase {
     ASSERT_OK(ql_write_op.Init(ql_writeresp_pb));
     auto doc_write_batch = MakeDocWriteBatch();
     HybridTime restart_read_ht;
-    ASSERT_OK(ql_write_op.Apply({&doc_write_batch, ReadOperationData(), &restart_read_ht}));
+    ASSERT_OK(ql_write_op.Apply({
+      .doc_write_batch = &doc_write_batch,
+      .read_operation_data = ReadOperationData(),
+      .restart_read_ht = &restart_read_ht,
+      .iterator = nullptr,
+      .restart_seek = true
+    }));
     ASSERT_OK(WriteToRocksDB(doc_write_batch, hybrid_time));
   }
 
@@ -378,7 +384,10 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   ASSERT_OK(redis_write_operation.Apply(docdb::DocOperationApplyData{
       .doc_write_batch = &doc_write_batch,
       .read_operation_data = {},
-      .restart_read_ht = nullptr}));
+      .restart_read_ht = nullptr,
+      .iterator = nullptr,
+      .restart_seek = true
+  }));
 
   ASSERT_OK(WriteToRocksDB(doc_write_batch, HybridTime::FromMicros(1000)));
 
@@ -450,7 +459,7 @@ SubDocKey(DocKey(0x0000, [1], []), [HT<max>]) -> { 1: DEL 2: DEL 3: DEL }
 }
 
 TEST_F(DocOperationTest, WritePackedNulls) {
-  FLAGS_ycql_enable_packed_row = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_enable_packed_row) = true;
   TestWriteNulls();
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [1], []), [HT<max>]) -> { 1: DEL 2: DEL 3: DEL }
@@ -889,7 +898,7 @@ class DocOperationScanTest : public DocOperationTest {
     std::sort(ordered_rows.begin(), ordered_rows.end());
 
     for (const auto op : operators) {
-      LOG(INFO) << "Testing: " << QLOperator_Name(op);
+      LOG(INFO) << "Testing: " << QLOperator_Name(op) << ", is_forward_scan: " << is_forward_scan;
       for (const auto& row : rows_) {
         QLConditionPB condition;
         condition.add_operands()->set_column_id(1_ColId);
@@ -1268,8 +1277,8 @@ TEST_F(DocOperationTest, MaxFileSizeWithWritesTrigger) {
 
   WaitCompactionsDone(rocksdb());
 
-  FLAGS_rocksdb_level0_slowdown_writes_trigger = 2;
-  FLAGS_rocksdb_level0_stop_writes_trigger = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_slowdown_writes_trigger) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_stop_writes_trigger) = 1;
   ASSERT_OK(ReinitDBOptions());
 
   std::vector<rocksdb::LiveFileMetaData> files;

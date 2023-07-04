@@ -63,7 +63,7 @@ class TransactionCoordinatorContext {
 
   // Returns current hybrid time lease expiration.
   // Valid only if we are leader.
-  virtual HybridTime HtLeaseExpiration() const = 0;
+  virtual Result<HybridTime> HtLeaseExpiration() const = 0;
 
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
   virtual std::unique_ptr<UpdateTxnOperation> CreateUpdateTransaction(

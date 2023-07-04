@@ -13,6 +13,32 @@ type: docs
 
 Included here are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.4 - June 30, 2023
+
+### Key enhancements
+
+* The `import data file` command now supports importing multiple files to the same table. Moreover, glob expressions can be provided in the `--file-table-map` argument to specify multiple files to be imported into the same table.
+
+* In addition to AWS S3, `import data file` now supports directly importing objects (CSV/TEXT files) stored in GCS and Azure Blob Storage. You can specify GCS and Azure Blob Storage "directories" by prefixing them with `gs://` and `https://`.
+
+* When using the [accelerated data export](../migrate-steps/#accelerate-data-export-for-mysql-and-oracle), Voyager can now connect to the source databases using SSL.
+
+* The `analyze-schema` command now reports unsupported data types.
+
+* The `--file-opts` CLI argument is now deprecated. Use the new [--escape-char](../../migrate/reference/yb-voyager-cli/#escape-char) and [--quote-char](../../migrate/reference/yb-voyager-cli/#quote-char) options.
+
+### Bug fixes
+
+* Fixed the issue where, if a CSV file had empty lines, `import data status` would continue reporting the import status as MIGRATING even though the import was completed and successful.
+
+* yb-voyager now explicitly closes the source/target database connections when exiting.
+
+* The `import data file` command now uses tab (\t) instead of comma (,) as the default delimiter when importing TEXT formatted files.
+
+### Known issues
+
+* Compared to earlier releases, Voyager v1.4 uses a different and incompatible structure to represent the import data state. As a result, Voyager v1.4 can't "continue" a data import operation that was started using Voyager v1.3 or earlier.
+
 ## v1.3 - May 30, 2023
 
 ### Key enhancements
@@ -41,7 +67,7 @@ Included here are the release notes for the YugabyteDB Voyager v1 release series
 
 ### Known issues
 
-* [16658](https://github.com/yugabyte/yugabyte-db/issues/16658) The `import data file` command may not recognise the data directory being provided, causing the  step to fail for dockerized yb-voyager.
+* [16658](https://github.com/yugabyte/yugabyte-db/issues/16658) The `import data file` command may not recognise the data directory being provided, causing the  step to fail for Dockerized yb-voyager.
 
 ## v1.1 - March 7, 2023
 
