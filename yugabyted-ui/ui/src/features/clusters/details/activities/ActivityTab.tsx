@@ -2,9 +2,9 @@ import React, { FC, useMemo } from "react";
 import { Box, Grid, makeStyles, Typography } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import { YBTable, YBLoadingBox, YBModal } from "@app/components";
-import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
+import { YBBadge } from "@app/components/YBBadge/YBBadge";
 import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
-import { useGetClusterActivitiesQuery } from "@app/api/src";
+import { useActivities } from "./activities";
 
 const useStyles = makeStyles((theme) => ({
   arrowComponent: {
@@ -45,22 +45,8 @@ export const ActivityTab: FC = () => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const { data: upstreamActivities } = useGetClusterActivitiesQuery({
-    activities: "INDEX_BACKFILL",
-  });
-
+  const activityData = useActivities();
   const [drawerOpenIndex, setDrawerOpenIndex] = React.useState<number>();
-
-  const activityData = useMemo<any[]>(() => {
-    return (
-      upstreamActivities?.data.map((data) => ({
-        name: data.name,
-        status:
-          (data.data as any).Phase === "Completed" ? BadgeVariant.Success : BadgeVariant.InProgress,
-        ...data.data,
-      })) ?? []
-    );
-  }, [upstreamActivities]);
 
   const activityColumns = [
     {
@@ -106,7 +92,9 @@ export const ActivityTab: FC = () => {
       return undefined;
     }
 
-    return Object.entries(activityData[drawerOpenIndex]);
+    console.log(activityData[drawerOpenIndex]);
+
+    return Object.entries<any>(activityData[drawerOpenIndex]);
   }, [drawerOpenIndex, activityData]);
 
   return (
@@ -183,7 +171,7 @@ export const ActivityTab: FC = () => {
           </YBModal>
         </Box>
       ) : (
-        <YBLoadingBox>{t("clusterDetail.activity.noactivity")}</YBLoadingBox>
+        <YBLoadingBox>{t("clusterDetail.activity.noactivities")}</YBLoadingBox>
       )}
     </Box>
   );

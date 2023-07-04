@@ -30,6 +30,9 @@ const useStyles = makeStyles((theme) => ({
     gap: theme.spacing(0.5),
     alignItems: 'center',
     width: 'fit-content',
+    '& span:first-letter': {
+      textTransform: 'uppercase',
+    }
   }),
   icon: {
     height: "14px",

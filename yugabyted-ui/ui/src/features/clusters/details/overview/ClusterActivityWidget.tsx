@@ -3,10 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { Box, Divider, Grid, Link, makeStyles, Typography } from '@material-ui/core';
 import { ChevronRight } from '@material-ui/icons';
 import clsx from 'clsx';
-import { formatDistance } from 'date-fns';
-import { BadgeVariant, YBBadge } from '@app/components/YBBadge/YBBadge';
+import { YBBadge } from '@app/components/YBBadge/YBBadge';
 import { ClusterAlertWidget } from './ClusterAlertWidget';
 import { Link as RouterLink } from 'react-router-dom';
+import { useActivities } from '../activities/activities';
 
 const useStyles = makeStyles((theme) => ({
   divider: {
@@ -29,6 +29,9 @@ const useStyles = makeStyles((theme) => ({
   label: {
     color: theme.palette.grey[600],
     marginTop: theme.spacing(0.625),
+    '&:first-letter': {
+      textTransform: 'uppercase'
+    }
   },
   margin: {
     marginTop: theme.spacing(2.5),
@@ -65,20 +68,11 @@ const useStyles = makeStyles((theme) => ({
 interface ClusterActivityWidgetProps {
 }
 
-// const date = new Date();
-
-// Sample activity for now
-const activities: any[] = [
-  /* {
-    activity: "Add node",
-    at: date.setMinutes(date.getMinutes() - 3),
-    status: "In progress"
-  } */
-]
-
 export const ClusterActivityWidget: FC<ClusterActivityWidgetProps> = () => {
   const classes = useStyles();
   const { t } = useTranslation();
+
+  const activityData = useActivities();
 
   return (
     <Box>
@@ -88,21 +82,21 @@ export const ClusterActivityWidget: FC<ClusterActivityWidgetProps> = () => {
           <ChevronRight className={classes.arrow} />
         </Box>
         <Grid container className={classes.container}>
-          {activities.length === 0 ?
+          {activityData.length === 0 ?
             <Typography variant="body2" className={clsx(classes.label, classes.margin)}>
               {t('clusterDetail.overview.noActivities')}
             </Typography>
             :
             <Box className={classes.activityContainer}>
               <Typography variant="body2" className={classes.label}>
-                {formatDistance(activities[0].at, new Date(), { addSuffix: true })}
+                {activityData[0].Phase === "Completed" ? activityData[0].StartTime : activityData[0].Phase}
               </Typography>
               <Box className={classes.activityContent}>
                 <Typography variant="body2" className={classes.title} noWrap>
-                  {activities[0].activity}
+                  {activityData[0].name}
                 </Typography>
                 <Box className={classes.statusContainer}>
-                  <YBBadge variant={BadgeVariant.InProgress} text={activities[0].status} />
+                  <YBBadge variant={activityData[0].status} text={activityData[0].Phase} />
                 </Box>
               </Box>
             </Box>
