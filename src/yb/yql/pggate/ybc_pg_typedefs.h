@@ -342,6 +342,8 @@ typedef struct PgCallbacks {
   void (*WriteExecOutParam)(PgExecOutParam *, const YbcPgExecOutParamValue *);
   void (*SignalWaitStart)(uint32_t);
   void (*SignalWaitEnd)();
+  void (*ProcSetNodeUUID)(const char *);
+  void (*ProcSetTopRequestId)(const char*);
 } YBCPgCallbacks;
 
 typedef struct PgGFlagsAccessor {

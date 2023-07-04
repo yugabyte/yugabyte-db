@@ -211,6 +211,15 @@ struct PGPROC
 	 * pg_buffercache extension locks all buffer partitions simultaneously.
 	 */
 	bool 		ybAnyLockAcquired;
+
+	/*
+	 * Metadata for wait events.
+	 */
+	int64 queryid;
+	char	remote_host[32];
+	int		remote_port;
+	char	node_uuid[32];
+	char	top_level_request_id[32];
 };
 
 /* NOTE: "typedef struct PGPROC PGPROC" appears in storage/lock.h. */
