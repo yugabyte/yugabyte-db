@@ -262,7 +262,7 @@ You need to perform the following steps:
 
 - Tag the local images to your target registry. The following example uses Google Artifact Registry.
 
-  **Note**: The Location, Project Id, Repository, and Image used in the below example have to be replaced as applicable.
+  **Note**: Replace the Location, Project ID, Repository, and Image in the example as applicable.
 
   ```sh
   docker tag quay.io/yugabyte/yugaware:{{<yb-version version="preview" format="build">}} us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/yugabyte/yugaware:{{<yb-version version="preview" format="build">}}
