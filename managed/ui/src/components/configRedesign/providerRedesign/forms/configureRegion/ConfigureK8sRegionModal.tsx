@@ -99,7 +99,7 @@ export const ConfigureK8sRegionModal = ({
 }: ConfigureK8sRegionModalProps) => {
   const classes = useStyles();
   const regionMetadataQuery = useQuery(
-    regionMetadataQueryKey.detail(ProviderCode.KUBERNETES),
+    regionMetadataQueryKey.detail(ProviderCode.KUBERNETES, kubernetesProvider),
     () => api.fetchRegionMetadata(ProviderCode.KUBERNETES, kubernetesProvider),
     { refetchOnMount: false, refetchOnWindowFocus: false }
   );
