@@ -467,7 +467,7 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b5"
+libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b6"
 libraryDependencies += "org.yb" % "yb-client" % "0.8.59-SNAPSHOT"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b30"
 
