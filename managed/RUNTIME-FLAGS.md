@@ -82,6 +82,8 @@
 | "Regex for match Yugabyte DB release helm .tar.gz files" | "yb.regex.release_pattern.helm" | "GLOBAL" | "Regex pattern used to find Yugabyte DB helm .tar.gz files" | "String" |
 | "tmp directory path" | "yb.filepaths.tmpDirectory" | "GLOBAL" | "Path to the tmp directory to be used by YBA" | "String" |
 | "Delete Expired Backup MAX GC Size" | "yb.backup.delete_expired_backup_max_gc_size" | "GLOBAL" | "Number of expired backups to be deleted in a single GC iteration." | "Integer" |
+| "Prometheus external URL" | "yb.metrics.external.url" | "GLOBAL" | "URL used to generate Prometheus metrics on YBA UI and to set up HA metrics federation." | "String" |
+| "Prometheus link use browser FQDN" | "yb.metrics.link.use_browser_fqdn" | "GLOBAL" | "If Prometheus link in browser should point to current FQDN in browser or use value from backend." | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
