@@ -35,7 +35,9 @@ const getAlertExpressionLink = (alertDetails) => {
     return "";
   }
   const url = new URL(alertDetails.alertExpressionUrl);
-  url.hostname = window.location.hostname;
+  if (alertDetails.metricsLinkUseBrowserFqdn) {
+    url.hostname = window.location.hostname;
+  }
   return (
     <a
       target="_blank"

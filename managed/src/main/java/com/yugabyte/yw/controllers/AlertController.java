@@ -854,7 +854,8 @@ public class AlertController extends AuthenticatedController {
       Alert alert, AlertConfiguration alertConfiguration, AlertDefinition alertDefinition) {
     return new AlertData()
         .setAlert(alert)
-        .setAlertExpressionUrl(getAlertExpressionUrl(alert, alertConfiguration, alertDefinition));
+        .setAlertExpressionUrl(getAlertExpressionUrl(alert, alertConfiguration, alertDefinition))
+        .setMetricsLinkUseBrowserFqdn(metricUrlProvider.getMetricsLinkUseBrowserFqdn());
   }
 
   private String getAlertExpressionUrl(

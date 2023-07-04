@@ -799,4 +799,21 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " on login, etc.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<String> metricsExternalUrl =
+      new ConfKeyInfo<>(
+          "yb.metrics.external.url",
+          ScopeType.GLOBAL,
+          "Prometheus external URL",
+          "URL used to generate Prometheus metrics on YBA UI and to set up HA metrics federation.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> metricsLinkUseBrowserFqdn =
+      new ConfKeyInfo<>(
+          "yb.metrics.link.use_browser_fqdn",
+          ScopeType.GLOBAL,
+          "Prometheus link use browser FQDN",
+          "If Prometheus link in browser should point to current FQDN in browser"
+              + " or use value from backend.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

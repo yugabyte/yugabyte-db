@@ -144,6 +144,8 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
       MetricRechartsGraphData rechartsOutput = new MetricRechartsGraphData();
       List<MetricGraphData> output = new ArrayList<>();
       ArrayNode directURLs = responseJson.putArray("directURLs");
+      responseJson.put(
+          "metricsLinkUseBrowserFqdn", metricUrlProvider.getMetricsLinkUseBrowserFqdn());
       for (Map.Entry<String, String> e : queries.entrySet()) {
         String metric = e.getKey();
         String queryExpr = e.getValue();

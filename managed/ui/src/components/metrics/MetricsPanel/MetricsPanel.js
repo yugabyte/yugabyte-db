@@ -287,7 +287,10 @@ export default class MetricsPanel extends Component {
         Metric graph in Prometheus
       </Tooltip>
     );
-    const getMetricsUrl = (internalUrl) => {
+    const getMetricsUrl = (internalUrl, metricsLinkUseBrowserFqdn) => {
+      if (!metricsLinkUseBrowserFqdn) {
+        return internalUrl;
+      }
       const url = new URL(internalUrl);
       url.hostname = window.location.hostname;
       return url.href;
@@ -353,7 +356,8 @@ export default class MetricsPanel extends Component {
               target="_blank"
               rel="noopener noreferrer"
               className="prometheus-link"
-              href={getMetricsUrl(this.props.metric.directURLs[0])}
+              href={getMetricsUrl(this.props.metric.directURLs[0],
+               this.props.metric.metricsLinkUseBrowserFqdn)}
             >
               <img
                 className="prometheus-link-icon"
