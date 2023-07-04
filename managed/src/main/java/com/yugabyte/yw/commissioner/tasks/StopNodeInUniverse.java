@@ -157,7 +157,7 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       // Update the DNS entry for this universe.
       UniverseDefinitionTaskParams.UserIntent userIntent =
           universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid).userIntent;
-      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNode);
 
       // Mark universe task state to success
