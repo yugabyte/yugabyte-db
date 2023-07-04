@@ -1,5 +1,5 @@
-import React, { FC, useState } from 'react';
-import { Box, Grid, makeStyles, MenuItem, Typography } from '@material-ui/core';
+import React, { FC, useMemo } from 'react';
+import { Box, Divider, Grid, makeStyles, MenuItem, Typography } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { useHistory, useLocation } from 'react-router-dom';
 
@@ -9,10 +9,10 @@ import { YBSelect } from '@app/components';
 import { ClusterInfo } from './ClusterInfo';
 import { ClusterInfoWidget } from './ClusterInfoWidget';
 import { ClusterStatusWidget } from './ClusterStatusWidget';
-import { RelativeInterval } from '@app/helpers';
+import { ClusterType, countryToFlag, getRegionCode, RelativeInterval } from '@app/helpers';
 import { useChartConfig } from '@app/features/clusters/details/overview/ChartConfig';
 import { ChartController } from '@app/features/clusters/details/overview/ChartControler';
-import { useGetClusterHealthCheckQuery, useGetClusterQuery } from '@app/api/src';
+import { useGetClusterHealthCheckQuery, useGetClusterNodesQuery, useGetClusterQuery } from '@app/api/src';
 
 
 const useStyles = makeStyles((theme) => ({
@@ -29,6 +29,13 @@ const useStyles = makeStyles((theme) => ({
     display: 'flex',
     flexWrap: 'wrap',
     rowGap: theme.spacing(2)
+  },
+  dropdownTitle: {
+    margin: theme.spacing(0.5, 1.5),
+    fontWeight: 400,
+  },
+  divider: {
+    margin: theme.spacing(1, 0, 1.5, 0),
   }
 }));
 
@@ -43,7 +50,6 @@ export const OverviewTab: FC = () => {
   const history = useHistory();
   const location = useLocation();
   const chartConfig = useChartConfig();
-  const [selectedRegion] = useState<string>();
   const searchParams = new URLSearchParams(location.search);
 
   // validate interval search param to have the right value
@@ -58,6 +64,44 @@ export const OverviewTab: FC = () => {
     newLocation.search = searchParams.toString();
     history.push(newLocation); // this will trigger page re-rendering, thus no need in useState/useEffect
   };
+
+  const { data: nodesResponse } = useGetClusterNodesQuery();
+  const regionData = useMemo(() => {
+    const primarySet = new Set<string>();
+    const readReplicaSet = new Set<string>();
+    nodesResponse?.data.forEach(node => {
+      if (!node.is_read_replica) {
+        primarySet.add(node.cloud_info.region + "#" + node.cloud_info.zone)
+      } else {
+        readReplicaSet.add(node.cloud_info.region + "#" + node.cloud_info.zone)
+      }
+    });
+
+    const getRegionItems = (regionList: string[]) => 
+      regionList.map(regionZone => {
+        const [region, zone] = regionZone.split('#');
+        return {
+          region,
+          zone,
+          flag: countryToFlag(getRegionCode({ region, zone })),
+        }
+      });
+    
+    return {
+      primary: getRegionItems(Array.from(primarySet)),
+      readReplica: getRegionItems(Array.from(readReplicaSet)),
+    }
+  }, [nodesResponse]);
+
+  const [region, setRegion] = React.useState<string>('');
+  React.useEffect(() => {
+    setRegion(
+      (regionData.primary.length > 0 && regionData.primary[0].region + '#' + regionData.primary[0].zone + '#PRIMARY') || 
+      (regionData.readReplica.length > 0 && regionData.readReplica[0].region + '#' + regionData.readReplica[0].zone + '#READ_REPLICA') ||
+      ''
+    )
+  }, [regionData]);
+  const [selectedRegion, selectedZone, clusterType] = region ? region.split('#') : [undefined, undefined, undefined];
 
   const isMultiRegionEnabled = true;
 
@@ -74,10 +118,35 @@ export const OverviewTab: FC = () => {
           <ClusterStatusWidget cluster={cluster} health={health} />}
       </div>
       <div className={classes.metricsRow}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" width="100%">          
-          <Box>
+        <Box display="flex" gridGap={10} alignItems="center" width="100%">
+          <Box mr={1}>
             <Typography variant="h5">{t('clusterDetail.keyMetrics')}</Typography>
           </Box>
+          <YBSelect
+            className={classes.intervalPicker}
+            value={region}
+            onChange={(event) => setRegion(event.target.value)}
+          >
+            {regionData.primary.length > 0 &&
+              <Typography variant="body2" className={classes.dropdownTitle}>{t('clusterDetail.primaryCluster')}</Typography>
+            }
+            {regionData.primary.map(data => (
+              <MenuItem key={data.region + '#' + data.zone + '#PRIMARY'} value={data.region + '#' + data.zone + '#PRIMARY'}>
+                {data.flag && <Box mr={1}>{data.flag}</Box>} {data.region} ({data.zone})
+              </MenuItem>
+            ))}
+            {regionData.primary.length > 0 && regionData.readReplica.length > 0 &&
+              <Divider className={classes.divider} />
+            }
+            {regionData.readReplica.length > 0 &&
+                <Typography variant="body2" className={classes.dropdownTitle}>{t('clusterDetail.readReplicas')}</Typography>
+            }
+            {regionData.readReplica.map(data => (
+              <MenuItem key={data.region + '#' + data.zone + '#READ_REPLICA'} value={data.region + '#' + data.zone + '#READ_REPLICA'}>
+                {data.flag && <Box mr={1}>{data.flag}</Box>} {data.region} ({data.zone})
+              </MenuItem>
+            ))}
+          </YBSelect>
           <YBSelect
             className={classes.intervalPicker}
             value={interval}
@@ -116,6 +185,8 @@ export const OverviewTab: FC = () => {
                   chartDrawingType={config.chartDrawingType}
                   relativeInterval={interval}
                   regionName={selectedRegion}
+                  zone={selectedZone}
+                  clusterType={clusterType as (ClusterType | undefined)}
                 />
               </Grid>
             )
