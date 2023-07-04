@@ -1892,54 +1892,6 @@ ysql_sql_advanced_latency:
         "OtherStmts": "Others"
       ticksuffix: "&nbsp;\u00B5s"
 
-ysql_server_rpc_p95:
-  metric: "rpc_latency"
-  function: "quantile_over_time.95|max"
-  range: true
-  filters:
-    export_type: "ysql_export"
-    server_type: "yb_ysqlserver"
-    service_type: "SQLProcessor"
-    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt"
-    quantile: "p95"
-  group_by: "service_method"
-  panel_group: "YSQL Ops & Latency"
-  layout:
-    title: "YSQL Op Latency (P95)"
-    xaxis:
-      type: "date"
-    yaxis:
-      alias:
-        "InsertStmt": "Insert"
-        "SelectStmt": "Select"
-        "UpdateStmt": "Update"
-        "DeleteStmt": "Delete"
-      ticksuffix: "&nbsp;\u00B5s"
-
-ysql_server_rpc_p99:
-  metric: "rpc_latency"
-  function: "quantile_over_time.99|max"
-  range: true
-  filters:
-    export_type: "ysql_export"
-    server_type: "yb_ysqlserver"
-    service_type: "SQLProcessor"
-    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt"
-    quantile: "p99"
-  group_by: "service_method"
-  panel_group: "YSQL Ops & Latency"
-  layout:
-    title: "YSQL Op Latency (P99)"
-    xaxis:
-      type: "date"
-    yaxis:
-      alias:
-        "InsertStmt": "Insert"
-        "SelectStmt": "Select"
-        "UpdateStmt": "Update"
-        "DeleteStmt": "Delete"
-      ticksuffix: "&nbsp;\u00B5s"
-
 #Cassandra Metrics
 cql_server_rpc_per_second:
   metric: "rpc_irate_rps"
