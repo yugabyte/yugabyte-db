@@ -49,11 +49,13 @@ export const OIDCAuth = (props) => {
   const [showMetadataModel, setShowMetadataModal] = useState(false);
 
   const transformData = (values) => {
-    const escStr = values.oidcProviderMetadata.replace(/[\r\n]/gm, '');
+    const escStr = values.oidcProviderMetadata
+      ? values.oidcProviderMetadata.replace(/[\r\n]/gm, '')
+      : null;
     const str = JSON.stringify(JSON.parse(escStr));
     const transformedData = {
       ...values,
-      oidcProviderMetadata: '""' + str + '""',
+      oidcProviderMetadata: values.oidcProviderMetadata ? '"""' + str + '"""' : '',
       type: 'OIDC'
     };
 
@@ -72,8 +74,8 @@ export const OIDCAuth = (props) => {
     const formData = oidcConfigs.reduce((fData, config) => {
       const [, key] = config.key.split(`${OIDC_PATH}.`);
       if (key === 'oidcProviderMetadata') {
-        const escapedStr = config.value ? escapeStr(config.value).replace(/\\/g, '') : null;
-        fData[key] = escapedStr ? JSON.stringify(JSON.parse(escapedStr), null, 2) : null;
+        const escapedStr = config.value ? escapeStr(config.value).replace(/\\/g, '') : '';
+        fData[key] = escapedStr ? JSON.stringify(JSON.parse(escapedStr), null, 2) : '';
       } else {
         fData[key] = escapeStr(config.value);
       }
