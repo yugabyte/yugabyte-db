@@ -54,7 +54,9 @@ ybauhEntry *AUHEntryArray = NULL;
 LWLock *auh_entry_array_lock;
 
 circularBufferIndex *CircularBufferIndexArray = NULL;
-static int circular_buf_size = 1000;
+static int circular_buf_size = 0;
+static int circular_buf_size_kb = 16*1024;
+
 static int auh_sampling_interval = 1;
 
 /* Entry point of library loading */
@@ -96,7 +98,7 @@ yb_auh_sighup(SIGNAL_ARGS)
 void
 yb_auh_main(Datum main_arg) {
 
-  ereport(LOG, (errmsg("starting bgworker yb_auh")));
+  ereport(LOG, (errmsg("starting bgworker yb_auh with buffer size %d", circular_buf_size)));
 
   /* Register functions for SIGTERM/SIGHUP management */
   pqsignal(SIGHUP, yb_auh_sighup);
@@ -104,6 +106,8 @@ yb_auh_main(Datum main_arg) {
 
   /* We're now ready to receive signals */
   BackgroundWorkerUnblockSignals();
+
+  pgstat_report_appname("yb_auh collector");
 
   while (!got_sigterm) {
     int rc;
@@ -153,8 +157,7 @@ yb_auh_main(Datum main_arg) {
     }
     LWLockRelease(auh_entry_array_lock);
     LWLockRelease(ProcArrayLock);
-
-
+    
     MemoryContextSwitchTo(oldcxt);
     /* No problems, so clean exit */
   }
@@ -168,10 +171,9 @@ _PG_init(void)
 
   if (!process_shared_preload_libraries_in_progress)
     return;
-  // TODO: add these in pgwrapper.c
-  DefineCustomIntVariable("yb_auh.circular_buf_size", "Size of circular buffer",
-                          "Default value is 1000",
-                          &circular_buf_size, 1000, 0, INT_MAX, PGC_POSTMASTER,
+  DefineCustomIntVariable("yb_auh.circular_buf_size_kb", "Size of circular buffer in KBs",
+                          "Default value is 16 MB",
+                          &circular_buf_size_kb, 16*1024, 0, INT_MAX, PGC_POSTMASTER,
                           GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE
                               | GUC_DISALLOW_IN_FILE,
                           NULL, NULL, NULL);
@@ -181,7 +183,6 @@ _PG_init(void)
                           GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE
                               | GUC_DISALLOW_IN_FILE,
                           NULL, NULL, NULL);
-  ereport(LOG, (errmsg("yb_auh collector started 2")));
 
   RequestAddinShmemSpace(yb_auh_memsize());
   RequestNamedLWLockTranche("auh_entry_array", 1);
@@ -207,7 +208,7 @@ static Size
 yb_auh_memsize(void)
 {
   Size		size;
-
+  circular_buf_size = (circular_buf_size_kb * 1024) / sizeof(struct ybauhEntry);
   size = MAXALIGN(sizeof(struct ybauhEntry) * circular_buf_size);
 
   return size;
