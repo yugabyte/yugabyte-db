@@ -94,6 +94,8 @@
 | "DB Available Mem Limit" | "yb.dbmem.checks.mem_available_limit_kb" | "UNIVERSE" | "Minimum available memory required on DB nodes for software upgrade." | "Long" |
 | "PG Based Backup" | "yb.backup.pg_based" | "UNIVERSE" | "Enable PG-based backup" | "Boolean" |
 | "DB Read Write Test" | "yb.metrics.db_read_write_test" | "UNIVERSE" | "The flag defines, if we perform DB write-read check on DB nodes or not." | "Boolean" |
+| "YSQLSH Connectivity Test" | "yb.metrics.ysqlsh_connectivity_test" | "UNIVERSE" | "The flag defines, if we perform YSQLSH Connectivity check on DB nodes or not." | "Boolean" |
+| "CQLSH Connectivity Test" | "yb.metrics.cqlsh_connectivity_test" | "UNIVERSE" | "The flag defines, if we perform CQLSH Connectivity check on DB nodes or not." | "Boolean" |
 | "Metrics Collection Level" | "yb.metrics.collection_level" | "UNIVERSE" | "DB node metrics collection level.ALL - collect all metrics, NORMAL - default value, which only limits some per-table metrics, MINIMAL - limits both node level and further limits table level metrics we collect and OFF to completely disable metric collection." | "String" |
 | "Universe Version Check Mode" | "yb.universe_version_check_mode" | "UNIVERSE" | "Possible values: NEVER, HA_ONLY, ALWAYS" | "VersionCheckMode" |
 | "Override Force Universe Lock" | "yb.task.override_force_universe_lock" | "UNIVERSE" | "Whether overriding universe lock is allowed when force option is selected.If it is disabled, force option will wait for the lock to be released." | "Boolean" |
