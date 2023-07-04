@@ -60,11 +60,13 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
           && userIntent.providerType.equals(CloudType.kubernetes)) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot change YSQL ports on k8s universe.");
-      } else if ((enableYSQLAuth != userIntent.enableYSQLAuth || enableYSQLAuth)
+      } else if ((enableYSQLAuth != userIntent.enableYSQLAuth)
           && StringUtils.isEmpty(ysqlPassword)) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Required password to configure YSQL auth.");
-      } else if (!enableYSQLAuth && !StringUtils.isEmpty(ysqlPassword)) {
+      } else if (enableYSQL
+          && (enableYSQLAuth == userIntent.enableYSQLAuth && !enableYSQLAuth)
+          && !StringUtils.isEmpty(ysqlPassword)) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot set password while YSQL auth is disabled.");
       }
@@ -79,11 +81,13 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
           || communicationPorts.yqlServerRpcPort != universePorts.yqlServerRpcPort)) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot change YCQL ports on k8s universe.");
-      } else if ((enableYCQLAuth != userIntent.enableYSQLAuth || enableYCQLAuth)
+      } else if ((enableYCQLAuth != userIntent.enableYCQLAuth)
           && StringUtils.isEmpty(ycqlPassword)) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Required password to configure YCQL auth.");
-      } else if (!enableYCQLAuth && !StringUtils.isEmpty(ycqlPassword)) {
+      } else if (enableYCQL
+          && (enableYCQLAuth == userIntent.enableYCQLAuth && !enableYCQLAuth)
+          && !StringUtils.isEmpty(ycqlPassword)) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot set password while YCQL auth is disabled.");
       }
