@@ -6,8 +6,7 @@ import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import type { TFunction } from "i18next";
 import clsx from "clsx";
 import { useLocalStorage } from "react-use";
-import { AlertConfiguration, alertConfigurationsKey, alertList, useCPUAlert } from "./alerts";
-import { useGetClusterAlertsQuery } from "@app/api/src";
+import { AlertConfiguration, AlertNotification, alertConfigurationsKey, useAlerts } from "./alerts";
 
 const useStyles = makeStyles((theme) => ({
   sectionWrapper: {
@@ -79,13 +78,6 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-type Notification = {
-  key: string;
-  title?: string;
-  info: string;
-  status: BadgeVariant;
-};
-
 const SevIndicator: React.FC<{ status: BadgeVariant; smIndicator?: boolean }> = ({
   status,
   smIndicator,
@@ -113,7 +105,8 @@ const SevIndicator: React.FC<{ status: BadgeVariant; smIndicator?: boolean }> = 
 };
 
 const NotificationComponent =
-  (classes: ReturnType<typeof useStyles>, notifications: Notification[]) => (dataIndex: number) => {
+  (classes: ReturnType<typeof useStyles>, notifications: AlertNotification[]) =>
+  (dataIndex: number) => {
     const notification = notifications[dataIndex];
 
     return (
@@ -150,70 +143,27 @@ export const AlertNotificationDetails: FC = () => {
   const [severeFilter, setSevereFilter] = React.useState<boolean>(false);
   const [warningFilter, setWarningFilter] = React.useState<boolean>(false);
 
-  const cpuAlerts = useCPUAlert();
-
   const [config] = useLocalStorage<AlertConfiguration[]>(alertConfigurationsKey);
 
-  const { data: alertData } = useGetClusterAlertsQuery();
-  const upstreamNotificationData = useMemo(() => alertData?.data || [], [alertData]);
+  const alertNotifications = useAlerts();
 
-  const notificationData = useMemo<Notification[]>(() => {
-    const cpuNotifications = [];
-    if (cpuAlerts.cpu_90) {
-      const alert = alertList.find((alert) => alert.key === Object.keys(cpuAlerts)[0])!;
-      cpuNotifications.push({
-        key: alert.key,
-        title: "CPU Utilization",
-        info: alert.name,
-        status: BadgeVariant.Error,
-      });
-    } else if (cpuAlerts.cpu_75) {
-      const alert = alertList.find((alert) => alert.key === Object.keys(cpuAlerts)[1])!;
-      cpuNotifications.push({
-        key: alert.key,
-        title: "CPU Utilization",
-        info: alert.name,
-        status: BadgeVariant.Warning,
-      });
-    }
-
-    const apiNotifications = upstreamNotificationData.map((notificationData) => ({
-      key: notificationData.name,
-      title:
-        alertList.find((alert) => alert.key === notificationData.name)?.name ||
-        BadgeVariant.Warning,
-      info: notificationData.info,
-      status: BadgeVariant.Warning,
-    }));
-
-    return [...cpuNotifications, ...apiNotifications];
-  }, [upstreamNotificationData, cpuAlerts]);
-
-  const filteredNotificationData = useMemo(() => {
-    let filteredNotifications: typeof notificationData;
-
-    /* Sev filter */
-    filteredNotifications = notificationData.filter(
-      (notification) =>
-        (severeFilter && notification.status === BadgeVariant.Error) ||
-        (warningFilter && notification.status === BadgeVariant.Warning) ||
-        (!severeFilter && !warningFilter)
-    );
-
-    /* Conf filter */
-    filteredNotifications = filteredNotifications.filter(
-      (notification) => config?.find((config) => config.key === notification.key)?.enabled ?? true
-    );
-
-    return filteredNotifications;
-  }, [notificationData, severeFilter, warningFilter, config]);
+  const filteredAlertNotifications = useMemo(
+    () =>
+      alertNotifications.filter(
+        (notification) =>
+          (severeFilter && notification.status === BadgeVariant.Error) ||
+          (warningFilter && notification.status === BadgeVariant.Warning) ||
+          (!severeFilter && !warningFilter)
+      ),
+    [alertNotifications, severeFilter, warningFilter, config]
+  );
 
   const notificationColumns = [
     {
       name: "title",
       label: t("clusterDetail.alerts.notification.name"),
       options: {
-        customBodyRenderLite: NotificationComponent(classes, filteredNotificationData),
+        customBodyRenderLite: NotificationComponent(classes, filteredAlertNotifications),
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
@@ -270,13 +220,13 @@ export const AlertNotificationDetails: FC = () => {
       <Box className={classes.notificationsSection}>
         <Box className={classes.sectionHeading}>
           {t("clusterDetail.alerts.notification.xnotifications", {
-            count: filteredNotificationData.length,
+            count: filteredAlertNotifications.length,
           })}
         </Box>
-        {filteredNotificationData.length ? (
+        {filteredAlertNotifications.length ? (
           <Box pb={4} pt={1}>
             <YBTable
-              data={filteredNotificationData}
+              data={filteredAlertNotifications}
               columns={notificationColumns}
               touchBorder={false}
             />

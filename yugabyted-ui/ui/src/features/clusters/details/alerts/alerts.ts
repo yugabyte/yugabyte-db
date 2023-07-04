@@ -1,8 +1,9 @@
-import { AXIOS_INSTANCE } from "@app/api/src";
+import { AXIOS_INSTANCE, useGetClusterAlertsQuery } from "@app/api/src";
 import { BadgeVariant } from "@app/components/YBBadge/YBBadge";
 import { getUnixTime } from "date-fns";
 import { subMinutes } from "date-fns";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useLocalStorage } from "react-use";
 
 export const alertConfigurationsKey = "alert-configurations";
 
@@ -110,4 +111,76 @@ export const useCPUAlert = () => {
   }, []);
 
   return cpuAlerts;
+};
+
+export type AlertNotification = {
+  key: string;
+  title: string;
+  info: string;
+  status: BadgeVariant;
+};
+
+export const useAlerts = () => {
+  const { data: upstreamAlerts } = useGetClusterAlertsQuery();
+
+  /* const upstreamAlerts = {
+    data: [
+      {
+        name: "ntp/chrony",
+        info: "ntp/chrony package is missing for clock synchronization. For centos 7, we recommend installing either ntp or chrony package and for centos 8, we recommend installing chrony package.",
+      },
+      {
+        name: "insecure",
+        info: "Cluster started in an insecure mode without authentication and encryption enabled. For non-production use only, not to be used without firewalls blocking the internet traffic.",
+      },
+    ],
+  }; */
+
+  const cpuAlerts = useCPUAlert();
+
+  const upstreamNotificationData = useMemo(() => upstreamAlerts?.data || [], [upstreamAlerts]);
+
+  const alertData = useMemo<AlertNotification[]>(() => {
+    const cpuNotifications = [];
+    if (cpuAlerts.cpu_90) {
+      const alert = alertList.find((alert) => alert.key === Object.keys(cpuAlerts)[0])!;
+      cpuNotifications.push({
+        key: alert.key,
+        title: "Very high CPU utilization",
+        info: alert.name,
+        status: BadgeVariant.Error,
+      });
+    } else if (cpuAlerts.cpu_75) {
+      const alert = alertList.find((alert) => alert.key === Object.keys(cpuAlerts)[1])!;
+      cpuNotifications.push({
+        key: alert.key,
+        title: "High CPU utilization",
+        info: alert.name,
+        status: BadgeVariant.Warning,
+      });
+    }
+
+    const apiNotifications = upstreamNotificationData.map((notificationData) => ({
+      key: notificationData.name,
+      title:
+        alertList.find((alert) => alert.key === notificationData.name)?.name ||
+        BadgeVariant.Warning,
+      info: notificationData.info,
+      status: BadgeVariant.Warning,
+    }));
+
+    return [...cpuNotifications, ...apiNotifications];
+  }, [upstreamNotificationData, cpuAlerts]);
+
+  const [config] = useLocalStorage<AlertConfiguration[]>(alertConfigurationsKey);
+
+  const configuredAlertData = useMemo<AlertNotification[]>(
+    () =>
+      alertData.filter(
+        (notification) => config?.find((config) => config.key === notification.key)?.enabled ?? true
+      ),
+    [alertData, config]
+  );
+
+  return configuredAlertData;
 };
