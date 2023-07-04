@@ -1791,6 +1791,9 @@ void TSTabletManager::CompleteShutdown() {
   if (admin_triggered_compaction_pool_) {
     admin_triggered_compaction_pool_->Shutdown();
   }
+  if (superblock_flush_bg_task_) {
+    superblock_flush_bg_task_->Shutdown();
+  }
   if (full_compaction_pool_) {
     full_compaction_pool_->Shutdown();
   }
