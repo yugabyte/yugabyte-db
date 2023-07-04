@@ -80,6 +80,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     userIntent.accessKeyCode = "demo-access";
     userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.regionList = ImmutableList.of(region.getUuid());
+    userIntent.provider = defaultProvider.getUuid().toString();
     defaultUniverse = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
