@@ -686,7 +686,6 @@ CDCServiceImpl::CDCServiceImpl(
   CHECK_OK(Thread::Create(
       "cdc_service", "update_peers_and_metrics", &CDCServiceImpl::UpdatePeersAndMetrics, this,
       &update_peers_and_metrics_thread_));
-  
   rate_limiter_->EnableLoggingWithDescription("CDC Service");
 
   LOG_IF(WARNING, get_changes_rpc_sem_.GetValue() == 1) << "only 1 thread available for GetChanges";
@@ -768,10 +767,8 @@ Status DoUpdateCDCConsumerOpId(
 }
 
 bool UpdateCheckpointRequired(
-    const StreamMetadata& record, const CDCSDKCheckpointPB& cdc_sdk_op_id, bool* force_update,
-    bool* is_snapshot) {
+    const StreamMetadata& record, const CDCSDKCheckpointPB& cdc_sdk_op_id, bool* is_snapshot) {
   *is_snapshot = false;
-  *force_update = false;
   switch (record.GetSourceType()) {
     case XCLUSTER:
       return true;
@@ -782,11 +779,6 @@ bool UpdateCheckpointRequired(
       }
       if (CDCServiceImpl::IsCDCSDKSnapshotRequest(cdc_sdk_op_id)) {
         *is_snapshot = true;
-        if (CDCServiceImpl::IsCDCSDKSnapshotBootstrapRequest(cdc_sdk_op_id)) {
-          // CDC should do a force update of checkpoint in cdc_state table as a part snapshot
-          // bootstrap.
-          *force_update = true;
-        }
         // CDC should update the stream active time in cdc_state table, during snapshot operation to
         // avoid stream expiry.
         return true;
@@ -1801,10 +1793,11 @@ void CDCServiceImpl::GetChanges(
                        .commit_time()
                  : 0);
 
+  bool snapshot_bootstrap = IsCDCSDKSnapshotBootstrapRequest(cdc_sdk_from_op_id);
   if (record.GetCheckpointType() == IMPLICIT ||
-      (record.GetCheckpointType() == EXPLICIT && got_explicit_checkpoint_from_request)) {
+      (record.GetCheckpointType() == EXPLICIT &&
+       (got_explicit_checkpoint_from_request || snapshot_bootstrap))) {
     bool is_snapshot = false;
-    bool snapshot_bootstrap = false;
     bool is_colocated = tablet_peer->tablet_metadata()->colocated();
     OpId snapshot_op_id = OpId::Invalid();
     std::string snapshot_key = "";
@@ -1820,7 +1813,7 @@ void CDCServiceImpl::GetChanges(
       }
     }
 
-    if (UpdateCheckpointRequired(record, cdc_sdk_from_op_id, &snapshot_bootstrap, &is_snapshot)) {
+    if (UpdateCheckpointRequired(record, cdc_sdk_from_op_id, &is_snapshot)) {
       // This is the snapshot bootstrap operation, so taking the checkpoint from the resp.
       if (is_snapshot) {
         snapshot_op_id =
