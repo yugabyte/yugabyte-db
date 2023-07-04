@@ -216,10 +216,10 @@ struct PGPROC
 	 * Metadata for wait events.
 	 */
 	int64 queryid;
-	char	remote_host[32];
+	char	remote_host[100];
 	int		remote_port;
-	char	node_uuid[32];
-	char	top_level_request_id[32];
+	char	node_uuid[100];
+	char	top_level_request_id[100];
 };
 
 /* NOTE: "typedef struct PGPROC PGPROC" appears in storage/lock.h. */
