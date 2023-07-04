@@ -252,7 +252,7 @@ You need to perform the following steps:
 
 - Login to your target container registry, as per the following example that uses Google Artifact Registry:
 
-   **Note**: The "Service Account" and "Location" used in the below example have to be replaced as applicable.
+   **Note**: Replace the Service Account and Location in the example as applicable.
 
   ```sh
   gcloud auth activate-service-account yugabytedb-test@yugabytedb-test-384308.iam.gserviceaccount.com --key-file=key.json
