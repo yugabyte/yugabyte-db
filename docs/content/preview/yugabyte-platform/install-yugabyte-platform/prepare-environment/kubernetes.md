@@ -274,7 +274,7 @@ You need to perform the following steps:
 
 - Push images to the private container registry, as follows:
 
-  **Note**: The Location, Project Id, Repository, and Image used in the below example have to be replaced as applicable.
+  **Note**: Replace the Location, Project ID, Repository, and Image in the example as applicable.
 
   ```sh
   docker push us-central1-docker.pkg.dev/yugabytedb-test-384308/yugabytepoc/yugabyte/yugaware:{{<yb-version version="preview" format="build">}}
