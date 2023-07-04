@@ -1538,6 +1538,8 @@ class NodeInfo:
         self.ysql_server_http_port = data["ysqlServerHttpPort"]
         self.check_clock = data["checkClock"]
         self.test_read_write = data["testReadWrite"]
+        self.test_ysqlsh_connectivity = data["testYsqlshConnectivity"]
+        self.test_cqlsh_connectivity = data["testCqlshConnectivity"]
         self.universe_uuid = data["universeUuid"]
         self.is_ybc_enabled = data["enableYbc"]
         self.ybc_port = data["ybcPort"]
@@ -1620,12 +1622,13 @@ def main():
         coordinator.add_check(checker, "check_for_error_logs", TSERVER)
         # Only need to check redis-cli/cqlsh for tserver nodes
         # to be docker/k8s friendly.
-        if n.enable_ycql:
+        if n.enable_ycql and n.test_cqlsh_connectivity:
             coordinator.add_check(checker, "check_cqlsh")
         if n.enable_yedis:
             coordinator.add_check(checker, "check_redis_cli")
         if n.enable_ysql:
-            coordinator.add_check(checker, "check_ysqlsh_connect")
+            if n.test_ysqlsh_connectivity:
+                coordinator.add_check(checker, "check_ysqlsh_connect")
             if n.test_read_write:
                 coordinator.add_check(checker, "check_ysqlsh_read_write")
             coordinator.add_check(checker, "check_postgres_worker_count")

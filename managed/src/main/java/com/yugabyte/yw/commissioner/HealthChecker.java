@@ -121,8 +121,6 @@ public class HealthChecker {
   private static final String MAX_NUM_THREADS_NODE_CHECK_KEY =
       "yb.health.max_num_parallel_node_checks";
 
-  public static final String READ_WRITE_TEST_PARAM = "yb.metrics.db_read_write_test";
-
   private final Environment environment;
 
   private final Config config;
@@ -648,6 +646,10 @@ public class HealthChecker {
     }
     boolean testReadWrite =
         confGetter.getConfForScope(params.universe, UniverseConfKeys.dbReadWriteTest);
+    boolean testYsqlshConnectivity =
+        confGetter.getConfForScope(params.universe, UniverseConfKeys.ysqlshConnectivityTest);
+    boolean testCqlshConnectivity =
+        confGetter.getConfForScope(params.universe, UniverseConfKeys.cqlshConnectivityTest);
     for (UniverseDefinitionTaskParams.Cluster cluster : details.clusters) {
       UserIntent userIntent = cluster.userIntent;
       Provider provider = Provider.get(UUID.fromString(userIntent.provider));
@@ -696,6 +698,8 @@ public class HealthChecker {
                 .setYbHomeDir(provider.getYbHome())
                 .setNodeStartTime(potentialStartTime)
                 .setTestReadWrite(testReadWrite)
+                .setTestYsqlshConnectivity(testYsqlshConnectivity)
+                .setTestCqlshConnectivity(testCqlshConnectivity)
                 .setUniverseUuid(params.universe.getUniverseUUID())
                 .setNodeDetails(nodeDetails);
         if (nodeDetails.isMaster) {
@@ -1052,6 +1056,8 @@ public class HealthChecker {
     private boolean checkClock = false;
     private Long nodeStartTime = null;
     private boolean testReadWrite = true;
+    private boolean testYsqlshConnectivity = true;
+    private boolean testCqlshConnectivity = true;
     private boolean enableYbc = false;
     private int ybcPort = 18018;
     private UUID universeUuid;

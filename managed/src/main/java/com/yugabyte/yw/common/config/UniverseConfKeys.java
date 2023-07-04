@@ -175,6 +175,22 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "The flag defines, if we perform DB write-read check on DB nodes or not.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ysqlshConnectivityTest =
+      new ConfKeyInfo<>(
+          "yb.metrics.ysqlsh_connectivity_test",
+          ScopeType.UNIVERSE,
+          "YSQLSH Connectivity Test",
+          "The flag defines, if we perform YSQLSH Connectivity check on DB nodes or not.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> cqlshConnectivityTest =
+      new ConfKeyInfo<>(
+          "yb.metrics.cqlsh_connectivity_test",
+          ScopeType.UNIVERSE,
+          "CQLSH Connectivity Test",
+          "The flag defines, if we perform CQLSH Connectivity check on DB nodes or not.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> metricsCollectionLevel =
       new ConfKeyInfo<>(
           "yb.metrics.collection_level",
