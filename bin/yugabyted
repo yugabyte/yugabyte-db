@@ -1643,7 +1643,7 @@ class ControlScript(object):
                                                         get("master_webserver_port")),
                             "-tserver_ui_port={}".format(self.configs.saved_data.
                                                         get("tserver_webserver_port")),
-                            "-warnings={}".format("\"" + "|".join(warnings_for_ui) + "\"")
+                            "-warnings={}".format("|".join(warnings_for_ui))
                         ]
                     if self.configs.saved_data.get("secure"):
                         yugabyted_ui_cmd.extend(["-secure=true",
@@ -1834,8 +1834,8 @@ class ControlScript(object):
                 if prereqs_check_result['status']==Output.ANIMATION_SUCCESS:
                     Output.print_out(prereqs_check_result['msg'])
                 elif prereqs_check_result['status']==Output.ANIMATION_WARNING:
-                    warnings.extend(prereqs_check_result['msg'][:-1])
-                    warning_help_msg = prereqs_check_result['msg'][-1]
+                    warnings.extend(list(prereqs_check_result['msg'].values())[:-1])
+                    warning_help_msg = prereqs_check_result['msg']["help_msg"]
                 elif prereqs_check_result['status']==Output.ANIMATION_FAIL:
                     Output.log(msg=prereqs_check_result['msg'],
                         level=logging.ERROR)
