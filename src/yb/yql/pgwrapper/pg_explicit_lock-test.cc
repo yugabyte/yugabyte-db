@@ -29,11 +29,9 @@ class PgExplicitLockTest : public PgMiniTestBase {
   }
 
   void TestRowLockInJoin() {
-    PGConn join_conn = ASSERT_RESULT(Connect());
-    ASSERT_OK(join_conn.Execute("SET yb_transaction_priority_upper_bound=0.4"));
-    PGConn misc_conn = ASSERT_RESULT(Connect());
-    PGConn select_conn = ASSERT_RESULT(Connect());
-    ASSERT_OK(select_conn.Execute("SET yb_transaction_priority_lower_bound=0.5"));
+    auto join_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
+    auto misc_conn = ASSERT_RESULT(Connect());
+    auto select_conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
 
     // Set up tables
     ASSERT_OK(misc_conn.Execute(

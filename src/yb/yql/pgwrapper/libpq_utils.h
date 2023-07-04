@@ -242,6 +242,8 @@ bool HasTransactionError(const Status& status);
 bool IsRetryable(const Status& status);
 
 Result<PGConn> Execute(Result<PGConn> connection, const std::string& query);
+Result<PGConn> SetHighPriTxn(Result<PGConn> connection);
+Result<PGConn> SetLowPriTxn(Result<PGConn> connection);
 
 class PGConnPerf {
  public:

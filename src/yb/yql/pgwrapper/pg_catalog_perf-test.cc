@@ -32,6 +32,7 @@
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 METRIC_DECLARE_counter(pg_response_cache_queries);
@@ -74,6 +75,47 @@ class Configuration {
   std::optional<uint64_t> response_cache_size_bytes_;
 };
 
+struct MetricCounters {
+  struct ResponseCache {
+    size_t queries;
+    size_t hits;
+    size_t renew_soft;
+    size_t renew_hard;
+    size_t gc_calls;
+    size_t entries_removed_by_gc;
+  };
+
+  ResponseCache cache;
+  size_t master_read_rpc;
+};
+
+struct MetricCountersDescriber : public MetricWatcherDeltaDescriberTraits<MetricCounters, 7> {
+  explicit MetricCountersDescriber(
+      std::reference_wrapper<const MetricEntity::MetricMap> master_metric,
+      std::reference_wrapper<const MetricEntity::MetricMap> tserver_metric)
+      : descriptors{
+          Descriptor{
+              &delta.master_read_rpc, master_metric,
+              METRIC_handler_latency_yb_tserver_TabletServerService_Read},
+          Descriptor{
+              &delta.cache.queries, tserver_metric, METRIC_pg_response_cache_queries},
+          Descriptor{
+              &delta.cache.hits, tserver_metric, METRIC_pg_response_cache_hits},
+          Descriptor{
+              &delta.cache.renew_soft, tserver_metric, METRIC_pg_response_cache_renew_soft},
+          Descriptor{
+              &delta.cache.renew_hard, tserver_metric, METRIC_pg_response_cache_renew_hard},
+          Descriptor{
+              &delta.cache.gc_calls, tserver_metric, METRIC_pg_response_cache_gc_calls},
+          Descriptor{
+              &delta.cache.entries_removed_by_gc,
+              tserver_metric, METRIC_pg_response_cache_entries_removed_by_gc}}
+  {}
+
+  DeltaType delta;
+  Descriptors descriptors;
+};
+
 class PgCatalogPerfTestBase : public PgMiniTestBase {
  public:
   virtual ~PgCatalogPerfTestBase() = default;
@@ -89,8 +131,8 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_response_cache_size_bytes) =
         config.response_cache_size_bytes().value_or(0);
     PgMiniTestBase::SetUp();
-    metrics_.emplace(
-        *cluster_->mini_master()->master(), *cluster_->mini_tablet_server(0)->server());
+    metrics_.emplace(GetMetricMap(*cluster_->mini_master()->master()),
+                     GetMetricMap(*cluster_->mini_tablet_server(0)->server()));
   }
 
   size_t NumTabletServers() override {
@@ -108,9 +150,9 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
     // So run simplest possible query which doesn't produce RPC in a loop until number of
     // RPC will be greater than 0.
     for (;;) {
-      const auto result = VERIFY_RESULT(metrics_->read_rpc_.Delta([&conn] {
+      const auto result = VERIFY_RESULT(metrics_->Delta([&conn] {
         return conn.Execute("ROLLBACK");
-      }));
+      })).master_read_rpc;
       if (result) {
         return result;
       }
@@ -120,97 +162,22 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
   }
 
   using AfterCacheRefreshFunctor = std::function<Status(PGConn*)>;
+
   Result<uint64_t> RPCCountAfterCacheRefresh(const AfterCacheRefreshFunctor& functor) {
     auto conn = VERIFY_RESULT(Connect());
     RETURN_NOT_OK(conn.Execute("CREATE TABLE cache_refresh_trigger (k INT)"));
     // Force version increment. Next new connection will do cache refresh on start.
     RETURN_NOT_OK(conn.Execute("ALTER TABLE cache_refresh_trigger ADD COLUMN v INT"));
     auto aux_conn = VERIFY_RESULT(Connect());
-    return metrics_->read_rpc_.Delta([&functor, &aux_conn] {
+    return VERIFY_RESULT(metrics_->Delta([&functor, &aux_conn] {
       return functor(&aux_conn);
-    });
+    })).master_read_rpc;
   }
 
-  struct MetricCounters {
-    size_t read_rpc = 0;
-    size_t cache_queries = 0;
-    size_t cache_hits = 0;
-    size_t cache_renew_soft = 0;
-    size_t cache_renew_hard = 0;
-    size_t cache_gc_calls = 0;
-    size_t cache_entries_removed_by_gc = 0;
-  };
-
-  Result<MetricCounters> MetricDeltas(MetricWatcher::DeltaFunctor functor) {
-    MetricCounters counters;
-    MetricDeltasCapturer capturer(std::move(functor));
-    RETURN_NOT_OK(capturer
-        .Capture(metrics_->cache_queries_,
-                 [&counters](size_t delta) {counters.cache_queries = delta; })
-        .Capture(metrics_->cache_hits_,
-                 [&counters](size_t delta) {counters.cache_hits = delta; })
-        .Capture(metrics_->cache_renew_soft_,
-                 [&counters](size_t delta) {counters.cache_renew_soft = delta; })
-        .Capture(metrics_->cache_renew_hard_,
-                 [&counters](size_t delta) {counters.cache_renew_hard = delta; })
-        .Capture(metrics_->cache_gc_calls_,
-                 [&counters](size_t delta) {counters.cache_gc_calls = delta; })
-        .Capture(metrics_->cache_entries_removed_by_gc_,
-                 [&counters](size_t delta) {counters.cache_entries_removed_by_gc = delta; })
-        .Capture(metrics_->read_rpc_,
-                 [&counters](size_t delta) {counters.read_rpc = delta; })
-        .Run());
-    return counters;
-  }
+  std::optional<MetricWatcher<MetricCountersDescriber>> metrics_;
 
  private:
   virtual Configuration GetConfig() const = 0;
-
-  class MetricDeltasCapturer {
-   public:
-    using Capturer = std::function<void(size_t)>;
-
-    explicit MetricDeltasCapturer(MetricWatcher::DeltaFunctor&& functor)
-        : functor_(functor) {}
-
-    MetricDeltasCapturer& Capture(
-        std::reference_wrapper<const MetricWatcher> watcher,
-        Capturer&& capturer) {
-      functor_ = [&w = watcher.get(), c = std::move(capturer), f = std::move(functor_)] {
-        c(VERIFY_RESULT(w.Delta(f)));
-        return static_cast<Status>(Status::OK());
-      };
-      return *this;
-    }
-
-    Status Run() {
-      return functor_();
-    }
-
-   private:
-    MetricWatcher::DeltaFunctor functor_;
-  };
-
-  struct Metrics {
-    Metrics(const master::Master& master, const tserver::TabletServer& tserver)
-        : read_rpc_(master, METRIC_handler_latency_yb_tserver_TabletServerService_Read),
-          cache_queries_(tserver, METRIC_pg_response_cache_queries),
-          cache_hits_(tserver, METRIC_pg_response_cache_hits),
-          cache_renew_soft_(tserver, METRIC_pg_response_cache_renew_soft),
-          cache_renew_hard_(tserver, METRIC_pg_response_cache_renew_hard),
-          cache_gc_calls_(tserver, METRIC_pg_response_cache_gc_calls),
-          cache_entries_removed_by_gc_(tserver, METRIC_pg_response_cache_entries_removed_by_gc) {}
-
-    MetricWatcher read_rpc_;
-    MetricWatcher cache_queries_;
-    MetricWatcher cache_hits_;
-    MetricWatcher cache_renew_soft_;
-    MetricWatcher cache_renew_hard_;
-    MetricWatcher cache_gc_calls_;
-    MetricWatcher cache_entries_removed_by_gc_;
-  };
-
-  std::optional<Metrics> metrics_;
 };
 
 class PgCatalogPerfBasicTest : public PgCatalogPerfTestBase {
@@ -294,9 +261,10 @@ TEST_F(PgCatalogPerfTest, StartupRPCCount) {
     return static_cast<Status>(Status::OK());
   };
 
-  const auto first_connect_rpc_count = ASSERT_RESULT(MetricDeltas(connector)).read_rpc;
+  const auto first_connect_rpc_count = ASSERT_RESULT(metrics_->Delta(connector)).master_read_rpc;
   ASSERT_EQ(first_connect_rpc_count, 5);
-  const auto subsequent_connect_rpc_count = ASSERT_RESULT(MetricDeltas(connector)).read_rpc;
+  const auto subsequent_connect_rpc_count = ASSERT_RESULT(
+      metrics_->Delta(connector)).master_read_rpc;
   ASSERT_EQ(subsequent_connect_rpc_count, 2);
 }
 
@@ -366,7 +334,7 @@ TEST_F_EX(PgCatalogPerfTest, ResponseCacheEfficiency, PgCatalogWithUnlimitedCach
     ASSERT_RESULT(conns.back().Fetch(select_all));
   }
   ASSERT_RESULT(aux_conn.Fetch(select_all));
-  const auto metrics = ASSERT_RESULT(MetricDeltas(
+  const auto metrics = ASSERT_RESULT(metrics_->Delta(
       [&conn, &conns] {
         for (size_t i = 0; i < kAlterTableCount; ++i) {
           RETURN_NOT_OK(conn.ExecuteFormat("ALTER TABLE t ADD COLUMN v_$0 INT", i));
@@ -388,21 +356,21 @@ TEST_F_EX(PgCatalogPerfTest, ResponseCacheEfficiency, PgCatalogWithUnlimitedCach
   constexpr size_t kUniqueQueriesPerRefresh = 3;
   constexpr auto kUniqueQueries = kAlterTableCount * kUniqueQueriesPerRefresh;
   constexpr auto kTotalQueries = kConnectionCount * kUniqueQueries;
-  ASSERT_EQ(metrics.cache_queries, kTotalQueries);
-  ASSERT_EQ(metrics.cache_hits, kTotalQueries - kUniqueQueries);
-  ASSERT_LE(metrics.read_rpc, 720);
+  ASSERT_EQ(metrics.cache.queries, kTotalQueries);
+  ASSERT_EQ(metrics.cache.hits, kTotalQueries - kUniqueQueries);
+  ASSERT_LE(metrics.master_read_rpc, 720);
 }
 
 TEST_F_EX(PgCatalogPerfTest,
           ResponseCacheEfficiencyInConnectionStart,
           PgCatalogWithUnlimitedCachePerfTest) {
   auto conn = ASSERT_RESULT(Connect());
-  auto metrics = ASSERT_RESULT(MetricDeltas([this] {
+  auto metrics = ASSERT_RESULT(metrics_->Delta([this] {
     RETURN_NOT_OK(Connect());
     return static_cast<Status>(Status::OK());
   }));
-  ASSERT_EQ(metrics.cache_queries, 4);
-  ASSERT_EQ(metrics.cache_hits, 4);
+  ASSERT_EQ(metrics.cache.queries, 4);
+  ASSERT_EQ(metrics.cache.hits, 4);
 }
 
 // The test checks response cache renewing process in case of 'Snapshot too old' error.
@@ -425,20 +393,20 @@ TEST_F_EX(PgCatalogPerfTest,
     return static_cast<Status>(Status::OK());
   };
 
-  auto first_connection_metrics = ASSERT_RESULT(MetricDeltas(connector));
-  ASSERT_EQ(first_connection_metrics.cache_renew_hard, 0);
-  ASSERT_EQ(first_connection_metrics.cache_renew_soft, 0);
-  ASSERT_EQ(first_connection_metrics.cache_hits, 0);
-  ASSERT_EQ(first_connection_metrics.cache_queries, 4);
+  auto first_connection_cache_metrics = ASSERT_RESULT(metrics_->Delta(connector)).cache;
+  ASSERT_EQ(first_connection_cache_metrics.renew_hard, 0);
+  ASSERT_EQ(first_connection_cache_metrics.renew_soft, 0);
+  ASSERT_EQ(first_connection_cache_metrics.hits, 0);
+  ASSERT_EQ(first_connection_cache_metrics.queries, 4);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(
       2 * FLAGS_pg_cache_response_renew_soft_lifetime_limit_ms));
 
-  auto second_connection_metrics = ASSERT_RESULT(MetricDeltas(connector));
-  ASSERT_EQ(second_connection_metrics.cache_renew_hard, 0);
-  ASSERT_EQ(second_connection_metrics.cache_renew_soft, 1);
-  ASSERT_EQ(second_connection_metrics.cache_hits, 1);
-  ASSERT_EQ(second_connection_metrics.cache_queries, 6);
+  auto second_connection_cache_metrics = ASSERT_RESULT(metrics_->Delta(connector)).cache;
+  ASSERT_EQ(second_connection_cache_metrics.renew_hard, 0);
+  ASSERT_EQ(second_connection_cache_metrics.renew_soft, 1);
+  ASSERT_EQ(second_connection_cache_metrics.hits, 1);
+  ASSERT_EQ(second_connection_cache_metrics.queries, 6);
 }
 
 // The test checks that GC keeps response cache memory lower than limit
@@ -447,16 +415,16 @@ TEST_F_EX(PgCatalogPerfTest, ResponseCacheMemoryLimit, PgCatalogWithLimitedCache
   ASSERT_OK(conn.Execute("CREATE TABLE t(k SERIAL PRIMARY KEY, v INT)"));
   auto aux_conn = ASSERT_RESULT(Connect());
   constexpr size_t kAlterTableCount = 10;
-  const auto metrics = ASSERT_RESULT(MetricDeltas(
+  const auto cache_metrics = ASSERT_RESULT(metrics_->Delta(
       [&conn, &aux_conn] {
         for (size_t i = 0; i < kAlterTableCount; ++i) {
           RETURN_NOT_OK(conn.ExecuteFormat("ALTER TABLE t ADD COLUMN v_$0 INT", i));
           RETURN_NOT_OK(aux_conn.ExecuteFormat("INSERT INTO t(v) VALUES(1)"));
         }
         return static_cast<Status>(Status::OK());
-      }));
-  ASSERT_EQ(metrics.cache_gc_calls, 9);
-  ASSERT_EQ(metrics.cache_entries_removed_by_gc, 26);
+      })).cache;
+  ASSERT_EQ(cache_metrics.gc_calls, 9);
+  ASSERT_EQ(cache_metrics.entries_removed_by_gc, 26);
   auto response_cache_mem_tracker =
       cluster_->mini_tablet_server(0)->server()->mem_tracker()->FindChild("PgResponseCache");
   ASSERT_TRUE(response_cache_mem_tracker);

@@ -61,6 +61,7 @@ set(PG_WRAPPER_TEST_BASE_SRCS
     libpq_test_base.cc
     pg_mini_test_base.cc
     pg_tablet_split_test_base.cc
+    pg_test_utils.cc
     pg_wrapper_test_base.cc)
 set(PG_WRAPPER_TEST_BASE_DEPS
     pq_utils
