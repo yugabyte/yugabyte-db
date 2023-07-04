@@ -217,7 +217,7 @@ To create the private endpoint and connect it to your YBM PSE (called a private 
 az network private-endpoint create \
     --connection-name <private_link_service_connection_name> \
     --name <private_endpoint_name> \
-    --private-connection-resource-id <service_name> \
+    --private-connection-resource-id <pse_service_name> \
     --resource-group <resource_group_name> \
     --subnet <subnet_name> \
     --vnet-name <private_endpoint_vnet_name> \
@@ -228,7 +228,7 @@ Replace values as follows:
 
 - `private_link_service_connection_name` - provide a name for the private link connection from the private endpoint to the private link service.
 - `private_endpoint_name` - provide a name for the private endpoint.
-- `service_name` - the Service Name of the PSE, which you noted down when creating the PSE.
+- `pse_service_name` - the Service Name of the PSE, which you noted down when creating the PSE.
 - `resource_group_name` - the resource group in which the private endpoint will be created.
 - `subnet_name` - the name of the subnet in the resource group in which the private endpoint will be created.
 - `private_endpoint_vnet_name` - the name of the VNet where the private endpoint will be created.
@@ -310,3 +310,8 @@ To be able to connect to your cluster using DNS (rather than the bare IP address
     - `private_endpoint_ipv4_address` - the IP address of the private endpoint.
     - `record_set_name` - provide a name for the record.
     - `resource_group_name` - the resource group in which the private endpoint was created.
+
+## Next steps
+
+- [Connect your application](../../../cloud-connect/connect-applications/)
+- [Add database users](../../../cloud-secure-clusters/add-users/)
