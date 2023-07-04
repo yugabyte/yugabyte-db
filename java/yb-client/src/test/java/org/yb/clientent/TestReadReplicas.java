@@ -103,10 +103,12 @@ public class TestReadReplicas extends TestYBClient {
 
     CatalogEntityInfo.PlacementInfoPB livePlacementInfo = CatalogEntityInfo.PlacementInfoPB.
         newBuilder().addAllPlacementBlocks(placementBlocksLive).
+        setNumReplicas(3).
         setPlacementUuid(ByteString.copyFromUtf8(liveTsPlacement)).build();
 
     CatalogEntityInfo.PlacementInfoPB readOnlyPlacementInfo = CatalogEntityInfo.PlacementInfoPB.
         newBuilder().addAllPlacementBlocks(placementBlocksReadOnly).
+        setNumReplicas(3).
         setPlacementUuid(ByteString.copyFromUtf8(readOnlyTsPlacement)).build();
 
     List<CatalogEntityInfo.PlacementInfoPB> readOnlyPlacements = Arrays.asList(
@@ -186,6 +188,7 @@ public class TestReadReplicas extends TestYBClient {
     CatalogEntityInfo.PlacementInfoPB readOnlyPlacementInfoNew =
             CatalogEntityInfo.PlacementInfoPB.newBuilder().
                     addAllPlacementBlocks(placementBlocksreadOnlyNew).
+                    setNumReplicas(3).
                     setPlacementUuid(ByteString.copyFromUtf8(readOnlyNewTsPlacement)).build();
 
     List<CatalogEntityInfo.PlacementInfoPB> readOnlyPlacementsNew =
