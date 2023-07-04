@@ -7469,6 +7469,42 @@
       "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
       "type" : "object"
     },
+    "PermissionInfo" : {
+      "properties" : {
+        "description" : {
+          "type" : "string"
+        },
+        "permission" : {
+          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE" ],
+          "type" : "string"
+        },
+        "prerequisite_permissions" : {
+          "items" : {
+            "$ref" : "#/definitions/PermissionInfoIdentifier"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "resource_type" : {
+          "enum" : [ "UNIVERSE", "DEFAULT" ],
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "PermissionInfoIdentifier" : {
+      "properties" : {
+        "permission" : {
+          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE" ],
+          "type" : "string"
+        },
+        "resource_type" : {
+          "enum" : [ "UNIVERSE", "DEFAULT" ],
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "PitrConfig" : {
       "description" : "PITR config created on the universe",
       "properties" : {
@@ -18319,6 +18355,42 @@
         "tags" : [ "Release management" ]
       }
     },
+    "/api/v1/customers/{cUUID}/rbac/permissions" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "listPermissions",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "default" : "null",
+          "description" : "Optional resource type to filter permission list",
+          "in" : "query",
+          "name" : "resourceType",
+          "required" : false,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/PermissionInfo"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List all the permissions available",
+        "tags" : [ "RBAC management" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/regions" : {
       "get" : {
         "description" : "",
@@ -24079,6 +24151,8 @@
     "name" : "PackagesController"
   }, {
     "name" : "Performance Advisor"
+  }, {
+    "name" : "RBAC management"
   }, {
     "name" : "Region management"
   }, {
