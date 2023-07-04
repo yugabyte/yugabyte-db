@@ -435,9 +435,18 @@ class DocKeyColumnPathBuilder {
       : doc_key_(doc_key.as_slice()) {
   }
 
+  RefCntPrefix Build(dockv::SystemColumnIds column_id) {
+    return Build(dockv::KeyEntryType::kSystemColumnId, to_underlying(column_id));
+  }
+
   RefCntPrefix Build(ColumnIdRep column_id) {
+    return Build(dockv::KeyEntryType::kColumnId, column_id);
+  }
+
+ private:
+  RefCntPrefix Build(dockv::KeyEntryType key_entry_type, ColumnIdRep column_id) {
     buffer_.Clear();
-    buffer_.AppendKeyEntryType(dockv::KeyEntryType::kColumnId);
+    buffer_.AppendKeyEntryType(key_entry_type);
     buffer_.AppendColumnId(ColumnId(column_id));
     RefCntBuffer path(doc_key_.size() + buffer_.size());
     doc_key_.CopyTo(path.data());
@@ -445,7 +454,6 @@ class DocKeyColumnPathBuilder {
     return path;
   }
 
- private:
   Slice doc_key_;
   dockv::KeyBytes buffer_;
 };
@@ -1248,7 +1256,7 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
         }
         if (!has_expression) {
           DocKeyColumnPathBuilder builder(encoded_doc_key_);
-          paths->push_back(builder.Build(to_underlying(dockv::SystemColumnIds::kLivenessColumn)));
+          paths->push_back(builder.Build(dockv::SystemColumnIds::kLivenessColumn));
           return Status::OK();
         }
       }
