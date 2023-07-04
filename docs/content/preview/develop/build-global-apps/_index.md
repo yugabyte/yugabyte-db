@@ -37,58 +37,74 @@ Running applications in multiple data centers with data split across them is not
 
 We can classify these patterns based on how multiple instances of the application operate on parts of the data or whether the application follows the workload or if the application operates on local data or only reads from local followers. For example,
 
-1. **Single Active** - The application is active in one region.
-1. **Multi-Active**  - Applications run in different regions and operate on all the cluster data.
-1. **Partitioned Multi-Active** - Multiple applications run in multiple regions and operate on just the local data.
-1. **Follow the Application** - The application moves a different region on failure and the workload follows the application.
-1. **Geo-local dataset** - Applications read from geographically placed local data.
-1. **Data Access** - Applications either read from leaders for consistent reads or from local replicas for stale reads.
+#### Legends
+
+For all the illustrations, we will use the following legend to represent tablet leaders/followers, cloud regions/zones and applications.
+
+![Global Database - Legend](/images/develop/global-apps/global-database-legend.png)
+
+### Application Architecture
+
+- **Single Active** - Only one application instance in a region (or fault domain) is active. The data must be placed close to that application.
+- **Multi-Active** - Applications run in different regions and operate on all the cluster data.
+- **Partitioned Multi-Active** - Multiple applications run in multiple regions and operate on just the local data.
+
+### Availability Architecture
+
+- **Follow the application** - Applications run closer to the leaders. On failure, the application moves to a different region.
+- **Geo-local dataset** - Applications read from geographically placed local data. On failure, application does not move.
+
+### Data Access Architectures
+
+- **Consistent reads** - Read from the source of truth, irrespective of latency or location
+- **Follower reads** - Stale reads  to achieve lower latency reads
+- **Bounded staleness** - Allow stale reads but with bounds on how stale data is
 
 Let's look at some of these application design patterns.
-<!--
-|         Pattern Type         |                         Follow the Workload                          |                              Geo-Local Data                               |
+
+|         Pattern Type         |                         Follow theApplication                           |                              Geo-Local Data                               |
 | ---------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | **Single Active**            | [Global database](./global-database)                                    | N/A                                                                       |
 | **Multi Active**             | [Duplicate indexes](./duplicate-indexes)                                | [Active-active multi master](./active-active-multi-master)                |
 | **Partitioned Multi Active** | [Latency-optimized geo-partitioning](./latency-optimized-geo-partition) | [Locality-optimized geo-partitioning](./locality-optimized-geo-partition) |
-| **Access only**              | [Follower Reads](./follower-reads), [Read Replicas](./read-replicas)    | N/A                                                                       |
+| **Data Access only**         | [Follower Reads](./follower-reads), [Read Replicas](./read-replicas)    | N/A                                                                       |
 
 Let's look at a quick overview of each of these patterns.
--->
 
 {{<table>}}
 
-| Pattern Name | Pattern Type | Description |
-| ------- | -------- | ----------- |
-| [Global database](./global-database) | _Single Active_,<br>_Multi-Active_,<br>_Follow the Workload_ |
-{{<header Level="6">}} Single cluster spread across multiple regions {{</header>}}
-A cluster with replicas spread across multiple regions/zones. On failure, a replica in another region/zone will be promoted to leader in seconds, without any loss of data.|
+| Pattern Name | Description |
+| ------- | ----------- |
+| [Global database](./global-database) |
+{{<header Level="6">}} Single database spread across multiple regions {{</header>}}
+A database spread across multiple(3 or more) regions/zones. On failure, a replica in another region/zone will be promoted to leader in seconds, without any loss of data.
+Applications read from source of truth, possibly with higher latencies|
 
-|[Active&#8209;Active Multi&#8209;Master](./active-active-multi-master)| _Multi-Active_,<br>_Geo-Local Data_ |
+|[Active&#8209;Active Multi&#8209;Master](./active-active-multi-master)|
 {{<header Level="6">}} Two clusters serving data together {{</header>}}
-Set up two separate clusters which would both handle reads and writes. Data is replicated asynchronously between the clusters|
+Two regions or more, manual failover, a few seconds of data loss (non-zero RPO), low read/write latencies, some caveats on transactional guarantees|
 
-|[Active&#8209;Active Single&#8209;Master](./active-active-single-master)| _Single Active_,<br>_Follow the Workload_ |
-{{<header Level="6">}} Standby cluster {{</header>}}
+|[Active&#8209;Active Single&#8209;Master](./active-active-single-master)|
+{{<header Level="6">}} Standby database {{</header>}}
 Set up a second cluster that gets populated asynchronously and can start serving data in case the primary fails. Can also be used for [blue/green](https://en.wikipedia.org/wiki/Blue-green_deployment) deployment testing|
 
-|[Duplicate indexes](./duplicate-indexes)| _Multi-Active_,<br>_Follow the Workload_ |
+|[Duplicate indexes](./duplicate-indexes)|
 {{<header Level="6">}} Consistent data everywhere {{</header>}}
 Set up covering indexes with schema the same as the table in multiple regions to read immediately consistent data locally|
 
-|[Locality&#8209;optimized geo&#8209;partitioning](./locality-optimized-geo-partition)| _Partitioned Multi-Active_,<br>_Geo-Local Data_ |
+|[Locality&#8209;optimized geo&#8209;partitioning](./locality-optimized-geo-partition)|
 {{<header Level="6">}} Local law compliance {{</header>}}
 Partition your data and place them in a manner that the rows belonging to different users will be located in their respective countries|
 
-|[Latency&#8209;optimized geo&#8209;partitioning](./latency-optimized-geo-partition)| _Partitioned Multi-Active_,<br>_Follow the Workload_ |
+|[Latency&#8209;optimized geo&#8209;partitioning](./latency-optimized-geo-partition)|
 {{<header Level="6">}} Fast local access {{</header>}}
 Partition your data and place them in a manner that the data belonging to nearby users can be accessed faster|
 
-|[Follower Reads](./follower-reads) | _Data Access_,<br>_Follow the Workload_ |
+|[Follower Reads](./follower-reads) |
 {{<header Level="6">}} Fast, stale reads {{</header>}}
 Read from local followers instead of going to the leaders in a different region|
 
-|[Read Replicas](./read-replicas) | _Data Access_,<br>_Follow the Workload_ |
+|[Read Replicas](./read-replicas) |
 {{<header Level="6">}} Fast reads from a read-only cluster{{</header>}}
 Set up a separate cluster of just followers to perform local reads instead of going to the leaders in a different region|
 

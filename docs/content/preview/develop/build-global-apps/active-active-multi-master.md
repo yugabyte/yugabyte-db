@@ -12,9 +12,8 @@ menu:
 type: docs
 ---
 
-For a highly available system, it is typical to opt for a [Global database](../global-database) that spans multiple regions with preferred leaders set to a specific region. This is great for apps that run in a single region.
 
-For apps that have to be run in multiple regions, you can adopt the **Active-Active Multi-Master** design pattern with which you can set up 2 clusters in different regions where both clusters actively take responsibility for the local reads and writes and populate one another **asynchronously**. Let us understand this in more detail.
+For apps that have to be run in multiple regions, you can adopt the **Active-Active Multi-Master** design pattern with which you can set up 2 clusters in two different regions where both clusters actively take responsibility for the local reads and writes and populate one another **asynchronously**. Here, failover is manual and incurs some possible loss of data as the data is asynchronously replicated between the two clusters, but both reads and writes have low latencies. Let us understand this in more detail.
 
 ## Overview
 
@@ -48,8 +47,7 @@ The replication happens at the DocDB layer bypassing the query layer, some stand
 - Avoid `TRIGGERS`, as the triggers won't be fired as the query layer is bypassed.
 - Avoid `SERIAL` columns as both the clusters would generate the same sequence (use UUID instead).
 - Schema changes are not automatically transmitted but have to be applied manually (for now)
-
-Another thing to note in xCluster is that transaction updates are NOT committed atomically from the source to the sink and hence the second cluster could be transactionally inconsistent.
+- Transaction updates are NOT committed atomically across sources and hence the other cluster could be transactionally inconsistent.
 
 ## Learn more
 

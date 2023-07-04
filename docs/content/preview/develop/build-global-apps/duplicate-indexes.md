@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-When you have your app running in one region, it is typical to set up a [Global database](../global-database) with preferred leaders set to that region. But if you have apps running in multiple regions, they would still have to go the leader in the preferred region for reads and writes. Although writes will always go to the leader tablets, the speed of reads could be improved with [Follower Reads](./follower-reads) or [Read replicas](./read-replicas). But in both such setups, the replicas may not be up-to-date with the latest data and would result in stale reads. This may not be acceptable for some applications.
+If you have apps running in multiple regions, they would still have to go the tablet leaders in the other regions for reads and writes. Although writes will always go to the tablet leaders, the speed of reads could be improved with [Follower Reads](./follower-reads) or [Read replicas](./read-replicas). But in both such setups, the replicas may not be up-to-date with the latest data and would result in stale reads. This may not be acceptable for some applications.
 
 This is where **Duplicate Indexes** would come in handy. Duplicate Indexes will guarantee immediately consistent reads in multiple regions. Let us look into how your applications can benefit from this pattern and understand the costs associated with it.
 

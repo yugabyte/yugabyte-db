@@ -44,17 +44,62 @@ You would get a cluster as shown in the following illustration.
 
 ![Global Database - Replicas](/images/develop/global-apps/global-database-replicas.png)
 
+You can check the node information by going to [http://127.0.0.1:7000/tablet-servers](http://127.0.0.1:7000/tablet-servers).
+
+![Global Database - Node list](/images/develop/global-apps/global-database-node-list.png)
+
+### Sample Table
+
+For illustration, create a simple user table with the following instructions.
+
+1.  Connect to the database using `ysqlsh`.
+
+```bash
+./bin/ysqlsh
+```
+
+```output
+❯ ysqlsh
+ysqlsh (11.2-YB-2.17.2.0-b0)
+Type "help" for help.
+```
+
+```sql
+CREATE TABLE users (
+  id int,
+  name VARCHAR,
+  PRIMARY KEY(id)
+) SPLIT INTO 1 TABLETS;
+```
+
+{{<note>}}
+We are creating the table with just one tablet only for a cleaner illustration of an `RF5` environment.
+{{</note>}}
+
+```output
+CREATE TABLE
+Time: 112.915 ms
+```
+
+You can check the tablet information by going to [http://127.0.0.1:7000/tablet-servers](http://127.0.0.1:7000/tablet-servers). You should see something similar to this.
+
+![Global Database - Tablet info](/images/develop/global-apps/global-database-tablet-info.png)
+
 ## Preferred Regions
 
 As the app is going to be running in `us-east` and you want it to failover to `us-central`, let's configure the database in the same manner. Set `us-east` to be preferred region 1 and `us-central` to be preferred region 2.
 
 ```shell
-yb-admin set_preferred_zones aws.us-east.*:1 aws.us-central.*:2
+yb-admin set_preferred_zones aws.us-east-2.us-east-2a:1 aws.us-central-1.us-central-1a:1
 ```
 
 Now automatically the leaders are placed in `us-east`.
 
 ![Global Database - Preferred Leaders](/images/develop/global-apps/global-database-preferred-leaders.png)
+
+You can check the tablet information by going to [http://127.0.0.1:7000/tablet-servers](http://127.0.0.1:7000/tablet-servers).
+
+![Global Database - Preferred leader info](/images/develop/global-apps/global-database-preferred-leader-info.png)
 
 ## Initial deploy
 
@@ -65,6 +110,29 @@ When the app starts up in the east, it has a very low read latency of `2ms` as i
 ## Failover
 
 The **Global database** is automatically resilient to a single region failure. When a region fails, followers in other regions are promoted to leaders within seconds and will continue to serve requests without any data loss. This is because the raft-based **synchronous replication** guarantees that at least `1 + RF/2` (`RF` = replication factor) nodes are consistent and up-to-date with the latest data. This enables the newly elected leader to serve the latest data immediately without any downtime for your users.
+
+To simulate the failure of `us-east` region follow these instructions.
+
+1. Add another master in the `us-central` region.
+
+```bash
+./bin/yb-admin change_master_config ADD_SERVER 127.0.0.4 7100
+```
+
+2. Stop the nodes in `us-east`.
+
+```bash
+./bin/yugabyted stop --base_dir=/tmp/ybd1
+./bin/yugabyted stop --base_dir=/tmp/ybd2
+```
+
+```output
+Stopped yugabyted using config /private/tmp/ybd1/conf/yugabyted.conf.
+Stopped yugabyted using config /private/tmp/ybd2/conf/yugabyted.conf.
+```
+
+Now you will notice that the followers in central region have been promoted to leaders and the application can continue further without any loss in data.
+
 
 ![Global Database - App Failover](/images/develop/global-apps/global-database-failover.png)
 

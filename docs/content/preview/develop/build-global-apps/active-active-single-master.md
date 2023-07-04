@@ -12,9 +12,7 @@ menu:
 type: docs
 ---
 
-For a highly available system, it is typical to opt for a [Global database](../global-database) that spans multiple regions. The raft-based **synchronous replication** guarantees that at least `1 + RF/2` (`RF` = replication factor) nodes are consistent and up-to-date with the latest data. This means a write can complete only after it has been successfully replicated to other nodes. This increases latency.
-
-For apps that run in a single region but need a safety net, you can adopt the **Active-Active Single-Master** design pattern with which you can setup 2 clusters in different regions where one cluster actively takes responsibility for all reads and writes and at the same time populates another cluster **asynchronously**. The second cluster can be promoted to primary in the case of a disaster. Let us understand this in more detail.
+For apps that run in a single region but need a safety net, you can adopt the **Active-Active Single-Master** design pattern with which you can setup 2 clusters in different regions where one cluster actively takes responsibility for all reads and writes and at the same time populates another cluster **asynchronously**. The second cluster can be promoted to primary in the case of a disaster. This setup would be very useful when you have just 2 regions and want to deploy the database within just one region for low latency but have another copy of the database in the other region for failover. Let us understand this in more detail.
 
 ## Overview
 

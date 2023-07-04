@@ -24,7 +24,7 @@ For this, YugabyteDB supports [Row-level geo-partitioning](../../../explore/mult
 
 {{<cluster-setup-tabs>}}
 
-Let's say you want to store the data of users from the US and Europe within their respective continents. For this, you should set up an `RF3` cluster with leaders in 2 regions, `eu-west-1` and `eu-west-1` and place the replicas in close regions, say `eu-west-2` and `eu-west-2`
+Let's say you want to store the data of users from the US and Europe within their respective continents. For this, you should set up an `RF3` cluster spread across 2 geos, `US` and `Europe` to place the data of the respective geographies correctly.Also to make sure each partition acts like a global database, you should opt for 3-regions in each of the geos.
 
 ![RF3 cluster spanning 2 regions](/images/develop/global-apps/locality-optimized-geo-partition-setup.png)
 
@@ -69,8 +69,8 @@ CREATE TABLESPACE us WITH (
     replica_placement='{"num_replicas": 3, 
     "placement_blocks":[
         {"cloud":"aws","region":"us-east-1","zone":"us-east-1a","min_num_replicas":1,"leader_preference":1},
-        {"cloud":"aws","region":"us-east-1","zone":"us-east-1c","min_num_replicas":1,"leader_preference":2},
-        {"cloud":"aws","region":"us-east-2","zone":"us-east-2b","min_num_replicas":1,"leader_preference":3}
+        {"cloud":"aws","region":"us-east-2","zone":"us-east-1c","min_num_replicas":1,"leader_preference":2},
+        {"cloud":"aws","region":"us-central-1","zone":"us-east-2b","min_num_replicas":1,"leader_preference":3}
         ]}'
 );
 ```
@@ -85,8 +85,8 @@ CREATE TABLESPACE eu WITH (
     replica_placement='{"num_replicas": 3, 
     "placement_blocks":[
         {"cloud":"aws","region":"eu-west-1","zone":"eu-west-1a","min_num_replicas":1,"leader_preference":1},
-        {"cloud":"aws","region":"eu-west-1","zone":"eu-west-1c","min_num_replicas":1,"leader_preference":2},
-        {"cloud":"aws","region":"eu-west-2","zone":"eu-west-2a","min_num_replicas":1,"leader_preference":3}
+        {"cloud":"aws","region":"eu-west-2","zone":"eu-west-1c","min_num_replicas":1,"leader_preference":2},
+        {"cloud":"aws","region":"eu-central-1","zone":"eu-west-2a","min_num_replicas":1,"leader_preference":3}
     ]}'
 );
 ```
@@ -109,12 +109,9 @@ This pattern will help apps running in different regions to have low read and wr
 
 ## Failover
 
-When any of the regions hosting one of the partition leaders fails, the partition follower in another zone would immediately be promoted to leader and the application can continue without any data loss.
+When any of the regions hosting one of the partition leaders fails, the partition follower in another zone would immediately be promoted to leader and the application can continue without any data loss. So this pattern is resilient for a 1-region failure.
 
 ![Failover](/images/develop/global-apps/locality-optimized-geo-partition-failover.png)
-
-To survive a region failure, it would be advisable to place all replicas in different regions.
-
 
 ## Learn more
 

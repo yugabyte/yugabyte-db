@@ -12,8 +12,6 @@ menu:
 type: docs
 ---
 
-For a single-active highly available system, it is typical to opt for a [Global database](../global-database) that spans multiple regions with preferred leaders set to a specific region. This is great for apps that run in a single region.
-
 For Multi-Active apps that need to be run in multiple regions, you can opt to partition the data per region and place the replicas in nearby regions. This would ensure very low latency for both reads and writes for the local partitions giving a seamless user experience for users close to their partitions. Let us look into this pattern in more detail.
 
 ## Overview
