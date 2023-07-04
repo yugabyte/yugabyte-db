@@ -187,7 +187,11 @@ struct FloatTraits<F> {
   using IntType = uint64_t;
 };
 
-}  // anonymous namespace
+std::vector<std::string> PerfArguments(int pid) {
+  return {"perf", "record", "-g", Format("-p$0", pid), Format("-o/tmp/perf.$0.data", pid)};
+}
+
+}  // namespace
 
 template<class T>
 GetValueResult<T> GetValue(PGresult* result, int row, int column) {
@@ -720,12 +724,11 @@ Result<PGConn> Execute(Result<PGConn> connection, const std::string& query) {
   return connection;
 }
 
-namespace {
-
-std::vector<std::string> PerfArguments(int pid) {
-  return {"perf", "record", "-g", Format("-p$0", pid), Format("-o/tmp/perf.$0.data", pid)};
+Result<PGConn> SetHighPriTxn(Result<PGConn> connection) {
+  return Execute(std::move(connection), "SET yb_transaction_priority_lower_bound=0.5");
 }
-
+Result<PGConn> SetLowPriTxn(Result<PGConn> connection) {
+  return Execute(std::move(connection), "SET yb_transaction_priority_upper_bound=0.4");
 }
 
 PGConnPerf::PGConnPerf(yb::pgwrapper::PGConn* conn)
