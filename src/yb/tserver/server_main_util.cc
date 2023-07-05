@@ -66,8 +66,6 @@ Status MasterTServerParseFlagsAndInit(const std::string& server_type, int* argc,
 
   RETURN_NOT_OK(InitYB(server_type, (*argv)[0]));
 
-  RETURN_NOT_OK(consensus::ValidateFlags());
-
   RETURN_NOT_OK(GetPrivateIpMode());
 
   LOG(INFO) << "NumCPUs determined to be: " << base::NumCPUs();

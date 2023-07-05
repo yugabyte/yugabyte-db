@@ -114,6 +114,7 @@ set(YRPC_LIBS
   rpc_header_proto
   rpc_introspection_proto
   snappy
+  yb_common
   yb_util
   ${OPENSSL_CRYPTO_LIBRARY}
   ${OPENSSL_SSL_LIBRARY})
