@@ -451,6 +451,7 @@ Result<FileNumbersHolder> CompactionJob::Run() {
   assert(num_threads > 0);
   const uint64_t start_micros = env_->NowMicros();
 
+  SET_WAIT_STATUS(yb::util::WaitStateCode::StartSubcompactionThreads);
   // Launch a thread for each of subcompactions 1...num_threads-1
   std::vector<scoped_refptr<yb::Thread>> thread_pool;
   thread_pool.reserve(num_threads - 1);
@@ -468,6 +469,7 @@ Result<FileNumbersHolder> CompactionJob::Run() {
   // others) in the current thread to be efficient with resources
   ProcessKeyValueCompaction(&file_numbers_holder, &compact_->sub_compact_states[0]);
 
+  SET_WAIT_STATUS(yb::util::WaitStateCode::WaitOnSubcompactionThreads);
   // Wait for all other threads (if there are any) to finish execution
   for (auto& thread : thread_pool) {
     RETURN_NOT_OK(yb::ThreadJoiner(thread.get()).Join());
@@ -663,6 +665,7 @@ void CompactionJob::ProcessKeyValueCompaction(
   const auto& c_iter_stats = c_iter->iter_stats();
   // TODO(noetzli): check whether we could check !shutting_down_->... only
   // only occasionally (see diff D42687)
+  SET_WAIT_STATUS(yb::util::WaitStateCode::WriteToFile);
   while (status.ok() && !shutting_down_->load(std::memory_order_acquire) &&
          !cfd->IsDropped() && c_iter->Valid()) {
     // Invariant: c_iter.status() is guaranteed to be OK if c_iter->Valid()
@@ -841,6 +844,8 @@ Status CompactionJob::FinishCompactionOutputFile(
   sub_compact->current_output()->finished = true;
   sub_compact->total_bytes += current_total_bytes;
 
+  SET_WAIT_STATUS(yb::util::WaitStateCode::CloseFile);
+
   // Finish and check for file errors
   if (sub_compact->data_outfile) {
     CloseFile(&s, &sub_compact->data_outfile);
@@ -990,6 +995,7 @@ Status CompactionJob::OpenCompactionOutputFile(
   const std::string base_fname = TableFileName(db_options_.db_paths, file_number,
                                     sub_compact->compaction->output_path_id());
   const std::string data_fname = TableBaseToDataFileName(base_fname);
+  SET_WAIT_STATUS(yb::util::WaitStateCode::OpenFile);
   const std::string table_name = sub_compact->compaction->column_family_data()->GetName();
   RETURN_NOT_OK(OpenFile(table_name, file_number, "base", base_fname, &base_writable_file));
   RETURN_NOT_OK(OpenFile(table_name, file_number, "data", data_fname, &data_writable_file));

@@ -261,6 +261,7 @@ set(UTIL_SRCS
   uuid.cc
   varint.cc
   version_info.cc
+  wait_state.cc
   write_buffer.cc
   yb_partition.cc
   zlib.cc

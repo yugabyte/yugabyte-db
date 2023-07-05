@@ -95,6 +95,7 @@ OperationDriver::OperationDriver(OperationTracker *operation_tracker,
       consensus_(consensus),
       preparer_(preparer),
       trace_(Trace::MaybeGetNewTraceForParent(Trace::CurrentTrace())),
+      wait_state_(util::WaitStateInfo::CurrentWaitState()),
       start_time_(MonoTime::Now()),
       replication_state_(NOT_REPLICATING),
       prepare_state_(NOT_PREPARED),
@@ -130,6 +131,7 @@ Status OperationDriver::Init(std::unique_ptr<Operation>* operation, int64_t term
   }
 
   if (term == OpId::kUnknownTerm && operation_) {
+    SET_WAIT_STATUS(util::WaitStateCode::AddedToFollower);
     RETURN_NOT_OK(operation_->AddedToFollower());
   }
 
@@ -173,6 +175,7 @@ void OperationDriver::ExecuteAsync() {
   TRACE_EVENT_FLOW_BEGIN0("operation", "ExecuteAsync", this);
   ADOPT_TRACE(trace());
   TRACE_FUNC();
+  SCOPED_ADOPT_WAIT_STATE(wait_state());
 
   auto delay = GetAtomicFlag(&FLAGS_TEST_delay_execute_async_ms);
   if (delay != 0 && operation_type() == OperationType::kWrite) {
@@ -191,6 +194,40 @@ void OperationDriver::ExecuteAsync() {
   }
   auto s = preparer_->Submit(this);
 
+  {
+    switch (operation_type()) {
+      case OperationType::kWrite:
+        SET_WAIT_STATUS(util::WaitStateCode::SubmittedWriteToPreparer);
+        break;
+      case OperationType::kChangeMetadata:
+        SET_WAIT_STATUS(util::WaitStateCode::SubmittedChangeMetadataToPreparer);
+        break;
+      case OperationType::kUpdateTransaction:
+        SET_WAIT_STATUS(util::WaitStateCode::SubmittedUpdateTransactionToPreparer);
+        break;
+      case OperationType::kSnapshot:
+        SET_WAIT_STATUS(util::WaitStateCode::SubmittedSnapshotToPreparer);
+        break;
+      case OperationType::kTruncate:
+        SET_WAIT_STATUS(util::WaitStateCode::SubmittedTruncateToPreparer);
+        break;
+      case OperationType::kEmpty:
+        SET_WAIT_STATUS(util::WaitStateCode::SubmittedEmptyToPreparer);
+        break;
+      case OperationType::kHistoryCutoff:
+        SET_WAIT_STATUS(util::WaitStateCode::SubmittedHistoryCutoffToPreparer);
+        break;
+      case OperationType::kSplit:
+        SET_WAIT_STATUS(util::WaitStateCode::SubmittedSplitToPreparer);
+        break;
+      case OperationType::kChangeAutoFlagsConfig:
+        SET_WAIT_STATUS(util::WaitStateCode::SubmittedChangeAutoFlagsConfigToPreparer);
+        break;
+      default:
+        SET_WAIT_STATUS(util::WaitStateCode::SubmittedUnexpectedToPreparer);
+    }
+  }
+  // SET_WAIT_STATUS(util::WaitStateCode::SubmittedToPreparer);
   if (operation_) {
     operation_->SubmittedToPreparer();
   }
@@ -202,9 +239,11 @@ void OperationDriver::ExecuteAsync() {
 
 Status OperationDriver::AddedToLeader(const OpId& op_id, const OpId& committed_op_id) {
   ADOPT_TRACE(trace());
+  SCOPED_ADOPT_WAIT_STATE(wait_state());
   CHECK(!GetOpId().valid());
   op_id_copy_.store(op_id, boost::memory_order_release);
 
+  SET_WAIT_STATUS(util::WaitStateCode::AddedToLeader);
   RETURN_NOT_OK(operation_->AddedToLeader(op_id, committed_op_id));
 
   StartOperation();
@@ -232,11 +271,13 @@ bool OperationDriver::StartOperation() {
 
 Status OperationDriver::PrepareAndStart(IsLeaderSide is_leader_side) {
   ADOPT_TRACE(trace());
+  SCOPED_ADOPT_WAIT_STATE(wait_state());
   TRACE_EVENT1("operation", "PrepareAndStart", "operation", this);
   VLOG_WITH_PREFIX(4) << "PrepareAndStart()";
   // Actually prepare and start the operation.
   prepare_physical_hybrid_time_ = GetMonoTimeMicros();
   if (operation_) {
+    SET_WAIT_STATUS(util::WaitStateCode::PrepareAndStart);
     RETURN_NOT_OK(operation_->Prepare(is_leader_side));
   }
 
@@ -290,6 +331,8 @@ void OperationDriver::HandleFailure(const Status& status) {
   VLOG_WITH_PREFIX(2) << "Failed operation: " << status;
   CHECK(!status.ok());
   ADOPT_TRACE(trace());
+  SCOPED_ADOPT_WAIT_STATE(wait_state());
+  SET_WAIT_STATUS(util::WaitStateCode::HandleFailure);
   TRACE("HandleFailure($0)", status.ToString());
 
   switch (repl_state_copy) {
@@ -387,6 +430,7 @@ void OperationDriver::TEST_Abort(const Status& status) {
 void OperationDriver::ApplyTask(int64_t leader_term, OpIds* applied_op_ids) {
   TRACE_EVENT_FLOW_END0("operation", "ApplyTask", this);
   ADOPT_TRACE(trace());
+  SCOPED_ADOPT_WAIT_STATE(wait_state());
 
 #ifndef NDEBUG
   {
@@ -401,7 +445,9 @@ void OperationDriver::ApplyTask(int64_t leader_term, OpIds* applied_op_ids) {
   scoped_refptr<OperationDriver> ref(this);
 
   {
+    SET_WAIT_STATUS(util::WaitStateCode::Applying);
     auto status = operation_->Replicated(leader_term, WasPending::kTrue);
+    SET_WAIT_STATUS(util::WaitStateCode::ApplyDone);
     LOG_IF_WITH_PREFIX(FATAL, !status.ok())
         << "Apply failed: " << status
         << ", request: " << operation_->request()->ShortDebugString();

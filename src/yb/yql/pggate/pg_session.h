@@ -353,6 +353,12 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   PgDocMetrics& metrics() { return metrics_; }
 
+  Status SetAUHMetadata(const char* remote_host, int remote_port);
+
+  void SetQueryId(uint64_t query_id);
+
+  void SetTopLevelRequestId();
+
   void setWaitEventInfo(uint32_t wait_event) {
     pg_callbacks_.SignalWaitStart(wait_event);
   }
@@ -373,6 +379,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   };
 
   Result<PerformFuture> Perform(BufferableOperations&& ops, PerformOptions&& options);
+
+  void FillAUHMetadata(AUHMetadataPB& auh_metadata);
 
   void ProcessPerformOnTxnSerialNo(
       uint64_t txn_serial_no,
@@ -428,6 +436,11 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   const YBCPgCallbacks& pg_callbacks_;
   bool has_write_ops_in_ddl_mode_ = false;
   std::variant<TxnSerialNoPerformInfo> last_perform_on_txn_serial_no_;
+
+  std::string top_level_request_id_;
+  std::string client_node_ip_;
+  std::string node_uuid_;
+  uint64_t query_id_;
 };
 
 }  // namespace pggate

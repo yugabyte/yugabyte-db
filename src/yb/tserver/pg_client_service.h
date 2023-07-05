@@ -70,6 +70,7 @@ class PgMutationCounter;
     (WaitForBackendsCatalogVersion) \
     (CancelTransaction) \
     (ActiveUniverseHistory) \
+    (GetTServerUUID) \
     /**/
 
 class PgClientServiceImpl : public PgClientServiceIf {

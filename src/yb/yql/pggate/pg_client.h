@@ -97,6 +97,8 @@ class PgClient {
 
   Result<uint64_t> GetCatalogMasterVersion();
 
+  Result<std::string> GetTServerUUID();
+
   Status CreateSequencesDataTable();
 
   Result<client::YBTableName> DropTable(

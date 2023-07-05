@@ -256,6 +256,13 @@ std::string RpcContext::ToString() const {
   return call_->ToString();
 }
 
+util::WaitStateInfoPtr RpcContext::wait_state() {
+ if (!call_) {
+  return nullptr;
+ }
+ return call_->wait_state();
+}
+
 void PanicRpc(RpcContext* context, const char* file, int line_number, const std::string& message) {
   if (context) {
     context->Panic(file, line_number, message);
@@ -263,6 +270,5 @@ void PanicRpc(RpcContext* context, const char* file, int line_number, const std:
     google::LogMessage(file, line_number, google::GLOG_FATAL).stream() << message;
   }
 }
-
 }  // namespace rpc
 }  // namespace yb
