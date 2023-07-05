@@ -212,7 +212,6 @@ aws ec2 create-vpc-endpoint \
 Replace values as follows:
 
 - `application_vpc_id` - ID of the AWS VPC. Find this value on the VPC dashboard in your AWS account.
-- `region` - region where you want the VPC endpoint. The region needs to be the same as a region where your cluster is deployed.
 - `pse_service_name` - service name of your PSE, which you noted down when creating the PSE.
 - `subnet_ids` - the subnet IDs, separated by whitespace, that your AWS VPC uses. You can also find these values under **Subnets** in your AWS VPC console.
 - `endpoint_security_group_id` - the security group ID of the endpoint
