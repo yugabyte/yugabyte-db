@@ -892,25 +892,6 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Result<GetChangesResponsePB> UpdateSnapshotDone(
       const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-      const GetChangesResponsePB* change_resp,
-      const TableId table_id = "") {
-    GetChangesRequestPB change_req2;
-    GetChangesResponsePB change_resp2;
-    PrepareChangeRequest(
-        &change_req2, stream_id, tablets, 0, change_resp->cdc_sdk_checkpoint().index(),
-        change_resp->cdc_sdk_checkpoint().term(), kCDCSDKSnapshotDoneKey, 0, 0, table_id);
-    RpcController get_changes_rpc;
-    RETURN_NOT_OK(cdc_proxy_->GetChanges(change_req2, &change_resp2, &get_changes_rpc));
-    if (change_resp2.has_error()) {
-      return StatusFromPB(change_resp2.error().status());
-    }
-
-    return change_resp2;
-  }
-
-  Result<GetChangesResponsePB> UpdateSnapshotDone(
-      const CDCStreamId& stream_id,
-      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const TableId table_id = "") {
     GetChangesRequestPB change_req2;
     GetChangesResponsePB change_resp2;

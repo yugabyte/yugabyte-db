@@ -1796,7 +1796,8 @@ void CDCServiceImpl::GetChanges(
   bool snapshot_bootstrap = IsCDCSDKSnapshotBootstrapRequest(cdc_sdk_from_op_id);
   if (record.GetCheckpointType() == IMPLICIT ||
       (record.GetCheckpointType() == EXPLICIT &&
-       (got_explicit_checkpoint_from_request || snapshot_bootstrap))) {
+       ((got_explicit_checkpoint_from_request && explicit_op_id != OpId::Invalid()) ||
+        snapshot_bootstrap))) {
     bool is_snapshot = false;
     bool is_colocated = tablet_peer->tablet_metadata()->colocated();
     OpId snapshot_op_id = OpId::Invalid();
@@ -3910,9 +3911,13 @@ Result<CDCSDKCheckpointPB> CDCServiceImpl::GetLastCDCSDKCheckpoint(
 
   const auto& row = *row_opt;
 
-  DCHECK_EQ(row.column(checkpoint_idx).type(), InternalType::kStringValue);
-
-  auto cdc_sdk_op_id = VERIFY_RESULT(OpId::FromString(row.column(checkpoint_idx).string_value()));
+  OpId cdc_sdk_op_id;
+  if (row.column(checkpoint_idx).IsNull()) {
+    cdc_sdk_op_id = OpId::Invalid();
+  } else {
+    DCHECK_EQ(row.column(checkpoint_idx).type(), InternalType::kStringValue);
+    cdc_sdk_op_id = VERIFY_RESULT(OpId::FromString(row.column(checkpoint_idx).string_value()));
+  }
 
   if (row.column(last_replicated_column_idx).IsNull() &&
       request_source == CDCRequestSource::CDCSDK) {
@@ -4240,9 +4245,6 @@ Status CDCServiceImpl::UpdateSnapshotDone(
       map_value_pb, kCDCSDKSafeTime,
       AsString(!cdc_sdk_checkpoint.has_snapshot_time() ? 0 : cdc_sdk_checkpoint.snapshot_time()));
   client::AddMapEntryToColumn(map_value_pb, kCDCSDKActiveTime, AsString(current_time));
-  cdc_state->AddStringColumnValue(
-      req, master::kCdcCheckpoint,
-      OpId(cdc_sdk_checkpoint.term(), cdc_sdk_checkpoint.index()).ToString());
   cdc_state->AddTimestampColumnValue(req, master::kCdcLastReplicationTime, 0);
 
   // Also update the active_time in the streaming row.
