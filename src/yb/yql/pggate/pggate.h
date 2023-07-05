@@ -643,6 +643,12 @@ class PgApiImpl {
 
   MemTracker &GetRootMemTracker() { return *MemTracker::GetRootTracker(); }
 
+  Status SetAUHMetadata(const char* remote_host, int remote_port);
+
+  void SetQueryId(uint64_t query_id);
+
+  void SetTopLevelRequestId();
+
  private:
   class Interrupter;
 

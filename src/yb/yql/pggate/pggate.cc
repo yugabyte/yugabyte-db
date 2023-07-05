@@ -1936,5 +1936,18 @@ Result<bool> PgApiImpl::CheckIfPitrActive() {
   return pg_session_->CheckIfPitrActive();
 }
 
+
+Status PgApiImpl::SetAUHMetadata(const char* remote_host, int remote_port) {
+  return pg_session_->SetAUHMetadata(remote_host, remote_port);
+}
+
+void PgApiImpl::SetQueryId(uint64_t query_id) {
+  pg_session_->SetQueryId(query_id);
+}
+
+void PgApiImpl::SetTopLevelRequestId() {
+  pg_session_->SetTopLevelRequestId();
+}
+
 } // namespace pggate
 } // namespace yb
