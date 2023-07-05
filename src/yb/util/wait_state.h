@@ -31,6 +31,8 @@
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/monotime.h"
 
+#define SET_WAIT_STATUS_TO_WITH_AUX(ptr, state, aux) \
+  if (ptr) ptr->set_state_with_aux(state, aux)
 #define SET_WAIT_STATUS_TO(ptr, state) \
   if (ptr) ptr->set_state(state)
 #define SET_WAIT_STATUS(state) \
@@ -160,15 +162,40 @@ struct AUHMetadata {
   }
 };
 
+struct AUHAuxInfo {
+  std::string tablet_id;
+  std::string table_id;
+
+  std::string ToString() const;
+
+  template <class PB>
+  void ToPB(PB* pb) const {
+    pb->set_table_id(table_id);
+    pb->set_tablet_id(tablet_id);
+  }
+
+  template <class PB>
+  static AUHAuxInfo FromPB(const PB& pb) {
+    return AUHAuxInfo{
+      .table_id = pb.table_id(),
+      .tablet_id = pb.tablet_id()
+    };
+  }
+};
+
 class WaitStateInfo;
 // typedef WaitStateInfo* WaitStateInfoPtr;
 typedef std::shared_ptr<WaitStateInfo> WaitStateInfoPtr;
 class WaitStateInfo {
+  // TBD Make interactions thread-safe.
+  // The DumpRunningRPcs may be called from a separate thread. We need to
+  // ensure that it gets the latest state.
  public:
   WaitStateInfo() = default;
   WaitStateInfo(AUHMetadata meta);
 
   void set_state(WaitStateCode c);
+  void set_state_with_aux(WaitStateCode c, char*);
 
   WaitStateCode get_state() const;
 
@@ -187,22 +214,27 @@ class WaitStateInfo {
   static void UpdateCurrentWaitStateFromPBExceptCurrentRequstId(const PB& pb) {
     auto wait_state = util::WaitStateInfo::CurrentWaitState();
     if (wait_state && pb.has_auh_metadata()) {
+      std::lock_guard<simple_spinlock> lock_guard(wait_state->mutex_);
       auto& auh_metadata = wait_state->metadata();
       auh_metadata.UpdateFromPBExceptCurrentRequstId(pb.auh_metadata());
     }
   }
-  AUHMetadata& metadata() {
+
+  AUHMetadata& metadata() REQUIRES(mutex_) {
     return metadata_;
   }
 
+  simple_spinlock* get_mutex() RETURN_CAPABILITY(mutex_);
  private:
-  AUHMetadata metadata_;
-  WaitStateCode code_ = WaitStateCode::Unused;
+  std::atomic<WaitStateCode> code_{WaitStateCode::Unused};
+
+  mutable simple_spinlock mutex_;
+  AUHMetadata metadata_ GUARDED_BY(mutex_);
+  AUHAuxInfo aux_info_ GUARDED_BY(mutex_);
 
 #ifdef TRACK_WAIT_HISTORY
-  std::atomic_int16_t num_updates_;
-  mutable simple_spinlock mutex_;
-  std::vector<WaitStateCode> history_;
+  std::atomic_int16_t num_updates_ GUARDED_BY(mutex_);
+  std::vector<WaitStateCode> history_ GUARDED_BY(mutex_);
 #endif
 
   // Similar to thread-local trace:
