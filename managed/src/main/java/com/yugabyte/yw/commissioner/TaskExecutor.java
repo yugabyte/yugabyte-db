@@ -799,7 +799,7 @@ public class TaskExecutor {
       Throwable t = null;
       TaskType taskType = taskInfo.getTaskType();
       taskStartTime = Instant.now();
-      Map<String, String> taskLables = this.getTaskMetricLabels();
+      Map<String, String> taskLabels = this.getTaskMetricLabels();
 
       try {
         if (log.isDebugEnabled()) {
@@ -808,7 +808,7 @@ public class TaskExecutor {
               task.getName(),
               getDurationSeconds(taskScheduledTime, taskStartTime));
         }
-        writeTaskWaitMetric(taskLables, taskScheduledTime, taskStartTime);
+        writeTaskWaitMetric(taskLabels, taskScheduledTime, taskStartTime);
         publishBeforeTask();
         if (getAbortTime() != null) {
           throw new CancellationException("Task " + task.getName() + " is aborted");
@@ -842,7 +842,7 @@ public class TaskExecutor {
               task.getName(),
               getDurationSeconds(taskStartTime, taskCompletionTime));
         }
-        writeTaskStateMetric(taskLables, taskStartTime, taskCompletionTime, getTaskState());
+        writeTaskStateMetric(taskLabels, taskStartTime, taskCompletionTime, getTaskState());
         task.terminate();
         publishAfterTask(t);
       }
