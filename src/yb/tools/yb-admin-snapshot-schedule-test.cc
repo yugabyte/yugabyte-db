@@ -3223,9 +3223,7 @@ void YbAdminSnapshotScheduleTest::TestGCHiddenTables() {
 
 class YbAdminSnapshotConsistentRestoreTest : public YbAdminSnapshotScheduleTest {
  public:
-  virtual std::vector<std::string> ExtraTSFlags() {
-    return { "--consistent_restore=true", "--TEST_tablet_delay_restore_ms=0" };
-  }
+  virtual std::vector<std::string> ExtraTSFlags() { return {"--TEST_tablet_delay_restore_ms=0"}; }
 };
 
 Status WaitWrites(int num, std::atomic<int>* current) {
@@ -3490,10 +3488,6 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, DDLsDuringRestore, YbAdminSnapshotConsist
 
 class YbAdminSnapshotConsistentRestoreFailoverTest : public YbAdminSnapshotScheduleTest {
  public:
-  std::vector<std::string> ExtraTSFlags() override {
-    return { "--consistent_restore=true" };
-  }
-
   std::vector<std::string> ExtraMasterFlags() override {
     return { "--TEST_skip_sending_restore_finished=true" };
   }
