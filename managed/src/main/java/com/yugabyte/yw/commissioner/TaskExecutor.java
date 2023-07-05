@@ -180,7 +180,9 @@ public class TaskExecutor {
   private static void writeTaskWaitMetric(
       Map<String, String> taskLabels, Instant scheduledTime, Instant startTime) {
     COMMISSIONER_TASK_WAITING_SEC
-        .labels(taskLabels.get("taskType"), taskLabels.get("parentTaskType"))
+        .labels(
+            taskLabels.get(KnownAlertLabels.TASK_TYPE.labelName()),
+            taskLabels.get(KnownAlertLabels.PARENT_TASK_TYPE.labelName()))
         .observe(getDurationSeconds(scheduledTime, startTime));
   }
 
@@ -188,7 +190,10 @@ public class TaskExecutor {
   private static void writeTaskStateMetric(
       Map<String, String> taskLabels, Instant startTime, Instant endTime, State state) {
     COMMISSIONER_TASK_EXECUTION_SEC
-        .labels(taskLabels.get("taskType"), state.name(), taskLabels.get("parentTaskType"))
+        .labels(
+            taskLabels.get(KnownAlertLabels.TASK_TYPE.labelName()),
+            state.name(),
+            taskLabels.get(KnownAlertLabels.PARENT_TASK_TYPE.labelName()))
         .observe(getDurationSeconds(startTime, endTime));
   }
 
@@ -1062,7 +1067,10 @@ public class TaskExecutor {
     @Override
     protected Map<String, String> getTaskMetricLabels() {
       return ImmutableMap.of(
-          "parentTaskType", "No parent", "taskType", taskInfo.getTaskType().name());
+          KnownAlertLabels.PARENT_TASK_TYPE.labelName(),
+          "No parent",
+          KnownAlertLabels.TASK_TYPE.labelName(),
+          taskInfo.getTaskType().name());
     }
 
     @Override
@@ -1245,8 +1253,8 @@ public class TaskExecutor {
     @Override
     protected Map<String, String> getTaskMetricLabels() {
       return ImmutableMap.of(
-          "parentTaskType", parentRunnableTask.getTaskType().name(),
-          "taskType", taskInfo.getTaskType().name());
+          KnownAlertLabels.PARENT_TASK_TYPE.labelName(), parentRunnableTask.getTaskType().name(),
+          KnownAlertLabels.TASK_TYPE.labelName(), taskInfo.getTaskType().name());
     }
 
     @Override
