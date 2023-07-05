@@ -617,3 +617,8 @@ message AUHMetadataPB {
   optional uint64 current_request_id = 4;
   optional uint64 query_id = 5;
 }
+
+message AUHAuxDataPB {
+  optional string tablet_id = 1;
+  optional string table_id = 2;
+}
