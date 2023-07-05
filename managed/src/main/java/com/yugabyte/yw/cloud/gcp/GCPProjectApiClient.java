@@ -64,7 +64,7 @@ public class GCPProjectApiClient {
      * @param operation the operation that we are waiting to get completed
      * @return the error, if any, else {@code null} if there was no error
      */
-    public Operation.Error waitForOperationCompletion(Operation operation) {
+    public void waitForOperationCompletion(Operation operation) {
       Long pollingInterval =
           runtimeConfGetter.getConfForScope(
               provider, ProviderConfKeys.operationStatusPollingInterval);
@@ -105,7 +105,10 @@ public class GCPProjectApiClient {
       } catch (IOException e) {
         throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Failed to connect to GCP.");
       }
-      return operation == null ? null : operation.getError();
+      if (operation != null && operation.getError() != null) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, operation.getError().getErrors().toString());
+      }
     }
   }
 
