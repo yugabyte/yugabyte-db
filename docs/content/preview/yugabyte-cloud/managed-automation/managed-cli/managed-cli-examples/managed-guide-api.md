@@ -47,7 +47,7 @@ To create your free [sandbox](../../../cloud-basics/create-clusters/create-clust
 
 ### Determine the database version
 
-YugabyteDB Managed has [two release tracks](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on), Preview for testing new features, and Stable for production deployments.
+YugabyteDB Managed has [three release tracks](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on), Preview and Innovation for testing new features, and Production for production deployments.
 
 To get the ID for the Preview track and add it to an environment variable, enter the following commands:
 

@@ -21,7 +21,7 @@ The following best practices are recommended for production clusters.
 | [Provider and region](#provider-and-region) | Deploy your cluster in a virtual private cloud (VPC), with the same provider and in the same region as your application VPC. YugabyteDB Managed supports AWS, Azure, and GCP.<br>Multi-region clusters must be deployed in VPCs. You need to create the VPCs before you deploy the cluster. Refer to [VPC network](../cloud-vpcs/). |
 | [Fault tolerance](#fault-tolerance) | Region or Availability zone (AZ) level - minimum of three nodes across multiple regions or AZs, with a replication factor of 3. |
 | [Sizing](#sizing) | For most production applications, at least 3 nodes with 4 to 8 vCPUs per node.<br>Clusters support 10 simultaneous connections per vCPU. For example, a 3-node cluster with 4 vCPUs per node can support 10 x 3 x 4 = 120 connections.<br>When scaling your cluster, for best results increase node size up to 16 vCPUs before adding more nodes. For example, for a 3-node cluster with 4 vCPUs per node, scale up to 8 or 16 vCPUs before adding a fourth node. |
-| [YugabyteDB version](#yugabytedb-version) | Use the **Stable** release track. |
+| [YugabyteDB version](#yugabytedb-version) | Use the **Production** release track. |
 | [Staging cluster](#staging-cluster) | Use a staging cluster to test application compatibility with database updates before upgrading your production cluster. |
 | [Backups](#backups) | Use the default backup schedule (daily, with 8 day retention). |
 | [Security and authorization](#security) | YugabyteDB Managed clusters are secure by default. After deploying, set up IP allow lists and add database users to allow clients, applications, and application VPCs to connect. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/). |
@@ -140,11 +140,12 @@ For production clusters, a minimum of 3 nodes with 4 to 8 vCPUs per node is reco
 
 ### YugabyteDB version
 
-By default, clusters are created using a stable release, taken from the [stable release series](../../../releases/versioning/#stable-releases) of YugabyteDB.
+By default, clusters are created using a stable release, taken from the [stable release series](../../../releases/versioning/#stable-releases) of YugabyteDB. You can choose to deploy your dedicated cluster using the following release tracks:
 
-You can choose to deploy your cluster using a preview release for development and testing. YugabyteDB Managed database preview releases are typically taken from the [preview release series](../../../releases/versioning/#preview-releases) of YugabyteDB, though they can also include a recently released stable release.
+- Innovation - Updated more frequently, providing quicker access to new features.
+- Production - Features less frequent updates using stable builds that have been tested longer in YugabyteDB Managed.
 
-If you need a feature from a preview release (that isn't yet available in a stable release) for a production deployment, contact {{% support-cloud %}} before you create your cluster.
+If you need a feature from the [preview release series](../../../releases/versioning/#preview-releases) of YugabyteDB, contact {{% support-cloud %}} before you create your cluster. (Preview releases are also used for Sandbox clusters.)
 
 Yugabyte manages upgrades for you. After you choose a track, database upgrades continue to take releases from the track you chose. For multi-node clusters, Yugabyte performs a rolling upgrade without any downtime. You can manage when Yugabyte performs maintenance and upgrades by configuring the [maintenance window](../../cloud-clusters/cloud-maintenance/) for your cluster.
 
