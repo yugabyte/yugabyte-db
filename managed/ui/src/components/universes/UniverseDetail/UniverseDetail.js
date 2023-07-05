@@ -670,7 +670,7 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         )}
 
-                      {!universePaused && (!this.isRRFlagsEnabled() || isKubernetesUniverse) && (
+                      {!universePaused && (!this.isRRFlagsEnabled() || isItKubernetesUniverse) && (
                         <YBMenuItem
                           disabled={updateInProgress}
                           onClick={showGFlagsModal}
@@ -682,7 +682,7 @@ class UniverseDetail extends Component {
                           <YBLabelWithIcon icon="fa fa-flag fa-fw">Edit Flags</YBLabelWithIcon>
                         </YBMenuItem>
                       )}
-                      {!universePaused && this.isRRFlagsEnabled() && !isKubernetesUniverse && (
+                      {!universePaused && this.isRRFlagsEnabled() && !isItKubernetesUniverse && (
                         <YBMenuItem
                           disabled={updateInProgress}
                           onClick={showGFlagsNewModal}
