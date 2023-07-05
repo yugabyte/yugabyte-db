@@ -57,7 +57,7 @@ class ThreadPool {
   void IncBackgroundThreadsIfNeeded(int num);
   void SetBackgroundThreads(int num);
   void StartBGThreads();
-  void Schedule(void (*function)(void* arg1, yb::util::WaitStateInfoPtr wait_state), void* arg, void* tag,
+  void Schedule(void (*function)(void* arg1), void* arg, void* tag,
                 void (*unschedFunction)(void* arg));
   int UnSchedule(void* arg);
 
@@ -98,7 +98,7 @@ class ThreadPool {
   // Entry per Schedule() call
   struct BGItem {
     void* arg;
-    void (*function)(void*, yb::util::WaitStateInfoPtr);
+    void (*function)(void*);
     void* tag;
     void (*unschedFunction)(void*);
   };

@@ -335,7 +335,7 @@ class Env {
   // serialized.
   // When the UnSchedule function is called, the unschedFunction
   // registered at the time of Schedule is invoked with arg as a parameter.
-  virtual void Schedule(void (*function)(void* arg, yb::util::WaitStateInfoPtr wait_state), void* arg,
+  virtual void Schedule(void (*function)(void* arg), void* arg,
                         Priority pri = LOW, void* tag = nullptr,
                         void (*unschedFunction)(void* arg) = 0) = 0;
 
@@ -672,7 +672,7 @@ class EnvWrapper : public Env {
 
   Status UnlockFile(FileLock* l) override;
 
-  void Schedule(void (*f)(void* arg, yb::util::WaitStateInfoPtr wait_state), void* a, Priority pri,
+  void Schedule(void (*f)(void* arg), void* a, Priority pri,
                 void* tag = nullptr, void (*u)(void* arg) = 0) override {
     return target_->Schedule(f, a, pri, tag, u);
   }

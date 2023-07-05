@@ -613,8 +613,8 @@ class DBImpl : public DB {
   void MaybeScheduleFlushOrCompaction();
   void SchedulePendingFlush(ColumnFamilyData* cfd);
   void SchedulePendingCompaction(ColumnFamilyData* cfd);
-  static void BGWorkCompaction(void* arg, yb::util::WaitStateInfoPtr wait_state);
-  static void BGWorkFlush(void* db, yb::util::WaitStateInfoPtr wait_state);
+  static void BGWorkCompaction(void* arg);
+  static void BGWorkFlush(void* db);
   static void UnscheduleCallback(void* arg);
   void WaitAfterBackgroundError(const Status& s, const char* job_name, LogBuffer* log_buffer);
   void BackgroundCallCompaction(

@@ -3285,21 +3285,19 @@ void DBImpl::SchedulePendingCompaction(ColumnFamilyData* cfd) {
   TEST_SYNC_POINT("DBImpl::SchedulePendingCompaction:Done");
 }
 
-void DBImpl::BGWorkFlush(void* db, yb::util::WaitStateInfoPtr wait_state) {
+void DBImpl::BGWorkFlush(void* db) {
   IOSTATS_SET_THREAD_POOL_ID(Env::Priority::HIGH);
   TEST_SYNC_POINT("DBImpl::BGWorkFlush");
-  SCOPED_ADOPT_WAIT_STATE(wait_state);
   reinterpret_cast<DBImpl*>(db)->BackgroundCallFlush(nullptr /* cfd */);
   SET_WAIT_STATUS(yb::util::WaitStateCode::Unused);
   TEST_SYNC_POINT("DBImpl::BGWorkFlush:done");
 }
 
-void DBImpl::BGWorkCompaction(void* arg, yb::util::WaitStateInfoPtr wait_state) {
+void DBImpl::BGWorkCompaction(void* arg) {
   CompactionArg ca = *(reinterpret_cast<CompactionArg*>(arg));
   delete reinterpret_cast<CompactionArg*>(arg);
   IOSTATS_SET_THREAD_POOL_ID(Env::Priority::LOW);
   TEST_SYNC_POINT("DBImpl::BGWorkCompaction");
-  SCOPED_ADOPT_WAIT_STATE(wait_state);
   reinterpret_cast<DBImpl*>(ca.db)->BackgroundCallCompaction(ca.m);
   SET_WAIT_STATUS(yb::util::WaitStateCode::Unused);
 }

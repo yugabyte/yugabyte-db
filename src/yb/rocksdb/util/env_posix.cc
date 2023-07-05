@@ -342,7 +342,7 @@ class PosixEnv : public Env {
     return result;
   }
 
-  virtual void Schedule(void (*function)(void* arg1, yb::util::WaitStateInfoPtr wait_state), void* arg,
+  virtual void Schedule(void (*function)(void* arg1), void* arg,
                         Priority pri = LOW, void* tag = nullptr,
                         void (*unschedFunction)(void* arg) = 0) override;
 
@@ -775,7 +775,7 @@ PosixEnv::PosixEnv(std::unique_ptr<RocksDBFileFactory> file_factory) :
   }
 }
 
-void PosixEnv::Schedule(void (*function)(void* arg1, yb::util::WaitStateInfoPtr wait_state), void* arg, Priority pri,
+void PosixEnv::Schedule(void (*function)(void* arg1), void* arg, Priority pri,
                         void* tag, void (*unschedFunction)(void* arg)) {
   assert(pri >= Priority::LOW && pri <= Priority::HIGH);
   thread_pools_[pri].Schedule(function, arg, tag, unschedFunction);

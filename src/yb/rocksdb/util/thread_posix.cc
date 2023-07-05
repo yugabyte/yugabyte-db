@@ -102,13 +102,14 @@ void ThreadPool::BGThread(size_t thread_id) {
       PthreadCall("unlock", pthread_mutex_unlock(&mu_));
       break;
     }
-    void (*function)(void*, yb::util::WaitStateInfoPtr) = queue_.front().function;
+    void (*function)(void*) = queue_.front().function;
     void* arg = queue_.front().arg;
     queue_.pop_front();
     queue_len_.store(static_cast<unsigned int>(queue_.size()),
                      std::memory_order_relaxed);
 
     bool decrease_io_priority = (low_io_priority != low_io_priority_);
+    SCOPED_ADOPT_WAIT_STATE(bg_wait_states_[thread_id]);
     PthreadCall("unlock", pthread_mutex_unlock(&mu_));
 
 #ifdef __linux__
@@ -133,7 +134,7 @@ void ThreadPool::BGThread(size_t thread_id) {
 #else
     (void)decrease_io_priority;  // avoid 'unused variable' error
 #endif
-    (*function)(arg, bg_wait_states_[thread_id]);
+    (*function)(arg);
   }
 }
 
@@ -180,7 +181,7 @@ void ThreadPool::StartBGThreads() {
   }
 }
 
-void ThreadPool::Schedule(void (*function)(void* arg1, yb::util::WaitStateInfoPtr wait_state), void* arg, void* tag,
+void ThreadPool::Schedule(void (*function)(void* arg1), void* arg, void* tag,
                           void (*unschedFunction)(void* arg)) {
   PthreadCall("lock", pthread_mutex_lock(&mu_));
 
