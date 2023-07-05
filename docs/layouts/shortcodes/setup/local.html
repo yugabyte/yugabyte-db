@@ -46,22 +46,12 @@
 {{- $data = print $data "After starting the yugabyted processes on all the nodes, configure the data placement constraint of the universe, as follows:" "\n" -}}
 
 {{- $data = print $data "```sh" "\n" -}}
-{{- $data = print $data "./bin/yugabyted configure data_placement --fault_tolerance=zone --base_dir=/tmp/ybd1" "\n" -}}
-{{- $data = print $data "```" "\n" -}}
-
 {{- if (gt $rf 3) -}}
-{{- $data = print $data "Now, set the replication factor to be `" $rf "` as follows:" "\n" -}}
-
-{{- $placement := "" -}}
-{{- range $idx, $loc := $locations -}}
-{{- $placement = print $placement $loc "," -}}
+{{- $data = print $data "./bin/yugabyted configure data_placement --base_dir=/tmp/ybd1 --fault_tolerance=zone --rf " $rf "\n" -}}
+{{- else -}}
+{{- $data = print $data "./bin/yugabyted configure data_placement --base_dir=/tmp/ybd1 --fault_tolerance=zone" "\n" -}}
 {{- end -}}
-{{- $placement = strings.TrimRight "," $placement -}}
-
-{{- $data = print $data "```sh" "\n" -}}
-{{- $data = print $data "./bin/yb-admin modify_placement_info " $placement " " $rf "\n" -}}
 {{- $data = print $data "```" "\n" -}}
-{{- end -}}
 
 {{- $data = print $data "" "\n" -}}
 {{- $data = print $data "This command can be executed on any node where you already started YugabyteDB" "\n" -}}
