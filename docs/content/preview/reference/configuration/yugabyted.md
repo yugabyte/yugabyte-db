@@ -23,6 +23,18 @@ For examples of using yugabyted to deploy single- and multi-node clusters, see [
 Note that yugabyted is not recommended for production deployments. For production deployments with fully-distributed multi-node clusters, use [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) directly. Refer to [Deploy YugabyteDB](../../../deploy).
 {{</note>}}
 
+{{% note title="macOS Monterey" %}}
+
+macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. Use the [--master_webserver_port flag](#advanced-flags) when you start the cluster to change the default port number, as follows:
+
+```sh
+./bin/yugabyted start --master_webserver_port=9999
+```
+
+Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
+
+{{% /note %}}
+
 ## Syntax
 
 ```sh
