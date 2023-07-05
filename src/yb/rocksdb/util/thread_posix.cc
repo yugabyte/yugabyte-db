@@ -51,6 +51,7 @@ ThreadPool::ThreadPool() {
 
 ThreadPool::~ThreadPool() {
   DCHECK(bgthreads_.empty());
+  DCHECK(bg_wait_states_.empty());
 }
 
 void ThreadPool::JoinAllThreads() {
@@ -62,6 +63,7 @@ void ThreadPool::JoinAllThreads() {
   for (const auto& thread : bgthreads_) {
     thread->Join();
   }
+  bg_wait_states_.clear();
   bgthreads_.clear();
 }
 
@@ -91,6 +93,7 @@ void ThreadPool::BGThread(size_t thread_id) {
       // Current thread is the last generated one and is excessive.
       // We always terminate excessive thread in the reverse order of
       // generation time.
+      bg_wait_states_.pop_back();
       bgthreads_.pop_back();
       if (HasExcessiveThread()) {
         // There is still at least more excessive thread to terminate.
@@ -106,6 +109,7 @@ void ThreadPool::BGThread(size_t thread_id) {
                      std::memory_order_relaxed);
 
     bool decrease_io_priority = (low_io_priority != low_io_priority_);
+    SCOPED_ADOPT_WAIT_STATE(bg_wait_states_[thread_id]);
     PthreadCall("unlock", pthread_mutex_unlock(&mu_));
 
 #ifdef __linux__
@@ -172,7 +176,7 @@ void ThreadPool::StartBGThreads() {
     CHECK_OK(yb::Thread::Create(
         category_name, std::move(thread_name),
         [this, tid]() { this->BGThread(tid); }, &thread));
-
+    bg_wait_states_.push_back(std::make_shared<yb::util::WaitStateInfo>());
     bgthreads_.push_back(thread);
   }
 }

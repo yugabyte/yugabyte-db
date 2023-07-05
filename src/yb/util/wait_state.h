@@ -47,7 +47,6 @@
 #define SCOPED_WAIT_STATUS(state) \
   SCOPED_WAIT_STATUS_FOR(yb::util::WaitStateInfo::CurrentWaitState(), (state))
 
-
 // For debugging purposes:
 // Uncomment the following line to track state changes in wait events.
 // #define TRACK_WAIT_HISTORY
@@ -78,7 +77,11 @@ YB_DEFINE_ENUM(
       (SubmittedChangeAutoFlagsConfigToPreparer)
       (SubmittedUnexpectedToPreparer)
     // Reads
-    (GetSafeTime)(GetSubDoc))
+    (GetSafeTime)(GetSubDoc)
+    // Flush and Compaction
+    (StartFlush)(StartCompaction)
+    (OpenFile)(CloseFile)(DeleteFile)(WriteToFile)
+    (StartSubcompactionThreads)(WaitOnSubcompactionThreads))
 
 struct AUHMetadata {
   std::string request_id;
@@ -94,19 +97,24 @@ class WaitStateInfo;
 typedef std::shared_ptr<WaitStateInfo> WaitStateInfoPtr;
 class WaitStateInfo {
  public:
+  WaitStateInfo() = default;
   WaitStateInfo(AUHMetadata meta);
 
   void set_state(WaitStateCode c);
 
   WaitStateCode get_state() const;
 
+  void set_metadata(AUHMetadata meta);
+
   std::string ToString() const;
+
+  AUHMetadata metadata(); 
 
   static WaitStateInfoPtr CurrentWaitState();
   static void SetCurrentWaitState(WaitStateInfoPtr);
 
  private:
-  const AUHMetadata metadata_;
+  AUHMetadata metadata_;
   WaitStateCode code_ = WaitStateCode::Unused;
 
 #ifdef TRACK_WAIT_HISTORY
