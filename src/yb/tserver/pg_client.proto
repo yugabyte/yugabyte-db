@@ -676,44 +676,6 @@ message PgCancelTransactionResponsePB {
   AppStatusPB status = 1;
 }
 
-message RemoteMethodPB {
-  // Service name for the RPC layer.
-  // The client created a proxy with this service name.
-  // Example: yb.rpc_test.CalculatorService
-  string service_name = 1;
-
-  // Name of the RPC method.
-  string method_name = 2;
-};
-
-// The header for the RPC request frame.
-message RequestHeader {
-  // A sequence number that is sent back in the Response. Hadoop specifies a uint32 and
-  // casts it to a signed int. That is counterintuitive, so we use an int32 instead.
-  // Allowed values (inherited from Hadoop):
-  //   0 through INT32_MAX: Regular RPC call IDs.
-  //   -2: Invalid call ID.
-  //   -3: Connection context call ID.
-  //   -33: SASL negotiation call ID.
-  int32 call_id = 1;
-
-  // RPC method being invoked.
-  // Not used for "connection setup" calls.
-  RemoteMethodPB remote_method = 2;
-
-  // Propagate the timeout as specified by the user. Note that, since there is some
-  // transit time between the client and server, if you wait exactly this amount of
-  // time and then respond, you are likely to cause a timeout on the client.
-  uint32 timeout_millis = 3;
-}
-
-message RpcCallInProgressPB {
-  RequestHeader header = 1;
-  uint64 elapsed_millis = 2;
-  uint64 sending_bytes = 3;
-  string state = 4;
-}
-
 message PgActiveUniverseHistoryRequestPB {}
 
 message PgActiveUniverseHistoryResponsePB {
