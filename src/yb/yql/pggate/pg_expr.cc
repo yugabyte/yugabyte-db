@@ -571,6 +571,10 @@ int PgExpr::get_pg_collid() const {
   return 0;  /* InvalidOid */
 }
 
+std::string PgExpr::ToString() const {
+  return Format("{ opcode: $0 }", to_underlying(opcode_));
+}
+
 //--------------------------------------------------------------------------------------------------
 
 PgConstant::PgConstant(ThreadSafeArena* arena,
@@ -812,6 +816,10 @@ void PgConstant::UpdateConstant(const void *value, size_t bytes, bool is_null) {
 
 Result<LWQLValuePB*> PgConstant::Eval() {
   return &ql_value_;
+}
+
+std::string PgConstant::ToString() const {
+  return ql_value_.ShortDebugString();
 }
 
 //--------------------------------------------------------------------------------------------------
