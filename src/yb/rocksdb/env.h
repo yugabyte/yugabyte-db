@@ -41,6 +41,7 @@
 #include "yb/util/io.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/wait_state.h"
 
 #ifdef _WIN32
 // Windows API macro interference

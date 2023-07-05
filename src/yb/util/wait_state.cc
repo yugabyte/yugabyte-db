@@ -46,6 +46,14 @@ WaitStateCode WaitStateInfo::get_state() const {
   return code_;
 }
 
+void WaitStateInfo::set_metadata(AUHMetadata meta) {
+  metadata_ = meta;
+}
+
+AUHMetadata WaitStateInfo::metadata() {
+  return metadata_;
+}
+
 std::string WaitStateInfo::ToString() const {
   #ifdef TRACK_WAIT_HISTORY
   std::vector<WaitStateCode> history;
