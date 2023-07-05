@@ -148,12 +148,12 @@ Database upgrades of high-availability (multi-node) clusters are done on a rolli
 
 Sandbox clusters are provisioned with a **preview** release, from the YugabyteDB [preview release](../../releases/versioning/#preview-releases) series.
 
-Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB [stable release](../../releases/versioning/#stable-releases) series. When creating a dedicated cluster, you can choose one of two release tracks:
+Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB [stable release](../../releases/versioning/#stable-releases) series. When creating a dedicated cluster, you can choose one of the following tracks:
 
 - Innovation, which features more frequent updates for faster access to new features.
 - Production, which has a slower update cadence and features only select stable release builds.
 
-Once a cluster is created, it is upgraded with releases from the release track that was assigned at creation (that is, either Innovation or Production, or Preview for Sandbox clusters).
+Once a cluster is created, it is upgraded with releases from the track that was assigned at creation (that is, either Innovation or Production, or Preview for Sandbox clusters).
 
 To view the database version running on a particular cluster, navigate to the **Clusters** page; the database version is displayed next to the cluster name; hover over the version to see the release track.
 
