@@ -44,6 +44,7 @@ import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
@@ -3880,6 +3881,68 @@ public class NodeManagerTest extends FakeDBApplication {
           .run(eq(expectedCommand), any(ShellProcessContext.class));
       idx++;
     }
+  }
+
+  @Test
+  public void testCGroupsSize() {
+    TestData td = this.testData.get(0);
+    Universe universe = createUniverse();
+    PlacementInfo pi = new PlacementInfo();
+    UserIntent userIntent = new UserIntent();
+    userIntent.provider = td.provider.getUuid().toString();
+    userIntent.providerType = td.provider.getCloudCode();
+    userIntent.numNodes = 1;
+    userIntent.replicationFactor = 1;
+    PlacementInfoUtil.addPlacementZone(td.zone.getUuid(), pi, 1, 1, false);
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
+    when(mockConfGetter.getConfForScope(eq(universe), eq(UniverseConfKeys.dbMemPostgresMaxMemMb)))
+        .thenReturn(100);
+    when(mockConfGetter.getConfForScope(
+            eq(universe), eq(UniverseConfKeys.dbMemPostgresReadReplicaMaxMemMb)))
+        .thenReturn(-1);
+
+    NodeDetails primaryNode = new NodeDetails();
+    primaryNode.azUuid = td.zone.getUuid();
+    primaryNode.placementUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
+    universe.getUniverseDetails().nodeDetailsSet.add(primaryNode);
+    NodeDetails rrNode =
+        universe
+            .getNodesInCluster(universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid)
+            .iterator()
+            .next();
+
+    UserIntent primaryIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    UserIntent rrIntent = universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent;
+
+    verifyCGroupSize(universe, primaryNode, 100);
+    verifyCGroupSize(universe, rrNode, 100); // inherited
+
+    primaryIntent.setCgroupSize(37);
+    verifyCGroupSize(universe, primaryNode, 37);
+    verifyCGroupSize(universe, rrNode, 37); // inherited
+    rrIntent.setCgroupSize(-1);
+    verifyCGroupSize(universe, rrNode, 37); // inherited
+    rrIntent.setCgroupSize(21);
+    verifyCGroupSize(universe, rrNode, 21);
+
+    primaryIntent.setUserIntentOverrides(TestUtils.composeAZOverrides(UUID.randomUUID(), null, 10));
+    verifyCGroupSize(universe, primaryNode, 37); // still the same as wrong azUUID
+    primaryIntent.setUserIntentOverrides(TestUtils.composeAZOverrides(td.zone.getUuid(), null, 10));
+    verifyCGroupSize(universe, primaryNode, 10);
+    verifyCGroupSize(universe, rrNode, 21);
+
+    rrIntent.setUserIntentOverrides(TestUtils.composeAZOverrides(td.zone.getUuid(), null, 5));
+    verifyCGroupSize(universe, rrNode, 5);
+  }
+
+  private void verifyCGroupSize(Universe universe, NodeDetails node, int value) {
+    NodeTaskParams nodeTaskParams = new NodeTaskParams();
+    nodeTaskParams.azUuid = node.azUuid;
+    nodeTaskParams.placementUuid = node.placementUuid;
+    assertEquals(value, NodeManager.getCGroupSize(mockConfGetter, universe, nodeTaskParams));
   }
 
   private void checkArguments(

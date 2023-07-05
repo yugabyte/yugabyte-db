@@ -61,6 +61,10 @@
     },
     "AZOverrides" : {
       "properties" : {
+        "cgroupSize" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
         "deviceInfo" : {
           "$ref" : "#/definitions/DeviceInfo"
         },
@@ -7063,6 +7067,10 @@
     },
     "OverridenDetails" : {
       "properties" : {
+        "cgroupSize" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
         "deviceInfo" : {
           "$ref" : "#/definitions/DeviceInfo"
         },
@@ -12090,6 +12098,10 @@
             "type" : "string"
           },
           "type" : "object"
+        },
+        "cgroupSize" : {
+          "format" : "int32",
+          "type" : "integer"
         },
         "dedicatedNodes" : {
           "type" : "boolean"
