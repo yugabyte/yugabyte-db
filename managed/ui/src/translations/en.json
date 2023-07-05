@@ -23,7 +23,8 @@
       "remove": "Remove",
       "wrong": "Something went wrong.",
       "areYouSure": "Are you sure ?",
-      "delete": "Delete"
+      "delete": "Delete",
+      "back": "Back"
     },
     "universeActions": {
       "encryptionAtRest": {
@@ -41,6 +42,33 @@
         "masterKeyRotationSuccess": "Successfully rotated master key.",
         "lastRotatedLabel": "Last rotated: ",
         "lastActiveKMSLabel": "Last active KMS: "
+      },
+      "editYSQLSettings": {
+        "modalTitle": "Edit YSQL configuration",
+        "ysqlToggleLabel": "Enable YSQL for this Universe ",
+        "authToggleLabel": "Enable YSQL Auth",
+        "cannotDisableYSQL": "User cannot disable YSQL once it is enabled",
+        "currentPwdToAuth": "Enter current password to turn off Auth",
+        "YSQLPwdLabel": "YSQL Password",
+        "rotatePwdLabel": "Rotate ysql password",
+        "currentPwd": "Enter current password",
+        "newPwd": "Enter new password",
+        "reEnterNewPwd": "Re-enter new password",
+        "updateSettingsSuccessMsg": "Updating YSQL configuration is in progress",
+        "rotatePwdSuccessMsg": "DB credentials for YSQL updated successfully"
+      },
+      "editYCQLSettings": {
+        "modalTitle": "Edit YCQL configuration",
+        "ycqlToggleLabel": "Enable YCQL for this Universe ",
+        "authToggleLabel": "Enable YCQL Auth",
+        "currentPwdToAuth": "Enter current password to turn off Auth",
+        "YCQLPwdLabel": "YCQL Password",
+        "rotatePwdLabel": "Rotate ycql password",
+        "currentPwd": "Enter current password",
+        "newPwd": "Enter new password",
+        "reEnterNewPwd": "Re-enter new password",
+        "updateSettingsSuccessMsg": "Updating YCQL configuration is in progress",
+        "rotatePwdSuccessMsg": "DB credentials for YCQL updated successfully"
       }
     },
     "commonErrors": {
