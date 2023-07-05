@@ -24,6 +24,7 @@
 #include "access/xlog_internal.h"
 #include "common/fe_memutils.h"
 #include "common/file_perm.h"
+#include "common/string.h"
 #include "datatype/timestamp.h"
 #include "fe_utils/connect.h"
 #include "port/pg_bswap.h"
@@ -50,8 +51,7 @@ char	   *dbuser = NULL;
 char	   *dbport = NULL;
 char	   *dbname = NULL;
 int			dbgetpassword = 0;	/* 0=auto, -1=never, 1=always */
-static bool have_password = false;
-static char password[100];
+static char *password = NULL;
 PGconn	   *conn = NULL;
 
 /*
@@ -151,20 +151,21 @@ GetConnection(void)
 	}
 
 	/* If -W was given, force prompt for password, but only the first time */
-	need_password = (dbgetpassword == 1 && !have_password);
+	need_password = (dbgetpassword == 1 && !password);
 
 	do
 	{
 		/* Get a new password if appropriate */
 		if (need_password)
 		{
-			simple_prompt("Password: ", password, sizeof(password), false);
-			have_password = true;
+			if (password)
+				free(password);
+			password = simple_prompt("Password: ", false);
 			need_password = false;
 		}
 
 		/* Use (or reuse, on a subsequent connection) password if we have it */
-		if (have_password)
+		if (password)
 		{
 			keywords[i] = "password";
 			values[i] = password;
