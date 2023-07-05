@@ -32,6 +32,7 @@
 #include "fe_utils/string_utils.h"
 
 #include "common.h"
+#include "common/string.h"
 #include "copy.h"
 #include "crosstabview.h"
 #include "describe.h"
@@ -1800,11 +1801,11 @@ exec_command_password(PsqlScanState scan_state, bool active_branch)
 	{
 		char	   *opt0 = psql_scan_slash_option(scan_state,
 												  OT_SQLID, NULL, true);
-		char		pw1[100];
-		char		pw2[100];
+		char	   *pw1;
+		char	   *pw2;
 
-		simple_prompt("Enter new password: ", pw1, sizeof(pw1), false);
-		simple_prompt("Enter it again: ", pw2, sizeof(pw2), false);
+		pw1 = simple_prompt("Enter new password: ", false);
+		pw2 = simple_prompt("Enter it again: ", false);
 
 		if (strcmp(pw1, pw2) != 0)
 		{
@@ -1849,6 +1850,8 @@ exec_command_password(PsqlScanState scan_state, bool active_branch)
 
 		if (opt0)
 			free(opt0);
+		free(pw1);
+		free(pw2);
 	}
 	else
 		ignore_slash_options(scan_state);
@@ -1894,8 +1897,7 @@ exec_command_prompt(PsqlScanState scan_state, bool active_branch,
 
 			if (!pset.inputfile)
 			{
-				result = (char *) pg_malloc(4096);
-				simple_prompt(prompt_text, result, 4096, true);
+				result = simple_prompt(prompt_text, true);
 			}
 			else
 			{
@@ -2818,19 +2820,19 @@ copy_previous_query(PQExpBuffer query_buf, PQExpBuffer previous_buf)
 static char *
 prompt_for_password(const char *username)
 {
-	char		buf[100];
+	char	   *result;
 
 	if (username == NULL || username[0] == '\0')
-		simple_prompt("Password: ", buf, sizeof(buf), false);
+		result = simple_prompt("Password: ", false);
 	else
 	{
 		char	   *prompt_text;
 
 		prompt_text = psprintf(_("Password for user %s: "), username);
-		simple_prompt(prompt_text, buf, sizeof(buf), false);
+		result = simple_prompt(prompt_text, false);
 		free(prompt_text);
 	}
-	return pg_strdup(buf);
+	return result;
 }
 
 static bool
