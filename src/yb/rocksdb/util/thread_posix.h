@@ -60,6 +60,7 @@ class ThreadPool {
   void Schedule(void (*function)(void* arg1), void* arg, void* tag,
                 void (*unschedFunction)(void* arg));
   int UnSchedule(void* arg);
+  std::vector<std::string> GetThreadpoolWaitStates();
 
   unsigned int GetQueueLen() const {
     return queue_len_.load(std::memory_order_relaxed);

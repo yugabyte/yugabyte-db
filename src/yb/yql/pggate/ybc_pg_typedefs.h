@@ -396,12 +396,7 @@ typedef struct PgServerDescriptor {
 } YBCServerDescriptor;
 
 typedef struct AuhDescriptor {
-  int call_id;
-  const char* service_name;
-  const char* method_name;
-  uint64_t elapsed_millis;
-  uint64_t sending_bytes;
-  const char* state;
+  const char* wait_state;
 } YBCAuhDescriptor;
 
 typedef struct PgColumnInfo {

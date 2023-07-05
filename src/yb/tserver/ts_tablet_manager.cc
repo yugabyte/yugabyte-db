@@ -2944,5 +2944,9 @@ Status ShutdownAndTombstoneTabletPeerNotOk(
   return status;
 }
 
+std::vector<std::string> TSTabletManager::GetThreadpoolWaitStates() const {
+  return tablet_options_.rocksdb_env->GetThreadpoolWaitStates();
+}
+
 } // namespace tserver
 } // namespace yb

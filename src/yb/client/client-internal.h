@@ -432,7 +432,7 @@ class YBClient::Data {
 
   Result<bool> CheckIfPitrActive(CoarseTimePoint deadline);
 
-  std::vector<rpc::RpcCallInProgressPB> ActiveUniverseHistory();
+  std::vector<std::string> ActiveUniverseHistory();
 
   template <class ProxyClass, class ReqClass, class RespClass>
   using SyncLeaderMasterFunc = void (ProxyClass::*)(

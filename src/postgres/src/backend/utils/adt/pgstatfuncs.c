@@ -2161,7 +2161,7 @@ tserver_stat_get_activity(PG_FUNCTION_ARGS)
 {
 	FuncCallContext *funcctx;
 
-	static int ncols = 6;
+	static int ncols = 1;
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -2173,17 +2173,7 @@ tserver_stat_get_activity(PG_FUNCTION_ARGS)
 		tupdesc = CreateTemplateTupleDesc(ncols, false);
 
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1,
-						   "call_id", INT4OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 2,
-						   "service_name", TEXTOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 3,
-						   "method_name", TEXTOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 4,
-						   "elapsed_millis", INT8OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 5,
-						   "sending_bytes", INT8OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 6,
-						   "state", TEXTOID, -1, 0);
+						   "wait_state", TEXTOID, -1, 0);
 
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
@@ -2204,12 +2194,7 @@ tserver_stat_get_activity(PG_FUNCTION_ARGS)
 		int cntr = funcctx->call_cntr;
 		YBCAuhDescriptor *rpc = (YBCAuhDescriptor *)funcctx->user_fctx + cntr;
 
-		values[0] = Int64GetDatum(rpc->call_id);
-		values[1] = CStringGetTextDatum(rpc->service_name);
-		values[2] = CStringGetTextDatum(rpc->method_name);
-		values[3] = Int64GetDatum(rpc->elapsed_millis);
-		values[4] = Int64GetDatum(rpc->sending_bytes);
-		values[5] = CStringGetTextDatum(rpc->state);
+		values[0] = Int64GetDatum(rpc->wait_state);
 		memset(nulls, 0, sizeof(nulls));
 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));

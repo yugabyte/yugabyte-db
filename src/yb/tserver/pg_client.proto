@@ -718,5 +718,5 @@ message PgActiveUniverseHistoryRequestPB {}
 
 message PgActiveUniverseHistoryResponsePB {
   AppStatusPB status = 1;
-  repeated RpcCallInProgressPB calls_in_flight = 2;
+  repeated string wait_states = 2;
 }

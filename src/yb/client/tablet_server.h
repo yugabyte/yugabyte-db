@@ -84,22 +84,12 @@ struct YBTabletServerPlacementInfo {
 };
 
 struct YBActiveUniverseHistoryInfo {
-  int call_id;
-  std::string service_name;
-  std::string method_name;
-  uint64_t elapsed_millis;
-  uint64_t sending_bytes;
-  std::string state;
+  std::string wait_state;
 
   template <class PB>
   static YBActiveUniverseHistoryInfo FromPB(const PB& pb) {
     return YBActiveUniverseHistoryInfo {
-      .call_id = pb.header().call_id(),
-      .service_name = pb.header().remote_method().service_name(),
-      .method_name = pb.header().remote_method().method_name(),
-      .elapsed_millis = pb.elapsed_millis(),
-      .sending_bytes = pb.sending_bytes(),
-      .state = pb.state(),
+      .wait_state = pb,
     };
   }
 };

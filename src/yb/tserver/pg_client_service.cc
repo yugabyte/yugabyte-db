@@ -463,16 +463,16 @@ class PgClientServiceImpl::Impl {
   Status ActiveUniverseHistory(
       const PgActiveUniverseHistoryRequestPB& req, PgActiveUniverseHistoryResponsePB* resp,
       rpc::RpcContext* context) {
-    auto res = client().ActiveUniverseHistory();
+    auto tserver_wait_states = client().ActiveUniverseHistory();
 
-    for (auto calls : res) {
-      auto call = resp->add_calls_in_flight();
-      call->mutable_header()->set_call_id(calls.header().call_id());
-      call->mutable_header()->mutable_remote_method()->set_service_name(calls.header().remote_method().service_name());
-      call->mutable_header()->mutable_remote_method()->set_method_name(calls.header().remote_method().method_name());
-      call->set_elapsed_millis(calls.elapsed_millis());
-      call->set_sending_bytes(calls.sending_bytes());
-      call->set_state(rpc::RpcCallState_descriptor()->FindValueByNumber(calls.state())->name());
+    for (auto wait_state : tserver_wait_states) {
+      resp->add_wait_states(wait_state);
+    }
+
+    auto bg_wait_states = tablet_server_.GetThreadpoolWaitStates();
+
+    for (auto wait_state : bg_wait_states) {
+      resp->add_wait_states(wait_state);
     }
 
     return Status::OK();

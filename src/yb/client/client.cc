@@ -2211,7 +2211,7 @@ Result<bool> YBClient::CheckIfPitrActive() {
   return data_->CheckIfPitrActive(deadline);
 }
 
-std::vector<rpc::RpcCallInProgressPB> YBClient::ActiveUniverseHistory() {
+std::vector<std::string> YBClient::ActiveUniverseHistory() {
   return data_->ActiveUniverseHistory();
 }
 

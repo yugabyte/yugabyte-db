@@ -1575,12 +1575,7 @@ YBCStatus YBCActiveUniverseHistory(YBCAuhDescriptor **rpcs, size_t* count) {
     YBCAuhDescriptor *dest = *rpcs;
     for (const auto &info : servers_info) {
       new (dest) YBCAuhDescriptor {
-        .call_id = info.call_id,
-        .service_name = YBCPAllocStdString(info.service_name),
-        .method_name = YBCPAllocStdString(info.method_name),
-        .elapsed_millis = info.elapsed_millis,
-        .sending_bytes = info.sending_bytes,
-        .state = YBCPAllocStdString(info.state),
+        .wait_state = YBCPAllocStdString(info.wait_state),
       };
       ++dest;
     }
