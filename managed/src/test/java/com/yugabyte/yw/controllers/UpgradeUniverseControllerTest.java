@@ -1318,6 +1318,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
             node.cloudInfo = new CloudSpecificInfo();
             node.cloudInfo.private_ip = "1.2.3." + idx;
             node.cloudInfo.az = availabilityZone.getCode();
+            node.cloudInfo.instance_type = instanceTypeString;
             node.azUuid = availabilityZone.getUuid();
             universeDetails.nodeDetailsSet.add(node);
           }

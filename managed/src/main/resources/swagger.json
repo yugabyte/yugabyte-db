@@ -59,6 +59,27 @@
       },
       "type" : "object"
     },
+    "AZOverrides" : {
+      "properties" : {
+        "cgroupSize" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "deviceInfo" : {
+          "$ref" : "#/definitions/DeviceInfo"
+        },
+        "instanceType" : {
+          "type" : "string"
+        },
+        "perProcess" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/OverridenDetails"
+          },
+          "type" : "object"
+        }
+      },
+      "type" : "object"
+    },
     "AccessKey" : {
       "description" : "Access key for the cloud provider. This helps to authenticate the user and get access to the provider.",
       "properties" : {
@@ -7032,6 +7053,21 @@
       },
       "type" : "object"
     },
+    "OverridenDetails" : {
+      "properties" : {
+        "cgroupSize" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "deviceInfo" : {
+          "$ref" : "#/definitions/DeviceInfo"
+        },
+        "instanceType" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "Package" : {
       "properties" : {
         "arch" : {
@@ -12057,6 +12093,10 @@
           },
           "type" : "object"
         },
+        "cgroupSize" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
         "dedicatedNodes" : {
           "type" : "boolean"
         },
@@ -12189,6 +12229,9 @@
         "useTimeSync" : {
           "type" : "boolean"
         },
+        "userIntentOverrides" : {
+          "$ref" : "#/definitions/UserIntentOverrides"
+        },
         "ybSoftwareVersion" : {
           "type" : "string"
         },
@@ -12203,6 +12246,23 @@
         },
         "ysqlPassword" : {
           "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "UserIntentOverrides" : {
+      "properties" : {
+        "azOverrides" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/AZOverrides"
+          },
+          "type" : "object"
+        },
+        "perProcess" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/OverridenDetails"
+          },
+          "type" : "object"
         }
       },
       "type" : "object"
