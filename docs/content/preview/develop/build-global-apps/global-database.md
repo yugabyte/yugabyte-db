@@ -119,7 +119,7 @@ To simulate the failure of `us-east` region follow these instructions.
 ./bin/yb-admin change_master_config ADD_SERVER 127.0.0.4 7100
 ```
 
-2. Stop the nodes in `us-east`.
+2. Stop the 2 nodes in `us-east`.
 
 ```bash
 ./bin/yugabyted stop --base_dir=/tmp/ybd1
@@ -131,8 +131,7 @@ Stopped yugabyted using config /private/tmp/ybd1/conf/yugabyted.conf.
 Stopped yugabyted using config /private/tmp/ybd2/conf/yugabyted.conf.
 ```
 
-Now you will notice that the followers in central region have been promoted to leaders and the application can continue further without any loss in data.
-
+Now you will notice that the followers in `us-central` region have been promoted to leaders and the application can continue further without any loss in data.
 
 ![Global Database - App Failover](/images/develop/global-apps/global-database-failover.png)
 
