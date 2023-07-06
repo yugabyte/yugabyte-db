@@ -728,4 +728,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Makes Timeout during execution of ansible playbooks configurable",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> useServerBroadcastAddressForYbBackup =
+      new ConfKeyInfo<>(
+          "yb.backup.use_server_broadcast_address_for_yb_backup",
+          ScopeType.UNIVERSE,
+          "Use server broadcast address for yb_backup",
+          "Controls whether server_broadcast_address entry should be used during yb_backup.py backup/restore",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

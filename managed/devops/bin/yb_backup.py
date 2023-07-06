@@ -1313,6 +1313,11 @@ class YBBackup:
             help="Do not disable automatic splitting before taking a backup. This is dangerous "
                  "because a tablet might be split and cleaned up just before we try to copy its "
                  "data.")
+        parser.add_argument(
+            '--use_server_broadcast_address', required=False, action='store_true', default=False,
+            help="Use server_broadcast_address if available, otherwise use rpc_bind_address. Note "
+                 "that broadcast address is overwritten by 'ts_secondary_ip_map' if available."
+        )
 
         """
         Test arguments
@@ -1455,7 +1460,7 @@ class YBBackup:
             # of the tserver. The host can either be RPC IP/Broadcast IP.
             logging.info('TS Web hosts/ports: {}'.format(self.args.ts_web_hosts_ports))
             for host_port in self.args.ts_web_hosts_ports.split(','):
-                (host, port) = host_port.split(':')
+                (host, port) = host_port.rsplit(':', 1)
                 # Add this host(RPC IP or Broadcast IP) to ts_cfgs dict. Set web port to access
                 # /varz endpoint.
                 self.ts_cfgs.setdefault(host, YBTSConfig(self)).set_web_port(port)
@@ -1562,7 +1567,7 @@ class YBBackup:
         if not self.leader_master_ip:
             all_masters = self.args.masters.split(",")
             # Use first Master's ip in list to get list of all masters.
-            self.leader_master_ip = all_masters[0].split(':')[0]
+            self.leader_master_ip = all_masters[0].rsplit(':', 1)[0]
 
             # Get LEADER ip, if it's ALIVE, else any alive master ip.
             output = self.run_yb_admin(['list_all_masters'])
@@ -1617,7 +1622,7 @@ class YBBackup:
             alive_ts_ips = self.get_live_tservers()
             if alive_ts_ips:
                 leader_master = self.get_leader_master_ip()
-                master_hosts = {hp.split(':')[0] for hp in self.args.masters.split(",")}
+                master_hosts = {hp.rsplit(':', 1)[0] for hp in self.args.masters.split(",")}
                 # Exclude the Master Leader because the host has maximum network pressure.
                 # Let's try to use a follower Master node instead.
                 master_hosts.discard(leader_master)
@@ -2273,9 +2278,10 @@ class YBBackup:
         :return: The obtained broadcast_ip.
         """
         resolved_ip_port = broadcast_ip_port \
-            if broadcast_ip_port != 'N/A' else rpc_ip_port
-        (broadcast_ip, port) = resolved_ip_port.split(':')
-        (rpc_ip, rpc_port) = rpc_ip_port.split(':')
+            if broadcast_ip_port != 'N/A' and self.args.use_server_broadcast_address \
+            else rpc_ip_port
+        (broadcast_ip, port) = resolved_ip_port.rsplit(':', 1)
+        (rpc_ip, rpc_port) = rpc_ip_port.rsplit(':', 1)
         if self.secondary_to_primary_ip_map:
             broadcast_ip = self.secondary_to_primary_ip_map.get(rpc_ip, broadcast_ip)
 
@@ -3490,7 +3496,7 @@ class YBBackup:
                     if LEADING_UUID_RE.match(line):
                         fields = split_by_tab(line)
                         (rpc_ip_port, role) = (fields[1], fields[2])
-                        (rpc_ip, rpc_port) = rpc_ip_port.split(':')
+                        (rpc_ip, rpc_port) = rpc_ip_port.rsplit(':', 1)
                         if role == 'LEADER' or role == 'FOLLOWER' or role == 'READ_REPLICA':
                             broadcast_ip = self.rpc_to_broadcast_map[rpc_ip]
                             tablets_by_tserver_ip.setdefault(broadcast_ip, set()).add(tablet_id)
