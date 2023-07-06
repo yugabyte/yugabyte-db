@@ -22,6 +22,7 @@
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
+#include "yb/dockv/key_entry_value.h"
 
 #include "yb/rocksutil/write_batch_formatter.h"
 #include "yb/rocksutil/yb_rocksdb.h"
@@ -282,6 +283,29 @@ Status DocDBRocksDBUtil::WriteToRocksDBAndClear(
   return Status::OK();
 }
 
+Result<Uuid> DocDBRocksDBUtil::WriteSimpleWithCotablePrefix(
+    int index, HybridTime write_time, Uuid cotable_id) {
+  uint16_t key_hash = index;
+  dockv::KeyEntryValues hash_components =
+      dockv::MakeKeyEntryValues(Format("row$0", index), 11111 * index);
+  if (cotable_id.IsNil()) {
+    uint32_t db_oid = 16234 + index;
+    uint32_t table_oid = 16234 + index;
+    std::string table_id = GetPgsqlTableId(db_oid, table_oid);
+    cotable_id = VERIFY_RESULT(Uuid::FromHexString(table_id));
+  }
+  auto encoded_doc_key = dockv::DocKey(cotable_id, key_hash, hash_components).Encode();
+  op_id_.term = index / 2;
+  op_id_.index = index;
+  auto& dwb = DefaultDocWriteBatch();
+  QLValuePB value;
+  value.set_int32_value(index);
+  RETURN_NOT_OK(dwb.SetPrimitive(
+      DocPath(encoded_doc_key, dockv::KeyEntryValue::MakeColumnId(ColumnId(10))), ValueRef(value)));
+  RETURN_NOT_OK(WriteToRocksDBAndClear(&dwb, write_time));
+  return cotable_id;
+}
+
 Status DocDBRocksDBUtil::WriteSimple(int index) {
   auto encoded_doc_key = dockv::MakeDocKey(Format("row$0", index), 11111 * index).Encode();
   op_id_.term = index / 2;
@@ -307,6 +331,13 @@ string DocDBRocksDBUtil::DocDBDebugDumpToStr() {
   return docdb::DocDBDebugDumpToStr(rocksdb(), this /*schema_packing_provider*/) +
          docdb::DocDBDebugDumpToStr(
              intents_db(), this /*schema_packing_provider*/, StorageDbType::kIntents);
+}
+
+void DocDBRocksDBUtil::DocDBDebugDumpToContainer(std::unordered_set<std::string>* out) {
+  DocDB db;
+  db.regular = rocksdb();
+  db.intents = intents_db();
+  docdb::DocDBDebugDumpToContainer(db, doc_read_context().schema_packing_storage, out);
 }
 
 Status DocDBRocksDBUtil::SetPrimitive(
