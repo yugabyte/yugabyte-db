@@ -16,7 +16,7 @@ type: docs
 
 Although looking up exact matches would suffice in most scenarios, there are some cases where approximate matching would be beneficial. You may not know the exact term you are searching for but may remember the phonetics of the term or parts of the term. 
 
-For such matching, YugabyteDB natively supports the PostgreSQL extension, [fuzzystrmatch](https://www.postgresql.org/docs/current/fuzzystrmatch.html) that provides multiple functions - Soundex, Levenshtein, Metaphone and Double Metaphone - which can be used to determine similarities between text. 
+For such matching, YugabyteDB natively supports the PostgreSQL extension, [fuzzystrmatch](https://www.postgresql.org/docs/current/fuzzystrmatch.html) that provides multiple functions - Soundex, Metaphone and Double Metaphone - which can be used to determine phonetic similarities between text.
 
 Let us explore the different methodologies available in YugabyteBD via some examples.
 
@@ -41,6 +41,9 @@ For sample data, let's use the [list of English words](https://github.com/dwyl/e
 ```sql
 -- make sure to give the full path of the file
 \COPY words(word) FROM '/tmp/words.txt';
+
+-- convert all words to lower case
+UPDATE words SET word = lower(word);
 ```
 
 To enable fuzzy matching, activate the `fuzzystrmatch` extension.
@@ -109,49 +112,8 @@ SELECT word, dmetaphone(word) FROM words WHERE dmetaphone(word) = dmetaphone('an
  inabstracted     | ANPS
  ```
 
-## Levenshtein
+## Learn more
 
-The [levenshtein distance](https://en.wikipedia.org/wiki/Levenshtein_distance) is a measure of the difference between 2 strings. It calculates the difference by considering the number of edits - insertions/deletions/substitutions needed for one string to be transformed into another. This is very useful for spell-checks. For example, to identify how the different mis-spellings of the `warehouse` that do not start with `w`, we could do:
-
-```sql
-SELECT word FROM words WHERE levenshtein('warehouse', word) < 3 AND word NOT LIKE 'w%' ORDER BY levenshtein('warehouse', word) ASC;
-```
-
-```output
-    word
--------------
- gatehouse
- carhouse
- alehouse
- tirehouse
- morehouse
- firehouse
- rehouse
- cakehouse
- bargehouse
- cardhouse
- farmhouse
- bakehouse
- rewarehouse
- ```
-
-## Similarity matching
-
-The [pg_trgm](https://www.postgresql.org/docs/15/pgtrgm.html) extension provides the `similarity` function that provides a score of how similar two strings are. This can be useful when you do not know the exact spelling of your query term. For example, you are looking for words with spelling close to `geodymamist`. To get the actual word, you could do this,
-
-```sql
-select word, similarity(word, 'geodymamist') as score from words order by score desc limit 5;
-```
-
-```output
-     word      |  score
----------------+----------
- geodynamicist | 0.444444
- geodist       | 0.428571
- geodesist     |    0.375
- geochemist    | 0.352941
- geodynamic    | 0.352941
-(5 rows)
-```
-
-You can combine one or more of the above schemes to provide intuitive experiences to your users.
+- [Understand GIN indexes](../../../../explore/indexes-constraints/gin/)
+- [Advanced fuzzy matching in YugabyteDB](https://www.yugabyte.com/blog/fuzzy-matching-in-yugabytedb/)
+- [Optimizing LIKE/ILIKE with indexes](https://www.yugabyte.com/blog/postgresql-like-query-performance-variations/)

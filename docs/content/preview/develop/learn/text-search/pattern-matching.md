@@ -37,6 +37,9 @@ For sample data, let's use the [list of English words](https://github.com/dwyl/e
 ```sql
 -- make sure to give the full path of the file
 \copy words(word) from '/tmp/words.txt';
+
+-- convert all words to lower case
+UPDATE words SET word = lower(word);
 ```
 
 ## Suffix matching
@@ -177,3 +180,10 @@ select word from words where word SIMILAR TO '%e{3,}%' ;
 - `{m,n}` denotes repetition of the previous item at least m and not more than n times.
 
 Parentheses `()` can be used to group items into a single logical item. A bracket expression `[...]` specifies a character class, just as in POSIX regular expressions.
+
+
+## Learn more
+
+- [Understand GIN indexes](../../../../explore/indexes-constraints/gin/)
+- [Advanced fuzzy matching in YugabyteDB](https://www.yugabyte.com/blog/fuzzy-matching-in-yugabytedb/)
+- [Optimizing LIKE/ILIKE with indexes](https://www.yugabyte.com/blog/postgresql-like-query-performance-variations/)

@@ -50,7 +50,7 @@ Text can be represented as a vector of words, which is effectively the list of w
 SELECT to_tsvector('Two convicts become friends and one convict escapes.');
 ```
 
-```output
+```sql{class=nocopy}
                          to_tsvector
 --------------------------------------------------------------
  'becom':3 'convict':2,7 'escap':8 'friend':4 'one':6 'two':1
@@ -69,7 +69,7 @@ Just as the text has to be processed for faster search, the query has to be proc
 SELECT to_tsquery('escaping | empire');
 ```
 
-```output
+```sql{class=nocopy}
    to_tsquery
 -----------------
  'escap' | 'empir'
@@ -89,12 +89,11 @@ Now that we have processed both the text and the query, we have to use the query
 SELECT name FROM movies WHERE to_tsvector(summary) @@ to_tsquery('one | son');
 ```
 
-```output
+```sql{class=nocopy}
            name
 --------------------------
  The Godfather
  The Shawshank Redemption
-(2 rows)
 ```
 
 ### AND
@@ -117,7 +116,7 @@ SELECT name FROM movies WHERE to_tsvector(summary) @@ to_tsquery('one & son');
 SELECT name FROM movies WHERE to_tsvector(summary) @@ to_tsquery('one & !son');
 ```
 
-```output
+```sql{class=nocopy}
            name
 --------------------------
  The Shawshank Redemption
@@ -131,7 +130,7 @@ Let's search for `conviction` in our movies table.
 SELECT name FROM movies WHERE to_tsvector(summary) @@ to_tsquery('conviction');
 ```
 
-```output
+```sql{class=nocopy}
            name
 --------------------------
  The Shawshank Redemption
@@ -149,7 +148,7 @@ SELECT name, ts_rank(to_tsvector(summary), to_tsquery('one | son')) as score FRO
 
 we get
 
-```output
+```sql{class=nocopy}
            name           |  score
 --------------------------+-----------
  The Godfather            | 0.0607927
@@ -167,7 +166,7 @@ You can use the `ts_headline` function to highlight the query matches inside the
 SELECT name, ts_headline(summary,to_tsquery('one | son'))  FROM movies WHERE to_tsvector(summary) @@ to_tsquery('one | son');
 ```
 
-```output
+```sql{class=nocopy}
            name           |                          ts_headline
 --------------------------+---------------------------------------------------------------
  The Godfather            | A don hands over his empire to <b>one</b> of his <b>sons</b>.
@@ -184,7 +183,7 @@ All the above searches have been done on the `summary` column. If you want to se
 SELECT name FROM movies WHERE to_tsvector(name || ' ' || summary) @@ to_tsquery('godfather | thief');
 ```
 
-```output
+```sql{class=nocopy}
      name
 ---------------
  The Godfather
@@ -213,7 +212,7 @@ Now, you can query the table just on the `tsv` column as,
 SELECT name FROM movies WHERE tsv @@ to_tsquery('godfather | thief');
 ```
 
-```output
+```sql{class=nocopy}
      name
 ---------------
  The Godfather
@@ -236,7 +235,7 @@ Even though we have stored the processed `tsvector` in a separate column, all th
 EXPLAIN ANALYZE SELECT name FROM movies WHERE tsv @@ to_tsquery('godfather');
 ```
 
-```output
+```sql{class=nocopy}
                              QUERY PLAN
 ---------------------------------------------------------------------
  Seq Scan on public.movies (actual time=2.987..6.378 rows=1 loops=1)
@@ -261,7 +260,7 @@ Now get the query plan again.
 EXPLAIN ANALYZE SELECT name FROM movies WHERE tsv @@ to_tsquery('godfather');
 ```
 
-```output
+```sql{class=nocopy}
                                       QUERY PLAN
 ---------------------------------------------------------------------------------------
  Index Scan using idx_movie on public.movies (actual time=2.580..2.584 rows=1 loops=1)
