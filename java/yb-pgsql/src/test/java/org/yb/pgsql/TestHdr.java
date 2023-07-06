@@ -108,8 +108,13 @@ public class TestHdr extends BasePgSQLTest {
     return truncated_value;
   }
 
-  private static BucketInterval getExpInterval(double latency, int bucketFactor) {
-    long latencyLong = Math.round(latency / DEFAULT_YB_HDR_RESOLUTION);
+  private static BucketInterval getExpInterval(double latency, int bucketFactor, boolean round) {
+    /*
+     * Round for intervals (ex. truncation messes up expectations for 4.8/0.1), and do not round for
+     * latencies (match hdr_histogram behavior)
+     */
+    long latencyLong = round ? Math.round(latency / DEFAULT_YB_HDR_RESOLUTION)
+        : (long) (latency / DEFAULT_YB_HDR_RESOLUTION);
     int bucketIndex = getBucketIndex(latencyLong, bucketFactor);
     int subBucketIndex = getSubbucketIndex(latencyLong, bucketIndex);
     long subBucketBottom = getSubbucketBottom(bucketIndex, subBucketIndex);
@@ -164,7 +169,7 @@ public class TestHdr extends BasePgSQLTest {
         double lowerBound = Double.parseDouble(matcher.group(1));
         double upperBound = Double.parseDouble(matcher.group(2));
         BucketInterval parsedInterval = new BucketInterval(lowerBound, upperBound);
-        BucketInterval expInterval = getExpInterval(lowerBound, bucketFactor);
+        BucketInterval expInterval = getExpInterval(lowerBound, bucketFactor, true);
         currCount += jsonObject.getInt(key);
 
         /* verify ends of array contain global max/min */
@@ -193,8 +198,8 @@ public class TestHdr extends BasePgSQLTest {
     double minTime = rs.getDouble(2);
     double maxTime = rs.getDouble(3);
     String latencyHistogram = rs.getString(4);
-    BucketInterval minInterval = getExpInterval(minTime, bucketFactor);
-    BucketInterval maxInterval = getExpInterval(maxTime, bucketFactor);
+    BucketInterval minInterval = getExpInterval(minTime, bucketFactor, false);
+    BucketInterval maxInterval = getExpInterval(maxTime, bucketFactor, false);
 
     JSONArray jsonArray = new JSONArray(latencyHistogram);
     JsonElement jsonPrint = JsonParser.parseString(latencyHistogram);
@@ -220,8 +225,8 @@ public class TestHdr extends BasePgSQLTest {
     double minTime = rs.getDouble(2);
     double maxTime = rs.getDouble(3);
     String latencyHistogram = rs.getString(4);
-    BucketInterval minInterval = getExpInterval(minTime, bucketFactor);
-    BucketInterval maxInterval = getExpInterval(maxTime, bucketFactor);
+    BucketInterval minInterval = getExpInterval(minTime, bucketFactor, false);
+    BucketInterval maxInterval = getExpInterval(maxTime, bucketFactor, false);
     JSONArray jsonArray = new JSONArray(latencyHistogram);
 
     /* unlikely after 1000 pg_sleep calls, but needs to be accounted for */
@@ -279,6 +284,11 @@ public class TestHdr extends BasePgSQLTest {
 
       runCheckHdrArray(statement, iterations, DEFAULT_YB_HDR_BUCKET_FACTOR);
     }
+  }
+
+  @Test
+  public void testPgRegressPercentile() throws Exception {
+    runPgRegressTest("yb_percentile_schedule");
   }
 
 }
