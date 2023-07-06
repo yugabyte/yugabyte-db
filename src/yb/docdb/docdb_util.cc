@@ -337,7 +337,7 @@ void DocDBRocksDBUtil::DocDBDebugDumpToContainer(std::unordered_set<std::string>
   DocDB db;
   db.regular = rocksdb();
   db.intents = intents_db();
-  docdb::DocDBDebugDumpToContainer(db, doc_read_context().schema_packing_storage, out);
+  docdb::DocDBDebugDumpToContainer(db, this /*schema_packing_provider*/, out);
 }
 
 Status DocDBRocksDBUtil::SetPrimitive(
