@@ -17,6 +17,8 @@
 
 #include <google/protobuf/io/coded_stream.h>
 
+#include "yb/common/common.pb.h"
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
 
@@ -332,7 +334,10 @@ bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
   if (req.get_wait_state()) {
     auto wait_state = this->wait_state();
     if (wait_state) {
-      resp->set_wait_state(wait_state->ToString());
+      WaitStateInfoPB pb;
+      wait_state->ToPB(&pb);
+      resp->set_wait_state(pb.DebugString());
+      // resp->set_wait_state(wait_state->ToString());
     } else {
       resp->set_wait_state("Not yet initialized");
     }
