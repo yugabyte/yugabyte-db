@@ -33,6 +33,8 @@
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_sys_table_prefetcher.h"
 
+#include "yb/util/wait_state.h"
+
 namespace yb {
 namespace pggate {
 
@@ -224,15 +226,15 @@ class PgDocResponse {
   using ProviderPtr = std::unique_ptr<Provider>;
 
   PgDocResponse() = default;
-  explicit PgDocResponse(PerformFuture future, uint32_t wait_event);
-  explicit PgDocResponse(ProviderPtr provider, uint32_t wait_event);
+  explicit PgDocResponse(PerformFuture future, util::WaitStateCode wait_event);
+  explicit PgDocResponse(ProviderPtr provider, util::WaitStateCode wait_event);
 
   bool Valid() const;
   Result<Data> Get();
 
  private:
   std::variant<PerformFuture, ProviderPtr> holder_;
-  uint32_t wait_event_;
+  util::WaitStateCode wait_event_;
 };
 
 class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
