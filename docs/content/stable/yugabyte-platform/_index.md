@@ -78,18 +78,17 @@ YugabyteDB Anywhere offers the following levels of [user accounts](security/auth
 
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
-  title="Build applications"
-  description="Start coding in your favorite programming language using examples."
+  title="Yugabyte University"
+  description="Take free courses on YugabyteDB Anywhere Operations."
   buttonText="Get started"
-  buttonUrl="../develop/build-apps/"
+  buttonUrl="https://university.yugabyte.com/collections/administrators"
   >}}
 
   {{< sections/3-box-card
-  title="Yugabyte University"
-  description="Take free courses to learn YugabyteDB Anywhere."
-  linkText1="YugabyteDB Anywhere Operations"
-  linkUrl1="https://university.yugabyte.com/collections/administrators"
-  linkTarget1="_blank"
+  title="Automation"
+  description="Use Terraform to manage YugabyteDB Anywhere."
+  buttonText="Automation"
+  buttonUrl="anywhere-automation/"
   >}}
 
   {{< sections/3-box-card
