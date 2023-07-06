@@ -2152,3 +2152,53 @@ yb_pg_stat_retrieve_concurrent_index_progress()
 
 	return progress;
 }
+
+/*
+ * Returns the list of traces which are on.
+ */
+Datum
+tserver_stat_get_activity(PG_FUNCTION_ARGS)
+{
+	FuncCallContext *funcctx;
+
+	static int ncols = 1;
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext oldcontext;
+		TupleDesc tupdesc;
+
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+		tupdesc = CreateTemplateTupleDesc(ncols, false);
+
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1,
+						   "wait_state", TEXTOID, -1, 0);
+
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+
+		YBCAuhDescriptor *rpcs = NULL;
+		size_t numrpcs = 0;
+		HandleYBStatus(YBCActiveUniverseHistory(&rpcs, &numrpcs));
+		funcctx->max_calls = numrpcs;
+		funcctx->user_fctx = rpcs;
+		MemoryContextSwitchTo(oldcontext);
+	}
+	funcctx = SRF_PERCALL_SETUP();
+	if (funcctx->call_cntr < funcctx->max_calls)
+	{
+		Datum		values[ncols];
+		bool		nulls[ncols];
+		HeapTuple	tuple;
+
+		int cntr = funcctx->call_cntr;
+		YBCAuhDescriptor *rpc = (YBCAuhDescriptor *)funcctx->user_fctx + cntr;
+
+		values[0] = CStringGetTextDatum(rpc->wait_state);
+		memset(nulls, 0, sizeof(nulls));
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+	}
+	else
+		SRF_RETURN_DONE(funcctx);
+}

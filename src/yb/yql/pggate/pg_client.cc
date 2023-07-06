@@ -687,6 +687,18 @@ class PgClient::Impl {
     return resp;
   }
 
+  Result<client::RpcsInfo> ActiveUniverseHistory() {
+    tserver::PgActiveUniverseHistoryRequestPB req;
+    tserver::PgActiveUniverseHistoryResponsePB resp;
+    RETURN_NOT_OK(proxy_->ActiveUniverseHistory(req, &resp, PrepareController()));
+    client::RpcsInfo result;
+    result.reserve(resp.wait_states_size());
+    for (const auto& wait_state : resp.wait_states()) {
+      result.push_back(client::YBActiveUniverseHistoryInfo{.wait_state = wait_state});
+    }
+    return result;
+  }
+
   #define YB_PG_CLIENT_SIMPLE_METHOD_IMPL(r, data, method) \
   Status method( \
       tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
@@ -920,6 +932,10 @@ Result<bool> PgClient::CheckIfPitrActive() {
 Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCatalogVersionInfo(
     bool size_only, uint32_t db_oid) {
   return impl_->GetTserverCatalogVersionInfo(size_only, db_oid);
+}
+
+Result<client::RpcsInfo> PgClient::ActiveUniverseHistory() {
+  return impl_->ActiveUniverseHistory();
 }
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DEFINE(r, data, method) \

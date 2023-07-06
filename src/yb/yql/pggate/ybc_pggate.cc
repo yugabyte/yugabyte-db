@@ -1561,6 +1561,28 @@ YBCStatus YBCPgCheckIfPitrActive(bool* is_active) {
   return ToYBCStatus(res.status());
 }
 
+YBCStatus YBCActiveUniverseHistory(YBCAuhDescriptor **rpcs, size_t* count) {
+  const auto result = pgapi->ActiveUniverseHistory();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  const auto &servers_info = result.get();
+  *count = servers_info.size();
+  *rpcs = NULL;
+  if (!servers_info.empty()) {
+    *rpcs = static_cast<YBCAuhDescriptor *>(
+        YBCPAlloc(sizeof(YBCAuhDescriptor) * servers_info.size()));
+    YBCAuhDescriptor *dest = *rpcs;
+    for (const auto &info : servers_info) {
+      new (dest) YBCAuhDescriptor {
+        .wait_state = YBCPAllocStdString(info.wait_state),
+      };
+      ++dest;
+    }
+  }
+  return YBCStatusOK();
+}
+
 YBCStatus YBCPgSetAUHMetadata(const char* remote_host, int remote_port) {
   return ToYBCStatus(pgapi->SetAUHMetadata(remote_host, remote_port));
 }

@@ -10447,4 +10447,9 @@
   prorettype => 'cstring', proargtypes => '',
   prosrc => 'yb_get_effective_transaction_isolation_level' },
 
+{ oid => '8061', descr => 'statistics: information about currently active rpcs in tserver',
+  proname => 'tserver_stat_get_activity', prorows => '100', proisstrict => 'f',
+  proretset => 't', provolatile => 'v', prorettype => 'text',
+  proargtypes => '', proallargtypes => '{text}', proargmodes => '{o}',
+  proargnames => '{wait_state}', prosrc => 'tserver_stat_get_activity' },
 ]

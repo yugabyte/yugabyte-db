@@ -363,6 +363,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     pg_callbacks_.SignalWaitStart(wait_event);
   }
 
+  Result<client::RpcsInfo> ActiveUniverseHistory();
+
  private:
   Result<PgTableDescPtr> DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit);
   Result<PerformFuture> FlushOperations(BufferableOperations ops, bool transactional);
