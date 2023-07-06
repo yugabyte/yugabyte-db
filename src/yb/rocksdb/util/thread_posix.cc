@@ -238,4 +238,18 @@ int ThreadPool::UnSchedule(void* arg) {
   return count;
 }
 
+std::vector<std::string> ThreadPool::GetThreadpoolWaitStates() {
+  std::vector<std::string> res;
+  PthreadCall("lock", pthread_mutex_lock(&mu_));
+  for (auto wait_state : bg_wait_states_) {
+    // Filter out unused threads
+    if (wait_state->code() != yb::util::WaitStateCode::Unused) {
+      res.push_back(wait_state->ToString());
+    }
+  }
+  PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+  return res;
+}
+
+
 }  // namespace rocksdb

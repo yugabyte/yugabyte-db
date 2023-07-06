@@ -78,6 +78,8 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   void RegisterCertificateReloader(tserver::CertificateReloader reloader) override {}
 
+  std::vector<std::string> GetThreadpoolWaitStates() const override;
+
  private:
   Master* master_ = nullptr;
   scoped_refptr<MetricEntity> metric_entity_;

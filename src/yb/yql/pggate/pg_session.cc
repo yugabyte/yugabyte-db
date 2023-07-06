@@ -906,6 +906,10 @@ Result<bool> PgSession::CheckIfPitrActive() {
   return pg_client_.CheckIfPitrActive();
 }
 
+Result<client::RpcsInfo> PgSession::ActiveUniverseHistory() {
+  return pg_client_.ActiveUniverseHistory();
+}
+
 Status PgSession::SetAUHMetadata(const char* remote_host, int remote_port) {
   node_uuid_ = VERIFY_RESULT(pg_client_.GetTServerUUID());
   client_node_ip_ = remote_host;

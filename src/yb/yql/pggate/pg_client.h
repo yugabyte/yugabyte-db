@@ -168,6 +168,8 @@ class PgClient {
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid);
 
+  Result<client::RpcsInfo> ActiveUniverseHistory();
+
 #define YB_PG_CLIENT_SIMPLE_METHOD_DECLARE(r, data, method) \
   Status method(                             \
       tserver::BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
