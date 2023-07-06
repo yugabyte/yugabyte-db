@@ -1,19 +1,23 @@
 ---
-title: What's new in YugabyteDB Managed
-linkTitle: What's new
-description: YugabyteDB Managed release notes and known issues.
+title: YugabyteDB Managed Change Log
+linkTitle: Change Log
+description: YugabyteDB Managed Change Log and known issues.
 headcontent: New features and known issues
 image: /images/section_icons/index/quick_start.png
-layout: single
+menu:
+  preview_yugabyte-cloud:
+    identifier: yugabytedb-managed-releases
+    parent: yugabytedb-managed
+    weight: 22
 type: docs
 ---
 
 On this page:
 
-[Releases](#releases) \
+[Change Log](#change-log) \
 [Known issues](#known-issues)
 
-## Releases
+## Change Log
 
 ### July 3, 2023
 
