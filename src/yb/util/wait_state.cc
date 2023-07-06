@@ -13,9 +13,11 @@
 
 #include "yb/util/wait_state.h"
 
+// #include "yb/common/common.pb.h"
 #include "yb/util/tostring.h"
 
 using yb::util::WaitStateCode;
+// using yb::common::WaitStateInfoPB;
 
 namespace yb::util {
 

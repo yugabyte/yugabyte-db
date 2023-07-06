@@ -18,6 +18,8 @@
 #include <string>
 #include <vector>
 
+// #include "yb/common/common.pb.h"
+
 #include "yb/util/flags.h"
 
 #include "yb/gutil/macros.h"
@@ -31,8 +33,6 @@
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/monotime.h"
 
-#define SET_WAIT_STATUS_TO_WITH_AUX(ptr, state, aux) \
-  if (ptr) ptr->set_state_with_aux(state, aux)
 #define SET_WAIT_STATUS_TO(ptr, state) \
   if (ptr) ptr->set_state(state)
 #define SET_WAIT_STATUS(state) \
@@ -161,21 +161,21 @@ struct AUHAuxInfo {
 };
 
 class WaitStateInfo;
+// class WaitStateInfoPB;
+
 // typedef WaitStateInfo* WaitStateInfoPtr;
 typedef std::shared_ptr<WaitStateInfo> WaitStateInfoPtr;
 class WaitStateInfo {
-  // TBD Make interactions thread-safe.
-  // The DumpRunningRPcs may be called from a separate thread. We need to
-  // ensure that it gets the latest state.
  public:
   WaitStateInfo(AUHMetadata meta);
 
   void set_state(WaitStateCode c);
-  void set_state_with_aux(WaitStateCode c, char*);
 
   WaitStateCode get_state() const;
 
   std::string ToString() const;
+
+  // void ToPB(WaitStateInfoPB *pb);
 
   static WaitStateInfoPtr CurrentWaitState();
   static void SetCurrentWaitState(WaitStateInfoPtr);
@@ -190,6 +190,17 @@ class WaitStateInfo {
     }
   }
 
+  template <class PB>
+  void ToPB(PB *pb) {
+    std::lock_guard<simple_spinlock> l(mutex_);
+    metadata_.ToPB(pb->mutable_metadata());
+    WaitStateCode code = code_;
+    pb->set_wait_status_code(yb::to_underlying(code));
+#ifndef NDEBUG
+    pb->set_wait_status_code_as_string(yb::ToString(code));
+#endif
+    aux_info_.ToPB(pb->mutable_aux_info());
+  }
   AUHMetadata& metadata() REQUIRES(mutex_) {
     return metadata_;
   }
