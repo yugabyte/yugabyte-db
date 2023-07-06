@@ -13,11 +13,9 @@
 
 #include "yb/util/wait_state.h"
 
-// #include "yb/common/common.pb.h"
 #include "yb/util/tostring.h"
 
 using yb::util::WaitStateCode;
-// using yb::common::WaitStateInfoPB;
 
 namespace yb::util {
 
@@ -77,6 +75,17 @@ std::string WaitStateInfo::ToString() const {
 #endif // TRACK_WAIT_HISTORY
 }
 
+void WaitStateInfo::ToPB(WaitStateInfoPB *pb) {
+  std::lock_guard<simple_spinlock> l(mutex_);
+  metadata_.ToPB(pb->mutable_metadata());
+  WaitStateCode code = code_;
+  pb->set_wait_status_code(yb::to_underlying(code));
+#ifndef NDEBUG
+  pb->set_wait_status_code_as_string(yb::ToString(code));
+#endif
+  aux_info_.ToPB(pb->mutable_aux_info());
+
+}
 WaitStateInfoPtr WaitStateInfo::CurrentWaitState() {
   return threadlocal_wait_state_;
 }
