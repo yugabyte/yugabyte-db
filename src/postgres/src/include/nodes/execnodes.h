@@ -1412,6 +1412,9 @@ typedef struct IndexScanState
  *		ScanDesc		   index scan descriptor
  *		VMBuffer		   buffer in use for visibility map testing, if any
  *		ioss_PscanLen	   Size of parallel index-only scan descriptor
+ *
+ *	YB specific attributes
+ *		aggrefs			   aggregate pushdown information
  * ----------------
  */
 typedef struct IndexOnlyScanState
@@ -1430,6 +1433,9 @@ typedef struct IndexOnlyScanState
 	IndexScanDesc ioss_ScanDesc;
 	Buffer		ioss_VMBuffer;
 	Size		ioss_PscanLen;
+
+	/* YB specific attributes. */
+	List	   *yb_ioss_aggrefs;
 	/*
 	 * yb_indexqual_for_recheck is the modified version of indexqual.
 	 * It is used in tuple recheck step only.
