@@ -18,7 +18,6 @@
 #include <google/protobuf/io/coded_stream.h>
 
 #include "yb/common/common.pb.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
 
