@@ -19,6 +19,8 @@ resources:
     url: /preview/faq/yugabyte-platform/
   - title: yugabyte.com
     url: https://www.yugabyte.com/anywhere/
+  - title: University
+    url: https://university.yugabyte.com/collections/administrators/
 ---
 
 YugabyteDB Anywhere (YBA) is a self-managed database-as-a-service offering from YugabyteDB that allows you to deploy and operate YugabyteDB universes at scale.
@@ -84,13 +86,10 @@ YugabyteDB Anywhere offers the following levels of [user accounts](security/auth
 
   {{< sections/3-box-card
   title="Yugabyte University"
-  description="Take free courses and workshops to learn YugabyteDB, YSQL, and YCQL."
-  linkText1="Developer workshops"
-  linkUrl1="https://university.yugabyte.com/collections/builder-workshop"
+  description="Take free courses to learn YugabyteDB Anywhere."
+  linkText1="YugabyteDB Anywhere Operations"
+  linkUrl1="https://university.yugabyte.com/collections/administrators"
   linkTarget1="_blank"
-  linkText2="YSQL exercises"
-  linkUrl2="https://university.yugabyte.com/courses/ysql-exercises-simple-queries"
-  linkTarget2="_blank"
   >}}
 
   {{< sections/3-box-card
