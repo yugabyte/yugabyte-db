@@ -5622,9 +5622,6 @@ PostgresMain(int argc, char *argv[],
 								/* Set the output format */
 								PortalSetResultFormat(portal, nformats, formats);
 
-								// if (IsYugaByteEnabled() && portal->queryDesc && portal->queryDesc->plannedstmt)
-								// 	YBCSetQueryId(portal->queryDesc->plannedstmt->queryId);
-
 								/* Now ready to retry the execute step. */
 								yb_exec_execute_message(portal_name,
 														max_rows,
