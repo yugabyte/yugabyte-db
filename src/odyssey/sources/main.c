@@ -11,6 +11,7 @@
 int odyssey_main(int argc, char *argv[])
 {
 	od_instance_t odyssey;
+	YbSetParentDeathSignal();
 	od_instance_init(&odyssey);
 	odyssey.orig_argv_ptr = argv[0];
 
