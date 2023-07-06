@@ -107,6 +107,11 @@ export const suggestedKubernetesConfigQueryKey = {
   ALL: ['suggestedKubernetesConfig']
 };
 
+export const xClusterQueryKey = {
+  ALL: ['xCluster'],
+  detail: (xClusterConfigUUID: string) => [...xClusterQueryKey.ALL, xClusterConfigUUID]
+};
+
 export const ApiTimeout = {
   FETCH_TABLE_INFO: 20_000,
   FETCH_XCLUSTER_CONFIG: 120_000
