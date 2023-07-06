@@ -74,6 +74,7 @@ public class LdapUtil {
     String ldapGroupMemberOfAttribute;
     boolean ldapGroupUseQuery;
     boolean ldapGroupUseRoleMapping;
+    Role ldapDefaultRole;
   }
 
   public Users loginWithLdap(CustomerLoginFormData data) throws LdapException {
@@ -101,6 +102,7 @@ public class LdapUtil {
     boolean ldapGroupUseRoleMapping =
         confGetter.getGlobalConf(GlobalConfKeys.ldapGroupUseRoleMapping);
     String ldapGroupSearchBaseDn = confGetter.getGlobalConf(GlobalConfKeys.ldapGroupSearchBaseDn);
+    Role ldapDefaultRole = confGetter.getGlobalConf(GlobalConfKeys.ldapDefaultRole);
 
     LdapConfiguration ldapConfiguration =
         new LdapConfiguration(
@@ -121,7 +123,8 @@ public class LdapUtil {
             ldapGroupSearchBaseDn,
             ldapGroupMemberOfAttribute,
             ldapGroupUseQuery,
-            ldapGroupUseRoleMapping);
+            ldapGroupUseRoleMapping,
+            ldapDefaultRole);
     Users user = authViaLDAP(data.getEmail(), data.getPassword(), ldapConfiguration);
 
     if (user == null) {
@@ -511,8 +514,8 @@ public class LdapUtil {
           roleToAssign = Users.Role.ReadOnly;
           break;
         default:
-          roleToAssign = Users.Role.ReadOnly;
-          log.warn("No valid role could be ascertained, defaulting to ReadOnly.");
+          roleToAssign = ldapConfiguration.getLdapDefaultRole();
+          log.warn("No valid role could be ascertained, defaulting to {}.", roleToAssign);
           if (!ldapConfiguration.isLdapGroupUseRoleMapping()) {
             users.setLdapSpecifiedRole(false);
           }

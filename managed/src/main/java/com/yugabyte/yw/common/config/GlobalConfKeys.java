@@ -13,6 +13,7 @@ package com.yugabyte.yw.common.config;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
+import com.yugabyte.yw.models.Users.Role;
 import java.time.Duration;
 import java.util.List;
 import org.apache.directory.api.ldap.model.message.SearchScope;
@@ -534,6 +535,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Whether to use ldap group to role mapping",
           "Hidden because this key has dedicated UI",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static ConfKeyInfo<Role> ldapDefaultRole =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_default_role",
+          ScopeType.GLOBAL,
+          "Which role to use in case role cannot be discerned via LDAP",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.LdapDefaultRoleEnum,
           ImmutableList.of(ConfKeyTags.UIDriven));
   public static ConfKeyInfo<Boolean> enableDetailedLogs =
       new ConfKeyInfo<>(

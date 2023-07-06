@@ -152,7 +152,9 @@ public class UsersTest extends FakeDBApplication {
 
   @Test
   public void testRoleUnion() {
-    Role[] roles = {null, Role.ReadOnly, Role.BackupAdmin, Role.Admin, Role.SuperAdmin};
+    Role[] roles = {
+      null, Role.ConnectOnly, Role.ReadOnly, Role.BackupAdmin, Role.Admin, Role.SuperAdmin
+    };
 
     for (int i = 0; i < roles.length; i++) {
       for (int j = 0; j < roles.length; j++) {
