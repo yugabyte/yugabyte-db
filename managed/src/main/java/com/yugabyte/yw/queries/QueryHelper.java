@@ -41,15 +41,15 @@ import play.libs.ws.WSClient;
 public class QueryHelper {
   private static final String RESET_QUERY_SQL = "SELECT pg_stat_statements_reset()";
   private static final String SLOW_QUERY_STATS_UNLIMITED_SQL =
-      "SELECT a.rolname, t.datname, t.queryid, "
-          + "t.query, t.calls, t.total_time, t.rows, t.min_time, t.max_time, t.mean_time, t.stddev_time, "
-          + "t.local_blks_hit, t.local_blks_written FROM pg_authid a JOIN (SELECT * FROM "
-          + "pg_stat_statements s JOIN pg_database d ON s.dbid = d.oid) t ON a.oid = t.userid";
+      "SELECT s.userid::regrole as rolname, d.datname, s.queryid, s.query, s.calls, s.total_time, "
+          + "s.rows, s.min_time, s.max_time, s.mean_time, s.stddev_time, "
+          + "s.local_blks_hit, s.local_blks_written "
+          + "FROM pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid";
   public static final String QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY =
       "yb.query_stats.slow_queries.order_by";
   public static final String QUERY_STATS_SLOW_QUERIES_LIMIT_KEY =
       "yb.query_stats.slow_queries.limit";
-  public static final String SET_ENABLE_NESTLOOP_OFF_STATEMENT = "/*+Set(enable_nestloop off)*/";
+  public static final String SET_ENABLE_NESTLOOP_OFF_STATEMENT = "Set(enable_nestloop off)";
   public static final String SET_ENABLE_NESTLOOP_OFF_KEY =
       "yb.query_stats.slow_queries.set_enable_nestloop_off";
 
@@ -336,7 +336,7 @@ public class QueryHelper {
             ? SET_ENABLE_NESTLOOP_OFF_STATEMENT
             : "";
     return String.format(
-        "%s%s ORDER BY t.%s DESC LIMIT %d",
+        "/*+ Leading((d pg_stat_statements)) %s */ %s ORDER BY s.%s DESC LIMIT %d",
         setEnableNestloopOffStatementOptional, SLOW_QUERY_STATS_UNLIMITED_SQL, orderBy, limit);
   }
 
