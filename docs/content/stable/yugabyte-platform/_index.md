@@ -86,7 +86,7 @@ YugabyteDB Anywhere offers the following levels of [user accounts](security/auth
 
   {{< sections/3-box-card
   title="Automation"
-  description="Use Terraform to manage YugabyteDB Anywhere."
+  description="Automate tasks using the YugabyteDB Anywhere Terraform provider."
   buttonText="Automation"
   buttonUrl="anywhere-automation/"
   >}}
