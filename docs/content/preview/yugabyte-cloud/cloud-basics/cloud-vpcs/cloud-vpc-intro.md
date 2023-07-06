@@ -38,6 +38,7 @@ Note that using a private service endpoint with [AWS PrivateLink](https://aws.am
 - You assign a VPC when you create a cluster. You can't switch VPCs after cluster creation.
 - You can't change the [size of your VPC](#set-the-cidr-and-size-your-vpc) once it is created.
 - You can create a maximum of 3 AWS VPCs per region.
+- You can create a maximum of 3 Azure VPCs per region.
 - You can create a maximum of 3 GCP VPCs.
 - VPCs are not supported on Sandbox clusters.
 
@@ -72,7 +73,11 @@ Each region in multi-region clusters must be deployed in a VPC. Depending on the
 
 ### Set the CIDR and size your VPC
 
-The block of [private IP addresses](#private-ip-address-ranges) used to define your VPC is entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing); because you can't resize a VPC once it is created, you need to decide on an appropriate size before creating it. You also need to ensure that [the range doesn't overlap](#restrictions) the range of addresses used by other resources in the network, such as any application VPC you will peer, or other VPCs you have created. (In Azure, the CIDR range is selected for you when you create the VPC.)
+The block of [private IP addresses](#private-ip-address-ranges) used to define your VPC is entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing).
+
+In Azure, the CIDR range is selected for you when you create the VPC.
+
+In AWS and GCP, because you can't resize a VPC once it is created, you need to decide on an appropriate size before creating it. You also need to ensure that [the range doesn't overlap](#restrictions) the range of addresses used by other resources in the network, such as any application VPC you will peer, or other VPCs you have created.
 
 Ideally, you want the network to be as small as possible while accommodating potential growth. Calculate how many applications will be connecting to it, and estimate how that is expected to grow over time. Although you may want to create a large network to cover all contingencies, an over-sized network can impact network performance. If your traffic experiences spikes, you'll need to take that into account.
 
