@@ -83,8 +83,8 @@ YB_DEFINE_ENUM(
 struct AUHMetadata {
   std::string top_level_request_id;
   std::string top_level_node_id;
-  int64_t query_id = 0;
-  int64_t current_request_id = 0;
+  uint64_t query_id = 0;
+  uint64_t current_request_id = 0;
   std::string client_node_ip;
 
   std::string ToString() const {
