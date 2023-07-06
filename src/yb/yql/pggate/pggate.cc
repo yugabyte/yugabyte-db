@@ -1936,6 +1936,9 @@ Result<bool> PgApiImpl::CheckIfPitrActive() {
   return pg_session_->CheckIfPitrActive();
 }
 
+Result<client::RpcsInfo> PgApiImpl::ActiveUniverseHistory() {
+  return pg_session_->ActiveUniverseHistory();
+}
 
 Status PgApiImpl::SetAUHMetadata(const char* remote_host, int remote_port) {
   return pg_session_->SetAUHMetadata(remote_host, remote_port);

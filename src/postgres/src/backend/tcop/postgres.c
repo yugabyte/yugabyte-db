@@ -735,6 +735,7 @@ pg_analyze_and_rewrite(RawStmt *parsetree, const char *query_string,
 						  queryEnv);
 
 	YBCSetQueryId(query->queryId);
+	MyProc->queryid = query->queryId;
 
 	if (log_parser_stats)
 		ShowUsage("PARSE ANALYSIS STATISTICS");
@@ -1904,8 +1905,12 @@ exec_bind_message(StringInfo input_message)
 	 */
 	PortalStart(portal, params, 0, InvalidSnapshot);
 
-	if (IsYugaByteEnabled() && portal->queryDesc && portal->queryDesc->plannedstmt)
+	if (IsYugaByteEnabled() && portal->queryDesc &&
+		portal->queryDesc->plannedstmt)
+	{
 		YBCSetQueryId(portal->queryDesc->plannedstmt->queryId);
+		MyProc->queryid = portal->queryDesc->plannedstmt->queryId;
+	}
 
 	/*
 	 * Apply the result format requests to the portal.
@@ -2098,7 +2103,10 @@ exec_execute_message(const char *portal_name, long max_rows)
 		max_rows = FETCH_ALL;
 
 	if (IsYugaByteEnabled() && portal->queryDesc && portal->queryDesc->plannedstmt)
+	{
 		YBCSetQueryId(portal->queryDesc->plannedstmt->queryId);
+		MyProc->queryid = portal->queryDesc->plannedstmt->queryId;
+	}
 
 	completed = PortalRun(portal,
 						  max_rows,
@@ -5151,7 +5159,7 @@ PostgresMain(int argc, char *argv[],
 
 		if (beentry->st_procpid != MyProcPid)
 			continue;
-		
+
 		/* A zeroed client addr means we don't know */
 		memset(&zero_clientaddr, 0, sizeof(zero_clientaddr));
 		if (memcmp(&(beentry->st_clientaddr), &zero_clientaddr,
@@ -5201,7 +5209,11 @@ PostgresMain(int argc, char *argv[],
 		}
 
 		if (IsYugaByteEnabled())
+		{
 			HandleYBStatus(YBCPgSetAUHMetadata(remote_host, atoi(remote_port)));
+			strcpy(MyProc->remote_host, remote_host);
+			MyProc->remote_port = atoi(remote_port);
+		}
 	}
 
 	/*
@@ -5625,7 +5637,10 @@ PostgresMain(int argc, char *argv[],
 								PortalSetResultFormat(portal, nformats, formats);
 
 								if (IsYugaByteEnabled() && portal->queryDesc && portal->queryDesc->plannedstmt)
+								{
 									YBCSetQueryId(portal->queryDesc->plannedstmt->queryId);
+									MyProc->queryid = portal->queryDesc->plannedstmt->queryId;
+								}
 
 								/* Now ready to retry the execute step. */
 								yb_exec_execute_message(portal_name,

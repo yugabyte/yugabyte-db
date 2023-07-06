@@ -22,6 +22,8 @@
 
 #include "yb/yql/pggate/pg_client.h"
 
+#include "yb/util/wait_state.h"
+
 namespace yb {
 namespace pggate {
 
@@ -43,7 +45,7 @@ class PerformFuture {
   bool Valid() const;
   bool Ready() const;
   Result<Data> Get();
-  void SignalWait(uint32_t wait_event);
+  void SignalWait(util::WaitStateCode wait_event);
 
  private:
   std::future<PerformResult> future_;

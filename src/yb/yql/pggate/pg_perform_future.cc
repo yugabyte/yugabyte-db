@@ -62,7 +62,7 @@ bool PerformFuture::Ready() const {
   return Valid() && future_.wait_for(0ms) == std::future_status::ready;
 }
 
-void PerformFuture::SignalWait(uint32_t wait_event) {
+void PerformFuture::SignalWait(util::WaitStateCode wait_event) {
   if (session_) {
     session_->setWaitEventInfo(wait_event);
   }

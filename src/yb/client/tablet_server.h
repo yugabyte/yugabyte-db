@@ -83,5 +83,16 @@ struct YBTabletServerPlacementInfo {
   }
 };
 
+struct YBActiveUniverseHistoryInfo {
+  std::string wait_state;
+
+  template <class PB>
+  static YBActiveUniverseHistoryInfo FromPB(const PB& pb) {
+    return YBActiveUniverseHistoryInfo {
+      .wait_state = pb,
+    };
+  }
+};
+
 } // namespace client
 } // namespace yb

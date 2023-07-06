@@ -54,6 +54,18 @@ WaitStateCode WaitStateInfo::get_state() const {
   return code_;
 }
 
+void WaitStateInfo::set_metadata(AUHMetadata meta) {
+  metadata_ = meta;
+}
+
+AUHMetadata WaitStateInfo::metadata() {
+  return metadata_;
+}
+
+WaitStateCode WaitStateInfo::code() {
+  return code_;
+}
+
 std::string WaitStateInfo::ToString() const {
   std::lock_guard<simple_spinlock> l(mutex_);
 #ifdef TRACK_WAIT_HISTORY

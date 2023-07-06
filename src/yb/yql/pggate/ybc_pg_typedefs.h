@@ -342,6 +342,8 @@ typedef struct PgCallbacks {
   void (*WriteExecOutParam)(PgExecOutParam *, const YbcPgExecOutParamValue *);
   void (*SignalWaitStart)(uint32_t);
   void (*SignalWaitEnd)();
+  void (*ProcSetNodeUUID)(const char *);
+  void (*ProcSetTopRequestId)(const char*);
 } YBCPgCallbacks;
 
 typedef struct PgGFlagsAccessor {
@@ -394,6 +396,10 @@ typedef struct PgServerDescriptor {
   uint16_t pg_port;
   const char *uuid;
 } YBCServerDescriptor;
+
+typedef struct AuhDescriptor {
+  const char* wait_state;
+} YBCAuhDescriptor;
 
 typedef struct PgColumnInfo {
   bool is_primary;

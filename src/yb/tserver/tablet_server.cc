@@ -1189,5 +1189,9 @@ void TabletServer::SetXClusterDDLOnlyMode(bool is_xcluster_read_only_mode) {
   xcluster_read_only_mode_.store(is_xcluster_read_only_mode, std::memory_order_release);
 }
 
+std::vector<std::string> TabletServer::GetThreadpoolWaitStates() const {
+  return tablet_manager_->GetThreadpoolWaitStates();
+}
+
 }  // namespace tserver
 }  // namespace yb

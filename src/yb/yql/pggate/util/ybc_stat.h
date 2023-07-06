@@ -23,25 +23,9 @@
 extern "C" {
 #endif
 
-/* ----------
- * YB AUH Wait Classes
- * ----------
- */
-#define YB_PG_WAIT_PERFORM					0xFE000000U
-
-/* ----------
- * Wait Events - PERFORM
- *
- * Use this category when a process is waiting for a response from Perform RPC calls.
- * ----------
- */
-typedef enum {
-    YB_PG_WAIT_EVENT_DML_READ = YB_PG_WAIT_PERFORM,
-    YB_PG_WAIT_EVENT_DML_WRITE
-} YBPgWaitEventPerform;
-
 extern const char *ybcstat_get_wait_event(uint32_t wait_event_info);
 extern const char *ybcstat_get_wait_event_type(uint32_t wait_event_info);
+extern const char *ybcstat_get_wait_event_component(uint32_t wait_event_info);
 
 #ifdef __cplusplus
 } // extern "C"

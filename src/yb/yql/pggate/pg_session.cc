@@ -899,9 +899,14 @@ Result<bool> PgSession::CheckIfPitrActive() {
   return pg_client_.CheckIfPitrActive();
 }
 
+Result<client::RpcsInfo> PgSession::ActiveUniverseHistory() {
+  return pg_client_.ActiveUniverseHistory();
+}
+
 Status PgSession::SetAUHMetadata(const char* remote_host, int remote_port) {
   auh_metadata_.top_level_node_id = VERIFY_RESULT(pg_client_.GetTServerUUID());
   auh_metadata_.client_node_ip = yb::Format("$0:$1", remote_host, remote_port);
+  pg_callbacks_.ProcSetNodeUUID(auh_metadata_.top_level_node_id.c_str());
   return Status::OK();
 }
 
@@ -911,6 +916,7 @@ void PgSession::SetQueryId(uint64_t query_id) {
 
 void PgSession::SetTopLevelRequestId() {
   auh_metadata_.top_level_request_id = GenerateObjectId();
+  pg_callbacks_.ProcSetTopRequestId(auh_metadata_.top_level_request_id.c_str());
 }
 
 }  // namespace pggate

@@ -50,14 +50,29 @@
   SCOPED_WAIT_STATUS_FOR(yb::util::WaitStateInfo::CurrentWaitState(), (state))
 
 
+/* ----------
+ * YB AUH Wait Components
+ * ----------
+ */
+#define YB_PG        0xF0000000U
+#define YB_TSERVER   0xE0000000U
+
+/* ----------
+ * YB AUH Wait Classes
+ * ----------
+ */
+#define YB_PG_WAIT_PERFORM           0xFE000000U
+#define YB_TSERVER_WAIT_RPC          0xEF000000U
+
 // For debugging purposes:
 // Uncomment the following line to track state changes in wait events.
 // #define TRACK_WAIT_HISTORY
 namespace yb {
 namespace util {
 
-YB_DEFINE_ENUM(
+YB_DEFINE_ENUM_TYPE(
     WaitStateCode,
+    uint32_t,
     (Unused)
     // General states for incoming RPCs
     (Created)(Queued)(Handling)(QueueingResponse)(ResponseQueued)
@@ -80,7 +95,15 @@ YB_DEFINE_ENUM(
       (SubmittedChangeAutoFlagsConfigToPreparer)
       (SubmittedUnexpectedToPreparer)
     // Reads
-    (GetSafeTime)(GetSubDoc))
+    (GetSafeTime)(GetSubDoc)
+    // Flush and Compaction
+    (StartFlush)(StartCompaction)
+    (OpenFile)(CloseFile)(DeleteFile)(WriteToFile)
+    (StartSubcompactionThreads)(WaitOnSubcompactionThreads)
+
+    // Perform Wait Events
+    ((DmlRead, YB_PG_WAIT_PERFORM)) (DmlWrite)
+    )
 
 struct AUHMetadata {
   std::string top_level_request_id;
@@ -166,15 +189,21 @@ class WaitStateInfo;
 typedef std::shared_ptr<WaitStateInfo> WaitStateInfoPtr;
 class WaitStateInfo {
  public:
+  WaitStateInfo() = default;
   WaitStateInfo(AUHMetadata meta);
 
   void set_state(WaitStateCode c);
 
   WaitStateCode get_state() const;
 
+  void set_metadata(AUHMetadata meta);
+
   std::string ToString() const;
 
   void ToPB(WaitStateInfoPB *pb);
+  AUHMetadata metadata();
+
+  WaitStateCode code();
 
   static WaitStateInfoPtr CurrentWaitState();
   static void SetCurrentWaitState(WaitStateInfoPtr);

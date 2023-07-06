@@ -3289,6 +3289,7 @@ void DBImpl::BGWorkFlush(void* db) {
   IOSTATS_SET_THREAD_POOL_ID(Env::Priority::HIGH);
   TEST_SYNC_POINT("DBImpl::BGWorkFlush");
   reinterpret_cast<DBImpl*>(db)->BackgroundCallFlush(nullptr /* cfd */);
+  SET_WAIT_STATUS(yb::util::WaitStateCode::Unused);
   TEST_SYNC_POINT("DBImpl::BGWorkFlush:done");
 }
 
@@ -3298,6 +3299,7 @@ void DBImpl::BGWorkCompaction(void* arg) {
   IOSTATS_SET_THREAD_POOL_ID(Env::Priority::LOW);
   TEST_SYNC_POINT("DBImpl::BGWorkCompaction");
   reinterpret_cast<DBImpl*>(ca.db)->BackgroundCallCompaction(ca.m);
+  SET_WAIT_STATUS(yb::util::WaitStateCode::Unused);
 }
 
 void DBImpl::UnscheduleCallback(void* arg) {
@@ -3431,6 +3433,9 @@ void DBImpl::BackgroundCallFlush(ColumnFamilyData* cfd) {
   bool made_progress = false;
   JobContext job_context(next_job_id_.fetch_add(1), true);
 
+  yb::util::WaitStateInfo::CurrentWaitState()->metadata().request_id = std::to_string(next_job_id_.load());
+  SET_WAIT_STATUS(yb::util::WaitStateCode::StartFlush);
+
   LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, db_options_.info_log.get());
 
   InstrumentedMutexLock l(&mutex_);
@@ -3462,6 +3467,10 @@ void DBImpl::BackgroundCallCompaction(ManualCompaction* m, std::unique_ptr<Compa
                                       CompactionTask* compaction_task) {
   bool made_progress = false;
   JobContext job_context(next_job_id_.fetch_add(1), true);
+
+  yb::util::WaitStateInfo::CurrentWaitState()->metadata().request_id = std::to_string(next_job_id_.load());
+  SET_WAIT_STATUS(yb::util::WaitStateCode::StartCompaction);
+
   LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, db_options_.info_log.get());
   if (compaction_task) {
     compaction_task->SetJobID(&job_context);
