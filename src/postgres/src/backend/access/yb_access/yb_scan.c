@@ -2561,7 +2561,8 @@ HeapScanDesc
 ybc_remote_beginscan(Relation relation,
 					 Snapshot snapshot,
 					 Scan *pg_scan_plan,
-					 PushdownExprs *pushdown)
+					 PushdownExprs *pushdown,
+					 List *aggrefs)
 {
 	YbScanDesc ybScan = ybcBeginScan(relation,
 									 NULL /* index */,
@@ -2571,7 +2572,7 @@ ybc_remote_beginscan(Relation relation,
 									 pg_scan_plan,
 									 pushdown /* rel_pushdown */,
 									 NULL /* idx_pushdown */,
-									 NULL /* aggrefs */);
+									 aggrefs);
 
 	/* Set up Postgres sys table scan description */
 	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));

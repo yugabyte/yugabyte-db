@@ -995,15 +995,16 @@ error hint:
  Index Scan using t1_pkey on t1
    Index Cond: (id = $1)
    InitPlan 1 (returns $0)
-     ->  Aggregate
+     ->  Finalize Aggregate
            ->  YB Seq Scan on t1 v_1
                  Remote Filter: (id < 10)
+                 Partial Aggregate: true
    InitPlan 2 (returns $1)
      ->  Finalize Aggregate
            ->  Seq Scan on t1 v_2
                  Remote Filter: (id < 10)
                  Partial Aggregate: true
-(11 rows)
+(12 rows)
 
 -- /*+BitmapScan(v_2)*/
 -- EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
