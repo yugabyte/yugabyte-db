@@ -108,14 +108,6 @@ paths:
         explode: false
         schema:
           type: string
-      - name: zone
-        in: query
-        description: Zone to filter for the given cluster
-        required: false
-        style: form
-        explode: false
-        schema:
-          type: string
       - name: start_time
         in: query
         description: Start of range of time series data (in epoch seconds)
@@ -136,14 +128,6 @@ paths:
           type: integer
           format: int64
           minimum: 0
-      - name: cluster_type
-        in: query
-        description: Cluster type (primary or read replica)
-        required: false
-        style: form
-        explode: false
-        schema:
-          type: string
     get:
       summary: Get a metric for a cluster
       description: Get metrics for a Yugabyte cluster

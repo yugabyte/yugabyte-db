@@ -169,14 +169,6 @@ paths:
           minimum: 0
           type: integer
         style: form
-      - description: Cluster type (primary or read replica)
-        explode: false
-        in: query
-        name: cluster_type
-        required: false
-        schema:
-          type: string
-        style: form
       responses:
         "200":
           content:

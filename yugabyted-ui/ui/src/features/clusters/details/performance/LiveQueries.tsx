@@ -130,7 +130,7 @@ const getRowCellComponent = (
               onClick={() => onSelect(displayedRows[dataIndex])}
             >
               <YBCodeBlock
-                text={displayedRows[dataIndex].query || 'No query data'}
+                text={displayedRows[dataIndex].query ?? ''}
                 preClassName={classes.queryCodeBlock}
                 codeClassName={classes.queryContainerCode}
               />
@@ -252,8 +252,7 @@ export const LiveQueries: FC = () => {
       name: 'node_name',
       label: t('clusterDetail.performance.liveQueries.columns.nodeName'),
       options: {
-        filter: true,
-        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } })
+        filter: true
       }
     },
     columns.database && {
@@ -263,16 +262,14 @@ export const LiveQueries: FC = () => {
           ? t('clusterDetail.performance.liveQueries.columns.database')
           : t('clusterDetail.performance.liveQueries.columns.keyspace'),
       options: {
-        filter: true,
-        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } })
+        filter: true
       }
     },
     columns.elapsedTime && {
       name: 'elapsed_millis',
       label: t('clusterDetail.performance.liveQueries.columns.elapsedTime'),
       options: {
-        filter: true,
-        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } })
+        filter: true
       }
     },
     columns.type && {
@@ -282,24 +279,21 @@ export const LiveQueries: FC = () => {
           ? t('clusterDetail.performance.liveQueries.columns.status')
           : t('clusterDetail.performance.liveQueries.columns.type'),
       options: {
-        filter: true,
-        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } })
+        filter: true
       }
     },
     columns.clientHost && {
       name: 'client_host',
       label: t('clusterDetail.performance.liveQueries.columns.clientHost'),
       options: {
-        filter: true,
-        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } })
+        filter: true
       }
     },
     columns.clientPort && {
       name: 'client_port',
       label: t('clusterDetail.performance.liveQueries.columns.clientPort'),
       options: {
-        filter: true, 
-        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } })
+        filter: true
       }
     },
     {

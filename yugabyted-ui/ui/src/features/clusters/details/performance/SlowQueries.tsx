@@ -193,40 +193,35 @@ export const SlowQueries: FC = () => {
       name: 'rolname',
       label: t('clusterDetail.performance.slowQueries.columns.user'),
       options: {
-        filter: true,
-        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } })
+        filter: true
       }
     },
     columns.totalTime && {
       name: 'total_time',
       label: t('clusterDetail.performance.slowQueries.columns.totalTime'),
       options: {
-        filter: true,
-        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } })
+        filter: true
       }
     },
     columns.count && {
       name: 'calls',
       label: t('clusterDetail.performance.slowQueries.columns.count'),
       options: {
-        filter: true,
-        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } })
+        filter: true
       }
     },
     columns.rows && {
       name: 'rows',
       label: t('clusterDetail.performance.slowQueries.columns.rows'),
       options: {
-        filter: true,
-        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } })
+        filter: true
       }
     },
     columns.database && {
       name: 'datname',
       label: t('clusterDetail.performance.slowQueries.columns.database'),
       options: {
-        filter: true,
-        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } })
+        filter: true
       }
     },
     {

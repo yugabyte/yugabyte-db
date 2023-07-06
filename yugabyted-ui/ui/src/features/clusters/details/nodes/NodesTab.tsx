@@ -1,7 +1,7 @@
 import React, { FC, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Box, MenuItem, Typography, makeStyles, LinearProgress } from '@material-ui/core';
-import { TFunction, useTranslation } from 'react-i18next';
+import { useTranslation } from 'react-i18next';
 import {
     YBTable,
     YBLoadingBox,
@@ -72,30 +72,15 @@ const useStyles = makeStyles((theme) => ({
     modalCheckboxChild: {
         marginLeft: '32px'
     },
-    filterContainer: {
-        display: 'flex',
-        marginBottom: theme.spacing(2),
-    },
     filterRow: {
         display: 'flex',
-        gap: '10px',
-        alignItems: 'center',
+        marginBottom: theme.spacing(2),
     },
     filterRowButtons: {
         marginLeft: 'auto'
     },
     checkbox: {
         padding: '6px 6px 6px 6px'
-    },
-    badge: {
-        backgroundColor: theme.palette.grey[200],
-        color: theme.palette.grey[700],
-        borderRadius: theme.shape.borderRadius,
-        fontSize: '10px',
-        fontWeight: 500,
-        letterSpacing: '0.2px',
-        textTransform: 'uppercase',
-        padding: theme.spacing(0.5, 1),
     }
   }));
 
@@ -103,20 +88,18 @@ const useStyles = makeStyles((theme) => ({
 //   <YBStatus type={isHealthy ? STATUS_TYPES.SUCCESS : STATUS_TYPES.ERROR} tooltip />
 // );
 
-const NodeComponent = (classes: ClassNameMap, t: TFunction) => (
+const NodeComponent = (classes: ClassNameMap) => (
     node_data: {
         status: boolean,
         name: string,
         host: string,
-        bootstrapping: boolean,
-        is_read_replica: boolean,
-    },
+        bootstrapping: boolean
+    }
 ) => {
-
     return (
     <Box className={classes.nodeComponent}>
         <YBStatus type={node_data.status ? STATUS_TYPES.SUCCESS : STATUS_TYPES.ERROR} tooltip />
-        <Box display="flex" gridGap={10} alignItems="center">
+        <Box>
             <Typography variant='body1' className={classes.nodeName}>
                 {node_data.name}
             </Typography>
@@ -126,9 +109,6 @@ const NodeComponent = (classes: ClassNameMap, t: TFunction) => (
             {/* <Typography variant='subtitle1' className={classes.nodeHost}>
                 {node_data.host}
             </Typography> */}
-            {node_data.is_read_replica &&
-                <Box className={classes.badge}>{t('clusterDetail.nodes.readReplica')}</Box>
-            }
         </Box>
         {node_data.bootstrapping && (
             <div className={classes.nodeBootstrappingIcon}>
@@ -164,11 +144,9 @@ export const NodesTab: FC = () => {
   const [showEditColumns, setShowEditColumns] = useState(false);
 
   const [queryParams, setQueryParams] = useQueryParams({
-    filter: withDefault(StringParam, ''),
-    node: withDefault(StringParam, ''),
+    filter: withDefault(StringParam, '')
   });
   const [filter, setFilter] = useState<string | undefined>(queryParams.filter);
-  const [nodeFilter, setNodeFilter] = useState<string>(queryParams.node);
 
   const handleChangeFilter = (
     newFilter: string,
@@ -178,16 +156,6 @@ export const NodesTab: FC = () => {
       filter: newFilter || undefined
     });
   };
-
-  const handleChangeNodeFilter = (
-    newNodeFilter: string,
-  ) => {
-    setNodeFilter(newNodeFilter);
-    setQueryParams({
-      node: newNodeFilter || undefined
-    });
-  };
-
   // Get nodes
   const { data: nodesResponse, isFetching: fetchingNodes, refetch: refetchNodes } =
     useGetClusterNodesQuery();
@@ -256,11 +224,7 @@ export const NodesTab: FC = () => {
         : !node.is_node_up || !node.is_master_up
         ? false
         : node.metrics.uptime_seconds < 60 && !isLoadBalancerIdleResponse?.is_idle ||
-          (!node.is_read_replica ? 
-            node.metrics.user_tablets_leaders + node.metrics.system_tablets_leaders == 0
-            :
-            node.metrics.user_tablets_total + node.metrics.system_tablets_total == 0
-          );
+          node.metrics.user_tablets_leaders + node.metrics.system_tablets_leaders == 0;
         return node;
       })
       .filter((node) => {
@@ -275,24 +239,13 @@ export const NodesTab: FC = () => {
                 return true;
         }
       })
-      .filter((node) => {
-        switch (nodeFilter) {
-            case 'primary':
-                return !node.is_read_replica;
-            case 'readreplica':
-                return node.is_read_replica;
-            default:
-                return true;
-        }
-      })
       .map((node) => ({
         ...node,
         node_data: {
             status: node.is_node_up,
             name: node.name,
             host: node.host,
-            bootstrapping: node.is_bootstrapping,
-            is_read_replica: node.is_read_replica
+            bootstrapping: node.is_bootstrapping
         },
         region_and_zone: {
             region: node.cloud_info.region,
@@ -342,9 +295,7 @@ export const NodesTab: FC = () => {
       }));
     }
     return [];
-  }, [nodesResponse, fetchingIsLoadBalancerIdle, isLoadBalancerIdleResponse, filter, nodeFilter]);
-
-  const hasReadReplica = !!nodesResponse?.data.find(node => node.is_read_replica);
+  }, [nodesResponse, fetchingIsLoadBalancerIdle, isLoadBalancerIdleResponse, filter]);
 
   if (fetchingNodes) {
     return (
@@ -384,7 +335,7 @@ export const NodesTab: FC = () => {
       },
       options: {
         filter: true,
-        customBodyRender: NodeComponent(classes, t),
+        customBodyRender: NodeComponent(classes),
         display: columns.node_data,
         setCellHeaderProps: () => ({style:{whiteSpace: 'nowrap', padding: '8px 8px 8px 34px' }})
       }
@@ -902,54 +853,31 @@ export const NodesTab: FC = () => {
             isLoadBalancerIdle={isLoadBalancerIdleResponse?.is_idle}
             fetchingIsLoadBalancerIdle={fetchingIsLoadBalancerIdle}/>
       </Box>
-      <Box className={classes.filterContainer}>
-        <Box className={classes.filterRow}>
-            <YBSelect
-                className={classes.selectBox}
-                value={filter}
-                onChange={(e) => {
-                    handleChangeFilter(
-                        (e.target as HTMLInputElement).value
-                    );
-                }}
-            >
-                    <MenuItem value={''}>
-                    {t('clusterDetail.nodes.allNodeStatuses')}
-                    </MenuItem>
-                    <MenuItem value={'running'}>
-                    <YBStatus type={STATUS_TYPES.SUCCESS}/>
-                    {t('clusterDetail.nodes.running')}</MenuItem>
-                    <MenuItem value={'bootstrapping'}>
-                    <YBStatus type={STATUS_TYPES.IN_PROGRESS}/>
-                    {t('clusterDetail.nodes.bootstrapping')}
-                    </MenuItem>
-                    <MenuItem value={'down'}>
-                    <YBStatus type={STATUS_TYPES.ERROR}/>
-                    {t('clusterDetail.nodes.down')}
-                    </MenuItem>
-            </YBSelect>
-            {hasReadReplica &&
-                <YBSelect
-                    className={classes.selectBox}
-                    value={nodeFilter}
-                    onChange={(e) => {
-                        handleChangeNodeFilter(
-                            (e.target as HTMLInputElement).value
-                        );
-                    }}
-                >
-                        <MenuItem value={''}>
-                            {t('clusterDetail.nodes.allNodes')}
-                        </MenuItem>
-                        <MenuItem value={'primary'}>
-                            {t('clusterDetail.nodes.primaryNodes')}
-                        </MenuItem>
-                        <MenuItem value={'readreplica'}>
-                            {t('clusterDetail.nodes.readReplicaNodes')}
-                        </MenuItem>
-                </YBSelect>
-            }
-        </Box>
+      <Box className={classes.filterRow}>
+        <YBSelect
+            className={classes.selectBox}
+            value={filter}
+            onChange={(e) => {
+            handleChangeFilter(
+                (e.target as HTMLInputElement).value
+            );
+            }}
+        >
+                <MenuItem value={''}>
+                {t('clusterDetail.nodes.allNodeStatuses')}
+                </MenuItem>
+                <MenuItem value={'running'}>
+                <YBStatus type={STATUS_TYPES.SUCCESS}/>
+                {t('clusterDetail.nodes.running')}</MenuItem>
+                <MenuItem value={'bootstrapping'}>
+                <YBStatus type={STATUS_TYPES.IN_PROGRESS}/>
+                {t('clusterDetail.nodes.bootstrapping')}
+                </MenuItem>
+                <MenuItem value={'down'}>
+                <YBStatus type={STATUS_TYPES.ERROR}/>
+                {t('clusterDetail.nodes.down')}
+                </MenuItem>
+        </YBSelect>
         <Box className={classes.filterRowButtons}>
             <YBButton
                 variant="ghost"

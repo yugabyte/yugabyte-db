@@ -2,7 +2,7 @@ import React, { FC, useEffect, useMemo } from 'react';
 import { makeStyles, Box, Typography, MenuItem, LinearProgress } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { YBButton, YBCheckbox, YBDropdown, YBInput, YBLoadingBox, YBSelect, YBTable } from '@app/components';
-import { NodeData, useGetClusterHealthCheckQuery, useGetClusterNodesQuery, useGetClusterTabletsQuery } from '@app/api/src';
+import { useGetClusterHealthCheckQuery, useGetClusterNodesQuery, useGetClusterTabletsQuery } from '@app/api/src';
 import SearchIcon from '@app/assets/search.svg';
 import RefreshIcon from '@app/assets/refresh.svg';
 import { BadgeVariant, YBBadge } from '@app/components/YBBadge/YBBadge';
@@ -73,7 +73,6 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) 
     .find(tablet => tablet.table_name === selectedTable)?.table_uuid as string : undefined, [selectedTable, tablets])
 
   const { data: nodesResponse, isFetching: isFetchingNodes } = useGetClusterNodesQuery({ query: { refetchOnMount: 'always' }});
-  const hasReadReplica = !!nodesResponse?.data.find((node) => node.is_read_replica);
   const nodeNames = useMemo(() => nodesResponse?.data.map(node => node.name), [nodesResponse])
 
   const [nodes, setNodes] = React.useState<string[]>(nodeNames ?? []);
@@ -105,14 +104,15 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) 
     if (!nodesResponse || !tableID || !healthCheckData) {
       return;
     }
+
     const populateTablets = async () => {
-      let nodeList: NodeData[];
+      let nodes = nodesResponse.data;
       if (nodes.length > 0) {
-        nodeList = nodesResponse.data.filter(n => nodes.find(node => node === n.name))
+        nodes = nodes.filter(n => nodes.find(node => node.name === n.name))
       } else {
-        nodeList = [];
+        nodes = [];
       }
-      const nodeHosts = nodeList.map(node => node.host);
+      const nodeHosts = nodes.map(node => node.host);
       if (!nodeHosts) {
         return;
       }
@@ -127,14 +127,12 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) 
                 const tabletID = Array.from(row[1].matchAll(/<th>(.*)<\/th>/g))[0][1]
                 const tabletRange = Array.from(row[1].matchAll(/<td>hash_split: \[(.*)\]<\/td>/g))[0][1]
                 const tabletLeader = Array.from(row[1].matchAll(/LEADER: <a href=".*">(.*)<\/a>/g))[0][1]
-                const tabletFollowers = Array.from(row[1].matchAll(/FOLLOWER: <a href=".*">(.*)<\/a>/g)).map(r => r[1]).join(', ') || '-'
-                const tabletReadReplicas = Array.from(row[1].matchAll(/READ_REPLICA: <a href=".*">(.*)<\/a>/g)).map(r => r[1]).join(', ') || '-'
+                const tabletFollowers = Array.from(row[1].matchAll(/FOLLOWER: <a href=".*">(.*)<\/a>/g)).map(r => r[1]).join(', ')
                 return {
                   id: tabletID,
                   range: tabletRange,
                   leaderNode: tabletLeader,
                   followerNodes: tabletFollowers,
-                  readReplicaNodes: tabletReadReplicas,
                   status: healthCheckData?.data?.under_replicated_tablets?.includes(tabletID) ? "Under-replicated" : 
                     (healthCheckData?.data?.leaderless_tablets?.includes(tabletID) ? "Unavailable" : ""),
                 }
@@ -179,74 +177,54 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) 
   }, [tabletList, tabletID]);
 
 
-  const columns = useMemo(() => {
-    const columns = [
-      {
-        name: 'id',
-        label: t('clusterDetail.databases.tabletID'),
-        options: {
-          setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
-          setCellProps: () => ({ style: { padding: '8px 16px' }}),
-        }
-      },
-      {
-        name: 'range',
-        label: t('clusterDetail.databases.tabletRange'),
-        options: {
-          setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
-          setCellProps: () => ({ style: { padding: '8px 16px' }}),
-        }
-      },
-      {
-        name: 'leaderNode',
-        label: t('clusterDetail.databases.leaderNode'),
-        options: {
-          setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
-          setCellProps: () => ({ style: { padding: '8px 16px' }}),
-        }
-      },
-      {
-        name: 'followerNodes',
-        label: t('clusterDetail.databases.followerNodes'),
-        options: {
-          setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
-          setCellProps: () => ({ style: { padding: '8px 16px' }}),
-        }
-      },
-      {
-        name: 'readReplicaNodes',
-        label: t('clusterDetail.databases.readReplicaNodes'),
-        options: {
-          setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
-          setCellProps: () => ({ style: { padding: '8px 16px' }}),
-        }
-      },
-      {
-        name: 'status',
-        label: '',
-        options: {
-          sort: false,
-          hideHeader: true,
-          setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
-          setCellProps: () => ({ style: { padding: '8px 16px' }}),
-          customBodyRender: (status: string) => status && 
-            <YBBadge variant={status === "Under-replicated" ? BadgeVariant.Warning : BadgeVariant.Error} 
-              text={status === "Under-replicated" ? t('clusterDetail.databases.underReplicated') : 
-                t('clusterDetail.databases.unavailable')} />,
-        }
-      },
-    ];
-
-    if (nodesResponse && nodesResponse.data.length < 2) {
-      columns.splice(columns.findIndex(col => col.name === "followerNodes"), 1);
-    }
-
-    if (!hasReadReplica) {
-      columns.splice(columns.findIndex(col => col.name === "readReplicaNodes"), 1);
-    }
-
-    return columns;
-  }, [nodesResponse, hasReadReplica]);
+  const columns = [
+    {
+      name: 'id',
+      label: t('clusterDetail.databases.tabletID'),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
+        setCellProps: () => ({ style: { padding: '8px 16px' }}),
+      }
+    },
+    {
+      name: 'range',
+      label: t('clusterDetail.databases.tabletRange'),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
+        setCellProps: () => ({ style: { padding: '8px 16px' }}),
+      }
+    },
+    {
+      name: 'leaderNode',
+      label: t('clusterDetail.databases.leaderNode'),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
+        setCellProps: () => ({ style: { padding: '8px 16px' }}),
+      }
+    },
+    {
+      name: 'followerNodes',
+      label: t('clusterDetail.databases.followerNodes'),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
+        setCellProps: () => ({ style: { padding: '8px 16px' }}),
+      }
+    },
+    {
+      name: 'status',
+      label: '',
+      options: {
+        sort: false,
+        hideHeader: true,
+        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
+        setCellProps: () => ({ style: { padding: '8px 16px' }}),
+        customBodyRender: (status: string) => status && 
+          <YBBadge variant={status === "Under-replicated" ? BadgeVariant.Warning : BadgeVariant.Error} 
+            text={status === "Under-replicated" ? t('clusterDetail.databases.underReplicated') : 
+              t('clusterDetail.databases.unavailable')} />,
+      }
+    },
+  ];
 
   if (isFetchingNodes || isFetchingHealth || isFetchingTablets || isLoading) {
     return (
