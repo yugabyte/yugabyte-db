@@ -213,10 +213,10 @@ Status PgDocResult::ProcessSparseSystemColumns(std::string *reservoir) {
 
 //--------------------------------------------------------------------------------------------------
 
-PgDocResponse::PgDocResponse(PerformFuture future, uint32_t wait_event)
+PgDocResponse::PgDocResponse(PerformFuture future, util::WaitStateCode wait_event)
     : holder_(std::move(future)), wait_event_(wait_event) {}
 
-PgDocResponse::PgDocResponse(ProviderPtr provider, uint32_t wait_event)
+PgDocResponse::PgDocResponse(ProviderPtr provider, util::WaitStateCode wait_event)
     : holder_(std::move(provider)), wait_event_(wait_event) {}
 
 bool PgDocResponse::Valid() const {
