@@ -915,6 +915,7 @@ Status PgSession::SetAUHMetadata(const char* remote_host, int remote_port) {
   client_node_ip_ = remote_host;
   client_node_ip_ += ":";
   client_node_ip_ += std::to_string(remote_port);
+  pg_callbacks_.ProcSetNodeUUID(node_uuid_.c_str());
   return Status::OK();
 }
 
@@ -924,6 +925,7 @@ void PgSession::SetQueryId(uint64_t query_id) {
 
 void PgSession::SetTopLevelRequestId() {
   top_level_request_id_ = GenerateObjectId();
+  pg_callbacks_.ProcSetTopRequestId(top_level_request_id_.c_str());
 }
 
 }  // namespace pggate

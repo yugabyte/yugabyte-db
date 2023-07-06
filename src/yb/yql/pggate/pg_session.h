@@ -359,8 +359,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   void SetTopLevelRequestId();
 
-  void setWaitEventInfo(uint32_t wait_event) {
-    pg_callbacks_.SignalWaitStart(wait_event);
+  void setWaitEventInfo(util::WaitStateCode wait_event) {
+    uint32_t enum_int = to_underlying(wait_event);
+    pg_callbacks_.SignalWaitStart(enum_int);
   }
 
   Result<client::RpcsInfo> ActiveUniverseHistory();
