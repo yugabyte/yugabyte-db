@@ -4203,17 +4203,18 @@ Status CDCServiceImpl::UpdateCheckpointAndActiveTime(
   RETURN_NOT_OK(RefreshCacheOnFail(session->ApplyAndFlushSync(op)));
 
   // If we update the colocated snapshot row, we still need to do one of two things:
-  // 1. Update the "safe_time" in the row used for streaming, if it is not set
-  // 2. Update active time on the row used for streaming
+  // 1. Update the "safe_time" in the row used for streaming, if the checkpoint is not set
+  // 2. Else, Only update the active time on the row used for streaming
   if (update_colocated_snapshot_row) {
-    auto streaming_safe_time = VERIFY_RESULT(GetSafeTime(producer_tablet, session));
-    if (snapshot_bootstrap && (streaming_safe_time == 0)) {
+    auto checkpoint = VERIFY_RESULT(GetLastCDCSDKCheckpoint(
+        producer_tablet.stream_id, producer_tablet.tablet_id, session, CDCRequestSource::CDCSDK));
+    if (snapshot_bootstrap && checkpoint.term() == 0 && checkpoint.index() == 0) {
       RETURN_NOT_OK(UpdateCheckpointAndActiveTime(
           producer_tablet, sent_op_id, commit_op_id, session, last_record_hybrid_time,
           request_source, snapshot_bootstrap, cdc_sdk_safe_time, is_snapshot, "", ""));
     } else {
       RETURN_NOT_OK(
-          UpdateActiveTime(producer_tablet, session, last_active_time, streaming_safe_time));
+          UpdateActiveTime(producer_tablet, session, last_active_time, checkpoint.snapshot_time()));
     }
   }
 
