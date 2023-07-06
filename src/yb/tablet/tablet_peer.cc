@@ -86,6 +86,7 @@
 #include "yb/tablet/write_query.h"
 
 #include "yb/util/debug-util.h"
+#include "yb/util/fault_injection.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -116,6 +117,11 @@ DEFINE_RUNTIME_bool(abort_active_txns_during_xrepl_bootstrap, true,
     "Abort active transactions during xcluster and cdc bootstrapping. Inconsistent replicated data "
     "may be produced if this is disabled.");
 TAG_FLAG(abort_active_txns_during_xrepl_bootstrap, advanced);
+
+DEFINE_test_flag(double, fault_crash_leader_before_changing_role, 0.0,
+                 "The leader will crash before changing the role (from PRE_VOTER or PRE_OBSERVER "
+                 "to VOTER or OBSERVER respectively) of the tablet server it is remote "
+                 "bootstrapping.");
 
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
@@ -1584,8 +1590,9 @@ rpc::Scheduler& TabletPeer::scheduler() const {
   return messenger_->scheduler();
 }
 
-// Called from within RemoteBootstrapSession and RemoteBootstrapAnchorService.
+// Called from within RemoteBootstrapSession and RemoteBootstrapServiceImpl.
 Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
+  MAYBE_FAULT(FLAGS_TEST_fault_crash_leader_before_changing_role);
   shared_ptr<consensus::Consensus> consensus = shared_consensus();
 
   // This check fixes an issue with test TestDeleteTabletDuringRemoteBootstrap in which a tablet is
@@ -1635,8 +1642,6 @@ Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
         peer->set_permanent_uuid(requestor_uuid);
 
         boost::optional<TabletServerErrorPB::Code> error_code;
-
-        // If another ChangeConfig is being processed, our request will be rejected.
         return consensus->ChangeConfig(req, &DoNothingStatusCB, &error_code);
       }
       case PeerMemberType::UNKNOWN_MEMBER_TYPE:
