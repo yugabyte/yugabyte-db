@@ -54,6 +54,10 @@ AUHMetadata WaitStateInfo::metadata() {
   return metadata_;
 }
 
+WaitStateCode WaitStateInfo::code() {
+  return code_;
+}
+
 std::string WaitStateInfo::ToString() const {
   #ifdef TRACK_WAIT_HISTORY
   std::vector<WaitStateCode> history;

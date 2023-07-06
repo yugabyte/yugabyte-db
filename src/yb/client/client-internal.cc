@@ -81,7 +81,6 @@
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_controller.h"
-#include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/flags.h"

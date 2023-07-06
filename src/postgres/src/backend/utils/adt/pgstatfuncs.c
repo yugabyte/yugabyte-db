@@ -2194,7 +2194,7 @@ tserver_stat_get_activity(PG_FUNCTION_ARGS)
 		int cntr = funcctx->call_cntr;
 		YBCAuhDescriptor *rpc = (YBCAuhDescriptor *)funcctx->user_fctx + cntr;
 
-		values[0] = Int64GetDatum(rpc->wait_state);
+		values[0] = CStringGetTextDatum(rpc->wait_state);
 		memset(nulls, 0, sizeof(nulls));
 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));

@@ -49,7 +49,6 @@
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc.h"
-#include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/server/server_base_options.h"
 

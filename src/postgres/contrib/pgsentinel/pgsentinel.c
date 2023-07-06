@@ -38,8 +38,6 @@
 #include "commands/extension.h"
 #include "catalog/namespace.h"
 
-#include "yb/yql/pggate/ybc_pggate.h"
-
 PG_MODULE_MAGIC;
 PG_FUNCTION_INFO_V1(pg_active_session_history);
 PG_FUNCTION_INFO_V1(pg_stat_statements_history);
