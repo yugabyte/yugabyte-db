@@ -28,6 +28,12 @@ List users in YugabyteDB Managed:
 ybm user list
 ```
 
+Invite a user to YugabyteDB Managed:
+
+```sh
+ybm user invite --email developer@mycompany.com --role Developer
+```
+
 ## Commands
 
 ### delete
