@@ -65,7 +65,7 @@ export const ClusterAlertWidget: FC<ClusterAlertWidgetProps> = () => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const alertNotifications = useAlerts();
+  const { data: alertNotifications } = useAlerts();
 
   const alert = useMemo<(typeof alertNotifications)[number] | undefined>(() => {
     if (alertNotifications.length === 0) {

@@ -45,7 +45,7 @@ export const ActivityTab: FC = () => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const activityData = useActivities();
+  const { data: activityData } = useActivities();
   const [drawerOpenIndex, setDrawerOpenIndex] = React.useState<number>();
 
   const activityColumns = [

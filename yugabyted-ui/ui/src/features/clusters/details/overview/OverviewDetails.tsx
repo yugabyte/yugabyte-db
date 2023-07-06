@@ -8,8 +8,14 @@ import { SettingsTab } from '../settings/SettingsTab';
 import { StringParam, useQueryParams, withDefault } from 'use-query-params';
 import { YBButton } from '@app/components';
 import RefreshIcon from '@app/assets/refresh.svg';
-import { useGetClusterQuery, useGetClusterNodesQuery, useGetClusterHealthCheckQuery, 
-  useGetIsLoadBalancerIdleQuery } from '@app/api/src';
+import { 
+  useGetClusterQuery, 
+  useGetClusterNodesQuery,
+  useGetClusterHealthCheckQuery, 
+  useGetIsLoadBalancerIdleQuery, 
+  useGetClusterActivitiesQuery,
+  useGetClusterAlertsQuery
+} from '@app/api/src';
 
 const useStyles = makeStyles((theme) => ({
   tabSectionContainer: {
@@ -73,12 +79,20 @@ export const OverviewDetails: FC = () => {
   const { refetch: refetchCluster } = useGetClusterQuery({ query: { enabled: false }});
   const { refetch: refetchHealth } = useGetClusterHealthCheckQuery({ query: { enabled: false }});
   const { refetch: refetchLoadBalancer } = useGetIsLoadBalancerIdleQuery({ query: { enabled: false }});
+  const { refetch: refetchActivities } = useGetClusterActivitiesQuery({ activities: "INDEX_BACKFILL" }, { query: { enabled: false }});
+  const { refetch: refetchAlerts } = useGetClusterAlertsQuery({ query: { enabled: false }});
 
   const refetch = () => {
-    refetchNodes();
-    refetchCluster();
-    refetchHealth();
-    refetchLoadBalancer();
+    if (currentTab === "tabOverview") {
+      refetchNodes();
+      refetchCluster();
+      refetchHealth();
+      refetchLoadBalancer();
+      refetchActivities();
+      refetchAlerts();
+    } else if (currentTab === "tabActivity") {
+      refetchActivities();
+    }
   }
 
   const TabComponent = tabList.find(tab => tab.name === currentTab)?.component;
@@ -97,7 +111,7 @@ export const OverviewDetails: FC = () => {
             />
           ))}
         </Tabs>
-        {currentTab === "tabOverview" &&
+        {(currentTab === "tabOverview" || currentTab === "tabActivity") &&
           <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={refetch}>
             {t('clusterDetail.performance.actions.refresh')}
           </YBButton>

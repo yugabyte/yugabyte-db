@@ -1171,6 +1171,7 @@
           "severe": "Severe",
           "warning": "Warning",
           "name": "Name",
+          "node": "Node",
           "severity": "Severity",
           "triggertime": "Trigger Time",
           "duration": "Duration",

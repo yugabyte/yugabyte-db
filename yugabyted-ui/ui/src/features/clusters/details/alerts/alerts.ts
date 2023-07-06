@@ -55,7 +55,10 @@ type CPUAlert = {
   cpu_75: boolean;
 };
 
-export const useCPUAlert = () => {
+export const useCPUAlert = (nodeName: string = "") => {
+  const [refetch, setRefetch] = useState<boolean>(false);
+  const refetchCPUAlerts = () => setRefetch((prev) => !prev);
+
   const [cpuAlerts, setCpuAlerts] = useState<CPUAlert>({
     cpu_90: false,
     cpu_75: false,
@@ -67,7 +70,9 @@ export const useCPUAlert = () => {
       const interval = { start: subMinutes(end, 5), end };
       const cpuAlerts = await AXIOS_INSTANCE.get(
         `/metrics?metrics=CPU_USAGE_SYSTEM%2CCPU_USAGE_USER` +
-          `&start_time=${getUnixTime(interval.start)}&end_time=${getUnixTime(interval.end)}`
+          `&start_time=${getUnixTime(interval.start)}&end_time=${getUnixTime(
+            interval.end
+          )}&node_name=${nodeName}`
       )
         .then(({ data }) => {
           const cpuUsages = {
@@ -108,9 +113,9 @@ export const useCPUAlert = () => {
     };
 
     computeCpuAlerts();
-  }, []);
+  }, [nodeName, refetch]);
 
-  return cpuAlerts;
+  return { data: cpuAlerts, refetch: refetchCPUAlerts };
 };
 
 export type AlertNotification = {
@@ -120,8 +125,8 @@ export type AlertNotification = {
   status: BadgeVariant;
 };
 
-export const useAlerts = () => {
-  const { data: upstreamAlerts } = useGetClusterAlertsQuery();
+export const useAlerts = (nodeName: string = "") => {
+  const { data: upstreamAlerts, refetch: refetchUpstreamAlerts } = useGetClusterAlertsQuery();
 
   /* const upstreamAlerts = {
     data: [
@@ -136,7 +141,12 @@ export const useAlerts = () => {
     ],
   }; */
 
-  const cpuAlerts = useCPUAlert();
+  const { data: cpuAlerts, refetch: refetchCPUAlerts } = useCPUAlert(nodeName);
+
+  const refetch = () => {
+    refetchUpstreamAlerts();
+    refetchCPUAlerts();
+  }
 
   const upstreamNotificationData = useMemo(() => upstreamAlerts?.data || [], [upstreamAlerts]);
 
@@ -160,17 +170,19 @@ export const useAlerts = () => {
       });
     }
 
-    const apiNotifications = upstreamNotificationData.map((notificationData) => ({
-      key: notificationData.name,
-      title:
-        alertList.find((alert) => alert.key === notificationData.name)?.name ||
-        BadgeVariant.Warning,
-      info: notificationData.info,
-      status: BadgeVariant.Warning,
-    }));
+    const apiNotifications = upstreamNotificationData
+      .filter((notificationData) => !nodeName || (notificationData as any).node === nodeName)
+      .map((notificationData) => ({
+        key: notificationData.name,
+        title:
+          alertList.find((alert) => alert.key === notificationData.name)?.name ||
+          BadgeVariant.Warning,
+        info: notificationData.info,
+        status: BadgeVariant.Warning,
+      }));
 
     return [...cpuNotifications, ...apiNotifications];
-  }, [upstreamNotificationData, cpuAlerts]);
+  }, [upstreamNotificationData, cpuAlerts, nodeName]);
 
   const [config] = useLocalStorage<AlertConfiguration[]>(alertConfigurationsKey);
 
@@ -182,5 +194,5 @@ export const useAlerts = () => {
     [alertData, config]
   );
 
-  return configuredAlertData;
+  return { data: configuredAlertData, refetch };
 };

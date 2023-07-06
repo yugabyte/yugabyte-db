@@ -72,7 +72,7 @@ export const ClusterActivityWidget: FC<ClusterActivityWidgetProps> = () => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const activityData = useActivities();
+  const { data: activityData } = useActivities();
 
   return (
     <Box>

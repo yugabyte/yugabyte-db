@@ -1,12 +1,14 @@
-import React, { FC, useMemo } from "react";
-import { Box, makeStyles, useTheme } from "@material-ui/core";
+import React, { FC, useMemo, useState } from "react";
+import { Box, MenuItem, makeStyles, useTheme } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import { YBTable, YBLoadingBox, YBCheckbox } from "@app/components";
+import { YBTable, YBLoadingBox, YBCheckbox, YBSelect, YBButton } from "@app/components";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import type { TFunction } from "i18next";
 import clsx from "clsx";
 import { useLocalStorage } from "react-use";
 import { AlertConfiguration, AlertNotification, alertConfigurationsKey, useAlerts } from "./alerts";
+import { useGetClusterNodesQuery } from "@app/api/src";
+import RefreshIcon from "@app/assets/refresh.svg";
 
 const useStyles = makeStyles((theme) => ({
   sectionWrapper: {
@@ -76,6 +78,9 @@ const useStyles = makeStyles((theme) => ({
   checkbox: {
     padding: theme.spacing(0.5, 1, 0.5, 0),
   },
+  selectBox: {
+    minWidth: "200px",
+  },
 }));
 
 const SevIndicator: React.FC<{ status: BadgeVariant; smIndicator?: boolean }> = ({
@@ -140,12 +145,24 @@ export const AlertNotificationDetails: FC = () => {
   const { t } = useTranslation();
   const classes = useStyles();
 
+  const { data: nodesResponse } = useGetClusterNodesQuery();
+
+  const nodesNamesList = useMemo(
+    () => [
+      { label: t("clusterDetail.performance.metrics.allNodes"), value: "" },
+      ...(nodesResponse?.data.map((node) => ({ label: node.name, value: node.name })) ?? []),
+    ],
+    [nodesResponse?.data]
+  );
+
+  const [nodeName, setNodeName] = useState<string>("");
+
   const [severeFilter, setSevereFilter] = React.useState<boolean>(false);
   const [warningFilter, setWarningFilter] = React.useState<boolean>(false);
 
   const [config] = useLocalStorage<AlertConfiguration[]>(alertConfigurationsKey);
 
-  const alertNotifications = useAlerts();
+  const { data: alertNotifications, refetch } = useAlerts(nodeName);
 
   const filteredAlertNotifications = useMemo(
     () =>
@@ -166,6 +183,14 @@ export const AlertNotificationDetails: FC = () => {
         customBodyRenderLite: NotificationComponent(classes, filteredAlertNotifications),
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
+    },
+    {
+      name: "node",
+      label: t("clusterDetail.alerts.notification.node"),
+      options: {
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px", minWidth: 100 } }),
       },
     },
     {
@@ -223,8 +248,26 @@ export const AlertNotificationDetails: FC = () => {
             count: filteredAlertNotifications.length,
           })}
         </Box>
+        <Box display="flex" alignItems="center" justifyContent="space-between" pb={2} gridGap={4} flexWrap="wrap">
+          <YBSelect
+            className={classes.selectBox}
+            value={nodeName}
+            onChange={(e) => setNodeName(e.target.value)}
+          >
+            {nodesNamesList?.map((el) => {
+              return (
+                <MenuItem key={el.label} value={el.value}>
+                  {el.label}
+                </MenuItem>
+              );
+            })}
+          </YBSelect>
+          <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={refetch}>
+            {t("clusterDetail.performance.actions.refresh")}
+          </YBButton>
+        </Box>
         {filteredAlertNotifications.length ? (
-          <Box pb={4} pt={1}>
+          <Box pb={4}>
             <YBTable
               data={filteredAlertNotifications}
               columns={notificationColumns}

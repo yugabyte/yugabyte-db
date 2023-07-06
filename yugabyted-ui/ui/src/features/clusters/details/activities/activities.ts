@@ -3,7 +3,7 @@ import { BadgeVariant } from "@app/components/YBBadge/YBBadge";
 import { useMemo } from "react";
 
 export const useActivities = () => {
-  const { data: upstreamActivities } = useGetClusterActivitiesQuery({
+  const { data: upstreamActivities, refetch } = useGetClusterActivitiesQuery({
     activities: "INDEX_BACKFILL",
   });
 
@@ -45,5 +45,5 @@ export const useActivities = () => {
     );
   }, [upstreamActivities]);
 
-  return activityData;
+  return { data: activityData, refetch };
 };
