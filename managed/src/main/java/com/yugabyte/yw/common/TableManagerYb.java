@@ -297,6 +297,12 @@ public class TableManagerYb extends DevopsBase {
         commandArgs.add(Json.stringify(Json.toJson(ipToSshKeyPath)));
       }
     }
+    Universe universe = Universe.getOrBadRequest(backupTableParams.getUniverseUUID());
+    boolean useServerBroadcastAddress =
+        confGetter.getConfForScope(universe, UniverseConfKeys.useServerBroadcastAddressForYbBackup);
+    if (useServerBroadcastAddress) {
+      commandArgs.add("--use_server_broadcast_address");
+    }
     commandArgs.add("--backup_location");
     commandArgs.add(backupTableParams.storageLocation);
     commandArgs.add("--storage_type");
@@ -310,7 +316,6 @@ public class TableManagerYb extends DevopsBase {
       commandArgs.add("--certs_dir");
       commandArgs.add(getCertsDir(region, provider));
     }
-    Universe universe = Universe.getOrBadRequest(backupTableParams.getUniverseUUID());
     boolean verboseLogsEnabled =
         confGetter.getConfForScope(universe, UniverseConfKeys.backupLogVerbose);
     if (backupTableParams.enableVerboseLogs || verboseLogsEnabled) {
