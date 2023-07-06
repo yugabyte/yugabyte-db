@@ -86,40 +86,40 @@ Now that we have processed both the text and the query, we have to use the query
 
 ```sql
 -- either `one` or `son`
-SELECT name FROM movies WHERE to_tsvector(summary) @@ to_tsquery('one | son');
+SELECT * FROM movies WHERE to_tsvector(summary) @@ to_tsquery('one | son');
 ```
 
 ```sql{class=nocopy}
-           name
---------------------------
- The Godfather
- The Shawshank Redemption
+           name           |                       summary
+--------------------------+------------------------------------------------------
+ The Godfather            | A don hands over his empire to one of his sons.
+ The Shawshank Redemption | Two convicts become friends and one convict escapes.
 ```
 
 ### AND
 
 ```sql
 -- both `one` and `son`
-SELECT name FROM movies WHERE to_tsvector(summary) @@ to_tsquery('one & son');
+SELECT * FROM movies WHERE to_tsvector(summary) @@ to_tsquery('one & son');
 ```
 
 ```output
-     name
----------------
- The Godfather
+     name      |                     summary
+---------------+-------------------------------------------------
+ The Godfather | A don hands over his empire to one of his sons.
  ```
 
 ### NOT
 
 ```sql
 -- both `one` but NOT `son`
-SELECT name FROM movies WHERE to_tsvector(summary) @@ to_tsquery('one & !son');
+SELECT * FROM movies WHERE to_tsvector(summary) @@ to_tsquery('one & !son');
 ```
 
 ```sql{class=nocopy}
-           name
---------------------------
- The Shawshank Redemption
+           name           |                       summary
+--------------------------+------------------------------------------------------
+ The Shawshank Redemption | Two convicts become friends and one convict escapes.
 ```
 
 Let's search for `conviction` in our movies table.
@@ -127,13 +127,13 @@ Let's search for `conviction` in our movies table.
 ### Stemming
 
 ```sql
-SELECT name FROM movies WHERE to_tsvector(summary) @@ to_tsquery('conviction');
+SELECT * FROM movies WHERE to_tsvector(summary) @@ to_tsquery('conviction');
 ```
 
 ```sql{class=nocopy}
-           name
---------------------------
- The Shawshank Redemption
+           name           |                       summary
+--------------------------+------------------------------------------------------
+ The Shawshank Redemption | Two convicts become friends and one convict escapes.
 ```
 
 Even though the word `conviction` was not present in the table, it returned `The Shawshank Redemption`. That is because the term `conviction` stemmed to `convict` and matched the right movie. This is the power of the full-text search!
@@ -143,17 +143,17 @@ Even though the word `conviction` was not present in the table, it returned `The
 Retrieved results can be ranked using a matching score generated with the `ts_rank` function that measures the relevance of the text to the query. This can be used for identifying text that is more relevant to the query. For example, when we search for `one` or `son`,
 
 ```sql
-SELECT name, ts_rank(to_tsvector(summary), to_tsquery('one | son')) as score FROM movies;
+SELECT ts_rank(to_tsvector(summary), to_tsquery('one | son')) as score,* FROM movies;
 ```
 
 we get
 
 ```sql{class=nocopy}
-           name           |  score
---------------------------+-----------
- The Godfather            | 0.0607927
- Inception                |         0
- The Shawshank Redemption | 0.0303964
+   score   |           name           |                          summary
+-----------+--------------------------+-----------------------------------------------------------
+ 0.0607927 | The Godfather            | A don hands over his empire to one of his sons.
+         0 | Inception                | A thief is given the task of planting an idea onto a mind
+ 0.0303964 | The Shawshank Redemption | Two convicts become friends and one convict escapes.
 ```
 
 Notice that the score for `The Godfather` is twice the score for `The Shawshank Redemption`. This is because both `one` and `son` were present in the former but only `one` was present in the latter. This score can be used to sort the results by relevance.
@@ -180,14 +180,14 @@ The matching terms are surrounded by `<b>..</b>`. This can be very useful when d
 All the above searches have been done on the `summary` column. If you want to search both the `name` and `summary`, you could concat both columns as below.
 
 ```sql
-SELECT name FROM movies WHERE to_tsvector(name || ' ' || summary) @@ to_tsquery('godfather | thief');
+SELECT * FROM movies WHERE to_tsvector(name || ' ' || summary) @@ to_tsquery('godfather | thief');
 ```
 
 ```sql{class=nocopy}
-     name
----------------
- The Godfather
- Inception
+     name      |                          summary
+---------------+-----------------------------------------------------------
+ The Godfather | A don hands over his empire to one of his sons.
+ Inception     | A thief is given the task of planting an idea onto a mind
 ```
 
 The query term `godfather` matched the title of one movie but the term `thief` matched the summary of another movie.
@@ -209,14 +209,14 @@ UPDATE movies SET tsv = to_tsvector(name || ' ' || summary);
 Now, you can query the table just on the `tsv` column as,
 
 ```sql
-SELECT name FROM movies WHERE tsv @@ to_tsquery('godfather | thief');
+SELECT * FROM movies WHERE tsv @@ to_tsquery('godfather | thief');
 ```
 
 ```sql{class=nocopy}
-     name
----------------
- The Godfather
- Inception
+     name      |                          summary                          |                                       tsv
+---------------+-----------------------------------------------------------+---------------------------------------------------------------------------------
+ The Godfather | A don hands over his empire to one of his sons.           | 'empir':8 'godfath':2 'hand':5 'one':10 'son':13
+ Inception     | A thief is given the task of planting an idea onto a mind | 'given':5 'idea':11 'incept':1 'mind':14 'onto':12 'plant':9 'task':7 'thief':3
 ```
 
 You can also set the column to be automatically updated on future inserts and updates with a trigger using the `tsvector_update_trigger` function.
