@@ -62,5 +62,4 @@ The YugabyteDB xCluster replication architecture is inspired by RDBMS databases 
     </a>
   </div>
 
-
 </div>
