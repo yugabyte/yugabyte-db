@@ -514,7 +514,7 @@ export function ReplicationDetails({
                 <Tab eventKey={'overview'} title={'Overview'}>
                   {targetUniverse !== undefined && (
                     <ReplicationOverview
-                      replication={xClusterConfig}
+                      xClusterConfig={xClusterConfig}
                       destinationUniverse={targetUniverse}
                     />
                   )}
