@@ -1141,6 +1141,47 @@ Status PopulateCDCSDKWriteRecord(
   return Status::OK();
 }
 
+Status PopulateCDCSDKWriteRecordWithInvalidSchemaRetry(
+    const ReplicateMsgPtr& msg,
+    const StreamMetadata& metadata,
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+    const EnumOidLabelMap& enum_oid_label_map,
+    const CompositeAttsMap& composite_atts_map,
+    SchemaDetailsMap* cached_schema_details,
+    GetChangesResponsePB* resp,
+    client::YBClient* client) {
+  const auto& records_size_before = resp->cdc_sdk_proto_records_size();
+
+  auto status = PopulateCDCSDKWriteRecord(
+      msg, metadata, tablet_peer, enum_oid_label_map, composite_atts_map, cached_schema_details,
+      resp, client);
+
+  if (!status.ok()) {
+    VLOG_WITH_FUNC(1) << "Recevied error status: " << status.ToString()
+                      << ", while prcoessing WRITE_OP, with op_id: " << msg->id().ShortDebugString()
+                      << ", on tablet: " << tablet_peer->tablet_id();
+    // Remove partial remnants created while processing the write record
+    while (resp->cdc_sdk_proto_records_size() > records_size_before) {
+      resp->mutable_cdc_sdk_proto_records()->RemoveLast();
+    }
+
+    // Clear the scheam for all the colocated tables assocaited with the tablet
+    auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+    for (auto const& cur_table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
+      auto it = cached_schema_details->find(cur_table_id);
+      if (it != cached_schema_details->end()) {
+        (*cached_schema_details).erase(it);
+      }
+    }
+
+    auto status = PopulateCDCSDKWriteRecord(
+        msg, metadata, tablet_peer, enum_oid_label_map, composite_atts_map, cached_schema_details,
+        resp, client);
+  }
+
+  return status;
+}
+
 Status PopulateCDCSDKDDLRecord(
     const ReplicateMsgPtr& msg, CDCSDKProtoRecordPB* proto_record, const string& table_name,
     const Schema& schema) {
@@ -1340,6 +1381,56 @@ Status ProcessIntents(
   }
 
   return Status::OK();
+}
+
+Status PrcoessIntentsWithInvalidSchemaRetry(
+    const OpId& op_id,
+    const TransactionId& transaction_id,
+    const StreamMetadata& metadata,
+    const EnumOidLabelMap& enum_oid_label_map,
+    const CompositeAttsMap& composite_atts_map,
+    GetChangesResponsePB* resp,
+    ScopedTrackedConsumption* consumption,
+    CDCSDKCheckpointPB* checkpoint,
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+    std::vector<docdb::IntentKeyValueForCDC>* keyValueIntents,
+    docdb::ApplyTransactionState* stream_state,
+    client::YBClient* client,
+    SchemaDetailsMap* cached_schema_details,
+    const uint64_t& commit_time) {
+  const auto& records_size_before = resp->cdc_sdk_proto_records_size();
+
+  auto status = ProcessIntents(
+      op_id, transaction_id, metadata, enum_oid_label_map, composite_atts_map, resp, consumption,
+      checkpoint, tablet_peer, keyValueIntents, stream_state, client, cached_schema_details,
+      commit_time);
+
+  if (!status.ok()) {
+    VLOG_WITH_FUNC(1) << "Recevied error status: " << status.ToString()
+                      << ", while prcoessing intents for transaction: " << transaction_id
+                      << ", with APPLY op_id: " << op_id
+                      << ", on tablet: " << tablet_peer->tablet_id();
+    // Remove partial remnants created while processing intents
+    while (resp->cdc_sdk_proto_records_size() > records_size_before) {
+      resp->mutable_cdc_sdk_proto_records()->RemoveLast();
+    }
+
+    // Clear the scheam for all the colocated tables assocaited with the tablet
+    auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+    for (auto const& cur_table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
+      auto it = cached_schema_details->find(cur_table_id);
+      if (it != cached_schema_details->end()) {
+        (*cached_schema_details).erase(it);
+      }
+    }
+
+    status = ProcessIntents(
+        op_id, transaction_id, metadata, enum_oid_label_map, composite_atts_map, resp, consumption,
+        checkpoint, tablet_peer, keyValueIntents, stream_state, client, cached_schema_details,
+        commit_time);
+  }
+
+  return status;
 }
 
 Status PopulateCDCSDKSnapshotRecord(
@@ -1697,13 +1788,18 @@ void SetSafetimeFromRequestIfInvalid(
 void UpdateSafetimeForResponse(
     const std::shared_ptr<yb::consensus::LWReplicateMsg>& msg, const bool& update_safe_time,
     const int64_t& safe_hybrid_time_req, HybridTime* safe_hybrid_time_resp) {
-  if (!FLAGS_cdc_enable_consistent_records || update_safe_time) {
+  if (!FLAGS_cdc_enable_consistent_records) {
+    *safe_hybrid_time_resp = HybridTime(GetTransactionCommitTime(msg));
+    return;
+  }
+
+  if (update_safe_time) {
     const auto& commit_time = GetTransactionCommitTime(msg);
     if ((int64_t)commit_time >= safe_hybrid_time_req &&
         (!safe_hybrid_time_resp->is_valid() || safe_hybrid_time_resp->ToUint64() < commit_time)) {
       *safe_hybrid_time_resp = HybridTime(GetTransactionCommitTime(msg));
+      return;
     }
-    return;
   }
 
   SetSafetimeFromRequestIfInvalid(safe_hybrid_time_req, safe_hybrid_time_resp);
@@ -1963,7 +2059,7 @@ Status GetChangesForCDCSDK(
     RETURN_NOT_OK(reverse_index_key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kTransactionId));
     auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&reverse_index_key_slice));
 
-    RETURN_NOT_OK(ProcessIntents(
+    RETURN_NOT_OK(PrcoessIntentsWithInvalidSchemaRetry(
         op_id, transaction_id, stream_metadata, enum_oid_label_map, composite_atts_map, resp,
         &consumption, &checkpoint, tablet_peer, &keyValueIntents, &stream_state, client,
         cached_schema_details, commit_timestamp));
@@ -2055,9 +2151,12 @@ Status GetChangesForCDCSDK(
         const auto& msg = wal_records[index];
 
         // In case of a connector failure we may get a wal_segment_index that is obsolete.
-        // We should not stream messages we have already streamed again in this case.
+        // We should not stream messages we have already streamed again in this case,
+        // except for "SPLIT_OP" messages which can appear with a hybrid_time lower than
+        // safe_hybrid_time_req.
         if (FLAGS_cdc_enable_consistent_records && safe_hybrid_time_req >= 0 &&
-            GetTransactionCommitTime(msg) <= (uint64_t)safe_hybrid_time_req) {
+            GetTransactionCommitTime(msg) <= (uint64_t)safe_hybrid_time_req &&
+            msg->op_type() != yb::consensus::OperationType::SPLIT_OP) {
           VLOG_WITH_FUNC(2)
               << "Received a message in wal_segment with commit_time <= request safe time."
                  " Will ignore this message. consistent_stream_safe_time: "
@@ -2102,7 +2201,7 @@ Status GetChangesForCDCSDK(
                       << msg->id().ShortDebugString() << ", tablet_id: " << tablet_id
                       << ", transaction_id: " << txn_id << ", commit_time: " << *commit_timestamp;
 
-              RETURN_NOT_OK(ProcessIntents(
+              RETURN_NOT_OK(PrcoessIntentsWithInvalidSchemaRetry(
                   op_id, txn_id, stream_metadata, enum_oid_label_map, composite_atts_map, resp,
                   &consumption, &checkpoint, tablet_peer, &intents, &new_stream_state, client,
                   cached_schema_details, msg->transaction_state().commit_hybrid_time()));
@@ -2134,7 +2233,7 @@ Status GetChangesForCDCSDK(
                     << ", hybrid_time: " << *commit_timestamp;
 
             if (!batch.has_transaction()) {
-              RETURN_NOT_OK(PopulateCDCSDKWriteRecord(
+              RETURN_NOT_OK(PopulateCDCSDKWriteRecordWithInvalidSchemaRetry(
                   msg, stream_metadata, tablet_peer, enum_oid_label_map, composite_atts_map,
                   cached_schema_details, resp, client));
 

@@ -17,8 +17,6 @@
 #include <optional>
 #include <unordered_map>
 
-#include "yb/gutil/stl_util.h"
-
 #include "yb/yql/pggate/pg_doc_op.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
@@ -118,16 +116,13 @@ class PgDml : public PgStatement {
   virtual LWPgsqlExpressionPB *AllocQualPB() = 0;
 
   // Allocate protobuf for expression whose value is bounded to a column.
-  virtual LWPgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) = 0;
+  virtual Result<LWPgsqlExpressionPB*> AllocColumnBindPB(PgColumn* col, PgExpr* expr) = 0;
 
   // Allocate protobuf for expression whose value is assigned to a column (SET clause).
   virtual LWPgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) = 0;
 
   // Specify target of the query in protobuf request.
   Status AppendTargetPB(PgExpr *target);
-
-  // Update bind values.
-  Status UpdateBindPBs();
 
   // Update set values.
   Status UpdateAssignPBs();
@@ -235,10 +230,6 @@ class PgDml : public PgStatement {
   // * Set values are used to hold columns' new values in the selected rows.
   bool ybctid_bind_ = false;
 
-  template<class K, class V>
-  using PointerMap = std::unordered_map<K*, V, PointerHash<K>, PointerEqual<K>>;
-
-  PointerMap<LWPgsqlExpressionPB, PgExpr*> expr_binds_;
   std::unordered_map<LWPgsqlExpressionPB*, PgExpr*> expr_assigns_;
 
   // Used for colocated TRUNCATE that doesn't bind any columns.

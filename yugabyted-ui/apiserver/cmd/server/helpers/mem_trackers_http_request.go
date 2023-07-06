@@ -19,7 +19,7 @@ func GetMemTrackersFuture(hostName string, isMaster bool, future chan MemTracker
     if isMaster {
         port = MasterUIPort
     }
-    memTrackers := MemTrackersFuture {
+    memTrackers := MemTrackersFuture{
         Consumption: 0,
         Limit:       0,
         Error:       nil,
@@ -42,7 +42,8 @@ func GetMemTrackersFuture(hostName string, isMaster bool, future chan MemTracker
         return
     }
     // parse raw mem trackers response
-    regex, err := regexp.Compile(`<td>root<\/td><td>(.*)<\/td><td>(.*)<\/td><td>(.*)<\/td>`)
+    regex, err := regexp.Compile(`<td><span class=\"toggle collapse\">` +
+        `<\/span>root<\/td><td>(.*)<\/td><td>(.*)<\/td><td>(.*)<\/td>`)
     if err != nil {
         memTrackers.Error = err
         future <- memTrackers

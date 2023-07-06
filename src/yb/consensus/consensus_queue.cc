@@ -78,11 +78,7 @@ using namespace yb::size_literals;
 
 DECLARE_uint64(rpc_max_message_size);
 
-// We expect that consensus_max_batch_size_bytes + 1_KB would be less than rpc_max_message_size.
-// Otherwise such batch would be rejected by RPC layer.
-DEFINE_RUNTIME_uint64(consensus_max_batch_size_bytes, 4_MB,
-    "The maximum per-tablet RPC batch size when updating peers.");
-TAG_FLAG(consensus_max_batch_size_bytes, advanced);
+DECLARE_uint64(consensus_max_batch_size_bytes);
 
 DEFINE_UNKNOWN_int32(follower_unavailable_considered_failed_sec, 900,
              "Seconds that a leader is unable to successfully heartbeat to a "
@@ -141,28 +137,6 @@ DEFINE_RUNTIME_uint32(
 DEFINE_test_flag(
     bool, assert_remote_bootstrap_happens_from_same_zone, false,
     "Assert that remote bootstrap is served by a peer in the same zone as the new peer.");
-
-namespace {
-
-constexpr const auto kMinRpcThrottleThresholdBytes = 16;
-
-static bool RpcThrottleThresholdBytesValidator(const char* flagname, int64_t value) {
-  if (value > 0) {
-    if (value < kMinRpcThrottleThresholdBytes) {
-      LOG(ERROR) << "Expect " << flagname << " to be at least " << kMinRpcThrottleThresholdBytes;
-      return false;
-    } else if (implicit_cast<size_t>(value) >= FLAGS_consensus_max_batch_size_bytes) {
-      LOG(ERROR) << "Expect " << flagname << " to be less than consensus_max_batch_size_bytes "
-                 << "value (" << FLAGS_consensus_max_batch_size_bytes << ")";
-      return false;
-    }
-  }
-  return true;
-}
-
-} // namespace
-
-DECLARE_int64(rpc_throttle_threshold_bytes);
 
 namespace yb {
 namespace consensus {
@@ -1770,21 +1744,6 @@ void PeerMessageQueue::TrackOperationsMemory(const OpIds& op_ids) {
 Result<OpId> PeerMessageQueue::TEST_GetLastOpIdWithType(
     int64_t max_allowed_index, OperationType op_type) {
   return log_cache_.TEST_GetLastOpIdWithType(max_allowed_index, op_type);
-}
-
-Status ValidateFlags() {
-  // Normally we would have used
-  //   DEFINE_validator(rpc_throttle_threshold_bytes, &RpcThrottleThresholdBytesValidator);
-  // right after defining the rpc_throttle_threshold_bytes flag. However, this leads to a segfault
-  // in the LTO-enabled build, presumably due to indeterminate order of static initialization.
-  // Instead, we invoke this function from master/tserver main() functions when static
-  // initialization is already finished.
-  if (!RpcThrottleThresholdBytesValidator(
-      "rpc_throttle_threshold_bytes", FLAGS_rpc_throttle_threshold_bytes)) {
-    return STATUS(InvalidArgument, "Flag validation failed");
-  }
-
-  return Status::OK();
 }
 
 }  // namespace consensus

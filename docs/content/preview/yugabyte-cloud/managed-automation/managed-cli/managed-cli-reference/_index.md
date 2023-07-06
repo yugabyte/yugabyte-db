@@ -63,14 +63,18 @@ You can manage the following resources using ybm:
 
 | Resource | Commands |
 | :--- | :--- |
+| [api-key](managed-cli-api-key/) | create, list, revoke |
 | [backup](managed-cli-backup/) | create, delete, list, restore |
-| [cluster](managed-cli-cluster/) | create, delete, list, describe, update, pause, resume, cert download, encryption list, encryption update |
-| [cluster network](managed-cli-network/) | allow-list assign, allow-list unassign, endpoint list,</br>endpoint describe, endpoint create, endpoint update, endpoint delete |
+| [cluster](managed-cli-cluster/) | cert download, create, delete, describe,</br>encryption list, encryption update,</br>list, node list, pause, resume, update |
+| [cluster network](managed-cli-network/) | allow-list assign, allow-list unassign,</br>endpoint create, endpoint delete , endpoint describe,</br>endpoint list, endpoint update |
 | [cluster read-replica](managed-cli-read-replica/) | create, delete, list, update |
 | [network-allow-list](managed-cli-network-allow-list/) | create, delete, list |
+| [permission](managed-cli-permission/) | list |
+| [region](managed-cli-region/) | list, instance list |
+| [role](managed-cli-role/) | create, delete, describe, list, update |
+| [user](managed-cli-user/) | delete, invite, list, update |
 | [vpc](managed-cli-vpc/) | create, delete, list |
 | [vpc peering](managed-cli-peering/) | create, delete, list |
-| [region](managed-cli-region/) | list, instance list |
 
 <!--
 - [cdc-sink](managed-cli-cdc-sink/)

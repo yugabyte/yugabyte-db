@@ -1224,7 +1224,7 @@ TEST_F(PgMiniTest, CatalogVersionUpdateIfNeeded) {
 
 // Test that we don't sequential restart read on the same table if intents were written
 // after the first read. GH #6972.
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoRestartSecondRead)) {
+TEST_F(PgMiniTest, NoRestartSecondRead) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 1000000000LL * kTimeMultiplier;
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());

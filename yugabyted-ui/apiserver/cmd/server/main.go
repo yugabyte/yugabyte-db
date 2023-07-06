@@ -211,11 +211,14 @@ func main() {
         // GetIsLoadBalancerIdle - Check if cluster load balancer is idle
         e.GET("/api/is_load_balancer_idle", c.GetIsLoadBalancerIdle)
 
-        // GetIsLoadBalancerIdle - Check if cluster load balancer is idle
+        // GetGflagsJson - Retrieve the gflags from Master and Tserver process
         e.GET("/api/gflags", c.GetGflagsJson)
 
         // GetClusterAlerts - Get list of any current cluster alerts
         e.GET("/api/alerts", c.GetClusterAlerts)
+
+        // GetTableInfo - Get info on a single table, given table uuid
+        e.GET("/api/table", c.GetTableInfo)
 
         render_htmls := templates.NewTemplate()
 

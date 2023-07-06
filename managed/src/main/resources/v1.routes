@@ -568,3 +568,6 @@ PUT /customers/:cUUID/ldap_mappings                                            c
 # Configure DB APIs
 POST /customers/:cUUID/universes/:univUUID/configure/ycql                      com.yugabyte.yw.controllers.UniverseYbDbAdminController.configureYCQL(cUUID: java.util.UUID, univUUID: java.util.UUID, request: Request)
 POST /customers/:cUUID/universes/:univUUID/configure/ysql                      com.yugabyte.yw.controllers.UniverseYbDbAdminController.configureYSQL(cUUID: java.util.UUID, univUUID: java.util.UUID, request: Request)
+
+# New RBAC APIs
+GET /customers/:cUUID/rbac/permissions                                         com.yugabyte.yw.controllers.RBACController.listPermissions(cUUID: java.util.UUID, resourceType: String ?= null)

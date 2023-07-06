@@ -123,6 +123,7 @@ lazy val root = (project in file("."))
 
 scalaVersion := "2.12.10"
 javacOptions ++= Seq("-source", "17", "-target", "17")
+Compile / unmanagedSourceDirectories += baseDirectory.value / "target/scala-2.12/"
 version := sys.process.Process("cat version.txt").lineStream_!.head
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
@@ -372,7 +373,9 @@ buildDependentArtifacts := {
 
 generateCrdObjects := {
   ybLog("Generating crd classes...")
-  val status = Process("mvn generate-sources", baseDirectory.value / "src/main/java/com/yugabyte/yw/common/operator/").!
+  val generatedSourcesDirectory = baseDirectory.value / "target/scala-2.12/"
+  val command = s"mvn generate-sources -DoutputDirectory=$generatedSourcesDirectory"
+  val status = Process(command, baseDirectory.value / "src/main/java/com/yugabyte/yw/common/operator/").!
   status
 }
 
@@ -407,7 +410,9 @@ cleanVenv := {
 
 cleanCrd := {
   ybLog("Cleaning CRD generated code...")
-  val status = Process("mvn clean", baseDirectory.value / "src/main/java/com/yugabyte/yw/common/operator/").!
+  val generatedSourcesDirectory = baseDirectory.value / "target/scala-2.12/"
+  val command = s"mvn clean -DoutputDirectory=$generatedSourcesDirectory"
+  val status = Process(command, baseDirectory.value / "src/main/java/com/yugabyte/yw/common/operator/").!
   status
 }
 

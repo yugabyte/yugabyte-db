@@ -838,5 +838,77 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKHistoricalMaxOpIdWithTa
       "historical_max_op_id should change"));
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(CDCSDKMultipleAlter)) {
+  const int num_tservers = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
+  const uint32_t num_tablets = 1;
+  // Creates a table with a key, and value column.
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  // Create CDC stream.
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  ASSERT_OK(WriteRowsHelper(1 /* start */, 11 /* end */, &test_cluster_, true));
+  // Call Getchanges
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  // Validate the columns and insert counts.
+  ValidateColumnCounts(change_resp, 2);
+  ValidateInsertCounts(change_resp, 10);
+
+  for (int nonkey_column_count = 2; nonkey_column_count < 15; ++nonkey_column_count) {
+    std::string added_column_name = "value_" + std::to_string(nonkey_column_count);
+    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, added_column_name));
+    ASSERT_OK(WriteRowsHelper(
+        nonkey_column_count * 10 + 1 /* start */,
+        nonkey_column_count * 10 + 11 /* end */,
+        &test_cluster_,
+        true,
+        3,
+        kTableName,
+        {added_column_name}));
+  }
+  LOG(INFO) << "Added columns and pushed required records";
+  constexpr size_t expected_records =
+      13 * 10 + 13; /* number of add columns 'times' insert per batch + expected DDL records */
+
+  std::vector<CDCSDKProtoRecordPB> seen_records;
+  ASSERT_OK(WaitFor(
+      [&]() -> bool {
+        change_resp =
+            EXPECT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+
+        for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+          seen_records.push_back(record);
+        }
+
+        if (seen_records.size() >= expected_records) return true;
+        return false;
+      },
+      MonoDelta::FromSeconds(120),
+      "Did not get all the expected records"));
+  LOG(INFO) << "Got all required records";
+
+  uint seen_ddl_records = 0;
+  for (const auto& record : seen_records) {
+    if (record.row_message().op() == RowMessage::DDL) {
+      seen_ddl_records += 1;
+    } else if (record.row_message().op() == RowMessage::INSERT) {
+      auto key_value = record.row_message().new_tuple(0).datum_int32();
+      auto expected_column_count = std::ceil(key_value / 10.0);
+      ASSERT_EQ(record.row_message().new_tuple_size(), expected_column_count);
+    }
+  }
+
+  ASSERT_GE(seen_ddl_records, 13);
+}
+
 }  // namespace cdc
 }  // namespace yb

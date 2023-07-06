@@ -918,9 +918,6 @@
           },
           "type" : "array"
         },
-        "query" : {
-          "type" : "string"
-        },
         "universeUUID" : {
           "format" : "uuid",
           "type" : "string"
@@ -934,7 +931,7 @@
           "type" : "integer"
         }
       },
-      "required" : [ "configurationUUID", "customerUUID", "labels", "query", "universeUUID", "uuid", "version" ],
+      "required" : [ "configurationUUID", "customerUUID", "labels", "universeUUID", "uuid", "version" ],
       "type" : "object"
     },
     "AlertDefinitionLabel" : {
@@ -1222,7 +1219,7 @@
         },
         "systemVariables" : {
           "items" : {
-            "enum" : [ "YUGABYTE_ALERT_STATUS", "YUGABYTE_ALERT_SEVERITY", "YUGABYTE_ALERT_TYPE", "YUGABYTE_ALERT_EXPRESSION", "YUGABYTE_CUSTOMER_CODE", "YUGABYTE_CUSTOMER_NAME", "YUGABYTE_CUSTOMER_UUID", "YUGABYTE_ALERT_SOURCE_UUID", "YUGABYTE_ALERT_SOURCE_TYPE", "YUGABYTE_ALERT_SOURCE_NAME", "YUGABYTE_ALERT_POLICY_TYPE", "YUGABYTE_ALERT_POLICY_NAME", "YUGABYTE_ALERT_POLICY_UUID", "YUGABYTE_ALERT_MESSAGE", "YUGABYTE_ALERT_START_TIME", "YUGABYTE_ALERT_END_TIME", "YUGABYTE_ALERT_CHANNEL_NAME", "YUGABYTE_ALERT_LABELS_JSON" ],
+            "enum" : [ "YUGABYTE_ALERT_STATUS", "YUGABYTE_ALERT_SEVERITY", "YUGABYTE_ALERT_TYPE", "YUGABYTE_ALERT_EXPRESSION", "YUGABYTE_CUSTOMER_CODE", "YUGABYTE_CUSTOMER_NAME", "YUGABYTE_CUSTOMER_UUID", "YUGABYTE_ALERT_SOURCE_UUID", "YUGABYTE_ALERT_SOURCE_TYPE", "YUGABYTE_ALERT_SOURCE_NAME", "YUGABYTE_ALERT_POLICY_TYPE", "YUGABYTE_ALERT_POLICY_NAME", "YUGABYTE_ALERT_POLICY_UUID", "YUGABYTE_ALERT_MESSAGE", "YUGABYTE_ALERT_START_TIME", "YUGABYTE_ALERT_END_TIME", "YUGABYTE_ALERT_CHANNEL_NAME", "YUGABYTE_AFFECTED_NODE_NAMES", "YUGABYTE_AFFECTED_NODE_ADDRESSES", "YUGABYTE_AFFECTED_NODE_IDENTIFIERS", "YUGABYTE_ALERT_LABELS_JSON" ],
             "type" : "string"
           },
           "type" : "array"
@@ -6525,6 +6522,9 @@
         "node" : {
           "type" : "string"
         },
+        "node_identifier" : {
+          "type" : "string"
+        },
         "node_name" : {
           "type" : "string"
         },
@@ -6537,7 +6537,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "details", "has_error", "has_warning", "message", "metrics", "metrics_only", "node", "node_name", "process" ],
+      "required" : [ "details", "has_error", "has_warning", "message", "metrics", "metrics_only", "node", "node_identifier", "node_name", "process" ],
       "type" : "object"
     },
     "NodeDetails" : {
@@ -7467,6 +7467,42 @@
         }
       },
       "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
+      "type" : "object"
+    },
+    "PermissionInfo" : {
+      "properties" : {
+        "description" : {
+          "type" : "string"
+        },
+        "permission" : {
+          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE" ],
+          "type" : "string"
+        },
+        "prerequisite_permissions" : {
+          "items" : {
+            "$ref" : "#/definitions/PermissionInfoIdentifier"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "resource_type" : {
+          "enum" : [ "UNIVERSE", "DEFAULT" ],
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "PermissionInfoIdentifier" : {
+      "properties" : {
+        "permission" : {
+          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE" ],
+          "type" : "string"
+        },
+        "resource_type" : {
+          "enum" : [ "UNIVERSE", "DEFAULT" ],
+          "type" : "string"
+        }
+      },
       "type" : "object"
     },
     "PitrConfig" : {
@@ -18319,6 +18355,42 @@
         "tags" : [ "Release management" ]
       }
     },
+    "/api/v1/customers/{cUUID}/rbac/permissions" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "listPermissions",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "default" : "null",
+          "description" : "Optional resource type to filter permission list",
+          "in" : "query",
+          "name" : "resourceType",
+          "required" : false,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/PermissionInfo"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List all the permissions available",
+        "tags" : [ "RBAC management" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/regions" : {
       "get" : {
         "description" : "",
@@ -19974,7 +20046,10 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Details"
+              "items" : {
+                "$ref" : "#/definitions/Details"
+              },
+              "type" : "array"
             }
           }
         },
@@ -24079,6 +24154,8 @@
     "name" : "PackagesController"
   }, {
     "name" : "Performance Advisor"
+  }, {
+    "name" : "RBAC management"
   }, {
     "name" : "Region management"
   }, {
