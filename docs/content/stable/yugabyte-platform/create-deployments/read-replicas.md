@@ -3,6 +3,7 @@ title: Create a read replica cluster in YugabyteDB Anywhere
 headerTitle: Create a read replica cluster
 linkTitle: Read replica cluster
 description: Use YugabyteDB Anywhere to create a read replica cluster.
+headcontent: Reduce read latencies in remote regions
 menu:
   stable_yugabyte-platform:
     identifier: create-read-replica-cluster
