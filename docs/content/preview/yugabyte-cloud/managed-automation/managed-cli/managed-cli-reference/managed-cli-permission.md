@@ -3,7 +3,7 @@ title: permission resource
 headerTitle: ybm permission
 linkTitle: permission
 description: YugabyteDB Managed CLI reference Permission resource.
-headcontent: Manage roles
+headcontent: List permissions
 menu:
   preview_yugabyte-cloud:
     identifier: managed-cli-permission
