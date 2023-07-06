@@ -59,6 +59,12 @@ export interface NodeData  {
    * @type {boolean}
    * @memberof NodeData
    */
+  is_read_replica: boolean;
+  /**
+   *
+   * @type {boolean}
+   * @memberof NodeData
+   */
   is_master_up: boolean;
   /**
    *
