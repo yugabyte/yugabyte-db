@@ -834,6 +834,7 @@ use_packaged_targets() {
   make_targets+=(
     "${packaged_targets[@]}"
     initial_sys_catalog_snapshot
+    update_ysql_conn_mgr_template
     update_ysql_migrations
   )
 }
@@ -925,6 +926,10 @@ build_fuzz_targets=""
 
 # These will influence what targets to build if invoked with the packaged_targets meta-target.
 build_odyssey="false"
+if is_linux; then
+  build_odyssey="true"
+fi
+
 build_yugabyted_ui="false"
 
 # -------------------------------------------------------------------------------------------------
@@ -1846,7 +1851,8 @@ create_build_root_file
 
 if [[ ${#make_targets[@]} -eq 0 && -n $java_test_name ]]; then
   # Build only a subset of targets when we're only trying to run a Java test.
-  make_targets+=( yb-master yb-tserver gen_auto_flags_json postgres update_ysql_migrations )
+  make_targets+=( yb-master yb-tserver gen_auto_flags_json postgres update_ysql_conn_mgr_template
+      update_ysql_migrations )
 fi
 
 if [[ $build_type == "compilecmds" ]]; then

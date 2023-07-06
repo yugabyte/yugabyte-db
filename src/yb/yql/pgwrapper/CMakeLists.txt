@@ -19,6 +19,7 @@ set(PGWRAPPER_SRCS
 set(PGWRAPPER_LIBS
     yb_common
     yb_pggate_flags
+    yb_process_wrapper
     yb_util)
 ADD_YB_LIBRARY(yb_pgwrapper
                SRCS ${PGWRAPPER_SRCS}
