@@ -734,8 +734,6 @@ pg_analyze_and_rewrite(RawStmt *parsetree, const char *query_string,
 	query = parse_analyze(parsetree, query_string, paramTypes, numParams,
 						  queryEnv);
 
-	YBCSetQueryId(query->queryId);
-
 	if (log_parser_stats)
 		ShowUsage("PARSE ANALYSIS STATISTICS");
 
@@ -791,6 +789,9 @@ pg_analyze_and_rewrite_params(RawStmt *parsetree,
 
 	if (post_parse_analyze_hook)
 		(*post_parse_analyze_hook) (pstate, query);
+
+	if (IsYugaByteEnabled())
+		YBCSetQueryId(query->queryId);
 
 	free_parsestate(pstate);
 
@@ -1903,9 +1904,6 @@ exec_bind_message(StringInfo input_message)
 	 * And we're ready to start portal execution.
 	 */
 	PortalStart(portal, params, 0, InvalidSnapshot);
-
-	if (IsYugaByteEnabled() && portal->queryDesc && portal->queryDesc->plannedstmt)
-		YBCSetQueryId(portal->queryDesc->plannedstmt->queryId);
 
 	/*
 	 * Apply the result format requests to the portal.
@@ -5624,8 +5622,8 @@ PostgresMain(int argc, char *argv[],
 								/* Set the output format */
 								PortalSetResultFormat(portal, nformats, formats);
 
-								if (IsYugaByteEnabled() && portal->queryDesc && portal->queryDesc->plannedstmt)
-									YBCSetQueryId(portal->queryDesc->plannedstmt->queryId);
+								// if (IsYugaByteEnabled() && portal->queryDesc && portal->queryDesc->plannedstmt)
+								// 	YBCSetQueryId(portal->queryDesc->plannedstmt->queryId);
 
 								/* Now ready to retry the execute step. */
 								yb_exec_execute_message(portal_name,
