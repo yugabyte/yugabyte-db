@@ -203,7 +203,7 @@ The Fault Tolerance of a cluster determines how resilient the cluster is to fail
 
 For production clusters, a minimum of Availability Zone Level is recommended. Whether you choose Region or Availability Zone Level depends on your application architecture, design, and latency requirements.
 
-For multi-region deployments, you can deploy a variety of topologies, including synchronously replicated, geo-level partitioned, <!-- cross-cluster, --> and read replicas. For more information, refer to [Topologies](../../yugabyte-cloud/cloud-basics/create-clusters-topology/).
+For multi-region deployments, you can deploy a variety of topologies, including synchronously replicated, geo-level partitioned, and read replicas. For more information, refer to [Topologies](../../yugabyte-cloud/cloud-basics/create-clusters-topology/).
 
 Sandbox clusters are limited to a single node in a single region.
 

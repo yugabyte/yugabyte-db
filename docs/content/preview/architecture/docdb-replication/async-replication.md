@@ -230,6 +230,7 @@ In the future, it may be possible to detect such unsafe constraints and issue a 
 ### Non-transactional&ndash;mode consistency issues
 
 When interacting with data replicated from another universe using non-transactional mode:
+
 - reads are only eventually consistent
 - last writer wins for writes
 - transactions are limited to isolation level SQL-92 READ COMMITTED
@@ -239,6 +240,7 @@ After losing one universe, the other universe may be left with torn transactions
 ### Transactional-mode limitations
 
 With transactional mode,
+
 - no writes are allowed in the target universe
 - active-active is not supported
 - YCQL is not yet supported
