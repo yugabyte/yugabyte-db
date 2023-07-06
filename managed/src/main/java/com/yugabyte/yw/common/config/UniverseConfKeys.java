@@ -704,4 +704,20 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "the nodes",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> slowQueryTimeoutSecs =
+      new ConfKeyInfo<>(
+          "yb.query_stats.slow_queries.timeout_secs",
+          ScopeType.UNIVERSE,
+          "Slow Queries Timeout",
+          "Timeout in secs for slow queries",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> ysqlTimeoutSecs =
+      new ConfKeyInfo<>(
+          "yb.ysql_timeout_secs",
+          ScopeType.UNIVERSE,
+          "YSQL Queries Timeout",
+          "Timeout in secs for YSQL queries",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
