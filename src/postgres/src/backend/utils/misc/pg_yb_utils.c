@@ -640,6 +640,8 @@ YBInitPostgresBackend(
 		callbacks.WriteExecOutParam = &YbWriteExecOutParam;
 		callbacks.SignalWaitStart = &pgstat_report_wait_start;
 		callbacks.SignalWaitEnd = &pgstat_report_wait_end;
+		callbacks.ProcSetNodeUUID = &ProcSetNodeUUID;
+		callbacks.ProcSetTopRequestId = &ProcSetTopRequestId;
 		YBCInitPgGate(type_table, count, callbacks);
 		YBCInstallTxnDdlHook();
 
@@ -3351,4 +3353,12 @@ bool YbIsBatchedExecution() {
 
 void YbSetIsBatchedExecution(bool value) {
 	yb_is_batched_execution = value;
+}
+
+void ProcSetNodeUUID(const char *node_uuid) {
+	strcpy(MyProc->node_uuid, node_uuid);
+}
+
+void ProcSetTopRequestId(const char *top_level_request_id) {
+	strcpy(MyProc->top_level_request_id, top_level_request_id);
 }

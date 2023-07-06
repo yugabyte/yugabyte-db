@@ -2153,6 +2153,75 @@ yb_pg_stat_retrieve_concurrent_index_progress()
 	return progress;
 }
 
+Datum
+yb_wait_metadata(PG_FUNCTION_ARGS)
+{
+	int32		beid = PG_GETARG_INT32(0);
+	PgBackendStatus *beentry;
+	PGPROC	   *proc;
+
+	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+		PG_RETURN_NULL();
+	else if (!has_privs_of_role(GetUserId(), beentry->st_userid))
+		PG_RETURN_NULL();
+	else if ((proc = BackendPidGetProc(beentry->st_procpid)) == NULL)
+		PG_RETURN_NULL();
+
+#define YB_WAIT_METADATA_COLS	5
+	Datum		values[YB_WAIT_METADATA_COLS];
+	bool		nulls[YB_WAIT_METADATA_COLS];
+	TupleDesc	tupdesc;
+
+	MemSet(values, 0, sizeof(values));
+	MemSet(nulls, 0, sizeof(nulls));
+
+		/* Initialise attributes information in the tuple descriptor */
+	tupdesc = CreateTemplateTupleDesc(YB_WAIT_METADATA_COLS, false);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "remote_host",
+					   TEXTOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "remote_port",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "queryid",
+					   INT8OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 4, "node_uuid",
+					   TEXTOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 5, "top_level_request_id",
+					   TEXTOID, -1, 0);
+
+	BlessTupleDesc(tupdesc);
+
+	if (strlen(proc->remote_host) > 0)
+		values[0] = CStringGetTextDatum(proc->remote_host);
+	else
+		nulls[0] = true;
+	ereport(LOG, (errmsg("Set remote host: %s: %s", proc->remote_host, DatumGetCString(values[0]))));
+
+	if (proc->remote_port != 0)
+		values[1] = Int32GetDatum(proc->remote_port);
+	else
+		nulls[1] = true;
+
+	ereport(LOG, (errmsg("Set remote port: %d", proc->remote_port)));
+
+	values[2] = Int64GetDatum(proc->queryid);
+	ereport(LOG, (errmsg("Set queryid: " INT64_FORMAT, proc->queryid)));
+
+	if (strlen(proc->node_uuid) > 0)
+		values[3] = CStringGetTextDatum(proc->node_uuid);
+	else
+		nulls[3] = true;
+	ereport(LOG, (errmsg("Set node uuid: %s", proc->node_uuid)));
+
+	if (strlen(proc->top_level_request_id) > 0)
+		values[4] = CStringGetTextDatum(proc->top_level_request_id);
+	else
+	 	nulls[4] = true;
+	ereport(LOG, (errmsg("Set top level request id: %s", proc->top_level_request_id)));
+
+	/* Returns the record as Datum */
+	PG_RETURN_DATUM(HeapTupleGetDatum(
+									  heap_form_tuple(tupdesc, values, nulls)));
+
 /*
  * Returns the list of traces which are on.
  */

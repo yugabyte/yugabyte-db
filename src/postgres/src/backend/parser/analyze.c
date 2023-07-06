@@ -157,7 +157,10 @@ parse_analyze_varparams(RawStmt *parseTree, const char *sourceText,
 	query = transformTopLevelStmt(pstate, parseTree);
 
 	if (IsYugaByteEnabled())
+	{
 		YBCSetQueryId(query->queryId);
+		MyProc->queryid = query->queryId;
+	}
 
 	if (pstate->p_target_relation &&
 		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP

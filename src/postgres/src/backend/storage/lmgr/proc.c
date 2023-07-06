@@ -439,6 +439,12 @@ InitProcess(void)
 
 	MyProc->ybAnyLockAcquired = false;
 
+	MyProc->queryid = 0;
+	MyProc->remote_host[0] = '\0';
+	MyProc->remote_port = 0;
+	MyProc->node_uuid[0] = '\0';
+	MyProc->top_level_request_id[0] = '\0';
+
 	/*
 	 * Acquire ownership of the PGPROC's latch, so that we can use WaitLatch
 	 * on it.  That allows us to repoint the process latch, which so far
@@ -582,6 +588,11 @@ InitAuxiliaryProcess(void)
 	MyProc->lwWaitMode = 0;
 	MyProc->waitLock = NULL;
 	MyProc->waitProcLock = NULL;
+	MyProc->queryid = 0;
+	MyProc->remote_host[0] = '\0';
+	MyProc->remote_port = 0;
+	MyProc->node_uuid[0] = '\0';
+	MyProc->top_level_request_id[0] = '\0';
 #ifdef USE_ASSERT_CHECKING
 	{
 		int			i;
