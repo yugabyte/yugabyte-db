@@ -94,7 +94,6 @@ YugabyteDB Anywhere offers the following levels of [user accounts](security/auth
 
   {{< sections/3-box-card
   title="Support"
-  description="Ask questions, request assistance from our team, participate in our journey."
   linkText1="Contact Support"
   linkUrl1="https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360001955891"
   linkTarget1="_blank"
