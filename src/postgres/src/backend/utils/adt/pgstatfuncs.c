@@ -2221,6 +2221,7 @@ yb_wait_metadata(PG_FUNCTION_ARGS)
 	/* Returns the record as Datum */
 	PG_RETURN_DATUM(HeapTupleGetDatum(
 									  heap_form_tuple(tupdesc, values, nulls)));
+}
 
 /*
  * Returns the list of traces which are on.
