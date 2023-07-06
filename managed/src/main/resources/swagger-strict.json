@@ -12189,6 +12189,10 @@
           "description" : "LDAP Specified Role",
           "type" : "boolean"
         },
+        "oidcJwtAuthToken" : {
+          "readOnly" : true,
+          "type" : "string"
+        },
         "role" : {
           "description" : "User role",
           "enum" : [ "ConnectOnly", "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
@@ -12248,6 +12252,10 @@
         "ldapSpecifiedRole" : {
           "description" : "LDAP Specified Role",
           "type" : "boolean"
+        },
+        "oidcJwtAuthToken" : {
+          "readOnly" : true,
+          "type" : "string"
         },
         "role" : {
           "description" : "User role",

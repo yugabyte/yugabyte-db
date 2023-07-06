@@ -84,6 +84,7 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.input.ReversedLinesFileReader;
+import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.play.java.Secure;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -394,6 +395,18 @@ public class SessionController extends AbstractPlatformController {
         null,
         null,
         request.remoteAddress());
+
+    try {
+      // Persist the JWT auth token in case of successful login.
+      CommonProfile profile = thirdPartyLoginHandler.getProfile(request);
+      if (profile.containsAttribute("id_token")) {
+        user.setOidcJwtAuthToken((String) profile.getAttribute("id_token"));
+        user.save();
+      }
+    } catch (Exception e) {
+      // Pass
+      log.error(String.format("Failed to retrieve user profile %s", e.getMessage()));
+    }
 
     return thirdPartyLoginHandler
         .redirectTo(request.queryString("orig_url").orElse(null))
