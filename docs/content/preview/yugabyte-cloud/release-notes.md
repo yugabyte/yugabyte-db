@@ -1,5 +1,6 @@
 ---
-title: Change log
+title: Change log for YugabyteDB Managed
+headerTitle: Change log
 linkTitle: Change log
 description: YugabyteDB Managed Change Log and known issues.
 headcontent: New features and known issues in YugabyteDB Managed
