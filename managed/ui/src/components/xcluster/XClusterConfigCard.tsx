@@ -69,6 +69,8 @@ export const XClusterConfigCard = ({
             clusterName={sourceUniverseName}
             isCurrentUniverse={currentUniverseUUID === xClusterConfig.sourceUniverseUUID}
             isLoading={universeListQuery.isLoading}
+            isActive={xClusterConfig.sourceActive}
+            xClusterConfigType={xClusterConfig.type}
           />
           <div className={styles.arrowIcon}>
             <RightArrow />
@@ -78,6 +80,8 @@ export const XClusterConfigCard = ({
             clusterName={targetUniverseName}
             isCurrentUniverse={currentUniverseUUID === xClusterConfig.targetUniverseUUID}
             isLoading={universeListQuery.isLoading}
+            isActive={xClusterConfig.targetActive}
+            xClusterConfigType={xClusterConfig.type}
           />
         </div>
         {_.includes(
