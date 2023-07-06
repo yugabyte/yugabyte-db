@@ -1,8 +1,8 @@
 ---
-title: YugabyteDB Managed Change Log
-linkTitle: Change Log
+title: Change log
+linkTitle: Change log
 description: YugabyteDB Managed Change Log and known issues.
-headcontent: New features and known issues
+headcontent: New features and known issues in YugabyteDB Managed
 image: /images/section_icons/index/quick_start.png
 menu:
   preview_yugabyte-cloud:
@@ -14,10 +14,10 @@ type: docs
 
 On this page:
 
-[Change Log](#change-log) \
+[Change log](#change-log) \
 [Known issues](#known-issues)
 
-## Change Log
+## Change log
 
 ### July 3, 2023
 
