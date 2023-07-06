@@ -151,7 +151,8 @@ extern void ybc_heap_endscan(HeapScanDesc scanDesc);
 extern HeapScanDesc ybc_remote_beginscan(Relation relation,
 										 Snapshot snapshot,
 										 Scan *pg_scan_plan,
-										 PushdownExprs *pushdown);
+										 PushdownExprs *pushdown,
+										 List *aggrefs);
 
 /* Add targets to the given statement. */
 extern void YbDmlAppendTargetSystem(AttrNumber attnum, YBCPgStatement handle);

@@ -1555,7 +1555,8 @@ yb_agg_pushdown_supported(AggState *aggstate)
 
 	/* Supported outer plan. */
 	if (!(IsA(outerPlanState(aggstate), ForeignScanState) ||
-		  IsA(outerPlanState(aggstate), IndexOnlyScanState)))
+		  IsA(outerPlanState(aggstate), IndexOnlyScanState) ||
+		  IsA(outerPlanState(aggstate), YbSeqScanState)))
 		return;
 	ss = (ScanState *) outerPlanState(aggstate);
 
