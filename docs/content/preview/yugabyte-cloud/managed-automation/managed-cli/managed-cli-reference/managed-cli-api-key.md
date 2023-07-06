@@ -22,6 +22,16 @@ Usage: ybm api-key [command] [flags]
 
 ## Examples
 
+Create an API key in YugabyteDB Managed:
+
+```sh
+ybm api-key create \
+    --name developer \
+    --duration 6 --unit Months \
+    --description "Developer API key" \
+    --role-name Developer
+```
+
 List API keys in YugabyteDB Managed:
 
 ```sh

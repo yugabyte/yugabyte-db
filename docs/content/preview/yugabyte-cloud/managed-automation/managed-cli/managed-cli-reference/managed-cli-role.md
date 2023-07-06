@@ -41,7 +41,7 @@ Create a role:
 ```sh
 ybm role create --role-name backuprole \
   --permissions resource-type=BACKUP,operation-group=CREATE \
-  --permissions resource-type=BACKUP,operation-group=DELETE \
+  --permissions resource-type=BACKUP,operation-group=DELETE
 ```
 
 ## Commands
