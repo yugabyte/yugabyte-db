@@ -38,16 +38,18 @@ export interface XClusterConfig {
   modifyTime: string;
   name: string;
   paused: boolean;
+  replicationGroupName: string;
   sourceActive: boolean;
-  sourceUniverseUUID?: string;
   status: XClusterConfigStatus;
   tableDetails: XClusterTableDetails[];
   tables: string[];
   targetActive: boolean;
-  targetUniverseUUID?: string;
   txnTableDetails: XClusterTableDetails;
   type: XClusterConfigType;
   uuid: string;
+
+  sourceUniverseUUID?: string;
+  targetUniverseUUID?: string;
 }
 
 //------------------------------------------------------------------------------------

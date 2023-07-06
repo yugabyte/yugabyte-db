@@ -1,15 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { Dispatch, ReactNode, SetStateAction, useEffect, useState } from 'react';
 import clsx from 'clsx';
 import './MenuItemsContainer.scss';
 
-/**
- * @param {Object} props
- * @param {boolean} props.parentDropdownOpen
- * @param {() => React.ReactNode} props.mainMenu
- * @param {Record<string, () => React.ReactNode>} props.subMenus
- */
-export const MenuItemsContainer = ({ mainMenu, subMenus, parentDropdownOpen }) => {
-  const [activeSubmenu, setActiveSubmenu] = useState(null);
+interface MenuItemsContainerProps {
+  mainMenu: (setActiveSubmenu: Dispatch<SetStateAction<null | string>>) => ReactNode;
+  parentDropdownOpen: Boolean;
+  subMenus: { [activeSubmenu: string]: (backToMainMenu: () => void) => ReactNode };
+}
+export const MenuItemsContainer = ({
+  mainMenu,
+  subMenus,
+  parentDropdownOpen
+}: MenuItemsContainerProps) => {
+  const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
 
   // reset active submenu when parent dropdown closed
   useEffect(() => {
@@ -20,12 +23,12 @@ export const MenuItemsContainer = ({ mainMenu, subMenus, parentDropdownOpen }) =
 
   return (
     <div className="menu-items-container">
-      <div className={clsx(
-        'menu-items-container__main-frame', {
+      <div
+        className={clsx('menu-items-container__main-frame', {
           'menu-items-container__main-frame--slide-right': activeSubmenu === null,
           'menu-items-container__main-frame--slide-left': activeSubmenu !== null
-        }
-      )}>
+        })}
+      >
         {mainMenu(setActiveSubmenu)}
       </div>
       <div className="menu-items-container__submenu-frame">
