@@ -15,6 +15,12 @@ On this page:
 
 ## Releases
 
+### July 3, 2023
+
+**Database**
+
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.19.0](../../releases/release-notes/v2.19/#v2.19.0.0). New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+
 ### June 30, 2023
 
 **New Features**
