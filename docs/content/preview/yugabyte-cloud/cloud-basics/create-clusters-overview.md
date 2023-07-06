@@ -143,7 +143,7 @@ For production clusters, a minimum of 3 nodes with 4 to 8 vCPUs per node is reco
 By default, clusters are created using a stable release, taken from the [stable release series](../../../releases/versioning/#stable-releases) of YugabyteDB. You can choose to deploy your dedicated cluster using the following tracks:
 
 - Innovation - Updated more frequently, providing quicker access to new features.
-- Production - Features less frequent updates using stable builds that have been tested longer in YugabyteDB Managed.
+- Production - Has less frequent updates, using select stable builds that have been tested longer in YugabyteDB Managed.
 
 If you need a feature from the [preview release series](../../../releases/versioning/#preview-releases) of YugabyteDB, contact {{% support-cloud %}} before you create your cluster. (Preview releases are also used for Sandbox clusters.)
 

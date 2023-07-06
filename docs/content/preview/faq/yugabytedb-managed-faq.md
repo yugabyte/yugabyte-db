@@ -150,7 +150,7 @@ Sandbox clusters are provisioned with a **preview** release, from the YugabyteDB
 
 Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB [stable release](../../releases/versioning/#stable-releases) series. When creating a dedicated cluster, you can choose one of the following tracks:
 
-- Innovation, which features more frequent updates for faster access to new features.
+- Innovation, which has more frequent updates for faster access to new features.
 - Production, which has a slower update cadence and features only select stable release builds.
 
 Once a cluster is created, it is upgraded with releases from the track that was assigned at creation (that is, either Innovation or Production, or Preview for Sandbox clusters).
