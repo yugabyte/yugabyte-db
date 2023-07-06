@@ -56,14 +56,14 @@ Unassign an allow list from a specified cluster.
 
 ### endpoint create
 
-Create a private service endpoint for a specified cluster.
+Create a [private service endpoint](../../../../cloud-basics/cloud-vpcs/cloud-add-endpoint/) for a specified cluster.
 
 | Flag | Description |
 | :--- | :--- |
 | --cluster-name | Required. The name of the cluster for which you want to create the endpoint. |
 | --region | Required. Region in which you want to create the endpoint. |
 | --accessibility-type | Required. The type of endpoint to create. `PUBLIC`, `PRIVATE`, or `PRIVATE_SERVICE_ENDPOINT`. |
-| --security-principals | Required for `PRIVATE_SERVICE_ENDPOINT`. A comma-separated list of Amazon Resource Names (ARNs) of security principals to be granted access to this endpoint. |
+| --security-principals | Required for `PRIVATE_SERVICE_ENDPOINT`. A comma-separated list of security principals to be granted access to this endpoint. For AWS, these are the Amazon resource names (ARNs) of AWS principals with permissions to create an interface VPC endpoint to connect to your endpoint service. For Azure, provide subscription IDs of the services to be granted access to this endpoint. |
 
 ### endpoint delete
 
@@ -100,4 +100,4 @@ Update the configuration of a specified private service endpoint.
 | Flag | Description |
 | :--- | :--- |
 | --endpoint-id | Required. The ID of the endpoint to update. |
-| --security-principals | A comma-separated list of ARNs of security principals to be granted access to this endpoint. |
+| --security-principals | A comma-separated list of security principals to be granted access to this endpoint. For AWS, these are the Amazon resource names (ARNs) of AWS principals with permissions to create an interface VPC endpoint to connect to your endpoint service. For Azure, provide subscription IDs of the services to be granted access to this endpoint. |

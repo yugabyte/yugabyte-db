@@ -30,7 +30,7 @@ In YugabyteDB Managed, a VPC network consists of the following components:
 
 Typically, you would either have a VPC network with peering, or use PSEs.
 
-VPCs, peering connections, and private service endpoints are managed on the **VPC Network** tab of the **Network Access** page.
+VPCs and peering connections are managed on the **VPC Network** tab of the **Network Access** page.
 
 {{< note title="Note" >}}
 
