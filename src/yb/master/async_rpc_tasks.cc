@@ -329,15 +329,21 @@ void RetryingTSRpcTask::DoRpcCallback() {
     LOG_WITH_PREFIX(WARNING) << "TS " << target_ts_desc_->permanent_uuid() << ": "
                              << type_name() << " RPC failed for tablet "
                              << tablet_id() << ": " << rpc_.status().ToString();
-    if (!target_ts_desc_->IsLive()) {
+    if (type() == MonitoredTaskType::kBackendsCatalogVersionTs && rpc_.status().IsRemoteError() &&
+        rpc_.status().message().ToBuffer().find("invalid method name:") != std::string::npos) {
+      LOG_WITH_PREFIX(WARNING)
+          << "TS " << target_ts_desc_->permanent_uuid() << " is on an older version that doesn't"
+          << " support backends catalog version RPC. Ignoring.";
+      TransitionToCompleteState();
+    } else if (!target_ts_desc_->IsLive()) {
       switch (type()) {
         case MonitoredTaskType::kBackendsCatalogVersionTs:
           // A similar check is done in BackendsCatalogVersionTS::HandleResponse.  This check is hit
           // when this RPC failed and tserver is dead.  That check is hit when this RPC succeeded
           // and tserver is dead.
           LOG_WITH_PREFIX(WARNING)
-              << "TS " << target_ts_desc_->permanent_uuid() << "is DEAD. Assume backends on that TS"
-              << " will be resolved to sufficient catalog version";
+              << "TS " << target_ts_desc_->permanent_uuid() << " is DEAD. Assume backends on that"
+              << " TS will be resolved to sufficient catalog version";
           TransitionToCompleteState();
           break;
         case MonitoredTaskType::kDeleteReplica:
