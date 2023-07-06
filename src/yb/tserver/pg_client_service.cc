@@ -460,6 +460,24 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status ActiveUniverseHistory(
+      const PgActiveUniverseHistoryRequestPB& req, PgActiveUniverseHistoryResponsePB* resp,
+      rpc::RpcContext* context) {
+    auto tserver_wait_states = client().ActiveUniverseHistory();
+
+    for (auto wait_state : tserver_wait_states) {
+      resp->add_wait_states(wait_state);
+    }
+
+    auto bg_wait_states = tablet_server_.GetThreadpoolWaitStates();
+
+    for (auto wait_state : bg_wait_states) {
+      resp->add_wait_states(wait_state);
+    }
+
+    return Status::OK();
+  }
+
   Status GetTserverCatalogVersionInfo(
       const PgGetTserverCatalogVersionInfoRequestPB& req,
       PgGetTserverCatalogVersionInfoResponsePB* resp,

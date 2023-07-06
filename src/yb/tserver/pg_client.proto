@@ -82,6 +82,8 @@ service PgClientService {
   rpc GetTserverCatalogVersionInfo(PgGetTserverCatalogVersionInfoRequestPB)
       returns (PgGetTserverCatalogVersionInfoResponsePB);
   rpc CancelTransaction(PgCancelTransactionRequestPB) returns (PgCancelTransactionResponsePB);
+  rpc ActiveUniverseHistory(PgActiveUniverseHistoryRequestPB)
+      returns (PgActiveUniverseHistoryResponsePB);
 }
 
 message PgHeartbeatRequestPB {
@@ -672,4 +674,11 @@ message PgCancelTransactionRequestPB {
 
 message PgCancelTransactionResponsePB {
   AppStatusPB status = 1;
+}
+
+message PgActiveUniverseHistoryRequestPB {}
+
+message PgActiveUniverseHistoryResponsePB {
+  AppStatusPB status = 1;
+  repeated string wait_states = 2;
 }

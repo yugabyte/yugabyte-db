@@ -10455,4 +10455,10 @@
   proargmodes => '{o,o,o,o,o}',
   proargnames => '{remote_host, remote_port, queryid, node_uuid, top_request_id}',
   prosrc => 'yb_wait_metadata' },
+
+{ oid => '8062', descr => 'statistics: information about currently active rpcs in tserver',
+  proname => 'tserver_stat_get_activity', prorows => '100', proisstrict => 'f',
+  proretset => 't', provolatile => 'v', prorettype => 'text',
+  proargtypes => '', proallargtypes => '{text}', proargmodes => '{o}',
+  proargnames => '{wait_state}', prosrc => 'tserver_stat_get_activity' },
 ]

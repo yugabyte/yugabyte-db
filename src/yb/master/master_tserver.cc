@@ -183,5 +183,9 @@ client::TransactionPool& MasterTabletServer::TransactionPool() {
   return *temp;
 }
 
+std::vector<std::string> MasterTabletServer::GetThreadpoolWaitStates() const {
+  return {};
+}
+
 } // namespace master
 } // namespace yb

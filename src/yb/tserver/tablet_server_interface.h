@@ -76,6 +76,8 @@ class TabletServerIf : public LocalTabletServer {
   client::YBClient* client() const {
     return client_future().get();
   }
+
+  virtual std::vector<std::string> GetThreadpoolWaitStates() const = 0;
 };
 
 } // namespace tserver

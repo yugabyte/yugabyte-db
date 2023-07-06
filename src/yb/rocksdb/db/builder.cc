@@ -96,6 +96,7 @@ namespace {
       const yb::IOPriority io_priority, Env* env,
       std::shared_ptr<WritableFileWriter>* file_writer) {
     unique_ptr<WritableFile> file;
+    SET_WAIT_STATUS(yb::util::WaitStateCode::OpenFile);
     Status s = NewWritableFile(env, filename, &file, env_options);
     if (!s.ok()) {
       return s;
@@ -168,6 +169,8 @@ Status BuildTable(const std::string& dbname,
       meta->UpdateKey(c_iter.key(), UpdateBoundariesType::kSmallest);
     }
 
+    SET_WAIT_STATUS(yb::util::WaitStateCode::WriteToFile);
+
     boost::container::small_vector<UserBoundaryValueRef, 0x10> user_values;
     for (; c_iter.Valid(); c_iter.Next()) {
       const Slice& key = c_iter.key();
@@ -215,6 +218,8 @@ Status BuildTable(const std::string& dbname,
       }
       RETURN_NOT_OK(base_file_writer->Sync(ioptions.use_fsync));
     }
+
+    SET_WAIT_STATUS(yb::util::WaitStateCode::CloseFile);
     if (s.ok() && !empty && is_split_sst) {
       s = data_file_writer->Close();
     }
@@ -243,6 +248,7 @@ Status BuildTable(const std::string& dbname,
     s = iter->status();
   }
 
+  SET_WAIT_STATUS(yb::util::WaitStateCode::DeleteFile);
   if (!s.ok() || meta->fd.GetTotalFileSize() == 0) {
     env->CleanupFile(base_fname);
     if (is_split_sst) {
