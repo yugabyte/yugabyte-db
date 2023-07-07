@@ -16,7 +16,12 @@ import {
   fetchTablesInUniverse,
   fetchXClusterConfig
 } from '../../../../actions/xClusterReplication';
-import { api, runtimeConfigQueryKey, universeQueryKey } from '../../../../redesign/helpers/api';
+import {
+  api,
+  runtimeConfigQueryKey,
+  universeQueryKey,
+  xClusterQueryKey
+} from '../../../../redesign/helpers/api';
 import { YBCheckBox, YBControlledSelect, YBInputField } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { hasSubstringMatch } from '../../../queries/helpers/queriesHelper';
@@ -230,9 +235,9 @@ export const TableSelect = (props: TableSelectProps) => {
    * Queries for shared xCluster config UUIDs
    */
   const sharedXClusterConfigQueries = useQueries(
-    sharedXClusterConfigUUIDs.map((UUID) => ({
-      queryKey: ['Xcluster', UUID],
-      queryFn: () => fetchXClusterConfig(UUID)
+    sharedXClusterConfigUUIDs.map((xClusterConfigUUID) => ({
+      queryKey: xClusterQueryKey.detail(xClusterConfigUUID),
+      queryFn: () => fetchXClusterConfig(xClusterConfigUUID)
     }))
     // The unsafe cast is needed due to an issue with useQueries typing
     // Upgrading react-query to v3.28 may solve this issue: https://github.com/TanStack/query/issues/1675
@@ -449,8 +454,8 @@ export const TableSelect = (props: TableSelectProps) => {
                     </li>
                     <li>PITR must be enabled on the target universe.</li>
                     <li>
-                      Neither the source universe nor the target universe universe is a participant
-                      in any other xCluster configuration.
+                      Neither the source universe nor the target universe is a participant in any
+                      other xCluster configuration.
                     </li>
                   </ol>
                   You may find further information on this feature on our{' '}

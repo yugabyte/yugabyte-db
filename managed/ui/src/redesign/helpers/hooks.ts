@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { useDeepCompareEffect, useFirstMountState, useMountedState } from 'react-use';
 import { AxiosError } from 'axios';
 import { MutationOptions, QueryClient, useMutation } from 'react-query';
-import { api, instanceTypeQueryKey, providerQueryKey } from './api';
+import { api, instanceTypeQueryKey, providerQueryKey, xClusterQueryKey } from './api';
 import {
   InstanceTypeMutation,
   YBProviderMutation
@@ -13,6 +13,8 @@ import {
   getCreateProviderErrorMessage,
   getEditProviderErrorMessage
 } from '../../components/configRedesign/providerRedesign/forms/utils';
+import { syncXClusterConfigWithDB } from '../../actions/xClusterReplication';
+import { toast } from 'react-toastify';
 
 // run callback when component is mounted only
 export const useWhenMounted = () => {
@@ -189,6 +191,38 @@ export const useDeleteInstanceType = (
         mutationOptions?.onError
           ? mutationOptions.onError(error, variables, context)
           : handleServerError(error, { customErrorLabel: 'Delete instance type request failed' });
+      }
+    }
+  );
+
+type SyncXClusterConfigWithDBParams = {
+  xClusterConfigUUID: string;
+  replicationGroupName: string;
+  universeUUID: string;
+};
+export const useSyncXClusterConfigWithDB = (
+  queryClient: QueryClient,
+  mutationOptions?: MutationOptions<YBPTask, Error | AxiosError, SyncXClusterConfigWithDBParams>
+) =>
+  useMutation(
+    ({ replicationGroupName, universeUUID }: SyncXClusterConfigWithDBParams) =>
+      syncXClusterConfigWithDB(replicationGroupName, universeUUID),
+    {
+      ...mutationOptions,
+      onSuccess: (response, variables, context) => {
+        if (mutationOptions?.onSuccess) {
+          mutationOptions.onSuccess(response, variables, context);
+        } else {
+          toast.success('Reconciled xCluster config with DB.');
+          queryClient.invalidateQueries(xClusterQueryKey.detail(variables.xClusterConfigUUID));
+        }
+      },
+      onError: (error, variables, context) => {
+        mutationOptions?.onError
+          ? mutationOptions.onError(error, variables, context)
+          : handleServerError(error, {
+              customErrorLabel: 'xCluster Config DB sync request failed'
+            });
       }
     }
   );
