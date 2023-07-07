@@ -2095,12 +2095,6 @@ exec_execute_message(const char *portal_name, long max_rows)
 	if (max_rows <= 0)
 		max_rows = FETCH_ALL;
 
-	if (IsYugaByteEnabled() && portal->queryDesc && portal->queryDesc->plannedstmt)
-	{
-		YBCSetQueryId(portal->queryDesc->plannedstmt->queryId);
-		MyProc->queryid = portal->queryDesc->plannedstmt->queryId;
-	}
-
 	completed = PortalRun(portal,
 						  max_rows,
 						  true, /* always top level */
