@@ -243,7 +243,7 @@ std::vector<std::string> ThreadPool::GetThreadpoolWaitStates() {
   PthreadCall("lock", pthread_mutex_lock(&mu_));
   for (auto wait_state : bg_wait_states_) {
     // Filter out unused threads
-    if (wait_state->code() != yb::util::WaitStateCode::Unused) {
+    if (wait_state->get_state() != yb::util::WaitStateCode::Unused) {
       res.push_back(wait_state->ToString());
     }
   }

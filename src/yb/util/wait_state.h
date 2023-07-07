@@ -104,15 +104,108 @@ YB_DEFINE_ENUM_TYPE(
     )
 
 struct AUHMetadata {
-  std::string request_id;
-  // TBD: other fields as required.
+  std::string top_level_request_id;
+  std::string top_level_node_id;
+  int64_t query_id = 0;
+  int64_t current_request_id = 0;
+  std::string client_node_ip;
 
   std::string ToString() const {
-	return request_id;
+    return yb::Format("{ top_level_node_id: $0, top_level_request_id: $1, query_id: $2, current_request_id: $3, client_node_ip: $4 }",
+                      top_level_node_id, top_level_request_id, query_id, current_request_id, client_node_ip);
+  }
+
+  void UpdateFrom(const AUHMetadata &other) {
+    if (!other.top_level_request_id.empty()) {
+      top_level_request_id = other.top_level_request_id;
+    }
+    if (!other.top_level_node_id.empty()) {
+      top_level_node_id = other.top_level_node_id;
+    }
+    if (other.query_id != 0) {
+      query_id = other.query_id;
+    }
+    if (other.current_request_id != 0) {
+      current_request_id = other.current_request_id;
+    }
+    if (!other.client_node_ip.empty()) {
+      client_node_ip = other.client_node_ip;
+    }
+  }
+
+  template <class PB>
+  void ToPB(PB* pb) const {
+    if (!top_level_request_id.empty()) {
+      pb->set_top_level_request_id(top_level_request_id);
+    }
+    if (!top_level_node_id.empty()) {
+      pb->set_top_level_node_id(top_level_node_id);
+    }
+    if (query_id != 0) {
+      pb->set_query_id(query_id);
+    }
+    if (current_request_id != 0) {
+      pb->set_current_request_id(current_request_id);
+    }
+    if (!client_node_ip.empty()) {
+      pb->set_client_node_ip(client_node_ip);
+    }
+  }
+
+  template <class PB>
+  static AUHMetadata FromPB(const PB& pb) {
+    return AUHMetadata{
+        .top_level_node_id = pb.top_level_node_id(),
+        .top_level_request_id = pb.top_level_request_id(),
+        .query_id = pb.query_id(),
+        .current_request_id = pb.current_request_id(),
+        .client_node_ip = pb.client_node_ip()
+    };
+  }
+
+  template <class PB>
+  void UpdateFromPB(const PB& pb) {
+    if (pb.has_top_level_node_id()) {
+      top_level_node_id = pb.top_level_node_id();
+    }
+    if (pb.has_top_level_request_id()) {
+      top_level_request_id = pb.top_level_request_id();
+    }
+    if (pb.has_query_id()) {
+      query_id = pb.query_id();
+    }
+    if (pb.has_client_node_ip()) {
+      client_node_ip = pb.client_node_ip();
+    }
+    if (pb.has_current_request_id()) {
+      current_request_id = pb.current_request_id();
+    }
+  }
+};
+
+struct AUHAuxInfo {
+  std::string tablet_id;
+  std::string table_id;
+
+  std::string ToString() const;
+
+  template <class PB>
+  void ToPB(PB* pb) const {
+    pb->set_table_id(table_id);
+    pb->set_tablet_id(tablet_id);
+  }
+
+  template <class PB>
+  static AUHAuxInfo FromPB(const PB& pb) {
+    return AUHAuxInfo{
+      .table_id = pb.table_id(),
+      .tablet_id = pb.tablet_id()
+    };
   }
 };
 
 class WaitStateInfo;
+
 // typedef WaitStateInfo* WaitStateInfoPtr;
 typedef std::shared_ptr<WaitStateInfo> WaitStateInfoPtr;
 class WaitStateInfo {
@@ -121,28 +214,52 @@ class WaitStateInfo {
   WaitStateInfo(AUHMetadata meta);
 
   void set_state(WaitStateCode c);
-
   WaitStateCode get_state() const;
-
-  void set_metadata(AUHMetadata meta);
-
-  std::string ToString() const;
-
-  AUHMetadata metadata();
-
-  WaitStateCode code();
 
   static WaitStateInfoPtr CurrentWaitState();
   static void SetCurrentWaitState(WaitStateInfoPtr);
 
+  void UpdateMetadata(const AUHMetadata& meta) EXCLUDES(mutex_);
+  void set_current_request_id(int64_t id) EXCLUDES(mutex_);
+
+  template <class PB>
+  static void UpdateMetadataFromPB(const PB& pb) {
+    auto wait_state = CurrentWaitState();
+    if (wait_state) {
+      wait_state->UpdateMetadata(AUHMetadata::FromPB(pb));
+    }
+  }
+
+  template <class PB>
+  void ToPB(PB *pb) {
+    std::lock_guard<simple_spinlock> l(mutex_);
+    metadata_.ToPB(pb->mutable_metadata());
+    WaitStateCode code = code_;
+    pb->set_wait_status_code(yb::to_underlying(code));
+#ifndef NDEBUG
+    pb->set_wait_status_code_as_string(yb::ToString(code));
+#endif
+    aux_info_.ToPB(pb->mutable_aux_info());
+  }
+
+  AUHMetadata& metadata() REQUIRES(mutex_) {
+    return metadata_;
+  }
+
+  simple_spinlock* get_mutex() RETURN_CAPABILITY(mutex_);
+
+  std::string ToString() const EXCLUDES(mutex_);
+
  private:
-  AUHMetadata metadata_;
-  WaitStateCode code_ = WaitStateCode::Unused;
+  std::atomic<WaitStateCode> code_{WaitStateCode::Unused};
+
+  mutable simple_spinlock mutex_;
+  AUHMetadata metadata_ GUARDED_BY(mutex_);
+  AUHAuxInfo aux_info_ GUARDED_BY(mutex_);
 
 #ifdef TRACK_WAIT_HISTORY
-  std::atomic_int16_t num_updates_;
-  mutable simple_spinlock mutex_;
-  std::vector<WaitStateCode> history_;
+  std::atomic_int16_t num_updates_ GUARDED_BY(mutex_);
+  std::vector<WaitStateCode> history_ GUARDED_BY(mutex_);
 #endif
 
   // Similar to thread-local trace:

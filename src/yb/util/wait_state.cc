@@ -22,12 +22,20 @@ namespace yb::util {
 // __thread WaitStateInfoPtr WaitStateInfo::threadlocal_wait_state_;
 thread_local WaitStateInfoPtr WaitStateInfo::threadlocal_wait_state_;
 
+std::string AUHAuxInfo::ToString() const {
+  return YB_STRUCT_TO_STRING(table_id, tablet_id);
+}
+
 WaitStateInfo::WaitStateInfo(AUHMetadata meta)
   : metadata_(meta)
 #ifdef TRACK_WAIT_HISTORY
   , num_updates_(0) 
 #endif 
   {}
+
+simple_spinlock* WaitStateInfo::get_mutex() {
+  return &mutex_;
+};
 
 void WaitStateInfo::set_state(WaitStateCode c) {
   VLOG(3) << this << " " << ToString() << " setting state to " << util::ToString(c);
@@ -46,34 +54,27 @@ WaitStateCode WaitStateInfo::get_state() const {
   return code_;
 }
 
-void WaitStateInfo::set_metadata(AUHMetadata meta) {
-  metadata_ = meta;
-}
-
-AUHMetadata WaitStateInfo::metadata() {
-  return metadata_;
-}
-
-WaitStateCode WaitStateInfo::code() {
-  return code_;
-}
-
 std::string WaitStateInfo::ToString() const {
-  #ifdef TRACK_WAIT_HISTORY
-  std::vector<WaitStateCode> history;
-  {
-    std::lock_guard<simple_spinlock> l(mutex_);
-    history = history_;
-  }
-  return yb::Format("meta : $0, status: $1, updates: $2, history : $3", metadata_.ToString(),
-    util::ToString(code_), num_updates_, yb::ToString(history));
-  #else
-    return yb::Format("meta : $0, status: $1", metadata_.ToString(), util::ToString(code_));
-  #endif // TRACK_WAIT_HISTORY
+  std::lock_guard<simple_spinlock> l(mutex_);
+#ifdef TRACK_WAIT_HISTORY
+  return YB_CLASS_TO_STRING(metadata, code, aux_info, num_updates, history);
+#else
+  return YB_CLASS_TO_STRING(metadata, code, aux_info);
+#endif // TRACK_WAIT_HISTORY
 }
 
 WaitStateInfoPtr WaitStateInfo::CurrentWaitState() {
   return threadlocal_wait_state_;
+}
+
+void WaitStateInfo::set_current_request_id(int64_t current_request_id) {
+  std::lock_guard<simple_spinlock> l(mutex_);
+  metadata_.current_request_id = current_request_id;
+}
+
+void WaitStateInfo::UpdateMetadata(const AUHMetadata& meta) {
+  std::lock_guard<simple_spinlock> l(mutex_);
+  metadata_.UpdateFrom(meta);
 }
 
 void WaitStateInfo::SetCurrentWaitState(WaitStateInfoPtr wait_state) {
