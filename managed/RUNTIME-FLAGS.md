@@ -155,3 +155,4 @@
 | "Under replicated tablets check timeout" | "yb.checks.under_replicated_tablets.timeout" | "UNIVERSE" | "Controls the max time out when performing the checkUnderReplicatedTablets subtask" | "Duration" |
 | "Memory check timeout" | "yb.dbmem.checks.timeout" | "UNIVERSE" | "Timeout for memory check in secs" | "Long" |
 | "Wait time before doing restore during xCluster setup task" | "yb.xcluster.sleep_time_before_restore" | "UNIVERSE" | "The amount of time to sleep (wait) before executing restore subtask during xCluster setup; it is useful because xCluster setup also drops the database before restore and the sleep makes sure the drop operation has reached all the nodes" | "Duration" |
+| "Ansible execution timeout in seconds" | "yb.upgrade.ansible_execution_timeout_sec" | "UNIVERSE" | "Makes Timeout during execution of ansible playbooks configurable" | "Duration" |
