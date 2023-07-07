@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.List;
 import java.util.Map;
 import javax.inject.Inject;
@@ -126,7 +127,10 @@ public class BackupTable extends AbstractTaskBase {
           }
         }
       } else {
-        log.info("Skipping table {}:{}", taskParams().getKeyspace(), taskParams().getTableName());
+        log.info(
+            "Skipping table {}:{}",
+            taskParams().getKeyspace(),
+            CommonUtils.logTableName(taskParams().getTableName()));
         backup.transitionState(Backup.BackupState.Skipped);
       }
     } catch (Exception e) {

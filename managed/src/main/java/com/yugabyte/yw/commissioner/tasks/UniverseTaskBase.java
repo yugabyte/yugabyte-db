@@ -2190,7 +2190,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               log.info(
                   "Queuing backup for table {}:{}",
                   tableSchema.getNamespace(),
-                  tableSchema.getTableName());
+                  CommonUtils.logTableName(tableSchema.getTableName()));
               if (tablesToBackup != null) {
                 tablesToBackup.add(
                     String.format("%s:%s", tableSchema.getNamespace(), tableSchema.getTableName()));
@@ -2226,7 +2226,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                   keyspaceMap.put(tableKeySpace, backupParams);
                   backupTableParamsList.add(backupParams);
                   if (tablesToBackup != null) {
-                    tablesToBackup.add(String.format("%s:%s", tableKeySpace, table.getName()));
+                    tablesToBackup.add(String.format("%s:%s", tableKeySpace, tableName));
                   }
                 }
               } else if (tableType.equals(TableType.YQL_TABLE_TYPE)
@@ -2239,13 +2239,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                 currentBackup.tableNameList.add(tableName);
                 currentBackup.tableUUIDList.add(tableUUID);
                 if (tablesToBackup != null) {
-                  tablesToBackup.add(String.format("%s:%s", tableKeySpace, table.getName()));
+                  tablesToBackup.add(String.format("%s:%s", tableKeySpace, tableName));
                 }
               } else {
                 log.error(
-                    "Unrecognized table type {} for {}:{}", tableType, tableKeySpace, tableName);
+                    "Unrecognized table type {} for {}:{}",
+                    tableType,
+                    tableKeySpace,
+                    CommonUtils.logTableName(tableName));
               }
-              log.info("Queuing backup for table {}:{}", tableKeySpace, tableName);
+              log.info(
+                  "Queuing backup for table {}:{}",
+                  tableKeySpace,
+                  CommonUtils.logTableName(tableName));
             }
           }
         }
@@ -2275,7 +2281,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               keyspaceMap.put(tableKeySpace, backupParams);
               backupTableParamsList.add(backupParams);
               if (tablesToBackup != null) {
-                tablesToBackup.add(String.format("%s:%s", tableKeySpace, table.getName()));
+                tablesToBackup.add(String.format("%s:%s", tableKeySpace, tableName));
               }
             }
           } else if (tableType.equals(TableType.YQL_TABLE_TYPE)
@@ -2290,12 +2296,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             currentBackup.tableNameList.add(tableName);
             currentBackup.tableUUIDList.add(tableUUID);
             if (tablesToBackup != null) {
-              tablesToBackup.add(String.format("%s:%s", tableKeySpace, table.getName()));
+              tablesToBackup.add(String.format("%s:%s", tableKeySpace, tableName));
             }
           } else {
-            log.error("Unrecognized table type {} for {}:{}", tableType, tableKeySpace, tableName);
+            log.error(
+                "Unrecognized table type {} for {}:{}",
+                tableType,
+                tableKeySpace,
+                CommonUtils.logTableName(tableName));
           }
-          log.info("Queuing backup for table {}:{}", tableKeySpace, tableName);
+          log.info(
+              "Queuing backup for table {}:{}", tableKeySpace, CommonUtils.logTableName(tableName));
         }
       }
     } catch (Exception e) {
