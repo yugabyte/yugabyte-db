@@ -334,10 +334,10 @@ bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
   if (req.get_wait_state()) {
     auto wait_state = this->wait_state();
     if (wait_state) {
+      // TBD: Add WaitStateInfoPB to the response instead of the string.
       WaitStateInfoPB pb;
       wait_state->ToPB(&pb);
-      resp->set_wait_state(pb.DebugString());
-      // resp->set_wait_state(wait_state->ToString());
+      resp->set_wait_state(wait_state->ToString());
     } else {
       resp->set_wait_state("Not yet initialized");
     }
