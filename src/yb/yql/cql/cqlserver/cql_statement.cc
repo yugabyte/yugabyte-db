@@ -16,6 +16,7 @@
 #include "yb/yql/cql/cqlserver/cql_statement.h"
 
 #include <openssl/md5.h>
+#include "yb/gutil/strings/escaping.h"
 
 DEFINE_RUNTIME_bool(cql_use_metadata_cache_for_schema_version_check, true,
                     "Use the internal Table Metadata Cache in TS to check the Table "
@@ -56,22 +57,22 @@ ql::CQLMessage::QueryId CQLStatement::GetQueryId(const string& keyspace, const s
 void StmtCounters::WriteAsJson(
     JsonWriter *jw, const ql::CQLMessage::QueryId& query_id) const {
   jw->StartObject();
+  jw->String("query_id");
+  jw->String(b2a_hex(query_id));
+
   jw->String("query");
   jw->String(this->query);
 
-  jw->String("query_id");
-  jw->String(query_id);
-
-  jw->String("num_calls");
+  jw->String("calls");
   jw->Int64(this->num_calls);
 
-  jw->String("total_time_in_msec");
+  jw->String("total_time");
   jw->Double(this->total_time_in_msec);
 
-  jw->String("min_time_in_msec");
+  jw->String("min_time");
   jw->Double(this->min_time_in_msec);
 
-  jw->String("max_time_in_msec");
+  jw->String("max_time");
   jw->Double(this->max_time_in_msec);
 
   jw->String("mean_time");
