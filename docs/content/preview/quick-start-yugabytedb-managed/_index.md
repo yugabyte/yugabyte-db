@@ -11,7 +11,7 @@ rightNav:
 unversioned: true
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="cluster">
   <li class="active">
     <a href="../quick-start-yugabytedb-managed/" class="nav-link">
       <img src="/icons/cloud.svg" alt="Cloud Icon">

@@ -24,7 +24,7 @@ This deployment provides the following advantages:
 - Resilience - putting the universe nodes in different regions provides a higher degree of failure independence.
 - Consistency - all writes are synchronously replicated. Transactions are globally consistent.
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="ybdb">
   <li>
     <a href="../synchronous-replication-ysql/" class="nav-link active">
       <img src="/icons/database.svg" alt="Server Icon">

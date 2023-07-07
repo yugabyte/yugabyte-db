@@ -36,7 +36,7 @@ This is a top-level tab widget, that uses different files for each tab. Everythi
 
 ### Second tab widget style
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb"   data-target="sql">
   <li class="active">
     <a href="../all-page-elements/" class="nav-link">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>

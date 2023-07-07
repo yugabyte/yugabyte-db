@@ -13,10 +13,10 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb"  data-target="cluster">
 
   <li >
-    <a href="../gorm/" class="nav-link active">
+    <a href="../gorm/" class="nav-link active" data-target="cluster">
       <i class="icon-postgres" aria-hidden="true"></i>
       GORM ORM
     </a>
