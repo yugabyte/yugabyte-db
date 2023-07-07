@@ -180,6 +180,10 @@ Status HostPortFromEndpointReplaceWildcard(const Endpoint& addr, HostPort* hp);
 // is non-NULL (mostly useful for testing).
 void TryRunLsof(const Endpoint& addr, std::vector<std::string>* log = NULL);
 
+void TryRunChronycTracking(std::vector<std::string>* log = NULL);
+
+void TryRunChronycSourcestats(std::vector<std::string>* log = NULL);
+
 // Get a free port that a local server could listen to. For use in tests. Tries up to a 1000 times
 // and fatals after that.
 // @param file_lock This will be set to a file lock ensuring the port does not get taken by
