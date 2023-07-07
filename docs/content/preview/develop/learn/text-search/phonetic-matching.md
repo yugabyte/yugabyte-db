@@ -29,21 +29,21 @@ TODO: Will add cluster setup tabs here.
 For examples and illustrations, let's use the following table and data.
 
 ```sql
-CREATE TABLE words (
+CREATE TABLE IF NOT EXISTS words (
     id SERIAL,
     word TEXT NOT NULL,
     PRIMARY KEY(id)
 );
 ```
 
-For sample data, let's use the [list of English words](https://github.com/dwyl/english-words/blob/master/words.txt). Load the data into the table using the following command.
+Let us load some sample words into the table.
 
 ```sql
--- make sure to give the full path of the file
-\COPY words(word) FROM '/tmp/words.txt';
-
--- convert all words to lower case
-UPDATE words SET word = lower(word);
+INSERT INTO words(word) VALUES 
+  ('anopisthographic'),('ambassadorship'),('ambuscader'),('ambiguity'),('ampycides'),
+  ('anapaestically'),('anapests'),('anapsidan'),('unpsychic'),('anapsid'),
+  ('unpessimistic'),('unepistolary'),('inabstracted'),('anapaest'),('unobstinate'),
+  ('amphigoric'),('amebic'),('amebous'),('ambassage'),('unpacified'),('unposing');
 ```
 
 To enable fuzzy matching, activate the `fuzzystrmatch` extension.
@@ -63,13 +63,13 @@ SELECT word, soundex(word), difference(word,'anapistagafi') FROM words WHERE sou
 ```
 
 ```output
-       word       | soundex | difference
-------------------+---------+------------
- anopisthographic | A512    |          4
- ambassadorship   | A512    |          4
- ambuscader       | A512    |          4
- ambiguity        | A512    |          4
- ampycides        | A512    |          4
+      word      | soundex | difference
+----------------+---------+------------
+ anapaestically | A512    |          4
+ ampycides      | A512    |          4
+ anapsid        | A512    |          4
+ amebous        | A512    |          4
+ anapaest       | A512    |          4
 ```
 
 The `difference` method calculates how different is one Soundex code from another. The value ranges from 0-4 and can be used to rank the results. But this is not advisable as the value is very naive.
@@ -85,11 +85,11 @@ SELECT word, metaphone(word,4) FROM words WHERE metaphone(word,4) = metaphone('a
 ```output
        word       | metaphone
 ------------------+-----------
- anopisthographic | ANPS
- anapsid          | ANPS
  anapaestically   | ANPS
- anapests         | ANPS
+ anapsid          | ANPS
+ anapaest         | ANPS
  anapsidan        | ANPS
+ anopisthographic | ANPS
 ```
 
 The `metaphone` function takes in an additional parameter of code output length that can be used for slightly modifying the matching errors.
@@ -103,13 +103,13 @@ SELECT word, dmetaphone(word) FROM words WHERE dmetaphone(word) = dmetaphone('an
 ```
 
 ```output
-       word       | dmetaphone
-------------------+------------
- anopisthographic | ANPS
- unpsychic        | ANPS
- unpessimistic    | ANPS
- unepistolary     | ANPS
- inabstracted     | ANPS
+      word      | dmetaphone
+----------------+------------
+ unpsychic      | ANPS
+ anapaestically | ANPS
+ inabstracted   | ANPS
+ unobstinate    | ANPS
+ unposing       | ANPS
  ```
 
 ## Learn more

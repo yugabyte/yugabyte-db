@@ -32,19 +32,19 @@ CREATE TABLE words (
 );
 ```
 
-For sample data, let's use the [list of English words](https://github.com/dwyl/english-words/blob/master/words.txt). Load the data into the table using the following command.
+Let us load some sample words into the table.
 
 ```sql
--- make sure to give the full path of the file
-\COPY words(word) FROM '/tmp/words.txt';
-
--- convert all words to lower case
-UPDATE words SET word = lower(word);
+INSERT INTO words(word) VALUES 
+  ('anopisthographic'),('ambassadorship'),('ambuscader'),('ambiguity'),('ampycides'),
+  ('anapaestically'),('anapests'),('anapsidan'),('unpsychic'),('anapsid'),
+  ('unpessimistic'),('unepistolary'),('inabstracted'),('anapaest'),('unobstinate'),
+  ('amphigoric'),('amebic'),('amebous'),('ambassage'),('unpacified'),('unposing');
 ```
 
 ## Levenshtein
 
-The [levenshtein distance](https://en.wikipedia.org/wiki/Levenshtein_distance) is a measure of the difference between 2 strings. It calculates the difference by considering the number of edits - insertions/deletions/substitutions needed for one string to be transformed into another. This is very useful for spell-checks. This function is provided by the PostgreSQL extension, [fuzzystrmatch](https://www.postgresql.org/docs/current/fuzzystrmatch.html).
+The [Levenshtein distance](https://en.wikipedia.org/wiki/Levenshtein_distance) is a measure of the difference between 2 strings. It calculates the difference by considering the number of edits - insertions/deletions/substitutions needed for one string to be transformed into another. This is very useful for spell-checks. This function is provided by the PostgreSQL extension, [fuzzystrmatch](https://www.postgresql.org/docs/current/fuzzystrmatch.html).
 
 To enable the levenshtein function, activate the `fuzzystrmatch` extension.
 
@@ -59,20 +59,20 @@ SELECT word, levenshtein('warehouse', word) FROM words WHERE levenshtein('wareho
 ```
 
 ```output
-    word     | levenshtein
--------------+-------------
- warehouse   |           0
- warehoused  |           1
- warehouser  |           1
- warehouses  |           1
- warmhouse   |           1
- wayhouse    |           2
- washhouse   |           2
- warehousers |           2
- whorehouse  |           2
- warhorse    |           2
- ```
- 
+    word    | levenshtein
+------------+-------------
+ warehouse  |           0
+ warmhouse  |           1
+ warehoused |           1
+ warehouser |           1
+ warhorse   |           2
+ tirehouse  |           2
+ washhouse  |           2
+ carhouse   |           2
+ firehouse  |           2
+ gatehouse  |           2
+```
+
 Note the levenshtein scoring for `warehoused` is `1`. This is because it has `1` additional character `d` than `warehouse`. Also it is `2` for `wayhouse` because it needs 2 edits `r->y` and `del e`.
 
 ## Trigrams
@@ -101,11 +101,10 @@ SELECT word, similarity(word, 'geodymamist') as score FROM words ORDER BY score 
      word      |  score
 ---------------+----------
  geodynamicist | 0.444444
- geodist       | 0.428571
  geodesist     |    0.375
  geochemist    | 0.352941
- geodynamic    | 0.352941
-(5 rows)
+ geodynamics   | 0.333333
+ geologist     | 0.294118
 ```
 
 To match word boundaries by avoiding cross-word trigrams, you can use the `strict_word_similarity` function. For example,

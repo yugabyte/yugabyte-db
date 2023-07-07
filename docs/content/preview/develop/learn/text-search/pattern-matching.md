@@ -25,21 +25,21 @@ TODO: Will add cluster setup tabs here.
 For examples and illustrations, let's use the following table and data.
 
 ```sql
-CREATE TABLE words (
+CREATE TABLE IF NOT EXISTS words (
     id SERIAL,
     word TEXT NOT NULL,
     PRIMARY KEY(id)
 );
 ```
 
-For sample data, let's use the [list of English words](https://github.com/dwyl/english-words/blob/master/words.txt). Load the data into the table using the following command.
+Let us load some sample words into the table.
 
 ```sql
--- make sure to give the full path of the file
-\copy words(word) from '/tmp/words.txt';
-
--- convert all words to lower case
-UPDATE words SET word = lower(word);
+INSERT INTO words(word) VALUES 
+  ('camp'),('carousel'),('cartel'),('carpet'),('carnivore'),('cartoon'),('carry'),('capsule'),
+  ('corsica'),('medica'),('azteca'),('republica'),('chronica'),('orca'),('cathodically'),('capably'),
+  ('cot'),('cat'),('cut'),('cwt'),('cit'),('cit'),('captainly'),('callously'),('career'),('calculate'),
+  ('lychees'),('deer'),('peer'),('seer'),('breeze'),('green'),('teen'),('casually');
 ```
 
 ## Suffix matching
@@ -47,18 +47,17 @@ UPDATE words SET word = lower(word);
 The `%` could be added to the end of a pattern to match any string that completes the given pattern. For example, to get all the words starting with `ca`, you would execute:
 
 ```sql
-select * from words where word like 'ca%' limit 5;
+SELECT word FROM words WHERE word LIKE 'ca%' limit 5;
 ```
 
 ```output
-  id   |     word
--------+--------------
- 57757 | can.
- 56710 | calyciferous
- 60726 | carpology
- 57735 | campward
- 57239 | camachile
-(5 rows)
+      word
+--------------
+ carnivore
+ camp
+ capably
+ cathodically
+ cartoon
 ```
 
 ## Prefix matching
@@ -66,18 +65,17 @@ select * from words where word like 'ca%' limit 5;
 The `%` could be added to the beginning of a pattern to match any string that ends in the given pattern. For example, to get words ending with `box`, you would execute:
 
 ```sql
-select * from words where word like '%ca' limit 5;
+SELECT word FROM words WHERE word LIKE '%ca' limit 5;
 ```
 
 ```output
-   id   |  word
---------+---------
-  33798 | baraca
- 464587 | xinca
-  92076 | crusca
- 343128 | ronica
- 302782 | polacca
-(5 rows)
+   word
+-----------
+ azteca
+ chronica
+ republica
+ corsica
+ medica
 ```
 
 ## Infix matching
@@ -85,18 +83,17 @@ select * from words where word like '%ca' limit 5;
 The `%` could also be used to match any sequence of text between a given pattern. For example, to get all words starting with `ca` and ending in `ly`, you could execute,
 
 ```sql
-select * from words where word like 'ca%ly' limit 5;
+SELECT word FROM words WHERE word LIKE 'ca%ly' limit 5;
 ```
 
 ```output
-  id   |      word
--------+----------------
- 62287 | cathodically
- 62300 | catholically
- 56535 | calculably
- 58913 | capitally
- 58520 | cantankerously
-(5 rows)
+     word
+--------------
+ capably
+ cathodically
+ casually
+ captainly
+ callously
 ```
 
 ## Single character matching
@@ -104,18 +101,17 @@ select * from words where word like 'ca%ly' limit 5;
 You can use `_`(underscore) to match any single character. To get all the 3 letter words that start with `c` and end in `t`, you would execute,
 
 ```sql
-select * from words where word ilike 'c_t' limit 5;
+SELECT word FROM words WHERE word LIKE 'c_t' limit 5;
 ```
 
 ```output
-  id   | word
--------+------
- 88853 | cpt
- 86923 | cot
- 63037 | cct
- 91859 | crt
- 72942 | cit
-(5 rows)
+ word
+------
+ cit
+ cot
+ cut
+ cat
+ cit
 ```
 
 ## Case insensitive matching
@@ -123,30 +119,29 @@ select * from words where word ilike 'c_t' limit 5;
 The `LIKE` operator performs case-sensitive matching. For example, if we change our pattern to uppercase, we may not get the same results.
 
 ```sql
-select * from words where word like 'C_T' limit 5;
+SELECT word FROM words WHERE word LIKE 'C_T' limit 5;
 ```
 
 ```output
- id | word
-----+------
+ word
+------
 (0 rows)
 ```
 
 To support case-insensitive matching, you would need to use the `ILIKE` operator.
 
 ```sql
-select * from words where word ilike 'C_T' limit 5;
+SELECT word FROM words WHERE word ILIKE 'C_T' limit 5;
 ```
 
 ```output
-  id   | word
--------+------
- 88853 | cpt
- 86923 | cot
- 63037 | cct
- 91859 | crt
- 72942 | cit
-(5 rows)
+ word
+------
+ cit
+ cot
+ cut
+ cat
+ cit
 ```
 
 ## Regex matching
@@ -155,18 +150,20 @@ The `SIMILAR TO` operator can be used to match patterns using the SQL standard's
 have `e` occurring three or more times consecutively,
 
 ```sql
-select word from words where word SIMILAR TO '%e{3,}%' ;
+SELECT word FROM words WHERE word SIMILAR TO '%e{2,}%' ;
 ```
 
 ```output
-   word
------------
- andeee
- ieee
- aieee
- whenceeer
- eee
-(5 rows)
+  word
+---------
+ peer
+ green
+ seer
+ lychees
+ deer
+ teen
+ breeze
+ career
 ```
 
 `SIMILAR TO` supports these pattern-matching metacharacters:
@@ -180,7 +177,6 @@ select word from words where word SIMILAR TO '%e{3,}%' ;
 - `{m,n}` denotes repetition of the previous item at least m and not more than n times.
 
 Parentheses `()` can be used to group items into a single logical item. A bracket expression `[...]` specifies a character class, just as in POSIX regular expressions.
-
 
 ## Learn more
 
