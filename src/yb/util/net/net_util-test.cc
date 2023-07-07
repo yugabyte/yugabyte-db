@@ -215,6 +215,23 @@ TEST_F(NetUtilTest, TestLsof) {
   ASSERT_STR_CONTAINS(lsof_lines[2], "net_util-test");
 }
 
+TEST_F(NetUtilTest, YB_DISABLE_TEST_ON_MACOS(TestChronyc)) {
+  vector<string> tracking_lines;
+  TryRunChronycTracking(&tracking_lines);
+  ASSERT_GE(tracking_lines[1].size(), 2);
+  ASSERT_STR_CONTAINS(tracking_lines[1], "Reference ID");
+  ASSERT_STR_CONTAINS(tracking_lines[1], "Stratum");
+  ASSERT_STR_CONTAINS(tracking_lines[1], "Residual freq");
+  ASSERT_STR_CONTAINS(tracking_lines[1], "Skew");
+
+  vector<string> sourcestats_lines;
+  TryRunChronycSourcestats(&sourcestats_lines);
+  ASSERT_GE(sourcestats_lines[1].size(), 2);
+  ASSERT_STR_CONTAINS(sourcestats_lines[1], "Freq Skew");
+  ASSERT_STR_CONTAINS(sourcestats_lines[1], "Offset");
+  ASSERT_STR_CONTAINS(sourcestats_lines[1], "Std Dev");
+}
+
 TEST_F(NetUtilTest, TestGetFQDN) {
   string fqdn;
   ASSERT_OK(GetFQDN(&fqdn));
