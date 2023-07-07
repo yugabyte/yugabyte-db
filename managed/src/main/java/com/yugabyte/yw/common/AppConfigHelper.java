@@ -9,7 +9,7 @@ import com.yugabyte.yw.common.config.RuntimeConfService;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/* Helper class for Files */
+/* Helper class for application config */
 @Singleton
 public class AppConfigHelper {
 
