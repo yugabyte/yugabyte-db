@@ -946,12 +946,16 @@ Status TabletSplitExternalMiniClusterITest::WaitForAnySstFiles(const TabletId& t
 
 Status TabletSplitExternalMiniClusterITest::WaitForAnySstFiles(
     size_t tserver_idx, const TabletId& tablet_id) {
-  const auto ts = cluster_->tablet_server(tserver_idx);
+  return WaitForAnySstFiles(*cluster_->tablet_server(tserver_idx), tablet_id);
+}
+
+Status TabletSplitExternalMiniClusterITest::WaitForAnySstFiles(
+  const ExternalTabletServer& ts, const TabletId& tablet_id) {
   return LoggedWaitFor(
-      [&]() -> Result<bool> {
-        auto resp = VERIFY_RESULT(cluster_->GetTabletStatus(*ts, tablet_id));
+      [this, &ts, &tablet_id]() -> Result<bool> {
+        auto resp = VERIFY_RESULT(cluster_->GetTabletStatus(ts, tablet_id));
         if (resp.has_error()) {
-          LOG(ERROR) << "Peer " << ts->uuid() << " tablet " << tablet_id
+          LOG(ERROR) << "Peer " << ts.uuid() << " tablet " << tablet_id
                      << " error: " << resp.error().status().ShortDebugString();
           return false;
         }
