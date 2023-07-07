@@ -589,6 +589,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithSnapshotAndNoBe
   ASSERT_GE((*expected_row).op_id.index, 0);
   ASSERT_NE((*expected_row).cdc_sdk_safe_time, HybridTime::kInvalid);
   ASSERT_GE((*expected_row).cdc_sdk_latest_active_time, 0);
+
+  // Assert that the safe time is invalid in the tablet_peers
+  AssertSafeTimeAsExpectedInTabletPeers(tablets[0].tablet_id(), (*expected_row).cdc_sdk_safe_time);
+
   // Count the number of snapshot READs.
   uint32_t reads_snapshot = 0;
   bool do_update = true;
@@ -674,8 +678,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithSnapshotAndNoBe
   }
   ASSERT_GE((*expected_row).op_id.term, 0);
   ASSERT_GE((*expected_row).op_id.index, 0);
-  ASSERT_EQ((*expected_row).cdc_sdk_safe_time, HybridTime::kInvalid);
+  ASSERT_NE((*expected_row).cdc_sdk_safe_time, HybridTime::kInvalid);
   ASSERT_GE((*expected_row).cdc_sdk_latest_active_time, 0);
+
+  // Assert that the safe time is invalid in the tablet_peers
+  AssertSafeTimeAsExpectedInTabletPeers(tablets[0].tablet_id(), HybridTime::kInvalid);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithSnapshotAndBeforeImage)) {
@@ -701,6 +708,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithSnapshotAndBefo
   ASSERT_GE((*expected_row).op_id.index, 0);
   ASSERT_NE((*expected_row).cdc_sdk_safe_time, HybridTime::kInvalid);
   ASSERT_GE((*expected_row).cdc_sdk_latest_active_time, 0);
+
+  // Assert that the safe time is invalid in the tablet_peers
+  AssertSafeTimeAsExpectedInTabletPeers(tablets[0].tablet_id(), (*expected_row).cdc_sdk_safe_time);
+
   // Count the number of snapshot READs.
   uint32_t reads_snapshot = 0;
   bool do_update = true;
@@ -788,6 +799,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionWithSnapshotAndBefo
   ASSERT_GE((*expected_row).op_id.index, 0);
   ASSERT_NE((*expected_row).cdc_sdk_safe_time, HybridTime::kInvalid);
   ASSERT_GE((*expected_row).cdc_sdk_latest_active_time, 0);
+
+  // Assert that the safe time is invalid in the tablet_peers
+  AssertSafeTimeAsExpectedInTabletPeers(tablets[0].tablet_id(), (*expected_row).cdc_sdk_safe_time);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestColumnDropBeforeImage)) {

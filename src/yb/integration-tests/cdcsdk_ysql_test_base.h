@@ -123,6 +123,7 @@ DECLARE_int32(ysql_num_shards_per_tserver);
 DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
 DECLARE_bool(cdc_enable_consistent_records);
 DECLARE_bool(cdc_populate_end_markers_transactions);
+DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 
 namespace yb {
 
@@ -397,6 +398,14 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const CDCSDKCheckpointPB* cp = nullptr,
       int tablet_idx = 0);
 
+  GetAllPendingChangesResponse GetAllPendingChangesWithRandomReqSafeTimeChanges(
+      const CDCStreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const CDCSDKCheckpointPB* cp = nullptr,
+      int tablet_idx = 0,
+      int64 safe_hybrid_time = -1,
+      int wal_segment_index = 0);
+
   GetAllPendingChangesResponse GetAllPendingChangesFromCdc(
       const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
@@ -533,6 +542,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   TableId GetColocatedTableId(const std::string& req_table_name);
 
+  void AssertSafeTimeAsExpectedInTabletPeers(
+      const TabletId& tablet_id, const HybridTime expected_safe_time);
 };
 
 }  // namespace cdc
