@@ -42,7 +42,7 @@ INSERT INTO movies(name, summary) VALUES('The Godfather','A don hands over his e
 INSERT INTO movies(name, summary) VALUES('Inception','A thief is given the task of planting an idea onto a mind');
 ```
 
-## Text processing
+## Parsing documents
 
 Text can be represented as a vector of words, which is effectively the list of words and the positions that the words occur in the text. The data type that represents this is `tsvector`. For example, let's consider the phrase, `'Two convicts become friends and one convict escapes.'`. When we convert this to `tsvector` using the `to_tsvector` helper function, we would get
 
@@ -57,13 +57,19 @@ SELECT to_tsvector('Two convicts become friends and one convict escapes.');
 (1 row)
 ```
 
-We can see that the word `one` occurs at position `6` in the text and the word `friend` occurs at position `4`. Also as the word `convict` occurs twice, both positions `2` and `7` are listed. Notice that the words `become` and `escape` are stored are `becom` and `escap`. This is the result of a process called [Stemming](https://en.wikipedia.org/wiki/Stemming), which converts different forms of a word to their root form. For example, the words `escape escaper escaping escaped` all stem to `escap`. This would enable fast retrieval of all the different forms of `escap` when searching for `escaping` or `escaped`.
+We can see that the word `one` occurs at position `6` in the text and the word `friend` occurs at position `4`. Also as the word `convict` occurs twice, both positions `2` and `7` are listed. 
+
+### Stemming
+
+Notice that the words `become` and `escape` are stored are `becom` and `escap`. This is the result of a process called [Stemming](https://en.wikipedia.org/wiki/Stemming), which converts different forms of a word to their root form. For example, the words `escape escaper escaping escaped` all stem to `escap`. This would enable fast retrieval of all the different forms of `escap` when searching for `escaping` or `escaped`.
+
+### Stop words
 
 The other interesting to note is that the word `and` is missing from the vector. This is because common words like `a, an, and, the ...` are known as [Stop Words](https://en.wikipedia.org/wiki/Stop_word) and are typically dropped during document and query processing.
 
-## Query processing
+## Parsing search queries
 
-Just as the text has to be processed for faster search, the query has to be processed too and it has to go through the same stemming and stop word removal process. The data type representing the query is `tsquery`. We can convert simple text to `tsquery` using one of the many helper functions like `to_tsquery, plainto_tsquery, phraseto_tsquery, websearch_to_tsquery` etc. If you want to search for `escaping` or `empire`, then
+Just as the text has to be processed for faster search, the query has to be processed and has to go through the same stemming and stop word removal process. The data type representing the query is `tsquery`. We can convert simple text to `tsquery` using one of the many helper functions like `to_tsquery, plainto_tsquery, phraseto_tsquery, websearch_to_tsquery` etc. If you want to search for `escaping` or `empire`, then
 
 ```sql
 SELECT to_tsquery('escaping | empire');
@@ -89,7 +95,7 @@ Now that we have processed both the text and the query, we have to use the query
 SELECT * FROM movies WHERE to_tsvector(summary) @@ to_tsquery('one | son');
 ```
 
-```sql{class=nocopy}
+```output
            name           |                       summary
 --------------------------+------------------------------------------------------
  The Godfather            | A don hands over his empire to one of his sons.
@@ -116,7 +122,7 @@ SELECT * FROM movies WHERE to_tsvector(summary) @@ to_tsquery('one & son');
 SELECT * FROM movies WHERE to_tsvector(summary) @@ to_tsquery('one & !son');
 ```
 
-```sql{class=nocopy}
+```output
            name           |                       summary
 --------------------------+------------------------------------------------------
  The Shawshank Redemption | Two convicts become friends and one convict escapes.
@@ -130,7 +136,7 @@ Let's search for `conviction` in our movies table.
 SELECT * FROM movies WHERE to_tsvector(summary) @@ to_tsquery('conviction');
 ```
 
-```sql{class=nocopy}
+```output
            name           |                       summary
 --------------------------+------------------------------------------------------
  The Shawshank Redemption | Two convicts become friends and one convict escapes.
@@ -148,7 +154,7 @@ SELECT ts_rank(to_tsvector(summary), to_tsquery('one | son')) as score,* FROM mo
 
 we get
 
-```sql{class=nocopy}
+```output
    score   |           name           |                          summary
 -----------+--------------------------+-----------------------------------------------------------
  0.0607927 | The Godfather            | A don hands over his empire to one of his sons.
@@ -166,7 +172,7 @@ You can use the `ts_headline` function to highlight the query matches inside the
 SELECT name, ts_headline(summary,to_tsquery('one | son'))  FROM movies WHERE to_tsvector(summary) @@ to_tsquery('one | son');
 ```
 
-```sql{class=nocopy}
+```output
            name           |                          ts_headline
 --------------------------+---------------------------------------------------------------
  The Godfather            | A don hands over his empire to <b>one</b> of his <b>sons</b>.
@@ -183,7 +189,7 @@ All the above searches have been done on the `summary` column. If you want to se
 SELECT * FROM movies WHERE to_tsvector(name || ' ' || summary) @@ to_tsquery('godfather | thief');
 ```
 
-```sql{class=nocopy}
+```output
      name      |                          summary
 ---------------+-----------------------------------------------------------
  The Godfather | A don hands over his empire to one of his sons.
@@ -192,7 +198,7 @@ SELECT * FROM movies WHERE to_tsvector(name || ' ' || summary) @@ to_tsquery('go
 
 The query term `godfather` matched the title of one movie but the term `thief` matched the summary of another movie.
 
-## Storing tsvector
+## Storing processed documents
 
 For every search above, the summary in all the rows was parsed again and again. This could be avoided by storing the `tsvector` in a separate column and storing the calculated `tsvector` on every insert. This can be accomplished by adding a new column and adding a trigger to update that column on row updates as below.
 

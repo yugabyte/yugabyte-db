@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: acid-transactions-2-ycql
     parent: learn
-    weight: 566
+    weight: 140
 type: docs
 ---
 

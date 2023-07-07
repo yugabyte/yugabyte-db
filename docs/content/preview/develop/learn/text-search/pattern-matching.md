@@ -1,7 +1,7 @@
 ---
 title: Pattern Matching in YSQL
-headerTitle: Pattern Search
-linkTitle: Pattern Search
+headerTitle: Pattern Matching
+linkTitle: Pattern Matching
 headcontent: Learn how to search text with pattern matching
 description: Learn how to search text with pattern matching
 menu:
@@ -96,24 +96,6 @@ SELECT word FROM words WHERE word LIKE 'ca%ly' limit 5;
  callously
 ```
 
-## Single character matching
-
-You can use `_`(underscore) to match any single character. To get all the 3 letter words that start with `c` and end in `t`, you would execute,
-
-```sql
-SELECT word FROM words WHERE word LIKE 'c_t' limit 5;
-```
-
-```output
- word
-------
- cit
- cot
- cut
- cat
- cit
-```
-
 ## Case insensitive matching
 
 The `LIKE` operator performs case-sensitive matching. For example, if we change our pattern to uppercase, we may not get the same results.
@@ -177,6 +159,24 @@ SELECT word FROM words WHERE word SIMILAR TO '%e{2,}%' ;
 - `{m,n}` denotes repetition of the previous item at least m and not more than n times.
 
 Parentheses `()` can be used to group items into a single logical item. A bracket expression `[...]` specifies a character class, just as in POSIX regular expressions.
+
+## Single character matching
+
+You can use `_`(underscore) to match any single character. To get all the 3 letter words that start with `c` and end in `t`, you would execute,
+
+```sql
+SELECT word FROM words WHERE word LIKE 'c_t' limit 5;
+```
+
+```output
+ word
+------
+ cit
+ cot
+ cut
+ cat
+ cit
+```
 
 ## Learn more
 

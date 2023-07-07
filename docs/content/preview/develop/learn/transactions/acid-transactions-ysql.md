@@ -10,7 +10,7 @@ menu:
   preview:
     identifier: acid-transactions-1-ysql
     parent: learn
-    weight: 566
+    weight: 140
 rightNav:
   hideH4: true
 type: docs

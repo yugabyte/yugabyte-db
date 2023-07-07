@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: text-search
     parent: learn
-    weight: 100
+    weight: 150
 type: indexpage
 ---
 
@@ -22,16 +22,16 @@ The full-text search brings in a whole new paradigm of pre-processing of data, e
 
 Let's look into the different methods and features that YugabyteDB provides for searching text.
 
-## Pattern Matching
+## Pattern matching
 
 Pattern matching is accomplished by specifying a pattern using the `%, _, *, .` characters and using the `LIKE`, `ILIKE` and `~` operators. The patterns can range from simple prefix/suffix expressions to complex regular expressions. For example:
 
 ```sql{class=nocopy}
-'abc' LIKE 'a%'     true
-'abc' LIKE '_bc'    true
-'abc' LIKE 'c'      false
-'abc' SIMILAR TO '%(b|d)%'      true
-'abc' ~ 'a.*c'   true
+'abc' LIKE 'a%'             --> true
+'abc' LIKE '_bc'            --> true
+'abc' LIKE 'c'              --> false
+'abc' SIMILAR TO '%(b|d)%'  --> true
+'abc' ~ 'a.*c'              --> true
 ```
 
 {{<tip>}}
@@ -70,17 +70,27 @@ select word from words where dmetaphone(word) = dmetaphone('anapistagafi') limit
 To learn more about pattern matching, see [Phonetic Search](./phonetic-matching)
 {{</tip>}}
 
+## Similarity search
+
+Similarity matching works by determining how similar two strings are by taking into account how many letters are different and how many occur together. This can be useful when you do not know the exact spelling of your query term and can be to design spell checkers.
+
+For example, the distance between `warehoused` and `warehouse` is `1`, as it has one additional character (`d`) than `warehouse`.
+
+{{<tip>}}
+To learn more about similarity search, see [Similarity Search](./similarity-matching)
+{{</tip>}}
+
 ## Learn more
 
 {{<index/block>}}
 
 {{<index/item
-    title="Pattern Match"
+    title="Pattern Matching"
     body="Search text based on a text pattern"
     href="./pattern-matching"
     icon="fa-solid fa-equals">}}
 {{<index/item
-    title="Phonetic Match"
+    title="Phonetic Search"
     body="Search text based on sound and similarity"
     icon="fa-solid fa-music"
     href="phonetic-matching">}}
@@ -89,5 +99,10 @@ To learn more about pattern matching, see [Phonetic Search](./phonetic-matching)
     body="Search engine like search"
     icon="fa-brands fa-searchengin"
     href="full-text-search">}}
+{{<index/item
+    title="Similarity Search"
+    body="Find similar words"
+    icon="fa-brands fa-searchengin"
+    href="similarity-matching">}}
 
 {{</index/block>}}

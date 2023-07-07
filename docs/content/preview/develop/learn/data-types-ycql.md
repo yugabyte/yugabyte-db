@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: data-types-1-ycql
     parent: learn
-    weight: 565
+    weight: 120
 type: docs
 ---
 

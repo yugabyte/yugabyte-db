@@ -9,7 +9,7 @@ menu:
   preview:
     identifier: data-modeling-1-ycql
     parent: learn
-    weight: 562
+    weight: 100
 type: docs
 ---
 

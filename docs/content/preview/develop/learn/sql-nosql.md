@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: sql-nosql
     parent: learn
-    weight: 561
+    weight: 130
 type: docs
 ---
 
