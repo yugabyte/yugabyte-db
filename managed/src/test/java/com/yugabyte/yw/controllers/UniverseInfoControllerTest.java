@@ -275,7 +275,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe, false);
     assertEquals(
         "/*+ Leading((d pg_stat_statements))  */ "
-            + "SELECT s.userid::regrole, d.datname, s.queryid, s.query, s.calls, "
+            + "SELECT s.userid::regrole as rolname, d.datname, s.queryid, s.query, s.calls, "
             + "s.total_time, s.rows, s.min_time, s.max_time, s.mean_time, s.stddev_time, "
             + "s.local_blks_hit, s.local_blks_written "
             + "FROM pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid"
@@ -303,7 +303,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe, false);
     assertEquals(
         "/*+ Leading((d pg_stat_statements)) Set(enable_nestloop off) */ "
-            + "SELECT s.userid::regrole, d.datname, s.queryid, s.query, s.calls, "
+            + "SELECT s.userid::regrole as rolname, d.datname, s.queryid, s.query, s.calls, "
             + "s.total_time, s.rows, s.min_time, s.max_time, s.mean_time, s.stddev_time, "
             + "s.local_blks_hit, s.local_blks_written "
             + "FROM pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid"

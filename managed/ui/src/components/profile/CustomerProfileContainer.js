@@ -18,7 +18,10 @@ import {
   fetchPasswordPolicyResponse,
   updateUserProfile,
   updateUserProfileFailure,
-  updateUserProfileSuccess
+  updateUserProfileSuccess,
+  updatePassword,
+  updatePasswordFailure,
+  updatePasswordSuccess
 } from '../../actions/customers';
 
 const mapDispatchToProps = (dispatch) => {
@@ -51,6 +54,15 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(updateUserProfileFailure(response.payload));
         } else {
           dispatch(updateUserProfileSuccess(response.payload));
+        }
+      });
+    },
+    updateUserPassword: (userUUID, values) => {
+      dispatch(updatePassword(userUUID, values)).then((response) => {
+        if (response.payload.status !== 200) {
+          dispatch(updatePasswordFailure(response.payload));
+        } else {
+          dispatch(updatePasswordSuccess(response.payload));
         }
       });
     },

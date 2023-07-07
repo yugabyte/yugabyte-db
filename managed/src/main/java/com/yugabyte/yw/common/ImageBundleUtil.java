@@ -5,6 +5,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -17,9 +18,11 @@ import lombok.extern.slf4j.Slf4j;
 public class ImageBundleUtil {
 
   @Inject private CloudQueryHelper cloudQueryHelper;
+  @Inject private RuntimeConfGetter runtimeConfGetter;
 
   public ImageBundle.NodeProperties getNodePropertiesOrFail(
       UUID imageBundleUUID, String region, String cloudCode) {
+    boolean isCloudEnabled = runtimeConfGetter.getStaticConf().getBoolean("yb.cloud.enabled");
     ImageBundle.NodeProperties properties = new ImageBundle.NodeProperties();
     ImageBundle bundle = ImageBundle.getOrBadRequest(imageBundleUUID);
     ProviderDetails providerDetails = bundle.getProvider().getDetails();
@@ -27,9 +30,14 @@ public class ImageBundleUtil {
       Map<String, ImageBundleDetails.BundleInfo> regionsBundleInfo =
           bundle.getDetails().getRegions();
 
-      if (regionsBundleInfo.containsKey(region)) {
-        ImageBundleDetails.BundleInfo bundleInfo = regionsBundleInfo.get(region);
-        properties.setMachineImage(bundleInfo.getYbImage());
+      if (regionsBundleInfo.containsKey(region) || isCloudEnabled) {
+        ImageBundleDetails.BundleInfo bundleInfo = new ImageBundleDetails.BundleInfo();
+        if (regionsBundleInfo.containsKey(region)) {
+          bundleInfo = regionsBundleInfo.get(region);
+          properties.setMachineImage(bundleInfo.getYbImage());
+          properties.setSshPort(bundleInfo.getSshPortOverride());
+          properties.setSshUser(bundleInfo.getSshUserOverride());
+        }
         if (properties.getMachineImage() == null) {
           Region r = Region.getByCode(bundle.getProvider(), region);
           properties.setMachineImage(r.getYbImage());
@@ -42,11 +50,9 @@ public class ImageBundleUtil {
             properties.setMachineImage(cloudQueryHelper.getDefaultImage(r, arch.toString()));
           }
         }
-        properties.setSshPort(bundleInfo.getSshPortOverride());
         if (properties.getSshPort() == null) {
           properties.setSshPort(providerDetails.getSshPort());
         }
-        properties.setSshUser(bundleInfo.getSshUserOverride());
         if (properties.getSshUser() == null) {
           properties.setSshUser(providerDetails.getSshUser());
         }

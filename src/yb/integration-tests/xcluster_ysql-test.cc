@@ -2670,7 +2670,6 @@ TEST_F(XClusterYsqlTest, IsBootstrapRequiredNotFlushed) {
   std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
   auto tables = ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 1));
 
-
   // tables contains both producer and consumer universe tables (alternately).
   // Pick out just the producer tables from the list.
   std::vector<std::shared_ptr<client::YBTable>> producer_tables;
@@ -2685,7 +2684,34 @@ TEST_F(XClusterYsqlTest, IsBootstrapRequiredNotFlushed) {
     }
   }
 
-  // 1. Write some data.
+  std::unique_ptr<client::YBClient> client;
+  std::unique_ptr<cdc::CDCServiceProxy> producer_cdc_proxy;
+  client = ASSERT_RESULT(consumer_cluster()->CreateClient());
+  producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
+      &client->proxy_cache(),
+      HostPort::FromBoundEndpoint(producer_cluster()->mini_tablet_server(0)->bound_rpc_addr()));
+
+  ASSERT_OK(WaitForLoadBalancersToStabilize());
+
+  std::vector<TabletId> tablet_ids;
+  if (producer_tables[0]) {
+    ASSERT_OK(producer_cluster_.client_->GetTablets(
+        producer_tables[0]->name(), (int32_t)3, &tablet_ids, NULL));
+    ASSERT_GT(tablet_ids.size(), 0);
+  }
+
+  // 1. Setup replication without any data.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_check_bootstrap_required) = true;
+  ASSERT_OK(SetupUniverseReplication(producer_tables));
+  master::GetUniverseReplicationResponsePB verify_resp;
+  ASSERT_OK(VerifyUniverseReplication(&verify_resp));
+
+  master::ListCDCStreamsResponsePB stream_resp;
+  ASSERT_OK(GetCDCStreamForTable(producer_tables[0]->id(), &stream_resp));
+  ASSERT_EQ(stream_resp.streams_size(), 1);
+  auto& stream_id = stream_resp.streams(0).stream_id();
+
+  // 2. Write some data.
   for (const auto& producer_table : producer_tables) {
     WriteWorkload(0, 100, &producer_cluster_, producer_table->name());
   }
@@ -2701,38 +2727,10 @@ TEST_F(XClusterYsqlTest, IsBootstrapRequiredNotFlushed) {
     }
   }
 
-  // 2. Setup replication.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_check_bootstrap_required) = true;
-  ASSERT_OK(SetupUniverseReplication(kReplicationGroupId, producer_tables));
-  master::GetUniverseReplicationResponsePB verify_resp;
-  ASSERT_OK(VerifyUniverseReplication(kReplicationGroupId, &verify_resp));
-
-  std::unique_ptr<client::YBClient> client;
-  std::unique_ptr<cdc::CDCServiceProxy> producer_cdc_proxy;
-  client = ASSERT_RESULT(consumer_cluster()->CreateClient());
-  producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
-      &client->proxy_cache(),
-      HostPort::FromBoundEndpoint(producer_cluster()->mini_tablet_server(0)->bound_rpc_addr()));
-
-  master::ListCDCStreamsResponsePB stream_resp;
-  ASSERT_OK(GetCDCStreamForTable(producer_tables[0]->id(), &stream_resp));
-  ASSERT_EQ(stream_resp.streams_size(), 1);
-
-  std::vector<TabletId> tablet_ids;
-  if (producer_tables[0]) {
-    ASSERT_OK(producer_cluster_.client_->GetTablets(producer_tables[0]->name(),
-                                                    (int32_t) 3,
-                                                    &tablet_ids,
-                                                    NULL));
-    ASSERT_GT(tablet_ids.size(), 0);
-  }
-
-  ASSERT_OK(WaitForLoadBalancersToStabilize());
-
+  // 3. IsBootstrapRequired on already replicating streams should return false.
   rpc::RpcController rpc;
   cdc::IsBootstrapRequiredRequestPB req;
   cdc::IsBootstrapRequiredResponsePB resp;
-  auto stream_id = stream_resp.streams(0).stream_id();
   req.set_stream_id(stream_id);
   req.add_tablet_ids(tablet_ids[0]);
 
@@ -2744,7 +2742,14 @@ TEST_F(XClusterYsqlTest, IsBootstrapRequiredNotFlushed) {
                                           {producer_tables[0]->id()}, stream_id));
   ASSERT_FALSE(should_bootstrap);
 
-  ASSERT_OK(DeleteUniverseReplication(kReplicationGroupId));
+  // 4. IsBootstrapRequired without a valid stream should return true.
+  should_bootstrap =
+      ASSERT_RESULT(producer_cluster_.client_->IsBootstrapRequired({producer_tables[0]->id()}));
+  ASSERT_TRUE(should_bootstrap);
+
+  // 4. Setup replication with data should fail.
+  ASSERT_NOK(
+      SetupUniverseReplication(cdc::ReplicationGroupId("replication-group-2"), producer_tables));
 }
 
 // Checks that with missing logs, replication will require bootstrapping

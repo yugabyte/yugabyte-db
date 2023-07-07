@@ -113,7 +113,7 @@ const EntityType = {
   DATABASE: 'DATABASE',
   TABLE: 'TABLE',
   INDEX: 'INDEX',
-  UNIVERSE:  'UNIVERSE'
+  UNIVERSE: 'UNIVERSE'
 } as const;
 export type EntityType = typeof EntityType[keyof typeof EntityType];
 
@@ -135,10 +135,10 @@ interface HighestNodeQueryLoadDetails {
   DeleteStmt: number;
   InsertStmt: number;
   SelectStmt: number;
-  UpdateStmt: number
+  UpdateStmt: number;
 }
 
-interface OtherNodeQueryLoadDetails extends HighestNodeQueryLoadDetails { }
+interface OtherNodeQueryLoadDetails extends HighestNodeQueryLoadDetails {}
 
 export interface RecommendationInfo {
   // CPU Skew and CPU Usage
@@ -241,6 +241,10 @@ export interface ProviderNode {
   instanceName: string;
   instanceTypeCode: string;
   nodeName: string;
-  nodeUuid: string
-  zoneUuid: string
+  nodeUuid: string;
+  zoneUuid: string;
+}
+
+export interface TaskResponse {
+  taskUUID: string;
 }

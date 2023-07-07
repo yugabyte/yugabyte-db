@@ -175,6 +175,22 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "The flag defines, if we perform DB write-read check on DB nodes or not.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ysqlshConnectivityTest =
+      new ConfKeyInfo<>(
+          "yb.metrics.ysqlsh_connectivity_test",
+          ScopeType.UNIVERSE,
+          "YSQLSH Connectivity Test",
+          "The flag defines, if we perform YSQLSH Connectivity check on DB nodes or not.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> cqlshConnectivityTest =
+      new ConfKeyInfo<>(
+          "yb.metrics.cqlsh_connectivity_test",
+          ScopeType.UNIVERSE,
+          "CQLSH Connectivity Test",
+          "The flag defines, if we perform CQLSH Connectivity check on DB nodes or not.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> metricsCollectionLevel =
       new ConfKeyInfo<>(
           "yb.metrics.collection_level",
@@ -684,5 +700,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Memory check timeout",
           "Timeout for memory check in secs",
           ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> sleepTimeBeforeRestoreXClusterSetup =
+      new ConfKeyInfo<>(
+          "yb.xcluster.sleep_time_before_restore",
+          ScopeType.UNIVERSE,
+          "Wait time before doing restore during xCluster setup task",
+          "The amount of time to sleep (wait) before executing restore subtask during "
+              + "xCluster setup; it is useful because xCluster setup also drops the database "
+              + "before restore and the sleep makes sure the drop operation has reached all "
+              + "the nodes",
+          ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

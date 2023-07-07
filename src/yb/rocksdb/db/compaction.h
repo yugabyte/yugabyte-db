@@ -83,7 +83,8 @@ struct FdWithBoundaries {
   FileDescriptor fd;
   LightweightBoundaries smallest; // smallest boundaries in this file
   LightweightBoundaries largest;  // largest boundaries in this file
-  Slice user_filter_data; // Data provided by user that will be passed to iterator replacer.
+  // Data provided by user that will be passed to iterator replacer.
+  Slice user_filter_data;
 
   FdWithBoundaries(Arena* arena, const FileMetaData& source);
 };

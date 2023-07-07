@@ -115,9 +115,9 @@ const checkAuthParamsInUrl = (params) => {
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
-    // skip 403 response for "/login" and "/register" endpoints
+    // skip 401 response for "/login" and "/register" endpoints
     const isAllowedUrl = /.+\/(login|register)$/i.test(error.request.responseURL);
-    const isUnauthorised = error.response?.status === 403;
+    const isUnauthorised = error.response?.status === 401;
     if (isUnauthorised && !isAllowedUrl) {
       //redirect to users current page
       const searchParam = new URLSearchParams(window.location.search);

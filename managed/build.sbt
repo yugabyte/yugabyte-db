@@ -123,7 +123,7 @@ lazy val root = (project in file("."))
 
 scalaVersion := "2.12.10"
 javacOptions ++= Seq("-source", "17", "-target", "17")
-unmanagedSourceDirectories in Compile += baseDirectory.value / "target/scala-2.12/"
+Compile / unmanagedSourceDirectories += baseDirectory.value / "target/scala-2.12/"
 version := sys.process.Process("cat version.txt").lineStream_!.head
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
@@ -163,6 +163,7 @@ libraryDependencies ++= Seq(
   "com.azure" % "azure-identity" % "1.6.0",
   "com.azure" % "azure-security-keyvault-keys" % "4.5.0",
   "com.azure" % "azure-storage-blob" % "12.19.1",
+  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.27.0",
   "javax.mail" % "mail" % "1.4.7",
   "javax.validation" % "validation-api" % "2.0.1.Final",
   "io.prometheus" % "simpleclient" % "0.11.0",
@@ -193,6 +194,7 @@ libraryDependencies ++= Seq(
   "org.unix4j" % "unix4j-command" % "0.6",
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
   "org.apache.directory.api" % "api-all" % "2.1.0",
+  "io.fabric8" % "crd-generator-apt" % "6.4.1",
   "io.fabric8" % "kubernetes-client" % "6.4.1",
   "io.fabric8" % "kubernetes-client-api" % "6.4.1",
   "io.fabric8" % "kubernetes-model" % "4.9.2",
@@ -466,7 +468,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b5"
-libraryDependencies += "org.yb" % "yb-client" % "0.8.57-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.58-SNAPSHOT"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b30"
 
 libraryDependencies ++= Seq(

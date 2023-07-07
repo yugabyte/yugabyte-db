@@ -57,6 +57,8 @@ Result<FlagCallbackRegistration> RegisterFlagUpdateCallback(
 // (ex: using std::bind) must not depend on any other static objects. The callback itself is invoked
 // only at runtime so is safe to access other static objects.
 // This is never Deregistered so all dependencies must outlive the program.
+// Note: This macro should be used in the same file that DEFINEs the flag. Using it any other file
+// can result in segfault due to indeterminate order of static initialization.
 #define REGISTER_CALLBACK(flag_name, descriptive_name, callback) \
   namespace { \
   static const std::shared_ptr<yb::FlagCallbackInfo> BOOST_PP_CAT( \

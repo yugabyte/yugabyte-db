@@ -1,11 +1,22 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { browserHistory } from 'react-router';
-import { isNonAvailable, showOrRedirect } from '../../utils/LayoutUtils';
+import { browserHistory, Link } from 'react-router';
+import { YBBanner, YBBannerVariant } from '../common/descriptors';
+import { isNonAvailable, isNotHidden, showOrRedirect } from '../../utils/LayoutUtils';
 import UserProfileForm from './UserProfileForm';
 import { YBLoading } from '../common/indicators';
 import { getPromiseState } from '../../utils/PromiseUtils';
+
+const BannerContent = () => (
+  <>
+    <b>Note!</b> “Users” page has moved. You can now{' '}
+    <Link className="p-page-banner-link" to="/admin/user-management">
+      access Users page
+    </Link>{' '}
+    from the User Management section under Admin menu.
+  </>
+);
 
 export default class CustomerProfile extends Component {
   constructor(props) {
@@ -58,16 +69,30 @@ export default class CustomerProfile extends Component {
     }
 
     return (
-      <div className="tab-content">
-        <h2 className="content-title">User Profile {profileUpdateStatus}</h2>
-        <UserProfileForm
-          customer={this.props.customer}
-          customerProfile={customerProfile}
-          apiToken={apiToken}
-          handleProfileUpdate={this.handleProfileUpdate}
-          {...this.props}
-        />
-      </div>
+      <>
+        {isNotHidden(customer.data.features, 'profile.banner') && (
+          <YBBanner
+            className="p-page-banner"
+            variant={YBBannerVariant.WARNING}
+            showBannerIcon={false}
+          >
+            <BannerContent />
+          </YBBanner>
+        )}
+        <div className="dashboard-container">
+          <div className="tab-content">
+            <h2 className="content-title">User Profile {profileUpdateStatus}</h2>
+
+            <UserProfileForm
+              customer={this.props.customer}
+              customerProfile={customerProfile}
+              apiToken={apiToken}
+              handleProfileUpdate={this.handleProfileUpdate}
+              {...this.props}
+            />
+          </div>
+        </div>
+      </>
     );
   }
 }
