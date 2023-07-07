@@ -155,7 +155,7 @@ ybm cluster create \
   --region-info region=ap-northeast-1,num-nodes=3 \
   --cluster-tier Dedicated \
   --fault-tolerance ZONE \
-  --database-version Preview \
+  --database-version Innovation \
   --cluster-name my-single-region \
   --wait
 ```
@@ -204,7 +204,7 @@ ybm cluster create \
   --region-info region=us-central1,num-nodes=1,vpc=gcp-vpc \
   --cluster-tier Dedicated \
   --fault-tolerance REGION \
-  --database-version Stable \
+  --database-version Production \
   --wait
 ```
 
