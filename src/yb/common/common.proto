@@ -614,8 +614,8 @@ message AUHMetadataPB {
   optional string top_level_request_id = 1;
   optional string client_node_ip = 2;
   optional string top_level_node_id = 3;
-  optional uint64 current_request_id = 4;
-  optional uint64 query_id = 5;
+  optional int64 current_request_id = 4;
+  optional int64 query_id = 5;
 }
 
 message AUHAuxDataPB {

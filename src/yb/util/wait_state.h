@@ -106,8 +106,8 @@ YB_DEFINE_ENUM_TYPE(
 struct AUHMetadata {
   std::string top_level_request_id;
   std::string top_level_node_id;
-  uint64_t query_id = 0;
-  uint64_t current_request_id = 0;
+  int64_t query_id = 0;
+  int64_t current_request_id = 0;
   std::string client_node_ip;
 
   std::string ToString() const {
@@ -220,7 +220,7 @@ class WaitStateInfo {
   static void SetCurrentWaitState(WaitStateInfoPtr);
 
   void UpdateMetadata(const AUHMetadata& meta) EXCLUDES(mutex_);
-  void set_current_request_id(uint64_t id) EXCLUDES(mutex_);
+  void set_current_request_id(int64_t id) EXCLUDES(mutex_);
 
   template <class PB>
   static void UpdateMetadataFromPB(const PB& pb) {

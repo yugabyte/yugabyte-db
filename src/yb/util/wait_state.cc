@@ -67,7 +67,7 @@ WaitStateInfoPtr WaitStateInfo::CurrentWaitState() {
   return threadlocal_wait_state_;
 }
 
-void WaitStateInfo::set_current_request_id(uint64_t current_request_id) {
+void WaitStateInfo::set_current_request_id(int64_t current_request_id) {
   std::lock_guard<simple_spinlock> l(mutex_);
   metadata_.current_request_id = current_request_id;
 }
