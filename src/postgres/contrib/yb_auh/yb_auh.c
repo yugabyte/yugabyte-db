@@ -180,8 +180,8 @@ static void pg_collect_samples(TimestampTz auh_sample_time)
     if (proc != NULL && proc->pid != 0)
     {
       //TODO:
-      auh_entry_store(auh_sample_time, proc->top_level_request_id, 1,
-                      proc->wait_event_info, "tabletid=123", proc->node_uuid,
+      auh_entry_store(auh_sample_time, proc->top_level_request_id, proc->top_level_request_id,
+                      proc->wait_event_info, "", proc->node_uuid,
                       proc->remote_host, proc->remote_port, proc->queryid, auh_sample_time,
                       1);
     }
@@ -192,6 +192,7 @@ static void pg_collect_samples(TimestampTz auh_sample_time)
 static void tserver_collect_samples(TimestampTz auh_sample_time)
 {
   //TODO:
+
 }
 
 void
