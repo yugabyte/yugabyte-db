@@ -33,9 +33,9 @@
     <img src="https://img.shields.io/badge/Release-v1.3.0-FFA500?labelColor=gray&style=flat&link=https://github.com/apache/age/releases"/>
   </a>
   &nbsp;
-  <a href="https://www.postgresql.org/docs/11/index.html">
-    <img src="https://img.shields.io/badge/Version-PostgreSQL 11-00008B?labelColor=gray&style=flat&link=https://www.postgresql.org/docs/11/index.html"/>
-  </a>   
+  <a href="https://www.postgresql.org/docs/12/index.html">
+    <img src="https://img.shields.io/badge/Version-PostgreSQL 12-00008B?labelColor=gray&style=flat&link=https://www.postgresql.org/docs/12/index.html"/>
+  </a>
   &nbsp;
   <a href="https://github.com/apache/age/issues">
     <img src="https://img.shields.io/github/issues/apache/age"/>
@@ -56,7 +56,7 @@
 <br>
 
 
-<h2><img height="30" src="/img/AGE.png" style="margin: 0 0 -3px 0">&nbsp;&nbsp;What is Apache AGE?</h2>
+<h2><img height="30" src="/img/AGE.png">&nbsp;&nbsp;What is Apache AGE?</h2>
 
 [Apache AGE](https://age.apache.org/#) is an extension for PostgreSQL that enables users to leverage a graph database on top of the existing relational databases. AGE is an acronym for A Graph Extension and is inspired by Bitnine's AgensGraph, a multi-model database fork of PostgreSQL. The basic principle of the project is to create a single storage that handles both the relational and graph data model so that the users can use the standard ANSI SQL along with openCypher, one of the most popular graph query languages today. 
 </br>
@@ -158,7 +158,7 @@ You can <a href="https://www.postgresql.org/ftp/source/"> download the Postgres 
 
 Clone the <a href="https://github.com/apache/age">github repository</a> or download the <a href="https://github.com/apache/age/releases">download an official release.
 </a>
-Run the pg_config utility and check the version of PostgreSQL. Currently, only PostgreSQL versions 11, 12 & 13 are supported. If you have any other version of Postgres, you will need to install PostgreSQL version 11, 12 or 13.
+Run the pg_config utility and check the version of PostgreSQL. Currently, only PostgreSQL versions 11, 12, & 13 are supported. If you have any other version of Postgres, you will need to install PostgreSQL version 11, 12, or 13.
 <br>
     
 ```bash

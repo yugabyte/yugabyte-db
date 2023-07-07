@@ -58,7 +58,7 @@ def deleteGraph(conn:ext.connection, graphName:str):
     with conn.cursor() as cursor:
         cursor.execute(sql.SQL("SELECT drop_graph({graphName}, true);").format(graphName=sql.Literal(graphName)))
         conn.commit()
-    
+
 
 def buildCypher(graphName:str, cypherStmt:str, columns:list) ->str:
     if graphName == None:
@@ -91,7 +91,7 @@ def execSql(conn:ext.connection, stmt:str, commit:bool=False, params:tuple=None)
         cursor.execute(stmt, params)
         if commit:
             conn.commit()
-        
+
         return cursor
     except SyntaxError as cause:
         conn.rollback()
@@ -105,8 +105,8 @@ def querySql(conn:ext.connection, stmt:str, params:tuple=None) -> ext.cursor :
     return execSql(conn, stmt, False, params)
 
 # Execute cypher statement and return cursor.
-# If cypher statement changes data (create, set, remove), 
-# You must commit session(ag.commit()) 
+# If cypher statement changes data (create, set, remove),
+# You must commit session(ag.commit())
 # (Otherwise the execution cannot make any effect.)
 def execCypher(conn:ext.connection, graphName:str, cypherStmt:str, cols:list=None, params:tuple=None) -> ext.cursor :
     if conn == None or conn.closed:
@@ -120,7 +120,7 @@ def execCypher(conn:ext.connection, graphName:str, cypherStmt:str, cols:list=Non
     cypher = cypher[2:len(cypher)-1]
 
     preparedStmt = "SELECT * FROM age_prepare_cypher({graphName},{cypherStmt})"
-    
+
     cursor = conn.cursor()
     try:
         cursor.execute(sql.SQL(preparedStmt).format(graphName=sql.Literal(graphName),cypherStmt=sql.Literal(cypher)))
@@ -190,10 +190,10 @@ class Age:
 
     def commit(self):
         self.connection.commit()
-        
+
     def rollback(self):
         self.connection.rollback()
-    
+
     def execCypher(self, cypherStmt:str, cols:list=None, params:tuple=None) -> ext.cursor :
         return execCypher(self.connection, self.graphName, cypherStmt, cols=cols, params=params)
 
@@ -202,8 +202,8 @@ class Age:
 
     # def execSql(self, stmt:str, commit:bool=False, params:tuple=None) -> ext.cursor :
     #     return execSql(self.connection, stmt, commit, params)
-        
-    
+
+
     # def execCypher(self, cypherStmt:str, commit:bool=False, params:tuple=None) -> ext.cursor :
     #     return execCypher(self.connection, self.graphName, cypherStmt, commit, params)
 
@@ -212,6 +212,3 @@ class Age:
 
     # def queryCypher(self, cypherStmt:str, columns:list=None , params:tuple=None) -> ext.cursor :
     #     return queryCypher(self.connection, self.graphName, cypherStmt, columns, params)
-
-
-

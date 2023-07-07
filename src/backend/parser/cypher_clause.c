@@ -25,6 +25,7 @@
 #include "postgres.h"
 
 #include "access/sysattr.h"
+#include "access/heapam.h"
 #include "catalog/pg_type_d.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -33,7 +34,7 @@
 #include "nodes/parsenodes.h"
 #include "nodes/pg_list.h"
 #include "nodes/primnodes.h"
-#include "optimizer/var.h"
+#include "optimizer/optimizer.h"
 #include "parser/parse_clause.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_collate.h"
@@ -84,6 +85,14 @@
 #define AGE_VARNAME_MERGE_CLAUSE AGE_DEFAULT_VARNAME_PREFIX"merge_clause"
 #define AGE_VARNAME_ID AGE_DEFAULT_VARNAME_PREFIX"id"
 #define AGE_VARNAME_SET_CLAUSE AGE_DEFAULT_VARNAME_PREFIX"set_clause"
+
+/*
+ * In the transformation stage, we need to track
+ * where a variable came from. When moving between
+ * clauses, Postgres parsestate and Query data structures
+ * are insufficient for some of the information we
+ * need.
+ */
 
 /*
  * Rules to determine if a node must be included:
@@ -270,9 +279,9 @@ static cypher_target_node *get_referenced_variable(ParseState *pstate,
 
 //call...[yield]
 static Query *transform_cypher_call_stmt(cypher_parsestate *cpstate,
-                                      cypher_clause *clause);
+                                         cypher_clause *clause);
 static Query *transform_cypher_call_subquery(cypher_parsestate *cpstate,
-                                          cypher_clause *clause);
+                                             cypher_clause *clause);
 
 // transform
 #define PREV_CYPHER_CLAUSE_ALIAS AGE_DEFAULT_ALIAS_PREFIX"previous_cypher_clause"
@@ -1704,8 +1713,7 @@ cypher_update_information *transform_cypher_set_item_list(
                 ereport(
                     ERROR,
                     (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                     errmsg(
-                         "SET clause doesn't not support updating maps or lists in a property"),
+                     errmsg("SET clause doesn't not support updating maps or lists in a property"),
                      parser_errposition(pstate, set_item->location)));
             }
 
@@ -5219,7 +5227,7 @@ transform_create_cypher_edge(cypher_parsestate *cpstate, List **target_list,
     rel->relid = RelationGetRelid(label_relation);
 
     rte = addRangeTableEntryForRelation((ParseState *)cpstate, label_relation,
-                                        NULL, false, false);
+                                        AccessShareLock, NULL, false, false);
     rte->requiredPerms = ACL_INSERT;
 
     // Build Id expression, always use the default logic
@@ -5488,7 +5496,7 @@ transform_create_cypher_new_node(cypher_parsestate *cpstate,
     rel->relid = RelationGetRelid(label_relation);
 
     rte = addRangeTableEntryForRelation((ParseState *)cpstate, label_relation,
-                                        NULL, false, false);
+                                        AccessShareLock, NULL, false, false);
     rte->requiredPerms = ACL_INSERT;
 
     // id
@@ -6485,7 +6493,7 @@ transform_merge_cypher_edge(cypher_parsestate *cpstate, List **target_list,
     rel->relid = RelationGetRelid(label_relation);
 
     rte = addRangeTableEntryForRelation((ParseState *)cpstate, label_relation,
-                                        NULL, false, false);
+                                        AccessShareLock, NULL, false, false);
     rte->requiredPerms = ACL_INSERT;
 
     // Build Id expression, always use the default logic
@@ -6603,7 +6611,7 @@ transform_merge_cypher_node(cypher_parsestate *cpstate, List **target_list,
     rel->relid = RelationGetRelid(label_relation);
 
     rte = addRangeTableEntryForRelation((ParseState *)cpstate, label_relation,
-                                        NULL, false, false);
+                                        AccessShareLock, NULL, false, false);
     rte->requiredPerms = ACL_INSERT;
 
     // id

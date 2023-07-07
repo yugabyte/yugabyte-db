@@ -17,6 +17,7 @@
  * under the License.
  */
 
+SET extra_float_digits = 0;
 LOAD 'age';
 SET search_path TO ag_catalog;
 

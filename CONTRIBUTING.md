@@ -20,7 +20,7 @@ We strongly recommend you to subscribe the mailing lists, join the Apache AGE Di
 
 ## Pull Requests
 
-Changes to AGE source code are proposed, reviewed, and committed via GitHub pull requests (described in Code Convention). Pull requests are a great way to get your ideas into this repository. Anyone can view and comment on active changes here. Reviewing others' changes are a good way to learn how the change process works and gain exposure to activity in various parts of the code. You can help by reviewing the changes, asking questions, or pointing out issues as simple as typos.
+Changes to AGE source code are proposed, reviewed, and committed via Github pull requests (described in Code Convention). Pull requests are a great way to get your ideas into this repository. Anyone can view and comment on active changes here. Reviewing others' changes are a good way to learn how the change process works and gain exposure to activity in various parts of the code. You can help by reviewing the changes, asking questions, or pointing out issues as simple as typos.
 
 ## Documentation Changes
 

@@ -26,6 +26,7 @@
 #include "access/skey.h"
 #include "access/stratnum.h"
 #include "catalog/indexing.h"
+#include "catalog/namespace.h"
 #include "fmgr.h"
 #include "nodes/execnodes.h"
 #include "nodes/makefuncs.h"
@@ -43,10 +44,13 @@
 #include "utils/ag_cache.h"
 #include "utils/graphid.h"
 
-// INSERT INTO ag_catalog.ag_label
-// VALUES (label_name, label_graph, label_id, label_kind, label_relation, seq_name)
-Oid insert_label(const char *label_name, Oid label_graph, int32 label_id,
-                 char label_kind, Oid label_relation, const char *seq_name)
+/*
+ * INSERT INTO ag_catalog.ag_label
+ * VALUES (label_name, label_graph, label_id, label_kind,
+ *         label_relation, seq_name)
+ */
+void insert_label(const char *label_name, Oid graph_oid, int32 label_id,
+                  char label_kind, Oid label_relation, const char *seq_name)
 {
     NameData label_name_data;
     NameData seq_name_data;
@@ -54,25 +58,25 @@ Oid insert_label(const char *label_name, Oid label_graph, int32 label_id,
     bool nulls[Natts_ag_label];
     Relation ag_label;
     HeapTuple tuple;
-    Oid label_oid;
 
     /*
      * NOTE: Is it better to make use of label_id and label_kind domain types
      *       than to use assert to check label_id and label_kind are valid?
      */
     AssertArg(label_name);
-    AssertArg(OidIsValid(label_graph));
     AssertArg(label_id_is_valid(label_id));
     AssertArg(label_kind == LABEL_KIND_VERTEX ||
               label_kind == LABEL_KIND_EDGE);
     AssertArg(OidIsValid(label_relation));
     AssertArg(seq_name);
 
+    ag_label = table_open(ag_label_relation_id(), RowExclusiveLock);
+
     namestrcpy(&label_name_data, label_name);
     values[Anum_ag_label_name - 1] = NameGetDatum(&label_name_data);
     nulls[Anum_ag_label_name - 1] = false;
 
-    values[Anum_ag_label_graph - 1] = ObjectIdGetDatum(label_graph);
+    values[Anum_ag_label_graph - 1] = ObjectIdGetDatum(graph_oid);
     nulls[Anum_ag_label_graph - 1] = false;
 
     values[Anum_ag_label_id - 1] = Int32GetDatum(label_id);
@@ -88,19 +92,15 @@ Oid insert_label(const char *label_name, Oid label_graph, int32 label_id,
     values[Anum_ag_label_seq_name - 1] = NameGetDatum(&seq_name_data);
     nulls[Anum_ag_label_seq_name - 1] = false;
 
-    ag_label = heap_open(ag_label_relation_id(), RowExclusiveLock);
-
     tuple = heap_form_tuple(RelationGetDescr(ag_label), values, nulls);
 
     /*
      * CatalogTupleInsert() is originally for PostgreSQL's catalog. However,
      * it is used at here for convenience.
      */
-    label_oid = CatalogTupleInsert(ag_label, tuple);
+    CatalogTupleInsert(ag_label, tuple);
 
-    heap_close(ag_label, RowExclusiveLock);
-
-    return label_oid;
+    table_close(ag_label, RowExclusiveLock);
 }
 
 // DELETE FROM ag_catalog.ag_label WHERE relation = relation
@@ -114,7 +114,7 @@ void delete_label(Oid relation)
     ScanKeyInit(&scan_keys[0], Anum_ag_label_relation, BTEqualStrategyNumber,
                 F_OIDEQ, ObjectIdGetDatum(relation));
 
-    ag_label = heap_open(ag_label_relation_id(), RowExclusiveLock);
+    ag_label = table_open(ag_label_relation_id(), RowExclusiveLock);
     scan_desc = systable_beginscan(ag_label, ag_label_relation_index_id(),
                                    true, NULL, 1, scan_keys);
 
@@ -129,45 +129,34 @@ void delete_label(Oid relation)
     CatalogTupleDelete(ag_label, &tuple->t_self);
 
     systable_endscan(scan_desc);
-    heap_close(ag_label, RowExclusiveLock);
+    table_close(ag_label, RowExclusiveLock);
 }
 
-Oid get_label_oid(const char *label_name, Oid label_graph)
+int32 get_label_id(const char *label_name, Oid graph_oid)
 {
     label_cache_data *cache_data;
 
-    cache_data = search_label_name_graph_cache(label_name, label_graph);
-    if (cache_data)
-        return cache_data->oid;
-    else
-        return InvalidOid;
-}
-
-int32 get_label_id(const char *label_name, Oid label_graph)
-{
-    label_cache_data *cache_data;
-
-    cache_data = search_label_name_graph_cache(label_name, label_graph);
+    cache_data = search_label_name_graph_cache(label_name, graph_oid);
     if (cache_data)
         return cache_data->id;
     else
         return INVALID_LABEL_ID;
 }
 
-Oid get_label_relation(const char *label_name, Oid label_graph)
+Oid get_label_relation(const char *label_name, Oid graph_oid)
 {
     label_cache_data *cache_data;
 
-    cache_data = search_label_name_graph_cache(label_name, label_graph);
+    cache_data = search_label_name_graph_cache(label_name, graph_oid);
     if (cache_data)
         return cache_data->relation;
     else
         return InvalidOid;
 }
 
-char *get_label_relation_name(const char *label_name, Oid label_graph)
+char *get_label_relation_name(const char *label_name, Oid graph_oid)
 {
-    return get_rel_name(get_label_relation(label_name, label_graph));
+    return get_rel_name(get_label_relation(label_name, graph_oid));
 }
 
 char get_label_kind(const char *label_name, Oid label_graph)
@@ -206,7 +195,7 @@ Datum _label_name(PG_FUNCTION_ARGS)
 
     label_id = (int32)(((uint64)AG_GETARG_GRAPHID(1)) >> ENTRY_ID_BITS);
 
-    label_cache = search_label_graph_id_cache(graph, label_id);
+    label_cache = search_label_graph_oid_cache(graph, label_id);
 
     label_name = NameStr(label_cache->name);
 
@@ -243,23 +232,23 @@ PG_FUNCTION_INFO_V1(_extract_label_id);
 
 Datum _extract_label_id(PG_FUNCTION_ARGS)
 {
-    graphid graph_id;
+    graphid graph_oid;
 
     if (PG_ARGISNULL(0))
     {
         ereport(ERROR, (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-                        errmsg("graph_id must not be null")));
+                        errmsg("graph_oid must not be null")));
     }
-    graph_id = AG_GETARG_GRAPHID(0);
+    graph_oid = AG_GETARG_GRAPHID(0);
 
-    PG_RETURN_INT32(get_graphid_label_id(graph_id));
+    PG_RETURN_INT32(get_graphid_label_id(graph_oid));
 }
 
-bool label_id_exists(Oid label_graph, int32 label_id)
+bool label_id_exists(Oid graph_oid, int32 label_id)
 {
     label_cache_data *cache_data;
 
-    cache_data = search_label_graph_id_cache(label_graph, label_id);
+    cache_data = search_label_graph_oid_cache(graph_oid, label_id);
     if (cache_data)
         return true;
     else
@@ -288,15 +277,16 @@ RangeVar *get_label_range_var(char *graph_name, Oid graph_oid,
  * XXX: We may want to use the cache system for this function,
  * however the cache system currently requires us to know the
  * name of the label we want.
-  */
+ */
 List *get_all_edge_labels_per_graph(EState *estate, Oid graph_oid)
 {
     List *labels = NIL;
     ScanKeyData scan_keys[2];
     Relation ag_label;
-    HeapScanDesc scan_desc;
+    TableScanDesc scan_desc;
     HeapTuple tuple;
     TupleTableSlot *slot;
+    ResultRelInfo *resultRelInfo;
 
     // setup scan keys to get all edges for the given graph oid
     ScanKeyInit(&scan_keys[1], Anum_ag_label_graph, BTEqualStrategyNumber,
@@ -305,11 +295,15 @@ List *get_all_edge_labels_per_graph(EState *estate, Oid graph_oid)
                 F_CHAREQ, CharGetDatum(LABEL_TYPE_EDGE));
 
     // setup the table to be scanned
-    ag_label = heap_open(ag_label_relation_id(), RowExclusiveLock);
-    scan_desc = heap_beginscan(ag_label, estate->es_snapshot, 2, scan_keys);
+    ag_label = table_open(ag_label_relation_id(), RowExclusiveLock);
+    scan_desc = table_beginscan(ag_label, estate->es_snapshot, 2, scan_keys);
 
-    slot = ExecInitExtraTupleSlot(estate,
-                RelationGetDescr(ag_label));
+    resultRelInfo = create_entity_result_rel_info(estate, "ag_catalog",
+                                                  "ag_label");
+
+    slot = ExecInitExtraTupleSlot(
+        estate, RelationGetDescr(resultRelInfo->ri_RelationDesc),
+        &TTSOpsHeapTuple);
 
     // scan through the results and get all the label names.
     while(true)
@@ -324,7 +318,7 @@ List *get_all_edge_labels_per_graph(EState *estate, Oid graph_oid)
         if (!HeapTupleIsValid(tuple))
             break;
 
-        ExecStoreTuple(tuple, slot, InvalidBuffer, false);
+        ExecStoreHeapTuple(tuple, slot, false);
 
         datum = slot_getattr(slot, Anum_ag_label_name, &isNull);
         label = DatumGetName(datum);
@@ -332,8 +326,10 @@ List *get_all_edge_labels_per_graph(EState *estate, Oid graph_oid)
         labels = lappend(labels, label);
     }
 
-    heap_endscan(scan_desc);
-    heap_close(ag_label, RowExclusiveLock);
+    table_endscan(scan_desc);
+
+    destroy_entity_result_rel_info(resultRelInfo);
+    table_close(resultRelInfo->ri_RelationDesc, RowExclusiveLock);
 
     return labels;
 }

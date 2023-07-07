@@ -228,7 +228,7 @@ typedef struct cypher_create_target_nodes
     ExtensibleNode extensible;
     List *paths;
     uint32 flags;
-    Oid graph_oid;
+    uint32 graph_oid;
 } cypher_create_target_nodes;
 
 typedef struct cypher_create_path
@@ -362,7 +362,7 @@ typedef struct cypher_update_information
 {
     ExtensibleNode extensible;
     List *set_items;
-    int flags;
+    uint32 flags;
     AttrNumber tuple_position;
     char *graph_name;
     char *clause_name;
@@ -384,9 +384,9 @@ typedef struct cypher_delete_information
 {
     ExtensibleNode extensible;
     List *delete_items;
-    int flags;
+    uint32 flags;
     char *graph_name;
-    Oid graph_oid;
+    uint32 graph_oid;
     bool detach;
 } cypher_delete_information;
 
@@ -400,8 +400,8 @@ typedef struct cypher_delete_item
 typedef struct cypher_merge_information
 {
     ExtensibleNode extensible;
-    int flags;
-    Oid graph_oid;
+    uint32 flags;
+    uint32 graph_oid;
     AttrNumber merge_function_attr;
     cypher_create_path *path;
 } cypher_merge_information;

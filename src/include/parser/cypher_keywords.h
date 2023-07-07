@@ -20,9 +20,10 @@
 #ifndef AG_KEYWORDS_H
 #define AG_KEYWORDS_H
 
-#include "common/keywords.h"
+#include "common/kwlookup.h"
 
-extern const ScanKeyword cypher_keywords[];
-extern const int num_cypher_keywords;
+extern const ScanKeywordList CypherKeyword;
+extern const uint16 CypherKeywordTokens[];
+extern const uint16 CypherKeywordCategories[];
 
 #endif

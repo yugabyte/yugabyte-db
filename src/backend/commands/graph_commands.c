@@ -19,9 +19,9 @@
 
 #include "postgres.h"
 
-#include "access/xact.h"
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "access/xact.h"
 #include "catalog/dependency.h"
 #include "catalog/objectaddress.h"
 #include "commands/defrem.h"
@@ -35,9 +35,8 @@
 #include "nodes/pg_list.h"
 #include "nodes/value.h"
 #include "parser/parser.h"
-#include "utils/fmgroids.h"
-#include "utils/relcache.h"
 #include "utils/rel.h"
+#include "utils/relcache.h"
 
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
@@ -182,9 +181,8 @@ Datum drop_graph(PG_FUNCTION_ARGS)
     graph_name_str = NameStr(*graph_name);
     if (!graph_exists(graph_name_str))
     {
-        ereport(ERROR,
-                (errcode(ERRCODE_UNDEFINED_SCHEMA),
-                 errmsg("graph \"%s\" does not exist", graph_name_str)));
+        ereport(ERROR, (errcode(ERRCODE_UNDEFINED_SCHEMA),
+                        errmsg("graph \"%s\" does not exist", graph_name_str)));
     }
 
     drop_schema_for_graph(graph_name_str, cascade);
@@ -367,11 +365,11 @@ List *get_graphnames(void)
     List *graphnames = NIL;
     char *str;
 
-    ag_graph = heap_open(ag_graph_relation_id(), RowExclusiveLock);
+    ag_graph = table_open(ag_graph_relation_id(), RowExclusiveLock);
     scan_desc = systable_beginscan(ag_graph, ag_graph_name_index_id(), true,
                                    NULL, 0, NULL);
 
-    slot = MakeTupleTableSlot(RelationGetDescr(ag_graph));
+    slot = MakeTupleTableSlot(RelationGetDescr(ag_graph), &TTSOpsHeapTuple);
 
     for (;;)
     {
@@ -380,17 +378,17 @@ List *get_graphnames(void)
             break;
 
         ExecClearTuple(slot);
-        ExecStoreTuple(tuple, slot, InvalidBuffer, false);
+        ExecStoreHeapTuple(tuple, slot, false);
 
         slot_getallattrs(slot);
 
-        str = DatumGetCString(slot->tts_values[0]);
+        str = DatumGetCString(slot->tts_values[Anum_ag_graph_name - 1]);
         graphnames = lappend(graphnames, str);
     }
 
     ExecDropSingleTupleTableSlot(slot);
     systable_endscan(scan_desc);
-    heap_close(ag_graph, RowExclusiveLock);
+    table_close(ag_graph, RowExclusiveLock);
 
     return graphnames;
 }

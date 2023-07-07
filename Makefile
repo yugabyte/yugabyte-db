@@ -108,14 +108,22 @@ ag_regress_dir = $(srcdir)/regress
 REGRESS_OPTS = --load-extension=age --inputdir=$(ag_regress_dir) --outputdir=$(ag_regress_dir) --temp-instance=$(ag_regress_dir)/instance --port=61958 --encoding=UTF-8
 
 ag_regress_out = instance/ log/ results/ regression.*
-EXTRA_CLEAN = $(addprefix $(ag_regress_dir)/, $(ag_regress_out)) src/backend/parser/cypher_gram.c src/include/parser/cypher_gram_def.h
+EXTRA_CLEAN = $(addprefix $(ag_regress_dir)/, $(ag_regress_out)) src/backend/parser/cypher_gram.c src/include/parser/cypher_gram_def.h src/include/parser/cypher_kwlist_d.h
+
+GEN_KEYWORDLIST = $(PERL) -I ./tools/ ./tools/gen_keywordlist.pl
+GEN_KEYWORDLIST_DEPS = ./tools/gen_keywordlist.pl tools/PerfectHash.pm
 
 ag_include_dir = $(srcdir)/src/include
 PG_CPPFLAGS = -I$(ag_include_dir) -I$(ag_include_dir)/parser
 
-PG_CONFIG = pg_config
+PG_CONFIG ?= pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
+
+src/backend/parser/cypher_keywords.o: src/include/parser/cypher_kwlist_d.h
+
+src/include/parser/cypher_kwlist_d.h: src/include/parser/cypher_kwlist.h $(GEN_KEYWORDLIST_DEPS)
+	$(GEN_KEYWORDLIST) --extern --varname CypherKeyword --output src/include/parser $<
 
 src/include/parser/cypher_gram_def.h: src/backend/parser/cypher_gram.c
 

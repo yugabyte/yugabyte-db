@@ -35,8 +35,8 @@ CREATE FUNCTION call_stmt_test.add_agtype(agtype, agtype) RETURNS agtype
     IMMUTABLE
     RETURNS NULL ON NULL INPUT;
 
-/* 
- * CALL (solo) 
+/*
+ * CALL (solo)
  */
 
 SELECT * FROM cypher('cypher_call', $$CALL sqrt(64)$$) as (sqrt agtype);

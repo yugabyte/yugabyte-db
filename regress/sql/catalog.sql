@@ -25,7 +25,7 @@ SET search_path TO ag_catalog;
 --
 
 SELECT create_graph('graph');
-SELECT * FROM ag_graph WHERE name = 'graph';
+SELECT name, namespace FROM ag_graph WHERE name = 'graph';
 
 -- create a label to test drop_label()
 SELECT * FROM cypher('graph', $$CREATE (:l)$$) AS r(a agtype);
@@ -62,18 +62,18 @@ SELECT create_graph('GraphA');
 SELECT create_graph('GraphB');
 
 -- Show GraphA's construction to verify case is preserved.
-SELECT * FROM ag_graph WHERE name = 'GraphA';
+SELECT name, namespace FROM ag_graph WHERE name = 'GraphA';
 SELECT nspname FROM pg_namespace WHERE nspname = 'GraphA';
 
 -- Rename GraphA to GraphX.
 SELECT alter_graph('GraphA', 'RENAME', 'GraphX');
 
 -- Show GraphX's construction to verify case is preserved.
-SELECT * FROM ag_graph WHERE name = 'GraphX';
+SELECT name, namespace FROM ag_graph WHERE name = 'GraphX';
 SELECT nspname FROM pg_namespace WHERE nspname = 'GraphX';
 
 -- Verify there isn't a graph GraphA anymore.
-SELECT * FROM ag_graph WHERE name = 'GraphA';
+SELECT name, namespace FROM ag_graph WHERE name = 'GraphA';
 SELECT * FROM pg_namespace WHERE nspname = 'GraphA';
 
 -- Sanity check that graphx does not exist - should return 0.

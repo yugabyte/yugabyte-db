@@ -19,13 +19,10 @@
 
 #include "postgres.h"
 
-#include "access/sysattr.h"
-#include "catalog/pg_type_d.h"
 #include "nodes/extensible.h"
 #include "nodes/nodes.h"
 #include "nodes/pg_list.h"
 #include "nodes/plannodes.h"
-#include "nodes/relation.h"
 
 #include "executor/cypher_executor.h"
 #include "optimizer/cypher_createplan.h"

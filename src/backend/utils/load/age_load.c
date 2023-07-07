@@ -21,67 +21,45 @@
 
 #include "access/heapam.h"
 #include "access/xact.h"
-#include "catalog/dependency.h"
-#include "catalog/namespace.h"
-#include "catalog/objectaddress.h"
-#include "catalog/pg_class_d.h"
-#include "commands/defrem.h"
-#include "commands/sequence.h"
-#include "commands/tablecmds.h"
-#include "miscadmin.h"
-#include "nodes/makefuncs.h"
-#include "nodes/nodes.h"
-#include "nodes/parsenodes.h"
-#include "nodes/pg_list.h"
-#include "nodes/plannodes.h"
-#include "nodes/primnodes.h"
-#include "nodes/value.h"
 #include "parser/parse_node.h"
-#include "parser/parser.h"
 #include "storage/lockdefs.h"
 #include "tcop/dest.h"
-#include "tcop/utility.h"
-#include "utils/acl.h"
 #include "utils/builtins.h"
-#include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
-#include "commands/label_commands.h"
-#include "utils/ag_cache.h"
 #include "utils/agtype.h"
 #include "utils/graphid.h"
 
-#include "utils/load/age_load.h"
-#include "utils/load/ag_load_labels.h"
 #include "utils/load/ag_load_edges.h"
+#include "utils/load/ag_load_labels.h"
+#include "utils/load/age_load.h"
 
-agtype* create_empty_agtype(void)
+agtype *create_empty_agtype(void)
 {
     agtype_in_state result;
 
     memset(&result, 0, sizeof(agtype_in_state));
 
-    result.res = push_agtype_value(&result.parse_state,
-                                   WAGT_BEGIN_OBJECT, NULL);
-    result.res = push_agtype_value(&result.parse_state,
-                                   WAGT_END_OBJECT, NULL);
+    result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_OBJECT,
+                                   NULL);
+    result.res = push_agtype_value(&result.parse_state, WAGT_END_OBJECT, NULL);
 
     return agtype_value_to_agtype(result.res);
 }
 
-agtype* create_agtype_from_list(char **header, char **fields,
-                                size_t fields_len, int64 vertex_id)
+agtype *create_agtype_from_list(char **header, char **fields, size_t fields_len,
+                                int64 vertex_id)
 {
     agtype_in_state result;
     int i;
 
     memset(&result, 0, sizeof(agtype_in_state));
 
-    result.res = push_agtype_value(&result.parse_state,
-                                   WAGT_BEGIN_OBJECT, NULL);
+    result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_OBJECT,
+                                   NULL);
 
     result.res = push_agtype_value(&result.parse_state,
                                    WAGT_KEY,
@@ -117,12 +95,13 @@ agtype* create_agtype_from_list_i(char **header, char **fields,
     {
         return create_empty_agtype();
     }
+
     memset(&result, 0, sizeof(agtype_in_state));
 
-    result.res = push_agtype_value(&result.parse_state,
-                                   WAGT_BEGIN_OBJECT, NULL);
+    result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_OBJECT,
+                                   NULL);
 
-    for (i = start_index; i<fields_len; i++)
+    for (i = start_index; i < fields_len; i++)
     {
         result.res = push_agtype_value(&result.parse_state,
                                        WAGT_KEY,
@@ -138,9 +117,9 @@ agtype* create_agtype_from_list_i(char **header, char **fields,
     return agtype_value_to_agtype(result.res);
 }
 
-void insert_edge_simple(Oid graph_id, char* label_name, graphid edge_id,
+void insert_edge_simple(Oid graph_oid, char *label_name, graphid edge_id,
                         graphid start_id, graphid end_id,
-                        agtype* edge_properties)
+                        agtype *edge_properties)
 {
 
     Datum values[6];
@@ -149,7 +128,7 @@ void insert_edge_simple(Oid graph_id, char* label_name, graphid edge_id,
     HeapTuple tuple;
 
     // Check if label provided exists as vertex label, then throw error
-    if (get_label_kind(label_name, graph_id) == LABEL_KIND_VERTEX)
+    if (get_label_kind(label_name, graph_oid) == LABEL_KIND_VERTEX)
     {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("label %s already exists as vertex label", label_name)));
@@ -160,21 +139,19 @@ void insert_edge_simple(Oid graph_id, char* label_name, graphid edge_id,
     values[2] = GRAPHID_GET_DATUM(end_id);
     values[3] = AGTYPE_P_GET_DATUM((edge_properties));
 
-    label_relation = heap_open(get_label_relation(label_name,
-                                                  graph_id),
-                               RowExclusiveLock);
+    label_relation = table_open(get_label_relation(label_name, graph_oid),
+                                RowExclusiveLock);
 
     tuple = heap_form_tuple(RelationGetDescr(label_relation),
                             values, nulls);
     heap_insert(label_relation, tuple,
                 GetCurrentCommandId(true), 0, NULL);
-    heap_close(label_relation, RowExclusiveLock);
+    table_close(label_relation, RowExclusiveLock);
     CommandCounterIncrement();
 }
 
-void insert_vertex_simple(Oid graph_id, char* label_name,
-                          graphid vertex_id,
-                          agtype* vertex_properties)
+void insert_vertex_simple(Oid graph_oid, char *label_name, graphid vertex_id,
+                          agtype *vertex_properties)
 {
 
     Datum values[2];
@@ -183,7 +160,7 @@ void insert_vertex_simple(Oid graph_id, char* label_name,
     HeapTuple tuple;
 
     // Check if label provided exists as edge label, then throw error
-    if (get_label_kind(label_name, graph_id) == LABEL_KIND_EDGE)
+    if (get_label_kind(label_name, graph_oid) == LABEL_KIND_EDGE)
     {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("label %s already exists as edge label", label_name)));
@@ -192,29 +169,26 @@ void insert_vertex_simple(Oid graph_id, char* label_name,
     values[0] = GRAPHID_GET_DATUM(vertex_id);
     values[1] = AGTYPE_P_GET_DATUM((vertex_properties));
 
-    label_relation = heap_open(get_label_relation(label_name,
-                                                  graph_id),
-                               RowExclusiveLock);
+    label_relation = table_open(get_label_relation(label_name, graph_oid),
+                                RowExclusiveLock);
     tuple = heap_form_tuple(RelationGetDescr(label_relation),
                             values, nulls);
     heap_insert(label_relation, tuple,
                 GetCurrentCommandId(true), 0, NULL);
-    heap_close(label_relation, RowExclusiveLock);
+    table_close(label_relation, RowExclusiveLock);
     CommandCounterIncrement();
 }
-
 
 PG_FUNCTION_INFO_V1(load_labels_from_file);
 Datum load_labels_from_file(PG_FUNCTION_ARGS)
 {
-
     Name graph_name;
     Name label_name;
     text* file_path;
     char* graph_name_str;
     char* label_name_str;
     char* file_path_str;
-    Oid graph_id;
+    Oid graph_oid;
     int32 label_id;
     bool id_field_exists;
 
@@ -246,12 +220,11 @@ Datum load_labels_from_file(PG_FUNCTION_ARGS)
     label_name_str = NameStr(*label_name);
     file_path_str = text_to_cstring(file_path);
 
-    graph_id = get_graph_oid(graph_name_str);
-    label_id = get_label_id(label_name_str, graph_id);
+    graph_oid = get_graph_oid(graph_name_str);
+    label_id = get_label_id(label_name_str, graph_oid);
 
-    create_labels_from_csv_file(file_path_str, graph_name_str,
-                                graph_id, label_name_str,
-                                label_id, id_field_exists);
+    create_labels_from_csv_file(file_path_str, graph_name_str, graph_oid,
+                                label_name_str, label_id, id_field_exists);
     PG_RETURN_VOID();
 
 }
@@ -266,7 +239,7 @@ Datum load_edges_from_file(PG_FUNCTION_ARGS)
     char* graph_name_str;
     char* label_name_str;
     char* file_path_str;
-    Oid graph_id;
+    Oid graph_oid;
     int32 label_id;
 
     if (PG_ARGISNULL(0))
@@ -295,11 +268,11 @@ Datum load_edges_from_file(PG_FUNCTION_ARGS)
     label_name_str = NameStr(*label_name);
     file_path_str = text_to_cstring(file_path);
 
-    graph_id = get_graph_oid(graph_name_str);
-    label_id = get_label_id(label_name_str, graph_id);
+    graph_oid = get_graph_oid(graph_name_str);
+    label_id = get_label_id(label_name_str, graph_oid);
 
-    create_edges_from_csv_file(file_path_str, graph_name_str,
-                               graph_id, label_name_str, label_id);
+    create_edges_from_csv_file(file_path_str, graph_name_str, graph_oid,
+                               label_name_str, label_id);
     PG_RETURN_VOID();
 
 }

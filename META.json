@@ -1,0 +1,45 @@
+{
+   "name": "ApacheAGE",
+   "abstract": "Apache AGE is a PostgreSQL Extension that provides graph database functionality",
+   "description": "Apache AGE is a PostgreSQL Extension that provides graph database functionality. AGE is an acronym for A Graph Extension, and is inspired by Bitnine's fork of PostgreSQL 10, AgensGraph, which is a multi-model database. The goal of the project is to create single storage that can handle both relational and graph model data so that users can use standard ANSI SQL along with openCypher, the Graph query language. A graph consists of a set of vertices (also called nodes) and edges, where each individual vertex and edge possesses a map of properties. A vertex is the basic object of a graph, that can exist independently of everything else in the graph. An edge creates a directed connection between two vertices. A graph database is simply composed of vertices and edges. This type of database is useful when the meaning is in the relationships between the data. Relational databases can easily handle direct relationships, but indirect relationships are more difficult to deal with in relational databases. A graph database stores relationship information as a first-class entity. Apache AGE gives you the best of both worlds, simultaneously.",
+   "version": "1.3.0",
+   "maintainer": [
+      "users@age.apache.org"
+   ],
+   "license": "apache_2_0",
+   "provides": {
+      "ApacheAGE": {
+         "abstract": "Apache AGE is a PostgreSQL Extension that provides graph database functionality",
+         "file": "age--1.3.0.sql",
+         "docfile": "README.md",
+         "version": "1.3.0"
+      }
+   },
+   "prereqs": {
+      "runtime": {
+         "requires": {
+            "PostgreSQL": "12.0.0"
+         }
+      }
+   },
+   "resources": {
+      "homepage": "https://github.com/apache/age/tree/master",
+      "bugtracker": {
+         "web": "https://github.com/apache/age/issues"
+      },
+      "repository": {
+        "url":  "https://github.com/apache/age.git",
+        "web":  "https://github.com/apache/age",
+        "type": "git"
+      }
+   },
+   "generated_by": "users@age.apache.org",
+   "meta-spec": {
+      "version": "1.0.0",
+      "url": "http://pgxn.org/meta/spec.txt"
+   },
+   "tags": [
+      "graphdb",
+      "graph-database"
+   ]
+}

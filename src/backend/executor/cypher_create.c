@@ -19,6 +19,7 @@
 
 #include "postgres.h"
 
+#include "access/heapam.h"
 #include "access/htup_details.h"
 #include "access/xact.h"
 #include "executor/tuptable.h"
@@ -26,17 +27,14 @@
 #include "nodes/extensible.h"
 #include "nodes/nodes.h"
 #include "nodes/plannodes.h"
-#include "parser/parse_relation.h"
 #include "rewrite/rewriteHandler.h"
 #include "utils/rel.h"
-#include "utils/tqual.h"
 
 #include "catalog/ag_label.h"
 #include "executor/cypher_executor.h"
 #include "executor/cypher_utils.h"
 #include "nodes/cypher_nodes.h"
 #include "utils/agtype.h"
-#include "utils/ag_cache.h"
 #include "utils/graphid.h"
 
 static void begin_cypher_create(CustomScanState *node, EState *estate,
@@ -85,7 +83,8 @@ static void begin_cypher_create(CustomScanState *node, EState *estate,
     ExecAssignExprContext(estate, &node->ss.ps);
 
     ExecInitScanTupleSlot(estate, &node->ss,
-                          ExecGetResultType(node->ss.ps.lefttree));
+                          ExecGetResultType(node->ss.ps.lefttree),
+                          &TTSOpsHeapTuple);
 
     if (!CYPHER_CLAUSE_IS_TERMINAL(css->flags))
     {
@@ -108,7 +107,7 @@ static void begin_cypher_create(CustomScanState *node, EState *estate,
                 continue;
 
             // Open relation and acquire a row exclusive lock.
-            rel = heap_open(cypher_node->relid, RowExclusiveLock);
+            rel = table_open(cypher_node->relid, RowExclusiveLock);
 
             // Initialize resultRelInfo for the vertex
             cypher_node->resultRelInfo = makeNode(ResultRelInfo);
@@ -120,9 +119,8 @@ static void begin_cypher_create(CustomScanState *node, EState *estate,
             ExecOpenIndices(cypher_node->resultRelInfo, false);
 
             // Setup the relation's tuple slot
-            cypher_node->elemTupleSlot = ExecInitExtraTupleSlot(
-                estate,
-                RelationGetDescr(cypher_node->resultRelInfo->ri_RelationDesc));
+            cypher_node->elemTupleSlot = table_slot_create(
+                rel, &estate->es_tupleTable);
 
             if (cypher_node->id_expr != NULL)
             {
@@ -295,8 +293,8 @@ static void end_cypher_create(CustomScanState *node)
             ExecCloseIndices(cypher_node->resultRelInfo);
 
             // close the relation itself
-            heap_close(cypher_node->resultRelInfo->ri_RelationDesc,
-                       RowExclusiveLock);
+            table_close(cypher_node->resultRelInfo->ri_RelationDesc,
+                        RowExclusiveLock);
         }
     }
 }
@@ -446,6 +444,7 @@ static void create_edge(cypher_create_custom_scan_state *css,
             prev_path = lappend(prev_path, DatumGetPointer(result));
             css->path_values = list_concat(prev_path, css->path_values);
         }
+
         if (CYPHER_TARGET_NODE_IS_VARIABLE(node->flags))
         {
             scantuple->tts_values[node->tuple_position - 1] = result;

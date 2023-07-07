@@ -316,6 +316,7 @@ static int _scan_errposition(const int location, const ag_yy_extra *extra);
  * and is the same with "ag_scanner_t".
  */
 #define YY_DECL ag_token ag_scanner_next_token(yyscan_t yyscanner)
+#define NDIGITS_PER_REMAINDER 9
 %}
 
 %%
@@ -902,7 +903,6 @@ static void _numstr_to_decimal(const char *numstr, const int base, strbuf *sb)
      */
     const uint64 divisor = 1000000000;
     const int ndivisions = 3;
-    const int ndigits_per_remainder = 9;
 
     int ndigits;
     int nwords;
@@ -1048,11 +1048,11 @@ static void _numstr_to_decimal(const char *numstr, const int base, strbuf *sb)
     // convert the collected remainders to a string, starting from the last one
     for (i = nremainders - 1; i >= 0; i--)
     {
-        char buf[ndigits_per_remainder];
+        char buf[NDIGITS_PER_REMAINDER];
         int buf_i;
         uint32 tmp;
 
-        buf_i = ndigits_per_remainder;
+        buf_i = NDIGITS_PER_REMAINDER;
 
         for (tmp = remainders[i]; tmp > 0; tmp /= 10)
             buf[--buf_i] = '0' + (char)(tmp % 10);
@@ -1064,7 +1064,7 @@ static void _numstr_to_decimal(const char *numstr, const int base, strbuf *sb)
                 buf[--buf_i] = '0';
         }
 
-        strbuf_append_buf(sb, &buf[buf_i], ndigits_per_remainder - buf_i);
+        strbuf_append_buf(sb, &buf[buf_i], NDIGITS_PER_REMAINDER - buf_i);
     }
 
     pfree(remainders);

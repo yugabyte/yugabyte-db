@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+SET extra_float_digits = 0;
 LOAD 'age';
 SET search_path TO ag_catalog;
 SELECT create_graph('scan');

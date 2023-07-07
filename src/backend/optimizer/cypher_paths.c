@@ -19,11 +19,8 @@
 
 #include "postgres.h"
 
-#include "access/sysattr.h"
-#include "catalog/pg_type_d.h"
 #include "nodes/parsenodes.h"
 #include "nodes/primnodes.h"
-#include "nodes/relation.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
 

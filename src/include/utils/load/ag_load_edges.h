@@ -20,11 +20,10 @@
 #ifndef AG_LOAD_EDGES_H
 #define AG_LOAD_EDGES_H
 
-
-#include <stdio.h>
-#include <string.h>
 #include <errno.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 
@@ -80,7 +79,7 @@ typedef struct {
     size_t header_row_length;
     size_t curr_row_length;
     char *graph_name;
-    Oid graph_id;
+    Oid graph_oid;
     char *object_name;
     int object_id;
     char *start_vertex;
@@ -92,7 +91,7 @@ typedef struct {
 void edge_field_cb(void *field, size_t field_len, void *data);
 void edge_row_cb(int delim __attribute__((unused)), void *data);
 
-int create_edges_from_csv_file(char *file_path, char *graph_name, Oid graph_id,
+int create_edges_from_csv_file(char *file_path, char *graph_name, Oid graph_oid,
                                 char *object_name, int object_id );
 
 #endif //AG_LOAD_EDGES_H

@@ -245,7 +245,7 @@ csv_set_space_func(struct csv_parser *p, int (*f)(unsigned char))
   /* Set the space function */
   if (p) p->is_space = f;
 }
- 
+
 void
 csv_set_term_func(struct csv_parser *p, int (*f)(unsigned char))
 {
@@ -259,7 +259,7 @@ csv_set_realloc_func(struct csv_parser *p, void *(*f)(void *, size_t))
   /* Set the realloc function used to increase buffer size */
   if (p && f) p->realloc_func = f;
 }
- 
+
 void
 csv_set_free_func(struct csv_parser *p, void (*f)(void *))
 {
@@ -282,7 +282,7 @@ csv_get_buffer_size(const struct csv_parser *p)
     return p->entry_size;
   return 0;
 }
- 
+
 static int
 csv_increase_buffer(struct csv_parser *p)
 {
@@ -291,10 +291,10 @@ csv_increase_buffer(struct csv_parser *p)
 
   if (p == NULL) return 0;
   if (p->realloc_func == NULL) return 0;
-  
-  /* Increase the size of the entry buffer.  Attempt to increase size by 
+
+  /* Increase the size of the entry buffer.  Attempt to increase size by
    * p->blk_size, if this is larger than SIZE_MAX try to increase current
-   * buffer size to SIZE_MAX.  If allocation fails, try to allocate halve 
+   * buffer size to SIZE_MAX.  If allocation fails, try to allocate halve
    * the size and try again until successful or increment size is zero.
    */
 
@@ -321,7 +321,7 @@ csv_increase_buffer(struct csv_parser *p)
   p->entry_size += to_add;
   return 0;
 }
- 
+
 size_t
 csv_parse(struct csv_parser *p, const void *s, size_t len, void (*cb1)(void *, size_t, void *), void (*cb2)(int c, void *), void *data)
 {
@@ -342,7 +342,7 @@ csv_parse(struct csv_parser *p, const void *s, size_t len, void (*cb1)(void *, s
 
   if (!p->entry_buf && pos < len) {
     /* Buffer hasn't been allocated yet and len > 0 */
-    if (csv_increase_buffer(p) != 0) { 
+    if (csv_increase_buffer(p) != 0) {
       p->quoted = quoted, p->pstate = pstate, p->spaces = spaces, p->entry_pos = entry_pos;
       return pos;
     }
@@ -367,7 +367,7 @@ csv_parse(struct csv_parser *p, const void *s, size_t len, void (*cb1)(void *, s
         } else if (is_term ? is_term(c) : c == CSV_CR || c == CSV_LF) { /* Carriage Return or Line Feed */
           if (pstate == FIELD_NOT_BEGUN) {
             SUBMIT_FIELD(p);
-            SUBMIT_ROW(p, c); 
+            SUBMIT_ROW(p, c);
           } else {  /* ROW_NOT_BEGUN */
             /* Don't submit empty rows by default */
             if (p->options & CSV_REPALL_NL) {

@@ -27,6 +27,7 @@
 #include "utils/syscache.h"
 
 #include "catalog/ag_namespace.h"
+#include "catalog/pg_type.h"
 
 typedef int64 graphid;
 #define F_GRAPHIDEQ F_INT8EQ

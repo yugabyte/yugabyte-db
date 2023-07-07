@@ -19,7 +19,6 @@
 
 #include "postgres.h"
 
-#include "common/keywords.h"
 #include "nodes/pg_list.h"
 #include "parser/scansup.h"
 
@@ -67,20 +66,19 @@ int cypher_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ag_scanner_t scanner)
         break;
     case AG_TOKEN_IDENTIFIER:
     {
-        const ScanKeyword *keyword;
+        int kwnum;
         char *ident;
 
-        keyword = ScanKeywordLookup(token.value.s, cypher_keywords,
-                                    num_cypher_keywords);
-        if (keyword)
+        kwnum = ScanKeywordLookup(token.value.s, &CypherKeyword);
+        if (kwnum >= 0)
         {
             /*
              * use token.value.s instead of keyword->name to preserve
              * case sensitivity
              */
-            lvalp->keyword = token.value.s;
+            lvalp->keyword = GetScanKeyword(kwnum, &CypherKeyword);
             *llocp = token.location;
-            return keyword->value;
+            return CypherKeywordTokens[kwnum];
         }
 
         ident = pstrdup(token.value.s);

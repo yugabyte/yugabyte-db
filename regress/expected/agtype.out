@@ -23,6 +23,7 @@
 -- Load extension and set path
 --
 LOAD 'age';
+SET extra_float_digits = 0;
 SET search_path TO ag_catalog;
 --
 -- Create a table using the AGTYPE type
@@ -2260,7 +2261,7 @@ SELECT agtype_to_int4(agtype_in('1.444::numeric'));
 
 -- These should all fail
 SELECT agtype_to_int4(agtype_in('"string"'));
-ERROR:  invalid input syntax for integer: "string"
+ERROR:  invalid input syntax for type integer: "string"
 SELECT agtype_to_int4(agtype_in('[1, 2, 3]'));
 ERROR:  cannot cast agtype array to type int
 SELECT agtype_to_int4(agtype_in('{"int":1}'));

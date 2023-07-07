@@ -2,10 +2,10 @@ name: Go Driver Tests
 
 on:
   push:
-    branches: [ "master", "PG11" ]
+    branches: [ "master", "PG12" ]
 
   pull_request:
-    branches: [ "master", "PG11" ]
+    branches: [ "master", "PG12" ]
 
 jobs:
   build:
@@ -17,7 +17,7 @@ jobs:
     defaults:
       run:
         working-directory: drivers/golang/age/
-  
+
     steps:
     - uses: actions/checkout@v3
 
@@ -26,17 +26,17 @@ jobs:
         if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
           if [[ "$GITHUB_REF" == "refs/heads/master" ]]; then
             echo "TAG=latest" >> $GITHUB_ENV
-          elif [[ "$GITHUB_REF" == "refs/heads/PG11" ]]; then
-            echo "TAG=PG11_latest" >> $GITHUB_ENV
+          elif [[ "$GITHUB_REF" == "refs/heads/PG12" ]]; then
+            echo "TAG=PG12_latest" >> $GITHUB_ENV
           fi
         elif [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
           if [[ "$GITHUB_BASE_REF" == "master" ]]; then
             echo "TAG=latest" >> $GITHUB_ENV
-          elif [[ "$GITHUB_BASE_REF" == "PG11" ]]; then
-            echo "TAG=PG11_latest" >> $GITHUB_ENV
+          elif [[ "$GITHUB_BASE_REF" == "PG12" ]]; then
+            echo "TAG=PG12_latest" >> $GITHUB_ENV
           fi
         fi
-      
+
     - name: Run apache/age docker image
       run: |
         export TAG=$TAG
@@ -46,7 +46,7 @@ jobs:
       uses: actions/setup-go@v3
       with:
         go-version: ${{ matrix.go-version }}
-    
+
     - name: Generate
       run: go generate ./../...
 

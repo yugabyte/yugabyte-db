@@ -25,6 +25,7 @@
 -- Load extension and set path
 --
 LOAD 'age';
+SET extra_float_digits = 0;
 SET search_path TO ag_catalog;
 
 --

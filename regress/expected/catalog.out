@@ -28,7 +28,7 @@ NOTICE:  graph "graph" has been created
  
 (1 row)
 
-SELECT * FROM ag_graph WHERE name = 'graph';
+SELECT name, namespace FROM ag_graph WHERE name = 'graph';
  name  | namespace 
 -------+-----------
  graph | graph
@@ -121,7 +121,7 @@ NOTICE:  graph "GraphB" has been created
 (1 row)
 
 -- Show GraphA's construction to verify case is preserved.
-SELECT * FROM ag_graph WHERE name = 'GraphA';
+SELECT name, namespace FROM ag_graph WHERE name = 'GraphA';
   name  | namespace 
 --------+-----------
  GraphA | "GraphA"
@@ -142,7 +142,7 @@ NOTICE:  graph "GraphA" renamed to "GraphX"
 (1 row)
 
 -- Show GraphX's construction to verify case is preserved.
-SELECT * FROM ag_graph WHERE name = 'GraphX';
+SELECT name, namespace FROM ag_graph WHERE name = 'GraphX';
   name  | namespace 
 --------+-----------
  GraphX | "GraphX"
@@ -155,14 +155,14 @@ SELECT nspname FROM pg_namespace WHERE nspname = 'GraphX';
 (1 row)
 
 -- Verify there isn't a graph GraphA anymore.
-SELECT * FROM ag_graph WHERE name = 'GraphA';
+SELECT name, namespace FROM ag_graph WHERE name = 'GraphA';
  name | namespace 
 ------+-----------
 (0 rows)
 
 SELECT * FROM pg_namespace WHERE nspname = 'GraphA';
- nspname | nspowner | nspacl 
----------+----------+--------
+ oid | nspname | nspowner | nspacl 
+-----+---------+----------+--------
 (0 rows)
 
 -- Sanity check that graphx does not exist - should return 0.

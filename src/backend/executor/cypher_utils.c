@@ -27,7 +27,9 @@
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
+#include "access/heapam.h"
 #include "access/multixact.h"
+#include "access/xact.h"
 #include "nodes/extensible.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodes.h"
@@ -44,6 +46,7 @@
 #include "executor/cypher_utils.h"
 #include "utils/agtype.h"
 #include "utils/ag_cache.h"
+#include "utils/agtype.h"
 #include "utils/graphid.h"
 
 /*
@@ -92,7 +95,7 @@ void destroy_entity_result_rel_info(ResultRelInfo *result_rel_info)
     ExecCloseIndices(result_rel_info);
 
     // close the rel
-    heap_close(result_rel_info->ri_RelationDesc, RowExclusiveLock);
+    table_close(result_rel_info->ri_RelationDesc, RowExclusiveLock);
 }
 
 TupleTableSlot *populate_vertex_tts(
@@ -171,7 +174,7 @@ bool entity_exists(EState *estate, Oid graph_oid, graphid id)
 {
     label_cache_data *label;
     ScanKeyData scan_keys[1];
-    HeapScanDesc scan_desc;
+    TableScanDesc scan_desc;
     HeapTuple tuple;
     Relation rel;
     bool result = true;
@@ -180,14 +183,14 @@ bool entity_exists(EState *estate, Oid graph_oid, graphid id)
      * Extract the label id from the graph id and get the table name
      * the entity is part of.
      */
-    label = search_label_graph_id_cache(graph_oid, GET_LABEL_ID(id));
+    label = search_label_graph_oid_cache(graph_oid, GET_LABEL_ID(id));
 
     // Setup the scan key to be the graphid
     ScanKeyInit(&scan_keys[0], 1, BTEqualStrategyNumber,
                 F_GRAPHIDEQ, GRAPHID_GET_DATUM(id));
 
-    rel = heap_open(label->relation, RowExclusiveLock);
-    scan_desc = heap_beginscan(rel, estate->es_snapshot, 1, scan_keys);
+    rel = table_open(label->relation, RowExclusiveLock);
+    scan_desc = table_beginscan(rel, estate->es_snapshot, 1, scan_keys);
 
     tuple = heap_getnext(scan_desc, ForwardScanDirection);
 
@@ -200,8 +203,8 @@ bool entity_exists(EState *estate, Oid graph_oid, graphid id)
         result = false;
     }
 
-    heap_endscan(scan_desc);
-    heap_close(rel, RowExclusiveLock);
+    table_endscan(scan_desc);
+    table_close(rel, RowExclusiveLock);
 
     return result;
 }
@@ -235,7 +238,7 @@ HeapTuple insert_entity_tuple_cid(ResultRelInfo *resultRelInfo,
     HeapTuple tuple = NULL;
 
     ExecStoreVirtualTuple(elemTupleSlot);
-    tuple = ExecMaterializeSlot(elemTupleSlot);
+    tuple = ExecFetchSlotHeapTuple(elemTupleSlot, true, NULL);
 
     /* Check the constraints of the tuple */
     tuple->t_tableOid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
@@ -244,14 +247,14 @@ HeapTuple insert_entity_tuple_cid(ResultRelInfo *resultRelInfo,
         ExecConstraints(resultRelInfo, elemTupleSlot, estate);
     }
 
-    /* Insert the tuple using the passed in cid */
-    heap_insert(resultRelInfo->ri_RelationDesc, tuple, cid, 0, NULL);
+    // Insert the tuple normally
+    table_tuple_insert(resultRelInfo->ri_RelationDesc, elemTupleSlot,
+                GetCurrentCommandId(true), 0, NULL);
 
-    /* Insert index entries for the tuple */
+    // Insert index entries for the tuple
     if (resultRelInfo->ri_NumIndices > 0)
     {
-        ExecInsertIndexTuples(elemTupleSlot, &(tuple->t_self), estate, false,
-                              NULL, NIL);
+        ExecInsertIndexTuples(elemTupleSlot, estate, false, NULL, NIL);
     }
 
     return tuple;

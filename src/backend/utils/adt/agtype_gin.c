@@ -33,6 +33,7 @@
 #include "access/stratnum.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
+#include "utils/float.h"
 #include "utils/builtins.h"
 #include "utils/varlena.h"
 

@@ -32,7 +32,6 @@
 #include "parser/parse_node.h"
 #include "parser/parse_relation.h"
 #include "parser/parse_target.h"
-#include "parser/parsetree.h"
 #include "utils/builtins.h"
 
 #include "catalog/ag_graph.h"
@@ -212,7 +211,7 @@ static bool convert_cypher_walker(Node *node, ParseState *pstate)
          * QTW_IGNORE_JOINALIASES
          *     We are not interested in this.
          */
-        flags = QTW_EXAMINE_RTES | QTW_IGNORE_RT_SUBQUERIES |
+        flags = QTW_EXAMINE_RTES_BEFORE | QTW_IGNORE_RT_SUBQUERIES |
                 QTW_IGNORE_JOINALIASES;
 
         /* recurse on query */

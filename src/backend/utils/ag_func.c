@@ -27,7 +27,6 @@
 #include "access/htup.h"
 #include "access/htup_details.h"
 #include "catalog/pg_proc.h"
-#include "fmgr.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
@@ -54,6 +53,7 @@ bool is_oid_ag_func(Oid func_oid, const char *func_name)
         ReleaseSysCache(proctup);
         return false;
     }
+
     nspid = proc->pronamespace;
     ReleaseSysCache(proctup);
 
@@ -81,7 +81,8 @@ Oid get_ag_func_oid(const char *func_name, const int nargs, ...)
 
     arg_types = buildoidvector(oids, nargs);
 
-    func_oid = GetSysCacheOid3(PROCNAMEARGSNSP, CStringGetDatum(func_name),
+    func_oid = GetSysCacheOid3(PROCNAMEARGSNSP, Anum_pg_proc_oid,
+                               CStringGetDatum(func_name),
                                PointerGetDatum(arg_types),
                                ObjectIdGetDatum(ag_catalog_namespace_id()));
     if (!OidIsValid(func_oid))
@@ -111,7 +112,8 @@ Oid get_pg_func_oid(const char *func_name, const int nargs, ...)
 
     arg_types = buildoidvector(oids, nargs);
 
-    func_oid = GetSysCacheOid3(PROCNAMEARGSNSP, CStringGetDatum(func_name),
+    func_oid = GetSysCacheOid3(PROCNAMEARGSNSP, Anum_pg_proc_oid,
+                               CStringGetDatum(func_name),
                                PointerGetDatum(arg_types),
                                ObjectIdGetDatum(pg_catalog_namespace_id()));
     if (!OidIsValid(func_oid))

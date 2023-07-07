@@ -17,18 +17,21 @@
  * under the License.
  */
 
--- complain if script is sourced in psql, rather than via CREATE EXTENSION
-\echo Use "ALTER EXTENSION age UPDATE TO '0.6.0'" to load this file. \quit
+-- complain if script is sourced in psql, rather than via ALTER EXTENSION
+\echo Use "ALTER EXTENSION age UPDATE TO '1.1.1'" to load this file. \quit
 
-CREATE OR REPLACE FUNCTION ag_catalog.age_vle(IN agtype, IN agtype, IN agtype,
-                                              IN agtype, IN agtype, IN agtype,
-                                              IN agtype, OUT edges agtype)
-RETURNS SETOF agtype
-LANGUAGE C
-IMMUTABLE
-STRICT
+-- add in new age_prepare_cypher function
+CREATE FUNCTION ag_catalog.age_prepare_cypher(cstring, cstring)
+RETURNS boolean
+LANGUAGE c
+STABLE
+PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
---
--- End
---
+-- modify the param defaults for cypher function
+CREATE OR REPLACE FUNCTION ag_catalog.cypher(graph_name name = NULL,
+                                             query_string cstring = NULL,
+                                             params agtype = NULL)
+RETURNS SETOF record
+LANGUAGE c
+AS 'MODULE_PATHNAME';

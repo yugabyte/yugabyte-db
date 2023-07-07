@@ -21,7 +21,6 @@
 #define AG_CYPHER_PATHNODE_H
 
 #include "nodes/pg_list.h"
-#include "nodes/relation.h"
 
 #define CREATE_PATH_NAME "Cypher Create"
 #define SET_PATH_NAME "Cypher Set"

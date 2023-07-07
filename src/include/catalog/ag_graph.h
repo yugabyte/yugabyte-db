@@ -24,21 +24,22 @@
 
 #include "catalog/ag_catalog.h"
 
-#define Anum_ag_graph_name 1
-#define Anum_ag_graph_namespace 2
+#define Anum_ag_graph_oid 1
+#define Anum_ag_graph_name 2
+#define Anum_ag_graph_namespace 3
 
-#define Natts_ag_graph 2
+#define Natts_ag_graph 3
 
 #define ag_graph_relation_id() ag_relation_id("ag_graph", "table")
 #define ag_graph_name_index_id() ag_relation_id("ag_graph_name_index", "index")
 #define ag_graph_namespace_index_id() \
     ag_relation_id("ag_graph_namespace_index", "index")
 
-Oid insert_graph(const Name graph_name, const Oid nsp_id);
+void insert_graph(const Name graph_name, const Oid nsp_id);
 void delete_graph(const Name graph_name);
 void update_graph_name(const Name graph_name, const Name new_name);
 
-Oid get_graph_oid(const char *graph_name);
+uint32 get_graph_oid(const char *graph_name);
 char *get_graph_namespace_name(const char *graph_name);
 
 List *get_graphnames(void);

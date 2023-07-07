@@ -17,16 +17,11 @@
  * under the License.
  */
 
-#include <stdio.h>
-#include <string.h>
-#include <errno.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include "postgres.h"
 
-#include "utils/load/csv.h"
 #include "utils/load/ag_load_edges.h"
 #include "utils/load/age_load.h"
-
+#include "utils/load/csv.h"
 
 void edge_field_cb(void *field, size_t field_len, void *data)
 {
@@ -86,7 +81,7 @@ void edge_row_cb(int delim __attribute__((unused)), void *data)
         cr->header_len = (size_t* )malloc(sizeof(size_t *) * cr->cur_field);
         cr->header = malloc((sizeof (char*) * cr->cur_field));
 
-        for ( i = 0; i<cr->cur_field; i++)
+        for (i = 0; i<cr->cur_field; i++)
         {
             cr->header_len[i] = cr->fields_len[i];
             cr->header[i] = strndup(cr->fields[i], cr->header_len[i]);
@@ -97,9 +92,9 @@ void edge_row_cb(int delim __attribute__((unused)), void *data)
         object_graph_id = make_graphid(cr->object_id, (int64)cr->row);
 
         start_id_int = strtol(cr->fields[0], NULL, 10);
-        start_vertex_type_id = get_label_id(cr->fields[1], cr->graph_id);
+        start_vertex_type_id = get_label_id(cr->fields[1], cr->graph_oid);
         end_id_int = strtol(cr->fields[2], NULL, 10);
-        end_vertex_type_id = get_label_id(cr->fields[3], cr->graph_id);
+        end_vertex_type_id = get_label_id(cr->fields[3], cr->graph_oid);
 
         start_vertex_graph_id = make_graphid(start_vertex_type_id, start_id_int);
         end_vertex_graph_id = make_graphid(end_vertex_type_id, end_id_int);
@@ -107,7 +102,7 @@ void edge_row_cb(int delim __attribute__((unused)), void *data)
         props = create_agtype_from_list_i(cr->header, cr->fields,
                                           n_fields, 3);
 
-        insert_edge_simple(cr->graph_id, cr->object_name,
+        insert_edge_simple(cr->graph_oid, cr->object_name,
                            object_graph_id, start_vertex_graph_id,
                            end_vertex_graph_id, props);
 
@@ -155,7 +150,7 @@ static int is_term(unsigned char c)
 
 int create_edges_from_csv_file(char *file_path,
                                char *graph_name,
-                               Oid graph_id,
+                               Oid graph_oid,
                                char *object_name,
                                int object_id )
 {
@@ -191,7 +186,7 @@ int create_edges_from_csv_file(char *file_path,
     cr.header_row_length = 0;
     cr.curr_row_length = 0;
     cr.graph_name = graph_name;
-    cr.graph_id = graph_id;
+    cr.graph_oid = graph_oid;
     cr.object_name = object_name;
     cr.object_id = object_id;
 
