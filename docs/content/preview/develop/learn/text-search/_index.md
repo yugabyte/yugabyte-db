@@ -38,26 +38,6 @@ Pattern matching is accomplished by specifying a pattern using the `%, _, *, .` 
 To learn more about pattern matching, see [Pattern Matching](./pattern-matching)
 {{</tip>}}
 
-## Full-text search
-
-Almost all of today's search engines use [Inverted Indexes](https://en.wikipedia.org/wiki/Inverted_index) extensively. Simply put, an inverted index parses a document and stores the individual words(a.k.a tokens) and their corresponding position in the document. For example,
-
-```sql{class=nocopy}
-'The quick brown fox jumps jumps over the lazy dog'
-```
-
-would be parsed as,
-
-```sql{class=nocopy}
- 'brown':3 'dog':10 'fox':4 'jump':5,6 'lazi':9 'quick':2
-```
-
-This enables a user to search for the document which has `fox` and `quick` or `jumping dog`.
-
-{{<tip>}}
-To learn more about pattern matching, see [Full-Text Search](./full-text-search)
-{{</tip>}}
-
 ## Phonetic search
 
 In the case where we do not know the exact search term and want to find similar items or documents that sound similar to a specific term, _fuzzy_ or _phonetic_ search would come in handy. YugabyteDB supports fuzzy search like Soundex, Metaphone via Postgres extensions. For example, to find words that sound like `anapistagafi`, you could execute,
@@ -78,6 +58,26 @@ For example, the distance between `warehoused` and `warehouse` is `1`, as it has
 
 {{<tip>}}
 To learn more about similarity search, see [Similarity Search](./similarity-matching)
+{{</tip>}}
+
+## Full-text search
+
+Almost all of today's search engines use [Inverted Indexes](https://en.wikipedia.org/wiki/Inverted_index) extensively. Simply put, an inverted index parses a document and stores the individual words(a.k.a tokens) and their corresponding position in the document. For example,
+
+```sql{class=nocopy}
+'The quick brown fox jumps jumps over the lazy dog'
+```
+
+would be parsed as,
+
+```sql{class=nocopy}
+ 'brown':3 'dog':10 'fox':4 'jump':5,6 'lazi':9 'quick':2
+```
+
+This enables a user to search for the document which has `fox` and `quick` or `jumping dog`.
+
+{{<tip>}}
+To learn more about pattern matching, see [Full-Text Search](./full-text-search)
 {{</tip>}}
 
 ## Learn more
@@ -102,7 +102,7 @@ To learn more about similarity search, see [Similarity Search](./similarity-matc
 {{<index/item
     title="Similarity Search"
     body="Find similar words"
-    icon="fa-brands fa-searchengin"
+    icon="fa-solid fa-equals"
     href="similarity-matching">}}
 
 {{</index/block>}}

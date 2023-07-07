@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: phonetic-matching-ysql
     parent: text-search
-    weight: 300
+    weight: 200
 rightNav:
   hideH3: true
 type: docs
