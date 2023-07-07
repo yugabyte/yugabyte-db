@@ -18,8 +18,6 @@
 #include <string>
 #include <vector>
 
-#include "yb/common/common.pb.h"
-
 #include "yb/util/flags.h"
 
 #include "yb/gutil/macros.h"
@@ -202,9 +200,6 @@ class WaitStateInfo {
 
   AUHMetadata metadata();
 
-  WaitStateCode code();
-  void ToPB(WaitStateInfoPB *pb);
-
   static WaitStateInfoPtr CurrentWaitState();
   static void SetCurrentWaitState(WaitStateInfoPtr);
 
@@ -218,6 +213,17 @@ class WaitStateInfo {
     }
   }
 
+  template <class PB>
+  void ToPB(PB *pb) {
+    std::lock_guard<simple_spinlock> l(mutex_);
+    metadata_.ToPB(pb->mutable_metadata());
+    WaitStateCode code = code_;
+    pb->set_wait_status_code(yb::to_underlying(code));
+#ifndef NDEBUG
+    pb->set_wait_status_code_as_string(yb::ToString(code));
+#endif
+    aux_info_.ToPB(pb->mutable_aux_info());
+  }
   AUHMetadata& metadata() REQUIRES(mutex_) {
     return metadata_;
   }
