@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.ArrayList;
 import java.util.List;
 import javax.inject.Inject;
@@ -104,7 +105,10 @@ public class DeleteKeyspace extends UniverseTaskBase {
             tableName -> {
               try {
                 finalClient.deleteTable(keyspaceName, tableName);
-                log.info("Dropped table {} from keyspace {}", tableName, keyspaceName);
+                log.info(
+                    "Dropped table {} from keyspace {}",
+                    CommonUtils.logTableName(tableName),
+                    keyspaceName);
               } catch (Exception e) {
                 throw new RuntimeException(e);
               }
