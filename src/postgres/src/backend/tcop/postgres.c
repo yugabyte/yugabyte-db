@@ -4702,6 +4702,12 @@ yb_exec_simple_query(const char* query_string, MemoryContext exec_context)
 	 * etc.
 	 */
 	YbRefreshSessionStatsDuringExecution();
+
+	/*
+	 * Reset Wait Metadata
+	*/
+	MyProc->queryid = 0;
+	MyProc->top_level_request_id[0] = '\0';
 }
 
 typedef struct YBExecuteMessageFunctorContext
@@ -5829,6 +5835,11 @@ PostgresMain(int argc, char *argv[],
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
 						 errmsg("invalid frontend message type %d",
 								firstchar)));
+		}
+		if (IsYugaByteEnabled())
+		{
+			MyProc->queryid = 0;
+			MyProc->top_level_request_id[0] = '\0';
 		}
 	}							/* end of input-reading loop */
 }
