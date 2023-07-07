@@ -187,7 +187,7 @@ If a database or a keyspace has an associated snapshot schedule, you can use tha
 
 YugabyteDB supports [index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md), which asynchronously populates a new index. The process runs in the background and can take a significant amount of time, depending on the size of the data. If you restore to a point in time soon after an index creation, you're likely to hit a state where the index is in the middle of the backfill process.
 
-**YugabyteDB ignores these partly-backfilled indexes during read operations. To make sure the indexes are properly used, you need to drop and create them again to reinitiate the backfill process.** Run the following query to get a list of indexes that need to be recreated:
+**YugabyteDB ignores these partly-backfilled indexes during read operations. To make sure the indexes are properly used, you need to drop and create them again to re-initiate the backfill process.** Run the following query to get a list of indexes that need to be recreated:
 
 ```sql
 SELECT pg_class.relname
@@ -249,6 +249,10 @@ You can't use PITR to restore to a state before the most recent [YSQL system cat
 Tracking issue: [13158](https://github.com/yugabyte/yugabyte-db/issues/13158)
 
 This limitation applies only to YSQL databases. YCQL is not affected.
+
+### YugabyteDB Anywhere
+
+YugabyteDB Anywhere [supports PITR](../../../yugabyte-platform/back-up-restore-universes/pitr/). However, you must initiate and manage PITR using the YugabyteDB Anywhere UI. If you use the yb-admin CLI to make changes to the PITR configuration of a universe managed by YugabyteDB Anywhere, including creating schedules and snapshots, your changes are not reflected in YugabyteDB Anywhere.
 
 ### Other limitations
 
