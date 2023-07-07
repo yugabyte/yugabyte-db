@@ -153,7 +153,7 @@ Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB 
 - Innovation, which has more frequent updates for faster access to new features.
 - Production, which has a slower update cadence and features only select stable release builds.
 
-Once a cluster is created, it is upgraded with releases from the track that was assigned at creation (that is, either Innovation or Production, or Preview for Sandbox clusters).
+Once a cluster is created, it is upgraded with releases from the track that was assigned at creation (that is, either Innovation or Production for dedicated clusters, or Preview for Sandbox clusters).
 
 To view the database version running on a particular cluster, navigate to the **Clusters** page; the database version is displayed next to the cluster name; hover over the version to see the release track.
 
