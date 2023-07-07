@@ -371,6 +371,8 @@ public class LdapUtilTest extends FakeDBApplication {
       entry.add("yugabytePlatformRole", newLdapRoleValid ? newLdapRole.toString() : "Invalid role");
     }
 
+    Role defaultLdapRole = Role.ConnectOnly;
+
     Users loggedInUser =
         ldapUtil.authViaLDAP(
             email,
@@ -394,26 +396,21 @@ public class LdapUtilTest extends FakeDBApplication {
                 memberOfAttribute,
                 false,
                 groupMappingOn,
-                Role.ConnectOnly));
+                defaultLdapRole));
 
-    if (groupMappingOn) {
+    if (newLdapRoleValid) {
       assertEquals(true, loggedInUser.isLdapSpecifiedRole());
-      if (newLdapRoleValid) {
-        assertEquals(newLdapRole, loggedInUser.getRole());
-      } else {
-        assertEquals(Role.ConnectOnly, loggedInUser.getRole());
-      }
+      assertEquals(newLdapRole, loggedInUser.getRole());
     } else {
-      if (!newLdapRoleValid) {
-        assertEquals(false, loggedInUser.isLdapSpecifiedRole());
-        if (oldUserPresent) {
-          assertEquals(oldUserRole, loggedInUser.getRole());
+      assertEquals(false, loggedInUser.isLdapSpecifiedRole());
+      if (oldUserPresent) {
+        if (oldUserLdapSpecifiedRole) {
+          assertEquals(defaultLdapRole, loggedInUser.getRole());
         } else {
-          assertEquals(Role.ConnectOnly, loggedInUser.getRole());
+          assertEquals(oldUserRole, loggedInUser.getRole());
         }
       } else {
-        assertEquals(true, loggedInUser.isLdapSpecifiedRole());
-        assertEquals(newLdapRole, loggedInUser.getRole());
+        assertEquals(defaultLdapRole, loggedInUser.getRole());
       }
     }
   }
