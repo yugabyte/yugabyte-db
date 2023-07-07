@@ -31,6 +31,7 @@
 #include "storage/shm_toc.h"
 #include "storage/shmem.h"
 #include "pgstat.h"
+#include "yb/yql/pggate/util/ybc_stat.h"
 
 PG_MODULE_MAGIC;
 PG_FUNCTION_INFO_V1(pg_active_universe_history);
@@ -157,8 +158,10 @@ yb_auh_main(Datum main_arg) {
 
     MemoryContext oldcxt = MemoryContextSwitchTo(uppercxt);
 
+    LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
     pg_collect_samples(auh_sample_time);
     tserver_collect_samples(auh_sample_time);
+    LWLockRelease(auh_entry_array_lock);
 
     MemoryContextSwitchTo(oldcxt);
     /* No problems, so clean exit */
@@ -169,8 +172,6 @@ yb_auh_main(Datum main_arg) {
 static void pg_collect_samples(TimestampTz auh_sample_time)
 {
   LWLockAcquire(ProcArrayLock, LW_SHARED);
-  LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
-
   int		procCount = ProcGlobal->allProcCount;
   for (int i = 0; i < procCount; i++)
   {
@@ -179,13 +180,12 @@ static void pg_collect_samples(TimestampTz auh_sample_time)
     if (proc != NULL && proc->pid != 0)
     {
       //TODO:
-      auh_entry_store(auh_sample_time, "abc", proc->pid,
-                      proc->wait_event_info, "tabletid=123", "0xffee",
-                      "127.0.0.1", 1234, 123456, auh_sample_time,
-                      500);
+      auh_entry_store(auh_sample_time, proc->top_level_request_id, 1,
+                      proc->wait_event_info, "tabletid=123", proc->node_uuid,
+                      proc->remote_host, proc->remote_port, proc->queryid, auh_sample_time,
+                      1);
     }
   }
-  LWLockRelease(auh_entry_array_lock);
   LWLockRelease(ProcArrayLock);
 }
 
@@ -379,8 +379,7 @@ pg_active_universe_history_internal(FunctionCallInfo fcinfo)
     // Wait event, wait event component, wait event class
     event_type = pgstat_get_wait_event_type(AUHEntryArray[i].wait_event);
     event = pgstat_get_wait_event(AUHEntryArray[i].wait_event);
-    // TODO: Change this to return class
-    event_component = pgstat_get_wait_event_type(AUHEntryArray[i].wait_event);
+    event_component = ybcstat_get_wait_event_component(AUHEntryArray[i].wait_event);
 
     if (event_component)
       values[j++] = CStringGetTextDatum(event_component);
