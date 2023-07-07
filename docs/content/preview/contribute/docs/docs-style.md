@@ -50,11 +50,19 @@ Prefer markdown-style `[link text](link-target)` links over HTML tags. Markdown'
 
 **Prompts may be necessary.** In a given procedure, the first code block should show the prompt; subsequent blocks can omit it, provided it doesn't impact clarity. Don't omit prompts (particularly shell prompts) if a procedure takes input in more than one way, such as an operation in ysqlsh followed by one in bash.
 
-**Badcode highlight** Make wrong coding practices stand out than regular code. Add attribute `{.badcode}` to the code block.
+You can use the following attributes to modify code blocks:
 
-```sql{.badcode}
-ysqlsh> CREATE TABLE $$__banking__$$;
-```
+- **Highlight bad code.** To highlight wrong coding practices, add the attribute `{.badcode}` to the code block. For example, ```sql{.badcode}```:
+
+  ```sql{.badcode}
+  ysqlsh> CREATE TABLE $$__banking__$$;
+  ```
+
+- **Remove the copy button.** To remove the Copy button from any code block, add the attribute `{.nocopy}` to the code block. For example, ```sql{.nocopy}```:
+
+  ```sql{.nocopy}
+  CREATE TABLE users(id INT PRIMARY KEY, name TEXT);
+  ```
 
 #### YSQL and YCQL code blocks
 
