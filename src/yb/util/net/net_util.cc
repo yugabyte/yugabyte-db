@@ -494,6 +494,22 @@ Status HostPortFromEndpointReplaceWildcard(const Endpoint& addr, HostPort* hp) {
   return Status::OK();
 }
 
+namespace {
+
+void TryRunCmd(const string& cmd, vector<string>* log = NULL) {
+  LOG_STRING(INFO, log) << "$ " << cmd;
+  vector<string> argv = { "bash", "-c", cmd };
+  string results;
+  Status s = Subprocess::Call(argv, &results);
+  if (!s.ok()) {
+    LOG_STRING(INFO, log) << s.ToString();
+    return;
+  }
+  LOG_STRING(INFO, log) << results;
+}
+
+} // anonymous namespace
+
 void TryRunLsof(const Endpoint& addr, vector<string>* log) {
 #if defined(__APPLE__)
   string cmd = strings::Substitute(
@@ -525,14 +541,15 @@ void TryRunLsof(const Endpoint& addr, vector<string>* log) {
   LOG_STRING(WARNING, log) << "Failed to bind to " << addr << ". "
                            << "Trying to use lsof to find any processes listening "
                            << "on the same port:";
-  LOG_STRING(INFO, log) << "$ " << cmd;
-  vector<string> argv = { "bash", "-c", cmd };
-  string results;
-  Status s = Subprocess::Call(argv, &results);
-  if (PREDICT_FALSE(!s.ok())) {
-    LOG_STRING(WARNING, log) << s.ToString();
-  }
-  LOG_STRING(WARNING, log) << results;
+  TryRunCmd(cmd, log);
+}
+
+void TryRunChronycTracking(vector<string>* log) {
+  TryRunCmd("chronyc tracking", log);
+}
+
+void TryRunChronycSourcestats(vector<string>* log) {
+  TryRunCmd("chronyc sourcestats", log);
 }
 
 uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock) {
