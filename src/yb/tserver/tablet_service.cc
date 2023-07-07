@@ -2053,7 +2053,9 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
-  util::WaitStateInfo::UpdateFromPB(*req);
+  if (req->has_auh_metadata()) {
+    util::WaitStateInfo::UpdateMetadataFromPB(req->auh_metadata());
+  }
   auto status = PerformWrite(req, resp, &context);
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), std::move(status), &context);
@@ -2068,7 +2070,9 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     return;
   }
 
-  util::WaitStateInfo::UpdateFromPB(*req);
+  if (req->has_auh_metadata()) {
+    util::WaitStateInfo::UpdateMetadataFromPB(req->auh_metadata());
+  }
   PerformRead(server_, this, req, resp, std::move(context));
 }
 
