@@ -36,7 +36,10 @@
 #include <glog/logging.h>
 
 #include "yb/gutil/macros.h"
+
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/sidecars.h"
+
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
@@ -140,8 +143,10 @@ class RpcController {
   // Return the configured timeout.
   MonoDelta timeout() const;
 
+  Sidecars& outbound_sidecars();
+
   // Assign sidecar with specified index to out.
-  Result<RefCntSlice> ExtractSidecar(int idx) const;
+  Result<RefCntSlice> ExtractSidecar(size_t idx) const;
 
   // Transfer all sidecars to specified context.
   size_t TransferSidecars(Sidecars* dest);
@@ -164,6 +169,8 @@ class RpcController {
   OutboundCallPtr call_;
   bool allow_local_calls_in_curr_thread_ = false;
   InvokeCallbackMode invoke_callback_mode_ = InvokeCallbackMode::kThreadPoolNormal;
+
+  std::optional<Sidecars> outbound_sidecars_;
 
   DISALLOW_COPY_AND_ASSIGN(RpcController);
 };

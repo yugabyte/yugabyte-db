@@ -156,7 +156,7 @@ ThreadPool* Proxy::GetCallbackThreadPool(
 
 bool Proxy::PrepareCall(AnyMessageConstPtr req, RpcController* controller) {
   auto call = controller->call_.get();
-  Status s = call->SetRequestParam(req, mem_tracker_);
+  Status s = call->SetRequestParam(req, &controller->outbound_sidecars(), mem_tracker_);
   if (PREDICT_FALSE(!s.ok())) {
     // Failed to serialize request: likely the request is missing a required
     // field.
