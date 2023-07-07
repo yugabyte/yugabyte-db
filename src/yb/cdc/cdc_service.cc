@@ -1291,7 +1291,7 @@ void CDCServiceImpl::GetTabletListToPollForCDC(
       tablet_id_to_tablet_locations_map[tablet.tablet_id()] = tablet;
     }
 
-    std::vector<std::pair<TabletId, OpId>> tablet_checkpoint_pairs;
+    std::vector<std::pair<TabletId, CDCSDKCheckpointPB>> tablet_checkpoint_pairs;
     RPC_STATUS_RETURN_ERROR(
         GetTabletIdsToPoll(
             req->table_info().stream_id(), active_or_hidden_tablets, parent_tablets,
@@ -1305,9 +1305,8 @@ void CDCServiceImpl::GetTabletListToPollForCDC(
 
       tablet_checkpoint_pair_pb->mutable_tablet_locations()->CopyFrom(
           tablet_id_to_tablet_locations_map[tablet_checkpoint_pair.first]);
-      CDCSDKCheckpointPB checkpoint_pb;
-      tablet_checkpoint_pair.second.ToPB(&checkpoint_pb);
-      tablet_checkpoint_pair_pb->mutable_cdc_sdk_checkpoint()->CopyFrom(checkpoint_pb);
+      tablet_checkpoint_pair_pb->mutable_cdc_sdk_checkpoint()->CopyFrom(
+          tablet_checkpoint_pair.second);
     }
   } else {
     // If the request had tablet_id populated, we will only return the details of the child tablets
@@ -1326,10 +1325,10 @@ void CDCServiceImpl::GetTabletListToPollForCDC(
     // Get the checkpoint from the parent tablet.
     CDCSDKCheckpointPB parent_checkpoint_pb;
     {
-      ProducerTabletInfo parent_tablet = {{}, req->table_info().stream_id(), req->tablet_id()};
-      auto result = GetLastCheckpoint(parent_tablet, CDCRequestSource::CDCSDK);
+      auto result = GetLastCheckpointFromCdcState(
+          req->table_info().stream_id(), req->tablet_id(), CDCRequestSource::CDCSDK);
       RPC_RESULT_RETURN_ERROR(result, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
-      (*result).ToPB(&parent_checkpoint_pb);
+      parent_checkpoint_pb.CopyFrom(*result);
     }
 
     for (const auto& child_tablet_id : child_tablet_ids) {
@@ -1339,14 +1338,15 @@ void CDCServiceImpl::GetTabletListToPollForCDC(
       tablet_checkpoint_pair_pb->mutable_tablet_locations()->CopyFrom(
           tablet_id_to_tablet_locations_map[child_tablet_id]);
 
-      auto result = GetLastCheckpoint(cur_child_tablet, CDCRequestSource::CDCSDK);
+      auto result = GetLastCheckpointFromCdcState(
+          cur_child_tablet.stream_id, cur_child_tablet.tablet_id, CDCRequestSource::CDCSDK);
       RPC_RESULT_RETURN_ERROR(result, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
-      if (result->is_valid_not_empty()) {
+      // If the child's checkpoint is invalid, we will rely on the parent tablet's checkpoint.
+      if (result->term() > 0 && result->index() > 0) {
         CDCSDKCheckpointPB checkpoint_pb;
-        (*result).ToPB(&checkpoint_pb);
+        checkpoint_pb.CopyFrom(result.get());
         tablet_checkpoint_pair_pb->mutable_cdc_sdk_checkpoint()->CopyFrom(checkpoint_pb);
       } else {
-        // Reuse the checkpoint from the parent.
         tablet_checkpoint_pair_pb->mutable_cdc_sdk_checkpoint()->CopyFrom(parent_checkpoint_pb);
       }
     }
@@ -2488,13 +2488,16 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
     const std::set<TabletId>& active_or_hidden_tablets,
     const std::set<TabletId>& parent_tablets,
     const std::map<TabletId, TabletId>& child_to_parent_mapping,
-    std::vector<std::pair<TabletId, OpId>>* result) {
+    std::vector<std::pair<TabletId, CDCSDKCheckpointPB>>* result) {
   std::set<TabletId> parents_with_polled_children;
   std::set<TabletId> polled_tablets;
 
   Status iteration_status;
   auto entries = VERIFY_RESULT(cdc_state_table_->GetTableRange(
-      CDCStateTableEntrySelector().IncludeCheckpoint().IncludeLastReplicationTime(),
+      CDCStateTableEntrySelector()
+          .IncludeCheckpoint()
+          .IncludeLastReplicationTime()
+          .IncludeCDCSDKSafeTime(),
       &iteration_status));
 
   for (auto entry_result : entries) {
@@ -2543,7 +2546,15 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
     }
 
     auto is_parent = (parent_tablets.find(tablet_id) != parent_tablets.end());
-    auto& checkpoint = *entry.checkpoint;
+
+    CDCSDKCheckpointPB checkpoint_pb;
+    checkpoint_pb.set_term(entry.checkpoint->term);
+    checkpoint_pb.set_index(entry.checkpoint->index);
+    if (entry.cdc_sdk_safe_time.has_value()) {
+      checkpoint_pb.set_snapshot_time(*entry.cdc_sdk_safe_time);
+    }
+    const auto& checkpoint = *entry.checkpoint;
+
     auto is_cur_tablet_polled = entry.last_replication_time.has_value();
 
     bool add_to_result = false;
@@ -2613,7 +2624,7 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
     }
 
     if (add_to_result) {
-      result->push_back(std::make_pair(tablet_id, checkpoint));
+      result->push_back(std::make_pair(tablet_id, checkpoint_pb));
     }
   }
 

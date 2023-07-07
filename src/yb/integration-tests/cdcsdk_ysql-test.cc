@@ -2712,6 +2712,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDC)) {
   auto get_tablets_resp = ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id));
 
   ASSERT_EQ(get_tablets_resp.tablet_checkpoint_pairs().size(), num_tablets);
+
+  // Assert that GetTabletListToPollForCDC also populates the snapshot_time.
+  for (const auto& tablet_checkpoint_pair : get_tablets_resp.tablet_checkpoint_pairs()) {
+    ASSERT_GE(tablet_checkpoint_pair.cdc_sdk_checkpoint().snapshot_time(), 0);
+  }
 }
 
 // Here creating a single table inside a namespace and a CDC stream on top of the namespace.
