@@ -741,6 +741,11 @@ TEST_F(
       ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id, tablets[0].tablet_id()));
   ASSERT_EQ(get_tablets_resp.tablet_checkpoint_pairs().size(), 2);
 
+  // Assert that GetTabletListToPollForCDC also populates the snapshot_time.
+  for (const auto& tablet_checkpoint_pair : get_tablets_resp.tablet_checkpoint_pairs()) {
+    ASSERT_GE(tablet_checkpoint_pair.cdc_sdk_checkpoint().snapshot_time(), 0);
+  }
+
   // Wait until the 'cdc_parent_tablet_deletion_task_' has run.
   SleepFor(MonoDelta::FromSeconds(2));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_split;
