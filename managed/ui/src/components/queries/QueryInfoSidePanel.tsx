@@ -31,7 +31,7 @@ const YSQL_SLOW_QUERY_DETAIL_FIELDS: YSQLSlowQueryPrimativeFields[] = [
   'calls',
   'rows',
   'datname',
-  'userid',
+  'rolname',
   'total_time',
   'max_time',
   'min_time',
@@ -129,6 +129,7 @@ export const QueryInfoSidePanel = ({ queryData, visible, onHide }: QueryInfoSide
     return queryData[ysqlSlowQueryKey].toString();
   };
 
+  /** `yb_latency_histogram` is not returned from queries on older YBDB versions */
   const latencyBarGraphData = queryData?.yb_latency_histogram
     ? adaptHistogramData(queryData.yb_latency_histogram)
     : [];
@@ -190,7 +191,7 @@ export const QueryInfoSidePanel = ({ queryData, visible, onHide }: QueryInfoSide
                       ))}
                     </Box>
                   </Box>
-                  {!!latencyBarGraphData.length && (
+                  {!!latencyBarGraphData?.length && (
                     <>
                       <Typography variant="body1">{t('slowQueryGraph.title')}</Typography>
                       <BarChart

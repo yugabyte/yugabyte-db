@@ -13,9 +13,6 @@ import { YBPanelItem } from '../panels';
 import { YBLoadingCircleIcon } from '../common/indicators';
 import { YBCheckBox, YBButtonLink, YBToggle } from '../common/forms/fields';
 import { QuerySearchInput } from './QuerySearchInput';
-import { SLOW_QUERY_P99_LATENCY_YB_SOFTWARE_VERSION_THRESHOLD } from './helpers/constants';
-import { LegacyQueryInfoSidePanel } from './LegacyQueryInfoSidePanel';
-import { compareYBSoftwareVersions, getPrimaryCluster } from '../../utils/universeUtilsTyped';
 
 const dropdownColKeys = {
   Query: {
@@ -27,7 +24,7 @@ const dropdownColKeys = {
     type: 'string'
   },
   User: {
-    value: 'userid',
+    value: 'rolname',
     type: 'string'
   },
   Count: {
@@ -229,15 +226,6 @@ const SlowQueriesComponent = () => {
     })
   ];
 
-  const ybSoftwareVersion = getPrimaryCluster(currentUniverse.data.universeDetails.clusters)
-    ?.userIntent.ybSoftwareVersion;
-  const isSlowQueryP99LatencySupported =
-    !!ybSoftwareVersion &&
-    compareYBSoftwareVersions(
-      SLOW_QUERY_P99_LATENCY_YB_SOFTWARE_VERSION_THRESHOLD,
-      ybSoftwareVersion,
-      true
-    ) < 0;
   return (
     <div className="slow-queries">
       <YBPanelItem
@@ -367,19 +355,11 @@ const SlowQueriesComponent = () => {
           </div>
         }
       />
-      {isSlowQueryP99LatencySupported ? (
-        <QueryInfoSidePanel
-          visible={selectedRow.length}
-          onHide={() => setSelectedRow([])}
-          queryData={ysqlQueries.find((x) => selectedRow.length && x.queryid === selectedRow[0])}
-        />
-      ) : (
-        <LegacyQueryInfoSidePanel
-          visible={selectedRow.length}
-          onHide={() => setSelectedRow([])}
-          queryData={ysqlQueries.find((x) => selectedRow.length && x.queryid === selectedRow[0])}
-        />
-      )}
+      <QueryInfoSidePanel
+        visible={selectedRow.length}
+        onHide={() => setSelectedRow([])}
+        queryData={ysqlQueries.find((x) => selectedRow.length && x.queryid === selectedRow[0])}
+      />
     </div>
   );
 };

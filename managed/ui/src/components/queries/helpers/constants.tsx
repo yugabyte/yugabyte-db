@@ -41,8 +41,3 @@ export const QueryType = {
   LIVE: 'liveQuery'
 } as const;
 export type QueryType = typeof QueryType[keyof typeof QueryType];
-
-/**
- * A YB software version must exceed the threshold to be considered a supported version.
- */
-export const SLOW_QUERY_P99_LATENCY_YB_SOFTWARE_VERSION_THRESHOLD = '2.19.1.0-b80';
