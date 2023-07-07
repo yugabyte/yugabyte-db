@@ -52,9 +52,9 @@
  * YB AUH Wait Components
  * ----------
  */
-#define YB_PG        0xF0000000U
+#define YB_PGGATE    0xF0000000U
 #define YB_TSERVER   0xE0000000U
-
+#define YB_PG        0x00000000U
 /* ----------
  * YB AUH Wait Classes
  * ----------
@@ -73,7 +73,7 @@ YB_DEFINE_ENUM_TYPE(
     uint32_t,
     (Unused)
     // General states for incoming RPCs
-    (Created)(Queued)(Handling)(QueueingResponse)(ResponseQueued)
+    ((Created, YB_TSERVER_WAIT_RPC))(Queued)(Handling)(QueueingResponse)(ResponseQueued)
     // Writes
     (AcquiringLocks)(ConflictResolution)(ExecuteWrite)(SubmittingToRaft)
       // OperationDriver
