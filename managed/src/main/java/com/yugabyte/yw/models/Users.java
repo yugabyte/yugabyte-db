@@ -17,6 +17,7 @@ import io.ebean.annotation.Encrypted;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import io.swagger.annotations.ApiModelProperty.AccessMode;
 import java.math.BigInteger;
 import java.security.SecureRandom;
 import java.time.Duration;
@@ -179,6 +180,12 @@ public class Users extends Model {
   @Column(nullable = false)
   @ApiModelProperty(value = "LDAP Specified Role")
   private boolean ldapSpecifiedRole;
+
+  @Encrypted
+  @Getter
+  @Setter
+  @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
+  private String oidcJwtAuthToken;
 
   public static final Finder<UUID, Users> find = new Finder<UUID, Users>(Users.class) {};
 

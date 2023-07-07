@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Throwables;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
 import com.google.inject.Provider;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -156,37 +157,43 @@ public class TaskExecutor {
       buildSummary(
           COMMISSIONER_TASK_WAITING_SEC_METRIC,
           "Duration between task creation and execution",
-          KnownAlertLabels.TASK_TYPE.labelName());
+          KnownAlertLabels.TASK_TYPE.labelName(),
+          KnownAlertLabels.PARENT_TASK_TYPE.labelName());
 
   private static final Summary COMMISSIONER_TASK_EXECUTION_SEC =
       buildSummary(
           COMMISSIONER_TASK_EXECUTION_SEC_METRIC,
           "Duration of task execution",
           KnownAlertLabels.TASK_TYPE.labelName(),
-          KnownAlertLabels.RESULT.labelName());
+          KnownAlertLabels.RESULT.labelName(),
+          KnownAlertLabels.PARENT_TASK_TYPE.labelName());
 
   private static Summary buildSummary(String name, String description, String... labelNames) {
     return Summary.build(name, description)
         .quantile(0.5, 0.05)
         .quantile(0.9, 0.01)
-        .maxAgeSeconds(TimeUnit.HOURS.toSeconds(1))
         .labelNames(labelNames)
         .register(CollectorRegistry.defaultRegistry);
   }
 
   // This writes the waiting time metric.
   private static void writeTaskWaitMetric(
-      TaskType taskType, Instant scheduledTime, Instant startTime) {
+      Map<String, String> taskLabels, Instant scheduledTime, Instant startTime) {
     COMMISSIONER_TASK_WAITING_SEC
-        .labels(taskType.name())
+        .labels(
+            taskLabels.get(KnownAlertLabels.TASK_TYPE.labelName()),
+            taskLabels.get(KnownAlertLabels.PARENT_TASK_TYPE.labelName()))
         .observe(getDurationSeconds(scheduledTime, startTime));
   }
 
   // This writes the execution time metric.
   private static void writeTaskStateMetric(
-      TaskType taskType, Instant startTime, Instant endTime, State state) {
+      Map<String, String> taskLabels, Instant startTime, Instant endTime, State state) {
     COMMISSIONER_TASK_EXECUTION_SEC
-        .labels(taskType.name(), state.name())
+        .labels(
+            taskLabels.get(KnownAlertLabels.TASK_TYPE.labelName()),
+            state.name(),
+            taskLabels.get(KnownAlertLabels.PARENT_TASK_TYPE.labelName()))
         .observe(getDurationSeconds(startTime, endTime));
   }
 
@@ -792,6 +799,7 @@ public class TaskExecutor {
       Throwable t = null;
       TaskType taskType = taskInfo.getTaskType();
       taskStartTime = Instant.now();
+      Map<String, String> taskLabels = this.getTaskMetricLabels();
 
       try {
         if (log.isDebugEnabled()) {
@@ -800,7 +808,7 @@ public class TaskExecutor {
               task.getName(),
               getDurationSeconds(taskScheduledTime, taskStartTime));
         }
-        writeTaskWaitMetric(taskType, taskScheduledTime, taskStartTime);
+        writeTaskWaitMetric(taskLabels, taskScheduledTime, taskStartTime);
         publishBeforeTask();
         if (getAbortTime() != null) {
           throw new CancellationException("Task " + task.getName() + " is aborted");
@@ -834,7 +842,7 @@ public class TaskExecutor {
               task.getName(),
               getDurationSeconds(taskStartTime, taskCompletionTime));
         }
-        writeTaskStateMetric(taskType, taskStartTime, taskCompletionTime, getTaskState());
+        writeTaskStateMetric(taskLabels, taskStartTime, taskCompletionTime, getTaskState());
         task.terminate();
         publishAfterTask(t);
       }
@@ -864,6 +872,8 @@ public class TaskExecutor {
       taskInfo.setDetails(taskDetails);
       taskInfo.update();
     }
+
+    protected abstract Map<String, String> getTaskMetricLabels();
 
     protected abstract Instant getAbortTime();
 
@@ -1055,6 +1065,15 @@ public class TaskExecutor {
     }
 
     @Override
+    protected Map<String, String> getTaskMetricLabels() {
+      return ImmutableMap.of(
+          KnownAlertLabels.PARENT_TASK_TYPE.labelName(),
+          "No parent",
+          KnownAlertLabels.TASK_TYPE.labelName(),
+          taskInfo.getTaskType().name());
+    }
+
+    @Override
     protected Instant getAbortTime() {
       return abortTime;
     }
@@ -1229,6 +1248,13 @@ public class TaskExecutor {
 
         currentAttempt++;
       }
+    }
+
+    @Override
+    protected Map<String, String> getTaskMetricLabels() {
+      return ImmutableMap.of(
+          KnownAlertLabels.PARENT_TASK_TYPE.labelName(), parentRunnableTask.getTaskType().name(),
+          KnownAlertLabels.TASK_TYPE.labelName(), taskInfo.getTaskType().name());
     }
 
     @Override

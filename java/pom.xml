@@ -40,7 +40,7 @@
 
   <groupId>org.yb</groupId>
   <artifactId>yb-parent</artifactId>
-  <version>0.8.57-SNAPSHOT</version>
+  <version>0.8.58-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <name>Yugabyte</name>
@@ -138,6 +138,7 @@
     <module>yb-cdc</module>
     <module>yb-multiapi</module>
     <module>yb-sample</module>
+    <module>yb-ysql-conn-mgr</module>
   </modules>
 
   <build>
@@ -354,7 +355,7 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-client</artifactId>
-        <version>0.8.57-SNAPSHOT</version>
+        <version>0.8.58-SNAPSHOT</version>
       </dependency>
       <dependency>
         <groupId>org.yb</groupId>
@@ -525,7 +526,7 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-client</artifactId>
-        <version>0.8.57-SNAPSHOT</version>
+        <version>0.8.58-SNAPSHOT</version>
         <type>test-jar</type>
       </dependency>
       <dependency>

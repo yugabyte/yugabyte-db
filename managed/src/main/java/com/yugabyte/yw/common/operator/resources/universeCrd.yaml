@@ -47,13 +47,23 @@ spec:
                 enableYSQLAuth:
                   type: boolean
                 ysqlPassword:
-                  type: string
+                  type: object
+                  properties:
+                    secretName:
+                      type: string
+                  required:
+                  - secretName
                 enableYCQL:
                   type: boolean
                 enableYCQLAuth:
                   type: boolean
                 ycqlPassword:
-                  type: string
+                  type: object
+                  properties:
+                    secretName:
+                      type: string
+                  required:
+                  - secretName
                 enableIPV6:
                   type: boolean
                 enableExposingService:

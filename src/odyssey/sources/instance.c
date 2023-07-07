@@ -7,6 +7,7 @@
 
 #include <machinarium.h>
 #include <odyssey.h>
+#include <sys/prctl.h>
 
 void od_instance_init(od_instance_t *instance)
 {
@@ -260,4 +261,31 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 error:
 	od_router_free(&router);
 	return NOT_OK_RESPONSE;
+}
+
+/*
+ * NOTE: This code has been duplicated from YBSetParentDeathSignal()
+ * function present in `src/postgres/src/backend/utils/misc/pg_yb_utils.c`.
+ */
+void YbSetParentDeathSignal()
+{
+	char *pdeathsig_str = getenv("YB_YSQLCONNMGR_PDEATHSIG");
+	if (pdeathsig_str) {
+		char *end_ptr = NULL;
+		long int pdeathsig = strtol(pdeathsig_str, &end_ptr, 10);
+		if (end_ptr == pdeathsig_str + strlen(pdeathsig_str)) {
+			if (pdeathsig >= 1 && pdeathsig <= 31) {
+				prctl(PR_SET_PDEATHSIG, pdeathsig);
+			} else {
+				fprintf(stdout,
+					"Error: YB_YSQLCONNMGR_PDEATHSIG is an invalid signal value: %ld",
+					pdeathsig);
+			}
+
+		} else {
+			fprintf(stdout,
+				"Error: failed to parse the value of YB_YSQLCONNMGR_PDEATHSIG: %s",
+				pdeathsig_str);
+		}
+	}
 }

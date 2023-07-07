@@ -122,7 +122,7 @@ class RocksDBPatcher {
   Status Load();
 
   // Set hybrid time filter for DB.
-  Status SetHybridTimeFilter(HybridTime value);
+  Status SetHybridTimeFilter(std::optional<uint32_t> db_oid, HybridTime value);
 
   // Modify flushed frontier and clean up smallest/largest op id in per-SST file metadata.
   Status ModifyFlushedFrontier(const ConsensusFrontier& frontier);

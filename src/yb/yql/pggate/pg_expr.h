@@ -81,6 +81,8 @@ class PgExpr {
 
   virtual Result<LWQLValuePB*> Eval();
 
+  virtual std::string ToString() const;
+
   // Access methods.
   Opcode opcode() const {
     return opcode_;
@@ -179,6 +181,8 @@ class PgConstant : public PgExpr {
 
   // Expression to PB.
   Result<LWQLValuePB*> Eval() override;
+
+  std::string ToString() const override;
 
   // Read binary value.
   Slice binary_value() {

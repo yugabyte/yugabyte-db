@@ -43,6 +43,7 @@ public class HealthCheck extends Model {
       private String process;
       private Date timestampIso;
       private String nodeName;
+      private String nodeIdentifier;
       private Boolean hasError = false;
       private Boolean hasWarning = false;
       private Boolean metricsOnly = false;

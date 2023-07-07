@@ -19,6 +19,8 @@ import static org.hamcrest.Matchers.nullValue;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDescription;
 import com.yugabyte.yw.models.Alert.SortBy;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
@@ -54,13 +56,21 @@ public class AlertTest extends FakeDBApplication {
 
   private AlertService alertService;
 
+  private AlertTemplateService alertTemplateService;
+
+  private AlertTemplateDescription alertTemplateDescription;
+
   @Before
   public void setUp() {
+    cust1 = ModelFactory.testCustomer("Customer 1");
     cust1 = ModelFactory.testCustomer("Customer 1");
     universe = ModelFactory.createUniverse(cust1.getId());
     configuration = createAlertConfiguration(cust1, universe);
     definition = createDefinition();
     alertService = app.injector().instanceOf(AlertService.class);
+    alertTemplateService = app.injector().instanceOf(AlertTemplateService.class);
+    alertTemplateDescription =
+        alertTemplateService.getTemplateDescription(configuration.getTemplate());
   }
 
   @Test
@@ -330,7 +340,9 @@ public class AlertTest extends FakeDBApplication {
 
   private Alert createAlert() {
     List<AlertLabel> labels =
-        definition.getEffectiveLabels(configuration, null, AlertConfiguration.Severity.SEVERE)
+        definition
+            .getEffectiveLabels(
+                alertTemplateDescription, configuration, null, AlertConfiguration.Severity.SEVERE)
             .stream()
             .map(l -> new AlertLabel(l.getName(), l.getValue()))
             .collect(Collectors.toList());
@@ -402,7 +414,11 @@ public class AlertTest extends FakeDBApplication {
             KnownAlertLabels.SEVERITY.labelName(),
             AlertConfiguration.Severity.SEVERE.name());
     AlertLabel expressionLabel =
-        new AlertLabel(alert, KnownAlertLabels.ALERT_EXPRESSION.labelName(), "query > 1");
+        new AlertLabel(
+            alert,
+            KnownAlertLabels.ALERT_EXPRESSION.labelName(),
+            alertTemplateDescription.getQueryWithThreshold(
+                definition, configuration.getThresholds().get(Severity.SEVERE)));
     AlertLabel thresholdLabel = new AlertLabel(alert, KnownAlertLabels.THRESHOLD.labelName(), "1");
     AlertLabel definitionUuidLabel =
         new AlertLabel(

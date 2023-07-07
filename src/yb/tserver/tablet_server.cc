@@ -103,6 +103,8 @@
 #include "yb/util/status_log.h"
 #include "yb/util/ntp_clock.h"
 
+#include "yb/yql/pgwrapper/pg_wrapper.h"
+
 using std::make_shared;
 using std::shared_ptr;
 using std::vector;
@@ -163,7 +165,7 @@ DEFINE_UNKNOWN_int32(redis_proxy_webserver_port, 0, "Webserver port for redis pr
 DEFINE_UNKNOWN_string(cql_proxy_bind_address, "", "Address to bind the CQL proxy to");
 DEFINE_UNKNOWN_int32(cql_proxy_webserver_port, 0, "Webserver port for CQL proxy");
 
-DEFINE_UNKNOWN_string(pgsql_proxy_bind_address, "", "Address to bind the PostgreSQL proxy to");
+DEFINE_NON_RUNTIME_string(pgsql_proxy_bind_address, "", "Address to bind the PostgreSQL proxy to");
 DECLARE_int32(pgsql_proxy_webserver_port);
 
 DEFINE_UNKNOWN_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
@@ -226,10 +228,40 @@ DEFINE_UNKNOWN_int32(
 TAG_FLAG(get_universe_key_registry_max_backoff_sec, stable);
 TAG_FLAG(get_universe_key_registry_max_backoff_sec, advanced);
 
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_port, 6433,
+    "Ysql Connection Manager port to which clients will connect. This must be different from the "
+    "postgres port set via pgsql_proxy_bind_address. Default is 6433.");
+
 namespace yb {
 namespace tserver {
 
 namespace {
+
+uint16_t GetPostgresPort() {
+  yb::HostPort postgres_address;
+  CHECK_OK(postgres_address.ParseString(
+      FLAGS_pgsql_proxy_bind_address, yb::pgwrapper::PgProcessConf().kDefaultPort));
+  return postgres_address.port();
+}
+
+void PostgresAndYsqlConnMgrPortValidator() {
+  const auto pg_port = GetPostgresPort();
+  if (FLAGS_ysql_conn_mgr_port == pg_port) {
+    LOG(FATAL) << "Postgres port (pgsql_proxy_bind_address: " << pg_port
+               << ") and Ysql Connection Manager port (ysql_conn_mgr_port:"
+               << FLAGS_ysql_conn_mgr_port << ") cannot be the same.";
+  }
+}
+
+// Normally we would have used DEFINE_validator. But this validation depends on the value of another
+// flag (pgsql_proxy_bind_address). On process startup flag validations are run as each flag
+// gets parsed from the command line parameter. So this would impose a restriction on the user to
+// pass the flags in a particular obscure order via command line. YBA has no guarantees on the order
+// it uses as well. So, instead we use a Callback with LOG(FATAL) since at startup Callbacks are run
+// after all the flags have been parsed.
+REGISTER_CALLBACK(ysql_conn_mgr_port, "PostgresAndYsqlConnMgrPortValidator",
+    &PostgresAndYsqlConnMgrPortValidator);
+
 
 class CDCServiceContextImpl : public cdc::CDCServiceContext {
  public:
