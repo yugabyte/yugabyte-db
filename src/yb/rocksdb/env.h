@@ -428,7 +428,7 @@ class Env {
   // Returns the ID of the current thread.
   virtual uint64_t GetThreadID() const;
 
-  virtual std::vector<std::string> GetThreadpoolWaitStates() = 0;
+  virtual std::vector<yb::util::WaitStateInfoPtr> GetThreadpoolWaitStates() = 0;
 
  private:
   // No copying allowed
@@ -726,7 +726,7 @@ class EnvWrapper : public Env {
     return target_->IsPlainText();
   }
 
-  std::vector<std::string> GetThreadpoolWaitStates() override {
+  std::vector<yb::util::WaitStateInfoPtr> GetThreadpoolWaitStates() override {
     return target_->GetThreadpoolWaitStates();
   }
 

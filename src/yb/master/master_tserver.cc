@@ -183,7 +183,7 @@ client::TransactionPool& MasterTabletServer::TransactionPool() {
   return *temp;
 }
 
-std::vector<std::string> MasterTabletServer::GetThreadpoolWaitStates() const {
+std::vector<yb::util::WaitStateInfoPtr> MasterTabletServer::GetThreadpoolWaitStates() const {
   return {};
 }
 

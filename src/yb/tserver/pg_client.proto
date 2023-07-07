@@ -680,5 +680,5 @@ message PgActiveUniverseHistoryRequestPB {}
 
 message PgActiveUniverseHistoryResponsePB {
   AppStatusPB status = 1;
-  repeated string wait_states = 2;
+  repeated WaitStateInfoPB wait_states = 2;
 }
