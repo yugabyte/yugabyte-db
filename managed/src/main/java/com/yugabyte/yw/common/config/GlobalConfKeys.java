@@ -354,6 +354,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable hot reload of TLS certificates without restart of the DB nodes",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> orgNameSelfSignedCert =
+      new ConfKeyInfo<>(
+          "yb.tlsCertificate.organizationName",
+          ScopeType.GLOBAL,
+          "Organization name for self signed certificates",
+          "Specify an organization name for self signed certificates",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> cmdOutputDelete =
       new ConfKeyInfo<>(
           "yb.logs.cmdOutputDelete",

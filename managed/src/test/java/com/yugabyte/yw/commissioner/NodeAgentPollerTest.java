@@ -28,6 +28,7 @@ import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
@@ -62,6 +63,8 @@ public class NodeAgentPollerTest extends FakeDBApplication {
   @Mock private PlatformScheduler mockPlatformScheduler;
   @Mock private NodeAgentClient mockNodeAgentClient;
 
+  private CertificateHelper certificateHelper;
+
   private NodeAgentManager nodeAgentManager;
   private NodeAgentHandler nodeAgentHandler;
   private NodeAgentPoller nodeAgentPoller;
@@ -72,7 +75,8 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentPollerInterval)))
         .thenReturn(Duration.ofSeconds(3));
-    nodeAgentManager = new NodeAgentManager(mockAppConfig, mockConfigHelper);
+    certificateHelper = new CertificateHelper(mockConfGetter);
+    nodeAgentManager = new NodeAgentManager(mockAppConfig, mockConfigHelper, certificateHelper);
     nodeAgentHandler = new NodeAgentHandler(mockAppConfig, nodeAgentManager, mockNodeAgentClient);
     nodeAgentPoller =
         new NodeAgentPoller(
