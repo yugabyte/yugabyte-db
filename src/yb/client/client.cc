@@ -1596,7 +1596,15 @@ Result<bool> YBClient::IsBootstrapRequired(const std::vector<TableId>& table_ids
         table_ids.size(), resp.results_size()));
   }
 
-  return resp.results(0).bootstrap_required();
+  bool bootstrap_required = false;
+  for (const auto& result : resp.results()) {
+    if (result.bootstrap_required()) {
+      bootstrap_required = true;
+      break;
+    }
+  }
+
+  return bootstrap_required;
 }
 
 Status YBClient::BootstrapProducer(
