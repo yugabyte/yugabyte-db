@@ -701,4 +701,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Timeout for memory check in secs",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> sleepTimeBeforeRestoreXClusterSetup =
+      new ConfKeyInfo<>(
+          "yb.xcluster.sleep_time_before_restore",
+          ScopeType.UNIVERSE,
+          "Wait time before doing restore during xCluster setup task",
+          "The amount of time to sleep (wait) before executing restore subtask during "
+              + "xCluster setup; it is useful because xCluster setup also drops the database "
+              + "before restore and the sleep makes sure the drop operation has reached all "
+              + "the nodes",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
