@@ -8,6 +8,7 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
@@ -22,6 +23,7 @@ import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import java.io.File;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -263,6 +265,15 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       } else if (tableType == CommonTypes.TableType.PGSQL_TABLE_TYPE) {
         // If the table type is YSQL, delete the database from the target universe before restore.
         createDeleteKeySpaceTask(namespaceName, CommonTypes.TableType.PGSQL_TABLE_TYPE);
+      }
+
+      // Wait for sometime to make sure the above drop database has reached all the nodes.
+      Duration waitTime =
+          this.confGetter.getConfForScope(
+              targetUniverse, UniverseConfKeys.sleepTimeBeforeRestoreXClusterSetup);
+      if (waitTime.compareTo(Duration.ZERO) > 0) {
+        createWaitForDurationSubtask(targetUniverse, waitTime)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RestoringBackup);
       }
 
       // Restore to the target universe.
