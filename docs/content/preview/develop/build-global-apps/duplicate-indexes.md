@@ -118,7 +118,7 @@ explain analyze select id, city from users where name = 'John Wick' ;
  Peak Memory Usage: 8 kB
 ```
 
-As you have added all of the columns needed for your queries as part of the covering index, the query executor will not have to go to the tablet leader (in a different region) to fetch the data. The query planner will use the index(`idx_west`) whose leaders are local to the region when querying. Note that the read latency is just `~2.2ms` instead of the original `~60ms`.
+As you have added all of the columns needed for your queries as part of the covering index, the query executor will not have to go to the tablet leader (in a different region) to fetch the data. The **geo-aware query planner** will prefer to use the index(`idx_west`) whose leaders are local to the region when querying. Note that the read latency is just `~2.2ms` instead of the original `~60ms`.
 
 {{<note title="Note">}}
 The query planner optimizations related to picking the right index by taking into consideration the leader preference of the tablespace in which the index lives are available from 2.17.3+ releases.

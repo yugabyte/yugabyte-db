@@ -35,13 +35,7 @@ When designing today's applications (eg. email, e-commerce websites, or broadcas
 
 Running applications in multiple data centers with data split across them is not a trivial task. YugabyteDB can be deployed in various configurations like single-region multi-zone or multi-region multi-zone configuration with ease. You can leverage some of our battle-tested design paradigms, which offer solutions to common problems faced in these scenarios. These proven paradigms offer solutions that can significantly accelerate your application development by saving time and resources that would otherwise be spent reinventing the wheel.
 
-We can classify these patterns based on how multiple instances of the application operate on parts of the data or whether the application follows the workload or if the application operates on local data or only reads from local followers. For example,
-
-#### Legends
-
-For all the illustrations, we will use the following legend to represent tablet leaders/followers, cloud regions/zones and applications.
-
-![Global Database - Legend](/images/develop/global-apps/global-database-legend.png)
+We can classify these patterns based on 
 
 ### Application Architecture
 
@@ -60,7 +54,9 @@ For all the illustrations, we will use the following legend to represent tablet 
 - **Follower reads** - Stale reads  to achieve lower latency reads
 - **Bounded staleness** - Allow stale reads but with bounds on how stale data is
 
-Let's look at some of these application design patterns.
+## Picking the right design pattern
+
+Based on specific requirements such as multiple instances of the application operating on all data or specific parts of it, workload alignment with the application, or the application solely reading from local followers, you can select the suitable design pattern from the table below.
 
 |         Pattern Type         |                         Follow theApplication                           |                              Geo-Local Data                               |
 | ---------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------- |
@@ -69,7 +65,11 @@ Let's look at some of these application design patterns.
 | **Partitioned Multi Active** | [Latency-optimized geo-partitioning](./latency-optimized-geo-partition) | [Locality-optimized geo-partitioning](./locality-optimized-geo-partition) |
 | **Data Access only**         | [Follower Reads](./follower-reads), [Read Replicas](./read-replicas)    | N/A                                                                       |
 
-Let's look at a quick overview of each of these patterns.
+## Design patterns explained
+
+We will use the following legend to represent tablet leaders/followers, cloud regions/zones and applications to explain the design patterns in detail.
+
+![Global Database - Legend](/images/develop/global-apps/global-database-legend.png)
 
 {{<table>}}
 
@@ -80,13 +80,13 @@ Let's look at a quick overview of each of these patterns.
 A database spread across multiple(3 or more) regions/zones. On failure, a replica in another region/zone will be promoted to leader in seconds, without any loss of data.
 Applications read from source of truth, possibly with higher latencies|
 
+|[Active&#8209;Active Single&#8209;Master](./active-active-single-master)|
+{{<header Level="6">}} Secondary database that can serve reads {{</header>}}
+Set up a second cluster that gets populated asynchronously and can start serving data in case the primary fails. Can also be used for [blue/green](https://en.wikipedia.org/wiki/Blue-green_deployment) deployment testing|
+
 |[Active&#8209;Active Multi&#8209;Master](./active-active-multi-master)|
 {{<header Level="6">}} Two clusters serving data together {{</header>}}
 Two regions or more, manual failover, a few seconds of data loss (non-zero RPO), low read/write latencies, some caveats on transactional guarantees|
-
-|[Active&#8209;Active Single&#8209;Master](./active-active-single-master)|
-{{<header Level="6">}} Standby database {{</header>}}
-Set up a second cluster that gets populated asynchronously and can start serving data in case the primary fails. Can also be used for [blue/green](https://en.wikipedia.org/wiki/Blue-green_deployment) deployment testing|
 
 |[Duplicate indexes](./duplicate-indexes)|
 {{<header Level="6">}} Consistent data everywhere {{</header>}}
@@ -105,7 +105,7 @@ Partition your data and place them in a manner that the data belonging to nearby
 Read from local followers instead of going to the leaders in a different region|
 
 |[Read Replicas](./read-replicas) |
-{{<header Level="6">}} Fast reads from a read-only cluster{{</header>}}
+{{<header Level="6">}} Fast reads from a read-only cluster {{</header>}}
 Set up a separate cluster of just followers to perform local reads instead of going to the leaders in a different region|
 
 {{</table>}}

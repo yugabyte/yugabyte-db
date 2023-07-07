@@ -33,6 +33,10 @@ You can set up another cluster in a different region say `us-east` using [xClust
 
 The `us-east` cluster is independent of the primary cluster in `us-west` and the data will be populated by **asynchronous replication** between each other. This means that the read and write latencies of each cluster will not be affected by the other but at the same time, the data in each cluster will not be immediately consistent with each other. You can use this pattern to reduce latencies for local users by writing and reading from the closest cluster.
 
+## Transactional consistency
+
+The **Active-Active Multi-Master** design pattern does not guarantee any transactional consistency during the replication between the clusters. Conflicts are resolved in the bi-directional replication by adopting the "last-writer wins" strategy.
+
 ## Failover
 
 When one of the clusters fail, say `us-west` fails, the other cluster in `us-east` will be able to handle reads and writes for all applications till the failed region recovers

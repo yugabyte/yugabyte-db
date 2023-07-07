@@ -24,7 +24,7 @@ Let's say you have your `RF3` cluster and apps deployed in `us-west`.
 
 This will ensure that the reads and writes are within the same region. Notice the low latency of reads and writes. As the whole cluster is in one region, in case of a region failure, you would lose all the data. Let's see how we can mitigate this.
 
-## Standby cluster
+## Secondary standby cluster
 
 You can set up a secondary cluster in a different region say `us-east` using [xCluster](../../../architecture/docdb-replication/async-replication).
 
@@ -39,6 +39,12 @@ As the second cluster has the same schema and the data(with a little lag), it ca
 ![Active-Active Single Master](/images/develop/global-apps/aa-single-master-reads.png)
 
 But the writes still have to go to the primary cluster in `us-west`.
+
+## Transactional consistency
+
+You can preserve and guarantee transactional atomicity and global ordering when propagating change data from one universe to another by adding the `transactional` flag when setting up the [xCluster replication](../../../deploy/multi-dc/async-replication-transactional/#set-up-unidirectional-transactional-replication). This is the default behavior.
+
+You can relax the transactional atomicity guarantee for lower replication lag.
 
 ## Failover
 
