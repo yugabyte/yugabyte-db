@@ -3179,11 +3179,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected void createNodePrecheckTasks(
       NodeDetails node, Set<ServerType> processTypes, SubTaskGroupType subGroupType) {
-
-    createCheckUnderReplicatedTabletsTask().setSubTaskGroupType(subGroupType);
+    boolean underReplicatedTabletsCheckEnabled =
+        confGetter.getConfForScope(
+            getUniverse(), UniverseConfKeys.underReplicatedTabletsCheckEnabled);
+    if (underReplicatedTabletsCheckEnabled) {
+      createCheckUnderReplicatedTabletsTask().setSubTaskGroupType(subGroupType);
+    }
 
     // TODO: Add follower lag tablet level check.
   }
+
   /**
    * Checks whether cluster contains any under replicated tablets before proceeding.
    *
