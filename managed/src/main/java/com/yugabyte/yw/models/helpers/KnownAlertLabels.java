@@ -45,6 +45,8 @@ public enum KnownAlertLabels {
   NAMESPACE,
   POD_NAME,
   CONTAINER_NAME,
+  NODE_ADDRESS,
+  NODE_IDENTIFIER,
   PARENT_TASK_TYPE;
 
   public String labelName() {
