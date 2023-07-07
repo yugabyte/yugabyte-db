@@ -2053,7 +2053,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
-  util::WaitStateInfo::UpdateCurrentWaitStateFromPBExceptCurrentRequstId(*req);
+  util::WaitStateInfo::UpdateFromPB(*req);
   auto status = PerformWrite(req, resp, &context);
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), std::move(status), &context);
@@ -2068,7 +2068,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     return;
   }
 
-  util::WaitStateInfo::UpdateCurrentWaitStateFromPBExceptCurrentRequstId(*req);
+  util::WaitStateInfo::UpdateFromPB(*req);
   PerformRead(server_, this, req, resp, std::move(context));
 }
 

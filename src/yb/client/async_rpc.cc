@@ -380,7 +380,6 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
   auto wait_state = util::WaitStateInfo::CurrentWaitState();
   if (wait_state) {
     auto& auh_metadata = wait_state->metadata();
-    // auh_metadata.ToPBExceptCurrentRequestId(req_.mutable_auh_metadata());
     auh_metadata.ToPB(req_.mutable_auh_metadata());
   }
   const ConsistentReadPoint* read_point = batcher_->read_point();

@@ -115,29 +115,41 @@ struct AUHMetadata {
                       top_level_node_id, top_level_request_id, query_id, current_request_id, client_node_ip);
   }
 
-  template <class PB>
-  void ToPBExceptCurrentRequestId(PB* pb) const {
-    pb->set_top_level_node_id(top_level_node_id);
-    pb->set_top_level_request_id(top_level_request_id);
-    pb->set_query_id(query_id);
-    pb->set_client_node_ip(client_node_ip);
+  void UpdateFrom(const AUHMetadata &other) {
+    if (!other.top_level_request_id.empty()) {
+      top_level_request_id = other.top_level_request_id;
+    }
+    if (!other.top_level_node_id.empty()) {
+      top_level_node_id = other.top_level_node_id;
+    }
+    if (other.query_id != 0) {
+      query_id = other.query_id;
+    }
+    if (other.current_request_id != 0) {
+      current_request_id = other.current_request_id;
+    }
+    if (!other.client_node_ip.empty()) {
+      client_node_ip = other.client_node_ip;
+    }
   }
 
   template <class PB>
   void ToPB(PB* pb) const {
-    ToPBExceptCurrentRequestId(pb);
-    pb->set_current_request_id(current_request_id);
-  }
-
-  template <class PB>
-  static AUHMetadata FromPBExceptCurrentRequestId(const PB& pb) {
-    return AUHMetadata{
-        .top_level_node_id = pb.top_level_node_id(),
-        .top_level_request_id = pb.top_level_request_id(),
-        .query_id = pb.query_id(),
-        .current_request_id = 0,
-        .client_node_ip = pb.client_node_ip()
-    };
+    if (!top_level_request_id.empty()) {
+      pb->set_top_level_request_id(top_level_request_id);
+    }
+    if (!top_level_node_id.empty()) {
+      pb->set_top_level_node_id(top_level_node_id);
+    }
+    if (query_id != 0) {
+      pb->set_query_id(query_id);
+    }
+    if (current_request_id != 0) {
+      pb->set_current_request_id(current_request_id);
+    }
+    if (!client_node_ip.empty()) {
+      pb->set_client_node_ip(client_node_ip);
+    }
   }
 
   template <class PB>
@@ -152,11 +164,22 @@ struct AUHMetadata {
   }
 
   template <class PB>
-  void UpdateFromPBExceptCurrentRequstId(const PB& pb) {
-    top_level_node_id = pb.top_level_node_id();
-    top_level_request_id = pb.top_level_request_id();
-    query_id = pb.query_id();
-    client_node_ip = pb.client_node_ip();
+  void UpdateFromPB(const PB& pb) {
+    if (pb.has_top_level_node_id()) {
+      top_level_node_id = pb.top_level_node_id();
+    }
+    if (pb.has_top_level_request_id()) {
+      top_level_request_id = pb.top_level_request_id();
+    }
+    if (pb.has_query_id()) {
+      query_id = pb.query_id();
+    }
+    if (pb.has_client_node_ip()) {
+      client_node_ip = pb.client_node_ip();
+    }
+    if (pb.has_current_request_id()) {
+      current_request_id = pb.current_request_id();
+    }
   }
 };
 
@@ -191,23 +214,19 @@ class WaitStateInfo {
   WaitStateInfo(AUHMetadata meta);
 
   void set_state(WaitStateCode c);
-
   WaitStateCode get_state() const;
-
-  void set_metadata(AUHMetadata meta);
-
-  std::string ToString() const;
 
   static WaitStateInfoPtr CurrentWaitState();
   static void SetCurrentWaitState(WaitStateInfoPtr);
 
+  void UpdateMetadata(const AUHMetadata& meta) EXCLUDES(mutex_);
+  void set_current_request_id(uint64_t id) EXCLUDES(mutex_);
+
   template <class PB>
-  static void UpdateCurrentWaitStateFromPBExceptCurrentRequstId(const PB& pb) {
-    auto wait_state = util::WaitStateInfo::CurrentWaitState();
-    if (wait_state && pb.has_auh_metadata()) {
-      std::lock_guard<simple_spinlock> lock_guard(wait_state->mutex_);
-      auto& auh_metadata = wait_state->metadata();
-      auh_metadata.UpdateFromPBExceptCurrentRequstId(pb.auh_metadata());
+  static void UpdateMetadataFromPB(const PB& pb) {
+    auto wait_state = CurrentWaitState();
+    if (wait_state) {
+      wait_state->UpdateMetadata(AUHMetadata::FromPB(pb));
     }
   }
 
@@ -222,11 +241,15 @@ class WaitStateInfo {
 #endif
     aux_info_.ToPB(pb->mutable_aux_info());
   }
+
   AUHMetadata& metadata() REQUIRES(mutex_) {
     return metadata_;
   }
 
   simple_spinlock* get_mutex() RETURN_CAPABILITY(mutex_);
+
+  std::string ToString() const EXCLUDES(mutex_);
+
  private:
   std::atomic<WaitStateCode> code_{WaitStateCode::Unused};
 

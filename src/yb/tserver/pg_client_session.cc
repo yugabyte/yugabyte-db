@@ -916,7 +916,7 @@ template <class DataPtr>
 Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
                                   rpc::RpcContext* context) {
   auto& options = *data->req.mutable_options();
-  util::WaitStateInfo::UpdateCurrentWaitStateFromPBExceptCurrentRequstId(options);
+  util::WaitStateInfo::UpdateMetadataFromPB(options);
   if (!options.ddl_mode() && xcluster_context_ && xcluster_context_->is_xcluster_read_only_mode()) {
     for (const auto& op : data->req.ops()) {
       if (op.has_write() && !op.write().is_backfill()) {

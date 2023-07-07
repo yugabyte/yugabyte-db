@@ -280,9 +280,10 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
   // create the waitstate after parsing?
   auto wait_state = this->wait_state();
   if (wait_state) {
-    std::lock_guard<simple_spinlock> l{*wait_state->get_mutex()};
-    wait_state->metadata().current_request_id = header_.call_id;
-    wait_state->metadata().client_node_ip = yb::ToString(remote_address());
+    wait_state->UpdateMetadata({
+              .current_request_id = header_.call_id,
+              .client_node_ip = yb::ToString(remote_address())
+            });
   } else {
     LOG(ERROR) << "Wait state is nullptr for " << ToString();
   }
