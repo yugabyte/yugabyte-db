@@ -12,8 +12,10 @@
 // under the License.
 //
 //
-// This class defines a CQL statement. A CQL statement extends from a SQL statement to handle query
-// ID and caching prepared statements in a list.
+// This class defines a CQL statement. A CQL statement extends from a SQL statement. Handles the
+// following use cases :
+// - query ID and caching prepared statements in a list.
+// - query ID and caching unprepared statements in a (separate) list.
 //--------------------------------------------------------------------------------------------------
 
 #pragma once
