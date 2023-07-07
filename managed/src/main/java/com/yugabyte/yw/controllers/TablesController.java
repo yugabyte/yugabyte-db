@@ -177,7 +177,7 @@ public class TablesController extends AuthenticatedController {
     LOG.info(
         "Submitted create table for {}:{}, task uuid = {}.",
         taskParams.tableUUID,
-        tableDetails.tableName,
+        CommonUtils.logTableName(tableDetails.tableName),
         taskUUID);
 
     // Add this task uuid to the user universe.
@@ -195,7 +195,7 @@ public class TablesController extends AuthenticatedController {
         taskUUID,
         taskParams.tableUUID,
         tableDetails.keyspace,
-        tableDetails.tableName);
+        CommonUtils.logTableName(tableDetails.tableName));
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -246,7 +246,7 @@ public class TablesController extends AuthenticatedController {
     LOG.info(
         "Submitted delete table for {}:{}, task uuid = {}.",
         taskParams.tableUUID,
-        taskParams.getFullName(),
+        CommonUtils.logTableName(taskParams.getFullName()),
         taskUUID);
 
     CustomerTask.create(
@@ -260,7 +260,7 @@ public class TablesController extends AuthenticatedController {
         "Saved task uuid {} in customer tasks table for table {}:{}",
         taskUUID,
         taskParams.tableUUID,
-        taskParams.getFullName());
+        CommonUtils.logTableName(taskParams.getFullName()));
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -770,7 +770,7 @@ public class TablesController extends AuthenticatedController {
       LOG.info(
           "Submitted backup to be scheduled {}:{}, schedule uuid = {}.",
           tableUUID,
-          taskParams.getTableName(),
+          CommonUtils.logTableName(taskParams.getTableName()),
           scheduleUUID);
       auditService()
           .createAuditEntryWithReqBody(
@@ -784,7 +784,7 @@ public class TablesController extends AuthenticatedController {
       LOG.info(
           "Submitted task to backup table {}:{}, task uuid = {}.",
           tableUUID,
-          taskParams.getTableName(),
+          CommonUtils.logTableName(taskParams.getTableName()),
           taskUUID);
       CustomerTask.create(
           customer,
@@ -798,7 +798,7 @@ public class TablesController extends AuthenticatedController {
           taskUUID,
           tableUUID,
           taskParams.getTableNames(),
-          taskParams.getTableName());
+          CommonUtils.logTableName(taskParams.getTableName()));
       auditService()
           .createAuditEntryWithReqBody(
               request,
@@ -864,7 +864,7 @@ public class TablesController extends AuthenticatedController {
     LOG.info(
         "Submitted import into table for {}:{}, task uuid = {}.",
         tableUUID,
-        taskParams.getTableName(),
+        CommonUtils.logTableName(taskParams.getTableName()),
         taskUUID);
 
     CustomerTask.create(
@@ -878,8 +878,8 @@ public class TablesController extends AuthenticatedController {
         "Saved task uuid {} in customer tasks table for table {}:{}.{}",
         taskUUID,
         tableUUID,
-        taskParams.getTableName(),
-        taskParams.getTableName());
+        CommonUtils.logTableName(taskParams.getTableName()),
+        CommonUtils.logTableName(taskParams.getTableName()));
 
     auditService()
         .createAuditEntryWithReqBody(
