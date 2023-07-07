@@ -770,11 +770,17 @@ bool UpdateCheckpointRequired(
   return false;
 }
 
-bool GetExplicitOpId(
-    const GetChangesRequestPB* req, OpId* op_id, CDCSDKCheckpointPB* cdc_sdk_explicit_op_id) {
+bool GetExplicitOpIdAndSafeTime(
+    const GetChangesRequestPB* req, OpId* op_id, CDCSDKCheckpointPB* cdc_sdk_explicit_op_id,
+    uint64_t* cdc_sdk_explicit_safe_time) {
   if (req->has_explicit_cdc_sdk_checkpoint()) {
     *cdc_sdk_explicit_op_id = req->explicit_cdc_sdk_checkpoint();
     *op_id = OpId::FromPB(*cdc_sdk_explicit_op_id);
+    if (req->explicit_cdc_sdk_checkpoint().has_snapshot_time()) {
+      *cdc_sdk_explicit_safe_time = 0;
+    } else {
+      *cdc_sdk_explicit_safe_time = req->explicit_cdc_sdk_checkpoint().snapshot_time();
+    }
     return true;
   }
 
@@ -1573,11 +1579,12 @@ void CDCServiceImpl::GetChanges(
 
   OpId explicit_op_id;
   CDCSDKCheckpointPB cdc_sdk_explicit_op_id;
+  uint64_t cdc_sdk_explicit_safe_time = 0;
 
   bool got_explicit_checkpoint_from_request = false;
   if (record.GetCheckpointType() == EXPLICIT) {
-    got_explicit_checkpoint_from_request =
-        GetExplicitOpId(req, &explicit_op_id, &cdc_sdk_explicit_op_id);
+    got_explicit_checkpoint_from_request = GetExplicitOpIdAndSafeTime(
+        req, &explicit_op_id, &cdc_sdk_explicit_op_id, &cdc_sdk_explicit_safe_time);
   }
 
   // Get opId from request.
@@ -1776,14 +1783,14 @@ void CDCServiceImpl::GetChanges(
 
     // If snapshot operation or before image is enabled, don't allow compaction.
     HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
-    if (record.GetRecordType() == CDCRecordType::ALL || cdc_sdk_from_op_id.write_id() == -1) {
-      if (req->safe_hybrid_time() != -1) {
-        cdc_sdk_safe_time = HybridTime::FromPB(req->safe_hybrid_time());
-      } else {
-        YB_LOG_EVERY_N(WARNING, 10000)
-            << "safe_hybrid_time is not present in request, using response to get safe_hybrid_time";
-        cdc_sdk_safe_time = HybridTime::FromPB(resp->safe_hybrid_time());
-      }
+    if (record.GetCheckpointType() == EXPLICIT && cdc_sdk_explicit_safe_time != 0) {
+      cdc_sdk_safe_time = HybridTime::FromPB(cdc_sdk_explicit_safe_time);
+    } else if (req->safe_hybrid_time() != -1) {
+      cdc_sdk_safe_time = HybridTime::FromPB(req->safe_hybrid_time());
+    } else {
+      YB_LOG_EVERY_N(WARNING, 10000)
+          << "safe_hybrid_time is not present in request, using response to get safe_hybrid_time";
+      cdc_sdk_safe_time = HybridTime::FromPB(resp->safe_hybrid_time());
     }
 
     if (UpdateCheckpointRequired(record, cdc_sdk_from_op_id, &is_snapshot)) {
@@ -2272,27 +2279,6 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
       last_replicated_time_str = Timestamp(*entry.last_replication_time).ToFormattedString();
     }
 
-    HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
-    int64_t last_active_time_cdc_state_table = std::numeric_limits<int64_t>::min();
-    if (entry.cdc_sdk_safe_time) {
-      cdc_sdk_safe_time = HybridTime(*entry.cdc_sdk_safe_time);
-    }
-
-    if (entry.active_time) {
-      last_active_time_cdc_state_table = *entry.active_time;
-    }
-
-    VLOG(1) << "stream_id: " << stream_id << ", tablet_id: " << tablet_id
-            << ", checkpoint: " << checkpoint
-            << ", last replicated time: " << last_replicated_time_str
-            << ", last active time: " << last_active_time_cdc_state_table
-            << ", cdc_sdk_safe_time: " << cdc_sdk_safe_time;
-
-    // Add the {tablet_id, stream_id} pair to the set if its checkpoint is OpId::Max().
-    if (tablet_stream_to_be_deleted && checkpoint == OpId::Max()) {
-      tablet_stream_to_be_deleted->insert({tablet_id, stream_id});
-    }
-
     auto get_stream_metadata = GetStream(stream_id);
     if (!get_stream_metadata.ok()) {
       LOG(WARNING) << "Read invalid stream id: " << stream_id << " for tablet " << tablet_id << ": "
@@ -2317,6 +2303,30 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
       continue;
     }
     StreamMetadata& record = **get_stream_metadata;
+
+    HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
+    int64_t last_active_time_cdc_state_table = std::numeric_limits<int64_t>::min();
+    // We will only populate the "cdc_sdk_safe_time" when before image is active or when we are in
+    // taking the snapshot of any table.
+    if (entry.cdc_sdk_safe_time &&
+        (record.GetRecordType() == CDCRecordType::ALL || entry.snapshot_key.has_value())) {
+      cdc_sdk_safe_time = HybridTime(*entry.cdc_sdk_safe_time);
+    }
+
+    if (entry.active_time) {
+      last_active_time_cdc_state_table = *entry.active_time;
+    }
+
+    VLOG(1) << "stream_id: " << stream_id << ", tablet_id: " << tablet_id
+            << ", checkpoint: " << checkpoint
+            << ", last replicated time: " << last_replicated_time_str
+            << ", last active time: " << last_active_time_cdc_state_table
+            << ", cdc_sdk_safe_time: " << cdc_sdk_safe_time;
+
+    // Add the {tablet_id, stream_id} pair to the set if its checkpoint is OpId::Max().
+    if (tablet_stream_to_be_deleted && checkpoint == OpId::Max()) {
+      tablet_stream_to_be_deleted->insert({tablet_id, stream_id});
+    }
 
     // If a tablet_id, stream_id pair is in "uninitialized state", we don't need to send the
     // checkpoint to the tablet peers.

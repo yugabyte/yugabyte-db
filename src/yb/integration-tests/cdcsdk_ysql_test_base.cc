@@ -1342,6 +1342,73 @@ namespace cdc {
     return change_resp;
   }
 
+  CDCSDKYsqlTest::GetAllPendingChangesResponse
+  CDCSDKYsqlTest::GetAllPendingChangesWithRandomReqSafeTimeChanges(
+      const CDCStreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const CDCSDKCheckpointPB* cp,
+      int tablet_idx,
+      int64 safe_hybrid_time,
+      int wal_segment_index) {
+    unsigned int seed = SeedRandom();
+    GetAllPendingChangesResponse resp;
+
+    size_t prev_records_size = 0;
+    CDCSDKCheckpointPB prev_checkpoint;
+    int64 prev_safetime = safe_hybrid_time;
+    int prev_index = wal_segment_index;
+    const CDCSDKCheckpointPB* prev_checkpoint_ptr = cp;
+
+    bool reset_req_checkpoint = false;
+    do {
+      GetChangesResponsePB change_resp;
+
+      auto get_changes_result = GetChangesFromCDC(
+          stream_id, tablets, prev_checkpoint_ptr, tablet_idx, prev_safetime, prev_index);
+
+      if (get_changes_result.ok()) {
+        change_resp = *get_changes_result;
+      } else {
+        LOG(ERROR) << "Encountered error while calling GetChanges on tablet: "
+                   << tablets[tablet_idx].tablet_id()
+                   << ", status: " << get_changes_result.status();
+        break;
+      }
+
+      prev_records_size = change_resp.cdc_sdk_proto_records_size();
+
+      if (reset_req_checkpoint && change_resp.cdc_sdk_proto_records_size() != 0) {
+        // Don't change the prev_checkpoint, resue the same from the last GetChanges call.
+        int random_index = rand_r(&seed) % change_resp.cdc_sdk_proto_records_size();
+
+        prev_safetime =
+            change_resp.cdc_sdk_proto_records().Get(random_index).row_message().commit_time() - 1;
+        prev_index = 0;
+
+        // We will only copy the records upto and including the 'random_index', since the rest of
+        // the records should come up in the next GetChanges response.
+        for (int i = 0; i <= random_index; ++i) {
+          resp.records.push_back(change_resp.cdc_sdk_proto_records(i));
+        }
+      } else {
+        prev_checkpoint = change_resp.cdc_sdk_checkpoint();
+        prev_safetime = change_resp.has_safe_hybrid_time() ? change_resp.safe_hybrid_time() : -1;
+        prev_index = change_resp.wal_segment_index();
+
+        for (int i = 0; i < change_resp.cdc_sdk_proto_records_size(); ++i) {
+          resp.records.push_back(change_resp.cdc_sdk_proto_records(i));
+        }
+      }
+
+      prev_checkpoint_ptr = &prev_checkpoint;
+
+      // flip the flag every iteration.
+      reset_req_checkpoint = !reset_req_checkpoint;
+    } while (prev_records_size != 0);
+
+    return resp;
+  }
+
   CDCSDKYsqlTest::GetAllPendingChangesResponse CDCSDKYsqlTest::GetAllPendingChangesFromCdc(
       const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
@@ -3005,6 +3072,19 @@ namespace cdc {
       }
     }
     return "";
+  }
+
+  void CDCSDKYsqlTest::AssertSafeTimeAsExpectedInTabletPeers(
+      const TabletId& tablet_id, const HybridTime expected_safe_time) {
+    for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+      for (const auto& tablet_peer : test_cluster()->GetTabletPeers(i)) {
+        if (tablet_peer->tablet_id() == tablet_id) {
+          ASSERT_OK(WaitFor(
+              [&]() -> bool { return tablet_peer->get_cdc_sdk_safe_time() == expected_safe_time; },
+              MonoDelta::FromSeconds(60), "Safe_time is not as expected."));
+        }
+      }
+    }
   }
 } // namespace cdc
 } // namespace yb
