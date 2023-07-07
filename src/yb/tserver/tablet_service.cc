@@ -118,6 +118,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/trace.h"
+#include "yb/util/wait_state.h"
 #include "yb/util/write_buffer.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -2052,6 +2053,9 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
+  if (req->has_auh_metadata()) {
+    util::WaitStateInfo::UpdateMetadataFromPB(req->auh_metadata());
+  }
   auto status = PerformWrite(req, resp, &context);
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), std::move(status), &context);
@@ -2066,6 +2070,9 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     return;
   }
 
+  if (req->has_auh_metadata()) {
+    util::WaitStateInfo::UpdateMetadataFromPB(req->auh_metadata());
+  }
   PerformRead(server_, this, req, resp, std::move(context));
 }
 

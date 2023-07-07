@@ -43,6 +43,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
+#include "yb/util/wait_state.h"
 #include "yb/util/yb_pg_errcodes.h"
 
 // TODO: do we need word Redis in following two metrics? ReadRpc and WriteRpc objects emitting
@@ -376,6 +377,11 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
     : AsyncRpc(data, consistency_level) {
   req_.set_allocated_tablet_id(const_cast<std::string*>(&tablet_invoker_.tablet()->tablet_id()));
   req_.set_include_trace(IsTracingEnabled());
+  auto wait_state = util::WaitStateInfo::CurrentWaitState();
+  if (wait_state) {
+    auto& auh_metadata = wait_state->metadata();
+    auh_metadata.ToPB(req_.mutable_auh_metadata());
+  }
   const ConsistentReadPoint* read_point = batcher_->read_point();
   bool has_read_time = false;
   if (read_point) {
