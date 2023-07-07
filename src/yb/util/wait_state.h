@@ -198,8 +198,6 @@ class WaitStateInfo {
 
   std::string ToString() const;
 
-  AUHMetadata metadata();
-
   static WaitStateInfoPtr CurrentWaitState();
   static void SetCurrentWaitState(WaitStateInfoPtr);
 
