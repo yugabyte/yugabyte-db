@@ -393,6 +393,18 @@ class CalculatorService: public CalculatorServiceIf {
     return resp;
   }
 
+  void Sidecar(
+      const rpc_test::SidecarRequestPB* req, rpc_test::SidecarResponsePB* resp,
+      RpcContext context) override {
+    auto num_sidecars = req->num_sidecars();
+    for (size_t i = 0; i != num_sidecars; ++i) {
+      auto& buffer = context.sidecars().Start();
+      buffer.Append(CHECK_RESULT(context.ExtractSidecar(num_sidecars - i - 1)).AsSlice());
+    }
+    resp->set_num_sidecars(num_sidecars);
+    context.RespondSuccess();
+  }
+
  private:
   void DoSleep(const SleepRequestPB* req, RpcContext context) {
     SleepFor(MonoDelta::FromMicroseconds(req->sleep_micros()));

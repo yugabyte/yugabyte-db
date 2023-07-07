@@ -43,8 +43,9 @@ LocalOutboundCall::LocalOutboundCall(
 }
 
 Status LocalOutboundCall::SetRequestParam(
-    AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker) {
+    AnyMessageConstPtr req, Sidecars* sidecars, const MemTrackerPtr& mem_tracker) {
   req_ = req;
+  // TODO(!!!) support sidecars
   return Status::OK();
 }
 

@@ -110,7 +110,7 @@ const ErrorStatusPB* RpcController::error_response() const {
   return nullptr;
 }
 
-Result<RefCntSlice> RpcController::ExtractSidecar(int idx) const {
+Result<RefCntSlice> RpcController::ExtractSidecar(size_t idx) const {
   return call_->ExtractSidecar(idx);
 }
 
@@ -135,6 +135,14 @@ void RpcController::set_deadline(CoarseTimePoint deadline) {
 MonoDelta RpcController::timeout() const {
   std::lock_guard l(lock_);
   return timeout_;
+}
+
+Sidecars& RpcController::outbound_sidecars() {
+  if (outbound_sidecars_) {
+    return *outbound_sidecars_;
+  }
+  outbound_sidecars_.emplace();
+  return *outbound_sidecars_;
 }
 
 int32_t RpcController::call_id() const {
