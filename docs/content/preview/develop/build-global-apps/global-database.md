@@ -20,11 +20,17 @@ For many applications, a single-region multi-zone deployment may suffice. But gl
 
 To be ready for region failures and be highly available, you can set up YugabyteDB as a cluster that spans multiple regions. This stretch cluster is known as a **Global Database**. Let's look into how to set this up and understand the benefits of building applications on top of this pattern.
 
+{{<tip>}}
+Application is active in one region at a time and does consistent reads.
+{{</tip>}}
+
 ## Overview
 
 Suppose you want your cluster distributed across three regions (`us-east`, `us-central`, and `us-west`) and that you are going to run your application in `us-east` with failover set to `us-central`. To do this, you set up a cluster with a replication factor (RF) of 5, with two replicas of the data in the primary and failover regions and the last copy in the third region.
 
+{{<note title="RF3 vs RF5">}}
 Although you could use an RF 3 cluster, an RF 5 cluster provides quicker failover; with two replicas in the preferred regions, when a leader fails, a local follower can be elected as a leader, rather than a follower in a different region.
+{{</note>}}
 
 <!-- begin: nav tabs -->
 {{<nav/tabs list="local,cloud,anywhere" active="local"/>}}

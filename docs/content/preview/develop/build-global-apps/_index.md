@@ -20,49 +20,74 @@ In today's fast-paced world, the internet and cloud technology have revolutioniz
 
 ## The need for global applications
 
-The reasons for making your applications global are the same as those for adopting a distributed database:
+### Business Continuity and Disaster Recovery
 
-- **Business continuity and disaster recovery** Although public clouds have come a long way since the inception of AWS in 2006, region and zone outages are still fairly common, happening once or twice a year (see, for example, [AWS outages](https://en.wikipedia.org/wiki/Timeline_of_Amazon_Web_Services#Amazon_Web_Services_outages) and [Google outages](https://en.wikipedia.org/wiki/Google_services_outages#:~:text=During%20eight%20episodes%2C%20one%20in,Google%20service%20in%20August%202013)). To provide uninterrupted service to your users, you need to run your applications in multiple locations.
+Although public clouds have come a long way since the inception of AWS in 2006, region and zone outages are still fairly common, happening once or twice a year (cf. [AWS Outages](https://en.wikipedia.org/wiki/Timeline_of_Amazon_Web_Services#Amazon_Web_Services_outages), [Google Outages](https://en.wikipedia.org/wiki/Google_services_outages#:~:text=During%20eight%20episodes%2C%20one%20in,Google%20service%20in%20August%202013)). You must run your applications in multiple locations to provide uninterrupted service to your users.
 
-- **Data residency for compliance** To comply with data residency laws (for example, the [GDPR](https://en.wikipedia.org/wiki/General_Data_Protection_Regulation)) in each country, you need to ensure that the data of citizens is stored on servers located in their country. This means that you need to design your applications to split data across geographies accordingly.
+### Data Residency for Compliance
 
-- **Moving data closer to users** When designing an application with global reach (for example, email, e-commerce, or broadcasting events like the Olympics), you need to take into account that users could be located in various geographies. If your application is hosted in data centers located in the US, users in Europe might encounter high latency when trying to access your application. To provide the best user experience, you need to run your applications closer to your users.
+To comply with data residency laws in each country, companies operating in that country must ensure that the data of their citizens is stored on servers located within that country (for example, the [GDPR](https://en.wikipedia.org/wiki/General_Data_Protection_Regulation)). This means that companies need to design their applications to split data across geographies accordingly.
 
-## Global application design patterns
+### Moving closer to users
 
-To simplify the task of designing a global application, leverage the following tested design patterns. These patterns offer solutions to common problems faced in developing global applications, and can accelerate your application development.
+When designing today's applications (eg. email, e-commerce websites, or broadcasting events like the Olympics), it's essential to consider that users could be located in various geographies. For instance, if your application is hosted in data centers located in the US, users in Europe might encounter high latency when trying to access your application. To provide the best user experience, it's crucial to run your applications closer to your users.
+
+## Application design patterns
+
+Running applications in multiple data centers with data split across them is not a trivial task. YugabyteDB can be deployed in various configurations like single-region multi-zone or multi-region multi-zone configuration with ease. You can leverage some of our battle-tested design paradigms, which offer solutions to common problems faced in these scenarios. These proven paradigms offer solutions that can significantly accelerate your application development by saving time and resources that would otherwise be spent reinventing the wheel.
+
+When designing global applications, a lot of thought questions need to be answered first. Like,
+
+- How multiple instances of the application would run in different fault domains (regions/data centers)?
+- Will the application instances be identical or different?
+- How will these applications be deployed across geo-locations?
+- Would each instance operate on the entire dataset or just a subset of the data?
+- Would conflicting app updates be allowed? If so, how are these handled?
+- How will the application evolve?
+- How will the application behave on a fault domain failure?
+
+To guide you through the path to answer such questions, we have defined several architectural concepts with which you would be able to choose a good design pattern for your application.
 
 ### Application Architecture
 
-- **Single Active** - Only one application instance in a region (or fault domain) is active. The data must be placed close to that application.
-- **Multi-Active** - Applications run in different regions and operate on all the cluster data.
-- **Partitioned Multi-Active** - Multiple applications run in multiple regions and operate on just the local data.
+Depending on where the application instances run and which ones are active, we define a few types of application architectures that you can choose from.
+
+- **Single Active** - Only one application instance in a region (or fault domain) is active. The data must be placed close to that application. On failure, the application moves to a different region.
+- **Multi-Active** - Applications run in different regions and operate on the entire data set.
+- **Read-Only Multi-Active** - Only one application instance is active, while the others can serve stale reads
+- **Partitioned Multi-Active** - Multiple applications run in multiple regions and operate on just a subset of data.
 
 ### Availability Architecture
 
-- **Follow the application** - Applications run closer to the leaders. On failure, the application moves to a different region.
-- **Geo-local dataset** - Applications read from geographically placed local data. On failure, the application does not move.
+Depending on whether the application instances operate on the entire dataset or just a subset, and if few of them just serve reads, we define a few types of availability architectures that you can choose from.
+
+- **Follow the application** - Only one application instance is active, while the others (one or more) can serve stale reads
+- **Geo-local dataset** - Applications act on geographically placed local data. On failure, the application does not move.
 
 ### Data Access Architectures
 
-- **Consistent reads** - Read from the source of truth, irrespective of latency or location.
-- **Follower reads** - Allow stale reads to achieve lower latency reads.
-- **Bounded staleness** - Allow stale reads but with bounds on how stale data is.
+Depending on whether the application should read the latest data or stale data, we define a few types of data access architectures that you can choose from.
+
+- **Consistent reads** - Read from the source of truth, irrespective of latency or location
+- **Follower reads** - Stale reads  to achieve lower latency reads
+- **Bounded staleness** - Allow stale reads but with bounds on how stale data is
 
 ## Picking the right design pattern
 
-The pattern you choose depends on the specific requirements of your deployment and use case, such as multiple instances of the application operating on all data or specific parts of it, workload alignment with the application, or the application solely reading from local followers.
+Now, we fit various design patterns into the different architectures (Application/Availability/Data Access) we previously above.
 
-|         Pattern Type         |                         Follow the Application                          |                              Geo-Local Data                               |
-| ---------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| **Single Active**            | [Global database](./global-database)                                    | N/A                                                                       |
-| **Multi Active**             | [Duplicate indexes](./duplicate-indexes)                                | [Active-active multi master](./active-active-multi-master)                |
-| **Partitioned Multi Active** | [Latency-optimized geo-partitioning](./latency-optimized-geo-partition) | [Locality-optimized geo-partitioning](./locality-optimized-geo-partition) |
-| **Data Access only**         | [Follower Reads](./follower-reads), [Read Replicas](./read-replicas)    | N/A                                                                       |
+|         Pattern Type         |                                       Follow the Application                                       |                              Geo-Local Data                               |
+| ---------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| **Single Active**            | [Global database](./global-database)<br>[Active-active multi-master](./active-active-multi-master) | N/A                                                                       |
+| **Multi Active**             | [Global database](./global-database)<br>[Duplicate indexes](./duplicate-indexes)                   | [Active-active multi-master](./active-active-multi-master)                |
+| **Partitioned Multi Active** | [Latency-optimized geo-partitioning](./latency-optimized-geo-partition)                            | [Locality-optimized geo-partitioning](./locality-optimized-geo-partition) |
+| **Data Access Architecture** | Consistent Reads<br>[Follower Reads](./follower-reads)<br>[Read Replicas](./read-replicas)         |                                                                       |
 
 ## Design patterns explained
 
+{{<note>}}
 We will use the following legend to represent tablet leaders/followers, cloud regions/zones and applications to explain the design patterns in detail.
+{{</note>}}
 
 ![Global Database - Legend](/images/develop/global-apps/global-database-legend.png)
 
@@ -75,6 +100,10 @@ We will use the following legend to represent tablet leaders/followers, cloud re
 A database spread across multiple(3 or more) regions/zones. On failure, a replica in another region/zone will be promoted to leader in seconds, without any loss of data.
 Applications read from source of truth, possibly with higher latencies|
 
+|[Duplicate indexes](./duplicate-indexes)|
+{{<header Level="6">}} Consistent data everywhere {{</header>}}
+Set up covering indexes with schema the same as the table in multiple regions to read immediately consistent data locally|
+
 |[Active&#8209;Active Single&#8209;Master](./active-active-single-master)|
 {{<header Level="6">}} Secondary database that can serve reads {{</header>}}
 Set up a second cluster that gets populated asynchronously and can start serving data in case the primary fails. Can also be used for [blue/green](https://en.wikipedia.org/wiki/Blue-green_deployment) deployment testing|
@@ -83,17 +112,13 @@ Set up a second cluster that gets populated asynchronously and can start serving
 {{<header Level="6">}} Two clusters serving data together {{</header>}}
 Two regions or more, manual failover, a few seconds of data loss (non-zero RPO), low read/write latencies, some caveats on transactional guarantees|
 
-|[Duplicate indexes](./duplicate-indexes)|
-{{<header Level="6">}} Consistent data everywhere {{</header>}}
-Set up covering indexes with schema the same as the table in multiple regions to read immediately consistent data locally|
+|[Latency&#8209;optimized geo&#8209;partitioning](./latency-optimized-geo-partition)|
+{{<header Level="6">}} Fast local access {{</header>}}
+Partition your data and place them in a manner that the data belonging to nearby users can be accessed faster|
 
 |[Locality&#8209;optimized geo&#8209;partitioning](./locality-optimized-geo-partition)|
 {{<header Level="6">}} Local law compliance {{</header>}}
 Partition your data and place them in a manner that the rows belonging to different users will be located in their respective countries|
-
-|[Latency&#8209;optimized geo&#8209;partitioning](./latency-optimized-geo-partition)|
-{{<header Level="6">}} Fast local access {{</header>}}
-Partition your data and place them in a manner that the data belonging to nearby users can be accessed faster|
 
 |[Follower Reads](./follower-reads) |
 {{<header Level="6">}} Fast, stale reads {{</header>}}
@@ -104,3 +129,5 @@ Read from local followers instead of going to the leaders in a different region|
 Set up a separate cluster of just followers to perform local reads instead of going to the leaders in a different region|
 
 {{</table>}}
+
+Adopting such design patterns can vastly accelerate your application development. These are proven paradigms that would save time without having to reinvent solutions.

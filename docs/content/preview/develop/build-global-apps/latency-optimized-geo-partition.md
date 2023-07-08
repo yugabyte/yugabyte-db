@@ -14,11 +14,15 @@ type: docs
 
 For Multi-Active apps that need to be run in multiple regions, you can opt to partition the data per region and place the replicas in nearby regions. This would ensure very low latency for both reads and writes for the local partitions giving a seamless user experience for users close to their partitions. Let us look into this pattern in more detail.
 
+{{<tip>}}
+Application instances are active in all regions, do consistent reads and operate on a subset of data.
+{{</tip>}}
+
 ## Overview
 
 {{<cluster-setup-tabs>}}
 
-Let's say you want to serve users both in the East and West regions of the US with reduced latency. For this, you should set up an `RF3` cluster with leaders in 2 regions, `us-west-1` and `us-east-1` and place the replicas in close regions, say `us-west-2` and `us-east-2`
+Let's say you want to serve users both in the East and West regions of the US with reduced latency. For this, you should set up an `RF3` cluster with leaders in 2 regions, `us-west-1` and `us-east-1` and place the replicas in close regions, say `us-west-2` and `us-east-2`. This will allow for low read and write latencies for the 2 partitions.
 
 ![RF3 cluster spanning 2 regions](/images/develop/global-apps/latency-optimized-geo-partition-setup.png)
 
@@ -103,7 +107,7 @@ When any of the regions hosting one of the partition leaders fails, the partitio
 
 ![Failover](/images/develop/global-apps/latency-optimized-geo-partition-failover.png)
 
-This pattern will help apps running in different regions to have low read and write latency as they are reading and writing data to nearby partitions.
+This pattern will help apps running in different regions to have low read and write latency as they are reading and writing data to nearby partitions. Note that the access latency increases a little to `10ms` and the write latency increases a lot more to `60ms`. This is because , the writes have to be replicated to the follower in `us-east-2` which is `60ms` away.
 
 ## Learn more
 
