@@ -16,6 +16,10 @@ If you have apps running in multiple regions, they would still have to go the ta
 
 This is where **Duplicate Indexes** would come in handy. Duplicate Indexes will guarantee immediately consistent reads in multiple regions. Let us look into how your applications can benefit from this pattern and understand the costs associated with it.
 
+{{<tip>}}
+Application instances are active in all regions and do consistent reads with the lowest latency.
+{{</tip>}}
+
 ## Overview
 
 Let's consider an RF3 [Global Database](../global-database) that is spread across 3 regions: `us-east`, `us-central`, and `us-west`. Let's say that your app running in `us-east`, so naturally have set up leader preference to `us-east`.
@@ -24,13 +28,21 @@ Let's consider an RF3 [Global Database](../global-database) that is spread acros
 
 ![RF3 Global Database](/images/develop/global-apps/duplicate-indexes-global-database.png)
 
-Let us add an app in `us-central`. Note, our goal is to reduce the access latency.
+Let us add an app in `us-central`.
 
 ![RF3 Global Database](/images/develop/global-apps/duplicate-indexes-central-app.png)
+
+{{<tip title="Goal #1">}}
+Reduce the `30ms` access latency of apps in `us-central`
+{{</tip>}}
 
 If you notice the app in `us-central` has a read latency of `30ms` whereas the app in `us-east` has a read latency of only `2ms`. This becomes worse, when you add an app in `us-west`.
 
 ![RF3 Global Database](/images/develop/global-apps/duplicate-indexes-west-app.png)
+
+{{<tip title="Goal #2">}}
+Reduce the `60ms` access latency of apps in `us-west`
+{{</tip>}}
 
 The app in `us-west` has a high read latency of `60ms`. Let us see how we can bring this down.
 
@@ -87,7 +99,7 @@ Even though the leader preference is set to a region, you should place the repli
         ]}');
       ```
 
-1. Create multiple covering indexes and attach them to region-level tablespaces
+1. Create multiple duplicate indexes and attach them to region-level tablespaces
 
       ```plpgsql
       CREATE INDEX idx_west    ON users (name) INCLUDE (id, city) TABLESPACE west;

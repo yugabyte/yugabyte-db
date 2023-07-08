@@ -15,6 +15,10 @@ type: docs
 
 For apps that have to be run in multiple regions, you can adopt the **Active-Active Multi-Master** design pattern with which you can set up 2 clusters in two different regions where both clusters actively take responsibility for the local reads and writes and populate one another **asynchronously**. Here, failover is manual and incurs some possible loss of data as the data is asynchronously replicated between the two clusters, but both reads and writes have low latencies. Let us understand this in more detail.
 
+{{<tip>}}
+Application instances are active in multiple regions and could read stale data.
+{{</tip>}}
+
 ## Overview
 
 {{<cluster-setup-tabs>}}

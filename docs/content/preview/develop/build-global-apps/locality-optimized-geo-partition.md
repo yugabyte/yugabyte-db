@@ -16,6 +16,10 @@ Data residency laws require data about a nation's citizens or residents to be co
 
 You would want to have data of users from different countries (eg. US/Germany/India) in the same table, but just store the rows in their regions to comply with the country's data-protection laws (eg. [GDPR](https://en.wikipedia.org/wiki/General_Data_Protection_Regulation)), or to reduce latency for the users in those countries. Something similar to the illustration below.
 
+{{<tip>}}
+Application instances are active in all regions, do consistent reads and operate just on the local partition of data.
+{{</tip>}}
+
 ![User data stored within their country's boundaries](/images/develop/global-apps/locality-optimized-geo-partition-goal.png)
 
 For this, YugabyteDB supports [Row-level geo-partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/). This combines two well-known PostgreSQL concepts, [partitioning](../../../explore/ysql-language-features/advanced-features/partitions/), and [tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/).
@@ -106,6 +110,10 @@ Similarly, the Europe app also has low read and write latencies.
 ![Europe app](/images/develop/global-apps/locality-optimized-geo-partition-europe-app.png)
 
 This pattern will help apps running in different regions to have low read and write latency as they are reading and writing data to nearby partitions and at the same time, comply with local data protection laws by keeping the citizen's data within the country boundaries.
+
+## Global tables
+
+Although we have partitioned the data for a single table and placed it in multiple geographies, you can also add other tables without partitioning to be present across both geographies. This was way you can have both global tables and partitioned tables in your setup.
 
 ## Failover
 

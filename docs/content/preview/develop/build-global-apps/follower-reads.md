@@ -25,6 +25,10 @@ There are a few scenarios where reading from the leader is not necessary. For ex
 
 If a little staleness for reads is okay for the app running in the other regions, then **Follower Reads** is the pattern to adopt. Let's look into how this can be beneficial for your application.
 
+{{<tip>}}
+Multiple application instances are active and some instances read stale data.
+{{</tip>}}
+
 ## Overview
 
 {{<cluster-setup-tabs>}}
