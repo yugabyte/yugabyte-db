@@ -11,6 +11,7 @@ menu:
     parent: develop
     weight: 201
 type: indexpage
+showRightNav: true
 ---
 
 {{<srcdiagram href="https://docs.google.com/presentation/d/1lEajQyVZLhmHRKmBxunf1LucWkQkrJ3rIthoHxZvyQc/edit#slide=id.g22bc5dd47b0_0_18">}}
@@ -19,23 +20,17 @@ In today's fast-paced world, the internet and cloud technology have revolutioniz
 
 ## The need for global applications
 
-### Business Continuity and Disaster Recovery
+The reasons for making your applications global are the same as those for adopting a distributed database:
 
-Although public clouds have come a long way since the inception of AWS in 2006, region and zone outages are still fairly common, happening once or twice a year (cf. [AWS Outages](https://en.wikipedia.org/wiki/Timeline_of_Amazon_Web_Services#Amazon_Web_Services_outages), [Google Outages](https://en.wikipedia.org/wiki/Google_services_outages#:~:text=During%20eight%20episodes%2C%20one%20in,Google%20service%20in%20August%202013)). You must run your applications in multiple locations to provide uninterrupted service to your users.
+- **Business continuity and disaster recovery** Although public clouds have come a long way since the inception of AWS in 2006, region and zone outages are still fairly common, happening once or twice a year (see, for example, [AWS outages](https://en.wikipedia.org/wiki/Timeline_of_Amazon_Web_Services#Amazon_Web_Services_outages) and [Google outages](https://en.wikipedia.org/wiki/Google_services_outages#:~:text=During%20eight%20episodes%2C%20one%20in,Google%20service%20in%20August%202013)). To provide uninterrupted service to your users, you need to run your applications in multiple locations.
 
-### Data Residency for Compliance
+- **Data residency for compliance** To comply with data residency laws (for example, the [GDPR](https://en.wikipedia.org/wiki/General_Data_Protection_Regulation)) in each country, you need to ensure that the data of citizens is stored on servers located in their country. This means that you need to design your applications to split data across geographies accordingly.
 
-To comply with data residency laws in each country, companies operating in that country must ensure that the data of their citizens is stored on servers located within that country (for example, the [GDPR](https://en.wikipedia.org/wiki/General_Data_Protection_Regulation)). This means that companies need to design their applications to split data across geographies accordingly.
+- **Moving data closer to users** When designing an application with global reach (for example, email, e-commerce, or broadcasting events like the Olympics), you need to take into account that users could be located in various geographies. If your application is hosted in data centers located in the US, users in Europe might encounter high latency when trying to access your application. To provide the best user experience, you need to run your applications closer to your users.
 
-### Moving closer to users
+## Global application design patterns
 
-When designing today's applications (eg. email, e-commerce websites, or broadcasting events like the Olympics), it's essential to consider that users could be located in various geographies. For instance, if your application is hosted in data centers located in the US, users in Europe might encounter high latency when trying to access your application. To provide the best user experience, it's crucial to run your applications closer to your users.
-
-## Application design patterns
-
-Running applications in multiple data centers with data split across them is not a trivial task. YugabyteDB can be deployed in various configurations like single-region multi-zone or multi-region multi-zone configuration with ease. You can leverage some of our battle-tested design paradigms, which offer solutions to common problems faced in these scenarios. These proven paradigms offer solutions that can significantly accelerate your application development by saving time and resources that would otherwise be spent reinventing the wheel.
-
-We can classify these patterns based on 
+To simplify the task of designing a global application, leverage the following tested design patterns. These patterns offer solutions to common problems faced in developing global applications, and can accelerate your application development.
 
 ### Application Architecture
 
@@ -46,19 +41,19 @@ We can classify these patterns based on
 ### Availability Architecture
 
 - **Follow the application** - Applications run closer to the leaders. On failure, the application moves to a different region.
-- **Geo-local dataset** - Applications read from geographically placed local data. On failure, application does not move.
+- **Geo-local dataset** - Applications read from geographically placed local data. On failure, the application does not move.
 
 ### Data Access Architectures
 
-- **Consistent reads** - Read from the source of truth, irrespective of latency or location
-- **Follower reads** - Stale reads  to achieve lower latency reads
-- **Bounded staleness** - Allow stale reads but with bounds on how stale data is
+- **Consistent reads** - Read from the source of truth, irrespective of latency or location.
+- **Follower reads** - Allow stale reads to achieve lower latency reads.
+- **Bounded staleness** - Allow stale reads but with bounds on how stale data is.
 
 ## Picking the right design pattern
 
-Based on specific requirements such as multiple instances of the application operating on all data or specific parts of it, workload alignment with the application, or the application solely reading from local followers, you can select the suitable design pattern from the table below.
+The pattern you choose depends on the specific requirements of your deployment and use case, such as multiple instances of the application operating on all data or specific parts of it, workload alignment with the application, or the application solely reading from local followers.
 
-|         Pattern Type         |                         Follow theApplication                           |                              Geo-Local Data                               |
+|         Pattern Type         |                         Follow the Application                          |                              Geo-Local Data                               |
 | ---------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | **Single Active**            | [Global database](./global-database)                                    | N/A                                                                       |
 | **Multi Active**             | [Duplicate indexes](./duplicate-indexes)                                | [Active-active multi master](./active-active-multi-master)                |
@@ -109,5 +104,3 @@ Read from local followers instead of going to the leaders in a different region|
 Set up a separate cluster of just followers to perform local reads instead of going to the leaders in a different region|
 
 {{</table>}}
-
-Adopting such design patterns can vastly accelerate your application development. These are proven paradigms that would save time without having to reinvent solutions.
