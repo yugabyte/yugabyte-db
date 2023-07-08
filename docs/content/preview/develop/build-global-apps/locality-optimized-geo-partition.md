@@ -1,9 +1,9 @@
 ---
 title: Locality Optimized Geo-Partitioning design pattern for global applications
-headerTitle: Locality Optimized Geo-Partitioning
-linkTitle: Locality Optimized Geo-Partitioning
-description: Geo Partitioning for compliance in Multi-Active global applications
-headcontent: Geo Partitioning for compliance in Multi-Active global applications
+headerTitle: Locality-optimized geo-partitioning
+linkTitle: Locality-optimized geo-partitioning
+description: Geo partitioning for compliance in Multi-Active global applications
+headcontent: Geo partition for compliance in Multi-Active global applications
 menu:
   preview:
     identifier: global-apps-locality-optimized-geo-partition
@@ -12,9 +12,9 @@ menu:
 type: docs
 ---
 
-Data residency laws require data about a nation's citizens or residents to be collected, processed, and/or stored inside the country. Multi-national businesses must operate under local data regulations that dictate how the data of a nation's residents must be stored within its borders. Re-architecting your storage layer and applications to support these could be a very daunting task. Let us see how you can accomplish this with ease in YugabyteDB.
+Data residency laws (such as the [GDPR](https://en.wikipedia.org/wiki/General_Data_Protection_Regulation)) require data about a nation's citizens or residents to be collected, processed, and/or stored inside the country. Multi-national businesses must operate under local data regulations that dictate how the data of a nation's residents must be stored inside its borders. Re-architecting your storage layer and applications to support these regulations could be a very daunting task. Let us see how you can accomplish this with ease in YugabyteDB.
 
-You would want to have data of users from different countries (eg. US/Germany/India) in the same table, but just store the rows in their regions to comply with the country's data-protection laws (eg. [GDPR](https://en.wikipedia.org/wiki/General_Data_Protection_Regulation)), or to reduce latency for the users in those countries. Something similar to the illustration below.
+You would want to have data of users from different countries (for example, US, Germany, India) in the same table, but just store the rows in their regions to comply with the country's data-protection laws, or to reduce latency for the users in those countries. Something similar to the illustration below.
 
 {{<tip>}}
 Application instances are active in all regions, do consistent reads, and data is partitioned but applications operate on the entire dataset.
@@ -28,13 +28,13 @@ For this, YugabyteDB supports [Row-level geo-partitioning](../../../explore/mult
 
 {{<cluster-setup-tabs>}}
 
-Let's say you want to store the data of users from the US and Europe within their respective continents. For this, you should set up an `RF3` cluster spread across 2 geos, `US` and `Europe` to place the data of the respective geographies correctly.Also to make sure each partition acts like a global database, you should opt for 3-regions in each of the geos.
+Suppose you want to store the data of users from the US and Europe on their respective continents. For this, you should set up an `RF3` cluster spread across 2 geos, `US` and `Europe` to place the data of the respective geographies correctly.Also to make sure each partition acts like a global database, you should opt for 3-regions in each of the geos.
 
 ![RF3 cluster spanning 2 regions](/images/develop/global-apps/locality-optimized-geo-partition-setup.png)
 
 ## Partition your data
 
-For the purpose of examples, let's consider a simple table of users, which you are going to partition by the `geo` field.
+For the this example, create a table of users, which you are going to partition by the `geo` field.
 
 ```plpgsql
 CREATE TABLE users (
@@ -43,7 +43,7 @@ CREATE TABLE users (
 ) PARTITION BY LIST (geo);
 ```
 
-Now partition your data for US and Europe users. This is to ensure that the app in `us-east` will operate on the `us` partition and the app in `eu-west` will operate on the `europe` partition.
+Now partition your data for US and Europe users. This is to ensure that the application in `us-east` will operate on the `us` partition and the application in `eu-west` will operate on the `europe` partition.
 
 {{<note>}}
 The tablespace definitions are discussed in the next section.
@@ -81,7 +81,7 @@ CREATE TABLESPACE us WITH (
 
 ![Place west replicas](/images/develop/global-apps/locality-optimized-geo-partition-us.png)
 
-Similarly set up your `europe` partitions in `eu-west-1` and `eu-west-2`.
+Similarly, set up your `europe` partitions in `eu-west-1` and `eu-west-2`.
 
 ```plpgsql
 --  tablespace for Europe data
@@ -97,19 +97,19 @@ CREATE TABLESPACE eu WITH (
 
 ![Place east replicas](/images/develop/global-apps/locality-optimized-geo-partition-europe.png)
 
-This ensures all the eu-user's data will be located within Europe.
+This ensures all the eu-user's data will be located in Europe.
 
-## Low Latency
+## Low latency
 
-Consider the US app for instance. As you have placed `us` partition's leader in `us-east-1`, it has a low read latency of `2ms`. As this partition has a replica in a nearby region, the write latency is also low (`<10ms`).
+Consider the US application for instance. As you have placed `us` partition's leader in `us-east-1`, it has a low read latency of `2ms`. As this partition has a replica in a nearby region, the write latency is also low (`<10ms`).
 
-![US app](/images/develop/global-apps/locality-optimized-geo-partition-us-app.png)
+![US application](/images/develop/global-apps/locality-optimized-geo-partition-us-app.png)
 
-Similarly, the Europe app also has low read and write latencies.
+Similarly, the Europe application also has low read and write latencies.
 
-![Europe app](/images/develop/global-apps/locality-optimized-geo-partition-europe-app.png)
+![Europe application](/images/develop/global-apps/locality-optimized-geo-partition-europe-app.png)
 
-This pattern will help apps running in different regions to have low read and write latency as they are reading and writing data to nearby partitions and at the same time, comply with local data protection laws by keeping the citizen's data within the country boundaries.
+This pattern will help applications running in different regions to have low read and write latency as they are reading and writing data to nearby partitions and at the same time, comply with local data protection laws by keeping the citizen's data inside the country boundaries.
 
 ## Global tables
 

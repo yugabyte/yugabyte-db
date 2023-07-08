@@ -1,7 +1,7 @@
 ---
 title: Duplicate Indexes for  global applications
-headerTitle: Duplicate Indexes
-linkTitle: Duplicate Indexes
+headerTitle: Duplicate indexes
+linkTitle: Duplicate indexes
 description: Enhance the performance of global applications with Duplicate Indexes
 headcontent: Enhance the performance of global applications with Duplicate Indexes
 menu:
@@ -22,45 +22,47 @@ Application instances are active in all regions and do consistent reads with the
 
 ## Overview
 
-Let's consider an RF3 [Global Database](../global-database) that is spread across 3 regions: `us-east`, `us-central`, and `us-west`. Let's say that your app running in `us-east`, so naturally have set up leader preference to `us-east`.
+Consider an RF3 [Global Database](../global-database) that is spread across 3 regions: `us-east`, `us-central`, and `us-west`. Suppose further that your application is running in `us-east`, and so you have set the leader preference to `us-east`.
 
 {{<cluster-setup-tabs>}}
 
 ![RF3 Global Database](/images/develop/global-apps/duplicate-indexes-global-database.png)
 
-Let us add an app in `us-central`.
+Let us add an application in `us-central`.
 
 ![RF3 Global Database](/images/develop/global-apps/duplicate-indexes-central-app.png)
 
 {{<tip title="Goal #1">}}
-Reduce the `30ms` access latency of apps in `us-central`
+Reduce the 30 ms access latency of applications in `us-central`
 {{</tip>}}
 
-If you notice the app in `us-central` has a read latency of `30ms` whereas the app in `us-east` has a read latency of only `2ms`. This becomes worse, when you add an app in `us-west`.
+If you notice the application in `us-central` has a read latency of 30 ms whereas the application in `us-east` has a read latency of only 2 ms. This becomes worse, when you add an application in `us-west`.
 
 ![RF3 Global Database](/images/develop/global-apps/duplicate-indexes-west-app.png)
 
 {{<tip title="Goal #2">}}
-Reduce the `60ms` access latency of apps in `us-west`
+Reduce the 60 ms access latency of applications in `us-west`
 {{</tip>}}
 
-The app in `us-west` has a high read latency of `60ms`. Let us see how we can bring this down.
+The application in `us-west` has a high read latency of 60 ms. Let us see how we can bring this down.
 
-## Duplicate Indexes
+## Duplicate indexes
 
-All reads go to the leader by default in YugabyteDB. So, even though the replicas are available in other regions, applications will have to incur cross-region latency if the leaders are in a different region than the app.
+All reads go to the leader by default in YugabyteDB. So, even though the replicas are available in other regions, applications will have to incur cross-region latency if the leaders are in a different region than the application.
 
-Let us create multiple covering indexes with the schema the same as the table and attach them to different tablespaces with leader preference set to each region. To set this up, follow these steps.
+Let us create multiple covering indexes with the schema the same as the table and attach them to different tablespaces with leader preference set to each region.
 
-1. For illustration, let's consider a simple table of users, which has the `id`, `name` and `city` for each user.
+To set this up, do the following:
 
-      ```plpgsql
-      CREATE TABLE users (
-          id INTEGER NOT NULL,
-          name VARCHAR,
-          city VARCHAR
-      );
-      ```
+1. Create a basic table of users, which has the `id`, `name`, and `city` for each user.
+
+    ```plpgsql
+    CREATE TABLE users (
+        id INTEGER NOT NULL,
+        name VARCHAR,
+        city VARCHAR
+    );
+    ```
 
 1. Create multiple tablespaces (one for every region you want your index leader to be located in) and set leader preference to that region:
 {{<note title="Note" >}}
@@ -99,7 +101,7 @@ Even though the leader preference is set to a region, you should place the repli
         ]}');
       ```
 
-1. Create multiple duplicate indexes and attach them to region-level tablespaces
+1. Create multiple duplicate indexes and attach them to region-level tablespaces.
 
       ```plpgsql
       CREATE INDEX idx_west    ON users (name) INCLUDE (id, city) TABLESPACE west;
@@ -107,13 +109,13 @@ Even though the leader preference is set to a region, you should place the repli
       CREATE INDEX idx_central ON users (name) INCLUDE (id, city) TABLESPACE central;
       ```
 
-This will create three clones of the covering index, with leaders in different regions and at the same time replicated in the other regions. You will get a setup similar to this:
+This creates three clones of the covering index, with leaders in different regions, and at the same time replicated in the other regions. You will get a setup similar to this:
 
 ![Duplicate indexes](/images/develop/global-apps/duplicate-indexes-create.png)
 
-## Reduced Read Latency
+## Reduced read latency
 
-Now, let us see the query plan to fetch the `id` and `city` for a user `John Wick` for the app running in `us-west`.
+Consider the query plan to fetch the `id` and `city` for a user `John Wick` for the application running in `us-west`:
 
 ```plpgsql
 explain analyze select id, city from users where name = 'John Wick' ;
@@ -130,7 +132,7 @@ explain analyze select id, city from users where name = 'John Wick' ;
  Peak Memory Usage: 8 kB
 ```
 
-As you have added all of the columns needed for your queries as part of the covering index, the query executor will not have to go to the tablet leader (in a different region) to fetch the data. The **geo-aware query planner** will prefer to use the index(`idx_west`) whose leaders are local to the region when querying. Note that the read latency is just `~2.2ms` instead of the original `~60ms`.
+As you have added all of the columns needed for your queries as part of the covering index, the query executor will not have to go to the tablet leader (in a different region) to fetch the data. The **geo-aware query planner** will prefer to use the index (`idx_west`) whose leaders are local to the region when querying. Note that the read latency is just ~2.2 ms instead of the original ~60 ms.
 
 {{<note title="Note">}}
 The query planner optimizations related to picking the right index by taking into consideration the leader preference of the tablespace in which the index lives are available from 2.17.3+ releases.
@@ -138,19 +140,19 @@ The query planner optimizations related to picking the right index by taking int
 
 ![Duplicate indexes](/images/develop/global-apps/duplicate-indexes-read-latencies.png)
 
-You can easily notice that all the apps now read locally with a reduced read latency of `2ms`. When you set up your cluster using duplicate indexes, it will have the effect of having consistent leaders for the table in each region.
+All the applications now read locally with a reduced read latency of 2 ms. When you set up your cluster using duplicate indexes, it has the effect of having consistent leaders for the table in each region.
 
-## Increased Write Latency
+## Increased write latency
 
 Let's take a look at the write latencies.
 
 ![Duplicate indexes](/images/develop/global-apps/duplicate-indexes-write-latencies.png)
 
-The write latencies have increased because each write has to update the tablet leader, its replicas and 3 index leaders and their replicas. Effectively you are sacrificing the write latency to get highly reduced read latency.
+The write latencies have increased because each write has to update the tablet leader, its replicas, and 3 index leaders and their replicas. Effectively you are sacrificing write latency to achieve highly reduced read latency.
 
 ## Failover
 
-In the case of zone/region failures, followers in other regions are elected leaders and the apps connect to the closest region automatically as illustrated below.
+In the case of zone or region failures, followers in other regions are elected leaders and the applications connect to the closest region automatically as shown in the following illustration.
 
 ![Duplicate indexes failover](/images/develop/global-apps/duplicate-indexes-failover.png)
 
