@@ -17,7 +17,7 @@ Data residency laws require data about a nation's citizens or residents to be co
 You would want to have data of users from different countries (eg. US/Germany/India) in the same table, but just store the rows in their regions to comply with the country's data-protection laws (eg. [GDPR](https://en.wikipedia.org/wiki/General_Data_Protection_Regulation)), or to reduce latency for the users in those countries. Something similar to the illustration below.
 
 {{<tip>}}
-Application instances are active in all regions, do consistent reads and operate just on the local partition of data.
+Application instances are active in all regions, do consistent reads, and data is partitioned but applications operate on the entire dataset.
 {{</tip>}}
 
 ![User data stored within their country's boundaries](/images/develop/global-apps/locality-optimized-geo-partition-goal.png)
