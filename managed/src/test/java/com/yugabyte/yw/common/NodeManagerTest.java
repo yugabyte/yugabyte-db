@@ -527,6 +527,8 @@ public class NodeManagerTest extends FakeDBApplication {
     when(mockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.ybNumReleasesToKeepDefault)))
         .thenReturn(3);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.numCoresToKeep)))
+        .thenReturn(5);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.ansibleStrategy)))
         .thenReturn("linear");
     when(mockConfGetter.getConfForScope(
@@ -856,6 +858,8 @@ public class NodeManagerTest extends FakeDBApplication {
 
         expectedCommand.add("--master_addresses_for_tserver");
         expectedCommand.add(MASTER_ADDRESSES);
+        expectedCommand.add("--num_cores_to_keep");
+        expectedCommand.add("5");
         if (!configureParams.isMasterInShellMode) {
           expectedCommand.add("--master_addresses_for_master");
           expectedCommand.add(MASTER_ADDRESSES);
