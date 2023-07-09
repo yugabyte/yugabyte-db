@@ -34,9 +34,7 @@ When designing today's applications (eg. email, e-commerce websites, or broadcas
 
 ## Application design patterns
 
-Running applications in multiple data centers with data split across them is not a trivial task. YugabyteDB can be deployed in various configurations like single-region multi-zone or multi-region multi-zone configuration with ease. You can leverage some of our battle-tested design paradigms, which offer solutions to common problems faced in these scenarios. These proven paradigms offer solutions that can significantly accelerate your application development by saving time and resources that would otherwise be spent reinventing the wheel.
-
-When designing global applications, a lot of thought questions need to be answered first. Like,
+Running applications in multiple data centers with data split across them is not a trivial task. When designing global applications, a lot of questions need to be answered first. Like,
 
 - How multiple instances of the application would run in different fault domains (regions/data centers)?
 - Will the application instances be identical or different?
@@ -130,4 +128,4 @@ Set up a separate cluster of just followers to perform local reads instead of go
 
 {{</table>}}
 
-Adopting such design patterns can vastly accelerate your application development. These are proven paradigms that would save time without having to reinvent solutions.
+You can leverage some of our battle-tested design paradigms, which offer solutions to common problems faced in many scenarios. Adopting such proven paradigms offer solutions that can significantly accelerate your application development by saving time and resources that would otherwise be spent reinventing the wheel.
