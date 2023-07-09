@@ -162,3 +162,4 @@
 | "Use server broadcast address for yb_backup" | "yb.backup.use_server_broadcast_address_for_yb_backup" | "UNIVERSE" | "Controls whether server_broadcast_address entry should be used during yb_backup.py backup/restore" | "Boolean" |
 | "Slow Queries Timeout" | "yb.query_stats.slow_queries.timeout_secs" | "UNIVERSE" | "Timeout in secs for slow queries" | "Long" |
 | "YSQL Queries Timeout" | "yb.ysql_timeout_secs" | "UNIVERSE" | "Timeout in secs for YSQL queries" | "Long" |
+| "Number of cores to keep" | "yb.num_cores_to_keep" | "UNIVERSE" | "Controls the configuration to set the number of cores to keep in the Ansible layer" | "Integer" |
