@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: full-text-search-ysql
     parent: text-search
-    weight: 400
+    weight: 300
 rightNav:
   hideH3: true
 type: docs

@@ -38,18 +38,6 @@ Pattern matching is accomplished by specifying a pattern using the `%, _, *, .` 
 To learn more about pattern matching, see [Pattern Matching](./pattern-matching).
 {{</tip>}}
 
-## Phonetic search
-
-For cases where you don't know the exact search term and want to find items or documents that sound similar to a specific term, use _fuzzy_ or _phonetic_ search. YugabyteDB supports fuzzy search using functions such as Soundex and Metaphone via the [fuzzystrmatch](https://www.postgresql.org/docs/11/fuzzystrmatch.html) PostgreSQL extension. For example, to find words that sound like `anapistagafi`, you could execute the following:
-
-```sql
-select word from words where dmetaphone(word) = dmetaphone('anapistagafi') limit 5;
-```
-
-{{<tip>}}
-To learn more about phonetic search, see [Phonetic Search](./phonetic-matching).
-{{</tip>}}
-
 ## Similarity search
 
 Similarity matching works by determining how similar two strings are by taking into account how many letters are different and how many occur together. Use similarity search when you don't know the exact spelling of your query term. Similarity search can be used to design spell checkers.
@@ -80,6 +68,18 @@ This enables you to search for the document which has `fox` and `quick` or `jump
 To learn more about full-text search, see [Full-Text Search](./full-text-search)
 {{</tip>}}
 
+## Phonetic search
+
+In the case where we do not know the exact search term and want to find similar items or documents that sound similar to a specific term, _fuzzy_ or _phonetic_ search would come in handy. YugabyteDB supports fuzzy search like Soundex, Metaphone via Postgres extensions. For example, to find words that sound like `anapistagafi`, you could execute,
+
+```sql
+select word from words where dmetaphone(word) = dmetaphone('anapistagafi') limit 5;
+```
+
+{{<tip>}}
+To learn more about pattern matching, see [Phonetic Search](./phonetic-matching)
+{{</tip>}}
+
 ## Learn more
 
 {{<index/block>}}
@@ -89,20 +89,23 @@ To learn more about full-text search, see [Full-Text Search](./full-text-search)
     body="Search text based on a text pattern."
     href="./pattern-matching"
     icon="fa-solid fa-equals">}}
-{{<index/item
-    title="Phonetic search"
-    body="Search text based on sound and similarity."
-    icon="fa-solid fa-music"
-    href="phonetic-matching">}}
-{{<index/item
-    title="Full-text search"
-    body="Search engine-like search."
-    icon="fa-brands fa-searchengin"
-    href="full-text-search">}}
+
 {{<index/item
     title="Similarity search"
     body="Find similar words."
     icon="fa-solid fa-equals"
     href="similarity-matching">}}
+
+{{<index/item
+    title="Full-Text Search"
+    body="Search engine like search"
+    icon="fa-brands fa-searchengin"
+    href="full-text-search">}}
+
+{{<index/item
+    title="Phonetic Search"
+    body="Search text based on sound and similarity"
+    icon="fa-solid fa-music"
+    href="phonetic-matching">}}
 
 {{</index/block>}}
