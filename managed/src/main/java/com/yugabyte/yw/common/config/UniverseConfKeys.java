@@ -752,4 +752,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Timeout in secs for YSQL queries",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> numCoresToKeep =
+      new ConfKeyInfo<>(
+          "yb.num_cores_to_keep",
+          ScopeType.UNIVERSE,
+          "Number of cores to keep",
+          "Controls the configuration to set the number of cores to keep in the Ansible layer",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

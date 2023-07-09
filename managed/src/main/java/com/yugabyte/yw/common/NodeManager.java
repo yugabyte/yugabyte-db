@@ -735,6 +735,10 @@ public class NodeManager extends DevopsBase {
     String masterAddresses = universe.getMasterAddresses(false);
     subcommand.add("--master_addresses_for_tserver");
     subcommand.add(masterAddresses);
+    Integer num_cores_to_keep =
+        confGetter.getConfForScope(universe, UniverseConfKeys.numCoresToKeep);
+    subcommand.add("--num_cores_to_keep");
+    subcommand.add(String.valueOf(num_cores_to_keep));
 
     if (masterAddresses == null || masterAddresses.isEmpty()) {
       LOG.warn("No valid masters found during configure for {}.", taskParam.getUniverseUUID());
@@ -1811,7 +1815,6 @@ public class NodeManager extends DevopsBase {
             commandArgs.add("--systemd_services");
             commandArgs.add("--ansible_exec_timeout_sec");
             commandArgs.add(String.valueOf(ansible_exec_timeout_sec));
-
           } else if (taskParam.useSystemd) {
             // Systemd for new universes
             commandArgs.add("--systemd_services");
