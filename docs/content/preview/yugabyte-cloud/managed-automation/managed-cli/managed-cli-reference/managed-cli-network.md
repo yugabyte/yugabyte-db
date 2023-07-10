@@ -71,6 +71,7 @@ Delete a specified private service endpoint.
 
 | Flag | Description |
 | :--- | :--- |
+| --cluster-name | Required. The name of the cluster with the endpoint to delete. |
 | --endpoint-id | Required. The ID of the endpoint to delete. |
 
 To avoid charges from your cloud provider, be sure to delete the corresponding endpoint in your cloud provider account.
@@ -81,6 +82,7 @@ Fetch detailed information about a specified private service endpoint.
 
 | Flag | Description |
 | :--- | :--- |
+| --cluster-name | Required. The name of the cluster with the endpoint to describe. |
 | --endpoint-id | Required. The ID of the endpoint to describe. |
 
 ### endpoint list
@@ -99,5 +101,6 @@ Update the configuration of a specified private service endpoint.
 
 | Flag | Description |
 | :--- | :--- |
+| --cluster-name | Required. The name of the cluster with the endpoint to update. |
 | --endpoint-id | Required. The ID of the endpoint to update. |
 | --security-principals | A comma-separated list of security principals to be granted access to this endpoint. For AWS, these are the Amazon resource names (ARNs) of AWS principals with permissions to create an interface VPC endpoint to connect to your endpoint service. For Azure, provide subscription IDs of the services to be granted access to this endpoint. |
