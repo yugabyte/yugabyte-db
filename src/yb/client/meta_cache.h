@@ -362,7 +362,7 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   mutable rw_spinlock mutex_;
   bool stale_;
   bool is_split_ = false;
-  std::vector<RemoteReplica> replicas_;
+  std::vector<std::shared_ptr<RemoteReplica>> replicas_;
   PartitionListVersion last_known_partition_list_version_ = 0;
 
   std::atomic<ReplicasCount> replicas_count_{{0, 0}};
