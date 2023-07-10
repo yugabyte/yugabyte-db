@@ -116,7 +116,7 @@ Partition your data and place them in a manner that the data belonging to nearby
 
 |[Locality&#8209;optimized geo&#8209;partitioning](./locality-optimized-geo-partition)|
 {{<header Level="6">}} Local law compliance {{</header>}}
-Partition your data and place them in a manner that the rows belonging to different users will be located in their respective countries.|
+Partition your data and place it such that the rows belonging to different users are located in their respective countries.|
 
 |[Follower Reads](./follower-reads) |
 {{<header Level="6">}} Fast, stale reads {{</header>}}
