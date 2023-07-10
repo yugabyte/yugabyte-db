@@ -70,12 +70,35 @@ const VALIDATION_SCHEMA = Yup.object().shape({
       then: Yup.string().required('Bind DN is Required'),
       otherwise: Yup.string()
     }
+  ),
+  ldap_tls_protocol: Yup.string().when(
+    ['ldap_security'],
+    {
+      is: (ldap_security) => ['enable_ldaps', 'enable_ldap_start_tls'].includes(ldap_security),
+      then: Yup.string().required('TLS Version is required'),
+      otherwise: Yup.string()
+    }
   )
 });
 
 const LDAP_PATH = 'yb.security.ldap';
 
 const TOAST_OPTIONS = { autoClose: 1750 };
+
+const TLS_VERSIONS = [
+  {
+    label: 'TLSv1',
+    value: 'TLSv1'
+  },
+  {
+    label: 'TLSv1.1',
+    value: 'TLSv1_1'
+  },
+  {
+    label: 'TLSv1.2',
+    value: 'TLSv1_2'
+  }
+];
 
 const SECURITY_OPTIONS = [
   {
@@ -269,7 +292,7 @@ export const LDAPAuth = (props) => {
       if (formValues[key] !== initValues[key]) {
         const keyName = `${LDAP_PATH}.${key}`;
         const value =
-        isString(formValues[key]) && !['ldap_default_role', 'ldap_group_search_scope'].includes(key)
+        isString(formValues[key]) && !['ldap_default_role', 'ldap_group_search_scope', 'ldap_tls_protocol'].includes(key)
             ? `"${formValues[key]}"`
             : formValues[key];
         promiseArr.push(
@@ -517,6 +540,50 @@ export const LDAPAuth = (props) => {
                           </Row>
                         </Col>
                       </Row>
+
+                      {['enable_ldap_start_tls', 'enable_ldaps'].includes(values?.ldap_security) &&
+                      <Row key="tls_protocol">
+                        <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
+                          <Row className="ua-field-row">
+                            <Col className="ua-label-c">
+                              <div>
+                                TLS Version &nbsp;
+                                <YBInfoTip
+                                  customClass="ldap-info-popover"
+                                  title="TLS Protocol Version"
+                                  content="Configure the TLS Protocol Version to be used in case of StartTLS or LDAPS"
+                                >
+                                  <i className="fa fa-info-circle" />
+                                </YBInfoTip>
+                              </div>
+                            </Col>
+                            <Col lg={12} className="ua-field ua-radio-c">
+                              <Row className="ua-radio-field-c">
+                                {TLS_VERSIONS.map(({ label, value }) => (
+                                  <Col key={`tls-${value}`} className="ua-radio-field">
+                                    <Field
+                                      name={'ldap_tls_protocol'}
+                                      type="radio"
+                                      component="input"
+                                      value={value}
+                                      checked={`${value}` === `${values['ldap_tls_protocol']}`}
+                                      disabled={isDisabled}
+                                    />
+                                    &nbsp;&nbsp;{label}
+                                  </Col>
+                                ))}
+                              </Row>
+                              <Row className="has-error">
+                                {errors.ldap_security && (
+                                  <div className="help-block standard-error">
+                                    <span>{errors.ldap_security}</span>
+                                  </div>
+                                )}
+                              </Row>
+                            </Col>
+                          </Row>
+                        </Col>
+                      </Row>}
 
                       <Row key="ldap_basedn">
                         <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
