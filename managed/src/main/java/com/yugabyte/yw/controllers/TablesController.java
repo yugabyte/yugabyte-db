@@ -519,7 +519,7 @@ public class TablesController extends AuthenticatedController {
   @ApiModel(description = "Namespace information response")
   @Builder
   @Jacksonized
-  static class NamespaceInfoResp {
+  public static class NamespaceInfoResp {
 
     @ApiModelProperty(value = "Namespace UUID", accessMode = READ_ONLY)
     public final UUID namespaceUUID;
@@ -529,6 +529,11 @@ public class TablesController extends AuthenticatedController {
 
     @ApiModelProperty(value = "Table type")
     public final TableType tableType;
+
+    public static NamespaceInfoResp createFromNamespaceIdentifier(
+        NamespaceIdentifierPB namespaceIdentifier) {
+      return buildResponseFromNamespaceIdentifier(namespaceIdentifier).build();
+    }
   }
 
   @ApiOperation(
@@ -1203,7 +1208,7 @@ public class TablesController extends AuthenticatedController {
     return builder;
   }
 
-  private NamespaceInfoResp.NamespaceInfoRespBuilder buildResponseFromNamespaceIdentifier(
+  private static NamespaceInfoResp.NamespaceInfoRespBuilder buildResponseFromNamespaceIdentifier(
       NamespaceIdentifierPB namespace) {
     String id = namespace.getId().toStringUtf8();
     NamespaceInfoResp.NamespaceInfoRespBuilder builder =
