@@ -286,6 +286,8 @@ public enum TaskType {
 
   WaitForServerReady(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady.class),
 
+  WaitForDuration(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDuration.class),
+
   RunExternalScript(com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript.class),
 
   RemoveAuthorizedKey(com.yugabyte.yw.commissioner.tasks.subtasks.RemoveAuthorizedKey.class),
