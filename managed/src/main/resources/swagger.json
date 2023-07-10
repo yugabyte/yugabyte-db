@@ -61,6 +61,9 @@
     },
     "AZOverrides" : {
       "properties" : {
+        "deviceInfo" : {
+          "$ref" : "#/definitions/DeviceInfo"
+        },
         "instanceType" : {
           "type" : "string"
         },
@@ -7078,6 +7081,9 @@
     },
     "OverridenDetails" : {
       "properties" : {
+        "deviceInfo" : {
+          "$ref" : "#/definitions/DeviceInfo"
+        },
         "instanceType" : {
           "type" : "string"
         }

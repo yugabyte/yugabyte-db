@@ -6,6 +6,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.*;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.util.StdConverter;
 import com.google.common.base.Strings;
@@ -460,10 +461,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @Data
   public static class OverridenDetails {
     @ApiModelProperty private String instanceType;
+    @ApiModelProperty private DeviceInfo deviceInfo;
 
     public void mergeWith(OverridenDetails other) {
       if (other == null) {
         return;
+      }
+      if (other.getDeviceInfo() != null) {
+        this.deviceInfo = other.getDeviceInfo();
       }
       if (other.getInstanceType() != null) {
         this.instanceType = other.getInstanceType();
@@ -797,12 +802,25 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     public DeviceInfo getDeviceInfoForNode(NodeDetails nodeDetails) {
-      return getDeviceInfoForProcessType(nodeDetails.dedicatedTo);
-    }
-
-    public DeviceInfo getDeviceInfoForProcessType(@Nullable UniverseTaskBase.ServerType type) {
-      if (type == UniverseTaskBase.ServerType.MASTER && masterDeviceInfo != null) {
+      if (dedicatedNodes
+          && masterDeviceInfo != null
+          && nodeDetails.dedicatedTo == UniverseTaskBase.ServerType.MASTER) {
         return masterDeviceInfo;
+      }
+      OverridenDetails overridenDetails =
+          getOverridenDetails(UniverseTaskBase.ServerType.TSERVER, nodeDetails.getAzUuid());
+      if (overridenDetails.getDeviceInfo() != null) {
+        JsonNode original = Json.toJson(deviceInfo);
+        JsonNode overriden = Json.toJson(overridenDetails.getDeviceInfo());
+        log.debug(
+            "Getting overriden device info {} for az {}",
+            Json.toJson(overriden),
+            nodeDetails.getAzUuid());
+
+        CommonUtils.deepMerge(original, overriden);
+        log.debug("Device info after merging {}", original);
+
+        return Json.fromJson(original, DeviceInfo.class);
       }
       return deviceInfo;
     }
