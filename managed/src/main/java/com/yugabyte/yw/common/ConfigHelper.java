@@ -26,6 +26,8 @@ import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.CustomClassLoaderConstructor;
 import play.Application;
+import org.yaml.snakeyaml.LoaderOptions;
+
 import play.libs.Json;
 
 @Singleton
@@ -108,11 +110,13 @@ public class ConfigHelper {
 
     String configFile = "version_metadata.json";
     InputStream inputStream = app.resourceAsStream(configFile);
+    LoaderOptions loaderOptions = new LoaderOptions();
+
     if (inputStream == null) { // version_metadata.json not found
       LOG.info(
           "{} file not found. Reading version from version.txt file",
           FilenameUtils.getName(configFile));
-      Yaml yaml = new Yaml(new CustomClassLoaderConstructor(app.classloader()));
+      Yaml yaml = new Yaml(new CustomClassLoaderConstructor(app.classloader(), loaderOptions));
       String version = yaml.load(app.resourceAsStream("version.txt"));
       return version;
     }
@@ -142,11 +146,13 @@ public class ConfigHelper {
   }
 
   public void loadConfigsToDB(Application app) {
+
+    LoaderOptions loaderOptions = new LoaderOptions();
     for (ConfigType type : ConfigType.values()) {
       if (type.getConfigFile() == null) {
         continue;
       }
-      Yaml yaml = new Yaml(new CustomClassLoaderConstructor(app.classloader()));
+      Yaml yaml = new Yaml(new CustomClassLoaderConstructor(app.classloader(), loaderOptions));
       Map<String, Object> config = yaml.load(app.resourceAsStream(type.getConfigFile()));
       loadConfigToDB(type, config);
     }

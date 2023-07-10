@@ -21,6 +21,7 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.CustomClassLoaderConstructor;
 import play.Environment;
@@ -58,8 +59,12 @@ public class MetricGrafanaGen {
   }
 
   public void loadMetricConfigs() {
+    LoaderOptions loaderOptions = new LoaderOptions();
+
     try (InputStream is = environment.classLoader().getResourceAsStream(METRICS_CONFIG_PATH)) {
-      Yaml yaml = new Yaml(new CustomClassLoaderConstructor(environment.classLoader()));
+      Yaml yaml =
+          new Yaml(new CustomClassLoaderConstructor(environment.classLoader(), loaderOptions));
+
       Map<String, Object> configs = (HashMap<String, Object>) yaml.load(is);
       MetricConfig.loadConfig(configs);
     } catch (Exception exception) {
