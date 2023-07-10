@@ -1564,6 +1564,16 @@ YBCStatus YBCPgCheckIfPitrActive(bool* is_active) {
   return ToYBCStatus(res.status());
 }
 
+YBCStatus YBCIsObjectPartOfXRepl(YBCPgOid database_oid, YBCPgOid table_oid,
+                                 bool* is_object_part_of_xrepl) {
+  auto res = pgapi->IsObjectPartOfXRepl(PgObjectId(database_oid, table_oid));
+  if (res.ok()) {
+    *is_object_part_of_xrepl = *res;
+    return YBCStatusOK();
+  }
+  return ToYBCStatus(res.status());
+}
+
 } // extern "C"
 
 } // namespace yb::pggate

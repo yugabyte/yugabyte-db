@@ -10815,11 +10815,6 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation *yb_mutable_rel,
 	 */
 	if (yb_clone_table)
 	{
-		/*
-		 * TODO(mislam): check for CDC and xCluster on the table and error out
-		 * here. See https://github.com/yugabyte/yugabyte-db/issues/16625.
-		 */
-
 		*yb_mutable_rel = YbATCloneRelationSetColumnType(
 			rel, colName, targetcollid, typeName, tab->newvals);
 
@@ -17095,6 +17090,17 @@ YbATValidateChangePrimaryKey(Relation rel, IndexStmt *stmt)
 {
 	Assert(IsYBRelation(rel));
 
+	bool is_object_part_of_xrepl;
+	HandleYBStatus(YBCIsObjectPartOfXRepl(MyDatabaseId,
+										  RelationGetRelid(rel),
+										  &is_object_part_of_xrepl));
+	if (is_object_part_of_xrepl)
+		ereport(ERROR,
+				(errmsg("cannot change the primary key of a table that is a "
+						"part of CDC or XCluster replication."),
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
+						 "16625.")));
+
 	/*
 	 * Recreating a table will change its OID, which is not tolerable
 	 * for system tables.
@@ -18630,6 +18636,17 @@ static void
 YbATValidateAlterColumnType(Relation rel)
 {
 	Assert(IsYBRelation(rel));
+
+	bool is_object_part_of_xrepl;
+	HandleYBStatus(YBCIsObjectPartOfXRepl(MyDatabaseId,
+										  RelationGetRelid(rel),
+										  &is_object_part_of_xrepl));
+	if (is_object_part_of_xrepl)
+		ereport(ERROR,
+				(errmsg("cannot change a column type of a table that is a "
+						"part of CDC or XCluster replication."),
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
+						 "16625.")));
 
 	/*
 	 * Recreating a table will change its OID, which is not tolerable
