@@ -93,7 +93,7 @@ As the application is going to be running in `us-east` and you want it to failov
 Set `us-east` to be preferred region 1 and `us-central` to be preferred region 2 as follows:
 
 ```shell
-./bin/yb-admin set_preferred_zones aws.us-east-2.us-east-2a:1 aws.us-central-1.us-central-1a:1
+./bin/yb-admin set_preferred_zones aws.us-east-2.us-east-2a:1 aws.us-central-1.us-central-1a:2 aws.us-west-1.us-west-1a:3
 ```
 
 The leaders are placed in `us-east`.
@@ -108,35 +108,27 @@ You can check the tablet information by going to the table on the **Database** p
 
 In this example, when the application starts up in the east, it has a very low read latency of 2 ms as it reads from leaders in the same region. Writes take about 30 ms, as every write has to be replicated to at least 2 other replicas, one of which is located in the region, and the next closest one is in `us-central`, about 30 ms away.
 
-![Global Database - application deploy](/images/develop/global-apps/global-database-application.png)
+![Global Database - application deploy](/images/develop/global-apps/global-database-app.png)
 
 ## Failover
 
 The **Global database** is automatically resilient to a single region failure. When a region fails, followers in other regions are promoted to leaders in seconds and continue to serve requests without any data loss. This is because the Raft-based **synchronous replication** guarantees that at least `1 + RF/2` nodes are consistent and up-to-date with the latest data. This enables the newly elected leader to serve the latest data immediately without any downtime for users.
 
-To simulate the failure of the `us-east` region, do the following:
+To simulate the failure of the `us-east` region, just stop the 2 nodes in `us-east` as follows:
 
-1. Add another master in the `us-central` region as follows:
+```bash
+./bin/yugabyted stop --base_dir=/tmp/ybd1
+./bin/yugabyted stop --base_dir=/tmp/ybd2
+```
 
-    ```bash
-    ./bin/yb-admin change_master_config ADD_SERVER 127.0.0.4 7100
-    ```
-
-1. Stop the 2 nodes in `us-east` as follows:
-
-    ```bash
-    ./bin/yugabyted stop --base_dir=/tmp/ybd1
-    ./bin/yugabyted stop --base_dir=/tmp/ybd2
-    ```
-
-    ```output
-    Stopped yugabyted using config /private/tmp/ybd1/conf/yugabyted.conf.
-    Stopped yugabyted using config /private/tmp/ybd2/conf/yugabyted.conf.
-    ```
-
-The followers in `us-central` have been promoted to leaders and the application can continue without any data loss.
+```output
+Stopped yugabyted using config /private/tmp/ybd1/conf/yugabyted.conf.
+Stopped yugabyted using config /private/tmp/ybd2/conf/yugabyted.conf.
+```
 
 ![Global Database - Application Failover](/images/develop/global-apps/global-database-failover.png)
+
+The followers in `us-central` have been promoted to leaders and the application can continue without any data loss.
 
 Because `us-central` was configured as the second preferred region, when `us-east` failed, the followers in `us-central` were automatically elected to be the leaders. The application also starts communicating with the leaders in `us-central` as we had configured `us-central` to be the first failover region. In this example, the write latency has increased to 40 ms from 30 ms. This is because the first replica is in `us-central` along with the leader, but the second replica is in `us-west`, which is 40 ms away.
 

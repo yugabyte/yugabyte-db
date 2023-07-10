@@ -57,7 +57,7 @@ Depending on where the application instances run and which ones are active, we d
 
 ### Availability Architecture
 
-Depending on whether the application instances operate on the entire dataset or just a subset, and if few of them just serve reads, we define a few types of availability architectures that you can choose from.
+Depending on whether the application instances operate on the entire dataset or just a subset, and how the application moves on a fault domain failure, we define a few types of availability architectures that you can choose from.
 
 - **Follow the application** - Only one application instance is active, while the others (one or more) can serve stale reads
 - **Geo-local dataset** - Applications act on geographically placed local data. On failure, the application does not move.
@@ -72,14 +72,14 @@ Depending on whether the application should read the latest data or stale data, 
 
 ## Picking the right design pattern
 
-Now, we fit various design patterns into the different architectures (Application/Availability/Data Access) we previously above.
+Now, we fit various design patterns into the different architectures (Application/Availability/Data Access) we have defined above.
 
 |         Pattern Type         |                                       Follow the Application                                       |                              Geo-Local Data                               |
 | ---------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | **Single Active**            | [Global database](./global-database)<br>[Active-active multi-master](./active-active-multi-master) | N/A                                                                       |
 | **Multi Active**             | [Global database](./global-database)<br>[Duplicate indexes](./duplicate-indexes)                   | [Active-active multi-master](./active-active-multi-master)                |
 | **Partitioned Multi Active** | [Latency-optimized geo-partitioning](./latency-optimized-geo-partition)                            | [Locality-optimized geo-partitioning](./locality-optimized-geo-partition) |
-| **Data Access Architecture** | Consistent Reads<br>[Follower Reads](./follower-reads)<br>[Read Replicas](./read-replicas)         |                                                                       |
+| **DATA ACCESS ARCHITECTURE** | [Consistent Reads](./global-database)<br>[Follower Reads](./follower-reads)<br>[Read Replicas](./read-replicas)         |                                                                       |
 
 ## Design patterns explained
 
