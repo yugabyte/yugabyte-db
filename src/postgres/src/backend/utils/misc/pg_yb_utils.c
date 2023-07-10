@@ -178,6 +178,12 @@ IsYugaByteEnabled()
 	return YBCPgIsYugaByteEnabled();
 }
 
+bool
+YbIsClientYsqlConnMgr()
+{
+	return IsYugaByteEnabled() && yb_is_client_ysqlconnmgr;
+}
+
 void
 CheckIsYBSupportedRelation(Relation relation)
 {
@@ -3400,6 +3406,8 @@ static bool yb_is_batched_execution = false;
 bool YbIsBatchedExecution() {
 	return yb_is_batched_execution;
 }
+
+bool yb_is_client_ysqlconnmgr = false;
 
 void YbSetIsBatchedExecution(bool value) {
 	yb_is_batched_execution = value;

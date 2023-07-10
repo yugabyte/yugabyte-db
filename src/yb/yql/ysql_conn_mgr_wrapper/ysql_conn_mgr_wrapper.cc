@@ -23,7 +23,6 @@
 
 DECLARE_bool(enable_ysql);
 DECLARE_bool(start_pgsql_proxy);
-DECLARE_uint32(ysql_conn_mgr_port);
 
 DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr, false,
     "Enable Ysql Connection Manager for the cluster. Tablet Server will start a "
@@ -44,6 +43,12 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_pool_size, 70,
     "Apart from database connections for the global pool, "
     "a small number of database connections will also be created as control connections, "
     "which will be proportional to ysql_conn_mgr_pool_size.");
+
+DEFINE_NON_RUNTIME_string(ysql_conn_mgr_username, "yugabyte",
+    "Username to be used by Ysql Connection Manager while creating database connections.");
+
+DEFINE_NON_RUNTIME_string(ysql_conn_mgr_password, "yugabyte",
+    "Password to be used by Ysql Connection Manager while creating database connections.");
 
 namespace {
 
@@ -98,6 +103,15 @@ Status YsqlConnMgrWrapper::Start() {
       ysql_conn_mgr_executable, conf_.CreateYsqlConnMgrConfigAndGetPath()};
   proc_.emplace(ysql_conn_mgr_executable, argv);
   proc_->SetEnv("YB_YSQLCONNMGR_PDEATHSIG", Format("$0", SIGINT));
+
+  if (getenv("YB_YSQL_CONN_MGR_USER") == NULL) {
+    proc_->SetEnv("YB_YSQL_CONN_MGR_USER", FLAGS_ysql_conn_mgr_username);
+  }
+
+  if (getenv("YB_YSQL_CONN_MGR_PASSWORD") == NULL) {
+    proc_->SetEnv("YB_YSQL_CONN_MGR_PASSWORD", FLAGS_ysql_conn_mgr_password);
+  }
+
   RETURN_NOT_OK(proc_->Start());
 
   LOG(INFO) << "Ysql Connection Manager process running as pid " << proc_->pid();
