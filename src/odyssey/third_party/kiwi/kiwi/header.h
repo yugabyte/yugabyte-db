@@ -22,7 +22,8 @@ typedef enum {
 	KIWI_FE_CLOSE = 'C',
 	KIWI_FE_COPY_DATA = 'd',
 	KIWI_FE_COPY_DONE = 'c',
-	KIWI_FE_COPY_FAIL = 'f'
+	KIWI_FE_COPY_FAIL = 'f',
+	KIWI_FE_AUTH = 'A'
 } kiwi_fe_type_t;
 
 typedef enum {
