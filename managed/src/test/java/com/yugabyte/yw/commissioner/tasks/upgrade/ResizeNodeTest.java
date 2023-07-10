@@ -13,6 +13,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -1207,6 +1208,46 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         assertEquals(DEFAULT_INSTANCE_TYPE, nodeDetails.cloudInfo.instance_type);
       }
     }
+  }
+
+  @Test
+  public void testChangeOnlyThroughputForAZ() {
+    ResizeNodeParams taskParams = createResizeParamsForCloud();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    UniverseDefinitionTaskParams.UserIntentOverrides userIntentOverrides =
+        new UniverseDefinitionTaskParams.UserIntentOverrides();
+    UniverseDefinitionTaskParams.AZOverrides azOverrides =
+        new UniverseDefinitionTaskParams.AZOverrides();
+    azOverrides.setDeviceInfo(new DeviceInfo());
+    azOverrides.getDeviceInfo().throughput = NEW_DISK_THROUGHPUT;
+    userIntentOverrides.setAzOverrides(Collections.singletonMap(az2.getUuid(), azOverrides));
+    taskParams.getPrimaryCluster().userIntent.setUserIntentOverrides(userIntentOverrides);
+    TaskInfo taskInfo = submitTask(taskParams);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    assertEquals(Success, taskInfo.getTaskState());
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+
+    String azNodeName =
+        defaultUniverse.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> n.getAzUuid().equals(az2.getUuid()))
+            .map(n -> n.getNodeName())
+            .findFirst()
+            .get();
+    int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.SetNodeState);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.InstanceActions);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.SetNodeState);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.PersistResizeNode);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
+    TaskInfo deviceTask = subTasksByPosition.get(1).get(0);
+    JsonNode params = deviceTask.getDetails();
+    assertEquals(azNodeName, params.get("nodeName").asText());
+    JsonNode deviceParams = params.get("deviceInfo");
+    DeviceInfo deviceInfo =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo;
+    deviceInfo.throughput = NEW_DISK_THROUGHPUT;
+    assertEquals(Json.toJson(deviceInfo), deviceParams);
   }
 
   @Test

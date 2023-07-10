@@ -325,11 +325,11 @@ public class ResizeNode extends UpgradeTaskBase {
     }
     byServerType.forEach(
         (type, nodes) -> {
-          DeviceInfo newDeviceInfo = newIntent.getDeviceInfoForProcessType(type);
           for (NodeDetails node : nodes) {
+            DeviceInfo newDeviceInfo = newIntent.getDeviceInfoForNode(node);
             String newInstanceType = newIntent.getInstanceType(type, node.getAzUuid());
             String currentInstanceType = node.cloudInfo.instance_type;
-            DeviceInfo currentDeviceInfo = currentIntent.getDeviceInfoForProcessType(type);
+            DeviceInfo currentDeviceInfo = currentIntent.getDeviceInfoForNode(node);
             createResizeNodeTasks(
                 Collections.singletonList(node),
                 newInstanceType,
