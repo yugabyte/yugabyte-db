@@ -332,7 +332,8 @@ public class AZUCloudImpl implements CloudAPI {
       } else {
         BackendAddressPoolInner backendAddressPool = backends.get(0);
         backendAddressPool =
-            apiClient.updateIPsInBackendPool(lbName, ipToVmName, backendAddressPool);
+            apiClient.updateIPsInBackendPool(
+                lbName, ipToVmName, backendAddressPool, virtualNetwork);
         backends.set(0, backendAddressPool);
       }
       return backends;
