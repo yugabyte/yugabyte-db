@@ -14,7 +14,7 @@ type: docs
 
 Data residency laws (such as the [GDPR](https://en.wikipedia.org/wiki/General_Data_Protection_Regulation)) require data about a nation's citizens or residents to be collected, processed, and/or stored inside the country. Multi-national businesses must operate under local data regulations that dictate how the data of a nation's residents must be stored inside its borders. Re-architecting your storage layer and applications to support these regulations could be a very daunting task. Let us see how you can accomplish this with ease in YugabyteDB.
 
-You would want to have data of users from different countries (for example, US, Germany, India) in the same table, but just store the rows in their regions to comply with the country's data-protection laws, or to reduce latency for the users in those countries. Something similar to the illustration below.
+You would want to have data of users from different countries (for example, US, Germany, India) in the same table, but just store the rows in their regions to comply with the country's data-protection laws, or to reduce latency for the users in those countries similar to the following illustration.
 
 {{<tip>}}
 Application instances are active in all regions, do consistent reads, and data is partitioned but applications operate on the entire dataset.
@@ -34,7 +34,7 @@ Suppose you want to store the data of users from the US and Europe on their resp
 
 ## Partition your data
 
-For the this example, create a table of users, which you are going to partition by the `geo` field.
+For this example, create a table of users, which you are going to partition by the `geo` field.
 
 ```plpgsql
 CREATE TABLE users (
@@ -43,7 +43,7 @@ CREATE TABLE users (
 ) PARTITION BY LIST (geo);
 ```
 
-Now partition your data for US and Europe users. This is to ensure that the application in `us-east` will operate on the `us` partition and the application in `eu-west` will operate on the `europe` partition.
+Now, partition your data for the US and Europe users to ensure that the application in `us-east` will operate on the `us` partition and the application in `eu-west` will operate on the `europe` partition.
 
 {{<note>}}
 The tablespace definitions are discussed in the next section.
@@ -65,12 +65,12 @@ CREATE TABLE eu PARTITION OF users (
 
 ## Replica placement
 
-Now configure your `us` partition leader preference to place the leader in `us-east-1`, one replica in `us-east-1` (nearby region) and the other replica in `us-east-2`. (Placing one replica in the same region as the leader ensures that the local replica is up-to-date and will be quickly promoted to leader in case the leader fails). This way , all the replicas of the `US` users will be located in the `US` regions.
+Configure your `us` partition leader preference to place the leader in `us-east-1`, one replica in `us-east-1` (nearby region) and the other replica in `us-east-2`. (Placing one replica in the same region as the leader ensures that the local replica is up-to-date and will be quickly promoted to leader in case the leader fails). This way , all the replicas of the `US` users will be located in the `US` regions.
 
 ```plpgsql
 --  tablespace for us data
 CREATE TABLESPACE us WITH (
-    replica_placement='{"num_replicas": 3, 
+    replica_placement='{"num_replicas": 3,
     "placement_blocks":[
         {"cloud":"aws","region":"us-east-1","zone":"us-east-1a","min_num_replicas":1,"leader_preference":1},
         {"cloud":"aws","region":"us-east-2","zone":"us-east-1c","min_num_replicas":1,"leader_preference":2},
@@ -86,7 +86,7 @@ Similarly, set up your `europe` partitions in `eu-west-1` and `eu-west-2`.
 ```plpgsql
 --  tablespace for Europe data
 CREATE TABLESPACE eu WITH (
-    replica_placement='{"num_replicas": 3, 
+    replica_placement='{"num_replicas": 3,
     "placement_blocks":[
         {"cloud":"aws","region":"eu-west-1","zone":"eu-west-1a","min_num_replicas":1,"leader_preference":1},
         {"cloud":"aws","region":"eu-west-2","zone":"eu-west-1c","min_num_replicas":1,"leader_preference":2},
@@ -113,7 +113,7 @@ This pattern will help applications running in different regions to have low rea
 
 ## Global tables
 
-Although we have partitioned the data for a single table and placed it in multiple geographies, you can also add other tables without partitioning to be present across both geographies. This was way you can have both global tables and partitioned tables in your setup.
+Although we have partitioned the data for a single table and placed it in multiple geographies, you can also add other tables without partitioning to be present across both geographies. This way, you can have both global tables and partitioned tables in your setup.
 
 ## Failover
 

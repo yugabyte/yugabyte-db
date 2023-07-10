@@ -33,7 +33,7 @@ Multiple application instances are active and some instances read stale data.
 
 {{<cluster-setup-tabs>}}
 
-Suppose you have a [Global Database](./global-database) set up across 3 regions `us-east`, `us-central`, and `us-west`, with leader preference set to `us-east`. Suppose further that you want to run applications in all the 3 regions. Then the read latencies would be similar to the following illustration.
+Suppose you have a [Global Database](../global-database) set up across 3 regions `us-east`, `us-central`, and `us-west`, with leader preference set to `us-east`. Suppose further that you want to run applications in all the 3 regions. Then the read latencies would be similar to the following illustration.
 
 ![Global Apps - setup](/images/develop/global-apps/global-apps-follower-reads-setup.png)
 
