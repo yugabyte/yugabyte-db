@@ -66,11 +66,11 @@ Depending on whether the application should read the latest data or stale data, 
 - **Follower reads** - Stale reads to achieve lower latency reads.
 - **Bounded staleness** - Allow stale reads but with bounds on how stale data is.
 
-## Picking the right design pattern
+## Pick the right design pattern
 
-Now, we fit various design patterns into the different architectures (Application/Availability/Data Access) we have defined above.
+Use the following matrix to choose a [design pattern](#design-patterns-explained), based on the architectures described in the preceding section.
 
-|         Pattern Type         |                                       Follow the Application                                       |                              Geo-Local Data                               |
+|         Pattern Type         |                                       Follow the Application                                       |                              Geo-Local Dataset                               |
 | ---------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | **Single Active**            | [Global database](./global-database)<br>[Active-active multi-master](./active-active-multi-master) | N/A                                                                       |
 | **Multi Active**             | [Global database](./global-database)<br>[Duplicate indexes](./duplicate-indexes)                   | [Active-active multi-master](./active-active-multi-master)                |
@@ -80,10 +80,12 @@ Now, we fit various design patterns into the different architectures (Applicatio
 ## Design patterns explained
 
 {{<note>}}
-We will use the following legend to represent tablet leaders/followers, cloud regions/zones, and applications to explain the design patterns in detail.
+All the illustrations in this section use the following legend to represent tablet leaders and followers, cloud regions and zones, and applications.
 {{</note>}}
 
 ![Global Database - Legend](/images/develop/global-apps/global-database-legend.png)
+
+The following table summarizes the design patterns that you can use for your applications. Use these proven patterns to address common problems and accelerate your application development.
 
 {{<table>}}
 
@@ -123,5 +125,3 @@ Read from local followers instead of going to the leaders in a different region.
 Set up a separate cluster of just followers to perform local reads instead of going to the leaders in a different region.|
 
 {{</table>}}
-
-You can leverage some of our battle-tested design paradigms, which offer solutions to common problems faced in many scenarios. Adopting such proven paradigms offer solutions that can significantly accelerate your application development by saving time and resources that would otherwise be spent reinventing the wheel.
