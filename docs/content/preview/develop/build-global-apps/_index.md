@@ -20,35 +20,31 @@ In today's fast-paced world, the internet and cloud technology have revolutioniz
 
 ## The need for global applications
 
-### Business Continuity and Disaster Recovery
+The reasons for making your applications global are the same as those for adopting a distributed database:
 
-Although public clouds have come a long way since the inception of AWS in 2006, region and zone outages are still fairly common, happening once or twice a year (cf. [AWS Outages](https://en.wikipedia.org/wiki/Timeline_of_Amazon_Web_Services#Amazon_Web_Services_outages), [Google Outages](https://en.wikipedia.org/wiki/Google_services_outages#:~:text=During%20eight%20episodes%2C%20one%20in,Google%20service%20in%20August%202013)). You must run your applications in multiple locations to provide uninterrupted service to your users.
+- **Business continuity and disaster recovery** Although public clouds have come a long way since the inception of AWS in 2006, region and zone outages are still fairly common, happening once or twice a year (see, for example, [AWS outages](https://en.wikipedia.org/wiki/Timeline_of_Amazon_Web_Services#Amazon_Web_Services_outages) and [Google outages](https://en.wikipedia.org/wiki/Google_services_outages#:~:text=During%20eight%20episodes%2C%20one%20in,Google%20service%20in%20August%202013)). To provide uninterrupted service to your users, you need to run your applications in multiple locations.
 
-### Data residency for compliance
+- **Data residency for compliance** To comply with data residency laws (for example, the [GDPR](https://en.wikipedia.org/wiki/General_Data_Protection_Regulation)), you need to ensure that the data of citizens is stored on servers located in their country. This means that you need to design your applications to split data across geographies accordingly.
 
-To comply with data residency laws in each country, companies operating in that country must ensure that the data of their citizens is stored on servers located in that country (for example, the [GDPR](https://en.wikipedia.org/wiki/General_Data_Protection_Regulation)). This means that companies need to design their applications to split data across geographies accordingly.
-
-### Moving closer to users
-
-When designing today's applications (for example, email, e-commerce websites, or broadcasting events like the Olympics), it's essential to consider that users could be located in various geographies. For instance, if your application is hosted in data centers located in the US, users in Europe might encounter high latency when trying to access your application. To provide the best user experience, it's crucial to run your applications closer to your users.
+- **Moving data closer to users** When designing an application with global reach (for example, email, e-commerce, or broadcasting events like the Olympics), you need to take into account that users could be located in various geographies. If your application is hosted in data centers located in the US, users in Europe might encounter high latency when trying to access your application. To provide the best user experience, you need to run your applications closer to your users.
 
 ## Application design patterns
 
-Running applications in multiple data centers with data split across them is not a trivial task. When designing global applications, a lot of questions need to be answered first. Like,
+Running applications in multiple data centers with data split across them is not a trivial task. When designing global applications, you need to answer the following questions:
 
-- How multiple instances of the application would run in different fault domains (regions/data centers)?
+- How will multiple instances of the application run in different fault domains (regions/data centers)?
 - Will the application instances be identical or different?
 - How will these applications be deployed across geo-locations?
-- Would each instance operate on the entire dataset or just a subset of the data?
-- Would conflicting app updates be allowed? If so, how are these handled?
+- Will each instance operate on the entire dataset or just a subset of the data?
+- Will conflicting application updates be allowed? If so, how are these handled?
 - How will the application evolve?
 - How will the application behave on a fault domain failure?
 
-To guide you through the path to answer such questions, we have defined several architectural concepts with which you would be able to choose a good design pattern for your application.
+To help you answer these questions, we have defined several architectural concepts that you can use to choose a suitable design pattern for your application.
 
 ### Application Architecture
 
-Depending on where the application instances run and which ones are active, we define a few types of application architectures that you can choose from.
+Depending on where the application instances run and which ones are active, choose from the following application architectures:
 
 - **Single Active** - Only one application instance in a region (or fault domain) is active. The data must be placed close to that application. On failure, the application moves to a different region.
 - **Multi-Active** - Applications run in different regions and operate on the entire data set.
@@ -57,14 +53,14 @@ Depending on where the application instances run and which ones are active, we d
 
 ### Availability Architecture
 
-Depending on whether the application instances operate on the entire dataset or just a subset, and how the application moves on a fault domain failure, we define a few types of availability architectures that you can choose from.
+Depending on whether the application instances operate on the entire dataset or just a subset, and how the application moves on a fault domain failure, choose from the following availability architectures:
 
 - **Follow the application** - Only one application instance is active, while the others (one or more) can serve stale reads.
 - **Geo-local dataset** - Applications act on geographically placed local data. On failure, the application does not move.
 
 ### Data Access Architectures
 
-Depending on whether the application should read the latest data or stale data, we define a few types of data access architectures that you can choose from.
+Depending on whether the application should read the latest data or stale data, choose from the following data access architectures:
 
 - **Consistent reads** - Read from the source of truth, irrespective of latency or location.
 - **Follower reads** - Stale reads to achieve lower latency reads.
