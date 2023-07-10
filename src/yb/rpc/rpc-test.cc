@@ -1188,6 +1188,32 @@ TEST_F(TestRpcSecure, TLS) {
   RunSecureTest(&TestSimple);
 }
 
+TEST_F(TestRpcSecure, Timeout) {
+  RunSecureTest([](auto* proxy) {
+    for (uint32_t delay_us = 20; delay_us < 100ul * 1000; delay_us *= 2) {
+      auto timeout = MonoDelta::FromMicroseconds(delay_us);
+      rpc_test::SleepRequestPB req;
+      rpc_test::SleepResponsePB resp;
+      req.set_sleep_micros(1000000ul);
+
+      Status s;
+      {
+        // dynamically allocate RpcController to it would NOT get recreated at the same address
+        // on the next iteration.
+        auto c = std::make_unique<RpcController>();
+
+        // Add some trash to instantiate sidecars.
+        c->outbound_sidecars().Start().Append(
+            pointer_cast<const char*>(&delay_us), sizeof(delay_us));
+
+        c->set_timeout(timeout);
+        s = proxy->Sleep(req, &resp, c.get());
+      }
+      ASSERT_NOK(s);
+    }
+  });
+}
+
 void TestBigOp(CalculatorServiceProxy* proxy) {
   RpcController controller;
   controller.set_timeout(5s * kTimeMultiplier);

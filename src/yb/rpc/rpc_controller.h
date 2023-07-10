@@ -38,7 +38,6 @@
 #include "yb/gutil/macros.h"
 
 #include "yb/rpc/rpc_fwd.h"
-#include "yb/rpc/sidecars.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
@@ -145,6 +144,8 @@ class RpcController {
 
   Sidecars& outbound_sidecars();
 
+  std::unique_ptr<Sidecars> MoveOutboundSidecars();
+
   // Assign sidecar with specified index to out.
   Result<RefCntSlice> ExtractSidecar(size_t idx) const;
 
@@ -170,7 +171,7 @@ class RpcController {
   bool allow_local_calls_in_curr_thread_ = false;
   InvokeCallbackMode invoke_callback_mode_ = InvokeCallbackMode::kThreadPoolNormal;
 
-  std::optional<Sidecars> outbound_sidecars_;
+  std::unique_ptr<Sidecars> outbound_sidecars_;
 
   DISALLOW_COPY_AND_ASSIGN(RpcController);
 };
