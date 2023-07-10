@@ -24,7 +24,7 @@ In today's fast-paced world, the internet and cloud technology have revolutioniz
 
 Although public clouds have come a long way since the inception of AWS in 2006, region and zone outages are still fairly common, happening once or twice a year (cf. [AWS Outages](https://en.wikipedia.org/wiki/Timeline_of_Amazon_Web_Services#Amazon_Web_Services_outages), [Google Outages](https://en.wikipedia.org/wiki/Google_services_outages#:~:text=During%20eight%20episodes%2C%20one%20in,Google%20service%20in%20August%202013)). You must run your applications in multiple locations to provide uninterrupted service to your users.
 
-### Data Residency for Compliance
+### Data residency for compliance
 
 To comply with data residency laws in each country, companies operating in that country must ensure that the data of their citizens is stored on servers located in that country (for example, the [GDPR](https://en.wikipedia.org/wiki/General_Data_Protection_Regulation)). This means that companies need to design their applications to split data across geographies accordingly.
 
