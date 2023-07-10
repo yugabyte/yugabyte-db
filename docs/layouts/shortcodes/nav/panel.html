@@ -1,0 +1,3 @@
+<div id="{{.Get "name"}}" class="tab-pane fade {{if (.Get "active")}}show active{{end}}" role="tabpanel" aria-labelledby="{{.Get "name"}}-tab">
+    {{.Inner | .Page.RenderString}}
+</div>
