@@ -659,6 +659,17 @@ class PgClient::Impl {
     return resp.is_pitr_active();
   }
 
+  Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id) {
+    tserver::PgIsObjectPartOfXReplRequestPB req;
+    tserver::PgIsObjectPartOfXReplResponsePB resp;
+    table_id.ToPB(req.mutable_table_id());
+    RETURN_NOT_OK(proxy_->IsObjectPartOfXRepl(req, &resp, PrepareController()));
+    if (resp.has_status()) {
+      return StatusFromPB(resp.status());
+    }
+    return resp.is_object_part_of_xrepl();
+  }
+
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid) {
     tserver::PgGetTserverCatalogVersionInfoRequestPB req;
@@ -896,6 +907,10 @@ void PgClient::PerformAsync(
 
 Result<bool> PgClient::CheckIfPitrActive() {
   return impl_->CheckIfPitrActive();
+}
+
+Result<bool> PgClient::IsObjectPartOfXRepl(const PgObjectId& table_id) {
+  return impl_->IsObjectPartOfXRepl(table_id);
 }
 
 Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCatalogVersionInfo(

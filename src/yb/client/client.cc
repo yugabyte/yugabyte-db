@@ -194,6 +194,8 @@ using yb::master::GetCDCStreamRequestPB;
 using yb::master::GetCDCStreamResponsePB;
 using yb::master::UpdateCDCStreamRequestPB;
 using yb::master::UpdateCDCStreamResponsePB;
+using yb::master::IsObjectPartOfXReplRequestPB;
+using yb::master::IsObjectPartOfXReplResponsePB;
 using yb::master::IsBootstrapRequiredRequestPB;
 using yb::master::IsBootstrapRequiredResponsePB;
 using yb::master::GetMasterClusterConfigRequestPB;
@@ -1569,6 +1571,15 @@ Status YBClient::UpdateCDCStream(const std::vector<CDCStreamId>& stream_ids,
   UpdateCDCStreamResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, UpdateCDCStream);
   return Status::OK();
+}
+
+Result<bool> YBClient::IsObjectPartOfXRepl(const TableId& table_id) {
+  IsObjectPartOfXReplRequestPB req;
+  IsObjectPartOfXReplResponsePB resp;
+  req.set_table_id(table_id);
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, IsObjectPartOfXRepl);
+  return resp.has_error() ? StatusFromPB(resp.error().status()) :
+      Result<bool>(resp.is_object_part_of_xrepl());
 }
 
 Result<bool> YBClient::IsBootstrapRequired(const std::vector<TableId>& table_ids,

@@ -6901,5 +6901,24 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetCheckpointOnSnapshotBootst
   ASSERT_EQ(change_resp.cdc_sdk_checkpoint().index(), checkpoint_resp.checkpoint().op_id().index());
 }
 
+TEST_F(CDCSDKYsqlTest, TestAlterOperationTableRewrite) {
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  constexpr auto kColumnName = "c1";
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0(id1 INT PRIMARY KEY, $1 varchar(10))", kTableName, kColumnName));
+  ASSERT_RESULT(CreateDBStream());
+
+  // Verify alter primary key, column type operations are disallowed on the table.
+  auto res = conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey", kTableName);
+  ASSERT_NOK(res);
+  ASSERT_STR_CONTAINS(res.ToString(),
+      "cannot change the primary key of a table that is a part of CDC or XCluster replication.");
+  res = conn.ExecuteFormat("ALTER TABLE $0 ALTER $1 TYPE varchar(1)", kTableName, kColumnName);
+  ASSERT_NOK(res);
+  ASSERT_STR_CONTAINS(res.ToString(),
+      "cannot change a column type of a table that is a part of CDC or XCluster replication.");
+}
+
 }  // namespace cdc
 }  // namespace yb

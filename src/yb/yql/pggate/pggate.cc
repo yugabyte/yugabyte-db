@@ -1936,5 +1936,9 @@ Result<bool> PgApiImpl::CheckIfPitrActive() {
   return pg_session_->CheckIfPitrActive();
 }
 
+Result<bool> PgApiImpl::IsObjectPartOfXRepl(const PgObjectId& table_id) {
+  return pg_session_->IsObjectPartOfXRepl(table_id);
+}
+
 } // namespace pggate
 } // namespace yb

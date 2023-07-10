@@ -1184,6 +1184,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status ListCDCStreams(
       const ListCDCStreamsRequestPB* req, ListCDCStreamsResponsePB* resp) override;
 
+  // Whether there is a CDC stream for a given table.
+  Status IsObjectPartOfXRepl(
+    const IsObjectPartOfXReplRequestPB* req, IsObjectPartOfXReplResponsePB* resp) override;
+
   // Fetch CDC stream info corresponding to a db stream id
   Status GetCDCDBStreamInfo(
       const GetCDCDBStreamInfoRequestPB* req, GetCDCDBStreamInfoResponsePB* resp) override;
