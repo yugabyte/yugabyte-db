@@ -232,7 +232,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               <YBButton
                 btnText="Restore Entire Backup"
                 onClick={() => {
-                  if (backupDetails.hasIncrementalBackups && backupDetails.commonBackupInfo.tableByTableBackup) {
+                  if (backupDetails.hasIncrementalBackups) {
                     if (incrementalBackups?.data) {
                       const recentBackup = incrementalBackups.data.filter(
                         (e: ICommonBackupInfo) => e.state === Backup_States.COMPLETED
