@@ -501,11 +501,6 @@ class PgClient::Impl {
         }
         union_op.ref_write(&write_op.write_request());
       }
-      if (op->read_time()) {
-        DCHECK(!req->options().has_isolation() ||
-            req->options().isolation() != IsolationLevel::SERIALIZABLE_ISOLATION);
-        op->read_time().AddToPB(req->mutable_options());
-      }
     }
   }
 

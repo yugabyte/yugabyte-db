@@ -104,6 +104,11 @@ extern GeolocationDistance get_tablespace_distance (Oid tablespaceoid);
  */
 extern bool IsYugaByteEnabled();
 
+/*
+ * Check whether the connection is made from Ysql Connection Manager.
+ */
+extern bool YbIsClientYsqlConnMgr();
+
 extern bool yb_enable_docdb_tracing;
 extern bool yb_read_from_followers;
 extern int32_t yb_follower_read_staleness_ms;
@@ -883,5 +888,7 @@ void YbSetIsBatchedExecution(bool value);
 		} \
 	} while (0)
 #endif
+
+extern bool yb_is_client_ysqlconnmgr;
 
 #endif /* PG_YB_UTILS_H */

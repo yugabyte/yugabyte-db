@@ -150,6 +150,12 @@ typedef struct Port
 	bool		yb_is_tserver_auth_method;
 
 	/*
+	 * To be used during Authentication, identifies whether authentication is
+	 * invoked due to Auth Passthrough Request packet.
+	 */
+	bool 		yb_is_auth_passthrough_req;
+
+	/*
 	 * Information that really has no business at all being in struct Port,
 	 * but since it gets used by elog.c in the same way as database_name and
 	 * other members of this struct, we may as well keep it here.

@@ -4,7 +4,9 @@ import static org.yb.util.HybridTimeUtil.HTTimestampToPhysicalAndLogical;
 
 import com.google.protobuf.ByteString;
 import java.nio.ByteBuffer;
+import java.util.Objects;
 import java.util.UUID;
+import javax.annotation.Nullable;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.client.SnapshotInfo;
 import org.yb.master.CatalogEntityInfo;
@@ -14,11 +16,13 @@ import org.yb.annotations.InterfaceAudience;
 @InterfaceAudience.Private
 public class SnapshotUtil {
 
-    public static UUID convertToUUID(ByteString byteString) {
+    public static UUID convertToUUID(@Nullable ByteString byteString) {
+        if (Objects.isNull(byteString) || byteString.isEmpty()) {
+          return null;
+        }
         byte[] bytes = byteString.toByteArray();
         ByteBuffer bb = ByteBuffer.wrap(bytes);
-        UUID uuid = new UUID(bb.getLong(), bb.getLong());
-        return uuid;
+        return new UUID(bb.getLong(), bb.getLong());
     }
 
     public static ByteString convertToByteString(UUID uuid) {

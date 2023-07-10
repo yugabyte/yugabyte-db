@@ -1731,6 +1731,7 @@ public class TestPgPushdown extends BasePgSQLTest {
                 + ");",
             tableName, numRowsToInsert));
         verifyPushdown(stmt, "" /* hint */);
+        verifyPushdown(stmt, String.format("/*+SeqScan(%s)*/", tableName));
         verifyPushdown(stmt, String.format("/*+IndexOnlyScan(%s %s)*/", tableName, indexName));
         stmt.executeUpdate(String.format("DROP TABLE %s", tableName));
       }

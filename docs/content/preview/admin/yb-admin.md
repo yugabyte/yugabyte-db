@@ -625,6 +625,13 @@ The following backup and snapshot commands are available:
 * [**restore_snapshot_schedule**](#restore-snapshot-schedule) restores all objects in a scheduled snapshot
 * [**delete_snapshot_schedule**](#delete-snapshot-schedule) deletes the specified snapshot schedule
 
+
+{{< note title="YugabyteDB Anywhere" >}}
+
+If you are using YugabyteDB Anywhere to manage point-in-time-recovery (PITR) for a universe, you must initiate and manage PITR using the YugabyteDB Anywhere UI. If you use the yb-admin CLI to make changes to the PITR configuration of a universe managed by YugabyteDB Anywhere, including creating schedules and snapshots, your changes are not reflected in YugabyteDB Anywhere.
+
+{{< /note >}}
+
 #### create_database_snapshot
 
 Creates a snapshot of the specified YSQL database.

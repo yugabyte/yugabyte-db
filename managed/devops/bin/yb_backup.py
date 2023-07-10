@@ -69,14 +69,14 @@ YSQL_CATALOG_VERSION_RE = re.compile(r'[\S\s]*Version: (?P<version>.*)')
 
 ROCKSDB_PATH_PREFIX = '/yb-data/tserver/data/rocksdb'
 
-SNAPSHOT_DIR_GLOB = '*' + ROCKSDB_PATH_PREFIX + '/table-*/tablet-*.snapshots/*'
+SNAPSHOT_DIR_GLOB = '*/table-*/tablet-*.snapshots/*'
 SNAPSHOT_DIR_SUFFIX_RE = re.compile(
     '^.*/tablet-({})[.]snapshots/({})$'.format(UUID_RE_STR, UUID_RE_STR))
 
-TABLE_PATH_PREFIX_TEMPLATE = ROCKSDB_PATH_PREFIX + '/table-{}'
+TABLE_PATH_PREFIX_TEMPLATE = '*/table-{}'
 
 TABLET_MASK = 'tablet-????????????????????????????????'
-TABLET_DIR_GLOB = '*' + TABLE_PATH_PREFIX_TEMPLATE + '/' + TABLET_MASK
+TABLET_DIR_GLOB = TABLE_PATH_PREFIX_TEMPLATE + '/' + TABLET_MASK
 
 MANIFEST_FILE_NAME = 'Manifest'
 METADATA_FILE_NAME = 'SnapshotInfoPB'
@@ -1313,6 +1313,11 @@ class YBBackup:
             help="Do not disable automatic splitting before taking a backup. This is dangerous "
                  "because a tablet might be split and cleaned up just before we try to copy its "
                  "data.")
+        parser.add_argument(
+            '--use_server_broadcast_address', required=False, action='store_true', default=False,
+            help="Use server_broadcast_address if available, otherwise use rpc_bind_address. Note "
+                 "that broadcast address is overwritten by 'ts_secondary_ip_map' if available."
+        )
 
         """
         Test arguments
@@ -1455,7 +1460,7 @@ class YBBackup:
             # of the tserver. The host can either be RPC IP/Broadcast IP.
             logging.info('TS Web hosts/ports: {}'.format(self.args.ts_web_hosts_ports))
             for host_port in self.args.ts_web_hosts_ports.split(','):
-                (host, port) = host_port.split(':')
+                (host, port) = host_port.rsplit(':', 1)
                 # Add this host(RPC IP or Broadcast IP) to ts_cfgs dict. Set web port to access
                 # /varz endpoint.
                 self.ts_cfgs.setdefault(host, YBTSConfig(self)).set_web_port(port)
@@ -1562,7 +1567,7 @@ class YBBackup:
         if not self.leader_master_ip:
             all_masters = self.args.masters.split(",")
             # Use first Master's ip in list to get list of all masters.
-            self.leader_master_ip = all_masters[0].split(':')[0]
+            self.leader_master_ip = all_masters[0].rsplit(':', 1)[0]
 
             # Get LEADER ip, if it's ALIVE, else any alive master ip.
             output = self.run_yb_admin(['list_all_masters'])
@@ -1617,7 +1622,7 @@ class YBBackup:
             alive_ts_ips = self.get_live_tservers()
             if alive_ts_ips:
                 leader_master = self.get_leader_master_ip()
-                master_hosts = {hp.split(':')[0] for hp in self.args.masters.split(",")}
+                master_hosts = {hp.rsplit(':', 1)[0] for hp in self.args.masters.split(",")}
                 # Exclude the Master Leader because the host has maximum network pressure.
                 # Let's try to use a follower Master node instead.
                 master_hosts.discard(leader_master)
@@ -2273,9 +2278,10 @@ class YBBackup:
         :return: The obtained broadcast_ip.
         """
         resolved_ip_port = broadcast_ip_port \
-            if broadcast_ip_port != 'N/A' else rpc_ip_port
-        (broadcast_ip, port) = resolved_ip_port.split(':')
-        (rpc_ip, rpc_port) = rpc_ip_port.split(':')
+            if broadcast_ip_port != 'N/A' and self.args.use_server_broadcast_address \
+            else rpc_ip_port
+        (broadcast_ip, port) = resolved_ip_port.rsplit(':', 1)
+        (rpc_ip, rpc_port) = rpc_ip_port.rsplit(':', 1)
         if self.secondary_to_primary_ip_map:
             broadcast_ip = self.secondary_to_primary_ip_map.get(rpc_ip, broadcast_ip)
 
@@ -2364,9 +2370,11 @@ class YBBackup:
                 tablet_dirs = tserver_ip_to_tablet_dirs[tserver_ip]
 
                 for data_dir in data_dirs:
+                    ts_data_dir = data_dir
+                    rocksdb_data_dir = strip_dir(ts_data_dir) + ROCKSDB_PATH_PREFIX
                     # Find all tablets for this table on this TS in this data_dir:
                     output = self.run_ssh_cmd(
-                        ['find', data_dir] +
+                        ['find', rocksdb_data_dir] +
                         ([] if self.args.mac else ['!', '-readable', '-prune', '-o']) +
                         ['-name', TABLET_MASK,
                          '-and',
@@ -2475,8 +2483,10 @@ class YBBackup:
                     if tserver_ip not in tservers_processed:
                         data_dirs = data_dir_by_tserver[tserver_ip]
                         if len(data_dirs) > 0:
-                            data_dir = data_dirs[0]
-                            parallel_find_snapshots.add_args(data_dir, snapshot_id, tserver_ip)
+                            ts_data_dir = data_dir = data_dirs[0]
+                            rocksdb_data_dir = strip_dir(ts_data_dir) + ROCKSDB_PATH_PREFIX
+                            parallel_find_snapshots.add_args(rocksdb_data_dir,
+                                                             snapshot_id, tserver_ip)
                             data_dirs.remove(data_dir)
 
                             if len(data_dirs) == 0:
@@ -2600,6 +2610,7 @@ class YBBackup:
                          target_checksum_filepath))
             upload_checksum_cmd = self.storage.upload_file_cmd(
                 snapshot_dir_checksum, target_checksum_filepath)
+            delete_checksum_cmd = ['rm', snapshot_dir_checksum]
 
         target_filepath = target_tablet_filepath + '/'
         logging.info('Uploading %s from tablet server %s to %s URL %s' % (
@@ -2612,7 +2623,9 @@ class YBBackup:
             parallel_commands.add_args(create_checksum_cmd)
             # 2. Upload check-sum file.
             parallel_commands.add_args(tuple(upload_checksum_cmd))
-        # 3. Upload tablet folder.
+            # 3. Delete local check-sum file.
+            parallel_commands.add_args(tuple(delete_checksum_cmd))
+        # 4. Upload tablet folder.
         parallel_commands.add_args(tuple(upload_tablet_cmd))
 
     def prepare_download_command(self, parallel_commands, tablet_id,
@@ -2647,14 +2660,16 @@ class YBBackup:
         create_checksum_cmd = self.create_checksum_cmd_for_dir(snapshot_dir_tmp)
         # Throw an error on failed checksum comparison, this will trigger this entire command
         # chain to be retried.
+        generated_checksum = self.checksum_path(strip_dir(snapshot_dir_tmp))
         check_checksum_cmd = compare_checksums_cmd(
             snapshot_dir_checksum,
-            self.checksum_path(strip_dir(snapshot_dir_tmp)),
+            generated_checksum,
             error_on_failure=True)
 
         rmcmd = ['rm', '-rf', snapshot_dir]
         mkdircmd = ['mkdir', '-p', snapshot_dir_tmp]
         mvcmd = ['mv', snapshot_dir_tmp, snapshot_dir]
+        rm_checksum_cmd = ['rm', snapshot_dir_checksum, generated_checksum]
 
         # Commands to be run over ssh for downloading the tablet backup.
         # 1. Clean-up: delete target tablet folder.
@@ -2670,7 +2685,9 @@ class YBBackup:
             parallel_commands.add_args(create_checksum_cmd)
             # 6. Compare check-sum files.
             parallel_commands.add_args(check_checksum_cmd)
-        # 7. Move the backup in place.
+            # 7. Remove downloaded and generated check-sum files
+            parallel_commands.add_args(tuple(rm_checksum_cmd))
+        # 8. Move the backup in place.
         parallel_commands.add_args(tuple(mvcmd))
 
     def prepare_cloud_ssh_cmds(
@@ -3479,7 +3496,7 @@ class YBBackup:
                     if LEADING_UUID_RE.match(line):
                         fields = split_by_tab(line)
                         (rpc_ip_port, role) = (fields[1], fields[2])
-                        (rpc_ip, rpc_port) = rpc_ip_port.split(':')
+                        (rpc_ip, rpc_port) = rpc_ip_port.rsplit(':', 1)
                         if role == 'LEADER' or role == 'FOLLOWER' or role == 'READ_REPLICA':
                             broadcast_ip = self.rpc_to_broadcast_map[rpc_ip]
                             tablets_by_tserver_ip.setdefault(broadcast_ip, set()).add(tablet_id)
