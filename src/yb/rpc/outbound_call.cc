@@ -209,14 +209,17 @@ void OutboundCall::NotifyTransferred(const Status& status, Connection* conn) {
 
 void OutboundCall::Serialize(ByteBlocks* output) {
   output->emplace_back(std::move(buffer_));
-  sidecars_->Flush(output);
+  if (sidecars_) {
+    sidecars_->Flush(output);
+  }
   buffer_consumption_ = ScopedTrackedConsumption();
 }
 
 Status OutboundCall::SetRequestParam(
-    AnyMessageConstPtr req, Sidecars* sidecars, const MemTrackerPtr& mem_tracker) {
+    AnyMessageConstPtr req, std::unique_ptr<Sidecars> sidecars, const MemTrackerPtr& mem_tracker) {
   auto req_size = req.SerializedSize();
-  auto sidecars_size = sidecars->size();
+  sidecars_ = std::move(sidecars);
+  auto sidecars_size = sidecars_ ? sidecars_->size() : 0;
   size_t message_size = SerializedMessageSize(req_size, sidecars_size);
 
   using Output = google::protobuf::io::CodedOutputStream;
@@ -229,10 +232,11 @@ Status OutboundCall::SetRequestParam(
   // each field.
   // serialized_remote_method already contains tag byte, so don't add extra byte for it.
   size_t header_pb_len = 1 + call_id_size + serialized_remote_method.size() + 1 + timeout_ms_size;
-  const auto& sidecar_offsets = sidecars->offsets();
+  const google::protobuf::RepeatedField<uint32_t>* sidecar_offsets = nullptr;
   size_t encoded_sidecars_len = 0;
   if (sidecars_size) {
-    encoded_sidecars_len = sidecar_offsets.size() * sizeof(uint32_t);
+    sidecar_offsets = &sidecars_->offsets();
+    encoded_sidecars_len = sidecar_offsets->size() * sizeof(uint32_t);
     header_pb_len += 1 + Output::VarintSize64(encoded_sidecars_len) + encoded_sidecars_len;
   }
   size_t header_size =
@@ -243,7 +247,6 @@ Status OutboundCall::SetRequestParam(
   size_t buffer_size = header_size + message_size;
 
   buffer_ = RefCntBuffer(buffer_size);
-  sidecars_ = sidecars;
   uint8_t* dst = buffer_.udata();
 
   // 1. The length for the whole request, not including the 4-byte
@@ -265,7 +268,7 @@ Status OutboundCall::SetRequestParam(
     constexpr auto kTag = (RequestHeader::kSidecarOffsetsFieldNumber << 3) |
                           WireFormatLite::WIRETYPE_LENGTH_DELIMITED;
     dst = PackedWrite<LightweightSerialization<WireFormatLite::TYPE_FIXED32, uint32_t>, kTag>(
-        sidecar_offsets | boost::adaptors::transformed(
+        *sidecar_offsets | boost::adaptors::transformed(
             [req_size](auto offset) { return narrow_cast<uint32_t>(offset + req_size); }),
         encoded_sidecars_len, dst);
   }
