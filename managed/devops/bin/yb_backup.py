@@ -2600,6 +2600,7 @@ class YBBackup:
                          target_checksum_filepath))
             upload_checksum_cmd = self.storage.upload_file_cmd(
                 snapshot_dir_checksum, target_checksum_filepath)
+            delete_checksum_cmd = ['rm', snapshot_dir_checksum]
 
         target_filepath = target_tablet_filepath + '/'
         logging.info('Uploading %s from tablet server %s to %s URL %s' % (
@@ -2612,7 +2613,9 @@ class YBBackup:
             parallel_commands.add_args(create_checksum_cmd)
             # 2. Upload check-sum file.
             parallel_commands.add_args(tuple(upload_checksum_cmd))
-        # 3. Upload tablet folder.
+            # 3. Delete local check-sum file.
+            parallel_commands.add_args(tuple(delete_checksum_cmd))
+        # 4. Upload tablet folder.
         parallel_commands.add_args(tuple(upload_tablet_cmd))
 
     def prepare_download_command(self, parallel_commands, tablet_id,
@@ -2647,14 +2650,16 @@ class YBBackup:
         create_checksum_cmd = self.create_checksum_cmd_for_dir(snapshot_dir_tmp)
         # Throw an error on failed checksum comparison, this will trigger this entire command
         # chain to be retried.
+        generated_checksum = self.checksum_path(strip_dir(snapshot_dir_tmp))
         check_checksum_cmd = compare_checksums_cmd(
             snapshot_dir_checksum,
-            self.checksum_path(strip_dir(snapshot_dir_tmp)),
+            generated_checksum,
             error_on_failure=True)
 
         rmcmd = ['rm', '-rf', snapshot_dir]
         mkdircmd = ['mkdir', '-p', snapshot_dir_tmp]
         mvcmd = ['mv', snapshot_dir_tmp, snapshot_dir]
+        rm_checksum_cmd = ['rm', snapshot_dir_checksum, generated_checksum]
 
         # Commands to be run over ssh for downloading the tablet backup.
         # 1. Clean-up: delete target tablet folder.
@@ -2670,7 +2675,9 @@ class YBBackup:
             parallel_commands.add_args(create_checksum_cmd)
             # 6. Compare check-sum files.
             parallel_commands.add_args(check_checksum_cmd)
-        # 7. Move the backup in place.
+            # 7. Remove downloaded and generated check-sum files
+            parallel_commands.add_args(tuple(rm_checksum_cmd))
+        # 8. Move the backup in place.
         parallel_commands.add_args(tuple(mvcmd))
 
     def prepare_cloud_ssh_cmds(
