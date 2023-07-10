@@ -179,7 +179,7 @@ public class TokenAuthenticator extends Action.Simple {
       // Some authenticated calls don't actually need to be authenticated
       // (e.g. /metadata/column_types). Only check auth_token is valid in that case.
       if (cust != null && (custUUID == null || custUUID.equals(cust.getUuid()))) {
-        if (!checkAccessLevel(endPoint, user, requestType)) {
+        if (!checkAccessLevel(endPoint, user, requestType, path)) {
           return CompletableFuture.completedFuture(Results.forbidden("User doesn't have access"));
         }
         RequestContext.put(CUSTOMER, cust);
@@ -261,7 +261,7 @@ public class TokenAuthenticator extends Action.Simple {
   }
 
   // Check role, and if the API call is accessible.
-  private boolean checkAccessLevel(String endPoint, Users user, String requestType) {
+  private boolean checkAccessLevel(String endPoint, Users user, String requestType, String path) {
     // Users should be allowed to change their password.
     // Even admin users should not be allowed to change another
     // user's password.
@@ -270,7 +270,9 @@ public class TokenAuthenticator extends Action.Simple {
       return userUUID.equals(user.getUuid());
     }
 
-    if (requestType.equals("GET") && endPoint.endsWith("/users/" + user.getUuid())) {
+    if (requestType.equals("GET")
+        && (endPoint.endsWith("/users/" + user.getUuid())
+            || path.endsWith("/customers/" + user.getCustomerUUID()))) {
       return true;
     }
 

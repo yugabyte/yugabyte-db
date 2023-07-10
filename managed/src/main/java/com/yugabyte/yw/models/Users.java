@@ -75,6 +75,8 @@ public class Users extends Model {
           return null;
         case BackupAdmin:
           return "backupAdminFeatureConfig.json";
+        case ConnectOnly:
+          return "connectOnlyFeatureConfig.json";
         default:
           return null;
       }
