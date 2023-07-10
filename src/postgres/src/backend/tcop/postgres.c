@@ -19,6 +19,7 @@
 
 #include "postgres.h"
 
+#include <arpa/inet.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <signal.h>
@@ -46,6 +47,8 @@
 #include "commands/prepare.h"
 #include "executor/spi.h"
 #include "jit/jit.h"
+
+#include "libpq/auth.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "libpq/pqsignal.h"
@@ -86,6 +89,7 @@
 #include "mb/pg_wchar.h"
 #include "pg_yb_utils.h"
 #include "libpq/yb_pqcomm_extensions.h"
+#include "utils/builtins.h"
 #include "utils/rel.h"
 
 /* ----------------
@@ -482,6 +486,13 @@ SocketBackend(StringInfo inBuf)
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
 						 errmsg("invalid frontend message type %d", qtype)));
+			break;
+
+		case 'A': /* Auth Passthrough Request */
+
+			if (!YbIsClientYsqlConnMgr())
+				ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+						errmsg("invalid frontend message type %d", qtype)));
 			break;
 
 		default:
@@ -4915,8 +4926,12 @@ PostgresMain(int argc, char *argv[],
 	 * *MyProcPort, because ConnCreate() allocated that space with malloc()
 	 * ... else we'd need to copy the Port data first.  Also, subsidiary data
 	 * such as the username isn't lost either; see ProcessStartupPacket().
+	 * PostmasterContext is required in case of connections created by
+	 * Ysql Connection Manager for `Authentication Passthrough`, so it shouldn't
+	 * be deleted in this case.
 	 */
-	if (PostmasterContext)
+	if(!(YbIsClientYsqlConnMgr())
+		&& PostmasterContext)
 	{
 		MemoryContextDelete(PostmasterContext);
 		PostmasterContext = NULL;
@@ -5728,6 +5743,54 @@ PostgresMain(int argc, char *argv[],
 				 * probably got here because a COPY failed, and the frontend
 				 * is still sending data.
 				 */
+				break;
+
+			case 'A': /* Auth Passthrough Request */
+				if (YbIsClientYsqlConnMgr())
+				{
+					start_xact_command();
+
+					/* Store a copy of the old context */
+					char *db_name = MyProcPort->database_name;
+					char *user_name = MyProcPort->user_name;
+					char *host = MyProcPort->remote_host;
+
+					/* Update the Port details with the new context. */
+					MyProcPort->user_name =
+						(char *) pq_getmsgstring(&input_message);
+					MyProcPort->database_name =
+						(char *) pq_getmsgstring(&input_message);
+					MyProcPort->remote_host =
+						(char *) pq_getmsgstring(&input_message);
+
+					/* Update the `remote_host` */
+					struct sockaddr_in *ip_address_1;
+					ip_address_1 =
+						(struct sockaddr_in *) (&MyProcPort->raddr.addr);
+					inet_pton(AF_INET, MyProcPort->remote_host,
+							  &(ip_address_1->sin_addr));
+					MyProcPort->yb_is_auth_passthrough_req = true;
+
+					/* Start authentication */
+					ClientAuthentication(MyProcPort);
+
+					/* Place back the old context */
+					MyProcPort->yb_is_auth_passthrough_req = false;
+					MyProcPort->user_name = user_name;
+					MyProcPort->database_name = db_name;
+					MyProcPort->remote_host = host;
+					inet_pton(AF_INET, MyProcPort->remote_host,
+							  &(ip_address_1->sin_addr));
+
+					/* Send the Ready for Query */
+					ReadyForQuery(DestRemote);
+				}
+				else
+				{
+					ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+									errmsg("invalid frontend message type %d",
+										   firstchar)));
+				}
 				break;
 
 			default:

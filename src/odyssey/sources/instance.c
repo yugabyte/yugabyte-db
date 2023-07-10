@@ -120,6 +120,9 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 		goto error;
 	}
 
+	yb_read_conf_from_env_var(&router.rules, &instance->config,
+				 &instance->logger);
+
 #ifdef PROM_FOUND
 	rc = od_prom_metrics_init(cron.metrics);
 	if (rc != OK_RESPONSE) {
