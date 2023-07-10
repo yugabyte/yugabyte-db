@@ -112,7 +112,7 @@ Two regions or more, manual failover, a few seconds of data loss (non-zero RPO),
 
 |[Latency&#8209;optimized geo&#8209;partitioning](./latency-optimized-geo-partition)|
 {{<header Level="6">}} Fast local access {{</header>}}
-Partition your data and place them in a manner that the data belonging to nearby users can be accessed faster.|
+Partition your data and place it such that the data belonging to nearby users can be accessed faster.|
 
 |[Locality&#8209;optimized geo&#8209;partitioning](./locality-optimized-geo-partition)|
 {{<header Level="6">}} Local law compliance {{</header>}}
