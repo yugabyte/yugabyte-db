@@ -1,9 +1,9 @@
 ---
 title: Phonetic Matching in YSQL
-headerTitle: Phonetic Search
-linkTitle: Phonetic Search
-headcontent: Learn how to do phonetic Matching in YSQL
-description: Learn how to do phonetic Matching in YSQL
+headerTitle: Phonetic search
+linkTitle: Phonetic search
+headcontent: Learn how to do phonetic matching in YSQL
+description: Learn how to do phonetic matching in YSQL
 menu:
   preview:
     identifier: phonetic-matching-ysql
@@ -14,19 +14,17 @@ rightNav:
 type: docs
 ---
 
-Although looking up exact matches would suffice in most scenarios, there are some cases where approximate matching would be beneficial. You may not know the exact term you are searching for but may remember the phonetics of the term or parts of the term. 
+While looking up exact matches suffices for most scenarios, you need approximate matching in situations where you don't know the exact term you are searching for but may remember the phonetics of the term or parts of the term.
 
-For such matching, YugabyteDB natively supports the PostgreSQL extension, [fuzzystrmatch](https://www.postgresql.org/docs/current/fuzzystrmatch.html) that provides multiple functions - Soundex, Metaphone and Double Metaphone - which can be used to determine phonetic similarities between text.
+For phonetic matching, YugabyteDB natively supports the PostgreSQL extension [fuzzystrmatch](https://www.postgresql.org/docs/current/fuzzystrmatch.html), which provides multiple functions - Soundex, Metaphone, and Double Metaphone - which you can use to determine phonetic similarities between text.
 
-Let us explore the different methodologies available in YugabyteBD via some examples.
-
-### Setup
+## Setup
 
 {{<warning>}}
 TODO: Will add cluster setup tabs here.
 {{</warning>}}
 
-For examples and illustrations, let's use the following table and data.
+Create the following table:
 
 ```sql
 CREATE TABLE IF NOT EXISTS words (
@@ -36,7 +34,7 @@ CREATE TABLE IF NOT EXISTS words (
 );
 ```
 
-Let us load some sample words into the table.
+Load some sample words into the table as follows:
 
 ```sql
 INSERT INTO words(word) VALUES 
@@ -46,7 +44,7 @@ INSERT INTO words(word) VALUES
   ('amphigoric'),('amebic'),('amebous'),('ambassage'),('unpacified'),('unposing');
 ```
 
-To enable fuzzy matching, activate the `fuzzystrmatch` extension.
+To enable fuzzy matching, activate the `fuzzystrmatch` extension as follows:
 
 ```sql
 CREATE extension IF NOT EXISTS fuzzystrmatch;
@@ -56,7 +54,7 @@ CREATE extension IF NOT EXISTS fuzzystrmatch;
 
 The [Soundex](https://en.wikipedia.org/wiki/Soundex) system is a method of matching similar-sounding names by converting them to the same four letter code which can then be used to determine similarities between text.
 
-For eg, you heard a word that sounded like `anapistagafi`. To find the actual word that sounds similar, you could use `soundex` method to find the closest-sounding word like,
+For example, suppose you heard a word that sounded like `anapistagafi`. To find the actual word that sounds similar, you could use `soundex` method to find the closest-sounding word as follows:
 
 ```sql
 SELECT word, soundex(word), difference(word,'anapistagafi') FROM words WHERE soundex(word) = soundex('anapistagafi') limit 5;
@@ -72,11 +70,11 @@ SELECT word, soundex(word), difference(word,'anapistagafi') FROM words WHERE sou
  anapaest       | A512    |          4
 ```
 
-The `difference` method calculates how different is one Soundex code from another. The value ranges from 0-4 and can be used to rank the results. But this is not advisable as the value is very naive.
+The `difference` method calculates how different one Soundex code is from another. The value ranges from 0-4 and can be used to rank the results. In this case, the difference is the same because the value is very naive.
 
 ## Metaphone
 
-The [metaphone](https://en.wikipedia.org/wiki/Metaphone) algorithm improves upon the Soundex by taking into consideration the inconsistencies in English spelling and pronunciation to produce a more accurate encoding.
+The [metaphone](https://en.wikipedia.org/wiki/Metaphone) algorithm improves upon Soundex by taking into consideration the inconsistencies in English spelling and pronunciation to produce a more accurate encoding. For example:
 
 ```sql
 SELECT word, metaphone(word,4) FROM words WHERE metaphone(word,4) = metaphone('anapistagafi',4) limit 5;
@@ -96,7 +94,7 @@ The `metaphone` function takes in an additional parameter of code output length 
 
 ## Double Metaphone
 
-The [Double Metaphone](https://en.wikipedia.org/wiki/Metaphone#Double_Metaphone) makes a number of fundamental design improvements over the original Metaphone algorithm. It calculates two different codes which enables it compare a wider range of pronunciations.
+The [Double Metaphone](https://en.wikipedia.org/wiki/Metaphone#Double_Metaphone) makes a number of fundamental design improvements over the original Metaphone algorithm. It calculates two different codes that enable it to compare a wider range of pronunciations.
 
 ```sql
 SELECT word, dmetaphone(word) FROM words WHERE dmetaphone(word) = dmetaphone('anapistagafi') limit 5;
