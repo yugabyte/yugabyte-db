@@ -163,6 +163,8 @@ class PgClient {
 
   Result<bool> CheckIfPitrActive();
 
+  Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
+
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid);
 

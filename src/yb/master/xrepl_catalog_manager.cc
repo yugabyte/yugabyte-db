@@ -1543,6 +1543,16 @@ Status CatalogManager::ListCDCStreams(
   return Status::OK();
 }
 
+Status CatalogManager::IsObjectPartOfXRepl(
+    const IsObjectPartOfXReplRequestPB* req, IsObjectPartOfXReplResponsePB* resp) {
+  auto table_info = GetTableInfo(req->table_id());
+  SCHECK(table_info, NotFound, "Table with id $0 does not exist", req->table_id());
+  SharedLock lock(mutex_);
+  resp->set_is_object_part_of_xrepl(IsXClusterEnabledUnlocked(*table_info) ||
+      IsTablePartOfCDCSDK(*table_info));
+  return Status::OK();
+}
+
 bool CatalogManager::CDCStreamExistsUnlocked(const CDCStreamId& stream_id) {
   scoped_refptr<CDCStreamInfo> stream = FindPtrOrNull(cdc_stream_map_, stream_id);
   if (stream == nullptr || stream->LockForRead()->is_deleting()) {

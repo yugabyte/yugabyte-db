@@ -975,5 +975,9 @@ Result<bool> PgSession::CheckIfPitrActive() {
   return pg_client_.CheckIfPitrActive();
 }
 
+Result<bool> PgSession::IsObjectPartOfXRepl(const PgObjectId& table_id) {
+  return pg_client_.IsObjectPartOfXRepl(table_id);
+}
+
 }  // namespace pggate
 }  // namespace yb

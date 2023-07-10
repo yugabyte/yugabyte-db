@@ -594,6 +594,8 @@ class YBClient {
   Status UpdateCDCStream(const std::vector<CDCStreamId>& stream_ids,
                          const std::vector<master::SysCDCStreamEntryPB>& new_entries);
 
+  Result<bool> IsObjectPartOfXRepl(const TableId& table_id);
+
   Result<bool> IsBootstrapRequired(const std::vector<TableId>& table_ids,
                                    const boost::optional<CDCStreamId>& stream_id = boost::none);
 

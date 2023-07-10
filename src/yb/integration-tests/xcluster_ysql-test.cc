@@ -3847,4 +3847,27 @@ TEST_F_EX(XClusterYsqlTest, DdlAndReadOperationsAllowedOnStandbyCluster, XCluste
   }
 }
 
+TEST_F(XClusterYsqlTest, TestAlterOperationTableRewrite) {
+  const auto tables_pair = ASSERT_RESULT(SetUpWithParams({1}, {1}, 3, 1));
+  constexpr auto kColumnName = "c1";
+  ASSERT_OK(SetupUniverseReplication(kReplicationGroupId, {tables_pair[0]}));
+  for (int i = 0; i <= 1; ++i) {
+    auto conn = i == 0 ? EXPECT_RESULT(producer_cluster_.ConnectToDB(kNamespaceName)) :
+        EXPECT_RESULT(consumer_cluster_.ConnectToDB(kNamespaceName));
+    const auto kTableName = tables_pair[i]->name().table_name();
+    // Verify alter primary key, column type operations are disallowed on the table.
+    auto res = conn.ExecuteFormat("ALTER TABLE $0 DROP CONSTRAINT $0_pkey",
+                                  kTableName);
+    ASSERT_NOK(res);
+    ASSERT_STR_CONTAINS(res.ToString(),
+        "cannot change the primary key of a table that is a part of CDC or XCluster replication.");
+    ASSERT_OK(
+        conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 varchar(10)", kTableName, kColumnName));
+    res = conn.ExecuteFormat("ALTER TABLE $0 ALTER $1 TYPE varchar(1)", kTableName, kColumnName);
+    ASSERT_NOK(res);
+    ASSERT_STR_CONTAINS(res.ToString(),
+        "cannot change a column type of a table that is a part of CDC or XCluster replication.");
+  }
+}
+
 }  // namespace yb
