@@ -244,7 +244,7 @@ class OutboundCall : public RpcCall {
   // Because the data is fully serialized by this call, 'req' may be
   // subsequently mutated with no ill effects.
   virtual Status SetRequestParam(
-      AnyMessageConstPtr req, Sidecars* sidecars, const MemTrackerPtr& mem_tracker);
+      AnyMessageConstPtr req, std::unique_ptr<Sidecars> sidecars, const MemTrackerPtr& mem_tracker);
 
   // Serialize the call for the wire. Requires that SetRequestParam()
   // is called first. This is called from the Reactor thread.
@@ -422,7 +422,7 @@ class OutboundCall : public RpcCall {
   // This buffer is written to by the client thread before the call is queued, and read by the
   // reactor thread, so no synchronization is needed.
   RefCntBuffer buffer_;
-  Sidecars* sidecars_ = nullptr;
+  std::unique_ptr<Sidecars> sidecars_;
 
   // Consumption of buffer_. Same synchronization rules as buffer_.
   ScopedTrackedConsumption buffer_consumption_;
