@@ -1714,7 +1714,7 @@ Result<bool> YBClient::IsLoadBalancerIdle() {
 }
 
 Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
-                                          master::PlacementInfoPB* replicas) {
+                                          master::PlacementInfoPB&& live_replicas) {
   master::ReplicationInfoPB replication_info;
   // Merge the obtained info with the existing table replication info.
   std::shared_ptr<client::YBTable> table;
@@ -1737,7 +1737,7 @@ Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
   }
 
   // Put in the new live placement info.
-  replication_info.set_allocated_live_replicas(replicas);
+  replication_info.mutable_live_replicas()->Swap(&live_replicas);
 
   std::unique_ptr<yb::client::YBTableAlterer> table_alterer(NewTableAlterer(table_name));
   return table_alterer->replication_info(replication_info)->Alter();
