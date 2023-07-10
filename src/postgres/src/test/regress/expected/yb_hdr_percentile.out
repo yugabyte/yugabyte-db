@@ -1,0 +1,94 @@
+-- Testing hdr percentile function
+SELECT yb_get_percentile('[{"[384.0,409.6)": 5}, {"[768.0,819.2)": 4}, {"[1126.4,1228.8)": 1}]', 50);
+ yb_get_percentile
+-------------------
+             409.6
+(1 row)
+
+SELECT yb_get_percentile('[{"[384.0,409.6)": 5}, {"[768.0,819.2)": 4}, {"[1126.4,1228.8)": 1}]', 90);
+ yb_get_percentile
+-------------------
+             819.2
+(1 row)
+
+SELECT yb_get_percentile('[{"[384.0,409.6)": 5}, {"[768.0,819.2)": 4}, {"[1126.4,1228.8)": 1}]', 99);
+ yb_get_percentile
+-------------------
+            1228.8
+(1 row)
+
+SELECT yb_get_percentile('[{"[384.0,409.6)": 5}, {"[768.0,819.2)": 4}, {"[1126.4,1228.8)": 1}]', 0);
+ yb_get_percentile
+-------------------
+             409.6
+(1 row)
+
+SELECT yb_get_percentile('[{"[384.0,409.6)": 5}, {"[768.0,819.2)": 4}, {"[1126.4,1228.8)": 1}]', -0.1);
+ yb_get_percentile
+-------------------
+             409.6
+(1 row)
+
+SELECT yb_get_percentile('[{"[384.0,409.6)": 5}, {"[768.0,819.2)": 4}, {"[1126.4,1228.8)": 1}]', 8892.3);
+ yb_get_percentile
+-------------------
+            1228.8
+(1 row)
+
+SELECT yb_get_percentile('[]', 90);
+ yb_get_percentile
+-------------------
+         -Infinity
+(1 row)
+
+SELECT yb_get_percentile('[{"[-2.8,2e4)": 8}]', -10);
+ yb_get_percentile
+-------------------
+             20000
+(1 row)
+
+SELECT yb_get_percentile('[{"[-2.8,2e4)": 8}]', 90);
+ yb_get_percentile
+-------------------
+             20000
+(1 row)
+
+SELECT yb_get_percentile('[{"[-1.1e-3,5000)": 5}, {}]', -10);
+ERROR:  Invalid histogram: Unexpected object end, should follow k/v pair within object
+SELECT yb_get_percentile('[{"[-1.1e-3,5000)": 5}, {}]', 100);
+ERROR:  Invalid histogram: Unexpected object end, should follow k/v pair within object
+SELECT yb_get_percentile('[{"[12,)": 8}]', 0);
+ yb_get_percentile
+-------------------
+          Infinity
+(1 row)
+
+SELECT yb_get_percentile('[{"[12,)": 8}]', 50);
+ yb_get_percentile
+-------------------
+          Infinity
+(1 row)
+
+SELECT yb_get_percentile('[{"[12,)": 8}]', 100);
+ yb_get_percentile
+-------------------
+          Infinity
+(1 row)
+
+SELECT yb_get_percentile('[{"[1,2)": 5}, {"[3,4)": 4}, {"[5,)": 1}]', 50);
+ yb_get_percentile
+-------------------
+                 2
+(1 row)
+
+SELECT yb_get_percentile('[{"[1,2)": 5}, {"[3,4)": 4}, {"[5,)": 1}]', 90);
+ yb_get_percentile
+-------------------
+                 4
+(1 row)
+
+SELECT yb_get_percentile('[{"[1,2)": 5}, {"[3,4)": 4}, {"[5,)": 1}]', 99);
+ yb_get_percentile
+-------------------
+          Infinity
+(1 row)
