@@ -282,7 +282,8 @@ message RegisterLogAnchorRequestPB {
   // tablet_id of the tablet the requester desires to bootstrap from.
   required bytes tablet_id = 2;
 
-  // op id where the log anchor needs to be dropped.
+  // The 'index' field of op_id should be set to the log index where the anchor needs to be
+  // registered at. The 'term' field of op_id is ignored.
   required OpIdPB op_id = 3;
 }
 
@@ -293,7 +294,8 @@ message UpdateLogAnchorRequestPB {
   // RemoteBootstrapAnchor request.
   required bytes owner_info = 1;
 
-  // op id to which the log anchor needs to be updated to.
+  // The 'index' field of op_id should be set to the log index where the anchor needs to be
+  // updated to. The 'term' field of op_id is ignored.
   required OpIdPB op_id = 2;
 }
 

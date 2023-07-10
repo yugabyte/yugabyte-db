@@ -165,6 +165,7 @@ class RemoteBootstrapITest : public CreateTableITestBase {
   void LeaderCrashesBeforeChangeRole(YBTableType table_type);
   void LeaderCrashesAfterChangeRole(YBTableType table_type);
 
+  // Places tservers in different zones so as to test bootstrapping from the closest follower.
   void BootstrapFromClosestPeerSetUp(int bootstrap_idle_timeout_ms = 5000);
   // Verifies that the new peer gets bootstrapped from the closest non leader follower
   // despite leader crash during remote log anchor session.
@@ -1340,6 +1341,11 @@ void RemoteBootstrapITest::DisableRemoteBootstrap_NoTightLoopWhenTabletDeleted(
 void RemoteBootstrapITest::LeaderCrashesWhileFetchingData(YBTableType table_type) {
   crash_test_timeout_ = MonoDelta::FromSeconds(40);
   CrashTestSetUp(table_type);
+
+  // Force leader to serve as bootstrap source.
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(crash_test_leader_index_),
+                              "remote_bootstrap_from_leader_only",
+                              "true"));
 
   // Cause the leader to crash when a follower tries to fetch data from it.
   const string& fault_flag = "TEST_fault_crash_on_handle_rb_fetch_data";
