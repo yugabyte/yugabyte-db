@@ -538,6 +538,11 @@ class ClusterAdminClient {
   Status DiscoverAllMasters(
     const HostPort& init_master_addr, std::string* all_master_addrs);
 
+  // Parses a placement info string of the form
+  // "cloud1.region1.zone1[:min_num_replicas],cloud2.region2.zone2[:min_num_replicas],..."
+  // and puts the result in placement_info_pb. If no RF is specified for a placement block, a
+  // default of 1 is used. This function does not validate correctness; that is done in
+  // CatalogManagerUtil::IsPlacementInfoValid.
   Status FillPlacementInfo(
       master::PlacementInfoPB* placement_info_pb, const std::string& placement_str);
 

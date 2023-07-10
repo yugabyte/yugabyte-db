@@ -254,6 +254,7 @@ public class TestReadFromFollowers extends BaseJedisTest {
 
     PlacementInfoPB livePlacementInfo =
         PlacementInfoPB.newBuilder().addAllPlacementBlocks(placementBlocksLive).
+            setNumReplicas(3).
             setPlacementUuid(ByteString.copyFromUtf8(PLACEMENT_UUID)).build();
 
     ModifyClusterConfigLiveReplicas liveOperation =
