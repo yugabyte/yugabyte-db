@@ -283,6 +283,7 @@ public class TableManagerTest extends FakeDBApplication {
                   testUniverse.getTServers().stream()
                       .collect(Collectors.toMap(t -> t.cloudInfo.private_ip, t -> pkPath)))));
     }
+    cmd.add("--use_server_broadcast_address");
     cmd.add("--backup_location");
     cmd.add(backupTableParams.storageLocation);
     cmd.add("--storage_type");
@@ -321,6 +322,9 @@ public class TableManagerTest extends FakeDBApplication {
         .thenReturn(false);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.enableSSE)))
         .thenReturn(false);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.useServerBroadcastAddressForYbBackup)))
+        .thenReturn(true);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ssh2Enabled))).thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.disableXxHashChecksum))).thenReturn(false);
   }
