@@ -1,7 +1,7 @@
 ---
 title: Similarity Search in YSQL
-headerTitle: Similarity Search
-linkTitle: Similarity Search
+headerTitle: Similarity search
+linkTitle: Similarity search
 headcontent: Learn how to do similarity search in YSQL
 description: Learn how to do similarity search in YSQL
 menu:
@@ -14,15 +14,15 @@ rightNav:
 type: docs
 ---
 
-Similarity matching works by determining how similar two different strings are. This can be useful when you do not know the exact spelling of your query term and can be to design spell checkers. Let us go into some of the methods you can use to achieve this.
+Similarity matching works by determining how similar two different strings are. This can be helpful when you don't know the exact spelling of your query term and can be used to design spell checkers.
 
-### Setup
+## Setup
 
 {{<warning>}}
 TODO: Will add cluster setup tabs here.
 {{</warning>}}
 
-For examples and illustrations, let's use the following table and data.
+Create the following table:
 
 ```sql
 CREATE TABLE words (
@@ -32,7 +32,7 @@ CREATE TABLE words (
 );
 ```
 
-Let us load some sample words into the table.
+ Load some sample words into the table as follows:
 
 ```sql
 INSERT INTO words(word) VALUES 
@@ -44,15 +44,15 @@ INSERT INTO words(word) VALUES
 
 ## Levenshtein
 
-The [Levenshtein distance](https://en.wikipedia.org/wiki/Levenshtein_distance) is a measure of the difference between 2 strings. It calculates the difference by considering the number of edits - insertions/deletions/substitutions needed for one string to be transformed into another. This is very useful for spell-checks. This function is provided by the PostgreSQL extension, [fuzzystrmatch](https://www.postgresql.org/docs/current/fuzzystrmatch.html).
+The [Levenshtein distance](https://en.wikipedia.org/wiki/Levenshtein_distance) is a measure of the difference between 2 strings. It calculates the difference by considering the number of edits (insertions, deletions, and substitutions) needed for one string to be transformed into another. This is particularly useful for spell-checks. This function is provided by the PostgreSQL extension [fuzzystrmatch](https://www.postgresql.org/docs/current/fuzzystrmatch.html).
 
-To enable the levenshtein function, activate the `fuzzystrmatch` extension.
+To enable the Levenshtein function, activate the `fuzzystrmatch` extension as follows:
 
 ```sql
 CREATE extension IF NOT EXISTS fuzzystrmatch;
 ```
 
-For example, to identify how the different mis-spellings of the `warehouse`, we could do:
+For example, to identify how the different mis-spellings of the `warehouse`, do the following:
 
 ```sql
 SELECT word, levenshtein('warehouse', word) FROM words WHERE levenshtein('warehouse', word) < 3  ORDER BY levenshtein('warehouse', word) ASC LIMIT 10;
@@ -73,25 +73,25 @@ SELECT word, levenshtein('warehouse', word) FROM words WHERE levenshtein('wareho
  gatehouse  |           2
 ```
 
-Note the levenshtein scoring for `warehoused` is `1`. This is because it has `1` additional character `d` than `warehouse`. Also it is `2` for `wayhouse` because it needs 2 edits `r->y` and `del e`.
+The Levenshtein scoring for `warehoused` is `1` because it has one more character (`d`) than `warehouse`. The scoring is `2` for `wayhouse` because it needs two edits (`r->y` and `del e`).
 
 ## Trigrams
 
-A trigram is a group of three consecutive characters taken from a string. We can measure the similarity of two strings by counting the number of trigrams they share. The [pg_trgm](https://www.postgresql.org/docs/15/pgtrgm.html) extension provides multiple functions like `show_trgm` and `similarity`,   function that provides a score of how similar two strings are. 
+A trigram is a group of three consecutive characters taken from a string. You can measure the similarity of two strings by counting the number of trigrams they share. The [pg_trgm](https://www.postgresql.org/docs/15/pgtrgm.html) extension provides multiple functions like `show_trgm` and `similarity`, which provide a score of how similar two strings are.
 
-For example, the trigrams for `warehouse` would be,
+For example, the trigrams for `warehouse` would be as follows:
 
 ```sql{class=output}
 {"  w"," wa",are,eho,hou,ous,reh,"se ",use,war}
 ```
 
-To enable the trigrams functionality, activate the `pg_trgm` extension.
+To enable the trigrams functionality, activate the `pg_trgm` extension:
 
 ```sql
 CREATE extension IF NOT EXISTS pg_trgm;
 ```
 
-For example, you are looking for words with spelling close to `geodymamist`. To get the actual word, you could do this,
+For example, suppose you are looking for words with spelling close to `geodymamist`. To get the actual word, you could do the following:
 
 ```sql
 SELECT word, similarity(word, 'geodymamist') as score FROM words ORDER BY score DESC LIMIT 5;
@@ -107,7 +107,7 @@ SELECT word, similarity(word, 'geodymamist') as score FROM words ORDER BY score 
  geologist     | 0.294118
 ```
 
-To match word boundaries by avoiding cross-word trigrams, you can use the `strict_word_similarity` function. For example,
+To match word boundaries by avoiding cross-word trigrams, you can use the `strict_word_similarity` function. For example:
 
 ```sql
 SELECT strict_word_similarity('word', 'two words'), similarity('word', 'two words');
@@ -119,7 +119,7 @@ SELECT strict_word_similarity('word', 'two words'), similarity('word', 'two word
                0.571429 |   0.363636
 ```
 
-Note that the `strict_word_similarity` is higher than the `similarity` as it gave higher importance to the presence of the exact term `word` in both strings.
+The `strict_word_similarity` is higher than the `similarity` as it gave higher importance to the presence of the exact term `word` in both strings.
 
 ## Learn more
 
