@@ -77,8 +77,7 @@ class SkipListRep : public MemTableRep {
                    bool (*callback_func)(void* arg,
                                          const char* entry)) override {
     SkipListRep::Iterator iter(&skip_list_);
-    Slice dummy_slice;
-    for (iter.Seek(dummy_slice, k.memtable_key().cdata());; iter.Next()) {
+    for (iter.SeekMemTableKey(Slice(), k.memtable_key().cdata());; iter.Next()) {
       auto entry = iter.Entry();
       if (!entry || !callback_func(callback_args, entry)) {
         break;
@@ -98,7 +97,7 @@ class SkipListRep : public MemTableRep {
   ~SkipListRep() override { }
 
   // Iteration over the contents of a skip list
-  class Iterator : public MemTableRep::Iterator {
+  class Iterator final : public MemTableRep::Iterator {
     typename SkipListImpl::Iterator iter_;
 
    public:
@@ -122,31 +121,31 @@ class SkipListRep : public MemTableRep {
 
     // Advances to the previous position.
     // REQUIRES: Valid()
-    void Prev() override {
-      iter_.Prev();
+    const char* Prev() override {
+      return iter_.Prev();
     }
 
     // Advance to the first entry with a key >= target
-    virtual void Seek(const Slice& user_key, const char* memtable_key)
-        override {
-      if (memtable_key != nullptr) {
-        iter_.Seek(memtable_key);
-      } else {
-        iter_.Seek(EncodeKey(&tmp_, user_key));
-      }
+    const char* Seek(Slice user_key) override {
+      return iter_.Seek(EncodeKey(&tmp_, user_key));
+    }
+
+    const char* SeekMemTableKey(Slice user_key, const char* memtable_key) override {
+      return iter_.Seek(memtable_key);
     }
 
     // Position at the first entry in list.
     // Final state of iterator is Valid() iff list is not empty.
-    void SeekToFirst() override {
-      iter_.SeekToFirst();
+    const char* SeekToFirst() override {
+      return iter_.SeekToFirst();
     }
 
     // Position at the last entry in list.
     // Final state of iterator is Valid() iff list is not empty.
-    void SeekToLast() override {
-      iter_.SeekToLast();
+    const char* SeekToLast() override {
+      return iter_.SeekToLast();
     }
+
    protected:
     std::string tmp_;       // For passing to EncodeKey
   };
@@ -194,18 +193,18 @@ class SkipListRep : public MemTableRep {
       return Entry();
     }
 
-    void Prev() override {
+    const char* Prev() override {
       assert(Entry() != nullptr);
       iter_.Prev();
       prev_ = iter_;
+      return Entry();
     }
 
-    virtual void Seek(const Slice& internal_key, const char *memtable_key)
-        override {
-      const char *encoded_key =
-        (memtable_key != nullptr) ?
-            memtable_key : EncodeKey(&tmp_, internal_key);
+    const char* Seek(Slice internal_key) override {
+      return SeekMemTableKey(internal_key, EncodeKey(&tmp_, internal_key));
+    }
 
+    const char* SeekMemTableKey(Slice key, const char* encoded_key) override {
       auto prev_entry = prev_.Entry();
       if (prev_entry && rep_.cmp_(encoded_key, prev_entry) >= 0) {
         // prev_.key() is smaller or equal to our target key; do a quick
@@ -219,7 +218,7 @@ class SkipListRep : public MemTableRep {
             break;
           }
           if (rep_.cmp_(encoded_key, entry) <= 0) {
-            return;
+            return Entry();
           }
           Next();
         }
@@ -227,16 +226,19 @@ class SkipListRep : public MemTableRep {
 
       iter_.Seek(encoded_key);
       prev_ = iter_;
+      return Entry();
     }
 
-    void SeekToFirst() override {
+    const char* SeekToFirst() override {
       iter_.SeekToFirst();
       prev_ = iter_;
+      return Entry();
     }
 
-    void SeekToLast() override {
+    const char* SeekToLast() override {
       iter_.SeekToLast();
       prev_ = iter_;
+      return Entry();
     }
 
    protected:

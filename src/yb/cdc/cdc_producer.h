@@ -22,7 +22,7 @@
 #include <boost/unordered_map.hpp>
 
 #include "yb/cdc/cdc_service.service.h"
-#include "yb/cdc/cdc_util.h"
+#include "yb/cdc/cdc_types.h"
 #include "yb/client/client_fwd.h"
 #include "yb/common/common_fwd.h"
 #include "yb/common/transaction.h"

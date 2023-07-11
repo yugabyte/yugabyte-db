@@ -138,7 +138,8 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
                 Status.BAD_REQUEST,
                 String.format("Image bundle with UUID %s does not exist", imageBundleUUID));
           }
-          if (bundle.getProvider().getCloudCode().equals(CloudType.aws)) {
+          if (bundle.getProvider().getCloudCode().equals(CloudType.aws)
+              && !super.runtimeConfGetter.getStaticConf().getBoolean("yb.cloud.enabled")) {
             Map<String, ImageBundleDetails.BundleInfo> regionsBundleInfo =
                 bundle.getDetails().getRegions();
             // Validate that the provided image bundle contains all the regions

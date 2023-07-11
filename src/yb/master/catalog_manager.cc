@@ -539,8 +539,9 @@ DEFINE_test_flag(bool, keep_docdb_table_on_ysql_drop_table, false,
 DEFINE_RUNTIME_int32(max_concurrent_delete_replica_rpcs_per_ts, 50,
     "The maximum number of outstanding DeleteReplica RPCs sent to an individual tserver.");
 
-DEFINE_RUNTIME_bool(enable_delete_truncate_cdcsdk_table, false,
-    "When set, enables deleting/truncating tables currently part of a CDCSDK Stream");
+DEFINE_RUNTIME_bool(
+    enable_truncate_cdcsdk_table, false,
+    "When set, enables truncating tables currently part of a CDCSDK Stream");
 
 DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExternal, false, true,
     "When set, it enables automatic tablet splitting for tables that are part of an "
@@ -1059,7 +1060,7 @@ Status CatalogManager::ElectedAsLeaderCb() {
 Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
   string uuid = master_->fs_manager()->uuid();
   auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
-  Consensus* consensus = tablet_peer()->consensus();
+  auto consensus = VERIFY_RESULT(tablet_peer()->GetConsensus());
   ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_ACTIVE);
   if (!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid) {
     return STATUS_SUBSTITUTE(IllegalState,
@@ -1073,7 +1074,7 @@ Status CatalogManager::WaitUntilCaughtUpAsLeader(const MonoDelta& timeout) {
     RETURN_NOT_OK(tablet_peer()->operation_tracker()->WaitForAllToFinish(timeout));
   }
 
-  RETURN_NOT_OK(tablet_peer()->consensus()->WaitForLeaderLeaseImprecise(deadline));
+  RETURN_NOT_OK(consensus->WaitForLeaderLeaseImprecise(deadline));
   return Status::OK();
 }
 
@@ -1083,7 +1084,15 @@ void CatalogManager::LoadSysCatalogDataTask() {
               << " secs due to fault injection by test";
     SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_delay_sys_catalog_reload_secs));
   }
-  auto consensus = tablet_peer()->shared_consensus();
+  auto consensus_result = tablet_peer()->GetConsensus();
+  if (!consensus_result) {
+    // This could happen for e.g. during a shutdown.
+    LOG_WITH_PREFIX(WARNING) << "Could not get consensus for sys catalog tablet: "
+                             << consensus_result.status();
+    return;
+  }
+  auto& consensus = consensus_result.get();
+
   const int64_t term = consensus->ConsensusState(CONSENSUS_CONFIG_ACTIVE).current_term();
   Status s = WaitUntilCaughtUpAsLeader(
       MonoDelta::FromMilliseconds(FLAGS_master_failover_catchup_timeout_ms));
@@ -2046,10 +2055,7 @@ Status CatalogManager::CheckIsLeaderAndReady() const {
     return STATUS_SUBSTITUTE(IllegalState,
         "Catalog manager of $0 is in shell mode, not the leader", uuid);
   }
-  Consensus* consensus = tablet_peer()->consensus();
-  if (consensus == nullptr) {
-    return STATUS(IllegalState, "Consensus has not been initialized yet");
-  }
+  auto consensus = VERIFY_RESULT(tablet_peer()->GetConsensus());
   ConsensusStatePB cstate = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
   if (PREDICT_FALSE(!cstate.has_leader_uuid() || cstate.leader_uuid() != uuid)) {
     return STATUS_SUBSTITUTE(IllegalState,
@@ -2077,7 +2083,12 @@ PeerRole CatalogManager::Role() const {
     return PeerRole::NON_PARTICIPANT;
   }
 
-  return tablet_peer()->consensus()->role();
+  auto consensus_result = tablet_peer()->GetConsensus();
+  if (!consensus_result) {
+    return PeerRole::NON_PARTICIPANT;
+  }
+
+  return consensus_result.get()->role();
 }
 
 bool CatalogManager::StartShutdown() {
@@ -5517,7 +5528,7 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
   }
   {
     SharedLock lock(mutex_);
-    if (!FLAGS_enable_delete_truncate_cdcsdk_table && IsTablePartOfCDCSDK(*table)) {
+    if (!FLAGS_enable_truncate_cdcsdk_table && IsTablePartOfCDCSDK(*table)) {
         return STATUS(
             NotSupported,
             "Cannot truncate a table in a CDCSDK Stream.",
@@ -10339,8 +10350,8 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
   // Call VerifyChangeRoleSucceeded only after we have set shell mode to false. Otherwise,
   // CatalogManager::GetTabletPeer will always return an error, and the consensus will never get
   // updated.
-  auto status = rb_client->VerifyChangeRoleSucceeded(
-      sys_catalog_->tablet_peer()->shared_consensus());
+  auto consensus = VERIFY_RESULT(sys_catalog_->tablet_peer()->GetConsensus());
+  auto status = rb_client->VerifyChangeRoleSucceeded(consensus);
 
   if (!status.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Remote bootstrap finished. "
@@ -11772,11 +11783,8 @@ Status CatalogManager::GetTableLocations(
 
 Status CatalogManager::GetCurrentConfig(consensus::ConsensusStatePB* cpb) const {
   auto tablet_peer = sys_catalog_->tablet_peer();
-  auto consensus = tablet_peer ? tablet_peer->shared_consensus() : nullptr;
-  if (!consensus) {
-    std::string uuid = master_->fs_manager()->uuid();
-    return STATUS_FORMAT(IllegalState, "Node $0 peer not initialized.", uuid);
-  }
+  SCHECK(tablet_peer, IllegalState, "Node $0 peer not initialized.", master_->fs_manager()->uuid());
+  auto consensus = VERIFY_RESULT(tablet_peer->GetConsensus());
 
   *cpb = consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED);
 
@@ -12059,9 +12067,13 @@ Status CatalogManager::SetClusterConfig(
 
   // TODO(bogdan): should this live here?
   const ReplicationInfoPB& replication_info = config.replication_info();
-  for (int i = 0; i < replication_info.read_replicas_size(); i++) {
-    if (!replication_info.read_replicas(i).has_placement_uuid()) {
-      Status s = STATUS(IllegalState,
+  for (auto& read_replica : replication_info.read_replicas()) {
+    Status s = CatalogManagerUtil::IsPlacementInfoValid(read_replica);
+    if (!s.ok()) {
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
+    }
+    if (!read_replica.has_placement_uuid()) {
+      s = STATUS(IllegalState,
                         "All read-only clusters must have a placement uuid specified");
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
     }
@@ -12854,7 +12866,7 @@ Result<bool> CatalogManager::SysCatalogLeaderStepDown(const ServerEntryPB& maste
   req.set_new_leader_uuid(master.instance_id().permanent_uuid());
 
   consensus::LeaderStepDownResponsePB resp;
-  RETURN_NOT_OK(tablet_peer->consensus()->StepDown(&req, &resp));
+  RETURN_NOT_OK(VERIFY_RESULT(tablet_peer->GetConsensus())->StepDown(&req, &resp));
   if (resp.has_error()) {
     YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 10)
         << "Step down failed: " << resp.error().status().message();

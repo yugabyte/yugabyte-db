@@ -21,6 +21,7 @@
 #include <functional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <type_traits>
 
 #include <boost/mpl/and.hpp>
@@ -174,6 +175,7 @@ auto ToString(std::reference_wrapper<Value> value) {
   return ToString(value.get());
 }
 
+inline std::string_view ToString(std::string_view str) { return str; }
 inline const std::string& ToString(const std::string& str) { return str; }
 inline std::string ToString(const char* str) { return str; }
 

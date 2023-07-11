@@ -27,16 +27,18 @@
 
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/cql_operation.h"
+#include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
-#include "yb/dockv/doc_kv_util.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_types.h"
-#include "yb/dockv/intent.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
+
+#include "yb/dockv/doc_kv_util.h"
+#include "yb/dockv/intent.h"
 #include "yb/dockv/subdocument.h"
 #include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
@@ -276,8 +278,21 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
                              const string& table_name) {
   DCHECK_ONLY_NOTNULL(restart_read_ht);
   DocWriteBatch doc_write_batch(doc_db, init_marker_behavior, pending_op, monotonic_counter);
-  DocOperationApplyData data = {&doc_write_batch, read_operation_data, restart_read_ht};
+
+  DocOperationApplyData data = {
+    .doc_write_batch = &doc_write_batch,
+    .read_operation_data = read_operation_data,
+    .restart_read_ht = restart_read_ht,
+    .iterator = nullptr,
+    .restart_seek = true,
+  };
+
+  std::optional<DocRowwiseIterator> iterator;
+  DocOperation* prev_operation = nullptr;
+  SingleOperation single_operation(doc_write_ops.size() == 1);
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
+    RETURN_NOT_OK(doc_op->UpdateIterator(&data, prev_operation, single_operation, &iterator));
+    prev_operation = doc_op.get();
     Status s = doc_op->Apply(data);
     if (s.IsQLError() && doc_op->OpType() == DocOperation::Type::QL_WRITE_OPERATION) {
       std::string error_msg;

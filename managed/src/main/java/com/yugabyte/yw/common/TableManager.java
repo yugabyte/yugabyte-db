@@ -2,20 +2,20 @@
 
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.common.BackupUtil.BACKUP_PREFIX_LENGTH;
-import static com.yugabyte.yw.common.BackupUtil.BACKUP_SCRIPT;
-import static com.yugabyte.yw.common.BackupUtil.EMR_MULTIPLE;
-import static com.yugabyte.yw.common.BackupUtil.K8S_CERT_PATH;
-import static com.yugabyte.yw.common.BackupUtil.REGION_LOCATIONS;
-import static com.yugabyte.yw.common.BackupUtil.REGION_NAME;
-import static com.yugabyte.yw.common.BackupUtil.TS_FMT_LENGTH;
-import static com.yugabyte.yw.common.BackupUtil.UNIV_PREFIX_LENGTH;
-import static com.yugabyte.yw.common.BackupUtil.UUID_LENGTH;
-import static com.yugabyte.yw.common.BackupUtil.VM_CERT_DIR;
-import static com.yugabyte.yw.common.BackupUtil.YB_CLOUD_COMMAND_TYPE;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.DELETE;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.BACKUP_PREFIX_LENGTH;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.BACKUP_SCRIPT;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.EMR_MULTIPLE;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.K8S_CERT_PATH;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.REGION_LOCATIONS;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.REGION_NAME;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.TS_FMT_LENGTH;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.UNIV_PREFIX_LENGTH;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.UUID_LENGTH;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.VM_CERT_DIR;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.YB_CLOUD_COMMAND_TYPE;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATION_FIELDNAME;
 
@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
@@ -75,7 +76,6 @@ public class TableManager extends DevopsBase {
   }
 
   @Inject ReleaseManager releaseManager;
-  @Inject BackupUtil backupUtil;
 
   public ShellResponse runCommand(CommandSubType subType, TableManagerParams taskParams) {
     Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
@@ -417,6 +417,12 @@ public class TableManager extends DevopsBase {
         commandArgs.add(Json.stringify(Json.toJson(ipToSshKeyPath)));
       }
     }
+    Universe universe = Universe.getOrBadRequest(backupTableParams.getUniverseUUID());
+    boolean useServerBroadcastAddress =
+        confGetter.getConfForScope(universe, UniverseConfKeys.useServerBroadcastAddressForYbBackup);
+    if (useServerBroadcastAddress) {
+      commandArgs.add("--use_server_broadcast_address");
+    }
     commandArgs.add("--backup_location");
     commandArgs.add(backupTableParams.storageLocation);
     commandArgs.add("--storage_type");
@@ -432,7 +438,6 @@ public class TableManager extends DevopsBase {
       commandArgs.add(getCertsDir(region, provider));
     }
     commandArgs.add(backupTableParams.actionType.name().toLowerCase());
-    Universe universe = Universe.getOrBadRequest(backupTableParams.getUniverseUUID());
     boolean verboseLogsEnabled =
         confGetter.getConfForScope(universe, UniverseConfKeys.backupLogVerbose);
     if (backupTableParams.enableVerboseLogs || verboseLogsEnabled) {

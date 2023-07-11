@@ -76,10 +76,9 @@ rocksdb::Env& TabletComponent::rocksdb_env() const {
 }
 
 void TabletComponent::RefreshYBMetaDataCache() {
+  // Note: every tablet will cleanup the cache, since during restore, there are no
+  // operations allowed, this should be fine.
   tablet_.ResetYBMetaDataCache();
-  if (!metadata().index_map()->empty()) {
-    tablet_.CreateNewYBMetaDataCache();
-  }
 }
 
 } // namespace tablet

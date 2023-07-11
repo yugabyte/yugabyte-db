@@ -81,7 +81,7 @@ public class ThirdPartyLoginHandler {
     sessionStore.destroySession(context);
   }
 
-  CommonProfile getProfile(Request request) {
+  public CommonProfile getProfile(Request request) {
     final PlayWebContext context = new PlayWebContext(request, sessionStore);
     final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
     return profileManager

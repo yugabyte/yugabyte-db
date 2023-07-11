@@ -94,13 +94,7 @@ class PgBackendsTest : public LibPqTestBase {
   PgOid catalog_version_db_oid_ = kPgInvalidOid;
 
   void BumpCatalogVersion(int num_versions) {
-    BumpCatalogVersion(num_versions, conn_.get());
-  }
-  void BumpCatalogVersion(int num_versions, PGConn* conn) {
-    LOG(INFO) << "Do " << num_versions << " breaking catalog version bumps";
-    for (int i = 0; i < num_versions; ++i) {
-      ASSERT_OK(conn->Execute("ALTER USER yugabyte PASSWORD '123456'"));
-    }
+    LibPqTestBase::BumpCatalogVersion(num_versions, conn_.get());
   }
 
   Result<uint64_t> GetCatalogVersion() {
@@ -291,7 +285,7 @@ TEST_F(PgBackendsTest, WaitOnlySameDatabase) {
   LOG(INFO) << "Bump catalog version for each database";
   for (const auto& db_name : db_names) {
     PGConn conn = ASSERT_RESULT(ConnectToDB(db_name));
-    BumpCatalogVersion(1, &conn);
+    LibPqTestBase::BumpCatalogVersion(1, &conn);
   }
   const uint64_t cat_ver = ASSERT_RESULT(GetCatalogVersion());
 
@@ -1034,7 +1028,7 @@ Status PgBackendsTestRf3DeadFaster::TestTserverUnresponsive(bool keep_alive) {
   LOG(INFO) << "Make new connection in case conn_'s node was selected to be unresponsive";
   ts = cluster_->tserver_daemons()[(ts_idx + 1) % num_ts];
   PGConn conn = VERIFY_RESULT(ConnectToTs(*ts));
-  BumpCatalogVersion(1, &conn);
+  LibPqTestBase::BumpCatalogVersion(1, &conn);
 
 #if !ISSUE_5030_IS_FIXED
   // TODO(jason): get rid of this when issue #5030 core issue is resolved.  This is here to add some

@@ -196,6 +196,10 @@ Sidecars& RpcContext::sidecars() {
   return call_->sidecars();
 }
 
+Result<RefCntSlice> RpcContext::ExtractSidecar(size_t idx) const {
+  return call_->ExtractSidecar(idx);
+}
+
 const Endpoint& RpcContext::remote_address() const {
   return call_->remote_address();
 }

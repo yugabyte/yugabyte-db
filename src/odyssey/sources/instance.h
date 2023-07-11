@@ -24,4 +24,11 @@ void od_instance_init(od_instance_t *);
 void od_instance_free(od_instance_t *);
 int od_instance_main(od_instance_t *, int, char **);
 
+/*
+ * Using YB_YSQLCONNMGR_PDEATHSIG environment variable (set by the yb-tserver),
+ * set the signal that is to be sent to the current process (Ysql Connection Manager)
+ * in case the parent process (yb-tserver) dies.
+ */
+void YbSetParentDeathSignal();
+
 #endif /* ODYSSEY_INSTANCE_H */

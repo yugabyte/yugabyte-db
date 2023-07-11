@@ -320,6 +320,7 @@
 #yb_enable_geolocation_costing = on
 #yb_enable_expression_pushdown = on
 #yb_enable_sequence_pushdown = on
+#yb_enable_distinct_pushdown = on
 
 # - Planner Cost Constants -
 

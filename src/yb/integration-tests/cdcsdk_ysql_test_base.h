@@ -108,7 +108,7 @@ DECLARE_bool(tablet_enable_ttl_file_filter);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_int32(cdc_max_stream_intent_records);
 DECLARE_bool(enable_single_record_update);
-DECLARE_bool(enable_delete_truncate_cdcsdk_table);
+DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(enable_load_balancing);
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
@@ -123,6 +123,7 @@ DECLARE_int32(ysql_num_shards_per_tserver);
 DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
 DECLARE_bool(cdc_enable_consistent_records);
 DECLARE_bool(cdc_populate_end_markers_transactions);
+DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 
 namespace yb {
 
@@ -281,12 +282,6 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Result<GetChangesResponsePB> UpdateSnapshotDone(
       const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-      const GetChangesResponsePB* change_resp,
-      const TableId table_id = "");
-
-  Result<GetChangesResponsePB> UpdateSnapshotDone(
-      const CDCStreamId& stream_id,
-      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const TableId table_id = "");
 
   Result<GetChangesResponsePB> UpdateCheckpoint(
@@ -403,50 +398,21 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const CDCSDKCheckpointPB* cp = nullptr,
       int tablet_idx = 0);
 
+  GetAllPendingChangesResponse GetAllPendingChangesWithRandomReqSafeTimeChanges(
+      const CDCStreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const CDCSDKCheckpointPB* cp = nullptr,
+      int tablet_idx = 0,
+      int64 safe_hybrid_time = -1,
+      int wal_segment_index = 0);
+
   GetAllPendingChangesResponse GetAllPendingChangesFromCdc(
       const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const CDCSDKCheckpointPB* cp = nullptr,
       int tablet_idx = 0,
       int64 safe_hybrid_time = -1,
-      int wal_segment_index = 0) {
-    GetAllPendingChangesResponse resp;
-
-    int prev_records = 0;
-    CDCSDKCheckpointPB prev_checkpoint;
-    int64 prev_safetime = safe_hybrid_time;
-    int prev_index = wal_segment_index;
-    const CDCSDKCheckpointPB* prev_checkpoint_ptr = cp;
-
-    do {
-      GetChangesResponsePB change_resp;
-      auto get_changes_result = GetChangesFromCDC(
-          stream_id, tablets, prev_checkpoint_ptr, tablet_idx, prev_safetime, prev_index);
-
-      if (get_changes_result.ok()) {
-        change_resp = *get_changes_result;
-      } else {
-        LOG(ERROR) << "Encountered error while calling GetChanges on tablet: "
-                   << tablets[tablet_idx].tablet_id()
-                   << ", status: " << get_changes_result.status();
-        break;
-      }
-
-      for (int i = 0; i < change_resp.cdc_sdk_proto_records_size(); i++) {
-        resp.records.push_back(change_resp.cdc_sdk_proto_records(i));
-      }
-
-      prev_checkpoint = change_resp.cdc_sdk_checkpoint();
-      prev_checkpoint_ptr = &prev_checkpoint;
-      prev_safetime = change_resp.has_safe_hybrid_time() ? change_resp.safe_hybrid_time() : -1;
-      prev_index = change_resp.wal_segment_index();
-      prev_records = change_resp.cdc_sdk_proto_records_size();
-    } while (prev_records != 0);
-
-    resp.checkpoint = prev_checkpoint;
-    resp.safe_hybrid_time = prev_safetime;
-    return resp;
-  }
+      int wal_segment_index = 0);
 
   Result<GetChangesResponsePB> GetChangesFromCDCWithExplictCheckpoint(
       const CDCStreamId& stream_id,
@@ -576,6 +542,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   TableId GetColocatedTableId(const std::string& req_table_name);
 
+  void AssertSafeTimeAsExpectedInTabletPeers(
+      const TabletId& tablet_id, const HybridTime expected_safe_time);
 };
 
 }  // namespace cdc

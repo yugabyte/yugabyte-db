@@ -121,13 +121,13 @@ class CqlGeoTransactionsTest: public CqlTestBase<MiniCluster> {
     for (int i = 1; i <= num_tablet_servers(); ++i) {
       YBTableName table_name{YQL_DATABASE_CQL, kNamespace,
                              strings::Substitute("$0$1", kTablePrefix, i)};
-      auto* placement_info = new master::PlacementInfoPB;
-      MakePlacementInfo(placement_info, i);
+      master::PlacementInfoPB placement_info;
+      MakePlacementInfo(&placement_info, i);
 
       ASSERT_OK(session.ExecuteQuery(strings::Substitute(
           "CREATE TABLE $0(value int, PRIMARY KEY (value)) WITH transactions = { 'enabled': true }",
           table_name.table_name())));
-      ASSERT_OK(client_->ModifyTablePlacementInfo(table_name, placement_info));
+      ASSERT_OK(client_->ModifyTablePlacementInfo(table_name, std::move(placement_info)));
       WaitForLoadBalanceCompletion();
     }
 

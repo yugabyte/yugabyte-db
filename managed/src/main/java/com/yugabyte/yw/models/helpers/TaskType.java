@@ -296,6 +296,8 @@ public enum TaskType {
 
   WaitForClockSync(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForClockSync.class),
 
+  WaitForDuration(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDuration.class),
+
   RunExternalScript(com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript.class),
 
   RemoveAuthorizedKey(com.yugabyte.yw.commissioner.tasks.subtasks.RemoveAuthorizedKey.class),

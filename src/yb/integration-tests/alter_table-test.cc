@@ -126,25 +126,25 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
     b.AddColumn("c1")->Type(DataType::INT32)->NotNull();
     CHECK_OK(b.Build(&schema_));
 
-    FLAGS_enable_data_block_fsync = false; // Keep unit tests fast.
-    FLAGS_use_hybrid_clock = false;
-    FLAGS_ht_lease_duration_ms = 0;
-    FLAGS_enable_ysql = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_data_block_fsync) = false; // Keep unit tests fast.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_hybrid_clock) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ht_lease_duration_ms) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
     ANNOTATE_BENIGN_RACE(&FLAGS_enable_maintenance_manager,
                          "safe to change at runtime");
   }
 
   void SetUp() override {
     // Make heartbeats faster to speed test runtime.
-    FLAGS_heartbeat_interval_ms = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 10;
 
-    FLAGS_catalog_manager_report_batch_size = GetParam();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_report_batch_size) = GetParam();
 
     YBMiniClusterTestBase::SetUp();
 
     MiniClusterOptions opts;
     opts.num_tablet_servers = num_replicas();
-    FLAGS_replication_factor = num_replicas();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = num_replicas();
     cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
     ASSERT_OK(cluster_->WaitForTabletServerCount(num_replicas()));
@@ -588,7 +588,7 @@ TEST_P(AlterTableTest, TestLogSchemaReplay) {
 
   google::FlagSaver flag_saver;
   // Restart without flushing RocksDB
-  FLAGS_flush_rocksdb_on_shutdown = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
   LOG(INFO) << "Restarting tablet";
   ASSERT_NO_FATALS(RestartTabletServer());
 
@@ -684,7 +684,7 @@ TEST_P(AlterTableTest, TestAlterWalRetentionSecs) {
 TEST_P(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {
   // Disable maintenance manager, since we manually flush/compact
   // in this test.
-  FLAGS_enable_maintenance_manager = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_maintenance_manager) = false;
 
   vector<string> rows;
 

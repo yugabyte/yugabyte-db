@@ -60,6 +60,7 @@ class PgMutationCounter;
     (Heartbeat) \
     (InsertSequenceTuple) \
     (IsInitDbDone) \
+    (IsObjectPartOfXRepl) \
     (ListLiveTabletServers) \
     (OpenTable) \
     (ReadSequenceTuple) \

@@ -34,6 +34,7 @@ DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
+METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Write);
 
 namespace yb::pgwrapper {
 
@@ -55,11 +56,22 @@ class PgSingleTServerTest : public PgMiniTestBase {
     conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
 
     ASSERT_OK(conn.Execute(create_table_cmd));
-    auto last_row = 0;
-    while (last_row < rows) {
-      auto first_row = last_row + 1;
-      last_row = std::min(rows, last_row + block_size);
-      ASSERT_OK(conn.ExecuteFormat(insert_cmd, first_row, last_row));
+
+    {
+      auto write_histogram = cluster_->mini_tablet_server(0)->metric_entity().FindOrCreateHistogram(
+          &METRIC_handler_latency_yb_tserver_TabletServerService_Write)->histogram();
+      auto metric_start = write_histogram->TotalSum();
+      auto start = MonoTime::Now();
+      auto last_row = 0;
+      while (last_row < rows) {
+        auto first_row = last_row + 1;
+        last_row = std::min(rows, last_row + block_size);
+        ASSERT_OK(conn.ExecuteFormat(insert_cmd, first_row, last_row));
+      }
+      auto finish = MonoTime::Now();
+      auto metric_finish = write_histogram->TotalSum();
+      LOG(INFO) << "Insert time: " << finish - start << ", tserver time: "
+                << MonoDelta::FromMicroseconds(metric_finish - metric_start);
     }
 
     auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
@@ -168,16 +180,16 @@ constexpr int kScanReads = 3;
 }
 
 TEST_F_EX(PgSingleTServerTest, Scan, PgMiniBigPrefetchTest) {
-  FLAGS_ysql_enable_packed_row = false;
-  FLAGS_ysql_enable_packed_row_for_colocated_table = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = false;
   Run(kScanRows, kScanBlockSize, kScanReads, /* compact= */ false, /* select= */ true);
 }
 
 TEST_F_EX(PgSingleTServerTest, ScanWithPackedRow, PgMiniBigPrefetchTest) {
   constexpr int kNumColumns = 10;
 
-  FLAGS_ysql_enable_packed_row = true;
-  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
 
   std::string create_cmd = "CREATE TABLE t (a int PRIMARY KEY";
   std::string insert_cmd = "INSERT INTO t VALUES (generate_series($0, $1)";
@@ -201,8 +213,8 @@ TEST_F_EX(PgSingleTServerTest, ScanSkipPK, PgMiniBigPrefetchTest) {
   constexpr auto kNumRows = kScanRows / 2;
   constexpr int kNumKeyColumns = 5;
 
-  FLAGS_ysql_enable_packed_row = true;
-  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
 
   std::string create_cmd = "CREATE TABLE t (";
   std::string pk = "";
@@ -227,8 +239,8 @@ TEST_F_EX(PgSingleTServerTest, ScanBigPK, PgMiniBigPrefetchTest) {
   constexpr auto kNumRows = kScanRows / 4;
   constexpr auto kNumRepetitions = 10;
 
-  FLAGS_ysql_enable_packed_row = true;
-  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
 
   std::string create_cmd = "CREATE TABLE t (k TEXT PRIMARY KEY, value INT)";
   std::string insert_cmd = "INSERT INTO t (k, value) VALUES (";
@@ -249,8 +261,8 @@ TEST_F_EX(PgSingleTServerTest, ScanSkipValues, PgMiniBigPrefetchTest) {
   constexpr auto kNumRows = kScanRows / 4;
   constexpr auto kNumExtraColumns = 10;
 
-  FLAGS_ysql_enable_packed_row = true;
-  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
 
   std::string create_cmd = "CREATE TABLE t (k INT PRIMARY KEY, value INT";
   std::string insert_cmd = "INSERT INTO t (k, value";
@@ -347,9 +359,9 @@ TEST_F_EX(
 
   constexpr auto kWriteNumIterations = 1000u;
 
-  TestThreadHolder thread_holder;
   CountDownLatch sync_start_latch(2);
   std::atomic<size_t> num_write_iterations{0};
+  TestThreadHolder thread_holder;
   thread_holder.AddThreadFunctor(
       [this, &stop = thread_holder.stop_flag(), &num_write_iterations, &sync_start_latch]() {
         auto write_conn = ASSERT_RESULT(Connect());
@@ -390,8 +402,8 @@ TEST_F_EX(
 // https://github.com/yugabyte/benchbase/blob/main/config/yugabyte/scan_workloads/yb_colocated/
 // scanG7_colo_pkey_rangescan_fullTableScan_increasingColumn.yaml
 TEST_F(PgSingleTServerTest, YB_DISABLE_TEST(PerfScanG7RangePK100Columns)) {
-    FLAGS_ysql_enable_packed_row = true;
-    FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
 
   constexpr auto kDatabaseName = "testdb";
   constexpr auto kNumColumns = 100;
@@ -660,7 +672,7 @@ TEST_F_EX(PgSingleTServerTest,
 
 // Repro for https://github.com/yugabyte/yugabyte-db/issues/17558.
 TEST_F(PgSingleTServerTest, PagingSelectWithDelayedIntentsApply) {
-  FLAGS_TEST_inject_sleep_before_applying_intents_ms = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_sleep_before_applying_intents_ms) = 100;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (v INT) SPLIT INTO 2 TABLETS"));
   for (int i = 0; i != 20; ++i) {
@@ -672,6 +684,25 @@ TEST_F(PgSingleTServerTest, PagingSelectWithDelayedIntentsApply) {
     auto all = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM t"));
     ASSERT_EQ(all, "1");
   }
+}
+
+TEST_F(PgSingleTServerTest, BoundedRangeScanWithLargeTransaction) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (r1 INT, r2 INT, PRIMARY KEY (r1 ASC, r2 ASC))"));
+  TestThreadHolder holder;
+  for (int i = 0; i != 10; ++i) {
+    holder.AddThreadFunctor([this, &stop = holder.stop_flag()] {
+      auto conn = ASSERT_RESULT(Connect());
+      while (!stop) {
+        auto res = ASSERT_RESULT(conn.FetchAllAsString("SELECT r2 FROM t WHERE r2 <= 1"));
+        if (!res.empty()) {
+          ASSERT_EQ(res, "1");
+        }
+      }
+    });
+  }
+  ASSERT_OK(conn.Execute("INSERT INTO t (SELECT 1, i FROM GENERATE_SERIES(1, 100000) AS i)"));
+  holder.WaitAndStop(std::chrono::seconds(5));
 }
 
 }  // namespace yb::pgwrapper

@@ -52,7 +52,7 @@ class PlacementInfoTest : public YBTest {
 
  protected:
   void SetUp() override {
-    FLAGS_TEST_check_broadcast_address = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;
 
     YBTest::SetUp();
     MiniClusterOptions opts;

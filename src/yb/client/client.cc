@@ -47,7 +47,8 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
-#include "yb/cdc/cdc_service.h"
+#include "yb/cdc/cdc_types.h"
+
 #include "yb/client/client_fwd.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/client-internal.h"
@@ -68,6 +69,7 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/common_util.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_type.h"
@@ -192,6 +194,8 @@ using yb::master::GetCDCStreamRequestPB;
 using yb::master::GetCDCStreamResponsePB;
 using yb::master::UpdateCDCStreamRequestPB;
 using yb::master::UpdateCDCStreamResponsePB;
+using yb::master::IsObjectPartOfXReplRequestPB;
+using yb::master::IsObjectPartOfXReplResponsePB;
 using yb::master::IsBootstrapRequiredRequestPB;
 using yb::master::IsBootstrapRequiredResponsePB;
 using yb::master::GetMasterClusterConfigRequestPB;
@@ -462,7 +466,9 @@ YBClientBuilder& YBClientBuilder::AddMasterAddressSource(const MasterAddressSour
   return *this;
 }
 
-Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBClient>* client) {
+Status YBClientBuilder::DoBuild(rpc::Messenger* messenger,
+                                server::ClockPtr clock,
+                                std::unique_ptr<YBClient>* client) {
   RETURN_NOT_OK(CheckCPUFlags());
 
   std::unique_ptr<YBClient> c(new YBClient());
@@ -526,6 +532,8 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
 
   c->data_->meta_cache_.reset(new MetaCache(c.get()));
 
+  c->data_->clock_ = clock;
+
   c->data_->cloud_info_pb_ = data_->cloud_info_pb_;
   c->data_->uuid_ = data_->uuid_;
 
@@ -533,14 +541,15 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
   return Status::OK();
 }
 
-Result<std::unique_ptr<YBClient>> YBClientBuilder::Build(rpc::Messenger* messenger) {
+Result<std::unique_ptr<YBClient>> YBClientBuilder::Build(
+    rpc::Messenger* messenger, const server::ClockPtr& clock) {
   std::unique_ptr<YBClient> client;
-  RETURN_NOT_OK(DoBuild(messenger, &client));
+  RETURN_NOT_OK(DoBuild(messenger, clock, &client));
   return client;
 }
 
 Result<std::unique_ptr<YBClient>> YBClientBuilder::Build(
-    std::unique_ptr<rpc::Messenger>&& messenger) {
+    std::unique_ptr<rpc::Messenger>&& messenger, const server::ClockPtr& clock) {
   std::unique_ptr<YBClient> client;
   auto ok = false;
   auto scope_exit = ScopeExit([&ok, &messenger] {
@@ -548,7 +557,7 @@ Result<std::unique_ptr<YBClient>> YBClientBuilder::Build(
       messenger->Shutdown();
     }
   });
-  RETURN_NOT_OK(DoBuild(messenger.get(), &client));
+  RETURN_NOT_OK(DoBuild(messenger.get(), clock, &client));
   ok = true;
   client->data_->messenger_holder_ = std::move(messenger);
   return client;
@@ -1564,6 +1573,15 @@ Status YBClient::UpdateCDCStream(const std::vector<CDCStreamId>& stream_ids,
   return Status::OK();
 }
 
+Result<bool> YBClient::IsObjectPartOfXRepl(const TableId& table_id) {
+  IsObjectPartOfXReplRequestPB req;
+  IsObjectPartOfXReplResponsePB resp;
+  req.set_table_id(table_id);
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, IsObjectPartOfXRepl);
+  return resp.has_error() ? StatusFromPB(resp.error().status()) :
+      Result<bool>(resp.is_object_part_of_xrepl());
+}
+
 Result<bool> YBClient::IsBootstrapRequired(const std::vector<TableId>& table_ids,
                                            const boost::optional<CDCStreamId>& stream_id) {
   if (table_ids.empty()) {
@@ -1589,7 +1607,15 @@ Result<bool> YBClient::IsBootstrapRequired(const std::vector<TableId>& table_ids
         table_ids.size(), resp.results_size()));
   }
 
-  return resp.results(0).bootstrap_required();
+  bool bootstrap_required = false;
+  for (const auto& result : resp.results()) {
+    if (result.bootstrap_required()) {
+      bootstrap_required = true;
+      break;
+    }
+  }
+
+  return bootstrap_required;
 }
 
 Status YBClient::BootstrapProducer(
@@ -1786,7 +1812,7 @@ Result<bool> YBClient::IsLoadBalancerIdle() {
 }
 
 Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
-                                          master::PlacementInfoPB* replicas) {
+                                          master::PlacementInfoPB&& live_replicas) {
   master::ReplicationInfoPB replication_info;
   // Merge the obtained info with the existing table replication info.
   std::shared_ptr<client::YBTable> table;
@@ -1809,7 +1835,7 @@ Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
   }
 
   // Put in the new live placement info.
-  replication_info.set_allocated_live_replicas(replicas);
+  replication_info.mutable_live_replicas()->Swap(&live_replicas);
 
   std::unique_ptr<yb::client::YBTableAlterer> table_alterer(NewTableAlterer(table_name));
   return table_alterer->replication_info(replication_info)->Alter();
@@ -2058,12 +2084,12 @@ Result<std::shared_ptr<internal::RemoteTabletServer>> YBClient::GetRemoteTabletS
   return tserver;
 }
 
-void YBClient::RequestsFinished(const std::set<RetryableRequestId>& request_ids) {
-  if (request_ids.empty()) {
+void YBClient::RequestsFinished(const RetryableRequestIdRange& request_id_range) {
+  if (request_id_range.empty()) {
     return;
   }
   std::lock_guard lock(data_->tablet_requests_mutex_);
-  for (RetryableRequestId id : request_ids) {
+  for (const auto& id : request_id_range) {
     auto& requests = data_->requests_.running_requests;
     auto it = requests.find(id);
     if (it != requests.end()) {
@@ -2491,6 +2517,10 @@ Result<TableId> GetTableId(YBClient* client, const YBTableName& table_name) {
 
 const std::string& YBClient::LogPrefix() const {
   return data_->log_prefix_;
+}
+
+server::Clock* YBClient::Clock() const {
+  return data_->clock_.get();
 }
 
 Result<encryption::UniverseKeyRegistryPB> YBClient::GetFullUniverseKeyRegistry() {

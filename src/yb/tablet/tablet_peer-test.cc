@@ -207,7 +207,7 @@ class TabletPeerTest : public YBTabletTest {
       if (FLAGS_quick_leader_election_on_create) {
         return tablet_peer_->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
       }
-      RETURN_NOT_OK(tablet_peer_->consensus()->EmulateElection());
+      RETURN_NOT_OK(VERIFY_RESULT(tablet_peer_->GetConsensus())->EmulateElection());
       return true;
     }, MonoDelta::FromMilliseconds(500), "If quick leader elections enabled, wait for peer to be a "
                                          "leader, otherwise emulate.");
@@ -325,7 +325,7 @@ class TabletPeerTest : public YBTabletTest {
 
 // Ensure that Log::GC() doesn't delete logs with anchors.
 TEST_F(TabletPeerTest, TestLogAnchorsAndGC) {
-  FLAGS_log_min_seconds_to_retain = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
   ConsensusBootstrapInfo info;
   ASSERT_OK(StartPeer(info));
 
@@ -365,7 +365,7 @@ TEST_F(TabletPeerTest, TestLogAnchorsAndGC) {
 
 // Ensure that Log::GC() doesn't delete logs when the DMS has an anchor.
 TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
-  FLAGS_log_min_seconds_to_retain = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
   ConsensusBootstrapInfo info;
   ASSERT_OK(StartPeer(info));
 
@@ -445,7 +445,7 @@ TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
 
 // Ensure that Log::GC() doesn't compact logs with OpIds of active transactions.
 TEST_F(TabletPeerTest, TestActiveOperationPreventsLogGC) {
-  FLAGS_log_min_seconds_to_retain = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
   ConsensusBootstrapInfo info;
   ASSERT_OK(StartPeer(info));
 

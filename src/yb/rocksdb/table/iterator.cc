@@ -71,20 +71,36 @@ Status Iterator::GetProperty(std::string prop_name, std::string* prop) {
 }
 
 namespace {
-class EmptyIterator : public Iterator {
+
+class EmptyIterator final : public Iterator {
  public:
   explicit EmptyIterator(const Status& s) : status_(s) { }
-  const KeyValueEntry& Entry() const override { return KeyValueEntry::Invalid(); }
-  void Seek(const Slice& target) override {}
-  void SeekToFirst() override {}
-  void SeekToLast() override {}
-
-  const KeyValueEntry& Next() override {
-    assert(false);
+  const KeyValueEntry& Entry() const override {
     return KeyValueEntry::Invalid();
   }
 
-  void Prev() override { assert(false); }
+  const KeyValueEntry& Seek(Slice target) override {
+    return Entry();
+  }
+
+  const KeyValueEntry& SeekToFirst() override {
+    return Entry();
+  }
+
+  const KeyValueEntry& SeekToLast() override {
+    return Entry();
+  }
+
+  const KeyValueEntry& Next() override {
+    assert(false);
+    return Entry();
+  }
+
+  const KeyValueEntry& Prev() override {
+    assert(false);
+    return Entry();
+  }
+
   Status status() const override { return status_; }
 
  private:
@@ -94,15 +110,31 @@ class EmptyIterator : public Iterator {
 class EmptyInternalIterator : public InternalIterator {
  public:
   explicit EmptyInternalIterator(const Status& s) : status_(s) {}
+
   const KeyValueEntry& Entry() const override { return KeyValueEntry::Invalid(); }
-  void Seek(const Slice& target) override {}
-  void SeekToFirst() override {}
-  void SeekToLast() override {}
+
+  const KeyValueEntry& Seek(Slice target) override {
+    return Entry();
+  }
+
+  const KeyValueEntry& SeekToFirst() override {
+    return Entry();
+  }
+
+  const KeyValueEntry& SeekToLast() override {
+    return Entry();
+  }
+
   const KeyValueEntry& Next() override {
     assert(false);
-    return KeyValueEntry::Invalid();
+    return Entry();
   }
-  void Prev() override { assert(false); }
+
+  const KeyValueEntry& Prev() override {
+    assert(false);
+    return Entry();
+  }
+
   Status status() const override { return status_; }
 
  private:

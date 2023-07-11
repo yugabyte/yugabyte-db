@@ -500,7 +500,7 @@ TEST_F(MasterTest, TestReRegisterRemovedUUID) {
 }
 
 TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
-  FLAGS_TEST_simulate_slow_table_create_secs = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_slow_table_create_secs) = 10;
 
   const char *kNamespaceName = "testnamespace";
   CreateNamespaceResponsePB resp;
@@ -544,7 +544,7 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
   t.join();
 
   {
-    FLAGS_TEST_return_error_if_namespace_not_found = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_return_error_if_namespace_not_found) = true;
     ListTablesRequestPB req;
     ListTablesResponsePB resp;
     ASSERT_OK(proxy_ddl_->ListTables(req, &resp, ResetAndGetController()));
@@ -554,7 +554,7 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
     ASSERT_TRUE(msg.find("Keyspace identifier not found") != string::npos);
 
     // After turning off this flag, ListTables should skip the table with the error.
-    FLAGS_TEST_return_error_if_namespace_not_found = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_return_error_if_namespace_not_found) = false;
     ASSERT_OK(proxy_ddl_->ListTables(req, &resp, ResetAndGetController()));
     LOG(INFO) << "Finished second ListTables request";
     ASSERT_FALSE(resp.has_error());
@@ -713,9 +713,9 @@ TEST_F(MasterTest, TestParentBasedTableToTabletMappingFlag) {
       {ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
        ColumnSchema("v1", DataType::UINT64),
        ColumnSchema("v2", DataType::STRING)});
-  FLAGS_use_parent_table_id_field = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_parent_table_id_field) = true;
   ASSERT_OK(CreateTable(kNewSchemaTableName, kTableSchema));
-  FLAGS_use_parent_table_id_field = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_parent_table_id_field) = false;
   ASSERT_OK(CreateTable(kOldSchemaTableName, kTableSchema));
 
   auto tables = mini_master_->catalog_manager_impl().GetTables(GetTablesMode::kAll);
@@ -1809,7 +1809,7 @@ TEST_P(LoopedMasterTest, TestNamespaceCreateSysCatalogFailure) {
   while (failures < loops) {
     // Inject Frequent failures into sys catalog commit.
     // The below code should eventually succeed but require a lot of restarts.
-    FLAGS_TEST_sys_catalog_write_rejection_percentage = 50;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sys_catalog_write_rejection_percentage) = 50;
 
     // CreateNamespace : Inject IO Errors.
     LOG(INFO) << "Iteration " << ++iter;
@@ -1820,7 +1820,7 @@ TEST_P(LoopedMasterTest, TestNamespaceCreateSysCatalogFailure) {
     }
 
     // Turn off random failures.
-    FLAGS_TEST_sys_catalog_write_rejection_percentage = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sys_catalog_write_rejection_percentage) = 0;
 
     // Internal search of CatalogManager should reveal whether it was partially created.
     std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
@@ -1873,7 +1873,7 @@ TEST_P(LoopedMasterTest, TestNamespaceDeleteSysCatalogFailure) {
     nsid = resp.id();
 
     // The below code should eventually succeed but require a lot of restarts.
-    FLAGS_TEST_sys_catalog_write_rejection_percentage = 50;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sys_catalog_write_rejection_percentage) = 50;
 
     // DeleteNamespace : Inject IO Errors.
     LOG(INFO) << "Iteration " << ++iter;
@@ -1894,7 +1894,7 @@ TEST_P(LoopedMasterTest, TestNamespaceDeleteSysCatalogFailure) {
     }
 
     // Turn off random failures.
-    FLAGS_TEST_sys_catalog_write_rejection_percentage = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sys_catalog_write_rejection_percentage) = 0;
 
     if (delete_failed) {
       ++failures;
@@ -2191,10 +2191,10 @@ TEST_F(MasterTest, TestNetworkErrorOnFirstRun) {
   TearDown();
   mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master-test"),
                                     AllocateFreePort(), AllocateFreePort(), 0));
-  FLAGS_TEST_simulate_port_conflict_error = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_port_conflict_error) = true;
   ASSERT_NOK(mini_master_->Start());
   // Instance file should be properly initialized, but consensus metadata is not initialized.
-  FLAGS_TEST_simulate_port_conflict_error = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_port_conflict_error) = false;
   // Restarting master should succeed.
   ASSERT_OK(mini_master_->Start());
 }

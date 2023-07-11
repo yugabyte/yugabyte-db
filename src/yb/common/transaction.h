@@ -37,6 +37,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
+#include "yb/util/metrics.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/uint_set.h"
@@ -239,6 +240,10 @@ class TransactionStatusManager {
 
   virtual Result<IsExternalTransaction> IsExternalTransactionResult(
       const TransactionId& transaction_id) = 0;
+
+  virtual void RecordConflictResolutionKeysScanned(int64_t num_keys) = 0;
+
+  virtual void RecordConflictResolutionScanLatency(MonoDelta latency)  = 0;
 
  private:
   friend class RequestScope;

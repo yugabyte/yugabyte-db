@@ -9,6 +9,7 @@ import io.fabric8.kubernetes.api.model.ObjectReference;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
+import io.yugabyte.operator.v1alpha1.*;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;

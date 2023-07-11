@@ -35,7 +35,7 @@
 #include "yb/util/test_util.h"
 
 #ifndef GFLAGS
-bool FLAGS_enable_print = false;
+bool ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_print) = false;
 #else
 #include "yb/util/flags.h"
 

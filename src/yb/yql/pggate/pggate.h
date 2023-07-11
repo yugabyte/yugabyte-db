@@ -639,6 +639,8 @@ class PgApiImpl {
 
   Result<bool> CheckIfPitrActive();
 
+  Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
+
   MemTracker &GetMemTracker() { return *mem_tracker_; }
 
   MemTracker &GetRootMemTracker() { return *MemTracker::GetRootTracker(); }

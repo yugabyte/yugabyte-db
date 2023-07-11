@@ -312,6 +312,8 @@ class RpcContext {
 
   std::string ToString() const;
 
+  Result<RefCntSlice> ExtractSidecar(size_t idx) const;
+
  private:
   std::shared_ptr<YBInboundCall> call_;
   std::shared_ptr<RpcCallParams> params_;

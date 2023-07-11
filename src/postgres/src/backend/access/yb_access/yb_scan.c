@@ -57,6 +57,7 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 #include "access/nbtree.h"
+#include "catalog/yb_type.h"
 
 typedef struct YbScanPlanData
 {
@@ -754,6 +755,21 @@ YbGetLengthOfKey(ScanKey *key_ptr)
 	/* We also want to include the last element. */
 	length_of_key++;
 	return length_of_key;
+}
+
+/*
+ * Given a table attribute number, get a corresponding index attribute number.
+ * Throw an error if it is not found.
+ */
+static AttrNumber
+YbGetIndexAttnum(AttrNumber table_attno, Relation index)
+{
+	for (int i = 0; i < IndexRelationGetNumberOfAttributes(index); ++i)
+	{
+		if (table_attno == index->rd_index->indkey.values[i])
+			return i + 1;
+	}
+	elog(ERROR, "column is not in index");
 }
 
 /*
@@ -1930,6 +1946,106 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 }
 
 /*
+ * Set aggregate targets into handle.  If index is not null, convert column
+ * attribute numbers from table-based numbers to index-based ones.
+ */
+void
+YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc,
+							Relation index, YBCPgStatement handle)
+{
+	ListCell   *lc;
+
+	/* Set aggregate scan targets. */
+	foreach(lc, aggrefs)
+	{
+		Aggref *aggref = lfirst_node(Aggref, lc);
+		char *func_name = get_func_name(aggref->aggfnoid);
+		ListCell *lc_arg;
+		YBCPgExpr op_handle;
+		const YBCPgTypeEntity *type_entity;
+
+		/* Get type entity for the operator from the aggref. */
+		type_entity = YbDataTypeFromOidMod(InvalidAttrNumber, aggref->aggtranstype);
+
+		/* Create operator. */
+		HandleYBStatus(YBCPgNewOperator(handle, func_name, type_entity, aggref->aggcollid, &op_handle));
+
+		/* Handle arguments. */
+		if (aggref->aggstar) {
+			/*
+			 * Add dummy argument for COUNT(*) case, turning it into COUNT(0).
+			 * We don't use a column reference as we want to count rows
+			 * even if all column values are NULL.
+			 */
+			YBCPgExpr const_handle;
+			HandleYBStatus(YBCPgNewConstant(handle,
+							 type_entity,
+							 false /* collate_is_valid_non_c */,
+							 NULL /* collation_sortkey */,
+							 0 /* datum */,
+							 false /* is_null */,
+							 &const_handle));
+			HandleYBStatus(YBCPgOperatorAppendArg(op_handle, const_handle));
+		} else {
+			/* Add aggregate arguments to operator. */
+			foreach(lc_arg, aggref->args)
+			{
+				TargetEntry *tle = lfirst_node(TargetEntry, lc_arg);
+				if (IsA(tle->expr, Const))
+				{
+					Const* const_node = castNode(Const, tle->expr);
+					/* Already checked by yb_agg_pushdown_supported */
+					Assert(const_node->constisnull || const_node->constbyval);
+
+					YBCPgExpr const_handle;
+					HandleYBStatus(YBCPgNewConstant(handle,
+									 type_entity,
+									 false /* collate_is_valid_non_c */,
+									 NULL /* collation_sortkey */,
+									 const_node->constvalue,
+									 const_node->constisnull,
+									 &const_handle));
+					HandleYBStatus(YBCPgOperatorAppendArg(op_handle, const_handle));
+				}
+				else if (IsA(tle->expr, Var))
+				{
+					/*
+					 * Use original attribute number (varoattno) instead of projected one (varattno)
+					 * as projection is disabled for tuples produced by pushed down operators.
+					 */
+					int attno = castNode(Var, tle->expr)->varoattno;
+					/*
+					 * For index (only) scans, translate the table-based
+					 * attribute number to an index-based one.
+					 */
+					if (index)
+						attno = YbGetIndexAttnum(attno, index);
+					Form_pg_attribute attr = TupleDescAttr(tupdesc, attno - 1);
+					YBCPgTypeAttrs type_attrs = {attr->atttypmod};
+
+					YBCPgExpr arg = YBCNewColumnRef(handle,
+													attno,
+													attr->atttypid,
+													attr->attcollation,
+													&type_attrs);
+					HandleYBStatus(YBCPgOperatorAppendArg(op_handle, arg));
+				}
+				else
+				{
+					/* Should never happen. */
+					ereport(ERROR,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("unsupported aggregate function argument type")));
+				}
+			}
+		}
+
+		/* Add aggregate operator as scan target. */
+		HandleYBStatus(YBCPgDmlAppendTarget(handle, op_handle));
+	}
+}
+
+/*
  * YbDmlAppendTargets
  *
  * Add targets to the statement.  The colref list is expected to be made up of
@@ -2044,7 +2160,8 @@ ybcBeginScan(Relation relation,
 			 int nkeys, ScanKey keys,
 			 Scan *pg_scan_plan,
 			 PushdownExprs *rel_pushdown,
-			 PushdownExprs *idx_pushdown)
+			 PushdownExprs *idx_pushdown,
+			 List *aggrefs)
 {
 	if (nkeys > YB_MAX_SCAN_KEYS)
 		ereport(ERROR,
@@ -2101,49 +2218,59 @@ ybcBeginScan(Relation relation,
 
 	/* Set up binds */
 	if (!YbBindScanKeys(ybScan, &scan_plan) || !YbBindHashKeys(ybScan))
-		ybScan->quit_scan = true;
-	else
 	{
-		/*
-		 * Set up the scan targets with respect to postgres scan plan
-		 * (i.e. set only required targets)
-		 */
+		ybScan->quit_scan = true;
+		bms_free(scan_plan.hash_key);
+		bms_free(scan_plan.primary_key);
+		bms_free(scan_plan.sk_cols);
+		return ybScan;
+	}
+
+	/*
+	 * Set up targets.  There are two separate cases:
+	 * - aggregate pushdown
+	 * - not aggregate pushdown
+	 * This ought to be reworked once aggregate pushdown supports a mix of
+	 * non-aggregate and aggregate targets.
+	 */
+	if (aggrefs != NIL)
+		YbDmlAppendTargetsAggregate(aggrefs, ybScan->target_desc, index,
+									ybScan->handle);
+	else
 		ybcSetupTargets(ybScan, &scan_plan, pg_scan_plan);
 
-		/*
-		* Set up pushdown expressions.
-		*/
-		if (rel_pushdown != NULL)
-		{
-			YbDmlAppendQuals(rel_pushdown->quals, true /* is_primary */,
-							 ybScan->handle);
-			YbDmlAppendColumnRefs(rel_pushdown->colrefs, true /* is_primary */,
-								  ybScan->handle);
-		}
-		if (idx_pushdown != NULL)
-		{
-			YbDmlAppendQuals(idx_pushdown->quals, false /* is_primary */,
-							 ybScan->handle);
-			YbDmlAppendColumnRefs(idx_pushdown->colrefs, false /* is_primary */,
-								  ybScan->handle);
-		}
-
-		/*
-		* Set the current syscatalog version (will check that we are up to
-		* date). Avoid it for syscatalog tables so that we can still use this
-		* for refreshing the caches when we are behind.
-		* Note: This works because we do not allow modifying schemas
-		* (alter/drop) for system catalog tables.
-		*/
-		if (!IsSystemRelation(relation))
-			YbSetCatalogCacheVersion(ybScan->handle,
-									 YbGetCatalogCacheVersion());
+	/*
+	 * Set up pushdown expressions.
+	 */
+	if (rel_pushdown != NULL)
+	{
+		YbDmlAppendQuals(rel_pushdown->quals, true /* is_primary */,
+						 ybScan->handle);
+		YbDmlAppendColumnRefs(rel_pushdown->colrefs, true /* is_primary */,
+							  ybScan->handle);
 	}
+	if (idx_pushdown != NULL)
+	{
+		YbDmlAppendQuals(idx_pushdown->quals, false /* is_primary */,
+						 ybScan->handle);
+		YbDmlAppendColumnRefs(idx_pushdown->colrefs, false /* is_primary */,
+							  ybScan->handle);
+	}
+
+	/*
+	 * Set the current syscatalog version (will check that we are up to
+	 * date). Avoid it for syscatalog tables so that we can still use this
+	 * for refreshing the caches when we are behind.
+	 * Note: This works because we do not allow modifying schemas
+	 * (alter/drop) for system catalog tables.
+	 */
+	if (!IsSystemRelation(relation))
+		YbSetCatalogCacheVersion(ybScan->handle,
+								 YbGetCatalogCacheVersion());
 
 	bms_free(scan_plan.hash_key);
 	bms_free(scan_plan.primary_key);
 	bms_free(scan_plan.sk_cols);
-
 	return ybScan;
 }
 
@@ -2318,20 +2445,8 @@ SysScanDesc ybc_systable_beginscan(Relation relation,
 			 * - When selecting using INDEX, the key values are bound to the IndexTable, so index attnum
 			 *   must be used for bindings.
 			 */
-			int i, j;
-			for (i = 0; i < nkeys; i++)
-			{
-				for (j = 0; j < IndexRelationGetNumberOfAttributes(index); j++)
-				{
-					if (key[i].sk_attno == index->rd_index->indkey.values[j])
-					{
-						key[i].sk_attno = j + 1;
-						break;
-					}
-				}
-				if (j == IndexRelationGetNumberOfAttributes(index))
-					elog(ERROR, "column is not in index");
-			}
+			for (int i = 0; i < nkeys; ++i)
+				key[i].sk_attno = YbGetIndexAttnum(key[i].sk_attno, index);
 		}
 	}
 
@@ -2343,7 +2458,8 @@ SysScanDesc ybc_systable_beginscan(Relation relation,
 									 key,
 									 pg_scan_plan,
 									 NULL /* rel_pushdown */,
-									 NULL /* idx_pushdown */);
+									 NULL /* idx_pushdown */,
+									 NULL /* aggrefs */);
 
 	/* Set up Postgres sys table scan description */
 	SysScanDesc scan_desc = (SysScanDesc) palloc0(sizeof(SysScanDescData));
@@ -2394,7 +2510,8 @@ HeapScanDesc ybc_heap_beginscan(Relation relation,
 									 key,
 									 pg_scan_plan,
 									 NULL /* rel_pushdown */,
-									 NULL /* idx_pushdown */);
+									 NULL /* idx_pushdown */,
+									 NULL /* aggrefs */);
 
 	/* Set up Postgres sys table scan description */
 	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
@@ -2444,7 +2561,8 @@ HeapScanDesc
 ybc_remote_beginscan(Relation relation,
 					 Snapshot snapshot,
 					 Scan *pg_scan_plan,
-					 PushdownExprs *pushdown)
+					 PushdownExprs *pushdown,
+					 List *aggrefs)
 {
 	YbScanDesc ybScan = ybcBeginScan(relation,
 									 NULL /* index */,
@@ -2453,7 +2571,8 @@ ybc_remote_beginscan(Relation relation,
 									 NULL /* key */,
 									 pg_scan_plan,
 									 pushdown /* rel_pushdown */,
-									 NULL /* idx_pushdown */);
+									 NULL /* idx_pushdown */,
+									 aggrefs);
 
 	/* Set up Postgres sys table scan description */
 	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));

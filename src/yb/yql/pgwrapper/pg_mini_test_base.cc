@@ -37,8 +37,7 @@ DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(ysql_num_shards_per_tserver);
 
-namespace yb {
-namespace pgwrapper {
+namespace yb::pgwrapper {
 
 void PgMiniTestBase::DoTearDown() {
   if (pg_supervisor_) {
@@ -50,13 +49,13 @@ void PgMiniTestBase::DoTearDown() {
 void PgMiniTestBase::SetUp() {
   HybridTime::TEST_SetPrettyToString(true);
 
-  FLAGS_client_read_write_timeout_ms = 120000 * kTimeMultiplier;
-  FLAGS_enable_ysql = true;
-  FLAGS_hide_pg_catalog_table_creation_logs = true;
-  FLAGS_master_auto_run_initdb = true;
-  FLAGS_pggate_rpc_timeout_secs = 120;
-  FLAGS_ysql_disable_index_backfill = true;
-  FLAGS_ysql_num_shards_per_tserver = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 120000 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_hide_pg_catalog_table_creation_logs) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_rpc_timeout_secs) = 120;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_disable_index_backfill) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_num_shards_per_tserver) = 1;
 
 
   master::SetDefaultInitialSysCatalogSnapshotFlags();
@@ -76,7 +75,7 @@ void PgMiniTestBase::SetUp() {
 
   auto port = cluster_->AllocateFreePort();
   auto pg_process_conf = ASSERT_RESULT(CreatePgProcessConf(port));
-  FLAGS_pgsql_proxy_webserver_port = cluster_->AllocateFreePort();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) = cluster_->AllocateFreePort();
 
   LOG(INFO) << "Starting PostgreSQL server listening on "
             << pg_process_conf.listen_addresses << ":" << pg_process_conf.pg_port << ", data: "
@@ -92,7 +91,7 @@ void PgMiniTestBase::SetUp() {
   ASSERT_OK(MiniClusterTestWithClient<MiniCluster>::CreateClient());
 }
 
-Result<TableId> PgMiniTestBase::GetTableIDFromTableName(const std::string table_name) {
+Result<TableId> PgMiniTestBase::GetTableIDFromTableName(const std::string& table_name) {
   // Get YBClient handler and tablet ID. Using this we can get the number of tablets before starting
   // the test and before the test ends. With this we can ensure that tablet splitting has occurred.
   const auto tables = VERIFY_RESULT(client_->ListTables());
@@ -137,40 +136,13 @@ const std::shared_ptr<tserver::MiniTabletServer> PgMiniTestBase::PickPgTabletSer
   return RandomElement(servers);
 }
 
-MetricWatcher::MetricWatcher(
-  std::reference_wrapper<const server::RpcServerBase> server,
-  std::reference_wrapper<const MetricPrototype> metric)
-    : server_(server.get()), metric_(metric.get()) {
-}
-
-Result<size_t> MetricWatcher::Delta(const DeltaFunctor& functor) const {
-  auto initial_values = VERIFY_RESULT(GetMetricCount());
-  RETURN_NOT_OK(functor());
-  return VERIFY_RESULT(GetMetricCount()) - initial_values;
-}
-
-Result<size_t> MetricWatcher::GetMetricCount() const {
-  const auto& metric_map = server_.metric_entity()->UnsafeMetricsMapForTests();
-  auto item = metric_map.find(&metric_);
-  SCHECK(item != metric_map.end(), IllegalState, "Metric not found");
-  const auto& metric = *item->second;
-  switch(metric.prototype()->type()) {
-    case MetricType::kHistogram: return down_cast<const Histogram&>(metric).TotalCount();
-    case MetricType::kCounter: return down_cast<const Counter&>(metric).value();
-
-    case MetricType::kGauge: break;
-    case MetricType::kLag: break;
-  }
-  return STATUS_FORMAT(IllegalState, "Unsupported metric type $0", metric.prototype()->type());
-}
-
 std::vector<tserver::TabletServerOptions> PgMiniTestBase::ExtraTServerOptions() {
   return std::vector<tserver::TabletServerOptions>();
 }
 
 void PgMiniTestBase::FlushAndCompactTablets() {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
-  FLAGS_history_cutoff_propagation_interval_ms = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 1;
   ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
   const auto compaction_start = MonoTime::Now();
   ASSERT_OK(cluster_->CompactTablets());
@@ -193,5 +165,4 @@ Status PgMiniTestBase::SetupConnection(PGConn* conn) const {
   return Status::OK();
 }
 
-} // namespace pgwrapper
-} // namespace yb
+} // namespace yb::pgwrapper

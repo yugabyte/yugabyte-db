@@ -13,8 +13,12 @@
 #pragma once
 
 #include <shared_mutex>
+#include <unordered_set>
+
+#include "yb/cdc/cdc_types.h"
 
 #include "yb/client/table_handle.h"
+
 #include "yb/util/opid.h"
 #include "yb/util/status.h"
 #include "yb/gutil/thread_annotations.h"
@@ -31,6 +35,8 @@ class CreateTableRequestPB;
 }  // namespace master
 
 namespace cdc {
+static const char* const kCdcStateTableName = "cdc_state";
+
 YB_STRONGLY_TYPED_BOOL(SetActiveTimeToCurrent);
 
 struct CDCStateTableKey {
@@ -83,6 +89,7 @@ class CDCStateTable {
  public:
   explicit CDCStateTable(client::AsyncClientInitialiser* async_client_init)
       : async_client_init_(async_client_init) {}
+  explicit CDCStateTable(client::YBClient* client) : client_(client) {}
 
   static const std::string& GetNamespaceName();
   static const std::string& GetTableName();
@@ -94,8 +101,7 @@ class CDCStateTable {
   Status DeleteEntries(const std::vector<CDCStateTableKey>& entry_keys) EXCLUDES(mutex_);
 
   Result<CDCStateTableRange> GetTableRange(
-      CDCStateTableEntrySelector&& field_filter, Status* iteration_status,
-      client::TableFilter filter = {}) EXCLUDES(mutex_);
+      CDCStateTableEntrySelector&& field_filter, Status* iteration_status) EXCLUDES(mutex_);
 
   // Get a single row from the table. If the row is not found, returns an nullopt.
   Result<std::optional<CDCStateTableEntry>> TryFetchEntry(
@@ -112,7 +118,8 @@ class CDCStateTable {
       QLOperator condition_op = QL_OP_NOOP) EXCLUDES(mutex_);
 
   std::shared_mutex mutex_;
-  client::AsyncClientInitialiser* async_client_init_;
+  client::AsyncClientInitialiser* async_client_init_ = nullptr;
+  client::YBClient* client_ = nullptr;
 
   std::shared_ptr<client::TableHandle> cdc_table_ GUARDED_BY(mutex_);
 };
@@ -139,7 +146,7 @@ class CDCStateTableRange {
 
   explicit CDCStateTableRange(
       const std::shared_ptr<client::TableHandle>& table, Status* failure_status,
-      std::vector<std::string>&& columns, client::TableFilter filter);
+      std::vector<std::string>&& columns);
 
   const_iterator begin() const { return CdcStateTableIterator(table_.get(), options_); }
   const_iterator end() const { return CdcStateTableIterator(); }

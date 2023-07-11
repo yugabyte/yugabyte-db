@@ -715,7 +715,7 @@ public class TestTablespaceProperties extends BasePgSQLTest {
         setPlacementUuid(ByteString.copyFromUtf8("")).build();
 
     CatalogEntityInfo.PlacementInfoPB readOnlyPlacementInfo = CatalogEntityInfo.PlacementInfoPB.
-        newBuilder().addAllPlacementBlocks(placementBlocksReadOnly).
+        newBuilder().addAllPlacementBlocks(placementBlocksReadOnly).setNumReplicas(1).
         setPlacementUuid(ByteString.copyFromUtf8("readcluster")).build();
 
     List<CatalogEntityInfo.PlacementInfoPB> readOnlyPlacements = Arrays.asList(

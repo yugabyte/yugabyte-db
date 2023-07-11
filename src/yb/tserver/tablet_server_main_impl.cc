@@ -49,6 +49,7 @@
 #include "yb/yql/cql/cqlserver/cql_server.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
+#include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_wrapper.h"
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/tserver/tserver_call_home.h"
@@ -127,6 +128,9 @@ DECLARE_string(ysql_hba_conf);
 DECLARE_string(ysql_pg_conf);
 DECLARE_string(metric_node_name);
 DECLARE_bool(enable_ysql);
+DECLARE_bool(enable_ysql_conn_mgr);
+DECLARE_uint32(ysql_conn_mgr_port);
+
 
 namespace yb {
 namespace tserver {
@@ -256,6 +260,18 @@ int TabletServerMain(int argc, char** argv) {
       LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_supervisor->Start());
   }
 
+  std::unique_ptr<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor> ysql_conn_mgr_supervisor;
+  if (FLAGS_enable_ysql_conn_mgr) {
+    LOG(INFO) << "Starting Ysql Connection Manager on port " << FLAGS_ysql_conn_mgr_port;
+
+    // Construct the config file for the Ysql Connection Manager process.
+    ysql_conn_mgr_supervisor = std::make_unique<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor>(
+        ysql_conn_mgr_wrapper::YsqlConnMgrConf(
+            tablet_server_options->fs_opts.data_paths.front()));
+
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(ysql_conn_mgr_supervisor->Start());
+  }
+
   std::unique_ptr<RedisServer> redis_server;
   if (FLAGS_start_redis_proxy) {
     RedisServerOptions redis_server_options;
@@ -327,6 +343,11 @@ int TabletServerMain(int argc, char** argv) {
   if (pg_supervisor) {
     LOG(WARNING) << "Stopping PostgreSQL";
     pg_supervisor->Stop();
+  }
+
+  if (ysql_conn_mgr_supervisor) {
+    LOG(WARNING) << "Stopping Ysql Connection Manager process";
+    ysql_conn_mgr_supervisor->Stop();
   }
 
   call_home.reset();

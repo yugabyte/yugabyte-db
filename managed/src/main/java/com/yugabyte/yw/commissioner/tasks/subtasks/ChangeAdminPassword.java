@@ -13,6 +13,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import play.mvc.Http;
 
 @Slf4j
@@ -59,7 +60,9 @@ public class ChangeAdminPassword extends UniverseTaskBase {
       if (primaryCluster == null) {
         primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
       }
-      if (primaryCluster.userIntent.enableYCQL && primaryCluster.userIntent.enableYCQLAuth) {
+      if (primaryCluster.userIntent.enableYCQL
+          && primaryCluster.userIntent.enableYCQLAuth
+          && !StringUtils.isEmpty(taskParams().ycqlNewPassword)) {
         dbData.ycqlCurrAdminPassword = taskParams().ycqlCurrentPassword;
         dbData.ycqlAdminUsername = taskParams().ycqlUserName;
         dbData.ycqlAdminPassword = taskParams().ycqlNewPassword;
@@ -76,7 +79,9 @@ public class ChangeAdminPassword extends UniverseTaskBase {
           }
         }
       }
-      if (primaryCluster.userIntent.enableYSQL && primaryCluster.userIntent.enableYSQLAuth) {
+      if (primaryCluster.userIntent.enableYSQL
+          && primaryCluster.userIntent.enableYSQLAuth
+          && !StringUtils.isEmpty(taskParams().ysqlNewPassword)) {
         dbData.dbName = taskParams().ysqlDbName;
         dbData.ysqlCurrAdminPassword = taskParams().ysqlCurrentPassword;
         dbData.ysqlAdminUsername = taskParams().ysqlUserName;

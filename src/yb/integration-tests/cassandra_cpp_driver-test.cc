@@ -2319,7 +2319,7 @@ class CppCassandraDriverTestWithMasterFailover : public CppCassandraDriverTestIn
 
 TEST_F_EX(
     CppCassandraDriverTest, TestLogSpewDuringBackfill, CppCassandraDriverTestWithMasterFailover) {
-  FLAGS_external_mini_cluster_max_log_bytes = 50_MB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_external_mini_cluster_max_log_bytes) = 50_MB;
   // TestBackfillIndexTable(this, PKOnlyIndex::kFalse, IsUnique::kTrue, IncludeAllColumns::kTrue,
   //                        UserEnforced::kFalse, StepdownMasterLeader::kTrue);
   // Wait for Log spew
@@ -2924,7 +2924,7 @@ class CppCassandraDriverLowSoftLimitTest : public CppCassandraDriverTest {
 
 TEST_F_EX(CppCassandraDriverTest, BatchWriteDuringSoftMemoryLimit,
           CppCassandraDriverLowSoftLimitTest) {
-  FLAGS_external_mini_cluster_max_log_bytes = 512_MB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_external_mini_cluster_max_log_bytes) = 512_MB;
 
   constexpr int kBatchSize = 500;
   constexpr int kWriters = 4;
@@ -3070,7 +3070,7 @@ class CppCassandraDriverTestThreeMasters : public CppCassandraDriverTestNoPartit
 };
 
 TEST_F_EX(CppCassandraDriverTest, ManyTables, CppCassandraDriverTestThreeMasters) {
-  FLAGS_external_mini_cluster_max_log_bytes = 512_MB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_external_mini_cluster_max_log_bytes) = 512_MB;
 
   constexpr int kThreads = RegularBuildVsSanitizers(5, 2);
   constexpr int kTables = RegularBuildVsSanitizers(15, 5);

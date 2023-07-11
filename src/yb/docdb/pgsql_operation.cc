@@ -435,9 +435,18 @@ class DocKeyColumnPathBuilder {
       : doc_key_(doc_key.as_slice()) {
   }
 
+  RefCntPrefix Build(dockv::SystemColumnIds column_id) {
+    return Build(dockv::KeyEntryType::kSystemColumnId, to_underlying(column_id));
+  }
+
   RefCntPrefix Build(ColumnIdRep column_id) {
+    return Build(dockv::KeyEntryType::kColumnId, column_id);
+  }
+
+ private:
+  RefCntPrefix Build(dockv::KeyEntryType key_entry_type, ColumnIdRep column_id) {
     buffer_.Clear();
-    buffer_.AppendKeyEntryType(dockv::KeyEntryType::kColumnId);
+    buffer_.AppendKeyEntryType(key_entry_type);
     buffer_.AppendColumnId(ColumnId(column_id));
     RefCntBuffer path(doc_key_.size() + buffer_.size());
     doc_key_.CopyTo(path.data());
@@ -445,7 +454,6 @@ class DocKeyColumnPathBuilder {
     return path;
   }
 
- private:
   Slice doc_key_;
   dockv::KeyBytes buffer_;
 };
@@ -541,15 +549,15 @@ Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
   response_ = response;
 
   doc_key_ = VERIFY_RESULT(FetchDocKey(doc_read_context_->schema(), request_));
-  encoded_doc_key_ = doc_key_->EncodeAsRefCntPrefix();
+  encoded_doc_key_ = doc_key_.EncodeAsRefCntPrefix();
 
   return Status::OK();
 }
 
 // Check if a duplicate value is inserted into a unique index.
 Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(const DocOperationApplyData& data) {
-  VLOG(3) << "Looking for collisions in\n" << docdb::DocDBDebugDumpToStr(
-      data.doc_write_batch->doc_db(), doc_read_context_->schema_packing_storage);
+  VLOG(3) << "Looking for collisions in\n" << DocDBDebugDumpToStr(
+      data.doc_write_batch->doc_db(), nullptr /*schema_packing_provider*/);
   // We need to check backwards only for backfilled entries.
   bool ret =
       VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, data.read_time())) ||
@@ -563,22 +571,22 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(const DocOperatio
 
 Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValueBackward(
     const DocOperationApplyData& data) {
-  VLOG(2) << "Looking for collision while going backward. Trying to insert " << *doc_key_;
+  VLOG(2) << "Looking for collision while going backward. Trying to insert " << doc_key_;
 
   auto iter = CreateIntentAwareIterator(
       data.doc_write_batch->doc_db(),
       BloomFilterMode::USE_BLOOM_FILTER,
-      doc_key_->Encode().AsSlice(),
+      encoded_doc_key_.as_slice(),
       rocksdb::kDefaultQueryId,
       txn_op_context_,
       data.read_operation_data.WithAlteredReadTime(ReadHybridTime::Max()));
 
   HybridTime oldest_past_min_ht = VERIFY_RESULT(FindOldestOverwrittenTimestamp(
-      iter.get(), SubDocKey(*doc_key_), data.read_time().read));
+      iter.get(), SubDocKey(doc_key_), data.read_time().read));
   const HybridTime oldest_past_min_ht_liveness =
       VERIFY_RESULT(FindOldestOverwrittenTimestamp(
           iter.get(),
-          SubDocKey(*doc_key_, KeyEntryValue::kLivenessColumn),
+          SubDocKey(doc_key_, KeyEntryValue::kLivenessColumn),
           data.read_time().read));
   oldest_past_min_ht.MakeAtMost(oldest_past_min_ht_liveness);
   if (!oldest_past_min_ht.is_valid()) {
@@ -591,7 +599,7 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValueBackward(
 Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
     const DocOperationApplyData& data, const ReadHybridTime& read_time) {
   // Set up the iterator to read the current primary key associated with the index key.
-  DocPgsqlScanSpec spec(doc_read_context_->schema(), request_.stmt_id(), *doc_key_);
+  DocPgsqlScanSpec spec(doc_read_context_->schema(), request_.stmt_id(), doc_key_);
   dockv::ReaderProjection projection(doc_read_context_->schema());
   auto iterator = DocRowwiseIterator(
       projection,
@@ -646,8 +654,8 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
               << "\nExisting: " << AsString(existing_value_buffer)
               << " vs New: " << AsString(new_value_buffer)
               << "\nUsed read time as " << AsString(data.read_time());
-      DVLOG(3) << "DocDB is now:\n" << docdb::DocDBDebugDumpToStr(
-          data.doc_write_batch->doc_db(), doc_read_context_->schema_packing_storage);
+      DVLOG(3) << "DocDB is now:\n" << DocDBDebugDumpToStr(
+          data.doc_write_batch->doc_db(), nullptr /*schema_packing_provider*/);
       return true;
     }
   }
@@ -661,17 +669,16 @@ Result<HybridTime> PgsqlWriteOperation::FindOldestOverwrittenTimestamp(
     const SubDocKey& sub_doc_key,
     HybridTime min_read_time) {
   HybridTime result;
-  VLOG(3) << "Doing iter->Seek " << *doc_key_;
-  iter->Seek(*doc_key_);
-  if (VERIFY_RESULT(iter->Fetch())) {
+  VLOG(3) << "Doing iter->Seek " << doc_key_;
+  iter->Seek(doc_key_);
+  if (VERIFY_RESULT_REF(iter->Fetch())) {
     const auto bytes = sub_doc_key.EncodeWithoutHt();
     const Slice& sub_key_slice = bytes.AsSlice();
-    result = VERIFY_RESULT(
-        iter->FindOldestRecord(sub_key_slice, min_read_time));
+    result = VERIFY_RESULT(iter->FindOldestRecord(sub_key_slice, min_read_time));
     VLOG(2) << "iter->FindOldestRecord returned " << result << " for "
             << SubDocKey::DebugSliceToString(sub_key_slice);
   } else {
-    VLOG(3) << "iter->Seek " << *doc_key_ << " turned out to be out of records";
+    VLOG(3) << "iter->Seek " << doc_key_ << " turned out to be out of records";
   }
   return result;
 }
@@ -1111,35 +1118,68 @@ Status PgsqlWriteOperation::ApplyFetchSequence(const DocOperationApplyData& data
 }
 
 const dockv::ReaderProjection& PgsqlWriteOperation::projection() const {
-  if (projection_.columns.empty() && doc_key_) {
-    InitProjection(doc_read_context_->schema(), request_, &projection_);
+  if (!projection_) {
+    projection_.emplace();
+    InitProjection(doc_read_context_->schema(), request_, &*projection_);
     VLOG_WITH_FUNC(4)
-        << "projection: " << projection_.ToString() << ", request: " << AsString(request_);
+        << "projection: " << projection_->ToString() << ", request: " << AsString(request_);
   }
 
-  return projection_;
+  return *projection_;
+}
+
+Status PgsqlWriteOperation::UpdateIterator(
+    DocOperationApplyData* data, DocOperation* prev_op, SingleOperation single_operation,
+      std::optional<DocRowwiseIterator>* iterator) {
+  if (prev_op) {
+    auto* prev = down_cast<PgsqlWriteOperation*>(prev_op);
+    if (request_.table_id() == prev->request_.table_id() &&
+        projection() == prev->projection()) {
+      data->restart_seek = doc_key_ <= prev->doc_key_;
+      return Status::OK();
+    }
+  }
+
+  iterator->emplace(
+      projection(),
+      *doc_read_context_,
+      txn_op_context_,
+      data->doc_write_batch->doc_db(),
+      data->read_operation_data,
+      data->doc_write_batch->pending_op());
+
+  static const dockv::DocKey kEmptyDocKey;
+  auto& key = single_operation ? doc_key_ : kEmptyDocKey;
+  static const dockv::KeyEntryValues kEmptyVec;
+  DocPgsqlScanSpec scan_spec(
+      doc_read_context_->schema(),
+      request_.stmt_id(),
+      /* hashed_components= */ kEmptyVec,
+      /* range_components= */ kEmptyVec,
+      /* condition= */ nullptr ,
+      /* hash_code= */ boost::none,
+      /* max_hash_code= */ boost::none,
+      key,
+      /* is_forward_scan= */ true ,
+      key,
+      key,
+      0,
+      AddHighestToUpperDocKey::kTrue);
+
+  data->iterator = &**iterator;
+  data->restart_seek = true;
+
+  return (**iterator).Init(scan_spec, SkipSeek::kTrue);
 }
 
 Result<bool> PgsqlWriteOperation::ReadColumns(
     const DocOperationApplyData& data, dockv::PgTableRow* table_row) {
   // Filter the columns using primary key.
-  if (!doc_key_) {
+  if (!VERIFY_RESULT(data.iterator->PgFetchRow(
+          encoded_doc_key_.as_slice(), data.restart_seek, table_row))) {
     return false;
   }
-
-  DocPgsqlScanSpec spec(doc_read_context_->schema(), request_.stmt_id(), *doc_key_);
-  auto iterator = DocRowwiseIterator(
-      projection(),
-      *doc_read_context_,
-      txn_op_context_,
-      data.doc_write_batch->doc_db(),
-      data.read_operation_data,
-      data.doc_write_batch->pending_op());
-  RETURN_NOT_OK(iterator.Init(spec));
-  if (!VERIFY_RESULT(iterator.PgFetchNext(table_row))) {
-    return false;
-  }
-  data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
+  data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(data.iterator->RestartReadHt()));
 
   return true;
 }
@@ -1216,29 +1256,27 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
         }
         if (!has_expression) {
           DocKeyColumnPathBuilder builder(encoded_doc_key_);
-          paths->push_back(builder.Build(to_underlying(dockv::SystemColumnIds::kLivenessColumn)));
+          paths->push_back(builder.Build(dockv::SystemColumnIds::kLivenessColumn));
           return Status::OK();
         }
       }
       break;
     }
     case GetDocPathsMode::kIntents: {
-      const google::protobuf::RepeatedPtrField<PgsqlColumnValuePB>* column_values = nullptr;
-      if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_INSERT ||
-          request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPSERT) {
-        column_values = &request_.column_values();
-      } else if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE) {
-        column_values = &request_.column_new_values();
+      if (request_.stmt_type() != PgsqlWriteRequestPB::PGSQL_UPDATE) {
+        break;
+      }
+      const auto& column_values = request_.column_new_values();
+
+      if (column_values.empty()) {
+        break;
       }
 
-      if (column_values != nullptr && !column_values->empty()) {
-        DocKeyColumnPathBuilder builder(encoded_doc_key_);
-        for (const auto& column_value : *column_values) {
-          paths->push_back(builder.Build(column_value.column_id()));
-        }
-        return Status::OK();
+      DocKeyColumnPathBuilder builder(encoded_doc_key_);
+      for (const auto& column_value : column_values) {
+        paths->push_back(builder.Build(column_value.column_id()));
       }
-      break;
+      return Status::OK();
     }
   }
   // Add row's doc key. Caller code will create strong intent for the whole row in this case.

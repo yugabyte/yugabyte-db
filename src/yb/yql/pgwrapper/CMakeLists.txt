@@ -19,6 +19,7 @@ set(PGWRAPPER_SRCS
 set(PGWRAPPER_LIBS
     yb_common
     yb_pggate_flags
+    yb_process_wrapper
     yb_util)
 ADD_YB_LIBRARY(yb_pgwrapper
                SRCS ${PGWRAPPER_SRCS}
@@ -61,6 +62,7 @@ set(PG_WRAPPER_TEST_BASE_SRCS
     libpq_test_base.cc
     pg_mini_test_base.cc
     pg_tablet_split_test_base.cc
+    pg_test_utils.cc
     pg_wrapper_test_base.cc)
 set(PG_WRAPPER_TEST_BASE_DEPS
     pq_utils

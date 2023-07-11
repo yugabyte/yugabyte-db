@@ -3,7 +3,7 @@ import { useUpdateEffect } from 'react-use';
 import { getUnixTime } from 'date-fns';
 import { useTranslation, TFuncKey, Namespace } from 'react-i18next';
 import { MetricResponse, useGetClusterMetricQuery } from '@app/api/src';
-import { getInterval, RelativeInterval, roundDecimal, timeFormatterWithStartEnd } from '@app/helpers';
+import { ClusterType, getInterval, RelativeInterval, roundDecimal, timeFormatterWithStartEnd } from '@app/helpers';
 import { YBChartContainer } from '@app/components/YBChart/YBChartContainer';
 import { YBLineChartOptions, YBLinerChart } from '@app/components/YBChart/YBLinerChart';
 
@@ -31,6 +31,8 @@ interface ChartContainerProps {
   unitKey?: TFuncKey<Namespace>;
   refreshFromParent?: number;
   regionName?: string;
+  zone?: string,
+  clusterType?: ClusterType;
 }
 
 /*
@@ -74,7 +76,9 @@ export const ChartController: FC<ChartContainerProps> = ({
   chartDrawingType,
   unitKey,
   refreshFromParent,
-  regionName
+  regionName,
+  zone,
+  clusterType
 }) => {
   const [interval, setNewInterval] = useState(() => getInterval(relativeInterval));
   const { t } = useTranslation();
@@ -85,7 +89,9 @@ export const ChartController: FC<ChartContainerProps> = ({
       node_name: newNodeName,
       start_time: getUnixTime(interval.start),
       end_time: getUnixTime(interval.end),
-      region: regionName === '' ? undefined : regionName
+      region: regionName === '' ? undefined : regionName,
+      zone: zone === '' ? undefined : zone,
+      cluster_type: clusterType
     },
     {
       query: {

@@ -102,7 +102,7 @@ class XClusterAdminCliTest : public AdminCliTestBase {
 
     // Only create a table on the consumer, producer table may differ in tests.
     CreateTable(Transactional::kTrue);
-    FLAGS_check_bootstrap_required = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_check_bootstrap_required) = false;
 
     // Create the producer cluster.
     opts.num_tablet_servers = num_tablet_servers();
@@ -874,7 +874,7 @@ TEST_F(XClusterAdminCliTest, SetupTransactionalReplicationWithYCQLTable) {
 TEST_F(XClusterAdminCliTest, AllowAddTransactionTablet) {
   // We normally disable setting up transactional replication for CQL tables because the
   // implementation isn't quite complete yet.  It's fine to use it in tests, however.
-  FLAGS_allow_ycql_transactional_xcluster = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_ycql_transactional_xcluster) = true;
 
   // Create an identical table on the producer.
   client::TableHandle producer_table;
@@ -960,10 +960,10 @@ TEST_F(XClusterAdminCliTest_Large, TestBootstrapProducerPerformance) {
       "Waiting for load balancer to be idle"));
 
   // Add delays to all rpc calls to simulate live environment.
-  FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms = 5;
-  FLAGS_rpc_throttle_threshold_bytes = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_throttle_threshold_bytes) = 0;
   // Enable parallelized version of BootstrapProducer.
-  FLAGS_parallelize_bootstrap_producer = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_parallelize_bootstrap_producer) = true;
 
   // Check that bootstrap_cdc_producer returns within time limit.
   ASSERT_OK(WaitFor(

@@ -86,7 +86,7 @@ static Status BuildMinMaxTestPool(
 class TestThreadPool : public ::testing::Test {
  public:
   TestThreadPool() {
-    FLAGS_enable_tracing = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = true;
   }
 };
 

@@ -342,6 +342,10 @@ public class UsersController extends AuthenticatedController {
         throw new PlatformServiceException(
             BAD_REQUEST, "Can't Assign the role of " + "SuperAdmin to another user.");
       }
+
+      if (user.getUserType() == UserType.ldap && user.isLdapSpecifiedRole() == true) {
+        throw new PlatformServiceException(BAD_REQUEST, "Cannot change role for LDAP user.");
+      }
       user.setRole(formData.getRole());
     }
     auditService()

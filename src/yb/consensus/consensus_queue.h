@@ -665,7 +665,5 @@ class PeerMessageQueueObserver {
   virtual ~PeerMessageQueueObserver() {}
 };
 
-Status ValidateFlags();
-
 }  // namespace consensus
 }  // namespace yb

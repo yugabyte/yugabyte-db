@@ -152,8 +152,8 @@ class AbstractInstancesMethod(AbstractMethod):
         else:
             self.parser.add_argument("search_pattern", nargs="?")
         self.parser.add_argument("-t", "--type", default=self.YB_SERVER_TYPE)
-        self.parser.add_argument('--tags', default=None)
-        self.parser.add_argument("--skip_tags", default=None)
+        self.parser.add_argument('--tags', action='append', default=None)
+        self.parser.add_argument("--skip_tags", action='append', default=None)
 
         # If we do not have this entry from ansible.env, then set a None default, else, assume the
         # pem file is in the same location as the ansible.env file.
@@ -764,6 +764,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="NTP server to connect to.")
         self.parser.add_argument("--lun_indexes", default="",
                                  help="Comma-separated LUN indexes for mounted on instance disks.")
+        self.parser.add_argument("--ansible_exec_timeout_sec", default=None)
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -802,6 +803,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
         if args.local_package_path:
             self.extra_vars.update({"local_package_path": args.local_package_path})
+        if args.ansible_exec_timeout_sec is not None:
+            self.extra_vars.update({"ansible_exec_timeout_sec": args.ansible_exec_timeout_sec})
         if args.air_gap:
             self.extra_vars.update({"air_gap": args.air_gap})
         if args.node_exporter_port:
@@ -1135,6 +1138,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--package', default=None)
         self.parser.add_argument('--num_releases_to_keep', type=int,
                                  help="Number of releases to keep after upgrade.")
+        self.parser.add_argument("--ansible_exec_timeout_sec", default=None)
         self.parser.add_argument('--ybc_package', default=None)
         self.parser.add_argument('--ybc_dir', default=None)
         self.parser.add_argument('--yb_process_type', default=None,
@@ -1227,6 +1231,9 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             if args.master_addresses_for_master is not None:
                 self.extra_vars["master_addresses_for_master"] = args.master_addresses_for_master
 
+            if args.ansible_exec_timeout_sec is not None:
+                self.extra_vars.update({"ansible_exec_timeout_sec": args.ansible_exec_timeout_sec})
+
             if args.server_broadcast_addresses is not None:
                 self.extra_vars["server_broadcast_addresses"] = args.server_broadcast_addresses
 
@@ -1297,7 +1304,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             # NOTE 2: itest should download package from s3 to improve speed for instances in AWS.
             # TODO: Add a variable to specify itest ssh_user depending on VM users.
             start_time = time.time()
-            if args.package and (args.tags is None or args.tags == "download-software"):
+            if args.package and (args.tags is None or "download-software" in args.tags):
                 if args.s3_remote_download:
                     aws_access_key = args.aws_access_key or os.getenv('AWS_ACCESS_KEY_ID')
                     aws_secret_key = args.aws_secret_key or os.getenv('AWS_SECRET_ACCESS_KEY')

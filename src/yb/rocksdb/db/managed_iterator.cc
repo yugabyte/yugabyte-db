@@ -104,7 +104,7 @@ ManagedIterator::~ManagedIterator() {
   UnLock();
 }
 
-void ManagedIterator::SeekToLast() {
+const KeyValueEntry& ManagedIterator::SeekToLast() {
   MILock l(&in_use_, this);
   if (NeedToRebuild()) {
     RebuildIterator();
@@ -114,16 +114,19 @@ void ManagedIterator::SeekToLast() {
   if (mutable_iter_->status().ok()) {
     UpdateCurrent();
   }
+  return entry_;
 }
 
-void ManagedIterator::SeekToFirst() {
+const KeyValueEntry& ManagedIterator::SeekToFirst() {
   MILock l(&in_use_, this);
   SeekInternal(Slice(), true);
+  return entry_;
 }
 
-void ManagedIterator::Seek(const Slice& user_key) {
+const KeyValueEntry& ManagedIterator::Seek(Slice user_key) {
   MILock l(&in_use_, this);
   SeekInternal(user_key, false);
+  return entry_;
 }
 
 void ManagedIterator::SeekInternal(const Slice& user_key, bool seek_to_first) {
@@ -139,10 +142,10 @@ void ManagedIterator::SeekInternal(const Slice& user_key, bool seek_to_first) {
   UpdateCurrent();
 }
 
-void ManagedIterator::Prev() {
+const KeyValueEntry& ManagedIterator::Prev() {
   if (!entry_) {
     status_ = STATUS(InvalidArgument, "Iterator value invalid");
-    return;
+    return entry_;
   }
   MILock l(&in_use_, this);
   if (NeedToRebuild()) {
@@ -152,12 +155,12 @@ void ManagedIterator::Prev() {
     SeekInternal(old_key, false);
     UpdateCurrent();
     if (!entry_) {
-      return;
+      return entry_;
     }
     if (key().compare(old_key) != 0) {
       entry_.Reset();
       status_ = STATUS(Incomplete, "Cannot do Prev now");
-      return;
+      return entry_;
     }
   }
   mutable_iter_->Prev();
@@ -167,6 +170,7 @@ void ManagedIterator::Prev() {
   } else {
     status_ = mutable_iter_->status();
   }
+  return entry_;
 }
 
 const KeyValueEntry& ManagedIterator::Next() {

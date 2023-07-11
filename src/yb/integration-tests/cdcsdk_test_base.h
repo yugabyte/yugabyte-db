@@ -88,11 +88,11 @@ class CDCSDKTestBase : public YBTest {
   void SetUp() override {
     YBTest::SetUp();
     // Allow for one-off network instability by ensuring a single CDC RPC timeout << test timeout.
-    FLAGS_cdc_read_rpc_timeout_ms = (kRpcTimeout / 4) * 1000;
-    FLAGS_cdc_write_rpc_timeout_ms = (kRpcTimeout / 4) * 1000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_read_rpc_timeout_ms) = (kRpcTimeout / 4) * 1000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_write_rpc_timeout_ms) = (kRpcTimeout / 4) * 1000;
 
-    FLAGS_TEST_check_broadcast_address = false;
-    FLAGS_flush_rocksdb_on_shutdown = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
     google::SetVLOGLevel("cdc*", 4);
   }
 

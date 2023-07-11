@@ -47,7 +47,7 @@ DEFINE_RUNTIME_int32(replication_failure_delay_exponent, 16 /* ~ 2^16/1000 ~= 65
     "Max number of failures (N) to use when calculating exponential backoff (2^N-1).");
 
 DEFINE_RUNTIME_bool(cdc_consumer_use_proxy_forwarding, false,
-    "When enabled, read requests from the CDC Consumer that go to the wrong node are "
+    "When enabled, read requests from the XClusterConsumer that go to the wrong node are "
     "forwarded to the correct node by the Producer.");
 
 DEFINE_test_flag(int32, xcluster_simulated_lag_ms, 0,
@@ -83,13 +83,13 @@ XClusterPoller::XClusterPoller(
     SchemaVersion last_compatible_consumer_schema_version,
     rocksdb::RateLimiter* rate_limiter,
     std::function<int64_t(const TabletId&)>
-        ger_leader_term)
+        get_leader_term)
     : producer_tablet_info_(producer_tablet_info),
       consumer_tablet_info_(consumer_tablet_info),
       op_id_(consensus::MinimumOpId()),
       validated_schema_version_(0),
       last_compatible_consumer_schema_version_(last_compatible_consumer_schema_version),
-      get_leader_term_(std::move(ger_leader_term)),
+      get_leader_term_(std::move(get_leader_term)),
       output_client_(CreateXClusterOutputClient(
           xcluster_consumer,
           consumer_tablet_info,
@@ -314,7 +314,7 @@ void XClusterPoller::DoPoll() {
   *checkpoint.mutable_op_id() = op_id_;
   if (checkpoint.op_id().index() > 0 || checkpoint.op_id().term() > 0) {
     // Only send non-zero checkpoints in request.
-    // If we don't know the latest checkpoint, then CDC producer can use the checkpoint from
+    // If we don't know the latest checkpoint, then XClusterProducer can use the checkpoint from
     // cdc_state table.
     // This is useful in scenarios where a new tablet peer becomes replication leader for a
     // producer tablet and is not aware of the last checkpoint.

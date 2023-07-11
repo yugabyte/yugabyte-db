@@ -20,7 +20,7 @@
 #include "yb/cdc/cdc_producer.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_service.service.h"
-#include "yb/cdc/cdc_state_table.h"
+#include "yb/cdc/cdc_types.h"
 #include "yb/cdc/cdc_util.h"
 #include "yb/client/async_initializer.h"
 
@@ -70,13 +70,8 @@ static const char* const kRecordFormat = "record_format";
 static const char* const kRetentionSec = "retention_sec";
 static const char* const kSourceType = "source_type";
 static const char* const kCheckpointType = "checkpoint_type";
-static const char* const kIdType = "id_type";
 static const char* const kStreamState = "state";
 static const char* const kNamespaceId = "NAMESPACEID";
-static const char* const kTableId = "TABLEID";
-static const char* const kCDCSDKSafeTime = "cdc_sdk_safe_time";
-static const char* const kCDCSDKActiveTime = "active_time";
-static const char* const kCDCSDKSnapshotKey = "snapshot_key";
 static const char* const kCDCSDKSnapshotDoneKey = "snapshot_done_key";
 struct TabletCheckpoint {
   OpId op_id;
@@ -380,7 +375,7 @@ class CDCServiceImpl : public CDCServiceIf {
       const std::set<TabletId>& active_or_hidden_tablets,
       const std::set<TabletId>& parent_tablets,
       const std::map<TabletId, TabletId>& child_to_parent_mapping,
-      std::vector<std::pair<TabletId, OpId>>* result);
+      std::vector<std::pair<TabletId, CDCSDKCheckpointPB>>* result);
 
   // This method deletes entries from the cdc_state table that are contained in the set.
   Status DeleteCDCStateTableMetadata(
@@ -446,6 +441,10 @@ class CDCServiceImpl : public CDCServiceIf {
   // Update composite map in cache.
   Result<CompositeAttsMap> UpdateCompositeMapInCacheUnlocked(const NamespaceName& ns_name)
       REQUIRES(mutex_);
+
+  Result<bool> IsBootstrapRequiredForTablet(
+      tablet::TabletPeerPtr tablet_peer, const OpId& min_op_id, const CoarseTimePoint& deadline);
+
   rpc::Rpcs rpcs_;
 
   std::unique_ptr<CDCServiceContext> context_;

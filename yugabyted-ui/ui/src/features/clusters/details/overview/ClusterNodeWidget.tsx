@@ -91,7 +91,11 @@ export const ClusterNodeWidget: FC<ClusterNodeWidgetProps> = ({ health }) => {
         : !node.is_node_up || !node.is_master_up
         ? false
         : node.metrics.uptime_seconds < 60 && !isLoadBalancerIdleResponse ||
-          node.metrics.user_tablets_leaders + node.metrics.system_tablets_leaders == 0;
+          (!node.is_read_replica ? 
+            node.metrics.user_tablets_leaders + node.metrics.system_tablets_leaders == 0
+            :
+            node.metrics.user_tablets_total + node.metrics.system_tablets_total == 0
+          );
     })
     : [];
   const healthyNodes = numNodes - deadNodes.length;

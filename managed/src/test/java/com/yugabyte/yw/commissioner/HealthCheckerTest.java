@@ -135,6 +135,12 @@ public class HealthCheckerTest extends FakeDBApplication {
     when(mockConfigUniverseScope.getInt("yb.health.max_num_parallel_node_checks")).thenReturn(10);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.dbReadWriteTest)))
         .thenReturn(true);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.ysqlshConnectivityTest)))
+        .thenReturn(true);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.cqlshConnectivityTest)))
+        .thenReturn(true);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.healthLogOutput)))
         .thenReturn(false);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.enableTriggerAPI)))

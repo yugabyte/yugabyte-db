@@ -31,6 +31,10 @@ public class TestPgForeignKeyBatching extends BasePgSQLTestWithRpcMetric {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_session_max_batch_size", Integer.toString(MAX_BATCH_SIZE));
+    // TestPgForeignKeyBatching.testConcurrency depends on fail-on-conflict behavior to perform its
+    // validation.
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
+    flagMap.put("enable_wait_queues", "false");
     return flagMap;
   }
 

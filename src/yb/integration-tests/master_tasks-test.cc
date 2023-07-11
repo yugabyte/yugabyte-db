@@ -53,7 +53,7 @@ TEST_F(MasterTasksTest, RetryingTSRpcTaskMaxDelay) {
   constexpr auto kNumRetries = 10;
   constexpr auto kMaxJitterMs = 50;
 
-  FLAGS_retrying_ts_rpc_max_delay_ms = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retrying_ts_rpc_max_delay_ms) = 100;
 
   auto* ts = cluster_->mini_tablet_server(0);
 

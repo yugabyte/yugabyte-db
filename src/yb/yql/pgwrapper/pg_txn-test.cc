@@ -25,8 +25,8 @@ using std::string;
 using namespace std::literals;
 
 DECLARE_bool(TEST_fail_in_apply_if_no_metadata);
-DECLARE_bool(TEST_follower_pause_update_consensus_requests);
 DECLARE_bool(yb_enable_read_committed_isolation);
+DECLARE_bool(enable_wait_queues);
 
 namespace yb {
 namespace pgwrapper {
@@ -45,7 +45,7 @@ class PgTxnTest : public PgMiniTestBase {
 };
 
 TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_SANITIZERS(EmptyUpdate)) {
-  FLAGS_TEST_fail_in_apply_if_no_metadata = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_in_apply_if_no_metadata) = true;
 
   auto conn = ASSERT_RESULT(Connect());
 
@@ -96,7 +96,7 @@ TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_SANITIZERS(ShowEffectiveYBIsolationLevel)) 
   AssertEffectiveIsolationLevel(&conn, "serializable");
   ASSERT_OK(conn.Execute("ROLLBACK"));
 
-  FLAGS_yb_enable_read_committed_isolation = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
   ASSERT_OK(RestartCluster());
 
   conn = ASSERT_RESULT(Connect());
@@ -141,7 +141,17 @@ TEST_F_EX(PgTxnTest, SelectRF1ReadOnlyDeferred, PgTxnRF1Test) {
   ASSERT_OK(conn.Execute("COMMIT"));
 }
 
-TEST_F(PgTxnTest, SerializableReadWriteConflicts) {
+class PgTxnTestFailOnConflict : public PgTxnTest {
+ protected:
+  void SetUp() override {
+    // This test depends on fail-on-conflict concurrency control to perform its validation.
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    PgTxnTest::SetUp();
+  }
+};
+
+TEST_F_EX(PgTxnTest, SerializableReadWriteConflicts, PgTxnTestFailOnConflict) {
   auto conn1 = ASSERT_RESULT(Connect());
   auto conn2 = ASSERT_RESULT(Connect());
   constexpr double kPriorityBound = 0.5;
@@ -311,7 +321,9 @@ TEST_F(PgTxnTest, ReadRecentSet) {
 //
 // Important note -- sync point only works in debug mode. Non-debug test runs may not catch these
 // issues as reliably.
-TEST_F(PgTxnTest, SelectForUpdateExclusiveRead) {
+TEST_F_EX( PgTxnTest, SelectForUpdateExclusiveRead, PgTxnTestFailOnConflict) {
+  // Note -- we disable wait-on-conflict behavior here because this regression test is specifically
+  // targeting a bug in fail-on-conflict behavior.
   constexpr int kNumThreads = 10;
   constexpr int kNumSleepSeconds = 1;
   TestThreadHolder thread_holder;

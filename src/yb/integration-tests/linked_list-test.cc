@@ -1063,8 +1063,8 @@ TEST_F(LinkedListTest, TestLoadWhileOneServerDownAndVerify) {
   FLAGS_ts_flags += "--log_cache_size_limit_mb=2";
   FLAGS_ts_flags += " --global_log_cache_size_limit_mb=4";
 
-  FLAGS_num_tablet_servers = 3;
-  FLAGS_num_tablets = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablets) = 1;
   ASSERT_NO_FATALS(BuildAndStart());
 
   LOG(INFO) << "Load the data with one of the three servers down.";

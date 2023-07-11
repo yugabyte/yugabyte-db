@@ -1700,8 +1700,9 @@ bool FileExpirationWithRF3::AllFilesHaveTTLMetadata() {
 void FileExpirationWithRF3::WaitUntilAllCommittedOpsApplied(const MonoDelta timeout) {
   const auto completion_deadline = MonoTime::Now() + timeout;
   for (auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    auto consensus = peer->shared_consensus();
-    if (consensus) {
+    auto consensus_result = peer->GetConsensus();
+    if (consensus_result) {
+      auto* consensus = consensus_result->get();
       ASSERT_OK(Wait([consensus]() -> Result<bool> {
         return consensus->GetLastAppliedOpId() >= consensus->GetLastCommittedOpId();
       }, completion_deadline, "Waiting for all committed ops to be applied"));

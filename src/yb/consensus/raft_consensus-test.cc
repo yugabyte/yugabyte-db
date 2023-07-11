@@ -215,7 +215,7 @@ class RaftConsensusTest : public YBTest {
         tablet_metric_entity_(
           METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "raft-consensus-test-tablet")),
         schema_(GetSimpleTestSchema()) {
-    FLAGS_enable_leader_failure_detection = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_leader_failure_detection) = false;
     options_.tablet_id = kTestTablet;
   }
 

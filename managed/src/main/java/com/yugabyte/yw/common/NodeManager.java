@@ -19,6 +19,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
@@ -82,6 +83,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -327,8 +329,8 @@ public class NodeManager extends DevopsBase {
         subCommand.add(customSecurityGroupId);
       }
     }
-
-    ProviderDetails providerDetails = params.getProvider().getDetails();
+    Provider provider = params.getProvider();
+    ProviderDetails providerDetails = provider.getDetails();
     if (params instanceof AnsibleDestroyServer.Params
         && providerType.equals(Common.CloudType.onprem)) {
       subCommand.add("--install_node_exporter");
@@ -342,7 +344,6 @@ public class NodeManager extends DevopsBase {
     }
     subCommand.add("--custom_ssh_port");
     subCommand.add(sshPort.toString());
-
     // TODO make this global and remove this conditional check
     // to avoid bugs.
     if ((type == NodeCommandType.Provision
@@ -351,17 +352,29 @@ public class NodeManager extends DevopsBase {
             || type == NodeCommandType.Disk_Update
             || type == NodeCommandType.Update_Mounted_Disks
             || type == NodeCommandType.Reboot
-            || type == NodeCommandType.Change_Instance_Type
-            || type == NodeCommandType.Wait_For_Connection)
-        && providerDetails.sshUser != null) {
+            || type == NodeCommandType.Change_Instance_Type)
+        && StringUtils.isNotBlank(providerDetails.sshUser)) {
       subCommand.add("--ssh_user");
       if (StringUtils.isNotBlank(sshUser)) {
         subCommand.add(sshUser);
       } else {
         subCommand.add(providerDetails.sshUser);
       }
-    }
-    if (type == NodeCommandType.Precheck) {
+    } else if (type == NodeCommandType.Wait_For_Connection) {
+      if (provider.getCloudCode() == CloudType.onprem
+          && providerDetails.skipProvisioning
+          && getNodeAgentClient().isClientEnabled(provider)) {
+        subCommand.add("--ssh_user");
+        subCommand.add("yugabyte");
+      } else if (StringUtils.isNotBlank(providerDetails.sshUser)) {
+        subCommand.add("--ssh_user");
+        if (StringUtils.isNotBlank(sshUser)) {
+          subCommand.add(sshUser);
+        } else {
+          subCommand.add(providerDetails.sshUser);
+        }
+      }
+    } else if (type == NodeCommandType.Precheck) {
       subCommand.add("--precheck_type");
       if (providerDetails.skipProvisioning) {
         subCommand.add("configure");
@@ -790,7 +803,7 @@ public class NodeManager extends DevopsBase {
                 ybcPackage, YBC_PACKAGE_REGEX));
       }
       ybcDir = "ybc" + matcher.group(1);
-      ybcFlags = GFlagsUtil.getYbcFlags(taskParam);
+      ybcFlags = GFlagsUtil.getYbcFlags(taskParam, config);
       boolean enableVerbose =
           confGetter.getConfForScope(universe, UniverseConfKeys.ybcEnableVervbose);
       if (enableVerbose) {
@@ -1706,10 +1719,14 @@ public class NodeManager extends DevopsBase {
 
           if (taskParam.isSystemdUpgrade) {
             // Cron to Systemd Upgrade
+            Duration ansible_exec_timeout_sec =
+                confGetter.getConfForScope(universe, UniverseConfKeys.ansibleExecutionTimeoutSec);
             commandArgs.add("--skip_preprovision");
             commandArgs.add("--tags");
             commandArgs.add("systemd_upgrade");
             commandArgs.add("--systemd_services");
+            commandArgs.add("--ansible_exec_timeout_sec");
+            commandArgs.add(String.valueOf(ansible_exec_timeout_sec));
           } else if (taskParam.useSystemd) {
             // Systemd for new universes
             commandArgs.add("--systemd_services");
@@ -1787,9 +1804,14 @@ public class NodeManager extends DevopsBase {
           commandArgs.addAll(getConfigureSubCommand(taskParam));
           if (taskParam.isSystemdUpgrade) {
             // Cron to Systemd Upgrade
+            Duration ansible_exec_timeout_sec =
+                confGetter.getConfForScope(universe, UniverseConfKeys.ansibleExecutionTimeoutSec);
             commandArgs.add("--tags");
             commandArgs.add("systemd_upgrade");
             commandArgs.add("--systemd_services");
+            commandArgs.add("--ansible_exec_timeout_sec");
+            commandArgs.add(String.valueOf(ansible_exec_timeout_sec));
+
           } else if (taskParam.useSystemd) {
             // Systemd for new universes
             commandArgs.add("--systemd_services");

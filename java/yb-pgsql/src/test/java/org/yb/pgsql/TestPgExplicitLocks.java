@@ -37,6 +37,9 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("yb_enable_read_committed_isolation", "true");
+    // This test depends on fail-on-conflict concurrency control to perform its validation.
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
+    flagMap.put("enable_wait_queues", "false");
     return flagMap;
   }
 
@@ -134,7 +137,7 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
       return String.format("DELETE FROM %s WHERE %s", table, where);
     }
 
-    String select(String where) {
+    String selectKeyShare(String where) {
       return String.format("SELECT * FROM %s WHERE %s FOR KEY SHARE OF %1$s", table, where);
     }
   };
@@ -142,9 +145,10 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
   private void runRangeKeyLocksTest(ParallelQueryRunner runner,
                                     IsolationLevel pgIsolationLevel) throws SQLException {
     QueryBuilder builder = new QueryBuilder("table_with_hash");
-    // NOTE: for all examples below, the SELECT statement will lock the whole predicate for
-    // SERIALIZABLE isolation level and only matching rows in other isolation levels. The predicate
-    // is locked by locking the longest prefix of pk that is specified in the where clause.
+    // NOTE: for all examples below, the SELECT KEY SHARE statement will lock the whole predicate
+    // for SERIALIZABLE isolation level and only matching rows in other isolation levels. The
+    // predicate is locked by locking the longest prefix of pk that is specified in the where
+    // clause.
     // E.g:
     //   SELECT ... WHERE h=1 : lock full partition (h=1)
     //   SELECT ... WHERE h=1 and r2=100 : lock only (h=1) chunk since value for r1 is missing
@@ -157,115 +161,115 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
     //      Conflicts will occur in both isolation levels since the row that DELETE tries to remove
     //      is already locked either way (lock predicate or only matching rows).
     runner.runWithConflict(
-      builder.select("h = 1"),
+      builder.selectKeyShare("h = 1"),
       builder.delete("h = 1 AND r1 = 10 AND r2 = 100"));
     // 2. DELETE on row that matches the same predicate but doesn't exist.
     runner.run(
-      builder.select("h = 1"),
+      builder.selectKeyShare("h = 1"),
       builder.delete("h = 1 AND r1 = 10 AND r2 = 102"),
       pgIsolationLevel == IsolationLevel.SERIALIZABLE /* conflict_expected */);
 
     runner.runWithConflict(
-      builder.select("h = 1 AND r1 = 10 AND r2 = 100"),
+      builder.selectKeyShare("h = 1 AND r1 = 10 AND r2 = 100"),
       builder.delete("h = 1"));
 
     // SELECT with (h: 1, r1: 10)
     // 1. DELETE on rows that exists and matches SELECT where clause
     runner.runWithConflict(
-      builder.select("h = 1 AND r1 = 10"),
+      builder.selectKeyShare("h = 1 AND r1 = 10"),
       builder.delete("h = 1 AND r1 = 10 AND r2 = 100"));
     // 2. DELETE on row that matches the same predicate but doesn't exist.
     runner.run(
-      builder.select("h = 1 AND r1 = 10"),
+      builder.selectKeyShare("h = 1 AND r1 = 10"),
       builder.delete("h = 1 AND r1 = 10 AND r2 = 102"),
       pgIsolationLevel == IsolationLevel.SERIALIZABLE /* conflict_expected */);
 
     // SELECT with (h:1, r1:10, r2:100) and (h:1, r1:11, r2:100)
     // 1. DELETE on row that exists and matches SELECT where clause
     runner.runWithConflict(
-      builder.select("h = 1 AND r1 IN (10, 11) AND r2 = 100"),
+      builder.selectKeyShare("h = 1 AND r1 IN (10, 11) AND r2 = 100"),
       builder.delete("h = 1 AND r1 = 10 AND r2 = 100"));
     // 2. DELETE on row that matches the same predicate but doesn't exist.
     runner.run(
-      builder.select("h = 1 AND r1 IN (10, 11) AND r2 = 100"),
+      builder.selectKeyShare("h = 1 AND r1 IN (10, 11) AND r2 = 100"),
       builder.delete("h = 1 AND r1 = 11 AND r2 = 100"),
       pgIsolationLevel == IsolationLevel.SERIALIZABLE /* conflict_expected */);
 
     // SELECT with (h:1, r1: 10, r2: 100) and (h:1, r1: 10, r2: 101)
     // 1. DELETE on row that exists and matches SELECT where clause
     runner.run(
-      builder.select("h = 1 AND r1 = 10 AND r2 IN (100, 101)"),
+      builder.selectKeyShare("h = 1 AND r1 = 10 AND r2 IN (100, 101)"),
       builder.delete("h = 1 AND r1 = 10 AND r2 = 100"),
       true /* conflict_expected */);
     // 2. DELETE on row that matches the same predicate but doesn't exist.
     runner.run(
-      builder.select("h = 1 AND r1 = 10 AND r2 IN (100, 101)"),
+      builder.selectKeyShare("h = 1 AND r1 = 10 AND r2 IN (100, 101)"),
       builder.delete("h = 1 AND r1 = 10 AND r2 = 101"),
       pgIsolationLevel == IsolationLevel.SERIALIZABLE /* conflict_expected */);
 
     // Lock full partition (h: 1) if SERIALIZABLE.
     runner.run(
-      builder.select("h = 1 AND r2 = 102"),
+      builder.selectKeyShare("h = 1 AND r2 = 102"),
       builder.delete("h = 1 AND r1 = 11 AND r2 = 101"),
       pgIsolationLevel == IsolationLevel.SERIALIZABLE /* conflict_expected */);
 
     // Lock full tablet if SERIALIZABLE.
     runner.run(
-      builder.select("r1 = 11"),
+      builder.selectKeyShare("r1 = 11"),
       builder.delete("h = 2 AND r1 = 21 AND r2 = 201"),
       pgIsolationLevel == IsolationLevel.SERIALIZABLE /* conflict_expected */);
     runner.run(
-      builder.select("r2 = 102"),
+      builder.selectKeyShare("r2 = 102"),
       builder.delete("h = 2 AND r1 = 21 AND r2 = 201"),
       pgIsolationLevel == IsolationLevel.SERIALIZABLE /* conflict_expected */);
 
     runner.runWithConflict(
-      builder.select("h = 1 AND r1 = 10 AND r2 = 100"),
+      builder.selectKeyShare("h = 1 AND r1 = 10 AND r2 = 100"),
       builder.delete("h = 1 AND r1 = 10 AND r2 = 100"));
 
     runner.runWithoutConflict(
-      builder.select("h = 1"),
+      builder.selectKeyShare("h = 1"),
       builder.delete("h = 2 AND r1 = 20 AND r2 = 200"));
     runner.runWithoutConflict(
-      builder.select("h = 1 AND r1 = 10"),
+      builder.selectKeyShare("h = 1 AND r1 = 10"),
       builder.delete("h = 1 AND r1 = 11 AND r2 = 101"));
     runner.runWithoutConflict(
-      builder.select("h = 1 AND r1 in (10, 11) AND r2 = 102"),
+      builder.selectKeyShare("h = 1 AND r1 in (10, 11) AND r2 = 102"),
       builder.delete("h = 2 AND r1 = 21 AND r2 = 201"));
     runner.runWithoutConflict(
-      builder.select("h = 1 AND r1 = 11 AND r2 in (100, 101)"),
+      builder.selectKeyShare("h = 1 AND r1 = 11 AND r2 in (100, 101)"),
       builder.delete("h = 1 AND r1 = 10 AND r2 = 100"));
     runner.runWithoutConflict(
-      builder.select("h = 1 AND r2 = 102"),
+      builder.selectKeyShare("h = 1 AND r2 = 102"),
       builder.delete("h = 2 AND r1 = 22 AND r2 = 202"));
     runner.runWithoutConflict(
-      builder.select("h = 1 AND r1 = 10 AND r2 = 100"),
+      builder.selectKeyShare("h = 1 AND r1 = 10 AND r2 = 100"),
       builder.delete("h = 1 AND r1 = 10 AND r2 = 1000"));
 
     builder = new QueryBuilder("table_without_hash");
     // Lock full tablet if SERIALIZABLE.
     runner.run(
-      builder.select("r2 = 11"),
+      builder.selectKeyShare("r2 = 11"),
       builder.delete("r1 = 2 AND r2 = 22"),
       pgIsolationLevel == IsolationLevel.SERIALIZABLE /* conflict_expected */);
 
     runner.run(
-      builder.select("r1 = 1 OR r2 = 11"),
+      builder.selectKeyShare("r1 = 1 OR r2 = 11"),
       builder.delete("r1 = 2 AND r2 = 22"),
       pgIsolationLevel == IsolationLevel.SERIALIZABLE /* conflict_expected */);
     runner.run(
-      builder.select("r1 = 1"),
+      builder.selectKeyShare("r1 = 1"),
       builder.delete("r1 = 1 AND r2 = 10"),
       true /* conflict_expected */);
     runner.runWithConflict(
-      builder.select("r2 = 10 AND r1 IN (1)"),
+      builder.selectKeyShare("r2 = 10 AND r1 IN (1)"),
       builder.delete("r1 = 1 AND r2 = 10"));
 
     runner.runWithoutConflict(
-      builder.select("r1 = 1"),
+      builder.selectKeyShare("r1 = 1"),
       builder.delete("r1 = 2 AND r2 = 20"));
     runner.runWithoutConflict(
-      builder.select("r2 = 10 AND r1 IN (1)"),
+      builder.selectKeyShare("r2 = 10 AND r1 IN (1)"),
       builder.delete("r1 = 1 AND r2 = 11"));
   }
 
