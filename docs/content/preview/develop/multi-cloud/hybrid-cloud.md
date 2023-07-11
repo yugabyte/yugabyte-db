@@ -15,7 +15,7 @@ type: docs
 
 One of the first steps for many organizations in the digital modernization journey would be to have a few applications in the public cloud while still running many of their applications in private data centers(_on-prem_). This setup of mixed cloud environments of both public cloud and private data centers is typically referred to as a **Hybrid cloud**.
 
-A hybrid cloud approach has become increasingly prevalent in modern infrastructure setups. During cloud migrations, organizations frequently adopt hybrid cloud implementations as they gradually and methodically transition their applications and data. Hybrid cloud environments enable the continued use of on-premises services while harnessing the benefits of flexible data storage and application access options provided by public cloud providers. 
+A hybrid cloud approach has become increasingly prevalent in modern infrastructure setups. During cloud migrations, organizations frequently adopt hybrid cloud implementations as they gradually and methodically transition their applications and data. Hybrid cloud environments enable the continued use of on-premises services while harnessing the benefits of flexible data storage and application access options provided by public cloud providers.
 
 The following illustration demonstrates a simple Hybrid cloud of 2 on-prem data centers and one public cloud.
 
