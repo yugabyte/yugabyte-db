@@ -214,7 +214,7 @@ A `USING` clause must be provided if there is no implicit or assignment cast fro
 
 If the change doesn't require data on disk to change, these semantics apply:
 
-- The action is online and concurrent DMLs to the table can go through.
+- Concurrent DMLs to the table can go through.
 
 Example:
 
