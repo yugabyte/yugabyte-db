@@ -13,27 +13,27 @@
 
 
 // eslint-disable-next-line no-duplicate-imports
-import type { CloudEnum } from './CloudEnum';
+import type { TableReplicationInfo } from './TableReplicationInfo';
 
 
 /**
- * Cloud deployment information
+ * 
  * @export
- * @interface CloudInfo
+ * @interface TableInfoTableReplicationInfo
  */
-export interface CloudInfo  {
+export interface TableInfoTableReplicationInfo  {
   /**
    * 
-   * @type {CloudEnum}
-   * @memberof CloudInfo
+   * @type {TableReplicationInfo}
+   * @memberof TableInfoTableReplicationInfo
    */
-  code: CloudEnum;
+  live_replicas?: TableReplicationInfo;
   /**
    * 
-   * @type {string}
-   * @memberof CloudInfo
+   * @type {TableReplicationInfo[]}
+   * @memberof TableInfoTableReplicationInfo
    */
-  region: string;
+  read_replicas?: TableReplicationInfo[];
 }
 
 

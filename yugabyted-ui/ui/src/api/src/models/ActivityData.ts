@@ -15,23 +15,23 @@
 
 
 /**
- * 
+ * Activity Data
  * @export
- * @interface NodeDataMetricsActiveConnections
+ * @interface ActivityData
  */
-export interface NodeDataMetricsActiveConnections  {
+export interface ActivityData  {
   /**
    * 
-   * @type {number}
-   * @memberof NodeDataMetricsActiveConnections
+   * @type {string}
+   * @memberof ActivityData
    */
-  ysql: number;
+  name: string;
   /**
    * 
-   * @type {number}
-   * @memberof NodeDataMetricsActiveConnections
+   * @type {object}
+   * @memberof ActivityData
    */
-  ycql: number;
+  data: object;
 }
 
 

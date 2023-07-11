@@ -15,23 +15,29 @@
 
 
 /**
- * 
+ * Gflag
  * @export
- * @interface NodeDataMetricsActiveConnections
+ * @interface Gflag
  */
-export interface NodeDataMetricsActiveConnections  {
+export interface Gflag  {
   /**
    * 
-   * @type {number}
-   * @memberof NodeDataMetricsActiveConnections
+   * @type {string}
+   * @memberof Gflag
    */
-  ysql: number;
+  name?: string;
   /**
    * 
-   * @type {number}
-   * @memberof NodeDataMetricsActiveConnections
+   * @type {string}
+   * @memberof Gflag
    */
-  ycql: number;
+  value?: string;
+  /**
+   * 
+   * @type {string}
+   * @memberof Gflag
+   */
+  type?: string;
 }
 
 

@@ -15,23 +15,23 @@
 
 
 /**
- * 
+ * Alerts Info
  * @export
- * @interface NodeDataMetricsActiveConnections
+ * @interface AlertsInfo
  */
-export interface NodeDataMetricsActiveConnections  {
+export interface AlertsInfo  {
   /**
-   * 
-   * @type {number}
-   * @memberof NodeDataMetricsActiveConnections
+   * Name of alert
+   * @type {string}
+   * @memberof AlertsInfo
    */
-  ysql: number;
+  name: string;
   /**
-   * 
-   * @type {number}
-   * @memberof NodeDataMetricsActiveConnections
+   * Array of alerts
+   * @type {string}
+   * @memberof AlertsInfo
    */
-  ycql: number;
+  info: string;
 }
 
 

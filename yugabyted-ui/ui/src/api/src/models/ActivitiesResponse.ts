@@ -12,26 +12,22 @@
  */
 
 
+// eslint-disable-next-line no-duplicate-imports
+import type { ActivityData } from './ActivityData';
 
 
 /**
  * 
  * @export
- * @interface NodeDataMetricsActiveConnections
+ * @interface ActivitiesResponse
  */
-export interface NodeDataMetricsActiveConnections  {
+export interface ActivitiesResponse  {
   /**
    * 
-   * @type {number}
-   * @memberof NodeDataMetricsActiveConnections
+   * @type {ActivityData[]}
+   * @memberof ActivitiesResponse
    */
-  ysql: number;
-  /**
-   * 
-   * @type {number}
-   * @memberof NodeDataMetricsActiveConnections
-   */
-  ycql: number;
+  data: ActivityData[];
 }
 
 

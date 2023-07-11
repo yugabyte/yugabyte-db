@@ -12,26 +12,28 @@
  */
 
 
+// eslint-disable-next-line no-duplicate-imports
+import type { Gflag } from './Gflag';
 
 
 /**
- * 
+ * Gflags Info
  * @export
- * @interface NodeDataMetricsActiveConnections
+ * @interface GflagsInfo
  */
-export interface NodeDataMetricsActiveConnections  {
+export interface GflagsInfo  {
   /**
    * 
-   * @type {number}
-   * @memberof NodeDataMetricsActiveConnections
+   * @type {Gflag[]}
+   * @memberof GflagsInfo
    */
-  ysql: number;
+  master_flags: Gflag[];
   /**
    * 
-   * @type {number}
-   * @memberof NodeDataMetricsActiveConnections
+   * @type {Gflag[]}
+   * @memberof GflagsInfo
    */
-  ycql: number;
+  tserver_flags: Gflag[];
 }
 
 
