@@ -87,6 +87,14 @@ public class MetricStorage {
   }
 
   public void markSource(UUID customerUuid, UUID metricSource, MetricSourceState state) {
+    if (customerUuid == null) {
+      throw new IllegalArgumentException("Customer UUID can't be null");
+    }
+    log.info(
+        "Setting metric source status for customer {} and source {} to {}",
+        customerUuid,
+        metricSource,
+        state.name());
     sourceStateMap.put(new Pair<>(customerUuid, metricSource), state);
   }
 
