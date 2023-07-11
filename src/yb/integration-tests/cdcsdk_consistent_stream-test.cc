@@ -912,5 +912,47 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(CDCSDKMultipleAlter)) {
   ASSERT_GE(seen_ddl_records, 13);
 }
 
+TEST_F(
+    CDCSDKYsqlTest,
+    YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithRandomReqSafeTimeChanges)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 64_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(EXPLICIT));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
+  ASSERT_FALSE(set_resp.has_error());
+
+  int num_batches = 25;
+  int inserts_per_batch = 100;
+
+  std::thread t1(
+      [&]() -> void { PerformSingleAndMultiShardInserts(num_batches, inserts_per_batch, 20); });
+  std::thread t2([&]() -> void {
+    PerformSingleAndMultiShardInserts(
+        num_batches, inserts_per_batch, 50, num_batches * inserts_per_batch);
+  });
+
+  t1.join();
+  t2.join();
+
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+
+  auto get_changes_resp = GetAllPendingChangesWithRandomReqSafeTimeChanges(stream_id, tablets);
+  std::unordered_set<int32_t> seen_unique_pk_values;
+  for (auto record : get_changes_resp.records) {
+    if (record.row_message().op() == RowMessage::INSERT) {
+      const int32_t& pk_value = record.row_message().new_tuple(0).datum_int32();
+      seen_unique_pk_values.insert(pk_value);
+    }
+  }
+
+  ASSERT_EQ(seen_unique_pk_values.size(), 5000);
+}
+
 }  // namespace cdc
 }  // namespace yb
