@@ -894,4 +894,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " or use value from backend.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> oidcFeatureEnhancements =
+      new ConfKeyInfo<>(
+          "yb.security.oidc_feature_enhancements",
+          ScopeType.GLOBAL,
+          "OIDC feature enhancements",
+          "Enables the OIDC enhancements such as auth_token retrieval, user registration in YBA"
+              + " on login, etc.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
 }
