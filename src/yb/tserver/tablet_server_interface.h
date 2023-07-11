@@ -26,6 +26,7 @@
 
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/local_tablet_server.h"
+#include "yb/util/wait_state.h"
 
 namespace yb {
 
@@ -77,7 +78,7 @@ class TabletServerIf : public LocalTabletServer {
     return client_future().get();
   }
 
-  virtual std::vector<std::string> GetThreadpoolWaitStates() const = 0;
+  virtual std::vector<yb::util::WaitStateInfoPtr> GetThreadpoolWaitStates() const = 0;
 };
 
 } // namespace tserver

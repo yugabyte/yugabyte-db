@@ -2231,7 +2231,7 @@ tserver_stat_get_activity(PG_FUNCTION_ARGS)
 {
 	FuncCallContext *funcctx;
 
-	static int ncols = 1;
+	static int ncols = 9;
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -2243,11 +2243,27 @@ tserver_stat_get_activity(PG_FUNCTION_ARGS)
 		tupdesc = CreateTemplateTupleDesc(ncols, false);
 
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1,
-						   "wait_state", TEXTOID, -1, 0);
+						   "top_level_request_id", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2,
+						   "client_node_ip", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3,
+						   "top_level_node_id", TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4,
+						   "current_request_id", INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 5,
+						   "query_id", INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 6,
+						   "wait_status_code", INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 7,
+						   "table_id", INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 8,
+						   "tablet_id", INT8OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 9,
+						   "wait_status_code_as_string", TEXTOID, -1, 0);
 
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
-		YBCAuhDescriptor *rpcs = NULL;
+		YBCAUHDescriptor *rpcs = NULL;
 		size_t numrpcs = 0;
 		HandleYBStatus(YBCActiveUniverseHistory(&rpcs, &numrpcs));
 		funcctx->max_calls = numrpcs;
@@ -2262,9 +2278,17 @@ tserver_stat_get_activity(PG_FUNCTION_ARGS)
 		HeapTuple	tuple;
 
 		int cntr = funcctx->call_cntr;
-		YBCAuhDescriptor *rpc = (YBCAuhDescriptor *)funcctx->user_fctx + cntr;
+		YBCAUHDescriptor *rpc = (YBCAUHDescriptor *)funcctx->user_fctx + cntr;
 
-		values[0] = CStringGetTextDatum(rpc->wait_state);
+		values[0] = CStringGetTextDatum(rpc->metadata.top_level_request_id);
+		values[1] = CStringGetTextDatum(rpc->metadata.client_node_ip);
+		values[2] = CStringGetTextDatum(rpc->metadata.top_level_node_id);
+		values[3] = Int64GetDatum(rpc->metadata.current_request_id);
+		values[4] = Int64GetDatum(rpc->metadata.query_id);
+		values[5] = UInt64GetDatum(rpc->wait_status_code);
+		values[6] = Int64GetDatum(rpc->aux_info.table_id);
+		values[7] = Int64GetDatum(rpc->aux_info.tablet_id);
+		values[8] = CStringGetTextDatum(rpc->wait_status_code_as_string);
 		memset(nulls, 0, sizeof(nulls));
 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
