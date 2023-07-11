@@ -123,7 +123,7 @@ lazy val root = (project in file("."))
 
 scalaVersion := "2.12.10"
 javacOptions ++= Seq("-source", "17", "-target", "17")
-Compile / unmanagedSourceDirectories += baseDirectory.value / "target/scala-2.12/"
+Compile / managedClasspath += baseDirectory.value / "target/scala-2.12/"
 version := sys.process.Process("cat version.txt").lineStream_!.head
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
