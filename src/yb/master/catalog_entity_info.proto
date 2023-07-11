@@ -283,13 +283,33 @@ message SysTabletsEntryPB {
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.
 message SysNamespaceEntryPB {
+  // There are significant differences between the state machines for YSQL vs non-YSQL.
+  // The additional complexity for YSQL is due to the amount of work required for
+  // database creation and deletion, requiring async tasks and additional states.
+
+  // For YSQL:
+  // PREPARING is the initial state.
+  // PREPARING -> RUNNING - happy path of creation.
+  // PREPARING -> FAILED  - unhappy path of creation.
+  // RUNNING -> DELETING  - deletion requested.
+  // DELETING -> DELETED  - happy path of deletion.
+  // DELETING -> FAILED   - unhappy path of deletion.
+  // FAILED -> DELETING   - deletion requested.
+
+  // For non-YSQL:
+  // PREPARING is the initial state.
+  // PREPARING -> RUNNING - happy path of database creation.
+  // PREPARING -> FAILED  - unhappy path of database creation.
+
+  // During the deletion flow a non-YSQL namespace is removed from the maps and sys catalog table
+  // directly instead of transitioning to any deletion states.
   enum State {
-    UNKNOWN = 0;    // Unset or bad data. Unexpected state.
-    PREPARING = 1;  // Creating. Transitive State. Possible Next States: [RUNNING, FAILED].
-    FAILED = 2;     // Creation Failed. Permanent State.
-    RUNNING = 3;    // Live. Permanent State. Possible Next States: [FAILED, DELETING].
-    DELETING = 4;   // Delete Requested. Transitive State. Possible Next States: [DELETED].
-    DELETED = 5;    // Delete Finished on TServers or Tombstone. Final State before erasure.
+    UNKNOWN = 0;
+    PREPARING = 1;
+    FAILED = 2;
+    RUNNING = 3;
+    DELETING = 4;
+    DELETED = 5;
   }
   // Note: The id of the namespace is not stored here as it is already part of
   // SysRowEntry's id component.
