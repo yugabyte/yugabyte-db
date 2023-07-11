@@ -59,7 +59,7 @@ The following releases are no longer supported:
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
-| [v2.17](../v2.17/) | December 8, 2022 | n/a | n/a |
+| [v2.17](v2.17/) | December 8, 2022 | n/a | n/a |
 | [v2.15](../release-notes/v2.15/) | June 27, 2022 | n/a | n/a |
 | [v2.13](../release-notes/v2.13/) | March 7, 2022 | n/a | n/a |
 | [v2.11](../release-notes/v2.11/) | November 22, 2021 | n/a | n/a |
