@@ -150,8 +150,10 @@ class CatalogManagerIf {
 
   virtual bool IsSystemTable(const TableInfo& table) const = 0;
 
-  virtual Result<scoped_refptr<NamespaceInfo>> FindNamespaceById(
-      const NamespaceId& id) const = 0;
+  virtual Result<scoped_refptr<NamespaceInfo>> FindNamespaceById(const NamespaceId& id) const = 0;
+
+  virtual Result<scoped_refptr<NamespaceInfo>> FindNamespace(
+      const NamespaceIdentifierPB& ns_identifier) const = 0;
 
   virtual scoped_refptr<TableInfo> GetTableInfoFromNamespaceNameAndTableName(
       YQLDatabase db_type, const NamespaceName& namespace_name, const TableName& table_name,

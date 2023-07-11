@@ -402,6 +402,14 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
     LOG(INFO) << "Changing metadata without state to RUNNING: " << ns->ToString();
     l.mutable_data()->pb.set_state(state);
   }
+  auto schedule_namespace_cleanup = [this, ns]() {
+    LOG(INFO) << "Loaded metadata to DELETE namespace " << ns->ToString();
+    if (ns->database_type() == YQL_DATABASE_PGSQL) {
+      state_->AddPostLoadTask(
+          std::bind(&CatalogManager::DeleteYsqlDatabaseAsync, catalog_manager_, ns),
+          "DeleteYsqlDatabaseAsync");
+    }
+  };
 
   switch(state) {
     case SysNamespaceEntryPB::RUNNING:
@@ -434,41 +442,46 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
       }
       break;
     case SysNamespaceEntryPB::PREPARING:
-      // PREPARING means the server restarted before completing NS creation.
-      // Consider it FAILED & remove any partially-created data.
+      // PREPARING means the server restarted before completing NS creation. For YSQL consider it
+      // FAILED & remove any partially-created data. We must do this to avoid leaking the namespace
+      // because such databases are not visible to clients through pg sessions as the pg process
+      // never committed the metadata for failed creation attempts.
+
+      // For other namespace types they will be visible to the client. For simplicity and because
+      // this is an extremely unlikely edge case we put cleanup responsibility on the client.
       FALLTHROUGH_INTENDED;
     case SysNamespaceEntryPB::FAILED:
-      LOG(INFO) << "Transitioning failed namespace (state="  << metadata.state()
-                << ") to DELETING: " << ns->ToString();
-      l.mutable_data()->pb.set_state(SysNamespaceEntryPB::DELETING);
-      FALLTHROUGH_INTENDED;
-    case SysNamespaceEntryPB::DELETING:
       catalog_manager_->namespace_ids_map_[ns_id] = ns;
-      if (!pb_data.name().empty()) {
-        catalog_manager_->namespace_names_mapper_[pb_data.database_type()][pb_data.name()] = ns;
+      // For YSQL we do not add the namespace to the map because clients cannot
+      // see it from pg. To allow clients to create a namespace with the same name before the
+      // deletion of this one succeeds we do not add it to the maps.
+      if (pb_data.database_type() == YQL_DATABASE_PGSQL) {
+        LOG(INFO) << "Transitioning failed namespace (state="
+                  << SysNamespaceEntryPB::State_Name(metadata.state())
+                  << ") to DELETING: " << ns->ToString();
+        l.mutable_data()->pb.set_state(SysNamespaceEntryPB::DELETING);
       } else {
-        LOG(WARNING) << "Namespace with id " << ns_id << " has empty name";
+        if (!pb_data.name().empty()) {
+          catalog_manager_->namespace_names_mapper_[pb_data.database_type()][pb_data.name()] = ns;
+        } else {
+          LOG(WARNING) << "Namespace with id " << ns_id << " has empty name";
+        }
       }
       l.Commit();
-      LOG(INFO) << "Loaded metadata to DELETE namespace " << ns->ToString();
-      if (ns->database_type() != YQL_DATABASE_PGSQL) {
-        state_->AddPostLoadTask(
-            std::bind(&CatalogManager::DeleteYcqlDatabaseAsync, catalog_manager_, ns),
-            "DeleteYcqlDatabaseAsync");
-      } else {
-        state_->AddPostLoadTask(
-            std::bind(&CatalogManager::DeleteYsqlDatabaseAsync, catalog_manager_, ns),
-            "DeleteYsqlDatabaseAsync");
-      }
+      schedule_namespace_cleanup();
+      break;
+    case SysNamespaceEntryPB::DELETING:
+      LOG_IF(DFATAL, pb_data.database_type() != YQL_DATABASE_PGSQL) << "PGSQL Databases only";
+      catalog_manager_->namespace_ids_map_[ns_id] = ns;
+      l.Commit();
+      schedule_namespace_cleanup();
       break;
     case SysNamespaceEntryPB::DELETED:
+      LOG_IF(DFATAL, pb_data.database_type() != YQL_DATABASE_PGSQL) << "PGSQL Databases only";
       LOG(INFO) << "Skipping metadata for namespace (state="  << metadata.state()
                 << "): " << ns->ToString();
-      // Garbage collection.  Async remove the Namespace from the SysCatalog.
-      // No in-memory state needed since tablet deletes have already been processed.
-      state_->AddPostLoadTask(
-          std::bind(&CatalogManager::DeleteYsqlDatabaseAsync, catalog_manager_, ns),
-          "DeleteYsqlDatabaseAsync");
+      l.Commit();
+      schedule_namespace_cleanup();
       break;
     default:
       FATAL_INVALID_ENUM_VALUE(SysNamespaceEntryPB_State, state);
