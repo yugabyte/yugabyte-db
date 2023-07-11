@@ -31,7 +31,10 @@
 #include "storage/shm_toc.h"
 #include "storage/shmem.h"
 #include "pgstat.h"
+#include "pg_yb_utils.h"
+
 #include "yb/yql/pggate/util/ybc_stat.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 PG_MODULE_MAGIC;
 PG_FUNCTION_INFO_V1(pg_active_universe_history);
@@ -112,6 +115,8 @@ yb_auh_sighup(SIGNAL_ARGS)
 
 void
 yb_auh_main(Datum main_arg) {
+  // TODO:
+  YBInitPostgresBackend("postgres", "", "hemant");
 
   ereport(LOG, (errmsg("starting bgworker yb_auh with buffer size %d", circular_buf_size)));
 
@@ -158,10 +163,8 @@ yb_auh_main(Datum main_arg) {
 
     MemoryContext oldcxt = MemoryContextSwitchTo(uppercxt);
 
-    LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
     pg_collect_samples(auh_sample_time);
     tserver_collect_samples(auh_sample_time);
-    LWLockRelease(auh_entry_array_lock);
 
     MemoryContextSwitchTo(oldcxt);
     /* No problems, so clean exit */
@@ -172,6 +175,7 @@ yb_auh_main(Datum main_arg) {
 static void pg_collect_samples(TimestampTz auh_sample_time)
 {
   LWLockAcquire(ProcArrayLock, LW_SHARED);
+  LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
   int		procCount = ProcGlobal->allProcCount;
   for (int i = 0; i < procCount; i++)
   {
@@ -180,19 +184,33 @@ static void pg_collect_samples(TimestampTz auh_sample_time)
     if (proc != NULL && proc->pid != 0)
     {
       //TODO:
-      auh_entry_store(auh_sample_time, proc->top_level_request_id, proc->top_level_request_id,
+      auh_entry_store(auh_sample_time, proc->top_level_request_id, 0,
                       proc->wait_event_info, "", proc->node_uuid,
                       proc->remote_host, proc->remote_port, proc->queryid, auh_sample_time,
                       1);
     }
   }
+  LWLockRelease(auh_entry_array_lock);
   LWLockRelease(ProcArrayLock);
 }
 
 static void tserver_collect_samples(TimestampTz auh_sample_time)
 {
   //TODO:
+  YBCAUHDescriptor *rpcs = NULL;
+  size_t numrpcs = 0;
+  ereport(LOG, (errmsg("tserver_collect_samples starting")));
 
+  HandleYBStatus(YBCActiveUniverseHistory(&rpcs, &numrpcs));
+  LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
+  for (int i = 0; i < numrpcs; i++) {
+    auh_entry_store(auh_sample_time, rpcs[i].metadata.top_level_request_id,
+                    rpcs[i].metadata.current_request_id, rpcs[i].wait_status_code,
+                    rpcs[i].aux_info.tablet_id, rpcs[i].metadata.top_level_node_id,
+                    rpcs[i].metadata.client_node_ip, 0, rpcs[i].metadata.query_id,
+                    auh_sample_time, 1);
+  }
+  LWLockRelease(auh_entry_array_lock);
 }
 
 void
