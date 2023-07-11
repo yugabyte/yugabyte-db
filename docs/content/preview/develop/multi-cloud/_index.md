@@ -13,19 +13,6 @@ menu:
 type: indexpage
 ---
 
-## TODO
-
-- Cloud failure
-- 2dc on Prem + 1 external cloud
-- Migration from AWS to GCP , keep one as backup (xcluster)
-- https://www.cockroachlabs.com/docs/stable/demo-automatic-cloud-migration.html
-- Deploy across AWS, GCP, Azure
-- Hybrid deployments
-- Migrating between clouds
-- Use maybe an example - Bank of Anthos
-
-## Overview
-
 Most organizations choose a single cloud provider(or private data centers) to deploy their applications. But this leads to vendor lock-in and the feature set and growth of your cloud provider can become a bottleneck for the growth of your organization.
 
 You can adopt a multicloud strategy and deploy your applications in 2 or more public cloud providers or opt for a combination of your private data centers and public cloud. But multicloud brings in the huge overhead of managing different cloud providers.
@@ -61,7 +48,6 @@ The digital transformation journey to move to public clouds from private data ce
 For more details, see [Hybrid cloud](./hybrid-cloud)
 {{</tip>}}
 
-
 A hybrid cloud approach has become increasingly prevalent in modern infrastructure setups. During cloud migrations, organizations frequently adopt hybrid cloud implementations as they gradually and methodically transition their applications and data. Hybrid cloud environments enable the continued use of on-premises services while harnessing the benefits of flexible data storage and application access options provided by public cloud providers.
 
 ## Migration
@@ -71,3 +57,7 @@ Depending on the needs of your application or the decision of your organization,
 {{<tip>}}
 For more details, see [Multicloud migration](./migration)
 {{</tip>}}
+
+## Learn more
+
+- [Bank of Anthos example on multicloud YugabyteDB](https://github.com/yugabyte/bank-of-anthos)

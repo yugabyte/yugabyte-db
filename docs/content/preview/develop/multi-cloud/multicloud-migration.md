@@ -1,14 +1,14 @@
 ---
 title: Multicloud Migration
 headerTitle: Multicloud Migration
-linkTitle: Multicloud Migration
+linkTitle: Multicloud migration
 description: Migrate your data between different clouds
 headcontent: Migrate your data between different clouds
 menu:
   preview:
     identifier: multicloud-migration
     parent: build-multicloud-apps
-    weight: 300
+    weight: 200
 type: docs
 ---
 
@@ -26,9 +26,7 @@ To accomplish this, we will use the [xCluster](../../../architecture/docdb-repli
 
 Set up the **Source** universe in `AWS` and the **Target** universe in `GCP`. using the following setup procedures.
 
-{{<warning title="TODO-Setup">}}
-Will add tabs for Local/YBAnywhere/YBManaged
-{{</warning>}}
+{{<cluster-setup-tabs>}}
 
 Now, note down the universe-uuids of the `source` and `target` universes.
 

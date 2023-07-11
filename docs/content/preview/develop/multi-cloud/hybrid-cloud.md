@@ -9,7 +9,7 @@ menu:
   preview:
     identifier: multicloud-hybrid-cloud
     parent: build-multicloud-apps
-    weight: 150
+    weight: 300
 type: docs
 ---
 
@@ -75,9 +75,16 @@ Once you have become comfortable with managing the newly added public cloud and 
 
 ![Global Database on Hybrid Cloud](/images/develop/multicloud/hybridcloud-global-database.png)
 
-With this setup, you get a [Global Database](../../build-global-apps/global-database) that keeps your data consistent across your 2 on-prem data centers and the public cloud and enables access to your data for all the applications running all your data centers.
+With this setup, you get a [Global Database](../../build-global-apps/global-database) that keeps your data consistent across your 2 on-prem data centers and the public cloud and enables access to your data for all the applications running all your data centers. In this case, you can set your on-prem data center as the preferred zone-1 and the public cloud as the second preferred zone.
+
+## Failover
+
+As you have set the public cloud as the second preferred zone when the primary on-prem data center in `us-west` fails, the tablet followers in the GCP region in `us-central` is promoted to leader and your applications can continue to serve your users without any data loss.
+
+![Hybrid Cloud Failover](/images/develop/multicloud/hybridcloud-failover.png)
 
 ## Learn more
 
 - [Replicate your data using backup and restore](../../../manage/backup-restore/)
 - [Maintain a backup cluster in another region using Active-Active Single Master design pattern](../../build-global-apps/active-active-single-master/)
+- [Multicloud setup](./multicloud-setup)
