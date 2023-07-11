@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS words (
 Load some sample words into the table as follows:
 
 ```sql
-INSERT INTO words(word) VALUES 
+INSERT INTO words(word) VALUES
   ('camp'),('carousel'),('cartel'),('carpet'),('carnivore'),('cartoon'),('carry'),('capsule'),
   ('corsica'),('medica'),('azteca'),('republica'),('chronica'),('orca'),('cathodically'),('capably'),
   ('cot'),('cat'),('cut'),('cwt'),('cit'),('cit'),('captainly'),('callously'),('career'),('calculate'),
@@ -60,7 +60,7 @@ SELECT word FROM words WHERE word LIKE 'ca%' limit 5;
 
 ## Prefix matching
 
-Add `%` to the beginning of a pattern to match any string that ends in the given pattern. For example, to get words ending with `box`, execute the following:
+Add `%` to the beginning of a pattern to match any string that ends in the given pattern. For example, to get words ending with `ca`, execute the following:
 
 ```sql
 SELECT word FROM words WHERE word LIKE '%ca' limit 5;
