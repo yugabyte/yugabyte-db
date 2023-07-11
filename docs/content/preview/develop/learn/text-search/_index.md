@@ -35,7 +35,7 @@ Pattern matching is accomplished by specifying a pattern using the `%, _, *, .` 
 ```
 
 {{<tip>}}
-To learn more about pattern matching, see [Pattern Matching](./pattern-matching).
+To learn more about pattern matching, see [Pattern matching](./pattern-matching).
 {{</tip>}}
 
 ## Similarity search
@@ -45,12 +45,12 @@ Similarity matching works by determining how similar two strings are by taking i
 For example, the distance between `warehoused` and `warehouse` is `1`, as it has one additional character (`d`) than `warehouse`.
 
 {{<tip>}}
-To learn more about similarity search, see [Similarity Search](./similarity-matching).
+To learn more about similarity search, see [Similarity search](./similarity-matching).
 {{</tip>}}
 
 ## Full-text search
 
-Almost all of today's search engines use [Inverted Indexes](https://en.wikipedia.org/wiki/Inverted_index) extensively. An inverted index parses a document and stores the individual words (that is, tokens) and their corresponding position in the document. For example:
+Almost all of today's search engines use [Inverted indexes](https://en.wikipedia.org/wiki/Inverted_index) extensively. An inverted index parses a document and stores the individual words (that is, tokens) and their corresponding position in the document. For example:
 
 ```sql{class=nocopy}
 'The quick brown fox jumps jumps over the lazy dog'
@@ -65,12 +65,12 @@ would be parsed as follows:
 This enables you to search for the document which has `fox` and `quick` or `jumping dog`.
 
 {{<tip>}}
-To learn more about full-text search, see [Full-Text Search](./full-text-search)
+To learn more about full-text search, see [Full-text search](./full-text-search).
 {{</tip>}}
 
 ## Phonetic search
 
-In the case where we do not know the exact search term and want to find similar items or documents that sound similar to a specific term, _fuzzy_ or _phonetic_ search would come in handy. YugabyteDB supports fuzzy search like Soundex, Metaphone via Postgres extensions. For example, to find words that sound like `anapistagafi`, you could execute,
+In the case where you do not know the exact search term and want to find similar items or documents that sound similar to a specific term, _fuzzy_ or _phonetic_ search would come in handy. YugabyteDB supports fuzzy search like Soundex, Metaphone via PostgreSQL extensions. For example, to find words that sound like `anapistagafi`, you could execute,
 
 ```sql
 select word from words where dmetaphone(word) = dmetaphone('anapistagafi') limit 5;
