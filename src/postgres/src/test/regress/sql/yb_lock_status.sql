@@ -61,7 +61,7 @@ BEGIN
                  FROM yb_lock_status(null, input_transaction_id) l
                  WHERE l.relation = input_relation
                  ORDER BY l.relation::regclass::text, l.transaction_id, l.hash_cols NULLS FIRST,
-                          l.range_cols NULLS FIRST;
+                          l.range_cols NULLS FIRST, l.column_id NULLS FIRST;
 END ;
 $$ LANGUAGE plpgsql;
 
