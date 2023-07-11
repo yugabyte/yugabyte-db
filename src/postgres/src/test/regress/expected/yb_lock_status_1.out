@@ -57,7 +57,7 @@ BEGIN
                  FROM yb_lock_status(null, input_transaction_id) l
                  WHERE l.relation = input_relation
                  ORDER BY l.relation::regclass::text, l.transaction_id, l.hash_cols NULLS FIRST,
-                          l.range_cols NULLS FIRST;
+                          l.range_cols NULLS FIRST, l.column_id NULLS FIRST;
 END ;
 $$ LANGUAGE plpgsql;
 -- Basic queries
@@ -102,11 +102,17 @@ SELECT * FROM run_yb_lock_status('yb_lock_tests'::regclass, null);
  relation | yb_lock_tests | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           |           |               |        |           | t                    |
  keyrange | yb_lock_tests | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,1}     |               |        |           | t                    |
  keyrange | yb_lock_tests | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,1}     | {1}           |        |           | t                    |
- row      | yb_lock_tests | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,1}     | {1,"\"one\""} |        |           | f                    |
+ row      | yb_lock_tests | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,1}     | {1,"\"one\""} |        |           | f                    |
+ column   | yb_lock_tests | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,1}     | {1,"\"one\""} |        |         0 | f                    |
+ column   | yb_lock_tests | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,1}     | {1,"\"one\""} |        |        14 | f                    |
+ column   | yb_lock_tests | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,1}     | {1,"\"one\""} |        |        15 | f                    |
  keyrange | yb_lock_tests | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {2,2}     |               |        |           | t                    |
  keyrange | yb_lock_tests | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {2,2}     | {2}           |        |           | t                    |
- row      | yb_lock_tests | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {2,2}     | {2,"\"two\""} |        |           | f                    |
-(8 rows)
+ row      | yb_lock_tests | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {2,2}     | {2,"\"two\""} |        |           | f                    |
+ column   | yb_lock_tests | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {2,2}     | {2,"\"two\""} |        |         0 | f                    |
+ column   | yb_lock_tests | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {2,2}     | {2,"\"two\""} |        |        14 | f                    |
+ column   | yb_lock_tests | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {2,2}     | {2,"\"two\""} |        |        15 | f                    |
+(14 rows)
 
 SELECT * FROM run_yb_lock_status('yb_lock_tests_k1_k2'::regclass, null);
  locktype |      relation       |            mode            | granted | fastpath | valid_waitstart | valid_waitend | has_node | has_tablet_id | has_transaction_id | valid_subtransaction_id | has_status_tablet_id | is_explicit | hash_cols | range_cols | attnum | column_id | multiple_rows_locked | num_blocking
@@ -115,11 +121,15 @@ SELECT * FROM run_yb_lock_status('yb_lock_tests_k1_k2'::regclass, null);
  relation | yb_lock_tests_k1_k2 | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           |           |            |        |           | t                    |
  keyrange | yb_lock_tests_k1_k2 | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       |            |        |           | t                    |
  keyrange | yb_lock_tests_k1_k2 | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1}        |        |           | t                    |
- row      | yb_lock_tests_k1_k2 | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1,"null"} |        |           | f                    |
+ row      | yb_lock_tests_k1_k2 | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1,"null"} |        |           | f                    |
+ column   | yb_lock_tests_k1_k2 | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1,"null"} |        |         0 | f                    |
+ column   | yb_lock_tests_k1_k2 | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1,"null"} |        |        13 | f                    |
  keyrange | yb_lock_tests_k1_k2 | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {2}       |            |        |           | t                    |
  keyrange | yb_lock_tests_k1_k2 | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {2}       | {2}        |        |           | t                    |
- row      | yb_lock_tests_k1_k2 | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {2}       | {2,"null"} |        |           | f                    |
-(8 rows)
+ row      | yb_lock_tests_k1_k2 | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {2}       | {2,"null"} |        |           | f                    |
+ column   | yb_lock_tests_k1_k2 | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {2}       | {2,"null"} |        |         0 | f                    |
+ column   | yb_lock_tests_k1_k2 | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {2}       | {2,"null"} |        |        13 | f                    |
+(12 rows)
 
 COMMIT;
 -- Basic Column Update
@@ -152,8 +162,11 @@ SELECT * FROM run_yb_lock_status('yb_lock_tests'::regclass, null);
  keyrange | yb_lock_tests | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,1}     | {1}           |        |           | t                    |
  row      | yb_lock_tests | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,1}     | {1,"\"one\""} |        |           | f                    |
  keyrange | yb_lock_tests | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,1}     | {2}           |        |           | t                    |
- row      | yb_lock_tests | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,1}     | {2,"\"one\""} |        |           | f                    |
-(6 rows)
+ row      | yb_lock_tests | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,1}     | {2,"\"one\""} |        |           | f                    |
+ column   | yb_lock_tests | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,1}     | {2,"\"one\""} |        |         0 | f                    |
+ column   | yb_lock_tests | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,1}     | {2,"\"one\""} |        |        14 | f                    |
+ column   | yb_lock_tests | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,1}     | {2,"\"one\""} |        |        15 | f                    |
+(9 rows)
 
 SELECT * FROM run_yb_lock_status('yb_lock_tests_k1_k2'::regclass, null);
  locktype |      relation       |            mode            | granted | fastpath | valid_waitstart | valid_waitend | has_node | has_tablet_id | has_transaction_id | valid_subtransaction_id | has_status_tablet_id | is_explicit | hash_cols | range_cols | attnum | column_id | multiple_rows_locked | num_blocking
@@ -164,9 +177,11 @@ SELECT * FROM run_yb_lock_status('yb_lock_tests_k1_k2'::regclass, null);
  keyrange | yb_lock_tests_k1_k2 | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       |            |        |           | t                    |
  keyrange | yb_lock_tests_k1_k2 | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1}        |        |           | t                    |
  keyrange | yb_lock_tests_k1_k2 | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1}        |        |           | t                    |
+ row      | yb_lock_tests_k1_k2 | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1,"null"} |        |           | f                    |
  row      | yb_lock_tests_k1_k2 | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1,"null"} |        |           | f                    |
- row      | yb_lock_tests_k1_k2 | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1,"null"} |        |           | f                    |
-(8 rows)
+ column   | yb_lock_tests_k1_k2 | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1,"null"} |        |         0 | f                    |
+ column   | yb_lock_tests_k1_k2 | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1,"null"} |        |        13 | f                    |
+(10 rows)
 
 ABORT;
 BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
@@ -180,8 +195,11 @@ SELECT * FROM run_yb_lock_status('yb_lock_tests'::regclass, null);
  row      | yb_lock_tests | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,1}     | {1,"\"one\""} |        |           | f                    |
  keyrange | yb_lock_tests | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,2}     |               |        |           | t                    |
  keyrange | yb_lock_tests | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,2}     | {1}           |        |           | t                    |
- row      | yb_lock_tests | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,2}     | {1,"\"one\""} |        |           | f                    |
-(7 rows)
+ row      | yb_lock_tests | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,2}     | {1,"\"one\""} |        |           | f                    |
+ column   | yb_lock_tests | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,2}     | {1,"\"one\""} |        |         0 | f                    |
+ column   | yb_lock_tests | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,2}     | {1,"\"one\""} |        |        14 | f                    |
+ column   | yb_lock_tests | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,2}     | {1,"\"one\""} |        |        15 | f                    |
+(10 rows)
 
 SELECT * FROM run_yb_lock_status('yb_lock_tests_k1_k2'::regclass, null);
  locktype |      relation       |            mode            | granted | fastpath | valid_waitstart | valid_waitend | has_node | has_tablet_id | has_transaction_id | valid_subtransaction_id | has_status_tablet_id | is_explicit | hash_cols | range_cols | attnum | column_id | multiple_rows_locked | num_blocking
@@ -191,8 +209,10 @@ SELECT * FROM run_yb_lock_status('yb_lock_tests_k1_k2'::regclass, null);
  keyrange | yb_lock_tests_k1_k2 | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1}        |        |           | t                    |
  row      | yb_lock_tests_k1_k2 | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1,"null"} |        |           | f                    |
  keyrange | yb_lock_tests_k1_k2 | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {2}        |        |           | t                    |
- row      | yb_lock_tests_k1_k2 | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {2,"null"} |        |           | f                    |
-(6 rows)
+ row      | yb_lock_tests_k1_k2 | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {2,"null"} |        |           | f                    |
+ column   | yb_lock_tests_k1_k2 | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {2,"null"} |        |         0 | f                    |
+ column   | yb_lock_tests_k1_k2 | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {2,"null"} |        |        13 | f                    |
+(8 rows)
 
 ABORT;
 -- SELECT FOR SHARE
@@ -400,8 +420,9 @@ SELECT * FROM run_yb_lock_status('fk_reference'::regclass, null);
  keyrange | fk_reference | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       |                 |        |           | t                    |
  keyrange | fk_reference | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1}             |        |           | t                    |
  keyrange | fk_reference | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1,1}           |        |           | t                    |
- row      | fk_reference | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1,1,"\"one\""} |        |           | f                    |
-(5 rows)
+ row      | fk_reference | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1,1,"\"one\""} |        |           | f                    |
+ column   | fk_reference | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1}       | {1,1,"\"one\""} |        |         0 | f                    |
+(6 rows)
 
 SELECT * FROM run_yb_lock_status('yb_lock_tests_k1_k2'::regclass, null);
  locktype | relation | mode | granted | fastpath | valid_waitstart | valid_waitend | has_node | has_tablet_id | has_transaction_id | valid_subtransaction_id | has_status_tablet_id | is_explicit | hash_cols | range_cols | attnum | column_id | multiple_rows_locked | num_blocking
