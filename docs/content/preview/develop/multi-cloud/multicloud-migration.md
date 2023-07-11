@@ -1,7 +1,7 @@
 ---
-title: Multicloud Migration
-headerTitle: Multicloud Migration
-linkTitle: Multicloud migration
+title: Multi-cloud Migration
+headerTitle: Multi-cloud Migration
+linkTitle: Multi-cloud migration
 description: Migrate your data between different clouds
 headcontent: Migrate your data between different clouds
 menu:
@@ -18,7 +18,7 @@ Moving your application either from an on-prem data center to a public cloud or 
 
 For illustration let us consider a scenario where you have a 3-node cluster deployed in AWS-`us-west`. and would like to move to GCP-`us-central`.
 
-![Multicloud Migration](/images/develop/multicloud/multicloud-migration-goal.png)
+![Multi-cloud Migration](/images/develop/multicloud/multicloud-migration-goal.png)
 
 To accomplish this, we will use the [xCluster](../../../architecture/docdb-replication/async-replication/) feature which provides one-way asynchronous replication from one universe to another for which the `AWS` will be the source and the `GCP` universe will be the target.
 
@@ -35,7 +35,7 @@ Now, note down the universe-uuids of the `source` and `target` universes.
 Now that the `GCP` universe has been set up, you need to populate the data from your `AWS` universe. This is typically referred to as **Bootstrapping**.
 
 {{<tip title="More Details">}}
-For detailed instructions, see [Bootstrap a target universe](../../../deploy/multi-dc/async-replication/#bootstrap-a-target-universe)
+For detailed instructions, see [Bootstrap a target universe](../../../deploy/multi-dc/async-replication/#bootstrap-a-target-universe).
 {{</tip>}}
 
 The basic flow of bootstrapping is as follows.
@@ -53,10 +53,10 @@ This will ensure that the current data in your `AWS` universe is correctly copie
 
 ## Set up replication
 
-Now that your data has been pre-populated from the `AWS` universe to the `GCP` universe, you need to set up the replication stream from `AWS` to the `GCP` universe. 
+Now that your data has been pre-populated from the `AWS` universe to the `GCP` universe, you need to set up the replication stream from `AWS` to the `GCP` universe.
 
 {{<tip title="More Details">}}
-For detailed instructions, on how to set up replication, see [Set up unidirectional replication](../../../deploy/multi-dc/async-replication/#set-up-unidirectional-replication)
+For detailed instructions, on how to set up replication, see [Set up unidirectional replication](../../../deploy/multi-dc/async-replication/#set-up-unidirectional-replication).
 {{</tip>}}
 
 A simple way to set up replication is as follows.
@@ -67,24 +67,24 @@ A simple way to set up replication is as follows.
   <comma_separated_source_universe_table_ids> <comma_separated_bootstrap_ids>
 ```
 
-![Multicloud Replication](/images/develop/multicloud/multicloud-migration-replication.png)
+![Multi-cloud Replication](/images/develop/multicloud/multicloud-migration-replication.png)
 
 Now any data changes to the `AWS` universe are automatically applied to the `GCP` universe. _NOTE_: For now, DDL changes have to be applied manually.
 
 ## Switch over to the new universe
 
-Once the new universe has caught up with the data from the old universe, you can switch over to the new universe. 
+After the new universe has caught up with the data from the old universe, you can switch over to the new universe.
 
 {{<tip title="More Details">}}
-For detailed instructions, on how to do planned switchover, see [Planned switchover](../../../deploy/multi-dc/async-replication-transactional/#switchover-planned-failover)
+For detailed instructions, on how to do planned switchover, see [Planned switchover](../../../deploy/multi-dc/async-replication-transactional/#switchover-planned-failover).
 {{</tip>}}
 
 The basic flow of switchover is as follows.
 
-- Verify that the data has been successfully migrated using simple techniques like validating the no.of rows of the corresponding tables in both universes are the same (eg. `SELECT count(*)`).
+- Verify that the data has been successfully migrated using simple techniques like validating the no.of rows of the corresponding tables in both universes are the same (For example, `SELECT count(*)`).
 - Stop the application traffic to the old universe to ensure no more data changes are attempted
 - Pause the replication on the new universe.
-- Promote the `GCP` universe to `ACTIVE`. eg,
+- Promote the `GCP` universe to `ACTIVE`. For example,
 
 ```bash
 ./bin/yb-admin \
@@ -93,7 +93,7 @@ The basic flow of switchover is as follows.
     change_xcluster_role ACTIVE
 ```
 
-Now you can point your apps to the new universe in `GCP` and then stop the replication. For eg,
+Now you can point your apps to the new universe in `GCP` and then stop the replication. For example,
 
 ![Migration complete](/images/develop/multicloud/multicloud-migration-complete.png)
 
@@ -101,9 +101,9 @@ At this point, you can either tear down your `AWS` universe or convert it to a s
 
 ## Migration from on-prem datacenters
 
-You can use the same procedure to migrate data from your on-prem data centers to the public cloud. Moving from on-prem data centers to a public cloud needs more caution. You might want to consider a Hybrid cloud setup first and then move to a public cloud completely. Please see, [Hybrid Cloud](./hybrid-cloud) for more details.
+You can use the same procedure to migrate data from your on-prem data centers to the public cloud. Moving from on-prem data centers to a public cloud needs more caution. You might want to consider a Hybrid cloud setup first and then move to a public cloud completely. Refer to [Hybrid Cloud](../hybrid-cloud) for more details.
 
 ## Learn more
 
-- [Active Active Single Master application design pattern](../../../develop/build-global-apps/active-active-single-master/)
-- [Hybrid Cloud](./hybrid-cloud)
+- [Active-active single-master application design pattern](../../../develop/build-global-apps/active-active-single-master/)
+- [Hybrid Cloud](../hybrid-cloud)

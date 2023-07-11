@@ -1,9 +1,9 @@
 ---
-title: Build  Multicloud Applications
-headerTitle: Build Multicloud Applications
-linkTitle: Build multicloud applications
+title: Build  Multi-cloud Applications
+headerTitle: Build Multi-cloud Applications
+linkTitle: Build multi-cloud applications
 description: Build applications that run on different clouds
-headcontent: Build applications that run on different clouds 
+headcontent: Build applications that run on different clouds
 image: /images/section_icons/develop/api-icon.png
 menu:
   preview:
@@ -15,15 +15,15 @@ type: indexpage
 
 Most organizations choose a single cloud provider(or private data centers) to deploy their applications. But this leads to vendor lock-in and the feature set and growth of your cloud provider can become a bottleneck for the growth of your organization.
 
-You can adopt a multicloud strategy and deploy your applications in 2 or more public cloud providers or opt for a combination of your private data centers and public cloud. But multicloud brings in the huge overhead of managing different cloud providers.
+You can adopt a multi-cloud strategy and deploy your applications in 2 or more public cloud providers or opt for a combination of your private data centers and public cloud. But multi-cloud brings in the huge overhead of managing different cloud providers.
 
-![Multicloud Yugabyte](/images/develop/multicloud/multicloud-global-spread.png)
+![Multi-cloud Yugabyte](/images/develop/multicloud/multicloud-global-spread.png)
 
-Let us see how multicloud would benefit your organization and understand how Yugabyte helps you manage multicloud with ease.
+Let us see how multi-cloud would benefit your organization and understand how Yugabyte helps you manage multi-cloud with ease.
 
-## The need for multicloud
+## The need for multi-cloud
 
-The main objective of adopting a multicloud strategy is to provide you with the flexibility to utilize the optimal computing environment for each specific workload. Multicloud strategy has a variety of benefits.
+The main objective of adopting a multi-cloud strategy is to provide you with the flexibility to utilize the optimal computing environment for each specific workload. Multi-cloud strategy has a variety of benefits.
 
 - **Avoid vendor lock-in**: Break free from the constraints of relying on a single provider and snatch the freedom to build your infrastructure anywhere
 - **Application-specific optimization**: Flexibility to align specific features and capabilities of different clouds with your application needs, considering factors such as speed, performance, reliability, geographical location, as well as security and compliance requirements, thereby tailoring your cloud environment to best suit your unique needs.
@@ -32,13 +32,13 @@ The main objective of adopting a multicloud strategy is to provide you with the 
 - **Closer to users**: Not all cloud providers might have data centers closer to your users in different geographies. Choose data centers from different cloud providers that are closer to your users across the world and provide a better experience to all your users.
 - **Data Compliance**: Local data protection laws require data of their citizens to be placed within their country. Your cloud provider may not have a data center in that region, but another provider might.
 
-## Multicloud management
+## Multi-cloud management
 
-While a multicloud approach offers numerous advantages, heightened management complexity and achieving consistent performance and reliability across multiple clouds could become big challenges for organizations to overcome.
+While a multi-cloud approach offers numerous advantages, heightened management complexity and achieving consistent performance and reliability across multiple clouds could become big challenges for organizations to overcome.
 
 As the number of cloud providers you utilize increases, the complexity of managing your environment grows. Different public cloud vendors offer distinct features, services and APIs for managing their services. While it is possible to manage each environment separately, the majority of IT teams lack the necessary time and resources.
 
-To address these challenges, multicloud management capabilities must be integrated directly into your cloud provider's products and solutions. This integration enables you to gain comprehensive visibility across all your cloud environments, monitor costs and usage, implement consistent security controls and policies, and seamlessly manage workloads.
+To address these challenges, multi-cloud management capabilities must be integrated directly into your cloud provider's products and solutions. This integration enables you to gain comprehensive visibility across all your cloud environments, monitor costs and usage, implement consistent security controls and policies, and seamlessly manage workloads.
 
 ## Hybrid cloud
 
@@ -55,7 +55,7 @@ A hybrid cloud approach has become increasingly prevalent in modern infrastructu
 Depending on the needs of your application or the decision of your organization, you might want to migrate from one cloud provider to another or from your on-prem data center to a public cloud. This could become a daunting task, given the differences between various cloud providers. Yugabyte offers simple patterns to make this migration seamless.
 
 {{<tip>}}
-For more details, see [Multicloud migration](./migration)
+For more details, see [Multi-cloud migration](./migration)
 {{</tip>}}
 
 ## Learn more
@@ -63,7 +63,7 @@ For more details, see [Multicloud migration](./migration)
 {{<index/block>}}
 
 {{<index/item
-    title="Multicloud setup"
+    title="Multi-cloud setup"
     body="Setup a YugabyteDB universe across AWS/GCP/Azure"
     href="./multicloud-setup"
     icon="fa-solid fa-equals">}}
