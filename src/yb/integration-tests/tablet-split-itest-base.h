@@ -244,6 +244,7 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
 
   Status WaitForAnySstFiles(const TabletId& tablet_id);
   Status WaitForAnySstFiles(size_t tserver_idx, const TabletId& tablet_id);
+  Status WaitForAnySstFiles(const ExternalTabletServer& ts, const TabletId& tablet_id);
 
   Status WaitTServerToBeQuietOnTablet(
       itest::TServerDetails* ts_desc, const TabletId& tablet_id);

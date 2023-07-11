@@ -14,14 +14,14 @@
 #pragma once
 
 #include "yb/gutil/macros.h"
+
+#include "yb/rpc/rpc_fwd.h"
+
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
-class Status;
 
-namespace rpc {
-class RpcContext;
-} // namespace rpc
+class Status;
 
 namespace master {
 

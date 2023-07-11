@@ -16,8 +16,10 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 
 @Singleton
+@Slf4j
 public class TemplateManager extends DevopsBase {
   private static final String COMMAND_TYPE = "instance";
   public static final String PROVISION_SCRIPT = "provision_instance.py";
@@ -69,6 +71,13 @@ public class TemplateManager extends DevopsBase {
 
     Provider provider = Provider.getOrBadRequest(accessKey.getProviderUUID());
     ProviderDetails details = provider.getDetails();
+
+    if (details.sshUser == null) {
+      log.warn(
+          "skip provision script templating, provider {} has no ssh user defined",
+          provider.getName());
+      return;
+    }
     commandArgs.add("--ssh_user");
     commandArgs.add(details.sshUser);
 

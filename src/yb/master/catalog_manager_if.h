@@ -219,6 +219,9 @@ class CatalogManagerIf {
   virtual Status ListCDCStreams(
       const ListCDCStreamsRequestPB* req, ListCDCStreamsResponsePB* resp) = 0;
 
+  virtual Status IsObjectPartOfXRepl(
+      const IsObjectPartOfXReplRequestPB* req, IsObjectPartOfXReplResponsePB* resp) = 0;
+
   virtual Status GetCDCDBStreamInfo(
     const GetCDCDBStreamInfoRequestPB* req, GetCDCDBStreamInfoResponsePB* resp) = 0;
 

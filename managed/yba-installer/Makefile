@@ -29,6 +29,7 @@ PACKAGE_NAME ?= ${PACKAGE_DIR}.tar.gz
 CONFIG_FILE_FOLDER:=$(CURDIR)/config/templates
 CRONTAB_SCRIPT_FOLDER:=$(CURDIR)/config/cron
 CONFIG_INPUT_FILE_NAME:=$(CURDIR)/yba-ctl.yml.reference
+CONFIG_EMBEDED_NAME:=$(CURDIR)/pkg/config/yba-ctl.yml
 VERSION_METADATA_JSON:=$(CURDIR)/version_metadata.json
 
 
@@ -73,7 +74,7 @@ ${PREREQS_DIR}/${YBDB_BINARY_NAME}:
 	curl -Lo $@ ${YBDB_BINARY_URL}
 	@echo downloaded $@
 
-yba-ctl: test ${BIN_DIR}/${BIN_NAME}
+yba-ctl: config test ${BIN_DIR}/${BIN_NAME}
 ${BIN_DIR}/${BIN_NAME}:
 	CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} go build -a -o $@ -tags ${BUILD_TAGS} -ldflags=" \
 	-X 'github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl.Version=${VERSION}' \
@@ -104,3 +105,7 @@ clean-package:
 
 .PHONY: test
 test:
+
+.PHONY: config
+config: 
+	cp ${CONFIG_INPUT_FILE_NAME} ${CONFIG_EMBEDED_NAME}

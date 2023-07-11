@@ -2241,6 +2241,17 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_is_client_ysqlconnmgr", PGC_SU_BACKEND, CUSTOM_OPTIONS,
+			gettext_noop("Identifies that connection is created by "
+						"Ysql Connection Manager."),
+			NULL
+		},
+		&yb_is_client_ysqlconnmgr,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL

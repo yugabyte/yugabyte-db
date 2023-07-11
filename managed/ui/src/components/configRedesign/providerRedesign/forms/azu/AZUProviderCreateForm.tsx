@@ -29,7 +29,14 @@ import {
   VPCSetupType
 } from '../../constants';
 import { FieldGroup } from '../components/FieldGroup';
-import { addItem, deleteItem, editItem, getIsFormDisabled, readFileAsText } from '../utils';
+import {
+  addItem,
+  constructAccessKeysCreatePayload,
+  deleteItem,
+  editItem,
+  getIsFormDisabled,
+  readFileAsText
+} from '../utils';
 import { FormContainer } from '../components/FormContainer';
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
 import { FormField } from '../components/FormField';
@@ -434,21 +441,15 @@ const constructProviderPayload = async (formValues: AZUProviderCreateFormFieldVa
     throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
   }
 
+  const allAccessKeysPayload = constructAccessKeysCreatePayload(
+    formValues.sshKeypairManagement,
+    formValues.sshKeypairName,
+    sshPrivateKeyContent
+  );
   return {
     code: ProviderCode.AZU,
     name: formValues.providerName,
-    ...(formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED && {
-      allAccessKeys: [
-        {
-          keyInfo: {
-            ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
-            ...(formValues.sshPrivateKeyContent && {
-              sshPrivateKeyContent: sshPrivateKeyContent
-            })
-          }
-        }
-      ]
-    }),
+    ...allAccessKeysPayload,
     details: {
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {

@@ -40,6 +40,7 @@
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
+#include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
 #include "yb/util/memory/memory.h"
 
@@ -158,7 +159,10 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   void Resolve() {
     auto status = SetRequestScope();
     if (status.ok()) {
+      auto start_time = CoarseMonoClock::Now();
       status = context_->ReadConflicts(this);
+      status_manager_.RecordConflictResolutionScanLatency(
+          MonoDelta(CoarseMonoClock::Now() - start_time));
     }
     if (!status.ok()) {
       InvokeCallback(status);
@@ -212,6 +216,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
       intent_iter_.RevalidateAfterUpperBoundChange();
       SeekForward(intent_key_prefix->AsSlice(), &intent_iter_);
     }
+    int64_t num_keys_scanned = 0;
     while (intent_iter_.Valid()) {
       auto existing_key = intent_iter_.key();
       auto existing_value = intent_iter_.value();
@@ -264,10 +269,10 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
           }
         }
       }
-
+      ++num_keys_scanned;
       intent_iter_.Next();
     }
-
+    status_manager_.RecordConflictResolutionKeysScanned(num_keys_scanned);
     return intent_iter_.status();
   }
 

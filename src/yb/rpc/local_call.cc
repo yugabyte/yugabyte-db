@@ -43,8 +43,11 @@ LocalOutboundCall::LocalOutboundCall(
 }
 
 Status LocalOutboundCall::SetRequestParam(
-    AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker) {
+    AnyMessageConstPtr req, std::unique_ptr<Sidecars> sidecars, const MemTrackerPtr& mem_tracker) {
   req_ = req;
+  if (sidecars) {
+    return STATUS_FORMAT(NotSupported, "Sidecars not supported for local calls");
+  }
   return Status::OK();
 }
 

@@ -46,6 +46,7 @@
 
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
+#include "yb/master/restore_sys_catalog_state.h"
 #include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/transaction.h"
@@ -1182,6 +1183,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // List CDC streams (optionally, for a given table).
   Status ListCDCStreams(
       const ListCDCStreamsRequestPB* req, ListCDCStreamsResponsePB* resp) override;
+
+  // Whether there is a CDC stream for a given table.
+  Status IsObjectPartOfXRepl(
+    const IsObjectPartOfXReplRequestPB* req, IsObjectPartOfXReplResponsePB* resp) override;
 
   // Fetch CDC stream info corresponding to a db stream id
   Status GetCDCDBStreamInfo(
@@ -2471,6 +2476,18 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       TabletSnapshotOperationCallback callback) override;
 
   void ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& operation) override;
+
+  Status RestoreSysCatalogCommon(
+    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet,
+    std::reference_wrapper<const ScopedRWOperation> pending_op,
+    RestoreSysCatalogState* state, docdb::DocWriteBatch* write_batch,
+    docdb::KeyValuePairPB* restore_kv);
+
+  Status RestoreSysCatalogSlowPitr(
+    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet);
+
+  Status RestoreSysCatalogFastPitr(
+    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet);
 
   Status RestoreSysCatalog(
       SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet,

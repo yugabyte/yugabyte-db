@@ -47,6 +47,15 @@ public class ScheduleUtil {
         .orElse(null);
   }
 
+  public static long getIncrementalBackupFrequency(Schedule schedule) {
+    BackupRequestParams scheduleParams =
+        Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
+    if (scheduleParams.incrementalBackupFrequency == 0L) {
+      return 0L;
+    }
+    return scheduleParams.incrementalBackupFrequency;
+  }
+
   public static Date nextExpectedIncrementTaskTime(Schedule schedule) {
     // Checking incremental backup frequency instead of using Util function as function is called
     // before object is created
@@ -64,26 +73,9 @@ public class ScheduleUtil {
       return new Date(newIncrementScheduleTaskTime);
     }
 
-    Date nextIncrementScheduleTaskTime;
-    try {
-      nextIncrementScheduleTaskTime = schedule.getNextIncrementScheduleTaskTime();
-    } catch (Exception e) {
-      nextIncrementScheduleTaskTime = new Date(nextScheduleTaskTime.getTime() + incrementFrequency);
-    }
-
+    Date nextIncrementScheduleTaskTime = schedule.getNextIncrementScheduleTaskTime();
     if (Objects.isNull(nextIncrementScheduleTaskTime)) {
-      nextIncrementScheduleTaskTime = new Date(nextScheduleTaskTime.getTime() + incrementFrequency);
-      return nextIncrementScheduleTaskTime;
-    }
-
-    // if the newly calculated nextExpectedIncrementTaskTime is after or equal nextScheduleTaskTime,
-    // then increment backup should be taken on the fresh full backup
-    Date calculatedNextIncrementScheduleTaskTime =
-        new Date(nextIncrementScheduleTaskTime.getTime() + incrementFrequency);
-    if (!calculatedNextIncrementScheduleTaskTime.before(nextScheduleTaskTime)) {
-      nextIncrementScheduleTaskTime = new Date(nextScheduleTaskTime.getTime() + incrementFrequency);
-    } else {
-      nextIncrementScheduleTaskTime = calculatedNextIncrementScheduleTaskTime;
+      return new Date(nextScheduleTaskTime.getTime() + incrementFrequency);
     }
 
     // check if calculated increment backup time is after current time
