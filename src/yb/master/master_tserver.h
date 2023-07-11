@@ -78,7 +78,7 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   void RegisterCertificateReloader(tserver::CertificateReloader reloader) override {}
 
-  std::vector<std::string> GetThreadpoolWaitStates() const override;
+  std::vector<yb::util::WaitStateInfoPtr> GetThreadpoolWaitStates() const override;
 
  private:
   Master* master_ = nullptr;

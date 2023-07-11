@@ -335,11 +335,7 @@ bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
     auto wait_state = this->wait_state();
     if (wait_state) {
       // TBD: Add WaitStateInfoPB to the response instead of the string.
-      WaitStateInfoPB pb;
-      wait_state->ToPB(&pb);
-      resp->set_wait_state(wait_state->ToString());
-    } else {
-      resp->set_wait_state("Not yet initialized");
+      wait_state->ToPB(resp->mutable_wait_state());
     }
   }
   resp->set_elapsed_millis(MonoTime::Now().GetDeltaSince(timing_.time_received)

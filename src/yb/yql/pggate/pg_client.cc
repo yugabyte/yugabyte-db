@@ -695,7 +695,7 @@ class PgClient::Impl {
     client::RpcsInfo result;
     result.reserve(resp.wait_states_size());
     for (const auto& wait_state : resp.wait_states()) {
-      result.push_back(client::YBActiveUniverseHistoryInfo{.wait_state = wait_state});
+      result.push_back(client::YBActiveUniverseHistoryInfo::FromPB(wait_state));
     }
     return result;
   }
