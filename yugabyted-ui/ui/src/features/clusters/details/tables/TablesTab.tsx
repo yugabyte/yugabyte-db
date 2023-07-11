@@ -45,7 +45,13 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
   const { t } = useTranslation();
 
   const [selectedDB, setSelectedDB] = React.useState<string>();
-  const [selectedTable, setSelectedTable] = React.useState<string>();
+
+  type SelectedTable = {
+    name: string,
+    uuid: string
+  } | undefined
+
+  const [selectedTable, setSelectedTable] = React.useState<SelectedTable>();
 
   React.useEffect(() => {
     setSelectedDB(undefined);
@@ -178,7 +184,7 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
               <YBDropdown
               origin={
                 <Box display="flex" alignItems="center" className={classes.dropdownContent}>
-                  {selectedTable}
+                  {selectedTable.name}
                   <TriangleDownIcon />
                 </Box>
               }
@@ -190,8 +196,8 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
               {tableList.map(item => (
                 <MenuItem
                   key={`keyspaces-${item.name.replace(' ', '-')}`}
-                  selected={item.name === selectedTable}
-                  onClick={() => setSelectedTable(item.name)}
+                  selected={item.uuid === selectedTable.uuid}
+                  onClick={() => setSelectedTable({ name: item.name, uuid: item.uuid }) }
                 >
                   {item.name}
                 </MenuItem>
@@ -202,12 +208,16 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
         }
       </Box>
       {selectedDB && selectedTable ? 
-        <TabletList selectedTable={selectedTable} onRefetch={refetchData} />
+        <TabletList
+          selectedTableUuid={selectedTable.uuid}
+          onRefetch={refetchData} />
         :
         (selectedDB ? 
           <TableList
             tableList={tableList}
-            onSelect={setSelectedTable}
+            onSelect={(name: string, uuid: string) => {
+                setSelectedTable({ name: name, uuid: uuid })
+            }}
             onRefetch={refetchData}
           />
           :

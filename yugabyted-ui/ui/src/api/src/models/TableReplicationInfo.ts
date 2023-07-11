@@ -13,27 +13,33 @@
 
 
 // eslint-disable-next-line no-duplicate-imports
-import type { CloudEnum } from './CloudEnum';
+import type { PlacementBlock } from './PlacementBlock';
 
 
 /**
- * Cloud deployment information
+ * TableReplicationInfo
  * @export
- * @interface CloudInfo
+ * @interface TableReplicationInfo
  */
-export interface CloudInfo  {
+export interface TableReplicationInfo  {
   /**
    * 
-   * @type {CloudEnum}
-   * @memberof CloudInfo
+   * @type {number}
+   * @memberof TableReplicationInfo
    */
-  code: CloudEnum;
+  num_replicas?: number;
+  /**
+   * 
+   * @type {PlacementBlock[]}
+   * @memberof TableReplicationInfo
+   */
+  placement_blocks?: PlacementBlock[];
   /**
    * 
    * @type {string}
-   * @memberof CloudInfo
+   * @memberof TableReplicationInfo
    */
-  region: string;
+  placement_uuid?: string;
 }
 
 

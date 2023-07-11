@@ -67,7 +67,7 @@ const useStyles = makeStyles((theme) => ({
 type DatabaseListProps = {
   tableList: ClusterTable[],
   onRefetch: () => void,
-  onSelect: (db: string) => void,
+  onSelect: (name: string, uuid: string) => void,
 }
 
 const ArrowComponent = (classes: ReturnType<typeof useStyles>) => () => {
@@ -271,7 +271,8 @@ export const TableList: FC<DatabaseListProps> = ({ tableList: tableListProp, onS
           options={{
             pagination: true,
             rowHover: true, 
-            onRowClick: (_, { dataIndex }) => onSelect(data[dataIndex].name) }}
+            onRowClick: (_, { dataIndex }) =>
+                onSelect(data[dataIndex].name, data[dataIndex].uuid) }}
           touchBorder={false}
         />
       }

@@ -15,23 +15,29 @@
 
 
 /**
- * 
+ * Column Info
  * @export
- * @interface NodeDataMetricsActiveConnections
+ * @interface ColumnInfo
  */
-export interface NodeDataMetricsActiveConnections  {
+export interface ColumnInfo  {
   /**
    * 
-   * @type {number}
-   * @memberof NodeDataMetricsActiveConnections
+   * @type {string}
+   * @memberof ColumnInfo
    */
-  ysql: number;
+  column?: string;
   /**
    * 
-   * @type {number}
-   * @memberof NodeDataMetricsActiveConnections
+   * @type {string}
+   * @memberof ColumnInfo
    */
-  ycql: number;
+  id?: string;
+  /**
+   * 
+   * @type {string}
+   * @memberof ColumnInfo
+   */
+  type?: string;
 }
 
 

@@ -12,26 +12,22 @@
  */
 
 
+// eslint-disable-next-line no-duplicate-imports
+import type { AlertsInfo } from './AlertsInfo';
 
 
 /**
  * 
  * @export
- * @interface NodeDataMetricsActiveConnections
+ * @interface AlertsResponse
  */
-export interface NodeDataMetricsActiveConnections  {
+export interface AlertsResponse  {
   /**
    * 
-   * @type {number}
-   * @memberof NodeDataMetricsActiveConnections
+   * @type {AlertsInfo[]}
+   * @memberof AlertsResponse
    */
-  ysql: number;
-  /**
-   * 
-   * @type {number}
-   * @memberof NodeDataMetricsActiveConnections
-   */
-  ycql: number;
+  data: AlertsInfo[];
 }
 
 
