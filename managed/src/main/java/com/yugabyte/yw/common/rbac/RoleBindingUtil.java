@@ -16,7 +16,7 @@ public class RoleBindingUtil {
   public RoleBinding createRoleBinding(
       UUID userUUID, UUID roleUUID, RoleBindingType type, ResourceGroup resourceGroup) {
     Users user = Users.getOrBadRequest(userUUID);
-    Role role = Role.getOrBadRequest(roleUUID);
+    Role role = Role.getOrBadRequest(user.getCustomerUUID(), roleUUID);
     log.info(
         "Creating {} RoleBinding '{}' with user UUID '{}', role UUID {} on resource group {}.",
         type,
@@ -29,7 +29,7 @@ public class RoleBindingUtil {
   public RoleBinding editRoleBinding(
       UUID roleBindingUUID, UUID roleUUID, ResourceGroup resourceGroup) {
     RoleBinding roleBinding = RoleBinding.getOrBadRequest(roleBindingUUID);
-    Role role = Role.getOrBadRequest(roleUUID);
+    Role role = Role.getOrBadRequest(roleBinding.getUser().getCustomerUUID(), roleUUID);
     log.info(
         "Editing {} RoleBinding '{}' with user UUID '{}', role UUID {} on resource group {}.",
         roleBinding.getType(),

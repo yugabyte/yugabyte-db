@@ -156,18 +156,21 @@ public class RBACControllerTest extends FakeDBApplication {
         Role.create(
             customer.getUuid(),
             "testSystemRole1",
+            "testDescription",
             RoleType.System,
             new HashSet<>(Arrays.asList(permission1, permission2, permission3, permission4)));
     Role role2 =
         Role.create(
             customer.getUuid(),
             "testCustomRole1",
+            "testDescription",
             RoleType.Custom,
             new HashSet<>(Arrays.asList(permission2)));
     Role role3 =
         Role.create(
             customer.getUuid(),
             "testCustomRole2",
+            "testDescription",
             RoleType.Custom,
             new HashSet<>(Arrays.asList(permission1, permission2)));
 
@@ -192,18 +195,21 @@ public class RBACControllerTest extends FakeDBApplication {
         Role.create(
             customer.getUuid(),
             "testSystemRole1",
+            "testDescription",
             RoleType.System,
             new HashSet<>(Arrays.asList(permission1, permission2, permission3, permission4)));
     Role role2 =
         Role.create(
             customer.getUuid(),
             "testCustomRole1",
+            "testDescription",
             RoleType.Custom,
             new HashSet<>(Arrays.asList(permission2)));
     Role role3 =
         Role.create(
             customer.getUuid(),
             "testCustomRole2",
+            "testDescription",
             RoleType.Custom,
             new HashSet<>(Arrays.asList(permission1, permission2)));
 
@@ -228,18 +234,21 @@ public class RBACControllerTest extends FakeDBApplication {
         Role.create(
             customer.getUuid(),
             "testSystemRole1",
+            "testDescription",
             RoleType.System,
             new HashSet<>(Arrays.asList(permission1, permission2, permission3, permission4)));
     Role role2 =
         Role.create(
             customer.getUuid(),
             "testCustomRole1",
+            "testDescription",
             RoleType.Custom,
             new HashSet<>(Arrays.asList(permission2)));
     Role role3 =
         Role.create(
             customer.getUuid(),
             "testCustomRole2",
+            "testDescription",
             RoleType.Custom,
             new HashSet<>(Arrays.asList(permission1, permission2)));
 
@@ -262,7 +271,8 @@ public class RBACControllerTest extends FakeDBApplication {
     // Filling the JSON object to be passed in the request body
     String createRoleRequestBody =
         "{"
-            + "\"name\": \"customReadUniverseRole1\","
+            + "\"name\": \"custom Read UniverseRole 1\","
+            + "\"description\": \"test Description\","
             + "\"permission_list\": ["
             + "{\"resource_type\": \"UNIVERSE\", \"permission\": \"READ\"}"
             + "]}";
@@ -275,12 +285,12 @@ public class RBACControllerTest extends FakeDBApplication {
     Role roleResult = reader.readValue(json);
 
     assertNotNull(roleResult);
-    assertEquals("customReadUniverseRole1", roleResult.getName());
+    assertEquals("custom Read UniverseRole 1", roleResult.getName());
     assertAuditEntry(1, customer.getUuid());
 
     // Get the role from DB and compare with returned result.
-    assertEquals(1, Role.getAll().size());
-    Role roleDb = Role.getAll().get(0);
+    assertEquals(1, Role.getAll(customer.getUuid()).size());
+    Role roleDb = Role.getAll(customer.getUuid()).get(0);
     assertEquals(roleResult, roleDb);
   }
 
@@ -291,6 +301,7 @@ public class RBACControllerTest extends FakeDBApplication {
         Role.create(
             customer.getUuid(),
             "customReadUniverseRole1",
+            "testDescription",
             RoleType.Custom,
             new HashSet<>(Arrays.asList(permission2)));
 
@@ -299,6 +310,7 @@ public class RBACControllerTest extends FakeDBApplication {
     String createRoleRequestBody =
         "{"
             + "\"name\": \"customReadUniverseRole1\","
+            + "\"description\": \"test Description\","
             + "\"permission_list\": ["
             + "{\"resource_type\": \"UNIVERSE\", \"permission\": \"READ\"}"
             + "]}";
@@ -315,6 +327,7 @@ public class RBACControllerTest extends FakeDBApplication {
     String createRoleRequestBody =
         "{"
             + "\"name\": \"customReadUniverseRole1\","
+            + "\"description\": \"test Description\","
             + "\"permission_list\": ["
             + "{\"resource_type\": \"UNIVERSE\", \"permission\": \"CREATE\"}"
             + "]}";
@@ -331,6 +344,7 @@ public class RBACControllerTest extends FakeDBApplication {
         Role.create(
             customer.getUuid(),
             "customReadUniverseRole1",
+            "testDescription",
             RoleType.Custom,
             new HashSet<>(Arrays.asList(permission1, permission2)));
 
@@ -353,8 +367,8 @@ public class RBACControllerTest extends FakeDBApplication {
     assertAuditEntry(1, customer.getUuid());
 
     // Get the role from DB and compare with returned result.
-    assertEquals(1, Role.getAll().size());
-    Role roleDb = Role.getAll().get(0);
+    assertEquals(1, Role.getAll(customer.getUuid()).size());
+    Role roleDb = Role.getAll(customer.getUuid()).get(0);
     assertEquals(roleResult, roleDb);
     // Verify if permissions got updated correctly.
     Set<PermissionInfoIdentifier> permissionList = new HashSet<>(Arrays.asList(permission2));
@@ -368,6 +382,7 @@ public class RBACControllerTest extends FakeDBApplication {
         Role.create(
             customer.getUuid(),
             "customReadUniverseRole1",
+            "testDescription",
             RoleType.System,
             new HashSet<>(Arrays.asList(permission1, permission2)));
 
@@ -392,13 +407,14 @@ public class RBACControllerTest extends FakeDBApplication {
         Role.create(
             customer.getUuid(),
             "testCustomRole1",
+            "testDescription",
             RoleType.Custom,
             new HashSet<>(Arrays.asList(permission1, permission2, permission3, permission4)));
 
     // Call API and assert if custom role is deleted.
     Result result = deleteRole(customer.getUuid(), role1.getRoleUUID());
     assertEquals(OK, result.status());
-    assertEquals(0, Role.getAll().size());
+    assertEquals(0, Role.getAll(customer.getUuid()).size());
     assertAuditEntry(1, customer.getUuid());
   }
 
@@ -409,6 +425,7 @@ public class RBACControllerTest extends FakeDBApplication {
         Role.create(
             customer.getUuid(),
             "testSystemRole1",
+            "testDescription",
             RoleType.System,
             new HashSet<>(Arrays.asList(permission1, permission2, permission3, permission4)));
 
@@ -416,7 +433,7 @@ public class RBACControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(() -> deleteRole(customer.getUuid(), role1.getRoleUUID()));
     assertEquals(BAD_REQUEST, result.status());
-    assertEquals(1, Role.getAll().size());
+    assertEquals(1, Role.getAll(customer.getUuid()).size());
     assertAuditEntry(0, customer.getUuid());
   }
 }

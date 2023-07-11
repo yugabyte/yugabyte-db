@@ -9122,6 +9122,10 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "description" : {
+          "description" : "Role description",
+          "type" : "string"
+        },
         "name" : {
           "description" : "Role name",
           "type" : "string"

@@ -16,6 +16,10 @@ public class RoleFormData {
   @JsonProperty("name")
   public String name;
 
+  @ApiModelProperty(value = "Description of the role to be created", required = true)
+  @JsonProperty("description")
+  public String description;
+
   @ApiModelProperty(value = "List of permissions given to the role", required = true)
   @JsonProperty("permission_list")
   public Set<PermissionInfoIdentifier> permissionList;
