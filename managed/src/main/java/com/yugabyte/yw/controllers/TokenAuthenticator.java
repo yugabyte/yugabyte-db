@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.controllers;
 
-import static play.mvc.Http.Status.UNAUTHORIZED;
+import static play.mvc.Http.Status.FORBIDDEN;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
@@ -173,7 +173,8 @@ public class TokenAuthenticator extends Action.Simple {
       if (user != null) {
         cust = Customer.get(user.getCustomerUUID());
       } else {
-        return CompletableFuture.completedFuture(Results.forbidden("Unable To Authenticate User"));
+        return CompletableFuture.completedFuture(
+            Results.unauthorized("Unable To Authenticate User"));
       }
 
       // Some authenticated calls don't actually need to be authenticated
@@ -185,8 +186,9 @@ public class TokenAuthenticator extends Action.Simple {
         RequestContext.put(CUSTOMER, cust);
         RequestContext.put(USER, userService.getUserWithFeatures(cust, user));
       } else {
-        // Send Forbidden Response if Authentication Fails.
-        return CompletableFuture.completedFuture(Results.forbidden("Unable To Authenticate User"));
+        // Send Unauthorized Response if Authentication Fails.
+        return CompletableFuture.completedFuture(
+            Results.unauthorized("Unable To Authenticate User"));
       }
       return delegate.call(request);
     } finally {
@@ -229,7 +231,7 @@ public class TokenAuthenticator extends Action.Simple {
 
   public void adminOrThrow(Http.Request request) {
     if (!adminAuthentication(request)) {
-      throw new PlatformServiceException(UNAUTHORIZED, "Only Admins can perform this operation.");
+      throw new PlatformServiceException(FORBIDDEN, "Only Admins can perform this operation.");
     }
   }
 
@@ -237,7 +239,7 @@ public class TokenAuthenticator extends Action.Simple {
   public void superAdminOrThrow(Http.Request request) {
     if (!superAdminAuthentication(request)) {
       throw new PlatformServiceException(
-          UNAUTHORIZED, "Only Super Admins can perform this operation.");
+          FORBIDDEN, "Only Super Admins can perform this operation.");
     }
   }
 

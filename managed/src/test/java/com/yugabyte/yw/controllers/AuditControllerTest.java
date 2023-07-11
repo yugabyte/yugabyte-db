@@ -6,8 +6,8 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.OK;
+import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 
@@ -87,7 +87,7 @@ public class AuditControllerTest extends FakeDBApplication {
         route(
             fakeRequest("GET", String.format(route, customer2.getUuid(), user1.getUuid()))
                 .cookie(validCookie));
-    assertEquals(FORBIDDEN, result.status());
+    assertEquals(UNAUTHORIZED, result.status());
   }
 
   @Test
