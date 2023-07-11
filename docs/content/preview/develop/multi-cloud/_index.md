@@ -60,4 +60,30 @@ For more details, see [Multicloud migration](./migration)
 
 ## Learn more
 
-- [Bank of Anthos example on multicloud YugabyteDB](https://github.com/yugabyte/bank-of-anthos)
+{{<index/block>}}
+
+{{<index/item
+    title="Multicloud setup"
+    body="Setup a YugabyteDB universe across AWS/GCP/Azure"
+    href="./multicloud-setup"
+    icon="fa-solid fa-equals">}}
+
+{{<index/item
+    title="Cloud Migration"
+    body="Migrate your data from one cloud to another"
+    icon="fa-solid fa-equals"
+    href="./multicloud-migration">}}
+
+{{<index/item
+    title="Hybrid Cloud"
+    body="Add a public cloud to your on-prem environment"
+    icon="fa-brands fa-searchengin"
+    href="./hybrid-cloud">}}
+
+{{<index/item
+    title="Bank of Anthos"
+    body="Full fledged example of a Banking app on Multicloud YugabyteDB"
+    icon="fa-solid fa-music"
+    href="https://github.com/yugabyte/bank-of-anthos">}}
+
+{{</index/block>}}
