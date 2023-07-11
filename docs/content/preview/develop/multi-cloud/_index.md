@@ -42,7 +42,7 @@ The main objective of adopting a multicloud strategy is to provide you with the 
 - **Application-specific optimization**: Flexibility to align specific features and capabilities of different clouds with your application needs, considering factors such as speed, performance, reliability, geographical location, as well as security and compliance requirements, thereby tailoring your cloud environment to best suit your unique needs.
 - **Minimize cost**: Lower costs by harnessing the benefits of optimal pricing and performance combinations offered by various cloud providers.
 - **Higher Availability**: An outage of one cloud provider need not mean an application outage as you would be seamlessly redirected to another prepared cloud, ensuring uninterrupted operations.
-- **Closer to users**: Not all cloud providers might have data centers closer to your users in different geographies. Choose data centers from different cloud providers that are closer to your users across the world and provide better experience to all your users.
+- **Closer to users**: Not all cloud providers might have data centers closer to your users in different geographies. Choose data centers from different cloud providers that are closer to your users across the world and provide a better experience to all your users.
 - **Data Compliance**: Local data protection laws require data of their citizens to be placed within their country. Your cloud provider may not have a data center in that region, but another provider might.
 
 ## Multicloud management
@@ -55,8 +55,19 @@ To address these challenges, multicloud management capabilities must be integrat
 
 ## Hybrid cloud
 
-The journey to move applications to public clouds from private data centers(_on-prem_) is not instantaneous. It takes a lot of time and planning. One of the first steps for many organizations would be to have a few applications in the public cloud while still running many of their applications in private data centers(_on-prem_). This setup of mixed cloud environments of both public cloud and private data centers is typically referred to as **Hybrid cloud**.
+The digital transformation journey to move to public clouds from private data centers(_on-prem_) is not instantaneous. It takes a lot of time and planning. One of the first steps for many organizations would be to have a few applications in the public cloud while still running many of their applications in private data centers(_on-prem_). This setup of mixed cloud environments of both public cloud and private data centers is typically referred to as **Hybrid cloud**.
+
+{{<tip>}}
+For more details, see [Hybrid cloud](./hybrid-cloud)
+{{</tip>}}
+
+
+A hybrid cloud approach has become increasingly prevalent in modern infrastructure setups. During cloud migrations, organizations frequently adopt hybrid cloud implementations as they gradually and methodically transition their applications and data. Hybrid cloud environments enable the continued use of on-premises services while harnessing the benefits of flexible data storage and application access options provided by public cloud providers.
 
 ## Migration
 
-Depending on the needs of your application or the decision of your organization, you might want to migrate from cloud provider to another. This could become a daunting task, given the differences between various cloud providers. Yugabyte offers simple patterns to make this migration seamless.
+Depending on the needs of your application or the decision of your organization, you might want to migrate from one cloud provider to another or from your on-prem data center to a public cloud. This could become a daunting task, given the differences between various cloud providers. Yugabyte offers simple patterns to make this migration seamless.
+
+{{<tip>}}
+For more details, see [Multicloud migration](./migration)
+{{</tip>}}

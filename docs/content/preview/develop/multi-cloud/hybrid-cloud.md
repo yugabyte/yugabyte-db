@@ -1,0 +1,83 @@
+---
+title: Hybrid Cloud
+headerTitle: Hybrid Cloud
+linkTitle: Hybrid Cloud
+description: Build applications that run across on-prem datacenters and public clouds
+headcontent: Build applications that run across on-prem datacenters and public clouds
+image: /images/section_icons/develop/api-icon.png
+menu:
+  preview:
+    identifier: multicloud-hybrid-cloud
+    parent: build-multicloud-apps
+    weight: 150
+type: docs
+---
+
+One of the first steps for many organizations in the digital modernization journey would be to have a few applications in the public cloud while still running many of their applications in private data centers(_on-prem_). This setup of mixed cloud environments of both public cloud and private data centers is typically referred to as a **Hybrid cloud**.
+
+A hybrid cloud approach has become increasingly prevalent in modern infrastructure setups. During cloud migrations, organizations frequently adopt hybrid cloud implementations as they gradually and methodically transition their applications and data. Hybrid cloud environments enable the continued use of on-premises services while harnessing the benefits of flexible data storage and application access options provided by public cloud providers. 
+
+The following illustration demonstrates a simple Hybrid cloud of 2 on-prem data centers and one public cloud.
+
+![Hybrid Cloud](/images/develop/multicloud/hybridcloud-example.png)
+
+## Benefits of Hybrid cloud
+
+A hybrid cloud approach is ideal for those seeking to leverage the scalability and presence offered by public clouds while keeping their data on-premises to comply with data regulation laws. Here are a few key benefits of adopting a hybrid cloud:
+
+- **Gradual modernization** : With a hybrid cloud, you have the flexibility to migrate applications to the cloud at your preferred pace, allowing you to modernize your technical infrastructure gradually over time.
+
+- **Regulatory compliance** : Many industries have specific regulations regarding the operating location of applications and data. A hybrid cloud environment enables you to utilize both private and public clouds while adhering to such regulatory requirements.
+
+- **Legacy applications** : You may have legacy systems that are challenging to migrate to the cloud. Hybrid cloud allows you to accommodate these systems by keeping applications on-premises.
+
+- **Edge computing capabilities** : Industries such as retail or telecommunications often demand low-latency edge computing, such as running applications in kiosks or network edge locations. A hybrid approach enables you to run select applications at the edge, meeting these specific needs.
+
+- **Latest technologies** : Hybrid cloud models offer the opportunity to leverage cutting-edge technologies such as AI and machine learning without the need to expand or replace your current infrastructure.
+
+By adopting a hybrid cloud approach, you can harness the benefits of both public and private clouds, tailoring your infrastructure to meet regulatory compliance, operational limitations, and latency-sensitive requirements.
+
+## Hybrid cloud deployment patterns
+
+Every hybrid cloud strategy has to be adapted to the specific needs of your organization like the workloads, compliance and availability. Here we discuss a few patterns that can you draft out a path to move applications to a public cloud. For illustrations, let us assume you have two on-prem data centers in `us-west` and `us-east` and you are adding a region in `us-central` on GCP.
+
+### Trivial workloads onto public cloud
+
+One of the key benefits of a Hybrid cloud strategy is that you can slowly migrate your applications from your on-prem data centers to the public cloud. The first phase of this process could be to move some applications to public cloud. For example, let us say you have 2 on-prem data centers with YugabyteDB deployed for your production and test applications like:
+
+![Two On-Prem DCs with Yugabyte](/images/develop/multicloud/hybridcloud-2-onprem.png)
+
+As a part of your data center modernization and expansion, you could opt to choose a public cloud provider like `GCP`/`AWS` in a region where you do not have a presence(eg. `us-central`) and move your testing application to that public cloud, like:
+
+![Two On-Prem DCs and a Public Cloud with Yugabyte](/images/develop/multicloud/hybridcloud-move-testing-app.png)
+
+{{<tip>}}
+To replicate your production data onto your test cluster, see [Backup and Restore](../../../manage/backup-restore/)
+{{</tip>}}
+
+This move has multiple advantages.
+
+- You get to test the new public data center without affecting your production systems
+- Instead of spending time and money to set up a whole data center in `us-central`, you have saved money and time to add your presence in `us-central`.
+- Adding a new public cloud to your environment and moving unimportant workloads to it, opens up the possibility of running other important workloads in your on-prem data centers.
+
+### Resource-intensive workloads in the public cloud
+
+Once you have tested out the new public cloud you have added to your infrastructure, you could move important and resource-intensive applications like machine-learning logic/stream processing etc to the newly adopted public cloud.
+
+![Two On-Prem DCs and a Public Cloud with Yugabyte](/images/develop/multicloud/hybridcloud-move-important-app.png)
+
+The reason for moving resource-intensive apps to the public cloud is that it is easy to switch to powerful node instances that the public cloud provides. For example, [AWS Instance types](https://aws.amazon.com/ec2/instance-types/) and [GCP Instance Types](https://cloud.google.com/compute/docs/machine-resource).
+
+### Applications spread across the Hybrid cloud
+
+Once you have become comfortable with managing the newly added public cloud and are happy with its performance, it would be a good choice to spread your primary database across both the on-prem data center and the public cloud, like
+
+![Global Database on Hybrid Cloud](/images/develop/multicloud/hybridcloud-global-database.png)
+
+With this setup, you get a [Global Database](../../build-global-apps/global-database) that keeps your data consistent across your 2 on-prem data centers and the public cloud and enables access to your data for all the applications running all your data centers.
+
+## Learn more
+
+- [Replicate your data using backup and restore](../../../manage/backup-restore/)
+- [Maintain a backup cluster in another region using Active-Active Single Master design pattern](../../build-global-apps/active-active-single-master/)
