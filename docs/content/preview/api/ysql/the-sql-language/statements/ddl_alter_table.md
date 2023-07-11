@@ -200,7 +200,7 @@ Add the specified constraint to the table.
 
 #### [*alter_column_type*]
 
-Change the type of an existing column. Depending if data on disk is required to be changed, different semantics apply.
+Change the type of an existing column. If data on disk is required to change, a full table rewrite is needed.
 
 Indexes and simple table constraints involving the column will be automatically converted to use the new column type by reparsing the originally supplied expression. 
 
@@ -210,8 +210,8 @@ The optional `USING` clause specifies how to compute the new column value from t
 
 A `USING` clause must be provided if there is no implicit or assignment cast from old to new type.
 
-##### Online alter type
- 
+##### Alter type without table-rewrite
+
 If the change doesn't require data on disk to change, these semantics apply:
 
 - The action is online and concurrent DMLs to the table can go through.
@@ -223,13 +223,13 @@ CREATE TABLE test (id BIGSERIAL PRIMARY KEY, a VARCHAR(50));
 ALTER TABLE test ALTER COLUMN a TYPE VARCHAR(51);
 ```
 
-##### Offline alter type
+##### Alter type with table rewrite
 
-If the change requires data on disk to change, these semantics apply:
+If the change requires data on disk to change, a full table rewrite will be done and the following semantics apply:
 
 - This action is offline, so concurrent DMLs should not be performed while an alter column type operation is happening.
 - The action creates an entirely new table under the hood, and concurrent DMLs won’t be reflected in the new table which can lead to correctness issues.
-- This action is not compatible with: partitioned tables, tables with rules, and tables with CDC streams .
+- This action is not compatible with: partitioned tables, tables with rules, and tables with CDC streams.
 - If the operation fails, it is possible that the existing table is renamed in DocDB. This leads to no functional issues, but may reflect in the YB admin panel.
 - If the operation fails, a new dangling table may exist.
 - Altering the data type of a foreign key column is not supported.
