@@ -710,7 +710,7 @@ if [[ ${#compiler_args[@]} -gt 0 ]]; then
   cmd+=( "${compiler_args[@]}" )
 fi
 
-if "$has_yb_c_files" && [[ $PWD == $BUILD_ROOT/postgres_build/* ]]; then
+if [[ $has_yb_c_files == "true" && $PWD == $BUILD_ROOT/postgres_build/* ]]; then
   # Custom build flags for YB files inside of the PostgreSQL source tree. This re-enables some flags
   # that we had to disable by default in build_postgres.py.
   cmd+=( "-Werror=unused-function" )
@@ -932,7 +932,7 @@ if is_clang &&
     ! is_configure_mode_invocation &&
     [[ $output_file == *.o ]] &&
     is_linux; then
-  if ! "$analyzer_checkers_specified"; then
+  if [[ $analyzer_checkers_specified == "false" ]]; then
     log "No -analyzer-checker=... option found on compiler command line. It is possible that" \
         "cmake was run without the YB_ENABLE_STATIC_ANALYZER environment variable set to 1. " \
         "Command: $compiler_args_str"
