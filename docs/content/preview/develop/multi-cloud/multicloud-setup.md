@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-You can create a multi-cloud YugabyteDB universe spanning multiple geographic regions and cloud providers. Let us over the various steps involved in setting up such a multi-cloud universe using the `yugabyted` and also with the on-prem provider in [YugabyteDB Anywhere](../../../yugabyte-platform/create-deployments/create-universe-multi-cloud/).
+You can create a multi-cloud YugabyteDB universe spanning multiple geographic regions and cloud providers. The following sections describe how to set up a multi-cloud universe using the `yugabyted` utility and also with the on-prem provider in [YugabyteDB Anywhere](../../../yugabyte-platform/create-deployments/create-universe-multi-cloud/).
 
 ## Topology
 
@@ -41,7 +41,7 @@ All public cloud providers enable VPN tunneling across VPCs and their subnets to
 
 ## Set up the multi-cloud universe
 
-We are going to set up a 6-node universe with 2 nodes each in AWS,GCP and Azure.
+We are going to set up a 6-node universe with 2 nodes each in AWS, GCP, and Azure.
 
 ### First cloud - AWS
 
@@ -111,7 +111,7 @@ Note the following:
 
 You need to set up multi-cloud VPC peering through a VPN tunnel.
 
-YugabyteDB requires a particular [set of firewall ports](../../install-yugabyte-platform/prepare-on-prem-nodes/#ports) to be opened for cluster operations.
+YugabyteDB requires a particular [set of firewall ports](../../../yugabyte-platform/install-yugabyte-platform/prepare-on-prem-nodes/#ports) to be opened for cluster operations.
 
 You should use non-overlapping [Classless Inter-Domain Routing (CIDR)](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing#Further_reading) blocks for each subnet across different clouds.
 
