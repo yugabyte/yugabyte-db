@@ -754,6 +754,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   const TabletId split_parent_tablet_id_;
 
+  std::atomic<uint64_t> follower_last_update_received_time_ms_{0};
+
   DISALLOW_COPY_AND_ASSIGN(RaftConsensus);
 };
 
