@@ -170,7 +170,7 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
     browserStorage.sidebarCollapsed = newValue;
   };
 
-  const { data: alerts } = useAlerts();
+  const { data: alerts } = useAlerts(true);
 
   // const { data: runtimeConfig } = useRuntimeConfig();
  

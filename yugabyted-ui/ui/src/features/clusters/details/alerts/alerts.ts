@@ -1,5 +1,6 @@
-import { AXIOS_INSTANCE, useGetClusterAlertsQuery } from "@app/api/src";
+import { AXIOS_INSTANCE, AlertsResponse, useGetClusterAlertsQuery } from "@app/api/src";
 import { BadgeVariant } from "@app/components/YBBadge/YBBadge";
+import axios from "axios";
 import { getUnixTime } from "date-fns";
 import { subMinutes } from "date-fns";
 import { useEffect, useMemo, useState } from "react";
@@ -55,9 +56,50 @@ type CPUAlert = {
   cpu_75: boolean;
 };
 
-export const useCPUAlert = (nodeName: string = "") => {
+export const useFetchAlerts = (nodeHost: string | true = "") => {
+  const { data: upstreamAlerts, refetch: refetchUpstreamAlerts } = 
+    useGetClusterAlertsQuery({ query: { enabled: nodeHost === true }});
+
   const [refetch, setRefetch] = useState<boolean>(false);
-  const refetchCPUAlerts = () => setRefetch((prev) => !prev);
+  const refetchAlerts = () => setRefetch((prev) => !prev);
+
+  const [alerts, setAlerts] = useState<AlertsResponse>({
+    data: [],
+  });
+
+  useEffect(() => {
+    if (nodeHost === true) {
+      return;
+    } else if (!nodeHost) {
+      setAlerts({ data: [] });
+      return;
+    }
+
+    const fetchNodeAlerts = async () => {
+      const alerts = await axios.get<AlertsResponse>(`http://${nodeHost}:15433/api/alerts`)
+        .then(({ data }) => data)
+        .catch((err) => {
+          console.error(err);
+          return { data: [] } as AlertsResponse;
+        });
+
+      setAlerts(alerts);
+    };
+
+    fetchNodeAlerts();
+  }, [nodeHost, refetch]);
+
+
+
+  return {
+    data: nodeHost === true ? upstreamAlerts : alerts, 
+    refetch: nodeHost === true ? refetchUpstreamAlerts : refetchAlerts
+  };
+};
+
+export const useCPUAlert = (nodeHost: string = "") => {
+  const [refetch, setRefetch] = useState<boolean>(false);
+  const refetchAlerts = () => setRefetch((prev) => !prev);
 
   const [cpuAlerts, setCpuAlerts] = useState<CPUAlert>({
     cpu_90: false,
@@ -72,7 +114,7 @@ export const useCPUAlert = (nodeName: string = "") => {
         `/metrics?metrics=CPU_USAGE_SYSTEM%2CCPU_USAGE_USER` +
           `&start_time=${getUnixTime(interval.start)}&end_time=${getUnixTime(
             interval.end
-          )}&node_name=${nodeName}`
+          )}&node_name=${nodeHost}`
       )
         .then(({ data }) => {
           const cpuUsages = {
@@ -113,9 +155,9 @@ export const useCPUAlert = (nodeName: string = "") => {
     };
 
     computeCpuAlerts();
-  }, [nodeName, refetch]);
+  }, [nodeHost, refetch]);
 
-  return { data: cpuAlerts, refetch: refetchCPUAlerts };
+  return { data: cpuAlerts, refetch: refetchAlerts };
 };
 
 export type AlertNotification = {
@@ -125,8 +167,8 @@ export type AlertNotification = {
   status: BadgeVariant;
 };
 
-export const useAlerts = (nodeName: string = "") => {
-  const { data: upstreamAlerts, refetch: refetchUpstreamAlerts } = useGetClusterAlertsQuery();
+export const useAlerts = (nodeHost: string | true = "") => {
+  const { data: upstreamAlerts, refetch: refetchUpstreamAlerts } = useFetchAlerts(nodeHost);
 
   /* const upstreamAlerts = {
     data: [
@@ -141,7 +183,8 @@ export const useAlerts = (nodeName: string = "") => {
     ],
   }; */
 
-  const { data: cpuAlerts, refetch: refetchCPUAlerts } = useCPUAlert(nodeName);
+  const { data: cpuAlerts, refetch: refetchCPUAlerts } = 
+    useCPUAlert(nodeHost === true ? undefined : nodeHost);
 
   const refetch = () => {
     refetchUpstreamAlerts();
@@ -171,7 +214,6 @@ export const useAlerts = (nodeName: string = "") => {
     }
 
     const apiNotifications = upstreamNotificationData
-      .filter((notificationData) => !nodeName || (notificationData as any).node === nodeName)
       .map((notificationData) => ({
         key: notificationData.name,
         title:
@@ -182,7 +224,7 @@ export const useAlerts = (nodeName: string = "") => {
       }));
 
     return [...cpuNotifications, ...apiNotifications];
-  }, [upstreamNotificationData, cpuAlerts, nodeName]);
+  }, [upstreamNotificationData, cpuAlerts, nodeHost]);
 
   const [config] = useLocalStorage<AlertConfiguration[]>(alertConfigurationsKey);
 
