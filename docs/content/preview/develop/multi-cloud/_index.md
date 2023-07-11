@@ -1,7 +1,7 @@
 ---
 title: Build  Multicloud Applications
-headerTitle: Build  Multicloud Applications
-linkTitle: Build  Multicloud Applications
+headerTitle: Build Multicloud Applications
+linkTitle: Build multicloud applications
 description: Build applications that run on different clouds
 headcontent: Build applications that run on different clouds 
 image: /images/section_icons/develop/api-icon.png
@@ -9,7 +9,7 @@ menu:
   preview:
     identifier: build-multicloud-apps
     parent: develop
-    weight: 150
+    weight: 300
 type: indexpage
 ---
 
