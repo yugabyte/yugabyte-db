@@ -4534,8 +4534,8 @@ error hint:
 LOG:  available indexes for IndexScan(ti1):
 LOG:  pg_hint_plan:
 used hint:
-IndexScan(ti1 not_exist)
 not used hint:
+IndexScan(ti1 not_exist)
 duplication hint:
 error hint:
 
@@ -4543,8 +4543,8 @@ error hint:
 \! sql/maskout.sh results/ut-S.tmpout
   QUERY PLAN
 ----------------
- Seq Scan on ti1  (cost={inf}..{inf} rows=1 width=xxx)
-   Filter: (c1 = 100)
+ Index Scan using ti1_hash on ti1  (cost=xxx..xxx rows=1 width=xxx)
+   Index Cond: (c1 = 100)
 
 -- No. S-3-5-5
 \o results/ut-S.tmpout
@@ -4552,8 +4552,8 @@ error hint:
 LOG:  available indexes for BitmapScan(ti1):
 LOG:  pg_hint_plan:
 used hint:
-BitmapScan(ti1 not_exist)
 not used hint:
+BitmapScan(ti1 not_exist)
 duplication hint:
 error hint:
 
@@ -4561,8 +4561,8 @@ error hint:
 \! sql/maskout.sh results/ut-S.tmpout
   QUERY PLAN
 ----------------
- Seq Scan on ti1  (cost={inf}..{inf} rows=1 width=xxx)
-   Filter: (c1 = 100)
+ Index Scan using ti1_hash on ti1  (cost=xxx..xxx rows=1 width=xxx)
+   Index Cond: (c1 = 100)
 
 -- No. S-3-5-6
 \o results/ut-S.tmpout
@@ -4570,8 +4570,8 @@ error hint:
 LOG:  available indexes for IndexOnlyScan(ti1):
 LOG:  pg_hint_plan:
 used hint:
-IndexOnlyScan(ti1 not_exist)
 not used hint:
+IndexOnlyScan(ti1 not_exist)
 duplication hint:
 error hint:
 
@@ -4579,8 +4579,8 @@ error hint:
 \! sql/maskout.sh results/ut-S.tmpout
   QUERY PLAN
 ----------------
- Seq Scan on ti1  (cost={inf}..{inf} rows=1 width=xxx)
-   Filter: (c1 = 100)
+ Index Scan using ti1_hash on ti1  (cost=xxx..xxx rows=1 width=xxx)
+   Index Cond: (c1 = 100)
 
 -- No. S-3-5-7
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
@@ -5283,11 +5283,11 @@ error hint:
  Append  (cost=xxx..xxx rows=4 width=xxx)
    ->  Index Scan using p1_i2 on p1 p1_1  (cost=xxx..xxx rows=1 width=xxx)
          Index Cond: (c2 = 1)
-   ->  Seq Scan on p1c1 p1_2  (cost={inf}..{inf} rows=1 width=xxx)
+   ->  Seq Scan on p1c1 p1_2  (cost=xxx..xxx rows=1 width=xxx)
          Filter: (c2 = 1)
-   ->  Seq Scan on p1c2 p1_3  (cost={inf}..{inf} rows=1 width=xxx)
+   ->  Seq Scan on p1c2 p1_3  (cost=xxx..xxx rows=1 width=xxx)
          Filter: (c2 = 1)
-   ->  Seq Scan on p1c3 p1_4  (cost={inf}..{inf} rows=1 width=xxx)
+   ->  Seq Scan on p1c3 p1_4  (cost=xxx..xxx rows=1 width=xxx)
          Filter: (c2 = 1)
 
 -- No. S-3-10-5
@@ -5307,12 +5307,12 @@ error hint:
 \! sql/maskout.sh results/ut-S.tmpout
   QUERY PLAN
 ----------------
- Append  (cost={inf}..{inf} rows=3 width=xxx)
-   ->  Seq Scan on p2 p2_1  (cost={inf}..{inf} rows=1 width=xxx)
+ Append  (cost=xxx..xxx rows=3 width=xxx)
+   ->  Seq Scan on p2 p2_1  (cost=xxx..xxx rows=1 width=xxx)
          Filter: (c1 = 1)
    ->  Index Scan using p2c1_pkey on p2c1 p2_2  (cost=xxx..xxx rows=1 width=xxx)
          Index Cond: (c1 = 1)
-   ->  Seq Scan on p2c1c1 p2_3  (cost={inf}..{inf} rows=1 width=xxx)
+   ->  Seq Scan on p2c1c1 p2_3  (cost=xxx..xxx rows=1 width=xxx)
          Filter: (c1 = 1)
 
 ----
@@ -6010,15 +6010,15 @@ EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
 LOG:  available indexes for IndexScanRegexp(ti1):
 LOG:  pg_hint_plan:
 used hint:
-IndexScanRegexp(ti1 no.*_exist)
 not used hint:
+IndexScanRegexp(ti1 no.*_exist)
 duplication hint:
 error hint:
 
-     QUERY PLAN     
---------------------
- Seq Scan on ti1
-   Filter: (c2 = 1)
+           QUERY PLAN           
+--------------------------------
+ Index Scan using ti1_i4 on ti1
+   Index Cond: (c2 = 1)
 (2 rows)
 
 -- No. S-3-14-4
@@ -6070,8 +6070,8 @@ LOG:  available indexes for IndexScanRegexp(p1):
 LOG:  available indexes for IndexScanRegexp(p1c1):
 LOG:  pg_hint_plan:
 used hint:
-IndexScanRegexp(p1 no.*_exist)
 not used hint:
+IndexScanRegexp(p1 no.*_exist)
 duplication hint:
 error hint:
 
@@ -6110,15 +6110,15 @@ EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
 LOG:  available indexes for IndexScan(ti1):
 LOG:  pg_hint_plan:
 used hint:
-IndexScan(ti1 not_exist)
 not used hint:
+IndexScan(ti1 not_exist)
 duplication hint:
 error hint:
 
-     QUERY PLAN     
---------------------
- Seq Scan on ti1
-   Filter: (c2 = 1)
+           QUERY PLAN           
+--------------------------------
+ Index Scan using ti1_i4 on ti1
+   Index Cond: (c2 = 1)
 (2 rows)
 
 -- No. S-3-15-3
@@ -6161,15 +6161,15 @@ EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
 LOG:  available indexes for IndexScan(ti1):
 LOG:  pg_hint_plan:
 used hint:
-IndexScan(ti1 not_exist1 not_exist2)
 not used hint:
+IndexScan(ti1 not_exist1 not_exist2)
 duplication hint:
 error hint:
 
-     QUERY PLAN     
---------------------
- Seq Scan on ti1
-   Filter: (c2 = 1)
+           QUERY PLAN           
+--------------------------------
+ Index Scan using ti1_i4 on ti1
+   Index Cond: (c2 = 1)
 (2 rows)
 
 DELETE FROM pg_db_role_setting WHERE setrole = (SELECT oid FROM pg_roles WHERE rolname = current_user);

@@ -3375,15 +3375,25 @@ regexpeq(const char *s1, const char *s2)
 }
 
 
-/* Remove indexes instructed not to use by hint. */
-static void
+/*
+ * Filter out indexes instructed in the hint as not to be used.
+ *
+ * This routine is used in relationship with the scan method enforcement, and
+ * it returns true to allow the follow-up scan method to be enforced, and false
+ * to prevent the scan enforcement.  Currently, this code will not enforce
+ * the scan enforcement if *all* the indexes available to a relation have been
+ * discarded.
+ */
+static bool
 restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
-			   bool using_parent_hint)
+				 bool using_parent_hint)
 {
 	ListCell	   *cell;
 	StringInfoData	buf;
 	RangeTblEntry  *rte = root->simple_rte_array[rel->relid];
 	Oid				relationObjectId = rte->relid;
+	List		   *unused_indexes = NIL;
+	bool			restrict_result;
 
 	/*
 	 * We delete all the IndexOptInfo list and prevent you from being usable by
@@ -3396,18 +3406,20 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 		rel->indexlist = NIL;
 		hint->base.state = HINT_STATE_USED;
 
-		return;
+		return true;
 	}
 
 	/*
 	 * When a list of indexes is not specified, we just use all indexes.
 	 */
 	if (hint->indexnames == NIL)
-		return;
+		return true;
 
 	/*
 	 * Leaving only an specified index, we delete it from a IndexOptInfo list
-	 * other than it.
+	 * other than it.  However, if none of the specified indexes are available,
+	 * then we keep all the indexes and skip enforcing the scan method. i.e.,
+	 * we skip the scan hint altogether for the relation.
 	 */
 	if (debug_level > 0)
 		initStringInfo(&buf);
@@ -3601,10 +3613,41 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 		}
 
 		if (!use_index)
-			rel->indexlist = foreach_delete_current(rel->indexlist, cell);
+			unused_indexes = lappend_oid(unused_indexes, info->indexoid);
 
 		pfree(indexname);
 	}
+
+	/*
+	 * Update the list of indexes available to the IndexOptInfo based on what
+	 * has been discarded previously.
+	 *
+	 * If the hint has no matching indexes, skip applying the hinted scan
+	 * method.  For example if an IndexScan hint does not have any matching
+	 * indexes, we should not enforce an enable_indexscan.
+	 */
+	if (list_length(unused_indexes) < list_length(rel->indexlist))
+	{
+		foreach (cell, unused_indexes)
+		{
+			Oid			final_oid = lfirst_oid(cell);
+			ListCell   *l;
+
+			foreach (l, rel->indexlist)
+			{
+				IndexOptInfo	   *info = (IndexOptInfo *) lfirst(l);
+
+				if (info->indexoid == final_oid)
+					rel->indexlist = foreach_delete_current(rel->indexlist, l);
+			}
+		}
+
+		restrict_result = true;
+	}
+	else
+		restrict_result = false;
+
+	list_free(unused_indexes);
 
 	if (debug_level > 0)
 	{
@@ -3632,6 +3675,8 @@ restrict_indexes(PlannerInfo *root, ScanMethodHint *hint, RelOptInfo *rel,
 		pfree(buf.data);
 		pfree(rel_buf.data);
 	}
+
+	return restrict_result;
 }
 
 /*
@@ -3820,8 +3865,6 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 		{
 			ScanMethodHint * pshint = current_hint_state->parent_scan_hint;
 
-			pshint->base.state = HINT_STATE_USED;
-
 			/* Apply index mask in the same manner to the parent. */
 			if (pshint->indexnames)
 			{
@@ -3867,14 +3910,22 @@ setup_hint_enforcement(PlannerInfo *root, RelOptInfo *rel,
 	{
 		bool using_parent_hint =
 			(shint == current_hint_state->parent_scan_hint);
+		bool restrict_result;
 
 		ret |= HINT_BM_SCAN_METHOD;
 
-		/* Setup scan enforcement environment */
-		setup_scan_method_enforcement(shint, current_hint_state);
+		/* restrict unwanted indexes */
+		restrict_result = restrict_indexes(root, shint, rel, using_parent_hint);
 
-		/* restrict unwanted inexes */
-		restrict_indexes(root, shint, rel, using_parent_hint);
+		/*
+		 * Setup scan enforcement environment
+		 *
+		 * This has to be called after restrict_indexes(), that may decide to
+		 * skip the scan method enforcement depending on the index restrictions
+		 * applied.
+		 */
+		if (restrict_result)
+			setup_scan_method_enforcement(shint, current_hint_state);
 
 		if (debug_level > 1)
 		{

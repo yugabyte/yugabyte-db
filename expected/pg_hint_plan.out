@@ -5570,15 +5570,15 @@ EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
 LOG:  available indexes for IndexScan(t5):
 LOG:  pg_hint_plan:
 used hint:
-IndexScan(t5 no_exist)
 not used hint:
+IndexScan(t5 no_exist)
 duplication hint:
 error hint:
 
-     QUERY PLAN     
---------------------
- Seq Scan on t5
-   Filter: (id = 1)
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Index Scan using t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on t5
+   Index Cond: (id = 1)
 (2 rows)
 
 /*+IndexScan(t5 t5_id1 t5_id2)*/
@@ -5618,15 +5618,15 @@ EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
 LOG:  available indexes for IndexScan(t5):
 LOG:  pg_hint_plan:
 used hint:
-IndexScan(t5 no_exist5 no_exist2)
 not used hint:
+IndexScan(t5 no_exist5 no_exist2)
 duplication hint:
 error hint:
 
-     QUERY PLAN     
---------------------
- Seq Scan on t5
-   Filter: (id = 1)
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Index Scan using t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on t5
+   Index Cond: (id = 1)
 (2 rows)
 
 -- outer inner
@@ -6745,8 +6745,8 @@ LOG:  available indexes for IndexScan(p2_c3_c1):
 LOG:  available indexes for IndexScan(p2_c3_c2):
 LOG:  pg_hint_plan:
 used hint:
-IndexScan(p2 p2_val)
 not used hint:
+IndexScan(p2 p2_val)
 duplication hint:
 error hint:
 
@@ -6923,8 +6923,8 @@ LOG:  available indexes for IndexScan(p2_c1_c1):
 LOG:  available indexes for IndexScan(p2_c1_c2):
 LOG:  pg_hint_plan:
 used hint:
-IndexScan(p2 no_exist)
 not used hint:
+IndexScan(p2 no_exist)
 duplication hint:
 error hint:
 
@@ -7286,15 +7286,15 @@ EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 LOG:  available indexes for IndexScanRegexp(t5):
 LOG:  pg_hint_plan:
 used hint:
-IndexScanRegexp(t5 t5[^_].*)
 not used hint:
+IndexScanRegexp(t5 t5[^_].*)
 duplication hint:
 error hint:
 
-     QUERY PLAN     
---------------------
- Seq Scan on t5
-   Filter: (id = 1)
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Index Only Scan using t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on t5
+   Index Cond: (id = 1)
 (2 rows)
 
 /*+ IndexScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)*/
@@ -7302,15 +7302,15 @@ EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 LOG:  available indexes for IndexScanRegexp(t5):
 LOG:  pg_hint_plan:
 used hint:
-IndexScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)
 not used hint:
+IndexScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)
 duplication hint:
 error hint:
 
-     QUERY PLAN     
---------------------
- Seq Scan on t5
-   Filter: (id = 1)
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Index Only Scan using t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on t5
+   Index Cond: (id = 1)
 (2 rows)
 
 /*+ IndexScan(t5 t5_id[0-9].*)*/
@@ -7318,15 +7318,15 @@ EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 LOG:  available indexes for IndexScan(t5):
 LOG:  pg_hint_plan:
 used hint:
-IndexScan(t5 t5_id[0-9].*)
 not used hint:
+IndexScan(t5 t5_id[0-9].*)
 duplication hint:
 error hint:
 
-     QUERY PLAN     
---------------------
- Seq Scan on t5
-   Filter: (id = 1)
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Index Only Scan using t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on t5
+   Index Cond: (id = 1)
 (2 rows)
 
 /*+ IndexOnlyScanRegexp(t5 t5_[^i].*)*/
@@ -7366,15 +7366,15 @@ EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 LOG:  available indexes for IndexOnlyScanRegexp(t5):
 LOG:  pg_hint_plan:
 used hint:
-IndexOnlyScanRegexp(t5 t5[^_].*)
 not used hint:
+IndexOnlyScanRegexp(t5 t5[^_].*)
 duplication hint:
 error hint:
 
-     QUERY PLAN     
---------------------
- Seq Scan on t5
-   Filter: (id = 1)
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Index Only Scan using t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on t5
+   Index Cond: (id = 1)
 (2 rows)
 
 /*+ IndexOnlyScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)*/
@@ -7382,15 +7382,15 @@ EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 LOG:  available indexes for IndexOnlyScanRegexp(t5):
 LOG:  pg_hint_plan:
 used hint:
-IndexOnlyScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)
 not used hint:
+IndexOnlyScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)
 duplication hint:
 error hint:
 
-     QUERY PLAN     
---------------------
- Seq Scan on t5
-   Filter: (id = 1)
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Index Only Scan using t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on t5
+   Index Cond: (id = 1)
 (2 rows)
 
 /*+ IndexOnlyScan(t5 t5_id[0-9].*)*/
@@ -7398,15 +7398,15 @@ EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 LOG:  available indexes for IndexOnlyScan(t5):
 LOG:  pg_hint_plan:
 used hint:
-IndexOnlyScan(t5 t5_id[0-9].*)
 not used hint:
+IndexOnlyScan(t5 t5_id[0-9].*)
 duplication hint:
 error hint:
 
-     QUERY PLAN     
---------------------
- Seq Scan on t5
-   Filter: (id = 1)
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Index Only Scan using t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on t5
+   Index Cond: (id = 1)
 (2 rows)
 
 /*+ BitmapScanRegexp(t5 t5_[^i].*)*/
@@ -7450,15 +7450,15 @@ EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 LOG:  available indexes for BitmapScanRegexp(t5):
 LOG:  pg_hint_plan:
 used hint:
-BitmapScanRegexp(t5 t5[^_].*)
 not used hint:
+BitmapScanRegexp(t5 t5[^_].*)
 duplication hint:
 error hint:
 
-     QUERY PLAN     
---------------------
- Seq Scan on t5
-   Filter: (id = 1)
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Index Only Scan using t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on t5
+   Index Cond: (id = 1)
 (2 rows)
 
 /*+ BitmapScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)*/
@@ -7466,15 +7466,15 @@ EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 LOG:  available indexes for BitmapScanRegexp(t5):
 LOG:  pg_hint_plan:
 used hint:
-BitmapScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)
 not used hint:
+BitmapScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)
 duplication hint:
 error hint:
 
-     QUERY PLAN     
---------------------
- Seq Scan on t5
-   Filter: (id = 1)
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Index Only Scan using t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on t5
+   Index Cond: (id = 1)
 (2 rows)
 
 /*+ BitmapScan(t5 t5_id[0-9].*)*/
@@ -7482,15 +7482,15 @@ EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
 LOG:  available indexes for BitmapScan(t5):
 LOG:  pg_hint_plan:
 used hint:
-BitmapScan(t5 t5_id[0-9].*)
 not used hint:
+BitmapScan(t5 t5_id[0-9].*)
 duplication hint:
 error hint:
 
-     QUERY PLAN     
---------------------
- Seq Scan on t5
-   Filter: (id = 1)
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Index Only Scan using t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on t5
+   Index Cond: (id = 1)
 (2 rows)
 
 -- Inheritance
@@ -7613,8 +7613,8 @@ LOG:  available indexes for IndexScanRegexp(p1_c3_c1):
 LOG:  available indexes for IndexScanRegexp(p1_c3_c2):
 LOG:  pg_hint_plan:
 used hint:
-IndexScanRegexp(p1 p1[^_].*)
 not used hint:
+IndexScanRegexp(p1 p1[^_].*)
 duplication hint:
 error hint:
 
@@ -7654,8 +7654,8 @@ LOG:  available indexes for IndexScan(p1_c3_c1):
 LOG:  available indexes for IndexScan(p1_c3_c2):
 LOG:  pg_hint_plan:
 used hint:
-IndexScan(p1 p1_.*val2.*)
 not used hint:
+IndexScan(p1 p1_.*val2.*)
 duplication hint:
 error hint:
 
@@ -7777,8 +7777,8 @@ LOG:  available indexes for IndexOnlyScanRegexp(p1_c3_c1):
 LOG:  available indexes for IndexOnlyScanRegexp(p1_c3_c2):
 LOG:  pg_hint_plan:
 used hint:
-IndexOnlyScanRegexp(p1 p1[^_].*)
 not used hint:
+IndexOnlyScanRegexp(p1 p1[^_].*)
 duplication hint:
 error hint:
 
@@ -7818,8 +7818,8 @@ LOG:  available indexes for IndexOnlyScan(p1_c3_c1):
 LOG:  available indexes for IndexOnlyScan(p1_c3_c2):
 LOG:  pg_hint_plan:
 used hint:
-IndexOnlyScan(p1 p1_.*val2.*)
 not used hint:
+IndexOnlyScan(p1 p1_.*val2.*)
 duplication hint:
 error hint:
 
@@ -7959,8 +7959,8 @@ LOG:  available indexes for BitmapScanRegexp(p1_c3_c1):
 LOG:  available indexes for BitmapScanRegexp(p1_c3_c2):
 LOG:  pg_hint_plan:
 used hint:
-BitmapScanRegexp(p1 p1[^_].*)
 not used hint:
+BitmapScanRegexp(p1 p1[^_].*)
 duplication hint:
 error hint:
 
@@ -8000,8 +8000,8 @@ LOG:  available indexes for BitmapScan(p1_c3_c1):
 LOG:  available indexes for BitmapScan(p1_c3_c2):
 LOG:  pg_hint_plan:
 used hint:
-BitmapScan(p1 p1_.*val2.*)
 not used hint:
+BitmapScan(p1 p1_.*val2.*)
 duplication hint:
 error hint:
 
