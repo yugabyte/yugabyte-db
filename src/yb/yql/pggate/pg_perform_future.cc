@@ -41,8 +41,12 @@ Status PatchStatus(const Status& status, const PgObjectIds& relations) {
 } // namespace
 
 PerformFuture::PerformFuture(
-    std::future<PerformResult> future, PgSession* session, PgObjectIds&& relations)
-    : future_(std::move(future)), session_(session), relations_(std::move(relations)) {
+    std::future<PerformResult> future, PgSession* session, PgObjectIds&& relations,
+    util::WaitStateCode wait_event)
+    : future_(std::move(future)),
+      session_(session),
+      relations_(std::move(relations)),
+      wait_event_(wait_event) {
 }
 
 PerformFuture::~PerformFuture() {
@@ -62,19 +66,17 @@ bool PerformFuture::Ready() const {
   return Valid() && future_.wait_for(0ms) == std::future_status::ready;
 }
 
-void PerformFuture::SignalWait(util::WaitStateCode wait_event) {
-  if (session_) {
-    session_->setWaitEventInfo(wait_event);
-  }
-}
-
 Result<PerformFuture::Data> PerformFuture::Get() {
   // Make sure Valid method will return false before thread will be blocked on call future.get()
   // This requirement is not necessary after fixing of #12884.
+  if (this->wait_event_ != util::WaitStateCode::Unused)
+    session_->setWaitEventInfo(this->wait_event_);
   auto future = std::move(future_);
   auto result = future.get();
   RETURN_NOT_OK(PatchStatus(result.status, relations_));
   session_->TrySetCatalogReadPoint(result.catalog_read_time);
+  if (this->wait_event_ != util::WaitStateCode::Unused)
+    session_->setWaitEventInfo(util::WaitStateCode::Unused);
   return Data{
       .response = std::move(result.response),
       .used_in_txn_limit = result.used_in_txn_limit};
