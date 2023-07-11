@@ -231,7 +231,7 @@ If the change requires data on disk to change, these semantics apply:
 - The action creates an entirely new table under the hood, and concurrent DMLs won’t be reflected in the new table which can lead to correctness issues.
 - This action is not compatible with: partitioned tables, tables with rules, and tables with CDC streams .
 - If the operation fails, it is possible that the existing table is renamed in DocDB. This leads to no functional issues, but may reflect in the YB admin panel.
-- If the operation fails, a new dangling table can continue to exist if DDL atomicity is not enabled.
+- If the operation fails, a new dangling table may exist.
 - Altering the data type of a foreign key column is not supported.
 
 Example:
