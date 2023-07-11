@@ -31,7 +31,9 @@ const initialStateFeatureInTest = {
   enableMKR: true,
   enableS3BackupProxy: false,
   enableRRGflags: true,
-  enableLDAPRoleMapping: true
+  enableLDAPRoleMapping: true,
+  enableNewRestoreModal: false,
+  enableEditDBSettings: false
 };
 
 const initialStateFeatureReleased = {
