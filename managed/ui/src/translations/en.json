@@ -567,6 +567,81 @@
         "info": "TLS connections using this CA Certificate will fail. Are you sure you want to delete your CA Certificate? ",
         "successMsg": "Certificate deleted successfully"
       }
+    },
+    "newRestoreModal": {
+      "title" : "Restore Backup",
+      "restoreSuccess": "Success. Click <0>here</0> for task details",
+      "allKeyspaces": "All Keyspaces",
+      "preparingRestore": "Preparing Restore...",
+      "backupInfoBanner": {
+        "backupSource": "Backup source (universe name)",
+        "createdAt": "Created at",
+        "numberOfKeyspace": "Number of Keyspaces",
+        "numberOfDatabase": "Number of Databases"
+      },
+      "prefetch": {
+        "loadingText": "Fetching Incremental Backups..."
+      },
+      "generalSettings": {
+        "restore": "Restore",
+        "next": "Next",
+        "universeSelection": {
+          "title": "Select target",
+          "selectTargetUniverse": "Select target universe",
+          "selectKMSConfig": "KMS Configuration",
+          "kmsConfigHelpText": "<b>Note!</b> For a successful restore, the KMS configuration used for restore should be the same KMS configuration used during backup creation.",
+          "validationMessages": {
+            "ybcNotEnabled" : "Cannot restore ybc backup to non-ybc universe"
+          }
+        },
+        "selectKeyspaceForm":{
+          "title": "Select Keyspace",
+          "selectKeyspace": "Select the keyspace you want to restore",
+          "optional": "(Optional)",
+          "restoreKeyspace": "Rename keyspace/s before restoring {{Optional}}",
+          "forceRenameHelpText": "<b>Note!</b> Renaming is required since the selected target universe contains keyspaces with identical names. You will be able to do this in the next step."
+        },
+        "tablesSelect": {
+          "title": "Select tables",
+          "selectAllTables": "Select all tables in this keyspace",
+          "selectSubsetOfTables": "Select a subset of tables"
+        },
+        "parallelThreads": {
+          "label": "Parallel threads (Optional)"
+        }
+      },
+      "selectTables": {
+        "title": "Select tables you want to restore",
+        "searchTableName": "Search table name",
+        "viewFilter": {
+          "viewAll" : "View All",
+          "viewSelected": "View Selected"
+        },
+        "tablesCount": "{{count}} tables",
+        "validationMessages": {
+          "minimumTables": "Atleast one table should be selected"
+        },
+        "table": "Table"
+      },
+      "renameKeyspaces": {
+        "title": "Rename keyspace/s before restoring  (Optional)",
+        "currenyKeyspacename": "Current keyspace name",
+        "assignNewName": "Assign new name",
+        "addNewName": "Add new name",
+        "validationMessages": {
+          "keyspacesAlreadyExists": "Keyspace already exists in the target Universe",
+          "duplicateKeyspaceName": "Duplicate keyspace name given",
+          "invalidKeyspaceName": "Invalid keyspace name"
+        },
+        "keyspace": "Keyspace",
+        "renamedTo": "Renamed To",
+        "loadingMsg": "Fetching keyspaces from target universe..."
+      },
+      "stepper": {
+        "generalSettings": "General Settings",
+        "selectTables": "Select Tables",
+        "renameKeyspaces": "Rename keyspace/s"
+      }
     }
   }
 }
