@@ -2028,6 +2028,13 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  public ListSnapshotRestorationsResponse listSnapshotRestorations(
+      UUID restorationUUID) throws Exception {
+    Deferred<ListSnapshotRestorationsResponse> d =
+      asyncClient.listSnapshotRestorations(restorationUUID);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
   public ListSnapshotsResponse listSnapshots(UUID snapshotUUID,
                                              boolean listDeletedSnapshots) throws Exception {
     Deferred<ListSnapshotsResponse> d =
