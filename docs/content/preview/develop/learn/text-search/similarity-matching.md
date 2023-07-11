@@ -18,9 +18,7 @@ Similarity matching works by determining how similar two different strings are. 
 
 ## Setup
 
-{{<warning>}}
-TODO: Will add cluster setup tabs here.
-{{</warning>}}
+{{<cluster-setup-tabs>}}
 
 Create the following table:
 

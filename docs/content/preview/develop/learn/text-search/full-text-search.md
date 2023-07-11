@@ -20,9 +20,7 @@ Let us look into how to use full-text search via some examples.
 
 ## Setup
 
-{{<warning>}}
-TODO: Will add cluster setup tabs here.
-{{</warning>}}
+{{<cluster-setup-tabs>}}
 
 Create the following `movies` table:
 

@@ -18,9 +18,7 @@ The `LIKE` operator is a basic pattern-matching operator that emulates wildcard-
 
 ## Setup
 
-{{<warning>}}
-TODO: Will add cluster setup tabs here.
-{{</warning>}}
+{{<cluster-setup-tabs>}}
 
 Create the following table:
 
