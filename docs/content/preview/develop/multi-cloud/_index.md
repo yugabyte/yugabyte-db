@@ -31,19 +31,21 @@ The main objective of adopting a multi-cloud strategy is to provide you with the
 - **Higher availability**: An outage of one cloud provider need not mean an application outage as you would be seamlessly redirected to another prepared cloud, ensuring uninterrupted operations.
 - **Closer to users**: Not all cloud providers may have data centers close to your users in different geographies. By choosing data centers from different cloud providers, you can provide a better experience to all your users.
 - **Data compliance**: Local data protection laws require data of their citizens to be placed in their country. One cloud provider may not have a data center in the regions you need, but another provider might.
-- **Flexibility**: There might be scenarios where you may not be able to use your current cloud provider and would have to use another provider in a specific geography. In such cases, being multicloud-ready would make this move simpler.
+- **Flexibility**: There might be scenarios where you may not be able to use your current cloud provider and would have to use another provider in a specific geography. In such cases, being multi-cloud ready would make this move simpler.
 
-## Building multicloud applications
+## Building multi-cloud applications
 
-While a multi-cloud approach offers numerous advantages, heightened management complexity and achieving consistent performance and reliability across multiple clouds present big challenges for organizations to overcome. 
+While a multi-cloud approach offers numerous advantages, heightened management complexity and achieving consistent performance and reliability across multiple clouds present big challenges for organizations to overcome.
 
 ### Setup
 
-YugabyteDB has been designed to address these challenges from day one. Multicloud management capabilities have been integrated directly into all the 3 product offerings - [YugabyteDB](../../), [Yugabyte Anywhere](../../yugabyte-platform/) and [Yugabyte Managed](../../yugabyte-cloud/). This integration provides comprehensive visibility of your database across all your cloud environments, allowing you to monitor costs and usage, implement consistent security controls and policies, and seamlessly manage workloads. To understand how you can set up YugabyteDB across different clouds see, [Multicloud setup](./multicloud-setup)
+YugabyteDB has been designed to address these challenges. Multi-cloud management capabilities have been integrated directly into the 3 product offerings - [YugabyteDB](../../), [Yugabyte Anywhere](../../yugabyte-platform/) and [Yugabyte Managed](../../yugabyte-cloud/). This integration provides comprehensive visibility of your database across all your cloud environments, allowing you to monitor costs and usage, implement consistent security controls and policies, and seamlessly manage workloads.
+
+To understand how you can set up YugabyteDB across different clouds see, [Multi-cloud setup](./multicloud-setup).
 
 ### Deploy
 
-Once you have set up your multicloud, you need to choose a good design pattern for your applications as per the needs of your organization. Depending your needs for Availability & Data Access, we define several patterns for you to choose from. See [Global applications](../build-global-apps/) for more info.
+After you set up your multi-cloud, you need to choose a suitable design pattern for your applications as per the needs of your organization. You can choose a design pattern depending on your needs for availability and data access. See [Global applications](../build-global-apps/) for more details.
 
 ## Hybrid cloud
 
@@ -57,7 +59,7 @@ To understand how you can set up YugabyteDB in a hybrid cloud environment see [H
 
 Depending on the needs of your application or your organization, you might want to migrate from one cloud provider to another, or from your on-prem data center to a public cloud. This could become a daunting task, given the differences between various cloud providers.
 
-YugabyteDB offers simple patterns to make this migration seamless. You could set up two separate universes and replicate from the old data center onto the new one. Or you could set up a [Global database](../build-global-apps/global-database) across all your data centers and then configure the database to use just a specific data center using data placement policies. For more details, see [Multi-cloud migration](./migration)
+YugabyteDB offers basic patterns to make this migration seamless. You can set up two separate universes and replicate from the old data center onto the new one. Or you can set up a [Global database](../build-global-apps/global-database) across all your data centers and then configure the database to use just a specific data center using data placement policies. For more details, see [Multi-cloud migration](./multicloud-migration).
 
 ## Learn more
 
@@ -81,10 +83,10 @@ YugabyteDB offers simple patterns to make this migration seamless. You could set
     icon="fa-brands fa-searchengin"
     href="./hybrid-cloud">}}
 
-{{<index/item
+<!-- {{<index/item
     title="Bank of Anthos"
     body="Full fledged example of a Banking application using YugabyteDB on a multi-cloud setup."
     icon="fa-solid fa-music"
-    href="https://github.com/yugabyte/bank-of-anthos">}}
+    href="https://github.com/yugabyte/bank-of-anthos">}} -->
 
 {{</index/block>}}

@@ -16,7 +16,7 @@ You can create a multi-cloud YugabyteDB universe spanning multiple geographic re
 
 ## Topology
 
-For illustration, let us set up a 6-node universe across AWS-`us-west`, Google Cloud Provider-`us-central`, and Microsoft Azure- `us-east`.
+For illustration, you can set up a 6-node universe across AWS-`us-west`, Google Cloud Provider-`us-central`, and Microsoft Azure- `us-east`.
 
 ![Multi-cloud Yugabyte](/images/develop/multicloud/multicloud-topology.png)
 
@@ -91,7 +91,7 @@ for node in {aws,gcp,azu}-{1,2} ; do ./bin/yugabyted destroy --base_dir=/tmp/ydb
 {{<nav/panel name="anywhere">}}
 
 {{<note>}}
-For detailed instructions on how to Multicloud in YBAnywhere, see [Create a multi-cloud universe](../../../yugabyte-platform/create-deployments/create-universe-multi-cloud/)
+For detailed instructions on how to setup a Multi-cloud universe in YB Anywhere, see [Create a multi-cloud universe](../../../yugabyte-platform/create-deployments/create-universe-multi-cloud/).
 {{</note>}}
 
 <!-- END: YBA cluster setup instructions -->
@@ -99,17 +99,17 @@ For detailed instructions on how to Multicloud in YBAnywhere, see [Create a mult
 {{</nav/panels>}}
 <!-- end: nav tabs -->
 
-## Multicloud application
+## Multi-cloud application
 
 ### Scenario
 
-Let us say that you have retail applications that do transactions and want it to be deployed closer your users who are in the `east` and `west` regions of the US. Both applications need fraud detection which needs to be fast.
+Suppose that you have retail applications that do transactions and want it to be deployed closer to users who are in the `east` and `west` regions of the US. Both applications need fraud detection which needs to be fast.
 
 ### Deployment
 
-You can choose from a list of [design patterns for global applications](../build-global-apps/) for designing your multicloud applications. Here we show you a simple setup.
+You can choose from a list of [design patterns for global applications](../build-global-apps/) for designing your multi-cloud applications using the following setup.
 
-As you want your retail application be closer your users, you have to deploy them in the data centers at AWS-`us-west` and AZU-`us-east`. As both systems would need a fast fraud detection, and as the regions are far apart, you can opt to deploy your fraud detection infrastructure in `GCP` like this:
+As you want your retail applications to be closer to your users, you have to deploy them in the data centers at AWS-`us-west` and AZU-`us-east`. As both systems would need a fast fraud detection, and as the regions are far apart, you can opt to deploy your fraud detection infrastructure in `GCP` as follows:
 
 ![Central fraud detection](/images/develop/multicloud/multicloud-fraud-detection.png)
 
