@@ -846,6 +846,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return external_txn_intents_state_.get();
   }
 
+  // The returned SchemaPackingProvider lives only as long as this.
   docdb::SchemaPackingProvider& GetSchemaPackingProvider();
 
   // 1. Pauses new read/write operations that block RocksDB shutdown and wait for all of those that
