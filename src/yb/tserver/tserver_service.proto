@@ -38,6 +38,7 @@ option java_package = "org.yb.tserver";
 import "yb/common/common.proto";
 import "yb/common/common_types.proto";
 import "yb/common/transaction.proto";
+import "yb/common/wire_protocol.proto";
 import "yb/tablet/tablet_types.proto";
 import "yb/tablet/operations.proto";
 import "yb/tserver/tserver.proto";
@@ -228,6 +229,31 @@ message GetTransactionStatusResponsePB {
   repeated fixed64 coordinator_safe_time = 6;
 
   repeated SubtxnSetPB aborted_subtxn_set = 7;
+
+  // Status containing deadlock info if the transaction was aborted due to deadlock. Else, it is
+  // set to Status::OK().
+  repeated AppStatusPB deadlock_reason = 8;
+}
+
+message GetOldTransactionsRequestPB {
+  optional bytes tablet_id = 1;
+  optional uint32 min_txn_age_ms = 2;
+  optional uint32 max_num_txns = 3;
+  optional fixed64 propagated_hybrid_time = 4;
+}
+
+message GetOldTransactionsResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+
+  message OldTransactionMetadataPB {
+    optional bytes transaction_id = 1;
+    repeated bytes tablets = 2;
+    optional SubtxnSetPB aborted_subtxn_set = 3;
+  }
+  repeated OldTransactionMetadataPB txn = 2;
+
+  optional fixed64 propagated_hybrid_time = 3;
 }
 
 message GetOldTransactionsRequestPB {
