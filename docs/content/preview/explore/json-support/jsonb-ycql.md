@@ -38,7 +38,7 @@ JSON data types are for storing JSON (JavaScript Object Notation) data, as speci
 
 JSON functionality in YCQL is **a subset** of the [JSON functionality in PostgreSQL](https://www.postgresql.org/docs/11/datatype-json.html).
 
-YCQL supports the JSONB data type.  JSONB datatype stores JSON data in binary format. JSONB datatype does not preserve white space, does not preserve the order of object keys, and does not keep duplicate object keys. If duplicate keys are specified in the input, only the last value is kept.
+YCQL supports the JSONB data type. JSONB stores JSON data in binary format. JSONB does not preserve white space, does not preserve the order of object keys, and does not keep duplicate object keys. If duplicate keys are specified in the input, only the last value is kept.
 
 The sections below walks you through different operations on JSONB column with some examples.
 
