@@ -225,7 +225,7 @@ To control automatic tablet splitting, use the `yb-master` [`--enable_automatic_
 
 {{< note title="Note" >}}
 
-Newly-created tables with [range sharding](../../../architecture/docdb-sharding/sharding/#range-sharding) always have one tablet _per table_ unless table partitioning is specified explicitly during table creation.
+Newly-created tables with [range sharding](../../../architecture/docdb-sharding/sharding/#range-sharding) always have one tablet _per cluster_ unless table partitioning is specified explicitly during table creation.
 
 {{< /note >}}
 
