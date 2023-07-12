@@ -13,27 +13,27 @@
 
 
 // eslint-disable-next-line no-duplicate-imports
-import type { Gflag } from './Gflag';
+import type { TableReplicationInfo } from './TableReplicationInfo';
 
 
 /**
- * Gflags Info
+ * 
  * @export
- * @interface GflagsInfo
+ * @interface TableInfoTableReplicationInfo
  */
-export interface GflagsInfo  {
+export interface TableInfoTableReplicationInfo  {
   /**
    * 
-   * @type {Gflag[]}
-   * @memberof GflagsInfo
+   * @type {TableReplicationInfo}
+   * @memberof TableInfoTableReplicationInfo
    */
-  master_flags: Gflag[];
+  live_replicas?: TableReplicationInfo;
   /**
    * 
-   * @type {Gflag[]}
-   * @memberof GflagsInfo
+   * @type {TableReplicationInfo[]}
+   * @memberof TableInfoTableReplicationInfo
    */
-  tserver_flags: Gflag[];
+  read_replicas?: TableReplicationInfo[];
 }
 
 

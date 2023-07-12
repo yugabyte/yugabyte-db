@@ -19,6 +19,8 @@ import type { AxiosInstance } from 'axios';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import type {
+  ActivitiesResponse,
+  AlertsResponse,
   ApiError,
   ClusterNodesResponse,
   ClusterTableListResponse,
@@ -29,9 +31,13 @@ import type {
   LiveQueryResponseSchema,
   MetricResponse,
   SlowQueryResponseSchema,
+  TableInfo,
   VersionInfo,
 } from '../models';
 
+export interface GetClusterActivitiesForQuery {
+  activities: string;
+}
 export interface GetClusterMetricForQuery {
   metrics: string;
   node_name?: string;
@@ -50,6 +56,165 @@ export interface GetGflagsForQuery {
 export interface GetLiveQueriesForQuery {
   api?: GetLiveQueriesApiEnum;
 }
+export interface GetTableInfoForQuery {
+  id: string;
+}
+
+/**
+ * Get activities data for a Yugabyte cluster
+ * Get a activities data for a cluster
+ */
+
+export const getClusterActivitiesAxiosRequest = (
+  requestParameters: GetClusterActivitiesForQuery,
+  customAxiosInstance?: AxiosInstance
+) => {
+  return Axios<ActivitiesResponse>(
+    {
+      url: '/activities',
+      method: 'GET',
+      params: {
+        activities: requestParameters['activities'],
+      }
+    },
+    customAxiosInstance
+  );
+};
+
+export const getClusterActivitiesQueryKey = (
+  requestParametersQuery: GetClusterActivitiesForQuery,
+  pageParam = -1,
+  version = 1,
+) => [
+  `/v${version}/activities`,
+  pageParam,
+  ...(requestParametersQuery ? [requestParametersQuery] : [])
+];
+
+
+export const useGetClusterActivitiesInfiniteQuery = <T = ActivitiesResponse, Error = ApiError>(
+  params: GetClusterActivitiesForQuery,
+  options?: {
+    query?: UseInfiniteQueryOptions<ActivitiesResponse, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  pageParam = -1,
+  version = 1,
+) => {
+  const queryKey = getClusterActivitiesQueryKey(params, pageParam, version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useInfiniteQuery<ActivitiesResponse, Error, T>(
+    queryKey,
+    () => getClusterActivitiesAxiosRequest(params, customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+export const useGetClusterActivitiesQuery = <T = ActivitiesResponse, Error = ApiError>(
+  params: GetClusterActivitiesForQuery,
+  options?: {
+    query?: UseQueryOptions<ActivitiesResponse, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  version = 1,
+) => {
+  const queryKey = getClusterActivitiesQueryKey(params,  version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useQuery<ActivitiesResponse, Error, T>(
+    queryKey,
+    () => getClusterActivitiesAxiosRequest(params, customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+
+
+/**
+ * Get any alerts for the cluster
+ * Get any alerts for the cluster
+ */
+
+export const getClusterAlertsAxiosRequest = (
+  customAxiosInstance?: AxiosInstance
+) => {
+  return Axios<AlertsResponse>(
+    {
+      url: '/alerts',
+      method: 'GET',
+      params: {
+      }
+    },
+    customAxiosInstance
+  );
+};
+
+export const getClusterAlertsQueryKey = (
+  pageParam = -1,
+  version = 1,
+) => [
+  `/v${version}/alerts`,
+  pageParam,
+];
+
+
+export const useGetClusterAlertsInfiniteQuery = <T = AlertsResponse, Error = ApiError>(
+  options?: {
+    query?: UseInfiniteQueryOptions<AlertsResponse, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  pageParam = -1,
+  version = 1,
+) => {
+  const queryKey = getClusterAlertsQueryKey(pageParam, version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useInfiniteQuery<AlertsResponse, Error, T>(
+    queryKey,
+    () => getClusterAlertsAxiosRequest(customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+export const useGetClusterAlertsQuery = <T = AlertsResponse, Error = ApiError>(
+  options?: {
+    query?: UseQueryOptions<AlertsResponse, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  version = 1,
+) => {
+  const queryKey = getClusterAlertsQueryKey(version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useQuery<AlertsResponse, Error, T>(
+    queryKey,
+    () => getClusterAlertsAxiosRequest(customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+
 
 /**
  * Get health information about the cluster
@@ -745,6 +910,87 @@ export const useGetSlowQueriesQuery = <T = SlowQueryResponseSchema, Error = ApiE
   const query = useQuery<SlowQueryResponseSchema, Error, T>(
     queryKey,
     () => getSlowQueriesAxiosRequest(customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+
+
+/**
+ * Get info on a single table, given table uuid
+ * Get info on a single table, given table uuid
+ */
+
+export const getTableInfoAxiosRequest = (
+  requestParameters: GetTableInfoForQuery,
+  customAxiosInstance?: AxiosInstance
+) => {
+  return Axios<TableInfo>(
+    {
+      url: '/table',
+      method: 'GET',
+      params: {
+        id: requestParameters['id'],
+      }
+    },
+    customAxiosInstance
+  );
+};
+
+export const getTableInfoQueryKey = (
+  requestParametersQuery: GetTableInfoForQuery,
+  pageParam = -1,
+  version = 1,
+) => [
+  `/v${version}/table`,
+  pageParam,
+  ...(requestParametersQuery ? [requestParametersQuery] : [])
+];
+
+
+export const useGetTableInfoInfiniteQuery = <T = TableInfo, Error = ApiError>(
+  params: GetTableInfoForQuery,
+  options?: {
+    query?: UseInfiniteQueryOptions<TableInfo, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  pageParam = -1,
+  version = 1,
+) => {
+  const queryKey = getTableInfoQueryKey(params, pageParam, version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useInfiniteQuery<TableInfo, Error, T>(
+    queryKey,
+    () => getTableInfoAxiosRequest(params, customAxiosInstance),
+    queryOptions
+  );
+
+  return {
+    queryKey,
+    ...query
+  };
+};
+
+export const useGetTableInfoQuery = <T = TableInfo, Error = ApiError>(
+  params: GetTableInfoForQuery,
+  options?: {
+    query?: UseQueryOptions<TableInfo, Error, T>;
+    customAxiosInstance?: AxiosInstance;
+  },
+  version = 1,
+) => {
+  const queryKey = getTableInfoQueryKey(params,  version);
+  const { query: queryOptions, customAxiosInstance } = options ?? {};
+
+  const query = useQuery<TableInfo, Error, T>(
+    queryKey,
+    () => getTableInfoAxiosRequest(params, customAxiosInstance),
     queryOptions
   );
 

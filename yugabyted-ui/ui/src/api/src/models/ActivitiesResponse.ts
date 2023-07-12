@@ -13,27 +13,21 @@
 
 
 // eslint-disable-next-line no-duplicate-imports
-import type { Gflag } from './Gflag';
+import type { ActivityData } from './ActivityData';
 
 
 /**
- * Gflags Info
+ * 
  * @export
- * @interface GflagsInfo
+ * @interface ActivitiesResponse
  */
-export interface GflagsInfo  {
+export interface ActivitiesResponse  {
   /**
    * 
-   * @type {Gflag[]}
-   * @memberof GflagsInfo
+   * @type {ActivityData[]}
+   * @memberof ActivitiesResponse
    */
-  master_flags: Gflag[];
-  /**
-   * 
-   * @type {Gflag[]}
-   * @memberof GflagsInfo
-   */
-  tserver_flags: Gflag[];
+  data: ActivityData[];
 }
 
 

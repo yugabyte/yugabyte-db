@@ -12,28 +12,32 @@
  */
 
 
-// eslint-disable-next-line no-duplicate-imports
-import type { Gflag } from './Gflag';
 
 
 /**
- * Gflags Info
+ * Placement Cloud Info
  * @export
- * @interface GflagsInfo
+ * @interface PlacementCloudInfo
  */
-export interface GflagsInfo  {
+export interface PlacementCloudInfo  {
   /**
    * 
-   * @type {Gflag[]}
-   * @memberof GflagsInfo
+   * @type {string}
+   * @memberof PlacementCloudInfo
    */
-  master_flags: Gflag[];
+  placement_cloud?: string;
   /**
    * 
-   * @type {Gflag[]}
-   * @memberof GflagsInfo
+   * @type {string}
+   * @memberof PlacementCloudInfo
    */
-  tserver_flags: Gflag[];
+  placement_region?: string;
+  /**
+   * 
+   * @type {string}
+   * @memberof PlacementCloudInfo
+   */
+  placement_zone?: string;
 }
 
 

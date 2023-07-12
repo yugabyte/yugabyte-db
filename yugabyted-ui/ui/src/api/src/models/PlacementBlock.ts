@@ -13,27 +13,27 @@
 
 
 // eslint-disable-next-line no-duplicate-imports
-import type { Gflag } from './Gflag';
+import type { PlacementCloudInfo } from './PlacementCloudInfo';
 
 
 /**
- * Gflags Info
+ * Placement Block
  * @export
- * @interface GflagsInfo
+ * @interface PlacementBlock
  */
-export interface GflagsInfo  {
+export interface PlacementBlock  {
   /**
    * 
-   * @type {Gflag[]}
-   * @memberof GflagsInfo
+   * @type {PlacementCloudInfo}
+   * @memberof PlacementBlock
    */
-  master_flags: Gflag[];
+  cloud_info?: PlacementCloudInfo;
   /**
    * 
-   * @type {Gflag[]}
-   * @memberof GflagsInfo
+   * @type {number}
+   * @memberof PlacementBlock
    */
-  tserver_flags: Gflag[];
+  min_num_replicas?: number;
 }
 
 

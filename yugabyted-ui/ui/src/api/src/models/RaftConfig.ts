@@ -12,28 +12,32 @@
  */
 
 
-// eslint-disable-next-line no-duplicate-imports
-import type { Gflag } from './Gflag';
 
 
 /**
- * Gflags Info
+ * Raft Config
  * @export
- * @interface GflagsInfo
+ * @interface RaftConfig
  */
-export interface GflagsInfo  {
+export interface RaftConfig  {
   /**
    * 
-   * @type {Gflag[]}
-   * @memberof GflagsInfo
+   * @type {string}
+   * @memberof RaftConfig
    */
-  master_flags: Gflag[];
+  uuid?: string;
   /**
    * 
-   * @type {Gflag[]}
-   * @memberof GflagsInfo
+   * @type {string}
+   * @memberof RaftConfig
    */
-  tserver_flags: Gflag[];
+  role?: string;
+  /**
+   * 
+   * @type {string}
+   * @memberof RaftConfig
+   */
+  location?: string;
 }
 
 
