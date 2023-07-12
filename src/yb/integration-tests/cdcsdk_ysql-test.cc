@@ -8014,7 +8014,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestFromOpIdInGetChangesResponse)
     ASSERT_EQ(record.from_op_id().index(), 0);
   }
 
-  const auto& prev_checkpoint = get_changes_resp.cdc_sdk_checkpoint();
+  const auto prev_checkpoint = get_changes_resp.cdc_sdk_checkpoint();
   get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &prev_checkpoint));
   for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
     auto record = get_changes_resp.cdc_sdk_proto_records(i);
