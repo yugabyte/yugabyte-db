@@ -147,7 +147,13 @@ public class QueryHelper {
                     RunQueryFormData ysqlQuery = new RunQueryFormData();
                     ysqlQuery.query = slowQuerySqlWithLimit(config, universe);
                     ysqlQuery.db_name = "postgres";
-                    return ysqlQueryExecutor.executeQueryInNodeShell(universe, ysqlQuery, node);
+                    return ysqlQueryExecutor.executeQueryInNodeShell(
+                        universe,
+                        ysqlQuery,
+                        node,
+                        runtimeConfigFactory
+                            .forUniverse(universe)
+                            .getLong("yb.query_stats.slow_queries.timeout_secs"));
                   };
 
               Future<JsonNode> future = threadPool.submit(callable);

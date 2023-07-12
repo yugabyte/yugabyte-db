@@ -4,6 +4,7 @@ import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
@@ -61,6 +62,7 @@ public class YsqlQueryExecutorTest extends WithApplication {
     RuntimeConfigFactory mockRuntimeConfigFactory = mock(RuntimeConfigFactory.class);
     when(mockRuntimeConfigFactory.forUniverse(any())).thenReturn(mockRuntimeConfig);
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+    when(mockRuntimeConfig.getLong("yb.ysql_timeout_secs")).thenReturn(180L);
     YsqlQueryExecutor ysqlQueryExecutor =
         spy(new YsqlQueryExecutor(mockRuntimeConfigFactory, mockNodeUniverseManager));
     Universe universe = mock(Universe.class);
@@ -79,7 +81,7 @@ public class YsqlQueryExecutorTest extends WithApplication {
     ShellResponse failureResponse = new ShellResponse();
     failureResponse.code = 1;
     failureResponse.message = "Failed!";
-    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any(), anyLong()))
         .thenReturn(errorCode == 400 ? failureResponse : new ShellResponse());
     DatabaseUserFormData dbForm = new DatabaseUserFormData();
     dbForm.dbName = "yugabyte";
