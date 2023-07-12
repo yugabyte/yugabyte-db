@@ -20,6 +20,16 @@ On this page:
 
 ## Change log
 
+### July 12, 2023
+
+**New Features**
+
+- New release tracks for dedicated clusters. You can now choose from different tracks in the [stable release series](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) when creating a dedicated cluster. You can choose one of the following tracks:
+  - Innovation, which has more frequent updates for faster access to new features. Currently features YugabyteDB version 2.16.5.0.
+  - Production, which has a slower update cadence and features only select stable release builds. Currently features YugabyteDB version 2.14.10.2.
+
+  After a cluster is created, it is upgraded with releases from the release track selected at creation. Sandbox clusters continue to use the Preview release track.
+
 ### July 3, 2023
 
 **Database**
