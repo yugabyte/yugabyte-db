@@ -152,7 +152,6 @@ static List *ExpandAllTables(ParseState *pstate, int location)
     foreach(l, pstate->p_namespace)
     {
         ParseNamespaceItem *nsitem = (ParseNamespaceItem *) lfirst(l);
-        RangeTblEntry *rte = nsitem->p_rte;
 
         /* Ignore table-only items */
         if (!nsitem->p_cols_visible)
@@ -162,10 +161,9 @@ static List *ExpandAllTables(ParseState *pstate, int location)
         /* Remember we found a p_cols_visible item */
         found_table = true;
 
-        target = list_concat(target, expand_rel_attrs(pstate, rte,
-                                                      RTERangeTablePosn(pstate,
-                                                                        rte,
-                                                                        NULL),
+        target = list_concat(target, expand_rel_attrs(pstate,
+                                                      nsitem->p_rte,
+                                                      nsitem->p_rtindex,
                                                       0, location));
     }
 

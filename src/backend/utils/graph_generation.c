@@ -69,7 +69,6 @@ int64 get_nextval_internal(graph_cache_data* graph_cache,
     return nextval_internal(obj_seq_id, true);
 }
 
-
 PG_FUNCTION_INFO_V1(create_complete_graph);
 
 /*

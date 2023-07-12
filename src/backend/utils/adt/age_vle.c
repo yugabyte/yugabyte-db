@@ -22,6 +22,7 @@
 #include "access/heapam.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
+#include "common/hashfn.h"
 #include "funcapi.h"
 #include "utils/lsyscache.h"
 

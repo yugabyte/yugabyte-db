@@ -133,3 +133,5 @@ src/backend/parser/cypher_parser.o: src/backend/parser/cypher_gram.c
 src/backend/parser/cypher_keywords.o: src/backend/parser/cypher_gram.c
 
 src/backend/parser/ag_scanner.c: FLEX_NO_BACKUP=yes
+
+installcheck: export LC_COLLATE=C

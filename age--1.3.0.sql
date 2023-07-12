@@ -74,6 +74,7 @@ CREATE UNIQUE INDEX ag_label_relation_index ON ag_label USING btree (relation);
 CREATE UNIQUE INDEX ag_label_seq_name_graph_index
 ON ag_label
 USING btree (seq_name, graph);
+
 --
 -- catalog lookup functions
 --
@@ -109,21 +110,22 @@ CREATE FUNCTION ag_catalog.create_elabel(graph_name name, label_name name)
     LANGUAGE c
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION ag_catalog.alter_graph(graph_name name, operation cstring, new_value name)
+CREATE FUNCTION ag_catalog.alter_graph(graph_name name, operation cstring,
+                                       new_value name)
 RETURNS void
 LANGUAGE c
 AS 'MODULE_PATHNAME';
 
 CREATE FUNCTION ag_catalog.drop_label(graph_name name, label_name name,
-                           force boolean = false)
+                                      force boolean = false)
 RETURNS void
 LANGUAGE c
 AS 'MODULE_PATHNAME';
 
 CREATE FUNCTION ag_catalog.load_labels_from_file(graph_name name,
-                                            label_name name,
-                                            file_path text,
-                                            id_field_exists bool default true)
+                                                 label_name name,
+                                                 file_path text,
+                                                 id_field_exists bool default true)
     RETURNS void
     LANGUAGE c
     AS 'MODULE_PATHNAME';
@@ -1388,7 +1390,6 @@ CREATE OPERATOR ^ (
   LEFTARG = agtype,
   RIGHTARG = agtype
 );
-
 
 CREATE FUNCTION ag_catalog.graphid_hash_cmp(graphid)
 RETURNS INTEGER
@@ -3086,7 +3087,6 @@ CREATE CAST (agtype AS graphid)
 WITH FUNCTION ag_catalog.agtype_to_graphid(agtype)
 AS IMPLICIT;
 
-
 --
 -- agtype - path
 --
@@ -3425,6 +3425,7 @@ AS 'MODULE_PATHNAME';
 --
 -- Scalar Functions
 --
+
 CREATE FUNCTION ag_catalog.age_id(agtype)
 RETURNS agtype
 LANGUAGE c
@@ -4109,7 +4110,6 @@ CALLED ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-
 -- function to create an AGTV_PATH from a VLE_path_container
 CREATE FUNCTION ag_catalog.age_materialize_vle_path(agtype)
 RETURNS agtype
@@ -4135,7 +4135,6 @@ STABLE
 RETURNS NULL ON NULL INPUT
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
-
 
 CREATE FUNCTION ag_catalog.age_match_two_vle_edges(agtype, agtype)
 RETURNS boolean
@@ -4204,7 +4203,9 @@ STABLE
 PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION ag_catalog.create_complete_graph(graph_name name, nodes int, edge_label name, node_label name = NULL)
+CREATE FUNCTION ag_catalog.create_complete_graph(graph_name name, nodes int,
+                                                 edge_label name,
+                                                 node_label name = NULL)
 RETURNS void
 LANGUAGE c
 CALLED ON NULL INPUT
@@ -4212,12 +4213,12 @@ PARALLEL SAFE
 AS 'MODULE_PATHNAME';
 
 CREATE FUNCTION ag_catalog.age_create_barbell_graph(graph_name name,
-                                                graph_size int,
-                                                bridge_size int,
-                                                node_label name = NULL,
-                                                node_properties agtype = NULL,
-                                                edge_label name = NULL,
-                                                edge_properties agtype = NULL)
+                                                    graph_size int,
+                                                    bridge_size int,
+                                                    node_label name = NULL,
+                                                    node_properties agtype = NULL,
+                                                    edge_label name = NULL,
+                                                    edge_properties agtype = NULL)
 RETURNS void
 LANGUAGE c
 CALLED ON NULL INPUT

@@ -480,6 +480,7 @@ static void fill_graph_cache_data(graph_cache_data *cache_data,
 {
     bool is_null;
     Datum value;
+    Name name;
 
     // ag_graph.id
     value = heap_getattr(tuple, Anum_ag_graph_oid, tuple_desc, &is_null);
@@ -488,7 +489,9 @@ static void fill_graph_cache_data(graph_cache_data *cache_data,
     // ag_graph.name
     value = heap_getattr(tuple, Anum_ag_graph_name, tuple_desc, &is_null);
     Assert(!is_null);
-    namecpy(&cache_data->name, DatumGetName(value));
+    name = DatumGetName(value);
+    Assert(name != NULL);
+    namestrcpy(&cache_data->name, name->data);
     // ag_graph.namespace
     value = heap_getattr(tuple, Anum_ag_graph_namespace, tuple_desc, &is_null);
     Assert(!is_null);
@@ -518,6 +521,12 @@ static void initialize_label_caches(void)
                            F_NAMEEQ);
     ag_cache_scan_key_init(&label_seq_name_graph_scan_keys[1], Anum_ag_label_graph,
                            F_OIDEQ);
+
+    // ag_label.seq_name, ag_label.graph
+    ag_cache_scan_key_init(&label_seq_name_graph_scan_keys[0],
+                           Anum_ag_label_seq_name, F_NAMEEQ);
+    ag_cache_scan_key_init(&label_seq_name_graph_scan_keys[1],
+                           Anum_ag_label_graph, F_OIDEQ);
 
     // ag_label.seq_name, ag_label.graph
     ag_cache_scan_key_init(&label_seq_name_graph_scan_keys[0],
@@ -928,7 +937,7 @@ static void *label_name_graph_cache_hash_search(Name name, Oid graph,
     label_name_graph_cache_key key;
 
     // initialize the hash key for label_name_graph_cache_hash
-    namecpy(&key.name, name);
+    namestrcpy(&key.name, name->data);
     key.graph = graph;
 
     return hash_search(label_name_graph_cache_hash, &key, action, found);
@@ -1161,11 +1170,14 @@ static void fill_label_cache_data(label_cache_data *cache_data,
 {
     bool is_null;
     Datum value;
+    Name name;
 
     // ag_label.name
     value = heap_getattr(tuple, Anum_ag_label_name, tuple_desc, &is_null);
     Assert(!is_null);
-    namecpy(&cache_data->name, DatumGetName(value));
+    name = DatumGetName(value);
+    Assert(name != NULL);
+    namestrcpy(&cache_data->name, name->data);
     // ag_label.graph
     value = heap_getattr(tuple, Anum_ag_label_graph, tuple_desc, &is_null);
     Assert(!is_null);

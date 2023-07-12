@@ -2964,15 +2964,19 @@ static agtype_value *execute_map_access_operator(agtype *map,
     case AGTV_INTEGER:
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("AGTV_INTEGER is not a valid key type")));
+        break;
     case AGTV_FLOAT:
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("AGTV_FLOAT is not a valid key type")));
+        break;
     case AGTV_NUMERIC:
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("AGTV_NUMERIC is not a valid key type")));
+        break;
     case AGTV_BOOL:
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("AGTV_BOOL is not a valid key type")));
+        break;
     case AGTV_STRING:
         key_str = key_value->val.string.val;
         key_len = key_value->val.string.len;
@@ -5894,7 +5898,7 @@ static agtype_iterator *get_next_list_element(agtype_iterator *it,
 
     /* the next token should be an element or the end of the array */
     itok = agtype_iterator_next(&it, &tmp, true);
-    Assert(itok == WAGT_ELEM || WAGT_END_ARRAY);
+    Assert(itok == WAGT_ELEM || itok == WAGT_END_ARRAY);
 
     /* if this is the end of the array return NULL */
     if (itok == WAGT_END_ARRAY) {
@@ -9719,7 +9723,7 @@ static agtype_iterator *get_next_object_key(agtype_iterator *it,
 
     /* the next token should be a key or the end of the object */
     itok = agtype_iterator_next(&it, &tmp, false);
-    Assert(itok == WAGT_KEY || WAGT_END_OBJECT);
+    Assert(itok == WAGT_KEY || itok == WAGT_END_OBJECT);
     /* if this is the end of the object return NULL */
     if (itok == WAGT_END_OBJECT)
     {

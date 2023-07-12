@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-
 	"github.com/antlr/antlr4/runtime/Go/antlr/v4"
 	"github.com/apache/age/drivers/golang/parser"
 )

@@ -2,10 +2,10 @@ name: Python Driver Tests
 
 on:
   push:
-    branches: [ "master", "PG12" ]
+    branches: [ "master", "PG13" ]
 
   pull_request:
-    branches: [ "master", "PG12" ]
+    branches: [ "master", "PG13" ]
 
 jobs:
   build:
@@ -23,14 +23,14 @@ jobs:
         if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
           if [[ "$GITHUB_REF" == "refs/heads/master" ]]; then
             echo "TAG=latest" >> $GITHUB_ENV
-          elif [[ "$GITHUB_REF" == "refs/heads/PG12" ]]; then
-            echo "TAG=PG12_latest" >> $GITHUB_ENV
+          elif [[ "$GITHUB_REF" == "refs/heads/PG13" ]]; then
+            echo "TAG=PG13_latest" >> $GITHUB_ENV
           fi
         elif [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
           if [[ "$GITHUB_BASE_REF" == "master" ]]; then
             echo "TAG=latest" >> $GITHUB_ENV
-          elif [[ "$GITHUB_BASE_REF" == "PG12" ]]; then
-            echo "TAG=PG12_latest" >> $GITHUB_ENV
+          elif [[ "$GITHUB_BASE_REF" == "PG13" ]]; then
+            echo "TAG=PG13_latest" >> $GITHUB_ENV
           fi
         fi
 

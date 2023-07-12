@@ -48,7 +48,6 @@ typedef struct PathHashStack
 static Datum make_text_key(char flag, const char *str, int len);
 static Datum make_scalar_key(const agtype_value *scalar_val, bool is_key);
 
-#define MAXINT8LEN        25
 
 /*
  *

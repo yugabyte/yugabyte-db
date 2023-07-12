@@ -42,7 +42,7 @@ static void object_access(ObjectAccessType access, Oid class_id, Oid object_id,
 void ag_ProcessUtility_hook(PlannedStmt *pstmt, const char *queryString,
                             ProcessUtilityContext context, ParamListInfo params,
                             QueryEnvironment *queryEnv, DestReceiver *dest,
-                            char *completionTag);
+                            QueryCompletion *qc);
 
 static bool is_age_drop(PlannedStmt *pstmt);
 static void drop_age_extension(DropStmt *stmt);
@@ -89,16 +89,16 @@ void process_utility_hook_fini(void)
 void ag_ProcessUtility_hook(PlannedStmt *pstmt, const char *queryString,
                              ProcessUtilityContext context, ParamListInfo params,
                              QueryEnvironment *queryEnv, DestReceiver *dest,
-                             char *completionTag)
+                             QueryCompletion *qc)
 {
     if (is_age_drop(pstmt))
         drop_age_extension((DropStmt *)pstmt->utilityStmt);
     else if (prev_process_utility_hook)
         (*prev_process_utility_hook) (pstmt, queryString, context, params,
-                                      queryEnv, dest, completionTag);
+                                      queryEnv, dest, qc);
     else
         standard_ProcessUtility(pstmt, queryString, context, params, queryEnv,
-                                dest, completionTag);
+                                dest, qc);
 }
 
 static void drop_age_extension(DropStmt *stmt)

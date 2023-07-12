@@ -2,32 +2,32 @@ name: Build / Regression
 
 on:
   push:
-    branches: [ 'master', 'PG12' ]
+    branches: [ 'master', 'PG13' ]
   pull_request:
-    branches: [ 'master', 'PG12' ]
+    branches: [ 'master', 'PG13' ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Get latest commit id of PostgreSQL 12
+      - name: Get latest commit id of PostgreSQL 13
         run: |
-          echo "PG_COMMIT_HASH=$(git ls-remote git://git.postgresql.org/git/postgresql.git refs/heads/REL_12_STABLE | awk '{print $1}')" >> $GITHUB_ENV
+          echo "PG_COMMIT_HASH=$(git ls-remote git://git.postgresql.org/git/postgresql.git refs/heads/REL_13_STABLE | awk '{print $1}')" >> $GITHUB_ENV
 
-      - name: Cache PostgreSQL 12
+      - name: Cache PostgreSQL 13
         uses: actions/cache@v3
-        id: pg12cache
+        id: pg13cache
         with:
-          path: ~/pg12
-          key: ${{ runner.os }}-v1-pg12-${{ env.PG_COMMIT_HASH }}
+          path: ~/pg13
+          key: ${{ runner.os }}-v1-pg13-${{ env.PG_COMMIT_HASH }}
 
-      - name: Install PostgreSQL 12
-        if: steps.pg12cache.outputs.cache-hit != 'true'
+      - name: Install PostgreSQL 13
+        if: steps.pg13cache.outputs.cache-hit != 'true'
         run: |
-          git clone --depth 1 --branch REL_12_STABLE git://git.postgresql.org/git/postgresql.git ~/pg12source
-          cd ~/pg12source
-          ./configure --prefix=$HOME/pg12 CFLAGS="-std=gnu99 -ggdb -O0" --enable-cassert
+          git clone --depth 1 --branch REL_13_STABLE git://git.postgresql.org/git/postgresql.git ~/pg13source
+          cd ~/pg13source
+          ./configure --prefix=$HOME/pg13 CFLAGS="-std=gnu99 -ggdb -O0" --enable-cassert
           make install -j$(nproc) > /dev/null
 
       - uses: actions/checkout@v3
@@ -35,12 +35,12 @@ jobs:
       - name: Build
         id: build
         run: |
-          make PG_CONFIG=$HOME/pg12/bin/pg_config install -j$(nproc)
+          make PG_CONFIG=$HOME/pg13/bin/pg_config install -j$(nproc)
 
       - name: Regression tests
         id: regression_tests
         run: |
-          make PG_CONFIG=$HOME/pg12/bin/pg_config installcheck
+          make PG_CONFIG=$HOME/pg13/bin/pg_config installcheck
         continue-on-error: true
 
       - name: Dump regression test errors

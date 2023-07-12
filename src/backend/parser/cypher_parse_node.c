@@ -106,25 +106,6 @@ static void errpos_ecb(void *arg)
     errposition(query_pos + geterrposition());
 }
 
-RangeTblEntry *find_rte(cypher_parsestate *cpstate, char *varname)
-{
-    ParseState *pstate = (ParseState *) cpstate;
-    ListCell *lc;
-
-    foreach (lc, pstate->p_rtable)
-    {
-        RangeTblEntry *rte = (RangeTblEntry *)lfirst(lc);
-        Alias *alias = rte->alias;
-        if (!alias)
-            continue;
-
-        if (!strcmp(alias->aliasname, varname))
-            return rte;
-    }
-
-    return NULL;
-}
-
 /*
  * Generates a default alias name for when a query needs on and the parse
  * state does not provide one.

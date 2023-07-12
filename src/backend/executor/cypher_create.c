@@ -45,10 +45,11 @@ static void rescan_cypher_create(CustomScanState *node);
 
 static void create_edge(cypher_create_custom_scan_state *css,
                         cypher_target_node *node, Datum prev_vertex_id,
-                        ListCell *next);
+                        ListCell *next, List *list);
 
 static Datum create_vertex(cypher_create_custom_scan_state *css,
-                           cypher_target_node *node, ListCell *next);
+                           cypher_target_node *node, ListCell *next,
+                           List *list);
 
 static void process_pattern(cypher_create_custom_scan_state *css);
 
@@ -161,14 +162,14 @@ static void process_pattern(cypher_create_custom_scan_state *css)
     foreach (lc2, css->pattern)
     {
         cypher_create_path *path = lfirst(lc2);
-
-        ListCell *lc = list_head(path->target_nodes);
+        List *list = path->target_nodes;
+        ListCell *lc = list_head(list);
 
         /*
          * Create the first vertex. The create_vertex function will
          * create the rest of the path, if necessary.
          */
-        create_vertex(css, lfirst(lc), lnext(lc));
+        create_vertex(css, lfirst(lc), lnext(list, lc), list);
 
         /*
          * If this path is a variable, take the list that was accumulated
@@ -339,7 +340,7 @@ Node *create_cypher_create_plan_state(CustomScan *cscan)
  */
 static void create_edge(cypher_create_custom_scan_state *css,
                         cypher_target_node *node, Datum prev_vertex_id,
-                        ListCell *next)
+                        ListCell *next, List *list)
 {
     bool isNull;
     EState *estate = css->css.ss.ps.state;
@@ -360,7 +361,7 @@ static void create_edge(cypher_create_custom_scan_state *css,
      * next vertex's id.
      */
     css->path_values = NIL;
-    next_vertex_id = create_vertex(css, lfirst(next), lnext(next));
+    next_vertex_id = create_vertex(css, lfirst(next), lnext(list, next), list);
 
     /*
      * Set the start and end vertex ids
@@ -458,7 +459,7 @@ static void create_edge(cypher_create_custom_scan_state *css,
  * the create_edge function.
  */
 static Datum create_vertex(cypher_create_custom_scan_state *css,
-                           cypher_target_node *node, ListCell *next)
+                           cypher_target_node *node, ListCell *next, List *list)
 {
     bool isNull;
     Datum id;
@@ -610,7 +611,7 @@ static Datum create_vertex(cypher_create_custom_scan_state *css,
     // If the path continues, create the next edge, passing the vertex's id.
     if (next != NULL)
     {
-        create_edge(css, lfirst(next), id, lnext(next));
+        create_edge(css, lfirst(next), id, lnext(list, next), list);
     }
 
     return id;

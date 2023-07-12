@@ -31,6 +31,7 @@
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 #include "commands/label_commands.h"
+#include "common/hashfn.h"
 
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"

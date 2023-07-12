@@ -284,8 +284,6 @@ static uint32 octdigit_value(const char c);
 
 static bool is_high_surrogate(const pg_wchar c);
 static bool is_low_surrogate(const pg_wchar c);
-static pg_wchar surrogate_pair_to_codepoint(const pg_wchar hi,
-                                            const pg_wchar lo);
 
 #define update_location() \
     do \
@@ -1097,15 +1095,6 @@ static bool is_high_surrogate(const pg_wchar c)
 static bool is_low_surrogate(const pg_wchar c)
 {
     return (c >= 0xDC00 && c <= 0xDFFF);
-}
-
-// http://www.unicode.org/faq/utf_bom.html#utf16-4
-static pg_wchar surrogate_pair_to_codepoint(const pg_wchar hi,
-                                            const pg_wchar lo)
-{
-    const pg_wchar surrogate_offset = 0x10000 - (0xD800 << 10) - 0xDC00;
-
-    return (hi << 10) + lo + surrogate_offset;
 }
 
 static int _scan_errmsg(const char *msg, const ag_yy_extra *extra)

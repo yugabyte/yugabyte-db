@@ -33,8 +33,8 @@
     <img src="https://img.shields.io/badge/Release-v1.3.0-FFA500?labelColor=gray&style=flat&link=https://github.com/apache/age/releases"/>
   </a>
   &nbsp;
-  <a href="https://www.postgresql.org/docs/12/index.html">
-    <img src="https://img.shields.io/badge/Version-PostgreSQL 12-00008B?labelColor=gray&style=flat&link=https://www.postgresql.org/docs/12/index.html"/>
+  <a href="https://www.postgresql.org/docs/13/index.html">
+    <img src="https://img.shields.io/badge/Version-PostgreSQL 13-00008B?labelColor=gray&style=flat&link=https://www.postgresql.org/docs/13/index.html"/>
   </a>
   &nbsp;
   <a href="https://github.com/apache/age/issues">

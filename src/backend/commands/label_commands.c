@@ -619,6 +619,7 @@ static void change_label_id_default(char *graph_name, char *label_name,
     AlterTableCmd *tbl_cmd;
     RangeVar *rv;
     FuncCall *func_call;
+    AlterTableUtilityContext atuc;
 
     func_call = build_id_default_func_expr(graph_name, label_name, schema_name,
                                            seq_name);
@@ -639,7 +640,11 @@ static void change_label_id_default(char *graph_name, char *label_name,
 
     tbl_stmt->cmds = list_make1(tbl_cmd);
 
-    AlterTable(relid, AccessExclusiveLock, tbl_stmt);
+    atuc.relid = relid;
+    atuc.queryEnv = pstate->p_queryEnv;
+    atuc.queryString = pstate->p_sourcetext;
+
+    AlterTable(tbl_stmt, AccessExclusiveLock, &atuc);
 
     CommandCounterIncrement();
 }
