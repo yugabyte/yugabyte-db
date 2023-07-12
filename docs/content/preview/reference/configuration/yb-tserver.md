@@ -1070,7 +1070,7 @@ Default: `1GB`
 When set to `true`, speed up YSQL bulk loads by skipping the lookup of any keys being inserted, thereby, enabling faster inserts.
 
 - Secondary indexes may be corrupted because old values will not be removed 
-- Foreign key integrity should be maintained just like a normal INSERT
+- Foreign key integrity will be maintained just like a normal INSERT
 - Batching is disabled if the table contains non-FK trigger as per the following [commit #7c428da](https://github.com/yugabyte/yugabyte-db/commit/7c428da49ce9009df8faf9788c53c9c71cb7178b).
 
 Default: `false`
