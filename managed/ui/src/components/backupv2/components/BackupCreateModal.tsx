@@ -70,6 +70,8 @@ type ToogleScheduleProps = Partial<IBackupSchedule> & Pick<IBackupSchedule, 'sch
 
 const DURATIONS = ['Days', 'Months', 'Years'];
 
+const DEFAULT_MIN_INCREMENTAL_BACKUP_INTERVAL = 1800; //in secs
+
 const TABLES_NOT_PRESENT_MSG = (api: string) => (
   <span className="alert-message warning">
     <i className="fa fa-warning" /> There are no {api} databases in this universe to backup.
@@ -204,6 +206,10 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
     [];
 
   const primaryCluster = find(universeDetails?.clusters, { clusterType: 'PRIMARY' });
+
+  const minIncrementalScheduleFrequencyInSecs = runtimeConfigs?.configEntries?.find(
+    (c: RunTimeConfigEntry) => c.key === 'yb.backup.minIncrementalScheduleFrequencyInSecs'
+  );
 
   initialValues['parallel_threads'] =
     Math.min(primaryCluster?.userIntent?.numNodes, ParallelThreads.MAX) || ParallelThreads.MIN;
@@ -393,24 +399,47 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
           `Parallel threads should be less than or equal to ${ParallelThreads.MAX}`
         )
     }),
-    incremental_backup_frequency: Yup.number().test({
-      message: 'Incremental backup interval must be less than full backup',
-      test: function (value) {
-        if (
-          !isScheduledBackup ||
-          !this.parent.is_incremental_backup_enabled ||
-          this.parent.use_cron_expression
-        )
-          return true;
+    incremental_backup_frequency: Yup.number()
+      .test({
+        message: 'Incremental backup interval must be less than full backup',
+        test: function (value) {
+          if (
+            !isScheduledBackup ||
+            !this.parent.is_incremental_backup_enabled ||
+            this.parent.use_cron_expression
+          )
+            return true;
 
-        return (
-          value *
-            MILLISECONDS_IN[this.parent.incremental_backup_frequency_type.value.toUpperCase()] <
-          this.parent.policy_interval *
-            MILLISECONDS_IN[this.parent.policy_interval_type.value.toUpperCase()]
-        );
-      }
-    })
+          return (
+            value *
+              MILLISECONDS_IN[this.parent.incremental_backup_frequency_type.value.toUpperCase()] <
+            this.parent.policy_interval *
+              MILLISECONDS_IN[this.parent.policy_interval_type.value.toUpperCase()]
+          );
+        }
+      })
+      .test({
+        message: `Incremental backup should be greater than ${
+          Number(
+            minIncrementalScheduleFrequencyInSecs?.value ?? DEFAULT_MIN_INCREMENTAL_BACKUP_INTERVAL
+          ) / 60
+        } minutes`,
+        test: function (value) {
+          if (minIncrementalScheduleFrequencyInSecs) {
+            if (
+              value *
+                MILLISECONDS_IN[
+                  this.parent.incremental_backup_frequency_type.value.toUpperCase()
+                ] >=
+              parseInt(minIncrementalScheduleFrequencyInSecs.value) * 1000
+            ) {
+              return true;
+            }
+            return false;
+          }
+          return true;
+        }
+      })
   });
 
   return (
