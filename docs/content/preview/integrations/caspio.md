@@ -23,7 +23,7 @@ To connect your YugabyteDB database to Caspio:
 
 1. In Zapier, create a Caspio application integration by providing your Caspio subdomain.
 
-1. In Zapier, create a PostgreSQL integration as follows.
+1. In Zapier, create a PostgreSQL integration as follows:
 
     - Add the host address of your YugabyteDB instance.
     - Change the port from `5432` to `5433`.
@@ -34,4 +34,4 @@ To connect your YugabyteDB database to Caspio:
 
 1. If your cluster is in YugabteDB Managed, be sure to add the listed IP addresses to the cluster [IP Allow List](../../yugabyte-cloud/cloud-secure-clusters/add-connections/).
 
-With these applications connected, users can create Zaps to trigger events and create relationships between Caspio and the underlying YugabyteDB data source.
+With these applications connected, you can create Zaps to trigger events and create relationships between Caspio and the underlying YugabyteDB data source.
