@@ -149,7 +149,7 @@ auto GetMaxSingleShardWaitDuration() {
   return FLAGS_force_single_shard_waiter_retry_ms * 1ms;
 }
 
-YB_DEFINE_ENUM(ResolutionStatus, (kPending)(kCommitted)(kAborted)(kPromoted));
+YB_DEFINE_ENUM(ResolutionStatus, (kPending)(kCommitted)(kAborted)(kPromoted)(kDeadlocked));
 
 class BlockerData;
 using BlockerDataPtr = std::shared_ptr<BlockerData>;
@@ -179,7 +179,9 @@ Result<ResolutionStatus> UnwrapResult(const Result<TransactionStatusResult>& res
     case COMMITTED:
       return ResolutionStatus::kCommitted;
     case ABORTED:
-      return ResolutionStatus::kAborted;
+      return res->expected_deadlock_status.ok()
+          ? ResolutionStatus::kAborted
+          : ResolutionStatus::kDeadlocked;
     case PENDING:
       return ResolutionStatus::kPending;
     case PROMOTED:
@@ -1312,10 +1314,13 @@ class WaitQueue::Impl {
     }
     if (resp.status(0) == ABORTED) {
       VLOG_WITH_PREFIX(1) << "Waiter status aborted " << waiter_id;
-      waiter->InvokeCallback(
-          // We return InternalError so that TabletInvoker does not retry.
-          STATUS_EC_FORMAT(InternalError, TransactionError(TransactionErrorCode::kConflict),
-                           "Transaction $0 was aborted while waiting for locks", waiter_id));
+      auto s = resp.deadlock_reason(0).code() == AppStatusPB::OK
+          ? STATUS_EC_FORMAT(
+                // Return InternalError so that TabletInvoker does not retry.
+                InternalError, TransactionError(TransactionErrorCode::kConflict),
+                "Transaction $0 was aborted while waiting for locks", waiter_id)
+          : StatusFromPB(resp.deadlock_reason(0));
+      waiter->InvokeCallback(s);
       return;
     }
     LOG(DFATAL) << "Waiting transaction " << waiter_id
@@ -1337,6 +1342,9 @@ class WaitQueue::Impl {
             InternalError, TransactionError(TransactionErrorCode::kConflict),
             "Transaction was aborted while waiting for locks $0", waiter->id),
           waiter);
+    } else if (*status == ResolutionStatus::kDeadlocked) {
+      DCHECK(!res->expected_deadlock_status.ok());
+      InvokeWaiterCallback(res->expected_deadlock_status, waiter);
     }
     // Need not handle waiter promotion case here as this code path is executed only as a callback
     // from WaitQueue::Impl::Poll function, where we periodically request waiter transaction state.

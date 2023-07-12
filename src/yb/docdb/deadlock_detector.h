@@ -189,6 +189,10 @@ class DeadlockDetector {
 
   void Shutdown();
 
+  // Returns the deadlock status if the given transaction could have been involved in a deadlock.
+  // Returns Status::OK() in all other cases.
+  Status GetTransactionDeadlockStatus(const TransactionId& txn_id);
+
  private:
   class Impl;
   std::shared_ptr<Impl> impl_;
