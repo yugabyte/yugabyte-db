@@ -1491,6 +1491,8 @@ about_to_start_running_test() {
   fi
 }
 
+user_mvn_opts_for_java_test=()
+
 # Arguments: <maven_module_name> <test_class_and_maybe_method>
 # The second argument could have slashes instead of dots, and could have an optional .java
 # extension.
@@ -1555,6 +1557,9 @@ run_java_test() {
     -DtempDir="$surefire_rel_tmp_dir"
     "${MVN_COMMON_OPTIONS_IN_TESTS[@]}"
   )
+  if [[ ${#user_mvn_opts_for_java_test[@]} -gt 0 ]]; then
+    mvn_opts+=( "${user_mvn_opts_for_java_test[@]}" )
+  fi
   if [[ ${YB_JAVA_TEST_OFFLINE_MODE:-1} == "1" ]]; then
     # When running in a CI/CD environment, we specify --offline because we don't want any downloads
     # to happen from Maven Central or Nexus. Everything we need should already be in the local Maven
