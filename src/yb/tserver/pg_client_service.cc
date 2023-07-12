@@ -753,6 +753,8 @@ class PgClientServiceImpl::Impl {
         }
       }
     }
+    VLOG(2) << __PRETTY_FUNCTION__ << " TServer wait-states " << yb::ToString(resp->tserver_wait_states());
+    VLOG(2) << __PRETTY_FUNCTION__ << " CQL wait-states " << yb::ToString(resp->cql_wait_states());
   }
 
   Status ActiveUniverseHistory(

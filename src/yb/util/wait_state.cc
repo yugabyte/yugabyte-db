@@ -105,6 +105,7 @@ void WaitStateInfo::set_state_if(WaitStateCode prev, WaitStateCode c) {
 }
 
 void WaitStateInfo::set_state(WaitStateCode c) {
+  TRACE(util::ToString(c));
   VLOG(3) << this << " " << ToString() << " setting state to " << util::ToString(c);
   if (freeze_) {
     // If this is the first time we are calling set_state after freeze() was called,
@@ -135,10 +136,16 @@ void WaitStateInfo::set_state(WaitStateCode c) {
 }
 
 WaitStateCode WaitStateInfo::get_state() const {
+  auto ret = WaitStateCode::Unused;
   if (GetAtomicFlag(&FLAGS_freeze_wait_states)) {
-    return get_frozen_state();
+    ret =  get_frozen_state();
+  } else {
+    ret = code_;
   }
-  return code_;
+  if (ret == WaitStateCode::HandlingDone) {
+    PRINT_THIS_TRACE();
+  }
+  return ret;
 }
 
 std::string WaitStateInfo::ToString() const {

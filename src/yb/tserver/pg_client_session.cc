@@ -929,6 +929,10 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
   auto& options = *data->req.mutable_options();
   if (options.has_auh_metadata()) {
     util::WaitStateInfo::UpdateMetadataFromPB(options.auh_metadata());
+    auto wait_state = util::WaitStateInfo::CurrentWaitState();
+    if (wait_state) {
+      wait_state->UpdateAuxInfo(util::AUHAuxInfo{ .method = "Perform"});
+    }
   }
   if (!options.ddl_mode() && xcluster_context_ && xcluster_context_->is_xcluster_read_only_mode()) {
     for (const auto& op : data->req.ops()) {

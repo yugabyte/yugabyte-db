@@ -175,6 +175,7 @@ struct AUHMetadata {
   }
 
   void UpdateFrom(const AUHMetadata &other) {
+    VLOG(2) << "Before Updating " << ToString();
     if (!other.top_level_request_id.empty()) {
       top_level_request_id = other.top_level_request_id;
     }
@@ -193,6 +194,7 @@ struct AUHMetadata {
     if (other.client_node_port != 0) {
       client_node_port = other.client_node_port;
     }
+    VLOG(2) << "After Updating " << ToString();
   }
 
   template <class PB>
@@ -217,6 +219,7 @@ struct AUHMetadata {
     if (client_node_port != 0) {
       pb->set_client_node_port(client_node_port);
     }
+    VLOG(2) << "After ToPB " << ToString() << "\n returned " << pb->DebugString();
   }
 
   template <class PB>
@@ -315,6 +318,7 @@ class WaitStateInfo {
 
   template <class PB>
   void ToPB(PB *pb) {
+    {
     std::lock_guard<simple_spinlock> l(mutex_);
     metadata_.ToPB(pb->mutable_metadata());
     WaitStateCode code = get_state();
@@ -323,6 +327,8 @@ class WaitStateInfo {
     pb->set_wait_status_code_as_string(yb::ToString(code));
 #endif
     aux_info_.ToPB(pb->mutable_aux_info());
+    }
+    VLOG(1) << "Wrote ToPB " << pb->ShortDebugString();
   }
 
   AUHMetadata& metadata() REQUIRES(mutex_) {
