@@ -315,13 +315,13 @@ Default: The default value in `2.18.1` is `-1` - feature is disabled by default.
 
 ##### --yb_num_shards_per_tserver
 
-The number of shards per YB-TServer for each YCQL table when a user table is created.
+The number of shards (tablets) per YB-TServer for each YCQL table when a user table is created.
 
 Default: `-1`, where the number of shards is determined at runtime, as follows:
 
 - If [enable_automatic_tablet_splitting](#enable-automatic-tablet-splitting) is `true`
   - The default value is considered as `1`.
-  - For servers with 4 CPU cores or less, the number of tablets per table doesn't depend on the number of YB-TServers. Instead, only 1 tablet per table is created for 2 CPU cores or less, and 2 tablets per table are created for 4 CPU cores or less.
+  - For servers with 4 CPU cores or less, the number of tablets for each table doesn't depend on the number of YB-TServers. Instead, for 2 CPU cores or less, 1 tablet per cluster is created; for 4 CPU cores or less, 2 tablets per cluster are created.
 
 - If `enable_automatic_tablet_splitting` is `false`
   - For servers with up to two CPU cores, the default value is considered as `4`.
@@ -341,13 +341,13 @@ Clusters created using `yugabyted` always use a default value of `1`.
 
 ##### --ysql_num_shards_per_tserver
 
-The number of shards per YB-TServer for each YSQL table when a user table is created.
+The number of shards (tablets) per YB-TServer for each YSQL table when a user table is created.
 
 Default: `-1`, where the number of shards is determined at runtime, as follows:
 
 - If [enable_automatic_tablet_splitting](#enable-automatic-tablet-splitting) is `true`
   - The default value is considered as `1`.
-  - For servers with 4 CPU cores or less, the number of tablets per table doesn't depend on the number of YB-TServers. Instead, only 1 tablet per table is created for 2 CPU cores or less, and 2 tablets per table are created for 4 CPU cores or less.
+  - For servers with 4 CPU cores or less, the number of tablets for each table doesn't depend on the number of YB-TServers. Instead, for 2 CPU cores or less, 1 tablet per cluster is created; for 4 CPU cores or less, 2 tablets per cluster are created.
 
 - If `enable_automatic_tablet_splitting` is `false`
   - For servers with up to two CPU cores, the default value is considered as `4`.

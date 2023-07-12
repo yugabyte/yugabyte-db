@@ -217,7 +217,7 @@ For details on the architecture design, see [Automatic resharding of data with t
 
 When automatic tablet splitting is enabled, newly-created tables with [hash sharding](../../../architecture/docdb-sharding/sharding/#hash-sharding) have one tablet per node by default.
 
-In addition, from version 2.14.10, for servers with up to 2 CPU cores, newly-created tables have one tablet per table, and servers with up to 4 CPU cores have 2 tablets per table.
+In addition, from version 2.14.10, for servers with up to 2 CPU cores, newly-created tables have one tablet per cluster, and servers with up to 4 CPU cores have 2 tablets per cluster.
 
 From version 2.18.0, automatic tablet splitting is turned on by default.
 
