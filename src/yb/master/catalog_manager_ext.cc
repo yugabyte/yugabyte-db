@@ -2357,6 +2357,7 @@ Status CatalogManager::RestoreSysCatalogCommon(
   auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
 
   // Load objects to restore and determine obsolete objects.
+  auto schema_packing_provider = &tablet->GetSchemaPackingProvider();
   RETURN_NOT_OK(state->LoadRestoringObjects(doc_read_context(), doc_db, db_pending_op));
   // Load existing objects from RocksDB because on followers they are NOT present in loaded sys
   // catalog state.
@@ -2370,15 +2371,16 @@ Status CatalogManager::RestoreSysCatalogCommon(
     RETURN_NOT_OK(state->PatchSequencesDataObjects());
 
     RETURN_NOT_OK(state->ProcessPgCatalogRestores(
-        doc_db, tablet->doc_db(),
-        write_batch, doc_read_context(), tablet->metadata()));
+        doc_db, tablet->doc_db(), write_batch, doc_read_context(), schema_packing_provider,
+        tablet->metadata()));
   }
 
   // Crash for tests.
   MAYBE_FAULT(FLAGS_TEST_crash_during_sys_catalog_restoration);
 
   // Restore the other tables.
-  RETURN_NOT_OK(state->PrepareWriteBatch(schema(), write_batch, master_->clock()->Now()));
+  RETURN_NOT_OK(state->PrepareWriteBatch(
+      schema(), schema_packing_provider, write_batch, master_->clock()->Now()));
 
   // Updates the restoration state to indicate that sys catalog phase has completed.
   // Also, initializes the master side perceived list of tables/tablets/namespaces

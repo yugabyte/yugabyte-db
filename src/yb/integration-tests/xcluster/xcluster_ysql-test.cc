@@ -1008,8 +1008,6 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionWithSavepointsOpt)
   // fails.  It is also turned on here to make sure we don't have a regression where the flag causes
   // crashes (this has happened before).
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_log_write_batches) = true;
-  // Workaround for issue #16665
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = false;
 
   // Attempt to get all of the changes from the transaction in a single CDC replication batch so the
   // optimization will kick in:
@@ -1047,8 +1045,6 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionWithSavepointsNoOp
   // fails.  It is also turned on here to make sure we don't have a regression where the flag causes
   // crashes (this has happened before).
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_log_write_batches) = true;
-  // Workaround for issue #16665
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = false;
 
   // Create two SAVEPOINTs but abort only one of them; all the writes except the aborted one should
   // be replicated and visible on the consumer side.

@@ -362,12 +362,8 @@ Result<bool> WriteQuery::CqlPrepareExecute() {
   for (const auto& req : ql_write_batch) {
     QLResponsePB* resp = response_->add_ql_response_batch();
     auto write_op = std::make_unique<docdb::QLWriteOperation>(
-        req,
-        table_info->schema_version,
-        table_info->doc_read_context,
-        table_info->index_map,
-        table_info->unique_index_key_projection,
-        txn_op_ctx);
+        req, table_info->schema_version, table_info->doc_read_context, table_info->index_map,
+        table_info->unique_index_key_projection, txn_op_ctx);
     RETURN_NOT_OK(write_op->Init(resp));
     doc_ops_.emplace_back(std::move(write_op));
   }
@@ -668,10 +664,9 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
       : docdb::InitMarkerBehavior::kOptional;
   for (;;) {
     RETURN_NOT_OK(docdb::AssembleDocWriteBatch(
-        doc_ops_, read_operation_data, tablet->doc_db(), scoped_read_operation_,
-        request().mutable_write_batch(), init_marker_behavior,
-        tablet->monotonic_counter(), &restart_read_ht_,
-        tablet->metadata()->table_name()));
+        doc_ops_, read_operation_data, tablet->doc_db(), &tablet->GetSchemaPackingProvider(),
+        scoped_read_operation_, request().mutable_write_batch(), init_marker_behavior,
+        tablet->monotonic_counter(), &restart_read_ht_, tablet->metadata()->table_name()));
 
     // For serializable isolation we don't fix read time, so could do read restart locally,
     // instead of failing whole transaction.

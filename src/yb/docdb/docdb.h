@@ -129,6 +129,7 @@ Status AssembleDocWriteBatch(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ReadOperationData& read_operation_data,
     const DocDB& doc_db,
+    SchemaPackingProvider* schema_packing_provider /* null okay */,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
     LWKeyValueWriteBatchPB* write_batch,
     InitMarkerBehavior init_marker_behavior,
