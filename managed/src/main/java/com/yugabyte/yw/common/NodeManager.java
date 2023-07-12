@@ -83,7 +83,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -1723,14 +1722,10 @@ public class NodeManager extends DevopsBase {
 
           if (taskParam.isSystemdUpgrade) {
             // Cron to Systemd Upgrade
-            Duration ansible_exec_timeout_sec =
-                confGetter.getConfForScope(universe, UniverseConfKeys.ansibleExecutionTimeoutSec);
             commandArgs.add("--skip_preprovision");
             commandArgs.add("--tags");
             commandArgs.add("systemd_upgrade");
             commandArgs.add("--systemd_services");
-            commandArgs.add("--ansible_exec_timeout_sec");
-            commandArgs.add(String.valueOf(ansible_exec_timeout_sec));
           } else if (taskParam.useSystemd) {
             // Systemd for new universes
             commandArgs.add("--systemd_services");
@@ -1808,13 +1803,9 @@ public class NodeManager extends DevopsBase {
           commandArgs.addAll(getConfigureSubCommand(taskParam));
           if (taskParam.isSystemdUpgrade) {
             // Cron to Systemd Upgrade
-            Duration ansible_exec_timeout_sec =
-                confGetter.getConfForScope(universe, UniverseConfKeys.ansibleExecutionTimeoutSec);
             commandArgs.add("--tags");
             commandArgs.add("systemd_upgrade");
             commandArgs.add("--systemd_services");
-            commandArgs.add("--ansible_exec_timeout_sec");
-            commandArgs.add(String.valueOf(ansible_exec_timeout_sec));
           } else if (taskParam.useSystemd) {
             // Systemd for new universes
             commandArgs.add("--systemd_services");
