@@ -27,12 +27,8 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 type UpstreamGflagResponseType = {
-  masterFlags: {
-    flags: UpstreamFlagType[],
-  },
-  tserverFlags: {
-    flags: UpstreamFlagType[],
-  }
+  master_flags: UpstreamFlagType[],
+  tserver_flags: UpstreamFlagType[],
 }
 
 type UpstreamFlagType = {
@@ -60,15 +56,17 @@ export const GFlagsOverview: FC<GFlagsOverviewProps> = (/* { showDrift, toggleDr
     }
   }, [nodesResponse])
 
-  const { data } = useGetGflagsQuery<UpstreamGflagResponseType>({ node_address: currentNode || "" });
+  const { data } = useGetGflagsQuery<UpstreamGflagResponseType>({ node_address: currentNode || "" }, 
+    { query: { enabled: !!currentNode }});
   const gflagData = useMemo(() => {
+    console.log(data)
     const masterFlags = {
-      nodeInfoFlags: data?.masterFlags?.flags.filter(flag => flag.type === "NodeInfo"),
-      customFlags: data?.masterFlags?.flags.filter(flag => flag.type === "Custom")
+      nodeInfoFlags: data?.master_flags?.filter(flag => flag.type === "NodeInfo"),
+      customFlags: data?.master_flags?.filter(flag => flag.type === "Custom")
     };
     const tserverFlags = {
-      nodeInfoFlags: data?.tserverFlags?.flags.filter(flag => flag.type === "NodeInfo"),
-      customFlags: data?.tserverFlags?.flags.filter(flag => flag.type === "Custom")
+      nodeInfoFlags: data?.tserver_flags?.filter(flag => flag.type === "NodeInfo"),
+      customFlags: data?.tserver_flags?.filter(flag => flag.type === "Custom")
     };
 
     const nodeInfoFlagList = new Set<string>()
