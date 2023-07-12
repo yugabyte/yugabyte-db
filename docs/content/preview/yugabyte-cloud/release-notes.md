@@ -22,7 +22,7 @@ On this page:
 
 ### July 12, 2023
 
-**New Features**
+**Database**
 
 - Ability to choose from different tracks in the [stable release series](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) when creating a dedicated cluster. You can choose one of the following tracks:
   - Innovation track - has more frequent updates for faster access to new features. Currently features YugabyteDB version 2.16.5.0.
