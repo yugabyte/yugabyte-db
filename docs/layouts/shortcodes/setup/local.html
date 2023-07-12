@@ -57,8 +57,8 @@
     {{- $data = print $data "```" "\n" -}}
 {{- end -}}
 
-{{- if eq $masterip (index $ips 0) -}}
-{{- $data = print $data "Next, join more nodes with the previous node as needed. `yugabyted` automatically applies a replication factor of `3` when a third node is added, as follows:" "\n" -}}
+{{- if and (eq $masterip (index $ips 0)) (ge $numnodes 3) -}}
+{{- $data = print $data "Next, join more nodes with the previous node as needed. `yugabyted` automatically applies a replication factor of `3` when a third node is added." "\n" -}}
 {{- $data = print $data "\n" -}}
 {{- end -}}
 
