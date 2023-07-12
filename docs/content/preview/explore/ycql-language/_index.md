@@ -42,7 +42,7 @@ YCQL has a number of features that are not present in Cassandra, as summarized i
 | [Fast transactions](../../architecture/transactions/distributed-txns/) | Single round-trip distributed transactions |
 | [Native JSONB support](../../api/ycql/type_jsonb)| Enables document data modelling like MongoDB |
 | Fast and consistent Secondary Indexes | Immediately consistent indexes with point lookups (no fan-out) |
-| Secondary Indexes with JSONB datatype | Flexibity in data model without compromising Efficiency and Consistency |
+| Secondary indexes with JSONB datatype | Flexibility in data model without compromising efficiency and consistency |
 
 ## Learn more
 
