@@ -165,6 +165,9 @@ DEFINE_test_flag(bool, pause_before_remote_bootstrap, false,
                  "If true, pause after copying the superblock but before "
                  "RemoteBootstrapClient::Start.");
 
+DEFINE_test_flag(bool, pause_after_set_bootstrapping, false,
+                 "If true, pause after changing a tablet's state to BOOTSTRAPPING.");
+
 DEFINE_test_flag(double, fault_crash_in_split_before_log_flushed, 0.0,
                  "Fraction of the time when the tablet will crash immediately before flushing a "
                  "parent tablet's kSplit operation.");
@@ -1543,7 +1546,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
 
   consensus::RetryableRequestsManager retryable_requests_manager(
       tablet_id, fs_manager_, meta->wal_dir());
-  s = retryable_requests_manager.Init();
+  s = retryable_requests_manager.Init(server_->Clock());
   if(!s.ok()) {
     LOG(ERROR) << kLogPrefix << "Tablet failed to init retryable requests: " << s;
     tablet_peer->SetFailed(s);
@@ -1588,6 +1591,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       tablet_peer->SetFailed(s);
       return;
     }
+    TEST_PAUSE_IF_FLAG(TEST_pause_after_set_bootstrapping);
 
     tablet::TabletInitData tablet_init_data = {
         .metadata = meta,

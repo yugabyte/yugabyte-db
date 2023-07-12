@@ -152,6 +152,9 @@ DEFINE_test_flag(int32, inject_delay_leader_change_role_append_secs, 0,
 DEFINE_test_flag(double, return_error_on_change_config, 0.0,
                  "Fraction of the time when ChangeConfig will return an error.");
 
+DEFINE_test_flag(bool, pause_before_replicate_batch, false,
+                 "Whether to pause before doing DoReplicateBatch.");
+
 METRIC_DEFINE_counter(tablet, follower_memory_pressure_rejections,
                       "Follower Memory Pressure Rejections",
                       yb::MetricUnit::kRequests,
@@ -1106,6 +1109,9 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
       std::numeric_limits<int64_t>::max());
   is_raft_leader_metric_->set_value(1);
 
+  // we don't care about this timestamp from leader because it doesn't accept Update requests.
+  follower_last_update_received_time_ms_.store(0, std::memory_order_release);
+
   return Status::OK();
 }
 
@@ -1171,6 +1177,7 @@ Status RaftConsensus::ReplicateBatch(const ConsensusRounds& rounds) {
 
 Status RaftConsensus::DoReplicateBatch(const ConsensusRounds& rounds, size_t* processed_rounds) {
   RETURN_NOT_OK(ExecuteHook(PRE_REPLICATE));
+  TEST_PAUSE_IF_FLAG(TEST_pause_before_replicate_batch);
   {
     ReplicaState::UniqueLock lock;
 #ifndef NDEBUG
@@ -1280,7 +1287,9 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
     ++*processed_rounds;
 
     if (round->replicate_msg()->op_type() == OperationType::WRITE_OP) {
-      auto result = state_->RegisterRetryableRequest(round);
+      DCHECK_EQ(state_->GetActiveRoleUnlocked(), PeerRole::LEADER);
+      auto result = state_->RegisterRetryableRequest(
+          round, tablet::IsLeaderSide(state_->GetActiveRoleUnlocked() == PeerRole::LEADER));
       if (!result.ok()) {
         round->NotifyReplicationFinished(
             result.status(), round->bound_term(), /* applied_op_ids = */ nullptr);
@@ -1500,6 +1509,8 @@ void RaftConsensus::TryRemoveFollowerTask(const string& uuid,
 Status RaftConsensus::Update(
     const std::shared_ptr<LWConsensusRequestPB>& request_ptr,
     LWConsensusResponsePB* response, CoarseTimePoint deadline) {
+  follower_last_update_received_time_ms_.store(
+      clock_->Now().GetPhysicalValueMillis(), std::memory_order_release);
   if (PREDICT_FALSE(FLAGS_TEST_follower_reject_update_consensus_requests)) {
     return STATUS(IllegalState, "Rejected: --TEST_follower_reject_update_consensus_requests "
                                 "is set to true.");
@@ -3180,17 +3191,32 @@ void RaftConsensus::DumpStatusHtml(std::ostream& out) const {
 
   // Dump the queues on a leader.
   PeerRole role;
+  std::string state_str;
   {
     auto lock = state_->LockForRead();
     role = state_->GetActiveRoleUnlocked();
+    state_str = state_->ToStringUnlocked();
   }
+
   if (role == PeerRole::LEADER) {
     out << "<h2>Queue overview</h2>" << std::endl;
     out << "<pre>" << EscapeForHtmlToString(queue_->ToString()) << "</pre>" << std::endl;
     out << "<hr/>" << std::endl;
     out << "<h2>Queue details</h2>" << std::endl;
     queue_->DumpToHtml(out);
-  } else if (role == PeerRole::FOLLOWER) {
+  } else if (role == PeerRole::FOLLOWER || role == PeerRole::READ_REPLICA) {
+    out << "<h2>Replica State</h2>" << std::endl;
+    out << "<ul>\n";
+    out << "<li>State: { " << EscapeForHtmlToString(state_str) << " }</li>" << std::endl;
+    const auto follower_last_update_received_time_ms =
+        follower_last_update_received_time_ms_.load(std::memory_order_acquire);
+    const auto last_update_received_time_lag = follower_last_update_received_time_ms > 0
+        ? clock_->Now().GetPhysicalValueMillis() - follower_last_update_received_time_ms
+        : 0;
+    out << "<li>Last update received time: "
+        << last_update_received_time_lag << "ms ago</li>" << std::endl;
+    out << "</ul>\n";
+
     out << "<hr/>" << std::endl;
     out << "<h2>Raft Config</h2>" << std::endl;
     RaftConfigPB config = CommittedConfig();

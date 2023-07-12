@@ -130,6 +130,9 @@ public class RestoreManagerYbTest extends FakeDBApplication {
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.disableXxHashChecksum))).thenReturn(false);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.backupLogVerbose)))
         .thenReturn(false);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.useServerBroadcastAddressForYbBackup)))
+        .thenReturn(true);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.enableSSE)))
         .thenReturn(false);
   }
@@ -298,6 +301,7 @@ public class RestoreManagerYbTest extends FakeDBApplication {
                   testUniverse.getTServers().stream()
                       .collect(Collectors.toMap(t -> t.cloudInfo.private_ip, t -> pkPath)))));
     }
+    cmd.add("--use_server_broadcast_address");
     cmd.add("--backup_location");
     cmd.add(backupStorageInfo.storageLocation);
     cmd.add("--storage_type");

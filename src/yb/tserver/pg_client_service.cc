@@ -347,7 +347,8 @@ class PgClientServiceImpl::Impl {
       GetLockStatusRequestPB node_req;
       // GetLockStatusRequestPB supports providing multiple transaction ids, but postgres sends
       // only one transaction id in PgGetLockStatusRequestPB for now.
-      node_req.add_transaction_ids(req.transaction_id());
+      if (!req.transaction_id().empty())
+        node_req.add_transaction_ids(req.transaction_id());
       GetLockStatusResponsePB node_resp;
       controller.Reset();
       RETURN_NOT_OK(proxy->GetLockStatus(node_req, &node_resp, &controller));
@@ -483,6 +484,18 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status IsObjectPartOfXRepl(
+    const PgIsObjectPartOfXReplRequestPB& req, PgIsObjectPartOfXReplResponsePB* resp,
+    rpc::RpcContext* context) {
+    auto res = client().IsObjectPartOfXRepl(PgObjectId::GetYbTableIdFromPB(req.table_id()));
+    if (!res.ok()) {
+      StatusToPB(res.status(), resp->mutable_status());
+    } else {
+      resp->set_is_object_part_of_xrepl(*res);
+    }
+    return Status::OK();
+  }
+
   void Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
     auto status = DoPerform(req, resp, context);
     if (!status.ok()) {
@@ -563,7 +576,7 @@ class PgClientServiceImpl::Impl {
 
     for (size_t i = 0 ; i < remote_tservers.size() ; i++) {
       const auto& proxy = remote_tservers[i]->proxy();
-      std::shared_ptr<rpc::RpcController> controller;
+      auto controller = std::make_shared<rpc::RpcController>();
       status_future.push_back(
           MakeFuture<Status>([&, controller](auto callback) {
             proxy->CancelTransactionAsync(
@@ -573,7 +586,7 @@ class PgClientServiceImpl::Impl {
           }));
     }
 
-    auto status = STATUS_FORMAT(NotFound, "Unable to cancel transaction");
+    auto status = STATUS_FORMAT(NotFound, "Transaction not found.");
     resp->Clear();
     for (size_t i = 0 ; i < status_future.size() ; i++) {
       const auto& s = status_future[i].get();

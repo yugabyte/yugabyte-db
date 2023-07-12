@@ -151,12 +151,15 @@ extern void ybc_heap_endscan(HeapScanDesc scanDesc);
 extern HeapScanDesc ybc_remote_beginscan(Relation relation,
 										 Snapshot snapshot,
 										 Scan *pg_scan_plan,
-										 PushdownExprs *pushdown);
+										 PushdownExprs *pushdown,
+										 List *aggrefs);
 
 /* Add targets to the given statement. */
 extern void YbDmlAppendTargetSystem(AttrNumber attnum, YBCPgStatement handle);
 extern void YbDmlAppendTargetRegular(TupleDesc tupdesc, AttrNumber attnum,
 									 YBCPgStatement handle);
+extern void YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc,
+										Relation index, YBCPgStatement handle);
 extern void YbDmlAppendTargets(List *colrefs, YBCPgStatement handle);
 /* Add quals to the given statement. */
 extern void YbDmlAppendQuals(List *quals, bool is_primary,
@@ -177,7 +180,8 @@ extern YbScanDesc ybcBeginScan(Relation relation,
 							   ScanKey key,
 							   Scan *pg_scan_plan,
 							   PushdownExprs *rel_pushdown,
-							   PushdownExprs *idx_pushdown);
+							   PushdownExprs *idx_pushdown,
+							   List *aggrefs);
 
 HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
 IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);

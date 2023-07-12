@@ -304,10 +304,6 @@ func GetBinaryDir() string {
 	return filepath.Dir(realPath)
 }
 
-func GetReferenceYaml() string {
-	return filepath.Join(GetBinaryDir(), "yba-ctl.yml.reference")
-}
-
 type YBVersion struct {
 
 	// ex: 2.17.1.0-b235-foo

@@ -83,6 +83,7 @@
 #include "utils/rel.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
+#include "utils/uuid.h"
 #include "fmgr.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
@@ -176,6 +177,12 @@ IsYugaByteEnabled()
 {
 	/* We do not support Init/Bootstrap processing modes yet. */
 	return YBCPgIsYugaByteEnabled();
+}
+
+bool
+YbIsClientYsqlConnMgr()
+{
+	return IsYugaByteEnabled() && yb_is_client_ysqlconnmgr;
 }
 
 void
@@ -642,6 +649,9 @@ YBInitPostgresBackend(
 		callbacks.GetCurrentYbMemctx = &GetCurrentYbMemctx;
 		callbacks.GetDebugQueryString = &GetDebugQueryString;
 		callbacks.WriteExecOutParam = &YbWriteExecOutParam;
+		callbacks.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch;
+		callbacks.PostgresEpochToUnixEpoch= &YbPostgresEpochToUnixEpoch;
+		callbacks.ConstructTextArrayDatum = &YbConstructTextArrayDatum;
 		YBCInitPgGate(type_table, count, callbacks);
 		YBCInstallTxnDdlHook();
 
@@ -2592,6 +2602,26 @@ yb_get_effective_transaction_isolation_level(PG_FUNCTION_ARGS)
 	PG_RETURN_CSTRING(yb_fetch_effective_transaction_isolation_level());
 }
 
+Datum
+yb_cancel_transaction(PG_FUNCTION_ARGS)
+{
+	if (!IsYbDbAdminUser(GetUserId()))
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("permission denied to cancel transaction")));
+
+	pg_uuid_t *id = PG_GETARG_UUID_P(0);
+	YBCStatus status = YBCPgCancelTransaction(id->data);
+	if (status)
+	{
+		ereport(NOTICE,
+				(errmsg("failed to cancel transaction"),
+				 errdetail("%s", YBCMessageAsCString(status))));
+		PG_RETURN_BOOL(false);
+	}
+	PG_RETURN_BOOL(true);
+}
+
 /*
  * This PG function takes one optional bool input argument (legacy).
  * If the input argument is not specified or its value is false, this function
@@ -3400,6 +3430,8 @@ static bool yb_is_batched_execution = false;
 bool YbIsBatchedExecution() {
 	return yb_is_batched_execution;
 }
+
+bool yb_is_client_ysqlconnmgr = false;
 
 void YbSetIsBatchedExecution(bool value) {
 	yb_is_batched_execution = value;

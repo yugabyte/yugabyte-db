@@ -1554,7 +1554,9 @@ yb_agg_pushdown_supported(AggState *aggstate)
 		return;
 
 	/* Supported outer plan. */
-	if (!IsA(outerPlanState(aggstate), ForeignScanState))
+	if (!(IsA(outerPlanState(aggstate), ForeignScanState) ||
+		  IsA(outerPlanState(aggstate), IndexOnlyScanState) ||
+		  IsA(outerPlanState(aggstate), YbSeqScanState)))
 		return;
 	ss = (ScanState *) outerPlanState(aggstate);
 
@@ -1688,16 +1690,17 @@ yb_agg_pushdown_supported(AggState *aggstate)
 		 *   select sum(1) from (select random() as r from foo) as res;
 		 *   select sum(1) from (select (null=random())::int as r from foo) as res;
 		 * and pushdown will still be supported.
-		 * For simplicity, we do not try to match Var between aggref->args and outplan
-		 * targetlist and simply reject once we see any item that is not a simple column
-		 * reference.
+		 * TODO(#18122): For simplicity, we do not try to match Var between
+		 * aggref->args and outplan targetlist and simply reject once we see
+		 * any item that is not a simple column reference.  This should be
+		 * improved.
 		 */
 		ListCell   *t;
 		foreach(t, outerPlanState(aggstate)->plan->targetlist)
 		{
 			TargetEntry *tle = lfirst_node(TargetEntry, t);
 
-			if (!IsA(tle->expr, Var) || IS_SPECIAL_VARNO(castNode(Var, tle->expr)->varno))
+			if (!IsA(tle->expr, Var))
 				return;
 		}
 	}

@@ -185,9 +185,9 @@ YugabyteDB Managed performs full cluster (all namespaces) level backups, and the
 
 Clusters are secure by default. You need to explicitly allow access to clusters by adding IP addresses of clients connecting to the cluster to the cluster IP allow list. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/).
 
-If your applications are running in a VPC, deploy your cluster in a VPC to improve security and lower network latency. If you are using peering, you also need to add the CIDR ranges of peered application VPCs to your cluster IP allow list.
+If your applications are running in a VPC, deploy your cluster in a VPC to improve security and lower network latency. If you are using peering (AWS and GCP), you also need to add the CIDR ranges of peered application VPCs to your cluster IP allow list. If you are using a private link (AWS and Azure), you do not need to add addresses to the IP allow list.
 
-Multi-region clusters must be deployed in VPCs; in AWS, each region or read replica must be deployed in its own VPC.
+Multi-region clusters, or clusters in Azure, must be deployed in VPCs; in AWS, each region or read replica must be deployed in its own VPC.
 
 You need to create VPCs before you deploy the cluster. YugabyteDB Managed supports AWS, Azure, and GCP for VPCs. Refer to [VPC network](../cloud-vpcs/).
 

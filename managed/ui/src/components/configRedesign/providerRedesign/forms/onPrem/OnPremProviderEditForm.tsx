@@ -25,7 +25,7 @@ import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { YBInput, YBInputField, YBToggleField } from '../../../../../redesign/components';
 import {
   addItem,
-  constructAccessKeysPayload,
+  constructAccessKeysEditPayload,
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
@@ -456,7 +456,7 @@ const constructProviderPayload = async (
     throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
   }
 
-  const allAccessKeysPayload = constructAccessKeysPayload(
+  const allAccessKeysPayload = constructAccessKeysEditPayload(
     formValues.editSSHKeypair,
     KeyPairManagement.SELF_MANAGED,
     { sshKeypairName: formValues.sshKeypairName, sshPrivateKeyContent: sshPrivateKeyContent },

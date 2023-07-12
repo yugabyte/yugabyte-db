@@ -160,7 +160,7 @@ To create a universe, do the following:
 
     `memstore_size_mb=1` sets the total size of memstores on the tablet-servers to `1MB`. This forces a flush of the data to disk when a value greater than 1MB is added, allowing you to observe to which tablets the data is written.
 
-1. Add two more nodes to make this a 3-node by joining them with the previous node. You need to pass the `memstore_size` flag to each of the added YB-TServer servers, as follows:
+1. Add two more nodes to make this a 3-node by joining them with the previous node. (If you are running on macOS, first [configure loopback addresses](../../../reference/configuration/yugabyted/#running-on-macos).) You need to pass the `memstore_size` flag to each of the added YB-TServer servers, as follows:
 
     ```sh
     ./bin/yugabyted start \

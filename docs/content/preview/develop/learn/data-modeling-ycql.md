@@ -1,7 +1,7 @@
 ---
 title: Data modeling in YCQL
 headerTitle: Data modeling
-linkTitle: 2. Data modeling
+linkTitle: Data modeling
 description: Learn data modeling in YCQL and how to identify the patterns used to access data and the types of queries to be performed.
 aliases:
   - /develop/learn/data-modeling/
@@ -9,7 +9,7 @@ menu:
   preview:
     identifier: data-modeling-1-ycql
     parent: learn
-    weight: 562
+    weight: 100
 type: docs
 ---
 

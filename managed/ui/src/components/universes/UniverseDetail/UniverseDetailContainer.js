@@ -118,6 +118,12 @@ const mapDispatchToProps = (dispatch) => {
     showThirdpartyUpgradeModal: () => {
       dispatch(openDialog('thirdpartyUpgradeModal'));
     },
+    showEnableYSQLModal: () => {
+      dispatch(openDialog('enableYSQLModal'));
+    },
+    showEnableYCQLModal: () => {
+      dispatch(openDialog('enableYCQLModal'));
+    },
 
     updateBackupState: (universeUUID, flag) => {
       dispatch(updateBackupState(universeUUID, flag)).then((response) => {

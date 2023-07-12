@@ -29,6 +29,7 @@ import com.google.api.services.compute.model.Operation;
 import com.google.api.services.compute.model.TCPHealthCheck;
 import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.GoogleCredentials;
+import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -64,15 +65,15 @@ public class GCPProjectApiClient {
      * @param operation the operation that we are waiting to get completed
      * @return the error, if any, else {@code null} if there was no error
      */
-    public Operation.Error waitForOperationCompletion(Operation operation) {
+    public void waitForOperationCompletion(Operation operation) {
       Long pollingInterval =
           runtimeConfGetter.getConfForScope(
               provider, ProviderConfKeys.operationStatusPollingInterval);
       Long timeoutInterval =
           runtimeConfGetter.getConfForScope(provider, ProviderConfKeys.operationTimeoutInterval);
       long start = System.currentTimeMillis();
-      String zone = getResourceNameFromResourceUrl(operation.getZone());
-      String region = getResourceNameFromResourceUrl(operation.getRegion());
+      String zone = CloudAPI.getResourceNameFromResourceUrl(operation.getZone());
+      String region = CloudAPI.getResourceNameFromResourceUrl(operation.getRegion());
       String status = operation.getStatus();
       String opId = operation.getName();
       try {
@@ -105,7 +106,10 @@ public class GCPProjectApiClient {
       } catch (IOException e) {
         throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Failed to connect to GCP.");
       }
-      return operation == null ? null : operation.getError();
+      if (operation != null && operation.getError() != null) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, operation.getError().getErrors().toString());
+      }
     }
   }
 
@@ -122,16 +126,6 @@ public class GCPProjectApiClient {
     }
     project = cloudInfo.getGceProject();
     this.operationPoller = new OperationPoller();
-  }
-
-  // Helper function to extract Resource name from resource URL
-  // It only works for URls that end with the resource Name.
-  public static String getResourceNameFromResourceUrl(String resourceUrl) {
-    if (resourceUrl != null && !resourceUrl.isEmpty()) {
-      String[] urlParts = resourceUrl.split("/", 0);
-      return urlParts[urlParts.length - 1];
-    }
-    return null;
   }
 
   /**
@@ -209,7 +203,7 @@ public class GCPProjectApiClient {
       String zone = zoneToBackend.getKey();
       Backend backend = zoneToBackend.getValue();
       String instanceGroupUrl = backend.getGroup();
-      String instanceGroupName = getResourceNameFromResourceUrl(instanceGroupUrl);
+      String instanceGroupName = CloudAPI.getResourceNameFromResourceUrl(instanceGroupUrl);
       log.warn("Deleting instance group: " + instanceGroupName);
       Operation response =
           compute.instanceGroups().delete(project, zone, instanceGroupName).execute();
@@ -478,7 +472,7 @@ public class GCPProjectApiClient {
   public void updateBackendService(String region, BackendService backendService)
       throws IOException {
     String backendServiceUrl = backendService.getSelfLink();
-    String backendServiceName = getResourceNameFromResourceUrl(backendServiceUrl);
+    String backendServiceName = CloudAPI.getResourceNameFromResourceUrl(backendServiceUrl);
     Operation response =
         compute
             .regionBackendServices()

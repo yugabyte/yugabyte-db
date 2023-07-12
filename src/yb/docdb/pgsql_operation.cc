@@ -85,8 +85,14 @@ DEFINE_UNKNOWN_bool(pgsql_consistent_transactional_paging, true,
 DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
                  "If set > 0, slows down the response to pgsql aggregate read by this amount.");
 
+// TODO: only enabled for new installs only for now, will enable it for upgrades in 2.22+ release.
+#ifndef NDEBUG
+// Disable packed row by default in debug builds.
+DEFINE_RUNTIME_bool(ysql_enable_packed_row, false,
+#else
 DEFINE_RUNTIME_AUTO_bool(ysql_enable_packed_row, kNewInstallsOnly, false, true,
-                         "Whether packed row is enabled for YSQL.");
+#endif
+                    "Whether packed row is enabled for YSQL.");
 
 DEFINE_UNKNOWN_bool(ysql_enable_packed_row_for_colocated_table, true,
                     "Whether to enable packed row for colocated tables.");
@@ -556,8 +562,8 @@ Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
 
 // Check if a duplicate value is inserted into a unique index.
 Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(const DocOperationApplyData& data) {
-  VLOG(3) << "Looking for collisions in\n" << docdb::DocDBDebugDumpToStr(
-      data.doc_write_batch->doc_db(), doc_read_context_->schema_packing_storage);
+  VLOG(3) << "Looking for collisions in\n" << DocDBDebugDumpToStr(
+      data.doc_write_batch->doc_db(), nullptr /*schema_packing_provider*/);
   // We need to check backwards only for backfilled entries.
   bool ret =
       VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, data.read_time())) ||
@@ -654,8 +660,8 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
               << "\nExisting: " << AsString(existing_value_buffer)
               << " vs New: " << AsString(new_value_buffer)
               << "\nUsed read time as " << AsString(data.read_time());
-      DVLOG(3) << "DocDB is now:\n" << docdb::DocDBDebugDumpToStr(
-          data.doc_write_batch->doc_db(), doc_read_context_->schema_packing_storage);
+      DVLOG(3) << "DocDB is now:\n" << DocDBDebugDumpToStr(
+          data.doc_write_batch->doc_db(), nullptr /*schema_packing_provider*/);
       return true;
     }
   }

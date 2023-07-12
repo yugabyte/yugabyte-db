@@ -146,7 +146,7 @@ public class GCPCloudImpl implements CloudAPI {
       if (instances != null && !CollectionUtils.isEmpty(instances)) {
         try {
           String instanceGroupUrl = apiClient.createNewInstanceGroupInZone(zone);
-          String instanceGroupName = apiClient.getResourceNameFromResourceUrl(instanceGroupUrl);
+          String instanceGroupName = CloudAPI.getResourceNameFromResourceUrl(instanceGroupUrl);
           apiClient.addInstancesToInstaceGroup(zone, instanceGroupName, instances);
           backend.setGroup(instanceGroupUrl);
           backends.add(backend);
@@ -180,7 +180,7 @@ public class GCPCloudImpl implements CloudAPI {
       Backend backend = zonesToBackend.get(zone);
       Set<InstanceReference> newInstances = new HashSet(zoneToNodes.getValue());
       String instanceGroupUrl = backend.getGroup();
-      String instanceGroupName = apiClient.getResourceNameFromResourceUrl(instanceGroupUrl);
+      String instanceGroupName = CloudAPI.getResourceNameFromResourceUrl(instanceGroupUrl);
       InstanceGroup instanceGroup = apiClient.getInstanceGroup(zone, instanceGroupName);
       log.info("Sucessfully fetched instance group " + instanceGroupName);
       try {
@@ -292,7 +292,7 @@ public class GCPCloudImpl implements CloudAPI {
     // health checks
     // However, we are not making that assumption here, to support future changes in the GCP API
     for (String healthCheckUrl : healthCheckUrls) {
-      String healthCheckName = apiClient.getResourceNameFromResourceUrl(healthCheckUrl);
+      String healthCheckName = CloudAPI.getResourceNameFromResourceUrl(healthCheckUrl);
       healthChecks.add(apiClient.getRegionalHelathCheckByName(region, healthCheckName));
     }
     List<String> newHealthCheckUrls = new ArrayList();

@@ -123,7 +123,7 @@ const STEPS = [
       isEditBackupMode: boolean
     ) => {
       if (isEditBackupMode) {
-        return 'Edit Backup';
+        return 'Change Retention Period';
       }
       if (isScheduledBackup) {
         return `${isEditMode ? 'Edit' : 'Create'} scheduled backup policy`;

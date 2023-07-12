@@ -11,6 +11,11 @@ CREATE TABLE ybaggtest (
     float_4    float4,
     float_8    float8
 );
+CREATE INDEX NONCONCURRENTLY ybaggtestindex ON ybaggtest (
+    (int_8, int_2) HASH,
+    float_4 DESC,
+    int_4 ASC
+) INCLUDE (float_8);
 
 -- Insert maximum integer values multiple times to force overflow on SUM (both in DocDB and PG).
 INSERT INTO ybaggtest VALUES (1, 32767, 2147483647, 9223372036854775807, 1.1, 2.2);
@@ -20,8 +25,10 @@ INSERT INTO ybaggtest
 
 -- Verify COUNT(...) returns proper value.
 \set explain 'EXPLAIN (COSTS OFF)'
+\set ss '/*+SeqScan(ybaggtest)*/'
+\set ios '/*+IndexOnlyScan(ybaggtest ybaggtestindex)*/'
 \set query 'SELECT COUNT(*) FROM ybaggtest'
-\set run ':explain :query; :query'
+\set run ':explain :query; :explain :ss :query; :explain :ios :query; :query; :ss :query; :ios :query'
 :run;
 \set query 'SELECT COUNT(0) FROM ybaggtest'
 :run;
@@ -31,6 +38,10 @@ INSERT INTO ybaggtest
 -- Delete row, verify COUNT(...) returns proper value.
 DELETE FROM ybaggtest WHERE id = 100;
 SELECT COUNT(*) FROM ybaggtest;
+/*+IndexOnlyScan(ybaggtest ybaggtestindex)*/
+SELECT COUNT(*) FROM ybaggtest;
+SELECT COUNT(0) FROM ybaggtest;
+/*+IndexOnlyScan(ybaggtest ybaggtestindex)*/
 SELECT COUNT(0) FROM ybaggtest;
 
 -- Verify selecting different aggs for same column works.
@@ -69,6 +80,9 @@ CREATE TABLE ybaggtest2 (
     a int
 );
 
+-- Create index where column a is not part of the key.
+CREATE INDEX NONCONCURRENTLY ybaggtest2index ON ybaggtest2 ((1)) INCLUDE (a);
+
 -- Insert NULL rows.
 INSERT INTO ybaggtest2 VALUES (NULL), (NULL), (NULL);
 
@@ -76,8 +90,14 @@ INSERT INTO ybaggtest2 VALUES (NULL), (NULL), (NULL);
 INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 
 -- Verify NULL rows are included in COUNT(*) but not in COUNT(row).
+\set ss '/*+SeqScan(ybaggtest2)*/'
+\set ios '/*+IndexOnlyScan(ybaggtest2 ybaggtest2index)*/'
 \set query 'SELECT COUNT(*) FROM ybaggtest2'
 :run;
+-- TODO(#16417): update the following three index only scan explains to have
+-- "Partial Aggregate: true" because pushdown will be allowed once the index's
+-- constant 1 column is not requested by the aggregate node to the index only
+-- scan node when using CP_SMALL_TLIST.
 \set query 'SELECT COUNT(a) FROM ybaggtest2'
 :run;
 \set query 'SELECT COUNT(*), COUNT(a) FROM ybaggtest2'
@@ -101,7 +121,10 @@ INSERT INTO digit VALUES(1, 'one'), (2, 'two'), (3, 'three'), (4, 'four'), (5, '
 CREATE TABLE test(k INT PRIMARY KEY);
 ALTER TABLE test ADD v1 int DEFAULT 5;
 ALTER TABLE test ADD v2 int DEFAULT 10;
+CREATE INDEX NONCONCURRENTLY testindex ON test (k) INCLUDE (v1, v2);
 INSERT INTO test VALUES(1), (2), (3);
+\set ss '/*+SeqScan(test)*/'
+\set ios '/*+IndexOnlyScan(test testindex)*/'
 \set query 'SELECT COUNT(*) FROM test'
 :run;
 \set query 'SELECT COUNT(k) FROM test'
@@ -137,6 +160,7 @@ DROP TABLE digit;
 -- Test dropped column.
 --
 CREATE TABLE test(K INT PRIMARY KEY, v1 INT NOT NULL, v2 INT NOT NULL);
+CREATE INDEX NONCONCURRENTLY testindex ON test (K) INCLUDE (v2);
 INSERT INTO test VALUES(1, 1, 1), (2, 2, 2), (3, 3, 3);
 AlTER TABLE test DROP v1;
 \set query 'SELECT MIN(v2) FROM test'
@@ -154,26 +178,59 @@ AlTER TABLE test DROP v1;
 --
 -- Original test case that had postgres FATAL:
 CREATE TABLE t1(c0 DECIMAL );
+CREATE INDEX NONCONCURRENTLY t1index ON t1 (c0);
 INSERT INTO t1(c0) VALUES(0.4632167437031089463062016875483095645904541015625), (0.82173140818865475498711248292238451540470123291015625), (0.69990454445895500246166420765803195536136627197265625), (0.7554730989898816861938257716246880590915679931640625);
 ALTER TABLE  ONLY t1 FORCE ROW LEVEL SECURITY, DISABLE ROW LEVEL SECURITY, NO FORCE ROW LEVEL SECURITY;
 INSERT INTO t1(c0) VALUES(0.9946693818538820952568357824929989874362945556640625), (0.13653666831997435249235195442452095448970794677734375), (0.3359001510719556993223022800520993769168853759765625), (0.312027233370160583802999099134467542171478271484375);
+\set ss '/*+SeqScan(t1)*/'
+\set ios '/*+IndexOnlyScan(t1 t1index)*/'
 \set query 'SELECT SUM(count) FROM (SELECT (CAST(((((''[-1962327130,2000870418)''::int4range)*(''(-1293215916,183586536]''::int4range)))-(((''[-545024026,526859443]''::int4range)*(NULL)))) AS VARCHAR)~current_query())::INT as count FROM ONLY t1) as res'
 :run;
 
 -- Simplified test case that had postgres FATAL:
 CREATE TABLE t2(c0 DECIMAL );
+CREATE INDEX NONCONCURRENTLY t2index ON t2 (c0);
 INSERT INTO t2 VALUES(1), (2), (3);
+\set ss '/*+SeqScan(t2)*/'
+\set ios '/*+IndexOnlyScan(t2 t2index)*/'
 \set query 'SELECT SUM(r) < 6 from (SELECT random() as r from t2) as res'
 :run;
 
 -- Simplified test case that had postgres FATAL:
 CREATE TABLE t3(c0 DECIMAL );
+CREATE INDEX NONCONCURRENTLY t3index ON t3 (c0);
 INSERT INTO t3 VALUES(1), (2), (3);
+\set ss '/*+SeqScan(t3)*/'
+\set ios '/*+IndexOnlyScan(t3 t3index)*/'
 \set query 'SELECT SUM(r) from (SELECT (NULL=random())::int as r from t3) as res'
 :run;
 
 -- Test case that did not have postgres FATAL but showed wrong result 't':
 CREATE TABLE t4(c0 FLOAT8);
+CREATE INDEX NONCONCURRENTLY t4index ON t4 (c0);
 INSERT INTO t4 VALUES(1), (2), (3);
+\set ss '/*+SeqScan(t4)*/'
+\set ios '/*+IndexOnlyScan(t4 t4index)*/'
 \set query 'SELECT SUM(r) = 6 from (SELECT random() as r from t4) as res'
+:run;
+
+--
+-- System tables.
+--
+\set ss '/*+SeqScan(pg_type)*/'
+\set ios '/*+IndexOnlyScan(pg_type pg_type_typname_nsp_index)*/'
+\set query 'SELECT MIN(typnamespace) FROM pg_type'
+:run;
+
+--
+-- Colocation.
+--
+CREATE DATABASE co COLOCATION TRUE;
+\c co
+CREATE TABLE t (i int, j int, k int);
+CREATE INDEX NONCONCURRENTLY i ON t (j, k DESC, i);
+INSERT INTO t VALUES (1, 2, 3), (4, 5, 6);
+\set ss '/*+SeqScan(t)*/'
+\set ios '/*+IndexOnlyScan(t i)*/'
+\set query 'SELECT SUM(k), AVG(i), COUNT(*), MAX(j) FROM t'
 :run;

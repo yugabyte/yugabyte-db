@@ -375,7 +375,7 @@ class CDCServiceImpl : public CDCServiceIf {
       const std::set<TabletId>& active_or_hidden_tablets,
       const std::set<TabletId>& parent_tablets,
       const std::map<TabletId, TabletId>& child_to_parent_mapping,
-      std::vector<std::pair<TabletId, OpId>>* result);
+      std::vector<std::pair<TabletId, CDCSDKCheckpointPB>>* result);
 
   // This method deletes entries from the cdc_state table that are contained in the set.
   Status DeleteCDCStateTableMetadata(
@@ -441,6 +441,10 @@ class CDCServiceImpl : public CDCServiceIf {
   // Update composite map in cache.
   Result<CompositeAttsMap> UpdateCompositeMapInCacheUnlocked(const NamespaceName& ns_name)
       REQUIRES(mutex_);
+
+  Result<bool> IsBootstrapRequiredForTablet(
+      tablet::TabletPeerPtr tablet_peer, const OpId& min_op_id, const CoarseTimePoint& deadline);
+
   rpc::Rpcs rpcs_;
 
   std::unique_ptr<CDCServiceContext> context_;

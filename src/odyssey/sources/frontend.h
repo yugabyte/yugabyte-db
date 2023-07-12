@@ -80,5 +80,8 @@ int od_frontend_info(od_client_t *, char *, ...);
 int od_frontend_error(od_client_t *, char *, char *, ...);
 int od_frontend_fatal(od_client_t *, char *, char *, ...);
 void od_frontend(void *);
+extern int yb_execute_on_control_connection(od_client_t *,
+					    int (*)(od_client_t *,
+						    od_server_t *));
 
 #endif /* ODYSSEY_FRONTEND_H */

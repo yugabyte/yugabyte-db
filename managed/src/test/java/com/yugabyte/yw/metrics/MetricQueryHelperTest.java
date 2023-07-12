@@ -26,6 +26,8 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertState;
 import com.yugabyte.yw.models.MetricConfig;
@@ -62,6 +64,8 @@ public class MetricQueryHelperTest extends FakeDBApplication {
 
   @Mock PlatformExecutorFactory mockPlatformExecutorFactory;
 
+  @Mock RuntimeConfGetter runtimeConfGetter;
+
   MetricConfigDefinition validMetric;
 
   @Before
@@ -75,8 +79,11 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     when(mockAppConfig.getString("yb.metrics.scrape_interval")).thenReturn("1s");
     when(mockPlatformExecutorFactory.createFixedExecutor(any(), anyInt(), any()))
         .thenReturn(executor);
+    when(runtimeConfGetter.getStaticConf()).thenReturn(mockAppConfig);
+    when(runtimeConfGetter.getGlobalConf(GlobalConfKeys.metricsLinkUseBrowserFqdn))
+        .thenReturn(true);
 
-    MetricUrlProvider metricUrlProvider = new MetricUrlProvider(mockAppConfig);
+    MetricUrlProvider metricUrlProvider = new MetricUrlProvider(runtimeConfGetter);
     metricQueryHelper =
         new MetricQueryHelper(
             mockAppConfig, mockApiHelper, metricUrlProvider, mockPlatformExecutorFactory);

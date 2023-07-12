@@ -19,6 +19,7 @@ set(PGWRAPPER_SRCS
 set(PGWRAPPER_LIBS
     yb_common
     yb_pggate_flags
+    yb_process_wrapper
     yb_util)
 ADD_YB_LIBRARY(yb_pgwrapper
                SRCS ${PGWRAPPER_SRCS}
@@ -131,7 +132,6 @@ ADD_YB_TEST(pg_load_balancer-test)
 ADD_YB_TEST(pg_master_failover-test)
 ADD_YB_TEST(pg_mini-test)
 ADD_YB_TEST(pg_namespace-test)
-ADD_YB_TEST(pg_old_txn-test)
 ADD_YB_TEST(pg_on_conflict-test)
 ADD_YB_TEST(pg_op_buffering-test)
 ADD_YB_TEST(pg_packed_row-test)
@@ -141,6 +141,7 @@ ADD_YB_TEST(pg_table_size-test)
 ADD_YB_TEST(pg_tablet_shutdown-test)
 ADD_YB_TEST(pg_tablet_split-test)
 ADD_YB_TEST(pg_txn-test)
+ADD_YB_TEST(pg_txn_status-test)
 ADD_YB_TEST(pg_wait_on_conflict-test)
 ADD_YB_TEST(pg_wrapper-test)
 

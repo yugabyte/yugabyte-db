@@ -1991,6 +1991,22 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  public CreateSnapshotScheduleResponse createSnapshotSchedule(
+      YQLDatabase databaseType,
+      String keyspaceName,
+      String keyspaceId,
+      long retentionInSecs,
+      long timeIntervalInSecs) throws Exception {
+    Deferred<CreateSnapshotScheduleResponse> d =
+        asyncClient.createSnapshotSchedule(
+            databaseType,
+            keyspaceName,
+            keyspaceId,
+            retentionInSecs,
+            timeIntervalInSecs);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
   public DeleteSnapshotScheduleResponse deleteSnapshotSchedule(
       UUID snapshotScheduleUUID) throws Exception {
     Deferred<DeleteSnapshotScheduleResponse> d =
@@ -2009,6 +2025,13 @@ public class YBClient implements AutoCloseable {
                                                  long restoreTimeInMillis) throws Exception {
     Deferred<RestoreSnapshotScheduleResponse> d =
       asyncClient.restoreSnapshotSchedule(snapshotScheduleUUID, restoreTimeInMillis);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public ListSnapshotRestorationsResponse listSnapshotRestorations(
+      UUID restorationUUID) throws Exception {
+    Deferred<ListSnapshotRestorationsResponse> d =
+      asyncClient.listSnapshotRestorations(restorationUUID);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

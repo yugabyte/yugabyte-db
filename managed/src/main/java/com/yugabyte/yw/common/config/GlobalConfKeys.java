@@ -323,6 +323,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable YBA's custom CA trust-store",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enforceCertVerificationBackupRestore =
+      new ConfKeyInfo<>(
+          "yb.certVerifyBackupRestore.is_enforced",
+          ScopeType.GLOBAL,
+          "Server certificate verification for S3 backup/restore",
+          "Enforce server certificate verification during S3 backup/restore",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> javaxNetSslTrustStore =
       new ConfKeyInfo<>(
           "yb.wellKnownCA.trustStore.path",
@@ -877,4 +885,30 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Number of expired backups to be deleted in a single GC iteration.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> metricsExternalUrl =
+      new ConfKeyInfo<>(
+          "yb.metrics.external.url",
+          ScopeType.GLOBAL,
+          "Prometheus external URL",
+          "URL used to generate Prometheus metrics on YBA UI and to set up HA metrics federation.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> metricsLinkUseBrowserFqdn =
+      new ConfKeyInfo<>(
+          "yb.metrics.link.use_browser_fqdn",
+          ScopeType.GLOBAL,
+          "Prometheus link use browser FQDN",
+          "If Prometheus link in browser should point to current FQDN in browser"
+              + " or use value from backend.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> oidcFeatureEnhancements =
+      new ConfKeyInfo<>(
+          "yb.security.oidc_feature_enhancements",
+          ScopeType.GLOBAL,
+          "OIDC feature enhancements",
+          "Enables the OIDC enhancements such as auth_token retrieval, user registration in YBA"
+              + " on login, etc.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
 }

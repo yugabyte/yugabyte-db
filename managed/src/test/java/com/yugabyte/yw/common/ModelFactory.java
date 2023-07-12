@@ -20,8 +20,11 @@ import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceInfo;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.AlertChannelParams;
 import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDescription;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
@@ -464,7 +467,6 @@ public class ModelFactory {
         new AlertDefinition()
             .setConfigurationUUID(configuration.getUuid())
             .setCustomerUUID(customer.getUuid())
-            .setQuery("query {{ query_condition }} {{ query_threshold }}")
             .generateUUID();
     if (universe != null) {
       alertDefinition.setLabels(
@@ -513,6 +515,8 @@ public class ModelFactory {
 
   public static Alert createAlert(
       Customer customer, Universe universe, AlertDefinition definition, Consumer<Alert> modifier) {
+    AlertTemplateService alertTemplateService =
+        StaticInjectorHolder.injector().instanceOf(AlertTemplateService.class);
     Alert alert =
         new Alert()
             .setCustomerUUID(customer.getUuid())
@@ -534,8 +538,12 @@ public class ModelFactory {
     alert.setConfigurationUuid(definition.getConfigurationUUID());
     alert.setConfigurationType(configuration.getTargetType());
     alert.setDefinitionUuid(definition.getUuid());
+    AlertTemplateDescription alertTemplateDescription =
+        alertTemplateService.getTemplateDescription(configuration.getTemplate());
     List<AlertLabel> labels =
-        definition.getEffectiveLabels(configuration, null, AlertConfiguration.Severity.SEVERE)
+        definition
+            .getEffectiveLabels(
+                alertTemplateDescription, configuration, null, AlertConfiguration.Severity.SEVERE)
             .stream()
             .map(l -> new AlertLabel(l.getName(), l.getValue()))
             .collect(Collectors.toList());

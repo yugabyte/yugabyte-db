@@ -142,6 +142,8 @@ class CatalogManagerIf {
       const ReplicationInfoPB& table_replication_info,
       const TablespaceId& tablespace_id) = 0;
 
+  virtual Result<ReplicationInfoPB> GetTableReplicationInfo(const TableInfoPtr& table) = 0;
+
   virtual std::vector<std::shared_ptr<server::MonitoredTask>> GetRecentJobs() = 0;
 
   virtual bool IsSystemTable(const TableInfo& table) const = 0;
@@ -218,6 +220,9 @@ class CatalogManagerIf {
 
   virtual Status ListCDCStreams(
       const ListCDCStreamsRequestPB* req, ListCDCStreamsResponsePB* resp) = 0;
+
+  virtual Status IsObjectPartOfXRepl(
+      const IsObjectPartOfXReplRequestPB* req, IsObjectPartOfXReplResponsePB* resp) = 0;
 
   virtual Status GetCDCDBStreamInfo(
     const GetCDCDBStreamInfoRequestPB* req, GetCDCDBStreamInfoResponsePB* resp) = 0;
