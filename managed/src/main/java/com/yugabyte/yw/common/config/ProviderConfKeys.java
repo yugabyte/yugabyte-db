@@ -323,4 +323,12 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "To enable ybc on k8s universe",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Boolean> ybcListenOnAllInterfacesK8s =
+      new ConfKeyInfo<>(
+          "yb.ybc_flags.listen_on_all_interfaces_k8s",
+          ScopeType.PROVIDER,
+          "Make YBC listen on 0.0.0.0",
+          "Makes YBC bind on all network interfaces",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
