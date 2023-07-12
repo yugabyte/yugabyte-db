@@ -40,9 +40,9 @@ jobs:
 
   - os: mac12
     compiler: clang
-    build_type: debug
+    build_type: release
     architecture: arm64
-    release_artifact: false
+    release_artifact: true
 
   - os: mac11
     compiler: clang
