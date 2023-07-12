@@ -1908,14 +1908,17 @@ fi
 
 export YB_JAVA_TEST_OFFLINE_MODE=0
 
-# We do not double-quote $user_mvn_opts on purpose to allow multiple options.
+if [[ -n $user_mvn_opts ]]; then
+  # We do not double-quote $user_mvn_opts on purpose to allow multiple options.
+  # shellcheck disable=SC2206
+  java_build_common_opts=( $user_mvn_opts )
+else
+  java_build_common_opts=()
+fi
 # shellcheck disable=SC2206
-user_mvn_opts_arr=( $user_mvn_opts )
-java_build_common_opts=(
-  "${user_mvn_opts_arr[@]}"
-  install
-  -DbinDir="$BUILD_ROOT/bin"
-)
+user_mvn_opts_for_java_test=( $user_mvn_opts )
+
+java_build_common_opts+=( install -DbinDir="$BUILD_ROOT/bin" )
 
 # Build Java code and prepare for running the tests, if necessary, but do not run them yet.
 if [[ ${build_java} == "true" ]]; then
