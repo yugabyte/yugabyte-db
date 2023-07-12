@@ -764,7 +764,6 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="NTP server to connect to.")
         self.parser.add_argument("--lun_indexes", default="",
                                  help="Comma-separated LUN indexes for mounted on instance disks.")
-        self.parser.add_argument("--ansible_exec_timeout_sec", default=None)
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -803,8 +802,6 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
         if args.local_package_path:
             self.extra_vars.update({"local_package_path": args.local_package_path})
-        if args.ansible_exec_timeout_sec is not None:
-            self.extra_vars.update({"ansible_exec_timeout_sec": args.ansible_exec_timeout_sec})
         if args.air_gap:
             self.extra_vars.update({"air_gap": args.air_gap})
         if args.node_exporter_port:
@@ -1138,7 +1135,6 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--package', default=None)
         self.parser.add_argument('--num_releases_to_keep', type=int,
                                  help="Number of releases to keep after upgrade.")
-        self.parser.add_argument("--ansible_exec_timeout_sec", default=None)
         self.parser.add_argument('--ybc_package', default=None)
         self.parser.add_argument('--ybc_dir', default=None)
         self.parser.add_argument('--yb_process_type', default=None,
@@ -1164,6 +1160,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--client_key_path')
         self.parser.add_argument('--cert_rotate_action', default=None,
                                  choices=self.CERT_ROTATE_ACTIONS)
+        self.parser.add_argument('--num_cores_to_keep', type=int, default=5,
+                                 help="number of clean cores to keep in the ansible layer")
         self.parser.add_argument('--skip_cert_validation',
                                  default=None, choices=self.SKIP_CERT_VALIDATION_OPTIONS)
         self.parser.add_argument('--cert_valid_duration', default=365)
@@ -1231,9 +1229,6 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             if args.master_addresses_for_master is not None:
                 self.extra_vars["master_addresses_for_master"] = args.master_addresses_for_master
 
-            if args.ansible_exec_timeout_sec is not None:
-                self.extra_vars.update({"ansible_exec_timeout_sec": args.ansible_exec_timeout_sec})
-
             if args.server_broadcast_addresses is not None:
                 self.extra_vars["server_broadcast_addresses"] = args.server_broadcast_addresses
 
@@ -1245,6 +1240,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
 
         self.extra_vars["systemd_option"] = args.systemd_services
         self.extra_vars["configure_ybc"] = args.configure_ybc
+        self.extra_vars["yb_num_cores_to_keep"] = args.num_cores_to_keep
 
         # Make sure we set server_type so we pick the right configure.
         self.update_ansible_vars_with_args(args)

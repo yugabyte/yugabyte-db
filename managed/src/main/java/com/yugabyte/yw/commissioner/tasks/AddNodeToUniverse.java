@@ -284,7 +284,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
               ImmutableSet.of(currentNode)));
 
       // Update the DNS entry for this universe.
-      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
       // Update node state to live.

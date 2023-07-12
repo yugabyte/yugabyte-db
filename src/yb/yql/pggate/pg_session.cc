@@ -440,6 +440,10 @@ Status PgSession::GetCatalogMasterVersion(uint64_t *version) {
   return Status::OK();
 }
 
+Status PgSession::CancelTransaction(const unsigned char* transaction_id) {
+  return pg_client_.CancelTransaction(transaction_id);
+}
+
 Status PgSession::CreateSequencesDataTable() {
   return pg_client_.CreateSequencesDataTable();
 }
@@ -833,6 +837,11 @@ void PgSession::DeleteForeignKeyReference(const LightweightTableYbctid& key) {
 
 Result<int> PgSession::TabletServerCount(bool primary_only) {
   return pg_client_.TabletServerCount(primary_only);
+}
+
+Result<yb::tserver::PgGetLockStatusResponsePB> PgSession::GetLockStatusData(
+    const std::string& table_id, const std::string& transaction_id) {
+  return pg_client_.GetLockStatusData(table_id, transaction_id);
 }
 
 Result<client::TabletServersInfo> PgSession::ListTabletServers() {

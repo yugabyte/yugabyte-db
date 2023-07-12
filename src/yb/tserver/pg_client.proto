@@ -44,8 +44,8 @@ service PgClientService {
   rpc GetCatalogMasterVersion(PgGetCatalogMasterVersionRequestPB)
       returns (PgGetCatalogMasterVersionResponsePB);
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
-  rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
   rpc GetLockStatus(PgGetLockStatusRequestPB) returns (PgGetLockStatusResponsePB);
+  rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
   rpc ListLiveTabletServers(PgListLiveTabletServersRequestPB)
       returns (PgListLiveTabletServersResponsePB);
   rpc GetIndexBackfillProgress(PgGetIndexBackfillProgressRequestPB)

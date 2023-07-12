@@ -181,6 +181,15 @@ public class YsqlQueryExecutor {
 
   public JsonNode executeQueryInNodeShell(
       Universe universe, RunQueryFormData queryParams, NodeDetails node) {
+    return executeQueryInNodeShell(
+        universe,
+        queryParams,
+        node,
+        runtimeConfigFactory.forUniverse(universe).getLong("yb.ysql_timeout_secs"));
+  }
+
+  public JsonNode executeQueryInNodeShell(
+      Universe universe, RunQueryFormData queryParams, NodeDetails node, long timeoutSec) {
     ObjectNode response = newObject();
     response.put("type", "ysql");
     String queryType = getQueryType(queryParams.query);
@@ -191,7 +200,7 @@ public class YsqlQueryExecutor {
     try {
       shellResponse =
           nodeUniverseManager
-              .runYsqlCommand(node, universe, queryParams.db_name, queryString)
+              .runYsqlCommand(node, universe, queryParams.db_name, queryString, timeoutSec)
               .processErrors("Ysql Query Execution Error");
     } catch (RuntimeException e) {
       response.put("error", ShellResponse.cleanedUpErrorMessage(e.getMessage()));

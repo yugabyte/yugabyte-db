@@ -175,9 +175,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // real. Then that down TServer will timeout this task and universe expansion will fail.
       createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      // Update the DNS entry for this universe, based in primary provider info.
-      UserIntent primaryIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, primaryIntent)
+      // Update the DNS entry for this universe.
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.

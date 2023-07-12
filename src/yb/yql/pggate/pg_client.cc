@@ -599,6 +599,24 @@ class PgClient::Impl {
     return Status::OK();
   }
 
+  Result<yb::tserver::PgGetLockStatusResponsePB> GetLockStatusData(
+      const std::string& table_id, const std::string& transaction_id) {
+    tserver::PgGetLockStatusRequestPB req;
+    tserver::PgGetLockStatusResponsePB resp;
+
+    if (!table_id.empty()) {
+      req.set_table_id(table_id);
+    }
+    if (!transaction_id.empty()) {
+      req.set_transaction_id(transaction_id);
+    }
+
+    RETURN_NOT_OK(proxy_->GetLockStatus(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+
+    return resp;
+  }
+
   Result<int32> TabletServerCount(bool primary_only) {
     if (tablet_server_count_cache_[primary_only] > 0) {
       return tablet_server_count_cache_[primary_only];
@@ -700,6 +718,14 @@ class PgClient::Impl {
   }
 
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_SIMPLE_METHOD_IMPL, ~, YB_PG_CLIENT_SIMPLE_METHODS);
+
+  Status CancelTransaction(const unsigned char* transaction_id) {
+    tserver::PgCancelTransactionRequestPB req;
+    req.set_transaction_id(transaction_id, kUuidSize);
+    tserver::PgCancelTransactionResponsePB resp;
+    RETURN_NOT_OK(proxy_->CancelTransaction(req, &resp, PrepareController(CoarseTimePoint())));
+    return ResponseStatus(resp);
+  }
 
  private:
   std::string LogPrefix() const {
@@ -817,6 +843,11 @@ Status PgClient::GetIndexBackfillProgress(
   return impl_->GetIndexBackfillProgress(index_ids, backfill_statuses);
 }
 
+Result<yb::tserver::PgGetLockStatusResponsePB> PgClient::GetLockStatusData(
+    const std::string& table_id, const std::string& transaction_id) {
+  return impl_->GetLockStatusData(table_id, transaction_id);
+}
+
 Result<int32> PgClient::TabletServerCount(bool primary_only) {
   return impl_->TabletServerCount(primary_only);
 }
@@ -926,6 +957,10 @@ Status PgClient::method( \
 }
 
 BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_SIMPLE_METHOD_DEFINE, ~, YB_PG_CLIENT_SIMPLE_METHODS);
+
+Status PgClient::CancelTransaction(const unsigned char* transaction_id) {
+  return impl_->CancelTransaction(transaction_id);
+}
 
 }  // namespace pggate
 }  // namespace yb
