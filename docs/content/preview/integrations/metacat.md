@@ -40,10 +40,10 @@ Make changes in the following four files:
 
 - In the `metacat-functional-tests/metacat-test-cluster/docker-compose.yml` file, change the following:
 
-  - Change the `image` to a YugabyteDB image
-  - Add the `command` and set it to the location of the script file you created
-  - Change the `POSTGRES_USER` and `POSTGRES_PASSWORD`
-  - Change the port number under `environment`
+  - Change the `image` to a YugabyteDB image.
+  - Add the `command` and set it to the location of the script file you created.
+  - Change the `POSTGRES_USER` and `POSTGRES_PASSWORD`.
+  - Change the port number under `environment` for `storage-barrier` configuration.
 
   For example:
 
