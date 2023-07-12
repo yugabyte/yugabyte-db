@@ -240,9 +240,7 @@ public class KubernetesOperatorController {
               Universe.maybeGetUniverseByName(cust.getId(), ybUniverse.getMetadata().getName());
           u.ifPresent(
               universe -> {
-                Result result =
-                    editUniverse(
-                        cust, universe, ybUniverse); /* gives null Result if not a real edit */
+                editUniverse(cust, universe, ybUniverse); /* gives null Result if not a real edit */
               });
         }
       } else if (action == OperatorAction.UPDATED) {
@@ -250,9 +248,7 @@ public class KubernetesOperatorController {
         Optional<Universe> u = Universe.maybeGetUniverseByName(cust.getId(), universeName);
         u.ifPresent(
             universe -> {
-              Result result =
-                  editUniverse(
-                      cust, universe, ybUniverse); /* gives null Result if not a real edit */
+              editUniverse(cust, universe, ybUniverse); /* gives null Result if not a real edit */
             });
       }
     } catch (Exception e) {
@@ -317,7 +313,7 @@ public class KubernetesOperatorController {
     return new YBPTask(universeResp.taskUUID, universeResp.universeUUID).asResult();
   }
 
-  private Result editUniverse(Customer cust, Universe universe, YBUniverse ybUniverse) {
+  private void editUniverse(Customer cust, Universe universe, YBUniverse ybUniverse) {
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     if (taskParams != null && taskParams.getPrimaryCluster() != null) {
       UserIntent currentUserIntent = taskParams.getPrimaryCluster().userIntent;
@@ -369,7 +365,7 @@ public class KubernetesOperatorController {
           if (!(currentUserIntent.masterGFlags.equals(incomingIntent.masterGFlags))
               || !(currentUserIntent.tserverGFlags.equals(incomingIntent.tserverGFlags))) {
             LOG.info("Updating Gflags");
-            return updateGflagsYbUniverse(
+            updateGflagsYbUniverse(
                 taskParams,
                 cust,
                 ybUniverse,
@@ -377,18 +373,17 @@ public class KubernetesOperatorController {
                 incomingIntent.tserverGFlags);
           } else if (currentUserIntent.numNodes != incomingIntent.numNodes || updateVersion(pair)) {
             LOG.info("Updating nodes");
-            return updateYBUniverse(taskParams, cust, ybUniverse);
+            taskUUID = updateYBUniverse(taskParams, cust, ybUniverse);
           } else if (!currentUserIntent.ybSoftwareVersion.equals(
               incomingIntent.ybSoftwareVersion)) {
             LOG.info("Upgrading software");
-            return upgradeYBUniverse(taskParams, cust, ybUniverse);
+            taskUUID = upgradeYBUniverse(taskParams, cust, ybUniverse);
           } else {
             LOG.info("No update made");
           }
         }
       }
     }
-    return null;
   }
 
   private boolean updateVersion(Pair<Field, UserIntent> pair) {
@@ -401,7 +396,7 @@ public class KubernetesOperatorController {
     return false;
   }
 
-  private Result updateGflagsYbUniverse(
+  private UUID updateGflagsYbUniverse(
       UniverseDefinitionTaskParams taskParams,
       Customer cust,
       YBUniverse ybUniverse,
@@ -432,7 +427,7 @@ public class KubernetesOperatorController {
     return new YBPTask(taskUUID, oldUniverse.getUniverseUUID()).asResult();
   }
 
-  private Result upgradeYBUniverse(
+  private UUID upgradeYBUniverse(
       UniverseDefinitionTaskParams taskParams, Customer cust, YBUniverse ybUniverse) {
     ObjectMapper mapper =
         Json.mapper()
@@ -456,12 +451,11 @@ public class KubernetesOperatorController {
     // requestParams.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
     requestParams.ybSoftwareVersion = taskParams.getPrimaryCluster().userIntent.ybSoftwareVersion;
     requestParams.setUniverseUUID(oldUniverse.getUniverseUUID());
-    UUID taskUUID = upgradeUniverseHandler.upgradeSoftware(requestParams, cust, oldUniverse);
     LOG.info("Upgrading universe with new info now");
-    return new YBPTask(taskUUID, oldUniverse.getUniverseUUID()).asResult();
+    return upgradeUniverseHandler.upgradeSoftware(requestParams, cust, oldUniverse);
   }
 
-  private Result updateYBUniverse(
+  private UUID updateYBUniverse(
       UniverseDefinitionTaskParams taskParams, Customer cust, YBUniverse ybUniverse) {
     // Converting details to configure task params using JSON
     ObjectMapper mapper =
@@ -485,8 +479,7 @@ public class KubernetesOperatorController {
             .orElse(null);
     LOG.info("Updating universe with new info now");
     universeCRUDHandler.configure(cust, taskConfigParams);
-    UUID taskUUID = universeCRUDHandler.update(cust, oldUniverse, taskConfigParams);
-    return new YBPTask(taskUUID, oldUniverse.getUniverseUUID()).asResult();
+    return universeCRUDHandler.update(cust, oldUniverse, taskConfigParams);
   }
 
   private UniverseConfigureTaskParams createTaskParams(YBUniverse ybUniverse, UUID customerUUID)
