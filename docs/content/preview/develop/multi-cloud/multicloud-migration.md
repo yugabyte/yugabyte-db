@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Moving your application either from an on-prem data center to a public cloud or from one public cloud to another is a non trivial task. However, using an xCluster YugabyteDB deployment, you can perform this migration with comparative ease.
+Moving your application either from an on-prem data center to a public cloud or from one public cloud to another is a non-trivial task. YugabyteDB provides a simple pattern for you to accomplish this daunting task with comparative ease.
 
 ## Migration between two clouds
 
