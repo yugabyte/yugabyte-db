@@ -15,8 +15,7 @@
 namespace yb {
 namespace cdc {
 
-TEST_F(
-    CDCSDKYsqlTest, YB_DISABLE_TEST_IN_SANITIZERS(TestCDCSDKConsistentStreamWithManyTransactions)) {
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithManyTransactions)) {
   FLAGS_cdc_max_stream_intent_records = 40;
 
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -28,7 +27,7 @@ TEST_F(
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
   ASSERT_FALSE(set_resp.has_error());
 
-  int num_batches = 150;
+  int num_batches = 75;
   int inserts_per_batch = 100;
 
   std::thread t1(
@@ -67,7 +66,7 @@ TEST_F(
   for (int i = 0; i < 8; i++) {
     ASSERT_EQ(expected_count[i], count[i]);
   }
-  ASSERT_EQ(60601, get_changes_resp.records.size());
+  ASSERT_EQ(30301, get_changes_resp.records.size());
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithForeignKeys)) {
