@@ -350,8 +350,9 @@ Default: `-1`, where the number of shards is determined at runtime, as follows:
   - For servers with 4 CPU cores or less, the number of tablets for each table doesn't depend on the number of YB-TServers. Instead, for 2 CPU cores or less, 1 tablet per cluster is created; for 4 CPU cores or less, 2 tablets per cluster are created.
 
 - If `enable_automatic_tablet_splitting` is `false`
-  - For servers with up to two CPU cores, the default value is considered as `4`.
-  - For three or more CPU cores, the default value is considered as `8`.
+  - For servers with up to two CPU cores, the default value is considered as 2.
+  - For servers with three or four CPU cores, the default value is considered as 4.
+  - Beyond four cores, the default value is considered as 8.
 
 Local cluster installations created using `yb-ctl` and `yb-docker-ctl` use a default value of `2` for this flag.
 
