@@ -59,7 +59,6 @@ export const GFlagsOverview: FC<GFlagsOverviewProps> = (/* { showDrift, toggleDr
   const { data } = useGetGflagsQuery<UpstreamGflagResponseType>({ node_address: currentNode || "" }, 
     { query: { enabled: !!currentNode }});
   const gflagData = useMemo(() => {
-    console.log(data)
     const masterFlags = {
       nodeInfoFlags: data?.master_flags?.filter(flag => flag.type === "NodeInfo"),
       customFlags: data?.master_flags?.filter(flag => flag.type === "Custom")
