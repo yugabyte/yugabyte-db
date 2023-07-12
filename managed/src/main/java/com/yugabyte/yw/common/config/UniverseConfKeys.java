@@ -720,14 +720,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "the nodes",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Duration> ansibleExecutionTimeoutSec =
-      new ConfKeyInfo<>(
-          "yb.upgrade.ansible_execution_timeout_sec",
-          ScopeType.UNIVERSE,
-          "Ansible execution timeout in seconds",
-          "Makes Timeout during execution of ansible playbooks configurable",
-          ConfDataType.DurationType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> useServerBroadcastAddressForYbBackup =
       new ConfKeyInfo<>(
           "yb.backup.use_server_broadcast_address_for_yb_backup",
