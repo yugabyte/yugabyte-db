@@ -392,7 +392,7 @@ class CDCServiceImpl : public CDCServiceIf {
       const std::set<TabletId>& active_or_hidden_tablets,
       const std::set<TabletId>& parent_tablets,
       const std::map<TabletId, TabletId>& child_to_parent_mapping,
-      std::vector<std::pair<TabletId, OpId>>* result);
+      std::vector<std::pair<TabletId, CDCSDKCheckpointPB>>* result);
 
   // This method deletes entries from the cdc_state table that are contained in the set.
   Status DeleteCDCStateTableMetadata(
