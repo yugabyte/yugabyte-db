@@ -10823,6 +10823,13 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation *yb_mutable_rel,
 		 * table.
 		 */
 		tab->relid = (*yb_mutable_rel)->rd_id;
+
+		/* Update the altered column's attribute number. */
+		HeapTuple attTup =
+			SearchSysCacheAttName(RelationGetRelid(*yb_mutable_rel), colName);
+		Assert(HeapTupleIsValid(attTup));
+		attnum = ((Form_pg_attribute) GETSTRUCT(attTup))->attnum;
+		ReleaseSysCache(attTup);
 	}
 
 	/*
@@ -10908,23 +10915,28 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation *yb_mutable_rel,
 
 	ReleaseSysCache(typeTuple);
 
+	/*
+	 * YB Note: Skip the steps below because datatype and collation
+	 * dependencies for the table have already been created as part of the
+	 * rewrite flow, so we do not need to install them here.
+	 * Also, the pg_statistic entries were not cloned for the altered column,
+	 * so we don't have any statistics to remove.
+	 */
 	if (!yb_clone_table)
 	{
 		CatalogTupleUpdate(attrelation, &heapTup->t_self, heapTup);
 
 		heap_close(attrelation, RowExclusiveLock);
+
+		/* Install dependencies on new datatype and collation */
+		add_column_datatype_dependency(RelationGetRelid(rel), attnum, targettype);
+		add_column_collation_dependency(RelationGetRelid(rel), attnum, targetcollid);
+
+		/*
+		 * Drop any pg_statistic entry for the column, since it's now wrong type
+		 */
+		RemoveStatistics(RelationGetRelid(rel), attnum);
 	}
-
-	/* Install dependencies on new datatype and collation */
-	add_column_datatype_dependency(RelationGetRelid(*yb_mutable_rel), attnum,
-								   targettype);
-	add_column_collation_dependency(RelationGetRelid(*yb_mutable_rel), attnum,
-									targetcollid);
-
-	/*
-	 * Drop any pg_statistic entry for the column, since it's now wrong type
-	 */
-	RemoveStatistics(RelationGetRelid(*yb_mutable_rel), attnum);
 
 	InvokeObjectPostAlterHook(RelationRelationId,
 							  RelationGetRelid(*yb_mutable_rel), attnum);
@@ -16674,7 +16686,7 @@ update_relispartition(Relation classRel, Oid relationId, bool newval)
  */
 static void
 YbATCopyStats(Oid old_relid, RangeVar *new_rel, Oid new_relid,
-			  AttrNumber *attmap, bool ext_only)
+			  AttrNumber *attmap, int altered_old_attnum)
 {
 	Relation		pg_statistic, pg_statistic_ext;
 	HeapTuple		tuple;
@@ -16728,9 +16740,6 @@ YbATCopyStats(Oid old_relid, RangeVar *new_rel, Oid new_relid,
 	systable_endscan(scan);
 	heap_close(pg_statistic_ext, RowExclusiveLock);
 
-	if (ext_only)
-		return;
-
 	/* Copy pg_statistic entries with updated starelid and staattnum values. */
 	pg_statistic =  heap_open(StatisticRelationId, RowExclusiveLock);
 	ScanKeyInit(&key, Anum_pg_statistic_starelid, BTEqualStrategyNumber,
@@ -16745,6 +16754,13 @@ YbATCopyStats(Oid old_relid, RangeVar *new_rel, Oid new_relid,
 		bool		nulls[Natts_pg_statistic];
 		bool		replaces[Natts_pg_statistic];
 		HeapTuple	newtuple;
+
+		/*
+		 * If this attribute's type was changed, don't copy the pg_statistic
+		 * entry because it is invalid.
+		 */
+		if (stat_form->staattnum == altered_old_attnum)
+			continue;
 
 		memset(values, 0, sizeof(values));
 		memset(nulls, false, sizeof(nulls));
@@ -17770,7 +17786,10 @@ YbATCopyFkAndCheckConstraints(const Relation old_rel, Relation new_rel,
  *
  * old_rel is the relation to copy table rows from.
  * new_rel is the relation to copy rows to.
- * attmap is the mapping of indexes of attributes from old_rel to new_rel.
+ * old2new_attmap is a mapping such that old2new_attmap[i] = j implies
+ * attnum i in the new relation maps to attnum j in the old relation.
+ * new2old_attmap is a mapping such that new2old_attmap[i] = j implies
+ * attnum i in the old relation maps to attnum j in the new relation.
  *
  * has_altered_column_type represents whether the new relation has a different
  * type for a column.
@@ -17790,7 +17809,9 @@ YbATCopyFkAndCheckConstraints(const Relation old_rel, Relation new_rel,
  */
 static void
 YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
-						   AttrNumber *attmap, bool has_altered_column_type,
+						   AttrNumber *old2new_attmap,
+						   AttrNumber *new2old_attmap,
+						   bool has_altered_column_type,
 						   const List *altered_column_new_column_values,
 						   const char *altered_column_name,
 						   List *new_check_constraints,
@@ -17831,7 +17852,14 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 	foreach(cell, altered_column_new_column_values)
 	{
 		NewColumnValue *new_column_value = lfirst(cell);
-
+		/*
+		 * At the time the new column values expressions were created, the
+		 * original attnum was used. We need to update the attnum after YB
+		 * table rewrite (because attnum can change if there are dropped
+		 * columns in the original relation).
+		 */
+		new_column_value->attnum =
+			new2old_attmap[new_column_value->attnum - 1];
 		/* expr already planned */
 		new_column_value->exprstate =
 			ExecInitExpr((Expr *) new_column_value->expr, NULL);
@@ -17883,8 +17911,8 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 			}
 			else
 			{
-				new_values[i] = old_values[attmap[i] - 1];
-				new_isnull[i] = old_isnull[attmap[i] - 1];
+				new_values[i] = old_values[old2new_attmap[i] - 1];
+				new_isnull[i] = old_isnull[old2new_attmap[i] - 1];
 			}
 		}
 
@@ -18283,6 +18311,7 @@ YbATCopyMetadataAndData(Relation old_rel, Relation new_rel,
 	Relation pg_trigger, pg_depend;
 	List	*new_check_constraints = NIL;
 	List	*new_fk_constraint_oids = NIL;
+	int		altered_old_attnum = 0;
 
 	YbATCopyFkAndCheckConstraints(old_rel, new_rel, pg_constraint,
 								  &new_check_constraints,
@@ -18297,7 +18326,7 @@ YbATCopyMetadataAndData(Relation old_rel, Relation new_rel,
 	 * Copy table content.
 	 */
 	YbATCopyTableRowsUnchecked(old_rel, new_rel, old2new_attmap,
-							   has_altered_column_type,
+							   new2old_attmap, has_altered_column_type,
 							   altered_column_new_column_values,
 							   altered_column_name, new_check_constraints,
 							   new_fk_constraint_oids);
@@ -18342,13 +18371,18 @@ YbATCopyMetadataAndData(Relation old_rel, Relation new_rel,
 	RangeVar *new_rel_rangevar = makeRangeVar(
 		pstrdup(namespace_name), pstrdup(old_table_name), -1 /* location */);
 
-	/*
-	 * If a column type was changed, only copy pg_statistic_ext because
-	 * pg_statistic would be invalid.
-	 */
+	if (has_altered_column_type)
+	{
+		HeapTuple attTup = SearchSysCacheAttName(RelationGetRelid(old_rel),
+												 altered_column_name);
+		Assert(HeapTupleIsValid(attTup));
+		altered_old_attnum = ((Form_pg_attribute) GETSTRUCT(attTup))->attnum;
+		ReleaseSysCache(attTup);
+	}
+
 	YbATCopyStats(RelationGetRelid(old_rel), new_rel_rangevar,
 				  RelationGetRelid(new_rel), new2old_attmap,
-				  has_altered_column_type /* ext_only */);
+				  altered_old_attnum);
 
 	/*
 	 * Copy policy objects.
