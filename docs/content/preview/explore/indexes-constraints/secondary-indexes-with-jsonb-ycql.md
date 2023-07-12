@@ -78,8 +78,7 @@ CREATE INDEX index_name ON table_name(column->>'attribute');
 Let us create an index on the *'zip'* attribute of the JSON document stored in the address column of the users table.
 
 ```cql
-CREATE INDEX idx_users_jsonb 
-    ON users(address->>'zip');
+CREATE INDEX idx_users_jsonb ON users(address->>'zip');
 ```
 
 ## List the index and verify the query plan
@@ -87,9 +86,9 @@ CREATE INDEX idx_users_jsonb
 You can use the `DESCRIBE INDEX` command to check the indexes as follows:
 
 ```cql
-DESCRIBE INDEX <index name>
+DESCRIBE INDEX idx_users_jsonb; 
 ```
-For information regarding the DESCRIBE INDEX command, see [DESCRIBE INDEX](../../../admin/ycqlsh/#describe)
+For additional information regarding the DESCRIBE INDEX command, see [DESCRIBE INDEX](../../../admin/ycqlsh/#describe)
 
 You can also use the `EXPLAIN` statement to check if a query uses an index and determine the query plan before execution.
 
@@ -97,7 +96,7 @@ You can also use the `EXPLAIN` statement to check if a query uses an index and d
 EXPLAIN SELECT * FROM users WHERE address->>'zip' = '327';
 ```
 
-For information regarding the EXPLAIN statement, see [EXPLAIN statement](../../../api/ycql/explain/)
+For additional information regarding the EXPLAIN statement, see [EXPLAIN statement](../../../api/ycql/explain/)
 
 ## Covering index and Partial index with JSONB column
 
@@ -109,7 +108,7 @@ Covering index includes all columns used in the query in the index definition.  
 
 ```cql
 CREATE INDEX idx_users_jsonb_cov ON users((address->>'zip')) 
-   INCLUDE (first_name,last_name);
+     INCLUDE (first_name,last_name);
 ```
 
 ### Partial index 
@@ -118,17 +117,17 @@ Partial index is created on a subset of data when you want to restrict index to 
 
 ``` cql
 CREATE INDEX idx_users_jsonb_part ON users (address->>'zip') 
-    WHERE email = 'lskywalker@yb.com';
+       WHERE email = 'lskywalker@yb.com';
 ```
 
 For additional information on CREATE INDEX statement, see [CREATE INDEX](../../../api/ycql/ddl_create_index/).
 
 ## Remove indexes
 
-You can remove one or more existing indexes using the `DROP INDEX` statement in YCQL with the following syntax:
+You can remove index created with JSONB datatype column using the `DROP INDEX` statement in YCQL with the following syntax:
 
 ```sql
-DROP INDEX index_name;
+DROP INDEX idx_users_jsonb;
 ```
 
 For additional information on DROP INDEX statement, see [DROP INDEX](../../../api/ycql/ddl_drop_index/).
