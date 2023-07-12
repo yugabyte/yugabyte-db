@@ -123,7 +123,7 @@ lazy val root = (project in file("."))
 
 scalaVersion := "2.12.10"
 javacOptions ++= Seq("-source", "17", "-target", "17")
-Compile / unmanagedSourceDirectories += baseDirectory.value / "target/scala-2.12/"
+Compile / managedClasspath += baseDirectory.value / "target/scala-2.12/"
 version := sys.process.Process("cat version.txt").lineStream_!.head
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
@@ -467,8 +467,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b5"
-libraryDependencies += "org.yb" % "yb-client" % "0.8.59-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.60-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b6"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b30"
 
 libraryDependencies ++= Seq(

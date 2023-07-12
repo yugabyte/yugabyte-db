@@ -23,6 +23,7 @@ import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/service.proto";
+import "yb/tablet/tablet_types.proto";
 
 // Info about a single tablet server, returned to the client as part
 // of the GetTabletLocations response. This can be used on the client
@@ -49,6 +50,7 @@ message TabletLocationsPB {
     required TSInfoPB ts_info = 1;
     required PeerRole role = 2;
     optional consensus.PeerMemberType member_type = 3;
+    optional tablet.RaftGroupStatePB state = 4;
   }
 
   required bytes tablet_id = 1;

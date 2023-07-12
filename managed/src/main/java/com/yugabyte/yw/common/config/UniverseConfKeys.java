@@ -720,14 +720,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "the nodes",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Duration> ansibleExecutionTimeoutSec =
-      new ConfKeyInfo<>(
-          "yb.upgrade.ansible_execution_timeout_sec",
-          ScopeType.UNIVERSE,
-          "Ansible execution timeout in seconds",
-          "Makes Timeout during execution of ansible playbooks configurable",
-          ConfDataType.DurationType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> useServerBroadcastAddressForYbBackup =
       new ConfKeyInfo<>(
           "yb.backup.use_server_broadcast_address_for_yb_backup",
@@ -735,5 +727,29 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Use server broadcast address for yb_backup",
           "Controls whether server_broadcast_address entry should be used during yb_backup.py backup/restore",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> slowQueryTimeoutSecs =
+      new ConfKeyInfo<>(
+          "yb.query_stats.slow_queries.timeout_secs",
+          ScopeType.UNIVERSE,
+          "Slow Queries Timeout",
+          "Timeout in secs for slow queries",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> ysqlTimeoutSecs =
+      new ConfKeyInfo<>(
+          "yb.ysql_timeout_secs",
+          ScopeType.UNIVERSE,
+          "YSQL Queries Timeout",
+          "Timeout in secs for YSQL queries",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> numCoresToKeep =
+      new ConfKeyInfo<>(
+          "yb.num_cores_to_keep",
+          ScopeType.UNIVERSE,
+          "Number of cores to keep",
+          "Controls the configuration to set the number of cores to keep in the Ansible layer",
+          ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

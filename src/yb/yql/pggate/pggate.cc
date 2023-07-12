@@ -60,6 +60,7 @@
 #include "yb/yql/pggate/pg_dml.h"
 #include "yb/yql/pggate/pg_dml_read.h"
 #include "yb/yql/pggate/pg_dml_write.h"
+#include "yb/yql/pggate/pg_function.h"
 #include "yb/yql/pggate/pg_insert.h"
 #include "yb/yql/pggate/pg_memctx.h"
 #include "yb/yql/pggate/pg_sample.h"
@@ -589,6 +590,16 @@ Status PgApiImpl::AddToCurrentPgMemctx(std::unique_ptr<PgStatement> stmt,
   return Status::OK();
 }
 
+// TODO(tvesely): Figure out how to use an arena for this
+//
+// For now, functions are allocated as ScopedPtr and cached in the memory context. The statements
+// would then be destructed when the context is destroyed and all other references are also cleared.
+Status PgApiImpl::AddToCurrentPgMemctx(std::unique_ptr<PgFunction> func, PgFunction **handle) {
+  *handle = func.get();
+  pg_callbacks_.GetCurrentYbMemctx()->Register(func.release());
+  return Status::OK();
+}
+
 // TODO(neil) Most like we don't need table_desc. If we do need it, use Arena here.
 // - PgTableDesc should have been declared as derived class of "MCBase".
 // - PgTableDesc objects should be allocated by YbPgMemctx::Arena.
@@ -791,6 +802,10 @@ Status PgApiImpl::ReserveOids(const PgOid database_oid,
 
 Status PgApiImpl::GetCatalogMasterVersion(uint64_t *version) {
   return pg_session_->GetCatalogMasterVersion(version);
+}
+
+Status PgApiImpl::CancelTransaction(const unsigned char* transaction_id) {
+  return pg_session_->CancelTransaction(transaction_id);
 }
 
 Result<PgTableDescPtr> PgApiImpl::LoadTable(const PgObjectId& table_id) {
@@ -1566,6 +1581,59 @@ Status PgApiImpl::ExecSelect(PgStatement *handle, const PgExecParameters *exec_p
   return dml_read.Exec(exec_params);
 }
 
+
+//--------------------------------------------------------------------------------------------------
+// Functions.
+//--------------------------------------------------------------------------------------------------
+
+Status PgApiImpl::NewSRF(
+    PgFunction **handle, PgFunctionDataProcessor processor) {
+  *handle = nullptr;
+  auto func = std::make_unique<PgFunction>(std::move(processor), pg_session_);
+  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(func), handle));
+  return Status::OK();
+}
+
+Status PgApiImpl::AddFunctionParam(
+    PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity, uint64_t datum,
+    bool is_null) {
+  if (!handle) {
+    return STATUS(InvalidArgument, "Invalid function handle");
+  }
+
+  return handle->AddParam(name, type_entity, datum, is_null);
+}
+
+Status PgApiImpl::AddFunctionTarget(
+    PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity,
+    const YBCPgTypeAttrs type_attrs) {
+  if (!handle) {
+    return STATUS(InvalidArgument, "Invalid function handle");
+  }
+
+  return handle->AddTarget(name, type_entity, type_attrs);
+}
+
+Status PgApiImpl::FinalizeFunctionTargets(PgFunction *handle) {
+  if (!handle) {
+    return STATUS(InvalidArgument, "Invalid function handle");
+  }
+
+  return handle->FinalizeTargets();
+}
+
+Status PgApiImpl::SRFGetNext(PgFunction *handle, uint64_t *values, bool *is_nulls, bool *has_data) {
+  if (!handle) {
+    return STATUS(InvalidArgument, "Invalid function handle");
+  }
+
+  return handle->GetNext(values, is_nulls, has_data);
+}
+
+Status PgApiImpl::NewGetLockStatusDataSRF(PgFunction **handle) {
+  return NewSRF(handle, PgLockStatusRequestor);
+}
+
 //--------------------------------------------------------------------------------------------------
 // Expressions.
 //--------------------------------------------------------------------------------------------------
@@ -1882,6 +1950,11 @@ void PgApiImpl::AddForeignKeyReference(PgOid table_id, const Slice& ybctid) {
 
 void PgApiImpl::SetTimeout(int timeout_ms) {
   pg_session_->SetTimeout(timeout_ms);
+}
+
+Result<yb::tserver::PgGetLockStatusResponsePB> PgApiImpl::GetLockStatusData(
+    const std::string &table_id, const std::string &transaction_id) {
+  return pg_session_->GetLockStatusData(table_id, transaction_id);
 }
 
 Result<client::TabletServersInfo> PgApiImpl::ListTabletServers() {

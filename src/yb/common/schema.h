@@ -232,6 +232,14 @@ class ColumnSchema {
     pg_type_oid_ = pg_type_oid;
   }
 
+  int32_t pg_typmod() const {
+    return pg_typmod_;
+  }
+
+  void set_pg_typmod(uint32_t pg_typmod) {
+    pg_typmod_ = pg_typmod;
+  }
+
   SortingType sorting_type() const;
 
   const std::string& name() const {
@@ -309,6 +317,7 @@ class ColumnSchema {
   bool is_counter_;
   int32_t order_;
   int32_t pg_type_oid_;
+  int32_t pg_typmod_;
   bool marked_for_deletion_;
 };
 
@@ -1172,6 +1181,7 @@ class SchemaBuilder {
   Status RemoveColumn(const std::string& name);
   Status RenameColumn(const std::string& old_name, const std::string& new_name);
   Status SetColumnPGType(const std::string& name, const uint32_t pg_type_oid);
+  Status SetColumnPGTypmod(const std::string& name, const uint32_t pg_typmod);
   Status MarkColumnForDeletion(const std::string& name);
   Status AlterProperties(const TablePropertiesPB& pb);
 

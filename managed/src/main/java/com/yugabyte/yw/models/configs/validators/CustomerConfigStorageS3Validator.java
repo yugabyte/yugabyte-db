@@ -8,6 +8,8 @@ import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
 import com.yugabyte.yw.common.BeanValidator;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.configs.CloudClientsFactory;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
@@ -26,11 +28,16 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
 
   private final CloudClientsFactory factory;
 
+  private final RuntimeConfGetter runtimeConfGetter;
+
   @Inject
   public CustomerConfigStorageS3Validator(
-      BeanValidator beanValidator, CloudClientsFactory factory) {
+      BeanValidator beanValidator,
+      CloudClientsFactory factory,
+      RuntimeConfGetter runtimeConfGetter) {
     super(beanValidator, S3_URL_SCHEMES);
     this.factory = factory;
+    this.runtimeConfGetter = runtimeConfGetter;
   }
 
   @Override
@@ -49,11 +56,9 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
       }
     }
     try {
-      // Disable cert checking while connecting with s3
-      // Enabling it can potentially fail when s3 compatible storages like
-      // Dell ECS are provided and custom certs are needed to connect
-      // Reference: https://yugabyte.atlassian.net/browse/PLAT-2497
-      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
+      if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enforceCertVerificationBackupRestore)) {
+        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "true");
+      }
 
       AmazonS3 s3Client = null;
       String exceptionMsg = null;
@@ -83,7 +88,9 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
 
     } finally {
       // Re-enable cert checking as it applies globally
-      System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
+      if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enforceCertVerificationBackupRestore)) {
+        System.setProperty(SDKGlobalConfiguration.DISABLE_CERT_CHECKING_SYSTEM_PROPERTY, "false");
+      }
     }
   }
 

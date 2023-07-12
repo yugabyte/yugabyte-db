@@ -47,6 +47,7 @@
 
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_expr.h"
+#include "yb/yql/pggate/pg_function.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_sys_table_prefetcher.h"
@@ -139,6 +140,10 @@ class PgApiImpl {
   // Cache statements in YB Memctx. When Memctx is destroyed, the statement is destructed.
   Status AddToCurrentPgMemctx(std::unique_ptr<PgStatement> stmt,
                               PgStatement **handle);
+
+  // Cache function calls in YB Memctx. When Memctx is destroyed, the function is destructed.
+  Status AddToCurrentPgMemctx(std::unique_ptr<PgFunction> func, PgFunction **handle);
+
   // Cache table descriptor in YB Memctx. When Memctx is destroyed, the descriptor is destructed.
   Status AddToCurrentPgMemctx(size_t table_desc_id,
                               const PgTableDescPtr &table_desc);
@@ -254,6 +259,8 @@ class PgApiImpl {
                      PgOid *end_oid);
 
   Status GetCatalogMasterVersion(uint64_t *version);
+
+  Status CancelTransaction(const unsigned char* transaction_id);
 
   // Load table.
   Result<PgTableDescPtr> LoadTable(const PgObjectId& table_id);
@@ -536,6 +543,25 @@ class PgApiImpl {
   Status ExecSelect(PgStatement *handle, const PgExecParameters *exec_params);
 
   //------------------------------------------------------------------------------------------------
+  // Functions.
+
+  Status NewSRF(PgFunction **handle, PgFunctionDataProcessor processor);
+
+  Status AddFunctionParam(
+      PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity,
+      uint64_t datum, bool is_null);
+
+  Status AddFunctionTarget(
+      PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity,
+      const YBCPgTypeAttrs type_attrs);
+
+  Status FinalizeFunctionTargets(PgFunction *handle);
+
+  Status SRFGetNext(PgFunction *handle, uint64_t *values, bool *is_nulls, bool *has_data);
+
+  Status NewGetLockStatusDataSRF(PgFunction **handle);
+
+  //------------------------------------------------------------------------------------------------
   // Analyze.
   Status NewSample(const PgObjectId& table_id,
                    const int targrows,
@@ -621,6 +647,8 @@ class PgApiImpl {
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
 
+  Result<yb::tserver::PgGetLockStatusResponsePB> GetLockStatusData(
+      const std::string &table_id, const std::string &transaction_id);
   Result<client::TabletServersInfo> ListTabletServers();
 
   Status GetIndexBackfillProgress(std::vector<PgObjectId> oids,
