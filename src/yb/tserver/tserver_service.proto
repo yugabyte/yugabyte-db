@@ -256,27 +256,6 @@ message GetOldTransactionsResponsePB {
   optional fixed64 propagated_hybrid_time = 3;
 }
 
-message GetOldTransactionsRequestPB {
-  optional bytes tablet_id = 1;
-  optional uint32 min_txn_age_ms = 2;
-  optional uint32 max_num_txns = 3;
-  optional fixed64 propagated_hybrid_time = 4;
-}
-
-message GetOldTransactionsResponsePB {
-  // Error message, if any.
-  optional TabletServerErrorPB error = 1;
-
-  message OldTransactionMetadataPB {
-    optional bytes transaction_id = 1;
-    repeated bytes tablets = 2;
-    optional SubtxnSetPB aborted_subtxn_set = 3;
-  }
-  repeated OldTransactionMetadataPB txn = 2;
-
-  optional fixed64 propagated_hybrid_time = 3;
-}
-
 message UpdateTransactionWaitingForStatusRequestPB {
   message BlockingTransaction {
     optional bytes transaction_id = 1;
