@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="sql">
   <li>
     <a href="../yugabyte-jdbc/" class="nav-link">
       YSQL
@@ -25,7 +25,7 @@ type: docs
   </li>
 </ul>
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="driver">
   <li >
     <a href="../ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>

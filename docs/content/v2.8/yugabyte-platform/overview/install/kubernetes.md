@@ -15,7 +15,7 @@ type: docs
 
 Select your installation type to see the installation flow. Click on the elements to see detailed steps.
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="operating-system">
   <li >
     <a href="../public-cloud" class="nav-link">
       <i class="fa-solid fa-cloud"></i>

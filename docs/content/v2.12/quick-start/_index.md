@@ -7,7 +7,7 @@ layout: single
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="cluster">
   <li>
     <a href="../quick-start-yugabytedb-managed/" class="nav-link">
       Use a cloud cluster
@@ -20,7 +20,7 @@ type: docs
   </li>
 </ul>
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="operating-system">
   <li class="active">
     <a href="../quick-start/" class="nav-link">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>

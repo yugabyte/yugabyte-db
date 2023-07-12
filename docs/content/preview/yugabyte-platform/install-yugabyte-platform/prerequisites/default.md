@@ -24,7 +24,7 @@ All installation methods support installing YBA with and without (airgapped) Int
 
 Licensing (such as a license file in the case of Replicated, or appropriate repository access in the case of Kubernetes) may be required prior to installation.  Contact {{% support-platform %}} for assistance.
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="operating-system">
 
   <li>
     <a href="../default/" class="nav-link active">

@@ -17,7 +17,7 @@ After [creating a local cluster](../../quick-start/create-local-cluster/), follo
 
 After running Yugastore, Yugabyte recommend running the [IoT Fleet Management](../realworld-apps/iot-spark-kafka-ksql/) application. This app is built on top of YugabyteDB as the database (using the YCQL API), Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics and Spring Boot as the application framework.
 
-<ul class="nav nav-tabs nav-tabs-yb">
+<ul class="nav nav-tabs nav-tabs-yb" data-target="operating-system">
   <li >
     <a href="#macos" class="nav-link active" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>

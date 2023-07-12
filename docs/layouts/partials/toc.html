@@ -1,10 +1,10 @@
 {{ $tocClasses := "" }}
 {{ if $.Param "rightNav.hideH3" }}
-{{ $tocClasses = " hide-h3" }}
+  {{ $tocClasses = " hide-h3" }}
 {{ end }}
 
 {{ if $.Param "rightNav.hideH4" }}
-{{ $tocClasses = printf "%s hide-h4" $tocClasses }}
+  {{ $tocClasses = printf "%s hide-h4" $tocClasses }}
 {{ end }}
 
 {{ if not .Params.notoc }}
@@ -14,138 +14,4 @@
 {{ end }}
 {{ end }}
 {{ end }}
-
-<script>if (!$.trim($('#TableOfContents').text())) {
-    $('aside.td-sidebar-toc .td-toc').remove();
-}
-
-/**
- * Create Cookie.
- */
-function setCookie(name, value, monthToLive) {
-    let cookie = name + '=' + encodeURIComponent(value);
-    if (typeof monthToLive !== 'number') {
-        monthToLive = 3;
-    }
-    cookie += '; max-age=' + (monthToLive * 30 * (24 * 60 * 60));
-    cookie += '; path=/';
-    document.cookie = cookie;
-}
-
-function ybGetCookie(cname) {
-    const cookieName = cname + '=';
-    const decodedCookie = decodeURIComponent(document.cookie);
-    const splittedCookie = decodedCookie.split(';');
-    const splittedLength = splittedCookie.length;
-
-    let checkCookie = '';
-    let fetchCookie = 0;
-    let matchedCookie = '';
-
-    while (fetchCookie < splittedLength) {
-        checkCookie = splittedCookie[fetchCookie];
-        while (checkCookie.charAt(0)) {
-            if (checkCookie.charAt(0) === ' ') {
-                checkCookie = checkCookie.substring(1);
-            } else {
-                break;
-            }
-        }
-
-        if (checkCookie.indexOf(cookieName) === 0) {
-            matchedCookie = checkCookie.substring(cookieName.length, checkCookie.length);
-            break;
-        }
-
-        fetchCookie += 1;
-    }
-    return matchedCookie;
-}
-
-
-function resetkey(time) {
-    setTimeout(function () {
-        setCookie('tab-active-sql', 'true', 3);
-        setCookie('tab-active-driver', 'true', 3);
-        setCookie('tab-active-ybdb', 'true', 3);
-        setCookie('tab-active-os', 'true', 3);
-        setCookie('tab-active-cl', 'true', 3);
-    }, time);
-}
-
-function triggerTabByCookie(cookieName, tabSelector, activeTabCookieName) {
-    if (ybGetCookie(cookieName) && ybGetCookie(activeTabCookieName) != 'true') {
-        const lis = document.querySelectorAll(tabSelector + ' li');
-        lis.forEach((li) => {
-            const containsCookie = li.innerText.includes(ybGetCookie(cookieName));
-            if (containsCookie){
-                if (window.location.href !== li.querySelector('a').href) {
-                    if (!li.classList.contains('tab-active') && !li.classList.contains('active')) {
-                        setCookie(activeTabCookieName, 'true', 3);
-                        li.classList.add('tab-active');
-                        console.log('-----------------------------------------------------------------------------------------------------');
-                        console.log( 'All Cookie1 ', containsCookie,li.innerText ,li.textContent.length);
-                        // console.log('Anchors', window.location.href, li.querySelector('a').href);
-                        console.log(li.querySelector('a'));
-                        console.log('-----------------------------------------------------------------------------------------------------');
-                        setTimeout(function () {
-                            li.querySelector('a').click();
-                        }, 500);
-                    }
-                }
-            }
-        });
-    }
-
-}
-
-
-$(document).on('click', 'ul[data-target="operating-system"] li', (event) => {
-    let activeName = $(event.currentTarget).text().trim();
-    setCookie('tab-os', activeName, 3);
-    resetkey(500);
-
-});
-triggerTabByCookie('tab-os', 'ul[data-target="operating-system"]', 'tab-active-os');
-
-$(document).on('click', 'ul[data-target="cluster"] li', (event) => {
-    let activeName = $(event.currentTarget).text().trim();
-    setCookie('tab-cluster', activeName, 3);
-    resetkey(500);
-});
-triggerTabByCookie('tab-cluster', 'ul[data-target="cluster"]', 'tab-active-cl');
-
-
-
-$(document).on('click', 'ul[data-target="ybdb"] li', (event) => {
-    let activeName = $(event.currentTarget).text().trim();
-    setCookie('tab-ybdb', activeName, 3);
-    resetkey(500);
-});
-triggerTabByCookie('tab-ybdb', 'ul[data-target="ybdb"]', 'tab-active-ybdb');
-
-$(document).on('click', 'ul[data-target="sql"] li', (event) => {
-    let activeName = $(event.currentTarget).text().trim();
-    setCookie('tab-sql', activeName, 3);
-    resetkey(500);
-});
-triggerTabByCookie('tab-sql', 'ul[data-target="sql"]', 'tab-active-sql');
-
-
-$(document).on('click', 'ul[data-target="driver"] li', (event) => {
-    let activeName = $(event.currentTarget).text().trim();
-    setCookie('tab-driver', activeName, 3);
-    resetkey(500);
-});
-triggerTabByCookie('tab-driver', 'ul[data-target="driver"]', 'tab-active-driver');
-
-setInterval(function () {
-    setCookie('tab-active-sql', 'false', 3);
-    setCookie('tab-active-driver', 'false', 3);
-    setCookie('tab-active-os', 'false', 3);
-    setCookie('tab-active-cl', 'false', 3);
-    setCookie('tab-active-ybdb', 'false', 3);
-    console.log('clear')
-}, 1500);
-
-</script>
+<script>if (!$.trim($('#TableOfContents').text())){$('aside.td-sidebar-toc .td-toc').remove();}</script>

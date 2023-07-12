@@ -19,7 +19,7 @@ This deployment provides the following advantages:
 - Resilience. Putting cluster nodes in different regions provides a higher degree of failure independence.
 - Consistency. All writes are synchronously replicated. Transactions are globally consistent.
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb"  data-target="sql">
   <li>
     <a href="../synchronous-replication-ysql/" class="nav-link">
       <img src="/icons/database.svg" alt="Server Icon">

@@ -17,7 +17,7 @@ Select your cloud provider to see the steps for configuration of database nodes.
 
 ## Configure Yugabyte Platform
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="operating-system">
 
   <li>
     <a href="../aws" class="nav-link">

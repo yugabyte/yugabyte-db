@@ -46,6 +46,7 @@ version_menu_pagelinks = true
 [ui]
   sidebar_cache_limit = 25000
   navbar_logo = true
+  persist_tabs = true
   sidebar_menu_compact = true
   sidebar_menu_foldable = true
   sidebar_search_disable = true

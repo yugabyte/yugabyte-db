@@ -22,7 +22,7 @@ After [creating a local cluster](../../quick-start/), follow the instructions be
 
 ## 1. Initialize YEDIS API and connect with redis-cli
 
-<ul class="nav nav-tabs nav-tabs-yb">
+<ul class="nav nav-tabs nav-tabs-yb" data-target="operating-system">
   <li>
     <a href="#macos" class="nav-link active" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>

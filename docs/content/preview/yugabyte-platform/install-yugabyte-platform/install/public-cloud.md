@@ -22,7 +22,7 @@ All of these process flows follow the same general steps:
 - Create a Provider Configuration (choose among AWS, GCP, Azure, on-prem, or various Kubernetes options).
 - Create a Universe using the configuration.
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="cloud">
   <li >
     <a href="../public-cloud/" class="nav-link active">
       <i class="fa-solid fa-cloud"></i>

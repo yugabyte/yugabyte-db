@@ -63,7 +63,7 @@ The topology is shown in the following illustration:
 
 ### Create the cluster
 
-<ul class="nav nav-tabs nav-tabs-yb">
+<ul class="nav nav-tabs nav-tabs-yb" data-target="ybdb">
   <li >
     <a href="#yugabyted" class="nav-link active" id="yugabyted-tab" data-toggle="tab" role="tab" aria-controls="yugabyted" aria-selected="true">
       <img src="/icons/database.svg" alt="Server Icon">

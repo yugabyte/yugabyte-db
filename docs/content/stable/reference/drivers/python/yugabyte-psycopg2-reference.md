@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="driver">
   <li >
     <a href="../yugabyte-psycopg2-reference/" class="nav-link active">
       <i class="fa-brands fa-java" aria-hidden="true"></i>

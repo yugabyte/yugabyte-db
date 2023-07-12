@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb"  data-target="operating-system">
   <li>
     <a href="../aws/" class="nav-link">
       <i class="fa-brands fa-aws" aria-hidden="true"></i>

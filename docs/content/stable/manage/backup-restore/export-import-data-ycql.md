@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="sql">
   <li >
     <a href="../export-import-data/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>

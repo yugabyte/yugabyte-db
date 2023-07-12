@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="driver">
   <li >
     <a href="../yb-pgx-reference/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>

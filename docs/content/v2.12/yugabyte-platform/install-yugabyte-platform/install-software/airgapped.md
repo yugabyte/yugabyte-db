@@ -10,7 +10,7 @@ menu:
     weight: 77
 type: docs
 ---
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="operating-system">
 
   <li>
     <a href="../default/" class="nav-link">

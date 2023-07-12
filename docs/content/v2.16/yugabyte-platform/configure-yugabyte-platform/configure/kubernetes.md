@@ -15,7 +15,7 @@ type: docs
 
 For overview of how to configure database nodes, select one of the following cloud providers:
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="operating-system">
   <li>
     <a href="../aws/" class="nav-link">
       <i class="fa-brands fa-aws"></i>

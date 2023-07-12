@@ -15,7 +15,7 @@ type: docs
 
 For installation overview, select one of the following installation types:
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="operating-system">
   <li >
     <a href="../public-cloud/" class="nav-link">
       <i class="fa-solid fa-cloud"></i>
