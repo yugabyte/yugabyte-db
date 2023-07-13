@@ -199,7 +199,6 @@ static void tserver_collect_samples(TimestampTz auh_sample_time)
   //TODO:
   YBCAUHDescriptor *rpcs = NULL;
   size_t numrpcs = 0;
-  ereport(LOG, (errmsg("tserver_collect_samples starting")));
 
   HandleYBStatus(YBCActiveUniverseHistory(&rpcs, &numrpcs));
   LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
@@ -293,14 +292,23 @@ static void auh_entry_store(TimestampTz auh_time,
   AUHEntryArray[inserted].auh_sample_time = auh_time;
   AUHEntryArray[inserted].wait_event = wait_event;
   AUHEntryArray[inserted].request_id = request_id;
-  memcpy(AUHEntryArray[inserted].top_level_request_id, top_level_request_id,
-         Min(strlen(top_level_request_id) + 1, 15));
-  memcpy(AUHEntryArray[inserted].wait_event_aux, wait_event_aux,
-         Min(strlen(wait_event_aux) + 1, 15));
-  memcpy(AUHEntryArray[inserted].top_level_node_id, top_level_node_id,
-         Min(strlen(top_level_node_id) + 1, 15));
-  memcpy(AUHEntryArray[inserted].client_node_ip, client_node_ip,
-         Min(strlen(client_node_ip) + 1, 15));
+
+  int len = Min(strlen(top_level_request_id) + 1, 15);
+  memcpy(AUHEntryArray[inserted].top_level_request_id, top_level_request_id, len);
+  AUHEntryArray[inserted].top_level_request_id[len] = '\0';
+
+  len = Min(strlen(wait_event_aux) + 1, 15);
+  memcpy(AUHEntryArray[inserted].wait_event_aux, wait_event_aux, len);
+  AUHEntryArray[inserted].wait_event_aux[len] = '\0';
+
+  len = Min(strlen(top_level_node_id) + 1, 15);
+  memcpy(AUHEntryArray[inserted].top_level_node_id, top_level_node_id, len);
+  AUHEntryArray[inserted].top_level_node_id[len] = '\0';
+
+  len = Min(strlen(client_node_ip) + 1, 15);
+  memcpy(AUHEntryArray[inserted].client_node_ip, client_node_ip, len);
+  AUHEntryArray[inserted].client_node_ip[len] = '\0';
+
   AUHEntryArray[inserted].client_node_port = client_node_port;
   AUHEntryArray[inserted].query_id = query_id;
   AUHEntryArray[inserted].start_ts_of_wait_event = start_ts_of_wait_event;
@@ -450,7 +458,9 @@ pg_active_universe_history_internal(FunctionCallInfo fcinfo)
       break;
 
     // Sample rate
-    if (AUHEntryArray[i].sample_rate)
+    // TODO: sample rate is throwing an error in certain mac environments
+    // Disabling it for now.
+    if (false && AUHEntryArray[i].sample_rate)
       values[j++] = Int16GetDatum(AUHEntryArray[i].sample_rate);
     else
       nulls[j++] = true;
