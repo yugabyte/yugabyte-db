@@ -38,10 +38,8 @@ SUBDIRS = \
 		pgaudit 	\
 		pg_stat_monitor  \
 		pg_trgm		\
-		pg_wait_sampling \
 		pgcrypto	\
 		pgrowlocks	\
-		pgsentinel  \
 		pgstattuple	\
 		pg_visibility	\
 		postgres_fdw	\

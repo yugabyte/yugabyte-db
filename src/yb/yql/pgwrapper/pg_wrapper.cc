@@ -389,9 +389,6 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   metricsLibs.push_back("pg_hint_plan");
   if (FLAGS_ysql_auh_enabled) {
     metricsLibs.push_back("yb_auh");
-    // TODO: pgsentinel and pg_wait_sampling will be removed once yb_auh takes shape
-    metricsLibs.push_back("pgsentinel");
-    metricsLibs.push_back("pg_wait_sampling");
   }
 
   vector<string> lines;
