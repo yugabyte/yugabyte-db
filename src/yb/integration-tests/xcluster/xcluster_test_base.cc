@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/integration-tests/xcluster_test_base.h"
+#include "yb/integration-tests/xcluster/xcluster_test_base.h"
 
 #include <string>
 
