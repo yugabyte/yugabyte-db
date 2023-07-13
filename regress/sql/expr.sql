@@ -395,7 +395,7 @@ RETURN false XOR false
 $$) AS r(result boolean);
 
 SELECT * FROM cypher('expr', $$
-RETURN false OR 1::bool    
+RETURN false OR 1::bool
 $$) AS (result boolean);
 
 SELECT * FROM cypher('expr', $$
@@ -403,7 +403,7 @@ RETURN false AND NOT 1::bool
 $$) AS (result boolean);
 
 SELECT * FROM cypher('expr', $$
-RETURN NOT 1::bool::int::bool    
+RETURN NOT 1::bool::int::bool
 $$) AS (result boolean);
 
 -- Invalid operands for AND, OR, NOT, XOR
@@ -420,11 +420,11 @@ RETURN false OR 1
 $$) AS r(result boolean);
 
 SELECT * FROM cypher('expr', $$
-RETURN 0 OR true 
+RETURN 0 OR true
 $$) AS r(result boolean);
 
 SELECT * FROM cypher('expr', $$
-RETURN NOT 1    
+RETURN NOT 1
 $$) AS r(result boolean);
 
 SELECT * FROM cypher('expr', $$
@@ -452,7 +452,7 @@ RETURN false XOR 1::numeric
 $$) AS (result agtype);
 
 SELECT * FROM cypher('expr', $$
-RETURN false OR 1::bool::int    
+RETURN false OR 1::bool::int
 $$) AS (result boolean);
 --
 -- Test indirection transform logic for object.property, object["property"],
@@ -1362,6 +1362,7 @@ SELECT * FROM age_toString(false);
 SELECT * FROM age_toString('a string');
 SELECT * FROM age_toString('a cstring'::cstring);
 SELECT * FROM age_toString('a text string'::text);
+SELECT * FROM age_toString(pg_typeof(3.14));
 -- agtypes
 SELECT * FROM age_toString(agtype_in('3'));
 SELECT * FROM age_toString(agtype_in('3.14'));
@@ -2708,6 +2709,9 @@ SELECT * FROM cypher('list',$$ MATCH p=(n:xyz)-[e]->() SET n.array=[0, 1, 2, 3, 
                                                            80, 81, 82, 83, 84, 85, 86, 87, 88, 89,
                                                            90, 91, 92, 93, 94, 95, 96, 97, 98, 99,
                                                            e.array, 100] return n,e $$) as (a agtype, b agtype);
+
+-- pg_typeof
+SELECT * FROM cypher('expr', $$MATCH (u) RETURN toString(pg_catalog.pg_typeof(u.id)) $$) AS (u agtype);
 
 --
 -- Cleanup
