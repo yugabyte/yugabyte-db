@@ -668,7 +668,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
       caching_info.mutable_lifetime_threshold_ms()->set_value(*cache_options.lifetime_threshold_ms);
     }
   }
-  
+
   pg_client_.PerformAsync(&options, &ops.operations, [promise](const PerformResult& result) {
     promise->set_value(result);
   });

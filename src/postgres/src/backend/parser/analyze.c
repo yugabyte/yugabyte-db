@@ -130,7 +130,10 @@ parse_analyze(RawStmt *parseTree, const char *sourceText,
 		(*post_parse_analyze_hook) (pstate, query);
 
 	if (IsYugaByteEnabled() && query->queryId)
+	{
 		YBCSetQueryId(query->queryId);
+		MyProc->queryid = query->queryId;
+	}
 
 	free_parsestate(pstate);
 
@@ -173,7 +176,10 @@ parse_analyze_varparams(RawStmt *parseTree, const char *sourceText,
 		(*post_parse_analyze_hook) (pstate, query);
 
 	if (IsYugaByteEnabled() && query->queryId)
+	{
 		YBCSetQueryId(query->queryId);
+		MyProc->queryid = query->queryId;
+	}
 
 	free_parsestate(pstate);
 

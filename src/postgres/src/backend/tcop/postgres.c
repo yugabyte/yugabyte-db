@@ -791,7 +791,10 @@ pg_analyze_and_rewrite_params(RawStmt *parsetree,
 		(*post_parse_analyze_hook) (pstate, query);
 
 	if (IsYugaByteEnabled() && query->queryId)
+	{
 		YBCSetQueryId(query->queryId);
+		MyProc->queryid = query->queryId;
+	}
 
 	free_parsestate(pstate);
 
@@ -2102,6 +2105,7 @@ exec_execute_message(const char *portal_name, long max_rows)
 		if (IsYugaByteEnabled() && pstmt->queryId)
 		{
 			YBCSetQueryId(pstmt->queryId);
+			MyProc->queryid = pstmt->queryId;
 		}
 	}
 
