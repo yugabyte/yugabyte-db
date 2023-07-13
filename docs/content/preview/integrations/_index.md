@@ -58,6 +58,13 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
     </a>
   </li>
 
+   <li>
+    <a href="datahub/">
+      <img src="/images/section_icons/develop/ecosystem/datahub.png">
+      Datahub
+    </a>
+  </li>
+
   <li>
     <a href="cdc/debezium/">
       <img src="/images/section_icons/develop/ecosystem/debezium.png">
