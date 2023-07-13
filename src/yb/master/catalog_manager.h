@@ -1294,7 +1294,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       rpc::RpcContext* rpc);
   //
   // Wait for replication to drain on CDC streams.
-  typedef std::pair<CDCStreamId, TabletId> StreamTabletIdPair;
+  typedef std::pair<xrepl::StreamId, TabletId> StreamTabletIdPair;
   typedef boost::hash<StreamTabletIdPair> StreamTabletIdHash;
   Status WaitForReplicationDrain(
       const WaitForReplicationDrainRequestPB* req,
@@ -1321,7 +1321,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // This method compares all tables in the namespace to all the tables added to a CDCSDK stream,
   // to find tables which are not yet processed by the CDCSDK streams.
   void FindAllTablesMissingInCDCSDKStream(
-      const CDCStreamId& stream_id,
+      const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<std::string>& table_ids, const NamespaceId& ns_id)
       REQUIRES(mutex_);
 
@@ -1349,12 +1349,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Delete specified CDC streams metadata.
   Status CleanUpCDCStreamsMetadata(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);
 
-  using StreamTablesMap = std::unordered_map<CDCStreamId, std::set<TableId>>;
+  using StreamTablesMap = std::unordered_map<xrepl::StreamId, std::set<TableId>>;
 
   Status CleanUpCDCMetadataFromSystemCatalog(const StreamTablesMap& drop_stream_tablelist);
 
   Status UpdateCDCStreams(
-      const std::vector<CDCStreamId>& stream_ids,
+      const std::vector<xrepl::StreamId>& stream_ids,
       const std::vector<yb::master::SysCDCStreamEntryPB>& update_entries);
 
   tablet::SnapshotCoordinator& snapshot_coordinator() override { return snapshot_coordinator_; }
@@ -2199,7 +2199,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   template <class Req, class Resp, class F>
   Status PerformOnSysCatalogTablet(const Req& req, Resp* resp, const F& f);
 
-  bool CDCStreamExistsUnlocked(const CDCStreamId& id) REQUIRES_SHARED(mutex_);
+  bool CDCStreamExistsUnlocked(const xrepl::StreamId& id) REQUIRES_SHARED(mutex_);
 
   Status CollectTable(
       const TableDescription& table_description,
@@ -2547,7 +2547,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       ColocationSchemaVersions;
 
   struct SetupReplicationInfo {
-    std::unordered_map<TableId, std::string> table_bootstrap_ids;
+    std::unordered_map<TableId, xrepl::StreamId> table_bootstrap_ids;
     bool transactional;
   };
 
@@ -2577,11 +2577,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // If all tables have been validated, creates a CDC stream for each table.
   Status CreateCdcStreamsIfReplicationValidated(
       scoped_refptr<UniverseReplicationInfo> universe,
-      const std::unordered_map<TableId, std::string>& table_bootstrap_ids);
+      const std::unordered_map<TableId, xrepl::StreamId>& table_bootstrap_ids);
 
   Status AddValidatedTableAndCreateCdcStreams(
       scoped_refptr<UniverseReplicationInfo> universe,
-      const std::unordered_map<TableId, std::string>& table_bootstrap_ids,
+      const std::unordered_map<TableId, xrepl::StreamId>& table_bootstrap_ids,
       const TableId& producer_table,
       const TableId& consumer_table,
       const ColocationSchemaVersions& colocated_schema_versions);
@@ -2604,27 +2604,25 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const cdc::ReplicationGroupId& replication_group_id,
       const std::shared_ptr<std::vector<client::YBTableInfo>>& info,
       const SetupReplicationInfo& setup_info, const Status& s);
+
   typedef std::vector<
-      std::tuple<CDCStreamId, TableId, std::unordered_map<std::string, std::string>>>
+      std::tuple<xrepl::StreamId, TableId, std::unordered_map<std::string, std::string>>>
       StreamUpdateInfos;
+
   void GetCDCStreamCallback(
-      const CDCStreamId& bootstrap_id,
-      std::shared_ptr<TableId>
-          table_id,
-      std::shared_ptr<std::unordered_map<std::string, std::string>>
-          options,
+      const xrepl::StreamId& bootstrap_id,
+      std::shared_ptr<TableId> table_id,
+      std::shared_ptr<std::unordered_map<std::string, std::string>> options,
       const cdc::ReplicationGroupId& replication_group_id,
       const TableId& table,
-      std::shared_ptr<CDCRpcTasks>
-          cdc_rpc,
+      std::shared_ptr<CDCRpcTasks> cdc_rpc,
       const Status& s,
-      std::shared_ptr<StreamUpdateInfos>
-          stream_update_infos,
-      std::shared_ptr<std::mutex>
-          update_infos_lock);
+      std::shared_ptr<StreamUpdateInfos> stream_update_infos,
+      std::shared_ptr<std::mutex> update_infos_lock);
+
   void AddCDCStreamToUniverseAndInitConsumer(
       const cdc::ReplicationGroupId& replication_group_id, const TableId& table,
-      const Result<CDCStreamId>& stream_id, std::function<void()> on_success_cb = nullptr);
+      const Result<xrepl::StreamId>& stream_id, std::function<void()> on_success_cb = nullptr);
 
   void MergeUniverseReplication(
       scoped_refptr<UniverseReplicationInfo> info, cdc::ReplicationGroupId original_id);
@@ -2644,7 +2642,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       scoped_refptr<UniverseReplicationInfo> universe);
 
   // Maps replication group id to the corresponding cdc stream for that table.
-  typedef std::unordered_map<cdc::ReplicationGroupId, CDCStreamId>
+  typedef std::unordered_map<cdc::ReplicationGroupId, xrepl::StreamId>
       XClusterConsumerTableStreamInfoMap;
 
   std::shared_ptr<cdc::CDCServiceProxy> GetCDCServiceProxy(
@@ -2657,19 +2655,20 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status IsBootstrapRequiredOnProducer(
       scoped_refptr<UniverseReplicationInfo> universe,
       const TableId& producer_table,
-      const std::unordered_map<TableId, std::string>& table_bootstrap_ids);
+      const std::unordered_map<TableId, xrepl::StreamId>& table_bootstrap_ids);
 
   // Check if bootstrapping is required for a table.
   Status IsTableBootstrapRequired(
       const TableId& table_id,
-      const CDCStreamId& stream_id,
+      const xrepl::StreamId& stream_id,
       CoarseTimePoint deadline,
       bool* const bootstrap_required);
 
   // Get the set of CDC streams for a given table, or an empty set if this is not a producer.
-  std::unordered_set<CDCStreamId> GetXClusterStreamsForProducerTable(const TableId& table_id) const;
+  std::unordered_set<xrepl::StreamId> GetXClusterStreamsForProducerTable(
+      const TableId& table_id) const;
 
-  std::unordered_set<CDCStreamId> GetCDCSDKStreamsForTable(const TableId& table_id) const;
+  std::unordered_set<xrepl::StreamId> GetCDCSDKStreamsForTable(const TableId& table_id) const;
 
   // Gets the set of CDC stream info for an xCluster consumer table.
   XClusterConsumerTableStreamInfoMap GetXClusterStreamInfoForConsumerTable(
@@ -2726,28 +2725,28 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status StoreReplicationErrors(
       const cdc::ReplicationGroupId& replication_group_id,
-      const std::string& consumer_table_id,
-      const std::string& stream_id,
+      const TableId& consumer_table_id,
+      const xrepl::StreamId& stream_id,
       const std::vector<std::pair<ReplicationErrorPb, std::string>>& replication_errors)
       EXCLUDES(mutex_);
 
   Status StoreReplicationErrorsUnlocked(
       const cdc::ReplicationGroupId& replication_group_id,
-      const std::string& consumer_table_id,
-      const std::string& stream_id,
+      const TableId& consumer_table_id,
+      const xrepl::StreamId& stream_id,
       const std::vector<std::pair<ReplicationErrorPb, std::string>>& replication_errors)
       REQUIRES_SHARED(mutex_);
 
   Status ClearReplicationErrors(
       const cdc::ReplicationGroupId& replication_group_id,
-      const std::string& consumer_table_id,
-      const std::string& stream_id,
+      const TableId& consumer_table_id,
+      const xrepl::StreamId& stream_id,
       const std::vector<ReplicationErrorPb>& replication_error_codes) EXCLUDES(mutex_);
 
   Status ClearReplicationErrorsUnlocked(
       const cdc::ReplicationGroupId& replication_group_id,
-      const std::string& consumer_table_id,
-      const std::string& stream_id,
+      const TableId& consumer_table_id,
+      const xrepl::StreamId& stream_id,
       const std::vector<ReplicationErrorPb>& replication_error_codes) REQUIRES_SHARED(mutex_);
 
   // Update the UniverseReplicationInfo object when toggling replication.
@@ -2907,8 +2906,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   std::unordered_map<TabletServerId, bool> should_send_universe_key_registry_
       GUARDED_BY(should_send_universe_key_registry_mutex_);
 
-  // CDC Stream map: CDCStreamId -> CDCStreamInfo.
-  typedef std::unordered_map<CDCStreamId, scoped_refptr<CDCStreamInfo>> CDCStreamInfoMap;
+  // CDC Stream map: xrepl::StreamId -> CDCStreamInfo.
+  typedef std::unordered_map<xrepl::StreamId, scoped_refptr<CDCStreamInfo>> CDCStreamInfoMap;
   CDCStreamInfoMap cdc_stream_map_ GUARDED_BY(mutex_);
 
   mutable MutexType cdcsdk_unprocessed_table_mutex_;
@@ -2919,14 +2918,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       namespace_to_cdcsdk_unprocessed_table_map_ GUARDED_BY(cdcsdk_unprocessed_table_mutex_);
 
   // Map of tables -> set of cdc streams they are producers for.
-  std::unordered_map<TableId, std::unordered_set<CDCStreamId>>
+  std::unordered_map<TableId, std::unordered_set<xrepl::StreamId>>
       xcluster_producer_tables_to_stream_map_ GUARDED_BY(mutex_);
 
   // Map of all consumer tables that are part of xcluster replication, to a map of the stream infos.
   std::unordered_map<TableId, XClusterConsumerTableStreamInfoMap>
       xcluster_consumer_tables_to_stream_map_ GUARDED_BY(mutex_);
 
-  std::unordered_map<TableId, std::unordered_set<CDCStreamId>> cdcsdk_tables_to_stream_map_
+  std::unordered_map<TableId, std::unordered_set<xrepl::StreamId>> cdcsdk_tables_to_stream_map_
       GUARDED_BY(mutex_);
 
   typedef std::unordered_map<cdc::ReplicationGroupId, scoped_refptr<UniverseReplicationInfo>>

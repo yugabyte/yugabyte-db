@@ -272,12 +272,12 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
 
   // Empty stream_ids will pause all streams.
   Status SetPauseAndVerifyWrittenRows(
-      const std::vector<std::string>& stream_ids, const YBTables& producer_tables,
+      const std::vector<xrepl::StreamId>& stream_ids, const YBTables& producer_tables,
       const std::unordered_set<Cluster*>& expected_fail_consumer_clusters,
       const std::unordered_set<XClusterTestBase::Cluster*>& skip_clusters, uint32_t start,
       uint32_t end, bool pause = true) {
     RETURN_NOT_OK(PauseResumeXClusterProducerStreams(stream_ids, pause));
-    // Needs to sleep to wait for heartbeat to propogate.
+    // Needs to sleep to wait for heartbeat to propagate.
     SleepFor(3s * kTimeMultiplier);
 
     // Reduce the timeout time when we don't expect replication to be successful.

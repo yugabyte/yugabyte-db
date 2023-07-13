@@ -104,11 +104,11 @@ class StreamMetadata {
       EXCLUDES(tablet_metadata_map_mutex_);
 
   Status InitOrReloadIfNeeded(
-      const std::string& stream_id, RefreshStreamMapOption opts, client::YBClient* client)
+      const xrepl::StreamId& stream_id, RefreshStreamMapOption opts, client::YBClient* client)
       EXCLUDES(load_mutex_);
 
  private:
-  Status GetStreamInfoFromMaster(const std::string& stream_id, client::YBClient* client)
+  Status GetStreamInfoFromMaster(const xrepl::StreamId& stream_id, client::YBClient* client)
       REQUIRES(load_mutex_) EXCLUDES(table_ids_mutex_, tablet_metadata_map_mutex_);
 
  private:
