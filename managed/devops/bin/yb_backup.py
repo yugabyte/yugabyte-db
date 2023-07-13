@@ -474,6 +474,9 @@ class AzBackupStorage(AbstractBackupStorage):
     def _command_list_prefix(self):
         return "azcopy"
 
+    def clean_up_logs_cmd(self):
+        return ["{} {} {}".format(self._command_list_prefix(), "jobs", "clean")]
+
     def upload_file_cmd(self, src, dest, local=False):
         if local is True:
             dest = dest + os.getenv('AZURE_STORAGE_SAS_TOKEN')
@@ -2394,6 +2397,10 @@ class YBBackup:
         # 4. Upload tablet folder.
         parallel_commands.add_args(tuple(upload_tablet_cmd))
 
+        # Cleanup azcopy logs and plan files
+        if self.is_az():
+            parallel_commands.add_args(tuple(self.storage.clean_up_logs_cmd()))
+
     def prepare_download_command(self, parallel_commands, tablet_id,
                                  tserver_ip, snapshot_dir, snapshot_metadata):
         """
@@ -2455,6 +2462,10 @@ class YBBackup:
             parallel_commands.add_args(tuple(rm_checksum_cmd))
         # 8. Move the backup in place.
         parallel_commands.add_args(tuple(mvcmd))
+
+        # Cleanup azcopy logs and plan files
+        if self.is_az():
+            parallel_commands.add_args(tuple(self.storage.clean_up_logs_cmd()))
 
     def prepare_cloud_ssh_cmds(
             self, parallel_commands, tserver_ip_to_tablet_id_to_snapshot_dirs, location_by_tablet,
@@ -2653,6 +2664,10 @@ class YBBackup:
             self.run_ssh_cmd(
                 self.storage.upload_file_cmd(src_path, dest_path),
                 server_ip)
+
+            # Cleanup azure logs and plan files after upload
+            if self.is_az():
+                self.run_ssh_cmd(self.storage.clean_up_logs_cmd(), server_ip)
 
     def get_ysql_catalog_version(self):
         """
