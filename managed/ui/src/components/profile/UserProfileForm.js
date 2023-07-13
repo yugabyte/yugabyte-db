@@ -215,14 +215,17 @@ export default class UserProfileForm extends Component {
                           component={YBFormInput}
                           placeholder="Customer Code"
                         />
-                        <Field
-                          name="customerId"
-                          readOnly={true}
-                          type="text"
-                          label="Customer ID"
-                          component={YBFormInput}
-                          placeholder="Customer ID"
-                        />
+                        <span className="copy-text-field">
+                          <Field
+                            name="customerId"
+                            readOnly={true}
+                            type="text"
+                            label="Customer ID"
+                            component={YBFormInput}
+                            placeholder="Customer ID"
+                          />
+                          <YBCopyButton text={customer.data.uuid} />
+                        </span>
                         <Field
                           name="timezone"
                           isDisabled={isDisabled(customer.data.features, 'profile.profileInfo')}
@@ -263,7 +266,7 @@ export default class UserProfileForm extends Component {
                   <Col md={6} sm={12}>
                     <h3>API Key management</h3>
                     <FlexContainer>
-                      <FlexGrow className="api-token-component">
+                      <FlexGrow className="copy-text-field">
                         <Field
                           field={{ value: apiToken.data || customer.data.apiToken || '' }}
                           type="text"
