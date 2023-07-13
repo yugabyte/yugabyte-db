@@ -28,9 +28,9 @@ For details about the differences between the release series, see [Release versi
 
 The type of YugabyteDB release series you are running determines its support timelines.
 
-**LTS (long-term support)** release series receive maintenance updates for at least 18 months (545 days) from the first release date of the minor release.
+**LTS (long-term support)** release series receive maintenance updates for at least 2 years (730 days) from the first release date of the minor release.
 
-**STS (standard-term support)** release series receive maintenance updates for at least 8 months (240 days) from the first release date of the minor release.
+**STS (standard-term support)** release series receive maintenance updates for at least 1 year (365 days) from the first release date of the minor release.
 
 LTS and STS release series are both subject to the following support and EOL timelines:
 
