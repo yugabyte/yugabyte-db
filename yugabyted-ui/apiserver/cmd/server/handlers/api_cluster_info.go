@@ -1186,12 +1186,19 @@ func (c *Container) GetClusterTablets(ctx echo.Context) error {
         return ctx.String(http.StatusInternalServerError, tabletsList.Error.Error())
     }
     for tabletId, tabletInfo := range tabletsList.Tablets {
+        hasLeader := false
+        for _, obj := range tabletInfo.RaftConfig {
+            if _, ok := obj["LEADER"]; ok {
+                hasLeader = true
+                break
+            }
+        }
         tabletListResponse.Data[tabletId] = models.ClusterTablet{
             Namespace: tabletInfo.Namespace,
             TableName: tabletInfo.TableName,
-            TableUuid: tabletInfo.TableUuid,
+            TableUuid: tabletInfo.TableId,
             TabletId:  tabletId,
-            HasLeader: tabletInfo.HasLeader,
+            HasLeader: hasLeader,
         }
     }
     return ctx.JSON(http.StatusOK, tabletListResponse)
