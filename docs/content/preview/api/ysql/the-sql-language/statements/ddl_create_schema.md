@@ -73,6 +73,8 @@ yugabyte=# CREATE SCHEMA branch AUTHORIZATION john;
 
 ## See also
 
+- [`DROP SCHEMA`](../ddl_drop_schema)
+- [`ALTER SCHEMA`](../ddl_alter_schema)
 - [`CREATE TABLE`](../ddl_create_table)
 - [`CREATE VIEW`](../ddl_create_view)
 - [`CREATE INDEX`](../ddl_create_index/)
