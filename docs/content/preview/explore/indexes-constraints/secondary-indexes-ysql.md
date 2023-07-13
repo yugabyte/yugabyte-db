@@ -1,9 +1,9 @@
 ---
-title: Secondary indexes in YugabyteDB
+title: Secondary indexes in YugabyteDB YSQL
 headerTitle: Secondary indexes
 linkTitle: Secondary indexes
-description: Overview of Secondary indexes in YSQL and YCQL
-headContent: Explore secondary indexes in YugabyteDB using YSQL and YCQL
+description: Overview of Secondary indexes in YSQL 
+headContent: Explore secondary indexes in YugabyteDB using YSQL 
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
@@ -14,6 +14,20 @@ aliases:
   - /preview/explore/ysql-language-features/indexes-1/
 type: docs
 ---
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="../secondary-indexes-ysql/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+  <li >
+    <a href="../secondary-indexes-ycql/" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+</ul>
 
 The use of indexes can enhance database performance by enabling the database server to find rows faster. You can create, drop, and list indexes, as well as use indexes on expressions.
 
@@ -46,7 +60,7 @@ For details, see [pg_indexes](https://www.postgresql.org/docs/12/view-pg-indexes
 For YCQL, you can use the [DESCRIBE INDEX](../../../admin/ycqlsh/#describe) command to check the indexes as follows:
 
 ```cql
-DESCRIBE INDEX <index name>
+DESCRIBE INDEX <index_name>;
 ```
 
 You can also use the `EXPLAIN` statement to check if a query uses an index and determine the query plan before execution.
