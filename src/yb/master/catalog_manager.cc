@@ -4213,7 +4213,7 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
                      "Need at least $1 tablet servers whereas $2 are alive.",
                      num_replicas, replica_quorum_needed, num_live_tservers);
     LOG(WARNING) << msg
-                 << ". Placement info: " << placement_info.ShortDebugString()
+                 << " Placement info: " << placement_info.ShortDebugString()
                  << ", replication factor flag: " << FLAGS_replication_factor;
     s = STATUS(InvalidArgument, msg);
     return SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s);
@@ -11066,6 +11066,7 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
       TabletLocationsPB_ReplicaPB* replica_pb = locs_pb->add_replicas();
       replica_pb->set_role(replica.second.role);
       replica_pb->set_member_type(replica.second.member_type);
+      replica_pb->set_state(replica.second.state);
       auto tsinfo_pb = replica.second.ts_desc->GetTSInformationPB();
 
       TSInfoPB* out_ts_info = replica_pb->mutable_ts_info();

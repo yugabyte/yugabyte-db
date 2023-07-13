@@ -129,10 +129,9 @@ class TSDescriptor {
   // Returns TSInformationPB for this TSDescriptor.
   const std::shared_ptr<TSInformationPB> GetTSInformationPB() const;
 
-  // Helper function to tell if this TS matches the cloud information provided. For now, we have
-  // no wildcard functionality, so it will have to explicitly match each individual component.
-  // Later, this might be extended to say if this TS is part of some wildcard expression for cloud
-  // information (eg: aws.us-west.* will match any TS in aws.us-west.1a or aws.us-west.1b, etc.).
+  // Helper function to tell if this TS matches the cloud information provided.
+  // The cloud info might be a wildcard expression (e.g. aws.us-west.*, which will match any TS in
+  // aws.us-west.1a or aws.us-west.1b, etc.).
   bool MatchesCloudInfo(const CloudInfoPB& cloud_info) const;
 
   CloudInfoPB GetCloudInfo() const;
@@ -299,6 +298,9 @@ class TSDescriptor {
   }
 
   virtual bool IsLiveAndHasReported() const;
+
+  // Is the ts in a read-only placement.
+  bool IsReadOnlyTS(const ReplicationInfoPB& replication_info) const;
 
  protected:
   virtual Status RegisterUnlocked(const NodeInstancePB& instance,
