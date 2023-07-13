@@ -107,7 +107,7 @@ You can also create covering and partial indexes with a JSONB column.
 
 ### Covering index
 
-Covering index includes all columns used in the query in the index definition. This is done by using the `INCLUDE` keyword in the `CREATE INDEX` syntax as follows:
+A covering index includes all columns used in the query in the index definition. You do this using the `INCLUDE` keyword in the `CREATE INDEX` syntax as follows:
 
 ```cql
 CREATE INDEX idx_users_jsonb_cov ON users((address->>'zip'))
