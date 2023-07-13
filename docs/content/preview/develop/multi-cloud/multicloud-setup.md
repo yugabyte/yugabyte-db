@@ -32,7 +32,7 @@ To be ready for a any region failure, you should opt for `RF=7`.
 <!-- BEGIN: local cluster setup instructions -->
 
 {{<warning title="VPC peering">}}
-Although for the current example, you **do not** have to set up VPC peering, for different clouds to be able to talk to each other, you need to set up multi-cloud VPC peering through a VPN tunnel. see [Setup VPC Peering](../../../yugabyte-platform/create-deployments/create-universe-multi-cloud/#set-up-vpc-peering) for detailed information.
+Although for the current example, you **do not** have to set up VPC peering, for different clouds to be able to talk to each other, you need to set up multi-cloud VPC peering through a VPN tunnel. See [Set up VPC peering](../../../yugabyte-platform/create-deployments/create-universe-multi-cloud/#set-up-vpc-peering) for detailed information.
 {{</warning>}}
 
 ## Set up the multi-cloud universe
@@ -106,15 +106,15 @@ Suppose that you have retail applications that do transactions and want it to be
 
 ### Deployment
 
-You can choose from a list of [design patterns for global applications](../build-global-apps/) for designing your multi-cloud applications using the following setup.
+You can choose from a list of [design patterns for global applications](../../build-global-apps/) for designing your multi-cloud applications using the following setup.
 
-As you want your retail applications to be closer to your users, you have to deploy them in the data centers at AWS-`us-west` and AZU-`us-east`. As both systems would need a fast fraud detection, and as the regions are far apart, you can opt to deploy your fraud detection infrastructure in `GCP` as follows:
+As you want your retail applications to be closer to your users, you have to deploy them in the data centers at AWS-`us-west` and AZU-`us-east`. As both systems would need fast fraud detection, and as the regions are far apart, you can opt to deploy your fraud detection infrastructure in `GCP` as follows:
 
 ![Central fraud detection](/images/develop/multicloud/multicloud-fraud-detection.png)
 
 ## Hybrid cloud
 
-Just as you chose `AWS`, `GCP` and `AZU`, you could choose to deploy your retail applications in your on-prem data centers and your fraud detection systems in the public cloud. See [Hybrid cloud](./hybrid-cloud) for more information.
+Just as you chose `AWS`, `GCP`, and `AZU`, you could also choose to deploy your retail applications in your on-prem data centers and your fraud detection systems in the public cloud. See [Hybrid cloud](../hybrid-cloud) for more information.
 
 ## Failover
 
