@@ -391,7 +391,7 @@ void CDCSDKTestBase::InitCreateStreamRequest(
 }
 
 // This creates a DB stream on the database kNamespaceName by default.
-Result<std::string> CDCSDKTestBase::CreateDBStream(
+Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStream(
     CDCCheckpointType checkpoint_type, CDCRecordType record_type) {
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
@@ -403,7 +403,7 @@ Result<std::string> CDCSDKTestBase::CreateDBStream(
 
   RETURN_NOT_OK(cdc_proxy_->CreateCDCStream(req, &resp, &rpc));
 
-  return resp.db_stream_id();
+  return xrepl::StreamId::FromString(resp.db_stream_id());
 }
 
 } // namespace cdc

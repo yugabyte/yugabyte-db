@@ -137,7 +137,7 @@ class XClusterOutputClient : public XClusterOutputClientIf {
   }
 
   std::string LogPrefixUnlocked() const {
-    return strings::Substitute(
+    return Format(
         "P [$0:$1] C [$2:$3]: ",
         producer_tablet_info_.stream_id,
         producer_tablet_info_.tablet_id,

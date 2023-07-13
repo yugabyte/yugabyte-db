@@ -1634,7 +1634,8 @@ class TransactionParticipant::Impl
         continue;
       }
       if ((**it).UpdateStatus(
-          info.status, info.status_ht, info.coordinator_safe_time, info.aborted_subtxn_set)) {
+          info.status, info.status_ht, info.coordinator_safe_time, info.aborted_subtxn_set,
+          info.expected_deadlock_status)) {
         NotifyAbortedTransactionIncrement(info.transaction_id);
         EnqueueRemoveUnlocked(
             info.transaction_id, RemoveReason::kStatusReceived, &min_running_notifier);

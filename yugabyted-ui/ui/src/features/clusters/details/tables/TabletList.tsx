@@ -2,7 +2,12 @@ import React, { FC, useEffect, useMemo } from 'react';
 import { makeStyles, Box, Typography, MenuItem, LinearProgress } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { YBButton, YBCheckbox, YBDropdown, YBInput, YBLoadingBox, YBSelect, YBTable } from '@app/components';
-import { NodeData, useGetClusterHealthCheckQuery, useGetClusterNodesQuery, useGetClusterTabletsQuery } from '@app/api/src';
+import {
+    NodeData,
+    TabletInfo,
+    useGetClusterHealthCheckQuery,
+    useGetClusterNodesQuery
+} from '@app/api/src';
 import SearchIcon from '@app/assets/search.svg';
 import RefreshIcon from '@app/assets/refresh.svg';
 import { BadgeVariant, YBBadge } from '@app/components/YBBadge/YBBadge';
@@ -60,17 +65,16 @@ const useStyles = makeStyles((theme) => ({
 
 type DatabaseListProps = {
   /* tabletList: ClusterTable[], */
-  selectedTable: string,
+  selectedTableUuid: string,
   onRefetch: () => void,
 }
 
-export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) => {
+export const TabletList: FC<DatabaseListProps> = ({ selectedTableUuid, onRefetch }) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const { data: tablets, isFetching: isFetchingTablets } = useGetClusterTabletsQuery({ query: { refetchOnMount: 'always' }});
-  const tableID = useMemo(() => tablets ? Object.values(tablets.data)
-    .find(tablet => tablet.table_name === selectedTable)?.table_uuid as string : undefined, [selectedTable, tablets])
+  const tableID = selectedTableUuid;
+  console.log(tableID)
 
   const { data: nodesResponse, isFetching: isFetchingNodes } = useGetClusterNodesQuery({ query: { refetchOnMount: 'always' }});
   const hasReadReplica = !!nodesResponse?.data.find((node) => node.is_read_replica);
@@ -117,29 +121,53 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) 
         return;
       }
 
+      // TODO: We probably want to avoid using axios directly and use a React hook like the
+      // useGet- queries, but using useQueries instead of useQuery since we need to do a batch
+      // of queries, one for each node. But for now this is ok.
       const getNodeTablets = async (nodeName: string) => {
         try {
-          const cpu = await axios.get<string>(`http://${nodeName}:7000/table?id=${tableID}&raw`)
+          const cpu = await axios.get(`/api/table?id=${tableID}&node_address=${nodeName}`)
             .then(({ data }) => {
-              const parseTable = data.substring(Array.from(data.matchAll(/<table /g))[2].index!);
-              const parseRows = Array.from(parseTable.matchAll(/<tr>([\s\S]*?)<\/tr>/g)).slice(1, -1);
-              return parseRows.map(row => {
-                const tabletID = Array.from(row[1].matchAll(/<th>(.*)<\/th>/g))[0][1]
-                const tabletRange = Array.from(row[1].matchAll(/<td>hash_split: \[(.*)\]<\/td>/g))[0][1]
-                const tabletLeader = Array.from(row[1].matchAll(/LEADER: <a href=".*">(.*)<\/a>/g))[0][1]
-                const tabletFollowers = Array.from(row[1].matchAll(/FOLLOWER: <a href=".*">(.*)<\/a>/g)).map(r => r[1]).join(', ') || '-'
-                const tabletReadReplicas = Array.from(row[1].matchAll(/READ_REPLICA: <a href=".*">(.*)<\/a>/g)).map(r => r[1]).join(', ') || '-'
-                return {
-                  id: tabletID,
-                  range: tabletRange,
-                  leaderNode: tabletLeader,
-                  followerNodes: tabletFollowers,
-                  readReplicaNodes: tabletReadReplicas,
-                  status: healthCheckData?.data?.under_replicated_tablets?.includes(tabletID) ? "Under-replicated" : 
-                    (healthCheckData?.data?.leaderless_tablets?.includes(tabletID) ? "Unavailable" : ""),
-                }
-              })
-              
+                return data.tablets.map((tablet: TabletInfo) => {
+                  // Determine leader, follower, and read replica nodes
+                  let leader = "";
+                  let followers: string[] = [];
+                  let read_replicas: string[] = [];
+                  tablet.raft_config?.forEach(node => {
+                      let nodeAddress = node.location
+                          ? (new URL(node.location)).hostname
+                          : ""
+                      switch(node.role) {
+                          case "LEADER":
+                            leader = nodeAddress;
+                            break;
+                          case "FOLLOWER":
+                            followers.push(nodeAddress)
+                            break;
+                          case "READ_REPLICA":
+                            read_replicas.push(nodeAddress)
+                            break;
+                          default:
+                            console.error("unknown role " + node.role + " for node " + nodeAddress)
+                        }
+                  });
+                  let hashPartition = tablet.partition
+                      ? [...tablet.partition?.matchAll(/hash_split: \[(.*)\]/g)][0][1]
+                      : ""
+                  return {
+                      id: tablet.tablet_id,
+                      range: hashPartition,
+                      leaderNode: leader,
+                      followerNodes: followers.join(', '),
+                      readReplicaNodes: read_replicas.join(', '),
+                      status: healthCheckData?.data?.under_replicated_tablets?.includes(tabletID)
+                          ? "Under-replicated"
+                          : (healthCheckData?.data?.leaderless_tablets?.includes(tabletID)
+                              ? "Unavailable"
+                              : ""),
+                  }
+                });
+
             })
             .catch(err => { console.error(err); return undefined; })
           return cpu;
@@ -155,7 +183,7 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) 
       for (let i = 0; i < nodeHosts.length; i++) {
         const node = nodeHosts[i];
         const tablets = await getNodeTablets(node);
-        tablets?.forEach(tablet => {
+        tablets?.forEach((tablet: any) => {
           if (!tabletList.find(t => t.id === tablet.id)) {
             tabletList.push(tablet);
           }
@@ -248,7 +276,7 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) 
     return columns;
   }, [nodesResponse, hasReadReplica]);
 
-  if (isFetchingNodes || isFetchingHealth || isFetchingTablets || isLoading) {
+  if (isFetchingNodes || isFetchingHealth || isLoading) {
     return (
       <Box textAlign="center" mt={2.5}>
         <LinearProgress />

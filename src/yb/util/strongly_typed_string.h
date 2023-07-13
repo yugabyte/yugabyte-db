@@ -35,6 +35,8 @@ class StronglyTypedString {
   StronglyTypedString() {}
   explicit StronglyTypedString(const std::string& value) : value_(value) {}
   explicit StronglyTypedString(const char* const value) : value_(value) {}
+  template <class InputIterator>
+  StronglyTypedString(InputIterator first, InputIterator last) : value_(first, last) {}
 
   StronglyTypedString(const StronglyTypedString<Tag>& rhs) : value_(rhs.value_) {}
   StronglyTypedString(const StronglyTypedString<Tag>&& rhs) : value_(std::move(rhs.value_)) {}
@@ -56,6 +58,9 @@ class StronglyTypedString {
   const std::string& ToString() const { return value_; }
 
   operator Slice() const { return value_; }
+
+  size_t size() const { return value_.size(); }
+  const char* data() const { return value_.data(); }
 
  private:
   std::string value_;

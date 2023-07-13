@@ -155,7 +155,7 @@ ybm cluster create \
   --region-info region=ap-northeast-1,num-nodes=3 \
   --cluster-tier Dedicated \
   --fault-tolerance ZONE \
-  --database-version Preview \
+  --database-version Innovation \
   --cluster-name my-single-region \
   --wait
 ```
@@ -204,7 +204,7 @@ ybm cluster create \
   --region-info region=us-central1,num-nodes=1,vpc=gcp-vpc \
   --cluster-tier Dedicated \
   --fault-tolerance REGION \
-  --database-version Stable \
+  --database-version Production \
   --wait
 ```
 
@@ -226,7 +226,7 @@ ybm cluster list
 Name               Tier        Version         State     Health    Regions                      Nodes     Total Res.(Vcpu/Mem/Disk)
 my-multi-region    Dedicated   2.14.7.0-b51    ACTIVE    💚        us-central1,+2               3         6 / 24GB / 600GB
 my-sandbox         Sandbox     2.17.1.0-b439   ACTIVE    💚        us-west-2                    1         2 / 4GB / 10GB
-my-single-region   Dedicated   2.17.2.0-b216   ACTIVE    💚        ap-northeast-1               3         12 / 48GB / 600GB
+my-single-region   Dedicated   2.14.7.0-b51    ACTIVE    💚        ap-northeast-1               3         12 / 48GB / 600GB
 ```
 
 You can pause a cluster when you don't need it:
@@ -256,7 +256,7 @@ ybm cluster resume \
 ```output
 The cluster my-single-region has been resumed
 Name               Tier        Version         State     Health    Regions          Nodes     Total Res.(Vcpu/Mem/Disk)
-my-single-region   Dedicated   2.17.2.0-b216   ACTIVE    💚        ap-northeast-1   3         12 / 48GB / 600GB
+my-single-region   Dedicated   2.14.7.0-b51    ACTIVE    💚        ap-northeast-1   3         12 / 48GB / 600GB
 ```
 
 If you don't need a cluster anymore, you can terminate it:
