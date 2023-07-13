@@ -834,7 +834,7 @@ class YBClient {
 
   Result<bool> CheckIfPitrActive();
 
-  std::vector<std::string> ActiveUniverseHistory();
+  std::vector<WaitStateInfoPB> ActiveUniverseHistory();
 
   void LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                          const std::string& partition_key,

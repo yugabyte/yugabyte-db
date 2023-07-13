@@ -2211,7 +2211,7 @@ Result<bool> YBClient::CheckIfPitrActive() {
   return data_->CheckIfPitrActive(deadline);
 }
 
-std::vector<std::string> YBClient::ActiveUniverseHistory() {
+std::vector<WaitStateInfoPB> YBClient::ActiveUniverseHistory() {
   rpc::DumpRunningRpcsRequestPB dump_req;
   rpc::DumpRunningRpcsResponsePB dump_resp;
 
@@ -2221,7 +2221,7 @@ std::vector<std::string> YBClient::ActiveUniverseHistory() {
 
   WARN_NOT_OK(messenger()->DumpRunningRpcs(dump_req, &dump_resp), "DumpRunningRpcs failed");
 
-  std::vector<std::string> res;
+  std::vector<WaitStateInfoPB> res;
   
   for (auto conns : dump_resp.inbound_connections()) {
     for (auto call : conns.calls_in_flight()) {

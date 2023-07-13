@@ -3433,7 +3433,10 @@ void DBImpl::BackgroundCallFlush(ColumnFamilyData* cfd) {
   bool made_progress = false;
   JobContext job_context(next_job_id_.fetch_add(1), true);
 
-  yb::util::WaitStateInfo::CurrentWaitState()->metadata().request_id = std::to_string(next_job_id_.load());
+  auto wait_state = yb::util::WaitStateInfo::CurrentWaitState();
+  if (wait_state) {
+    wait_state->set_current_request_id(next_job_id_.load());
+  }
   SET_WAIT_STATUS(yb::util::WaitStateCode::StartFlush);
 
   LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, db_options_.info_log.get());
@@ -3468,7 +3471,10 @@ void DBImpl::BackgroundCallCompaction(ManualCompaction* m, std::unique_ptr<Compa
   bool made_progress = false;
   JobContext job_context(next_job_id_.fetch_add(1), true);
 
-  yb::util::WaitStateInfo::CurrentWaitState()->metadata().request_id = std::to_string(next_job_id_.load());
+  auto wait_state = yb::util::WaitStateInfo::CurrentWaitState();
+  if (wait_state) {
+    wait_state->set_current_request_id(next_job_id_.load());
+  }
   SET_WAIT_STATUS(yb::util::WaitStateCode::StartCompaction);
 
   LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, db_options_.info_log.get());

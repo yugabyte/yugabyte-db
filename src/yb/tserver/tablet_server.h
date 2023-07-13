@@ -292,7 +292,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void SetXClusterDDLOnlyMode(bool is_xcluster_read_only_mode);
 
-  std::vector<std::string> GetThreadpoolWaitStates() const override;
+  std::vector<yb::util::WaitStateInfoPtr> GetThreadpoolWaitStates() const override;
 
  protected:
   virtual Status RegisterServices();

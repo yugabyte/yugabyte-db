@@ -397,9 +397,25 @@ typedef struct PgServerDescriptor {
   const char *uuid;
 } YBCServerDescriptor;
 
-typedef struct AuhDescriptor {
-  const char* wait_state;
-} YBCAuhDescriptor;
+typedef struct AUHMetadataDescriptor {
+  const char* top_level_request_id;
+  const char* client_node_ip;
+  const char* top_level_node_id;
+  int64_t current_request_id;
+  int64_t query_id;
+} YBCAUHMetadataDescriptor;
+
+typedef struct AUHAuxDescriptor {
+  const char* table_id;
+  const char* tablet_id;
+} YBCAUHAuxDescriptor;
+
+typedef struct AUHDescriptor {
+  YBCAUHMetadataDescriptor metadata;
+  uint64_t wait_status_code;
+  YBCAUHAuxDescriptor aux_info;
+  const char* wait_status_code_as_string;
+} YBCAUHDescriptor;
 
 typedef struct PgColumnInfo {
   bool is_primary;

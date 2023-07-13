@@ -434,7 +434,10 @@ class PgClient::Impl {
     req.set_session_id(session_id_);
     *req.mutable_options() = std::move(*options);
     PrepareOperations(&req, operations);
-    req.mutable_options()->mutable_auh_metadata()->set_request_id(reinterpret_cast<int64_t>(&req));
+    // Amit: This is probably unnecessary. header_ already contains a call-id.
+    req.mutable_options()->mutable_auh_metadata()->set_current_request_id(reinterpret_cast<uint64_t>(&req));
+
+    LOG(ERROR) << " PG_CLIENT_QUERY_ID: " << req.options().auh_metadata().query_id();
 
     if (exchange_) {
       PerformData data(&arena, std::move(*operations), callback);
@@ -694,7 +697,7 @@ class PgClient::Impl {
     client::RpcsInfo result;
     result.reserve(resp.wait_states_size());
     for (const auto& wait_state : resp.wait_states()) {
-      result.push_back(client::YBActiveUniverseHistoryInfo{.wait_state = wait_state});
+      result.push_back(client::YBActiveUniverseHistoryInfo::FromPB(wait_state));
     }
     return result;
   }

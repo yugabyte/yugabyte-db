@@ -12,6 +12,7 @@
 //
 
 #include <string>
+#include "yb/util/wait_state.h"
 #pragma once
 
 namespace yb {
@@ -84,12 +85,18 @@ struct YBTabletServerPlacementInfo {
 };
 
 struct YBActiveUniverseHistoryInfo {
-  std::string wait_state;
+  util::AUHMetadata metadata;
+  uint64_t wait_status_code;
+  util::AUHAuxInfo aux_info;
+  std::string wait_status_code_as_string;
 
   template <class PB>
   static YBActiveUniverseHistoryInfo FromPB(const PB& pb) {
     return YBActiveUniverseHistoryInfo {
-      .wait_state = pb,
+      .metadata = util::AUHMetadata::FromPB(pb.metadata()),
+      .wait_status_code = pb.wait_status_code(),
+      .aux_info = util::AUHAuxInfo::FromPB(pb.aux_info()),
+      .wait_status_code_as_string = pb.wait_status_code_as_string(),
     };
   }
 };

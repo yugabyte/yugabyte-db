@@ -5,8 +5,15 @@ CREATE FUNCTION pg_active_universe_history(
     OUT auh_sample_time timestamptz,
     OUT top_level_request_id text,
     OUT request_id INTEGER,
+    OUT wait_event_component text,
     OUT wait_event_class text,
-    OUT wait_event text
+    OUT wait_event text,
+    OUT wait_event_aux text,
+    OUT top_level_node_id text,
+    OUT query_id BIGINT,
+    OUT client_node_ip text,
+    OUT start_ts_of_wait_event timestamptz,
+    OUT sample_rate SMALLINT
 )
 
 RETURNS SETOF record

@@ -1561,7 +1561,7 @@ YBCStatus YBCPgCheckIfPitrActive(bool* is_active) {
   return ToYBCStatus(res.status());
 }
 
-YBCStatus YBCActiveUniverseHistory(YBCAuhDescriptor **rpcs, size_t* count) {
+YBCStatus YBCActiveUniverseHistory(YBCAUHDescriptor **rpcs, size_t* count) {
   const auto result = pgapi->ActiveUniverseHistory();
   if (!result.ok()) {
     return ToYBCStatus(result.status());
@@ -1570,12 +1570,24 @@ YBCStatus YBCActiveUniverseHistory(YBCAuhDescriptor **rpcs, size_t* count) {
   *count = servers_info.size();
   *rpcs = NULL;
   if (!servers_info.empty()) {
-    *rpcs = static_cast<YBCAuhDescriptor *>(
-        YBCPAlloc(sizeof(YBCAuhDescriptor) * servers_info.size()));
-    YBCAuhDescriptor *dest = *rpcs;
+    *rpcs = static_cast<YBCAUHDescriptor *>(
+        YBCPAlloc(sizeof(YBCAUHDescriptor) * servers_info.size()));
+    YBCAUHDescriptor *dest = *rpcs;
     for (const auto &info : servers_info) {
-      new (dest) YBCAuhDescriptor {
-        .wait_state = YBCPAllocStdString(info.wait_state),
+      new (dest) YBCAUHDescriptor {
+        .metadata = {
+          .top_level_request_id = YBCPAllocStdString(info.metadata.top_level_request_id),
+          .client_node_ip = YBCPAllocStdString(info.metadata.client_node_ip),
+          .top_level_node_id = YBCPAllocStdString(info.metadata.top_level_node_id),
+          .current_request_id = info.metadata.current_request_id,
+          .query_id = info.metadata.query_id,
+        },
+        .wait_status_code = info.wait_status_code,
+        .aux_info = {
+          .table_id = YBCPAllocStdString(info.aux_info.table_id),
+          .tablet_id = YBCPAllocStdString(info.aux_info.tablet_id),
+        },
+        .wait_status_code_as_string = YBCPAllocStdString(info.wait_status_code_as_string),
       };
       ++dest;
     }

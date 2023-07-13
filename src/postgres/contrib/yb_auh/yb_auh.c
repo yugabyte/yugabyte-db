@@ -31,17 +31,28 @@
 #include "storage/shm_toc.h"
 #include "storage/shmem.h"
 #include "pgstat.h"
+#include "pg_yb_utils.h"
+
+#include "yb/yql/pggate/util/ybc_stat.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 PG_MODULE_MAGIC;
 PG_FUNCTION_INFO_V1(pg_active_universe_history);
 
-#define PG_ACTIVE_UNIVERSE_HISTORY_COLS        5
+#define PG_ACTIVE_UNIVERSE_HISTORY_COLS        11
 
 typedef struct ybauhEntry {
   TimestampTz auh_sample_time;
   char top_level_request_id[16];
-  int request_id;
+  long request_id;
   uint32 wait_event;
+  char wait_event_aux[16];
+  char top_level_node_id[16];
+  char client_node_ip[16];
+  uint16 client_node_port;
+  long query_id;
+  TimestampTz start_ts_of_wait_event;
+  uint16 sample_rate;
 } ybauhEntry;
 
 /* counters */
@@ -54,7 +65,9 @@ ybauhEntry *AUHEntryArray = NULL;
 LWLock *auh_entry_array_lock;
 
 circularBufferIndex *CircularBufferIndexArray = NULL;
-static int circular_buf_size = 1000;
+static int circular_buf_size = 0;
+static int circular_buf_size_kb = 16*1024;
+
 static int auh_sampling_interval = 1;
 
 /* Entry point of library loading */
@@ -65,12 +78,19 @@ static Size yb_auh_circularBufferIndexSize(void);
 static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
 static void ybauh_startup_hook(void);
 static void pg_active_universe_history_internal(FunctionCallInfo fcinfo);
-
-
 static void auh_entry_store(TimestampTz auh_time,
                             const char* top_level_request_id,
-                            int request_id,
-                            uint32 wait_event);
+                            long request_id,
+                            uint32 wait_event,
+                            const char* wait_event_aux,
+                            const char* top_level_node_id,
+                            const char* client_node_ip,
+                            uint16 client_node_port,
+                            long query_id,
+                            TimestampTz start_ts_of_wait_event,
+                            uint16 sample_rate);
+static void pg_collect_samples(TimestampTz auh_sample_time);
+static void tserver_collect_samples(TimestampTz auh_sample_time);
 
 static volatile sig_atomic_t got_sigterm = false;
 static volatile sig_atomic_t got_sighup = false;
@@ -95,8 +115,10 @@ yb_auh_sighup(SIGNAL_ARGS)
 
 void
 yb_auh_main(Datum main_arg) {
+  // TODO:
+  YBInitPostgresBackend("postgres", "", "hemant");
 
-  ereport(LOG, (errmsg("starting bgworker yb_auh")));
+  ereport(LOG, (errmsg("starting bgworker yb_auh with buffer size %d", circular_buf_size)));
 
   /* Register functions for SIGTERM/SIGHUP management */
   pqsignal(SIGHUP, yb_auh_sighup);
@@ -104,6 +126,8 @@ yb_auh_main(Datum main_arg) {
 
   /* We're now ready to receive signals */
   BackgroundWorkerUnblockSignals();
+
+  pgstat_report_appname("yb_auh collector");
 
   while (!got_sigterm) {
     int rc;
@@ -138,27 +162,55 @@ yb_auh_main(Datum main_arg) {
     auh_sample_time = GetCurrentTimestamp();
 
     MemoryContext oldcxt = MemoryContextSwitchTo(uppercxt);
-    LWLockAcquire(ProcArrayLock, LW_SHARED);
-    LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
 
-    int		procCount = ProcGlobal->allProcCount;
-    for (int i = 0; i < procCount; i++)
-    {
-      PGPROC *proc = &ProcGlobal->allProcs[i];
-
-      if (proc != NULL && proc->pid != 0)
-      {
-        auh_entry_store(auh_sample_time, "abc", proc->pid, proc->wait_event_info);
-      }
-    }
-    LWLockRelease(auh_entry_array_lock);
-    LWLockRelease(ProcArrayLock);
-
+    pg_collect_samples(auh_sample_time);
+    tserver_collect_samples(auh_sample_time);
 
     MemoryContextSwitchTo(oldcxt);
     /* No problems, so clean exit */
   }
   proc_exit(0);
+}
+
+static void pg_collect_samples(TimestampTz auh_sample_time)
+{
+  LWLockAcquire(ProcArrayLock, LW_SHARED);
+  LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
+  int		procCount = ProcGlobal->allProcCount;
+  for (int i = 0; i < procCount; i++)
+  {
+    PGPROC *proc = &ProcGlobal->allProcs[i];
+
+    if (proc != NULL && proc->pid != 0)
+    {
+      //TODO:
+      auh_entry_store(auh_sample_time, proc->top_level_request_id, 0,
+                      proc->wait_event_info, "", proc->node_uuid,
+                      proc->remote_host, proc->remote_port, proc->queryid, auh_sample_time,
+                      1);
+    }
+  }
+  LWLockRelease(auh_entry_array_lock);
+  LWLockRelease(ProcArrayLock);
+}
+
+static void tserver_collect_samples(TimestampTz auh_sample_time)
+{
+  //TODO:
+  YBCAUHDescriptor *rpcs = NULL;
+  size_t numrpcs = 0;
+  ereport(LOG, (errmsg("tserver_collect_samples starting")));
+
+  HandleYBStatus(YBCActiveUniverseHistory(&rpcs, &numrpcs));
+  LWLockAcquire(auh_entry_array_lock, LW_EXCLUSIVE);
+  for (int i = 0; i < numrpcs; i++) {
+    auh_entry_store(auh_sample_time, rpcs[i].metadata.top_level_request_id,
+                    rpcs[i].metadata.current_request_id, rpcs[i].wait_status_code,
+                    rpcs[i].aux_info.tablet_id, rpcs[i].metadata.top_level_node_id,
+                    rpcs[i].metadata.client_node_ip, 0, rpcs[i].metadata.query_id,
+                    auh_sample_time, 1);
+  }
+  LWLockRelease(auh_entry_array_lock);
 }
 
 void
@@ -168,10 +220,9 @@ _PG_init(void)
 
   if (!process_shared_preload_libraries_in_progress)
     return;
-  // TODO: add these in pgwrapper.c
-  DefineCustomIntVariable("yb_auh.circular_buf_size", "Size of circular buffer",
-                          "Default value is 1000",
-                          &circular_buf_size, 1000, 0, INT_MAX, PGC_POSTMASTER,
+  DefineCustomIntVariable("yb_auh.circular_buf_size_kb", "Size of circular buffer in KBs",
+                          "Default value is 16 MB",
+                          &circular_buf_size_kb, 16*1024, 0, INT_MAX, PGC_POSTMASTER,
                           GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE
                               | GUC_DISALLOW_IN_FILE,
                           NULL, NULL, NULL);
@@ -181,7 +232,6 @@ _PG_init(void)
                           GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE
                               | GUC_DISALLOW_IN_FILE,
                           NULL, NULL, NULL);
-  ereport(LOG, (errmsg("yb_auh collector started 2")));
 
   RequestAddinShmemSpace(yb_auh_memsize());
   RequestNamedLWLockTranche("auh_entry_array", 1);
@@ -207,7 +257,7 @@ static Size
 yb_auh_memsize(void)
 {
   Size		size;
-
+  circular_buf_size = (circular_buf_size_kb * 1024) / sizeof(struct ybauhEntry);
   size = MAXALIGN(sizeof(struct ybauhEntry) * circular_buf_size);
 
   return size;
@@ -224,8 +274,15 @@ yb_auh_circularBufferIndexSize(void)
 
 static void auh_entry_store(TimestampTz auh_time,
                             const char* top_level_request_id,
-                            int request_id,
-                            uint32 wait_event)
+                            long request_id,
+                            uint32 wait_event,
+                            const char* wait_event_aux,
+                            const char* top_level_node_id,
+                            const char* client_node_ip,
+                            uint16 client_node_port,
+                            long query_id,
+                            TimestampTz start_ts_of_wait_event,
+                            uint16 sample_rate)
 {
   int inserted;
   if (!AUHEntryArray) { return; }
@@ -238,6 +295,16 @@ static void auh_entry_store(TimestampTz auh_time,
   AUHEntryArray[inserted].request_id = request_id;
   memcpy(AUHEntryArray[inserted].top_level_request_id, top_level_request_id,
          Min(strlen(top_level_request_id) + 1, 15));
+  memcpy(AUHEntryArray[inserted].wait_event_aux, wait_event_aux,
+         Min(strlen(wait_event_aux) + 1, 15));
+  memcpy(AUHEntryArray[inserted].top_level_node_id, top_level_node_id,
+         Min(strlen(top_level_node_id) + 1, 15));
+  memcpy(AUHEntryArray[inserted].client_node_ip, client_node_ip,
+         Min(strlen(client_node_ip) + 1, 15));
+  AUHEntryArray[inserted].client_node_port = client_node_port;
+  AUHEntryArray[inserted].query_id = query_id;
+  AUHEntryArray[inserted].start_ts_of_wait_event = start_ts_of_wait_event;
+  AUHEntryArray[inserted].sample_rate = sample_rate;
 }
 
 static void
@@ -305,7 +372,7 @@ pg_active_universe_history_internal(FunctionCallInfo fcinfo)
     Datum           values[PG_ACTIVE_UNIVERSE_HISTORY_COLS];
     bool            nulls[PG_ACTIVE_UNIVERSE_HISTORY_COLS];
     int                     j = 0;
-    const char *event_type, *event;
+    const char *event_type, *event, *event_component;
 
     memset(values, 0, sizeof(values));
     memset(nulls, 0, sizeof(nulls));
@@ -327,8 +394,17 @@ pg_active_universe_history_internal(FunctionCallInfo fcinfo)
       values[j++] = Int64GetDatum(AUHEntryArray[i].request_id);
     else
       nulls[j++] = true;
+
+    // Wait event, wait event component, wait event class
     event_type = pgstat_get_wait_event_type(AUHEntryArray[i].wait_event);
     event = pgstat_get_wait_event(AUHEntryArray[i].wait_event);
+    event_component = ybcstat_get_wait_event_component(AUHEntryArray[i].wait_event);
+
+    if (event_component)
+      values[j++] = CStringGetTextDatum(event_component);
+    else
+      nulls[j++] = true;
+
     if (event_type)
       values[j++] = CStringGetTextDatum(event_type);
     else
@@ -336,6 +412,46 @@ pg_active_universe_history_internal(FunctionCallInfo fcinfo)
 
     if (event)
       values[j++] = CStringGetTextDatum(event);
+    else
+      nulls[j++] = true;
+
+    // wait event's auxillary info
+    if (AUHEntryArray[i].wait_event_aux[0] != '\0')
+      values[j++] = CStringGetTextDatum(AUHEntryArray[i].wait_event_aux);
+    else
+      nulls[j++] = true;
+
+    // Top level node id
+    if (AUHEntryArray[i].top_level_node_id[0] != '\0')
+      values[j++] = CStringGetTextDatum(AUHEntryArray[i].top_level_node_id);
+    else
+      nulls[j++] = true;
+
+    // query id
+    if (AUHEntryArray[i].query_id)
+      values[j++] = Int64GetDatum(AUHEntryArray[i].query_id);
+    else
+      nulls[j++] = true;
+
+    // Originating client node
+    char client_node[22];
+    if (AUHEntryArray[i].client_node_ip[0] != '\0')
+    {
+      sprintf(client_node, "%s:%d", AUHEntryArray[i].client_node_ip,
+              AUHEntryArray[i].client_node_port);
+      values[j++] = CStringGetTextDatum(client_node);
+    }
+    else
+      nulls[j++] = true;
+    // start timestamp of wait event
+    if (TimestampTzGetDatum(AUHEntryArray[i].start_ts_of_wait_event))
+      values[j++] = TimestampTzGetDatum(AUHEntryArray[i].start_ts_of_wait_event);
+    else
+      break;
+
+    // Sample rate
+    if (AUHEntryArray[i].sample_rate)
+      values[j++] = Int16GetDatum(AUHEntryArray[i].sample_rate);
     else
       nulls[j++] = true;
 

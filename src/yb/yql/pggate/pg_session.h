@@ -35,6 +35,7 @@
 #include "yb/util/lw_function.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/result.h"
+#include "yb/util/wait_state.h"
 
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_doc_metrics.h"
@@ -381,8 +382,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   Result<PerformFuture> Perform(BufferableOperations&& ops, PerformOptions&& options);
 
-  void FillAUHMetadata(AUHMetadataPB& auh_metadata);
-
   void ProcessPerformOnTxnSerialNo(
       uint64_t txn_serial_no,
       EnsureReadTimeIsSet force_set_read_time_for_current_txn_serial_no,
@@ -438,10 +437,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   bool has_write_ops_in_ddl_mode_ = false;
   std::variant<TxnSerialNoPerformInfo> last_perform_on_txn_serial_no_;
 
-  std::string top_level_request_id_;
-  std::string client_node_ip_;
-  std::string node_uuid_;
-  uint64_t query_id_;
+  util::AUHMetadata auh_metadata_;
 };
 
 }  // namespace pggate
