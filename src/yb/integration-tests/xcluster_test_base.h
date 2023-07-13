@@ -157,13 +157,13 @@ class XClusterTestBase : public YBTest {
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
       const cdc::ReplicationGroupId& replication_group_id,
       const std::vector<std::shared_ptr<client::YBTable>>& tables,
-      const std::vector<std::string>& bootstrap_ids = {},
+      const std::vector<xrepl::StreamId>& bootstrap_ids = {},
       SetupReplicationOptions opts = SetupReplicationOptions());
 
   Status SetupUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
-      const cdc::ReplicationGroupId& replication_group_id,
-      const std::vector<std::string>& table_ids, const std::vector<std::string>& bootstrap_ids = {},
+      const cdc::ReplicationGroupId& replication_group_id, const std::vector<TableId>& table_ids,
+      const std::vector<xrepl::StreamId>& bootstrap_ids = {},
       SetupReplicationOptions opts = SetupReplicationOptions());
 
   Status SetupNSUniverseReplication(
@@ -232,11 +232,11 @@ class XClusterTestBase : public YBTest {
       cdc::XClusterRole expected_xcluster_role, Cluster* cluster = nullptr,
       boost::optional<CoarseTimePoint> deadline = boost::none);
 
-  Result<std::vector<CDCStreamId>> BootstrapProducer(
+  Result<std::vector<xrepl::StreamId>> BootstrapProducer(
       MiniCluster* producer_cluster, YBClient* producer_client,
       const std::vector<std::shared_ptr<yb::client::YBTable>>& tables);
 
-  Result<std::vector<CDCStreamId>> BootstrapProducer(
+  Result<std::vector<xrepl::StreamId>> BootstrapProducer(
       MiniCluster* producer_cluster, YBClient* producer_client,
       const std::vector<std::string>& table_ids);
 
@@ -306,10 +306,10 @@ class XClusterTestBase : public YBTest {
       const boost::optional<ReplicationErrorPb>
           expected_replication_error);
 
-  Result<CDCStreamId> GetCDCStreamID(const std::string& producer_table_id);
+  Result<xrepl::StreamId> GetCDCStreamID(const TableId& producer_table_id);
 
   Status PauseResumeXClusterProducerStreams(
-      const std::vector<std::string>& stream_ids, bool is_paused);
+      const std::vector<xrepl::StreamId>& stream_ids, bool is_paused);
 
  protected:
   CoarseTimePoint PropagationDeadline() const {

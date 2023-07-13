@@ -428,7 +428,7 @@ Status XClusterYsqlTestBase::ValidateRows(
   return OK();
 }
 
-Result<std::vector<std::string>> XClusterYsqlTestBase::BootstrapCluster(
+Result<std::vector<xrepl::StreamId>> XClusterYsqlTestBase::BootstrapCluster(
     const std::vector<std::shared_ptr<client::YBTable>>& tables,
     XClusterTestBase::Cluster* cluster) {
   cdc::BootstrapProducerRequestPB req;
@@ -446,12 +446,12 @@ Result<std::vector<std::string>> XClusterYsqlTestBase::BootstrapCluster(
 
   CHECK_EQ(resp.cdc_bootstrap_ids().size(), tables.size());
 
-  std::vector<std::string> bootstrap_ids;
+  std::vector<xrepl::StreamId> bootstrap_ids;
   int table_idx = 0;
   for (const auto& bootstrap_id : resp.cdc_bootstrap_ids()) {
     LOG(INFO) << "Got bootstrap id " << bootstrap_id << " for table "
               << tables[table_idx++]->name().table_name();
-    bootstrap_ids.emplace_back(bootstrap_id);
+    bootstrap_ids.emplace_back(VERIFY_RESULT(xrepl::StreamId::FromString(bootstrap_id)));
   }
 
   return bootstrap_ids;

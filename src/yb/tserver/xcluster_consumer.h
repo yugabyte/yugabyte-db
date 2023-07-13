@@ -125,11 +125,11 @@ class XClusterConsumer {
 
   // Stores a replication error and detail. This overwrites a previously stored 'error'.
   void StoreReplicationError(
-    const TabletId& tablet_id, const CDCStreamId& stream_id, ReplicationErrorPb error,
-    const std::string& detail);
+      const TabletId& tablet_id, const xrepl::StreamId& stream_id, ReplicationErrorPb error,
+      const std::string& detail);
 
   // Clears replication errors.
-  void ClearReplicationError(const TabletId& tablet_id, const CDCStreamId& stream_id);
+  void ClearReplicationError(const TabletId& tablet_id, const xrepl::StreamId& stream_id);
 
   // Returns the replication error map.
   cdc::TabletReplicationErrorMap GetReplicationErrors() const;
@@ -157,8 +157,8 @@ class XClusterConsumer {
       const XClusterPoller& poller) REQUIRES_SHARED(master_data_mutex_);
 
   void UpdatePollerSchemaVersionMaps(
-      std::shared_ptr<XClusterPoller> xcluster_poller,
-      const CDCStreamId& stream_id) const REQUIRES_SHARED (master_data_mutex_);
+      std::shared_ptr<XClusterPoller> xcluster_poller, const xrepl::StreamId& stream_id) const
+      REQUIRES_SHARED(master_data_mutex_);
 
   void RemoveFromPollersMap(const cdc::ProducerTabletInfo producer_tablet_info);
 
@@ -198,9 +198,9 @@ class XClusterConsumer {
   ProducerConsumerTabletMap producer_consumer_tablet_map_from_master_
       GUARDED_BY(master_data_mutex_);
 
-  std::unordered_set<std::string> streams_with_local_tserver_optimization_
+  std::unordered_set<xrepl::StreamId> streams_with_local_tserver_optimization_
       GUARDED_BY(master_data_mutex_);
-  std::unordered_map<std::string, cdc::SchemaVersionMapping> stream_to_schema_version_
+  std::unordered_map<xrepl::StreamId, cdc::SchemaVersionMapping> stream_to_schema_version_
       GUARDED_BY(master_data_mutex_);
 
   cdc::StreamSchemaVersionMap stream_schema_version_map_

@@ -321,9 +321,8 @@ class XClusterTest : public XClusterTestBase,
 
   void VerifyReplicationError(
       const std::string& consumer_table_id,
-      const std::string& stream_id,
+      const xrepl::StreamId& stream_id,
       const boost::optional<ReplicationErrorPb> expected_replication_error) {
-
     // 1. Verify that the RPC contains the expected error.
     master::GetReplicationStatusRequestPB req;
     master::GetReplicationStatusResponsePB resp;
@@ -346,9 +345,8 @@ class XClusterTest : public XClusterTestBase,
         return false;
       }
 
-      if (resp.statuses_size() == 0 ||
-          (resp.statuses()[0].table_id() != consumer_table_id &&
-           resp.statuses()[0].stream_id() != stream_id)) {
+      if (resp.statuses_size() == 0 || (resp.statuses()[0].table_id() != consumer_table_id &&
+                                        resp.statuses()[0].stream_id() != stream_id.ToString())) {
         return false;
       }
 
@@ -372,7 +370,7 @@ class XClusterTest : public XClusterTestBase,
     }
   }
 
-  Result<CDCStreamId> GetCDCStreamID(const std::string& producer_table_id) {
+  Result<xrepl::StreamId> GetCDCStreamID(const std::string& producer_table_id) {
     master::ListCDCStreamsResponsePB stream_resp;
     RETURN_NOT_OK(GetCDCStreamForTable(producer_table_id, &stream_resp));
 
@@ -387,7 +385,7 @@ class XClusterTest : public XClusterTestBase,
                            stream_resp.streams(0).table_id().Get(0)));
     }
 
-    return stream_resp.streams(0).stream_id();
+    return xrepl::StreamId::FromString(stream_resp.streams(0).stream_id());
   }
 
   YB_STRONGLY_TYPED_BOOL(EnableTLSEncryption);
@@ -462,7 +460,7 @@ class XClusterTest : public XClusterTestBase,
 
   // Empty stream_ids will pause all streams.
   void SetPauseAndVerifyWrittenRows(
-      const std::vector<std::string>& stream_ids,
+      const std::vector<xrepl::StreamId>& stream_ids,
       const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
       const std::vector<std::shared_ptr<client::YBTable>>& consumer_tables, uint32_t start,
       uint32_t end, bool pause = true) {
@@ -667,7 +665,7 @@ TEST_P(XClusterTest, SetupUniverseReplicationWithProducerBootstrapId) {
               << " for table " << producer_tables[table_idx++]->name().table_name();
   }
 
-  std::unordered_map<std::string, int> tablet_bootstraps;
+  std::unordered_map<xrepl::StreamId, int> tablet_bootstraps;
 
   // Verify that for each of the table's tablets, a new row in cdc_state table with the returned
   // id was inserted.
@@ -1283,7 +1281,7 @@ TEST_P(XClusterTest, PollAndObserveIdleDampening) {
   ASSERT_OK(GetCDCStreamForTable(tables[0]->id(), &stream_resp));
   ASSERT_EQ(stream_resp.streams_size(), 1);
   ASSERT_EQ(stream_resp.streams(0).table_id().Get(0), tables[0]->id());
-  auto stream_id = stream_resp.streams(0).stream_id();
+  auto stream_id = ASSERT_RESULT(xrepl::StreamId::FromString(stream_resp.streams(0).stream_id()));
 
   // Find the tablet id for the stream.
   TabletId tablet_id;
@@ -1291,7 +1289,7 @@ TEST_P(XClusterTest, PollAndObserveIdleDampening) {
     yb::cdc::ListTabletsRequestPB tablets_req;
     yb::cdc::ListTabletsResponsePB tablets_resp;
     rpc::RpcController rpc;
-    tablets_req.set_stream_id(stream_id);
+    tablets_req.set_stream_id(stream_id.ToString());
 
     auto producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
         &producer_client()->proxy_cache(),
@@ -1704,7 +1702,7 @@ TEST_P(XClusterTestTransactionalOnly, WithBootstrap) {
 
   ASSERT_EQ(resp.cdc_bootstrap_ids().size(), 1);
 
-  const auto& bootstrap_id = resp.cdc_bootstrap_ids(0);
+  const auto& bootstrap_id = ASSERT_RESULT(xrepl::StreamId::FromString(resp.cdc_bootstrap_ids(0)));
   LOG(INFO) << "Got bootstrap id " << bootstrap_id << " for table "
             << producer_table->name().table_name();
 
@@ -2839,7 +2837,7 @@ TEST_P(XClusterTest, TestNonZeroLagMetricsWithoutGetChange) {
   ASSERT_FALSE(stream_resp.has_error());
   ASSERT_EQ(stream_resp.streams_size(), 1);
   ASSERT_EQ(stream_resp.streams(0).table_id().Get(0), producer_table->id());
-  auto stream_id = stream_resp.streams(0).stream_id();
+  auto stream_id = ASSERT_RESULT(xrepl::StreamId::FromString(stream_resp.streams(0).stream_id()));
 
   // Obtain producer tablet id.
   TabletId tablet_id;
@@ -2847,7 +2845,7 @@ TEST_P(XClusterTest, TestNonZeroLagMetricsWithoutGetChange) {
     yb::cdc::ListTabletsRequestPB tablets_req;
     yb::cdc::ListTabletsResponsePB tablets_resp;
     rpc::RpcController rpc;
-    tablets_req.set_stream_id(stream_id);
+    tablets_req.set_stream_id(stream_id.ToString());
 
     auto producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
         &producer_client()->proxy_cache(),
@@ -3448,15 +3446,15 @@ TEST_P(XClusterTest, PausingAndResumingReplicationFromProducerSingleTable) {
   ASSERT_OK(PauseResumeXClusterProducerStreams({}, false));
 
   // Invalid ID case.
-  ASSERT_NOK(PauseResumeXClusterProducerStreams({"invalid_id"}, true));
-  ASSERT_NOK(PauseResumeXClusterProducerStreams({"invalid_id"}, false));
+  ASSERT_NOK(PauseResumeXClusterProducerStreams({xrepl::StreamId::GenerateRandom()}, true));
+  ASSERT_NOK(PauseResumeXClusterProducerStreams({xrepl::StreamId::GenerateRandom()}, false));
 
   ASSERT_OK(SetupUniverseReplication(producer_tables));
   master::IsSetupUniverseReplicationDoneResponsePB is_resp;
   ASSERT_OK(WaitForSetupUniverseReplication(
       consumer_cluster(), consumer_client(), kReplicationGroupId, &is_resp));
 
-  std::vector<std::string> stream_ids;
+  std::vector<xrepl::StreamId> stream_ids;
 
   WriteWorkloadAndVerifyWrittenRows(producer_tables[0], consumer_tables[0], 0, 10);
 
@@ -3500,7 +3498,7 @@ TEST_P(XClusterTest, PausingAndResumingReplicationFromProducerMultiTable) {
     }
   }
 
-  std::vector<std::string> stream_ids;
+  std::vector<xrepl::StreamId> stream_ids;
 
   ASSERT_OK(SetupUniverseReplication(producer_tables));
   master::IsSetupUniverseReplicationDoneResponsePB is_resp;
@@ -3514,7 +3512,7 @@ TEST_P(XClusterTest, PausingAndResumingReplicationFromProducerMultiTable) {
   SetPauseAndVerifyWrittenRows({}, producer_tables, consumer_tables, 20, 30, false);
   // Add the stream IDs of the first two tables to test pausing and resuming just those ones.
   for (size_t i = 0; i < producer_tables.size() - 1; ++i) {
-    auto stream_id = (string)ASSERT_RESULT(GetCDCStreamID(producer_tables[i]->id()));
+    auto stream_id = ASSERT_RESULT(GetCDCStreamID(producer_tables[i]->id()));
     stream_ids.push_back(stream_id);
   }
   // Test pausing replication on the first two tables by passing stream_ids containing their
