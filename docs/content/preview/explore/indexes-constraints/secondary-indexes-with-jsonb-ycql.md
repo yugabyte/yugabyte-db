@@ -103,7 +103,7 @@ For additional information, see the [EXPLAIN](../../../api/ycql/explain/) statem
 
 ## Covering index and Partial index with JSONB column
 
-You can also create a covering index and partial index with a JSONB column.
+You can also create covering and partial indexes with a JSONB column.
 
 ### Covering index
 
