@@ -426,18 +426,18 @@ public class SessionController extends AbstractPlatformController {
     List<Customer> allCustomers = Customer.getAll();
     if (allCustomers.size() != 1) {
       throw new PlatformServiceException(
-          UNAUTHORIZED, "Cannot allow insecure with multiple customers.");
+          FORBIDDEN, "Cannot allow insecure with multiple customers.");
     }
     String securityLevel =
         (String) configHelper.getConfig(ConfigHelper.ConfigType.Security).get("level");
     if (securityLevel != null && securityLevel.equals("insecure")) {
       List<Users> users = Users.getAllReadOnly();
       if (users.isEmpty()) {
-        throw new PlatformServiceException(UNAUTHORIZED, "No read only customer exists.");
+        throw new PlatformServiceException(FORBIDDEN, "No read only customer exists.");
       }
       Users user = users.get(0);
       if (user == null) {
-        throw new PlatformServiceException(UNAUTHORIZED, "Invalid User saved.");
+        throw new PlatformServiceException(FORBIDDEN, "Invalid User saved.");
       }
       String apiToken = user.getApiToken();
       if (apiToken == null || apiToken.isEmpty()) {
