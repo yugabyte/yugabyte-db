@@ -209,4 +209,11 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
     </a>
   </li>
 
+  <li>
+    <a href="superblocks/">
+      <img src="/images/section_icons/develop/ecosystem/superblocks.png">
+      Superblocks
+    </a>
+  </li>
+
 </ul>
