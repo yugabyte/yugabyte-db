@@ -71,7 +71,7 @@ namespace util {
 YB_DEFINE_ENUM_TYPE(
     WaitStateCode,
     uint32_t,
-    (Unused)
+    ((Unused, 0))
     // General states for incoming RPCs
     ((Created, YB_TSERVER_WAIT_RPC))(Queued)(Handling)(QueueingResponse)(ResponseQueued)
     // Writes
@@ -100,7 +100,7 @@ YB_DEFINE_ENUM_TYPE(
     (StartSubcompactionThreads)(WaitOnSubcompactionThreads)
 
     // Perform Wait Events
-    ((DmlRead, YB_PG_WAIT_PERFORM)) (DmlWrite)
+    ((DmlRead, YB_PG_WAIT_PERFORM)) (DmlWrite) (DmlReadWrite)
     )
 
 struct AUHMetadata {
