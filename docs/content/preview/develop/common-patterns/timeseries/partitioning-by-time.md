@@ -16,6 +16,10 @@ Partitioning refers to splitting what is logically one large table into smaller 
 
 The following example describes the advantage of partitions in little more detail.
 
+{{<note title="Note">}}
+Partitioning is only available in [YSQL](../../../../api/ysql/).
+{{</note>}}
+
 ## Setup
 
 {{<cluster-setup-tabs>}}
