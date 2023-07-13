@@ -117,7 +117,7 @@ To speed up the process, you create an index for the department column, as follo
 CREATE INDEX index_employees_department ON employees(department);
 ```
 
-The following example executes the query after the index has been applied to `department` and uses the `EXPLAIN` statement to prove that the index participated in the processing of the query:
+The following example executes the query after the index has been applied to `department` and uses the `EXPLAIN` statement to prove that the index is used during query execution:
 
 ```cql
 EXPLAIN SELECT * FROM employees WHERE department = 'Operations';
