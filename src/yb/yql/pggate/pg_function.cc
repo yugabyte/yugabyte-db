@@ -209,9 +209,8 @@ Result<PgTableRow> AddLock(
     RETURN_NOT_OK(SetColumnValue("hash_cols", lock.hash_cols(), schema, &row));
   if (lock.range_cols().size() > 0)
     RETURN_NOT_OK(SetColumnValue("range_cols", lock.range_cols(), schema, &row));
-  // TODO: add attnum to GetLockStatusResponse
-  //  if (lock.attnum())
-  //    RETURN_NOT_OK(SetColumnValue("attnum", lock.attnum(), schema, &row));
+  if (lock.attnum())
+    RETURN_NOT_OK(SetColumnValue("attnum", lock.attnum(), schema, &row));
   if (lock.has_column_id())
     RETURN_NOT_OK(SetColumnValue("column_id", lock.column_id(), schema, &row));
   RETURN_NOT_OK(SetColumnValue("multiple_rows_locked", lock.multiple_rows_locked(), schema, &row));
