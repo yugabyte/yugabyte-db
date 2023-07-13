@@ -127,7 +127,7 @@ For additional information on the CREATE INDEX statement, see [CREATE INDEX](../
 
 ## Remove indexes
 
-You can remove index created with JSONB datatype column using the `DROP INDEX` statement in YCQL with the following syntax:
+You can remove an index created with the JSONB datatype column using the `DROP INDEX` statement in YCQL with the following syntax:
 
 ```sql
 DROP INDEX idx_users_jsonb;
