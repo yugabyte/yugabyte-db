@@ -1,6 +1,6 @@
 ---
-title: Global Ordering By Time
-headerTitle: Global Ordering By Time
+title: Global ordering by time
+headerTitle: Global ordering by time
 linkTitle: Global ordering by time
 description: Distribute your time-ordered data and retrieve fast
 headcontent: Distribute your time-ordered data and retrieve fast
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Here, we will see how to distribute your entire time-ordered dataset across tablets and retrieve data efficiently.
+Learn how to distribute your entire time-ordered dataset across tablets and retrieve data efficiently.
 
 ## Setup
 
@@ -20,7 +20,9 @@ Here, we will see how to distribute your entire time-ordered dataset across tabl
 
 ## Distributing on timestamp
 
-Let us consider a speed metrics tracking system that tracks the data from the speed sensor of many cars. A simple schema would be,
+Consider a speed metrics tracking system that tracks the data from the speed sensor of many cars.
+
+Create a table with an example schema as follows:
 
 ```sql
 CREATE TABLE global_order1 (
@@ -31,18 +33,18 @@ CREATE TABLE global_order1 (
 );
 ```
 
-This would store the speed data points of different cars as they arrive in the system.
+The `global_order1` stores the speed data points of different cars as they arrive in the system.
 
-Let us insert some sample data into the table.
+Insert some sample data into the table.
 
 ```sql
-INSERT INTO global_order1 (ts, car, speed) 
+INSERT INTO global_order1 (ts, car, speed)
         (SELECT '2023-07-01 00:00:00'::timestamp + make_interval(secs=>id),
             'car-' || ceil(random()*2), ceil(random()*60)
             FROM generate_series(1,100) AS id);
 ```
 
-Now let us retrieve some data from the table.
+Retrieve some data from the table.
 
 ```sql
 SELECT * FROM global_order1;
@@ -62,7 +64,7 @@ SELECT * FROM global_order1;
  2023-07-01 00:00:09 | car-2 |    55
 ```
 
-You will notice that the data is automatically ordered on time. This is because the table is set to be sorted on the `ts` by `PRIMARY KEY(ts ASC)`. This ensures that the data is sorted and all closeby data resides in the same tablet. This sort of order makes it efficient for range queries to get all data within a specific time range. For example,
+You can notice that the data is automatically ordered on time. This is because the table is set to be sorted on the `ts` by `PRIMARY KEY(ts ASC)`. This ensures that the data is sorted and all data closeby resides in the same tablet. This order makes it efficient for range queries to get all data within a specific time range. For example,
 
 ```sql
 SELECT * FROM global_order1 WHERE ts > '2023-07-01 00:01:00' AND ts < '2023-07-01 00:01:05';
@@ -77,7 +79,9 @@ SELECT * FROM global_order1 WHERE ts > '2023-07-01 00:01:00' AND ts < '2023-07-0
  2023-07-01 00:01:04 | car-2 |    60
 ```
 
-But as the data grows, the tablet splits and one-half moves to a different tablet ensuring scalability and so on. This also means that the grows in one shard before moving to the next tablet. Also because a specific range could be in a single shard, this could lead to Let us see how to distribute the ordered data across different tablets.
+But as the data grows, the tablet splits and one-half moves to a different tablet ensuring scalability, and so on. This also means that the data grows in one shard before moving to the next tablet. Also, because a specific range could be in a single shard, this could lead to.
+
+The following section describes how to distribute the ordered data across different tablets.
 
 ## Bucketing for distribution
 
@@ -93,18 +97,24 @@ CREATE TABLE global_order2 (
 ) SPLIT INTO 3 TABLETS;
 ```
 
-{{<note>}} We are explicitly splitting the table into 3 tablets only to show the tablet information for the following examples {{</note>}}
+{{<note>}}
+Note that the table is explicitly split into 3 tablets only to view the tablet information for the following examples.
+{{</note>}}
 
-Notice that we have added a bucketid to our data which is a random number between `0` and `7` and are distributing the data on the entity and bucketid. Let us add the same data to this table.
+Notice that you have added a `bucketid` to your data which is a random number between `0` and `7` and are distributing the data on the entity and `bucketid`.
+
+Add the same data to this table as follows:
 
 ```sql
-INSERT INTO global_order2 (ts, car, speed) 
+INSERT INTO global_order2 (ts, car, speed)
         (SELECT '2023-07-01 00:00:00'::timestamp + make_interval(secs=>id),
             'car-' || ceil(random()*2), ceil(random()*60)
             FROM generate_series(1,100) AS id);
 ```
 
-As we have set a default value of `bucketid` column to (`random()*8``),  we do not have to explicitly insert the value. Now if we retrieve the data from the table, we will see,
+As a default value of `bucketid` column to (`random()*8``) is set, you do not have to explicitly insert the value.
+
+Retrieve the data from the table as follows:
 
 ```sql
 SELECT *, yb_hash_code(bucketid) % 3 as tablet FROM global_order2;
@@ -126,9 +136,7 @@ SELECT *, yb_hash_code(bucketid) % 3 as tablet FROM global_order2;
  2023-07-01 00:00:40 | car-1 |    16 |        0 |      0
 ```
 
-You will quickly notice that the data is split into buckets and the buckets are distributed across different tablets. The data is ordered on the `ts` within each bucket but our result was not ordered. As the query planner does not know about the different values of `bucketid`, it will do a sequential scan for the above query. To optimally retrieve all the data for a specific car, say `car-1`, you would need to modify the query to explicitly call out the buckets as:
-
-Now we can retrieve data from this model with ordering as,
+Notice that the data is split into buckets and the buckets are distributed across different tablets. The data is ordered on the `ts` in each bucket but your result is not ordered. As the query planner does not know about the different values of `bucketid`, it will do a sequential scan for the above query. To optimally retrieve all the data for a specific car, say `car-1`, you need to modify the query to explicitly call out the buckets as follows:
 
 ```sql
 SELECT * FROM global_order2 WHERE bucketid IN (0,1,2,3,4,5,6,7) ORDER BY ts ASC;
@@ -148,7 +156,7 @@ SELECT * FROM global_order2 WHERE bucketid IN (0,1,2,3,4,5,6,7) ORDER BY ts ASC;
  2023-07-01 00:00:09 | car-1 |    58 |        3
 ```
 
-A simple query plan will show that the above query uses the primary key index.
+You can execute an example query plan to verify that the above query uses the primary key index as follows:
 
 ```sql
 EXPLAIN ANALYZE SELECT * FROM global_order2 WHERE bucketid IN (0,1,2,3,4,5,6,7) ORDER BY ts ASC;
