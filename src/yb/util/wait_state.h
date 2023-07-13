@@ -155,8 +155,8 @@ struct AUHMetadata {
   template <class PB>
   static AUHMetadata FromPB(const PB& pb) {
     return AUHMetadata{
-        .top_level_node_id = pb.top_level_node_id(),
         .top_level_request_id = pb.top_level_request_id(),
+        .top_level_node_id = pb.top_level_node_id(),
         .query_id = pb.query_id(),
         .current_request_id = pb.current_request_id(),
         .client_node_ip = pb.client_node_ip()
@@ -198,8 +198,8 @@ struct AUHAuxInfo {
   template <class PB>
   static AUHAuxInfo FromPB(const PB& pb) {
     return AUHAuxInfo{
-      .table_id = pb.table_id(),
-      .tablet_id = pb.tablet_id()
+      .tablet_id = pb.tablet_id(),
+      .table_id = pb.table_id()
     };
   }
 };
