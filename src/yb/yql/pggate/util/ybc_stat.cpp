@@ -85,6 +85,9 @@ ybcstat_get_wait_event_type(uint32_t wait_event_info) {
         case YB_TSERVER_WAIT_RPC:
             event_type = "RPC Wait";
             break;
+        case YB_FLUSH_AND_COMPACTION:
+            event_type = "Flush and Compaction";
+            break;
         default:
             event_type = "???";
             break;
