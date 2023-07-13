@@ -144,8 +144,18 @@ public class CloudProviderHelper {
       regionList = reqProvider.getRegions();
     }
 
+    Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(reqProvider);
+    boolean isConfigInProvider = updateKubeConfig(provider, providerConfig, edit);
+    // We will update the pull secret related information for the provider.
+    Map<String, String> updatedProviderConfig = CloudInfoInterface.fetchEnvVars(provider);
+
     for (Region region : regionList) {
       bootstrapKubernetesProvider(provider, reqProvider, region, region.getZones(), edit);
+    }
+    if (isConfigInProvider || !providerConfig.equals(updatedProviderConfig)) {
+      // Top level provider properties are handled in `updateProviderData` with other provider
+      // types.
+      provider.save();
     }
     return provider;
   }
@@ -159,11 +169,6 @@ public class CloudProviderHelper {
     if (azList == null) {
       azList = rd.getZones();
     }
-
-    Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(reqProvider);
-    boolean isConfigInProvider = updateKubeConfig(provider, providerConfig, edit);
-    // We will update the pull secret related information for the provider.
-    Map<String, String> updatedProviderConfig = CloudInfoInterface.fetchEnvVars(provider);
 
     Map<String, String> regionConfig = CloudInfoInterface.fetchEnvVars(rd);
     String regionCode = rd.getCode();
@@ -217,6 +222,8 @@ public class CloudProviderHelper {
         az.setDetails(zone.getDetails());
       }
       boolean isConfigInZone = updateKubeConfigForZone(provider, region, az, zoneConfig, edit);
+      KubernetesInfo k8sProviderInfo = CloudInfoInterface.get(provider);
+      boolean isConfigInProvider = k8sProviderInfo.getKubeConfig() != null;
       boolean useInClusterServiceAccount =
           !(isConfigInProvider || isConfigInRegion || isConfigInZone) && !edit;
       if (useInClusterServiceAccount) {
@@ -231,11 +238,7 @@ public class CloudProviderHelper {
     if (regionUpdateNeeded || isConfigInRegion) {
       region.save();
     }
-    if (isConfigInProvider || !providerConfig.equals(updatedProviderConfig)) {
-      // Top level provider properties are handled in `updateProviderData` with other provider
-      // types.
-      provider.save();
-    }
+
     return provider;
   }
 
@@ -897,7 +900,9 @@ public class CloudProviderHelper {
             .getZones()
             .forEach(
                 zone -> {
-                  if (zone.getSubnet() == null && provider.getCloudCode() != CloudType.onprem) {
+                  if (zone.getSubnet() == null
+                      && provider.getCloudCode() != CloudType.onprem
+                      && provider.getCloudCode() != CloudType.kubernetes) {
                     throw new PlatformServiceException(
                         BAD_REQUEST, "Required field subnet for zone: " + zone.getCode());
                   }
