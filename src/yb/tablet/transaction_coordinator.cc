@@ -1147,6 +1147,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         const auto& id = it->id();
         resp_txn->set_transaction_id(id.data(), id.size());
         *resp_txn->mutable_aborted_subtxn_set() = it->GetAbortedSubtxnInfo()->pb();
+        resp_txn->set_start_time(it->first_touch());
 
         for (const auto& tablet_id : it->pending_involved_tablets()) {
           resp_txn->add_tablets(tablet_id);
