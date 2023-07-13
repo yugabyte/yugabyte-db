@@ -183,7 +183,7 @@ SELECT * FROM validate_and_return_lock_status('yb_lock_tests'::regclass, null);
  keyrange | yb_lock_tests | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,1}     |               |        |           | t                    |
  keyrange | yb_lock_tests | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,1}     | {1}           |        |           | t                    |
  row      | yb_lock_tests | {WEAK_READ,WEAK_WRITE}     | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,1}     | {1,"\"one\""} |        |           | f                    |
- column   | yb_lock_tests | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,1}     | {1,"\"one\""} |        |         4 | f                    |
+ column   | yb_lock_tests | {STRONG_READ,STRONG_WRITE} | t       | f        |                 | t             | t        | t             | t                  | t                       | f                    | f           | {1,1}     | {1,"\"one\""} |      5 |         4 | f                    |
 (5 rows)
 
 SELECT * FROM validate_and_return_lock_status('yb_lock_tests_k1_k2'::regclass, null);
@@ -471,6 +471,63 @@ SELECT COUNT(DISTINCT(tablet_id)) FROM yb_lock_status('yb_lock_tests'::regclass,
 -------
      2
 (1 row)
+
+ABORT;
+-- Validate attnum
+CREATE TABLE attno_test_table(a int, b int, c int, d int, e int, f int, PRIMARY KEY((e, f) hash, b));
+INSERT INTO attno_test_table VALUES (1,1,1,1,1,1);
+-- Because the primary key is on (e,f,b), the first attnum 'a' should be the after the primary key in docdb
+BEGIN; UPDATE attno_test_table SET a = 2 WHERE e = 1 AND f = 1 AND b = 1;
+SELECT l.relation::regclass, a.attname, l.locktype, l.mode, l.hash_cols, l.range_cols, l.attnum, l.column_id
+FROM yb_lock_status(null,null) l LEFT JOIN pg_attribute a ON a.attrelid = l.relation AND a.attnum = l.attnum;
+     relation     | attname | locktype |            mode            | hash_cols | range_cols | attnum | column_id
+------------------+---------+----------+----------------------------+-----------+------------+--------+-----------
+ attno_test_table |         | relation | {WEAK_READ,WEAK_WRITE}     |           |            |        |
+ attno_test_table |         | keyrange | {WEAK_READ,WEAK_WRITE}     | {1,1}     |            |        |
+ attno_test_table |         | row      | {WEAK_READ,WEAK_WRITE}     | {1,1}     | {1}        |        |
+ attno_test_table | a       | column   | {STRONG_READ,STRONG_WRITE} | {1,1}     | {1}        |      1 |         3
+(4 rows)
+
+ABORT;
+-- 'c' should be the second non-key column in docdb, and the second attnum
+BEGIN; UPDATE attno_test_table SET c = 2 WHERE e = 1 AND f = 1 AND b = 1;
+SELECT l.relation::regclass, a.attname, l.locktype, l.mode, l.hash_cols, l.range_cols, l.attnum, l.column_id
+FROM yb_lock_status(null,null) l LEFT JOIN pg_attribute a ON a.attrelid = l.relation AND a.attnum = l.attnum;
+     relation     | attname | locktype |            mode            | hash_cols | range_cols | attnum | column_id
+------------------+---------+----------+----------------------------+-----------+------------+--------+-----------
+ attno_test_table |         | relation | {WEAK_READ,WEAK_WRITE}     |           |            |        |
+ attno_test_table |         | keyrange | {WEAK_READ,WEAK_WRITE}     | {1,1}     |            |        |
+ attno_test_table |         | row      | {WEAK_READ,WEAK_WRITE}     | {1,1}     | {1}        |        |
+ attno_test_table | c       | column   | {STRONG_READ,STRONG_WRITE} | {1,1}     | {1}        |      3 |         4
+(4 rows)
+
+ABORT;
+ALTER TABLE attno_test_table DROP COLUMN c;
+-- 'd' is the fourth attnum, which should not have changed when we dropped column 'c'
+BEGIN; UPDATE attno_test_table SET d = 2 WHERE e = 1 AND f = 1 AND b = 1;
+SELECT l.relation::regclass, a.attname, l.locktype, l.mode, l.hash_cols, l.range_cols, l.attnum, l.column_id
+FROM yb_lock_status(null,null) l LEFT JOIN pg_attribute a ON a.attrelid = l.relation AND a.attnum = l.attnum;
+     relation     | attname | locktype |            mode            | hash_cols | range_cols | attnum | column_id
+------------------+---------+----------+----------------------------+-----------+------------+--------+-----------
+ attno_test_table |         | relation | {WEAK_READ,WEAK_WRITE}     |           |            |        |
+ attno_test_table |         | keyrange | {WEAK_READ,WEAK_WRITE}     | {1,1}     |            |        |
+ attno_test_table |         | row      | {WEAK_READ,WEAK_WRITE}     | {1,1}     | {1}        |        |
+ attno_test_table | d       | column   | {STRONG_READ,STRONG_WRITE} | {1,1}     | {1}        |      4 |         5
+(4 rows)
+
+ABORT;
+ALTER TABLE attno_test_table ADD COLUMN c text;
+-- After re-adding 'c', it should be the last column both in docdb and in pg_attribute
+BEGIN; UPDATE attno_test_table SET c = 'test' WHERE e = 1 AND f = 1 AND b = 1;
+SELECT l.relation::regclass, a.attname, l.locktype, l.mode, l.hash_cols, l.range_cols, l.attnum, l.column_id
+FROM yb_lock_status(null,null) l LEFT JOIN pg_attribute a ON a.attrelid = l.relation AND a.attnum = l.attnum;
+     relation     | attname | locktype |            mode            | hash_cols | range_cols | attnum | column_id
+------------------+---------+----------+----------------------------+-----------+------------+--------+-----------
+ attno_test_table |         | relation | {WEAK_READ,WEAK_WRITE}     |           |            |        |
+ attno_test_table |         | keyrange | {WEAK_READ,WEAK_WRITE}     | {1,1}     |            |        |
+ attno_test_table |         | row      | {WEAK_READ,WEAK_WRITE}     | {1,1}     | {1}        |        |
+ attno_test_table | c       | column   | {STRONG_READ,STRONG_WRITE} | {1,1}     | {1}        |      7 |         6
+(4 rows)
 
 ABORT;
 -- Should not see any values
