@@ -137,4 +137,4 @@ ycqlsh:example> EXPLAIN SELECT product FROM orders
 
 - [PARTIAL INDEX](../../../api/ycql/ddl_create_index/#partial-index) in the YCQL API documentation
 
-- [Partial index with JSONB column](../secondary-indexes-with-jsonb-ycql/#partial-index).
+- [Partial index with JSONB column](../secondary-indexes-with-jsonb-ycql/#partial-index)
