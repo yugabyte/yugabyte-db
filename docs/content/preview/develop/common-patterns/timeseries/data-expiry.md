@@ -13,10 +13,10 @@ type: docs
 ---
 
 
-Consider a scenario where only need the last few values and the older data is not of any value and can be purged. With many other databases, you would have to set up a background job to clean out older data. With YugabyteDB, you can set an expiration value to the columns with `USING TTL` operator.
+Consider a scenario where you only need the last few values and the older data is not of any value and can be purged.You would have to set up a background job to clean out older data using many other databases. With YugabyteDB however, you can set an expiration value to the columns with `USING TTL` operator.
 
 {{<note title="Note">}}
-TTL-based expiration is only available in [YCQL](../../../../api/ycql/)
+TTL-based expiration is only available in [YCQL](../../../../api/ycql/).
 {{</note>}}
 
 ## Setup
@@ -25,6 +25,10 @@ TTL-based expiration is only available in [YCQL](../../../../api/ycql/)
 
 ## Row-level TTL
 
+Consider a speed metrics tracking system that tracks the data from the speed sensor of many cars.
+
+Create a table and insert data with an example schema as follows:
+
 ```sql
 CREATE KEYSPACE IF NOT EXISTS yugabyte;
 USE yugabyte;
@@ -32,34 +36,34 @@ CREATE TABLE car_speed5 (
     ts timestamp,/* time at which the event was generated */
     car text, /* name of the car */
     speed int,   /* speed of your car */
-    PRIMARY KEY(car, ts) 
+    PRIMARY KEY(car, ts)
 ) WITH CLUSTERING ORDER BY (ts DESC);
 ```
 
 ```sql
-INSERT INTO car_speed4(ts,car,speed) VALUES('2023-07-01 10:00:01','car-1',50) USING TTL 10;
-INSERT INTO car_speed4(ts,car,speed) VALUES('2023-07-01 10:00:02','car-2',25) USING TTL 15;
-INSERT INTO car_speed4(ts,car,speed) VALUES('2023-07-01 10:00:03','car-1',39) USING TTL 15;
-INSERT INTO car_speed4(ts,car,speed) VALUES('2023-07-01 10:00:04','car-1',49) USING TTL 20;
-INSERT INTO car_speed4(ts,car,speed) VALUES('2023-07-01 10:00:05','car-2', 3) USING TTL 25;
+INSERT INTO car_speed5(ts,car,speed) VALUES('2023-07-01 10:00:01','car-1',50) USING TTL 10;
+INSERT INTO car_speed5(ts,car,speed) VALUES('2023-07-01 10:00:02','car-2',25) USING TTL 15;
+INSERT INTO car_speed5(ts,car,speed) VALUES('2023-07-01 10:00:03','car-1',39) USING TTL 15;
+INSERT INTO car_speed5(ts,car,speed) VALUES('2023-07-01 10:00:04','car-1',49) USING TTL 20;
+INSERT INTO car_speed5(ts,car,speed) VALUES('2023-07-01 10:00:05','car-2', 3) USING TTL 25;
 ```
 
 As soon as you insert the data, start selecting all rows over and over. Eventually, you will see all the data disappear.
 
 ## Column-level TTL
 
-Instead of setting the TTL on an entire row, you can set TTL per column for more fine-grained expirations. For example, 
+Instead of setting the TTL on an entire row, you can set TTL per column for more fine-grained expiration. For example,
 
 1. Add a row.
 
     ```sql
-    INSERT INTO car_speed4(ts,car,speed) VALUES('2023-08-01 10:00:01', 'car-5', 50);
+    INSERT INTO car_speed5(ts,car,speed) VALUES('2023-08-01 10:00:01', 'car-5', 50);
     ```
 
 1. Fetch the rows.
 
     ```sql
-    SELECT * FROM car_speed4 WHERE car='car-5';
+    SELECT * FROM car_speed5 WHERE car='car-5';
     ```
 
     ```output
@@ -71,13 +75,13 @@ Instead of setting the TTL on an entire row, you can set TTL per column for more
 1. Now, set the expiry on the speed column of that row.
 
     ```sql
-    UPDATE car_speed4 USING TTL 5 SET speed=10 WHERE car='car-5' AND ts ='2023-08-01 10:00:01';;
+    UPDATE car_speed5 USING TTL 5 SET speed=10 WHERE car='car-5' AND ts ='2023-08-01 10:00:01';
     ```
 
 1. Wait for `5` seconds and fetch the row for `car-5`.
 
     ```sql
-    SELECT * FROM car_speed4 WHERE car='car-5';
+    SELECT * FROM car_speed5 WHERE car='car-5';
     ```
 
     ```output
