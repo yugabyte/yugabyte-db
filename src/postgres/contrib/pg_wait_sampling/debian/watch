@@ -1,3 +1,0 @@
-version=3
-opts="uversionmangle=s/_/./g" \
-  https://github.com/postgrespro/pg_wait_sampling/releases .*/archive/v(.*).tar.gz
