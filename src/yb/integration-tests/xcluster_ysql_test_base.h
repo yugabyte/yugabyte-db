@@ -78,7 +78,7 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   static Status ValidateRows(
       const client::YBTableName& table_name, int row_count, Cluster* cluster);
 
-  static Result<std::vector<std::string>> BootstrapCluster(
+  static Result<std::vector<xrepl::StreamId>> BootstrapCluster(
       const std::vector<std::shared_ptr<client::YBTable>>& tables,
       XClusterTestBase::Cluster* cluster);
 

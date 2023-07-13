@@ -1972,7 +1972,7 @@ Status HandleGetChangesForSnapshotRequest(
 // to read intents from WAL.
 
 Status GetChangesForCDCSDK(
-    const CDCStreamId& stream_id,
+    const xrepl::StreamId& stream_id,
     const TabletId& tablet_id,
     const CDCSDKCheckpointPB& from_op_id,
     const StreamMetadata& stream_metadata,

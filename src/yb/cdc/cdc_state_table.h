@@ -41,9 +41,22 @@ YB_STRONGLY_TYPED_BOOL(SetActiveTimeToCurrent);
 
 struct CDCStateTableKey {
   TabletId tablet_id;     // HashPrimaryKey
-  CDCStreamId stream_id;  // PrimaryKey
+  xrepl::StreamId stream_id;  // PrimaryKey
+  TableId colocated_table_id;  // PrimaryKey is StreamId_ColocatedTableId for colocated tables
+
+  CDCStateTableKey(const TabletId& tablet_id, const xrepl::StreamId& stream_id)
+      : tablet_id(tablet_id), stream_id(stream_id) {}
+
+  CDCStateTableKey(
+      const TabletId& tablet_id,
+      const xrepl::StreamId& stream_id,
+      const TableId& colocated_table_id)
+      : tablet_id(tablet_id), stream_id(stream_id), colocated_table_id(colocated_table_id) {}
 
   std::string ToString() const;
+  std::string CompositeStreamId() const;
+  static Result<CDCStateTableKey> FromString(
+      const TabletId& tablet_id, const std::string& composite_stream_id);
 };
 
 // CDCStateTableEntry represents the cdc_state table row. We can use this object to read and write
@@ -51,10 +64,16 @@ struct CDCStateTableKey {
 // populated only when they are part of the project. Null are represented as nullopt. During
 // write\update any populated field (not nullopt) is written to the table.
 struct CDCStateTableEntry {
-  explicit CDCStateTableEntry(const TabletId& tablet_id, const CDCStreamId& stream_id)
-      : key{tablet_id, stream_id} {}
+  explicit CDCStateTableEntry(const TabletId& tablet_id, const xrepl::StreamId& stream_id)
+      : key(tablet_id, stream_id) {}
+  explicit CDCStateTableEntry(
+      const TabletId& tablet_id,
+      const xrepl::StreamId& stream_id,
+      const TableId& colocated_table_id)
+      : key(tablet_id, stream_id, colocated_table_id) {}
 
   explicit CDCStateTableEntry(const CDCStateTableKey& other) : key(other) {}
+  explicit CDCStateTableEntry(CDCStateTableKey&& other) : key(std::move(other)) {}
 
   CDCStateTableKey key;
   std::optional<OpId> checkpoint;
