@@ -226,15 +226,14 @@ class PgDocResponse {
   using ProviderPtr = std::unique_ptr<Provider>;
 
   PgDocResponse() = default;
-  explicit PgDocResponse(PerformFuture future, util::WaitStateCode wait_event);
-  explicit PgDocResponse(ProviderPtr provider, util::WaitStateCode wait_event);
+  explicit PgDocResponse(PerformFuture future);
+  explicit PgDocResponse(ProviderPtr provider);
 
   bool Valid() const;
   Result<Data> Get();
 
  private:
   std::variant<PerformFuture, ProviderPtr> holder_;
-  util::WaitStateCode wait_event_;
 };
 
 class PgDocOp : public std::enable_shared_from_this<PgDocOp> {

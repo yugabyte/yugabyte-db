@@ -38,6 +38,7 @@ struct BufferingSettings {
 struct BufferableOperations {
   PgsqlOps operations;
   PgObjectIds relations;
+  util::WaitStateCode wait_event_ = util::WaitStateCode::Unused;
 
   void Add(PgsqlOpPtr op, const PgObjectId& relation);
   void Swap(BufferableOperations* rhs);
