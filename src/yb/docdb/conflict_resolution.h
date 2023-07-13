@@ -140,5 +140,12 @@ Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_sourc
 
 std::string DebugIntentKeyToString(Slice intent_key);
 
+// Decodes the doc_path present in the parsed_intent, and adds the lock information to the given
+// lock_info pointer. parsed_intent is expected to have a hybrid time by default. If not,
+// intent_has_ht needs to be set to false for the function to not return an error status.
+Status PopulateLockInfoFromParsedIntent(
+    const ParsedIntent& parsed_intent, const dockv::DecodedIntentValue& decoded_value,
+    const SchemaPtr& schema, LockInfoPB* lock_info, bool intent_has_ht = true);
+
 } // namespace docdb
 } // namespace yb

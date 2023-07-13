@@ -16,12 +16,11 @@ import (
 	"github.com/fluxcd/pkg/tar"
 	"github.com/spf13/viper"
 
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common/shell"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/runner"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/systemd"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
 )
 
 type platformDirectories struct {
@@ -57,20 +56,15 @@ type Platform struct {
 	version  string
 	FixPaths bool
 	platformDirectories
-	runStep
 }
 
 // NewPlatform creates a new YBA service struct.
-func NewPlatform(version string, run runStep) Platform {
-	if run == nil {
-		run = runner.New("platform")
-	}
+func NewPlatform(version string) Platform {
 	return Platform{
 		name:                "yb-platform",
 		version:             version,
 		platformDirectories: newPlatDirectories(version),
 		FixPaths:            false,
-		runStep:             run,
 	}
 }
 
@@ -107,30 +101,25 @@ func (plat Platform) Name() string {
 
 // Install YBA service.
 func (plat Platform) Install() error {
-	plat.StartSection("platform install")
-	defer plat.EndSection()
-
 	log.Info("Starting Platform install")
-	plat.RunStep(func() error {
-		config.GenerateTemplate(plat)
-		return nil
-	})
-	if err := plat.RunStep(plat.createNecessaryDirectories); err != nil {
+	config.GenerateTemplate(plat)
+
+	if err := plat.createNecessaryDirectories(); err != nil {
 		return err
 	}
-	if err := plat.RunStep(plat.untarDevopsAndYugawarePackages); err != nil {
+	if err := plat.untarDevopsAndYugawarePackages(); err != nil {
 		return err
 	}
-	if err := plat.RunStep(plat.copyYbcPackages); err != nil {
+	if err := plat.copyYbcPackages(); err != nil {
 		return err
 	}
-	if err := plat.RunStep(plat.copyNodeAgentPackages); err != nil {
+	if err := plat.copyNodeAgentPackages(); err != nil {
 		return err
 	}
-	if err := plat.RunStep(plat.renameAndCreateSymlinks); err != nil {
+	if err := plat.renameAndCreateSymlinks(); err != nil {
 		return err
 	}
-	if err := plat.RunStep(createPemFormatKeyAndCert); err != nil {
+	if err := createPemFormatKeyAndCert(); err != nil {
 		return err
 	}
 
@@ -141,14 +130,14 @@ func (plat Platform) Install() error {
 		_, err := common.Create(logFile)
 		return err
 	}
-	if err := plat.RunStep(createClosure); err != nil {
+	if err := createClosure(); err != nil {
 		log.Error("Failed to create " + logFile + ": " + err.Error())
 		return err
 	}
 
 	//Crontab based monitoring for non-root installs.
 	if !common.HasSudoAccess() {
-		if err := plat.RunStep(plat.CreateCronJob); err != nil {
+		if err := plat.CreateCronJob(); err != nil {
 			return err
 		}
 	} else {
@@ -157,13 +146,13 @@ func (plat Platform) Install() error {
 		chownClosure := func() error {
 			return common.Chown(common.GetBaseInstall(), userName, userName, true)
 		}
-		if err := plat.RunStep(chownClosure); err != nil {
+		if err := chownClosure(); err != nil {
 			log.Error("Failed to set ownership of " + common.GetBaseInstall() + ": " + err.Error())
 			return err
 		}
 	}
 
-	if err := plat.RunStep(plat.Start); err != nil {
+	if err := plat.Start(); err != nil {
 		return err
 	}
 	log.Info("Finishing Platform install")
@@ -551,7 +540,7 @@ func createPemFormatKeyAndCert() error {
 
 	// Create this new concatenated PEM file to write key and cert in order.
 	serverPemPath := filepath.Join(common.GetSelfSignedCertsDir(), common.ServerPemPath)
-	pemFile, err := os.OpenFile(serverPemPath, os.O_CREATE|os.O_WRONLY, 0644)
+	pemFile, err := common.Create(serverPemPath)
 	if err != nil {
 		log.Error(fmt.Sprintf("Failed to open server.pem with error: %s", err))
 		return err

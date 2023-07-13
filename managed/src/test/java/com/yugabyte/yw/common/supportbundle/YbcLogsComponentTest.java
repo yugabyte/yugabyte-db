@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -103,6 +104,9 @@ public class YbcLogsComponentTest extends FakeDBApplication {
     when(mockSupportBundleUtil.checkDateBetweenDates(any(), any(), any())).thenCallRealMethod();
     when(mockSupportBundleUtil.unGzip(any(), any())).thenCallRealMethod();
     when(mockSupportBundleUtil.unTar(any(), any())).thenCallRealMethod();
+    doCallRealMethod()
+        .when(mockSupportBundleUtil)
+        .batchWiseDownload(any(), any(), any(), any(), any(), any(), any(), any(), any());
 
     when(mockNodeUniverseManager.checkNodeIfFileExists(any(), any(), any())).thenReturn(true);
     // Generate a fake shell response containing the entire list of file paths

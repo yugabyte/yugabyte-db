@@ -60,6 +60,7 @@
 #include "yb/yql/pggate/pg_dml.h"
 #include "yb/yql/pggate/pg_dml_read.h"
 #include "yb/yql/pggate/pg_dml_write.h"
+#include "yb/yql/pggate/pg_function.h"
 #include "yb/yql/pggate/pg_insert.h"
 #include "yb/yql/pggate/pg_memctx.h"
 #include "yb/yql/pggate/pg_sample.h"
@@ -529,10 +530,10 @@ const YBCPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgApiImpl::InitSession(const string& database_name) {
+Status PgApiImpl::InitSession(const string& database_name, YBCPgExecStatsState* session_stats) {
   CHECK(!pg_session_);
   auto session = make_scoped_refptr<PgSession>(
-      &pg_client_, database_name, pg_txn_manager_, clock_, pg_callbacks_);
+      &pg_client_, database_name, pg_txn_manager_, clock_, pg_callbacks_, session_stats);
   if (!database_name.empty()) {
     RETURN_NOT_OK(session->ConnectDatabase(database_name));
   }
@@ -586,6 +587,16 @@ Status PgApiImpl::AddToCurrentPgMemctx(std::unique_ptr<PgStatement> stmt,
                                        PgStatement **handle) {
   *handle = stmt.get();
   pg_callbacks_.GetCurrentYbMemctx()->Register(stmt.release());
+  return Status::OK();
+}
+
+// TODO(tvesely): Figure out how to use an arena for this
+//
+// For now, functions are allocated as ScopedPtr and cached in the memory context. The statements
+// would then be destructed when the context is destroyed and all other references are also cleared.
+Status PgApiImpl::AddToCurrentPgMemctx(std::unique_ptr<PgFunction> func, PgFunction **handle) {
+  *handle = func.get();
+  pg_callbacks_.GetCurrentYbMemctx()->Register(func.release());
   return Status::OK();
 }
 
@@ -791,6 +802,10 @@ Status PgApiImpl::ReserveOids(const PgOid database_oid,
 
 Status PgApiImpl::GetCatalogMasterVersion(uint64_t *version) {
   return pg_session_->GetCatalogMasterVersion(version);
+}
+
+Status PgApiImpl::CancelTransaction(const unsigned char* transaction_id) {
+  return pg_session_->CancelTransaction(transaction_id);
 }
 
 Result<PgTableDescPtr> PgApiImpl::LoadTable(const PgObjectId& table_id) {
@@ -1247,6 +1262,10 @@ Status PgApiImpl::DmlBindColumnCondBetween(PgStatement *handle, int attr_num,
                                                               end_inclusive);
 }
 
+Status PgApiImpl::DmlBindColumnCondIsNotNull(PgStatement *handle, int attr_num) {
+  return down_cast<PgDmlRead*>(handle)->BindColumnCondIsNotNull(attr_num);
+}
+
 Status PgApiImpl::DmlBindColumnCondIn(PgStatement *handle, YBCPgExpr lhs, int n_attr_values,
                                       PgExpr **attr_values) {
   return down_cast<PgDmlRead*>(handle)->BindColumnCondIn(lhs, n_attr_values, attr_values);
@@ -1562,6 +1581,59 @@ Status PgApiImpl::ExecSelect(PgStatement *handle, const PgExecParameters *exec_p
   return dml_read.Exec(exec_params);
 }
 
+
+//--------------------------------------------------------------------------------------------------
+// Functions.
+//--------------------------------------------------------------------------------------------------
+
+Status PgApiImpl::NewSRF(
+    PgFunction **handle, PgFunctionDataProcessor processor) {
+  *handle = nullptr;
+  auto func = std::make_unique<PgFunction>(std::move(processor), pg_session_);
+  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(func), handle));
+  return Status::OK();
+}
+
+Status PgApiImpl::AddFunctionParam(
+    PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity, uint64_t datum,
+    bool is_null) {
+  if (!handle) {
+    return STATUS(InvalidArgument, "Invalid function handle");
+  }
+
+  return handle->AddParam(name, type_entity, datum, is_null);
+}
+
+Status PgApiImpl::AddFunctionTarget(
+    PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity,
+    const YBCPgTypeAttrs type_attrs) {
+  if (!handle) {
+    return STATUS(InvalidArgument, "Invalid function handle");
+  }
+
+  return handle->AddTarget(name, type_entity, type_attrs);
+}
+
+Status PgApiImpl::FinalizeFunctionTargets(PgFunction *handle) {
+  if (!handle) {
+    return STATUS(InvalidArgument, "Invalid function handle");
+  }
+
+  return handle->FinalizeTargets();
+}
+
+Status PgApiImpl::SRFGetNext(PgFunction *handle, uint64_t *values, bool *is_nulls, bool *has_data) {
+  if (!handle) {
+    return STATUS(InvalidArgument, "Invalid function handle");
+  }
+
+  return handle->GetNext(values, is_nulls, has_data);
+}
+
+Status PgApiImpl::NewGetLockStatusDataSRF(PgFunction **handle) {
+  return NewSRF(handle, PgLockStatusRequestor);
+}
+
 //--------------------------------------------------------------------------------------------------
 // Expressions.
 //--------------------------------------------------------------------------------------------------
@@ -1731,18 +1803,6 @@ uint64_t PgApiImpl::GetSharedAuthKey() const {
   return tserver_shared_object_->postgres_auth_key();
 }
 
-void PgApiImpl::GetAndResetReadRpcStats(PgStatement *handle,
-                                        uint64_t* reads, uint64_t* read_wait,
-                                        uint64_t* tbl_reads, uint64_t* tbl_read_wait) {
-  down_cast<PgDmlRead*>(handle)->GetAndResetReadRpcStats(reads, read_wait,
-                                                         tbl_reads, tbl_read_wait);
-}
-
-void PgApiImpl::GetAndResetOperationFlushRpcStats(uint64_t* count,
-                                                  uint64_t* wait_time) {
-  pg_session_->GetAndResetOperationFlushRpcStats(count, wait_time);
-}
-
 // Tuple Expression -----------------------------------------------------------------------------
 Status PgApiImpl::NewTupleExpr(
     YBCPgStatement stmt, const YBCPgTypeEntity *tuple_type_entity,
@@ -1892,6 +1952,11 @@ void PgApiImpl::SetTimeout(int timeout_ms) {
   pg_session_->SetTimeout(timeout_ms);
 }
 
+Result<yb::tserver::PgGetLockStatusResponsePB> PgApiImpl::GetLockStatusData(
+    const std::string &table_id, const std::string &transaction_id) {
+  return pg_session_->GetLockStatusData(table_id, transaction_id);
+}
+
 Result<client::TabletServersInfo> PgApiImpl::ListTabletServers() {
   return pg_session_->ListTabletServers();
 }
@@ -1932,16 +1997,20 @@ Status PgApiImpl::PrefetchRegisteredSysTables() {
 }
 
 void PgApiImpl::RegisterSysTableForPrefetching(
-  const PgObjectId& table_id, const PgObjectId& index_id) {
+  const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr) {
   if (!pg_sys_table_prefetcher_) {
     LOG(DFATAL) << "Sys table prefetching was not started yet";
   } else {
-    pg_sys_table_prefetcher_->Register(table_id, index_id);
+    pg_sys_table_prefetcher_->Register(table_id, index_id, row_oid_filtering_attr);
   }
 }
 
 Result<bool> PgApiImpl::CheckIfPitrActive() {
   return pg_session_->CheckIfPitrActive();
+}
+
+Result<bool> PgApiImpl::IsObjectPartOfXRepl(const PgObjectId& table_id) {
+  return pg_session_->IsObjectPartOfXRepl(table_id);
 }
 
 } // namespace pggate

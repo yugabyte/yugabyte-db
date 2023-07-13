@@ -115,7 +115,7 @@ class TestMaintenanceOp : public MaintenanceOp {
   virtual ~TestMaintenanceOp() {}
 
   bool Prepare() override {
-    std::lock_guard<Mutex> guard(lock_);
+    std::lock_guard guard(lock_);
     if (state_ != OP_RUNNABLE) {
       return false;
     }
@@ -127,14 +127,14 @@ class TestMaintenanceOp : public MaintenanceOp {
 
   void Perform() override {
     DLOG(INFO) << "Performing op " << name();
-    std::lock_guard<Mutex> guard(lock_);
+    std::lock_guard guard(lock_);
     CHECK_EQ(OP_RUNNING, state_);
     state_ = OP_FINISHED;
     state_change_cond_.Broadcast();
   }
 
   void UpdateStats(MaintenanceOpStats* stats) override {
-    std::lock_guard<Mutex> guard(lock_);
+    std::lock_guard guard(lock_);
     stats->set_runnable(state_ == OP_RUNNABLE);
     stats->set_ram_anchored(consumption_.consumption());
     stats->set_logs_retained_bytes(logs_retained_bytes_);
@@ -142,14 +142,14 @@ class TestMaintenanceOp : public MaintenanceOp {
   }
 
   void Enable() {
-    std::lock_guard<Mutex> guard(lock_);
+    std::lock_guard guard(lock_);
     DCHECK((state_ == OP_DISABLED) || (state_ == OP_FINISHED));
     state_ = OP_RUNNABLE;
     state_change_cond_.Broadcast();
   }
 
   void WaitForState(TestMaintenanceOpState state) {
-    std::lock_guard<Mutex> guard(lock_);
+    std::lock_guard guard(lock_);
     while (true) {
       if (state_ == state) {
         return;
@@ -160,7 +160,7 @@ class TestMaintenanceOp : public MaintenanceOp {
 
   bool WaitForStateWithTimeout(TestMaintenanceOpState state, int ms) {
     MonoDelta to_wait = MonoDelta::FromMilliseconds(ms);
-    std::lock_guard<Mutex> guard(lock_);
+    std::lock_guard guard(lock_);
     while (true) {
       if (state_ == state) {
         return true;
@@ -172,17 +172,17 @@ class TestMaintenanceOp : public MaintenanceOp {
   }
 
   void set_ram_anchored(uint64_t ram_anchored) {
-    std::lock_guard<Mutex> guard(lock_);
+    std::lock_guard guard(lock_);
     consumption_.Reset(ram_anchored);
   }
 
   void set_logs_retained_bytes(uint64_t logs_retained_bytes) {
-    std::lock_guard<Mutex> guard(lock_);
+    std::lock_guard guard(lock_);
     logs_retained_bytes_ = logs_retained_bytes;
   }
 
   void set_perf_improvement(uint64_t perf_improvement) {
-    std::lock_guard<Mutex> guard(lock_);
+    std::lock_guard guard(lock_);
     perf_improvement_ = perf_improvement;
   }
 
@@ -267,7 +267,7 @@ TEST_F(MaintenanceManagerTest, TestLogRetentionPrioritization) {
   // Then we find the op clears the most log retention and ram, i.e. - op3
   for (auto* op : { &op1, &op3, &op2 }) {
     {
-      std::lock_guard<std::mutex> lock(manager_->mutex_);
+      std::lock_guard lock(manager_->mutex_);
 
       ASSERT_EQ(op, manager_->FindBestOp());
     }

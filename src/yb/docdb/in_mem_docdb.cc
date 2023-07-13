@@ -22,6 +22,7 @@
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_util.h"
+#include "yb/docdb/iter_util.h"
 
 #include "yb/gutil/strings/substitute.h"
 
@@ -154,7 +155,7 @@ void InMemDocDbState::CaptureAt(const DocDB& doc_db, HybridTime hybrid_time,
     auto encoded_subdoc_key = subdoc_key.EncodeWithoutHt();
     auto doc_from_rocksdb_opt = ASSERT_RESULT(yb::docdb::TEST_GetSubDocument(
         encoded_subdoc_key, doc_db, query_id, kNonTransactionalOperationContext,
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::SingleTime(hybrid_time)));
+        ReadOperationData::FromSingleReadTime(hybrid_time)));
     // doc_found can be false for deleted documents, and that is perfectly valid.
     if (doc_from_rocksdb_opt) {
       SetDocument(encoded_doc_key, std::move(*doc_from_rocksdb_opt));

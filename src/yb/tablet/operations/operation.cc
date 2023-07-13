@@ -106,7 +106,7 @@ void Operation::CompleteWithStatus(const Status& status) const {
 
 void Operation::set_consensus_round(const consensus::ConsensusRoundPtr& consensus_round) {
   {
-    std::lock_guard<simple_spinlock> l(mutex_);
+    std::lock_guard l(mutex_);
     // We are not using set_op_id here so we can acquire the mutex only once.
     consensus_round_ = consensus_round;
     consensus_round_atomic_.store(consensus_round.get(), std::memory_order_release);
@@ -135,7 +135,7 @@ Status Operation::AddedToLeader(const OpId& op_id, const OpId& committed_op_id) 
   }
 
   {
-    std::lock_guard<simple_spinlock> l(mutex_);
+    std::lock_guard l(mutex_);
     op_id_ = op_id;
     auto* replicate_msg = consensus_round_->replicate_msg().get();
     op_id.ToPB(replicate_msg->mutable_id());

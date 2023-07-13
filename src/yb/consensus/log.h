@@ -153,6 +153,7 @@ class Log : public RefCountedThreadSafe<Log> {
                              ThreadPool* background_sync_threadpool,
                              int64_t cdc_min_replicated_index,
                              scoped_refptr<Log> *log,
+                             const PreLogRolloverCallback& pre_log_rollover_callback = {},
                              NewSegmentAllocationCallback callback = {},
                              CreateNewSegment create_new_segment = CreateNewSegment::kTrue);
 
@@ -364,6 +365,7 @@ class Log : public RefCountedThreadSafe<Log> {
       ThreadPool* allocation_thread_pool,
       ThreadPool* background_sync_threadpool,
       NewSegmentAllocationCallback callback,
+      const PreLogRolloverCallback& pre_log_rollover_callback,
       CreateNewSegment create_new_segment = CreateNewSegment::kTrue);
 
   Env* get_env() {
@@ -536,7 +538,7 @@ class Log : public RefCountedThreadSafe<Log> {
   std::string next_segment_path_;
 
   // Lock to protect mutations to log_state_ and other shared state variables.
-  mutable percpu_rwlock state_lock_;
+  mutable PerCpuRwMutex state_lock_;
 
   LogState log_state_;
 
@@ -646,6 +648,8 @@ class Log : public RefCountedThreadSafe<Log> {
   CreateNewSegment create_new_segment_at_start_;
 
   NewSegmentAllocationCallback new_segment_allocation_callback_;
+
+  PreLogRolloverCallback pre_log_rollover_callback_;
 
   DISALLOW_COPY_AND_ASSIGN(Log);
 };

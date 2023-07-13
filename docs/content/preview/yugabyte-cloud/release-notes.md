@@ -2,7 +2,7 @@
 title: What's new in YugabyteDB Managed
 linkTitle: What's new
 description: YugabyteDB Managed release notes and known issues.
-headcontent: New features, cloud provider regions, and known issues
+headcontent: New features and known issues
 image: /images/section_icons/index/quick_start.png
 layout: single
 type: docs
@@ -10,11 +10,54 @@ type: docs
 
 On this page:
 
-- [Releases](#releases)
-- [Cloud provider regions](#cloud-provider-regions)
-- [Known issues](#known-issues)
+[Releases](#releases) \
+[Known issues](#known-issues)
 
 ## Releases
+
+### July 3, 2023
+
+**Database**
+
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.19.0](../../releases/release-notes/v2.19/#v2.19.0.0). New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+
+### June 30, 2023
+
+**New Features**
+
+- Support for deploying clusters on Microsoft Azure, including:
+  - Global availability - deploy in 20 Azure regions worldwide.
+  - Azure Private Link - establish secure private network connectivity between your Azure Virtual Networks and YugabyteDB Managed clusters for greater data privacy and compliance.
+  - Horizontal and vertical scaling.
+  - Availability zone fault tolerance - deploy single region, multi-zone clusters to ensure high availability and fault tolerance in the same region.
+
+  Blog: [Presenting the Enterprise-Ready DBaaS on Azure](https://www.yugabyte.com/blog/enterprise-ready-dbaas-on-azure/)
+
+<div style="position: relative; padding-bottom: calc(51.625% + 44px); height: 0;"><iframe src="https://app.supademo.com/embed/_AUexrYwJ1vNyKQsdA_di" frameborder="0" webkitallowfullscreen="true" mozallowfullscreen="true" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe></div>
+
+### June 26, 2023
+
+**New Features**
+
+- Support for using a customer managed key (CMK) in Google Cloud Key Management Service (KMS) to encrypt a dedicated cluster (preview release). When YugabyteDB encryption at rest is enabled, your can now encrypt your cluster using your own CMK residing in Google Cloud KMS or AWS KMS.
+
+### June 8, 2023
+
+**Database**
+
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.17.3](../../releases/release-notes/v2.17/#v2.17.3.0). New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+
+### June 7, 2023
+
+**New Features**
+
+- Ability to create custom roles using Role-Based Access Control (RBAC) to precisely manage user access and permissions to match your organization's specific needs. This includes a new built-in Viewer role which offers a secure and restricted view of cluster information without the risk of unintended modifications.
+
+### May 30, 2023
+
+**Database**
+
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.14.9](../../releases/release-notes/v2.14/#v2.14.9.0). New clusters use this version by default.
 
 ### April 28, 2023
 
@@ -141,7 +184,7 @@ On this page:
 
 **New Features**
 
-- Support for role-based API keys. Assign [roles](../cloud-admin/manage-access/#user-roles) to API keys; keys assigned a developer role can't be used to perform admin tasks. In addition, keys are no longer revoked if the user that created the key is deleted from the account.
+- Support for role-based API keys. Assign [roles](../cloud-admin/managed-roles) to API keys; keys assigned a developer role can't be used to perform admin tasks. In addition, keys are no longer revoked if the user that created the key is deleted from the account.
 
 ### October 17, 2022
 
@@ -330,69 +373,6 @@ This release includes the following features:
 - YSQL and YCQL API support
 - Multiple users - invite additional users
 - Encryption at rest and in transit
-
-## Cloud provider regions
-
-### GCP
-
-The following **GCP regions** are available:
-
-- Taiwan (asia-east1)
-- Honk Kong (asia-east2)
-- Tokyo (asia-northeast1)
-- Osaka (asia-northeast2)
-- Seoul (asia-northeast3)
-- Mumbai (asia-south1)
-- Delhi (asia-south2)
-- Singapore (asia-southeast1)
-- Jakarta (asia-southeast2)
-- Sydney (australia-southeast1)
-- Melbourne (australia-southeast2)
-- Warsaw (europe-central2)
-- Finland (europe-north1)
-- Belgium (europe-west1)
-- London (europe-west2)
-- Frankfurt (europe-west3)
-- Netherlands (europe-west4)
-- Zurich (europe-west6)
-- Montreal (northamerica-northeast1)
-- Toronto (northamerica-northeast2)
-- Sao Paulo (southamerica-east1)
-- Iowa (us-central1)
-- South Carolina (us-east1)
-- N. Virginia (us-east4)
-- Oregon (us-west1)
-- Los Angeles (us-west2)
-- Salt Lake City (us-west3)
-- Las Vegas (us-west4)
-
-### AWS
-
-The following **AWS regions** are available:
-
-- Cape Town (af-south-1)
-- Hong Kong (ap-east-1)
-- Tokyo (ap-northeast-1)
-- Seoul (ap-northeast-2)
-- Osaka (ap-northeast-3)
-- Mumbai (ap-south-1)
-- Singapore (ap-southeast-1)
-- Sydney (ap-southeast-2)
-- Central (ca-central-1)
-- Frankfurt (eu-central-1)
-- Stockholm (eu-north-1)
-- Milan (eu-south-1)
-- Ireland (eu-west-1)
-- London (eu-west-2)
-- Paris (eu-west-3)
-- Bahrain (me-south-1)
-- Sao Paulo (sa-east-1)
-- N. Virginia (us-east-1)
-- Ohio (us-east-2)
-- N. California (us-west-1)*
-- Oregon (us-west-2)
-
-\* Region has 2 availability zones only
 
 ## Known issues
 

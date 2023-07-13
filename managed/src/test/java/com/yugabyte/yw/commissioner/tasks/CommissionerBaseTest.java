@@ -3,12 +3,14 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
+import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
 import com.typesafe.config.Config;
+import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.cloud.gcp.GCPInitializer;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -19,16 +21,17 @@ import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
+import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.SwamperHelper;
@@ -39,6 +42,7 @@ import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -52,6 +56,8 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.List;
 import java.util.UUID;
 import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
@@ -90,6 +96,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected CallbackController mockCallbackController;
   protected PlayCacheSessionStore mockSessionStore;
   protected ApiHelper mockApiHelper;
+  protected NodeUIApiHelper mockNodeUIApiHelper;
   protected MetricQueryHelper mockMetricQueryHelper;
   protected MetricService metricService;
   protected AlertService alertService;
@@ -104,7 +111,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected SupportBundleComponentFactory mockSupportBundleComponentFactory;
   protected ReleaseManager mockReleaseManager;
   protected GFlagsValidation mockGFlagsValidation;
-  protected BackupUtil mockBackupUtil;
+  protected ProviderEditRestrictionManager providerEditRestrictionManager;
+  protected BackupHelper mockBackupHelper;
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -112,10 +120,12 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected Customer defaultCustomer;
   protected Provider defaultProvider;
   protected Provider gcpProvider;
+  protected Provider azuProvider;
   protected Provider onPremProvider;
   protected Provider kubernetesProvider;
   protected SettableRuntimeConfigFactory factory;
   protected RuntimeConfGetter confGetter;
+  protected CloudAPI.Factory mockCloudAPIFactory;
 
   protected Commissioner commissioner;
 
@@ -126,6 +136,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
+    azuProvider = ModelFactory.azuProvider(defaultCustomer);
     onPremProvider = ModelFactory.onpremProvider(defaultCustomer);
     kubernetesProvider = ModelFactory.kubernetesProvider(defaultCustomer);
     metricService = app.injector().instanceOf(MetricService.class);
@@ -134,6 +145,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     RuntimeConfigFactory configFactory = app.injector().instanceOf(RuntimeConfigFactory.class);
     alertConfigurationService = spy(app.injector().instanceOf(AlertConfigurationService.class));
     taskExecutor = app.injector().instanceOf(TaskExecutor.class);
+    providerEditRestrictionManager =
+        app.injector().instanceOf(ProviderEditRestrictionManager.class);
 
     // Enable custom hooks in tests
     factory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
@@ -180,6 +193,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
     mockApiHelper = mock(ApiHelper.class);
+    mockNodeUIApiHelper = mock(NodeUIApiHelper.class);
     mockMetricQueryHelper = mock(MetricQueryHelper.class);
     mockYcqlQueryExecutor = mock(YcqlQueryExecutor.class);
     mockYsqlQueryExecutor = mock(YsqlQueryExecutor.class);
@@ -189,7 +203,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockSupportBundleComponentFactory = mock(SupportBundleComponentFactory.class);
     mockGFlagsValidation = mock(GFlagsValidation.class);
     mockReleaseManager = mock(ReleaseManager.class);
-    mockBackupUtil = mock(BackupUtil.class);
+    mockCloudAPIFactory = mock(CloudAPI.Factory.class);
+    mockBackupHelper = mock(BackupHelper.class);
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -226,8 +241,10 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                     bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class))
                 .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
                 .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))
-                .overrides(bind(BackupUtil.class).toInstance(mockBackupUtil))
+                .overrides(bind(NodeUIApiHelper.class).toInstance(mockNodeUIApiHelper))
+                .overrides(bind(BackupHelper.class).toInstance(mockBackupHelper))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager)))
+        .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
         .build();
   }
 
@@ -248,7 +265,19 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     }
   }
 
-  protected TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
+  protected TaskType assertTaskType(List<TaskInfo> tasks, TaskType expectedTaskType) {
+    TaskType taskType = tasks.get(0).getTaskType();
+    assertEquals(expectedTaskType, taskType);
+    return taskType;
+  }
+
+  protected TaskType assertTaskType(List<TaskInfo> tasks, TaskType expectedTaskType, int position) {
+    TaskType taskType = tasks.get(0).getTaskType();
+    assertEquals("at position " + position, expectedTaskType, taskType);
+    return taskType;
+  }
+
+  public static TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
     int numRetries = 0;
     while (numRetries < MAX_RETRY_COUNT) {
       // Here is a hack to decrease amount of accidental problems for tests using this

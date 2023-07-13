@@ -3,7 +3,6 @@ title: Debezium connector for YugabyteDB
 headerTitle: Debezium connector for YugabyteDB
 linkTitle: Debezium connector
 description: Debezium is an open source distributed platform used to capture the changes in a database.
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   v2.14:
     parent: explore-change-data-capture
@@ -690,9 +689,9 @@ A `delete` change event record provides a consumer with the information it needs
 
 When a row is deleted, the _delete_ event value still works with log compaction, because Kafka can remove all earlier messages that have that same key. However, for Kafka to remove all messages that have that same key, the message value must be `null`. To make this possible, the YugabyteDB connector follows a delete event with a special _tombstone_ event that has the same key but a null value.
 
-{{< tip title="DROP or TRUNCATE tables when CDC is enabled" >}}
+{{< tip title="TRUNCATE tables when CDC is enabled" >}}
 
-By default, the YugabyteDB CDC implementation does not allow you to DROP or TRUNCATE a table while an active CDC stream is present on the namespace. If you need to perform these operations while CDC is enabled, set the [enable_delete_truncate_cdcsdk_table](../../../reference/configuration/yb-tserver/#enable-delete-truncate-cdcsdk-table) flag to `true` and then you can DROP or TRUNCATE the table.
+By default, the YugabyteDB CDC implementation does not allow you to TRUNCATE a table while an active CDC stream is present on the namespace. To allow truncating tables while CDC is active, set the [enable_truncate_cdcsdk_table](../../../reference/configuration/yb-tserver/#enable-truncate-cdcsdk-table) flag to true.
 
 {{< /tip >}}
 

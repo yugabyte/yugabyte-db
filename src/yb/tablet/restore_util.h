@@ -39,8 +39,10 @@ class FetchState {
             boost::none,
             rocksdb::kDefaultQueryId,
             TransactionOperationContext(),
-            CoarseTimePoint::max(),
-            read_time)) {
+            docdb::ReadOperationData {
+              .deadline = CoarseTimePoint::max(),
+              .read_time = read_time,
+            })) {
   }
 
   Status SetPrefix(const Slice& prefix);
@@ -54,14 +56,14 @@ class FetchState {
   }
 
   Slice value() const {
-    return iterator_->value();
+    return key_.value;
   }
 
   size_t num_rows() const {
     return num_rows_;
   }
 
-  const docdb::FetchKeyResult& FullKey() const {
+  const docdb::FetchedEntry& FullKey() const {
     return key_;
   }
 
@@ -81,7 +83,7 @@ class FetchState {
 
   std::unique_ptr<docdb::IntentAwareIterator> iterator_;
   Slice prefix_;
-  docdb::FetchKeyResult key_;
+  docdb::FetchedEntry key_;
   size_t num_rows_ = 0;
   // Store stack of subkeys for the current row.
   // I.e. the first entry is related to row, the second is related to column in this row.

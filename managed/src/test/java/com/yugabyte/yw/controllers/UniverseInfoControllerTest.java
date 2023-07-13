@@ -272,13 +272,14 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     when(mockRuntimeConfig.getBoolean(QueryHelper.SET_ENABLE_NESTLOOP_OFF_KEY)).thenReturn(false);
     ExecutorService executor = Executors.newFixedThreadPool(1);
     QueryHelper queryHelper = new QueryHelper(mockRuntimeConfigFactory, executor, mockWsClient);
-    String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe);
+    String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe, false);
     assertEquals(
-        "SELECT a.rolname, t.datname, t.queryid, t.query, t.calls, t.total_time, t.rows,"
-            + " t.min_time, t.max_time, t.mean_time, t.stddev_time, t.local_blks_hit,"
-            + " t.local_blks_written FROM pg_authid a JOIN (SELECT * FROM pg_stat_statements s"
-            + " JOIN pg_database d ON s.dbid = d.oid) t ON a.oid = t.userid ORDER BY"
-            + " t.total_time DESC LIMIT 200",
+        "/*+ Leading((d pg_stat_statements))  */ "
+            + "SELECT s.userid::regrole as rolname, d.datname, s.queryid, s.query, s.calls, "
+            + "s.total_time, s.rows, s.min_time, s.max_time, s.mean_time, s.stddev_time, "
+            + "s.local_blks_hit, s.local_blks_written "
+            + "FROM pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid"
+            + " ORDER BY s.total_time DESC LIMIT 200",
         actualSql);
   }
 
@@ -299,14 +300,14 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     when(mockRuntimeConfig.getBoolean(QueryHelper.SET_ENABLE_NESTLOOP_OFF_KEY)).thenReturn(true);
     ExecutorService executor = Executors.newFixedThreadPool(1);
     QueryHelper queryHelper = new QueryHelper(mockRuntimeConfigFactory, executor, mockWsClient);
-    String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe);
+    String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe, false);
     assertEquals(
-        "/*+Set(enable_nestloop off)*/SELECT a.rolname, t.datname, t.queryid, t.query, "
-            + "t.calls, t.total_time, t.rows,"
-            + " t.min_time, t.max_time, t.mean_time, t.stddev_time, t.local_blks_hit,"
-            + " t.local_blks_written FROM pg_authid a JOIN (SELECT * FROM pg_stat_statements s"
-            + " JOIN pg_database d ON s.dbid = d.oid) t ON a.oid = t.userid ORDER BY"
-            + " t.total_time DESC LIMIT 200",
+        "/*+ Leading((d pg_stat_statements)) Set(enable_nestloop off) */ "
+            + "SELECT s.userid::regrole as rolname, d.datname, s.queryid, s.query, s.calls, "
+            + "s.total_time, s.rows, s.min_time, s.max_time, s.mean_time, s.stddev_time, "
+            + "s.local_blks_hit, s.local_blks_written "
+            + "FROM pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid"
+            + " ORDER BY s.total_time DESC LIMIT 200",
         actualSql);
   }
 

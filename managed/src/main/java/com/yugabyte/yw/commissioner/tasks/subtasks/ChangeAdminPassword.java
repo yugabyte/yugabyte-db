@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -11,6 +13,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import play.mvc.Http;
 
 @Slf4j
@@ -53,8 +56,13 @@ public class ChangeAdminPassword extends UniverseTaskBase {
 
       DatabaseSecurityFormData dbData = new DatabaseSecurityFormData();
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-      if (taskParams().primaryCluster.userIntent.enableYCQL
-          && taskParams().primaryCluster.userIntent.enableYCQLAuth) {
+      Cluster primaryCluster = taskParams().primaryCluster;
+      if (primaryCluster == null) {
+        primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+      }
+      if (primaryCluster.userIntent.enableYCQL
+          && primaryCluster.userIntent.enableYCQLAuth
+          && !StringUtils.isEmpty(taskParams().ycqlNewPassword)) {
         dbData.ycqlCurrAdminPassword = taskParams().ycqlCurrentPassword;
         dbData.ycqlAdminUsername = taskParams().ycqlUserName;
         dbData.ycqlAdminPassword = taskParams().ycqlNewPassword;
@@ -71,8 +79,9 @@ public class ChangeAdminPassword extends UniverseTaskBase {
           }
         }
       }
-      if (taskParams().primaryCluster.userIntent.enableYSQL
-          && taskParams().primaryCluster.userIntent.enableYSQLAuth) {
+      if (primaryCluster.userIntent.enableYSQL
+          && primaryCluster.userIntent.enableYSQLAuth
+          && !StringUtils.isEmpty(taskParams().ysqlNewPassword)) {
         dbData.dbName = taskParams().ysqlDbName;
         dbData.ysqlCurrAdminPassword = taskParams().ysqlCurrentPassword;
         dbData.ysqlAdminUsername = taskParams().ysqlUserName;
@@ -90,7 +99,6 @@ public class ChangeAdminPassword extends UniverseTaskBase {
           }
         }
       }
-
     } catch (Exception e) {
       String msg = getName() + " failed with exception " + e.getMessage();
       log.warn(msg, e.getMessage());

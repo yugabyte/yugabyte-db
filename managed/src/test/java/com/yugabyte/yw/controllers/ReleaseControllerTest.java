@@ -18,9 +18,9 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.OK;
+import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -246,7 +246,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
     ObjectNode body = Json.newObject();
     UUID randomUUID = UUID.randomUUID();
     Result result = createRelease(randomUUID, body);
-    assertEquals(FORBIDDEN, result.status());
+    assertEquals(UNAUTHORIZED, result.status());
 
     String resultString = contentAsString(result);
     assertEquals(resultString, "Unable To Authenticate User");
@@ -545,7 +545,7 @@ public class ReleaseControllerTest extends FakeDBApplication {
   public void testRefreshReleaseInvalidCustomer() {
     UUID randomUUID = UUID.randomUUID();
     Result result = refreshReleases(randomUUID);
-    assertEquals(FORBIDDEN, result.status());
+    assertEquals(UNAUTHORIZED, result.status());
 
     String resultString = contentAsString(result);
     assertEquals(resultString, "Unable To Authenticate User");

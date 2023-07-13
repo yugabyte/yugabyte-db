@@ -55,9 +55,10 @@ class PgPackedRowTest : public PackedRowTestBase<PgMiniTestBase> {
   void TestCompaction(int num_keys, const std::string& expr_suffix);
   void TestColocated(int num_keys, int num_expected_records);
   void TestSstDump(bool specify_metadata, std::string* output);
+  void TestAppliedSchemaVersion(bool colocated);
 };
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
+TEST_F(PgPackedRowTest, Simple) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT, v2 TEXT)"));
@@ -78,7 +79,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
   ASSERT_EQ(value, "four, five");
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Update)) {
+TEST_F(PgPackedRowTest, Update) {
   // Test update with and without packed row enabled.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pack_full_row_update) = true;
 
@@ -118,14 +119,14 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Update)) {
 }
 
 // Alter 2 tables and performs compactions concurrently. See #13846 for details.
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AlterTable)) {
+TEST_F(PgPackedRowTest, AlterTable) {
   static const auto kExpectedErrors = {
       "Try again",
       "Snapshot too old",
       "Network error"
   };
 
-  FLAGS_timestamp_history_retention_interval_sec = 1 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 1 * kTimeMultiplier;
 
   auto conn = ASSERT_RESULT(Connect());
 
@@ -179,7 +180,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AlterTable)) {
   thread_holder.Stop();
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(UpdateReturning)) {
+TEST_F(PgPackedRowTest, UpdateReturning) {
   // Test UPDATE...RETURNING with packed row enabled.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pack_full_row_update) = true;
 
@@ -200,7 +201,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(UpdateReturning)) {
   CheckNumRecords(cluster_.get(), /* expected_num_records = */ 2);
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Random)) {
+TEST_F(PgPackedRowTest, Random) {
   constexpr int kModifications = 4000;
   constexpr int kKeys = 50;
 
@@ -290,7 +291,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Random)) {
   }
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(SchemaChange)) {
+TEST_F(PgPackedRowTest, SchemaChange) {
   constexpr int kKey = 10;
   constexpr int kValue1 = 10;
 
@@ -315,7 +316,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(SchemaChange)) {
 }
 
 // Check that we GC old schemas. I.e. when there are no more packed rows with this schema version.
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(SchemaGC)) {
+TEST_F(PgPackedRowTest, SchemaGC) {
   constexpr int kModifications = 1200;
 
   auto conn = ASSERT_RESULT(Connect());
@@ -441,7 +442,7 @@ void PgPackedRowTest::TestColocated(int num_keys, int num_expected_records) {
   CheckNumRecords(cluster_.get(), num_expected_records);
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(TableGroup)) {
+TEST_F(PgPackedRowTest, TableGroup) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE DATABASE test"));
   conn = ASSERT_RESULT(ConnectToDB("test"));
@@ -450,16 +451,16 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(TableGroup)) {
   TestCompaction(/* num_keys = */ 10, "TABLEGROUP tg");
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Colocated)) {
+TEST_F(PgPackedRowTest, Colocated) {
   TestColocated(/* num_keys = */ 10, /* num_expected_records = */ 20);
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(ColocatedCompactionPackRowDisabled)) {
+TEST_F(PgPackedRowTest, ColocatedCompactionPackRowDisabled) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = false;
   TestColocated(/* num_keys = */ 10, /* num_expected_records = */ 40);
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(ColocatedPackRowDisabled)) {
+TEST_F(PgPackedRowTest, ColocatedPackRowDisabled) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = false;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE DATABASE test WITH colocated = true"));
@@ -480,7 +481,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(ColocatedPackRowDisabled)) {
   CheckNumRecords(cluster_.get(), 1);
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(CompactAfterTransaction)) {
+TEST_F(PgPackedRowTest, CompactAfterTransaction) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE test (key BIGSERIAL PRIMARY KEY, value TEXT)"));
   ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 'one')"));
@@ -494,12 +495,12 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(CompactAfterTransaction)) {
   ASSERT_EQ(value, "1, odin; 2, dva");
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Serial)) {
+TEST_F(PgPackedRowTest, Serial) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE sbtest1(id SERIAL, PRIMARY KEY (id))"));
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(PackDuringCompaction)) {
+TEST_F(PgPackedRowTest, PackDuringCompaction) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
 
   const auto kNumKeys = 10;
@@ -531,7 +532,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(PackDuringCompaction)) {
 }
 
 // Check that we correctly interpret packed row size limit.
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(BigValue)) {
+TEST_F(PgPackedRowTest, BigValue) {
   constexpr size_t kValueLimit = 512;
   const std::string kBigValue(kValueLimit, 'B');
   const std::string kHalfBigValue(kValueLimit / 2, 'H');
@@ -579,7 +580,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(BigValue)) {
   ASSERT_OK(update_value(0, kHalfBigValue, 2));
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AddColumn)) {
+TEST_F(PgPackedRowTest, AddColumn) {
   {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.Execute("CREATE DATABASE test WITH colocated = true"));
@@ -599,10 +600,10 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AddColumn)) {
 }
 
 // Checks repacking of columns then would not fit into limit with new schema due to added columns.
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(PackOverflow)) {
+TEST_F(PgPackedRowTest, PackOverflow) {
   constexpr int kRange = 32;
 
-  FLAGS_ysql_packed_row_size_limit = 128;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_packed_row_size_limit) = 128;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute(
       "CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT) SPLIT INTO 1 TABLETS"));
@@ -618,7 +619,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(PackOverflow)) {
   ASSERT_OK(cluster_->CompactTablets());
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AddDropColumn)) {
+TEST_F(PgPackedRowTest, AddDropColumn) {
   constexpr int kKeys = 15;
 
   auto conn = ASSERT_RESULT(Connect());
@@ -669,7 +670,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AddDropColumn)) {
   thread_holder.Stop();
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(CoveringIndex)) {
+TEST_F(PgPackedRowTest, CoveringIndex) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT, v2 TEXT)"));
@@ -678,11 +679,12 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(CoveringIndex)) {
   ASSERT_OK(conn.Execute("INSERT INTO t (key, v1, v2) VALUES (1, 'one', 'odin')"));
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Transaction)) {
+TEST_F(PgPackedRowTest, Transaction) {
   // Set retention interval to 0, to repack all recently flushed entries.
-  FLAGS_timestamp_history_retention_interval_sec = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
 
-  FLAGS_TEST_skip_aborting_active_transactions_during_schema_change = true;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_skip_aborting_active_transactions_during_schema_change) = true;
 
   auto conn = ASSERT_RESULT(Connect());
 
@@ -699,9 +701,9 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Transaction)) {
   ASSERT_OK(cluster_->CompactTablets());
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(CleanupIntentDocHt)) {
+TEST_F(PgPackedRowTest, CleanupIntentDocHt) {
   // Set retention interval to 0, to repack all recently flushed entries.
-  FLAGS_timestamp_history_retention_interval_sec = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
 
   auto conn = ASSERT_RESULT(Connect());
 
@@ -729,19 +731,32 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(CleanupIntentDocHt)) {
   }
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AppliedSchemaVersion)) {
-  // Set retention interval to 0, to repack all recently flushed entries.
-  FLAGS_timestamp_history_retention_interval_sec = 0;
-  FLAGS_rocksdb_level0_file_num_compaction_trigger = 2;
-  FLAGS_rocksdb_universal_compaction_always_include_size_threshold = 1_KB;
+void PgPackedRowTest::TestAppliedSchemaVersion(bool colocated) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_universal_compaction_always_include_size_threshold) =
+      1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
 
   auto conn = ASSERT_RESULT(Connect());
-
-  ASSERT_OK(conn.Execute("CREATE TABLE t (key TEXT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+  if (colocated) {
+    ASSERT_OK(conn.Execute("CREATE DATABASE test WITH colocated = true"));
+    conn = ASSERT_RESULT(ConnectToDB("test"));
+  }
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE t (key TEXT PRIMARY KEY, v1 INT, v2 INT)$0",
+      colocated ? "" : "SPLIT INTO 1 TABLETS"));
+  if (colocated) {
+    ASSERT_OK(conn.Execute("CREATE INDEX t_v1 ON t (v1)"));
+    ASSERT_OK(conn.Execute("CREATE INDEX t_v2 ON t (v2)"));
+    ASSERT_OK(conn.Execute("CREATE INDEX t_v12 ON t (v1, v2)"));
+    ASSERT_OK(conn.Execute("CREATE INDEX t_v21 ON t (v2, v1)"));
+  }
 
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn.ExecuteFormat(
-      "INSERT INTO t (key) VALUES ('$0')", RandomHumanReadableString(512_KB)));
+      "INSERT INTO t (key, v1, v2) VALUES ('$0', $1, $2)",
+      RandomHumanReadableString(512_KB), RandomUniformInt<int32_t>(), RandomUniformInt<int32_t>()));
   ASSERT_OK(conn.CommitTransaction());
 
   std::this_thread::sleep_for(5s);
@@ -757,8 +772,16 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AppliedSchemaVersion)) {
   ASSERT_OK(cluster_->CompactTablets());
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(UpdateToNull)) {
-  FLAGS_timestamp_history_retention_interval_sec = 0;
+TEST_F(PgPackedRowTest, AppliedSchemaVersion) {
+  TestAppliedSchemaVersion(false);
+}
+
+TEST_F(PgPackedRowTest, AppliedSchemaVersionWithColocation) {
+  TestAppliedSchemaVersion(true);
+}
+
+TEST_F(PgPackedRowTest, UpdateToNull) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
 
   auto conn = ASSERT_RESULT(Connect());
 
@@ -774,6 +797,26 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(UpdateToNull)) {
 
   content = ASSERT_RESULT(conn.FetchAllAsString("SELECT v2 FROM test"));
   ASSERT_EQ(content, "NULL");
+}
+
+TEST_F(PgPackedRowTest, UpdateToNullWithPK) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, value) VALUES (1, 'hello')"));
+  ASSERT_OK(conn.Execute("UPDATE t SET value = NULL WHERE key = 1"));
+
+  DumpDocDB(cluster_.get(), ListPeersFilter::kLeaders);
+  auto value = ASSERT_RESULT(conn.FetchRowAsString("SELECT value FROM t"));
+  ASSERT_EQ(value, "NULL");
+
+  ASSERT_OK(cluster_->CompactTablets());
+
+  DumpDocDB(cluster_.get(), ListPeersFilter::kLeaders);
+
+  value = ASSERT_RESULT(conn.FetchRowAsString("SELECT value FROM t"));
+  ASSERT_EQ(value, "NULL");
 }
 
 class TestKVFormatter : public tablet::KVFormatter {
@@ -850,7 +893,7 @@ void PgPackedRowTest::TestSstDump(bool specify_metadata, std::string* output) {
   *output = formatter.entries();
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(SstDump)) {
+TEST_F(PgPackedRowTest, SstDump) {
   std::string output;
   ASSERT_NO_FATALS(TestSstDump(true, &output));
 
@@ -867,8 +910,8 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(SstDump)) {
       output);
 }
 
-TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(SstDumpNoMetadata)) {
-  FLAGS_TEST_dcheck_for_missing_schema_packing = false;
+TEST_F(PgPackedRowTest, SstDumpNoMetadata) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = false;
 
   std::string output;
   ASSERT_NO_FATALS(TestSstDump(false, &output));

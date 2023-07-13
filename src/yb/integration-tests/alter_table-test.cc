@@ -122,29 +122,29 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
       inserted_idx_(0) {
 
     YBSchemaBuilder b;
-    b.AddColumn("c0")->Type(INT32)->NotNull()->HashPrimaryKey();
-    b.AddColumn("c1")->Type(INT32)->NotNull();
+    b.AddColumn("c0")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+    b.AddColumn("c1")->Type(DataType::INT32)->NotNull();
     CHECK_OK(b.Build(&schema_));
 
-    FLAGS_enable_data_block_fsync = false; // Keep unit tests fast.
-    FLAGS_use_hybrid_clock = false;
-    FLAGS_ht_lease_duration_ms = 0;
-    FLAGS_enable_ysql = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_data_block_fsync) = false; // Keep unit tests fast.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_hybrid_clock) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ht_lease_duration_ms) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
     ANNOTATE_BENIGN_RACE(&FLAGS_enable_maintenance_manager,
                          "safe to change at runtime");
   }
 
   void SetUp() override {
     // Make heartbeats faster to speed test runtime.
-    FLAGS_heartbeat_interval_ms = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 10;
 
-    FLAGS_catalog_manager_report_batch_size = GetParam();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_report_batch_size) = GetParam();
 
     YBMiniClusterTestBase::SetUp();
 
     MiniClusterOptions opts;
     opts.num_tablet_servers = num_replicas();
-    FLAGS_replication_factor = num_replicas();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = num_replicas();
     cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
     ASSERT_OK(cluster_->WaitForTabletServerCount(num_replicas()));
@@ -233,7 +233,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
                          const string& column_name,
                          const MonoDelta& timeout) {
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(table_name));
-    table_alterer->AddColumn(column_name)->Type(INT32)->NotNull();
+    table_alterer->AddColumn(column_name)->Type(DataType::INT32)->NotNull();
     return table_alterer->timeout(timeout)->Alter();
   }
 
@@ -333,7 +333,7 @@ TEST_P(AlterTableTest, TestAddNullableColumnWithoutDefault) {
 
   {
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    table_alterer->AddColumn("new")->Type(INT32);
+    table_alterer->AddColumn("new")->Type(DataType::INT32);
     ASSERT_OK(table_alterer->Alter());
   }
 
@@ -588,7 +588,7 @@ TEST_P(AlterTableTest, TestLogSchemaReplay) {
 
   google::FlagSaver flag_saver;
   // Restart without flushing RocksDB
-  FLAGS_flush_rocksdb_on_shutdown = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
   LOG(INFO) << "Restarting tablet";
   ASSERT_NO_FATALS(RestartTabletServer());
 
@@ -684,7 +684,7 @@ TEST_P(AlterTableTest, TestAlterWalRetentionSecs) {
 TEST_P(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {
   // Disable maintenance manager, since we manually flush/compact
   // in this test.
-  FLAGS_enable_maintenance_manager = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_maintenance_manager) = false;
 
   vector<string> rows;
 
@@ -908,7 +908,7 @@ TEST_P(AlterTableTest, TestMultipleAlters) {
   for (size_t i = 0; i < kNumNewCols; i++) {
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kSplitTableName));
     table_alterer->AddColumn(strings::Substitute("new_col$0", i))
-                 ->Type(INT32)->NotNull();
+                 ->Type(DataType::INT32)->NotNull();
     ASSERT_OK(table_alterer->wait(false)->Alter());
   }
 

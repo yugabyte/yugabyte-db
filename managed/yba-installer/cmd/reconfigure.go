@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/ybactlstate"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
 var reconfigureCmd = &cobra.Command{
@@ -69,6 +69,15 @@ var reconfigureCmd = &cobra.Command{
 	},
 }
 
+var configGenCmd = &cobra.Command{
+	Use:     "generate-config",
+	Short:   "Create the default config file.",
+	Aliases: []string{"gen-config", "create-config"},
+	Run: func(cmd *cobra.Command, args []string) {
+		writeDefaultConfig()
+	},
+}
+
 func init() {
-	rootCmd.AddCommand(reconfigureCmd)
+	rootCmd.AddCommand(reconfigureCmd, configGenCmd)
 }

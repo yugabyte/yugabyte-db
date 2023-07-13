@@ -61,6 +61,7 @@
 
 DECLARE_uint64(rpc_max_message_size);
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
+DECLARE_bool(enable_flush_retryable_requests);
 
 DEFINE_test_flag(double, fault_crash_leader_after_changing_role, 0.0,
                  "The leader will crash after successfully sending a ChangeConfig (CHANGE_ROLE "
@@ -79,6 +80,8 @@ using consensus::MinimumOpId;
 using strings::Substitute;
 using tablet::RaftGroupMetadataPtr;
 using tablet::TabletPeer;
+
+const std::string kRetryableRequestsFileName = "retryable_requests";
 
 RemoteBootstrapSession::RemoteBootstrapSession(
     const std::shared_ptr<TabletPeer>& tablet_peer, std::string session_id,
@@ -131,15 +134,8 @@ Status RemoteBootstrapSession::ChangeRole() {
 }
 
 Status RemoteBootstrapSession::SetInitialCommittedState() {
-  shared_ptr <consensus::Consensus> consensus = tablet_peer_->shared_consensus();
-  if (!consensus) {
-    tablet::RaftGroupStatePB tablet_state = tablet_peer_->state();
-    return STATUS(IllegalState,
-                  Substitute("Unable to initialize remote bootstrap session "
-                             "for tablet $0. Consensus is not available. Tablet state: $1 ($2)",
-                             tablet_peer_->tablet_id(), tablet::RaftGroupStatePB_Name(tablet_state),
-                             tablet_state));
-  }
+  auto consensus = VERIFY_RESULT_PREPEND(
+      tablet_peer_->GetConsensus(), "Unable to initialize remote bootstrap session");
   initial_committed_cstate_ = consensus->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED);
   return Status::OK();
 }
@@ -178,7 +174,7 @@ const std::string RemoteBootstrapSession::kCheckpointsDir = "checkpoints";
 
 Status RemoteBootstrapSession::Init() {
   // Take locks to support re-initialization of the same session.
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   RETURN_NOT_OK(UnregisterAnchorIfNeededUnlocked());
 
   const string& tablet_id = tablet_peer_->tablet_id();
@@ -223,9 +219,40 @@ Status RemoteBootstrapSession::Init() {
     RETURN_NOT_OK(status);
   }
 
+  std::optional<OpId> min_synced_op_id;
+  // Copy the retryable requests if it exists.
+  if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests)) {
+    Status s = tablet_peer_->FlushRetryableRequests();
+    if (s.ok() || s.IsAlreadyPresent()) {
+      retryable_requests_filepath_ = JoinPathSegments(checkpoint_dir_, kRetryableRequestsFileName);
+      auto copy_result = tablet_peer_->CopyRetryableRequestsTo(*retryable_requests_filepath_);
+      if (!copy_result.ok()) {
+        LOG(WARNING) << "Copy retryable requests failed: " << s;
+        retryable_requests_filepath_.reset();
+      } else {
+        min_synced_op_id = *copy_result;
+      }
+    } else {
+      LOG(WARNING) << "Remote bootstrap session: flush retryable requests failed: " << s;
+    }
+  }
+
   for (const auto& source : sources_) {
     if (source) {
       RETURN_NOT_OK(source->Init());
+    }
+  }
+
+  // It's possible that the wal segment is not synced and the retryable requests file
+  // is newer than the data of wal file downloaded by remote peer. The remote peer will
+  // reject newer ops that covered by retryable requests but not in the wal segment by
+  // incorrectly detect them as duplicate.
+  if (min_synced_op_id) {
+    auto log_msg = Format("wait for OP($0) to be synced", *min_synced_op_id);
+    LOG(INFO) << "Start to " << log_msg;
+    auto wait_result = tablet_peer_->log()->WaitForSafeOpIdToApply(*min_synced_op_id);
+    if (wait_result.empty()) {
+      return STATUS_FORMAT(TimedOut, "Failed to $0", log_msg);
     }
   }
 
@@ -380,6 +407,8 @@ Status RemoteBootstrapSession::ValidateDataId(const yb::tserver::DataIdPB& data_
             data_id.ShortDebugString());
       }
       return Status::OK();
+    case DataIdPB::RETRYABLE_REQUESTS:
+      return Status::OK();
     case DataIdPB::SNAPSHOT_FILE: FALLTHROUGH_INTENDED;
     case DataIdPB::UNKNOWN:
       return STATUS(InvalidArgument, "Type not supported", data_id.ShortDebugString());
@@ -413,6 +442,12 @@ Status RemoteBootstrapSession::GetDataPiece(const DataIdPB& data_id, GetDataPiec
                             "Unable to get piece of RocksDB file");
       break;
     }
+    case DataIdPB::RETRYABLE_REQUESTS: {
+      // Fetching the retryable requests file (may be abscent).
+      RETURN_NOT_OK_PREPEND(GetRetryableRequestsFilePiece(info),
+                            "Unable to get piece of retryable requests file");
+      break;
+    }
     default:
       info->error_code = RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST;
       return STATUS_SUBSTITUTE(InvalidArgument, "Invalid request type $0", data_id.type());
@@ -427,7 +462,7 @@ Status RemoteBootstrapSession::GetDataPiece(const DataIdPB& data_id, GetDataPiec
 Status RemoteBootstrapSession::GetLogSegmentPiece(uint64_t segment_seqno, GetDataPieceInfo* info) {
   std::shared_ptr<RandomAccessFile> file;
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (opened_log_segment_seqno_ != segment_seqno) {
       RETURN_NOT_OK(OpenLogSegment(segment_seqno, &info->error_code));
     }
@@ -445,6 +480,13 @@ Status RemoteBootstrapSession::GetLogSegmentPiece(uint64_t segment_seqno, GetDat
 Status RemoteBootstrapSession::GetRocksDBFilePiece(
     const std::string& file_name, GetDataPieceInfo* info) {
   return GetFilePiece(checkpoint_dir_, file_name, env(), info);
+}
+
+Status RemoteBootstrapSession::GetRetryableRequestsFilePiece(GetDataPieceInfo* info) {
+  if (!retryable_requests_filepath_.has_value()) {
+    return Status::OK();
+  }
+  return GetFilePiece(checkpoint_dir_, kRetryableRequestsFileName, env(), info);
 }
 
 Status RemoteBootstrapSession::GetFilePiece(
@@ -539,12 +581,12 @@ Status RemoteBootstrapSession::UnregisterAnchorIfNeededUnlocked() {
 }
 
 void RemoteBootstrapSession::SetSuccess() {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   succeeded_ = true;
 }
 
 bool RemoteBootstrapSession::Succeeded() {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   return succeeded_;
 }
 

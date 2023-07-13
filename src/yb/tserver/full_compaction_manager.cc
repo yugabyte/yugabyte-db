@@ -27,6 +27,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/background_task.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -37,6 +38,10 @@ namespace {
 constexpr int32_t kDefaultJitterFactorPercentage = 33;
 // Indicates the maximum size for an abbreviated hash used for jitter.
 constexpr uint64_t kMaxSmallHash = 1000000000;
+// Indicates the factor at which we should force memory cleanup in FullCompactionManager.
+// Multiplier for the maximum number of peers we should ever store in FullCompactionManager
+// versus the number of peers stored in TsTabletManager.
+constexpr double kPeerCleanupFactor = 2;
 
 }; // namespace
 
@@ -50,6 +55,11 @@ DEFINE_RUNTIME_int32(scheduled_full_compaction_jitter_factor_percentage,
               "determining full compaction schedule per tablet. Jitter will be deterministically "
               "computed when scheduling a compaction, between 0 and (frequency * jitter factor) "
               "hours.");
+
+DEFINE_NON_RUNTIME_int32(auto_compact_check_interval_sec, 60,
+              "The interval at which the full compaction task checks for tablets "
+              "eligible for compaction, in seconds. 0 indicates that the background task "
+              "is fully disabled.");
 
 DEFINE_RUNTIME_uint32(auto_compact_stat_window_seconds, 300,
               "Window of time (seconds) over which DocDB read statistics are analyzed for the "
@@ -69,15 +79,21 @@ DEFINE_RUNTIME_uint32(auto_compact_min_wait_between_seconds, 0,
               "Minimum wait time between automatic full compactions. Also applies to "
               "scheduled full compactions.");
 
+DEFINE_RUNTIME_int32(auto_compact_memory_cleanup_interval_sec, 3600,
+              "The frequency with which we should check whether cleanup is needed in the "
+              "full compaction manager. -1 indicates we should disable clean up.");
+
+using namespace std::literals;
+
 namespace yb {
 namespace tserver {
 
 using tablet::TabletPeerPtr;
 
-FullCompactionManager::FullCompactionManager(
-    TSTabletManager* ts_tablet_manager, int32_t check_interval_sec)
+FullCompactionManager::FullCompactionManager(TSTabletManager* ts_tablet_manager)
     : ts_tablet_manager_(ts_tablet_manager),
-      check_interval_sec_(check_interval_sec) {
+      check_interval_sec_(ANNOTATE_UNPROTECTED_READ(FLAGS_auto_compact_check_interval_sec)) {
+  last_cleanup_time_ = CoarseMonoClock::Now();
   SetFrequencyAndJitterFromFlags();
   LOG(INFO) << "Initialized full compaction manager"
       << " check_interval_sec: " << check_interval_sec_
@@ -87,23 +103,87 @@ FullCompactionManager::FullCompactionManager(
 }
 
 void FullCompactionManager::ScheduleFullCompactions() {
+  const auto peers = ts_tablet_manager_->GetTabletPeers();
   SetFrequencyAndJitterFromFlags();
-  CollectDocDBStats();
-  DoScheduleFullCompactions();
+  CollectDocDBStats(peers);
+  DoScheduleFullCompactions(peers);
+  CleanupIfNecessary(peers);
 }
 
-void FullCompactionManager::CollectDocDBStats() {
-  for (auto& peer : ts_tablet_manager_->GetTabletPeers()) {
-    const auto tablet_id = peer->tablet_id();
-    const auto shared_tablet = peer->shared_tablet();
+Status FullCompactionManager::Init() {
+  if (check_interval_sec_ > 0) {
+    bg_task_.reset(
+        new BackgroundTask(std::function<void()>([this]() {
+            ScheduleFullCompactions(); }),
+        "full compaction manager", "compaction scheduler bgtask",
+        MonoDelta::FromSeconds(check_interval_sec_).ToChronoMilliseconds()));
+    RETURN_NOT_OK(bg_task_->Init());
+  }
+  return Status::OK();
+}
+
+void FullCompactionManager::Shutdown() {
+  if (bg_task_) {
+    bg_task_->Shutdown();
+  }
+}
+
+void FullCompactionManager::CollectDocDBStats(
+    const std::vector<tablet::TabletPeerPtr>& peers) {
+  for (const auto& peer : peers) {
+    const auto& tablet_id = peer->tablet_id();
+    const auto& shared_tablet = peer->shared_tablet();
     if (shared_tablet && shared_tablet->metrics() != nullptr) {
       auto window_iter = tablet_stats_window_.emplace(
-          tablet_id, KeyStatsSlidingWindow(peer, check_interval_sec_)).first;
-      window_iter->second.RecordCurrentStats();
+          tablet_id, KeyStatsSlidingWindow(check_interval_sec_)).first;
+      const auto last_compact_time = shared_tablet->metadata()->last_full_compaction_time();
+      window_iter->second.RecordCurrentStats(*shared_tablet->metrics(), last_compact_time);
     } else {
       tablet_stats_window_.erase(tablet_id);
     }
   }
+}
+
+namespace {
+
+struct TabletIdPtrHasher {
+  std::size_t operator()(const TabletId* tablet_id) const {
+    return std::hash<TabletId>{}(*tablet_id);
+  }
+};
+
+struct TabletIdPtrEq {
+  bool operator()(const TabletId* id1, const TabletId* id2) const {
+    return std::equal_to<void>{}(*id1, *id2);
+  }
+};
+
+}  // namespace
+
+void FullCompactionManager::CleanupIfNecessary(
+    const std::vector<tablet::TabletPeerPtr>& peers) {
+  const auto cleanup_frequency_sec =
+      ANNOTATE_UNPROTECTED_READ(FLAGS_auto_compact_memory_cleanup_interval_sec);
+  // If cleanup_frequency_sec is negative, then cleanup is disabled.
+  // Cleanup isn't needed if it hasn't been enough time since the last cleanup
+  // and if we don't have too many entries.
+  if (cleanup_frequency_sec < 0 ||
+      (CoarseMonoClock::Now() < last_cleanup_time_ + cleanup_frequency_sec * 1s &&
+      tablet_stats_window_.size() <= peers.size() * kPeerCleanupFactor)) {
+    return;
+  }
+
+  std::unordered_set<const TabletId*, TabletIdPtrHasher, TabletIdPtrEq> in_tablet_manager;
+  for (const auto& peer : peers) {
+    in_tablet_manager.insert(&peer->tablet_id());
+  }
+  const auto peer_not_exists_fn = [&in_tablet_manager](const auto& item) {
+    return in_tablet_manager.find(&item.first) == in_tablet_manager.end();
+  };
+  // Erase any tablet entries that are not currently in the TsTabletManager's peers.
+  std::erase_if(next_compact_time_per_tablet_, peer_not_exists_fn);
+  std::erase_if(tablet_stats_window_, peer_not_exists_fn);
+  last_cleanup_time_ = CoarseMonoClock::Now();
 }
 
 bool FullCompactionManager::ShouldCompactBasedOnStats(const TabletId& tablet_id) {
@@ -132,7 +212,7 @@ bool FullCompactionManager::ShouldCompactBasedOnStats(const TabletId& tablet_id)
   return true;
 }
 
-bool FullCompactionManager::CompactedTooRecently(const TabletPeerPtr peer, const HybridTime& now) {
+bool FullCompactionManager::CompactedTooRecently(const TabletPeerPtr& peer, const HybridTime& now) {
   // Check that we haven't compacted too recently.
   const auto min_compaction_wait =
       ANNOTATE_UNPROTECTED_READ(FLAGS_auto_compact_min_wait_between_seconds);
@@ -146,9 +226,10 @@ bool FullCompactionManager::CompactedTooRecently(const TabletPeerPtr peer, const
   return false;
 }
 
-void FullCompactionManager::DoScheduleFullCompactions() {
+void FullCompactionManager::DoScheduleFullCompactions(
+    const std::vector<tablet::TabletPeerPtr>& peers) {
   int num_scheduled = 0;
-  PeerNextCompactList peers_to_compact = GetPeersEligibleForCompaction();
+  PeerNextCompactList peers_to_compact = GetPeersEligibleForCompaction(peers);
 
   for (auto itr = peers_to_compact.begin(); itr != peers_to_compact.end(); itr++) {
     const auto peer = itr->second;
@@ -172,10 +253,11 @@ void FullCompactionManager::DoScheduleFullCompactions() {
   num_scheduled_last_execution_.store(num_scheduled);
 }
 
-PeerNextCompactList FullCompactionManager::GetPeersEligibleForCompaction() {
+PeerNextCompactList FullCompactionManager::GetPeersEligibleForCompaction(
+    const std::vector<tablet::TabletPeerPtr>& peers) {
   const auto now = ts_tablet_manager_->server()->Clock()->Now();
   PeerNextCompactList compact_list;
-  for (auto& peer : ts_tablet_manager_->GetTabletPeers()) {
+  for (const auto& peer : peers) {
     const auto tablet_id = peer->tablet_id();
     const auto tablet = peer->shared_tablet();
     // If the tablet isn't eligible for compaction, remove it from our stored compaction
@@ -236,7 +318,8 @@ void FullCompactionManager::ResetFrequencyAndJitterIfNeeded(
   }
 }
 
-HybridTime FullCompactionManager::DetermineNextCompactTime(TabletPeerPtr peer, HybridTime now) {
+HybridTime FullCompactionManager::DetermineNextCompactTime(
+    const TabletPeerPtr& peer, HybridTime now) {
   // First, see if we've pre-calculated a next compaction time for this tablet. If not, it will
   // need to be calculated based on the last full compaction time.
   const auto tablet_id = peer->tablet_id();
@@ -266,6 +349,13 @@ HybridTime FullCompactionManager::CalculateNextCompactTime(
       : last_compact_time.AddDelta(compaction_frequency_ - jitter);
 }
 
+void FullCompactionManager::TEST_DoScheduleFullCompactionsWithManualValues(
+    MonoDelta compaction_frequency, int jitter_factor) {
+  const auto peers = ts_tablet_manager_->GetTabletPeers();
+  ResetFrequencyAndJitterIfNeeded(compaction_frequency, jitter_factor);
+  DoScheduleFullCompactions(peers);
+}
+
 namespace {
 
 size_t hash_value_for_jitter(
@@ -288,18 +378,16 @@ MonoDelta FullCompactionManager::CalculateJitter(
   return max_jitter_ / kMaxSmallHash * small_hash;
 }
 
-KeyStatsSlidingWindow::KeyStatsSlidingWindow(
-    tablet::TabletPeerPtr peer, int32_t check_interval_sec)
-    : tablet_peer_(peer),
-      metrics_(tablet_peer_->shared_tablet()->metrics()),
-      check_interval_sec_(check_interval_sec) {
-  ResetWindow();
+KeyStatsSlidingWindow::KeyStatsSlidingWindow(int32_t check_interval_sec)
+    : check_interval_sec_(check_interval_sec) {
 }
 
-void KeyStatsSlidingWindow::RecordCurrentStats() {
-  // Reset the window anytime a full compaction is detected.
-  if (tablet_peer_->tablet_metadata()->last_full_compaction_time() > last_compaction_time_) {
-    ResetWindow();
+void KeyStatsSlidingWindow::RecordCurrentStats(
+    const tablet::TabletMetrics& metrics, uint64_t last_compact_time) {
+  // Reset the window anytime a full compaction or new tablet instance is detected.
+  if (last_compact_time > last_compaction_time_
+      || metrics.instance_id != metrics_instance_id_) {
+    ResetWindow(last_compact_time, metrics.instance_id);
   }
 
   ComputeWindowSizeAndIntervals();
@@ -319,15 +407,15 @@ void KeyStatsSlidingWindow::RecordCurrentStats() {
   }
 
   // Finally, push the latest metrics into the back of the window.
-  key_stats_window_.push_back({ metrics_->docdb_keys_found->value(),
-      metrics_->docdb_obsolete_keys_found_past_cutoff->value() });
+  key_stats_window_.push_back({ metrics.docdb_keys_found->value(),
+      metrics.docdb_obsolete_keys_found_past_cutoff->value() });
 }
 
 KeyStatistics KeyStatsSlidingWindow::current_stats() const {
   // To calculate statistics, expected_intervals_ needs to be greater than 0
   // and the key_stats_window_ deque needs (expected_intervals_ + 1) values.
   if (expected_intervals_ == 0 || key_stats_window_.size() <= expected_intervals_) {
-    return KeyStatistics{0, 0};
+    return KeyStatistics{ 0, 0 };
   }
   return { key_stats_window_.back().total - key_stats_window_.front().total,
       key_stats_window_.back().obsolete_cutoff - key_stats_window_.front().obsolete_cutoff };
@@ -341,9 +429,10 @@ void KeyStatsSlidingWindow::ComputeWindowSizeAndIntervals() {
       ? 0 : (window_size_sec - 1) / check_interval_sec_ + 1;
 }
 
-void KeyStatsSlidingWindow::ResetWindow() {
+void KeyStatsSlidingWindow::ResetWindow(uint64_t last_compaction_time, uint64_t instance_id) {
   key_stats_window_.clear();
-  last_compaction_time_ = tablet_peer_->tablet_metadata()->last_full_compaction_time();
+  last_compaction_time_ = last_compaction_time;
+  metrics_instance_id_ = instance_id;
 }
 
 } // namespace tserver

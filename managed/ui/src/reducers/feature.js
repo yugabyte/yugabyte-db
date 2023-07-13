@@ -30,7 +30,11 @@ const initialStateFeatureInTest = {
   enableAWSProviderValidation: true,
   enableGFlagHBAConf: false,
   enableMKR: true,
-  enableS3BackupProxy: false
+  enableS3BackupProxy: false,
+  enableRRGflags: true,
+  enableLDAPRoleMapping: true,
+  enableNewRestoreModal: false,
+  enableEditDBSettings: false
 };
 
 const initialStateFeatureReleased = {
@@ -60,6 +64,7 @@ const initialStateFeatureReleased = {
   enablePrefillKubeConfig: true,
   enableCustomEmailTemplates: true,
   enableGFlagHBAConf: false
+  // enableRRGflags: true
 };
 
 export const FeatureFlag = (

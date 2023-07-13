@@ -51,6 +51,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
@@ -156,6 +157,8 @@ class PgClientSessionLocker {
 };
 
 using LockablePgClientSessionPtr = std::shared_ptr<LockablePgClientSession>;
+using RemoteTabletServerPtr = std::shared_ptr<client::internal::RemoteTabletServer>;
+using client::internal::RemoteTabletPtr;
 
 void GetTablePartitionList(const client::YBTablePtr& table, PgTablePartitionsPB* partition_list) {
   const auto table_partition_list = table->GetVersionedPartitions();
@@ -194,7 +197,8 @@ class PgClientServiceImpl::Impl {
       rpc::Scheduler* scheduler,
       const std::optional<XClusterContext>& xcluster_context,
       PgMutationCounter* pg_node_level_mutation_counter,
-      MetricEntity* metric_entity)
+      MetricEntity* metric_entity,
+      const std::shared_ptr<MemTracker>& parent_mem_tracker)
       : tablet_server_(tablet_server.get()),
         client_future_(client_future),
         clock_(clock),
@@ -203,7 +207,7 @@ class PgClientServiceImpl::Impl {
         check_expired_sessions_(scheduler),
         xcluster_context_(xcluster_context),
         pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
-        response_cache_(metric_entity),
+        response_cache_(parent_mem_tracker, metric_entity),
         instance_id_(Uuid::Generate()) {
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
   }
@@ -233,7 +237,7 @@ class PgClientServiceImpl::Impl {
       session->StartExchange(instance_id_);
     }
 
-    std::lock_guard<rw_spinlock> lock(mutex_);
+    std::lock_guard lock(mutex_);
     auto it = sessions_.insert(std::move(session)).first;
     session_expiration_queue_.push({(**it).expiration(), session_id});
     return Status::OK();
@@ -343,7 +347,8 @@ class PgClientServiceImpl::Impl {
       GetLockStatusRequestPB node_req;
       // GetLockStatusRequestPB supports providing multiple transaction ids, but postgres sends
       // only one transaction id in PgGetLockStatusRequestPB for now.
-      node_req.add_transaction_ids(req.transaction_id());
+      if (!req.transaction_id().empty())
+        node_req.add_transaction_ids(req.transaction_id());
       GetLockStatusResponsePB node_resp;
       controller.Reset();
       RETURN_NOT_OK(proxy->GetLockStatus(node_req, &node_resp, &controller));
@@ -479,6 +484,18 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status IsObjectPartOfXRepl(
+    const PgIsObjectPartOfXReplRequestPB& req, PgIsObjectPartOfXReplResponsePB* resp,
+    rpc::RpcContext* context) {
+    auto res = client().IsObjectPartOfXRepl(PgObjectId::GetYbTableIdFromPB(req.table_id()));
+    if (!res.ok()) {
+      StatusToPB(res.status(), resp->mutable_status());
+    } else {
+      resp->set_is_object_part_of_xrepl(*res);
+    }
+    return Status::OK();
+  }
+
   void Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
     auto status = DoPerform(req, resp, context);
     if (!status.ok()) {
@@ -488,6 +505,116 @@ class PgClientServiceImpl::Impl {
 
   void InvalidateTableCache() {
     table_cache_.InvalidateAll(CoarseMonoClock::Now());
+  }
+
+  // Return the TabletServer hosting the specified status tablet.
+  std::future<Result<RemoteTabletServerPtr>> GetTServerHostingStatusTablet(
+      const TabletId& status_tablet_id, CoarseTimePoint deadline) {
+
+    return MakeFuture<Result<RemoteTabletServerPtr>>([&](auto callback) {
+      client().LookupTabletById(
+          status_tablet_id, /* table =*/ nullptr, master::IncludeInactive::kFalse,
+          master::IncludeDeleted::kFalse, deadline,
+          [&, status_tablet_id, callback] (const auto& lookup_result) {
+            if (!lookup_result.ok()) {
+              return callback(lookup_result.status());
+            }
+
+            auto& remote_tablet = *lookup_result;
+            if (!remote_tablet) {
+              return callback(STATUS_FORMAT(
+                  InvalidArgument,
+                  Format("Status tablet with id: $0 not found", status_tablet_id)));
+            }
+
+            if (!remote_tablet->LeaderTServer()) {
+              return callback(STATUS_FORMAT(
+                  TryAgain, Format("Leader not found for tablet $0", status_tablet_id)));
+            }
+            const auto& permanent_uuid = remote_tablet->LeaderTServer()->permanent_uuid();
+            callback(client().GetRemoteTabletServer(permanent_uuid));
+          },
+          // Force a client cache refresh so as to not hit NOT_LEADER error.
+          client::UseCache::kFalse);
+    });
+  }
+
+  Result<std::vector<RemoteTabletServerPtr>> GetAllLiveTservers() {
+    std::vector<RemoteTabletServerPtr> remote_tservers;
+    std::vector<master::TSInformationPB> live_tservers;
+    RETURN_NOT_OK(tablet_server_.GetLiveTServers(&live_tservers));
+    for (const auto& live_ts : live_tservers) {
+      const auto& permanent_uuid = live_ts.tserver_instance().permanent_uuid();
+      remote_tservers.push_back(VERIFY_RESULT(client().GetRemoteTabletServer(permanent_uuid)));
+    }
+    return remote_tservers;
+  }
+
+  Status CancelTransaction(const PgCancelTransactionRequestPB& req,
+                           PgCancelTransactionResponsePB* resp,
+                           rpc::RpcContext* context) {
+    if (req.transaction_id().empty()) {
+      return STATUS_FORMAT(IllegalState,
+                           "Transaction Id not provided in PgCancelTransactionRequestPB");
+    }
+    tserver::CancelTransactionRequestPB node_req;
+    node_req.set_transaction_id(req.transaction_id());
+
+    std::vector<RemoteTabletServerPtr> remote_tservers;
+    if (req.status_tablet_id().empty()) {
+      remote_tservers = VERIFY_RESULT(GetAllLiveTservers());
+    } else {
+      const auto& remote_ts = VERIFY_RESULT(GetTServerHostingStatusTablet(
+          req.status_tablet_id(), context->GetClientDeadline()).get());
+      remote_tservers.push_back(remote_ts);
+      node_req.set_status_tablet_id(req.status_tablet_id());
+    }
+
+    std::vector<std::future<Status>> status_future;
+    std::vector<std::shared_ptr<tserver::CancelTransactionResponsePB>>
+        node_resp(remote_tservers.size(), std::make_shared<tserver::CancelTransactionResponsePB>());
+
+    for (size_t i = 0 ; i < remote_tservers.size() ; i++) {
+      const auto& proxy = remote_tservers[i]->proxy();
+      auto controller = std::make_shared<rpc::RpcController>();
+      status_future.push_back(
+          MakeFuture<Status>([&, controller](auto callback) {
+            proxy->CancelTransactionAsync(
+                node_req, node_resp[i].get(), controller.get(), [callback, controller] {
+              callback(controller->status());
+            });
+          }));
+    }
+
+    auto status = STATUS_FORMAT(NotFound, "Transaction not found.");
+    resp->Clear();
+    for (size_t i = 0 ; i < status_future.size() ; i++) {
+      const auto& s = status_future[i].get();
+      if (!s.ok()) {
+        LOG(WARNING) << "CancelTransaction request to TS failed with status: " << s;
+        continue;
+      }
+
+      if (node_resp[i]->has_error()) {
+        // Errors take precedence over TransactionStatus::ABORTED statuses. This needs to be done to
+        // correctly handle cancelation requests of promoted txns. Ignore all NotFound statuses as
+        // we collate them, collect all other error types.
+        const auto& status_from_pb = StatusFromPB(node_resp[i]->error().status());
+        if (status_from_pb.IsNotFound()) {
+          continue;
+        }
+        status = status_from_pb.CloneAndAppend("\n").CloneAndAppend(status.message());
+      }
+
+      // One of the TServers reported successfull cancelation of the transaction. Reset the status
+      // if we haven't seen any errors other than NOT_FOUND from the remaining TServers.
+      if (status.IsNotFound()) {
+        status = Status::OK();
+      }
+    }
+
+    StatusToPB(status, resp->mutable_status());
+    return Status::OK();
   }
 
   #define PG_CLIENT_SESSION_METHOD_FORWARD(r, data, method) \
@@ -542,7 +669,7 @@ class PgClientServiceImpl::Impl {
 
   void CheckExpiredSessions() {
     auto now = CoarseMonoClock::now();
-    std::lock_guard<rw_spinlock> lock(mutex_);
+    std::lock_guard lock(mutex_);
     while (!session_expiration_queue_.empty()) {
       auto& top = session_expiration_queue_.top();
       if (top.first > now) {
@@ -617,6 +744,7 @@ PgClientServiceImpl::PgClientServiceImpl(
     const std::shared_future<client::YBClient*>& client_future,
     const scoped_refptr<ClockBase>& clock,
     TransactionPoolProvider transaction_pool_provider,
+    const std::shared_ptr<MemTracker>& parent_mem_tracker,
     const scoped_refptr<MetricEntity>& entity,
     rpc::Scheduler* scheduler,
     const std::optional<XClusterContext>& xcluster_context,
@@ -624,7 +752,7 @@ PgClientServiceImpl::PgClientServiceImpl(
     : PgClientServiceIf(entity),
       impl_(new Impl(
           tablet_server, client_future, clock, std::move(transaction_pool_provider), scheduler,
-          xcluster_context, pg_node_level_mutation_counter, entity.get())) {}
+          xcluster_context, pg_node_level_mutation_counter, entity.get(), parent_mem_tracker)) {}
 
 PgClientServiceImpl::~PgClientServiceImpl() = default;
 

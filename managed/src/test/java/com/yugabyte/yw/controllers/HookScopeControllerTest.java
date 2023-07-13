@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertForbiddenWithException;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
@@ -237,7 +238,7 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
     Result result =
         assertPlatformException(
             () -> createHookScope(TriggerType.PreNodeProvision, null, null, defaultUser));
-    assertUnauthorized(result, "Only Super Admins can perform this operation.");
+    assertForbiddenWithException(result, "Only Super Admins can perform this operation.");
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
@@ -293,7 +294,7 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthToken("GET", baseRoute, defaultUser.createAuthToken()));
-    assertUnauthorized(result, "Only Super Admins can perform this operation.");
+    assertForbiddenWithException(result, "Only Super Admins can perform this operation.");
   }
 
   @Test
@@ -318,7 +319,7 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
     Result deleteResult =
         assertPlatformException(
             () -> doRequestWithAuthToken("DELETE", uri, defaultUser.createAuthToken()));
-    assertUnauthorized(deleteResult, "Only Super Admins can perform this operation.");
+    assertForbiddenWithException(deleteResult, "Only Super Admins can perform this operation.");
     assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
@@ -339,7 +340,7 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
     result =
         assertPlatformException(
             () -> doRequestWithAuthToken("POST", uri, defaultUser.createAuthToken()));
-    assertUnauthorized(result, "Only Super Admins can perform this operation.");
+    assertForbiddenWithException(result, "Only Super Admins can perform this operation.");
 
     // Attach the hook to the hook scope
     result = doRequestWithAuthToken("POST", uri, superAdminUser.createAuthToken());
@@ -354,7 +355,7 @@ public class HookScopeControllerTest extends PlatformGuiceApplicationBaseTest {
     result =
         assertPlatformException(
             () -> doRequestWithAuthToken("DELETE", uri, defaultUser.createAuthToken()));
-    assertUnauthorized(result, "Only Super Admins can perform this operation.");
+    assertForbiddenWithException(result, "Only Super Admins can perform this operation.");
 
     // Detach the hook from the hook scope
     result = doRequestWithAuthToken("DELETE", uri, superAdminUser.createAuthToken());

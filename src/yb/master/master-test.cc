@@ -104,7 +104,20 @@ class MasterTest : public MasterTestBase {
   string GetWebserverDir() { return GetTestPath("webserver-docroot"); }
 
   void TestRegisterDistBroadcastDupPrivate(string use_private_ip, bool only_check_used_host_port);
+
+  Result<TSHeartbeatResponsePB> SendHeartbeat(
+      TSToMasterCommonPB common, TSRegistrationPB registration);
 };
+
+Result<TSHeartbeatResponsePB> MasterTest::SendHeartbeat(
+    TSToMasterCommonPB common, TSRegistrationPB registration) {
+  TSHeartbeatRequestPB req;
+  TSHeartbeatResponsePB resp;
+  req.mutable_common()->Swap(&common);
+  req.mutable_registration()->Swap(&registration);
+  RETURN_NOT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
+  return resp;
+}
 
 TEST_F(MasterTest, TestPingServer) {
   // Ping the server.
@@ -119,6 +132,14 @@ TEST_F(MasterTest, TestPingServer) {
 static void MakeHostPortPB(const std::string& host, uint32_t port, HostPortPB* pb) {
   pb->set_host(host);
   pb->set_port(port);
+}
+
+CloudInfoPB MakeCloudInfoPB(std::string cloud, std::string region, std::string zone) {
+  CloudInfoPB result;
+  *result.mutable_placement_cloud() = std::move(cloud);
+  *result.mutable_placement_region() = std::move(region);
+  *result.mutable_placement_zone() = std::move(zone);
+  return result;
 }
 
 // Test that shutting down a MiniMaster without starting it does not
@@ -427,8 +448,59 @@ TEST_F(MasterTest, TestRegisterDistBroadcastDupPrivateUsePrivateIpRegionCheckAll
       /*use_private_ip*/ "region", /*only_check_used_host_port*/ false);
 }
 
+TEST_F(MasterTest, TestReRegisterRemovedUUID) {
+  // When a tserver's disk is wiped and the process restarted, the tserver comes back with a
+  // different uuid. If a quorum is broken by a majority of tservers failing in this way, one
+  // strategy to repair the quorum is to reset the wiped tservers with their original uuids.
+  // However this requires the master to re-register a tserver with a uuid it has seen before and
+  // rejected due to seeing a later sequence number from the same node. This test verifies the
+  // master process can handle re-registering tservers with uuids it has previously removed.
+  const std::string first_uuid = "uuid1";
+  const std::string second_uuid = "uuid2";
+  vector<shared_ptr<TSDescriptor>> descs;
+  int seqno = 1;
+  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  EXPECT_EQ(descs.size(), 0);
+  TSToMasterCommonPB original_common;
+  TSRegistrationPB registration;
+  original_common.mutable_ts_instance()->set_permanent_uuid(first_uuid);
+  original_common.mutable_ts_instance()->set_instance_seqno(seqno++);
+  MakeHostPortPB("localhost", 1000, registration.mutable_common()->add_private_rpc_addresses());
+  MakeHostPortPB("localhost", 1000, registration.mutable_common()->add_broadcast_addresses());
+  MakeHostPortPB("localhost", 2000, registration.mutable_common()->add_http_addresses());
+  *registration.mutable_common()->mutable_cloud_info() = MakeCloudInfoPB("cloud", "region", "zone");
+  auto resp = ASSERT_RESULT(SendHeartbeat(original_common, registration));
+  EXPECT_FALSE(resp.needs_reregister());
+
+  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  ASSERT_EQ(descs.size(), 1);
+  auto original_desc = descs[0];
+
+  auto new_common = original_common;
+  new_common.mutable_ts_instance()->set_permanent_uuid(second_uuid);
+  new_common.mutable_ts_instance()->set_instance_seqno(seqno++);
+  resp = ASSERT_RESULT(SendHeartbeat(new_common, registration));
+  EXPECT_FALSE(resp.needs_reregister());
+  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  // This function filters out descriptors of removed tservers so we still expect just 1 descriptor.
+  ASSERT_EQ(descs.size(), 1);
+  auto new_desc = descs[0];
+  EXPECT_EQ(new_desc->permanent_uuid(), second_uuid);
+  EXPECT_TRUE(original_desc->IsRemoved());
+
+  auto updated_original_common = original_common;
+  updated_original_common.mutable_ts_instance()->set_instance_seqno(seqno++);
+  resp = ASSERT_RESULT(SendHeartbeat(updated_original_common, registration));
+  EXPECT_FALSE(resp.needs_reregister());
+
+  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  ASSERT_EQ(descs.size(), 1);
+  EXPECT_EQ(descs[0]->permanent_uuid(), first_uuid);
+  EXPECT_TRUE(new_desc->IsRemoved());
+}
+
 TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
-  FLAGS_TEST_simulate_slow_table_create_secs = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_slow_table_create_secs) = 10;
 
   const char *kNamespaceName = "testnamespace";
   CreateNamespaceResponsePB resp;
@@ -436,7 +508,7 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
 
   auto task = [kNamespaceName, this]() {
     const char *kTableName = "testtable";
-    const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
+    const Schema kTableSchema({ ColumnSchema("key", DataType::INT32, ColumnKind::HASH) });
     shared_ptr<RpcController> controller;
     // Set an RPC timeout for the controllers.
     controller = make_shared<RpcController>();
@@ -472,7 +544,7 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
   t.join();
 
   {
-    FLAGS_TEST_return_error_if_namespace_not_found = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_return_error_if_namespace_not_found) = true;
     ListTablesRequestPB req;
     ListTablesResponsePB resp;
     ASSERT_OK(proxy_ddl_->ListTables(req, &resp, ResetAndGetController()));
@@ -482,7 +554,7 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
     ASSERT_TRUE(msg.find("Keyspace identifier not found") != string::npos);
 
     // After turning off this flag, ListTables should skip the table with the error.
-    FLAGS_TEST_return_error_if_namespace_not_found = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_return_error_if_namespace_not_found) = false;
     ASSERT_OK(proxy_ddl_->ListTables(req, &resp, ResetAndGetController()));
     LOG(INFO) << "Finished second ListTables request";
     ASSERT_FALSE(resp.has_error());
@@ -492,10 +564,10 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
 TEST_F(MasterTest, TestCatalog) {
   const char *kTableName = "testtb";
   const char *kOtherTableName = "tbtest";
-  const Schema kTableSchema({ ColumnSchema("key", INT32),
-                              ColumnSchema("v1", UINT64),
-                              ColumnSchema("v2", STRING) },
-                            1);
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+      ColumnSchema("v1", DataType::UINT64),
+      ColumnSchema("v2", DataType::STRING) });
 
   ASSERT_OK(CreateTable(kTableName, kTableSchema));
 
@@ -638,10 +710,12 @@ TEST_F(MasterTest, TestParentBasedTableToTabletMappingFlag) {
   const std::string kNewSchemaTableName = "newschema";
   const std::string kOldSchemaTableName = "oldschema";
   const Schema kTableSchema(
-      {ColumnSchema("key", INT32), ColumnSchema("v1", UINT64), ColumnSchema("v2", STRING)}, 1);
-  FLAGS_use_parent_table_id_field = true;
+      {ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+       ColumnSchema("v1", DataType::UINT64),
+       ColumnSchema("v2", DataType::STRING)});
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_parent_table_id_field) = true;
   ASSERT_OK(CreateTable(kNewSchemaTableName, kTableSchema));
-  FLAGS_use_parent_table_id_field = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_parent_table_id_field) = false;
   ASSERT_OK(CreateTable(kOldSchemaTableName, kTableSchema));
 
   auto tables = mini_master_->catalog_manager_impl().GetTables(GetTablesMode::kAll);
@@ -717,7 +791,8 @@ TEST_F(MasterTest, TestTablegroups) {
   TablegroupId kTablegroupId = GetPgsqlTablegroupId(12345, 67890);
   TableId      kTableId = GetPgsqlTableId(123455, 67891);
   const char*  kTableName = "test_table";
-  const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
   const NamespaceName ns_name = "test_tablegroup_ns";
 
   // Create a new namespace.
@@ -796,7 +871,7 @@ TEST_F(MasterTest, TestCreateTableInvalidSchema) {
   for (int i = 0; i < 2; i++) {
     ColumnSchemaPB* col = req.mutable_schema()->add_columns();
     col->set_name("col");
-    QLType::Create(INT32)->ToQLTypePB(col->mutable_type());
+    QLType::Create(DataType::INT32)->ToQLTypePB(col->mutable_type());
     col->set_is_key(true);
   }
 
@@ -811,7 +886,7 @@ TEST_F(MasterTest, TestCreateTableInvalidSchema) {
 // invalid.
 TEST_F(MasterTest, TestInvalidGetTableLocations) {
   const TableName kTableName = "test";
-  Schema schema({ ColumnSchema("key", INT32) }, 1);
+  Schema schema({ ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
   ASSERT_OK(CreateTable(kTableName, schema));
   {
     GetTableLocationsRequestPB req;
@@ -829,9 +904,114 @@ TEST_F(MasterTest, TestInvalidGetTableLocations) {
   }
 }
 
+// Test for DB-6087. Previously, GetTabletLocations was not looking at the tablespace overrides for
+// number of replicas. This test follows some change in logic to make sure we are using checking
+// the tablespace first before defaulting to cluster config.
+TEST_F(MasterTest, GetNumTabletReplicasChecksTablespace) {
+  const TableName kTableName = "test";
+  Schema schema({ ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
+  GetMasterClusterConfigRequestPB config_req;
+  GetMasterClusterConfigResponsePB config_resp;
+  ASSERT_OK(
+      proxy_cluster_->GetMasterClusterConfig(config_req, &config_resp, ResetAndGetController()));
+  ASSERT_FALSE(config_resp.has_error());
+  ASSERT_TRUE(config_resp.has_cluster_config());
+  auto cluster_config = config_resp.cluster_config();
+  auto replication_info = cluster_config.mutable_replication_info();
+
+  // update replication info
+  int kNumClusterLiveReplicas = 5;
+  auto* live_replicas = replication_info->mutable_live_replicas();
+  live_replicas->set_num_replicas(kNumClusterLiveReplicas);
+  UpdateMasterClusterConfig(&cluster_config);
+
+  // set tablespace replication info to be different than cluster config
+  int kNumTableLiveReplicas = 2;
+  CreateTableRequestPB req;
+  live_replicas = req.mutable_replication_info()->mutable_live_replicas();
+  live_replicas->set_num_replicas(kNumTableLiveReplicas);
+  ASSERT_OK(DoCreateTable(kTableName, schema, &req));
+
+  TableId table_id;
+  {
+    ListTablesResponsePB tables;
+    ASSERT_NO_FATALS(DoListAllTables(&tables));
+    ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
+    for (auto& t : *tables.mutable_tables()) {
+      if (t.name().compare(kTableName) == 0) {
+        table_id = t.id();
+      }
+    }
+  }
+
+  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  auto table = mini_master_->catalog_manager_impl().GetTableInfo(table_id);
+  int num_live_replicas = 0, num_read_replicas = 0;
+  mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTable(
+      table, &num_live_replicas, &num_read_replicas);
+  ASSERT_EQ(num_live_replicas + num_read_replicas, kNumTableLiveReplicas);
+
+  for (auto& tablet : table->GetTablets()) {
+    num_live_replicas = 0, num_read_replicas = 0;
+    ASSERT_OK(mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTablet(
+        tablet->id(), &num_live_replicas, &num_read_replicas));
+    ASSERT_EQ(num_live_replicas + num_read_replicas, kNumTableLiveReplicas);
+  }
+}
+
+// Test for DB-6087. This case ensures the tablespace RF defaults to cluster RF when there are no
+// table level overrides.
+TEST_F(MasterTest, GetNumTabletReplicasDefaultsToClusterConfig) {
+  const TableName kTableName = "test";
+  Schema schema({ ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
+  GetMasterClusterConfigRequestPB config_req;
+  GetMasterClusterConfigResponsePB config_resp;
+  ASSERT_OK(
+      proxy_cluster_->GetMasterClusterConfig(config_req, &config_resp, ResetAndGetController()));
+  ASSERT_FALSE(config_resp.has_error());
+  ASSERT_TRUE(config_resp.has_cluster_config());
+  auto cluster_config = config_resp.cluster_config();
+  auto replication_info = cluster_config.mutable_replication_info();
+
+  // update replication info
+  int kNumClusterLiveReplicas = 5;
+  auto* live_replicas = replication_info->mutable_live_replicas();
+  live_replicas->set_num_replicas(kNumClusterLiveReplicas);
+  UpdateMasterClusterConfig(&cluster_config);
+
+  CreateTableRequestPB req;
+  ASSERT_OK(DoCreateTable(kTableName, schema, &req));
+
+  TableId table_id;
+  {
+    ListTablesResponsePB tables;
+    ASSERT_NO_FATALS(DoListAllTables(&tables));
+    ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
+    for (auto& t : *tables.mutable_tables()) {
+      if (t.name().compare(kTableName) == 0) {
+        table_id = t.id();
+      }
+    }
+  }
+
+  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  auto table = mini_master_->catalog_manager_impl().GetTableInfo(table_id);
+  int num_live_replicas = 0, num_read_replicas = 0;
+  mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTable(
+      table, &num_live_replicas, &num_read_replicas);
+  ASSERT_EQ(num_live_replicas + num_read_replicas, kNumClusterLiveReplicas);
+
+  for (auto& tablet : table->GetTablets()) {
+    num_live_replicas = 0, num_read_replicas = 0;
+    ASSERT_OK(mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTablet(
+        tablet->id(), &num_live_replicas, &num_read_replicas));
+    ASSERT_EQ(num_live_replicas + num_read_replicas, kNumClusterLiveReplicas);
+  }
+}
+
 TEST_F(MasterTest, TestInvalidPlacementInfo) {
   const TableName kTableName = "test";
-  Schema schema({ColumnSchema("key", INT32)}, 1);
+  Schema schema({ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST)});
   GetMasterClusterConfigRequestPB config_req;
   GetMasterClusterConfigResponsePB config_resp;
   ASSERT_OK(proxy_cluster_->GetMasterClusterConfig(
@@ -1112,7 +1292,8 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
   // Create a table.
   const TableName kTableName = "testtb";
   const TableName kTableNamePgsql = "testtb_pgsql";
-  const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
 
   ASSERT_OK(CreateTable(other_ns_name, kTableName, kTableSchema));
   ASSERT_OK(CreatePgsqlTable(other_ns_pgsql_id, kTableNamePgsql + "_1", kTableSchema));
@@ -1253,7 +1434,8 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
 
 TEST_F(MasterTest, TestTablesWithNamespace) {
   const TableName kTableName = "testtb";
-  const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
   ListTablesResponsePB tables;
 
   // Create a table with default namespace.
@@ -1461,7 +1643,8 @@ TEST_F(MasterTest, TestNamespaceCreateStates) {
 
   // Test that Basic Access is not allowed to a Namespace while INITIALIZING.
   // 1. CANNOT Create a Table on the namespace.
-  const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
   ASSERT_NOK(CreatePgsqlTable(nsid, "test_table", kTableSchema));
   // 2. CANNOT Alter the namespace.
   {
@@ -1626,7 +1809,7 @@ TEST_P(LoopedMasterTest, TestNamespaceCreateSysCatalogFailure) {
   while (failures < loops) {
     // Inject Frequent failures into sys catalog commit.
     // The below code should eventually succeed but require a lot of restarts.
-    FLAGS_TEST_sys_catalog_write_rejection_percentage = 50;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sys_catalog_write_rejection_percentage) = 50;
 
     // CreateNamespace : Inject IO Errors.
     LOG(INFO) << "Iteration " << ++iter;
@@ -1637,7 +1820,7 @@ TEST_P(LoopedMasterTest, TestNamespaceCreateSysCatalogFailure) {
     }
 
     // Turn off random failures.
-    FLAGS_TEST_sys_catalog_write_rejection_percentage = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sys_catalog_write_rejection_percentage) = 0;
 
     // Internal search of CatalogManager should reveal whether it was partially created.
     std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
@@ -1690,7 +1873,7 @@ TEST_P(LoopedMasterTest, TestNamespaceDeleteSysCatalogFailure) {
     nsid = resp.id();
 
     // The below code should eventually succeed but require a lot of restarts.
-    FLAGS_TEST_sys_catalog_write_rejection_percentage = 50;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sys_catalog_write_rejection_percentage) = 50;
 
     // DeleteNamespace : Inject IO Errors.
     LOG(INFO) << "Iteration " << ++iter;
@@ -1711,7 +1894,7 @@ TEST_P(LoopedMasterTest, TestNamespaceDeleteSysCatalogFailure) {
     }
 
     // Turn off random failures.
-    FLAGS_TEST_sys_catalog_write_rejection_percentage = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sys_catalog_write_rejection_percentage) = 0;
 
     if (delete_failed) {
       ++failures;
@@ -1728,7 +1911,8 @@ TEST_P(LoopedMasterTest, TestNamespaceDeleteSysCatalogFailure) {
 
 TEST_F(MasterTest, TestFullTableName) {
   const TableName kTableName = "testtb";
-  const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
   ListTablesResponsePB tables;
 
   // Create a table with the default namespace.
@@ -1900,7 +2084,8 @@ TEST_F(MasterTest, TestGetTableSchema) {
 
   // Create a table with the defined new namespace.
   const TableName kTableName = "testtb";
-  const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
   ASSERT_OK(CreateTable(other_ns_name, kTableName, kTableSchema));
 
   ListTablesResponsePB tables;
@@ -2006,10 +2191,10 @@ TEST_F(MasterTest, TestNetworkErrorOnFirstRun) {
   TearDown();
   mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master-test"),
                                     AllocateFreePort(), AllocateFreePort(), 0));
-  FLAGS_TEST_simulate_port_conflict_error = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_port_conflict_error) = true;
   ASSERT_NOK(mini_master_->Start());
   // Instance file should be properly initialized, but consensus metadata is not initialized.
-  FLAGS_TEST_simulate_port_conflict_error = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_port_conflict_error) = false;
   // Restarting master should succeed.
   ASSERT_OK(mini_master_->Start());
 }
@@ -2091,10 +2276,10 @@ void GetTableSchema(const char* table_name,
 // test ensures that bug does not regress.
 TEST_F(MasterTest, TestGetTableSchemaIsAtomicWithCreateTable) {
   const char *kTableName = "testtb";
-  const Schema kTableSchema({ ColumnSchema("key", INT32),
-                              ColumnSchema("v1", UINT64),
-                              ColumnSchema("v2", STRING) },
-                            1);
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+      ColumnSchema("v1", DataType::UINT64),
+      ColumnSchema("v2", DataType::STRING) });
 
   CountDownLatch started(1);
   AtomicBool done(false);

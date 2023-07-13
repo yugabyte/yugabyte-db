@@ -69,6 +69,9 @@ public class Audit extends Model {
     @EnumValue("Certificate")
     Certificate,
 
+    @EnumValue("CustomCACertificate")
+    CustomCACertificate,
+
     @EnumValue("Alert")
     Alert,
 
@@ -160,7 +163,10 @@ public class Audit extends Model {
     PerformanceAdvisorSettings,
 
     @EnumValue("PerformanceAdvisorRun")
-    PerformanceAdvisorRun
+    PerformanceAdvisorRun,
+
+    @EnumValue("Role")
+    Role
   }
 
   public enum ActionType {

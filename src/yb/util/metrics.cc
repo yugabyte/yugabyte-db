@@ -143,6 +143,20 @@ const char* MetricType::Name(MetricType::Type type) {
   }
 }
 
+// For prometheus # TYPE.
+const char* MetricType::PrometheusType(MetricType::Type type) {
+  switch (type) {
+    case kGauge: case kLag:
+      return kGaugeType;
+    case kCounter:
+      return kCounterType;
+    default:
+      LOG(DFATAL) << Format("$0 type can't be exported to prometheus # TYPE",
+          Name(type));
+      return "UNKNOWN TYPE";
+  }
+}
+
 namespace {
 
 const char* MetricLevelName(MetricLevel level) {
@@ -184,7 +198,7 @@ Status MetricRegistry::WriteAsJson(JsonWriter* writer,
                                    const MetricJsonOptions& opts) const {
   EntityMap entities;
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     entities = entities_;
   }
 
@@ -214,7 +228,7 @@ Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
                                           const MetricPrometheusOptions& opts) const {
   EntityMap entities;
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     entities = entities_;
   }
 
@@ -242,7 +256,7 @@ Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
 void MetricRegistry::get_all_prototypes(std::set<std::string>& prototypes) const {
   EntityMap entities;
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     entities = entities_;
   }
   for (const EntityMap::value_type& e : entities) {
@@ -251,7 +265,7 @@ void MetricRegistry::get_all_prototypes(std::set<std::string>& prototypes) const
 }
 
 void MetricRegistry::RetireOldMetrics() {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   for (auto it = entities_.begin(); it != entities_.end();) {
     it->second->RetireOldMetrics();
 
@@ -314,7 +328,7 @@ scoped_refptr<MetricEntity> MetricRegistry::FindOrCreateEntity(
     const MetricEntityPrototype* prototype,
     const std::string& id,
     const MetricEntity::AttributeMap& initial_attributes) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   scoped_refptr<MetricEntity> e = FindPtrOrNull(entities_, id);
   if (!e) {
     e = new MetricEntity(prototype, id, initial_attributes);
@@ -369,12 +383,12 @@ StringGauge::StringGauge(const GaugePrototype<string>* proto,
     : Gauge(proto), value_(std::move(initial_value)) {}
 
 std::string StringGauge::value() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   return value_;
 }
 
 void StringGauge::set_value(const std::string& value) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   value_ = value;
 }
 
@@ -447,7 +461,9 @@ Status Counter::WriteForPrometheus(
   }
 
   return writer->WriteSingleEntry(attr, prototype_->name(), value(),
-                                  prototype()->aggregation_function());
+                                  prototype()->aggregation_function(),
+                                  MetricType::PrometheusType(prototype_->type()),
+                                  prototype_->description());
 }
 
 //
@@ -489,7 +505,9 @@ Status MillisLag::WriteForPrometheus(
   }
 
   return writer->WriteSingleEntry(attr, prototype_->name(), lag_ms(),
-                                  prototype()->aggregation_function());
+                                  prototype()->aggregation_function(),
+                                  MetricType::PrometheusType(prototype_->type()),
+                                  prototype_->description());
 }
 
 AtomicMillisLag::AtomicMillisLag(const MillisLagPrototype* proto)
@@ -596,38 +614,52 @@ Status Histogram::WriteForPrometheus(
 
   // Representing the sum and count require suffixed names.
   std::string hist_name = prototype_->name();
+  const char* description = prototype_->description();
+  const char* counter_type = MetricType::PrometheusType(MetricType::kCounter);
   auto copy_of_attr = attr;
+  // For #HELP and #TYPE, we need to print them for each entry, since our
+  // histogram doesn't really get exported as histograms.
   RETURN_NOT_OK(writer->WriteSingleEntry(
         copy_of_attr, hist_name + "_sum", snapshot.TotalSum(),
-        prototype()->aggregation_function()));
+        prototype()->aggregation_function(), counter_type, description));
   RETURN_NOT_OK(writer->WriteSingleEntry(
         copy_of_attr, hist_name + "_count", snapshot.TotalCount(),
-        prototype()->aggregation_function()));
+        prototype()->aggregation_function(), counter_type, description));
 
   // Copy the label map to add the quatiles.
   if (export_percentiles_ && FLAGS_expose_metric_histogram_percentiles) {
+    const char* gauge_type = MetricType::PrometheusType(MetricType::kGauge);
     copy_of_attr["quantile"] = "p50";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
                                            snapshot.ValueAtPercentile(50),
-                                           prototype()->aggregation_function()));
+                                           prototype()->aggregation_function(),
+                                           gauge_type, description));
     copy_of_attr["quantile"] = "p95";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
                                            snapshot.ValueAtPercentile(95),
-                                           prototype()->aggregation_function()));
+                                           prototype()->aggregation_function(),
+                                           gauge_type, description));
     copy_of_attr["quantile"] = "p99";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
                                            snapshot.ValueAtPercentile(99),
-                                           prototype()->aggregation_function()));
+                                           prototype()->aggregation_function(),
+                                           gauge_type, description));
     copy_of_attr["quantile"] = "mean";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
                                            snapshot.MeanValue(),
-                                           prototype()->aggregation_function()));
+                                           prototype()->aggregation_function(),
+                                           gauge_type, description));
     copy_of_attr["quantile"] = "max";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
                                            snapshot.MaxValue(),
-                                           prototype()->aggregation_function()));
+                                           prototype()->aggregation_function(),
+                                           gauge_type, description));
   }
   return Status::OK();
+}
+
+void Histogram::Reset() const {
+  histogram_->ResetPercentiles();
 }
 
 Status Histogram::GetAndResetHistogramSnapshotPB(HistogramSnapshotPB* snapshot_pb,
@@ -639,7 +671,7 @@ Status Histogram::GetAndResetHistogramSnapshotPB(HistogramSnapshotPB* snapshot_p
   // the histogram's percentiles between each invocation. User also has the
   // option to set the url parameter reset_histograms=false
   if (opts.reset_histograms) {
-    histogram_->ResetPercentiles();
+    Reset();
   }
 
   snapshot_pb->set_name(prototype_->name());

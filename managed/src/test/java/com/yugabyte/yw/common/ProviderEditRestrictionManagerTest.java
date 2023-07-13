@@ -13,6 +13,7 @@ import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.upgrade.ThirdpartySoftwareUpgrade;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
@@ -41,7 +42,6 @@ public class ProviderEditRestrictionManagerTest extends CommissionerBaseTest {
   private static final int TIMEOUT_MILLIS = 500;
 
   private ProviderEditRestrictionManager providerEditRestrictionManager;
-  private Config mockConfig;
   private boolean isEnabled = true;
   private Multimap<UUID, UUID> useProviderIdsByTaskId = ArrayListMultimap.create();
   private Map<UUID, UUID> editProviderIdByTaskId = new HashMap<>();
@@ -63,7 +63,8 @@ public class ProviderEditRestrictionManagerTest extends CommissionerBaseTest {
     builder = super.configureApplication(builder);
     ProviderEditRestrictionManager manager =
         new ProviderEditRestrictionManager(
-            new DummyRuntimeConfigFactoryImpl(Mockito.mock(Config.class))) {
+            new RuntimeConfGetter(
+                new DummyRuntimeConfigFactoryImpl(Mockito.mock(Config.class)), null)) {
           @Override
           protected long getLockTimeoutMillis() {
             return TIMEOUT_MILLIS;

@@ -48,7 +48,14 @@ func (c *Container) GetConnectionFromMap(host string) (*pgxpool.Pool, error) {
     if exists {
         return conn, nil
     }
-    conn, err := helpers.CreatePgClient(c.logger, host)
+    pgConnectionParams := helpers.PgClientConnectionParams {
+        User:     helpers.DbYsqlUser,
+        Password: helpers.DbPassword,
+        Host:     host,
+        Port:     helpers.PORT,
+        Database: helpers.DbName,
+    }
+    conn, err := helpers.CreatePgClient(c.logger, pgConnectionParams)
     if err != nil {
         c.logger.Errorf("Error initializing the pgx client.")
         return conn, err

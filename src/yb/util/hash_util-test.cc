@@ -116,7 +116,7 @@ TEST(HashUtilTest, PgSocketDerivationWithCustomPath) {
 
   // Smallest flag path.
   {
-    FLAGS_tmp_dir = "/";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tmp_dir) = "/";
 
     // Largest possible host without trimming.
     // tmp path len = 1, hostname len = 80, port len = 5.
@@ -140,7 +140,8 @@ TEST(HashUtilTest, PgSocketDerivationWithCustomPath) {
 
   // Largest flag path that doesn't involve fallback to /tmp.
   {
-    FLAGS_tmp_dir = "/aaaaa/bbb/ccc/dddddddddddddddddddddddddddddddddddddddddd/ee";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tmp_dir) =
+        "/aaaaa/bbb/ccc/dddddddddddddddddddddddddddddddddddddddddd/ee";
 
     constexpr auto largest_hostname_without_trimming = "aaaaaaaaa.bbbbbbbbb.c";
     // tmp path len = 60, hostname len = 21, port len = 5.
@@ -158,7 +159,8 @@ TEST(HashUtilTest, PgSocketDerivationWithCustomPath) {
 
   // Smallest flag path which involves fallback to /tmp.
   {
-    FLAGS_tmp_dir = "/aaaaa/bbb/ccc/dddddddddddddddddddddddddddddddddddddddddd/eee";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tmp_dir) =
+        "/aaaaa/bbb/ccc/dddddddddddddddddddddddddddddddddddddddddd/eee";
     constexpr auto fallback_tmp_path = "/tmp";
 
     // Largest possible host without trimming.

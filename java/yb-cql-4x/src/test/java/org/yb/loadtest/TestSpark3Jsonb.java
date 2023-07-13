@@ -37,14 +37,14 @@ import java.util.stream.Collectors;
 
 import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.MiniYBClusterBuilder;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import com.datastax.oss.driver.api.core.CqlSession;
 import com.datastax.oss.driver.api.core.cql.ResultSet;
 import com.datastax.spark.connector.cql.CassandraConnector;
 import com.datastax.spark.connector.CassandraSparkExtensions;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestSpark3Jsonb extends BaseMiniClusterTest {
 
   private Logger logger = LoggerFactory.getLogger(TestSpark3Jsonb.class);

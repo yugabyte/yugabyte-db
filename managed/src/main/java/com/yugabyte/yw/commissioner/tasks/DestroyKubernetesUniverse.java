@@ -73,7 +73,8 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
           lockedXClusterUniversesUuidSet,
           Stream.of(universe.getUniverseUUID()).collect(Collectors.toSet()),
           xClusterUniverseService,
-          new HashSet<>() /* excludeXClusterConfigSet */);
+          new HashSet<>() /* excludeXClusterConfigSet */,
+          params().isForceDelete);
 
       preTaskActions();
 
@@ -240,6 +241,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
     params.providerUUID = providerUUID;
     params.isReadOnlyCluster = isReadOnlyCluster;
     params.universeName = universeName;
+    params.azCode = az;
     params.helmReleaseName =
         KubernetesUtil.getHelmReleaseName(
             nodePrefix, universeName, az, isReadOnlyCluster, newNamingStyle);

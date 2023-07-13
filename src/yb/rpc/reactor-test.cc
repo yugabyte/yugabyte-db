@@ -87,10 +87,10 @@ class ReactorTest : public RpcTestBase {
 TEST_F_EX(ReactorTest, MessengerInitFailure, YBTest) {
   MessengerBuilder builder("test-msgr");
   // Test Reactor::Init failure in very first Messenger's reactor
-  FLAGS_TEST_rpc_reactor_index_for_init_failure_simulation = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_rpc_reactor_index_for_init_failure_simulation) = 0;
   ASSERT_NOK(builder.Build());
   // Test Reactor::Init failure in second Messenger's reactor
-  FLAGS_TEST_rpc_reactor_index_for_init_failure_simulation = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_rpc_reactor_index_for_init_failure_simulation) = 1;
   ASSERT_NOK(builder.Build());
 }
 

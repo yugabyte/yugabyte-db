@@ -45,10 +45,14 @@ import {
   getFeatureState
 } from '../../../utils/LayoutUtils';
 import { SecurityMenu } from '../SecurityModal/SecurityMenu';
+import { DBSettingsMenu } from '../DBSettingsModal/DBSettingsMenu';
 import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup';
 import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportBundle';
 import { XClusterReplication } from '../../xcluster/XClusterReplication';
 import { EncryptionAtRest } from '../../../redesign/features/universe/universe-actions/encryption-at-rest/EncryptionAtRest';
+import { EnableYSQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYSQLModal';
+import { EnableYCQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYCQLModal';
+import { EditGflagsModal } from '../../../redesign/features/universe/universe-actions/edit-gflags/EditGflags';
 import './UniverseDetail.scss';
 
 const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d', 'c6gd'];
@@ -60,6 +64,7 @@ export const isEphemeralAwsStorageInstance = (instanceType) => {
 class UniverseDetail extends Component {
   constructor(props) {
     super(props);
+
     this.showUpgradeMarker = this.showUpgradeMarker.bind(this);
     this.onEditUniverseButtonClick = this.onEditUniverseButtonClick.bind(this);
     this.state = {
@@ -82,6 +87,16 @@ class UniverseDetail extends Component {
   isNewUIEnabled = () => {
     const { featureFlags } = this.props;
     return featureFlags.test.enableNewUI || featureFlags.released.enableNewUI;
+  };
+
+  isRRFlagsEnabled = () => {
+    const { featureFlags } = this.props;
+    return featureFlags.test.enableRRGflags || featureFlags.released.enableRRGflags;
+  };
+
+  isEditDBSettingsEnabled = () => {
+    const { featureFlags } = this.props;
+    return featureFlags.test.enableEditDBSettings || featureFlags.released.enableEditDBSettings;
   };
 
   componentDidMount() {
@@ -232,11 +247,14 @@ class UniverseDetail extends Component {
       showRunSampleAppsModal,
       showSupportBundleModal,
       showGFlagsModal,
+      showGFlagsNewModal,
       showHelmOverridesModal,
       showManageKeyModal,
       showDeleteUniverseModal,
       showToggleUniverseStateModal,
       showToggleBackupModal,
+      showEnableYSQLModal,
+      showEnableYCQLModal,
       updateBackupState,
       closeModal,
       customer,
@@ -498,6 +516,8 @@ class UniverseDetail extends Component {
                   universe={universe}
                   currentCustomer={currentCustomer}
                   currentUser={currentUser}
+                  closeModal={closeModal}
+                  visibleModal={visibleModal}
                 />
               </Tab.Pane>
             )
@@ -660,10 +680,22 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         )}
 
-                      {!universePaused && (
+                      {!universePaused && (!this.isRRFlagsEnabled() || isItKubernetesUniverse) && (
                         <YBMenuItem
                           disabled={updateInProgress}
                           onClick={showGFlagsModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.editGFlags'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-flag fa-fw">Edit Flags</YBLabelWithIcon>
+                        </YBMenuItem>
+                      )}
+                      {!universePaused && this.isRRFlagsEnabled() && !isItKubernetesUniverse && (
+                        <YBMenuItem
+                          disabled={updateInProgress}
+                          onClick={showGFlagsNewModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
                             'universes.details.overview.editGFlags'
@@ -694,7 +726,19 @@ class UniverseDetail extends Component {
                           </span>
                         </YBMenuItem>
                       )}
-
+                      {!universePaused && this.isEditDBSettingsEnabled() && (
+                        <YBMenuItem
+                          disabled={updateInProgress}
+                          onClick={() => showSubmenu('dbSettings')}
+                        >
+                          <YBLabelWithIcon icon="fa fa-database fa-fw">
+                            Edit YSQL/YCQL Settings
+                          </YBLabelWithIcon>
+                          <span className="pull-right">
+                            <i className="fa fa-chevron-right submenu-icon" />
+                          </span>
+                        </YBMenuItem>
+                      )}
                       {!universePaused && (
                         <YBMenuItem
                           disabled={updateInProgress}
@@ -759,10 +803,7 @@ class UniverseDetail extends Component {
                               modal={modal}
                               closeModal={closeModal}
                               button={
-                                <YBMenuItem
-                                  disabled={updateInProgress}
-                                  onClick={showSupportBundleModal}
-                                >
+                                <YBMenuItem onClick={showSupportBundleModal}>
                                   <YBLabelWithIcon icon="fa fa-file-archive-o">
                                     Support Bundles
                                   </YBLabelWithIcon>
@@ -854,6 +895,15 @@ class UniverseDetail extends Component {
                           manageKeyAvailability={manageKeyAvailability}
                         />
                       </>
+                    ),
+                    dbSettings: (backToMainMenu) => (
+                      <>
+                        <DBSettingsMenu
+                          backToMainMenu={backToMainMenu}
+                          showEnableYSQLModal={showEnableYSQLModal}
+                          showEnableYCQLModal={showEnableYCQLModal}
+                        />
+                      </>
                     )
                   }}
                 />
@@ -874,6 +924,16 @@ class UniverseDetail extends Component {
           }
           onHide={closeModal}
         />
+        <EditGflagsModal
+          open={showModal && visibleModal === 'gFlagsNewModal'}
+          onClose={() => {
+            closeModal();
+            this.props.fetchCustomerTasks();
+            this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+          }}
+          universeData={currentUniverse.data}
+        />
+
         <DeleteUniverseContainer
           visible={showModal && visibleModal === 'deleteUniverseModal'}
           onHide={closeModal}
@@ -915,6 +975,25 @@ class UniverseDetail extends Component {
             uuid={currentUniverse.data.universeUUID}
           />
         )}
+
+        <EnableYSQLModal
+          open={showModal && visibleModal === 'enableYSQLModal'}
+          onClose={() => {
+            closeModal();
+            this.props.fetchCustomerTasks();
+            this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+          }}
+          universeData={currentUniverse.data}
+        />
+        <EnableYCQLModal
+          open={showModal && visibleModal === 'enableYCQLModal'}
+          onClose={() => {
+            closeModal();
+            this.props.fetchCustomerTasks();
+            this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+          }}
+          universeData={currentUniverse.data}
+        />
 
         <Measure onMeasure={this.onResize.bind(this)}>
           <YBTabsWithLinksPanel

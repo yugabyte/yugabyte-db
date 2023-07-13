@@ -23,7 +23,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.io.File;
@@ -82,6 +81,7 @@ public class ReleaseManager {
   private final GCPUtil gcpUtil;
   private final RuntimeConfGetter confGetter;
   private final Environment environment;
+  private final CloudUtilFactory cloudUtilFactory;
 
   @Inject
   public ReleaseManager(
@@ -92,7 +92,8 @@ public class ReleaseManager {
       AWSUtil awsUtil,
       GCPUtil gcpUtil,
       RuntimeConfGetter confGetter,
-      Environment environment) {
+      Environment environment,
+      CloudUtilFactory cloudUtilFactory) {
     this.configHelper = configHelper;
     this.appConfig = appConfig;
     this.gFlagsValidation = gFlagsValidation;
@@ -101,6 +102,7 @@ public class ReleaseManager {
     this.gcpUtil = gcpUtil;
     this.confGetter = confGetter;
     this.environment = environment;
+    this.cloudUtilFactory = cloudUtilFactory;
   }
 
   public enum ReleaseState {
@@ -982,20 +984,9 @@ public class ReleaseManager {
       List<String> missingGFlagsFilesList = gFlagsValidation.getMissingGFlagFileList(version);
       if (missingGFlagsFilesList.size() != 0) {
         String releasesPath = appConfig.getString(Util.YB_RELEASES_PATH);
-        if (releaseMetadata.hasLocalRelease()) {
-          try (InputStream inputStream = getTarGZipDBPackageInputStream(version, releaseMetadata)) {
-            gFlagsValidation.fetchGFlagFilesFromTarGZipInputStream(
-                inputStream, version, missingGFlagsFilesList, releasesPath);
-          }
-          log.info("Successfully added gFlags metadata for version: {}", version);
-        } else {
-          AddGFlagMetadata.Params taskParams = new AddGFlagMetadata.Params();
-          taskParams.version = version;
-          taskParams.releaseMetadata = releaseMetadata;
-          taskParams.requiredGFlagsFileList = missingGFlagsFilesList;
-          taskParams.releasesPath = releasesPath;
-          commissioner.submit(TaskType.AddGFlagMetadata, taskParams);
-        }
+        AddGFlagMetadata.fetchGFlagFiles(
+            releaseMetadata, missingGFlagsFilesList, version, releasesPath, this, gFlagsValidation);
+        log.info("Successfully added gFlags metadata for version: {}", version);
       } else {
         log.warn("Skipping gFlags metadata addition as all files are already present");
       }
@@ -1010,12 +1001,14 @@ public class ReleaseManager {
       CustomerConfigStorageS3Data configData = new CustomerConfigStorageS3Data();
       configData.awsAccessKeyId = releaseMetadata.s3.getAccessKeyId();
       configData.awsSecretAccessKey = releaseMetadata.s3.secretAccessKey;
-      return CloudUtil.getCloudUtil(Util.S3)
+      return cloudUtilFactory
+          .getCloudUtil(Util.S3)
           .getCloudFileInputStream(configData, releaseMetadata.s3.paths.getX86_64());
     } else if (releaseMetadata.gcs != null) {
       CustomerConfigStorageGCSData configData = new CustomerConfigStorageGCSData();
       configData.gcsCredentialsJson = releaseMetadata.gcs.credentialsJson;
-      return CloudUtil.getCloudUtil(Util.GCS)
+      return cloudUtilFactory
+          .getCloudUtil(Util.GCS)
           .getCloudFileInputStream(configData, releaseMetadata.gcs.paths.getX86_64());
     } else if (releaseMetadata.http != null) {
       return new URL(releaseMetadata.http.getPaths().getX86_64()).openStream();

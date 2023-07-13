@@ -18,7 +18,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
-import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -96,11 +95,15 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
         }
       }
 
+      // Make sure clock skew is low enough on the master nodes.
+      createWaitForClockSyncTasks(universe, masterNodeList)
+          .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+
       createStartMasterProcessTasks(masterNodeList);
 
-      if (EncryptionAtRestUtil.getNumUniverseKeys(universe.getUniverseUUID()) > 0) {
-        createSetActiveUniverseKeysTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      }
+      // Make sure clock skew is low enough on the tserver nodes.
+      createWaitForClockSyncTasks(universe, tserverNodeList)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
       createStartTServerTasks(tserverNodeList)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);

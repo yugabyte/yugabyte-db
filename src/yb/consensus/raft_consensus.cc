@@ -152,6 +152,9 @@ DEFINE_test_flag(int32, inject_delay_leader_change_role_append_secs, 0,
 DEFINE_test_flag(double, return_error_on_change_config, 0.0,
                  "Fraction of the time when ChangeConfig will return an error.");
 
+DEFINE_test_flag(bool, pause_before_replicate_batch, false,
+                 "Whether to pause before doing DoReplicateBatch.");
+
 METRIC_DEFINE_counter(tablet, follower_memory_pressure_rejections,
                       "Follower Memory Pressure Rejections",
                       yb::MetricUnit::kRequests,
@@ -290,8 +293,8 @@ class NonTrackedRoundCallback : public ConsensusRoundCallback {
 
   void ReplicationFinished(
       const Status& status, int64_t leader_term, OpIds* applied_op_ids) override {
-    down_cast<RaftConsensus*>(round_->consensus())->NonTrackedRoundReplicationFinished(
-        round_, callback_, status);
+    down_cast<RaftConsensus*>(round_->consensus())
+        ->NonTrackedRoundReplicationFinished(round_, callback_, status);
   }
 
  private:
@@ -334,7 +337,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
     ThreadPool* raft_pool,
-    RetryableRequests* retryable_requests,
+    RetryableRequestsManager* retryable_requests_manager,
     MultiRaftManager* multi_raft_manager) {
 
   auto rpc_factory = std::make_unique<RpcPeerProxyFactory>(
@@ -389,7 +392,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
       parent_mem_tracker,
       mark_dirty_clbk,
       table_type,
-      retryable_requests);
+      retryable_requests_manager);
 }
 
 RaftConsensus::RaftConsensus(
@@ -405,7 +408,7 @@ RaftConsensus::RaftConsensus(
     shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
-    RetryableRequests* retryable_requests)
+    RetryableRequestsManager* retryable_requests_manager)
     : raft_pool_token_(std::move(raft_pool_token)),
       log_(log),
       clock_(clock),
@@ -444,7 +447,7 @@ RaftConsensus::RaftConsensus(
       std::move(cmeta),
       DCHECK_NOTNULL(consensus_context),
       this,
-      retryable_requests,
+      retryable_requests_manager,
       std::bind(&PeerMessageQueue::TrackOperationsMemory, queue_.get(), _1));
 
   peer_manager_->SetConsensus(this);
@@ -1106,6 +1109,9 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
       std::numeric_limits<int64_t>::max());
   is_raft_leader_metric_->set_value(1);
 
+  // we don't care about this timestamp from leader because it doesn't accept Update requests.
+  follower_last_update_received_time_ms_.store(0, std::memory_order_release);
+
   return Status::OK();
 }
 
@@ -1171,6 +1177,7 @@ Status RaftConsensus::ReplicateBatch(const ConsensusRounds& rounds) {
 
 Status RaftConsensus::DoReplicateBatch(const ConsensusRounds& rounds, size_t* processed_rounds) {
   RETURN_NOT_OK(ExecuteHook(PRE_REPLICATE));
+  TEST_PAUSE_IF_FLAG(TEST_pause_before_replicate_batch);
   {
     ReplicaState::UniqueLock lock;
 #ifndef NDEBUG
@@ -1280,7 +1287,9 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
     ++*processed_rounds;
 
     if (round->replicate_msg()->op_type() == OperationType::WRITE_OP) {
-      auto result = state_->RegisterRetryableRequest(round);
+      DCHECK_EQ(state_->GetActiveRoleUnlocked(), PeerRole::LEADER);
+      auto result = state_->RegisterRetryableRequest(
+          round, tablet::IsLeaderSide(state_->GetActiveRoleUnlocked() == PeerRole::LEADER));
       if (!result.ok()) {
         round->NotifyReplicationFinished(
             result.status(), round->bound_term(), /* applied_op_ids = */ nullptr);
@@ -1380,9 +1389,8 @@ void RaftConsensus::UpdateMajorityReplicated(
   s = state_->UpdateMajorityReplicatedUnlocked(
       majority_replicated_data.op_id, committed_op_id, &committed_index_changed,
       last_applied_op_id);
-  auto leader_state = state_->GetLeaderStateUnlocked();
-  if (leader_state.ok() && leader_state.status == LeaderStatus::LEADER_AND_READY) {
-    state_->context()->MajorityReplicated();
+  if (s.ok() && state_->GetLeaderStateUnlocked().ok()) {
+    s = state_->context()->MajorityReplicated();
   }
   if (PREDICT_FALSE(!s.ok())) {
     string msg = Format("Unable to mark committed up to $0: $1", majority_replicated_data.op_id, s);
@@ -1501,6 +1509,8 @@ void RaftConsensus::TryRemoveFollowerTask(const string& uuid,
 Status RaftConsensus::Update(
     const std::shared_ptr<LWConsensusRequestPB>& request_ptr,
     LWConsensusResponsePB* response, CoarseTimePoint deadline) {
+  follower_last_update_received_time_ms_.store(
+      clock_->Now().GetPhysicalValueMillis(), std::memory_order_release);
   if (PREDICT_FALSE(FLAGS_TEST_follower_reject_update_consensus_requests)) {
     return STATUS(IllegalState, "Rejected: --TEST_follower_reject_update_consensus_requests "
                                 "is set to true.");
@@ -2663,12 +2673,12 @@ Status RaftConsensus::UnsafeChangeConfig(
   for (const auto& peer : committed_config.peers()) {
     const string& peer_uuid = peer.permanent_uuid();
     if (!ContainsKey(retained_peer_uuids, peer_uuid)) {
-      ChangeConfigRequestPB req;
-      req.set_tablet_id(tablet_id());
-      req.mutable_server()->set_permanent_uuid(peer_uuid);
-      req.set_type(REMOVE_SERVER);
-      req.set_cas_config_opid_index(committed_config.opid_index());
-      CHECK(RemoveFromRaftConfig(&new_config, req));
+      ChangeConfigRequestPB change_config_request;
+      change_config_request.set_tablet_id(tablet_id());
+      change_config_request.mutable_server()->set_permanent_uuid(peer_uuid);
+      change_config_request.set_type(REMOVE_SERVER);
+      change_config_request.set_cas_config_opid_index(committed_config.opid_index());
+      CHECK(RemoveFromRaftConfig(&new_config, change_config_request));
     }
   }
   // Check that local peer is part of the new config and is a VOTER.
@@ -3181,17 +3191,32 @@ void RaftConsensus::DumpStatusHtml(std::ostream& out) const {
 
   // Dump the queues on a leader.
   PeerRole role;
+  std::string state_str;
   {
     auto lock = state_->LockForRead();
     role = state_->GetActiveRoleUnlocked();
+    state_str = state_->ToStringUnlocked();
   }
+
   if (role == PeerRole::LEADER) {
     out << "<h2>Queue overview</h2>" << std::endl;
     out << "<pre>" << EscapeForHtmlToString(queue_->ToString()) << "</pre>" << std::endl;
     out << "<hr/>" << std::endl;
     out << "<h2>Queue details</h2>" << std::endl;
     queue_->DumpToHtml(out);
-  } else if (role == PeerRole::FOLLOWER) {
+  } else if (role == PeerRole::FOLLOWER || role == PeerRole::READ_REPLICA) {
+    out << "<h2>Replica State</h2>" << std::endl;
+    out << "<ul>\n";
+    out << "<li>State: { " << EscapeForHtmlToString(state_str) << " }</li>" << std::endl;
+    const auto follower_last_update_received_time_ms =
+        follower_last_update_received_time_ms_.load(std::memory_order_acquire);
+    const auto last_update_received_time_lag = follower_last_update_received_time_ms > 0
+        ? clock_->Now().GetPhysicalValueMillis() - follower_last_update_received_time_ms
+        : 0;
+    out << "<li>Last update received time: "
+        << last_update_received_time_lag << "ms ago</li>" << std::endl;
+    out << "</ul>\n";
+
     out << "<hr/>" << std::endl;
     out << "<h2>Raft Config</h2>" << std::endl;
     RaftConfigPB config = CommittedConfig();
@@ -3550,6 +3575,26 @@ Result<RetryableRequests> RaftConsensus::GetRetryableRequests() const {
     return STATUS_FORMAT(IllegalState, "Replica is in $0 state", state_->state());
   }
   return state_->retryable_requests();
+}
+
+OpId RaftConsensus::GetLastFlushedOpIdInRetryableRequests() {
+  return state_->GetLastFlushedOpIdInRetryableRequests();
+}
+
+Status RaftConsensus::FlushRetryableRequests() {
+  return state_->FlushRetryableRequests();
+}
+
+Status RaftConsensus::CopyRetryableRequestsTo(const std::string &dest_path) {
+  auto lock = state_->LockForRead();
+  if(state_->state() != ReplicaState::kRunning) {
+    return STATUS_FORMAT(IllegalState, "Replica is in $0 state", state_->state());
+  }
+  return state_->CopyRetryableRequestsTo(dest_path);
+}
+
+bool RaftConsensus::TEST_HasRetryableRequestsOnDisk() const {
+  return state_->TEST_HasRetryableRequestsOnDisk();
 }
 
 RetryableRequestsCounts RaftConsensus::TEST_CountRetryableRequests() {

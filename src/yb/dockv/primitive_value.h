@@ -100,7 +100,7 @@ class PrimitiveValue {
   ValueEntryType type() const { return type_; }
 
   // Convert this value to a human-readable string for logging / debugging.
-  std::string ToString() const;
+  std::string ToString(bool render_options = false) const;
 
   ~PrimitiveValue();
 
@@ -256,6 +256,8 @@ class PrimitiveValue {
   mutable ListExtendOrder extend_order_ = ListExtendOrder::APPEND;
 
   ValueEntryType type_;
+
+  std::string ValueToString() const;
 
   // TODO: do we have to worry about alignment here?
   union {

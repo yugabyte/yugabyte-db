@@ -245,8 +245,8 @@ void YBTableTestBase::CreateTable() {
     ASSERT_OK(client_->CreateNamespaceIfNotExists(tn.namespace_name(), tn.namespace_type()));
 
     YBSchemaBuilder b;
-    b.AddColumn("k")->Type(BINARY)->NotNull()->HashPrimaryKey();
-    b.AddColumn("v")->Type(BINARY)->NotNull();
+    b.AddColumn("k")->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
+    b.AddColumn("v")->Type(DataType::BINARY)->NotNull();
     ASSERT_OK(b.Build(&schema_));
 
     ASSERT_OK(NewTableCreator()->table_name(tn).schema(&schema_).Create());
@@ -267,15 +267,23 @@ shared_ptr<YBSession> YBTableTestBase::NewSession() {
   return session;
 }
 
-void YBTableTestBase::PutKeyValue(YBSession* session, string key, string value) {
+Status YBTableTestBase::PutKeyValue(YBSession* session, const string& key, const string& value) {
   auto insert = table_.NewInsertOp();
   QLAddStringHashValue(insert->mutable_request(), key);
   table_.AddStringColumnValue(insert->mutable_request(), "v", value);
-  ASSERT_OK(session->TEST_ApplyAndFlush(insert));
+  return session->TEST_ApplyAndFlush(insert);
 }
 
-void YBTableTestBase::PutKeyValue(string key, string value) {
-  PutKeyValue(session_.get(), key, value);
+void YBTableTestBase::PutKeyValue(const string& key, const string& value) {
+  ASSERT_OK(PutKeyValue(session_.get(), key, value));
+}
+
+void YBTableTestBase::PutKeyValueIgnoreError(const string& key, const string& value) {
+  auto s ATTRIBUTE_UNUSED = PutKeyValue(session_.get(), key, value);
+  if (!s.ok()) {
+    LOG(WARNING) << "PutKeyValueIgnoreError: " << s;
+  }
+  return;
 }
 
 void YBTableTestBase::RestartCluster() {

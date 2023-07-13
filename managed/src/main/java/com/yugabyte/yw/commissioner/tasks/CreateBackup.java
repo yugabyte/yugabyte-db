@@ -25,12 +25,11 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.ScheduleUtil;
-import com.yugabyte.yw.common.StorageUtil;
+import com.yugabyte.yw.common.StorageUtilFactory;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
-import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
@@ -63,18 +62,18 @@ public class CreateBackup extends UniverseTaskBase {
 
   private final CustomerConfigService customerConfigService;
   private final YbcManager ybcManager;
-  private final BackupUtil backupUtil;
+  private final StorageUtilFactory storageUtilFactory;
 
   @Inject
   protected CreateBackup(
       BaseTaskDependencies baseTaskDependencies,
       CustomerConfigService customerConfigService,
       YbcManager ybcManager,
-      BackupUtil backupUtil) {
+      StorageUtilFactory storageUtilFactory) {
     super(baseTaskDependencies);
     this.customerConfigService = customerConfigService;
     this.ybcManager = ybcManager;
-    this.backupUtil = backupUtil;
+    this.storageUtilFactory = storageUtilFactory;
   }
 
   protected BackupRequestParams params() {
@@ -116,7 +115,8 @@ public class CreateBackup extends UniverseTaskBase {
         // Clear any previous subtasks if any.
         getRunnableTask().reset();
 
-        StorageUtil.getStorageUtil(customerConfig.getName())
+        storageUtilFactory
+            .getStorageUtil(customerConfig.getName())
             .validateStorageConfigOnUniverse(customerConfig, universe);
 
         if (ybcBackup
@@ -262,7 +262,9 @@ public class CreateBackup extends UniverseTaskBase {
         taskUUID,
         CustomerTask.TargetType.Backup,
         CustomerTask.TaskType.Create,
-        universe.getName());
+        universe.getName(),
+        null,
+        schedule.getScheduleName());
     log.info(
         "Saved task uuid {} in customer tasks table for universe {}:{}",
         taskUUID,

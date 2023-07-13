@@ -5,6 +5,7 @@ package com.yugabyte.yw.forms;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -24,13 +25,13 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
@@ -42,14 +43,20 @@ import play.mvc.Http.Status;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @Slf4j
-public class ResizeNodeParams extends UpgradeTaskParams {
+public class ResizeNodeParams extends UpgradeWithGFlags {
+
+  private static final Pattern AZU_NO_LOCAL_DISK = Pattern.compile("Standard_(D|E)[0-9]*as\\_v5");
+
+  public static final int AZU_DISK_LIMIT_NO_DOWNTIME = 4 * 1024; // 4 TiB
 
   private static final Set<Common.CloudType> SUPPORTED_CLOUD_TYPES =
-      EnumSet.of(Common.CloudType.gcp, Common.CloudType.aws, Common.CloudType.kubernetes);
+      EnumSet.of(
+          Common.CloudType.gcp,
+          Common.CloudType.aws,
+          Common.CloudType.kubernetes,
+          Common.CloudType.azu);
 
   private boolean forceResizeNode;
-  public Map<String, String> masterGFlags;
-  public Map<String, String> tserverGFlags;
 
   @Override
   public boolean isKubernetesUpgradeSupported() {
@@ -109,6 +116,9 @@ public class ResizeNodeParams extends UpgradeTaskParams {
     }
     if (!hasClustersToResize && !forceResizeNode) {
       throw new IllegalArgumentException("No changes!");
+    }
+    if (flagsProvided(universe)) {
+      verifyGFlags(universe);
     }
   }
 
@@ -208,7 +218,7 @@ public class ResizeNodeParams extends UpgradeTaskParams {
     }
     // Check valid provider.
     if (!SUPPORTED_CLOUD_TYPES.contains(currentUserIntent.providerType)) {
-      return "Smart resizing is only supported for AWS / GCP / K8S, It is: "
+      return "Smart resizing is only supported for AWS / GCP / K8S/ Azu, It is: "
           + currentUserIntent.providerType.toString();
     }
     if (currentUserIntent.dedicatedNodes != newUserIntent.dedicatedNodes) {
@@ -261,6 +271,37 @@ public class ResizeNodeParams extends UpgradeTaskParams {
             currentUserIntent.instanceType,
             currentUserIntent.deviceInfo)) {
       return "ResizeNode operation is not supported for instances with ephemeral drives";
+    }
+    if ((diskChanged || masterDiskChanged)
+        && currentUserIntent.providerType == Common.CloudType.azu) {
+      if (diskChanged
+          && currentUserIntent.deviceInfo.storageType
+              == PublicCloudConstants.StorageType.UltraSSD_LRS) {
+        return "UltraSSD doesn't support resizing without downtime";
+      }
+      if (masterDiskChanged
+          && currentUserIntent.masterDeviceInfo.storageType
+              == PublicCloudConstants.StorageType.UltraSSD_LRS) {
+        return "UltraSSD doesn't support resizing without downtime";
+      }
+      if (diskChanged
+          && currentUserIntent.deviceInfo.volumeSize <= AZU_DISK_LIMIT_NO_DOWNTIME
+          && newUserIntent.deviceInfo.volumeSize > AZU_DISK_LIMIT_NO_DOWNTIME) {
+        return "Cannot expand from "
+            + currentUserIntent.deviceInfo.volumeSize
+            + "GB to "
+            + newUserIntent.deviceInfo.volumeSize
+            + "GB without VM deallocation";
+      }
+      if (masterDiskChanged
+          && currentUserIntent.masterDeviceInfo.volumeSize <= AZU_DISK_LIMIT_NO_DOWNTIME
+          && newUserIntent.masterDeviceInfo.volumeSize > AZU_DISK_LIMIT_NO_DOWNTIME) {
+        return "Cannot expand from "
+            + currentUserIntent.masterDeviceInfo.volumeSize
+            + "GB to "
+            + newUserIntent.masterDeviceInfo.volumeSize
+            + "GB without VM deallocation";
+      }
     }
     if ((masterDiskChanged || masterInstanceTypeChanged)
         && hasEphemeralStorage(
@@ -420,12 +461,31 @@ public class ResizeNodeParams extends UpgradeTaskParams {
                 "Provider %s of type %s does not contain the intended instance type '%s'",
                 currentUserIntent.provider, currentUserIntent.providerType, newInstanceTypeCode));
       }
+      if (currentUserIntent.providerType == Common.CloudType.azu
+          && isAzureWithLocalDisk(currentInstanceTypeCode)
+              != isAzureWithLocalDisk(newInstanceTypeCode)) {
+        errorConsumer.accept(
+            String.format(
+                "Cannot switch between instances with and without local disk (%s and %s)",
+                currentInstanceTypeCode, newInstanceTypeCode));
+      }
       return true;
     }
     return false;
   }
 
-  public boolean flagsProvided() {
+  private static boolean isAzureWithLocalDisk(String instanceType) {
+    return AZU_NO_LOCAL_DISK.matcher(instanceType).matches();
+  }
+
+  public boolean flagsProvided(Universe universe) {
+    for (Cluster newCluster : clusters) {
+      Cluster oldCluster = universe.getCluster(newCluster.uuid);
+      if (!Objects.equals(
+          oldCluster.userIntent.specificGFlags, newCluster.userIntent.specificGFlags)) {
+        return true;
+      }
+    }
     // If one is present, we know the other must be present.
     return masterGFlags != null;
   }

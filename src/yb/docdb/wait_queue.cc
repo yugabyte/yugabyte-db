@@ -28,9 +28,11 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction.pb.h"
+#include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/dockv/intent.h"
+#include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/shared_lock_manager.h"
+#include "yb/dockv/intent.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/thread_annotations.h"
 #include "yb/rpc/rpc.h"
@@ -126,6 +128,9 @@ using namespace std::placeholders;
 namespace yb {
 namespace docdb {
 
+using dockv::DecodedIntentValue;
+using dockv::KeyEntryTypeAsChar;
+
 namespace {
 
 CoarseTimePoint GetWaitForRelockUnblockedKeysDeadline() {
@@ -144,7 +149,7 @@ auto GetMaxSingleShardWaitDuration() {
   return FLAGS_force_single_shard_waiter_retry_ms * 1ms;
 }
 
-YB_DEFINE_ENUM(ResolutionStatus, (kPending)(kCommitted)(kAborted)(kPromoted));
+YB_DEFINE_ENUM(ResolutionStatus, (kPending)(kCommitted)(kAborted)(kPromoted)(kDeadlocked));
 
 class BlockerData;
 using BlockerDataPtr = std::shared_ptr<BlockerData>;
@@ -174,7 +179,9 @@ Result<ResolutionStatus> UnwrapResult(const Result<TransactionStatusResult>& res
     case COMMITTED:
       return ResolutionStatus::kCommitted;
     case ABORTED:
-      return ResolutionStatus::kAborted;
+      return res->expected_deadlock_status.ok()
+          ? ResolutionStatus::kAborted
+          : ResolutionStatus::kDeadlocked;
     case PENDING:
       return ResolutionStatus::kPending;
     case PROMOTED:
@@ -310,6 +317,11 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
       return CoarseMonoClock::Now() - created_at > refresh_waiter_timeout_ms * 1ms;
     }
     return false;
+  }
+
+  LockBatchEntries GetLockBatchEntries() const EXCLUDES(mutex_) {
+    SharedLock lock(mutex_);
+    return unlocked_ ? unlocked_->Get() : LockBatchEntries{};
   }
 
  private:
@@ -1186,6 +1198,65 @@ class WaitQueue::Impl {
     MaybeSignalWaitingTransactions(id, res);
   }
 
+  Status GetLockStatus(
+      const std::set<TransactionId>& transaction_ids, SchemaPtr schema_ptr,
+      TabletLockInfoPB* tablet_lock_info) const {
+    std::vector<std::pair<const TransactionId, LockBatchEntries>> waiter_lock_entries;
+    {
+      SharedLock l(mutex_);
+      // If the wait-queue is being shutdown, waiter_status_ would  be empty. No need to
+      // explicitly check 'shutting_down_' and return.
+
+      if (transaction_ids.empty()) {
+        // When transaction_ids is empty, return awaiting locks info of all waiters.
+        for (const auto& [_, waiter_data] : waiter_status_) {
+          waiter_lock_entries.push_back({waiter_data->id, waiter_data->GetLockBatchEntries()});
+        }
+        for (const auto& waiter : single_shard_waiters_) {
+          waiter_lock_entries.push_back({TransactionId::Nil(), waiter->GetLockBatchEntries()});
+        }
+      } else {
+        for (const auto& txn_id : transaction_ids) {
+          const auto& it = waiter_status_.find(txn_id);
+          if (it != waiter_status_.end()) {
+            waiter_lock_entries.push_back({it->second->id, it->second->GetLockBatchEntries()});
+          }
+        }
+      }
+    }
+
+    for (const auto& [txn_id, lock_batch_entries] : waiter_lock_entries) {
+      auto* lock_entry = txn_id.IsNil()
+          ? tablet_lock_info->add_single_shard_waiters()
+          : &(*tablet_lock_info->mutable_transaction_locks())[txn_id.ToString()];
+
+      for (const auto& lock_batch_entry : lock_batch_entries) {
+        const auto& partial_doc_key_slice = lock_batch_entry.key.as_slice();
+        DCHECK(partial_doc_key_slice.empty() ||
+               !partial_doc_key_slice.ends_with(KeyEntryTypeAsChar::kGroupEnd));
+
+        // kGroupEnd suffix is stripped from RefCntPrefix key(s) as part of conflict resolution.
+        // Append kGroupEnd for the decoder to work as expected and not error out.
+        std::string doc_key_str;
+        doc_key_str.reserve(partial_doc_key_slice.size() + 1);
+        partial_doc_key_slice.AppendTo(&doc_key_str);
+        doc_key_str.append(&KeyEntryTypeAsChar::kGroupEnd);
+
+        auto parsed_intent = ParsedIntent {
+          .doc_path = Slice(doc_key_str.c_str(), doc_key_str.size()),
+          .types = lock_batch_entry.intent_types,
+          .doc_ht = Slice(),
+        };
+        // TODO(pglocks): Populate 'subtransaction_id' & 'is_explicit' info of waiter txn(s) in
+        // the LockInfoPB response. Currently we don't track either for waiter txn(s).
+        RETURN_NOT_OK(docdb::PopulateLockInfoFromParsedIntent(
+            parsed_intent, DecodedIntentValue{}, schema_ptr, lock_entry->add_locks(),
+            /* intent_has_ht */ false));
+      }
+    }
+    return Status::OK();
+  }
+
  private:
   void HandleWaiterStatusFromParticipant(
       WaiterDataPtr waiter, Result<TransactionStatusResult> res) {
@@ -1243,10 +1314,13 @@ class WaitQueue::Impl {
     }
     if (resp.status(0) == ABORTED) {
       VLOG_WITH_PREFIX(1) << "Waiter status aborted " << waiter_id;
-      waiter->InvokeCallback(
-          // We return InternalError so that TabletInvoker does not retry.
-          STATUS_FORMAT(InternalError, "Transaction $0 was aborted while waiting for locks",
-                        waiter_id));
+      auto s = resp.deadlock_reason(0).code() == AppStatusPB::OK
+          ? STATUS_EC_FORMAT(
+                // Return InternalError so that TabletInvoker does not retry.
+                InternalError, TransactionError(TransactionErrorCode::kConflict),
+                "Transaction $0 was aborted while waiting for locks", waiter_id)
+          : StatusFromPB(resp.deadlock_reason(0));
+      waiter->InvokeCallback(s);
       return;
     }
     LOG(DFATAL) << "Waiting transaction " << waiter_id
@@ -1264,8 +1338,13 @@ class WaitQueue::Impl {
       //
       // Refer issue: https://github.com/yugabyte/yugabyte-db/issues/16375
       InvokeWaiterCallback(
-          STATUS_FORMAT(Aborted, "Transaction was aborted while waiting for locks $0", waiter->id),
+          STATUS_EC_FORMAT(
+            InternalError, TransactionError(TransactionErrorCode::kConflict),
+            "Transaction was aborted while waiting for locks $0", waiter->id),
           waiter);
+    } else if (*status == ResolutionStatus::kDeadlocked) {
+      DCHECK(!res->expected_deadlock_status.ok());
+      InvokeWaiterCallback(res->expected_deadlock_status, waiter);
     }
     // Need not handle waiter promotion case here as this code path is executed only as a callback
     // from WaitQueue::Impl::Poll function, where we periodically request waiter transaction state.
@@ -1461,6 +1540,7 @@ void WaitQueue::StartShutdown() {
 void WaitQueue::CompleteShutdown() {
   return impl_->CompleteShutdown();
 }
+
 void WaitQueue::DumpStatusHtml(std::ostream& out) {
   return impl_->DumpStatusHtml(out);
 }
@@ -1479,6 +1559,12 @@ void WaitQueue::SignalAborted(const TransactionId& id) {
 
 void WaitQueue::SignalPromoted(const TransactionId& id, TransactionStatusResult&& res) {
   return impl_->SignalPromoted(id, std::move(res));
+}
+
+Status WaitQueue::GetLockStatus(
+    const std::set<TransactionId>& transaction_ids, SchemaPtr schema_ptr,
+    TabletLockInfoPB* tablet_lock_info) const {
+  return impl_->GetLockStatus(transaction_ids, schema_ptr, tablet_lock_info);
 }
 
 }  // namespace docdb

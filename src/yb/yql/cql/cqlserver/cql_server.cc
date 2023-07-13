@@ -39,6 +39,7 @@
 
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
 #include "yb/yql/cql/cqlserver/cql_service.h"
+#include "yb/yql/cql/cqlserver/statements-path-handler.h"
 
 DEFINE_UNKNOWN_int32(cql_service_queue_length, 10000,
              "RPC queue length for CQL service");
@@ -97,7 +98,10 @@ Status CQLServer::Start() {
   auto cql_service = std::make_shared<CQLServiceImpl>(this, opts_);
   cql_service->CompleteInit();
 
-  RETURN_NOT_OK(RegisterService(FLAGS_cql_service_queue_length, std::move(cql_service)));
+  cql_service_ = std::move(cql_service);
+  RETURN_NOT_OK(RegisterService(FLAGS_cql_service_queue_length, cql_service_));
+
+  AddStatementsPathHandlers(web_server_.get(), cql_service_);
 
   RETURN_NOT_OK(server::RpcAndWebServerBase::Start());
 

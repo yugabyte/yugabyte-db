@@ -14,8 +14,6 @@ type: docs
 
 There are no set-up charges or commitments to begin using YugabyteDB Managed. At the end of the month, you are automatically charged for that month's usage. You can view your charges for the current billing period at any time by selecting **Invoices** on the **Billing** tab of the **Admin** page. Refer to [Manage your billing profile and payment method](../cloud-billing-profile/).
 
-Only an Admin user (the user who created the YugabyteDB Managed account) can access the billing and payment details.
-
 Your bill is calculated based on your usage of the following dimensions:
 
 - Instance vCPU capacity

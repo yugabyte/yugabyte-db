@@ -150,9 +150,9 @@ void TsTabletManagerITest::TearDown() {
 TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
   // We need to control elections precisely for this test since we're using
   // EmulateElection() with a distributed consensus configuration.
-  FLAGS_enable_leader_failure_detection = false;
-  FLAGS_catalog_manager_wait_for_new_tablets_to_elect_leader = false;
-  FLAGS_use_create_table_leader_hint = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_leader_failure_detection) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_wait_for_new_tablets_to_elect_leader) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_create_table_leader_hint) = false;
 
   // Run a few more iters in slow-test mode.
   OverrideFlagForSlowTests("num_election_test_loops", "10");
@@ -200,7 +200,7 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
     SCOPED_TRACE(Substitute("Iter: $0", i));
     int new_leader_idx = rand_r(&seed) % 2;
     LOG(INFO) << "Electing peer " << new_leader_idx << "...";
-    consensus::Consensus* con = CHECK_NOTNULL(tablet_peers[new_leader_idx]->consensus());
+    auto con = CHECK_RESULT(tablet_peers[new_leader_idx]->GetConsensus());
     ASSERT_OK(con->EmulateElection());
     LOG(INFO) << "Waiting for servers to agree...";
     ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(5),

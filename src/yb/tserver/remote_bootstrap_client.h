@@ -163,6 +163,10 @@ class RemoteBootstrapClient {
   // WAL file is opened with options so that it will fsync() on close.
   Status DownloadWAL(uint64_t wal_segment_seqno);
 
+  // Download the retryable request file.
+  // It might be abscent at the remote peer.
+  Status DownloadRetryableRequestsFile();
+
   // Write out the Consensus Metadata file based on the ConsensusStatePB
   // downloaded as part of initiating the remote bootstrap session.
   Status WriteConsensusMetadata();
@@ -237,6 +241,8 @@ class RemoteBootstrapClient {
 
   const std::string log_prefix_;
   RemoteBootstrapFileDownloader downloader_;
+
+  bool download_retryable_requests_;
 
   DISALLOW_COPY_AND_ASSIGN(RemoteBootstrapClient);
 };

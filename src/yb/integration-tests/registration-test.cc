@@ -84,15 +84,15 @@ using client::YBTableName;
 class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
   RegistrationTest()
-      : schema_({ ColumnSchema("c1", UINT32, /* is_nullable */ false, /* is_hash_key */ true)}, 1) {
+      : schema_({ ColumnSchema("c1", DataType::UINT32, ColumnKind::HASH)}) {
   }
 
   void SetUp() override {
     // Make heartbeats faster to speed test runtime.
-    FLAGS_heartbeat_interval_ms = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 10;
 
     // To prevent automatic creation of the transaction status table.
-    FLAGS_enable_ysql = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
 
     YBMiniClusterTestBase::SetUp();
 
@@ -165,7 +165,7 @@ TEST_F(RegistrationTest, TestTabletReports) {
   string tablet_id_2;
   string table_id_1;
   // Speed up test by having low number of tablets.
-  FLAGS_yb_num_shards_per_tserver = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_num_shards_per_tserver) = 2;
 
   ASSERT_OK(cluster_->WaitForTabletServerCount(1));
 
@@ -262,7 +262,7 @@ TEST_F(RegistrationTest, TestTabletReports) {
 class RegistrationFailedTest : public YBMiniClusterTestBase<MiniCluster> {
   void SetUp() override {
     // Cause waiting for tservers to register to master to fail.
-    FLAGS_TEST_mini_cluster_registration_wait_time_sec = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_mini_cluster_registration_wait_time_sec) = 0;
 
     YBMiniClusterTestBase::SetUp();
     cluster_.reset(new MiniCluster(MiniClusterOptions()));

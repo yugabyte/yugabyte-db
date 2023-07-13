@@ -184,6 +184,9 @@ func main() {
         // GetClusterMetric - Get a metric for a cluster
         e.GET("/api/metrics", c.GetClusterMetric)
 
+        // GetClusterActivities - Get activity data of a cluster
+        e.GET("/api/activities", c.GetClusterActivities)
+
         // GetClusterNodes - Get the nodes for a cluster
         e.GET("/api/nodes", c.GetClusterNodes)
 
@@ -208,6 +211,15 @@ func main() {
         // GetIsLoadBalancerIdle - Check if cluster load balancer is idle
         e.GET("/api/is_load_balancer_idle", c.GetIsLoadBalancerIdle)
 
+        // GetGflagsJson - Retrieve the gflags from Master and Tserver process
+        e.GET("/api/gflags", c.GetGflagsJson)
+
+        // GetClusterAlerts - Get list of any current cluster alerts
+        e.GET("/api/alerts", c.GetClusterAlerts)
+
+        // GetTableInfo - Get info on a single table, given table uuid
+        e.GET("/api/table", c.GetTableInfo)
+
         render_htmls := templates.NewTemplate()
 
         // Code for rendering UI Without embedding the files
@@ -223,5 +235,6 @@ func main() {
         e.GET("/", handlers.IndexHandler)
 
         // Start server
-        e.Logger.Fatal(e.Start(port))
+        uiBindAddress := helpers.HOST + port
+        e.Logger.Fatal(e.Start(uiBindAddress))
 }

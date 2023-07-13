@@ -88,7 +88,7 @@ Status TSDescriptor::Register(const NodeInstancePB& instance,
                               const TSRegistrationPB& registration,
                               CloudInfoPB local_cloud_info,
                               rpc::ProxyCache* proxy_cache) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   return RegisterUnlocked(instance, registration, std::move(local_cloud_info), proxy_cache);
 }
 
@@ -160,7 +160,7 @@ void TSDescriptor::UpdateHeartbeat(const TSHeartbeatRequestPB* req) {
   DCHECK_GE(req->num_live_tablets(), 0);
   DCHECK_GE(req->leader_count(), 0);
   {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     last_heartbeat_ = MonoTime::Now();
     num_live_replicas_ = req->num_live_tablets();
     leader_count_ = req->leader_count();
@@ -194,7 +194,7 @@ bool TSDescriptor::has_tablet_report() const {
 }
 
 void TSDescriptor::set_has_tablet_report(bool has_report) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   has_tablet_report_ = has_report;
 }
 
@@ -225,13 +225,13 @@ void TSDescriptor::DecayRecentReplicaCreationsUnlocked() {
 }
 
 void TSDescriptor::IncrementRecentReplicaCreations() {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   DecayRecentReplicaCreationsUnlocked();
   recent_replica_creations_ += 1;
 }
 
 double TSDescriptor::RecentReplicaCreations() {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   DecayRecentReplicaCreationsUnlocked();
   return recent_replica_creations_;
 }
@@ -310,7 +310,7 @@ bool TSDescriptor::IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_in
 }
 
 void TSDescriptor::UpdateMetrics(const TServerMetricsPB& metrics) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   ts_metrics_.total_memory_usage = metrics.total_ram_usage();
   ts_metrics_.total_sst_file_size = metrics.total_sst_file_size();
   ts_metrics_.uncompressed_sst_file_size = metrics.uncompressed_sst_file_size();
@@ -361,12 +361,12 @@ std::string TSDescriptor::PendingTabletDeleteToString() const {
 }
 
 void TSDescriptor::AddPendingTabletDelete(const std::string& tablet_id) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   tablets_pending_delete_.insert(tablet_id);
 }
 
 void TSDescriptor::ClearPendingTabletDelete(const std::string& tablet_id) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   tablets_pending_delete_.erase(tablet_id);
 }
 

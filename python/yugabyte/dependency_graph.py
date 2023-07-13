@@ -857,7 +857,12 @@ def main() -> None:
         user_said_all_java_tests = get_bool_env_var('YB_RUN_ALL_JAVA_TESTS')
         cpp_files_changed = SourceFileCategory.CPP in updated_categories
         java_files_changed = SourceFileCategory.JAVA in updated_categories
-        yb_master_or_tserver_changed = bool(affected_basenames & set(['yb-master', 'yb-tserver']))
+        yb_master_or_tserver_changed = bool(affected_basenames & set([
+            'yb-master',
+            'yb-tserver',
+            'yb-master-dynamic',
+            'yb-tserver-dynamic',
+        ]))
 
         run_cpp_tests = select_all_tests_for_now or cpp_files_changed or user_said_all_cpp_tests
 

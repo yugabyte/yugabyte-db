@@ -12,7 +12,9 @@ package com.yugabyte.yw.common;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
+import com.yugabyte.yw.controllers.handlers.EnvProxySelector;
 import io.ebean.DB;
+import java.net.ProxySelector;
 import play.Environment;
 import play.db.ebean.EbeanDynamicEvolutions;
 
@@ -38,6 +40,7 @@ public class YBALifeCycle {
 
   /** This is invoked before any migrations start and first thing after YBA module is loaded. */
   void onStart() {
+    ProxySelector.setDefault(new EnvProxySelector());
     checkIfDowngrade();
   }
 

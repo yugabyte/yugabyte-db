@@ -65,12 +65,10 @@ class PgsqlWriteOperation :
   PgsqlResponsePB* response() const { return response_; }
 
   Result<bool> HasDuplicateUniqueIndexValue(const DocOperationApplyData& data);
+  Result<bool> HasDuplicateUniqueIndexValueBackward(const DocOperationApplyData& data);
   Result<bool> HasDuplicateUniqueIndexValue(
       const DocOperationApplyData& data,
-      yb::docdb::Direction direction);
-  Result<bool> HasDuplicateUniqueIndexValue(
-      const DocOperationApplyData& data,
-      ReadHybridTime read_time);
+      const ReadHybridTime& read_time);
   Result<HybridTime> FindOldestOverwrittenTimestamp(
       IntentAwareIterator* iter,
       const dockv::SubDocKey& sub_doc_key,
@@ -78,6 +76,10 @@ class PgsqlWriteOperation :
 
   // Execute write.
   Status Apply(const DocOperationApplyData& data) override;
+
+  Status UpdateIterator(
+      DocOperationApplyData* data, DocOperation* prev, SingleOperation single_operation,
+      std::optional<DocRowwiseIterator>* iterator) final;
 
  private:
   void ClearResponse() override {
@@ -95,7 +97,7 @@ class PgsqlWriteOperation :
   Status ApplyFetchSequence(const DocOperationApplyData& data);
 
   Status DeleteRow(const dockv::DocPath& row_path, DocWriteBatch* doc_write_batch,
-                   const ReadHybridTime& read_ht, CoarseTimePoint deadline);
+                   const ReadOperationData& read_operation_data);
 
   // Reading current row before operating on it.
   // Returns true if row was present.
@@ -124,7 +126,7 @@ class PgsqlWriteOperation :
   //------------------------------------------------------------------------------------------------
   // Context.
   DocReadContextPtr doc_read_context_;
-  mutable dockv::ReaderProjection projection_;
+  mutable std::optional<dockv::ReaderProjection> projection_;
   const TransactionOperationContext txn_op_context_;
 
   // Input arguments.
@@ -134,7 +136,7 @@ class PgsqlWriteOperation :
   // UPDATE, DELETE, INSERT operations should return total number of new or changed rows.
 
   // Doc key and encoded doc key for the primary key.
-  std::optional<dockv::DocKey> doc_key_;
+  dockv::DocKey doc_key_;
   RefCntPrefix encoded_doc_key_;
 
   // Rows result requested.
@@ -168,8 +170,7 @@ class PgsqlReadOperation : public DocExprExecutor {
   //   batch protobuf will carry many ybctids.
   //     SELECT ... WHERE ybctid IN (y1, y2, y3)
   Result<size_t> Execute(const YQLStorageIf& ql_storage,
-                         CoarseTimePoint deadline,
-                         const ReadHybridTime& read_time,
+                         const ReadOperationData& read_operation_data,
                          bool is_explicit_request_read_time,
                          const DocReadContext& doc_read_context,
                          const DocReadContext* index_doc_read_context,
@@ -185,8 +186,7 @@ class PgsqlReadOperation : public DocExprExecutor {
  private:
   // Execute a READ operator for a given scalar argument.
   Result<size_t> ExecuteScalar(const YQLStorageIf& ql_storage,
-                               CoarseTimePoint deadline,
-                               const ReadHybridTime& read_time,
+                               const ReadOperationData& read_operation_data,
                                bool is_explicit_request_read_time,
                                const DocReadContext& doc_read_context,
                                const DocReadContext* index_doc_read_context,
@@ -198,8 +198,7 @@ class PgsqlReadOperation : public DocExprExecutor {
 
   // Execute a READ operator for a given batch of ybctids.
   Result<size_t> ExecuteBatchYbctid(const YQLStorageIf& ql_storage,
-                                    CoarseTimePoint deadline,
-                                    const ReadHybridTime& read_time,
+                                    const ReadOperationData& read_operation_data,
                                     const DocReadContext& doc_read_context,
                                     std::reference_wrapper<const ScopedRWOperation> pending_op,
                                     WriteBuffer* result_buffer,
@@ -207,8 +206,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                                     const DocDBStatistics* statistics);
 
   Result<size_t> ExecuteSample(const YQLStorageIf& ql_storage,
-                               CoarseTimePoint deadline,
-                               const ReadHybridTime& read_time,
+                               const ReadOperationData& read_operation_data,
                                bool is_explicit_request_read_time,
                                const DocReadContext& doc_read_context,
                                std::reference_wrapper<const ScopedRWOperation> pending_op,

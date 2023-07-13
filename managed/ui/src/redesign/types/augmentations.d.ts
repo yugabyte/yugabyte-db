@@ -1,5 +1,6 @@
 import { MuiPickersOverrides } from '@material-ui-pickers/typings/overrides';
 import { QueryKey } from 'react-query/types/core/types';
+import { colors } from '../theme/variables';
 
 type overridesNameToClassKey = {
   [P in keyof MuiPickersOverrides]: keyof MuiPickersOverrides[P];
@@ -80,13 +81,11 @@ declare module '@material-ui/core/styles/createPalette' {
     };
   }
 
-  export type YBAColors = Record<string, string>;
-
   // extend standard palette with chart colors
   interface Palette {
     chart: ChartColors;
     orange: PaletteColor;
-    ybacolors: YBAColors;
+    ybacolors: typeof colors.ybacolors;
   }
 
   interface PaletteOptions {

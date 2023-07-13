@@ -90,7 +90,7 @@ TEST(AutoFlagsTest, TestPromote) {
   VerifyFlagDefault(100);
 
   // Override should still work
-  FLAGS_test_auto_flag = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_test_auto_flag) = 10;
   ASSERT_EQ(FLAGS_test_auto_flag, 10);
   VerifyFlagDefault(100);
 

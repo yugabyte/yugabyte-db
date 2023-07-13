@@ -1,0 +1,243 @@
+// Copyright (c) YugaByte, Inc.
+
+package com.yugabyte.yw.controllers;
+
+import static play.mvc.Http.Status.BAD_REQUEST;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.google.inject.Inject;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.rbac.PermissionInfo;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.common.rbac.PermissionUtil;
+import com.yugabyte.yw.common.rbac.RoleUtil;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.RoleFormData;
+import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Role;
+import com.yugabyte.yw.models.Role.RoleType;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiParam;
+import io.swagger.annotations.Authorization;
+import java.util.Collections;
+import java.util.List;
+import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.EnumUtils;
+import play.libs.Json;
+import play.mvc.Http;
+import play.mvc.Result;
+
+@Api(
+    value = "RBAC management",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
+@Slf4j
+public class RBACController extends AuthenticatedController {
+
+  private final PermissionUtil permissionUtil;
+  private final RoleUtil roleUtil;
+
+  @Inject
+  public RBACController(PermissionUtil permissionUtil, RoleUtil roleUtil) {
+    this.permissionUtil = permissionUtil;
+    this.roleUtil = roleUtil;
+  }
+
+  /**
+   * List all the permissions info for each resource type. Optionally can be filtered with a query
+   * param 'resourceType' to get specific resource permissions.
+   *
+   * @param customerUUID
+   * @param resourceType
+   * @return list of all permissions info
+   */
+  @ApiOperation(
+      value = "List all the permissions available",
+      nickname = "listPermissions",
+      response = PermissionInfo.class,
+      responseContainer = "List")
+  public Result listPermissions(
+      UUID customerUUID,
+      @ApiParam(value = "Optional resource type to filter permission list") String resourceType) {
+    // Check if customer exists.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+
+    List<PermissionInfo> permissionInfoList = Collections.emptyList();
+    if (EnumUtils.isValidEnum(ResourceType.class, resourceType)) {
+      permissionInfoList = permissionUtil.getAllPermissionInfo(ResourceType.valueOf(resourceType));
+    } else {
+      permissionInfoList = permissionUtil.getAllPermissionInfo();
+    }
+    return PlatformResults.withData(permissionInfoList);
+  }
+
+  /**
+   * Get the information of a single Role with its UUID.
+   *
+   * @param customerUUID
+   * @param roleUUID
+   * @return the role information
+   */
+  @ApiOperation(value = "Get a role's information", nickname = "getRole", response = Role.class)
+  public Result getRole(UUID customerUUID, UUID roleUUID) {
+    // Check if customer exists.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Role role = Role.getOrBadRequest(roleUUID);
+    return PlatformResults.withData(role);
+  }
+
+  /**
+   * List the information of all roles available. Optionally can be filtered with a query param
+   * 'roleType' of Custom or System.
+   *
+   * @param customerUUID
+   * @param roleType
+   * @return the list of roles and their information
+   */
+  @ApiOperation(
+      value = "List all the roles available",
+      nickname = "listRoles",
+      response = Role.class,
+      responseContainer = "List")
+  public Result listRoles(
+      UUID customerUUID,
+      @ApiParam(value = "Optional role type to filter roles list") String roleType) {
+    // Check if customer exists.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+
+    // Get all roles if 'roleType' is not a valid enum
+    List<Role> roleList = Collections.emptyList();
+    if (EnumUtils.isValidEnum(RoleType.class, roleType)) {
+      roleList = Role.getAll(RoleType.valueOf(roleType));
+    } else {
+      roleList = Role.getAll();
+    }
+    return PlatformResults.withData(roleList);
+  }
+
+  /**
+   * Create a custom role with a given name and a given set of permissions.
+   *
+   * @param customerUUID
+   * @param request
+   * @return the info of the role created
+   */
+  @ApiOperation(value = "Create a custom role", nickname = "createRole", response = Role.class)
+  public Result createRole(UUID customerUUID, Http.Request request) {
+    // Check if customer exists.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+
+    // Parse request body.
+    JsonNode requestBody = request.body().asJson();
+    RoleFormData roleFormData =
+        formFactory.getFormDataOrBadRequest(requestBody, RoleFormData.class);
+
+    // Check if role with given name already exists.
+    if (Role.get(roleFormData.name) != null) {
+      String errorMsg = "Role with given name already exists: " + roleFormData.name;
+      log.error(errorMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+    }
+
+    // Create a custom role now.
+    Role role =
+        roleUtil.createRole(
+            customerUUID, roleFormData.name, RoleType.Custom, roleFormData.permissionList);
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Role,
+            role.getRoleUUID().toString(),
+            Audit.ActionType.Create,
+            Json.toJson(roleFormData));
+    return PlatformResults.withData(role);
+  }
+
+  /**
+   * Edit the set of permissions of a given custom role.
+   *
+   * @param customerUUID
+   * @param roleUUID
+   * @param request
+   * @return the info of the edited role
+   */
+  @ApiOperation(value = "Edit a custom role", nickname = "editRole", response = Role.class)
+  public Result editRole(UUID customerUUID, UUID roleUUID, Http.Request request) {
+    // Check if customer exists.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+
+    // Parse request body.
+    JsonNode requestBody = request.body().asJson();
+    RoleFormData roleFormData =
+        formFactory.getFormDataOrBadRequest(requestBody, RoleFormData.class);
+
+    // Check if role with given UUID exists.
+    Role role = Role.get(roleUUID);
+    if (role == null) {
+      String errorMsg = "Role with given UUID doesn't exist: " + roleUUID;
+      log.error(errorMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+    }
+
+    // Ensure we are not modifying system defined roles.
+    if (RoleType.System.equals(role.getRoleType())) {
+      String errorMsg = "Cannot modify System Role with given UUID: " + roleUUID;
+      log.error(errorMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+    }
+
+    // Edit the custom role with given permissions.
+    // Set of permissions is the only editable field in a role.
+    role = roleUtil.editRolePermissions(roleUUID, roleFormData.permissionList);
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Role,
+            role.getRoleUUID().toString(),
+            Audit.ActionType.Edit,
+            Json.toJson(roleFormData));
+    return PlatformResults.withData(role);
+  }
+
+  /**
+   * Delete a custom role with a given role UUID.
+   *
+   * @param customerUUID
+   * @param roleUUID
+   * @param request
+   * @return a success message if deleted properly.
+   */
+  @ApiOperation(
+      value = "Delete a custom role",
+      nickname = "deleteRole",
+      response = YBPSuccess.class)
+  public Result deleteRole(UUID customerUUID, UUID roleUUID, Http.Request request) {
+    // Check if customer exists.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+
+    // Check if role with given UUID exists.
+    Role role = Role.get(roleUUID);
+    if (Role.get(roleUUID) == null) {
+      String errorMsg = "Role with given UUID doesn't exist: " + roleUUID;
+      log.error(errorMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+    }
+
+    // Ensure we are not deleting system defined roles.
+    if (RoleType.System.equals(role.getRoleType())) {
+      String errorMsg = "Cannot delete System Role with given UUID: " + roleUUID;
+      log.error(errorMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+    }
+
+    // Delete the custom role.
+    roleUtil.deleteRole(roleUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            request, Audit.TargetType.Role, roleUUID.toString(), Audit.ActionType.Delete);
+    return YBPSuccess.withMessage("Successfully deleted role with UUID: " + roleUUID);
+  }
+}

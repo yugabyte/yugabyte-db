@@ -11,6 +11,7 @@
 
 package com.yugabyte.yw.common.kms.util.hashicorpvault;
 
+import com.bettercloud.vault.SslConfig;
 import com.bettercloud.vault.Vault;
 import com.bettercloud.vault.VaultConfig;
 import com.bettercloud.vault.VaultException;
@@ -19,8 +20,11 @@ import com.bettercloud.vault.response.AuthResponse;
 import com.bettercloud.vault.response.LogicalResponse;
 import com.bettercloud.vault.rest.RestResponse;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyStore;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.List;
@@ -33,6 +37,7 @@ import org.slf4j.LoggerFactory;
  * Wrapper over Vault.logical crud operations
  */
 public class VaultAccessor {
+
   public static final Logger LOG = LoggerFactory.getLogger(VaultAccessor.class);
 
   public static final long TTL_RENEWAL_BEFORE_EXPIRY_HRS = 24;
@@ -45,10 +50,8 @@ public class VaultAccessor {
   private int apiVersion;
 
   /**
-   * Constructs vault object of com.bettercloud.vault.Vault use buildVaultAccessor to build a object
-   *
-   * @param vObj
-   * @param apiVer
+   * Constructs vault object of com.bettercloud.vault.Vault use buildVaultAccessor to build an
+   * object
    */
   public VaultAccessor(Vault vObj, int apiVer) {
 
@@ -60,23 +63,33 @@ public class VaultAccessor {
     tokenTtlExpiry = Calendar.getInstance();
   }
 
-  /**
-   * From address(url) and from token, build Vault object to access vault.
-   *
-   * @param vaultAddr
-   * @param vaultToken
-   * @return
-   * @throws VaultException
-   */
+  /** From address(url) and from token, build Vault object to access vault. */
   public static VaultAccessor buildVaultAccessor(String vaultAddr, String vaultToken)
       throws VaultException {
-    LOG.debug("Calling buildVaultAccessor: with addr {}", vaultAddr);
+    LOG.debug("Calling buildVaultAccessor: with address {}", vaultAddr);
+    int apiVersion = 1;
 
-    int apiversion = 1;
-    VaultConfig config = new VaultConfig().address(vaultAddr).token(vaultToken).build();
-    Vault vault = new Vault(config, Integer.valueOf(apiversion));
+    VaultConfig config = new VaultConfig().address(vaultAddr).token(vaultToken);
+
+    // Need to do this to circumvent the issue of not being able to call non-static methods
+    // of CAStore into this class. HCVault/EAR code needs refactoring.
+    CustomCAStoreManager customCAStoreManager =
+        StaticInjectorHolder.injector().instanceOf(CustomCAStoreManager.class);
+    boolean customCAUploaded = customCAStoreManager.areCustomCAsPresent();
+    boolean ybaTrustStoreEnabled = customCAStoreManager.isEnabled();
+    if (customCAUploaded && !ybaTrustStoreEnabled) {
+      LOG.warn("Skipping to use YBA's custom trust-store as the feature is disabled");
+    }
+    if (customCAUploaded && ybaTrustStoreEnabled) {
+      LOG.debug("Using YBA's custom trust-store with Java defaults");
+      KeyStore ybaJavaKeyStore = customCAStoreManager.getYbaAndJavaKeyStore();
+      config.sslConfig(new SslConfig().trustStore(ybaJavaKeyStore).build());
+    }
+    config = config.build();
+
+    Vault vault = new Vault(config, Integer.valueOf(apiVersion));
     LOG.info("Created vault connection with {}, - {}", vaultAddr, vault);
-    VaultAccessor vAccessor = new VaultAccessor(vault, apiversion);
+    VaultAccessor vAccessor = new VaultAccessor(vault, apiVersion);
 
     try {
       vAccessor.tokenSelfLookupCheck();
@@ -107,15 +120,10 @@ public class VaultAccessor {
     } catch (VaultException e) {
       LOG.debug("Cannot extract secret engine type /sys/mounts/, exception :" + e.getMessage());
     }
-    return new String("INVAID");
+    return new String("INVALID");
   }
 
-  /**
-   * Checks for response and throws exception if its one of the http error codes
-   *
-   * @param restResp
-   * @throws VaultException
-   */
+  /** Checks for response and throws exception if its one of the http error codes */
   public int checkForResponseFailure(RestResponse restResp) throws VaultException {
     int status = restResp.getStatus();
     LOG.debug("Response status is : {}", status);
@@ -132,8 +140,8 @@ public class VaultAccessor {
   /**
    * Extracts ttl from vault and sets it to the object
    *
-   * @return List<long ttl, long ttlexpiry> ttl: ttl (int seconds) fetched from vault and ttlexpiry:
-   *     time stamp (int milisecods) of expiry (currentTime + ttl)
+   * @return List<long ttl, long ttl-expiry> ttl: ttl (int seconds) fetched from vault and
+   *     ttl-expiry: time stamp (int milliseconds) of expiry (currentTime + ttl)
    * @throws VaultException
    */
   public List<Object> getTokenExpiryFromVault() throws VaultException {
@@ -171,7 +179,7 @@ public class VaultAccessor {
     return Arrays.asList(tokenTTL, tokenTtlExpiry.getTimeInMillis());
   }
 
-  /** This is done as best effort, and no gurantees are given at this point of time. */
+  /** This is done as best effort, and no guarantees are given at this point of time. */
   public void renewSelf() {
     try {
       boolean isRenewable = vault.auth().lookupSelf().isRenewable();
@@ -246,7 +254,7 @@ public class VaultAccessor {
    *
    * @param path
    * @param textmap dictionary of data that is getting posted.
-   * @param filter to return specific vaule of output
+   * @param filter to return specific value of output
    * @return
    * @throws VaultException
    */

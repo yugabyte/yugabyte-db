@@ -149,6 +149,7 @@ class MiniTabletServer {
   Status Reconnect();
 
   FsManager& fs_manager() const;
+  MetricEntity& metric_entity() const;
 
  private:
   bool started_;

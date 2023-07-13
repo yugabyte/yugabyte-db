@@ -132,12 +132,12 @@ class QLDmlTest : public QLDmlTestBase<MiniCluster> {
 
     if (!FLAGS_mini_cluster_reuse_data) {
       YBSchemaBuilder b;
-      b.AddColumn("h1")->Type(INT32)->HashPrimaryKey()->NotNull();
-      b.AddColumn("h2")->Type(STRING)->HashPrimaryKey()->NotNull();
-      b.AddColumn("r1")->Type(INT32)->PrimaryKey()->NotNull();
-      b.AddColumn("r2")->Type(STRING)->PrimaryKey()->NotNull();
-      b.AddColumn("c1")->Type(INT32);
-      b.AddColumn("c2")->Type(STRING);
+      b.AddColumn("h1")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+      b.AddColumn("h2")->Type(DataType::STRING)->HashPrimaryKey()->NotNull();
+      b.AddColumn("r1")->Type(DataType::INT32)->PrimaryKey()->NotNull();
+      b.AddColumn("r2")->Type(DataType::STRING)->PrimaryKey()->NotNull();
+      b.AddColumn("c1")->Type(DataType::INT32);
+      b.AddColumn("c2")->Type(DataType::STRING);
 
       ASSERT_OK(table_.Create(kTableName, CalcNumTablets(3), client_.get(), &b));
     } else {
@@ -340,7 +340,7 @@ TEST_F(QLDmlTest, TestInsertWrongSchema) {
 
   // Move to schema version 1 by altering table
   std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-  table_alterer->AddColumn("c3")->Type(INT32)->NotNull();
+  table_alterer->AddColumn("c3")->Type(DataType::INT32)->NotNull();
   EXPECT_OK(table_alterer->timeout(MonoDelta::FromSeconds(60))->Alter());
 
   // The request created has schema version 0 by default
@@ -364,8 +364,8 @@ std::string StrRangeFor(int32_t idx) {
 class QLDmlRangeFilterBase: public QLDmlTest {
  public:
   void SetUp() override {
-    FLAGS_rocksdb_disable_compactions = true;
-    FLAGS_yb_num_shards_per_tserver = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_num_shards_per_tserver) = 1;
     QLDmlTest::SetUp();
   }
 };
@@ -429,7 +429,7 @@ TEST_F_EX(QLDmlTest, RangeFilter, QLDmlRangeFilterBase) {
     ASSERT_OK(cluster_->FlushTablets());
     std::this_thread::sleep_for(1s);
   }
-  FLAGS_db_block_cache_size_bytes = -2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_cache_size_bytes) = -2;
   ASSERT_OK(cluster_->RestartSync());
   {
     constexpr size_t kTotalProbes = 1000;
@@ -790,7 +790,7 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
-    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, BOOL);
+    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, DataType::BOOL);
     EXPECT_FALSE(row.column(0).bool_value());
   }
 
@@ -833,17 +833,17 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
     LOG(INFO) << "Schema: " << rowblock->schema().ToString() << ", row: " << row.ToString();
     EXPECT_EQ(rowblock->schema().num_columns(), 6);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
-    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, BOOL);
+    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, DataType::BOOL);
     EXPECT_EQ(rowblock->schema().column(1).name(), "h1");
-    EXPECT_EQ(rowblock->schema().column(1).type_info()->type, INT32);
+    EXPECT_EQ(rowblock->schema().column(1).type_info()->type, DataType::INT32);
     EXPECT_EQ(rowblock->schema().column(2).name(), "h2");
-    EXPECT_EQ(rowblock->schema().column(2).type_info()->type, STRING);
+    EXPECT_EQ(rowblock->schema().column(2).type_info()->type, DataType::STRING);
     EXPECT_EQ(rowblock->schema().column(3).name(), "r1");
-    EXPECT_EQ(rowblock->schema().column(3).type_info()->type, INT32);
+    EXPECT_EQ(rowblock->schema().column(3).type_info()->type, DataType::INT32);
     EXPECT_EQ(rowblock->schema().column(4).name(), "r2");
-    EXPECT_EQ(rowblock->schema().column(4).type_info()->type, STRING);
+    EXPECT_EQ(rowblock->schema().column(4).type_info()->type, DataType::STRING);
     EXPECT_EQ(rowblock->schema().column(5).name(), "c2");
-    EXPECT_EQ(rowblock->schema().column(5).type_info()->type, STRING);
+    EXPECT_EQ(rowblock->schema().column(5).type_info()->type, DataType::STRING);
     EXPECT_FALSE(row.column(0).bool_value());
     EXPECT_EQ(row.column(1).int32_value(), 1);
     EXPECT_EQ(row.column(2).string_value(), "a");
@@ -887,7 +887,7 @@ TEST_F(QLDmlTest, TestConditionalInsert) {
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
-    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, BOOL);
+    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, DataType::BOOL);
     EXPECT_TRUE(row.column(0).bool_value());
   }
 
@@ -962,7 +962,7 @@ TEST_F(QLDmlTest, TestConditionalUpdate) {
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
-    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, BOOL);
+    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, DataType::BOOL);
     EXPECT_FALSE(row.column(0).bool_value());
   }
 
@@ -997,7 +997,7 @@ TEST_F(QLDmlTest, TestConditionalUpdate) {
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
-    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, BOOL);
+    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, DataType::BOOL);
     EXPECT_TRUE(row.column(0).bool_value());
   }
 
@@ -1056,17 +1056,17 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().num_columns(), 6);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
-    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, BOOL);
+    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, DataType::BOOL);
     EXPECT_EQ(rowblock->schema().column(1).name(), "h1");
-    EXPECT_EQ(rowblock->schema().column(1).type_info()->type, INT32);
+    EXPECT_EQ(rowblock->schema().column(1).type_info()->type, DataType::INT32);
     EXPECT_EQ(rowblock->schema().column(2).name(), "h2");
-    EXPECT_EQ(rowblock->schema().column(2).type_info()->type, STRING);
+    EXPECT_EQ(rowblock->schema().column(2).type_info()->type, DataType::STRING);
     EXPECT_EQ(rowblock->schema().column(3).name(), "r1");
-    EXPECT_EQ(rowblock->schema().column(3).type_info()->type, INT32);
+    EXPECT_EQ(rowblock->schema().column(3).type_info()->type, DataType::INT32);
     EXPECT_EQ(rowblock->schema().column(4).name(), "r2");
-    EXPECT_EQ(rowblock->schema().column(4).type_info()->type, STRING);
+    EXPECT_EQ(rowblock->schema().column(4).type_info()->type, DataType::STRING);
     EXPECT_EQ(rowblock->schema().column(5).name(), "c1");
-    EXPECT_EQ(rowblock->schema().column(5).type_info()->type, INT32);
+    EXPECT_EQ(rowblock->schema().column(5).type_info()->type, DataType::INT32);
     EXPECT_FALSE(row.column(0).bool_value());
     EXPECT_EQ(row.column(1).int32_value(), 1);
     EXPECT_EQ(row.column(2).string_value(), "a");
@@ -1109,7 +1109,7 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
-    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, BOOL);
+    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, DataType::BOOL);
     EXPECT_TRUE(row.column(0).bool_value());
   }
 
@@ -1149,7 +1149,7 @@ TEST_F(QLDmlTest, TestConditionalDelete) {
     EXPECT_EQ(rowblock->row_count(), 1);
     const auto& row = rowblock->row(0);
     EXPECT_EQ(rowblock->schema().column(0).name(), "[applied]");
-    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, BOOL);
+    EXPECT_EQ(rowblock->schema().column(0).type_info()->type, DataType::BOOL);
     EXPECT_FALSE(row.column(0).bool_value());
   }
 }
@@ -1227,8 +1227,8 @@ TEST_F(QLDmlTest, OpenRecentlyCreatedTable) {
                                    Format("table_$0", i));
     std::thread table_creation_thread([this, table_name] {
       YBSchemaBuilder builder;
-      builder.AddColumn("k")->Type(INT32)->HashPrimaryKey()->NotNull();
-      builder.AddColumn("v")->Type(INT32);
+      builder.AddColumn("k")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+      builder.AddColumn("v")->Type(DataType::INT32);
       TableHandle table;
       ASSERT_OK(table.Create(table_name, 9, client_.get(), &builder));
     });
@@ -1252,7 +1252,7 @@ TEST_F(QLDmlTest, OpenRecentlyCreatedTable) {
 
 TEST_F(QLDmlTest, ReadFollower) {
   DontVerifyClusterBeforeNextTearDown();
-  FLAGS_flush_rocksdb_on_shutdown = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
   constexpr int kNumRows = RegularBuildVsSanitizers(5000, 1000);
 
   ASSERT_NO_FATALS(InsertRows(kNumRows));
@@ -1283,7 +1283,7 @@ TEST_F(QLDmlTest, ReadFollower) {
   // UpdateConsensus requests to update the safe time. So staleness
   // will keep increasing. Disable staleness for the verification
   // step.
-  FLAGS_max_stale_read_bound_time_ms = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_stale_read_bound_time_ms) = 0;
 
 
   // Check that after restart we don't miss any rows.

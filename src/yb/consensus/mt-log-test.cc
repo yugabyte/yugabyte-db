@@ -114,7 +114,7 @@ class MultiThreadedLogTest : public LogTestBase {
       DVLOG(1) << num_ops << " ops in this batch";
       num_ops =  std::max(num_ops, 1);
       {
-        std::lock_guard<simple_spinlock> lock_guard(lock_);
+        std::lock_guard lock_guard(lock_);
         for (int j = 0; j < num_ops; j++) {
           auto replicate = rpc::MakeSharedMessage<consensus::LWReplicateMsg>();
           auto index = current_index_++;

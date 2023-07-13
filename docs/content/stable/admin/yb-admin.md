@@ -59,7 +59,7 @@ To display the online help, run `yb-admin --help` from the YugabyteDB home direc
 * [xCluster replication](#xcluster-replication-commands)
 * [Decommissioning](#decommissioning-commands)
 * [Rebalancing](#rebalancing-commands)
-* [Upgrade YSQL system catalog](#upgrade-ysql-system-catalog)
+* [Upgrade](#upgrade)
 
 ---
 
@@ -284,12 +284,6 @@ yb-admin \
 
 Splits the specified hash-sharded tablet and computes the split point as the middle of tablet's sharding range.
 
-{{< note title="Note" >}}
-
-The `yb-admin split_tablet` command is not yet supported for use with range-sharded tablets. To follow plans on this, see [GitHub #5166](https://github.com/yugabyte/yugabyte-db/issues/5166)
-
-{{< /note >}}
-
 ```sh
 split_tablet -master_addresses <master-addresses> <tablet_id_to_split>
 ```
@@ -438,13 +432,14 @@ Triggers manual compaction on a table.
 yb-admin \
     -master_addresses <master-addresses> \
     compact_table <keyspace> <table_name> \
-    [timeout_in_seconds]
+    [timeout_in_seconds] [ADD_INDEXES]
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *keyspace*: Specifies the database `ysql.db-name` or keyspace `ycql.keyspace-name`.
 * *table_name*: Specifies the table name.
-* *timeout_in_seconds*: Specifies duration, in seconds when the cli timeouts waiting for compaction to end. Default value is `20`.
+* *timeout_in_seconds*: Specifies duration, in seconds, yb-admin waits for compaction to end. Default value is `20`.
+* *ADD_INDEXES*: Whether to compact the indexes associated with the table. Default value is `false`.
 
 **Example**
 
@@ -459,6 +454,36 @@ Started compaction of table kong.test
 Compaction request id: 75c406c1d2964487985f9c852a8ef2a3
 Waiting for compaction...
 Compaction complete: SUCCESS
+```
+
+#### compact_table_by_id
+
+Triggers manual compaction on a table.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    compact_table_by_id <table_id> \
+    [timeout_in_seconds] [ADD_INDEXES]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *table_id*: The unique UUID associated with the table to be compacted.
+* *timeout_in_seconds*: Specifies duration, in seconds, yb-admin waits for compaction to end. Default value is `20`.
+* *ADD_INDEXES*: Whether to compact the indexes associated with the table. Default value is `false`.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    compact_table_by_id 000033f100003000800000000000410a
+```
+
+```output
+Compacted [000033f100003000800000000000410a] tables.
 ```
 
 #### modify_table_placement_info
@@ -1055,8 +1080,7 @@ Restore from an absolute timestamp:
 ```sh
 ./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-    1617670679185100
+    restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 1617670679185100
 ```
 
 Restore from a relative time:
@@ -1064,8 +1088,7 @@ Restore from a relative time:
 ```sh
 ./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-    minus 60s
+    restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 minus 60s
 ```
 
 In both cases, the output is similar to the following:
@@ -1661,7 +1684,8 @@ yb-admin \
     <source_universe_uuid>_<replication_name> \
     <source_master_addresses> \
     <comma_separated_list_of_table_ids> \
-    [ <comma_separated_list_of_producer_bootstrap_ids> ]
+    [ <comma_separated_list_of_producer_bootstrap_ids> ] \
+    [ transactional ]
 ```
 
 * *target_master_addresses*: Comma-separated list of target YB-Master hosts and ports. Default value is `localhost:7100`.
@@ -1670,6 +1694,7 @@ yb-admin \
 * *source_master_addresses*: Comma-separated list of the source master addresses.
 * *comma_separated_list_of_table_ids*: Comma-separated list of source universe table identifiers (`table_id`).
 * *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of source universe bootstrap identifiers (`bootstrap_id`). Obtain these with [bootstrap_cdc_producer](#bootstrap-cdc-producer-comma-separated-list-of-table-ids), using a comma-separated list of source universe table IDs.
+* *transactional*: identifies the universe as Active in a transactional xCluster deployment.
 
 {{< warning title="Important" >}}
 Enter the source universe bootstrap IDs in the same order as their corresponding table IDs.
@@ -1808,9 +1833,7 @@ yb-admin \
     <role> 
 ```
 
-* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`. 
-These are the addresses of the master nodes where the role has to be applied. Example: if we want to change target to `STANDBY` we have to use target universe master addresses, 
-and if we want to change source universe role then we have to use source universe master addresses.
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`. These are the addresses of the master nodes where the role is to be applied. For example, to change the target to `STANDBY`, use target universe master addresses, and to change the source universe role, use source universe master addresses.
 * *role*: Can be `STANDBY` or `ACTIVE`.
 
 **Example**
@@ -1844,6 +1867,7 @@ yb-admin \
     -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
     get_xcluster_safe_time
 ```
+
 ```output
 {
     "namespace_id": "000033f1000030008000000000000000",
@@ -1861,6 +1885,45 @@ yb-admin \
 * *safe_time_epoch*: The `epoch` of the safe time.
 * *safe_time_lag_sec*: Safe time lag is computed as `(current time - current safe time)`.
 * *safe_time_skew_sec*: Safe time skew is computed as `(safe time of most caught up tablet - safe time of laggiest tablet)`.
+
+#### wait_for_replication_drain
+
+Verify when the producer and consumer are in sync for a given list of `stream_ids` at a given timestamp.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <source_master_addresses> \
+    wait_for_replication_drain \
+    <comma_separated_list_of_stream_ids> [<timestamp> | minus <interval>]
+```
+
+* *source_master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *comma_separated_list_of_stream_ids*: Comma-separated list of stream IDs.
+* *timestamp*: The time to which to wait for replication to drain. If not provided, it will be set to current time in the YB-Master API.
+* *minus <interval>*: The `minus <interval>` is the same format as described in [Restore from a relative time](../../explore/cluster-management/point-in-time-recovery-ysql/#restore-from-a-relative-time), or see [`restore_snapshot_schedule`](#restore-snapshot-schedule).
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
+    wait_for_replication_drain 000033f1000030008000000000000000,200033f1000030008000000000000002 minus 1m
+```
+
+If all streams are caught-up, the API outputs `All replications are caught-up.` to the console.
+
+Otherwise, it outputs the non-caught-up streams in the following format:
+
+```output
+Found undrained replications:
+- Under Stream <stream_id>:
+  - Tablet: <tablet_id>
+  - Tablet: <tablet_id>
+  // ......
+// ......
+```
 
 #### list_cdc_streams
 
@@ -1907,8 +1970,7 @@ yb-admin \
 * `force_delete`: (Optional) Force the delete operation.
 
 {{< note title="Note" >}}
-This command should only be needed for advanced operations, such as doing manual cleanup of old bootstrapped streams that were never fully initialized, or otherwise failed replication streams.
-For normal xcluster replication cleanup, please use [`delete_universe_replication`](#delete-universe-replication).
+This command should only be needed for advanced operations, such as doing manual cleanup of old bootstrapped streams that were never fully initialized, or otherwise failed replication streams. For normal xCluster replication cleanup, use [`delete_universe_replication`](#delete-universe-replication).
 {{< /note >}}
 
 #### bootstrap_cdc_producer <comma_separated_list_of_table_ids>
@@ -2195,23 +2257,70 @@ yb-admin \
 
 ---
 
-### Upgrade YSQL system catalog
+### Upgrade
+
+Refer to [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about how to upgrade a YugabyteDB cluster.
+
+#### promote_auto_flags
+
+[AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md) protect new features that modify the format of data sent over the wire or stored on-disk. After all YugabyteDB processes have been upgraded to the new version, these features can be enabled by promoting their AutoFlags.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    promote_auto_flags \
+    [<max_flags_class> [<promote_non_runtime_flags> [force]]]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *max_flags_class*: The maximum AutoFlag class to promote. Allowed values are `kLocalVolatile`, `kLocalPersisted`, `kExternal`, `kNewInstallsOnly`. Default value is `kExternal`.
+* *promote_non_runtime_flags*: Weather to promote non-runtime flags. Allowed values are `true` and `false`. Default value is `true`.
+* *force*: Forces the generation of a new AutoFlag configuration and sends it to all YugabyteDB processes even if there are no new AutoFlags to promote.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    promote_auto_flags kLocalPersisted
+```
+
+If the operation is successful you should see output similar to the following:
+
+```output
+PromoteAutoFlags status: 
+New AutoFlags were promoted. Config version: 2
+```
+
+OR
+
+```output
+PromoteAutoFlags status: 
+No new AutoFlags to promote
+```
 
 #### upgrade_ysql
 
 Upgrades the YSQL system catalog after a successful [YugabyteDB cluster upgrade](../../manage/upgrade-deployment/).
+
 YSQL upgrades are not required for clusters where [YSQL is not enabled](../../reference/configuration/yb-tserver/#ysql-flags).
 
 **Syntax**
 
 ```sh
-yb-admin upgrade_ysql
+yb-admin \
+    -master_addresses <master-addresses> \
+    upgrade_ysql
 ```
 
 **Example**
 
 ```sh
-./bin/yb-admin upgrade_ysql
+./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    upgrade_ysql
 ```
 
 A successful upgrade returns the following message:
@@ -2224,8 +2333,9 @@ In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is t
 
 ```sh
 ./bin/yb-admin \
-      -timeout_ms 180000 \
-      upgrade_ysql
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    -timeout_ms 180000 \
+    upgrade_ysql
 ```
 
 Running the above command is an online operation and doesn't require stopping a running cluster. This command is idempotent and can be run multiple times without any side effects.
@@ -2233,5 +2343,3 @@ Running the above command is an online operation and doesn't require stopping a 
 {{< note title="Note" >}}
 Concurrent operations in a cluster can lead to various transactional conflicts, catalog version mismatches, and read restart errors. This is expected, and should be addressed by rerunning the upgrade command.
 {{< /note >}}
-
-Refer to [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about YB-Master and YB-Tserver upgrades, followed by YSQL system catalog upgrades.

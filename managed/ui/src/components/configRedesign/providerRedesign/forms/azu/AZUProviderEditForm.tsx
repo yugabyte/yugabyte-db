@@ -41,7 +41,7 @@ import {
 import { RegionOperation } from '../configureRegion/constants';
 import {
   addItem,
-  constructAccessKeysPayload,
+  constructAccessKeysEditPayload,
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
@@ -75,7 +75,9 @@ export interface AZUProviderEditFormFieldValues {
   azuClientSecret: string;
   azuHostedZoneId: string;
   azuRG: string;
+  azuNetworkRG: string;
   azuSubscriptionId: string;
+  azuNetworkSubscriptionId: string;
   azuTenantId: string;
   dbNodePublicInternetAccess: boolean;
   editSSHKeypair: boolean;
@@ -257,10 +259,28 @@ export const AZUProviderEditForm = ({
                 />
               </FormField>
               <FormField>
+                <FieldLabel>Network Resource Group</FieldLabel>
+                <YBInputField
+                  control={formMethods.control}
+                  name="azuNetworkRG"
+                  disabled={isFormDisabled}
+                  fullWidth
+                />
+              </FormField>
+              <FormField>
                 <FieldLabel>Subscription ID</FieldLabel>
                 <YBInputField
                   control={formMethods.control}
                   name="azuSubscriptionId"
+                  disabled={isFormDisabled}
+                  fullWidth
+                />
+              </FormField>
+              <FormField>
+                <FieldLabel>Network Subscription ID</FieldLabel>
+                <YBInputField
+                  control={formMethods.control}
+                  name="azuNetworkSubscriptionId"
                   disabled={isFormDisabled}
                   fullWidth
                 />
@@ -469,7 +489,9 @@ const constructDefaultFormValues = (
   azuClientSecret: providerConfig.details.cloudInfo.azu.azuClientSecret ?? '',
   azuHostedZoneId: providerConfig.details.cloudInfo.azu.azuHostedZoneId ?? '',
   azuRG: providerConfig.details.cloudInfo.azu.azuRG ?? '',
+  azuNetworkRG: providerConfig.details.cloudInfo.azu.azuNetworkRG ?? '',
   azuSubscriptionId: providerConfig.details.cloudInfo.azu.azuSubscriptionId ?? '',
+  azuNetworkSubscriptionId: providerConfig.details.cloudInfo.azu.azuNetworkSubscriptionId ?? '',
   azuTenantId: providerConfig.details.cloudInfo.azu.azuTenantId ?? '',
   dbNodePublicInternetAccess: !providerConfig.details.airGapInstall,
   editSSHKeypair: false,
@@ -479,6 +501,7 @@ const constructDefaultFormValues = (
   regions: providerConfig.regions.map((region) => ({
     fieldId: generateLowerCaseAlphanumericId(),
     code: region.code,
+    name: region.name,
     vnet: region.details.cloudInfo.azu.vnet,
     securityGroupId: region.details.cloudInfo.azu.securityGroupId,
     ybImage: region.details.cloudInfo.azu.ybImage ?? '',
@@ -503,7 +526,7 @@ const constructProviderPayload = async (
     throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
   }
 
-  const allAccessKeysPayload = constructAccessKeysPayload(
+  const allAccessKeysPayload = constructAccessKeysEditPayload(
     formValues.editSSHKeypair,
     formValues.sshKeypairManagement,
     { sshKeypairName: formValues.sshKeypairName, sshPrivateKeyContent: sshPrivateKeyContent },
@@ -522,7 +545,11 @@ const constructProviderPayload = async (
           azuClientSecret: formValues.azuClientSecret,
           ...(formValues.azuHostedZoneId && { azuHostedZoneId: formValues.azuHostedZoneId }),
           azuRG: formValues.azuRG,
+          ...(formValues.azuNetworkRG && { azuNetworkRG: formValues.azuNetworkRG }),
           azuSubscriptionId: formValues.azuSubscriptionId,
+          ...(formValues.azuNetworkSubscriptionId && {
+            azuNetworkSubscriptionId: formValues.azuNetworkSubscriptionId
+          }),
           azuTenantId: formValues.azuTenantId
         }
       },

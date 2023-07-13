@@ -35,6 +35,13 @@ SELECT * FROM pk_multi WHERE h = 1;
 EXPLAIN (COSTS OFF) SELECT * FROM pk_multi WHERE yb_hash_code(h) = yb_hash_code(1);
 SELECT * FROM pk_multi WHERE yb_hash_code(h) = yb_hash_code(1);
 
+-- Test yb_pushdown_is_not_null
+CREATE TABLE inn_hash(k int PRIMARY KEY, v int);
+CREATE INDEX ON inn_hash(v ASC);
+INSERT INTO inn_hash VALUES (1,NULL),(2,102),(3,NULL),(4,104),(5,105),(6,NULL);
+SELECT * FROM inn_hash WHERE v IS NOT NULL;
+/*+Set(yb_pushdown_is_not_null false)*/ SELECT * FROM inn_hash WHERE v IS NOT NULL;
+
 -- Test unique secondary index ordering
 CREATE TABLE usc_asc(k int, v int);
 CREATE UNIQUE INDEX ON usc_asc(v ASC NULLS FIRST);
@@ -425,3 +432,20 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_k
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_kv_pkey) */ SELECT 1 FROM t_kv;
 
 DROP TABLE t_kv;
+
+-- Test index SPLIT AT with INCLUDE clause
+CREATE TABLE test_tbl (
+  a INT,
+  b INT,
+  PRIMARY KEY (a ASC)
+) SPLIT AT VALUES((1));
+CREATE INDEX test_idx on test_tbl(
+  b ASC
+) INCLUDE (a) SPLIT AT VALUES ((1));
+INSERT INTO test_tbl VALUES (1, 2),(2, 1),(4, 3),(5, 4);
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT a, b FROM test_tbl WHERE a = 4;
+SELECT a, b FROM test_tbl WHERE a = 4;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT a, b FROM test_tbl WHERE b = 4;
+SELECT a, b FROM test_tbl WHERE b = 4;
+DROP INDEX test_idx;
+DROP TABLE test_tbl;

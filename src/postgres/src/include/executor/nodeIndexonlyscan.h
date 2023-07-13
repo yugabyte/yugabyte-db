@@ -33,10 +33,4 @@ extern void ExecIndexOnlyScanReInitializeDSM(IndexOnlyScanState *node,
 extern void ExecIndexOnlyScanInitializeWorker(IndexOnlyScanState *node,
 								  ParallelWorkerContext *pwcxt);
 
-/*
- * Update YugabyteDB specific run-time statistics
- */
-extern void YbExecUpdateInstrumentIndexOnlyScan(IndexOnlyScanState *node,
-												Instrumentation *instr);
-
 #endif							/* NODEINDEXONLYSCAN_H */

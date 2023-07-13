@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.DnsManager.DnsCommandType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
@@ -101,6 +102,10 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       // Set of processes to be started, note that in this case it is same as nodes provisioned.
       Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(readOnlyNodes);
 
+      // Make sure clock skew is low enough.
+      createWaitForClockSyncTasks(universe, newTservers)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
       // Start the tservers in the clusters.
       createStartTserverProcessTasks(
           newTservers, universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL);
@@ -119,6 +124,10 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
 
       // Update the async_replicas in the cluster config on master leader.
       createPlacementInfoTask(null /* blacklistNodes */)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Add read replica nodes to the DNS entry.
+      createDnsManipulationTask(DnsCommandType.Edit, false, universe)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Update the swamper target file.

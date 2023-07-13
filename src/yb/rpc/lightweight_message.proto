@@ -47,3 +47,11 @@ extend google.protobuf.MessageOptions {
 message LightweightMessageOptions {
   bool force_arena = 1;
 }
+
+extend google.protobuf.EnumOptions {
+  LightweightEnumOptions lightweight_enum = 50000;
+}
+
+message LightweightEnumOptions {
+  string name = 1;
+}

@@ -72,7 +72,7 @@ Status FlushManager::FlushTables(const FlushTablesRequestPB* req,
   DCHECK_GT(ts_tablet_map.size(), 0);
 
   {
-    std::lock_guard<LockType> l(lock_);
+    std::lock_guard l(lock_);
     TRACE("Acquired flush manager lock");
 
     // Init Tablet Server id lists in memory storage.
@@ -117,7 +117,7 @@ Status FlushManager::IsFlushTablesDone(const IsFlushTablesDoneRequestPB* req,
                                        IsFlushTablesDoneResponsePB* resp) {
   LOG(INFO) << "Servicing IsFlushTablesDone request: " << req->ShortDebugString();
 
-  std::lock_guard<LockType> l(lock_);
+  std::lock_guard l(lock_);
   TRACE("Acquired flush manager lock");
 
   // Check flush request id.
@@ -156,7 +156,7 @@ void FlushManager::HandleFlushTabletsResponse(const FlushRequestId& flush_id,
   LOG(INFO) << "Handling Flush Tablets Response from TS " << ts_uuid
             << ". Status: " << status << ". Flush request id: " << flush_id;
 
-  std::lock_guard<LockType> l(lock_);
+  std::lock_guard l(lock_);
   TRACE("Acquired flush manager lock");
 
   // Check current flush request id.
@@ -189,7 +189,7 @@ void FlushManager::HandleFlushTabletsResponse(const FlushRequestId& flush_id,
 }
 
 void FlushManager::DeleteCompleteFlushRequests() {
-  std::lock_guard<LockType> l(lock_);
+  std::lock_guard l(lock_);
   TRACE("Acquired flush manager lock");
 
   // Clean-up complete flushing requests.

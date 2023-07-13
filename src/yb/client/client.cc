@@ -47,7 +47,8 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
-#include "yb/cdc/cdc_service.h"
+#include "yb/cdc/cdc_types.h"
+
 #include "yb/client/client_fwd.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/client-internal.h"
@@ -68,6 +69,7 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/common_util.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_type.h"
@@ -192,6 +194,8 @@ using yb::master::GetCDCStreamRequestPB;
 using yb::master::GetCDCStreamResponsePB;
 using yb::master::UpdateCDCStreamRequestPB;
 using yb::master::UpdateCDCStreamResponsePB;
+using yb::master::IsObjectPartOfXReplRequestPB;
+using yb::master::IsObjectPartOfXReplResponsePB;
 using yb::master::IsBootstrapRequiredRequestPB;
 using yb::master::IsBootstrapRequiredResponsePB;
 using yb::master::GetMasterClusterConfigRequestPB;
@@ -296,12 +300,6 @@ void FillFromRepeatedTabletLocations(
       ranges->push_back(partition.ShortDebugString());
     }
   }
-}
-
-std::future<FetchPartitionsResult> FetchPartitionsFuture(
-    YBClient* client, const TableId& table_id) {
-  return MakeFuture<FetchPartitionsResult>(
-      [&](const auto& callback) { YBTable::FetchPartitions(client, table_id, callback); });
 }
 
 } // namespace
@@ -468,7 +466,9 @@ YBClientBuilder& YBClientBuilder::AddMasterAddressSource(const MasterAddressSour
   return *this;
 }
 
-Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBClient>* client) {
+Status YBClientBuilder::DoBuild(rpc::Messenger* messenger,
+                                server::ClockPtr clock,
+                                std::unique_ptr<YBClient>* client) {
   RETURN_NOT_OK(CheckCPUFlags());
 
   std::unique_ptr<YBClient> c(new YBClient());
@@ -532,6 +532,8 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
 
   c->data_->meta_cache_.reset(new MetaCache(c.get()));
 
+  c->data_->clock_ = clock;
+
   c->data_->cloud_info_pb_ = data_->cloud_info_pb_;
   c->data_->uuid_ = data_->uuid_;
 
@@ -539,14 +541,15 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
   return Status::OK();
 }
 
-Result<std::unique_ptr<YBClient>> YBClientBuilder::Build(rpc::Messenger* messenger) {
+Result<std::unique_ptr<YBClient>> YBClientBuilder::Build(
+    rpc::Messenger* messenger, const server::ClockPtr& clock) {
   std::unique_ptr<YBClient> client;
-  RETURN_NOT_OK(DoBuild(messenger, &client));
+  RETURN_NOT_OK(DoBuild(messenger, clock, &client));
   return client;
 }
 
 Result<std::unique_ptr<YBClient>> YBClientBuilder::Build(
-    std::unique_ptr<rpc::Messenger>&& messenger) {
+    std::unique_ptr<rpc::Messenger>&& messenger, const server::ClockPtr& clock) {
   std::unique_ptr<YBClient> client;
   auto ok = false;
   auto scope_exit = ScopeExit([&ok, &messenger] {
@@ -554,7 +557,7 @@ Result<std::unique_ptr<YBClient>> YBClientBuilder::Build(
       messenger->Shutdown();
     }
   });
-  RETURN_NOT_OK(DoBuild(messenger.get(), &client));
+  RETURN_NOT_OK(DoBuild(messenger.get(), clock, &client));
   ok = true;
   client->data_->messenger_holder_ = std::move(messenger);
   return client;
@@ -783,7 +786,7 @@ Status YBClient::GetYBTableInfo(const YBTableName& table_name, std::shared_ptr<Y
 Status YBClient::GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBTableInfo> info,
                                     StatusCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  return data_->GetTableSchemaById(this, table_id, deadline, info, callback);
+  return data_->GetTableSchema(this, table_id, deadline, info, callback);
 }
 
 Status YBClient::GetTablegroupSchemaById(const TablegroupId& tablegroup_id,
@@ -1570,6 +1573,15 @@ Status YBClient::UpdateCDCStream(const std::vector<CDCStreamId>& stream_ids,
   return Status::OK();
 }
 
+Result<bool> YBClient::IsObjectPartOfXRepl(const TableId& table_id) {
+  IsObjectPartOfXReplRequestPB req;
+  IsObjectPartOfXReplResponsePB resp;
+  req.set_table_id(table_id);
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, IsObjectPartOfXRepl);
+  return resp.has_error() ? StatusFromPB(resp.error().status()) :
+      Result<bool>(resp.is_object_part_of_xrepl());
+}
+
 Result<bool> YBClient::IsBootstrapRequired(const std::vector<TableId>& table_ids,
                                            const boost::optional<CDCStreamId>& stream_id) {
   if (table_ids.empty()) {
@@ -1595,7 +1607,15 @@ Result<bool> YBClient::IsBootstrapRequired(const std::vector<TableId>& table_ids
         table_ids.size(), resp.results_size()));
   }
 
-  return resp.results(0).bootstrap_required();
+  bool bootstrap_required = false;
+  for (const auto& result : resp.results()) {
+    if (result.bootstrap_required()) {
+      bootstrap_required = true;
+      break;
+    }
+  }
+
+  return bootstrap_required;
 }
 
 Status YBClient::BootstrapProducer(
@@ -1610,18 +1630,14 @@ Status YBClient::BootstrapProducer(
 }
 
 Status YBClient::UpdateConsumerOnProducerSplit(
-    const string& producer_id,
+    const cdc::ReplicationGroupId& replication_group_id,
     const CDCStreamId& stream_id,
     const master::ProducerSplitTabletInfoPB& split_info) {
-  if (producer_id.empty()) {
-    return STATUS(InvalidArgument, "Producer id is required.");
-  }
-  if (stream_id.empty()) {
-    return STATUS(InvalidArgument, "Stream id is required.");
-  }
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "Producer id is required.");
+  SCHECK(!stream_id.empty(), InvalidArgument, "Stream id is required.");
 
   UpdateConsumerOnProducerSplitRequestPB req;
-  req.set_producer_id(producer_id);
+  req.set_producer_id(replication_group_id.ToString());
   req.set_stream_id(stream_id);
   req.mutable_producer_split_tablet_info()->CopyFrom(split_info);
 
@@ -1631,25 +1647,19 @@ Status YBClient::UpdateConsumerOnProducerSplit(
 }
 
 Status YBClient::UpdateConsumerOnProducerMetadata(
-    const string& producer_id,
+    const cdc::ReplicationGroupId& replication_group_id,
     const CDCStreamId& stream_id,
     const tablet::ChangeMetadataRequestPB& meta_info,
     uint32_t colocation_id,
     uint32_t producer_schema_version,
     uint32_t consumer_schema_version,
-    master::UpdateConsumerOnProducerMetadataResponsePB *resp) {
-  if (producer_id.empty()) {
-    return STATUS(InvalidArgument, "Producer id is required.");
-  }
-  if (stream_id.empty()) {
-    return STATUS(InvalidArgument, "Stream id is required.");
-  }
-  if (resp == nullptr) {
-    return STATUS(InvalidArgument, "Response pointer is required.");
-  }
+    master::UpdateConsumerOnProducerMetadataResponsePB* resp) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "ReplicationGroup id is required.");
+  SCHECK(!stream_id.empty(), InvalidArgument, "Stream id is required.");
+  SCHECK(resp != nullptr, InvalidArgument, "Response pointer is required.");
 
   master::UpdateConsumerOnProducerMetadataRequestPB req;
-  req.set_producer_id(producer_id);
+  req.set_producer_id(replication_group_id.ToString());
   req.set_stream_id(stream_id);
   req.set_colocation_id(colocation_id);
   req.set_producer_schema_version(producer_schema_version);
@@ -1674,7 +1684,16 @@ void YBClient::GetTableLocations(
       std::move(callback));
 }
 
-Status YBClient::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {
+Status YBClient::TabletServerCount(int *tserver_count, bool primary_only,
+                                   bool use_cache,
+                                   const std::string* tablespace_id,
+                                   const master::ReplicationInfoPB* replication_info) {
+  // Must make an RPC call if replication info must be fetched
+  // (ie. cannot use the tserver count cache)
+  bool is_replication_info_required = tablespace_id || replication_info;
+  SCHECK(!use_cache || !is_replication_info_required, InvalidArgument,
+         "Cannot use cache when replication info must be fetched");
+
   int tserver_count_cached = data_->tserver_count_cached_[primary_only].load(
       std::memory_order_acquire);
   if (use_cache && tserver_count_cached > 0) {
@@ -1685,6 +1704,14 @@ Status YBClient::TabletServerCount(int *tserver_count, bool primary_only, bool u
   ListTabletServersRequestPB req;
   ListTabletServersResponsePB resp;
   req.set_primary_only(primary_only);
+  if (tablespace_id && !tablespace_id->empty())
+    req.set_tablespace_id(*tablespace_id);
+  if (replication_info)
+    req.mutable_replication_info()->CopyFrom(*replication_info);
+  // We should only refer to the TServers in the primary/sync cluster,
+  // not the secondary read replica cluster.
+  if (req.has_tablespace_id() || req.has_replication_info())
+    req.set_primary_only(true);
   CALL_SYNC_LEADER_MASTER_RPC_EX(Cluster, req, resp, ListTabletServers);
   data_->tserver_count_cached_[primary_only].store(resp.servers_size(), std::memory_order_release);
   *tserver_count = resp.servers_size();
@@ -1785,7 +1812,7 @@ Result<bool> YBClient::IsLoadBalancerIdle() {
 }
 
 Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
-                                          master::PlacementInfoPB* replicas) {
+                                          master::PlacementInfoPB&& live_replicas) {
   master::ReplicationInfoPB replication_info;
   // Merge the obtained info with the existing table replication info.
   std::shared_ptr<client::YBTable> table;
@@ -1808,7 +1835,7 @@ Status YBClient::ModifyTablePlacementInfo(const YBTableName& table_name,
   }
 
   // Put in the new live placement info.
-  replication_info.set_allocated_live_replicas(replicas);
+  replication_info.mutable_live_replicas()->Swap(&live_replicas);
 
   std::unique_ptr<yb::client::YBTableAlterer> table_alterer(NewTableAlterer(table_name));
   return table_alterer->replication_info(replication_info)->Alter();
@@ -2043,7 +2070,7 @@ const CloudInfoPB& YBClient::cloud_info() const {
 }
 
 std::pair<RetryableRequestId, RetryableRequestId> YBClient::NextRequestIdAndMinRunningRequestId() {
-  std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);
+  std::lock_guard lock(data_->tablet_requests_mutex_);
   auto& requests = data_->requests_;
   auto id = requests.request_id_seq++;
   requests.running_requests.insert(id);
@@ -2057,12 +2084,12 @@ Result<std::shared_ptr<internal::RemoteTabletServer>> YBClient::GetRemoteTabletS
   return tserver;
 }
 
-void YBClient::RequestsFinished(const std::set<RetryableRequestId>& request_ids) {
-  if (request_ids.empty()) {
+void YBClient::RequestsFinished(const RetryableRequestIdRange& request_id_range) {
+  if (request_id_range.empty()) {
     return;
   }
-  std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);
-  for (RetryableRequestId id : request_ids) {
+  std::lock_guard lock(data_->tablet_requests_mutex_);
+  for (const auto& id : request_id_range) {
     auto& requests = data_->requests_.running_requests;
     auto it = requests.find(id);
     if (it != requests.end()) {
@@ -2337,26 +2364,69 @@ Result<bool> YBClient::TableExists(const YBTableName& table_name) {
 }
 
 Status YBClient::OpenTable(const YBTableName& table_name, YBTablePtr* table) {
-  YBTableInfo info;
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  RETURN_NOT_OK(data_->GetTableSchema(this, table_name, deadline, &info));
-  auto future = FetchPartitionsFuture(this, info.table_id);
-  // In the future, probably will look up the table in some map to reuse YBTable instances.
-  *table = std::make_shared<YBTable>(info, VERIFY_RESULT(future.get()));
-  return Status::OK();
+  return DoOpenTable(table_name, table);
 }
 
 Status YBClient::OpenTable(
     const TableId& table_id, YBTablePtr* table, master::GetTableSchemaResponsePB* resp) {
-  // Fetch partitions first to run GetTableSchema and GetTableLocations RPCs in parallel.
-  auto future = FetchPartitionsFuture(this, table_id);
+  return DoOpenTable(table_id, table, resp);
+}
 
-  YBTableInfo info;
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  RETURN_NOT_OK(data_->GetTableSchema(this, table_id, deadline, &info, resp));
-  // In the future, probably will look up the table in some map to reuse YBTable instances.
-  *table = std::make_shared<YBTable>(info, VERIFY_RESULT(future.get()));
+template <class Id>
+Status YBClient::DoOpenTable(
+    const Id& id, YBTablePtr* table, master::GetTableSchemaResponsePB* resp) {
+  std::promise<Result<YBTablePtr>> result;
+  DoOpenTableAsync(
+      id, [&result](const auto& res) { result.set_value(res); }, resp);
+  *table = VERIFY_RESULT(result.get_future().get());
   return Status::OK();
+}
+
+void YBClient::OpenTableAsync(
+    const YBTableName& table_name, const OpenTableAsyncCallback& callback) {
+  DoOpenTableAsync(table_name, callback);
+}
+
+void YBClient::OpenTableAsync(const TableId& table_id, const OpenTableAsyncCallback& callback,
+                              master::GetTableSchemaResponsePB* resp) {
+  DoOpenTableAsync(table_id, callback, resp);
+}
+
+template <class Id>
+void YBClient::DoOpenTableAsync(const Id& id,
+                                const OpenTableAsyncCallback& callback,
+                                master::GetTableSchemaResponsePB* resp) {
+  auto info = std::make_shared<YBTableInfo>();
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  auto s = data_->GetTableSchema(
+      this, id, deadline, info,
+      Bind(&YBClient::GetTableSchemaCallback, Unretained(this), std::move(info), callback),
+      resp);
+  if (!s.ok()) {
+    callback(s);
+    return;
+  }
+}
+
+void YBClient::GetTableSchemaCallback(std::shared_ptr<YBTableInfo> info,
+                                      const OpenTableAsyncCallback& callback,
+                                      const Status& s) {
+  if (!s.ok()) {
+    callback(s);
+    return;
+  }
+
+  YBTable::FetchPartitions(
+      this, info->table_id,
+      [info, callback](const FetchPartitionsResult& fetch_result) {
+        if (!fetch_result.ok()) {
+          callback(fetch_result.status());
+        } else {
+          // In the future, probably will look up the table in some map to reuse YBTable instances.
+          auto table = std::make_shared<YBTable>(*info, *fetch_result);
+          callback(table);
+        }
+      });
 }
 
 shared_ptr<YBSession> YBClient::NewSession() {
@@ -2367,7 +2437,10 @@ bool YBClient::IsMultiMaster() const {
   return data_->IsMultiMaster();
 }
 
-Result<int> YBClient::NumTabletsForUserTable(TableType table_type) {
+Result<int> YBClient::NumTabletsForUserTable(
+    TableType table_type,
+    const std::string* tablespace_id,
+    const master::ReplicationInfoPB* replication_info) {
   if (table_type == TableType::PGSQL_TABLE_TYPE &&
         FLAGS_ysql_num_tablets > 0) {
     VLOG_WITH_PREFIX(1) << "num_tablets = " << FLAGS_ysql_num_tablets
@@ -2375,14 +2448,15 @@ Result<int> YBClient::NumTabletsForUserTable(TableType table_type) {
     return FLAGS_ysql_num_tablets;
   }
 
-  if (FLAGS_ycql_num_tablets > 0) {
+  if (table_type != TableType::PGSQL_TABLE_TYPE && FLAGS_ycql_num_tablets > 0) {
     VLOG_WITH_PREFIX(1) << "num_tablets = " << FLAGS_ycql_num_tablets
                         << ": --ycql_num_tablets is specified.";
     return FLAGS_ycql_num_tablets;
   }
 
   int tserver_count = 0;
-  RETURN_NOT_OK(TabletServerCount(&tserver_count, true /* primary_only */));
+  RETURN_NOT_OK(TabletServerCount(&tserver_count, true /* primary_only */,
+        false /* use_cache */, tablespace_id, replication_info));
   SCHECK_GE(tserver_count, 0, IllegalState, "Number of tservers cannot be negative.");
 
   const auto num_tablets = GetInitialNumTabletsPerTable(table_type, tserver_count);
@@ -2443,6 +2517,10 @@ Result<TableId> GetTableId(YBClient* client, const YBTableName& table_name) {
 
 const std::string& YBClient::LogPrefix() const {
   return data_->log_prefix_;
+}
+
+server::Clock* YBClient::Clock() const {
+  return data_->clock_.get();
 }
 
 Result<encryption::UniverseKeyRegistryPB> YBClient::GetFullUniverseKeyRegistry() {

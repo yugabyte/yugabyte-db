@@ -510,7 +510,7 @@ prepare_for_running_cxx_test() {
     is_gtest_test=true
   fi
 
-  if ! "$run_at_once" && "$is_gtest_test"; then
+  if [[ $run_at_once == "false" && $is_gtest_test == "true" ]]; then
     test_cmd_line+=( "--gtest_filter=$test_name" )
   fi
 
@@ -798,7 +798,7 @@ handle_cxx_test_xml_output() {
 
   stop_process_tree_supervisor
 
-  if ! "$process_supervisor_success"; then
+  if [[ $process_supervisor_success == "false" ]]; then
     log "Process tree supervisor reported that the test failed"
     test_failed=true
   fi
@@ -835,15 +835,22 @@ set_test_log_url_prefix() {
 determine_test_timeout() {
   expect_num_args 0 "$@"
   expect_vars_to_be_set rel_test_binary
+  local -r build_root_basename=${BUILD_ROOT##*/}
   if [[ -n ${YB_TEST_TIMEOUT:-} ]]; then
     timeout_sec=$YB_TEST_TIMEOUT
   else
-    if [[ $rel_test_binary == "tests-pgwrapper/create_initial_sys_catalog_snapshot" || \
-          $rel_test_binary == "tests-pgwrapper/pg_libpq-test" || \
-          $rel_test_binary == "tests-pgwrapper/pg_libpq_err-test" || \
-          $rel_test_binary == "tests-pgwrapper/pg_mini-test" || \
-          $rel_test_binary == "tests-pgwrapper/pg_wrapper-test" || \
-          $rel_test_binary == "tests-tools/yb-admin-snapshot-schedule-test" ]]; then
+    if [[ ( $rel_test_binary == "tests-pgwrapper/create_initial_sys_catalog_snapshot" || \
+            $rel_test_binary == "tests-pgwrapper/pg_libpq-test" || \
+            $rel_test_binary == "tests-pgwrapper/pg_libpq_err-test" || \
+            $rel_test_binary == "tests-pgwrapper/pg_mini-test" || \
+            $rel_test_binary == "tests-pgwrapper/pg_wrapper-test" || \
+            $rel_test_binary == "tests-tools/yb-admin-snapshot-schedule-test" ) ||
+          ( $build_root_basename =~ ^tsan && \
+            ( $rel_test_binary == "tests-pgwrapper/geo_transactions-test" || \
+              $rel_test_binary == "tests-pgwrapper/pg_ddl_atomicity-test" || \
+              $rel_test_binary == "tests-pgwrapper/pg_mini-test" || \
+              $rel_test_binary == "tests-pgwrapper/pg_wait_on_conflict-test" || \
+              $rel_test_binary == "tests-pgwrapper/colocation-test" ) ) ]]; then
       timeout_sec=$INCREASED_TEST_TIMEOUT_SEC
     else
       timeout_sec=$DEFAULT_TEST_TIMEOUT_SEC
@@ -958,7 +965,7 @@ handle_cxx_test_failure() {
     test_cmd_line \
     test_log_path
 
-  if ! "$test_failed" & ! did_test_succeed "$test_exit_code" "$test_log_path"; then
+  if [[ $test_failed == "false" ]] && ! did_test_succeed "$test_exit_code" "$test_log_path"; then
     test_failed=true
   fi
 
@@ -1484,6 +1491,8 @@ about_to_start_running_test() {
   fi
 }
 
+user_mvn_opts_for_java_test=()
+
 # Arguments: <maven_module_name> <test_class_and_maybe_method>
 # The second argument could have slashes instead of dots, and could have an optional .java
 # extension.
@@ -1548,6 +1557,9 @@ run_java_test() {
     -DtempDir="$surefire_rel_tmp_dir"
     "${MVN_COMMON_OPTIONS_IN_TESTS[@]}"
   )
+  if [[ ${#user_mvn_opts_for_java_test[@]} -gt 0 ]]; then
+    mvn_opts+=( "${user_mvn_opts_for_java_test[@]}" )
+  fi
   if [[ ${YB_JAVA_TEST_OFFLINE_MODE:-1} == "1" ]]; then
     # When running in a CI/CD environment, we specify --offline because we don't want any downloads
     # to happen from Maven Central or Nexus. Everything we need should already be in the local Maven
@@ -1644,7 +1656,7 @@ run_java_test() {
 
   local attempts_left
   for attempts_left in {1..0}; do
-    if "$should_clean_test_dir" && [[ -d $surefire_reports_dir ]]; then
+    if [[ $should_clean_test_dir == "true" && -d $surefire_reports_dir ]]; then
       log "Cleaning the existing contents of: $surefire_reports_dir"
       ( set -x; rm -f "$surefire_reports_dir"/* )
     fi
@@ -1841,6 +1853,7 @@ run_all_java_test_methods_separately() {
     # shellcheck disable=SC2030,SC2031
     export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
     export YB_REDIRECT_MVN_OUTPUT_TO_FILE=1
+    ensure_test_tmp_dir_is_set
     declare -i num_successes=0
     declare -i num_failures=0
     declare -i total_tests=0
@@ -1863,13 +1876,13 @@ run_all_java_test_methods_separately() {
       current_time_sec=$(date +%s)
       declare -i elapsed_time_sec=$(( current_time_sec - start_time_sec ))
       declare -i avg_test_time_sec=$(( elapsed_time_sec / total_tests ))
-      heading "Current Java test stats: " \
-              "$num_successes successful," \
-              "$num_failures failed," \
-              "$total_tests total," \
-              "success rate: $success_pct%," \
-              "elapsed time: $elapsed_time_sec sec," \
-              "avg test time: $avg_test_time_sec sec"
+      log "Current Java test stats: " \
+          "$num_successes successful," \
+          "$num_failures failed," \
+          "$total_tests total," \
+          "success rate: $success_pct%," \
+          "elapsed time: $elapsed_time_sec sec," \
+          "avg test time: $avg_test_time_sec sec"
     done < <( sort "$java_test_list_path" )
   )
 }
@@ -1939,7 +1952,9 @@ resolve_and_run_java_test() {
   local rel_java_src_path=${java_test_class//./\/}
   if ! is_jenkins; then
     log "Java test class: $java_test_class"
-    log "Java test method name and optionally a parameter set index: $java_test_method_name"
+    if [[ -n $java_test_method_name ]]; then
+      log "Java test method name and optionally a parameter set index: $java_test_method_name"
+    fi
   fi
 
   local module_name=""

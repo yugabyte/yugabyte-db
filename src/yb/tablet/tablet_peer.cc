@@ -86,11 +86,13 @@
 #include "yb/tablet/write_query.h"
 
 #include "yb/util/debug-util.h"
+#include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
@@ -126,6 +128,8 @@ DEFINE_test_flag(double, fault_crash_leader_before_changing_role, 0.0,
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
 DECLARE_int64(cdc_intent_retention_ms);
+
+DECLARE_bool(enable_flush_retryable_requests);
 
 namespace yb {
 namespace tablet {
@@ -194,7 +198,7 @@ TabletPeer::TabletPeer(
       client_future_(client_future) {}
 
 TabletPeer::~TabletPeer() {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   // We should either have called Shutdown(), or we should have never called
   // Init().
   LOG_IF_WITH_PREFIX(DFATAL, tablet_) << "TabletPeer not fully shut down.";
@@ -210,9 +214,10 @@ Status TabletPeer::InitTabletPeer(
     const scoped_refptr<MetricEntity>& tablet_metric_entity,
     ThreadPool* raft_pool,
     ThreadPool* tablet_prepare_pool,
-    consensus::RetryableRequests* retryable_requests,
+    consensus::RetryableRequestsManager* retryable_requests_manager,
     std::unique_ptr<ConsensusMetadata> consensus_meta,
-    consensus::MultiRaftManager* multi_raft_manager) {
+    consensus::MultiRaftManager* multi_raft_manager,
+    ThreadPool* flush_retryable_requests_pool) {
   DCHECK(tablet) << "A TabletPeer must be provided with a Tablet";
   DCHECK(log) << "A TabletPeer must be provided with a Log";
 
@@ -221,7 +226,7 @@ Status TabletPeer::InitTabletPeer(
   }
 
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     auto state = state_.load(std::memory_order_acquire);
     if (state != RaftGroupStatePB::BOOTSTRAPPING) {
       return STATUS_FORMAT(
@@ -282,10 +287,6 @@ Status TabletPeer::InitTabletPeer(
                                             meta_->fs_manager()->uuid(), &consensus_meta));
     }
 
-    if (retryable_requests) {
-      retryable_requests->SetMetricEntity(tablet->GetTabletMetricsEntity());
-    }
-
     consensus_ = RaftConsensus::Create(
         options,
         std::move(consensus_meta),
@@ -302,9 +303,14 @@ Status TabletPeer::InitTabletPeer(
         mark_dirty_clbk_,
         tablet_->table_type(),
         raft_pool,
-        retryable_requests,
+        retryable_requests_manager,
         multi_raft_manager);
     has_consensus_.store(true, std::memory_order_release);
+
+    auto flush_retryable_requests_pool_token = flush_retryable_requests_pool
+        ? flush_retryable_requests_pool->NewToken(ThreadPool::ExecutionMode::SERIAL) : nullptr;
+    retryable_requests_flusher_ = std::make_shared<RetryableRequestsFlusher>(
+        tablet_id_, consensus_, std::move(flush_retryable_requests_pool_token));
 
     tablet_->SetHybridTimeLeaseProvider(std::bind(&TabletPeer::HybridTimeLease, this, _1, _2));
     operation_tracker_.SetPostTracker(
@@ -317,7 +323,8 @@ Status TabletPeer::InitTabletPeer(
   }
   // End of lock scope for lock_.
 
-  ChangeConfigReplicated(RaftConfig()); // Set initial flag value.
+  auto raft_config = VERIFY_RESULT(GetRaftConsensus())->CommittedConfig();
+  ChangeConfigReplicated(raft_config);  // Set initial flag value.
 
   RETURN_NOT_OK(prepare_thread_->Start());
 
@@ -349,8 +356,9 @@ Result<FixedHybridTimeLease> TabletPeer::HybridTimeLease(
   // min_allowed could contain non zero logical part, so we add one microsecond to be sure that
   // the resulting ht_lease is at least min_allowed.
   auto min_allowed_micros = min_allowed.CeilPhysicalValueMicros();
-  MicrosTime lease_micros = VERIFY_RESULT(consensus_->MajorityReplicatedHtLeaseExpiration(
-      min_allowed_micros, deadline));
+  MicrosTime lease_micros =
+      VERIFY_RESULT(VERIFY_RESULT(GetConsensus())
+                        ->MajorityReplicatedHtLeaseExpiration(min_allowed_micros, deadline));
   if (lease_micros >= kMaxHybridTimePhysicalMicros) {
     // This could happen when leader leases are disabled.
     return FixedHybridTimeLease();
@@ -362,7 +370,8 @@ Result<FixedHybridTimeLease> TabletPeer::HybridTimeLease(
 }
 
 Result<HybridTime> TabletPeer::PreparePeerRequest() {
-  auto leader_term = consensus_->GetLeaderState(/* allow_stale= */ true).term;
+  auto leader_term =
+      VERIFY_RESULT(GetRaftConsensus())->GetLeaderState(/* allow_stale= */ true).term;
   if (leader_term >= 0) {
     auto last_write_ht = tablet_->mvcc_manager()->LastReplicatedHybridTime();
     auto propagated_history_cutoff =
@@ -389,15 +398,12 @@ Result<HybridTime> TabletPeer::PreparePeerRequest() {
   return tablet_->mvcc_manager()->SafeTime(ht_lease);
 }
 
-void TabletPeer::MajorityReplicated() {
-  auto ht_lease = HybridTimeLease(
-      /* min_allowed= */ HybridTime::kMin, /* deadline */ CoarseTimePoint::max());
-  if (!ht_lease.ok()) {
-    LOG_WITH_PREFIX(DFATAL) << "Failed to get current lease: " << ht_lease.status();
-    return;
-  }
+Status TabletPeer::MajorityReplicated() {
+  auto ht_lease = VERIFY_RESULT(HybridTimeLease(
+      /* min_allowed= */ HybridTime::kMin, /* deadline */ CoarseTimePoint::max()));
 
-  tablet_->mvcc_manager()->UpdatePropagatedSafeTimeOnLeader(*ht_lease);
+  tablet_->mvcc_manager()->UpdatePropagatedSafeTimeOnLeader(ht_lease);
+  return Status::OK();
 }
 
 void TabletPeer::ChangeConfigReplicated(const RaftConfigPB& config) {
@@ -418,12 +424,13 @@ Status TabletPeer::CheckOperationAllowed(const OpId& op_id, consensus::Operation
 
 Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   {
-    std::lock_guard<simple_spinlock> l(state_change_lock_);
+    std::lock_guard l(state_change_lock_);
     TRACE("Starting consensus");
 
     VLOG_WITH_PREFIX(2) << "Peer starting";
 
-    VLOG(2) << "RaftConfig before starting: " << consensus_->CommittedConfig().DebugString();
+    auto consensus = GetRaftConsensusUnsafe();
+    VLOG(2) << "RaftConfig before starting: " << consensus->CommittedConfig().DebugString();
 
     // If tablet was previously considered shutdown w.r.t. metrics,
     // fix that for a tablet now being reinstated.
@@ -431,7 +438,7 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
       << "Remove from set of tablets that have been shutdown so as to allow reporting metrics";
     metric_registry_->tablets_shutdown_erase(tablet_id());
 
-    RETURN_NOT_OK(consensus_->Start(bootstrap_info));
+    RETURN_NOT_OK(consensus->Start(bootstrap_info));
     RETURN_NOT_OK(UpdateState(RaftGroupStatePB::BOOTSTRAPPING, RaftGroupStatePB::RUNNING,
                               "Incorrect state to start TabletPeer, "));
   }
@@ -446,16 +453,11 @@ Status TabletPeer::Start(const ConsensusBootstrapInfo& bootstrap_info) {
   return tablet_->EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause */ nullptr);
 }
 
-consensus::RaftConfigPB TabletPeer::RaftConfig() const {
-  CHECK(consensus_) << "consensus is null";
-  return consensus_->CommittedConfig();
-}
-
 bool TabletPeer::StartShutdown() {
   LOG_WITH_PREFIX(INFO) << "Initiating TabletPeer shutdown";
 
   {
-    std::lock_guard<decltype(lock_)> lock(lock_);
+    std::lock_guard lock(lock_);
     if (tablet_) {
       tablet_->StartShutdown();
     }
@@ -475,18 +477,14 @@ bool TabletPeer::StartShutdown() {
     }
   }
 
-  std::lock_guard<simple_spinlock> l(state_change_lock_);
+  std::lock_guard l(state_change_lock_);
   // Even though Tablet::Shutdown() also unregisters its ops, we have to do it here
   // to ensure that any currently running operation finishes before we proceed with
   // the rest of the shutdown sequence. In particular, a maintenance operation could
   // indirectly end up calling into the log, which we are about to shut down.
   UnregisterMaintenanceOps();
 
-  std::shared_ptr<consensus::RaftConsensus> consensus;
-  {
-    std::lock_guard<decltype(lock_)> lock(lock_);
-    consensus = consensus_;
-  }
+  auto consensus = GetRaftConsensusUnsafe();
   if (consensus) {
     consensus->Shutdown();
   }
@@ -526,12 +524,15 @@ void TabletPeer::CompleteShutdown(
   tablet_obj_state_.store(TabletObjectState::kDestroyed, std::memory_order_release);
 
   // Only mark the peer as SHUTDOWN when all other components have shut down.
+  std::shared_ptr<consensus::RaftConsensus> consensus;
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     strand_.reset();
+    retryable_requests_flusher_.reset();
     // Release mem tracker resources.
     has_consensus_.store(false, std::memory_order_release);
-    consensus_.reset();
+    // Clear the consensus and destroy it outside the lock.
+    consensus_.swap(consensus);
     prepare_thread_.reset();
     tablet_.reset();
     auto state = state_.load(std::memory_order_acquire);
@@ -651,7 +652,7 @@ Status TabletPeer::WaitUntilConsensusRunning(const MonoDelta& timeout) {
                      RaftGroupStatePB_Name(cached_state)));
     }
     if (cached_state == RUNNING && has_consensus_.load(std::memory_order_acquire) &&
-        consensus_->IsRunning()) {
+        VERIFY_RESULT(GetRaftConsensus())->IsRunning()) {
       break;
     }
     MonoTime now(MonoTime::Now());
@@ -729,7 +730,7 @@ Status TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
   std::shared_ptr<consensus::RaftConsensus> consensus;
   TabletPtr tablet;
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     consensus = consensus_;
     tablet = tablet_;
   }
@@ -757,7 +758,7 @@ std::unique_ptr<UpdateTxnOperation> TabletPeer::CreateUpdateTransaction(
 }
 
 void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   DCHECK(status_pb_out != nullptr);
   DCHECK(status_listener_.get() != nullptr);
   const auto disk_size_info = GetOnDiskSizeInfo();
@@ -822,12 +823,12 @@ Result<TabletPtr> TabletPeer::shared_tablet_safe() const {
 }
 
 TabletDataState TabletPeer::data_state() const {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   return meta_->tablet_data_state();
 }
 
 string TabletPeer::HumanReadableState() const {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   TabletDataState data_state = meta_->tablet_data_state();
   RaftGroupStatePB state = this->state();
   // If failed, any number of things could have gone wrong.
@@ -962,7 +963,7 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
     *details += Format("Min pending op id index: $0\n", min_pending_op_index);
   }
 
-  auto min_retryable_request_op_id = consensus_->MinRetryableRequestOpId();
+  auto min_retryable_request_op_id = VERIFY_RESULT(GetRaftConsensus())->MinRetryableRequestOpId();
   min_index = std::min(min_index, min_retryable_request_op_id.index);
   if (details) {
     *details += Format("Min retryable request op id: $0\n", min_retryable_request_op_id);
@@ -994,7 +995,7 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
   // - New data gets written and Raft-committed, but not yet flushed to an SSTable.
   // - We still don't garbage-collect the logs containing the committed but unflushed data,
   //   because the earlier value of the last committed op id that we read prevents us from doing so.
-  auto last_committed_op_id = consensus()->GetLastCommittedOpId();
+  auto last_committed_op_id = VERIFY_RESULT(GetConsensus())->GetLastCommittedOpId();
   min_index = std::min(min_index, last_committed_op_id.index);
   if (details) {
     *details += Format("Last committed op id: $0\n", last_committed_op_id);
@@ -1108,12 +1109,12 @@ Status TabletPeer::set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replica
 }
 
 Status TabletPeer::set_cdc_min_replicated_index(int64_t cdc_min_replicated_index) {
-  std::lock_guard<decltype(cdc_min_replicated_index_lock_)> l(cdc_min_replicated_index_lock_);
+  std::lock_guard l(cdc_min_replicated_index_lock_);
   return set_cdc_min_replicated_index_unlocked(cdc_min_replicated_index);
 }
 
 Status TabletPeer::reset_cdc_min_replicated_index_if_stale() {
-  std::lock_guard<decltype(cdc_min_replicated_index_lock_)> l(cdc_min_replicated_index_lock_);
+  std::lock_guard l(cdc_min_replicated_index_lock_);
   auto seconds_since_last_refresh =
       MonoTime::Now().GetDeltaSince(cdc_min_replicated_index_refresh_time_).ToSeconds();
   if (seconds_since_last_refresh >
@@ -1217,7 +1218,7 @@ Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
   RETURN_NOT_OK(set_cdc_sdk_safe_time(cdc_sdk_safe_time));
 
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     RETURN_NOT_OK(CheckRunning());
     auto txn_participant = tablet_->transaction_participant();
     if (txn_participant) {
@@ -1357,23 +1358,26 @@ bool TabletPeer::ShouldApplyWrite() {
   return tablet_->ShouldApplyWrite();
 }
 
-consensus::Consensus* TabletPeer::consensus() const {
-  return raft_consensus();
+Result<std::shared_ptr<consensus::Consensus>> TabletPeer::GetConsensus() const {
+  return GetRaftConsensus();
 }
 
-consensus::RaftConsensus* TabletPeer::raft_consensus() const {
-  std::lock_guard<simple_spinlock> lock(lock_);
-  return consensus_.get();
-}
+Result<shared_ptr<consensus::RaftConsensus>> TabletPeer::GetRaftConsensus() const {
+  std::lock_guard lock(lock_);
+  SCHECK(!IsShutdownStarted(), NotFound, "Tablet peer $0 is shutting down", LogPrefix());
+  SCHECK(consensus_, IllegalState, "Consensus not yet initialized for tablet peer $0", LogPrefix());
 
-shared_ptr<consensus::Consensus> TabletPeer::shared_consensus() const {
-  std::lock_guard<simple_spinlock> lock(lock_);
   return consensus_;
 }
 
-shared_ptr<consensus::RaftConsensus> TabletPeer::shared_raft_consensus() const {
-  std::lock_guard<simple_spinlock> lock(lock_);
+shared_ptr<consensus::RaftConsensus> TabletPeer::GetRaftConsensusUnsafe() const {
+  std::lock_guard lock(lock_);
   return consensus_;
+}
+
+std::shared_ptr<RetryableRequestsFlusher> TabletPeer::shared_retryable_requests_flusher() const {
+  std::lock_guard lock(lock_);
+  return retryable_requests_flusher_;
 }
 
 Result<OperationDriverPtr> TabletPeer::NewLeaderOperationDriver(
@@ -1402,7 +1406,7 @@ void TabletPeer::RegisterMaintenanceOps(MaintenanceManager* maint_mgr) {
   // Note that the state_change_lock_ is taken in Shutdown(),
   // prior to calling UnregisterMaintenanceOps().
 
-  std::lock_guard<simple_spinlock> l(state_change_lock_);
+  std::lock_guard l(state_change_lock_);
 
   if (state() != RaftGroupStatePB::RUNNING) {
     LOG_WITH_PREFIX(WARNING) << "Not registering maintenance operations: tablet not RUNNING";
@@ -1466,17 +1470,28 @@ std::string TabletPeer::LogPrefix() const {
 scoped_refptr<OperationDriver> TabletPeer::CreateOperationDriver() {
   return scoped_refptr<OperationDriver>(new OperationDriver(
       &operation_tracker_,
-      consensus_.get(),
-      prepare_thread_.get(),
+      GetRaftConsensusUnsafe().get(),
+      prepare_thread_.get(),  // May be nullptr
       tablet_->table_type()));
 }
 
-int64_t TabletPeer::LeaderTerm() const {
-  shared_ptr<consensus::Consensus> consensus;
-  {
-    std::lock_guard<simple_spinlock> lock(lock_);
-    consensus = consensus_;
+Result<client::YBClient*> TabletPeer::client() const {
+  auto cached_value = client_cache_.load(std::memory_order_acquire);
+  if (cached_value != nullptr) {
+    return cached_value;
   }
+  auto future_status = client_future_.wait_for(
+      TransactionRpcTimeout().ToSteadyDuration());
+  if (future_status != std::future_status::ready) {
+    return STATUS(TimedOut, "Client not ready");
+  }
+  auto result = client_future_.get();
+  client_cache_.store(result, std::memory_order_release);
+  return result;
+}
+
+int64_t TabletPeer::LeaderTerm() const {
+  auto consensus = GetRaftConsensusUnsafe();
   return consensus ? consensus->LeaderTerm() : yb::OpId::kUnknownTerm;
 }
 
@@ -1485,17 +1500,14 @@ Result<HybridTime> TabletPeer::LeaderSafeTime() const {
 }
 
 consensus::LeaderStatus TabletPeer::LeaderStatus(bool allow_stale) const {
-  shared_ptr<consensus::Consensus> consensus;
-  {
-    std::lock_guard<simple_spinlock> lock(lock_);
-    consensus = consensus_;
-  }
+  auto consensus = GetRaftConsensusUnsafe();
   return consensus ? consensus->GetLeaderStatus(allow_stale) : consensus::LeaderStatus::NOT_LEADER;
 }
 
-HybridTime TabletPeer::HtLeaseExpiration() const {
+Result<HybridTime> TabletPeer::HtLeaseExpiration() const {
+  auto consensus = VERIFY_RESULT(GetRaftConsensus());
   HybridTime result(
-      CHECK_RESULT(consensus_->MajorityReplicatedHtLeaseExpiration(0, CoarseTimePoint::max())), 0);
+      CHECK_RESULT(consensus->MajorityReplicatedHtLeaseExpiration(0, CoarseTimePoint::max())), 0);
   return std::max(result, tablet_->mvcc_manager()->LastReplicatedHybridTime());
 }
 
@@ -1557,7 +1569,7 @@ void TabletPeer::StrandEnqueue(rpc::StrandTask* task) {
 }
 
 bool TabletPeer::CanBeDeleted() {
-  const auto consensus = shared_raft_consensus();
+  const auto consensus = GetRaftConsensusUnsafe();
   if (!consensus || consensus->LeaderTerm() == OpId::kUnknownTerm) {
     return false;
   }
@@ -1572,7 +1584,7 @@ bool TabletPeer::CanBeDeleted() {
     return false;
   }
 
-  const auto all_applied_op_id = consensus->GetAllAppliedOpId();
+  const auto all_applied_op_id = consensus.get()->GetAllAppliedOpId();
   if (all_applied_op_id < op_id) {
     return false;
   }
@@ -1592,26 +1604,12 @@ rpc::Scheduler& TabletPeer::scheduler() const {
 // Called from within RemoteBootstrapSession and RemoteBootstrapServiceImpl.
 Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
   MAYBE_FAULT(FLAGS_TEST_fault_crash_leader_before_changing_role);
-  shared_ptr<consensus::Consensus> consensus = shared_consensus();
-
-  // This check fixes an issue with test TestDeleteTabletDuringRemoteBootstrap in which a tablet is
-  // tombstoned while the bootstrap is happening. This causes the peer's consensus object to be
-  // null.
-  if (!consensus) {
-    RaftGroupStatePB tablet_state = state();
-    return STATUS(
-        IllegalState,
-        Substitute(
-            "Unable to change role for server $0 in config for tablet $1. Consensus is not "
-            "available. "
-            "Tablet state: $2 ($3)",
-            requestor_uuid, tablet_id(), RaftGroupStatePB_Name(tablet_state), tablet_state));
-  }
+  auto consensus = VERIFY_RESULT_PREPEND(GetConsensus(), "Unable to change role for tablet peer");
 
   // If peer being bootstrapped is already a VOTER, don't send the ChangeConfig request. This could
   // happen when a tserver that is already a VOTER in the configuration tombstones its tablet, and
   // the leader starts bootstrapping it.
-  const consensus::RaftConfigPB config = RaftConfig();
+  const auto config = consensus->CommittedConfig();
   for (const RaftPeerPB& peer_pb : config.peers()) {
     if (peer_pb.permanent_uuid() != requestor_uuid) {
       continue;
@@ -1656,6 +1654,65 @@ Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
   return STATUS(
       IllegalState,
       Substitute("Unable to find peer $0 in config for tablet $1", requestor_uuid, tablet_id()));
+}
+
+void TabletPeer::EnableFlushRetryableRequests() {
+  flush_retryable_requests_enabled_.store(true, std::memory_order_relaxed);
+}
+
+bool TabletPeer::FlushRetryableRequestsEnabled() const {
+  return GetAtomicFlag(&FLAGS_enable_flush_retryable_requests) &&
+      flush_retryable_requests_enabled_.load(std::memory_order_relaxed);
+}
+
+Result<consensus::RetryableRequests> TabletPeer::GetRetryableRequests() {
+  return VERIFY_RESULT(GetRaftConsensus())->GetRetryableRequests();
+}
+
+Status TabletPeer::FlushRetryableRequests() {
+  if (!FlushRetryableRequestsEnabled()) {
+    return STATUS(NotSupported, "flush_retryable_requests is not supported");
+  }
+  auto retryable_requests_flusher = shared_retryable_requests_flusher();
+  SCHECK_FORMAT(retryable_requests_flusher,
+                IllegalState,
+                "Tablet $0 retryable_requests_flusher not initialized",
+                tablet_id_);
+  return retryable_requests_flusher->FlushRetryableRequests();
+}
+
+Result<OpId> TabletPeer::CopyRetryableRequestsTo(const std::string& dest_path) {
+  if (!FlushRetryableRequestsEnabled()) {
+    return STATUS(NotSupported, "flush_retryable_requests is not supported");
+  }
+  auto retryable_requests_flusher = shared_retryable_requests_flusher();
+  SCHECK_FORMAT(retryable_requests_flusher,
+                IllegalState,
+                "Tablet $0 retryable_requests_flusher not initialized",
+                tablet_id_);
+  return retryable_requests_flusher->CopyRetryableRequestsTo(dest_path);
+}
+
+Status TabletPeer::SubmitFlushRetryableRequestsTask() {
+  if (!FlushRetryableRequestsEnabled()) {
+    return STATUS(NotSupported, "flush_retryable_requests is not supported");
+  }
+  auto retryable_requests_flusher = shared_retryable_requests_flusher();
+  SCHECK_FORMAT(retryable_requests_flusher,
+                IllegalState,
+                "Tablet $0 retryable_requests_flusher not initialized",
+                tablet_id_);
+  return retryable_requests_flusher->SubmitFlushRetryableRequestsTask();
+}
+
+bool TabletPeer::TEST_HasRetryableRequestsOnDisk() {
+  if (!FlushRetryableRequestsEnabled()) {
+    return false;
+  }
+  auto retryable_requests_flusher = shared_retryable_requests_flusher();
+  return retryable_requests_flusher
+      ? retryable_requests_flusher->TEST_HasRetryableRequestsOnDisk()
+      : false;
 }
 
 }  // namespace tablet

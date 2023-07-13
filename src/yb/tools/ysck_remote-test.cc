@@ -77,8 +77,8 @@ class RemoteYsckTest : public YBTest {
   RemoteYsckTest()
     : random_(SeedRandom()) {
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(INT32)->NotNull()->HashPrimaryKey();
-    b.AddColumn("int_val")->Type(INT32)->NotNull();
+    b.AddColumn("key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+    b.AddColumn("int_val")->Type(DataType::INT32)->NotNull();
     CHECK_OK(b.Build(&schema_));
   }
 
@@ -86,7 +86,7 @@ class RemoteYsckTest : public YBTest {
     YBTest::SetUp();
 
     // Speed up testing, saves about 700ms per TEST_F.
-    FLAGS_heartbeat_interval_ms = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 10;
 
     MiniClusterOptions opts;
     opts.num_tablet_servers = 3;

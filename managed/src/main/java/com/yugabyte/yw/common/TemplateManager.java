@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -15,13 +16,17 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 
 @Singleton
+@Slf4j
 public class TemplateManager extends DevopsBase {
   private static final String COMMAND_TYPE = "instance";
   public static final String PROVISION_SCRIPT = "provision_instance.py";
 
   @Inject Config appConfig;
+
+  @Inject NodeAgentClient nodeAgentClient;
 
   @Override
   protected String getCommandType() {
@@ -66,6 +71,13 @@ public class TemplateManager extends DevopsBase {
 
     Provider provider = Provider.getOrBadRequest(accessKey.getProviderUUID());
     ProviderDetails details = provider.getDetails();
+
+    if (details.sshUser == null) {
+      log.warn(
+          "skip provision script templating, provider {} has no ssh user defined",
+          provider.getName());
+      return;
+    }
     commandArgs.add("--ssh_user");
     commandArgs.add(details.sshUser);
 
@@ -80,6 +92,8 @@ public class TemplateManager extends DevopsBase {
 
     commandArgs.add("--custom_ssh_port");
     commandArgs.add(details.sshPort.toString());
+    commandArgs.add("--provider_id");
+    commandArgs.add(provider.getUuid().toString());
 
     if (airGapInstall) {
       commandArgs.add("--air_gap");
@@ -105,6 +119,12 @@ public class TemplateManager extends DevopsBase {
           commandArgs.add(server);
         }
       }
+    }
+
+    if (nodeAgentClient.isClientEnabled(provider)) {
+      commandArgs.add("--install_node_agent");
+      commandArgs.add("--node_agent_port");
+      commandArgs.add(String.valueOf(confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort)));
     }
 
     JsonNode result =

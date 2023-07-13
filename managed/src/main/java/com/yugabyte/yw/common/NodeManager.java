@@ -19,6 +19,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
@@ -141,6 +142,8 @@ public class NodeManager extends DevopsBase {
   @Inject ReleaseManager releaseManager;
 
   @Inject ImageBundleUtil imageBundleUtil;
+
+  @Inject NodeAgentClient nodeAgentClient;
 
   @Inject NodeAgentPoller nodeAgentPoller;
 
@@ -325,19 +328,21 @@ public class NodeManager extends DevopsBase {
         subCommand.add(customSecurityGroupId);
       }
     }
-
+    Provider provider = params.getProvider();
+    ProviderDetails providerDetails = provider.getDetails();
     if (params instanceof AnsibleDestroyServer.Params
         && providerType.equals(Common.CloudType.onprem)) {
       subCommand.add("--install_node_exporter");
+      if (!providerDetails.skipProvisioning) {
+        subCommand.add("--provisioning_cleanup");
+      }
     }
 
-    ProviderDetails providerDetails = params.getProvider().getDetails();
     if (sshPort == null) {
       sshPort = providerDetails.getSshPort();
     }
     subCommand.add("--custom_ssh_port");
     subCommand.add(sshPort.toString());
-
     // TODO make this global and remove this conditional check
     // to avoid bugs.
     if ((type == NodeCommandType.Provision
@@ -346,17 +351,29 @@ public class NodeManager extends DevopsBase {
             || type == NodeCommandType.Disk_Update
             || type == NodeCommandType.Update_Mounted_Disks
             || type == NodeCommandType.Reboot
-            || type == NodeCommandType.Change_Instance_Type
-            || type == NodeCommandType.Wait_For_Connection)
-        && providerDetails.sshUser != null) {
+            || type == NodeCommandType.Change_Instance_Type)
+        && StringUtils.isNotBlank(providerDetails.sshUser)) {
       subCommand.add("--ssh_user");
       if (StringUtils.isNotBlank(sshUser)) {
         subCommand.add(sshUser);
       } else {
         subCommand.add(providerDetails.sshUser);
       }
-    }
-    if (type == NodeCommandType.Precheck) {
+    } else if (type == NodeCommandType.Wait_For_Connection) {
+      if (provider.getCloudCode() == CloudType.onprem
+          && providerDetails.skipProvisioning
+          && getNodeAgentClient().isClientEnabled(provider)) {
+        subCommand.add("--ssh_user");
+        subCommand.add("yugabyte");
+      } else if (StringUtils.isNotBlank(providerDetails.sshUser)) {
+        subCommand.add("--ssh_user");
+        if (StringUtils.isNotBlank(sshUser)) {
+          subCommand.add(sshUser);
+        } else {
+          subCommand.add(providerDetails.sshUser);
+        }
+      }
+    } else if (type == NodeCommandType.Precheck) {
       subCommand.add("--precheck_type");
       if (providerDetails.skipProvisioning) {
         subCommand.add("configure");
@@ -717,6 +734,10 @@ public class NodeManager extends DevopsBase {
     String masterAddresses = universe.getMasterAddresses(false);
     subcommand.add("--master_addresses_for_tserver");
     subcommand.add(masterAddresses);
+    Integer num_cores_to_keep =
+        confGetter.getConfForScope(universe, UniverseConfKeys.numCoresToKeep);
+    subcommand.add("--num_cores_to_keep");
+    subcommand.add(String.valueOf(num_cores_to_keep));
 
     if (masterAddresses == null || masterAddresses.isEmpty()) {
       LOG.warn("No valid masters found during configure for {}.", taskParam.getUniverseUUID());
@@ -785,7 +806,7 @@ public class NodeManager extends DevopsBase {
                 ybcPackage, YBC_PACKAGE_REGEX));
       }
       ybcDir = "ybc" + matcher.group(1);
-      ybcFlags = GFlagsUtil.getYbcFlags(taskParam);
+      ybcFlags = GFlagsUtil.getYbcFlags(taskParam, config);
       boolean enableVerbose =
           confGetter.getConfForScope(universe, UniverseConfKeys.ybcEnableVervbose);
       if (enableVerbose) {
@@ -1343,7 +1364,7 @@ public class NodeManager extends DevopsBase {
                 }
                 commandArgs.add("--connection_type");
                 commandArgs.add("node_agent_rpc");
-                NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
+                nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
               });
     }
     commandArgs.add(nodeTaskParam.getNodeName());
@@ -1463,7 +1484,7 @@ public class NodeManager extends DevopsBase {
                 if (getNodeAgentClient().isAnsibleOffloadingEnabled(nodeAgent, provider)) {
                   commandArgs.add("--offload_ansible");
                 }
-                NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
+                nodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
               });
     }
   }

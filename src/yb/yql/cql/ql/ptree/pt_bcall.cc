@@ -115,7 +115,8 @@ Status PTBcall::Analyze(SemContext *sem_context) {
   // - If the datatype of an argument (such as bind variable) is not determined, and the overloaded
   //   function call cannot be resolved by the rest of the arguments, the parser should raised
   //   error for multiple matches.
-  SemState sem_state(sem_context, QLType::Create(UNKNOWN_DATA), InternalType::VALUE_NOT_SET);
+  SemState sem_state(
+      sem_context, QLType::Create(DataType::UNKNOWN_DATA), InternalType::VALUE_NOT_SET);
 
   int pindex = 0;
   const MCList<PTExpr::SharedPtr>& exprs = args_->node_list();
@@ -408,13 +409,13 @@ Status PTBcall::CheckOperatorAfterArgAnalyze(SemContext *sem_context) {
     const QLType::SharedPtr type = args_->element(0)->ql_type();
     DCHECK(!type->IsUnknown());
 
-    if (type->main() == TUPLE) {
+    if (type->main() == DataType::TUPLE) {
       // https://github.com/YugaByte/yugabyte-db/issues/936
       return sem_context->Error(args_->element(0),
           "Tuple type not implemented yet", ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
     }
 
-    if (type->Contains(FROZEN) || type->Contains(USER_DEFINED_TYPE)) {
+    if (type->Contains(DataType::FROZEN) || type->Contains(DataType::USER_DEFINED_TYPE)) {
       // Only the server side implementation allows complex types unwrapping based on the schema.
       name_->insert(0, "server_");
     }
@@ -427,7 +428,7 @@ void PTBcall::rscol_type_PB(QLTypePB *pb_type) const {
   if (aggregate_opcode() == bfql::TSOpcode::kAvg) {
     // Tablets return a map of (count, sum),
     // so that the average can be calculated across all tablets.
-    QLType::CreateTypeMap(INT64, args_->node_list().front()->ql_type()->main())
+    QLType::CreateTypeMap(DataType::INT64, args_->node_list().front()->ql_type()->main())
         ->ToQLTypePB(pb_type);
     return;
   }

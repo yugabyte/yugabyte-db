@@ -23,7 +23,7 @@
 namespace yb {
 
 void Delayer::Delay(MonoTime when, std::function<void()> action) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   if (!thread_) {
     CHECK_OK(yb::Thread::Create("delayer", "delay", &Delayer::Execute, this, &thread_));
   }
@@ -33,7 +33,7 @@ void Delayer::Delay(MonoTime when, std::function<void()> action) {
 
 Delayer::~Delayer() {
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     stop_ = true;
     cond_.notify_one();
   }

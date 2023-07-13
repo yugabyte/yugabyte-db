@@ -28,7 +28,7 @@ func GetHealthCheckFuture(nodeHost string, future chan HealthCheckFuture) {
     httpClient := &http.Client{
         Timeout: time.Second * 10,
     }
-    url := fmt.Sprintf("http://%s:7000/api/v1/health-check", nodeHost)
+    url := fmt.Sprintf("http://%s:%s/api/v1/health-check", nodeHost, MasterUIPort)
     resp, err := httpClient.Get(url)
     if err != nil {
         healthCheck.Error = err

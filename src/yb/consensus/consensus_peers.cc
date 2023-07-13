@@ -134,7 +134,7 @@ void Peer::TEST_SetTerm(int term, ThreadSafeArena* arena) {
 }
 
 Status Peer::Init() {
-  std::lock_guard<simple_spinlock> lock(peer_lock_);
+  std::lock_guard lock(peer_lock_);
   queue_->TrackPeer(peer_pb_);
   // Capture a weak_ptr reference into the functor so it can safely handle
   // outliving the peer.
@@ -562,7 +562,7 @@ void Peer::Close() {
 
   // If the peer is already closed return.
   {
-    std::lock_guard<simple_spinlock> processing_lock(peer_lock_);
+    std::lock_guard processing_lock(peer_lock_);
     if (using_thread_pool_.load(std::memory_order_acquire) > 0) {
       auto deadline = std::chrono::steady_clock::now() +
                       FLAGS_max_wait_for_processresponse_before_closing_ms * 1ms;
@@ -590,7 +590,7 @@ void Peer::Close() {
 }
 
 Peer::~Peer() {
-  std::lock_guard<simple_spinlock> processing_lock(peer_lock_);
+  std::lock_guard processing_lock(peer_lock_);
   CHECK_EQ(state_, kPeerClosed) << "Peer cannot be implicitly closed";
 }
 

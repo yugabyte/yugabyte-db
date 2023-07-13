@@ -135,7 +135,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   }
 
   HybridTime read_time_for_backfill() const EXCLUDES(mutex_) {
-    std::lock_guard<simple_spinlock> l(mutex_);
+    std::lock_guard l(mutex_);
     return read_time_for_backfill_;
   }
 

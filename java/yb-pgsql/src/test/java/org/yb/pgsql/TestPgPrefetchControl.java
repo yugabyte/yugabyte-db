@@ -57,12 +57,12 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
     }
   }
 
-  private TopLevelCheckerBuilder makeTopLevelBuilder() {
-    return JsonUtil.makeCheckerBuilder(TopLevelCheckerBuilder.class);
+  private static TopLevelCheckerBuilder makeTopLevelBuilder() {
+    return JsonUtil.makeCheckerBuilder(TopLevelCheckerBuilder.class, false /* nullify */);
   }
 
   private static PlanCheckerBuilder makePlanBuilder() {
-    return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class, false);
+    return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class, false /* nullify */);
   }
 
   private static String makeFillerString(int n) {
@@ -102,7 +102,7 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
         statement,
         stmt,
         makeTopLevelBuilder()
-          .storageReadRequests(Checkers.greaterOrEqual(50))
+          .storageReadRequests(Checkers.greaterOrEqual(51))
           .storageWriteRequests(Checkers.equal(0))
           .storageExecutionTime(Checkers.greaterOrEqual(0.0))
           .plan(makePlanBuilder().build())

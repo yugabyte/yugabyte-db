@@ -228,7 +228,7 @@ public class UniverseInfoHandler {
       Universe universe,
       NodeDetails node,
       String ybHomeDir,
-      String sourceNodeFile,
+      List<String> sourceNodeFile,
       Path targetFile) {
     ShellResponse response =
         nodeUniverseManager.downloadNodeFile(

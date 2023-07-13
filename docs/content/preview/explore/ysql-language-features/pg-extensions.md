@@ -31,36 +31,34 @@ For information about using a specific extension in YugabyteDB, use the Example 
 
 YugabyteDB supports the following [PostgreSQL modules](https://www.postgresql.org/docs/11/contrib.html). All of these modules are pre-bundled.
 
-| Module | Description | Examples |
-| :----- | :---------- | :------ |
-| [file_fdw](https://www.postgresql.org/docs/11/file-fdw.html) | Provides the foreign-data wrapper file_fdw, which can be used to access data files in the server's file system. | [Example](#file-fdw-example) |
-| [fuzzystrmatch](https://www.postgresql.org/docs/11/fuzzystrmatch.html) | Provides several functions to determine similarities and distance between strings. | [Example](#fuzzystrmatch-example) |
-| [hstore](https://www.postgresql.org/docs/11/hstore.html) | Implements the hstore data type for storing sets of key-value pairs in a single PostgreSQL value. | |
-| [passwordcheck](https://www.postgresql.org/docs/11/passwordcheck.html) | Checks user passwords whenever they are set with CREATE ROLE or ALTER ROLE. If a password is considered too weak, it is rejected. | [Example](#passwordcheck-example) |
-| [pgcrypto](https://www.postgresql.org/docs/11/pgcrypto.html) | Provides various cryptographic functions. | [Example](#pgcrypto-example) |
-| [pg_stat_statements](https://www.postgresql.org/docs/11/pgstatstatements.html) | Provides a means for tracking execution statistics of all SQL statements executed by a server. | [Example](#pg-stat-statements-example) |
-| [pg_trgm](https://www.postgresql.org/docs/11/pgtrgm.html) | Provides functions and operators for determining the similarity of alphanumeric text based on trigram matching, as well as index operator classes that support fast searching for similar strings. | |
-| [postgres_fdw](https://www.postgresql.org/docs/11/postgres-fdw.html) | Provides the foreign-data wrapper postgres_fdw, which can be used to access data stored in external PostgreSQL servers. | [Example](#postgres-fdw-example) |
-| [spi](https://www.postgresql.org/docs/11/contrib-spi.html) | Lets you use the Server Programming Interface (SPI) to create user-defined functions and stored procedures in C, and to run YSQL queries directly against YugabyteDB. | [Example](#spi-example) |
-| [sslinfo](https://www.postgresql.org/docs/11/sslinfo.html) | Provides information about the SSL certificate that the current client provided when connecting to PostgreSQL. | |
-| [tablefunc](https://www.postgresql.org/docs/11/tablefunc.html) | Provides several table functions. For example, `normal_rand()` creates values, picked using a pseudorandom generator, from an ideal normal distribution. You specify how many values you want, and the mean and standard deviation of the ideal distribution. You use it in the same way that you use `generate_series()` | [Example](#tablefunc-example) |
-| [uuid-ossp](https://www.postgresql.org/docs/11/uuid-ossp.html) | Provides functions to generate universally unique identifiers (UUIDs), and functions to produce certain special UUID constants. | [Example](#uuid-ossp-example) |
+| Module | Description |
+| :----- | :---------- |
+| [auto_explain](#auto-explain) | Provides a means for logging execution plans of slow statements automatically. |
+| [file_fdw](#file-fdw-example) | Provides the foreign-data wrapper file_fdw, which can be used to access data files in the server's file system. |
+| [fuzzystrmatch](#fuzzystrmatch-example) | Provides several functions to determine similarities and distance between strings. |
+| hstore | Implements the hstore data type for storing sets of key-value pairs in a single PostgreSQL value. See [hstore](https://www.postgresql.org/docs/11/hstore.html) in the PostgreSQL documentation. |
+| [passwordcheck](#passwordcheck) | Checks user passwords whenever they are set with CREATE ROLE or ALTER ROLE. If a password is considered too weak, it is rejected. |
+| [pgcrypto](#pgcrypto-example) | Provides various cryptographic functions. |
+| [pg_stat_statements](#pg-stat-statements-example) | Provides a means for tracking execution statistics of all SQL statements executed by a server. | [Example](#pg-stat-statements-example) |
+| pg_trgm | Provides functions and operators for determining the similarity of alphanumeric text based on trigram matching, as well as index operator classes that support fast searching for similar strings. See [pg_trgm](https://www.postgresql.org/docs/11/pgtrgm.html) in the PostgreSQL documentation. |
+| [postgres_fdw](#postgres-fdw-example) | Provides the foreign-data wrapper postgres_fdw, which can be used to access data stored in external PostgreSQL servers. |
+| [spi](#spi-example) | Lets you use the Server Programming Interface (SPI) to create user-defined functions and stored procedures in C, and to run YSQL queries directly against YugabyteDB. |
+| sslinfo | Provides information about the SSL certificate that the current client provided when connecting to PostgreSQL. See [sslinfo](https://www.postgresql.org/docs/11/sslinfo.html) in the PostgreSQL documentation. |
+| [tablefunc](#tablefunc-example) | Provides several table functions. For example, `normal_rand()` creates values, picked using a pseudorandom generator, from an ideal normal distribution. You specify how many values you want, and the mean and standard deviation of the ideal distribution. You use it in the same way that you use `generate_series()` |
+| [uuid-ossp](#uuid-ossp-example) | Provides functions to generate universally unique identifiers (UUIDs), and functions to produce certain special UUID constants. |
 
 ### Other extensions
 
 | Extension | Status | Description | Examples |
 | :-------- | :----- | :---------- | :------- |
+| [HypoPG](https://github.com/HypoPG/hypopg) | Pre-bundled | Create hypothetical indexes to test whether an index can increase performance for problematic queries without consuming any actual resources. | [Example](#hypopg-example) |
 | [pg_hint_plan](https://pghintplan.osdn.jp/pg_hint_plan.html) | Pre-bundled | Tweak execution plans using "hints", which are descriptions in the form of SQL comments. | [Example](../../query-1-performance/pg-hint-plan/#root) |
 | [PGAudit](https://www.pgaudit.org/) | Pre-bundled | The PostgreSQL Audit Extension (pgAudit) provides detailed session and/or object audit logging via the standard PostgreSQL logging facility. | [Install and example](../../../secure/audit-logging/audit-logging-ysql/) |
 | [pg_stat_monitor](https://github.com/percona/pg_stat_monitor) | Pre-bundled | A PostgreSQL query performance monitoring tool, based on the PostgreSQL pg_stat_statements module. | |
 | [Orafce](https://github.com/orafce/orafce) | Pre-bundled | Provides compatibility with Oracle functions and packages that are either missing or implemented differently in YugabyteDB and PostgreSQL. This compatibility layer can help you port your Oracle applications to YugabyteDB. | |
 | [PostGIS](https://postgis.net/) | Requires installation | A spatial database extender for PostgreSQL-compatible object-relational databases. | [Install and example](#postgis-example) |
-| [postgresql-hll](https://github.com/citusdata/postgresql-hll) | Requires installation | Introduces the data type `hll`, which is a HyperLogLog data structure. | [Install and example](#postgresql-hll-example) |
+| [postgresql-hll](https://github.com/yugabyte/yugabyte-db/tree/master/src/postgres/third-party-extensions/postgresql-hll) | Pre-bundled | Adds the data type `hll`, which is a HyperLogLog data structure. | [Example](#postgresql-hll-example) |
 | [pgsql-postal](https://github.com/pramsey/pgsql-postal) | Requires installation | Parse and normalize street addresses around the world using libpostal. | [Install and example](#pgsql-postal-example) |
-| [YCQL_fdw](https://github.com/YugaByte/yugabyte-db/issues/830) | In-progress | Access YCQL tables via the YSQL API. | |
-| [pg_cron](https://github.com/citusdata/pg_cron) | In-progress | Cron-based job scheduler for PostgreSQL. Using the same syntax as regular cron, schedule PostgreSQL commands directly from the database. | |
-| [PostgreSQL Anonymizer](https://postgresql-anonymizer.readthedocs.io/en/latest/) | In-progress | Mask or replace personally identifiable information (PII) or commercially sensitive data from a PostgreSQL database. | |
-| [PG Partition Manager](https://github.com/pgpartman/pg_partman) | In-progress | Create and manage both time-based and serial-based table partition sets. | |
 
 ## Install extensions
 
@@ -161,9 +159,66 @@ On CentOS, the correct path is `/usr/pgsql-11/bin/pg_config`.
 
 ## Use PostgreSQL extensions
 
+### auto_explain
+
+The [auto_explain](https://www.postgresql.org/docs/11/auto-explain.html) PostgreSQL module provides a means for logging execution plans of slow statements automatically, without having to run EXPLAIN by hand. This is especially helpful for tracking down un-optimized queries in large applications.
+
+To enable the auto_explain extension, add `auto_explain` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [--ysql_pg_conf_csv](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
+
+```sh
+--ysql_pg_conf_csv="shared_preload_libraries=auto_explain"
+```
+
+Note that modifying `shared_preload_libraries` requires restarting the YB-TServer.
+
+You can customize the following auto_explain parameters:
+
+| Parameter | Description | Default |
+| :--- | :--- | :--- |
+| `log_min_duration` | Minimum statement execution time, in milliseconds, that will cause the statement's plan to be logged. Setting this to zero logs all plans. Minus-one (the default) disables logging. For example, if you set it to 250ms then all statements that run 250ms or longer will be logged. Only superusers can change this setting. | -1 |
+| `log_analyze` | Print EXPLAIN ANALYZE output, rather than just EXPLAIN output when an execution plan is logged. When on, per-plan-node timing occurs for all statements executed, whether or not they run long enough to actually get logged. This can have an extremely negative impact on performance. Turning off `log_timing` ameliorates the performance cost, at the price of obtaining less information. Only superusers can change this setting. | false |
+| `log_buffers` | Print buffer usage statistics when an execution plan is logged; equivalent to the BUFFERS option of EXPLAIN. Has no effect unless `log_analyze` is enabled. Only superusers can change this setting. | false |
+| `log_timing` | Print per-node timing information when an execution plan is logged; equivalent to the TIMING option of EXPLAIN. The overhead of repeatedly reading the system clock can slow down queries significantly on some systems, so it may be beneficial to set this parameter to off when only actual row counts, and not exact times, are needed. Has no effect unless `log_analyze` is enabled. Only superusers can change this setting. | true |
+| `log_triggers` | Include trigger execution statistics when an execution plan is logged. Has no effect unless `log_analyze` is enabled. Only superusers can change this setting. | false |
+| `log_verbose` | Print verbose details when an execution plan is logged; equivalent to the VERBOSE option of EXPLAIN. Only superusers can change this setting. | false |
+| `log_format` | The format of the EXPLAIN output. Allowed values are `text`, `xml`, `json`, and `yaml`. Only superusers can change this setting. | text |
+| `log_nested_statements` | Consider nested statements (statements executed inside a function) for logging. When off, only top-level query plans are logged. Only superusers can change this setting. | false |
+| `sample_rate` | Explain only a set fraction of the statements in each session. The default 1 means explain all the queries. In case of nested statements, either all will be explained or none. Only superusers can change this setting. | 1 |
+
+Note that the default behavior is to do nothing, so you must set at least `auto_explain.log_min_duration` if you want any results.
+
+#### auto_explain example
+
+To change auto_explain parameters, use the SET statement. For example:
+
+```sql
+SET auto_explain.log_min_duration = 0;
+SET auto_explain.log_analyze = true;
+SELECT count(*)
+    FROM pg_class, pg_index
+    WHERE oid = indrelid AND indisunique;
+```
+
+This produces log output similar to the following in the PostgreSQL log file in the `tserver/logs` directory:
+
+```output
+LOG:  duration: 316.556 ms  plan:
+        Query Text: SELECT count(*)
+                   FROM pg_class, pg_index
+                   WHERE oid = indrelid AND indisunique;
+        Aggregate  (cost=216.39..216.40 rows=1 width=8) (actual time=316.489..316.489 rows=1 loops=1)
+          ->  Nested Loop  (cost=0.00..213.89 rows=1000 width=0) (actual time=10.828..316.200 rows=110 loops=1)
+                ->  Seq Scan on pg_index  (cost=0.00..100.00 rows=1000 width=4) (actual time=7.465..8.068 rows=110 loops=1)
+                      Remote Filter: indisunique
+                ->  Index Scan using pg_class_oid_index on pg_class  (cost=0.00..0.11 rows=1 width=4) (actual time=2.673..2.673 rows=1 loops=110)
+                      Index Cond: (oid = pg_index.indrelid)
+```
+
 ### file_fdw example
 
-First, install the extension:
+The [file_fdw](https://www.postgresql.org/docs/11/file-fdw.html) module provides the foreign-data wrapper `file_fdw`, which can be used to access data files in the server's file system, or to execute programs on the server and read their output.
+
+To enable the extension:
 
 ```sql
 CREATE EXTENSION file_fdw;
@@ -185,6 +240,8 @@ You can execute `SELECT` statements on the foreign tables to access the data in 
 
 ### fuzzystrmatch example
 
+The [fuzzystrmatch](https://www.postgresql.org/docs/11/fuzzystrmatch.html) module provides several functions to determine similarities and distance between strings.
+
 ```sql
 CREATE EXTENSION fuzzystrmatch;
 
@@ -198,13 +255,134 @@ SELECT levenshtein('Yugabyte', 'yugabyte'), metaphone('yugabyte', 8);
 (1 row)
 ```
 
-### passwordcheck example
+### HypoPG example
 
-To enable the [passwordcheck](https://www.postgresql.org/docs/11/passwordcheck.html) extension, add `passwordcheck` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [--ysql_pg_conf_csv](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
+The [HypoPG](https://github.com/HypoPG/hypopg) PostgreSQL extension adds support for hypothetical indexes. Use hypothetical indexes to test whether adding an index improves the performance of problematic queries, without expending resources to create them.
+
+To enable the extension:
+
+```sql
+CREATE EXTENSION hypopg;
+```
+
+Create a table as follows:
+
+```sql
+CREATE TABLE up_and_down (up int primary key, down int);
+INSERT INTO up_and_down SELECT a AS up, 10001-a AS down FROM generate_series(1,10000) a;
+```
+
+The `up_and_down` table has no indexes, but is defined with a primary key. As a result, when using the primary key, records are retrieved directly:
+
+```sql
+EXPLAIN SELECT * FROM up_and_down WHERE up = 999;
+```
+
+```output
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Index Scan using up_and_down_pkey on up_and_down  (cost=0.00..4.11 rows=1 width=8)
+   Index Cond: (up = 999)
+```
+
+However, because it doesn't have an index, fetching a value from the `down` column results in a sequential scan:
+
+```sql
+EXPLAIN SELECT * FROM up_and_down WHERE down = 999;
+```
+
+```output
+                           QUERY PLAN
+----------------------------------------------------------------
+ Seq Scan on up_and_down  (cost=0.00..102.50 rows=1000 width=8)
+   Filter: (down = 999)
+```
+
+To see what would happen if you were to create an index for the `down` column without actually creating the index, use HypoPG as follows:
+
+```sql
+SELECT * FROM hypopg_create_index('create index on up_and_down(down)');
+```
+
+```output
+ indexrelid |          indexname
+------------+-----------------------------
+      13283 | <13283>lsm_up_and_down_down
+```
+
+Explain now shows that the planner would use the index:
+
+```sql
+EXPLAIN SELECT * FROM up_and_down WHERE down = 999;
+```
+
+```output
+                                            QUERY PLAN
+--------------------------------------------------------------------------------------------------
+ Index Scan using <13283>lsm_up_and_down_down on up_and_down  (cost=0.00..4.01 rows=1000 width=8)
+   Index Cond: (down = 999)
+```
+
+As the index is not really created, if you use `EXPLAIN ANALYZE`, the hypothetical index is ignored:
+
+```sql
+EXPLAIN ANALYZE SELECT * FROM up_and_down WHERE down = 999;
+```
+
+```output
+                                                 QUERY PLAN
+------------------------------------------------------------------------------------------------------------
+ Seq Scan on up_and_down  (cost=0.00..102.50 rows=1000 width=8) (actual time=35.678..35.687 rows=1 loops=1)
+   Filter: (down = 999)
+   Rows Removed by Filter: 9999
+ Planning Time: 0.041 ms
+ Execution Time: 35.735 ms
+ Peak Memory Usage: 0 kB
+```
+
+You can query the hypothetical indexes you created using the `hypopg()` function:
+
+```sql
+SELECT * FROM hypopg();
+```
+
+```output
+          indexname          | indexrelid | indrelid | innatts | indisunique | indkey | indcollation | indclass | indoption | indexprs | indpred | amid
+-----------------------------+------------+----------+---------+-------------+--------+--------------+----------+-----------+----------+---------+------
+ <13283>lsm_up_and_down_down |      13283 |    16927 |       1 | f           | 2      | 0            | 9942     |           |          |         | 9900
+```
+
+If you create multiple hypothetical indexes, you can drop a single hypothetical index using its `indexrelid` as follows:
+
+```sql
+SELECT * FROM hypopg_drop_index(13283);
+```
+
+```output
+ hypopg_drop_index
+-------------------
+ t
+```
+
+To remove all hypothetical indexes, log out or quit your session.
+
+```sql
+\q
+```
+
+For more information, refer to the [HypoPG documentation](https://hypopg.readthedocs.io/en/rel1_stable/).
+
+### passwordcheck
+
+The [passwordcheck](https://www.postgresql.org/docs/11/passwordcheck.html) PostgreSQL module provides a means to check user passwords whenever they are set with CREATE ROLE or ALTER ROLE. If a password is considered too weak, it will be rejected and the command will terminate with an error.
+
+To enable the passwordcheck extension, add `passwordcheck` to `shared_preload_libraries` in the PostgreSQL server configuration parameters using the YB-TServer [--ysql_pg_conf_csv](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag:
 
 ```sh
 --ysql_pg_conf_csv="shared_preload_libraries=passwordcheck"
 ```
+
+Note that modifying `shared_preload_libraries` requires restarting the YB-TServer.
 
 You can customize the following passwordcheck parameters:
 
@@ -223,6 +401,8 @@ For example, the following flag changes the minimum and maximum passwordcheck le
 ```sh
 --ysql_pg_conf_csv="shared_preload_libraries=passwordcheck,passwordcheck.minimum_length=10,passwordcheck.maximum_length=18"
 ```
+
+#### passwordcheck example
 
 You can change passwordcheck parameters for the _current session only_ using a `SET` statement. For example, to increase the maximum length allowed and not require numbers, execute the following commands:
 
@@ -261,6 +441,8 @@ The passwordcheck extension only works for passwords that are provided in plain 
 
 ### pgcrypto example
 
+The [pgcrypto](https://www.postgresql.org/docs/11/pgcrypto.html) module provides cryptographic functions for PostgreSQL.
+
 ```sql
 CREATE EXTENSION pgcrypto;
 CREATE TABLE pgcrypto_example(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), content text, digest text);
@@ -278,6 +460,8 @@ SELECT * FROM pgcrypto_example;
 
 ### pg_stat_statements example
 
+The [pg_stat_statements](https://www.postgresql.org/docs/11/pgstatstatements.html) module provides a means for tracking execution statistics of all SQL statements executed by a server.
+
 ```sql
 CREATE EXTENSION pg_stat_statements;
 
@@ -288,9 +472,42 @@ To get the output of `pg_stat_statements` in JSON format, visit `https://<yb-tse
 
 For more information on using pg_stat_statements in YugabyteDB, refer to [Get query statistics using pg_stat_statements](../../query-1-performance/pg-stat-statements/).
 
+### postgres_fdw example
+
+The [postgres_fdw](https://www.postgresql.org/docs/11/postgres-fdw.html) module provides the foreign-data wrapper postgres_fdw, which can be used to access data stored in external PostgreSQL servers.
+
+First, enable the extension:
+
+```sql
+CREATE EXTENSION postgres_fdw;
+```
+
+To connect to a remote YSQL or PostgreSQL database, create a foreign server object. Specify the connection information (except the username and password) using the `OPTIONS` clause:
+
+```sql
+CREATE SERVER my_server FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host 'host_ip', dbname 'external_db', port 'port_number');
+```
+
+Specify the username and password using `CREATE USER MAPPING`:
+
+```sql
+CREATE USER MAPPING FOR mylocaluser SERVER my_server OPTIONS (user 'remote_user', password 'password');
+```
+
+You can now create foreign tables using `CREATE FOREIGN TABLE` and `IMPORT FOREIGN SCHEMA`:
+
+```sql
+CREATE FOREIGN TABLE table_name (colname1 int, colname2 int) SERVER my_server OPTIONS (schema_name 'schema', table_name 'table');
+IMPORT FOREIGN SCHEMA foreign_schema_name FROM SERVER my_server INTO local_schema_name;
+```
+
+You can execute `SELECT` statements on the foreign tables to access the data in the corresponding remote tables.
+
 ### spi example
 
-YugabyteDB supports the following four (of five &mdash; `timetravel` is not currently supported) extensions provided in the `spi` module:
+The [spi](https://www.postgresql.org/docs/11/contrib-spi.html) module provides several workable examples of using the Server Programming Interface (SPI) and triggers.
+
+YugabyteDB supports the following four (of five &mdash; `timetravel` is not currently supported) extensions provided in the spi module:
 
 * `autoinc` functions auto-increment fields.
 * `insert_username` functions track who changed a table.
@@ -370,6 +587,8 @@ YugabyteDB supports the following four (of five &mdash; `timetravel` is not curr
 
 ### tablefunc example
 
+The [tablefunc](https://www.postgresql.org/docs/11/tablefunc.html) module includes various functions that return tables (that is, multiple rows).
+
 ```sql
 CREATE EXTENSION tablefunc;
 
@@ -422,36 +641,9 @@ The `connectby()` function displays a hierarchy of the kind that you see in an _
 
 The `crosstab()`and  `crosstabN()` functions produce "pivot" displays. The _"N"_ in crosstabN() indicates the fact that a few, `crosstab1()`, `crosstab2()`, `crosstab3()`, are provided natively by the extension and that you can follow documented steps to create more.
 
-### postgres_fdw example
-
-First, install the extension:
-
-```sql
-CREATE EXTENSION postgres_fdw;
-```
-
-To connect to a remote YSQL or PostgreSQL database, create a foreign server object. Specify the connection information (except the username and password) using the `OPTIONS` clause:
-
-```sql
-CREATE SERVER my_server FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host 'host_ip', dbname 'external_db', port 'port_number');
-```
-
-Specify the username and password using `CREATE USER MAPPING`:
-
-```sql
-CREATE USER MAPPING FOR mylocaluser SERVER my_server OPTIONS (user 'remote_user', password 'password');
-```
-
-You can now create foreign tables using `CREATE FOREIGN TABLE` and `IMPORT FOREIGN SCHEMA`:
-
-```sql
-CREATE FOREIGN TABLE table_name (colname1 int, colname2 int) SERVER my_server OPTIONS (schema_name 'schema', table_name 'table');
-IMPORT FOREIGN SCHEMA foreign_schema_name FROM SERVER my_server INTO local_schema_name;
-```
-
-You can execute `SELECT` statements on the foreign tables to access the data in the corresponding remote tables.
-
 ### uuid-ossp example
+
+The [uuid-ossp](https://www.postgresql.org/docs/11/uuid-ossp.html) module provides functions to generate universally unique identifiers (UUIDs) using one of several standard algorithms.
 
 First, install the extension:
 
@@ -474,33 +666,58 @@ SELECT uuid_generate_v1(), uuid_generate_v4(), uuid_nil();
 
 ### postgresql-hll example
 
-First, install `postgres-hll` [from source](https://github.com/citusdata/postgresql-hll#from-source) locally in a PostgreSQL instance. Use the same PostgreSQL version as that incorporated into YugabyteDB.
+The [postgresql-hll](https://github.com/yugabyte/yugabyte-db/tree/master/src/postgres/third-party-extensions/postgresql-hll) extension adds a new data type hll, which is a HyperLogLog data structure. HyperLogLog is a fixed-size, set-like structure used for distinct value counting with tunable precision. For example, in 1280 bytes hll can estimate the count of tens of billions of distinct values with only a few percent error.
 
-After you've installed the extension in PostgreSQL, copy the files to your YugabyteDB instance as follows:
-
-```sh
-cp -v "$(pg_config --pkglibdir)"/*hll*.so "$(yb_pg_config --pkglibdir)" &&
-cp -v "$(pg_config --sharedir)"/extension/*hll*.sql "$(yb_pg_config --sharedir)"/extension &&
-cp -v "$(pg_config --sharedir)"/extension/*hll*.control "$(yb_pg_config --sharedir)"/extension &&
-  ./bin/ysqlsh -c "CREATE EXTENSION \"hll\";"
-```
-
-To run the example from the [postgresql-hll](https://github.com/citusdata/postgresql-hll#usage) repository, connect using `ysqlsh` and run the following:
+First, enable the extension:
 
 ```sql
-yugabyte=# CREATE TABLE helloworld (id integer, set hll);
+CREATE EXTENSION "hll";
+```
+
+To run the helloworld example from the [postgresql-hll](https://github.com/yugabyte/yugabyte-db/tree/master/src/postgres/third-party-extensions/postgresql-hll#usage) repository, connect using `ysqlsh` and run the following:
+
+```sql
+CREATE TABLE helloworld (id integer, set hll);
+```
+
+```output
 CREATE TABLE
---- Insert an empty HLL
-yugabyte=# INSERT INTO helloworld(id, set) VALUES (1, hll_empty());
+```
+
+Insert an empty HLL as follows:
+
+```sql
+INSERT INTO helloworld(id, set) VALUES (1, hll_empty());
+```
+
+```output
 INSERT 0 1
---- Add a hashed integer to the HLL
-yugabyte=# UPDATE helloworld SET set = hll_add(set, hll_hash_integer(12345)) WHERE id = 1;
+```
+
+Add a hashed integer to the HLL as follows:
+
+```sql
+UPDATE helloworld SET set = hll_add(set, hll_hash_integer(12345)) WHERE id = 1;
+```
+
+```output
 UPDATE 1
---- Or add a hashed string to the HLL
-yugabyte=# UPDATE helloworld SET set = hll_add(set, hll_hash_text('hello world')) WHERE id = 1;
+```
+
+Add a hashed string to the HLL as follows:
+
+```sql
+UPDATE helloworld SET set = hll_add(set, hll_hash_text('hello world')) WHERE id = 1;
+```
+
+```output
 UPDATE 1
---- Get the cardinality of the HLL
-yugabyte=# SELECT hll_cardinality(set) FROM helloworld WHERE id = 1;
+```
+
+Get the cardinality of the HLL as follows:
+
+```sql
+SELECT hll_cardinality(set) FROM helloworld WHERE id = 1;
 ```
 
 ```output
@@ -509,6 +726,8 @@ yugabyte=# SELECT hll_cardinality(set) FROM helloworld WHERE id = 1;
                2
 (1 row)
 ```
+
+For a more advanced example, see the [Data Warehouse Use Case](https://github.com/yugabyte/yugabyte-db/tree/master/src/postgres/third-party-extensions/postgresql-hll#data-warehouse-use-case).
 
 ### PostGIS example
 
@@ -649,6 +868,8 @@ This may take a couple of minutes.
     ```
 
 ### pgsql-postal example
+
+The [pgsql-postal](https://github.com/pramsey/pgsql-postal) extension parses and normalizes street addresses around the world using libpostal.
 
 #### Installation
 

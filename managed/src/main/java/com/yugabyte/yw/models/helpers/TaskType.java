@@ -48,6 +48,11 @@ public enum TaskType {
 
   CreateBackup(com.yugabyte.yw.commissioner.tasks.CreateBackup.class),
 
+  ConfigureDBApis(com.yugabyte.yw.commissioner.tasks.upgrade.ConfigureDBApis.class),
+
+  ConfigureDBApisKubernetes(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ConfigureDBApisKubernetes.class),
+
   CreatePitrConfig(com.yugabyte.yw.commissioner.tasks.CreatePitrConfig.class),
 
   DeletePitrConfig(com.yugabyte.yw.commissioner.tasks.DeletePitrConfig.class),
@@ -232,6 +237,9 @@ public enum TaskType {
 
   ModifyBlackList(com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList.class),
 
+  CheckUnderReplicatedTablets(
+      com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets.class),
+
   ManipulateDnsRecordTask(
       com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask.class),
 
@@ -285,6 +293,10 @@ public enum TaskType {
   InstanceActions(com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions.class),
 
   WaitForServerReady(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady.class),
+
+  WaitForClockSync(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForClockSync.class),
+
+  WaitForDuration(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDuration.class),
 
   RunExternalScript(com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript.class),
 
@@ -477,7 +489,8 @@ public enum TaskType {
 
   InstallYbcSoftware(com.yugabyte.yw.commissioner.tasks.InstallYbcSoftware.class),
 
-  InstallYbcSoftwareOnK8s(com.yugabyte.yw.commissioner.tasks.InstallYbcSoftwareOnK8s.class),
+  InstallYbcSoftwareOnK8s(
+      com.yugabyte.yw.commissioner.tasks.subtasks.InstallYbcSoftwareOnK8s.class),
 
   UpgradeUniverseYbc(com.yugabyte.yw.commissioner.tasks.UpgradeUniverseYbc.class),
 
@@ -504,9 +517,17 @@ public enum TaskType {
   UpdateClusterUserIntent(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterUserIntent.class),
 
+  UpdateClusterAPIDetails(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails.class),
+
+  UpdateUniverseCommunicationPorts(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts.class),
+
   CreateBackupSchedule(com.yugabyte.yw.commissioner.tasks.CreateBackupSchedule.class),
 
-  YBCBackupSucceeded(com.yugabyte.yw.commissioner.tasks.subtasks.YBCBackupSucceeded.class);
+  YBCBackupSucceeded(com.yugabyte.yw.commissioner.tasks.subtasks.YBCBackupSucceeded.class),
+
+  CloudProviderEdit(com.yugabyte.yw.commissioner.tasks.CloudProviderEdit.class);
 
   private final Class<? extends ITask> taskClass;
 

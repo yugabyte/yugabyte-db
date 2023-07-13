@@ -668,7 +668,7 @@ std::string fail_to_fast_resolve_address;
 
 void TEST_SetFailToFastResolveAddress(const std::string& address) {
   {
-    std::lock_guard<simple_spinlock> lock(fail_to_fast_resolve_address_mutex);
+    std::lock_guard lock(fail_to_fast_resolve_address_mutex);
     fail_to_fast_resolve_address = address;
   }
   LOG(INFO) << "Setting fail_to_fast_resolve_address to: " << address;
@@ -684,7 +684,7 @@ boost::optional<IpAddress> TryFastResolve(const std::string& host) {
   static const std::string kYbIpSuffix = ".ip.yugabyte";
   if (boost::ends_with(host, kYbIpSuffix)) {
     {
-      std::lock_guard<simple_spinlock> lock(fail_to_fast_resolve_address_mutex);
+      std::lock_guard lock(fail_to_fast_resolve_address_mutex);
       if (PREDICT_FALSE(host == fail_to_fast_resolve_address)) {
         return boost::none;
       }

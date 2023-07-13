@@ -19,6 +19,7 @@ import { TASK_SHORT_TIMEOUT } from '../../tasks/constants';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
 import { YUGABYTE_TITLE } from '../../../config';
 import { getLatestAccessKey } from '../../configRedesign/providerRedesign/utils';
+import { NodeAgentStatus } from '../../../redesign/features/NodeAgent/NodeAgentStatus';
 
 const TIMEOUT_BEFORE_REFRESH = 2500;
 
@@ -253,7 +254,8 @@ class OnPremNodesList extends Component {
       handleSubmit,
       tasks: { customerTaskList },
       showProviderView,
-      visibleModal
+      visibleModal,
+      nodeAgentStatusByIPs
     } = this.props;
     const self = this;
     let nodeListItems = [];
@@ -327,6 +329,19 @@ class OnPremNodesList extends Component {
       if (row) {
         return <div>{row.inUse ? '' : renderIconByStatus(row.precheckTask)}</div>;
       }
+    };
+
+    const nodeAgentStatus = (cell, row) => {
+      let status = '';
+      let isReachable = false;
+      if (nodeAgentStatusByIPs.isSuccess) {
+        const nodeAgents = nodeAgentStatusByIPs.data.entities;
+        const nodeAgent = nodeAgents.find((nodeAgent) => row.ip === nodeAgent.ip);
+        status = nodeAgent?.state;
+        isReachable = nodeAgent?.reachable;
+      }
+
+      return <NodeAgentStatus status={status} isReachable={isReachable} />;
     };
 
     const actionsList = (cell, row) => {
@@ -502,6 +517,11 @@ class OnPremNodesList extends Component {
               <TableHeaderColumn dataField="instanceType" dataSort>
                 Instance Type
               </TableHeaderColumn>
+              {this.props.isNodeAgentHealthDown && (
+                <TableHeaderColumn dataField="" dataFormat={nodeAgentStatus} dataSort>
+                  Agent
+                </TableHeaderColumn>
+              )}
               <TableHeaderColumn
                 dataField=""
                 dataFormat={actionsList}

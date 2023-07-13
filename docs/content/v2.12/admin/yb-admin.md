@@ -284,12 +284,6 @@ yb-admin \
 
 Splits the specified hash-sharded tablet and computes the split point as the middle of tablet's sharding range.
 
-{{< note title="Note" >}}
-
-The `yb-admin split_tablet` command is not yet supported for use with range-sharded tablets. To follow plans on this, see [GitHub #5166](https://github.com/yugabyte/yugabyte-db/issues/5166)
-
-{{< /note >}}
-
 ```sh
 split_tablet -master_addresses <master-addresses> <tablet_id_to_split>
 ```
@@ -1023,8 +1017,7 @@ Restore from an absolute timestamp:
 ```sh
 ./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-    1617670679185100
+    restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 1617670679185100
 ```
 
 Restore from a relative time:
@@ -1032,8 +1025,7 @@ Restore from a relative time:
 ```sh
 ./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
-    minus 60s
+    restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 minus 60s
 ```
 
 In both cases, the output is similar to the following:

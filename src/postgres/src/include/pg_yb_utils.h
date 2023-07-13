@@ -104,6 +104,11 @@ extern GeolocationDistance get_tablespace_distance (Oid tablespaceoid);
  */
 extern bool IsYugaByteEnabled();
 
+/*
+ * Check whether the connection is made from Ysql Connection Manager.
+ */
+extern bool YbIsClientYsqlConnMgr();
+
 extern bool yb_enable_docdb_tracing;
 extern bool yb_read_from_followers;
 extern int32_t yb_follower_read_staleness_ms;
@@ -430,6 +435,12 @@ extern int yb_index_state_flags_update_delay;
 extern bool yb_enable_expression_pushdown;
 
 /*
+ * Enables distinct pushdown.
+ * If true, send supported DISTINCT operations to DocDB
+ */
+extern bool yb_enable_distinct_pushdown;
+
+/*
  * YSQL guc variable that is used to enable the use of Postgres's selectivity
  * functions and YSQL table statistics.
  * e.g. 'SET yb_enable_optimizer_statistics = true'
@@ -563,8 +574,6 @@ extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();
 extern void YBFlushBufferedOperations();
-extern void YBGetAndResetOperationFlushRpcStats(uint64_t *count,
-												uint64_t *wait_time);
 
 bool YBEnableTracing();
 bool YBReadFromFollowersEnabled();
@@ -719,11 +728,29 @@ extern bool check_yb_xcluster_consistency_level(char **newval, void **extra,
 												GucSource source);
 extern void assign_yb_xcluster_consistency_level(const char *newval,
 												 void		*extra);
+
 /*
- * Update read RPC statistics for EXPLAIN ANALYZE.
+ * Updates the session stats snapshot with the collected stats and copies the
+ * difference to the query execution context's instrumentation.
  */
-void YbUpdateReadRpcStats(YBCPgStatement handle,
-						  YbPgRpcStats *reads, YbPgRpcStats *tbl_reads);
+void YbUpdateSessionStats(YbInstrumentation *yb_instr);
+
+/*
+ * Refreshes the session stats snapshot with the collected stats. This function
+ * is to be invoked before the query has started its execution.
+ */
+void YbRefreshSessionStatsBeforeExecution();
+
+/*
+ * Refreshes the session stats snapshot with the collected stats. This function
+ * is to be invoked when during/after query execution.
+ */
+void YbRefreshSessionStatsDuringExecution();
+/*
+ * Updates the global flag indicating whether RPC requests to the underlying
+ * storage layer need to be timed.
+ */
+void YbToggleSessionStatsTimer(bool timing_on);
 
 /*
  * If the tserver gflag --ysql_disable_server_file_access is set to
@@ -861,5 +888,7 @@ void YbSetIsBatchedExecution(bool value);
 		} \
 	} while (0)
 #endif
+
+extern bool yb_is_client_ysqlconnmgr;
 
 #endif /* PG_YB_UTILS_H */

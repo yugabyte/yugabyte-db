@@ -31,67 +31,26 @@ namespace docdb {
 
 class ScanChoices {
  public:
-  explicit ScanChoices(bool is_forward_scan) : is_forward_scan_(is_forward_scan) {}
-  virtual ~ScanChoices() {}
+  ScanChoices() = default;
 
-  bool CurrentTargetMatchesKey(const Slice& curr);
+  ScanChoices(const ScanChoices&) = delete;
+  void operator=(const ScanChoices&) = delete;
+
+    virtual ~ScanChoices() = default;
 
   // Returns false if there are still target keys we need to scan, and true if we are done.
-  virtual bool FinishedWithScanChoices() const { return finished_; }
+  virtual bool Finished() const = 0;
 
-  // Go to the next scan target if any.
-  virtual Status DoneWithCurrentTarget() = 0;
-
-  // Go (directly) to the new target (or the one after if new_target does not
-  // exist in the desired list/range). If the new_target is larger than all scan target options it
-  // means we are done.
-  // Returns false if key parsing fails for any reason. If new_target is a valid user key, this
-  // method will correctly parse it. If it is not a valid user key, this method will return false.
-  // The caller should then determine how to deal with this key; e.g. if it's a valid system key,
-  // the caller can seek past this key before calling this method again with a new key.
-  virtual Result<bool> SkipTargetsUpTo(const Slice& new_target) = 0;
-
-  // If the given doc_key isn't already at the desired target, seek appropriately to go to the
-  // current target.
-  virtual Status SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) = 0;
-
-  // Append KeyEntryValue to target. After every append, we need to check if it is the last hash key
-  // column. Subsequently, we need to add a kGroundEnd after that if it is the last hash key cokumn.
-  // Hence, appending to scan target should always be done using this function.
-  void AppendToScanTarget(const dockv::KeyEntryValue& target, size_t col_idx) {
-    target.AppendToKey(&current_scan_target_);
-    if (has_hash_columns_ && col_idx == num_hash_cols_) {
-      current_scan_target_.AppendKeyEntryType(dockv::KeyEntryType::kGroupEnd);
-    }
-  }
-
-  void AppendInfToScanTarget(bool positive, size_t col_idx) {
-    if (has_hash_columns_ && col_idx == num_hash_cols_) {
-      current_scan_target_.RemoveLastByte();
-    }
-
-    auto inf_val = positive ? dockv::KeyEntryValue(dockv::KeyEntryType::kHighest)
-                            : dockv::KeyEntryValue(dockv::KeyEntryType::kLowest);
-    AppendToScanTarget(inf_val, col_idx);
-  }
+  // Check whether scan choices is interested in specified row.
+  // Seek on specified iterator to the next row of interest.
+  virtual Result<bool> InterestedInRow(dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter) = 0;
+  virtual Result<bool> AdvanceToNextRow(dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter) = 0;
 
   static ScanChoicesPtr Create(
       const Schema& schema, const qlexpr::YQLScanSpec& doc_spec,
       const dockv::KeyBytes& lower_doc_key, const dockv::KeyBytes& upper_doc_key);
 
- protected:
-  const bool is_forward_scan_;
-  dockv::KeyBytes current_scan_target_;
-  bool finished_ = false;
-  bool has_hash_columns_ = false;
-  size_t num_hash_cols_;
-
-  // True if CurrentTargetMatchesKey should return true all the time as
-  // the filter this ScanChoices iterates over is trivial.
-  bool is_trivial_filter_ = false;
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(ScanChoices);
+  static ScanChoicesPtr CreateEmpty();
 };
 
 // This class combines the notions of option filters (col1 IN (1,2,3)) and
@@ -225,6 +184,8 @@ class OptionRange {
     return range1.end_idx_ <= range2.end_idx_;
   }
 
+  std::string ToString() const;
+
  private:
   dockv::KeyEntryValue lower_;
   bool lower_inclusive_;
@@ -243,20 +204,7 @@ class OptionRange {
 };
 
 inline std::ostream& operator<<(std::ostream& str, const OptionRange& opt) {
-  if (opt.lower_inclusive()) {
-    str << "[";
-  } else {
-    str << "(";
-  }
-
-  str << opt.lower().ToString() << ", " << opt.upper().ToString();
-
-  if (opt.upper_inclusive()) {
-    str << "]";
-  } else {
-    str << ")";
-  }
-  return str;
+  return str << opt.ToString();
 }
 
 class HybridScanChoices : public ScanChoices {
@@ -283,12 +231,29 @@ class HybridScanChoices : public ScanChoices {
       const dockv::KeyBytes& lower_doc_key,
       const dockv::KeyBytes& upper_doc_key);
 
-  Result<bool> SkipTargetsUpTo(const Slice& new_target) override;
-  Status DoneWithCurrentTarget() override;
-  Status SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) override;
+  bool Finished() const override {
+    return finished_;
+  }
 
- protected:
+  Result<bool> InterestedInRow(dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter) override;
+  Result<bool> AdvanceToNextRow(dockv::KeyBytes* row_key, IntentAwareIteratorIf* iter) override;
+
+ private:
   friend class ScanChoicesTest;
+
+  // Sets current_scan_target_ to the first tuple in the filter space that is >= new_target.
+  Result<bool> SkipTargetsUpTo(Slice new_target);
+  Result<bool> DoneWithCurrentTarget();
+  void SeekToCurrentTarget(IntentAwareIteratorIf* db_iter);
+
+  bool CurrentTargetMatchesKey(Slice curr);
+
+  // Append KeyEntryValue to target. After every append, we need to check if it is the last hash key
+  // column. Subsequently, we need to add a kGroundEnd after that if it is the last hash key column.
+  // Hence, appending to scan target should always be done using this function.
+  void AppendToScanTarget(const dockv::KeyEntryValue& target, size_t col_idx);
+  void AppendInfToScanTarget(size_t col_idx);
+
   // Utility function for (multi)key scans. Updates the target scan key by
   // incrementing the option index for an OptionList. Will handle overflow by setting current
   // index to 0 and incrementing the previous index instead. If it overflows at first index
@@ -299,7 +264,6 @@ class HybridScanChoices : public ScanChoices {
   std::vector<OptionRange> TEST_GetCurrentOptions();
   Result<bool> ValidateHashGroup(const dockv::KeyBytes& scan_target) const;
 
- private:
   // Utility method to return a column corresponding to idx in the schema.
   // This may be different from schema.column_id in the presence of the hash_code column.
   ColumnId GetColumnId(const Schema& schema, size_t idx) const;
@@ -326,6 +290,16 @@ class HybridScanChoices : public ScanChoices {
 
   // Sets an entire group to a particular logical option index.
   void SetGroup(size_t opt_list_idx, size_t opt_index);
+
+  const bool is_forward_scan_;
+  dockv::KeyBytes current_scan_target_;
+  bool finished_ = false;
+  bool has_hash_columns_ = false;
+  size_t num_hash_cols_;
+
+  // True if CurrentTargetMatchesKey should return true all the time as
+  // the filter this ScanChoices iterates over is trivial.
+  bool is_trivial_filter_ = false;
 
   dockv::KeyBytes prev_scan_target_;
 

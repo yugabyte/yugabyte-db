@@ -108,14 +108,20 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
         startMaster = !startTserver;
       }
 
+      final Set<NodeDetails> nodeCollection = ImmutableSet.of(currentNode);
+
+      // Make sure clock skew is low enough on the node.
+      createWaitForClockSyncTasks(universe, nodeCollection)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
       if (startMaster) {
         if (currentNode.masterState == null) {
           saveNodeStatus(
               taskParams().nodeName, NodeStatus.builder().masterState(MasterState.ToStart).build());
         }
-        createStartMasterOnNodeTasks(universe, currentNode, null);
+        createStartMasterOnNodeTasks(universe, currentNode, null, false);
       }
-      final Set<NodeDetails> nodeCollection = ImmutableSet.of(currentNode);
+
       if (startTserver) {
         // Update master addresses for tservers.
         createConfigureServerTasks(nodeCollection, params -> params.updateMasterAddrsOnly = true)
@@ -147,7 +153,7 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
               ImmutableSet.of(currentNode)));
 
       // Update the DNS entry for this universe.
-      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, cluster.userIntent)
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
       // Update the swamper target file.

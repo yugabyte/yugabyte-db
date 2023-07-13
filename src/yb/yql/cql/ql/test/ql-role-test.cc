@@ -164,7 +164,7 @@ class QLTestAuthentication : public QLTestBase {
 class TestQLPermission : public QLTestAuthentication {
  public:
   TestQLPermission() : QLTestAuthentication() {
-    FLAGS_use_cassandra_authentication = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = true;
   }
 
   // Helper Functions
@@ -414,7 +414,7 @@ TEST_F(TestQLPermission, TestGrantRevokeAll) {
   GrantRevokePermissionAndVerify(processor, revoke_describe_all_roles,
                                  canonical_resource_roles, permissions_keyspaces, role_name);
 
-  FLAGS_use_cassandra_authentication = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = false;
   EXEC_INVALID_STMT_WITH_ERROR(grant_stmt, "Unauthorized");
 }
 
@@ -479,7 +479,7 @@ TEST_F(TestQLPermission, TestGrantRevokeKeyspace) {
   const auto revoke_all_stmt = RevokeKeyspace("ALL", keyspace1, role_name_2);
   GrantRevokePermissionAndVerify(processor, revoke_all_stmt, canonical_resource, {}, role_name_2);
 
-  FLAGS_use_cassandra_authentication = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = false;
   EXEC_INVALID_STMT_WITH_ERROR(grant_stmt, "Unauthorized");
   EXEC_INVALID_STMT_WITH_ERROR(grant_stmt4, "Unauthorized");
 }
@@ -516,7 +516,7 @@ TEST_F(TestQLPermission, TestGrantToRole) {
   // statements that didn't modify anything in the master.
   CreateRole(processor, "some_role");
 
-  FLAGS_use_cassandra_authentication = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = false;
   EXEC_INVALID_STMT_WITH_ERROR(grant_stmt, "Unauthorized");
 }
 
@@ -582,7 +582,7 @@ TEST_F(TestQLPermission, TestGrantRevokeTable) {
   // statements that didn't modify anything in the master.
   CreateRole(processor, "some_role");
 
-  FLAGS_use_cassandra_authentication = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = false;
   EXEC_INVALID_STMT_WITH_ERROR(grant_stmt, "Unauthorized");
   EXEC_INVALID_STMT_WITH_ERROR(grant_stmt3, "Unauthorized");
 }
@@ -666,7 +666,7 @@ TEST_F(TestQLPermission, TestGrantDescribe) {
 class TestQLRole : public QLTestAuthentication {
  public:
   TestQLRole() : QLTestAuthentication() {
-    FLAGS_use_cassandra_authentication = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = true;
     DCHECK(!FLAGS_ycql_allow_non_authenticated_password_reset);
   }
 
@@ -1006,9 +1006,10 @@ TEST_F(TestQLRole, TestQLCreateRoleSimple) {
   CreateRole(processor, "another_role");
 
   // Flag Test:
-  FLAGS_use_cassandra_authentication = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = false;
   for (bool non_authenticated_password_reset : {false, true}) {
-    FLAGS_ycql_allow_non_authenticated_password_reset = non_authenticated_password_reset;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_allow_non_authenticated_password_reset) =
+        non_authenticated_password_reset;
     EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(role4), "Unauthorized");  // Valid, but unauthorized
     EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(role9), "Unauthorized");  // Invalid and unauthorized
   }
@@ -1049,9 +1050,10 @@ TEST_F(TestQLRole, TestQLDropRoleSimple) {
   // statements that didn't modify anything in the master.
   CreateRole(processor, "some_role");
 
-  FLAGS_use_cassandra_authentication = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = false;
   for (bool non_authenticated_password_reset : {false, true}) {
-    FLAGS_ycql_allow_non_authenticated_password_reset = non_authenticated_password_reset;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_allow_non_authenticated_password_reset) =
+        non_authenticated_password_reset;
     EXEC_INVALID_STMT_WITH_ERROR(DropStmt(role1), "Unauthorized");
   }
 }
@@ -1076,9 +1078,10 @@ TEST_F(TestQLRole, TestQLAlterRoleSimple) {
   ExecuteValidModificationStmt(processor, AlterStmt(role2, "UPDATED_PWD"));
   CheckRole(processor, role2, "UPDATED_PWD", /*can_login*/ true, /*is_superuser*/ true);
 
-  FLAGS_use_cassandra_authentication = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = false;
   for (bool non_authenticated_password_reset : {false, true}) {
-    FLAGS_ycql_allow_non_authenticated_password_reset = non_authenticated_password_reset;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_allow_non_authenticated_password_reset) =
+        non_authenticated_password_reset;
     if (non_authenticated_password_reset) {
       ExecuteValidModificationStmt(processor, AlterStmt(role1, "UPDATED_WITH_DISABLED_AUTH"));
       ExecuteValidModificationStmt(processor, AlterStmt(role2, "UPDATED_WITH_DISABLED_AUTH"));

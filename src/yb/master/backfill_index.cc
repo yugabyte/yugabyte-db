@@ -860,7 +860,7 @@ Status BackfillTable::UpdateSafeTime(const Status& s, HybridTime ht) {
   // Need to guard this.
   HybridTime read_timestamp;
   {
-    std::lock_guard<simple_spinlock> l(mutex_);
+    std::lock_guard l(mutex_);
     VLOG(2) << "Updating read_time_for_backfill_ to max{ "
             << read_time_for_backfill_.ToString() << ", " << ht.ToString()
             << " }.";

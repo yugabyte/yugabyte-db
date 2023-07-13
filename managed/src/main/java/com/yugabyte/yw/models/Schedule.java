@@ -379,7 +379,7 @@ public class Schedule extends Model {
     if (schedule == null) {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          "Invalid Customer UUID: " + customerUUID + ", Schedule UUID: " + scheduleUUID);
+          "Invalid Customer UUID: " + customerUUID + ", Invalid Schedule UUID: " + scheduleUUID);
     }
     return schedule;
   }

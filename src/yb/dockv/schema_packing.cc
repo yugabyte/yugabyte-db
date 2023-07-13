@@ -125,7 +125,7 @@ bool SchemaPacking::SkippedColumn(ColumnId column_id) const {
 }
 
 void SchemaPacking::GetBounds(
-    const Slice& packed, boost::container::small_vector_base<const uint8_t*>* bounds) const {
+    Slice packed, boost::container::small_vector_base<const uint8_t*>* bounds) const {
   bounds->clear();
   bounds->reserve(columns_.size() + 1);
   const auto prefix_len = this->prefix_len();
@@ -143,7 +143,7 @@ void SchemaPacking::GetBounds(
   }
 }
 
-Slice SchemaPacking::GetValue(size_t idx, const Slice& packed) const {
+Slice SchemaPacking::GetValue(size_t idx, Slice packed) const {
   const auto& column_data = columns_[idx];
   size_t offset = column_data.num_varlen_columns_before
       ? LoadEnd(column_data.num_varlen_columns_before - 1, packed) : 0;
@@ -154,7 +154,7 @@ Slice SchemaPacking::GetValue(size_t idx, const Slice& packed) const {
   return Slice(packed.data() + offset, packed.data() + end);
 }
 
-std::optional<Slice> SchemaPacking::GetValue(ColumnId column_id, const Slice& packed) const {
+std::optional<Slice> SchemaPacking::GetValue(ColumnId column_id, Slice packed) const {
   auto index = column_to_idx_.get(column_id.rep());
   if (index == kSkippedColumnIdx) {
     return {};
@@ -327,7 +327,8 @@ Status SchemaPackingStorage::InsertSchemas(
 }
 
 void SchemaPackingStorage::ToPB(
-    SchemaVersion skip_schema_version, google::protobuf::RepeatedPtrField<SchemaPackingPB>* out) {
+    SchemaVersion skip_schema_version,
+    google::protobuf::RepeatedPtrField<SchemaPackingPB>* out) const {
   for (const auto& version_and_packing : version_to_schema_packing_) {
     if (version_and_packing.first == skip_schema_version) {
       continue;
@@ -355,6 +356,10 @@ std::string SchemaPackingStorage::VersionsToString() const {
   }
   std::sort(versions.begin(), versions.end());
   return AsString(versions);
+}
+
+std::string SchemaPackingStorage::ToString() const {
+  return YB_CLASS_TO_STRING(table_type, version_to_schema_packing);
 }
 
 } // namespace yb::dockv

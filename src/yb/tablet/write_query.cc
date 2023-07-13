@@ -73,6 +73,9 @@ void SetupKeyValueBatch(const tserver::WriteRequestPB& client_request, LWWritePB
     out_request->set_client_id2(client_request.client_id2());
     out_request->set_request_id(client_request.request_id());
     out_request->set_min_running_request_id(client_request.min_running_request_id());
+    if (client_request.has_start_time_micros()) {
+      out_request->set_start_time_micros(client_request.start_time_micros());
+    }
   }
   out_request->set_batch_idx(client_request.batch_idx());
   // Actually, in production code, we could check for external hybrid time only when there are
@@ -125,15 +128,13 @@ WriteQuery::WriteQuery(
     WriteQueryContext* context,
     TabletPtr tablet,
     rpc::RpcContext* rpc_context,
-    tserver::WriteResponsePB* response,
-    dockv::OperationKind kind)
+    tserver::WriteResponsePB* response)
     : operation_(std::make_unique<WriteOperation>(std::move(tablet))),
       term_(term),
       deadline_(deadline),
       context_(context),
       rpc_context_(rpc_context),
       response_(response),
-      kind_(kind),
       start_time_(CoarseMonoClock::Now()),
       execute_mode_(ExecuteMode::kSimple) {
 }
@@ -508,7 +509,7 @@ Status WriteQuery::DoExecute() {
   dockv::PartialRangeKeyIntents partial_range_key_intents(metadata.UsePartialRangeKeyIntents());
   prepare_result_ = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
       doc_ops_, write_batch.read_pairs(), tablet->metrics()->write_lock_latency,
-      tablet->metrics()->failed_batch_lock, isolation_level_, kind(), row_mark_type,
+      tablet->metrics()->failed_batch_lock, isolation_level_, row_mark_type,
       transactional_table, write_batch.has_transaction(), deadline(), partial_range_key_intents,
       tablet->shared_lock_manager()));
 
@@ -517,12 +518,21 @@ Status WriteQuery::DoExecute() {
   auto* transaction_participant = tablet->transaction_participant();
   docdb::WaitQueue* wait_queue = nullptr;
 
-  if (transaction_participant) {
+  if (transaction_participant && execute_mode_ != ExecuteMode::kCql) {
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17557
+    // For now, we disable this behavior in YCQL, both because many tests depend on FAIL_ON_CONFLICT
+    // behavior and because we do not want to change the behavior of existing CQL clusters. We may
+    // revisit this in the future in case there are performance benefits to enabling
+    // WAIT_ON_CONFLICT in YCQL as well.
+    //
+    // Note that we do not check execute_mode_ == ExecuteMode::kPgsql, since this condition is not
+    // sufficient to include all YSQL traffic -- some YSQL traffic may have ExecuteMode::kSimple,
+    // such as writes performed as part of an explicit lock read.
     wait_queue = transaction_participant->wait_queue();
   }
 
   if (!tablet->txns_enabled() || !transactional_table) {
-    CompleteExecute();
+    CompleteExecute(HybridTime::kInvalid);
     return Status::OK();
   }
 
@@ -596,21 +606,22 @@ void WriteQuery::NonTransactionalConflictsResolved(HybridTime now, HybridTime re
     tablet->clock()->Update(result);
   }
 
-  CompleteExecute();
+  CompleteExecute(HybridTime::kInvalid);
 }
 
 void WriteQuery::TransactionalConflictsResolved() {
   auto status = DoTransactionalConflictsResolved();
   if (!status.ok()) {
-    LOG(DFATAL) << status;
+    LOG(WARNING) << status;
     ExecuteDone(status);
   }
 }
 
 Status WriteQuery::DoTransactionalConflictsResolved() {
-  auto tablet = VERIFY_RESULT(tablet_safe());
+  HybridTime safe_time;
   if (!read_time_) {
-    auto safe_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
+    auto tablet = VERIFY_RESULT(tablet_safe());
+    safe_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
     read_time_ = ReadHybridTime::FromHybridTimeRange(
         {safe_time, tablet->clock()->NowRange().second});
   } else if (prepare_result_.need_read_snapshot &&
@@ -621,26 +632,29 @@ Status WriteQuery::DoTransactionalConflictsResolved() {
         read_time_);
   }
 
-  CompleteExecute();
+  CompleteExecute(safe_time);
   return Status::OK();
 }
 
-void WriteQuery::CompleteExecute() {
-  ExecuteDone(DoCompleteExecute());
+void WriteQuery::CompleteExecute(HybridTime safe_time) {
+  ExecuteDone(DoCompleteExecute(safe_time));
 }
 
-Status WriteQuery::DoCompleteExecute() {
+Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
   auto tablet = VERIFY_RESULT(tablet_safe());
   auto read_op = prepare_result_.need_read_snapshot
       ? VERIFY_RESULT(ScopedReadOperation::Create(tablet.get(),
                                                   RequireLease::kTrue,
                                                   read_time_))
       : ScopedReadOperation();
-  // Actual read hybrid time used for read-modify-write operation.
-  auto real_read_time = prepare_result_.need_read_snapshot
-      ? read_op.read_time()
-      // When need_read_snapshot is false, this time is used only to write TTL field of record.
-      : ReadHybridTime::SingleTime(tablet->clock()->Now());
+
+  docdb::ReadOperationData read_operation_data {
+    .deadline = deadline(),
+    .read_time = prepare_result_.need_read_snapshot
+        ? read_op.read_time()
+        // When need_read_snapshot is false, this time is used only to write TTL field of record.
+        : ReadHybridTime::SingleTime(tablet->clock()->Now()),
+  };
 
   // We expect all read operations for this transaction to be done in AssembleDocWriteBatch. Once
   // read_txn goes out of scope, the read point is deregistered.
@@ -654,7 +668,7 @@ Status WriteQuery::DoCompleteExecute() {
       : docdb::InitMarkerBehavior::kOptional;
   for (;;) {
     RETURN_NOT_OK(docdb::AssembleDocWriteBatch(
-        doc_ops_, deadline(), real_read_time, tablet->doc_db(), scoped_read_operation_,
+        doc_ops_, read_operation_data, tablet->doc_db(), scoped_read_operation_,
         request().mutable_write_batch(), init_marker_behavior,
         tablet->monotonic_counter(), &restart_read_ht_,
         tablet->metadata()->table_name()));
@@ -665,11 +679,13 @@ Status WriteQuery::DoCompleteExecute() {
       break;
     }
 
-    real_read_time.read = restart_read_ht_;
+    read_operation_data.read_time.read = restart_read_ht_;
     if (!local_limit_updated) {
       local_limit_updated = true;
-      real_read_time.local_limit = std::min(
-          real_read_time.local_limit, VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue)));
+      safe_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
+      read_operation_data.read_time.local_limit = std::min(
+          read_operation_data.read_time.local_limit,
+          safe_time);
     }
 
     restart_read_ht_ = HybridTime();
@@ -684,7 +700,7 @@ Status WriteQuery::DoCompleteExecute() {
   if (allow_immediate_read_restart_ &&
       isolation_level_ != IsolationLevel::NON_TRANSACTIONAL &&
       response_) {
-    real_read_time.ToPB(response_->mutable_used_read_time());
+    read_operation_data.read_time.ToPB(response_->mutable_used_read_time());
   }
 
   if (restart_read_ht_.is_valid()) {
@@ -831,6 +847,108 @@ void WriteQuery::CompleteQLWriteBatch(const Status& status) {
   StartSynchronization(std::move(self_), Status::OK());
 }
 
+struct UpdateQLIndexesTask {
+  WriteQuery* query;
+
+  client::YBClient* client = nullptr;
+  client::YBTransactionPtr txn;
+  client::YBSessionPtr session;
+  const ChildTransactionDataPB* child_transaction_data = nullptr;
+  client::YBMetaDataCache* metadata_cache;
+
+  std::mutex mutex;
+  WriteQuery::IndexOps index_ops GUARDED_BY(mutex);
+  size_t counter GUARDED_BY(mutex) = 1;
+  Status failure;
+
+  explicit UpdateQLIndexesTask(WriteQuery* query_) : query(query_) {}
+
+  Status Init(const TabletPtr& tablet, docdb::QLWriteOperation* write_op) {
+    client = &tablet->client();
+    session = std::make_shared<client::YBSession>(client);
+    session->SetDeadline(query->deadline());
+    if (write_op->request().has_child_transaction_data()) {
+      child_transaction_data = &write_op->request().child_transaction_data();
+      auto child_data = VERIFY_RESULT(client::ChildTransactionData::FromPB(
+          write_op->request().child_transaction_data()));
+      txn = std::make_shared<client::YBTransaction>(&tablet->transaction_manager(), child_data);
+      session->SetTransaction(txn);
+    } else {
+      child_transaction_data = nullptr;
+    }
+    metadata_cache = tablet->YBMetaDataCache();
+    if (!metadata_cache) {
+      return STATUS(Corruption, "Table metadata cache is not present for index update");
+    }
+
+    return Status::OK();
+  }
+
+  void SanityCheck(docdb::QLWriteOperation* write_op) {
+    if (write_op->request().has_child_transaction_data()) {
+      DCHECK_ONLY_NOTNULL(child_transaction_data);
+      DCHECK_EQ(child_transaction_data->ShortDebugString(),
+                write_op->request().child_transaction_data().ShortDebugString());
+    } else {
+      DCHECK(child_transaction_data == nullptr) <<
+          "Value: " << child_transaction_data->ShortDebugString();
+    }
+  }
+
+  void AddRequests(
+      const std::shared_ptr<UpdateQLIndexesTask>& self, docdb::QLWriteOperation* write_op) {
+    // Apply the write ops to update the index
+    {
+      std::lock_guard lock(self->mutex);
+      counter += write_op->index_requests().size();
+    }
+    for (auto& [index_info, index_request] : write_op->index_requests()) {
+      auto callback = [self, &index_request = index_request, write_op](const auto& index_table) {
+        self->TableResolved(&index_request, write_op, index_table);
+      };
+      metadata_cache->GetTableAsync(index_info->table_id(), callback);
+    }
+  }
+
+  void TableResolved(
+      QLWriteRequestPB* index_request, docdb::QLWriteOperation* write_op,
+      const Result<client::GetTableResult>& index_table) {
+    if (!index_table.ok()) {
+      std::lock_guard lock(mutex);
+      if (failure.ok()) {
+        failure = index_table.status();
+      }
+      CompleteStep();
+      return;
+    }
+
+    std::shared_ptr<client::YBqlWriteOp> index_op(index_table->table->NewQLWrite());
+    index_op->mutable_request()->Swap(index_request);
+    index_op->mutable_request()->MergeFrom(*index_request);
+
+    std::lock_guard lock(mutex);
+    session->Apply(index_op);
+    index_ops.emplace_back(std::move(index_op), write_op);
+    CompleteStep();
+  }
+
+  void Filled() {
+    std::lock_guard lock(mutex);
+    CompleteStep();
+  }
+
+  void CompleteStep() REQUIRES(mutex) {
+    if (!--counter) {
+      if (!failure.ok()) {
+        WriteQuery::StartSynchronization(std::move(query->self_), failure);
+        return;
+      }
+      session->FlushAsync(std::bind(
+          &WriteQuery::UpdateQLIndexesFlushed, query, session, txn, std::move(index_ops), _1));
+    }
+  }
+};
+
 void WriteQuery::UpdateQLIndexes() {
   auto tablet_result = tablet_safe();
   if (!tablet_result.ok()) {
@@ -839,77 +957,32 @@ void WriteQuery::UpdateQLIndexes() {
   }
   auto tablet = *tablet_result;
 
-  client::YBClient* client = nullptr;
-  client::YBSessionPtr session;
-  client::YBTransactionPtr txn;
-  IndexOps index_ops;
-  const ChildTransactionDataPB* child_transaction_data = nullptr;
+  std::shared_ptr<UpdateQLIndexesTask> task;
   for (auto& doc_op : doc_ops_) {
     auto* write_op = down_cast<docdb::QLWriteOperation*>(doc_op.get());
     if (write_op->index_requests().empty()) {
       continue;
     }
-    if (!client) {
-      client = &tablet->client();
-      session = std::make_shared<client::YBSession>(client);
-      session->SetDeadline(deadline());
-      if (write_op->request().has_child_transaction_data()) {
-        child_transaction_data = &write_op->request().child_transaction_data();
-        auto child_data = client::ChildTransactionData::FromPB(
-            write_op->request().child_transaction_data());
-        if (!child_data.ok()) {
-          StartSynchronization(std::move(self_), child_data.status());
-          return;
-        }
-        txn = std::make_shared<client::YBTransaction>(
-            &tablet->transaction_manager(), *child_data);
-        session->SetTransaction(txn);
-      } else {
-        child_transaction_data = nullptr;
-      }
-    } else if (write_op->request().has_child_transaction_data()) {
-      DCHECK_ONLY_NOTNULL(child_transaction_data);
-      DCHECK_EQ(child_transaction_data->ShortDebugString(),
-                write_op->request().child_transaction_data().ShortDebugString());
-    } else {
-      DCHECK(child_transaction_data == nullptr) <<
-          "Value: " << child_transaction_data->ShortDebugString();
-    }
-
-    // Apply the write ops to update the index
-    for (auto& [index_info, index_request] : write_op->index_requests()) {
-      client::YBTablePtr index_table;
-      bool cache_used_ignored = false;
-      auto metadata_cache = tablet->YBMetaDataCache();
-      if (!metadata_cache) {
-        StartSynchronization(
-            std::move(self_),
-            STATUS(Corruption, "Table metadata cache is not present for index update"));
-        return;
-      }
-      // TODO create async version of GetTable.
-      // It is ok to have sync call here, because we use cache and it should not take too long.
-      auto status = metadata_cache->GetTable(
-          index_info->table_id(), &index_table, &cache_used_ignored);
+    if (!task) {
+      task = std::make_shared<UpdateQLIndexesTask>(this);
+      auto status = task->Init(tablet, write_op);
       if (!status.ok()) {
         StartSynchronization(std::move(self_), status);
         return;
       }
-      std::shared_ptr<client::YBqlWriteOp> index_op(index_table->NewQLWrite());
-      index_op->mutable_request()->Swap(&index_request);
-      index_op->mutable_request()->MergeFrom(index_request);
-      session->Apply(index_op);
-      index_ops.emplace_back(std::move(index_op), write_op);
+    } else {
+      task->SanityCheck(write_op);
     }
+
+    task->AddRequests(task, write_op);
   }
 
-  if (!session) {
+  if (!task) {
     CompleteQLWriteBatch(Status::OK());
     return;
   }
 
-  session->FlushAsync(std::bind(
-      &WriteQuery::UpdateQLIndexesFlushed, this, session, txn, std::move(index_ops), _1));
+  task->Filled();
 }
 
 void WriteQuery::UpdateQLIndexesFlushed(

@@ -79,11 +79,11 @@ void MasterTestBase::SetUp() {
 
   // In this test, we create tables to test catalog manager behavior,
   // but we have no tablet servers. Typically this would be disallowed.
-  FLAGS_catalog_manager_check_ts_count_for_create_table = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_check_ts_count_for_create_table) = false;
   // Since this is a master-only test, don't do any operations on cdc state for xCluster tests.
-  FLAGS_TEST_disable_cdc_state_insert_on_setup = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_cdc_state_insert_on_setup) = true;
   // Since this is a master-only test, don't wait for tablet creation of tables.
-  FLAGS_TEST_create_table_in_running_state = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_create_table_in_running_state) = true;
 
   // Start master with the create flag on.
   mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master"),

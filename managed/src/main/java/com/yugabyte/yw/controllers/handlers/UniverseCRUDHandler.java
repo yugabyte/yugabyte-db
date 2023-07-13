@@ -28,11 +28,13 @@ import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
@@ -48,7 +50,6 @@ import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.utils.Pair;
-import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.DiskIncreaseFormData;
 import com.yugabyte.yw.forms.ResizeNodeParams;
@@ -66,6 +67,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
@@ -124,6 +126,8 @@ public class UniverseCRUDHandler {
   @Inject YbcManager ybcManager;
 
   @Inject ReleaseManager releaseManager;
+
+  @Inject CertificateHelper certificateHelper;
 
   private enum OpType {
     CONFIGURE,
@@ -333,9 +337,7 @@ public class UniverseCRUDHandler {
         if (cert.getCertType() == CertConfigType.HashicorpVault) {
           try {
             VaultPKI certProvider = VaultPKI.getVaultPKIInstance(cert);
-            certProvider.dumpCACertBundle(
-                runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
-                customer.getUuid());
+            certProvider.dumpCACertBundle(AppConfigHelper.getStoragePath(), customer.getUuid());
           } catch (Exception e) {
             throw new PlatformServiceException(
                 INTERNAL_SERVER_ERROR,
@@ -346,7 +348,7 @@ public class UniverseCRUDHandler {
       } else {
         // create self-signed rootCA in case it is not provided by the user.
         taskParams.rootCA =
-            CertificateHelper.createRootCA(
+            certificateHelper.createRootCA(
                 runtimeConfigFactory.staticApplicationConf(),
                 taskParams.nodePrefix,
                 customer.getUuid());
@@ -363,7 +365,7 @@ public class UniverseCRUDHandler {
           // create self-signed clientRootCA in case it is not provided by the user
           // and root and clientRoot CA needs to be different
           taskParams.setClientRootCA(
-              CertificateHelper.createClientRootCA(
+              certificateHelper.createClientRootCA(
                   runtimeConfigFactory.staticApplicationConf(),
                   taskParams.nodePrefix,
                   customer.getUuid()));
@@ -386,9 +388,7 @@ public class UniverseCRUDHandler {
       if (cert.getCertType() == CertConfigType.HashicorpVault) {
         try {
           VaultPKI certProvider = VaultPKI.getVaultPKIInstance(cert);
-          certProvider.dumpCACertBundle(
-              runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
-              customer.getUuid());
+          certProvider.dumpCACertBundle(AppConfigHelper.getStoragePath(), customer.getUuid());
         } catch (Exception e) {
           throw new PlatformServiceException(
               INTERNAL_SERVER_ERROR,
@@ -473,6 +473,15 @@ public class UniverseCRUDHandler {
             UniverseDefinitionTaskParams.ExposingServiceState.UNEXPOSED;
       }
       validateRegionsAndZones(provider, c);
+      // Configure the defaultimageBundle in case not specified.
+      if (c.userIntent.imageBundleUUID == null && provider.getCloudCode().imageBundleSupported()) {
+        if (provider.getImageBundles().size() > 0) {
+          ImageBundle bundle = ImageBundle.getDefaultForProvider(provider.getUuid());
+          if (bundle != null) {
+            c.userIntent.imageBundleUUID = bundle.getUuid();
+          }
+        }
+      }
 
       // Set the node exporter config based on the provider
       if (!c.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
@@ -610,9 +619,17 @@ public class UniverseCRUDHandler {
       try {
         if (userIntent.enableYSQLAuth) {
           passwordPolicyService.checkPasswordPolicy(null, userIntent.ysqlPassword);
+          if (confGetter.getConfForScope(
+              customer, CustomerConfKeys.enforceSecureUniversePassword)) {
+            passwordPolicyService.validatePasswordNotLeaked("YSQL", userIntent.ysqlPassword);
+          }
         }
         if (userIntent.enableYCQLAuth) {
           passwordPolicyService.checkPasswordPolicy(null, userIntent.ycqlPassword);
+          if (confGetter.getConfForScope(
+              customer, CustomerConfKeys.enforceSecureUniversePassword)) {
+            passwordPolicyService.validatePasswordNotLeaked("YCQL", userIntent.ycqlPassword);
+          }
         }
       } catch (Exception e) {
         throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
@@ -1816,7 +1833,7 @@ public class UniverseCRUDHandler {
 
     if (isRootCA && taskParams.createNewRootCA) {
       taskParams.rootCA =
-          CertificateHelper.createRootCA(
+          certificateHelper.createRootCA(
               runtimeConfigFactory.staticApplicationConf(),
               universeDetails.nodePrefix,
               customer.getUuid());
@@ -1824,7 +1841,7 @@ public class UniverseCRUDHandler {
 
     if (isClientRootCA && taskParams.createNewClientRootCA) {
       taskParams.setClientRootCA(
-          CertificateHelper.createClientRootCA(
+          certificateHelper.createClientRootCA(
               runtimeConfigFactory.staticApplicationConf(),
               universeDetails.nodePrefix,
               customer.getUuid()));

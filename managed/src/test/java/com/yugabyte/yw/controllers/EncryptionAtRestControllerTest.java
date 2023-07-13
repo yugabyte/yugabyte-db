@@ -215,7 +215,7 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
     Result createKMSResult =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq));
-    assertBadRequest(createKMSResult, "Invalid AWS Credentials.");
+    assertBadRequest(createKMSResult, "Invalid AWS Credentials or it has insuffient permissions.");
   }
 
   @Test

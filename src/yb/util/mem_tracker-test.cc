@@ -43,6 +43,7 @@
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/tcmalloc_util.h"
 
 DECLARE_int32(memory_limit_soft_percentage);
 DECLARE_int64(mem_tracker_update_consumption_interval_us);
@@ -141,9 +142,7 @@ class GcTest : public GarbageCollector {
 
   explicit GcTest(MemTracker* tracker) : tracker_(tracker) {}
 
-  void CollectGarbage(size_t required) { tracker_->Release(NUM_RELEASE_BYTES); }
-
-  virtual ~GcTest() {}
+  void CollectGarbage(size_t required) override { tracker_->Release(NUM_RELEASE_BYTES); }
 
  private:
   MemTracker* tracker_;
@@ -278,7 +277,7 @@ TEST(MemTrackerTest, SoftLimitExceeded) {
   const int kNumIters = 100000;
   const int kMemLimit = 1000;
   google::FlagSaver saver;
-  FLAGS_memory_limit_soft_percentage = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_memory_limit_soft_percentage) = 0;
   shared_ptr<MemTracker> m = MemTracker::CreateTracker(kMemLimit, "test");
 
   // Consumption is 0; the soft limit is never exceeded.
@@ -309,7 +308,7 @@ TEST(MemTrackerTest, SoftLimitExceeded) {
   }
 }
 
-#ifdef YB_TCMALLOC_ENABLED
+#if YB_TCMALLOC_ENABLED
 TEST(MemTrackerTest, TcMallocRootTracker) {
   MemTracker::TEST_SetReleasedMemorySinceGC(0);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_mem_tracker_update_consumption_interval_us) = 100000;
@@ -321,7 +320,7 @@ TEST(MemTrackerTest, TcMallocRootTracker) {
   // Sleep to be sure that UpdateConsumption will take action.
   int64_t value = 0;
   ASSERT_OK(WaitFor([root, &value] {
-    value = MemTracker::GetTCMallocActualHeapSizeBytes();
+    value = GetTCMallocActualHeapSizeBytes();
     return root->GetUpdatedConsumption() == value;
   }, kWaitTimeout, "Consumption actualized"));
 
@@ -346,7 +345,7 @@ TEST(MemTrackerTest, TcMallocRootTracker) {
   }
 
   // The freed memory should go to the pageheap free bytes.
-  ASSERT_GE(MemTracker::GetPageHeapFreeBytes(), alloc_size);
+  ASSERT_GE(GetTCMallocPageHeapFreeBytes(), alloc_size);
 
   if (FLAGS_mem_tracker_include_pageheap_free_in_root_consumption) {
     // If we are including pageheap free size, consumption should stay the same.
@@ -363,27 +362,27 @@ TEST(MemTrackerTest, TcMallocGC) {
   MemTracker::TEST_SetReleasedMemorySinceGC(0);
   shared_ptr<MemTracker> root = MemTracker::GetRootTracker();
   // Set a low GC threshold, so we can manage it easily in the test.
-  FLAGS_mem_tracker_tcmalloc_gc_release_bytes = 1_MB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_mem_tracker_tcmalloc_gc_release_bytes) = 1_MB;
   // Allocate something bigger than the threshold.
   std::unique_ptr<char[]> big_alloc(new char[4_MB]);
   // clang in release mode can optimize out the above allocation unless
   // we do something with the pointer... so we just log it.
   VLOG(8) << static_cast<void*>(big_alloc.get());
   // Check overhead at start of the test.
-  auto overhead_before = MemTracker::GetPageHeapFreeBytes();
+  auto overhead_before = GetTCMallocPageHeapFreeBytes();
   LOG(INFO) << "Initial overhead " << overhead_before;
   // Clear the memory, so tcmalloc gets free bytes.
   big_alloc.reset();
   // Check the overhead afterwards, should clearly be higher.
-  auto overhead_after = MemTracker::GetPageHeapFreeBytes();
+  auto overhead_after = GetTCMallocPageHeapFreeBytes();
   LOG(INFO) << "Post-free overhead " << overhead_after;
   ASSERT_GT(overhead_after, overhead_before);
   // Release up to the threshold. We only GC after we cross it, so nothing should happen now.
   root->Release(1_MB);
-  ASSERT_EQ(overhead_after, MemTracker::GetPageHeapFreeBytes());
+  ASSERT_EQ(overhead_after, GetTCMallocPageHeapFreeBytes());
   // Now we go over the limit and trigger a GC.
   root->Release(1);
-  auto overhead_final = MemTracker::GetPageHeapFreeBytes();
+  auto overhead_final = GetTCMallocPageHeapFreeBytes();
   LOG(INFO) << "Final overhead " << overhead_final;
   ASSERT_GT(overhead_after, overhead_final);
 }

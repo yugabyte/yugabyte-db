@@ -332,8 +332,7 @@ class Messenger : public ProxyContext {
 
   const Protocol* const listen_protocol_;
 
-  // Protects closing_, acceptor_pools_.
-  mutable percpu_rwlock lock_;
+  mutable PerCpuRwMutex lock_;
 
   std::atomic_bool closing_ = false;
 
@@ -349,7 +348,7 @@ class Messenger : public ProxyContext {
   const scoped_refptr<Histogram> outgoing_queue_time_;
 
   // Acceptor which is listening on behalf of this messenger.
-  std::unique_ptr<Acceptor> acceptor_;
+  std::unique_ptr<Acceptor> acceptor_ GUARDED_BY(lock_);
   IpAddress outbound_address_v4_;
   IpAddress outbound_address_v6_;
 
@@ -359,14 +358,15 @@ class Messenger : public ProxyContext {
 
   std::mutex mutex_scheduled_tasks_;
 
-  std::unordered_map<ScheduledTaskId, std::shared_ptr<DelayedTask>> scheduled_tasks_;
+  std::unordered_map<ScheduledTaskId, std::shared_ptr<DelayedTask>> scheduled_tasks_
+      GUARDED_BY(mutex_scheduled_tasks_);
 
   // Flag that we have at least on address with artificially broken connectivity.
   std::atomic<bool> has_broken_connectivity_ = {false};
 
   // Set of addresses with artificially broken connectivity.
-  std::unordered_set<IpAddress, IpAddressHash> broken_connectivity_from_;
-  std::unordered_set<IpAddress, IpAddressHash> broken_connectivity_to_;
+  std::unordered_set<IpAddress, IpAddressHash> broken_connectivity_from_ GUARDED_BY(lock_);
+  std::unordered_set<IpAddress, IpAddressHash> broken_connectivity_to_ GUARDED_BY(lock_);
 
   IoThreadPool io_thread_pool_;
   Scheduler scheduler_;

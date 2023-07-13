@@ -168,6 +168,15 @@ public class AlertTemplateVariableService {
     return variable;
   }
 
+  public AlertTemplateVariable getOrBadRequest(UUID customerUuid, UUID uuid) {
+    AlertTemplateVariable variable = getOrBadRequest(uuid);
+    if (!(variable.getCustomerUUID().equals(customerUuid))) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Invalid Alert Template Variable UUID: " + uuid);
+    }
+    return variable;
+  }
+
   public List<AlertTemplateVariable> list(Set<UUID> uuids) {
     return appendInClause(AlertTemplateVariable.createQuery(), "uuid", uuids).findList();
   }

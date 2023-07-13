@@ -47,7 +47,7 @@ DEFINE_RUNTIME_int32(replication_failure_delay_exponent, 16 /* ~ 2^16/1000 ~= 65
     "Max number of failures (N) to use when calculating exponential backoff (2^N-1).");
 
 DEFINE_RUNTIME_bool(cdc_consumer_use_proxy_forwarding, false,
-    "When enabled, read requests from the CDC Consumer that go to the wrong node are "
+    "When enabled, read requests from the XClusterConsumer that go to the wrong node are "
     "forwarded to the correct node by the Producer.");
 
 DEFINE_test_flag(int32, xcluster_simulated_lag_ms, 0,
@@ -58,6 +58,9 @@ DEFINE_test_flag(string, xcluster_simulated_lag_tablet_filter, "",
 
 DEFINE_test_flag(bool, cdc_skip_replication_poll, false,
                  "If true, polling will be skipped.");
+
+DEFINE_test_flag(bool, xcluster_disable_poller_term_check, false,
+    "If true, the poller will not check the leader term.");
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 
@@ -77,12 +80,16 @@ XClusterPoller::XClusterPoller(
     bool use_local_tserver,
     const std::vector<TabletId>& global_transaction_status_tablets,
     bool enable_replicate_transaction_status_table,
-    SchemaVersion last_compatible_consumer_schema_version)
+    SchemaVersion last_compatible_consumer_schema_version,
+    rocksdb::RateLimiter* rate_limiter,
+    std::function<int64_t(const TabletId&)>
+        get_leader_term)
     : producer_tablet_info_(producer_tablet_info),
       consumer_tablet_info_(consumer_tablet_info),
       op_id_(consensus::MinimumOpId()),
       validated_schema_version_(0),
       last_compatible_consumer_schema_version_(last_compatible_consumer_schema_version),
+      get_leader_term_(std::move(get_leader_term)),
       output_client_(CreateXClusterOutputClient(
           xcluster_consumer,
           consumer_tablet_info,
@@ -93,7 +100,8 @@ XClusterPoller::XClusterPoller(
           std::bind(&XClusterPoller::HandleApplyChanges, this, _1),
           use_local_tserver,
           global_transaction_status_tablets,
-          enable_replicate_transaction_status_table)),
+          enable_replicate_transaction_status_table,
+          rate_limiter)),
       producer_client_(producer_client),
       thread_pool_(thread_pool),
       rpcs_(rpcs),
@@ -122,7 +130,7 @@ void XClusterPoller::Shutdown() {
 
   rpc::RpcCommandPtr rpc_to_abort;
   {
-    std::lock_guard<std::mutex> l(data_mutex_);
+    std::lock_guard l(data_mutex_);
     output_client_->Shutdown();
     if (poll_handle_ != rpcs_->InvalidHandle()) {
       rpc_to_abort = *poll_handle_;
@@ -133,7 +141,7 @@ void XClusterPoller::Shutdown() {
   }
 }
 
-std::string XClusterPoller::LogPrefixUnlocked() const {
+std::string XClusterPoller::LogPrefix() const {
   return strings::Substitute("P [$0:$1] C [$2:$3]: ",
                              producer_tablet_info_.stream_id,
                              producer_tablet_info_.tablet_id,
@@ -141,17 +149,17 @@ std::string XClusterPoller::LogPrefixUnlocked() const {
                              consumer_tablet_info_.tablet_id);
 }
 
-bool XClusterPoller::CheckOffline() { return shutdown_.load(); }
+bool XClusterPoller::CheckOffline() { return shutdown_ || is_failed_; }
 
 #define RETURN_WHEN_OFFLINE() \
   if (CheckOffline()) { \
-    LOG_WITH_PREFIX_UNLOCKED(WARNING) << "CDC Poller went offline"; \
+    LOG_WITH_PREFIX(WARNING) << "XCluster Poller went offline"; \
     return; \
   }
 
 #define ACQUIRE_MUTEX_IF_ONLINE() \
   RETURN_WHEN_OFFLINE(); \
-  std::lock_guard<std::mutex> l(data_mutex_);
+  std::lock_guard l(data_mutex_);
 
 void XClusterPoller::UpdateSchemaVersions(const cdc::XClusterSchemaVersionMap& schema_versions) {
   RETURN_WHEN_OFFLINE();
@@ -160,9 +168,9 @@ void XClusterPoller::UpdateSchemaVersions(const cdc::XClusterSchemaVersionMap& s
     schema_version_map_ = schema_versions;
   }
   for (const auto& [producer_schema_version, consumer_schema_version] : schema_versions) {
-    LOG_WITH_PREFIX_UNLOCKED(INFO) << Format(
-        "Producer Schema Version:$0, Consumer Schema Version:$1",
-        producer_schema_version, consumer_schema_version);
+    LOG_WITH_PREFIX(INFO) << Format(
+        "Producer Schema Version:$0, Consumer Schema Version:$1", producer_schema_version,
+        consumer_schema_version);
   }
 }
 
@@ -175,9 +183,9 @@ void XClusterPoller::UpdateColocatedSchemaVersionMap(
   }
   for (const auto& [colocation_id, schema_versions] : input_colocated_schema_version_map) {
     for (const auto& [producer_schema_version, consumer_schema_version] : schema_versions) {
-      LOG_WITH_PREFIX_UNLOCKED(INFO) << Format(
-          "ColocationId:$0 Producer Schema Version:$1, Consumer Schema Version:$2",
-          colocation_id, producer_schema_version, consumer_schema_version);
+      LOG_WITH_PREFIX(INFO) << Format(
+          "ColocationId:$0 Producer Schema Version:$1, Consumer Schema Version:$2", colocation_id,
+          producer_schema_version, consumer_schema_version);
     }
   }
 }
@@ -240,13 +248,20 @@ void XClusterPoller::UpdateSafeTime(int64 new_time) {
 
 void XClusterPoller::Poll() {
   RETURN_WHEN_OFFLINE();
-  WARN_NOT_OK(
-      thread_pool_->SubmitFunc(std::bind(&XClusterPoller::DoPoll, shared_from_this())),
-      "Could not submit Poll to thread pool");
+
+  auto s = thread_pool_->SubmitFunc(std::bind(&XClusterPoller::DoPoll, shared_from_this()));
+  if (!s.ok()) {
+    LOG_WITH_PREFIX(WARNING) << "Could not submit Poll to thread pool: " << s;
+    is_failed_ = true;
+  }
 }
 
 void XClusterPoller::DoPoll() {
   ACQUIRE_MUTEX_IF_ONLINE();
+
+  if (!IsLeaderTermValid()) {
+    return;
+  }
 
   if (PREDICT_FALSE(FLAGS_TEST_cdc_skip_replication_poll)) {
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_async_replication_idle_delay_ms));
@@ -299,7 +314,7 @@ void XClusterPoller::DoPoll() {
   *checkpoint.mutable_op_id() = op_id_;
   if (checkpoint.op_id().index() > 0 || checkpoint.op_id().term() > 0) {
     // Only send non-zero checkpoints in request.
-    // If we don't know the latest checkpoint, then CDC producer can use the checkpoint from
+    // If we don't know the latest checkpoint, then XClusterProducer can use the checkpoint from
     // cdc_state table.
     // This is useful in scenarios where a new tablet peer becomes replication leader for a
     // producer tablet and is not aware of the last checkpoint.
@@ -309,9 +324,11 @@ void XClusterPoller::DoPoll() {
   poll_handle_ = rpcs_->Prepare();
   if (poll_handle_ == rpcs_->InvalidHandle()) {
     DCHECK(CheckOffline());
-    LOG_WITH_PREFIX_UNLOCKED(WARNING) << "Unable to perform poll, rpcs_ is shutdown";
+    LOG_WITH_PREFIX(WARNING) << "Unable to perform poll, rpcs_ is shutdown";
     return;
   }
+
+  VLOG_WITH_PREFIX(5) << "Sending GetChangesRequest: " << req.ShortDebugString();
 
   *poll_handle_ = CreateGetChangesCDCRpc(
       CoarseMonoClock::now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms),
@@ -331,7 +348,7 @@ void XClusterPoller::UpdateSchemaVersionsForApply() {
 void XClusterPoller::HandlePoll(const Status& status, cdc::GetChangesResponsePB&& resp) {
   rpc::RpcCommandPtr retained;
   {
-    std::lock_guard<std::mutex> l(data_mutex_);
+    std::lock_guard l(data_mutex_);
     retained = rpcs_->Unregister(&poll_handle_);
   }
   RETURN_WHEN_OFFLINE();
@@ -345,16 +362,19 @@ void XClusterPoller::HandlePoll(const Status& status, cdc::GetChangesResponsePB&
 void XClusterPoller::DoHandlePoll(Status status, std::shared_ptr<cdc::GetChangesResponsePB> resp) {
   ACQUIRE_MUTEX_IF_ONLINE();
 
+  if (!IsLeaderTermValid()) {
+    return;
+  }
+
   status_ = status;
 
   bool failed = false;
   if (!status_.ok()) {
-    LOG_WITH_PREFIX_UNLOCKED(INFO) << "XClusterPoller failure: " << status_.ToString();
+    LOG_WITH_PREFIX(INFO) << "XClusterPoller failure: " << status_.ToString();
     failed = true;
   } else if (resp->has_error()) {
-    LOG_WITH_PREFIX_UNLOCKED(WARNING)
-        << "XClusterPoller failure response: code=" << resp->error().code()
-        << ", status=" << resp->error().status().DebugString();
+    LOG_WITH_PREFIX(WARNING) << "XClusterPoller failure response: code=" << resp->error().code()
+                             << ", status=" << resp->error().status().DebugString();
     failed = true;
 
     if (resp->error().code() == cdc::CDCErrorPB::CHECKPOINT_TOO_OLD) {
@@ -365,7 +385,7 @@ void XClusterPoller::DoHandlePoll(Status status, std::shared_ptr<cdc::GetChanges
           "Unable to find expected op id on the producer");
     }
   } else if (!resp->has_checkpoint()) {
-    LOG_WITH_PREFIX_UNLOCKED(ERROR) << "XClusterPoller failure: no checkpoint";
+    LOG_WITH_PREFIX(ERROR) << "XClusterPoller failure: no checkpoint";
     failed = true;
   }
   if (failed) {
@@ -393,13 +413,17 @@ void XClusterPoller::DoHandleApplyChanges(XClusterOutputClientResponse response)
   ACQUIRE_MUTEX_IF_ONLINE();
   DCHECK(response.get_changes_response);
 
+  if (!IsLeaderTermValid()) {
+    return;
+  }
+
   if (!response.status.ok()) {
-    LOG_WITH_PREFIX_UNLOCKED(WARNING) << "ApplyChanges failure: " << response.status;
+    LOG_WITH_PREFIX(WARNING) << "ApplyChanges failure: " << response.status;
     // Repeat the ApplyChanges step, with exponential backoff
     apply_failures_ =
         std::min(apply_failures_ + 1, GetAtomicFlag(&FLAGS_replication_failure_delay_exponent));
     int64_t delay = (1 << apply_failures_) - 1;
-    VLOG_WITH_PREFIX_UNLOCKED(1) << "Retrying ApplyChanges after sleeping for  " << delay;
+    VLOG_WITH_PREFIX(1) << "Retrying ApplyChanges after sleeping for  " << delay;
     SleepFor(MonoDelta::FromMilliseconds(delay));
     UpdateSchemaVersionsForApply();
     WARN_NOT_OK(
@@ -424,6 +448,33 @@ void XClusterPoller::DoHandleApplyChanges(XClusterOutputClientResponse response)
 
     Poll();
   }
+}
+
+bool XClusterPoller::IsLeaderTermValid() {
+  if (is_failed_) {
+    return false;
+  }
+
+  if (FLAGS_TEST_xcluster_disable_poller_term_check) {
+    return true;
+  }
+
+  auto current_term = get_leader_term_(consumer_tablet_info_.tablet_id);
+  if (leader_term_ == OpId::kUnknownTerm) {
+    leader_term_ = current_term;
+  }
+
+  if (current_term == OpId::kUnknownTerm || current_term != leader_term_) {
+    LOG_WITH_PREFIX(WARNING) << "Stopping Poller as leader term "
+                             << (current_term == OpId::kUnknownTerm
+                                     ? "is unknown"
+                                     : "changed. Expected: " + std::to_string(leader_term_) +
+                                           ", Current: " + std::to_string(current_term));
+    is_failed_ = true;
+    return false;
+  }
+
+  return true;
 }
 
 #undef ACQUIRE_MUTEX_IF_ONLINE

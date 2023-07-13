@@ -435,6 +435,7 @@ class MetricType {
  public:
   enum Type { kGauge, kCounter, kHistogram, kLag };
   static const char* Name(Type t);
+  static const char* PrometheusType(Type t);
  private:
   static const char* const kGaugeType;
   static const char* const kCounterType;
@@ -525,17 +526,17 @@ class MetricRegistry {
 
   // Return the number of entities in this registry.
   size_t num_entities() const {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     return entities_.size();
   }
 
   void tablets_shutdown_insert(std::string id) {
-    std::lock_guard<std::shared_timed_mutex> l(tablets_shutdown_lock_);
+    std::lock_guard l(tablets_shutdown_lock_);
     tablets_shutdown_.insert(id);
   }
 
   void tablets_shutdown_erase(std::string id) {
-    std::lock_guard<std::shared_timed_mutex> l(tablets_shutdown_lock_);
+    std::lock_guard l(tablets_shutdown_lock_);
     (void)tablets_shutdown_.erase(id);
   }
 
@@ -754,7 +755,9 @@ class AtomicGauge : public Gauge {
     }
 
     return writer->WriteSingleEntry(attr, prototype_->name(), value(),
-                                    prototype()->aggregation_function());
+                                    prototype()->aggregation_function(),
+                                    MetricType::PrometheusType(prototype_->type()),
+                                    prototype_->description());
   }
 
  protected:
@@ -794,7 +797,7 @@ template <typename T>
 class FunctionGauge : public Gauge {
  public:
   T value() const {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     return function_.Run();
   }
 
@@ -806,7 +809,7 @@ class FunctionGauge : public Gauge {
   // This should be used during destruction. If you want a settable
   // Gauge, use a normal Gauge instead of a FunctionGauge.
   void DetachToConstant(T v) {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     function_ = Bind(&FunctionGauge::Return, v);
   }
 
@@ -851,7 +854,9 @@ class FunctionGauge : public Gauge {
     }
 
     return writer->WriteSingleEntry(attr, prototype_->name(), value(),
-                                    prototype()->aggregation_function());
+                                    prototype()->aggregation_function(),
+                                    MetricType::PrometheusType(prototype_->type()),
+                                    prototype_->description());
   }
 
  private:
@@ -982,7 +987,9 @@ class AtomicMillisLag : public MillisLag {
     }
 
     return writer->WriteSingleEntry(attr, prototype_->name(), this->lag_ms(),
-                                    prototype()->aggregation_function());
+                                    prototype()->aggregation_function(),
+                                    MetricType::PrometheusType(prototype_->type()),
+                                    prototype_->description());
   }
 
  protected:
@@ -1044,6 +1051,8 @@ class Histogram : public Metric {
   Status WriteForPrometheus(
       PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
       const MetricPrometheusOptions& opts) const override;
+
+  void Reset() const;
 
   // Returns a snapshot of this histogram including the bucketed values and counts.
   // Resets the bucketed counts, but not the total count/sum.
@@ -1117,7 +1126,7 @@ inline scoped_refptr<AtomicGauge<T>> MetricEntity::FindOrCreateGauge(
     const GaugePrototype<T>* proto,
     const T& initial_value) {
   CheckInstantiation(proto);
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   auto it = metric_map_.find(proto);
   if (it == metric_map_.end()) {
     auto result = new AtomicGauge<T>(proto, initial_value);
@@ -1132,7 +1141,7 @@ inline scoped_refptr<AtomicGauge<T> > MetricEntity::FindOrCreateGauge(
     std::unique_ptr<GaugePrototype<T>> proto,
     const T& initial_value) {
   CheckInstantiation(proto.get());
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   auto it = metric_map_.find(proto.get());
   if (it != metric_map_.end()) {
     return down_cast<AtomicGauge<T>*>(it->second.get());
@@ -1147,7 +1156,7 @@ inline scoped_refptr<FunctionGauge<T> > MetricEntity::FindOrCreateFunctionGauge(
     const GaugePrototype<T>* proto,
     const Callback<T()>& function) {
   CheckInstantiation(proto);
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   auto it = metric_map_.find(proto);
   if (it != metric_map_.end()) {
     return down_cast<FunctionGauge<T>*>(it->second.get());

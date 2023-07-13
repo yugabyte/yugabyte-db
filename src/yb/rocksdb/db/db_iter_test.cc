@@ -95,28 +95,25 @@ class TestIterator : public InternalIterator {
     });
   }
 
-  bool Valid() const override {
-    assert(initialized_);
-    return valid_;
-  }
-
-  void SeekToFirst() override {
+  const KeyValueEntry& SeekToFirst() override {
     assert(initialized_);
     valid_ = (data_.size() > 0);
     iter_ = 0;
+    return Entry();
   }
 
-  void SeekToLast() override {
+  const KeyValueEntry& SeekToLast() override {
     assert(initialized_);
     valid_ = (data_.size() > 0);
     iter_ = data_.size() - 1;
+    return Entry();
   }
 
-  void Seek(const Slice& target) override {
+  const KeyValueEntry& Seek(Slice target) override {
     assert(initialized_);
     SeekToFirst();
     if (!valid_) {
-      return;
+      return Entry();
     }
     while (iter_ < data_.size() &&
            (cmp.Compare(data_[iter_].first, target) < 0)) {
@@ -126,34 +123,39 @@ class TestIterator : public InternalIterator {
     if (iter_ == data_.size()) {
       valid_ = false;
     }
+    return Entry();
   }
 
-  void Next() override {
+  const KeyValueEntry& Next() override {
     assert(initialized_);
     if (data_.empty() || (iter_ == data_.size() - 1)) {
       valid_ = false;
     } else {
       ++iter_;
     }
+    return Entry();
   }
 
-  void Prev() override {
+  const KeyValueEntry& Prev() override {
     assert(initialized_);
     if (iter_ == 0) {
       valid_ = false;
     } else {
       --iter_;
     }
+    return Entry();
   }
 
-  Slice key() const override {
+  const KeyValueEntry& Entry() const override {
     assert(initialized_);
-    return data_[iter_].first;
-  }
-
-  Slice value() const override {
-    assert(initialized_);
-    return data_[iter_].second;
+    if (!valid_) {
+      return KeyValueEntry::Invalid();
+    }
+    entry_ = KeyValueEntry {
+      .key = data_[iter_].first,
+      .value = data_[iter_].second,
+    };
+    return entry_;
   }
 
   Status status() const override {
@@ -169,6 +171,7 @@ class TestIterator : public InternalIterator {
 
   InternalKeyComparator cmp;
   std::vector<std::pair<std::string, std::string>> data_;
+  mutable KeyValueEntry entry_;
 };
 
 class DBIteratorTest : public RocksDBTest {

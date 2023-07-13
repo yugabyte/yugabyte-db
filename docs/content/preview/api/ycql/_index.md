@@ -5,7 +5,7 @@ linkTitle: YCQL
 description: YCQL is a semi-relational API that is best fit for internet-scale OLTP & HTAP applications.
 summary: Reference for the YCQL API
 image: /images/section_icons/api/ycql.png
-headcontent:
+headcontent: Cassandra-compatible API
 menu:
   preview:
     parent: api
@@ -15,6 +15,7 @@ menu:
       classes: separator
 aliases:
   - /preview/api/ycql/
+showRightNav: true
 type: indexpage
 ---
 
@@ -72,13 +73,6 @@ Statement | Description |
 [`REVOKE PERMISSION`](ddl_revoke_permission) | Revoke a permission on an object from a role |
 [`GRANT ROLE`](ddl_grant_role) | Grant a role to another role |
 [`REVOKE ROLE`](ddl_revoke_role) | Revoke a role from another role |
-
-The following table lists all security statements that are not yet implemented.
-
-Statement |
----------------|
-`LIST ROLES` |
-`LIST PERMISSIONS` |
 
 ## DML statements
 
@@ -144,8 +138,7 @@ Primitive Type | Allowed in Key | Type Parameters | Description |
 
 [User-defined data types](ddl_create_type) are also supported.
 
-The following table lists all YCQL primitive types that are not yet implemented.
+## Learn more
 
-Primitive Type |
----------------|
-`TUPLE` |
+- [Advantages of YCQL over Cassandra](../../faq/comparisons/cassandra)
+- [YCQL - Cassandra 3.4 compatibility](../../explore/ycql-language/cassandra-feature-support)

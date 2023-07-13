@@ -42,6 +42,7 @@
 #include "yb/client/client.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/pg_catversions.h"
 #include "yb/qlexpr/index.h"
 #include "yb/dockv/partial_row.h"
 #include "yb/dockv/partition.h"
@@ -167,7 +168,8 @@ std::string SysCatalogTable::schema_column_metadata() { return kSysCatalogTableC
 SysCatalogTable::SysCatalogTable(Master* master, MetricRegistry* metrics,
                                  ElectedLeaderCallback leader_cb)
     : doc_read_context_(std::make_unique<docdb::DocReadContext>(
-          kLogPrefix, TableType::YQL_TABLE_TYPE, BuildTableSchema(), kSysCatalogSchemaVersion)),
+          kLogPrefix, TableType::YQL_TABLE_TYPE, docdb::Index::kFalse, BuildTableSchema(),
+          kSysCatalogSchemaVersion)),
       metric_registry_(metrics),
       metric_entity_(METRIC_ENTITY_server.Instantiate(metric_registry_, "yb.master")),
       master_(master),
@@ -268,7 +270,7 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
   auto metadata = VERIFY_RESULT(tablet::RaftGroupMetadata::Load(fs_manager, kSysCatalogTabletId));
 
   // Verify that the schema is the current one
-  if (!metadata->schema()->Equals(doc_read_context_->schema)) {
+  if (!metadata->schema()->Equals(doc_read_context_->schema())) {
     // TODO: In this case we probably should execute the migration step.
     return(STATUS(Corruption, "Unexpected schema", metadata->schema()->ToString()));
   }
@@ -406,13 +408,14 @@ void SysCatalogTable::SysCatalogStateChanged(
     const string& tablet_id,
     std::shared_ptr<StateChangeContext> context) {
   CHECK_EQ(tablet_id, tablet_peer()->tablet_id());
-  shared_ptr<consensus::Consensus> consensus = tablet_peer()->shared_consensus();
-  if (!consensus) {
+  auto consensus_result = tablet_peer()->GetConsensus();
+  if (!consensus_result) {
     LOG_WITH_PREFIX(WARNING) << "Received notification of tablet state change "
                              << "but tablet no longer running. Tablet ID: "
                              << tablet_id << ". Reason: " << context->ToString();
     return;
   }
+  auto& consensus = consensus_result.get();
 
   // We use the active config, in case there is a pending one with this peer becoming the voter,
   // that allows its role to be determined correctly as the LEADER and so loads the sys catalog.
@@ -596,7 +599,9 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .full_compaction_pool = nullptr,
       .admin_triggered_compaction_pool = nullptr,
       // We don't support splitting the catalog tablet, this field is unneeded.
-      .post_split_compaction_added = nullptr
+      .post_split_compaction_added = nullptr,
+      // Metadata cache is not used on master.
+      .metadata_cache = nullptr,
   };
   tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
@@ -604,7 +609,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .append_pool = append_pool(),
       .allocation_pool = allocation_pool_.get(),
       .log_sync_pool = log_sync_pool(),
-      .retryable_requests = nullptr,
+      .retryable_requests_manager = nullptr,
   };
   RETURN_NOT_OK(BootstrapTablet(data, &tablet, &log, &consensus_info));
 
@@ -622,17 +627,17 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           tablet->GetTabletMetricsEntity(),
           raft_pool(),
           tablet_prepare_pool(),
-          nullptr /* retryable_requests */,
+          nullptr /* retryable_requests_manager */,
           nullptr /* consensus_meta */,
-          multi_raft_manager_.get()),
+          multi_raft_manager_.get(),
+          nullptr /* flush_retryable_requests_pool */),
       "Failed to Init() TabletPeer");
 
-  RETURN_NOT_OK_PREPEND(tablet_peer()->Start(consensus_info),
-                        "Failed to Start() TabletPeer");
+  RETURN_NOT_OK_PREPEND(tablet_peer()->Start(consensus_info), "Failed to Start() TabletPeer");
 
   tablet_peer()->RegisterMaintenanceOps(master_->maintenance_manager());
 
-  if (!tablet->schema()->Equals(doc_read_context_->schema)) {
+  if (!tablet->schema()->Equals(doc_read_context_->schema())) {
     return STATUS(Corruption, "Unexpected schema", tablet->schema()->ToString());
   }
   RETURN_NOT_OK(mem_manager_->Init());
@@ -742,9 +747,9 @@ Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
 // protobuf itself.
 Schema SysCatalogTable::BuildTableSchema() {
   SchemaBuilder builder;
-  CHECK_OK(builder.AddKeyColumn(kSysCatalogTableColType, INT8));
-  CHECK_OK(builder.AddKeyColumn(kSysCatalogTableColId, BINARY));
-  CHECK_OK(builder.AddColumn(kSysCatalogTableColMetadata, BINARY));
+  CHECK_OK(builder.AddKeyColumn(kSysCatalogTableColType, DataType::INT8));
+  CHECK_OK(builder.AddKeyColumn(kSysCatalogTableColId, DataType::BINARY));
+  CHECK_OK(builder.AddColumn(kSysCatalogTableColMetadata, DataType::BINARY));
   return builder.Build();
 }
 
@@ -756,7 +761,7 @@ Status SysCatalogTable::GetTableSchema(
     return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
   }
   ReadHybridTime read_time = read_hybrid_time ? read_hybrid_time : ReadHybridTime::Max();
-  const Schema& schema = doc_read_context_->schema;
+  const Schema& schema = doc_read_context_->schema();
   dockv::ReaderProjection projection(schema);
   auto doc_iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
       projection, read_time, /* table_id= */ "", CoarseTimePoint::max(),
@@ -839,8 +844,9 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
   auto start = CoarseMonoClock::Now();
 
   uint64_t count = 0;
-  RETURN_NOT_OK(EnumerateSysCatalog(tablet.get(), doc_read_context_->schema, visitor->entry_type(),
-                                    [visitor, &count](const Slice& id, const Slice& data) {
+  RETURN_NOT_OK(
+      EnumerateSysCatalog(tablet.get(), doc_read_context_->schema(), visitor->entry_type(),
+      [visitor, &count](const Slice& id, const Slice& data) {
     ++count;
     return visitor->Visit(id, data);
   }));
@@ -951,7 +957,7 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */);
     RETURN_NOT_OK(iter->Init(spec));
   } else {
-    iter->Init(read_data.table_info->table_type);
+    iter->InitForTableType(read_data.table_info->table_type);
   }
 
   while (VERIFY_RESULT(iter->FetchNext(&source_row))) {
@@ -972,10 +978,14 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
     }
     if (versions) {
       // When 'versions' is set we read all rows.
+      const uint64_t current_version =
+        static_cast<uint64_t>(version_col_value->int64_value());
+      const uint64_t last_breaking_version =
+        static_cast<uint64_t>(last_breaking_version_col_value->int64_value());
       auto insert_result = versions->insert(
-        std::make_pair(db_oid_value->uint32_value(),
-                       std::make_pair(version_col_value->int64_value(),
-                                      last_breaking_version_col_value->int64_value())));
+        std::make_pair(db_oid_value->uint32_value(), PgCatalogVersion{
+            .current_version = current_version,
+            .last_breaking_version = last_breaking_version}));
       // There should not be any duplicate db_oid because it is a primary key.
       DCHECK(insert_result.second);
     } else {
@@ -1679,7 +1689,7 @@ Status SysCatalogTable::DeleteYsqlSystemTable(const string& table_id, int64_t te
 }
 
 const Schema& SysCatalogTable::schema() {
-  return doc_read_context_->schema;
+  return doc_read_context_->schema();
 }
 
 const docdb::DocReadContext& SysCatalogTable::doc_read_context() {
@@ -1690,7 +1700,7 @@ Status SysCatalogTable::FetchDdlLog(google::protobuf::RepeatedPtrField<DdlLogEnt
   auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
 
   return EnumerateSysCatalog(
-      tablet.get(), doc_read_context_->schema, SysRowEntryType::DDL_LOG_ENTRY,
+      tablet.get(), doc_read_context_->schema(), SysRowEntryType::DDL_LOG_ENTRY,
       [entries](const Slice& id, const Slice& data) -> Status {
     *entries->Add() = VERIFY_RESULT(pb_util::ParseFromSlice<DdlLogEntryPB>(data));
     return Status::OK();

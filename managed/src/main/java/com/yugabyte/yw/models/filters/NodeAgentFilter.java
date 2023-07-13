@@ -2,12 +2,19 @@
 
 package com.yugabyte.yw.models.filters;
 
-import java.util.List;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import java.util.Set;
+import java.util.UUID;
 import lombok.Builder;
 import lombok.Getter;
 
 @Builder
 @Getter
 public class NodeAgentFilter {
-  private List<String> nodeIps;
+  private Set<String> nodeIps;
+  private CloudType cloudType;
+  private UUID providerUuid;
+  private UUID universeUuid;
+  private UUID regionUuid;
+  private UUID zoneUuid;
 }

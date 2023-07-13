@@ -24,8 +24,7 @@ const NOTE_CONTENT = (
     <b>Note!</b> If the tables to replicate are not empty on this source universe, ensure that the
     <b> backup storage config can be accessed from both source and target universe </b>
     for bootstrapping. Particularly, <b>Network File System (NFS)</b> based storage configs may not
-    be accessible from universes in different regions. In that case, refer to the based storage
-    configs may not be accessible from universes in different regions. In that case, refer to the{' '}
+    be accessible from universes in different regions. In that case, refer to the{' '}
     <a href={YB_ADMIN_XCLUSTER_DOCUMENTATION_URL}>
       {'documentation for creating replication using yb-admin.'}
     </a>

@@ -2,22 +2,22 @@
   "dbVersions":
   [
     {
-      "series": "v2.17",
+      "series": "v2.19",
       "alias": "preview",
-      "display": "v2.17 (Preview)",
-      "version": "2.17.3.0",
-      "versionShort": "2.17.3",
-      "appVersion": "2.17.3.0-b152",
+      "display": "v2.19 (Preview)",
+      "version": "2.19.0.0",
+      "versionShort": "2.19.0",
+      "appVersion": "2.19.0.0-b190",
       "isStable": false,
-      "initialRelease": "2022-12-08"
+      "initialRelease": "2023-06-20"
     },
     {
       "series": "v2.18",
       "alias": "stable",
       "display": "v2.18 (STS)",
-      "version": "2.18.0.0",
-      "versionShort": "2.18.0",
-      "appVersion": "2.18.0.0-b65",
+      "version": "2.18.1.0",
+      "versionShort": "2.18.1",
+      "appVersion": "2.18.1.0-b84",
       "isStable": true,
       "isLTS": false,
       "isSTS": true,
@@ -28,9 +28,9 @@
     {
       "series": "v2.16",
       "display": "v2.16 (STS)",
-      "version": "2.16.4.0",
-      "versionShort": "2.16.4",
-      "appVersion": "2.16.4.0-b32",
+      "version": "2.16.5.0",
+      "versionShort": "2.16.5",
+      "appVersion": "2.16.5.0-b24",
       "isStable": true,
       "isLTS": false,
       "isSTS": true,
@@ -41,9 +41,9 @@
     {
       "series": "v2.14",
       "display": "v2.14 (LTS)",
-      "version": "2.14.9.0",
-      "versionShort": "2.14.9",
-      "appVersion": "2.14.9.0-b23",
+      "version": "2.14.10.2",
+      "versionShort": "2.14.10",
+      "appVersion": "2.14.10.2-b1",
       "isStable": true,
       "isLTS": true,
       "initialRelease": "2022-07-14",

@@ -74,7 +74,7 @@ public class SupportBundleController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(requestBody, SupportBundleFormData.class);
 
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     if (universe.getUniverseDetails().updateInProgress
         || universe.getUniverseDetails().universePaused) {
@@ -149,7 +149,7 @@ public class SupportBundleController extends AuthenticatedController {
       produces = "application/x-compressed")
   public Result download(UUID customerUUID, UUID universeUUID, UUID bundleUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe.getOrBadRequest(universeUUID, customer);
     SupportBundle bundle = SupportBundle.getOrBadRequest(bundleUUID);
 
     if (bundle.getStatus() != SupportBundleStatusType.Success) {
@@ -170,6 +170,8 @@ public class SupportBundleController extends AuthenticatedController {
       responseContainer = "List",
       nickname = "listSupportBundle")
   public Result list(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe.getOrBadRequest(universeUUID, customer);
     int retentionDays = config.getInt("yb.support_bundle.retention_days");
     SupportBundle.setRetentionDays(retentionDays);
     List<SupportBundle> supportBundles = SupportBundle.getAll(universeUUID);
@@ -181,6 +183,8 @@ public class SupportBundleController extends AuthenticatedController {
       response = SupportBundle.class,
       nickname = "getSupportBundle")
   public Result get(UUID customerUUID, UUID universeUUID, UUID supportBundleUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe.getOrBadRequest(universeUUID, customer);
     int retentionDays = config.getInt("yb.support_bundle.retention_days");
     SupportBundle.setRetentionDays(retentionDays);
     SupportBundle supportBundle = SupportBundle.getOrBadRequest(supportBundleUUID);
@@ -194,7 +198,8 @@ public class SupportBundleController extends AuthenticatedController {
   public Result delete(
       UUID customerUUID, UUID universeUUID, UUID bundleUUID, Http.Request request) {
     SupportBundle supportBundle = SupportBundle.getOrBadRequest(bundleUUID);
-
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe.getOrBadRequest(universeUUID, customer);
     // Deletes row from the support_bundle db table
     SupportBundle.delete(bundleUUID);
 

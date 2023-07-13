@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.CloudProviderHelper.EditableInUseProvider;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.ApiModelProperty;
@@ -41,21 +42,26 @@ public class AWSCloudInfo implements CloudInfoInterface {
   @JsonAlias("HOSTED_ZONE_ID")
   @ApiModelProperty
   @ApiParam(value = "Route 53 Zone ID")
+  @EditableInUseProvider(name = "AWS Hosted Zone ID", allowed = false)
   public String awsHostedZoneId;
 
   @JsonAlias("HOSTED_ZONE_NAME")
   @ApiModelProperty
+  @EditableInUseProvider(name = "AWS Hosted Zone Name", allowed = false)
   public String awsHostedZoneName;
 
   @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
+  @EditableInUseProvider(name = "AWS Host VPC Region", allowed = false)
   public String hostVpcRegion;
 
   @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
+  @EditableInUseProvider(name = "AWS Host VPC ID", allowed = false)
   public String hostVpcId;
 
   @ApiModelProperty(
       value = "New/Existing VPC for provider creation",
       accessMode = AccessMode.READ_ONLY)
+  @EditableInUseProvider(name = "AWS VPC type", allowed = false)
   private VPCType vpcType = VPCType.EXISTING;
 
   @JsonIgnore

@@ -22,6 +22,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.GCPUtil;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -40,6 +41,7 @@ import com.yugabyte.yw.models.helpers.ProviderAndRegion;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -132,6 +134,7 @@ public class UniverseResourceDetails {
     double hourlyPrice = 0.0;
     double hourlyEBSPrice = 0.0;
     UserIntent userIntent = params.getPrimaryCluster().userIntent;
+    Map<Pair<String, String>, Double> spotPrices = new HashMap<>();
     for (NodeDetails nodeDetails : params.nodeDetailsSet) {
       if (nodeDetails.placementUuid != null) {
         userIntent = params.getClusterByUuid(nodeDetails.placementUuid).userIntent;
@@ -212,19 +215,48 @@ public class UniverseResourceDetails {
           if (userIntent.spotPrice > 0.0) {
             hourlyPrice += userIntent.spotPrice;
           } else {
+            Pair<String, String> spotPair;
+            Double spotPrice;
             switch (userIntent.providerType) {
               case aws:
-                hourlyPrice += AWSUtil.getAwsSpotPrice(nodeDetails.getZone(), instanceType);
+                spotPair = new Pair<String, String>(nodeDetails.getZone(), instanceType);
+                String providerUUID = userIntent.provider;
+                spotPrice =
+                    spotPrices.computeIfAbsent(
+                        spotPair,
+                        pair -> {
+                          return AWSUtil.getAwsSpotPrice(
+                              pair.getFirst(),
+                              pair.getSecond(),
+                              providerUUID,
+                              nodeDetails.getRegion());
+                        });
                 break;
               case gcp:
-                hourlyPrice += GCPUtil.getGcpSpotPrice(nodeDetails.getRegion(), instanceType);
+                spotPair = new Pair<String, String>(nodeDetails.getRegion(), instanceType);
+                spotPrice =
+                    spotPrices.computeIfAbsent(
+                        spotPair,
+                        pair -> {
+                          return GCPUtil.getGcpSpotPrice(pair.getFirst(), pair.getSecond());
+                        });
                 break;
               case azu:
-                hourlyPrice += AZUtil.getAzuSpotPrice(nodeDetails.getRegion(), instanceType);
+                spotPair = new Pair<String, String>(nodeDetails.getRegion(), instanceType);
+                spotPrice =
+                    spotPrices.computeIfAbsent(
+                        spotPair,
+                        pair -> {
+                          return AZUtil.getAzuSpotPrice(pair.getFirst(), pair.getSecond());
+                        });
                 break;
               default:
-                hourlyPrice += instancePrice.getPriceDetails().pricePerHour;
+                spotPrice = Double.NaN;
             }
+            hourlyPrice +=
+                (!spotPrice.equals(Double.NaN)
+                    ? spotPrice
+                    : instancePrice.getPriceDetails().pricePerHour);
           }
         }
       }

@@ -43,7 +43,7 @@ public class ProviderDetails extends MigratedKeyInfoFields {
     @ApiModelProperty public OnPremCloudInfo onprem;
   }
 
-  @ApiModelProperty public CloudInfo cloudInfo;
+  @ApiModelProperty private CloudInfo cloudInfo;
   // Flag to enable node agent for this provider depending on the runtime config settings.
   @ApiModelProperty public boolean enableNodeAgent;
 

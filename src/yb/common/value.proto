@@ -12,6 +12,8 @@
 
 syntax = "proto2";
 
+import "yb/rpc/lightweight_message.proto";
+
 package yb;
 
 option java_package = "org.yb";
@@ -93,7 +95,10 @@ message QLValuePB {
 // be changed once the types are implemented and released.
 //
 // Make sure this is in sync with YBCPgDataType in ybc_pg_typedefs.h.
-enum DataType {
+enum PersistentDataType {
+  // DataType constains continuous range of values and should be used in memory for efficiency.
+  option (yb.rpc.lightweight_enum).name = "DataType";
+
   UNKNOWN_DATA = 999;
   NULL_VALUE_TYPE = 0;
   INT8 = 1;
@@ -160,6 +165,8 @@ enum QLOperator {
   QL_OP_NOT_LIKE = 15;
   QL_OP_IN = 16;
   QL_OP_NOT_IN = 17;
+  QL_OP_CONTAINS = 22;
+  QL_OP_CONTAINS_KEY = 23;
 
   // Relation operators that take three operands.
   QL_OP_BETWEEN = 18;
@@ -168,19 +175,4 @@ enum QLOperator {
   // Operators that take no operand. For use in "if" clause only currently.
   QL_OP_EXISTS = 20;     // IF EXISTS
   QL_OP_NOT_EXISTS = 21; // IF NOT EXISTS
-}
-
-message DatumMessagePB {
-  optional string column_name = 1;
-  optional int64 column_type = 2;
-  oneof datum {
-    int32 datum_int32 = 3;
-    int64 datum_int64 = 4;
-    float datum_float = 5;
-    double datum_double = 6;
-    bool datum_bool = 7;
-    string datum_string = 8;
-    bytes datum_bytes = 9;
-    bool datum_missing = 10;
-  }
 }

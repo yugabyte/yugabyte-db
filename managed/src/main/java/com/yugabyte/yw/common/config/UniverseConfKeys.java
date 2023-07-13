@@ -175,6 +175,22 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "The flag defines, if we perform DB write-read check on DB nodes or not.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ysqlshConnectivityTest =
+      new ConfKeyInfo<>(
+          "yb.metrics.ysqlsh_connectivity_test",
+          ScopeType.UNIVERSE,
+          "YSQLSH Connectivity Test",
+          "The flag defines, if we perform YSQLSH Connectivity check on DB nodes or not.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> cqlshConnectivityTest =
+      new ConfKeyInfo<>(
+          "yb.metrics.cqlsh_connectivity_test",
+          ScopeType.UNIVERSE,
+          "CQLSH Connectivity Test",
+          "The flag defines, if we perform CQLSH Connectivity check on DB nodes or not.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> metricsCollectionLevel =
       new ConfKeyInfo<>(
           "yb.metrics.collection_level",
@@ -222,6 +238,22 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "SSh Key Expiration Threshold",
           "TODO",
           ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableSSE =
+      new ConfKeyInfo<>(
+          "yb.backup.enable_sse",
+          ScopeType.UNIVERSE,
+          "Enable SSE",
+          "Enable SSE during backup/restore",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowTableByTableBackupYCQL =
+      new ConfKeyInfo<>(
+          "yb.backup.allow_table_by_table_backup_ycql",
+          ScopeType.UNIVERSE,
+          "Allow Table by Table backups for YCQL",
+          "Backup tables individually during YCQL backup",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> nfsDirs =
       new ConfKeyInfo<>(
@@ -643,5 +675,81 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Postgres logs regex pattern",
           "Postgres logs regex pattern in support bundle",
           ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> ysqlUpgradeTimeoutSec =
+      new ConfKeyInfo<>(
+          "yb.upgrade.ysql_upgrade_timeout_sec",
+          ScopeType.UNIVERSE,
+          "YSQL Upgrade Timeout in seconds",
+          "Controls the yb-client admin operation timeout when performing the runUpgradeYSQL "
+              + "subtask rpc calls.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> underReplicatedTabletsTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.under_replicated_tablets.timeout",
+          ScopeType.UNIVERSE,
+          "Under replicated tablets check timeout",
+          "Controls the max time out when performing the checkUnderReplicatedTablets subtask",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> underReplicatedTabletsCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.checks.under_replicated_tablets.enabled",
+          ScopeType.UNIVERSE,
+          "Enabling under replicated tablets check",
+          "Controls whether or not to perform the checkUnderReplicatedTablets subtask",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> checkMemoryTimeoutSecs =
+      new ConfKeyInfo<>(
+          "yb.dbmem.checks.timeout",
+          ScopeType.UNIVERSE,
+          "Memory check timeout",
+          "Timeout for memory check in secs",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> sleepTimeBeforeRestoreXClusterSetup =
+      new ConfKeyInfo<>(
+          "yb.xcluster.sleep_time_before_restore",
+          ScopeType.UNIVERSE,
+          "Wait time before doing restore during xCluster setup task",
+          "The amount of time to sleep (wait) before executing restore subtask during "
+              + "xCluster setup; it is useful because xCluster setup also drops the database "
+              + "before restore and the sleep makes sure the drop operation has reached all "
+              + "the nodes",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> useServerBroadcastAddressForYbBackup =
+      new ConfKeyInfo<>(
+          "yb.backup.use_server_broadcast_address_for_yb_backup",
+          ScopeType.UNIVERSE,
+          "Use server broadcast address for yb_backup",
+          "Controls whether server_broadcast_address entry should be used during yb_backup.py backup/restore",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> slowQueryTimeoutSecs =
+      new ConfKeyInfo<>(
+          "yb.query_stats.slow_queries.timeout_secs",
+          ScopeType.UNIVERSE,
+          "Slow Queries Timeout",
+          "Timeout in secs for slow queries",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> ysqlTimeoutSecs =
+      new ConfKeyInfo<>(
+          "yb.ysql_timeout_secs",
+          ScopeType.UNIVERSE,
+          "YSQL Queries Timeout",
+          "Timeout in secs for YSQL queries",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> numCoresToKeep =
+      new ConfKeyInfo<>(
+          "yb.num_cores_to_keep",
+          ScopeType.UNIVERSE,
+          "Number of cores to keep",
+          "Controls the configuration to set the number of cores to keep in the Ansible layer",
+          ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

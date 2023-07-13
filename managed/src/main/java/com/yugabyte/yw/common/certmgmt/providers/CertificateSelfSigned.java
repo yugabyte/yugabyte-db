@@ -39,16 +39,21 @@ public class CertificateSelfSigned extends CertificateProviderBase {
 
   private final Config appConfig;
 
+  private final CertificateHelper certificateHelper;
+
   X509Certificate curCaCertificate;
   KeyPair curKeyPair;
 
-  public CertificateSelfSigned(UUID pCACertUUID, Config config) {
+  public CertificateSelfSigned(
+      UUID pCACertUUID, Config config, CertificateHelper certificateHelper) {
     super(CertConfigType.SelfSigned, pCACertUUID);
     this.appConfig = config;
+    this.certificateHelper = certificateHelper;
   }
 
-  public CertificateSelfSigned(CertificateInfo rootCertConfigInfo, Config config) {
-    this(rootCertConfigInfo.getUuid(), config);
+  public CertificateSelfSigned(
+      CertificateInfo rootCertConfigInfo, Config config, CertificateHelper certificateHelper) {
+    this(rootCertConfigInfo.getUuid(), config, certificateHelper);
   }
 
   @Override
@@ -77,6 +82,7 @@ public class CertificateSelfSigned extends CertificateProviderBase {
       if (certInfo.getPrivateKey() == null) {
         throw new PlatformServiceException(BAD_REQUEST, "Keyfile cannot be null!");
       }
+
       // The first entry will be the certificate that needs to sign the necessary certificate.
       X509Certificate cer =
           CertificateHelper.convertStringToX509CertList(
@@ -150,7 +156,7 @@ public class CertificateSelfSigned extends CertificateProviderBase {
       log.error("Failed to get yb.tlsCertificate.root.expiryInYears");
     }
 
-    curCaCertificate = CertificateHelper.generateCACertificate(certLabel, keyPair, timeInYears);
+    curCaCertificate = certificateHelper.generateCACertificate(certLabel, keyPair, timeInYears);
     curKeyPair = keyPair;
     return curCaCertificate;
   }

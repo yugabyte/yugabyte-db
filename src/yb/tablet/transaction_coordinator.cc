@@ -14,6 +14,7 @@
 //
 
 #include "yb/tablet/transaction_coordinator.h"
+#include <time.h>
 
 #include <atomic>
 #include <iterator>
@@ -102,6 +103,14 @@ DEFINE_test_flag(bool, disable_cleanup_applied_transactions, false,
 
 DEFINE_test_flag(bool, disable_apply_committed_transactions, false,
                  "Should we disable the apply of committed transactions.");
+
+DEFINE_test_flag(bool, mock_cancel_unhosted_transactions, false,
+                 "When enabled, the flag alters the behavior of the txn coordinator to falsely "
+                 "claim successful cancelation of transactions it does not actually host.");
+
+DEFINE_test_flag(bool, fail_abort_request_with_try_again, false,
+                 "When enabled, the txn coordinator responds to all abort transaction requests "
+                 "with TryAgain error status, for the set of transactions it hosts.");
 
 DEFINE_RUNTIME_uint32(external_transaction_apply_rpc_limit, 0,
                       "Limit on the number of outstanding APPLY external transaction rpcs sent to "
@@ -204,11 +213,13 @@ class TransactionState {
  public:
   explicit TransactionState(TransactionStateContext* context,
                             const TransactionId& id,
+                            MicrosTime first_touch,
                             HybridTime last_touch,
                             const std::string& parent_log_prefix)
       : context_(*context),
         id_(id),
         log_prefix_(BuildLogPrefix(parent_log_prefix, id)),
+        first_touch_(first_touch),
         last_touch_(last_touch),
         aborted_subtxn_info_(std::make_shared<const SubtxnSetAndPB>()) {
   }
@@ -228,6 +239,14 @@ class TransactionState {
   // that updates status of this transaction.
   HybridTime last_touch() const {
     return last_touch_;
+  }
+
+  MicrosTime first_touch() const {
+    return first_touch_;
+  }
+
+  const auto& pending_involved_tablets() const {
+    return pending_involved_tablets_;
   }
 
   // Status of transaction.
@@ -427,7 +446,8 @@ class TransactionState {
         if (!status_ht) {
           status_ht = context_.coordinator_context().clock().Now();
         }
-        status_ht = std::min(status_ht, context_.coordinator_context().HtLeaseExpiration());
+        status_ht =
+            std::min(status_ht, VERIFY_RESULT(context_.coordinator_context().HtLeaseExpiration()));
         return TransactionStatusResult{TransactionStatus::PENDING, status_ht.Decremented()};
       }
       case TransactionStatus::CREATED: FALLTHROUGH_INTENDED;
@@ -672,6 +692,14 @@ class TransactionState {
             "Transaction in wrong state during heartbeat: $0",
             TransactionStatus_Name(status_));
       }
+
+      // Store pending involved tablets and txn start time in memory. Clear the tablets field if the
+      // transaction is still PENDING to avoid raft-replicating this additional metadata.
+      for (const auto& tablet_id : request->request()->tablets()) {
+        pending_involved_tablets_.insert(tablet_id.ToBuffer());
+      }
+      first_touch_ = request->request()->start_time();
+      request->mutable_request()->clear_tablets();
     }
 
     if (!status.ok()) {
@@ -922,6 +950,7 @@ class TransactionState {
   const TransactionId id_;
   const std::string log_prefix_;
   TransactionStatus status_ = TransactionStatus::PENDING;
+  MicrosTime first_touch_;
   HybridTime last_touch_;
   // It should match last_touch_, but it is possible that because of some code errors it
   // would not be so. To add stability we introduce a separate field for it.
@@ -946,6 +975,11 @@ class TransactionState {
                     required_replicated_batches, all_batches_replicated, all_intents_applied);
     }
   };
+
+  // Set of tablets at which this txn has written data or acquired locks, while the transaction is
+  // still pending. Note that involved_tablets_ is only populated on COMMIT and includes additional
+  // metadata not known or needed before COMMIT time.
+  std::unordered_set<TabletId> pending_involved_tablets_;
 
   // Tablets participating in this transaction.
   std::unordered_map<
@@ -1032,7 +1066,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   }
 
   void RemoveInactiveTransactions(Waiters* waiters) override {
-    std::lock_guard<std::mutex> lock(managed_mutex_);
+    std::lock_guard lock(managed_mutex_);
     auto& sorted_txn_map = waiters->get<TransactionIdTag>();
     for (auto it = sorted_txn_map.begin(); it != sorted_txn_map.end();) {
       auto next_it = sorted_txn_map.upper_bound(it->txn_id());
@@ -1085,19 +1119,60 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     return Status::OK();
   }
 
+  Status GetOldTransactions(const tserver::GetOldTransactionsRequestPB* req,
+                            tserver::GetOldTransactionsResponsePB* resp,
+                            CoarseTimePoint deadline) {
+    auto min_age = req->min_txn_age_ms() * 1ms;
+    auto now = context_.clock().Now();
+
+    {
+      std::unique_lock<std::mutex> lock(managed_mutex_);
+      const auto& index = managed_transactions_.get<FirstTouchTag>();
+      for (auto it = index.begin(); it != index.end(); ++it) {
+        if (static_cast<uint32_t>(resp->txn_size()) >= req->max_num_txns()) {
+          break;
+        }
+        if (it->status() != TransactionStatus::PENDING || !it->first_touch()) {
+          continue;
+        }
+
+        auto age = (now.GetPhysicalValueMicros() - it->first_touch()) * 1us;
+        if (age <= min_age) {
+          // Since our iterator is sorted by first_touch, if we encounter a transaction which is too
+          // new, we can discontinue our scan of active transactions.
+          break;
+        }
+
+        auto* resp_txn = resp->add_txn();
+        const auto& id = it->id();
+        resp_txn->set_transaction_id(id.data(), id.size());
+        *resp_txn->mutable_aborted_subtxn_set() = it->GetAbortedSubtxnInfo()->pb();
+
+        for (const auto& tablet_id : it->pending_involved_tablets()) {
+          resp_txn->add_tablets(tablet_id);
+        }
+      }
+    }
+    return Status::OK();
+  }
+
   Status GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
                    CoarseTimePoint deadline,
                    tserver::GetTransactionStatusResponsePB* response) {
     AtomicFlagSleepMs(&FLAGS_TEST_inject_txn_get_status_delay_ms);
     auto leader_term = context_.LeaderTerm();
+    std::vector<TransactionId> decoded_txn_ids;
+    decoded_txn_ids.reserve(transaction_ids.size());
+    for (auto i = 0 ; i < transaction_ids.size() ; i++) {
+      decoded_txn_ids.emplace_back(VERIFY_RESULT(FullyDecodeTransactionId(transaction_ids[i])));
+    }
+
     PostponedLeaderActions postponed_leader_actions;
     {
       std::unique_lock<std::mutex> lock(managed_mutex_);
       HybridTime leader_safe_time;
       postponed_leader_actions_.leader_term = leader_term;
-      for (const auto& transaction_id : transaction_ids) {
-        auto id = VERIFY_RESULT(FullyDecodeTransactionId(transaction_id));
-
+      for (const auto& id : decoded_txn_ids) {
         auto it = managed_transactions_.find(id);
         std::vector<ExpectedTabletBatches> expected_tablet_batches;
         bool known_txn = it != managed_transactions_.end();
@@ -1135,6 +1210,24 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         }
       }
       postponed_leader_actions.Swap(&postponed_leader_actions_);
+    }
+
+    RSTATUS_DCHECK_EQ(
+        response->status().size(), decoded_txn_ids.size(), IllegalState,
+        Format("Expected to see $0 (vs $1) statuses in GetTransactionStatusResponsePB",
+               decoded_txn_ids.size(), response->status().size()));
+    // GetTransactionDeadlockStatus should be called outside the scope of managed_mutex_.
+    // Else we risk a deadlock since the detector acquires the locks in the order:
+    // detector's mutex -> coordinator's managed_mutex_, during execution of TriggerProbes().
+    for (auto i = 0 ; i < response->status().size() ; i++) {
+      // Deadlock detector stores info of transactions that might have been aborted due to a
+      // deadlock even before the coordinator cancels them. So it could happen that the detector
+      // reports a deadlock specific error for a transaction that the coordinator is/was unable
+      // to abort. Hence we query the detector for statuses of txns in ABORTED state alone.
+      Status s = response->status(i) == TransactionStatus::ABORTED
+          ? deadlock_detector_.GetTransactionDeadlockStatus(decoded_txn_ids[i])
+          : Status::OK();
+      StatusToPB(s, response->add_deadlock_reason());
     }
 
     ExecutePostponedLeaderActions(&postponed_leader_actions);
@@ -1249,49 +1342,41 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     return TransactionStatusResult{TransactionStatus::PENDING, result.status_time.Decremented()};
   }
 
-  void Abort(const std::string& transaction_id, int64_t term, TransactionAbortCallback callback) {
+  void Abort(const TransactionId& transaction_id, int64_t term, TransactionAbortCallback callback) {
     AtomicFlagSleepMs(&FLAGS_TEST_inject_txn_get_status_delay_ms);
 
-    auto id = FullyDecodeTransactionId(transaction_id);
-    VLOG_WITH_PREFIX_AND_FUNC(4) << "transaction_id: " << id << ".";
-    if (!id.ok()) {
-      callback(id.status());
+    std::unique_lock<std::mutex> lock(managed_mutex_);
+    auto it = managed_transactions_.find(transaction_id);
+    if (it == managed_transactions_.end()) {
+      lock.unlock();
+      VLOG_WITH_PREFIX_AND_FUNC(4) << "transaction_id: " << transaction_id << " not found.";
+      callback(TransactionStatusResult::Aborted());
       return;
     }
-    Abort(*id, term, callback);
+
+    DoAbort(it, term, std::move(callback), std::move(lock));
   }
 
-  void Abort(const TransactionId& transaction_id, int64_t term, TransactionAbortCallback callback) {
-    PostponedLeaderActions actions;
-    {
-      std::unique_lock<std::mutex> lock(managed_mutex_);
-      auto it = managed_transactions_.find(transaction_id);
-      if (it == managed_transactions_.end()) {
-        lock.unlock();
-        VLOG_WITH_PREFIX_AND_FUNC(4) << "transaction_id: " << transaction_id << " not found.";
+  bool CancelTransactionIfFound(
+      const TransactionId& transaction_id, int64_t term, TransactionAbortCallback callback) {
+
+    std::unique_lock<std::mutex> lock(managed_mutex_);
+    auto it = managed_transactions_.find(transaction_id);
+    if (it == managed_transactions_.end()) {
+      lock.unlock();
+      if (PREDICT_FALSE(FLAGS_TEST_mock_cancel_unhosted_transactions)) {
         callback(TransactionStatusResult::Aborted());
-        return;
+        return true;
       }
-      VLOG_WITH_PREFIX_AND_FUNC(4)
-          << "transaction_id: " << transaction_id << " found, aborting now.";
-      postponed_leader_actions_.leader_term = term;
-      boost::optional<TransactionStatusResult> status;
-      managed_transactions_.modify(it, [&status, &callback](TransactionState& state) {
-        status = state.Abort(&callback);
-      });
-      if (callback) {
-        lock.unlock();
-        callback(*status);
-        return;
-      }
-      actions.Swap(&postponed_leader_actions_);
+      return false;
     }
 
-    ExecutePostponedLeaderActions(&actions);
+    DoAbort(it, term, std::move(callback), std::move(lock));
+    return true;
   }
 
   size_t test_count_transactions() {
-    std::lock_guard<std::mutex> lock(managed_mutex_);
+    std::lock_guard lock(managed_mutex_);
     return managed_transactions_.size();
   }
 
@@ -1305,9 +1390,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     PostponedLeaderActions actions;
     Status result;
     {
-      std::lock_guard<std::mutex> lock(managed_mutex_);
+      std::lock_guard lock(managed_mutex_);
       postponed_leader_actions_.leader_term = data.leader_term;
-      auto it = GetTransaction(*id, data.state.status(), data.hybrid_time);
+      auto it = GetTransaction(*id, data.state.status(), data.state.start_time(), data.hybrid_time);
       if (it == managed_transactions_.end()) {
         return Status::OK();
       }
@@ -1338,7 +1423,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     bool last_transaction = false;
     PostponedLeaderActions actions;
     {
-      std::lock_guard<std::mutex> lock(managed_mutex_);
+      std::lock_guard lock(managed_mutex_);
       postponed_leader_actions_.leader_term = OpId::kUnknownTerm;
       auto it = managed_transactions_.find(*id);
       if (it == managed_transactions_.end()) {
@@ -1427,7 +1512,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         auto status = HandleTransactionNotFound(*id, state);
         if (status.ok()) {
           it = managed_transactions_.emplace(
-              this, *id, context_.clock().Now(), log_prefix_).first;
+              this, *id, state.start_time(), context_.clock().Now(), log_prefix_).first;
         } else {
           lock.unlock();
           status = status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
@@ -1446,7 +1531,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   }
 
   int64_t PrepareGC(std::string* details) {
-    std::lock_guard<std::mutex> lock(managed_mutex_);
+    std::lock_guard lock(managed_mutex_);
     if (!managed_transactions_.empty()) {
       auto& txn = *managed_transactions_.get<FirstEntryIndexTag>().begin();
       if (details) {
@@ -1464,7 +1549,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
 
   std::string DumpTransactions() {
     std::string result;
-    std::lock_guard<std::mutex> lock(managed_mutex_);
+    std::lock_guard lock(managed_mutex_);
     for (const auto& txn : managed_transactions_) {
       result += txn.ToString();
       result += "\n";
@@ -1504,6 +1589,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
 
  private:
   class LastTouchTag;
+  class FirstTouchTag;
   class FirstEntryIndexTag;
 
   typedef boost::multi_index_container<TransactionState,
@@ -1518,6 +1604,12 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
               boost::multi_index::const_mem_fun<TransactionState,
                                                 HybridTime,
                                                 &TransactionState::last_touch>
+          >,
+          boost::multi_index::ordered_non_unique <
+              boost::multi_index::tag<FirstTouchTag>,
+              boost::multi_index::const_mem_fun<TransactionState,
+                                                MicrosTime,
+                                                &TransactionState::first_touch>
           >,
           boost::multi_index::ordered_non_unique <
               boost::multi_index::tag<FirstEntryIndexTag>,
@@ -1592,7 +1684,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
             const auto split_child_tablet_ids = SplitChildTabletIdsData(status).value();
             const bool tablet_has_been_split = !split_child_tablet_ids.empty();
             if (status.IsNotFound() || tablet_has_been_split) {
-              std::lock_guard<std::mutex> lock(managed_mutex_);
+              std::lock_guard lock(managed_mutex_);
               auto it = managed_transactions_.find(action.transaction);
               if (it == managed_transactions_.end()) {
                 return;
@@ -1659,11 +1751,12 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
 
   ManagedTransactions::iterator GetTransaction(const TransactionId& id,
                                                TransactionStatus status,
+                                               MicrosTime start_time,
                                                HybridTime hybrid_time) {
     auto it = managed_transactions_.find(id);
     if (it == managed_transactions_.end()) {
       if (status != TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS) {
-        it = managed_transactions_.emplace(this, id, hybrid_time, log_prefix_).first;
+        it = managed_transactions_.emplace(this, id, start_time, hybrid_time, log_prefix_).first;
         VLOG_WITH_PREFIX(1) << Format("Added: $0", *it);
       }
     }
@@ -1746,7 +1839,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     bool leader = leader_term != OpId::kUnknownTerm;
     PostponedLeaderActions actions;
     {
-      std::lock_guard<std::mutex> lock(managed_mutex_);
+      std::lock_guard lock(managed_mutex_);
       postponed_leader_actions_.leader_term = leader_term;
 
       auto& index = managed_transactions_.get<LastTouchTag>();
@@ -1797,6 +1890,36 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       });
       managed_transactions_.erase(it);
     }
+  }
+
+  void DoAbort(
+      ManagedTransactions::iterator it, int64_t term, TransactionAbortCallback callback,
+      std::unique_lock<std::mutex> lock) {
+    CHECK(it != managed_transactions_.end());
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "transaction_id: " << it->id() << " found, aborting now.";
+
+    if (PREDICT_FALSE(FLAGS_TEST_fail_abort_request_with_try_again)) {
+      lock.unlock();
+      callback(STATUS_FORMAT(
+          TryAgain, "Test flag fail_abort_request_with_try_again is enabled."));
+      return;
+    }
+
+    PostponedLeaderActions actions;
+    postponed_leader_actions_.leader_term = term;
+    TransactionStatusResult status;
+    managed_transactions_.modify(it, [&status, &callback](TransactionState& state) {
+      status = state.Abort(&callback);
+    });
+    if (callback) {
+      lock.unlock();
+      callback(status);
+      return;
+    }
+    actions.Swap(&postponed_leader_actions_);
+    lock.unlock();
+
+    ExecutePostponedLeaderActions(&actions);
   }
 
   TransactionCoordinatorContext& context_;
@@ -1870,10 +1993,21 @@ Status TransactionCoordinator::GetStatus(
   return impl_->GetStatus(transaction_ids, deadline, response);
 }
 
-void TransactionCoordinator::Abort(const std::string& transaction_id,
+Status TransactionCoordinator::GetOldTransactions(
+    const tserver::GetOldTransactionsRequestPB* req, tserver::GetOldTransactionsResponsePB* resp,
+    CoarseTimePoint deadline) {
+  return impl_->GetOldTransactions(req, resp, deadline);
+}
+
+void TransactionCoordinator::Abort(const TransactionId& transaction_id,
                                    int64_t term,
                                    TransactionAbortCallback callback) {
   impl_->Abort(transaction_id, term, std::move(callback));
+}
+
+bool TransactionCoordinator::CancelTransactionIfFound(
+    const TransactionId& transaction_id, int64_t term, TransactionAbortCallback callback) {
+  return impl_->CancelTransactionIfFound(transaction_id, term, std::move(callback));
 }
 
 std::string TransactionCoordinator::DumpTransactions() {

@@ -111,7 +111,7 @@ TEST_F(ClusterAdminClientTest, YB_DISABLE_TEST_IN_SANITIZERS(ListSnapshotsWithou
 
 TEST_F(
     ClusterAdminClientTest,
-    YB_DISABLE_TEST_IN_TSAN(CreateSnapshotAfterMultiNamespaceCreateIssuedWithSameName)) {
+    CreateSnapshotAfterMultiNamespaceCreateIssuedWithSameName) {
   std::string db_name = "test_pgsql";
   TestThreadHolder threads;
   SetAtomicFlag(true, &FLAGS_TEST_hang_on_namespace_transition);

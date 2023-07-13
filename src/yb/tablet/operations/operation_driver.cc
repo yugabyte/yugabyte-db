@@ -153,7 +153,7 @@ OperationType OperationDriver::operation_type() const {
 }
 
 string OperationDriver::ToString() const {
-  std::lock_guard<simple_spinlock> lock(lock_);
+  std::lock_guard lock(lock_);
   return ToStringUnlocked();
 }
 
@@ -246,7 +246,7 @@ Status OperationDriver::PrepareAndStart(IsLeaderSide is_leader_side) {
   // phase.
   ReplicationState repl_state_copy;
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     CHECK_EQ(prepare_state_, NOT_PREPARED);
     repl_state_copy = replication_state_;
   }
@@ -260,7 +260,7 @@ Status OperationDriver::PrepareAndStart(IsLeaderSide is_leader_side) {
   }
 
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     // No one should have modified prepare_state_ since we've read it under the lock a few lines
     // above, because PrepareAndStart should only run once per operation.
     CHECK_EQ(prepare_state_, NOT_PREPARED);
@@ -283,7 +283,7 @@ void OperationDriver::HandleFailure(const Status& status) {
   ReplicationState repl_state_copy;
 
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     repl_state_copy = replication_state_;
   }
 
@@ -318,7 +318,7 @@ void OperationDriver::ReplicationFinished(
 
   PrepareState prepare_state_copy;
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     if (replication_state_ == REPLICATION_FAILED) {
       LOG_IF(DFATAL, status.ok()) << "Successfully replicated operation that was previously failed";
       return;
@@ -346,7 +346,7 @@ void OperationDriver::ReplicationFinished(
       std::this_thread::sleep_for(1ms);
       PrepareState prepare_state;
       {
-        std::lock_guard<simple_spinlock> lock(lock_);
+        std::lock_guard lock(lock_);
         prepare_state = prepare_state_;
         if (prepare_state == PrepareState::PREPARED) {
           break;
@@ -370,7 +370,7 @@ void OperationDriver::TEST_Abort(const Status& status) {
 
   ReplicationState repl_state_copy;
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     repl_state_copy = replication_state_;
   }
 
@@ -390,7 +390,7 @@ void OperationDriver::ApplyTask(int64_t leader_term, OpIds* applied_op_ids) {
 
 #ifndef NDEBUG
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     DCHECK_EQ(replication_state_, REPLICATED);
     DCHECK_EQ(prepare_state_, PREPARED);
   }
@@ -448,7 +448,7 @@ std::string OperationDriver::LogPrefix() const {
   OperationType operation_type;
 
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     repl_state_copy = replication_state_;
     prep_state_copy = prepare_state_;
     ts_string = operation_ && operation_->has_hybrid_time()

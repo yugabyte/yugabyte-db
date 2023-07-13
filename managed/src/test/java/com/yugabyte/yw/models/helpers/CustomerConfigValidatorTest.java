@@ -23,6 +23,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.azure.core.http.rest.PagedIterable;
 import com.azure.storage.blob.BlobClient;
 import com.azure.storage.blob.BlobContainerClient;
 import com.azure.storage.blob.models.BlobItem;
@@ -38,6 +39,7 @@ import com.yugabyte.yw.common.CloudUtil;
 import com.yugabyte.yw.common.CloudUtil.ExtraPermissionToValidate;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
 import com.yugabyte.yw.models.configs.StubbedCustomerConfigValidator;
@@ -72,7 +74,12 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
   public void setUp() {
     customerConfigValidator =
         new StubbedCustomerConfigValidator(
-            app.injector().instanceOf(BeanValidator.class), allowedBuckets);
+            app.injector().instanceOf(BeanValidator.class),
+            allowedBuckets,
+            mockStorageUtilFactory,
+            app.injector().instanceOf(RuntimeConfGetter.class),
+            mockAWSUtil);
+    when(mockStorageUtilFactory.getCloudUtil("AZ")).thenReturn(mockAZUtil);
   }
 
   @Test
@@ -379,10 +386,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
         .when(mockAZUtil)
         .validateOnBlobContainerClient(
             blobContainerClient,
-            ImmutableList.of(
-                ExtraPermissionToValidate.READ,
-                ExtraPermissionToValidate.LIST,
-                ExtraPermissionToValidate.DELETE));
+            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
 
     when(blobClient.openInputStream()).thenReturn(blobIs);
 
@@ -411,13 +415,21 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
   }
 
   private void setupAzureListAndDeleteValidation(
-      BlobClient blobClient, boolean shouldListValidateFail, boolean shouldDeleteValidateFail) {
-    if (shouldListValidateFail) {
-      when(blobClient.exists()).thenReturn(false);
-    } else if (shouldDeleteValidateFail) {
-      when(blobClient.exists()).thenReturn(true).thenReturn(true);
-    } else {
-      when(blobClient.exists()).thenReturn(true).thenReturn(false);
+      BlobContainerClient blobContainerClient,
+      BlobClient blobClient,
+      boolean shouldListValidateFail,
+      boolean shouldDeleteValidateFail,
+      String fileName) {
+    PagedIterable<BlobItem> mockIterable = mock(PagedIterable.class);
+    when(blobContainerClient.listBlobs()).thenReturn(mockIterable);
+    ArrayList<BlobItem> listBlobItems = new ArrayList<BlobItem>();
+    BlobItem mockBlobItem = mock(BlobItem.class);
+    when(mockBlobItem.getName()).thenReturn(fileName);
+    when(mockIterable.spliterator()).thenAnswer(invocation -> listBlobItems.spliterator());
+
+    if (!shouldListValidateFail) {
+      listBlobItems.add(mockBlobItem);
+      when(blobClient.exists()).thenReturn(shouldDeleteValidateFail);
     }
   }
 
@@ -484,7 +496,12 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     setupAzureReadValidation(
         blobContainerClient, blobClient, blobIs, shouldReadValidateFail, incorrectData);
 
-    setupAzureListAndDeleteValidation(blobClient, shouldListValidateFail, shouldDeleteValidateFail);
+    setupAzureListAndDeleteValidation(
+        blobContainerClient,
+        blobClient,
+        shouldListValidateFail,
+        shouldDeleteValidateFail,
+        fileName);
 
     if (shouldCreateValidateFail) {
       assertThat(

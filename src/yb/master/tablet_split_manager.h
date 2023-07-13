@@ -55,7 +55,7 @@ class TabletSplitManager {
   // Table-level checks for splitting that are checked not only as a best-effort
   // filter, but also after acquiring the table/tablet locks in CatalogManager::DoSplit.
   Status ValidateSplitCandidateTable(
-      const TableInfo& table,
+      const TableInfoPtr& table,
       IgnoreDisabledList ignore_disabled_list = IgnoreDisabledList::kFalse);
 
   // Tablet-level checks for splitting that are checked not only as a best-effort

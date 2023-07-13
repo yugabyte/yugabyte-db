@@ -30,7 +30,7 @@ namespace yb {
 class FlagsCallbackTest : public YBTest {};
 
 TEST(FlagsCallbackTest, TestCallback) {
-  FLAGS_TEST_allow_duplicate_flag_callbacks = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_allow_duplicate_flag_callbacks) = false;
 
   ASSERT_TRUE(global1_called);
   ASSERT_FALSE(global2_set);

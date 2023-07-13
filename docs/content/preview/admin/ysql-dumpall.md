@@ -12,13 +12,23 @@ menu:
 type: docs
 ---
 
-`ysql_dumpall` is a utility for writing out (“dumping”) all YugabyteDB databases of a cluster into one plain-text, SQL script file. The script file contains SQL statements that can be used as input to `ysqlsh` to restore the databases. It does this by calling [`ysql_dump`](../ysql-dump/) for each database in the YugabyteDB cluster. `ysql_dumpall` also dumps global objects that are common to all databases, such as database roles. (`ysql_dump` does not export roles.)
+## Overview
 
-Because `ysql_dumpall` reads tables from all databases, you will most likely have to connect as a database superuser in order to produce a complete dump. Also, you will need superuser privileges to execute the saved script in order to be allowed to add roles and create databases.
+ysql_dumpall is a utility for writing out (“dumping”) all YugabyteDB databases of a cluster into one plain-text, SQL script file. The script file contains SQL statements that can be used as input to `ysqlsh` to restore the databases. It does this by calling [ysql_dump](../ysql-dump/) for each database in the YugabyteDB cluster. ysql_dumpall also dumps global objects that are common to all databases, such as database roles. (ysql_dump does not export roles.)
+
+Because ysql_dumpall reads tables from all databases, you will most likely have to connect as a database superuser in order to produce a complete dump. Also, you will need superuser privileges to execute the saved script in order to be allowed to add roles and create databases.
 
 The SQL script will be written to the standard output. Use the [`-f|--file`](#f-file-filename) option or shell operators to redirect it into a file.
 
-`ysql_dumpall` needs to connect multiple times (once per database) to the YugabyteDB cluster. If you use password authentication, it will ask for a password each time. It is convenient to have a `~/.pgpass` file in such cases.
+ysql_dumpall needs to connect multiple times (once per database) to the YugabyteDB cluster. If you use password authentication, it will ask for a password each time. It is convenient to have a `~/.pgpass` file in such cases.
+
+### Installation
+
+ysql_dumpall is installed with YugabyteDB and is located in the `postgres/bin` directory of the YugabyteDB home directory.
+
+### Online help
+
+Run `ysql_dumpall --help` to display the online help.
 
 ## Syntax
 
@@ -59,7 +69,7 @@ Dump object identifiers (OIDs) as part of the data for every table. Use this opt
 
 #### -O, --no-owner
 
-Do not output statements to set ownership of objects to match the original database. By default, `ysql_dumpall` issues `ALTER OWNER` or `SET SESSION AUTHORIZATION` statements to set ownership of created schema elements. These statements will fail when the script is run unless it is started by a superuser (or the same user that owns all of the objects in the script). To make a script that can be restored by any user, but will give that user ownership of all the objects, specify [`-O|--no-owner`](#o-no-owner).
+Do not output statements to set ownership of objects to match the original database. By default, ysql_dumpall issues `ALTER OWNER` or `SET SESSION AUTHORIZATION` statements to set ownership of created schema elements. These statements will fail when the script is run unless it is started by a superuser (or the same user that owns all of the objects in the script). To make a script that can be restored by any user, but will give that user ownership of all the objects, specify [`-O|--no-owner`](#o-no-owner).
 
 #### -r, --roles-only
 
@@ -75,11 +85,11 @@ Specify the superuser username to use when disabling triggers. This is relevant 
 
 #### -v, --verbose
 
-Specifies verbose mode. This will cause `ysql_dumpall` to output start and stop times to the dump file, and progress messages to standard error. It will also enable verbose output in [`ysql_dump`](../ysql-dump/).
+Specifies verbose mode. This causes ysql_dumpall to output start and stop times to the dump file, and progress messages to standard error. It will also enable verbose output in [ysql_dump](../ysql-dump/).
 
 #### --version, -V
 
-Print the `ysql_dumpall` version and exit.
+Print the ysql_dumpall version and exit.
 
 #### -x, --no-privileges, --no-acl
 
@@ -95,7 +105,7 @@ This option disables the use of dollar quoting for function bodies, and forces t
 
 #### --disable-triggers
 
-This option is relevant only when creating a data-only dump. It instructs `ysql_dumpall` to include statements to temporarily disable triggers on the target tables while the data is reloaded. Use this if you have referential integrity checks or other triggers on the tables that you do not want to invoke during data reload.
+This option is relevant only when creating a data-only dump. It instructs ysql_dumpall to include statements to temporarily disable triggers on the target tables while the data is reloaded. Use this if you have referential integrity checks or other triggers on the tables that you do not want to invoke during data reload.
 
 Presently, the statements emitted for `--disable-triggers` must be done as superuser. So, you should also specify a superuser name with [`-S|--superuser`](#s-username-superuser-username), or preferably be careful to start the resulting script as a superuser.
 
@@ -109,7 +119,7 @@ Dump data as `INSERT` statements (rather than `COPY` statements). This will make
 
 #### --load-via-partition-root
 
-When dumping data for a table partition, make the COPY or INSERT statements target the root of the partitioning hierarchy that contains it, rather than the partition itself. This causes the appropriate partition to be re-determined for each row when the data is loaded. This may be useful when reloading data on a server where rows do not always fall into the same partitions as they did on the original server. That could happen, for example, if the partitioning column is of type text and the two systems have different definitions of the collation used to sort the partitioning column.
+When dumping data for a table partition, make the COPY or INSERT statements target the root of the partitioning hierarchy that contains it, rather than the partition itself. This causes the appropriate partition to be re-determined for each row when the data is loaded. This may be useful when reloading data on a server where rows do not always fall into the same partitions as they did on the original server. That could happen, for example, if the partitioning column is of type text, and the two systems have different definitions of the collation used to sort the partitioning column.
 
 #### --lock-wait-timeout=*timeout*
 
@@ -125,7 +135,7 @@ Do not dump publications.
 
 #### --no-role-passwords
 
-Do not dump passwords for roles. When restored, roles will have a null password, and password authentication will always fail until the password is set. Since password values aren't needed when this option is specified, the role information is read from the catalog view `pg_roles` instead of `pg_authid`. Therefore, this option also helps if access to `pg_authid` is restricted by some security policy. [**Note**: YugabyteDB uses the `pg_roles` and `pg_authid` system tables for PostgreSQL compatibility.]
+Do not dump passwords for roles. When restored, roles will have a null password, and password authentication will always fail until the password is set. As password values aren't needed when this option is specified, the role information is read from the catalog view `pg_roles` instead of `pg_authid`. Therefore, this option also helps if access to `pg_authid` is restricted by some security policy. Note: YugabyteDB uses the `pg_roles` and `pg_authid` system tables for PostgreSQL compatibility.
 
 #### --no-security-labels
 
@@ -137,7 +147,7 @@ Do not dump subscriptions.
 
 #### --no-sync
 
-By default, `ysql_dumpall` will wait for all files to be written safely to disk. This option causes `ysql_dumpall` to return without waiting, which is faster, but means that a subsequent operating system crash can leave the dump corrupt. Generally, this option is useful for testing but should not be used when dumping data from production installation.
+By default, ysql_dumpall waits for all files to be written safely to disk. This option causes ysql_dumpall to return without waiting, which is faster, but means that a subsequent operating system crash can leave the dump corrupt. Generally, this option is helpful for testing but should not be used when dumping data from production installation.
 
 #### --no-unlogged-table-data
 
@@ -145,7 +155,7 @@ Do not dump the contents of unlogged tables. This option has no effect on whethe
 
 #### --quote-all-identifiers
 
-Force quoting of all identifiers. This option is recommended when dumping a database from a server whose YugabyteDB major version is different from the `ysql_dumpall` version, or when the output is intended to be loaded into a server of a different major version. By default, `ysql_dumpall` quotes only identifiers that are reserved words in its own major version. This sometimes results in compatibility issues when dealing with servers of other versions that may have slightly different sets of reserved words. Using `--quote-all-identifiers` prevents such issues, at the price of a harder-to-read dump script.
+Force quoting of all identifiers. This option is recommended when dumping a database from a server whose YugabyteDB major version is different from the ysql_dumpall version, or when the output is intended to be loaded into a server of a different major version. By default, ysql_dumpall quotes only identifiers that are reserved words in its own major version. This sometimes results in compatibility issues when dealing with servers of other versions that may have slightly different sets of reserved words. Using `--quote-all-identifiers` prevents such issues, at the price of a harder-to-read dump script.
 
 #### --use-set-session-authorization
 
@@ -153,7 +163,7 @@ Output SQL-standard `SET SESSION AUTHORIZATION` statements instead of `ALTER OWN
 
 ### -?, --help
 
-Show help about `ysql_dumpall` command line arguments and then exit.
+Show help about ysql_dumpall command line arguments and then exit.
 
 ## Connection options
 
@@ -163,7 +173,7 @@ The following command line options control the database connection parameters.
 
 Specifies parameters used to connect to the server, as a connection string.
 
-The option is called `-d|--dbname` for consistency with other client applications, but because `ysql_dumpall` needs to connect to many databases, the database name in the connection string will be ignored. Use the [`-l|--database`](#l-database-database) option to specify the name of the database used for the initial connection, which will dump global objects and discover what other databases should be dumped.
+The option is called `-d|--dbname` for consistency with other client applications, but because ysql_dumpall needs to connect to many databases, the database name in the connection string will be ignored. Use the [`-l|--database`](#l-database-database) option to specify the name of the database used for the initial connection, which will dump global objects and discover what other databases should be dumped.
 
 #### -h *host*, --host *host*
 
@@ -187,9 +197,9 @@ Never issue a password prompt. If the server requires password authentication an
 
 #### -W, --password
 
-Force `ysql_dumpall` to prompt for a password before connecting to a database.
+Force ysql_dumpall to prompt for a password before connecting to a database.
 
-This option is never essential, since `ysql_dumpall` will automatically prompt for a password if the server demands password authentication. However, `ysql_dumpall` will waste a connection attempt finding out that the server wants a password. In some cases it is worth typing `-W|--password` to avoid the extra connection attempt.
+This option is never essential, because ysql_dumpall automatically prompts for a password if the server demands password authentication. However, ysql_dumpall will waste a connection attempt finding out that the server wants a password. In some cases it is worth typing `-W|--password` to avoid the extra connection attempt.
 
 {{< note title="Note" >}}
 
@@ -199,11 +209,11 @@ For each database to be dumped, a password prompt will occur. To avoid having to
 
 #### --role=*rolename*
 
-Specifies a role name to be used to create the dump. This option causes `ysql_dumpall` to issue a `SET ROLE <rolename>` statement after connecting to the database. It is useful when the authenticated user (specified by [`-U|--username`](#u-username-username)) lacks privileges needed by `ysql_dumpall`, but can switch to a role with the required rights. Some installations have a policy against logging in directly as a superuser, and use of this option allows dumps to be made without violating the policy.
+Specifies a role name to be used to create the dump. This option causes ysql_dumpall to issue a `SET ROLE <rolename>` statement after connecting to the database. It is helpful when the authenticated user (specified by [`-U|--username`](#u-username-username)) lacks privileges needed by ysql_dumpall, but can switch to a role with the required rights. Some installations have a policy against logging in directly as a superuser, and use of this option allows dumps to be made without violating the policy.
 
 ## Environment
 
-The following PostgreSQL environment variables, referenced in some `ysql_dumpall` and `ysql_dump` options, are used by YugabyteDB for PostgreSQL compatibility:
+The following PostgreSQL environment variables, referenced in some ysql_dumpall and ysql_dump options, are used by YugabyteDB for PostgreSQL compatibility:
 
 - `PGHOST`
 - `PGPORT`
@@ -215,9 +225,9 @@ This utility also uses the environment variables supported by `libpq`.
 
 ## Notes
 
-- Since `ysql_dumpall` calls [`ysql_dump`](../ysql-dump/) internally, some diagnostic messages will refer to `ysql_dump`.
-- The [`-c|--clean`](#c-clean) option can be useful even when your intention is to restore the dump script into a fresh cluster. Use of `-c|--clean` authorizes the script to drop and recreate the built-in `yugabyte`, `postgres`, and `template1` databases, ensuring that those databases will retain the same properties (for instance, locale and encoding) that they had in the source cluster. Without the option, those databases will retain their existing database-level properties, as well as any pre-existing contents.
-- Once restored, it is wise to run `ANALYZE` on each database so the optimizer has useful statistics. You can also run `vacuumdb -a -z` to analyze all databases.
+- Because ysql_dumpall calls [ysql_dump](../ysql-dump/) internally, some diagnostic messages will refer to ysql_dump.
+- The [`-c|--clean`](#c-clean) option can be helpful even when your intention is to restore the dump script into a fresh cluster. Use of `-c|--clean` authorizes the script to drop and recreate the built-in `yugabyte`, `postgres`, and `template1` databases, ensuring that those databases will retain the same properties (for instance, locale and encoding) that they had in the source cluster. Without the option, those databases will retain their existing database-level properties, as well as any pre-existing contents.
+- Once restored, it is recommended to run `ANALYZE` on each database so the optimizer has helpful statistics. You can also run `vacuumdb -a -z` to analyze all databases.
 - The dump script should not be expected to run completely without errors. In particular, because the script will issue `CREATE ROLE` statements for every role existing in the source cluster, it is certain to get a `role already exists` error for the bootstrap superuser, unless the destination cluster was initialized with a different bootstrap superuser name. This error is harmless and should be ignored. Use of the [`-c|--clean`](#c-clean) option is likely to produce additional harmless error messages about non-existent objects, although you can minimize those by adding [`--if-exists`](#if-exists).
 
 ## Examples
@@ -234,7 +244,7 @@ To reload databases from this file, you can use:
 $ ./bin/ysqlsh -f db.out yugabyte
 ```
 
-It is not important to which database you connect here since the script file created by `ysql_dumpall` will contain the appropriate statements to create and connect to the saved databases. An exception is that if you specified [`-c|--clean`](#c-clean), you must connect to the `postgres` database initially; the script will attempt to drop other databases immediately, and that will fail for the database you are connected to.
+The database to which you connect is not important because the script file created by ysql_dumpall will contain the appropriate statements to create and connect to the saved databases. An exception is that if you specified [`-c|--clean`](#c-clean), you must connect to the `postgres` database initially; the script will attempt to drop other databases immediately, and that will fail for the database you are connected to.
 
 ## See Also
 

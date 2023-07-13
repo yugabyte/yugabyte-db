@@ -887,7 +887,7 @@ std::vector<ColumnSchema> YBqlReadOp::MakeColumnSchemasFromRequest() const {
 }
 
 Result<qlexpr::QLRowBlock> YBqlReadOp::MakeRowBlock() const {
-  Schema schema(MakeColumnSchemasFromRequest(), 0);
+  Schema schema(MakeColumnSchemasFromRequest());
   qlexpr::QLRowBlock result(schema);
   auto data = rows_data_.AsSlice();
   if (!data.empty()) {
@@ -1052,8 +1052,9 @@ OpGroup YBPgsqlReadOp::group() {
       ? OpGroup::kConsistentPrefixRead : OpGroup::kLeaderRead;
 }
 
-void YBPgsqlReadOp::SetUsedReadTime(const ReadHybridTime& used_time) {
+void YBPgsqlReadOp::SetUsedReadTime(const ReadHybridTime& used_time, const TabletId& tablet) {
   used_read_time_ = used_time;
+  used_tablet_ = tablet;
 }
 
 Status YBPgsqlReadOp::GetPartitionKey(std::string* partition_key) const {
@@ -1164,7 +1165,7 @@ Status YBNoOp::Execute(YBClient* client, const dockv::YBPartialRow& key) {
   return Status::OK();
 }
 
-bool YBPgsqlReadOp::should_add_intents(IsolationLevel isolation_level) {
+bool YBPgsqlReadOp::should_apply_intents(IsolationLevel isolation_level) {
   return isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION ||
          IsValidRowMarkType(GetRowMarkTypeFromPB(*request_));
 }

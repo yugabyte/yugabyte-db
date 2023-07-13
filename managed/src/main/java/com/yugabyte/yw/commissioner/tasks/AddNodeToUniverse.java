@@ -196,6 +196,10 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       createTransferXClusterCertsCopyTasks(
           Collections.singleton(currentNode), universe, SubTaskGroupType.Provisioning);
 
+      // Make sure clock skew is low enough.
+      createWaitForClockSyncTasks(universe, nodeSet)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+
       // Bring up any masters, as needed.
       if (addMaster) {
         log.info(
@@ -280,7 +284,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
               ImmutableSet.of(currentNode)));
 
       // Update the DNS entry for this universe.
-      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
       // Update node state to live.

@@ -21,13 +21,13 @@ Subprograms with different _subprogram_call_signatures_ can share the same _[sub
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
@@ -35,10 +35,10 @@ Subprograms with different _subprogram_call_signatures_ can share the same _[sub
 </ul>
 
 <div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../syntax_resources/user-defined-subprograms-and-anon-blocks/subprogram_signature,arg_decl,arg_name,arg_mode,arg_type.grammar.md" %}}
   </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../syntax_resources/user-defined-subprograms-and-anon-blocks/subprogram_signature,arg_decl,arg_name,arg_mode,arg_type.diagram.md" %}}
   </div>
 </div>
@@ -47,13 +47,13 @@ and the _subprogram_call_signature_ rule:
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
-    <a href="#grammar-2" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar-2" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram-2" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram-2" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
@@ -61,10 +61,10 @@ and the _subprogram_call_signature_ rule:
 </ul>
 
 <div class="tab-content">
-  <div id="grammar-2" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar-2" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../syntax_resources/user-defined-subprograms-and-anon-blocks/subprogram_call_signature.grammar.md" %}}
   </div>
-  <div id="diagram-2" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram-2" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../syntax_resources/user-defined-subprograms-and-anon-blocks/subprogram_call_signature.diagram.md" %}}
   </div>
 </div>

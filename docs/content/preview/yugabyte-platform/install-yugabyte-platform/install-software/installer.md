@@ -62,7 +62,7 @@ Use YBA Installer to install YBA on a host. YBA Installer performs preflight che
 Download and extract the YBA Installer by entering the following commands:
 
 ```sh
-$ wget http://downloads.yugabyte.com/releases/{{<yb-version version="preview" format="long">}}/yba_installer_full-{{<yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
+$ wget https://downloads.yugabyte.com/releases/{{<yb-version version="preview" format="long">}}/yba_installer_full-{{<yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
 $ tar -xf yba_installer_full-{{<yb-version version="preview" format="build">}}-linux-x86_64.tar.gz
 $ cd yba_installer_full-{{<yb-version version="preview" format="build">}}/
 ```
@@ -157,7 +157,7 @@ To perform an install, run the `install` command. Once started, an install can t
 $ sudo ./yba-ctl install
 ```
 
-You can also provide a license when running the `install` command by using the `-l` flag:
+You can also provide a license when running the `install` command by using the `-l` flag if you haven't [set the license prior to install](#provide-a-license) :
 
 ```sh
 $ sudo ./yba-ctl install -l /path/to/license

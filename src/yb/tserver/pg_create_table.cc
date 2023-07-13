@@ -72,8 +72,13 @@ Status PgCreateTable::Prepare() {
 
   if (!req_.split_bounds().empty()) {
     if (hash_schema_.is_initialized()) {
-      return STATUS(InvalidArgument,
+      if (indexed_table_id_.IsValid()) {
+        return STATUS(InvalidArgument,
+                    "SPLIT AT option is not yet supported for hash partitioned indexes");
+      } else {
+        return STATUS(InvalidArgument,
                     "SPLIT AT option is not yet supported for hash partitioned tables");
+      }
     }
   }
 
@@ -194,7 +199,7 @@ Status PgCreateTable::Exec(
 }
 
 Status PgCreateTable::AddColumn(const PgCreateColumnPB& req) {
-  auto yb_type = QLType::Create(static_cast<DataType>(req.attr_ybtype()));
+  auto yb_type = QLType::Create(ToLW(static_cast<PersistentDataType>(req.attr_ybtype())));
   if (!req.is_hash() && !req.is_range()) {
     EnsureYBbasectidColumnCreated();
   }
@@ -211,10 +216,9 @@ Status PgCreateTable::AddColumn(const PgCreateColumnPB& req) {
     col->HashPrimaryKey();
     hash_schema_ = dockv::YBHashSchema::kPgsqlHash;
   } else if (req.is_range()) {
-    col->PrimaryKey();
+    col->PrimaryKey(sorting_type);
     range_columns_.emplace_back(req.attr_name());
   }
-  col->SetSortingType(sorting_type);
   col->PgTypeOid(req.attr_pgoid());
   return Status::OK();
 }
@@ -335,13 +339,13 @@ Status CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadli
                                                    kPgSequencesDataNamespaceId));
 
   // Set up the schema.
-  client::YBSchemaBuilder schemaBuilder;
-  schemaBuilder.AddColumn(kPgSequenceDbOidColName)->HashPrimaryKey()->Type(yb::INT64)->NotNull();
-  schemaBuilder.AddColumn(kPgSequenceSeqOidColName)->HashPrimaryKey()->Type(yb::INT64)->NotNull();
-  schemaBuilder.AddColumn(kPgSequenceLastValueColName)->Type(yb::INT64)->NotNull();
-  schemaBuilder.AddColumn(kPgSequenceIsCalledColName)->Type(yb::BOOL)->NotNull();
+  client::YBSchemaBuilder schema_builder;
+  schema_builder.AddColumn(kPgSequenceDbOidColName)->HashPrimaryKey()->Type(DataType::INT64);
+  schema_builder.AddColumn(kPgSequenceSeqOidColName)->HashPrimaryKey()->Type(DataType::INT64);
+  schema_builder.AddColumn(kPgSequenceLastValueColName)->Type(DataType::INT64)->NotNull();
+  schema_builder.AddColumn(kPgSequenceIsCalledColName)->Type(DataType::BOOL)->NotNull();
   client::YBSchema schema;
-  CHECK_OK(schemaBuilder.Build(&schema));
+  CHECK_OK(schema_builder.Build(&schema));
 
   // Generate the table id.
   PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);

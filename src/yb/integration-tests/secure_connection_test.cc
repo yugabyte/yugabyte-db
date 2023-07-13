@@ -60,12 +60,12 @@ class SecureConnectionTest : public client::KeyValueTableTest<MiniCluster> {
   }
 
   void SetUp() override {
-    FLAGS_use_node_to_node_encryption = true;
-    FLAGS_use_client_to_server_encryption = true;
-    FLAGS_allow_insecure_connections = false;
-    FLAGS_TEST_public_hostname_suffix = ".ip.yugabyte";
-    FLAGS_TEST_private_broadcast_address = true;
-    FLAGS_certs_dir = CertsDir();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_node_to_node_encryption) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_client_to_server_encryption) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_insecure_connections) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_public_hostname_suffix) = ".ip.yugabyte";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_private_broadcast_address) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_certs_dir) = CertsDir();
 
     KeyValueTableTest::SetUp();
 
@@ -82,7 +82,7 @@ class SecureConnectionTest : public client::KeyValueTableTest<MiniCluster> {
 
   Result<std::unique_ptr<client::YBClient>> CreateBadClient() {
     google::FlagSaver flag_saver;
-    FLAGS_yb_client_admin_operation_timeout_sec = 5;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_client_admin_operation_timeout_sec) = 5;
     auto name = "127.0.0.54";
     auto host = "127.0.0.52";
     return cluster_->CreateSecureClient(name, host, &bad_secure_context_);
@@ -131,7 +131,7 @@ TEST_F(SecureConnectionTest, CertificateDetails) {
 
 class SecureConnectionTLS12Test : public SecureConnectionTest {
   void SetUp() override {
-    FLAGS_ssl_protocols = "tls12";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ssl_protocols) = "tls12";
     SecureConnectionTest::SetUp();
   }
 };
@@ -139,14 +139,14 @@ class SecureConnectionTLS12Test : public SecureConnectionTest {
 TEST_F_EX(SecureConnectionTest, TLS12, SecureConnectionTLS12Test) {
   TestSimpleOps();
 
-  FLAGS_ssl_protocols = "ssl2 ssl3,tls10 tls11";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ssl_protocols) = "ssl2 ssl3,tls10 tls11";
   ASSERT_NOK(CreateBadClient());
 }
 
 TEST_F(SecureConnectionTest, BigWrite) {
   client::YBSchemaBuilder builder;
-  builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
-  builder.AddColumn(kValueColumn)->Type(STRING);
+  builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+  builder.AddColumn(kValueColumn)->Type(DataType::STRING);
 
   ASSERT_OK(table_.Create(client::kTableName, 1, client_.get(), &builder));
 
@@ -178,9 +178,9 @@ TEST_F(SecureConnectionTest, BigWrite) {
 
 class SecureConnectionWithClientCertificatesTest : public SecureConnectionTest {
   void SetUp() override {
-    FLAGS_TEST_nodes_per_cloud = 100;
-    FLAGS_node_to_node_encryption_use_client_certificates = true;
-    FLAGS_verify_client_endpoint = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_nodes_per_cloud) = 100;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_use_client_certificates) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_verify_client_endpoint) = true;
     SecureConnectionTest::SetUp();
   }
 };
@@ -193,9 +193,9 @@ TEST_F_EX(SecureConnectionTest, ClientCertificates, SecureConnectionWithClientCe
 
 class SecureConnectionVerifyNameOnlyTest : public SecureConnectionTest {
   void SetUp() override {
-    FLAGS_TEST_nodes_per_cloud = 100;
-    FLAGS_node_to_node_encryption_use_client_certificates = true;
-    FLAGS_node_to_node_encryption_required_uid = "yugabyte-test";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_nodes_per_cloud) = 100;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_use_client_certificates) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_node_to_node_encryption_required_uid) = "yugabyte-test";
     SecureConnectionTest::SetUp();
   }
 
@@ -208,8 +208,8 @@ TEST_F_EX(SecureConnectionTest, VerifyNameOnly, SecureConnectionVerifyNameOnlyTe
 
 class SecureConnectionCipherListTest : public SecureConnectionTest {
   void SetUp() override {
-    FLAGS_cipher_list = "HIGH";
-    FLAGS_ssl_protocols = "tls12";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cipher_list) = "HIGH";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ssl_protocols) = "tls12";
     SecureConnectionTest::SetUp();
   }
 };
@@ -220,8 +220,8 @@ TEST_F_EX(SecureConnectionTest, CipherList, SecureConnectionCipherListTest) {
 
 class SecureConnectionCipherSuitesTest : public SecureConnectionTest {
   void SetUp() override {
-    FLAGS_ciphersuites = "TLS_AES_128_CCM_8_SHA256";
-    FLAGS_ssl_protocols = "tls13";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ciphersuites) = "TLS_AES_128_CCM_8_SHA256";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ssl_protocols) = "tls13";
     SecureConnectionTest::SetUp();
   }
 };
@@ -232,8 +232,8 @@ TEST_F_EX(SecureConnectionTest, CipherSuites, SecureConnectionCipherSuitesTest) 
 
 class SecureConnectionCompressionTest : public SecureConnectionTest {
   void SetUp() override {
-    FLAGS_enable_stream_compression = true;
-    FLAGS_stream_compression_algo = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_stream_compression) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_stream_compression_algo) = 1;
     SecureConnectionTest::SetUp();
   }
 };

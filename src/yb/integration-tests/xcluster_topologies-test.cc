@@ -97,9 +97,9 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
   YBTables consumer_tables_;
 
   void SetUp() override {
-    FLAGS_enable_ysql = false;
-    FLAGS_transaction_table_num_tablets = 1;
-    FLAGS_yb_num_shards_per_tserver = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_num_shards_per_tserver) = 1;
     XClusterYcqlTestBase::SetUp();
   }
 
@@ -107,7 +107,7 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
       const std::vector<uint32_t>& num_consumer_tablets,
       const std::vector<uint32_t>& num_producer_tablets) {
     YBSchemaBuilder b;
-    b.AddColumn("c0")->Type(INT32)->NotNull()->HashPrimaryKey();
+    b.AddColumn("c0")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
     // Create transactional table.
     TableProperties table_properties;
     b.SetTableProperties(table_properties);
@@ -191,10 +191,10 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
       MiniCluster* consumer_cluster_mini_cluster = consumer_cluster->mini_cluster_.get();
       master::IsSetupUniverseReplicationDoneResponsePB resp;
       RETURN_NOT_OK(SetupUniverseReplication(
-          producer_cluster(), consumer_cluster_mini_cluster, consumer_cluster_client, kUniverseId,
-          producer_tables_[producer_cluster()->GetClusterId()]));
+          producer_cluster(), consumer_cluster_mini_cluster, consumer_cluster_client,
+          kReplicationGroupId, producer_tables_[producer_cluster()->GetClusterId()]));
       RETURN_NOT_OK(WaitForSetupUniverseReplication(
-          consumer_cluster_mini_cluster, consumer_cluster_client, kUniverseId, &resp));
+          consumer_cluster_mini_cluster, consumer_cluster_client, kReplicationGroupId, &resp));
     }
     return Status::OK();
   }
@@ -339,28 +339,28 @@ TEST_F(XClusterTopologiesTest, TestNToOneReplicationFails) {
 
   for (size_t i = 0; i < producer_clusters_.size(); ++i) {
     MiniCluster* producer_cluster_mini_cluster = producer_clusters_[i]->mini_cluster_.get();
-    const std::string universe_id = Format("$0$1", kUniverseId, i);
+    const cdc::ReplicationGroupId replication_group_id(Format("$0$1", kReplicationGroupId, i));
     master::IsSetupUniverseReplicationDoneResponsePB setup_resp;
     master::GetUniverseReplicationResponsePB verify_resp;
     if (i == 0) {
       ASSERT_OK(SetupUniverseReplication(
-          producer_cluster_mini_cluster, consumer_cluster(), consumer_client(), universe_id,
-          producer_tables_[producer_cluster_mini_cluster->GetClusterId()]));
+          producer_cluster_mini_cluster, consumer_cluster(), consumer_client(),
+          replication_group_id, producer_tables_[producer_cluster_mini_cluster->GetClusterId()]));
     } else {
-       ASSERT_NOK(SetupUniverseReplication(
-          producer_cluster_mini_cluster, consumer_cluster(), consumer_client(), universe_id,
-          producer_tables_[producer_cluster_mini_cluster->GetClusterId()]));
+      ASSERT_NOK(SetupUniverseReplication(
+          producer_cluster_mini_cluster, consumer_cluster(), consumer_client(),
+          replication_group_id, producer_tables_[producer_cluster_mini_cluster->GetClusterId()]));
     }
   }
 }
 
 class XClusterTopologiesTestClusterFailure : public XClusterTopologiesTest {
   void SetUp() override {
-    FLAGS_cdc_wal_retention_time_secs = 1;
-    FLAGS_log_min_segments_to_retain = 1;
-    FLAGS_log_min_seconds_to_retain = 1;
-    FLAGS_enable_log_retention_by_op_idx = true;
-    FLAGS_log_segment_size_bytes = 100;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
     XClusterTopologiesTest::SetUp();
   }
 };

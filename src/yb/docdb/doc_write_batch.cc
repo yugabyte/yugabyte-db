@@ -15,21 +15,24 @@
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/ql_value.h"
 
-#include "yb/docdb/docdb_fwd.h"
-#include "yb/dockv/doc_key.h"
-#include "yb/dockv/doc_path.h"
 #include "yb/docdb/doc_read_context.h"
-#include "yb/dockv/doc_ttl_util.h"
-#include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb-internal.h"
+#include "yb/docdb/docdb.messages.h"
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/kv_debug.h"
+#include "yb/docdb/read_operation_data.h"
+
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_path.h"
+#include "yb/dockv/doc_ttl_util.h"
 #include "yb/dockv/schema_packing.h"
 #include "yb/dockv/subdocument.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/write_batch.h"
+
 #include "yb/rocksutil/write_batch_formatter.h"
 
 #include "yb/server/hybrid_clock.h"
@@ -62,8 +65,7 @@ struct DocWriteBatch::LazyIterator {
   std::unique_ptr<IntentAwareIterator> iterator;
   const DocDB* doc_db;
   const DocPath* doc_path;
-  const ReadHybridTime* read_ht;
-  CoarseTimePoint deadline;
+  const ReadOperationData* read_operation_data;
   rocksdb::QueryId query_id;
 
   IntentAwareIterator& Iterator() {
@@ -74,8 +76,7 @@ struct DocWriteBatch::LazyIterator {
           doc_path->encoded_doc_key().AsSlice(),
           query_id,
           TransactionOperationContext(),
-          deadline,
-          *read_ht);
+          *read_operation_data);
     }
     return *iterator;
   }
@@ -111,18 +112,11 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
   // Seek the value.
   doc_iter->Seek(key_prefix_.AsSlice());
   VLOG_WITH_FUNC(4) << SubDocKey::DebugSliceToString(key_prefix_.AsSlice())
-                    << ", IsOutOfRecords: " << doc_iter->IsOutOfRecords()
                     << ", prev_subdoc_ht: " << prev_subdoc_ht
                     << ", prev_key_prefix_exact: " << prev_key_prefix_exact
                     << ", has_ancestor: " << has_ancestor;
 
-  FetchKeyResult key_data;
-  if (!doc_iter->IsOutOfRecords()) {
-    key_data = VERIFY_RESULT(doc_iter->FetchKey());
-    VLOG_WITH_FUNC(4)
-            << "Found: " << SubDocKey::DebugSliceToString(key_data.key) << ", good: "
-            << key_prefix_.IsPrefixOf(key_data.key);
-  }
+  auto key_data = VERIFY_RESULT_REF(doc_iter->Fetch());
 
   bool use_packed_row = false;
   Slice recent_value;
@@ -157,7 +151,7 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
 
   // Checking for expiration.
   if (!use_packed_row) {
-    recent_value = doc_iter->value();
+    recent_value = key_data.value;
   }
   ValueControlFields control_fields;
   {
@@ -195,23 +189,22 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
     return Status::OK();
   }
 
-  Slice value;
   if (use_packed_row) {
-    RETURN_NOT_OK(doc_iter->NextFullValue(&key_data.write_time, &value, &key_data.key));
+    key_data = VERIFY_RESULT(doc_iter->NextFullValue());
 
-    if (doc_iter->IsOutOfRecords()) {
+    if (!key_data) {
       return Status::OK();
     }
   } else {
-    value = recent_value;
+    key_data.value = recent_value;
   }
 
   // If the first key >= key_prefix_ in RocksDB starts with key_prefix_, then a
   // document/subdocument pointed to by key_prefix_ exists, or has been recently deleted.
   if (key_prefix_.IsPrefixOf(key_data.key)) {
     // No need to decode again if no merge records were encountered.
-    if (value != recent_value) {
-      auto value_copy = value;
+    if (key_data.value != recent_value) {
+      auto value_copy = key_data.value;
       current_entry_.user_timestamp = VERIFY_RESULT(
           ValueControlFields::Decode(&value_copy)).timestamp;
       current_entry_.value_type = dockv::DecodeValueEntryType(value_copy);
@@ -485,8 +478,7 @@ Status DocWriteBatch::SetPrimitive(
     .iterator = std::move(intent_iter),
     .doc_db = nullptr,
     .doc_path = nullptr,
-    .read_ht = nullptr,
-    .deadline = {},
+    .read_operation_data = nullptr,
     .query_id = {},
   };
   return DoSetPrimitive(doc_path, control_fields, value, &iter, /* write_id= */ {});
@@ -530,8 +522,7 @@ Status DocWriteBatch::DoSetPrimitive(
 Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
                                    const ValueControlFields& control_fields,
                                    const ValueRef& value,
-                                   const ReadHybridTime& read_ht,
-                                   CoarseTimePoint deadline,
+                                   const ReadOperationData& read_operation_data,
                                    rocksdb::QueryId query_id,
                                    std::optional<IntraTxnWriteId> write_id) {
   DOCDB_DEBUG_LOG("Called with doc_path=$0, value=$1", doc_path.ToString(), value.ToString());
@@ -540,8 +531,7 @@ Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
     .iterator = nullptr,
     .doc_db = &doc_db_,
     .doc_path = &doc_path,
-    .read_ht = &read_ht,
-    .deadline = deadline,
+    .read_operation_data = &read_operation_data,
     .query_id = query_id,
   };
   return DoSetPrimitive(doc_path, control_fields, value, &iter, write_id);
@@ -550,13 +540,12 @@ Status DocWriteBatch::SetPrimitive(const DocPath& doc_path,
 Status DocWriteBatch::ExtendSubDocument(
     const DocPath& doc_path,
     const ValueRef& value,
-    const ReadHybridTime& read_ht,
-    const CoarseTimePoint deadline,
+    const ReadOperationData& read_operation_data,
     rocksdb::QueryId query_id,
     MonoDelta ttl,
     UserTimeMicros user_timestamp) {
   if (value.is_array()) {
-    return ExtendList(doc_path, value, read_ht, deadline, query_id, ttl, user_timestamp);
+    return ExtendList(doc_path, value, read_operation_data, query_id, ttl, user_timestamp);
   }
   if (value.is_set()) {
     ValueRef value_ref(
@@ -567,7 +556,7 @@ Status DocWriteBatch::ExtendSubDocument(
       DocPath child_doc_path = doc_path;
       child_doc_path.AddSubKey(KeyEntryValue::FromQLValuePB(key, value.sorting_type()));
       RETURN_NOT_OK(ExtendSubDocument(
-          child_doc_path, value_ref, read_ht, deadline, query_id, ttl, user_timestamp));
+          child_doc_path, value_ref, read_operation_data, query_id, ttl, user_timestamp));
     }
     return Status::OK();
   }
@@ -592,7 +581,7 @@ Status DocWriteBatch::ExtendSubDocument(
       RETURN_NOT_OK(ExtendSubDocument(
           child_doc_path,
           ValueRef(map_value.values(i), value),
-          read_ht, deadline, query_id, ttl, user_timestamp));
+          read_operation_data, query_id, ttl, user_timestamp));
     }
     return Status::OK();
   }
@@ -600,14 +589,13 @@ Status DocWriteBatch::ExtendSubDocument(
     .ttl = ttl,
     .timestamp = user_timestamp,
   };
-  return SetPrimitive(doc_path, control_fields, value, read_ht, deadline, query_id);
+  return SetPrimitive(doc_path, control_fields, value, read_operation_data, query_id);
 }
 
 Status DocWriteBatch::InsertSubDocument(
     const DocPath& doc_path,
     const ValueRef& value,
-    const ReadHybridTime& read_ht,
-    const CoarseTimePoint deadline,
+    const ReadOperationData& read_operation_data,
     rocksdb::QueryId query_id,
     MonoDelta ttl,
     UserTimeMicros user_timestamp,
@@ -619,17 +607,16 @@ Status DocWriteBatch::InsertSubDocument(
       .timestamp = user_timestamp,
     };
     RETURN_NOT_OK(SetPrimitive(
-        doc_path, control_fields, ValueRef(value.ContainerValueType()), read_ht, deadline,
+        doc_path, control_fields, ValueRef(value.ContainerValueType()), read_operation_data,
         query_id));
   }
-  return ExtendSubDocument(doc_path, value, read_ht, deadline, query_id, ttl, user_timestamp);
+  return ExtendSubDocument(doc_path, value, read_operation_data, query_id, ttl, user_timestamp);
 }
 
 Status DocWriteBatch::ExtendList(
     const DocPath& doc_path,
     const ValueRef& value,
-    const ReadHybridTime& read_ht,
-    const CoarseTimePoint deadline,
+    const ReadOperationData& read_operation_data,
     rocksdb::QueryId query_id,
     MonoDelta ttl,
     UserTimeMicros user_timestamp) {
@@ -650,7 +637,7 @@ Status DocWriteBatch::ExtendList(
       index++;
       child_doc_path.AddSubKey(KeyEntryValue::ArrayIndex(-index));
       RETURN_NOT_OK(ExtendSubDocument(
-          child_doc_path, ValueRef(array.Get(i), value), read_ht, deadline, query_id,
+          child_doc_path, ValueRef(array.Get(i), value), read_operation_data, query_id,
           ttl, user_timestamp));
     }
   } else {
@@ -660,7 +647,7 @@ Status DocWriteBatch::ExtendList(
       child_doc_path.AddSubKey(KeyEntryValue::ArrayIndex(
           value.list_extend_order() == dockv::ListExtendOrder::APPEND ? index : -index));
       RETURN_NOT_OK(ExtendSubDocument(
-          child_doc_path, ValueRef(elem, value), read_ht, deadline, query_id, ttl,
+          child_doc_path, ValueRef(elem, value), read_operation_data, query_id, ttl,
           user_timestamp));
     }
   }
@@ -671,8 +658,7 @@ Status DocWriteBatch::ReplaceRedisInList(
     const DocPath &doc_path,
     int64_t index,
     const ValueRef& value,
-    const ReadHybridTime& read_ht,
-    const CoarseTimePoint deadline,
+    const ReadOperationData& read_operation_data,
     const rocksdb::QueryId query_id,
     const Direction dir,
     const int64_t start_index,
@@ -689,8 +675,7 @@ Status DocWriteBatch::ReplaceRedisInList(
       key_prefix_.AsSlice(),
       query_id,
       TransactionOperationContext(),
-      deadline,
-      read_ht);
+      read_operation_data);
 
   if (dir == Direction::kForward) {
     // Ensure we seek directly to indices and skip init marker if it exists.
@@ -705,19 +690,22 @@ Status DocWriteBatch::ReplaceRedisInList(
   }
 
   SubDocKey found_key;
-  FetchKeyResult key_data;
+  FetchedEntry key_data;
   for (auto current_index = start_index;;) {
-    if (index <= 0 || iter->IsOutOfRecords() ||
-        !(key_data = VERIFY_RESULT(iter->FetchKey())).key.starts_with(key_prefix_)) {
+    bool valid = index > 0;
+    if (valid) {
+      key_data = VERIFY_RESULT(iter->Fetch());
+      valid = key_data && key_data.key.starts_with(key_prefix_);
+    }
+    if (!valid) {
       return STATUS_SUBSTITUTE(Corruption,
           "Index Error: $0, reached beginning of list with size $1",
           index - 1, // YQL layer list index starts from 0, not 1 as in DocDB.
           current_index);
     }
-
     RETURN_NOT_OK(found_key.FullyDecodeFrom(key_data.key, dockv::HybridTimeRequired::kFalse));
 
-    if (VERIFY_RESULT(dockv::Value::IsTombstoned(iter->value()))) {
+    if (VERIFY_RESULT(dockv::Value::IsTombstoned(key_data.value))) {
       found_key.KeepPrefix(sub_doc_key.num_subkeys() + 1);
       if (dir == Direction::kForward) {
         iter->SeekPastSubKey(key_data.key);
@@ -731,7 +719,7 @@ Status DocWriteBatch::ReplaceRedisInList(
     // The code below is meant specifically for POP functionality in Redis lists.
     if (results) {
       dockv::Value v;
-      RETURN_NOT_OK(v.Decode(iter->value()));
+      RETURN_NOT_OK(v.Decode(key_data.value));
       results->push_back(v.primitive_value().GetString());
     }
 
@@ -748,7 +736,7 @@ Status DocWriteBatch::ReplaceRedisInList(
       KeyBytes array_index_prefix(key_prefix_);
       DocPath child_doc_path = doc_path;
       child_doc_path.AddSubKey(found_key.subkeys()[sub_doc_key.num_subkeys()]);
-      return InsertSubDocument(child_doc_path, value, read_ht, deadline, query_id, write_ttl);
+      return InsertSubDocument(child_doc_path, value, read_operation_data, query_id, write_ttl);
     }
 
     if (dir == Direction::kForward) {
@@ -774,8 +762,7 @@ Status DocWriteBatch::ReplaceCqlInList(
     const DocPath& doc_path,
     const int target_cql_index,
     const ValueRef& value,
-    const ReadHybridTime& read_ht,
-    const CoarseTimePoint deadline,
+    const ReadOperationData& read_operation_data,
     const rocksdb::QueryId query_id,
     MonoDelta default_ttl,
     MonoDelta write_ttl) {
@@ -789,16 +776,15 @@ Status DocWriteBatch::ReplaceCqlInList(
       key_prefix_.AsSlice(),
       query_id,
       TransactionOperationContext(),
-      deadline,
-      read_ht);
+      read_operation_data);
 
   RETURN_NOT_OK(SeekToKeyPrefix(iter.get(), HasAncestor::kFalse));
 
-  if (iter->IsOutOfRecords()) {
+  const auto& current_key = VERIFY_RESULT_REF(iter->Fetch());
+  if (!current_key) {
     return STATUS(QLError, "Unable to replace items in empty list.");
   }
 
-  auto current_key = VERIFY_RESULT(iter->FetchKey());
   // Note that the only case we should have a collection without an init marker is if the collection
   // was created with upsert semantics. e.g.:
   // UPDATE foo SET v = v + [1, 2] WHERE k = 1
@@ -807,7 +793,7 @@ Status DocWriteBatch::ReplaceCqlInList(
   // collection item found in DocDB as if there were no higher-level overwrite or invalidation of
   // it.
   auto current_key_is_init_marker = current_key.key.compare(key_prefix_) == 0;
-  const auto& collection_write_time = current_key_is_init_marker
+  auto collection_write_time = current_key_is_init_marker
       ? current_key.write_time : DocHybridTime::EncodedMin();
 
   Slice value_slice;
@@ -818,10 +804,14 @@ Status DocWriteBatch::ReplaceCqlInList(
   key_prefix_.AppendKeyEntryType(KeyEntryType::kArrayIndex);
   RETURN_NOT_OK(SeekToKeyPrefix(iter.get(), HasAncestor::kFalse));
 
-  FetchKeyResult key_data;
+  FetchedEntry key_data;
   while (true) {
-    if (target_cql_index < 0 || iter->IsOutOfRecords() ||
-        !(key_data = VERIFY_RESULT(iter->FetchKey())).key.starts_with(key_prefix_)) {
+    bool valid = target_cql_index >= 0;
+    if (valid) {
+      key_data = VERIFY_RESULT(iter->Fetch());
+      valid = key_data && key_data.key.starts_with(key_prefix_);
+    }
+    if (!valid) {
       return STATUS_SUBSTITUTE(
           QLError,
           "Unable to replace items into list, expecting index $0, reached end of list with size $1",
@@ -831,7 +821,7 @@ Status DocWriteBatch::ReplaceCqlInList(
 
     RETURN_NOT_OK(found_key.FullyDecodeFrom(key_data.key, dockv::HybridTimeRequired::kFalse));
 
-    value_slice = iter->value();
+    value_slice = key_data.value;
     auto entry_ttl = VERIFY_RESULT(ValueControlFields::Decode(&value_slice)).ttl;
     auto value_type = dockv::DecodeValueEntryType(value_slice);
 
@@ -841,7 +831,7 @@ Status DocWriteBatch::ReplaceCqlInList(
     } else {
       entry_ttl = dockv::ComputeTTL(entry_ttl, default_ttl);
       has_expired = VERIFY_RESULT(dockv::HasExpiredTTL(
-          key_data.write_time, entry_ttl, read_ht.read));
+          key_data.write_time, entry_ttl, read_operation_data.read_time.read));
     }
 
     if (has_expired) {
@@ -857,7 +847,7 @@ Status DocWriteBatch::ReplaceCqlInList(
       KeyBytes array_index_prefix(key_prefix_);
       DocPath child_doc_path = doc_path;
       child_doc_path.AddSubKey(found_key.subkeys()[sub_doc_key.num_subkeys()]);
-      return InsertSubDocument(child_doc_path, value, read_ht, deadline, query_id, write_ttl);
+      return InsertSubDocument(child_doc_path, value, read_operation_data, query_id, write_ttl);
     }
 
     current_cql_index++;
@@ -867,12 +857,12 @@ Status DocWriteBatch::ReplaceCqlInList(
 
 Status DocWriteBatch::DeleteSubDoc(
     const DocPath& doc_path,
-    const ReadHybridTime& read_ht,
-    const CoarseTimePoint deadline,
+    const ReadOperationData& read_operation_data,
     rocksdb::QueryId query_id,
     UserTimeMicros user_timestamp) {
   return SetPrimitive(
-      doc_path, ValueRef(ValueEntryType::kTombstone), read_ht, deadline, query_id, user_timestamp);
+      doc_path, ValueRef(ValueEntryType::kTombstone), read_operation_data, query_id,
+      user_timestamp);
 }
 
 void DocWriteBatch::Clear() {
@@ -911,12 +901,11 @@ DocWriteBatchFormatter::DocWriteBatchFormatter(
     StorageDbType storage_db_type,
     BinaryOutputFormat binary_output_format,
     WriteBatchOutputFormat batch_output_format,
-    std::string line_prefix)
-    : WriteBatchFormatter(binary_output_format,
-                          batch_output_format,
-                          std::move(line_prefix)),
-      storage_db_type_(storage_db_type) {
-}
+    std::string line_prefix,
+    SchemaPackingProvider* schema_packing_provider)
+    : WriteBatchFormatter(binary_output_format, batch_output_format, std::move(line_prefix)),
+      storage_db_type_(storage_db_type),
+      schema_packing_provider_(schema_packing_provider) {}
 
 std::string DocWriteBatchFormatter::FormatKey(const Slice& key) {
   const auto key_result = DocDBKeyToDebugStr(key, storage_db_type_);
@@ -931,8 +920,7 @@ std::string DocWriteBatchFormatter::FormatKey(const Slice& key) {
 
 std::string DocWriteBatchFormatter::FormatValue(const Slice& key, const Slice& value) {
   auto key_type = GetKeyType(key, storage_db_type_);
-  const auto value_result = DocDBValueToDebugStr(
-      key_type, key, value, dockv::SchemaPackingStorage(TableType::YQL_TABLE_TYPE));
+  const auto value_result = DocDBValueToDebugStr(key_type, key, value, schema_packing_provider_);
   if (value_result.ok()) {
     return *value_result;
   }
@@ -947,9 +935,11 @@ Result<std::string> WriteBatchToString(
     StorageDbType storage_db_type,
     BinaryOutputFormat binary_output_format,
     WriteBatchOutputFormat batch_output_format,
-    const std::string& line_prefix) {
+    std::string line_prefix,
+    SchemaPackingProvider* schema_packing_provider) {
   DocWriteBatchFormatter formatter(
-      storage_db_type, binary_output_format, batch_output_format, line_prefix);
+      storage_db_type, binary_output_format, batch_output_format, line_prefix,
+      schema_packing_provider);
   RETURN_NOT_OK(write_batch.Iterate(&formatter));
   return formatter.str();
 }

@@ -27,6 +27,7 @@ import Alerts from './pages/Alerts';
 import Backups from './pages/Backups';
 import UniverseConsole from './pages/UniverseConsole';
 import Metrics from './pages/Metrics';
+import { NodeAgent } from './pages/NodeAgent';
 import TableDetail from './pages/TableDetail';
 import Help from './pages/Help';
 import Profile from './pages/Profile';
@@ -114,9 +115,9 @@ const checkAuthParamsInUrl = (params) => {
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
-    // skip 403 response for "/login" and "/register" endpoints
+    // skip 401 response for "/login" and "/register" endpoints
     const isAllowedUrl = /.+\/(login|register)$/i.test(error.request.responseURL);
-    const isUnauthorised = error.response?.status === 403;
+    const isUnauthorised = error.response?.status === 401;
     if (isUnauthorised && !isAllowedUrl) {
       //redirect to users current page
       const searchParam = new URLSearchParams(window.location.search);
@@ -265,6 +266,7 @@ export default (store) => {
           <Route path=":tab/:section" component={DataCenterConfiguration} />
           <Route path=":tab/:section/:uuid" component={DataCenterConfiguration} />
         </Route>
+        <Route path="/nodeagent" component={NodeAgent} />
         <Route path="/alerts" component={Alerts} />
         <Route path="/backups" component={Backups} />
         <Route path="/help" component={Help} />

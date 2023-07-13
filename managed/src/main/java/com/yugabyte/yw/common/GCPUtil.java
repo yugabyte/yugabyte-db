@@ -18,7 +18,8 @@ import com.google.cloud.storage.StorageBatchResult;
 import com.google.cloud.storage.StorageException;
 import com.google.cloud.storage.StorageOptions;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.ybc.YbcBackupUtil;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import java.io.BufferedReader;
@@ -31,10 +32,13 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.channels.Channels;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.StreamSupport;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
@@ -67,6 +71,14 @@ public class GCPUtil implements CloudUtil {
     location = location.substring(prefixLength);
     String[] split = location.split("/", 2);
     return split;
+  }
+
+  @Override
+  public ConfigLocationInfo getConfigLocationInfo(String location) {
+    String[] splitLocations = getSplitLocationValue(location);
+    String bucket = splitLocations.length > 0 ? splitLocations[0] : "";
+    String cloudPath = splitLocations.length > 1 ? splitLocations[1] : "";
+    return new ConfigLocationInfo(bucket, cloudPath);
   }
 
   public static Storage getStorageService(CustomerConfigStorageGCSData gcsData)
@@ -116,7 +128,8 @@ public class GCPUtil implements CloudUtil {
   }
 
   @Override
-  public boolean canCredentialListObjects(CustomerConfigData configData, List<String> locations) {
+  public boolean canCredentialListObjects(
+      CustomerConfigData configData, Collection<String> locations) {
     if (CollectionUtils.isEmpty(locations)) {
       return true;
     }
@@ -202,18 +215,56 @@ public class GCPUtil implements CloudUtil {
     return Channels.newInputStream(blob.reader());
   }
 
+  /*
+   * For GCS location like gs://bucket/suffix,
+   * splitLocation[0] is equal to bucket
+   * splitLocation[1] is equal to the suffix part of string
+   */
+  @Override
+  public boolean checkFileExists(
+      CustomerConfigData configData,
+      Set<String> locations,
+      String fileName,
+      boolean checkExistsOnAll) {
+    try {
+      Storage storage = getStorageService((CustomerConfigStorageGCSData) configData);
+      AtomicInteger count = new AtomicInteger(0);
+      return locations.stream()
+          .map(
+              l -> {
+                String[] splitLocation = getSplitLocationValue(l);
+                String bucketName = splitLocation[0];
+
+                // This is the absolute location inside the GS bucket to get the file
+                String objectSuffix =
+                    splitLocation.length > 1
+                        ? BackupUtil.getPathWithPrefixSuffixJoin(splitLocation[1], fileName)
+                        : fileName;
+                Blob blob = storage.get(bucketName, objectSuffix);
+                if (blob != null && blob.exists()) {
+                  count.incrementAndGet();
+                }
+                return count;
+              })
+          .anyMatch(i -> checkExistsOnAll ? (i.get() == locations.size()) : (i.get() == 1));
+    } catch (IOException e) {
+      throw new RuntimeException("Error checking files on locations", e);
+    }
+  }
+
   @Override
   public CloudStoreSpec createCloudStoreSpec(
-      String storageLocation,
+      String region,
       String commonDir,
       String previousBackupLocation,
       CustomerConfigData configData) {
     CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
+    String storageLocation = getRegionLocationsMap(configData).get(region);
     String[] splitValues = getSplitLocationValue(storageLocation);
     String bucket = splitValues[0];
     String cloudDir =
         splitValues.length > 1
-            ? BackupUtil.getCloudpathWithConfigSuffix(splitValues[1], commonDir)
+            ? BackupUtil.getPathWithPrefixSuffixJoin(splitValues[1], commonDir)
             : commonDir;
     cloudDir = BackupUtil.appendSlash(cloudDir);
     String previousCloudDir = "";
@@ -221,7 +272,6 @@ public class GCPUtil implements CloudUtil {
       splitValues = getSplitLocationValue(previousBackupLocation);
       previousCloudDir =
           splitValues.length > 1 ? BackupUtil.appendSlash(splitValues[1]) : previousCloudDir;
-      log.info(previousCloudDir);
     }
     Map<String, String> gcsCredsMap = createCredsMapYbc(gcsData);
     return YbcBackupUtil.buildCloudStoreSpec(
@@ -230,13 +280,14 @@ public class GCPUtil implements CloudUtil {
 
   @Override
   public CloudStoreSpec createRestoreCloudStoreSpec(
-      String storageLocation, String cloudDir, CustomerConfigData configData, boolean isDsm) {
+      String region, String cloudDir, CustomerConfigData configData, boolean isDsm) {
     CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
+    String storageLocation = getRegionLocationsMap(configData).get(region);
     String[] splitValues = getSplitLocationValue(storageLocation);
     String bucket = splitValues[0];
     Map<String, String> gcsCredsMap = createCredsMapYbc(gcsData);
     if (isDsm) {
-      String location = BackupUtil.appendSlash(splitValues[1]);
+      String location = BackupUtil.appendSlash(getSplitLocationValue(cloudDir)[1]);
       return YbcBackupUtil.buildCloudStoreSpec(bucket, location, "", gcsCredsMap, Util.GCS);
     }
     return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, "", gcsCredsMap, Util.GCS);
@@ -276,6 +327,7 @@ public class GCPUtil implements CloudUtil {
       gcsData.regionLocations.stream()
           .forEach(rL -> regionLocationsMap.put(rL.region, rL.location));
     }
+    regionLocationsMap.put(YbcBackupUtil.DEFAULT_REGION_STRING, gcsData.backupLocation);
     return regionLocationsMap;
   }
 

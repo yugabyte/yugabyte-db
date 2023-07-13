@@ -13,11 +13,14 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
@@ -56,6 +59,7 @@ import org.mockito.InjectMocks;
 import org.mockito.MockitoAnnotations;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
 @Slf4j
@@ -68,6 +72,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
           TaskType.SetNodeState,
+          TaskType.CheckUnderReplicatedTablets,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
@@ -79,6 +84,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER =
       ImmutableList.of(
           TaskType.SetNodeState,
+          TaskType.CheckUnderReplicatedTablets,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.AnsibleClusterServerCtl,
@@ -104,6 +110,10 @@ public class CertsRotateTest extends UpgradeTaskTest {
     super.setUp();
     MockitoAnnotations.initMocks(this);
     certsRotate.setUserTaskUUID(UUID.randomUUID());
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("underreplicated_tablets", Json.newArray());
+    when(mockNodeUIApiHelper.getRequest(anyString())).thenReturn(bodyJson);
   }
 
   private TaskInfo submitTask(CertsRotateParams requestParams) {
@@ -618,10 +628,10 @@ public class CertsRotateTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
-    int expectedPosition = 63;
+    int expectedPosition = 69;
     int expectedNumberOfInvocations = 21;
     if (rotateRootCA) {
-      expectedPosition += 122;
+      expectedPosition += 134;
       expectedNumberOfInvocations += 30;
       // RootCA update task
       position = assertCommonTasks(subTasksByPosition, position, true, false);
@@ -731,7 +741,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
 
     int position = 0;
     // RootCA update task
-    int expectedPosition = isRolling ? 63 : 15;
+    int expectedPosition = isRolling ? 69 : 15;
     // Cert update tasks
     position = assertCommonTasks(subTasksByPosition, position, false, false);
     // gflags update tasks

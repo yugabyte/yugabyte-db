@@ -11,10 +11,10 @@ import (
 	"os"
 
 	"github.com/spf13/viper"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/ybactl"
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/runner"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
 // Get the commands that will require yba-ctl.yml to be setup before getting run
@@ -60,6 +60,23 @@ func initAfterFlagsParsed(cmdName string) {
 
 }
 
+func writeDefaultConfig() {
+	cfgFile, err := os.Create(common.InputFile())
+	if err != nil {
+		log.Fatal("could not create input file: " + err.Error())
+	}
+	defer cfgFile.Close()
+
+	_, err = cfgFile.WriteString(config.ReferenceYbaCtlConfig)
+	if err != nil {
+		log.Fatal("could not create input file: " + err.Error())
+	}
+	err = os.Chmod(common.InputFile(), 0644)
+	if err != nil {
+		log.Warn("failed to update config file permissions: " + err.Error())
+	}
+}
+
 func ensureInstallerConfFile() {
 	_, err := os.Stat(common.InputFile())
 	if err != nil && !os.IsNotExist(err) {
@@ -75,8 +92,7 @@ func ensureInstallerConfFile() {
 			common.DefaultNo)
 
 		// Copy over reference yaml before checking the user choice.
-		common.CopyFile(common.GetReferenceYaml(), common.InputFile())
-		os.Chmod(common.InputFile(), 0600)
+		writeDefaultConfig()
 
 		if !userChoice {
 			log.Info(fmt.Sprintf(
@@ -87,15 +103,14 @@ func ensureInstallerConfFile() {
 }
 
 func initServices(cmdName string) {
-	stepRunner := runner.New(cmdName)
 	// services is an ordered map so services that depend on others should go later in the chain.
 	services = make(map[string]common.Component)
 	installPostgres := viper.GetBool("postgres.install.enabled")
 	installYbdb := viper.GetBool("ybdb.install.enabled")
-	services[PostgresServiceName] = NewPostgres("10.23", stepRunner)
-	services[YbdbServiceName] = NewYbdb("2.17.2.0", stepRunner)
-	services[PrometheusServiceName] = NewPrometheus("2.43.0", stepRunner)
-	services[YbPlatformServiceName] = NewPlatform(common.GetVersion(), stepRunner)
+	services[PostgresServiceName] = NewPostgres("10.23")
+	services[YbdbServiceName] = NewYbdb("2.17.2.0")
+	services[PrometheusServiceName] = NewPrometheus("2.44.0")
+	services[YbPlatformServiceName] = NewPlatform(common.GetVersion())
 	// serviceOrder = make([]string, len(services))
 	if installPostgres {
 		serviceOrder = []string{PostgresServiceName, PrometheusServiceName, YbPlatformServiceName}

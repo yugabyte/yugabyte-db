@@ -19,6 +19,7 @@
 
 #include "postgres.h"
 
+#include <arpa/inet.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <signal.h>
@@ -46,6 +47,8 @@
 #include "commands/prepare.h"
 #include "executor/spi.h"
 #include "jit/jit.h"
+
+#include "libpq/auth.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "libpq/pqsignal.h"
@@ -86,6 +89,7 @@
 #include "mb/pg_wchar.h"
 #include "pg_yb_utils.h"
 #include "libpq/yb_pqcomm_extensions.h"
+#include "utils/builtins.h"
 #include "utils/rel.h"
 
 /* ----------------
@@ -484,6 +488,13 @@ SocketBackend(StringInfo inBuf)
 						 errmsg("invalid frontend message type %d", qtype)));
 			break;
 
+		case 'A': /* Auth Passthrough Request */
+
+			if (!YbIsClientYsqlConnMgr())
+				ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+						errmsg("invalid frontend message type %d", qtype)));
+			break;
+
 		default:
 
 			/*
@@ -517,8 +528,8 @@ SocketBackend(StringInfo inBuf)
 							YbSetIsBatchedExecution(true);
 							break;
 						case DETECT_BY_PEEKING:
-							if (!YbIsBatchedExecution() && 
-								yb_pq_peekbyte_no_msg_reading_status_check() != 
+							if (!YbIsBatchedExecution() &&
+								yb_pq_peekbyte_no_msg_reading_status_check() !=
 									'S')
 								YbSetIsBatchedExecution(true);
 							break;
@@ -3772,6 +3783,7 @@ static void YBRefreshCache()
 
 	/* Clear and reload system catalog caches, including all callbacks. */
 	ResetCatalogCaches();
+	YbRelationCacheInvalidate();
 	CallSystemCacheCallbacks();
 
 	YBPreloadRelCache();
@@ -4675,6 +4687,14 @@ yb_exec_simple_query(const char* query_string, MemoryContext exec_context)
 		.command_tag  = yb_parse_command_tag(query_string)
 	};
 	yb_exec_query_wrapper(exec_context, &restart_data, &yb_exec_simple_query_impl, query_string);
+
+	/*
+	 * Fetch the updated session execution stats at the end of each query, so
+	 * that stats don't accumulate across queries. The stats collected here
+	 * typically correspond to completed flushes, reads associated with triggers
+	 * etc.
+	 */
+	YbRefreshSessionStatsDuringExecution();
 }
 
 typedef struct YBExecuteMessageFunctorContext
@@ -4700,11 +4720,19 @@ yb_exec_execute_message(const char* portal_name,
                         YBQueryRestartData* restart_data,
                         MemoryContext exec_context)
 {
-  YBExecuteMessageFunctorContext ctx = {
+	YBExecuteMessageFunctorContext ctx = {
 		.portal_name = portal_name,
 		.max_rows = max_rows
 	};
 	yb_exec_query_wrapper(exec_context, restart_data, &yb_exec_execute_message_impl, &ctx);
+
+	/*
+	 * Fetch the updated session execution stats at the end of each query, so
+	 * that stats don't accumulate across queries. The stats collected here
+	 * typically correspond to completed flushes, reads associated with triggers
+	 * etc.
+	 */
+	YbRefreshSessionStatsDuringExecution();
 }
 
 static void yb_report_cache_version_restart(const char* query, ErrorData *edata)
@@ -4898,8 +4926,12 @@ PostgresMain(int argc, char *argv[],
 	 * *MyProcPort, because ConnCreate() allocated that space with malloc()
 	 * ... else we'd need to copy the Port data first.  Also, subsidiary data
 	 * such as the username isn't lost either; see ProcessStartupPacket().
+	 * PostmasterContext is required in case of connections created by
+	 * Ysql Connection Manager for `Authentication Passthrough`, so it shouldn't
+	 * be deleted in this case.
 	 */
-	if (PostmasterContext)
+	if(!(YbIsClientYsqlConnMgr())
+		&& PostmasterContext)
 	{
 		MemoryContextDelete(PostmasterContext);
 		PostmasterContext = NULL;
@@ -5711,6 +5743,54 @@ PostgresMain(int argc, char *argv[],
 				 * probably got here because a COPY failed, and the frontend
 				 * is still sending data.
 				 */
+				break;
+
+			case 'A': /* Auth Passthrough Request */
+				if (YbIsClientYsqlConnMgr())
+				{
+					start_xact_command();
+
+					/* Store a copy of the old context */
+					char *db_name = MyProcPort->database_name;
+					char *user_name = MyProcPort->user_name;
+					char *host = MyProcPort->remote_host;
+
+					/* Update the Port details with the new context. */
+					MyProcPort->user_name =
+						(char *) pq_getmsgstring(&input_message);
+					MyProcPort->database_name =
+						(char *) pq_getmsgstring(&input_message);
+					MyProcPort->remote_host =
+						(char *) pq_getmsgstring(&input_message);
+
+					/* Update the `remote_host` */
+					struct sockaddr_in *ip_address_1;
+					ip_address_1 =
+						(struct sockaddr_in *) (&MyProcPort->raddr.addr);
+					inet_pton(AF_INET, MyProcPort->remote_host,
+							  &(ip_address_1->sin_addr));
+					MyProcPort->yb_is_auth_passthrough_req = true;
+
+					/* Start authentication */
+					ClientAuthentication(MyProcPort);
+
+					/* Place back the old context */
+					MyProcPort->yb_is_auth_passthrough_req = false;
+					MyProcPort->user_name = user_name;
+					MyProcPort->database_name = db_name;
+					MyProcPort->remote_host = host;
+					inet_pton(AF_INET, MyProcPort->remote_host,
+							  &(ip_address_1->sin_addr));
+
+					/* Send the Ready for Query */
+					ReadyForQuery(DestRemote);
+				}
+				else
+				{
+					ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+									errmsg("invalid frontend message type %d",
+										   firstchar)));
+				}
 				break;
 
 			default:

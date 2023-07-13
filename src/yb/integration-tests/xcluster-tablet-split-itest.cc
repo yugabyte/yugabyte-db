@@ -14,6 +14,7 @@
 #include <boost/algorithm/string/join.hpp>
 
 #include "yb/cdc/cdc_service.proxy.h"
+#include "yb/cdc/cdc_state_table.h"
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/session.h"
@@ -118,24 +119,6 @@ class XClusterTabletSplitITestBase : public TabletSplitBase {
     return s;
   }
 
-  Result<std::vector<qlexpr::QLRow>> GetRowsFromCdcStateTable(const string& stream_id = "") {
-    client::YBClient* producer_client(
-        producer_cluster_ ? producer_client_.get() : TabletSplitBase::client_.get());
-    client::TableHandle table;
-    client::YBTableName cdc_state_table(
-        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-    RETURN_NOT_OK(table.Open(cdc_state_table, producer_client));
-
-    std::vector<qlexpr::QLRow> rows;
-    for (const auto& row : client::TableRange(table)) {
-      if (stream_id.empty() || row.column(master::kCdcStreamIdIdx).string_value() == stream_id) {
-        rows.emplace_back(row);
-      }
-    }
-
-    return rows;
-  }
-
   virtual void SwitchToProducer() {
     if (!producer_cluster_) {
       return;
@@ -181,10 +164,11 @@ class XClusterTabletSplitITestBase : public TabletSplitBase {
 class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest> {
  public:
   void SetUp() override {
-    FLAGS_cdc_state_table_num_tablets = 1;
+    google::SetVLOGLevel("cdc*", 4);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
     // Set before creating tests so that the first run doesn't wait 30s.
     // Lowering to 5s here to speed up tests.
-    FLAGS_cdc_parent_tablet_deletion_task_retry_secs = 5;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 5;
     TabletSplitITest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
@@ -198,7 +182,7 @@ class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest
       master::IsCreateTableDoneRequestPB is_create_req;
       master::IsCreateTableDoneResponsePB is_create_resp;
 
-      is_create_req.mutable_table()->set_table_name(master::kCdcStateTableName);
+      is_create_req.mutable_table()->set_table_name(cdc::kCdcStateTableName);
       is_create_req.mutable_table()->mutable_namespace_()->set_name(master::kSystemNamespaceName);
       master::MasterDdlProxy master_proxy(
           &client_->proxy_cache(), VERIFY_RESULT(cluster_->GetLeaderMasterBoundRpcAddr()));
@@ -484,7 +468,7 @@ class xClusterTabletMapTest : public XClusterTabletSplitITest,
   void SetUp() override {}
 
   void RunSetUp(int producer_tablet_count, int consumer_tablet_count) {
-    FLAGS_cdc_state_table_num_tablets = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
 
     {
       TEST_SetThreadPrefixScoped prefix_se("P");
@@ -587,6 +571,7 @@ TEST_F(XClusterTabletSplitITest, SplittingWithXClusterReplicationOnProducer) {
 }
 
 TEST_F(XClusterTabletSplitITest, MultipleSplitsDuringPausedReplication) {
+  google::SetVLOGLevel("cdc*", 4);
   // Simulate network partition with paused replication, then perform multiple splits on producer
   // before re-enabling replication. Should be able to handle all of the splits.
 
@@ -812,20 +797,23 @@ TEST_F(XClusterExternalTabletSplitITest, MasterFailoverDuringProducerPostSplitOp
   // Verify that all the children tablets are present in cdc_state, parent may get deleted.
   auto tablet_ids = ASSERT_RESULT(GetTestTableTabletIds(0));
   tablet_ids.erase(parent_tablet);
+
+  client::YBClient* producer_client(
+      producer_cluster_ ? producer_client_.get() : client_.get());
+
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         std::unordered_set<TabletId> tablet_ids_map(tablet_ids.begin(), tablet_ids.end());
-        const auto rows = GetRowsFromCdcStateTable();
-        if (!rows.ok()) {
-          LOG(WARNING) << "Encountered error during GetRowsFromCdcStateTable: " << rows.status();
-          return false;
+        cdc::CDCStateTable cdc_state_table(producer_client);
+        Status s;
+        for (auto row_result :
+             VERIFY_RESULT(cdc_state_table.GetTableRange({} /* just key columns */, &s))) {
+          RETURN_NOT_OK(row_result);
+          auto& row = *row_result;
+          tablet_ids_map.erase(row.key.tablet_id);
         }
-        for (const auto& row : *rows) {
-          const auto tablet_id = row.column(master::kCdcTabletIdIdx).string_value();
-          if (tablet_ids_map.count(tablet_id)) {
-            tablet_ids_map.erase(tablet_id);
-          }
-        }
+        RETURN_NOT_OK(s);
+
         if (!tablet_ids_map.empty()) {
           LOG(WARNING) << "Did not find tablet_ids in system.cdc_state: "
                        << ToString(tablet_ids_map);
@@ -895,7 +883,7 @@ class XClusterAutomaticTabletSplitITest : public XClusterTabletSplitITest {
 
 // This test is very flaky in TSAN as we spend a long time waiting for children tablets to be
 // ready, and will often then time out.
-TEST_F(XClusterAutomaticTabletSplitITest, YB_DISABLE_TEST_IN_TSAN(AutomaticTabletSplitting)) {
+TEST_F(XClusterAutomaticTabletSplitITest, AutomaticTabletSplitting) {
   constexpr auto num_active_tablets = 6;
 
   // Setup a new thread for continuous writing to producer.

@@ -678,7 +678,7 @@ Status PTSelectStmt::AnalyzeReferences(SemContext *sem_context) {
   //   after an INDEX is chosen.
   if (where_clause_) {
     // Walk the <where_expr> tree, which is expected to be of BOOL type.
-    SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
+    SemState sem_state(sem_context, QLType::Create(DataType::BOOL), InternalType::kBoolValue);
     select_scan_info_->set_analyze_where(true);
     RETURN_NOT_OK(where_clause_->Analyze(sem_context));
     select_scan_info_->set_analyze_where(false);
@@ -686,7 +686,7 @@ Status PTSelectStmt::AnalyzeReferences(SemContext *sem_context) {
 
   if (if_clause_) {
     // Walk the <if_expr> tree, which is expected to be of BOOL type.
-    SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
+    SemState sem_state(sem_context, QLType::Create(DataType::BOOL), InternalType::kBoolValue);
     select_scan_info_->set_analyze_if(true);
     RETURN_NOT_OK(if_clause_->Analyze(sem_context));
     select_scan_info_->set_analyze_if(false);
@@ -1113,7 +1113,7 @@ Status PTSelectStmt::AnalyzeLimitClause(SemContext *sem_context) {
 
   RETURN_NOT_OK(limit_clause_->CheckRhsExpr(sem_context));
 
-  SemState sem_state(sem_context, QLType::Create(INT32), InternalType::kInt32Value);
+  SemState sem_state(sem_context, QLType::Create(DataType::INT32), InternalType::kInt32Value);
   sem_state.set_bindvar_name(PTBindVar::limit_bindvar_name());
   RETURN_NOT_OK(limit_clause_->Analyze(sem_context));
 
@@ -1127,7 +1127,7 @@ Status PTSelectStmt::AnalyzeOffsetClause(SemContext *sem_context) {
 
   RETURN_NOT_OK(offset_clause_->CheckRhsExpr(sem_context));
 
-  SemState sem_state(sem_context, QLType::Create(INT32), InternalType::kInt32Value);
+  SemState sem_state(sem_context, QLType::Create(DataType::INT32), InternalType::kInt32Value);
   sem_state.set_bindvar_name(PTBindVar::offset_bindvar_name());
   RETURN_NOT_OK(offset_clause_->Analyze(sem_context));
 
@@ -1291,6 +1291,8 @@ Status SelectScanInfo::AddWhereExpr(SemContext *sem_context,
       break;
     }
 
+    case QL_OP_CONTAINS_KEY: FALLTHROUGH_INTENDED;
+    case QL_OP_CONTAINS: FALLTHROUGH_INTENDED;
     case QL_OP_NOT_EQUAL: FALLTHROUGH_INTENDED;
     case QL_OP_NOT_IN: FALLTHROUGH_INTENDED;
     case QL_OP_IN: {

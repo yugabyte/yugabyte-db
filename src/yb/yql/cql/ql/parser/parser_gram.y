@@ -605,9 +605,10 @@ using namespace yb::ql;
                           CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE CLUSTER CLUSTERING
                           COALESCE COLLATE COLLATION COLUMN COMMENT COMMENTS COMMIT COMMITTED
                           COMPACT CONCURRENTLY CONFIGURATION CONFLICT CONNECTION CONSTRAINT
-                          CONSTRAINTS CONTENT_P CONTINUE_P CONVERSION_P COPY COST COUNTER COVERING
-                          CREATE CROSS CSV CUBE CURRENT_P CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE
-                          CURRENT_SCHEMA CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
+                          CONSTRAINTS CONTAINS CONTENT_P CONTINUE_P CONVERSION_P COPY COST COUNTER
+                          COVERING CREATE CROSS CSV CUBE CURRENT_P CURRENT_CATALOG CURRENT_DATE
+                          CURRENT_ROLE CURRENT_SCHEMA CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER
+                          CURSOR CYCLE
 
                           DATA_P DATE DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DEFAULT
                           DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE_P
@@ -737,6 +738,7 @@ using namespace yb::ql;
 %nonassoc   BETWEEN IN_P LIKE ILIKE SIMILAR NOT_LA
 %nonassoc   ESCAPE                                  // ESCAPE must be just above LIKE/ILIKE/SIMILAR.
 %left       POSTFIXOP                                                 // dummy for postfix Op rules.
+%nonassoc   CONTAINS KEY
 
 // To support target_el without AS, we must give IDENT an explicit priority
 // between POSTFIXOP and Op.  We can safely assign the same priority to
@@ -789,6 +791,9 @@ using namespace yb::ql;
 // kluge to keep xml_whitespace_option from causing shift/reduce conflicts.
 %right    PRESERVE STRIP_P
 %right    IF_P
+
+// assigning precedence higher than KEY to avoid shift/reduce conflict in CONTAINS KEY
+%nonassoc SCONST
 
 //--------------------------------------------------------------------------------------------------
 // Logging.
@@ -3353,6 +3358,12 @@ a_expr:
   | a_expr NOT_EQUALS a_expr {
     $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, QL_OP_NOT_EQUAL, $1, $3);
   }
+  | a_expr CONTAINS KEY a_expr {
+    $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, QL_OP_CONTAINS_KEY, $1, $4);
+  }
+  | a_expr CONTAINS a_expr {
+    $$ = MAKE_NODE(@1, PTRelation2, ExprOperator::kRelation2, QL_OP_CONTAINS, $1, $3);
+  }
   | a_expr LIKE a_expr {
     PARSER_CQL_INVALID(@2);
   }
@@ -3648,7 +3659,7 @@ func_application:
     $$ = MAKE_NODE(@1, PTPartitionHash, name, $3);
   }
   | CAST '(' a_expr AS Typename ')' {
-    if ($5->ql_type() && !$5->ql_type()->IsParametric()) {
+    if ($5 && $5->ql_type() && !$5->ql_type()->IsParametric()) {
       PTExprListNode::SharedPtr args = MAKE_NODE(@1, PTExprListNode);
       args->Append($3);
       args->Append(PTExpr::CreateConst(PTREE_MEM, PTREE_LOC(@5), $5));
@@ -4638,19 +4649,27 @@ Typename:
 
 ParametricTypename:
   MAP '<' Typename ',' Typename '>' {
-    $$ = MAKE_NODE(@1, PTMap, $3, $5);
+    if ($3 != nullptr && $5 != nullptr) {
+      $$ = MAKE_NODE(@1, PTMap, $3, $5);
+    }
   }
   | SET '<' Typename '>' {
-    $$ = MAKE_NODE(@1, PTSet, $3);
+      if ($3 != nullptr) {
+        $$ = MAKE_NODE(@1, PTSet, $3);
+      }
   }
   | LIST '<' Typename '>' {
-    $$ = MAKE_NODE(@1, PTList, $3);
+      if ($3 != nullptr) {
+        $$ = MAKE_NODE(@1, PTList, $3);
+      }
   }
   | TUPLE '<' type_name_list '>' {
     PARSER_UNSUPPORTED(@1);
   }
   | FROZEN '<' Typename '>' {
-    $$ = MAKE_NODE(@1, PTFrozen, $3);
+      if ($3 != nullptr) {
+        $$ = MAKE_NODE(@1, PTFrozen, $3);
+      }
   }
 ;
 
@@ -5052,6 +5071,7 @@ unreserved_keyword:
   | CONFLICT { $$ = $1; }
   | CONNECTION { $$ = $1; }
   | CONSTRAINTS { $$ = $1; }
+  | CONTAINS { $$ = $1; }
   | CONTENT_P { $$ = $1; }
   | CONTINUE_P { $$ = $1; }
   | CONVERSION_P { $$ = $1; }

@@ -34,6 +34,7 @@
 
 #include <sys/types.h>
 
+#include <filesystem>
 #include <set>
 #include <unordered_map>
 
@@ -45,6 +46,8 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
+
+#include "yb/rocksdb/db/filename.h"
 
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
@@ -77,20 +80,98 @@ void ExternalMiniClusterFsInspector::TabletsWithDataOnTS(
     size_t index,
     std::function<void (const std::string&, const std::string&)> handler) {
   static const std::string kTabletDirPrefix = "tablet-";
-  for (const auto& data_dir : cluster_->tablet_server(index)->GetDataDirs()) {
-    string wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
-    vector<string> tables;
+  TableWalDirsOnTS(index, [&](const string& data_dir, const string& table_wal_dir) {
     vector<string> table_tablets;
-    CHECK_OK(ListFilesInDir(wal_dir, &tables));
+    CHECK_OK(ListFilesInDir(table_wal_dir, &table_tablets));
+    for (const auto& tablet : table_tablets) {
+      CHECK(Slice(tablet).starts_with(kTabletDirPrefix));
+      handler(data_dir, tablet.substr(kTabletDirPrefix.size()));
+    }
+  });
+}
+
+void ExternalMiniClusterFsInspector::TableWalDirsOnTS(size_t index,
+  std::function<void (const string&, const string&)> handler) {
+  for (const auto& data_dir : cluster_->tablet_server(index)->GetDataDirs()) {
+    auto ts_wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
+    vector<string> tables;
+    CHECK_OK(ListFilesInDir(ts_wal_dir, &tables));
     for (const auto& table : tables) {
-      auto table_wal_dir = JoinPathSegments(wal_dir, table);
-      CHECK_OK(ListFilesInDir(table_wal_dir, &table_tablets));
-      for (const auto& tablet : table_tablets) {
-        CHECK(Slice(tablet).starts_with(kTabletDirPrefix));
-        handler(data_dir, tablet.substr(kTabletDirPrefix.size()));
-      }
+      handler(data_dir, JoinPathSegments(ts_wal_dir, table));
     }
   }
+}
+
+Result<vector<string>> ExternalMiniClusterFsInspector::ListTableWalFilesOnTS(
+  size_t index, const TableId& table_id) {
+  vector<string> wal_files;
+  TableWalDirsOnTS(index, [&](const string& data_dir, const string& table_wal_dir) {
+    if (table_wal_dir.find(table_id) == std::string::npos) {
+      return;
+    }
+    vector<string> files;
+    CHECK_OK(RecursivelyListFilesInDir(table_wal_dir, &files));
+    for (const auto& file : files) {
+      std::string filename = std::filesystem::path(file).filename();
+      if (FsManager::IsWalSegmentFileName(filename)) {
+        wal_files.push_back(file);
+      }
+    }
+  });
+  return wal_files;
+}
+
+Result<vector<string>> ExternalMiniClusterFsInspector::ListTableSstFilesOnTS(
+  size_t index, const TableId& table_id) {
+  vector<string> sst_files;
+  for (const auto& data_dir : cluster_->tablet_server(index)->GetDataDirs()) {
+    auto ts_rocksdb_dir = JoinPathSegments(data_dir,
+                                           FsManager::kDataDirName,
+                                           FsManager::kRocksDBDirName);
+    vector<string> tables;
+    RETURN_NOT_OK(ListFilesInDir(ts_rocksdb_dir, &tables));
+    for (const auto& table : tables) {
+      // Skip directories that do not correspond to the given table.
+      if (table.find(table_id) == std::string::npos) {
+        continue;
+      }
+      auto table_sst_dir = JoinPathSegments(ts_rocksdb_dir, table);
+      vector<string> files = VERIFY_RESULT(RecursivelyListFilesInDir(table_sst_dir));
+      for (const auto& file : files) {
+        uint64_t number;
+        rocksdb::FileType type;
+        std::string filename = std::filesystem::path(file).filename();
+        if (ParseFileName(filename, &number, &type) &&
+            (type == rocksdb::kTableFile || type == rocksdb::kTableSBlockFile)) {
+          sst_files.push_back(file);
+        }
+      }
+      break;
+    }
+  }
+  return sst_files;
+}
+
+Result<vector<string>> ExternalMiniClusterFsInspector::RecursivelyListFilesInDir(
+  const string& path) {
+  vector<string> entries;
+  RETURN_NOT_OK(RecursivelyListFilesInDir(path, &entries));
+  return entries;
+}
+
+Status ExternalMiniClusterFsInspector::RecursivelyListFilesInDir(const string& path,
+                                                                 vector<string>* entries) {
+  vector<string> files;
+  RETURN_NOT_OK(ListFilesInDir(path, &files));
+  for (const auto& file : files) {
+    auto file_path = JoinPathSegments(path, file);
+    if (VERIFY_RESULT(env_->IsDirectory(file_path))) {
+      RETURN_NOT_OK(RecursivelyListFilesInDir(file_path, entries));
+    } else {
+      entries->push_back(std::move(file_path));
+    }
+  }
+  return Status::OK();
 }
 
 Status ExternalMiniClusterFsInspector::ListFilesInDir(const string& path,
@@ -116,21 +197,14 @@ size_t ExternalMiniClusterFsInspector::CountFilesInDir(const string& path) {
 
 int ExternalMiniClusterFsInspector::CountWALSegmentsOnTS(size_t index) {
   int total_segments = 0;
-  for (const auto& data_dir : cluster_->tablet_server(index)->GetDataDirs()) {
-    string ts_wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
+  TableWalDirsOnTS(index, [&](const string& data_dir, const string& table_wal_dir) {
     vector<string> tablets;
-    vector<string> tables;
-    CHECK_OK(ListFilesInDir(ts_wal_dir, &tables));
-    for (const auto& table : tables) {
-      auto table_wal_dir = JoinPathSegments(ts_wal_dir, table);
-      // tablets vector will be cleared before any elements are inserted into it.
-      CHECK_OK(ListFilesInDir(table_wal_dir, &tablets));
-      for (const string &tablet : tablets) {
-        string tablet_wal_dir = JoinPathSegments(table_wal_dir, tablet);
-        total_segments += CountFilesInDir(tablet_wal_dir);
-      }
+    CHECK_OK(ListFilesInDir(table_wal_dir, &tablets));
+    for (const string &tablet : tablets) {
+      string tablet_wal_dir = JoinPathSegments(table_wal_dir, tablet);
+      total_segments += CountFilesInDir(tablet_wal_dir);
     }
-  }
+  });
   return total_segments;
 }
 
@@ -174,14 +248,9 @@ vector<string> ExternalMiniClusterFsInspector::ListTabletsWithDataOnTS(size_t in
 int ExternalMiniClusterFsInspector::CountWALSegmentsForTabletOnTS(size_t index,
                                                                   const string& tablet_id) {
   int count = 0;
-  for (const auto& data_dir : cluster_->tablet_server(index)->GetDataDirs()) {
-    string wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
-    vector<string> tables;
+  TableWalDirsOnTS(index, [&](const string& data_dir, const string& table_wal_dir) {
     vector<string> tablets;
-    CHECK_OK(ListFilesInDir(wal_dir, &tables));
-    for (const auto& table : tables) {
-      auto table_wal_dir = JoinPathSegments(wal_dir, table);
-      CHECK_OK(ListFilesInDir(table_wal_dir, &tablets));
+    CHECK_OK(ListFilesInDir(table_wal_dir, &tablets));
       for (const auto& tablet : tablets) {
         // All tablets wal directories start with the string 'tablet-'
         if (tablet == Substitute("tablet-$0", tablet_id)) {
@@ -189,8 +258,7 @@ int ExternalMiniClusterFsInspector::CountWALSegmentsForTabletOnTS(size_t index,
           count += CountFilesInDir(tablet_wal_dir);
         }
       }
-    }
-  }
+    });
   return count;
 }
 
@@ -406,7 +474,7 @@ Status ExternalMiniClusterFsInspector::WaitForFilePatternInTabletWalDirOnTs(
   string error_msg;
   vector<string> entries;
   while (true) {
-    Status s = ListFilesInDir(tablet_wal_dir, &entries);
+    RETURN_NOT_OK(ListFilesInDir(tablet_wal_dir, &entries));
     std::sort(entries.begin(), entries.end());
 
     error_msg = "";

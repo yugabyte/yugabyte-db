@@ -16,12 +16,17 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.yugabyte.yw.controllers.handlers.UniverseYbDbAdminHandler;
+import com.yugabyte.yw.forms.ConfigureDBApiParams;
+import com.yugabyte.yw.forms.ConfigureYCQLFormData;
+import com.yugabyte.yw.forms.ConfigureYSQLFormData;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserDropFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.RunQueryFormData;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -54,7 +59,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
           paramType = "body"))
   public Result setDatabaseCredentials(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     universeYbDbAdminHandler.setDatabaseCredentials(
         customer,
@@ -84,7 +89,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
           paramType = "body"))
   public Result dropUserInDB(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     DatabaseUserDropFormData data =
         formFactory.getFormDataOrBadRequest(request, DatabaseUserDropFormData.class).get();
@@ -115,7 +120,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
   public Result createRestrictedUserInDB(
       UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     DatabaseUserFormData data =
         formFactory.getFormDataOrBadRequest(request, DatabaseUserFormData.class).get();
@@ -144,7 +149,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
           paramType = "body"))
   public Result createUserInDB(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
     DatabaseUserFormData data =
         formFactory.getFormDataOrBadRequest(request, DatabaseUserFormData.class).get();
@@ -175,7 +180,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
           required = true))
   public Result runQuery(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     Form<RunQueryFormData> formData =
         formFactory.getFormDataOrBadRequest(request, RunQueryFormData.class);
 
@@ -188,5 +193,91 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
             universeUUID.toString(),
             Audit.ActionType.RunYsqlQuery);
     return PlatformResults.withRawData(queryResult);
+  }
+
+  /**
+   * API that configure YSQL API for the universe. Only supports rolling upgrade.
+   *
+   * @param customerUUID ID of customer
+   * @param universeUUID ID of universe
+   * @return Result of update operation with task id
+   */
+  @ApiOperation(
+      value = "Configure YSQL",
+      notes = "Queues a task to configure ysql in a universe.",
+      nickname = "configureYSQL",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "configure_ysql_form_data",
+          value = "Configure YSQL Form Data",
+          dataType = "com.yugabyte.yw.forms.ConfigureYSQLFormData",
+          required = true,
+          paramType = "body"))
+  public Result configureYSQL(UUID customerUUID, UUID universeUUID, Http.Request request) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    ConfigureDBApiParams requestParams = getGeneralizedConfigureDBApiParams(request, universe);
+    ConfigureYSQLFormData formData = parseJsonAndValidate(request, ConfigureYSQLFormData.class);
+    formData.mergeWithConfigureDBApiParams(requestParams);
+    UUID taskUUID = universeYbDbAdminHandler.configureYSQL(requestParams, customer, universe);
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.Configure);
+    return new YBPTask(taskUUID, universe.getUniverseUUID()).asResult();
+  }
+
+  /**
+   * API that configure YCQL API for the universe. Only supports rolling upgrade.
+   *
+   * @param customerUUID ID of customer
+   * @param universeUUID ID of universe
+   * @return Result of update operation with task id
+   */
+  @ApiOperation(
+      value = "Configure YCQL",
+      notes = "Queues a task to configure ycql in a universe.",
+      nickname = "configureYCQL",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "configure_ycql_form_data",
+          value = "Configure YCQL Form Data",
+          dataType = "com.yugabyte.yw.forms.ConfigureYCQLFormData",
+          required = true,
+          paramType = "body"))
+  public Result configureYCQL(UUID customerUUID, UUID universeUUID, Http.Request request) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    ConfigureDBApiParams requestParams = getGeneralizedConfigureDBApiParams(request, universe);
+    ConfigureYCQLFormData formData = parseJsonAndValidate(request, ConfigureYCQLFormData.class);
+    formData.mergeWithConfigureDBApiParams(requestParams);
+    UUID taskUUID = universeYbDbAdminHandler.configureYCQL(requestParams, customer, universe);
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.Configure);
+    return new YBPTask(taskUUID, universe.getUniverseUUID()).asResult();
+  }
+
+  private ConfigureDBApiParams getGeneralizedConfigureDBApiParams(
+      Http.Request request, Universe universe) {
+    ConfigureDBApiParams requestParams =
+        UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
+            request, ConfigureDBApiParams.class, universe);
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    requestParams.setUniverseUUID(universe.getUniverseUUID());
+    requestParams.enableYCQL = userIntent.enableYCQL;
+    requestParams.enableYCQLAuth = userIntent.enableYCQLAuth;
+    requestParams.enableYSQL = userIntent.enableYSQL;
+    requestParams.enableYSQLAuth = userIntent.enableYSQLAuth;
+    requestParams.communicationPorts = universe.getUniverseDetails().communicationPorts;
+    return requestParams;
   }
 }

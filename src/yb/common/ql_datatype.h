@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/common/common_fwd.h"
 #include "yb/common/value.pb.h"
 
 namespace yb {

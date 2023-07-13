@@ -152,6 +152,10 @@ DEFINE_RUNTIME_bool(
     allow_ycql_transactional_xcluster, false,
     "Determines if xCluster transactional replication on YCQL tables is allowed.");
 
+DEFINE_RUNTIME_bool(
+    enable_fast_pitr, false,
+    "Whether fast restore of sys catalog on the master is enabled.");
+
 namespace yb {
 
 using rpc::RpcContext;
@@ -728,14 +732,14 @@ Status CatalogManager::RestoreEntry(const SysRowEntry& entry, const SnapshotId& 
 Status CatalogManager::DeleteSnapshot(const DeleteSnapshotRequestPB* req,
                                       DeleteSnapshotResponsePB* resp,
                                       RpcContext* rpc) {
-  LOG(INFO) << "Servicing DeleteSnapshot request: " << req->ShortDebugString();
-
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(req->snapshot_id());
   if (txn_snapshot_id) {
+    LOG(INFO) << "Servicing DeleteSnapshot request. id: " << txn_snapshot_id
+              << ", request: " << req->ShortDebugString();
     return snapshot_coordinator_.Delete(
         txn_snapshot_id, leader_ready_term(), rpc->GetClientDeadline());
   }
-
+  LOG(INFO) << "Servicing DeleteSnapshot request: " << req->ShortDebugString();
   return DeleteNonTransactionAwareSnapshot(req->snapshot_id());
 }
 
@@ -1228,7 +1232,7 @@ Status CatalogManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB*
       "updating cluster config in sys-catalog"));
   l.Commit();
 
-  std::lock_guard<simple_spinlock> lock(should_send_universe_key_registry_mutex_);
+  std::lock_guard lock(should_send_universe_key_registry_mutex_);
   for (auto& entry : should_send_universe_key_registry_) {
     entry.second = true;
   }
@@ -1995,12 +1999,11 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
 
     // Ignore 'nullable' attribute - due to difference in implementation
     // of PgCreateTable::AddColumn() and PgAlterTable::AddColumn().
-    struct CompareColumnsExceptNullable {
-      bool operator ()(const ColumnSchema& a, const ColumnSchema& b) {
-        return ColumnSchema::CompHashKey(a, b) && ColumnSchema::CompSortingType(a, b) &&
-            ColumnSchema::CompTypeInfo(a, b) && ColumnSchema::CompName(a, b);
-      }
-    } comparator;
+    auto comparator = [](const ColumnSchema& a, const ColumnSchema& b) {
+      return ColumnSchema::CompKind(a, b) &&
+             ColumnSchema::CompTypeInfo(a, b) &&
+             ColumnSchema::CompName(a, b);
+    };
     // Schema::Equals() compares only column names & types. It does not compare the column ids.
     if (!persisted_schema.Equals(schema, comparator)
         || persisted_schema.column_ids().size() != column_ids.size()) {
@@ -2334,21 +2337,11 @@ void CatalogManager::ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& ta
   WARN_NOT_OK(ScheduleTask(task), "Failed to send create snapshot request");
 }
 
-Status CatalogManager::RestoreSysCatalog(
-    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, Status* complete_status) {
-  VLOG_WITH_PREFIX_AND_FUNC(1) << restoration->restoration_id;
-
-  auto tablet_pending_op = tablet->CreateScopedRWOperationBlockingRocksDbShutdownStart();
-
-  bool restore_successful = false;
-  // If sys catalog restoration fails then unblock other RPCs.
-  auto scope_exit = ScopeExit([this, &restore_successful] {
-    if (!restore_successful) {
-      LOG(INFO) << "PITR: Accepting RPCs to the master leader";
-      std::lock_guard<simple_spinlock> l(state_lock_);
-      is_catalog_loaded_ = true;
-    }
-  });
+Status CatalogManager::RestoreSysCatalogCommon(
+    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet,
+    std::reference_wrapper<const ScopedRWOperation> tablet_pending_op,
+    RestoreSysCatalogState* state, docdb::DocWriteBatch* write_batch,
+    docdb::KeyValuePairPB* restore_kv) {
   // Restore master snapshot and load it to RocksDB.
   auto dir = VERIFY_RESULT(tablet->snapshots().RestoreToTemporary(
       restoration->snapshot_id, restoration->restore_at));
@@ -2364,41 +2357,28 @@ Status CatalogManager::RestoreSysCatalog(
   auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
 
   // Load objects to restore and determine obsolete objects.
-  RestoreSysCatalogState state(restoration);
-  RETURN_NOT_OK(state.LoadRestoringObjects(doc_read_context(), doc_db, db_pending_op));
+  RETURN_NOT_OK(state->LoadRestoringObjects(doc_read_context(), doc_db, db_pending_op));
   // Load existing objects from RocksDB because on followers they are NOT present in loaded sys
   // catalog state.
-  RETURN_NOT_OK(state.LoadExistingObjects(doc_read_context(), tablet->doc_db(), tablet_pending_op));
-  RETURN_NOT_OK(state.Process());
-
-  docdb::DocWriteBatch write_batch(
-      tablet->doc_db(), docdb::InitMarkerBehavior::kOptional, tablet_pending_op);
+  RETURN_NOT_OK(
+      state->LoadExistingObjects(doc_read_context(), tablet->doc_db(), tablet_pending_op));
+  RETURN_NOT_OK(state->Process());
 
   // Restore the pg_catalog tables.
-  if (FLAGS_enable_ysql && state.IsYsqlRestoration()) {
+  if (FLAGS_enable_ysql && state->IsYsqlRestoration()) {
     // Restore sequences_data table.
-    RETURN_NOT_OK(state.PatchSequencesDataObjects());
+    RETURN_NOT_OK(state->PatchSequencesDataObjects());
 
-    auto status = state.ProcessPgCatalogRestores(
+    RETURN_NOT_OK(state->ProcessPgCatalogRestores(
         doc_db, tablet->doc_db(),
-        &write_batch, doc_read_context(), tablet->metadata());
-
-    // As RestoreSysCatalog is synchronous on Master it should be ok to set the completion
-    // status in case of validation failures so that it gets propagated back to the client before
-    // doing any write operations.
-    if (status.IsNotSupported()) {
-      *complete_status = status;
-      return Status::OK();
-    }
-
-    RETURN_NOT_OK(status);
+        write_batch, doc_read_context(), tablet->metadata()));
   }
 
   // Crash for tests.
   MAYBE_FAULT(FLAGS_TEST_crash_during_sys_catalog_restoration);
 
   // Restore the other tables.
-  RETURN_NOT_OK(state.PrepareWriteBatch(schema(), &write_batch, master_->clock()->Now()));
+  RETURN_NOT_OK(state->PrepareWriteBatch(schema(), write_batch, master_->clock()->Now()));
 
   // Updates the restoration state to indicate that sys catalog phase has completed.
   // Also, initializes the master side perceived list of tables/tablets/namespaces
@@ -2408,8 +2388,38 @@ Status CatalogManager::RestoreSysCatalog(
   // Also, generates the restoration state entry.
   // This is to persist the restoration so that on restarts the RESTORE_ON_TABLET
   // rpcs can be retried.
-  auto restore_kv = VERIFY_RESULT(
+  *restore_kv = VERIFY_RESULT(
       snapshot_coordinator_.UpdateRestorationAndGetWritePair(restoration));
+
+  return Status::OK();
+}
+
+Status CatalogManager::RestoreSysCatalogSlowPitr(
+    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet) {
+  VLOG_WITH_PREFIX_AND_FUNC(1) << restoration->restoration_id;
+
+  // Creating this scopedRWOperation guarantees that rocksdb will be alive during the
+  // entire duration of this function. If shutdown is issued in parallel then it will
+  // wait for this operation to complete before starting shutdown rocksdb.
+  auto tablet_pending_op = tablet->CreateScopedRWOperationBlockingRocksDbShutdownStart();
+
+  bool restore_successful = false;
+  // If sys catalog restoration fails then unblock other RPCs.
+  auto scope_exit = ScopeExit([this, &restore_successful] {
+    if (!restore_successful) {
+      LOG(INFO) << "PITR: Accepting RPCs to the master leader";
+      std::lock_guard l(state_lock_);
+      is_catalog_loaded_ = true;
+    }
+  });
+
+  RestoreSysCatalogState state(restoration);
+  docdb::DocWriteBatch write_batch(
+      tablet->doc_db(), docdb::InitMarkerBehavior::kOptional, tablet_pending_op);
+  docdb::KeyValuePairPB restore_kv;
+
+  RETURN_NOT_OK(RestoreSysCatalogCommon(
+      restoration, tablet, tablet_pending_op, &state, &write_batch, &restore_kv));
 
   // Apply write batch to RocksDB.
   state.WriteToRocksDB(
@@ -2425,6 +2435,93 @@ Status CatalogManager::RestoreSysCatalog(
   restore_successful = true;
 
   return Status::OK();
+}
+
+Status CatalogManager::RestoreSysCatalogFastPitr(
+    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet) {
+  VLOG_WITH_PREFIX_AND_FUNC(1) << restoration->restoration_id;
+  // As of 19 May 2023, rocksdb shutdown can only be issued either on a raft apply path
+  // or via TabletPeer shutdown. Since this particular operation is in the raft apply path
+  // we can be sure that there won't be any concurrent shutdowns issued since raft apply is
+  // sequential and tabletpeer shutdown waits for all pending raft apply to finish before
+  // triggering a shutdown. So we don't need a ScopedRWOperation guarding this area against
+  // Rocsdb shutdowns. Create a dummy ScopedRWOperation here.
+  ScopedRWOperation tablet_pending_op;
+  bool restore_successful = false;
+
+  // If sys catalog restoration fails then unblock other RPCs.
+  auto scope_exit = ScopeExit([this, &restore_successful] {
+    if (!restore_successful) {
+      LOG(INFO) << "PITR: Accepting RPCs to the master leader";
+      std::lock_guard<simple_spinlock> l(state_lock_);
+      is_catalog_loaded_ = true;
+    }
+  });
+
+  docdb::DocWriteBatch write_batch(
+      tablet->doc_db(), docdb::InitMarkerBehavior::kOptional, tablet_pending_op);
+  RestoreSysCatalogState state(restoration);
+  docdb::KeyValuePairPB restore_kv;
+
+  RETURN_NOT_OK(RestoreSysCatalogCommon(
+      restoration, tablet, tablet_pending_op, &state, &write_batch, &restore_kv));
+
+  if (state.IsYsqlRestoration()) {
+    // Set Hybrid Time filter for pg catalog tables.
+    tablet::TabletScopedRWOperationPauses op_pauses = tablet->StartShutdownRocksDBs(
+        tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kTrue);
+
+    std::lock_guard<std::mutex> lock(tablet->create_checkpoint_lock_);
+
+    tablet->CompleteShutdownRocksDBs(op_pauses);
+
+    rocksdb::Options rocksdb_opts;
+    tablet->InitRocksDBOptions(&rocksdb_opts, tablet->LogPrefix());
+    docdb::RocksDBPatcher patcher(tablet->metadata()->rocksdb_dir(), rocksdb_opts);
+    RETURN_NOT_OK(patcher.Load());
+    RETURN_NOT_OK(patcher.SetHybridTimeFilter(restoration->db_oid, restoration->restore_at));
+
+    RETURN_NOT_OK(tablet->OpenKeyValueTablet());
+    RETURN_NOT_OK(tablet->EnableCompactions(&op_pauses.blocking_rocksdb_shutdown_start));
+
+    // Ensure that op_pauses stays in scope throughout this function.
+    for (auto* op_pause : op_pauses.AsArray()) {
+      DFATAL_OR_RETURN_NOT_OK(op_pause->status());
+    }
+  }
+
+  // Apply write batch to RocksDB.
+  state.WriteToRocksDB(
+      &write_batch, restore_kv, restoration->write_time, restoration->op_id, tablet);
+
+  LOG_WITH_PREFIX(INFO) << "PITR: In leader term " << LeaderTerm() << ", wrote "
+                        << write_batch.size() << " entries to rocksdb";
+
+  if (LeaderTerm() >= 0) {
+    RETURN_NOT_OK(ElectedAsLeaderCb());
+  }
+
+  restore_successful = true;
+
+  return Status::OK();
+}
+
+Status CatalogManager::RestoreSysCatalog(
+    SnapshotScheduleRestoration* restoration, tablet::Tablet* tablet, Status* complete_status) {
+  Status s;
+  if (GetAtomicFlag(&FLAGS_enable_fast_pitr)) {
+    s = RestoreSysCatalogFastPitr(restoration, tablet);
+  } else {
+    s = RestoreSysCatalogSlowPitr(restoration, tablet);
+  }
+  // As RestoreSysCatalog is synchronous on Master it should be ok to set the completion
+  // status in case of validation failures so that it gets propagated back to the client before
+  // doing any write operations.
+  if (s.IsNotSupported()) {
+    *complete_status = s;
+    return Status::OK();
+  }
+  return s;
 }
 
 Status CatalogManager::VerifyRestoredObjects(
@@ -2624,11 +2721,11 @@ int64_t CatalogManager::LeaderTerm() {
   if (!peer) {
     return -1;
   }
-  auto consensus = peer->shared_consensus();
-  if (!consensus) {
+  auto consensus_result = peer->GetConsensus();
+  if (!consensus_result) {
     return -1;
   }
-  return consensus->GetLeaderState(/* allow_stale= */ true).term;
+  return consensus_result.get()->GetLeaderState(/* allow_stale= */ true).term;
 }
 
 void CatalogManager::HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) {
@@ -2854,9 +2951,32 @@ Status CatalogManager::CreateSnapshotSchedule(const CreateSnapshotScheduleReques
                                               CreateSnapshotScheduleResponsePB* resp,
                                               rpc::RpcContext* rpc) {
   LOG(INFO) << "Servicing CreateSnapshotSchedule " << req->ShortDebugString();
+  CreateSnapshotScheduleRequestPB req_with_ns_id;
+  req_with_ns_id.CopyFrom(*req);
+  // Filter should be namespace level and have the namespace id.
+  // Set namespace id if not already present in the request.
+  if (req->options().filter().tables().tables_size() != 1) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::INVALID_REQUEST,
+        STATUS(NotSupported, "Only one filter can be set on a snapshot schedule"));
+  }
+  auto& filter = req->options().filter().tables().tables(0).namespace_();
+  if (!filter.has_id()) {
+    NamespaceIdentifierPB ns_id;
+    ns_id.set_database_type(filter.database_type());
+    ns_id.set_name(filter.name());
+    auto ns = VERIFY_RESULT(FindNamespace(ns_id));
+    LOG_WITH_FUNC(INFO) << "Namespace info obtained on master " << ns->ToString();
+    TableIdentifierPB* ns_req =
+        req_with_ns_id.mutable_options()->mutable_filter()->mutable_tables()->mutable_tables(0);
+    ns_req->mutable_namespace_()->set_id(ns->id());
+    ns_req->mutable_namespace_()->set_name(ns->name());
+    ns_req->mutable_namespace_()->set_database_type(ns->database_type());
+    LOG_WITH_FUNC(INFO) << "Modified request " << req_with_ns_id.ShortDebugString();
+  }
 
   auto id = VERIFY_RESULT(snapshot_coordinator_.CreateSchedule(
-      *req, leader_ready_term(), rpc->GetClientDeadline()));
+      req_with_ns_id, leader_ready_term(), rpc->GetClientDeadline()));
   resp->set_snapshot_schedule_id(id.data(), id.size());
   return Status::OK();
 }
@@ -2927,7 +3047,7 @@ bool ShouldResendRegistry(
     const std::string& ts_uuid, bool has_registration, Registry* registry, Mutex* mutex) {
   bool should_resend_registry;
   {
-    std::lock_guard<Mutex> lock(*mutex);
+    std::lock_guard lock(*mutex);
     auto it = registry->find(ts_uuid);
     should_resend_registry = (it == registry->end() || it->second || has_registration);
     if (it == registry->end()) {
@@ -3105,7 +3225,8 @@ Status CatalogManager::ValidateTableSchema(
 
     // Check that schema name matches for YSQL tables, if the field is empty, fill in that
     // information during GetTableSchema call later.
-    if (is_ysql_table && t.has_pgschema_name() &&
+    bool has_valid_pgschema_name = !t.pgschema_name().empty();
+    if (is_ysql_table && has_valid_pgschema_name &&
         t.pgschema_name() != source_schema.SchemaName()) {
       continue;
     }
@@ -3117,10 +3238,8 @@ Status CatalogManager::ValidateTableSchema(
            Substitute("Error while getting table schema: $0", status.ToString()));
 
     // Double-check schema name here if the previous check was skipped.
-    if (is_ysql_table && !t.has_pgschema_name()) {
-      std::string target_schema_name = resp->schema().has_pgschema_name()
-          ? resp->schema().pgschema_name()
-          : "";
+    if (is_ysql_table && !has_valid_pgschema_name) {
+      std::string target_schema_name = resp->schema().pgschema_name();
       if (target_schema_name != source_schema.SchemaName()) {
         table->clear_table_id();
         continue;
@@ -3146,8 +3265,9 @@ Status CatalogManager::ValidateTableSchema(
     break;
   }
 
-  SCHECK(table->has_table_id(), NotFound,
-         Substitute("Could not find matching table for $0", info->table_name.ToString()));
+  SCHECK(table->has_table_id(), NotFound, Substitute(
+      "Could not find matching table for $0$1", info->table_name.ToString(),
+      (is_ysql_table ? " pgschema_name: " + source_schema.SchemaName() : "")));
 
   // Still need to make map of table id to resp table id (to add to validated map)
   // For colocated tables, only add the parent table since we only added the parent table to the
@@ -3215,7 +3335,7 @@ Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
 
 void CatalogManager::PrepareRestore() {
   LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs since restoration is ongoing";
-  std::lock_guard<simple_spinlock> l(state_lock_);
+  std::lock_guard l(state_lock_);
   is_catalog_loaded_ = false;
 }
 

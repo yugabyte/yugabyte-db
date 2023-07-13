@@ -17,8 +17,9 @@ import subprocess
 import boto3
 from botocore.exceptions import ClientError
 from botocore.utils import InstanceMetadataFetcher
+import requests
 from six.moves.urllib.error import URLError
-from six.moves.urllib.request import urlopen
+from six.moves.urllib.request import urlopen, Request
 from ybops.cloud.aws.command import (AwsAccessCommand, AwsDnsCommand, AwsInstanceCommand,
                                      AwsNetworkCommand, AwsQueryCommand)
 from ybops.cloud.aws.utils import (AwsBootstrapClient, YbVpcComponents,
@@ -35,7 +36,8 @@ from ybops.utils.ssh import (format_rsa_key, validated_key_file)
 class AwsCloud(AbstractCloud):
     """Subclass specific to AWS cloud related functionality.
     """
-    INSTANCE_METADATA_API = "http://169.254.169.254/2016-09-02/meta-data/"
+    BASE_INSTANCE_METADATA_API = "http://169.254.169.254/"
+    INSTANCE_METADATA_API = os.path.join(BASE_INSTANCE_METADATA_API, "2016-09-02/meta-data/")
     INSTANCE_IDENTITY_API = "http://169.254.169.254/2016-09-02/dynamic/instance-identity/document"
     NETWORK_METADATA_API = os.path.join(INSTANCE_METADATA_API, "network/interfaces/macs/")
     METADATA_API_TIMEOUT_SECONDS = 3
@@ -277,6 +279,25 @@ class AwsCloud(AbstractCloud):
         except (URLError, socket.timeout):
             raise YBOpsRuntimeError("Unable to auto-discover AWS provider information")
 
+    def get_and_append_imdsv2_token_header(self, url):
+        # Fetch IMDSv2 token from the instance metadata service
+        try:
+            headers = {'X-aws-ec2-metadata-token-ttl-seconds': '60'}
+            token_url = os.path.join(self.BASE_INSTANCE_METADATA_API, "latest", "api", "token")
+            response = requests.put(token_url, headers=headers, timeout=20)
+            response.raise_for_status()
+            token = response.text
+        except Exception as e:
+            logging.info("[app] Token retrieval via imdsv2 failed, falling back to imds, {}".
+                         format(e))
+            token = None
+
+        request = Request(url)
+        if token:
+            request.add_header('X-aws-ec2-metadata-token', token)
+
+        return request
+
     def get_instance_metadata(self, metadata_type):
         """This method fetches instance metadata using AWS metadata api
         Args:
@@ -286,14 +307,19 @@ class AwsCloud(AbstractCloud):
             raises a runtime exception.
         """
         if metadata_type in ["mac", "instance-id", "security-groups"]:
-            return urlopen(os.path.join(self.INSTANCE_METADATA_API, metadata_type),
+            request = self.get_and_append_imdsv2_token_header(os.path.join(
+                self.INSTANCE_METADATA_API, metadata_type))
+            return urlopen(request,
                            timeout=self.METADATA_API_TIMEOUT_SECONDS).read().decode('utf-8')
         elif metadata_type in ["vpc-id", "subnet-id"]:
             mac = self.get_instance_metadata("mac")
-            return urlopen(os.path.join(self.NETWORK_METADATA_API, mac, metadata_type),
+            request = self.get_and_append_imdsv2_token_header(os.path.join(
+                self.NETWORK_METADATA_API, mac, metadata_type))
+            return urlopen(request,
                            timeout=self.METADATA_API_TIMEOUT_SECONDS).read().decode('utf-8')
         elif metadata_type in ["region", "privateIp"]:
-            identity_data = urlopen(self.INSTANCE_IDENTITY_API,
+            request = self.get_and_append_imdsv2_token_header(self.INSTANCE_IDENTITY_API)
+            identity_data = urlopen(request,
                                     timeout=self.METADATA_API_TIMEOUT_SECONDS) \
                 .read().decode('utf-8')
             return json.loads(identity_data).get(metadata_type) if identity_data else None
@@ -481,6 +507,26 @@ class AwsCloud(AbstractCloud):
                             AllocationId=elastic_ip["AllocationId"]
                         )
                 logging.info("[app] Deleted elastic ip {}".format(public_ip_address))
+
+        # persistent spot requests might have more than one instance associated with them
+        # so terminate them all
+        if(instance.spot_instance_request_id):
+            spot_request_id = instance.spot_instance_request_id
+            client = boto3.client('ec2', region)
+            response = client.describe_spot_instance_requests(
+                SpotInstanceRequestIds=[spot_request_id])
+            spot_requests = response['SpotInstanceRequests']
+            instance_ids = [request['InstanceId']
+                            for request in spot_requests if 'InstanceId' in request]
+            if instance_ids:
+                client.terminate_instances(InstanceIds=instance_ids)
+                logging.info(f"Terminated {len(instance_ids)} instances")
+
+            logging.info(f"[app] Deleting spot instance request {spot_request_id}")
+            client.cancel_spot_instance_requests(
+                SpotInstanceRequestIds=[spot_request_id]
+            )
+
         instance.terminate()
         instance.wait_until_terminated()
 

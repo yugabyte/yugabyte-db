@@ -31,7 +31,7 @@ void Poller::Start(Scheduler* scheduler, MonoDelta interval) {
   scheduler_ = scheduler;
   interval_ = interval;
 
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   if (!closing_) {
     Schedule();
   }
@@ -61,7 +61,7 @@ void Poller::Schedule() {
 
 void Poller::Poll(const Status& status) {
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (!status.ok() || closing_) {
       LOG_WITH_PREFIX(INFO) << "Poll stopped: " << status;
       poll_task_id_ = rpc::kUninitializedScheduledTaskId;
@@ -73,7 +73,7 @@ void Poller::Poll(const Status& status) {
   callback_();
 
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (!closing_) {
       Schedule();
     } else {

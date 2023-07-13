@@ -46,10 +46,10 @@ using dockv::kNoExpiration;
 using dockv::kUseDefaultTTL;
 using rocksdb::FilterDecision;
 
-static const Schema kTableSchema({ ColumnSchema("key", INT32),
-                                   ColumnSchema("v1", UINT64),
-                                   ColumnSchema("v2", STRING) },
-                                 1);
+static const Schema kTableSchema({
+    ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+    ColumnSchema("v1", DataType::UINT64),
+    ColumnSchema("v2", DataType::STRING) });
 
 class ExpirationFilterTest : public YBTest {
  public:

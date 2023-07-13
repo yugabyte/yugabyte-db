@@ -42,6 +42,7 @@
 
 #include <boost/function.hpp>
 #include <boost/functional/hash/hash.hpp>
+#include <boost/range/any_range.hpp>
 
 #include <gtest/gtest_prod.h>
 
@@ -70,6 +71,8 @@
 #include "yb/master/master_replication.fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
+
+#include "yb/server/clock.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/mem_tracker.h"
@@ -113,6 +116,7 @@ class ClientMasterRpcBase;
 
 using GetTableLocationsCallback =
     std::function<void(const Result<master::GetTableLocationsResponsePB*>&)>;
+using OpenTableAsyncCallback = std::function<void(const Result<YBTablePtr>&)>;
 
 using MasterAddressSource = std::function<std::vector<std::string>()>;
 
@@ -140,6 +144,9 @@ struct TableCompactionStatus {
   HybridTime last_request_time;
   std::vector<TabletReplicaFullCompactionStatus> replica_statuses;
 };
+
+using RetryableRequestIdRange =
+    boost::any_range<RetryableRequestId, boost::forward_traversal_tag, RetryableRequestId>;
 
 // Creates a new YBClient with the desired options.
 //
@@ -212,15 +219,19 @@ class YBClientBuilder {
   // The return value may indicate an error in the create operation, or a
   // misuse of the builder; in the latter case, only the last error is
   // returned.
-  Result<std::unique_ptr<YBClient>> Build(rpc::Messenger* messenger = nullptr);
+  Result<std::unique_ptr<YBClient>> Build(
+      rpc::Messenger* messenger = nullptr, const server::ClockPtr& clock = nullptr);
 
   // Creates the client which gets the messenger ownership and shuts it down on client shutdown.
-  Result<std::unique_ptr<YBClient>> Build(std::unique_ptr<rpc::Messenger>&& messenger);
+  Result<std::unique_ptr<YBClient>> Build(std::unique_ptr<rpc::Messenger>&& messenger,
+                                          const server::ClockPtr& clock);
 
  private:
   class Data;
 
-  Status DoBuild(rpc::Messenger* messenger, std::unique_ptr<client::YBClient>* client);
+  Status DoBuild(rpc::Messenger* messenger,
+                 server::ClockPtr clock,
+                 std::unique_ptr<client::YBClient>* client);
 
   std::unique_ptr<Data> data_;
 
@@ -583,6 +594,8 @@ class YBClient {
   Status UpdateCDCStream(const std::vector<CDCStreamId>& stream_ids,
                          const std::vector<master::SysCDCStreamEntryPB>& new_entries);
 
+  Result<bool> IsObjectPartOfXRepl(const TableId& table_id);
+
   Result<bool> IsBootstrapRequired(const std::vector<TableId>& table_ids,
                                    const boost::optional<CDCStreamId>& stream_id = boost::none);
 
@@ -594,19 +607,20 @@ class YBClient {
       BootstrapProducerCallback callback);
 
   // Update consumer pollers after a producer side tablet split.
-  Status UpdateConsumerOnProducerSplit(const std::string& producer_id,
-                                       const TableId& table_id,
-                                       const master::ProducerSplitTabletInfoPB& split_info);
+  Status UpdateConsumerOnProducerSplit(
+      const cdc::ReplicationGroupId& replication_group_id,
+      const TableId& table_id,
+      const master::ProducerSplitTabletInfoPB& split_info);
 
   // Update after a producer DDL change. Returns if caller should wait for a similar Consumer DDL.
   Status UpdateConsumerOnProducerMetadata(
-      const std::string& producer_id,
+      const cdc::ReplicationGroupId& replication_group_id,
       const CDCStreamId& stream_id,
       const tablet::ChangeMetadataRequestPB& meta_info,
       uint32_t colocation_id,
       uint32_t producer_schema_version,
       uint32_t consumer_schema_version,
-      master::UpdateConsumerOnProducerMetadataResponsePB *resp);
+      master::UpdateConsumerOnProducerMetadataResponsePB* resp);
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
@@ -617,7 +631,8 @@ class YBClient {
   // If primary_only is set to true, we expect the primary/sync cluster tserver count only.
   // If use_cache is set to true, we return old value.
   Status TabletServerCount(int *tserver_count, bool primary_only = false,
-      bool use_cache = false);
+      bool use_cache = false, const std::string* tablespace_id = nullptr,
+      const master::ReplicationInfoPB* replication_info = nullptr);
 
   Result<std::vector<YBTabletServer>> ListTabletServers();
 
@@ -721,8 +736,7 @@ class YBClient {
   Result<bool> IsLoadBalancerIdle();
 
   Status ModifyTablePlacementInfo(
-      const YBTableName& table_name,
-      master::PlacementInfoPB* replicas);
+      const YBTableName& table_name, master::PlacementInfoPB&& live_replicas);
 
   // Creates a transaction status table. 'table_name' is required to start with
   // kTransactionTablePrefix.
@@ -735,12 +749,14 @@ class YBClient {
 
   // Open the table with the given name or id. This will do an RPC to ensure that
   // the table exists and look up its schema.
-  // Version with table_id is preferable due to parallel run of RPCs.
-  // TODO: should we offer an async version of this as well?
   // TODO: probably should have a configurable timeout in YBClientBuilder?
   Status OpenTable(const YBTableName& table_name, YBTablePtr* table);
   Status OpenTable(const TableId& table_id, YBTablePtr* table,
                    master::GetTableSchemaResponsePB* resp = nullptr);
+
+  void OpenTableAsync(const YBTableName& table_name, const OpenTableAsyncCallback& callback);
+  void OpenTableAsync(const TableId& table_id, const OpenTableAsyncCallback& callback,
+                      master::GetTableSchemaResponsePB* resp = nullptr);
 
   Result<YBTablePtr> OpenTable(const TableId& table_id);
   Result<YBTablePtr> OpenTable(const YBTableName& name);
@@ -784,7 +800,9 @@ class YBClient {
   // Get the number of tablets to be created for a new user table.
   // This will be based on --num_shards_per_tserver or --ysql_num_shards_per_tserver
   // and number of tservers.
-  Result<int> NumTabletsForUserTable(TableType table_type);
+  Result<int> NumTabletsForUserTable(
+      TableType table_type, const std::string* tablespace_id = nullptr,
+      const master::ReplicationInfoPB* replication_info = nullptr);
 
   void TEST_set_admin_operation_timeout(const MonoDelta& timeout);
 
@@ -880,11 +898,13 @@ class YBClient {
   Result<std::shared_ptr<internal::RemoteTabletServer>> GetRemoteTabletServer(
       const std::string& permanent_uuid);
 
-  void RequestsFinished(const std::set<RetryableRequestId>& request_ids);
+  void RequestsFinished(const RetryableRequestIdRange& request_id_range);
 
   void Shutdown();
 
   const std::string& LogPrefix() const;
+
+  server::Clock* Clock() const;
 
  private:
   class Data;
@@ -921,6 +941,17 @@ class YBClient {
 
   friend std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(
       YBClient* client, const YBTablePtr& table);
+
+  template <class Id>
+  Status DoOpenTable(const Id& id, YBTablePtr* table,
+                   master::GetTableSchemaResponsePB* resp = nullptr);
+
+  template <class Id>
+  void DoOpenTableAsync(const Id& id, const OpenTableAsyncCallback& callback,
+                        master::GetTableSchemaResponsePB* resp = nullptr);
+
+  void GetTableSchemaCallback(
+      std::shared_ptr<YBTableInfo> info, const OpenTableAsyncCallback& callback, const Status& s);
 
   CoarseTimePoint PatchAdminDeadline(CoarseTimePoint deadline) const;
 

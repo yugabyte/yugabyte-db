@@ -81,14 +81,19 @@ public class ApiHelper {
 
   // Helper function to get the full body of the webpage via an http request to the given url.
   public String getBody(String url) {
-    WSRequest request = wsClient.url(url);
-    request.setRequestTimeout(DEFAULT_GET_REQUEST_TIMEOUT);
+    return getBody(url, new HashMap<>(), DEFAULT_GET_REQUEST_TIMEOUT);
+  }
+
+  public String getBody(String url, Map<String, String> headers, Duration timeout) {
+    WSRequest request = requestWithHeaders(url, headers);
+    request.setRequestTimeout(timeout);
     CompletionStage<String> jsonPromise = request.get().thenApply(WSResponse::getBody);
     String pageText = null;
     try {
       pageText = jsonPromise.toCompletableFuture().get();
-    } catch (InterruptedException | ExecutionException e) {
+    } catch (Exception e) {
       pageText = e.getMessage();
+      e.printStackTrace();
     }
     return pageText;
   }

@@ -17,6 +17,7 @@ import io.ebean.annotation.Encrypted;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import io.swagger.annotations.ApiModelProperty.AccessMode;
 import java.math.BigInteger;
 import java.security.SecureRandom;
 import java.time.Duration;
@@ -27,10 +28,9 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.Entity;
-import javax.persistence.EnumType;
-import javax.persistence.Enumerated;
 import javax.persistence.Id;
 import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.joda.time.DateTime;
@@ -52,17 +52,20 @@ public class Users extends Model {
 
   /** These are the available user roles */
   public enum Role {
-    @EnumValue("Admin")
-    Admin,
+    @EnumValue("ConnectOnly")
+    ConnectOnly,
 
     @EnumValue("ReadOnly")
     ReadOnly,
 
-    @EnumValue("SuperAdmin")
-    SuperAdmin,
-
     @EnumValue("BackupAdmin")
-    BackupAdmin;
+    BackupAdmin,
+
+    @EnumValue("Admin")
+    Admin,
+
+    @EnumValue("SuperAdmin")
+    SuperAdmin;
 
     public String getFeaturesFile() {
       switch (this) {
@@ -74,9 +77,27 @@ public class Users extends Model {
           return null;
         case BackupAdmin:
           return "backupAdminFeatureConfig.json";
+        case ConnectOnly:
+          return "connectOnlyFeatureConfig.json";
         default:
           return null;
       }
+    }
+
+    public static Role union(Role r1, Role r2) {
+      if (r1 == null) {
+        return r2;
+      }
+
+      if (r2 == null) {
+        return r1;
+      }
+
+      if (r1.compareTo(r2) < 0) {
+        return r2;
+      }
+
+      return r1;
     }
   }
 
@@ -146,7 +167,6 @@ public class Users extends Model {
 
   // The role of the user.
   @Column(nullable = false)
-  @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "User role")
   private Role role;
 
@@ -162,6 +182,20 @@ public class Users extends Model {
   @ApiModelProperty(value = "LDAP Specified Role")
   private boolean ldapSpecifiedRole;
 
+  @Encrypted
+  @Setter
+  @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
+  private String oidcJwtAuthToken;
+
+  public String getOidcJwtAuthToken() {
+    return null;
+  }
+
+  @JsonIgnore
+  public String getUnmakedOidcJwtAuthToken() {
+    return oidcJwtAuthToken;
+  }
+
   public static final Finder<UUID, Users> find = new Finder<UUID, Users>(Users.class) {};
 
   @Deprecated
@@ -171,6 +205,14 @@ public class Users extends Model {
 
   public static Users getOrBadRequest(UUID userUUID) {
     Users user = get(userUUID);
+    if (user == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid User UUID:" + userUUID);
+    }
+    return user;
+  }
+
+  public static Users getOrBadRequest(UUID customerUUID, UUID userUUID) {
+    Users user = find.query().where().idEq(userUUID).eq("customer_uuid", customerUUID).findOne();
     if (user == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid User UUID:" + userUUID);
     }
@@ -394,5 +436,12 @@ public class Users extends Model {
 
   public static List<Users> getAllReadOnly() {
     return find.query().where().eq("role", Role.ReadOnly).findList();
+  }
+
+  @RequiredArgsConstructor
+  public static class UserOIDCAuthToken {
+
+    @ApiModelProperty(value = "User OIDC Auth token")
+    public final String oidcAuthToken;
   }
 }

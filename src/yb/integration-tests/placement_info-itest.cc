@@ -52,7 +52,7 @@ class PlacementInfoTest : public YBTest {
 
  protected:
   void SetUp() override {
-    FLAGS_TEST_check_broadcast_address = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;
 
     YBTest::SetUp();
     MiniClusterOptions opts;
@@ -85,8 +85,8 @@ class PlacementInfoTest : public YBTest {
     // Create the table.
     YBSchema schema;
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
-    b.AddColumn("int_val")->Type(INT32)->NotNull();
+    b.AddColumn("key")->Type(DataType::INT32)->NotNull()->PrimaryKey();
+    b.AddColumn("int_val")->Type(DataType::INT32)->NotNull();
     CHECK_OK(b.Build(&schema));
     std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     table_name_ = std::make_unique<YBTableName>(YQL_DATABASE_CQL, "test_tablet_locations");

@@ -22,6 +22,7 @@
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index_container.hpp>
 
+#include "yb/cdc/cdc_types.h"
 #include "yb/cdc/cdc_util.h"
 #include "yb/client/client_fwd.h"
 #include "yb/common/common_types.pb.h"
@@ -29,6 +30,12 @@
 #include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+
+namespace rocksdb {
+
+class RateLimiter;
+
+}
 
 namespace yb {
 
@@ -67,11 +74,15 @@ class XClusterConsumer {
  public:
   static Result<std::unique_ptr<XClusterConsumer>> Create(
       std::function<bool(const std::string&)> is_leader_for_tablet,
+      std::function<int64_t(const TabletId&)>
+          get_leader_term,
       rpc::ProxyCache* proxy_cache,
-     TabletServer* tserver);
+      TabletServer* tserver);
 
   XClusterConsumer(
       std::function<bool(const std::string&)> is_leader_for_tablet,
+      std::function<int64_t(const TabletId&)>
+          get_leader_term,
       rpc::ProxyCache* proxy_cache,
       const std::string& ts_uuid,
       std::unique_ptr<XClusterClient>
@@ -143,7 +154,7 @@ class XClusterConsumer {
 
   bool ShouldContinuePolling(
       const cdc::ProducerTabletInfo producer_tablet_info,
-      const cdc::ConsumerTabletInfo consumer_tablet_info) REQUIRES_SHARED(master_data_mutex_);
+      const XClusterPoller& poller) REQUIRES_SHARED(master_data_mutex_);
 
   void UpdatePollerSchemaVersionMaps(
       std::shared_ptr<XClusterPoller> xcluster_poller,
@@ -163,6 +174,7 @@ class XClusterConsumer {
   rw_spinlock producer_pollers_map_mutex_ ACQUIRED_AFTER(master_data_mutex_);
 
   std::function<bool(const std::string&)> is_leader_for_tablet_;
+  std::function<int64_t(const TabletId&)> get_leader_term_;
 
   class TabletTag;
   using ProducerConsumerTabletMap = boost::multi_index_container <
@@ -209,12 +221,12 @@ class XClusterConsumer {
   std::string log_prefix_;
   std::shared_ptr<XClusterClient> local_client_;
 
-  // map: {universe_uuid : ...}.
-  std::unordered_map<std::string, std::shared_ptr<XClusterClient>> remote_clients_
+  // map: {replication_group_id : ...}.
+  std::unordered_map<cdc::ReplicationGroupId, std::shared_ptr<XClusterClient>> remote_clients_
       GUARDED_BY(producer_pollers_map_mutex_);
-  std::unordered_map<std::string, std::string> uuid_master_addrs_
-    GUARDED_BY(master_data_mutex_);
-  std::unordered_set<std::string> changed_master_addrs_ GUARDED_BY(master_data_mutex_);
+  std::unordered_map<cdc::ReplicationGroupId, std::string> uuid_master_addrs_
+      GUARDED_BY(master_data_mutex_);
+  std::unordered_set<cdc::ReplicationGroupId> changed_master_addrs_ GUARDED_BY(master_data_mutex_);
 
   std::atomic<int32_t> cluster_config_version_ GUARDED_BY(master_data_mutex_) = {-1};
   std::atomic<cdc::XClusterRole> consumer_role_ = cdc::XClusterRole::ACTIVE;
@@ -240,6 +252,8 @@ class XClusterConsumer {
   mutable simple_spinlock tablet_replication_error_map_lock_;
   cdc::TabletReplicationErrorMap tablet_replication_error_map_
     GUARDED_BY(tablet_replication_error_map_lock_);
+
+  std::unique_ptr<rocksdb::RateLimiter> rate_limiter_;
 };
 
 } // namespace tserver

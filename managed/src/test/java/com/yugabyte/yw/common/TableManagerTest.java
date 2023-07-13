@@ -2,12 +2,12 @@
 
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.common.BackupUtil.K8S_CERT_PATH;
-import static com.yugabyte.yw.common.BackupUtil.VM_CERT_DIR;
 import static com.yugabyte.yw.common.DevopsBase.PY_WRAPPER;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.K8S_CERT_PATH;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.VM_CERT_DIR;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
@@ -61,8 +61,6 @@ public class TableManagerTest extends FakeDBApplication {
   @Mock ShellProcessHandler shellProcessHandler;
 
   @Mock ReleaseManager releaseManager;
-
-  // @Mock BackupUtil backupUtil;
 
   @InjectMocks TableManager tableManager;
 
@@ -267,9 +265,6 @@ public class TableManagerTest extends FakeDBApplication {
         cmd.add(backupTableParams.tableUUID.toString().replace("-", ""));
       }
       cmd.add("--no_auto_name");
-      if (backupTableParams.sse) {
-        cmd.add("--sse");
-      }
     }
     if (testProvider.getCode().equals("kubernetes")) {
       cmd.add("--k8s_config");
@@ -286,6 +281,7 @@ public class TableManagerTest extends FakeDBApplication {
                   testUniverse.getTServers().stream()
                       .collect(Collectors.toMap(t -> t.cloudInfo.private_ip, t -> pkPath)))));
     }
+    cmd.add("--use_server_broadcast_address");
     cmd.add("--backup_location");
     cmd.add(backupTableParams.storageLocation);
     cmd.add("--storage_type");
@@ -322,6 +318,11 @@ public class TableManagerTest extends FakeDBApplication {
         .thenReturn(false);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.backupLogVerbose)))
         .thenReturn(false);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.enableSSE)))
+        .thenReturn(false);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.useServerBroadcastAddressForYbBackup)))
+        .thenReturn(true);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ssh2Enabled))).thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.disableXxHashChecksum))).thenReturn(false);
   }

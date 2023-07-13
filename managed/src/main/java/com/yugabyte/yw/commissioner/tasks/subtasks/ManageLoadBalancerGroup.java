@@ -4,22 +4,23 @@ import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeID;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.MapUtils;
 
 @Slf4j
 public class ManageLoadBalancerGroup extends UniverseTaskBase {
@@ -76,20 +77,9 @@ public class ManageLoadBalancerGroup extends UniverseTaskBase {
       ports.add(universe.getUniverseDetails().communicationPorts.redisServerRpcPort);
     LoadBalancerConfig lbConfig = taskParams().lbConfig;
     try {
-      Set<NodeDetails> nodes = new HashSet<>();
-      if (MapUtils.isNotEmpty(lbConfig.getAzNodes())) {
-        for (Set<NodeDetails> nodesPerAz : lbConfig.getAzNodes().values()) {
-          nodes.addAll(nodesPerAz);
-        }
-      }
+      Map<AvailabilityZone, Set<NodeID>> azToNodeIDs = getNodeIDs(lbConfig.getAzNodes());
       cloudAPI.manageNodeGroup(
-          provider,
-          taskParams().regionCode,
-          lbConfig.getLbName(),
-          getNodeIDs(nodes).getFirst(),
-          getNodeIDs(nodes).getSecond(),
-          "TCP",
-          ports);
+          provider, taskParams().regionCode, lbConfig.getLbName(), azToNodeIDs, "TCP", ports);
     } catch (Exception e) {
       String msg =
           "Error "
@@ -102,13 +92,16 @@ public class ManageLoadBalancerGroup extends UniverseTaskBase {
     }
   }
 
-  public Pair<List<String>, List<NodeID>> getNodeIDs(Set<NodeDetails> nodes) {
-    List<String> nodeNames = new ArrayList<>();
-    List<NodeID> nodeIDs = new ArrayList<>();
-    for (NodeDetails n : nodes) {
-      nodeNames.add(n.nodeName);
-      nodeIDs.add(new NodeID(n.nodeName, n.nodeUuid.toString()));
+  public Map<AvailabilityZone, Set<NodeID>> getNodeIDs(
+      Map<AvailabilityZone, Set<NodeDetails>> azToNodes) {
+    Map<AvailabilityZone, Set<NodeID>> azToNodeIDs = new HashMap();
+    for (Map.Entry<AvailabilityZone, Set<NodeDetails>> azToNode : azToNodes.entrySet()) {
+      azToNodeIDs.put(
+          azToNode.getKey(),
+          azToNode.getValue().stream()
+              .map(node -> new NodeID(node.nodeName, node.nodeUuid.toString()))
+              .collect(Collectors.toSet()));
     }
-    return new Pair(nodeNames, nodeIDs);
+    return azToNodeIDs;
   }
 }

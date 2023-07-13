@@ -11,7 +11,10 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.aws.AWSCloudImpl;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
+import com.yugabyte.yw.common.CloudProviderHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
+import com.yugabyte.yw.common.CloudRegionHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -25,8 +28,10 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -46,16 +51,50 @@ public class RegionHandler {
 
   @Inject AWSCloudImpl awsCloudImpl;
 
-  // TODO: this will be removed after UI revamp
+  @Inject CloudRegionHelper cloudRegionHelper;
+
+  @Inject CloudProviderHelper CloudProviderHelper;
+
+  @Deprecated
   public Region createRegion(UUID customerUUID, UUID providerUUID, RegionFormData form) {
     return providerEditRestrictionManager.tryEditProvider(
         providerUUID, () -> doCreateRegion(customerUUID, providerUUID, form));
   }
 
+  public Region createRegion(UUID customerUUID, UUID providerUUID, Region region) {
+    return providerEditRestrictionManager.tryEditProvider(
+        providerUUID, () -> doCreateRegion(customerUUID, providerUUID, region));
+  }
+
+  @Deprecated
   public Region editRegion(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, RegionEditFormData form) {
     return providerEditRestrictionManager.tryEditProvider(
         providerUUID, () -> doEditRegion(customerUUID, providerUUID, regionUUID, form));
+  }
+
+  public Region editRegion(UUID customerUUID, UUID providerUUID, UUID regionUUID, Region region) {
+    return providerEditRestrictionManager.tryEditProvider(
+        providerUUID, () -> doEditRegion(customerUUID, providerUUID, region));
+  }
+
+  public Region doEditRegion(UUID customerUUID, UUID providerUUID, Region region) {
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    Region existingRegion = Region.getOrBadRequest(customerUUID, providerUUID, region.getUuid());
+    if (existingRegion.getNodeCount() > 0) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Modifying region %s details is not allowed for providers in use.",
+              existingRegion.getCode()));
+    }
+
+    existingRegion.setDetails(region.getDetails());
+    existingRegion.save();
+    CloudProviderHelper.updateAZs(provider, provider, region, existingRegion);
+    existingRegion.refresh();
+
+    return existingRegion;
   }
 
   public Region doEditRegion(
@@ -98,6 +137,7 @@ public class RegionHandler {
     return region;
   }
 
+  @Deprecated
   private Region doCreateRegion(UUID customerUUID, UUID providerUUID, RegionFormData form) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     String regionCode = form.code;
@@ -152,6 +192,31 @@ public class RegionHandler {
       region =
           Region.create(
               provider, regionCode, form.name, form.ybImage, form.latitude, form.longitude);
+    }
+
+    return region;
+  }
+
+  private Region doCreateRegion(UUID customerUUID, UUID providerUUID, Region region) {
+    // k8s/non-k8s region handling.
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    if (provider.getCloudCode() != CloudType.kubernetes) {
+      CloudBootstrap.Params.PerRegionMetadata metadata =
+          CloudBootstrap.Params.PerRegionMetadata.fromRegion(region);
+
+      String destVpcId = null;
+      if (provider.getCloudCode() == CloudType.gcp) {
+        GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
+        destVpcId = gcpCloudInfo.getDestVpcId();
+      }
+
+      region = cloudRegionHelper.createRegion(provider, region.getCode(), destVpcId, metadata);
+    } else {
+      // Handle k8s region bootstrap.
+      Set<Region> regions = new HashSet<>();
+      regions.add(region);
+      CloudProviderHelper.editKubernetesProvider(provider, provider, regions);
+      region = Region.getByCode(provider, region.getCode());
     }
 
     return region;

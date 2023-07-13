@@ -41,15 +41,15 @@ class TransactionEntTest : public client::KeyValueTableTest<MiniCluster> {
   virtual ~TransactionEntTest() {}
 
   void SetUp() override {
-    FLAGS_fail_on_out_of_range_clock_skew = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_fail_on_out_of_range_clock_skew) = false;
 
     server::RandomErrorClock::Register();
-    FLAGS_time_source = server::RandomErrorClock::kNtpName;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = server::RandomErrorClock::kNtpName;
     KeyValueTableTest::SetUp();
 
     CreateTable(client::Transactional::kTrue);
 
-    FLAGS_intents_flush_max_delay_ms = 250;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_intents_flush_max_delay_ms) = 250;
 
     HybridTime::TEST_SetPrettyToString(true);
   }
@@ -59,7 +59,7 @@ class TransactionEntTest : public client::KeyValueTableTest<MiniCluster> {
     server::ClockPtr clock(new server::HybridClock(random_error_clock));
     EXPECT_OK(clock->Init());
 
-    std::lock_guard<std::mutex> lock(transaction_managers_mutex_);
+    std::lock_guard lock(transaction_managers_mutex_);
     transaction_managers_.emplace_back(client_.get(), clock, client::LocalTabletFilter());
     return transaction_managers_.back();
   }

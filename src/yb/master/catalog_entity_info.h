@@ -38,7 +38,7 @@
 
 #include <boost/bimap.hpp>
 
-#include "yb/cdc/cdc_util.h"
+#include "yb/cdc/cdc_types.h"
 #include "yb/common/entity_ids.h"
 #include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
@@ -60,6 +60,7 @@
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/shared_lock.h"
 
 DECLARE_bool(use_parent_table_id_field);
 
@@ -468,6 +469,16 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
       ysql_ddl_txn_verifier_state().contains_create_table_op();
   }
 
+  std::vector<std::string> cols_marked_for_deletion() const {
+    std::vector<std::string> columns;
+    for (const auto& col : pb.schema().columns()) {
+      if (col.marked_for_deletion()) {
+        columns.push_back(col.name());
+      }
+    }
+    return columns;
+  }
+
   Result<bool> is_being_modified_by_ddl_transaction(const TransactionId& txn) const;
 
   const std::string& state_name() const {
@@ -667,14 +678,14 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Returns true if the table is backfilling an index.
   bool IsBackfilling() const {
-    std::shared_lock<decltype(lock_)> l(lock_);
+    SharedLock l(lock_);
     return is_backfilling_;
   }
 
   Status SetIsBackfilling();
 
   void ClearIsBackfilling() {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     is_backfilling_ = false;
   }
 
@@ -1214,10 +1225,11 @@ struct PersistentUniverseReplicationInfo :
 class UniverseReplicationInfo : public RefCountedThreadSafe<UniverseReplicationInfo>,
                                 public MetadataCowWrapper<PersistentUniverseReplicationInfo> {
  public:
-  explicit UniverseReplicationInfo(std::string producer_id)
-      : producer_id_(std::move(producer_id)) {}
+  explicit UniverseReplicationInfo(cdc::ReplicationGroupId replication_group_id)
+      : replication_group_id_(std::move(replication_group_id)) {}
 
-  const std::string& id() const override { return producer_id_; }
+  const std::string& id() const override { return replication_group_id_.ToString(); }
+  const cdc::ReplicationGroupId& ReplicationGroupId() const { return replication_group_id_; }
 
   std::string ToString() const override;
 
@@ -1252,7 +1264,7 @@ class UniverseReplicationInfo : public RefCountedThreadSafe<UniverseReplicationI
   friend class RefCountedThreadSafe<UniverseReplicationInfo>;
   ~UniverseReplicationInfo() = default;
 
-  const std::string producer_id_;
+  const cdc::ReplicationGroupId replication_group_id_;
 
   std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks_;
   std::string master_addrs_;

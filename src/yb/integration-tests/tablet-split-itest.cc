@@ -31,6 +31,7 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_util.h"
+#include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
 
 #include "yb/dockv/doc_key.h"
@@ -161,6 +162,9 @@ DECLARE_bool(TEST_skip_election_when_fail_detected);
 DECLARE_int32(scheduled_full_compaction_frequency_hours);
 DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
 DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
+DECLARE_bool(enable_copy_retryable_requests_from_parent);
+DECLARE_bool(enable_flush_retryable_requests);
+DECLARE_int32(max_create_tablets_per_ts);
 
 namespace yb {
 
@@ -512,14 +516,16 @@ TEST_F(TabletSplitITest, SlowSplitSingleTablet) {
   const auto leader_failure_timeout = FLAGS_leader_failure_max_missed_heartbeat_periods *
         FLAGS_raft_heartbeat_interval_ms;
 
-  FLAGS_TEST_apply_tablet_split_inject_delay_ms = 200 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_apply_tablet_split_inject_delay_ms) = 200 * kTimeMultiplier;
   // We want heartbeater to be called during tablet split apply to reproduce deadlock bug.
-  FLAGS_heartbeat_interval_ms = FLAGS_TEST_apply_tablet_split_inject_delay_ms / 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) =
+      FLAGS_TEST_apply_tablet_split_inject_delay_ms / 3;
   // We reduce FLAGS_leader_lease_duration_ms for ReplicaState::GetLeaderState to avoid always
   // reusing results from cache on heartbeat, otherwise it won't lock ReplicaState mutex.
-  FLAGS_leader_lease_duration_ms = FLAGS_TEST_apply_tablet_split_inject_delay_ms / 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_lease_duration_ms) =
+      FLAGS_TEST_apply_tablet_split_inject_delay_ms / 2;
   // Reduce raft_heartbeat_interval_ms for leader lease to be reliably replicated.
-  FLAGS_raft_heartbeat_interval_ms = FLAGS_leader_lease_duration_ms / 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_heartbeat_interval_ms) = FLAGS_leader_lease_duration_ms / 2;
   // Keep leader failure timeout the same to avoid flaky losses of leader with short heartbeats.
   FLAGS_leader_failure_max_missed_heartbeat_periods =
       leader_failure_timeout / FLAGS_raft_heartbeat_interval_ms;
@@ -554,7 +560,7 @@ TEST_F(TabletSplitITest, SplitSystemTable) {
 TEST_F(TabletSplitITest, SplitTabletDuringReadWriteLoad) {
   constexpr auto kNumTablets = 3;
 
-  FLAGS_db_write_buffer_size = 100_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 100_KB;
 
   TestWorkload workload(cluster_.get());
   workload.set_table_name(client::kTableName);
@@ -635,7 +641,7 @@ namespace {
 void SetSmallDbBlockSize() {
   // Set data block size low enough, so we have enough data blocks for middle key
   // detection to work correctly.
-  FLAGS_db_block_size_bytes = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 1_KB;
 }
 
 }
@@ -743,7 +749,8 @@ TEST_F_EX(TabletSplitITest, SplitClientRequestsClean, TabletSplitITestSlowMainen
   for (int i = 0; i < 2; ++i) {
     for (auto& leader_peer : leader_peers) {
       LOG(INFO) << leader_peer->LogPrefix() << "MinRetryableRequestOpId(): "
-                << AsString(leader_peer->raft_consensus()->MinRetryableRequestOpId());
+                << AsString(
+                       ASSERT_RESULT(leader_peer->GetRaftConsensus())->MinRetryableRequestOpId());
       // Delay to make RetryableRequests::CleanExpiredReplicatedAndGetMinOpId (called by
       // MinRetryableRequestOpId) do delayed cleanup.
       SleepFor(kRetryableRequestTimeoutSecs * 1s);
@@ -767,7 +774,7 @@ TEST_F(TabletSplitITest, SplitSingleTabletWithLimit) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
   const auto kSplitDepth = 3;
   const auto kNumRows = 50 * (1 << kSplitDepth);
-  FLAGS_tablet_split_limit_per_table = (1 << kSplitDepth) - 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_limit_per_table) = (1 << kSplitDepth) - 1;
 
   CreateSingleTablet();
   ASSERT_OK(WriteRows(kNumRows, 1));
@@ -815,6 +822,20 @@ TEST_F(TabletSplitITest, SplitSingleTabletWithLimit) {
 
   auto table_info = ASSERT_RESULT(catalog_mgr->FindTable(table_id_pb));
   ASSERT_EQ(table_info->NumPartitions(), FLAGS_tablet_split_limit_per_table);
+}
+
+TEST_F(TabletSplitITest, MaxCreateTabletsPerTs) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
+  SetNumTablets(3);
+  CreateTable();
+  auto catalog_mgr = ASSERT_RESULT(catalog_manager());
+  auto table = catalog_mgr->GetTableInfo(table_->id());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_create_tablets_per_ts) = 1;
+  ASSERT_NOK(catalog_mgr->tablet_split_manager()->ValidateSplitCandidateTable(table));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_create_tablets_per_ts) = 2;
+  ASSERT_OK(catalog_mgr->tablet_split_manager()->ValidateSplitCandidateTable(table));
 }
 
 TEST_F(TabletSplitITest, SplitDuringReplicaOffline) {
@@ -897,8 +918,9 @@ TEST_F(TabletSplitITest, DifferentYBTableInstances) {
 TEST_F(TabletSplitITest, SplitSingleTabletLongTransactions) {
   constexpr auto kNumRows = 1000;
   constexpr auto kNumApplyLargeTxnBatches = 10;
-  FLAGS_txn_max_apply_batch_records = kNumRows / kNumApplyLargeTxnBatches;
-  FLAGS_TEST_pause_and_skip_apply_intents_task_loop_ms = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) =
+      kNumRows / kNumApplyLargeTxnBatches;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_and_skip_apply_intents_task_loop_ms) = 1;
 
   // Write enough rows to trigger the large transaction apply path with kNumApplyLargeTxnBatches
   // batches. Wait for post split compaction and validate data before returning.
@@ -1990,6 +2012,8 @@ class TabletSplitSingleServerITest : public TabletSplitITest {
   }
 
   Status TestSplitBeforeParentDeletion(bool hide_only);
+
+  void TestRetryableWrite();
 };
 
 // Start tablet split, create Index to start backfill while split operation in progress
@@ -1997,7 +2021,7 @@ class TabletSplitSingleServerITest : public TabletSplitITest {
 TEST_F(TabletSplitSingleServerITest, TestBackfillDuringSplit) {
   // TODO(#11695) -- Switch this back to a TabletServerITest
   constexpr auto kNumRows = 10000UL;
-  FLAGS_TEST_apply_tablet_split_inject_delay_ms = 200 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_apply_tablet_split_inject_delay_ms) = 200 * kTimeMultiplier;
 
   CreateSingleTablet();
   const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
@@ -2039,7 +2063,8 @@ TEST_F(TabletSplitSingleServerITest, TestSplitDuringBackfill) {
   // TODO(#11695) -- Switch this back to a TabletServerITest
   constexpr auto kNumRows = 10000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
-  FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms = 200 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_slowdown_backfill_alter_table_rpcs_ms) = 200 * kTimeMultiplier;
 
   CreateSingleTablet();
   const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
@@ -2192,7 +2217,7 @@ TEST_F(TabletSplitSingleServerITest, AutoSplitNotValidOnceCheckedForTtl) {
 
   auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
   auto* split_manager = catalog_mgr->tablet_split_manager();
-  auto& table_info = *ASSERT_NOTNULL(catalog_mgr->GetTableInfo(table_->id()));
+  auto table_info = ASSERT_NOTNULL(catalog_mgr->GetTableInfo(table_->id()));
 
   // Candidate table should start as a valid split candidate.
   ASSERT_OK(split_manager->ValidateSplitCandidateTable(table_info));
@@ -2397,17 +2422,26 @@ TEST_F(TabletSplitSingleServerITest, SplitBeforeParentHidden) {
   ASSERT_OK(TestSplitBeforeParentDeletion(true /* hide_only */));
 }
 
-TEST_F(TabletSplitSingleServerITest, TestRetryableWrite) {
-  // Test scenario of GH issue: https://github.com/yugabyte/yugabyte-db/issues/14005
-  // 1. Parent tablet leader received and replicated the WRITE_OP 1
-  //    but the client didn't get response.
-  // 2. The client retried WRITE_OP 1 and gets TABLET_SPLIT.
-  // 3. The client prepared WRITE_OP 2 to the child tablet and cause duplication.
-
+// Test scenario of GH issue: https://github.com/yugabyte/yugabyte-db/issues/14005
+// 1. Parent tablet leader received and replicated the WRITE_OP 1
+//    but the client didn't get response.
+// 2. The client retried WRITE_OP 1 and gets TABLET_SPLIT.
+// 3. The client prepared WRITE_OP 2 to the child tablet and cause duplication.
+void TabletSplitSingleServerITest::TestRetryableWrite() {
   auto kNumRows = 2;
   CreateSingleTablet();
 
   const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
+
+  auto peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
+  ASSERT_OK(peer->log()->AllocateSegmentAndRollOver());
+
+  if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests)) {
+    // Wait retryable requests flushed to disk.
+    ASSERT_OK(WaitFor([&] {
+      return peer->TEST_HasRetryableRequestsOnDisk();
+    }, 10s, "retryable requests flushed to disk"));
+  }
 
 #ifndef NDEBUG
   SyncPoint::GetInstance()->LoadDependency({
@@ -2427,10 +2461,12 @@ TEST_F(TabletSplitSingleServerITest, TestRetryableWrite) {
   });
 
   // Wait for 1.4 is replicated.
-  auto peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
-  ASSERT_OK(WaitFor([&] {
-    return peer->raft_consensus()->GetLastCommittedOpId().index == kNumRows + 2;
-  }, 10s, "the third row is replicated"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(peer->GetRaftConsensus())->GetLastCommittedOpId().index ==
+               kNumRows + 2;
+      },
+      10s, "the third row is replicated"));
 
   TEST_SYNC_POINT("TabletSplitSingleServerITest::TestRetryableWrite:WaitForSetTimedOut");
 
@@ -2453,6 +2489,24 @@ TEST_F(TabletSplitSingleServerITest, TestRetryableWrite) {
      SyncPoint::GetInstance()->DisableProcessing();
      SyncPoint::GetInstance()->ClearTrace();
 #endif // NDEBUG
+}
+
+TEST_F(TabletSplitSingleServerITest, TestRetryableWrite) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_copy_retryable_requests_from_parent) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = false;
+  TestRetryableWrite();
+}
+
+TEST_F(TabletSplitSingleServerITest, TestRetryableWriteWithCopyingFromParent) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_copy_retryable_requests_from_parent) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = false;
+  TestRetryableWrite();
+}
+
+TEST_F(TabletSplitSingleServerITest, TestRetryableWriteWithPersistedStructure) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_copy_retryable_requests_from_parent) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
+  TestRetryableWrite();
 }
 
 TEST_F(TabletSplitExternalMiniClusterITest, Simple) {
@@ -2911,6 +2965,11 @@ TEST_F_EX(
   const auto source_tablet_id = ASSERT_RESULT(GetOnlyTestTabletId());
   LOG(INFO) << "Source tablet ID: " << source_tablet_id;
 
+  // Wait until WRITE_OP is replicated across all peers.
+  auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(cluster_.get()));
+  ASSERT_OK(itest::WaitForServerToBeQuiet(10s * kTimeMultiplier, ts_map, source_tablet_id,
+      /* last_logged_opid = */ nullptr, itest::MustBeCommitted::kTrue));
+
   constexpr auto offline_ts_idx = 0;
   auto* offline_ts = cluster_->tablet_server(offline_ts_idx);
   offline_ts->Shutdown();
@@ -2922,6 +2981,7 @@ TEST_F_EX(
     if (ts->IsProcessAlive()) {
       ASSERT_OK(cluster_->FlushTabletsOnSingleTServer(
           ts, {source_tablet_id}, /* is_compaction = */ false));
+      ASSERT_OK(WaitForAnySstFiles(*ts, source_tablet_id));
     }
   }
   ASSERT_OK(SplitTablet(source_tablet_id));
@@ -3022,7 +3082,8 @@ TEST_F(TabletSplitITest, ParentRemoteBootstrapAfterWritesToChildren) {
   for (auto& ts : cluster_->mini_tablet_servers()) {
     const auto* tablet_manager = ts->server()->tablet_manager();
     const auto peer = ASSERT_RESULT(tablet_manager->GetTablet(source_tablet_id));
-    if (peer->consensus()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER) {
+    if (ASSERT_RESULT(peer->GetConsensus())->GetLeaderStatus() !=
+        consensus::LeaderStatus::NOT_LEADER) {
       continue;
     }
     LOG(INFO) << Format(

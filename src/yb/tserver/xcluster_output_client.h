@@ -12,10 +12,17 @@
 
 #include "yb/tserver/xcluster_output_client_interface.h"
 #include "yb/cdc/cdc_util.h"
+
 #include "yb/client/client_fwd.h"
 #include "yb/rpc/rpc_fwd.h"
 
 #pragma once
+
+namespace rocksdb {
+
+class RateLimiter;
+
+}
 
 namespace yb {
 
@@ -37,7 +44,8 @@ std::shared_ptr<XClusterOutputClientIf> CreateXClusterOutputClient(
         apply_changes_clbk,
     bool use_local_tserver,
     const std::vector<TabletId>& global_transaction_status_tablets,
-    bool enable_replicate_transaction_status_table);
+    bool enable_replicate_transaction_status_table,
+    rocksdb::RateLimiter* rate_limiter);
 
 } // namespace tserver
 } // namespace yb

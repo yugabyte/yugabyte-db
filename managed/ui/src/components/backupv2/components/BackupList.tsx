@@ -18,7 +18,7 @@ import { Backup_States, getBackupsList, IBackup, IStorageConfig, TIME_RANGE_STAT
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton, YBMultiSelectRedesiged } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
-import { BackupDetails } from './BackupDetails';
+import { BackupDetails, IncrementalBackupProps } from './BackupDetails';
 import {
   BACKUP_REFETCH_INTERVAL,
   BACKUP_STATUS_OPTIONS,
@@ -42,6 +42,7 @@ import { find } from 'lodash';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import BackupRestoreNewModal from './restore/BackupRestoreNewModal';
 import './BackupList.scss';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -136,10 +137,15 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
   const [showAssignConfigModal, setShowAssignConfigModal] = useState(false);
   const [showEditBackupModal, setShowEditBackupModal] = useState(false);
   const [isRestoreEntireBackup, setRestoreEntireBackup] = useState(false);
+  const [incrementalBackupProps, setIncrementalBackupsProps] = useState<IncrementalBackupProps>({});
 
   const [selectedBackups, setSelectedBackups] = useState<IBackup[]>([]);
   const [status, setStatus] = useState<any[]>([BACKUP_STATUS_OPTIONS[0]]);
   const [moreFilters, setMoreFilters] = useState<any>([]);
+
+  const featureFlags = useSelector((state:any) => state.featureFlags);
+
+  const isNewRestoreModalEnabled = featureFlags.test.enableNewRestoreModal || featureFlags.released.enableNewRestoreModal;
 
   const timeReducer = (_state: TIME_RANGE_STATE, action: OptionTypeBase) => {
     if (action.label === 'Custom') {
@@ -309,7 +315,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
             row.commonBackupInfo.state !== Backup_States.COMPLETED ||
             !row.isStorageConfigPresent
           }>
-          Edit Backup
+          Change Retention Period
         </MenuItem>
       </DropdownButton>
     );
@@ -609,8 +615,9 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           setSelectedBackups([showDetails] as IBackup[]);
           setShowDeleteModal(true);
         }}
-        onRestore={(customDetails?: IBackup) => {
-          setRestoreEntireBackup(customDetails ? false : true);
+        onRestore={(customDetails?: IBackup, incrementalBackupProps?: IncrementalBackupProps) => {
+          setRestoreEntireBackup(incrementalBackupProps?.isRestoreEntireBackup ?? false);
+          setIncrementalBackupsProps(incrementalBackupProps ?? {});
           setRestoreDetails(customDetails ?? showDetails);
           setShowRestoreModal(true);
         }}
@@ -630,7 +637,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         visible={showDeleteModal}
         onHide={() => setShowDeleteModal(false)}
       />
-      {restoreDetails && (
+       {!isNewRestoreModalEnabled && restoreDetails && (
         <BackupRestoreModal
           backup_details={restoreDetails}
           visible={showRestoreModal}
@@ -667,11 +674,24 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         isEditMode={true}
         isIncrementalBackup={selectedBackups[0]?.hasIncrementalBackups}
         isScheduledBackup={selectedBackups.length !== 0 && !selectedBackups[0].onDemand}
-        editValues={selectedBackups[0] && convertBackupToFormValues(selectedBackups[0], 
-          storageConfigs?.data.find((e:IStorageConfig) => {
+        editValues={selectedBackups[0] && convertBackupToFormValues(selectedBackups[0],
+          storageConfigs?.data.find((e: IStorageConfig) => {
             return e.configUUID === selectedBackups[0].commonBackupInfo.storageConfigUUID;
           }))}
       />
+      {isNewRestoreModalEnabled && restoreDetails && (
+        <BackupRestoreNewModal
+          backupDetails={restoreDetails as any}
+          visible={true}
+          onHide={() => {
+            setRestoreDetails(null);
+            setRestoreEntireBackup(false);
+            setIncrementalBackupsProps({});
+          }}
+          incrementalBackupProps={incrementalBackupProps}
+        />
+
+      )}
     </Row>
   );
 };

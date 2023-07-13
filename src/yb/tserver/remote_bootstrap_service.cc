@@ -187,7 +187,7 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
 
   scoped_refptr<RemoteBootstrapSession> session;
   {
-    std::lock_guard<std::mutex> l(sessions_mutex_);
+    std::lock_guard l(sessions_mutex_);
     auto it = sessions_.find(session_id);
     if (it == sessions_.end()) {
       LOG(INFO) << "Beginning new remote bootstrap session on tablet " << tablet_id
@@ -220,6 +220,7 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
   resp->set_session_idle_timeout_millis(FLAGS_remote_bootstrap_idle_timeout_ms);
   resp->mutable_superblock()->CopyFrom(session->tablet_superblock());
   resp->mutable_initial_committed_cstate()->CopyFrom(session->initial_committed_cstate());
+  resp->set_retryable_requests_file_flushed(session->has_retryable_requests_file());
 
   auto const& log_segments = session->log_segments();
   resp->mutable_deprecated_wal_segment_seqnos()->Reserve(narrow_cast<int>(log_segments.size()));
@@ -239,7 +240,7 @@ void RemoteBootstrapServiceImpl::CheckRemoteBootstrapSessionActive(
     CheckRemoteBootstrapSessionActiveResponsePB* resp,
     rpc::RpcContext context) {
   // Look up and validate remote bootstrap session.
-  std::lock_guard<std::mutex> l(sessions_mutex_);
+  std::lock_guard l(sessions_mutex_);
   auto it = sessions_.find(req->session_id());
   if (it != sessions_.end()) {
     if (req->keepalive()) {
@@ -263,7 +264,7 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
   // Look up and validate remote bootstrap session.
   scoped_refptr<RemoteBootstrapSession> session;
   {
-    std::lock_guard<std::mutex> l(sessions_mutex_);
+    std::lock_guard l(sessions_mutex_);
     auto it = sessions_.find(session_id);
     if (it == sessions_.end()) {
       RPC_RETURN_APP_ERROR(
@@ -319,7 +320,7 @@ void RemoteBootstrapServiceImpl::EndRemoteBootstrapSession(
         EndRemoteBootstrapSessionResponsePB* resp,
         rpc::RpcContext context) {
   {
-    std::lock_guard<std::mutex> l(sessions_mutex_);
+    std::lock_guard l(sessions_mutex_);
     RemoteBootstrapErrorPB::Code app_error;
     RPC_RETURN_NOT_OK(DoEndRemoteBootstrapSession(
                           req->session_id(), req->is_success(), &app_error),
@@ -341,7 +342,7 @@ void RemoteBootstrapServiceImpl::RemoveRemoteBootstrapSession(
     RemoveRemoteBootstrapSessionResponsePB* resp,
     rpc::RpcContext context) {
   {
-    std::lock_guard<std::mutex> l(sessions_mutex_);
+    std::lock_guard l(sessions_mutex_);
     RemoveRemoteBootstrapSession(req->session_id());
   }
   context.RespondSuccess();
@@ -366,7 +367,7 @@ void RemoteBootstrapServiceImpl::Shutdown() {
   session_expiration_thread_->Join();
 
   {
-    std::lock_guard<std::mutex> lock(sessions_mutex_);
+    std::lock_guard lock(sessions_mutex_);
     // Destroy all remote bootstrap sessions.
     std::vector<string> session_ids;
     session_ids.reserve(sessions_.size());
@@ -382,7 +383,7 @@ void RemoteBootstrapServiceImpl::Shutdown() {
   }
 
   {
-    std::lock_guard<std::mutex> l(log_anchors_mutex_);
+    std::lock_guard l(log_anchors_mutex_);
     std::vector<string> session_ids;
     session_ids.reserve(log_anchors_map_.size());
     for (const auto& entry : log_anchors_map_) {
@@ -402,7 +403,8 @@ Status RemoteBootstrapServiceImpl::ValidateFetchRequestDataId(
         const DataIdPB& data_id,
         RemoteBootstrapErrorPB::Code* app_error,
         const scoped_refptr<RemoteBootstrapSession>& session) const {
-  int num_set = data_id.has_wal_segment_seqno() + data_id.has_file_name();
+  int num_set = (data_id.type() == DataIdPB::RETRYABLE_REQUESTS)
+      + data_id.has_wal_segment_seqno() + data_id.has_file_name();
   if (PREDICT_FALSE(num_set != 1)) {
     *app_error = RemoteBootstrapErrorPB::INVALID_REMOTE_BOOTSTRAP_REQUEST;
     return STATUS(InvalidArgument,
@@ -521,27 +523,28 @@ void RemoteBootstrapServiceImpl::RegisterLogAnchor(
       RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
       Substitute("Tablet is not running yet: $0", req->tablet_id()));
 
+  const auto requested_log_index = req->op_id().index();
   int64_t min_available_log_index = tablet_peer->log()->GetLogReader()->GetMinReplicateIndex();
   if (min_available_log_index == -1) {
     min_available_log_index = tablet_peer->log()->GetMinReplicateIndex();
   }
 
-  if (req->log_index() < min_available_log_index) {
+  if (requested_log_index < min_available_log_index) {
     RPC_RETURN_APP_ERROR(
         RemoteBootstrapErrorPB::REMOTE_LOG_ANCHOR_FAILURE,
-        Substitute("Cannot register LogAnchor for index $0", req->log_index()),
+        Substitute("Cannot register LogAnchor for index $0", requested_log_index),
         STATUS(NotSupported, "Not Supported: Requested LogAnchor index < MinReplicateIndex"));
   }
 
   MAYBE_FAULT(FLAGS_TEST_fault_crash_on_rbs_anchor_register);
 
   {
-    std::lock_guard<std::mutex> l(log_anchors_mutex_);
+    std::lock_guard l(log_anchors_mutex_);
     auto it = log_anchors_map_.find(req->owner_info());
     if (it == log_anchors_map_.end()) {
       std::shared_ptr<log::LogAnchor> log_anchor_ptr(new log::LogAnchor());
       tablet_peer->log_anchor_registry()->Register(
-          req->log_index(), req->owner_info(), log_anchor_ptr.get());
+          requested_log_index, req->owner_info(), log_anchor_ptr.get());
       std::shared_ptr<LogAnchorSessionData> anchor_session_data(
           new LogAnchorSessionData(tablet_peer, log_anchor_ptr));
       log_anchors_map_[req->owner_info()] = anchor_session_data;
@@ -551,11 +554,11 @@ void RemoteBootstrapServiceImpl::RegisterLogAnchor(
       it->second->ResetExpiration();
       RPC_RETURN_NOT_OK(
           tablet_peer->log_anchor_registry()->UpdateRegistration(
-              req->log_index(), log_anchor_ptr.get()),
+              requested_log_index, log_anchor_ptr.get()),
           RemoteBootstrapErrorPB::REMOTE_LOG_ANCHOR_FAILURE,
           Substitute(
               "Cannot Update LogAnchor for tablet $0 to index $1", tablet_peer->tablet_id(),
-              req->log_index()));
+              requested_log_index));
     }
   }
 
@@ -564,7 +567,7 @@ void RemoteBootstrapServiceImpl::RegisterLogAnchor(
 
 void RemoteBootstrapServiceImpl::UpdateLogAnchor(
     const UpdateLogAnchorRequestPB* req, UpdateLogAnchorResponsePB* resp, rpc::RpcContext context) {
-  std::lock_guard<std::mutex> l(log_anchors_mutex_);
+  std::lock_guard l(log_anchors_mutex_);
   auto it = log_anchors_map_.find(req->owner_info());
   if (it == log_anchors_map_.end()) {
     RPC_RETURN_APP_ERROR(
@@ -573,16 +576,17 @@ void RemoteBootstrapServiceImpl::UpdateLogAnchor(
         STATUS(IllegalState, "Cannot Update Log Anchor without Registering for one"));
   }
 
+  const auto requested_log_index = req->op_id().index();
   std::shared_ptr<tablet::TabletPeer> tablet_peer(it->second->tablet_peer_);
   std::shared_ptr<log::LogAnchor> log_anchor_ptr(it->second->log_anchor_ptr_);
   it->second->ResetExpiration();
   RPC_RETURN_NOT_OK(
       tablet_peer->log_anchor_registry()->UpdateRegistration(
-          req->log_index(), log_anchor_ptr.get()),
+          requested_log_index, log_anchor_ptr.get()),
       RemoteBootstrapErrorPB::REMOTE_LOG_ANCHOR_FAILURE,
       Substitute(
           "Cannot Update LogAnchor for tablet $0 to $1", tablet_peer->tablet_id(),
-          req->log_index()));
+          requested_log_index));
 
   context.RespondSuccess();
 }
@@ -591,7 +595,7 @@ void RemoteBootstrapServiceImpl::KeepLogAnchorAlive(
     const KeepLogAnchorAliveRequestPB* req,
     KeepLogAnchorAliveResponsePB* resp,
     rpc::RpcContext context) {
-  std::lock_guard<std::mutex> l(log_anchors_mutex_);
+  std::lock_guard l(log_anchors_mutex_);
   auto it = log_anchors_map_.find(req->owner_info());
   if (it == log_anchors_map_.end()) {
     RPC_RETURN_APP_ERROR(
@@ -610,7 +614,7 @@ void RemoteBootstrapServiceImpl::UnregisterLogAnchor(
     UnregisterLogAnchorResponsePB* resp,
     rpc::RpcContext context) {
   RemoteBootstrapErrorPB::Code app_error;
-  std::lock_guard<std::mutex> l(log_anchors_mutex_);
+  std::lock_guard l(log_anchors_mutex_);
   RPC_RETURN_NOT_OK(
       DoEndLogAnchorSession(req->owner_info(), &app_error),
       app_error,
@@ -624,7 +628,7 @@ void RemoteBootstrapServiceImpl::ChangePeerRole(
     const ChangePeerRoleRequestPB* req, ChangePeerRoleResponsePB* resp, rpc::RpcContext context) {
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
   {
-    std::lock_guard<std::mutex> l(log_anchors_mutex_);
+    std::lock_guard l(log_anchors_mutex_);
     auto it = log_anchors_map_.find(req->owner_info());
     if (it == log_anchors_map_.end()) {
       RPC_RETURN_APP_ERROR(
@@ -673,7 +677,7 @@ Status RemoteBootstrapServiceImpl::DoEndLogAnchorSession(
 }
 
 void RemoteBootstrapServiceImpl::EndExpiredRemoteBootstrapSessions() {
-  std::lock_guard<std::mutex> l(sessions_mutex_);
+  std::lock_guard l(sessions_mutex_);
   auto now = CoarseMonoClock::Now();
 
   std::vector<string> expired_session_ids;
@@ -691,7 +695,7 @@ void RemoteBootstrapServiceImpl::EndExpiredRemoteBootstrapSessions() {
 }
 
 void RemoteBootstrapServiceImpl::EndExpiredLogAnchorSessions() {
-  std::lock_guard<std::mutex> l(log_anchors_mutex_);
+  std::lock_guard l(log_anchors_mutex_);
   auto now = CoarseMonoClock::Now();
 
   std::vector<string> expired_session_ids;

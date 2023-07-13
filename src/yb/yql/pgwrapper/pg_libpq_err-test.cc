@@ -21,7 +21,7 @@ namespace pgwrapper {
 class PgLibPqErrTest : public LibPqTestBase {
 };
 
-TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(BeginWithoutCommit)) {
+TEST_F(PgLibPqErrTest, BeginWithoutCommit) {
   constexpr auto kIterations = 10;
 
   // Create table and insert some rows.
@@ -67,7 +67,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(BeginWithoutCommit)) {
   }
 }
 
-TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertWithoutCommit)) {
+TEST_F(PgLibPqErrTest, InsertWithoutCommit) {
   constexpr auto kRetryCount = 3;
   constexpr auto kIterations = 10;
   constexpr auto kRowPerSeed = 100;
@@ -149,7 +149,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertWithoutCommit)) {
   }
 }
 
-TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertDuplicateWithoutCommit)) {
+TEST_F(PgLibPqErrTest, InsertDuplicateWithoutCommit) {
   constexpr auto kRetryCount = 3;
   constexpr auto kIterations = 10;
   constexpr auto kRowPerSeed = 100;
@@ -230,7 +230,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertDuplicateWithoutCommit)) {
   }
 }
 
-TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(UpdateWithoutCommit)) {
+TEST_F(PgLibPqErrTest, UpdateWithoutCommit) {
   constexpr auto kRetryCount = 3;
   constexpr auto kIterations = 10;
   constexpr auto kRowCount = 100;
@@ -322,7 +322,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(UpdateWithoutCommit)) {
   }
 }
 
-TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(DeleteWithoutCommit)) {
+TEST_F(PgLibPqErrTest, DeleteWithoutCommit) {
   constexpr auto kRetryCount = 3;
   constexpr auto kIterations = 10;
   constexpr auto kRowCount = 100;
@@ -407,7 +407,7 @@ TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(DeleteWithoutCommit)) {
   }
 }
 
-TEST_F(PgLibPqErrTest, YB_DISABLE_TEST_IN_TSAN(InsertTransactionAborted)) {
+TEST_F(PgLibPqErrTest, InsertTransactionAborted) {
   constexpr auto kIterations = 10;
   constexpr auto kRowPerSeed = 100;
 

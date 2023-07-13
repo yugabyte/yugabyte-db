@@ -37,6 +37,7 @@
 #include "yb/util/result.h"
 
 #include "yb/yql/pggate/pg_client.h"
+#include "yb/yql/pggate/pg_doc_metrics.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_operation_buffer.h"
 #include "yb/yql/pggate/pg_perform_future.h"
@@ -115,11 +116,15 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   typedef scoped_refptr<PgSession> ScopedRefPtr;
 
   // Constructors.
-  PgSession(PgClient* pg_client,
-            const std::string& database_name,
-            scoped_refptr<PgTxnManager> pg_txn_manager,
-            scoped_refptr<server::HybridClock> clock,
-            const YBCPgCallbacks& pg_callbacks);
+  PgSession(
+      PgClient* pg_client,
+      const std::string& database_name,
+      scoped_refptr<PgTxnManager>
+          pg_txn_manager,
+      scoped_refptr<server::HybridClock>
+          clock,
+      const YBCPgCallbacks& pg_callbacks,
+      YBCPgExecStatsState* stats_state);
   virtual ~PgSession();
 
   // Resets the read point for catalog tables.
@@ -144,6 +149,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Status DropDatabase(const std::string& database_name, PgOid database_oid);
 
   Status GetCatalogMasterVersion(uint64_t *version);
+
+  Status CancelTransaction(const unsigned char* transaction_id);
 
   // API for sequences data operations.
   Status CreateSequencesDataTable();
@@ -263,6 +270,11 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   Result<PerformFuture> RunAsync(const ReadOperationGenerator& generator, CacheOptions&& options);
 
+  // Lock functions.
+  // -------------
+  Result<yb::tserver::PgGetLockStatusResponsePB> GetLockStatusData(
+      const std::string& table_id, const std::string& transaction_id);
+
   // Smart driver functions.
   // -------------
   Result<client::TabletServersInfo> ListTabletServers();
@@ -346,7 +358,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   Result<bool> CheckIfPitrActive();
 
-  void GetAndResetOperationFlushRpcStats(uint64_t* count, uint64_t* wait_time);
+  PgDocMetrics& metrics() { return metrics_; }
+
+  // Check whether the specified table has a CDC stream.
+  Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
 
  private:
   Result<PgTableDescPtr> DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit);
@@ -406,6 +421,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   TableYbctidSet fk_reference_cache_;
   TableYbctidSet fk_reference_intent_;
   std::unordered_set<PgOid> fk_intent_region_local_tables_;
+
+  PgDocMetrics metrics_;
 
   // Should write operations be buffered?
   bool buffering_enabled_ = false;

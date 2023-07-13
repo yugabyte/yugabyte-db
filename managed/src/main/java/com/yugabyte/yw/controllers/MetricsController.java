@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.AppInit;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.models.Metric;
@@ -45,6 +46,12 @@ public class MetricsController extends Controller {
       "kamon.prometheus.embedded-server.hostname";
   private static final String KAMON_EMBEDDED_SERVER_PORT = "kamon.prometheus.embedded-server.port";
 
+  @Inject
+  public MetricsController(AppInit appInit) {
+    // Bind AppInit so that the metrics are not published before the app initialisation completes.
+    // No-op performed.
+  }
+
   @Inject private MetricService metricService;
 
   @Inject ApiHelper apiHelper;
@@ -58,25 +65,20 @@ public class MetricsController extends Controller {
       response = String.class,
       nickname = "MetricsDetail")
   public Result index() {
-    final ByteArrayOutputStream response = new ByteArrayOutputStream(1 << 20);
-    try {
-      final OutputStreamWriter osw = new OutputStreamWriter(response);
+    try (ByteArrayOutputStream response = new ByteArrayOutputStream(1 << 20);
+        OutputStreamWriter osw = new OutputStreamWriter(response)) {
       // Write runtime metrics
       TextFormat.write004(osw, CollectorRegistry.defaultRegistry.metricFamilySamples());
       // Write persisted metrics
       TextFormat.write004(osw, Collections.enumeration(getPrecalculatedMetrics()));
       // Write Kamon metrics
       osw.write(getKamonMetrics());
-
       osw.flush();
-      osw.close();
       response.flush();
-      response.close();
+      return Results.status(OK, response.toString());
     } catch (Exception e) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
-
-    return Results.status(OK, response.toString());
   }
 
   private String getKamonMetrics() {

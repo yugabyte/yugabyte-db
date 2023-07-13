@@ -24,8 +24,7 @@
 #include "yb/util/math_util.h"
 #include "yb/util/strongly_typed_bool.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 class ConsensusFrontier;
 class DeadlineInfo;
@@ -45,6 +44,7 @@ class PgsqlWriteOperation;
 class QLWriteOperation;
 class RedisWriteOperation;
 class ScanChoices;
+class SchemaPackingProvider;
 class SharedLockManager;
 class TransactionStatusCache;
 class WaitQueue;
@@ -54,9 +54,11 @@ class YQLStorageIf;
 struct ApplyTransactionState;
 struct DocDB;
 struct DocReadContext;
+struct FetchedEntry;
 struct IntentKeyValueForCDC;
 struct KeyBounds;
 struct LockBatchEntry;
+struct ReadOperationData;
 
 using DocKeyHash = uint16_t;
 using LockBatchEntries = std::vector<LockBatchEntry>;
@@ -66,6 +68,6 @@ using ScanChoicesPtr = std::unique_ptr<ScanChoices>;
 using IndexRequests = std::vector<std::pair<const qlexpr::IndexInfo*, QLWriteRequestPB>>;
 
 YB_STRONGLY_TYPED_BOOL(SkipFlush);
+YB_STRONGLY_TYPED_BOOL(SkipSeek);
 
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb

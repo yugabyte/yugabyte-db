@@ -242,7 +242,7 @@ Status YBTableCreator::Create() {
     CHECK(!schema_) << "Schema should not be set for redis table creation";
     redis_schema.reset(new YBSchema());
     YBSchemaBuilder b;
-    b.AddColumn(kRedisKeyColumnName)->Type(BINARY)->NotNull()->HashPrimaryKey();
+    b.AddColumn(kRedisKeyColumnName)->Type(DataType::BINARY)->NotNull()->HashPrimaryKey();
     RETURN_NOT_OK(b.Build(redis_schema.get()));
     schema(redis_schema.get());
   }
@@ -316,7 +316,18 @@ Status YBTableCreator::Create() {
       num_tablets_ = 1;
       VLOG(1) << "num_tablets=1: using one tablet for a system table";
     } else {
-      num_tablets_ = VERIFY_RESULT(client_->NumTabletsForUserTable(table_type_));
+      if (table_type_ == TableType::PGSQL_TABLE_TYPE && !is_pg_catalog_table_) {
+        LOG(INFO) << "Get number of tablet for YSQL user table";
+        if (replication_info_ && !tablespace_id_.empty())
+          return STATUS(InvalidArgument,
+                        "Both replication info and tablespace ID cannot "
+                        "be set when calculating number of tablets.");
+        num_tablets_ = VERIFY_RESULT(client_->NumTabletsForUserTable(
+            table_type_, &tablespace_id_, replication_info_.get()));
+      } else {
+        num_tablets_ = VERIFY_RESULT(client_->NumTabletsForUserTable(
+            table_type_));
+      }
     }
   }
   req.set_num_tablets(num_tablets_);

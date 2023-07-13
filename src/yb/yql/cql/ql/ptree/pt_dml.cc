@@ -288,7 +288,7 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
                              &json_col_where_ops_, &partition_key_ops_, &op_counters,
                              &partition_key_counter, opcode(), &func_ops_, &multi_col_where_ops_);
 
-  SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
+  SemState sem_state(sem_context, QLType::Create(DataType::BOOL), InternalType::kBoolValue);
   sem_state.SetWhereState(&where_state);
   RETURN_NOT_OK(expr->Analyze(sem_context));
 
@@ -369,7 +369,7 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
 
 Status PTDmlStmt::AnalyzeIfClause(SemContext *sem_context) {
   if (if_clause_) {
-    SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
+    SemState sem_state(sem_context, QLType::Create(DataType::BOOL), InternalType::kBoolValue);
     sem_state.set_processing_if_clause(true);
     return if_clause_->Analyze(sem_context);
   }
@@ -807,6 +807,38 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
         default:
           return sem_context->Error(expr, "Statement type cannot have where condition",
               ErrorCode::CQL_STATEMENT_INVALID);
+      }
+      break;
+    }
+
+    case QL_OP_CONTAINS_KEY: {
+      if (col_args != nullptr) {
+        return sem_context->Error(
+            expr, "Operator not supported for subscripted column",
+            ErrorCode::CQL_STATEMENT_INVALID);
+      } else {
+        counter.increase_contains_key();
+        if (!counter.is_valid()) {
+          return sem_context->Error(
+              expr, "Illogical condition for where clause", ErrorCode::CQL_STATEMENT_INVALID);
+        }
+        ops_->emplace_back(col_desc, value, expr->ql_op());
+      }
+      break;
+    }
+
+    case QL_OP_CONTAINS: {
+      if (col_args != nullptr) {
+        return sem_context->Error(
+            expr, "Operator not supported for subscripted column",
+            ErrorCode::CQL_STATEMENT_INVALID);
+      } else {
+        counter.increase_contains();
+        if (!counter.is_valid()) {
+          return sem_context->Error(
+              expr, "Illogical condition for where clause", ErrorCode::CQL_STATEMENT_INVALID);
+        }
+        ops_->emplace_back(col_desc, value, expr->ql_op());
       }
       break;
     }

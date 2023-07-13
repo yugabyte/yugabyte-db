@@ -45,7 +45,7 @@ class YBC:
 
     def quote_cmd_line_for_bash(self, cmd_line):
         if not isinstance(cmd_line, list) and not isinstance(cmd_line, tuple):
-            raise BackupException("Expected a list/tuple, got: [[ {} ]]".format(cmd_line))
+            raise Exception("Expected a list/tuple, got: [[ {} ]]".format(cmd_line))
         return ' '.join([pipes.quote(str(arg)) for arg in cmd_line])
 
     def move_contents(self, root_src_dir, root_dst_dir):
@@ -129,9 +129,19 @@ class YBC:
         if os.path.exists(CONTROLLER_PID_FILE):
             pid = self.read_pid_file(CONTROLLER_PID_FILE)
             try:
-                os.kill(pid, 0)
-                os.kill(pid, signal.SIGKILL)
-                os.waitpid(pid)
+                parent = psutil.Process(pid)
+                children = parent.children(recursive=True)
+                for p in children:
+                    try:
+                        os.kill(p.pid, signal.SIGKILL)
+                        os.waitpid(p.pid)
+                    except Exception:
+                        pass
+                try:
+                    os.kill(parent.pid, signal.SIGKILL)
+                    os.waitpid(parent.pid)
+                except Exception:
+                    pass
             except Exception:
                 pass
             os.remove(CONTROLLER_PID_FILE)

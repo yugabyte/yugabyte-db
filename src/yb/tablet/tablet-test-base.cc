@@ -22,10 +22,9 @@ namespace yb {
 namespace tablet {
 
 Schema StringKeyTestSetup::CreateSchema() {
-  return Schema({ ColumnSchema("key", STRING, false, true),
-                  ColumnSchema("key_idx", INT32),
-                  ColumnSchema("val", INT32) },
-                1);
+  return Schema({ ColumnSchema("key", DataType::STRING, ColumnKind::HASH),
+                  ColumnSchema("key_idx", DataType::INT32),
+                  ColumnSchema("val", DataType::INT32) });
 }
 
 void StringKeyTestSetup::BuildRowKey(QLWriteRequestPB *req, int64_t key_idx) {
@@ -61,11 +60,10 @@ uint32_t StringKeyTestSetup::GetMaxRows() {
 }
 
 Schema CompositeKeyTestSetup::CreateSchema() {
-  return Schema({ ColumnSchema("key1", STRING, false, true),
-                  ColumnSchema("key2", INT32, false, true),
-                  ColumnSchema("key_idx", INT32),
-                  ColumnSchema("val", INT32) },
-                2);
+  return Schema({ ColumnSchema("key1", DataType::STRING, ColumnKind::HASH),
+                  ColumnSchema("key2", DataType::INT32, ColumnKind::HASH),
+                  ColumnSchema("key_idx", DataType::INT32),
+                  ColumnSchema("val", DataType::INT32) });
 }
 
 void CompositeKeyTestSetup::FormatKey(char *buf, size_t buf_size, int64_t key_idx) {

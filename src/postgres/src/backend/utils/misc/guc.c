@@ -2027,6 +2027,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_pushdown_is_not_null", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("If true, IS NOT NULL is pushed down."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_pushdown_is_not_null,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_upgrade_mode", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enter a special mode designed specifically for YSQL cluster upgrades. "
 						 "Allows creating new system tables with given relation and type OID. "
@@ -2119,6 +2130,15 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&yb_enable_expression_pushdown,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"yb_enable_distinct_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Push supported DISTINCT operations to DocDB."),
+			NULL
+		},
+		&yb_enable_distinct_pushdown,
 		true,
 		NULL, NULL, NULL
 	},
@@ -2217,6 +2237,17 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_disable_wait_for_backends_catalog_version,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_is_client_ysqlconnmgr", PGC_SU_BACKEND, CUSTOM_OPTIONS,
+			gettext_noop("Identifies that connection is created by "
+						"Ysql Connection Manager."),
+			NULL
+		},
+		&yb_is_client_ysqlconnmgr,
 		false,
 		NULL, NULL, NULL
 	},
@@ -3691,7 +3722,16 @@ static struct config_real ConfigureNamesReal[] =
 		DEFAULT_PARALLEL_SETUP_COST, 0, DBL_MAX,
 		NULL, NULL, NULL
 	},
-
+	{
+		{"yb_network_fetch_cost", PGC_USERSET, QUERY_TUNING_COST,
+			gettext_noop("Sets the planner's estimate of the fixed cost of "
+							 "fetching a batch of rows from a YB relation"),
+			NULL
+		},
+		&yb_network_fetch_cost,
+		YB_DEFAULT_FETCH_COST, 0, DBL_MAX,
+		NULL, NULL, NULL
+	},
 	{
 		{"jit_above_cost", PGC_USERSET, QUERY_TUNING_COST,
 			gettext_noop("Perform JIT compilation if query is more expensive."),
@@ -4843,7 +4883,7 @@ static struct config_enum ConfigureNamesEnum[] =
 		{"yb_pg_batch_detection_mechanism", PGC_SIGHUP, COMPAT_OPTIONS_CLIENT,
 			gettext_noop("The drivers use message protocol to communicate "
 						 "with PG. The driver does not inform PG in advance "
-						 "about a Batch execution. We need to identify a batch " 
+						 "about a Batch execution. We need to identify a batch "
 						 "because in that case the single-shard optimization "
 						 "should be disabled. Postgres drivers pipeline "
 						 "messages and we exploit this to peek the message "
@@ -5355,7 +5395,13 @@ add_placeholder_variable(const char *name, int elevel)
 static struct config_generic *
 find_option(const char *name, bool create_placeholders, int elevel)
 {
+#ifdef ADDRESS_SANITIZER
+	struct config_generic config_placeholder;
+	config_placeholder.name = name;
+	const char **key = &config_placeholder.name;
+#else
 	const char **key = &name;
+#endif
 	struct config_generic **res;
 	int			i;
 
@@ -8816,7 +8862,13 @@ static void
 define_custom_variable(struct config_generic *variable)
 {
 	const char *name = variable->name;
+#ifdef ADDRESS_SANITIZER
+	struct config_generic config_placeholder;
+	config_placeholder.name = name;
+	const char **nameAddr = &config_placeholder.name;
+#else
 	const char **nameAddr = &name;
+#endif
 	struct config_string *pHolder;
 	struct config_generic **res;
 

@@ -51,7 +51,8 @@ export const XClusterConfigAction = {
   RESTART: 'restart',
   DELETE: 'delete',
   ADD_TABLE: 'addTable',
-  EDIT: 'edit'
+  EDIT: 'edit',
+  DB_SYNC: 'dbSync'
 } as const;
 export type XClusterConfigAction = typeof XClusterConfigAction[keyof typeof XClusterConfigAction];
 
@@ -60,6 +61,11 @@ export const XClusterConfigType = {
   TXN: 'Txn'
 } as const;
 export type XClusterConfigType = typeof XClusterConfigType[keyof typeof XClusterConfigType];
+
+export const XClusterConfigTypeLabel = {
+  [XClusterConfigType.BASIC]: 'Basic',
+  [XClusterConfigType.TXN]: 'Transactional'
+} as const;
 
 //------------------------------------------------------------------------------------
 // Table Selection Constants
@@ -187,7 +193,8 @@ export const XClusterModalName = {
   RESTART_CONFIG: 'restartXClusterConfigModal',
   ADD_TABLE_TO_CONFIG: 'addTablesToXClusterConfigModal',
   REMOVE_TABLE_FROM_CONFIG: 'removeTableFromXClusterConfigModal',
-  TABLE_REPLICATION_LAG_GRAPH: 'tableReplicationLagGraphModal'
+  TABLE_REPLICATION_LAG_GRAPH: 'tableReplicationLagGraphModal',
+  SYNC_XCLUSTER_CONFIG_WITH_DB: 'syncXClusterConfigWithDB'
 } as const;
 
 /**

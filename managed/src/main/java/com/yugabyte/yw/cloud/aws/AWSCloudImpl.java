@@ -79,18 +79,22 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
+import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NodeID;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -106,6 +110,14 @@ import play.libs.Json;
 
 // TODO - Better handling of UnauthorizedOperation. Ideally we should trigger alert so that
 public class AWSCloudImpl implements CloudAPI {
+
+  EncryptionAtRestManager keyManager;
+
+  @Inject
+  public AWSCloudImpl(EncryptionAtRestManager keyManager) {
+    this.keyManager = keyManager;
+  }
+
   public static final Logger LOG = LoggerFactory.getLogger(AWSCloudImpl.class);
 
   public AmazonElasticLoadBalancing getELBClient(Provider provider, String regionCode) {
@@ -205,7 +217,9 @@ public class AWSCloudImpl implements CloudAPI {
     try {
       if (config.has(AwsKmsAuthConfigField.CMK_ID.fieldName)) {
         try {
-          KeyProvider.AWS.getServiceInstance().refreshKmsWithService(null, config);
+          keyManager
+              .getServiceInstance(KeyProvider.AWS.toString())
+              .refreshKmsWithService(null, config);
           LOG.info("Validated AWS KMS creds for customer '{}'", customerUUID);
           return true;
         } catch (Exception e) {
@@ -412,7 +426,6 @@ public class AWSCloudImpl implements CloudAPI {
    * @param provider the cloud provider bean for the AWS provider.
    * @param regionCode the region code.
    * @param lbName the load balancer name.
-   * @param nodeNames the DB node names.
    * @param nodeIDs the DB node IDs (name, uuid).
    * @param protocol the listening protocol.
    * @param ports the listening ports enabled (YSQL, YCQL, YEDIS).
@@ -422,8 +435,7 @@ public class AWSCloudImpl implements CloudAPI {
       Provider provider,
       String regionCode,
       String lbName,
-      List<String> nodeNames,
-      List<NodeID> nodeIDs,
+      Map<AvailabilityZone, Set<NodeID>> azToNodeIDs,
       String protocol,
       List<Integer> ports) {
     try {
@@ -431,7 +443,9 @@ public class AWSCloudImpl implements CloudAPI {
       AmazonElasticLoadBalancing lbClient = getELBClient(provider, regionCode);
       AmazonEC2 ec2Client = getEC2Client(provider, regionCode);
       // Get EC2 node instances
-      List<String> instanceIDs = getInstanceIDs(ec2Client, nodeNames, nodeIDs);
+      List<NodeID> nodeIDs =
+          azToNodeIDs.values().stream().flatMap(Collection::stream).collect(Collectors.toList());
+      List<String> instanceIDs = getInstanceIDs(ec2Client, nodeIDs);
       // Check for listeners on each enabled port
       for (int port : ports) {
         Listener listener = getListenerByPort(lbClient, lbName, port);
@@ -623,15 +637,15 @@ public class AWSCloudImpl implements CloudAPI {
    * uuid.
    *
    * @param ec2Client the AWS EC2 client for API calls.
-   * @param nodeNames the list of node names.
    * @param nodeIDs the node IDs (name, uuid).
    * @return a list. The node instance IDs.
    */
-  private List<String> getInstanceIDs(
-      AmazonEC2 ec2Client, List<String> nodeNames, List<NodeID> nodeIDs) throws Exception {
-    if (CollectionUtils.isEmpty(nodeNames) || CollectionUtils.isEmpty(nodeIDs)) {
+  private List<String> getInstanceIDs(AmazonEC2 ec2Client, List<NodeID> nodeIDs) throws Exception {
+    if (CollectionUtils.isEmpty(nodeIDs)) {
       return new ArrayList<>();
     }
+    List<String> nodeNames =
+        nodeIDs.stream().map(nodeId -> nodeId.getName()).collect(Collectors.toList());
     // Get instances by node name
     Filter filterName = new Filter("tag:Name").withValues(nodeNames);
     List<String> states = ImmutableList.of("pending", "running", "stopping", "stopped");

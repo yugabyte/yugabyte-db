@@ -98,12 +98,12 @@ void AddTableToXClusterTask::RunInternal() {
     return;
   }
 
-  replication_group_ =
+  replication_group_id_ =
       VERIFY_RESULT_AND_FAIL_TASK(catalog_manager_->GetIndexesTableReplicationGroup(*table_info_));
-  DCHECK(!replication_group_.empty());
+  DCHECK(!replication_group_id_.empty());
 
   FAIL_TASK_AND_RETURN_IF_NOT_OK(catalog_manager_->BootstrapTable(
-      replication_group_,
+      replication_group_id_,
       *table_info_,
       std::bind(&AddTableToXClusterTask::BootstrapTableCallback, shared_from(this), _1)));
 }
@@ -125,11 +125,11 @@ void AddTableToXClusterTask::BootstrapTableCallback(
 void AddTableToXClusterTask::AddTableToReplicationGroup(
     TableId producer_table_id, std::string bootstrap_id) {
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "Adding table to xcluster universe replication "
-                                 << replication_group_ << " with bootstrap_id " << bootstrap_id
+                                 << replication_group_id_ << " with bootstrap_id " << bootstrap_id
                                  << " and bootstrap_time " << bootstrap_time_;
   AlterUniverseReplicationRequestPB alter_universe_req;
   AlterUniverseReplicationResponsePB alter_universe_resp;
-  alter_universe_req.set_producer_id(replication_group_);
+  alter_universe_req.set_producer_id(replication_group_id_.ToString());
   alter_universe_req.add_producer_table_ids_to_add(producer_table_id);
   alter_universe_req.add_producer_bootstrap_ids_to_add(bootstrap_id);
   FAIL_TASK_AND_RETURN_IF_NOT_OK(catalog_manager_->AlterUniverseReplication(
@@ -148,7 +148,7 @@ void AddTableToXClusterTask::AddTableToReplicationGroup(
 void AddTableToXClusterTask::WaitForSetupUniverseReplicationToFinish() {
   IsSetupUniverseReplicationDoneRequestPB check_req;
   IsSetupUniverseReplicationDoneResponsePB check_resp;
-  check_req.set_producer_id(replication_group_);
+  check_req.set_producer_id(replication_group_id_.ToString());
   auto status = catalog_manager_->IsSetupUniverseReplicationDone(
       &check_req, &check_resp, /* RpcContext */ nullptr);
   if (status.ok() && check_resp.has_error()) {

@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.AlertConfigFormData;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
@@ -96,6 +97,16 @@ public class UniverseActionsHandler {
           }
           break;
         case DISABLE:
+          EncryptionAtRestConfig encryptionAtRestConfig =
+              universe.getUniverseDetails().encryptionAtRestConfig;
+          if (encryptionAtRestConfig.kmsConfigUUID != null) {
+            LOG.debug(
+                "Received KMS config UUID {}, "
+                    + "but updating KMS config UUID {} from universe details.",
+                taskParams.encryptionAtRestConfig.kmsConfigUUID,
+                encryptionAtRestConfig.kmsConfigUUID);
+            taskParams.encryptionAtRestConfig.kmsConfigUUID = encryptionAtRestConfig.kmsConfigUUID;
+          }
           customerTaskType = CustomerTask.TaskType.DisableEncryptionAtRest;
           break;
         default:
@@ -235,6 +246,7 @@ public class UniverseActionsHandler {
             mapper.writeValueAsString(universe.getUniverseDetails()), ResumeUniverse.Params.class);
     // There is no staleness of a resume request. Perform it even if the universe has changed.
     taskParams.expectedUniverseVersion = -1;
+    taskParams.customerUUID = customer.getUuid();
 
     // Submit the task to resume the universe.
     TaskType taskType = TaskType.ResumeUniverse;
@@ -266,6 +278,15 @@ public class UniverseActionsHandler {
 
   public UUID updateLoadBalancerConfig(
       Customer customer, Universe universe, UniverseDefinitionTaskParams taskParams) {
+    if (!taskParams.getUniverseUUID().equals(universe.getUniverseUUID())) {
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST,
+          "Invalid Universe UUID in json: "
+              + taskParams.getUniverseUUID().toString()
+              + " Expected UUID: "
+              + universe.getUniverseUUID().toString());
+    }
+
     LOG.info(
         "Update load balancer config, universe: {} [ {} ] ",
         universe.getName(),

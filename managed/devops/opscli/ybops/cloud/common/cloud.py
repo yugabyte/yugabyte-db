@@ -685,7 +685,7 @@ class AbstractCloud(AbstractCommandParser):
         logging.error("[app] Start instance {} exceeded maxRetries!".format(instance_name))
         raise YBOpsRecoverableError(
             "Cannot reach the instance {} after its start at ports {}".format(
-                instance_name, str(server_port))
+                instance_name, str(server_ports))
         )
 
     def wait_for_startup_script(self, args, connect_options):

@@ -53,7 +53,7 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
     XClusterYsqlTestBase::SetUp();
     ASSERT_OK(SET_FLAG(vmodule, "backfill_index*=4,xrepl*=4,xcluster*=4,add_table*=4,catalog*=4"));
 
-    FLAGS_TEST_user_ddl_operation_timeout_sec = NonTsanVsTsan(60, 90);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_user_ddl_operation_timeout_sec) = NonTsanVsTsan(60, 90);
 
     ASSERT_OK(Initialize(3 /* replication_factor */));
 
@@ -73,11 +73,11 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
     ASSERT_OK(producer_client()->OpenTable(yb_table_name, &producer_table));
     namespace_id_ = producer_table->name().namespace_id();
 
-    ASSERT_OK(SetupUniverseReplication(kUniverseId, {producer_table},
-              {LeaderOnly::kTrue, Transactional::kTrue}));
+    ASSERT_OK(SetupUniverseReplication(
+        kReplicationGroupId, {producer_table}, {LeaderOnly::kTrue, Transactional::kTrue}));
     // Verify that universe was setup on consumer.
     master::GetUniverseReplicationResponsePB resp;
-    ASSERT_OK(VerifyUniverseReplication(kUniverseId, &resp));
+    ASSERT_OK(VerifyUniverseReplication(kReplicationGroupId, &resp));
     ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
     ASSERT_OK(WaitForValidSafeTimeOnAllTServers(namespace_id_));
 
@@ -266,14 +266,16 @@ TEST_F(XClusterYsqlIndexTest, FailedCreateIndex) {
   ASSERT_OK(producer_conn_->Execute(kCreateIndexStmt));
 
   // Create index while replication is paused should fail.
-  ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, false));
+  ASSERT_OK(
+      ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, false));
   ASSERT_NOK(consumer_conn_->Execute(kCreateIndexStmt));
-  ASSERT_OK(ToggleUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, true));
+  ASSERT_OK(
+      ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, true));
 
   // Failure during bootstrap
-  FLAGS_TEST_xcluster_fail_table_create_during_bootstrap = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_table_create_during_bootstrap) = true;
   ASSERT_NOK(consumer_conn_->Execute(kCreateIndexStmt));
-  FLAGS_TEST_xcluster_fail_table_create_during_bootstrap = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_table_create_during_bootstrap) = false;
 
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(ValidateRows());

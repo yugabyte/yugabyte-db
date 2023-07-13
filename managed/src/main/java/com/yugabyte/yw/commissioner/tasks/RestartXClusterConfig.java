@@ -5,13 +5,11 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
 import com.yugabyte.yw.common.XClusterUniverseService;
-import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
-import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
-import java.util.Collections;
 import java.util.Set;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -46,11 +44,6 @@ public class RestartXClusterConfig extends EditXClusterConfig {
         xClusterConfig.updateTableType(taskParams().getTableInfoList());
 
         // Do not skip bootstrapping for the following tables. It will check if it is required.
-        if (xClusterConfig.getType().equals(ConfigType.Txn)) {
-          xClusterConfig.updateNeedBootstrapForTables(
-              getTableIds(Collections.singleton(taskParams().getTxnTableInfo())),
-              true /* needBootstrap */);
-        }
         if (taskParams().getBootstrapParams() != null) {
           xClusterConfig.updateNeedBootstrapForTables(
               taskParams().getBootstrapParams().tables, true /* needBootstrap */);
@@ -69,8 +62,7 @@ public class RestartXClusterConfig extends EditXClusterConfig {
         log.info("isRestartWholeConfig is {}", isRestartWholeConfig);
         if (isRestartWholeConfig) {
           createXClusterConfigSetStatusForTablesTask(
-              getTableIds(taskParams().getTableInfoList(), taskParams().getTxnTableInfo()),
-              XClusterTableConfig.Status.Updating);
+              getTableIds(taskParams().getTableInfoList()), XClusterTableConfig.Status.Updating);
 
           // Delete the replication group.
           createDeleteXClusterConfigSubtasks(
@@ -79,15 +71,13 @@ public class RestartXClusterConfig extends EditXClusterConfig {
           createXClusterConfigSetStatusTask(XClusterConfig.XClusterConfigStatusType.Updating);
 
           createXClusterConfigSetStatusForTablesTask(
-              getTableIds(taskParams().getTableInfoList(), taskParams().getTxnTableInfo()),
-              XClusterTableConfig.Status.Updating);
+              getTableIds(taskParams().getTableInfoList()), XClusterTableConfig.Status.Updating);
 
           addSubtasksToCreateXClusterConfig(
               sourceUniverse,
               targetUniverse,
               taskParams().getTableInfoList(),
-              taskParams().getMainTableIndexTablesMap(),
-              taskParams().getTxnTableInfo());
+              taskParams().getMainTableIndexTablesMap());
         } else {
           createXClusterConfigSetStatusForTablesTask(tableIds, XClusterTableConfig.Status.Updating);
 
@@ -101,8 +91,7 @@ public class RestartXClusterConfig extends EditXClusterConfig {
               targetUniverse,
               taskParams().getTableInfoList(),
               taskParams().getMainTableIndexTablesMap(),
-              tableIds,
-              taskParams().getTxnTableInfo());
+              tableIds);
         }
 
         createXClusterConfigSetStatusTask(XClusterConfig.XClusterConfigStatusType.Running)
@@ -140,10 +129,8 @@ public class RestartXClusterConfig extends EditXClusterConfig {
           tablesInUpdatingStatus, XClusterTableConfig.Status.Failed);
       // Set backup and restore status to failed and alter load balanced.
       boolean isLoadBalancerAltered = false;
-      for (Backup backup : backupList) {
-        if (backup.getBackupInfo().alterLoadBalancer) {
-          isLoadBalancerAltered = true;
-        }
+      for (Restore restore : restoreList) {
+        isLoadBalancerAltered = isLoadBalancerAltered || restore.isAlterLoadBalancer();
       }
       handleFailedBackupAndRestore(
           backupList, restoreList, false /* isAbort */, isLoadBalancerAltered);

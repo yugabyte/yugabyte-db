@@ -9,9 +9,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/licensing/pubkey"
-	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
 
 // ErrorInvalidLicenseFormat for incorrectly formatted license files

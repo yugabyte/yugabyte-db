@@ -16,7 +16,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -50,7 +50,7 @@ import static org.yb.AssertionWrappers.*;
 // CREATE INDEX airports_idx3 ON airports((iso_region, elevation_ft) HASH,
 //                                        coordinates, ident, name);
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgRegressHashIndex extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgRegressHashIndex.class);
 
@@ -87,14 +87,14 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                        "  WHERE iso_region = 'US-CA'",
                                        -1 /* expectedRowCount */,
                                        execCount);
-      perfAssertLessThan(scanTime * 10, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       scanTime = timeQueryWithRowCount(stmt,
                                        "SELECT * FROM airports" +
                                        "  WHERE iso_region = 'US-CA' LIMIT 1",
                                        1 /* expectedRowCount */,
                                        execCount);
-      perfAssertLessThan(scanTime * 20, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       scanTime = timeQueryWithRowCount(stmt,
                                        "SELECT * FROM airports" +
@@ -102,7 +102,7 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                         "  ORDER BY ident LIMIT 1",
                                         1 /* expectedRowCount */,
                                         execCount);
-      perfAssertLessThan(scanTime * 25, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       scanTime = timeQueryWithRowCount(stmt,
                                        "SELECT * FROM airports" +
@@ -110,7 +110,7 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                        "  ORDER BY ident ASC LIMIT 1",
                                        1 /* expectedRowCount */,
                                        execCount);
-      perfAssertLessThan(scanTime * 25, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       LOG.info("Reverse scan is expected to be slower");
       scanTime = timeQueryWithRowCount(stmt,
@@ -119,7 +119,7 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                         "  ORDER BY ident DESC LIMIT 1",
                                         1 /* expectedRowCount */,
                                         execCount);
-      perfAssertLessThan(scanTime * 10, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       scanTime = timeQueryWithRowCount(stmt,
                                        "SELECT * FROM airports" +
@@ -127,21 +127,21 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                        "  ORDER BY iso_region, ident LIMIT 1",
                                        1 /* expectedRowCount */,
                                        execCount);
-      perfAssertLessThan(scanTime * 25, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       scanTime = timeQueryWithRowCount(stmt,
                                        "SELECT gps_code FROM airports" +
                                        "  WHERE iso_region = 'US-CA' AND ident >= '4' LIMIT 2",
                                        2 /* expectedRowCount */,
                                        execCount);
-      perfAssertLessThan(scanTime * 25, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       long opTime = timeQueryWithRowCount(stmt,
                                           "SELECT gps_code FROM airports" +
                                           "  WHERE iso_region = 'US-CA' AND ident < '4' LIMIT 2",
                                           2 /* expectedRowCount */,
                                           execCount);
-      perfAssertLessThan(opTime * 25, fullscanTime);
+      perfAssertLessThan(opTime, fullscanTime);
 
       //--------------------------------------------------------------------------------------------
       // Check elapsed time for various statements that use the following INDEX.
@@ -153,14 +153,14 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                        "  WHERE iso_region = 'US-CA' ORDER BY name DESC LIMIT 1",
                                        1,
                                        execCount);
-      perfAssertLessThan(scanTime * 25, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       scanTime = timeQueryWithRowCount(stmt,
                                        "SELECT gps_code FROM airports" +
                                        "  WHERE iso_region = 'US-CA' ORDER BY name ASC LIMIT 1",
                                        1,
                                        execCount);
-      perfAssertLessThan(scanTime * 25, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       //--------------------------------------------------------------------------------------------
       // Check elapsed time for various statements that use the following INDEX.
@@ -172,14 +172,14 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                        " WHERE iso_region = 'US-CA' ORDER BY gps_code ASC LIMIT 1",
                                        1,
                                        execCount);
-      perfAssertLessThan(scanTime * 15, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       scanTime = timeQueryWithRowCount(stmt,
                                        "SELECT gps_code FROM airports" +
                                        " WHERE iso_region = 'US-CA' ORDER BY gps_code DESC LIMIT 1",
                                        1,
                                        execCount);
-      perfAssertLessThan(scanTime * 15, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       // Forward scan is a lot slower than reverse scan.
       scanTime = timeQueryWithRowCount(stmt,
@@ -187,14 +187,14 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                        "  ORDER BY iso_region, gps_code LIMIT 1",
                                        1,
                                        execCount);
-      perfAssertLessThan(scanTime * 5, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       scanTime = timeQueryWithRowCount(stmt,
                                        "SELECT gps_code FROM airports" +
                                        "  ORDER BY iso_region ASC, gps_code ASC LIMIT 1",
                                        1,
                                        execCount);
-      perfAssertLessThan(scanTime * 5, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       // Reverse scan is faster.
       long reverseTime = timeQueryWithRowCount(stmt,
@@ -202,7 +202,7 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                                "  ORDER BY iso_region DESC, gps_code DESC LIMIT 1",
                                                1,
                                                execCount);
-      perfAssertLessThan(reverseTime * 25, fullscanTime);
+      perfAssertLessThan(reverseTime, fullscanTime);
 
       // The following statement is doing full scan due to ordering in different direction.
       scanTime = timeQueryWithRowCount(stmt,
@@ -225,7 +225,7 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                        "  ORDER BY coordinates, ident, name LIMIT 1",
                                        1,
                                        execCount);
-      perfAssertLessThan(scanTime * 15, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       scanTime = timeQueryWithRowCount(stmt,
                                        "SELECT gps_code FROM airports" +
@@ -233,7 +233,7 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                        "  ORDER BY coordinates ASC, ident, name LIMIT 1",
                                        1,
                                        execCount);
-      perfAssertLessThan(scanTime * 15, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       scanTime = timeQueryWithRowCount(stmt,
                                        "SELECT gps_code FROM airports" +
@@ -241,7 +241,7 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                        "  ORDER BY coordinates DESC, ident DESC, name DESC LIMIT 1",
                                        1,
                                        execCount);
-      perfAssertLessThan(scanTime * 15, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       scanTime = timeQueryWithRowCount(stmt,
                                        "SELECT gps_code FROM airports" +
@@ -249,7 +249,7 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                        "  ORDER BY coordinates, ident, name ASC LIMIT 1",
                                        1,
                                        execCount);
-      perfAssertLessThan(scanTime * 15, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       // This ORDER BY should be HASH + RANGE optimized.
       scanTime = timeQueryWithRowCount(stmt,
@@ -258,7 +258,7 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                        "  ORDER BY coordinates, ident LIMIT 1",
                                        1,
                                        execCount);
-      perfAssertLessThan(scanTime * 15, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       // This ORDER BY should be HASH + RANGE optimized.
       scanTime = timeQueryWithRowCount(stmt,
@@ -267,7 +267,7 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                        "  ORDER BY coordinates LIMIT 1",
                                        1,
                                        execCount);
-      perfAssertLessThan(scanTime * 15, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       // Wrong order direction for name (Must be all ASC or all DESC).
       scanTime = timeQueryWithRowCount(stmt,
@@ -322,7 +322,7 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                        "  ORDER BY coordinates, ident, name LIMIT 1",
                                        1,
                                        execCount);
-      perfAssertLessThan(scanTime * 15, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       scanTime = timeQueryWithRowCount(stmt,
                                        "SELECT * FROM airports" +
@@ -330,7 +330,7 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                        "  ORDER BY coordinates ASC, ident, name LIMIT 1",
                                        1,
                                        execCount);
-      perfAssertLessThan(scanTime * 15, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       scanTime = timeQueryWithRowCount(stmt,
                                        "SELECT * FROM airports" +
@@ -338,7 +338,7 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                        "  ORDER BY coordinates DESC, ident DESC, name DESC LIMIT 1",
                                        1,
                                        execCount);
-      perfAssertLessThan(scanTime * 15, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       scanTime = timeQueryWithRowCount(stmt,
                                        "SELECT * FROM airports" +
@@ -346,7 +346,7 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                        "  ORDER BY coordinates, ident, name ASC LIMIT 1",
                                        1,
                                        execCount);
-      perfAssertLessThan(scanTime * 15, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       // This ORDER BY should be HASH + RANGE optimized.
       scanTime = timeQueryWithRowCount(stmt,
@@ -355,7 +355,7 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                        "  ORDER BY coordinates, ident LIMIT 1",
                                        1,
                                        execCount);
-      perfAssertLessThan(scanTime * 15, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       // This ORDER BY should be HASH + RANGE optimized.
       scanTime = timeQueryWithRowCount(stmt,
@@ -364,7 +364,7 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                        "  ORDER BY coordinates LIMIT 1",
                                        1,
                                        execCount);
-      perfAssertLessThan(scanTime * 15, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       // Wrong order direction for name (Must be all ASC or all DESC).
       scanTime = timeQueryWithRowCount(stmt,
@@ -415,7 +415,7 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                        "  ORDER BY coordinates, ident, name",
                                        -1,
                                        execCount);
-      perfAssertLessThan(scanTime * 10, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       // This ORDER BY should be HASH + RANGE optimized.
       scanTime = timeQueryWithRowCount(stmt,
@@ -424,7 +424,7 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                        "  ORDER BY coordinates, ident",
                                        -1,
                                        execCount);
-      perfAssertLessThan(scanTime * 10, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       // This ORDER BY should be HASH + RANGE optimized.
       scanTime = timeQueryWithRowCount(stmt,
@@ -433,7 +433,7 @@ public class TestPgRegressHashIndex extends BasePgSQLTest {
                                        "  ORDER BY coordinates",
                                        -1,
                                        execCount);
-      perfAssertLessThan(scanTime * 10, fullscanTime);
+      perfAssertLessThan(scanTime, fullscanTime);
 
       // This ORDER BY should not be optimized. Missing hash column.
       scanTime = timeQueryWithRowCount(stmt,

@@ -102,6 +102,9 @@ inline Result<int32_t> GetInt32(PGresult* result, int row, int column) {
   return GetValue<int32_t>(result, row, column);
 }
 
+inline Result<int64_t> GetInt64(PGresult* result, int row, int column) {
+  return GetValue<int64_t>(result, row, column);
+}
 inline Result<std::string> GetString(PGresult* result, int row, int column) {
   return GetValue<std::string>(result, row, column);
 }
@@ -239,6 +242,8 @@ bool HasTransactionError(const Status& status);
 bool IsRetryable(const Status& status);
 
 Result<PGConn> Execute(Result<PGConn> connection, const std::string& query);
+Result<PGConn> SetHighPriTxn(Result<PGConn> connection);
+Result<PGConn> SetLowPriTxn(Result<PGConn> connection);
 
 class PGConnPerf {
  public:

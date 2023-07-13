@@ -81,7 +81,7 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
 
 
   // Test that config.cluster_uuid gets set to the value that we specify through flag cluster_uuid.
-  FLAGS_cluster_uuid = Uuid::Generate().ToString();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cluster_uuid) = Uuid::Generate().ToString();
   ASSERT_OK(mini_master->Start());
   auto master = mini_master->master();
   ASSERT_OK(master->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
@@ -99,7 +99,7 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
   ASSERT_OK(Env::Default()->CreateDir(dir));
   mini_master =
       std::make_unique<MiniMaster>(Env::Default(), dir, AllocateFreePort(), AllocateFreePort(), 0);
-  FLAGS_cluster_uuid = "";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cluster_uuid) = "";
   ASSERT_OK(mini_master->Start());
   master = mini_master->master();
   ASSERT_OK(master->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
@@ -264,15 +264,14 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
   std::shared_ptr<ClusterConfigInfo> config_info(make_shared<ClusterConfigInfo>());
   {
     auto l = config_info->LockForWrite();
-    auto pb = l.mutable_data()
-                  ->pb.mutable_replication_info()
-                  ->mutable_live_replicas()
-                  ->add_placement_blocks();
+    auto* live_replicas = l.mutable_data()->pb.mutable_replication_info()->mutable_live_replicas();
+    auto pb = live_replicas->add_placement_blocks();
     auto cloud_info = pb->mutable_cloud_info();
     cloud_info->set_placement_cloud("cloud");
     cloud_info->set_placement_region("region");
     cloud_info->set_placement_zone("zone");
     pb->set_min_num_replicas(100);
+    live_replicas->set_num_replicas(100);
 
     // Set it in the sys_catalog_. It already has the default entry, so we use update.
     ASSERT_OK(sys_catalog_->Upsert(kLeaderTerm, config_info.get()));
@@ -287,14 +286,13 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
 
   {
     auto l = config_info->LockForWrite();
-    auto pb = l.mutable_data()
-                  ->pb.mutable_replication_info()
-                  ->mutable_live_replicas()
-                  ->mutable_placement_blocks(0);
+    auto* live_replicas = l.mutable_data()->pb.mutable_replication_info()->mutable_live_replicas();
+    auto pb = live_replicas->mutable_placement_blocks(0);
     auto cloud_info = pb->mutable_cloud_info();
     // Update some config_info info.
     cloud_info->set_placement_cloud("cloud2");
     pb->set_min_num_replicas(200);
+    live_replicas->set_num_replicas(100);
     // Update it in the sys_catalog_.
     ASSERT_OK(sys_catalog_->Upsert(kLeaderTerm, config_info.get()));
     l.Commit();
@@ -318,11 +316,10 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
   // Update a field in the previously used in memory state and set through proper API.
   {
     auto l = config_info->LockForWrite();
-    auto pb = l.mutable_data()
-                  ->pb.mutable_replication_info()
-                  ->mutable_live_replicas()
-                  ->mutable_placement_blocks(0);
+    auto* live_replicas = l.mutable_data()->pb.mutable_replication_info()->mutable_live_replicas();
+    auto pb = live_replicas->mutable_placement_blocks(0);
     pb->set_min_num_replicas(300);
+    live_replicas->set_num_replicas(300);
 
     ChangeMasterClusterConfigRequestPB req;
     *req.mutable_cluster_config() = l.mutable_data()->pb;

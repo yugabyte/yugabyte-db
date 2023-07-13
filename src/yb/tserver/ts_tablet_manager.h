@@ -172,6 +172,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
     return admin_triggered_compaction_pool_.get();
   }
   ThreadPool* waiting_txn_pool() const { return waiting_txn_pool_.get(); }
+  ThreadPool* flush_retryable_requests_pool() const { return flush_retryable_requests_pool_.get(); }
 
   // Create a new tablet and register it with the tablet manager. The new tablet
   // is persisted on disk and opened before this method returns.
@@ -273,7 +274,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Adjust the max number of tablets that will be included in a single report.
   // This is normally controlled by a master-configured GFLAG.
   void SetReportLimit(int32_t limit) {
-    std::lock_guard<RWMutex> write_lock(mutex_);
+    std::lock_guard write_lock(mutex_);
     report_limit_ = limit;
   }
   int32_t GetReportLimit() {
@@ -287,6 +288,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   TabletPeers GetTabletPeersWithTableId(const TableId& table_id) const;
   void GetTabletPeersUnlocked(TabletPeers* tablet_peers) const REQUIRES_SHARED(mutex_);
   void PreserveLocalLeadersOnly(std::vector<const TabletId*>* tablet_ids) const;
+
+  // Get TabletPeers for all status tablets hosted on this server.
+  TabletPeers GetStatusTabletPeers();
 
   // Callback used for state changes outside of the control of TsTabletManager, such as a consensus
   // role change. They are applied asynchronously internally.
@@ -369,6 +373,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Trigger admin full compactions concurrently on the provided tablets.
   // should_wait determines whether this function is asynchronous or not.
   Status TriggerAdminCompaction(const TabletPtrs& tablets, bool should_wait);
+
+  // Create Metadata cache atomically and return the metadata cache object.
+  client::YBMetaDataCache* CreateYBMetaDataCache();
+
+  // Get the metadata cache object.
+  client::YBMetaDataCache* YBMetaDataCache() const;
 
  private:
   FRIEND_TEST(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered);
@@ -618,6 +628,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Thread pool for read ops, that are run in parallel, shared between all tablets.
   std::unique_ptr<ThreadPool> read_pool_;
 
+  // Thread pool for flushing retryable requests.
+  std::unique_ptr<ThreadPool> flush_retryable_requests_pool_;
+
   // Thread pool for manually triggering full compactions for tablets, either via schedule
   // of tablets created from a split.
   // This is used by a tablet method to schedule compactions on the child tablets after
@@ -671,9 +684,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   int64_t snapshot_schedules_version_ = 0;
   HybridTime last_restorations_update_ht_;
 
-  // Background task for periodically scheduling major compactions.
-  std::unique_ptr<BackgroundTask> scheduled_full_compaction_bg_task_;
-
   // Background task for periodically flushing the superblocks.
   std::unique_ptr<BackgroundTask> superblock_flush_bg_task_;
 
@@ -681,6 +691,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   std::shared_mutex service_registration_mutex_;
   std::unordered_map<StatefulServiceKind, ConsensusChangeCallback> service_consensus_change_cb_;
+
+  // Metadata cache used by write operations for index requests processing.
+  simple_spinlock metadata_cache_spinlock_;
+  std::shared_ptr<client::YBMetaDataCache> metadata_cache_holder_;
+  std::atomic<client::YBMetaDataCache*> metadata_cache_;
 
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };
@@ -717,7 +732,8 @@ Status DeleteTabletData(const scoped_refptr<tablet::RaftGroupMetadata>& meta,
                         tablet::TabletDataState delete_type,
                         const std::string& uuid,
                         const yb::OpId& last_logged_opid,
-                        TSTabletManager* ts_manager = nullptr);
+                        TSTabletManager* ts_manager = nullptr,
+                        FsManager* fs_manager = nullptr);
 
 // Return Status::IllegalState if leader_term < last_logged_term.
 // Helper function for use with remote bootstrap.

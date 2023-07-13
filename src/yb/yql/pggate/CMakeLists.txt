@@ -37,6 +37,8 @@ set(PGGATE_SRCS
     pg_dml.cc
     pg_dml_write.cc
     pg_dml_read.cc
+    pg_function.cc
+    pg_function_helpers.cc
     pg_type.cc
     pg_select.cc
     pg_select_index.cc
@@ -50,7 +52,8 @@ set(PGGATE_SRCS
     pg_memctx.cc
     pg_callbacks.cc
     pg_tools.cc
-    pg_sys_table_prefetcher.cc)
+    pg_sys_table_prefetcher.cc
+    pg_doc_metrics.cc)
 
 ADD_YB_LIBRARY(yb_pggate_flags
                SRCS pggate_flags.cc

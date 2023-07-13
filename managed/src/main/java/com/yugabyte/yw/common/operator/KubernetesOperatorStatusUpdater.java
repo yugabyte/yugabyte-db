@@ -9,9 +9,12 @@ import io.fabric8.kubernetes.api.model.ObjectReference;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
+import io.yugabyte.operator.v1alpha1.*;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,8 +51,16 @@ public class KubernetesOperatorStatusUpdater {
           LOG.error("YBUniverse {} no longer exists", universeName);
           return;
         }
+        List<String> cqlEndpoints = Arrays.asList(u.getYQLServerAddresses().split(","));
+        List<String> sqlEndpoints = Arrays.asList(u.getYSQLServerAddresses().split(","));
         YBUniverseStatus ybUniverseStatus = new YBUniverseStatus();
         ybUniverseStatus.setUniverseStatus(status);
+        ybUniverseStatus.setCqlEndpoints(cqlEndpoints);
+        ybUniverseStatus.setSqlEndpoints(sqlEndpoints);
+
+        ybUniverseStatus.setUniverseStatus(status);
+        ybUniverseStatus.setCqlEndpoints(cqlEndpoints);
+        ybUniverseStatus.setSqlEndpoints(sqlEndpoints);
         LOG.info("Universe status is: {}", status);
         ybUniverse.setStatus(ybUniverseStatus);
         client

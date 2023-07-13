@@ -97,7 +97,8 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     bool is_forward_scan,
     const DocKey& lower_doc_key,
     const DocKey& upper_doc_key,
-    const size_t prefix_length)
+    const size_t prefix_length,
+    AddHighestToUpperDocKey add_highest_to_upper_doc_key)
     : PgsqlScanSpec(
           schema, is_forward_scan, query_id,
           condition ? std::make_unique<qlexpr::QLScanRange>(schema, *condition) : nullptr,
@@ -110,6 +111,9 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
       lower_doc_key_(lower_doc_key.Encode()),
       upper_doc_key_(upper_doc_key.Encode()) {
+  if (add_highest_to_upper_doc_key) {
+    upper_doc_key_.AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType::kHighest);
+  }
 
   if (!hashed_components_->empty() && schema.num_hash_key_columns() > 0) {
     options_ = std::make_shared<std::vector<qlexpr::OptionList>>(schema.num_dockey_components());
@@ -247,7 +251,7 @@ void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
         // Push them into the options groups and options indexes as hybrid scan utilizes to match
         // target elements with their corresponding columns.
         int start_range_col_idx = 0;
-        ColumnListVector col_idxs;
+        qlexpr::ColumnListVector col_idxs;
         options_groups_.BeginNewGroup();
 
         for (const auto& elem : lhs.tuple().elems()) {
@@ -306,8 +310,8 @@ void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
             reverse.push_back(get_scan_direction(col_idxs[i]));
           }
 
-          const auto sorted_options =
-              GetTuplesSortedByOrdering(options, schema(), is_forward_scan(), col_idxs);
+          const auto sorted_options = qlexpr::GetTuplesSortedByOrdering(
+              options, schema(), is_forward_scan(), col_idxs);
 
           // Step 3: Add the sorted options into the options_ vector for HybridScan to use them to
           // perform seeks and nexts.

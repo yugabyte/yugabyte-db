@@ -18,6 +18,7 @@
 #include "yb/common/schema.h"
 
 #include "yb/dockv/pg_row.h"
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/gutil/singleton.h"
 
@@ -118,7 +119,7 @@ const YBCPgTypeEntity* DocPgGetTypeEntity(YbgTypeDesc pg_type) {
     return Singleton<DocPgTypeAnalyzer>::get()->GetTypeEntity(pg_type.type_id);
 }
 
-Status DocPgAddVarRef(const ColumnId& column_id,
+Status DocPgAddVarRef(size_t column_idx,
                       int32_t attno,
                       int32_t typid,
                       int32_t typmod,
@@ -128,10 +129,13 @@ Status DocPgAddVarRef(const ColumnId& column_id,
     VLOG(1) << "Attribute " << attno << " is already processed";
     return Status::OK();
   }
-  const YBCPgTypeEntity *arg_type = DocPgGetTypeEntity({typid, typmod});
   var_map->emplace(std::piecewise_construct,
-                   std::forward_as_tuple(attno),
-                   std::forward_as_tuple(column_id.rep(), arg_type, typmod));
+                   std::tuple(attno),
+                   std::tuple(DocPgVarRef {
+                     .var_col_idx = column_idx,
+                     .var_type = DocPgGetTypeEntity({typid, typmod}),
+                     .var_type_attrs = {typmod},
+                   }));
   VLOG(1) << "Attribute " << attno << " has been processed";
   return Status::OK();
 }
@@ -147,9 +151,11 @@ Status DocPgPrepareExpr(const std::string& expr_str,
     int32_t typmod;
     PG_RETURN_NOT_OK(YbgExprType(*expr, &typid));
     PG_RETURN_NOT_OK(YbgExprTypmod(*expr, &typmod));
-    YbgTypeDesc pg_arg_type = {typid, typmod};
-    const YBCPgTypeEntity *arg_type = DocPgGetTypeEntity(pg_arg_type);
-    *ret_type = DocPgVarRef(0, arg_type, typmod);
+    *ret_type = DocPgVarRef {
+      .var_col_idx = dockv::ReaderProjection::kNotFoundIndex,
+      .var_type = DocPgGetTypeEntity({typid, typmod}),
+      .var_type_attrs = {typmod},
+    };
     VLOG(1) << "Processed expression return type";
   }
   return Status::OK();
@@ -192,10 +198,8 @@ Status DocPgPrepareExprCtx(const dockv::PgTableRow& table_row,
                            YbgExprContext expr_ctx) {
   PG_RETURN_NOT_OK(YbgExprContextReset(expr_ctx));
   // Set the column values (used to resolve scan variables in the expression).
-  for (auto it = var_map.begin(); it != var_map.end(); it++) {
-    const int& attno = it->first;
-    const DocPgVarRef& arg_ref = it->second;
-    auto val = table_row.GetValueByColumnId(arg_ref.var_colid);
+  for (const auto& [attno, arg_ref] : var_map) {
+    auto val = table_row.GetValueByIndex(arg_ref.var_col_idx);
     uint64_t datum = 0;
     const bool is_null = !val;
     if (!is_null) {

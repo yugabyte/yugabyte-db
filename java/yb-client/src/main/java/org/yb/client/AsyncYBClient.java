@@ -61,7 +61,6 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.epoll.EpollChannelOption;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
@@ -103,6 +102,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import javax.annotation.Nullable;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
@@ -430,6 +430,32 @@ public class AsyncYBClient implements AutoCloseable {
     return d;
   }
 
+  public Deferred<CreateCDCStreamResponse> createCDCStream(YBTable table,
+                                                           String nameSpaceName,
+                                                           String format,
+                                                           String checkpointType,
+                                                           String recordType,
+                                                           CommonTypes.YQLDatabase dbType) {
+    checkIsClosed();
+    CreateCDCStreamRequest rpc = new CreateCDCStreamRequest(table,
+      table.getTableId(),
+      nameSpaceName,
+      format,
+      checkpointType,
+      recordType,
+      dbType);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    Deferred<CreateCDCStreamResponse> d = rpc.getDeferred().addErrback(
+      new Callback<Object, Object>() {
+        @Override
+        public Object call(Object o) throws Exception {
+          return o;
+        }
+      });
+    sendRpcToTablet(rpc);
+    return d;
+  }
+
   /**
    * Get changes for a given tablet and stream.
    * @param table the table to get changes for.
@@ -460,6 +486,13 @@ public class AsyncYBClient implements AutoCloseable {
       needSchemaInfo, null, -1);
   }
 
+  public Deferred<GetChangesResponse> getChangesCDCSDK(YBTable table, String streamId,
+      String tabletId, long term, long index, byte[] key, int write_id, long time,
+      boolean needSchemaInfo, CdcSdkCheckpoint explicitCheckpoint, long safeHybridTime) {
+    return getChangesCDCSDK(
+        table, streamId, tabletId, term, index, key, write_id, time, needSchemaInfo, null, -1, 0);
+  }
+
   /**
    * Get changes for a given tablet and stream.
    * @param table the table to get changes for.
@@ -471,18 +504,18 @@ public class AsyncYBClient implements AutoCloseable {
    * @param time the time to start get changes for.
    * @param needSchemaInfo request schema from the response.
    * @param explicitCheckpoint checkpoint works in explicit mode.
+   * @param safeHybridTime safe hybrid time received from the previous get changes call.
+   * @param walSegmentIndex wal segment index received from the previous get changes call.
    * @return a deferred object for the response from server.
    */
   public Deferred<GetChangesResponse> getChangesCDCSDK(YBTable table, String streamId,
-                                                       String tabletId, long term,
-                                                       long index, byte[] key,
-                                                       int write_id, long time,
-                                                       boolean needSchemaInfo,
-                                                       CdcSdkCheckpoint explicitCheckpoint,
-                                                       long safeHybridTime) {
+      String tabletId, long term, long index, byte[] key, int write_id, long time,
+      boolean needSchemaInfo, CdcSdkCheckpoint explicitCheckpoint, long safeHybridTime,
+      int walSegmentIndex) {
     checkIsClosed();
     GetChangesRequest rpc = new GetChangesRequest(table, streamId, tabletId, term, index, key,
-        write_id, time, needSchemaInfo, explicitCheckpoint, table.getTableId(), safeHybridTime);
+        write_id, time, needSchemaInfo, explicitCheckpoint, table.getTableId(), safeHybridTime,
+        walSegmentIndex);
     Deferred<GetChangesResponse> d = rpc.getDeferred();
     d.addErrback(new Callback<Exception, Exception>() {
       @Override
@@ -628,6 +661,28 @@ public class AsyncYBClient implements AutoCloseable {
     Deferred<PromoteAutoFlagsResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
+    return d;
+  }
+
+  /**
+   * Check whether YSQL has finished upgrading.
+   * @param hp the host and port of the tserver.
+   * @param useSingleConnection whether or not to use a single connection.
+   * @return a deferred object containing whether or not YSQL has completed upgrading.
+   */
+  public Deferred<UpgradeYsqlResponse> upgradeYsql(
+      HostAndPort hp,
+      boolean useSingleConnection) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+
+    UpgradeYsqlRequest rpc = new UpgradeYsqlRequest(useSingleConnection);
+    rpc.setTimeoutMillis(defaultOperationTimeoutMs);
+    Deferred<UpgradeYsqlResponse> d = rpc.getDeferred();
+    client.sendRpc(rpc);
     return d;
   }
 
@@ -1066,14 +1121,16 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<SetupUniverseReplicationResponse> setupUniverseReplication(
     String replicationGroupName,
     Map<String, String> sourceTableIdsBootstrapIdMap,
-    Set<CommonNet.HostPortPB> sourceMasterAddresses) {
+    Set<CommonNet.HostPortPB> sourceMasterAddresses,
+    @Nullable Boolean isTransactional) {
     checkIsClosed();
     SetupUniverseReplicationRequest request =
       new SetupUniverseReplicationRequest(
         this.masterTable,
         replicationGroupName,
         sourceTableIdsBootstrapIdMap,
-        sourceMasterAddresses);
+        sourceMasterAddresses,
+        isTransactional);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }
@@ -1397,6 +1454,25 @@ public class AsyncYBClient implements AutoCloseable {
     return sendRpcToTablet(request);
   }
 
+  public Deferred<CreateSnapshotScheduleResponse> createSnapshotSchedule(
+      YQLDatabase databaseType,
+      String keyspaceName,
+      String keyspaceId,
+      long retentionInSecs,
+      long timeIntervalInSecs) {
+    checkIsClosed();
+    CreateSnapshotScheduleRequest request =
+        new CreateSnapshotScheduleRequest(
+            this.masterTable,
+            databaseType,
+            keyspaceName,
+            keyspaceId,
+            retentionInSecs,
+            timeIntervalInSecs);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
   public Deferred<DeleteSnapshotScheduleResponse> deleteSnapshotSchedule(
       UUID snapshotScheduleUUID) {
     checkIsClosed();
@@ -1421,6 +1497,14 @@ public class AsyncYBClient implements AutoCloseable {
     RestoreSnapshotScheduleRequest request =
         new RestoreSnapshotScheduleRequest(this.masterTable, snapshotScheduleUUID,
                                             restoreTimeInMillis);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<ListSnapshotRestorationsResponse> listSnapshotRestorations(UUID restorationUUID) {
+    checkIsClosed();
+    ListSnapshotRestorationsRequest request =
+        new ListSnapshotRestorationsRequest(this.masterTable, restorationUUID);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }
@@ -3546,10 +3630,6 @@ public class AsyncYBClient implements AutoCloseable {
         .option(ChannelOption.TCP_NODELAY, true)
         .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, TCP_CONNECT_TIMEOUT_MILLIS)
         .option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT);
-      if (SystemUtil.IS_LINUX) {
-        // No support for TCP_KEEPIDLE on MacOs
-        bootstrap.option(EpollChannelOption.TCP_KEEPIDLE, TCP_KEEP_IDLE_INTERVALS);
-      }
       return bootstrap;
     }
 
