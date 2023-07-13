@@ -116,7 +116,7 @@ CREATE INDEX idx_users_jsonb_cov ON users((address->>'zip'))
 
 ### Partial index
 
-Partial index is created on a subset of data when you want to restrict index to a specific condition. This is done by using `WHERE` clause in the `CREATE INDEX` syntax as follows:
+A partial index is created on a subset of data when you want to restrict the index to a specific condition. You do this using the `WHERE` clause in the `CREATE INDEX` syntax as follows:
 
 ``` cql
 CREATE INDEX idx_users_jsonb_part ON users (address->>'zip')
