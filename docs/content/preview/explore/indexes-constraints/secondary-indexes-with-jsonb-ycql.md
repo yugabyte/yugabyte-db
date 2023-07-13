@@ -38,7 +38,7 @@ The following section describes secondary indexes with JSONB column in YCQL usin
 
 Secondary indexes in YCQL can be created only on tables with `transaction = {'enabled':'true'}`. This is due to the use of distributed ACID transactions under the hood to maintain the consistency of secondary indexes in YCQL.
 
-Any attempt to create secondary index on a table without `transactions = {'enabled':'true'}` will result in an error.
+Any attempt to create a secondary index on a table without `transactions = {'enabled':'true'}` results in an error.
 
 Create a `users` table that has a JSONB column as follows:
 
