@@ -226,7 +226,38 @@ SELECT COUNT(DISTINCT(tablet_id)) FROM yb_lock_status('yb_lock_tests'::regclass,
                                   WHERE relation = 'yb_lock_tests'::regclass;
 ABORT;
 
+-- Validate attnum
+CREATE TABLE attno_test_table(a int, b int, c int, d int, e int, f int, PRIMARY KEY((e, f) hash, b));
+INSERT INTO attno_test_table VALUES (1,1,1,1,1,1);
+
+-- Because the primary key is on (e,f,b), the first attnum 'a' should be the after the primary key in docdb
+BEGIN; UPDATE attno_test_table SET a = 2 WHERE e = 1 AND f = 1 AND b = 1;
+SELECT l.relation::regclass, a.attname, l.locktype, l.mode, l.hash_cols, l.range_cols, l.attnum, l.column_id
+FROM yb_lock_status(null,null) l LEFT JOIN pg_attribute a ON a.attrelid = l.relation AND a.attnum = l.attnum;
+ABORT;
+
+-- 'c' should be the second non-key column in docdb, and the second attnum
+BEGIN; UPDATE attno_test_table SET c = 2 WHERE e = 1 AND f = 1 AND b = 1;
+SELECT l.relation::regclass, a.attname, l.locktype, l.mode, l.hash_cols, l.range_cols, l.attnum, l.column_id
+FROM yb_lock_status(null,null) l LEFT JOIN pg_attribute a ON a.attrelid = l.relation AND a.attnum = l.attnum;
+ABORT;
+
+ALTER TABLE attno_test_table DROP COLUMN c;
+-- 'd' is the fourth attnum, which should not have changed when we dropped column 'c'
+BEGIN; UPDATE attno_test_table SET d = 2 WHERE e = 1 AND f = 1 AND b = 1;
+SELECT l.relation::regclass, a.attname, l.locktype, l.mode, l.hash_cols, l.range_cols, l.attnum, l.column_id
+FROM yb_lock_status(null,null) l LEFT JOIN pg_attribute a ON a.attrelid = l.relation AND a.attnum = l.attnum;
+ABORT;
+
+ALTER TABLE attno_test_table ADD COLUMN c text;
+-- After re-adding 'c', it should be the last column both in docdb and in pg_attribute
+BEGIN; UPDATE attno_test_table SET c = 'test' WHERE e = 1 AND f = 1 AND b = 1;
+SELECT l.relation::regclass, a.attname, l.locktype, l.mode, l.hash_cols, l.range_cols, l.attnum, l.column_id
+FROM yb_lock_status(null,null) l LEFT JOIN pg_attribute a ON a.attrelid = l.relation AND a.attnum = l.attnum;
+ABORT;
+
 -- Should not see any values
 SELECT * FROM validate_and_return_lock_status(null, null);
 
 -- TODO: Add support for colocated tables
+
