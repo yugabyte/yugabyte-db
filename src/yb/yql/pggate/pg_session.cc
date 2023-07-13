@@ -669,8 +669,6 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     }
   }
   
-  LOG(ERROR) << " QUERY: " << ::yb::pggate::GetDebugQueryString(pg_callbacks_);
-
   pg_client_.PerformAsync(&options, &ops.operations, [promise](const PerformResult& result) {
     promise->set_value(result);
   });

@@ -437,8 +437,6 @@ class PgClient::Impl {
     // Amit: This is probably unnecessary. header_ already contains a call-id.
     req.mutable_options()->mutable_auh_metadata()->set_current_request_id(reinterpret_cast<uint64_t>(&req));
 
-    LOG(ERROR) << " PG_CLIENT_QUERY_ID: " << req.options().auh_metadata().query_id();
-
     if (exchange_) {
       PerformData data(&arena, std::move(*operations), callback);
       ProcessPerformResponse(&data, ExecutePerform(&data, req));

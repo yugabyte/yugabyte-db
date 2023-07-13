@@ -1534,6 +1534,8 @@ pgss_store(const char *query, uint64 queryId,
 			queryObj->queryId = queryId;
 	}
 
+	YBCSetQueryId(queryId);
+
 	/* Set up key for hashtable search */
 	key.userid = GetUserId();
 	key.dbid = MyDatabaseId;
