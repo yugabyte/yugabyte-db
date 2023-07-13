@@ -40,8 +40,6 @@ import {
   fetchRunTimeConfigsKeyInfoResponse,
   getTlsCertificates,
   getTlsCertificatesResponse,
-  insecureLogin,
-  insecureLoginResponse,
   fetchUser,
   fetchUserSuccess,
   fetchUserFailure,
@@ -159,14 +157,6 @@ const mapDispatchToProps = (dispatch) => {
           return dispatch(fetchCustomerTasksSuccess(response.payload));
         } else {
           return dispatch(fetchCustomerTasksFailure(response.payload));
-        }
-      });
-    },
-
-    fetchInsecureLogin: () => {
-      dispatch(insecureLogin()).then((response) => {
-        if (response.payload.status === 200) {
-          dispatch(insecureLoginResponse(response));
         }
       });
     },
