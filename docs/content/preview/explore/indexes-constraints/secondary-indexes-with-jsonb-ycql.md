@@ -99,7 +99,7 @@ You can also use the `EXPLAIN` statement to check if a query uses an index and d
 EXPLAIN SELECT * FROM users WHERE address->>'zip' = '327';
 ```
 
-For additional information, see [EXPLAIN](../../../api/ycql/explain/) statement.
+For additional information, see the [EXPLAIN](../../../api/ycql/explain/) statement.
 
 ## Covering index and Partial index with JSONB column
 
