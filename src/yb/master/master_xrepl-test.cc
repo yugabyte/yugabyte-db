@@ -297,16 +297,6 @@ TEST_F(MasterTestXRepl, TestIsObjectPartOfXRepl) {
   ASSERT_TRUE(ASSERT_RESULT(IsObjectPartOfXRepl(table_id)));
 }
 
-TEST_F(MasterTestXRepl, TestIsObjectPartOfXRepl) {
-  TableId table_id;
-  ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
-
-  CDCStreamId stream_id;
-  FLAGS_cdc_state_table_num_tablets = 1;
-  ASSERT_OK(CreateCDCStream(table_id, &stream_id));
-  ASSERT_TRUE(ASSERT_RESULT(IsObjectPartOfXRepl(table_id)));
-}
-
 TEST_F(MasterTestXRepl, TestSetupUniverseReplication) {
   std::string producer_id = "producer_universe";
   std::vector<std::string> producer_masters {"127.0.0.1:7100"};
