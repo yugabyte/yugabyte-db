@@ -13,12 +13,15 @@
 
 package com.yugabyte.yw.models;
 
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.SwamperHelper;
@@ -595,16 +598,22 @@ public class UniverseSpec {
       this.provider.save();
 
       if (this.provider.getCloudCode().equals(Common.CloudType.kubernetes)) {
-        // Kubernetes provider contains kubernetesPullSecret file.
-        FileData.writeFileToDB(
-            this.provider.getDetails().getCloudInfo().getKubernetes().getKubernetesPullSecret());
+        try {
+          // Kubernetes provider contains kubernetesPullSecret file.
+          FileData.upsertFileInDB(
+              this.provider.getDetails().getCloudInfo().getKubernetes().getKubernetesPullSecret());
 
-        // Each az contains its own kubeConfig.
-        for (Region region : Region.getByProvider(this.provider.getUuid())) {
-          for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(region.getUuid())) {
-            FileData.writeFileToDB(
-                az.getAvailabilityZoneDetails().getCloudInfo().getKubernetes().getKubeConfig());
+          // Each az contains its own kubeConfig.
+          for (Region region : Region.getByProvider(this.provider.getUuid())) {
+            for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(region.getUuid())) {
+              FileData.upsertFileInDB(
+                  az.getAvailabilityZoneDetails().getCloudInfo().getKubernetes().getKubeConfig());
+            }
           }
+        } catch (IOException e) {
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR,
+              String.format("Failed to write kubernetes config file in DB. %S", e.getMessage()));
         }
       }
 
@@ -619,20 +628,26 @@ public class UniverseSpec {
       // Sync access keys to db.
       for (AccessKey key : this.provider.getAllAccessKeys()) {
         AccessKey.KeyInfo keyInfo = key.getKeyInfo();
-        FileData.writeFileToDB(keyInfo.vaultFile);
-        FileData.writeFileToDB(keyInfo.vaultPasswordFile);
-        if (keyInfo.privateKey != null) {
-          FileData.writeFileToDB(keyInfo.privateKey);
-        }
-        if (keyInfo.publicKey != null) {
-          FileData.writeFileToDB(keyInfo.publicKey);
-        }
+        try {
+          FileData.upsertFileInDB(keyInfo.vaultFile);
+          FileData.upsertFileInDB(keyInfo.vaultPasswordFile);
+          if (keyInfo.privateKey != null) {
+            FileData.upsertFileInDB(keyInfo.privateKey);
+          }
+          if (keyInfo.publicKey != null) {
+            FileData.upsertFileInDB(keyInfo.publicKey);
+          }
 
-        File accessKeyDir = new File(keyInfo.vaultFile).getParentFile();
-        // GCP provider contains credentials.json file.
-        if (this.provider.getCloudCode().equals(Common.CloudType.gcp)) {
-          FileData.writeFileToDB(
-              Paths.get(accessKeyDir.getAbsolutePath(), "credentials.json").toString());
+          File accessKeyDir = new File(keyInfo.vaultFile).getParentFile();
+          // GCP provider contains credentials.json file.
+          if (this.provider.getCloudCode().equals(Common.CloudType.gcp)) {
+            FileData.upsertFileInDB(
+                Paths.get(accessKeyDir.getAbsolutePath(), "credentials.json").toString());
+          }
+        } catch (IOException e) {
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR,
+              String.format("Failed to write access key file in DB. %s", e.getMessage()));
         }
       }
     }
@@ -650,7 +665,13 @@ public class UniverseSpec {
         File[] certificateInfoFiles = certificateInfoBaseDir.listFiles();
         if (certificateInfoFiles != null) {
           for (File certificateInfoFile : certificateInfoFiles) {
-            FileData.writeFileToDB(certificateInfoFile.getAbsolutePath());
+            try {
+              FileData.upsertFileInDB(certificateInfoFile.getAbsolutePath());
+            } catch (Exception e) {
+              throw new PlatformServiceException(
+                  INTERNAL_SERVER_ERROR,
+                  String.format("Failed to write certificates in DB. %s", e.getMessage()));
+            }
           }
         }
       }

@@ -728,14 +728,14 @@ public class CertificateHelper {
     try (JcaPEMWriter certWriter = new JcaPEMWriter(new FileWriter(certFile, append))) {
       certWriter.writeObject(cert);
       certWriter.flush();
+
+      if (syncToDB) {
+        // Write the certificates in the DB.
+        FileData.upsertFileInDB(certPath);
+      }
     } catch (IOException e) {
       log.error(e.getMessage(), e);
       throw e;
-    }
-
-    if (syncToDB) {
-      // Write the certificates in the DB.
-      FileData.writeFileToDB(certPath);
     }
   }
 
@@ -749,14 +749,15 @@ public class CertificateHelper {
     try (JcaPEMWriter keyWriter = new JcaPEMWriter(new FileWriter(keyFile))) {
       keyWriter.writeObject(keyContent);
       keyWriter.flush();
+
+      if (syncToDB) {
+        // Write the certificate private key in the DB.
+        FileData.upsertFileInDB(keyPath);
+      }
     } catch (Exception e) {
       log.error(e.getMessage());
-      throw new RuntimeException("Save privateKey failed.");
-    }
-
-    if (syncToDB) {
-      // Write the certificate private key in the DB.
-      FileData.writeFileToDB(keyPath);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, String.format("Failed to save private key: %s", e.getMessage()));
     }
   }
 
@@ -776,15 +777,15 @@ public class CertificateHelper {
         certWriter.writeObject(cert);
         certWriter.flush();
       }
+
+      if (syncToDB) {
+        // Write the certificate in the DB.
+        FileData.upsertFileInDB(certPath);
+      }
     } catch (IOException e) {
       log.error(e.getMessage());
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Saving certificate content failed");
-    }
-
-    if (syncToDB) {
-      // Write the certificate in the DB.
-      FileData.writeFileToDB(certPath);
     }
   }
 
