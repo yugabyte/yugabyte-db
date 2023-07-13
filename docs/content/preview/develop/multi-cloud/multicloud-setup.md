@@ -16,7 +16,11 @@ You can create a multi-cloud YugabyteDB universe spanning multiple geographic re
 
 ## Topology
 
-For illustration, you can set up a 6-node universe across AWS-`us-west`, Google Cloud Provider-`us-central`, and Microsoft Azure- `us-east`.
+For illustration, you can set up a 6-node universe across AWS-`us-west`, Google Cloud Provider-`us-central`, and Microsoft Azure- `us-east` with `RF=5`
+
+{{<note title="Note">}}
+To be ready for a any region failure, you should opt for `RF=7`.
+{{</note>}}
 
 ![Multi-cloud Yugabyte](/images/develop/multicloud/multicloud-topology.png)
 
@@ -39,7 +43,7 @@ For illustration, let us set up a 6-node universe with 2 nodes each in AWS, GCP,
 
 {{<setup/local
     numnodes="2"
-    rf="3"
+    rf="5"
     basedir="/tmp/ydb-aws-"
     status="no"
     dataplacement="no"
@@ -51,7 +55,7 @@ For illustration, let us set up a 6-node universe with 2 nodes each in AWS, GCP,
 
 {{<setup/local
     numnodes="2"
-    rf="3"
+    rf="5"
     destroy="no"
     ips="127.0.0.3,127.0.0.4"
     masterip="127.0.0.1"
@@ -66,7 +70,7 @@ For illustration, let us set up a 6-node universe with 2 nodes each in AWS, GCP,
 
 {{<setup/local
     numnodes="2"
-    rf="3"
+    rf="5"
     destroy="no"
     ips="127.0.0.5,127.0.0.6"
     masterip="127.0.0.1"
@@ -75,15 +79,10 @@ For illustration, let us set up a 6-node universe with 2 nodes each in AWS, GCP,
     status="yes"
     locations="azu.us-east-1.us-east-1a,azu.us-east-1.us-east-1a">}}
 
-<!--
-## Destroy the universe
 
-After exploring the multi-cloud setup locally, you can destroy the cluster using the following command
+Now, you should have a 6-node cluster with 2 nodes in each cloud provider like this:
 
-```bash
-for node in {aws,gcp,azu}-{1,2} ; do ./bin/yugabyted destroy --base_dir=/tmp/ydb-${node} ; done
-```
--->
+![Multi-cloud Yugabyte](/images/develop/multicloud/multicloud-6nodes.png)
 
 <!-- END: local cluster setup instructions -->
 {{</nav/panel>}}
@@ -119,11 +118,14 @@ Just as you chose `AWS`, `GCP` and `AZU`, you could choose to deploy your retail
 
 ## Failover
 
-On a region failure, the multi-cloud YugabyteDB universe will automatically failover to either of the remaining cloud regions depending on the [application design pattern](../../build-global-apps/) you had chosen for your setup. In the above example, if you had set the preferred zones order to be `azu:1 aws:2`, then when `AZU` fails, apps will move to `AWS` and the applications will use the data in `us-west` to serve your users without any data loss.
+On a region failure, the multi-cloud YugabyteDB universe will automatically failover to either of the remaining cloud regions depending on the [application design pattern](../../build-global-apps/) you had chosen for your setup. In the above example, if you had set the preferred zones order to be `aws:1 azu:2`, then when `AWS` fails, apps will move to `AZU` and the applications will use the data in `us-east` to serve your users without any data loss.
 
 ![Multi-cloud Yugabyte](/images/develop/multicloud/multicloud-failover.png)
+
+You could choose closer regions to avoid an increase in latency on failover.
 
 ## Learn more
 
 - [Build global applications](../../build-global-apps/)
 - [Global database failover](../../build-global-apps/global-database#failover)
+- [Improve latencies with closer regions ](../../build-global-apps/global-database#improve-latencies-with-closer-regions)

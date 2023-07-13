@@ -69,24 +69,18 @@ YugabyteDB offers basic patterns to make this migration seamless. You can set up
     title="Multi-cloud setup"
     body="Setup a YugabyteDB universe across AWS/GCP/Azure."
     href="./multicloud-setup"
-    icon="fa-solid fa-equals">}}
+    icon="fa-brands fa-cloudflare">}}
 
 {{<index/item
     title="Cloud migration"
     body="Migrate your data from one cloud to another."
-    icon="fa-solid fa-equals"
+    icon="fa-solid fa-cloud-arrow-up"
     href="./multicloud-migration">}}
 
 {{<index/item
     title="Hybrid cloud"
     body="Add a public cloud to your on-prem environment."
-    icon="fa-brands fa-searchengin"
+    icon="fa-brands fa-soundcloud"
     href="./hybrid-cloud">}}
-
-<!-- {{<index/item
-    title="Bank of Anthos"
-    body="Full fledged example of a Banking application using YugabyteDB on a multi-cloud setup."
-    icon="fa-solid fa-music"
-    href="https://github.com/yugabyte/bank-of-anthos">}} -->
 
 {{</index/block>}}
