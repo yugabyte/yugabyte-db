@@ -104,7 +104,7 @@ As the data is split based on time, when querying for a specific time range, the
 EXPLAIN ANALYZE SELECT * FROM part_demo WHERE ts > '2023-07-01' AND ts < '2023-08-01';
 ```
 
-```sql{class=nocopy}
+```sql{.nocopy}
                                    QUERY PLAN
 -----------------------------------------------------------------------------------------------------------
  Append (actual time=2.288..2.310 rows=25 loops=1)

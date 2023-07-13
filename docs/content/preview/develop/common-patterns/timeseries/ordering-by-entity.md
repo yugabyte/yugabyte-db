@@ -149,7 +149,7 @@ This enables the query planner to use the primary index on `car, bucketid` as no
 EXPLAIN ANALYZE SELECT * FROM entity_order2 WHERE car='car-1' AND bucketid IN (0,1,2,3,4,5,6,7);
 ```
 
-```sql{class=nocopy}
+```sql{.nocopy}
                                                               QUERY PLAN
 ------------------------------------------------------------------------------------------------------------------------------
  Index Scan using entity_order2_pkey on entity_order2  (cost=0.00..16.25 rows=100 width=46) (actual time=1.534..1.562 rows=49 loops=1)

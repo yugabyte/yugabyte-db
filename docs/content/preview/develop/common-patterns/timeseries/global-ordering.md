@@ -162,7 +162,7 @@ You can execute an example query plan to verify that the above query uses the pr
 EXPLAIN ANALYZE SELECT * FROM global_order2 WHERE bucketid IN (0,1,2,3,4,5,6,7) ORDER BY ts ASC;
 ```
 
-```sql{class=nocopy}
+```sql{.nocopy}
                                                QUERY PLAN
 --------------------------------------------------------------------------------------------------------
  Sort (actual time=2.279..2.289 rows=95 loops=1)

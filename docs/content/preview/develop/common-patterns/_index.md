@@ -24,7 +24,7 @@ The Timeseries data model meets the special needs of large event data scenarios 
 
 A good example would be the speed sensor in a car that tracks the speed of a car and sends them to a remote system for tracking.
 
-```sql{class=nocopy}
+```sql{.nocopy}
 "car1" , "2023-05-01 01:00:00", 35
 "car1" , "2023-05-01 01:01:00", 40
 "car1" , "2023-05-01 01:02:00", 42
@@ -56,7 +56,7 @@ Key-value stores are expected to be some of the fastest storage data models.
 
 In a wide-column data model, the data is organized as rows and columns. Each row is identified by a row `id` or `name` and each column is identified by a column -`id` or `name`. Each row can have any number of columns attached to it. You can visualize it to be a table like structure where some of the cells are empty. For example,
 
-```sql{class=nocopy}
+```sql{.nocopy}
 |       | col-1 | col-2 | col-3 |
 | ----- | ----- | ----- | ----- |
 | row-1 | a     |       | c     |
@@ -66,7 +66,7 @@ In a wide-column data model, the data is organized as rows and columns. Each row
 
 To get specific cells, you can issue commands as follows:
 
-```sql{class=nocopy}
+```sql{.nocopy}
 get(row-1, col-3) ==> c
 get(row-3, col-2) ==> NULL
 ```
