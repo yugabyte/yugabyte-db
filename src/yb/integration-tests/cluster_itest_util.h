@@ -68,6 +68,7 @@
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_client.fwd.h"
+#include "yb/master/master_client.pb.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -460,6 +461,14 @@ Status ListRunningTabletIds(const TServerDetails* ts,
 
 // Get the set of tablet ids across the cluster
 std::set<TabletId> GetClusterTabletIds(MiniCluster* cluster);
+
+// Get the list of tablets for the given table on the given tserver from the Master.
+Result<std::vector<master::TabletLocationsPB::ReplicaPB>>
+GetTabletsOnTsAccordingToMaster(ExternalMiniCluster* cluster,
+                                const TabletServerId& ts_uuid,
+                                const client::YBTableName& table_name,
+                                const MonoDelta& timeout,
+                                const RequireTabletsRunning require_tablets_running);
 
 // Get the list of tablet locations for the specified tablet from the Master.
 Status GetTabletLocations(ExternalMiniCluster* cluster,

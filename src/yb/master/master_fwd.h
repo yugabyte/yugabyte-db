@@ -120,7 +120,7 @@ using TablespaceIdToReplicationInfoMap = std::unordered_map<
     TablespaceId, boost::optional<ReplicationInfoPB>>;
 
 using LeaderStepDownFailureTimes = std::unordered_map<TabletServerId, MonoTime>;
-using TabletReplicaMap = std::unordered_map<std::string, TabletReplica>;
+using TabletReplicaMap = std::unordered_map<TabletServerId, TabletReplica>;
 using TabletToTabletServerMap = std::unordered_map<TabletId, TabletServerId>;
 using TabletInfoMap = std::map<TabletId, scoped_refptr<TabletInfo>>;
 struct cloud_hash;

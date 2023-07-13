@@ -36,6 +36,7 @@
 #include <functional>
 #include <iomanip>
 #include <map>
+#include <memory>
 #include <sstream>
 #include <unordered_set>
 
@@ -56,6 +57,8 @@
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
@@ -72,9 +75,11 @@
 #include "yb/server/webserver.h"
 #include "yb/server/webui_util.h"
 
+#include "yb/tablet/tablet_types.pb.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
+#include "yb/util/logging.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_case.h"
 #include "yb/util/timestamp.h"
@@ -129,6 +134,7 @@ std::optional<HostPortPB> GetPublicHttpHostPort(const ServerRegistrationPB& regi
 using consensus::RaftPeerPB;
 using std::vector;
 using std::map;
+using std::pair;
 using std::string;
 using std::stringstream;
 using std::unique_ptr;
@@ -1574,22 +1580,101 @@ std::vector<TabletInfoPtr> MasterPathHandlers::GetLeaderlessTablets() {
   return leaderless_tablets;
 }
 
-Result<std::vector<TabletInfoPtr>> MasterPathHandlers::GetUnderReplicatedTablets() {
-  std::vector<TabletInfoPtr> underreplicated_tablets;
+// Returns the placement_uuids of any placement in which the given tablet is underreplicated.
+vector<string> GetTabletUnderReplicatedPlacements(
+    const TabletInfoPtr& tablet, const ReplicationInfoPB& replication_info) {
+  VLOG_WITH_FUNC(1) << "Processing tablet " << tablet->id();
+  // We will decrement the num_replicas and replication_factor counters in each placement as we find
+  // replicas in its placement blocks.
+  // If the tablet is under-replicated, it will have some counter > 0.
+  ReplicationInfoPB replication_info_copy = replication_info;
+  vector<PlacementInfoPB*> placements;
+  placements.push_back(replication_info_copy.mutable_live_replicas());
+  for (int i = 0; i < replication_info_copy.read_replicas_size(); ++i) {
+    placements.push_back(replication_info_copy.mutable_read_replicas(i));
+  }
 
-  auto nonsystem_tablets = GetNonSystemTablets();
+  auto replica_locations = tablet->GetReplicaLocations();
+  for (auto& [ts_uuid, replica] : *replica_locations) {
+    // Replicas are put into the UNKNOWN state by config change until they heartbeat so we count
+    // UNKNOWN replicas as running to avoid false positives.
+    if (replica.state != tablet::RaftGroupStatePB::RUNNING &&
+        replica.state != tablet::RaftGroupStatePB::UNKNOWN) {
+      VLOG_WITH_FUNC(1) << "Skipping replica in state " << RaftGroupStatePB_Name(replica.state);
+      continue;
+    }
+    auto& ts_desc = replica.ts_desc;
+    if (!ts_desc->IsLiveAndHasReported()) {
+      VLOG_WITH_FUNC(1) << "Skipping not live TS " << ts_desc->permanent_uuid();
+      continue;
+    }
 
-  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+    // Decrement counters in the relevant placement.
+    VLOG_WITH_FUNC(1) << "Processing tablet replica on TS " << ts_desc->permanent_uuid();
+    for (auto* placement : placements) {
+      if (placement->placement_uuid() == ts_desc->placement_uuid()) {
+        VLOG_WITH_FUNC(1) << "TS matches placement " << placement->placement_uuid();
+        placement->set_num_replicas(placement->num_replicas() - 1);
 
-  auto cluster_rf = VERIFY_RESULT_PREPEND(master_->catalog_manager()->GetReplicationFactor(),
-                                          "Unable to find replication factor");
+        // Decrement the unique placement block within this placement.
+        for (int i = 0; i < placement->placement_blocks_size(); ++i) {
+          if (ts_desc->MatchesCloudInfo(placement->placement_blocks(i).cloud_info())) {
+            VLOG_WITH_FUNC(1) << "TS matches placement "
+                              << placement->placement_blocks(i).ShortDebugString();
+            placement->mutable_placement_blocks(i)->set_min_num_replicas(
+                placement->placement_blocks(i).min_num_replicas() - 1);
+            break;
+          }
+        }
+      }
+    }
+  }
 
-  for (TabletInfoPtr t : nonsystem_tablets) {
-    auto rm = t.get()->GetReplicaLocations();
+  // If the tablet is under-replicated, it will have some counter > 0.
+  vector<string> underreplicated_placements;
+  for (const auto* placement : placements) {
+    if (placement->num_replicas() > 0) {
+      VLOG_WITH_FUNC(1) << Format("Tablet $0 underreplicated in placement $1. Need $2 more "
+          "replicas.", tablet->id(), placement->placement_uuid(), placement->num_replicas());
+      underreplicated_placements.push_back(placement->placement_uuid());
+      continue;
+    }
 
-    // Find out the tablets which have been replicated less than the replication factor
-    if (rm->size() < cluster_rf) {
-      underreplicated_tablets.push_back(t);
+    // Check placement blocks within this placement.
+    for (auto& placement_block : placement->placement_blocks()) {
+      if (placement_block.min_num_replicas() > 0) {
+        VLOG_WITH_FUNC(1) << Format("Tablet $0 underreplicated in placement block $1 for placement "
+            "$2. Need $3 more replicas.", tablet->id(),
+            placement_block.cloud_info().ShortDebugString(), placement->placement_uuid(),
+            placement_block.min_num_replicas());
+        underreplicated_placements.push_back(placement->placement_uuid());
+        break;
+      }
+    }
+  }
+  return underreplicated_placements;
+}
+
+Result<vector<pair<TabletInfoPtr, vector<string>>>>
+    MasterPathHandlers::GetUnderReplicatedTablets() {
+  auto* catalog_mgr = master_->catalog_manager();
+
+  catalog_mgr->AssertLeaderLockAcquiredForReading();
+  auto tables = catalog_mgr->GetTables(GetTablesMode::kRunning);
+
+  vector<pair<TabletInfoPtr, vector<string>>> underreplicated_tablets;
+  for (const auto& table : tables) {
+    if (catalog_mgr->IsSystemTable(*table.get())) {
+      continue;
+    }
+    auto replication_info = VERIFY_RESULT(catalog_mgr->GetTableReplicationInfo(table));
+    for (TabletInfoPtr tablet : table->GetTablets()) {
+      auto underreplicated_placements =
+          GetTabletUnderReplicatedPlacements(tablet, replication_info);
+      if (!underreplicated_placements.empty()) {
+        underreplicated_tablets.emplace_back(
+            std::move(tablet), std::move(underreplicated_placements));
+      }
     }
   }
   return underreplicated_tablets;
@@ -1599,14 +1684,14 @@ void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& r
                                                   Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
 
-  auto leaderless_ts = GetLeaderlessTablets();
-  auto underreplicated_ts = GetUnderReplicatedTablets();
+  auto leaderless_tablets = GetLeaderlessTablets();
+  auto underreplicated_tablets = GetUnderReplicatedTablets();
 
   *output << "<h3>Leaderless Tablets</h3>\n";
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Table Name</th><th>Table UUID</th><th>Tablet ID</th></tr>\n";
 
-  for (TabletInfoPtr t : leaderless_ts) {
+  for (TabletInfoPtr t : leaderless_tablets) {
     *output << Format(
         "<tr><td><a href=\"/table?id=$0\">$1</a></td><td>$2</td><th>$3</th></tr>\n",
         EscapeForHtmlToString(t->table()->id()),
@@ -1617,28 +1702,33 @@ void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& r
 
   *output << "</table>\n";
 
-  if (!underreplicated_ts.ok()) {
-    LOG(WARNING) << underreplicated_ts.ToString();
-    *output << "<h2>Call to get the cluster replication factor failed</h2>\n";
+  if (!underreplicated_tablets.ok()) {
+    LOG(WARNING) << underreplicated_tablets.ToString();
+    *output << "<h2>Call to GetUnderReplicatedTablets failed</h2>\n";
     return;
   }
 
   *output << "<h3>Underreplicated Tablets</h3>\n";
   *output << "<table class='table table-striped'>\n";
-  *output << "  <tr><th>Table Name</th><th>Table UUID</th><th>Tablet ID</th>"
-          << "<th>Tablet Replication Count</th></tr>\n";
+  *output << "<tr><th>Table Name</th><th>Table UUID</th><th>Tablet ID</th>"
+          << "<th>Tablet Replication Count</th><th>Underreplicated Placements</th></tr>\n";
 
-  for (TabletInfoPtr t : *underreplicated_ts) {
-    auto rm = t.get()->GetReplicaLocations();
+  for (auto& [tablet, placement_uuids] : *underreplicated_tablets) {
+    auto rm = tablet.get()->GetReplicaLocations();
 
+    stringstream underreplicated_placements;
+    for (auto& uuid : placement_uuids) {
+      underreplicated_placements << (uuid == "" ? "Live (primary) cluster" : uuid) << "\n";
+    }
     *output << Format(
         "<tr><td><a href=\"/table?id=$0\">$1</a></td><td>$2</td>"
-        "<td>$3</td><td>$4</td></tr>\n",
-        EscapeForHtmlToString(t->table()->id()),
-        EscapeForHtmlToString(t->table()->name()),
-        EscapeForHtmlToString(t->table()->id()),
-        EscapeForHtmlToString(t.get()->tablet_id()),
-        EscapeForHtmlToString(std::to_string(rm->size())));
+        "<td>$3</td><td>$4</td><td>$5</td></tr>\n",
+        EscapeForHtmlToString(tablet->table()->id()),
+        EscapeForHtmlToString(tablet->table()->name()),
+        EscapeForHtmlToString(tablet->table()->id()),
+        EscapeForHtmlToString(tablet->tablet_id()),
+        EscapeForHtmlToString(std::to_string(rm->size())),
+        EscapeForHtmlToString(underreplicated_placements.str()));
   }
 
   *output << "</table>\n";
@@ -1673,12 +1763,12 @@ void MasterPathHandlers::HandleGetUnderReplicationStatus(const Webserver::WebReq
   std::stringstream *output = &resp->output;
   JsonWriter jw(output, JsonWriter::COMPACT);
 
-  auto underreplicated_ts = GetUnderReplicatedTablets();
+  auto underreplicated_tablets = GetUnderReplicatedTablets();
 
-  if (!underreplicated_ts.ok()) {
+  if (!underreplicated_tablets.ok()) {
     jw.StartObject();
     jw.String("Error");
-    jw.String(underreplicated_ts.status().ToString());
+    jw.String(underreplicated_tablets.status().ToString());
     jw.EndObject();
     return;
   }
@@ -1687,12 +1777,18 @@ void MasterPathHandlers::HandleGetUnderReplicationStatus(const Webserver::WebReq
   jw.String("underreplicated_tablets");
   jw.StartArray();
 
-  for(TabletInfoPtr t : *underreplicated_ts) {
+  for (auto& [tablet, placement_uuids] : *underreplicated_tablets) {
     jw.StartObject();
     jw.String("table_uuid");
-    jw.String(t->table()->id());
+    jw.String(tablet->table()->id());
     jw.String("tablet_uuid");
-    jw.String(t.get()->tablet_id());
+    jw.String(tablet.get()->tablet_id());
+    jw.String("underreplicated_placements");
+    jw.StartArray();
+    for (auto& uuid : placement_uuids) {
+      jw.String(uuid);
+    }
+    jw.EndArray();
     jw.EndObject();
   }
 

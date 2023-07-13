@@ -164,7 +164,7 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
   // Get replicas for this tablet.
   auto replica_map = tablet->GetReplicaLocations();
 
-  // Get the size of replica.
+  // Get the number of relevant replicas in the replica map.
   size_t replica_size = GetReplicaSize(replica_map);
 
   // Set state information for both the tablet and the tablet server replicas.
