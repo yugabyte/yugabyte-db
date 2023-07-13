@@ -11,7 +11,7 @@ DATA = pg_stat_statements--1.4.sql \
 	pg_stat_statements--1.0--1.1.sql \
 	pg_stat_statements--unpackaged--1.0.sql
 PGFILEDESC = "pg_stat_statements - execution statistics of SQL statements"
-SHLIB_LINK += -L$(YB_BUILD_ROOT)/lib -lserver_process -lyb_pggate_webserver -lhdr_histogram -lyb_pggate
+SHLIB_LINK += -L$(YB_BUILD_ROOT)/lib -lserver_process -lyb_pggate_webserver -lhdr_histogram
 
 LDFLAGS_SL += $(filter -lm, $(LIBS))
 

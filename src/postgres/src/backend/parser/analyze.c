@@ -129,7 +129,7 @@ parse_analyze(RawStmt *parseTree, const char *sourceText,
 	if (post_parse_analyze_hook)
 		(*post_parse_analyze_hook) (pstate, query);
 
-	if (IsYugaByteEnabled())
+	if (IsYugaByteEnabled() && query->queryId)
 		YBCSetQueryId(query->queryId);
 
 	free_parsestate(pstate);
@@ -172,7 +172,7 @@ parse_analyze_varparams(RawStmt *parseTree, const char *sourceText,
 	if (post_parse_analyze_hook)
 		(*post_parse_analyze_hook) (pstate, query);
 
-	if (IsYugaByteEnabled())
+	if (IsYugaByteEnabled() && query->queryId)
 		YBCSetQueryId(query->queryId);
 
 	free_parsestate(pstate);

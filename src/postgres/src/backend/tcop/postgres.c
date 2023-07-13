@@ -790,7 +790,7 @@ pg_analyze_and_rewrite_params(RawStmt *parsetree,
 	if (post_parse_analyze_hook)
 		(*post_parse_analyze_hook) (pstate, query);
 
-	if (IsYugaByteEnabled())
+	if (IsYugaByteEnabled() && query->queryId)
 		YBCSetQueryId(query->queryId);
 
 	free_parsestate(pstate);
@@ -2094,6 +2094,16 @@ exec_execute_message(const char *portal_name, long max_rows)
 	 */
 	if (max_rows <= 0)
 		max_rows = FETCH_ALL;
+
+	ListCell   *stmtlist_item;
+	foreach(stmtlist_item, portal->stmts)
+	{
+		PlannedStmt *pstmt = lfirst_node(PlannedStmt, stmtlist_item);
+		if (IsYugaByteEnabled() && pstmt->queryId)
+		{
+			YBCSetQueryId(pstmt->queryId);
+		}
+	}
 
 	completed = PortalRun(portal,
 						  max_rows,
