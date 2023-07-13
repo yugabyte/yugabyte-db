@@ -79,7 +79,7 @@ SELECT * FROM global_order1 WHERE ts > '2023-07-01 00:01:00' AND ts < '2023-07-0
  2023-07-01 00:01:04 | car-2 |    60
 ```
 
-But as the data grows, the tablet splits and one-half moves to a different tablet ensuring scalability, and so on. This also means that the data grows in one shard before moving to the next tablet. Also, because a specific range could be in a single shard, this could lead to.
+But as the data grows, the tablet splits and one-half moves to a different tablet ensuring scalability, and so on. This also means that the data grows in one shard before moving to the next tablet. Also, because a specific range could be in a single shard, this could lead to one shard becoming a hot shard.
 
 The following section describes how to distribute the ordered data across different tablets.
 
