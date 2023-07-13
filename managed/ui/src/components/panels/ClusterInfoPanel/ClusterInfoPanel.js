@@ -23,7 +23,6 @@ export default class ClusterInfoPanel extends Component {
     const {
       isDedicatedNodes,
       universeInfo,
-      insecure,
       universeInfo: {
         universeDetails,
         universeDetails: { clusters }
@@ -68,18 +67,17 @@ export default class ClusterInfoPanel extends Component {
                   </span>
                 </Col>
               </Row>
-              {!insecure && (
-                <Row className={'cluster-metadata'}>
-                  <Col lg={6} md={6} sm={6} xs={6}>
-                    <span className={'cluster-metadata__label'}>{'Instance Type:'}</span>
-                  </Col>
-                  <Col lg={6} md={6} sm={6} xs={6}>
-                    <span className={'cluster-metadata__align'}>
-                      {userIntent && userIntent.instanceType}
-                    </span>
-                  </Col>
-                </Row>
-              )}
+
+              <Row className={'cluster-metadata'}>
+                <Col lg={6} md={6} sm={6} xs={6}>
+                  <span className={'cluster-metadata__label'}>{'Instance Type:'}</span>
+                </Col>
+                <Col lg={6} md={6} sm={6} xs={6}>
+                  <span className={'cluster-metadata__align'}>
+                    {userIntent && userIntent.instanceType}
+                  </span>
+                </Col>
+              </Row>
               <Row className={'cluster-metadata'}>
                 <Col lg={8} md={6} sm={6} xs={6}>
                   <span className={'cluster-metadata__label'}>{'Replication Factor:'}</span>
@@ -115,18 +113,16 @@ export default class ClusterInfoPanel extends Component {
                       </span>
                     </Col>
                   </Row>
-                  {!insecure && (
-                    <Row className={'cluster-metadata'}>
-                      <Col lg={6} md={6} sm={6} xs={6}>
-                        <span className={'cluster-metadata__label'}>{'Instance Type:'}</span>
-                      </Col>
-                      <Col lg={6} md={6} sm={6} xs={6}>
-                        <span className={'cluster-metadata__align'}>
-                          {userIntent && userIntent.masterInstanceType}
-                        </span>
-                      </Col>
-                    </Row>
-                  )}
+                  <Row className={'cluster-metadata'}>
+                    <Col lg={6} md={6} sm={6} xs={6}>
+                      <span className={'cluster-metadata__label'}>{'Instance Type:'}</span>
+                    </Col>
+                    <Col lg={6} md={6} sm={6} xs={6}>
+                      <span className={'cluster-metadata__align'}>
+                        {userIntent && userIntent.masterInstanceType}
+                      </span>
+                    </Col>
+                  </Row>
                 </FlexGrow>
               </>
             )}

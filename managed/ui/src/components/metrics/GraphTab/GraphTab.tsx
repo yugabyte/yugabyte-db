@@ -30,7 +30,6 @@ export const GraphTab: FC<MetricsData> = ({
   tableName
 }) => {
   let tabContent = null;
-  const insecureLoginToken = useSelector((state: any) => state.customer.INSECURE_apiToken);
   const { currentUser } = useSelector((state: any) => state.customer);
   const graph = useSelector((state: any) => state.graph);
   const {
@@ -144,15 +143,7 @@ export const GraphTab: FC<MetricsData> = ({
     outlierNumNodes
   ]);
 
-  tabContent = getTabContent(
-    graph,
-    selectedUniverse,
-    type,
-    metricsKey,
-    title,
-    currentUser,
-    insecureLoginToken
-  );
+  tabContent = getTabContent(graph, selectedUniverse, type, metricsKey, title, currentUser);
 
   return <>{tabContent}</>;
 };
