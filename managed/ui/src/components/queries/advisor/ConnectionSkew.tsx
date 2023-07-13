@@ -79,8 +79,10 @@ export const ConnectionSkew: FC<PerfRecommendationProps> = ({ data, summary }) =
           </span>
         </div>
       </div>
-      <span className="queryText">{t('clusterDetail.performance.chartTitle.Connections')}</span>
-      <div id="connectionsSkewGraph"></div>
+      <div className="chartBox">
+        <span className="queryText">{t('clusterDetail.performance.chartTitle.Connections')}</span>
+        <div id="connectionsSkewGraph"></div>
+      </div>
     </div>
   );
 };

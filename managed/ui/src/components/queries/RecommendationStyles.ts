@@ -9,6 +9,9 @@ export const useStyles = makeStyles((theme) => ({
     position: 'relative',
     marginBottom: theme.spacing(3)
   },
+  inactiveRecommendation: {
+    opacity: 0.5
+  },
   itemHeader: {
     cursor: 'pointer'
   },
