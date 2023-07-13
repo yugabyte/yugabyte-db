@@ -37,7 +37,9 @@ class PerformFuture {
   };
 
   PerformFuture() = default;
-  PerformFuture(std::future<PerformResult> future, PgSession* session, PgObjectIds&& relations);
+  PerformFuture(
+      std::future<PerformResult> future, PgSession* session, PgObjectIds&& relations,
+      util::WaitStateCode wait_event);
   PerformFuture(PerformFuture&&) = default;
   PerformFuture& operator=(PerformFuture&&) = default;
   ~PerformFuture();
@@ -45,12 +47,12 @@ class PerformFuture {
   bool Valid() const;
   bool Ready() const;
   Result<Data> Get();
-  void SignalWait(util::WaitStateCode wait_event);
 
  private:
   std::future<PerformResult> future_;
   PgSession* session_ = nullptr;
   PgObjectIds relations_;
+  util::WaitStateCode wait_event_;
 };
 
 } // namespace pggate

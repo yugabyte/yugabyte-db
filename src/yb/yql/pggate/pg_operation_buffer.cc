@@ -169,6 +169,14 @@ void EnsureCapacity(InFlightOps* in_flight_ops, BufferingSettings buffering_sett
 } // namespace
 
 void BufferableOperations::Add(PgsqlOpPtr op, const PgObjectId& relation) {
+  if (wait_event_ == util::WaitStateCode::Unused) wait_event_ = op.get()->getWaitEvent();
+  else if (
+      (wait_event_ == util::WaitStateCode::DmlRead &&
+       op.get()->getWaitEvent() == util::WaitStateCode::DmlWrite) ||
+      (wait_event_ == util::WaitStateCode::DmlWrite &&
+       op.get()->getWaitEvent() == util::WaitStateCode::DmlRead))
+    wait_event_ = util::WaitStateCode::DmlReadWrite;
+
   operations.push_back(std::move(op));
   relations.push_back(relation);
 }
@@ -176,11 +184,13 @@ void BufferableOperations::Add(PgsqlOpPtr op, const PgObjectId& relation) {
 void BufferableOperations::Swap(BufferableOperations* rhs) {
   operations.swap(rhs->operations);
   relations.swap(rhs->relations);
+  rhs->wait_event_ = wait_event_;
 }
 
 void BufferableOperations::Clear() {
   operations.clear();
   relations.clear();
+  wait_event_ = util::WaitStateCode::Unused;
 }
 
 void BufferableOperations::Reserve(size_t capacity) {

@@ -672,7 +672,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   pg_client_.PerformAsync(&options, &ops.operations, [promise](const PerformResult& result) {
     promise->set_value(result);
   });
-  return PerformFuture(promise->get_future(), this, std::move(ops.relations));
+  return PerformFuture(promise->get_future(), this, std::move(ops.relations), ops.wait_event_);
 }
 
 void PgSession::ProcessPerformOnTxnSerialNo(
