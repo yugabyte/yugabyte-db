@@ -1,6 +1,6 @@
 ---
-title: Ordering By Entity
-headerTitle: Ordering By Entity
+title: Ordering by entity
+headerTitle: Ordering by entity
 linkTitle: Ordering by entity
 description: Distribute your time-ordered data and retrieve fast
 headcontent: Distribute your time-ordered data and retrieve fast
@@ -13,7 +13,9 @@ type: docs
 ---
 
 
-In a timeseries data model, to enforce that all data for an entity stays together and at the same time maintains the timestamp-based ordering, you have to distribute the data by the entity and order it on time. Let us go over this with few examples
+In a timeseries data model, to enforce that all data for an entity stays together and at the same time maintains the timestamp-based ordering, you have to distribute the data by the entity and order it on time.
+
+The following sections describes ordering by entity with a few examples.
 
 ## Setup
 
@@ -21,7 +23,9 @@ In a timeseries data model, to enforce that all data for an entity stays togethe
 
 ## Entity-wise ordering
 
-Let us consider a speed metrics tracking system that tracks the data from the speed sensor of many cars.
+Consider a speed metrics tracking system that tracks the data from the speed sensor of many cars.
+
+Create a table with an example schema as follows:
 
 ```sql
 CREATE TABLE entity_order1 (
@@ -32,18 +36,20 @@ CREATE TABLE entity_order1 (
 ) SPLIT INTO 3 TABLETS;
 ```
 
-{{<note>}} We are explicitly splitting the table into 3 tablets only to show the tablet information for the following examples {{</note>}}
+{{<note>}} Note that the table is explicitly split into 3 tablets only to view the tablet information for the following examples. {{</note>}}
 
-Now, when you insert the data, the data will be distributed on the value of `yb_hash_code(car)` but within a car, the data will be ordered by timestamp. Let us insert the same data into the new table.
+When you insert data, it gets distributed on the value of `yb_hash_code(car)` but within a car, the data gets ordered by timestamp.
+
+Insert the same data into the new table as follows:
 
 ```sql
-INSERT INTO entity_order1 (ts, car, speed) 
+INSERT INTO entity_order1 (ts, car, speed)
         (SELECT '2023-07-01 00:00:00'::timestamp + make_interval(secs=>id),
             'car-' || ceil(random()*2), ceil(random()*60)
             FROM generate_series(1,100) AS id);
 ```
 
-Now let us retrieve some data from the table.
+Retrieve some data from the table as follows:
 
 ```sql
 SELECT *, yb_hash_code(car) % 3 as tablet FROM entity_order1;
@@ -63,13 +69,15 @@ SELECT *, yb_hash_code(car) % 3 as tablet FROM entity_order1;
  2023-07-01 00:00:06 | car-1 |    10 |      2
 ```
 
-You will immediately notice that the data for each car is together (in the same tablet) but at the same time, the data is automatically sorted. The key thing to note here is that all the data for a specific car say, `car-1` will be located in the same tablet(`2`) as we have defined the data to be distributed on the hash of car with (`PRIMARY KEY(car HASH, ts ASC)`). 
+Notice that the data for each car is together (in the same tablet) but at the same time, the data is automatically sorted. The key thing to note here is that all the data for a specific car say, `car-1` will be located in the same tablet(`2`) as you have defined the data to be distributed on the hash of car with (`PRIMARY KEY(car HASH, ts ASC)`).
 
-Distributing the data by the entity(`car`) and ordering the data by timestamp for each entity solves the problem of keeping data together for an entity and at the same time maintains a global distribution across different entities across the different tablets. But this could lead to a hot shard problem if there are too many operations on the same car. Let us see a simple method to overcome that.
+Distributing the data by the entity(`car`) and ordering the data by timestamp for each entity solves the problem of keeping data together for an entity and at the same time maintains a global distribution across different entities across the different tablets. But this could lead to a hot shard problem if there are too many operations on the same car.
+
+The following section describes a basic method to overcome the hot shard problem.
 
 ## Bucketing for distribution
 
-Bucketing allows you to distribute your data on a specific entity and at the same time keep the data ordered within the entity. The idea is to split the entities' data into buckets and distribute the buckets. To understand this, let us modify the above table to add a `bucketid`.
+Bucketing allows you to distribute your data on a specific entity and at the same time keep the data ordered in the entity. The idea is to split the entities' data into buckets and distribute the buckets. To understand this, you can modify the above table to add a `bucketid`.
 
 ```sql
 CREATE TABLE entity_order2 (
@@ -81,16 +89,20 @@ CREATE TABLE entity_order2 (
 ) SPLIT INTO 3 TABLETS;
 ```
 
-Notice that we have added a bucketid to our data which is a random number between `0` and `7` and are distributing the data on the entity and bucketid. Let us add the same data to this table.
+Notice that you have added a `bucketid` to your data which is a random number between `0` and `7` and are distributing the data on the entity and `bucketid`.
+
+Add the same data to this table.
 
 ```sql
-INSERT INTO entity_order2 (ts, car, speed) 
+INSERT INTO entity_order2 (ts, car, speed)
         (SELECT '2023-07-01 00:00:00'::timestamp + make_interval(secs=>id),
             'car-' || ceil(random()*2), ceil(random()*60)
             FROM generate_series(1,100) AS id);
 ```
 
-As we have set to set a default value to `bucketid` column (`random()*8``),  we do not have to explicitly insert the value. Now if we retrieve the data from the table, we will see,
+As you have set to set a default value to `bucketid` column (`random()*8``),  you do not have to explicitly insert the value.
+
+If you retrieve the data from the table, you can see the following:
 
 ```sql
 SELECT *, yb_hash_code(car,bucketid) % 3 as tablet FROM entity_order2;
@@ -112,7 +124,7 @@ SELECT *, yb_hash_code(car,bucketid) % 3 as tablet FROM entity_order2;
  2023-07-01 00:00:20 | car-1 |    53 |        2 |      1
 ```
 
-You will quickly notice that the data for each car is split into buckets and that the data is ordered on the `ts` within each bucket and that the buckets are distributed across different tablets. As the query planner does not know about the different values of `bucketid`, it will do a sequential scan for the above quey. To optimally retrieve all the data for a specific car, say `car-1`, you would need to modify the query to explicitly call out the buckets as:
+You can notice that the data for each car is split into buckets and that the data is ordered on the `ts` in each bucket and that the buckets are distributed across different tablets. As the query planner does not know about the different values of `bucketid`, it will do a sequential scan for the above query. To optimally retrieve all the data for a specific car, say `car-1`, you need to modify the query to explicitly call out the buckets as follows:
 
 ```sql
 SELECT * FROM entity_order2
@@ -147,7 +159,7 @@ EXPLAIN ANALYZE SELECT * FROM entity_order2 WHERE car='car-1' AND bucketid IN (0
  Peak Memory Usage: 8 kB
 ```
 
-You will quickly notice that the data is not truly sorted in the resultset. This is because the data is ordered only within each bucket. So you will have to `order by` clause to your original query.
+You can see that the data is not truly sorted in the result set. This is because the data is ordered only in each bucket. So you have to use the `order by` clause to your original query as follows:
 
 ```sql
 SELECT * FROM entity_order2 WHERE car='car-1' AND bucketid IN (0,1,2,3,4,5,6,7) ORDER BY ts ASC;
