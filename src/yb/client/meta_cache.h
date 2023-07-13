@@ -143,6 +143,11 @@ class RemoteTabletServer {
 
   HostPortPB DesiredHostPort(const CloudInfoPB& cloud_info) const;
 
+  yb::CloudInfoPB cloud_info_pb() const {
+    SharedLock<rw_spinlock> lock(mutex_);
+    return cloud_info_pb_;
+  }
+
   std::string TEST_PlacementZone() const;
 
  private:
