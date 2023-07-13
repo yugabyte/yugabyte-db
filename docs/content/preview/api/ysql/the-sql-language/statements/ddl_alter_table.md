@@ -230,7 +230,7 @@ If the change requires data on disk to change, a full table rewrite will be done
 - This action is offline, so concurrent DMLs should not be performed while an alter column type operation is happening.
 - The action creates an entirely new table under the hood, and concurrent DMLs won’t be reflected in the new table which can lead to correctness issues.
 - This action is not compatible with: partitioned tables, tables with rules, and tables with CDC streams.
-- If the operation fails, it is possible that the existing table is renamed in DocDB. This leads to no functional issues, but may reflect in the YB admin panel.
+- If the operation fails, it is possible that the existing table is renamed in DocDB. This may lead to issues like yb-admin commands that take table name.
 - If the operation fails, a new dangling table may exist.
 - Altering the data type of a foreign key column is not supported.
 
