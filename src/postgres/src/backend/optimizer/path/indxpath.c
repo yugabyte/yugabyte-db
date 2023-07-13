@@ -619,7 +619,8 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		List *colclauses = clauses->indexclauses[i];
 		foreach (lc, colclauses)
 		{
-			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+			IndexClause *iclause = (IndexClause *) lfirst(lc);
+			RestrictInfo *rinfo = iclause->rinfo;
 
 			/*
 			 * If we can batch up outer vars in rinfo then do so.
@@ -2873,7 +2874,6 @@ match_opclause_to_indexcol(PlannerInfo *root,
 		!bms_is_member(index_relid, rinfo->right_relids) &&
 		!contain_volatile_functions(rightop))
 	{
-		/* YB_TODO(neil) Double check the merge on "if" condition */
 		/*
 		 * Do not use the yb_hash_code special case if we have an applicable
 		 * functional index on yb_hash_code. For example, if the call is an

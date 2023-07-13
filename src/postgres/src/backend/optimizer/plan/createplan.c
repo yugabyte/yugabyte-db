@@ -5519,6 +5519,7 @@ create_nestloop_plan(PlannerInfo *root,
 		foreach(l, joinrestrictclauses)
 		{
 			Oid hashOpno = InvalidOid;
+			Oid collation = InvalidOid;
 			RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);	
 			if (!list_member_ptr(joinclauses, rinfo->clause))
 			{
@@ -5536,7 +5537,9 @@ create_nestloop_plan(PlannerInfo *root,
 					yb_get_batched_restrictinfo(rinfo,batched_outerrelids,
 											 			 inner_relids);
 
-				hashOpno = ((OpExpr *) batched_rinfo->clause)->opno;
+				OpExpr	   *hclause = (OpExpr *) batched_rinfo->clause;
+				hashOpno = hclause->opno;
+				collation = hclause->inputcollid;
 			}
 
 			current_hinfo->hashOp = hashOpno;
@@ -6364,11 +6367,6 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 
 	*stripped_indexquals_p = stripped_indexquals;
 	*fixed_indexquals_p = fixed_indexquals;
-	/* YB_TODO(Tanuj@yugabyte)
-	 * - Need to track Tanuj's work on this function and rework. His code needs reimplementation to
-	 *   match Postgres's new code.
-	 * - I removed his work for now.
-	 */
 }
 
 /*
@@ -7469,7 +7467,6 @@ make_YbBatchedNestLoop(List *tlist,
 	node->nl.nestParams = nestParams;
 	node->num_hashClauseInfos = num_hashClauseInfos;
 	node->hashClauseInfos = hashClauseInfos;
-
 	return node;
 }
 
