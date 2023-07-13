@@ -34,8 +34,7 @@
 #include "yb/consensus/log.h"
 
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/integration-tests/xcluster_test_base.h"
-#include "yb/integration-tests/xcluster_ycql_test_base.h"
+#include "yb/integration-tests/xcluster/xcluster_ycql_test_base.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/mini_master.h"
