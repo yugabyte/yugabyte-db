@@ -123,7 +123,7 @@ CREATE INDEX idx_users_jsonb_part ON users (address->>'zip')
        WHERE email = 'lskywalker@yb.com';
 ```
 
-For additional information on CREATE INDEX statement, see [CREATE INDEX](../../../api/ycql/ddl_create_index/).
+For additional information on the CREATE INDEX statement, see [CREATE INDEX](../../../api/ycql/ddl_create_index/).
 
 ## Remove indexes
 
