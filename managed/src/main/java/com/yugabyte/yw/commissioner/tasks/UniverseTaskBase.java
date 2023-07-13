@@ -128,7 +128,6 @@ import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
-import com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
@@ -479,37 +478,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       case UNDEFINED:
         break;
     }
-
-    UniverseUpdater updater =
-        universe -> {
-          log.info(
-              String.format(
-                  "Setting encryption at rest status to %s for universe %s",
-                  taskParams().encryptionAtRestConfig.opType.name(),
-                  universe.getUniverseUUID().toString()));
-          // Persist the updated information about the universe.
-          // It should have been marked as being edited in lockUniverseForUpdate().
-          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          if (!universeDetails.updateInProgress) {
-            String msg =
-                "Universe "
-                    + taskParams().getUniverseUUID()
-                    + " has not been marked as being updated.";
-            log.error(msg);
-            throw new RuntimeException(msg);
-          }
-
-          universeDetails.encryptionAtRestConfig = taskParams().encryptionAtRestConfig;
-
-          universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled =
-              taskParams().encryptionAtRestConfig.opType.equals(OpType.ENABLE);
-          universe.setUniverseDetails(universeDetails);
-        };
-    // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
-    // catch as we want to fail.
-    saveUniverseDetails(updater);
-    log.trace("Wrote user intent for universe {}.", taskParams().getUniverseUUID());
-
     return subTaskGroup;
   }
 
