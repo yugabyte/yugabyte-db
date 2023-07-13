@@ -32,7 +32,7 @@ Create a table and insert data with an example schema as follows:
 ```sql
 CREATE KEYSPACE IF NOT EXISTS yugabyte;
 USE yugabyte;
-CREATE TABLE car_speed5 (
+CREATE TABLE exp_demo (
     ts timestamp,/* time at which the event was generated */
     car text, /* name of the car */
     speed int,   /* speed of your car */
@@ -41,14 +41,18 @@ CREATE TABLE car_speed5 (
 ```
 
 ```sql
-INSERT INTO car_speed5(ts,car,speed) VALUES('2023-07-01 10:00:01','car-1',50) USING TTL 10;
-INSERT INTO car_speed5(ts,car,speed) VALUES('2023-07-01 10:00:02','car-2',25) USING TTL 15;
-INSERT INTO car_speed5(ts,car,speed) VALUES('2023-07-01 10:00:03','car-1',39) USING TTL 15;
-INSERT INTO car_speed5(ts,car,speed) VALUES('2023-07-01 10:00:04','car-1',49) USING TTL 20;
-INSERT INTO car_speed5(ts,car,speed) VALUES('2023-07-01 10:00:05','car-2', 3) USING TTL 25;
+INSERT INTO exp_demo(ts,car,speed) VALUES('2023-07-01 10:00:01','car-1',50) USING TTL 10;
+INSERT INTO exp_demo(ts,car,speed) VALUES('2023-07-01 10:00:02','car-2',25) USING TTL 15;
+INSERT INTO exp_demo(ts,car,speed) VALUES('2023-07-01 10:00:03','car-1',39) USING TTL 15;
+INSERT INTO exp_demo(ts,car,speed) VALUES('2023-07-01 10:00:04','car-1',49) USING TTL 20;
+INSERT INTO exp_demo(ts,car,speed) VALUES('2023-07-01 10:00:05','car-2', 3) USING TTL 25;
 ```
 
 As soon as you insert the data, start selecting all rows over and over. Eventually, you will see all the data disappear.
+
+```sql
+SELECT * from exp_demo;
+```
 
 ## Column-level TTL
 
@@ -57,13 +61,13 @@ Instead of setting the TTL on an entire row, you can set TTL per column for more
 1. Add a row.
 
     ```sql
-    INSERT INTO car_speed5(ts,car,speed) VALUES('2023-08-01 10:00:01', 'car-5', 50);
+    INSERT INTO exp_demo(ts,car,speed) VALUES('2023-08-01 10:00:01', 'car-5', 50);
     ```
 
 1. Fetch the rows.
 
     ```sql
-    SELECT * FROM car_speed5 WHERE car='car-5';
+    SELECT * FROM exp_demo WHERE car='car-5';
     ```
 
     ```output
@@ -75,13 +79,13 @@ Instead of setting the TTL on an entire row, you can set TTL per column for more
 1. Now, set the expiry on the speed column of that row.
 
     ```sql
-    UPDATE car_speed5 USING TTL 5 SET speed=10 WHERE car='car-5' AND ts ='2023-08-01 10:00:01';
+    UPDATE exp_demo USING TTL 5 SET speed=10 WHERE car='car-5' AND ts ='2023-08-01 10:00:01';
     ```
 
 1. Wait for `5` seconds and fetch the row for `car-5`.
 
     ```sql
-    SELECT * FROM car_speed5 WHERE car='car-5';
+    SELECT * FROM exp_demo WHERE car='car-5';
     ```
 
     ```output
