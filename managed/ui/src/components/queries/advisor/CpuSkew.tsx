@@ -79,11 +79,12 @@ export const CpuSkew: FC<PerfRecommendationProps> = ({ data, summary }) => {
           </span>
         </div>
       </div>
-      <span className="queryText">
-        {' '}
-        {t('clusterDetail.performance.chartTitle.CpuUsagePercentage')}
-      </span>
-      <div id="cpuSkewGraph"></div>
+      <div className="chartBox">
+        <span className="queryText">
+          {t('clusterDetail.performance.chartTitle.CpuUsagePercentage')}
+        </span>
+        <div id="cpuSkewGraph"></div>
+      </div>
     </div>
   );
 };

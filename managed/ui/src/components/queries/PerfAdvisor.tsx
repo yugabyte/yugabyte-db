@@ -312,7 +312,7 @@ export const PerfAdvisor: FC = () => {
   });
   const recommendationTypes = Object.keys(recommendationTypeList);
   const recommendationLabel =
-    displayedRecomendations?.length > 0 ? 'Recommendations' : 'Recommendation';
+    displayedRecomendations?.length > 1 ? 'Recommendations' : 'Recommendation';
 
   if (isLoading) {
     return (
