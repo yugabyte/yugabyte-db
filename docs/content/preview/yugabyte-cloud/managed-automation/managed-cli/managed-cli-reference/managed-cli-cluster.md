@@ -75,7 +75,7 @@ Create a cluster.
 | --region-info | Region details for multi-region cluster, provided as key-value pairs.<br>Arguments:<ul><li>region-name - name of the region specified as cloud.region</li><li>num-nodes - number of nodes for the region</li><li>vpc - name of the VPC</li></ul>Specify one `--region-info` flag for each region in the cluster.<br>If specified, region and num-nodes is required, vpc is optional. |
 | --cluster-tier | Type of cluster. `Sandbox` or `Dedicated`. |
 | --fault-tolerance | Fault tolerance for the cluster. `NONE`, `ZONE`, or `REGION`. |
-| --database-version | Database version to use for the cluster. `Stable` or `Preview`. |
+| --database-version | Database version to use for the cluster. `Innovation`, `Production`, or `Preview`. |
 | --encryption-spec | customer managed key (CMK) credentials for encryption at rest, provided as key-value pairs.<br>Arguments:<ul><li>cloud-provider - cloud provider (`AWS` or `GCP`); required</li><li>aws-access-key - access key ID (AWS only; required)</li><li>aws-secret-key - secret access key (AWS only)</li><li>aws-arn - Amazon resource name of the CMK (AWS only; required)</li><li>gcp-resource-id - cloud KMS resource ID (GCP only; required)</li><li>gcp-service-account-path - path to the service account credentials key file (GCP only; required)</li></ul>If not provided, you are prompted for the secret access key.</br>AWS secret access key can also be configured using the YBM_AWS_SECRET_KEY [environment variable](../../managed-cli-overview/#environment-variables). |
 
 ### delete
