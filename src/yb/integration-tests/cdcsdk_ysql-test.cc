@@ -6818,6 +6818,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestFromOpIdInGetChangesResponse)
     ASSERT_EQ(record.from_op_id().index(), prev_checkpoint.index());
   }
 
+  auto pending_changes_resp = GetAllPendingChangesFromCdc(
+      stream_id, tablets, &get_changes_resp.cdc_sdk_checkpoint(), 0,
+      get_changes_resp.safe_hybrid_time(), get_changes_resp.wal_segment_index());
+  for (const auto& record : pending_changes_resp.records) {
+    UpdateRecordCount(record, count);
+  }
+
   for (int i = 0; i < 8; i++) {
     ASSERT_EQ(expected_count[i], count[i]);
   }
