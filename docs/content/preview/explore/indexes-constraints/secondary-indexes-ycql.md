@@ -7,7 +7,7 @@ headContent: Explore secondary indexes in YugabyteDB using YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
-    identifier: secondary-indexes
+    identifier: secondary-indexes-ycql
     parent: explore-indexes-constraints
     weight: 220
 aliases:
@@ -33,18 +33,15 @@ The use of indexes can enhance database performance by enabling the database ser
 
 ## Create indexes
 
-You can create indexes in YCQL using the `CREATE INDEX` statement that has the following syntax:
+You can create indexes in YCQL using the `CREATE INDEX` statement using the following syntax:
 
 ```sql
 CREATE INDEX index_name ON table_name(column_list);
 ```
 
-YCQL supports Unique and Partial secondary indexes.  Additional details can be found at
-- [Unique Index](../../../explore/indexes-constraints/unique-index-ycql/)
-- [Partial Index](../../../explore/indexes-constraints/partial-index-ycql/)
-- Covering Index
+YCQL supports [Unique](../../../explore/indexes-constraints/unique-index-ycql/), [Partial](../../../explore/indexes-constraints/partial-index-ycql/), and Covering secondary indexes.
 
-For additional information, see [CREATE INDEX](../../../api/ycql/ddl_create_index/)
+For additional information on creating indexes, see [CREATE INDEX](../../../api/ycql/ddl_create_index/).
 
 ## List indexes and verify the query plan
 
@@ -54,15 +51,15 @@ You can use the [DESCRIBE INDEX](../../../admin/ycqlsh/#describe) command to che
 DESCRIBE INDEX <index_name>
 ```
 
-For additional information regarding the DESCRIBE INDEX command, see [DESCRIBE INDEX](../../../admin/ycqlsh/#describe)
+For additional information, see [DESCRIBE INDEX](../../../admin/ycqlsh/#describe).
 
 You can also use the `EXPLAIN` statement to check if a query uses an index and determine the query plan before execution.
 
-For information regarding the EXPLAIN statement, see [EXPLAIN statement in YCQL](../../../api/ycql/explain/)
+For more information, see [EXPLAIN statement in YCQL](../../../api/ycql/explain/).
 
 ## Remove indexes
 
-You can remove an index using the `DROP INDEX` statement in YCQL with the following syntax:
+You can remove an index using the `DROP INDEX` statement in YCQL using the following syntax:
 
 ```sql
 DROP INDEX index_name;
@@ -97,8 +94,7 @@ The following example shows a query that finds employees working in Operations:
 SELECT * FROM employees WHERE department = 'Operations';
 ```
 
-To process the preceding query, the whole `employees` table needs to be scanned and all the shards have to be accessed. For large organizations, this will take a significant amount of time.  Running an `EXPLAIN` confirms that this by indicating `seq scan` on the table
-
+To process the preceding query, the whole `employees` table needs to be scanned and all the shards have to be accessed. For large organizations, this will take a significant amount of time. You can confirm this using the following `EXPLAIN` statement which indicates `seq scan` on the table.
 
 ```cql
 EXPLAIN SELECT * FROM employees WHERE department = 'Operations';
@@ -123,7 +119,7 @@ The following example executes the query after the index has been applied to `de
 EXPLAIN SELECT * FROM employees WHERE department = 'Operations';
 ```
 
-The following is the output produced by the preceding example:
+Following is the output produced by the preceding example:
 
 ```output
  QUERY PLAN
@@ -132,10 +128,12 @@ The following is the output produced by the preceding example:
    Key Conditions: (department = 'Operations')
 ```
 
-The following example shows how to remove `index_employees_department` that was created in Create indexes:
+To remove the index `index_employees_department`, use the following command:
 
 ```cql
 DROP INDEX index_employees_department;
 ```
 
+## Learn more
 
+- [Secondary indexes with JSONB](../secondary-indexes-with-jsonb-ycql/)
