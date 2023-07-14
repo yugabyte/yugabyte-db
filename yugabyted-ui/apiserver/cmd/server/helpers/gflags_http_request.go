@@ -15,9 +15,9 @@ type GFlagsFuture struct {
 }
 
 func GetGFlagsFuture(hostName string, isMaster bool, future chan GFlagsFuture) {
-    port := "9000"
+    port := TserverUIPort
     if isMaster {
-        port = "7000"
+        port = MasterUIPort
     }
     gFlags := GFlagsFuture {
         GFlags: map[string]string{},

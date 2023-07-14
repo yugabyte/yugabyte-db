@@ -14,6 +14,8 @@ var (
         DbPassword  string
         SslMode     string
         SslRootCert string
+        MasterUIPort  string
+        TserverUIPort string
 )
 
 func init() {
@@ -32,5 +34,9 @@ func init() {
                 "ssl mode for connecting to the database.")
         flag.StringVar(&SslRootCert, "ssl_root certificate", "",
                 "root certificate for connecting to the database.")
+        flag.StringVar(&MasterUIPort, "master_ui_port", "7000",
+                "Master UI port.")
+        flag.StringVar(&TserverUIPort, "tserver_ui_port", "9000",
+                "Tserver UI port.")
         flag.Parse()
 }

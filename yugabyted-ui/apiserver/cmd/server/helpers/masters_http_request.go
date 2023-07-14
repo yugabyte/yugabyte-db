@@ -62,7 +62,7 @@ func GetMastersFuture(nodeHost string, future chan MastersFuture) {
     httpClient := &http.Client{
         Timeout: time.Second * 10,
     }
-    url := fmt.Sprintf("http://%s:7000/api/v1/masters", nodeHost)
+    url := fmt.Sprintf("http://%s:%s/api/v1/masters", nodeHost, MasterUIPort)
     resp, err := httpClient.Get(url)
     if err != nil {
         masters.Error = err
