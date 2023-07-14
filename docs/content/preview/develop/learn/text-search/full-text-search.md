@@ -48,7 +48,7 @@ Text can be represented as a vector of words, which is effectively the list of w
 SELECT to_tsvector('Two convicts become friends and one convict escapes.');
 ```
 
-```sql{class=nocopy}
+```sql{.nocopy}
                          to_tsvector
 --------------------------------------------------------------
  'becom':3 'convict':2,7 'escap':8 'friend':4 'one':6 'two':1
@@ -73,7 +73,7 @@ Just as the text has to be processed for faster search, the query has to go thro
 SELECT to_tsquery('escaping | empire');
 ```
 
-```sql{class=nocopy}
+```sql{.nocopy}
    to_tsquery
 -----------------
  'escap' | 'empir'
@@ -216,7 +216,7 @@ Now you can query the table just on the `tsv` column as follows:
 SELECT * FROM movies WHERE tsv @@ to_tsquery('godfather | thief');
 ```
 
-```sql{class=nocopy}
+```sql{.nocopy}
      name      |                          summary                          |                                       tsv
 ---------------+-----------------------------------------------------------+---------------------------------------------------------------------------------
  The Godfather | A don hands over his empire to one of his sons.           | 'empir':8 'godfath':2 'hand':5 'one':10 'son':13
@@ -241,7 +241,7 @@ Show the query plan as follows:
 EXPLAIN ANALYZE SELECT name FROM movies WHERE tsv @@ to_tsquery('godfather');
 ```
 
-```sql{class=nocopy}
+```sql{.nocopy}
                              QUERY PLAN
 ---------------------------------------------------------------------
  Seq Scan on public.movies (actual time=2.987..6.378 rows=1 loops=1)
@@ -266,7 +266,7 @@ Get the query plan again:
 EXPLAIN ANALYZE SELECT name FROM movies WHERE tsv @@ to_tsquery('godfather');
 ```
 
-```sql{class=nocopy}
+```sql{.nocopy}
                                       QUERY PLAN
 ---------------------------------------------------------------------------------------
  Index Scan using idx_movie on public.movies (actual time=2.580..2.584 rows=1 loops=1)

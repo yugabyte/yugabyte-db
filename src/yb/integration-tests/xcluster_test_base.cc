@@ -226,7 +226,7 @@ Status XClusterTestBase::SetupUniverseReplication(
     MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
     const cdc::ReplicationGroupId& replication_group_id,
     const std::vector<std::shared_ptr<client::YBTable>>& tables,
-    const std::vector<string>& bootstrap_ids, SetupReplicationOptions opts) {
+    const std::vector<xrepl::StreamId>& bootstrap_ids, SetupReplicationOptions opts) {
   std::vector<string> table_ids;
   for (const auto& table : tables) {
     table_ids.push_back(table->id());
@@ -239,8 +239,8 @@ Status XClusterTestBase::SetupUniverseReplication(
 
 Status XClusterTestBase::SetupUniverseReplication(
     MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
-    const cdc::ReplicationGroupId& replication_group_id, const std::vector<string>& table_ids,
-    const std::vector<string>& bootstrap_ids, SetupReplicationOptions opts) {
+    const cdc::ReplicationGroupId& replication_group_id, const std::vector<TableId>& table_ids,
+    const std::vector<xrepl::StreamId>& bootstrap_ids, SetupReplicationOptions opts) {
   // If we have certs for encryption in FLAGS_certs_dir then we need to copy it over to the
   // universe_id subdirectory in FLAGS_certs_for_cdc_dir.
   if (!FLAGS_certs_for_cdc_dir.empty() && !FLAGS_certs_dir.empty()) {
@@ -279,7 +279,7 @@ Status XClusterTestBase::SetupUniverseReplication(
       "Bootstrap Ids for all tables should be provided");
 
   for (const auto& bootstrap_id : bootstrap_ids) {
-    req.add_producer_bootstrap_ids(bootstrap_id);
+    req.add_producer_bootstrap_ids(bootstrap_id.ToString());
   }
 
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
@@ -639,7 +639,7 @@ Status XClusterTestBase::WaitForRoleChangeToPropogateToAllTServers(
   return Status::OK();
 }
 
-Result<std::vector<CDCStreamId>> XClusterTestBase::BootstrapProducer(
+Result<std::vector<xrepl::StreamId>> XClusterTestBase::BootstrapProducer(
     MiniCluster* producer_cluster, YBClient* producer_client,
     const std::vector<std::shared_ptr<yb::client::YBTable>>& tables) {
   std::vector<string> table_ids;
@@ -650,7 +650,7 @@ Result<std::vector<CDCStreamId>> XClusterTestBase::BootstrapProducer(
   return BootstrapProducer(producer_cluster, producer_client, table_ids);
 }
 
-Result<std::vector<CDCStreamId>> XClusterTestBase::BootstrapProducer(
+Result<std::vector<xrepl::StreamId>> XClusterTestBase::BootstrapProducer(
     MiniCluster* producer_cluster, YBClient* producer_client,
     const std::vector<string>& table_ids) {
   std::unique_ptr<cdc::CDCServiceProxy> producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
@@ -669,8 +669,11 @@ Result<std::vector<CDCStreamId>> XClusterTestBase::BootstrapProducer(
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }
 
-  std::vector<CDCStreamId> stream_ids;
-  MoveCollection(&resp.cdc_bootstrap_ids(), &stream_ids);
+  std::vector<xrepl::StreamId> stream_ids;
+  for (auto& bootstrap_id : resp.cdc_bootstrap_ids()) {
+    stream_ids.emplace_back(VERIFY_RESULT(xrepl::StreamId::FromString(bootstrap_id)));
+  }
+
   return stream_ids;
 }
 
@@ -771,7 +774,7 @@ void XClusterTestBase::VerifyReplicationError(
   }
 }
 
-Result<CDCStreamId> XClusterTestBase::GetCDCStreamID(const std::string& producer_table_id) {
+Result<xrepl::StreamId> XClusterTestBase::GetCDCStreamID(const TableId& producer_table_id) {
   master::ListCDCStreamsResponsePB stream_resp;
   RETURN_NOT_OK(GetCDCStreamForTable(producer_table_id, &stream_resp));
 
@@ -785,7 +788,7 @@ Result<CDCStreamId> XClusterTestBase::GetCDCStreamID(const std::string& producer
           "Expected table id $0, have $1", producer_table_id,
           stream_resp.streams(0).table_id().Get(0)));
 
-  return stream_resp.streams(0).stream_id();
+  return xrepl::StreamId::FromString(stream_resp.streams(0).stream_id());
 }
 
 Status XClusterTestBase::WaitForSafeTime(
@@ -814,7 +817,7 @@ Status XClusterTestBase::WaitForSafeTime(
 }
 
 Status XClusterTestBase::PauseResumeXClusterProducerStreams(
-    const std::vector<std::string>& stream_ids, bool is_paused) {
+    const std::vector<xrepl::StreamId>& stream_ids, bool is_paused) {
   master::PauseResumeXClusterProducerStreamsRequestPB req;
   master::PauseResumeXClusterProducerStreamsResponsePB resp;
 
@@ -825,7 +828,7 @@ Status XClusterTestBase::PauseResumeXClusterProducerStreams(
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
   for (const auto& stream_id : stream_ids) {
-    req.add_stream_ids(stream_id);
+    req.add_stream_ids(stream_id.ToString());
   }
   req.set_is_paused(is_paused);
   RETURN_NOT_OK(master_proxy->PauseResumeXClusterProducerStreams(req, &resp, &rpc));

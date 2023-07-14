@@ -36,6 +36,12 @@ export interface ClusterTable  {
   keyspace: string;
   /**
    * 
+   * @type {string}
+   * @memberof ClusterTable
+   */
+  uuid: string;
+  /**
+   * 
    * @type {YbApiEnum}
    * @memberof ClusterTable
    */

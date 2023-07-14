@@ -14,7 +14,7 @@ import {
 } from '../../../../components';
 import { Universe } from '../../universe-form/utils/dto';
 import { api } from '../../../../utils/api';
-import { getPrimaryCluster } from '../../universe-form/utils/helpers';
+import { getPrimaryCluster, createErrorMessage } from '../../universe-form/utils/helpers';
 import {
   YSQLFormFields,
   YSQLFormPayload,
@@ -71,15 +71,14 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({ open, onClose, unive
     },
     {
       onSuccess: (response) => {
-        console.log(response);
         toast.success(
           t('universeActions.editYSQLSettings.updateSettingsSuccessMsg'),
           TOAST_OPTIONS
         );
         onClose();
       },
-      onError: () => {
-        toast.error(t('common.genericFailure'), TOAST_OPTIONS);
+      onError: (error) => {
+        toast.error(createErrorMessage(error), TOAST_OPTIONS);
       }
     }
   );
@@ -94,8 +93,8 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({ open, onClose, unive
         toast.success(t('universeActions.editYSQLSettings.rotatePwdSuccessMsg'), TOAST_OPTIONS);
         onClose();
       },
-      onError: () => {
-        toast.error(t('common.genericFailure'), TOAST_OPTIONS);
+      onError: (error) => {
+        toast.error(createErrorMessage(error), TOAST_OPTIONS);
       }
     }
   );
@@ -206,14 +205,25 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({ open, onClose, unive
                     <img alt="Info" src={InfoMessageIcon} />
                   </YBTooltip>
                 </Typography>
-                <YBToggleField
-                  name={'enableYSQLAuth'}
-                  inputProps={{
-                    'data-testid': 'EnableYSQLModal-AuthToggle'
-                  }}
-                  control={control}
-                  disabled={rotateYSQLPasswordValue}
-                />
+                <YBTooltip
+                  title={
+                    rotateYSQLPasswordValue
+                      ? t('universeActions.editYSQLSettings.rotateBothYSQLWarning')
+                      : ''
+                  }
+                  placement="top-end"
+                >
+                  <div>
+                    <YBToggleField
+                      name={'enableYSQLAuth'}
+                      inputProps={{
+                        'data-testid': 'EnableYSQLModal-AuthToggle'
+                      }}
+                      control={control}
+                      disabled={rotateYSQLPasswordValue}
+                    />
+                  </div>
+                </YBTooltip>
               </Box>
               {!enableYSQLAuthValue && primaryCluster?.userIntent?.enableYSQLAuth && (
                 <Box flex={1} mt={2} width="300px">

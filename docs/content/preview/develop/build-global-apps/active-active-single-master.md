@@ -20,7 +20,7 @@ Only one application instance is active at any time and does consistent reads. A
 
 ## Overview
 
-{{<cluster-setup-tabs>}}
+{{<cluster-setup-tabs list="local,anywhere">}}
 
 Let's say you have your `RF3` cluster and apps deployed in `us-west`.
 

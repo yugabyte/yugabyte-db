@@ -58,6 +58,7 @@ export interface GetLiveQueriesForQuery {
 }
 export interface GetTableInfoForQuery {
   id: string;
+  node_address: string;
 }
 
 /**
@@ -936,6 +937,7 @@ export const getTableInfoAxiosRequest = (
       method: 'GET',
       params: {
         id: requestParameters['id'],
+        node_address: requestParameters['node_address'],
       }
     },
     customAxiosInstance

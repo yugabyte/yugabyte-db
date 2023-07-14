@@ -1642,18 +1642,18 @@ TEST_F(ClientTest, TestGetTableSchemaByIdMissingTable) {
 }
 
 TEST_F(ClientTest, TestCreateCDCStreamAsync) {
-  std::promise<Result<CDCStreamId>> promise;
+  std::promise<Result<xrepl::StreamId>> promise;
   std::unordered_map<std::string, std::string> options;
   client_->CreateCDCStream(
       client_table_.table()->id(), options, cdc::StreamModeTransactional::kFalse,
       [&promise](const auto& stream) { promise.set_value(stream); });
   auto stream = promise.get_future().get();
   ASSERT_OK(stream);
-  ASSERT_FALSE(stream->empty());
+  ASSERT_FALSE(stream->IsNil());
 }
 
 TEST_F(ClientTest, TestCreateCDCStreamMissingTable) {
-  std::promise<Result<CDCStreamId>> promise;
+  std::promise<Result<xrepl::StreamId>> promise;
   std::unordered_map<std::string, std::string> options;
   client_->CreateCDCStream(
       "MissingTableId", options, cdc::StreamModeTransactional::kFalse,
@@ -1678,7 +1678,7 @@ TEST_F(ClientTest, TestDeleteCDCStreamAsync) {
 TEST_F(ClientTest, TestDeleteCDCStreamMissingId) {
   // Try to delete a non-existent CDC stream.
   Synchronizer sync;
-  client_->DeleteCDCStream("MissingStreamId", sync.AsStatusCallback());
+  client_->DeleteCDCStream(xrepl::StreamId::GenerateRandom(), sync.AsStatusCallback());
   Status s = sync.Wait();
   ASSERT_TRUE(TableNotFound(s)) << s;
 }
