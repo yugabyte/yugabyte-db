@@ -2453,7 +2453,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               null /* ysqlDbName */,
               Util.DEFAULT_YCQL_PASSWORD,
               params.ycqlPassword,
-              Util.DEFAULT_YCQL_USERNAME)
+              Util.DEFAULT_YCQL_USERNAME,
+              true /* validateCurrentPassword */)
           .setSubTaskGroupType(subTaskGroupType);
     }
     if (!params.enableYSQLAuth && !StringUtils.isEmpty(params.ysqlPassword)) {
@@ -2465,7 +2466,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               Util.YUGABYTE_DB,
               null /* ycqlPassword */,
               null /* ycqlCurrentPassword */,
-              null /* ycqlUserName */)
+              null /* ycqlUserName */,
+              true /* validateCurrentPassword */)
           .setSubTaskGroupType(subTaskGroupType);
     }
   }
