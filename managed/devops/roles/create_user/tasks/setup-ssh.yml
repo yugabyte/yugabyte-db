@@ -24,6 +24,13 @@
     group: "{{ create_user.group  }}"
   when: ssh_config.ssh_type != "ssh2"
 
+- name: Check SELinux status
+  shell: getenforce
+  register: getenforce_result
+  ignore_errors: true
+
+- set_fact: selinux_status_result="{{ getenforce_result.stdout | default("Disabled") }}"
+
 - block:
   - name: Setup SSH2 | Check if private key file exists
     stat:
@@ -107,3 +114,7 @@
     user: "{{ ssh_config.sudo_user }}"
     key: "{{ ssh_config.authorized_keys }}"
   when: ssh_config.ssh_type != "ssh2"
+
+- name: Set correct context for ".ssh" directory when SELinux enabled
+  shell: chcon -R -t ssh_home_t {{ create_user.home_dir }}/.{{ ssh_config.ssh_type }}
+  when: selinux_status_result == "Enforcing"
