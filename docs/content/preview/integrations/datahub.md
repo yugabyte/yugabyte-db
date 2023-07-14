@@ -97,4 +97,5 @@ Run the example using the following command:
 docker compose -f docker-compose-without-neo4j.quickstart.yml up -d
 ```
 
-After all the containers are running, you can ingest some demo data by running  `./datahub/docker/ingestion/ingestion.sh`, or head to `http://localhost:9002`` (username: datahub, password: datahub) to access the UI.
+After all the containers are running, you can ingest some demo data by running  `./datahub/docker/ingestion/ingestion.sh`, or head to <http://localhost:9002> (username: datahub, password: datahub) to access the UI.
+
