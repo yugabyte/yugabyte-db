@@ -1716,6 +1716,7 @@ ReadCommonScan(Scan *local_node)
 	ReadCommonPlan(&local_node->plan);
 
 	READ_UINT_FIELD(scanrelid);
+	READ_ENUM_FIELD(yb_lock_mechanism, YbLockMechanism);
 }
 
 /*

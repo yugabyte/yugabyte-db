@@ -30,6 +30,7 @@
 #include "access/htup_details.h"
 #include "access/relscan.h"
 #include "access/sysattr.h"
+#include "access/xact.h"
 #include "commands/dbcommands.h"
 #include "commands/tablegroup.h"
 #include "catalog/index.h"
@@ -396,12 +397,41 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
 	}
 
 	/* Fetch one row. */
-	HandleYBStatus(YBCPgDmlFetch(ybScan->handle,
-	                             tupdesc->natts,
-	                             (uint64_t *) values,
-	                             nulls,
-	                             &syscols,
-	                             &has_data));
+	YBCStatus status = YBCPgDmlFetch(ybScan->handle,
+									 tupdesc->natts,
+									 (uint64_t *) values,
+									 nulls,
+									 &syscols,
+									 &has_data);
+
+	if (IsolationIsSerializable())
+		HandleYBStatus(status);
+	else if (status)
+	{
+		if (ybScan->exec_params != NULL && YBCIsTxnConflictError(YBCStatusTransactionError(status)))
+		{
+			elog(DEBUG2, "Error when trying to lock row. "
+				 "pg_wait_policy=%d docdb_wait_policy=%d txn_errcode=%d message=%s",
+				 ybScan->exec_params->pg_wait_policy,
+				 ybScan->exec_params->docdb_wait_policy,
+				 YBCStatusTransactionError(status),
+				 YBCStatusMessageBegin(status));
+			if (ybScan->exec_params->pg_wait_policy == LockWaitError)
+				ereport(ERROR, (errcode(ERRCODE_LOCK_NOT_AVAILABLE),
+								errmsg("could not obtain lock on row in relation \"%s\"",
+									   RelationGetRelationName(ybScan->relation))));
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+						 errmsg("could not serialize access due to concurrent update"),
+						 yb_txn_errcode(YBCGetTxnConflictErrorCode())));
+		}
+		else if (YBCIsTxnSkipLockingError(YBCStatusTransactionError(status)))
+			/* For skip locking, it's correct to simply return no results. */
+			has_data = false;
+		else
+			HandleYBStatus(status);
+	}
 
 	if (has_data)
 	{
@@ -2982,25 +3012,19 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 }
 
 HTSU_Result
-YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy wait_policy,
-						 EState* estate)
+YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy pg_wait_policy,
+			 EState* estate)
 {
-	if (wait_policy == LockWaitBlock && !YBIsWaitQueueEnabled()) {
-		/*
-		 * If wait-queues are not enabled, we default to the "Fail-on-Conflict" policy which is mapped
-		 * to LockWaitError right now (see WaitPolicy proto for meaning of "Fail-on-Conflict" and the
-		 * reason why LockWaitError is not mapped to no-wait semantics but to Fail-on-Conflict
-		 * semantics).
-		 */
-		wait_policy = LockWaitError;
-	}
+	int docdb_wait_policy;
+
+	YBSetRowLockPolicy(&docdb_wait_policy, pg_wait_policy);
 
 	YBCPgStatement ybc_stmt;
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-								RelationGetRelid(relation),
-								NULL /* prepare_params */,
-								YBCIsRegionLocal(relation),
-								&ybc_stmt));
+								  RelationGetRelid(relation),
+								  NULL /* prepare_params */,
+								  YBCIsRegionLocal(relation),
+								  &ybc_stmt));
 
 	/* Bind ybctid to identify the current row. */
 	YBCPgExpr ybctid_expr = YBCNewConstant(ybc_stmt, BYTEAOID, InvalidOid, ybctid, false);
@@ -3009,8 +3033,9 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy w
 	YBCPgExecParameters exec_params = {0};
 	exec_params.limit_count = 1;
 	exec_params.rowmark = mode;
-	exec_params.wait_policy = wait_policy;
-  exec_params.stmt_in_txn_limit_ht_for_reads =
+	exec_params.pg_wait_policy = pg_wait_policy;
+	exec_params.docdb_wait_policy = docdb_wait_policy;
+	exec_params.stmt_in_txn_limit_ht_for_reads =
 		estate->yb_exec_params.stmt_in_txn_limit_ht_for_reads;
 
 	HTSU_Result res = HeapTupleMayBeUpdated;
@@ -3046,8 +3071,9 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy w
 		MemoryContext error_context = MemoryContextSwitchTo(exec_context);
 		ErrorData* edata = CopyErrorData();
 
-		elog(DEBUG2, "Error when trying to lock row. wait_policy=%d txn_errcode=%d message=%s",
-			 wait_policy, edata->yb_txn_errcode, edata->message);
+		elog(DEBUG2, "Error when trying to lock row. "
+			 "pg_wait_policy=%d docdb_wait_policy=%d txn_errcode=%d message=%s",
+			 pg_wait_policy, docdb_wait_policy, edata->yb_txn_errcode, edata->message);
 
 		if (YBCIsTxnConflictError(edata->yb_txn_errcode))
 			res = HeapTupleUpdated;
