@@ -5,10 +5,26 @@ import {
   isNonEmptyArray,
   isNonEmptyObject,
   isDefinedNotNull,
-  isNonEmptyString
+  isNonEmptyString,
+  isEmptyString
 } from './ObjectUtils';
 import { PROVIDER_TYPES, BASE_URL } from '../config';
 import { NodeState } from '../redesign/helpers/dtos';
+
+const LDAP_KEYS = [
+  'ldapserver',
+  'ldapport',
+  'ldapscheme',
+  'ldaptls',
+  'ldapprefix',
+  'ldapsuffix',
+  'ldapbasedn',
+  'ldapbinddn',
+  'ldapbindpasswd',
+  'ldapsearchattribute',
+  'ldapsearchfilter',
+  'ldapurl'
+];
 
 export const CONST_VALUES = {
   LDAP: 'ldap',
@@ -384,20 +400,33 @@ export const verifyLDAPAttributes = (GFlagInput) => {
     );
 
     for (let index = 0; index < LDAPRowWithAttributes?.length; index++) {
-      const splitLDAPAttribute = LDAPRowWithAttributes[index]?.split(CONST_VALUES.EQUALS);
-      // If a LDAP attribute does not have any value, raise a validation error
-      if (splitLDAPAttribute?.length < 2 && isNonEmptyString(splitLDAPAttribute?.[0])) {
+      const [ldapKey, ...ldapValues] = LDAPRowWithAttributes[index]?.split(CONST_VALUES.EQUALS);
+      const ldapValue = ldapValues.join(CONST_VALUES.EQUALS);
+
+      if (!LDAP_KEYS.includes(ldapKey)) {
+        isAttributeInvalid = true;
+        isWarning = false;
+        errorMessage = 'universeForm.gFlags.InvalidLDAPKey';
+        break;
+      }
+
+      if (isEmptyString(ldapValue)) {
         isAttributeInvalid = true;
         isWarning = false;
         errorMessage = 'universeForm.gFlags.LDAPMissingAttributeValue';
         break;
       }
+
+      const hasNoEndQuote =
+        ldapValue.startsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR) &&
+        !ldapValue.endsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR);
+
+      const hasNoStartQuote =
+        !ldapValue.startsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR) &&
+        ldapValue.endsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR);
+
       // If a LDAP attribute starts with double quotes and does not end with it, raise a validation error
-      if (
-        splitLDAPAttribute.length === 2 &&
-        splitLDAPAttribute[1].startsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR) &&
-        !splitLDAPAttribute[1].endsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR)
-      ) {
+      if (hasNoEndQuote || hasNoStartQuote) {
         isAttributeInvalid = true;
         isWarning = false;
         errorMessage = 'universeForm.gFlags.LDAPMissingQuote';
