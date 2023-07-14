@@ -55,6 +55,7 @@ import clsx from 'clsx';
 import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import { handleCACertErrMsg } from '../../customCACerts';
 import './BackupRestoreModal.scss';
 
 interface RestoreModalProps {
@@ -170,7 +171,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
       onError: (resp: any) => {
         onHide();
         setCurrentStep(0);
-        toast.error(resp.response.data.error);
+        !handleCACertErrMsg(resp) && toast.error(resp.response.data.error);
       }
     }
   );

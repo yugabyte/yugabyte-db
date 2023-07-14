@@ -44,7 +44,6 @@ import { IBackupSchedule } from '../common/IBackupSchedule';
 import { MILLISECONDS_IN } from '../scheduled/ScheduledBackupUtils';
 import { components } from 'react-select';
 
-import Close from '../../universes/images/close.svg';
 
 import { ParallelThreads } from '../common/BackupUtils';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
@@ -52,7 +51,9 @@ import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../actions/universe';
 import { QUERY_KEY, api } from '../../../redesign/features/universe/universe-form/utils/api';
 import { RunTimeConfigEntry } from '../../../redesign/features/universe/universe-form/utils/dto';
+import { handleCACertErrMsg } from '../../customCACerts';
 import './BackupCreateModal.scss';
+import Close from '../../universes/images/close.svg';
 
 interface BackupCreateModalProps {
   onHide: Function;
@@ -251,7 +252,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       },
       onError: (err: any) => {
         onHide();
-        toast.error(err.response.data.error);
+        !handleCACertErrMsg(err) && toast.error(err.response.data.error);
       }
     }
   );
@@ -267,7 +268,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       },
       onError: (err: any) => {
         onHide();
-        toast.error(err.response.data.error);
+        !handleCACertErrMsg(err) && toast.error(err.response.data.error);
       }
     }
   );
@@ -296,7 +297,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       },
       onError: (err: any) => {
         onHide();
-        toast.error(err?.response?.data?.error ?? 'An Error occurred');
+        !handleCACertErrMsg(err) && toast.error(err?.response?.data?.error ?? 'An Error occurred');
       }
     }
   );
@@ -317,7 +318,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       },
       onError: (resp: any) => {
         onHide();
-        toast.error(resp?.response?.data?.error ?? 'An error occurred');
+        !handleCACertErrMsg(resp) && toast.error(resp?.response?.data?.error ?? 'An error occurred');
       }
     }
   );
