@@ -32,6 +32,7 @@ import { toast } from 'react-toastify';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { YBLoadingCircleIcon } from '../../common/indicators';
+import { handleCACertErrMsg } from '../../customCACerts';
 import './BackupDetails.scss';
 
 export type IncrementalBackupProps = {
@@ -171,7 +172,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
         setShowAddIncrementalBackupModal(false);
       },
       onError: (resp: any) => {
-        toast.error(createErrorMessage(resp));
+        !handleCACertErrMsg(resp) && toast.error(createErrorMessage(resp));
       }
     }
   );

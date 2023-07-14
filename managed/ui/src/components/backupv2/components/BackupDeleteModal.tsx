@@ -16,6 +16,7 @@ import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBModalForm } from '../../common/forms';
 import { YBButton } from '../../common/forms/fields';
+import { handleCACertErrMsg } from '../../customCACerts';
 
 interface BackupDeleteProps {
   backupsList: IBackup[];
@@ -32,12 +33,21 @@ const isIncrementalBackupInProgress = (backupList: IBackup[]) => {
 export const BackupDeleteModal: FC<BackupDeleteProps> = ({ backupsList, visible, onHide }) => {
   const queryClient = useQueryClient();
   const delBackup = useMutation((backupList: IBackup[]) => deleteBackup(backupList), {
-    onSuccess: () => {
+    onSuccess: (resp: any) => {
+      toast.success(
+        <span>
+          Backup is queued for deletion. Click &nbsp;
+          <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+            here
+          </a>
+          &nbsp; for task details
+        </span>
+      );
       onHide();
       queryClient.invalidateQueries('backups');
     },
-    onError: () => {
-      toast.error('Unable to delete backup');
+    onError: (resp: any) => {
+      !handleCACertErrMsg(resp) && toast.error('Unable to delete backup');
       onHide();
     }
   });
