@@ -1,3 +1,45 @@
+'/cluster':
+  get:
+    summary: Get a cluster
+    description: Get a Yugabyte Cluster
+    operationId: getCluster
+    tags:
+      - cluster
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ClusterResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+  delete:
+    summary: Submit task to delete a cluster
+    description: Submit task to delete a Yugabyte Cluster
+    tags:
+      - cluster
+    responses:
+      '200':
+        description: Successfully submitted delete cluster request
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+    operationId: deleteCluster
+  put:
+    summary: Submit task to edit a cluster
+    description: Submit task to edit a Yugabyte Cluster
+    operationId: editCluster
+    tags:
+      - cluster
+    requestBody:
+      $ref: '../request_bodies/_index.yaml#/ClusterSpec'
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ClusterResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
 '/live_queries':
   get:
     summary: Get the live queries in a cluster
@@ -131,6 +173,22 @@
       in: query
       description: Which activities data to retrieve
       required: true
+      style: form
+      explode: false
+      schema:
+        type: string
+    - name: status
+      in: query
+      description: Completed or In-Progress
+      required: true
+      style: form
+      explode: false
+      schema:
+        type: string
+    - name: database
+      in: query
+      description: Which database's activities data is to be retrived.
+      required: false
       style: form
       explode: false
       schema:
@@ -303,48 +361,6 @@
     responses:
       '200':
         $ref: '../responses/_index.yaml#/AlertsResponse'
-      '400':
-        $ref: '../responses/_index.yaml#/ApiError'
-      '500':
-        $ref: '../responses/_index.yaml#/ApiError'
-'/cluster':
-  get:
-    summary: Get a cluster
-    description: Get a Yugabyte Cluster
-    operationId: getCluster
-    tags:
-      - cluster
-    responses:
-      '200':
-        $ref: '../responses/_index.yaml#/ClusterResponse'
-      '400':
-        $ref: '../responses/_index.yaml#/ApiError'
-      '500':
-        $ref: '../responses/_index.yaml#/ApiError'
-  delete:
-    summary: Submit task to delete a cluster
-    description: Submit task to delete a Yugabyte Cluster
-    tags:
-      - cluster
-    responses:
-      '200':
-        description: Successfully submitted delete cluster request
-      '400':
-        $ref: '../responses/_index.yaml#/ApiError'
-      '500':
-        $ref: '../responses/_index.yaml#/ApiError'
-    operationId: deleteCluster
-  put:
-    summary: Submit task to edit a cluster
-    description: Submit task to edit a Yugabyte Cluster
-    operationId: editCluster
-    tags:
-      - cluster
-    requestBody:
-      $ref: '../request_bodies/_index.yaml#/ClusterSpec'
-    responses:
-      '200':
-        $ref: '../responses/_index.yaml#/ClusterResponse'
       '400':
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
