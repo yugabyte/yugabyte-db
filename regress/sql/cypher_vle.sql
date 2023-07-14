@@ -305,6 +305,31 @@ SELECT * FROM cypher('cypher_vle', $$ MATCH ()-[p *]-() MATCH (p) RETURN p $$)as
 SELECT * FROM cypher('cypher_vle', $$ MATCH p=() MATCH ()-[p *]-() RETURN p $$)as (p agtype);
 SELECT * FROM cypher('cypher_vle', $$ MATCH ()-[p *]-() MATCH p=() RETURN p $$)as (p agtype);
 
+-- issue 1033, agtype_access_operator not working on containerized edges
+SELECT create_graph('access');
+
+SELECT * FROM cypher('access',$$ CREATE ()-[:knows]->() $$) as (results agtype);
+SELECT * FROM cypher('access',$$ CREATE ()-[:knows]->()-[:knows]->()$$) as (results agtype);
+SELECT * FROM cypher('access',$$ CREATE ()-[:knows {id:0}]->()-[:knows {id: 1}]->() $$) as (results agtype);
+SELECT * FROM cypher('access',$$ CREATE ()-[:knows {id:2, arry:[0,1,2,3,{name: "joe"}]}]->()-[:knows {id: 3, arry:[1,3,{name:"john", stats: {age: 1000}}]}]->() $$) as (results agtype);
+SELECT * FROM cypher('access', $$ MATCH (u)-[e*]->(v) RETURN e $$)as (edges agtype);
+SELECT * FROM cypher('access', $$ MATCH (u)-[e*2..2]->(v) RETURN e $$)as (edges agtype);
+SELECT * FROM cypher('access',$$ MATCH ()-[e*2..2]->() RETURN properties(e[0]) $$) as (prop_first_edge agtype);
+SELECT * FROM cypher('access',$$ MATCH ()-[e*2..2]->() RETURN e[0].id $$) as (results agtype);
+SELECT * FROM cypher('access',$$ MATCH ()-[e*2..2]->() RETURN e[0].arry[2] $$) as (results agtype);
+SELECT * FROM cypher('access',$$ MATCH ()-[e*2..2]->() RETURN properties(e[1]) $$) as (prop_second_edge agtype);
+SELECT * FROM cypher('access',$$ MATCH ()-[e*2..2]->() RETURN e[1].id $$) as (results agtype);
+SELECT * FROM cypher('access',$$ MATCH ()-[e*2..2]->() RETURN e[1].arry[2] $$) as (results agtype);
+SELECT * FROM cypher('access',$$ MATCH ()-[e*2..2]->() RETURN e[1].arry[2].stats $$) as (results agtype);
+SELECT * FROM cypher('access',$$ MATCH ()-[e*2..2]->() RETURN properties(e[2]) $$) as (prop_third_edge agtype);
+
+SELECT * FROM cypher('access',$$ MATCH ()-[e*]->() RETURN properties(e[0]), properties(e[1]) $$) as (prop_1st agtype, prop_2nd agtype);
+SELECT * FROM cypher('access',$$ MATCH ()-[e*]->() RETURN e[0].id, e[1].id $$) as (results_1st agtype, results_2nd agtype);
+SELECT * FROM cypher('access',$$ MATCH ()-[e*]->() RETURN e[0].arry, e[1].arry $$) as (results_1st agtype, results_2nd agtype);
+SELECT * FROM cypher('access',$$ MATCH ()-[e*]->() RETURN e[0].arry[2], e[1].arry[2] $$) as (results_1st agtype, results_2nd agtype);
+
+SELECT drop_graph('access', true);
+
 --
 -- Clean up
 --

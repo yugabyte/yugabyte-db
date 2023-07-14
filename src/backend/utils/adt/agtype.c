@@ -3451,58 +3451,30 @@ Datum agtype_access_operator(PG_FUNCTION_ARGS)
     bool *nulls = NULL;
     Oid *types = NULL;
     int nargs = 0;
-    agtype *object = NULL;
-    agtype_value *object_value = NULL;
+    agtype *container = NULL;
+    agtype_value *container_value = NULL;
     int i = 0;
 
     /* extract our args, we need at least 2 */
     nargs = extract_variadic_args_min(fcinfo, 0, true, &args, &types, &nulls,
                                       2);
-    /* return NULL if we don't have the minimum number of args */
+    /*
+     * Return NULL if -
+     *
+     *     1) Our args are all null - nothing passed at all.
+     *     2) We don't have the minimum number of args. We require an object or
+     *        an array along with either a key or element number. Note that the
+     *        function extract_variadic_args_min will return 0 (nargs) if we
+     *        don't have at least 2 args.
+     *
+     */
     if (args == NULL || nargs == 0 || nulls[0] == true)
     {
         PG_RETURN_NULL();
     }
 
-    /* get the object argument */
-    object = DATUM_GET_AGTYPE_P(args[0]);
-
-    /* if the object is a scalar, it must be a vertex or edge */
-    if (AGT_ROOT_IS_SCALAR(object))
-    {
-        agtype_value *scalar_value = NULL;
-        agtype_value *property_value = NULL;
-
-        /* unpack the scalar */
-        scalar_value = get_ith_agtype_value_from_container(&object->root, 0);
-
-        /* get the properties depending on the type or fail */
-        if (scalar_value->type == AGTV_VERTEX)
-        {
-            property_value = &scalar_value->val.object.pairs[2].value;
-        }
-        else if (scalar_value->type == AGTV_EDGE)
-        {
-            property_value = &scalar_value->val.object.pairs[4].value;
-        }
-        else
-        {
-            ereport(ERROR,(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                           errmsg("scalar object must be a vertex or edge")));
-        }
-
-        /* if the properties are NULL, return NULL */
-        if (property_value == NULL || property_value->type == AGTV_NULL)
-        {
-            PG_RETURN_NULL();
-        }
-
-        /* set the object_value to the property_value. */
-        object_value = property_value;
-    }
-
-    /* check for NULL keys */
-    for (i = 1; i < nargs; i++)
+    /* check for individual NULLs */
+    for (i = 0; i < nargs; i++)
     {
         /* if we have a NULL, return NULL */
         if (nulls[i] == true)
@@ -3511,7 +3483,28 @@ Datum agtype_access_operator(PG_FUNCTION_ARGS)
         }
     }
 
-    /* iterate through the keys */
+    /* get the container argument. It could be an object or array */
+    container = DATUM_GET_AGTYPE_P(args[0]);
+
+    /* if it is a scalar, open it and pull out the value */
+    if (AGT_ROOT_IS_SCALAR(container))
+    {
+        container_value = get_ith_agtype_value_from_container(&container->root,
+                                                              0);
+
+        /* it must be either a vertex or an edge */
+        if (container_value->type != AGTV_EDGE &&
+            container_value->type != AGTV_VERTEX)
+        {
+                ereport(ERROR,(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                               errmsg("scalar object must be a vertex or edge")));
+        }
+
+        /* clear the container reference */
+        container = NULL;
+    }
+
+    /* iterate through the keys (object fields or array elements) */
     for (i = 1; i < nargs; i++)
     {
         agtype *key = NULL;
@@ -3527,53 +3520,67 @@ Datum agtype_access_operator(PG_FUNCTION_ARGS)
         }
 
         /*
+         * Check for a vertex or edge container_value and extract the properties
+         * object.
+         */
+        if ((container_value != NULL &&
+             (container_value->type == AGTV_EDGE ||
+              container_value->type == AGTV_VERTEX)))
+        {
+            /* both are objects, get the properties object */
+            container_value = (container_value->type == AGTV_EDGE)
+                ? &container_value->val.object.pairs[4].value
+                : &container_value->val.object.pairs[2].value;
+        }
+
+        /*
          * If we are dealing with a type of object, which can be an -
          * agtype OBJECT, an agtype_value OBJECT serialized (BINARY), or an
          * agtype_value OBJECT deserialized.
          */
-        if ((object_value != NULL &&
-             (object_value->type == AGTV_OBJECT ||
-             (object_value->type == AGTV_BINARY &&
-              AGTYPE_CONTAINER_IS_OBJECT(object_value->val.binary.data)))) ||
-            (object != NULL && AGT_ROOT_IS_OBJECT(object)))
+        if ((container_value != NULL &&
+             (container_value->type == AGTV_OBJECT ||
+              (container_value->type == AGTV_BINARY &&
+               AGTYPE_CONTAINER_IS_OBJECT(container_value->val.binary.data)))) ||
+            (container != NULL && AGT_ROOT_IS_OBJECT(container)))
         {
-            object_value = execute_map_access_operator(object, object_value,
-                                                       key);
+            container_value = execute_map_access_operator(container,
+                                                          container_value, key);
         }
         /*
          * If we are dealing with a type of array, which can be an -
          * agtype ARRAY, an agtype_value ARRAY serialized (BINARY), or an
          * agtype_value ARRAY deserialized.
          */
-        else if ((object_value != NULL &&
-                  (object_value->type == AGTV_ARRAY ||
-                  (object_value->type == AGTV_BINARY &&
-                   AGTYPE_CONTAINER_IS_ARRAY(object_value->val.binary.data)))) ||
-                 (object != NULL && AGT_ROOT_IS_ARRAY(object)))
+        else if ((container_value != NULL &&
+                  (container_value->type == AGTV_ARRAY ||
+                   (container_value->type == AGTV_BINARY &&
+                    AGTYPE_CONTAINER_IS_ARRAY(container_value->val.binary.data)))) ||
+                 (container != NULL && AGT_ROOT_IS_ARRAY(container)))
         {
-            object_value = execute_array_access_operator(object, object_value,
-                                                         key);
+            container_value = execute_array_access_operator(container,
+                                                            container_value,
+                                                            key);
         }
-        /* this is unexpected */
         else
         {
+            /* this is unexpected */
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                             errmsg("container must be an array or object")));
         }
 
         /* for NULL values return NULL */
-        if (object_value == NULL || object_value->type == AGTV_NULL)
+        if (container_value == NULL || container_value->type == AGTV_NULL)
         {
             PG_RETURN_NULL();
         }
 
-        /* clear the object reference */
-        object = NULL;
-
+        /* clear the container reference */
+        container = NULL;
     }
 
     /* serialize and return the result */
-    return AGTYPE_P_GET_DATUM(agtype_value_to_agtype(object_value));
+    return AGTYPE_P_GET_DATUM(agtype_value_to_agtype(container_value));
 }
 
 PG_FUNCTION_INFO_V1(agtype_access_slice);

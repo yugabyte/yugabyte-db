@@ -814,6 +814,192 @@ SELECT * FROM cypher('cypher_vle', $$ MATCH ()-[p *]-() MATCH p=() RETURN p $$)a
 ERROR:  variable "p" already exists
 LINE 1: ...M cypher('cypher_vle', $$ MATCH ()-[p *]-() MATCH p=() RETUR...
                                                              ^
+-- issue 1033, agtype_access_operator not working on containerized edges
+SELECT create_graph('access');
+NOTICE:  graph "access" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('access',$$ CREATE ()-[:knows]->() $$) as (results agtype);
+ results 
+---------
+(0 rows)
+
+SELECT * FROM cypher('access',$$ CREATE ()-[:knows]->()-[:knows]->()$$) as (results agtype);
+ results 
+---------
+(0 rows)
+
+SELECT * FROM cypher('access',$$ CREATE ()-[:knows {id:0}]->()-[:knows {id: 1}]->() $$) as (results agtype);
+ results 
+---------
+(0 rows)
+
+SELECT * FROM cypher('access',$$ CREATE ()-[:knows {id:2, arry:[0,1,2,3,{name: "joe"}]}]->()-[:knows {id: 3, arry:[1,3,{name:"john", stats: {age: 1000}}]}]->() $$) as (results agtype);
+ results 
+---------
+(0 rows)
+
+SELECT * FROM cypher('access', $$ MATCH (u)-[e*]->(v) RETURN e $$)as (edges agtype);
+                                                                                                                                                                                 edges                                                                                                                                                                                 
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 844424930131969, "label": "knows", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}}::edge]
+ [{"id": 844424930131971, "label": "knows", "end_id": 281474976710660, "start_id": 281474976710659, "properties": {}}::edge]
+ [{"id": 844424930131971, "label": "knows", "end_id": 281474976710660, "start_id": 281474976710659, "properties": {}}::edge, {"id": 844424930131970, "label": "knows", "end_id": 281474976710661, "start_id": 281474976710660, "properties": {}}::edge]
+ [{"id": 844424930131970, "label": "knows", "end_id": 281474976710661, "start_id": 281474976710660, "properties": {}}::edge]
+ [{"id": 844424930131973, "label": "knows", "end_id": 281474976710663, "start_id": 281474976710662, "properties": {"id": 0}}::edge]
+ [{"id": 844424930131973, "label": "knows", "end_id": 281474976710663, "start_id": 281474976710662, "properties": {"id": 0}}::edge, {"id": 844424930131972, "label": "knows", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {"id": 1}}::edge]
+ [{"id": 844424930131972, "label": "knows", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {"id": 1}}::edge]
+ [{"id": 844424930131975, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710665, "properties": {"id": 2, "arry": [0, 1, 2, 3, {"name": "joe"}]}}::edge]
+ [{"id": 844424930131975, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710665, "properties": {"id": 2, "arry": [0, 1, 2, 3, {"name": "joe"}]}}::edge, {"id": 844424930131974, "label": "knows", "end_id": 281474976710667, "start_id": 281474976710666, "properties": {"id": 3, "arry": [1, 3, {"name": "john", "stats": {"age": 1000}}]}}::edge]
+ [{"id": 844424930131974, "label": "knows", "end_id": 281474976710667, "start_id": 281474976710666, "properties": {"id": 3, "arry": [1, 3, {"name": "john", "stats": {"age": 1000}}]}}::edge]
+(10 rows)
+
+SELECT * FROM cypher('access', $$ MATCH (u)-[e*2..2]->(v) RETURN e $$)as (edges agtype);
+                                                                                                                                                                                 edges                                                                                                                                                                                 
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 844424930131971, "label": "knows", "end_id": 281474976710660, "start_id": 281474976710659, "properties": {}}::edge, {"id": 844424930131970, "label": "knows", "end_id": 281474976710661, "start_id": 281474976710660, "properties": {}}::edge]
+ [{"id": 844424930131973, "label": "knows", "end_id": 281474976710663, "start_id": 281474976710662, "properties": {"id": 0}}::edge, {"id": 844424930131972, "label": "knows", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {"id": 1}}::edge]
+ [{"id": 844424930131975, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710665, "properties": {"id": 2, "arry": [0, 1, 2, 3, {"name": "joe"}]}}::edge, {"id": 844424930131974, "label": "knows", "end_id": 281474976710667, "start_id": 281474976710666, "properties": {"id": 3, "arry": [1, 3, {"name": "john", "stats": {"age": 1000}}]}}::edge]
+(3 rows)
+
+SELECT * FROM cypher('access',$$ MATCH ()-[e*2..2]->() RETURN properties(e[0]) $$) as (prop_first_edge agtype);
+                 prop_first_edge                  
+--------------------------------------------------
+ {}
+ {"id": 0}
+ {"id": 2, "arry": [0, 1, 2, 3, {"name": "joe"}]}
+(3 rows)
+
+SELECT * FROM cypher('access',$$ MATCH ()-[e*2..2]->() RETURN e[0].id $$) as (results agtype);
+ results 
+---------
+ 
+ 0
+ 2
+(3 rows)
+
+SELECT * FROM cypher('access',$$ MATCH ()-[e*2..2]->() RETURN e[0].arry[2] $$) as (results agtype);
+ results 
+---------
+ 
+ 
+ 2
+(3 rows)
+
+SELECT * FROM cypher('access',$$ MATCH ()-[e*2..2]->() RETURN properties(e[1]) $$) as (prop_second_edge agtype);
+                          prop_second_edge                           
+---------------------------------------------------------------------
+ {}
+ {"id": 1}
+ {"id": 3, "arry": [1, 3, {"name": "john", "stats": {"age": 1000}}]}
+(3 rows)
+
+SELECT * FROM cypher('access',$$ MATCH ()-[e*2..2]->() RETURN e[1].id $$) as (results agtype);
+ results 
+---------
+ 
+ 1
+ 3
+(3 rows)
+
+SELECT * FROM cypher('access',$$ MATCH ()-[e*2..2]->() RETURN e[1].arry[2] $$) as (results agtype);
+                 results                  
+------------------------------------------
+ 
+ 
+ {"name": "john", "stats": {"age": 1000}}
+(3 rows)
+
+SELECT * FROM cypher('access',$$ MATCH ()-[e*2..2]->() RETURN e[1].arry[2].stats $$) as (results agtype);
+    results    
+---------------
+ 
+ 
+ {"age": 1000}
+(3 rows)
+
+SELECT * FROM cypher('access',$$ MATCH ()-[e*2..2]->() RETURN properties(e[2]) $$) as (prop_third_edge agtype);
+ prop_third_edge 
+-----------------
+ 
+ 
+ 
+(3 rows)
+
+SELECT * FROM cypher('access',$$ MATCH ()-[e*]->() RETURN properties(e[0]), properties(e[1]) $$) as (prop_1st agtype, prop_2nd agtype);
+                              prop_1st                               |                              prop_2nd                               
+---------------------------------------------------------------------+---------------------------------------------------------------------
+ {}                                                                  | 
+ {}                                                                  | 
+ {}                                                                  | {}
+ {}                                                                  | 
+ {"id": 0}                                                           | 
+ {"id": 0}                                                           | {"id": 1}
+ {"id": 1}                                                           | 
+ {"id": 2, "arry": [0, 1, 2, 3, {"name": "joe"}]}                    | 
+ {"id": 2, "arry": [0, 1, 2, 3, {"name": "joe"}]}                    | {"id": 3, "arry": [1, 3, {"name": "john", "stats": {"age": 1000}}]}
+ {"id": 3, "arry": [1, 3, {"name": "john", "stats": {"age": 1000}}]} | 
+(10 rows)
+
+SELECT * FROM cypher('access',$$ MATCH ()-[e*]->() RETURN e[0].id, e[1].id $$) as (results_1st agtype, results_2nd agtype);
+ results_1st | results_2nd 
+-------------+-------------
+             | 
+             | 
+             | 
+             | 
+ 0           | 
+ 0           | 1
+ 1           | 
+ 2           | 
+ 2           | 3
+ 3           | 
+(10 rows)
+
+SELECT * FROM cypher('access',$$ MATCH ()-[e*]->() RETURN e[0].arry, e[1].arry $$) as (results_1st agtype, results_2nd agtype);
+                   results_1st                    |                   results_2nd                    
+--------------------------------------------------+--------------------------------------------------
+                                                  | 
+                                                  | 
+                                                  | 
+                                                  | 
+                                                  | 
+                                                  | 
+                                                  | 
+ [0, 1, 2, 3, {"name": "joe"}]                    | 
+ [0, 1, 2, 3, {"name": "joe"}]                    | [1, 3, {"name": "john", "stats": {"age": 1000}}]
+ [1, 3, {"name": "john", "stats": {"age": 1000}}] | 
+(10 rows)
+
+SELECT * FROM cypher('access',$$ MATCH ()-[e*]->() RETURN e[0].arry[2], e[1].arry[2] $$) as (results_1st agtype, results_2nd agtype);
+               results_1st                |               results_2nd                
+------------------------------------------+------------------------------------------
+                                          | 
+                                          | 
+                                          | 
+                                          | 
+                                          | 
+                                          | 
+                                          | 
+ 2                                        | 
+ 2                                        | {"name": "john", "stats": {"age": 1000}}
+ {"name": "john", "stats": {"age": 1000}} | 
+(10 rows)
+
+SELECT drop_graph('access', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table access._ag_label_vertex
+drop cascades to table access._ag_label_edge
+drop cascades to table access.knows
+NOTICE:  graph "access" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
 --
 -- Clean up
 --
