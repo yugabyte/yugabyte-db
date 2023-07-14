@@ -167,7 +167,9 @@ static int MasterMain(int argc, char** argv) {
   total_mem_watcher->Shutdown();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(ThreadJoiner(total_mem_watcher_thread.get()).Join());
 
-  call_home.reset();
+  if (call_home) {
+    call_home->Shutdown();
+  }
 
   server.Shutdown();
 

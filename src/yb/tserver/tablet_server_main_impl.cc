@@ -383,7 +383,9 @@ int TabletServerMain(int argc, char** argv) {
     ysql_conn_mgr_supervisor->Stop();
   }
 
-  call_home.reset();
+  if (call_home) {
+    call_home->Shutdown();
+  }
 
   LOG(WARNING) << "Stopping Tablet server";
   server->Shutdown();
