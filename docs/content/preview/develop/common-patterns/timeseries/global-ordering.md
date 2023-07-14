@@ -112,7 +112,7 @@ INSERT INTO global_order2 (ts, car, speed)
             FROM generate_series(1,100) AS id);
 ```
 
-As a default value of `bucketid` column to (`random()*8``) is set, you do not have to explicitly insert the value.
+As a default value of `bucketid` column to `random()*8` is set, you do not have to explicitly insert the value.
 
 Retrieve the data from the table as follows:
 

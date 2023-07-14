@@ -50,7 +50,7 @@ user2.name = "Harry Potter"
 user2.country = "UK"
 ```
 
-Key-value stores are expected to be some of the fastest storage data models. For more information, see [Key-Value Model](./keyvalue)
+Key-value stores are expected to be some of the fastest storage data models. For more information, see [Key-Value Model](./keyvalue).
 
 ## Wide-column
 

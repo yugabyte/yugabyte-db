@@ -89,7 +89,7 @@ CREATE TABLE entity_order2 (
 ) SPLIT INTO 3 TABLETS;
 ```
 
-Notice that you have added a `bucketid` to your data which is a random number between `0` and `7` and are distributing the data on the entity and `bucketid`.
+Notice that a `bucketid` is added to your data which is a random number between `0` and `7` and are distributing the data on the entity and `bucketid`.
 
 Add the same data to this table.
 
