@@ -44,6 +44,14 @@ yb_lock_status(PG_FUNCTION_ARGS)
 	FuncCallContext *funcctx;
 	YbFuncCallContext yb_funcctx;
 
+	if (!yb_enable_pg_locks)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("lock status is unavailable"),
+						errdetail("yb_enable_pg_locks is false or a system "
+								  "upgrade is in progress")));
+	}
+
 	/*
 	 *  If this is not a superuser, do not return actual user data.
 	 *  TODO: Remove this as soon as we mask out user data.
