@@ -15,6 +15,7 @@ import {
 } from '../../../actions/cloud';
 import { fetchTaskProgress, fetchTaskProgressResponse } from '../../../actions/tasks';
 import { toast } from 'react-toastify';
+import { handleCACertErrMsg } from '../../customCACerts';
 
 const mapStateToProps = (state) => {
   return {
@@ -46,6 +47,9 @@ const mapDispatchToProps = (dispatch) => {
       return dispatch(createKMSProviderConfig(provider, body))
         .then?.((response) => {
           if (response.error) {
+            if(handleCACertErrMsg(response.payload)){
+              return;
+            }
             const errorMessage =
               response.payload?.response?.data?.error || response.payload.message;
             toast.error(errorMessage, { autoClose: 2500 });
