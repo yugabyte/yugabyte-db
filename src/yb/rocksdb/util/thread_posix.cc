@@ -176,7 +176,11 @@ void ThreadPool::StartBGThreads() {
     CHECK_OK(yb::Thread::Create(
         category_name, std::move(thread_name),
         [this, tid]() { this->BGThread(tid); }, &thread));
-    bg_wait_states_.push_back(std::make_shared<yb::util::WaitStateInfo>());
+    bg_wait_states_.push_back(std::make_shared<yb::util::WaitStateInfo>(
+                                yb::util::AUHMetadata{
+                                    .top_level_node_id = "rocksdb",
+                                    .top_level_request_id = {0, 2},
+                                    .query_id = -2}));
     bgthreads_.push_back(thread);
   }
 }

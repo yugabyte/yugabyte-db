@@ -1516,6 +1516,14 @@ Status RaftConsensus::Update(
     return STATUS(IllegalState, "Rejected: --TEST_follower_reject_update_consensus_requests "
                                 "is set to true.");
   }
+  auto wait_state = util::WaitStateInfo::CurrentWaitState();
+  if (wait_state) {
+    wait_state->UpdateMetadata(
+      yb::util::AUHMetadata{
+          .top_level_node_id = "consensus",
+          .top_level_request_id = {0, 1},
+          .query_id = -1});
+  }
   SET_WAIT_STATUS(util::WaitStateCode::Updating);
 
   TEST_PAUSE_IF_FLAG(TEST_follower_pause_update_consensus_requests);
