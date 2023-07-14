@@ -479,7 +479,7 @@ libraryDependencies ++= Seq(
   "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
 )
 
-dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.21.2"
+dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.21.7"
 dependencyOverrides += "com.google.guava" % "guava" % "23.0"
 // SSO functionality only works on the older version of nimbusds.
 // Azure library upgrade tries to upgrade nimbusds to latest version.
