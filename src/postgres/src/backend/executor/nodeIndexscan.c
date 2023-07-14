@@ -141,29 +141,37 @@ IndexNext(IndexScanState *node)
 	}
 
 	/*
-	 * Setup LIMIT and future execution parameter before calling YugaByte scanning rountines.
+	 * Set up any locking that happens at the time of the scan.
 	 */
 	if (IsYugaByteEnabled()) {
+		IndexScan  *plan;
 		scandesc->yb_exec_params = &estate->yb_exec_params;
 		scandesc->yb_exec_params->rowmark = -1;
 
 		// Add row marks.
-		if (XactIsoLevel == XACT_SERIALIZABLE)
+		plan = castNode(IndexScan, node->ss.ps.plan);
+		if (plan->scan.yb_lock_mechanism == YB_RANGE_LOCK_ON_SCAN ||
+			plan->scan.yb_lock_mechanism == YB_LOCK_CLAUSE_ON_PK)
 		{
 			/*
-			 * In case of SERIALIZABLE isolation level we have to take predicate locks to disallow
+			 * In case of SERIALIZABLE isolation level we have to take prefix range locks to disallow
 			 * INSERTion of new rows that satisfy the query predicate. So, we set the rowmark on all
 			 * read requests sent to tserver instead of locking each tuple one by one in LockRows node.
+			 *
+			 * For other isolation levels it's sometimes possible to take locks during the index scan
+			 * as well.
 			 */
 			ListCell   *l;
-			foreach(l, estate->es_rowMarks) {
+			foreach(l, estate->es_rowMarks)
+			{
 				ExecRowMark *erm = (ExecRowMark *) lfirst(l);
-				// Do not propogate non-row-locking row marks.
-				if (erm->markType != ROW_MARK_REFERENCE &&
-						erm->markType != ROW_MARK_COPY) {
+				// Do not propagate non-row-locking row marks.
+				if (erm->markType != ROW_MARK_REFERENCE && erm->markType != ROW_MARK_COPY)
+				{
 					scandesc->yb_exec_params->rowmark = erm->markType;
-					YBUpdateRowLockPolicyForSerializable(
-							&scandesc->yb_exec_params->wait_policy, erm->waitPolicy);
+					scandesc->yb_exec_params->pg_wait_policy = erm->waitPolicy;
+					YBSetRowLockPolicy(&scandesc->yb_exec_params->docdb_wait_policy,
+									   erm->waitPolicy);
 				}
 				break;
 			}
