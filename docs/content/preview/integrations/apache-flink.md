@@ -12,7 +12,7 @@ type: docs
 
 [Apache Flink](https://flink.apache.org/) is a framework and distributed processing engine for stateful computations over unbounded and bounded data streams.
 
-Flink provides JDBC sink connectors to write data to various databases.
+Flink provides various DataStream connectors including one for JDBC to write data to various databases. You can use this connector to write date from Flink to YugabyteDB.
 
 ## Connect
 
@@ -21,8 +21,15 @@ The following example based on the [Flink documentation](https://nightlies.apach
 Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB Prerequisites](../../tools/#yugabytedb-prerequisites).
 Note that the YugabyteDB cluster you are connecting to is running on localhost.
 
+Using [YSQLSH](../../admin/ysqlsh/#starting-ysqlsh), create a table named books in YugabyteDB as follows:
+
+```sql
+create table books (id bigint, title varchar, authors varchar, year int);
+```
+
+Compile and run the following program:
+
 ```java
-// Create a table named book and insert data.
 package com.yugabyte;
 
 import org.apache.flink.connector.jdbc.JdbcConnectionOptions;
