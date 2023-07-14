@@ -649,7 +649,7 @@ class PgApiImpl {
 
   Status SetAUHMetadata(const char* remote_host, int remote_port);
 
-  void SetQueryId(uint64_t query_id);
+  void SetQueryId(int64_t query_id);
 
   void SetTopLevelRequestId();
 

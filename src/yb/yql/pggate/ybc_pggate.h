@@ -673,7 +673,7 @@ YBCStatus YBCActiveUniverseHistory(YBCAUHDescriptor **rpcs, size_t* numrpcs);
 
 YBCStatus YBCPgSetAUHMetadata(const char* remote_host, int remote_port);
 
-void YBCSetQueryId(uint64_t query_id);
+void YBCSetQueryId(int64_t query_id);
 
 void YBCSetTopLevelRequestId();
 

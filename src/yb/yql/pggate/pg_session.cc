@@ -910,7 +910,7 @@ Status PgSession::SetAUHMetadata(const char* remote_host, int remote_port) {
   return Status::OK();
 }
 
-void PgSession::SetQueryId(uint64_t query_id) {
+void PgSession::SetQueryId(int64_t query_id) {
   auh_metadata_.query_id = query_id;
 }
 

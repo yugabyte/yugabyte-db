@@ -734,9 +734,6 @@ pg_analyze_and_rewrite(RawStmt *parsetree, const char *query_string,
 	query = parse_analyze(parsetree, query_string, paramTypes, numParams,
 						  queryEnv);
 
-	YBCSetQueryId(query->queryId);
-	MyProc->queryid = query->queryId;
-
 	if (log_parser_stats)
 		ShowUsage("PARSE ANALYSIS STATISTICS");
 
@@ -792,6 +789,12 @@ pg_analyze_and_rewrite_params(RawStmt *parsetree,
 
 	if (post_parse_analyze_hook)
 		(*post_parse_analyze_hook) (pstate, query);
+
+	if (IsYugaByteEnabled() && query->queryId)
+	{
+		YBCSetQueryId(query->queryId);
+		MyProc->queryid = query->queryId;
+	}
 
 	free_parsestate(pstate);
 
@@ -1905,13 +1908,6 @@ exec_bind_message(StringInfo input_message)
 	 */
 	PortalStart(portal, params, 0, InvalidSnapshot);
 
-	if (IsYugaByteEnabled() && portal->queryDesc &&
-		portal->queryDesc->plannedstmt)
-	{
-		YBCSetQueryId(portal->queryDesc->plannedstmt->queryId);
-		MyProc->queryid = portal->queryDesc->plannedstmt->queryId;
-	}
-
 	/*
 	 * Apply the result format requests to the portal.
 	 */
@@ -2102,10 +2098,15 @@ exec_execute_message(const char *portal_name, long max_rows)
 	if (max_rows <= 0)
 		max_rows = FETCH_ALL;
 
-	if (IsYugaByteEnabled() && portal->queryDesc && portal->queryDesc->plannedstmt)
+	ListCell   *stmtlist_item;
+	foreach(stmtlist_item, portal->stmts)
 	{
-		YBCSetQueryId(portal->queryDesc->plannedstmt->queryId);
-		MyProc->queryid = portal->queryDesc->plannedstmt->queryId;
+		PlannedStmt *pstmt = lfirst_node(PlannedStmt, stmtlist_item);
+		if (IsYugaByteEnabled() && pstmt->queryId)
+		{
+			YBCSetQueryId(pstmt->queryId);
+			MyProc->queryid = pstmt->queryId;
+		}
 	}
 
 	completed = PortalRun(portal,
@@ -5641,12 +5642,6 @@ PostgresMain(int argc, char *argv[],
 								PortalStart(portal, params, 0, InvalidSnapshot);
 								/* Set the output format */
 								PortalSetResultFormat(portal, nformats, formats);
-
-								if (IsYugaByteEnabled() && portal->queryDesc && portal->queryDesc->plannedstmt)
-								{
-									YBCSetQueryId(portal->queryDesc->plannedstmt->queryId);
-									MyProc->queryid = portal->queryDesc->plannedstmt->queryId;
-								}
 
 								/* Now ready to retry the execute step. */
 								yb_exec_execute_message(portal_name,

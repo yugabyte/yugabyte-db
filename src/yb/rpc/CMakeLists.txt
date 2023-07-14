@@ -58,6 +58,7 @@ PROTOBUF_GENERATE_CPP(
   PROTO_FILES rpc_introspection.proto)
 set(RPC_INTROSPECTION_PROTO_LIBS
   rpc_header_proto
+  yb_common_proto
   protobuf)
 ADD_YB_LIBRARY(rpc_introspection_proto
   SRCS ${RPC_INTROSPECTION_PROTO_SRCS}

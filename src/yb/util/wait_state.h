@@ -61,6 +61,7 @@
  */
 #define YB_PG_WAIT_PERFORM           0xFE000000U
 #define YB_TSERVER_WAIT_RPC          0xEF000000U
+#define YB_FLUSH_AND_COMPACTION      0xEE000000U
 
 // For debugging purposes:
 // Uncomment the following line to track state changes in wait events.
@@ -94,8 +95,9 @@ YB_DEFINE_ENUM_TYPE(
       (SubmittedUnexpectedToPreparer)
     // Reads
     (GetSafeTime)(GetSubDoc)
+
     // Flush and Compaction
-    (StartFlush)(StartCompaction)
+    ((StartFlush, YB_FLUSH_AND_COMPACTION))(StartCompaction)
     (OpenFile)(CloseFile)(DeleteFile)(WriteToFile)
     (StartSubcompactionThreads)(WaitOnSubcompactionThreads)
 
@@ -191,8 +193,8 @@ struct AUHAuxInfo {
 
   template <class PB>
   void ToPB(PB* pb) const {
-    pb->set_table_id(table_id);
     pb->set_tablet_id(tablet_id);
+    pb->set_table_id(table_id);
   }
 
   template <class PB>

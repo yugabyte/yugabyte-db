@@ -1599,7 +1599,7 @@ YBCStatus YBCPgSetAUHMetadata(const char* remote_host, int remote_port) {
   return ToYBCStatus(pgapi->SetAUHMetadata(remote_host, remote_port));
 }
 
-void YBCSetQueryId(uint64_t query_id) {
+void YBCSetQueryId(int64_t query_id) {
   pgapi->SetQueryId(query_id);
 }
 
