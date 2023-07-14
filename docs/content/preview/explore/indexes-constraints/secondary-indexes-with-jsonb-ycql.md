@@ -28,7 +28,7 @@ type: docs
   </li>
 </ul>
 
-Secondary indexes can be created with a JSONB datatype column. The use of indexes can enhance database performance by enabling the database server to find rows faster.  You can create covering indexes as well as partial indexes with JSONB columns.
+Secondary indexes can be created with a JSONB datatype column in YCQL. Secondary Indexes in YCQL are global and distributed and similar to tables.  So the use of indexes can enhance database performance by enabling the database server to find rows faster.  You can create covering indexes as well as partial indexes with JSONB columns.
 
 The following section describes secondary indexes with JSONB column in YCQL using examples.
 
