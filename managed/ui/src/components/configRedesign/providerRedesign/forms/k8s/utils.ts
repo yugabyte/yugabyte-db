@@ -30,6 +30,7 @@ export const adaptSuggestedKubernetesConfig = (
   const regions = regionList.map<K8sRegionField>((region) => ({
     fieldId: generateLowerCaseAlphanumericId(),
     code: region.code,
+    name: region.name || region.code,
     regionData: {
       value: { code: region.code, zoneOptions: [] },
       label: region.name || region.code

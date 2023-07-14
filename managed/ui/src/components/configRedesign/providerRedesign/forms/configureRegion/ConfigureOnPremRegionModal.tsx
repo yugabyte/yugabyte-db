@@ -38,6 +38,7 @@ export interface OnPremAvailabilityZoneFormValues {
 export interface ConfigureOnPremRegionFormValues {
   fieldId: string;
   code: string;
+  name: string;
   location: { value: { latitude: number; longitude: number }; label: string };
   zones: OnPremAvailabilityZoneFormValues[];
 }
@@ -114,6 +115,7 @@ export const ConfigureOnPremRegionModal = ({
     }
     const newRegion = {
       ...formValues,
+      name: formValues.code,
       fieldId: formValues.fieldId ?? generateLowerCaseAlphanumericId()
     };
     onRegionSubmit(newRegion);
