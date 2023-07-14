@@ -56,3 +56,24 @@ strtoint(const char *pg_restrict str, char **pg_restrict endptr, int base)
 		errno = ERANGE;
 	return (int) val;
 }
+
+/*
+ * pg_strip_crlf -- Remove any trailing newline and carriage return
+ *
+ * Removes any trailing newline and carriage return characters (\r on
+ * Windows) in the input string, zero-terminating it.
+ *
+ * The passed in string must be zero-terminated.  This function returns
+ * the new length of the string.
+ */
+int
+pg_strip_crlf(char *str)
+{
+	int			len = strlen(str);
+
+	while (len > 0 && (str[len - 1] == '\n' ||
+					   str[len - 1] == '\r'))
+		str[--len] = '\0';
+
+	return len;
+}

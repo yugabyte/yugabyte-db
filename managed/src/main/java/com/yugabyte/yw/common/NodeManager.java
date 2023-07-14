@@ -2423,15 +2423,7 @@ public class NodeManager extends DevopsBase {
     ReleaseManager.ReleaseMetadata releaseMetadata =
         releaseManager.getReleaseByVersion(ybSoftwareVersion);
     if (releaseMetadata != null) {
-      if (releaseMetadata.s3 != null) {
-        ybServerPackage = releaseMetadata.s3.paths.x86_64;
-      } else if (releaseMetadata.gcs != null) {
-        ybServerPackage = releaseMetadata.gcs.paths.x86_64;
-      } else if (releaseMetadata.http != null) {
-        ybServerPackage = releaseMetadata.http.paths.x86_64;
-      } else {
-        ybServerPackage = releaseMetadata.getFilePath(region);
-      }
+      ybServerPackage = releaseMetadata.getFilePath(region);
     }
     return ybServerPackage;
   }

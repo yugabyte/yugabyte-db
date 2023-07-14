@@ -131,7 +131,7 @@ class XClusterDRTest : public XClusterYsqlTestBase {
   }
 
   // Setup replication with bootstrap, set STANDBY role and wait for safe time.
-  Status SetupReplication(std::vector<string> bootstrap_ids) {
+  Status SetupReplication(std::vector<xrepl::StreamId> bootstrap_ids) {
     RETURN_NOT_OK(SetupUniverseReplication(
         source_cluster_->mini_cluster_.get(), target_cluster_->mini_cluster_.get(), target_client_,
         kReplicationGroupId, source_tables_for_bootstrap_, bootstrap_ids,
@@ -147,7 +147,8 @@ class XClusterDRTest : public XClusterYsqlTestBase {
     return WaitForValidSafeTimeOnAllTServers(namespace_id, target_cluster_);
   }
 
-  Result<std::pair<std::vector<std::string>, TxnSnapshotId>> BootstrapAndSnapshotSourceCluster() {
+  Result<std::pair<std::vector<xrepl::StreamId>, TxnSnapshotId>>
+  BootstrapAndSnapshotSourceCluster() {
     auto bootstrap_ids =
         VERIFY_RESULT(BootstrapCluster(source_tables_for_bootstrap_, source_cluster_));
     auto snapshot_id = VERIFY_RESULT(source_snapshot_util_->CreateSnapshot((*source_table_)->id()));

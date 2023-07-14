@@ -2257,7 +2257,7 @@ TEST_F(XClusterYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
               << " for table " << producer_tables[table_idx++]->name().table_name();
   }
 
-  std::unordered_map<std::string, int> tablet_bootstraps;
+  std::unordered_map<xrepl::StreamId, int> tablet_bootstraps;
 
   // Verify that for each of the table's tablets, a new row in cdc_state table with the returned
   // id was inserted.
@@ -2291,9 +2291,9 @@ TEST_F(XClusterYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
   }
 
   // Map table -> bootstrap_id. We will need when setting up replication.
-  std::unordered_map<TableId, std::string> table_bootstrap_ids;
+  std::unordered_map<TableId, xrepl::StreamId> table_bootstrap_ids;
   for (size_t i = 0; i < bootstrap_ids.size(); i++) {
-    table_bootstrap_ids[producer_tables[i]->id()] = bootstrap_ids[i];
+    table_bootstrap_ids.insert_or_assign(producer_tables[i]->id(), bootstrap_ids[i]);
   }
 
   // 2. Setup replication.
@@ -2310,7 +2310,7 @@ TEST_F(XClusterYsqlTest, SetupUniverseReplicationWithProducerBootstrapId) {
     setup_universe_req.add_producer_table_ids(producer_table->id());
     const auto& iter = table_bootstrap_ids.find(producer_table->id());
     ASSERT_NE(iter, table_bootstrap_ids.end());
-    setup_universe_req.add_producer_bootstrap_ids(iter->second);
+    setup_universe_req.add_producer_bootstrap_ids(iter->second.ToString());
   }
 
   auto* consumer_leader_mini_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
@@ -2709,7 +2709,7 @@ TEST_F(XClusterYsqlTest, IsBootstrapRequiredNotFlushed) {
   master::ListCDCStreamsResponsePB stream_resp;
   ASSERT_OK(GetCDCStreamForTable(producer_tables[0]->id(), &stream_resp));
   ASSERT_EQ(stream_resp.streams_size(), 1);
-  auto& stream_id = stream_resp.streams(0).stream_id();
+  auto stream_id = ASSERT_RESULT(xrepl::StreamId::FromString(stream_resp.streams(0).stream_id()));
 
   // 2. Write some data.
   for (const auto& producer_table : producer_tables) {
@@ -2731,15 +2731,15 @@ TEST_F(XClusterYsqlTest, IsBootstrapRequiredNotFlushed) {
   rpc::RpcController rpc;
   cdc::IsBootstrapRequiredRequestPB req;
   cdc::IsBootstrapRequiredResponsePB resp;
-  req.set_stream_id(stream_id);
+  req.set_stream_id(stream_id.ToString());
   req.add_tablet_ids(tablet_ids[0]);
 
   ASSERT_OK(producer_cdc_proxy->IsBootstrapRequired(req, &resp, &rpc));
   ASSERT_FALSE(resp.has_error());
   ASSERT_FALSE(resp.bootstrap_required());
 
-  auto should_bootstrap = ASSERT_RESULT(producer_cluster_.client_->IsBootstrapRequired(
-                                          {producer_tables[0]->id()}, stream_id));
+  auto should_bootstrap = ASSERT_RESULT(
+      producer_cluster_.client_->IsBootstrapRequired({producer_tables[0]->id()}, stream_id));
   ASSERT_FALSE(should_bootstrap);
 
   // 4. IsBootstrapRequired without a valid stream should return true.
@@ -3118,7 +3118,7 @@ void XClusterYsqlTest::TestReplicationWithPackedColumns(bool colocated, bool boo
   }
 
   // If bootstrap is requested, run bootstrap
-  std::vector<CDCStreamId> bootstrap_ids = {};
+  std::vector<xrepl::StreamId> bootstrap_ids = {};
   if (bootstrap) {
     bootstrap_ids = ASSERT_RESULT(
         BootstrapProducer(producer_cluster(), producer_client(), {producer_table_id}));
@@ -3278,9 +3278,9 @@ TEST_F(XClusterYsqlTest, ReplicationWithDefaultProducerSchemaVersion) {
 }
 
 void PrepareChangeRequest(
-    cdc::GetChangesRequestPB* change_req, const CDCStreamId& stream_id,
+    cdc::GetChangesRequestPB* change_req, const xrepl::StreamId& stream_id,
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets) {
-  change_req->set_stream_id(stream_id);
+  change_req->set_stream_id(stream_id.ToString());
   change_req->set_tablet_id(tablets.Get(0).tablet_id());
   change_req->mutable_from_cdc_sdk_checkpoint()->set_term(0);
   change_req->mutable_from_cdc_sdk_checkpoint()->set_index(0);
@@ -3289,10 +3289,10 @@ void PrepareChangeRequest(
 }
 
 void PrepareChangeRequest(
-    cdc::GetChangesRequestPB* change_req, const CDCStreamId& stream_id,
+    cdc::GetChangesRequestPB* change_req, const xrepl::StreamId& stream_id,
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
     const cdc::CDCSDKCheckpointPB& cp) {
-  change_req->set_stream_id(stream_id);
+  change_req->set_stream_id(stream_id.ToString());
   change_req->set_tablet_id(tablets.Get(0).tablet_id());
   change_req->mutable_from_cdc_sdk_checkpoint()->set_term(cp.term());
   change_req->mutable_from_cdc_sdk_checkpoint()->set_index(cp.index());
@@ -3301,7 +3301,7 @@ void PrepareChangeRequest(
 }
 
 Result<cdc::GetChangesResponsePB> GetChangesFromCDC(
-    const std::unique_ptr<cdc::CDCServiceProxy>& cdc_proxy, const CDCStreamId& stream_id,
+    const std::unique_ptr<cdc::CDCServiceProxy>& cdc_proxy, const xrepl::StreamId& stream_id,
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
     const cdc::CDCSDKCheckpointPB* cp = nullptr) {
   cdc::GetChangesRequestPB change_req;
@@ -3336,8 +3336,9 @@ void InitCreateStreamRequest(
 }
 
 // This creates a DB stream on the database kNamespaceName by default.
-Result<CDCStreamId> CreateDBStream(const std::unique_ptr<cdc::CDCServiceProxy>& cdc_proxy,
-                                   cdc::CDCCheckpointType checkpoint_type) {
+Result<xrepl::StreamId> CreateDBStream(
+    const std::unique_ptr<cdc::CDCServiceProxy>& cdc_proxy,
+    cdc::CDCCheckpointType checkpoint_type) {
   cdc::CreateCDCStreamRequestPB req;
   cdc::CreateCDCStreamResponsePB resp;
 
@@ -3346,22 +3347,23 @@ Result<CDCStreamId> CreateDBStream(const std::unique_ptr<cdc::CDCServiceProxy>& 
 
   InitCreateStreamRequest(&req, checkpoint_type, kNamespaceName);
   RETURN_NOT_OK(cdc_proxy->CreateCDCStream(req, &resp, &rpc));
-  return resp.db_stream_id();
+  return xrepl::StreamId::FromString(resp.db_stream_id());
 }
 
 void PrepareSetCheckpointRequest(
-    cdc::SetCDCCheckpointRequestPB* set_checkpoint_req, const CDCStreamId stream_id,
+    cdc::SetCDCCheckpointRequestPB* set_checkpoint_req, const xrepl::StreamId stream_id,
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets) {
-  set_checkpoint_req->set_stream_id(stream_id);
+  set_checkpoint_req->set_stream_id(stream_id.ToString());
   set_checkpoint_req->set_initial_checkpoint(true);
   set_checkpoint_req->set_tablet_id(tablets.Get(0).tablet_id());
   set_checkpoint_req->mutable_checkpoint()->mutable_op_id()->set_term(0);
   set_checkpoint_req->mutable_checkpoint()->mutable_op_id()->set_index(0);
 }
 
-Status SetInitialCheckpoint(const std::unique_ptr<cdc::CDCServiceProxy>& cdc_proxy,
+Status SetInitialCheckpoint(
+    const std::unique_ptr<cdc::CDCServiceProxy>& cdc_proxy,
     YBClient* client,
-    const CDCStreamId& stream_id,
+    const xrepl::StreamId& stream_id,
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets) {
   rpc::RpcController set_checkpoint_rpc;
   cdc::SetCDCCheckpointRequestPB set_checkpoint_req;
@@ -3435,8 +3437,8 @@ void XClusterYsqlTest::ValidateRecordsXClusterWithCDCSDK(bool update_min_cdc_ind
                                &tablets, /* partition_list_version =*/
                                nullptr));
   ASSERT_EQ(tablets.size(), 1);
-  CDCStreamId db_stream_id = ASSERT_RESULT(CreateDBStream(sdk_proxy,
-                                                          cdc::CDCCheckpointType::IMPLICIT));
+  xrepl::StreamId db_stream_id =
+      ASSERT_RESULT(CreateDBStream(sdk_proxy, cdc::CDCCheckpointType::IMPLICIT));
   ASSERT_OK(SetInitialCheckpoint(sdk_proxy, client, db_stream_id, tablets));
 
   // 1. Write some data.
