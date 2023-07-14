@@ -44,13 +44,7 @@
 
 using namespace std::literals;
 
-#ifdef NDEBUG
-constexpr bool kUseFastNextForIteratorDefault = false;
-#else
-constexpr bool kUseFastNextForIteratorDefault = true;
-#endif
-
-DEFINE_RUNTIME_bool(use_fast_next_for_iteration, kUseFastNextForIteratorDefault,
+DEFINE_RUNTIME_bool(use_fast_next_for_iteration, true,
                     "Whether intent aware iterator should use fast next feature.");
 
 // Default value was picked intuitively, could try to find more suitable value in future.

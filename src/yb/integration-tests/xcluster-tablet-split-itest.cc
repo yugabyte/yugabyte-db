@@ -246,8 +246,7 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
   // Create a cdc stream for this tablet.
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(&client_->proxy_cache(),
       HostPort::FromBoundEndpoint(cluster_->mini_tablet_servers().front()->bound_rpc_addr()));
-  CDCStreamId stream_id;
-  cdc::CreateCDCStream(cdc_proxy, table_->id(), &stream_id);
+  auto stream_id = ASSERT_RESULT(cdc::CreateCDCStream(cdc_proxy, table_->id()));
   // Ensure that the cdc_state table is ready before inserting rows and splitting.
   ASSERT_OK(WaitForCdcStateTableToBeReady());
 
@@ -264,7 +263,7 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
   cdc::GetChangesResponsePB change_resp;
 
   change_req.set_tablet_id(source_tablet_id);
-  change_req.set_stream_id(stream_id);
+  change_req.set_stream_id(stream_id.ToString());
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
 
@@ -283,7 +282,7 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
     cdc::GetChangesResponsePB child_change_resp;
 
     child_change_req.set_tablet_id(child_tablet_id);
-    child_change_req.set_stream_id(stream_id);
+    child_change_req.set_stream_id(stream_id.ToString());
     child_change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
     child_change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
 
@@ -1035,8 +1034,7 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithCdcStream) {
   // Create a cdc stream for this tablet.
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(&client_->proxy_cache(),
       HostPort::FromBoundEndpoint(cluster_->mini_tablet_servers().front()->bound_rpc_addr()));
-  CDCStreamId stream_id;
-  cdc::CreateCDCStream(cdc_proxy, table_->id(), &stream_id);
+  auto stream_id = ASSERT_RESULT(cdc::CreateCDCStream(cdc_proxy, table_->id()));
   // Ensure that the cdc_state table is ready before inserting rows and splitting.
   ASSERT_OK(WaitForCdcStateTableToBeReady());
 

@@ -1860,8 +1860,8 @@ void AcknowledgeStreamedMultiShardTxn(
 }
 
 Status HandleGetChangesForSnapshotRequest(
-    const CDCStreamId& stream_id, const TabletId& tablet_id, const CDCSDKCheckpointPB& from_op_id,
-    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+    const xrepl::StreamId& stream_id, const TabletId& tablet_id,
+    const CDCSDKCheckpointPB& from_op_id, const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const EnumOidLabelMap& enum_oid_label_map, const CompositeAttsMap& composite_atts_map,
     client::YBClient* client, GetChangesResponsePB* resp, SchemaDetailsMap* cached_schema_details,
     const TableId& colocated_table_id, const tablet::TabletPtr& tablet_ptr, string* table_name,
@@ -1972,7 +1972,7 @@ Status HandleGetChangesForSnapshotRequest(
 // to read intents from WAL.
 
 Status GetChangesForCDCSDK(
-    const CDCStreamId& stream_id,
+    const xrepl::StreamId& stream_id,
     const TabletId& tablet_id,
     const CDCSDKCheckpointPB& from_op_id,
     const StreamMetadata& stream_metadata,

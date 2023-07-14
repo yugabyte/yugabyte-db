@@ -171,7 +171,7 @@ function validateSession(store, replacePath, callback) {
           ? response.payload.response
           : {};
         switch (status) {
-          case 403:
+          case 401:
             store.dispatch(resetCustomer());
             store.dispatch(customerTokenError());
             clearCredentials();

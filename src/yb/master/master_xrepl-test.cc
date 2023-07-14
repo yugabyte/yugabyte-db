@@ -43,9 +43,9 @@ static const Schema kTableSchema({
 
 class MasterTestXRepl  : public MasterTestBase {
  protected:
-  Status CreateCDCStream(const TableId& table_id, CDCStreamId* stream_id);
-  Result<GetCDCStreamResponsePB> GetCDCStream(const CDCStreamId& stream_id);
-  Status DeleteCDCStream(const CDCStreamId& stream_id);
+  Result<xrepl::StreamId> CreateCDCStream(const TableId& table_id);
+  Result<GetCDCStreamResponsePB> GetCDCStream(const xrepl::StreamId& stream_id);
+  Status DeleteCDCStream(const xrepl::StreamId& stream_id);
   Result<ListCDCStreamsResponsePB> ListCDCStreams();
   Result<bool> IsObjectPartOfXRepl(const TableId& table_id);
 
@@ -57,7 +57,7 @@ class MasterTestXRepl  : public MasterTestBase {
 
 };
 
-Status MasterTestXRepl::CreateCDCStream(const TableId& table_id, CDCStreamId* stream_id) {
+Result<xrepl::StreamId> MasterTestXRepl::CreateCDCStream(const TableId& table_id) {
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
 
@@ -81,23 +81,23 @@ Status MasterTestXRepl::CreateCDCStream(const TableId& table_id, CDCStreamId* st
     return true;
   }, MonoDelta::FromSeconds(30), "Wait for cdc_state table creation to finish"));
 
-  *stream_id = resp.stream_id();
-  return Status::OK();
+  return xrepl::StreamId::FromString(resp.stream_id());
 }
 
-Result<GetCDCStreamResponsePB> MasterTestXRepl::GetCDCStream(const CDCStreamId& stream_id) {
+Result<GetCDCStreamResponsePB> MasterTestXRepl::GetCDCStream(
+    const xrepl::StreamId& stream_id) {
   GetCDCStreamRequestPB req;
   GetCDCStreamResponsePB resp;
-  req.set_stream_id(stream_id);
+  req.set_stream_id(stream_id.ToString());
 
   RETURN_NOT_OK(proxy_replication_->GetCDCStream(req, &resp, ResetAndGetController()));
   return resp;
 }
 
-Status MasterTestXRepl::DeleteCDCStream(const CDCStreamId& stream_id) {
+Status MasterTestXRepl::DeleteCDCStream(const xrepl::StreamId& stream_id) {
   DeleteCDCStreamRequestPB req;
   DeleteCDCStreamResponsePB resp;
-  req.add_stream_id(stream_id);
+  req.add_stream_id(stream_id.ToString());
 
   RETURN_NOT_OK(proxy_replication_->DeleteCDCStream(req, &resp, ResetAndGetController()));
   if (resp.has_error()) {
@@ -197,9 +197,8 @@ TEST_F(MasterTestXRepl, TestCreateCDCStream) {
   TableId table_id;
   ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
 
-  CDCStreamId stream_id;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
-  ASSERT_OK(CreateCDCStream(table_id, &stream_id));
+  auto stream_id = ASSERT_RESULT(CreateCDCStream(table_id));
 
   auto resp = ASSERT_RESULT(GetCDCStream(stream_id));
   ASSERT_EQ(resp.stream().table_id().Get(0), table_id);
@@ -209,9 +208,8 @@ TEST_F(MasterTestXRepl, TestDeleteCDCStream) {
   TableId table_id;
   ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
 
-  CDCStreamId stream_id;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
-  ASSERT_OK(CreateCDCStream(table_id, &stream_id));
+  auto stream_id = ASSERT_RESULT(CreateCDCStream(table_id));
 
   auto resp = ASSERT_RESULT(GetCDCStream(stream_id));
   ASSERT_EQ(resp.stream().table_id().Get(0), table_id);
@@ -228,9 +226,8 @@ TEST_F(MasterTestXRepl, TestDeleteTableWithCDCStream) {
   TableId table_id;
   ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
 
-  CDCStreamId stream_id;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
-  ASSERT_OK(CreateCDCStream(table_id, &stream_id));
+  auto stream_id = ASSERT_RESULT(CreateCDCStream(table_id));
 
   auto resp = ASSERT_RESULT(GetCDCStream(stream_id));
   ASSERT_EQ(resp.stream().table_id().Get(0), table_id);
@@ -248,7 +245,7 @@ TEST_F(MasterTestXRepl, YB_DISABLE_TEST_IN_SANITIZERS(TestDeleteCDCStreamNoForce
   TableId table_id;
   ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
 
-  CDCStreamId stream_id;
+  auto stream_id = xrepl::StreamId::Nil();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
   // CreateCDCStream, simulating a fully-created XCluster configuration.
   {
@@ -264,8 +261,7 @@ TEST_F(MasterTestXRepl, YB_DISABLE_TEST_IN_SANITIZERS(TestDeleteCDCStreamNoForce
     if (resp.has_error()) {
       ASSERT_OK(StatusFromPB(resp.error().status()));
     }
-
-    stream_id = resp.stream_id();
+    stream_id = ASSERT_RESULT(CreateCDCStream(table_id));
   }
 
   auto resp = ASSERT_RESULT(GetCDCStream(stream_id));
@@ -284,22 +280,20 @@ TEST_F(MasterTestXRepl, TestListCDCStreams) {
   TableId table_id;
   ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
 
-  CDCStreamId stream_id;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
-  ASSERT_OK(CreateCDCStream(table_id, &stream_id));
+  auto stream_id = ASSERT_RESULT(CreateCDCStream(table_id));
 
   auto resp = ASSERT_RESULT(ListCDCStreams());
   ASSERT_EQ(1, resp.streams_size());
-  ASSERT_EQ(stream_id, resp.streams(0).stream_id());
+  ASSERT_EQ(stream_id.ToString(), resp.streams(0).stream_id());
 }
 
 TEST_F(MasterTestXRepl, TestIsObjectPartOfXRepl) {
   TableId table_id;
   ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
 
-  CDCStreamId stream_id;
   FLAGS_cdc_state_table_num_tablets = 1;
-  ASSERT_OK(CreateCDCStream(table_id, &stream_id));
+  ASSERT_RESULT(CreateCDCStream(table_id));
   ASSERT_TRUE(ASSERT_RESULT(IsObjectPartOfXRepl(table_id)));
 }
 

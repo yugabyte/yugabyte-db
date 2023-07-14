@@ -33,7 +33,9 @@ step "s2_begin"  { BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ; }
 step "s2_insert" { INSERT INTO foo VALUES (2,2); }
 step "s2_update" { UPDATE foo SET v=10 WHERE k=1; }
 
-permutation "s1_insert" "s2_insert" "s1_lock_status" "s1_commit"
 permutation "s1_insert" "s2_begin" "s2_insert" "s1_lock_status" "s1_commit"
+# TODO: uncomment the below permutation once #18195 is resolved
+# permutation "s1_insert" "s2_insert" "s1_lock_status" "s1_commit"
+#
 # TODO: uncomment this as soon as issue #18149 is resolved
 # permutation "s1_select_for_update" "s2_update" "s1_lock_status" "s1_commit"
