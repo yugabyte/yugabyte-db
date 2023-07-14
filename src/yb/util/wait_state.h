@@ -191,6 +191,8 @@ struct AUHAuxInfo {
 
   std::string ToString() const;
 
+  void UpdateFrom(const AUHAuxInfo &other);
+
   template <class PB>
   void ToPB(PB* pb) const {
     pb->set_tablet_id(tablet_id);
@@ -222,6 +224,7 @@ class WaitStateInfo {
   static void SetCurrentWaitState(WaitStateInfoPtr);
 
   void UpdateMetadata(const AUHMetadata& meta) EXCLUDES(mutex_);
+  void UpdateAuxInfo(const AUHAuxInfo& aux) EXCLUDES(mutex_);
   void set_current_request_id(int64_t id) EXCLUDES(mutex_);
 
   template <class PB>

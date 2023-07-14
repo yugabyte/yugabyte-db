@@ -26,6 +26,15 @@ std::string AUHAuxInfo::ToString() const {
   return YB_STRUCT_TO_STRING(table_id, tablet_id);
 }
 
+void AUHAuxInfo::UpdateFrom(const AUHAuxInfo &other) {
+  if (!other.tablet_id.empty()) {
+    tablet_id = other.tablet_id;
+  }
+  if (!other.table_id.empty()) {
+    table_id = other.table_id;
+  }
+}
+
 WaitStateInfo::WaitStateInfo(AUHMetadata meta)
   : metadata_(meta)
 #ifdef TRACK_WAIT_HISTORY
@@ -75,6 +84,11 @@ void WaitStateInfo::set_current_request_id(int64_t current_request_id) {
 void WaitStateInfo::UpdateMetadata(const AUHMetadata& meta) {
   std::lock_guard<simple_spinlock> l(mutex_);
   metadata_.UpdateFrom(meta);
+}
+
+void WaitStateInfo::UpdateAuxInfo(const AUHAuxInfo& aux) {
+  std::lock_guard<simple_spinlock> l(mutex_);
+  aux_info_.UpdateFrom(aux);
 }
 
 void WaitStateInfo::SetCurrentWaitState(WaitStateInfoPtr wait_state) {
