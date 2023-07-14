@@ -21,7 +21,7 @@ The following example based on the [Flink documentation](https://nightlies.apach
 Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB Prerequisites](../../tools/#yugabytedb-prerequisites).
 Note that the YugabyteDB cluster you are connecting to is running on localhost.
 
-Using [YSQLSH](../../admin/ysqlsh/#starting-ysqlsh), create a table named books in YugabyteDB as follows:
+Create a table named books using [YSQLSH](../../admin/ysqlsh/#starting-ysqlsh) as follows:
 
 ```sql
 create table books (id bigint, title varchar, authors varchar, year int);

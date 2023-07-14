@@ -121,6 +121,13 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
   </li>
 
   <li>
+    <a href="kinesis/">
+      <img src="/images/section_icons/develop/ecosystem/kinesis.png">
+      Kinesis Data Stream
+    </a>
+  </li>
+
+  <li>
     <a href="liquibase/">
       <img src="/images/section_icons/develop/ecosystem/liquibase.png">
       Liquibase
