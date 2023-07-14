@@ -418,7 +418,7 @@ const constructProviderPayload = async (
     },
     regions: formValues.regions.map<OnPremRegionMutation>((regionFormValues) => ({
       code: regionFormValues.code,
-      name: regionFormValues.code,
+      name: regionFormValues.name,
       latitude: regionFormValues.location.value.latitude,
       longitude: regionFormValues.location.value.longitude,
       zones: regionFormValues.zones.map((zone) => ({ code: zone.code, name: zone.code }))
