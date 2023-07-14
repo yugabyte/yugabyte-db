@@ -69,6 +69,7 @@ interface ConfigureK8sRegionFormValues {
 export interface K8sRegionField extends ConfigureK8sRegionFormValues {
   fieldId: string;
   code: string;
+  name: string;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -129,6 +130,7 @@ export const ConfigureK8sRegionModal = ({
     const newRegion = {
       ...formValues,
       code: formValues.regionData.value.code,
+      name: formValues.regionData.label,
       fieldId: formValues.fieldId ?? generateLowerCaseAlphanumericId(),
       zones: formValues.zones.map((zone) => {
         const { isNewZone, ...zoneValues } = zone;

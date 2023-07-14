@@ -457,6 +457,7 @@ const constructDefaultFormValues = (
     regions: providerConfig.regions.map((region) => ({
       fieldId: generateLowerCaseAlphanumericId(),
       code: region.code,
+      name: region.name,
       regionData: {
         value: { code: region.code, zoneOptions: [] },
         label: region.name
