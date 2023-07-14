@@ -397,6 +397,7 @@ public class GFlagsUtil {
     }
     if (EncryptionInTransitUtil.isRootCARequired(universeDetails)) {
       ybcFlags.put("certs_dir_name", "/opt/certs/yugabyte");
+      ybcFlags.put("cert_node_filename", node.cloudInfo.private_ip);
     }
     return ybcFlags;
   }
