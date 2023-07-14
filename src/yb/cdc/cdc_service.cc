@@ -164,9 +164,9 @@ DEFINE_test_flag(bool, cdc_inject_replication_index_update_failure, false,
 DEFINE_test_flag(bool, force_get_checkpoint_from_cdc_state, false,
     "Always bypass the cache and fetch the checkpoint from the cdc state table");
 
-DEFINE_RUNTIME_int32(get_changes_max_send_rate_mbps, 100,
+DEFINE_RUNTIME_int32(xcluster_get_changes_max_send_rate_mbps, 100,
                      "Server-wide max send rate in megabytes per second for GetChanges response "
-                     "traffic. Throttles both xcluster and cdc traffic.");
+                     "traffic. Throttles xcluster but not cdc traffic.");
 
 DECLARE_bool(enable_log_retention_by_op_idx);
 
@@ -684,7 +684,7 @@ CDCServiceImpl::CDCServiceImpl(
       get_changes_rpc_sem_(std::max(
           1.0, floor(FLAGS_rpc_workers_limit * (1 - FLAGS_cdc_get_changes_free_rpc_ratio)))),
       rate_limiter_(std::unique_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(
-          GetAtomicFlag(&FLAGS_get_changes_max_send_rate_mbps) * 1_MB))),
+          GetAtomicFlag(&FLAGS_xcluster_get_changes_max_send_rate_mbps) * 1_MB))),
       impl_(new Impl(context_.get(), &mutex_)) {
   cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(impl_->async_client_init_.get());
 
@@ -1866,11 +1866,12 @@ void CDCServiceImpl::GetChanges(
         CDCErrorPB::TABLET_SPLIT, &context);
     return;
   }
-
-  LOG_SLOW_EXECUTION_EVERY_N_SECS(INFO, 1 /* n_secs */, 100 /* max_expected_millis */,
-      Format("Rate limiting GetChanges request for tablet $0", req->tablet_id())) {
-    rate_limiter_->Request(resp->ByteSizeLong(), IOPriority::kHigh);
-  };
+  if (record.GetSourceType() == XCLUSTER) {
+    LOG_SLOW_EXECUTION_EVERY_N_SECS(INFO, 1 /* n_secs */, 100 /* max_expected_millis */,
+        Format("Rate limiting GetChanges request for tablet $0", req->tablet_id())) {
+      rate_limiter_->Request(resp->ByteSizeLong(), IOPriority::kHigh);
+    };
+  }
   context.RespondSuccess();
 }
 
@@ -2706,7 +2707,8 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
         DeleteCDCStateTableMetadata(cdc_state_entries_to_delete, failed_tablet_ids),
         "Unable to cleanup CDC State table metadata");
 
-    rate_limiter_->SetBytesPerSecond(GetAtomicFlag(&FLAGS_get_changes_max_send_rate_mbps) * 1_MB);
+    rate_limiter_->SetBytesPerSecond(
+        GetAtomicFlag(&FLAGS_xcluster_get_changes_max_send_rate_mbps) * 1_MB);
 
   } while (sleep_while_not_stopped());
 }
