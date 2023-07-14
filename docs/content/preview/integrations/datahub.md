@@ -17,7 +17,7 @@ Because YugabyteDB's YSQL API is wire-compatible with PostgreSQL, Datahub can co
 
 ## Setup
 
-You can run the Docker Compose [quickStart example](https://github.com/datahub-project/datahub/blob/master/docker/quickstart/docker-compose-without-neo4j.quickstart.yml) provided in the Datahub's GitHub repository against YugabyteDB with the following changes:
+You can run the Docker Compose [quickStart example](https://github.com/datahub-project/datahub/blob/master/docker/quickstart/docker-compose-without-neo4j.quickstart.yml) provided in the Datahub GitHub repository against YugabyteDB with the following changes:
 
 - Replace the MySql Docker image with that of YugabyteDB.
 - Specify entrypoint command for the YugabyteDB Docker container.
