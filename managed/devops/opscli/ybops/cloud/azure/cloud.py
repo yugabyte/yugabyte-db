@@ -89,6 +89,15 @@ class AzureCloud(AbstractCloud):
         for region, metadata in perRegionMetadata.items():
             self.get_admin().network(metadata).cleanup(region)
 
+    def mount_disk(self, host_info, os_disk_id):
+        self.get_admin().update_os_disk(host_info["name"], os_disk_id)
+
+    def clone_disk(self, args, volume_id, num_disks):
+        zoneParts = args.zone.split('-')
+        zone = zoneParts[1] if len(zoneParts) > 1 else None
+        return self.get_admin().clone_disk(
+            args.search_pattern, args.region, zone, volume_id, num_disks)
+
     def create_or_update_instance(self, args, adminSSH, tags_to_remove=None):
         vmName = args.search_pattern
         region = args.region
