@@ -364,6 +364,7 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_enable_read_request_caching;
   const bool*     ysql_enable_profile;
   const bool*     ysql_disable_per_tuple_memory_context_in_update_relattrs;
+  const bool*     ysql_enable_create_database_oid_collision_retry;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
