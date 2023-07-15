@@ -101,7 +101,19 @@ VPC networking is not supported in Sandbox clusters.
         <div class="title">Private service endpoints</div>
       </div>
       <div class="body">
-        Manage private service endpoints.
+        Manage private service endpoints (PSEs).
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="./managed-endpoint-aws/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
+        <div class="title">Set up a private link</div>
+      </div>
+      <div class="body">
+        Connect your VPC to application VPCs on AWS and Azure using a private link.
       </div>
     </a>
   </div>

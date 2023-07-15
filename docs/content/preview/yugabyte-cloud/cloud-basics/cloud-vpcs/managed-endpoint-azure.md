@@ -39,9 +39,11 @@ To use Azure Private Link, you need the following:
 
 Make sure that default security group in your application Azure Virtual Network (VNet) allows internal connectivity. Otherwise, your application may not be able to reach the endpoint.
 
-To use Private Link to connect your cluster to an Azure VNet that hosts your application, first create a private service endpoint (PSE) on your cluster, then create an endpoint in Azure.
+To use Azure Private Link to connect your cluster to an Azure VNet that hosts your application, first create a private service endpoint (PSE) on your cluster, then create an endpoint in Azure.
 
 ## Create a PSE in YugabyteDB Managed
+
+You create the PSE for your cluster using [ybm CLI](../../../../managed-automation/managed-cli/).
 
 To create a PSE, do the following:
 
