@@ -83,6 +83,7 @@
 #include "yb/common/key_encoder.h"
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_type_util.h"
 #include "yb/common/ql_wire_protocol.h"
@@ -204,6 +205,7 @@
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
+#include "yb/util/yb_pg_errcodes.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
@@ -8486,14 +8488,29 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
 
     // Validate the user request.
 
-    // Verify that the namespace does not already exist.
-    ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id()); // Same ID.
-    if (ns == nullptr) {
-      // For PGSQL databases having name uniqueness handled at a different layer, we still need to
-      // verify it to avoid the race condition caused by multiple CreateNamespace requests with the
-      // same db name running in parallel.
-      ns = FindPtrOrNull(namespace_names_mapper_[db_type], req->name());
+    // Verify that the namespace with same id does not already exist.
+    ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id());
+    if (ns != nullptr) {
+      // If PG OID collision happens. Use the PG error code: YB_PG_DUPLICATE_DATABASE to signal PG
+      // backend to retry CREATE DATABASE using the next available OID.
+      // Otherwise, don't set customized error code in the return status.
+      // This is the default behavior of STATUS().
+      resp->set_id(ns->id());
+      auto pg_createdb_oid_collision_errcode = PgsqlError(YBPgErrorCode::YB_PG_DUPLICATE_DATABASE);
+      return_status = STATUS(AlreadyPresent,
+                             Format("Keyspace with id '$0' already exists", req->namespace_id()),
+                             Slice(),
+                             db_type == YQL_DATABASE_PGSQL
+                                ? &pg_createdb_oid_collision_errcode : nullptr);
+      LOG(WARNING) << "Found keyspace: " << ns->id() << ". Failed creating keyspace with error: "
+                   << return_status.ToString() << " Request:\n" << req->DebugString();
+      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_ALREADY_PRESENT,
+                        return_status);
     }
+    // Use the by name namespace map to enforce global uniqueness for both YCQL keyspaces and YSQL
+    // databases.  Although postgres metadata normally enforces db name uniqueness, it fails in
+    // case of concurrent CREATE DATABASE requests in different sessions.
+    ns = FindPtrOrNull(namespace_names_mapper_[db_type], req->name());
     if (ns != nullptr) {
       resp->set_id(ns->id());
       return_status = STATUS_SUBSTITUTE(AlreadyPresent, "Keyspace '$0' already exists",

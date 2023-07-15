@@ -1364,7 +1364,9 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_enable_read_request_caching         = &FLAGS_ysql_enable_read_request_caching,
       .ysql_enable_profile                      = &FLAGS_ysql_enable_profile,
       .ysql_disable_per_tuple_memory_context_in_update_relattrs =
-          &FLAGS_ysql_disable_per_tuple_memory_context_in_update_relattrs
+          &FLAGS_ysql_disable_per_tuple_memory_context_in_update_relattrs,
+      .ysql_enable_create_database_oid_collision_retry =
+          &FLAGS_ysql_enable_create_database_oid_collision_retry
   };
   return &accessor;
 }

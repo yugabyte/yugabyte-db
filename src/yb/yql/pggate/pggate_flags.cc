@@ -147,3 +147,8 @@ DEFINE_int32(ysql_num_databases_reserved_in_db_catalog_version_mode, 10,
              "fail the create database statement.");
 TAG_FLAG(ysql_num_databases_reserved_in_db_catalog_version_mode, advanced);
 TAG_FLAG(ysql_num_databases_reserved_in_db_catalog_version_mode, hidden);
+
+DEFINE_NON_RUNTIME_bool(ysql_enable_create_database_oid_collision_retry, true,
+                        "Whether to retry YSQL CREATE DATABASE statement "
+                        "if oid collision happens.");
+TAG_FLAG(ysql_enable_create_database_oid_collision_retry, advanced);

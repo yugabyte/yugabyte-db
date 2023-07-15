@@ -95,7 +95,8 @@ ColumnSortingOptions(SortByDir dir, SortByNulls nulls, bool* is_desc, bool* is_n
 /*  Database Functions. */
 
 void
-YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated)
+YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated,
+				  bool *retry_on_oid_collision)
 {
 	if (YBIsDBCatalogVersionMode())
 	{
@@ -120,7 +121,24 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bo
 										  next_oid,
 										  colocated,
 										  &handle));
-	HandleYBStatus(YBCPgExecCreateDatabase(handle));
+	
+	YBCStatus createdb_status = YBCPgExecCreateDatabase(handle);
+	/* If OID collision happends for CREATE DATABASE, then we need to retry CREATE DATABASE. */
+	if (retry_on_oid_collision)
+	{
+		*retry_on_oid_collision = createdb_status &&
+				YBCStatusPgsqlError(createdb_status) == ERRCODE_DUPLICATE_DATABASE &&
+				*YBCGetGFlags()->ysql_enable_create_database_oid_collision_retry;
+		
+		if (*retry_on_oid_collision)
+		{
+			YBCFreeStatus(createdb_status);
+			return;
+		}
+	}
+
+	HandleYBStatus(createdb_status);
+
 	if (YBIsDBCatalogVersionMode())
 		YbCreateMasterDBCatalogVersionTableEntry(dboid);
 }

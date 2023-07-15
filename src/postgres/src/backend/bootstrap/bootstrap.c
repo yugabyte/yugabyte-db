@@ -526,7 +526,8 @@ BootstrapModeMain(void)
 		                  "template1",
 		                  InvalidOid,
 		                  FirstBootstrapObjectId,
-		                  false /* colocated */);
+		                  false /* colocated */,
+		                  NULL /* retry_on_oid_collision */);
 	}
 
 	/*
