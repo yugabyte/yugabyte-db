@@ -13,6 +13,7 @@ import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -344,12 +345,6 @@ public class KubernetesOperatorController {
             }
           }
 
-          incomingIntent = forTaskIntent;
-          if (!field.getName().equals("universeOverrides")) {
-            incomingIntent.universeOverrides = currentUserIntent.universeOverrides;
-            LOG.info("removed overrides for upgrade/update");
-          }
-
           Cluster primaryCluster = taskParams.getPrimaryCluster();
           primaryCluster.userIntent = incomingIntent;
           taskParams.clusters =
@@ -362,7 +357,11 @@ public class KubernetesOperatorController {
               String.format("Starting task on universe %s", currentUserIntent.universeName);
           KubernetesOperatorStatusUpdater.doKubernetesEventUpdate(
               currentUserIntent.universeName, startingTask);
-          if (!(currentUserIntent.masterGFlags.equals(incomingIntent.masterGFlags))
+          if (!incomingIntent.universeOverrides.equals(currentUserIntent.universeOverrides)) {
+            LOG.info("Updating Kubernetes Overrides");
+            updateOverridesYbUniverse(
+                taskParams, cust, ybUniverse, incomingIntent.universeOverrides);
+          } else if (!(currentUserIntent.masterGFlags.equals(incomingIntent.masterGFlags))
               || !(currentUserIntent.tserverGFlags.equals(incomingIntent.tserverGFlags))) {
             LOG.info("Updating Gflags");
             updateGflagsYbUniverse(
@@ -373,11 +372,11 @@ public class KubernetesOperatorController {
                 incomingIntent.tserverGFlags);
           } else if (currentUserIntent.numNodes != incomingIntent.numNodes || updateVersion(pair)) {
             LOG.info("Updating nodes");
-            taskUUID = updateYBUniverse(taskParams, cust, ybUniverse);
+            updateYBUniverse(taskParams, cust, ybUniverse);
           } else if (!currentUserIntent.ybSoftwareVersion.equals(
               incomingIntent.ybSoftwareVersion)) {
             LOG.info("Upgrading software");
-            taskUUID = upgradeYBUniverse(taskParams, cust, ybUniverse);
+            upgradeYBUniverse(taskParams, cust, ybUniverse);
           } else {
             LOG.info("No update made");
           }
@@ -394,6 +393,37 @@ public class KubernetesOperatorController {
       }
     }
     return false;
+  }
+
+  private UUID updateOverridesYbUniverse(
+      UniverseDefinitionTaskParams taskParams,
+      Customer cust,
+      YBUniverse ybUniverse,
+      String universeOverrides) {
+    KubernetesOverridesUpgradeParams requestParams = new KubernetesOverridesUpgradeParams();
+
+    ObjectMapper mapper =
+        Json.mapper()
+            .copy()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+    try {
+      requestParams =
+          mapper.readValue(
+              mapper.writeValueAsString(taskParams), KubernetesOverridesUpgradeParams.class);
+    } catch (Exception e) {
+      LOG.error("Failed at creating upgrade software params", e);
+    }
+    requestParams.universeOverrides = universeOverrides;
+
+    Universe oldUniverse =
+        Universe.maybeGetUniverseByName(cust.getId(), ybUniverse.getMetadata().getName())
+            .orElse(null);
+
+    UUID taskUUID =
+        upgradeUniverseHandler.upgradeKubernetesOverrides(requestParams, cust, oldUniverse);
+    LOG.info("Submitted task to upgrade universe overrides with new overrides");
+    return taskUUID;
   }
 
   private UUID updateGflagsYbUniverse(
@@ -424,7 +454,7 @@ public class KubernetesOperatorController {
 
     UUID taskUUID = upgradeUniverseHandler.upgradeGFlags(requestParams, cust, oldUniverse);
     LOG.info("Submitted task to upgrade universe with new GFlags");
-    return new YBPTask(taskUUID, oldUniverse.getUniverseUUID()).asResult();
+    return taskUUID;
   }
 
   private UUID upgradeYBUniverse(
