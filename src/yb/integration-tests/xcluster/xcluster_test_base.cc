@@ -176,10 +176,9 @@ Status XClusterTestBase::WaitForLoadBalancersToStabilize(MiniCluster* cluster) {
 
 Status XClusterTestBase::CreateDatabase(
     Cluster* cluster, const std::string& namespace_name, bool colocated) {
-  auto conn = EXPECT_RESULT(cluster->Connect());
-  EXPECT_OK(conn.ExecuteFormat(
-      "CREATE DATABASE $0$1", namespace_name, colocated ? " colocated = true" : ""));
-  return Status::OK();
+  auto conn = VERIFY_RESULT(cluster->Connect());
+  return conn.ExecuteFormat(
+      "CREATE DATABASE $0$1", namespace_name, colocated ? " colocated = true" : "");
 }
 
 Result<YBTableName> XClusterTestBase::CreateTable(
