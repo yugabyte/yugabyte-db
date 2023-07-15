@@ -277,7 +277,8 @@ ybcGetForeignPlan(PlannerInfo *root,
 							remote_colrefs,  /* fdw_private data (attribute types) */
 							NIL,             /* remote target list (none for now) */
 							remote_quals,
-							outer_plan);
+							outer_plan,
+							best_path->path.yb_path_info);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -305,6 +306,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	Relation    relation     = node->ss.ss_currentRelation;
 
 	YbFdwExecState *ybc_state = NULL;
+	ForeignScan *foreignScan = castNode(ForeignScan, node->ss.ps.plan);
 
 	/* Do nothing in EXPLAIN (no ANALYZE) case.  node->fdw_state stays NULL. */
 	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
@@ -325,7 +327,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	if (YBReadFromFollowersEnabled()) {
 		ereport(DEBUG2, (errmsg("Doing read from followers")));
 	}
-	if (XactIsoLevel == XACT_SERIALIZABLE)
+	if (foreignScan->scan.yb_lock_mechanism == YB_RANGE_LOCK_ON_SCAN)
 	{
 		/*
 		 * In case of SERIALIZABLE isolation level we have to take predicate locks to disallow
@@ -339,7 +341,9 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 			if (erm->markType != ROW_MARK_REFERENCE && erm->markType != ROW_MARK_COPY)
 			{
 				ybc_state->exec_params->rowmark = erm->markType;
-				YBUpdateRowLockPolicyForSerializable(&ybc_state->exec_params->wait_policy, erm->waitPolicy);
+				ybc_state->exec_params->pg_wait_policy = erm->waitPolicy;
+				YBSetRowLockPolicy(&ybc_state->exec_params->docdb_wait_policy,
+								   erm->waitPolicy);
 			}
 			break;
 		}

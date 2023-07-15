@@ -20,7 +20,7 @@ Application instances are active in multiple regions and could read stale data.
 
 ## Overview
 
-{{<cluster-setup-tabs>}}
+{{<cluster-setup-tabs list="local,anywhere">}}
 
 Suppose you have your `RF3` cluster and apps deployed in `us-west`.
 

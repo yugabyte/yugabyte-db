@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "yb/integration-tests/xcluster_test_base.h"
+#include "yb/integration-tests/xcluster/xcluster_test_base.h"
 
 namespace yb {
 constexpr int kWaitForRowCountTimeout = 5 * kTimeMultiplier;
