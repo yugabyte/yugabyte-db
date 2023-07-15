@@ -2713,9 +2713,44 @@ SELECT * FROM cypher('list',$$ MATCH p=(n:xyz)-[e]->() SET n.array=[0, 1, 2, 3, 
 -- pg_typeof
 SELECT * FROM cypher('expr', $$MATCH (u) RETURN toString(pg_catalog.pg_typeof(u.id)) $$) AS (u agtype);
 
+-- issue: 395 aggregate function collect() incorrect container for operation
+SELECT create_graph('graph_395');
+SELECT * FROM cypher('graph_395', $$ CREATE (n:Project {name: 'Project A'}),
+                                            (m:Project {name: 'Project B'}),
+                                            (a:Task {name: 'Task A', size: 10}),
+                                            (b:Task {name: 'Task B', size: 5}),
+                                            (c:Task {name: 'Task C', size: 7}),
+                                            (x:Person {name: 'John', age: 55}),
+                                            (y:Person {name: 'Bob', age: 43}),
+                                            (z:Person {name: 'Alice', age: 33}),
+                                            (n)-[:Has]->(a),
+                                            (n)-[:Has]->(b),
+                                            (m)-[:Has]->(c),
+                                            (a)-[:AssignedTo]->(x),
+                                            (b)-[:AssignedTo]->(y),
+                                            (c)-[:AssignedTo]->(y) $$) as (n agtype);
+
+SELECT * FROM cypher('graph_395', $$ MATCH (p:Project)-[:Has]->(t:Task)-[:AssignedTo]->(u:Person)
+                                     WITH p, t, collect(u) AS users
+                                     WITH p, {tn: t.name, users: users} AS task
+                                     RETURN task $$) AS (p agtype);
+
+SELECT * FROM cypher('graph_395', $$ MATCH (p:Project)-[:Has]->(t:Task)-[:AssignedTo]->(u:Person)
+                                     WITH p, t, collect(u) AS users
+                                     WITH p, {tn: t.name, users: users} AS task
+                                     WITH p, collect(task) AS tasks
+                                     RETURN tasks $$) AS (p agtype);
+
+SELECT * FROM cypher('graph_395', $$ MATCH (p:Project)-[:Has]->(t:Task)-[:AssignedTo]->(u:Person)
+                                     WITH p, t, collect(u) AS users
+                                     WITH p, {tn: t.name, users: users} AS task
+                                     WITH p, collect(task) AS tasks
+                                     WITH {pn: p.name, tasks:tasks} AS project
+                                     RETURN project $$) AS (p agtype);
 --
 -- Cleanup
 --
+SELECT * FROM drop_graph('graph_395', true);
 SELECT * FROM drop_graph('chained', true);
 SELECT * FROM drop_graph('VLE', true);
 SELECT * FROM drop_graph('case_statement', true);

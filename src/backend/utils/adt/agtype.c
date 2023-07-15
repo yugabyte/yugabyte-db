@@ -9430,6 +9430,7 @@ Datum age_collect_aggtransfn(PG_FUNCTION_ARGS)
         /* create and initialize the state */
         castate = palloc0(sizeof(agtype_in_state));
         memset(castate, 0, sizeof(agtype_in_state));
+
         /* start the array */
         castate->res = push_agtype_value(&castate->parse_state,
                                          WAGT_BEGIN_ARRAY, NULL);
@@ -9459,23 +9460,25 @@ Datum age_collect_aggtransfn(PG_FUNCTION_ARGS)
         /* only add non null values */
         if (nulls[0] == false)
         {
+            agtype_value *agtv_value = NULL;
+
             /* we need to check for agtype null and skip it, if found */
             if (types[0] == AGTYPEOID)
             {
                 agtype *agt_arg;
-                agtype_value *agtv_value;
 
                 /* get the agtype argument */
                 agt_arg = DATUM_GET_AGTYPE_P(args[0]);
-                agtv_value = get_ith_agtype_value_from_container(&agt_arg->root,
-                                                                 0);
-                /* add the arg if not agtype null */
-                if (agtv_value->type != AGTV_NULL)
+
+                /* get the scalar value */
+                if (AGTYPE_CONTAINER_IS_SCALAR(&agt_arg->root))
                 {
-                    add_agtype(args[0], nulls[0], castate, types[0], false);
+                    agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
                 }
             }
-            else
+
+            /* skip the arg if agtype null */
+            if (agtv_value == NULL || agtv_value->type != AGTV_NULL)
             {
                 add_agtype(args[0], nulls[0], castate, types[0], false);
             }

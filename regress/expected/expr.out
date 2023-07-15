@@ -6703,9 +6703,84 @@ SELECT * FROM cypher('expr', $$MATCH (u) RETURN toString(pg_catalog.pg_typeof(u.
  "agtype"
 (7 rows)
 
+-- issue: 395 aggregate function collect() incorrect container for operation
+SELECT create_graph('graph_395');
+NOTICE:  graph "graph_395" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('graph_395', $$ CREATE (n:Project {name: 'Project A'}),
+                                            (m:Project {name: 'Project B'}),
+                                            (a:Task {name: 'Task A', size: 10}),
+                                            (b:Task {name: 'Task B', size: 5}),
+                                            (c:Task {name: 'Task C', size: 7}),
+                                            (x:Person {name: 'John', age: 55}),
+                                            (y:Person {name: 'Bob', age: 43}),
+                                            (z:Person {name: 'Alice', age: 33}),
+                                            (n)-[:Has]->(a),
+                                            (n)-[:Has]->(b),
+                                            (m)-[:Has]->(c),
+                                            (a)-[:AssignedTo]->(x),
+                                            (b)-[:AssignedTo]->(y),
+                                            (c)-[:AssignedTo]->(y) $$) as (n agtype);
+ n 
+---
+(0 rows)
+
+SELECT * FROM cypher('graph_395', $$ MATCH (p:Project)-[:Has]->(t:Task)-[:AssignedTo]->(u:Person)
+                                     WITH p, t, collect(u) AS users
+                                     WITH p, {tn: t.name, users: users} AS task
+                                     RETURN task $$) AS (p agtype);
+                                                              p                                                              
+-----------------------------------------------------------------------------------------------------------------------------
+ {"tn": "Task A", "users": [{"id": 1407374883553281, "label": "Person", "properties": {"age": 55, "name": "John"}}::vertex]}
+ {"tn": "Task B", "users": [{"id": 1407374883553282, "label": "Person", "properties": {"age": 43, "name": "Bob"}}::vertex]}
+ {"tn": "Task C", "users": [{"id": 1407374883553282, "label": "Person", "properties": {"age": 43, "name": "Bob"}}::vertex]}
+(3 rows)
+
+SELECT * FROM cypher('graph_395', $$ MATCH (p:Project)-[:Has]->(t:Task)-[:AssignedTo]->(u:Person)
+                                     WITH p, t, collect(u) AS users
+                                     WITH p, {tn: t.name, users: users} AS task
+                                     WITH p, collect(task) AS tasks
+                                     RETURN tasks $$) AS (p agtype);
+                                                                                                                             p                                                                                                                             
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"tn": "Task A", "users": [{"id": 1407374883553281, "label": "Person", "properties": {"age": 55, "name": "John"}}::vertex]}, {"tn": "Task B", "users": [{"id": 1407374883553282, "label": "Person", "properties": {"age": 43, "name": "Bob"}}::vertex]}]
+ [{"tn": "Task C", "users": [{"id": 1407374883553282, "label": "Person", "properties": {"age": 43, "name": "Bob"}}::vertex]}]
+(2 rows)
+
+SELECT * FROM cypher('graph_395', $$ MATCH (p:Project)-[:Has]->(t:Task)-[:AssignedTo]->(u:Person)
+                                     WITH p, t, collect(u) AS users
+                                     WITH p, {tn: t.name, users: users} AS task
+                                     WITH p, collect(task) AS tasks
+                                     WITH {pn: p.name, tasks:tasks} AS project
+                                     RETURN project $$) AS (p agtype);
+                                                                                                                                            p                                                                                                                                            
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"pn": "Project A", "tasks": [{"tn": "Task A", "users": [{"id": 1407374883553281, "label": "Person", "properties": {"age": 55, "name": "John"}}::vertex]}, {"tn": "Task B", "users": [{"id": 1407374883553282, "label": "Person", "properties": {"age": 43, "name": "Bob"}}::vertex]}]}
+ {"pn": "Project B", "tasks": [{"tn": "Task C", "users": [{"id": 1407374883553282, "label": "Person", "properties": {"age": 43, "name": "Bob"}}::vertex]}]}
+(2 rows)
+
 --
 -- Cleanup
 --
+SELECT * FROM drop_graph('graph_395', true);
+NOTICE:  drop cascades to 7 other objects
+DETAIL:  drop cascades to table graph_395._ag_label_vertex
+drop cascades to table graph_395._ag_label_edge
+drop cascades to table graph_395."Project"
+drop cascades to table graph_395."Task"
+drop cascades to table graph_395."Person"
+drop cascades to table graph_395."Has"
+drop cascades to table graph_395."AssignedTo"
+NOTICE:  graph "graph_395" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
 SELECT * FROM drop_graph('chained', true);
 NOTICE:  drop cascades to 3 other objects
 DETAIL:  drop cascades to table chained._ag_label_vertex
