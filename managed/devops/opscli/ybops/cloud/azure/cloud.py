@@ -127,13 +127,25 @@ class AzureCloud(AbstractCloud):
         spot_price = args.spot_price
         use_spot_instance = args.use_spot_instance
         tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
+        vm_params = json.loads(args.custom_vm_params).get(region) \
+            if args.custom_vm_params is not None else {}
+        if vm_params is None:
+            logging.warning("[app] VM parameters not specified for region {}.".format(region))
+        disk_params = json.loads(args.custom_disk_params).get(region) \
+            if args.custom_disk_params is not None else {}
+        if disk_params is None:
+            logging.warning("[app] Disk parameters not specified for region {}.".format(region))
+        network_params = json.loads(args.custom_network_params).get(region) \
+            if args.custom_network_params is not None else {}
+        if network_params is None:
+            logging.warning("[app] Network parameters not specified for region {}".format(region))
         nicId = self.get_admin().create_or_update_nic(
-            vmName, vnet, subnet, zone, nsg, region, public_ip, tags)
+            vmName, vnet, subnet, zone, nsg, region, public_ip, tags, network_params)
         output = self.get_admin().create_or_update_vm(vmName, zone, numVolumes, private_key_file,
-                                                      volSize, instanceType, adminSSH, nsg, image,
+                                                      volSize, instanceType, adminSSH, image,
                                                       volType, args.type, region, nicId, tags,
-                                                      disk_iops, disk_throughput,
-                                                      spot_price, use_spot_instance)
+                                                      disk_iops, disk_throughput, spot_price,
+                                                      use_spot_instance, vm_params, disk_params)
         logging.info("[app] Updated Azure VM {}.".format(vmName, region, zone))
         return output
 
