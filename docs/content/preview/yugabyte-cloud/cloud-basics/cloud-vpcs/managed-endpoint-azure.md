@@ -43,7 +43,7 @@ To use Azure Private Link to connect your cluster to an Azure VNet that hosts yo
 
 ## Create a PSE in YugabyteDB Managed
 
-You create the PSE for your cluster using [ybm CLI](../../../../managed-automation/managed-cli/).
+You create the PSE for your cluster using [ybm CLI](../../../managed-automation/managed-cli/).
 
 To create a PSE, do the following:
 

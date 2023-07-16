@@ -43,7 +43,7 @@ To use AWS PrivateLink to connect your cluster to a VPC in AWS that hosts your a
 
 ## Create a PSE in YugabyteDB Managed
 
-You create the PSEs (one for each region) for your cluster using [ybm CLI](../../../../managed-automation/managed-cli/).
+You create the PSEs (one for each region) for your cluster using [ybm CLI](../../../managed-automation/managed-cli/).
 
 To create a PSE, do the following:
 
