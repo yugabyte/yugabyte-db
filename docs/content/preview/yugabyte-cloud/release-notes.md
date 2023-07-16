@@ -20,7 +20,7 @@ On this page:
 
 ## Change log
 
-### July 12, 2023
+### July 13, 2023
 
 **Database**
 
@@ -28,7 +28,7 @@ On this page:
   - Innovation track - has more frequent updates for faster access to new features. Currently features YugabyteDB version 2.16.5.0.
   - Production track - has a slower update cadence and features only select stable release builds. Currently features YugabyteDB version 2.14.10.2.
 
-  After a cluster is created, it is upgraded with releases from the release track selected at creation. Sandbox clusters continue to use the Preview release track.
+  After a cluster is created, it is upgraded with releases from the release track selected at creation. Clusters previously on the Stable track running 2.14 are now on the Production track, while clusters running 2.16 are now on the Innovation track. Sandbox clusters continue to use the Preview release track.
 
 ### July 3, 2023
 
