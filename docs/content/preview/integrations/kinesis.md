@@ -19,15 +19,15 @@ YugabyteDB has a [Debezium connector](https://github.com/yugabyte/debezium-conne
 
 To connect your YugabyteDB database to Kinesis:
 
-- Create a Kinesis Data Stream from AWS Management Console. Note the name of the stream you create.
-- Start a YugabyteDB cluster. Refer [YugabyteDB Prerequisites](../../tools/#yugabytedb-prerequisites).
-- Create a CDC stream using following command:
+1. Create a Kinesis Data Stream from AWS Management Console. Note the name of the stream you create.
+1. Start a YugabyteDB cluster. Refer [YugabyteDB Prerequisites](../../tools/#yugabytedb-prerequisites).
+1. Create a CDC stream using following command:
 
     ```sh
     ./bin/yb-admin --master_addresses 127.0.0.1:7100 create_change_data_stream ysql.yugabyte
     ```
 
-- Create a table using [ysqlsh](../../admin/ysqlsh/#starting-ysqlsh) as follows:
+1. Create a table using [ysqlsh](../../admin/ysqlsh/#starting-ysqlsh) as follows:
 
     ```sql
     CREATE TABLE users(
@@ -38,7 +38,7 @@ To connect your YugabyteDB database to Kinesis:
     password   text, source     text);
     ```
 
-- Write a Java application which will use the Debezium connector to receive CDC data from YugabyteDB and write to Kinesis Data Streams.
+1. Write a Java application which will use the Debezium connector to receive CDC data from YugabyteDB and write to Kinesis Data Streams.
 The following code snippet shows an example implementation:
 
     ```java
@@ -120,5 +120,5 @@ The following code snippet shows an example implementation:
     executor.execute(engine);
     ```
 
-- As you insert records into the users table, you can check the records arriving in the Kinesis data stream.
+1. As you insert records into the users table, you can check the records arriving in the Kinesis data stream.
 For some INSERT DMLs, refer to the `users.sql` script in [CDC examples](https://github.com/yugabyte/cdc-examples/blob/main/cdc-quickstart-kafka-connect/scripts/users.sql).
