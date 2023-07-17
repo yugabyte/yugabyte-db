@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
 import com.yugabyte.yw.models.helpers.NodeID;
 import java.util.List;
 import java.util.Map;
@@ -68,8 +69,8 @@ public interface CloudAPI {
       String regionCode,
       String lbName,
       Map<AvailabilityZone, Set<NodeID>> azToNodesMap,
-      String protocol,
-      List<Integer> ports);
+      List<Integer> ports,
+      NLBHealthCheckConfiguration healthCheckConfig);
 
   void validateInstanceTemplate(Provider provider, String instanceTemplate);
 

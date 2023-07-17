@@ -38,6 +38,11 @@ public interface CloudUtil extends StorageUtil {
     NULL
   }
 
+  public static enum Protocol {
+    TCP,
+    HTTP
+  }
+
   public static final String KEY_LOCATION_SUFFIX = Util.KEY_LOCATION_SUFFIX;
   public static final String SUCCESS = "success";
   int FILE_DOWNLOAD_BUFFER_SIZE = 8 * 1024;
