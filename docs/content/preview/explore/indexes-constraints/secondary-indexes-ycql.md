@@ -10,8 +10,6 @@ menu:
     identifier: secondary-indexes-ycql
     parent: explore-indexes-constraints
     weight: 220
-aliases:
-  - /preview/explore/ysql-language-features/indexes-1/
 type: docs
 ---
 <ul class="nav nav-tabs-alt nav-tabs-yb">

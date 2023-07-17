@@ -45,17 +45,24 @@ For additional information on creating indexes, see [CREATE INDEX](../../../api/
 
 The following exercise demonstrates how to optimize query performance using a covering index.
 
+1. Create a keyspace as follows:
+
+    ```cql
+    ycqlsh> CREATE KEYSPACE docs;
+    ycqlsh> USE docs;
+    ```
+
 1. Create and insert some rows into a table `employees` with two columns `id` and `username`
 
     ```cql
     CREATE TABLE employees (
     employee_no integer PRIMARY KEY,
     name text,
-    department text 
+    department text
     )
     WITH TRANSACTIONS = {'enabled':'true'};
     ```
-    
+
     ```cql
     INSERT INTO employees(employee_no, name,department) VALUES(1221, 'John Smith', 'Marketing');
     INSERT INTO employees(employee_no, name,department) VALUES(1222, 'Bette Davis', 'Sales');
@@ -66,6 +73,12 @@ The following exercise demonstrates how to optimize query performance using a co
 
     ```sql
     SELECT name FROM employees WHERE department='Sales';
+    ```
+
+    ```output
+     name
+    -------------
+     Bette Davis
     ```
 
 1. Run `EXPLAIN` on select query to show that the query does a sequential scan before creating an index
@@ -82,33 +95,33 @@ The following exercise demonstrates how to optimize query performance using a co
     ```
 
 1. Optimize the SELECT query by creating an index as follows
-  
+
     ```cql
     CREATE INDEX index_employees_department ON employees(department);
     ```
-  
+
     ```cql
     EXPLAIN SELECT name FROM employees WHERE department='Sales';
     ```
 
-    ```
+    ```output
      QUERY PLAN
      --------------------------------------------------------------------
      Index Scan using index_employees_department on employees
       Key Conditions: (department = 'Sales')
     ```
 
-   Since the select query includes a column that is not included in the index, the query still reaches out to the table to get the column values.
+   As the select query includes a column that is not included in the index, the query still reaches out to the table to get the column values.
 
-1. Create a covering index by specifying the username column in the INCLUDE clause
-
-    A covering index allows you to perform an index-only scan if the query select list matches the columns that are included in the index and the additional columns added using the INCLUDE keyword.   
-    
-    Ideally, specify columns that are updated frequently in the INCLUDE clause. For other cases, it is probably faster to index all the key columns.
+1. Create a covering index by specifying the username column in the INCLUDE clause as follows:
 
     ```sql
     CREATE INDEX index_employees_department_nm ON employees(department) include(name);
     ```
+
+    A covering index allows you to perform an index-only scan if the query select list matches the columns that are included in the index and the additional columns added using the INCLUDE keyword.
+
+    Ideally, specify columns that are updated frequently in the INCLUDE clause. For other cases, it is probably faster to index all the key columns.
 
     ```sql
     EXPLAIN SELECT name FROM employees WHERE department='Sales';
@@ -118,7 +131,7 @@ The following exercise demonstrates how to optimize query performance using a co
      QUERY PLAN
     ----------------------------------------------------------------------------
     Index Only Scan using docs.index_employees_department_nm on docs.employees
-      Key Conditions: (department = 'Sales') 
+      Key Conditions: (department = 'Sales')
     ```
 
 
