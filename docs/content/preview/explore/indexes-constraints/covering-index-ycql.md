@@ -45,11 +45,11 @@ For additional information on creating indexes, see [CREATE INDEX](../../../api/
 
 The following exercise demonstrates how to optimize query performance using a covering index.
 
-1. Create a keyspace as follows:
+1. Create a sample HR keyspace as follows:
 
     ```cql
-    ycqlsh> CREATE KEYSPACE docs;
-    ycqlsh> USE docs;
+    ycqlsh> CREATE KEYSPACE HR;
+    ycqlsh> USE HR;
     ```
 
 1. Create and insert some rows into a table `employees` with two columns `id` and `username`
@@ -130,8 +130,6 @@ The following exercise demonstrates how to optimize query performance using a co
     ```output
      QUERY PLAN
     ----------------------------------------------------------------------------
-    Index Only Scan using docs.index_employees_department_nm on docs.employees
+    Index Only Scan using HR.index_employees_department_nm on HR.employees
       Key Conditions: (department = 'Sales')
     ```
-
-
