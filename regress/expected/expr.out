@@ -3032,6 +3032,75 @@ ERROR:  function ag_catalog.age_tointeger() does not exist
 LINE 2:     RETURN toInteger()
                    ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+-- toIntegerList()
+SELECT * FROM cypher('expr', $$
+    RETURN toIntegerList([1, 7.8, 9.0, '88'])
+$$) AS (toIntegerList agtype);
+ tointegerlist 
+---------------
+ [1, 7, 9, 88]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toIntegerList([4.2, '123', '8', 8])
+$$) AS (toIntegerList agtype);
+ tointegerlist  
+----------------
+ [4, 123, 8, 8]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toIntegerList(['41', '12', 2])
+$$) AS (toIntegerList agtype);
+ tointegerlist 
+---------------
+ [41, 12, 2]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toIntegerList([1, 2, 3, '10.2'])
+$$) AS (toIntegerList agtype);
+ tointegerlist 
+---------------
+ [1, 2, 3, 10]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toIntegerList([0000])
+$$) AS (toIntegerList agtype);
+ tointegerlist 
+---------------
+ [0]
+(1 row)
+
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN toIntegerList(["false_", 'asdsad', '123k1kdk1'])
+$$) AS (toIntegerList agtype);
+   tointegerlist    
+--------------------
+ [null, null, null]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    RETURN toIntegerList([null, '123false', 'one'])
+$$) AS (toIntegerList agtype);
+   tointegerlist    
+--------------------
+ [null, null, null]
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN toIntegerList(123, '123')
+$$) AS (toIntegerList agtype);
+ERROR:  toIntegerList() argument must resolve to a list or null
+SELECT * FROM cypher('expr', $$
+    RETURN toIntegerList(32[])
+$$) AS (toIntegerList agtype);
+ERROR:  syntax error at or near "]"
+LINE 2:     RETURN toIntegerList(32[])
+                                    ^
 -- length() of a path
 SELECT * FROM cypher('expr', $$
     RETURN length([{id: 0, label: "vertex 0", properties: {}}::vertex, {id: 2, label: "edge 0", end_id: 1, start_id: 0, properties: {}}::edge, {id: 1, label: "vertex 1", properties: {}}::vertex]::path)
