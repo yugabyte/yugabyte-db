@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-[DataHub](https://github.com/datahub-project/datahub) is an open-source metadata platform for the modern data stack. DataHub is a modern data catalog built to enable end-to-end data discovery, data observability, and data governance. It supports various data sources including PostgreSQL.
+[DataHub](https://github.com/datahub-project/datahub) is an open-source metadata platform for the data stack. DataHub is a modern data catalog built to enable end-to-end data discovery, data observability, and data governance. It supports various data sources including PostgreSQL.
 
 Because YugabyteDB's YSQL API is wire-compatible with PostgreSQL, Datahub can connect to YugabyteDB as a data source using the [PostgreSQL plugin](https://datahubproject.io/docs/generated/ingestion/sources/postgres/#install-the-plugin).
 
@@ -20,7 +20,7 @@ Because YugabyteDB's YSQL API is wire-compatible with PostgreSQL, Datahub can co
 You can run the Docker Compose [quickStart example](https://github.com/datahub-project/datahub/blob/master/docker/quickstart/docker-compose-without-neo4j.quickstart.yml) provided in the Datahub GitHub repository against YugabyteDB with the following changes:
 
 - Replace the MySql Docker image with that of YugabyteDB.
-- Specify entrypoint command for the YugabyteDB Docker container.
+- Specify the entrypoint command for the YugabyteDB Docker container.
 - Change port from 5432 to 5433
 - Change username and password to yugabyte.
 - Change the driver to `org.postgresql.Driver`.
