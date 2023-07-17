@@ -153,6 +153,8 @@
         "modalTitle": "Delete Read Replica of {{universeName}}"
       },
       "gFlags": {
+        "edit": "Edit",
+        "preview": "Preview",
         "addFlag": "Add Flag",
         "addGflags": "Add Flags",
         "addJson": "Add as JSON",
@@ -188,7 +190,16 @@
         "delayBetweenServers": "Delay Between Servers :",
         "seconds": "seconds",
         "inheritRRModalBody": "Apply the same Flags to both Primary Cluster and Read replica? <br /> This will override all the Flags that are currently applied to Read replica<br /> by Primary Cluster’s Flag.",
-        "inheritRRModalConfirmMsg": "Are you sure you want to continue with the changes?"
+        "inheritRRModalConfirmMsg": "Are you sure you want to continue with the changes?",
+        "addRow": "Add Row",
+        "hbaLDAPConflocal": "local database user auth-method [auth-options]",
+        "hbaLDAPConfHost": "host database user address auth-method [auth-options]",
+        "hbaLDAPConfHostSSL": "hostssl database user IP-address auth-method [auth-options]",
+        "InvalidLDAPKey": "Invalid LDAP key or missing '=' between key value pair",
+        "LDAPMissingAttributeValue": "Missing value for the attribute",
+        "LDAPMissingQuote": "Attribute value should be enclosed in quotes",
+        "nonASCIIDetected": "Non-ASCII value detected"
+
       },
       "helmOverrides": {
         "addK8sOverrides": "Add Kubernetes Overrides",
