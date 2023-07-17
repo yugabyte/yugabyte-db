@@ -78,7 +78,7 @@ SELECT * FROM part_9_23 LIMIT 4;
  2023-09-01 00:00:23 | car-2 |    33
 ```
 
-## Fetching data
+## Fetch data
 
 Although data is stored in different tables as partitions, to access all the data you just need to query the parent table. Take a look at the query plan for a select query as follows:
 
@@ -103,7 +103,7 @@ EXPLAIN ANALYZE SELECT * FROM part_demo;
 
 When querying the parent table, the child partitions are automatically queried.
 
-## Fetching within a time range
+## Fetch data within a time range
 
 As the data is split based on time, when querying for a specific time range, the query executor fetches data only from the partition that the data is expected to be in. For example, see the query plan for fetching data for a specific month.
 
@@ -139,7 +139,7 @@ DROP TABLE
 Time: 103.214 ms
 ```
 
-## Automating partition management
+## Automate partition management
 
 Creation and deletion of partitions can be managed using the [pg_partman](https://github.com/pgpartman/pg_partman) extension or scheduling jobs using [pg_cron](https://github.com/citusdata/pg_cron).
 
