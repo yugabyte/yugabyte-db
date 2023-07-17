@@ -139,7 +139,7 @@ Status CatalogManagerUtil::AreLeadersOnPreferredOnly(
         ts_descs,
         replication_info);
 
-    for (const auto& tablet : table->GetTablets()) {
+    for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
       auto tablet_lock = tablet->LockForRead();
       const auto replication_locations = tablet->GetReplicaLocations();
       for (const auto& replica : *replication_locations) {
@@ -248,7 +248,7 @@ Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
 }
 
 Status CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
-    const scoped_refptr<TabletInfo>& tablet) {
+    const TabletInfoPtr& tablet) {
   static const auto stringify_partition_key = [](const Slice& key) {
     return key.empty() ? "{empty}" : key.ToDebugString();
   };
@@ -262,8 +262,8 @@ Status CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
   const auto partition = tablet_pb.partition();
 
   VLOG(3) << "Tablet " << tablet_id << " " << AsString(partition);
-  TabletInfos tablets_in_range = tablet->table()->GetTabletsInRange(
-      partition.partition_key_start(), partition.partition_key_end());
+  TabletInfos tablets_in_range = VERIFY_RESULT(tablet->table()->GetTabletsInRange(
+      partition.partition_key_start(), partition.partition_key_end()));
 
   std::string partition_key = partition.partition_key_start();
   for (const auto& inner_tablet : tablets_in_range) {

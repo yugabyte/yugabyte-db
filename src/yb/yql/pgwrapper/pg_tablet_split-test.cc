@@ -444,7 +444,7 @@ TEST_F(PgTabletSplitTest, SplitSequencesDataTable) {
   auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
   master::TableInfoPtr sequences_data_table = catalog_mgr->GetTableInfo(kPgSequencesDataTableId);
   // Attempt splits on "system_postgres.sequences_data" table and verify that it fails.
-  for (const auto& tablet : sequences_data_table->GetTablets()) {
+  for (const auto& tablet : ASSERT_RESULT(sequences_data_table->GetTablets())) {
     LOG(INFO) << "Splitting : " << sequences_data_table->name() << " Tablet :" << tablet->id();
     auto s = catalog_mgr->TEST_SplitTablet(tablet, true /* is_manual_split */);
     LOG(INFO) << s.ToString();
@@ -1355,7 +1355,7 @@ TEST_F(PgRangePartitionedTableSplitTest, SelectMiddleRangeAfterManualSplit) {
 
       const auto table_id = ASSERT_RESULT(GetTableIDFromTableName(table_name));
       const auto table = ASSERT_RESULT(catalog_manager())->GetTableInfo(table_id);
-      const auto tablets = GetTabletsByPartitionKey(table);
+      const auto tablets = ASSERT_RESULT(GetTabletsByPartitionKey(table));
       ASSERT_EQ(tablets.size(), 3);
 
       // Exptract middle tablet bounds.
@@ -1452,7 +1452,8 @@ TEST_P(PgPartitioningTest, PgGatePartitionsListAfterSplit) {
 
     // Build expected split clause.
     const auto table_id = ASSERT_RESULT(GetTableIDFromTableName(table_name));
-    const auto tablets = ASSERT_RESULT(catalog_manager())->GetTableInfo(table_id)->GetTablets();
+    const auto tablets =
+        ASSERT_RESULT(ASSERT_RESULT(catalog_manager())->GetTableInfo(table_id)->GetTablets());
     std::stringstream expected_clause;
     expected_clause << "SPLIT AT VALUES (";
     bool need_comma = false;

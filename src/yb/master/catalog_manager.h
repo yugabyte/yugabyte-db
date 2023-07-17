@@ -157,7 +157,7 @@ typedef std::unordered_map<TablespaceId, boost::optional<ReplicationInfoPB>>
 
 typedef std::unordered_map<TableId, boost::optional<TablespaceId>> TableToTablespaceIdMap;
 
-typedef std::unordered_map<TableId, std::vector<scoped_refptr<TabletInfo>>> TableToTabletInfos;
+typedef std::unordered_map<TableId, std::vector<TabletInfoPtr>> TableToTabletInfos;
 
 typedef std::unordered_map<TableId, xrepl::StreamId> TableBootstrapIdsMap;
 
@@ -536,7 +536,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Otherwise, returns Status::OK and puts the result in 'locs_pb'.
   // This only returns tablets which are in RUNNING state.
   Status GetTabletLocations(
-      scoped_refptr<TabletInfo> tablet_info,
+      const TabletInfoPtr& tablet_info,
       TabletLocationsPB* locs_pb,
       IncludeInactive include_inactive) override;
 
@@ -588,7 +588,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const std::set<TabletId>& new_running_tablets = {});
 
   void StartElectionIfReady(
-      const consensus::ConsensusStatePB& cstate, const LeaderEpoch& epoch, TabletInfo* tablet);
+      const consensus::ConsensusStatePB& cstate, const LeaderEpoch& epoch,
+      const TabletInfoPtr& tablet);
 
   Result<bool> IsTableUndergoingPitrRestore(const TableInfo& table_info);
 
@@ -760,7 +761,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Dump all of the current state about tables and tablets to the
   // given output stream. This is verbose, meant for debugging.
-  void DumpState(std::ostream* out, bool on_disk_dump = false) const override;
+  Status DumpState(std::ostream* out, bool on_disk_dump = false) const override;
 
   void SetLoadBalancerEnabled(bool is_enabled);
 
@@ -833,7 +834,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Let the catalog manager know that we have received a response for a prepare delete
   // transaction tablet request. This will trigger delete tablet requests on all replicas.
   void NotifyPrepareDeleteTransactionTabletFinished(
-      const scoped_refptr<TabletInfo>& tablet, const std::string& msg, HideOnly hide_only,
+      const TabletInfoPtr& tablet, const std::string& msg, HideOnly hide_only,
       const LeaderEpoch& epoch) override;
 
   // Let the catalog manager know that we have received a response for a delete tablet request,
@@ -943,7 +944,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const ValidateReplicationInfoRequestPB* req, ValidateReplicationInfoResponsePB* resp);
 
   Result<size_t> GetReplicationFactor() override;
-  Result<size_t> GetNumTabletReplicas(const scoped_refptr<TabletInfo>& tablet);
+  Result<size_t> GetNumTabletReplicas(const TabletInfoPtr& tablet);
 
   // Lookup tablet by ID, then call GetExpectedNumberOfReplicasForTable below.
   Status GetExpectedNumberOfReplicasForTablet(const TabletId& tablet_id,
@@ -1096,7 +1097,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Test wrapper around protected DoSplitTablet method.
   Status TEST_SplitTablet(
-      const scoped_refptr<TabletInfo>& source_tablet_info,
+      const TabletInfoPtr& source_tablet_info,
       docdb::DocKeyHash split_hash_code) override;
 
   Status TEST_SplitTablet(
@@ -1508,7 +1509,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status CleanUpDeletedXReplStreams(const LeaderEpoch& epoch);
 
-  void GetValidTabletsAndDroppedTablesForStream(
+  Status GetValidTabletsAndDroppedTablesForStream(
       const CDCStreamInfoPtr stream, std::set<TabletId>* tablets_with_streams,
       std::set<TableId>* dropped_tables);
 
@@ -1610,7 +1611,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status BackfillMetadataForXRepl(const TableInfoPtr& table_info, const LeaderEpoch& epoch);
 
-  Result<scoped_refptr<TabletInfo>> GetTabletInfo(const TabletId& tablet_id) override
+  Result<TabletInfoPtr> GetTabletInfo(const TabletId& tablet_id) override
       EXCLUDES(mutex_);
 
   // Gets the tablet info for each tablet id, or nullptr if the tablet was not found.
@@ -1831,7 +1832,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Returns Status::ServiceUnavailable if tablet is not running.
   // Set include_inactive to true in order to also get information about hidden tablets.
   Status BuildLocationsForTablet(
-      const scoped_refptr<TabletInfo>& tablet,
+      const TabletInfoPtr& tablet,
       TabletLocationsPB* locs_pb,
       IncludeInactive include_inactive = IncludeInactive::kFalse,
       PartitionsOnly partitions_only = PartitionsOnly::kFalse);
@@ -1862,7 +1863,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Select and assign a tablet server as the protege 'config'. This protege is selected from the
   // set of tservers in 'global_state' that have the lowest current protege load.
   Status SelectProtegeForTablet(
-      TabletInfo* tablet, consensus::RaftConfigPB *config, CMGlobalLoadState* global_state);
+      const TabletInfoPtr& tablet, consensus::RaftConfigPB* config,
+      CMGlobalLoadState* global_state);
 
   // Select N Replicas from online tablet servers (as specified by
   // 'ts_descs') for the specified tablet and populate the consensus configuration
@@ -1871,7 +1873,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   //
   // This method is called by "ProcessPendingAssignmentsPerTable()".
   Status SelectReplicasForTablet(
-      const TSDescriptorVector& ts_descs, TabletInfo* tablet,
+      const TSDescriptorVector& ts_descs, const TabletInfoPtr& tablet,
       CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state);
 
   // Select N Replicas from the online tablet servers that have been chosen to respect the
@@ -1888,13 +1890,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       CMPerTableLoadState* per_table_state,
       CMGlobalLoadState* global_state);
 
-  void HandleAssignPreparingTablet(TabletInfo* tablet,
+  void HandleAssignPreparingTablet(const TabletInfoPtr& tablet,
                                    DeferredAssignmentActions* deferred);
 
   // Assign tablets and send CreateTablet RPCs to tablet servers.
   // The out param 'new_tablets' should have any newly-created TabletInfo
   // objects appended to it.
-  void HandleAssignCreatingTablet(TabletInfo* tablet,
+  Status HandleAssignCreatingTablet(const TabletInfoPtr& tablet,
                                   DeferredAssignmentActions* deferred,
                                   TabletInfos* new_tablets);
 
@@ -1909,7 +1911,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // This must be called after persisting the tablet state as
   // CREATING to ensure coherent state after Master failover.
   Status SendCreateTabletRequests(
-      const std::vector<TabletInfo*>& tablets, const LeaderEpoch& epoch);
+      const std::vector<TabletInfoPtr>& tablets,
+      const LeaderEpoch& epoch);
 
   // Send the "alter table request" to all tablets of the specified table.
   //
@@ -1928,7 +1931,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Starts the background task to send the SplitTablet RPC to the leader for the specified tablet.
   Status SendSplitTabletRequest(
-      const scoped_refptr<TabletInfo>& tablet, std::array<TabletId, kNumSplitParts> new_tablet_ids,
+      const TabletInfoPtr& tablet, std::array<TabletId, kNumSplitParts> new_tablet_ids,
       const std::string& split_encoded_key, const std::string& split_partition_key,
       const LeaderEpoch& epoch);
 
@@ -1936,7 +1939,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   void SendTruncateTableRequest(const scoped_refptr<TableInfo>& table, const LeaderEpoch& epoch);
 
   // Start the background task to send the TruncateTable() RPC to the leader for this tablet.
-  void SendTruncateTabletRequest(const scoped_refptr<TabletInfo>& tablet, const LeaderEpoch& epoch);
+  void SendTruncateTabletRequest(const TabletInfoPtr& tablet, const LeaderEpoch& epoch);
 
   // Truncate the specified table/index.
   Status TruncateTable(const TableId& table_id,
@@ -1967,7 +1970,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Request tablet servers to delete all replicas of the tablet.
   void DeleteTabletReplicas(
-      TabletInfo* tablet, const std::string& msg, HideOnly hide_only, KeepData keep_data,
+      const TabletInfoPtr& tablet, const std::string& msg, HideOnly hide_only, KeepData keep_data,
       const LeaderEpoch& epoch) override;
 
   // Returns error if and only if it is forbidden to both:
@@ -1992,7 +1995,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Sends a prepare delete transaction tablet request to the leader of the status tablet.
   // This will be followed by delete tablet requests to each replica.
   Status SendPrepareDeleteTransactionTabletRequest(
-      const scoped_refptr<TabletInfo>& tablet, const std::string& leader_uuid,
+      const TabletInfoPtr& tablet, const std::string& leader_uuid,
       const std::string& reason, HideOnly hide_only, const LeaderEpoch& epoch);
 
   // Start a task to request the specified tablet leader to step down and optionally to remove
@@ -2000,20 +2003,20 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // immediately to become the new leader. If new_leader_ts_uuid is empty, the election will be run
   // following the protocol's default mechanism.
   void SendLeaderStepDownRequest(
-      const scoped_refptr<TabletInfo>& tablet, const consensus::ConsensusStatePB& cstate,
+      const TabletInfoPtr& tablet, const consensus::ConsensusStatePB& cstate,
       const std::string& change_config_ts_uuid, bool should_remove, const LeaderEpoch& epoch,
       const std::string& new_leader_ts_uuid = "");
 
   // Start a task to change the config to remove a certain voter because the specified tablet is
   // over-replicated.
   void SendRemoveServerRequest(
-      const scoped_refptr<TabletInfo>& tablet, const consensus::ConsensusStatePB& cstate,
+      const TabletInfoPtr& tablet, const consensus::ConsensusStatePB& cstate,
       const std::string& change_config_ts_uuid, const LeaderEpoch& epoch);
 
   // Start a task to change the config to add an additional voter because the
   // specified tablet is under-replicated.
   void SendAddServerRequest(
-      const scoped_refptr<TabletInfo>& tablet, consensus::PeerMemberType member_type,
+      const TabletInfoPtr& tablet, consensus::PeerMemberType member_type,
       const consensus::ConsensusStatePB& cstate, const std::string& change_config_ts_uuid,
       const LeaderEpoch& epoch);
 
@@ -2071,16 +2074,16 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       TableInfo::WriteLock* table_write_lock, TabletInfo::WriteLock* tablet_write_lock)
       EXCLUDES(mutex_);
 
-  Result<scoped_refptr<TabletInfo>> GetTabletInfoUnlocked(const TabletId& tablet_id)
+  Result<TabletInfoPtr> GetTabletInfoUnlocked(const TabletId& tablet_id)
       REQUIRES_SHARED(mutex_);
 
   Status DoSplitTablet(
-      const scoped_refptr<TabletInfo>& source_tablet_info, std::string split_encoded_key,
+      const TabletInfoPtr& source_tablet_info, std::string split_encoded_key,
       std::string split_partition_key, ManualSplit is_manual_split, const LeaderEpoch& epoch);
 
   // Splits tablet using specified split_hash_code as a split point.
   Status DoSplitTablet(
-      const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code,
+      const TabletInfoPtr& source_tablet_info, docdb::DocKeyHash split_hash_code,
       ManualSplit is_manual_split, const LeaderEpoch& epoch);
 
   int64_t leader_ready_term() const override EXCLUDES(state_lock_) {
@@ -2393,7 +2396,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   std::unordered_map<std::string, std::shared_ptr<tablet::AbstractTablet>> system_tablets_;
 
   // Tablet of colocated databases indexed by the namespace id.
-  std::unordered_map<NamespaceId, scoped_refptr<TabletInfo>> colocated_db_tablets_map_
+  std::unordered_map<NamespaceId, TabletInfoPtr> colocated_db_tablets_map_
       GUARDED_BY(mutex_);
 
   std::unique_ptr<YsqlTablegroupManager> tablegroup_manager_
@@ -2461,11 +2464,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       std::unordered_set<TableId>* parent_colocated_table_ids);
 
   Status SplitTablet(
-      const scoped_refptr<TabletInfo>& tablet, ManualSplit is_manual_split,
+      const TabletInfoPtr& tablet, ManualSplit is_manual_split,
       const LeaderEpoch& epoch);
 
   void SplitTabletWithKey(
-      const scoped_refptr<TabletInfo>& tablet, const std::string& split_encoded_key,
+      const TabletInfoPtr& tablet, const std::string& split_encoded_key,
       const std::string& split_partition_key, ManualSplit is_manual_split,
       const LeaderEpoch& epoch);
 
@@ -2473,9 +2476,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       REQUIRES_SHARED(mutex_);
 
   Status ValidateSplitCandidate(
-      const scoped_refptr<TabletInfo>& tablet, ManualSplit is_manual_split) EXCLUDES(mutex_);
+      const TabletInfoPtr& tablet, ManualSplit is_manual_split) EXCLUDES(mutex_);
   Status ValidateSplitCandidateUnlocked(
-      const scoped_refptr<TabletInfo>& tablet, ManualSplit is_manual_split)
+      const TabletInfoPtr& tablet, ManualSplit is_manual_split)
       REQUIRES_SHARED(mutex_);
 
   // From the list of TServers in 'ts_descs', return the ones that match any placement policy
@@ -2538,11 +2541,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   TSDescriptorVector GetAllLiveNotBlacklistedTServers() const override;
 
-  void InitializeTableLoadState(
+  Status InitializeTableLoadState(
       const TableId& table_id, TSDescriptorVector ts_descs, CMPerTableLoadState* state);
 
-  void InitializeGlobalLoadState(
-      const TSDescriptorVector& ts_descs, CMGlobalLoadState* state);
+  Result<CMGlobalLoadState> InitializeGlobalLoadState(const TSDescriptorVector& ts_descs);
 
   // Send a step down request for the sys catalog tablet to the specified master. If the step down
   // RPC response has an error, returns false. If the step down RPC is successful, returns true.
@@ -2559,7 +2561,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Helper function for BuildLocationsForTablet to handle the special case of a system tablet.
   Status BuildLocationsForSystemTablet(
-      const scoped_refptr<TabletInfo>& tablet,
+      const TabletInfoPtr& tablet,
       TabletLocationsPB* locs_pb,
       IncludeInactive include_inactive,
       PartitionsOnly partitions_only);
@@ -2958,7 +2960,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       google::protobuf::RepeatedPtrField<SysRowEntry>* out,
       google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>*
           tablet_snapshot_info = nullptr,
-      std::vector<scoped_refptr<TabletInfo>>* all_tablets = nullptr);
+      std::vector<TabletInfoPtr>* all_tablets = nullptr);
 
   Result<SysRowEntries> CollectEntriesForSequencesDataTable();
 

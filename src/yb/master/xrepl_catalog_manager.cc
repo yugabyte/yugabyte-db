@@ -1232,7 +1232,7 @@ Status CatalogManager::PopulateCDCStateTable(const xrepl::StreamId& stream_id,
   std::vector<cdc::CDCStateTableEntry> entries;
   for (const auto& table_id : table_ids) {
     auto table = VERIFY_RESULT(FindTableById(table_id));
-    for (const auto& tablet : table->GetTablets()) {
+    for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
       cdc::CDCStateTableEntry entry(tablet->id(), stream_id);
       if (has_consistent_snapshot_option) {
         // We must have seen this tablet id in the above check for Invalid checkpoint. If not, this
@@ -1498,7 +1498,7 @@ Status CatalogManager::WaitForSnapshotSafeOpIdToBePopulated(
   auto num_expected_tablets = 0;
   for (const auto& table_id : table_ids) {
     auto table = VERIFY_RESULT(FindTableById(table_id));
-    num_expected_tablets += table->GetTablets().size();
+    num_expected_tablets += table->TabletCount();
   }
 
   return WaitFor(
@@ -2089,7 +2089,7 @@ Result<std::vector<CDCStreamInfoPtr>> CatalogManager::FindXReplStreamsMarkedForD
   return streams;
 }
 
-void CatalogManager::GetValidTabletsAndDroppedTablesForStream(
+Status CatalogManager::GetValidTabletsAndDroppedTablesForStream(
     const CDCStreamInfoPtr stream, std::set<TabletId>* tablets_with_streams,
     std::set<TableId>* dropped_tables) {
   for (const auto& table_id : stream->table_id()) {
@@ -2102,7 +2102,7 @@ void CatalogManager::GetValidTabletsAndDroppedTablesForStream(
     }
     // GetTablets locks lock_ in shared mode.
     if (table) {
-      tablets = table->GetTablets(IncludeInactive::kTrue);
+      tablets = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
     }
 
     // For the table dropped, GetTablets() will be empty.
@@ -2115,6 +2115,7 @@ void CatalogManager::GetValidTabletsAndDroppedTablesForStream(
       dropped_tables->insert(table_id);
     }
   }
+  return Status::OK();
 }
 
 Result<CDCStreamInfoPtr> CatalogManager::GetXReplStreamInfo(const xrepl::StreamId& stream_id) {
@@ -2214,8 +2215,8 @@ Status CatalogManager::CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) {
     // Get the set of all tablets not associated with the table dropped. Tablets belonging to this
     // set will not be deleted from cdc_state.
     // The second set consists of all the tables that were associated with the stream, but dropped.
-    GetValidTabletsAndDroppedTablesForStream(
-        stream, &tablets_to_keep_per_stream[stream_id], &drop_stream_table_list[stream_id]);
+    RETURN_NOT_OK(GetValidTabletsAndDroppedTablesForStream(
+        stream, &tablets_to_keep_per_stream[stream_id], &drop_stream_table_list[stream_id]));
   }
 
   std::vector<cdc::CDCStateTableKey> keys_to_delete;
@@ -3508,7 +3509,7 @@ Status CatalogManager::IsTableBootstrapRequired(
   // Make a batch call for IsBootstrapRequired on every relevant TServer.
   std::map<std::shared_ptr<cdc::CDCServiceProxy>, cdc::IsBootstrapRequiredRequestPB>
       proxy_to_request;
-  for (const auto& tablet : table->GetTablets()) {
+  for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
     auto ts = VERIFY_RESULT(tablet->GetLeader());
     std::shared_ptr<cdc::CDCServiceProxy> proxy;
     RETURN_NOT_OK(ts->GetProxy(&proxy));
@@ -4765,7 +4766,7 @@ Status CatalogManager::BootstrapProducer(
 
     // Pick a valid tserver to bootstrap from.
     if (!ts) {
-      ts = VERIFY_RESULT(table_info->GetTablets().front()->GetLeader());
+      ts = VERIFY_RESULT(VERIFY_RESULT(table_info->GetTablets()).front()->GetLeader());
     }
   }
   SCHECK(ts, IllegalState, "No valid tserver found to bootstrap from");
@@ -5605,7 +5606,7 @@ Status CatalogManager::WaitForReplicationDrain(
         auto table_info = VERIFY_RESULT(FindTableById(table_id));
         RSTATUS_DCHECK(table_info != nullptr, NotFound, "Table ID not found: " + table_id);
 
-        for (const auto& tablet : table_info->GetTablets()) {
+        for (const auto& tablet : VERIFY_RESULT(table_info->GetTablets())) {
           // (1) If tuple is marked as drained in a previous iteration, skip it.
           // (2) Otherwise, check if it is drained in the current iteration.
           if (drained_stream_tablet_ids.contains({stream->StreamId(), tablet->id()})) {
