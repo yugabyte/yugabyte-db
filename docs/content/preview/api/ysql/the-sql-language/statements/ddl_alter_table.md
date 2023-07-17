@@ -212,9 +212,7 @@ A `USING` clause must be included when there is no implicit or assignment cast a
 
 ##### Alter type without table-rewrite
 
-If the change doesn't require data on disk to change, these semantics apply:
-
-- Concurrent DMLs to the table can go through.
+If the change doesn't require data on disk to change, concurrent DMLs to the table can be safely performed.
 
 Example:
 
