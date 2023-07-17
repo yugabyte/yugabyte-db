@@ -10,8 +10,6 @@ menu:
     identifier: secondary-indexes-ycql
     parent: explore-indexes-constraints
     weight: 220
-aliases:
-  - /preview/explore/ysql-language-features/indexes-1/
 type: docs
 ---
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -39,7 +37,7 @@ You can create indexes in YCQL using the `CREATE INDEX` statement using the foll
 CREATE INDEX index_name ON table_name(column_list);
 ```
 
-YCQL supports [Unique](../../../explore/indexes-constraints/unique-index-ycql/), [Partial](../../../explore/indexes-constraints/partial-index-ycql/), and Covering secondary indexes.
+YCQL supports [Unique](../../../explore/indexes-constraints/unique-index-ycql/), [Partial](../../../explore/indexes-constraints/partial-index-ycql/), and [Covering](../../../explore/indexes-constraints/covering-index-ycql/) secondary indexes.
 
 For additional information on creating indexes, see [CREATE INDEX](../../../api/ycql/ddl_create_index/).
 
