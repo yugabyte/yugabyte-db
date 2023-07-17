@@ -1604,5 +1604,77 @@ TEST_F(LogTest, CopyUpTo) {
   ASSERT_OK(log_->Close());
 }
 
+// This test generate segments with random commits, term changes and some empty segments. We should
+// be able to read older ops that are not in the log cache after a log restart.
+TEST_F(LogTest, TestLogIndex) {
+  google::SetVLOGLevel("log*", 10);
+
+  constexpr auto kNumSegments = 5;
+  constexpr auto kNumBatchesPerSegment = 5;
+  constexpr auto kNumEntriesPerBatch = 5;
+  constexpr auto kNumApproxTermChanges = 10;
+  constexpr auto kNumApproxTermChangesWithIndexRollback = 3;
+  constexpr auto kCommitProbability = 0.1;
+
+  // We will rollover segments manually.
+  options_.segment_size_bytes = std::numeric_limits<size_t>::max();
+
+  auto read_all_indexes = [this](int64_t last_index) -> Status {
+    SCHECK_GT(last_index, 0, IllegalState, "last_index should be > 0");
+    for (auto index = last_index; index > 0; --index) {
+      auto log_index_entry = VERIFY_RESULT(log_->GetLogReader()->TEST_GetIndexEntry(index));
+      SCHECK_EQ(log_index_entry.op_id.index, index, IllegalState, "index mismatch");
+    }
+    return Status::OK();
+  };
+
+  BuildLog();
+
+  auto ops = ASSERT_RESULT(GenerateOpsAndAppendToLog(
+      kNumSegments, kNumBatchesPerSegment, kNumEntriesPerBatch, kCommitProbability,
+      kNumApproxTermChanges, kNumApproxTermChangesWithIndexRollback));
+  ASSERT_GT(ops.size(), 0);
+
+  SegmentSequence segments;
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_EQ(segments.size(), kNumSegments + 1);
+  ASSERT_OK(read_all_indexes(ops.rbegin()->id.index));
+
+  // Restart the log to generate an empty segment.
+  // Closing the log will leave the last segment empty with no replicates and a footer that does not
+  // have max_replicate_index.
+  ASSERT_OK(log_->Close());
+  BuildLog();
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_EQ(segments.size(), kNumSegments + 2);
+  auto read_entries = segments.rbegin()->get()->ReadEntries();
+  ASSERT_EQ(read_entries.entries.size(), 0);
+
+  ASSERT_OK(read_all_indexes(ops.rbegin()->id.index));
+
+  // Write more data so that the empty segment is somewhere in the middle.
+  ops = ASSERT_RESULT(GenerateOpsAndAppendToLog(
+      kNumSegments, kNumBatchesPerSegment, kNumEntriesPerBatch, kCommitProbability,
+      kNumApproxTermChanges, kNumApproxTermChangesWithIndexRollback));
+  ASSERT_GT(ops.size(), 0);
+
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_EQ(segments.size(), 2 * kNumSegments + 2);
+  ASSERT_OK(read_all_indexes(ops.rbegin()->id.index));
+
+  // Restart the log again to generate empty segments at the end.
+  ASSERT_OK(log_->Close());
+  BuildLog();
+
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_EQ(segments.size(), 2 * kNumSegments + 3);
+  read_entries = segments.rbegin()->get()->ReadEntries();
+  ASSERT_EQ(read_entries.entries.size(), 0);
+
+  ASSERT_OK(read_all_indexes(ops.rbegin()->id.index));
+
+  ASSERT_OK(log_->Close());
+}
+
 } // namespace log
 } // namespace yb

@@ -678,7 +678,8 @@ Result<LogIndexEntry> LogReader::GetIndexEntry(const int64_t op_index) const {
 
         // Stop loading at the segment in which all operations have Raft indexes lower than
         // op_index.
-        if (segment->HasFooter() && segment->footer().max_replicate_index() < op_index) {
+        if (segment->HasFooter() && segment->footer().has_max_replicate_index() &&
+            segment->footer().max_replicate_index() < op_index) {
           VLOG_WITH_PREFIX(2) << "Will stop loading at segment "
                               << seg_num << ", max_replicate_index: "
                               << segment->footer().max_replicate_index();
