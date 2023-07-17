@@ -70,7 +70,7 @@ public class ChangeAdminPassword extends UniverseTaskBase {
 
         if (taskParams().validateCurrentPassword) {
           DatabaseSecurityFormData testDBCreds = new DatabaseSecurityFormData();
-          testDBCreds.ycqlAdminPassword = dbData.ysqlCurrAdminPassword;
+          testDBCreds.ycqlAdminPassword = dbData.ycqlCurrAdminPassword;
           testDBCreds.ycqlAdminUsername = dbData.ycqlAdminUsername;
           ycqlQueryExecutor.validateAdminPassword(universe, testDBCreds);
         }
