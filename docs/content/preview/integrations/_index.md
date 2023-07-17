@@ -73,6 +73,13 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
   </li>
 
   <li>
+    <a href="dataedo/">
+      <img src="/images/section_icons/develop/ecosystem/dataedo.png">
+      Dataedo
+    </a>
+  </li>
+
+  <li>
     <a href="cdc/debezium/">
       <img src="/images/section_icons/develop/ecosystem/debezium.png">
       Debezium
