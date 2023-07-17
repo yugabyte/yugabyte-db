@@ -2078,6 +2078,34 @@ class ControlScript(object):
 
             yb_tserver_cmd.extend(["--ysql_hba_conf_csv={}".format(ysql_hba_conf_csv_flag)])
 
+        # If ysql_ident_conf_csv is present
+        # Extract the value of ysql_ident_conf_csv
+        # Remove the flag present in the tserver_flags string
+        if tserver_flags.find("ysql_ident_conf_csv") != -1:
+            ysql_ident_conf_csv_start_index = tserver_flags.find('ysql_ident_conf_csv')
+            ysql_ident_conf_csv_end_index = \
+                tserver_flags.find('}', ysql_ident_conf_csv_start_index) + 1
+            ysql_ident_conf_csv_flag = tserver_flags[ysql_ident_conf_csv_start_index:\
+                    ysql_ident_conf_csv_end_index]
+            ysql_ident_conf_csv_flag = \
+                ysql_ident_conf_csv_flag[ysql_ident_conf_csv_flag.find("{")+1:-1]
+
+            # If the value was given through the config file
+            # remove the starting and ending quotes.
+            if ysql_ident_conf_csv_flag[0] == "'" and ysql_ident_conf_csv_flag[-1] == "'":
+                ysql_ident_conf_csv_flag = ysql_ident_conf_csv_flag[1:-1]
+            elif ysql_ident_conf_csv_flag[0] == '"' and ysql_ident_conf_csv_flag[-1] == '"':
+                ysql_ident_conf_csv_flag = ysql_ident_conf_csv_flag[1:-1]
+
+            # Remove the flag present in tserver_flags
+            if ysql_ident_conf_csv_start_index == 0:
+                tserver_flags = tserver_flags[ysql_ident_conf_csv_end_index+1:]
+            else:
+                tserver_flags = tserver_flags[:ysql_ident_conf_csv_start_index-1] + \
+                    tserver_flags[ysql_ident_conf_csv_end_index:]
+
+            yb_tserver_cmd.extend(["--ysql_ident_conf_csv={}".format(ysql_ident_conf_csv_flag)])
+
         # If ysql_pg_conf_csv is present
         # Extract the value of ysql_pg_conf_csv given through CLI
         # Remove the flag present in the tserver_flags string

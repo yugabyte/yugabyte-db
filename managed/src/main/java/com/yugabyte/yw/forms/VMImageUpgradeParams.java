@@ -101,10 +101,10 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
         (StringUtils.isNotBlank(ybSoftwareVersion)
             && !ybSoftwareVersion.equals(userIntent.ybSoftwareVersion));
     CloudType provider = userIntent.providerType;
-    if (!(provider == CloudType.gcp || provider == CloudType.aws)) {
+    if (!(provider == CloudType.gcp || provider == CloudType.aws || provider == CloudType.azu)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
-          "VM image upgrade is only supported for AWS / GCP, got: " + provider.toString());
+          "VM image upgrade is only supported for cloud providers, got: " + provider.toString());
     }
     if (UniverseDefinitionTaskParams.hasEphemeralStorage(userIntent)) {
       throw new PlatformServiceException(
