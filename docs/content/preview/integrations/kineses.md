@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-Kinesis Data Streams enables applications to collect and process large streams of data records in real time. These applications can send the processed records to dashboards, use them to generate alerts, dynamically change pricing and advertising strategies, or send data to a variety of other AWS services.
+[Amazon Kinesis](https://aws.amazon.com/kinesis/) Data Streams enables applications to collect and process large streams of data records in real time. These applications can send the processed records to dashboards, use them to generate alerts, dynamically change pricing and advertising strategies, or send data to a variety of other AWS services.
 
 YugabyteDB has a [Debezium connector](https://github.com/yugabyte/debezium-connector-yugabytedb) which you can use to read changes to a table and then write those into Kinesis Data Streams using the AWS SDK for Java and the Kinesis Producer Library.
 
