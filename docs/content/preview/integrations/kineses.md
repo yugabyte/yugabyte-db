@@ -121,4 +121,4 @@ Code snippets of a sample code is as follows:
     ```
 
 - As you insert records into the users table, you can check the records arriving in the Kinesis Data Stream.
-For some INSERT DMLs, refer to `users.sql` script in [CDC examples](https://github.com/yugabyte/cdc-examples/blob/main/cdc-quickstart-kafka-connect/scripts/users.sql).
+For some INSERT DMLs, refer to the `users.sql` script in [CDC examples](https://github.com/yugabyte/cdc-examples/blob/main/cdc-quickstart-kafka-connect/scripts/users.sql).
