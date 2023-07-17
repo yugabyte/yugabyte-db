@@ -21,7 +21,7 @@ Hevo supports PostgreSQL among many other databases as a source. It can also wor
 
 ## Connect
 
-To add YugabyteDB as a source in [Pipeline](https://docs.hevodata.com/pipelines/), do the following:
+To add YugabyteDB as a source in Hevo, create a [Pipeline](https://docs.hevodata.com/pipelines/) as follows:
 
 1. Start a YugabyteDB cluster. Refer [YugabyteDB Prerequisites](../../tools/#yugabytedb-prerequisites).
 1. In the Hevo UI, create a new Pipeline by selecting PostgreSQL as the source type.
