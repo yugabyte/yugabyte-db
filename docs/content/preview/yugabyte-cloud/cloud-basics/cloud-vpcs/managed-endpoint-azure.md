@@ -84,6 +84,14 @@ Note the following values:
 - **Host** - The host name of the PSE. You will use this to connect to your cluster. The host name of a PSE for Azure always ends in `azure.ybdb.io`. The PSE Host is also displayed in YugabyteDB Managed on the cluster **Settings** tab under **Connection Parameters**.
 - **Service Name** - The Service Name is also referred to as an alias in Azure. You will use this service name when creating the private endpoint in Azure.
 
+To delete a PSE, enter the following command:
+
+```sh
+ybm cluster network endpoint delete \
+    --cluster-name <yugabytedb_cluster> \
+    --endpoint-id <endpoint_id> \
+```
+
 ## Create a private endpoint in Azure
 
 You can create the private endpoint using the [Azure Portal](https://portal.azure.com/) or from the command line using the [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/).
