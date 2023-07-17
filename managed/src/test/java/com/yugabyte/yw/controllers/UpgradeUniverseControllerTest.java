@@ -47,6 +47,7 @@ import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -106,6 +107,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
 
   private static Commissioner mockCommissioner;
   private Config mockConfig;
+  private CertificateHelper certificateHelper;
 
   private final String TMP_CHART_PATH =
       "/tmp/yugaware_tests/" + getClass().getSimpleName() + "/charts";
@@ -196,6 +198,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     customer = ModelFactory.testCustomer();
     Users user = ModelFactory.testUser(customer);
     authToken = user.createAuthToken();
+    certificateHelper = new CertificateHelper(app.injector().instanceOf(RuntimeConfGetter.class));
     new File(TMP_CHART_PATH).mkdirs();
     createTempFile(TMP_CHART_PATH, "uuct_yugabyte-1.0.0-helm.tar.gz", "Sample helm chart data");
   }
@@ -901,8 +904,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     when(mockConfig.getString("yb.storage.path")).thenReturn(TMP_CERTS_PATH);
-    UUID certUUID1 = CertificateHelper.createRootCA(mockConfig, "test cert 1", customer.getUuid());
-    UUID certUUID2 = CertificateHelper.createRootCA(mockConfig, "test cert 2", customer.getUuid());
+    UUID certUUID1 = certificateHelper.createRootCA(mockConfig, "test cert 1", customer.getUuid());
+    UUID certUUID2 = certificateHelper.createRootCA(mockConfig, "test cert 2", customer.getUuid());
     UUID universeUUID = prepareUniverseForTlsToggle(true, true, certUUID1);
 
     String url =
@@ -987,7 +990,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
-    assertBadRequest(result, "VM image upgrade is only supported for AWS / GCP");
+    assertBadRequest(result, "VM image upgrade is only supported for cloud providers");
 
     ArgumentCaptor<VMImageUpgradeParams> argCaptor =
         ArgumentCaptor.forClass(VMImageUpgradeParams.class);

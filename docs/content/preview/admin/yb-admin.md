@@ -617,6 +617,7 @@ The following backup and snapshot commands are available:
 * [**list_snapshots**](#list-snapshots) returns a list of all snapshots, restores, and their states
 * [**create_snapshot**](#create-snapshot) creates a snapshot of one or more YCQL tables and indexes
 * [**restore_snapshot**](#restore-snapshot) restores a snapshot
+* [**list_snapshot_restorations**](#list-snapshot-restorations) returns a list of all snapshot restorations
 * [**export_snapshot**](#export-snapshot) creates a snapshot metadata file
 * [**import_snapshot**](#import-snapshot) imports a snapshot metadata file
 * [**delete_snapshot**](#delete-snapshot) deletes a snapshot's information
@@ -624,6 +625,13 @@ The following backup and snapshot commands are available:
 * [**list_snapshot_schedules**](#list-snapshot-schedules) returns a list of all snapshot schedules
 * [**restore_snapshot_schedule**](#restore-snapshot-schedule) restores all objects in a scheduled snapshot
 * [**delete_snapshot_schedule**](#delete-snapshot-schedule) deletes the specified snapshot schedule
+
+
+{{< note title="YugabyteDB Anywhere" >}}
+
+If you are using YugabyteDB Anywhere to manage point-in-time-recovery (PITR) for a universe, you must initiate and manage PITR using the YugabyteDB Anywhere UI. If you use the yb-admin CLI to make changes to the PITR configuration of a universe managed by YugabyteDB Anywhere, including creating schedules and snapshots, your changes are not reflected in YugabyteDB Anywhere.
+
+{{< /note >}}
 
 #### create_database_snapshot
 
@@ -845,6 +853,49 @@ For the example above, the restore failed, so the following displays:
 ```output
 Restoration UUID                      State
 5a9bc559-2155-4c38-ac8b-b6d0f7aa1af6  FAILED
+```
+
+#### list_snapshot_restorations
+
+Lists the snapshots restorations.
+
+Returns one or more restorations in JSON format.
+
+**restorations list** entries contain:
+
+* the restoration's unique ID
+* the snapshot's unique ID
+* state of the restoration
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    list_snapshot_restorations <restoration_id>
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *restoration_id*: the snapshot restoration's unique identifier. The ID is optional; omit the ID to return all restorations in the system.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    list_snapshot_restorations 26ed9053-0c26-4277-a2b8-c12d0fa4c8cf
+```
+
+```output.json
+{
+    "restorations": [
+        {
+            "id": "26ed9053-0c26-4277-a2b8-c12d0fa4c8cf",
+            "snapshot_id": "ca8f3763-5437-4594-818d-713fb0cddb96",
+            "state": "RESTORED"
+        }
+    ]
+}
 ```
 
 #### export_snapshot

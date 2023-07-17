@@ -568,14 +568,6 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     true /* low_pri_txn_succeed */);
   }
 
-  static Result<PGConn> SetHighPriTxn(Result<PGConn> connection) {
-    return Execute(std::move(connection), "SET yb_transaction_priority_lower_bound=0.5");
-  }
-
-  static Result<PGConn> SetLowPriTxn(Result<PGConn> connection) {
-    return Execute(std::move(connection), "SET yb_transaction_priority_upper_bound=0.4");
-  }
-
   static Status StartTxn(PGConn* connection) {
     return TxnHelper<level>::StartTxn(connection);
   }

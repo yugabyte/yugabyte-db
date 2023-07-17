@@ -260,6 +260,9 @@ class TransactionManager::Impl {
   void UpdateTransactionTablesVersion(
       uint64_t version, UpdateTransactionTablesVersionCallback callback) {
     if (table_state_.GetStatusTabletsVersion() >= version) {
+      if (callback) {
+        callback(Status::OK());
+      }
       return;
     }
 

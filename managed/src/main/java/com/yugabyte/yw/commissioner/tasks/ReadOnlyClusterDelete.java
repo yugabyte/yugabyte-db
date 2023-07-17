@@ -12,7 +12,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.DnsManager.DnsCommandType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
@@ -90,9 +90,8 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
       createPlacementInfoTask(null /* blacklistNodes */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      // Remove the DNS entry for this cluster.
-      createDnsManipulationTask(
-              DnsManager.DnsCommandType.Delete, params().isForceDelete, cluster.userIntent)
+      // Remove read replica nodes from the DNS entry.
+      createDnsManipulationTask(DnsCommandType.Edit, false, universe)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Update the swamper target file.

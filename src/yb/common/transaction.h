@@ -37,6 +37,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
+#include "yb/util/metrics.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/uint_set.h"
@@ -120,13 +121,17 @@ struct TransactionStatusResult {
   // Populating status_tablet field is optional, except when we report transaction promotion.
   TabletId status_tablet;
 
+  // Status containing the deadlock info if the transaction was aborted due to a deadlock.
+  // Defaults to Status::OK() in all other cases.
+  Status expected_deadlock_status = Status::OK();
+
   TransactionStatusResult() {}
 
   TransactionStatusResult(TransactionStatus status_, HybridTime status_time_);
 
   TransactionStatusResult(
       TransactionStatus status_, HybridTime status_time_,
-      SubtxnSet aborted_subtxn_set_);
+      SubtxnSet aborted_subtxn_set_, Status expected_deadlock_status_ = Status::OK());
 
   TransactionStatusResult(
       TransactionStatus status_, HybridTime status_time_, SubtxnSet aborted_subtxn_set_,
@@ -239,6 +244,10 @@ class TransactionStatusManager {
 
   virtual Result<IsExternalTransaction> IsExternalTransactionResult(
       const TransactionId& transaction_id) = 0;
+
+  virtual void RecordConflictResolutionKeysScanned(int64_t num_keys) = 0;
+
+  virtual void RecordConflictResolutionScanLatency(MonoDelta latency)  = 0;
 
  private:
   friend class RequestScope;

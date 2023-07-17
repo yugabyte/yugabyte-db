@@ -157,7 +157,7 @@ Examples:
 : Encryption in transit requires SSL/TLS certificates for each node in the cluster.
 : - When starting a local single-node cluster, a certificate is automatically generated for the cluster.
 : - When deploying a node in a multi-node cluster, you need to generate the certificate for the node using the `--cert generate_server_certs` command and copy it to the node *before* you start the node using the `--secure` flag, or the node creation will fail.
-: When authentication is enabled, the default user and password is `yugabyte` and `yugabyte` in YSQL, and `cassandra` and `cassandra` in YCQL.
+: When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a cluster is started,`yugabyted` outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the credentials file location.
 : For examples creating secure local multi-node, multi-zone, and multi-region clusters, refer to [Examples](#examples).
 
 #### Advanced flags

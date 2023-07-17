@@ -20,7 +20,7 @@ export interface YSQLSlowQuery {
   rows: number;
   stddev_time: number;
   total_time: number;
-  userid: string;
+  rolname: string;
   yb_latency_histogram: HistogramBucket[];
 }
 export type YSQLSlowQueryPrimativeFields = keyof Omit<YSQLSlowQuery, 'yb_latency_histogram'>;

@@ -12,7 +12,7 @@ import {
   XCLUSTER_METRIC_REFETCH_INTERVAL_MS
 } from './constants';
 import { XClusterConfigCard } from './XClusterConfigCard';
-import { api } from '../../redesign/helpers/api';
+import { api, xClusterQueryKey } from '../../redesign/helpers/api';
 import { XClusterConfig } from './XClusterTypes';
 
 import styles from './XClusterConfigList.module.scss';
@@ -43,7 +43,7 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
   // Upgrading react-query to v3.28 may solve this issue: https://github.com/TanStack/query/issues/1675
   const xClusterConfigQueries = useQueries(
     universeXClusterConfigUUIDs.map((uuid: string) => ({
-      queryKey: ['Xcluster', uuid],
+      queryKey: xClusterQueryKey.detail(uuid),
       queryFn: () => fetchXClusterConfig(uuid),
       enabled: universeQuery.data?.universeDetails !== undefined
     }))
@@ -55,7 +55,7 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
         xClusterConfig?.data?.status &&
         _.includes(TRANSITORY_XCLUSTER_CONFIG_STATUSES, xClusterConfig.data.status)
       ) {
-        queryClient.invalidateQueries(['Xcluster', xClusterConfig.data.uuid]);
+        queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.data.uuid));
       }
     });
   }, XCLUSTER_METRIC_REFETCH_INTERVAL_MS);

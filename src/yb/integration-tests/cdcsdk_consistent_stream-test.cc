@@ -22,7 +22,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithMan
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
   ASSERT_FALSE(set_resp.has_error());
 
@@ -85,7 +85,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithFor
   ASSERT_OK(test_client()->GetTablets(table2, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
   ASSERT_FALSE(set_resp.has_error());
 
@@ -154,7 +154,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithAbo
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
   ASSERT_FALSE(set_resp.has_error());
 
@@ -214,7 +214,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithTse
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
   ASSERT_FALSE(set_resp.has_error());
 
@@ -308,7 +308,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithDDL
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
   ASSERT_FALSE(set_resp.has_error());
 
@@ -387,7 +387,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithLea
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
   ASSERT_FALSE(set_resp.has_error());
 
@@ -495,7 +495,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithCol
   ASSERT_OK(test_client()->GetTablets(table1, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
   ASSERT_FALSE(set_resp.has_error());
 
@@ -575,7 +575,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithTab
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
   ASSERT_FALSE(set_resp.has_error());
 
@@ -759,7 +759,7 @@ TEST_F(
   ASSERT_EQ(tablets.size(), 1);
 
   // Flushed transactions are replayed only if there is a cdc stream.
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
   ASSERT_FALSE(set_resp.has_error());
 
@@ -836,6 +836,120 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKHistoricalMaxOpIdWithTa
       },
       MonoDelta::FromSeconds(5),
       "historical_max_op_id should change"));
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(CDCSDKMultipleAlter)) {
+  const int num_tservers = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
+  const uint32_t num_tablets = 1;
+  // Creates a table with a key, and value column.
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+
+  // Create CDC stream.
+  auto stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  ASSERT_OK(WriteRowsHelper(1 /* start */, 11 /* end */, &test_cluster_, true));
+  // Call Getchanges
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  // Validate the columns and insert counts.
+  ValidateColumnCounts(change_resp, 2);
+  ValidateInsertCounts(change_resp, 10);
+
+  for (int nonkey_column_count = 2; nonkey_column_count < 15; ++nonkey_column_count) {
+    std::string added_column_name = "value_" + std::to_string(nonkey_column_count);
+    ASSERT_OK(AddColumn(&test_cluster_, kNamespaceName, kTableName, added_column_name));
+    ASSERT_OK(WriteRowsHelper(
+        nonkey_column_count * 10 + 1 /* start */,
+        nonkey_column_count * 10 + 11 /* end */,
+        &test_cluster_,
+        true,
+        3,
+        kTableName,
+        {added_column_name}));
+  }
+  LOG(INFO) << "Added columns and pushed required records";
+  constexpr size_t expected_records =
+      13 * 10 + 13; /* number of add columns 'times' insert per batch + expected DDL records */
+
+  std::vector<CDCSDKProtoRecordPB> seen_records;
+  ASSERT_OK(WaitFor(
+      [&]() -> bool {
+        change_resp =
+            EXPECT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+
+        for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+          seen_records.push_back(record);
+        }
+
+        if (seen_records.size() >= expected_records) return true;
+        return false;
+      },
+      MonoDelta::FromSeconds(120),
+      "Did not get all the expected records"));
+  LOG(INFO) << "Got all required records";
+
+  uint seen_ddl_records = 0;
+  for (const auto& record : seen_records) {
+    if (record.row_message().op() == RowMessage::DDL) {
+      seen_ddl_records += 1;
+    } else if (record.row_message().op() == RowMessage::INSERT) {
+      auto key_value = record.row_message().new_tuple(0).datum_int32();
+      auto expected_column_count = std::ceil(key_value / 10.0);
+      ASSERT_EQ(record.row_message().new_tuple_size(), expected_column_count);
+    }
+  }
+
+  ASSERT_GE(seen_ddl_records, 13);
+}
+
+TEST_F(
+    CDCSDKYsqlTest,
+    YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithRandomReqSafeTimeChanges)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 64_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  auto stream_id = ASSERT_RESULT(CreateDBStream(EXPLICIT));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
+  ASSERT_FALSE(set_resp.has_error());
+
+  int num_batches = 25;
+  int inserts_per_batch = 100;
+
+  std::thread t1(
+      [&]() -> void { PerformSingleAndMultiShardInserts(num_batches, inserts_per_batch, 20); });
+  std::thread t2([&]() -> void {
+    PerformSingleAndMultiShardInserts(
+        num_batches, inserts_per_batch, 50, num_batches * inserts_per_batch);
+  });
+
+  t1.join();
+  t2.join();
+
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+
+  auto get_changes_resp = GetAllPendingChangesWithRandomReqSafeTimeChanges(stream_id, tablets);
+  std::unordered_set<int32_t> seen_unique_pk_values;
+  for (auto record : get_changes_resp.records) {
+    if (record.row_message().op() == RowMessage::INSERT) {
+      const int32_t& pk_value = record.row_message().new_tuple(0).datum_int32();
+      seen_unique_pk_values.insert(pk_value);
+    }
+  }
+
+  ASSERT_EQ(seen_unique_pk_values.size(), 5000);
 }
 
 }  // namespace cdc

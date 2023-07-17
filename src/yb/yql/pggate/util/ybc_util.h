@@ -60,6 +60,11 @@ extern bool yb_pushdown_strict_inequality;
 extern bool yb_pushdown_is_not_null;
 
 /*
+ * Guc that toggles the pg_locks view on/off.
+ */
+extern bool yb_enable_pg_locks;
+
+/*
  * Guc variable to suppress non-Postgres logs from appearing in Postgres log file.
  */
 extern bool suppress_nonpg_logs;

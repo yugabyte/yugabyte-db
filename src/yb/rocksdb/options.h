@@ -34,6 +34,7 @@
 #include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/universal_compaction.h"
 
 #include "yb/util/slice.h"
@@ -824,7 +825,7 @@ struct ColumnFamilyOptions {
 typedef std::function<yb::Result<bool>(const MemTable&)> MemTableFilter;
 
 using IteratorReplacer =
-    std::function<InternalIterator*(InternalIterator*, Arena*, const Slice&)>;
+    std::function<InternalIterator*(InternalIterator*, Arena*, Slice)>;
 
 using CompactionContextFactory = std::function<CompactionContextPtr(
     CompactionFeed* feed, const CompactionContextOptions& options)>;

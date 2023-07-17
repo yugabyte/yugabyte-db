@@ -43,21 +43,21 @@ static const Schema kTableSchema({
 
 class MasterTestXRepl  : public MasterTestBase {
  protected:
-  Status CreateCDCStream(const TableId& table_id, CDCStreamId* stream_id);
-  Status GetCDCStream(const CDCStreamId& stream_id, GetCDCStreamResponsePB* resp);
-  Status DeleteCDCStream(const CDCStreamId& stream_id);
-  Status ListCDCStreams(ListCDCStreamsResponsePB* resp);
+  Result<xrepl::StreamId> CreateCDCStream(const TableId& table_id);
+  Result<GetCDCStreamResponsePB> GetCDCStream(const xrepl::StreamId& stream_id);
+  Status DeleteCDCStream(const xrepl::StreamId& stream_id);
+  Result<ListCDCStreamsResponsePB> ListCDCStreams();
+  Result<bool> IsObjectPartOfXRepl(const TableId& table_id);
 
   Status SetupUniverseReplication(
       const std::string& producer_id, const std::vector<std::string>& master_addr,
       const std::vector<std::string>& tables);
   Status DeleteUniverseReplication(const std::string& producer_id);
-  Status GetUniverseReplication(
-      const std::string& producer_id, GetUniverseReplicationResponsePB* resp);
+  Result<GetUniverseReplicationResponsePB> GetUniverseReplication(const std::string& producer_id);
 
 };
 
-Status MasterTestXRepl::CreateCDCStream(const TableId& table_id, CDCStreamId* stream_id) {
+Result<xrepl::StreamId> MasterTestXRepl::CreateCDCStream(const TableId& table_id) {
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
 
@@ -81,25 +81,23 @@ Status MasterTestXRepl::CreateCDCStream(const TableId& table_id, CDCStreamId* st
     return true;
   }, MonoDelta::FromSeconds(30), "Wait for cdc_state table creation to finish"));
 
-  *stream_id = resp.stream_id();
-  return Status::OK();
+  return xrepl::StreamId::FromString(resp.stream_id());
 }
 
-Status MasterTestXRepl::GetCDCStream(const CDCStreamId& stream_id, GetCDCStreamResponsePB* resp) {
+Result<GetCDCStreamResponsePB> MasterTestXRepl::GetCDCStream(
+    const xrepl::StreamId& stream_id) {
   GetCDCStreamRequestPB req;
-  req.set_stream_id(stream_id);
+  GetCDCStreamResponsePB resp;
+  req.set_stream_id(stream_id.ToString());
 
-  RETURN_NOT_OK(proxy_replication_->GetCDCStream(req, resp, ResetAndGetController()));
-  if (resp->has_error()) {
-    RETURN_NOT_OK(StatusFromPB(resp->error().status()));
-  }
-  return Status::OK();
+  RETURN_NOT_OK(proxy_replication_->GetCDCStream(req, &resp, ResetAndGetController()));
+  return resp;
 }
 
-Status MasterTestXRepl::DeleteCDCStream(const CDCStreamId& stream_id) {
+Status MasterTestXRepl::DeleteCDCStream(const xrepl::StreamId& stream_id) {
   DeleteCDCStreamRequestPB req;
   DeleteCDCStreamResponsePB resp;
-  req.add_stream_id(stream_id);
+  req.add_stream_id(stream_id.ToString());
 
   RETURN_NOT_OK(proxy_replication_->DeleteCDCStream(req, &resp, ResetAndGetController()));
   if (resp.has_error()) {
@@ -108,14 +106,22 @@ Status MasterTestXRepl::DeleteCDCStream(const CDCStreamId& stream_id) {
   return Status::OK();
 }
 
-Status MasterTestXRepl::ListCDCStreams(ListCDCStreamsResponsePB* resp) {
+Result<ListCDCStreamsResponsePB> MasterTestXRepl::ListCDCStreams() {
   ListCDCStreamsRequestPB req;
+  ListCDCStreamsResponsePB resp;
 
-  RETURN_NOT_OK(proxy_replication_->ListCDCStreams(req, resp, ResetAndGetController()));
-  if (resp->has_error()) {
-    RETURN_NOT_OK(StatusFromPB(resp->error().status()));
-  }
-  return Status::OK();
+  RETURN_NOT_OK(proxy_replication_->ListCDCStreams(req, &resp, ResetAndGetController()));
+  return resp;
+}
+
+Result<bool> MasterTestXRepl::IsObjectPartOfXRepl(const TableId& table_id) {
+  IsObjectPartOfXReplRequestPB req;
+  IsObjectPartOfXReplResponsePB resp;
+
+  req.set_table_id(table_id);
+  RETURN_NOT_OK(proxy_replication_->IsObjectPartOfXRepl(req, &resp, ResetAndGetController()));
+  return resp.has_error() ? StatusFromPB(resp.error().status()) :
+      Result<bool>(resp.is_object_part_of_xrepl());
 }
 
 Status MasterTestXRepl::SetupUniverseReplication(
@@ -146,16 +152,14 @@ Status MasterTestXRepl::SetupUniverseReplication(
   return Status::OK();
 }
 
-Status MasterTestXRepl::GetUniverseReplication(
-    const std::string& producer_id, GetUniverseReplicationResponsePB* resp) {
+Result<GetUniverseReplicationResponsePB> MasterTestXRepl::GetUniverseReplication(
+    const std::string& producer_id) {
   GetUniverseReplicationRequestPB req;
+  GetUniverseReplicationResponsePB resp;
   req.set_producer_id(producer_id);
 
-  RETURN_NOT_OK(proxy_replication_->GetUniverseReplication(req, resp, ResetAndGetController()));
-  if (resp->has_error()) {
-    RETURN_NOT_OK(StatusFromPB(resp->error().status()));
-  }
-  return Status::OK();
+  RETURN_NOT_OK(proxy_replication_->GetUniverseReplication(req, &resp, ResetAndGetController()));
+  return resp;
 }
 
 Status MasterTestXRepl::DeleteUniverseReplication(const std::string& producer_id) {
@@ -193,12 +197,10 @@ TEST_F(MasterTestXRepl, TestCreateCDCStream) {
   TableId table_id;
   ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
 
-  CDCStreamId stream_id;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
-  ASSERT_OK(CreateCDCStream(table_id, &stream_id));
+  auto stream_id = ASSERT_RESULT(CreateCDCStream(table_id));
 
-  GetCDCStreamResponsePB resp;
-  ASSERT_OK(GetCDCStream(stream_id, &resp));
+  auto resp = ASSERT_RESULT(GetCDCStream(stream_id));
   ASSERT_EQ(resp.stream().table_id().Get(0), table_id);
 }
 
@@ -206,18 +208,16 @@ TEST_F(MasterTestXRepl, TestDeleteCDCStream) {
   TableId table_id;
   ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
 
-  CDCStreamId stream_id;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
-  ASSERT_OK(CreateCDCStream(table_id, &stream_id));
+  auto stream_id = ASSERT_RESULT(CreateCDCStream(table_id));
 
-  GetCDCStreamResponsePB resp;
-  ASSERT_OK(GetCDCStream(stream_id, &resp));
+  auto resp = ASSERT_RESULT(GetCDCStream(stream_id));
   ASSERT_EQ(resp.stream().table_id().Get(0), table_id);
 
   ASSERT_OK(DeleteCDCStream(stream_id));
 
   resp.Clear();
-  ASSERT_NOK(GetCDCStream(stream_id, &resp));
+  resp = ASSERT_RESULT(GetCDCStream(stream_id));
   ASSERT_TRUE(resp.has_error());
   ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());
 }
@@ -226,19 +226,17 @@ TEST_F(MasterTestXRepl, TestDeleteTableWithCDCStream) {
   TableId table_id;
   ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
 
-  CDCStreamId stream_id;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
-  ASSERT_OK(CreateCDCStream(table_id, &stream_id));
+  auto stream_id = ASSERT_RESULT(CreateCDCStream(table_id));
 
-  GetCDCStreamResponsePB resp;
-  ASSERT_OK(GetCDCStream(stream_id, &resp));
+  auto resp = ASSERT_RESULT(GetCDCStream(stream_id));
   ASSERT_EQ(resp.stream().table_id().Get(0), table_id);
 
   // Deleting the table will fail since it has a CDC stream attached.
   TableId id;
   ASSERT_NOK(DeleteTableSync(default_namespace_name, kTableName, &id));
 
-  ASSERT_OK(GetCDCStream(stream_id, &resp));
+  ASSERT_OK(GetCDCStream(stream_id));
 }
 
 // Just disabled on sanitizers because it doesn't need to run often. It's just a unit test.
@@ -247,7 +245,7 @@ TEST_F(MasterTestXRepl, YB_DISABLE_TEST_IN_SANITIZERS(TestDeleteCDCStreamNoForce
   TableId table_id;
   ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
 
-  CDCStreamId stream_id;
+  auto stream_id = xrepl::StreamId::Nil();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
   // CreateCDCStream, simulating a fully-created XCluster configuration.
   {
@@ -263,19 +261,17 @@ TEST_F(MasterTestXRepl, YB_DISABLE_TEST_IN_SANITIZERS(TestDeleteCDCStreamNoForce
     if (resp.has_error()) {
       ASSERT_OK(StatusFromPB(resp.error().status()));
     }
-
-    stream_id = resp.stream_id();
+    stream_id = ASSERT_RESULT(CreateCDCStream(table_id));
   }
 
-  GetCDCStreamResponsePB resp;
-  ASSERT_OK(GetCDCStream(stream_id, &resp));
+  auto resp = ASSERT_RESULT(GetCDCStream(stream_id));
   ASSERT_EQ(resp.stream().table_id().Get(0), table_id);
 
   // Should succeed because we don't use the 'force_delete' safety check in this API call.
   ASSERT_OK(DeleteCDCStream(stream_id));
 
   resp.Clear();
-  ASSERT_NOK(GetCDCStream(stream_id, &resp));
+  resp = ASSERT_RESULT(GetCDCStream(stream_id));
   ASSERT_TRUE(resp.has_error());
   ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());
 }
@@ -284,14 +280,21 @@ TEST_F(MasterTestXRepl, TestListCDCStreams) {
   TableId table_id;
   ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
 
-  CDCStreamId stream_id;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
-  ASSERT_OK(CreateCDCStream(table_id, &stream_id));
+  auto stream_id = ASSERT_RESULT(CreateCDCStream(table_id));
 
-  ListCDCStreamsResponsePB resp;
-  ASSERT_OK(ListCDCStreams(&resp));
+  auto resp = ASSERT_RESULT(ListCDCStreams());
   ASSERT_EQ(1, resp.streams_size());
-  ASSERT_EQ(stream_id, resp.streams(0).stream_id());
+  ASSERT_EQ(stream_id.ToString(), resp.streams(0).stream_id());
+}
+
+TEST_F(MasterTestXRepl, TestIsObjectPartOfXRepl) {
+  TableId table_id;
+  ASSERT_OK(CreateTable(kTableName, kTableSchema, &table_id));
+
+  FLAGS_cdc_state_table_num_tablets = 1;
+  ASSERT_RESULT(CreateCDCStream(table_id));
+  ASSERT_TRUE(ASSERT_RESULT(IsObjectPartOfXRepl(table_id)));
 }
 
 TEST_F(MasterTestXRepl, TestSetupUniverseReplication) {
@@ -301,8 +304,7 @@ TEST_F(MasterTestXRepl, TestSetupUniverseReplication) {
   // Always fails because we don't have actual producer.
   ASSERT_NOK(SetupUniverseReplication(producer_id, producer_masters, tables));
 
-  GetUniverseReplicationResponsePB resp;
-  ASSERT_OK(GetUniverseReplication(producer_id, &resp));
+  auto resp = ASSERT_RESULT(GetUniverseReplication(producer_id));
   ASSERT_EQ(resp.entry().producer_id(), producer_id);
 
   ASSERT_EQ(resp.entry().producer_master_addresses_size(), 1);
@@ -323,14 +325,13 @@ TEST_F(MasterTestXRepl, TestDeleteUniverseReplication) {
   ASSERT_NOK(SetupUniverseReplication(producer_id, producer_masters, tables));
 
   // Verify that universe was created.
-  GetUniverseReplicationResponsePB resp;
-  ASSERT_OK(GetUniverseReplication(producer_id, &resp));
+  auto resp = ASSERT_RESULT(GetUniverseReplication(producer_id));
   ASSERT_EQ(resp.entry().producer_id(), producer_id);
 
   ASSERT_OK(DeleteUniverseReplication(producer_id));
 
   resp.Clear();
-  ASSERT_NOK(GetUniverseReplication(producer_id, &resp));
+  resp = ASSERT_RESULT(GetUniverseReplication(producer_id));
   ASSERT_TRUE(resp.has_error());
   ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());
 }

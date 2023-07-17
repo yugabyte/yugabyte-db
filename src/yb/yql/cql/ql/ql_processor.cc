@@ -435,19 +435,22 @@ void QLProcessor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCal
   executor_.ExecuteAsync(batch, std::move(cb));
 }
 
-void QLProcessor::RunAsync(const string& stmt, const StatementParameters& params,
-                           StatementExecutedCallback cb, const bool reparsed) {
+TreeNodeOpcode QLProcessor::RunAsync(const string& stmt, const StatementParameters& params,
+                                     StatementExecutedCallback cb, const bool reparsed) {
   ParseTree::UniPtr parse_tree;
   const Status s = Prepare(stmt, &parse_tree, reparsed);
   if (PREDICT_FALSE(!s.ok())) {
-    return cb.Run(s, nullptr /* result */);
+    cb.Run(s, nullptr /* result */);
+    return TreeNodeOpcode::kNoOp;
   }
   const ParseTree* ptree = parse_tree.release();
+  const TreeNodeOpcode op_code = ptree->root() ? ptree->root()->opcode() : TreeNodeOpcode::kNoOp;
   // Do not make a copy of stmt and params when binding to the RunAsyncDone callback because when
   // error occurs due to stale matadata, the statement needs to be reexecuted. We should pass the
   // original references which are guaranteed to still be alive when the statement is reexecuted.
   ExecuteAsync(*ptree, params, Bind(&QLProcessor::RunAsyncDone, Unretained(this), ConstRef(stmt),
                                     ConstRef(params), Owned(ptree), cb));
+  return op_code;
 }
 
 void QLProcessor::RunAsyncDone(const string& stmt, const StatementParameters& params,

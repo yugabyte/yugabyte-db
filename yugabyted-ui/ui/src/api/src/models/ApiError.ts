@@ -23,7 +23,7 @@ import type { ApiErrorError } from './ApiErrorError';
  */
 export interface ApiError  {
   /**
-   *
+   * 
    * @type {ApiErrorError}
    * @memberof ApiError
    */

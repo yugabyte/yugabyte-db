@@ -45,10 +45,13 @@ import {
   getFeatureState
 } from '../../../utils/LayoutUtils';
 import { SecurityMenu } from '../SecurityModal/SecurityMenu';
+import { DBSettingsMenu } from '../DBSettingsModal/DBSettingsMenu';
 import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup';
 import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportBundle';
 import { XClusterReplication } from '../../xcluster/XClusterReplication';
 import { EncryptionAtRest } from '../../../redesign/features/universe/universe-actions/encryption-at-rest/EncryptionAtRest';
+import { EnableYSQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYSQLModal';
+import { EnableYCQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYCQLModal';
 import { EditGflagsModal } from '../../../redesign/features/universe/universe-actions/edit-gflags/EditGflags';
 import './UniverseDetail.scss';
 
@@ -89,6 +92,11 @@ class UniverseDetail extends Component {
   isRRFlagsEnabled = () => {
     const { featureFlags } = this.props;
     return featureFlags.test.enableRRGflags || featureFlags.released.enableRRGflags;
+  };
+
+  isEditDBSettingsEnabled = () => {
+    const { featureFlags } = this.props;
+    return featureFlags.test.enableEditDBSettings || featureFlags.released.enableEditDBSettings;
   };
 
   componentDidMount() {
@@ -245,6 +253,8 @@ class UniverseDetail extends Component {
       showDeleteUniverseModal,
       showToggleUniverseStateModal,
       showToggleBackupModal,
+      showEnableYSQLModal,
+      showEnableYCQLModal,
       updateBackupState,
       closeModal,
       customer,
@@ -670,7 +680,7 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         )}
 
-                      {!universePaused && (!this.isRRFlagsEnabled() || isKubernetesUniverse) && (
+                      {!universePaused && (!this.isRRFlagsEnabled() || isItKubernetesUniverse) && (
                         <YBMenuItem
                           disabled={updateInProgress}
                           onClick={showGFlagsModal}
@@ -682,7 +692,7 @@ class UniverseDetail extends Component {
                           <YBLabelWithIcon icon="fa fa-flag fa-fw">Edit Flags</YBLabelWithIcon>
                         </YBMenuItem>
                       )}
-                      {!universePaused && this.isRRFlagsEnabled() && !isKubernetesUniverse && (
+                      {!universePaused && this.isRRFlagsEnabled() && !isItKubernetesUniverse && (
                         <YBMenuItem
                           disabled={updateInProgress}
                           onClick={showGFlagsNewModal}
@@ -716,7 +726,19 @@ class UniverseDetail extends Component {
                           </span>
                         </YBMenuItem>
                       )}
-
+                      {!universePaused && this.isEditDBSettingsEnabled() && (
+                        <YBMenuItem
+                          disabled={updateInProgress}
+                          onClick={() => showSubmenu('dbSettings')}
+                        >
+                          <YBLabelWithIcon icon="fa fa-database fa-fw">
+                            Edit YSQL/YCQL Settings
+                          </YBLabelWithIcon>
+                          <span className="pull-right">
+                            <i className="fa fa-chevron-right submenu-icon" />
+                          </span>
+                        </YBMenuItem>
+                      )}
                       {!universePaused && (
                         <YBMenuItem
                           disabled={updateInProgress}
@@ -873,6 +895,15 @@ class UniverseDetail extends Component {
                           manageKeyAvailability={manageKeyAvailability}
                         />
                       </>
+                    ),
+                    dbSettings: (backToMainMenu) => (
+                      <>
+                        <DBSettingsMenu
+                          backToMainMenu={backToMainMenu}
+                          showEnableYSQLModal={showEnableYSQLModal}
+                          showEnableYCQLModal={showEnableYCQLModal}
+                        />
+                      </>
                     )
                   }}
                 />
@@ -944,6 +975,25 @@ class UniverseDetail extends Component {
             uuid={currentUniverse.data.universeUUID}
           />
         )}
+
+        <EnableYSQLModal
+          open={showModal && visibleModal === 'enableYSQLModal'}
+          onClose={() => {
+            closeModal();
+            this.props.fetchCustomerTasks();
+            this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+          }}
+          universeData={currentUniverse.data}
+        />
+        <EnableYCQLModal
+          open={showModal && visibleModal === 'enableYCQLModal'}
+          onClose={() => {
+            closeModal();
+            this.props.fetchCustomerTasks();
+            this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+          }}
+          universeData={currentUniverse.data}
+        />
 
         <Measure onMeasure={this.onResize.bind(this)}>
           <YBTabsWithLinksPanel

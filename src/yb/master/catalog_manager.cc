@@ -83,6 +83,7 @@
 #include "yb/common/common_util.h"
 #include "yb/common/constants.h"
 #include "yb/common/key_encoder.h"
+#include "yb/common/pg_catversions.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_type_util.h"
 #include "yb/common/schema_pbutil.h"
@@ -539,8 +540,9 @@ DEFINE_test_flag(bool, keep_docdb_table_on_ysql_drop_table, false,
 DEFINE_RUNTIME_int32(max_concurrent_delete_replica_rpcs_per_ts, 50,
     "The maximum number of outstanding DeleteReplica RPCs sent to an individual tserver.");
 
-DEFINE_RUNTIME_bool(enable_delete_truncate_cdcsdk_table, false,
-    "When set, enables deleting/truncating tables currently part of a CDCSDK Stream");
+DEFINE_RUNTIME_bool(
+    enable_truncate_cdcsdk_table, false,
+    "When set, enables truncating tables currently part of a CDCSDK Stream");
 
 DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExternal, false, true,
     "When set, it enables automatic tablet splitting for tables that are part of an "
@@ -4356,7 +4358,7 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
                      "Need at least $1 tablet servers whereas $2 are alive.",
                      num_replicas, replica_quorum_needed, num_live_tservers);
     LOG(WARNING) << msg
-                 << ". Placement info: " << placement_info.ShortDebugString()
+                 << " Placement info: " << placement_info.ShortDebugString()
                  << ", replication factor flag: " << FLAGS_replication_factor;
     s = STATUS(InvalidArgument, msg);
     return SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s);
@@ -5104,7 +5106,7 @@ std::string CatalogManager::GenerateIdUnlocked(
       case SysRowEntryType::SNAPSHOT:
         return id;
       case SysRowEntryType::CDC_STREAM:
-        if (!CDCStreamExistsUnlocked(id)) return id;
+        if (!CDCStreamExistsUnlocked(CHECK_RESULT(xrepl::StreamId::FromString(id)))) return id;
         break;
       case SysRowEntryType::CLUSTER_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntryType::ROLE: FALLTHROUGH_INTENDED;
@@ -5527,7 +5529,7 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
   }
   {
     SharedLock lock(mutex_);
-    if (!FLAGS_enable_delete_truncate_cdcsdk_table && IsTablePartOfCDCSDK(*table)) {
+    if (!FLAGS_enable_truncate_cdcsdk_table && IsTablePartOfCDCSDK(*table)) {
         return STATUS(
             NotSupported,
             "Cannot truncate a table in a CDCSDK Stream.",
@@ -9902,8 +9904,9 @@ Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap*
   return Status::OK();
 }
 
+// Note: versions and fingerprint are outputs.
 Status CatalogManager::GetYsqlAllDBCatalogVersions(
-    bool use_cache, DbOidToCatalogVersionMap* versions) {
+    bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint) {
   DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
   if (use_cache) {
     SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
@@ -9918,12 +9921,20 @@ Status CatalogManager::GetYsqlAllDBCatalogVersions(
     // make such unit tests happy.
     if (heartbeat_pg_catalog_versions_cache_) {
       *versions = *heartbeat_pg_catalog_versions_cache_;
+      if (fingerprint) {
+        *fingerprint = heartbeat_pg_catalog_versions_cache_fingerprint_;
+      }
       return Status::OK();
     }
   }
   // Cannot use cached data, or the cache has never been initialized yet, read
   // from pg_yb_catalog_version table.
-  return GetYsqlAllDBCatalogVersionsImpl(versions);
+  RETURN_NOT_OK(GetYsqlAllDBCatalogVersionsImpl(versions));
+  if (fingerprint) {
+    *fingerprint = FingerprintCatalogVersions<DbOidToCatalogVersionMap>(*versions);
+    VLOG_WITH_FUNC(2) << "databases: " << versions->size() << ", fingerprint: " << *fingerprint;
+  }
+  return Status::OK();
 }
 
 Status CatalogManager::InitializeTransactionTablesConfig(int64_t term) {
@@ -11668,6 +11679,7 @@ Status CatalogManager::BuildLocationsForTablet(
       TabletLocationsPB_ReplicaPB* replica_pb = locs_pb->add_replicas();
       replica_pb->set_role(replica.second.role);
       replica_pb->set_member_type(replica.second.member_type);
+      replica_pb->set_state(replica.second.state);
       auto tsinfo_pb = replica.second.ts_desc->GetTSInformationPB();
 
       TSInfoPB* out_ts_info = replica_pb->mutable_ts_info();
@@ -12066,9 +12078,13 @@ Status CatalogManager::SetClusterConfig(
 
   // TODO(bogdan): should this live here?
   const ReplicationInfoPB& replication_info = config.replication_info();
-  for (int i = 0; i < replication_info.read_replicas_size(); i++) {
-    if (!replication_info.read_replicas(i).has_placement_uuid()) {
-      Status s = STATUS(IllegalState,
+  for (auto& read_replica : replication_info.read_replicas()) {
+    Status s = CatalogManagerUtil::IsPlacementInfoValid(read_replica);
+    if (!s.ok()) {
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
+    }
+    if (!read_replica.has_placement_uuid()) {
+      s = STATUS(IllegalState,
                         "All read-only clusters must have a placement uuid specified");
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_CLUSTER_CONFIG, s);
     }
@@ -13372,31 +13388,35 @@ void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {
   DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
   DCHECK(FLAGS_enable_heartbeat_pg_catalog_versions_cache);
   DCHECK(pg_catalog_versions_bg_task_running_);
-  const bool is_inited_leader = [this] {
+
+  {
     SCOPED_LEADER_SHARED_LOCK(l, this);
-    return l.IsInitializedAndIsLeader();
-  }();
-  if (!is_inited_leader) {
-    VLOG(2) << "No longer the leader, skipping catalog versions task";
-    pg_catalog_versions_bg_task_running_ = false;
-    ResetCachedCatalogVersions();
-    return;
+    if (!l.IsInitializedAndIsLeader()) {
+      VLOG(2) << "No longer the leader, skipping catalog versions task";
+      pg_catalog_versions_bg_task_running_ = false;
+      ResetCachedCatalogVersions();
+      return;
+    }
   }
+
   // Refresh the catalog versions in memory.
-  VLOG(2) << "Running RefreshPgCatalogVersionInfoPeriodically task";
+  VLOG(2) << "Running " << __func__ << " task";
   DbOidToCatalogVersionMap versions;
   Status s = GetYsqlAllDBCatalogVersionsImpl(&versions);
   if (!s.ok()) {
     LOG(WARNING) << "Catalog versions refresh task failed: " << s.ToString();
     ResetCachedCatalogVersions();
   } else {
-    VLOG(2) << "Refreshed catalog versions in memory: " << yb::ToString(versions);
+    VLOG_WITH_FUNC(2) << "Refreshed " << versions.size() << " catalog versions in memory";
+    const auto fingerprint = yb::FingerprintCatalogVersions<DbOidToCatalogVersionMap>(versions);
+    VLOG_WITH_FUNC(2) << "fingerprint: " << fingerprint;
     LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
     if (heartbeat_pg_catalog_versions_cache_) {
       heartbeat_pg_catalog_versions_cache_->swap(versions);
     } else {
       heartbeat_pg_catalog_versions_cache_ = std::move(versions);
     }
+    heartbeat_pg_catalog_versions_cache_fingerprint_ = fingerprint;
   }
   ScheduleRefreshPgCatalogVersionsTask();
 }

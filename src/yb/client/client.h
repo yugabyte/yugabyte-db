@@ -42,6 +42,7 @@
 
 #include <boost/function.hpp>
 #include <boost/functional/hash/hash.hpp>
+#include <boost/range/any_range.hpp>
 
 #include <gtest/gtest_prod.h>
 
@@ -70,6 +71,8 @@
 #include "yb/master/master_replication.fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
+
+#include "yb/server/clock.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/mem_tracker.h"
@@ -142,6 +145,9 @@ struct TableCompactionStatus {
   std::vector<TabletReplicaFullCompactionStatus> replica_statuses;
 };
 
+using RetryableRequestIdRange =
+    boost::any_range<RetryableRequestId, boost::forward_traversal_tag, RetryableRequestId>;
+
 // Creates a new YBClient with the desired options.
 //
 // Note that YBClients are shared amongst multiple threads and, as such,
@@ -213,15 +219,19 @@ class YBClientBuilder {
   // The return value may indicate an error in the create operation, or a
   // misuse of the builder; in the latter case, only the last error is
   // returned.
-  Result<std::unique_ptr<YBClient>> Build(rpc::Messenger* messenger = nullptr);
+  Result<std::unique_ptr<YBClient>> Build(
+      rpc::Messenger* messenger = nullptr, const server::ClockPtr& clock = nullptr);
 
   // Creates the client which gets the messenger ownership and shuts it down on client shutdown.
-  Result<std::unique_ptr<YBClient>> Build(std::unique_ptr<rpc::Messenger>&& messenger);
+  Result<std::unique_ptr<YBClient>> Build(std::unique_ptr<rpc::Messenger>&& messenger,
+                                          const server::ClockPtr& clock);
 
  private:
   class Data;
 
-  Status DoBuild(rpc::Messenger* messenger, std::unique_ptr<client::YBClient>* client);
+  Status DoBuild(rpc::Messenger* messenger,
+                 server::ClockPtr clock,
+                 std::unique_ptr<client::YBClient>* client);
 
   std::unique_ptr<Data> data_;
 
@@ -531,11 +541,11 @@ class YBClient {
   // CDC Stream related methods.
 
   // Create a new CDC stream.
-  Result<CDCStreamId> CreateCDCStream(
+  Result<xrepl::StreamId> CreateCDCStream(
       const TableId& table_id,
       const std::unordered_map<std::string, std::string>& options,
       bool active = true,
-      const NamespaceId& namespace_id = "");
+      const xrepl::StreamId& db_stream_id = xrepl::StreamId::Nil());
 
   void CreateCDCStream(
       const TableId& table_id,
@@ -544,17 +554,17 @@ class YBClient {
       CreateCDCStreamCallback callback);
 
   // Delete multiple CDC streams.
-  Status DeleteCDCStream(const std::vector<CDCStreamId>& streams,
-                         bool force_delete = false,
-                         bool ignore_errors = false,
-                         master::DeleteCDCStreamResponsePB* resp = nullptr);
+  Status DeleteCDCStream(
+      const std::vector<xrepl::StreamId>& streams,
+      bool force_delete = false,
+      bool ignore_errors = false,
+      master::DeleteCDCStreamResponsePB* resp = nullptr);
 
   // Delete a CDC stream.
-  Status DeleteCDCStream(const CDCStreamId& stream_id,
-                         bool force_delete = false,
-                         bool ignore_errors = false);
+  Status DeleteCDCStream(
+      const xrepl::StreamId& stream_id, bool force_delete = false, bool ignore_errors = false);
 
-  void DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback callback);
+  void DeleteCDCStream(const xrepl::StreamId& stream_id, StatusCallback callback);
 
   // Create a new CDC stream.
   Status GetCDCDBStreamInfo(
@@ -567,25 +577,31 @@ class YBClient {
       const StdStatusCallback& callback);
 
   // Retrieve a CDC stream.
-  Status GetCDCStream(const CDCStreamId &stream_id,
-                      NamespaceId* ns_id,
-                      std::vector<TableId>* table_ids,
-                      std::unordered_map<std::string, std::string>* options,
-                      cdc::StreamModeTransactional* transactional);
+  Status GetCDCStream(
+      const xrepl::StreamId& stream_id,
+      NamespaceId* ns_id,
+      std::vector<TableId>* table_ids,
+      std::unordered_map<std::string, std::string>* options,
+      cdc::StreamModeTransactional* transactional);
 
-  void GetCDCStream(const CDCStreamId& stream_id,
-                    std::shared_ptr<TableId> table_id,
-                    std::shared_ptr<std::unordered_map<std::string, std::string>> options,
-                    StdStatusCallback callback);
+  void GetCDCStream(
+      const xrepl::StreamId& stream_id,
+      std::shared_ptr<TableId> table_id,
+      std::shared_ptr<std::unordered_map<std::string, std::string>> options,
+      StdStatusCallback callback);
 
   void DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback);
 
   // Update a CDC stream's options.
-  Status UpdateCDCStream(const std::vector<CDCStreamId>& stream_ids,
-                         const std::vector<master::SysCDCStreamEntryPB>& new_entries);
+  Status UpdateCDCStream(
+      const std::vector<xrepl::StreamId>& stream_ids,
+      const std::vector<master::SysCDCStreamEntryPB>& new_entries);
 
-  Result<bool> IsBootstrapRequired(const std::vector<TableId>& table_ids,
-                                   const boost::optional<CDCStreamId>& stream_id = boost::none);
+  Result<bool> IsObjectPartOfXRepl(const TableId& table_id);
+
+  Result<bool> IsBootstrapRequired(
+      const std::vector<TableId>& table_ids,
+      const boost::optional<xrepl::StreamId>& stream_id = boost::none);
 
   Status BootstrapProducer(
       const YQLDatabase& db_type,
@@ -597,13 +613,13 @@ class YBClient {
   // Update consumer pollers after a producer side tablet split.
   Status UpdateConsumerOnProducerSplit(
       const cdc::ReplicationGroupId& replication_group_id,
-      const TableId& table_id,
+      const xrepl::StreamId& stream_id,
       const master::ProducerSplitTabletInfoPB& split_info);
 
   // Update after a producer DDL change. Returns if caller should wait for a similar Consumer DDL.
   Status UpdateConsumerOnProducerMetadata(
       const cdc::ReplicationGroupId& replication_group_id,
-      const CDCStreamId& stream_id,
+      const xrepl::StreamId& stream_id,
       const tablet::ChangeMetadataRequestPB& meta_info,
       uint32_t colocation_id,
       uint32_t producer_schema_version,
@@ -724,8 +740,7 @@ class YBClient {
   Result<bool> IsLoadBalancerIdle();
 
   Status ModifyTablePlacementInfo(
-      const YBTableName& table_name,
-      master::PlacementInfoPB* replicas);
+      const YBTableName& table_name, master::PlacementInfoPB&& live_replicas);
 
   // Creates a transaction status table. 'table_name' is required to start with
   // kTransactionTablePrefix.
@@ -887,11 +902,13 @@ class YBClient {
   Result<std::shared_ptr<internal::RemoteTabletServer>> GetRemoteTabletServer(
       const std::string& permanent_uuid);
 
-  void RequestsFinished(const std::set<RetryableRequestId>& request_ids);
+  void RequestsFinished(const RetryableRequestIdRange& request_id_range);
 
   void Shutdown();
 
   const std::string& LogPrefix() const;
+
+  server::Clock* Clock() const;
 
  private:
   class Data;

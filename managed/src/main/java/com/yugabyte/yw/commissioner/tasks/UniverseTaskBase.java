@@ -86,6 +86,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseYbcDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpgradeYbc;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForClockSync;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDuration;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForEncryptionKeyInMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForFollowerLag;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeaderBlacklistCompletion;
@@ -127,11 +128,11 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.controllers.TablesController.NamespaceInfoResp;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
-import com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
@@ -203,10 +204,12 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.MDC;
 import org.yb.ColumnSchema.SortOrder;
+import org.yb.CommonTypes;
 import org.yb.CommonTypes.TableType;
 import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListMastersResponse;
+import org.yb.client.ListNamespacesResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.ModifyClusterConfigIncrementVersion;
 import org.yb.client.YBClient;
@@ -485,37 +488,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       case UNDEFINED:
         break;
     }
-
-    UniverseUpdater updater =
-        universe -> {
-          log.info(
-              String.format(
-                  "Setting encryption at rest status to %s for universe %s",
-                  taskParams().encryptionAtRestConfig.opType.name(),
-                  universe.getUniverseUUID().toString()));
-          // Persist the updated information about the universe.
-          // It should have been marked as being edited in lockUniverseForUpdate().
-          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          if (!universeDetails.updateInProgress) {
-            String msg =
-                "Universe "
-                    + taskParams().getUniverseUUID()
-                    + " has not been marked as being updated.";
-            log.error(msg);
-            throw new RuntimeException(msg);
-          }
-
-          universeDetails.encryptionAtRestConfig = taskParams().encryptionAtRestConfig;
-
-          universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled =
-              taskParams().encryptionAtRestConfig.opType.equals(OpType.ENABLE);
-          universe.setUniverseDetails(universeDetails);
-        };
-    // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
-    // catch as we want to fail.
-    saveUniverseDetails(updater);
-    log.trace("Wrote user intent for universe {}.", taskParams().getUniverseUUID());
-
     return subTaskGroup;
   }
 
@@ -2189,7 +2161,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               log.info(
                   "Queuing backup for table {}:{}",
                   tableSchema.getNamespace(),
-                  tableSchema.getTableName());
+                  CommonUtils.logTableName(tableSchema.getTableName()));
               if (tablesToBackup != null) {
                 tablesToBackup.add(
                     String.format("%s:%s", tableSchema.getNamespace(), tableSchema.getTableName()));
@@ -2225,7 +2197,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                   keyspaceMap.put(tableKeySpace, backupParams);
                   backupTableParamsList.add(backupParams);
                   if (tablesToBackup != null) {
-                    tablesToBackup.add(String.format("%s:%s", tableKeySpace, table.getName()));
+                    tablesToBackup.add(String.format("%s:%s", tableKeySpace, tableName));
                   }
                 }
               } else if (tableType.equals(TableType.YQL_TABLE_TYPE)
@@ -2238,13 +2210,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                 currentBackup.tableNameList.add(tableName);
                 currentBackup.tableUUIDList.add(tableUUID);
                 if (tablesToBackup != null) {
-                  tablesToBackup.add(String.format("%s:%s", tableKeySpace, table.getName()));
+                  tablesToBackup.add(String.format("%s:%s", tableKeySpace, tableName));
                 }
               } else {
                 log.error(
-                    "Unrecognized table type {} for {}:{}", tableType, tableKeySpace, tableName);
+                    "Unrecognized table type {} for {}:{}",
+                    tableType,
+                    tableKeySpace,
+                    CommonUtils.logTableName(tableName));
               }
-              log.info("Queuing backup for table {}:{}", tableKeySpace, tableName);
+              log.info(
+                  "Queuing backup for table {}:{}",
+                  tableKeySpace,
+                  CommonUtils.logTableName(tableName));
             }
           }
         }
@@ -2271,10 +2249,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             if (!keyspaceMap.containsKey(tableKeySpace)) {
               BackupTableParams backupParams =
                   new BackupTableParams(backupRequestParams, tableKeySpace);
+              backupParams.allTables = true;
               keyspaceMap.put(tableKeySpace, backupParams);
               backupTableParamsList.add(backupParams);
               if (tablesToBackup != null) {
-                tablesToBackup.add(String.format("%s:%s", tableKeySpace, table.getName()));
+                tablesToBackup.add(String.format("%s:%s", tableKeySpace, tableName));
               }
             }
           } else if (tableType.equals(TableType.YQL_TABLE_TYPE)
@@ -2282,6 +2261,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             if (!keyspaceMap.containsKey(tableKeySpace)) {
               BackupTableParams backupParams =
                   new BackupTableParams(backupRequestParams, tableKeySpace);
+              backupParams.allTables = true;
               keyspaceMap.put(tableKeySpace, backupParams);
               backupTableParamsList.add(backupParams);
             }
@@ -2289,12 +2269,17 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             currentBackup.tableNameList.add(tableName);
             currentBackup.tableUUIDList.add(tableUUID);
             if (tablesToBackup != null) {
-              tablesToBackup.add(String.format("%s:%s", tableKeySpace, table.getName()));
+              tablesToBackup.add(String.format("%s:%s", tableKeySpace, tableName));
             }
           } else {
-            log.error("Unrecognized table type {} for {}:{}", tableType, tableKeySpace, tableName);
+            log.error(
+                "Unrecognized table type {} for {}:{}",
+                tableType,
+                tableKeySpace,
+                CommonUtils.logTableName(tableName));
           }
-          log.info("Queuing backup for table {}:{}", tableKeySpace, tableName);
+          log.info(
+              "Queuing backup for table {}:{}", tableKeySpace, CommonUtils.logTableName(tableName));
         }
       }
     } catch (Exception e) {
@@ -2882,20 +2867,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  public SubTaskGroup createDnsManipulationTask(
+      DnsManager.DnsCommandType eventType, boolean isForceDelete, Universe universe) {
+    Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    return createDnsManipulationTask(eventType, isForceDelete, primaryCluster);
+  }
+
   /**
    * Creates a task list to manipulate the DNS record available for this universe.
    *
    * @param eventType the type of manipulation to do on the DNS records.
    * @param isForceDelete if this is a delete operation, set this to true to ignore errors
-   * @param intent universe information.
+   * @param primaryCluster primary cluster information.
    * @return subtask group
    */
   public SubTaskGroup createDnsManipulationTask(
-      DnsManager.DnsCommandType eventType,
-      boolean isForceDelete,
-      UniverseDefinitionTaskParams.UserIntent intent) {
+      DnsManager.DnsCommandType eventType, boolean isForceDelete, Cluster primaryCluster) {
+    UserIntent userIntent = primaryCluster.userIntent;
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateDnsEntry");
-    Provider p = Provider.getOrBadRequest(UUID.fromString(intent.provider));
+    Provider p = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
     if (!p.getCloudCode().isHostedZoneEnabled()) {
       return subTaskGroup;
     }
@@ -2907,10 +2897,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     ManipulateDnsRecordTask.Params params = new ManipulateDnsRecordTask.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.type = eventType;
-    params.providerUUID = UUID.fromString(intent.provider);
+    params.providerUUID = UUID.fromString(userIntent.provider);
     params.hostedZoneId = hostedZoneId;
     params.domainNamePrefix =
-        String.format("%s.%s", intent.universeName, Customer.get(p.getCustomerUUID()).getCode());
+        String.format(
+            "%s.%s", userIntent.universeName, Customer.get(p.getCustomerUUID()).getCode());
     params.isForceDelete = isForceDelete;
     // Create the task to update DNS entries.
     ManipulateDnsRecordTask task = createTask(ManipulateDnsRecordTask.class);
@@ -3178,11 +3169,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected void createNodePrecheckTasks(
       NodeDetails node, Set<ServerType> processTypes, SubTaskGroupType subGroupType) {
-
-    createCheckUnderReplicatedTabletsTask().setSubTaskGroupType(subGroupType);
+    boolean underReplicatedTabletsCheckEnabled =
+        confGetter.getConfForScope(
+            getUniverse(), UniverseConfKeys.underReplicatedTabletsCheckEnabled);
+    if (underReplicatedTabletsCheckEnabled) {
+      createCheckUnderReplicatedTabletsTask().setSubTaskGroupType(subGroupType);
+    }
 
     // TODO: Add follower lag tablet level check.
   }
+
   /**
    * Checks whether cluster contains any under replicated tablets before proceeding.
    *
@@ -3429,7 +3425,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
     // Update the DNS entry for all the nodes once, using the primary cluster type.
-    createDnsManipulationTask(DnsManager.DnsCommandType.Create, false, primaryCluster.userIntent)
+    createDnsManipulationTask(DnsManager.DnsCommandType.Create, false, primaryCluster)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
     // Update the swamper target file.
@@ -3959,6 +3955,51 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             .getGlobalConf(GlobalConfKeys.waitForClockSyncMaxAcceptableClockSkew)
             .toNanos(),
         this.confGetter.getGlobalConf(GlobalConfKeys.waitForClockSyncTimeout).toMillis());
+  }
+
+  protected SubTaskGroup createWaitForDurationSubtask(Universe universe, Duration waitTime) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForDuration");
+    WaitForDuration.Params params = new WaitForDuration.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.waitTime = waitTime;
+
+    WaitForDuration task = createTask(WaitForDuration.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * It creates a map of keyspace name to keyspace ID for a specific table type by gathering the
+   * list of NamespaceIdentifiers from a YBClient connected to a universe. The namespace name is
+   * unique for a table type.
+   *
+   * @param client The client connected to the universe
+   * @param tableType The table type for which you want the map
+   * @return A map of keyspace name to keyspace ID
+   */
+  public static Map<String, String> getKeyspaceNameKeyspaceIdMap(
+      YBClient client, CommonTypes.TableType tableType) {
+    try {
+      ListNamespacesResponse listNamespacesResponse = client.getNamespacesList();
+      if (listNamespacesResponse.hasError()) {
+        throw new RuntimeException(
+            String.format(
+                "Failed to get list of namespaces: %s", listNamespacesResponse.errorMessage()));
+      }
+      Map<String, String> keyspaceNameKeyspaceIdMap = new HashMap<>();
+      listNamespacesResponse.getNamespacesList().stream()
+          .map(NamespaceInfoResp::createFromNamespaceIdentifier)
+          .filter(namespaceInfo -> namespaceInfo.tableType.equals(tableType))
+          .forEach(
+              namespaceInfo ->
+                  keyspaceNameKeyspaceIdMap.put(
+                      namespaceInfo.name, namespaceInfo.namespaceUUID.toString().replace("-", "")));
+      return keyspaceNameKeyspaceIdMap;
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
   }
 
   // XCluster: All the xCluster related code resides in this section.

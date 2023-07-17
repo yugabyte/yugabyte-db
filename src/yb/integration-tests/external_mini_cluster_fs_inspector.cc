@@ -474,7 +474,7 @@ Status ExternalMiniClusterFsInspector::WaitForFilePatternInTabletWalDirOnTs(
   string error_msg;
   vector<string> entries;
   while (true) {
-    Status s = ListFilesInDir(tablet_wal_dir, &entries);
+    RETURN_NOT_OK(ListFilesInDir(tablet_wal_dir, &entries));
     std::sort(entries.begin(), entries.end());
 
     error_msg = "";

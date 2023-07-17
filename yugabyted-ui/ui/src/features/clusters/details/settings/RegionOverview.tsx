@@ -1,7 +1,7 @@
 import React, { FC, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, makeStyles, Paper, Typography } from '@material-ui/core';
-import { countryToFlag, roundDecimal } from '@app/helpers';
+import { countryToFlag, getRegionCode, roundDecimal } from '@app/helpers';
 import { YBTable } from '@app/components';
 import type { MUISortOptions } from 'mui-datatables';
 import { ClusterFaultTolerance, useGetClusterNodesQuery, useGetClusterQuery } from '@app/api/src';
@@ -13,34 +13,25 @@ const useStyles = makeStyles((theme) => ({
     border: `1px solid ${theme.palette.grey[200]}`,
     width: '100%'
   },
-  heading: {
-    marginBottom: theme.spacing(5),
+  summaryContainer: {
+    display: 'flex',
+    gap: '10px',
+    margin: theme.spacing(3, 0, 2, 0),
+    justifyContent: 'space-between',
+    padding: theme.spacing(2, 6, 2, 3),
+    borderRadius: theme.shape.borderRadius,
+    border: '1px solid',
+    borderColor: theme.palette.grey[100],
   },
+  summaryItem: {
+    display: 'flex',
+  },
+  summaryTitle: {
+    marginRight: theme.spacing(4),
+    textTransform: 'uppercase',
+    color: theme.palette.grey[600],
+  }
 }));
-
-const regionCountryCodes: { [k: string]: string } = {
-  'us-east-2':      'us',
-  'us-east-1':      'us',
-  'us-west-1':      'us',
-  'us-west-2':      'us',
-  'af-south-1':     'za',
-  'ap-south-1':     'in',
-  'ap-northeast-3': 'jp',
-  'ap-southeast-1': 'sg',
-  'ap-southeast-2': 'au',
-  'ap-northeast-1': 'jp',
-  'ca-central-1':   'ca',
-  'eu-central-1':   'de',
-  'eu-west-1':      'ie',
-  'eu-west-2':      'gb',
-  'eu-south-1':     'it',
-  'eu-west-3':      'fr',
-  'eu-north-1':     'se',
-  'me-south-1':     'bh',
-  'sa-east-1':      'br',
-  'us-gov-east-1':  'us',
-  'us-gov-west-1':  'us',
-}
 
 const RegionNameComponent = () => ({ name, code }: { name: string, code?: string }) => {
   return (
@@ -51,9 +42,10 @@ const RegionNameComponent = () => ({ name, code }: { name: string, code?: string
 }
 
 interface RegionOverviewProps {
+  readReplica?: boolean,
 }
 
-export const RegionOverview: FC<RegionOverviewProps> = () => {
+export const RegionOverview: FC<RegionOverviewProps> = ({ readReplica }) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
@@ -62,8 +54,6 @@ export const RegionOverview: FC<RegionOverviewProps> = () => {
   const clusterSpec = cluster?.spec;
 
   const isZone = clusterSpec?.cluster_info.fault_tolerance === ClusterFaultTolerance.Zone;
-  const totalCores = clusterSpec?.cluster_info?.node_info.num_cores ?? 0;
-  const totalDiskSize = clusterSpec?.cluster_info.node_info.disk_size_gb ?? 0;
 
   // Get text for ram usage
   const getRamUsageText = (ramUsageGb: number) => {
@@ -79,27 +69,52 @@ export const RegionOverview: FC<RegionOverviewProps> = () => {
 
   // Get nodes
   const { data: nodesResponse } = useGetClusterNodesQuery();
-  const totalRamUsageGb = (nodesResponse?.data.reduce((acc, curr) =>
+  const nodeList = React.useMemo(() => 
+    nodesResponse?.data.filter(node => (readReplica && node.is_read_replica) || (!readReplica && !node.is_read_replica))
+  ,[nodesResponse, readReplica]);
+  const totalRamUsageGb = (nodeList?.reduce((acc, curr) =>
     acc + curr.metrics.ram_provisioned_bytes, 0) ?? 0) / (1024 * 1024 * 1024);
+  const totalCores = roundDecimal((clusterSpec?.cluster_info?.node_info.num_cores ?? 0) / (nodesResponse?.data.length ?? 1) * (nodeList?.length ?? 0));
+  const totalDiskSize = roundDecimal((clusterSpec?.cluster_info.node_info.disk_size_gb ?? 0) / (nodesResponse?.data.length ?? 1) * (nodeList?.length ?? 0));
 
   const regionData = useMemo(() => {
     const set = new Set<string>();
-    nodesResponse?.data.forEach(node => set.add(node.cloud_info.region + "#" + node.cloud_info.zone));
+    nodeList?.forEach(node => set.add(node.cloud_info.region + "#" + node.cloud_info.zone));
     return Array.from(set).map(regionZone => {
       const [region, zone] = regionZone.split('#');
       return {
         region: {
           name: `${region} (${zone})`,
-          code: Object.entries(regionCountryCodes).find(([key]) => zone.startsWith(key) || key.startsWith(region))?.[1],
+          code: getRegionCode({ region, zone }),
         },
-        nodeCount: nodesResponse?.data.filter(node => 
+        nodeCount: nodeList?.filter(node => 
           node.cloud_info.region === region && node.cloud_info.zone === zone).length,
-        vCpuPerNode: totalCores / (nodesResponse?.data.length ?? 1),
-        ramPerNode: getRamUsageText(totalRamUsageGb / (nodesResponse?.data.length ?? 1)),
-        diskPerNode: getDiskSizeText(totalDiskSize / (nodesResponse?.data.length ?? 1)),
+        vCpuPerNode: totalCores / (nodeList?.length ?? 1),
+        ramPerNode: getRamUsageText(totalRamUsageGb / (nodeList?.length ?? 1)),
+        diskPerNode: getDiskSizeText(totalDiskSize / (nodeList?.length ?? 1)),
       }
     })
-  }, [nodesResponse, totalCores, totalRamUsageGb, totalDiskSize])
+  }, [nodeList, totalCores, totalRamUsageGb, totalDiskSize, readReplica])
+
+  const summaryData = useMemo(() => [
+    {
+      title: t('clusterDetail.settings.regions.totalNodes'),
+      value: nodeList?.filter(node => (readReplica && node.is_read_replica) || (!readReplica && !node.is_read_replica))
+        .length.toString(),
+    },
+    {
+      title: t('clusterDetail.settings.regions.totalvCPU'),
+      value: totalCores.toString(),
+    },
+    {
+      title: t('clusterDetail.settings.regions.totalMemory'),
+      value: getRamUsageText(totalRamUsageGb),
+    },
+    {
+      title: t('clusterDetail.settings.regions.totalDiskSize'),
+      value: getDiskSizeText(totalDiskSize),
+    }
+  ], [nodeList, totalCores, totalRamUsageGb, totalDiskSize])
 
   const regionColumns = [
     {
@@ -158,11 +173,23 @@ export const RegionOverview: FC<RegionOverviewProps> = () => {
     },
   ];
 
+  if (regionData.length === 0) {
+    return null;
+  }
+
   return (
     <Paper className={classes.paperContainer}>
-      <Typography variant="h4" className={classes.heading}>
-        {isZone ? t('clusterDetail.settings.regions.zonesTitle') : t('clusterDetail.settings.regions.title')}
+      <Typography variant="h4">
+        {readReplica ? t('clusterDetail.settings.regions.readReplica') : t('clusterDetail.settings.regions.title')}
       </Typography>
+      <Box className={classes.summaryContainer}>
+        {summaryData.map(summaryItem => (
+          <Box key={summaryItem.title} className={classes.summaryItem}>
+            <Typography variant='body2' className={classes.summaryTitle}>{summaryItem.title}</Typography>
+            <Typography variant='body2'>{summaryItem.value}</Typography>
+          </Box>
+        ))}
+      </Box>
       <YBTable
         data={regionData}
         columns={regionColumns}

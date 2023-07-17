@@ -12,8 +12,12 @@
 //
 
 #include <chrono>
+#include <memory>
 #include <regex>
+#include <string>
+#include <unordered_set>
 
+#include "yb/client/client_fwd.h"
 #include "yb/client/session.h"
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
@@ -22,8 +26,12 @@
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/common_types.pb.h"
+#include "yb/consensus/consensus_types.pb.h"
 #include "yb/dockv/partition.h"
 
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
@@ -31,10 +39,13 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master-path-handlers.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/mini_master.h"
 
+#include "yb/master/tasks_tracker.h"
 #include "yb/server/webui_util.h"
 
+#include "yb/tablet/tablet_types.pb.h"
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -43,31 +54,38 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/jsonreader.h"
+#include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_string(TEST_master_extra_list_host_port);
+DECLARE_bool(TEST_tserver_disable_heartbeat);
 
 DECLARE_int32(follower_unavailable_considered_failed_sec);
 
 DECLARE_uint64(master_maximum_heartbeats_without_lease);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
+DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_bool(enable_automatic_tablet_splitting);
 
 namespace yb {
 namespace master {
 
 using std::string;
+using std::vector;
+using std::unordered_set;
 
 using namespace std::literals;
 
 const std::string kKeyspaceName("my_keyspace");
 const client::YBTableName table_name(YQL_DATABASE_CQL, kKeyspaceName, "test_table");
 const uint kNumMasters(3);
+const uint kNumTservers(3);
 const uint kNumTablets(3);
 
 template <class T>
@@ -87,6 +105,7 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
   }
 
   void DoTearDown() override {
+    LOG(INFO) << "Calling DoTearDown in master path handlers";
     cluster_->Shutdown();
   }
 
@@ -136,6 +155,19 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
     return table;
   }
 
+  string GetLeaderlessTabletsString() {
+    faststring result;
+    auto url = "/tablet-replication";
+    TestUrl(url, &result);
+    const string& result_str = result.ToString();
+    size_t pos_leaderless = result_str.find("Leaderless Tablets", 0);
+    size_t pos_underreplicated = result_str.find("Underreplicated Tablets", 0);
+    CHECK_NE(pos_leaderless, string::npos);
+    CHECK_NE(pos_underreplicated, string::npos);
+    CHECK_GT(pos_underreplicated, pos_leaderless);
+    return result_str.substr(pos_leaderless, pos_underreplicated - pos_leaderless);
+  }
+
   using YBMiniClusterTestBase<T>::cluster_;
   std::unique_ptr<tools::ClusterAdminClient> yb_admin_client_;
   string master_http_url_;
@@ -147,7 +179,7 @@ class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> 
     MiniClusterOptions opts;
     // Set low heartbeat timeout.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5000;
-    opts.num_tablet_servers = kNumTablets;
+    opts.num_tablet_servers = kNumTservers;
     opts.num_masters = num_masters();
     cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
@@ -218,7 +250,7 @@ TEST_F(MasterPathHandlersItest, TestDeadTServers) {
 }
 
 TEST_F(MasterPathHandlersItest, TestTabletReplicationEndpoint) {
-  auto table = CreateTestTable();
+  auto table = CreateTestTable(kNumTablets);
 
   // Choose a tablet to orphan and take note of the servers which are leaders/followers for this
   // tablet.
@@ -493,7 +525,6 @@ TEST_F(MasterPathHandlersItest, TestTableJsonEndpointNoArgs) {
 }
 
 TEST_F(MasterPathHandlersItest, TestTablesJsonEndpoint) {
-
   auto table = CreateTestTable();
 
   faststring result;
@@ -530,70 +561,6 @@ TEST_F(MasterPathHandlersItest, TestTablesJsonEndpoint) {
   EXPECT_TRUE(disk_size_obj.HasMember("uncompressed_sst_file_size"));
   EXPECT_TRUE(disk_size_obj.HasMember("uncompressed_sst_file_size_bytes"));
   EXPECT_TRUE(disk_size_obj.HasMember("has_missing_size"));
-}
-
-TEST_F(MasterPathHandlersItest, TestTabletUnderReplicationEndpoint) {
-  // Set test specific flag
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_follower_unavailable_considered_failed_sec) = 30;
-
-  auto table = CreateTestTable();
-
-  // Get all the tablets of this table and store them
-  google::protobuf::RepeatedPtrField<TabletLocationsPB> tablets;
-  ASSERT_OK(client_->GetTabletsFromTableId(table->id(), kNumTablets, &tablets));
-
-  std::vector<std::string> tIds;
-  bool isTestTrue = true;
-
-  int numTablets = tablets.size();
-  for(int i = 0; i < numTablets; i++) {
-    auto tablet = tablets.Get(i);
-    tIds.push_back(tablet.tablet_id());
-  }
-
-  // Now kill one of the servers
-  // Since the replication factor is 3 and the number
-  // of nodes is also 3, all the tablets
-  // of this table should become under replicated
-  cluster_->mini_tablet_server(0)->Shutdown();
-  // Wait for 3*30 secs just to be safe
-  std::this_thread::sleep_for(std::chrono::milliseconds(
-    3 * FLAGS_follower_unavailable_considered_failed_sec * 1000));
-
-  // Call endpoint and validate format of response.
-  faststring result;
-  TestUrl("/api/v1/tablet-under-replication", &result);
-
-  JsonReader r(result.ToString());
-  ASSERT_OK(r.Init());
-  const rapidjson::Value* json_obj = nullptr;
-  EXPECT_OK(r.ExtractObject(r.root(), NULL, &json_obj));
-  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
-  EXPECT_TRUE(json_obj->HasMember("underreplicated_tablets"));
-  EXPECT_EQ(rapidjson::kArrayType, (*json_obj)["underreplicated_tablets"].GetType());
-  const rapidjson::Value::ConstArray tablets_json =
-      (*json_obj)["underreplicated_tablets"].GetArray();
-
-  for (const auto& tablet_json : tablets_json) {
-    EXPECT_EQ(rapidjson::kObjectType, tablet_json.GetType());
-    EXPECT_TRUE(tablet_json.HasMember("table_uuid"));
-    EXPECT_EQ(rapidjson::kStringType, tablet_json["table_uuid"].GetType());
-    EXPECT_TRUE(tablet_json.HasMember("tablet_uuid"));
-    EXPECT_EQ(rapidjson::kStringType, tablet_json["tablet_uuid"].GetType());
-  }
-
-  // These tablets should be present in the json response
-  for(const std::string &id : tIds) {
-    isTestTrue = isTestTrue && std::any_of(tablets_json.begin(), tablets_json.end(),
-                      [&id](const auto &tablet_json) {
-                          return tablet_json["tablet_uuid"].GetString() == id;
-                      });
-  }
-
-  EXPECT_TRUE(isTestTrue) << "Expected to find under-replicated tablets.";
-
-  // YBMiniClusterTestBase test-end verification will fail if the cluster is up with stopped nodes.
-  cluster_->Shutdown();
 }
 
 class MultiMasterPathHandlersItest : public MasterPathHandlersItest {
@@ -676,38 +643,258 @@ TEST_F_EX(MasterPathHandlersItest, ShowDeletedTablets, TabletSplitMasterPathHand
 class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<ExternalMiniCluster> {
  public:
   void InitCluster() override {
-    ExternalMiniClusterOptions opts;
     // Set low heartbeat timeout.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5000;
-    opts.num_tablet_servers = kNumTablets;
-    opts.num_masters = num_masters();
-    cluster_.reset(new ExternalMiniCluster(opts));
+    cluster_.reset(new ExternalMiniCluster(opts_));
     ASSERT_OK(cluster_->Start());
+    ASSERT_OK(cluster_->SetFlagOnMasters("tserver_unresponsive_timeout_ms", "10000"));
   }
 
   void SetMasterHTTPURL() override {
     HostPort master_http_endpoint = cluster_->master(0)->bound_http_hostport();
     master_http_url_ = "http://" + ToString(master_http_endpoint);
   }
+
+ protected:
+  ExternalMiniClusterOptions opts_;
+
+  void SetUp() override {
+    opts_.num_tablet_servers = kNumTservers;
+    opts_.num_masters = num_masters();
+    opts_.extra_tserver_flags.push_back("--placement_cloud=c");
+    opts_.extra_tserver_flags.push_back("--placement_region=r");
+    opts_.extra_tserver_flags.push_back("--placement_zone=z${index}");
+    opts_.extra_tserver_flags.push_back("--placement_uuid=" + kLivePlacementUuid);
+    opts_.extra_tserver_flags.push_back("--follower_unavailable_considered_failed_sec=10");
+
+    MasterPathHandlersBaseItest<ExternalMiniCluster>::SetUp();
+
+    yb_admin_client_ = std::make_unique<tools::ClusterAdminClient>(
+        cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(30));
+    ASSERT_OK(yb_admin_client_->Init());
+
+    // 3 live replicas, one in each zone.
+    ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0:1,c.r.z1:1,c.r.z2:1", 3,
+        kLivePlacementUuid));
+  }
+
+  Status AddTabletServer(const string& zone, const string& placement_uuid) {
+    vector<string> extra_flags;
+    extra_flags.push_back("--placement_cloud=c");
+    extra_flags.push_back("--placement_region=r");
+    extra_flags.push_back("--placement_zone=" + zone);
+    extra_flags.push_back("--placement_uuid=" + placement_uuid);
+    extra_flags.push_back("--follower_unavailable_considered_failed_sec=10");
+    return cluster_->AddTabletServer(
+        ExternalMiniClusterOptions::kDefaultStartCqlProxy, extra_flags);
+  }
+
+  const string kReadReplicaPlacementUuid = "read_replica";
+  const string kLivePlacementUuid = "live";
+  std::unique_ptr<tools::ClusterAdminClient> yb_admin_client_;
 };
+
+class MasterPathHandlersUnderReplicationItest : public MasterPathHandlersExternalItest {
+ protected:
+  Status CheckUnderReplicatedInPlacements(
+      const unordered_set<TabletId> test_tablet_ids,
+      const unordered_set<string>& placements) {
+    faststring result;
+    TestUrl("/api/v1/tablet-under-replication", &result);
+    JsonReader r(result.ToString());
+    RETURN_NOT_OK(r.Init());
+    const rapidjson::Value* json_obj = nullptr;
+    RETURN_NOT_OK(r.ExtractObject(r.root(), NULL, &json_obj));
+    const rapidjson::Value::ConstArray tablets_json =
+        (*json_obj)["underreplicated_tablets"].GetArray();
+    if (placements.empty()) {
+      SCHECK_EQ(tablets_json.Size(), 0, IllegalState, "Expected no underreplicated tablets");
+      return Status::OK();
+    }
+
+    SCHECK_EQ(tablets_json.Size(), test_tablet_ids.size(), IllegalState,
+        "Unexpected amount of underreplicated tablets");
+    for (auto& tablet_json : tablets_json) {
+      auto tablet_id = tablet_json["tablet_uuid"].GetString();
+      auto table_id = tablet_json["table_uuid"].GetString();
+      if (!test_tablet_ids.contains(tablet_id)) {
+        return STATUS_FORMAT(IllegalState, "Tablet $0 from table $1 unexpectedly underreplicated",
+            tablet_id, table_id);
+      }
+
+      auto underreplicated_placements = tablet_json["underreplicated_placements"].GetArray();
+      SCHECK_EQ(underreplicated_placements.Size(), placements.size(), IllegalState,
+          "Actual number of underreplicated placements did not match expected");
+      for (auto& placement : underreplicated_placements) {
+        auto placement_id = placement.GetString();
+        if (!placements.contains(placement_id)) {
+          return STATUS_FORMAT(IllegalState, "Placement $0 unexpectedly underreplicated",
+              placement_id);
+        }
+      }
+    }
+    return Status::OK();
+  }
+
+  Status CheckNotUnderReplicated(const unordered_set<TabletId> test_tablet_ids) {
+    return CheckUnderReplicatedInPlacements(test_tablet_ids, {} /* placements */);
+  }
+
+  Result<unordered_set<TabletId>> CreateTestTableAndGetTabletIds() {
+    table_ = CreateTestTable(kNumTablets);
+
+    // Store tablet ids to check later.
+    master::GetTableLocationsResponsePB table_locs;
+    RETURN_NOT_OK(itest::GetTableLocations(cluster_.get(), table_->name(), 10s /* timeout */,
+        RequireTabletsRunning::kFalse, &table_locs));
+    unordered_set<TabletId> test_tablet_ids;
+    for (auto& tablet : table_locs.tablet_locations()) {
+      test_tablet_ids.insert(tablet.tablet_id());
+    }
+    SCHECK_EQ(test_tablet_ids.size(), kNumTablets, IllegalState, "Incorrect number of tablets");
+    return test_tablet_ids;
+  }
+
+  std::shared_ptr<client::YBTable> table_;
+};
+
+TEST_F_EX(MasterPathHandlersItest, TestTabletUnderReplicationEndpoint,
+    MasterPathHandlersUnderReplicationItest) {
+  auto tablet_ids = ASSERT_RESULT(CreateTestTableAndGetTabletIds());
+  ASSERT_OK(WaitFor([&]() {
+    return CheckNotUnderReplicated(tablet_ids).ok();
+  }, 10s, "Wait for not underreplicated"));
+
+  cluster_->tablet_server(0)->Shutdown();
+  ASSERT_OK(WaitFor([&]() {
+    return CheckUnderReplicatedInPlacements(tablet_ids, {kLivePlacementUuid}).ok();
+  }, 3s * FLAGS_follower_unavailable_considered_failed_sec, "Wait for underreplicated"));
+
+  // Even after moving to the new tservers, the table should be underreplicated since there is no
+  // z0 replica.
+  ASSERT_OK(AddTabletServer("z1", kLivePlacementUuid));
+  ASSERT_OK(WaitFor([&]() {
+    return CheckUnderReplicatedInPlacements(tablet_ids, {kLivePlacementUuid}).ok();
+  }, 10s, "Wait for underreplicated"));
+
+  // YBMiniClusterTestBase test-end verification will fail if the cluster is up with stopped nodes.
+  cluster_->Shutdown();
+}
+
+TEST_F_EX(MasterPathHandlersItest, TestTabletUnderReplicationEndpointTableReplicationInfo,
+    MasterPathHandlersUnderReplicationItest) {
+  auto tablet_ids = ASSERT_RESULT(CreateTestTableAndGetTabletIds());
+  ASSERT_OK(yb_admin_client_->ModifyTablePlacementInfo(table_->name(), "c.r.z0:0,c.r.z1:0,c.r.z2:0",
+      3, kLivePlacementUuid));
+  ASSERT_OK(WaitFor([&]() {
+    return CheckNotUnderReplicated(tablet_ids).ok();
+  }, 10s, "Wait for not underreplicated"));
+
+  cluster_->tablet_server(0)->Shutdown();
+  ASSERT_OK(WaitFor([&]() {
+    return CheckUnderReplicatedInPlacements(tablet_ids, {kLivePlacementUuid}).ok();
+  }, 3s * FLAGS_follower_unavailable_considered_failed_sec, "Wait for underreplicated"));
+
+  // After moving to the new tserver, the table is no longer underreplicated according to the
+  // table placement info (but would be according to the cluster's).
+  ASSERT_OK(AddTabletServer("z1", kLivePlacementUuid));
+  ASSERT_OK(WaitFor([&]() {
+    return CheckNotUnderReplicated(tablet_ids).ok();
+  }, 3s * FLAGS_follower_unavailable_considered_failed_sec, "Wait for not underreplicated"));
+
+  // YBMiniClusterTestBase test-end verification will fail if the cluster is up with stopped nodes.
+  cluster_->Shutdown();
+}
+
+TEST_F_EX(MasterPathHandlersItest, TestTabletUnderReplicationEndpointBootstrapping,
+    MasterPathHandlersUnderReplicationItest) {
+  // Shutdown ts2 so we start under-replicated.
+  auto* ts_to_restart = cluster_->tablet_server(2);
+  ts_to_restart->Shutdown();
+  auto tablet_ids = ASSERT_RESULT(CreateTestTableAndGetTabletIds());
+
+  ASSERT_OK(ts_to_restart->Restart(ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      {{"TEST_pause_rbs_before_download_wal", "true"},
+       {"TEST_pause_after_set_bootstrapping", "true"}}));
+
+  // Waits for all tablets to be in the specified state according to the master leader.
+  auto WaitForTabletsInState = [&](tablet::RaftGroupStatePB state) {
+    return WaitFor([&]() -> Result<bool> {
+      auto tablet_replicas = VERIFY_RESULT(itest::GetTabletsOnTsAccordingToMaster(
+          cluster_.get(), ts_to_restart->uuid(), table_->name(), 10s /* timeout */,
+          RequireTabletsRunning::kFalse));
+      if (tablet_replicas.size() != kNumTablets) {
+        return false;
+      }
+      for (auto& replica : tablet_replicas) {
+        if (replica.state() != state) {
+          return false;
+        }
+      }
+      return true;
+    }, 10s, "Wait for tablets to be in state " + RaftGroupStatePB_Name(state));
+  };
+
+  // The tablet should be under-replicated while it is remote bootstrapping.
+  ASSERT_OK(WaitForTabletsInState(tablet::RaftGroupStatePB::NOT_STARTED));
+  ASSERT_OK(CheckUnderReplicatedInPlacements(tablet_ids, {kLivePlacementUuid}));
+
+  // The tablet should be under-replicated while it is opening (local bootstrapping).
+  ASSERT_OK(cluster_->SetFlag(ts_to_restart, "TEST_pause_rbs_before_download_wal", "false"));
+  ASSERT_OK(WaitForTabletsInState(tablet::RaftGroupStatePB::BOOTSTRAPPING));
+  ASSERT_OK(CheckUnderReplicatedInPlacements(tablet_ids, {kLivePlacementUuid}));
+
+  // The tablet should not be under-replicated once bootstrapping ends.
+  ASSERT_OK(cluster_->SetFlag(ts_to_restart, "TEST_pause_after_set_bootstrapping", "false"));
+  ASSERT_OK(WaitForTabletsInState(tablet::RaftGroupStatePB::RUNNING));
+  ASSERT_OK(CheckNotUnderReplicated(tablet_ids));
+}
+
+TEST_F_EX(MasterPathHandlersItest, TestTabletUnderReplicationEndpointReadReplicas,
+    MasterPathHandlersUnderReplicationItest) {
+  // 2 read replicas, one in z0 and one in z1.
+  ASSERT_OK(yb_admin_client_->AddReadReplicaPlacementInfo("c.r.z0:1,c.r.z1:1", 2,
+      kReadReplicaPlacementUuid));
+  ASSERT_OK(AddTabletServer("z0", kReadReplicaPlacementUuid));
+  ASSERT_OK(AddTabletServer("z1", kReadReplicaPlacementUuid));
+
+  auto tablet_ids = ASSERT_RESULT(CreateTestTableAndGetTabletIds());
+  ASSERT_OK(WaitFor([&]() {
+    return CheckNotUnderReplicated(tablet_ids).ok();
+  }, 10s, "Wait for not underreplicated"));
+
+  // Should be under-replicated in only the live cluster, not the read replica.
+  cluster_->tablet_server(0)->Shutdown();
+  ASSERT_OK(WaitFor([&]() {
+    return CheckUnderReplicatedInPlacements(tablet_ids, {kLivePlacementUuid}).ok();
+  }, 3s * FLAGS_follower_unavailable_considered_failed_sec, "Wait for underreplicated in live"));
+
+  ASSERT_OK(cluster_->tablet_server(0)->Start());
+  ASSERT_OK(WaitFor([&]() {
+    return CheckNotUnderReplicated(tablet_ids).ok();
+  }, 3s * FLAGS_follower_unavailable_considered_failed_sec, "Wait for not underreplicated"));
+
+  // Should be under-replicated in only the read replica, not the live cluster.
+  cluster_->tablet_server(4)->Shutdown();
+  ASSERT_OK(WaitFor([&]() {
+    return CheckUnderReplicatedInPlacements(tablet_ids, {kReadReplicaPlacementUuid}).ok();
+  }, 3s * FLAGS_follower_unavailable_considered_failed_sec, "Wait for underreplicated in RR"));
+
+  // YBMiniClusterTestBase test-end verification will fail if the cluster is up with stopped nodes.
+  cluster_->Shutdown();
+}
 
 TEST_F_EX(MasterPathHandlersItest, TestTablePlacementInfo, MasterPathHandlersExternalItest) {
   std::shared_ptr<client::YBTable> table = CreateTestTable(/* num_tablets */ 1);
 
-  // Verify replication info is empty.
   faststring result;
   auto url = Format("/table?id=$0", table->id());
-  TestUrl(url, &result);
-  const string& result_str = result.ToString();
-  size_t pos = result_str.find("Replication Info", 0);
-  ASSERT_NE(pos, string::npos);
-  ASSERT_EQ(result_str.find("live_replicas", pos + 1), string::npos);
 
   // Verify cluster level replication info.
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("cloud.region.zone", 3, "table_uuid"));
   TestUrl(url, &result);
   const string& cluster_str = result.ToString();
-  pos = cluster_str.find("Replication Info", 0);
+  size_t pos = cluster_str.find("Replication Info", 0);
   ASSERT_NE(pos, string::npos);
   pos = cluster_str.find("placement_zone", pos + 1);
   ASSERT_NE(pos, string::npos);
@@ -743,19 +930,6 @@ class MasterPathHandlersLeaderlessITest : public MasterPathHandlersExternalItest
     }
     LOG(FATAL) << "Didn't find a tablet id for table " << table_->name().table_name();
     return "";
-  }
-
-  string GetLeaderlessTabletsString() {
-    faststring result;
-    auto url = "/tablet-replication";
-    TestUrl(url, &result);
-    const string& result_str = result.ToString();
-    size_t pos_leaderless = result_str.find("Leaderless Tablets", 0);
-    size_t pos_underreplicated = result_str.find("Underreplicated Tablets", 0);
-    CHECK_NE(pos_leaderless, string::npos);
-    CHECK_NE(pos_underreplicated, string::npos);
-    CHECK_GT(pos_underreplicated, pos_leaderless);
-    return result_str.substr(pos_leaderless, pos_underreplicated - pos_leaderless);
   }
 
   std::shared_ptr<client::YBTable> table_;
@@ -798,6 +972,49 @@ TEST_F(MasterPathHandlersLeaderlessITest, TestHeartbeatsWithoutLeaderLease) {
     string result = GetLeaderlessTabletsString();
     return result.find(tablet_id) == string::npos;
   }, 20s * kTimeMultiplier, "leaderless tablet endpoint becomes empty"));
+}
+
+TEST_F(MasterPathHandlersItest, TestLeaderlessDeletedTablet) {
+  auto table = CreateTestTable(kNumTablets);
+
+  // Prevent heartbeats from overwriting replica locations.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
+
+  auto& catalog_mgr = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto table_info = catalog_mgr.GetTableInfo(table->id());
+  auto tablets = table_info->GetTablets();
+  ASSERT_EQ(tablets.size(), kNumTablets);
+
+  // Make all tablets leaderless.
+  for (auto& tablet : tablets) {
+    auto replicas = std::make_shared<TabletReplicaMap>(*tablet->GetReplicaLocations());
+    for (auto& replica : *replicas) {
+      replica.second.role = PeerRole::FOLLOWER;
+    }
+    tablet->SetReplicaLocations(replicas);
+  }
+  auto running_tablet = tablets[0];
+  auto deleted_tablet = tablets[1];
+  auto replaced_tablet = tablets[2];
+
+  auto deleted_lock = deleted_tablet->LockForWrite();
+  deleted_lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, "");
+  deleted_lock.Commit();
+
+  auto replaced_lock = replaced_tablet->LockForWrite();
+  replaced_lock.mutable_data()->set_state(SysTabletsEntryPB::REPLACED, "");
+  replaced_lock.Commit();
+
+  // Only the RUNNING tablet should be returned in the endpoint.
+  string result = GetLeaderlessTabletsString();
+  LOG(INFO) << result;
+  ASSERT_NE(result.find(running_tablet->id()), string::npos);
+  ASSERT_EQ(result.find(deleted_tablet->id()), string::npos);
+  ASSERT_EQ(result.find(replaced_tablet->id()), string::npos);
+
+  // Shutdown cluster to prevent cluster consistency check from failing because of the edited
+  // tablet states.
+  cluster_->Shutdown();
 }
 
 }  // namespace master

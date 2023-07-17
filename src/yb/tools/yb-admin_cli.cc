@@ -1966,8 +1966,18 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClient* client) {
           kMinus),
       [client](const CLIArguments& args) -> Status {
         RETURN_NOT_OK(CheckArgumentsCount(args.size(), 1, 3));
-        vector<CDCStreamId> stream_ids;
-        boost::split(stream_ids, args[0], boost::is_any_of(","));
+        vector<string> stream_ids_str;
+        boost::split(stream_ids_str, args[0], boost::is_any_of(","));
+        vector<xrepl::StreamId> stream_ids;
+        stream_ids.reserve(stream_ids_str.size());
+        for (const auto& stream_id_str : stream_ids_str) {
+          auto stream_id_result = xrepl::StreamId::FromString(stream_id_str);
+          if (!stream_id_result.ok()) {
+            return ClusterAdminCli::kInvalidArguments;
+          }
+          stream_ids.emplace_back(std::move(*stream_id_result));
+        }
+
         string target_time;
         if (args.size() == 2) {
           target_time = args[1];

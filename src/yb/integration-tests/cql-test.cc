@@ -56,6 +56,7 @@ DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 
+DECLARE_int32(cql_unprepared_stmts_entries_limit);
 DECLARE_int32(partitions_vtable_cache_refresh_secs);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_bool(disable_truncate_table);
@@ -815,23 +816,84 @@ TEST_F(CqlTest, TestCQLPreparedStmtStats) {
   ASSERT_OK(r.ExtractObjectArray(r.root(), "prepared_statements", &stmt_stats));
   ASSERT_EQ(2, stmt_stats.size());
 
-  const rapidjson::Value* insert_stat = stmt_stats[0];
+  const rapidjson::Value* insert_stat = stmt_stats[1];
   string insert_query;
   ASSERT_OK(r.ExtractString(insert_stat, "query", &insert_query));
   ASSERT_EQ("INSERT INTO t1 (i, j) VALUES (?, ?)", insert_query);
 
   int64 insert_num_calls = 0;
-  ASSERT_OK(r.ExtractInt64(insert_stat, "num_calls", &insert_num_calls));
+  ASSERT_OK(r.ExtractInt64(insert_stat, "calls", &insert_num_calls));
   ASSERT_EQ(10, insert_num_calls);
 
-  const rapidjson::Value* select_stat = stmt_stats[1];
+  const rapidjson::Value* select_stat = stmt_stats[0];
   string select_query;
   ASSERT_OK(r.ExtractString(select_stat, "query", &select_query));
   ASSERT_EQ("SELECT * FROM t1 WHERE i = ?", select_query);
 
   int64 select_num_calls = 0;
-  ASSERT_OK(r.ExtractInt64(select_stat, "num_calls", &select_num_calls));
+  ASSERT_OK(r.ExtractInt64(select_stat, "calls", &select_num_calls));
   ASSERT_EQ(5, select_num_calls);
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(CqlTest, TestCQLUnpreparedStmtStats) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  std::vector<Endpoint> addrs;
+  CHECK_OK(cql_server_->web_server()->GetBoundAddresses(&addrs));
+  CHECK_EQ(addrs.size(), 1);
+
+  FLAGS_cql_unprepared_stmts_entries_limit = 205;
+  const string create_table_stmt = "CREATE TABLE t1 (i INT PRIMARY KEY, j INT)";
+  const string insert_stmt_1 = "INSERT INTO t1 (i, j) VALUES (1,11)";
+  const string insert_stmt_2 = "INSERT INTO t1 (i, j) VALUES (2,22)";
+  const string select_stmt_1 = "SELECT j FROM t1 WHERE i = 1";
+  const string select_stmt_2 = "SELECT j FROM t1 WHERE i = 2";
+
+  LOG(INFO) << "Create table";
+  ASSERT_OK(session.ExecuteQuery(create_table_stmt));
+
+  LOG(INFO) << "Insert statements";
+  ASSERT_OK(session.ExecuteQuery(insert_stmt_1));
+  ASSERT_OK(session.ExecuteQuery(insert_stmt_2));
+
+  LOG(INFO) << "Select statements";
+  const int num_select_queries = 100;
+  for (int i = 0; i < num_select_queries; i++) {
+    // We alternately execute the two select queries.
+    ASSERT_OK(session.ExecuteQuery(i&1 ? select_stmt_1 : select_stmt_2));
+  }
+
+  EasyCurl curl;
+  faststring buf;
+  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addrs[0])), &buf));
+
+  JsonReader r(buf.ToString());
+  ASSERT_OK(r.Init());
+  std::vector<const rapidjson::Value*> stmt_stats;
+  ASSERT_OK(r.ExtractObjectArray(r.root(), "unprepared_statements", &stmt_stats));
+
+  string query_text;
+  int64 obtained_num_calls = 0;
+  for (auto const& stmt_stat : stmt_stats) {
+    ASSERT_OK(r.ExtractString(stmt_stat, "query", &query_text));
+    if (query_text == create_table_stmt) {
+      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      ASSERT_EQ(1, obtained_num_calls);
+    } else if (query_text == insert_stmt_1) {
+      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      ASSERT_EQ(1, obtained_num_calls);
+    } else if (query_text == insert_stmt_2) {
+      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      ASSERT_EQ(1, obtained_num_calls);
+    } else if (query_text == select_stmt_1) {
+      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      ASSERT_EQ(num_select_queries/2, obtained_num_calls);
+    } else if (query_text == select_stmt_2) {
+      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      ASSERT_EQ(num_select_queries/2, obtained_num_calls);
+    }
+  }
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }

@@ -205,6 +205,16 @@ export const CreateConfigModal = ({
     formikActions.setFieldValue('tableUUIDs', tableUUIDs);
   };
 
+  const handleTransactionalConfigCheckboxClick = (
+    isTransactionalConfig: boolean,
+    formikActions: FormikActions<CreateXClusterConfigFormValues>
+  ) => {
+    if (isTableSelectionValidated) {
+      setIsTableSelectionValidated(false);
+    }
+    formikActions.setFieldValue('isTransactionalConfig', !isTransactionalConfig);
+  };
+
   const resetModalState = () => {
     setCurrentStep(FIRST_FORM_STEP);
     setBootstrapRequiredTableUUIDs([]);
@@ -218,24 +228,8 @@ export const CreateConfigModal = ({
     onHide();
   };
 
-  /**
-   * Wrapper around setFieldValue from formik.
-   * Reset `isTableSelectionValidated` to false if changing
-   * a validated table selection.
-   */
-  const setTableUUIDs = (
-    tableUUIDs: string[],
-    formikActions: FormikActions<CreateXClusterConfigFormValues>
-  ) => {
-    const { setFieldValue } = formikActions;
-    if (isTableSelectionValidated) {
-      setIsTableSelectionValidated(false);
-    }
-    setFieldValue('tableUUIDs', tableUUIDs);
-  };
-
   const resetTableSelection = (formikActions: FormikActions<CreateXClusterConfigFormValues>) => {
-    setTableUUIDs([], formikActions);
+    setSelectedTableUUIDs([], formikActions);
     setSelectedKeyspaces([]);
     setFormWarnings((formWarnings) => {
       const { tableUUIDs, ...newformWarnings } = formWarnings;
@@ -421,7 +415,14 @@ export const CreateConfigModal = ({
                     setSelectedTableUUIDs: (tableUUIDs: string[]) =>
                       setSelectedTableUUIDs(tableUUIDs, formik.current),
                     tableType: tableType,
+                    handleTransactionalConfigCheckboxClick: () => {
+                      handleTransactionalConfigCheckboxClick(
+                        values.isTransactionalConfig,
+                        formik.current
+                      );
+                    },
                     isFixedTableType: false,
+                    isTransactionalConfig: values.isTransactionalConfig,
                     setTableType,
                     selectedKeyspaces,
                     setSelectedKeyspaces,

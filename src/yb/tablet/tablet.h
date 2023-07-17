@@ -848,6 +848,27 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   docdb::SchemaPackingProvider& GetSchemaPackingProvider();
 
+  // 1. Pauses new read/write operations that block RocksDB shutdown and wait for all of those that
+  // are pending to complete.
+  // 2. Starts RocksDB shutdown (that might abort some of the rest of read/write operations).
+  // 3. If abort_ops is specified, aborts pending RocksDB operations that are abortable.
+  // 4. Pauses new read/write operations and wait for all of those that are pending to complete.
+  // Returns TabletScopedRWOperationPauses that are preventing new read/write operations from being
+  // started.
+  TabletScopedRWOperationPauses StartShutdownRocksDBs(
+      DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops,
+      Stop stop = Stop::kFalse);
+
+  // Returns DB paths for destructed in-memory RocksDBs objects, so caller can delete on-disk
+  // directories if needed.
+  std::vector<std::string> CompleteShutdownRocksDBs(
+      const TabletScopedRWOperationPauses& ops_pauses);
+
+  Status OpenKeyValueTablet();
+
+  // Lock used to serialize the creation of RocksDB checkpoints.
+  mutable std::mutex create_checkpoint_lock_;
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -858,7 +879,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   FRIEND_TEST(TestTablet, TestGetLogRetentionSizeForIndex);
 
-  Status OpenKeyValueTablet();
   virtual Status CreateTabletDirectories(const std::string& db_dir, FsManager* fs);
 
   std::vector<ColumnId> GetColumnSchemasForIndex(
@@ -886,22 +906,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   ScopedRWOperationPause PauseReadWriteOperations(
       BlockingRocksDbShutdownStart blocking_rocksdb_shutdown_start, Stop stop = Stop::kFalse);
 
-  // 1. Pauses new read/write operations that block RocksDB shutdown and wait for all of those that
-  // are pending to complete.
-  // 2. Starts RocksDB shutdown (that might abort some of the rest of read/write operations).
-  // 3. If abort_ops is specified, aborts pending RocksDB operations that are abortable.
-  // 4. Pauses new read/write operations and wait for all of those that are pending to complete.
-  // Returns TabletScopedRWOperationPauses that are preventing new read/write operations from being
-  // started.
-  TabletScopedRWOperationPauses StartShutdownRocksDBs(
-      DisableFlushOnShutdown disable_flush_on_shutdown, AbortOps abort_ops,
-      Stop stop = Stop::kFalse);
-
-  // Returns DB paths for destructed in-memory RocksDBs objects, so caller can delete on-disk
-  // directories if needed.
-  std::vector<std::string> CompleteShutdownRocksDBs(
-      const TabletScopedRWOperationPauses& ops_pauses);
-
   // Attempt to delete on-disk RocksDBs from all provided db_paths, even if errors are encountered.
   // Return the first error encountered.
   Status DeleteRocksDBs(const std::vector<std::string>& db_paths);
@@ -928,8 +932,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void SyncRestoringOperationFilter(ResetSplit reset_split) EXCLUDES(operation_filters_mutex_);
   void UnregisterOperationFilterUnlocked(OperationFilter* filter)
     REQUIRES(operation_filters_mutex_);
-
-  std::shared_ptr<dockv::SchemaPackingStorage> PrimarySchemaPackingStorage();
 
   Status AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id);
 
@@ -981,9 +983,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   scoped_refptr<server::Clock> clock_;
 
   MvccManager mvcc_;
-
-  // Lock used to serialize the creation of RocksDB checkpoints.
-  mutable std::mutex create_checkpoint_lock_;
 
   enum State {
     kInitialized,

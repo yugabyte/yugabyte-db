@@ -46,7 +46,6 @@ set(CQLSERVER_SRCS
   cql_server_options.cc
   cql_service.cc
   cql_statement.cc
-  statement_metrics.cc
   statements-path-handler.cc
   system_query_cache.cc
 )

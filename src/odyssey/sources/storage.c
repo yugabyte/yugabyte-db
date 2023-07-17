@@ -279,7 +279,7 @@ void od_storage_watchdog_watch(void *arg)
 
 	for (;;) {
 		/* attach client to some route */
-		status = od_router_attach(router, watchdog_client, false);
+		status = od_router_attach(router, watchdog_client, false, watchdog_client);
 		od_debug(&instance->logger, "watchdog", watchdog_client, NULL,
 			 "attaching wd client to backend connection status: %s",
 			 od_router_status_to_str(status));

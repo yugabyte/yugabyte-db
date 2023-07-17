@@ -110,7 +110,9 @@ class CatalogManagerIf {
   virtual Status GetYsqlCatalogVersion(
       uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
   virtual Status GetYsqlAllDBCatalogVersions(
-      bool use_cache, std::map<uint32_t, std::pair<uint64_t, uint64_t>>* versions) = 0;
+      bool use_cache,
+      DbOidToCatalogVersionMap* versions,
+      uint64_t* fingerprint) = 0;
   virtual Status GetYsqlDBCatalogVersion(
       uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
 
@@ -141,6 +143,8 @@ class CatalogManagerIf {
   virtual Result<ReplicationInfoPB> GetTableReplicationInfo(
       const ReplicationInfoPB& table_replication_info,
       const TablespaceId& tablespace_id) = 0;
+
+  virtual Result<ReplicationInfoPB> GetTableReplicationInfo(const TableInfoPtr& table) = 0;
 
   virtual std::vector<std::shared_ptr<server::MonitoredTask>> GetRecentJobs() = 0;
 
@@ -218,6 +222,9 @@ class CatalogManagerIf {
 
   virtual Status ListCDCStreams(
       const ListCDCStreamsRequestPB* req, ListCDCStreamsResponsePB* resp) = 0;
+
+  virtual Status IsObjectPartOfXRepl(
+      const IsObjectPartOfXReplRequestPB* req, IsObjectPartOfXReplResponsePB* resp) = 0;
 
   virtual Status GetCDCDBStreamInfo(
     const GetCDCDBStreamInfoRequestPB* req, GetCDCDBStreamInfoResponsePB* resp) = 0;

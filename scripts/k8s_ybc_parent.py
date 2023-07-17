@@ -45,7 +45,7 @@ class YBC:
 
     def quote_cmd_line_for_bash(self, cmd_line):
         if not isinstance(cmd_line, list) and not isinstance(cmd_line, tuple):
-            raise BackupException("Expected a list/tuple, got: [[ {} ]]".format(cmd_line))
+            raise Exception("Expected a list/tuple, got: [[ {} ]]".format(cmd_line))
         return ' '.join([pipes.quote(str(arg)) for arg in cmd_line])
 
     def move_contents(self, root_src_dir, root_dst_dir):

@@ -163,7 +163,10 @@ public class Audit extends Model {
     PerformanceAdvisorSettings,
 
     @EnumValue("PerformanceAdvisorRun")
-    PerformanceAdvisorRun
+    PerformanceAdvisorRun,
+
+    @EnumValue("Role")
+    Role
   }
 
   public enum ActionType {

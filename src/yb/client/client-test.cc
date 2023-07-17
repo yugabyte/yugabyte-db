@@ -1642,18 +1642,18 @@ TEST_F(ClientTest, TestGetTableSchemaByIdMissingTable) {
 }
 
 TEST_F(ClientTest, TestCreateCDCStreamAsync) {
-  std::promise<Result<CDCStreamId>> promise;
+  std::promise<Result<xrepl::StreamId>> promise;
   std::unordered_map<std::string, std::string> options;
   client_->CreateCDCStream(
       client_table_.table()->id(), options, cdc::StreamModeTransactional::kFalse,
       [&promise](const auto& stream) { promise.set_value(stream); });
   auto stream = promise.get_future().get();
   ASSERT_OK(stream);
-  ASSERT_FALSE(stream->empty());
+  ASSERT_FALSE(stream->IsNil());
 }
 
 TEST_F(ClientTest, TestCreateCDCStreamMissingTable) {
-  std::promise<Result<CDCStreamId>> promise;
+  std::promise<Result<xrepl::StreamId>> promise;
   std::unordered_map<std::string, std::string> options;
   client_->CreateCDCStream(
       "MissingTableId", options, cdc::StreamModeTransactional::kFalse,
@@ -1678,7 +1678,7 @@ TEST_F(ClientTest, TestDeleteCDCStreamAsync) {
 TEST_F(ClientTest, TestDeleteCDCStreamMissingId) {
   // Try to delete a non-existent CDC stream.
   Synchronizer sync;
-  client_->DeleteCDCStream("MissingStreamId", sync.AsStatusCallback());
+  client_->DeleteCDCStream(xrepl::StreamId::GenerateRandom(), sync.AsStatusCallback());
   Status s = sync.Wait();
   ASSERT_TRUE(TableNotFound(s)) << s;
 }
@@ -2303,6 +2303,13 @@ TEST_F(ClientTest, TestReadFromFollower) {
   const YBTableName kReadFromFollowerTable(YQL_DATABASE_CQL, "TestReadFromFollower");
   TableHandle table;
   ASSERT_NO_FATALS(CreateTable(kReadFromFollowerTable, 1, &table));
+  // Followers which haven't heard from the leader will have last_replicated_ as kMin.
+  // These will return kMin for SafeTimeFromFollowers, causing the follower read to be
+  // rejected due to staleness. To avoid this situation, we'll wait until all followers
+  // have at least 1 op from the leader.
+  ASSERT_NO_FATALS(InsertTestRows(table, 1));
+  ASSERT_OK(WaitAllReplicasSynchronizedWithLeader(cluster_.get(), CoarseMonoClock::Now() + 5s));
+
   ASSERT_NO_FATALS(InsertTestRows(table, FLAGS_test_scan_num_rows));
 
   // Find the followers.
@@ -2354,6 +2361,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
       EXPECT_OK(tserver_proxy->Read(req, &resp, &controller));
 
       // Verify response.
+      LOG_IF(INFO, resp.has_error()) << "Got response " << yb::ToString(resp);
       EXPECT_FALSE(resp.has_error());
       EXPECT_EQ(1, resp.ql_batch_size());
       const QLResponsePB &ql_resp = resp.ql_batch(0);

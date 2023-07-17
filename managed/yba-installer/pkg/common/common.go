@@ -102,7 +102,7 @@ func createUpgradeDirs() {
 // Copies over necessary files for all services from yba_installer_full to the GetSoftwareRoot()
 func copyBits(vers string) {
 	yugabundleBinary := "yugabundle-" + GetVersion() + "-centos-x86_64.tar.gz"
-	neededFiles := []string{GoBinaryName, versionMetadataJSON, yugabundleBinary,
+	neededFiles := []string{GoBinaryName, VersionMetadataJSON, yugabundleBinary,
 		GetJavaPackagePath(), GetPostgresPackagePath()}
 
 	for _, file := range neededFiles {

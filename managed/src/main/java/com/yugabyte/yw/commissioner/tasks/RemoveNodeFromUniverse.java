@@ -189,7 +189,7 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
           masterReachable);
 
       // Update the DNS entry for this universe.
-      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
           .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
 
       // Update Node State to Removed

@@ -106,7 +106,7 @@ message LockInfoPB {
 
   optional uint32 column_id = 3;
 
-  optional bool is_full_pk = 4;
+  optional bool multiple_rows_locked = 4;
 
   optional fixed64 wait_start_ht = 5;
 
@@ -133,4 +133,8 @@ message TabletLockInfoPB {
 
   // Awaiting lock info of single shard waiters.
   repeated TransactionLockInfoPB single_shard_waiters = 4;
+
+  // Leader term of the peer populating the response. Used to filter out duplicate responses for
+  // the same tablet and ensure we pick the most recent results.
+  optional uint64 term = 5;
 }

@@ -240,6 +240,10 @@ class TransactionParticipant : public TransactionStatusManager {
 
   const TabletId& tablet_id() const override;
 
+  void RecordConflictResolutionKeysScanned(int64_t num_keys) override;
+
+  void RecordConflictResolutionScanLatency(MonoDelta latency) override;
+
   size_t TEST_GetNumRunningTransactions() const;
 
   // Returns pair of number of intents and number of transactions.

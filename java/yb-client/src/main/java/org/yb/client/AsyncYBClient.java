@@ -61,7 +61,6 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.epoll.EpollChannelOption;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
@@ -1455,6 +1454,25 @@ public class AsyncYBClient implements AutoCloseable {
     return sendRpcToTablet(request);
   }
 
+  public Deferred<CreateSnapshotScheduleResponse> createSnapshotSchedule(
+      YQLDatabase databaseType,
+      String keyspaceName,
+      String keyspaceId,
+      long retentionInSecs,
+      long timeIntervalInSecs) {
+    checkIsClosed();
+    CreateSnapshotScheduleRequest request =
+        new CreateSnapshotScheduleRequest(
+            this.masterTable,
+            databaseType,
+            keyspaceName,
+            keyspaceId,
+            retentionInSecs,
+            timeIntervalInSecs);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
   public Deferred<DeleteSnapshotScheduleResponse> deleteSnapshotSchedule(
       UUID snapshotScheduleUUID) {
     checkIsClosed();
@@ -1479,6 +1497,14 @@ public class AsyncYBClient implements AutoCloseable {
     RestoreSnapshotScheduleRequest request =
         new RestoreSnapshotScheduleRequest(this.masterTable, snapshotScheduleUUID,
                                             restoreTimeInMillis);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<ListSnapshotRestorationsResponse> listSnapshotRestorations(UUID restorationUUID) {
+    checkIsClosed();
+    ListSnapshotRestorationsRequest request =
+        new ListSnapshotRestorationsRequest(this.masterTable, restorationUUID);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }

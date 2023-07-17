@@ -16,7 +16,7 @@
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
-#include "yb/integration-tests/xcluster_ysql_test_base.h"
+#include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
@@ -130,12 +130,14 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
     ASSERT_OK(GetCDCStreamForTable(producer_table1_->id(), &stream_resp));
     ASSERT_EQ(stream_resp.streams_size(), 1);
     ASSERT_EQ(stream_resp.streams(0).table_id().Get(0), producer_table1_->id());
-    stream_ids_.push_back(stream_resp.streams(0).stream_id());
+    stream_ids_.emplace_back(
+        ASSERT_RESULT(xrepl::StreamId::FromString(stream_resp.streams(0).stream_id())));
 
     ASSERT_OK(GetCDCStreamForTable(producer_table2_->id(), &stream_resp));
     ASSERT_EQ(stream_resp.streams_size(), 1);
     ASSERT_EQ(stream_resp.streams(0).table_id().Get(0), producer_table2_->id());
-    stream_ids_.push_back(stream_resp.streams(0).stream_id());
+    stream_ids_.emplace_back(
+        ASSERT_RESULT(xrepl::StreamId::FromString(stream_resp.streams(0).stream_id())));
 
     ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), kTabletCount + 1));
     ASSERT_OK(PostReplicationSetup());
@@ -245,7 +247,7 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
   }
 
  protected:
-  std::vector<std::string> stream_ids_;
+  std::vector<xrepl::StreamId> stream_ids_;
   std::shared_ptr<client::YBTable> producer_table1_, producer_table2_;
   std::shared_ptr<client::YBTable> consumer_table1_, consumer_table2_;
   std::vector<TabletId> producer_tablet_ids_;
@@ -386,8 +388,8 @@ class XClusterConsistencyTestWithBootstrap : public XClusterConsistencyTest {
     for (auto& bootstrap_id : bootstrap_ids_) {
       auto it = std::find(stream_ids_.begin(), stream_ids_.end(), bootstrap_id);
       ASSERT_TRUE(it != stream_ids_.end())
-          << "Bootstrap Ids " << JoinStrings(bootstrap_ids_, ",") << " and Stream Ids "
-          << JoinStrings(stream_ids_, ",") << " should match";
+          << "Bootstrap Ids " << yb::ToString(bootstrap_ids_) << " and Stream Ids "
+          << yb::ToString(stream_ids_) << " should match";
     }
   }
 
@@ -417,7 +419,7 @@ class XClusterConsistencyTestWithBootstrap : public XClusterConsistencyTest {
         bootstrap_ids_, opts);
   }
 
-  std::vector<std::string> bootstrap_ids_;
+  std::vector<xrepl::StreamId> bootstrap_ids_;
 };
 
 // Test Setup with Bootstrap works.
