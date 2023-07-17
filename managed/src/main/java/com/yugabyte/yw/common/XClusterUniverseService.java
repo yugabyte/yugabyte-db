@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -15,9 +16,11 @@ import com.yugabyte.yw.common.services.config.YbClientConfig;
 import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -36,8 +39,10 @@ import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.yb.client.GetReplicationStatusResponse;
 import org.yb.client.IsBootstrapRequiredResponse;
 import org.yb.client.YBClient;
+import org.yb.master.MasterReplicationOuterClass.ReplicationStatusPB;
 
 @Singleton
 @Slf4j
@@ -257,7 +262,7 @@ public class XClusterUniverseService {
       boolean ignoreErrors)
       throws Exception {
     log.debug(
-        "XClusterConfigTaskBase.isBootstrapRequired is called with xClusterConfig={}, "
+        "XClusterUniverseService.isBootstrapRequired is called with xClusterConfig={}, "
             + "tableIds={}, and universeUuid={}",
         xClusterConfig,
         tableIds,
@@ -416,5 +421,70 @@ public class XClusterUniverseService {
       throws Exception {
     return isBootstrapRequired(
         tableIds, xClusterConfig, sourceUniverseUuid, false /* ignoreErrors */);
+  }
+
+  public List<ReplicationStatusPB> getReplicationStatus(XClusterConfig xClusterConfig) {
+    log.debug(
+        "XClusterUniverseService.getReplicationStatus is called with xClusterConfig={}",
+        xClusterConfig);
+
+    Set<String> streamIds =
+        xClusterConfig.getTableDetails().stream()
+            .filter(XClusterTableConfig::isReplicationSetupDone)
+            .map(XClusterTableConfig::getStreamId)
+            .collect(Collectors.toSet());
+
+    // If there is no table in replication, there is no corresponding replication group.
+    if (streamIds.isEmpty()) {
+      return Collections.emptyList();
+    }
+
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+    String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
+    String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
+    YbClientConfig clientConfig =
+        ybClientConfigFactory.create(targetUniverseMasterAddresses, targetUniverseCertificate);
+    try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
+      GetReplicationStatusResponse resp =
+          client.getReplicationStatus(xClusterConfig.getReplicationGroupName());
+      if (resp.hasError()) {
+        throw new RuntimeException(
+            String.format(
+                "GetReplicationStatus RPC call with %s has errors in " + "xCluster config %s: %s",
+                xClusterConfig.getReplicationGroupName(), xClusterConfig, resp.errorMessage()));
+      }
+      List<ReplicationStatusPB> statuses = resp.getStatuses();
+      log.debug(
+          "GetReplicationStatus RPC call with {} returned {}",
+          xClusterConfig.getReplicationGroupName(),
+          statuses);
+
+      Set<String> streamIdsWithStatus =
+          statuses.stream()
+              .map(replicationStatus -> replicationStatus.getStreamId().toStringUtf8())
+              .collect(Collectors.toSet());
+      Set<String> notFoundStreamIds = Sets.difference(streamIds, streamIdsWithStatus);
+      Set<String> extraStreamIds = Sets.difference(streamIdsWithStatus, streamIds);
+      if (!notFoundStreamIds.isEmpty() || !extraStreamIds.isEmpty()) {
+        log.warn(
+            "GetReplicationStatus RPC call does not have streamIds {} and includes extra "
+                + "streamIds {}; please sync",
+            notFoundStreamIds,
+            extraStreamIds);
+        if (confGetter.getConfForScope(
+            targetUniverse, UniverseConfKeys.ensureSyncGetReplicationStatus)) {
+          throw new RuntimeException(
+              String.format(
+                  "GetReplicationStatus RPC call does not have streamIds %s and includes "
+                      + "extra streamIds %s; please sync",
+                  notFoundStreamIds, extraStreamIds));
+        }
+      }
+
+      return statuses;
+    } catch (Exception e) {
+      log.error("XClusterUniverseService.GetReplicationStatus hit error : {}", e.getMessage());
+      throw new RuntimeException(e);
+    }
   }
 }
