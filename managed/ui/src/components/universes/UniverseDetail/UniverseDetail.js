@@ -96,7 +96,7 @@ class UniverseDetail extends Component {
 
   isEditDBSettingsEnabled = () => {
     const { featureFlags } = this.props;
-    return featureFlags.test.enableEditDBSettings || featureFlags.released.enableEditDBSettings;
+    return featureFlags.test.enableConfigureDBApi || featureFlags.released.enableConfigureDBApi;
   };
 
   componentDidMount() {

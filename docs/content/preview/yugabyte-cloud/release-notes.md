@@ -1,19 +1,34 @@
 ---
-title: What's new in YugabyteDB Managed
-linkTitle: What's new
-description: YugabyteDB Managed release notes and known issues.
+title: Change log for YugabyteDB Managed
+headerTitle: What's new in YugabyteDB Managed
+linkTitle: Change log
+description: YugabyteDB Managed Change Log and known issues.
 headcontent: New features and known issues
 image: /images/section_icons/index/quick_start.png
-layout: single
+menu:
+  preview_yugabyte-cloud:
+    identifier: yugabytedb-managed-releases
+    parent: yugabytedb-managed
+    weight: 22
 type: docs
 ---
 
 On this page:
 
-[Releases](#releases) \
+[Change log](#change-log) \
 [Known issues](#known-issues)
 
-## Releases
+## Change log
+
+### July 13, 2023
+
+**Database**
+
+- Ability to choose from different tracks in the [stable release series](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) when creating a dedicated cluster. You can choose one of the following tracks:
+  - Innovation track - has more frequent updates for faster access to new features. Currently features YugabyteDB version 2.16.5.0.
+  - Production track - has a slower update cadence and features only select stable release builds. Currently features YugabyteDB version 2.14.10.2.
+
+  After a cluster is created, it is upgraded with releases from the release track selected at creation. Clusters previously on the Stable track running 2.14 are now on the Production track, while clusters running 2.16 are now on the Innovation track. Sandbox clusters continue to use the Preview release track.
 
 ### July 3, 2023
 
