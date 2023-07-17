@@ -39,7 +39,7 @@ To connect your YugabyteDB database to Kinesis:
     ```
 
 - Write a Java application which will use the Debezium connector to receive CDC data from YugabyteDB and write to Kinesis Data Streams.
-Code snippets of a sample code is as follows:
+The following code snippet shows an example implementation:
 
     ```java
     // Build Kinesis client
