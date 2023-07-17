@@ -191,7 +191,7 @@ Ensure that YugabyteDB is up and running. To install YugabyteDB on your cloud vi
 1. Enable CDC using yb-admin. The following command enables CDC on all the schemas and tables in the YugabyteDB database.
 
     ```sh
-    ./bin/yb-admin — master_addresses <master_addresses>:7100 create_change_data_stream ysql.yugabyte
+    ./yb-admin -master_addresses 10.37.1.119:7100,10.37.1.127:7100,10.37.1.89:7100 create_change_data_stream ysql.yugabyte -certs_dir_name /home/yugabyte/yugabyte-tls-config/
     ```
 
     If you have a multi-node YugabyteDB setup, you need to provide a comma-separated list of **host:port** values of both the leader and the follower nodes as the `master_addresses` argument.
