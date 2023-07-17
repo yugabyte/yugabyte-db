@@ -752,4 +752,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Timeout in secs for YSQL queries",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ensureSyncGetReplicationStatus =
+      new ConfKeyInfo<>(
+          "yb.xcluster.ensure_sync_get_replication_status",
+          ScopeType.UNIVERSE,
+          "Whether to check YBA xCluster object is in sync with DB replication group",
+          "It ensures that the YBA XCluster object for tables that are in replication is "
+              + "in sync with replication group in DB. If they are not in sync and this is true, "
+              + "getting the xCluster object will throw an exception and the user has to resync "
+              + "the xCluster config.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

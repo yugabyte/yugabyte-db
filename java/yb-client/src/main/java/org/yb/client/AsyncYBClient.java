@@ -118,6 +118,7 @@ import org.yb.master.MasterClientOuterClass;
 import org.yb.master.MasterClientOuterClass.GetTableLocationsResponsePB;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterReplicationOuterClass;
+import org.yb.master.MasterReplicationOuterClass.ReplicationStatusPB;
 import org.yb.master.MasterTypes.MasterErrorPB;
 import org.yb.util.*;
 
@@ -1327,6 +1328,23 @@ public class AsyncYBClient implements AutoCloseable {
     checkIsClosed();
     IsBootstrapRequiredRequest request =
         new IsBootstrapRequiredRequest(this.masterTable, tableIdsStreamIdMap);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * It returns the replication status of the replication streams.
+   *
+   * @param replicationGroupName A string specifying a specific replication group; if null,
+   *                             all replication streams will be included in the response
+   * @return A deferred object that yields a {@link GetReplicationStatusResponse} which contains
+   *         a list of {@link ReplicationStatusPB} objects
+   */
+  public Deferred<GetReplicationStatusResponse> getReplicationStatus(
+        @Nullable String replicationGroupName) {
+    checkIsClosed();
+    GetReplicationStatusRequest request =
+        new GetReplicationStatusRequest(this.masterTable, replicationGroupName);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }
