@@ -32,7 +32,7 @@ To add YugabyteDB as a source in Hevo, create a [Pipeline](https://docs.hevodata
 1. Under **Select an Ingestion Mode**, choose **Table**. You can also choose **Custom SQL**, in which case you also need to provide the actual SQL to fetch data from your tables. **Logical Replication** is not supported.
 1. Provide the database and schema name where the table data is present and other connection details.
 1. Select the tables which you want to ingest into Hevo.
-1. Select a value for the "Query Mode". If your table has an incrementing column and a timestamp column which gets updated for updates, you can choose "Change Data Capture". The mode "xmin" is not supported in YugabyteDB.
+1. Select a value for the **Query Mode**. If your table has an incrementing column and a timestamp column which gets updated for updates, you can choose **Change Data Capture**. **xmin** is not supported in YugabyteDB.
 1. Select and configure a destination as per your requirement.
 
 After the pipeline is created, data from your YugabyteDB cluster gets ingested into the destination via the Hevo pipeline.
