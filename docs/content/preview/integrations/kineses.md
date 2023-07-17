@@ -1,5 +1,5 @@
 ---
-title: Kinesis Data Stream
+title: Kinesis Data Streams
 linkTitle: Kinesis Data Stream
 description: Use Kinesis Data Stream with YSQL API
 aliases:
