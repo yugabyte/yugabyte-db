@@ -29,7 +29,7 @@ To add YugabyteDB as a source in [Pipeline](https://docs.hevodata.com/pipelines/
 
    ![pipeline](/images/section_icons/develop/ecosystem/hevodata-setup.png)
 
-1. Select "Table" as the "Ingestion Mode" for YugabyteDB. Custom SQL can also be opted in which case, you also need to provide the actual SQL to fetch data from your tables. "Logical Replication" is not supported.
+1. Under **Select an Ingestion Mode**, choose **Table**. You can also choose **Custom SQL**, in which case you also need to provide the actual SQL to fetch data from your tables. **Logical Replication** is not supported.
 1. Provide the database and schema name where the table data is present and other connection details.
 1. Select the tables which you want to ingest into Hevo.
 1. Select a value for the "Query Mode". If your table has an incrementing column and a timestamp column which gets updated for updates, you can choose "Change Data Capture". The mode "xmin" is not supported in YugabyteDB.
