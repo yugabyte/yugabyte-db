@@ -619,13 +619,13 @@
     showSection = true
     newTab = true
 
-[[preview_yugabyte-cloud]]
-  name = "What's New"
-  weight = 4
-  identifier = "yugabytedb-managed-releases"
-  url = "/preview/yugabyte-cloud/release-notes/"
-  [preview_yugabyte-cloud.params]
-    showSection = true
+# [[preview_yugabyte-cloud]]
+#   name = "What's New"
+#   weight = 4
+#   identifier = "yugabytedb-managed-releases"
+#   url = "/preview/yugabyte-cloud/release-notes/"
+#   [preview_yugabyte-cloud.params]
+#     showSection = true
 
 ########## Menus for stable
 

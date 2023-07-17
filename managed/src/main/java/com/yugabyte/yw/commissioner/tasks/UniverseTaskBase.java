@@ -768,6 +768,28 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       String ycqlPassword,
       String ycqlCurrentPassword,
       String ycqlUserName) {
+    return createChangeAdminPasswordTask(
+        primaryCluster,
+        ysqlPassword,
+        ysqlCurrentPassword,
+        ysqlUserName,
+        ysqlDbName,
+        ycqlPassword,
+        ycqlCurrentPassword,
+        ycqlUsername,
+        false /* validateCurrentPassword */);
+  }
+
+  public SubTaskGroup createChangeAdminPasswordTask(
+      Cluster primaryCluster,
+      String ysqlPassword,
+      String ysqlCurrentPassword,
+      String ysqlUserName,
+      String ysqlDbName,
+      String ycqlPassword,
+      String ycqlCurrentPassword,
+      String ycqlUserName,
+      boolean validateCurrentPassword) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("ChangeAdminPassword");
     ChangeAdminPassword.Params params = new ChangeAdminPassword.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
@@ -779,6 +801,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.ycqlUserName = ycqlUserName;
     params.ysqlUserName = ysqlUserName;
     params.ysqlDbName = ysqlDbName;
+    params.validateCurrentPassword = validateCurrentPassword;
     ChangeAdminPassword task = createTask(ChangeAdminPassword.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);

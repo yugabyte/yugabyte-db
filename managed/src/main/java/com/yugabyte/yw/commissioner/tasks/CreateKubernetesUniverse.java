@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Provider;
@@ -89,6 +90,8 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       }
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      KubernetesOperatorStatusUpdater.createYBUniverseEventStatus(
+          universe, getName(), getUserTaskUUID());
 
       // Set all the in-memory node names first.
       setNodeNames(universe);
@@ -213,9 +216,9 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       th = t;
       throw t;
     } finally {
-      updateYBUniverseStatus(getUniverse(), th);
+      KubernetesOperatorStatusUpdater.updateYBUniverseStatus(
+          getUniverse(), getName(), getUserTaskUUID(), th);
       unlockUniverseForUpdate();
-      updateYBUniverseStatusAfterUnlock();
     }
     log.info("Finished {} task.", getName());
   }

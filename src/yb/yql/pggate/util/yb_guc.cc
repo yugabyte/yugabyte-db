@@ -33,6 +33,8 @@ bool yb_pushdown_strict_inequality = true;
 
 bool yb_pushdown_is_not_null = true;
 
+bool yb_enable_pg_locks = true;
+
 bool yb_run_with_explain_analyze = false;
 
 // If this is set in the user's session to a positive value, it will supersede the gflag
