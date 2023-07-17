@@ -330,6 +330,15 @@ SELECT * FROM cypher('access',$$ MATCH ()-[e*]->() RETURN e[0].arry[2], e[1].arr
 
 SELECT drop_graph('access', true);
 
+-- issue 1043
+SELECT create_graph('issue_1043');
+SELECT * FROM cypher('issue_1043', $$ CREATE (n)-[:KNOWS {n:'hello'}]->({n:'hello'}) $$) as (a agtype);
+SELECT * FROM cypher('issue_1043', $$ MATCH (x)<-[y *]-(),({n:y[0].n}) RETURN x $$) as (a agtype);
+SELECT * FROM cypher('issue_1043', $$ CREATE (n)-[:KNOWS {n:'hello'}]->({n:'hello'}) $$) as (a agtype);
+SELECT * FROM cypher('issue_1043', $$ MATCH (x)<-[y *]-(),({n:y[0].n}) RETURN x $$) as (a agtype);
+
+SELECT drop_graph('issue_1043', true);
+
 --
 -- Clean up
 --

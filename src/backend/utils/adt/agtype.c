@@ -3486,8 +3486,25 @@ Datum agtype_access_operator(PG_FUNCTION_ARGS)
     /* get the container argument. It could be an object or array */
     container = DATUM_GET_AGTYPE_P(args[0]);
 
+    /* if it is a binary container, check for a VLE vpc */
+    if (AGT_ROOT_IS_BINARY(container))
+    {
+        if (AGT_ROOT_BINARY_FLAGS(container) == AGT_FBINARY_TYPE_VLE_PATH)
+        {
+            /* retrieve an array of edges from the vpc */
+            container_value = agtv_materialize_vle_edges(container);
+            /* clear the container reference */
+            container = NULL;
+        }
+        else
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("binary container must be a VLE vpc")));
+        }
+    }
     /* if it is a scalar, open it and pull out the value */
-    if (AGT_ROOT_IS_SCALAR(container))
+    else if (AGT_ROOT_IS_SCALAR(container))
     {
         container_value = get_ith_agtype_value_from_container(&container->root,
                                                               0);
