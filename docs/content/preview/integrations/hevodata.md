@@ -35,4 +35,5 @@ To add YugabyteDB as a source in [Pipeline](https://docs.hevodata.com/pipelines/
 1. Select a value for the "Query Mode". If your table has an incrementing column and a timestamp column which gets updated for updates, you can choose "Change Data Capture". The mode "xmin" is not supported in YugabyteDB.
 1. Select and configure a destination as per your requirement.
 
-After the pipeline is created, you can see that the data from your YugabyteDB cluster gets ingested into the destination via this Hevo pipeline.
+After the pipeline is created, data from your YugabyteDB cluster gets ingested into the destination via the Hevo pipeline.
+
