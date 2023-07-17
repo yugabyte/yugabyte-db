@@ -100,6 +100,13 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
     </a>
   </li>
 
+   <li>
+    <a href="hevodata/">
+      <img src="/images/section_icons/develop/ecosystem/hevodata.png">
+      Hevo Data
+    </a>
+  </li>
+
   <li>
     <a href="jaeger/">
       <img src="/images/section_icons/develop/ecosystem/jaeger.png">
