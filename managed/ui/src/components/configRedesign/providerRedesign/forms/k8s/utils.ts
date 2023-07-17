@@ -1,8 +1,7 @@
 import { SuggestedKubernetesConfig } from '../../../../../redesign/helpers/dtos';
-import { KubernetesProviderLabel, ProviderCode } from '../../constants';
+import { KubernetesProvider, KubernetesProviderLabel } from '../../constants';
 import { K8sRegionField } from '../configureRegion/ConfigureK8sRegionModal';
 import { K8sCertIssuerType } from '../configureRegion/constants';
-import { getRegionlabel } from '../configureRegion/utils';
 import { generateLowerCaseAlphanumericId } from '../utils';
 
 export const adaptSuggestedKubernetesConfig = (
@@ -31,9 +30,10 @@ export const adaptSuggestedKubernetesConfig = (
   const regions = regionList.map<K8sRegionField>((region) => ({
     fieldId: generateLowerCaseAlphanumericId(),
     code: region.code,
+    name: region.name || region.code,
     regionData: {
       value: { code: region.code, zoneOptions: [] },
-      label: region.name || getRegionlabel(ProviderCode.KUBERNETES, region.code)
+      label: region.name || region.code
     },
     zones: region.zoneList.map((zone) => ({
       code: zone.name,
@@ -47,8 +47,8 @@ export const adaptSuggestedKubernetesConfig = (
     kubernetesPullSecretContent: kubernetesPullSecretContent,
     kubernetesImageRegistry: KUBECONFIG_IMAGE_REGISTRY,
     kubernetesProvider: {
-      label: KubernetesProviderLabel[kubernetesProvider],
-      value: kubernetesProvider
+      label: KubernetesProviderLabel[kubernetesProvider as KubernetesProvider],
+      value: kubernetesProvider as KubernetesProvider
     },
     regions: regions
   };

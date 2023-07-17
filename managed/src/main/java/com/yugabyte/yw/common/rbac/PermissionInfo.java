@@ -26,7 +26,6 @@ public class PermissionInfo {
     READ,
     UPDATE,
     DELETE,
-    USE,
   }
 
   @JsonProperty("resource_type")

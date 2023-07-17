@@ -77,12 +77,13 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({ formProps, mode }) => {
   const classes = useStyles();
 
   // Define state variables
-  const [rowCount, setRowCount] = useState<number>(2);
   const GFlagValueConfObject = formProps?.values?.flagvalueobject;
   if (mode === GFLAG_EDIT && !GFlagValueConfObject) {
     unformattedLDAPConf = unformatLDAPConf(formProps?.values?.flagvalue);
   }
-
+  const [rowCount, setRowCount] = useState<number>(
+    GFlagValueConfObject?.length > 0 ? GFlagValueConfObject?.length : 2
+  );
   const [errorMessage, setErrorMessage] = useState<string>(CONST_VALUES.EMPTY_STRING);
   const [GFlagRows, setGFlagConfRows] = useState<any>(
     GFlagValueConfObject?.length > 0
@@ -160,7 +161,7 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({ formProps, mode }) => {
       ? formProps.setFieldValue('flagvalue', CONST_VALUES.EMPTY_STRING)
       : formProps.setFieldValue('flagvalue', confData);
     formProps.setFieldValue('previewFlagValue', confData);
-    formProps.setFieldValue('flagvalueobject', GFlagRows);
+    formProps.setFieldValue('flagvalueobject', rows);
     formProps.setFieldValue('previewFlagError', errorMessage);
   };
 

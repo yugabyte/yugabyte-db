@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigUI;
 import com.yugabyte.yw.models.Backup;
@@ -66,7 +67,11 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     customerConfigService = app.injector().instanceOf(CustomerConfigService.class);
     customerConfigService.setConfigValidator(
         new StubbedCustomerConfigValidator(
-            app.injector().instanceOf(BeanValidator.class), allowedBuckets));
+            app.injector().instanceOf(BeanValidator.class),
+            allowedBuckets,
+            mockStorageUtilFactory,
+            app.injector().instanceOf(RuntimeConfGetter.class),
+            mockAWSUtil));
   }
 
   @Test

@@ -13,8 +13,12 @@
 #pragma once
 
 #include <shared_mutex>
+#include <unordered_set>
+
+#include "yb/cdc/cdc_types.h"
 
 #include "yb/client/table_handle.h"
+
 #include "yb/util/opid.h"
 #include "yb/util/status.h"
 #include "yb/gutil/thread_annotations.h"
@@ -31,13 +35,28 @@ class CreateTableRequestPB;
 }  // namespace master
 
 namespace cdc {
+static const char* const kCdcStateTableName = "cdc_state";
+
 YB_STRONGLY_TYPED_BOOL(SetActiveTimeToCurrent);
 
 struct CDCStateTableKey {
   TabletId tablet_id;     // HashPrimaryKey
-  CDCStreamId stream_id;  // PrimaryKey
+  xrepl::StreamId stream_id;  // PrimaryKey
+  TableId colocated_table_id;  // PrimaryKey is StreamId_ColocatedTableId for colocated tables
+
+  CDCStateTableKey(const TabletId& tablet_id, const xrepl::StreamId& stream_id)
+      : tablet_id(tablet_id), stream_id(stream_id) {}
+
+  CDCStateTableKey(
+      const TabletId& tablet_id,
+      const xrepl::StreamId& stream_id,
+      const TableId& colocated_table_id)
+      : tablet_id(tablet_id), stream_id(stream_id), colocated_table_id(colocated_table_id) {}
 
   std::string ToString() const;
+  std::string CompositeStreamId() const;
+  static Result<CDCStateTableKey> FromString(
+      const TabletId& tablet_id, const std::string& composite_stream_id);
 };
 
 // CDCStateTableEntry represents the cdc_state table row. We can use this object to read and write
@@ -45,10 +64,16 @@ struct CDCStateTableKey {
 // populated only when they are part of the project. Null are represented as nullopt. During
 // write\update any populated field (not nullopt) is written to the table.
 struct CDCStateTableEntry {
-  explicit CDCStateTableEntry(const TabletId& tablet_id, const CDCStreamId& stream_id)
-      : key{tablet_id, stream_id} {}
+  explicit CDCStateTableEntry(const TabletId& tablet_id, const xrepl::StreamId& stream_id)
+      : key(tablet_id, stream_id) {}
+  explicit CDCStateTableEntry(
+      const TabletId& tablet_id,
+      const xrepl::StreamId& stream_id,
+      const TableId& colocated_table_id)
+      : key(tablet_id, stream_id, colocated_table_id) {}
 
   explicit CDCStateTableEntry(const CDCStateTableKey& other) : key(other) {}
+  explicit CDCStateTableEntry(CDCStateTableKey&& other) : key(std::move(other)) {}
 
   CDCStateTableKey key;
   std::optional<OpId> checkpoint;
@@ -83,6 +108,7 @@ class CDCStateTable {
  public:
   explicit CDCStateTable(client::AsyncClientInitialiser* async_client_init)
       : async_client_init_(async_client_init) {}
+  explicit CDCStateTable(client::YBClient* client) : client_(client) {}
 
   static const std::string& GetNamespaceName();
   static const std::string& GetTableName();
@@ -94,8 +120,7 @@ class CDCStateTable {
   Status DeleteEntries(const std::vector<CDCStateTableKey>& entry_keys) EXCLUDES(mutex_);
 
   Result<CDCStateTableRange> GetTableRange(
-      CDCStateTableEntrySelector&& field_filter, Status* iteration_status,
-      client::TableFilter filter = {}) EXCLUDES(mutex_);
+      CDCStateTableEntrySelector&& field_filter, Status* iteration_status) EXCLUDES(mutex_);
 
   // Get a single row from the table. If the row is not found, returns an nullopt.
   Result<std::optional<CDCStateTableEntry>> TryFetchEntry(
@@ -112,7 +137,8 @@ class CDCStateTable {
       QLOperator condition_op = QL_OP_NOOP) EXCLUDES(mutex_);
 
   std::shared_mutex mutex_;
-  client::AsyncClientInitialiser* async_client_init_;
+  client::AsyncClientInitialiser* async_client_init_ = nullptr;
+  client::YBClient* client_ = nullptr;
 
   std::shared_ptr<client::TableHandle> cdc_table_ GUARDED_BY(mutex_);
 };
@@ -139,7 +165,7 @@ class CDCStateTableRange {
 
   explicit CDCStateTableRange(
       const std::shared_ptr<client::TableHandle>& table, Status* failure_status,
-      std::vector<std::string>&& columns, client::TableFilter filter);
+      std::vector<std::string>&& columns);
 
   const_iterator begin() const { return CdcStateTableIterator(table_.get(), options_); }
   const_iterator end() const { return CdcStateTableIterator(); }

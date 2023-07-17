@@ -21,7 +21,7 @@ namespace pgwrapper {
 class AlterSchemaAbortTxnTest : public PgMiniTestBase {
  public:
   void SetUp() override {
-    FLAGS_TEST_fail_alter_schema_after_abort_transactions = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_alter_schema_after_abort_transactions) = true;
     PgMiniTestBase::SetUp();
   }
 };

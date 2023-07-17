@@ -3659,7 +3659,7 @@ func_application:
     $$ = MAKE_NODE(@1, PTPartitionHash, name, $3);
   }
   | CAST '(' a_expr AS Typename ')' {
-    if ($5->ql_type() && !$5->ql_type()->IsParametric()) {
+    if ($5 && $5->ql_type() && !$5->ql_type()->IsParametric()) {
       PTExprListNode::SharedPtr args = MAKE_NODE(@1, PTExprListNode);
       args->Append($3);
       args->Append(PTExpr::CreateConst(PTREE_MEM, PTREE_LOC(@5), $5));
@@ -4649,19 +4649,27 @@ Typename:
 
 ParametricTypename:
   MAP '<' Typename ',' Typename '>' {
-    $$ = MAKE_NODE(@1, PTMap, $3, $5);
+    if ($3 != nullptr && $5 != nullptr) {
+      $$ = MAKE_NODE(@1, PTMap, $3, $5);
+    }
   }
   | SET '<' Typename '>' {
-    $$ = MAKE_NODE(@1, PTSet, $3);
+      if ($3 != nullptr) {
+        $$ = MAKE_NODE(@1, PTSet, $3);
+      }
   }
   | LIST '<' Typename '>' {
-    $$ = MAKE_NODE(@1, PTList, $3);
+      if ($3 != nullptr) {
+        $$ = MAKE_NODE(@1, PTList, $3);
+      }
   }
   | TUPLE '<' type_name_list '>' {
     PARSER_UNSUPPORTED(@1);
   }
   | FROZEN '<' Typename '>' {
-    $$ = MAKE_NODE(@1, PTFrozen, $3);
+      if ($3 != nullptr) {
+        $$ = MAKE_NODE(@1, PTFrozen, $3);
+      }
   }
 ;
 

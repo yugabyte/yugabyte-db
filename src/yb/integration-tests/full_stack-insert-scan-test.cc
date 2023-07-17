@@ -262,7 +262,7 @@ const YBTableName FullStackInsertScanTest::kTableName(
     YQL_DATABASE_CQL, "my_keyspace", "full-stack-mrs-test-tbl");
 
 TEST_F(FullStackInsertScanTest, MRSOnlyStressTest) {
-  FLAGS_enable_maintenance_manager = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_maintenance_manager) = false;
   ASSERT_NO_FATALS(CreateTable());
   ASSERT_NO_FATALS(DoConcurrentClientInserts());
   ASSERT_NO_FATALS(DoTestScans());

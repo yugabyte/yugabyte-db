@@ -11,6 +11,7 @@ import (
     "math"
     "net"
     "net/http"
+    "runtime"
     "sort"
     "strconv"
     "strings"
@@ -48,6 +49,25 @@ const READ_SUM_METRIC = "handler_latency_yb_tserver_TabletServerService_Read_sum
 const WRITE_SUM_METRIC = "handler_latency_yb_tserver_TabletServerService_Write_sum"
 
 const GRANULARITY_NUM_INTERVALS = 120
+
+var OS_NAME = runtime.GOOS
+
+var MAX_PROC = map[string]int{
+    "Linux" : 12000,
+    "Darwin" : 2500,
+}
+var WARNING_MSGS = map[string]string{
+    "open_files" :"open files ulimits value set low. Please set soft and hard limits to 1048576.",
+    "max_user_processes" :fmt.Sprintf("max user processes ulimits value set low." +
+        " Please set soft and hard limits to %d", MAX_PROC[OS_NAME]),
+    "transparent_hugepages" :"Transparent hugepages disabled. Please enable transparent_hugepages.",
+    "ntp/chrony" :"ntp/chrony package is missing for clock synchronization. For centos 7, " +
+        "we recommend installing either ntp or chrony package and for centos 8, " +
+        "we recommend installing chrony package.",
+    "insecure" :"Cluster started in an insecure mode without " +
+        "authentication and encryption enabled. For non-production use only, " +
+        "not to be used without firewalls blocking the internet traffic.",
+}
 
 type SlowQueriesFuture struct {
     Items []*models.SlowQueryResponseYsqlQueryItem
@@ -90,7 +110,7 @@ func getNodes(clusterType ...string) ([]string, error) {
         if clusterType[0] == "READ_REPLICA" {
             readReplicas := replicationInfo.ReadReplicas
             if len(readReplicas) == 0 {
-                return hostNames, errors.New("No Read Replica nodes Present.")
+                return hostNames, errors.New("no Read Replica nodes present")
             }
             readReplicaUuid := readReplicas[0].PlacementUuid
             for hostport := range tabletServersResponse.Tablets[readReplicaUuid] {
@@ -664,6 +684,82 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
     return ctx.JSON(http.StatusOK, metricResponse)
 }
 
+// GetClusterActivities - Get the cluster activities details
+func (c *Container) GetClusterActivities(ctx echo.Context) error {
+        response := models.ActivitiesResponse{
+                Data: []models.ActivityData{},
+        }
+
+        activityParam := strings.Split(ctx.QueryParam("activities"), ",")
+
+        for _, activity := range activityParam {
+                switch activity {
+                case "INDEX_BACKFILL":
+                        tablesFuture := make(chan helpers.TablesFuture)
+                        go helpers.GetTablesFuture(helpers.HOST, true, tablesFuture)
+                        tablesListStruct := <-tablesFuture
+                        if tablesListStruct.Error != nil {
+                                return ctx.String(http.StatusInternalServerError,
+                                        tablesListStruct.Error.Error())
+                        }
+                        tablesList := append(tablesListStruct.Tables.User,
+                                tablesListStruct.Tables.Index...)
+                        ysql_databases := make(map[string] struct{})
+                        for _, table := range tablesList {
+                                if table.YsqlOid != "" {
+                                        _, ok := ysql_databases[table.Keyspace]
+                                        if !ok {
+                                                ysql_databases[table.Keyspace] = struct{}{}
+                                        }
+                                }
+                        }
+
+                        indexBackFillInfofutures := []chan helpers.IndexBackFillInfoFuture{}
+
+                        for database := range ysql_databases {
+                                pgConnectionParams := helpers.PgClientConnectionParams{
+                                                User: helpers.DbYsqlUser,
+                                                Password: helpers.DbPassword,
+                                                Host: helpers.HOST,
+                                                Port: helpers.PORT,
+                                                Database: database,
+                                }
+
+                                pgClient, err := helpers.CreatePgClient(c.logger,
+                                        pgConnectionParams)
+                                if err != nil {
+                                        c.logger.Errorf("Error initializing the " +
+                                                "pgx client for database %s.", database)
+                                        return ctx.String(http.StatusInternalServerError,
+                                                err.Error())
+                                }
+                                indexBackFillInfoFuture := make(
+                                        chan helpers.IndexBackFillInfoFuture)
+                                indexBackFillInfofutures = append(indexBackFillInfofutures,
+                                        indexBackFillInfoFuture)
+                                go helpers.GetIndexBackFillInfo(pgClient, indexBackFillInfoFuture)
+                        }
+
+                        for _, future := range indexBackFillInfofutures {
+                                indexBackFillInfoResponse := <-future
+                                if indexBackFillInfoResponse.Error != nil {
+                                        return ctx.String(http.StatusInternalServerError,
+                                                indexBackFillInfoResponse.Error.Error())
+                                }
+                                for _, indexBackFillInfo := range
+                                                indexBackFillInfoResponse.IndexBackFillInfo {
+                                        response.Data = append(response.Data, models.ActivityData{
+                                                Name: activity,
+                                                Data: indexBackFillInfo,
+                                        })
+                                }
+
+                        }
+                }
+        }
+        return ctx.JSON(http.StatusOK, response)
+}
+
 // GetClusterNodes - Get the nodes for a cluster
 func (c *Container) GetClusterNodes(ctx echo.Context) error {
     response := models.ClusterNodesResponse{
@@ -867,35 +963,41 @@ func (c *Container) GetClusterTables(ctx echo.Context) error {
         Data: []models.ClusterTable{},
     }
     tablesFuture := make(chan helpers.TablesFuture)
-    go helpers.GetTablesFuture(helpers.HOST, tablesFuture)
-    tablesList := <-tablesFuture
-    if tablesList.Error != nil {
-        return ctx.String(http.StatusInternalServerError, tablesList.Error.Error())
+    go helpers.GetTablesFuture(helpers.HOST, true, tablesFuture)
+    tablesListStruct := <-tablesFuture
+    if tablesListStruct.Error != nil {
+        return ctx.String(http.StatusInternalServerError, tablesListStruct.Error.Error())
     }
+    // For now, we only show user and index tables.
+    tablesList := append(tablesListStruct.Tables.User, tablesListStruct.Tables.Index...)
     api := ctx.QueryParam("api")
     switch api {
     case "YSQL":
-        for _, table := range tablesList.Tables {
-            if table.IsYsql {
+        for _, table := range tablesList {
+            if table.YsqlOid != "" {
                 tableListResponse.Data = append(tableListResponse.Data,
                     models.ClusterTable{
-                        Name:      table.Name,
+                        Name:      table.TableName,
                         Keyspace:  table.Keyspace,
+                        Uuid:      table.Uuid,
                         Type:      models.YBAPIENUM_YSQL,
-                        SizeBytes: table.SizeBytes,
+                        SizeBytes: table.OnDiskSize.WalFilesSizeBytes +
+                                   table.OnDiskSize.SstFilesSizeBytes,
                     })
             }
         }
     case "YCQL":
-        for _, table := range tablesList.Tables {
-            if !table.IsYsql {
+        for _, table := range tablesList {
+            if table.YsqlOid == "" {
                 tableListResponse.Data = append(tableListResponse.Data,
                     models.ClusterTable{
-                        Name:      table.Name,
+                        Name:      table.TableName,
                         Keyspace:  table.Keyspace,
+                        Uuid:      table.Uuid,
                         Type:      models.YBAPIENUM_YCQL,
-                        SizeBytes: table.SizeBytes,
-                    })
+                        SizeBytes: table.OnDiskSize.WalFilesSizeBytes +
+                                   table.OnDiskSize.SstFilesSizeBytes,
+                })
             }
         }
     }
@@ -1072,7 +1174,7 @@ func (c *Container) GetSlowQueries(ctx echo.Context) error {
     return ctx.JSON(http.StatusOK, slowQueryResponse)
 }
 
-// GetLiveQueries - Get the live queries in a cluster
+// GetLiveQueries - Get the tablets in a cluster
 func (c *Container) GetClusterTablets(ctx echo.Context) error {
     tabletListResponse := models.ClusterTabletListResponse{
         Data: map[string]models.ClusterTablet{},
@@ -1084,12 +1186,19 @@ func (c *Container) GetClusterTablets(ctx echo.Context) error {
         return ctx.String(http.StatusInternalServerError, tabletsList.Error.Error())
     }
     for tabletId, tabletInfo := range tabletsList.Tablets {
+        hasLeader := false
+        for _, obj := range tabletInfo.RaftConfig {
+            if _, ok := obj["LEADER"]; ok {
+                hasLeader = true
+                break
+            }
+        }
         tabletListResponse.Data[tabletId] = models.ClusterTablet{
             Namespace: tabletInfo.Namespace,
             TableName: tabletInfo.TableName,
-            TableUuid: tabletInfo.TableUuid,
+            TableUuid: tabletInfo.TableId,
             TabletId:  tabletId,
-            HasLeader: tabletInfo.HasLeader,
+            HasLeader: hasLeader,
         }
     }
     return ctx.JSON(http.StatusOK, tabletListResponse)
@@ -1158,7 +1267,7 @@ func (c *Container) GetIsLoadBalancerIdle(ctx echo.Context) error {
     })
 }
 
-// GetGflagsJson - retrieve the gflags from Master and Tserver process
+// GetGflagsJson - Retrieve the gflags from Master and Tserver process
 func (c *Container) GetGflagsJson(ctx echo.Context) error {
 
     nodeHost := ctx.QueryParam("node_address")
@@ -1177,15 +1286,147 @@ func (c *Container) GetGflagsJson(ctx echo.Context) error {
         c.logger.Errorf(tserverFlags.Error.Error())
     }
 
-    masterFlagsJson := make(map[string]interface{})
-    json.Unmarshal(masterFlags.GFlags, &masterFlagsJson)
+    // Type conversion from helpers.GFlag to models.Gflag
+    masterFlagsResponse := []models.Gflag{}
+    for _, obj := range masterFlags.GFlags {
+        masterFlagsResponse = append(masterFlagsResponse, models.Gflag(obj))
+    }
 
-    tserverFlagsJson := make(map[string]interface{})
-    json.Unmarshal(masterFlags.GFlags, &tserverFlagsJson)
+    tserverFlagsResponse := []models.Gflag{}
+    for _, obj := range tserverFlags.GFlags {
+        tserverFlagsResponse = append(tserverFlagsResponse, models.Gflag(obj))
+    }
 
     return ctx.JSON(http.StatusOK, models.GflagsInfo{
-        MasterFlags:  masterFlagsJson,
-        TserverFlags: tserverFlagsJson,
+        MasterFlags:  masterFlagsResponse,
+        TserverFlags: tserverFlagsResponse,
     })
 
+}
+
+// GetTableInfo - Get info on a single table, given table uuid
+func (c *Container) GetTableInfo(ctx echo.Context) error {
+
+    id := ctx.QueryParam("id")
+    nodeHost := ctx.QueryParam("node_address")
+
+    if id == "" {
+        return ctx.String(http.StatusBadRequest, "Missing table id query parameter")
+    }
+
+    tableInfoFuture := make(chan helpers.TableInfoFuture)
+    go helpers.GetTableInfoFuture(nodeHost, id, tableInfoFuture)
+
+    tableInfo := <- tableInfoFuture
+    if tableInfo.Error != nil {
+        return ctx.String(http.StatusInternalServerError, tableInfo.Error.Error())
+    }
+
+    // Get placement blocks for live replicas
+    liveReplicaPlacementBlocks := []models.PlacementBlock{}
+    for _, placementBlock :=
+        range tableInfo.TableInfo.TableReplicationInfo.LiveReplicas.PlacementBlocks {
+            liveReplicaPlacementBlocks = append(liveReplicaPlacementBlocks, models.PlacementBlock{
+                CloudInfo: models.PlacementCloudInfo{
+                    PlacementCloud: placementBlock.CloudInfo.PlacementCloud,
+                    PlacementRegion: placementBlock.CloudInfo.PlacementRegion,
+                    PlacementZone: placementBlock.CloudInfo.PlacementZone,
+                },
+                MinNumReplicas: int32(placementBlock.MinNumReplicas),
+            })
+    }
+
+    // Get read replicas
+    readReplicas := []models.TableReplicationInfo{}
+    for _, readReplica :=
+        range tableInfo.TableInfo.TableReplicationInfo.ReadReplicas {
+            readReplicaInfo := models.TableReplicationInfo{}
+            readReplicaInfo.NumReplicas = int32(readReplica.NumReplicas)
+            for _, placementBlock := range readReplica.PlacementBlocks {
+                readReplicaInfo.PlacementBlocks = append(readReplicaInfo.PlacementBlocks,
+                    models.PlacementBlock{
+                        CloudInfo: models.PlacementCloudInfo{
+                            PlacementCloud: placementBlock.CloudInfo.PlacementCloud,
+                            PlacementRegion: placementBlock.CloudInfo.PlacementRegion,
+                            PlacementZone: placementBlock.CloudInfo.PlacementZone,
+                        },
+                        MinNumReplicas: int32(placementBlock.MinNumReplicas),
+                    })
+            }
+            readReplicaInfo.PlacementUuid = readReplica.PlacementUuid
+            readReplicas = append(readReplicas, readReplicaInfo)
+    }
+
+    // Get columns
+    columns := []models.ColumnInfo{}
+    for _, column := range tableInfo.TableInfo.Columns {
+        columns = append(columns, models.ColumnInfo(column))
+    }
+
+    // Get tablets
+    tablets := []models.TabletInfo{}
+    for _, tablet := range tableInfo.TableInfo.Tablets {
+        hidden, err := strconv.ParseBool(tablet.Hidden)
+        // If parsebool fails, assume tablet is not hidden
+        if err != nil {
+            hidden = false
+        }
+        // Get Raft Config info
+        raftConfig := []models.RaftConfig{}
+        for _, location := range tablet.Locations {
+            raftConfig = append(raftConfig, models.RaftConfig(location))
+        }
+        tablets = append(tablets, models.TabletInfo{
+            TabletId: tablet.TabletId,
+            Partition: tablet.Partition,
+            SplitDepth: tablet.SplitDepth,
+            State: tablet.State,
+            Hidden: hidden,
+            Message: tablet.Message,
+            RaftConfig: raftConfig,
+        })
+    }
+
+    return ctx.JSON(http.StatusOK, models.TableInfo{
+        TableName: tableInfo.TableInfo.TableName,
+        TableId: tableInfo.TableInfo.TableId,
+        TableVersion: tableInfo.TableInfo.TableVersion,
+        TableType: tableInfo.TableInfo.TableType,
+        TableState: tableInfo.TableInfo.TableState,
+        TableStateMessage: tableInfo.TableInfo.TableStateMessage,
+        TableTablespaceOid: tableInfo.TableInfo.TableTablespaceOid,
+        TableReplicationInfo: models.TableInfoTableReplicationInfo{
+            LiveReplicas: models.TableReplicationInfo{
+                NumReplicas:
+                    int32(tableInfo.TableInfo.TableReplicationInfo.LiveReplicas.NumReplicas),
+                PlacementBlocks: liveReplicaPlacementBlocks,
+                PlacementUuid: tableInfo.TableInfo.TableReplicationInfo.LiveReplicas.PlacementUuid,
+            },
+            ReadReplicas: readReplicas,
+        },
+        Columns: columns,
+        Tablets: tablets,
+    })
+
+}
+
+// GetClusterAlerts - Get all cluster alerts info (If Any)
+func (c *Container) GetClusterAlerts(ctx echo.Context) error {
+
+    alertsResponse := models.AlertsResponse {
+        Data: []models.AlertsInfo{},
+    }
+
+    if helpers.Warnings != "" {
+        warnings := strings.Split(helpers.Warnings, "|")
+
+        for _, warning := range warnings {
+            alertsResponse.Data = append(alertsResponse.Data, models.AlertsInfo{
+                Name: warning,
+                Info: WARNING_MSGS[warning],
+            })
+        }
+    }
+
+    return ctx.JSON(http.StatusOK, alertsResponse)
 }

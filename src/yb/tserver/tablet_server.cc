@@ -48,6 +48,8 @@
 #include "yb/client/universe_key_client.h"
 
 #include "yb/common/common_flags.h"
+#include "yb/common/common_util.h"
+#include "yb/common/pg_catversions.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/encryption/encrypted_file_factory.h"
@@ -57,6 +59,7 @@
 
 #include "yb/fs/fs_manager.h"
 
+#include "yb/gutil/hash/city.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_heartbeat.pb.h"
@@ -102,6 +105,8 @@
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/ntp_clock.h"
+
+#include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using std::make_shared;
 using std::shared_ptr;
@@ -163,7 +168,7 @@ DEFINE_UNKNOWN_int32(redis_proxy_webserver_port, 0, "Webserver port for redis pr
 DEFINE_UNKNOWN_string(cql_proxy_bind_address, "", "Address to bind the CQL proxy to");
 DEFINE_UNKNOWN_int32(cql_proxy_webserver_port, 0, "Webserver port for CQL proxy");
 
-DEFINE_UNKNOWN_string(pgsql_proxy_bind_address, "", "Address to bind the PostgreSQL proxy to");
+DEFINE_NON_RUNTIME_string(pgsql_proxy_bind_address, "", "Address to bind the PostgreSQL proxy to");
 DECLARE_int32(pgsql_proxy_webserver_port);
 
 DEFINE_UNKNOWN_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
@@ -226,10 +231,40 @@ DEFINE_UNKNOWN_int32(
 TAG_FLAG(get_universe_key_registry_max_backoff_sec, stable);
 TAG_FLAG(get_universe_key_registry_max_backoff_sec, advanced);
 
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_port, 6433,
+    "Ysql Connection Manager port to which clients will connect. This must be different from the "
+    "postgres port set via pgsql_proxy_bind_address. Default is 6433.");
+
 namespace yb {
 namespace tserver {
 
 namespace {
+
+uint16_t GetPostgresPort() {
+  yb::HostPort postgres_address;
+  CHECK_OK(postgres_address.ParseString(
+      FLAGS_pgsql_proxy_bind_address, yb::pgwrapper::PgProcessConf().kDefaultPort));
+  return postgres_address.port();
+}
+
+void PostgresAndYsqlConnMgrPortValidator() {
+  const auto pg_port = GetPostgresPort();
+  if (FLAGS_ysql_conn_mgr_port == pg_port) {
+    LOG(FATAL) << "Postgres port (pgsql_proxy_bind_address: " << pg_port
+               << ") and Ysql Connection Manager port (ysql_conn_mgr_port:"
+               << FLAGS_ysql_conn_mgr_port << ") cannot be the same.";
+  }
+}
+
+// Normally we would have used DEFINE_validator. But this validation depends on the value of another
+// flag (pgsql_proxy_bind_address). On process startup flag validations are run as each flag
+// gets parsed from the command line parameter. So this would impose a restriction on the user to
+// pass the flags in a particular obscure order via command line. YBA has no guarantees on the order
+// it uses as well. So, instead we use a Callback with LOG(FATAL) since at startup Callbacks are run
+// after all the flags have been parsed.
+REGISTER_CALLBACK(ysql_conn_mgr_port, "PostgresAndYsqlConnMgrPortValidator",
+    &PostgresAndYsqlConnMgrPortValidator);
+
 
 class CDCServiceContextImpl : public cdc::CDCServiceContext {
  public:
@@ -533,48 +568,44 @@ Status TabletServer::RegisterServices() {
   cdc_service_ = std::make_shared<cdc::CDCServiceImpl>(
       std::make_unique<CDCServiceContextImpl>(this), metric_entity(), metric_registry());
 
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+  RETURN_NOT_OK(RegisterService(
       FLAGS_ts_backup_svc_queue_length,
-      std::make_unique<TabletServiceBackupImpl>(tablet_manager_.get(), metric_entity())));
+      std::make_shared<TabletServiceBackupImpl>(tablet_manager_.get(), metric_entity())));
 
-  RETURN_NOT_OK(
-      RpcAndWebServerBase::RegisterService(FLAGS_xcluster_svc_queue_length, cdc_service_));
+  RETURN_NOT_OK(RegisterService(FLAGS_xcluster_svc_queue_length, cdc_service_));
 
   auto tablet_server_service = std::make_shared<TabletServiceImpl>(this);
   tablet_server_service_ = tablet_server_service;
   LOG(INFO) << "yb::tserver::TabletServiceImpl created at " << tablet_server_service.get();
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_tablet_server_svc_queue_length,
-                                                     std::move(tablet_server_service)));
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_tablet_server_svc_queue_length, std::move(tablet_server_service)));
 
-  std::unique_ptr<ServiceIf> admin_service(new TabletServiceAdminImpl(this));
+  auto admin_service = std::make_shared<TabletServiceAdminImpl>(this);
   LOG(INFO) << "yb::tserver::TabletServiceAdminImpl created at " << admin_service.get();
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_admin_svc_queue_length,
-                                                     std::move(admin_service)));
+  RETURN_NOT_OK(RegisterService(FLAGS_ts_admin_svc_queue_length, std::move(admin_service)));
 
-  std::unique_ptr<ServiceIf> consensus_service(new ConsensusServiceImpl(metric_entity(),
-                                                                        tablet_manager_.get()));
+  auto consensus_service = std::make_shared<ConsensusServiceImpl>(
+      metric_entity(), tablet_manager_.get());
   LOG(INFO) << "yb::tserver::ConsensusServiceImpl created at " << consensus_service.get();
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_consensus_svc_queue_length,
-                                                     std::move(consensus_service),
-                                                     rpc::ServicePriority::kHigh));
+  RETURN_NOT_OK(RegisterService(FLAGS_ts_consensus_svc_queue_length,
+                                std::move(consensus_service),
+                                rpc::ServicePriority::kHigh));
 
-  std::unique_ptr<ServiceIf> remote_bootstrap_service =
-      std::make_unique<RemoteBootstrapServiceImpl>(
+  auto remote_bootstrap_service = std::make_shared<RemoteBootstrapServiceImpl>(
           fs_manager_.get(), tablet_manager_.get(), metric_entity(), this->MakeCloudInfoPB(),
           &this->proxy_cache());
   LOG(INFO) << "yb::tserver::RemoteBootstrapServiceImpl created at " <<
     remote_bootstrap_service.get();
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_remote_bootstrap_svc_queue_length,
-                                                     std::move(remote_bootstrap_service)));
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_ts_remote_bootstrap_svc_queue_length, std::move(remote_bootstrap_service)));
   auto pg_client_service = std::make_shared<PgClientServiceImpl>(
       *this, tablet_manager_->client_future(), clock(),
-      std::bind(&TabletServer::TransactionPool, this), metric_entity(),
+      std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(),
       &messenger()->scheduler(), XClusterContext(xcluster_safe_time_map_, xcluster_read_only_mode_),
       &pg_node_level_mutation_counter_);
   pg_client_service_ = pg_client_service;
   LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service.get();
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-      FLAGS_pg_client_svc_queue_length, std::move(pg_client_service)));
+  RETURN_NOT_OK(RegisterService(FLAGS_pg_client_svc_queue_length, std::move(pg_client_service)));
 
   if (FLAGS_TEST_echo_service_enabled) {
     auto test_echo_service = std::make_unique<stateful_service::TestEchoService>(
@@ -582,8 +613,7 @@ Status TabletServer::RegisterServices() {
     LOG(INFO) << "yb::tserver::stateful_service::TestEchoService created at "
               << test_echo_service.get();
     RETURN_NOT_OK(test_echo_service->Init(tablet_manager_.get()));
-    RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-        FLAGS_TEST_echo_svc_queue_length, std::move(test_echo_service)));
+    RETURN_NOT_OK(RegisterService(FLAGS_TEST_echo_svc_queue_length, std::move(test_echo_service)));
   }
 
   auto pg_auto_analyze_service =
@@ -591,7 +621,7 @@ Status TabletServer::RegisterServices() {
   LOG(INFO) << "yb::tserver::stateful_service::PgAutoAnalyzeService created at "
             << pg_auto_analyze_service.get();
   RETURN_NOT_OK(pg_auto_analyze_service->Init(tablet_manager_.get()));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+  RETURN_NOT_OK(RegisterService(
       FLAGS_TEST_echo_svc_queue_length, std::move(pg_auto_analyze_service)));
 
   return Status::OK();
@@ -930,6 +960,16 @@ void TabletServer::SetYsqlDBCatalogVersions(
       ++it;
     }
   }
+  if (!catalog_changed) {
+    return;
+  }
+  // After we have updated versions, we compute and update its fingerprint.
+  const auto new_fingerprint =
+      FingerprintCatalogVersions<DbOidToCatalogVersionInfoMap>(ysql_db_catalog_version_map_);
+  catalog_versions_fingerprint_.store(new_fingerprint, std::memory_order_release);
+  VLOG_WITH_FUNC(2) << "databases: " << ysql_db_catalog_version_map_.size()
+                    << ", new fingerprint: " << new_fingerprint;
+
   if (catalog_changed) {
     // TODO(myang): see how to only invalidate per-database tables.
     // https://github.com/yugabyte/yugabyte-db/issues/16114.

@@ -64,6 +64,10 @@ class Sidecars {
 
   void Flush(ByteBlocks* output);
 
+  const google::protobuf::RepeatedField<uint32_t>& offsets() const {
+    return offsets_;
+  }
+
  private:
   simple_spinlock take_mutex_;
   WriteBuffer buffer_;

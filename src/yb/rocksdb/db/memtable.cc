@@ -260,7 +260,7 @@ class MemTableIterator : public InternalIterator {
     }
   }
 
-  void Seek(const Slice& k) override {
+  const KeyValueEntry& Seek(Slice k) override {
     PERF_TIMER_GUARD(seek_on_memtable_time);
     PERF_COUNTER_ADD(seek_on_memtable_count, 1);
     if (bloom_ != nullptr) {
@@ -268,21 +268,20 @@ class MemTableIterator : public InternalIterator {
               prefix_extractor_->Transform(ExtractUserKey(k)))) {
         PERF_COUNTER_ADD(bloom_memtable_miss_count, 1);
         entry_ = KeyValueEntry::Invalid();
-        return;
+        return entry_;
       } else {
         PERF_COUNTER_ADD(bloom_memtable_hit_count, 1);
       }
     }
-    iter_->Seek(k, nullptr);
-    UpdateFetchResult();
+    return UpdateFetchResult(iter_->Seek(k));
   }
-  void SeekToFirst() override {
-    iter_->SeekToFirst();
-    UpdateFetchResult();
+
+  const KeyValueEntry& SeekToFirst() override {
+    return UpdateFetchResult(iter_->SeekToFirst());
   }
-  void SeekToLast() override {
-    iter_->SeekToLast();
-    UpdateFetchResult();
+
+  const KeyValueEntry& SeekToLast() override {
+    return UpdateFetchResult(iter_->SeekToLast());
   }
 
   const KeyValueEntry& Next() override {
@@ -290,14 +289,9 @@ class MemTableIterator : public InternalIterator {
     return UpdateFetchResult(iter_->Next());
   }
 
-  void Prev() override {
+  const KeyValueEntry& Prev() override {
     assert(Valid());
-    iter_->Prev();
-    UpdateFetchResult();
-  }
-
-  void UpdateFetchResult() {
-    UpdateFetchResult(iter_->Entry());
+    return UpdateFetchResult(iter_->Prev());
   }
 
   const KeyValueEntry& UpdateFetchResult(const char* entry) {
@@ -815,9 +809,8 @@ void MemTable::Update(SequenceNumber seq,
   LookupKey lkey(key, seq);
   Slice mem_key = lkey.memtable_key();
 
-  std::unique_ptr<MemTableRep::Iterator> iter(
-      table_->GetDynamicPrefixIterator());
-  iter->Seek(lkey.internal_key(), mem_key.cdata());
+  std::unique_ptr<MemTableRep::Iterator> iter(table_->GetDynamicPrefixIterator());
+  iter->SeekMemTableKey(lkey.internal_key(), mem_key.cdata());
 
   const char* entry = iter->Entry();
   if (entry) {
@@ -876,9 +869,8 @@ bool MemTable::UpdateCallback(SequenceNumber seq,
   LookupKey lkey(key, seq);
   Slice memkey = lkey.memtable_key();
 
-  std::unique_ptr<MemTableRep::Iterator> iter(
-      table_->GetDynamicPrefixIterator());
-  iter->Seek(lkey.internal_key(), memkey.cdata());
+  std::unique_ptr<MemTableRep::Iterator> iter(table_->GetDynamicPrefixIterator());
+  iter->SeekMemTableKey(lkey.internal_key(), memkey.cdata());
 
   const char* entry = iter->Entry();
   if (entry) {
@@ -954,7 +946,7 @@ size_t MemTable::CountSuccessiveMergeEntries(const LookupKey& key) {
   // The iterator only needs to be ordered within the same user key.
   std::unique_ptr<MemTableRep::Iterator> iter(
       table_->GetDynamicPrefixIterator());
-  iter->Seek(key.internal_key(), memkey.cdata());
+  iter->SeekMemTableKey(key.internal_key(), memkey.cdata());
 
   size_t num_successive_merges = 0;
 
@@ -995,7 +987,7 @@ UserFrontierPtr MemTable::GetFrontier(UpdateUserValueType type) const {
 void MemTableRep::Get(const LookupKey& k, void* callback_args,
                       bool (*callback_func)(void* arg, const char* entry)) {
   auto iter = GetDynamicPrefixIterator();
-  for (iter->Seek(k.internal_key(), k.memtable_key().cdata());; iter->Next()) {
+  for (iter->SeekMemTableKey(k.internal_key(), k.memtable_key().cdata());; iter->Next()) {
     auto entry = iter->Entry();
     if (!entry || !callback_func(callback_args, entry)) {
       break;

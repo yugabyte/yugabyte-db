@@ -39,6 +39,7 @@ import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/rpc/rpc_header.proto";
 import "yb/tablet/metadata.proto";
+import "yb/util/opid.proto";
 
 // RaftConfig remote bootstrap RPC calls.
 service RemoteBootstrapService {
@@ -285,8 +286,9 @@ message RegisterLogAnchorRequestPB {
   // tablet_id of the tablet the requester desires to bootstrap from.
   required bytes tablet_id = 2;
 
-  // Log index where the anchor needs to be registered at.
-  required int64 log_index = 3;
+  // The 'index' field of op_id should be set to the log index where the anchor needs to be
+  // registered at. The 'term' field of op_id is ignored.
+  required OpIdPB op_id = 3;
 }
 
 message RegisterLogAnchorResponsePB {}
@@ -296,8 +298,9 @@ message UpdateLogAnchorRequestPB {
   // RemoteBootstrapAnchor request.
   required bytes owner_info = 1;
 
-  // Log index to which the anchor needs to be updated to.
-  required int64 log_index = 2;
+  // The 'index' field of op_id should be set to the log index where the anchor needs to be
+  // updated to. The 'term' field of op_id is ignored.
+  required OpIdPB op_id = 2;
 }
 
 message UpdateLogAnchorResponsePB {}

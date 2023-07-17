@@ -7,10 +7,11 @@
 EXPLAIN (COSTS OFF) SELECT count(*) FROM airports WHERE iso_region = 'US-CA';
                       QUERY PLAN
 -------------------------------------------------------
- Aggregate
+ Finalize Aggregate
    ->  Index Only Scan using airports_idx2 on airports
          Index Cond: (iso_region = 'US-CA'::text)
-(3 rows)
+         Partial Aggregate: true
+(4 rows)
 
 EXPLAIN (COSTS OFF) SELECT gps_code FROM airports WHERE iso_region = 'US-CA' AND type = 'small_airport'
           ORDER BY ident;

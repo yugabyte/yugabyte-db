@@ -34,7 +34,6 @@ namespace yb {
 namespace docdb {
 
 YB_DEFINE_ENUM(ResolvedIntentState, (kNoIntent)(kInvalidPrefix)(kValid));
-YB_DEFINE_ENUM(SeekIntentIterNeeded, (kNoNeed)(kSeek)(kSeekForward));
 
 // Provides a way to iterate over DocDB (sub)keys with respect to committed intents transparently
 // for caller. Implementation relies on intents order in RocksDB, which is determined by intent key
@@ -63,6 +62,8 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
 
   IntentAwareIterator(const IntentAwareIterator& other) = delete;
   void operator=(const IntentAwareIterator& other) = delete;
+
+  void Revalidate();
 
   // Seek to the smallest key which is greater or equal than doc_key.
   void Seek(const dockv::DocKey& doc_key);
@@ -97,7 +98,7 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
 
   // Fetches currently pointed key and also updates max_seen_ht to ht of this key. The key does not
   // contain the DocHybridTime but is returned separately and optionally.
-  Result<FetchedEntry> Fetch() override;
+  Result<const FetchedEntry&> Fetch() override;
 
   const ReadHybridTime& read_time() const override { return read_time_; }
   Result<HybridTime> RestartReadHt() const override;
@@ -173,7 +174,7 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   // them are after earliest record which is after read limit. Then will act the same way on
   // previous key.
   template <Direction direction>
-  void SkipFutureRecords();
+  void SkipFutureRecords(const rocksdb::KeyValueEntry& entry);
 
   // Skips intents with hybrid time after read limit.
   void SkipFutureIntents();
@@ -193,7 +194,7 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   // intent_iter_ will be positioned to first intent for the smallest (biggest) key
   // greater (smaller) than resolved_intent_sub_doc_key_encoded_.
   template<Direction direction>
-  void SeekToSuitableIntent();
+  void SeekToSuitableIntent(const rocksdb::KeyValueEntry& entry);
 
   // Decodes intent at intent_iter_ position and updates resolved_intent_* fields if that intent
   // matches all following conditions:
@@ -230,7 +231,7 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   // Set the exclusive upperbound of the intent iterator to the current SubDocKey of the regular
   // iterator. This is necessary to avoid RocksDB iterator from scanning over the deleted intents
   // beyond the current regular key unnecessarily.
-  Status SetIntentUpperbound();
+  bool SetIntentUpperbound();
 
   // Resets the exclusive upperbound of the intent iterator to its default value.
   // - If we are using an upper bound for the regular RocksDB iterator, we will reuse the same upper
@@ -238,10 +239,7 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   // - If there is no upper bound for regular RocksDB (e.g. because we are scanning the entire
   //   table), we will fall back to scanning the entire intents RocksDB.
   void ResetIntentUpperbound();
-
-  void DoSetIntentUpperBound(Slice intent_upper_bound);
-
-  void SeekIntentIterIfNeeded();
+  void SyncIntentUpperbound();
 
   // Does initial steps for prev doc key/sub doc key seek.
   // Returns true if prepare succeed.
@@ -254,16 +252,27 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   // Returns true if iterator currently points to some record.
   bool HasCurrentEntry();
 
+  size_t IntentPrepareSeek(Slice key, Slice suffix);
+  size_t IntentPrepareSeek(Slice key, char suffix);
+
   // Update seek_intent_iter_needed_, seek_key_prefix_ and seek_key_buffer_ to seek forward
   // for key + suffix.
   // If use_suffix_for_prefix then suffix is used in seek_key_prefix_, otherwise it will match key.
-  void UpdatePlannedIntentSeekForward(
-      Slice key, Slice suffix, bool use_suffix_for_prefix = true);
+  void IntentSeekForward(size_t prefix_len);
 
-  template <Direction direction>
-  bool NextRegular();
+  template <class T>
+  bool HandleStatus(const Result<T>& result) {
+    if (result.ok()) {
+      return true;
+    }
+    status_ = result.status();
+    return false;
+  }
 
-  void HandleStatus(const Status& status);
+  bool HandleStatus(const Status& status);
+  void FillEntry();
+  void FillRegularEntry();
+  void FillIntentEntry();
 
   void SeekTriggered() {
 #ifndef NDEBUG
@@ -275,12 +284,12 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   const EncodedReadHybridTime encoded_read_time_;
 
   const TransactionOperationContext txn_op_context_;
-  docdb::BoundedRocksDbIterator intent_iter_;
-  docdb::BoundedRocksDbIterator iter_;
+  BoundedRocksDbIterator intent_iter_;
+  BoundedRocksDbIterator iter_;
 
   // regular_value_ contains value for the current entry from regular db.
   // Empty if there is no current value in regular db.
-  Slice regular_value_;
+  rocksdb::KeyValueEntry regular_entry_;
 
   Status status_;
   EncodedDocHybridTime max_seen_ht_{DocHybridTime::kMin};
@@ -289,7 +298,7 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   Slice upperbound_;
 
   // Buffer for holding the exclusive upper bound of the intent key.
-  dockv::KeyBytes intent_upperbound_keybytes_;
+  KeyBuffer intent_upperbound_buffer_;
 
   Slice intent_upperbound_;
 
@@ -308,14 +317,9 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   Slice prefix_;
   TransactionStatusCache transaction_status_cache_;
 
-  bool skip_future_records_needed_ = false;
-  bool skip_future_intents_needed_ = false;
-  bool reset_intent_upperbound_during_skip_ = false;
-  SeekIntentIterNeeded seek_intent_iter_needed_ = SeekIntentIterNeeded::kNoNeed;
-
   // Reusable buffer to prepare seek key to avoid reallocating temporary buffers in critical paths.
-  KeyBuffer planned_intent_seek_buffer_;
-  Slice planned_intent_seek_prefix_;
+  KeyBuffer seek_buffer_;
+  FetchedEntry entry_;
 
 #ifndef NDEBUG
   void DebugSeekTriggered();

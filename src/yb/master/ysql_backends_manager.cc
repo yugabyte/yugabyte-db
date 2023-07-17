@@ -44,6 +44,9 @@ DEFINE_RUNTIME_uint32(ysql_backends_catalog_version_job_expiration_sec, 120, // 
     " flag.");
 TAG_FLAG(ysql_backends_catalog_version_job_expiration_sec, advanced);
 
+DEFINE_test_flag(bool, assert_no_future_catalog_version, false,
+    "Asserts that the clients are never requesting a catalog version which is higher "
+    "than what is seen at the master. Used to assert that there are no stale master reads.");
 DEFINE_test_flag(bool, block_wait_for_ysql_backends_catalog_version, false, // runtime-settable
     "If true, enable toggleable busy-wait at the beginning of WaitForYsqlBackendsCatalogVersion.");
 DEFINE_test_flag(bool, wait_for_ysql_backends_catalog_version_take_leader_lock, true,
@@ -140,6 +143,9 @@ Status YsqlBackendsManager::WaitForYsqlBackendsCatalogVersion(
     }
   }
   if (master_version < version) {
+    LOG_IF(FATAL, FLAGS_TEST_assert_no_future_catalog_version)
+        << "Possible stale read by the master ."
+        << " master_version " << master_version << " client expected version " << version;
     return SetupError(
         resp->mutable_error(),
         STATUS_FORMAT(
@@ -765,6 +771,17 @@ void BackendsCatalogVersionTS::HandleResponse(int attempt) {
             // load.
             should_retry = false;
           }
+          if (status.message().ToBuffer().find("column \"catalog_version\" does not exist") !=
+              std::string::npos) {
+            // This likely means ysql upgrade hasn't happened yet.  Succeed for backwards
+            // compatibility.
+            TransitionToCompleteState();
+            LOG_WITH_PREFIX(INFO)
+                << "wait for backends catalog version failed: " << status
+                << ", but ignoring for backwards compatibility";
+            found_behind_ = true;
+            return;
+          }
         }
         break;
       case TabletServerErrorPB::OPERATION_NOT_SUPPORTED:
@@ -802,22 +819,30 @@ void BackendsCatalogVersionTS::UnregisterAsyncTaskCallback() {
     return;
   }
 
-  // Identify dead tserver.
-  bool was_dead = found_dead_;
+  // There are multiple cases where we consider a tserver to be resolved:
+  // - Num lagging backends is zero: directly resolved
+  // - Tserver was found dead in HandleResponse: indirectly resolved assuming issue #13369.
+  // - Tserver was found dead in DoRpcCallback: (same).
+  // - Tserver was found behind in HandleResponse: indirectly resolved for compatibility during
+  //   upgrade: it is possible backends are actually behind.
+  // - Tserver was found behind in DoRpcCallback: (same).
+  bool indirectly_resolved = found_dead_ || found_behind_;
   if (!rpc_.status().ok()) {
-    // Only way for rpc status to be not okay is from ts not being live in
-    // RetryingTSRpcTask::DoRpcCallback, resulting in TransitionToCompleteState.
+    // Only way for rpc status to be not okay is from TransitionToCompleteState in
+    // RetryingTSRpcTask::DoRpcCallback.  That can happen in any of the following ways:
+    // - ts died.
+    // - ts is on an older version that doesn't support the RPC.
     DCHECK_EQ(state(), MonitoredTaskState::kComplete);
     DCHECK(!resp_.has_error()) << LogPrefix() << resp_.error().ShortDebugString();
-    was_dead = true;
+    indirectly_resolved = true;
   }
 
   // Find failures.
   Status status;
-  if (!was_dead) {
-    // Only live tservers can be considered to have failures since dead tservers are considered
-    // resolved.  This check comes first because dead tservers could still get resp error like
-    // catalog version too old.
+  if (!indirectly_resolved) {
+    // Only live tservers can be considered to have failures since dead or behind tservers are
+    // considered resolved.  Dead tservers could still get resp error like catalog version too old,
+    // but we don't want to throw error when they are already considered resolved.
     // TODO(#13369): ensure dead tservers abort/block ops until they successfully heartbeat.
 
     if (resp_.has_error()) {
@@ -839,11 +864,16 @@ void BackendsCatalogVersionTS::UnregisterAsyncTaskCallback() {
   }
 
   if (auto job = job_.lock()) {
-    if (was_dead) {
-      // Dead tservers are assumed to be resolved to latest.
-      // TODO(#13369): ensure dead tservers abort/block ops until they successfully heartbeat.
-      LOG_WITH_PREFIX(INFO)
-          << "tserver died, so assuming its backends are at latest catalog version";
+    if (indirectly_resolved) {
+      // There are three cases of indirectly resolved tservers, outlined in a comment above.
+      if (found_dead_ || !target_ts_desc_->IsLive()) {
+        // The two tserver-found-dead cases.
+        LOG_WITH_PREFIX(INFO)
+            << "tserver died, so assuming its backends are at latest catalog version";
+      } else {
+        // The two tserver-found-behind cases.
+        LOG_WITH_PREFIX(INFO) << "tserver behind, so skipping backends catalog version check";
+      }
       job->Update(permanent_uuid(), 0);
     } else if (status.ok()) {
       DCHECK(resp_.has_num_lagging_backends());

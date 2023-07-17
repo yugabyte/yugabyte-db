@@ -146,7 +146,7 @@ void FileMetaData::UpdateBoundariesExceptKey(
 }
 
 Slice FileMetaData::UserFilter() const {
-  return largest.user_frontier ? largest.user_frontier->Filter() : Slice();
+  return largest.user_frontier ? largest.user_frontier->FilterAsSlice() : Slice();
 }
 
 std::string FileMetaData::FrontiersToString() const {

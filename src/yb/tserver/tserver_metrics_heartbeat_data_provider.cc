@@ -96,11 +96,11 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
           storage_metadata->set_may_have_orphaned_post_split_data(
                 tablet->MayHaveOrphanedPostSplitData());
           if (FLAGS_tserver_heartbeat_metrics_add_leader_info) {
-            auto consensus = tablet_peer->shared_raft_consensus();
-            if (consensus) {
+            auto consensus_result = tablet_peer->GetRaftConsensus();
+            if (consensus_result) {
               MicrosTime ht_lease_exp;
               consensus::LeaderLeaseStatus leader_lease_status =
-                  consensus->GetLeaderLeaseStatusIfLeader(&ht_lease_exp);
+                  consensus_result.get()->GetLeaderLeaseStatusIfLeader(&ht_lease_exp);
               auto leader_info = req->add_leader_info();
               leader_info->set_tablet_id(tablet_peer->tablet_id());
               leader_info->set_leader_lease_status(leader_lease_status);
@@ -137,11 +137,9 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
 
         auto& stream_to_status = *replication_state->mutable_stream_replication_statuses();
         const auto& stream_replication_error_map = tablet_kv.second;
-        for (const auto& stream_kv : stream_replication_error_map) {
-          const CDCStreamId& stream_id = stream_kv.first;
-          const auto& replication_error_map = stream_kv.second;
-
-          auto& error_to_detail = *stream_to_status[stream_id].mutable_replication_errors();
+        for (const auto& [stream_id, replication_error_map] : stream_replication_error_map) {
+          auto& error_to_detail =
+              *stream_to_status[stream_id.ToString()].mutable_replication_errors();
           for (const auto& error_kv : replication_error_map) {
             const ReplicationErrorPb error = error_kv.first;
             const std::string& detail = error_kv.second;

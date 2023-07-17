@@ -6,11 +6,11 @@ import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertConflict;
-import static com.yugabyte.yw.common.AssertHelper.assertForbidden;
+import static com.yugabyte.yw.common.AssertHelper.assertForbiddenWithException;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
-import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
+import static com.yugabyte.yw.common.AssertHelper.assertUnauthorizedNoException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.FakeApiHelper.routeWithYWErrHandler;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
@@ -399,7 +399,7 @@ public class SessionControllerTest {
         ConfigHelper.ConfigType.Security, ImmutableMap.of("level", "insecure"));
 
     Result result = routeWithYWErrHandler(app, fakeRequest("GET", "/api/insecure_login"));
-    assertUnauthorized(result, "No read only customer exists.");
+    assertForbiddenWithException(result, "No read only customer exists.");
     assertAuditEntry(0, customer.getUuid());
   }
 
@@ -412,7 +412,7 @@ public class SessionControllerTest {
 
     Result result = routeWithYWErrHandler(app, fakeRequest("GET", "/api/insecure_login"));
 
-    assertUnauthorized(result, "Insecure login unavailable.");
+    assertForbiddenWithException(result, "Insecure login unavailable.");
     assertAuditEntry(0, customer.getUuid());
   }
 
@@ -917,6 +917,6 @@ public class SessionControllerTest {
                 "GET", "/universes/" + universe.getUniverseUUID() + "/proxy/" + nodeAddr + "/"));
     // Expect the request to fail since the hostname isn't real.
     // This shows that it got past validation though
-    assertForbidden(result, "Unable To Authenticate User");
+    assertUnauthorizedNoException(result, "Unable To Authenticate User");
   }
 }

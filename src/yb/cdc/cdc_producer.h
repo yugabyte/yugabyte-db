@@ -22,7 +22,7 @@
 #include <boost/unordered_map.hpp>
 
 #include "yb/cdc/cdc_service.service.h"
-#include "yb/cdc/cdc_util.h"
+#include "yb/cdc/cdc_types.h"
 #include "yb/client/client_fwd.h"
 #include "yb/common/common_fwd.h"
 #include "yb/common/transaction.h"
@@ -58,7 +58,7 @@ using SchemaDetailsMap = std::map<TableId, SchemaDetails>;
 class StreamMetadata;
 
 Status GetChangesForCDCSDK(
-    const CDCStreamId& stream_id,
+    const xrepl::StreamId& stream_id,
     const TableId& tablet_id,
     const CDCSDKCheckpointPB& op_id,
     const StreamMetadata& record,
@@ -81,8 +81,8 @@ Status GetChangesForCDCSDK(
 using UpdateOnSplitOpFunc = std::function<Status(const consensus::ReplicateMsg&)>;
 
 Status GetChangesForXCluster(
-    const std::string& stream_id,
-    const std::string& tablet_id,
+    const xrepl::StreamId& stream_id,
+    const TabletId& tablet_id,
     const OpId& op_id,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     UpdateOnSplitOpFunc update_on_split_op_func,

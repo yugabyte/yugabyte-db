@@ -107,11 +107,11 @@ class PgLibPqTest : public LibPqTestBase {
 
   void TestMultiBankAccount(IsolationLevel isolation, const bool colocation = false);
 
-  void DoIncrement(int key, int num_increments, IsolationLevel isolation);
+  void DoIncrement(int key, int num_increments, IsolationLevel isolation, bool lock_first = false);
 
   void TestParallelCounter(IsolationLevel isolation);
 
-  void TestConcurrentCounter(IsolationLevel isolation);
+  void TestConcurrentCounter(IsolationLevel isolation, bool lock_first = false);
 
   void TestOnConflict(bool kill_master, const MonoDelta& duration);
 
@@ -157,15 +157,18 @@ class PgLibPqTest : public LibPqTestBase {
 
   Status TestDuplicateCreateTableRequest(PGConn conn);
 
-  void BumpCatalogVersion(int num_versions, PGConn* conn) {
-    LOG(INFO) << "Do " << num_versions << " breaking catalog version bumps";
-    for (int i = 0; i < num_versions; ++i) {
-      ASSERT_OK(conn->Execute("ALTER ROLE yugabyte SUPERUSER"));
-    }
-  }
-
  private:
   Result<PGConn> RestartTSAndConnectToPostgres(int ts_idx, const std::string& db_name);
+};
+
+class PgLibPqFailOnConflictTest : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // This test depends on fail-on-conflict concurrency control to perform its validation.
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
+    options->extra_tserver_flags.push_back("--enable_wait_queues=false");
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+  }
 };
 
 static Result<PgOid> GetTablegroupOid(PGConn* conn, const std::string& tablegroup_name) {
@@ -206,7 +209,7 @@ TEST_F(PgLibPqTest, Simple) {
 //
 // The described procedure is repeated multiple times to increase probability of catching bug,
 // w/o running test multiple times.
-TEST_F(PgLibPqTest, SerializableColoring) {
+TEST_F_EX(PgLibPqTest, SerializableColoring, PgLibPqFailOnConflictTest) {
   constexpr auto kKeys = RegularBuildVsSanitizers(10, 20);
   constexpr auto kColors = 2;
   constexpr auto kIterations = 20;
@@ -244,6 +247,9 @@ TEST_F(PgLibPqTest, SerializableColoring) {
 
         auto res = connection.Fetch("SELECT * FROM t");
         if (!res.ok()) {
+          // res will have failed status here for conflicting transactions as long as we are using
+          // fail-on-conflict concurrency control. Hence this test runs with wait-on-conflict
+          // disabled.
           ASSERT_TRUE(HasTransactionError(res.status())) << res.status();
           return;
         }
@@ -313,7 +319,7 @@ TEST_F(PgLibPqTest, SerializableColoring) {
   }
 }
 
-TEST_F(PgLibPqTest, SerializableReadWriteConflict) {
+TEST_F_EX(PgLibPqTest, SerializableReadWriteConflict, PgLibPqFailOnConflictTest) {
   const auto kKeys = RegularBuildVsSanitizers(20, 5);
   const auto kNumTries = RegularBuildVsSanitizers(4, 1);
   auto tries = 1;
@@ -324,6 +330,8 @@ TEST_F(PgLibPqTest, SerializableReadWriteConflict) {
 
     size_t reads_won = 0, writes_won = 0;
     for (int i = 0; i != kKeys; ++i) {
+      // With fail-on-conflict concurrency control, we expect one of these operations to fail.
+      // Otherwise, one of them will block indefinitely.
       auto read_conn = ASSERT_RESULT(Connect());
       ASSERT_OK(read_conn.Execute("BEGIN ISOLATION LEVEL SERIALIZABLE"));
       auto res = read_conn.FetchFormat("SELECT * FROM t WHERE key = $0", i);
@@ -777,33 +785,35 @@ TEST_F(PgLibPqFailoverDuringInitDb, CreateTable) {
   auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
 }
 
-class PgLibPqSmallClockSkewTest : public PgLibPqTest {
+class PgLibPqSmallClockSkewFailOnConflictTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // Use small clock skew, to decrease number of read restarts.
     options->extra_tserver_flags.push_back("--max_clock_skew_usec=5000");
+    // This test depends on fail-on-conflict concurrency control to perform its validation.
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
+    options->extra_tserver_flags.push_back("--enable_wait_queues=false");
   }
 };
 
-TEST_F_EX(PgLibPqTest, MultiBankAccountSnapshot,
-          PgLibPqSmallClockSkewTest) {
+TEST_F_EX(PgLibPqTest, MultiBankAccountSnapshot, PgLibPqSmallClockSkewFailOnConflictTest) {
   TestMultiBankAccount(IsolationLevel::SNAPSHOT_ISOLATION);
 }
 
 TEST_F_EX(
-    PgLibPqTest, MultiBankAccountSnapshotWithColocation,
-    PgLibPqSmallClockSkewTest) {
+    PgLibPqTest, MultiBankAccountSnapshotWithColocation, PgLibPqSmallClockSkewFailOnConflictTest) {
   TestMultiBankAccount(IsolationLevel::SNAPSHOT_ISOLATION, true /* colocation */);
 }
 
-TEST_F(PgLibPqTest, MultiBankAccountSerializable) {
+TEST_F_EX(PgLibPqTest, MultiBankAccountSerializable, PgLibPqFailOnConflictTest) {
   TestMultiBankAccount(IsolationLevel::SERIALIZABLE_ISOLATION);
 }
 
-TEST_F(PgLibPqTest, MultiBankAccountSerializableWithColocation) {
+TEST_F_EX(PgLibPqTest, MultiBankAccountSerializableWithColocation, PgLibPqFailOnConflictTest) {
   TestMultiBankAccount(IsolationLevel::SERIALIZABLE_ISOLATION, true /* colocation */);
 }
 
-void PgLibPqTest::DoIncrement(int key, int num_increments, IsolationLevel isolation) {
+void PgLibPqTest::DoIncrement(
+    int key, int num_increments, IsolationLevel isolation, bool lock_first) {
   auto conn = ASSERT_RESULT(Connect());
 
   // Perform increments
@@ -811,6 +821,9 @@ void PgLibPqTest::DoIncrement(int key, int num_increments, IsolationLevel isolat
   while (succeeded_incs < num_increments) {
     ASSERT_OK(conn.StartTransaction(isolation));
     bool committed = false;
+    if (lock_first) {
+      ASSERT_OK(conn.FetchFormat("SELECT * FROM t WHERE key = $0 FOR UPDATE", key));
+    }
     auto exec_status = conn.ExecuteFormat("UPDATE t SET value = value + 1 WHERE key = $0", key);
     if (exec_status.ok()) {
       auto commit_status = conn.Execute("COMMIT");
@@ -866,7 +879,7 @@ TEST_F(PgLibPqTest, TestParallelCounterRepeatableRead) {
   TestParallelCounter(IsolationLevel::SNAPSHOT_ISOLATION);
 }
 
-void PgLibPqTest::TestConcurrentCounter(IsolationLevel isolation) {
+void PgLibPqTest::TestConcurrentCounter(IsolationLevel isolation, bool lock_first) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT, value INT)"));
@@ -879,8 +892,8 @@ void PgLibPqTest::TestConcurrentCounter(IsolationLevel isolation) {
   // Have each thread increment the same already-created counter
   std::vector<std::thread> threads;
   while (threads.size() != kThreads) {
-    threads.emplace_back([this, isolation] {
-      DoIncrement(0, kIncrements, isolation);
+    threads.emplace_back([this, isolation, lock_first] {
+      DoIncrement(0, kIncrements, isolation, lock_first);
     });
   }
 
@@ -896,8 +909,26 @@ void PgLibPqTest::TestConcurrentCounter(IsolationLevel isolation) {
   ASSERT_EQ(row_val, kThreads * kIncrements);
 }
 
-TEST_F(PgLibPqTest, TestConcurrentCounterSerializable) {
+TEST_F_EX(PgLibPqTest, TestConcurrentCounterSerializable, PgLibPqFailOnConflictTest) {
+  // Each of the three threads perform the following:
+  // BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+  // UPDATE t SET value = value + 1 WHERE key = 0;
+  // COMMIT;
+  // The UPDATE first does a read and acquires a kStrongRead lock on the key=0 row. So each thread
+  // is able to acquire this lock concurrently. The UPDATE then does a write to the same row and
+  // gets blocked. With fail-on-conflict behavior, one of the threads will win at the second RPC and
+  // progress can be made. But with wait-on-conflict behavior, progress cannot be made since
+  // deadlock is repeatedly encountered by all threads most of the time.
+  //
+  // In order to test a similar scenario with wait-on-conflict behavior,
+  // TestLockedConcurrentCounterSerializable adds a SELECT...FOR UPDATE before the UPDATE, so only
+  // one thread can block the row and deadlocks are not encountered.
   TestConcurrentCounter(IsolationLevel::SERIALIZABLE_ISOLATION);
+}
+
+TEST_F(PgLibPqTest, TestLockedConcurrentCounterSerializable) {
+  // See comment in TestConcurrentCounterSerializable.
+  TestConcurrentCounter(IsolationLevel::SERIALIZABLE_ISOLATION, /* lock_first = */ true);
 }
 
 TEST_F(PgLibPqTest, TestConcurrentCounterRepeatableRead) {
@@ -1560,7 +1591,7 @@ void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
 
 // Test for ensuring that transaction conflicts work as expected for colocated tables.
 // Related to https://github.com/yugabyte/yugabyte-db/issues/3251.
-TEST_F(PgLibPqTest, TxnConflictsForColocatedTables) {
+TEST_F_EX(PgLibPqTest, TxnConflictsForColocatedTables, PgLibPqFailOnConflictTest) {
   auto conn = ASSERT_RESULT(Connect());
   const string database_name = "test_db";
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation = true", database_name));
@@ -1568,7 +1599,7 @@ TEST_F(PgLibPqTest, TxnConflictsForColocatedTables) {
 }
 
 // Test for ensuring that transaction conflicts work as expected for Tablegroups.
-TEST_F(PgLibPqTest, TxnConflictsForTablegroups) {
+TEST_F_EX(PgLibPqTest, TxnConflictsForTablegroups, PgLibPqFailOnConflictTest) {
   auto conn = ASSERT_RESULT(Connect());
   CreateDatabaseWithTablegroup(
       "test_db" /* database_name */, "test_tgroup" /* tablegroup_name */, &conn);
@@ -3479,7 +3510,8 @@ TEST_F(PgLibPqTest, AggrSystemColumn) {
   ASSERT_NOK(conn.Fetch("SELECT SUM(oid) FROM pg_type"));
 }
 
-class PgLibPqLegecyColocatedDBTest : public PgLibPqTest {
+class PgLibPqLegacyColocatedDBTest : public PgLibPqTest {
+ protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // Override the flag value set in parent class PgLibPqTest to enable to create legacy colocated
     // databases.
@@ -3487,8 +3519,16 @@ class PgLibPqLegecyColocatedDBTest : public PgLibPqTest {
   }
 };
 
-TEST_F_EX(PgLibPqTest, LegacyColocatedDBTableColocation,
-          PgLibPqLegecyColocatedDBTest) {
+class PgLibPqLegacyColocatedDBFailOnConflictTest : public PgLibPqLegacyColocatedDBTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // This test depends on fail-on-conflict concurrency control to perform its validation.
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
+    options->extra_tserver_flags.push_back("--enable_wait_queues=false");
+    PgLibPqLegacyColocatedDBTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+TEST_F_EX(PgLibPqTest, LegacyColocatedDBTableColocation, PgLibPqLegacyColocatedDBTest) {
   TestTableColocation(GetLegacyColocatedDBTabletLocations);
 }
 
@@ -3496,7 +3536,7 @@ TEST_F_EX(PgLibPqTest, LegacyColocatedDBTableColocation,
 // colocated database.
 TEST_F_EX(PgLibPqTest,
     TxnConflictsForColocatedTablesInLegacyColocatedDB,
-    PgLibPqLegecyColocatedDBTest) {
+    PgLibPqLegacyColocatedDBFailOnConflictTest) {
   auto conn = ASSERT_RESULT(Connect());
   const string database_name = "test_db";
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation = true", database_name));
@@ -3506,7 +3546,7 @@ TEST_F_EX(PgLibPqTest,
 // Ensure tablet bootstrap doesn't crash when replaying change metadata operations
 // for a deleted colocated table in a legacy colocated database.
 TEST_F_EX(PgLibPqTest,
-    ReplayDeletedTableInLegacyColocatedDB, PgLibPqLegecyColocatedDBTest) {
+    ReplayDeletedTableInLegacyColocatedDB, PgLibPqLegacyColocatedDBTest) {
   PGConn conn = ASSERT_RESULT(Connect());
   const string database_name = "test_db";
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation = true", database_name));
@@ -3537,7 +3577,7 @@ TEST_F_EX(PgLibPqTest, LoadBalanceSingleLegacyColocatedDB,
 // Test that adding a tserver causes colocation tablets of legacy colocated databases to offload
 // tablet-peers to the new tserver.
 TEST_F_EX(PgLibPqTest, LoadBalanceMultipleLegacyColocatedDB,
-    PgLibPqLegecyColocatedDBTest) {
+    PgLibPqLegacyColocatedDBTest) {
   TestLoadBalanceMultipleColocatedDB(GetLegacyColocatedDBTabletLocations);
 }
 

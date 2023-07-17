@@ -36,8 +36,8 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
     PgMiniTestBase::SetUp();
-    FLAGS_ysql_enable_table_mutation_counter = true;
-    FLAGS_ysql_enable_auto_analyze_service = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_table_mutation_counter) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_service) = true;
     ASSERT_OK(SET_FLAG(vmodule, "pg_auto_analyze*=5"));
   }
 

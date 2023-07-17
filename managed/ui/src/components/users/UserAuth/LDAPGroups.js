@@ -14,7 +14,7 @@ const useStyles = makeStyles((theme) => ({
     height: 40
   },
   mapTable: {
-    background: theme.palette.ybacolors.ybBackgroundGray,
+    background: theme.palette.ybacolors.backgroundGray.lightest,
     border: `1px solid #CCCCCC`,
     borderRadius: theme.spacing(1),
     padding: theme.spacing(3)
@@ -120,8 +120,8 @@ export const LDAPMappingModal = ({ open, onClose, onSubmit, values }) => {
         mb={2}
       >
         <Box mt={0.5}>
-          Add LDAP Groups you want to map to the following role. Make sure to add them one
-          at a time.
+          Add LDAP Groups you want to map to the following role. Make sure to add them one at a
+          time.
         </Box>
         <Box mt={1} display="flex" justifyContent="flex-end">
           <YBButton

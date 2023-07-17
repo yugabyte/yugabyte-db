@@ -26,7 +26,7 @@ export const RegionsCell = ({ regions }: RegionsCellProps) => {
   const firstRegion = sortedRegions[0];
 
   return (
-    <Box display="flex" gridGap="5px">
+    <Box display="flex" alignItems="center" gridGap="5px">
       <Typography variant="body2">{firstRegion.name}</Typography>
       {sortedRegions.length > 1 && <div className={classes.pill}>+{sortedRegions.length - 1}</div>}
     </Box>

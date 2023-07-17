@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -57,14 +58,16 @@ public class CertificateControllerTest extends FakeDBApplication {
   private final List<String> test_certs = Arrays.asList("test_cert1", "test_cert2", "test_cert3");
   private final List<UUID> test_certs_uuids = new ArrayList<>();
   private Config spyConf;
+  private CertificateHelper certificateHelper;
 
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
+    certificateHelper = new CertificateHelper(app.injector().instanceOf(RuntimeConfGetter.class));
     spyConf = spy(app.config());
     for (String cert : test_certs) {
-      test_certs_uuids.add(CertificateHelper.createRootCA(spyConf, cert, customer.getUuid()));
+      test_certs_uuids.add(certificateHelper.createRootCA(spyConf, cert, customer.getUuid()));
     }
   }
 
@@ -357,7 +360,7 @@ public class CertificateControllerTest extends FakeDBApplication {
     bodyJson.put("certStart", date.getTime());
     bodyJson.put("certExpiry", date.getTime());
     bodyJson.put("certContent", cert_content);
-    UUID rootCA = CertificateHelper.createRootCA(spyConf, "test-universe", customer.getUuid());
+    UUID rootCA = certificateHelper.createRootCA(spyConf, "test-universe", customer.getUuid());
     Result result = createClientCertificate(customer.getUuid(), rootCA, bodyJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
@@ -370,7 +373,7 @@ public class CertificateControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetRootCertificate() {
-    UUID rootCA = CertificateHelper.createRootCA(spyConf, "test-universe", customer.getUuid());
+    UUID rootCA = certificateHelper.createRootCA(spyConf, "test-universe", customer.getUuid());
     Result result = getRootCertificate(customer.getUuid(), rootCA);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());

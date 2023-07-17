@@ -277,7 +277,8 @@ ybcGetForeignPlan(PlannerInfo *root,
 							remote_colrefs,  /* fdw_private data (attribute types) */
 							NIL,             /* remote target list (none for now) */
 							remote_quals,
-							outer_plan);
+							outer_plan,
+							best_path->path.yb_path_info);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -305,6 +306,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	Relation    relation     = node->ss.ss_currentRelation;
 
 	YbFdwExecState *ybc_state = NULL;
+	ForeignScan *foreignScan = castNode(ForeignScan, node->ss.ps.plan);
 
 	/* Do nothing in EXPLAIN (no ANALYZE) case.  node->fdw_state stays NULL. */
 	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
@@ -325,7 +327,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	if (YBReadFromFollowersEnabled()) {
 		ereport(DEBUG2, (errmsg("Doing read from followers")));
 	}
-	if (XactIsoLevel == XACT_SERIALIZABLE)
+	if (foreignScan->scan.yb_lock_mechanism == YB_RANGE_LOCK_ON_SCAN)
 	{
 		/*
 		 * In case of SERIALIZABLE isolation level we have to take predicate locks to disallow
@@ -339,7 +341,9 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 			if (erm->markType != ROW_MARK_REFERENCE && erm->markType != ROW_MARK_COPY)
 			{
 				ybc_state->exec_params->rowmark = erm->markType;
-				YBUpdateRowLockPolicyForSerializable(&ybc_state->exec_params->wait_policy, erm->waitPolicy);
+				ybc_state->exec_params->pg_wait_policy = erm->waitPolicy;
+				YBSetRowLockPolicy(&ybc_state->exec_params->docdb_wait_policy,
+								   erm->waitPolicy);
 			}
 			break;
 		}
@@ -359,10 +363,11 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 static void
 ybcSetupScanTargets(ForeignScanState *node)
 {
-	EState *estate = node->ss.ps.state;
-	ForeignScan *foreignScan = (ForeignScan *) node->ss.ps.plan;
-	Relation relation = node->ss.ss_currentRelation;
-	YbFdwExecState *ybc_state = (YbFdwExecState *) node->fdw_state;
+	ScanState *ss = &node->ss;
+	EState *estate = ss->ps.state;
+	ForeignScan *foreignScan = (ForeignScan *) ss->ps.plan;
+	Relation relation = ss->ss_currentRelation;
+	YBCPgStatement handle = ((YbFdwExecState *) node->fdw_state)->handle;
 	TupleDesc tupdesc = RelationGetDescr(relation);
 	ListCell *lc;
 
@@ -370,10 +375,37 @@ ybcSetupScanTargets(ForeignScanState *node)
 	List *target_attrs = foreignScan->fdw_exprs;
 
 	MemoryContext oldcontext =
-		MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_query_memory);
+		MemoryContextSwitchTo(ss->ps.ps_ExprContext->ecxt_per_query_memory);
 
 	/* Set scan targets. */
-	if (node->yb_fdw_aggs == NIL)
+	if (node->yb_fdw_aggrefs != NIL)
+	{
+		YbDmlAppendTargetsAggregate(node->yb_fdw_aggrefs,
+									RelationGetDescr(ss->ss_currentRelation),
+									NULL /* index */,
+									handle);
+
+		/*
+		 * For aggregate pushdown, we read just the aggregates from DocDB
+		 * and pass that up to the aggregate node (agg pushdown wouldn't be
+		 * enabled if we needed to read more than that).  Set up a dummy
+		 * scan slot to hold that as many attributes as there are pushed
+		 * aggregates.
+		 */
+		TupleDesc tupdesc =
+			CreateTemplateTupleDesc(list_length(node->yb_fdw_aggrefs),
+									false /* hasoid */);
+		ExecInitScanTupleSlot(estate, ss, tupdesc);
+
+		/*
+		 * Consider the example "SELECT COUNT(oid) FROM pg_type", Postgres would have to do a
+		 * sequential scan to fetch the system column oid. Here YSQL does pushdown so what's
+		 * fetched from a tablet is the result of count(oid), which is not even a column, let
+		 * alone a system column. Clear fsSystemCol because no system column is needed.
+		 */
+		foreignScan->fsSystemCol = false;
+	}
+	else
 	{
 		/* Set non-aggregate column targets. */
 		bool target_added = false;
@@ -383,13 +415,12 @@ ybcSetupScanTargets(ForeignScanState *node)
 			AttrNumber	attnum = target->resno;
 
 			if (attnum < 0)
-				YbDmlAppendTargetSystem(attnum, ybc_state->handle);
+				YbDmlAppendTargetSystem(attnum, handle);
 			else
 			{
 				Assert(attnum > 0);
 				if (!TupleDescAttr(tupdesc, attnum - 1)->attisdropped)
-					YbDmlAppendTargetRegular(tupdesc, attnum,
-											 ybc_state->handle);
+					YbDmlAppendTargetRegular(tupdesc, attnum, handle);
 				else
 					continue;
 			}
@@ -408,110 +439,9 @@ ybcSetupScanTargets(ForeignScanState *node)
 		 * targets.
 		 */
 		if (!target_added)
-			YbDmlAppendTargetSystem(YBTupleIdAttributeNumber,
-									ybc_state->handle);
+			YbDmlAppendTargetSystem(YBTupleIdAttributeNumber, handle);
 	}
-	else
-	{
-		/* Set aggregate scan targets. */
-		foreach(lc, node->yb_fdw_aggs)
-		{
-			Aggref *aggref = lfirst_node(Aggref, lc);
-			char *func_name = get_func_name(aggref->aggfnoid);
-			ListCell *lc_arg;
-			YBCPgExpr op_handle;
-			const YBCPgTypeEntity *type_entity;
 
-			/* Get type entity for the operator from the aggref. */
-			type_entity = YbDataTypeFromOidMod(InvalidAttrNumber, aggref->aggtranstype);
-
-			/* Create operator. */
-			HandleYBStatus(YBCPgNewOperator(ybc_state->handle, func_name, type_entity, aggref->aggcollid, &op_handle));
-
-			/* Handle arguments. */
-			if (aggref->aggstar) {
-				/*
-				 * Add dummy argument for COUNT(*) case, turning it into COUNT(0).
-				 * We don't use a column reference as we want to count rows
-				 * even if all column values are NULL.
-				 */
-				YBCPgExpr const_handle;
-				HandleYBStatus(YBCPgNewConstant(ybc_state->handle,
-								 type_entity,
-								 false /* collate_is_valid_non_c */,
-								 NULL /* collation_sortkey */,
-								 0 /* datum */,
-								 false /* is_null */,
-								 &const_handle));
-				HandleYBStatus(YBCPgOperatorAppendArg(op_handle, const_handle));
-			} else {
-				/* Add aggregate arguments to operator. */
-				foreach(lc_arg, aggref->args)
-				{
-					TargetEntry *tle = lfirst_node(TargetEntry, lc_arg);
-					if (IsA(tle->expr, Const))
-					{
-						Const* const_node = castNode(Const, tle->expr);
-						/* Already checked by yb_agg_pushdown_supported */
-						Assert(const_node->constisnull || const_node->constbyval);
-
-						YBCPgExpr const_handle;
-						HandleYBStatus(YBCPgNewConstant(ybc_state->handle,
-										 type_entity,
-										 false /* collate_is_valid_non_c */,
-										 NULL /* collation_sortkey */,
-										 const_node->constvalue,
-										 const_node->constisnull,
-										 &const_handle));
-						HandleYBStatus(YBCPgOperatorAppendArg(op_handle, const_handle));
-					}
-					else if (IsA(tle->expr, Var))
-					{
-						/*
-						 * Use original attribute number (varoattno) instead of projected one (varattno)
-						 * as projection is disabled for tuples produced by pushed down operators.
-						 */
-						int attno = castNode(Var, tle->expr)->varoattno;
-						Form_pg_attribute attr = TupleDescAttr(tupdesc, attno - 1);
-						YBCPgTypeAttrs type_attrs = {attr->atttypmod};
-
-						YBCPgExpr arg = YBCNewColumnRef(ybc_state->handle,
-														attno,
-														attr->atttypid,
-														attr->attcollation,
-														&type_attrs);
-						HandleYBStatus(YBCPgOperatorAppendArg(op_handle, arg));
-					}
-					else
-					{
-						/* Should never happen. */
-						ereport(ERROR,
-								(errcode(ERRCODE_INTERNAL_ERROR),
-								 errmsg("unsupported aggregate function argument type")));
-					}
-				}
-			}
-
-			/* Add aggregate operator as scan target. */
-			HandleYBStatus(YBCPgDmlAppendTarget(ybc_state->handle, op_handle));
-		}
-
-		/*
-		 * Setup the scan slot based on new tuple descriptor for the given targets. This is a dummy
-		 * tupledesc that only includes the number of attributes.
-		 */
-		TupleDesc target_tupdesc = CreateTemplateTupleDesc(list_length(node->yb_fdw_aggs),
-														   false /* hasoid */);
-		ExecInitScanTupleSlot(estate, &node->ss, target_tupdesc);
-
-		/*
-		 * Consider the example "SELECT COUNT(oid) FROM pg_type", Postgres would have to do a
-		 * sequential scan to fetch the system column oid. Here YSQL does pushdown so what's
-		 * fetched from a tablet is the result of count(oid), which is not even a column, let
-		 * alone a system column. Clear fsSystemCol because no system column is needed.
-		 */
-		foreignScan->fsSystemCol = false;
-	}
 	MemoryContextSwitchTo(oldcontext);
 }
 
@@ -661,17 +591,6 @@ ybcEndForeignScan(ForeignScanState *node)
 	ybcFreeStatementObject(ybc_state);
 }
 
-/*
- * ybcExplainForeignScan
- *		Produce extra output for EXPLAIN of a ForeignScan on a foreign table
- */
-static void
-ybcExplainForeignScan(ForeignScanState *node, ExplainState *es)
-{
-	if (node->yb_fdw_aggs != NIL)
-		ExplainPropertyBool("Partial Aggregate", true, es);
-}
-
 /* ------------------------------------------------------------------------- */
 /*  FDW declaration */
 
@@ -691,9 +610,9 @@ ybc_fdw_handler()
 	fdwroutine->IterateForeignScan = ybcIterateForeignScan;
 	fdwroutine->ReScanForeignScan  = ybcReScanForeignScan;
 	fdwroutine->EndForeignScan     = ybcEndForeignScan;
-	fdwroutine->ExplainForeignScan = ybcExplainForeignScan;
 
 	/* TODO: These are optional but we should support them eventually. */
+	/* fdwroutine->ExplainForeignScan = ybcExplainForeignScan; */
 	/* fdwroutine->AnalyzeForeignTable = ybcAnalyzeForeignTable; */
 	/* fdwroutine->IsForeignScanParallelSafe = ybcIsForeignScanParallelSafe; */
 

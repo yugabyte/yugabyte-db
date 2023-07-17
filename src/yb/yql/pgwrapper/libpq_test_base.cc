@@ -31,7 +31,7 @@ namespace pgwrapper {
 void LibPqTestBase::SetUp() {
   // YSQL has very verbose logging in case of conflicts
   // TODO: reduce the verbosity of that logging.
-  FLAGS_external_mini_cluster_max_log_bytes = 512_MB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_external_mini_cluster_max_log_bytes) = 512_MB;
   PgWrapperTestBase::SetUp();
 }
 
@@ -78,6 +78,13 @@ bool LibPqTestBase::TransactionalFailure(const Status& status) {
 Result<PgOid> GetDatabaseOid(PGConn* conn, const std::string& db_name) {
   return conn->FetchValue<PGOid>(
       Format("SELECT oid FROM pg_database WHERE datname = '$0'", db_name));
+}
+
+void LibPqTestBase::BumpCatalogVersion(int num_versions, PGConn* conn) {
+  LOG(INFO) << "Do " << num_versions << " breaking catalog version bumps";
+  for (int i = 0; i < num_versions; ++i) {
+    ASSERT_OK(conn->Execute("ALTER ROLE yugabyte SUPERUSER"));
+  }
 }
 
 } // namespace pgwrapper

@@ -74,7 +74,7 @@ static Status BuildMinMaxTestPool(
 class TestTaskStream : public ::testing::Test {
  public:
   TestTaskStream() {
-    FLAGS_enable_tracing = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = true;
   }
  protected:
   const int32_t kTaskstreamQueueMaxSize = 100000;

@@ -241,7 +241,7 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
       LOG(WARNING) << "Performing a write with row lock " << RowMarkType_Name(row_mark_)
                    << " when only reads are expected";
     }
-    intent_types_ = GetIntentTypeSet(isolation_level_, dockv::OperationKind::kWrite, row_mark_);
+    intent_types_ = dockv::GetIntentTypesForWrite(isolation_level_);
 
     // We cannot recover from failures here, because it means that we cannot apply replicated
     // operation.
@@ -250,7 +250,7 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
   }
 
   if (!put_batch_.read_pairs().empty()) {
-    intent_types_ = GetIntentTypeSet(isolation_level_, dockv::OperationKind::kRead, row_mark_);
+    intent_types_ = dockv::GetIntentTypesForRead(isolation_level_, row_mark_);
     RETURN_NOT_OK(EnumerateIntents(
         put_batch_.read_pairs(), std::ref(*this), partial_range_key_intents_));
   }

@@ -13,17 +13,7 @@ type: docs
 
 Clusters [replicated across regions](../../create-clusters-topology/#replicate-across-regions) include a minimum of 3 nodes spread across 3 regions with a replication factor (RF) of 3. You can add or remove nodes in increments of 3 (each region has the same number of nodes).
 
-## Features
-
-Multi-region replicated clusters include the following features:
-
-- Replicated synchronously across 3 regions with a [replication factor](../../../../architecture/docdb-replication/replication/) (RF) of 3.
-- No limit on cluster size - choose any cluster size based on your use case.
-- Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
-- VPC networking required.
-- Automated and on-demand backups.
-- Available in all [regions](../../../release-notes#cloud-provider-regions).
-- Enterprise support.
+Currently, Azure is not supported for replicated across region clusters (coming soon).
 
 ## Preferred region
 
@@ -39,11 +29,23 @@ You can enable [follower reads](../../../../explore/ysql-language-features/going
 
 In cases where the cluster has read replicas and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region.
 
+## Features
+
+Multi-region replicated clusters include the following features:
+
+- Replicated synchronously across 3 regions with a [replication factor](../../../../architecture/docdb-replication/replication/) (RF) of 3.
+- No limit on cluster size - choose any cluster size based on your use case.
+- Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
+- VPC networking required.
+- Automated and on-demand backups.
+- Available in all [regions](../../create-clusters-overview/#cloud-provider-regions).
+- Enterprise support.
+
 ## Prerequisites
 
-- Multi-region clusters must be deployed in VPCs. Create a VPC for each region where you want to deploy the nodes in the cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [Peer VPCs](../../cloud-vpcs/cloud-add-vpc-aws/#create-a-vpc).
-- By default, clusters deployed in VPCs do not expose any publicly-accessible IP addresses. Unless you enable [Public Access](../../../cloud-secure-clusters/add-connections/), you can only connect to multi-region clusters from applications that reside on a peered network, and the peering connection must be Active. Refer to [Peering connections](../../cloud-vpcs/cloud-add-peering).
-- Create a billing profile and add a payment method before you can create a Dedicated cluster. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
+- Multi-region clusters must be deployed in VPCs. Create a VPC for each region where you want to deploy the nodes in the cluster. Refer to [VPC network overview](../../cloud-vpcs/cloud-vpc-intro/).
+- By default, clusters deployed in VPCs do not expose any publicly-accessible IP addresses. Unless you enable [Public Access](../../../cloud-secure-clusters/add-connections/), you can only connect from resources inside the VPC network. Refer to [VPC network overview](../../cloud-vpcs/).
+- A billing profile and payment method. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
 
 ## Create a multi-region replicated cluster
 
@@ -75,7 +77,7 @@ Set **Data Distribution** to **Replicate across regions**.
 
 **Regions**: For each region, choose the following:
 
-- the [region](../../../release-notes#cloud-provider-regions) where the nodes will be located.
+- the [region](../../create-clusters-overview/#cloud-provider-regions) where the nodes will be located.
 - the VPC in which to deploy the nodes. Only VPCs using the selected cloud provider and available in the selected region are listed. For AWS clusters, choose a separate VPC for each region. For GCP clusters, the same VPC is used for all regions. VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
 - The number of nodes to deploy in the regions. Each region has the same number of nodes.
 

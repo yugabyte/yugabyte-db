@@ -148,6 +148,7 @@ set(MASTER_SRCS
   ysql_backends_manager.cc
   ysql_tablegroup_manager.cc
   ysql_tablespace_manager.cc
+  ysql_ddl_handler.cc
   ysql_transaction_ddl.cc)
 
 set(MASTER_DEPS

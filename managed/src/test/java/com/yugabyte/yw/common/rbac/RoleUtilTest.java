@@ -10,13 +10,12 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Role;
-import com.yugabyte.yw.models.Role.RoleType;
+import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.Role.RoleType;
 import java.io.File;
 import java.util.Arrays;
 import java.util.HashSet;
 import junitparams.JUnitParamsRunner;
-import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -24,7 +23,6 @@ import org.mockito.Spy;
 import play.Environment;
 import play.Mode;
 
-@Slf4j
 @RunWith(JUnitParamsRunner.class)
 public class RoleUtilTest extends FakeDBApplication {
   @Spy Environment environment;
@@ -51,6 +49,7 @@ public class RoleUtilTest extends FakeDBApplication {
         roleUtil.createRole(
             customer.getUuid(),
             "FakeRole1",
+            "FakeRoleDescription1",
             RoleType.Custom,
             new HashSet<>(
                 Arrays.asList(
@@ -70,6 +69,7 @@ public class RoleUtilTest extends FakeDBApplication {
         roleUtil.createRole(
             customer.getUuid(),
             "FakeRole1",
+            "FakeRoleDescription1",
             RoleType.Custom,
             new HashSet<>(
                 Arrays.asList(
@@ -84,6 +84,7 @@ public class RoleUtilTest extends FakeDBApplication {
         roleUtil.createRole(
             customer.getUuid(),
             "FakeRole1",
+            "FakeRoleDescription1",
             RoleType.Custom,
             new HashSet<>(
                 Arrays.asList(
@@ -95,14 +96,16 @@ public class RoleUtilTest extends FakeDBApplication {
     assertEquals(3, role.getPermissionDetails().getPermissionList().size());
     assertNotNull(role.getCreatedOn());
 
-    roleUtil.editRolePermissions(
+    roleUtil.editRole(
+        customer.getUuid(),
         role.getRoleUUID(),
+        null,
         new HashSet<>(
             Arrays.asList(
                 new PermissionInfoIdentifier(ResourceType.UNIVERSE, Permission.DELETE),
                 new PermissionInfoIdentifier(ResourceType.UNIVERSE, Permission.DELETE),
                 new PermissionInfoIdentifier(ResourceType.UNIVERSE, Permission.READ))));
-    Role roleUpdated = Role.getOrBadRequest(role.getRoleUUID());
+    Role roleUpdated = Role.getOrBadRequest(customer.getUuid(), role.getRoleUUID());
     assertEquals(2, roleUpdated.getPermissionDetails().getPermissionList().size());
     assertNotEquals(roleUpdated.getCreatedOn(), roleUpdated.getUpdatedOn());
   }
@@ -113,6 +116,7 @@ public class RoleUtilTest extends FakeDBApplication {
         roleUtil.createRole(
             customer.getUuid(),
             "FakeRole1",
+            "FakeRoleDescription1",
             RoleType.Custom,
             new HashSet<>(
                 Arrays.asList(
@@ -124,8 +128,10 @@ public class RoleUtilTest extends FakeDBApplication {
     assertEquals(3, role.getPermissionDetails().getPermissionList().size());
     assertNotNull(role.getCreatedOn());
 
-    roleUtil.editRolePermissions(
+    roleUtil.editRole(
+        customer.getUuid(),
         role.getRoleUUID(),
+        null,
         new HashSet<>(
             Arrays.asList(
                 new PermissionInfoIdentifier(ResourceType.UNIVERSE, Permission.CREATE),

@@ -97,6 +97,11 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
     ? AdministrationTabs.HA
     : AdministrationTabs.AC;
 
+  const isCustomCaCertsEnabled =
+    globalRuntimeConfigs?.data?.configEntries?.find(
+      (c: any) => c.key === 'yb.customCATrustStore.enabled'
+    )?.value === 'true';
+
   useEffect(() => {
     showOrRedirect(currentCustomer.data.features, 'menu.administration');
     // redirect to a proper url on navigation from sidebar "Admin" button (the "/admin" route)
@@ -204,7 +209,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
         {getHighAvailabilityTab()}
         {getAlertTab()}
         {getUserManagementTab()}
-        {getCustomCACertsTab()}
+        {isCustomCaCertsEnabled && getCustomCACertsTab()}
         {isCongifUIEnabled && getAdvancedTab()}
       </YBTabsWithLinksPanel>
     </div>

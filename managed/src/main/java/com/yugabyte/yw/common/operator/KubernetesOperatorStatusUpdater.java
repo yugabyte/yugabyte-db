@@ -9,12 +9,14 @@ import io.fabric8.kubernetes.api.model.ObjectReference;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
+import io.yugabyte.operator.v1alpha1.*;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,6 +40,37 @@ public class KubernetesOperatorStatusUpdater {
   public static void removeFromMap(String universeName) {
     if (nameToResource.containsKey(universeName)) {
       nameToResource.remove(universeName);
+    }
+  }
+
+  public static void createYBUniverseEventStatus(
+      Universe universe, String taskName, UUID taskUUID) {
+    if (universe.getUniverseDetails().isKubernetesOperatorControlled) {
+      try {
+        String eventStr =
+            String.format(
+                "Starting task %s (%s) on universe %s", taskName, taskUUID, universe.getName());
+        KubernetesOperatorStatusUpdater.updateStatus(universe, eventStr);
+      } catch (Exception e) {
+        LOG.warn("Error in creating Kubernetes Operator Universe status", e);
+      }
+    }
+  }
+
+  public static void updateYBUniverseStatus(
+      Universe universe, String taskName, UUID taskUUID, Throwable t) {
+    if (universe.getUniverseDetails().isKubernetesOperatorControlled) {
+      try {
+        // Updating Kubernetes Custom Resource (if done through operator).
+        String status = (t != null ? "Failed" : "Succeeded");
+        LOG.info("ybUniverseStatus info: {}: {}", taskName, status);
+        String statusStr =
+            String.format(
+                "Task %s (%s) on universe %s %s", taskName, taskUUID, universe.getName(), status);
+        updateStatus(universe, statusStr);
+      } catch (Exception e) {
+        LOG.warn("Error in creating Kubernetes Operator Universe status", e);
+      }
     }
   }
 

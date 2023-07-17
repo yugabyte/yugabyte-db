@@ -119,6 +119,12 @@ class CQLProcessor : public ql::QLProcessor {
         ? static_cast<const ql::ExecuteRequest&>(*request_).query_id() : "";
   }
 
+  ql::CQLMessage::QueryId GetUnprepQueryId() const {
+    return request_ && request_->opcode() == ql::CQLMessage::Opcode::QUERY
+        ? CQLStatement::GetQueryId(ql_env_.CurrentKeyspace(),
+                                   static_cast<const ql::QueryRequest&>(*request_).query()) : "";
+  }
+
   const std::unordered_map<std::string, std::vector<std::string>> kSupportedOptions = {
       {ql::CQLMessage::kCQLVersionOption,
           {"3.0.0" /* minimum */, "3.4.2" /* current */}},

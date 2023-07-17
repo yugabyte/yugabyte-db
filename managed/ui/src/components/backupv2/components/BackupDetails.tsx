@@ -34,12 +34,17 @@ import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import './BackupDetails.scss';
 
+export type IncrementalBackupProps = {
+  isRestoreEntireBackup?: boolean; // if the restore entire backup button is clicked
+  incrementalBackupUUID?: string; // if restore to point button is clicked
+  singleKeyspaceRestore?: boolean; // if restore button is clicked inside the incremental backup
+}
 interface BackupDetailsProps {
   backupDetails: IBackup | null;
   onHide: () => void;
   storageConfigName: string;
   onDelete: () => void;
-  onRestore: (backup?: IBackup) => void;
+  onRestore: (backup?: IBackup, incrementalProps?: IncrementalBackupProps) => void;
   storageConfigs: {
     data?: any[];
   };
@@ -100,11 +105,11 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
       if (backupDetails!.backupType === TableType.YQL_TABLE_TYPE) {
 
         const allTableAvailableForBackup = responseList.every((r) => {
-          if(r.allTables) return true;
+          if (r.allTables) return true;
           return r.tableUUIDList?.every((tableUUID) => find(tablesInUniverse, { tableUUID }));
         });
 
-        if(!allTableAvailableForBackup){
+        if (!allTableAvailableForBackup) {
           return Promise.reject({ response: { data: { error: `One or more of selected tables to backup do not exist in keyspace` } } });
         }
 
@@ -231,18 +236,26 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             {!hideRestore && (
               <YBButton
                 btnText="Restore Entire Backup"
+                btnIcon="fa fa-share"
                 onClick={() => {
-                  if (backupDetails.hasIncrementalBackups && backupDetails.commonBackupInfo.tableByTableBackup) {
+                  if (backupDetails.hasIncrementalBackups) {
                     if (incrementalBackups?.data) {
                       const recentBackup = incrementalBackups.data.filter(
                         (e: ICommonBackupInfo) => e.state === Backup_States.COMPLETED
                       )[0];
-                      onRestore({ ...backupDetails, commonBackupInfo: recentBackup });
+                      onRestore({ ...backupDetails, commonBackupInfo: recentBackup }, {
+                        isRestoreEntireBackup: true,
+                        incrementalBackupUUID: recentBackup.backupUUID,
+                        singleKeyspaceRestore: false
+                      });
                     }
 
                   }
                   else {
-                    onRestore();
+                    onRestore(undefined, {
+                      isRestoreEntireBackup: true,
+                      singleKeyspaceRestore: false
+                    });
                   }
                 }}
                 disabled={
@@ -253,7 +266,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             )}
             {onEdit && (
               <YBButton
-                btnText="Edit Backup"
+                btnText="Change Retention Period"
                 btnIcon="fa fa-pencil"
                 onClick={() => onEdit()}
                 disabled={
@@ -388,13 +401,17 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 <TableListComponent
                   backup={backupDetails}
                   keyspaceSearch={searchKeyspaceText}
-                  onRestore={(tablesList: Keyspace_Table[]) => {
+                  onRestore={(tablesList: Keyspace_Table[], incrementalBackupProps: IncrementalBackupProps) => {
                     onRestore({
                       ...backupDetails,
                       commonBackupInfo: {
                         ...backupDetails.commonBackupInfo,
                         responseList: tablesList
                       }
+                    }, {
+                      isRestoreEntireBackup: true,
+                      incrementalBackupUUID: incrementalBackupProps.incrementalBackupUUID,
+                      singleKeyspaceRestore: incrementalBackupProps.singleKeyspaceRestore
                     });
                   }}
                   hideRestore={hideRestore}

@@ -19,6 +19,8 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.common.CloudProviderHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ProviderEditRestrictionManager;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.controllers.handlers.AccessKeyHandler;
 import com.yugabyte.yw.controllers.handlers.ImageBundleHandler;
 import com.yugabyte.yw.controllers.handlers.RegionHandler;
@@ -29,6 +31,8 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import io.swagger.annotations.ApiModel;
+import java.time.Duration;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -46,6 +50,7 @@ public class CloudProviderEdit extends CloudTaskBase {
   private AccessKeyHandler accessKeyHandler;
   private CloudProviderHelper cloudProviderHelper;
   private ImageBundleHandler imageBundleHandler;
+  private ProviderEditRestrictionManager providerEditRestrictionManager;
 
   @Inject
   protected CloudProviderEdit(
@@ -53,12 +58,14 @@ public class CloudProviderEdit extends CloudTaskBase {
       RegionHandler regionHandler,
       AccessKeyHandler accessKeyHandler,
       CloudProviderHelper cloudProviderHelper,
-      ImageBundleHandler imageBundleHandler) {
+      ImageBundleHandler imageBundleHandler,
+      ProviderEditRestrictionManager providerEditRestrictionManager) {
     super(baseTaskDependencies);
     this.regionHandler = regionHandler;
     this.accessKeyHandler = accessKeyHandler;
     this.cloudProviderHelper = cloudProviderHelper;
     this.imageBundleHandler = imageBundleHandler;
+    this.providerEditRestrictionManager = providerEditRestrictionManager;
   }
 
   @ApiModel(value = "CloudProviderEditParams", description = "Parameters for editing provider")
@@ -78,7 +85,10 @@ public class CloudProviderEdit extends CloudTaskBase {
       Provider editProviderReq = taskParams().newProviderState;
       Provider provider = Provider.getOrBadRequest(taskParams().getProviderUUID());
       provider.setVersion(editProviderReq.getVersion());
-
+      if (providerEditRestrictionManager.isAllowAutoTasksBeforeEdit()
+          && !providerEditRestrictionManager.getTasksInUse(taskParams().providerUUID).isEmpty()) {
+        waitForAutoTasks();
+      }
       updateProviderData(provider, editProviderReq);
       updateAccessKeys(provider, editProviderReq);
       if (editProviderReq.getRegions() != null && !editProviderReq.getRegions().isEmpty()) {
@@ -96,6 +106,23 @@ public class CloudProviderEdit extends CloudTaskBase {
       p.save();
       throw e;
     }
+  }
+
+  private void waitForAutoTasks() {
+    long timeout = getMaxWaitMs();
+    long waitTs = getWaitDurationMs();
+    Duration waitDuration = Duration.ofMillis(waitTs);
+    Collection<UUID> taskUUIDs = Collections.emptyList();
+    while (timeout > 0) {
+      taskUUIDs = providerEditRestrictionManager.getTasksInUse(taskParams().providerUUID);
+      if (taskUUIDs.isEmpty()) {
+        return;
+      }
+      waitFor(waitDuration);
+      timeout -= waitTs;
+    }
+    throw new RuntimeException(
+        "Reached timeout of " + getMaxWaitMs() + " ms while waiting for tasks: " + taskUUIDs);
   }
 
   private void updateRegionsAndZones(Provider provider, Provider editProviderReq) {
@@ -267,5 +294,13 @@ public class CloudProviderEdit extends CloudTaskBase {
         (uuid, bundle) -> {
           imageBundleHandler.doDelete(provider.getUuid(), bundle.getUuid());
         });
+  }
+
+  private long getWaitDurationMs() {
+    return confGetter.getGlobalConf(GlobalConfKeys.waitForProviderTasksStepMs);
+  }
+
+  private long getMaxWaitMs() {
+    return confGetter.getGlobalConf(GlobalConfKeys.waitForProviderTasksTimeoutMs);
   }
 }

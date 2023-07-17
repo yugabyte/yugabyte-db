@@ -14,7 +14,7 @@
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
-#include "yb/integration-tests/xcluster_ysql_test_base.h"
+#include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
@@ -53,7 +53,7 @@ class XClusterYsqlIndexTest : public XClusterYsqlTestBase {
     XClusterYsqlTestBase::SetUp();
     ASSERT_OK(SET_FLAG(vmodule, "backfill_index*=4,xrepl*=4,xcluster*=4,add_table*=4,catalog*=4"));
 
-    FLAGS_TEST_user_ddl_operation_timeout_sec = NonTsanVsTsan(60, 90);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_user_ddl_operation_timeout_sec) = NonTsanVsTsan(60, 90);
 
     ASSERT_OK(Initialize(3 /* replication_factor */));
 
@@ -273,9 +273,9 @@ TEST_F(XClusterYsqlIndexTest, FailedCreateIndex) {
       ToggleUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, true));
 
   // Failure during bootstrap
-  FLAGS_TEST_xcluster_fail_table_create_during_bootstrap = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_table_create_during_bootstrap) = true;
   ASSERT_NOK(consumer_conn_->Execute(kCreateIndexStmt));
-  FLAGS_TEST_xcluster_fail_table_create_during_bootstrap = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_table_create_during_bootstrap) = false;
 
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(ValidateRows());

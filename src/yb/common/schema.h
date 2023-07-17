@@ -160,7 +160,8 @@ class ColumnSchema {
                bool is_static = false,
                bool is_counter = false,
                int32_t order = 0,
-               int32_t pg_type_oid = 0 /*kInvalidOid*/)
+               int32_t pg_type_oid = 0 /*kInvalidOid*/,
+               bool marked_for_deletion = false)
       : name_(std::move(name)),
         type_(type),
         kind_(kind),
@@ -168,7 +169,8 @@ class ColumnSchema {
         is_static_(is_static),
         is_counter_(is_counter),
         order_(order),
-        pg_type_oid_(pg_type_oid) {
+        pg_type_oid_(pg_type_oid),
+        marked_for_deletion_(marked_for_deletion) {
   }
 
   // convenience constructor for creating columns with simple (non-parametric) data types
@@ -179,7 +181,8 @@ class ColumnSchema {
                bool is_static = false,
                bool is_counter = false,
                int32_t order = 0,
-               int32_t pg_type_oid = 0 /*kInvalidOid*/);
+               int32_t pg_type_oid = 0 /*kInvalidOid*/,
+               bool marked_for_deletion = false);
 
   const std::shared_ptr<QLType>& type() const {
     return type_;
@@ -229,10 +232,27 @@ class ColumnSchema {
     pg_type_oid_ = pg_type_oid;
   }
 
+  int32_t pg_typmod() const {
+    return pg_typmod_;
+  }
+
+  void set_pg_typmod(uint32_t pg_typmod) {
+    pg_typmod_ = pg_typmod;
+  }
+
   SortingType sorting_type() const;
 
   const std::string& name() const {
     return name_;
+  }
+
+  bool marked_for_deletion() const {
+    return marked_for_deletion_;
+  }
+
+  void set_marked_for_deletion(bool marked_for_deletion) {
+    CHECK(!is_key()) << "Cannot mark " << name_ << " for deletion as it is a key column";
+    marked_for_deletion_ = marked_for_deletion;
   }
 
   // Return a string identifying this column, including its
@@ -297,6 +317,8 @@ class ColumnSchema {
   bool is_counter_;
   int32_t order_;
   int32_t pg_type_oid_;
+  int32_t pg_typmod_;
+  bool marked_for_deletion_;
 };
 
 class ContiguousRow;
@@ -960,6 +982,10 @@ class Schema {
     return ret;
   }
 
+  bool IsColMarkedForDeletion(int col_idx) const {
+    return column(col_idx).marked_for_deletion();
+  }
+
   // Returns the memory usage of this object without the object itself. Should
   // be used when embedded inside another object.
   size_t memory_footprint_excluding_this() const;
@@ -1155,6 +1181,8 @@ class SchemaBuilder {
   Status RemoveColumn(const std::string& name);
   Status RenameColumn(const std::string& old_name, const std::string& new_name);
   Status SetColumnPGType(const std::string& name, const uint32_t pg_type_oid);
+  Status SetColumnPGTypmod(const std::string& name, const uint32_t pg_typmod);
+  Status MarkColumnForDeletion(const std::string& name);
   Status AlterProperties(const TablePropertiesPB& pb);
 
  private:

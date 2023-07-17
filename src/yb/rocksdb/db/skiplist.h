@@ -106,18 +106,18 @@ class SkipListBase {
 
     // Advances to the previous position.
     // REQUIRES: Valid()
-    void Prev();
+    Key Prev();
 
     // Advance to the first entry with a key >= target
-    void Seek(Key target);
+    Key Seek(Key target);
 
     // Position at the first entry in list.
     // Final state of iterator is Valid() iff list is not empty.
-    void SeekToFirst();
+    Key SeekToFirst();
 
     // Position at the last entry in list.
     // Final state of iterator is Valid() iff list is not empty.
-    void SeekToLast();
+    Key SeekToLast();
 
    private:
     const SkipListBase* list_;
@@ -293,32 +293,38 @@ Key SkipListBase<Key, Comparator, NodeType>::Iterator::Next() {
 }
 
 template<class Key, class Comparator, class NodeType>
-void SkipListBase<Key, Comparator, NodeType>::Iterator::Prev() {
+Key SkipListBase<Key, Comparator, NodeType>::Iterator::Prev() {
   // Instead of using explicit "prev" links, we just search for the
   // last node that falls before key.
   DCHECK(Entry());
   node_ = list_->FindLessThan(node_->key);
-  if (node_ == list_->head_) {
-    node_ = nullptr;
+  if (node_ != list_->head_) {
+    return node_->key;
   }
+  node_ = nullptr;
+  return Key();
 }
 
 template<class Key, class Comparator, class NodeType>
-void SkipListBase<Key, Comparator, NodeType>::Iterator::Seek(Key target) {
+Key SkipListBase<Key, Comparator, NodeType>::Iterator::Seek(Key target) {
   node_ = list_->FindGreaterOrEqual(target);
+  return Entry();
 }
 
 template<class Key, class Comparator, class NodeType>
-void SkipListBase<Key, Comparator, NodeType>::Iterator::SeekToFirst() {
+Key SkipListBase<Key, Comparator, NodeType>::Iterator::SeekToFirst() {
   node_ = list_->head_->Next(0);
+  return Entry();
 }
 
 template<class Key, class Comparator, class NodeType>
-void SkipListBase<Key, Comparator, NodeType>::Iterator::SeekToLast() {
+Key SkipListBase<Key, Comparator, NodeType>::Iterator::SeekToLast() {
   node_ = list_->FindLast();
-  if (node_ == list_->head_) {
-    node_ = nullptr;
+  if (node_ != list_->head_) {
+    return node_->key;
   }
+  node_ = nullptr;
+  return Key();
 }
 
 template<class Key, class Comparator, class NodeType>

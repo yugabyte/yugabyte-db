@@ -327,14 +327,18 @@ public class LdapUtil {
       if (ldapConfiguration.isLdapUseSsl() || ldapConfiguration.isLdapUseTls()) {
 
         boolean customCAUploaded = customCAStoreManager.areCustomCAsPresent();
-        if (customCAUploaded && customCAStoreManager.isEnabled()) {
-          log.debug("Using YBA's custom trust-store manager along-with Java defaults");
-          KeyStore ybaJavaKeyStore = customCAStoreManager.getYbaAndJavaKeyStore();
-          TrustManagerFactory trustFactory =
-              TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-          trustFactory.init(ybaJavaKeyStore);
-          TrustManager[] ybaJavaTrustManagers = trustFactory.getTrustManagers();
-          config.setTrustManagers(ybaJavaTrustManagers);
+        if (customCAStoreManager.isEnabled()) {
+          if (customCAUploaded) {
+            log.debug("Using YBA's custom trust-store manager along-with Java defaults");
+            KeyStore ybaJavaKeyStore = customCAStoreManager.getYbaAndJavaKeyStore();
+            TrustManagerFactory trustFactory =
+                TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            trustFactory.init(ybaJavaKeyStore);
+            TrustManager[] ybaJavaTrustManagers = trustFactory.getTrustManagers();
+            config.setTrustManagers(ybaJavaTrustManagers);
+          } else {
+            log.debug("Using Java default trust managers");
+          }
         } else {
           if (customCAUploaded) {
             log.warn("Skipping to use YBA's custom trust-store as the feature is disabled");
@@ -511,23 +515,32 @@ public class LdapUtil {
           break;
         default:
           roleToAssign = ldapConfiguration.getLdapDefaultRole();
-          log.warn("No valid role could be ascertained, defaulting to {}.", roleToAssign);
-          if (!ldapConfiguration.isLdapGroupUseRoleMapping()) {
-            users.setLdapSpecifiedRole(false);
-          }
+          users.setLdapSpecifiedRole(false);
       }
       Users oldUser = Users.find.query().where().eq("email", email).findOne();
-      if (oldUser != null) {
-        oldUser.setLdapSpecifiedRole(users.isLdapSpecifiedRole());
-      }
 
-      if (oldUser != null
-          && (oldUser.getRole() == roleToAssign || !oldUser.isLdapSpecifiedRole())) {
-        return oldUser;
-      } else if (oldUser != null && (oldUser.getRole() != roleToAssign)) {
-        oldUser.setRole(roleToAssign);
+      if (oldUser != null) {
+        /* If we find a valid role from LDAP then assign that to this user and disallow further
+         * changes by YBA SuperAdmin in User Management.
+         * Otherwise,
+         *  if the last time the role was set via LDAP, we take away that role (meaning assign
+         *    default), and allow YBA SuperAdmin to change this role later in User Management.
+         * Otherwise, this is a user for which the admin has or will set a role, NOOP
+         */
+        if (users.isLdapSpecifiedRole()) {
+          oldUser.setRole(roleToAssign);
+          oldUser.setLdapSpecifiedRole(true);
+        } else if (oldUser.isLdapSpecifiedRole()) {
+          log.warn("No valid role could be ascertained, defaulting to {}.", roleToAssign);
+          oldUser.setRole(roleToAssign);
+          oldUser.setLdapSpecifiedRole(false);
+        }
         return oldUser;
       } else {
+        if (!users.isLdapSpecifiedRole()) {
+          log.warn("No valid role could be ascertained, defaulting to {}.", roleToAssign);
+        }
+
         users.setEmail(email.toLowerCase());
         byte[] passwordLdap = new byte[16];
         new Random().nextBytes(passwordLdap);

@@ -1221,7 +1221,9 @@ class PosixEnv : public Env {
       dir = buf;
     }
     // Directory may already exist
-    WARN_NOT_OK(CreateDir(dir), "Create test dir failed");
+    if (!DirExists(dir)) {
+      WARN_NOT_OK(CreateDir(dir), "Create test dir failed");
+    }
     // /tmp may be a symlink, so canonicalize the path.
     return Canonicalize(dir, result);
   }

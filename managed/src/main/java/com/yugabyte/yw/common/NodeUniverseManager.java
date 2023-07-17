@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -49,7 +50,6 @@ import play.libs.Json;
 public class NodeUniverseManager extends DevopsBase {
   private static final ShellProcessContext DEFAULT_CONTEXT =
       ShellProcessContext.builder().logCmdOutput(true).build();
-  public static final long YSQL_COMMAND_DEFAULT_TIMEOUT_SEC = TimeUnit.MINUTES.toSeconds(3);
   public static final String NODE_ACTION_SSH_SCRIPT = "bin/run_node_action.py";
   public static final String CERTS_DIR = "/yugabyte-tls-config";
   public static final String K8S_CERTS_DIR = "/opt/certs/yugabyte";
@@ -173,6 +173,28 @@ public class NodeUniverseManager extends DevopsBase {
     actionArgs.add("--local_file");
     actionArgs.add(localFile);
     return executeNodeAction(UniverseNodeAction.COPY_FILE, universe, node, actionArgs, context);
+  }
+
+  public ShellResponse bulkCheckFilesExist(
+      NodeDetails node,
+      Universe universe,
+      String ybDir,
+      String sourceFilesPath,
+      String targetLocalFilePath) {
+    universeLock.acquireLock(universe.getUniverseUUID());
+    try {
+      List<String> actionArgs = new ArrayList<>();
+      actionArgs.add("--yb_dir");
+      actionArgs.add(ybDir);
+      actionArgs.add("--source_files_to_check_path");
+      actionArgs.add(sourceFilesPath);
+      actionArgs.add("--target_local_file_path");
+      actionArgs.add(targetLocalFilePath);
+      return executeNodeAction(
+          UniverseNodeAction.BULK_CHECK_FILES_EXIST, universe, node, actionArgs, DEFAULT_CONTEXT);
+    } finally {
+      universeLock.releaseLock(universe.getUniverseUUID());
+    }
   }
 
   public ShellResponse uploadFileToNode(
@@ -303,7 +325,12 @@ public class NodeUniverseManager extends DevopsBase {
 
   public ShellResponse runYsqlCommand(
       NodeDetails node, Universe universe, String dbName, String ysqlCommand) {
-    return runYsqlCommand(node, universe, dbName, ysqlCommand, YSQL_COMMAND_DEFAULT_TIMEOUT_SEC);
+    return runYsqlCommand(
+        node,
+        universe,
+        dbName,
+        ysqlCommand,
+        confGetter.getConfForScope(universe, UniverseConfKeys.ysqlTimeoutSecs));
   }
 
   public ShellResponse runYsqlCommand(
@@ -572,6 +599,7 @@ public class NodeUniverseManager extends DevopsBase {
     DOWNLOAD_FILE,
     COPY_FILE,
     UPLOAD_FILE,
-    TEST_DIRECTORY
+    TEST_DIRECTORY,
+    BULK_CHECK_FILES_EXIST
   }
 }

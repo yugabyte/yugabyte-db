@@ -152,8 +152,8 @@ class AbstractInstancesMethod(AbstractMethod):
         else:
             self.parser.add_argument("search_pattern", nargs="?")
         self.parser.add_argument("-t", "--type", default=self.YB_SERVER_TYPE)
-        self.parser.add_argument('--tags', default=None)
-        self.parser.add_argument("--skip_tags", default=None)
+        self.parser.add_argument('--tags', action='append', default=None)
+        self.parser.add_argument("--skip_tags", action='append', default=None)
 
         # If we do not have this entry from ansible.env, then set a None default, else, assume the
         # pem file is in the same location as the ansible.env file.
@@ -562,7 +562,8 @@ class ReplaceRootVolumeMethod(AbstractInstancesMethod):
             id = args.search_pattern
             logging.info("==> Stopping instance {}".format(id))
             self.cloud.stop_instance(host_info)
-            if current_root_volume:
+            # Azure does not require unmounting because replacement is done in one API call.
+            if current_root_volume and self.cloud.name != "azu":
                 self.cloud.unmount_disk(host_info, current_root_volume)
                 unmounted = True
                 logging.info("==> Root volume {} unmounted from {}".format(
@@ -891,6 +892,7 @@ class CreateRootVolumesMethod(AbstractInstancesMethod):
         args.search_pattern = "{}-".format(unique_string) + args.search_pattern
         volume_id = self.create_master_volume(args)
         output = [volume_id]
+        logging.info("Create master volume output {}".format(output))
         num_disks = int(args.num_disks) - 1
         snapshot_creation_delay = None
         snapshot_creation_max_attempts = None
@@ -909,8 +911,9 @@ class CreateRootVolumesMethod(AbstractInstancesMethod):
         if num_disks > 0:
             logging.info("Cloning {} other disks using volume_id {}".format(num_disks, volume_id))
             if snapshot_creation_delay is not None and snapshot_creation_max_attempts is not None:
-                output.extend(self.cloud.clone_disk(args, volume_id, num_disks,
-                              args.snapshot_creation_delay, args.snapshot_creation_max_attempts))
+                output.extend(self.cloud.clone_disk(
+                    args, volume_id, num_disks,
+                    args.snapshot_creation_delay, args.snapshot_creation_max_attempts))
             else:
                 output.extend(self.cloud.clone_disk(args, volume_id, num_disks))
 
@@ -1160,6 +1163,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--client_key_path')
         self.parser.add_argument('--cert_rotate_action', default=None,
                                  choices=self.CERT_ROTATE_ACTIONS)
+        self.parser.add_argument('--num_cores_to_keep', type=int, default=5,
+                                 help="number of clean cores to keep in the ansible layer")
         self.parser.add_argument('--skip_cert_validation',
                                  default=None, choices=self.SKIP_CERT_VALIDATION_OPTIONS)
         self.parser.add_argument('--cert_valid_duration', default=365)
@@ -1238,6 +1243,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
 
         self.extra_vars["systemd_option"] = args.systemd_services
         self.extra_vars["configure_ybc"] = args.configure_ybc
+        self.extra_vars["yb_num_cores_to_keep"] = args.num_cores_to_keep
 
         # Make sure we set server_type so we pick the right configure.
         self.update_ansible_vars_with_args(args)
@@ -1297,7 +1303,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             # NOTE 2: itest should download package from s3 to improve speed for instances in AWS.
             # TODO: Add a variable to specify itest ssh_user depending on VM users.
             start_time = time.time()
-            if args.package and (args.tags is None or args.tags == "download-software"):
+            if args.package and (args.tags is None or "download-software" in args.tags):
                 if args.s3_remote_download:
                     aws_access_key = args.aws_access_key or os.getenv('AWS_ACCESS_KEY_ID')
                     aws_secret_key = args.aws_secret_key or os.getenv('AWS_SECRET_ACCESS_KEY')

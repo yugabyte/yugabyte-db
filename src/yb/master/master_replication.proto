@@ -89,6 +89,16 @@ message ListCDCStreamsResponsePB {
   repeated CDCStreamInfoPB streams = 2;
 }
 
+message IsObjectPartOfXReplRequestPB {
+  required string table_id = 1;
+}
+
+message IsObjectPartOfXReplResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+  required bool is_object_part_of_xrepl = 2;
+}
+
 message GetCDCStreamRequestPB {
   optional bytes stream_id = 1;
 }
@@ -439,6 +449,8 @@ service MasterReplication {
   rpc CreateCDCStream(CreateCDCStreamRequestPB) returns (CreateCDCStreamResponsePB);
   rpc DeleteCDCStream(DeleteCDCStreamRequestPB) returns (DeleteCDCStreamResponsePB);
   rpc ListCDCStreams(ListCDCStreamsRequestPB) returns (ListCDCStreamsResponsePB);
+  rpc IsObjectPartOfXRepl(IsObjectPartOfXReplRequestPB)
+      returns (IsObjectPartOfXReplResponsePB);
   rpc GetCDCStream(GetCDCStreamRequestPB) returns (GetCDCStreamResponsePB);
   rpc GetCDCDBStreamInfo(GetCDCDBStreamInfoRequestPB) returns (GetCDCDBStreamInfoResponsePB);
   rpc UpdateCDCStream (UpdateCDCStreamRequestPB) returns (UpdateCDCStreamResponsePB);

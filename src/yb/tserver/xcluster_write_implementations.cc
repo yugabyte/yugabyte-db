@@ -28,7 +28,7 @@
 #include "yb/tserver/tserver.pb.h"
 
 #include "yb/cdc/cdc_service.pb.h"
-#include "yb/cdc/cdc_util.h"
+#include "yb/cdc/cdc_types.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/size_literals.h"

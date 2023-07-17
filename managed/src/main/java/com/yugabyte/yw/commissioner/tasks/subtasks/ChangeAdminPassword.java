@@ -13,6 +13,7 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import play.mvc.Http;
 
 @Slf4j
@@ -37,6 +38,7 @@ public class ChangeAdminPassword extends UniverseTaskBase {
     public String ycqlCurrentPassword;
     public String ycqlNewPassword;
     public String ysqlDbName;
+    public boolean validateCurrentPassword;
   }
 
   protected Params taskParams() {
@@ -59,10 +61,20 @@ public class ChangeAdminPassword extends UniverseTaskBase {
       if (primaryCluster == null) {
         primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
       }
-      if (primaryCluster.userIntent.enableYCQL && primaryCluster.userIntent.enableYCQLAuth) {
+      if (primaryCluster.userIntent.enableYCQL
+          && primaryCluster.userIntent.enableYCQLAuth
+          && !StringUtils.isEmpty(taskParams().ycqlNewPassword)) {
         dbData.ycqlCurrAdminPassword = taskParams().ycqlCurrentPassword;
         dbData.ycqlAdminUsername = taskParams().ycqlUserName;
         dbData.ycqlAdminPassword = taskParams().ycqlNewPassword;
+
+        if (taskParams().validateCurrentPassword) {
+          DatabaseSecurityFormData testDBCreds = new DatabaseSecurityFormData();
+          testDBCreds.ycqlAdminPassword = dbData.ycqlCurrAdminPassword;
+          testDBCreds.ycqlAdminUsername = dbData.ycqlAdminUsername;
+          ycqlQueryExecutor.validateAdminPassword(universe, testDBCreds);
+        }
+
         try {
           // Check if the password already works.
           ycqlQueryExecutor.validateAdminPassword(universe, dbData);
@@ -76,11 +88,22 @@ public class ChangeAdminPassword extends UniverseTaskBase {
           }
         }
       }
-      if (primaryCluster.userIntent.enableYSQL && primaryCluster.userIntent.enableYSQLAuth) {
+      if (primaryCluster.userIntent.enableYSQL
+          && primaryCluster.userIntent.enableYSQLAuth
+          && !StringUtils.isEmpty(taskParams().ysqlNewPassword)) {
         dbData.dbName = taskParams().ysqlDbName;
         dbData.ysqlCurrAdminPassword = taskParams().ysqlCurrentPassword;
         dbData.ysqlAdminUsername = taskParams().ysqlUserName;
         dbData.ysqlAdminPassword = taskParams().ysqlNewPassword;
+
+        if (taskParams().validateCurrentPassword) {
+          DatabaseSecurityFormData testDBCreds = new DatabaseSecurityFormData();
+          testDBCreds.ysqlAdminPassword = dbData.ysqlCurrAdminPassword;
+          testDBCreds.dbName = dbData.dbName;
+          testDBCreds.ysqlAdminUsername = dbData.ysqlAdminUsername;
+          ysqlQueryExecutor.validateAdminPassword(universe, testDBCreds);
+        }
+
         try {
           // Check if the password already works.
           ysqlQueryExecutor.validateAdminPassword(universe, dbData);

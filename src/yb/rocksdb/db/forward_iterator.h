@@ -70,18 +70,20 @@ class ForwardIterator : public InternalIterator {
                   ColumnFamilyData* cfd, SuperVersion* current_sv = nullptr);
   virtual ~ForwardIterator();
 
-  void SeekToLast() override {
+  const KeyValueEntry& SeekToLast() override {
     status_ = STATUS(NotSupported, "ForwardIterator::SeekToLast()");
-    entry_ = KeyValueEntry::Invalid();
+    entry_.Reset();
+    return entry_;
   }
-  void Prev() override {
+  const KeyValueEntry& Prev() override {
     status_ = STATUS(NotSupported, "ForwardIterator::Prev");
-    entry_ = KeyValueEntry::Invalid();
+    entry_.Reset();
+    return entry_;
   }
 
   const KeyValueEntry& Entry() const final;
-  void SeekToFirst() final;
-  void Seek(const Slice& target) final;
+  const KeyValueEntry& SeekToFirst() final;
+  const KeyValueEntry& Seek(Slice target) final;
   const KeyValueEntry& Next() final;
   Status status() const final;
   Status GetProperty(std::string prop_name, std::string* prop) final;

@@ -79,8 +79,11 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
 
   Result<HybridTime> RestartReadHt() override;
 
+  void Seek(Slice key) override;
+
   HybridTime TEST_MaxSeenHt() override;
 
+  Result<bool> PgFetchRow(Slice key, bool restart, dockv::PgTableRow* table_row);
   Result<bool> PgFetchNext(dockv::PgTableRow* table_row) override;
 
   bool TEST_is_flat_doc() const {
@@ -107,7 +110,6 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
   template <class TableRow>
   Result<bool> FetchNextImpl(TableRow table_row);
 
-  void Seek(Slice key) override;
   void PrevDocKey(Slice key) override;
 
   void ConfigureForYsql();
@@ -130,8 +132,8 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
     const dockv::ReaderProjection* static_projection;
   };
 
-  Result<DocReaderResult> FetchRow(FetchedEntry* fetched_entry, dockv::PgTableRow* table_row);
-  Result<DocReaderResult> FetchRow(FetchedEntry* fetched_entry, QLTableRowPair table_row);
+  Result<DocReaderResult> FetchRow(const FetchedEntry& fetched_entry, dockv::PgTableRow* table_row);
+  Result<DocReaderResult> FetchRow(const FetchedEntry& fetched_entry, QLTableRowPair table_row);
 
   Status FillRow(QLTableRowPair table_row);
   Status FillRow(dockv::PgTableRow* table_row);
@@ -148,7 +150,6 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
 
   // DocReader result returned by the previous fetch.
   DocReaderResult prev_doc_found_ = DocReaderResult::kNotFound;
-  FetchedEntry current_entry_;
 
   const DocDBStatistics* statistics_;
 };

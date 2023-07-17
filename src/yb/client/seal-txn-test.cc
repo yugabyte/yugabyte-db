@@ -38,7 +38,7 @@ namespace client {
 class SealTxnTest : public TransactionTestBase<MiniCluster> {
  protected:
   void SetUp() override {
-    FLAGS_enable_transaction_sealing = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_transaction_sealing) = true;
 
     SetIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
     TransactionTestBase::SetUp();
@@ -93,12 +93,12 @@ TEST_F(SealTxnTest, NumBatches) {
 TEST_F(SealTxnTest, NumBatchesWithRestart) {
   // Restarting whole cluster could result in expired transaction, that is not expected by the test.
   // Increase transaction timeout to avoid such kind of failures.
-  FLAGS_transaction_max_missed_heartbeat_periods = 50;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_max_missed_heartbeat_periods) = 50;
   TestNumBatches(/* restart= */ true);
 }
 
 TEST_F(SealTxnTest, NumBatchesWithRejection) {
-  FLAGS_TEST_write_rejection_percentage = 75;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_write_rejection_percentage) = 75;
   TestNumBatches(/* restart= */ false);
 }
 
@@ -107,9 +107,9 @@ TEST_F(SealTxnTest, NumBatchesWithRejection) {
 TEST_F(SealTxnTest, NumBatchesDisable) {
   DisableTransactionTimeout();
   // Should be enough for the restarted servers to be back online
-  FLAGS_transaction_rpc_timeout_ms = 20000 * kTimeMultiplier;
-  FLAGS_enable_transaction_sealing = false;
-  FLAGS_TEST_fail_on_replicated_batch_idx_set_in_txn_record = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_rpc_timeout_ms) = 20000 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_transaction_sealing) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_on_replicated_batch_idx_set_in_txn_record) = true;
 
   auto txn = CreateTransaction();
   auto session = CreateSession(txn);

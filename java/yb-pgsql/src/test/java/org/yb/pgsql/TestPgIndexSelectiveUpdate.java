@@ -32,7 +32,7 @@ public class TestPgIndexSelectiveUpdate extends BasePgSQLTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("TEST_export_intentdb_metrics", "true");
+    flagMap.put("export_intentdb_metrics", "true");
     return flagMap;
   }
 

@@ -34,7 +34,7 @@
 #include "yb/tserver/xcluster_poller.h"
 
 #include "yb/cdc/cdc_consumer.pb.h"
-#include "yb/cdc/cdc_util.h"
+#include "yb/cdc/cdc_types.h"
 
 #include "yb/client/error.h"
 #include "yb/client/client.h"
@@ -55,8 +55,8 @@
 using std::string;
 
 DEFINE_UNKNOWN_int32(cdc_consumer_handler_thread_pool_size, 0,
-    "Override the max thread pool size for CDCConsumerHandler, which is used by "
-    "CDCPollers. If set to 0, then the thread pool will use the default size (number of "
+    "Override the max thread pool size for XClusterConsumerHandler, which is used by "
+    "XClusterPoller. If set to 0, then the thread pool will use the default size (number of "
     "cpus on the system).");
 TAG_FLAG(cdc_consumer_handler_thread_pool_size, advanced);
 
@@ -124,7 +124,7 @@ Result<std::unique_ptr<XClusterConsumer>> XClusterConsumer::Create(
 
   auto local_client = std::make_unique<XClusterClient>();
   if (FLAGS_use_node_to_node_encryption) {
-    rpc::MessengerBuilder messenger_builder("cdc-consumer");
+    rpc::MessengerBuilder messenger_builder("xcluster-consumer");
 
     local_client->secure_context = VERIFY_RESULT(server::SetupSecureContext(
         "", "", server::SecureContextType::kInternal, &messenger_builder));
@@ -135,7 +135,7 @@ Result<std::unique_ptr<XClusterConsumer>> XClusterConsumer::Create(
   local_client->client = VERIFY_RESULT(
       client::YBClientBuilder()
           .master_server_addrs(hostport_strs)
-          .set_client_name("CDCConsumerLocal")
+          .set_client_name("XClusterConsumerLocal")
           .default_rpc_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms))
           .Build(local_client->messenger.get()));
 
@@ -148,7 +148,7 @@ Result<std::unique_ptr<XClusterConsumer>> XClusterConsumer::Create(
   RETURN_NOT_OK(yb::Thread::Create(
       "XClusterConsumer", "Poll", &XClusterConsumer::RunThread, xcluster_consumer.get(),
       &xcluster_consumer->run_trigger_poll_thread_));
-  ThreadPoolBuilder cdc_consumer_thread_pool_builder("CDCConsumerHandler");
+  ThreadPoolBuilder cdc_consumer_thread_pool_builder("XClusterConsumerHandler");
   if (FLAGS_cdc_consumer_handler_thread_pool_size > 0) {
     cdc_consumer_thread_pool_builder.set_max_threads(FLAGS_cdc_consumer_handler_thread_pool_size);
   }
@@ -185,7 +185,7 @@ XClusterConsumer::~XClusterConsumer() {
 }
 
 void XClusterConsumer::Shutdown() {
-  LOG_WITH_PREFIX(INFO) << "Shutting down CDC Consumer";
+  LOG_WITH_PREFIX(INFO) << "Shutting down XClusterConsumer";
   {
     std::lock_guard l(should_run_mutex_);
     should_run_ = false;
@@ -328,7 +328,7 @@ void XClusterConsumer::UpdateInMemoryState(
   uuid_master_addrs_.swap(old_uuid_master_addrs);
 
   if (!consumer_registry) {
-    LOG_WITH_PREFIX(INFO) << "Given empty CDC consumer registry: removing Pollers";
+    LOG_WITH_PREFIX(INFO) << "Given empty xCluster consumer registry: removing Pollers";
     consumer_role_ = cdc::XClusterRole::ACTIVE;
     // Clear the tablets list in case users want to increase number of txn status tablets in between
     // having active replication setups.
@@ -337,7 +337,8 @@ void XClusterConsumer::UpdateInMemoryState(
     return;
   }
 
-  LOG_WITH_PREFIX(INFO) << "Updating CDC consumer registry: " << consumer_registry->DebugString();
+  LOG_WITH_PREFIX(INFO) << "Updating xCluster consumer registry: "
+                        << consumer_registry->DebugString();
 
   consumer_role_ = consumer_registry->role();
   streams_with_local_tserver_optimization_.clear();
@@ -360,22 +361,28 @@ void XClusterConsumer::UpdateInMemoryState(
         changed_master_addrs_.insert(cdc::ReplicationGroupId(replication_group_id));
       }
     }
-    // recreate the set of CDCPollers
-    for (const auto& stream_entry : producer_entry_pb.stream_map()) {
-      const auto& stream_entry_pb = stream_entry.second;
+    // recreate the set of XClusterPoller
+    for (const auto& [stream_id_str, stream_entry_pb] : producer_entry_pb.stream_map()) {
+      auto stream_id_result = xrepl::StreamId::FromString(stream_id_str);
+      if (!stream_id_result) {
+        LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Invalid stream id: " << stream_id_str;
+        continue;
+      }
+      auto& stream_id = *stream_id_result;
+
       if (stream_entry_pb.local_tserver_optimized()) {
         LOG_WITH_PREFIX(INFO) << Format(
-            "Stream $0 will use local tserver optimization", stream_entry.first);
-        streams_with_local_tserver_optimization_.insert(stream_entry.first);
+            "Stream $0 will use local tserver optimization", stream_id);
+        streams_with_local_tserver_optimization_.insert(stream_id);
       }
       if (stream_entry_pb.has_producer_schema()) {
-        stream_to_schema_version_[stream_entry.first] = std::make_pair(
+        stream_to_schema_version_[stream_id] = std::make_pair(
             stream_entry_pb.producer_schema().validated_schema_version(),
             stream_entry_pb.producer_schema().last_compatible_consumer_schema_version());
       }
 
       if (stream_entry_pb.has_schema_versions()) {
-        auto& schema_version_map = stream_schema_version_map_[stream_entry.first];
+        auto& schema_version_map = stream_schema_version_map_[stream_id];
         auto schema_versions = stream_entry_pb.schema_versions();
         schema_version_map[schema_versions.current_producer_schema_version()] =
             schema_versions.current_consumer_schema_version();
@@ -392,7 +399,7 @@ void XClusterConsumer::UpdateInMemoryState(
 
       for (const auto& [colocated_id, versions] : stream_entry_pb.colocated_schema_versions()) {
         auto& schema_version_map =
-            stream_colocated_schema_version_map_[stream_entry.first][colocated_id];
+            stream_colocated_schema_version_map_[stream_id][colocated_id];
         schema_version_map[versions.current_producer_schema_version()] =
             versions.current_consumer_schema_version();
 
@@ -410,7 +417,7 @@ void XClusterConsumer::UpdateInMemoryState(
         const auto& consumer_tablet_id = tablet_entry.first;
         for (const auto& producer_tablet_id : tablet_entry.second.tablets()) {
           ProducerTabletInfo producer_tablet_info(
-              {cdc::ReplicationGroupId(replication_group_id), stream_entry.first,
+              {cdc::ReplicationGroupId(replication_group_id), stream_id,
                producer_tablet_id});
           cdc::ConsumerTabletInfo consumer_tablet_info(
               {consumer_tablet_id, stream_entry_pb.consumer_table_id()});
@@ -497,7 +504,7 @@ void XClusterConsumer::TriggerPollForNewTablets() {
           auto remote_client = std::make_unique<XClusterClient>();
           std::string dir;
           if (FLAGS_use_node_to_node_encryption) {
-            rpc::MessengerBuilder messenger_builder("cdc-consumer");
+            rpc::MessengerBuilder messenger_builder("xcluster-consumer");
             if (!FLAGS_certs_for_cdc_dir.empty()) {
               dir = JoinPathSegments(
                   FLAGS_certs_for_cdc_dir,
@@ -524,7 +531,7 @@ void XClusterConsumer::TriggerPollForNewTablets() {
 
           auto client_result =
               yb::client::YBClientBuilder()
-                  .set_client_name("CDCConsumerRemote")
+                  .set_client_name("XClusterConsumerRemote")
                   .add_master_server_addr(uuid_master_addrs_[replication_group_id])
                   .skip_master_flagfile()
                   .default_rpc_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms))
@@ -579,8 +586,7 @@ void XClusterConsumer::TriggerPollForNewTablets() {
 }
 
 void XClusterConsumer::UpdatePollerSchemaVersionMaps(
-    std::shared_ptr<XClusterPoller> xcluster_poller, const CDCStreamId& stream_id) const {
-
+    std::shared_ptr<XClusterPoller> xcluster_poller, const xrepl::StreamId& stream_id) const {
   auto compatible_schema_version = FindOrNull(stream_to_schema_version_, stream_id);
   if (compatible_schema_version != nullptr) {
       xcluster_poller->SetSchemaVersion(compatible_schema_version->first,
@@ -770,7 +776,7 @@ Status XClusterConsumer::PublishXClusterSafeTime() {
 
 void XClusterConsumer::StoreReplicationError(
     const TabletId& tablet_id,
-    const CDCStreamId& stream_id,
+    const xrepl::StreamId& stream_id,
     const ReplicationErrorPb error,
     const std::string& detail) {
   std::lock_guard lock(tablet_replication_error_map_lock_);
@@ -778,8 +784,7 @@ void XClusterConsumer::StoreReplicationError(
 }
 
 void XClusterConsumer::ClearReplicationError(
-    const TabletId& tablet_id,
-    const CDCStreamId& stream_id) {
+    const TabletId& tablet_id, const xrepl::StreamId& stream_id) {
   std::lock_guard l(tablet_replication_error_map_lock_);
   if (!tablet_replication_error_map_.contains(tablet_id)) {
     return;

@@ -1,11 +1,14 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -42,6 +45,12 @@ public class RestoreBackupParams extends UniverseTaskParams {
 
   @ApiModelProperty(value = "Backup's storage info to restore")
   public List<BackupStorageInfo> backupStorageInfoList;
+
+  @ApiModelProperty(hidden = true)
+  @JsonIgnore
+  @Getter
+  @Setter
+  private Map<String, YbcBackupResponse> successMarkerMap = new HashMap<>();
 
   // Intermediate states to resume ybc backups
   public UUID prefixUUID;
@@ -103,6 +112,9 @@ public class RestoreBackupParams extends UniverseTaskParams {
 
     @ApiModelProperty(value = "User name of the new tables owner")
     public String newOwner = null;
+
+    @ApiModelProperty(value = "Is selective table restore")
+    public boolean selectiveTableRestore = false;
   }
 
   public RestoreBackupParams(

@@ -111,7 +111,8 @@ TabletInitData TabletHarness::MakeTabletInitData(const RaftGroupMetadataPtr& met
       .transaction_manager_provider = nullptr,
       .full_compaction_pool = nullptr,
       .admin_triggered_compaction_pool = nullptr,
-      .post_split_compaction_added = nullptr
+      .post_split_compaction_added = nullptr,
+      .metadata_cache = nullptr,
     };
 }
 

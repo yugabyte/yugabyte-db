@@ -101,10 +101,10 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
         (StringUtils.isNotBlank(ybSoftwareVersion)
             && !ybSoftwareVersion.equals(userIntent.ybSoftwareVersion));
     CloudType provider = userIntent.providerType;
-    if (!(provider == CloudType.gcp || provider == CloudType.aws)) {
+    if (!(provider == CloudType.gcp || provider == CloudType.aws || provider == CloudType.azu)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
-          "VM image upgrade is only supported for AWS / GCP, got: " + provider.toString());
+          "VM image upgrade is only supported for cloud providers, got: " + provider.toString());
     }
     if (UniverseDefinitionTaskParams.hasEphemeralStorage(userIntent)) {
       throw new PlatformServiceException(
@@ -138,7 +138,8 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
                 Status.BAD_REQUEST,
                 String.format("Image bundle with UUID %s does not exist", imageBundleUUID));
           }
-          if (bundle.getProvider().getCloudCode().equals(CloudType.aws)) {
+          if (bundle.getProvider().getCloudCode().equals(CloudType.aws)
+              && !super.runtimeConfGetter.getStaticConf().getBoolean("yb.cloud.enabled")) {
             Map<String, ImageBundleDetails.BundleInfo> regionsBundleInfo =
                 bundle.getDetails().getRegions();
             // Validate that the provided image bundle contains all the regions

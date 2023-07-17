@@ -31,13 +31,14 @@ The **Regions** section on the cluster **Settings** tab summarizes the cluster c
 
 Read replicas require the following:
 
-- Primary cluster that is deployed in a VPC.
+- Primary cluster that is deployed in a VPC, in AWS or GCP.
 - Read replicas must be deployed in a VPC. Create a VPC for each region where you want to deploy a read replica. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 
 ## Limitations
 
 - Partition-by-region clusters do not support read replicas.
 - If another [locking cluster operation](../#locking-operations) is already running, you must wait for it to finish.
+- Currently, Azure is not supported for read replicas (coming soon).
 
 ## Add or edit read replicas
 
@@ -51,7 +52,7 @@ To add or edit read-replicas:
 
 1. For each replica, set the following options:
 
-    **Region** - Choose the [region](../../release-notes#cloud-provider-regions) where you want to deploy the replica.
+    **Region** - Choose the [region](../../cloud-basics/create-clusters-overview/#cloud-provider-regions) where you want to deploy the replica.
 
     **VPC** - Choose the VPC in which to deploy the nodes. You need to create VPCs before deploying a replica. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 

@@ -73,6 +73,9 @@ void SetupKeyValueBatch(const tserver::WriteRequestPB& client_request, LWWritePB
     out_request->set_client_id2(client_request.client_id2());
     out_request->set_request_id(client_request.request_id());
     out_request->set_min_running_request_id(client_request.min_running_request_id());
+    if (client_request.has_start_time_micros()) {
+      out_request->set_start_time_micros(client_request.start_time_micros());
+    }
   }
   out_request->set_batch_idx(client_request.batch_idx());
   // Actually, in production code, we could check for external hybrid time only when there are
@@ -125,15 +128,13 @@ WriteQuery::WriteQuery(
     WriteQueryContext* context,
     TabletPtr tablet,
     rpc::RpcContext* rpc_context,
-    tserver::WriteResponsePB* response,
-    dockv::OperationKind kind)
+    tserver::WriteResponsePB* response)
     : operation_(std::make_unique<WriteOperation>(std::move(tablet))),
       term_(term),
       deadline_(deadline),
       context_(context),
       rpc_context_(rpc_context),
       response_(response),
-      kind_(kind),
       start_time_(CoarseMonoClock::Now()),
       execute_mode_(ExecuteMode::kSimple) {
 }
@@ -508,7 +509,7 @@ Status WriteQuery::DoExecute() {
   dockv::PartialRangeKeyIntents partial_range_key_intents(metadata.UsePartialRangeKeyIntents());
   prepare_result_ = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
       doc_ops_, write_batch.read_pairs(), tablet->metrics()->write_lock_latency,
-      tablet->metrics()->failed_batch_lock, isolation_level_, kind(), row_mark_type,
+      tablet->metrics()->failed_batch_lock, isolation_level_, row_mark_type,
       transactional_table, write_batch.has_transaction(), deadline(), partial_range_key_intents,
       tablet->shared_lock_manager()));
 
@@ -611,7 +612,7 @@ void WriteQuery::NonTransactionalConflictsResolved(HybridTime now, HybridTime re
 void WriteQuery::TransactionalConflictsResolved() {
   auto status = DoTransactionalConflictsResolved();
   if (!status.ok()) {
-    LOG(DFATAL) << status;
+    LOG(WARNING) << status;
     ExecuteDone(status);
   }
 }
@@ -853,7 +854,7 @@ struct UpdateQLIndexesTask {
   client::YBTransactionPtr txn;
   client::YBSessionPtr session;
   const ChildTransactionDataPB* child_transaction_data = nullptr;
-  std::shared_ptr<client::YBMetaDataCache> metadata_cache;
+  client::YBMetaDataCache* metadata_cache;
 
   std::mutex mutex;
   WriteQuery::IndexOps index_ops GUARDED_BY(mutex);

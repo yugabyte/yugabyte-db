@@ -79,9 +79,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
+import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
@@ -108,6 +110,14 @@ import play.libs.Json;
 
 // TODO - Better handling of UnauthorizedOperation. Ideally we should trigger alert so that
 public class AWSCloudImpl implements CloudAPI {
+
+  EncryptionAtRestManager keyManager;
+
+  @Inject
+  public AWSCloudImpl(EncryptionAtRestManager keyManager) {
+    this.keyManager = keyManager;
+  }
+
   public static final Logger LOG = LoggerFactory.getLogger(AWSCloudImpl.class);
 
   public AmazonElasticLoadBalancing getELBClient(Provider provider, String regionCode) {
@@ -207,7 +217,9 @@ public class AWSCloudImpl implements CloudAPI {
     try {
       if (config.has(AwsKmsAuthConfigField.CMK_ID.fieldName)) {
         try {
-          KeyProvider.AWS.getServiceInstance().refreshKmsWithService(null, config);
+          keyManager
+              .getServiceInstance(KeyProvider.AWS.toString())
+              .refreshKmsWithService(null, config);
           LOG.info("Validated AWS KMS creds for customer '{}'", customerUUID);
           return true;
         } catch (Exception e) {

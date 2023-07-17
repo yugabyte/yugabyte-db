@@ -397,7 +397,7 @@ TEST_F(MetricsTest, JsonPrintTest) {
 
 // Test that metrics are retired when they are no longer referenced.
 TEST_F(MetricsTest, RetirementTest) {
-  FLAGS_metrics_retirement_age_ms = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_metrics_retirement_age_ms) = 100;
 
   const string kMetricName = "foo";
   scoped_refptr<Counter> counter = METRIC_reqs_pending.Instantiate(entity_);
@@ -439,7 +439,7 @@ TEST_F(MetricsTest, TestRetiringEntities) {
 // Test that we can mark a metric to never be retired.
 TEST_F(MetricsTest, NeverRetireTest) {
   entity_->NeverRetire(METRIC_test_hist.Instantiate(entity_));
-  FLAGS_metrics_retirement_age_ms = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_metrics_retirement_age_ms) = 0;
 
   for (int i = 0; i < 3; i++) {
     entity_->RetireOldMetrics();

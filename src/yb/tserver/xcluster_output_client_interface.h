@@ -16,7 +16,7 @@
 #include "yb/consensus/opid_util.h"
 
 #include "yb/cdc/cdc_service.pb.h"
-#include "yb/cdc/cdc_util.h"
+#include "yb/cdc/cdc_types.h"
 
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"

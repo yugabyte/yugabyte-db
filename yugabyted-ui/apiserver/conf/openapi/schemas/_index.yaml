@@ -340,6 +340,32 @@ MetricData:
   required:
     - name
     - values
+ActivityData:
+  title: Activity Data
+  description: Activity Data
+  type: object
+  properties:
+    name:
+      type: string
+    data:
+      type: object
+  required:
+    - name
+    - data
+AlertsInfo:
+  title: Alerts Info
+  description: Alerts Info
+  type: object
+  properties:
+    name:
+      description: Name of alert
+      type: string
+    info:
+      description: Array of alerts
+      type: string
+  required:
+    - name
+    - info
 ClusterTableData:
   title: Cluster Table Data
   description: List of cluster tables
@@ -361,6 +387,10 @@ ClusterTable:
       type: string
       minLength: 1
       nullable: false
+    uuid:
+      type: string
+      minLength: 1
+      nullable: false
     type:
       $ref: '#/YbApiEnum'
     size_bytes:
@@ -370,6 +400,7 @@ ClusterTable:
   required:
     - name
     - keyspace
+    - uuid
     - type
     - size_bytes
 YbApiEnum:
@@ -622,7 +653,7 @@ HealthCheckInfo:
 ClusterTabletData:
   title: Cluster Tablet Data
   description: List of cluster tablets
-  type: array
+  type: object
   additionalProperties:
     $ref: '#/ClusterTablet'
 ClusterTablet:
@@ -648,6 +679,159 @@ ClusterTablet:
     - table_uuid
     - table_id
     - has_leader
+GflagsInfo:
+  title: Gflags Info
+  description: Gflags Info
+  type: object
+  properties:
+    master_flags:
+      type: array
+      items:
+        $ref: '#/Gflag'
+    tserver_flags:
+      type: array
+      items:
+        $ref: '#/Gflag'
+  required:
+    - master_flags
+    - tserver_flags
+Gflag:
+  title: Gflag
+  description: Gflag
+  type: object
+  properties:
+    name:
+      type: string
+    value:
+      type: string
+    type:
+      type: string
+TableInfo:
+  title: Table Info
+  description: Table Info
+  type: object
+  properties:
+    table_name:
+      type: string
+    table_id:
+      type: string
+      format: uuid
+    table_version:
+      type: integer
+    table_type:
+      type: string
+    table_state:
+      type: string
+    table_state_message:
+      type: string
+    table_tablespace_oid:
+      type: string
+    table_replication_info:
+      type: object
+      properties:
+        live_replicas:
+          $ref: '#/TableReplicationInfo'
+        read_replicas:
+          type: array
+          items:
+            $ref: '#/TableReplicationInfo'
+    columns:
+      type: array
+      items:
+        $ref: '#/ColumnInfo'
+    tablets:
+      type: array
+      items:
+        $ref: '#/TabletInfo'
+  required:
+    - table_name
+    - table_id
+    - table_version
+    - table_type
+    - table_state
+    - table_state_message
+    - table_replication_info
+    - columns
+    - tablets
+TabletInfo:
+  title: Tablet Info
+  description: Tablet Info
+  type: object
+  properties:
+    tablet_id:
+      type: string
+      format: uuid
+    partition:
+      type: string
+    split_depth:
+      type: integer
+    state:
+      type: string
+    hidden:
+      type: boolean
+    message:
+      type: string
+    raft_config:
+      type: array
+      items:
+        $ref: '#/RaftConfig'
+RaftConfig:
+  title: Raft Config
+  description: Raft Config
+  type: object
+  properties:
+    uuid:
+      type: string
+      format: uuid
+    role:
+      type: string
+    location:
+      type: string
+ColumnInfo:
+  title: Column Info
+  description: Column Info
+  type: object
+  properties:
+    column:
+      type: string
+    id:
+      type: string
+    type:
+      type: string
+TableReplicationInfo:
+  title: TableReplicationInfo
+  description: TableReplicationInfo
+  type: object
+  properties:
+    num_replicas:
+      type: integer
+    placement_blocks:
+      type: array
+      items:
+        $ref: '#/PlacementBlock'
+    placement_uuid:
+      type: string
+      format: uuid
+PlacementBlock:
+  title: Placement Block
+  description: Placement Block
+  type: object
+  properties:
+    cloud_info:
+      $ref: '#/PlacementCloudInfo'
+    min_num_replicas:
+      type: integer
+PlacementCloudInfo:
+  title: Placement Cloud Info
+  description: Placement Cloud Info
+  type: object
+  properties:
+    placement_cloud:
+      type: string
+    placement_region:
+      type: string
+    placement_zone:
+      type: string
 VersionInfo:
   title: YugabyteDB Version Info
   description: YugabyteDB version info

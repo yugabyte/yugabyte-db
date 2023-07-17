@@ -130,16 +130,8 @@ TAG_FLAG(tablet_do_dup_key_checks, unsafe);
 DEFINE_UNKNOWN_bool(tablet_do_compaction_cleanup_for_intents, true,
             "Whether to clean up intents for aborted transactions in compaction.");
 
-DEFINE_UNKNOWN_int32(tablet_bloom_block_size, 4096,
-             "Block size of the bloom filters used for tablet keys.");
-TAG_FLAG(tablet_bloom_block_size, advanced);
-
-DEFINE_UNKNOWN_double(tablet_bloom_target_fp_rate, 0.01f,
-              "Target false-positive rate (between 0 and 1) to size tablet key bloom filters. "
-              "A lower false positive rate may reduce the number of disk seeks required "
-              "in heavy insert workloads, at the expense of more space and RAM "
-              "required for bloom filters.");
-TAG_FLAG(tablet_bloom_target_fp_rate, advanced);
+DEPRECATE_FLAG(int32, tablet_bloom_block_size, "06_2023");
+DEPRECATE_FLAG(double, tablet_bloom_target_fp_rate, "06_2023");
 
 METRIC_DEFINE_entity(table);
 METRIC_DEFINE_entity(tablet);
@@ -237,8 +229,8 @@ DEFINE_test_flag(bool, tablet_verify_flushed_frontier_after_modifying, false,
 DEFINE_test_flag(bool, docdb_log_write_batches, false,
                  "Dump write batches being written to RocksDB");
 
-DEFINE_test_flag(bool, export_intentdb_metrics, false,
-                 "Dump intentsdb statistics to prometheus metrics");
+DEFINE_NON_RUNTIME_bool(export_intentdb_metrics, true,
+                    "Dump intentsdb statistics to prometheus metrics");
 
 DEFINE_test_flag(bool, pause_before_full_compaction, false,
                  "Pause before triggering full compaction.");
@@ -474,6 +466,7 @@ Tablet::Tablet(const TabletInitData& data)
       write_ops_being_submitted_counter_("Tablet schema"),
       client_future_(data.client_future),
       transaction_manager_provider_(data.transaction_manager_provider),
+      metadata_cache_(data.metadata_cache),
       local_tablet_filter_(data.local_tablet_filter),
       log_prefix_suffix_(data.log_prefix_suffix),
       is_sys_catalog_(data.is_sys_catalog),
@@ -502,9 +495,9 @@ Tablet::Tablet(const TabletInitData& data)
     regulardb_statistics_ =
         rocksdb::CreateDBStatistics(table_metrics_entity_, tablet_metrics_entity_);
     intentsdb_statistics_ =
-        (GetAtomicFlag(&FLAGS_TEST_export_intentdb_metrics)
+        (GetAtomicFlag(&FLAGS_export_intentdb_metrics)
              ? rocksdb::CreateDBStatistics(table_metrics_entity_, tablet_metrics_entity_, true)
-             : rocksdb::CreateDBStatistics(table_metrics_entity_, nullptr, true));
+             : rocksdb::CreateDBStatistics(nullptr, nullptr, true));
 
     metrics_.reset(new TabletMetrics(table_metrics_entity_, tablet_metrics_entity_));
 
@@ -531,10 +524,8 @@ Tablet::Tablet(const TabletInitData& data)
     }
   }
 
-  // Create index table metadata cache for secondary index update.
-  if (has_index) {
-    CreateNewYBMetaDataCache();
-  }
+  LOG_IF(FATAL, has_index && !metadata_cache_)
+      << "Metadata cache is missing when indexes are present";
 
   if (data.transaction_coordinator_context &&
       table_info->table_type == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
@@ -625,22 +616,14 @@ Status Tablet::CreateTabletDirectories(const string& db_dir, FsManager* fs) {
   return Status::OK();
 }
 
+client::YBMetaDataCache* Tablet::YBMetaDataCache() {
+  return metadata_cache_;
+}
+
 void Tablet::ResetYBMetaDataCache() {
-  std::atomic_store_explicit(&metadata_cache_, {}, std::memory_order_release);
-}
-
-void Tablet::CreateNewYBMetaDataCache() {
-  auto meta_data_cache_mem_tracker =
-      MemTracker::FindOrCreateTracker(0, "Metadata cache", mem_tracker());
-  std::atomic_store_explicit(
-      &metadata_cache_,
-      std::make_shared<client::YBMetaDataCache>(
-          client_future_.get(), false /* Update permissions cache */, meta_data_cache_mem_tracker),
-      std::memory_order_release);
-}
-
-std::shared_ptr<client::YBMetaDataCache> Tablet::YBMetaDataCache() {
-  return std::atomic_load_explicit(&metadata_cache_, std::memory_order_acquire);
+  if (metadata_cache_) {
+    metadata_cache_->Reset();
+  }
 }
 
 template <class F>
@@ -2193,12 +2176,17 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
         current_table_info->table_id);
   }
 
-  // Clear old index table metadata cache.
-  ResetYBMetaDataCache();
-
-  // Create transaction manager and index table metadata cache for secondary index update.
-  if (!operation->index_map().empty()) {
-    CreateNewYBMetaDataCache();
+  // Cleanup the index from cache which are deleted or updated.
+  if (current_table_info->index_map && !current_table_info->index_map->empty()) {
+    for (const auto& index : *current_table_info->index_map) {
+      const auto it = operation->index_map().find(index.first);
+      // Remove entry if it's not found in updated map or it's version has changed.
+      if (it == operation->index_map().end()) {
+        YBMetaDataCache()->RemoveCachedTable(index.second.table_id());
+      } else if (it->second.schema_version() != index.second.schema_version()) {
+        YBMetaDataCache()->RemoveCachedTable(index.second.table_id(), it->second.schema_version());
+      }
+    }
   }
 
   // Flush the updated schema metadata to disk.
@@ -3318,9 +3306,8 @@ Status Tablet::DebugDump(vector<string> *lines) {
 void Tablet::DocDBDebugDump(vector<string> *lines) {
   LOG_STRING(INFO, lines) << "Dumping tablet:";
   LOG_STRING(INFO, lines) << "---------------------------";
-  auto primary_schema_packing_storage = PrimarySchemaPackingStorage();
   docdb::DocDBDebugDump(
-      regular_db_.get(), LOG_STRING(INFO, lines), *primary_schema_packing_storage,
+      regular_db_.get(), LOG_STRING(INFO, lines), &GetSchemaPackingProvider(),
       docdb::StorageDbType::kRegular);
 }
 
@@ -3457,26 +3444,24 @@ Status Tablet::ForceFullRocksDBCompact(rocksdb::CompactionReason compaction_reas
 std::string Tablet::TEST_DocDBDumpStr(IncludeIntents include_intents) {
   if (!regular_db_) return "";
 
-  auto schema_packing_storage = PrimarySchemaPackingStorage();
   if (!include_intents) {
     return docdb::DocDBDebugDumpToStr(doc_db().WithoutIntents(),
-        *schema_packing_storage);
+        &GetSchemaPackingProvider());
   }
 
-  return docdb::DocDBDebugDumpToStr(doc_db(), *schema_packing_storage);
+  return docdb::DocDBDebugDumpToStr(doc_db(), &GetSchemaPackingProvider());
 }
 
 void Tablet::TEST_DocDBDumpToContainer(
     IncludeIntents include_intents, std::unordered_set<std::string>* out) {
   if (!regular_db_) return;
 
-  auto schema_packing_storage = PrimarySchemaPackingStorage();
   if (!include_intents) {
     return docdb::DocDBDebugDumpToContainer(doc_db().WithoutIntents(),
-        *schema_packing_storage, out);
+        &GetSchemaPackingProvider(), out);
   }
 
-  return docdb::DocDBDebugDumpToContainer(doc_db(), *schema_packing_storage, out);
+  return docdb::DocDBDebugDumpToContainer(doc_db(), &GetSchemaPackingProvider(), out);
 }
 
 void Tablet::TEST_DocDBDumpToLog(IncludeIntents include_intents) {
@@ -3485,13 +3470,12 @@ void Tablet::TEST_DocDBDumpToLog(IncludeIntents include_intents) {
     return;
   }
 
-  auto schema_packing_storage = PrimarySchemaPackingStorage();
   docdb::DumpRocksDBToLog(
-      regular_db_.get(), *schema_packing_storage, StorageDbType::kRegular, LogPrefix());
+      regular_db_.get(), &GetSchemaPackingProvider(), StorageDbType::kRegular, LogPrefix());
 
   if (include_intents && intents_db_) {
     docdb::DumpRocksDBToLog(
-        intents_db_.get(), *schema_packing_storage, StorageDbType::kIntents, LogPrefix());
+        intents_db_.get(), &GetSchemaPackingProvider(), StorageDbType::kIntents, LogPrefix());
   }
 }
 
@@ -3758,11 +3742,12 @@ Status Tablet::ReadIntents(std::vector<std::string>* intents) {
   auto intent_iter = std::unique_ptr<rocksdb::Iterator>(
       intents_db_->NewIterator(read_options));
   intent_iter->SeekToFirst();
-  dockv::SchemaPackingStorage schema_packing_storage(table_type());
+  auto* schema_packing_provider = &GetSchemaPackingProvider();
 
   for (; intent_iter->Valid(); intent_iter->Next()) {
-    auto item = EntryToString(intent_iter->key(), intent_iter->value(),
-      schema_packing_storage, docdb::StorageDbType::kIntents);
+    auto item = EntryToString(
+        intent_iter->key(), intent_iter->value(), schema_packing_provider,
+        docdb::StorageDbType::kIntents);
     intents->push_back(item);
   }
 
@@ -4139,12 +4124,6 @@ void Tablet::RegisterOperationFilter(OperationFilter* filter) {
 
 docdb::SchemaPackingProvider& Tablet::GetSchemaPackingProvider() {
   return *metadata_.get();
-}
-
-std::shared_ptr<dockv::SchemaPackingStorage> Tablet::PrimarySchemaPackingStorage() {
-  auto doc_read_context = metadata_->primary_table_info()->doc_read_context;
-  return std::shared_ptr<dockv::SchemaPackingStorage>(doc_read_context,
-      &doc_read_context->schema_packing_storage);
 }
 
 void Tablet::UnregisterOperationFilter(OperationFilter* filter) {

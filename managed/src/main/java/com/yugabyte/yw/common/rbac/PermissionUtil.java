@@ -10,6 +10,8 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +28,14 @@ public class PermissionUtil {
     this.environment = environment;
   }
 
+  public List<PermissionInfo> getAllPermissionInfo() {
+    List<PermissionInfo> permissionInfoList = new ArrayList<>();
+    for (ResourceType resourceType : ResourceType.values()) {
+      permissionInfoList.addAll(getAllPermissionInfo(resourceType));
+    }
+    return permissionInfoList;
+  }
+
   public List<PermissionInfo> getAllPermissionInfo(ResourceType resourceType) {
     try {
       ObjectMapper mapper = new ObjectMapper();
@@ -34,7 +44,7 @@ public class PermissionUtil {
           new TypeReference<List<PermissionInfo>>() {});
     } catch (IOException e) {
       e.printStackTrace();
-      return null;
+      return Collections.emptyList();
     }
   }
 

@@ -89,8 +89,8 @@ int64_t CountLookups(MiniCluster* cluster) {
 }
 
 TEST_F(NetworkFailureTest, DisconnectMasterLeader) {
-  FLAGS_meta_cache_lookup_throttling_max_delay_ms = 10000;
-  FLAGS_meta_cache_lookup_throttling_step_ms = 50;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_meta_cache_lookup_throttling_max_delay_ms) = 10000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_meta_cache_lookup_throttling_step_ms) = 50;
 
   constexpr int kWriteRows = RegularBuildVsSanitizers(5000, 500);
   constexpr int kReportRows = kWriteRows / 5;

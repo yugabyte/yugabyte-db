@@ -43,7 +43,7 @@ TEST_F(FlagsTest, TestRefreshFlagsFile) {
 
 TEST_F(FlagsTest, TestSetFlagDefault) {
   ASSERT_EQ(0, FLAGS_flagstest_testflag);
-  FLAGS_flagstest_testflag = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_flagstest_testflag) = 2;
   ASSERT_OK(SET_FLAG_DEFAULT_AND_CURRENT(flagstest_testflag, 1));
   ASSERT_EQ(1, FLAGS_flagstest_testflag);
 

@@ -3223,9 +3223,7 @@ void YbAdminSnapshotScheduleTest::TestGCHiddenTables() {
 
 class YbAdminSnapshotConsistentRestoreTest : public YbAdminSnapshotScheduleTest {
  public:
-  virtual std::vector<std::string> ExtraTSFlags() {
-    return { "--consistent_restore=true", "--TEST_tablet_delay_restore_ms=0" };
-  }
+  virtual std::vector<std::string> ExtraTSFlags() { return {"--TEST_tablet_delay_restore_ms=0"}; }
 };
 
 Status WaitWrites(int num, std::atomic<int>* current) {
@@ -3490,10 +3488,6 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, DDLsDuringRestore, YbAdminSnapshotConsist
 
 class YbAdminSnapshotConsistentRestoreFailoverTest : public YbAdminSnapshotScheduleTest {
  public:
-  std::vector<std::string> ExtraTSFlags() override {
-    return { "--consistent_restore=true" };
-  }
-
   std::vector<std::string> ExtraMasterFlags() override {
     return { "--TEST_skip_sending_restore_finished=true" };
   }
@@ -3624,8 +3618,8 @@ class YbAdminRestoreAfterSplitTest : public YbAdminSnapshotScheduleTest {
   }
 
   void SetRf1Flags() {
-    FLAGS_num_tablet_servers = 1;
-    FLAGS_num_replicas = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
   }
 
   Result<int> GetRowCount(CassandraSession* conn) {
@@ -4162,8 +4156,8 @@ TEST_F_EX(
 TEST_F_EX(YbAdminSnapshotScheduleTest, CacheRefreshOnNewConnection,
           YbAdminSnapshotScheduleAutoSplitting) {
   // Setup an RF1 so that we are only dealing with one tserver and its cache.
-  FLAGS_num_tablet_servers = 1;
-  FLAGS_num_replicas = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
 
   auto schedule_id = ASSERT_RESULT(PreparePg());
 
@@ -4235,8 +4229,8 @@ class YbAdminSnapshotScheduleTestWithYsqlAndManualSplitting
 
   void TestIOWithSnapshotScheduleAndSplit(bool test_write, bool perform_restore) {
     // Setup an RF1 so that we are only dealing with one tserver and its cache.
-    FLAGS_num_tablet_servers = 1;
-    FLAGS_num_replicas = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
 
     auto schedule_id = ASSERT_RESULT(PreparePg());
 

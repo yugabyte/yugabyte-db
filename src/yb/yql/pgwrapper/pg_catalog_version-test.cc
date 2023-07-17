@@ -33,8 +33,8 @@ class PgCatalogVersionTest : public LibPqTestBase {
     Version last_breaking_version;
   };
 
-  static constexpr auto kYugabyteDatabase = "yugabyte";
-  static constexpr auto kTestDatabase = "test_db";
+  static constexpr auto* kYugabyteDatabase = "yugabyte";
+  static constexpr auto* kTestDatabase = "test_db";
 
   using MasterCatalogVersionMap = std::unordered_map<Oid, CatalogVersion>;
   using ShmCatalogVersionMap = std::unordered_map<Oid, Version>;
@@ -294,10 +294,10 @@ class PgCatalogVersionTest : public LibPqTestBase {
   //   pg_database
   //   pg_tablespace
   void TestDBCatalogVersionGlobalDDLHelper(bool disable_global_ddl) {
-    constexpr auto kTestUser1 = "test_user1";
-    constexpr auto kTestUser2 = "test_user2";
-    constexpr auto kTestGroup = "test_group";
-    constexpr auto kTestTablespace = "test_tsp";
+    constexpr auto* kTestUser1 = "test_user1";
+    constexpr auto* kTestUser2 = "test_user2";
+    constexpr auto* kTestGroup = "test_group";
+    constexpr auto* kTestTablespace = "test_tsp";
     // Test setup.
     auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
     ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte));
@@ -769,7 +769,7 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
 
 // This test exercises the wrap around logic in tserver shared memory free
 // slot allocation algorithm for a newly created database.
-TEST_F(PgCatalogVersionTest, RecyleManyDatabases) {
+TEST_F(PgCatalogVersionTest, RecycleManyDatabases) {
   RestartClusterWithDBCatalogVersionMode();
   auto conn = ASSERT_RESULT(ConnectToDB("template1"));
   const auto initial_count = ASSERT_RESULT(conn.FetchValue<PGUint64>(
@@ -805,6 +805,108 @@ TEST_F(PgCatalogVersionTest, RecyleManyDatabases) {
     count = ASSERT_RESULT(conn.FetchValue<PGUint64>(
         "SELECT COUNT(*) FROM pg_yb_catalog_version"));
     CHECK_EQ(count, initial_count);
+  }
+}
+
+class PgCatalogVersionEnableAuthTest
+    : public PgCatalogVersionTest,
+      public ::testing::WithParamInterface<std::pair<bool, bool>> {
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgCatalogVersionTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--ysql_enable_auth=true");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(PgCatalogVersionEnableAuthTest,
+                        PgCatalogVersionEnableAuthTest,
+                        ::testing::Values(std::make_pair(true, true),
+                                          std::make_pair(true, false),
+                                          std::make_pair(false, true),
+                                          std::make_pair(false, false)));
+
+// This test verifies that changing a user's password does not affect existing
+// this user's existing connection. The user is able to continue in the existing
+// connection that was authenticated using the old password. Making a new
+// connection using the old password will fail.
+TEST_P(PgCatalogVersionEnableAuthTest, ChangeUserPassword) {
+  const bool per_database_mode = GetParam().first;
+  const bool use_tserver_response_cache = GetParam().second;
+  LOG(INFO) << "per_database_mode: " << per_database_mode
+            << ", use_tserver_response_cache: " << use_tserver_response_cache;
+  string conn_str_prefix = Format("host=$0 port=$1 dbname='$2'",
+                                  pg_ts->bind_host(),
+                                  pg_ts->pgsql_rpc_port(),
+                                  kYugabyteDatabase);
+  auto conn_yugabyte = ASSERT_RESULT(PGConnBuilder({
+      .host = pg_ts->bind_host(),
+      .port = pg_ts->pgsql_rpc_port(),
+      .dbname = kYugabyteDatabase,
+      .user = "yugabyte",
+      .password = "yugabyte",
+    }).Connect());
+  constexpr CatalogVersion kInitialCatalogVersion{1, 1};
+  auto expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
+  for (const auto& entry : expected_versions) {
+    ASSERT_OK(CheckMatch(entry.second, kInitialCatalogVersion));
+  }
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte, per_database_mode));
+  std::vector<string> extra_tserver_flags =
+    { Format("--ysql_enable_read_request_caching=$0", use_tserver_response_cache) };
+  RestartClusterSetDBCatalogVersionMode(per_database_mode, extra_tserver_flags);
+  conn_yugabyte = ASSERT_RESULT(PGConnBuilder({
+      .host = pg_ts->bind_host(),
+      .port = pg_ts->pgsql_rpc_port(),
+      .dbname = kYugabyteDatabase,
+      .user = "yugabyte",
+      .password = "yugabyte",
+    }).Connect());
+  constexpr auto* kTestUser = "test_user";
+  constexpr auto* kOldPassword = "123";
+  constexpr auto* kNewPassword = "456";
+  ASSERT_OK(conn_yugabyte.ExecuteFormat(
+      "CREATE USER $0 PASSWORD '$1'", kTestUser, kOldPassword));
+  auto conn_test = ASSERT_RESULT(PGConnBuilder({
+      .host = pg_ts->bind_host(),
+      .port = pg_ts->pgsql_rpc_port(),
+      .dbname = kYugabyteDatabase,
+      .user = kTestUser,
+      .password = kOldPassword,
+    }).Connect());
+  auto res = ASSERT_RESULT(conn_test.Fetch("SELECT * FROM pg_yb_catalog_version"));
+  ASSERT_OK(conn_yugabyte.ExecuteFormat(
+      "ALTER USER $0 PASSWORD '$1'", kTestUser, kNewPassword));
+  WaitForCatalogVersionToPropagate();
+  // The existing connection that was authenticated with the old password is
+  // not affected by the password change.
+  res = ASSERT_RESULT(conn_test.Fetch("SELECT * FROM pg_yb_catalog_version"));
+  // Making a new connection using the old password should fail.
+  auto status = ResultToStatus(PGConnBuilder({
+      .host = pg_ts->bind_host(),
+      .port = pg_ts->pgsql_rpc_port(),
+      .dbname = kYugabyteDatabase,
+      .user = kTestUser,
+      .password = kOldPassword,
+    }).Connect());
+  ASSERT_STR_CONTAINS(status.ToString(), "password authentication failed");
+  // Making a new connection using the new password should succeed. As of
+  // 2023-06-29, pg_authid is not cached in tserver response cache during
+  // the authentication phase when making a new connection. If we ever read
+  // cached pg_authid from tserver response cache during authentication
+  // time, making a new connection with the new password would fail because
+  // tserver cache would have stored the old password.
+  auto conn_test_new = ASSERT_RESULT(PGConnBuilder({
+      .host = pg_ts->bind_host(),
+      .port = pg_ts->pgsql_rpc_port(),
+      .dbname = kYugabyteDatabase,
+      .user = kTestUser,
+      .password = kNewPassword,
+    }).Connect());
+  res = ASSERT_RESULT(conn_test_new.Fetch("SELECT * FROM pg_yb_catalog_version"));
+  // Verify that catalog version does not change.
+  expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
+  for (const auto& entry : expected_versions) {
+    ASSERT_OK(CheckMatch(entry.second, kInitialCatalogVersion));
   }
 }
 

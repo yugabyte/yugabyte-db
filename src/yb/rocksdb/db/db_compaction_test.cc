@@ -2768,11 +2768,12 @@ TEST_P(CompactionPriTest, Test) {
 
 // Test that manual compaction is aborted during shutdown.
 TEST_F_EX(DBCompactionTest, AbortManualCompactionOnShutdown, RocksDBTest) {
-  FLAGS_use_priority_thread_pool_for_compactions = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_priority_thread_pool_for_compactions) = true;
 
   for (const auto use_priority_thread_pool_for_flushes : {false, true}) {
     LOG(INFO) << "use_priority_thread_pool_for_flushes: " << use_priority_thread_pool_for_flushes;
-    FLAGS_use_priority_thread_pool_for_flushes = use_priority_thread_pool_for_flushes;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_priority_thread_pool_for_flushes) =
+        use_priority_thread_pool_for_flushes;
 
     auto* env = Env::Default();
     const auto db_root_path = yb::Format(

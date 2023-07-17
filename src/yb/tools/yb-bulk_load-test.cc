@@ -103,7 +103,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     opts.num_tablet_servers = kNumTabletServers;
 
     // Use a high enough initial sequence number.
-    FLAGS_initial_seqno = 1 << 20;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_seqno) = 1 << 20;
 
     cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
@@ -402,7 +402,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
 class YBBulkLoadTestWithoutRebalancing : public YBBulkLoadTest {
  public:
   void SetUp() override {
-    FLAGS_enable_load_balancing = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
     YBBulkLoadTest::SetUp();
   }
 };

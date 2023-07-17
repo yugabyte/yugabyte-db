@@ -6,7 +6,7 @@ import { Alert } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { toast } from 'react-toastify';
 import { useSlowQueriesApi, filterBySearchTokens } from './helpers/queriesHelper';
-import { resetSlowQueries  } from '../../actions/universe';
+import { resetSlowQueries } from '../../actions/universe';
 import { QueryInfoSidePanel } from './QueryInfoSidePanel';
 import { Highlighter } from '../../helpers/Highlighter';
 import { YBPanelItem } from '../panels';
@@ -358,7 +358,7 @@ const SlowQueriesComponent = () => {
       <QueryInfoSidePanel
         visible={selectedRow.length}
         onHide={() => setSelectedRow([])}
-        data={ysqlQueries.find((x) => selectedRow.length && x.queryid === selectedRow[0])}
+        queryData={ysqlQueries.find((x) => selectedRow.length && x.queryid === selectedRow[0])}
       />
     </div>
   );

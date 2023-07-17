@@ -397,6 +397,10 @@ class BackendsCatalogVersionTS : public RetryingTSRpcTask {
   // master-to-tserver RPC deadline.
   const int prev_num_lagging_backends_;
 
+  // Whether the tserver is considered behind.  This is checked and set true on HandleResponse when
+  // the response error complains about mismatched schema most likely due to not having run
+  // upgrade_ysql.
+  bool found_behind_ = false;
   // Whether the tserver is considered dead (expired).  This is checked and set true on
   // HandleResponse.  It may be the case that this is not set and tserver is found dead through a
   // different way (e.g. rpc failure).

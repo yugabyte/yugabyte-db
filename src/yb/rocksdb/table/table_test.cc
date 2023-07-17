@@ -239,11 +239,12 @@ class BlockConstructor: public Constructor {
 };
 
 // A helper class that converts internal format keys into user keys
-class KeyConvertingIterator : public InternalIterator {
+class KeyConvertingIterator final : public InternalIterator {
  public:
   explicit KeyConvertingIterator(InternalIterator* iter,
                                  bool arena_mode = false)
       : iter_(iter), arena_mode_(arena_mode) {}
+
   virtual ~KeyConvertingIterator() {
     if (arena_mode_) {
       iter_->~InternalIterator();
@@ -251,21 +252,34 @@ class KeyConvertingIterator : public InternalIterator {
       delete iter_;
     }
   }
-  void Seek(const Slice& target) override {
+
+  const KeyValueEntry& Seek(Slice target) override {
     ParsedInternalKey ikey(target, kMaxSequenceNumber, kTypeValue);
     std::string encoded;
     AppendInternalKey(&encoded, ikey);
     iter_->Seek(encoded);
+    return Entry();
   }
-  void SeekToFirst() override { iter_->SeekToFirst(); }
-  void SeekToLast() override { iter_->SeekToLast(); }
+
+  const KeyValueEntry& SeekToFirst() override {
+    iter_->SeekToFirst();
+    return Entry();
+  }
+
+  const KeyValueEntry& SeekToLast() override {
+    iter_->SeekToLast();
+    return Entry();
+  }
 
   const KeyValueEntry& Next() override {
     iter_->Next();
     return Entry();
   }
 
-  void Prev() override { iter_->Prev(); }
+  const KeyValueEntry& Prev() override {
+    iter_->Prev();
+    return Entry();
+  }
 
   const KeyValueEntry& Entry() const override {
     const auto& res = iter_->Entry();
@@ -475,16 +489,29 @@ class MemTableConstructor: public Constructor {
 class InternalIteratorFromIterator : public InternalIterator {
  public:
   explicit InternalIteratorFromIterator(Iterator* it) : it_(it) {}
-  void Seek(const Slice& target) override { it_->Seek(target); }
-  void SeekToFirst() override { it_->SeekToFirst(); }
-  void SeekToLast() override { it_->SeekToLast(); }
+
+  const KeyValueEntry& Seek(Slice target) override {
+    it_->Seek(target);
+    return Entry();
+  }
+  const KeyValueEntry& SeekToFirst() override {
+    it_->SeekToFirst();
+    return Entry();
+  }
+  const KeyValueEntry& SeekToLast() override {
+    it_->SeekToLast();
+    return Entry();
+  }
 
   const KeyValueEntry& Next() override {
     it_->Next();
     return Entry();
   }
 
-  void Prev() override { it_->Prev(); }
+  const KeyValueEntry& Prev() override {
+    it_->Prev();
+    return Entry();
+  }
 
   const KeyValueEntry& Entry() const override {
     const auto& entry = it_->Entry();

@@ -55,6 +55,20 @@ MetricResponse:
           - data
           - start_timestamp
           - end_timestamp
+ActivityResponse:
+  description: Activities Response
+  content:
+    application/json:
+      schema:
+        title: Activities Response
+        type: object
+        properties:
+          data:
+            type: array
+            items:
+              $ref: '../schemas/_index.yaml#/ActivityData'
+        required:
+          - data
 ClusterTableListResponse:
   description: List of cluster tables
   content:
@@ -110,13 +124,24 @@ GflagsResponse:
   content:
     application/json:
       schema:
-        title: Gflags Info
+        $ref: '../schemas/_index.yaml#/GflagsInfo'
+AlertsResponse:
+  description: Alerts information
+  content:
+    application/json:
+      schema:
+        title: Alerts Response
         type: object
         properties:
-          masterFlags:
-            type: object
-          tserverFlags:
-            type: object
+          data:
+            type: array
+            items:
+              $ref: '../schemas/_index.yaml#/AlertsInfo'
         required:
-          - masterFlags
-          - tserverFlags
+          - data
+TableInfoResponse:
+  description: Information for a single table
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/_index.yaml#/TableInfo'

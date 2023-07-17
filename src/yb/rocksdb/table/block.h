@@ -191,13 +191,13 @@ class BlockIter final : public InternalIterator {
 
   virtual const KeyValueEntry& Next() override;
 
-  virtual void Prev() override;
+  virtual const KeyValueEntry& Prev() override;
 
-  virtual void Seek(const Slice& target) override;
+  virtual const KeyValueEntry& Seek(Slice target) override;
 
-  virtual void SeekToFirst() override;
+  virtual const KeyValueEntry& SeekToFirst() override;
 
-  virtual void SeekToLast() override;
+  virtual const KeyValueEntry& SeekToLast() override;
 
   virtual Status PinData() override {
     // block data is always pinned.

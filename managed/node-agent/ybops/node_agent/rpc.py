@@ -11,7 +11,6 @@
 import logging
 import shlex
 import time
-import traceback
 import uuid
 
 from ansible.module_utils._text import to_native

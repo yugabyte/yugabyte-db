@@ -240,12 +240,13 @@ int64_t StatefulServiceBase::WaitForLeaderLeaseAndGetTerm(TabletPeerPtr tablet_p
   }
 
   const auto& tablet_id = tablet_peer->tablet_id();
-  auto consensus = tablet_peer->shared_consensus();
-  if (!consensus) {
+  auto consensus_result = tablet_peer->GetConsensus();
+  if (!consensus_result) {
     VLOG(1) << ServiceName() << " Received notification of tablet leader change "
             << "but tablet no longer running. Tablet ID: " << tablet_id;
     return OpId::kUnknownTerm;
   }
+  auto& consensus = consensus_result.get();
 
   auto leader_status = consensus->CheckIsActiveLeaderAndHasLease();
   // The possible outcomes are:

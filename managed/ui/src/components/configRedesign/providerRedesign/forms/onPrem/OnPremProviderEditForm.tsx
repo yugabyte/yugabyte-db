@@ -25,7 +25,7 @@ import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { YBInput, YBInputField, YBToggleField } from '../../../../../redesign/components';
 import {
   addItem,
-  constructAccessKeysPayload,
+  constructAccessKeysEditPayload,
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
@@ -431,6 +431,7 @@ const constructDefaultFormValues = (
   regions: providerConfig.regions.map((region) => ({
     fieldId: generateLowerCaseAlphanumericId(),
     code: region.code,
+    name: region.name || region.code,
     location: getOnPremLocationOption(region.latitude, region.longitude),
     zones: region.zones.map((zone) => ({
       code: zone.code
@@ -456,7 +457,7 @@ const constructProviderPayload = async (
     throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
   }
 
-  const allAccessKeysPayload = constructAccessKeysPayload(
+  const allAccessKeysPayload = constructAccessKeysEditPayload(
     formValues.editSSHKeypair,
     KeyPairManagement.SELF_MANAGED,
     { sshKeypairName: formValues.sshKeypairName, sshPrivateKeyContent: sshPrivateKeyContent },
@@ -502,7 +503,7 @@ const constructProviderPayload = async (
             longitude: regionFormValues.location.value.longitude
           }),
           code: regionFormValues.code,
-          name: regionFormValues.code,
+          name: regionFormValues.name,
           zones: [
             ...regionFormValues.zones.map((azFormValues) => {
               const existingZone = findExistingZone<OnPremRegion, OnPremAvailabilityZone>(

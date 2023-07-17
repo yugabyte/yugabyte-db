@@ -99,22 +99,22 @@ class LogSyncTest : public RestartTest {
  protected:
   void BeforeStartCluster() override {
     // setting the flag immaterial of the default value
-    FLAGS_log_enable_background_sync = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_enable_background_sync) = true;
   }
 };
 
 TEST_F(RestartTest, WalFooterProperlyInitialized) {
-  FLAGS_TEST_simulate_abrupt_server_restart = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = true;
   // Disable reuse unclosed segment feature to prevent log from reusing
   // the last segment and skipping building footer.
-  FLAGS_reuse_unclosed_segment_threshold_bytes = -1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_reuse_unclosed_segment_threshold_bytes) = -1;
   auto timestamp_before_write = GetCurrentTimeMicros();
   PutKeyValue("key", "value");
   auto timestamp_after_write = GetCurrentTimeMicros();
 
   auto* tablet_server = mini_cluster()->mini_tablet_server(0);
   ASSERT_OK(tablet_server->Restart());
-  FLAGS_TEST_simulate_abrupt_server_restart = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = false;
 
   string tablet_id;
   ASSERT_NO_FATALS(GetTablet(table_.name(), &tablet_id));
@@ -159,8 +159,8 @@ TEST_F(LogSyncTest, BackgroundSync) {
 class PersistRetryableRequestsTest : public RestartTest {
  protected:
   void BeforeStartCluster() override {
-    FLAGS_enable_flush_retryable_requests = true;
-    FLAGS_retryable_request_timeout_secs = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_timeout_secs) = 10;
   }
 
   size_t num_tablet_servers() override { return 1; }
@@ -194,9 +194,13 @@ void PersistRetryableRequestsTest::TestRetryableWrite(bool wait_file_to_expire) 
   int64_t new_index = 1;
   PutKeyValue("key_1", "value_1");
   new_index++;
-  ASSERT_OK(WaitFor([&] {
-    return tablet_peer->raft_consensus()->GetLastCommittedOpId().index == new_index;
-  }, 10s, Format("the write $0 is replicated", new_index)));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(tablet_peer->GetRaftConsensus())->GetLastCommittedOpId().index ==
+               new_index;
+      },
+      10s,
+      Format("the write $0 is replicated", new_index)));
 
   if (wait_file_to_expire) {
     ASSERT_OK(RollLog(tablet_peer));
@@ -205,9 +209,13 @@ void PersistRetryableRequestsTest::TestRetryableWrite(bool wait_file_to_expire) 
     SetAtomicFlag(false, &FLAGS_enable_flush_retryable_requests);
     PutKeyValue("key_1", "value_1");
     new_index++;
-    ASSERT_OK(WaitFor([&] {
-      return tablet_peer->raft_consensus()->GetLastCommittedOpId().index == new_index;
-    }, 10s, Format("the write $0 is replicated", new_index)));
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          return VERIFY_RESULT(tablet_peer->GetRaftConsensus())->GetLastCommittedOpId().index ==
+                 new_index;
+        },
+        10s,
+        Format("the write $0 is replicated", new_index)));
     ASSERT_OK(RollLog(tablet_peer));
 
     // Sleep for enough time to make the persisted file old enough.
@@ -215,9 +223,13 @@ void PersistRetryableRequestsTest::TestRetryableWrite(bool wait_file_to_expire) 
     SleepFor((FLAGS_retryable_request_timeout_secs + 1) * 1s);
     SetAtomicFlag(true, &FLAGS_enable_flush_retryable_requests);
 
-    ASSERT_OK(WaitFor([&] {
-      return tablet_peer->shared_raft_consensus()->MinRetryableRequestOpId() == OpId::Max();
-    }, 10s, "retryable requests get GCed"));
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          return VERIFY_RESULT(tablet_peer->GetRaftConsensus())->MinRetryableRequestOpId() ==
+                 OpId::Max();
+        },
+        10s,
+        "retryable requests get GCed"));
   }
 
 #ifndef NDEBUG
@@ -238,9 +250,13 @@ void PersistRetryableRequestsTest::TestRetryableWrite(bool wait_file_to_expire) 
     PutKeyValue("key_0", "value_0");
   });
 
-  ASSERT_OK(WaitFor([&] {
-    return tablet_peer->raft_consensus()->GetLastCommittedOpId().index == new_index;
-  }, 10s, Format("the write $0 is replicated", new_index)));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(tablet_peer->GetRaftConsensus())->GetLastCommittedOpId().index ==
+               new_index;
+      },
+      10s,
+      Format("the write $0 is replicated", new_index)));
 
   if (!wait_file_to_expire) {
     ASSERT_OK(RollLog(tablet_peer));
@@ -273,17 +289,17 @@ void PersistRetryableRequestsTest::TestRetryableWrite(bool wait_file_to_expire) 
 
 
 TEST_F(PersistRetryableRequestsTest, TestRetryableWriteAfterRestart) {
-  FLAGS_enable_flush_retryable_requests = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
   return TestRetryableWrite(/* wait_file_to_expire */ false);
 }
 
 TEST_F(PersistRetryableRequestsTest, TestRetryableWriteWithoutPersistence) {
-  FLAGS_enable_flush_retryable_requests = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = false;
   return TestRetryableWrite(/* wait_file_to_expire */ false);
 }
 
 TEST_F(PersistRetryableRequestsTest, TestRetryableRequestsFileTooOld) {
-  FLAGS_enable_flush_retryable_requests = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
   return TestRetryableWrite(/* wait_file_to_expire */ true);
 }
 

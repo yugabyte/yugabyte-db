@@ -53,7 +53,8 @@ interface NodeAgentStatusProps {
 const NODE_AGENT_STATUS_TO_DISPLAY_TEXT = {
   READY: 'Ready',
   REGISTERING: 'Registering',
-  UPGRADING: 'Upgrading',
+  UPGRADE: 'Upgrading',
+  UPGRADED: 'Upgrading',
   UNREACHABLE: 'Unreachable'
 };
 

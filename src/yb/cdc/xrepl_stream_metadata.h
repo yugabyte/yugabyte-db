@@ -15,14 +15,20 @@
 #include <shared_mutex>
 
 #include "yb/cdc/cdc_service.pb.h"
-#include "yb/cdc/cdc_util.h"
+#include "yb/cdc/cdc_types.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/gutil/thread_annotations.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/util/shared_lock.h"
 
-namespace yb::cdc {
+namespace yb {
+
+namespace client {
+class YBClient;
+}  // namespace client
+
+namespace cdc {
 
 // This class holds the metadata for a CDC stream on the Producer cluster. This is a cache of the
 // metadata stored in the CatalogManager. Certain fields like table_ids_, state_, ... can change on
@@ -98,11 +104,11 @@ class StreamMetadata {
       EXCLUDES(tablet_metadata_map_mutex_);
 
   Status InitOrReloadIfNeeded(
-      const std::string& stream_id, RefreshStreamMapOption opts, client::YBClient* client)
+      const xrepl::StreamId& stream_id, RefreshStreamMapOption opts, client::YBClient* client)
       EXCLUDES(load_mutex_);
 
  private:
-  Status GetStreamInfoFromMaster(const std::string& stream_id, client::YBClient* client)
+  Status GetStreamInfoFromMaster(const xrepl::StreamId& stream_id, client::YBClient* client)
       REQUIRES(load_mutex_) EXCLUDES(table_ids_mutex_, tablet_metadata_map_mutex_);
 
  private:
@@ -125,4 +131,5 @@ class StreamMetadata {
       GUARDED_BY(tablet_metadata_map_mutex_);
 };
 
-}  // namespace yb::cdc
+}  // namespace cdc
+}  // namespace yb

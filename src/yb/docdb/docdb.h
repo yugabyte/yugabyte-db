@@ -82,8 +82,6 @@ class Counter;
 
 namespace docdb {
 
-class DocOperation;
-
 // This function prepares the transaction by taking locks. The set of keys locked are returned to
 // the caller via the keys_locked argument (because they need to be saved and unlocked when the
 // transaction commits). A flag is also returned to indicate if any of the write operations
@@ -113,9 +111,8 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const ArenaList<LWKeyValuePairPB>& read_pairs,
     const scoped_refptr<Histogram>& write_lock_latency,
     const scoped_refptr<Counter>& failed_batch_lock,
-    const IsolationLevel isolation_level,
-    const dockv::OperationKind operation_kind,
-    const RowMarkType row_mark_type,
+    IsolationLevel isolation_level,
+    RowMarkType row_mark_type,
     bool transactional_table,
     bool write_transaction_metadata,
     CoarseTimePoint deadline,
