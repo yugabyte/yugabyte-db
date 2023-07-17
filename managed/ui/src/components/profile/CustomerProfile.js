@@ -28,7 +28,10 @@ export default class CustomerProfile extends Component {
   }
 
   componentDidMount() {
-    const { customer } = this.props;
+    const { customer, runtimeConfigs } = this.props;
+    if (!runtimeConfigs) {
+      this.props.fetchGlobalRunTimeConfigs();
+    }
     this.props.getCustomerUsers();
     this.props.validateRegistration();
     if (isNonAvailable(customer.features, 'main.profile')) browserHistory.push('/');
@@ -42,7 +45,12 @@ export default class CustomerProfile extends Component {
   };
 
   render() {
-    const { customer = {}, apiToken, customerProfile } = this.props;
+    const { customer = {}, apiToken, customerProfile, runtimeConfigs, OIDCToken } = this.props;
+    const isOIDCEnhancementEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (c) => c.key === 'yb.security.oidc_feature_enhancements'
+      ).value === 'true';
+
     if (getPromiseState(customer).isLoading() || getPromiseState(customer).isInit()) {
       return <YBLoading />;
     }
@@ -87,7 +95,9 @@ export default class CustomerProfile extends Component {
               customer={this.props.customer}
               customerProfile={customerProfile}
               apiToken={apiToken}
+              OIDCToken={OIDCToken}
               handleProfileUpdate={this.handleProfileUpdate}
+              isOIDCEnhancementEnabled={isOIDCEnhancementEnabled}
               {...this.props}
             />
           </div>
