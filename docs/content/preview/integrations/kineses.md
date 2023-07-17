@@ -1,7 +1,7 @@
 ---
 title: Kinesis Data Streams
 linkTitle: Kinesis Data Streams
-description: Use Kinesis Data Stream with YSQL API
+description: Use Kinesis Data Streams with YSQL API
 aliases:
 menu:
   preview_integrations:
