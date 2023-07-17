@@ -448,13 +448,9 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 
 	YbScanDesc ybscan = (YbScanDesc) scan->opaque;
 	ybscan->exec_params = scan->yb_exec_params;
+	/* exec_params can be NULL in case of systable_getnext, for example. */
 	if (ybscan->exec_params)
 		ybscan->exec_params->work_mem = work_mem;
-
-	if (!ybscan->exec_params) {
-		ereport(DEBUG1, (errmsg("null exec_params")));
-	}
-	Assert(PointerIsValid(ybscan));
 
 	/* Special case: aggregate pushdown. */
 	if (scan->yb_aggrefs)
