@@ -5316,6 +5316,99 @@ Datum age_tofloat(PG_FUNCTION_ARGS)
     PG_RETURN_POINTER(agtype_value_to_agtype(&agtv_result));
 }
 
+PG_FUNCTION_INFO_V1(age_tofloatlist);
+/*
+ * toFloatList() converts a list of values and returns a list of floating point values. 
+ * If any values are not convertible to floating point they will be null in the list returned.
+ */
+Datum age_tofloatlist(PG_FUNCTION_ARGS)
+{
+    agtype *agt_arg = NULL;
+    agtype_in_state agis_result;
+    agtype_value *elem;
+    agtype_value float_elem;
+    char *string = NULL;
+    int count;
+    int i;
+    bool is_valid = false;
+    float float_num;
+    char buffer[64];
+
+    /* check for null */
+    if (PG_ARGISNULL(0))
+    {
+        PG_RETURN_NULL();
+    }
+    agt_arg = AG_GET_ARG_AGTYPE_P(0);
+    /* check for an array */
+    if (!AGT_ROOT_IS_ARRAY(agt_arg) || AGT_ROOT_IS_SCALAR(agt_arg))
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                        errmsg("toFloatList() argument must resolve to a list or null")));
+
+    count = AGT_ROOT_COUNT(agt_arg);
+
+    /* if we have an empty list or only one element in the list, return null */
+    if (count == 0)
+        PG_RETURN_NULL();
+    
+    /* clear the result structure */
+    MemSet(&agis_result, 0, sizeof(agtype_in_state));
+
+    /* push the beginning of the array */
+    agis_result.res = push_agtype_value(&agis_result.parse_state,
+                                        WAGT_BEGIN_ARRAY, NULL);
+
+    /* iterate through the list */
+    for (i = 0; i < count; i++)
+    {
+        // TODO: check element's type, it's value, and convert it to float if possible.
+        elem = get_ith_agtype_value_from_container(&agt_arg->root, i);
+        float_elem.type = AGTV_FLOAT;
+
+        switch (elem->type)
+        {
+        case AGTV_STRING:
+
+            string = elem->val.string.val;
+            if (atof(string))
+            {
+                float_elem.type = AGTV_FLOAT;
+                float_elem.val.float_value = float8in_internal_null(string, NULL, "double precision",
+                                            string, &is_valid); 
+                agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM, &float_elem);
+            }
+            else 
+            {
+                float_elem.type = AGTV_NULL;
+                agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM, &float_elem);
+            }
+            
+            break;
+
+        case AGTV_FLOAT:
+
+            float_elem.type = AGTV_FLOAT;
+            float_num = elem->val.float_value;
+            sprintf(buffer, "%f", float_num);
+            string = buffer;
+            float_elem.val.float_value = float8in_internal_null(string, NULL, "double precision", string, &is_valid);
+            agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM, &float_elem);
+
+            break;
+            
+        default:
+
+            float_elem.type = AGTV_NULL;
+            agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_ELEM, &float_elem);
+
+            break;
+        }
+    }
+    agis_result.res = push_agtype_value(&agis_result.parse_state, WAGT_END_ARRAY, NULL);
+
+    PG_RETURN_POINTER(agtype_value_to_agtype(agis_result.res));
+}
+
 PG_FUNCTION_INFO_V1(age_tointeger);
 
 Datum age_tointeger(PG_FUNCTION_ARGS)

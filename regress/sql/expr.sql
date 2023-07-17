@@ -1299,6 +1299,39 @@ $$) AS (toFloat agtype);
 SELECT * FROM cypher('expr', $$
     RETURN toFloat()
 $$) AS (toFloat agtype);
+-- toFloatList()
+SELECT * FROM cypher('expr', $$
+    RETURN toFloatList([1.3])
+$$) AS (toFloatList agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toFloatList([1.2, '4.654'])
+$$) AS (toFloatList agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toFloatList(['1.9432', 8.6222, '9.4111212', 344.22])
+$$) AS (toFloatList agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toFloatList(['999.2'])
+$$) AS (toFloatList agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toFloatList([1.20002])
+$$) AS (toFloatList agtype);
+-- should return null
+SELECT * FROM cypher('expr', $$
+    RETURN toFloatList(['true'])
+$$) AS (toFloatList agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toFloatList([null])
+$$) AS (toFloatList agtype);
+-- should fail
+SELECT * FROM cypher('expr', $$
+    RETURN toFloatList([failed])
+$$) AS (toFloatList agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toFloatList("failed")
+$$) AS (toFloatList agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN toFloatList(555)
+$$) AS (toFloatList agtype);
 -- toInteger()
 SELECT * FROM cypher('expr', $$
     RETURN toInteger(1)
