@@ -123,7 +123,7 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
   <li>
     <a href="kinesis/">
       <img src="/images/section_icons/develop/ecosystem/kinesis.png">
-      Kinesis Data Stream
+      Kinesis Data Streams
     </a>
   </li>
 

@@ -1,7 +1,7 @@
 ---
-title: Kinesis Data Stream
-linkTitle: Kinesis Data Stream
-description: Use Kinesis Data Stream with YSQL API
+title: Kinesis Data Streams
+linkTitle: Kinesis Data Streams
+description: Use Kinesis Data Streams with YSQL API
 aliases:
 menu:
   preview_integrations:
@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-Kinesis Data Streams enables applications to collect and process large streams of data records in real time. These applications can send the processed records to dashboards, use them to generate alerts, dynamically change pricing and advertising strategies, or send data to a variety of other AWS services.
+[Amazon Kinesis](https://aws.amazon.com/kinesis/) Data Streams enables applications to collect and process large streams of data records in real time. These applications can send the processed records to dashboards, use them to generate alerts, dynamically change pricing and advertising strategies, or send data to a variety of other AWS services.
 
 YugabyteDB has a [Debezium connector](https://github.com/yugabyte/debezium-connector-yugabytedb) which you can use to read changes to a table and then write those into Kinesis Data Streams using the AWS SDK for Java and the Kinesis Producer Library.
 
@@ -27,7 +27,7 @@ To connect your YugabyteDB database to Kinesis:
     ./bin/yb-admin --master_addresses 127.0.0.1:7100 create_change_data_stream ysql.yugabyte
     ```
 
-- Create a table using [YSQLSH](../../admin/ysqlsh/#starting-ysqlsh) as follows:
+- Create a table using [ysqlsh](../../admin/ysqlsh/#starting-ysqlsh) as follows:
 
     ```sql
     CREATE TABLE users(
@@ -38,8 +38,8 @@ To connect your YugabyteDB database to Kinesis:
     password   text, source     text);
     ```
 
-- Write a Java application which will use the Debezium connector to receive CDC data from YugabyteDB and write to Kinesis Data Stream.
-Code snippets of a sample code is as follows:
+- Write a Java application which will use the Debezium connector to receive CDC data from YugabyteDB and write to Kinesis Data Streams.
+The following code snippet shows an example implementation:
 
     ```java
     // Build Kinesis client
@@ -120,5 +120,5 @@ Code snippets of a sample code is as follows:
     executor.execute(engine);
     ```
 
-- As you insert records into the users table, you can check the records arriving in the Kinesis Data Stream.
-For some INSERT DMLs, refer to `users.sql` script in [CDC examples](https://github.com/yugabyte/cdc-examples/blob/main/cdc-quickstart-kafka-connect/scripts/users.sql).
+- As you insert records into the users table, you can check the records arriving in the Kinesis data stream.
+For some INSERT DMLs, refer to the `users.sql` script in [CDC examples](https://github.com/yugabyte/cdc-examples/blob/main/cdc-quickstart-kafka-connect/scripts/users.sql).
