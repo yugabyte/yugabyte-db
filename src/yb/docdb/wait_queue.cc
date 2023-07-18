@@ -1314,13 +1314,14 @@ class WaitQueue::Impl {
     }
     if (resp.status(0) == ABORTED) {
       VLOG_WITH_PREFIX(1) << "Waiter status aborted " << waiter_id;
-      auto s = resp.deadlock_reason(0).code() == AppStatusPB::OK
-          ? STATUS_EC_FORMAT(
-                // Return InternalError so that TabletInvoker does not retry.
-                InternalError, TransactionError(TransactionErrorCode::kConflict),
-                "Transaction $0 was aborted while waiting for locks", waiter_id)
-          : StatusFromPB(resp.deadlock_reason(0));
-      waiter->InvokeCallback(s);
+      if (resp.deadlock_reason().empty() || resp.deadlock_reason(0).code() == AppStatusPB::OK) {
+        waiter->InvokeCallback(
+            // Return InternalError so that TabletInvoker does not retry.
+            STATUS_EC_FORMAT(InternalError, TransactionError(TransactionErrorCode::kConflict),
+                             "Transaction $0 was aborted while waiting for locks", waiter_id));
+      } else {
+        waiter->InvokeCallback(StatusFromPB(resp.deadlock_reason(0)));
+      }
       return;
     }
     LOG(DFATAL) << "Waiting transaction " << waiter_id
