@@ -52,6 +52,13 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
   </li>
 
   <li>
+    <a href="ataccama/">
+      <img src="/images/section_icons/develop/ecosystem/ataccama.png">
+      Ataccama DQ Analyzer
+    </a>
+  </li>
+
+  <li>
     <a href="atomicjar/">
       <img src="/images/section_icons/develop/ecosystem/atomicjar-icon.png">
       AtomicJar Testcontainers
@@ -62,6 +69,20 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
     <a href="camunda/">
       <img src="/images/section_icons/develop/ecosystem/camunda.png">
       Camunda
+    </a>
+  </li>
+
+   <li>
+    <a href="datahub/">
+      <img src="/images/section_icons/develop/ecosystem/datahub.png">
+      Datahub
+    </a>
+  </li>
+
+  <li>
+    <a href="dataedo/">
+      <img src="/images/section_icons/develop/ecosystem/dataedo.png">
+      Dataedo
     </a>
   </li>
 
