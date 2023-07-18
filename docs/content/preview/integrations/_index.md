@@ -175,6 +175,12 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
       Mirantis MKE
     </a>
   </li>
+   <li>
+    <a href="pgmigrate/">
+      <img src="/images/section_icons/develop/ecosystem/pgmigrate.png">
+      PGmigrate
+    </a>
+  </li>
   <li>
     <a href="presto/">
       <img src="/images/section_icons/develop/ecosystem/presto-icon.png">
@@ -186,6 +192,12 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
     <a href="prisma/">
       <img src="/images/develop/graphql/prisma/prisma.png">
       Prisma
+    </a>
+  </li>
+
+  <li>
+    <a href="schema-evolution-mgr/">
+      Schema Evolution Manager
     </a>
   </li>
 
