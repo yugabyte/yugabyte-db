@@ -848,8 +848,10 @@ public class NodeManager extends DevopsBase {
     }
 
     UserIntent userIntent = getUserIntentFromParams(taskParam);
+
+    // Set on both master and tserver processes to allow db to validate inter-node RPCs.
+    extra_gflags.put("cluster_uuid", String.valueOf(taskParam.universeUUID));
     if (taskParam.isMaster) {
-      extra_gflags.put("cluster_uuid", String.valueOf(taskParam.universeUUID));
       extra_gflags.put("replication_factor", String.valueOf(userIntent.replicationFactor));
     }
 
@@ -1015,6 +1017,12 @@ public class NodeManager extends DevopsBase {
           } else if (taskSubType.equals(UpgradeTaskParams.UpgradeTaskSubType.Install.toString())) {
             subcommand.add("--tags");
             subcommand.add("install-software");
+            subcommand.add("--tags");
+            subcommand.add("override_gflags");
+
+            Map<String, String> gflags = new HashMap<>(taskParam.gflags);
+            subcommand.add("--gflags");
+            subcommand.add(Json.stringify(Json.toJson(gflags)));
           }
           subcommand.add("--num_releases_to_keep");
           if (config.getBoolean("yb.cloud.enabled")) {
