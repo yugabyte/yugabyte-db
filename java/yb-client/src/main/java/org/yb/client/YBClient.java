@@ -1923,6 +1923,13 @@ public class YBClient implements AutoCloseable {
     return isBootstrapRequiredList;
   }
 
+  public GetReplicationStatusResponse getReplicationStatus(
+      @Nullable String replicationGroupName) throws Exception {
+    Deferred<GetReplicationStatusResponse> d =
+        asyncClient.getReplicationStatus(replicationGroupName);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
   /**
    * @see AsyncYBClient#listCDCStreams(String, String, MasterReplicationOuterClass.IdTypePB)
    */
