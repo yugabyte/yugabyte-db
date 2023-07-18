@@ -1714,6 +1714,10 @@ public class NodeManager extends DevopsBase {
             }
           }
 
+          if (confGetter.getGlobalConf(GlobalConfKeys.installLocalesDbNodes)) {
+            commandArgs.add("--install_locales");
+          }
+
           maybeAddVMImageCommandArgs(
               universe,
               cloudType,
