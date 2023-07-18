@@ -1,4 +1,4 @@
-import React, { FC, useEffect } from 'react';
+import { FC, useEffect } from 'react';
 import { Tab } from 'react-bootstrap';
 import { browserHistory } from 'react-router';
 import { useQuery } from 'react-query';

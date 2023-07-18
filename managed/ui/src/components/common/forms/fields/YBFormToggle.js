@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import Toggle from 'react-toggle';
 import { YBLabel, DescriptionItem } from '../../../../components/common/descriptors';
 import 'react-toggle/style.css';
@@ -9,9 +9,7 @@ import { isFunction } from 'lodash';
 import { isDefinedNotNull } from '../../../../utils/ObjectUtils';
 
 export default class YBFormToggle extends Component {
-
   handleOnChange = (event) => {
-
     const { field, onChange } = this.props;
 
     if (isDefinedNotNull(field) && isFunction(field.onChange)) {
@@ -21,7 +19,6 @@ export default class YBFormToggle extends Component {
     if (isFunction(onChange)) {
       onChange(this.props, event);
     }
-
   };
 
   render() {

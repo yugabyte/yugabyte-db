@@ -1,5 +1,3 @@
-import React from 'react';
-
 const KeyIcon = () => (
   <svg
     className="user-tab-logo"

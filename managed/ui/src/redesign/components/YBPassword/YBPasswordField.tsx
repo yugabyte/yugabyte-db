@@ -1,4 +1,4 @@
-import React, { ReactElement } from 'react';
+import { ReactElement } from 'react';
 import { UseControllerProps, useController, FieldValues } from 'react-hook-form';
 import { YBPassword } from './YBPassword';
 import type { YBInputProps } from '../YBInput/YBInput';

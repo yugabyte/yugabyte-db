@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { withRouter } from 'react-router';
 import clsx from 'clsx';
 import { useSelector } from 'react-redux';

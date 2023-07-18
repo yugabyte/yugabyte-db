@@ -1,5 +1,3 @@
-import React from 'react';
-
 import { MetricMeasure, MetricTypes } from '../components/metrics/constants';
 import { MetricsPanel } from '../components/metrics';
 import { isKubernetesUniverse } from './UniverseUtils';

@@ -80,7 +80,7 @@ module.exports = {
     'no-extra-boolean-cast': 0,
     'no-unused-vars': 0,
     '@typescript-eslint/no-unused-vars': [
-      2,
+      0,
       { vars: 'all', args: 'none', ignoreRestSiblings: true }
     ],
     '@typescript-eslint/ban-types': 0,

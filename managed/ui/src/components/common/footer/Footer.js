@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { PureComponent } from 'react';
+import { PureComponent } from 'react';
 import './stylesheets/Footer.scss';
 import slackLogo from './images/slack-logo-full.svg';
 import githubLogo from './images/github-light-small.png';

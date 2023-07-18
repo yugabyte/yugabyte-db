@@ -1,4 +1,3 @@
-import React from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { getFeatureFromReleased, getFeatureFromTest } from '../../selector/feature';
 import { YBToggle } from '../common/forms/fields';

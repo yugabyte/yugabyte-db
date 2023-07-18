@@ -1,4 +1,3 @@
-import React from 'react';
 import { Tab, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import { YBTabsPanel } from '../panels';
 import UsersListContainer from './Users/UsersListContainer';

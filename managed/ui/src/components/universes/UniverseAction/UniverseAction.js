@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { connect } from 'react-redux';
 import moment from 'moment';
 
@@ -65,7 +65,7 @@ class UniverseAction extends Component {
       universe,
       universe: { universeConfig }
     } = this.props;
-  
+
     const universePaused = universe?.universeDetails?.universePaused;
     let btnLabel = null;
     let btnIcon = null;
@@ -114,7 +114,7 @@ class UniverseAction extends Component {
     }
     return (
       <div>
-        {!universePaused &&
+        {!universePaused && (
           <YBButton
             btnText={btnLabel}
             btnIcon={btnIcon}
@@ -122,7 +122,7 @@ class UniverseAction extends Component {
             disabled={disabled}
             onClick={disabled ? null : this.openModal}
           />
-        }
+        )}
         {modalForm}
       </div>
     );

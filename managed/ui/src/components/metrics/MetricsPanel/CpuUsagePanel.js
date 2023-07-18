@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import { Graph } from '../';
 import { NodeType } from '../../../redesign/utils/dtos';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';

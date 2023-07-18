@@ -1,6 +1,5 @@
 // Copyright (c) YugaByte, Inc.
-
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { browserHistory, Link } from 'react-router';
 import { YBBanner, YBBannerVariant } from '../common/descriptors';
 import { isNonAvailable, isNotHidden, showOrRedirect } from '../../utils/LayoutUtils';

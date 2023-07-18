@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { PureComponent } from 'react';
+import { PureComponent } from 'react';
 import { DescriptionItem } from './';
 
 import './stylesheets/YBStatsBlock.scss';

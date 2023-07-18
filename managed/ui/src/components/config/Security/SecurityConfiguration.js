@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Tab } from 'react-bootstrap';
 import { YBTabsPanel } from '../../panels';
 import KeyManagementConfigurationContainer from './KeyManagementConfigurationContainer';

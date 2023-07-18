@@ -1,4 +1,3 @@
-import React from 'react';
 import { YBModal } from '../../common/forms/fields';
 import { PROTECTION_LEVELS } from './KeyManagementConfiguration';
 import { GCP_KMS_REGIONS_FLATTENED } from '../PublicCloud/views/providerRegionsData';
@@ -88,9 +87,7 @@ export const ConfigDetails = ({ data, visible, onHide }) => {
       {
         label: 'Expiry',
         value:
-          HC_VAULT_TTL && HC_VAULT_TTL_EXPIRY
-            ? ybFormatDate(HC_VAULT_TTL_EXPIRY)
-            : 'Wont Expire'
+          HC_VAULT_TTL && HC_VAULT_TTL_EXPIRY ? ybFormatDate(HC_VAULT_TTL_EXPIRY) : 'Wont Expire'
       }
     ];
     return data;

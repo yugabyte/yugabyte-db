@@ -1,4 +1,4 @@
-import React, { ReactNode, useState } from 'react';
+import { ReactNode, useState } from 'react';
 import { Collapse } from 'react-bootstrap';
 
 import styles from './CollapsibleNote.module.scss';

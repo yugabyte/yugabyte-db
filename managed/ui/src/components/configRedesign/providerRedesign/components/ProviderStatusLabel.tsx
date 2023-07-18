@@ -1,4 +1,3 @@
-import React from 'react';
 import { makeStyles, Typography } from '@material-ui/core';
 import clsx from 'clsx';
 import { Variant } from '@material-ui/core/styles/createTypography';

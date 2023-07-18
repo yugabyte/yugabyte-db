@@ -1,4 +1,4 @@
-import React, { FC, useRef, useState } from 'react';
+import { FC, useRef, useState } from 'react';
 import { Popover, Row, Col, Button, Overlay } from 'react-bootstrap';
 import './UniverseAlertBadge.scss';
 import { useMutation, useQuery, useQueryClient } from 'react-query';

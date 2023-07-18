@@ -1,9 +1,8 @@
 // Copyright (c) YugaByte, Inc.
-
-import React, { Component } from 'react';
+import { Component } from 'react';
 import * as Yup from 'yup';
 import Cookies from 'js-cookie';
-import moment from 'moment';
+import moment from 'moment-timezone';
 import { isEqual } from 'lodash';
 import { Col, Row } from 'react-bootstrap';
 import { FormHelperText } from '@material-ui/core';

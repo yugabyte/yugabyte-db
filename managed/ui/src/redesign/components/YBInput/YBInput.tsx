@@ -1,4 +1,4 @@
-import React, { FC, ReactNode } from 'react';
+import { FC, ReactNode } from 'react';
 import { TextField, StandardTextFieldProps } from '@material-ui/core';
 import { YBTooltip } from '../YBTooltip/YBTooltip';
 

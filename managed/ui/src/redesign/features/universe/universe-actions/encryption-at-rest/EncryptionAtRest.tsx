@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import { FC } from 'react';
 import clsx from 'clsx';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useForm, FormProvider } from 'react-hook-form';

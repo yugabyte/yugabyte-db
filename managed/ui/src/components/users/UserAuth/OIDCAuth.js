@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import * as Yup from 'yup';
 import clsx from 'clsx';
 import { trimStart, trimEnd, isString } from 'lodash';

@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Highlighter } from '../../../../helpers/Highlighter';
 import AceEditor from 'react-ace';

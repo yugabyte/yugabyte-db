@@ -1,4 +1,3 @@
-import React from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { Field } from 'redux-form';
 import { YBButton, YBSelectWithLabel } from '../../../../common/forms/fields';
@@ -9,7 +8,8 @@ export const ChangeOrAddProvider = ({
   providerType,
   setCurrentViewCreateConfig
 }) => {
-  const currentCloudProviders = configuredProviders?.data?.filter?.((provider) => provider.code === providerType) || [];
+  const currentCloudProviders =
+    configuredProviders?.data?.filter?.((provider) => provider.code === providerType) || [];
 
   return (
     <Row className="provider-row-flex" data-testid="change-or-add-provider">
