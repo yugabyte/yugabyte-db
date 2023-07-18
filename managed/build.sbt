@@ -446,7 +446,6 @@ libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
   "io.netty" % "netty-codec-haproxy" % "4.1.89.Final",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
-  "net.minidev" % "json-smart" % "2.4.8",
   "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
 )
 
