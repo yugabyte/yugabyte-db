@@ -190,6 +190,12 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
   </li>
 
   <li>
+    <a href="rabbitmq/">
+      <img src="/images/section_icons/develop/ecosystem/rabbitmq.png">
+      RabbitMQ
+    </a>
+  </li>
+  <li>
     <a href="sequelize/">
       <img src="/images/section_icons/develop/ecosystem/sequelize.png">
       Sequelize
