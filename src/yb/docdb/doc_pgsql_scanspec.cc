@@ -24,6 +24,7 @@
 #include "yb/docdb/doc_scanspec_util.h"
 #include "yb/docdb/value_type.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
@@ -194,9 +195,14 @@ void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
         auto col_id = ColumnId(lhs.column_id());
         auto col_idx = schema().find_column_by_id(col_id);
 
-        // Skip any non-range columns. Hashed columns should always be sent as tuples along with
-        // their yb_hash_code. Hence, for hashed columns lhs should never be a column id.
-        DCHECK(schema().is_range_column(col_idx));
+        // Skip any non-range columns.
+        if (!schema().is_range_column(col_idx)) {
+          // Hashed columns should always be sent as tuples along with their yb_hash_code.
+          // Hence, for hashed columns lhs should never be a column id.
+          YB_LOG_EVERY_N_SECS_OR_VLOG(DFATAL, 60, 1)
+              << "Expected only range column: id=" << col_id << " idx=" << col_idx << THROTTLE_MSG;
+          return;
+        }
 
         auto sortingType = get_sorting_type(col_idx);
 
