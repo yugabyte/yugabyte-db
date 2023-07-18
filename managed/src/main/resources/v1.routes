@@ -575,8 +575,12 @@ POST /customers/:cUUID/universes/:univUUID/configure/ysql                      c
 
 # New RBAC APIs
 GET /customers/:cUUID/rbac/permissions                                         com.yugabyte.yw.controllers.RBACController.listPermissions(cUUID: java.util.UUID, resourceType: String ?= null)
+# Role APIs
 POST /customers/:cUUID/rbac/role                                               com.yugabyte.yw.controllers.RBACController.createRole(cUUID: java.util.UUID, request: Request)
 GET /customers/:cUUID/rbac/role                                                com.yugabyte.yw.controllers.RBACController.listRoles(cUUID: java.util.UUID, roleType: String ?= null)
 GET /customers/:cUUID/rbac/role/:rUUID                                         com.yugabyte.yw.controllers.RBACController.getRole(cUUID: java.util.UUID, rUUID: java.util.UUID)
 PUT /customers/:cUUID/rbac/role/:rUUID                                         com.yugabyte.yw.controllers.RBACController.editRole(cUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
 DELETE /customers/:cUUID/rbac/role/:rUUID                                      com.yugabyte.yw.controllers.RBACController.deleteRole(cUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
+# RoleBinding APIs
+GET /customers/:cUUID/rbac/role_binding                                        com.yugabyte.yw.controllers.RBACController.listRoleBinding(cUUID: java.util.UUID, userUUID: java.util.UUID ?= null)
+POST /customers/:cUUID/rbac/role_binding/:userUUID                             com.yugabyte.yw.controllers.RBACController.setRoleBindings(cUUID: java.util.UUID, userUUID: java.util.UUID, request: Request)

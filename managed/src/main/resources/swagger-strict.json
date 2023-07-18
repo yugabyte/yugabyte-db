@@ -1329,7 +1329,7 @@
         },
         "target" : {
           "description" : "Target",
-          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "CustomCACertificate", "Alert", "AlertTemplateSettings", "AlertTemplateVariables", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun", "Role" ],
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "CustomCACertificate", "Alert", "AlertTemplateSettings", "AlertTemplateVariables", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun", "Role", "RoleBinding" ],
           "example" : "User",
           "readOnly" : true,
           "type" : "string"
@@ -7536,7 +7536,7 @@
           "type" : "string"
         },
         "permission" : {
-          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE" ],
+          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE", "PAUSE_RESUME" ],
           "type" : "string"
         },
         "prerequisite_permissions" : {
@@ -7556,7 +7556,7 @@
     "PermissionInfoIdentifier" : {
       "properties" : {
         "permission" : {
-          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE" ],
+          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE", "PAUSE_RESUME" ],
           "type" : "string"
         },
         "resource_type" : {
@@ -8370,6 +8370,42 @@
         }
       },
       "required" : [ "clusters", "creatingUser", "forceResizeNode", "kubernetesUpgradeSupported", "masterGFlags", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tserverGFlags", "upgradeOption" ],
+      "type" : "object"
+    },
+    "ResourceDefinition" : {
+      "properties" : {
+        "allowAll" : {
+          "description" : "Select all resources (including future resources)",
+          "type" : "boolean"
+        },
+        "resourceType" : {
+          "description" : "Resource Type",
+          "enum" : [ "UNIVERSE", "DEFAULT" ],
+          "type" : "string"
+        },
+        "resourceUUIDSet" : {
+          "description" : "Set of resource uuids",
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        }
+      },
+      "type" : "object"
+    },
+    "ResourceGroup" : {
+      "properties" : {
+        "resourceDefinitionSet" : {
+          "items" : {
+            "$ref" : "#/definitions/ResourceDefinition"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        }
+      },
+      "required" : [ "resourceDefinitionSet" ],
       "type" : "object"
     },
     "RestartBootstrapParams" : {
@@ -9226,6 +9262,76 @@
           "type" : "string"
         }
       },
+      "type" : "object"
+    },
+    "RoleBinding" : {
+      "properties" : {
+        "createTime" : {
+          "description" : "RoleBinding create time",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "resourceGroup" : {
+          "$ref" : "#/definitions/ResourceGroup",
+          "description" : "Details of the resource group"
+        },
+        "role" : {
+          "$ref" : "#/definitions/Role",
+          "description" : "Role"
+        },
+        "type" : {
+          "description" : "Role binding type",
+          "enum" : [ "System", "Custom" ],
+          "type" : "string"
+        },
+        "updateTime" : {
+          "description" : "RoleBinding last updated time",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "user" : {
+          "$ref" : "#/definitions/Users",
+          "description" : "User"
+        },
+        "uuid" : {
+          "description" : "UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
+    "RoleBindingFormData" : {
+      "description" : "Role Binding form metadata",
+      "properties" : {
+        "roleResourceDefinitions" : {
+          "description" : "List of roles and resource groups defined.",
+          "items" : {
+            "$ref" : "#/definitions/RoleResourceDefinition"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [ "roleResourceDefinitions" ],
+      "type" : "object"
+    },
+    "RoleResourceDefinition" : {
+      "description" : "Role and resource group definition.",
+      "properties" : {
+        "resourceGroup" : {
+          "$ref" : "#/definitions/ResourceGroup",
+          "description" : "Resource group definition for the role."
+        },
+        "roleUUID" : {
+          "description" : "UUID of the role to attach resource group to.",
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "resourceGroup", "roleUUID" ],
       "type" : "object"
     },
     "RunQueryFormData" : {
@@ -18677,6 +18783,87 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Edit a custom role",
+        "tags" : [ "RBAC management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/rbac/role_binding" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getRoleBindings",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "default" : "null",
+          "description" : "Optional user UUID to filter role binding map",
+          "format" : "uuid",
+          "in" : "query",
+          "name" : "userUUID",
+          "required" : false,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "$ref" : "#/definitions/RoleBinding"
+              },
+              "type" : "object"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get all the role bindings available",
+        "tags" : [ "RBAC management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/rbac/role_binding/{userUUID}" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "editRoleBinding",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "userUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "set role bindings form data",
+          "in" : "body",
+          "name" : "RoleBindingFormData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/RoleBindingFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/RoleBinding"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Edit the role bindings of a user",
         "tags" : [ "RBAC management" ]
       }
     },
