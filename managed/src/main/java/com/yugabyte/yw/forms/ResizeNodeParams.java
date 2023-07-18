@@ -25,6 +25,7 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -42,7 +43,7 @@ import play.mvc.Http.Status;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @Slf4j
-public class ResizeNodeParams extends UpgradeWithGFlags {
+public class ResizeNodeParams extends UpgradeTaskParams {
 
   public static final int AZU_DISK_LIMIT_NO_DOWNTIME = 4 * 1024; // 4 TiB
 
@@ -54,6 +55,8 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
           Common.CloudType.azu);
 
   private boolean forceResizeNode;
+  public Map<String, String> masterGFlags;
+  public Map<String, String> tserverGFlags;
 
   @Override
   public boolean isKubernetesUpgradeSupported() {
@@ -113,9 +116,6 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
     }
     if (!hasClustersToResize && !forceResizeNode) {
       throw new IllegalArgumentException("No changes!");
-    }
-    if (flagsProvided(universe)) {
-      verifyGFlags(universe);
     }
   }
 
@@ -467,14 +467,7 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
     return false;
   }
 
-  public boolean flagsProvided(Universe universe) {
-    for (Cluster newCluster : clusters) {
-      Cluster oldCluster = universe.getCluster(newCluster.uuid);
-      if (!Objects.equals(
-          oldCluster.userIntent.specificGFlags, newCluster.userIntent.specificGFlags)) {
-        return true;
-      }
-    }
+  public boolean flagsProvided() {
     // If one is present, we know the other must be present.
     return masterGFlags != null;
   }

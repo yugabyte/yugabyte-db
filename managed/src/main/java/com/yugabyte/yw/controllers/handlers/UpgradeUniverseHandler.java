@@ -51,7 +51,6 @@ import java.util.Map;
 import java.util.UUID;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.MapUtils;
 import play.mvc.Http.Status;
 
 @Slf4j
@@ -158,8 +157,8 @@ public class UpgradeUniverseHandler {
   public UUID upgradeGFlags(
       GFlagsUpgradeParams requestParams, Customer customer, Universe universe) {
     UserIntent userIntent;
-    if (MapUtils.isEmpty(requestParams.masterGFlags)
-        && MapUtils.isEmpty(requestParams.masterGFlags)
+    if (requestParams.masterGFlags.isEmpty()
+        && requestParams.tserverGFlags.isEmpty()
         && requestParams.getPrimaryCluster() != null) {
       // If user hasn't provided gflags in the top level params, get from primary cluster
       userIntent = requestParams.getPrimaryCluster().userIntent;
