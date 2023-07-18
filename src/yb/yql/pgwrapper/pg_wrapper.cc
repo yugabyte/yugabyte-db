@@ -896,11 +896,16 @@ void PgSupervisor::RunThread() {
       }
       pg_wrapper_.reset();
     } else {
-      // TODO: a better way to handle this error.
-      LOG(WARNING) << "Failed when waiting for PostgreSQL server to exit: "
-                   << wait_result.status() << ", waiting a bit";
-      std::this_thread::sleep_for(1s);
-      continue;
+      LOG(WARNING) << "Failed when waiting for process to exit: " << wait_result.status();
+
+      // Don't continue waiting in the loop if it is IllegalState as this means the process is not
+      // currently running at all, perhaps due to failure to start. In this case, the
+      // pg_wrapper is reset to null. So there isn't a process to wait.
+      if (!wait_result.status().IsIllegalState()) {
+        LOG(INFO) << "Wait a bit next pg_wrapper wait-check";
+        std::this_thread::sleep_for(1s);
+        continue;
+      }
     }
 
     {
