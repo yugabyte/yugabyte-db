@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Field } from 'redux-form';
 import { Row, Col } from 'react-bootstrap';
 import { YBInputField, YBButton, YBTextArea, YBNumericInput } from '../../../common/forms/fields';
@@ -164,11 +164,16 @@ export default class OnPremProviderAndAccessKey extends Component {
           <Row>
             <Col lg={10}>
               <Row>
-                <Col lg={2} className='no-padding onprem-ntp'>
+                <Col lg={2} className="no-padding onprem-ntp">
                   <div className="form-item-custom-label">NTP Setup</div>
                 </Col>
-                <Col lg={10} className='no-padding'>
-                  <NTPConfig onChange={change} hideOnPremProvider initialValues={initialValues} disabled={isEditProvider}/>
+                <Col lg={10} className="no-padding">
+                  <NTPConfig
+                    onChange={change}
+                    hideOnPremProvider
+                    initialValues={initialValues}
+                    disabled={isEditProvider}
+                  />
                 </Col>
               </Row>
             </Col>

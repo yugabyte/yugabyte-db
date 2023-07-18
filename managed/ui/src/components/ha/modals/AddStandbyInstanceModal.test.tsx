@@ -1,4 +1,3 @@
-import React from 'react';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'react-toastify';
 import { render, waitFor } from '../../../test-utils';

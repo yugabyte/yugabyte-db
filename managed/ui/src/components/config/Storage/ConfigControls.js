@@ -5,16 +5,10 @@
 // This file will hold the backup config controls i.e Save,
 // Update and Cancel.
 
-import React from 'react';
 import { YBButton } from '../../common/forms/fields';
 
 export const ConfigControls = (props) => {
-  const {
-    activeTab,
-    editView,
-    listView,
-    showListView
-  } = props;
+  const { activeTab, editView, listView, showListView } = props;
 
   return (
     <div className="form-action-button-container">

@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import {
   isNonEmptyObject,
@@ -142,7 +142,10 @@ class ProviderConfiguration extends Component {
         (provider) => provider.code === providerType
       );
 
-      this.setState({ currentView: isNonEmptyObject(currentProvider) ? 'result' : 'init', currentCloudProviders });
+      this.setState({
+        currentView: isNonEmptyObject(currentProvider) ? 'result' : 'init',
+        currentCloudProviders
+      });
     }
 
     let currentProviderTask = null;

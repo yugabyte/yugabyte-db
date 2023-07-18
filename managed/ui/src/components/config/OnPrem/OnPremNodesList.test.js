@@ -1,4 +1,3 @@
-import React from 'react';
 import { render, screen } from '../../../test-utils';
 import OnPremNodesList from './OnPremNodesList';
 
@@ -25,7 +24,8 @@ const cloudMockState = {
         instanceName: '',
         zoneUuid: 'eb6f7ddd-2da6-4f8c-ad4a-d352abaca169',
         inUse: true,
-        detailsJson: '{"ip":"10.150.1.149","sshUser":"hkandala","region":"us-west-1","zone":"z1","instanceType":"n1-standard-4","instanceName":"","nodeName":"yb-15-hkandala-onprem-universe-n1"}',
+        detailsJson:
+          '{"ip":"10.150.1.149","sshUser":"hkandala","region":"us-west-1","zone":"z1","instanceType":"n1-standard-4","instanceName":"","nodeName":"yb-15-hkandala-onprem-universe-n1"}',
         details: {
           ip: '10.150.1.149',
           sshUser: SSH_USER,
@@ -43,13 +43,18 @@ const cloudMockState = {
       {
         active: true,
         awsHostedZoneName: null,
-        cloudParams: {errorString: null, providerUUID: null, perRegionMetadata: {}, keyPairName: null },
-        code: "onprem",
-        config: {USE_HOSTNAME: "false"},
-        customerUUID: "f33e3c9b-75ab-4c30-80ad-cba85646ea39",
+        cloudParams: {
+          errorString: null,
+          providerUUID: null,
+          perRegionMetadata: {},
+          keyPairName: null
+        },
+        code: 'onprem',
+        config: { USE_HOSTNAME: 'false' },
+        customerUUID: 'f33e3c9b-75ab-4c30-80ad-cba85646ea39',
         hostedZoneId: null,
-        instanceTypes: [{providerUuid: PROVIDER_UUID, instanceTypeCode: "Linux"}],
-        name: "fewaijgeaf",
+        instanceTypes: [{ providerUuid: PROVIDER_UUID, instanceTypeCode: 'Linux' }],
+        name: 'fewaijgeaf',
         priceComponents: [],
         uuid: PROVIDER_UUID
       }
@@ -59,7 +64,7 @@ const cloudMockState = {
     data: [
       {
         idKey: {
-          providerUUID: PROVIDER_UUID,
+          providerUUID: PROVIDER_UUID
         },
         keyInfo: {
           sshUser: SSH_USER,
@@ -101,7 +106,7 @@ const mockUniverseList = {
       creationDate: 1617617731775,
       version: 1,
       resources: {
-        pricePerHour:0.1836,
+        pricePerHour: 0.1836,
         ebsPricePerHour: 0,
         numCores: 3,
         memSizeGB: 11.25,
@@ -113,7 +118,7 @@ const mockUniverseList = {
       universeDetails: {
         nodeDetailsSet: [
           {
-            nodeName: TEST_NODE_NAME,
+            nodeName: TEST_NODE_NAME
           }
         ]
       }
@@ -129,16 +134,18 @@ const tasks = {
 };
 
 beforeEach(() => {
-  render(<OnPremNodesList
-    cloud={cloudMockState}
-    universeList={mockUniverseList}
-    getRegionListItems={getRegionListItems}
-    getInstanceTypeListItems={getInstanceTypeListItems}
-    handleSubmit={handleNodeSubmit}
-    fetchCustomerTasks={fetchCustomerTasks}
-    tasks={tasks}
-    showAddNodesDialog={showAddNodesDialog}
-  />);
+  render(
+    <OnPremNodesList
+      cloud={cloudMockState}
+      universeList={mockUniverseList}
+      getRegionListItems={getRegionListItems}
+      getInstanceTypeListItems={getInstanceTypeListItems}
+      handleSubmit={handleNodeSubmit}
+      fetchCustomerTasks={fetchCustomerTasks}
+      tasks={tasks}
+      showAddNodesDialog={showAddNodesDialog}
+    />
+  );
 });
 
 describe('On-Premise node instance list tests', () => {

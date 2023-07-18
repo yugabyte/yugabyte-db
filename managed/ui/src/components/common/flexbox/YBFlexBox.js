@@ -1,6 +1,5 @@
 // Copyright (c) YugaByte, Inc.
 
-import React from 'react';
 import './YBFlexBox.scss';
 
 const FlexContainer = ({ className, direction, ...props }) => (

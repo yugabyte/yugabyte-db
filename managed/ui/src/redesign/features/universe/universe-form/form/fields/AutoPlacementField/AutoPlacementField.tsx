@@ -1,4 +1,4 @@
-import React, { ReactElement } from 'react';
+import { ReactElement } from 'react';
 import { Box } from '@material-ui/core';
 import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';

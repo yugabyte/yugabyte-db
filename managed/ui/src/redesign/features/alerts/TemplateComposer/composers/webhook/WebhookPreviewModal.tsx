@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC, useRef } from 'react';
+import { FC, useRef } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery } from 'react-query';
@@ -72,7 +72,15 @@ const WebhookPreviewModal: FC<WebhookPreviewModalProps> = ({ bodyValue, visible,
   );
 
   const fillTemplateWithValue = useMutation(
-    ({ textTemplate, htmlTemplate, alertConfigUUID }: { textTemplate: string; htmlTemplate: string; alertConfigUUID: string }) =>
+    ({
+      textTemplate,
+      htmlTemplate,
+      alertConfigUUID
+    }: {
+      textTemplate: string;
+      htmlTemplate: string;
+      alertConfigUUID: string;
+    }) =>
       previewAlertNotification(
         {
           type: 'WebHook',
@@ -94,7 +102,11 @@ const WebhookPreviewModal: FC<WebhookPreviewModalProps> = ({ bodyValue, visible,
   const previewTemplate = (alertConfigUUID: string) => {
     const bodyAsHTML = new HTMLSerializer(bodyEditorRef.current!).serializeElement(bodyValue);
     const bodyAsText = convertNodesToText(bodyValue);
-    fillTemplateWithValue.mutate({ textTemplate: bodyAsText, htmlTemplate: bodyAsHTML, alertConfigUUID });
+    fillTemplateWithValue.mutate({
+      textTemplate: bodyAsText,
+      htmlTemplate: bodyAsHTML,
+      alertConfigUUID
+    });
   };
 
   if (!visible) return null;

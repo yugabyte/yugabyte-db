@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 
 import './YBWidget.scss';
 import { FlexContainer, FlexGrow } from '../../common/flexbox/YBFlexBox';

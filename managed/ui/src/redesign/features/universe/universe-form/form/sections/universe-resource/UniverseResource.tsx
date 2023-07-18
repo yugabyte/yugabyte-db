@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import { FC } from 'react';
 import pluralize from 'pluralize';
 import { Box, makeStyles, Theme } from '@material-ui/core';
 import { YBCost, Multiplier } from '../../../../../../components';

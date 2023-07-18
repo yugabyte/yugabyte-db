@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import { FC } from 'react';
 import clsx from 'clsx';
 import { Trans, useTranslation } from 'react-i18next';
 import { Box, Typography, makeStyles } from '@material-ui/core';

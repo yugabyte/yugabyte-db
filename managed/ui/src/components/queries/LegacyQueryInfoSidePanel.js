@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { YBButton } from '../common/forms/fields';
 import { Highlighter } from '../../helpers/Highlighter';
 import copy from 'copy-to-clipboard';

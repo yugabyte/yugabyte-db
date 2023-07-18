@@ -1,5 +1,4 @@
 import { Field } from 'formik';
-import React from 'react';
 import { Alert, Col, Row } from 'react-bootstrap';
 import { YBCheckBox, YBControlledSelectWithLabel, YBFormToggle, YBToggle } from '../fields';
 import YBModalForm from '../YBModalForm/YBModalForm';

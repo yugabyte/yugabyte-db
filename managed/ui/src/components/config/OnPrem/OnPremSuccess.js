@@ -1,5 +1,5 @@
 import { cloneDeep, isEqual, map, sortBy } from 'lodash';
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { browserHistory, Link, withRouter } from 'react-router';
 import { Field, reduxForm } from 'redux-form';

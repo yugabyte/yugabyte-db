@@ -1,4 +1,3 @@
-import React from 'react';
 import clsx from 'clsx';
 import { Col, Row } from 'react-bootstrap';
 import { useDispatch, useSelector } from 'react-redux';

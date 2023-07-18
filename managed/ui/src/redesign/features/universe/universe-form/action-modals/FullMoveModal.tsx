@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import pluralize from 'pluralize';
 import { Box, Theme, Typography, makeStyles } from '@material-ui/core';

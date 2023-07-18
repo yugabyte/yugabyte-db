@@ -2,7 +2,7 @@ import _ from 'lodash';
 import * as Yup from 'yup';
 import { Field, Formik } from 'formik';
 import { Col, Row } from 'react-bootstrap';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { YBFormInput, YBFormSelect, YBModal } from '../../../common/forms/fields';
 
 // The following region array is used in the old provider form.

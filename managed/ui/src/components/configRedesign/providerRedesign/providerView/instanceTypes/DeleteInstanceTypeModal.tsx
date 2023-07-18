@@ -1,5 +1,3 @@
-import React from 'react';
-
 import { YBModal, YBModalProps } from '../../../../../redesign/components';
 
 import { InstanceType } from '../../../../../redesign/helpers/dtos';

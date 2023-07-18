@@ -1,4 +1,4 @@
-import React, { ReactElement } from 'react';
+import { ReactElement } from 'react';
 import { FieldValues, useController, UseControllerProps } from 'react-hook-form';
 import { YBSelect, YBSelectProps } from '../';
 

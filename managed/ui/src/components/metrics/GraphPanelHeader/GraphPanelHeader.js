@@ -5,7 +5,7 @@ import { Link, withRouter, browserHistory } from 'react-router';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import momentLocalizer from 'react-widgets-moment';
 
-import moment from 'moment';
+import moment from 'moment-timezone';
 import { toast } from 'react-toastify';
 import _ from 'lodash';
 

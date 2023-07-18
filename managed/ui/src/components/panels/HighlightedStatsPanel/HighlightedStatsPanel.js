@@ -1,8 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import moment from 'moment';
-import { YBFormattedNumber , YBResourceCount } from '../../common/descriptors';
+import { YBFormattedNumber, YBResourceCount } from '../../common/descriptors';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBLoading } from '../../common/indicators';
 

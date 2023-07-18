@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { PureComponent } from 'react';
+import { PureComponent } from 'react';
 import { toast } from 'react-toastify';
 
 export default class YBPasteButton extends PureComponent {

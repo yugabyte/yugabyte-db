@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import { FC } from 'react';
 
 import { YBModal } from '../../common/forms/fields';
 import { TableLagGraph } from './TableLagGraph';
