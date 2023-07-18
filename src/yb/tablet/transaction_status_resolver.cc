@@ -259,7 +259,8 @@ class TransactionStatusResolver::Impl {
       auto& status_info = status_infos_[i];
       status_info.transaction_id = queue.front();
       status_info.status = response.status(i);
-      if (response.deadlock_reason(i).code() != AppStatusPB::OK) {
+      if (response.deadlock_reason().size() > i &&
+          response.deadlock_reason(i).code() != AppStatusPB::OK) {
         // response contains a deadlock specific error.
         status_info.expected_deadlock_status = StatusFromPB(response.deadlock_reason(i));
       }
