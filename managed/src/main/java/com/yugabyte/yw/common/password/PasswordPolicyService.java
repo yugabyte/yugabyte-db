@@ -113,7 +113,7 @@ public class PasswordPolicyService {
     headers.put("User-Agent", "YugabyteDB");
     String response =
         apiHelper.getBody(
-            PASSWORD_API_URL + hash.substring(0, PREFIX_LENGTH), headers, Duration.ofMinutes(1));
+            PASSWORD_API_URL + hash.substring(0, PREFIX_LENGTH), headers, Duration.ofSeconds(30));
 
     if (response.contains(hash.substring(PREFIX_LENGTH).toUpperCase())) {
       throw new PlatformServiceException(
