@@ -2191,7 +2191,8 @@ ybcBeginScan(Relation relation,
 			 Scan *pg_scan_plan,
 			 PushdownExprs *rel_pushdown,
 			 PushdownExprs *idx_pushdown,
-			 List *aggrefs)
+			 List *aggrefs,
+			 YBCPgExecParameters *exec_params)
 {
 	if (nkeys > YB_MAX_SCAN_KEYS)
 		ereport(ERROR,
@@ -2229,7 +2230,7 @@ ybcBeginScan(Relation relation,
 		ybScan->quit_scan = true;
 		return ybScan;
 	}
-	ybScan->exec_params = NULL;
+	ybScan->exec_params = exec_params;
 	ybScan->relation = relation;
 	ybScan->index = index;
 	ybScan->quit_scan = false;
@@ -2489,7 +2490,8 @@ SysScanDesc ybc_systable_beginscan(Relation relation,
 									 pg_scan_plan,
 									 NULL /* rel_pushdown */,
 									 NULL /* idx_pushdown */,
-									 NULL /* aggrefs */);
+									 NULL /* aggrefs */,
+									 NULL /* exec_params */);
 
 	/* Set up Postgres sys table scan description */
 	SysScanDesc scan_desc = (SysScanDesc) palloc0(sizeof(SysScanDescData));
@@ -2541,7 +2543,8 @@ HeapScanDesc ybc_heap_beginscan(Relation relation,
 									 pg_scan_plan,
 									 NULL /* rel_pushdown */,
 									 NULL /* idx_pushdown */,
-									 NULL /* aggrefs */);
+									 NULL /* aggrefs */,
+									 NULL /* exec_params */);
 
 	/* Set up Postgres sys table scan description */
 	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
@@ -2592,7 +2595,8 @@ ybc_remote_beginscan(Relation relation,
 					 Snapshot snapshot,
 					 Scan *pg_scan_plan,
 					 PushdownExprs *pushdown,
-					 List *aggrefs)
+					 List *aggrefs,
+					 YBCPgExecParameters *exec_params)
 {
 	YbScanDesc ybScan = ybcBeginScan(relation,
 									 NULL /* index */,
@@ -2602,7 +2606,8 @@ ybc_remote_beginscan(Relation relation,
 									 pg_scan_plan,
 									 pushdown /* rel_pushdown */,
 									 NULL /* idx_pushdown */,
-									 aggrefs);
+									 aggrefs,
+									 exec_params);
 
 	/* Set up Postgres sys table scan description */
 	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
