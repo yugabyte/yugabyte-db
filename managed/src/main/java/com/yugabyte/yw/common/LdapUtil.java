@@ -327,7 +327,7 @@ public class LdapUtil {
       if (ldapConfiguration.isLdapUseSsl() || ldapConfiguration.isLdapUseTls()) {
 
         boolean customCAUploaded = customCAStoreManager.areCustomCAsPresent();
-        if (customCAStoreManager.isEnabled()) {
+        if (customCAStoreManager.isEnabled() && isCertVerificationEnforced()) {
           if (customCAUploaded) {
             log.debug("Using YBA's custom trust-store manager along-with Java defaults");
             KeyStore ybaJavaKeyStore = customCAStoreManager.getYbaAndJavaKeyStore();
@@ -341,7 +341,11 @@ public class LdapUtil {
           }
         } else {
           if (customCAUploaded) {
-            log.warn("Skipping to use YBA's custom trust-store as the feature is disabled");
+            log.warn(
+                "Skipping to use YBA's trust-store as the feature is disabled. CA-store "
+                    + "feature flag: {}, certification-verfication for LDAP: {}",
+                customCAStoreManager.isEnabled(),
+                isCertVerificationEnforced());
           }
           config.setTrustManagers(new NoVerificationTrustManager());
         }
@@ -566,5 +570,9 @@ public class LdapUtil {
       }
     }
     return users;
+  }
+
+  public boolean isCertVerificationEnforced() {
+    return confGetter.getGlobalConf(GlobalConfKeys.ldapsEnforceCertVerification);
   }
 }

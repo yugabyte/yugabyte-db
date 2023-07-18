@@ -568,6 +568,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Hidden because this key has dedicated UI",
           ConfDataType.LdapDefaultRoleEnum,
           ImmutableList.of(ConfKeyTags.UIDriven));
+  public static ConfKeyInfo<Boolean> ldapsEnforceCertVerification =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.enforce_server_cert_verification",
+          ScopeType.GLOBAL,
+          "Server certificate verification for LDAPs/LDAP-TLS",
+          "Enforce server certificate verification for LDAPs/LDAP-TLS",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static ConfKeyInfo<Boolean> enableDetailedLogs =
       new ConfKeyInfo<>(
           "yb.security.enable_detailed_logs",
