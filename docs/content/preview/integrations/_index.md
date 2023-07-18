@@ -29,7 +29,12 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
       Apache Atlas
     </a>
   </li>
-
+  <li>
+    <a href="apache-beam/">
+      <img src="/images/section_icons/develop/ecosystem/beam.png">
+      Apache Beam
+    </a>
+  </li>
   <li>
     <a href="apache-flink/">
       <img src="/images/section_icons/develop/ecosystem/apache-flink.png">
