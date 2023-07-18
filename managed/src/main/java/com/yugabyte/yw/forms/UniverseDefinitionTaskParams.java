@@ -976,6 +976,17 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   }
 
   @JsonIgnore
+  public Cluster getClusterByNodeUUID(UUID nodeUUID) {
+    NodeDetails node =
+        nodeDetailsSet.stream().filter(n -> n.nodeUuid.equals(nodeUUID)).findFirst().orElse(null);
+    if (node == null) {
+      return null;
+    }
+
+    return getClusterByUuid(node.placementUuid);
+  }
+
+  @JsonIgnore
   public void setExistingLBs(List<Cluster> clusters) {
     Map<ClusterAZ, String> existingLBsMap = new HashMap<>();
     for (Cluster cluster : clusters) {
