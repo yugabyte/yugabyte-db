@@ -58,14 +58,15 @@ using std::string;
 
 using namespace std::literals;
 
-DECLARE_bool(enable_ysql);
 DECLARE_bool(enable_log_retention_by_op_idx);
-DECLARE_int32(transaction_table_num_tablets);
+DECLARE_bool(enable_ysql);
 DECLARE_int32(cdc_max_apply_batch_num_records);
-DECLARE_int32(yb_num_shards_per_tserver);
+DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 DECLARE_int32(cdc_wal_retention_time_secs);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_int32(log_min_segments_to_retain);
+DECLARE_int32(transaction_table_num_tablets);
+DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_uint64(log_segment_size_bytes);
 
 namespace yb {
@@ -166,7 +167,8 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
       std::string cluster_id = Format("additional_producer_$0", i);
       std::unique_ptr<Cluster> additional_producer_cluster = VERIFY_RESULT(AddClusterWithTables(
           &producer_clusters_, &(producer_tables_[cluster_id]), cluster_id,
-          num_producer_tablets.size(), num_tablets_per_table, num_tservers));
+          num_producer_tablets.size(), num_tablets_per_table, /* is_producer= */ true,
+          num_tservers));
       additional_clusters.additional_producer_clusters_.push_back(
           std::move(additional_producer_cluster));
     }
@@ -174,7 +176,8 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
     for (uint32_t i = 0; i < num_additional_consumers; ++i) {
       std::unique_ptr<Cluster> additional_consumer_cluster = VERIFY_RESULT(AddClusterWithTables(
           &consumer_clusters_, &consumer_tables_, Format("additional_consumer_$0", i),
-          num_consumer_tablets.size(), num_tablets_per_table, num_tservers));
+          num_consumer_tablets.size(), num_tablets_per_table, /* is_producer= */ false,
+          num_tservers));
       additional_clusters.additional_consumer_clusters_.push_back(
           std::move(additional_consumer_cluster));
     }
@@ -314,8 +317,8 @@ TEST_F(XClusterTopologiesTest, TestBasicBroadcastTopology) {
   uint32_t kReplicationFactor = NonTsanVsTsan(3, 1);
   std::vector<uint32_t> tables_vector(kNumTables, kNTabletsPerTable);
   auto additional_clusters = ASSERT_RESULT(SetUpWithParams(
-      tables_vector, tables_vector, kReplicationFactor, 2 /* num additional consumers */,
-      kNTabletsPerTable));
+      tables_vector, tables_vector, kReplicationFactor, /* num_additional_consumers= */ 2,
+      /* num_additional_producers= */ 0, kNTabletsPerTable));
   ASSERT_OK(SetupAllUniverseReplication());
   for (int i = 0; i < kNumTables; ++i) {
     const auto& producer_table = producer_tables_[producer_cluster()->GetClusterId()][i];
@@ -354,13 +357,22 @@ TEST_F(XClusterTopologiesTest, TestNToOneReplicationFails) {
 }
 
 class XClusterTopologiesTestClusterFailure : public XClusterTopologiesTest {
+ public:
   void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 100;
+    XClusterTopologiesTest::SetUp();
+  }
+
+  // Call this after SetupAllUniverseReplication() -- replication setup does not work with only op
+  // id retention due to delays getting stream checkpoints to WAL retention code
+  void SwitchToRetainOnlyByOpId() {
+    // Ensure initial checkpoint from each stream is available to WAL retention code:
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_cdc_state_checkpoint_update_interval_ms * 10));
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 1;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
-    XClusterTopologiesTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 1;
   }
 };
 
@@ -371,28 +383,33 @@ TEST_F(XClusterTopologiesTestClusterFailure, TestBroadcastWithConsumerFailure) {
   uint32_t kReplicationFactor = NonTsanVsTsan(3, 1);
   std::vector<uint32_t> tables_vector(kNumTables, kNTabletsPerTable);
   auto additional_consumer_clusters = ASSERT_RESULT(SetUpWithParams(
-      tables_vector, tables_vector, kReplicationFactor, 2 /* num additional consumers */,
-      kNTabletsPerTable));
+      tables_vector, tables_vector, kReplicationFactor, /* num_additional_consumers= */ 2,
+      /* num_additional_producers= */ 0, kNTabletsPerTable));
   ASSERT_OK(SetupAllUniverseReplication());
+  SwitchToRetainOnlyByOpId();
 
   const auto& producer_tables = producer_tables_[producer_cluster()->GetClusterId()];
   ASSERT_OK(WriteWorkloadAndVerifyWrittenRows(producer_tables, 0, 10));
   Cluster* down_cluster = consumer_clusters_[0];
   {
-    // Bring down the first consumer cluster.
+    LOG(INFO) << ">>>>> Bring down the first consumer cluster.";
     TEST_SetThreadPrefixScoped prefix_se("C");
     down_cluster->mini_cluster_.get()->StopSync();
 
-    // Write some records to ensure that replication is still ongoing for the remaining clusters.
+    LOG(INFO) << ">>>>> Write some records to ensure that replication is still ongoing for the "
+                 "remaining clusters.";
     ASSERT_OK(WriteWorkloadAndVerifyWrittenRows(producer_tables, 10, 100, {}, {down_cluster}));
     SleepFor(MonoDelta::FromSeconds(5));
 
-    // Bring the consumer cluster back up and verify that its replication catches up.
+    LOG(INFO) << ">>>>> Bring the consumer cluster back up.";
     ASSERT_OK(down_cluster->mini_cluster_.get()->StartSync());
   }
+  LOG(INFO) << ">>>>> Verify that consumer cluster replication catches up.";
   ASSERT_OK(VerifyWrittenRecords());
 
+  LOG(INFO) << ">>>>> Write workload and verify written rows.";
   ASSERT_OK(WriteWorkloadAndVerifyWrittenRows(producer_tables, 100, 110));
+  LOG(INFO) << ">>>>> Successful!  Tearing down cluster now...";
 }
 
 // Testing that 1:N replication still works even when a producer drops.
@@ -402,9 +419,10 @@ TEST_F(XClusterTopologiesTestClusterFailure, TestBroadcastWithProducerFailure) {
   uint32_t kReplicationFactor = NonTsanVsTsan(3, 1);
   std::vector<uint32_t> tables_vector(kNumTables, kNTabletsPerTable);
   auto additional_consumer_clusters = ASSERT_RESULT(SetUpWithParams(
-      tables_vector, tables_vector, kReplicationFactor, 2 /* num additional consumers */,
-      kNTabletsPerTable));
+      tables_vector, tables_vector, kReplicationFactor, /* num_additional_consumers= */ 2,
+      /* num_additional_producers= */ 0, kNTabletsPerTable));
   ASSERT_OK(SetupAllUniverseReplication());
+  SwitchToRetainOnlyByOpId();
 
   const auto& producer_tables = producer_tables_[producer_cluster()->GetClusterId()];
   ASSERT_OK(WriteWorkloadAndVerifyWrittenRows(producer_tables, 0, 10));
