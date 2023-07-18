@@ -466,7 +466,9 @@ class PgClientServiceImpl::Impl {
     auto tserver_wait_states = client().ActiveUniverseHistory();
 
     for (auto wait_state : tserver_wait_states) {
-      resp->add_wait_states()->CopyFrom(wait_state);
+      if (!wait_state.metadata().top_level_request_id().empty()) {
+        resp->add_wait_states()->CopyFrom(wait_state);
+      }
     }
 
     auto bg_wait_states = tablet_server_.GetThreadpoolWaitStates();

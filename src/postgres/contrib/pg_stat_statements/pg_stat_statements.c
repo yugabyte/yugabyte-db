@@ -375,7 +375,7 @@ static void pgss_store(const char *query, uint64 queryId,
 		   double total_time, uint64 rows,
 		   const BufferUsage *bufusage,
 		   pgssJumbleState *jstate,
-		   Query *queryObj);
+		   uint64* query_id);
 static void pg_stat_statements_internal(FunctionCallInfo fcinfo,
 							pgssVersion api_version,
 							bool showtext);
@@ -1211,7 +1211,7 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 				   0,
 				   NULL,
 				   &jstate,
-				   query);
+				   &query->queryId);
 }
 
 /*
@@ -1318,7 +1318,7 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 				   queryDesc->totaltime->total * 1000.0,	/* convert to msec */
 				   queryDesc->estate->es_processed,
 				   &queryDesc->totaltime->bufusage,
-				   NULL, NULL);
+				   NULL, &queryDesc->plannedstmt->queryId);
 	}
 
 	if (prev_ExecutorEnd)
@@ -1429,7 +1429,7 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 				   INSTR_TIME_GET_MILLISEC(duration),
 				   rows,
 				   &bufusage,
-				   NULL, NULL);
+				   NULL, &pstmt->queryId);
 	}
 	else
 	{
@@ -1472,7 +1472,7 @@ pgss_store(const char *query, uint64 queryId,
 		   double total_time, uint64 rows,
 		   const BufferUsage *bufusage,
 		   pgssJumbleState *jstate,
-		   Query *queryObj)
+		   uint64* query_id)
 {
 	pgssHashKey key;
 	pgssEntry  *entry;
@@ -1530,8 +1530,8 @@ pgss_store(const char *query, uint64 queryId,
 	if (queryId == UINT64CONST(0))
 	{
 		queryId = pgss_hash_string(redacted_query, redacted_query_len);
-		if (queryObj)
-			queryObj->queryId = queryId;
+		if (query_id)
+			*query_id = queryId;
 	}
 
 	/* Set up key for hashtable search */

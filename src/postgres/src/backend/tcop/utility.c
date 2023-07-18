@@ -408,6 +408,9 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 	bool		isAtomicContext = (!(context == PROCESS_UTILITY_TOPLEVEL || context == PROCESS_UTILITY_QUERY_NONATOMIC) || IsTransactionBlock());
 	ParseState *pstate;
 
+	if (IsYugaByteEnabled() && pstmt->queryId)
+		YBCSetQueryId(pstmt->queryId);
+
 	/* This can recurse, so check for excessive recursion */
 	check_stack_depth();
 

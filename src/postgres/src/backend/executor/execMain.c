@@ -470,6 +470,9 @@ standard_ExecutorEnd(QueryDesc *queryDesc)
 	EState	   *estate;
 	MemoryContext oldcontext;
 
+	if (IsYugaByteEnabled() && queryDesc->plannedstmt->queryId)
+		YBCSetQueryId(queryDesc->plannedstmt->queryId);
+
 	/* sanity checks */
 	Assert(queryDesc != NULL);
 

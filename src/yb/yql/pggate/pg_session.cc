@@ -658,7 +658,9 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   }
   options.set_trace_requested(pg_txn_manager_->ShouldEnableTracing());
 
-  auh_metadata_.ToPB(options.mutable_auh_metadata());
+  if (!auh_metadata_.top_level_request_id.empty()) {
+    auh_metadata_.ToPB(options.mutable_auh_metadata());
+  }
 
   if (ops_options.cache_options) {
     auto& cache_options = *ops_options.cache_options;
@@ -906,6 +908,7 @@ Result<client::RpcsInfo> PgSession::ActiveUniverseHistory() {
 Status PgSession::SetAUHMetadata(const char* remote_host, int remote_port) {
   auto node_uuid = VERIFY_RESULT(pg_client_.GetTServerUUID());
   pg_callbacks_.ProcSetNodeUUID(node_uuid.c_str());
+  auh_metadata_.top_level_node_id = node_uuid;
   auh_metadata_.client_node_ip = yb::Format("$0:$1", remote_host, remote_port);
   return Status::OK();
 }

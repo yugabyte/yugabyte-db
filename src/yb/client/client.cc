@@ -2225,7 +2225,7 @@ std::vector<WaitStateInfoPB> YBClient::ActiveUniverseHistory() {
   
   for (auto conns : dump_resp.inbound_connections()) {
     for (auto call : conns.calls_in_flight()) {
-      if (call.has_header() && call.header().remote_method().method_name() != "ActiveUniverseHistory") {
+      if (call.has_header() && call.header().remote_method().method_name() != "ActiveUniverseHistory" && call.has_wait_state()) {
         res.push_back(call.wait_state());
       }
     }
@@ -2233,7 +2233,7 @@ std::vector<WaitStateInfoPB> YBClient::ActiveUniverseHistory() {
 
   for (auto conns : dump_resp.outbound_connections()) {
     for (auto call : conns.calls_in_flight()) {
-      if (call.has_header() && call.header().remote_method().method_name() != "ActiveUniverseHistory") {
+      if (call.has_header() && call.header().remote_method().method_name() != "ActiveUniverseHistory" && call.has_wait_state()) {
         res.push_back(call.wait_state());
       }
     }
