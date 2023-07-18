@@ -554,6 +554,7 @@ public class NodeManagerTest extends FakeDBApplication {
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.ansibleLocalTemp)))
         .thenReturn("/tmp/ansible_tmp/");
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybTmpDirectoryPath))).thenReturn("/tmp");
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.installLocalesDbNodes))).thenReturn(false);
   }
 
   private String getMountPoints(AnsibleConfigureServers.Params taskParam) {

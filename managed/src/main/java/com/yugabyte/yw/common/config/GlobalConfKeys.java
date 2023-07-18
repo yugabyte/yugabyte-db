@@ -919,4 +919,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " on login, etc.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Boolean> installLocalesDbNodes =
+      new ConfKeyInfo<>(
+          "yb.install_locales_db_nodes",
+          ScopeType.GLOBAL,
+          "Install Locales DB nodes",
+          "If enabled YBA will install locales on the DB nodes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

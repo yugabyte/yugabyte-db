@@ -765,6 +765,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="NTP server to connect to.")
         self.parser.add_argument("--lun_indexes", default="",
                                  help="Comma-separated LUN indexes for mounted on instance disks.")
+        self.parser.add_argument("--install_locales", action="store_true", default=False,
+                                 help="If enabled YBA will install locale on the DB nodes")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -856,6 +858,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         use_default_ssh_port = not ssh_port_updated
         host_info = self.wait_for_host(args, use_default_ssh_port)
         ansible = self.cloud.setup_ansible(args)
+        if args.install_locales:
+            self.extra_vars["install_locales"] = True
         ansible.run("preprovision.yml", self.extra_vars, host_info, disable_offloading=True)
 
         # Disabling custom_ssh_port for onprem provider when ssh2_enabled, because
