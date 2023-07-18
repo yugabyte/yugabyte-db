@@ -118,6 +118,8 @@ message LockInfoPB {
   optional bool is_explicit = 8;
 
   repeated LockMode modes = 9;
+
+  repeated bytes blocking_txn_ids = 10;
 }
 
 message TabletLockInfoPB {

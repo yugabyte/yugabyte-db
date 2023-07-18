@@ -197,6 +197,13 @@ inline auto GetMicros(CoarseMonoClock::Duration duration) {
   return std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
 }
 
+struct WaiterLockStatusInfo {
+  TransactionId id;
+  HybridTime wait_start;
+  LockBatchEntries locks;
+  std::vector<BlockerDataPtr> blockers;
+};
+
 // Data for an active transaction which is waiting on some number of other transactions with which
 // it has detected conflicts. The blockers field owns shared_ptr references to BlockerData of
 // pending transactions it's blocked by. These references keep the BlockerData instances alive in
@@ -205,7 +212,7 @@ inline auto GetMicros(CoarseMonoClock::Duration duration) {
 // and are discarded.
 struct WaiterData : public std::enable_shared_from_this<WaiterData> {
   WaiterData(const TransactionId id_, LockBatch* const locks_, uint64_t serial_no_,
-             const TabletId& status_tablet_,
+             HybridTime wait_start_, const TabletId& status_tablet_,
              const std::vector<BlockerDataAndConflictInfo> blockers_,
              const WaitDoneCallback callback_,
              std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration_, rpc::Rpcs* rpcs,
@@ -213,6 +220,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
       : id(id_),
         locks(locks_),
         serial_no(serial_no_),
+        wait_start(wait_start_),
         status_tablet(status_tablet_),
         blockers(std::move(blockers_)),
         callback(std::move(callback_)),
@@ -230,11 +238,11 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
   const TransactionId id;
   LockBatch* const locks;
   const uint64_t serial_no;
+  const HybridTime wait_start;
   const TabletId status_tablet;
   const std::vector<BlockerDataAndConflictInfo> blockers;
   const WaitDoneCallback callback;
   std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration;
-  const CoarseTimePoint created_at = CoarseMonoClock::Now();
 
   void InvokeCallback(const Status& status, HybridTime resume_ht = HybridTime::kInvalid) {
     VLOG_WITH_PREFIX(4) << "Invoking waiter callback " << status;
@@ -245,7 +253,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
           << "be rare.";
       return;
     }
-    finished_waiting_latency_->Increment(GetMicros(CoarseMonoClock::Now() - created_at));
+    finished_waiting_latency_->Increment(MicrosSinceCreation());
     if (!status.ok()) {
       unlocked_ = std::nullopt;
       callback(status, resume_ht);
@@ -312,9 +320,16 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
   }
 
   bool ShouldReRunConflictResolution() {
-    auto refresh_waiter_timeout_ms = GetAtomicFlag(&FLAGS_refresh_waiter_timeout_ms);
-    if (PREDICT_TRUE(refresh_waiter_timeout_ms > 0)) {
-      return CoarseMonoClock::Now() - created_at > refresh_waiter_timeout_ms * 1ms;
+    auto refresh_waiter_timeout = GetAtomicFlag(&FLAGS_refresh_waiter_timeout_ms) * 1ms;
+    if (IsSingleShard()) {
+      if (refresh_waiter_timeout.count() > 0) {
+        refresh_waiter_timeout = std::min(refresh_waiter_timeout, GetMaxSingleShardWaitDuration());
+      } else {
+        refresh_waiter_timeout = GetMaxSingleShardWaitDuration();
+      }
+    }
+    if (PREDICT_TRUE(refresh_waiter_timeout.count() > 0)) {
+      return MicrosSinceCreation() > GetMicros(refresh_waiter_timeout);
     }
     return false;
   }
@@ -324,7 +339,26 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
     return unlocked_ ? unlocked_->Get() : LockBatchEntries{};
   }
 
+  WaiterLockStatusInfo GetWaiterLockStatusInfo() const EXCLUDES(mutex_) {
+    SharedLock lock(mutex_);
+    auto info = WaiterLockStatusInfo {
+      .id = id,
+      .wait_start = wait_start,
+      .locks = unlocked_ ? unlocked_->Get() : LockBatchEntries{},
+      .blockers = {},
+    };
+    info.blockers.reserve(blockers.size());
+    for (const auto& blocker : blockers) {
+      info.blockers.push_back(blocker.first);
+    }
+    return info;
+  }
+
  private:
+  int64_t MicrosSinceCreation() const {
+    return GetCurrentTimeMicros() - wait_start.GetPhysicalValueMicros();
+  }
+
   scoped_refptr<Histogram>& finished_waiting_latency_;
   mutable rw_spinlock mutex_;
   std::optional<UnlockedBatch> unlocked_ GUARDED_BY(mutex_) = std::nullopt;
@@ -343,7 +377,7 @@ class BlockerData {
   BlockerData(const TransactionId& id, const TabletId& status_tablet)
     : id_(id), status_tablet_(status_tablet) {}
 
-  const TransactionId& id() { return id_; }
+  const TransactionId& id() const { return id_; }
 
   const TabletId& status_tablet() EXCLUDES(mutex_) {
     SharedLock r_lock(mutex_);
@@ -885,11 +919,11 @@ class WaitQueue::Impl {
     }
 
     auto waiter_data = std::make_shared<WaiterData>(
-        waiter_txn_id, locks, serial_no, status_tablet_id, std::move(blocker_datas),
+        waiter_txn_id, locks, serial_no, clock_->Now(), status_tablet_id, std::move(blocker_datas),
         std::move(callback), std::move(scoped_reporter), &rpcs_, &finished_waiting_latency_);
     if (waiter_data->IsSingleShard()) {
       DCHECK(single_shard_waiters_.size() == 0 ||
-              waiter_data->created_at >= single_shard_waiters_.front()->created_at);
+             waiter_data->wait_start >= single_shard_waiters_.front()->wait_start);
       single_shard_waiters_.push_front(waiter_data);
     } else {
       waiter_status_[waiter_txn_id] = waiter_data;
@@ -963,7 +997,7 @@ class WaitQueue::Impl {
         }
       }
       EraseIf([&stale_single_shard_waiters](const auto& waiter) {
-        if (waiter->created_at + GetMaxSingleShardWaitDuration() < CoarseMonoClock::Now()) {
+        if (waiter->ShouldReRunConflictResolution()) {
           stale_single_shard_waiters.push_back(waiter);
           return true;
         }
@@ -974,10 +1008,11 @@ class WaitQueue::Impl {
     }
 
     for (const auto& waiter : waiters) {
-      auto duration = CoarseMonoClock::Now() - waiter->created_at;
-      auto seconds = duration / 1s;
+      auto duration_us =
+          clock_->Now().GetPhysicalValueMicros() - waiter->wait_start.GetPhysicalValueMicros();
+      auto seconds = duration_us * 1us / 1s;
       VLOG_WITH_PREFIX_AND_FUNC(4) << waiter->id << " waiting for " << seconds << " seconds";
-      pending_time_waiting_->Increment(GetMicros(duration));
+      pending_time_waiting_->Increment(duration_us);
       if (waiter->ShouldReRunConflictResolution()) {
         InvokeWaiterCallback(kRefreshWaiterTimeout, waiter);
         continue;
@@ -1201,7 +1236,7 @@ class WaitQueue::Impl {
   Status GetLockStatus(
       const std::set<TransactionId>& transaction_ids, SchemaPtr schema_ptr,
       TabletLockInfoPB* tablet_lock_info) const {
-    std::vector<std::pair<const TransactionId, LockBatchEntries>> waiter_lock_entries;
+    std::vector<WaiterLockStatusInfo> waiter_lock_entries;
     {
       SharedLock l(mutex_);
       // If the wait-queue is being shutdown, waiter_status_ would  be empty. No need to
@@ -1210,27 +1245,28 @@ class WaitQueue::Impl {
       if (transaction_ids.empty()) {
         // When transaction_ids is empty, return awaiting locks info of all waiters.
         for (const auto& [_, waiter_data] : waiter_status_) {
-          waiter_lock_entries.push_back({waiter_data->id, waiter_data->GetLockBatchEntries()});
+          waiter_lock_entries.push_back(waiter_data->GetWaiterLockStatusInfo());
         }
-        for (const auto& waiter : single_shard_waiters_) {
-          waiter_lock_entries.push_back({TransactionId::Nil(), waiter->GetLockBatchEntries()});
+        for (const auto& waiter_data : single_shard_waiters_) {
+          waiter_lock_entries.push_back(waiter_data->GetWaiterLockStatusInfo());
         }
       } else {
         for (const auto& txn_id : transaction_ids) {
           const auto& it = waiter_status_.find(txn_id);
           if (it != waiter_status_.end()) {
-            waiter_lock_entries.push_back({it->second->id, it->second->GetLockBatchEntries()});
+            waiter_lock_entries.push_back(it->second->GetWaiterLockStatusInfo());
           }
         }
       }
     }
 
-    for (const auto& [txn_id, lock_batch_entries] : waiter_lock_entries) {
+    for (const auto& lock_status_info : waiter_lock_entries) {
+      const auto& txn_id = lock_status_info.id;
       auto* lock_entry = txn_id.IsNil()
           ? tablet_lock_info->add_single_shard_waiters()
           : &(*tablet_lock_info->mutable_transaction_locks())[txn_id.ToString()];
 
-      for (const auto& lock_batch_entry : lock_batch_entries) {
+      for (const auto& lock_batch_entry : lock_status_info.locks) {
         const auto& partial_doc_key_slice = lock_batch_entry.key.as_slice();
         DCHECK(partial_doc_key_slice.empty() ||
                !partial_doc_key_slice.ends_with(KeyEntryTypeAsChar::kGroupEnd));
@@ -1249,9 +1285,14 @@ class WaitQueue::Impl {
         };
         // TODO(pglocks): Populate 'subtransaction_id' & 'is_explicit' info of waiter txn(s) in
         // the LockInfoPB response. Currently we don't track either for waiter txn(s).
+        auto* lock = lock_entry->add_locks();
         RETURN_NOT_OK(docdb::PopulateLockInfoFromParsedIntent(
-            parsed_intent, DecodedIntentValue{}, schema_ptr, lock_entry->add_locks(),
-            /* intent_has_ht */ false));
+            parsed_intent, DecodedIntentValue{}, schema_ptr, lock, /* intent_has_ht */ false));
+        lock->set_wait_start_ht(lock_status_info.wait_start.ToUint64());
+        for (const auto& blocker : lock_status_info.blockers) {
+          auto& id = blocker->id();
+          lock->add_blocking_txn_ids(id.data(), id.size());
+        }
       }
     }
     return Status::OK();
