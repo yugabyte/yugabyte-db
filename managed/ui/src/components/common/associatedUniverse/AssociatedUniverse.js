@@ -1,4 +1,3 @@
-import React from 'react';
 import { YBModal } from '../forms/fields';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Link } from 'react-router';
@@ -13,8 +12,8 @@ const modifyStatus = (item, row) => {
   const universeStatus = row.universePaused
     ? 'Paused'
     : row.updateSucceeded && !row.updateInProgress
-      ? 'Ready'
-      : 'Error';
+    ? 'Ready'
+    : 'Error';
   switch (universeStatus) {
     case 'Ready':
       return (
@@ -59,7 +58,7 @@ export const AssociatedUniverse = ({ onHide, associatedUniverses, visible, title
     <YBModal
       visible={visible}
       onHide={onHide}
-      submitLabel='Close'
+      submitLabel="Close"
       onFormSubmit={onHide}
       title={`Universes using ${title}`}
     >

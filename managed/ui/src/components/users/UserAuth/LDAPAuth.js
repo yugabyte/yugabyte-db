@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import * as Yup from 'yup';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';

@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import './ItemStatus.scss';
 
 export default class ItemStatus extends Component {

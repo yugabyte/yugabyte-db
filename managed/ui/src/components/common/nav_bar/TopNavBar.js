@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import 'react-fa';
 import { MenuItem, NavDropdown, Navbar, Nav } from 'react-bootstrap';
 import { Link } from 'react-router';

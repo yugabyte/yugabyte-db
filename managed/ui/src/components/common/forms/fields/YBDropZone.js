@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Fragment, Component } from 'react';
+import { Fragment, Component } from 'react';
 import Dropzone from 'react-dropzone3';
 
 import { YBLabel } from '../../../../components/common/descriptors';

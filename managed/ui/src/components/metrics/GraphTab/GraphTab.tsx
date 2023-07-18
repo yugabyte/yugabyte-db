@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { FC, useEffect } from 'react';
+import { FC, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import {

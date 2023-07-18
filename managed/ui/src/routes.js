@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
 import Cookies from 'js-cookie';
-import React from 'react';
 import { Route, IndexRoute, browserHistory } from 'react-router';
 import _ from 'lodash';
 import axios from 'axios';

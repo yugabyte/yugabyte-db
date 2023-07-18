@@ -1,6 +1,5 @@
 // Copyright (c) YugaByte, Inc.
 
-import React from 'react';
 import i18n from 'i18next';
 import ReactDOM from 'react-dom';
 import { CssBaseline, ThemeProvider } from '@material-ui/core';

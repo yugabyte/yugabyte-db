@@ -342,6 +342,7 @@ export const UniverseView = (props) => {
       .slice((activePage - 1) * pageSize, activePage * pageSize)
       .map((item, idx) => {
         return (
+          // eslint-disable-next-line react/no-unknown-property
           <li className="universe-list-item" key={item.universeUUID} idx={idx}>
             <YBUniverseItem {...props} universe={item} runtimeConfigs={runtimeConfigs} />
           </li>

@@ -1,9 +1,8 @@
 // Copyright (c) YugaByte, Inc.
-
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Alert, Row, Panel } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import moment from 'moment';
+import moment from 'moment-timezone';
 import { sortBy, values } from 'lodash';
 import { NodeAgentStatusModal } from '../../../configRedesign/providerRedesign/providerView/instanceTypes/NodeAgentStatusModal';
 import { YBLoading } from '../../../common/indicators';

@@ -1,6 +1,5 @@
 // Copyright (c) YugaByte, Inc.
 
-import React from 'react';
 import LogoFull from './images/yb_yblogo_darkbg.svg';
 import LogoMonochrome from './images/yb_yblogo_whitebg.svg';
 import LogoIcon from './images/yb_ybsymbol_original.svg';

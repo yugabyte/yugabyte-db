@@ -1,4 +1,4 @@
-import React, { useState, ReactElement } from 'react';
+import { useState, ReactElement } from 'react';
 import _ from 'lodash';
 import * as Yup from 'yup';
 import clsx from 'clsx';

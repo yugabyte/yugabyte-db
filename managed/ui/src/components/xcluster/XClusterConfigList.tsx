@@ -1,4 +1,3 @@
-import React from 'react';
 import _ from 'lodash';
 import clsx from 'clsx';
 import { useQueries, useQuery, useQueryClient, UseQueryResult } from 'react-query';

@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import _ from 'lodash';
 
 import { YBDropZone } from '../../../configRedesign/providerRedesign/components/YBDropZone/YBDropZone';

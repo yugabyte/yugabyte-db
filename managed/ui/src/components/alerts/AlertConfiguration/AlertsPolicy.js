@@ -1,4 +1,4 @@
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { Field } from 'redux-form';
 import { YBInputField, YBSelect } from '../../common/forms/fields';
@@ -131,17 +131,16 @@ export class AlertsPolicy extends Component {
         {!isReadOnly &&
         currentMetric?.name &&
         fields.length < MAX_SEVERITY_ALLOWED &&
-        !currentMetric.thresholdReadOnly ?
-          (
-            <Row>
-              <Col lg={2}>
-                <a href="# " className="on-prem-add-link" onClick={this.addRow}>
-                  <i className="fa fa-plus-circle fa-2x on-prem-row-add-btn" onClick={this.addRow} />
-                  Add Severity
-                </a>
-              </Col>
-            </Row>
-          ) : null}
+        !currentMetric.thresholdReadOnly ? (
+          <Row>
+            <Col lg={2}>
+              <a href="# " className="on-prem-add-link" onClick={this.addRow}>
+                <i className="fa fa-plus-circle fa-2x on-prem-row-add-btn" onClick={this.addRow} />
+                Add Severity
+              </a>
+            </Col>
+          </Row>
+        ) : null}
       </div>
     );
   }

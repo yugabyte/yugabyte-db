@@ -69,6 +69,7 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
+// eslint-disable-next-line react/display-name
 export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
   const [
     restoreContext,

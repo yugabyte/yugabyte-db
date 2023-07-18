@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC, useRef } from 'react';
+import { FC, useRef } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery } from 'react-query';
@@ -145,7 +145,13 @@ const EmailPreviewModal: FC<EmailPreviewModalProps> = ({
     const bodyAsText = convertNodesToText(bodyValue);
     const subjectAsText = convertNodesToText(subjectValue);
 
-    fillTemplateWithValue.mutate({ bodyAsHTML, subjectAsHTML, bodyAsText, subjectAsText, alertConfigUUID });
+    fillTemplateWithValue.mutate({
+      bodyAsHTML,
+      subjectAsHTML,
+      bodyAsText,
+      subjectAsText,
+      alertConfigUUID
+    });
   };
 
   return (

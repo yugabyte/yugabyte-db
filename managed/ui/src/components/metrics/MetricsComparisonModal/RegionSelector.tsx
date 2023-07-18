@@ -1,4 +1,4 @@
-import React, { Fragment, FC } from 'react';
+import { Fragment, FC } from 'react';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { MetricConsts } from '../../metrics/constants';
 import { isNonEmptyObject } from '../../../utils/ObjectUtils';

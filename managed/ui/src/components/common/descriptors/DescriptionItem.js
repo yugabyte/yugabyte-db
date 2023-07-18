@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { PureComponent } from 'react';
+import { PureComponent } from 'react';
 import PropTypes from 'prop-types';
 
 import './stylesheets/DescriptionItem.scss';

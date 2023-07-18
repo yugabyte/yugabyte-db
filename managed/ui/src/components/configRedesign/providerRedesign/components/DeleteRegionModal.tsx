@@ -1,4 +1,3 @@
-import React from 'react';
 import { YBModal, YBModalProps } from '../../../../redesign/components';
 
 import { SupportedRegionField } from '../forms/configureRegion/types';

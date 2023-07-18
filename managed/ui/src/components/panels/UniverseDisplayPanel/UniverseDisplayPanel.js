@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Link } from 'react-router';
 import { Row, Col } from 'react-bootstrap';
 import { isFinite } from 'lodash';
@@ -73,11 +73,9 @@ class UniverseDisplayItem extends Component {
         />
       );
     }
-    const universeCreationDate = universe.creationDate ? (
-      ybFormatDate(universe.creationDate, YBTimeFormats.YB_DATE_ONLY_TIMESTAMP)
-    ) : (
-      ''
-    );
+    const universeCreationDate = universe.creationDate
+      ? ybFormatDate(universe.creationDate, YBTimeFormats.YB_DATE_ONLY_TIMESTAMP)
+      : '';
 
     return (
       <Col sm={4} md={3} lg={2}>

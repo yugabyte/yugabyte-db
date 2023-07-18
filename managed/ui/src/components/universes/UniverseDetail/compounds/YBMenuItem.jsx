@@ -1,4 +1,4 @@
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { LinkContainer } from 'react-router-bootstrap';
 import { MenuItem } from 'react-bootstrap';
 import { isEnabled, isHidden } from '../../../../utils/LayoutUtils';

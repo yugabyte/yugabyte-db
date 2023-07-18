@@ -1,4 +1,3 @@
-import React from 'react';
 import axios from 'axios';
 import { filterBySearchTokens } from './helpers/queriesHelper';
 import { LiveQueries } from './LiveQueries';

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { api } from '../../../redesign/helpers/api';

@@ -1,4 +1,4 @@
-import React, { ChangeEvent, ReactElement, useState } from 'react';
+import { ChangeEvent, ReactElement, useState } from 'react';
 import pluralize from 'pluralize';
 import { useQuery } from 'react-query';
 import { useUpdateEffect } from 'react-use';

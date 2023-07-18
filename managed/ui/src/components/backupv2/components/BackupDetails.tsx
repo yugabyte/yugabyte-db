@@ -10,7 +10,8 @@
 import React, { FC, useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { Link } from 'react-router';
-import { Backup_States, IBackup, ICommonBackupInfo, ITable, Keyspace_Table, fetchIncrementalBackup } from '..';
+import { Backup_States, IBackup, ICommonBackupInfo, ITable, Keyspace_Table } from '..';
+import { fetchIncrementalBackup } from '.././common/BackupAPI';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton } from '../../common/forms/fields';
 import { BACKUP_REFETCH_INTERVAL, RevealBadge, calculateDuration } from '../common/BackupUtils';
@@ -39,7 +40,7 @@ export type IncrementalBackupProps = {
   isRestoreEntireBackup?: boolean; // if the restore entire backup button is clicked
   incrementalBackupUUID?: string; // if restore to point button is clicked
   singleKeyspaceRestore?: boolean; // if restore button is clicked inside the incremental backup
-}
+};
 interface BackupDetailsProps {
   backupDetails: IBackup | null;
   onHide: () => void;
@@ -104,14 +105,17 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
       }
 
       if (backupDetails!.backupType === TableType.YQL_TABLE_TYPE) {
-
         const allTableAvailableForBackup = responseList.every((r) => {
           if (r.allTables) return true;
           return r.tableUUIDList?.every((tableUUID) => find(tablesInUniverse, { tableUUID }));
         });
 
         if (!allTableAvailableForBackup) {
-          return Promise.reject({ response: { data: { error: `One or more of selected tables to backup do not exist in keyspace` } } });
+          return Promise.reject({
+            response: {
+              data: { error: `One or more of selected tables to backup do not exist in keyspace` }
+            }
+          });
         }
 
         responseList = responseList.map((r) => {
@@ -125,9 +129,9 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             tableUUIDList: r.allTables
               ? []
               : backupTablesPresentInUniverse.map(
-                (tableName) =>
-                  find(tablesInUniverse, { tableName, keySpace: r.keyspace })?.tableUUID ?? ''
-              )
+                  (tableName) =>
+                    find(tablesInUniverse, { tableName, keySpace: r.keyspace })?.tableUUID ?? ''
+                )
           };
         });
       }
@@ -152,7 +156,6 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
           uniqueKeyspaceResponseList.push(r);
         }
       });
-
 
       return addIncrementalBackup({
         ...backupDetails!,
@@ -179,8 +182,8 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
 
   const kmsConfig = kmsConfigs
     ? kmsConfigs.find((config: any) => {
-      return config.metadata.configUUID === backupDetails?.commonBackupInfo?.kmsConfigUUID;
-    })
+        return config.metadata.configUUID === backupDetails?.commonBackupInfo?.kmsConfigUUID;
+      })
     : undefined;
 
   if (!backupDetails) return null;
@@ -244,15 +247,16 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                       const recentBackup = incrementalBackups.data.filter(
                         (e: ICommonBackupInfo) => e.state === Backup_States.COMPLETED
                       )[0];
-                      onRestore({ ...backupDetails, commonBackupInfo: recentBackup }, {
-                        isRestoreEntireBackup: true,
-                        incrementalBackupUUID: recentBackup.backupUUID,
-                        singleKeyspaceRestore: false
-                      });
+                      onRestore(
+                        { ...backupDetails, commonBackupInfo: recentBackup },
+                        {
+                          isRestoreEntireBackup: true,
+                          incrementalBackupUUID: recentBackup.backupUUID,
+                          singleKeyspaceRestore: false
+                        }
+                      );
                     }
-
-                  }
-                  else {
+                  } else {
                     onRestore(undefined, {
                       isRestoreEntireBackup: true,
                       singleKeyspaceRestore: false
@@ -402,18 +406,24 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 <TableListComponent
                   backup={backupDetails}
                   keyspaceSearch={searchKeyspaceText}
-                  onRestore={(tablesList: Keyspace_Table[], incrementalBackupProps: IncrementalBackupProps) => {
-                    onRestore({
-                      ...backupDetails,
-                      commonBackupInfo: {
-                        ...backupDetails.commonBackupInfo,
-                        responseList: tablesList
+                  onRestore={(
+                    tablesList: Keyspace_Table[],
+                    incrementalBackupProps: IncrementalBackupProps
+                  ) => {
+                    onRestore(
+                      {
+                        ...backupDetails,
+                        commonBackupInfo: {
+                          ...backupDetails.commonBackupInfo,
+                          responseList: tablesList
+                        }
+                      },
+                      {
+                        isRestoreEntireBackup: true,
+                        incrementalBackupUUID: incrementalBackupProps.incrementalBackupUUID,
+                        singleKeyspaceRestore: incrementalBackupProps.singleKeyspaceRestore
                       }
-                    }, {
-                      isRestoreEntireBackup: true,
-                      incrementalBackupUUID: incrementalBackupProps.incrementalBackupUUID,
-                      singleKeyspaceRestore: incrementalBackupProps.singleKeyspaceRestore
-                    });
+                    );
                   }}
                   hideRestore={hideRestore}
                 />

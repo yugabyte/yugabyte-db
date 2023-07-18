@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Link, withRouter, browserHistory } from 'react-router';
 import { Grid, DropdownButton, MenuItem, Tab, Alert } from 'react-bootstrap';
 import Measure from 'react-measure';

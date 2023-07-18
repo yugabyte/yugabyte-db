@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, ReactNode } from 'react';
+import { Component, ReactNode } from 'react';
 import { Row, Col } from 'react-bootstrap';
 
 import { isNonEmptyObject } from '../../../utils/ObjectUtils';

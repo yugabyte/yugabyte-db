@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import _ from 'lodash';
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { toast } from 'react-toastify';
 import { Field, FieldArray } from 'redux-form';
 import { Col, Alert } from 'react-bootstrap';

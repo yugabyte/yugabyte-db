@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { YBToggle, YBTextInputWithLabel, YBPassword } from '../../common/forms/fields';
 import { Field } from 'redux-form';

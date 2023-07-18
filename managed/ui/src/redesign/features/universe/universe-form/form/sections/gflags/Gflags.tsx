@@ -1,4 +1,4 @@
-import React, { FC, useContext } from 'react';
+import { FC, useContext } from 'react';
 import _ from 'lodash';
 import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';

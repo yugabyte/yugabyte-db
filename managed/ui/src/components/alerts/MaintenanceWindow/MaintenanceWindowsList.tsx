@@ -1,4 +1,4 @@
-import React, { ChangeEvent, FC, useState } from 'react';
+import { ChangeEvent, FC, useState } from 'react';
 import { Col, DropdownButton, MenuItem, OverlayTrigger, Popover, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
@@ -10,7 +10,11 @@ import {
   MaintenanceWindowState,
   updateMaintenanceWindow
 } from '.';
-import { convertToISODateString, dateStrToMoment, ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import {
+  convertToISODateString,
+  dateStrToMoment,
+  ybFormatDate
+} from '../../../redesign/helpers/DateUtils';
 import { YBButton, YBCheckBox } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
@@ -76,10 +80,7 @@ const GetMaintenanceWindowActions = ({
 
   const extendTime = useMutation(
     ({ window, minutesToExtend }: { window: MaintenanceWindowSchema; minutesToExtend: number }) => {
-      const currentEndTime = dateStrToMoment(window.endTime).add(
-        minutesToExtend,
-        'minute'
-      );
+      const currentEndTime = dateStrToMoment(window.endTime).add(minutesToExtend, 'minute');
       return updateMaintenanceWindow({
         ...window,
         endTime: convertToISODateString(currentEndTime.toDate())
