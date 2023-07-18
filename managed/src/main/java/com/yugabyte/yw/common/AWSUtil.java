@@ -54,6 +54,7 @@ import javax.net.ssl.TrustManagerFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.http.conn.ssl.NoopHostnameVerifier;
 import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.yb.ybc.CloudStoreSpec;
 import org.yb.ybc.CloudType;
@@ -245,7 +246,13 @@ public class AWSUtil implements CloudUtil {
           SecureRandom secureRandom = new SecureRandom();
           SSLContext sslContext = SSLContext.getInstance("TLS");
           sslContext.init(null, ybaJavaTrustManagers, secureRandom);
-          SSLConnectionSocketFactory sslSocketFactory = new SSLConnectionSocketFactory(sslContext);
+          SSLConnectionSocketFactory sslSocketFactory;
+          if (StringUtils.isBlank(endpoint) || isHostBaseS3Standard(s3Data.awsHostBase)) {
+            sslSocketFactory =
+                new SSLConnectionSocketFactory(sslContext, new NoopHostnameVerifier());
+          } else {
+            sslSocketFactory = new SSLConnectionSocketFactory(sslContext);
+          }
           if (clientConfig == null) {
             clientConfig = new ClientConfiguration();
           }
