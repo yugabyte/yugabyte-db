@@ -154,9 +154,11 @@ void DocQLScanSpec::InitOptions(const QLConditionPB& condition) {
         ColumnId col_id = ColumnId(lhs.column_id());
         size_t col_idx = schema().find_column_by_id(col_id);
 
-        // Skip any non-range columns. Hashed columns should always be sent as tuples along with
-        // their yb_hash_code. Hence, for hashed columns lhs should never be a column id.
-        DCHECK(schema().is_range_column(col_idx));
+        // Skip any non-range columns.
+        if (!schema().is_range_column(col_idx)) {
+          DCHECK(!schema().is_hash_key_column(col_idx));
+          return;
+        }
 
         auto sorting_type = get_sorting_type(col_idx);
 
