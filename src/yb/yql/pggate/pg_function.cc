@@ -19,7 +19,9 @@
 
 #include "yb/client/yb_op.h"
 
+#include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -140,7 +142,9 @@ Status PgFunction::GetNext(uint64_t* values, bool* is_nulls, bool* has_data) {
 Result<PgTableRow> AddLock(
     const ReaderProjection& projection, const Schema& schema, const std::string& permanent_uuid,
     const TableId table_id, const std::string& tablet_id, const yb::LockInfoPB& lock,
-    const Uuid transaction_id = Uuid::Nil()) {
+    const Uuid& transaction_id = Uuid::Nil(), HybridTime wait_start_ht = HybridTime::kMin,
+    const std::vector<std::string>& blocking_txn_ids = {}) {
+  DCHECK_NE(lock.has_wait_end_ht(), wait_start_ht != HybridTime::kMin);
   PgTableRow row(projection);
   row.SetNull();
 
@@ -178,9 +182,9 @@ Result<PgTableRow> AddLock(
   // if there is no transaction id, this is a fastpath operation
   RETURN_NOT_OK(SetColumnValue("fastpath", transaction_id.IsNil() ? true : false, schema, &row));
 
-  if (lock.has_wait_start_ht())
+  if (wait_start_ht != HybridTime::kMin)
     RETURN_NOT_OK(SetColumnValue(
-        "waitstart", HybridTime(lock.wait_start_ht()).GetPhysicalValueMicros(), schema, &row));
+        "waitstart", wait_start_ht.GetPhysicalValueMicros(), schema, &row));
 
   if (lock.has_wait_end_ht())
     RETURN_NOT_OK(SetColumnValue(
@@ -212,15 +216,20 @@ Result<PgTableRow> AddLock(
     RETURN_NOT_OK(SetColumnValue("column_id", lock.column_id(), schema, &row));
   RETURN_NOT_OK(SetColumnValue("multiple_rows_locked", lock.multiple_rows_locked(), schema, &row));
 
+  RETURN_NOT_OK(SetColumnValue("blocked_by", blocking_txn_ids, schema, &row));
+
+  return row;
+}
+
+Result<std::vector<std::string>> GetDecodedBlockerTransactionIds(
+    const TabletLockInfoPB::WaiterInfoPB& waiter_info) {
   std::vector<std::string> decoded_blocker_txn_ids;
-  decoded_blocker_txn_ids.reserve(lock.blocking_txn_ids().size());
-  for (const auto& blocking_txn_id : lock.blocking_txn_ids()) {
+  decoded_blocker_txn_ids.reserve(waiter_info.blocking_txn_ids().size());
+  for (const auto& blocking_txn_id : waiter_info.blocking_txn_ids()) {
     decoded_blocker_txn_ids.push_back(
         VERIFY_RESULT(FullyDecodeTransactionId(blocking_txn_id)).ToString());
   }
-  RETURN_NOT_OK(SetColumnValue("blocked_by", decoded_blocker_txn_ids, schema, &row));
-
-  return row;
+  return decoded_blocker_txn_ids;
 }
 
 Result<std::list<PgTableRow>> PgLockStatusRequestor(
@@ -244,18 +253,31 @@ Result<std::list<PgTableRow>> PgLockStatusRequestor(
   for (const auto& node : lock_status.node_locks()) {
     for (const auto& tab : node.tablet_lock_infos()) {
       for (const auto& [transaction_id, transaction_locks] : tab.transaction_locks()) {
-        for (const auto& lock : transaction_locks.locks()) {
+        for (const auto& lock : transaction_locks.granted_locks()) {
           PgTableRow row = VERIFY_RESULT(AddLock(
               projection, schema, node.permanent_uuid(), tab.table_id(), tab.tablet_id(), lock,
               VERIFY_RESULT(Uuid::FromString(transaction_id))));
           data.emplace_back(row);
         }
+
+        auto wait_start_ht = HybridTime::FromPB(transaction_locks.waiting_locks().wait_start_ht());
+        auto blocking_txn_ids = VERIFY_RESULT(
+            GetDecodedBlockerTransactionIds(transaction_locks.waiting_locks()));
+        for (const auto& lock : transaction_locks.waiting_locks().locks()) {
+          PgTableRow row = VERIFY_RESULT(AddLock(
+              projection, schema, node.permanent_uuid(), tab.table_id(), tab.tablet_id(), lock,
+              VERIFY_RESULT(Uuid::FromString(transaction_id)), wait_start_ht, blocking_txn_ids));
+          data.emplace_back(row);
+        }
       }
 
-      for (const auto& waiters : tab.single_shard_waiters()) {
-        for (const auto& lock : waiters.locks()) {
+      for (const auto& waiter : tab.single_shard_waiters()) {
+        auto wait_start_ht = HybridTime::FromPB(waiter.wait_start_ht());
+        auto blocking_txn_ids = VERIFY_RESULT(GetDecodedBlockerTransactionIds(waiter));
+        for (const auto& lock : waiter.locks()) {
           PgTableRow row = VERIFY_RESULT(AddLock(
-              projection, schema, node.permanent_uuid(), tab.table_id(), tab.tablet_id(), lock));
+              projection, schema, node.permanent_uuid(), tab.table_id(), tab.tablet_id(), lock,
+              Uuid::Nil(), wait_start_ht, blocking_txn_ids));
           data.emplace_back(row);
         }
       }

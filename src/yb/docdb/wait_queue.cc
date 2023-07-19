@@ -1262,9 +1262,20 @@ class WaitQueue::Impl {
 
     for (const auto& lock_status_info : waiter_lock_entries) {
       const auto& txn_id = lock_status_info.id;
-      auto* lock_entry = txn_id.IsNil()
-          ? tablet_lock_info->add_single_shard_waiters()
-          : &(*tablet_lock_info->mutable_transaction_locks())[txn_id.ToString()];
+      TabletLockInfoPB::WaiterInfoPB* waiter_info = nullptr;
+      if (txn_id.IsNil()) {
+        waiter_info = tablet_lock_info->add_single_shard_waiters();
+      } else {
+        auto* lock_entry = &(*tablet_lock_info->mutable_transaction_locks())[txn_id.ToString()];
+        DCHECK(!lock_entry->has_waiting_locks());
+        waiter_info = lock_entry->mutable_waiting_locks();
+      }
+
+      waiter_info->set_wait_start_ht(lock_status_info.wait_start.ToUint64());
+      for (const auto& blocker : lock_status_info.blockers) {
+        auto& id = blocker->id();
+        waiter_info->add_blocking_txn_ids(id.data(), id.size());
+      }
 
       for (const auto& lock_batch_entry : lock_status_info.locks) {
         const auto& partial_doc_key_slice = lock_batch_entry.key.as_slice();
@@ -1285,14 +1296,9 @@ class WaitQueue::Impl {
         };
         // TODO(pglocks): Populate 'subtransaction_id' & 'is_explicit' info of waiter txn(s) in
         // the LockInfoPB response. Currently we don't track either for waiter txn(s).
-        auto* lock = lock_entry->add_locks();
         RETURN_NOT_OK(docdb::PopulateLockInfoFromParsedIntent(
-            parsed_intent, DecodedIntentValue{}, schema_ptr, lock, /* intent_has_ht */ false));
-        lock->set_wait_start_ht(lock_status_info.wait_start.ToUint64());
-        for (const auto& blocker : lock_status_info.blockers) {
-          auto& id = blocker->id();
-          lock->add_blocking_txn_ids(id.data(), id.size());
-        }
+            parsed_intent, DecodedIntentValue{}, schema_ptr, waiter_info->add_locks(),
+            /* intent_has_ht */ false));
       }
     }
     return Status::OK();

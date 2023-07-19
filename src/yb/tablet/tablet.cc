@@ -4214,7 +4214,7 @@ Status PopulateLockInfoFromIntent(
 
   auto& lock_entry = (*txn_locks)[decoded_value.transaction_id.ToString()];
   return docdb::PopulateLockInfoFromParsedIntent(
-      parsed_intent, decoded_value, schema, lock_entry.add_locks());
+      parsed_intent, decoded_value, schema, lock_entry.add_granted_locks());
 }
 
 Status Tablet::GetLockStatus(const std::set<TransactionId>& transaction_ids,
