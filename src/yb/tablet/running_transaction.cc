@@ -17,6 +17,7 @@
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/tablet/transaction_participant_context.h"
 
@@ -123,9 +124,11 @@ void RunningTransaction::RequestStatusAt(const StatusRequest& request,
           transaction_status == TransactionStatus::PENDING) {
         local_commit_aborted_subtxn_set = last_known_aborted_subtxn_set_;
       }
+      auto last_known_deadlock_status = last_known_deadlock_status_;
       lock->unlock();
       request.callback(TransactionStatusResult{
-          *transaction_status, last_known_status_hybrid_time, local_commit_aborted_subtxn_set});
+          *transaction_status, last_known_status_hybrid_time, local_commit_aborted_subtxn_set,
+          last_known_deadlock_status});
       return;
     }
   }
@@ -152,7 +155,7 @@ bool RunningTransaction::WasAborted() const {
 
 Status RunningTransaction::CheckAborted() const {
   if (WasAborted()) {
-    return MakeAbortedStatus(id());
+    return last_known_deadlock_status_.ok() ? MakeAbortedStatus(id()) : last_known_deadlock_status_;
   }
   return Status::OK();
 }
@@ -278,7 +281,8 @@ void RunningTransaction::StatusReceived(
 
 bool RunningTransaction::UpdateStatus(
     TransactionStatus transaction_status, HybridTime time_of_status,
-    HybridTime coordinator_safe_time, SubtxnSet aborted_subtxn_set) {
+    HybridTime coordinator_safe_time, SubtxnSet aborted_subtxn_set,
+    const Status& expected_deadlock_status) {
   if (!local_commit_time_ && transaction_status != TransactionStatus::ABORTED) {
     // If we've already committed locally, then last_known_aborted_subtxn_set_ is already set
     // properly. Otherwise, we should update it here.
@@ -303,6 +307,8 @@ bool RunningTransaction::UpdateStatus(
     context_.NotifyAbortedTransactionDecrement(id());
   }
   last_known_status_ = transaction_status;
+  DCHECK(expected_deadlock_status.ok() || transaction_status == TransactionStatus::ABORTED);
+  last_known_deadlock_status_ = expected_deadlock_status;
 
   return transaction_status == TransactionStatus::ABORTED;
 }
@@ -323,6 +329,7 @@ void RunningTransaction::DoStatusReceived(const Status& status,
   decltype(status_waiters_) status_waiters;
   HybridTime time_of_status = HybridTime::kMin;
   TransactionStatus transaction_status = TransactionStatus::PENDING;
+  Status expected_deadlock_status = Status::OK();
   SubtxnSet aborted_subtxn_set;
   const bool ok = status.ok();
   int64_t new_request_id = -1;
@@ -338,12 +345,11 @@ void RunningTransaction::DoStatusReceived(const Status& status,
       return;
     }
 
-    if (response.status_hybrid_time().size() != 1 ||
-        response.status().size() != 1 ||
-        (response.aborted_subtxn_set().size() != 0 && response.aborted_subtxn_set().size() != 1)) {
+    if (response.status_hybrid_time().size() != 1 || response.status().size() != 1 ||
+        response.aborted_subtxn_set().size() > 1 || response.deadlock_reason().size() > 1) {
       LOG_WITH_PREFIX(DFATAL)
-          << "Wrong number of status, status hybrid time, or aborted subtxn set entries, "
-          << "exactly one entry expected: "
+          << "Wrong number of status, status hybrid time, deadlock_reason, or aborted subtxn "
+          << "set entries, exactly one entry expected: "
           << response.ShortDebugString();
     } else if (PREDICT_FALSE(response.aborted_subtxn_set().empty())) {
       YB_LOG_EVERY_N(WARNING, 1)
@@ -356,6 +362,11 @@ void RunningTransaction::DoStatusReceived(const Status& status,
         time_of_status = HybridTime(response.status_hybrid_time()[0]);
         transaction_status = response.status(0);
         aborted_subtxn_set = aborted_subtxn_set_or_status.get();
+        if (!response.deadlock_reason().empty() &&
+            response.deadlock_reason(0).code() != AppStatusPB::OK) {
+          // response contains a deadlock specific error.
+          expected_deadlock_status = StatusFromPB(response.deadlock_reason(0));
+        }
       } else {
         LOG_WITH_PREFIX(DFATAL)
             << "Could not deserialize SubtxnSet: "
@@ -370,7 +381,8 @@ void RunningTransaction::DoStatusReceived(const Status& status,
     auto coordinator_safe_time = response.coordinator_safe_time().size() == 1
         ? HybridTime::FromPB(response.coordinator_safe_time(0)) : HybridTime();
     auto did_abort_txn = UpdateStatus(
-        transaction_status, time_of_status, coordinator_safe_time, aborted_subtxn_set);
+        transaction_status, time_of_status, coordinator_safe_time, aborted_subtxn_set,
+        expected_deadlock_status);
     if (did_abort_txn) {
       context_.NotifyAbortedTransactionIncrement(id());
       context_.EnqueueRemoveUnlocked(id(), RemoveReason::kStatusReceived, &min_running_notifier);
@@ -410,7 +422,9 @@ void RunningTransaction::DoStatusReceived(const Status& status,
   if (new_request_id >= 0) {
     SendStatusRequest(new_request_id, shared_self);
   }
-  NotifyWaiters(serial_no, time_of_status, transaction_status, aborted_subtxn_set, status_waiters);
+  NotifyWaiters(
+      serial_no, time_of_status, transaction_status, aborted_subtxn_set, status_waiters,
+      expected_deadlock_status);
 }
 
 std::vector<StatusRequest> RunningTransaction::ExtractFinishedStatusWaitersUnlocked(
@@ -441,7 +455,8 @@ std::vector<StatusRequest> RunningTransaction::ExtractFinishedStatusWaitersUnloc
 void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_status,
                                        TransactionStatus transaction_status,
                                        const SubtxnSet& aborted_subtxn_set,
-                                       const std::vector<StatusRequest>& status_waiters) {
+                                       const std::vector<StatusRequest>& status_waiters,
+                                       const Status& expected_deadlock_status) {
   for (const auto& waiter : status_waiters) {
     auto status_for_waiter = GetStatusAt(
         waiter.global_limit_ht, time_of_status, transaction_status, external_transaction());
@@ -452,6 +467,7 @@ void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_sta
           result.status == TransactionStatus::PENDING) {
         result.aborted_subtxn_set = aborted_subtxn_set;
       }
+      result.expected_deadlock_status = expected_deadlock_status;
       waiter.callback(std::move(result));
     } else if (time_of_status >= waiter.read_ht) {
       // It means that between read_ht and global_limit_ht transaction was pending.
@@ -461,7 +477,8 @@ void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_sta
           << "Notify waiter with request id greater than id of status request: "
           << waiter.serial_no << " vs " << serial_no;
       waiter.callback(TransactionStatusResult{
-          TransactionStatus::PENDING, time_of_status, aborted_subtxn_set});
+          TransactionStatus::PENDING, time_of_status, aborted_subtxn_set,
+          expected_deadlock_status});
     } else {
       waiter.callback(STATUS(TryAgain,
           Format("Cannot determine transaction status with read_ht $0, and global_limit_ht $1, "
@@ -507,7 +524,8 @@ void RunningTransaction::AbortReceived(const Status& status,
     if (result.ok() && result->status_time != HybridTime::kMax) {
       auto coordinator_safe_time = HybridTime::FromPB(response.coordinator_safe_time());
       if (UpdateStatus(
-          result->status, result->status_time, coordinator_safe_time, result->aborted_subtxn_set)) {
+          result->status, result->status_time, coordinator_safe_time, result->aborted_subtxn_set,
+          result->expected_deadlock_status)) {
         context_.NotifyAbortedTransactionIncrement(id());
         context_.EnqueueRemoveUnlocked(id(), RemoveReason::kAbortReceived, &min_running_notifier);
       }

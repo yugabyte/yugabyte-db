@@ -127,6 +127,8 @@ public class UniverseCRUDHandler {
 
   @Inject ReleaseManager releaseManager;
 
+  @Inject CertificateHelper certificateHelper;
+
   private enum OpType {
     CONFIGURE,
     CREATE,
@@ -346,7 +348,7 @@ public class UniverseCRUDHandler {
       } else {
         // create self-signed rootCA in case it is not provided by the user.
         taskParams.rootCA =
-            CertificateHelper.createRootCA(
+            certificateHelper.createRootCA(
                 runtimeConfigFactory.staticApplicationConf(),
                 taskParams.nodePrefix,
                 customer.getUuid());
@@ -363,7 +365,7 @@ public class UniverseCRUDHandler {
           // create self-signed clientRootCA in case it is not provided by the user
           // and root and clientRoot CA needs to be different
           taskParams.setClientRootCA(
-              CertificateHelper.createClientRootCA(
+              certificateHelper.createClientRootCA(
                   runtimeConfigFactory.staticApplicationConf(),
                   taskParams.nodePrefix,
                   customer.getUuid()));
@@ -1831,7 +1833,7 @@ public class UniverseCRUDHandler {
 
     if (isRootCA && taskParams.createNewRootCA) {
       taskParams.rootCA =
-          CertificateHelper.createRootCA(
+          certificateHelper.createRootCA(
               runtimeConfigFactory.staticApplicationConf(),
               universeDetails.nodePrefix,
               customer.getUuid());
@@ -1839,7 +1841,7 @@ public class UniverseCRUDHandler {
 
     if (isClientRootCA && taskParams.createNewClientRootCA) {
       taskParams.setClientRootCA(
-          CertificateHelper.createClientRootCA(
+          certificateHelper.createClientRootCA(
               runtimeConfigFactory.staticApplicationConf(),
               universeDetails.nodePrefix,
               customer.getUuid()));

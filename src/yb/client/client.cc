@@ -120,103 +120,102 @@
 
 using namespace std::literals;
 
-using yb::master::ListTablegroupsRequestPB;
-using yb::master::ListTablegroupsResponsePB;
-using yb::master::GetNamespaceInfoRequestPB;
-using yb::master::GetNamespaceInfoResponsePB;
+using google::protobuf::RepeatedField;
+using google::protobuf::RepeatedPtrField;
+using std::make_pair;
+using std::string;
+using std::vector;
+using yb::master::AddTransactionStatusTabletRequestPB;
+using yb::master::AddTransactionStatusTabletResponsePB;
+using yb::master::AlterRoleRequestPB;
+using yb::master::AlterRoleResponsePB;
+using yb::master::CreateCDCStreamRequestPB;
+using yb::master::CreateCDCStreamResponsePB;
+using yb::master::CreateNamespaceRequestPB;
+using yb::master::CreateNamespaceResponsePB;
+using yb::master::CreateRoleRequestPB;
+using yb::master::CreateRoleResponsePB;
+using yb::master::CreateTransactionStatusTableRequestPB;
+using yb::master::CreateTransactionStatusTableResponsePB;
+using yb::master::CreateUDTypeRequestPB;
+using yb::master::CreateUDTypeResponsePB;
+using yb::master::DeleteCDCStreamRequestPB;
+using yb::master::DeleteCDCStreamResponsePB;
+using yb::master::DeleteNamespaceRequestPB;
+using yb::master::DeleteNamespaceResponsePB;
+using yb::master::DeleteRoleRequestPB;
+using yb::master::DeleteRoleResponsePB;
+using yb::master::DeleteUDTypeRequestPB;
+using yb::master::DeleteUDTypeResponsePB;
+using yb::master::GetCDCDBStreamInfoRequestPB;
+using yb::master::GetCDCDBStreamInfoResponsePB;
+using yb::master::GetCDCStreamRequestPB;
+using yb::master::GetCDCStreamResponsePB;
 using yb::master::GetIndexBackfillProgressRequestPB;
 using yb::master::GetIndexBackfillProgressResponsePB;
+using yb::master::GetMasterClusterConfigRequestPB;
+using yb::master::GetMasterClusterConfigResponsePB;
+using yb::master::GetNamespaceInfoRequestPB;
+using yb::master::GetNamespaceInfoResponsePB;
+using yb::master::GetPermissionsRequestPB;
+using yb::master::GetPermissionsResponsePB;
 using yb::master::GetTableLocationsRequestPB;
 using yb::master::GetTableLocationsResponsePB;
+using yb::master::GetTableSchemaFromSysCatalogRequestPB;
 using yb::master::GetTabletLocationsRequestPB;
 using yb::master::GetTabletLocationsResponsePB;
 using yb::master::GetTransactionStatusTabletsRequestPB;
 using yb::master::GetTransactionStatusTabletsResponsePB;
+using yb::master::GetUDTypeInfoRequestPB;
+using yb::master::GetUDTypeInfoResponsePB;
+using yb::master::GetUDTypeMetadataRequestPB;
+using yb::master::GetUDTypeMetadataResponsePB;
+using yb::master::GetYsqlCatalogConfigRequestPB;
+using yb::master::GetYsqlCatalogConfigResponsePB;
+using yb::master::GrantRevokePermissionRequestPB;
+using yb::master::GrantRevokePermissionResponsePB;
+using yb::master::GrantRevokeRoleRequestPB;
+using yb::master::GrantRevokeRoleResponsePB;
+using yb::master::IsBootstrapRequiredRequestPB;
+using yb::master::IsBootstrapRequiredResponsePB;
 using yb::master::IsLoadBalancedRequestPB;
 using yb::master::IsLoadBalancedResponsePB;
 using yb::master::IsLoadBalancerIdleRequestPB;
 using yb::master::IsLoadBalancerIdleResponsePB;
+using yb::master::IsObjectPartOfXReplRequestPB;
+using yb::master::IsObjectPartOfXReplResponsePB;
+using yb::master::ListLiveTabletServersRequestPB;
+using yb::master::ListLiveTabletServersResponsePB;
+using yb::master::ListLiveTabletServersResponsePB_Entry;
 using yb::master::ListMastersRequestPB;
 using yb::master::ListMastersResponsePB;
+using yb::master::ListNamespacesRequestPB;
+using yb::master::ListNamespacesResponsePB;
+using yb::master::ListTablegroupsRequestPB;
+using yb::master::ListTablegroupsResponsePB;
 using yb::master::ListTablesRequestPB;
 using yb::master::ListTablesResponsePB;
 using yb::master::ListTablesResponsePB_TableInfo;
 using yb::master::ListTabletServersRequestPB;
 using yb::master::ListTabletServersResponsePB;
 using yb::master::ListTabletServersResponsePB_Entry;
-using yb::master::ListLiveTabletServersRequestPB;
-using yb::master::ListLiveTabletServersResponsePB;
-using yb::master::ListLiveTabletServersResponsePB_Entry;
-using yb::master::CreateNamespaceRequestPB;
-using yb::master::CreateNamespaceResponsePB;
-using yb::master::DeleteNamespaceRequestPB;
-using yb::master::DeleteNamespaceResponsePB;
-using yb::master::ListNamespacesRequestPB;
-using yb::master::ListNamespacesResponsePB;
-using yb::master::ReservePgsqlOidsRequestPB;
-using yb::master::ReservePgsqlOidsResponsePB;
-using yb::master::GetYsqlCatalogConfigRequestPB;
-using yb::master::GetYsqlCatalogConfigResponsePB;
-using yb::master::CreateUDTypeRequestPB;
-using yb::master::CreateUDTypeResponsePB;
-using yb::master::AlterRoleRequestPB;
-using yb::master::AlterRoleResponsePB;
-using yb::master::CreateRoleRequestPB;
-using yb::master::CreateRoleResponsePB;
-using yb::master::DeleteUDTypeRequestPB;
-using yb::master::DeleteUDTypeResponsePB;
-using yb::master::DeleteRoleRequestPB;
-using yb::master::DeleteRoleResponsePB;
-using yb::master::GetPermissionsRequestPB;
-using yb::master::GetPermissionsResponsePB;
-using yb::master::GrantRevokeRoleRequestPB;
-using yb::master::GrantRevokeRoleResponsePB;
-using yb::master::GetUDTypeInfoRequestPB;
-using yb::master::GetUDTypeInfoResponsePB;
-using yb::master::GetUDTypeMetadataRequestPB;
-using yb::master::GetUDTypeMetadataResponsePB;
-using yb::master::GrantRevokePermissionResponsePB;
-using yb::master::GrantRevokePermissionRequestPB;
 using yb::master::MasterDdlProxy;
-using yb::master::ReplicationInfoPB;
-using yb::master::TabletLocationsPB;
-using yb::master::RedisConfigSetRequestPB;
-using yb::master::RedisConfigSetResponsePB;
+using yb::master::PlacementInfoPB;
 using yb::master::RedisConfigGetRequestPB;
 using yb::master::RedisConfigGetResponsePB;
-using yb::master::CreateCDCStreamRequestPB;
-using yb::master::CreateCDCStreamResponsePB;
-using yb::master::DeleteCDCStreamRequestPB;
-using yb::master::DeleteCDCStreamResponsePB;
-using yb::master::GetCDCDBStreamInfoRequestPB;
-using yb::master::GetCDCDBStreamInfoResponsePB;
-using yb::master::GetCDCStreamRequestPB;
-using yb::master::GetCDCStreamResponsePB;
+using yb::master::RedisConfigSetRequestPB;
+using yb::master::RedisConfigSetResponsePB;
+using yb::master::ReplicationInfoPB;
+using yb::master::ReservePgsqlOidsRequestPB;
+using yb::master::ReservePgsqlOidsResponsePB;
+using yb::master::TabletLocationsPB;
 using yb::master::UpdateCDCStreamRequestPB;
 using yb::master::UpdateCDCStreamResponsePB;
-using yb::master::IsObjectPartOfXReplRequestPB;
-using yb::master::IsObjectPartOfXReplResponsePB;
-using yb::master::IsBootstrapRequiredRequestPB;
-using yb::master::IsBootstrapRequiredResponsePB;
-using yb::master::GetMasterClusterConfigRequestPB;
-using yb::master::GetMasterClusterConfigResponsePB;
-using yb::master::CreateTransactionStatusTableRequestPB;
-using yb::master::CreateTransactionStatusTableResponsePB;
-using yb::master::AddTransactionStatusTabletRequestPB;
-using yb::master::AddTransactionStatusTabletResponsePB;
 using yb::master::UpdateConsumerOnProducerSplitRequestPB;
 using yb::master::UpdateConsumerOnProducerSplitResponsePB;
-using yb::master::GetTableSchemaFromSysCatalogRequestPB;
-using yb::master::GetTableSchemaFromSysCatalogRequestPB;
 using yb::master::WaitForYsqlBackendsCatalogVersionRequestPB;
 using yb::master::WaitForYsqlBackendsCatalogVersionResponsePB;
-using yb::master::PlacementInfoPB;
 using yb::rpc::Messenger;
-using std::string;
-using std::vector;
-using std::make_pair;
-using google::protobuf::RepeatedField;
-using google::protobuf::RepeatedPtrField;
 
 using namespace yb::size_literals;  // NOLINT.
 
@@ -1394,16 +1393,16 @@ Status YBClient::DeleteUDType(const std::string& namespace_name,
   return Status::OK();
 }
 
-Result<CDCStreamId> YBClient::CreateCDCStream(
+Result<xrepl::StreamId> YBClient::CreateCDCStream(
     const TableId& table_id,
     const std::unordered_map<std::string, std::string>& options,
     bool active,
-    const CDCStreamId& db_stream_id) {
+    const xrepl::StreamId& db_stream_id) {
   // Setting up request.
   CreateCDCStreamRequestPB req;
   req.set_table_id(table_id);
-  if (!db_stream_id.empty()) {
-    req.set_db_stream_id(db_stream_id);
+  if (db_stream_id) {
+    req.set_db_stream_id(db_stream_id.ToString());
   }
   req.mutable_options()->Reserve(narrow_cast<int>(options.size()));
   for (const auto& option : options) {
@@ -1416,7 +1415,7 @@ Result<CDCStreamId> YBClient::CreateCDCStream(
 
   CreateCDCStreamResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, CreateCDCStream);
-  return resp.stream_id();
+  return xrepl::StreamId::FromString(resp.stream_id());
 }
 
 void YBClient::CreateCDCStream(
@@ -1429,14 +1428,14 @@ void YBClient::CreateCDCStream(
 }
 
 Status YBClient::GetCDCStream(
-    const CDCStreamId& stream_id,
+    const xrepl::StreamId& stream_id,
     NamespaceId* ns_id,
     std::vector<ObjectId>* object_ids,
     std::unordered_map<std::string, std::string>* options,
     cdc::StreamModeTransactional* transactional) {
   // Setting up request.
   GetCDCStreamRequestPB req;
-  req.set_stream_id(stream_id);
+  req.set_stream_id(stream_id.ToString());
 
   // Sending request.
   GetCDCStreamResponsePB resp;
@@ -1466,18 +1465,20 @@ Status YBClient::GetCDCStream(
   return Status::OK();
 }
 
-void YBClient::GetCDCStream(const CDCStreamId& stream_id,
-                            std::shared_ptr<TableId> table_id,
-                            std::shared_ptr<std::unordered_map<std::string, std::string>> options,
-                            StdStatusCallback callback) {
+void YBClient::GetCDCStream(
+    const xrepl::StreamId& stream_id,
+    std::shared_ptr<TableId> table_id,
+    std::shared_ptr<std::unordered_map<std::string, std::string>> options,
+    StdStatusCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   data_->GetCDCStream(this, stream_id, table_id, options, deadline, callback);
 }
 
-Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams,
-                                 bool force_delete,
-                                 bool ignore_errors,
-                                 master::DeleteCDCStreamResponsePB* ret) {
+Status YBClient::DeleteCDCStream(
+    const vector<xrepl::StreamId>& streams,
+    bool force_delete,
+    bool ignore_errors,
+    master::DeleteCDCStreamResponsePB* ret) {
   if (streams.empty()) {
     return STATUS(InvalidArgument, "At least one stream id should be provided");
   }
@@ -1486,7 +1487,7 @@ Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams,
   DeleteCDCStreamRequestPB req;
   req.mutable_stream_id()->Reserve(narrow_cast<int>(streams.size()));
   for (const auto& stream : streams) {
-    req.add_stream_id(stream);
+    req.add_stream_id(stream.ToString());
   }
   req.set_force_delete(force_delete);
   req.set_ignore_errors(ignore_errors);
@@ -1501,11 +1502,11 @@ Status YBClient::DeleteCDCStream(const vector<CDCStreamId>& streams,
   return Status::OK();
 }
 
-Status YBClient::DeleteCDCStream(const CDCStreamId& stream_id, bool force_delete,
-                                 bool ignore_errors) {
+Status YBClient::DeleteCDCStream(
+    const xrepl::StreamId& stream_id, bool force_delete, bool ignore_errors) {
   // Setting up request.
   DeleteCDCStreamRequestPB req;
-  req.add_stream_id(stream_id);
+  req.add_stream_id(stream_id.ToString());
   req.set_force_delete(force_delete);
   req.set_ignore_errors(ignore_errors);
 
@@ -1514,7 +1515,7 @@ Status YBClient::DeleteCDCStream(const CDCStreamId& stream_id, bool force_delete
   return Status::OK();
 }
 
-void YBClient::DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback callback) {
+void YBClient::DeleteCDCStream(const xrepl::StreamId& stream_id, StatusCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   data_->DeleteCDCStream(this, stream_id, deadline, callback);
 }
@@ -1548,8 +1549,9 @@ void YBClient::GetCDCDBStreamInfo(
   data_->GetCDCDBStreamInfo(this, db_stream_id, db_stream_info, deadline, callback);
 }
 
-Status YBClient::UpdateCDCStream(const std::vector<CDCStreamId>& stream_ids,
-                                 const std::vector<master::SysCDCStreamEntryPB>& new_entries) {
+Status YBClient::UpdateCDCStream(
+    const std::vector<xrepl::StreamId>& stream_ids,
+    const std::vector<master::SysCDCStreamEntryPB>& new_entries) {
   if (stream_ids.size() != new_entries.size()) {
     return STATUS(InvalidArgument, "Mismatched number of stream IDs and entries.");
   }
@@ -1560,11 +1562,10 @@ Status YBClient::UpdateCDCStream(const std::vector<CDCStreamId>& stream_ids,
   // Setting up request.
   UpdateCDCStreamRequestPB req;
   for (size_t i = 0; i < stream_ids.size(); i++) {
-    if (stream_ids[i].empty()) {
-      return STATUS(InvalidArgument, "Stream ID cannot be empty.");
-    }
+    SCHECK(stream_ids[i], InvalidArgument, "Stream ID cannot be empty.");
+
     auto stream = req.add_streams();
-    stream->set_stream_id(stream_ids[i]);
+    stream->set_stream_id(stream_ids[i].ToString());
     stream->mutable_entry()->CopyFrom(new_entries[i]);
   }
 
@@ -1578,12 +1579,12 @@ Result<bool> YBClient::IsObjectPartOfXRepl(const TableId& table_id) {
   IsObjectPartOfXReplResponsePB resp;
   req.set_table_id(table_id);
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, IsObjectPartOfXRepl);
-  return resp.has_error() ? StatusFromPB(resp.error().status()) :
-      Result<bool>(resp.is_object_part_of_xrepl());
+  return resp.has_error() ? StatusFromPB(resp.error().status())
+                          : Result<bool>(resp.is_object_part_of_xrepl());
 }
 
-Result<bool> YBClient::IsBootstrapRequired(const std::vector<TableId>& table_ids,
-                                           const boost::optional<CDCStreamId>& stream_id) {
+Result<bool> YBClient::IsBootstrapRequired(
+    const std::vector<TableId>& table_ids, const boost::optional<xrepl::StreamId>& stream_id) {
   if (table_ids.empty()) {
     return STATUS(InvalidArgument, "At least one table ID is required.");
   }
@@ -1594,7 +1595,7 @@ Result<bool> YBClient::IsBootstrapRequired(const std::vector<TableId>& table_ids
     req.add_table_ids(table_id);
   }
   if (stream_id) {
-    req.add_stream_ids(*stream_id);
+    req.add_stream_ids(stream_id->ToString());
   }
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, IsBootstrapRequired);
 
@@ -1631,14 +1632,14 @@ Status YBClient::BootstrapProducer(
 
 Status YBClient::UpdateConsumerOnProducerSplit(
     const cdc::ReplicationGroupId& replication_group_id,
-    const CDCStreamId& stream_id,
+    const xrepl::StreamId& stream_id,
     const master::ProducerSplitTabletInfoPB& split_info) {
   SCHECK(!replication_group_id.empty(), InvalidArgument, "Producer id is required.");
-  SCHECK(!stream_id.empty(), InvalidArgument, "Stream id is required.");
+  SCHECK(stream_id, InvalidArgument, "Stream id is required.");
 
   UpdateConsumerOnProducerSplitRequestPB req;
   req.set_producer_id(replication_group_id.ToString());
-  req.set_stream_id(stream_id);
+  req.set_stream_id(stream_id.ToString());
   req.mutable_producer_split_tablet_info()->CopyFrom(split_info);
 
   UpdateConsumerOnProducerSplitResponsePB resp;
@@ -1648,19 +1649,19 @@ Status YBClient::UpdateConsumerOnProducerSplit(
 
 Status YBClient::UpdateConsumerOnProducerMetadata(
     const cdc::ReplicationGroupId& replication_group_id,
-    const CDCStreamId& stream_id,
+    const xrepl::StreamId& stream_id,
     const tablet::ChangeMetadataRequestPB& meta_info,
     uint32_t colocation_id,
     uint32_t producer_schema_version,
     uint32_t consumer_schema_version,
     master::UpdateConsumerOnProducerMetadataResponsePB* resp) {
   SCHECK(!replication_group_id.empty(), InvalidArgument, "ReplicationGroup id is required.");
-  SCHECK(!stream_id.empty(), InvalidArgument, "Stream id is required.");
+  SCHECK(stream_id, InvalidArgument, "Stream id is required.");
   SCHECK(resp != nullptr, InvalidArgument, "Response pointer is required.");
 
   master::UpdateConsumerOnProducerMetadataRequestPB req;
   req.set_producer_id(replication_group_id.ToString());
-  req.set_stream_id(stream_id);
+  req.set_stream_id(stream_id.ToString());
   req.set_colocation_id(colocation_id);
   req.set_producer_schema_version(producer_schema_version);
   req.set_consumer_schema_version(consumer_schema_version);

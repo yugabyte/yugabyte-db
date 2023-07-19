@@ -10,7 +10,6 @@ import static com.yugabyte.yw.common.AssertHelper.assertForbiddenWithException;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
-import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
 import static com.yugabyte.yw.common.AssertHelper.assertUnauthorizedNoException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.FakeApiHelper.routeWithYWErrHandler;
@@ -400,7 +399,7 @@ public class SessionControllerTest {
         ConfigHelper.ConfigType.Security, ImmutableMap.of("level", "insecure"));
 
     Result result = routeWithYWErrHandler(app, fakeRequest("GET", "/api/insecure_login"));
-    assertUnauthorized(result, "No read only customer exists.");
+    assertForbiddenWithException(result, "No read only customer exists.");
     assertAuditEntry(0, customer.getUuid());
   }
 

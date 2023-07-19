@@ -71,6 +71,7 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
+// eslint-disable-next-line react/display-name
 const RenameKeyspace = React.forwardRef<PageRef>((_, forwardRef) => {
   const restoreContext = (useContext(RestoreFormContext) as unknown) as RestoreContextMethods;
 

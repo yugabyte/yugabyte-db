@@ -12,7 +12,8 @@ import { useQuery } from 'react-query';
 import { useMount } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { PageRef, RestoreContextMethods, RestoreFormContext } from '../../RestoreContext';
-import { Backup_States, IBackup, fetchIncrementalBackup } from '../../../..';
+import { Backup_States, IBackup } from '../../../..';
+import { fetchIncrementalBackup } from '../../../../common/BackupAPI';
 import { YBLoadingCircleIcon } from '../../../../../common/indicators';
 
 // eslint-disable-next-line react/display-name

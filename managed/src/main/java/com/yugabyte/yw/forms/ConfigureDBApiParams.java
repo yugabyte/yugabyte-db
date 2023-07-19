@@ -53,8 +53,9 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
       if (changeInYcql) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot configure YCQL along with YSQL at a time.");
-      } else if (!enableYSQL) {
-        throw new PlatformServiceException(BAD_REQUEST, "cannot disable YSQL once it is enabled.");
+      } else if (enableYSQL && !userIntent.enableYSQL) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot enable YSQL if it was disabled earlier.");
       } else if ((communicationPorts.ysqlServerHttpPort != universePorts.ysqlServerHttpPort
               || communicationPorts.ysqlServerRpcPort != universePorts.ysqlServerRpcPort)
           && userIntent.providerType.equals(CloudType.kubernetes)) {

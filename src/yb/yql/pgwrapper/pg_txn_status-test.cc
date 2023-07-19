@@ -18,7 +18,7 @@
 #include "yb/client/tablet_server.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/transaction.h"
-#include "yb/integration-tests/xcluster_ycql_test_base.h"
+#include "yb/integration-tests/xcluster/xcluster_ycql_test_base.h"
 #include "yb/master/master_defaults.h"
 #include "yb/rpc/rpc_controller.h"
 

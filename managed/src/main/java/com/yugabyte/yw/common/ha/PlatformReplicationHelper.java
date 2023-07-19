@@ -321,7 +321,7 @@ public class PlatformReplicationHelper {
       String federatedAddr = metricUrlProvider.getMetricsExternalUrl();
 
       URI federatedURL = new URI(federatedAddr);
-      String federatedPoint = federatedURL.getHost() + ":" + federatedURL.getPort();
+      String federatedPoint = remoteAddr.getHost() + ":" + federatedURL.getPort();
       this.writeFederatedPrometheusConfig(federatedPoint, configFile);
 
       // Reload the config.

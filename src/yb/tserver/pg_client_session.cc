@@ -984,6 +984,7 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
       VLOG_WITH_PREFIX(2)
           << "FlushAsync of " << ops_count << " ops completed for non-distributed transaction";
     }
+    VLOG_WITH_PREFIX(5) << "Perform resp: " << data->resp.ShortDebugString();
   });
 
   return Status::OK();

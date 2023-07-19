@@ -152,6 +152,14 @@ class DocOperationTest : public DocDBTestBase {
     SeedRandom();
   }
 
+  void SetUp() override {
+    SetMaxFileSizeForCompaction(0);
+    // Make a function that will always use rocksdb_max_file_size_for_compaction.
+    // Normally, max_file_size_for_compaction is only used for tables with TTL.
+    ANNOTATE_UNPROTECTED_WRITE(max_file_size_for_compaction_) = MakeMaxFileSizeFunction();
+    DocDBTestBase::SetUp();
+  }
+
   Schema CreateSchema() override {
     ColumnSchema hash_column_schema("k", DataType::INT32, ColumnKind::HASH);
     ColumnSchema column1_schema("c1", DataType::INT32);
@@ -199,7 +207,8 @@ class DocOperationTest : public DocDBTestBase {
       .read_operation_data = ReadOperationData(),
       .restart_read_ht = &restart_read_ht,
       .iterator = nullptr,
-      .restart_seek = true
+      .restart_seek = true,
+      .schema_packing_provider = nullptr,
     }));
     ASSERT_OK(WriteToRocksDB(doc_write_batch, hybrid_time));
   }
@@ -361,9 +370,6 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
 
   void SetMaxFileSizeForCompaction(const uint64_t max_size) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_file_size_for_compaction) = max_size;
-    // Make a function that will always use rocksdb_max_file_size_for_compaction.
-    // Normally, max_file_size_for_compaction is only used for tables with TTL.
-    max_file_size_for_compaction_ = MakeMaxFileSizeFunction();
   }
 
   void TestWriteNulls();
@@ -386,7 +392,8 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
       .read_operation_data = {},
       .restart_read_ht = nullptr,
       .iterator = nullptr,
-      .restart_seek = true
+      .restart_seek = true,
+      .schema_packing_provider = nullptr,
   }));
 
   ASSERT_OK(WriteToRocksDB(doc_write_batch, HybridTime::FromMicros(1000)));
@@ -1223,7 +1230,7 @@ int CountBigFiles(const std::vector<rocksdb::LiveFileMetaData>& files,
     const size_t kMaxFileSize) {
   int num_large_files = 0;
   for (auto file : files) {
-    if (file.uncompressed_size > kMaxFileSize) {
+    if (ANNOTATE_UNPROTECTED_READ(file.uncompressed_size) > kMaxFileSize) {
       num_large_files++;
     }
   }
@@ -1234,7 +1241,9 @@ void WaitCompactionsDone(rocksdb::DB* db) {
   for (;;) {
     std::this_thread::sleep_for(500ms);
     uint64_t value = 0;
+    ANNOTATE_IGNORE_READS_BEGIN();
     ASSERT_TRUE(db->GetIntProperty(rocksdb::DB::Properties::kNumRunningCompactions, &value));
+    ANNOTATE_IGNORE_READS_END();
     if (value == 0) {
       break;
     }
@@ -1243,7 +1252,7 @@ void WaitCompactionsDone(rocksdb::DB* db) {
 
 } // namespace
 
-TEST_F(DocOperationTest, YB_DISABLE_TEST_IN_TSAN(MaxFileSizeForCompaction)) {
+TEST_F(DocOperationTest, MaxFileSizeForCompaction) {
   google::FlagSaver flag_saver;
 
   ASSERT_OK(DisableCompactions());
@@ -1287,8 +1296,10 @@ TEST_F(DocOperationTest, MaxFileSizeWithWritesTrigger) {
   auto handle_impl = down_cast<rocksdb::ColumnFamilyHandleImpl*>(
       regular_db_->DefaultColumnFamily());
   auto stats = handle_impl->cfd()->internal_stats();
+  ANNOTATE_IGNORE_READS_BEGIN();
   ASSERT_EQ(0, stats->GetCFStats(rocksdb::InternalStats::LEVEL0_NUM_FILES_TOTAL));
   ASSERT_EQ(0, stats->GetCFStats(rocksdb::InternalStats::LEVEL0_SLOWDOWN_TOTAL));
+  ANNOTATE_IGNORE_READS_END();
 }
 
 TEST_F(DocOperationTest, MaxFileSizeIgnoredWithFileFilter) {
@@ -1300,7 +1311,8 @@ TEST_F(DocOperationTest, MaxFileSizeIgnoredWithFileFilter) {
   auto expected_files = GenerateFiles(kNumFilesToWrite, this, kBigFileFrequency);
   LOG(INFO) << "Files that would exist without compaction, if no filtering: " << expected_files;
 
-  auto files = rocksdb()->GetLiveFilesMetaData();
+  std::vector<rocksdb::LiveFileMetaData> files;
+  rocksdb()->GetLiveFilesMetaData(&files);
   ASSERT_EQ(kNumFilesToWrite, files.size());
   ASSERT_EQ(kExpectedBigFiles, CountBigFiles(files, kMaxFileSize));
 
@@ -1314,7 +1326,8 @@ TEST_F(DocOperationTest, MaxFileSizeIgnoredWithFileFilter) {
 
   WaitCompactionsDone(rocksdb());
 
-  files = rocksdb()->GetLiveFilesMetaData();
+  files.clear();
+  rocksdb()->GetLiveFilesMetaData(&files);
 
   // We expect all files to be filtered and thus removed, no matter the size.
   ASSERT_EQ(0, files.size());
@@ -1338,7 +1351,8 @@ TEST_F(DocOperationTest, EarlyFilesFilteredBeforeBigFile) {
       " files, first kept big file at " << kBigFileFrequency + 1;
   LOG(INFO) << "Expected files after compaction: " << expected_files;
 
-  auto files = rocksdb()->GetLiveFilesMetaData();
+  std::vector<rocksdb::LiveFileMetaData> files;
+  rocksdb()->GetLiveFilesMetaData(&files);
   ASSERT_EQ(kNumFilesToWrite, files.size());
   ASSERT_EQ(kExpectedBigFiles, CountBigFiles(files, kMaxFileSize));
 
@@ -1357,7 +1371,8 @@ TEST_F(DocOperationTest, EarlyFilesFilteredBeforeBigFile) {
   // Compactions will be kicked off as part of options reinitialization.
   WaitCompactionsDone(rocksdb());
 
-  files = rocksdb()->GetLiveFilesMetaData();
+  files.clear();
+  rocksdb()->GetLiveFilesMetaData(&files);
 
   // We expect three files to expire, one big file and two small ones.
   // The remaining small files should be compacted, leaving 5 files remaining.

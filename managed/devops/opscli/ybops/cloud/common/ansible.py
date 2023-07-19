@@ -111,7 +111,6 @@ class AnsibleProcess(object):
         ssh_key_file = vars.pop("private_key_file", None)
         ssh2_enabled = vars.pop("ssh2_enabled", False) and check_ssh2_bin_present()
         local_package_path = vars.pop("local_package_path", None)
-        ansible_exec_timeout_sec = vars.pop("ansible_exec_timeout_sec", None)
         connection_type = vars.pop("connection_type", None)
         node_agent_home = vars.pop("node_agent_home", None)
         node_agent_ip = vars.pop("node_agent_ip", None)
@@ -284,20 +283,13 @@ class AnsibleProcess(object):
         else:
             logging.info("Running ansible playbook {} on platform"
                          .format(os.path.basename(filename)))
-            try:
-                p = subprocess.Popen(process_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                     env=env)
-                stdout, stderr = p.communicate(timeout=int(ansible_exec_timeout_sec) if
-                                               ansible_exec_timeout_sec else None)
-                rc = p.returncode
-                stdout = stdout.decode('utf-8')
-                if print_output:
-                    print(stdout)
-
-            except subprocess.TimeoutExpired:
-                logging.error("Timeout during ansible playbook {} on platform. Timeout: {} seconds"
-                              .format(os.path.basename(filename), ansible_exec_timeout_sec))
-                p.kill()
+            p = subprocess.Popen(process_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                 env=env)
+            stdout, stderr = p.communicate()
+            rc = p.returncode
+            stdout = stdout.decode('utf-8')
+        if print_output:
+            print(stdout)
 
         if rc != 0:
             errmsg = f"Playbook run of {filename} against {inventory_target} with args " \

@@ -64,6 +64,7 @@ import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
 import com.yugabyte.yw.common.rbac.PermissionUtil;
+import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.rbac.RoleUtil;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -198,6 +199,7 @@ public class Module extends AbstractModule {
       bind(PerfAdvisorScheduler.class).asEagerSingleton();
       bind(PermissionUtil.class).asEagerSingleton();
       bind(RoleUtil.class).asEagerSingleton();
+      bind(RoleBindingUtil.class).asEagerSingleton();
       requestStaticInjection(CertificateInfo.class);
       requestStaticInjection(HealthCheck.class);
       requestStaticInjection(AppConfigHelper.class);

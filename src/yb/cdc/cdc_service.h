@@ -96,7 +96,7 @@ struct TabletCDCCheckpointInfo {
 };
 
 using TabletIdCDCCheckpointMap = std::unordered_map<TabletId, TabletCDCCheckpointInfo>;
-using TabletIdStreamIdSet = std::set<std::pair<TabletId, CDCStreamId>>;
+using TabletIdStreamIdSet = std::set<std::pair<TabletId, xrepl::StreamId>>;
 using RollBackTabletIdCheckpointMap =
     std::unordered_map<const std::string*, std::pair<int64_t, OpId>>;
 class CDCServiceImpl : public CDCServiceIf {
@@ -240,10 +240,10 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<OpId> GetLastCheckpoint(
       const ProducerTabletInfo& producer_tablet, const CDCRequestSource& request_source);
 
-  Result<uint64_t> GetSafeTime(const CDCStreamId& stream_id, const TabletId& tablet_id);
+  Result<uint64_t> GetSafeTime(const xrepl::StreamId& stream_id, const TabletId& tablet_id);
 
   Result<CDCSDKCheckpointPB> GetLastCheckpointFromCdcState(
-      const CDCStreamId& stream_id, const TabletId& tablet_id,
+      const xrepl::StreamId& stream_id, const TabletId& tablet_id,
       const CDCRequestSource& request_source, const TableId& colocated_table_id = "");
 
   Status InsertRowForColocatedTableInCDCStateTable(
@@ -265,29 +265,29 @@ class CDCServiceImpl : public CDCServiceIf {
       const TableId& colocated_table_id = "");
 
   Status UpdateSnapshotDone(
-      const CDCStreamId& stream_id, const TabletId& tablet_id, const TableId& colocated_table_id,
-      const CDCSDKCheckpointPB& cdc_sdk_checkpoint);
+      const xrepl::StreamId& stream_id, const TabletId& tablet_id,
+      const TableId& colocated_table_id, const CDCSDKCheckpointPB& cdc_sdk_checkpoint);
 
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> GetTablets(
-      const CDCStreamId& stream_id);
+      const xrepl::StreamId& stream_id);
 
   Status CreateCDCStreamForTable(
       const TableId& table_id,
       const std::unordered_map<std::string, std::string>& options,
-      const CDCStreamId& stream_id);
+      const xrepl::StreamId& stream_id);
 
   void RollbackPartialCreate(const CDCCreationState& creation_state);
 
   Result<NamespaceId> GetNamespaceId(const std::string& ns_name, YQLDatabase db_type);
 
   Result<std::shared_ptr<StreamMetadata>> GetStream(
-      const std::string& stream_id, RefreshStreamMapOption ops = RefreshStreamMapOption::kNone)
+      const xrepl::StreamId& stream_id, RefreshStreamMapOption ops = RefreshStreamMapOption::kNone)
       EXCLUDES(mutex_);
 
-  void RemoveStreamFromCache(const CDCStreamId& stream_id);
+  void RemoveStreamFromCache(const xrepl::StreamId& stream_id);
 
   void AddStreamMetadataToCache(
-      const std::string& stream_id, const std::shared_ptr<StreamMetadata>& stream_metadata)
+      const xrepl::StreamId& stream_id, const std::shared_ptr<StreamMetadata>& stream_metadata)
       EXCLUDES(mutex_);
 
   Status CheckTabletValidForStream(const ProducerTabletInfo& producer_info);
@@ -371,7 +371,7 @@ class CDCServiceImpl : public CDCServiceIf {
   void UpdatePeersAndMetrics();
 
   Status GetTabletIdsToPoll(
-      const CDCStreamId stream_id,
+      const xrepl::StreamId stream_id,
       const std::set<TabletId>& active_or_hidden_tablets,
       const std::set<TabletId>& parent_tablets,
       const std::map<TabletId, TabletId>& child_to_parent_mapping,
@@ -390,7 +390,7 @@ class CDCServiceImpl : public CDCServiceIf {
 
   // Initialize a new CDCStateTableEntry and adds the tablet stream to tablet_checkpoints_.
   void InitNewTabletStreamEntry(
-      const CDCStreamId& stream_id,
+      const xrepl::StreamId& stream_id,
       const TabletId& tablet_id,
       std::vector<ProducerTabletInfo>* producer_entries_modified,
       std::vector<CDCStateTableEntry>* entries_to_insert);
@@ -465,7 +465,7 @@ class CDCServiceImpl : public CDCServiceIf {
 
   std::unique_ptr<CDCStateTable> cdc_state_table_;
 
-  std::unordered_map<std::string, std::shared_ptr<StreamMetadata>> stream_metadata_
+  std::unordered_map<xrepl::StreamId, std::shared_ptr<StreamMetadata>> stream_metadata_
       GUARDED_BY(mutex_);
 
   // Map of namespace name to (map of enum oid to enumlabel).

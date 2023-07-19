@@ -57,7 +57,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   MUST_USE_RESULT bool UpdateStatus(
       TransactionStatus transaction_status, HybridTime time_of_status,
-      HybridTime coordinator_safe_time, SubtxnSet aborted_subtxn_set);
+      HybridTime coordinator_safe_time, SubtxnSet aborted_subtxn_set,
+      const Status& expected_deadlock_status);
 
   void UpdateAbortCheckHT(HybridTime now, UpdateAbortCheckHTMode mode);
 
@@ -161,7 +162,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   void NotifyWaiters(int64_t serial_no, HybridTime time_of_status,
                      TransactionStatus transaction_status,
                      const SubtxnSet& aborted_subtxn_set,
-                     const std::vector<StatusRequest>& status_waiters);
+                     const std::vector<StatusRequest>& status_waiters,
+                     const Status& expected_deadlock_status);
 
   static Result<TransactionStatusResult> MakeAbortResult(
       const Status& status,
@@ -181,6 +183,9 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   TransactionStatus last_known_status_ = TransactionStatus::CREATED;
   HybridTime last_known_status_hybrid_time_ = HybridTime::kMin;
   SubtxnSet last_known_aborted_subtxn_set_;
+  // Status containing the deadlock info if the transaction was aborted due to a deadlock.
+  // Defaults to Status::OK() in all other cases.
+  Status last_known_deadlock_status_ = Status::OK();
   std::vector<StatusRequest> status_waiters_;
   rpc::Rpcs::Handle get_status_handle_;
   rpc::Rpcs::Handle abort_handle_;

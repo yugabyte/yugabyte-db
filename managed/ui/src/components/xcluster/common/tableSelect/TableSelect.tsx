@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   BootstrapTable,
   ExpandColumnComponentProps,
@@ -83,6 +83,8 @@ interface CommonTableSelectProps {
 type TableSelectProps =
   | (CommonTableSelectProps & {
       configAction: typeof XClusterConfigAction.CREATE;
+      isTransactionalConfig: boolean;
+      handleTransactionalConfigCheckboxClick: () => void;
     })
   | (CommonTableSelectProps & {
       configAction: typeof XClusterConfigAction.ADD_TABLE;
@@ -439,6 +441,8 @@ export const TableSelect = (props: TableSelectProps) => {
             <Field
               name="isTransactionalConfig"
               component={YBCheckBox}
+              checkState={props.isTransactionalConfig}
+              onClick={props.handleTransactionalConfigCheckboxClick}
               label="Enable transactional atomicity"
               disabled={!isTransactionalAtomicitySupported}
             />

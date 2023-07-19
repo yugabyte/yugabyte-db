@@ -424,8 +424,8 @@ class ClusterAdminClient {
 
   Status BootstrapProducer(const std::vector<TableId>& table_id);
 
-  Status WaitForReplicationDrain(const std::vector<CDCStreamId>& stream_ids,
-                                 const std::string& target_time);
+  Status WaitForReplicationDrain(
+      const std::vector<xrepl::StreamId>& stream_ids, const std::string& target_time);
 
   Status SetupNSUniverseReplication(const std::string& producer_uuid,
                                     const std::vector<std::string>& producer_addresses,

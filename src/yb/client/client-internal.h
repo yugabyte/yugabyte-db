@@ -304,10 +304,11 @@ class YBClient::Data {
                        CoarseTimePoint deadline,
                        CreateCDCStreamCallback callback);
 
-  void DeleteCDCStream(YBClient* client,
-                       const CDCStreamId& stream_id,
-                       CoarseTimePoint deadline,
-                       StatusCallback callback);
+  void DeleteCDCStream(
+      YBClient* client,
+      const xrepl::StreamId& stream_id,
+      CoarseTimePoint deadline,
+      StatusCallback callback);
 
   Status BootstrapProducer(
       YBClient* client,
@@ -324,12 +325,13 @@ class YBClient::Data {
     CoarseTimePoint deadline,
     StdStatusCallback callback);
 
-  void GetCDCStream(YBClient* client,
-                    const CDCStreamId& stream_id,
-                    std::shared_ptr<TableId> table_id,
-                    std::shared_ptr<std::unordered_map<std::string, std::string>> options,
-                    CoarseTimePoint deadline,
-                    StdStatusCallback callback);
+  void GetCDCStream(
+      YBClient* client,
+      const xrepl::StreamId& stream_id,
+      std::shared_ptr<TableId> table_id,
+      std::shared_ptr<std::unordered_map<std::string, std::string>> options,
+      CoarseTimePoint deadline,
+      StdStatusCallback callback);
 
   void DeleteNotServingTablet(
       YBClient* client, const TabletId& tablet_id, CoarseTimePoint deadline,

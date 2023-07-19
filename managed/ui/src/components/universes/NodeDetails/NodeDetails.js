@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import _ from 'lodash';
 
 import { NodeDetailsTable } from '../../universes';
@@ -15,8 +15,9 @@ import { getPromiseState } from '../../../utils/PromiseUtils';
 import {
   getPrimaryCluster,
   getReadOnlyCluster,
-  nodeComparisonFunction
-, hasLiveNodes } from '../../../utils/UniverseUtils';
+  nodeComparisonFunction,
+  hasLiveNodes
+} from '../../../utils/UniverseUtils';
 
 import { YBLoading } from '../../common/indicators';
 

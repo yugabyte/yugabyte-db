@@ -63,6 +63,9 @@ using master::SysCDCStreamEntryPB;
 using rpc::RpcController;
 
 namespace {
+
+const string kFakeUuid = "11111111111111111111111111111111";
+
 Result<string> GetRecentStreamId(MiniCluster* cluster, TabletId target_table_id = "") {
   // Return the first stream with tablet_id matching target_table_id using ListCDCStreams.
   // If target_table_id is not specified, return the first stream.
@@ -356,11 +359,11 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationFailsWithInvalidBootstr
       kProducerClusterId,
       producer_cluster_->GetMasterAddresses(),
       producer_cluster_table->id(),
-      "fake-bootstrap-id"));
+      kFakeUuid));
 
   // Verify that error message has relevant information.
   ASSERT_TRUE(
-      error_msg.find("Could not find CDC stream: stream_id: \"fake-bootstrap-id\"") !=
+      error_msg.find("Could not find CDC stream: stream_id: \"" + kFakeUuid + "\"") !=
       string::npos);
 }
 
@@ -381,7 +384,7 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationCleanupOnFailure) {
       kProducerClusterId,
       producer_cluster_->GetMasterAddresses(),
       producer_cluster_table->id(),
-      "fake-bootstrap-id"));
+      kFakeUuid));
 
   // Wait for the universe to be cleaned up
   ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kProducerClusterId));

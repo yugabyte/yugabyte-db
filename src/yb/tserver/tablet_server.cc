@@ -48,6 +48,8 @@
 #include "yb/client/universe_key_client.h"
 
 #include "yb/common/common_flags.h"
+#include "yb/common/common_util.h"
+#include "yb/common/pg_catversions.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/encryption/encrypted_file_factory.h"
@@ -57,6 +59,7 @@
 
 #include "yb/fs/fs_manager.h"
 
+#include "yb/gutil/hash/city.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/master_heartbeat.pb.h"
@@ -776,6 +779,14 @@ Status TabletServer::DisplayRpcIcons(std::stringstream* output) {
       "/statements", FLAGS_pgsql_proxy_bind_address, FLAGS_pgsql_proxy_webserver_port,
       http_addr_host, &sql_all_url));
   DisplayIconTile(output, "fa-tasks", "YSQL All Ops", sql_all_url);
+
+  // YCQL All Ops
+  string cql_all_url;
+  RETURN_NOT_OK(GetDynamicUrlTile(
+      "/statements", FLAGS_cql_proxy_bind_address, FLAGS_cql_proxy_webserver_port,
+      http_addr_host, &cql_all_url));
+  DisplayIconTile(output, "fa-tasks", "YCQL All Ops", cql_all_url);
+
   return Status::OK();
 }
 
@@ -957,6 +968,16 @@ void TabletServer::SetYsqlDBCatalogVersions(
       ++it;
     }
   }
+  if (!catalog_changed) {
+    return;
+  }
+  // After we have updated versions, we compute and update its fingerprint.
+  const auto new_fingerprint =
+      FingerprintCatalogVersions<DbOidToCatalogVersionInfoMap>(ysql_db_catalog_version_map_);
+  catalog_versions_fingerprint_.store(new_fingerprint, std::memory_order_release);
+  VLOG_WITH_FUNC(2) << "databases: " << ysql_db_catalog_version_map_.size()
+                    << ", new fingerprint: " << new_fingerprint;
+
   if (catalog_changed) {
     // TODO(myang): see how to only invalidate per-database tables.
     // https://github.com/yugabyte/yugabyte-db/issues/16114.

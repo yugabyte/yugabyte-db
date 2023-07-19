@@ -11,9 +11,6 @@
 // under the License.
 //
 
-#include <boost/algorithm/hex.hpp>
-#include <boost/algorithm/string/erase.hpp>
-
 #include <google/protobuf/repeated_field.h>
 #include <gtest/gtest.h>
 
@@ -42,13 +39,6 @@ DECLARE_bool(enable_deadlock_detection);
 using namespace std::literals;
 using std::string;
 
-// Returns a status of 'status_type' with message 'msg' when 'condition' evaluates to false.
-#define RETURN_ON_FALSE(condition, status_type, msg) do { \
-  if (!(condition)) { \
-    return STATUS_FORMAT(status_type, msg); \
-  } \
-} while (false);
-
 namespace yb {
 namespace pgwrapper {
 
@@ -64,6 +54,7 @@ void PgLocksTestBase::SetUp() {
 
   PgMiniTestBase::SetUp();
   InitTSProxies();
+  InitPgClientProxies();
 }
 
 void PgLocksTestBase::InitTSProxies() {
@@ -74,16 +65,24 @@ void PgLocksTestBase::InitTSProxies() {
   }
 }
 
+void PgLocksTestBase::InitPgClientProxies() {
+  for (size_t i = 0 ; i < NumTabletServers() ; i++) {
+    pg_client_service_proxies_.push_back(std::make_unique<PgClientServiceProxy>(
+        &client_->proxy_cache(),
+        HostPort::FromBoundEndpoint(cluster_->mini_tablet_server(i)->bound_rpc_addr())));
+  }
+}
+
 Result<TabletId> PgLocksTestBase::GetSingularTabletOfTable(const string& table_name) {
   auto tables = VERIFY_RESULT(client_->ListTables(table_name));
-  RETURN_ON_FALSE(tables.size() == 1, IllegalState, "");
+  RSTATUS_DCHECK(tables.size() == 1, IllegalState, "Expected tables.size() == 1");
 
   auto table_id = tables.at(0).table_id();
-  RETURN_ON_FALSE(!table_id.empty(), IllegalState, "");
+  RSTATUS_DCHECK(!table_id.empty(), IllegalState, "Expected non-empty table_id");
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   RETURN_NOT_OK(client_->GetTabletsFromTableId(table_id, 5000, &tablets));
-  RETURN_ON_FALSE(tablets.size() == 1, IllegalState, "");
+  RSTATUS_DCHECK(tablets.size() == 1, IllegalState, "Expected tablets.size() == 1");
 
   return tablets.begin()->tablet_id();
 }
@@ -109,35 +108,64 @@ Result<TabletId> PgLocksTestBase::CreateTableAndGetTabletId(const string& table_
   return VERIFY_RESULT(GetSingularTabletOfTable(table_name));
 }
 
+Result<tserver::PgGetLockStatusResponsePB> PgLocksTestBase::GetLockStatus(
+    const tserver::PgGetLockStatusRequestPB& req) {
+  RSTATUS_DCHECK(!pg_client_service_proxies_.empty(),
+                 IllegalState,
+                 "Found empty pg_client_service_proxies_ list.");
+
+  tserver::PgGetLockStatusResponsePB resp;
+  rpc::RpcController controller;
+  RETURN_NOT_OK(pg_client_service_proxies_[0]->GetLockStatus(req, &resp, &controller));
+  return resp;
+}
+
 Result<tserver::GetLockStatusResponsePB> PgLocksTestBase::GetLockStatus(
-    const TabletId& tablet_id,
-    const std::vector<TransactionId>& transactions_ids) {
-  tserver::GetLockStatusRequestPB req;
-  tserver::GetLockStatusResponsePB resp;
+    const tserver::GetLockStatusRequestPB& req) {
+  tserver::GetLockStatusResponsePB accumulated_resp;
   rpc::RpcController controller;
   controller.set_timeout(kTimeoutMs * 1ms * kTimeMultiplier);
-  req.set_tablet_id(tablet_id);
-
-  for (const auto& txn_id : transactions_ids) {
-    auto txn_id_str = txn_id.ToString();
-    boost::erase_all(txn_id_str, "-");
-    req.add_transaction_ids(boost::algorithm::unhex(txn_id_str));
-  }
 
   Status s;
+  auto got_valid_resp = false;
   for (auto& proxy : get_ts_proxies()) {
-    resp.Clear();
+    tserver::GetLockStatusResponsePB resp;
     controller.Reset();
-
     RETURN_NOT_OK(proxy->GetLockStatus(req, &resp, &controller));
     if (!resp.has_error()) {
-      return resp;
+      got_valid_resp = got_valid_resp || resp.tablet_lock_infos_size() > 0;
+      for (const auto& tablet_lock_info : resp.tablet_lock_infos()) {
+        *accumulated_resp.add_tablet_lock_infos() = tablet_lock_info;
+      }
     }
     s = StatusFromPB(resp.error().status()).CloneAndAppend("\n").CloneAndAppend(s.message());
   }
 
+  if (got_valid_resp) {
+    return accumulated_resp;
+  }
   return STATUS_FORMAT(IllegalState,
-                "GetLockStatus request for tablet $0 failed: $1", tablet_id, s);
+                       "GetLockStatus request failed: $0", s);
+}
+
+Result<tserver::GetLockStatusResponsePB> PgLocksTestBase::GetLockStatus(
+    const TabletId& tablet_id,
+    const std::vector<TransactionId>& transactions_ids) {
+  tserver::GetLockStatusRequestPB req;
+  auto& txn_info = (*req.mutable_transactions_by_tablet())[tablet_id];
+  for (const auto& txn_id : transactions_ids) {
+    txn_info.add_transaction_ids(txn_id.data(), txn_id.size());
+  }
+  return GetLockStatus(req);
+}
+
+Result<tserver::GetLockStatusResponsePB> PgLocksTestBase::GetLockStatus(
+    const std::vector<TransactionId>& transactions_ids) {
+  tserver::GetLockStatusRequestPB req;
+  for (const auto& txn_id : transactions_ids) {
+    req.add_transaction_ids(txn_id.data(), txn_id.size());
+  }
+  return GetLockStatus(req);
 }
 
 Result<TransactionId> PgLocksTestBase::GetSingularTransactionOnTablet(const TabletId& tablet_id) {
@@ -145,19 +173,17 @@ Result<TransactionId> PgLocksTestBase::GetSingularTransactionOnTablet(const Tabl
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
-
-  RETURN_ON_FALSE(resp.tablet_lock_infos_size() == 1,
-                  IllegalState,
-                  "Expected to see single tablet, bot found mpore than one.");
+  RSTATUS_DCHECK(resp.tablet_lock_infos_size() == 1,
+                 IllegalState,
+                 "Expected to see single tablet, bot found more than one.");
   const auto& tablet_lock_info = resp.tablet_lock_infos(0);
 
-  RETURN_ON_FALSE(tablet_lock_info.transaction_locks().size() == 1,
-                  IllegalState,
-                  "Expected to see single transaction, but found more than one.");
+  RSTATUS_DCHECK(tablet_lock_info.transaction_locks().size() == 1,
+                 IllegalState,
+                 "Expected to see single transaction, but found more than one.");
   const auto& it = tablet_lock_info.transaction_locks().begin();
-
   std::string txn_id_str = it->first;
-  RETURN_ON_FALSE(!txn_id_str.empty(), IllegalState, "Expected to see one txn, but found none.");
+  RSTATUS_DCHECK(!txn_id_str.empty(), IllegalState, "Expected to see one txn, but found none.");
   return TransactionId::FromString(txn_id_str);
 }
 
@@ -166,7 +192,6 @@ Result<TransactionId> PgLocksTestBase::OpenTransaction(
     const std::string& key) {
   RETURN_NOT_OK(conn->StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   RETURN_NOT_OK(conn->FetchFormat("SELECT * FROM $0 WHERE k=$1 FOR UPDATE", table_name, key));
-
   SleepFor(2ms * FLAGS_heartbeat_interval_ms * kTimeMultiplier);
   return GetSingularTransactionOnTablet(tablet_id);
 }
@@ -180,7 +205,6 @@ Result<PgLocksTestBase::TestSession> PgLocksTestBase::Init(
                                                : GetSingularTabletOfTable(table_name)),
     .table_name = table_name,
   };
-
   s.txn_id = VERIFY_RESULT(
       OpenTransaction(s.conn, table_name, s.first_involved_tablet, key_to_lock));
   return s;
@@ -194,8 +218,15 @@ std::vector<TabletServerServiceProxy*> PgLocksTestBase::get_ts_proxies(const std
       ts_proxies.push_back(ts_proxies_[i].get());
     }
   }
-
   return ts_proxies;
+}
+
+std::vector<PgClientServiceProxy*> PgLocksTestBase::get_pg_client_service_proxies() {
+  std::vector<PgClientServiceProxy*> pg_client_proxies;
+  for (size_t i = 0 ; i < NumTabletServers() ; i++) {
+    pg_client_proxies.push_back(pg_client_service_proxies_[i].get());
+  }
+  return pg_client_proxies;
 }
 
 Result<std::future<Status>> PgLocksTestBase::ExpectBlockedAsync(

@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/yugaware"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight"
@@ -47,9 +48,18 @@ var upgradeCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		state, err := ybactlstate.LoadState()
-		// Can have no stateif upgrading from a version before state existed
+		// Can have no state if upgrading from a version before state existed.
 		if err != nil {
 			state = ybactlstate.New()
+			state.CurrentStatus = ybactlstate.InstalledStatus
+			if err := ybactlstate.StoreState(state); err != nil {
+				log.Fatal("error initializing new state: " + err.Error())
+			}
+		}
+
+		// Upgrade yba-ctl first.
+		if err := ybaCtl.Install(); err != nil {
+			log.Fatal("failed to upgrade yba-ctl")
 		}
 
 		//Todo: this is a temporary hidden feature to migrate data
@@ -58,6 +68,11 @@ var upgradeCmd = &cobra.Command{
 		if preflight.ShouldFail(results) {
 			preflight.PrintPreflightResults(results)
 			log.Fatal("preflight failed")
+		}
+
+		state.CurrentStatus = ybactlstate.UpgradingStatus
+		if err := ybactlstate.StoreState(state); err != nil {
+			log.Fatal("could not update state: " + err.Error())
 		}
 
 		/* This is the postgres major version upgrade workflow!
@@ -135,10 +150,8 @@ var upgradeCmd = &cobra.Command{
 		common.PrintStatus(statuses...)
 		// Here ends the postgres minor version/no upgrade workflow
 
-		if err := ybaCtl.Install(); err != nil {
-			log.Fatal("failed to install yba-ctl")
-		}
-
+		state.CurrentStatus = ybactlstate.InstalledStatus
+		state.Version = ybactl.Version
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("failed to write state: " + err.Error())
 		}

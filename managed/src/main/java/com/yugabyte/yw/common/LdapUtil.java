@@ -75,6 +75,17 @@ public class LdapUtil {
     boolean ldapGroupUseQuery;
     boolean ldapGroupUseRoleMapping;
     Role ldapDefaultRole;
+    TlsProtocol ldapTlsProtocol;
+  }
+
+  public enum TlsProtocol {
+    TLSv1,
+    TLSv1_1,
+    TLSv1_2;
+
+    public String getVersionString() {
+      return this.toString().replace('_', '.');
+    }
   }
 
   public Users loginWithLdap(CustomerLoginFormData data) throws LdapException {
@@ -103,6 +114,7 @@ public class LdapUtil {
         confGetter.getGlobalConf(GlobalConfKeys.ldapGroupUseRoleMapping);
     String ldapGroupSearchBaseDn = confGetter.getGlobalConf(GlobalConfKeys.ldapGroupSearchBaseDn);
     Role ldapDefaultRole = confGetter.getGlobalConf(GlobalConfKeys.ldapDefaultRole);
+    TlsProtocol ldapTlsProtocol = confGetter.getGlobalConf(GlobalConfKeys.ldapTlsProtocol);
 
     LdapConfiguration ldapConfiguration =
         new LdapConfiguration(
@@ -124,7 +136,8 @@ public class LdapUtil {
             ldapGroupMemberOfAttribute,
             ldapGroupUseQuery,
             ldapGroupUseRoleMapping,
-            ldapDefaultRole);
+            ldapDefaultRole,
+            ldapTlsProtocol);
     Users user = authViaLDAP(data.getEmail(), data.getPassword(), ldapConfiguration);
 
     if (user == null) {
@@ -325,6 +338,9 @@ public class LdapUtil {
       config.setLdapHost(ldapConfiguration.getLdapUrl());
       config.setLdapPort(ldapConfiguration.getLdapPort());
       if (ldapConfiguration.isLdapUseSsl() || ldapConfiguration.isLdapUseTls()) {
+
+        config.setEnabledProtocols(
+            new String[] {ldapConfiguration.getLdapTlsProtocol().getVersionString()});
 
         boolean customCAUploaded = customCAStoreManager.areCustomCAsPresent();
         if (customCAStoreManager.isEnabled()) {

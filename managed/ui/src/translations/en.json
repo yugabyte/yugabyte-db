@@ -47,28 +47,30 @@
         "modalTitle": "Edit YSQL configuration",
         "ysqlToggleLabel": "Enable YSQL for this Universe ",
         "authToggleLabel": "Enable YSQL Auth",
-        "cannotDisableYSQL": "User cannot disable YSQL once it is enabled",
-        "currentPwdToAuth": "Enter current password to turn off Auth",
+        "cannotEnableYSQL": "You cannot enable YSQL after universe creation",
+        "currentPwdToAuth": "Enter current password to disable Auth",
         "YSQLPwdLabel": "YSQL Password",
         "rotatePwdLabel": "Rotate ysql password",
         "currentPwd": "Enter current password",
         "newPwd": "Enter new password",
         "reEnterNewPwd": "Re-enter new password",
         "updateSettingsSuccessMsg": "Updating YSQL configuration is in progress",
-        "rotatePwdSuccessMsg": "DB credentials for YSQL updated successfully"
+        "rotatePwdSuccessMsg": "DB credentials for YSQL updated successfully",
+        "rotateBothYSQLWarning": "Rotating YSQL Password and Editing YSQL settings should be performed at different times."
       },
       "editYCQLSettings": {
         "modalTitle": "Edit YCQL configuration",
         "ycqlToggleLabel": "Enable YCQL for this Universe ",
         "authToggleLabel": "Enable YCQL Auth",
-        "currentPwdToAuth": "Enter current password to turn off Auth",
+        "currentPwdToAuth": "Enter current password to disable Auth",
         "YCQLPwdLabel": "YCQL Password",
         "rotatePwdLabel": "Rotate ycql password",
         "currentPwd": "Enter current password",
         "newPwd": "Enter new password",
         "reEnterNewPwd": "Re-enter new password",
         "updateSettingsSuccessMsg": "Updating YCQL configuration is in progress",
-        "rotatePwdSuccessMsg": "DB credentials for YCQL updated successfully"
+        "rotatePwdSuccessMsg": "DB credentials for YCQL updated successfully",
+        "rotateBothYCQLWarning": "Rotating YCQL Password and Editing YCQL settings should be performed at different times."
       }
     },
     "commonErrors": {
@@ -223,6 +225,7 @@
         "hbaLDAPConflocal": "local database user auth-method [auth-options]",
         "hbaLDAPConfHost": "host database user address auth-method [auth-options]",
         "hbaLDAPConfHostSSL": "hostssl database user IP-address auth-method [auth-options]",
+        "InvalidLDAPKey": "Invalid LDAP key or missing '=' between key value pair",
         "LDAPMissingAttributeValue": "Missing value for the attribute",
         "LDAPMissingQuote": "Attribute value should be enclosed in quotes",
         "nonASCIIDetected": "Non-ASCII value detected"
@@ -569,7 +572,7 @@
       }
     },
     "newRestoreModal": {
-      "title" : "Restore Backup",
+      "title": "Restore Backup",
       "restoreSuccess": "Success. Click <0>here</0> for task details",
       "allKeyspaces": "All Keyspaces",
       "preparingRestore": "Preparing Restore...",
@@ -591,10 +594,10 @@
           "selectKMSConfig": "KMS Configuration",
           "kmsConfigHelpText": "<b>Note!</b> For a successful restore, the KMS configuration used for restore should be the same KMS configuration used during backup creation.",
           "validationMessages": {
-            "ybcNotEnabled" : "Cannot restore ybc backup to non-ybc universe"
+            "ybcNotEnabled": "Cannot restore ybc backup to non-ybc universe"
           }
         },
-        "selectKeyspaceForm":{
+        "selectKeyspaceForm": {
           "title": "Select Keyspace",
           "selectKeyspace": "Select the keyspace you want to restore",
           "optional": "(Optional)",
@@ -614,7 +617,7 @@
         "title": "Select tables you want to restore",
         "searchTableName": "Search table name",
         "viewFilter": {
-          "viewAll" : "View All",
+          "viewAll": "View All",
           "viewSelected": "View Selected"
         },
         "tablesCount": "{{count}} tables",

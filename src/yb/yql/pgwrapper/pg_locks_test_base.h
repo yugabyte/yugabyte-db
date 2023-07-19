@@ -17,6 +17,7 @@
 #include "yb/common/transaction.h"
 
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
@@ -32,12 +33,15 @@ namespace yb {
 namespace pgwrapper {
 
 using tserver::TabletServerServiceProxy;
+using tserver::PgClientServiceProxy;
 
 class PgLocksTestBase : public client::GeoTransactionsTestBase {
  protected:
   void SetUp() override;
 
   virtual void InitTSProxies();
+
+  virtual void InitPgClientProxies();
 
   size_t NumTabletServers() override {
     return 1;
@@ -57,9 +61,20 @@ class PgLocksTestBase : public client::GeoTransactionsTestBase {
 
   Result<TabletId> CreateTableAndGetTabletId(const string& table_name);
 
+  // GetLockStatus helper that hits the pg_client_service endpoint.
+  Result<tserver::PgGetLockStatusResponsePB> GetLockStatus(
+      const tserver::PgGetLockStatusRequestPB& resp);
+
+  // GetLockStatus helper that hits the tserver endpoint, fetches locks of specified
+  // txns at the given tablet
   Result<tserver::GetLockStatusResponsePB> GetLockStatus(
       const TabletId& tablet_id,
       const std::vector<TransactionId>& transactions_ids = {});
+
+  // GetLockStatus helper that hits the tserver endpoint, fetches locks of specified
+  // txns at all tablets.
+  Result<tserver::GetLockStatusResponsePB> GetLockStatus(
+      const std::vector<TransactionId>& transactions_ids);
 
   Result<TransactionId> GetSingularTransactionOnTablet(const TabletId& tablet_id);
 
@@ -79,12 +94,19 @@ class PgLocksTestBase : public client::GeoTransactionsTestBase {
 
   std::vector<TabletServerServiceProxy*> get_ts_proxies(const std::string& ts_uuid = "");
 
+  std::vector<PgClientServiceProxy*> get_pg_client_service_proxies();
+
   Result<std::future<Status>> ExpectBlockedAsync(pgwrapper::PGConn* conn, const std::string& query);
 
   static constexpr int kTimeoutMs = 2000;
 
  private:
+  Result<tserver::GetLockStatusResponsePB> GetLockStatus(
+      const tserver::GetLockStatusRequestPB& req);
+
   std::vector<std::unique_ptr<TabletServerServiceProxy>> ts_proxies_;
+
+  std::vector<std::unique_ptr<PgClientServiceProxy>> pg_client_service_proxies_;
 };
 
 } // namespace pgwrapper

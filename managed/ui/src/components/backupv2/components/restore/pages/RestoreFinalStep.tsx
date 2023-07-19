@@ -21,6 +21,7 @@ import { YBLoadingCircleIcon } from '../../../../common/indicators';
 
 // this is the final page of the restore modal;
 // prepares the payload and triggers the api request
+// eslint-disable-next-line react/display-name
 const RestoreFinalStep = React.forwardRef(() => {
   const restoreContext = (useContext(RestoreFormContext) as unknown) as RestoreContextMethods;
   const [, , { hideModal }] = restoreContext;

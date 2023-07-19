@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import _ from 'lodash';
 import { useSelector } from 'react-redux';
 import { Field } from 'formik';
@@ -158,7 +158,11 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
   //renderers
   const renderFormComponent = (flag) => {
     // eslint-disable-next-line no-prototype-builtins
-    const defaultKey = selectedFlag?.hasOwnProperty('current') ? 'current' : 'default';
+    const defaultKey = selectedFlag?.hasOwnProperty('current')
+      ? 'current'
+      : selectedFlag?.hasOwnProperty('default')
+      ? 'default'
+      : 'target';
     switch (flag?.type) {
       case 'bool':
         return (

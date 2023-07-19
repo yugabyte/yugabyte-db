@@ -43,6 +43,7 @@
 #include "yb/client/async_initializer.h"
 #include "yb/client/client.h"
 
+#include "yb/common/pg_catversions.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_meta.h"
@@ -625,11 +626,12 @@ Status Master::get_ysql_db_oid_to_cat_version_info_map(
   DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
   // This function can only be called during initdb time.
   DbOidToCatalogVersionMap versions;
-  // We do not use cache which is only used for filling heartbeat response. The
-  // heartbeat mechanism is already subject to a heartbeat delay. In other situation
-  // where we are not already subject to any delay, we want the latest reading from
-  // the table pg_yb_catalog_version.
-  RETURN_NOT_OK(catalog_manager_->GetYsqlAllDBCatalogVersions(false /* use_cache */, &versions));
+  // We do not use cache/fingerprint which is only used for filling heartbeat
+  // response. The heartbeat mechanism is already subject to a heartbeat delay.
+  // In other situation where we are not already subject to any delay, we want
+  // the latest reading from the table pg_yb_catalog_version.
+  RETURN_NOT_OK(catalog_manager_->GetYsqlAllDBCatalogVersions(
+      false /* use_cache */, &versions, nullptr /* fingerprint */));
   if (req.size_only()) {
     resp->set_num_entries(narrow_cast<uint32_t>(versions.size()));
   } else {

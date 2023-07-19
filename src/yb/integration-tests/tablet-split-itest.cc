@@ -2363,12 +2363,14 @@ TEST_F(TabletSplitSingleServerITest, TabletServerSplitAlreadySplitTablet) {
   SetAtomicFlag(false, &FLAGS_TEST_skip_deleting_split_tablets);
   ASSERT_OK(WaitForTabletSplitCompletion(/* expected_non_split_tablets =*/ 2));
 
-  // If the parent tablet has been cleaned up, this should trigger a Not Found error.
+  // If the parent tablet has been cleaned up or is still being cleaned up, this should trigger
+  // a Not Found error or a Not Running error correspondingly.
   resp = ASSERT_RESULT(send_split_request());
   EXPECT_TRUE(resp.has_error());
   EXPECT_TRUE(
       StatusFromPB(resp.error().status()).IsNotFound() ||
-      resp.error().code() == tserver::TabletServerErrorPB::TABLET_NOT_FOUND)
+      resp.error().code() == tserver::TabletServerErrorPB::TABLET_NOT_FOUND ||
+      resp.error().code() == tserver::TabletServerErrorPB::TABLET_NOT_RUNNING)
       << resp.error().DebugString();
 }
 

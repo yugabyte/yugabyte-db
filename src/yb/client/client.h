@@ -541,11 +541,11 @@ class YBClient {
   // CDC Stream related methods.
 
   // Create a new CDC stream.
-  Result<CDCStreamId> CreateCDCStream(
+  Result<xrepl::StreamId> CreateCDCStream(
       const TableId& table_id,
       const std::unordered_map<std::string, std::string>& options,
       bool active = true,
-      const NamespaceId& namespace_id = "");
+      const xrepl::StreamId& db_stream_id = xrepl::StreamId::Nil());
 
   void CreateCDCStream(
       const TableId& table_id,
@@ -554,17 +554,17 @@ class YBClient {
       CreateCDCStreamCallback callback);
 
   // Delete multiple CDC streams.
-  Status DeleteCDCStream(const std::vector<CDCStreamId>& streams,
-                         bool force_delete = false,
-                         bool ignore_errors = false,
-                         master::DeleteCDCStreamResponsePB* resp = nullptr);
+  Status DeleteCDCStream(
+      const std::vector<xrepl::StreamId>& streams,
+      bool force_delete = false,
+      bool ignore_errors = false,
+      master::DeleteCDCStreamResponsePB* resp = nullptr);
 
   // Delete a CDC stream.
-  Status DeleteCDCStream(const CDCStreamId& stream_id,
-                         bool force_delete = false,
-                         bool ignore_errors = false);
+  Status DeleteCDCStream(
+      const xrepl::StreamId& stream_id, bool force_delete = false, bool ignore_errors = false);
 
-  void DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback callback);
+  void DeleteCDCStream(const xrepl::StreamId& stream_id, StatusCallback callback);
 
   // Create a new CDC stream.
   Status GetCDCDBStreamInfo(
@@ -577,27 +577,31 @@ class YBClient {
       const StdStatusCallback& callback);
 
   // Retrieve a CDC stream.
-  Status GetCDCStream(const CDCStreamId &stream_id,
-                      NamespaceId* ns_id,
-                      std::vector<TableId>* table_ids,
-                      std::unordered_map<std::string, std::string>* options,
-                      cdc::StreamModeTransactional* transactional);
+  Status GetCDCStream(
+      const xrepl::StreamId& stream_id,
+      NamespaceId* ns_id,
+      std::vector<TableId>* table_ids,
+      std::unordered_map<std::string, std::string>* options,
+      cdc::StreamModeTransactional* transactional);
 
-  void GetCDCStream(const CDCStreamId& stream_id,
-                    std::shared_ptr<TableId> table_id,
-                    std::shared_ptr<std::unordered_map<std::string, std::string>> options,
-                    StdStatusCallback callback);
+  void GetCDCStream(
+      const xrepl::StreamId& stream_id,
+      std::shared_ptr<TableId> table_id,
+      std::shared_ptr<std::unordered_map<std::string, std::string>> options,
+      StdStatusCallback callback);
 
   void DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback);
 
   // Update a CDC stream's options.
-  Status UpdateCDCStream(const std::vector<CDCStreamId>& stream_ids,
-                         const std::vector<master::SysCDCStreamEntryPB>& new_entries);
+  Status UpdateCDCStream(
+      const std::vector<xrepl::StreamId>& stream_ids,
+      const std::vector<master::SysCDCStreamEntryPB>& new_entries);
 
   Result<bool> IsObjectPartOfXRepl(const TableId& table_id);
 
-  Result<bool> IsBootstrapRequired(const std::vector<TableId>& table_ids,
-                                   const boost::optional<CDCStreamId>& stream_id = boost::none);
+  Result<bool> IsBootstrapRequired(
+      const std::vector<TableId>& table_ids,
+      const boost::optional<xrepl::StreamId>& stream_id = boost::none);
 
   Status BootstrapProducer(
       const YQLDatabase& db_type,
@@ -609,13 +613,13 @@ class YBClient {
   // Update consumer pollers after a producer side tablet split.
   Status UpdateConsumerOnProducerSplit(
       const cdc::ReplicationGroupId& replication_group_id,
-      const TableId& table_id,
+      const xrepl::StreamId& stream_id,
       const master::ProducerSplitTabletInfoPB& split_info);
 
   // Update after a producer DDL change. Returns if caller should wait for a similar Consumer DDL.
   Status UpdateConsumerOnProducerMetadata(
       const cdc::ReplicationGroupId& replication_group_id,
-      const CDCStreamId& stream_id,
+      const xrepl::StreamId& stream_id,
       const tablet::ChangeMetadataRequestPB& meta_info,
       uint32_t colocation_id,
       uint32_t producer_schema_version,

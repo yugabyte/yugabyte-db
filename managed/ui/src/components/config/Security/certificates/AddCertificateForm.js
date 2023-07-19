@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import { Field } from 'formik';
 import { Alert, Tabs, Tab, Row, Col } from 'react-bootstrap';
@@ -377,7 +377,7 @@ export default class AddCertificateForm extends Component {
     return initialValues;
   };
 
-  componentWillReceiveProps() {
+  UNSAFE_componentWillReceiveProps() {
     const { certificate, mode } = this.props;
     const isEditMode = mode === MODES.EDIT;
     if (isEditMode && certificate.type === 'HashicorpVault') this.setState({ tab: 'hashicorp' });

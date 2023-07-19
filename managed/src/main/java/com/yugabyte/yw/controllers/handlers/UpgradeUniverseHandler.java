@@ -64,6 +64,7 @@ public class UpgradeUniverseHandler {
   private final GFlagsValidationHandler gFlagsValidationHandler;
   private final YbcManager ybcManager;
   private final RuntimeConfGetter confGetter;
+  private final CertificateHelper certificateHelper;
 
   @Inject
   public UpgradeUniverseHandler(
@@ -72,13 +73,15 @@ public class UpgradeUniverseHandler {
       RuntimeConfigFactory runtimeConfigFactory,
       GFlagsValidationHandler gFlagsValidationHandler,
       YbcManager ybcManager,
-      RuntimeConfGetter confGetter) {
+      RuntimeConfGetter confGetter,
+      CertificateHelper certificateHelper) {
     this.commissioner = commissioner;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.gFlagsValidationHandler = gFlagsValidationHandler;
     this.ybcManager = ybcManager;
     this.confGetter = confGetter;
+    this.certificateHelper = certificateHelper;
   }
 
   public UUID restartUniverse(
@@ -359,7 +362,7 @@ public class UpgradeUniverseHandler {
         // Create self-signed rootCA in case it is not provided by the user
         if (requestParams.rootCA == null) {
           requestParams.rootCA =
-              CertificateHelper.createRootCA(
+              certificateHelper.createRootCA(
                   runtimeConfigFactory.staticApplicationConf(),
                   universeDetails.nodePrefix,
                   customer.getUuid());
@@ -383,7 +386,7 @@ public class UpgradeUniverseHandler {
             // Create self-signed clientRootCA in case it is not provided by the user
             // and rootCA and clientRootCA needs to be different
             requestParams.setClientRootCA(
-                CertificateHelper.createClientRootCA(
+                certificateHelper.createClientRootCA(
                     runtimeConfigFactory.staticApplicationConf(),
                     universeDetails.nodePrefix,
                     customer.getUuid()));

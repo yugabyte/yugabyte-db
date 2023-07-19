@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, PureComponent, Fragment } from 'react';
+import { Component, PureComponent, Fragment } from 'react';
 import { Link } from 'react-router';
 import { Row, Col } from 'react-bootstrap';
 import moment from 'moment';
@@ -296,7 +296,7 @@ class HealthInfoPanel extends PureComponent {
             <span className="text-lightgray text-light">
               <i className={'fa fa-clock-o'}></i> Updated{' '}
               <span className={'text-dark text-normal'}>
-                <FormattedRelative value={lastUpdateDate} />
+                <FormattedRelative value={lastUpdateDate} unit="day" />
               </span>
             </span>
           ) : null

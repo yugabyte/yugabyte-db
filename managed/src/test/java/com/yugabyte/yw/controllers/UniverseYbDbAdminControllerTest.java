@@ -40,7 +40,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
-import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -48,12 +47,6 @@ import play.test.Helpers;
 
 @RunWith(JUnitParamsRunner.class)
 public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase {
-
-  @Override
-  protected GuiceApplicationBuilder appOverrides(GuiceApplicationBuilder applicationBuilder) {
-    // Setting platform type as correct.
-    return applicationBuilder.configure("yb.mode", "OSS");
-  }
 
   @Test
   public void testRunQueryWithInvalidUniverse() throws Exception {
@@ -286,8 +279,8 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
   @Test
   public void testConfigureYSQL() {
     Universe universe = createUniverse(customer.getId());
-    updateUniverseAPIDetails(universe, true, false, true, false);
-    ObjectNode bodyJson = Json.newObject().put("enableYSQL", false).put("enableYSQLAuth", false);
+    updateUniverseAPIDetails(universe, false, false, true, false);
+    ObjectNode bodyJson = Json.newObject().put("enableYSQL", true).put("enableYSQLAuth", false);
     String url =
         "/api/customers/"
             + customer.getUuid()
@@ -297,8 +290,8 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
-    assertBadRequest(result, "cannot disable YSQL once it is enabled.");
-    updateUniverseAPIDetails(universe, false, false, true, false);
+    assertBadRequest(result, "Cannot enable YSQL if it was disabled earlier.");
+    updateUniverseAPIDetails(universe, true, false, true, false);
     bodyJson.put("enableYSQL", true).put("ysqlPassword", "foo");
     result =
         assertPlatformException(

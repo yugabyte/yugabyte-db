@@ -31,6 +31,7 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
+// eslint-disable-next-line react/display-name
 export const SelectTables = React.forwardRef<PageRef>((_, forwardRef) => {
   const restoreContext = (useContext(RestoreFormContext) as unknown) as RestoreContextMethods;
 

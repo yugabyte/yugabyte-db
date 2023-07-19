@@ -362,21 +362,27 @@ void XClusterConsumer::UpdateInMemoryState(
       }
     }
     // recreate the set of XClusterPoller
-    for (const auto& stream_entry : producer_entry_pb.stream_map()) {
-      const auto& stream_entry_pb = stream_entry.second;
+    for (const auto& [stream_id_str, stream_entry_pb] : producer_entry_pb.stream_map()) {
+      auto stream_id_result = xrepl::StreamId::FromString(stream_id_str);
+      if (!stream_id_result) {
+        LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Invalid stream id: " << stream_id_str;
+        continue;
+      }
+      auto& stream_id = *stream_id_result;
+
       if (stream_entry_pb.local_tserver_optimized()) {
         LOG_WITH_PREFIX(INFO) << Format(
-            "Stream $0 will use local tserver optimization", stream_entry.first);
-        streams_with_local_tserver_optimization_.insert(stream_entry.first);
+            "Stream $0 will use local tserver optimization", stream_id);
+        streams_with_local_tserver_optimization_.insert(stream_id);
       }
       if (stream_entry_pb.has_producer_schema()) {
-        stream_to_schema_version_[stream_entry.first] = std::make_pair(
+        stream_to_schema_version_[stream_id] = std::make_pair(
             stream_entry_pb.producer_schema().validated_schema_version(),
             stream_entry_pb.producer_schema().last_compatible_consumer_schema_version());
       }
 
       if (stream_entry_pb.has_schema_versions()) {
-        auto& schema_version_map = stream_schema_version_map_[stream_entry.first];
+        auto& schema_version_map = stream_schema_version_map_[stream_id];
         auto schema_versions = stream_entry_pb.schema_versions();
         schema_version_map[schema_versions.current_producer_schema_version()] =
             schema_versions.current_consumer_schema_version();
@@ -393,7 +399,7 @@ void XClusterConsumer::UpdateInMemoryState(
 
       for (const auto& [colocated_id, versions] : stream_entry_pb.colocated_schema_versions()) {
         auto& schema_version_map =
-            stream_colocated_schema_version_map_[stream_entry.first][colocated_id];
+            stream_colocated_schema_version_map_[stream_id][colocated_id];
         schema_version_map[versions.current_producer_schema_version()] =
             versions.current_consumer_schema_version();
 
@@ -411,7 +417,7 @@ void XClusterConsumer::UpdateInMemoryState(
         const auto& consumer_tablet_id = tablet_entry.first;
         for (const auto& producer_tablet_id : tablet_entry.second.tablets()) {
           ProducerTabletInfo producer_tablet_info(
-              {cdc::ReplicationGroupId(replication_group_id), stream_entry.first,
+              {cdc::ReplicationGroupId(replication_group_id), stream_id,
                producer_tablet_id});
           cdc::ConsumerTabletInfo consumer_tablet_info(
               {consumer_tablet_id, stream_entry_pb.consumer_table_id()});
@@ -580,8 +586,7 @@ void XClusterConsumer::TriggerPollForNewTablets() {
 }
 
 void XClusterConsumer::UpdatePollerSchemaVersionMaps(
-    std::shared_ptr<XClusterPoller> xcluster_poller, const CDCStreamId& stream_id) const {
-
+    std::shared_ptr<XClusterPoller> xcluster_poller, const xrepl::StreamId& stream_id) const {
   auto compatible_schema_version = FindOrNull(stream_to_schema_version_, stream_id);
   if (compatible_schema_version != nullptr) {
       xcluster_poller->SetSchemaVersion(compatible_schema_version->first,
@@ -771,7 +776,7 @@ Status XClusterConsumer::PublishXClusterSafeTime() {
 
 void XClusterConsumer::StoreReplicationError(
     const TabletId& tablet_id,
-    const CDCStreamId& stream_id,
+    const xrepl::StreamId& stream_id,
     const ReplicationErrorPb error,
     const std::string& detail) {
   std::lock_guard lock(tablet_replication_error_map_lock_);
@@ -779,8 +784,7 @@ void XClusterConsumer::StoreReplicationError(
 }
 
 void XClusterConsumer::ClearReplicationError(
-    const TabletId& tablet_id,
-    const CDCStreamId& stream_id) {
+    const TabletId& tablet_id, const xrepl::StreamId& stream_id) {
   std::lock_guard l(tablet_replication_error_map_lock_);
   if (!tablet_replication_error_map_.contains(tablet_id)) {
     return;

@@ -24,10 +24,9 @@
 
 #include "yb/consensus/opid_util.h"
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
@@ -142,11 +141,12 @@ void XClusterPoller::Shutdown() {
 }
 
 std::string XClusterPoller::LogPrefix() const {
-  return strings::Substitute("P [$0:$1] C [$2:$3]: ",
-                             producer_tablet_info_.stream_id,
-                             producer_tablet_info_.tablet_id,
-                             consumer_tablet_info_.table_id,
-                             consumer_tablet_info_.tablet_id);
+  return Format(
+      "P [$0:$1] C [$2:$3]: ",
+      producer_tablet_info_.stream_id,
+      producer_tablet_info_.tablet_id,
+      consumer_tablet_info_.table_id,
+      consumer_tablet_info_.tablet_id);
 }
 
 bool XClusterPoller::CheckOffline() { return shutdown_ || is_failed_; }
@@ -306,7 +306,7 @@ void XClusterPoller::DoPoll() {
   }
 
   cdc::GetChangesRequestPB req;
-  req.set_stream_id(producer_tablet_info_.stream_id);
+  req.set_stream_id(producer_tablet_info_.stream_id.ToString());
   req.set_tablet_id(producer_tablet_info_.tablet_id);
   req.set_serve_as_proxy(GetAtomicFlag(&FLAGS_cdc_consumer_use_proxy_forwarding));
 

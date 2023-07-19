@@ -137,11 +137,9 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
 
         auto& stream_to_status = *replication_state->mutable_stream_replication_statuses();
         const auto& stream_replication_error_map = tablet_kv.second;
-        for (const auto& stream_kv : stream_replication_error_map) {
-          const CDCStreamId& stream_id = stream_kv.first;
-          const auto& replication_error_map = stream_kv.second;
-
-          auto& error_to_detail = *stream_to_status[stream_id].mutable_replication_errors();
+        for (const auto& [stream_id, replication_error_map] : stream_replication_error_map) {
+          auto& error_to_detail =
+              *stream_to_status[stream_id.ToString()].mutable_replication_errors();
           for (const auto& error_kv : replication_error_map) {
             const ReplicationErrorPb error = error_kv.first;
             const std::string& detail = error_kv.second;

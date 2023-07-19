@@ -15,7 +15,7 @@
 
 
 /**
- *
+ * 
  * @export
  * @interface HealthCheckInfo
  */
@@ -27,7 +27,7 @@ export interface HealthCheckInfo  {
    */
   dead_nodes: string[];
   /**
-   *
+   * 
    * @type {number}
    * @memberof HealthCheckInfo
    */
@@ -45,3 +45,6 @@ export interface HealthCheckInfo  {
    */
   leaderless_tablets: string[];
 }
+
+
+

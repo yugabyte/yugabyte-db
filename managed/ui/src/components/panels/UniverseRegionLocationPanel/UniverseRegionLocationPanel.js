@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
-import { RegionMap , RegionMapLegend } from '../../maps';
+import { Component } from 'react';
+import { RegionMap, RegionMapLegend } from '../../maps';
 
 import { isNonEmptyArray, isValidObject, isEmptyArray } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';

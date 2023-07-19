@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC, useEffect, useState } from 'react';
+import { FC, useEffect, useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { BootstrapTable, RemoteObjSpec, TableHeaderColumn } from 'react-bootstrap-table';
 import { useQuery } from 'react-query';

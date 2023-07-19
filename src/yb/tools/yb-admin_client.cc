@@ -4074,11 +4074,11 @@ Status ClusterAdminClient::BootstrapProducer(const vector<TableId>& table_ids) {
 }
 
 Status ClusterAdminClient::WaitForReplicationDrain(
-    const std::vector<CDCStreamId>& stream_ids, const string& target_time) {
+    const std::vector<xrepl::StreamId>& stream_ids, const string& target_time) {
   master::WaitForReplicationDrainRequestPB req;
   master::WaitForReplicationDrainResponsePB resp;
   for (const auto& stream_id : stream_ids) {
-        req.add_stream_ids(stream_id);
+        req.add_stream_ids(stream_id.ToString());
   }
   // If target_time is not provided, it will be set to current time in the master API.
   if (!target_time.empty()) {
@@ -4097,9 +4097,10 @@ Status ClusterAdminClient::WaitForReplicationDrain(
         return StatusFromPB(resp.error().status());
   }
 
-  std::unordered_map<CDCStreamId, std::vector<TabletId>> undrained_streams;
+  std::unordered_map<xrepl::StreamId, std::vector<TabletId>> undrained_streams;
   for (const auto& stream_info : resp.undrained_stream_info()) {
-        undrained_streams[stream_info.stream_id()].push_back(stream_info.tablet_id());
+        undrained_streams[VERIFY_RESULT(xrepl::StreamId::FromString(stream_info.stream_id()))]
+            .push_back(stream_info.tablet_id());
   }
   if (!undrained_streams.empty()) {
         cout << "Found undrained replications:" << endl;

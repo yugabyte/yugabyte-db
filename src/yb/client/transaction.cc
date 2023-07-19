@@ -264,7 +264,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     const auto now = manager_->clock()->Now().GetPhysicalValueMicros();
     // start_ is not set if Init is not called - this happens for transactions that get
     // aborted without doing anything, so we set time_spent to 0 for these transactions.
-    const auto time_spent = (start_ == 0 ? 0 : now - start_) * 1us;
+    auto start = start_.load(std::memory_order_relaxed);
+    const auto time_spent = (start == 0 ? 0 : now - start) * 1us;
     if ((trace_ && trace_->must_print())
            || (threshold > 0 && ToMilliseconds(time_spent) > threshold)
            || (FLAGS_txn_print_trace_on_error && !status_.ok())) {
@@ -1077,7 +1078,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     } else {
       metadata_.start_time = read_point_.Now();
     }
-    start_ = manager_->clock()->Now().GetPhysicalValueMicros();
+    start_.store(manager_->clock()->Now().GetPhysicalValueMicros(), std::memory_order_release);
   }
 
   void SetReadTimeIfNeeded(bool do_it) {
@@ -1145,8 +1146,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     state.set_transaction_id(metadata_.transaction_id.data(), metadata_.transaction_id.size());
     state.set_status(status);
 
-    if (start_ > 0) {
-      state.set_start_time(start_);
+    auto start = start_.load(std::memory_order_acquire);
+    if (start > 0) {
+      state.set_start_time(start);
 
       if (!PREDICT_FALSE(FLAGS_disable_heartbeat_send_involved_tablets)) {
         for (const auto& [tablet_id, _] : tablets_with_locks) {
@@ -2110,7 +2112,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   // The trace buffer.
   scoped_refptr<Trace> trace_;
 
-  MicrosTime start_;
+  std::atomic<MicrosTime> start_;
 
   // Manager is created once per service.
   TransactionManager* const manager_;

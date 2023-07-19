@@ -14,7 +14,7 @@ import {
 } from '../../../../components';
 import { Universe } from '../../universe-form/utils/dto';
 import { api } from '../../../../utils/api';
-import { getPrimaryCluster } from '../../universe-form/utils/helpers';
+import { getPrimaryCluster, createErrorMessage } from '../../universe-form/utils/helpers';
 import {
   YCQLFormFields,
   YCQLFormPayload,
@@ -71,15 +71,14 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({ open, onClose, unive
     },
     {
       onSuccess: (response) => {
-        console.log(response);
         toast.success(
           t('universeActions.editYCQLSettings.updateSettingsSuccessMsg'),
           TOAST_OPTIONS
         );
         onClose();
       },
-      onError: () => {
-        toast.error(t('common.genericFailure'), TOAST_OPTIONS);
+      onError: (error) => {
+        toast.error(createErrorMessage(error), TOAST_OPTIONS);
       }
     }
   );
@@ -94,8 +93,8 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({ open, onClose, unive
         toast.success(t('universeActions.editYCQLSettings.rotatePwdSuccessMsg'), TOAST_OPTIONS);
         onClose();
       },
-      onError: () => {
-        toast.error(t('common.genericFailure'), TOAST_OPTIONS);
+      onError: (error) => {
+        toast.error(createErrorMessage(error), TOAST_OPTIONS);
       }
     }
   );
@@ -171,8 +170,10 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({ open, onClose, unive
               </Typography>
               <YBTooltip
                 title={
-                  !primaryCluster?.userIntent?.enableYSQL
+                  !primaryCluster?.userIntent?.enableYSQL && primaryCluster?.userIntent?.enableYCQL // user can disable only one endpoint among YSQL and YCQL
                     ? t('universeForm.securityConfig.authSettings.enableYsqlOrYcql')
+                    : rotateYCQLPasswordValue
+                    ? t('universeActions.editYCQLSettings.rotateBothYCQLWarning') // user can rotate password only if YCQL and auth is enabled
                     : ''
                 }
                 placement="top-end"
@@ -184,11 +185,34 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({ open, onClose, unive
                       'data-testid': 'EnableYCQLModal-Toggle'
                     }}
                     control={control}
-                    disabled={rotateYCQLPasswordValue || !primaryCluster?.userIntent?.enableYSQL}
+                    disabled={
+                      rotateYCQLPasswordValue ||
+                      (!primaryCluster?.userIntent?.enableYSQL &&
+                        primaryCluster?.userIntent?.enableYCQL) // user can disable only one endpoint among YSQL and YCQL
+                    }
                   />
                 </div>
               </YBTooltip>
             </Box>
+            {!enableYCQLValue && primaryCluster?.userIntent?.enableYCQLAuth && (
+              <Box flex={1} mt={2} width="300px">
+                <YBPasswordField
+                  rules={{
+                    required: t('universeForm.validation.required', {
+                      field: t('universeForm.securityConfig.authSettings.ycqlAuthPassword')
+                    }) as string
+                  }}
+                  name={'ycqlPassword'}
+                  control={control}
+                  fullWidth
+                  inputProps={{
+                    autoComplete: 'previous-password',
+                    'data-testid': 'YCQLField-PasswordLabelInput'
+                  }}
+                  placeholder={t('universeActions.editYCQLSettings.currentPwdToAuth')}
+                />
+              </Box>
+            )}
           </Box>
           {enableYCQLValue && (
             <Box className={classes.mainContainer}>
@@ -206,14 +230,25 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({ open, onClose, unive
                     <img alt="Info" src={InfoMessageIcon} />
                   </YBTooltip>
                 </Typography>
-                <YBToggleField
-                  name={'enableYCQLAuth'}
-                  inputProps={{
-                    'data-testid': 'EnableYCQLModal-AuthToggle'
-                  }}
-                  control={control}
-                  disabled={rotateYCQLPasswordValue}
-                />
+                <YBTooltip
+                  title={
+                    rotateYCQLPasswordValue
+                      ? t('universeActions.editYCQLSettings.rotateBothYCQLWarning')
+                      : ''
+                  }
+                  placement="top-end"
+                >
+                  <div>
+                    <YBToggleField
+                      name={'enableYCQLAuth'}
+                      inputProps={{
+                        'data-testid': 'EnableYCQLModal-AuthToggle'
+                      }}
+                      control={control}
+                      disabled={rotateYCQLPasswordValue}
+                    />
+                  </div>
+                </YBTooltip>
               </Box>
               {!enableYCQLAuthValue && primaryCluster?.userIntent?.enableYCQLAuth && (
                 <Box flex={1} mt={2} width="300px">
@@ -227,7 +262,7 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({ open, onClose, unive
                     control={control}
                     fullWidth
                     inputProps={{
-                      autoComplete: 'new-password',
+                      autoComplete: 'previous-password',
                       'data-testid': 'YCQLField-PasswordLabelInput'
                     }}
                     placeholder={t('universeActions.editYCQLSettings.currentPwdToAuth')}

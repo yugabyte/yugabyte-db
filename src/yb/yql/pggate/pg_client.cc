@@ -610,6 +610,10 @@ class PgClient::Impl {
     if (!transaction_id.empty()) {
       req.set_transaction_id(transaction_id);
     }
+    // TODO(pg_locks): Remove static variable initialization and populate max_num_txns from the GUC
+    // variable instead. Refer https://github.com/yugabyte/yugabyte-db/issues/18178 for details.
+    static const auto yb_locks_max_transactions = 1024;
+    req.set_max_num_txns(yb_locks_max_transactions);
 
     RETURN_NOT_OK(proxy_->GetLockStatus(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));

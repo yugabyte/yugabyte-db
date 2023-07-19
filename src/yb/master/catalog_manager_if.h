@@ -110,7 +110,9 @@ class CatalogManagerIf {
   virtual Status GetYsqlCatalogVersion(
       uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
   virtual Status GetYsqlAllDBCatalogVersions(
-      bool use_cache, std::map<uint32_t, std::pair<uint64_t, uint64_t>>* versions) = 0;
+      bool use_cache,
+      DbOidToCatalogVersionMap* versions,
+      uint64_t* fingerprint) = 0;
   virtual Status GetYsqlDBCatalogVersion(
       uint32_t db_oid, uint64_t* catalog_version, uint64_t* last_breaking_version) = 0;
 
@@ -148,8 +150,10 @@ class CatalogManagerIf {
 
   virtual bool IsSystemTable(const TableInfo& table) const = 0;
 
-  virtual Result<scoped_refptr<NamespaceInfo>> FindNamespaceById(
-      const NamespaceId& id) const = 0;
+  virtual Result<scoped_refptr<NamespaceInfo>> FindNamespaceById(const NamespaceId& id) const = 0;
+
+  virtual Result<scoped_refptr<NamespaceInfo>> FindNamespace(
+      const NamespaceIdentifierPB& ns_identifier) const = 0;
 
   virtual scoped_refptr<TableInfo> GetTableInfoFromNamespaceNameAndTableName(
       YQLDatabase db_type, const NamespaceName& namespace_name, const TableName& table_name,

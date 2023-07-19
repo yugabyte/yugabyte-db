@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import { useRef } from 'react';
 import { Field, FieldArray, Form, FormikProps } from 'formik';
 
 import { YBModalForm } from '../../common/forms';
@@ -36,14 +36,14 @@ const formatYBHAWebSerivceConfigValue = (peerCerts: CertFormItem[]) =>
     ssl {
       trustManager = {
         ${peerCerts
-    .map(
-      (peerCert) => `stores += {
+          .map(
+            (peerCert) => `stores += {
           type = "PEM"
           data = """${peerCert.data}"""
         }
         `
-    )
-    .join('')}
+          )
+          .join('')}
       }
     }  
   }`;

@@ -720,14 +720,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "the nodes",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Duration> ansibleExecutionTimeoutSec =
-      new ConfKeyInfo<>(
-          "yb.upgrade.ansible_execution_timeout_sec",
-          ScopeType.UNIVERSE,
-          "Ansible execution timeout in seconds",
-          "Makes Timeout during execution of ansible playbooks configurable",
-          ConfDataType.DurationType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> useServerBroadcastAddressForYbBackup =
       new ConfKeyInfo<>(
           "yb.backup.use_server_broadcast_address_for_yb_backup",
@@ -759,5 +751,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Number of cores to keep",
           "Controls the configuration to set the number of cores to keep in the Ansible layer",
           ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ensureSyncGetReplicationStatus =
+      new ConfKeyInfo<>(
+          "yb.xcluster.ensure_sync_get_replication_status",
+          ScopeType.UNIVERSE,
+          "Whether to check YBA xCluster object is in sync with DB replication group",
+          "It ensures that the YBA XCluster object for tables that are in replication is "
+              + "in sync with replication group in DB. If they are not in sync and this is true, "
+              + "getting the xCluster object will throw an exception and the user has to resync "
+              + "the xCluster config.",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

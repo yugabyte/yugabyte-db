@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 // Can't use `useLocation` hook because this component is the child
 // of a component that calls withRouter: https://github.com/ReactTraining/react-router/issues/7015
 import { withRouter } from 'react-router';

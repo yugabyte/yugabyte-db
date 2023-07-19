@@ -323,6 +323,10 @@ Slice DocRowwiseIteratorBase::shared_key_prefix() const {
   return doc_read_context_.shared_key_prefix();
 }
 
+Slice DocRowwiseIteratorBase::upperbound() const {
+  return doc_read_context_.upperbound();
+}
+
 Status DocRowwiseIteratorBase::InitIterKey(Slice key, bool full_row) {
   row_key_.Reset(key);
   VLOG_WITH_FUNC(4) << " Current row key is " << row_key_ << ", full_row: " << full_row;

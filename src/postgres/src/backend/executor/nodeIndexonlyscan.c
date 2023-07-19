@@ -86,11 +86,11 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		if (IsYugaByteEnabled() && node->yb_ioss_aggrefs)
 		{
 			/*
-			 * For aggregate pushdown, we read just the aggregates from DocDB
-			 * and pass that up to the aggregate node (agg pushdown wouldn't be
-			 * enabled if we needed to read more than that).  Set up a dummy
-			 * scan slot to hold that as many attributes as there are pushed
-			 * aggregates.
+			 * For aggregate pushdown, we only read aggregate results from
+			 * DocDB and pass that up to the aggregate node (agg pushdown
+			 * wouldn't be enabled if we needed to read other expressions). Set
+			 * up a dummy scan slot to hold as many attributes as there are
+			 * pushed aggregates.
 			 */
 			TupleDesc tupdesc =
 				CreateTemplateTupleDesc(list_length(node->yb_ioss_aggrefs),
@@ -258,7 +258,7 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		}
 		else if (scandesc->xs_itup)
 			StoreIndexTuple(slot, scandesc->xs_itup, scandesc->xs_itupdesc);
-		else if (IsYugaByteEnabled() && scandesc->yb_agg_slot)
+		else if (IsYugaByteEnabled() && scandesc->yb_aggrefs)
 		{
 			/* Slot should have already been updated by YB amgettuple. */
 		}

@@ -81,9 +81,6 @@
 #include "utils/snapmgr.h"
 #include "utils/tqual.h"
 
-#include "pg_yb_utils.h"
-#include "access/yb_lsm.h"
-
 /* ----------------------------------------------------------------
  *					macros used in index_ routines
  *
@@ -635,17 +632,8 @@ index_getnext_tid(IndexScanDesc scan, ScanDirection direction)
 HeapTuple
 index_fetch_heap(IndexScanDesc scan)
 {
-	/*
-	 * For YugaByte secondary indexes, there are two scenarios.
-	 * - If YugaByte returns an index-tuple, the returned ybctid value should be used to query data.
-	 * - If YugaByte returns a heap_tuple, all requested data was already selected in the tuple.
-	 */
 	if (IsYBRelation(scan->heapRelation))
-	{
-		if (scan->xs_hitup != 0)
-			return scan->xs_hitup;
-		return YBCFetchTuple(scan->heapRelation, scan->xs_ctup.t_ybctid);
-	}
+		return scan->xs_hitup;
 
 	ItemPointer tid = &scan->xs_ctup.t_self;
 	bool		all_dead = false;

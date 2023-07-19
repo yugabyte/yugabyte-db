@@ -1,8 +1,7 @@
-import React, {useState} from 'react';
+import { useState } from 'react';
 import { DatePicker } from 'react-widgets';
 
 import './DateRangePicker.scss';
-
 
 export const CustomDateRangePicker = ({ onRangeChange }) => {
   const yesterday = new Date();
@@ -12,12 +11,12 @@ export const CustomDateRangePicker = ({ onRangeChange }) => {
 
   const handleStartDateTimeChange = (timestamp) => {
     setLocalStartDate(timestamp);
-    onRangeChange({ start:localEndDate, end: timestamp});
+    onRangeChange({ start: localEndDate, end: timestamp });
   };
 
   const handleEndDateTimeChange = (timestamp) => {
     setLocalEndDate(timestamp);
-    onRangeChange({ start:localStartDate, end: timestamp});
+    onRangeChange({ start: localStartDate, end: timestamp });
   };
 
   return (

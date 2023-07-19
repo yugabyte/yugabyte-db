@@ -1147,6 +1147,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         const auto& id = it->id();
         resp_txn->set_transaction_id(id.data(), id.size());
         *resp_txn->mutable_aborted_subtxn_set() = it->GetAbortedSubtxnInfo()->pb();
+        resp_txn->set_start_time(it->first_touch());
 
         for (const auto& tablet_id : it->pending_involved_tablets()) {
           resp_txn->add_tablets(tablet_id);
@@ -1161,14 +1162,18 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
                    tserver::GetTransactionStatusResponsePB* response) {
     AtomicFlagSleepMs(&FLAGS_TEST_inject_txn_get_status_delay_ms);
     auto leader_term = context_.LeaderTerm();
+    std::vector<TransactionId> decoded_txn_ids;
+    decoded_txn_ids.reserve(transaction_ids.size());
+    for (auto i = 0 ; i < transaction_ids.size() ; i++) {
+      decoded_txn_ids.emplace_back(VERIFY_RESULT(FullyDecodeTransactionId(transaction_ids[i])));
+    }
+
     PostponedLeaderActions postponed_leader_actions;
     {
       std::unique_lock<std::mutex> lock(managed_mutex_);
       HybridTime leader_safe_time;
       postponed_leader_actions_.leader_term = leader_term;
-      for (const auto& transaction_id : transaction_ids) {
-        auto id = VERIFY_RESULT(FullyDecodeTransactionId(transaction_id));
-
+      for (const auto& id : decoded_txn_ids) {
         auto it = managed_transactions_.find(id);
         std::vector<ExpectedTabletBatches> expected_tablet_batches;
         bool known_txn = it != managed_transactions_.end();
@@ -1206,6 +1211,24 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         }
       }
       postponed_leader_actions.Swap(&postponed_leader_actions_);
+    }
+
+    RSTATUS_DCHECK_EQ(
+        response->status().size(), decoded_txn_ids.size(), IllegalState,
+        Format("Expected to see $0 (vs $1) statuses in GetTransactionStatusResponsePB",
+               decoded_txn_ids.size(), response->status().size()));
+    // GetTransactionDeadlockStatus should be called outside the scope of managed_mutex_.
+    // Else we risk a deadlock since the detector acquires the locks in the order:
+    // detector's mutex -> coordinator's managed_mutex_, during execution of TriggerProbes().
+    for (auto i = 0 ; i < response->status().size() ; i++) {
+      // Deadlock detector stores info of transactions that might have been aborted due to a
+      // deadlock even before the coordinator cancels them. So it could happen that the detector
+      // reports a deadlock specific error for a transaction that the coordinator is/was unable
+      // to abort. Hence we query the detector for statuses of txns in ABORTED state alone.
+      Status s = response->status(i) == TransactionStatus::ABORTED
+          ? deadlock_detector_.GetTransactionDeadlockStatus(decoded_txn_ids[i])
+          : Status::OK();
+      StatusToPB(s, response->add_deadlock_reason());
     }
 
     ExecutePostponedLeaderActions(&postponed_leader_actions);
