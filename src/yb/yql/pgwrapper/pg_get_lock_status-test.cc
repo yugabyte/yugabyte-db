@@ -99,7 +99,10 @@ class PgGetLockStatusTest : public PgLocksTestBase {
           auto id = ASSERT_RESULT(TransactionId::FromString(txn_lock_pair.first));
           auto txn_map_it = tablet_map_it->second.find(id);
           ASSERT_NE(txn_map_it, tablet_map_it->second.end());
-          ASSERT_EQ(txn_lock_pair.second.locks_size(), txn_map_it->second);
+          const auto& lock_info = txn_lock_pair.second;
+          ASSERT_EQ(
+              lock_info.granted_locks_size() + lock_info.waiting_locks().locks_size(),
+              txn_map_it->second);
           tablet_map_it->second.erase(txn_map_it);
         }
         ASSERT_TRUE(tablet_map_it->second.empty());
@@ -400,22 +403,15 @@ TEST_F(PgGetLockStatusTest, TestBlockedBy) {
     auto waiter_txn_id = ASSERT_RESULT(TransactionId::FromString(txn_id));
     ASSERT_EQ(waiter_txn_id, waiter_session.txn_id);
 
-    // Two locks from the Init() setup, and two locks from the blocked SELECT...FOR UPDATE
-    ASSERT_EQ(txn_lock.locks().size(), 4);
+    ASSERT_EQ(txn_lock.waiting_locks().locks().size(), 2);
 
-    for (const auto& lock : txn_lock.locks()) {
-      if (lock.has_wait_end_ht()) {
-        continue;
-      }
-
-      std::set<TransactionId> blockers;
-      for (const auto& blocking_txn_id : lock.blocking_txn_ids()) {
-        auto decoded = ASSERT_RESULT(FullyDecodeTransactionId(blocking_txn_id));
-        blockers.insert(decoded);
-        ASSERT_TRUE(decoded == session1.txn_id || decoded == session2.txn_id);
-      }
-      ASSERT_EQ(blockers.size(), 2);
+    std::set<TransactionId> blockers;
+    for (const auto& blocking_txn_id : txn_lock.waiting_locks().blocking_txn_ids()) {
+      auto decoded = ASSERT_RESULT(FullyDecodeTransactionId(blocking_txn_id));
+      blockers.insert(decoded);
+      ASSERT_TRUE(decoded == session1.txn_id || decoded == session2.txn_id);
     }
+    ASSERT_EQ(blockers.size(), 2);
   }
 
   ASSERT_OK(session1.conn->CommitTransaction());
