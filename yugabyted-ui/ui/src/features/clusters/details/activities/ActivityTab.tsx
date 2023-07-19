@@ -161,7 +161,7 @@ export const ActivityTab: FC = () => {
         flexWrap="wrap"
       >
         <Box>
-          {ysqlDBList.length >= 0 && (
+          {ysqlDBList.length > 0 && (
             <>
               <Typography
                 variant="subtitle2"
