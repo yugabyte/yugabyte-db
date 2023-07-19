@@ -587,16 +587,6 @@ export const UniverseView = (props) => {
           searchTerms={searchTokens}
           onSubmitSearchTerms={handleSearchTokenChange}
         />
-        {isNotHidden(currentCustomer.data.features, 'universe.import') && (
-          <Link to="/universes/import">
-            <YBButton
-              btnClass="universe-button btn btn-lg btn-default"
-              disabled={isDisabled(currentCustomer.data.features, 'universe.import')}
-              btnText="Import Universe"
-              btnIcon="fa fa-mail-forward"
-            />
-          </Link>
-        )}
         {isNotHidden(currentCustomer.data.features, 'universe.create') && (
           <Link to="/universes/create">
             <YBButton
