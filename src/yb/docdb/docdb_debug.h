@@ -23,6 +23,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "yb/docdb/doc_operation.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_types.h"
 
@@ -61,6 +62,8 @@ std::string DocDBDebugDumpToStr(
     DocDB docdb,
     SchemaPackingProvider* schema_packing_provider /*null ok*/,
     IncludeBinary include_binary = IncludeBinary::kFalse);
+
+std::string DocDBDebugDumpToStr(const DocOperationApplyData& data);
 
 void DocDBDebugDumpToContainer(
     DocDB docdb,

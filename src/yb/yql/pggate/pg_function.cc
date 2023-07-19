@@ -19,7 +19,11 @@
 
 #include "yb/client/yb_op.h"
 
+#include "yb/common/transaction.h"
+
 #include "yb/rpc/rpc_fwd.h"
+
+#include "yb/util/result.h"
 
 #include "yb/yql/pggate/pg_function.h"
 #include "yb/yql/pggate/pg_function_helpers.h"
@@ -208,8 +212,13 @@ Result<PgTableRow> AddLock(
     RETURN_NOT_OK(SetColumnValue("column_id", lock.column_id(), schema, &row));
   RETURN_NOT_OK(SetColumnValue("multiple_rows_locked", lock.multiple_rows_locked(), schema, &row));
 
-  // TODO: Add this when the field has been added to the protobuf
-  // RETURN_NOT_OK(SetColumnValue("blocked_by", l.blocked_by(), schema, &row));
+  std::vector<std::string> decoded_blocker_txn_ids;
+  decoded_blocker_txn_ids.reserve(lock.blocking_txn_ids().size());
+  for (const auto& blocking_txn_id : lock.blocking_txn_ids()) {
+    decoded_blocker_txn_ids.push_back(
+        VERIFY_RESULT(FullyDecodeTransactionId(blocking_txn_id)).ToString());
+  }
+  RETURN_NOT_OK(SetColumnValue("blocked_by", decoded_blocker_txn_ids, schema, &row));
 
   return row;
 }

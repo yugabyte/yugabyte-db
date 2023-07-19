@@ -34,6 +34,7 @@ struct DocOperationApplyData {
   DocRowwiseIterator* iterator;
   // Whether we should restart seek while fetching entry from doc key.
   bool restart_seek;
+  SchemaPackingProvider* schema_packing_provider;  // null okay
 
   CoarseTimePoint deadline() const {
     return read_operation_data.deadline;

@@ -101,7 +101,8 @@ YbSeqNext(YbSeqScanState *node)
 										estate->es_snapshot,
 										(Scan *) plan,
 										yb_pushdown,
-										node->aggrefs);
+										node->aggrefs,
+										&estate->yb_exec_params);
 		node->ss.ss_currentScanDesc = scandesc;
 	}
 

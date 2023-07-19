@@ -46,6 +46,7 @@ module.exports = {
     'plugin:react/recommended',
     'plugin:@typescript-eslint/recommended',
     'plugin:react-hooks/recommended',
+    'plugin:storybook/recommended',
     // Disable rules that conflict with Prettier
     // Prettier must be last to override other configs
     'prettier'
