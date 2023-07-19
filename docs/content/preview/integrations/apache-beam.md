@@ -20,7 +20,7 @@ To use Apache Beam, ensure that you have YugabyteDB up and running. Download and
 
 To run Apache Beam with YugabyteDB, do the following:
 
-1. Create a folder "apache-beam-test" as follows:
+1. Create a folder `apache-beam-test` as follows:
 
     ```sh
     mkdir apache-beam-test && cd apache-beam-test
