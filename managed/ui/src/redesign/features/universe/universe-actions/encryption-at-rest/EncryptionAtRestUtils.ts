@@ -5,7 +5,7 @@ import { KmsConfig } from '../../universe-form/utils/dto';
 //styles
 export const useMKRStyles = makeStyles((theme) => ({
   container: {
-    backgroundColor: theme.palette.ybacolors.backgroundGray.lightest,
+    backgroundColor: theme.palette.ybacolors.backgroundGrayLightest,
     border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`,
     borderRadius: theme.spacing(1)
   },
