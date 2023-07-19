@@ -309,7 +309,7 @@ Default: `-1`, where the number of shards is determined at runtime, as follows:
 
 - If [enable_automatic_tablet_splitting](#enable-automatic-tablet-splitting) is `true`
   - The default value is considered as `1`.
-  - For version `2.16.5` and later, for servers with 4 CPU cores or less, the number of tablets for each table doesn't depend on the number of YB-TServers. Instead, for 2 CPU cores or less, 1 tablet per cluster is created; for 4 CPU cores or less, 2 tablets per cluster are created.
+  - For version 2.16.5 and later, for servers with 4 CPU cores or less, the number of tablets for each table doesn't depend on the number of YB-TServers. Instead, for 2 CPU cores or less, 1 tablet per cluster is created; for 4 CPU cores or less, 2 tablets per cluster are created.
 
 - If `enable_automatic_tablet_splitting` is `false`
   - For servers with up to two CPU cores, the default value is considered as `4`.
@@ -322,7 +322,7 @@ Clusters created using `yugabyted` always use a default value of `1`.
 {{< note title="Note" >}}
 
 - This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
-- If the value is set to *Default* (`-1`), then the system automatically determines an appropriate value based on the number of CPU cores and internally *updates* the flag with the intended value during startup prior to version `2.16.5` and the flag remains *unchanged* starting from version `2.16.5`.
+- If the value is set to *Default* (`-1`), then the system automatically determines an appropriate value based on the number of CPU cores and internally *updates* the flag with the intended value during startup prior to version 2.16.5 and the flag remains *unchanged* starting from version 2.16.5.
 - The [`CREATE TABLE ... WITH TABLETS = <num>`](../../../api/ycql/ddl_create_table/#create-a-table-specifying-the-number-of-tablets) clause can be used on a per-table basis to override the `yb_num_shards_per_tserver` value.
 
 {{< /note >}}
@@ -335,7 +335,7 @@ Default: `-1`, where the number of shards is determined at runtime, as follows:
 
 - If [enable_automatic_tablet_splitting](#enable-automatic-tablet-splitting) is `true`
   - The default value is considered as `1`.
-  - For version `2.16.5` and later, for servers with 4 CPU cores or less, the number of tablets for each table doesn't depend on the number of YB-TServers. Instead, for 2 CPU cores or less, 1 tablet per cluster is created; for 4 CPU cores or less, 2 tablets per cluster are created.
+  - For version 2.16.5 and later, for servers with 4 CPU cores or less, the number of tablets for each table doesn't depend on the number of YB-TServers. Instead, for 2 CPU cores or less, 1 tablet per cluster is created; for 4 CPU cores or less, 2 tablets per cluster are created.
 
 - If `enable_automatic_tablet_splitting` is `false`
   - For servers with up to two CPU cores, the default value is considered as `2`.
@@ -349,7 +349,7 @@ Clusters created using `yugabyted` always use a default value of `1`.
 {{< note title="Note" >}}
 
 - This value must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
-- If the value is set to *Default* (`-1`), the system automatically determines an appropriate value based on the number of CPU cores and internally *updates* the flag with the intended value during startup prior to version `2.16.5` and the flag remains *unchanged* starting from version `2.16.5`.
+- If the value is set to *Default* (`-1`), the system automatically determines an appropriate value based on the number of CPU cores and internally *updates* the flag with the intended value during startup prior to version 2.16.5 and the flag remains *unchanged* starting from version 2.16.5.
 - The [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause can be used on a per-table basis to override the `ysql_num_shards_per_tserver` value.
 
 {{< /note >}}
