@@ -408,7 +408,7 @@ To run RabbitMQ with YugabyteDB, do the following:
     }
     ```
 
-1. Finally, create a class "Recv.java" in the "src" folder which consumes the records from the queue and outputs to the console:
+1. Finally, create a class `Recv.java` in the `src` folder which consumes the records from the queue and outputs to the console:
 
     ```java
 
