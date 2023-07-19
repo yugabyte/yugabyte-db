@@ -779,6 +779,14 @@ Status TabletServer::DisplayRpcIcons(std::stringstream* output) {
       "/statements", FLAGS_pgsql_proxy_bind_address, FLAGS_pgsql_proxy_webserver_port,
       http_addr_host, &sql_all_url));
   DisplayIconTile(output, "fa-tasks", "YSQL All Ops", sql_all_url);
+
+  // YCQL All Ops
+  string cql_all_url;
+  RETURN_NOT_OK(GetDynamicUrlTile(
+      "/statements", FLAGS_cql_proxy_bind_address, FLAGS_cql_proxy_webserver_port,
+      http_addr_host, &cql_all_url));
+  DisplayIconTile(output, "fa-tasks", "YCQL All Ops", cql_all_url);
+
   return Status::OK();
 }
 
