@@ -3359,6 +3359,6 @@ void ProcSetNodeUUID(const char *node_uuid) {
 	strcpy(MyProc->node_uuid, node_uuid);
 }
 
-void ProcSetTopRequestId(const char *top_level_request_id) {
-	strcpy(MyProc->top_level_request_id, top_level_request_id);
+void ProcSetTopRequestId(const uint64_t *top_level_request_id) {
+	memcpy(MyProc->top_level_request_id, top_level_request_id, 2);
 }

@@ -38,4 +38,6 @@ namespace yb {
 
 std::string GenerateObjectId(bool binary_id = false);
 
+uint64_t GenerateRandomId();
+
 } // namespace yb

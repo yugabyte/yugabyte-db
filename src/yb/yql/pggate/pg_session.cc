@@ -915,8 +915,8 @@ void PgSession::SetQueryId(int64_t query_id) {
 }
 
 void PgSession::SetTopLevelRequestId() {
-  auh_metadata_.top_level_request_id = GenerateObjectId();
-  pg_callbacks_.ProcSetTopRequestId(auh_metadata_.top_level_request_id.c_str());
+  auh_metadata_.top_level_request_id = {GenerateRandomId(), GenerateRandomId()};
+  pg_callbacks_.ProcSetTopRequestId(&auh_metadata_.top_level_request_id[0]);
 }
 
 }  // namespace pggate

@@ -106,7 +106,7 @@ YB_DEFINE_ENUM_TYPE(
     )
 
 struct AUHMetadata {
-  std::string top_level_request_id;
+  std::vector<uint64_t> top_level_request_id;
   std::string top_level_node_id;
   int64_t query_id = 0;
   int64_t current_request_id = 0;
@@ -137,8 +137,9 @@ struct AUHMetadata {
 
   template <class PB>
   void ToPB(PB* pb) const {
-    if (!top_level_request_id.empty()) {
-      pb->set_top_level_request_id(top_level_request_id);
+    if ((int)top_level_request_id.size() == 2) {
+      pb->add_top_level_request_id(top_level_request_id[0]);
+      pb->add_top_level_request_id(top_level_request_id[1]);
     }
     if (!top_level_node_id.empty()) {
       pb->set_top_level_node_id(top_level_node_id);
@@ -157,7 +158,7 @@ struct AUHMetadata {
   template <class PB>
   static AUHMetadata FromPB(const PB& pb) {
     return AUHMetadata{
-        .top_level_request_id = pb.top_level_request_id(),
+        .top_level_request_id = std::vector<uint64_t>(pb.top_level_request_id().begin(), pb.top_level_request_id().end()),
         .top_level_node_id = pb.top_level_node_id(),
         .query_id = pb.query_id(),
         .current_request_id = pb.current_request_id(),
@@ -171,7 +172,7 @@ struct AUHMetadata {
       top_level_node_id = pb.top_level_node_id();
     }
     if (pb.has_top_level_request_id()) {
-      top_level_request_id = pb.top_level_request_id();
+      top_level_request_id = std::vector<uint64_t>(pb.top_level_request_id().begin(), pb.top_level_request_id().end());
     }
     if (pb.has_query_id()) {
       query_id = pb.query_id();

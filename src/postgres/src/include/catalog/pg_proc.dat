@@ -10447,18 +10447,4 @@
   prorettype => 'cstring', proargtypes => '',
   prosrc => 'yb_get_effective_transaction_isolation_level' },
 
-{ oid => '8061',
-  descr => 'Display Wait Event Info Metadata',
-  proname => 'yb_wait_metadata', provolatile => 's',
-  proparallel => 'r', prorettype => 'record', proargtypes => 'int4',
-  proallargtypes => '{varchar,int8,int8,varchar,varchar}',
-  proargmodes => '{o,o,o,o,o}',
-  proargnames => '{remote_host, remote_port, queryid, node_uuid, top_request_id}',
-  prosrc => 'yb_wait_metadata' },
-
-{ oid => '8062', descr => 'statistics: information about currently active rpcs in tserver',
-  proname => 'tserver_stat_get_activity', prorows => '100', proisstrict => 'f',
-  proretset => 't', provolatile => 'v', prorettype => 'text',
-  proargtypes => '', proallargtypes => '{text}', proargmodes => '{o}',
-  proargnames => '{wait_state}', prosrc => 'tserver_stat_get_activity' },
 ]

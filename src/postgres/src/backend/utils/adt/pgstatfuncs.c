@@ -2153,146 +2153,146 @@ yb_pg_stat_retrieve_concurrent_index_progress()
 	return progress;
 }
 
-Datum
-yb_wait_metadata(PG_FUNCTION_ARGS)
-{
-	int32		beid = PG_GETARG_INT32(0);
-	PgBackendStatus *beentry;
-	PGPROC	   *proc;
+// Datum
+// yb_wait_metadata(PG_FUNCTION_ARGS)
+// {
+// 	int32		beid = PG_GETARG_INT32(0);
+// 	PgBackendStatus *beentry;
+// 	PGPROC	   *proc;
 
-	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
-		PG_RETURN_NULL();
-	else if (!has_privs_of_role(GetUserId(), beentry->st_userid))
-		PG_RETURN_NULL();
-	else if ((proc = BackendPidGetProc(beentry->st_procpid)) == NULL)
-		PG_RETURN_NULL();
+// 	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+// 		PG_RETURN_NULL();
+// 	else if (!has_privs_of_role(GetUserId(), beentry->st_userid))
+// 		PG_RETURN_NULL();
+// 	else if ((proc = BackendPidGetProc(beentry->st_procpid)) == NULL)
+// 		PG_RETURN_NULL();
 
-#define YB_WAIT_METADATA_COLS	5
-	Datum		values[YB_WAIT_METADATA_COLS];
-	bool		nulls[YB_WAIT_METADATA_COLS];
-	TupleDesc	tupdesc;
+// #define YB_WAIT_METADATA_COLS	5
+// 	Datum		values[YB_WAIT_METADATA_COLS];
+// 	bool		nulls[YB_WAIT_METADATA_COLS];
+// 	TupleDesc	tupdesc;
 
-	MemSet(values, 0, sizeof(values));
-	MemSet(nulls, 0, sizeof(nulls));
+// 	MemSet(values, 0, sizeof(values));
+// 	MemSet(nulls, 0, sizeof(nulls));
 
-		/* Initialise attributes information in the tuple descriptor */
-	tupdesc = CreateTemplateTupleDesc(YB_WAIT_METADATA_COLS, false);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "remote_host",
-					   TEXTOID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "remote_port",
-					   INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "queryid",
-					   INT8OID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 4, "node_uuid",
-					   TEXTOID, -1, 0);
-	TupleDescInitEntry(tupdesc, (AttrNumber) 5, "top_level_request_id",
-					   TEXTOID, -1, 0);
+// 		/* Initialise attributes information in the tuple descriptor */
+// 	tupdesc = CreateTemplateTupleDesc(YB_WAIT_METADATA_COLS, false);
+// 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "remote_host",
+// 					   TEXTOID, -1, 0);
+// 	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "remote_port",
+// 					   INT8OID, -1, 0);
+// 	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "queryid",
+// 					   INT8OID, -1, 0);
+// 	TupleDescInitEntry(tupdesc, (AttrNumber) 4, "node_uuid",
+// 					   TEXTOID, -1, 0);
+// 	TupleDescInitEntry(tupdesc, (AttrNumber) 5, "top_level_request_id",
+// 					   TEXTOID, -1, 0);
 
-	BlessTupleDesc(tupdesc);
+// 	BlessTupleDesc(tupdesc);
 
-	if (strlen(proc->remote_host) > 0)
-		values[0] = CStringGetTextDatum(proc->remote_host);
-	else
-		nulls[0] = true;
-	ereport(LOG, (errmsg("Set remote host: %s: %s", proc->remote_host, DatumGetCString(values[0]))));
+// 	if (strlen(proc->remote_host) > 0)
+// 		values[0] = CStringGetTextDatum(proc->remote_host);
+// 	else
+// 		nulls[0] = true;
+// 	ereport(LOG, (errmsg("Set remote host: %s: %s", proc->remote_host, DatumGetCString(values[0]))));
 
-	if (proc->remote_port != 0)
-		values[1] = Int32GetDatum(proc->remote_port);
-	else
-		nulls[1] = true;
+// 	if (proc->remote_port != 0)
+// 		values[1] = Int32GetDatum(proc->remote_port);
+// 	else
+// 		nulls[1] = true;
 
-	ereport(LOG, (errmsg("Set remote port: %d", proc->remote_port)));
+// 	ereport(LOG, (errmsg("Set remote port: %d", proc->remote_port)));
 
-	values[2] = Int64GetDatum(proc->queryid);
-	ereport(LOG, (errmsg("Set queryid: " INT64_FORMAT, proc->queryid)));
+// 	values[2] = Int64GetDatum(proc->queryid);
+// 	ereport(LOG, (errmsg("Set queryid: " INT64_FORMAT, proc->queryid)));
 
-	if (strlen(proc->node_uuid) > 0)
-		values[3] = CStringGetTextDatum(proc->node_uuid);
-	else
-		nulls[3] = true;
-	ereport(LOG, (errmsg("Set node uuid: %s", proc->node_uuid)));
+// 	if (strlen(proc->node_uuid) > 0)
+// 		values[3] = CStringGetTextDatum(proc->node_uuid);
+// 	else
+// 		nulls[3] = true;
+// 	ereport(LOG, (errmsg("Set node uuid: %s", proc->node_uuid)));
 
-	if (strlen(proc->top_level_request_id) > 0)
-		values[4] = CStringGetTextDatum(proc->top_level_request_id);
-	else
-	 	nulls[4] = true;
-	ereport(LOG, (errmsg("Set top level request id: %s", proc->top_level_request_id)));
+// 	if (strlen(proc->top_level_request_id) > 0)
+// 		values[4] = CStringGetTextDatum(proc->top_level_request_id);
+// 	else
+// 	 	nulls[4] = true;
+// 	ereport(LOG, (errmsg("Set top level request id: %s", proc->top_level_request_id)));
 
-	/* Returns the record as Datum */
-	PG_RETURN_DATUM(HeapTupleGetDatum(
-									  heap_form_tuple(tupdesc, values, nulls)));
-}
+// 	/* Returns the record as Datum */
+// 	PG_RETURN_DATUM(HeapTupleGetDatum(
+// 									  heap_form_tuple(tupdesc, values, nulls)));
+// }
 
-/*
- * Returns the list of traces which are on.
- */
-Datum
-tserver_stat_get_activity(PG_FUNCTION_ARGS)
-{
-	FuncCallContext *funcctx;
+// /*
+//  * Returns the list of traces which are on.
+//  */
+// Datum
+// tserver_stat_get_activity(PG_FUNCTION_ARGS)
+// {
+// 	FuncCallContext *funcctx;
 
-	static int ncols = 9;
+// 	static int ncols = 9;
 
-	if (SRF_IS_FIRSTCALL())
-	{
-		MemoryContext oldcontext;
-		TupleDesc tupdesc;
+// 	if (SRF_IS_FIRSTCALL())
+// 	{
+// 		MemoryContext oldcontext;
+// 		TupleDesc tupdesc;
 
-		funcctx = SRF_FIRSTCALL_INIT();
-		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
-		tupdesc = CreateTemplateTupleDesc(ncols, false);
+// 		funcctx = SRF_FIRSTCALL_INIT();
+// 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+// 		tupdesc = CreateTemplateTupleDesc(ncols, false);
 
-		TupleDescInitEntry(tupdesc, (AttrNumber) 1,
-						   "top_level_request_id", TEXTOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 2,
-						   "client_node_ip", TEXTOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 3,
-						   "top_level_node_id", TEXTOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 4,
-						   "current_request_id", INT8OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 5,
-						   "query_id", INT8OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 6,
-						   "wait_status_code", INT8OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 7,
-						   "table_id", INT8OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 8,
-						   "tablet_id", INT8OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 9,
-						   "wait_status_code_as_string", TEXTOID, -1, 0);
+// 		TupleDescInitEntry(tupdesc, (AttrNumber) 1,
+// 						   "top_level_request_id", TEXTOID, -1, 0);
+// 		TupleDescInitEntry(tupdesc, (AttrNumber) 2,
+// 						   "client_node_ip", TEXTOID, -1, 0);
+// 		TupleDescInitEntry(tupdesc, (AttrNumber) 3,
+// 						   "top_level_node_id", TEXTOID, -1, 0);
+// 		TupleDescInitEntry(tupdesc, (AttrNumber) 4,
+// 						   "current_request_id", INT8OID, -1, 0);
+// 		TupleDescInitEntry(tupdesc, (AttrNumber) 5,
+// 						   "query_id", INT8OID, -1, 0);
+// 		TupleDescInitEntry(tupdesc, (AttrNumber) 6,
+// 						   "wait_status_code", INT8OID, -1, 0);
+// 		TupleDescInitEntry(tupdesc, (AttrNumber) 7,
+// 						   "table_id", INT8OID, -1, 0);
+// 		TupleDescInitEntry(tupdesc, (AttrNumber) 8,
+// 						   "tablet_id", INT8OID, -1, 0);
+// 		TupleDescInitEntry(tupdesc, (AttrNumber) 9,
+// 						   "wait_status_code_as_string", TEXTOID, -1, 0);
 
-		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+// 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
-		YBCAUHDescriptor *rpcs = NULL;
-		size_t numrpcs = 0;
-		HandleYBStatus(YBCActiveUniverseHistory(&rpcs, &numrpcs));
-		funcctx->max_calls = numrpcs;
-		funcctx->user_fctx = rpcs;
-		MemoryContextSwitchTo(oldcontext);
-	}
-	funcctx = SRF_PERCALL_SETUP();
-	if (funcctx->call_cntr < funcctx->max_calls)
-	{
-		Datum		values[ncols];
-		bool		nulls[ncols];
-		HeapTuple	tuple;
+// 		YBCAUHDescriptor *rpcs = NULL;
+// 		size_t numrpcs = 0;
+// 		HandleYBStatus(YBCActiveUniverseHistory(&rpcs, &numrpcs));
+// 		funcctx->max_calls = numrpcs;
+// 		funcctx->user_fctx = rpcs;
+// 		MemoryContextSwitchTo(oldcontext);
+// 	}
+// 	funcctx = SRF_PERCALL_SETUP();
+// 	if (funcctx->call_cntr < funcctx->max_calls)
+// 	{
+// 		Datum		values[ncols];
+// 		bool		nulls[ncols];
+// 		HeapTuple	tuple;
 
-		int cntr = funcctx->call_cntr;
-		YBCAUHDescriptor *rpc = (YBCAUHDescriptor *)funcctx->user_fctx + cntr;
+// 		int cntr = funcctx->call_cntr;
+// 		YBCAUHDescriptor *rpc = (YBCAUHDescriptor *)funcctx->user_fctx + cntr;
 
-		values[0] = CStringGetTextDatum(rpc->metadata.top_level_request_id);
-		values[1] = CStringGetTextDatum(rpc->metadata.client_node_ip);
-		values[2] = CStringGetTextDatum(rpc->metadata.top_level_node_id);
-		values[3] = Int64GetDatum(rpc->metadata.current_request_id);
-		values[4] = Int64GetDatum(rpc->metadata.query_id);
-		values[5] = UInt64GetDatum(rpc->wait_status_code);
-		values[6] = Int64GetDatum(rpc->aux_info.table_id);
-		values[7] = Int64GetDatum(rpc->aux_info.tablet_id);
-		values[8] = CStringGetTextDatum(rpc->wait_status_code_as_string);
-		memset(nulls, 0, sizeof(nulls));
-		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
-		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
-	}
-	else
-		SRF_RETURN_DONE(funcctx);
-}
+// 		values[0] = CStringGetTextDatum(rpc->metadata.top_level_request_id);
+// 		values[1] = CStringGetTextDatum(rpc->metadata.client_node_ip);
+// 		values[2] = CStringGetTextDatum(rpc->metadata.top_level_node_id);
+// 		values[3] = Int64GetDatum(rpc->metadata.current_request_id);
+// 		values[4] = Int64GetDatum(rpc->metadata.query_id);
+// 		values[5] = UInt64GetDatum(rpc->wait_status_code);
+// 		values[6] = Int64GetDatum(rpc->aux_info.table_id);
+// 		values[7] = Int64GetDatum(rpc->aux_info.tablet_id);
+// 		values[8] = CStringGetTextDatum(rpc->wait_status_code_as_string);
+// 		memset(nulls, 0, sizeof(nulls));
+// 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+// 		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+// 	}
+// 	else
+// 		SRF_RETURN_DONE(funcctx);
+// }
