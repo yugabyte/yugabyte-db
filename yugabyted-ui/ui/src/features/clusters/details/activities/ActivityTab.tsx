@@ -2,7 +2,7 @@ import React, { FC } from "react";
 import { Box, Grid, makeStyles, MenuItem, Typography } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import { YBTable, YBLoadingBox, YBModal, YBSelect, YBButton } from "@app/components";
-import { YBBadge } from "@app/components/YBBadge/YBBadge";
+import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
 import { useActivities } from "./activities";
 import { GetClusterTablesApiEnum, useGetClusterTablesQuery } from "@app/api/src";
@@ -69,7 +69,7 @@ export const ActivityTab: FC = () => {
         )
       ),
     [clusterTablesResponseYsql?.data]
-  );;
+  );
 
   const [selectedDB, setSelectedDB] = React.useState<string>(ysqlDBList[0] ?? "");
   React.useEffect(() => {
@@ -81,13 +81,20 @@ export const ActivityTab: FC = () => {
     }
   }, [ysqlDBList]);
 
-  const { data: activityData, refetch: refetchActivities } = useActivities();
-  const [drawerOpenIndex, setDrawerOpenIndex] = React.useState<number>();
+  const { data: inProgressActivityData, refetch: refetchInProgressActivities } = useActivities(
+    "IN_PROGRESS",
+    selectedDB
+  );
+  const { data: completedActivityData, refetch: refetchCompletedActivities } =
+    useActivities("COMPLETED");
+
+  const [drawerOpenData, setDrawerOpenData] = React.useState<{ dataList: any[]; index: number }>();
 
   const refetch = React.useCallback(() => {
-    refetchActivities();
+    refetchInProgressActivities();
+    refetchCompletedActivities();
     refetchYsql();
-  }, [refetchActivities, refetchYsql]);
+  }, [refetchInProgressActivities, refetchCompletedActivities, refetchYsql]);
 
   const activityColumns = [
     {
@@ -102,9 +109,13 @@ export const ActivityTab: FC = () => {
       name: "Phase",
       label: t("clusterDetail.activity.status"),
       options: {
-        customBodyRenderLite: (dataIndex: number) => {
-          const activity = activityData[dataIndex];
-          return <YBBadge variant={activity.status} text={activity.Phase} />;
+        customBodyRender: (phase: string) => {
+          return (
+            <YBBadge
+              variant={phase === "Completed" ? BadgeVariant.Success : BadgeVariant.InProgress}
+              text={phase}
+            />
+          );
         },
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
@@ -129,12 +140,12 @@ export const ActivityTab: FC = () => {
   ];
 
   const activityValues = React.useMemo(() => {
-    if (drawerOpenIndex === undefined) {
+    if (drawerOpenData === undefined) {
       return undefined;
     }
 
-    return Object.entries<any>(activityData[drawerOpenIndex]);
-  }, [drawerOpenIndex, activityData]);
+    return Object.entries<any>(drawerOpenData.dataList[drawerOpenData.index]);
+  }, [drawerOpenData]);
 
   return (
     <Box>
@@ -150,7 +161,7 @@ export const ActivityTab: FC = () => {
         flexWrap="wrap"
       >
         <Box>
-          {ysqlDBList.length > 0 && (
+          {ysqlDBList.length >= 0 && (
             <>
               <Typography
                 variant="subtitle2"
@@ -179,28 +190,29 @@ export const ActivityTab: FC = () => {
           {t("clusterDetail.performance.actions.refresh")}
         </YBButton>
       </Box>
-      {activityData.length ? (
+      {inProgressActivityData.length ? (
         <Box pb={5}>
           <YBTable
-            data={activityData}
+            data={inProgressActivityData}
             columns={activityColumns}
             options={{
               pagination: false,
               rowHover: true,
-              onRowClick: (_, { dataIndex }) => setDrawerOpenIndex(dataIndex),
+              onRowClick: (_, { dataIndex }) =>
+                setDrawerOpenData({ dataList: inProgressActivityData, index: dataIndex }),
             }}
             touchBorder={false}
           />
           <YBModal
-            open={drawerOpenIndex !== undefined}
+            open={drawerOpenData !== undefined}
             title={t("clusterDetail.activity.details.title")}
-            onClose={() => setDrawerOpenIndex(undefined)}
+            onClose={() => setDrawerOpenData(undefined)}
             enableBackdropDismiss
             titleSeparator
             cancelLabel={t("common.close")}
             isSidePanel
           >
-            {drawerOpenIndex !== undefined && (
+            {drawerOpenData !== undefined && (
               <>
                 <Box className={classes.activityDetailBox}>
                   <Grid container spacing={2}>
@@ -209,7 +221,7 @@ export const ActivityTab: FC = () => {
                         {t("clusterDetail.activity.details.operationName")}
                       </Typography>
                       <Typography variant="body2" className={classes.value}>
-                        {activityData[drawerOpenIndex].name}
+                        {drawerOpenData.dataList[drawerOpenData.index].name}
                       </Typography>
                     </Grid>
                     <Grid xs={6} item>
@@ -217,8 +229,8 @@ export const ActivityTab: FC = () => {
                         {t("clusterDetail.activity.details.status")}
                       </Typography>
                       <YBBadge
-                        variant={activityData[drawerOpenIndex].status}
-                        text={activityData[drawerOpenIndex].Phase}
+                        variant={drawerOpenData.dataList[drawerOpenData.index].status}
+                        text={drawerOpenData.dataList[drawerOpenData.index].Phase}
                       />
                     </Grid>
                     {activityValues?.map(([key, value]) =>
@@ -257,15 +269,16 @@ export const ActivityTab: FC = () => {
       <Box className={classes.sectionHeading}>
         {t("clusterDetail.activity.completedActivities")}
       </Box>
-      {activityData.length ? (
+      {completedActivityData.length ? (
         <Box pb={4}>
           <YBTable
-            data={activityData}
+            data={completedActivityData}
             columns={activityColumns}
             options={{
               pagination: false,
               rowHover: true,
-              onRowClick: (_, { dataIndex }) => setDrawerOpenIndex(dataIndex),
+              onRowClick: (_, { dataIndex }) =>
+                setDrawerOpenData({ dataList: completedActivityData, index: dataIndex }),
             }}
             touchBorder={false}
           />

@@ -2,22 +2,29 @@ import { useGetClusterActivitiesQuery } from "@app/api/src";
 import { BadgeVariant } from "@app/components/YBBadge/YBBadge";
 import { useMemo } from "react";
 
-export const useActivities = () => {
-  const { data: upstreamActivities, refetch } = useGetClusterActivitiesQuery({
-    activities: "INDEX_BACKFILL",
-  });
+type ACTIVITY_STATUS = "IN_PROGRESS" | "COMPLETED";
+
+export const useActivities = (status?: ACTIVITY_STATUS, dbName?: string) => {
+  const { data: upstreamActivities, refetch } = useGetClusterActivitiesQuery(
+    {
+      activities: "INDEX_BACKFILL",
+      status,
+      database: dbName ?? null,
+    },
+    { query: { enabled: (status === "IN_PROGRESS" && dbName) || status === "COMPLETED" } }
+  );
 
   /* const upstreamActivities = {
     data: [
-        {
-          name: "INDEX_BACKFILL",
-          data: {
-            Duration: "4.85 s",
-            IndexName: "temp_index",
-            Phase: "Completed",
-            StartTime: "34.8 s ago",
-          },
+      {
+        name: "INDEX_BACKFILL",
+        data: {
+          Duration: "4.85 s",
+          IndexName: "temp_index",
+          Phase: "Completed",
+          StartTime: "34.8 s ago",
         },
+      },
       {
         name: "INDEX_BACKFILL",
         data: {
