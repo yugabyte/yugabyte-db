@@ -169,6 +169,13 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
     </a>
   </li>
 
+  <li>
+    <a href="metacat/">
+      <img src="/images/section_icons/develop/ecosystem/metabase.png">
+      Metacat
+    </a>
+  </li>
+
    <li>
     <a href="mirantis/">
       <img src="/images/section_icons/develop/ecosystem/mirantis.png">
