@@ -14,13 +14,14 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.*;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
-import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -1739,7 +1740,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param taskParams the given task params(details).
    */
   public void updateTaskDetailsInDB(UniverseDefinitionTaskParams taskParams) {
-    getRunnableTask().setTaskDetails(RedactingService.filterSecretFields(Json.toJson(taskParams)));
+    getRunnableTask()
+        .setTaskDetails(
+            RedactingService.filterSecretFields(Json.toJson(taskParams), RedactionTarget.APIS));
   }
 
   /**

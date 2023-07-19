@@ -3,7 +3,8 @@ package db.migration.default_.common;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -27,7 +28,7 @@ public class R__Redact_Secrets_From_Audit extends BaseJavaMigration {
       String payloadStr = resultSet.getString("payload");
       if (StringUtils.isNotEmpty(payloadStr)) {
         JsonNode payload = play.libs.Json.parse(payloadStr);
-        JsonNode newPayload = AuditService.filterSecretFields(payload);
+        JsonNode newPayload = RedactingService.filterSecretFields(payload, RedactionTarget.LOGS);
         if (!payload.equals(newPayload)) {
           updateStatement.setString(1, play.libs.Json.stringify(newPayload));
           updateStatement.setLong(2, id);
@@ -41,6 +42,6 @@ public class R__Redact_Secrets_From_Audit extends BaseJavaMigration {
   public Integer getChecksum() {
     int codeChecksum = 82918230; // Change me if you want to force migration to run
     MurmurHash3 murmurHash3 = new MurmurHash3();
-    return murmurHash3.arrayHash(AuditService.SECRET_PATHS.toArray(), codeChecksum);
+    return murmurHash3.arrayHash(RedactingService.SECRET_PATHS_FOR_LOGS.toArray(), codeChecksum);
   }
 }
