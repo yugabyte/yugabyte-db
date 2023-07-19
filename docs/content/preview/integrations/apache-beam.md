@@ -39,7 +39,7 @@ To run Apache Beam with YugabyteDB, do the following:
     pip install beam-nuggets
     ```
 
-1. Create a python file, "democode.py" and add the following code to it:
+1. Create a python file, `democode.py` and add the following code to it:
 
     ```python
     import apache_beam as beam
