@@ -325,6 +325,13 @@ message PgGetLockStatusResponsePB {
   }
 
   repeated NodeLockStatusResponsePB node_locks = 2;
+
+  message TransactionList {
+    repeated bytes transaction_ids = 1;
+  }
+
+  // Map of transactions keyed by the host node uuid.
+  map<string, TransactionList> transactions_by_node = 3;
 }
 
 message PgListLiveTabletServersRequestPB {

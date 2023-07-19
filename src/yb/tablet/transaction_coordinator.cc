@@ -263,6 +263,9 @@ class TransactionState {
     return is_external_;
   }
 
+  const auto& host_node_uuid() const {
+    return host_node_uuid_;
+  }
 
   std::string ToString() const {
     return Format("{ id: $0 last_touch: $1 status: $2 involved_tablets: $3 replicating: $4 "
@@ -701,6 +704,12 @@ class TransactionState {
       first_touch_ = request->request()->start_time();
       request->mutable_request()->clear_tablets();
     }
+    if (!state.host_node_uuid().empty()) {
+      if (host_node_uuid_.empty()) {
+        host_node_uuid_ = state.host_node_uuid();
+      }
+      DCHECK_EQ(host_node_uuid_, state.host_node_uuid());
+    }
 
     if (!status.ok()) {
       context_.CompleteWithStatus(std::move(request), std::move(status));
@@ -1004,6 +1013,8 @@ class TransactionState {
   std::deque<std::unique_ptr<tablet::UpdateTxnOperation>> request_queue_;
 
   std::vector<TransactionAbortCallback> abort_waiters_;
+  // Node uuid hosting the transaction at the query layer.
+  std::string host_node_uuid_;
 };
 
 struct CompleteWithStatusEntry {
@@ -1148,6 +1159,10 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         resp_txn->set_transaction_id(id.data(), id.size());
         *resp_txn->mutable_aborted_subtxn_set() = it->GetAbortedSubtxnInfo()->pb();
         resp_txn->set_start_time(it->first_touch());
+        const auto& host_node_uuid = it->host_node_uuid();
+        if (!host_node_uuid.empty()) {
+          resp_txn->set_host_node_uuid(host_node_uuid);
+        }
 
         for (const auto& tablet_id : it->pending_involved_tablets()) {
           resp_txn->add_tablets(tablet_id);
