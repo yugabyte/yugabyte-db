@@ -1276,7 +1276,7 @@ class WaitQueue::Impl {
         std::string doc_key_str;
         doc_key_str.reserve(partial_doc_key_slice.size() + 1);
         partial_doc_key_slice.AppendTo(&doc_key_str);
-        doc_key_str.append(&KeyEntryTypeAsChar::kGroupEnd);
+        doc_key_str.append(&KeyEntryTypeAsChar::kGroupEnd, 1);
 
         auto parsed_intent = ParsedIntent {
           .doc_path = Slice(doc_key_str.c_str(), doc_key_str.size()),
