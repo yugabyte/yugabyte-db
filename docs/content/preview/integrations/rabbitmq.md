@@ -461,7 +461,7 @@ To run RabbitMQ with YugabyteDB, do the following:
     valueSchema=Schema{dbserver1.public.test.Envelope:STRUCT}, timestamp=null, headers=ConnectHeaders(headers=)}]
     ```
 
-1. From the terminal where "Recv.java" runs, you can see a log output similar to the following:
+1. From the terminal where `Recv.java` runs, you can see a log output similar to the following:
 
     ```output
      [x] Received 'EmbeddedEngineChangeEvent [key={"schema":{"type":"struct","fields":[{"type":"struct","fields":[{"type":"int32","optional":false,"field":"value"},{"type":"boolean","optional":false,"field":"set"}],"optional":false,"name":"id","field":"id"}],"optional":false,"name":"dbserver1.public.test.Key"},"payload":{"id":{"value":8,"set":true}}},
