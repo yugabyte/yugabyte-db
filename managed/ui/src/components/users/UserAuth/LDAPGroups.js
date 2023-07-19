@@ -1,4 +1,3 @@
-import React from 'react';
 import * as Yup from 'yup';
 import { Box, MenuItem, IconButton, makeStyles } from '@material-ui/core';
 import { useFieldArray, useForm } from 'react-hook-form';
@@ -14,7 +13,7 @@ const useStyles = makeStyles((theme) => ({
     height: 40
   },
   mapTable: {
-    background: theme.palette.ybacolors.backgroundGray.lightest,
+    background: theme.palette.ybacolors.backgroundGrayLightest,
     border: `1px solid #CCCCCC`,
     borderRadius: theme.spacing(1),
     padding: theme.spacing(3)
