@@ -260,6 +260,7 @@ message GetOldTransactionsResponsePB {
     repeated bytes tablets = 2;
     optional SubtxnSetPB aborted_subtxn_set = 3;
     optional fixed64 start_time = 4;
+    optional string host_node_uuid = 5;
   }
   repeated OldTransactionMetadataPB txn = 2;
 

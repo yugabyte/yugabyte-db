@@ -56,6 +56,9 @@ message TransactionStatePB {
 
   // The time at which this transaction started at the client.
   optional fixed64 start_time = 10;
+
+  // Stores the uuid of the node hosting the transaction at the query layer.
+  optional string host_node_uuid = 11;
 }
 
 message TruncatePB {

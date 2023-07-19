@@ -1156,6 +1156,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         }
       }
     }
+    auto* local_ts = manager_->client()->GetLocalTabletServer();
+    if (local_ts) {
+      state.set_host_node_uuid(local_ts->permanent_uuid());
+    }
 
     if (aborted_set_for_rollback_heartbeat) {
       VLOG_WITH_PREFIX(4) << "Setting aborted_set_for_rollback_heartbeat: "
