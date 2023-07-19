@@ -242,7 +242,7 @@ To run RabbitMQ with YugabyteDB, do the following:
     </project>
     ```
 
-1. Create a "class App.java" file in the "src" folder, and add the following code to it. This is the entry point for your application to run:
+1. Create a `App.java` class file in the `src` folder, and add the following code to it. This is the entry point for your application to run:
 
     ```java
     public class App {
