@@ -76,7 +76,7 @@ To run Apache Beam with YugabyteDB, do the following:
         print('demo code ran successful')
     ```
 
-1. Run "democode.py" as follows:
+1. Run `democode.py` as follows:
 
     ```python
     python democode.py
