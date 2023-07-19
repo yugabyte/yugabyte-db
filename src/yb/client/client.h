@@ -647,6 +647,8 @@ class YBClient {
                             const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
                             const tserver::LocalTabletServer* local_tserver);
 
+  const internal::RemoteTabletServer* GetLocalTabletServer() const;
+
   // List only those tables whose names pass a substring match on 'filter'.
   //
   // 'tables' is appended to only on success.
