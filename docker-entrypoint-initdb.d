@@ -1,1 +1,0 @@
-docker-entrypoint-initdb.d
