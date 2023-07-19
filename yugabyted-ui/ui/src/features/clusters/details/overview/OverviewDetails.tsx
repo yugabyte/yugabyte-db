@@ -83,16 +83,12 @@ export const OverviewDetails: FC = () => {
   const { refetch: refetchAlerts } = useGetClusterAlertsQuery({ query: { enabled: false }});
 
   const refetch = () => {
-    if (currentTab === "tabOverview") {
-      refetchNodes();
-      refetchCluster();
-      refetchHealth();
-      refetchLoadBalancer();
-      refetchActivities();
-      refetchAlerts();
-    } else if (currentTab === "tabActivity") {
-      refetchActivities();
-    }
+    refetchNodes();
+    refetchCluster();
+    refetchHealth();
+    refetchLoadBalancer();
+    refetchActivities();
+    refetchAlerts();
   }
 
   const TabComponent = tabList.find(tab => tab.name === currentTab)?.component;
@@ -111,7 +107,7 @@ export const OverviewDetails: FC = () => {
             />
           ))}
         </Tabs>
-        {(currentTab === "tabOverview" || currentTab === "tabActivity") &&
+        {currentTab === "tabOverview" &&
           <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={refetch}>
             {t('clusterDetail.performance.actions.refresh')}
           </YBButton>

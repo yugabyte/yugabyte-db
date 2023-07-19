@@ -1,10 +1,12 @@
-import React, { FC, useMemo } from "react";
-import { Box, Grid, makeStyles, Typography } from "@material-ui/core";
+import React, { FC } from "react";
+import { Box, Grid, makeStyles, MenuItem, Typography } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import { YBTable, YBLoadingBox, YBModal } from "@app/components";
+import { YBTable, YBLoadingBox, YBModal, YBSelect, YBButton } from "@app/components";
 import { YBBadge } from "@app/components/YBBadge/YBBadge";
 import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
 import { useActivities } from "./activities";
+import { GetClusterTablesApiEnum, useGetClusterTablesQuery } from "@app/api/src";
+import RefreshIcon from "@app/assets/refresh.svg";
 
 const useStyles = makeStyles((theme) => ({
   arrowComponent: {
@@ -23,6 +25,7 @@ const useStyles = makeStyles((theme) => ({
   label: {
     color: theme.palette.grey[600],
     fontWeight: theme.typography.fontWeightMedium as number,
+    marginTop: theme.spacing(1),
     marginBottom: theme.spacing(0.5),
     textTransform: "uppercase",
     textAlign: "start",
@@ -30,6 +33,15 @@ const useStyles = makeStyles((theme) => ({
   value: {
     paddingBottom: theme.spacing(1),
     textAlign: "start",
+  },
+  selectBox: {
+    minWidth: "200px",
+  },
+  sectionHeading: {
+    fontWeight: 700,
+    fontSize: "15px",
+    color: theme.palette.grey[900],
+    margin: theme.spacing(3, 0, 1, 0.5),
   },
 }));
 
@@ -45,8 +57,37 @@ export const ActivityTab: FC = () => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const { data: activityData } = useActivities();
+  const { data: clusterTablesResponseYsql, refetch: refetchYsql } = useGetClusterTablesQuery({
+    api: GetClusterTablesApiEnum.Ysql,
+  });
+  const ysqlDBList = React.useMemo(
+    () =>
+      Array.from(
+        (clusterTablesResponseYsql?.data ?? []).reduce(
+          (prev, curr) => prev.add(curr.keyspace),
+          new Set<string>()
+        )
+      ),
+    [clusterTablesResponseYsql?.data]
+  );;
+
+  const [selectedDB, setSelectedDB] = React.useState<string>(ysqlDBList[0] ?? "");
+  React.useEffect(() => {
+    if (
+      (ysqlDBList.length > 0 && selectedDB === "") ||
+      !ysqlDBList.find((db) => db === selectedDB)
+    ) {
+      setSelectedDB(ysqlDBList[0] ?? "");
+    }
+  }, [ysqlDBList]);
+
+  const { data: activityData, refetch: refetchActivities } = useActivities();
   const [drawerOpenIndex, setDrawerOpenIndex] = React.useState<number>();
+
+  const refetch = React.useCallback(() => {
+    refetchActivities();
+    refetchYsql();
+  }, [refetchActivities, refetchYsql]);
 
   const activityColumns = [
     {
@@ -87,20 +128,59 @@ export const ActivityTab: FC = () => {
     },
   ];
 
-  const activityValues = useMemo(() => {
+  const activityValues = React.useMemo(() => {
     if (drawerOpenIndex === undefined) {
       return undefined;
     }
-
-    console.log(activityData[drawerOpenIndex]);
 
     return Object.entries<any>(activityData[drawerOpenIndex]);
   }, [drawerOpenIndex, activityData]);
 
   return (
     <Box>
+      <Box className={classes.sectionHeading}>
+        {t("clusterDetail.activity.inprogressActivities")}
+      </Box>
+      <Box
+        display="flex"
+        alignItems="end"
+        justifyContent="space-between"
+        pb={2}
+        gridGap={4}
+        flexWrap="wrap"
+      >
+        <Box>
+          {ysqlDBList.length > 0 && (
+            <>
+              <Typography
+                variant="subtitle2"
+                className={classes.label}
+                style={{ marginBottom: 0, marginLeft: 1.5 }}
+              >
+                {t("clusterDetail.activity.database")}
+              </Typography>
+              <YBSelect
+                className={classes.selectBox}
+                value={selectedDB}
+                onChange={(e) => setSelectedDB(e.target.value)}
+              >
+                {ysqlDBList.map((dbName) => {
+                  return (
+                    <MenuItem key={dbName} value={dbName}>
+                      {dbName}
+                    </MenuItem>
+                  );
+                })}
+              </YBSelect>
+            </>
+          )}
+        </Box>
+        <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={refetch}>
+          {t("clusterDetail.performance.actions.refresh")}
+        </YBButton>
+      </Box>
       {activityData.length ? (
-        <Box pb={4} pt={1}>
+        <Box pb={5}>
           <YBTable
             data={activityData}
             columns={activityColumns}
@@ -171,7 +251,27 @@ export const ActivityTab: FC = () => {
           </YBModal>
         </Box>
       ) : (
-        <YBLoadingBox>{t("clusterDetail.activity.noactivities")}</YBLoadingBox>
+        <YBLoadingBox>{t("clusterDetail.activity.noInprogressActivities")}</YBLoadingBox>
+      )}
+
+      <Box className={classes.sectionHeading}>
+        {t("clusterDetail.activity.completedActivities")}
+      </Box>
+      {activityData.length ? (
+        <Box pb={4}>
+          <YBTable
+            data={activityData}
+            columns={activityColumns}
+            options={{
+              pagination: false,
+              rowHover: true,
+              onRowClick: (_, { dataIndex }) => setDrawerOpenIndex(dataIndex),
+            }}
+            touchBorder={false}
+          />
+        </Box>
+      ) : (
+        <YBLoadingBox>{t("clusterDetail.activity.noCompletedActivities")}</YBLoadingBox>
       )}
     </Box>
   );
