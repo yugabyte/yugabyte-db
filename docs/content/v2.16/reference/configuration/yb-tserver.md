@@ -329,7 +329,7 @@ Clusters created using `yugabyted` always use a default value of `1`.
 
 ##### --ysql_num_shards_per_tserver
 
-The number of shards (tablets) per YB-TServer for each YCQL table when a user table is created.
+The number of shards (tablets) per YB-TServer for each YSQL table when a user table is created.
 
 Default: `-1`, where the number of shards is determined at runtime, as follows:
 
