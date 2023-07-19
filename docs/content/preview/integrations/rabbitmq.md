@@ -333,7 +333,7 @@ To run RabbitMQ with YugabyteDB, do the following:
     }
     ```
 
-1. Create a "Send.java" class in the "src" folder. This creates a channel between the producer and the queue and then publishes the message to the queue:
+1. Create a `Send.java` class in the `src` folder. This creates a channel between the producer and the queue and then publishes the message to the queue:
 
     ```java
 
