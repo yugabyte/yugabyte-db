@@ -80,6 +80,16 @@ extern int ysql_session_max_batch_size;
 extern int ysql_max_in_flight_ops;
 
 /*
+ * Guc variable that sets the minimum transaction age, in ms, to report when using yb_lock_status().
+ */
+extern int yb_locks_min_txn_age;
+
+/*
+ * Guc variable that sets the number of transactions to return results for in yb_lock_status().
+ */
+extern int yb_locks_max_transactions;
+
+/*
  * Guc variable to enable binary restore from a binary backup of YSQL tables. When doing binary
  * restore, we copy the docdb SST files of those tables from the source database and reuse them
  * for a newly created target database to restore those tables.
