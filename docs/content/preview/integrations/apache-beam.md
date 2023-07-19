@@ -95,7 +95,7 @@ To run Apache Beam with YugabyteDB, do the following:
     You can see the following output:
 
     ```output
-         num | name
+     num | name
     -----+------
        5 | May
        1 | Jan
