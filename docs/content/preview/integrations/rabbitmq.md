@@ -449,7 +449,7 @@ To run RabbitMQ with YugabyteDB, do the following:
     INSERT into test values (1, Jake, 20);
     ```
 
-1. From the terminal where "App.java" runs, you can see a log output similar to the following:
+1. From the terminal where `App.java` runs, you can see a log output similar to the following:
 
     ```output
     [x] Sent 'EmbeddedEngineChangeEvent [key={"schema":{"type":"struct","fields":[{"type":"struct","fields":[{"type":"int32","optional":false,"field":"value"},{"type":"boolean","optional":false,"field":"set"}],"optional":false,"name":"id","field":"id"}],"optional":false,"name":"dbserver1.public.test.Key"},"payload":{"id":{"value":8,"set":true}}}
