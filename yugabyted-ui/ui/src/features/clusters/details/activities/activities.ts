@@ -4,14 +4,14 @@ import { useMemo } from "react";
 
 type ACTIVITY_STATUS = "IN_PROGRESS" | "COMPLETED";
 
-export const useActivities = (status?: ACTIVITY_STATUS, dbName?: string) => {
+export const useActivities = (status: ACTIVITY_STATUS, database?: string) => {
   const { data: upstreamActivities, refetch } = useGetClusterActivitiesQuery(
     {
       activities: "INDEX_BACKFILL",
       status,
-      database: dbName ?? null,
+      database,
     },
-    { query: { enabled: (status === "IN_PROGRESS" && dbName) || status === "COMPLETED" } }
+    { query: { enabled: (status === "IN_PROGRESS" && !!database) || status === "COMPLETED" } }
   );
 
   /* const upstreamActivities = {
