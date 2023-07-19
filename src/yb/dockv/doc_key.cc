@@ -232,19 +232,19 @@ KeyBytes DocKey::Encode() const {
 namespace {
 
 // Used as cache of allocated memory by EncodeAsRefCntPrefix.
-thread_local boost::optional<KeyBytes> thread_local_encode_buffer;
+thread_local std::optional<KeyBytes> thread_local_encode_buffer;
 
 }
 
-RefCntPrefix DocKey::EncodeAsRefCntPrefix() const {
-  KeyBytes* encode_buffer = thread_local_encode_buffer.get_ptr();
-  if (!encode_buffer) {
+RefCntPrefix DocKey::EncodeAsRefCntPrefix(Slice suffix) const {
+  if (!thread_local_encode_buffer) {
     thread_local_encode_buffer.emplace();
-    encode_buffer = thread_local_encode_buffer.get_ptr();
   }
-  encode_buffer->Clear();
-  AppendTo(encode_buffer);
-  return RefCntPrefix(encode_buffer->AsSlice());
+  auto& encode_buffer = *thread_local_encode_buffer;
+  encode_buffer.Clear();
+  AppendTo(&encode_buffer);
+  encode_buffer.AppendRawBytes(suffix);
+  return RefCntPrefix(encode_buffer.AsSlice());
 }
 
 void DocKey::AppendTo(KeyBytes* out) const {
@@ -1021,8 +1021,8 @@ int SubDocKey::CompareToIgnoreHt(const SubDocKey& other) const {
   return result;
 }
 
-string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes) {
-  rocksdb::Slice mutable_slice(key_bytes.AsSlice());
+string BestEffortDocDBKeyToStr(Slice key) {
+  Slice mutable_slice = key;
   SubDocKey subdoc_key;
   Status decode_status = subdoc_key.DecodeFrom(
       &mutable_slice, HybridTimeRequired::kFalse, AllowSpecial::kTrue);
@@ -1042,11 +1042,11 @@ string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes) {
   }
 
   // We could not decode a SubDocKey at all, even without a hybrid_time.
-  return key_bytes.ToString();
+  return key.ToDebugString();
 }
 
-std::string BestEffortDocDBKeyToStr(const rocksdb::Slice& slice) {
-  return BestEffortDocDBKeyToStr(KeyBytes(slice));
+std::string BestEffortDocDBKeyToStr(const KeyBytes& key_bytes) {
+  return BestEffortDocDBKeyToStr(key_bytes.AsSlice());
 }
 
 KeyBytes SubDocKey::AdvanceOutOfSubDoc() const {

@@ -101,16 +101,16 @@ class DocDBTableReader {
   // Returns true if value was found, false otherwise.
   // FetchedEntry will contain last entry fetched by the iterator.
   Result<DocReaderResult> Get(
-      Slice root_doc_key, const FetchedEntry& fetched_entry, dockv::SubDocument* result);
+      KeyBuffer* root_doc_key, const FetchedEntry& fetched_entry, dockv::SubDocument* result);
 
   // Same as get, but for rows that have doc keys with only one subkey.
   // This is always true for YSQL.
   // result shouldn't be nullptr and will be filled with the same number of primitives as number of
   // columns passed to ctor in projection and in the same order.
   Result<DocReaderResult> GetFlat(
-      Slice root_doc_key, const FetchedEntry& fetched_entry, qlexpr::QLTableRow* result);
+      KeyBuffer* root_doc_key, const FetchedEntry& fetched_entry, qlexpr::QLTableRow* result);
   Result<DocReaderResult> GetFlat(
-      Slice root_doc_key, const FetchedEntry& fetched_entry, dockv::PgTableRow* result);
+      KeyBuffer* root_doc_key, const FetchedEntry& fetched_entry, dockv::PgTableRow* result);
 
  private:
   // Initializes the reader to read a row at sub_doc_key by seeking to and reading obsolescence info
@@ -119,7 +119,7 @@ class DocDBTableReader {
 
   template <class Res>
   Result<DocReaderResult> DoGetFlat(
-      Slice root_doc_key, const FetchedEntry& fetched_entry, Res* result);
+      KeyBuffer* root_doc_key, const FetchedEntry& fetched_entry, Res* result);
 
   template <bool is_flat_doc, bool ysql, bool check_exists_only>
   class GetHelperBase;

@@ -137,6 +137,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   void FinalizeKeyFoundStats();
 
   Slice shared_key_prefix() const;
+  Slice upperbound() const;
 
   bool is_initialized_ = false;
 
