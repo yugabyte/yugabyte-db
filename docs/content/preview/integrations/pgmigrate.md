@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-[PGmigrate](https://github.com/yandex/pgmigrate) is a database migration tool with following key-features:
+[PGmigrate](https://github.com/yandex/pgmigrate) is a database migration tool with following key features:
 
 - Transactional and non-transactional migrations.
 - Callbacks: You can run some DDL on specific steps of migration process (for example, drop some code before executing migrations, and create it back after migrations were applied).
