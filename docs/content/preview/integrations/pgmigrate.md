@@ -40,4 +40,5 @@ To run the [PGmigrate tutorial](https://github.com/yandex/pgmigrate/blob/master/
     conn: host=127.0.1.1 dbname=foodb user=yugabyte password=yugabyte port=5433
     ```
 
-1. Proceed with tutorial using the preceding configuration.
+1. Proceed with the tutorial using the preceding configuration.
+
