@@ -442,7 +442,7 @@ To run RabbitMQ with YugabyteDB, do the following:
     [*] Waiting for messages. To exit press CTRL+C
     ```
 
-1. From a new terminal run the "App.java" class.
+1. From a new terminal run the `App.java` class.
 1. After both the applications are running, open the ysqlsh shell and insert a row into the test table as follows:
 
     ```sql
