@@ -14,7 +14,7 @@ type: docs
 [PGmigrate](https://github.com/yandex/pgmigrate) is a database migration tool with following key features:
 
 - Transactional and non-transactional migrations.
-- Callbacks: You can run some DDL on specific steps of migration process (for example, drop some code before executing migrations, and create it back after migrations were applied).
+- Callbacks: You can run some DDL on specific steps of the migration process (for example, drop some code before executing migrations, and create it back after migrations were applied).
 - Online migrations: You can execute series of transactional migrations and callbacks in a single transaction. So, if something goes wrong, a basic ROLLBACK will bring back the transaction to a consistent state.
 
 Because YugabyteDB's YSQL API is wire-compatible with PostgreSQL, PGmigrate can connect to YugabyteDB just like with PostgreSQL.
