@@ -14,6 +14,7 @@
 #pragma once
 
 #include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace docdb {
@@ -21,13 +22,12 @@ namespace docdb {
 class DeadlineInfo {
  public:
   explicit DeadlineInfo(CoarseTimePoint deadline);
-  bool CheckAndSetDeadlinePassed();
+  Status CheckDeadlinePassed();
   std::string ToString() const;
 
  private:
   CoarseTimePoint deadline_;
   uint32_t counter_ = 0;
-  bool deadline_passed_ = false;
 };
 
 // If TEST_tserver_timeout is true, set the deadline to now and sleep for 100ms to simulate a
