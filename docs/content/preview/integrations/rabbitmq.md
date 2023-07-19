@@ -260,7 +260,7 @@ To run RabbitMQ with YugabyteDB, do the following:
     }
     ```
 
-1. Create a configuration file "CmdLineOpts.java" in the "src" folder, where you can store the connection properties to connect to YugabyteDB. Add the following code to it. Set the "streamId" to the stream ID generated in step 1 :
+1. Create a configuration file `CmdLineOpts.java` in the `src` folder, where you can store the connection properties to connect to YugabyteDB. Add the following code to it. Set the "streamId" to the stream ID generated in step 1:
 
     ```java
 
