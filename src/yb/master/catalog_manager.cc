@@ -8689,8 +8689,9 @@ void CatalogManager::ProcessPendingNamespace(
   }
   TRACE("Done processing keyspace");
   LOG(INFO) << "Processed keyspace: " << ns->ToString();
+  auto has_transaction = metadata.has_transaction();
   ns_write_lock.Commit();
-  if (metadata.has_transaction()) {
+  if (has_transaction) {
     LOG(INFO) << "Enqueuing keyspace for Transaction Verification: " << ns->ToString();
     std::function<Status(bool)> when_done =
         std::bind(&CatalogManager::VerifyNamespacePgLayer, this, ns, _1);
