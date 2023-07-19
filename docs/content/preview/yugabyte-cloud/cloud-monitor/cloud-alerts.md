@@ -106,14 +106,14 @@ For information on scaling clusters, refer to [Scale and configure clusters](../
 
 #### Fix IOPS alerts
 
-YugabyteDB Managed sends a notification when the disk input output (I/O) operations per second (IOPS) on any node in the cluster exceeds the threshold, as follows:
+YugabyteDB Managed sends a notification when the disk input output (I/O) operations per second (IOPS) on any node in the cluster (AWS only) exceeds the threshold, as follows:
 
 - Node disk IOPS utilization exceeded 80% (Warning).
 - Node disk IOPS utilization reached 100% (Warning).
 
 For large datasets or clusters with high concurrent transactions, higher IOPS is recommended.
 
-If disk IOPS consistently exceeds 80% for any node, consider taking action to remove any bottlenecks on performance. For clusters deployed on AWS, increase the maximum disk IOPS per node. For clusters deployed in GCP and Azure, add more vCPUs or increase the disk size.
+If disk IOPS consistently exceeds 80% for any node, consider taking action to remove any bottlenecks on performance. For clusters deployed on AWS, increase the maximum disk IOPS per node. For clusters deployed in GCP and Azure, add more vCPUs and/or increase the disk size.
 
 For information on scaling clusters, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
