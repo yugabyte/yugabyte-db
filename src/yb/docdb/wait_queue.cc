@@ -685,10 +685,10 @@ class WaitQueue::Impl {
     for (const auto& entry : locks->Get()) {
       auto it = blockers_by_key_.find(entry.key);
       if (it == blockers_by_key_.end()) {
-        VLOG_WITH_PREFIX(5) << "No blockers found for key " << entry.key.ShortDebugString();
+        VLOG_WITH_PREFIX(5) << "No blockers found for key " << entry.key.ToString();
         continue;
       }
-      VLOG_WITH_PREFIX(4) << "Found blockers for key " << entry.key.ShortDebugString();
+      VLOG_WITH_PREFIX(4) << "Found blockers for key " << entry.key.ToString();
 
       for (const auto& blocker_id : it->second) {
         if (blocker_id == waiter_txn_id) {

@@ -83,6 +83,8 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
 
   HybridTime TEST_MaxSeenHt() override;
 
+  // key slice should point to block of memory, that contains kHighest after the end.
+  // So extended slice could be used as upperbound.
   Result<bool> PgFetchRow(Slice key, bool restart, dockv::PgTableRow* table_row);
   Result<bool> PgFetchNext(dockv::PgTableRow* table_row) override;
 
@@ -139,7 +141,8 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
   Status FillRow(dockv::PgTableRow* table_row);
 
   std::unique_ptr<IntentAwareIterator> db_iter_;
-  std::optional<IntentAwareIteratorPrefixScope> prefix_scope_;
+  KeyBuffer prefix_buffer_;
+  std::optional<IntentAwareIteratorUpperboundScope> upperbound_scope_;
 
   DocMode doc_mode_ = DocMode::kGeneric;
 

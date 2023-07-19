@@ -95,7 +95,7 @@ class IntentAwareIteratorIf {
   // contain the DocHybridTime but is returned separately and optionally.
   virtual Result<const FetchedEntry&> Fetch() = 0;
 
-  virtual void SetUpperbound(Slice upperbound) = 0;
+  virtual Slice SetUpperbound(Slice upperbound) = 0;
 
   // Helper function to get the current position of the iterator.
   virtual std::string DebugPosToString() = 0;
