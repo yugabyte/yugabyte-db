@@ -436,7 +436,7 @@ To run RabbitMQ with YugabyteDB, do the following:
     }
     ```
 
-1. Run the "Recv.java" class for the receiver to start listening. You can see output similar to the following:
+1. Run the `Recv.java` class for the receiver to start listening. You can see output similar to the following:
 
     ```output
     [*] Waiting for messages. To exit press CTRL+C
