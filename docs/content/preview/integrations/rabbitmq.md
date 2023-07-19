@@ -358,7 +358,7 @@ To run RabbitMQ with YugabyteDB, do the following:
     }
     ```
 
-1. Create an "EngineRunner.java" class in the "src" folder, which starts the debezium engine and captures the changes on the server side as records. It then calls the "Send.java" class's run API with the record that it received to publish it to the queue.
+1. Create an `EngineRunner.java` class in the `src` folder, which starts the Debezium engine and captures the changes on the server side as records. It then calls the `Send.java` class run API with the record that it received to publish it to the queue.
 
     ```java
 
