@@ -72,7 +72,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
             allowedBuckets,
             mockStorageUtilFactory,
             app.injector().instanceOf(RuntimeConfGetter.class),
-            mockAWSUtil));
+            mockAWSUtil,
+            mockGCPUtil));
     doCallRealMethod().when(mockAWSUtil).getConfigLocationInfo(any());
   }
 
