@@ -31,7 +31,7 @@ import Profile from './pages/Profile';
 import YugawareLogs from './pages/YugawareLogs';
 import Importer from './pages/Importer';
 import Releases from './pages/Releases';
-import { isDefinedNotNull, isNullOrEmpty } from './utils/ObjectUtils';
+import { isDefinedNotNull, isNullOrEmpty, objToQueryParams } from './utils/ObjectUtils';
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
 import { ReplicationDetails } from './components/xcluster';
@@ -43,8 +43,15 @@ import { DataCenterConfiguration } from './pages/DataCenterConfiguration';
  */
 const redirectToUrl = () => {
   const searchParam = new URLSearchParams(window.location.search);
-  const pathToRedirect = searchParam.get('orig_url');
-  pathToRedirect ? browserHistory.push(`/?orig_url=${pathToRedirect}`) : browserHistory.push('/');
+  const orig_url = searchParam.get('orig_url');
+  const user_not_found = searchParam.get('user_not_found');
+  //construct route
+  const paramsObj = {};
+  if (orig_url) paramsObj.orig_url = orig_url;
+  if (user_not_found) paramsObj.user_not_found = user_not_found;
+  const queryString = objToQueryParams(paramsObj);
+
+  browserHistory.push(queryString ? `/?${queryString}` : '/');
 };
 
 export const clearCredentials = () => {
@@ -119,9 +126,14 @@ axios.interceptors.response.use(
       //redirect to users current page
       const searchParam = new URLSearchParams(window.location.search);
       const location = searchParam.get('orig_url') ?? window.location.pathname;
-      browserHistory.push(
-        location && !['/', '/login'].includes(location) ? `/login?orig_url=${location}` : '/login'
-      );
+      const user_not_found = searchParam.get('user_not_found');
+      //construct route
+      const paramsObj = {};
+      if (location && !['/', '/login'].includes(location)) paramsObj.orig_url = location;
+      if (user_not_found) paramsObj.user_not_found = user_not_found;
+      const queryString = objToQueryParams(paramsObj);
+      //redirect to route
+      browserHistory.push(queryString ? `/login?${queryString}` : '/login');
     }
     return Promise.reject(error);
   }
@@ -135,6 +147,7 @@ function validateSession(store, replacePath, callback) {
   const searchParam = new URLSearchParams(window.location.search);
   if (_.isEmpty(customerId) || _.isEmpty(userId)) {
     const location = searchParam.get('orig_url') ?? window.location.pathname;
+    const user_not_found = searchParam.get('user_not_found');
     store.dispatch(fetchCustomerCount()).then((response) => {
       if (!response.error) {
         const responseData = response.payload.data;
@@ -144,9 +157,14 @@ function validateSession(store, replacePath, callback) {
       }
     });
     store.dispatch(customerTokenError());
-    location && location !== '/'
-      ? browserHistory.push(`/login?orig_url=${location}`)
-      : browserHistory.push('/login');
+
+    //construct route
+    const paramsObj = {};
+    if (location && location !== '/') paramsObj.orig_url = location;
+    if (user_not_found) paramsObj.user_not_found = user_not_found;
+    const queryString = objToQueryParams(paramsObj);
+    //redirect to route
+    browserHistory.push(queryString ? `/login?${queryString}` : '/login');
   } else {
     store.dispatch(validateToken()).then((response) => {
       if (response.error) {
