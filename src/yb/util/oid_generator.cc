@@ -87,6 +87,9 @@ std::string GenerateObjectId(bool binary_id) {
   return generator.Next(binary_id);
 }
 
+// Link to source codes for the classes below
+// https://github.com/open-telemetry/opentelemetry-cpp/blob/main/sdk/src/common/random.cc
+// https://github.com/open-telemetry/opentelemetry-cpp/blob/main/sdk/src/common/platform/fork_unix.cc
 namespace platform
 {
 int AtFork(void (*prepare)(), void (*parent)(), void (*child)()) noexcept
@@ -121,13 +124,13 @@ private:
 
 thread_local FastRandomNumberGenerator TlsRandomNumberGenerator::engine_{};
 
-FastRandomNumberGenerator &OtelRandom::GetRandomNumberGenerator() noexcept
+FastRandomNumberGenerator &GenerateRandomNumber::GetRandomNumberGenerator() noexcept
 {
   static thread_local TlsRandomNumberGenerator random_number_generator{};
   return TlsRandomNumberGenerator::engine();
 }
 
-uint64_t OtelRandom::GenerateRandom64() noexcept
+uint64_t GenerateRandomNumber::GenerateRandom64() noexcept
 {
   return GetRandomNumberGenerator()();
 }

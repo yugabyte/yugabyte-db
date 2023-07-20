@@ -38,6 +38,9 @@ namespace yb {
 
 std::string GenerateObjectId(bool binary_id = false);
 
+// Link to source codes for the classes below
+// https://github.com/open-telemetry/opentelemetry-cpp/blob/main/sdk/src/common/fast_random_number_generator.h
+// https://github.com/open-telemetry/opentelemetry-cpp/blob/main/sdk/src/common/random.h
 class FastRandomNumberGenerator
 {
 public:
@@ -84,7 +87,7 @@ private:
   std::array<uint64_t, 2> state_{};
 };
 
-class OtelRandom
+class GenerateRandomNumber
 {
 public:
   /**
