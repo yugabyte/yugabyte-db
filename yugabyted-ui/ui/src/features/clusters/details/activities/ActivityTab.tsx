@@ -203,64 +203,6 @@ export const ActivityTab: FC = () => {
             }}
             touchBorder={false}
           />
-          <YBModal
-            open={drawerOpenData !== undefined}
-            title={t("clusterDetail.activity.details.title")}
-            onClose={() => setDrawerOpenData(undefined)}
-            enableBackdropDismiss
-            titleSeparator
-            cancelLabel={t("common.close")}
-            isSidePanel
-          >
-            {drawerOpenData !== undefined && (
-              <>
-                <Box className={classes.activityDetailBox}>
-                  <Grid container spacing={2}>
-                    <Grid xs={6} item>
-                      <Typography variant="subtitle2" className={classes.label}>
-                        {t("clusterDetail.activity.details.operationName")}
-                      </Typography>
-                      <Typography variant="body2" className={classes.value}>
-                        {drawerOpenData.dataList[drawerOpenData.index].name}
-                      </Typography>
-                    </Grid>
-                    <Grid xs={6} item>
-                      <Typography variant="subtitle2" className={classes.label}>
-                        {t("clusterDetail.activity.details.status")}
-                      </Typography>
-                      <YBBadge
-                        variant={drawerOpenData.dataList[drawerOpenData.index].status}
-                        text={drawerOpenData.dataList[drawerOpenData.index].Phase}
-                      />
-                    </Grid>
-                    {activityValues?.map(([key, value]) =>
-                      key === "name" || key === "status" ? (
-                        <></>
-                      ) : (
-                        <Grid xs={6} item>
-                          <Typography variant="subtitle2" className={classes.label}>
-                            {key.split(/(?=[A-Z][^A-Z])/).join(" ")}
-                          </Typography>
-                          <Typography variant="body2" className={classes.value}>
-                            {value}
-                          </Typography>
-                        </Grid>
-                      )
-                    )}
-                    {/* <Grid xs={12} item>
-                      <Box display="flex" justifyContent="space-between">
-                        <Typography variant="subtitle2" className={classes.label}>
-                          {t("clusterDetail.activity.details.progress")}
-                        </Typography>
-                        22%
-                      </Box>
-                      <YBProgress value={22} color={theme.palette.primary[500]} />
-                    </Grid> */}
-                  </Grid>
-                </Box>
-              </>
-            )}
-          </YBModal>
         </Box>
       ) : (
         <YBLoadingBox>{t("clusterDetail.activity.noInprogressActivities")}</YBLoadingBox>
@@ -286,6 +228,65 @@ export const ActivityTab: FC = () => {
       ) : (
         <YBLoadingBox>{t("clusterDetail.activity.noCompletedActivities")}</YBLoadingBox>
       )}
+
+      <YBModal
+        open={drawerOpenData !== undefined}
+        title={t("clusterDetail.activity.details.title")}
+        onClose={() => setDrawerOpenData(undefined)}
+        enableBackdropDismiss
+        titleSeparator
+        cancelLabel={t("common.close")}
+        isSidePanel
+      >
+        {drawerOpenData !== undefined && (
+          <>
+            <Box className={classes.activityDetailBox}>
+              <Grid container spacing={2}>
+                <Grid xs={6} item>
+                  <Typography variant="subtitle2" className={classes.label}>
+                    {t("clusterDetail.activity.details.operationName")}
+                  </Typography>
+                  <Typography variant="body2" className={classes.value}>
+                    {drawerOpenData.dataList[drawerOpenData.index].name}
+                  </Typography>
+                </Grid>
+                <Grid xs={6} item>
+                  <Typography variant="subtitle2" className={classes.label}>
+                    {t("clusterDetail.activity.details.status")}
+                  </Typography>
+                  <YBBadge
+                    variant={drawerOpenData.dataList[drawerOpenData.index].status}
+                    text={drawerOpenData.dataList[drawerOpenData.index].Phase}
+                  />
+                </Grid>
+                {activityValues?.map(([key, value]) =>
+                  key === "name" || key === "status" ? (
+                    <></>
+                  ) : (
+                    <Grid xs={6} item>
+                      <Typography variant="subtitle2" className={classes.label}>
+                        {key.split(/(?=[A-Z][^A-Z])/).join(" ")}
+                      </Typography>
+                      <Typography variant="body2" className={classes.value}>
+                        {value}
+                      </Typography>
+                    </Grid>
+                  )
+                )}
+                {/* <Grid xs={12} item>
+                      <Box display="flex" justifyContent="space-between">
+                        <Typography variant="subtitle2" className={classes.label}>
+                          {t("clusterDetail.activity.details.progress")}
+                        </Typography>
+                        22%
+                      </Box>
+                      <YBProgress value={22} color={theme.palette.primary[500]} />
+                    </Grid> */}
+              </Grid>
+            </Box>
+          </>
+        )}
+      </YBModal>
     </Box>
   );
 };
