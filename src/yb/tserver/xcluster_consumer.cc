@@ -51,6 +51,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/thread.h"
+#include "yb/util/unique_lock.h"
 
 using std::string;
 
@@ -88,6 +89,14 @@ DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_for_cdc_dir);
 
 using namespace std::chrono_literals;
+
+#define ACQUIRE_SHARED_LOCK_IF_ONLINE \
+  SharedLock l(master_data_mutex_); \
+  do { \
+    if (is_shutdown_) { \
+      return; \
+    } \
+  } while (false)
 
 namespace yb {
 
@@ -172,11 +181,16 @@ XClusterConsumer::XClusterConsumer(
       log_prefix_(Format("[TS $0]: ", ts_uuid)),
       local_client_(std::move(local_client)),
       last_safe_time_published_at_(MonoTime::Now()),
-      transaction_manager_(transaction_manager),
-      rate_limiter_(std::unique_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(
-          GetAtomicFlag(&FLAGS_apply_changes_max_send_rate_mbps) * 1_MB))) {
-        rate_limiter_->EnableLoggingWithDescription("XCluster Output Client");
-      }
+      transaction_manager_(transaction_manager) {
+  rate_limiter_ = std::unique_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(
+      GetAtomicFlag(&FLAGS_apply_changes_max_send_rate_mbps) * 1_MB));
+  rate_limiter_->EnableLoggingWithDescription("XCluster Output Client");
+  SetRateLimiterSpeed();
+
+  rate_limiter_callback_ = CHECK_RESULT(RegisterFlagUpdateCallback(
+      &FLAGS_apply_changes_max_send_rate_mbps, "xclusterConsumerRateLimiter",
+      std::bind(&XClusterConsumer::SetRateLimiterSpeed, this)));
+}
 
 XClusterConsumer::~XClusterConsumer() {
   Shutdown();
@@ -186,58 +200,69 @@ XClusterConsumer::~XClusterConsumer() {
 
 void XClusterConsumer::Shutdown() {
   LOG_WITH_PREFIX(INFO) << "Shutting down XClusterConsumer";
-  {
-    std::lock_guard l(should_run_mutex_);
-    should_run_ = false;
-  }
-  cond_.notify_all();
+  is_shutdown_ = true;
 
-  if (thread_pool_) {
-    thread_pool_->Shutdown();
-  }
+  run_thread_cond_.notify_all();
 
   // Shutdown the pollers outside of the master_data_mutex lock to keep lock ordering the same.
   std::vector<std::shared_ptr<XClusterPoller>> pollers_to_shutdown;
+  decltype(remote_clients_) clients_to_shutdown;
   {
     std::lock_guard write_lock(master_data_mutex_);
     producer_consumer_tablet_map_from_master_.clear();
     uuid_master_addrs_.clear();
     {
       std::lock_guard producer_pollers_map_write_lock(producer_pollers_map_mutex_);
-      // Shutdown the remote and local clients, and abort any of their ongoing rpcs.
-      for (auto& uuid_and_client : remote_clients_) {
-        uuid_and_client.second->Shutdown();
-      }
 
-      // Fetch all the pollers.
-      pollers_to_shutdown.reserve(pollers_to_shutdown.size());
+      clients_to_shutdown = std::move(remote_clients_);
+
+      pollers_to_shutdown.reserve(producer_pollers_map_.size());
       for (const auto& poller : producer_pollers_map_) {
-        pollers_to_shutdown.push_back(poller.second);
+        pollers_to_shutdown.emplace_back(std::move(poller.second));
       }
       producer_pollers_map_.clear();
     }
-    local_client_->client->Shutdown();
   }
 
-  // Now can shutdown the pollers.
   for (const auto& poller : pollers_to_shutdown) {
-    poller->Shutdown();
+    poller->StartShutdown();
+  }
+
+  if (thread_pool_) {
+    thread_pool_->Shutdown();
+  }
+
+  // TODO: Shutdown the client after the thread pool shutdown, otherwise we seem to get stuck. This
+  // ordering indicates some bug in the client shutdown code.
+  for (auto& [replication_id, client] : clients_to_shutdown) {
+    client->Shutdown();
+  }
+
+  local_client_->client->Shutdown();
+
+  for (const auto& poller : pollers_to_shutdown) {
+    poller->CompleteShutdown();
   }
 
   if (run_trigger_poll_thread_) {
     WARN_NOT_OK(ThreadJoiner(run_trigger_poll_thread_.get()).Join(), "Could not join thread");
   }
+
+  rate_limiter_callback_.Deregister();
+
+  LOG_WITH_PREFIX(INFO) << "Shut down XClusterConsumer completed";
+}
+
+void XClusterConsumer::SetRateLimiterSpeed() {
+  rate_limiter_->SetBytesPerSecond(GetAtomicFlag(&FLAGS_apply_changes_max_send_rate_mbps) * 1_MB);
 }
 
 void XClusterConsumer::RunThread() {
   while (true) {
     {
-      std::unique_lock<std::mutex> l(should_run_mutex_);
-      if (!should_run_) {
-        return;
-      }
-      cond_.wait_for(l, 1000ms);
-      if (!should_run_) {
+      UniqueLock l(shutdown_mutex_);
+      if (run_thread_cond_.wait_for(
+              GetLockForCondition(&l), 1s, [this]() { return is_shutdown_.load(); })) {
         return;
       }
     }
@@ -247,15 +272,13 @@ void XClusterConsumer::RunThread() {
 
     auto s = PublishXClusterSafeTime();
     YB_LOG_IF_EVERY_N(WARNING, !s.ok(), 10) << "PublishXClusterSafeTime failed: " << s;
-
-    rate_limiter_->SetBytesPerSecond(GetAtomicFlag(&FLAGS_apply_changes_max_send_rate_mbps) * 1_MB);
   }
 }
 
 void XClusterConsumer::RefreshWithNewRegistryFromMaster(
     const cdc::ConsumerRegistryPB* consumer_registry, int32_t cluster_config_version) {
   UpdateInMemoryState(consumer_registry, cluster_config_version);
-  cond_.notify_all();
+  run_thread_cond_.notify_all();
 }
 
 std::vector<std::string> XClusterConsumer::TEST_producer_tablets_running() {
@@ -282,13 +305,10 @@ std::vector<std::shared_ptr<XClusterPoller>> XClusterConsumer::TEST_ListPollers(
 // NOTE: This happens on TS.heartbeat, so it needs to finish quickly
 void XClusterConsumer::UpdateInMemoryState(
     const cdc::ConsumerRegistryPB* consumer_registry, int32_t cluster_config_version) {
-  {
-    std::lock_guard l(should_run_mutex_);
-    if (!should_run_) {
-      return;
-    }
-  }
   std::lock_guard write_lock_master(master_data_mutex_);
+  if (is_shutdown_) {
+    return;
+  }
 
   // Only update it if the version is newer.
   if (cluster_config_version <= cluster_config_version_.load(std::memory_order_acquire)) {
@@ -308,7 +328,7 @@ void XClusterConsumer::UpdateInMemoryState(
       // We could not open the transaction status table, so return without setting any in-memory
       // state.
       LOG(WARNING) << "Error getting global transaction status tablets: " << get_tablets_status;
-      cond_.notify_all();
+      run_thread_cond_.notify_all();
       return;
     }
 
@@ -333,7 +353,7 @@ void XClusterConsumer::UpdateInMemoryState(
     // Clear the tablets list in case users want to increase number of txn status tablets in between
     // having active replication setups.
     global_transaction_status_tablets_.clear();
-    cond_.notify_all();
+    run_thread_cond_.notify_all();
     return;
   }
 
@@ -432,12 +452,12 @@ void XClusterConsumer::UpdateInMemoryState(
   }
   enable_replicate_transaction_status_table_ =
       consumer_registry->enable_replicate_transaction_status_table();
-  cond_.notify_all();
+  run_thread_cond_.notify_all();
 }
 
 Result<cdc::ConsumerTabletInfo> XClusterConsumer::GetConsumerTableInfo(
     const TabletId& producer_tablet_id) {
-  SharedLock<rw_spinlock> lock(master_data_mutex_);
+  SharedLock lock(master_data_mutex_);
   const auto& index_by_tablet = producer_consumer_tablet_map_from_master_.get<TabletTag>();
   auto count = index_by_tablet.count(producer_tablet_id);
   SCHECK(
@@ -456,7 +476,8 @@ Result<cdc::ConsumerTabletInfo> XClusterConsumer::GetConsumerTableInfo(
 }
 
 void XClusterConsumer::TriggerPollForNewTablets() {
-  SharedLock read_lock_master(master_data_mutex_);
+  ACQUIRE_SHARED_LOCK_IF_ONLINE;
+
   int32_t current_cluster_config_version = cluster_config_version();
 
   for (const auto& entry : producer_consumer_tablet_map_from_master_) {
@@ -568,7 +589,7 @@ void XClusterConsumer::TriggerPollForNewTablets() {
             "Start polling for producer tablet $0, consumer tablet $1", producer_tablet_info,
             consumer_tablet_info.tablet_id);
         producer_pollers_map_[producer_tablet_info] = xcluster_poller;
-        xcluster_poller->Poll();
+        xcluster_poller->SchedulePoll();
       }
     }
 
@@ -589,8 +610,8 @@ void XClusterConsumer::UpdatePollerSchemaVersionMaps(
     std::shared_ptr<XClusterPoller> xcluster_poller, const xrepl::StreamId& stream_id) const {
   auto compatible_schema_version = FindOrNull(stream_to_schema_version_, stream_id);
   if (compatible_schema_version != nullptr) {
-      xcluster_poller->SetSchemaVersion(compatible_schema_version->first,
-                                        compatible_schema_version->second);
+    xcluster_poller->ScheduleSetSchemaVersionIfNeeded(
+        compatible_schema_version->first, compatible_schema_version->second);
   }
 
   auto schema_versions = FindOrNull(stream_schema_version_map_, stream_id);
@@ -609,7 +630,7 @@ void XClusterConsumer::TriggerDeletionOfOldPollers() {
   std::vector<std::shared_ptr<XClusterClient>> clients_to_delete;
   std::vector<std::shared_ptr<XClusterPoller>> pollers_to_shutdown;
   {
-    SharedLock<rw_spinlock> read_lock_master(master_data_mutex_);
+    ACQUIRE_SHARED_LOCK_IF_ONLINE;
     std::lock_guard write_lock_pollers(producer_pollers_map_mutex_);
     for (auto it = producer_pollers_map_.cbegin(); it != producer_pollers_map_.cend();) {
       const ProducerTabletInfo producer_info = it->first;
@@ -638,9 +659,15 @@ void XClusterConsumer::TriggerDeletionOfOldPollers() {
       }
     }
   }
+
   for (const auto& poller : pollers_to_shutdown) {
-    poller->Shutdown();
+    poller->StartShutdown();
   }
+
+  for (const auto& poller : pollers_to_shutdown) {
+    poller->CompleteShutdown();
+  }
+
   for (const auto& client : clients_to_delete) {
     client->Shutdown();
   }
@@ -705,7 +732,7 @@ Status XClusterConsumer::ReloadCertificates() {
 }
 
 Status XClusterConsumer::PublishXClusterSafeTime() {
-  if (consumer_role_ == cdc::XClusterRole::ACTIVE) {
+  if (is_shutdown_ || consumer_role_ == cdc::XClusterRole::ACTIVE) {
     return Status::OK();
   }
 
