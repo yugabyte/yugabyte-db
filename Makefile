@@ -100,7 +100,6 @@ REGRESS = scan \
           graph_generation \
           name_validation \
           drop
-          
 
 srcdir=`pwd`
 
