@@ -77,7 +77,7 @@ export const ChartController: FC<ChartContainerProps> = ({
   unitKey,
   refreshFromParent,
   regionName,
-  zone: _,
+  zone,
   clusterType
 }) => {
   const [interval, setNewInterval] = useState(() => getInterval(relativeInterval));
@@ -90,7 +90,7 @@ export const ChartController: FC<ChartContainerProps> = ({
       start_time: getUnixTime(interval.start),
       end_time: getUnixTime(interval.end),
       region: regionName === '' ? undefined : regionName,
-      /* zone: zone === '' ? undefined : zone, */
+      zone: zone === '' ? undefined : zone,
       cluster_type: clusterType
     },
     {

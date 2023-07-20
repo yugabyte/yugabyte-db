@@ -44,6 +44,7 @@ export interface GetClusterMetricForQuery {
   metrics: string;
   node_name?: string;
   region?: string;
+  zone?: string;
   start_time?: number;
   end_time?: number;
   cluster_type?: string;
@@ -312,6 +313,7 @@ export const getClusterMetricAxiosRequest = (
         metrics: requestParameters['metrics'],
         node_name: requestParameters['node_name'],
         region: requestParameters['region'],
+        zone: requestParameters['zone'],
         start_time: requestParameters['start_time'],
         end_time: requestParameters['end_time'],
         cluster_type: requestParameters['cluster_type'],
