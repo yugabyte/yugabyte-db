@@ -77,6 +77,9 @@ int cypher_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ag_scanner_t scanner)
              * case sensitivity
              */
             lvalp->keyword = GetScanKeyword(kwnum, &CypherKeyword);
+            ident = pstrdup(token.value.s);
+            truncate_identifier(ident, strlen(ident), true);
+            lvalp->string = ident;
             *llocp = token.location;
             return CypherKeywordTokens[kwnum];
         }

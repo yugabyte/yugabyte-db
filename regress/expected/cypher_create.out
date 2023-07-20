@@ -765,13 +765,41 @@ $$) as (a agtype);
 ERROR:  variable e already exists
 LINE 3:  CREATE (p)-[e:new]->(a)
                     ^
+-- Validate usage of keywords as labels is supported and case sensitive
+SELECT * FROM cypher('cypher_create', $$
+        CREATE (a:CREATE)
+	RETURN a
+$$) as (a agtype);
+                                   a                                   
+-----------------------------------------------------------------------
+ {"id": 5348024557502465, "label": "CREATE", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_create', $$
+        CREATE (a:create)
+	RETURN a
+$$) as (a agtype);
+                                   a                                   
+-----------------------------------------------------------------------
+ {"id": 5629499534213121, "label": "create", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_create', $$
+        CREATE (a:CrEaTe)
+	RETURN a
+$$) as (a agtype);
+                                   a                                   
+-----------------------------------------------------------------------
+ {"id": 5910974510923777, "label": "CrEaTe", "properties": {}}::vertex
+(1 row)
+
 --
 -- Clean up
 --
 DROP TABLE simple_path;
 DROP FUNCTION create_test;
 SELECT drop_graph('cypher_create', true);
-NOTICE:  drop cascades to 16 other objects
+NOTICE:  drop cascades to 19 other objects
 DETAIL:  drop cascades to table cypher_create._ag_label_vertex
 drop cascades to table cypher_create._ag_label_edge
 drop cascades to table cypher_create.v
@@ -788,6 +816,9 @@ drop cascades to table cypher_create."Part"
 drop cascades to table cypher_create.new
 drop cascades to table cypher_create.node
 drop cascades to table cypher_create.n1
+drop cascades to table cypher_create."CREATE"
+drop cascades to table cypher_create."create"
+drop cascades to table cypher_create."CrEaTe"
 NOTICE:  graph "cypher_create" has been dropped
  drop_graph 
 ------------

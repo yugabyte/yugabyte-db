@@ -385,6 +385,24 @@ SELECT * FROM cypher('cypher_create', $$
 	CREATE (p)-[e:new]->(a)
 $$) as (a agtype);
 
+
+-- Validate usage of keywords as labels is supported and case sensitive
+
+SELECT * FROM cypher('cypher_create', $$
+        CREATE (a:CREATE)
+	RETURN a
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+        CREATE (a:create)
+	RETURN a
+$$) as (a agtype);
+
+SELECT * FROM cypher('cypher_create', $$
+        CREATE (a:CrEaTe)
+	RETURN a
+$$) as (a agtype);
+
 --
 -- Clean up
 --
