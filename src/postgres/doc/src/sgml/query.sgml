@@ -28,11 +28,11 @@
     <productname>PostgreSQL</productname> source distribution
     in the directory <filename>src/tutorial/</filename>.  (Binary
     distributions of <productname>PostgreSQL</productname> might not
-    compile these files.)  To use those
+    provide those files.)  To use those
     files, first change to that directory and run <application>make</application>:
 
 <screen>
-<prompt>$</prompt> <userinput>cd <replaceable>....</replaceable>/src/tutorial</userinput>
+<prompt>$</prompt> <userinput>cd <replaceable>...</replaceable>/src/tutorial</userinput>
 <prompt>$</prompt> <userinput>make</userinput>
 </screen>
 
@@ -40,12 +40,10 @@
     functions and types.  Then, to start the tutorial, do the following:
 
 <screen>
-<prompt>$</prompt> <userinput>cd <replaceable>....</replaceable>/tutorial</userinput>
 <prompt>$</prompt> <userinput>psql -s mydb</userinput>
 <computeroutput>
 ...
 </computeroutput>
-
 <prompt>mydb=&gt;</prompt> <userinput>\i basics.sql</userinput>
 </screen>
 
@@ -442,27 +440,26 @@ SELECT DISTINCT city
     Thus far, our queries have only accessed one table at a time.
     Queries can access multiple tables at once, or access the same
     table in such a way that multiple rows of the table are being
-    processed at the same time.  A query that accesses multiple rows
-    of the same or different tables at one time is called a
-    <firstterm>join</firstterm> query.  As an example, say you wish to
-    list all the weather records together with the location of the
-    associated city.  To do that, we need to compare the <structfield>city</structfield>
+    processed at the same time.  Queries that access multiple tables
+    (or multiple instances of the same table) at one time are called
+    <firstterm>join</firstterm> queries.  They combine rows from one table
+    with rows from a second table, with an expression specifying which rows
+    are to be paired.  For example, to return all the weather records together
+    with the location of the associated city, the database needs to compare
+    the <structfield>city</structfield>
     column of each row of the <structname>weather</structname> table with the
     <structfield>name</structfield> column of all rows in the <structname>cities</structname>
-    table, and select the pairs of rows where these values match.
-    <note>
+    table, and select the pairs of rows where these values match.<footnote>
      <para>
       This  is only a conceptual model.  The join is usually performed
       in a more efficient manner than actually comparing each possible
       pair of rows, but this is invisible to the user.
      </para>
-    </note>
+    </footnote>
     This would be accomplished by the following query:
 
 <programlisting>
-SELECT *
-    FROM weather, cities
-    WHERE city = name;
+SELECT * FROM weather JOIN cities ON city = name;
 </programlisting>
 
 <screen>
@@ -499,22 +496,12 @@ SELECT *
        <literal>*</literal>:
 <programlisting>
 SELECT city, temp_lo, temp_hi, prcp, date, location
-    FROM weather, cities
-    WHERE city = name;
+    FROM weather JOIN cities ON city = name;
 </programlisting>
       </para>
      </listitem>
     </itemizedlist>
    </para>
-
-   <formalpara>
-    <title>Exercise:</title>
-
-    <para>
-     Attempt to determine the semantics of this query when the
-     <literal>WHERE</literal> clause is omitted.
-    </para>
-   </formalpara>
 
    <para>
     Since the columns all had different names, the parser
@@ -526,8 +513,7 @@ SELECT city, temp_lo, temp_hi, prcp, date, location
 <programlisting>
 SELECT weather.city, weather.temp_lo, weather.temp_hi,
        weather.prcp, weather.date, cities.location
-    FROM weather, cities
-    WHERE cities.name = weather.city;
+    FROM weather JOIN cities ON weather.city = cities.name;
 </programlisting>
 
     It is widely considered good style to qualify all column names
@@ -537,20 +523,29 @@ SELECT weather.city, weather.temp_lo, weather.temp_hi,
 
    <para>
     Join queries of the kind seen thus far can also be written in this
-    alternative form:
+    form:
 
 <programlisting>
 SELECT *
-    FROM weather INNER JOIN cities ON (weather.city = cities.name);
+    FROM weather, cities
+    WHERE city = name;
 </programlisting>
 
-    This syntax is not as commonly used as the one above, but we show
-    it here to help you understand the following topics.
+    This syntax pre-dates the <literal>JOIN</literal>/<literal>ON</literal>
+    syntax, which was introduced in SQL-92.  The tables are simply listed in
+    the <literal>FROM</literal> clause, and the comparison expression is added
+    to the <literal>WHERE</literal> clause.  The results from this older
+    implicit syntax and the newer explicit
+    <literal>JOIN</literal>/<literal>ON</literal> syntax are identical.  But
+    for a reader of the query, the explicit syntax makes its meaning easier to
+    understand: The join condition is introduced by its own key word whereas
+    previously the condition was mixed into the <literal>WHERE</literal>
+    clause together with other conditions.
    </para>
 
-   <para>
-    <indexterm><primary>join</primary><secondary>outer</secondary></indexterm>
+   <indexterm><primary>join</primary><secondary>outer</secondary></indexterm>
 
+   <para>
     Now we will figure out how we can get the Hayward records back in.
     What we want the query to do is to scan the
     <structname>weather</structname> table and for each row to find the
@@ -558,20 +553,22 @@ SELECT *
     found we want some <quote>empty values</quote> to be substituted
     for the <structname>cities</structname> table's columns.  This kind
     of query is called an <firstterm>outer join</firstterm>.  (The
-    joins we have seen so far are inner joins.)  The command looks
-    like this:
+    joins we have seen so far are <firstterm>inner joins</firstterm>.)
+    The command looks like this:
 
 <programlisting>
 SELECT *
-    FROM weather LEFT OUTER JOIN cities ON (weather.city = cities.name);
+    FROM weather LEFT OUTER JOIN cities ON weather.city = cities.name;
+</programlisting>
 
+<screen>
      city      | temp_lo | temp_hi | prcp |    date    |     name      | location
 ---------------+---------+---------+------+------------+---------------+-----------
  Hayward       |      37 |      54 |      | 1994-11-29 |               |
  San Francisco |      46 |      50 | 0.25 | 1994-11-27 | San Francisco | (-194,53)
  San Francisco |      43 |      57 |    0 | 1994-11-29 | San Francisco | (-194,53)
 (3 rows)
-</programlisting>
+</screen>
 
     This query is called a <firstterm>left outer
     join</firstterm> because the table mentioned on the left of the
@@ -591,10 +588,9 @@ SELECT *
     </para>
    </formalpara>
 
+   <indexterm><primary>join</primary><secondary>self</secondary></indexterm>
+   <indexterm><primary>alias</primary><secondary>for table name in query</secondary></indexterm>
    <para>
-    <indexterm><primary>join</primary><secondary>self</secondary></indexterm>
-    <indexterm><primary>alias</primary><secondary>for table name in query</secondary></indexterm>
-
     We can also join a table against itself.  This is called a
     <firstterm>self join</firstterm>.  As an example, suppose we wish
     to find all the weather records that are in the temperature range
@@ -607,27 +603,27 @@ SELECT *
     following query:
 
 <programlisting>
-SELECT W1.city, W1.temp_lo AS low, W1.temp_hi AS high,
-    W2.city, W2.temp_lo AS low, W2.temp_hi AS high
-    FROM weather W1, weather W2
-    WHERE W1.temp_lo &lt; W2.temp_lo
-    AND W1.temp_hi &gt; W2.temp_hi;
+SELECT w1.city, w1.temp_lo AS low, w1.temp_hi AS high,
+       w2.city, w2.temp_lo AS low, w2.temp_hi AS high
+    FROM weather w1 JOIN weather w2
+        ON w1.temp_lo &lt; w2.temp_lo AND w1.temp_hi &gt; w2.temp_hi;
+</programlisting>
 
+<screen>
      city      | low | high |     city      | low | high
 ---------------+-----+------+---------------+-----+------
  San Francisco |  43 |   57 | San Francisco |  46 |   50
  Hayward       |  37 |   54 | San Francisco |  46 |   50
 (2 rows)
-</programlisting>
+</screen>
 
-    Here we have relabeled the weather table as <literal>W1</literal> and
-    <literal>W2</literal> to be able to distinguish the left and right side
+    Here we have relabeled the weather table as <literal>w1</literal> and
+    <literal>w2</literal> to be able to distinguish the left and right side
     of the join.  You can also use these kinds of aliases in other
     queries to save some typing, e.g.:
 <programlisting>
 SELECT *
-    FROM weather w, cities c
-    WHERE w.city = c.name;
+    FROM weather w JOIN cities c ON w.city = c.name;
 </programlisting>
     You will encounter this style of abbreviating quite frequently.
    </para>
@@ -710,20 +706,20 @@ SELECT city FROM weather
     <indexterm><primary>HAVING</primary></indexterm>
 
     Aggregates are also very useful in combination with <literal>GROUP
-    BY</literal> clauses.  For example, we can get the maximum low
-    temperature observed in each city with:
+    BY</literal> clauses.  For example, we can get the number of readings
+    and the maximum low temperature observed in each city with:
 
 <programlisting>
-SELECT city, max(temp_lo)
+SELECT city, count(*), max(temp_lo)
     FROM weather
     GROUP BY city;
 </programlisting>
 
 <screen>
-     city      | max
----------------+-----
- Hayward       |  37
- San Francisco |  46
+     city      | count | max
+---------------+-------+-----
+ Hayward       |     1 |  37
+ San Francisco |     2 |  46
 (2 rows)
 </screen>
 
@@ -733,16 +729,16 @@ SELECT city, max(temp_lo)
     rows using <literal>HAVING</literal>:
 
 <programlisting>
-SELECT city, max(temp_lo)
+SELECT city, count(*), max(temp_lo)
     FROM weather
     GROUP BY city
     HAVING max(temp_lo) &lt; 40;
 </programlisting>
 
 <screen>
-  city   | max
----------+-----
- Hayward |  37
+  city   | count | max
+---------+-------+-----
+ Hayward |     1 |  37
 (1 row)
 </screen>
 
@@ -752,12 +748,18 @@ SELECT city, max(temp_lo)
     names begin with <quote><literal>S</literal></quote>, we might do:
 
 <programlisting>
-SELECT city, max(temp_lo)
+SELECT city, count(*), max(temp_lo)
     FROM weather
     WHERE city LIKE 'S%'            -- <co id="co.tutorial-agg-like"/>
-    GROUP BY city
-    HAVING max(temp_lo) &lt; 40;
+    GROUP BY city;
 </programlisting>
+
+<screen>
+     city      | count | max
+---------------+-------+-----
+ San Francisco |     2 |  46
+(1 row)
+</screen>
    <calloutlist>
     <callout arearefs="co.tutorial-agg-like">
      <para>
@@ -793,6 +795,34 @@ SELECT city, max(temp_lo)
     more efficient than adding the restriction to <literal>HAVING</literal>,
     because we avoid doing the grouping and aggregate calculations
     for all rows that fail the <literal>WHERE</literal> check.
+   </para>
+
+   <para>
+    Another way to select the rows that go into an aggregate
+    computation is to use <literal>FILTER</literal>, which is a
+    per-aggregate option:
+
+<programlisting>
+SELECT city, count(*) FILTER (WHERE temp_lo &lt; 45), max(temp_lo)
+    FROM weather
+    GROUP BY city;
+</programlisting>
+
+<screen>
+     city      | count | max
+---------------+-------+-----
+ Hayward       |     1 |  37
+ San Francisco |     1 |  46
+(2 rows)
+</screen>
+
+    <literal>FILTER</literal> is much like <literal>WHERE</literal>,
+    except that it removes rows only from the input of the particular
+    aggregate function that it is attached to.
+    Here, the <literal>count</literal> aggregate counts only
+    rows with <literal>temp_lo</literal> below 45; but the
+    <literal>max</literal> aggregate is still applied to all rows,
+    so it still finds the reading of 46.
    </para>
   </sect1>
 

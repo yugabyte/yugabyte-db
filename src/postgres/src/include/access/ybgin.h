@@ -54,7 +54,7 @@ extern void ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 extern bool ybgingettuple(IndexScanDesc scan, ScanDirection dir);
 extern void ybginendscan(IndexScanDesc scan);
 extern bool ybgininsert(Relation rel, Datum *values, bool *isnull,
-						Datum ybctid, Relation heapRel,
+						ItemPointer heap_tid, Relation heapRel,
 						IndexUniqueCheck checkUnique,
 						struct IndexInfo *indexInfo, bool shared_insert);
 extern void ybgindelete(Relation rel, Datum *values, bool *isnull,

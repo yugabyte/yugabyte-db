@@ -3,7 +3,7 @@
  * test.c
  *		Test harness code for shared memory message queues.
  *
- * Copyright (c) 2013-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/test/modules/test_shm_mq/test.c
@@ -27,7 +27,7 @@ PG_FUNCTION_INFO_V1(test_shm_mq_pipelined);
 void		_PG_init(void);
 
 static void verify_message(Size origlen, char *origdata, Size newlen,
-			   char *newdata);
+						   char *newdata);
 
 /*
  * Simple test of the shared memory message queue infrastructure.
@@ -57,23 +57,23 @@ test_shm_mq(PG_FUNCTION_ARGS)
 	if (loop_count < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("repeat count size must be a non-negative integer")));
+				 errmsg("repeat count size must be an integer value greater than or equal to zero")));
 
 	/*
 	 * Since this test sends data using the blocking interfaces, it cannot
 	 * send data to itself.  Therefore, a minimum of 1 worker is required. Of
 	 * course, a negative worker count is nonsensical.
 	 */
-	if (nworkers < 1)
+	if (nworkers <= 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("number of workers must be a positive integer")));
+				 errmsg("number of workers must be an integer value greater than zero")));
 
 	/* Set up dynamic shared memory segment and background workers. */
 	test_shm_mq_setup(queue_size, nworkers, &seg, &outqh, &inqh);
 
 	/* Send the initial message. */
-	res = shm_mq_send(outqh, message_size, message_contents, false);
+	res = shm_mq_send(outqh, message_size, message_contents, false, true);
 	if (res != SHM_MQ_SUCCESS)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
@@ -97,7 +97,7 @@ test_shm_mq(PG_FUNCTION_ARGS)
 			break;
 
 		/* Send it back out. */
-		res = shm_mq_send(outqh, len, data, false);
+		res = shm_mq_send(outqh, len, data, false, true);
 		if (res != SHM_MQ_SUCCESS)
 			ereport(ERROR,
 					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
@@ -149,7 +149,7 @@ test_shm_mq_pipelined(PG_FUNCTION_ARGS)
 	if (loop_count < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("repeat count size must be a non-negative integer")));
+				 errmsg("repeat count size must be an integer value greater than or equal to zero")));
 
 	/*
 	 * Using the nonblocking interfaces, we can even send data to ourselves,
@@ -158,7 +158,7 @@ test_shm_mq_pipelined(PG_FUNCTION_ARGS)
 	if (nworkers < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("number of workers must be a non-negative integer")));
+				 errmsg("number of workers must be an integer value greater than or equal to zero")));
 
 	/* Set up dynamic shared memory segment and background workers. */
 	test_shm_mq_setup(queue_size, nworkers, &seg, &outqh, &inqh);
@@ -177,7 +177,8 @@ test_shm_mq_pipelined(PG_FUNCTION_ARGS)
 		 */
 		if (send_count < loop_count)
 		{
-			res = shm_mq_send(outqh, message_size, message_contents, true);
+			res = shm_mq_send(outqh, message_size, message_contents, true,
+							  true);
 			if (res == SHM_MQ_SUCCESS)
 			{
 				++send_count;
@@ -231,7 +232,8 @@ test_shm_mq_pipelined(PG_FUNCTION_ARGS)
 			 * have read or written data and therefore there may now be work
 			 * for us to do.
 			 */
-			WaitLatch(MyLatch, WL_LATCH_SET, 0, PG_WAIT_EXTENSION);
+			(void) WaitLatch(MyLatch, WL_LATCH_SET | WL_EXIT_ON_PM_DEATH, 0,
+							 PG_WAIT_EXTENSION);
 			ResetLatch(MyLatch);
 			CHECK_FOR_INTERRUPTS();
 		}

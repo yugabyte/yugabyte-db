@@ -92,6 +92,8 @@ static void YBCAddSysCatalogColumns(YBCPgStatement yb_stmt,
 									IndexStmt *pkey_idx,
 									const bool key)
 {
+#ifdef NEIL_OID
+	/* OID is now a regular column */
 	if (tupdesc->tdhasoid)
 	{
 		/* Add the OID column if the table was declared with OIDs. */
@@ -103,6 +105,7 @@ static void YBCAddSysCatalogColumns(YBCPgStatement yb_stmt,
 							   0,
 							   key);
 	}
+#endif
 
 	/* Add the rest of the columns. */
 	for (int attno = 0; attno < tupdesc->natts; attno++)
@@ -133,7 +136,7 @@ void YBCCreateSysCatalogTable(const char *table_name,
 	HandleYBStatus(YBCPgNewCreateTable(db_name,
 	                                   schema_name,
 	                                   table_name,
-	                                   TemplateDbOid,
+	                                   Template1DbOid,
 	                                   table_oid,
 	                                   is_shared_relation,
 	                                   false, /* if_not_exists */

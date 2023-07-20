@@ -4,7 +4,7 @@ CREATE TEMP TABLE x (
 	c text not null default 'stuff',
 	d text,
 	e text
-) WITH OIDS;
+) ;
 
 CREATE FUNCTION fn_x_before () RETURNS TRIGGER AS '
   BEGIN
@@ -53,6 +53,20 @@ COPY x (a, b, c, d, e) from stdin;
 -- non-existent column in column list: should fail
 COPY x (xyz) from stdin;
 
+-- redundant options
+COPY x from stdin (format CSV, FORMAT CSV);
+COPY x from stdin (freeze off, freeze on);
+COPY x from stdin (delimiter ',', delimiter ',');
+COPY x from stdin (null ' ', null ' ');
+COPY x from stdin (header off, header on);
+COPY x from stdin (quote ':', quote ':');
+COPY x from stdin (escape ':', escape ':');
+COPY x from stdin (force_quote (a), force_quote *);
+COPY x from stdin (force_not_null (a), force_not_null (b));
+COPY x from stdin (force_null (a), force_null (b));
+COPY x from stdin (convert_selectively (a), convert_selectively (b));
+COPY x from stdin (encoding 'sql_ascii', encoding 'sql_ascii');
+
 -- too many columns in column list: should fail
 COPY x (a, b, c, d, e, d, c) from stdin;
 
@@ -73,10 +87,10 @@ COPY x from stdin;
 \.
 
 -- various COPY options: delimiters, oids, NULL string, encoding
-COPY x (b, c, d, e) from stdin with oids delimiter ',' null 'x';
-500000,x,45,80,90
-500001,x,\x,\\x,\\\x
-500002,x,\,,\\\,,\\
+COPY x (b, c, d, e) from stdin delimiter ',' null 'x';
+x,45,80,90
+x,\x,\\x,\\\x
+x,\,,\\\,,\\
 \.
 
 COPY x from stdin WITH DELIMITER AS ';' NULL AS '';
@@ -95,21 +109,34 @@ COPY x from stdin WITH DELIMITER AS ':' NULL AS E'\\X' ENCODING 'sql_ascii';
 4008:8:Delimiter:\::\:
 \.
 
+COPY x TO stdout WHERE a = 1;
+COPY x from stdin WHERE a = 50004;
+50003	24	34	44	54
+50004	25	35	45	55
+50005	26	36	46	56
+\.
+
+COPY x from stdin WHERE a > 60003;
+60001	22	32	42	52
+60002	23	33	43	53
+60003	24	34	44	54
+60004	25	35	45	55
+60005	26	36	46	56
+\.
+
+COPY x from stdin WHERE f > 60003;
+
+COPY x from stdin WHERE a = max(x.b);
+
+COPY x from stdin WHERE a IN (SELECT 1 FROM x);
+
+COPY x from stdin WHERE a IN (generate_series(1,5));
+
+COPY x from stdin WHERE a = row_number() over(b);
+
+
 -- check results of copy in
 SELECT * FROM x;
-
--- COPY w/ oids on a table w/o oids should fail
-CREATE TABLE no_oids (
-	a	int,
-	b	int
-) WITHOUT OIDS;
-
-INSERT INTO no_oids (a, b) VALUES (5, 10);
-INSERT INTO no_oids (a, b) VALUES (20, 30);
-
--- should fail
-COPY no_oids FROM stdin WITH OIDS;
-COPY no_oids TO stdout WITH OIDS;
 
 -- check copy out
 COPY x TO stdout;

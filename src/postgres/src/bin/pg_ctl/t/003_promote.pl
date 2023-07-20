@@ -1,18 +1,21 @@
+
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+
 use strict;
 use warnings;
 
-use PostgresNode;
-use TestLib;
-use Test::More tests => 12;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
-my $tempdir = TestLib::tempdir;
+my $tempdir = PostgreSQL::Test::Utils::tempdir;
 
 command_fails_like(
 	[ 'pg_ctl', '-D', "$tempdir/nonexistent", 'promote' ],
 	qr/directory .* does not exist/,
 	'pg_ctl promote with nonexistent directory');
 
-my $node_primary = get_new_node('primary');
+my $node_primary = PostgreSQL::Test::Cluster->new('primary');
 $node_primary->init(allows_streaming => 1);
 
 command_fails_like(
@@ -27,7 +30,7 @@ command_fails_like(
 	qr/not in standby mode/,
 	'pg_ctl promote of primary instance fails');
 
-my $node_standby = get_new_node('standby');
+my $node_standby = PostgreSQL::Test::Cluster->new('standby');
 $node_primary->backup('my_backup');
 $node_standby->init_from_backup($node_primary, 'my_backup',
 	has_streaming => 1);
@@ -44,7 +47,7 @@ ok( $node_standby->poll_query_until(
 	'promoted standby is not in recovery');
 
 # same again with default wait option
-$node_standby = get_new_node('standby2');
+$node_standby = PostgreSQL::Test::Cluster->new('standby2');
 $node_standby->init_from_backup($node_primary, 'my_backup',
 	has_streaming => 1);
 $node_standby->start;
@@ -59,3 +62,5 @@ command_ok([ 'pg_ctl', '-D', $node_standby->data_dir, 'promote' ],
 
 is($node_standby->safe_psql('postgres', 'SELECT pg_is_in_recovery()'),
 	'f', 'promoted standby is not in recovery');
+
+done_testing();

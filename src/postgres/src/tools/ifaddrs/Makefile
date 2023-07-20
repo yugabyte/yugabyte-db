@@ -2,7 +2,7 @@
 #
 # Makefile for src/tools/ifaddrs
 #
-# Copyright (c) 2003-2018, PostgreSQL Global Development Group
+# Copyright (c) 2003-2022, PostgreSQL Global Development Group
 #
 # src/tools/ifaddrs/Makefile
 #
@@ -16,7 +16,8 @@ libpq_backend_dir = $(top_builddir)/src/backend/libpq
 
 override CPPFLAGS := -I$(libpq_backend_dir) $(CPPFLAGS)
 
-OBJS = test_ifaddrs.o
+OBJS = \
+	test_ifaddrs.o
 
 all: test_ifaddrs
 

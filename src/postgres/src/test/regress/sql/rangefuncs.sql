@@ -319,6 +319,21 @@ SELECT * FROM (VALUES (1),(2),(3)) v1(r1),
               LATERAL (SELECT r1, * FROM (VALUES (10),(20),(30)) v2(r2)
                                          LEFT JOIN generate_series(r1,2+r2/5) f(i) ON ((r2+i)<100) OFFSET 0) s1;
 
+-- check handling of FULL JOIN with multiple lateral references (bug #15741)
+
+SELECT *
+FROM (VALUES (1),(2)) v1(r1)
+    LEFT JOIN LATERAL (
+        SELECT *
+        FROM generate_series(1, v1.r1) AS gs1
+        LEFT JOIN LATERAL (
+            SELECT *
+            FROM generate_series(1, gs1) AS gs2
+            LEFT JOIN generate_series(1, gs2) AS gs3 ON TRUE
+        ) AS ss1 ON TRUE
+        FULL JOIN generate_series(1, v1.r1) AS gs4 ON FALSE
+    ) AS ss0 ON TRUE;
+
 DROP FUNCTION rngfunc_sql(int,int);
 DROP FUNCTION rngfunc_mat(int,int);
 DROP SEQUENCE rngfunc_rescan_seq1;
@@ -390,6 +405,27 @@ DROP FUNCTION dup(anyelement);
 
 -- fails, no way to deduce outputs
 CREATE FUNCTION bad (f1 int, out f2 anyelement, out f3 anyarray)
+AS 'select $1, array[$1,$1]' LANGUAGE sql;
+
+CREATE FUNCTION dup (f1 anycompatible, f2 anycompatiblearray, f3 out anycompatible, f4 out anycompatiblearray)
+AS 'select $1, $2' LANGUAGE sql;
+SELECT dup(22, array[44]);
+SELECT dup(4.5, array[44]);
+SELECT dup(22, array[44::bigint]);
+SELECT *, pg_typeof(f3), pg_typeof(f4) FROM dup(22, array[44::bigint]);
+
+DROP FUNCTION dup(f1 anycompatible, f2 anycompatiblearray);
+
+CREATE FUNCTION dup (f1 anycompatiblerange, f2 out anycompatible, f3 out anycompatiblearray, f4 out anycompatiblerange)
+AS 'select lower($1), array[lower($1), upper($1)], $1' LANGUAGE sql;
+SELECT dup(int4range(4,7));
+SELECT dup(numrange(4,7));
+SELECT dup(textrange('aaa', 'bbb'));
+
+DROP FUNCTION dup(f1 anycompatiblerange);
+
+-- fails, no way to deduce outputs
+CREATE FUNCTION bad (f1 anyarray, out f2 anycompatible, out f3 anycompatiblearray)
 AS 'select $1, array[$1,$1]' LANGUAGE sql;
 
 --
@@ -500,6 +536,27 @@ $$ language sql strict immutable;
 select array_to_set(array['one', 'two']);
 select * from array_to_set(array['one', 'two']) as t(f1 int,f2 text);
 select * from array_to_set(array['one', 'two']); -- fail
+-- after-the-fact coercion of the columns is now possible, too
+select * from array_to_set(array['one', 'two']) as t(f1 numeric(4,2),f2 text);
+-- and if it doesn't work, you get a compile-time not run-time error
+select * from array_to_set(array['one', 'two']) as t(f1 point,f2 text);
+
+-- with "strict", this function can't be inlined in FROM
+explain (verbose, costs off)
+  select * from array_to_set(array['one', 'two']) as t(f1 numeric(4,2),f2 text);
+
+-- but without, it can be:
+
+create or replace function array_to_set(anyarray) returns setof record as $$
+  select i AS "index", $1[i] AS "value" from generate_subscripts($1, 1) i
+$$ language sql immutable;
+
+select array_to_set(array['one', 'two']);
+select * from array_to_set(array['one', 'two']) as t(f1 int,f2 text);
+select * from array_to_set(array['one', 'two']) as t(f1 numeric(4,2),f2 text);
+select * from array_to_set(array['one', 'two']) as t(f1 point,f2 text);
+explain (verbose, costs off)
+  select * from array_to_set(array['one', 'two']) as t(f1 numeric(4,2),f2 text);
 
 create temp table rngfunc(f1 int8, f2 int8);
 
@@ -522,6 +579,73 @@ select * from testrngfunc() as t(f1 int8,f2 int8);
 select * from testrngfunc(); -- fail
 
 drop function testrngfunc();
+
+-- Check that typmod imposed by a composite type is honored
+create type rngfunc_type as (f1 numeric(35,6), f2 numeric(35,2));
+
+create function testrngfunc() returns rngfunc_type as $$
+  select 7.136178319899999964, 7.136178319899999964;
+$$ language sql immutable;
+
+explain (verbose, costs off)
+select testrngfunc();
+select testrngfunc();
+explain (verbose, costs off)
+select * from testrngfunc();
+select * from testrngfunc();
+
+create or replace function testrngfunc() returns rngfunc_type as $$
+  select 7.136178319899999964, 7.136178319899999964;
+$$ language sql volatile;
+
+explain (verbose, costs off)
+select testrngfunc();
+select testrngfunc();
+explain (verbose, costs off)
+select * from testrngfunc();
+select * from testrngfunc();
+
+drop function testrngfunc();
+
+create function testrngfunc() returns setof rngfunc_type as $$
+  select 7.136178319899999964, 7.136178319899999964;
+$$ language sql immutable;
+
+explain (verbose, costs off)
+select testrngfunc();
+select testrngfunc();
+explain (verbose, costs off)
+select * from testrngfunc();
+select * from testrngfunc();
+
+create or replace function testrngfunc() returns setof rngfunc_type as $$
+  select 7.136178319899999964, 7.136178319899999964;
+$$ language sql volatile;
+
+explain (verbose, costs off)
+select testrngfunc();
+select testrngfunc();
+explain (verbose, costs off)
+select * from testrngfunc();
+select * from testrngfunc();
+
+create or replace function testrngfunc() returns setof rngfunc_type as $$
+  select 1, 2 union select 3, 4 order by 1;
+$$ language sql immutable;
+
+explain (verbose, costs off)
+select testrngfunc();
+select testrngfunc();
+explain (verbose, costs off)
+select * from testrngfunc();
+select * from testrngfunc();
+
+-- Check a couple of error cases while we're here
+select * from testrngfunc() as t(f1 int8,f2 int8);  -- fail, composite result
+select * from pg_get_keywords() as t(f1 int8,f2 int8);  -- fail, OUT params
+select * from sin(3) as t(f1 int8,f2 int8);  -- fail, scalar result type
+
+drop type rngfunc_type cascade;
 
 --
 -- Check some cases involving added/dropped columns in a rowtype result
@@ -558,19 +682,52 @@ SELECT * FROM ROWS FROM(get_users(), generate_series(10,11)) WITH ORDINALITY;
 select * from usersview;
 alter table users add column junk text;
 select * from usersview;
+
+alter table users drop column moredrop;  -- fail, view has reference
+
+-- We used to have a bug that would allow the above to succeed, posing
+-- hazards for later execution of the view.  Check that the internal
+-- defenses for those hazards haven't bit-rotted, in case some other
+-- bug with similar symptoms emerges.
 begin;
+
+-- destroy the dependency entry that prevents the DROP:
+delete from pg_depend where
+  objid = (select oid from pg_rewrite
+           where ev_class = 'usersview'::regclass and rulename = '_RETURN')
+  and refobjsubid = 5
+returning pg_describe_object(classid, objid, objsubid) as obj,
+          pg_describe_object(refclassid, refobjid, refobjsubid) as ref,
+          deptype;
+
 alter table users drop column moredrop;
 select * from usersview;  -- expect clean failure
 rollback;
+
+alter table users alter column seq type numeric;  -- fail, view has reference
+
+-- likewise, check we don't crash if the dependency goes wrong
+begin;
+
+-- destroy the dependency entry that prevents the ALTER:
+delete from pg_depend where
+  objid = (select oid from pg_rewrite
+           where ev_class = 'usersview'::regclass and rulename = '_RETURN')
+  and refobjsubid = 2
+returning pg_describe_object(classid, objid, objsubid) as obj,
+          pg_describe_object(refclassid, refobjid, refobjsubid) as ref,
+          deptype;
+
 alter table users alter column seq type numeric;
 select * from usersview;  -- expect clean failure
+rollback;
 
 drop view usersview;
 drop function get_first_user();
 drop function get_users();
 drop table users;
 
--- this won't get inlined because of type coercion, but it shouldn't fail
+-- check behavior with type coercion required for a set-op
 
 create or replace function rngfuncbar() returns setof text as
 $$ select 'foo'::varchar union all select 'bar'::varchar ; $$
@@ -578,6 +735,8 @@ language sql stable;
 
 select rngfuncbar();
 select * from rngfuncbar();
+-- this function is now inlinable, too:
+explain (verbose, costs off) select * from rngfuncbar();
 
 drop function rngfuncbar();
 
@@ -641,3 +800,18 @@ select *, row_to_json(u) from unnest(array[null::rngfunc2, (1,'foo')::rngfunc2, 
 select *, row_to_json(u) from unnest(array[]::rngfunc2[]) u;
 
 drop type rngfunc2;
+
+-- check handling of functions pulled up into function RTEs (bug #17227)
+
+explain (verbose, costs off)
+select * from
+  (select jsonb_path_query_array(module->'lectures', '$[*]') as lecture
+   from unnest(array['{"lectures": [{"id": "1"}]}'::jsonb])
+        as unnested_modules(module)) as ss,
+  jsonb_to_recordset(ss.lecture) as j (id text);
+
+select * from
+  (select jsonb_path_query_array(module->'lectures', '$[*]') as lecture
+   from unnest(array['{"lectures": [{"id": "1"}]}'::jsonb])
+        as unnested_modules(module)) as ss,
+  jsonb_to_recordset(ss.lecture) as j (id text);

@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/xaggr.sgml -->
 
  <sect1 id="xaggr">
-  <title>User-defined Aggregates</title>
+  <title>User-Defined Aggregates</title>
 
   <indexterm zone="xaggr">
    <primary>aggregate function</primary>
@@ -298,10 +298,10 @@ FROM (VALUES (1, 1.0e20::float8),
    Here is an example of a polymorphic aggregate:
 
 <programlisting>
-CREATE AGGREGATE array_accum (anyelement)
+CREATE AGGREGATE array_accum (anycompatible)
 (
     sfunc = array_append,
-    stype = anyarray,
+    stype = anycompatiblearray,
     initcond = '{}'
 );
 </programlisting>
@@ -322,7 +322,7 @@ SELECT attrelid::regclass, array_accum(attname)
     WHERE attnum &gt; 0 AND attrelid = 'pg_tablespace'::regclass
     GROUP BY attrelid;
 
-   attrelid    |              array_accum              
+   attrelid    |              array_accum
 ---------------+---------------------------------------
  pg_tablespace | {spcname,spcowner,spcacl,spcoptions}
 (1 row)
@@ -332,7 +332,7 @@ SELECT attrelid::regclass, array_accum(atttypid::regtype)
     WHERE attnum &gt; 0 AND attrelid = 'pg_tablespace'::regclass
     GROUP BY attrelid;
 
-   attrelid    |        array_accum        
+   attrelid    |        array_accum
 ---------------+---------------------------
  pg_tablespace | {name,oid,aclitem[],text[]}
 (1 row)
@@ -490,7 +490,7 @@ SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY income) FROM households;
    Also, because the final function performs the sort, it is not possible
    to continue adding input rows by executing the transition function again
    later.  This means the final function is not <literal>READ_ONLY</literal>;
-   it must be declared in <xref linkend="sql-createaggregate"/>
+   it must be declared in <link linkend="sql-createaggregate"><command>CREATE AGGREGATE</command></link>
    as <literal>READ_WRITE</literal>, or as <literal>SHAREABLE</literal> if
    it's possible for additional final-function calls to make use of the
    already-sorted state.

@@ -4,7 +4,7 @@
  *	 Implementation of generic xlog records.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/generic_xlog.c
@@ -69,11 +69,11 @@ struct GenericXLogState
 };
 
 static void writeFragment(PageData *pageData, OffsetNumber offset,
-			  OffsetNumber len, const char *data);
+						  OffsetNumber len, const char *data);
 static void computeRegionDelta(PageData *pageData,
-				   const char *curpage, const char *targetpage,
-				   int targetStart, int targetEnd,
-				   int validStart, int validEnd);
+							   const char *curpage, const char *targetpage,
+							   int targetStart, int targetEnd,
+							   int validStart, int validEnd);
 static void computeDelta(PageData *pageData, Page curpage, Page targetpage);
 static void applyPageRedo(Page page, const char *delta, Size deltaSize);
 
@@ -482,10 +482,10 @@ generic_redo(XLogReaderState *record)
 	uint8		block_id;
 
 	/* Protect limited size of buffers[] array */
-	Assert(record->max_block_id < MAX_GENERIC_XLOG_PAGES);
+	Assert(XLogRecMaxBlockId(record) < MAX_GENERIC_XLOG_PAGES);
 
 	/* Iterate over blocks */
-	for (block_id = 0; block_id <= record->max_block_id; block_id++)
+	for (block_id = 0; block_id <= XLogRecMaxBlockId(record); block_id++)
 	{
 		XLogRedoAction action;
 
@@ -525,7 +525,7 @@ generic_redo(XLogReaderState *record)
 	}
 
 	/* Changes are done: unlock and release all buffers */
-	for (block_id = 0; block_id <= record->max_block_id; block_id++)
+	for (block_id = 0; block_id <= XLogRecMaxBlockId(record); block_id++)
 	{
 		if (BufferIsValid(buffers[block_id]))
 			UnlockReleaseBuffer(buffers[block_id]);

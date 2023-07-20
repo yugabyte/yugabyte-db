@@ -3,7 +3,7 @@
  * tsmapi.h
  *	  API for tablesample methods
  *
- * Copyright (c) 2015-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2015-2022, PostgreSQL Global Development Group
  *
  * src/include/access/tsmapi.h
  *
@@ -13,7 +13,7 @@
 #define TSMAPI_H
 
 #include "nodes/execnodes.h"
-#include "nodes/relation.h"
+#include "nodes/pathnodes.h"
 
 
 /*
@@ -34,7 +34,8 @@ typedef void (*BeginSampleScan_function) (SampleScanState *node,
 										  int nparams,
 										  uint32 seed);
 
-typedef BlockNumber (*NextSampleBlock_function) (SampleScanState *node);
+typedef BlockNumber (*NextSampleBlock_function) (SampleScanState *node,
+												 BlockNumber nblocks);
 
 typedef OffsetNumber (*NextSampleTuple_function) (SampleScanState *node,
 												  BlockNumber blockno,

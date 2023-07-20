@@ -4,7 +4,7 @@
  *
  * PostgreSQL object comments utility code.
  *
- * Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/commands/comment.c
@@ -15,8 +15,9 @@
 #include "postgres.h"
 
 #include "access/genam.h"
-#include "access/heapam.h"
 #include "access/htup_details.h"
+#include "access/relation.h"
+#include "access/table.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaddress.h"
 #include "catalog/pg_description.h"
@@ -27,7 +28,6 @@
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
-#include "utils/tqual.h"
 
 
 /*
@@ -52,7 +52,7 @@ CommentObject(CommentStmt *stmt)
 	 */
 	if (stmt->objtype == OBJECT_DATABASE)
 	{
-		char	   *database = strVal((Value *) stmt->object);
+		char	   *database = strVal(stmt->object);
 
 		if (!OidIsValid(get_database_oid(database, true)))
 		{
@@ -98,8 +98,9 @@ CommentObject(CommentStmt *stmt)
 				relation->rd_rel->relkind != RELKIND_PARTITIONED_TABLE)
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						 errmsg("\"%s\" is not a table, view, materialized view, composite type, or foreign table",
-								RelationGetRelationName(relation))));
+						 errmsg("cannot set comment on relation \"%s\"",
+								RelationGetRelationName(relation)),
+						 errdetail_relkind_not_supported(relation->rd_rel->relkind)));
 			break;
 		default:
 			break;
@@ -184,7 +185,7 @@ CreateComments(Oid oid, Oid classoid, int32 subid, const char *comment)
 				BTEqualStrategyNumber, F_INT4EQ,
 				Int32GetDatum(subid));
 
-	description = heap_open(DescriptionRelationId, RowExclusiveLock);
+	description = table_open(DescriptionRelationId, RowExclusiveLock);
 
 	sd = systable_beginscan(description, DescriptionObjIndexId, true,
 							NULL, 3, skey);
@@ -221,7 +222,7 @@ CreateComments(Oid oid, Oid classoid, int32 subid, const char *comment)
 
 	/* Done */
 
-	heap_close(description, NoLock);
+	table_close(description, NoLock);
 }
 
 /*
@@ -274,7 +275,7 @@ CreateSharedComments(Oid oid, Oid classoid, const char *comment)
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(classoid));
 
-	shdescription = heap_open(SharedDescriptionRelationId, RowExclusiveLock);
+	shdescription = table_open(SharedDescriptionRelationId, RowExclusiveLock);
 
 	sd = systable_beginscan(shdescription, SharedDescriptionObjIndexId, true,
 							NULL, 2, skey);
@@ -311,7 +312,7 @@ CreateSharedComments(Oid oid, Oid classoid, const char *comment)
 
 	/* Done */
 
-	heap_close(shdescription, NoLock);
+	table_close(shdescription, NoLock);
 }
 
 /*
@@ -352,7 +353,7 @@ DeleteComments(Oid oid, Oid classoid, int32 subid)
 	else
 		nkeys = 2;
 
-	description = heap_open(DescriptionRelationId, RowExclusiveLock);
+	description = table_open(DescriptionRelationId, RowExclusiveLock);
 
 	sd = systable_beginscan(description, DescriptionObjIndexId, true,
 							NULL, nkeys, skey);
@@ -363,7 +364,7 @@ DeleteComments(Oid oid, Oid classoid, int32 subid)
 	/* Done */
 
 	systable_endscan(sd);
-	heap_close(description, RowExclusiveLock);
+	table_close(description, RowExclusiveLock);
 }
 
 /*
@@ -388,7 +389,7 @@ DeleteSharedComments(Oid oid, Oid classoid)
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(classoid));
 
-	shdescription = heap_open(SharedDescriptionRelationId, RowExclusiveLock);
+	shdescription = table_open(SharedDescriptionRelationId, RowExclusiveLock);
 
 	sd = systable_beginscan(shdescription, SharedDescriptionObjIndexId, true,
 							NULL, 2, skey);
@@ -399,7 +400,7 @@ DeleteSharedComments(Oid oid, Oid classoid)
 	/* Done */
 
 	systable_endscan(sd);
-	heap_close(shdescription, RowExclusiveLock);
+	table_close(shdescription, RowExclusiveLock);
 }
 
 /*
@@ -430,7 +431,7 @@ GetComment(Oid oid, Oid classoid, int32 subid)
 				BTEqualStrategyNumber, F_INT4EQ,
 				Int32GetDatum(subid));
 
-	description = heap_open(DescriptionRelationId, AccessShareLock);
+	description = table_open(DescriptionRelationId, AccessShareLock);
 	tupdesc = RelationGetDescr(description);
 
 	sd = systable_beginscan(description, DescriptionObjIndexId, true,
@@ -452,7 +453,7 @@ GetComment(Oid oid, Oid classoid, int32 subid)
 	systable_endscan(sd);
 
 	/* Done */
-	heap_close(description, AccessShareLock);
+	table_close(description, AccessShareLock);
 
 	return comment;
 }

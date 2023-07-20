@@ -1,15 +1,18 @@
+
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+
 use strict;
 use warnings;
 
-use PostgresNode;
-use TestLib;
-use Test::More tests => 12;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
 program_help_ok('pg_resetwal');
 program_version_ok('pg_resetwal');
 program_options_handling_ok('pg_resetwal');
 
-my $node = get_new_node('main');
+my $node = PostgreSQL::Test::Cluster->new('main');
 $node->init;
 
 command_like([ 'pg_resetwal', '-n', $node->data_dir ],
@@ -25,3 +28,5 @@ SKIP:
 	ok(check_mode_recursive($node->data_dir, 0700, 0600),
 		'check PGDATA permissions');
 }
+
+done_testing();

@@ -3,7 +3,7 @@
  * standbydesc.c
  *	  rmgr descriptor routines for storage/ipc/standby.c
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -101,6 +101,10 @@ standby_desc_invalidations(StringInfo buf,
 						   bool relcacheInitFileInval)
 {
 	int			i;
+
+	/* Do nothing if there are no invalidation messages */
+	if (nmsgs <= 0)
+		return;
 
 	if (relcacheInitFileInval)
 		appendStringInfo(buf, "; relcache init file inval dbid %u tsid %u",

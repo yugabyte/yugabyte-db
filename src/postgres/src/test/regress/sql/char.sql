@@ -2,16 +2,17 @@
 -- CHAR
 --
 
--- fixed-length by value
--- internally passed by value if <= 4 bytes in storage
+-- Per SQL standard, CHAR means character(1), that is a varlena type
+-- with a constraint restricting it to one character (not byte)
 
 SELECT char 'c' = char 'c' AS true;
 
 --
 -- Build a table for testing
+-- (This temporarily hides the table created in test_setup.sql)
 --
 
-CREATE TABLE CHAR_TBL(f1 char);
+CREATE TEMP TABLE CHAR_TBL(f1 char);
 
 INSERT INTO CHAR_TBL (f1) VALUES ('a');
 
@@ -32,29 +33,29 @@ INSERT INTO CHAR_TBL (f1) VALUES ('cd');
 INSERT INTO CHAR_TBL (f1) VALUES ('c     ');
 
 
-SELECT '' AS seven, * FROM CHAR_TBL;
+SELECT * FROM CHAR_TBL;
 
-SELECT '' AS six, c.*
+SELECT c.*
    FROM CHAR_TBL c
    WHERE c.f1 <> 'a';
 
-SELECT '' AS one, c.*
+SELECT c.*
    FROM CHAR_TBL c
    WHERE c.f1 = 'a';
 
-SELECT '' AS five, c.*
+SELECT c.*
    FROM CHAR_TBL c
    WHERE c.f1 < 'a';
 
-SELECT '' AS six, c.*
+SELECT c.*
    FROM CHAR_TBL c
    WHERE c.f1 <= 'a';
 
-SELECT '' AS one, c.*
+SELECT c.*
    FROM CHAR_TBL c
    WHERE c.f1 > 'a';
 
-SELECT '' AS two, c.*
+SELECT c.*
    FROM CHAR_TBL c
    WHERE c.f1 >= 'a';
 
@@ -63,13 +64,26 @@ DROP TABLE CHAR_TBL;
 --
 -- Now test longer arrays of char
 --
+-- This char_tbl was already created and filled in test_setup.sql.
+-- Here we just try to insert bad values.
+--
 
-CREATE TABLE CHAR_TBL(f1 char(4));
-
-INSERT INTO CHAR_TBL (f1) VALUES ('a');
-INSERT INTO CHAR_TBL (f1) VALUES ('ab');
-INSERT INTO CHAR_TBL (f1) VALUES ('abcd');
 INSERT INTO CHAR_TBL (f1) VALUES ('abcde');
-INSERT INTO CHAR_TBL (f1) VALUES ('abcd    ');
 
-SELECT '' AS four, * FROM CHAR_TBL;
+SELECT * FROM CHAR_TBL;
+
+--
+-- Also test "char", which is an ad-hoc one-byte type.  It can only
+-- really store ASCII characters, but we allow high-bit-set characters
+-- to be accessed via bytea-like escapes.
+--
+
+SELECT 'a'::"char";
+SELECT '\101'::"char";
+SELECT '\377'::"char";
+SELECT 'a'::"char"::text;
+SELECT '\377'::"char"::text;
+SELECT '\000'::"char"::text;
+SELECT 'a'::text::"char";
+SELECT '\377'::text::"char";
+SELECT ''::text::"char";

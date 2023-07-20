@@ -9,7 +9,7 @@
  * the single-user case works.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -22,10 +22,9 @@
 
 #include "access/htup_details.h"
 #include "catalog/pg_authid.h"
+#include "miscadmin.h"
 #include "utils/inval.h"
 #include "utils/syscache.h"
-#include "miscadmin.h"
-
 
 /*
  * In common cases the same roleid (ie, the session or current ID) will

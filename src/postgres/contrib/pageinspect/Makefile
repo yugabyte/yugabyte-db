@@ -1,18 +1,28 @@
 # contrib/pageinspect/Makefile
 
 MODULE_big	= pageinspect
-OBJS		= rawpage.o heapfuncs.o btreefuncs.o fsmfuncs.o \
-		  brinfuncs.o ginfuncs.o hashfuncs.o $(WIN32RES)
+OBJS = \
+	$(WIN32RES) \
+	brinfuncs.o \
+	btreefuncs.o \
+	fsmfuncs.o \
+	ginfuncs.o \
+	gistfuncs.o \
+	hashfuncs.o \
+	heapfuncs.o \
+	rawpage.o
 
 EXTENSION = pageinspect
-DATA =  pageinspect--1.6--1.7.sql \
+DATA =  pageinspect--1.10--1.11.sql \
+	pageinspect--1.9--1.10.sql pageinspect--1.8--1.9.sql \
+	pageinspect--1.7--1.8.sql pageinspect--1.6--1.7.sql \
 	pageinspect--1.5.sql pageinspect--1.5--1.6.sql \
 	pageinspect--1.4--1.5.sql pageinspect--1.3--1.4.sql \
 	pageinspect--1.2--1.3.sql pageinspect--1.1--1.2.sql \
-	pageinspect--1.0--1.1.sql pageinspect--unpackaged--1.0.sql
+	pageinspect--1.0--1.1.sql
 PGFILEDESC = "pageinspect - functions to inspect contents of database pages"
 
-REGRESS = page btree brin gin hash
+REGRESS = page btree brin gin gist hash checksum oldextversions
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config

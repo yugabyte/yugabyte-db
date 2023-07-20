@@ -4,7 +4,7 @@
  *	  Utility routines for the Postgres inverted index access method.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -20,6 +20,7 @@
 #include "access/xloginsert.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
+#include "commands/vacuum.h"
 #include "miscadmin.h"
 #include "storage/indexfsm.h"
 #include "storage/lmgr.h"
@@ -44,6 +45,7 @@ ginhandler(PG_FUNCTION_ARGS)
 
 	amroutine->amstrategies = 0;
 	amroutine->amsupport = GINNProcs;
+	amroutine->amoptsprocnum = GIN_OPTIONS_PROC;
 	amroutine->amcanorder = false;
 	amroutine->amcanorderbyop = false;
 	amroutine->amcanbackward = false;
@@ -57,6 +59,9 @@ ginhandler(PG_FUNCTION_ARGS)
 	amroutine->ampredlocks = true;
 	amroutine->amcanparallel = false;
 	amroutine->amcaninclude = false;
+	amroutine->amusemaintenanceworkmem = true;
+	amroutine->amparallelvacuumoptions =
+		VACUUM_OPTION_PARALLEL_BULKDEL | VACUUM_OPTION_PARALLEL_CLEANUP;
 	amroutine->amkeytype = InvalidOid;
 
 	amroutine->ambuild = ginbuild;
@@ -68,7 +73,9 @@ ginhandler(PG_FUNCTION_ARGS)
 	amroutine->amcostestimate = gincostestimate;
 	amroutine->amoptions = ginoptions;
 	amroutine->amproperty = NULL;
+	amroutine->ambuildphasename = NULL;
 	amroutine->amvalidate = ginvalidate;
+	amroutine->amadjustmembers = ginadjustmembers;
 	amroutine->ambeginscan = ginbeginscan;
 	amroutine->amrescan = ginrescan;
 	amroutine->amgettuple = NULL;
@@ -97,7 +104,7 @@ initGinState(GinState *state, Relation index)
 	MemSet(state, 0, sizeof(GinState));
 
 	state->index = index;
-	state->oneCol = (origTupdesc->natts == 1) ? true : false;
+	state->oneCol = (origTupdesc->natts == 1);
 	state->origTupdesc = origTupdesc;
 
 	for (i = 0; i < origTupdesc->natts; i++)
@@ -108,7 +115,7 @@ initGinState(GinState *state, Relation index)
 			state->tupdesc[i] = state->origTupdesc;
 		else
 		{
-			state->tupdesc[i] = CreateTemplateTupleDesc(2, false);
+			state->tupdesc[i] = CreateTemplateTupleDesc(2);
 
 			TupleDescInitEntry(state->tupdesc[i], (AttrNumber) 1, NULL,
 							   INT2OID, -1, 0);
@@ -363,7 +370,6 @@ GinInitPage(Page page, uint32 f, Size pageSize)
 	PageInit(page, pageSize, sizeof(GinPageOpaqueData));
 
 	opaque = GinPageGetOpaque(page);
-	memset(opaque, 0, sizeof(GinPageOpaqueData));
 	opaque->flags = f;
 	opaque->rightlink = InvalidBlockNumber;
 }
@@ -623,30 +629,16 @@ ginExtractEntries(GinState *ginstate, OffsetNumber attnum,
 bytea *
 ginoptions(Datum reloptions, bool validate)
 {
-	relopt_value *options;
-	GinOptions *rdopts;
-	int			numoptions;
 	static const relopt_parse_elt tab[] = {
 		{"fastupdate", RELOPT_TYPE_BOOL, offsetof(GinOptions, useFastUpdate)},
 		{"gin_pending_list_limit", RELOPT_TYPE_INT, offsetof(GinOptions,
 															 pendingListCleanupSize)}
 	};
 
-	options = parseRelOptions(reloptions, validate, RELOPT_KIND_GIN,
-							  &numoptions);
-
-	/* if none set, we're done */
-	if (numoptions == 0)
-		return NULL;
-
-	rdopts = allocateReloptStruct(sizeof(GinOptions), options, numoptions);
-
-	fillRelOptions((void *) rdopts, sizeof(GinOptions), options, numoptions,
-				   validate, tab, lengthof(tab));
-
-	pfree(options);
-
-	return (bytea *) rdopts;
+	return (bytea *) build_reloptions(reloptions, validate,
+									  RELOPT_KIND_GIN,
+									  sizeof(GinOptions),
+									  tab, lengthof(tab));
 }
 
 /*
@@ -688,7 +680,7 @@ ginGetStats(Relation index, GinStatsData *stats)
  * Note: nPendingPages and ginVersion are *not* copied over
  */
 void
-ginUpdateStats(Relation index, const GinStatsData *stats)
+ginUpdateStats(Relation index, const GinStatsData *stats, bool is_build)
 {
 	Buffer		metabuffer;
 	Page		metapage;
@@ -718,7 +710,7 @@ ginUpdateStats(Relation index, const GinStatsData *stats)
 
 	MarkBufferDirty(metabuffer);
 
-	if (RelationNeedsWAL(index))
+	if (RelationNeedsWAL(index) && !is_build)
 	{
 		XLogRecPtr	recptr;
 		ginxlogUpdateMeta data;

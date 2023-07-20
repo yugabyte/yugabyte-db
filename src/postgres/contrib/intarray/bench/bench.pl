@@ -1,6 +1,9 @@
 #!/usr/bin/perl
 
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+
 use strict;
+use warnings;
 
 # make sure we are in a sane environment.
 use DBI();

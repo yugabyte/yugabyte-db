@@ -7,7 +7,7 @@
  *	  and join trees.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/primnodes.h
@@ -32,7 +32,7 @@
  *	  specifies an alias for a range variable; the alias might also
  *	  specify renaming of columns within the table.
  *
- * Note: colnames is a list of Value nodes (always strings).  In Alias structs
+ * Note: colnames is a list of String nodes.  In Alias structs
  * associated with RTEs, there may be entries corresponding to dropped
  * columns; these are normally empty strings ("").  See parsenodes.h for info.
  */
@@ -76,7 +76,7 @@ typedef struct RangeVar
 /*
  * TableFunc - node for a table function, such as XMLTABLE.
  *
- * Entries in the ns_names list are either string Value nodes containing
+ * Entries in the ns_names list are either String nodes containing
  * literal namespace names, or NULL pointers to represent DEFAULT.
  */
 typedef struct TableFunc
@@ -111,6 +111,7 @@ typedef struct IntoClause
 
 	RangeVar   *rel;			/* target relation name */
 	List	   *colNames;		/* column names to assign, or NIL */
+	char	   *accessMethod;	/* table access method */
 	List	   *options;		/* options from WITH clause */
 	OnCommitAction onCommit;	/* what do we do at COMMIT? */
 	char	   *tableSpaceName; /* table space to use, or NULL */
@@ -140,24 +141,43 @@ typedef struct Expr
 /*
  * Var - expression node representing a variable (ie, a table column)
  *
- * Note: during parsing/planning, varnoold/varoattno are always just copies
- * of varno/varattno.  At the tail end of planning, Var nodes appearing in
- * upper-level plan nodes are reassigned to point to the outputs of their
- * subplans; for example, in a join node varno becomes INNER_VAR or OUTER_VAR
- * and varattno becomes the index of the proper element of that subplan's
- * target list.  Similarly, INDEX_VAR is used to identify Vars that reference
- * an index column rather than a heap column.  (In ForeignScan and CustomScan
- * plan nodes, INDEX_VAR is abused to signify references to columns of a
- * custom scan tuple type.)  In all these cases, varnoold/varoattno hold the
- * original values.  The code doesn't really need varnoold/varoattno, but they
- * are very useful for debugging and interpreting completed plans, so we keep
- * them around.
+ * In the parser and planner, varno and varattno identify the semantic
+ * referent, which is a base-relation column unless the reference is to a join
+ * USING column that isn't semantically equivalent to either join input column
+ * (because it is a FULL join or the input column requires a type coercion).
+ * In those cases varno and varattno refer to the JOIN RTE.  (Early in the
+ * planner, we replace such join references by the implied expression; but up
+ * till then we want join reference Vars to keep their original identity for
+ * query-printing purposes.)
+ *
+ * At the end of planning, Var nodes appearing in upper-level plan nodes are
+ * reassigned to point to the outputs of their subplans; for example, in a
+ * join node varno becomes INNER_VAR or OUTER_VAR and varattno becomes the
+ * index of the proper element of that subplan's target list.  Similarly,
+ * INDEX_VAR is used to identify Vars that reference an index column rather
+ * than a heap column.  (In ForeignScan and CustomScan plan nodes, INDEX_VAR
+ * is abused to signify references to columns of a custom scan tuple type.)
+ *
+ * ROWID_VAR is used in the planner to identify nonce variables that carry
+ * row identity information during UPDATE/DELETE/MERGE.  This value should
+ * never be seen outside the planner.
+ *
+ * In the parser, varnosyn and varattnosyn are either identical to
+ * varno/varattno, or they specify the column's position in an aliased JOIN
+ * RTE that hides the semantic referent RTE's refname.  This is a syntactic
+ * identifier as opposed to the semantic identifier; it tells ruleutils.c
+ * how to print the Var properly.  varnosyn/varattnosyn retain their values
+ * throughout planning and execution, so they are particularly helpful to
+ * identify Vars when debugging.  Note, however, that a Var that is generated
+ * in the planner and doesn't correspond to any simple relation column may
+ * have varnosyn = varattnosyn = 0.
  */
-#define    INNER_VAR		65000	/* reference to inner subplan */
-#define    OUTER_VAR		65001	/* reference to outer subplan */
-#define    INDEX_VAR		65002	/* reference to index column */
+#define    INNER_VAR		(-1)	/* reference to inner subplan */
+#define    OUTER_VAR		(-2)	/* reference to outer subplan */
+#define    INDEX_VAR		(-3)	/* reference to index column */
+#define    ROWID_VAR		(-4)	/* row identity column during planning */
 
-#define IS_SPECIAL_VARNO(varno)		((varno) >= INNER_VAR)
+#define IS_SPECIAL_VARNO(varno)		((int) (varno) < 0)
 
 /* Symbols for the indexes of the special RTE entries in rules */
 #define    PRS2_OLD_VARNO			1
@@ -166,8 +186,8 @@ typedef struct Expr
 typedef struct Var
 {
 	Expr		xpr;
-	Index		varno;			/* index of this var's relation in the range
-								 * table, or INNER_VAR/OUTER_VAR/INDEX_VAR */
+	int			varno;			/* index of this var's relation in the range
+								 * table, or INNER_VAR/OUTER_VAR/etc */
 	AttrNumber	varattno;		/* attribute number of this var, or zero for
 								 * all attrs ("whole-row Var") */
 	Oid			vartype;		/* pg_type OID for the type of this var */
@@ -176,8 +196,8 @@ typedef struct Var
 	Index		varlevelsup;	/* for subquery variables referencing outer
 								 * relations; 0 in a normal var, >0 means N
 								 * levels up */
-	Index		varnoold;		/* original value of varno, for debugging */
-	AttrNumber	varoattno;		/* original value of varattno */
+	Index		varnosyn;		/* syntactic relation index (0 if unknown) */
+	AttrNumber	varattnosyn;	/* syntactic attribute number */
 	int			location;		/* token location, or -1 if unknown */
 } Var;
 
@@ -290,6 +310,12 @@ typedef struct Param
  * a crosscheck that the Aggrefs match the plan; but note that when aggsplit
  * indicates a non-final mode, aggtype reflects the transition data type
  * not the SQL-level output type of the aggregate.
+ *
+ * aggno and aggtransno are -1 in the parse stage, and are set in planning.
+ * Aggregates with the same 'aggno' represent the same aggregate expression,
+ * and can share the result.  Aggregates with same 'transno' but different
+ * 'aggno' can share the same transition state, only the final function needs
+ * to be called separately.
  */
 typedef struct Aggref
 {
@@ -311,6 +337,8 @@ typedef struct Aggref
 	char		aggkind;		/* aggregate kind (see pg_aggregate.h) */
 	Index		agglevelsup;	/* > 0 if agg belongs to outer query */
 	AggSplit	aggsplit;		/* expected agg-splitting mode of parent Agg */
+	int			aggno;			/* unique ID within the Agg node */
+	int			aggtransno;		/* unique ID of transition state in the Agg */
 	int			location;		/* token location, or -1 if unknown */
 } Aggref;
 
@@ -367,52 +395,62 @@ typedef struct WindowFunc
 	int			location;		/* token location, or -1 if unknown */
 } WindowFunc;
 
-/* ----------------
- *	ArrayRef: describes an array subscripting operation
+/*
+ * SubscriptingRef: describes a subscripting operation over a container
+ * (array, etc).
  *
- * An ArrayRef can describe fetching a single element from an array,
- * fetching a subarray (array slice), storing a single element into
- * an array, or storing a slice.  The "store" cases work with an
- * initial array value and a source value that is inserted into the
- * appropriate part of the array; the result of the operation is an
- * entire new modified array value.
+ * A SubscriptingRef can describe fetching a single element from a container,
+ * fetching a part of a container (e.g. an array slice), storing a single
+ * element into a container, or storing a slice.  The "store" cases work with
+ * an initial container value and a source value that is inserted into the
+ * appropriate part of the container; the result of the operation is an
+ * entire new modified container value.
  *
- * If reflowerindexpr = NIL, then we are fetching or storing a single array
- * element at the subscripts given by refupperindexpr.  Otherwise we are
- * fetching or storing an array slice, that is a rectangular subarray
+ * If reflowerindexpr = NIL, then we are fetching or storing a single container
+ * element at the subscripts given by refupperindexpr. Otherwise we are
+ * fetching or storing a container slice, that is a rectangular subcontainer
  * with lower and upper bounds given by the index expressions.
  * reflowerindexpr must be the same length as refupperindexpr when it
  * is not NIL.
  *
  * In the slice case, individual expressions in the subscript lists can be
  * NULL, meaning "substitute the array's current lower or upper bound".
+ * (Non-array containers may or may not support this.)
  *
- * Note: the result datatype is the element type when fetching a single
- * element; but it is the array type when doing subarray fetch or either
- * type of store.
+ * refcontainertype is the actual container type that determines the
+ * subscripting semantics.  (This will generally be either the exposed type of
+ * refexpr, or the base type if that is a domain.)  refelemtype is the type of
+ * the container's elements; this is saved for the use of the subscripting
+ * functions, but is not used by the core code.  refrestype, reftypmod, and
+ * refcollid describe the type of the SubscriptingRef's result.  In a store
+ * expression, refrestype will always match refcontainertype; in a fetch,
+ * it could be refelemtype for an element fetch, or refcontainertype for a
+ * slice fetch, or possibly something else as determined by type-specific
+ * subscripting logic.  Likewise, reftypmod and refcollid will match the
+ * container's properties in a store, but could be different in a fetch.
  *
- * Note: for the cases where an array is returned, if refexpr yields a R/W
- * expanded array, then the implementation is allowed to modify that object
- * in-place and return the same object.)
- * ----------------
+ * Note: for the cases where a container is returned, if refexpr yields a R/W
+ * expanded container, then the implementation is allowed to modify that
+ * object in-place and return the same object.
  */
-typedef struct ArrayRef
+typedef struct SubscriptingRef
 {
 	Expr		xpr;
-	Oid			refarraytype;	/* type of the array proper */
-	Oid			refelemtype;	/* type of the array elements */
-	int32		reftypmod;		/* typmod of the array (and elements too) */
-	Oid			refcollid;		/* OID of collation, or InvalidOid if none */
+	Oid			refcontainertype;	/* type of the container proper */
+	Oid			refelemtype;	/* the container type's pg_type.typelem */
+	Oid			refrestype;		/* type of the SubscriptingRef's result */
+	int32		reftypmod;		/* typmod of the result */
+	Oid			refcollid;		/* collation of result, or InvalidOid if none */
 	List	   *refupperindexpr;	/* expressions that evaluate to upper
-									 * array indexes */
+									 * container indexes */
 	List	   *reflowerindexpr;	/* expressions that evaluate to lower
-									 * array indexes, or NIL for single array
-									 * element */
-	Expr	   *refexpr;		/* the expression that evaluates to an array
-								 * value */
+									 * container indexes, or NIL for single
+									 * container element */
+	Expr	   *refexpr;		/* the expression that evaluates to a
+								 * container value */
 	Expr	   *refassgnexpr;	/* expression for the source value, or NULL if
 								 * fetch */
-} ArrayRef;
+} SubscriptingRef;
 
 /*
  * CoercionContext - distinguishes the allowed set of type casts
@@ -424,11 +462,15 @@ typedef enum CoercionContext
 {
 	COERCION_IMPLICIT,			/* coercion in context of expression */
 	COERCION_ASSIGNMENT,		/* coercion in context of assignment */
+	COERCION_PLPGSQL,			/* if no assignment cast, use CoerceViaIO */
 	COERCION_EXPLICIT			/* explicit cast operation */
 } CoercionContext;
 
 /*
- * CoercionForm - how to display a node that could have come from a cast
+ * CoercionForm - how to display a FuncExpr or related node
+ *
+ * "Coercion" is a bit of a misnomer, since this value records other
+ * special syntaxes besides casts, but for now we'll keep this naming.
  *
  * NB: equal() ignores CoercionForm fields, therefore this *must* not carry
  * any semantically significant information.  We need that behavior so that
@@ -440,7 +482,8 @@ typedef enum CoercionForm
 {
 	COERCE_EXPLICIT_CALL,		/* display as a function call */
 	COERCE_EXPLICIT_CAST,		/* display as an explicit cast */
-	COERCE_IMPLICIT_CAST		/* implicit cast, so hide it */
+	COERCE_IMPLICIT_CAST,		/* implicit cast, so hide it */
+	COERCE_SQL_SYNTAX			/* display with SQL-mandated special syntax */
 } CoercionForm;
 
 /*
@@ -548,12 +591,29 @@ typedef OpExpr NullIfExpr;
  * is almost the same as for the underlying operator, but we need a useOr
  * flag to remember whether it's ANY or ALL, and we don't have to store
  * the result type (or the collation) because it must be boolean.
+ *
+ * A ScalarArrayOpExpr with a valid hashfuncid is evaluated during execution
+ * by building a hash table containing the Const values from the RHS arg.
+ * This table is probed during expression evaluation.  The planner will set
+ * hashfuncid to the hash function which must be used to build and probe the
+ * hash table.  The executor determines if it should use hash-based checks or
+ * the more traditional means based on if the hashfuncid is set or not.
+ *
+ * When performing hashed NOT IN, the negfuncid will also be set to the
+ * equality function which the hash table must use to build and probe the hash
+ * table.  opno and opfuncid will remain set to the <> operator and its
+ * corresponding function and won't be used during execution.  For
+ * non-hashtable based NOT INs, negfuncid will be set to InvalidOid.  See
+ * convert_saop_to_hashed_saop().
  */
 typedef struct ScalarArrayOpExpr
 {
 	Expr		xpr;
 	Oid			opno;			/* PG_OPERATOR OID of the operator */
-	Oid			opfuncid;		/* PG_PROC OID of underlying function */
+	Oid			opfuncid;		/* PG_PROC OID of comparison function */
+	Oid			hashfuncid;		/* PG_PROC OID of hash func or InvalidOid */
+	Oid			negfuncid;		/* PG_PROC OID of negator of opfuncid function
+								 * or InvalidOid.  See above */
 	bool		useOr;			/* true for ANY, false for ALL */
 	Oid			inputcollid;	/* OID of collation that operator should use */
 	List	   *args;			/* the scalar and array operands */
@@ -732,6 +792,9 @@ typedef struct SubPlan
 /*
  * AlternativeSubPlan - expression node for a choice among SubPlans
  *
+ * This is used only transiently during planning: by the time the plan
+ * reaches the executor, all AlternativeSubPlan nodes have been removed.
+ *
  * The subplans are given as a List so that the node definition need not
  * change if there's ever more than two alternatives.  For the moment,
  * though, there are always exactly two; and the first one is the fast-start
@@ -768,7 +831,7 @@ typedef struct FieldSelect
  *
  * FieldStore represents the operation of modifying one field in a tuple
  * value, yielding a new tuple value (the input is not touched!).  Like
- * the assign case of ArrayRef, this is used to implement UPDATE of a
+ * the assign case of SubscriptingRef, this is used to implement UPDATE of a
  * portion of a column.
  *
  * resulttype is always a named composite type (not a domain).  To update
@@ -950,7 +1013,7 @@ typedef struct CaseWhen
  * We also abuse this node type for some other purposes, including:
  *	* Placeholder for the current array element value in ArrayCoerceExpr;
  *	  see build_coercion_expression().
- *	* Nested FieldStore/ArrayRef assignment expressions in INSERT/UPDATE;
+ *	* Nested FieldStore/SubscriptingRef assignment expressions in INSERT/UPDATE;
  *	  see transformAssignmentIndirection().
  *
  * The uses in CaseExpr and ArrayCoerceExpr are safe only to the extent that
@@ -960,7 +1023,7 @@ typedef struct CaseWhen
  * break it.
  *
  * The nested-assignment-expression case is safe because the only node types
- * that can be above such CaseTestExprs are FieldStore and ArrayRef.
+ * that can be above such CaseTestExprs are FieldStore and SubscriptingRef.
  */
 typedef struct CaseTestExpr
 {
@@ -1002,15 +1065,13 @@ typedef struct ArrayExpr
  * than vice versa.)  It is important not to assume that length(args) is
  * the same as the number of columns logically present in the rowtype.
  *
- * colnames provides field names in cases where the names can't easily be
- * obtained otherwise.  Names *must* be provided if row_typeid is RECORDOID.
- * If row_typeid identifies a known composite type, colnames can be NIL to
- * indicate the type's cataloged field names apply.  Note that colnames can
- * be non-NIL even for a composite type, and typically is when the RowExpr
- * was created by expanding a whole-row Var.  This is so that we can retain
- * the column alias names of the RTE that the Var referenced (which would
- * otherwise be very difficult to extract from the parsetree).  Like the
- * args list, colnames is one-for-one with physical fields of the rowtype.
+ * colnames provides field names if the ROW() result is of type RECORD.
+ * Names *must* be provided if row_typeid is RECORDOID; but if it is a
+ * named composite type, colnames will be ignored in favor of using the
+ * type's cataloged field names, so colnames should be NIL.  Like the
+ * args list, colnames is defined to be one-for-one with physical fields
+ * of the rowtype (although dropped columns shouldn't appear in the
+ * RECORD case, so this fine point is currently moot).
  */
 typedef struct RowExpr
 {
@@ -1165,7 +1226,7 @@ typedef enum XmlExprOp
 	IS_DOCUMENT					/* xmlval IS DOCUMENT */
 } XmlExprOp;
 
-typedef enum
+typedef enum XmlOptionType
 {
 	XMLOPTION_DOCUMENT,
 	XMLOPTION_CONTENT
@@ -1177,7 +1238,7 @@ typedef struct XmlExpr
 	XmlExprOp	op;				/* xml function ID */
 	char	   *name;			/* name in xml(NAME foo ...) syntaxes */
 	List	   *named_args;		/* non-XML expressions for xml_attributes */
-	List	   *arg_names;		/* parallel list of Value strings */
+	List	   *arg_names;		/* parallel list of String values */
 	List	   *args;			/* list of expressions */
 	XmlOptionType xmloption;	/* DOCUMENT or CONTENT */
 	Oid			type;			/* target type/typmod for XMLSERIALIZE */
@@ -1301,6 +1362,7 @@ typedef struct SetToDefault
  * of the target relation being constrained; this aids placing the expression
  * correctly during planning.  We can assume however that its "levelsup" is
  * always zero, due to the syntactic constraints on where it can appear.
+ * Also, cvarno will always be a true RT index, never INNER_VAR etc.
  *
  * The referenced cursor can be represented either as a hardwired string
  * or as a reference to a run-time parameter of type REFCURSOR.  The latter
@@ -1358,13 +1420,14 @@ typedef struct InferenceElem
  * column for the item; so there may be missing or out-of-order resnos.
  * It is even legal to have duplicated resnos; consider
  *		UPDATE table SET arraycol[1] = ..., arraycol[2] = ..., ...
- * The two meanings come together in the executor, because the planner
- * transforms INSERT/UPDATE tlists into a normalized form with exactly
- * one entry for each column of the destination table.  Before that's
- * happened, however, it is risky to assume that resno == position.
- * Generally get_tle_by_resno() should be used rather than list_nth()
- * to fetch tlist entries by resno, and only in SELECT should you assume
- * that resno is a unique identifier.
+ * In an INSERT, the rewriter and planner will normalize the tlist by
+ * reordering it into physical column order and filling in default values
+ * for any columns not assigned values by the original query.  In an UPDATE,
+ * after the rewriter merges multiple assignments for the same column, the
+ * planner extracts the target-column numbers into a separate "update_colnos"
+ * list, and then renumbers the tlist elements serially.  Thus, tlist resnos
+ * match ordinal position in all tlists seen by the executor; but it is wrong
+ * to assume that before planning has happened.
  *
  * resname is required to represent the correct column name in non-resjunk
  * entries of top-level SELECT targetlists, since it will be used as the
@@ -1471,6 +1534,11 @@ typedef struct RangeTblRef
  * alias has a critical impact on semantics, because a join with an alias
  * restricts visibility of the tables/columns inside it.
  *
+ * join_using_alias is an Alias node representing the join correlation
+ * name that SQL:2016 and later allow to be attached to JOIN/USING.
+ * Its column alias list includes only the common column names from USING,
+ * and it does not restrict visibility of the join's input tables.
+ *
  * During parse analysis, an RTE is created for the Join, and its index
  * is filled into rtindex.  This RTE is present mainly so that Vars can
  * be created that refer to the outputs of the join.  The planner sometimes
@@ -1486,6 +1554,7 @@ typedef struct JoinExpr
 	Node	   *larg;			/* left subtree */
 	Node	   *rarg;			/* right subtree */
 	List	   *usingClause;	/* USING clause, if any (list of String) */
+	Alias	   *join_using_alias;	/* alias attached to USING clause, if any */
 	Node	   *quals;			/* qualifiers on join, if any */
 	Alias	   *alias;			/* user-written alias clause, if any */
 	int			rtindex;		/* RT index assigned for join, or 0 */

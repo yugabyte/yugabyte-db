@@ -1,6 +1,9 @@
 #!/usr/bin/perl
 
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+
 use strict;
+use warnings;
 
 my $integer = '[+-]?[0-9]+';
 my $real    = '[+-]?[0-9]+\.[0-9]+';

@@ -27,6 +27,7 @@
 #include "access/genam.h"
 #include "access/relscan.h"
 #include "access/skey.h"
+#include "access/yb_scan.h"
 #include "access/ybgin.h"
 #include "access/ybgin_private.h"
 #include "commands/tablegroup.h"

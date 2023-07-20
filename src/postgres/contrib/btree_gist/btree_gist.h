@@ -4,8 +4,8 @@
 #ifndef __BTREE_GIST_H__
 #define __BTREE_GIST_H__
 
-#include "fmgr.h"
 #include "access/nbtree.h"
+#include "fmgr.h"
 
 #define BtreeGistNotEqualStrategyNumber 6
 
@@ -32,6 +32,7 @@ enum gbtree_type
 	gbt_t_bpchar,
 	gbt_t_bytea,
 	gbt_t_bit,
+	gbt_t_bool,
 	gbt_t_inet,
 	gbt_t_uuid,
 	gbt_t_enum

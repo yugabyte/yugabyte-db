@@ -1,20 +1,37 @@
 # -*-perl-*- hey - emacs - this is a perl file
 
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+
+#
+# Script that provides 'make' functionality for msvc builds.
+#
 # src/tools/msvc/build.pl
-
+#
 use strict;
+use warnings;
 
-use File::Basename;
-use File::Spec;
-BEGIN  { use lib File::Spec->rel2abs(dirname(__FILE__)); }
+use FindBin;
+use lib $FindBin::RealBin;
 
 use Cwd;
 
 use Mkvcbuild;
 
-chdir('..\..\..') if (-d '..\msvc' && -d '..\..\..\src');
+sub usage
+{
+	die(    "Usage: build.pl [ [ <configuration> ] <component> ]\n"
+		  . "Options are case-insensitive.\n"
+		  . "  configuration: Release | Debug.  This sets the configuration\n"
+		  . "    to build.  Default is Release.\n"
+		  . "  component: name of component to build.  An empty value means\n"
+		  . "    to build all components.\n");
+}
+
+chdir('../../..') if (-d '../msvc' && -d '../../../src');
 die 'Must run from root or msvc directory'
-  unless (-d 'src\tools\msvc' && -d 'src');
+  unless (-d 'src/tools/msvc' && -d 'src');
+
+usage() unless scalar(@ARGV) <= 2;
 
 # buildenv.pl is for specifying the build environment settings
 # it should contain lines like:
@@ -37,30 +54,29 @@ do "./src/tools/msvc/config.pl" if (-f "src/tools/msvc/config.pl");
 my $vcver = Mkvcbuild::mkvcbuild($config);
 
 # check what sort of build we are doing
-
 my $bconf     = $ENV{CONFIG}   || "Release";
 my $msbflags  = $ENV{MSBFLAGS} || "";
 my $buildwhat = $ARGV[1]       || "";
-if (uc($ARGV[0]) eq 'DEBUG')
+
+if (defined($ARGV[0]))
 {
-	$bconf = "Debug";
-}
-elsif (uc($ARGV[0]) ne "RELEASE")
-{
-	$buildwhat = $ARGV[0] || "";
+	if (uc($ARGV[0]) eq 'DEBUG')
+	{
+		$bconf = "Debug";
+	}
+	elsif (uc($ARGV[0]) ne "RELEASE")
+	{
+		$buildwhat = $ARGV[0] || "";
+	}
 }
 
 # ... and do it
 
-if ($buildwhat and $vcver >= 10.00)
+if ($buildwhat)
 {
 	system(
 		"msbuild $buildwhat.vcxproj /verbosity:normal $msbflags /p:Configuration=$bconf"
 	);
-}
-elsif ($buildwhat)
-{
-	system("vcbuild $msbflags $buildwhat.vcproj $bconf");
 }
 else
 {

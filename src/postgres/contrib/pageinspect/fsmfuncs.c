@@ -9,7 +9,7 @@
  * there's hardly any use case for using these without superuser-rights
  * anyway.
  *
- * Copyright (c) 2007-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2007-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/pageinspect/fsmfuncs.c
@@ -19,11 +19,10 @@
 
 #include "postgres.h"
 
-#include "pageinspect.h"
-
 #include "funcapi.h"
 #include "lib/stringinfo.h"
 #include "miscadmin.h"
+#include "pageinspect.h"
 #include "storage/fsm_internals.h"
 #include "utils/builtins.h"
 
@@ -37,15 +36,21 @@ fsm_page_contents(PG_FUNCTION_ARGS)
 {
 	bytea	   *raw_page = PG_GETARG_BYTEA_P(0);
 	StringInfoData sinfo;
+	Page		page;
 	FSMPage		fsmpage;
 	int			i;
 
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("must be superuser to use raw page functions"))));
+				 errmsg("must be superuser to use raw page functions")));
 
-	fsmpage = (FSMPage) PageGetContents(VARDATA(raw_page));
+	page = get_page_from_raw(raw_page);
+
+	if (PageIsNew(page))
+		PG_RETURN_NULL();
+
+	fsmpage = (FSMPage) PageGetContents(page);
 
 	initStringInfo(&sinfo);
 

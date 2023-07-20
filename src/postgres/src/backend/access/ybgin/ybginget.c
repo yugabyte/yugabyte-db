@@ -29,6 +29,7 @@
 #include "access/relscan.h"
 #include "access/sdir.h"
 #include "access/sysattr.h"
+#include "access/yb_scan.h"
 #include "access/ybgin.h"
 #include "access/ybgin_private.h"
 #include "catalog/pg_collation.h"
@@ -41,6 +42,7 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/selfuncs.h"
+#include "utils/yb_like_support.h"
 
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -260,7 +262,7 @@ get_greaterstr(Datum prefix, Oid datatype, Oid colloid)
 	Oid			opfamily;
 	Oid			oproid;
 
-	/* make_greater_string cannot accurately handle non-C collations. */
+	/* yb_make_greater_string cannot accurately handle non-C collations. */
 	if (!lc_collate_is_c(colloid))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -286,7 +288,7 @@ get_greaterstr(Datum prefix, Oid datatype, Oid colloid)
 		elog(ERROR, "no < operator for opfamily %u", opfamily);
 	fmgr_info(get_opcode(oproid), &ltproc);
 	prefix_const = text_to_const(prefix, colloid);
-	return make_greater_string(prefix_const, &ltproc, colloid);
+	return yb_make_greater_string(prefix_const, &ltproc, colloid);
 }
 
 static void
@@ -570,9 +572,12 @@ ybginFetchNextHeapTuple(IndexScanDesc scan)
 
 		tuple->t_tableOid = RelationGetRelid(scan->heapRelation);
 		if (syscols.ybctid != NULL)
-			tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
+			HEAPTUPLE_YBCTID(tuple) = PointerGetDatum(syscols.ybctid);
+#ifdef YB_TODO
+		/* YB_TODO(jasonk@yugabyte) Set & get OID is no longer valid */
 		if (syscols.oid != InvalidOid)
 			HeapTupleSetOid(tuple, syscols.oid);
+#endif
 	}
 	pfree(values);
 	pfree(nulls);
@@ -597,7 +602,7 @@ ybgingettuple(IndexScanDesc scan, ScanDirection dir)
 	}
 
 	/* fetch */
-	scan->xs_ctup.t_ybctid = 0;
+	YbItemPointerSetInvalid(&scan->xs_heaptid);
 	if (scan->yb_aggrefs)
 	{
 		/*
@@ -626,13 +631,13 @@ ybgingettuple(IndexScanDesc scan, ScanDirection dir)
 		scan->yb_agg_slot =
 			ybFetchNext(ybso->handle, scan->yb_agg_slot,
 						RelationGetRelid(scan->indexRelation));
-		return !scan->yb_agg_slot->tts_isempty;
+		return !TTS_EMPTY(scan->yb_agg_slot);
 	}
 	while (HeapTupleIsValid(tup = ybginFetchNextHeapTuple(scan)))
 	{
 		if (true)				/* TODO(jason): don't assume a match. */
 		{
-			scan->xs_ctup.t_ybctid = tup->t_ybctid;
+			YbItemPointerYbctid(&scan->xs_heaptid) = HEAPTUPLE_YBCTID(tup);
 			scan->xs_hitup = tup;
 			scan->xs_hitupdesc = RelationGetDescr(scan->heapRelation);
 
@@ -644,5 +649,5 @@ ybgingettuple(IndexScanDesc scan, ScanDirection dir)
 		heap_freetuple(tup);
 	}
 
-	return scan->xs_ctup.t_ybctid != 0;
+	return YbItemPointerYbctid(&scan->xs_heaptid) != 0;
 }

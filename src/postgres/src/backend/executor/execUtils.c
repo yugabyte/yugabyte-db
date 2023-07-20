@@ -3,7 +3,7 @@
  * execUtils.c
  *	  miscellaneous executor utility routines
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -25,7 +25,10 @@
  *		etc
  *
  *		ExecOpenScanRelation	Common code for scan node init routines.
- *		ExecCloseScanRelation
+ *
+ *		ExecInitRangeTable		Set up executor's range-table-related data.
+ *
+ *		ExecGetRangeTableRelation		Fetch Relation for a rangetable entry.
  *
  *		executor_errposition	Report syntactic position of an error.
  *
@@ -42,14 +45,20 @@
 
 #include "postgres.h"
 
+#include "access/parallel.h"
 #include "access/relscan.h"
+#include "access/table.h"
+#include "access/tableam.h"
 #include "access/transam.h"
 #include "executor/executor.h"
 #include "executor/execPartition.h"
+#include "executor/nodeModifyTable.h"
 #include "jit/jit.h"
 #include "mb/pg_wchar.h"
+#include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
 #include "parser/parsetree.h"
+#include "partitioning/partdesc.h"
 #include "storage/lmgr.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
@@ -57,7 +66,7 @@
 #include "utils/typcache.h"
 
 
-static bool tlist_matches_tupdesc(PlanState *ps, List *tlist, Index varno, TupleDesc tupdesc);
+static bool tlist_matches_tupdesc(PlanState *ps, List *tlist, int varno, TupleDesc tupdesc);
 static void ShutdownExprContext(ExprContext *econtext, bool isCommit);
 
 
@@ -107,6 +116,9 @@ CreateExecutorState(void)
 	estate->es_snapshot = InvalidSnapshot;	/* caller must initialize this */
 	estate->es_crosscheck_snapshot = InvalidSnapshot;	/* no crosscheck */
 	estate->es_range_table = NIL;
+	estate->es_range_table_size = 0;
+	estate->es_relations = NULL;
+	estate->es_rowmarks = NULL;
 	estate->es_plannedstmt = NULL;
 
 	estate->es_junkFilter = NULL;
@@ -114,18 +126,14 @@ CreateExecutorState(void)
 	estate->es_output_cid = (CommandId) 0;
 
 	estate->es_result_relations = NULL;
-	estate->es_num_result_relations = 0;
-	estate->es_result_relation_info = NULL;
-
-	estate->es_root_result_relations = NULL;
-	estate->es_num_root_result_relations = 0;
-
+	estate->es_opened_result_relations = NIL;
 	estate->es_tuple_routing_result_relations = NIL;
-
 	estate->es_trig_target_relations = NIL;
-	estate->es_trig_tuple_slot = NULL;
-	estate->es_trig_oldtup_slot = NULL;
-	estate->es_trig_newtup_slot = NULL;
+
+	estate->es_insert_pending_result_relations = NIL;
+	estate->es_insert_pending_modifytables = NIL;
+
+	estate->es_resultrelinfo_extra = NIL;
 
 	estate->es_param_list_info = NULL;
 	estate->es_param_exec_vals = NULL;
@@ -136,10 +144,7 @@ CreateExecutorState(void)
 
 	estate->es_tupleTable = NIL;
 
-	estate->es_rowMarks = NIL;
-
 	estate->es_processed = 0;
-	estate->es_lastoid = InvalidOid;
 
 	estate->es_top_eflags = 0;
 	estate->es_instrument = 0;
@@ -153,9 +158,6 @@ CreateExecutorState(void)
 
 	estate->es_per_tuple_exprcontext = NULL;
 
-	estate->es_epqTuple = NULL;
-	estate->es_epqTupleSet = NULL;
-	estate->es_epqScanDone = NULL;
 	estate->es_sourceText = NULL;
 
 	estate->es_use_parallel_mode = false;
@@ -244,6 +246,13 @@ FreeExecutorState(EState *estate)
 		estate->es_jit = NULL;
 	}
 
+	/* release partition directory, if allocated */
+	if (estate->es_partition_directory)
+	{
+		DestroyPartitionDirectory(estate->es_partition_directory);
+		estate->es_partition_directory = NULL;
+	}
+
 	/*
 	 * Free the per-query memory context, thereby releasing all working
 	 * memory, including the EState node itself.
@@ -251,21 +260,13 @@ FreeExecutorState(EState *estate)
 	MemoryContextDelete(estate->es_query_cxt);
 }
 
-/* ----------------
- *		CreateExprContext
- *
- *		Create a context for expression evaluation within an EState.
- *
- * An executor run may require multiple ExprContexts (we usually make one
- * for each Plan node, and a separate one for per-output-tuple processing
- * such as constraint checking).  Each ExprContext has its own "per-tuple"
- * memory context.
- *
- * Note we make no assumption about the caller's memory context.
- * ----------------
+/*
+ * Internal implementation for CreateExprContext() and CreateWorkExprContext()
+ * that allows control over the AllocSet parameters.
  */
-ExprContext *
-CreateExprContext(EState *estate)
+static ExprContext *
+CreateExprContextInternal(EState *estate, Size minContextSize,
+						  Size initBlockSize, Size maxBlockSize)
 {
 	ExprContext *econtext;
 	MemoryContext oldcontext;
@@ -288,7 +289,9 @@ CreateExprContext(EState *estate)
 	econtext->ecxt_per_tuple_memory =
 		AllocSetContextCreate(estate->es_query_cxt,
 							  "ExprContext",
-							  ALLOCSET_DEFAULT_SIZES);
+							  minContextSize,
+							  initBlockSize,
+							  maxBlockSize);
 
 	econtext->ecxt_param_exec_vals = estate->es_param_exec_vals;
 	econtext->ecxt_param_list_info = estate->es_param_list_info;
@@ -316,6 +319,52 @@ CreateExprContext(EState *estate)
 	MemoryContextSwitchTo(oldcontext);
 
 	return econtext;
+}
+
+/* ----------------
+ *		CreateExprContext
+ *
+ *		Create a context for expression evaluation within an EState.
+ *
+ * An executor run may require multiple ExprContexts (we usually make one
+ * for each Plan node, and a separate one for per-output-tuple processing
+ * such as constraint checking).  Each ExprContext has its own "per-tuple"
+ * memory context.
+ *
+ * Note we make no assumption about the caller's memory context.
+ * ----------------
+ */
+ExprContext *
+CreateExprContext(EState *estate)
+{
+	return CreateExprContextInternal(estate, ALLOCSET_DEFAULT_SIZES);
+}
+
+
+/* ----------------
+ *		CreateWorkExprContext
+ *
+ * Like CreateExprContext, but specifies the AllocSet sizes to be reasonable
+ * in proportion to work_mem. If the maximum block allocation size is too
+ * large, it's easy to skip right past work_mem with a single allocation.
+ * ----------------
+ */
+ExprContext *
+CreateWorkExprContext(EState *estate)
+{
+	Size		minContextSize = ALLOCSET_DEFAULT_MINSIZE;
+	Size		initBlockSize = ALLOCSET_DEFAULT_INITSIZE;
+	Size		maxBlockSize = ALLOCSET_DEFAULT_MAXSIZE;
+
+	/* choose the maxBlockSize to be no larger than 1/16 of work_mem */
+	while (16 * maxBlockSize > work_mem * 1024L)
+		maxBlockSize >>= 1;
+
+	if (maxBlockSize < ALLOCSET_DEFAULT_INITSIZE)
+		maxBlockSize = ALLOCSET_DEFAULT_INITSIZE;
+
+	return CreateExprContextInternal(estate, minContextSize,
+									 initBlockSize, maxBlockSize);
 }
 
 /* ----------------
@@ -480,6 +529,35 @@ ExecGetResultType(PlanState *planstate)
 	return planstate->ps_ResultTupleDesc;
 }
 
+/*
+ * ExecGetResultSlotOps - information about node's type of result slot
+ */
+const TupleTableSlotOps *
+ExecGetResultSlotOps(PlanState *planstate, bool *isfixed)
+{
+	if (planstate->resultopsset && planstate->resultops)
+	{
+		if (isfixed)
+			*isfixed = planstate->resultopsfixed;
+		return planstate->resultops;
+	}
+
+	if (isfixed)
+	{
+		if (planstate->resultopsset)
+			*isfixed = planstate->resultopsfixed;
+		else if (planstate->ps_ResultTupleSlot)
+			*isfixed = TTS_FIXED(planstate->ps_ResultTupleSlot);
+		else
+			*isfixed = false;
+	}
+
+	if (!planstate->ps_ResultTupleSlot)
+		return &TTSOpsVirtual;
+
+	return planstate->ps_ResultTupleSlot->tts_ops;
+}
+
 
 /* ----------------
  *		ExecAssignProjectionInfo
@@ -512,27 +590,36 @@ ExecAssignProjectionInfo(PlanState *planstate,
  */
 void
 ExecConditionalAssignProjectionInfo(PlanState *planstate, TupleDesc inputDesc,
-									Index varno)
+									int varno)
 {
 	if (tlist_matches_tupdesc(planstate,
 							  planstate->plan->targetlist,
 							  varno,
 							  inputDesc))
+	{
 		planstate->ps_ProjInfo = NULL;
+		planstate->resultopsset = planstate->scanopsset;
+		planstate->resultopsfixed = planstate->scanopsfixed;
+		planstate->resultops = planstate->scanops;
+	}
 	else
 	{
 		if (!planstate->ps_ResultTupleSlot)
-			ExecInitResultSlot(planstate);
+		{
+			ExecInitResultSlot(planstate, &TTSOpsVirtual);
+			planstate->resultops = &TTSOpsVirtual;
+			planstate->resultopsfixed = true;
+			planstate->resultopsset = true;
+		}
 		ExecAssignProjectionInfo(planstate, inputDesc);
 	}
 }
 
 static bool
-tlist_matches_tupdesc(PlanState *ps, List *tlist, Index varno, TupleDesc tupdesc)
+tlist_matches_tupdesc(PlanState *ps, List *tlist, int varno, TupleDesc tupdesc)
 {
 	int			numattrs = tupdesc->natts;
 	int			attrno;
-	bool		hasoid;
 	ListCell   *tlist_item = list_head(tlist);
 
 	/* Check the tlist attributes */
@@ -571,19 +658,11 @@ tlist_matches_tupdesc(PlanState *ps, List *tlist, Index varno, TupleDesc tupdesc
 			 var->vartypmod != -1))
 			return false;		/* type mismatch */
 
-		tlist_item = lnext(tlist_item);
+		tlist_item = lnext(tlist, tlist_item);
 	}
 
 	if (tlist_item)
 		return false;			/* tlist too long */
-
-	/*
-	 * If the plan context requires a particular hasoid setting, then that has
-	 * to match, too.
-	 */
-	if (ExecContextForcesOids(ps, &hasoid) &&
-		hasoid != tupdesc->tdhasoid)
-		return false;
 
 	return true;
 }
@@ -633,11 +712,13 @@ ExecAssignScanType(ScanState *scanstate, TupleDesc tupDesc)
 }
 
 /* ----------------
- *		ExecCreateSlotFromOuterPlan
+ *		ExecCreateScanSlotFromOuterPlan
  * ----------------
  */
 void
-ExecCreateScanSlotFromOuterPlan(EState *estate, ScanState *scanstate)
+ExecCreateScanSlotFromOuterPlan(EState *estate,
+								ScanState *scanstate,
+								const TupleTableSlotOps *tts_ops)
 {
 	PlanState  *outerPlan;
 	TupleDesc	tupDesc;
@@ -645,7 +726,7 @@ ExecCreateScanSlotFromOuterPlan(EState *estate, ScanState *scanstate)
 	outerPlan = outerPlanState(scanstate);
 	tupDesc = ExecGetResultType(outerPlan);
 
-	ExecInitScanTupleSlot(estate, scanstate, tupDesc);
+	ExecInitScanTupleSlot(estate, scanstate, tupDesc, tts_ops);
 }
 
 /* ----------------------------------------------------------------
@@ -653,21 +734,16 @@ ExecCreateScanSlotFromOuterPlan(EState *estate, ScanState *scanstate)
  *
  *		Detect whether a relation (identified by rangetable index)
  *		is one of the target relations of the query.
+ *
+ * Note: This is currently no longer used in core.  We keep it around
+ * because FDWs may wish to use it to determine if their foreign table
+ * is a target relation.
  * ----------------------------------------------------------------
  */
 bool
 ExecRelationIsTargetRelation(EState *estate, Index scanrelid)
 {
-	ResultRelInfo *resultRelInfos;
-	int			i;
-
-	resultRelInfos = estate->es_result_relations;
-	for (i = 0; i < estate->es_num_result_relations; i++)
-	{
-		if (resultRelInfos[i].ri_RangeTableIndex == scanrelid)
-			return true;
-	}
-	return false;
+	return list_member_int(estate->es_plannedstmt->resultRelations, scanrelid);
 }
 
 /* ----------------------------------------------------------------
@@ -675,39 +751,15 @@ ExecRelationIsTargetRelation(EState *estate, Index scanrelid)
  *
  *		Open the heap relation to be scanned by a base-level scan plan node.
  *		This should be called during the node's ExecInit routine.
- *
- * By default, this acquires AccessShareLock on the relation.  However,
- * if the relation was already locked by InitPlan, we don't need to acquire
- * any additional lock.  This saves trips to the shared lock manager.
  * ----------------------------------------------------------------
  */
 Relation
 ExecOpenScanRelation(EState *estate, Index scanrelid, int eflags)
 {
 	Relation	rel;
-	Oid			reloid;
-	LOCKMODE	lockmode;
 
-	/*
-	 * Determine the lock type we need.  First, scan to see if target relation
-	 * is a result relation.  If not, check if it's a FOR UPDATE/FOR SHARE
-	 * relation.  In either of those cases, we got the lock already.
-	 */
-	lockmode = AccessShareLock;
-	if (ExecRelationIsTargetRelation(estate, scanrelid))
-		lockmode = NoLock;
-	else
-	{
-		/* Keep this check in sync with InitPlan! */
-		ExecRowMark *erm = ExecFindRowMark(estate, scanrelid, true);
-
-		if (erm != NULL && erm->relation != NULL)
-			lockmode = NoLock;
-	}
-
-	/* Open the relation and acquire lock as needed */
-	reloid = getrelid(scanrelid, estate->es_range_table);
-	rel = heap_open(reloid, lockmode);
+	/* Open the relation. */
+	rel = ExecGetRangeTableRelation(estate, scanrelid);
 
 	/*
 	 * Complain if we're attempting a scan of an unscannable relation, except
@@ -725,24 +777,120 @@ ExecOpenScanRelation(EState *estate, Index scanrelid, int eflags)
 	return rel;
 }
 
-/* ----------------------------------------------------------------
- *		ExecCloseScanRelation
+/*
+ * ExecInitRangeTable
+ *		Set up executor's range-table-related data
  *
- *		Close the heap relation scanned by a base-level scan plan node.
- *		This should be called during the node's ExecEnd routine.
- *
- * Currently, we do not release the lock acquired by ExecOpenScanRelation.
- * This lock should be held till end of transaction.  (There is a faction
- * that considers this too much locking, however.)
- *
- * If we did want to release the lock, we'd have to repeat the logic in
- * ExecOpenScanRelation in order to figure out what to release.
- * ----------------------------------------------------------------
+ * In addition to the range table proper, initialize arrays that are
+ * indexed by rangetable index.
  */
 void
-ExecCloseScanRelation(Relation scanrel)
+ExecInitRangeTable(EState *estate, List *rangeTable)
 {
-	heap_close(scanrel, NoLock);
+	/* Remember the range table List as-is */
+	estate->es_range_table = rangeTable;
+
+	/* Set size of associated arrays */
+	estate->es_range_table_size = list_length(rangeTable);
+
+	/*
+	 * Allocate an array to store an open Relation corresponding to each
+	 * rangetable entry, and initialize entries to NULL.  Relations are opened
+	 * and stored here as needed.
+	 */
+	estate->es_relations = (Relation *)
+		palloc0(estate->es_range_table_size * sizeof(Relation));
+
+	/*
+	 * es_result_relations and es_rowmarks are also parallel to
+	 * es_range_table, but are allocated only if needed.
+	 */
+	estate->es_result_relations = NULL;
+	estate->es_rowmarks = NULL;
+}
+
+/*
+ * ExecGetRangeTableRelation
+ *		Open the Relation for a range table entry, if not already done
+ *
+ * The Relations will be closed again in ExecEndPlan().
+ */
+Relation
+ExecGetRangeTableRelation(EState *estate, Index rti)
+{
+	Relation	rel;
+
+	Assert(rti > 0 && rti <= estate->es_range_table_size);
+
+	rel = estate->es_relations[rti - 1];
+	if (rel == NULL)
+	{
+		/* First time through, so open the relation */
+		RangeTblEntry *rte = exec_rt_fetch(rti, estate);
+
+		Assert(rte->rtekind == RTE_RELATION);
+
+		if (!IsParallelWorker())
+		{
+			/*
+			 * In a normal query, we should already have the appropriate lock,
+			 * but verify that through an Assert.  Since there's already an
+			 * Assert inside table_open that insists on holding some lock, it
+			 * seems sufficient to check this only when rellockmode is higher
+			 * than the minimum.
+			 */
+			rel = table_open(rte->relid, NoLock);
+			Assert(rte->rellockmode == AccessShareLock ||
+				   CheckRelationLockedByMe(rel, rte->rellockmode, false));
+		}
+		else
+		{
+			/*
+			 * If we are a parallel worker, we need to obtain our own local
+			 * lock on the relation.  This ensures sane behavior in case the
+			 * parent process exits before we do.
+			 */
+			rel = table_open(rte->relid, rte->rellockmode);
+		}
+
+		estate->es_relations[rti - 1] = rel;
+	}
+
+	return rel;
+}
+
+/*
+ * ExecInitResultRelation
+ *		Open relation given by the passed-in RT index and fill its
+ *		ResultRelInfo node
+ *
+ * Here, we also save the ResultRelInfo in estate->es_result_relations array
+ * such that it can be accessed later using the RT index.
+ */
+void
+ExecInitResultRelation(EState *estate, ResultRelInfo *resultRelInfo,
+					   Index rti)
+{
+	Relation	resultRelationDesc;
+
+	resultRelationDesc = ExecGetRangeTableRelation(estate, rti);
+	InitResultRelInfo(resultRelInfo,
+					  resultRelationDesc,
+					  rti,
+					  NULL,
+					  estate->es_instrument);
+
+	if (estate->es_result_relations == NULL)
+		estate->es_result_relations = (ResultRelInfo **)
+			palloc0(estate->es_range_table_size * sizeof(ResultRelInfo *));
+	estate->es_result_relations[rti - 1] = resultRelInfo;
+
+	/*
+	 * Saving in the list allows to avoid needlessly traversing the whole
+	 * array when only a few of its entries are possibly non-NULL.
+	 */
+	estate->es_opened_result_relations =
+		lappend(estate->es_opened_result_relations, resultRelInfo);
 }
 
 /*
@@ -898,61 +1046,6 @@ ShutdownExprContext(ExprContext *econtext, bool isCommit)
 }
 
 /*
- * ExecLockNonLeafAppendTables
- *
- * Locks, if necessary, the tables indicated by the RT indexes contained in
- * the partitioned_rels list.  These are the non-leaf tables in the partition
- * tree controlled by a given Append or MergeAppend node.
- */
-void
-ExecLockNonLeafAppendTables(List *partitioned_rels, EState *estate)
-{
-	PlannedStmt *stmt = estate->es_plannedstmt;
-	ListCell   *lc;
-
-	foreach(lc, partitioned_rels)
-	{
-		ListCell   *l;
-		Index		rti = lfirst_int(lc);
-		bool		is_result_rel = false;
-		Oid			relid = getrelid(rti, estate->es_range_table);
-
-		/* If this is a result relation, already locked in InitPlan */
-		foreach(l, stmt->nonleafResultRelations)
-		{
-			if (rti == lfirst_int(l))
-			{
-				is_result_rel = true;
-				break;
-			}
-		}
-
-		/*
-		 * Not a result relation; check if there is a RowMark that requires
-		 * taking a RowShareLock on this rel.
-		 */
-		if (!is_result_rel)
-		{
-			PlanRowMark *rc = NULL;
-
-			foreach(l, stmt->rowMarks)
-			{
-				if (((PlanRowMark *) lfirst(l))->rti == rti)
-				{
-					rc = lfirst(l);
-					break;
-				}
-			}
-
-			if (rc && RowMarkRequiresRowShareLock(rc->markType))
-				LockRelationOid(relid, RowShareLock);
-			else
-				LockRelationOid(relid, AccessShareLock);
-		}
-	}
-}
-
-/*
  *		GetAttributeByName
  *		GetAttributeByNum
  *
@@ -1103,37 +1196,135 @@ ExecCleanTargetListLength(List *targetlist)
 	return len;
 }
 
+/*
+ * Return a relInfo's tuple slot for a trigger's OLD tuples.
+ */
+TupleTableSlot *
+ExecGetTriggerOldSlot(EState *estate, ResultRelInfo *relInfo)
+{
+	if (relInfo->ri_TrigOldSlot == NULL)
+	{
+		Relation	rel = relInfo->ri_RelationDesc;
+		MemoryContext oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
+
+		relInfo->ri_TrigOldSlot =
+			ExecInitExtraTupleSlot(estate,
+								   RelationGetDescr(rel),
+								   table_slot_callbacks(rel));
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	return relInfo->ri_TrigOldSlot;
+}
+
+/*
+ * Return a relInfo's tuple slot for a trigger's NEW tuples.
+ */
+TupleTableSlot *
+ExecGetTriggerNewSlot(EState *estate, ResultRelInfo *relInfo)
+{
+	if (relInfo->ri_TrigNewSlot == NULL)
+	{
+		Relation	rel = relInfo->ri_RelationDesc;
+		MemoryContext oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
+
+		relInfo->ri_TrigNewSlot =
+			ExecInitExtraTupleSlot(estate,
+								   RelationGetDescr(rel),
+								   table_slot_callbacks(rel));
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	return relInfo->ri_TrigNewSlot;
+}
+
+/*
+ * Return a relInfo's tuple slot for processing returning tuples.
+ */
+TupleTableSlot *
+ExecGetReturningSlot(EState *estate, ResultRelInfo *relInfo)
+{
+	if (relInfo->ri_ReturningSlot == NULL)
+	{
+		Relation	rel = relInfo->ri_RelationDesc;
+		MemoryContext oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
+
+		relInfo->ri_ReturningSlot =
+			ExecInitExtraTupleSlot(estate,
+								   RelationGetDescr(rel),
+								   table_slot_callbacks(rel));
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	return relInfo->ri_ReturningSlot;
+}
+
+/*
+ * Return the map needed to convert given child result relation's tuples to
+ * the rowtype of the query's main target ("root") relation.  Note that a
+ * NULL result is valid and means that no conversion is needed.
+ */
+TupleConversionMap *
+ExecGetChildToRootMap(ResultRelInfo *resultRelInfo)
+{
+	/* If we didn't already do so, compute the map for this child. */
+	if (!resultRelInfo->ri_ChildToRootMapValid)
+	{
+		ResultRelInfo *rootRelInfo = resultRelInfo->ri_RootResultRelInfo;
+
+		if (rootRelInfo)
+			resultRelInfo->ri_ChildToRootMap =
+				convert_tuples_by_name(RelationGetDescr(resultRelInfo->ri_RelationDesc),
+									   RelationGetDescr(rootRelInfo->ri_RelationDesc));
+		else					/* this isn't a child result rel */
+			resultRelInfo->ri_ChildToRootMap = NULL;
+
+		resultRelInfo->ri_ChildToRootMapValid = true;
+	}
+
+	return resultRelInfo->ri_ChildToRootMap;
+}
+
 /* Return a bitmap representing columns being inserted */
 Bitmapset *
 ExecGetInsertedCols(ResultRelInfo *relinfo, EState *estate)
 {
 	/*
-	 * The columns are stored in the range table entry. If this ResultRelInfo
-	 * doesn't have an entry in the range table (i.e. if it represents a
-	 * partition routing target), fetch the parent's RTE and map the columns
-	 * to the order they are in the partition.
+	 * The columns are stored in the range table entry.  If this ResultRelInfo
+	 * represents a partition routing target, and doesn't have an entry of its
+	 * own in the range table, fetch the parent's RTE and map the columns to
+	 * the order they are in the partition.
 	 */
 	if (relinfo->ri_RangeTableIndex != 0)
 	{
-		RangeTblEntry *rte = rt_fetch(relinfo->ri_RangeTableIndex,
-									  estate->es_range_table);
+		RangeTblEntry *rte = exec_rt_fetch(relinfo->ri_RangeTableIndex, estate);
 
 		return rte->insertedCols;
 	}
-	else
+	else if (relinfo->ri_RootResultRelInfo)
 	{
 		ResultRelInfo *rootRelInfo = relinfo->ri_RootResultRelInfo;
-		RangeTblEntry *rte = rt_fetch(rootRelInfo->ri_RangeTableIndex,
-									  estate->es_range_table);
-		TupleConversionMap *map;
+		RangeTblEntry *rte = exec_rt_fetch(rootRelInfo->ri_RangeTableIndex, estate);
 
-		map = convert_tuples_by_name(RelationGetDescr(rootRelInfo->ri_RelationDesc),
-									 RelationGetDescr(relinfo->ri_RelationDesc),
-									 gettext_noop("could not convert row type"));
-		if (map != NULL)
-			return execute_attr_map_cols(rte->insertedCols, map, rootRelInfo->ri_RelationDesc);
+		if (relinfo->ri_RootToPartitionMap != NULL)
+			return execute_attr_map_cols(relinfo->ri_RootToPartitionMap->attrMap,
+										 rte->insertedCols,
+										 relinfo->ri_RelationDesc);
 		else
 			return rte->insertedCols;
+	}
+	else
+	{
+		/*
+		 * The relation isn't in the range table and it isn't a partition
+		 * routing target.  This ResultRelInfo must've been created only for
+		 * firing triggers and the relation is not being inserted into.  (See
+		 * ExecGetTriggerResultRel.)
+		 */
+		return NULL;
 	}
 }
 
@@ -1144,24 +1335,56 @@ ExecGetUpdatedCols(ResultRelInfo *relinfo, EState *estate)
 	/* see ExecGetInsertedCols() */
 	if (relinfo->ri_RangeTableIndex != 0)
 	{
-		RangeTblEntry *rte = rt_fetch(relinfo->ri_RangeTableIndex,
-									  estate->es_range_table);
+		RangeTblEntry *rte = exec_rt_fetch(relinfo->ri_RangeTableIndex, estate);
 
 		return rte->updatedCols;
 	}
-	else
+	else if (relinfo->ri_RootResultRelInfo)
 	{
 		ResultRelInfo *rootRelInfo = relinfo->ri_RootResultRelInfo;
-		RangeTblEntry *rte = rt_fetch(rootRelInfo->ri_RangeTableIndex,
-									  estate->es_range_table);
-		TupleConversionMap *map;
+		RangeTblEntry *rte = exec_rt_fetch(rootRelInfo->ri_RangeTableIndex, estate);
 
-		map = convert_tuples_by_name(RelationGetDescr(rootRelInfo->ri_RelationDesc),
-									 RelationGetDescr(relinfo->ri_RelationDesc),
-									 gettext_noop("could not convert row type"));
-		if (map != NULL)
-			return execute_attr_map_cols(rte->updatedCols, map, rootRelInfo->ri_RelationDesc);
+		if (relinfo->ri_RootToPartitionMap != NULL)
+			return execute_attr_map_cols(relinfo->ri_RootToPartitionMap->attrMap,
+										 rte->updatedCols,
+										 relinfo->ri_RelationDesc);
 		else
 			return rte->updatedCols;
 	}
+	else
+		return NULL;
+}
+
+/* Return a bitmap representing generated columns being updated */
+Bitmapset *
+ExecGetExtraUpdatedCols(ResultRelInfo *relinfo, EState *estate)
+{
+	Relation	rel = relinfo->ri_RelationDesc;
+	TupleDesc	tupdesc = RelationGetDescr(rel);
+
+	if (tupdesc->constr && tupdesc->constr->has_generated_stored)
+	{
+		ListCell   *lc;
+
+		/* In some code paths we can reach here before initializing the info */
+		if (relinfo->ri_GeneratedExprs == NULL)
+			ExecInitStoredGenerated(relinfo, estate, CMD_UPDATE);
+		foreach(lc, estate->es_resultrelinfo_extra)
+		{
+			ResultRelInfoExtra *rextra = (ResultRelInfoExtra *) lfirst(lc);
+
+			if (rextra->rinfo == relinfo)
+				return rextra->ri_extraUpdatedCols;
+		}
+		Assert(false);			/* shouldn't get here */
+	}
+	return NULL;
+}
+
+/* Return columns being updated, including generated columns */
+Bitmapset *
+ExecGetAllUpdatedCols(ResultRelInfo *relinfo, EState *estate)
+{
+	return bms_union(ExecGetUpdatedCols(relinfo, estate),
+					 ExecGetExtraUpdatedCols(relinfo, estate));
 }

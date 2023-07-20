@@ -4,7 +4,7 @@
  *	  Sort the items of a dump into a safe order for dumping
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -15,21 +15,24 @@
  */
 #include "postgres_fe.h"
 
+#include "catalog/pg_class_d.h"
 #include "pg_backup_archiver.h"
 #include "pg_backup_utils.h"
 #include "pg_dump.h"
-
-#include "catalog/pg_class_d.h"
-
-/* translator: this is a module name */
-static const char *modulename = gettext_noop("sorter");
 
 /*
  * Sort priority for database object types.
  * Objects are sorted by type, and within a type by name.
  *
- * Because materialized views can potentially reference system views,
- * DO_REFRESH_MATVIEW should always be the last thing on the list.
+ * Triggers, event triggers, and materialized views are intentionally sorted
+ * late.  Triggers must be restored after all data modifications, so that
+ * they don't interfere with loading data.  Event triggers are restored
+ * next-to-last so that they don't interfere with object creations of any
+ * kind.  Matview refreshes are last because they should execute in the
+ * database's normal state (e.g., they must come after all ACLs are restored;
+ * also, if they choose to look at system catalogs, they should see the final
+ * restore state).  If you think to change this, see also the RestorePass
+ * mechanism in pg_backup_archiver.c.
  *
  * On the other hand, casts are intentionally sorted earlier than you might
  * expect; logically they should come after functions, since they usually
@@ -44,59 +47,112 @@ static const char *modulename = gettext_noop("sorter");
  * pg_dump.c; that is, PRE_DATA objects must sort before DO_PRE_DATA_BOUNDARY,
  * POST_DATA objects must sort after DO_POST_DATA_BOUNDARY, and DATA objects
  * must sort between them.
- *
- * Note: sortDataAndIndexObjectsBySize wants to have all DO_TABLE_DATA and
- * DO_INDEX objects in contiguous chunks, so do not reuse the values for those
- * for other object types.
  */
+
+/* This enum lists the priority levels in order */
+enum dbObjectTypePriorities
+{
+	PRIO_NAMESPACE = 1,
+	PRIO_PROCLANG,
+	PRIO_COLLATION,
+	PRIO_TRANSFORM,
+	PRIO_EXTENSION,
+	PRIO_TYPE,					/* used for DO_TYPE and DO_SHELL_TYPE */
+	PRIO_CAST,
+	PRIO_FUNC,
+	PRIO_AGG,
+	PRIO_ACCESS_METHOD,
+	PRIO_OPERATOR,
+	PRIO_OPFAMILY,				/* used for DO_OPFAMILY and DO_OPCLASS */
+	PRIO_CONVERSION,
+	PRIO_TSPARSER,
+	PRIO_TSTEMPLATE,
+	PRIO_TSDICT,
+	PRIO_TSCONFIG,
+	PRIO_FDW,
+	PRIO_FOREIGN_SERVER,
+	PRIO_TABLE,
+	PRIO_TABLE_ATTACH,
+	PRIO_DUMMY_TYPE,
+	PRIO_ATTRDEF,
+	PRIO_BLOB,
+	PRIO_PRE_DATA_BOUNDARY,		/* boundary! */
+	PRIO_TABLE_DATA,
+	PRIO_SEQUENCE_SET,
+	PRIO_BLOB_DATA,
+	PRIO_POST_DATA_BOUNDARY,	/* boundary! */
+	PRIO_CONSTRAINT,
+	PRIO_INDEX,
+	PRIO_INDEX_ATTACH,
+	PRIO_STATSEXT,
+	PRIO_RULE,
+	PRIO_TRIGGER,
+	PRIO_FK_CONSTRAINT,
+	PRIO_POLICY,
+	PRIO_PUBLICATION,
+	PRIO_PUBLICATION_REL,
+	PRIO_PUBLICATION_TABLE_IN_SCHEMA,
+	PRIO_SUBSCRIPTION,
+	PRIO_TABLEGROUP,
+	PRIO_DEFAULT_ACL,			/* done in ACL pass */
+	PRIO_EVENT_TRIGGER,			/* must be next to last! */
+	PRIO_REFRESH_MATVIEW		/* must be last! */
+};
+
+/* This table is indexed by enum DumpableObjectType */
 static const int dbObjectTypePriority[] =
 {
-	1,							/* DO_NAMESPACE */
-	4,							/* DO_EXTENSION */
-	5,							/* DO_TYPE */
-	5,							/* DO_SHELL_TYPE */
-	7,							/* DO_FUNC */
-	8,							/* DO_AGG */
-	9,							/* DO_OPERATOR */
-	9,							/* DO_ACCESS_METHOD */
-	10,							/* DO_OPCLASS */
-	10,							/* DO_OPFAMILY */
-	3,							/* DO_COLLATION */
-	11,							/* DO_CONVERSION */
-	19,							/* DO_TABLE */
-	21,							/* DO_ATTRDEF */
-	29,							/* DO_INDEX */
-	30,							/* DO_INDEX_ATTACH */
-	31,							/* DO_STATSEXT */
-	32,							/* DO_RULE */
-	33,							/* DO_TRIGGER */
-	28,							/* DO_CONSTRAINT */
-	34,							/* DO_FK_CONSTRAINT */
-	2,							/* DO_PROCLANG */
-	6,							/* DO_CAST */
-	24,							/* DO_TABLE_DATA */
-	25,							/* DO_SEQUENCE_SET */
-	20,							/* DO_DUMMY_TYPE */
-	12,							/* DO_TSPARSER */
-	14,							/* DO_TSDICT */
-	13,							/* DO_TSTEMPLATE */
-	15,							/* DO_TSCONFIG */
-	16,							/* DO_FDW */
-	17,							/* DO_FOREIGN_SERVER */
-	34,							/* DO_DEFAULT_ACL */
-	3,							/* DO_TRANSFORM */
-	22,							/* DO_BLOB */
-	26,							/* DO_BLOB_DATA */
-	23,							/* DO_PRE_DATA_BOUNDARY */
-	27,							/* DO_POST_DATA_BOUNDARY */
-	35,							/* DO_EVENT_TRIGGER */
-	40,							/* DO_REFRESH_MATVIEW */
-	36,							/* DO_POLICY */
-	37,							/* DO_PUBLICATION */
-	38,							/* DO_PUBLICATION_REL */
-	39,							/* DO_SUBSCRIPTION */
-	18,							/* DO_TABLEGROUP */
+	PRIO_NAMESPACE,				/* DO_NAMESPACE */
+	PRIO_EXTENSION,				/* DO_EXTENSION */
+	PRIO_TYPE,					/* DO_TYPE */
+	PRIO_TYPE,					/* DO_SHELL_TYPE */
+	PRIO_FUNC,					/* DO_FUNC */
+	PRIO_AGG,					/* DO_AGG */
+	PRIO_OPERATOR,				/* DO_OPERATOR */
+	PRIO_ACCESS_METHOD,			/* DO_ACCESS_METHOD */
+	PRIO_OPFAMILY,				/* DO_OPCLASS */
+	PRIO_OPFAMILY,				/* DO_OPFAMILY */
+	PRIO_COLLATION,				/* DO_COLLATION */
+	PRIO_CONVERSION,			/* DO_CONVERSION */
+	PRIO_TABLE,					/* DO_TABLE */
+	PRIO_TABLE_ATTACH,			/* DO_TABLE_ATTACH */
+	PRIO_ATTRDEF,				/* DO_ATTRDEF */
+	PRIO_INDEX,					/* DO_INDEX */
+	PRIO_INDEX_ATTACH,			/* DO_INDEX_ATTACH */
+	PRIO_STATSEXT,				/* DO_STATSEXT */
+	PRIO_RULE,					/* DO_RULE */
+	PRIO_TRIGGER,				/* DO_TRIGGER */
+	PRIO_CONSTRAINT,			/* DO_CONSTRAINT */
+	PRIO_FK_CONSTRAINT,			/* DO_FK_CONSTRAINT */
+	PRIO_PROCLANG,				/* DO_PROCLANG */
+	PRIO_CAST,					/* DO_CAST */
+	PRIO_TABLE_DATA,			/* DO_TABLE_DATA */
+	PRIO_SEQUENCE_SET,			/* DO_SEQUENCE_SET */
+	PRIO_DUMMY_TYPE,			/* DO_DUMMY_TYPE */
+	PRIO_TSPARSER,				/* DO_TSPARSER */
+	PRIO_TSDICT,				/* DO_TSDICT */
+	PRIO_TSTEMPLATE,			/* DO_TSTEMPLATE */
+	PRIO_TSCONFIG,				/* DO_TSCONFIG */
+	PRIO_FDW,					/* DO_FDW */
+	PRIO_FOREIGN_SERVER,		/* DO_FOREIGN_SERVER */
+	PRIO_DEFAULT_ACL,			/* DO_DEFAULT_ACL */
+	PRIO_TRANSFORM,				/* DO_TRANSFORM */
+	PRIO_BLOB,					/* DO_BLOB */
+	PRIO_BLOB_DATA,				/* DO_BLOB_DATA */
+	PRIO_PRE_DATA_BOUNDARY,		/* DO_PRE_DATA_BOUNDARY */
+	PRIO_POST_DATA_BOUNDARY,	/* DO_POST_DATA_BOUNDARY */
+	PRIO_EVENT_TRIGGER,			/* DO_EVENT_TRIGGER */
+	PRIO_REFRESH_MATVIEW,		/* DO_REFRESH_MATVIEW */
+	PRIO_POLICY,				/* DO_POLICY */
+	PRIO_PUBLICATION,			/* DO_PUBLICATION */
+	PRIO_PUBLICATION_REL,		/* DO_PUBLICATION_REL */
+	PRIO_PUBLICATION_TABLE_IN_SCHEMA,	/* DO_PUBLICATION_TABLE_IN_SCHEMA */
+	PRIO_SUBSCRIPTION,			/* DO_SUBSCRIPTION */
+	PRIO_TABLEGROUP				/* DO_TABLEGROUP */
 };
+
+StaticAssertDecl(lengthof(dbObjectTypePriority) == (DO_TABLEGROUP + 1),
+				 "array length mismatch");
 
 static DumpId preDataBoundId;
 static DumpId postDataBoundId;
@@ -104,113 +160,23 @@ static DumpId postDataBoundId;
 
 static int	DOTypeNameCompare(const void *p1, const void *p2);
 static bool TopoSort(DumpableObject **objs,
-		 int numObjs,
-		 DumpableObject **ordering,
-		 int *nOrdering);
+					 int numObjs,
+					 DumpableObject **ordering,
+					 int *nOrdering);
 static void addHeapElement(int val, int *heap, int heapLength);
 static int	removeHeapElement(int *heap, int heapLength);
 static void findDependencyLoops(DumpableObject **objs, int nObjs, int totObjs);
-static int findLoop(DumpableObject *obj,
-		 DumpId startPoint,
-		 bool *processed,
-		 DumpId *searchFailed,
-		 DumpableObject **workspace,
-		 int depth);
+static int	findLoop(DumpableObject *obj,
+					 DumpId startPoint,
+					 bool *processed,
+					 DumpId *searchFailed,
+					 DumpableObject **workspace,
+					 int depth);
 static void repairDependencyLoop(DumpableObject **loop,
-					 int nLoop);
+								 int nLoop);
 static void describeDumpableObject(DumpableObject *obj,
-					   char *buf, int bufsize);
+								   char *buf, int bufsize);
 
-static int	DOSizeCompare(const void *p1, const void *p2);
-
-static int
-findFirstEqualType(DumpableObjectType type, DumpableObject **objs, int numObjs)
-{
-	int			i;
-
-	for (i = 0; i < numObjs; i++)
-		if (objs[i]->objType == type)
-			return i;
-	return -1;
-}
-
-static int
-findFirstDifferentType(DumpableObjectType type, DumpableObject **objs, int numObjs, int start)
-{
-	int			i;
-
-	for (i = start; i < numObjs; i++)
-		if (objs[i]->objType != type)
-			return i;
-	return numObjs - 1;
-}
-
-/*
- * When we do a parallel dump, we want to start with the largest items first.
- *
- * Say we have the objects in this order:
- * ....DDDDD....III....
- *
- * with D = Table data, I = Index, . = other object
- *
- * This sorting function now takes each of the D or I blocks and sorts them
- * according to their size.
- */
-void
-sortDataAndIndexObjectsBySize(DumpableObject **objs, int numObjs)
-{
-	int			startIdx,
-				endIdx;
-	void	   *startPtr;
-
-	if (numObjs <= 1)
-		return;
-
-	startIdx = findFirstEqualType(DO_TABLE_DATA, objs, numObjs);
-	if (startIdx >= 0)
-	{
-		endIdx = findFirstDifferentType(DO_TABLE_DATA, objs, numObjs, startIdx);
-		startPtr = objs + startIdx;
-		qsort(startPtr, endIdx - startIdx, sizeof(DumpableObject *),
-			  DOSizeCompare);
-	}
-
-	startIdx = findFirstEqualType(DO_INDEX, objs, numObjs);
-	if (startIdx >= 0)
-	{
-		endIdx = findFirstDifferentType(DO_INDEX, objs, numObjs, startIdx);
-		startPtr = objs + startIdx;
-		qsort(startPtr, endIdx - startIdx, sizeof(DumpableObject *),
-			  DOSizeCompare);
-	}
-}
-
-static int
-DOSizeCompare(const void *p1, const void *p2)
-{
-	DumpableObject *obj1 = *(DumpableObject **) p1;
-	DumpableObject *obj2 = *(DumpableObject **) p2;
-	int			obj1_size = 0;
-	int			obj2_size = 0;
-
-	if (obj1->objType == DO_TABLE_DATA)
-		obj1_size = ((TableDataInfo *) obj1)->tdtable->relpages;
-	if (obj1->objType == DO_INDEX)
-		obj1_size = ((IndxInfo *) obj1)->relpages;
-
-	if (obj2->objType == DO_TABLE_DATA)
-		obj2_size = ((TableDataInfo *) obj2)->tdtable->relpages;
-	if (obj2->objType == DO_INDEX)
-		obj2_size = ((IndxInfo *) obj2)->relpages;
-
-	/* we want to see the biggest item go first */
-	if (obj1_size > obj2_size)
-		return -1;
-	if (obj2_size > obj1_size)
-		return 1;
-
-	return 0;
-}
 
 /*
  * Sort the given objects into a type/name-based ordering
@@ -272,6 +238,7 @@ DOTypeNameCompare(const void *p1, const void *p2)
 		FuncInfo   *fobj2 = *(FuncInfo *const *) p2;
 		int			i;
 
+		/* Sort by number of arguments, then argument type names */
 		cmpval = fobj1->nargs - fobj2->nargs;
 		if (cmpval != 0)
 			return cmpval;
@@ -310,7 +277,30 @@ DOTypeNameCompare(const void *p1, const void *p2)
 		AttrDefInfo *adobj1 = *(AttrDefInfo *const *) p1;
 		AttrDefInfo *adobj2 = *(AttrDefInfo *const *) p2;
 
+		/* Sort by attribute number */
 		cmpval = (adobj1->adnum - adobj2->adnum);
+		if (cmpval != 0)
+			return cmpval;
+	}
+	else if (obj1->objType == DO_POLICY)
+	{
+		PolicyInfo *pobj1 = *(PolicyInfo *const *) p1;
+		PolicyInfo *pobj2 = *(PolicyInfo *const *) p2;
+
+		/* Sort by table name (table namespace was considered already) */
+		cmpval = strcmp(pobj1->poltable->dobj.name,
+						pobj2->poltable->dobj.name);
+		if (cmpval != 0)
+			return cmpval;
+	}
+	else if (obj1->objType == DO_TRIGGER)
+	{
+		TriggerInfo *tobj1 = *(TriggerInfo *const *) p1;
+		TriggerInfo *tobj2 = *(TriggerInfo *const *) p2;
+
+		/* Sort by table name (table namespace was considered already) */
+		cmpval = strcmp(tobj1->tgtable->dobj.name,
+						tobj2->tgtable->dobj.name);
 		if (cmpval != 0)
 			return cmpval;
 	}
@@ -424,21 +414,20 @@ TopoSort(DumpableObject **objs,
 	 * We also make a map showing the input-order index of the item with
 	 * dumpId j.
 	 */
-	beforeConstraints = (int *) pg_malloc((maxDumpId + 1) * sizeof(int));
-	memset(beforeConstraints, 0, (maxDumpId + 1) * sizeof(int));
+	beforeConstraints = (int *) pg_malloc0((maxDumpId + 1) * sizeof(int));
 	idMap = (int *) pg_malloc((maxDumpId + 1) * sizeof(int));
 	for (i = 0; i < numObjs; i++)
 	{
 		obj = objs[i];
 		j = obj->dumpId;
 		if (j <= 0 || j > maxDumpId)
-			exit_horribly(modulename, "invalid dumpId %d\n", j);
+			pg_fatal("invalid dumpId %d", j);
 		idMap[j] = i;
 		for (j = 0; j < obj->nDeps; j++)
 		{
 			k = obj->dependencies[j];
 			if (k <= 0 || k > maxDumpId)
-				exit_horribly(modulename, "invalid dependency %d\n", k);
+				pg_fatal("invalid dependency %d", k);
 			beforeConstraints[k]++;
 		}
 	}
@@ -672,7 +661,7 @@ findDependencyLoops(DumpableObject **objs, int nObjs, int totObjs)
 
 	/* We'd better have fixed at least one loop */
 	if (!fixedloop)
-		exit_horribly(modulename, "could not identify dependency loop\n");
+		pg_fatal("could not identify dependency loop");
 
 	free(workspace);
 	free(searchFailed);
@@ -1214,6 +1203,24 @@ repairDependencyLoop(DumpableObject **loop,
 	}
 
 	/*
+	 * Loop of table with itself --- just ignore it.
+	 *
+	 * (Actually, what this arises from is a dependency of a table column on
+	 * another column, which happened with generated columns before v15; or a
+	 * dependency of a table column on the whole table, which happens with
+	 * partitioning.  But we didn't pay attention to sub-object IDs while
+	 * collecting the dependency data, so we can't see that here.)
+	 */
+	if (nLoop == 1)
+	{
+		if (loop[0]->objType == DO_TABLE)
+		{
+			removeObjectDependency(loop[0], loop[0]->dumpId);
+			return;
+		}
+	}
+
+	/*
 	 * If all the objects are TABLE_DATA items, what we must have is a
 	 * circular set of foreign key constraints (or a single self-referential
 	 * table).  Print an appropriate complaint and break the loop arbitrarily.
@@ -1225,13 +1232,13 @@ repairDependencyLoop(DumpableObject **loop,
 	}
 	if (i >= nLoop)
 	{
-		write_msg(NULL, ngettext("NOTICE: there are circular foreign-key constraints on this table:\n",
-								 "NOTICE: there are circular foreign-key constraints among these tables:\n",
-								 nLoop));
+		pg_log_warning(ngettext("there are circular foreign-key constraints on this table:",
+								"there are circular foreign-key constraints among these tables:",
+								nLoop));
 		for (i = 0; i < nLoop; i++)
-			write_msg(NULL, "  %s\n", loop[i]->name);
-		write_msg(NULL, "You might not be able to restore the dump without using --disable-triggers or temporarily dropping the constraints.\n");
-		write_msg(NULL, "Consider using a full dump instead of a --data-only dump to avoid this problem.\n");
+			pg_log_info("  %s", loop[i]->name);
+		pg_log_info("You might not be able to restore the dump without using --disable-triggers or temporarily dropping the constraints.");
+		pg_log_info("Consider using a full dump instead of a --data-only dump to avoid this problem.");
 		if (nLoop > 1)
 			removeObjectDependency(loop[0], loop[1]->dumpId);
 		else					/* must be a self-dependency */
@@ -1243,13 +1250,13 @@ repairDependencyLoop(DumpableObject **loop,
 	 * If we can't find a principled way to break the loop, complain and break
 	 * it in an arbitrary fashion.
 	 */
-	write_msg(modulename, "WARNING: could not resolve dependency loop among these items:\n");
+	pg_log_warning("could not resolve dependency loop among these items:");
 	for (i = 0; i < nLoop; i++)
 	{
 		char		buf[1024];
 
 		describeDumpableObject(loop[i], buf, sizeof(buf));
-		write_msg(modulename, "  %s\n", buf);
+		pg_log_info("  %s", buf);
 	}
 
 	if (nLoop > 1)
@@ -1337,6 +1344,11 @@ describeDumpableObject(DumpableObject *obj, char *buf, int bufsize)
 			snprintf(buf, bufsize,
 					"TABLEGROUP %s  (ID %d OID %u)",
 					obj->name, obj->dumpId, obj->catId.oid);
+			return;
+		case DO_TABLE_ATTACH:
+			snprintf(buf, bufsize,
+					 "TABLE ATTACH %s  (ID %d)",
+					 obj->name, obj->dumpId);
 			return;
 		case DO_ATTRDEF:
 			snprintf(buf, bufsize,
@@ -1482,6 +1494,11 @@ describeDumpableObject(DumpableObject *obj, char *buf, int bufsize)
 		case DO_PUBLICATION_REL:
 			snprintf(buf, bufsize,
 					 "PUBLICATION TABLE (ID %d OID %u)",
+					 obj->dumpId, obj->catId.oid);
+			return;
+		case DO_PUBLICATION_TABLE_IN_SCHEMA:
+			snprintf(buf, bufsize,
+					 "PUBLICATION TABLES IN SCHEMA (ID %d OID %u)",
 					 obj->dumpId, obj->catId.oid);
 			return;
 		case DO_SUBSCRIPTION:

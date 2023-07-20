@@ -4,7 +4,7 @@
  *	  definition of the "trigger" system catalog (pg_trigger)
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_trigger.h
@@ -33,17 +33,26 @@
  */
 CATALOG(pg_trigger,2620,TriggerRelationId)
 {
-	Oid			tgrelid;		/* relation trigger is attached to */
+	Oid			oid;			/* oid */
+	Oid			tgrelid BKI_LOOKUP(pg_class);	/* relation trigger is
+												 * attached to */
+	Oid			tgparentid BKI_LOOKUP_OPT(pg_trigger);	/* OID of parent
+														 * trigger, if any */
 	NameData	tgname;			/* trigger's name */
-	Oid			tgfoid;			/* OID of function to be called */
+	Oid			tgfoid BKI_LOOKUP(pg_proc); /* OID of function to be called */
 	int16		tgtype;			/* BEFORE/AFTER/INSTEAD, UPDATE/DELETE/INSERT,
 								 * ROW/STATEMENT; see below */
 	char		tgenabled;		/* trigger's firing configuration WRT
 								 * session_replication_role */
 	bool		tgisinternal;	/* trigger is system-generated */
-	Oid			tgconstrrelid;	/* constraint's FROM table, if any */
-	Oid			tgconstrindid;	/* constraint's supporting index, if any */
-	Oid			tgconstraint;	/* associated pg_constraint entry, if any */
+	Oid			tgconstrrelid BKI_LOOKUP_OPT(pg_class); /* constraint's FROM
+														 * table, if any */
+	Oid			tgconstrindid BKI_LOOKUP_OPT(pg_class); /* constraint's
+														 * supporting index, if
+														 * any */
+	Oid			tgconstraint BKI_LOOKUP_OPT(pg_constraint); /* associated
+															 * pg_constraint entry,
+															 * if any */
 	bool		tgdeferrable;	/* constraint trigger is deferrable */
 	bool		tginitdeferred; /* constraint trigger is deferred initially */
 	int16		tgnargs;		/* # of extra arguments in tgargs */
@@ -52,7 +61,8 @@ CATALOG(pg_trigger,2620,TriggerRelationId)
 	 * Variable-length fields start here, but we allow direct access to
 	 * tgattr. Note: tgattr and tgargs must not be null.
 	 */
-	int2vector	tgattr;			/* column numbers, if trigger is on columns */
+	int2vector	tgattr BKI_FORCE_NOT_NULL;	/* column numbers, if trigger is
+											 * on columns */
 
 #ifdef CATALOG_VARLEN
 	bytea		tgargs BKI_FORCE_NOT_NULL;	/* first\000second\000tgnargs\000 */
@@ -68,6 +78,14 @@ CATALOG(pg_trigger,2620,TriggerRelationId)
  * ----------------
  */
 typedef FormData_pg_trigger *Form_pg_trigger;
+
+DECLARE_TOAST(pg_trigger, 2336, 2337);
+
+DECLARE_INDEX(pg_trigger_tgconstraint_index, 2699, TriggerConstraintIndexId, on pg_trigger using btree(tgconstraint oid_ops));
+DECLARE_UNIQUE_INDEX(pg_trigger_tgrelid_tgname_index, 2701, TriggerRelidNameIndexId, on pg_trigger using btree(tgrelid oid_ops, tgname name_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_trigger_oid_index, 2702, TriggerOidIndexId, on pg_trigger using btree(oid oid_ops));
+
+DECLARE_ARRAY_FOREIGN_KEY((tgrelid, tgattr), pg_attribute, (attrelid, attnum));
 
 #ifdef EXPOSE_TO_CLIENT_CODE
 

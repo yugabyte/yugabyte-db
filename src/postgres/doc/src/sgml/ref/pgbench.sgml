@@ -1,4 +1,7 @@
-<!-- doc/src/sgml/ref/pgbench.sgml -->
+<!--
+doc/src/sgml/ref/pgbench.sgml
+PostgreSQL documentation
+-->
 
 <refentry id="pgbench">
  <indexterm zone="pgbench">
@@ -53,23 +56,30 @@ scaling factor: 10
 query mode: simple
 number of clients: 10
 number of threads: 1
+maximum number of tries: 1
 number of transactions per client: 1000
 number of transactions actually processed: 10000/10000
-maximum number of tries: 1
-tps = 85.184871 (including connections establishing)
-tps = 85.296346 (excluding connections establishing)
+number of failed transactions: 0 (0.000%)
+latency average = 11.013 ms
+latency stddev = 7.351 ms
+initial connection time = 45.758 ms
+tps = 896.967014 (without initial connection time)
 </screen>
 
-  The first six lines and the eighth line report some of the most important
-  parameter settings.  The seventh line reports the number of transactions
-  completed and intended (the latter being just the product of number of clients
+  The first seven lines report some of the most important parameter
+  settings.
+  The sixth line reports the maximum number of tries for transactions with
+  serialization or deadlock errors (see <xref linkend="failures-and-retries"/>
+  for more information).
+  The eighth line reports the number of transactions completed
+  and intended (the latter being just the product of number of clients
   and number of transactions per client); these will be equal unless the run
-  failed before completion or some SQL/meta command(s) failed.  (In
+  failed before completion or some SQL command(s) failed.  (In
   <option>-T</option> mode, only the actual number of transactions is printed.)
-  (see <xref linkend="errors-and-retries" endterm="errors-and-retries-title"/>
-  for more information)
-  The last two lines report the number of transactions per second,
-  figured with and without counting the time to start database sessions.
+  The next line reports the number of failed transactions due to
+  serialization or deadlock errors (see <xref linkend="failures-and-retries"/>
+  for more information).
+  The last line reports the number of transactions per second.
  </para>
 
   <para>
@@ -152,6 +162,18 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
     <variablelist>
 
      <varlistentry>
+      <term><replaceable class="parameter">dbname</replaceable></term>
+      <listitem>
+       <para>
+        Specifies the name of the database to test in. If this is
+        not specified, the environment variable
+        <envar>PGDATABASE</envar> is used. If that is not set, the
+        user name specified for the connection is used.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>-i</option></term>
       <term><option>--initialize</option></term>
       <listitem>
@@ -196,11 +218,36 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
           </listitem>
          </varlistentry>
          <varlistentry>
-          <term><literal>g</literal> (Generate data)</term>
+          <term><literal>g</literal> or <literal>G</literal> (Generate data, client-side or server-side)</term>
           <listitem>
            <para>
             Generate data and load it into the standard tables,
             replacing any data already present.
+           </para>
+           <para>
+            With <literal>g</literal> (client-side data generation),
+            data is generated in <command>pgbench</command> client and then
+            sent to the server. This uses the client/server bandwidth
+            extensively through a <command>COPY</command>.
+            <command>pgbench</command> uses the FREEZE option with version 14 or later
+            of <productname>PostgreSQL</productname> to speed up
+            subsequent <command>VACUUM</command>, unless partitions are enabled.
+            Using <literal>g</literal> causes logging to print one message
+            every 100,000 rows while generating data for the
+            <structname>pgbench_accounts</structname> table.
+           </para>
+           <para>
+            With <literal>G</literal> (server-side data generation),
+            only small queries are sent from the <command>pgbench</command>
+            client and then data is actually generated in the server.
+            No significant bandwidth is required for this variant, but
+            the server will do more work.
+            Using <literal>G</literal> causes logging not to print any progress
+            message while generating data.
+           </para>
+           <para>
+            The default initialization behavior uses client-side data
+            generation (equivalent to <literal>g</literal>).
            </para>
           </listitem>
          </varlistentry>
@@ -229,8 +276,7 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
            </para>
           </listitem>
          </varlistentry>
-        </variablelist>
-       </para>
+        </variablelist></para>
       </listitem>
      </varlistentry>
 
@@ -265,8 +311,12 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
       <listitem>
        <para>
         Switch logging to quiet mode, producing only one progress message per 5
-        seconds. The default logging prints one message each 100000 rows, which
+        seconds. The default logging prints one message each 100,000 rows, which
         often outputs many lines per second (especially on good hardware).
+       </para>
+       <para>
+        This setting has no effect if <literal>G</literal> is specified
+        in <option>-I</option>.
        </para>
       </listitem>
      </varlistentry>
@@ -310,6 +360,31 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
      </varlistentry>
 
      <varlistentry>
+      <term><option>--partition-method=<replaceable>NAME</replaceable></option></term>
+      <listitem>
+       <para>
+        Create a partitioned <literal>pgbench_accounts</literal> table with
+        <replaceable>NAME</replaceable> method.
+        Expected values are <literal>range</literal> or <literal>hash</literal>.
+        This option requires that <option>--partitions</option> is set to non-zero.
+        If unspecified, default is <literal>range</literal>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--partitions=<replaceable>NUM</replaceable></option></term>
+      <listitem>
+       <para>
+        Create a partitioned <literal>pgbench_accounts</literal> table with
+        <replaceable>NUM</replaceable> partitions of nearly equal size for
+        the scaled number of accounts.
+        Default is <literal>0</literal>, meaning no partitioning.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>--tablespace=<replaceable>tablespace</replaceable></option></term>
       <listitem>
        <para>
@@ -346,18 +421,21 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
       <term><option>--builtin</option>=<replaceable>scriptname[@weight]</replaceable></term>
       <listitem>
        <para>
-        Add the specified built-in script to the list of executed scripts.
-        An optional integer weight after <literal>@</literal> allows to adjust the
-        probability of drawing the script.  If not specified, it is set to 1.
+        Add the specified built-in script to the list of scripts to be executed.
         Available built-in scripts are: <literal>tpcb-like</literal>,
         <literal>simple-update</literal> and <literal>select-only</literal>.
         Unambiguous prefixes of built-in names are accepted.
-        With special name <literal>list</literal>, show the list of built-in scripts
+        With the special name <literal>list</literal>, show the list of built-in scripts
         and exit immediately.
+       </para>
+       <para>
+        Optionally, write an integer weight after <literal>@</literal> to
+        adjust the probability of selecting this script versus other ones.
+        The default weight is 1.
+        See below for details.
        </para>
       </listitem>
      </varlistentry>
-
 
      <varlistentry>
       <term><option>-c</option> <replaceable>clients</replaceable></term>
@@ -425,10 +503,16 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
       <term><option>--file=</option><replaceable>filename[@weight]</replaceable></term>
       <listitem>
        <para>
-        Add a transaction script read from <replaceable>filename</replaceable> to
-        the list of executed scripts.
-        An optional integer weight after <literal>@</literal> allows to adjust the
-        probability of drawing the test.
+        Add a transaction script read from <replaceable>filename</replaceable>
+        to the list of scripts to be executed.
+       </para>
+       <para>
+        Optionally, write an integer weight after <literal>@</literal> to
+        adjust the probability of selecting this script versus other ones.
+        The default weight is 1.
+        (To use a script file name that includes an <literal>@</literal>
+        character, append a weight so that there is no ambiguity, for
+        example <literal>filen@me@1</literal>.)
         See below for details.
        </para>
       </listitem>
@@ -463,7 +547,7 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
       <term><option>--latency-limit=</option><replaceable>limit</replaceable></term>
       <listitem>
        <para>
-        Transaction which last more than <replaceable>limit</replaceable> milliseconds
+        Transactions that last more than <replaceable>limit</replaceable> milliseconds
         are counted and reported separately, as <firstterm>late</firstterm>.
        </para>
        <para>
@@ -472,6 +556,17 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
         have no hope of meeting the latency limit, are not sent to the server
         at all. They are counted and reported separately as
         <firstterm>skipped</firstterm>.
+       </para>
+       <para>
+        When the <option>--max-tries</option> option is used, a transaction
+        which fails due to a serialization anomaly or from a deadlock will not
+        be retried if the total time of all its tries is greater than
+        <replaceable>limit</replaceable> ms. To limit only the time of tries
+        and not their number, use <literal>--max-tries=0</literal>. By
+        default, the option <option>--max-tries</option> is set to 1 and
+        transactions with serialization/deadlock errors are not retried. See
+        <xref linkend="failures-and-retries"/> for more information about
+        retrying such transactions.
        </para>
        <para>
         The transaction with serialization or deadlock failure can be retried if
@@ -503,6 +598,13 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
             <para><literal>prepared</literal>: use extended query protocol with prepared statements.</para>
            </listitem>
           </itemizedlist>
+
+        In the <literal>prepared</literal> mode, <application>pgbench</application>
+        reuses the parse analysis result starting from the second query
+        iteration, so <application>pgbench</application> runs faster
+        than in other modes.
+       </para>
+       <para>
         The default is simple query protocol.  (See <xref linkend="protocol"/>
         for more information.)
        </para>
@@ -542,22 +644,26 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
        <para>
         Show progress report every <replaceable>sec</replaceable> seconds.  The report
         includes the time since the beginning of the run, the TPS since the
-        last report, and the transaction latency average and standard
-        deviation since the last report.  If any transactions ended with a
-        failed SQL or meta command since the last report, they are also reported
-        as failed.  If any transactions ended with an error "in failed SQL
-        transaction block", they are reported separatly as <literal>in failed
-        tx</literal> (see <xref linkend="errors-and-retries"
-        endterm="errors-and-retries-title"/> for more information).  Under
+        last report, and the transaction latency average, standard deviation,
+        and the number of failed transactions since the last report. Under
         throttling (<option>-R</option>), the latency is computed with respect
         to the transaction scheduled start time, not the actual transaction
-        beginning time, thus it also includes the average schedule lag time.  If
-        any transactions have been rolled back and retried after a
+        beginning time, thus it also includes the average schedule lag time.
+        When <option>--max-tries</option> is used to enable transaction retries
+        after serialization/deadlock errors, the report includes the number of
+        retried transactions and the sum of all retries.
+       </para>
+       <para>
+        If any transactions ended with a failed SQL or meta command since the
+        last report, they are also reported as failed.  If any transactions ended with
+        an error "in failed SQL transaction block", they are reported separatly as
+        <literal>in failed tx</literal> (see <xref linkend="errors-and-retries"
+        endterm="errors-and-retries-title"/> for more information).  
+        If any transactions have been rolled back and retried after a
         serialization/deadlock failure since the last report, the report
         includes the number of such transactions and the sum of all retries. Use
-        the options <option>--max-tries</option> and/or
-        <option>--latency-limit</option> to enable transactions retries after
-        serialization/deadlock failures.
+        the options <option>--max-tries</option> and/or <option>--latency-limit</option>
+        to enable transactions retries after serialization/deadlock failures.
        </para>
       </listitem>
      </varlistentry>
@@ -574,7 +680,8 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
         after serialization or deadlock failures.  The report displays the
         columns with statistics on errors and retries only if the current
         <application>pgbench</application> run has an error of the corresponding
-        type or retry, respectively. See below for details.
+        type or retry, respectively. The report displays retry statistics only if the
+        <option>--max-tries</option> option is not equal to 1.
        </para>
       </listitem>
      </varlistentry>
@@ -604,7 +711,7 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
         transaction to finish. The wait time is called the schedule lag time,
         and its average and maximum are also reported separately. The
         transaction latency with respect to the actual transaction start time,
-        i.e. the time spent executing the transaction in the database, can be
+        i.e., the time spent executing the transaction in the database, can be
         computed by subtracting the schedule lag time from the reported
         latency.
        </para>
@@ -703,11 +810,47 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
      </varlistentry>
 
      <varlistentry>
+      <term><option>--failures-detailed</option></term>
+      <listitem>
+       <para>
+        Report failures in per-transaction and aggregation logs, as well as in
+        the main and per-script reports, grouped by the following types:
+        <itemizedlist>
+         <listitem>
+          <para>serialization failures;</para>
+         </listitem>
+         <listitem>
+          <para>deadlock failures;</para>
+         </listitem>
+        </itemizedlist>
+        See <xref linkend="failures-and-retries"/> for more information.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>--log-prefix=<replaceable>prefix</replaceable></option></term>
       <listitem>
        <para>
         Set the filename prefix for the log files created by
         <option>--log</option>.  The default is <literal>pgbench_log</literal>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--max-tries=<replaceable>number_of_tries</replaceable></option></term>
+      <listitem>
+       <para>
+        Enable retries for transactions with serialization/deadlock errors and
+        set the maximum number of these tries. This option can be combined with
+        the <option>--latency-limit</option> option which limits the total time
+        of all transaction tries; moreover, you cannot use an unlimited number
+        of tries (<literal>--max-tries=0</literal>) without
+        <option>--latency-limit</option> or <option>--time</option>.
+        The default value is 1 and transactions with serialization/deadlock
+        errors are not retried. See <xref linkend="failures-and-retries"/>
+        for more information about retrying such transactions.
        </para>
       </listitem>
      </varlistentry>
@@ -741,13 +884,13 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
      </varlistentry>
 
      <varlistentry>
-      <term><option>--random-seed=</option><replaceable>SEED</replaceable></term>
+      <term><option>--random-seed=</option><replaceable>seed</replaceable></term>
       <listitem>
        <para>
         Set random generator seed.  Seeds the system random number generator,
         which then produces a sequence of initial generator states, one for
         each thread.
-        Values for <replaceable>SEED</replaceable> may be:
+        Values for <replaceable>seed</replaceable> may be:
         <literal>time</literal> (the default, the seed is based on the current time),
         <literal>rand</literal> (use a strong random source, failing if none
         is available), or an unsigned decimal integer value.
@@ -755,7 +898,7 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
         (<literal>random...</literal> functions) or implicitly (for instance option
         <option>--rate</option> uses it to schedule transactions).
         When explicitly set, the value used for seeding is shown on the terminal.
-        Any value allowed for <replaceable>SEED</replaceable> may also be
+        Any value allowed for <replaceable>seed</replaceable> may also be
         provided through the environment variable
         <literal>PGBENCH_RANDOM_SEED</literal>.
         To ensure that the provided seed impacts all possible uses, put this option
@@ -769,7 +912,7 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
         client per thread and there are no external or data dependencies.
         From a statistical viewpoint reproducing runs exactly is a bad idea because
         it can hide the performance variability or improve performance unduly,
-        e.g. by hitting the same pages as a previous run.
+        e.g., by hitting the same pages as a previous run.
         However, it may also be of great help for debugging, for instance
         re-running a tricky case which leads to an error.
         Use wisely.
@@ -789,8 +932,31 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
        <para>
         Remember to take the sampling rate into account when processing the
         log file. For example, when computing TPS values, you need to multiply
-        the numbers accordingly (e.g. with 0.01 sample rate, you'll only get
+        the numbers accordingly (e.g., with 0.01 sample rate, you'll only get
         1/100 of the actual TPS).
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--show-script=</option><replaceable>scriptname</replaceable></term>
+      <listitem>
+       <para>
+        Show the actual code of builtin script <replaceable>scriptname</replaceable>
+        on stderr, and exit immediately.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--verbose-errors</option></term>
+      <listitem>
+       <para>
+        Print messages about all errors and failures (errors without retrying)
+        including which limit for retries was exceeded and how far it was
+        exceeded for the serialization/deadlock failures. (Note that in this
+        case the output can be significantly increased.).
+        See <xref linkend="failures-and-retries"/> for more information.
        </para>
       </listitem>
      </varlistentry>
@@ -804,8 +970,8 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
   <title>Common Options</title>
 
    <para>
-    <application>pgbench</application> accepts the following command-line
-    common arguments:
+    <application>pgbench</application> also accepts the following common command-line
+    arguments for connection parameters:
 
     <variablelist>
 
@@ -866,18 +1032,64 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
  </refsect1>
 
  <refsect1>
+  <title>Exit Status</title>
+
+  <para>
+   A successful run will exit with status 0.  Exit status 1 indicates static
+   problems such as invalid command-line options or internal errors which
+   are supposed to never occur.  Early errors that occur when starting
+   benchmark such as initial connection failures also exit with status 1.
+   Errors during the run such as database errors or problems in the script
+   will result in exit status 2. In the latter case,
+   <application>pgbench</application> will print partial results.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Environment</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><envar>PGDATABASE</envar></term>
+    <term><envar>PGHOST</envar></term>
+    <term><envar>PGPORT</envar></term>
+    <term><envar>PGUSER</envar></term>
+
+    <listitem>
+     <para>
+      Default connection parameters.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   This utility, like most other <productname>PostgreSQL</productname> utilities,
+   uses the environment variables supported by <application>libpq</application>
+   (see <xref linkend="libpq-envars"/>).
+  </para>
+
+  <para>
+   The environment variable <envar>PG_COLOR</envar> specifies whether to use
+   color in diagnostic messages. Possible values are
+   <literal>always</literal>, <literal>auto</literal> and
+   <literal>never</literal>.
+  </para>
+ </refsect1>
+
+ <refsect1>
   <title>Notes</title>
 
- <refsect2 id="transactions-and-scripts">
-  <title id="transactions-and-scripts-title">What is the <quote>Transaction</quote> Actually Performed in <application>pgbench</application>?</title>
+ <refsect2 id="transactions-and-scripts" xreflabel="What Is the &quot;Transaction&quot; Actually Performed in pgbench?">
+  <title id="transactions-and-scripts-title">What Is the <quote>Transaction</quote> Actually Performed in <application>pgbench</application>?</title>
 
   <para>
    <application>pgbench</application> executes test scripts chosen randomly
    from a specified list.
-   They include built-in scripts with <option>-b</option> and
-   user-provided custom scripts with <option>-f</option>.
-   Each script may be given a relative weight specified after a
-   <literal>@</literal> so as to change its drawing probability.
+   The scripts may include built-in scripts specified with <option>-b</option>
+   and user-provided scripts specified with <option>-f</option>.
+   Each script may be given a relative weight specified after an
+   <literal>@</literal> so as to change its selection probability.
    The default weight is <literal>1</literal>.
    Scripts with a weight of <literal>0</literal> are ignored.
  </para>
@@ -885,7 +1097,7 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
   <para>
    The default built-in transaction script (also invoked with <option>-b tpcb-like</option>)
    issues seven commands per transaction over randomly chosen <literal>aid</literal>,
-   <literal>tid</literal>, <literal>bid</literal> and <literal>balance</literal>.
+   <literal>tid</literal>, <literal>bid</literal> and <literal>delta</literal>.
    The scenario is inspired by the TPC-B benchmark, but is not actually TPC-B,
    hence the name.
   </para>
@@ -937,17 +1149,22 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
     Before <productname>PostgreSQL</productname> 9.6, SQL commands in script files
     were terminated by newlines, and so they could not be continued across
     lines.  Now a semicolon is <emphasis>required</emphasis> to separate consecutive
-    SQL commands (though a SQL command does not need one if it is followed
+    SQL commands (though an SQL command does not need one if it is followed
     by a meta command).  If you need to create a script file that works with
     both old and new versions of <application>pgbench</application>, be sure to write
     each SQL command on a single line ending with a semicolon.
+   </para>
+   <para>
+    It is assumed that pgbench scripts do not contain incomplete blocks of SQL
+    transactions. If at runtime the client reaches the end of the script without
+    completing the last transaction block, it will be aborted.
    </para>
   </note>
 
   <para>
    There is a simple variable-substitution facility for script files.
    Variable names must consist of letters (including non-Latin letters),
-   digits, and underscores.
+   digits, and underscores, with the first character not being a digit.
    Variables can be set by the command-line <option>-D</option> option,
    explained above, or by the meta commands explained below.
    In addition to any variables preset by <option>-D</option> command-line options,
@@ -955,14 +1172,18 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
    <xref linkend="pgbench-automatic-variables"/>. A value specified for these
    variables using <option>-D</option> takes precedence over the automatic presets.
    Once set, a variable's
-   value can be inserted into a SQL command by writing
+   value can be inserted into an SQL command by writing
    <literal>:</literal><replaceable>variablename</replaceable>.  When running more than
    one client session, each session has its own set of variables.
+   <application>pgbench</application> supports up to 255 variable uses in one
+   statement.
   </para>
 
    <table id="pgbench-automatic-variables">
-    <title>Automatic Variables</title>
+    <title>pgbench Automatic Variables</title>
     <tgroup cols="2">
+     <colspec colname="col1" colwidth="1*"/>
+     <colspec colname="col2" colwidth="2*"/>
      <thead>
       <row>
        <entry>Variable</entry>
@@ -978,7 +1199,7 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
 
       <row>
        <entry> <literal>default_seed</literal> </entry>
-       <entry>seed used in hash functions by default</entry>
+       <entry>seed used in hash and pseudorandom permutation functions by default</entry>
       </row>
 
       <row>
@@ -1003,6 +1224,61 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
   </para>
 
   <variablelist>
+   <varlistentry id='pgbench-metacommand-gset'>
+    <term>
+     <literal>\gset [<replaceable>prefix</replaceable>]</literal>
+     <literal>\aset [<replaceable>prefix</replaceable>]</literal>
+    </term>
+
+    <listitem>
+     <para>
+      These commands may be used to end SQL queries, taking the place of the
+      terminating semicolon (<literal>;</literal>).
+     </para>
+
+     <para>
+      When the <literal>\gset</literal> command is used, the preceding SQL query is
+      expected to return one row, the columns of which are stored into variables
+      named after column names, and prefixed with <replaceable>prefix</replaceable>
+      if provided.
+     </para>
+
+     <para>
+      When the <literal>\aset</literal> command is used, all combined SQL queries
+      (separated by <literal>\;</literal>) have their columns stored into variables
+      named after column names, and prefixed with <replaceable>prefix</replaceable>
+      if provided. If a query returns no row, no assignment is made and the variable
+      can be tested for existence to detect this. If a query returns more than one
+      row, the last value is kept.
+     </para>
+
+     <para>
+      <literal>\gset</literal> and <literal>\aset</literal> cannot be used in
+      pipeline mode, since the query results are not yet available by the time
+      the commands would need them.
+     </para>
+
+     <para>
+      The following example puts the final account balance from the first query
+      into variable <replaceable>abalance</replaceable>, and fills variables
+      <replaceable>p_two</replaceable> and <replaceable>p_three</replaceable>
+      with integers from the third query.
+      The result of the second query is discarded.
+      The result of the two last combined queries are stored in variables
+      <replaceable>four</replaceable> and <replaceable>five</replaceable>.
+<programlisting>
+UPDATE pgbench_accounts
+  SET abalance = abalance + :delta
+  WHERE aid = :aid
+  RETURNING abalance \gset
+-- compound of two queries
+SELECT 1 \;
+SELECT 2 AS two, 3 AS three \gset p_
+SELECT 4 AS four \; SELECT 5 AS five \aset
+</programlisting></para>
+    </listitem>
+   </varlistentry>
+
    <varlistentry>
     <term><literal>\if</literal> <replaceable class="parameter">expression</replaceable></term>
     <term><literal>\elif</literal> <replaceable class="parameter">expression</replaceable></term>
@@ -1048,6 +1324,13 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
       For conditional purposes, non zero numerical values are
       <literal>TRUE</literal>, zero numerical values and <literal>NULL</literal>
       are <literal>FALSE</literal>.
+     </para>
+
+     <para>
+      Too large or small integer and double constants, as well as
+      integer arithmetic operators (<literal>+</literal>,
+      <literal>-</literal>, <literal>*</literal> and <literal>/</literal>)
+      raise errors on overflows.
      </para>
 
      <para>
@@ -1135,178 +1418,395 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
 </programlisting></para>
     </listitem>
    </varlistentry>
+
+   <varlistentry id='pgbench-metacommand-pipeline'>
+    <term><literal>\startpipeline</literal></term>
+    <term><literal>\endpipeline</literal></term>
+
+    <listitem>
+      <para>
+        These commands delimit the start and end of a pipeline of SQL
+        statements.  In pipeline mode, statements are sent to the server
+        without waiting for the results of previous statements.  See
+        <xref linkend="libpq-pipeline-mode"/> for more details.
+        Pipeline mode requires the use of extended query protocol.
+     </para>
+    </listitem>
+   </varlistentry>
+
   </variablelist>
  </refsect2>
 
  <refsect2 id="pgbench-builtin-operators">
-  <title>Built-In Operators</title>
+  <title>Built-in Operators</title>
 
   <para>
    The arithmetic, bitwise, comparison and logical operators listed in
    <xref linkend="pgbench-operators"/> are built into <application>pgbench</application>
    and may be used in expressions appearing in
    <link linkend="pgbench-metacommand-set"><literal>\set</literal></link>.
+   The operators are listed in increasing precedence order.
+   Except as noted, operators taking two numeric inputs will produce
+   a double value if either input is double, otherwise they produce
+   an integer result.
   </para>
 
-  <table id="pgbench-operators">
-   <title>pgbench Operators by increasing precedence</title>
-   <tgroup cols="4">
-    <thead>
-     <row>
-      <entry>Operator</entry>
-      <entry>Description</entry>
-      <entry>Example</entry>
-      <entry>Result</entry>
-     </row>
-    </thead>
-    <tbody>
-     <row>
-      <entry><literal>OR</literal></entry>
-      <entry>logical or</entry>
-      <entry><literal>5 or 0</literal></entry>
-      <entry><literal>TRUE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>AND</literal></entry>
-      <entry>logical and</entry>
-      <entry><literal>3 and 0</literal></entry>
-      <entry><literal>FALSE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>NOT</literal></entry>
-      <entry>logical not</entry>
-      <entry><literal>not false</literal></entry>
-      <entry><literal>TRUE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>IS [NOT] (NULL|TRUE|FALSE)</literal></entry>
-      <entry>value tests</entry>
-      <entry><literal>1 is null</literal></entry>
-      <entry><literal>FALSE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>ISNULL|NOTNULL</literal></entry>
-      <entry>null tests</entry>
-      <entry><literal>1 notnull</literal></entry>
-      <entry><literal>TRUE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>=</literal></entry>
-      <entry>is equal</entry>
-      <entry><literal>5 = 4</literal></entry>
-      <entry><literal>FALSE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>&lt;&gt;</literal></entry>
-      <entry>is not equal</entry>
-      <entry><literal>5 &lt;&gt; 4</literal></entry>
-      <entry><literal>TRUE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>!=</literal></entry>
-      <entry>is not equal</entry>
-      <entry><literal>5 != 5</literal></entry>
-      <entry><literal>FALSE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>&lt;</literal></entry>
-      <entry>lower than</entry>
-      <entry><literal>5 &lt; 4</literal></entry>
-      <entry><literal>FALSE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>&lt;=</literal></entry>
-      <entry>lower or equal</entry>
-      <entry><literal>5 &lt;= 4</literal></entry>
-      <entry><literal>FALSE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>&gt;</literal></entry>
-      <entry>greater than</entry>
-      <entry><literal>5 &gt; 4</literal></entry>
-      <entry><literal>TRUE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>&gt;=</literal></entry>
-      <entry>greater or equal</entry>
-      <entry><literal>5 &gt;= 4</literal></entry>
-      <entry><literal>TRUE</literal></entry>
-     </row>
-     <row>
-      <entry><literal>|</literal></entry>
-      <entry>integer bitwise OR</entry>
-      <entry><literal>1 | 2</literal></entry>
-      <entry><literal>3</literal></entry>
-     </row>
-     <row>
-      <entry><literal>#</literal></entry>
-      <entry>integer bitwise XOR</entry>
-      <entry><literal>1 # 3</literal></entry>
-      <entry><literal>2</literal></entry>
-     </row>
-     <row>
-      <entry><literal>&amp;</literal></entry>
-      <entry>integer bitwise AND</entry>
-      <entry><literal>1 &amp; 3</literal></entry>
-      <entry><literal>1</literal></entry>
-     </row>
-     <row>
-      <entry><literal>~</literal></entry>
-      <entry>integer bitwise NOT</entry>
-      <entry><literal>~ 1</literal></entry>
-      <entry><literal>-2</literal></entry>
-     </row>
-     <row>
-      <entry><literal>&lt;&lt;</literal></entry>
-      <entry>integer bitwise shift left</entry>
-      <entry><literal>1 &lt;&lt; 2</literal></entry>
-      <entry><literal>4</literal></entry>
-     </row>
-     <row>
-      <entry><literal>&gt;&gt;</literal></entry>
-      <entry>integer bitwise shift right</entry>
-      <entry><literal>8 &gt;&gt; 2</literal></entry>
-      <entry><literal>2</literal></entry>
-     </row>
-     <row>
-      <entry><literal>+</literal></entry>
-      <entry>addition</entry>
-      <entry><literal>5 + 4</literal></entry>
-      <entry><literal>9</literal></entry>
-     </row>
-     <row>
-      <entry><literal>-</literal></entry>
-      <entry>subtraction</entry>
-      <entry><literal>3 - 2.0</literal></entry>
-      <entry><literal>1.0</literal></entry>
-     </row>
-     <row>
-      <entry><literal>*</literal></entry>
-      <entry>multiplication</entry>
-      <entry><literal>5 * 4</literal></entry>
-      <entry><literal>20</literal></entry>
-     </row>
-     <row>
-      <entry><literal>/</literal></entry>
-      <entry>division (integer truncates the results)</entry>
-      <entry><literal>5 / 3</literal></entry>
-      <entry><literal>1</literal></entry>
-     </row>
-     <row>
-      <entry><literal>%</literal></entry>
-      <entry>modulo</entry>
-      <entry><literal>3 % 2</literal></entry>
-      <entry><literal>1</literal></entry>
-     </row>
-     <row>
-      <entry><literal>-</literal></entry>
-      <entry>opposite</entry>
-      <entry><literal>- 2.0</literal></entry>
-      <entry><literal>-2.0</literal></entry>
-     </row>
-    </tbody>
-   </tgroup>
-  </table>
+   <table id="pgbench-operators">
+    <title>pgbench Operators</title>
+    <tgroup cols="1">
+     <thead>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        Operator
+       </para>
+       <para>
+        Description
+       </para>
+       <para>
+        Example(s)
+       </para></entry>
+      </row>
+     </thead>
+
+     <tbody>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>boolean</replaceable> <literal>OR</literal> <replaceable>boolean</replaceable>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Logical OR
+       </para>
+       <para>
+        <literal>5 or 0</literal>
+        <returnvalue>TRUE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>boolean</replaceable> <literal>AND</literal> <replaceable>boolean</replaceable>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Logical AND
+       </para>
+       <para>
+        <literal>3 and 0</literal>
+        <returnvalue>FALSE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <literal>NOT</literal> <replaceable>boolean</replaceable>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Logical NOT
+       </para>
+       <para>
+        <literal>not false</literal>
+        <returnvalue>TRUE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>boolean</replaceable> <literal>IS [NOT] (NULL|TRUE|FALSE)</literal>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Boolean value tests
+       </para>
+       <para>
+        <literal>1 is null</literal>
+        <returnvalue>FALSE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>value</replaceable> <literal>ISNULL|NOTNULL</literal>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Nullness tests
+       </para>
+       <para>
+        <literal>1 notnull</literal>
+        <returnvalue>TRUE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>number</replaceable> <literal>=</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Equal
+       </para>
+       <para>
+        <literal>5 = 4</literal>
+        <returnvalue>FALSE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>number</replaceable> <literal>&lt;&gt;</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Not equal
+       </para>
+       <para>
+        <literal>5 &lt;&gt; 4</literal>
+        <returnvalue>TRUE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>number</replaceable> <literal>!=</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Not equal
+       </para>
+       <para>
+        <literal>5 != 5</literal>
+        <returnvalue>FALSE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>number</replaceable> <literal>&lt;</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Less than
+       </para>
+       <para>
+        <literal>5 &lt; 4</literal>
+        <returnvalue>FALSE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>number</replaceable> <literal>&lt;=</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Less than or equal to
+       </para>
+       <para>
+        <literal>5 &lt;= 4</literal>
+        <returnvalue>FALSE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>number</replaceable> <literal>&gt;</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Greater than
+       </para>
+       <para>
+        <literal>5 &gt; 4</literal>
+        <returnvalue>TRUE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>number</replaceable> <literal>&gt;=</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>boolean</replaceable></returnvalue>
+       </para>
+       <para>
+        Greater than or equal to
+       </para>
+       <para>
+        <literal>5 &gt;= 4</literal>
+        <returnvalue>TRUE</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>integer</replaceable> <literal>|</literal> <replaceable>integer</replaceable>
+        <returnvalue><replaceable>integer</replaceable></returnvalue>
+       </para>
+       <para>
+        Bitwise OR
+       </para>
+       <para>
+        <literal>1 | 2</literal>
+        <returnvalue>3</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>integer</replaceable> <literal>#</literal> <replaceable>integer</replaceable>
+        <returnvalue><replaceable>integer</replaceable></returnvalue>
+       </para>
+       <para>
+        Bitwise XOR
+       </para>
+       <para>
+        <literal>1 # 3</literal>
+        <returnvalue>2</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>integer</replaceable> <literal>&amp;</literal> <replaceable>integer</replaceable>
+        <returnvalue><replaceable>integer</replaceable></returnvalue>
+       </para>
+       <para>
+        Bitwise AND
+       </para>
+       <para>
+        <literal>1 &amp; 3</literal>
+        <returnvalue>1</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <literal>~</literal> <replaceable>integer</replaceable>
+        <returnvalue><replaceable>integer</replaceable></returnvalue>
+       </para>
+       <para>
+        Bitwise NOT
+       </para>
+       <para>
+        <literal>~ 1</literal>
+        <returnvalue>-2</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>integer</replaceable> <literal>&lt;&lt;</literal> <replaceable>integer</replaceable>
+        <returnvalue><replaceable>integer</replaceable></returnvalue>
+       </para>
+       <para>
+        Bitwise shift left
+       </para>
+       <para>
+        <literal>1 &lt;&lt; 2</literal>
+        <returnvalue>4</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>integer</replaceable> <literal>&gt;&gt;</literal> <replaceable>integer</replaceable>
+        <returnvalue><replaceable>integer</replaceable></returnvalue>
+       </para>
+       <para>
+        Bitwise shift right
+       </para>
+       <para>
+        <literal>8 &gt;&gt; 2</literal>
+        <returnvalue>2</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>number</replaceable> <literal>+</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>number</replaceable></returnvalue>
+       </para>
+       <para>
+        Addition
+       </para>
+       <para>
+        <literal>5 + 4</literal>
+        <returnvalue>9</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>number</replaceable> <literal>-</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>number</replaceable></returnvalue>
+       </para>
+       <para>
+        Subtraction
+       </para>
+       <para>
+        <literal>3 - 2.0</literal>
+        <returnvalue>1.0</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>number</replaceable> <literal>*</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>number</replaceable></returnvalue>
+       </para>
+       <para>
+        Multiplication
+       </para>
+       <para>
+        <literal>5 * 4</literal>
+        <returnvalue>20</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>number</replaceable> <literal>/</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>number</replaceable></returnvalue>
+       </para>
+       <para>
+        Division (truncates the result towards zero if both inputs are integers)
+       </para>
+       <para>
+        <literal>5 / 3</literal>
+        <returnvalue>1</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <replaceable>integer</replaceable> <literal>%</literal> <replaceable>integer</replaceable>
+        <returnvalue><replaceable>integer</replaceable></returnvalue>
+       </para>
+       <para>
+        Modulo (remainder)
+       </para>
+       <para>
+        <literal>3 % 2</literal>
+        <returnvalue>1</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <literal>-</literal> <replaceable>number</replaceable>
+        <returnvalue><replaceable>number</replaceable></returnvalue>
+       </para>
+       <para>
+        Negation
+       </para>
+       <para>
+        <literal>- 2.0</literal>
+        <returnvalue>-2.0</returnvalue>
+       </para></entry>
+      </row>
+     </tbody>
+    </tgroup>
+   </table>
  </refsect2>
 
  <refsect2 id="pgbench-builtin-functions">
@@ -1321,156 +1821,316 @@ pgbench <optional> <replaceable>options</replaceable> </optional> <replaceable>d
    <!-- list pgbench functions in alphabetical order -->
    <table id="pgbench-functions">
     <title>pgbench Functions</title>
-    <tgroup cols="5">
+    <tgroup cols="1">
      <thead>
       <row>
-       <entry>Function</entry>
-       <entry>Return Type</entry>
-       <entry>Description</entry>
-       <entry>Example</entry>
-       <entry>Result</entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        Function
+       </para>
+       <para>
+        Description
+       </para>
+       <para>
+        Example(s)
+       </para></entry>
       </row>
      </thead>
+
      <tbody>
       <row>
-       <entry><literal><function>abs(<replaceable>a</replaceable>)</function></literal></entry>
-       <entry>same as <replaceable>a</replaceable></entry>
-       <entry>absolute value</entry>
-       <entry><literal>abs(-17)</literal></entry>
-       <entry><literal>17</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>abs</function> ( <replaceable>number</replaceable> )
+        <returnvalue></returnvalue> same type as input
+       </para>
+       <para>
+        Absolute value
+       </para>
+       <para>
+        <literal>abs(-17)</literal>
+        <returnvalue>17</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>debug(<replaceable>a</replaceable>)</function></literal></entry>
-       <entry>same as <replaceable>a</replaceable> </entry>
-       <entry>print <replaceable>a</replaceable> to <systemitem>stderr</systemitem>,
-        and return <replaceable>a</replaceable></entry>
-       <entry><literal>debug(5432.1)</literal></entry>
-       <entry><literal>5432.1</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>debug</function> ( <replaceable>number</replaceable> )
+        <returnvalue></returnvalue> same type as input
+       </para>
+       <para>
+        Prints the argument to <systemitem>stderr</systemitem>,
+        and returns the argument.
+       </para>
+       <para>
+        <literal>debug(5432.1)</literal>
+        <returnvalue>5432.1</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>double(<replaceable>i</replaceable>)</function></literal></entry>
-       <entry>double</entry>
-       <entry>cast to double</entry>
-       <entry><literal>double(5432)</literal></entry>
-       <entry><literal>5432.0</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>double</function> ( <replaceable>number</replaceable> )
+        <returnvalue>double</returnvalue>
+       </para>
+       <para>
+        Casts to double.
+       </para>
+       <para>
+        <literal>double(5432)</literal>
+        <returnvalue>5432.0</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>exp(<replaceable>x</replaceable>)</function></literal></entry>
-       <entry>double</entry>
-       <entry>exponential</entry>
-       <entry><literal>exp(1.0)</literal></entry>
-       <entry><literal>2.718281828459045</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>exp</function> ( <replaceable>number</replaceable> )
+        <returnvalue>double</returnvalue>
+       </para>
+       <para>
+        Exponential (<literal>e</literal> raised to the given power)
+       </para>
+       <para>
+        <literal>exp(1.0)</literal>
+        <returnvalue>2.718281828459045</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>greatest(<replaceable>a</replaceable> [, <replaceable>...</replaceable> ] )</function></literal></entry>
-       <entry>double if any <replaceable>a</replaceable> is double, else integer</entry>
-       <entry>largest value among arguments</entry>
-       <entry><literal>greatest(5, 4, 3, 2)</literal></entry>
-       <entry><literal>5</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>greatest</function> ( <replaceable>number</replaceable> <optional>, <literal>...</literal> </optional> )
+        <returnvalue></returnvalue> <type>double</type> if any argument is double, else <type>integer</type>
+       </para>
+       <para>
+        Selects the largest value among the arguments.
+       </para>
+       <para>
+        <literal>greatest(5, 4, 3, 2)</literal>
+        <returnvalue>5</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>hash(<replaceable>a</replaceable> [, <replaceable>seed</replaceable> ] )</function></literal></entry>
-       <entry>integer</entry>
-       <entry>alias for <literal>hash_murmur2()</literal></entry>
-       <entry><literal>hash(10, 5432)</literal></entry>
-       <entry><literal>-5817877081768721676</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>hash</function> ( <parameter>value</parameter> <optional>, <parameter>seed</parameter> </optional> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        This is an alias for <function>hash_murmur2</function>.
+       </para>
+       <para>
+        <literal>hash(10, 5432)</literal>
+        <returnvalue>-5817877081768721676</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>hash_fnv1a(<replaceable>a</replaceable> [, <replaceable>seed</replaceable> ] )</function></literal></entry>
-       <entry>integer</entry>
-       <entry><ulink url="https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function">FNV-1a hash</ulink></entry>
-       <entry><literal>hash_fnv1a(10, 5432)</literal></entry>
-       <entry><literal>-7793829335365542153</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>hash_fnv1a</function> ( <parameter>value</parameter> <optional>, <parameter>seed</parameter> </optional> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Computes <ulink url="https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function">FNV-1a hash</ulink>.
+       </para>
+       <para>
+        <literal>hash_fnv1a(10, 5432)</literal>
+        <returnvalue>-7793829335365542153</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>hash_murmur2(<replaceable>a</replaceable> [, <replaceable>seed</replaceable> ] )</function></literal></entry>
-       <entry>integer</entry>
-       <entry><ulink url="https://en.wikipedia.org/wiki/MurmurHash">MurmurHash2 hash</ulink></entry>
-       <entry><literal>hash_murmur2(10, 5432)</literal></entry>
-       <entry><literal>-5817877081768721676</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>hash_murmur2</function> ( <parameter>value</parameter> <optional>, <parameter>seed</parameter> </optional> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Computes <ulink url="https://en.wikipedia.org/wiki/MurmurHash">MurmurHash2 hash</ulink>.
+       </para>
+       <para>
+        <literal>hash_murmur2(10, 5432)</literal>
+        <returnvalue>-5817877081768721676</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>int(<replaceable>x</replaceable>)</function></literal></entry>
-       <entry>integer</entry>
-       <entry>cast to int</entry>
-       <entry><literal>int(5.4 + 3.8)</literal></entry>
-       <entry><literal>9</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>int</function> ( <replaceable>number</replaceable> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Casts to integer.
+       </para>
+       <para>
+        <literal>int(5.4 + 3.8)</literal>
+        <returnvalue>9</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>least(<replaceable>a</replaceable> [, <replaceable>...</replaceable> ] )</function></literal></entry>
-       <entry>double if any <replaceable>a</replaceable> is double, else integer</entry>
-       <entry>smallest value among arguments</entry>
-       <entry><literal>least(5, 4, 3, 2.1)</literal></entry>
-       <entry><literal>2.1</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>least</function> ( <replaceable>number</replaceable> <optional>, <literal>...</literal> </optional> )
+        <returnvalue></returnvalue> <type>double</type> if any argument is double, else <type>integer</type>
+       </para>
+       <para>
+        Selects the smallest value among the arguments.
+       </para>
+       <para>
+        <literal>least(5, 4, 3, 2.1)</literal>
+        <returnvalue>2.1</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>ln(<replaceable>x</replaceable>)</function></literal></entry>
-       <entry>double</entry>
-       <entry>natural logarithm</entry>
-       <entry><literal>ln(2.718281828459045)</literal></entry>
-       <entry><literal>1.0</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>ln</function> ( <replaceable>number</replaceable> )
+        <returnvalue>double</returnvalue>
+       </para>
+       <para>
+        Natural logarithm
+       </para>
+       <para>
+        <literal>ln(2.718281828459045)</literal>
+        <returnvalue>1.0</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>mod(<replaceable>i</replaceable>, <replaceable>j</replaceable>)</function></literal></entry>
-       <entry>integer</entry>
-       <entry>modulo</entry>
-       <entry><literal>mod(54, 32)</literal></entry>
-       <entry><literal>22</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+<function>mod</function> ( <replaceable>integer</replaceable>, <replaceable>integer</replaceable> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Modulo (remainder)
+       </para>
+       <para>
+        <literal>mod(54, 32)</literal>
+        <returnvalue>22</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>pi()</function></literal></entry>
-       <entry>double</entry>
-       <entry>value of the constant PI</entry>
-       <entry><literal>pi()</literal></entry>
-       <entry><literal>3.14159265358979323846</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>permute</function> ( <parameter>i</parameter>, <parameter>size</parameter> [, <parameter>seed</parameter> ] )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Permuted value of <parameter>i</parameter>, in the range
+        <literal>[0, size)</literal>.  This is the new position of
+        <parameter>i</parameter> (modulo <parameter>size</parameter>) in a
+        pseudorandom permutation of the integers <literal>0...size-1</literal>,
+        parameterized by <parameter>seed</parameter>, see below.
+       </para>
+       <para>
+        <literal>permute(0, 4)</literal>
+        <returnvalue>an integer between 0 and 3</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>pow(<replaceable>x</replaceable>, <replaceable>y</replaceable>)</function>, <function>power(<replaceable>x</replaceable>, <replaceable>y</replaceable>)</function></literal></entry>
-       <entry>double</entry>
-       <entry>exponentiation</entry>
-       <entry><literal>pow(2.0, 10)</literal>, <literal>power(2.0, 10)</literal></entry>
-       <entry><literal>1024.0</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>pi</function> ()
+        <returnvalue>double</returnvalue>
+       </para>
+       <para>
+        Approximate value of <phrase role="symbol_font">&pi;</phrase>
+       </para>
+       <para>
+        <literal>pi()</literal>
+        <returnvalue>3.14159265358979323846</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>random(<replaceable>lb</replaceable>, <replaceable>ub</replaceable>)</function></literal></entry>
-       <entry>integer</entry>
-       <entry>uniformly-distributed random integer in <literal>[lb, ub]</literal></entry>
-       <entry><literal>random(1, 10)</literal></entry>
-       <entry>an integer between <literal>1</literal> and <literal>10</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>pow</function> ( <parameter>x</parameter>, <parameter>y</parameter> )
+        <returnvalue>double</returnvalue>
+       </para>
+       <para role="func_signature">
+        <function>power</function> ( <parameter>x</parameter>, <parameter>y</parameter> )
+        <returnvalue>double</returnvalue>
+       </para>
+       <para>
+        <parameter>x</parameter> raised to the power of <parameter>y</parameter>
+       </para>
+       <para>
+        <literal>pow(2.0, 10)</literal>
+        <returnvalue>1024.0</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>random_exponential(<replaceable>lb</replaceable>, <replaceable>ub</replaceable>, <replaceable>parameter</replaceable>)</function></literal></entry>
-       <entry>integer</entry>
-       <entry>exponentially-distributed random integer in <literal>[lb, ub]</literal>,
-              see below</entry>
-       <entry><literal>random_exponential(1, 10, 3.0)</literal></entry>
-       <entry>an integer between <literal>1</literal> and <literal>10</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>random</function> ( <parameter>lb</parameter>, <parameter>ub</parameter> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Computes a uniformly-distributed random integer in <literal>[lb,
+        ub]</literal>.
+       </para>
+       <para>
+        <literal>random(1, 10)</literal>
+        <returnvalue>an integer between 1 and 10</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>random_gaussian(<replaceable>lb</replaceable>, <replaceable>ub</replaceable>, <replaceable>parameter</replaceable>)</function></literal></entry>
-       <entry>integer</entry>
-       <entry>Gaussian-distributed random integer in <literal>[lb, ub]</literal>,
-              see below</entry>
-       <entry><literal>random_gaussian(1, 10, 2.5)</literal></entry>
-       <entry>an integer between <literal>1</literal> and <literal>10</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>random_exponential</function> ( <parameter>lb</parameter>, <parameter>ub</parameter>, <parameter>parameter</parameter> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Computes an exponentially-distributed random integer in <literal>[lb,
+        ub]</literal>, see below.
+       </para>
+       <para>
+        <literal>random_exponential(1, 10, 3.0)</literal>
+        <returnvalue>an integer between 1 and 10</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>random_zipfian(<replaceable>lb</replaceable>, <replaceable>ub</replaceable>, <replaceable>parameter</replaceable>)</function></literal></entry>
-       <entry>integer</entry>
-       <entry>Zipfian-distributed random integer in <literal>[lb, ub]</literal>,
-              see below</entry>
-       <entry><literal>random_zipfian(1, 10, 1.5)</literal></entry>
-       <entry>an integer between <literal>1</literal> and <literal>10</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>random_gaussian</function> ( <parameter>lb</parameter>, <parameter>ub</parameter>, <parameter>parameter</parameter> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Computes a Gaussian-distributed random integer in <literal>[lb,
+        ub]</literal>, see below.
+       </para>
+       <para>
+        <literal>random_gaussian(1, 10, 2.5)</literal>
+        <returnvalue>an integer between 1 and 10</returnvalue>
+       </para></entry>
       </row>
+
       <row>
-       <entry><literal><function>sqrt(<replaceable>x</replaceable>)</function></literal></entry>
-       <entry>double</entry>
-       <entry>square root</entry>
-       <entry><literal>sqrt(2.0)</literal></entry>
-       <entry><literal>1.414213562</literal></entry>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>random_zipfian</function> ( <parameter>lb</parameter>, <parameter>ub</parameter>, <parameter>parameter</parameter> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Computes a Zipfian-distributed random integer in <literal>[lb,
+        ub]</literal>, see below.
+       </para>
+       <para>
+        <literal>random_zipfian(1, 10, 1.5)</literal>
+        <returnvalue>an integer between 1 and 10</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <function>sqrt</function> ( <replaceable>number</replaceable> )
+        <returnvalue>double</returnvalue>
+       </para>
+       <para>
+        Square root
+       </para>
+       <para>
+        <literal>sqrt(2.0)</literal>
+        <returnvalue>1.414213562</returnvalue>
+       </para></entry>
       </row>
      </tbody>
-     </tgroup>
+    </tgroup>
    </table>
 
    <para>
@@ -1537,32 +2197,20 @@ f(x) = PHI(2.0 * parameter * (x - mu) / (max - min + 1)) /
       <literal>2.0 / parameter</literal>, that is a relative
       <literal>1.0 / parameter</literal> around the mean; for instance, if
       <replaceable>parameter</replaceable> is 4.0, 67% of values are drawn from the
-      middle quarter (1.0 / 4.0) of the interval (i.e. from
+      middle quarter (1.0 / 4.0) of the interval (i.e., from
       <literal>3.0 / 8.0</literal> to <literal>5.0 / 8.0</literal>) and 95% from
       the middle half (<literal>2.0 / 4.0</literal>) of the interval (second and third
-      quartiles). The minimum <replaceable>parameter</replaceable> is 2.0 for performance
-      of the Box-Muller transform.
+      quartiles). The minimum allowed <replaceable>parameter</replaceable>
+      value is 2.0.
      </para>
     </listitem>
     <listitem>
      <para>
-      <literal>random_zipfian</literal> generates an approximated bounded Zipfian
-      distribution. For <replaceable>parameter</replaceable> in (0, 1), an
-      approximated algorithm is taken from
-      "Quickly Generating Billion-Record Synthetic Databases",
-      Jim Gray et al, SIGMOD 1994. For <replaceable>parameter</replaceable>
-      in (1, 1000), a rejection method is used, based on
-      "Non-Uniform Random Variate Generation", Luc Devroye, p. 550-551,
-      Springer 1986. The distribution is not defined when the parameter's
-      value is 1.0. The function's performance is poor for parameter values
-      close and above 1.0 and on a small range.
-     </para>
-     <para>
+      <literal>random_zipfian</literal> generates a bounded Zipfian
+      distribution.
       <replaceable>parameter</replaceable> defines how skewed the distribution
       is. The larger the <replaceable>parameter</replaceable>, the more
       frequently values closer to the beginning of the interval are drawn.
-      The closer to 0 <replaceable>parameter</replaceable> is,
-      the flatter (more uniform) the output distribution.
       The distribution is such that, assuming the range starts from 1,
       the ratio of the probability of drawing <replaceable>k</replaceable>
       versus drawing <replaceable>k+1</replaceable> is
@@ -1570,35 +2218,83 @@ f(x) = PHI(2.0 * parameter * (x - mu) / (max - min + 1)) /
       For example, <literal>random_zipfian(1, ..., 2.5)</literal> produces
       the value <literal>1</literal> about <literal>(2/1)**2.5 =
       5.66</literal> times more frequently than <literal>2</literal>, which
-      itself is produced <literal>(3/2)*2.5 = 2.76</literal> times more
+      itself is produced <literal>(3/2)**2.5 = 2.76</literal> times more
       frequently than <literal>3</literal>, and so on.
+     </para>
+     <para>
+      <application>pgbench</application>'s implementation is based on
+      "Non-Uniform Random Variate Generation", Luc Devroye, p. 550-551,
+      Springer 1986.  Due to limitations of that algorithm,
+      the <replaceable>parameter</replaceable> value is restricted to
+      the range [1.001, 1000].
      </para>
     </listitem>
    </itemizedlist>
+
+   <note>
+    <para>
+      When designing a benchmark which selects rows non-uniformly, be aware
+      that the rows chosen may be correlated with other data such as IDs from
+      a sequence or the physical row ordering, which may skew performance
+      measurements.
+    </para>
+    <para>
+      To avoid this, you may wish to use the <function>permute</function>
+      function, or some other additional step with similar effect, to shuffle
+      the selected rows and remove such correlations.
+    </para>
+   </note>
 
   <para>
     Hash functions <literal>hash</literal>, <literal>hash_murmur2</literal> and
     <literal>hash_fnv1a</literal> accept an input value and an optional seed parameter.
     In case the seed isn't provided the value of <literal>:default_seed</literal>
     is used, which is initialized randomly unless set by the command-line
-    <literal>-D</literal> option. Hash functions can be used to scatter the
-    distribution of random functions such as <literal>random_zipfian</literal> or
-    <literal>random_exponential</literal>. For instance, the following pgbench
-    script simulates possible real world workload typical for social media and
-    blogging platforms where few accounts generate excessive load:
+    <literal>-D</literal> option.
+  </para>
+
+  <para>
+    <literal>permute</literal> accepts an input value, a size, and an optional
+    seed parameter.  It generates a pseudorandom permutation of integers in
+    the range <literal>[0, size)</literal>, and returns the index of the input
+    value in the permuted values.  The permutation chosen is parameterized by
+    the seed, which defaults to <literal>:default_seed</literal>, if not
+    specified.  Unlike the hash functions, <literal>permute</literal> ensures
+    that there are no collisions or holes in the output values.  Input values
+    outside the interval are interpreted modulo the size.  The function raises
+    an error if the size is not positive.  <function>permute</function> can be
+    used to scatter the distribution of non-uniform random functions such as
+    <literal>random_zipfian</literal> or <literal>random_exponential</literal>
+    so that values drawn more often are not trivially correlated.  For
+    instance, the following <application>pgbench</application> script
+    simulates a possible real world workload typical for social media and
+    blogging platforms where a few accounts generate excessive load:
 
 <programlisting>
-\set r random_zipfian(0, 100000000, 1.07)
-\set k abs(hash(:r)) % 1000000
+\set size 1000000
+\set r random_zipfian(1, :size, 1.07)
+\set k 1 + permute(:r, :size)
 </programlisting>
 
     In some cases several distinct distributions are needed which don't correlate
-    with each other and this is when implicit seed parameter comes in handy:
+    with each other and this is when the optional seed parameter comes in handy:
 
 <programlisting>
-\set k1 abs(hash(:r, :default_seed + 123)) % 1000000
-\set k2 abs(hash(:r, :default_seed + 321)) % 1000000
+\set k1 1 + permute(:r, :size, :default_seed + 123)
+\set k2 1 + permute(:r, :size, :default_seed + 321)
 </programlisting>
+
+    A similar behavior can also be approximated with <function>hash</function>:
+
+<programlisting>
+\set size 1000000
+\set r random_zipfian(1, 100 * :size, 1.07)
+\set k 1 + abs(hash(:r)) % :size
+</programlisting>
+
+    However, since <function>hash</function> generates collisions, some values
+    will not be reachable and others will be more frequent than expected from
+    the original distribution.
   </para>
 
   <para>
@@ -1650,27 +2346,93 @@ END;
   </para>
 
   <para>
-   The format of the log is:
+   Each line in a log file describes one transaction.
+   It contains the following space-separated fields:
 
-<synopsis>
-<replaceable>client_id</replaceable> <replaceable>transaction_no</replaceable> <replaceable>time</replaceable> <replaceable>script_no</replaceable> <replaceable>time_epoch</replaceable> <replaceable>time_us</replaceable> <optional> <replaceable>schedule_lag</replaceable> </optional> <optional> <replaceable>retries</replaceable> </optional>
-</synopsis>
+   <variablelist>
+    <varlistentry>
+     <term><replaceable>client_id</replaceable></term>
+     <listitem>
+      <para>
+       identifies the client session that ran the transaction
+      </para>
+     </listitem>
+    </varlistentry>
 
-   where
-   <replaceable>client_id</replaceable> indicates which client session ran the transaction,
-   <replaceable>transaction_no</replaceable> counts how many transactions have been
-   run by that session,
-   <replaceable>time</replaceable> is the total elapsed transaction time in microseconds,
-   <replaceable>script_no</replaceable> identifies which script file was used (useful when
-   multiple scripts were specified with <option>-f</option> or <option>-b</option>),
-   and <replaceable>time_epoch</replaceable>/<replaceable>time_us</replaceable> are a
-   Unix-epoch time stamp and an offset
-   in microseconds (suitable for creating an ISO 8601
-   time stamp with fractional seconds) showing when
-   the transaction completed.
-   The <replaceable>schedule_lag</replaceable> field is the difference between the
-   transaction's scheduled start time, and the time it actually started, in
-   microseconds. It is only present when the <option>--rate</option> option is used.
+    <varlistentry>
+     <term><replaceable>transaction_no</replaceable></term>
+     <listitem>
+      <para>
+       counts how many transactions have been run by that session
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>time</replaceable></term>
+     <listitem>
+      <para>
+       transaction's elapsed time, in microseconds
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>script_no</replaceable></term>
+     <listitem>
+      <para>
+       identifies the script file that was used for the transaction
+       (useful when multiple scripts are specified
+       with <option>-f</option> or <option>-b</option>)
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>time_epoch</replaceable></term>
+     <listitem>
+      <para>
+       transaction's completion time, as a Unix-epoch time stamp
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>time_us</replaceable></term>
+     <listitem>
+      <para>
+       fractional-second part of transaction's completion time, in
+       microseconds
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>schedule_lag</replaceable></term>
+     <listitem>
+      <para>
+       transaction start delay, that is the difference between the
+       transaction's scheduled start time and the time it actually
+       started, in microseconds
+       (present only if <option>--rate</option> is specified)
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>retries</replaceable></term>
+     <listitem>
+      <para>
+       count of retries after serialization or deadlock errors during the
+       transaction
+       (present only if <option>--max-tries</option> is not equal to one)
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+  </para>
+
+  <para>
    When both <option>--rate</option> and <option>--latency-limit</option> are used,
    the <replaceable>time</replaceable> for a skipped transaction will be reported as
    <literal>skipped</literal>.
@@ -1678,13 +2440,14 @@ END;
    serialization or deadlock failures during the current script execution. It is
    only present when the maximum number of tries for transactions is more than 1
    (<option>--max-tries</option>) and/or the maximum time of tries for
-   transactions is used (<option>--latency-limit</option>). If the transaction
-   ended with an error "in failed SQL transaction", its
-   <replaceable>time</replaceable> will be reported as
-   <literal>in_failed_tx</literal>. If the transaction ended with other error,
-   its <replaceable>time</replaceable> will be reported as
-   <literal>failed</literal> (see <xref linkend="errors-and-retries"
-   endterm="errors-and-retries-title"/> for more information).
+   transactions is used (<option>--latency-limit</option>).
+   If the transaction ends with a failure, its <replaceable>time</replaceable>
+   will be reported as <literal>failed</literal>. If you use the
+   <option>--failures-detailed</option> option, the
+   <replaceable>time</replaceable> of the failed transaction will be reported as
+   <literal>serialization</literal> or
+   <literal>deadlock</literal> depending on the type of failure (see
+   <xref linkend="failures-and-retries"/> for more information).
   </para>
 
   <para>
@@ -1714,20 +2477,37 @@ END;
   </para>
 
   <para>
-   The following example shows a snippet of a log file with errors and retries,
-   with the maximum number of tries set to 10 (note the additional
+   The following example shows a snippet of a log file with failures and
+   retries, with the maximum number of tries set to 10 (note the additional
    <replaceable>retries</replaceable> column):
 <screen>
-3 0 47423 0 1499414498 34501 4
-3 1 8333 0 1499414498 42848 1
-3 2 8358 0 1499414498 51219 1
-4 0 72345 0 1499414498 59433 7
-1 3 41718 0 1499414498 67879 5
-1 4 8416 0 1499414498 76311 1
-3 3 33235 0 1499414498 84469 4
-0 0 failed 0 1499414498 84905 10
-2 0 failed 0 1499414498 86248 10
-3 4 8307 0 1499414498 92788 1
+3 0 47423 0 1499414498 34501 3
+3 1 8333 0 1499414498 42848 0
+3 2 8358 0 1499414498 51219 0
+4 0 72345 0 1499414498 59433 6
+1 3 41718 0 1499414498 67879 4
+1 4 8416 0 1499414498 76311 0
+3 3 33235 0 1499414498 84469 3
+0 0 failed 0 1499414498 84905 9
+2 0 failed 0 1499414498 86248 9
+3 4 8307 0 1499414498 92788 0
+</screen>
+  </para>
+
+  <para>
+   If the <option>--failures-detailed</option> option is used, the type of
+   failure is reported in the <replaceable>time</replaceable> like this:
+<screen>
+3 0 47423 0 1499414498 34501 3
+3 1 8333 0 1499414498 42848 0
+3 2 8358 0 1499414498 51219 0
+4 0 72345 0 1499414498 59433 6
+1 3 41718 0 1499414498 67879 4
+1 4 8416 0 1499414498 76311 0
+3 3 33235 0 1499414498 84469 3
+0 0 serialization 0 1499414498 84905 9
+2 0 serialization 0 1499414498 86248 9
+3 4 8307 0 1499414498 92788 0
 </screen>
   </para>
 
@@ -1743,64 +2523,173 @@ END;
 
   <para>
    With the <option>--aggregate-interval</option> option, a different
-   format is used for the log files:
+   format is used for the log files.  Each log line describes one
+   aggregation interval.  It contains the following space-separated
+   fields:
 
-<synopsis>
-<replaceable>interval_start</replaceable> <replaceable>num_transactions</replaceable> <replaceable>sum_latency</replaceable> <replaceable>sum_latency_2</replaceable> <replaceable>min_latency</replaceable> <replaceable>max_latency</replaceable> <replaceable>failed_tx</replaceable> <replaceable>in_failed_tx</replaceable> <optional> <replaceable>sum_lag</replaceable> <replaceable>sum_lag_2</replaceable> <replaceable>min_lag</replaceable> <replaceable>max_lag</replaceable> <optional> <replaceable>skipped</replaceable> </optional> </optional> <optional> <replaceable>retried_tx</replaceable> <replaceable>retries</replaceable> </optional>
-</synopsis>
+   <variablelist>
+    <varlistentry>
+     <term><replaceable>interval_start</replaceable></term>
+     <listitem>
+      <para>
+       start time of the interval, as a Unix-epoch time stamp
+      </para>
+     </listitem>
+    </varlistentry>
 
-   where
-   <replaceable>interval_start</replaceable> is the start of the interval (as a Unix
-   epoch time stamp),
-   <replaceable>num_transactions</replaceable> is the number of transactions
-   within the interval,
-   <replaceable>sum_latency</replaceable> is the sum of the transaction
-   latencies within the interval,
-   <replaceable>sum_latency_2</replaceable> is the sum of squares of the
-   transaction latencies within the interval,
-   <replaceable>min_latency</replaceable> is the minimum latency within the interval,
-   and
-   <replaceable>max_latency</replaceable> is the maximum latency within the interval,
-   <replaceable>failed_tx</replaceable> is the number of transactions that ended
-   with a failed SQL or meta command within the interval,
-   <replaceable>in_failed_tx</replaceable> is the number of transactions that
-   ended with an error "in failed SQL transaction block" (see
-   <xref linkend="errors-and-retries" endterm="errors-and-retries-title"/>
-   for more information).
-   The next fields,
-   <replaceable>sum_lag</replaceable>, <replaceable>sum_lag_2</replaceable>, <replaceable>min_lag</replaceable>,
-   and <replaceable>max_lag</replaceable>, are only present if the <option>--rate</option>
-   option is used.
-   They provide statistics about the time each transaction had to wait for the
-   previous one to finish, i.e. the difference between each transaction's
-   scheduled start time and the time it actually started.
-   The next field, <replaceable>skipped</replaceable>,
-   is only present if the <option>--latency-limit</option> option is used, too.
-   It counts the number of transactions skipped because they would have
-   started too late.
-   The <replaceable>retried_tx</replaceable> and
-   <replaceable>retries</replaceable> fields are only present if the maximum
-   number of tries for transactions is more than 1
-   (<option>--max-tries</option>) and/or the maximum time of tries for
-   transactions is used (<option>--latency-limit</option>). They report the
-   number of retried transactions and the sum of all the retries after
-   serialization or deadlock failures within the interval.
-   Each transaction is counted in the interval when it was committed.
+    <varlistentry>
+     <term><replaceable>num_transactions</replaceable></term>
+     <listitem>
+      <para>
+       number of transactions within the interval
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>sum_latency</replaceable></term>
+     <listitem>
+      <para>
+       sum of transaction latencies
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>sum_latency_2</replaceable></term>
+     <listitem>
+      <para>
+       sum of squares of transaction latencies
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>min_latency</replaceable></term>
+     <listitem>
+      <para>
+       minimum transaction latency
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>max_latency</replaceable></term>
+     <listitem>
+      <para>
+       maximum transaction latency
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>sum_lag</replaceable></term>
+     <listitem>
+      <para>
+       sum of transaction start delays
+       (zero unless <option>--rate</option> is specified)
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>sum_lag_2</replaceable></term>
+     <listitem>
+      <para>
+       sum of squares of transaction start delays
+       (zero unless <option>--rate</option> is specified)
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>min_lag</replaceable></term>
+     <listitem>
+      <para>
+       minimum transaction start delay
+       (zero unless <option>--rate</option> is specified)
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>max_lag</replaceable></term>
+     <listitem>
+      <para>
+       maximum transaction start delay
+       (zero unless <option>--rate</option> is specified)
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>skipped</replaceable></term>
+     <listitem>
+      <para>
+       number of transactions skipped because they would have started too late
+       (zero unless <option>--rate</option>
+       and <option>--latency-limit</option> are specified)
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>retried</replaceable></term>
+     <listitem>
+      <para>
+       number of retried transactions
+       (zero unless <option>--max-tries</option> is not equal to one)
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>retries</replaceable></term>
+     <listitem>
+      <para>
+       number of retries after serialization or deadlock errors
+       (zero unless <option>--max-tries</option> is not equal to one)
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>serialization_failures</replaceable></term>
+     <listitem>
+      <para>
+       number of transactions that got a serialization error and were not
+       retried afterwards
+       (zero unless <option>--failures-detailed</option> is specified)
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>deadlock_failures</replaceable></term>
+     <listitem>
+      <para>
+       number of transactions that got a deadlock error and were not
+       retried afterwards
+       (zero unless <option>--failures-detailed</option> is specified)
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
   </para>
 
   <para>
-   Here is some example output:
+   Here is some example output generated with these options:
 <screen>
-1345828501 5601 1542744 483552416 61 2573 0 0
-1345828503 7884 1979812 565806736 60 1479 0 0
-1345828505 7208 1979422 567277552 59 1391 0 0
-1345828507 7685 1980268 569784714 60 1398 0 0
-1345828509 7073 1979779 573489941 236 1411 0 0
-</screen></para>
+<userinput>pgbench --aggregate-interval=10 --time=20 --client=10 --log --rate=1000 --latency-limit=10 --failures-detailed --max-tries=10 test</userinput>
+
+1650260552 5178 26171317 177284491527 1136 44462 2647617 7321113867 0 9866 64 7564 28340 4148 0
+1650260562 4808 25573984 220121792172 1171 62083 3037380 9666800914 0 9998 598 7392 26621 4527 0
+</screen>
+  </para>
 
   <para>
-   Notice that while the plain (unaggregated) log file shows which script
-   was used for each transaction, the aggregated log does not. Therefore if
+   Notice that while the plain (unaggregated) log format shows which script
+   was used for each transaction, the aggregated format does not. Therefore if
    you need per-script data, you need to aggregate the data on your own.
   </para>
 
@@ -1822,38 +2711,28 @@ END;
      </listitem>
      <listitem>
        <para>
-         The number of errors in this statement. See
-         <xref linkend="errors-and-retries" endterm="errors-and-retries-title"/>
-         for more information.
+         The number of failures in this statement. See
+         <xref linkend="failures-and-retries"/> for more information.
        </para>
      </listitem>
      <listitem>
        <para>
-         The number of errors "in failed SQL transaction" in this statement. See
-         <xref linkend="errors-and-retries" endterm="errors-and-retries-title"/>
-         for more information.
-       </para>
-     </listitem>
-     <listitem>
-       <para>
-         The number of retries after a serialization or a deadlock failure in
-         this statement. See <xref linkend="errors-and-retries"
-         endterm="errors-and-retries-title"/> for more information.
+         The number of retries after a serialization or a deadlock error in this
+         statement. See <xref linkend="failures-and-retries"/> for more information.
        </para>
      </listitem>
    </itemizedlist>
   </para>
 
   <para>
-   The report displays the columns with statistics on errors and retries only if
-   the current <application>pgbench</application> run has an error or retry,
-   respectively.
+   The report displays retry statistics only if the <option>--max-tries</option>
+   option is not equal to 1.
   </para>
 
-   <para>
+  <para>
    All values are computed for each statement executed by every client and are
    reported after the benchmark has finished.
-   </para>
+  </para>
 
   <para>
    For the default script, the output will look similar to this:
@@ -1864,25 +2743,27 @@ scaling factor: 1
 query mode: simple
 number of clients: 10
 number of threads: 1
+maximum number of tries: 1
 number of transactions per client: 1000
 number of transactions actually processed: 10000/10000
-maximum number of tries: 1
-latency average = 15.844 ms
-latency stddev = 2.715 ms
-tps = 618.764555 (including connections establishing)
-tps = 622.977698 (excluding connections establishing)
-statement latencies in milliseconds:
-        0.002  \set aid random(1, 100000 * :scale)
-        0.005  \set bid random(1, 1 * :scale)
-        0.002  \set tid random(1, 10 * :scale)
-        0.001  \set delta random(-5000, 5000)
-        0.326  BEGIN;
-        0.603  UPDATE pgbench_accounts SET abalance = abalance + :delta WHERE aid = :aid;
-        0.454  SELECT abalance FROM pgbench_accounts WHERE aid = :aid;
-        5.528  UPDATE pgbench_tellers SET tbalance = tbalance + :delta WHERE tid = :tid;
-        7.335  UPDATE pgbench_branches SET bbalance = bbalance + :delta WHERE bid = :bid;
-        0.371  INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);
-        1.212  END;
+number of failed transactions: 0 (0.000%)
+number of transactions above the 50.0 ms latency limit: 1311/10000 (13.110 %)
+latency average = 28.488 ms
+latency stddev = 21.009 ms
+initial connection time = 69.068 ms
+tps = 346.224794 (without initial connection time)
+statement latencies in milliseconds and failures:
+   0.012  0  \set aid random(1, 100000 * :scale)
+   0.002  0  \set bid random(1, 1 * :scale)
+   0.002  0  \set tid random(1, 10 * :scale)
+   0.002  0  \set delta random(-5000, 5000)
+   0.319  0  BEGIN;
+   0.834  0  UPDATE pgbench_accounts SET abalance = abalance + :delta WHERE aid = :aid;
+   0.641  0  SELECT abalance FROM pgbench_accounts WHERE aid = :aid;
+  11.126  0  UPDATE pgbench_tellers SET tbalance = tbalance + :delta WHERE tid = :tid;
+  12.961  0  UPDATE pgbench_branches SET bbalance = bbalance + :delta WHERE bid = :bid;
+   0.634  0  INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);
+   1.957  0  END;
 </screen>
 
    Another example of output for the default script using serializable default
@@ -1895,36 +2776,30 @@ scaling factor: 1
 query mode: simple
 number of clients: 10
 number of threads: 1
+maximum number of tries: 10
 number of transactions per client: 1000
-number of transactions actually processed: 4473/10000
-number of errors: 5527 (55.270%)
-number of retried: 7467 (74.670%)
-number of retries: 257244
-maximum number of tries: 100
-number of transactions above the 100.0 ms latency limit: 5766/10000 (57.660 %) (including errors)
-latency average = 41.169 ms
-latency stddev = 51.783 ms
-tps = 50.322494 (including connections establishing)
-tps = 50.324595 (excluding connections establishing)
-statement latencies in milliseconds, errors and retries:
-  0.004     0       0  \set aid random(1, 100000 * :scale)
-  0.000     0       0  \set bid random(1, 1 * :scale)
-  0.000     0       0  \set tid random(1, 10 * :scale)
-  0.000     0       0  \set delta random(-5000, 5000)
-  0.213     0       0  BEGIN;
-  0.393     0       0  UPDATE pgbench_accounts
-                       SET abalance = abalance + :delta WHERE aid = :aid;
-  0.332     0       0  SELECT abalance FROM pgbench_accounts WHERE aid = :aid;
-  0.409  4971  250265  UPDATE pgbench_tellers
-                       SET tbalance = tbalance + :delta WHERE tid = :tid;
-  0.311   556    6975  UPDATE pgbench_branches
-                       SET bbalance = bbalance + :delta WHERE bid = :bid;
-  0.299     0       0  INSERT INTO pgbench_history
-                              (tid, bid, aid, delta, mtime)
-                       VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);
-  0.520     0       4  END;
-</screen>
-  </para>
+number of transactions actually processed: 6317/10000
+number of failed transactions: 3683 (36.830%)
+number of transactions retried: 7667 (76.670%)
+total number of retries: 45339
+number of transactions above the 50.0 ms latency limit: 106/6317 (1.678 %)
+latency average = 17.016 ms
+latency stddev = 13.283 ms
+initial connection time = 45.017 ms
+tps = 186.792667 (without initial connection time)
+statement latencies in milliseconds, failures and retries:
+  0.006     0      0  \set aid random(1, 100000 * :scale)
+  0.001     0      0  \set bid random(1, 1 * :scale)
+  0.001     0      0  \set tid random(1, 10 * :scale)
+  0.001     0      0  \set delta random(-5000, 5000)
+  0.385     0      0  BEGIN;
+  0.773     0      1  UPDATE pgbench_accounts SET abalance = abalance + :delta WHERE aid = :aid;
+  0.624     0      0  SELECT abalance FROM pgbench_accounts WHERE aid = :aid;
+  1.098   320   3762  UPDATE pgbench_tellers SET tbalance = tbalance + :delta WHERE tid = :tid;
+  0.582  3363  41576  UPDATE pgbench_branches SET bbalance = bbalance + :delta WHERE bid = :bid;
+  0.465     0      0  INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);
+  1.933     0      0  END;
+</screen></para>
 
   <para>
    If multiple script files are specified, all statistics are reported
@@ -1941,29 +2816,103 @@ statement latencies in milliseconds, errors and retries:
   </para>
  </refsect2>
 
- <refsect2 id="errors-and-retries">
-  <title id="errors-and-retries-title">Errors and Serialization/Deadlock Retries</title>
+ <refsect2 id="failures-and-retries" xreflabel="Failures and Serialization/Deadlock Retries">
+  <title>Failures and Serialization/Deadlock Retries</title>
 
   <para>
-   Client's run is aborted only in case of a serious error, for example, the
-   connection with the backend was lost. Otherwise if the execution of SQL or
-   meta command fails, the client's run continues normally until the end of the
-   current script execution (it is assumed that one transaction script contains
-   only one transaction; see <xref linkend="transactions-and-scripts"
-   endterm="transactions-and-scripts-title"/> for more information).
-   Transactions with serialization or deadlock failures are rolled back and
-   repeated until they complete successfully or reach the maximum number of
-   tries (specified by the <option>--max-tries</option> option) / the maximum
-   time of tries (specified by the <option>--latency-limit</option> option). If
-   the last transaction run fails, this transaction will be reported as failed,
-   and the client variables will be set as they were before the first run of
-   this transaction.
+   When executing <application>pgbench</application>, there are three main types
+   of errors:
+   <itemizedlist>
+     <listitem>
+       <para>
+         Errors of the main program. They are the most serious and always result
+         in an immediate exit from <application>pgbench</application> with the
+         corresponding error message. They include:
+         <itemizedlist>
+           <listitem>
+             <para>
+               errors at the beginning of <application>pgbench</application>
+               (e.g. an invalid option value);
+             </para>
+           </listitem>
+           <listitem>
+             <para>
+               errors in the initialization mode (e.g. the query to create
+               tables for built-in scripts fails);
+             </para>
+           </listitem>
+           <listitem>
+             <para>
+               errors before starting threads (e.g. could not connect to the
+               database server, syntax error in the meta command, thread
+               creation failure);
+             </para>
+           </listitem>
+           <listitem>
+             <para>
+               internal <application>pgbench</application> errors (which are
+               supposed to never occur...).
+             </para>
+           </listitem>
+         </itemizedlist></para>
+     </listitem>
+     <listitem>
+       <para>
+         Errors when the thread manages its clients (e.g. the client could not
+         start a connection to the database server / the socket for connecting
+         the client to the database server has become invalid). In such cases
+         all clients of this thread stop while other threads continue to work.
+       </para>
+     </listitem>
+     <listitem>
+       <para>
+         Direct client errors. They lead to immediate exit from
+         <application>pgbench</application> with the corresponding error message
+         only in the case of an internal <application>pgbench</application>
+         error (which are supposed to never occur...). Otherwise in the worst
+         case they only lead to the abortion of the failed client while other
+         clients continue their run (but some client errors are handled without
+         an abortion of the client and reported separately, see below). Later in
+         this section it is assumed that the discussed errors are only the
+         direct client errors and they are not internal
+         <application>pgbench</application> errors.
+       </para>
+     </listitem>
+   </itemizedlist>
+  </para>
+
+  <para>
+   A client's run is aborted in case of a serious error; for example, the
+   connection with the database server was lost or the end of script was reached
+   without completing the last transaction. In addition, if execution of an SQL
+   or meta command fails for reasons other than serialization or deadlock errors,
+   the client is aborted. Otherwise, if an SQL command fails with serialization or
+   deadlock errors, the client is not aborted. In such cases, the current
+   transaction is rolled back, which also includes setting the client variables
+   as they were before the run of this transaction (it is assumed that one
+   transaction script contains only one transaction; see
+   <xref linkend="transactions-and-scripts"/> for more information).
+   Transactions with serialization or deadlock errors are repeated after
+   rollbacks until they complete successfully or reach the maximum
+   number of tries (specified by the <option>--max-tries</option> option) / the maximum
+   time of retries (specified by the <option>--latency-limit</option> option) / the end
+   of benchmark (specified by the <option>--time</option> option). If
+   the last trial run fails, this transaction will be reported as failed but
+   the client is not aborted and continues to work.
   </para>
 
   <note>
    <para>
+    Without specifying the <option>--max-tries</option> option, a transaction will
+    never be retried after a serialization or deadlock error because its default
+    value is 1. Use an unlimited number of tries (<literal>--max-tries=0</literal>)
+    and the <option>--latency-limit</option> option to limit only the maximum time
+    of tries. You can also use the <option>--time</option> option to limit the
+    benchmark duration under an unlimited number of tries.
+   </para>
+   <para>
     Be careful when repeating scripts that contain multiple transactions: the
-    script is always retried completely, so the successful transactions can be
+    script is always retried completely, so successful transactions can be
     performed several times.
    </para>
    <para>
@@ -1983,33 +2932,28 @@ statement latencies in milliseconds, errors and retries:
 
   <para>
    The latency of a successful transaction includes the entire time of
-   transaction execution with rollbacks and retries. The latency for failed
-   transactions and commands is not computed separately.
+   transaction execution with rollbacks and retries. The latency is measured
+   only for successful transactions and commands but not for failed transactions
+   or commands.
   </para>
 
   <para>
-   The main report contains the number of failed transactions if it is non-zero.
-   If the total number of transactions ended with an error "in failed SQL
-   transaction block" is non-zero, the main report also contains it. If the
-   total number of retried transactions is non-zero, the main report also
-   contains the statistics related to retries: the total number of retried
-   transactions and total number of retries (use the options
-   <option>--max-tries</option> and/or <option>--latency-limit</option> to make
-   it possible). The per-statement report inherits all columns from the main
-   report. Note that if a failure/error occurs, the following failures/errors in
-   the current script execution are not shown in the reports. The retry is only
-   reported for the first command where the failure occured during the current
-   script execution.
+   The main report contains the number of failed transactions. If the
+   <option>--max-tries</option> option is not equal to 1, the main report also
+   contains statistics related to retries: the total number of retried
+   transactions and total number of retries. The per-script report inherits all
+   these fields from the main report. The per-statement report displays retry
+   statistics only if the <option>--max-tries</option> option is not equal to 1.
   </para>
 
   <para>
-   If you want to distinguish between failures or errors by type (including
-   which limit for retries was violated and how far it was exceeded for the
-   serialization/deadlock errors), use the <application>pgbench</application>
-   debugging output created with the option <option>--debug</option> and with
-   the debugging level <literal>fails</literal> or <literal>all</literal>. The
-   first variant is recommended for this purpose because with in the second case
-   the debugging output can be very large.
+   If you want to group failures by basic types in per-transaction and
+   aggregation logs, as well as in the main and per-script reports, use the
+   <option>--failures-detailed</option> option. If you also want to distinguish
+   all errors and failures (errors without retrying) by type including which
+   limit for retries was exceeded and how much it was exceeded by for the
+   serialization/deadlock failures, use the <option>--verbose-errors</option>
+   option.
   </para>
  </refsect2>
 

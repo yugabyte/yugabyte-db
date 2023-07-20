@@ -1,16 +1,16 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2022, PostgreSQL Global Development Group
  *
  * src/bin/psql/common.c
  */
 #include "postgres_fe.h"
-#include "common.h"
 
 #include <ctype.h>
 #include <limits.h>
 #include <math.h>
+#include <pwd.h>
 #include <signal.h>
 #ifndef WIN32
 #include <unistd.h>				/* for write() */
@@ -19,20 +19,25 @@
 #include <win32.h>
 #endif
 
-#include "fe_utils/string_utils.h"
-#include "portability/instr_time.h"
-
-#include "settings.h"
 #include "command.h"
+#include "common.h"
+#include "common/logging.h"
 #include "copy.h"
 #include "crosstabview.h"
+#include "fe_utils/cancel.h"
 #include "fe_utils/mbprint.h"
-
-
-#define PQmblenBounded(s, e)  strnlen(s, PQmblen(s, e))
+#include "fe_utils/string_utils.h"
+#include "portability/instr_time.h"
+#include "settings.h"
 
 static bool DescribeQuery(const char *query, double *elapsed_msec);
 static bool ExecQueryUsingCursor(const char *query, double *elapsed_msec);
+static int	ExecQueryAndProcessResults(const char *query,
+									   double *elapsed_msec,
+									   bool *svpt_gone_p,
+									   bool is_watch,
+									   const printQueryOpt *opt,
+									   FILE *printQueryFout);
 static bool command_no_begin(const char *query);
 static bool is_select_command(const char *query);
 
@@ -69,7 +74,7 @@ openQueryOutputFile(const char *fname, FILE **fout, bool *is_pipe)
 
 	if (*fout == NULL)
 	{
-		psql_error("%s: %s\n", fname, strerror(errno));
+		pg_log_error("%s: %m", fname);
 		return false;
 	}
 
@@ -158,7 +163,7 @@ psql_get_variable(const char *varname, PsqlScanQuoteType quote,
 
 				if (!pset.db)
 				{
-					psql_error("cannot escape without active connection\n");
+					pg_log_error("cannot escape without active connection");
 					return NULL;
 				}
 
@@ -173,7 +178,7 @@ psql_get_variable(const char *varname, PsqlScanQuoteType quote,
 				{
 					const char *error = PQerrorMessage(pset.db);
 
-					psql_error("%s", error);
+					pg_log_info("%s", error);
 					return NULL;
 				}
 
@@ -199,8 +204,8 @@ psql_get_variable(const char *varname, PsqlScanQuoteType quote,
 				initPQExpBuffer(&buf);
 				if (!appendShellStringNoError(&buf, value))
 				{
-					psql_error("shell command argument contains a newline or carriage return: \"%s\"\n",
-							   value);
+					pg_log_error("shell command argument contains a newline or carriage return: \"%s\"",
+								 value);
 					free(buf.data);
 					return NULL;
 				}
@@ -216,26 +221,12 @@ psql_get_variable(const char *varname, PsqlScanQuoteType quote,
 
 
 /*
- * Error reporting for scripts. Errors should look like
- *	 psql:filename:lineno: message
+ * YB_TODO(jasonk)
+ * - Postgres no longer uses psql_error.
+ * - Need to reintro "YB_DISABLE_ERROR_PREFIX" to Pg15 code.
+ *
+ * psql_error(const char *fmt,...) is gone.
  */
-void
-psql_error(const char *fmt,...)
-{
-	va_list		ap;
-
-	fflush(stdout);
-	if (pset.queryFout && pset.queryFout != stdout)
-		fflush(pset.queryFout);
-
-	if (pset.inputfile && !GetVariable(pset.vars, "YB_DISABLE_ERROR_PREFIX"))
-		fprintf(stderr, "%s:%s:" UINT64_FORMAT ": ", pset.progname, pset.inputfile, pset.lineno);
-	va_start(ap, fmt);
-	vfprintf(stderr, _(fmt), ap);
-	va_end(ap);
-}
-
-
 
 /*
  * for backend Notice messages (INFO, WARNING, etc)
@@ -244,7 +235,7 @@ void
 NoticeProcessor(void *arg, const char *message)
 {
 	(void) arg;					/* not used */
-	psql_error("%s", message);
+	pg_log_info("%s", message);
 }
 
 
@@ -253,16 +244,7 @@ NoticeProcessor(void *arg, const char *message)
  * Code to support query cancellation
  *
  * Before we start a query, we enable the SIGINT signal catcher to send a
- * cancel request to the backend. Note that sending the cancel directly from
- * the signal handler is safe because PQcancel() is written to make it
- * so. We use write() to report to stderr because it's better to use simple
- * facilities in a signal handler.
- *
- * On win32, the signal canceling happens on a separate thread, because
- * that's how SetConsoleCtrlHandler works. The PQcancel function is safe
- * for this (unlike PQrequestCancel). However, a CRITICAL_SECTION is required
- * to protect the PGcancel structure against being changed while the signal
- * thread is using it.
+ * cancel request to the backend.
  *
  * SIGINT is supposed to abort all long-running psql operations, not only
  * database queries.  In most places, this is accomplished by checking
@@ -270,117 +252,36 @@ NoticeProcessor(void *arg, const char *message)
  * blocked on user input (in readline() or fgets()).  In those places, we
  * set sigint_interrupt_enabled true while blocked, instructing the signal
  * catcher to longjmp through sigint_interrupt_jmp.  We assume readline and
- * fgets are coded to handle possible interruption.  (XXX currently this does
- * not work on win32, so control-C is less useful there)
+ * fgets are coded to handle possible interruption.
+ *
+ * On Windows, currently this does not work, so control-C is less useful
+ * there.
  */
 volatile bool sigint_interrupt_enabled = false;
 
 sigjmp_buf	sigint_interrupt_jmp;
 
-static PGcancel *volatile cancelConn = NULL;
-
-#ifdef WIN32
-static CRITICAL_SECTION cancelConnLock;
-#endif
-
-/*
- * Write a simple string to stderr --- must be safe in a signal handler.
- * We ignore the write() result since there's not much we could do about it.
- * Certain compilers make that harder than it ought to be.
- */
-#define write_stderr(str) \
-	do { \
-		const char *str_ = (str); \
-		int		rc_; \
-		rc_ = write(fileno(stderr), str_, strlen(str_)); \
-		(void) rc_; \
-	} while (0)
-
-
-#ifndef WIN32
-
 static void
-handle_sigint(SIGNAL_ARGS)
+psql_cancel_callback(void)
 {
-	int			save_errno = errno;
-	char		errbuf[256];
-
+#ifndef WIN32
 	/* if we are waiting for input, longjmp out of it */
 	if (sigint_interrupt_enabled)
 	{
 		sigint_interrupt_enabled = false;
 		siglongjmp(sigint_interrupt_jmp, 1);
 	}
+#endif
 
 	/* else, set cancel flag to stop any long-running loops */
 	cancel_pressed = true;
-
-	/* and send QueryCancel if we are processing a database query */
-	if (cancelConn != NULL)
-	{
-		if (PQcancel(cancelConn, errbuf, sizeof(errbuf)))
-			write_stderr("Cancel request sent\n");
-		else
-		{
-			write_stderr("Could not send cancel request: ");
-			write_stderr(errbuf);
-		}
-	}
-
-	errno = save_errno;			/* just in case the write changed it */
 }
 
 void
-setup_cancel_handler(void)
+psql_setup_cancel_handler(void)
 {
-	pqsignal(SIGINT, handle_sigint);
+	setup_cancel_handler(psql_cancel_callback);
 }
-#else							/* WIN32 */
-
-static BOOL WINAPI
-consoleHandler(DWORD dwCtrlType)
-{
-	char		errbuf[256];
-
-	if (dwCtrlType == CTRL_C_EVENT ||
-		dwCtrlType == CTRL_BREAK_EVENT)
-	{
-		/*
-		 * Can't longjmp here, because we are in wrong thread :-(
-		 */
-
-		/* set cancel flag to stop any long-running loops */
-		cancel_pressed = true;
-
-		/* and send QueryCancel if we are processing a database query */
-		EnterCriticalSection(&cancelConnLock);
-		if (cancelConn != NULL)
-		{
-			if (PQcancel(cancelConn, errbuf, sizeof(errbuf)))
-				write_stderr("Cancel request sent\n");
-			else
-			{
-				write_stderr("Could not send cancel request: ");
-				write_stderr(errbuf);
-			}
-		}
-		LeaveCriticalSection(&cancelConnLock);
-
-		return TRUE;
-	}
-	else
-		/* Return FALSE for any signals not being handled */
-		return FALSE;
-}
-
-void
-setup_cancel_handler(void)
-{
-	InitializeCriticalSection(&cancelConnLock);
-
-	SetConsoleCtrlHandler(consoleHandler, TRUE);
-}
-#endif							/* WIN32 */
 
 
 /* ConnectionUp
@@ -415,85 +316,47 @@ CheckConnection(void)
 	{
 		if (!pset.cur_cmd_interactive)
 		{
-			psql_error("connection to server was lost\n");
+			pg_log_error("connection to server was lost");
 			exit(EXIT_BADCONN);
 		}
 
-		psql_error("The connection to the server was lost. Attempting reset: ");
+		fprintf(stderr, _("The connection to the server was lost. Attempting reset: "));
 		PQreset(pset.db);
 		OK = ConnectionUp();
 		if (!OK)
 		{
-			psql_error("Failed.\n");
-			PQfinish(pset.db);
+			fprintf(stderr, _("Failed.\n"));
+
+			/*
+			 * Transition to having no connection; but stash away the failed
+			 * connection so that we can still refer to its parameters in a
+			 * later \connect attempt.  Keep the state cleanup here in sync
+			 * with do_connect().
+			 */
+			if (pset.dead_conn)
+				PQfinish(pset.dead_conn);
+			pset.dead_conn = pset.db;
 			pset.db = NULL;
 			ResetCancelConn();
 			UnsyncVariables();
 		}
 		else
-			psql_error("Succeeded.\n");
+		{
+			fprintf(stderr, _("Succeeded.\n"));
+
+			/*
+			 * Re-sync, just in case anything changed.  Keep this in sync with
+			 * do_connect().
+			 */
+			SyncVariables();
+			connection_warnings(false); /* Must be after SyncVariables */
+		}
 	}
 
 	return OK;
 }
 
 
-
-/*
- * SetCancelConn
- *
- * Set cancelConn to point to the current database connection.
- */
-void
-SetCancelConn(void)
-{
-	PGcancel   *oldCancelConn;
-
-#ifdef WIN32
-	EnterCriticalSection(&cancelConnLock);
-#endif
-
-	/* Free the old one if we have one */
-	oldCancelConn = cancelConn;
-	/* be sure handle_sigint doesn't use pointer while freeing */
-	cancelConn = NULL;
-
-	if (oldCancelConn != NULL)
-		PQfreeCancel(oldCancelConn);
-
-	cancelConn = PQgetCancel(pset.db);
-
-#ifdef WIN32
-	LeaveCriticalSection(&cancelConnLock);
-#endif
-}
-
-
-/*
- * ResetCancelConn
- *
- * Free the current cancel connection, if any, and set to NULL.
- */
-void
-ResetCancelConn(void)
-{
-	PGcancel   *oldCancelConn;
-
-#ifdef WIN32
-	EnterCriticalSection(&cancelConnLock);
-#endif
-
-	oldCancelConn = cancelConn;
-	/* be sure handle_sigint doesn't use pointer while freeing */
-	cancelConn = NULL;
-
-	if (oldCancelConn != NULL)
-		PQfreeCancel(oldCancelConn);
-
-#ifdef WIN32
-	LeaveCriticalSection(&cancelConnLock);
-#endif
-}
 
 
 /*
@@ -505,7 +368,7 @@ ResetCancelConn(void)
  * Returns true for valid result, false for error state.
  */
 static bool
-AcceptResult(const PGresult *result)
+AcceptResult(const PGresult *result, bool show_error)
 {
 	bool		OK;
 
@@ -531,17 +394,17 @@ AcceptResult(const PGresult *result)
 
 			default:
 				OK = false;
-				psql_error("unexpected PQresultStatus: %d\n",
-						   PQresultStatus(result));
+				pg_log_error("unexpected PQresultStatus: %d",
+							 PQresultStatus(result));
 				break;
 		}
 
-	if (!OK)
+	if (!OK && show_error)
 	{
 		const char *error = PQerrorMessage(pset.db);
 
 		if (strlen(error))
-			psql_error("%s", error);
+			pg_log_info("%s", error);
 
 		CheckConnection();
 	}
@@ -562,11 +425,11 @@ AcceptResult(const PGresult *result)
  * entered by the user, not queries generated by slash commands.
  */
 static void
-SetResultVariables(PGresult *results, bool success)
+SetResultVariables(PGresult *result, bool success)
 {
 	if (success)
 	{
-		const char *ntuples = PQcmdTuples(results);
+		const char *ntuples = PQcmdTuples(result);
 
 		SetVariable(pset.vars, "ERROR", "false");
 		SetVariable(pset.vars, "SQLSTATE", "00000");
@@ -574,8 +437,8 @@ SetResultVariables(PGresult *results, bool success)
 	}
 	else
 	{
-		const char *code = PQresultErrorField(results, PG_DIAG_SQLSTATE);
-		const char *mesg = PQresultErrorField(results, PG_DIAG_MESSAGE_PRIMARY);
+		const char *code = PQresultErrorField(result, PG_DIAG_SQLSTATE);
+		const char *mesg = PQresultErrorField(result, PG_DIAG_MESSAGE_PRIMARY);
 
 		SetVariable(pset.vars, "ERROR", "true");
 
@@ -622,6 +485,19 @@ ClearOrSaveResult(PGresult *result)
 				break;
 		}
 	}
+}
+
+
+/*
+ * Consume all results
+ */
+static void
+ClearOrSaveAllResults(void)
+{
+	PGresult   *result;
+
+	while ((result = PQgetResult(pset.db)) != NULL)
+		ClearOrSaveResult(result);
 }
 
 
@@ -695,7 +571,7 @@ PSQLexec(const char *query)
 
 	if (!pset.db)
 	{
-		psql_error("You are currently not connected to a database.\n");
+		pg_log_error("You are currently not connected to a database.");
 		return NULL;
 	}
 
@@ -718,13 +594,13 @@ PSQLexec(const char *query)
 			return NULL;
 	}
 
-	SetCancelConn();
+	SetCancelConn(pset.db);
 
 	res = PQexec(pset.db, query);
 
 	ResetCancelConn();
 
-	if (!AcceptResult(res))
+	if (!AcceptResult(res, true))
 	{
 		ClearOrSaveResult(res);
 		res = NULL;
@@ -738,95 +614,35 @@ PSQLexec(const char *query)
  * PSQLexecWatch
  *
  * This function is used for \watch command to send the query to
- * the server and print out the results.
+ * the server and print out the result.
  *
  * Returns 1 if the query executed successfully, 0 if it cannot be repeated,
  * e.g., because of the interrupt, -1 on error.
  */
 int
-PSQLexecWatch(const char *query, const printQueryOpt *opt)
+PSQLexecWatch(const char *query, const printQueryOpt *opt, FILE *printQueryFout)
 {
-	PGresult   *res;
+	bool		timing = pset.timing;
 	double		elapsed_msec = 0;
-	instr_time	before;
-	instr_time	after;
+	int			res;
 
 	if (!pset.db)
 	{
-		psql_error("You are currently not connected to a database.\n");
+		pg_log_error("You are currently not connected to a database.");
 		return 0;
 	}
 
-	SetCancelConn();
+	SetCancelConn(pset.db);
 
-	if (pset.timing)
-		INSTR_TIME_SET_CURRENT(before);
-
-	res = PQexec(pset.db, query);
+	res = ExecQueryAndProcessResults(query, &elapsed_msec, NULL, true, opt, printQueryFout);
 
 	ResetCancelConn();
 
-	if (!AcceptResult(res))
-	{
-		ClearOrSaveResult(res);
-		return 0;
-	}
-
-	if (pset.timing)
-	{
-		INSTR_TIME_SET_CURRENT(after);
-		INSTR_TIME_SUBTRACT(after, before);
-		elapsed_msec = INSTR_TIME_GET_MILLISEC(after);
-	}
-
-	/*
-	 * If SIGINT is sent while the query is processing, the interrupt will be
-	 * consumed.  The user's intention, though, is to cancel the entire watch
-	 * process, so detect a sent cancellation request and exit in this case.
-	 */
-	if (cancel_pressed)
-	{
-		PQclear(res);
-		return 0;
-	}
-
-	switch (PQresultStatus(res))
-	{
-		case PGRES_TUPLES_OK:
-			printQuery(res, opt, pset.queryFout, false, pset.logfile);
-			break;
-
-		case PGRES_COMMAND_OK:
-			fprintf(pset.queryFout, "%s\n%s\n\n", opt->title, PQcmdStatus(res));
-			break;
-
-		case PGRES_EMPTY_QUERY:
-			psql_error(_("\\watch cannot be used with an empty query\n"));
-			PQclear(res);
-			return -1;
-
-		case PGRES_COPY_OUT:
-		case PGRES_COPY_IN:
-		case PGRES_COPY_BOTH:
-			psql_error(_("\\watch cannot be used with COPY\n"));
-			PQclear(res);
-			return -1;
-
-		default:
-			psql_error(_("unexpected result status for \\watch\n"));
-			PQclear(res);
-			return -1;
-	}
-
-	PQclear(res);
-
-	fflush(pset.queryFout);
-
 	/* Possible microtiming output */
-	if (pset.timing)
+	if (timing)
 		PrintTiming(elapsed_msec);
 
-	return 1;
+	return res;
 }
 
 
@@ -858,42 +674,30 @@ PrintNotifications(void)
 /*
  * PrintQueryTuples: assuming query result is OK, print its tuples
  *
+ * We use the options given by opt unless that's NULL, in which case
+ * we use pset.popt.
+ *
+ * Output is to printQueryFout unless that's NULL, in which case
+ * we use pset.queryFout.
+ *
  * Returns true if successful, false otherwise.
  */
 static bool
-PrintQueryTuples(const PGresult *results)
+PrintQueryTuples(const PGresult *result, const printQueryOpt *opt,
+				 FILE *printQueryFout)
 {
-	printQueryOpt my_popt = pset.popt;
+	bool		ok = true;
+	FILE	   *fout = printQueryFout ? printQueryFout : pset.queryFout;
 
-	/* one-shot expanded output requested via \gx */
-	if (pset.g_expanded)
-		my_popt.topt.expanded = 1;
-
-	/* write output to \g argument, if any */
-	if (pset.gfname)
+	printQuery(result, opt ? opt : &pset.popt, fout, false, pset.logfile);
+	fflush(fout);
+	if (ferror(fout))
 	{
-		FILE	   *fout;
-		bool		is_pipe;
-
-		if (!openQueryOutputFile(pset.gfname, &fout, &is_pipe))
-			return false;
-		if (is_pipe)
-			disable_sigpipe_trap();
-
-		printQuery(results, &my_popt, fout, false, pset.logfile);
-
-		if (is_pipe)
-		{
-			pclose(fout);
-			restore_sigpipe_trap();
-		}
-		else
-			fclose(fout);
+		pg_log_error("could not print result table: %m");
+		ok = false;
 	}
-	else
-		printQuery(results, &my_popt, pset.queryFout, false, pset.logfile);
 
-	return true;
+	return ok;
 }
 
 
@@ -909,12 +713,12 @@ StoreQueryTuple(const PGresult *result)
 
 	if (PQntuples(result) < 1)
 	{
-		psql_error("no rows returned for \\gset\n");
+		pg_log_error("no rows returned for \\gset");
 		success = false;
 	}
 	else if (PQntuples(result) > 1)
 	{
-		psql_error("more than one row returned for \\gset\n");
+		pg_log_error("more than one row returned for \\gset");
 		success = false;
 	}
 	else
@@ -1035,261 +839,156 @@ loop_exit:
 
 
 /*
- * ProcessResult: utility function for use by SendQuery() only
+ * Marshal the COPY data.  Either path will get the
+ * connection out of its COPY state, then call PQresultStatus()
+ * once and report any error.  Return whether all was ok.
  *
- * When our command string contained a COPY FROM STDIN or COPY TO STDOUT,
- * PQexec() has stopped at the PGresult associated with the first such
- * command.  In that event, we'll marshal data for the COPY and then cycle
- * through any subsequent PGresult objects.
+ * For COPY OUT, direct the output to copystream, or discard if that's NULL.
+ * For COPY IN, use pset.copyStream as data source if it's set,
+ * otherwise cur_cmd_source.
  *
- * When the command string contained no such COPY command, this function
- * degenerates to an AcceptResult() call.
- *
- * Changes its argument to point to the last PGresult of the command string,
- * or NULL if that result was for a COPY TO STDOUT.  (Returning NULL prevents
- * the command status from being printed, which we want in that case so that
- * the status line doesn't get taken as part of the COPY data.)
- *
- * Returns true on complete success, false otherwise.  Possible failure modes
- * include purely client-side problems; check the transaction status for the
- * server-side opinion.
+ * Update *resultp if further processing is necessary; set to NULL otherwise.
+ * Return a result when queryFout can safely output a result status: on COPY
+ * IN, or on COPY OUT if written to something other than pset.queryFout.
+ * Returning NULL prevents the command status from being printed, which we
+ * want if the status line doesn't get taken as part of the COPY data.
  */
 static bool
-ProcessResult(PGresult **results)
+HandleCopyResult(PGresult **resultp, FILE *copystream)
 {
-	bool		success = true;
-	bool		first_cycle = true;
+	bool		success;
+	PGresult   *copy_result;
+	ExecStatusType result_status = PQresultStatus(*resultp);
 
-	for (;;)
+	Assert(result_status == PGRES_COPY_OUT ||
+		   result_status == PGRES_COPY_IN);
+
+	SetCancelConn(pset.db);
+
+	if (result_status == PGRES_COPY_OUT)
 	{
-		ExecStatusType result_status;
-		bool		is_copy;
-		PGresult   *next_result;
-
-		if (!AcceptResult(*results))
-		{
-			/*
-			 * Failure at this point is always a server-side failure or a
-			 * failure to submit the command string.  Either way, we're
-			 * finished with this command string.
-			 */
-			success = false;
-			break;
-		}
-
-		result_status = PQresultStatus(*results);
-		switch (result_status)
-		{
-			case PGRES_EMPTY_QUERY:
-			case PGRES_COMMAND_OK:
-			case PGRES_TUPLES_OK:
-				is_copy = false;
-				break;
-
-			case PGRES_COPY_OUT:
-			case PGRES_COPY_IN:
-				is_copy = true;
-				break;
-
-			default:
-				/* AcceptResult() should have caught anything else. */
-				is_copy = false;
-				psql_error("unexpected PQresultStatus: %d\n", result_status);
-				break;
-		}
-
-		if (is_copy)
-		{
-			/*
-			 * Marshal the COPY data.  Either subroutine will get the
-			 * connection out of its COPY state, then call PQresultStatus()
-			 * once and report any error.
-			 *
-			 * For COPY OUT, direct the output to pset.copyStream if it's set,
-			 * otherwise to pset.gfname if it's set, otherwise to queryFout.
-			 * For COPY IN, use pset.copyStream as data source if it's set,
-			 * otherwise cur_cmd_source.
-			 */
-			FILE	   *copystream;
-			PGresult   *copy_result;
-
-			SetCancelConn();
-			if (result_status == PGRES_COPY_OUT)
-			{
-				bool		need_close = false;
-				bool		is_pipe = false;
-
-				if (pset.copyStream)
-				{
-					/* invoked by \copy */
-					copystream = pset.copyStream;
-				}
-				else if (pset.gfname)
-				{
-					/* invoked by \g */
-					if (openQueryOutputFile(pset.gfname,
-											&copystream, &is_pipe))
-					{
-						need_close = true;
-						if (is_pipe)
-							disable_sigpipe_trap();
-					}
-					else
-						copystream = NULL;	/* discard COPY data entirely */
-				}
-				else
-				{
-					/* fall back to the generic query output stream */
-					copystream = pset.queryFout;
-				}
-
-				success = handleCopyOut(pset.db,
-										copystream,
-										&copy_result)
-					&& success
-					&& (copystream != NULL);
-
-				/*
-				 * Suppress status printing if the report would go to the same
-				 * place as the COPY data just went.  Note this doesn't
-				 * prevent error reporting, since handleCopyOut did that.
-				 */
-				if (copystream == pset.queryFout)
-				{
-					PQclear(copy_result);
-					copy_result = NULL;
-				}
-
-				if (need_close)
-				{
-					/* close \g argument file/pipe */
-					if (is_pipe)
-					{
-						pclose(copystream);
-						restore_sigpipe_trap();
-					}
-					else
-					{
-						fclose(copystream);
-					}
-				}
-			}
-			else
-			{
-				/* COPY IN */
-				copystream = pset.copyStream ? pset.copyStream : pset.cur_cmd_source;
-				success = handleCopyIn(pset.db,
-									   copystream,
-									   PQbinaryTuples(*results),
-									   &copy_result) && success;
-			}
-			ResetCancelConn();
-
-			/*
-			 * Replace the PGRES_COPY_OUT/IN result with COPY command's exit
-			 * status, or with NULL if we want to suppress printing anything.
-			 */
-			PQclear(*results);
-			*results = copy_result;
-		}
-		else if (first_cycle)
-		{
-			/* fast path: no COPY commands; PQexec visited all results */
-			break;
-		}
+		success = handleCopyOut(pset.db,
+								copystream,
+								&copy_result)
+			&& (copystream != NULL);
 
 		/*
-		 * Check PQgetResult() again.  In the typical case of a single-command
-		 * string, it will return NULL.  Otherwise, we'll have other results
-		 * to process that may include other COPYs.  We keep the last result.
+		 * Suppress status printing if the report would go to the same place
+		 * as the COPY data just went.  Note this doesn't prevent error
+		 * reporting, since handleCopyOut did that.
 		 */
-		next_result = PQgetResult(pset.db);
-		if (!next_result)
-			break;
-
-		PQclear(*results);
-		*results = next_result;
-		first_cycle = false;
+		if (copystream == pset.queryFout)
+		{
+			PQclear(copy_result);
+			copy_result = NULL;
+		}
 	}
+	else
+	{
+		/* COPY IN */
+		/* Ignore the copystream argument passed to the function */
+		copystream = pset.copyStream ? pset.copyStream : pset.cur_cmd_source;
+		success = handleCopyIn(pset.db,
+							   copystream,
+							   PQbinaryTuples(*resultp),
+							   &copy_result);
+	}
+	ResetCancelConn();
 
-	SetResultVariables(*results, success);
-
-	/* may need this to recover from conn loss during COPY */
-	if (!first_cycle && !CheckConnection())
-		return false;
+	/*
+	 * Replace the PGRES_COPY_OUT/IN result with COPY command's exit status,
+	 * or with NULL if we want to suppress printing anything.
+	 */
+	PQclear(*resultp);
+	*resultp = copy_result;
 
 	return success;
 }
 
-
 /*
  * PrintQueryStatus: report command status as required
  *
- * Note: Utility function for use by PrintQueryResults() only.
+ * Note: Utility function for use by PrintQueryResult() only.
  */
 static void
-PrintQueryStatus(PGresult *results)
+PrintQueryStatus(PGresult *result, FILE *printQueryFout)
 {
 	char		buf[16];
+	FILE	   *fout = printQueryFout ? printQueryFout : pset.queryFout;
 
 	if (!pset.quiet)
 	{
 		if (pset.popt.topt.format == PRINT_HTML)
 		{
-			fputs("<p>", pset.queryFout);
-			html_escaped_print(PQcmdStatus(results), pset.queryFout);
-			fputs("</p>\n", pset.queryFout);
+			fputs("<p>", fout);
+			html_escaped_print(PQcmdStatus(result), fout);
+			fputs("</p>\n", fout);
 		}
 		else
-			fprintf(pset.queryFout, "%s\n", PQcmdStatus(results));
+			fprintf(fout, "%s\n", PQcmdStatus(result));
+		fflush(fout);
 	}
 
 	if (pset.logfile)
-		fprintf(pset.logfile, "%s\n", PQcmdStatus(results));
+		fprintf(pset.logfile, "%s\n", PQcmdStatus(result));
 
-	snprintf(buf, sizeof(buf), "%u", (unsigned int) PQoidValue(results));
+	snprintf(buf, sizeof(buf), "%u", (unsigned int) PQoidValue(result));
 	SetVariable(pset.vars, "LASTOID", buf);
 }
 
 
 /*
- * PrintQueryResults: print out (or store or execute) query results as required
+ * PrintQueryResult: print out (or store or execute) query result as required
  *
  * Note: Utility function for use by SendQuery() only.
+ *
+ * last is true if this is the last result of a command string.
+ * opt and printQueryFout are defined as for PrintQueryTuples.
+ * printStatusFout is where to send command status; NULL means pset.queryFout.
  *
  * Returns true if the query executed successfully, false otherwise.
  */
 static bool
-PrintQueryResults(PGresult *results)
+PrintQueryResult(PGresult *result, bool last,
+				 const printQueryOpt *opt, FILE *printQueryFout,
+				 FILE *printStatusFout)
 {
 	bool		success;
 	const char *cmdstatus;
 
-	if (!results)
+	if (!result)
 		return false;
 
-	switch (PQresultStatus(results))
+	switch (PQresultStatus(result))
 	{
 		case PGRES_TUPLES_OK:
 			/* store or execute or print the data ... */
-			if (pset.gset_prefix)
-				success = StoreQueryTuple(results);
-			else if (pset.gexec_flag)
-				success = ExecQueryTuples(results);
-			else if (pset.crosstab_flag)
-				success = PrintResultsInCrosstab(results);
+			if (last && pset.gset_prefix)
+				success = StoreQueryTuple(result);
+			else if (last && pset.gexec_flag)
+				success = ExecQueryTuples(result);
+			else if (last && pset.crosstab_flag)
+				success = PrintResultInCrosstab(result);
+			else if (last || pset.show_all_results)
+				success = PrintQueryTuples(result, opt, printQueryFout);
 			else
-				success = PrintQueryTuples(results);
+				success = true;
+
 			/* if it's INSERT/UPDATE/DELETE RETURNING, also print status */
-			cmdstatus = PQcmdStatus(results);
-			if (strncmp(cmdstatus, "INSERT", 6) == 0 ||
-				strncmp(cmdstatus, "UPDATE", 6) == 0 ||
-				strncmp(cmdstatus, "DELETE", 6) == 0)
-				PrintQueryStatus(results);
+			if (last || pset.show_all_results)
+			{
+				cmdstatus = PQcmdStatus(result);
+				if (strncmp(cmdstatus, "INSERT", 6) == 0 ||
+					strncmp(cmdstatus, "UPDATE", 6) == 0 ||
+					strncmp(cmdstatus, "DELETE", 6) == 0)
+					PrintQueryStatus(result, printStatusFout);
+			}
+
 			break;
 
 		case PGRES_COMMAND_OK:
-			PrintQueryStatus(results);
+			if (last || pset.show_all_results)
+				PrintQueryStatus(result, printStatusFout);
 			success = true;
 			break;
 
@@ -1299,7 +998,7 @@ PrintQueryResults(PGresult *results)
 
 		case PGRES_COPY_OUT:
 		case PGRES_COPY_IN:
-			/* nothing to do here */
+			/* nothing to do here: already processed */
 			success = true;
 			break;
 
@@ -1311,20 +1010,17 @@ PrintQueryResults(PGresult *results)
 
 		default:
 			success = false;
-			psql_error("unexpected PQresultStatus: %d\n",
-					   PQresultStatus(results));
+			pg_log_error("unexpected PQresultStatus: %d",
+						 PQresultStatus(result));
 			break;
 	}
-
-	fflush(pset.queryFout);
 
 	return success;
 }
 
-
 /*
  * SendQuery: send the query string to the backend
- * (and print out results)
+ * (and print out result)
  *
  * Note: This is the "front door" way to send a query. That is, use it to
  * send queries actually entered by the user. These queries will be subject to
@@ -1337,17 +1033,17 @@ PrintQueryResults(PGresult *results)
 bool
 SendQuery(const char *query)
 {
-	PGresult   *results;
+	bool		timing = pset.timing;
 	PGTransactionStatusType transaction_status;
 	double		elapsed_msec = 0;
 	bool		OK = false;
 	int			i;
 	bool		on_error_rollback_savepoint = false;
-	static bool on_error_rollback_warning = false;
+	bool		svpt_gone = false;
 
 	if (!pset.db)
 	{
-		psql_error("You are currently not connected to a database.\n");
+		pg_log_error("You are currently not connected to a database.");
 		goto sendquery_cleanup;
 	}
 
@@ -1382,7 +1078,7 @@ SendQuery(const char *query)
 		fflush(pset.logfile);
 	}
 
-	SetCancelConn();
+	SetCancelConn(pset.db);
 
 	transaction_status = PQtransactionStatus(pset.db);
 
@@ -1390,15 +1086,16 @@ SendQuery(const char *query)
 		!pset.autocommit &&
 		!command_no_begin(query))
 	{
-		results = PQexec(pset.db, "BEGIN");
-		if (PQresultStatus(results) != PGRES_COMMAND_OK)
+		PGresult   *result;
+
+		result = PQexec(pset.db, "BEGIN");
+		if (PQresultStatus(result) != PGRES_COMMAND_OK)
 		{
-			psql_error("%s", PQerrorMessage(pset.db));
-			ClearOrSaveResult(results);
-			ResetCancelConn();
+			pg_log_info("%s", PQerrorMessage(pset.db));
+			ClearOrSaveResult(result);
 			goto sendquery_cleanup;
 		}
-		ClearOrSaveResult(results);
+		ClearOrSaveResult(result);
 		transaction_status = PQtransactionStatus(pset.db);
 	}
 
@@ -1407,74 +1104,38 @@ SendQuery(const char *query)
 		(pset.cur_cmd_interactive ||
 		 pset.on_error_rollback == PSQL_ERROR_ROLLBACK_ON))
 	{
-		if (on_error_rollback_warning == false && pset.sversion < 80000)
-		{
-			char		sverbuf[32];
+		PGresult   *result;
 
-			psql_error("The server (version %s) does not support savepoints for ON_ERROR_ROLLBACK.\n",
-					   formatPGVersionNumber(pset.sversion, false,
-											 sverbuf, sizeof(sverbuf)));
-			on_error_rollback_warning = true;
-		}
-		else
+		result = PQexec(pset.db, "SAVEPOINT pg_psql_temporary_savepoint");
+		if (PQresultStatus(result) != PGRES_COMMAND_OK)
 		{
-			results = PQexec(pset.db, "SAVEPOINT pg_psql_temporary_savepoint");
-			if (PQresultStatus(results) != PGRES_COMMAND_OK)
-			{
-				psql_error("%s", PQerrorMessage(pset.db));
-				ClearOrSaveResult(results);
-				ResetCancelConn();
-				goto sendquery_cleanup;
-			}
-			ClearOrSaveResult(results);
-			on_error_rollback_savepoint = true;
+			pg_log_info("%s", PQerrorMessage(pset.db));
+			ClearOrSaveResult(result);
+			goto sendquery_cleanup;
 		}
+		ClearOrSaveResult(result);
+		on_error_rollback_savepoint = true;
 	}
 
 	if (pset.gdesc_flag)
 	{
 		/* Describe query's result columns, without executing it */
 		OK = DescribeQuery(query, &elapsed_msec);
-		ResetCancelConn();
-		results = NULL;			/* PQclear(NULL) does nothing */
 	}
 	else if (pset.fetch_count <= 0 || pset.gexec_flag ||
 			 pset.crosstab_flag || !is_select_command(query))
 	{
 		/* Default fetch-it-all-and-print mode */
-		instr_time	before,
-					after;
-
-		if (pset.timing)
-			INSTR_TIME_SET_CURRENT(before);
-
-		results = PQexec(pset.db, query);
-
-		/* these operations are included in the timing result: */
-		ResetCancelConn();
-		OK = ProcessResult(&results);
-
-		if (pset.timing)
-		{
-			INSTR_TIME_SET_CURRENT(after);
-			INSTR_TIME_SUBTRACT(after, before);
-			elapsed_msec = INSTR_TIME_GET_MILLISEC(after);
-		}
-
-		/* but printing results isn't: */
-		if (OK && results)
-			OK = PrintQueryResults(results);
+		OK = (ExecQueryAndProcessResults(query, &elapsed_msec, &svpt_gone, false, NULL, NULL) > 0);
 	}
 	else
 	{
 		/* Fetch-in-segments mode */
 		OK = ExecQueryUsingCursor(query, &elapsed_msec);
-		ResetCancelConn();
-		results = NULL;			/* PQclear(NULL) does nothing */
 	}
 
 	if (!OK && pset.echo == PSQL_ECHO_ERRORS)
-		psql_error("STATEMENT:  %s\n", query);
+		pg_log_info("STATEMENT:  %s", query);
 
 	/* If we made a temporary savepoint, possibly release/rollback */
 	if (on_error_rollback_savepoint)
@@ -1497,17 +1158,10 @@ SendQuery(const char *query)
 			case PQTRANS_INTRANS:
 
 				/*
-				 * Do nothing if they are messing with savepoints themselves:
-				 * If the user did RELEASE or ROLLBACK, our savepoint is gone.
-				 * If they issued a SAVEPOINT, releasing ours would remove
-				 * theirs.
+				 * Release our savepoint, but do nothing if they are messing
+				 * with savepoints themselves
 				 */
-				if (results &&
-					(strcmp(PQcmdStatus(results), "SAVEPOINT") == 0 ||
-					 strcmp(PQcmdStatus(results), "RELEASE") == 0 ||
-					 strcmp(PQcmdStatus(results), "ROLLBACK") == 0))
-					svptcmd = NULL;
-				else
+				if (!svpt_gone)
 					svptcmd = "RELEASE pg_psql_temporary_savepoint";
 				break;
 
@@ -1517,8 +1171,8 @@ SendQuery(const char *query)
 				OK = false;
 				/* PQTRANS_UNKNOWN is expected given a broken connection. */
 				if (transaction_status != PQTRANS_UNKNOWN || ConnectionUp())
-					psql_error("unexpected transaction status (%d)\n",
-							   transaction_status);
+					pg_log_error("unexpected transaction status (%d)",
+								 transaction_status);
 				break;
 		}
 
@@ -1529,22 +1183,18 @@ SendQuery(const char *query)
 			svptres = PQexec(pset.db, svptcmd);
 			if (PQresultStatus(svptres) != PGRES_COMMAND_OK)
 			{
-				psql_error("%s", PQerrorMessage(pset.db));
+				pg_log_info("%s", PQerrorMessage(pset.db));
 				ClearOrSaveResult(svptres);
 				OK = false;
 
-				PQclear(results);
-				ResetCancelConn();
 				goto sendquery_cleanup;
 			}
 			PQclear(svptres);
 		}
 	}
 
-	ClearOrSaveResult(results);
-
 	/* Possible microtiming output */
-	if (pset.timing)
+	if (timing)
 		PrintTiming(elapsed_msec);
 
 	/* check for events that may occur during query execution */
@@ -1565,6 +1215,9 @@ SendQuery(const char *query)
 
 sendquery_cleanup:
 
+	/* global cancellation reset */
+	ResetCancelConn();
+
 	/* reset \g's output-to-filename trigger */
 	if (pset.gfname)
 	{
@@ -1572,8 +1225,12 @@ sendquery_cleanup:
 		pset.gfname = NULL;
 	}
 
-	/* reset \gx's expanded-mode flag */
-	pset.g_expanded = false;
+	/* restore print settings if \g changed them */
+	if (pset.gsavepopt)
+	{
+		restorePsetInfo(&pset.popt, pset.gsavepopt);
+		pset.gsavepopt = NULL;
+	}
 
 	/* reset \gset trigger */
 	if (pset.gset_prefix)
@@ -1611,14 +1268,15 @@ sendquery_cleanup:
 static bool
 DescribeQuery(const char *query, double *elapsed_msec)
 {
-	PGresult   *results;
+	bool		timing = pset.timing;
+	PGresult   *result;
 	bool		OK;
 	instr_time	before,
 				after;
 
 	*elapsed_msec = 0;
 
-	if (pset.timing)
+	if (timing)
 		INSTR_TIME_SET_CURRENT(before);
 
 	/*
@@ -1629,22 +1287,22 @@ DescribeQuery(const char *query, double *elapsed_msec)
 	 * anyway.  (So there's no great need to clear it when done, which is a
 	 * good thing because libpq provides no easy way to do that.)
 	 */
-	results = PQprepare(pset.db, "", query, 0, NULL);
-	if (PQresultStatus(results) != PGRES_COMMAND_OK)
+	result = PQprepare(pset.db, "", query, 0, NULL);
+	if (PQresultStatus(result) != PGRES_COMMAND_OK)
 	{
-		psql_error("%s", PQerrorMessage(pset.db));
-		SetResultVariables(results, false);
-		ClearOrSaveResult(results);
+		pg_log_info("%s", PQerrorMessage(pset.db));
+		SetResultVariables(result, false);
+		ClearOrSaveResult(result);
 		return false;
 	}
-	PQclear(results);
+	PQclear(result);
 
-	results = PQdescribePrepared(pset.db, "");
-	OK = AcceptResult(results) &&
-		(PQresultStatus(results) == PGRES_COMMAND_OK);
-	if (OK && results)
+	result = PQdescribePrepared(pset.db, "");
+	OK = AcceptResult(result, true) &&
+		(PQresultStatus(result) == PGRES_COMMAND_OK);
+	if (OK && result)
 	{
-		if (PQnfields(results) > 0)
+		if (PQnfields(result) > 0)
 		{
 			PQExpBufferData buf;
 			int			i;
@@ -1657,7 +1315,7 @@ DescribeQuery(const char *query, double *elapsed_msec)
 							  gettext_noop("Column"),
 							  gettext_noop("Type"));
 
-			for (i = 0; i < PQnfields(results); i++)
+			for (i = 0; i < PQnfields(result); i++)
 			{
 				const char *name;
 				char	   *escname;
@@ -1665,40 +1323,40 @@ DescribeQuery(const char *query, double *elapsed_msec)
 				if (i > 0)
 					appendPQExpBufferStr(&buf, ",");
 
-				name = PQfname(results, i);
+				name = PQfname(result, i);
 				escname = PQescapeLiteral(pset.db, name, strlen(name));
 
 				if (escname == NULL)
 				{
-					psql_error("%s", PQerrorMessage(pset.db));
-					PQclear(results);
+					pg_log_info("%s", PQerrorMessage(pset.db));
+					PQclear(result);
 					termPQExpBuffer(&buf);
 					return false;
 				}
 
 				appendPQExpBuffer(&buf, "(%s, '%u'::pg_catalog.oid, %d)",
 								  escname,
-								  PQftype(results, i),
-								  PQfmod(results, i));
+								  PQftype(result, i),
+								  PQfmod(result, i));
 
 				PQfreemem(escname);
 			}
 
 			appendPQExpBufferStr(&buf, ") s(name, tp, tpm)");
-			PQclear(results);
+			PQclear(result);
 
-			results = PQexec(pset.db, buf.data);
-			OK = AcceptResult(results);
+			result = PQexec(pset.db, buf.data);
+			OK = AcceptResult(result, true);
 
-			if (pset.timing)
+			if (timing)
 			{
 				INSTR_TIME_SET_CURRENT(after);
 				INSTR_TIME_SUBTRACT(after, before);
 				*elapsed_msec += INSTR_TIME_GET_MILLISEC(after);
 			}
 
-			if (OK && results)
-				OK = PrintQueryResults(results);
+			if (OK && result)
+				OK = PrintQueryResult(result, true, NULL, NULL, NULL);
 
 			termPQExpBuffer(&buf);
 		}
@@ -1707,10 +1365,300 @@ DescribeQuery(const char *query, double *elapsed_msec)
 					_("The command has no result, or the result has no columns.\n"));
 	}
 
-	SetResultVariables(results, OK);
-	ClearOrSaveResult(results);
+	SetResultVariables(result, OK);
+	ClearOrSaveResult(result);
 
 	return OK;
+}
+
+
+/*
+ * ExecQueryAndProcessResults: utility function for use by SendQuery()
+ * and PSQLexecWatch().
+ *
+ * Sends query and cycles through PGresult objects.
+ *
+ * If our command string contained a COPY FROM STDIN or COPY TO STDOUT, the
+ * PGresult associated with these commands must be processed by providing an
+ * input or output stream.  In that event, we'll marshal data for the COPY.
+ *
+ * For other commands, the results are processed normally, depending on their
+ * status.
+ *
+ * Returns 1 on complete success, 0 on interrupt and -1 or errors.  Possible
+ * failure modes include purely client-side problems; check the transaction
+ * status for the server-side opinion.
+ *
+ * Note that on a combined query, failure does not mean that nothing was
+ * committed.
+ */
+static int
+ExecQueryAndProcessResults(const char *query,
+						   double *elapsed_msec, bool *svpt_gone_p,
+						   bool is_watch,
+						   const printQueryOpt *opt, FILE *printQueryFout)
+{
+	bool		timing = pset.timing;
+	bool		success;
+	instr_time	before,
+				after;
+	PGresult   *result;
+	FILE	   *gfile_fout = NULL;
+	bool		gfile_is_pipe = false;
+
+	if (timing)
+		INSTR_TIME_SET_CURRENT(before);
+
+	success = PQsendQuery(pset.db, query);
+
+	if (!success)
+	{
+		const char *error = PQerrorMessage(pset.db);
+
+		if (strlen(error))
+			pg_log_info("%s", error);
+
+		CheckConnection();
+
+		return -1;
+	}
+
+	/*
+	 * If SIGINT is sent while the query is processing, the interrupt will be
+	 * consumed.  The user's intention, though, is to cancel the entire watch
+	 * process, so detect a sent cancellation request and exit in this case.
+	 */
+	if (is_watch && cancel_pressed)
+	{
+		ClearOrSaveAllResults();
+		return 0;
+	}
+
+	/* first result */
+	result = PQgetResult(pset.db);
+
+	while (result != NULL)
+	{
+		ExecStatusType result_status;
+		PGresult   *next_result;
+		bool		last;
+
+		if (!AcceptResult(result, false))
+		{
+			/*
+			 * Some error occured, either a server-side failure or a failure
+			 * to submit the command string.  Record that.
+			 */
+			const char *error = PQresultErrorMessage(result);
+
+			if (strlen(error))
+				pg_log_info("%s", error);
+
+			CheckConnection();
+			if (!is_watch)
+				SetResultVariables(result, false);
+
+			/* keep the result status before clearing it */
+			result_status = PQresultStatus(result);
+			ClearOrSaveResult(result);
+			success = false;
+
+			/*
+			 * switch to next result
+			 */
+			if (result_status == PGRES_COPY_BOTH ||
+				result_status == PGRES_COPY_OUT ||
+				result_status == PGRES_COPY_IN)
+
+				/*
+				 * For some obscure reason PQgetResult does *not* return a
+				 * NULL in copy cases despite the result having been cleared,
+				 * but keeps returning an "empty" result that we have to
+				 * ignore manually.
+				 */
+				result = NULL;
+			else
+				result = PQgetResult(pset.db);
+
+			/*
+			 * Get current timing measure in case an error occurs
+			 */
+			if (timing)
+			{
+				INSTR_TIME_SET_CURRENT(after);
+				INSTR_TIME_SUBTRACT(after, before);
+				*elapsed_msec = INSTR_TIME_GET_MILLISEC(after);
+			}
+
+			continue;
+		}
+		else if (svpt_gone_p && !*svpt_gone_p)
+		{
+			/*
+			 * Check if the user ran any command that would destroy our
+			 * internal savepoint: If the user did COMMIT AND CHAIN, RELEASE
+			 * or ROLLBACK, our savepoint is gone. If they issued a SAVEPOINT,
+			 * releasing ours would remove theirs.
+			 */
+			const char *cmd = PQcmdStatus(result);
+
+			*svpt_gone_p = (strcmp(cmd, "COMMIT") == 0 ||
+							strcmp(cmd, "SAVEPOINT") == 0 ||
+							strcmp(cmd, "RELEASE") == 0 ||
+							strcmp(cmd, "ROLLBACK") == 0);
+		}
+
+		result_status = PQresultStatus(result);
+
+		/* must handle COPY before changing the current result */
+		Assert(result_status != PGRES_COPY_BOTH);
+		if (result_status == PGRES_COPY_IN ||
+			result_status == PGRES_COPY_OUT)
+		{
+			FILE	   *copy_stream = NULL;
+
+			/*
+			 * For COPY OUT, direct the output to the default place (probably
+			 * a pager pipe) for \watch, or to pset.copyStream for \copy,
+			 * otherwise to pset.gfname if that's set, otherwise to
+			 * pset.queryFout.
+			 */
+			if (result_status == PGRES_COPY_OUT)
+			{
+				if (is_watch)
+				{
+					/* invoked by \watch */
+					copy_stream = printQueryFout ? printQueryFout : pset.queryFout;
+				}
+				else if (pset.copyStream)
+				{
+					/* invoked by \copy */
+					copy_stream = pset.copyStream;
+				}
+				else if (pset.gfname)
+				{
+					/* send to \g file, which we may have opened already */
+					if (gfile_fout == NULL)
+					{
+						if (openQueryOutputFile(pset.gfname,
+												&gfile_fout, &gfile_is_pipe))
+						{
+							if (gfile_is_pipe)
+								disable_sigpipe_trap();
+							copy_stream = gfile_fout;
+						}
+						else
+							success = false;
+					}
+					else
+						copy_stream = gfile_fout;
+				}
+				else
+				{
+					/* fall back to the generic query output stream */
+					copy_stream = pset.queryFout;
+				}
+			}
+
+			/*
+			 * Even if the output stream could not be opened, we call
+			 * HandleCopyResult() with a NULL output stream to collect and
+			 * discard the COPY data.
+			 */
+			success &= HandleCopyResult(&result, copy_stream);
+		}
+
+		/*
+		 * Check PQgetResult() again.  In the typical case of a single-command
+		 * string, it will return NULL.  Otherwise, we'll have other results
+		 * to process.  We need to do that to check whether this is the last.
+		 */
+		next_result = PQgetResult(pset.db);
+		last = (next_result == NULL);
+
+		/*
+		 * Update current timing measure.
+		 *
+		 * It will include the display of previous results, if any. This
+		 * cannot be helped because the server goes on processing further
+		 * queries anyway while the previous ones are being displayed. The
+		 * parallel execution of the client display hides the server time when
+		 * it is shorter.
+		 *
+		 * With combined queries, timing must be understood as an upper bound
+		 * of the time spent processing them.
+		 */
+		if (timing)
+		{
+			INSTR_TIME_SET_CURRENT(after);
+			INSTR_TIME_SUBTRACT(after, before);
+			*elapsed_msec = INSTR_TIME_GET_MILLISEC(after);
+		}
+
+		/* this may or may not print something depending on settings */
+		if (result != NULL)
+		{
+			/*
+			 * If results need to be printed into the file specified by \g,
+			 * open it, unless we already did.  Note that when pset.gfname is
+			 * set, the passed-in value of printQueryFout is not used for
+			 * tuple output, but it's still used for status output.
+			 */
+			FILE	   *tuples_fout = printQueryFout;
+			bool		do_print = true;
+
+			if (PQresultStatus(result) == PGRES_TUPLES_OK &&
+				pset.gfname)
+			{
+				if (gfile_fout == NULL)
+				{
+					if (openQueryOutputFile(pset.gfname,
+											&gfile_fout, &gfile_is_pipe))
+					{
+						if (gfile_is_pipe)
+							disable_sigpipe_trap();
+					}
+					else
+						success = do_print = false;
+				}
+				tuples_fout = gfile_fout;
+			}
+			if (do_print)
+				success &= PrintQueryResult(result, last, opt,
+											tuples_fout, printQueryFout);
+		}
+
+		/* set variables on last result if all went well */
+		if (!is_watch && last && success)
+			SetResultVariables(result, true);
+
+		ClearOrSaveResult(result);
+		result = next_result;
+
+		if (cancel_pressed)
+		{
+			ClearOrSaveAllResults();
+			break;
+		}
+	}
+
+	/* close \g file if we opened it */
+	if (gfile_fout)
+	{
+		if (gfile_is_pipe)
+		{
+			pclose(gfile_fout);
+			restore_sigpipe_trap();
+		}
+		else
+			fclose(gfile_fout);
+	}
+
+	/* may need this to recover from conn loss during COPY */
+	if (!CheckConnection())
+		return -1;
+
+	return cancel_pressed ? 0 : success ? 1 : -1;
 }
 
 
@@ -1728,9 +1676,10 @@ static bool
 ExecQueryUsingCursor(const char *query, double *elapsed_msec)
 {
 	bool		OK = true;
-	PGresult   *results;
+	PGresult   *result;
 	PQExpBufferData buf;
 	printQueryOpt my_popt = pset.popt;
+	bool		timing = pset.timing;
 	FILE	   *fout;
 	bool		is_pipe;
 	bool		is_pager = false;
@@ -1750,16 +1699,16 @@ ExecQueryUsingCursor(const char *query, double *elapsed_msec)
 	my_popt.topt.stop_table = false;
 	my_popt.topt.prior_records = 0;
 
-	if (pset.timing)
+	if (timing)
 		INSTR_TIME_SET_CURRENT(before);
 
 	/* if we're not in a transaction, start one */
 	if (PQtransactionStatus(pset.db) == PQTRANS_IDLE)
 	{
-		results = PQexec(pset.db, "BEGIN");
-		OK = AcceptResult(results) &&
-			(PQresultStatus(results) == PGRES_COMMAND_OK);
-		ClearOrSaveResult(results);
+		result = PQexec(pset.db, "BEGIN");
+		OK = AcceptResult(result, true) &&
+			(PQresultStatus(result) == PGRES_COMMAND_OK);
+		ClearOrSaveResult(result);
 		if (!OK)
 			return false;
 		started_txn = true;
@@ -1770,17 +1719,17 @@ ExecQueryUsingCursor(const char *query, double *elapsed_msec)
 	appendPQExpBuffer(&buf, "DECLARE _psql_cursor NO SCROLL CURSOR FOR\n%s",
 					  query);
 
-	results = PQexec(pset.db, buf.data);
-	OK = AcceptResult(results) &&
-		(PQresultStatus(results) == PGRES_COMMAND_OK);
+	result = PQexec(pset.db, buf.data);
+	OK = AcceptResult(result, true) &&
+		(PQresultStatus(result) == PGRES_COMMAND_OK);
 	if (!OK)
-		SetResultVariables(results, OK);
-	ClearOrSaveResult(results);
+		SetResultVariables(result, OK);
+	ClearOrSaveResult(result);
 	termPQExpBuffer(&buf);
 	if (!OK)
 		goto cleanup;
 
-	if (pset.timing)
+	if (timing)
 	{
 		INSTR_TIME_SET_CURRENT(after);
 		INSTR_TIME_SUBTRACT(after, before);
@@ -1799,10 +1748,6 @@ ExecQueryUsingCursor(const char *query, double *elapsed_msec)
 	snprintf(fetch_cmd, sizeof(fetch_cmd),
 			 "FETCH FORWARD %d FROM _psql_cursor",
 			 fetch_count);
-
-	/* one-shot expanded output requested via \gx */
-	if (pset.g_expanded)
-		my_popt.topt.expanded = 1;
 
 	/* prepare to write output to \g argument, if any */
 	if (pset.gfname)
@@ -1826,20 +1771,20 @@ ExecQueryUsingCursor(const char *query, double *elapsed_msec)
 
 	for (;;)
 	{
-		if (pset.timing)
+		if (timing)
 			INSTR_TIME_SET_CURRENT(before);
 
 		/* get fetch_count tuples at a time */
-		results = PQexec(pset.db, fetch_cmd);
+		result = PQexec(pset.db, fetch_cmd);
 
-		if (pset.timing)
+		if (timing)
 		{
 			INSTR_TIME_SET_CURRENT(after);
 			INSTR_TIME_SUBTRACT(after, before);
 			*elapsed_msec += INSTR_TIME_GET_MILLISEC(after);
 		}
 
-		if (PQresultStatus(results) != PGRES_TUPLES_OK)
+		if (PQresultStatus(result) != PGRES_TUPLES_OK)
 		{
 			/* shut down pager before printing error message */
 			if (is_pager)
@@ -1848,18 +1793,18 @@ ExecQueryUsingCursor(const char *query, double *elapsed_msec)
 				is_pager = false;
 			}
 
-			OK = AcceptResult(results);
+			OK = AcceptResult(result, true);
 			Assert(!OK);
-			SetResultVariables(results, OK);
-			ClearOrSaveResult(results);
+			SetResultVariables(result, OK);
+			ClearOrSaveResult(result);
 			break;
 		}
 
 		if (pset.gset_prefix)
 		{
 			/* StoreQueryTuple will complain if not exactly one row */
-			OK = StoreQueryTuple(results);
-			ClearOrSaveResult(results);
+			OK = StoreQueryTuple(result);
+			ClearOrSaveResult(result);
 			break;
 		}
 
@@ -1867,7 +1812,7 @@ ExecQueryUsingCursor(const char *query, double *elapsed_msec)
 		 * Note we do not deal with \gdesc, \gexec or \crosstabview modes here
 		 */
 
-		ntuples = PQntuples(results);
+		ntuples = PQntuples(result);
 		total_tuples += ntuples;
 
 		if (ntuples < fetch_count)
@@ -1885,9 +1830,9 @@ ExecQueryUsingCursor(const char *query, double *elapsed_msec)
 			is_pager = true;
 		}
 
-		printQuery(results, &my_popt, fout, is_pager, pset.logfile);
+		printQuery(result, &my_popt, fout, is_pager, pset.logfile);
 
-		ClearOrSaveResult(results);
+		ClearOrSaveResult(result);
 
 		/* after the first result set, disallow header decoration */
 		my_popt.topt.start_table = false;
@@ -1946,7 +1891,7 @@ ExecQueryUsingCursor(const char *query, double *elapsed_msec)
 	}
 
 cleanup:
-	if (pset.timing)
+	if (timing)
 		INSTR_TIME_SET_CURRENT(before);
 
 	/*
@@ -1954,25 +1899,25 @@ cleanup:
 	 * ignore the result (it's probably just a bleat about being in an aborted
 	 * transaction)
 	 */
-	results = PQexec(pset.db, "CLOSE _psql_cursor");
+	result = PQexec(pset.db, "CLOSE _psql_cursor");
 	if (OK)
 	{
-		OK = AcceptResult(results) &&
-			(PQresultStatus(results) == PGRES_COMMAND_OK);
-		ClearOrSaveResult(results);
+		OK = AcceptResult(result, true) &&
+			(PQresultStatus(result) == PGRES_COMMAND_OK);
+		ClearOrSaveResult(result);
 	}
 	else
-		PQclear(results);
+		PQclear(result);
 
 	if (started_txn)
 	{
-		results = PQexec(pset.db, OK ? "COMMIT" : "ROLLBACK");
-		OK &= AcceptResult(results) &&
-			(PQresultStatus(results) == PGRES_COMMAND_OK);
-		ClearOrSaveResult(results);
+		result = PQexec(pset.db, OK ? "COMMIT" : "ROLLBACK");
+		OK &= AcceptResult(result, true) &&
+			(PQresultStatus(result) == PGRES_COMMAND_OK);
+		ClearOrSaveResult(result);
 	}
 
-	if (pset.timing)
+	if (timing)
 	{
 		INSTR_TIME_SET_CURRENT(after);
 		INSTR_TIME_SUBTRACT(after, before);
@@ -2205,6 +2150,22 @@ command_no_begin(const char *query)
 			return true;
 		if (wordlen == 10 && pg_strncasecmp(query, "tablespace", 10) == 0)
 			return true;
+		if (wordlen == 5 && (pg_strncasecmp(query, "index", 5) == 0 ||
+							 pg_strncasecmp(query, "table", 5) == 0))
+		{
+			query += wordlen;
+			query = skip_white_space(query);
+			wordlen = 0;
+			while (isalpha((unsigned char) query[wordlen]))
+				wordlen += PQmblenBounded(&query[wordlen], pset.encoding);
+
+			/*
+			 * REINDEX [ TABLE | INDEX ] CONCURRENTLY are not allowed in
+			 * xacts.
+			 */
+			if (wordlen == 12 && pg_strncasecmp(query, "concurrently", 12) == 0)
+				return true;
+		}
 
 		/* DROP INDEX CONCURRENTLY isn't allowed in xacts */
 		if (wordlen == 5 && pg_strncasecmp(query, "index", 5) == 0)
@@ -2285,9 +2246,6 @@ is_select_command(const char *query)
 
 /*
  * Test if the current user is a database superuser.
- *
- * Note: this will correctly detect superuserness only with a protocol-3.0
- * or newer backend; otherwise it will always say "false".
  */
 bool
 is_superuser(void)
@@ -2308,9 +2266,6 @@ is_superuser(void)
 
 /*
  * Test if the current session uses standard string literals.
- *
- * Note: With a pre-protocol-3.0 connection this will always say "false",
- * which should be the right answer.
  */
 bool
 standard_strings(void)
@@ -2331,10 +2286,6 @@ standard_strings(void)
 
 /*
  * Return the session user of the current connection.
- *
- * Note: this will correctly detect the session user only with a
- * protocol-3.0 or newer backend; otherwise it will return the
- * connection user.
  */
 const char *
 session_username(void)
@@ -2405,8 +2356,6 @@ expand_tilde(char **filename)
 		}
 	}
 #endif
-
-	return;
 }
 
 /*

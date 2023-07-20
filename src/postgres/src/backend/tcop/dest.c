@@ -4,7 +4,7 @@
  *	  support for communication destinations
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -67,36 +67,40 @@ donothingCleanup(DestReceiver *self)
  *		static DestReceiver structs for dest types needing no local state
  * ----------------
  */
-static DestReceiver donothingDR = {
+static const DestReceiver donothingDR = {
 	donothingReceive, donothingStartup, donothingCleanup, donothingCleanup,
 	DestNone
 };
 
-static DestReceiver debugtupDR = {
+static const DestReceiver debugtupDR = {
 	debugtup, debugStartup, donothingCleanup, donothingCleanup,
 	DestDebug
 };
 
-static DestReceiver printsimpleDR = {
+static const DestReceiver printsimpleDR = {
 	printsimple, printsimple_startup, donothingCleanup, donothingCleanup,
 	DestRemoteSimple
 };
 
-static DestReceiver spi_printtupDR = {
+static const DestReceiver spi_printtupDR = {
 	spi_printtup, spi_dest_startup, donothingCleanup, donothingCleanup,
 	DestSPI
 };
 
-/* Globally available receiver for DestNone */
-DestReceiver *None_Receiver = &donothingDR;
-
+/*
+ * Globally available receiver for DestNone.
+ *
+ * It's ok to cast the constness away as any modification of the none receiver
+ * would be a bug (which gets easier to catch this way).
+ */
+DestReceiver *None_Receiver = (DestReceiver *) &donothingDR;
 
 /* ----------------
  *		BeginCommand - initialize the destination at start of command
  * ----------------
  */
 void
-BeginCommand(const char *commandTag, CommandDest dest)
+BeginCommand(CommandTag commandTag, CommandDest dest)
 {
 	/* Nothing to do at present */
 }
@@ -108,6 +112,11 @@ BeginCommand(const char *commandTag, CommandDest dest)
 DestReceiver *
 CreateDestReceiver(CommandDest dest)
 {
+	/*
+	 * It's ok to cast the constness away as any modification of the none
+	 * receiver would be a bug (which gets easier to catch this way).
+	 */
+
 	switch (dest)
 	{
 		case DestRemote:
@@ -115,16 +124,16 @@ CreateDestReceiver(CommandDest dest)
 			return printtup_create_DR(dest);
 
 		case DestRemoteSimple:
-			return &printsimpleDR;
+			return unconstify(DestReceiver *, &printsimpleDR);
 
 		case DestNone:
-			return &donothingDR;
+			return unconstify(DestReceiver *, &donothingDR);
 
 		case DestDebug:
-			return &debugtupDR;
+			return unconstify(DestReceiver *, &debugtupDR);
 
 		case DestSPI:
-			return &spi_printtupDR;
+			return unconstify(DestReceiver *, &spi_printtupDR);
 
 		case DestTuplestore:
 			return CreateTuplestoreDestReceiver();
@@ -146,7 +155,7 @@ CreateDestReceiver(CommandDest dest)
 	}
 
 	/* should never get here */
-	return &donothingDR;
+	pg_unreachable();
 }
 
 /* ----------------
@@ -154,8 +163,12 @@ CreateDestReceiver(CommandDest dest)
  * ----------------
  */
 void
-EndCommand(const char *commandTag, CommandDest dest)
+EndCommand(const QueryCompletion *qc, CommandDest dest, bool force_undecorated_output)
 {
+	char		completionTag[COMPLETION_TAG_BUFSIZE];
+	CommandTag	tag;
+	const char *tagname;
+
 	switch (dest)
 	{
 		case DestRemote:
@@ -163,12 +176,29 @@ EndCommand(const char *commandTag, CommandDest dest)
 		case DestRemoteSimple:
 
 			/*
-			 * We assume the commandTag is plain ASCII and therefore requires
-			 * no encoding conversion.
+			 * We assume the tagname is plain ASCII and therefore requires no
+			 * encoding conversion.
+			 *
+			 * We no longer display LastOid, but to preserve the wire
+			 * protocol, we write InvalidOid where the LastOid used to be
+			 * written.
+			 *
+			 * All cases where LastOid was written also write nprocessed
+			 * count, so just Assert that rather than having an extra test.
 			 */
-			pq_putmessage('C', commandTag, strlen(commandTag) + 1);
-			break;
+			tag = qc->commandTag;
+			tagname = GetCommandTagName(tag);
 
+			if (command_tag_display_rowcount(tag) && !force_undecorated_output)
+				snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
+						 tag == CMDTAG_INSERT ?
+						 "%s 0 " UINT64_FORMAT : "%s " UINT64_FORMAT,
+						 tagname, qc->nprocessed);
+			else
+				snprintf(completionTag, COMPLETION_TAG_BUFSIZE, "%s", tagname);
+			pq_putmessage('C', completionTag, strlen(completionTag) + 1);
+
+			switch_fallthrough();
 		case DestNone:
 		case DestDebug:
 		case DestSPI:
@@ -183,15 +213,22 @@ EndCommand(const char *commandTag, CommandDest dest)
 }
 
 /* ----------------
+ *		EndReplicationCommand - stripped down version of EndCommand
+ *
+ *		For use by replication commands.
+ * ----------------
+ */
+void
+EndReplicationCommand(const char *commandTag)
+{
+	pq_putmessage('C', commandTag, strlen(commandTag) + 1);
+}
+
+/* ----------------
  *		NullCommand - tell dest that an empty query string was recognized
  *
- *		In FE/BE protocol version 1.0, this hack is necessary to support
- *		libpq's crufty way of determining whether a multiple-command
- *		query string is done.  In protocol 2.0 it's probably not really
- *		necessary to distinguish empty queries anymore, but we still do it
- *		for backwards compatibility with 1.0.  In protocol 3.0 it has some
- *		use again, since it ensures that there will be a recognizable end
- *		to the response to an Execute message.
+ *		This ensures that there will be a recognizable end to the response
+ *		to an Execute message in the extended query protocol.
  * ----------------
  */
 void
@@ -203,14 +240,8 @@ NullCommand(CommandDest dest)
 		case DestRemoteExecute:
 		case DestRemoteSimple:
 
-			/*
-			 * tell the fe that we saw an empty query string.  In protocols
-			 * before 3.0 this has a useless empty-string message body.
-			 */
-			if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 3)
-				pq_putemptymessage('I');
-			else
-				pq_putmessage('I', "", 1);
+			/* Tell the FE that we saw an empty query string */
+			pq_putemptymessage('I');
 			break;
 
 		case DestNone:
@@ -245,7 +276,6 @@ ReadyForQuery(CommandDest dest)
 		case DestRemote:
 		case DestRemoteExecute:
 		case DestRemoteSimple:
-			if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 3)
 			{
 				StringInfoData buf;
 
@@ -253,8 +283,6 @@ ReadyForQuery(CommandDest dest)
 				pq_sendbyte(&buf, TransactionBlockStatusCode());
 				pq_endmessage(&buf);
 			}
-			else
-				pq_putemptymessage('Z');
 			/* Flush output at end of cycle in any case. */
 			pq_flush();
 			break;

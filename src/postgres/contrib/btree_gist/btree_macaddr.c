@@ -141,9 +141,8 @@ gbt_macad_consistent(PG_FUNCTION_ARGS)
 	key.lower = (GBT_NUMKEY *) &kkk->lower;
 	key.upper = (GBT_NUMKEY *) &kkk->upper;
 
-	PG_RETURN_BOOL(
-				   gbt_num_consistent(&key, (void *) query, &strategy, GIST_LEAF(entry), &tinfo, fcinfo->flinfo)
-		);
+	PG_RETURN_BOOL(gbt_num_consistent(&key, (void *) query, &strategy,
+									  GIST_LEAF(entry), &tinfo, fcinfo->flinfo));
 }
 
 
@@ -175,17 +174,14 @@ gbt_macad_penalty(PG_FUNCTION_ARGS)
 	penalty_num(result, iorg[0], iorg[1], inew[0], inew[1]);
 
 	PG_RETURN_POINTER(result);
-
 }
 
 Datum
 gbt_macad_picksplit(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_POINTER(gbt_num_picksplit(
-										(GistEntryVector *) PG_GETARG_POINTER(0),
+	PG_RETURN_POINTER(gbt_num_picksplit((GistEntryVector *) PG_GETARG_POINTER(0),
 										(GIST_SPLITVEC *) PG_GETARG_POINTER(1),
-										&tinfo, fcinfo->flinfo
-										));
+										&tinfo, fcinfo->flinfo));
 }
 
 Datum

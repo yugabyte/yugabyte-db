@@ -3,7 +3,7 @@
  * pg_range.c
  *	  routines to support manipulation of the pg_range relation
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -15,8 +15,8 @@
 #include "postgres.h"
 
 #include "access/genam.h"
-#include "access/heapam.h"
 #include "access/htup_details.h"
+#include "access/table.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_collation.h"
@@ -26,7 +26,6 @@
 #include "catalog/pg_type.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
-#include "utils/tqual.h"
 
 
 /*
@@ -36,7 +35,7 @@
 void
 RangeCreate(Oid rangeTypeOid, Oid rangeSubType, Oid rangeCollation,
 			Oid rangeSubOpclass, RegProcedure rangeCanonical,
-			RegProcedure rangeSubDiff)
+			RegProcedure rangeSubDiff, Oid multirangeTypeOid)
 {
 	Relation	pg_range;
 	Datum		values[Natts_pg_range];
@@ -44,8 +43,10 @@ RangeCreate(Oid rangeTypeOid, Oid rangeSubType, Oid rangeCollation,
 	HeapTuple	tup;
 	ObjectAddress myself;
 	ObjectAddress referenced;
+	ObjectAddress referencing;
+	ObjectAddresses *addrs;
 
-	pg_range = heap_open(RangeRelationId, RowExclusiveLock);
+	pg_range = table_open(RangeRelationId, RowExclusiveLock);
 
 	memset(nulls, 0, sizeof(nulls));
 
@@ -55,6 +56,7 @@ RangeCreate(Oid rangeTypeOid, Oid rangeSubType, Oid rangeCollation,
 	values[Anum_pg_range_rngsubopc - 1] = ObjectIdGetDatum(rangeSubOpclass);
 	values[Anum_pg_range_rngcanonical - 1] = ObjectIdGetDatum(rangeCanonical);
 	values[Anum_pg_range_rngsubdiff - 1] = ObjectIdGetDatum(rangeSubDiff);
+	values[Anum_pg_range_rngmultitypid - 1] = ObjectIdGetDatum(multirangeTypeOid);
 
 	tup = heap_form_tuple(RelationGetDescr(pg_range), values, nulls);
 
@@ -62,46 +64,44 @@ RangeCreate(Oid rangeTypeOid, Oid rangeSubType, Oid rangeCollation,
 	heap_freetuple(tup);
 
 	/* record type's dependencies on range-related items */
+	addrs = new_object_addresses();
 
-	myself.classId = TypeRelationId;
-	myself.objectId = rangeTypeOid;
-	myself.objectSubId = 0;
+	ObjectAddressSet(myself, TypeRelationId, rangeTypeOid);
 
-	referenced.classId = TypeRelationId;
-	referenced.objectId = rangeSubType;
-	referenced.objectSubId = 0;
-	recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+	ObjectAddressSet(referenced, TypeRelationId, rangeSubType);
+	add_exact_object_address(&referenced, addrs);
 
-	referenced.classId = OperatorClassRelationId;
-	referenced.objectId = rangeSubOpclass;
-	referenced.objectSubId = 0;
-	recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+	ObjectAddressSet(referenced, OperatorClassRelationId, rangeSubOpclass);
+	add_exact_object_address(&referenced, addrs);
 
 	if (OidIsValid(rangeCollation))
 	{
-		referenced.classId = CollationRelationId;
-		referenced.objectId = rangeCollation;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, CollationRelationId, rangeCollation);
+		add_exact_object_address(&referenced, addrs);
 	}
 
 	if (OidIsValid(rangeCanonical))
 	{
-		referenced.classId = ProcedureRelationId;
-		referenced.objectId = rangeCanonical;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, ProcedureRelationId, rangeCanonical);
+		add_exact_object_address(&referenced, addrs);
 	}
 
 	if (OidIsValid(rangeSubDiff))
 	{
-		referenced.classId = ProcedureRelationId;
-		referenced.objectId = rangeSubDiff;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, ProcedureRelationId, rangeSubDiff);
+		add_exact_object_address(&referenced, addrs);
 	}
 
-	heap_close(pg_range, RowExclusiveLock);
+	record_object_address_dependencies(&myself, addrs, DEPENDENCY_NORMAL);
+	free_object_addresses(addrs);
+
+	/* record multirange type's dependency on the range type */
+	referencing.classId = TypeRelationId;
+	referencing.objectId = multirangeTypeOid;
+	referencing.objectSubId = 0;
+	recordDependencyOn(&referencing, &myself, DEPENDENCY_INTERNAL);
+
+	table_close(pg_range, RowExclusiveLock);
 }
 
 
@@ -117,7 +117,7 @@ RangeDelete(Oid rangeTypeOid)
 	SysScanDesc scan;
 	HeapTuple	tup;
 
-	pg_range = heap_open(RangeRelationId, RowExclusiveLock);
+	pg_range = table_open(RangeRelationId, RowExclusiveLock);
 
 	ScanKeyInit(&key[0],
 				Anum_pg_range_rngtypid,
@@ -134,5 +134,5 @@ RangeDelete(Oid rangeTypeOid)
 
 	systable_endscan(scan);
 
-	heap_close(pg_range, RowExclusiveLock);
+	table_close(pg_range, RowExclusiveLock);
 }

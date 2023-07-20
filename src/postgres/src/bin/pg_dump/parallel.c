@@ -4,7 +4,7 @@
  *
  *	Parallel support for pg_dump and pg_restore
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -16,20 +16,20 @@
 /*
  * Parallel operation works like this:
  *
- * The original, master process calls ParallelBackupStart(), which forks off
+ * The original, leader process calls ParallelBackupStart(), which forks off
  * the desired number of worker processes, which each enter WaitForCommands().
  *
- * The master process dispatches an individual work item to one of the worker
+ * The leader process dispatches an individual work item to one of the worker
  * processes in DispatchJobForTocEntry().  We send a command string such as
  * "DUMP 1234" or "RESTORE 1234", where 1234 is the TocEntry ID.
  * The worker process receives and decodes the command and passes it to the
  * routine pointed to by AH->WorkerJobDumpPtr or AH->WorkerJobRestorePtr,
  * which are routines of the current archive format.  That routine performs
  * the required action (dump or restore) and returns an integer status code.
- * This is passed back to the master where we pass it to the
+ * This is passed back to the leader where we pass it to the
  * ParallelCompletionPtr callback function that was passed to
  * DispatchJobForTocEntry().  The callback function does state updating
- * for the master control logic in pg_backup_archiver.c.
+ * for the leader control logic in pg_backup_archiver.c.
  *
  * In principle additional archive-format-specific information might be needed
  * in commands or worker status responses, but so far that hasn't proved
@@ -40,8 +40,9 @@
  * threads in the same process.  To avoid problems, they work with cloned
  * copies of the Archive data structure; see RunWorker().)
  *
- * In the master process, the workerStatus field for each worker has one of
+ * In the leader process, the workerStatus field for each worker has one of
  * the following values:
+ *		WRKR_NOT_STARTED: we've not yet forked this worker
  *		WRKR_IDLE: it's waiting for a command
  *		WRKR_WORKING: it's working on a command
  *		WRKR_TERMINATED: process ended
@@ -61,10 +62,9 @@
 #include <sys/select.h>
 #endif
 
+#include "fe_utils/string_utils.h"
 #include "parallel.h"
 #include "pg_backup_utils.h"
-
-#include "fe_utils/string_utils.h"
 #include "port/pg_bswap.h"
 
 /* Mnemonic macros for indexing the fd array returned by pipe(2) */
@@ -76,16 +76,20 @@
 /* Worker process statuses */
 typedef enum
 {
+	WRKR_NOT_STARTED = 0,
 	WRKR_IDLE,
 	WRKR_WORKING,
 	WRKR_TERMINATED
 } T_WorkerStatus;
 
+#define WORKER_IS_RUNNING(workerStatus) \
+	((workerStatus) == WRKR_IDLE || (workerStatus) == WRKR_WORKING)
+
 /*
  * Private per-parallel-worker state (typedef for this is in parallel.h).
  *
- * Much of this is valid only in the master process (or, on Windows, should
- * be touched only by the master thread).  But the AH field should be touched
+ * Much of this is valid only in the leader process (or, on Windows, should
+ * be touched only by the leader thread).  But the AH field should be touched
  * only by workers.  The pipe descriptors are valid everywhere.
  */
 struct ParallelSlot
@@ -98,7 +102,7 @@ struct ParallelSlot
 
 	ArchiveHandle *AH;			/* Archive data worker is using */
 
-	int			pipeRead;		/* master's end of the pipes */
+	int			pipeRead;		/* leader's end of the pipes */
 	int			pipeWrite;
 	int			pipeRevRead;	/* child's end of the pipes */
 	int			pipeRevWrite;
@@ -120,13 +124,13 @@ struct ParallelSlot
  */
 typedef struct
 {
-	ArchiveHandle *AH;			/* master database connection */
+	ArchiveHandle *AH;			/* leader database connection */
 	ParallelSlot *slot;			/* this worker's parallel slot */
 } WorkerInfo;
 
 /* Windows implementation of pipe access */
 static int	pgpipe(int handles[2]);
-static int	piperead(int s, char *buf, int len);
+#define piperead(a,b,c)		recv(a,b,c,0)
 #define pipewrite(a,b,c)	send(a,b,c,0)
 
 #else							/* !WIN32 */
@@ -153,9 +157,9 @@ static ShutdownInformation shutdown_info;
  * State info for signal handling.
  * We assume signal_info initializes to zeroes.
  *
- * On Unix, myAH is the master DB connection in the master process, and the
+ * On Unix, myAH is the leader DB connection in the leader process, and the
  * worker's own connection in worker processes.  On Windows, we have only one
- * instance of signal_info, so myAH is the master connection and the worker
+ * instance of signal_info, so myAH is the leader connection and the worker
  * connections must be dug out of pstate->parallelSlot[].
  */
 typedef struct DumpSignalInformation
@@ -197,8 +201,6 @@ bool		parallel_init_done = false;
 DWORD		mainThreadId;
 #endif							/* WIN32 */
 
-static const char *modulename = gettext_noop("parallel archiver");
-
 /* Local function prototypes */
 static ParallelSlot *GetMyPSlot(ParallelState *pstate);
 static void archive_close_connection(int code, void *arg);
@@ -213,34 +215,19 @@ static bool HasEveryWorkerTerminated(ParallelState *pstate);
 static void lockTableForWorker(ArchiveHandle *AH, TocEntry *te);
 static void WaitForCommands(ArchiveHandle *AH, int pipefd[2]);
 static bool ListenToWorkers(ArchiveHandle *AH, ParallelState *pstate,
-				bool do_wait);
-static char *getMessageFromMaster(int pipefd[2]);
-static void sendMessageToMaster(int pipefd[2], const char *str);
+							bool do_wait);
+static char *getMessageFromLeader(int pipefd[2]);
+static void sendMessageToLeader(int pipefd[2], const char *str);
 static int	select_loop(int maxFd, fd_set *workerset);
 static char *getMessageFromWorker(ParallelState *pstate,
-					 bool do_wait, int *worker);
+								  bool do_wait, int *worker);
 static void sendMessageToWorker(ParallelState *pstate,
-					int worker, const char *str);
+								int worker, const char *str);
 static char *readMessageFromPipe(int fd);
 
 #define messageStartsWith(msg, prefix) \
 	(strncmp(msg, prefix, strlen(prefix)) == 0)
-#define messageEquals(msg, pattern) \
-	(strcmp(msg, pattern) == 0)
 
-
-/*
- * Shutdown callback to clean up socket access
- */
-#ifdef WIN32
-static void
-shutdown_parallel_dump_utils(int code, void *unused)
-{
-	/* Call the cleanup function only from the main thread */
-	if (mainThreadId == GetCurrentThreadId())
-		WSACleanup();
-}
-#endif
 
 /*
  * Initialize parallel dump support --- should be called early in process
@@ -263,12 +250,8 @@ init_parallel_dump_utils(void)
 		/* Initialize socket access */
 		err = WSAStartup(MAKEWORD(2, 2), &wsaData);
 		if (err != 0)
-		{
-			fprintf(stderr, _("%s: WSAStartup failed: %d\n"), progname, err);
-			exit_nicely(1);
-		}
-		/* ... and arrange to shut it down at exit */
-		on_exit_nicely(shutdown_parallel_dump_utils, NULL);
+			pg_fatal("%s() failed: error code %d", "WSAStartup", err);
+
 		parallel_init_done = true;
 	}
 #endif
@@ -277,7 +260,7 @@ init_parallel_dump_utils(void)
 /*
  * Find the ParallelSlot for the current worker process or thread.
  *
- * Returns NULL if no matching slot is found (this implies we're the master).
+ * Returns NULL if no matching slot is found (this implies we're the leader).
  */
 static ParallelSlot *
 GetMyPSlot(ParallelState *pstate)
@@ -367,7 +350,7 @@ archive_close_connection(int code, void *arg)
 		if (!slot)
 		{
 			/*
-			 * We're the master.  Forcibly shut down workers, then close our
+			 * We're the leader.  Forcibly shut down workers, then close our
 			 * own database connection, if any.
 			 */
 			ShutdownWorkersHard(si->pstate);
@@ -381,7 +364,7 @@ archive_close_connection(int code, void *arg)
 			 * We're a worker.  Shut down our own DB connection if any.  On
 			 * Windows, we also have to close our communication sockets, to
 			 * emulate what will happen on Unix when the worker process exits.
-			 * (Without this, if this is a premature exit, the master would
+			 * (Without this, if this is a premature exit, the leader would
 			 * fail to detect it because there would be no EOF condition on
 			 * the other end of the pipe.)
 			 */
@@ -396,7 +379,7 @@ archive_close_connection(int code, void *arg)
 	}
 	else
 	{
-		/* Non-parallel operation: just kill the master DB connection */
+		/* Non-parallel operation: just kill the leader DB connection */
 		if (si->AHX)
 			DisconnectDatabase(si->AHX);
 	}
@@ -406,8 +389,8 @@ archive_close_connection(int code, void *arg)
  * Forcibly shut down any remaining workers, waiting for them to finish.
  *
  * Note that we don't expect to come here during normal exit (the workers
- * should be long gone, and the ParallelState too).  We're only here in an
- * exit_horribly() situation, so intervening to cancel active commands is
+ * should be long gone, and the ParallelState too).  We're only here in a
+ * pg_fatal() situation, so intervening to cancel active commands is
  * appropriate.
  */
 static void
@@ -417,7 +400,9 @@ ShutdownWorkersHard(ParallelState *pstate)
 
 	/*
 	 * Close our write end of the sockets so that any workers waiting for
-	 * commands know they can exit.
+	 * commands know they can exit.  (Note: some of the pipeWrite fields might
+	 * still be zero, if we failed to initialize all the workers.  Hence, just
+	 * ignore errors here.)
 	 */
 	for (i = 0; i < pstate->numWorkers; i++)
 		closesocket(pstate->parallelSlot[i].pipeWrite);
@@ -491,7 +476,7 @@ WaitForTerminatingWorkers(ParallelState *pstate)
 
 		for (j = 0; j < pstate->numWorkers; j++)
 		{
-			if (pstate->parallelSlot[j].workerStatus != WRKR_TERMINATED)
+			if (WORKER_IS_RUNNING(pstate->parallelSlot[j].workerStatus))
 			{
 				lpHandles[nrun] = (HANDLE) pstate->parallelSlot[j].hThread;
 				nrun++;
@@ -539,11 +524,11 @@ WaitForTerminatingWorkers(ParallelState *pstate)
  *
  * In parallel operation on Unix, each process is responsible for canceling
  * its own connection (this must be so because nobody else has access to it).
- * Furthermore, the master process should attempt to forward its signal to
+ * Furthermore, the leader process should attempt to forward its signal to
  * each child.  In simple manual use of pg_dump/pg_restore, forwarding isn't
  * needed because typing control-C at the console would deliver SIGINT to
  * every member of the terminal process group --- but in other scenarios it
- * might be that only the master gets signaled.
+ * might be that only the leader gets signaled.
  *
  * On Windows, the cancel handler runs in a separate thread, because that's
  * how SetConsoleCtrlHandler works.  We make it stop worker threads, send
@@ -574,8 +559,8 @@ sigTermHandler(SIGNAL_ARGS)
 	pqsignal(SIGQUIT, SIG_IGN);
 
 	/*
-	 * If we're in the master, forward signal to all workers.  (It seems best
-	 * to do this before PQcancel; killing the master transaction will result
+	 * If we're in the leader, forward signal to all workers.  (It seems best
+	 * to do this before PQcancel; killing the leader transaction will result
 	 * in invalid-snapshot errors from active workers, which maybe we can
 	 * quiet by killing workers first.)  Ignore any errors.
 	 */
@@ -599,7 +584,7 @@ sigTermHandler(SIGNAL_ARGS)
 
 	/*
 	 * Report we're quitting, using nothing more complicated than write(2).
-	 * When in parallel operation, only the master process should do this.
+	 * When in parallel operation, only the leader process should do this.
 	 */
 	if (!signal_info.am_worker)
 	{
@@ -611,8 +596,11 @@ sigTermHandler(SIGNAL_ARGS)
 		write_stderr("terminated by user\n");
 	}
 
-	/* And die. */
-	exit(1);
+	/*
+	 * And die, using _exit() not exit() because the latter will invoke atexit
+	 * handlers that can fail if we interrupted related code.
+	 */
+	_exit(1);
 }
 
 /*
@@ -660,7 +648,7 @@ consoleHandler(DWORD dwCtrlType)
 		 * If in parallel mode, stop worker threads and send QueryCancel to
 		 * their connected backends.  The main point of stopping the worker
 		 * threads is to keep them from reporting the query cancels as errors,
-		 * which would clutter the user's screen.  We needn't stop the master
+		 * which would clutter the user's screen.  We needn't stop the leader
 		 * thread since it won't be doing much anyway.  Do this before
 		 * canceling the main transaction, else we might get invalid-snapshot
 		 * errors reported before we can stop the workers.  Ignore errors,
@@ -688,7 +676,7 @@ consoleHandler(DWORD dwCtrlType)
 		}
 
 		/*
-		 * Send QueryCancel to master connection, if enabled.  Ignore errors,
+		 * Send QueryCancel to leader connection, if enabled.  Ignore errors,
 		 * there's not much we can do about them anyway.
 		 */
 		if (signal_info.myAH != NULL && signal_info.myAH->connCancel != NULL)
@@ -699,7 +687,7 @@ consoleHandler(DWORD dwCtrlType)
 
 		/*
 		 * Report we're quitting, using nothing more complicated than
-		 * write(2).  (We might be able to get away with using write_msg()
+		 * write(2).  (We might be able to get away with using pg_log_*()
 		 * here, but since we terminated other threads uncleanly above, it
 		 * seems better to assume as little as possible.)
 		 */
@@ -924,6 +912,7 @@ ParallelBackupStart(ArchiveHandle *AH)
 	if (AH->public.numWorkers == 1)
 		return pstate;
 
+	/* Create status arrays, being sure to initialize all fields to 0 */
 	pstate->te = (TocEntry **)
 		pg_malloc0(pstate->numWorkers * sizeof(TocEntry *));
 	pstate->parallelSlot = (ParallelSlot *)
@@ -943,11 +932,11 @@ ParallelBackupStart(ArchiveHandle *AH)
 	shutdown_info.pstate = pstate;
 
 	/*
-	 * Temporarily disable query cancellation on the master connection.  This
+	 * Temporarily disable query cancellation on the leader connection.  This
 	 * ensures that child processes won't inherit valid AH->connCancel
-	 * settings and thus won't try to issue cancels against the master's
+	 * settings and thus won't try to issue cancels against the leader's
 	 * connection.  No harm is done if we fail while it's disabled, because
-	 * the master connection is idle at this point anyway.
+	 * the leader connection is idle at this point anyway.
 	 */
 	set_archive_cancel_info(AH, NULL);
 
@@ -969,18 +958,9 @@ ParallelBackupStart(ArchiveHandle *AH)
 
 		/* Create communication pipes for this worker */
 		if (pgpipe(pipeMW) < 0 || pgpipe(pipeWM) < 0)
-			exit_horribly(modulename,
-						  "could not create communication channels: %s\n",
-						  strerror(errno));
+			pg_fatal("could not create communication channels: %m");
 
-		pstate->te[i] = NULL;	/* just for safety */
-
-		slot->workerStatus = WRKR_IDLE;
-		slot->AH = NULL;
-		slot->callback = NULL;
-		slot->callback_data = NULL;
-
-		/* master's ends of the pipes */
+		/* leader's ends of the pipes */
 		slot->pipeRead = pipeWM[PIPE_READ];
 		slot->pipeWrite = pipeMW[PIPE_WRITE];
 		/* child's ends of the pipes */
@@ -997,6 +977,7 @@ ParallelBackupStart(ArchiveHandle *AH)
 		handle = _beginthreadex(NULL, 0, (void *) &init_spawned_worker_win32,
 								wi, 0, &(slot->threadId));
 		slot->hThread = handle;
+		slot->workerStatus = WRKR_IDLE;
 #else							/* !WIN32 */
 		pid = fork();
 		if (pid == 0)
@@ -1010,13 +991,13 @@ ParallelBackupStart(ArchiveHandle *AH)
 			/* instruct signal handler that we're in a worker now */
 			signal_info.am_worker = true;
 
-			/* close read end of Worker -> Master */
+			/* close read end of Worker -> Leader */
 			closesocket(pipeWM[PIPE_READ]);
-			/* close write end of Master -> Worker */
+			/* close write end of Leader -> Worker */
 			closesocket(pipeMW[PIPE_WRITE]);
 
 			/*
-			 * Close all inherited fds for communication of the master with
+			 * Close all inherited fds for communication of the leader with
 			 * previously-forked workers.
 			 */
 			for (j = 0; j < i; j++)
@@ -1034,23 +1015,22 @@ ParallelBackupStart(ArchiveHandle *AH)
 		else if (pid < 0)
 		{
 			/* fork failed */
-			exit_horribly(modulename,
-						  "could not create worker process: %s\n",
-						  strerror(errno));
+			pg_fatal("could not create worker process: %m");
 		}
 
-		/* In Master after successful fork */
+		/* In Leader after successful fork */
 		slot->pid = pid;
+		slot->workerStatus = WRKR_IDLE;
 
-		/* close read end of Master -> Worker */
+		/* close read end of Leader -> Worker */
 		closesocket(pipeMW[PIPE_READ]);
-		/* close write end of Worker -> Master */
+		/* close write end of Worker -> Leader */
 		closesocket(pipeWM[PIPE_WRITE]);
 #endif							/* WIN32 */
 	}
 
 	/*
-	 * Having forked off the workers, disable SIGPIPE so that master isn't
+	 * Having forked off the workers, disable SIGPIPE so that leader isn't
 	 * killed if it tries to send a command to a dead worker.  We don't want
 	 * the workers to inherit this setting, though.
 	 */
@@ -1059,7 +1039,7 @@ ParallelBackupStart(ArchiveHandle *AH)
 #endif
 
 	/*
-	 * Re-establish query cancellation on the master connection.
+	 * Re-establish query cancellation on the leader connection.
 	 */
 	set_archive_cancel_info(AH, AH->connection);
 
@@ -1165,13 +1145,12 @@ parseWorkerCommand(ArchiveHandle *AH, TocEntry **te, T_Action *act,
 		Assert(*te != NULL);
 	}
 	else
-		exit_horribly(modulename,
-					  "unrecognized command received from master: \"%s\"\n",
-					  msg);
+		pg_fatal("unrecognized command received from leader: \"%s\"",
+				 msg);
 }
 
 /*
- * buildWorkerResponse: format a response string to send to the master.
+ * buildWorkerResponse: format a response string to send to the leader.
  *
  * The string is built in the caller-supplied buffer of size buflen.
  */
@@ -1209,9 +1188,8 @@ parseWorkerResponse(ArchiveHandle *AH, TocEntry *te,
 		AH->public.n_errors += n_errors;
 	}
 	else
-		exit_horribly(modulename,
-					  "invalid message received from worker: \"%s\"\n",
-					  msg);
+		pg_fatal("invalid message received from worker: \"%s\"",
+				 msg);
 
 	return status;
 }
@@ -1270,7 +1248,7 @@ GetIdleWorker(ParallelState *pstate)
 }
 
 /*
- * Return true iff every worker is in the WRKR_TERMINATED state.
+ * Return true iff no worker is running.
  */
 static bool
 HasEveryWorkerTerminated(ParallelState *pstate)
@@ -1279,7 +1257,7 @@ HasEveryWorkerTerminated(ParallelState *pstate)
 
 	for (i = 0; i < pstate->numWorkers; i++)
 	{
-		if (pstate->parallelSlot[i].workerStatus != WRKR_TERMINATED)
+		if (WORKER_IS_RUNNING(pstate->parallelSlot[i].workerStatus))
 			return false;
 	}
 	return true;
@@ -1304,16 +1282,16 @@ IsEveryWorkerIdle(ParallelState *pstate)
 /*
  * Acquire lock on a table to be dumped by a worker process.
  *
- * The master process is already holding an ACCESS SHARE lock.  Ordinarily
+ * The leader process is already holding an ACCESS SHARE lock.  Ordinarily
  * it's no problem for a worker to get one too, but if anything else besides
  * pg_dump is running, there's a possible deadlock:
  *
- * 1) Master dumps the schema and locks all tables in ACCESS SHARE mode.
+ * 1) Leader dumps the schema and locks all tables in ACCESS SHARE mode.
  * 2) Another process requests an ACCESS EXCLUSIVE lock (which is not granted
- *	  because the master holds a conflicting ACCESS SHARE lock).
+ *	  because the leader holds a conflicting ACCESS SHARE lock).
  * 3) A worker process also requests an ACCESS SHARE lock to read the table.
  *	  The worker is enqueued behind the ACCESS EXCLUSIVE lock request.
- * 4) Now we have a deadlock, since the master is effectively waiting for
+ * 4) Now we have a deadlock, since the leader is effectively waiting for
  *	  the worker.  The server cannot detect that, however.
  *
  * To prevent an infinite wait, prior to touching a table in a worker, request
@@ -1342,11 +1320,10 @@ lockTableForWorker(ArchiveHandle *AH, TocEntry *te)
 	res = PQexec(AH->connection, query->data);
 
 	if (!res || PQresultStatus(res) != PGRES_COMMAND_OK)
-		exit_horribly(modulename,
-					  "could not obtain lock on relation \"%s\"\n"
-					  "This usually means that someone requested an ACCESS EXCLUSIVE lock "
-					  "on the table after the ysql_dump parent process had gotten the "
-					  "initial ACCESS SHARE lock on the table.\n", qualId);
+		pg_fatal("could not obtain lock on relation \"%s\"\n"
+				 "This usually means that someone requested an ACCESS EXCLUSIVE lock "
+				 "on the table after the ysql_dump parent process had gotten the "
+				 "initial ACCESS SHARE lock on the table.", qualId);
 
 	PQclear(res);
 	destroyPQExpBuffer(query);
@@ -1355,7 +1332,7 @@ lockTableForWorker(ArchiveHandle *AH, TocEntry *te)
 /*
  * WaitForCommands: main routine for a worker process.
  *
- * Read and execute commands from the master until we see EOF on the pipe.
+ * Read and execute commands from the leader until we see EOF on the pipe.
  */
 static void
 WaitForCommands(ArchiveHandle *AH, int pipefd[2])
@@ -1368,7 +1345,7 @@ WaitForCommands(ArchiveHandle *AH, int pipefd[2])
 
 	for (;;)
 	{
-		if (!(command = getMessageFromMaster(pipefd)))
+		if (!(command = getMessageFromLeader(pipefd)))
 		{
 			/* EOF, so done */
 			return;
@@ -1393,10 +1370,10 @@ WaitForCommands(ArchiveHandle *AH, int pipefd[2])
 		else
 			Assert(false);
 
-		/* Return status to master */
+		/* Return status to leader */
 		buildWorkerResponse(AH, te, act, status, buf, sizeof(buf));
 
-		sendMessageToMaster(pipefd, buf);
+		sendMessageToLeader(pipefd, buf);
 
 		/* command was pg_malloc'd and we are responsible for free()ing it. */
 		free(command);
@@ -1432,7 +1409,7 @@ ListenToWorkers(ArchiveHandle *AH, ParallelState *pstate, bool do_wait)
 	{
 		/* If do_wait is true, we must have detected EOF on some socket */
 		if (do_wait)
-			exit_horribly(modulename, "a worker process died unexpectedly\n");
+			pg_fatal("a worker process died unexpectedly");
 		return false;
 	}
 
@@ -1449,9 +1426,8 @@ ListenToWorkers(ArchiveHandle *AH, ParallelState *pstate, bool do_wait)
 		pstate->te[worker] = NULL;
 	}
 	else
-		exit_horribly(modulename,
-					  "invalid message received from worker: \"%s\"\n",
-					  msg);
+		pg_fatal("invalid message received from worker: \"%s\"",
+				 msg);
 
 	/* Free the string returned from getMessageFromWorker */
 	free(msg);
@@ -1471,7 +1447,7 @@ ListenToWorkers(ArchiveHandle *AH, ParallelState *pstate, bool do_wait)
  * Any received results are passed to the callback specified to
  * DispatchJobForTocEntry.
  *
- * This function is executed in the master process.
+ * This function is executed in the leader process.
  */
 void
 WaitForWorkers(ArchiveHandle *AH, ParallelState *pstate, WFW_WaitOption mode)
@@ -1532,32 +1508,30 @@ WaitForWorkers(ArchiveHandle *AH, ParallelState *pstate, WFW_WaitOption mode)
 }
 
 /*
- * Read one command message from the master, blocking if necessary
+ * Read one command message from the leader, blocking if necessary
  * until one is available, and return it as a malloc'd string.
  * On EOF, return NULL.
  *
  * This function is executed in worker processes.
  */
 static char *
-getMessageFromMaster(int pipefd[2])
+getMessageFromLeader(int pipefd[2])
 {
 	return readMessageFromPipe(pipefd[PIPE_READ]);
 }
 
 /*
- * Send a status message to the master.
+ * Send a status message to the leader.
  *
  * This function is executed in worker processes.
  */
 static void
-sendMessageToMaster(int pipefd[2], const char *str)
+sendMessageToLeader(int pipefd[2], const char *str)
 {
 	int			len = strlen(str) + 1;
 
 	if (pipewrite(pipefd[PIPE_WRITE], str, len) != len)
-		exit_horribly(modulename,
-					  "could not write to the communication channel: %s\n",
-					  strerror(errno));
+		pg_fatal("could not write to the communication channel: %m");
 }
 
 /*
@@ -1601,7 +1575,7 @@ select_loop(int maxFd, fd_set *workerset)
  * that's hard to distinguish from the no-data-available case, but for now
  * our one caller is okay with that.
  *
- * This function is executed in the master process.
+ * This function is executed in the leader process.
  */
 static char *
 getMessageFromWorker(ParallelState *pstate, bool do_wait, int *worker)
@@ -1615,7 +1589,7 @@ getMessageFromWorker(ParallelState *pstate, bool do_wait, int *worker)
 	FD_ZERO(&workerset);
 	for (i = 0; i < pstate->numWorkers; i++)
 	{
-		if (pstate->parallelSlot[i].workerStatus == WRKR_TERMINATED)
+		if (!WORKER_IS_RUNNING(pstate->parallelSlot[i].workerStatus))
 			continue;
 		FD_SET(pstate->parallelSlot[i].pipeRead, &workerset);
 		if (pstate->parallelSlot[i].pipeRead > maxFd)
@@ -1634,12 +1608,14 @@ getMessageFromWorker(ParallelState *pstate, bool do_wait, int *worker)
 	}
 
 	if (i < 0)
-		exit_horribly(modulename, "select() failed: %s\n", strerror(errno));
+		pg_fatal("%s() failed: %m", "select");
 
 	for (i = 0; i < pstate->numWorkers; i++)
 	{
 		char	   *msg;
 
+		if (!WORKER_IS_RUNNING(pstate->parallelSlot[i].workerStatus))
+			continue;
 		if (!FD_ISSET(pstate->parallelSlot[i].pipeRead, &workerset))
 			continue;
 
@@ -1664,7 +1640,7 @@ getMessageFromWorker(ParallelState *pstate, bool do_wait, int *worker)
 /*
  * Send a command message to the specified worker process.
  *
- * This function is executed in the master process.
+ * This function is executed in the leader process.
  */
 static void
 sendMessageToWorker(ParallelState *pstate, int worker, const char *str)
@@ -1673,9 +1649,7 @@ sendMessageToWorker(ParallelState *pstate, int worker, const char *str)
 
 	if (pipewrite(pstate->parallelSlot[worker].pipeWrite, str, len) != len)
 	{
-		exit_horribly(modulename,
-					  "could not write to the communication channel: %s\n",
-					  strerror(errno));
+		pg_fatal("could not write to the communication channel: %m");
 	}
 }
 
@@ -1697,7 +1671,7 @@ readMessageFromPipe(int fd)
 	/*
 	 * In theory, if we let piperead() read multiple bytes, it might give us
 	 * back fragments of multiple messages.  (That can't actually occur, since
-	 * neither master nor workers send more than one message without waiting
+	 * neither leader nor workers send more than one message without waiting
 	 * for a reply, but we don't wish to assume that here.)  For simplicity,
 	 * read a byte at a time until we get the terminating '\0'.  This method
 	 * is a bit inefficient, but since this is only used for relatively short
@@ -1759,8 +1733,8 @@ pgpipe(int handles[2])
 	 */
 	if ((s = socket(AF_INET, SOCK_STREAM, 0)) == PGINVALID_SOCKET)
 	{
-		write_msg(modulename, "pgpipe: could not create socket: error code %d\n",
-				  WSAGetLastError());
+		pg_log_error("pgpipe: could not create socket: error code %d",
+					 WSAGetLastError());
 		return -1;
 	}
 
@@ -1770,22 +1744,22 @@ pgpipe(int handles[2])
 	serv_addr.sin_addr.s_addr = pg_hton32(INADDR_LOOPBACK);
 	if (bind(s, (SOCKADDR *) &serv_addr, len) == SOCKET_ERROR)
 	{
-		write_msg(modulename, "pgpipe: could not bind: error code %d\n",
-				  WSAGetLastError());
+		pg_log_error("pgpipe: could not bind: error code %d",
+					 WSAGetLastError());
 		closesocket(s);
 		return -1;
 	}
 	if (listen(s, 1) == SOCKET_ERROR)
 	{
-		write_msg(modulename, "pgpipe: could not listen: error code %d\n",
-				  WSAGetLastError());
+		pg_log_error("pgpipe: could not listen: error code %d",
+					 WSAGetLastError());
 		closesocket(s);
 		return -1;
 	}
 	if (getsockname(s, (SOCKADDR *) &serv_addr, &len) == SOCKET_ERROR)
 	{
-		write_msg(modulename, "pgpipe: getsockname() failed: error code %d\n",
-				  WSAGetLastError());
+		pg_log_error("pgpipe: %s() failed: error code %d", "getsockname",
+					 WSAGetLastError());
 		closesocket(s);
 		return -1;
 	}
@@ -1795,8 +1769,8 @@ pgpipe(int handles[2])
 	 */
 	if ((tmp_sock = socket(AF_INET, SOCK_STREAM, 0)) == PGINVALID_SOCKET)
 	{
-		write_msg(modulename, "pgpipe: could not create second socket: error code %d\n",
-				  WSAGetLastError());
+		pg_log_error("pgpipe: could not create second socket: error code %d",
+					 WSAGetLastError());
 		closesocket(s);
 		return -1;
 	}
@@ -1804,8 +1778,8 @@ pgpipe(int handles[2])
 
 	if (connect(handles[1], (SOCKADDR *) &serv_addr, len) == SOCKET_ERROR)
 	{
-		write_msg(modulename, "pgpipe: could not connect socket: error code %d\n",
-				  WSAGetLastError());
+		pg_log_error("pgpipe: could not connect socket: error code %d",
+					 WSAGetLastError());
 		closesocket(handles[1]);
 		handles[1] = -1;
 		closesocket(s);
@@ -1813,8 +1787,8 @@ pgpipe(int handles[2])
 	}
 	if ((tmp_sock = accept(s, (SOCKADDR *) &serv_addr, &len)) == PGINVALID_SOCKET)
 	{
-		write_msg(modulename, "pgpipe: could not accept connection: error code %d\n",
-				  WSAGetLastError());
+		pg_log_error("pgpipe: could not accept connection: error code %d",
+					 WSAGetLastError());
 		closesocket(handles[1]);
 		handles[1] = -1;
 		closesocket(s);
@@ -1824,22 +1798,6 @@ pgpipe(int handles[2])
 
 	closesocket(s);
 	return 0;
-}
-
-/*
- * Windows implementation of reading from a pipe.
- */
-static int
-piperead(int s, char *buf, int len)
-{
-	int			ret = recv(s, buf, len, 0);
-
-	if (ret < 0 && WSAGetLastError() == WSAECONNRESET)
-	{
-		/* EOF on the pipe! */
-		ret = 0;
-	}
-	return ret;
 }
 
 #endif							/* WIN32 */

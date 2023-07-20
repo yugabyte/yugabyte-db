@@ -3,7 +3,7 @@
  * amutils.c
  *	  SQL-level APIs related to index access methods.
  *
- * Copyright (c) 2016-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2022, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -444,4 +444,27 @@ pg_index_column_has_property(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 
 	return indexam_property(fcinfo, propname, InvalidOid, relid, attno);
+}
+
+/*
+ * Return the name of the given phase, as used for progress reporting by the
+ * given AM.
+ */
+Datum
+pg_indexam_progress_phasename(PG_FUNCTION_ARGS)
+{
+	Oid			amoid = PG_GETARG_OID(0);
+	int32		phasenum = PG_GETARG_INT32(1);
+	IndexAmRoutine *routine;
+	char	   *name;
+
+	routine = GetIndexAmRoutineByAmId(amoid, true);
+	if (routine == NULL || !routine->ambuildphasename)
+		PG_RETURN_NULL();
+
+	name = routine->ambuildphasename(phasenum);
+	if (!name)
+		PG_RETURN_NULL();
+
+	PG_RETURN_TEXT_P(CStringGetTextDatum(name));
 }

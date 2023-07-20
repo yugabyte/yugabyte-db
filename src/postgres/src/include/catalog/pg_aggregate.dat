@@ -3,7 +3,7 @@
 # pg_aggregate.dat
 #    Initial contents of the pg_aggregate system catalog.
 #
-# Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/include/catalog/pg_aggregate.dat
@@ -104,9 +104,6 @@
 { aggfnoid => 'max(float8)', aggtransfn => 'float8larger',
   aggcombinefn => 'float8larger', aggsortop => '>(float8,float8)',
   aggtranstype => 'float8' },
-{ aggfnoid => 'max(abstime)', aggtransfn => 'int4larger',
-  aggcombinefn => 'int4larger', aggsortop => '>(abstime,abstime)',
-  aggtranstype => 'abstime' },
 { aggfnoid => 'max(date)', aggtransfn => 'date_larger',
   aggcombinefn => 'date_larger', aggsortop => '>(date,date)',
   aggtranstype => 'date' },
@@ -149,6 +146,12 @@
 { aggfnoid => 'max(inet)', aggtransfn => 'network_larger',
   aggcombinefn => 'network_larger', aggsortop => '>(inet,inet)',
   aggtranstype => 'inet' },
+{ aggfnoid => 'max(pg_lsn)', aggtransfn => 'pg_lsn_larger',
+  aggcombinefn => 'pg_lsn_larger', aggsortop => '>(pg_lsn,pg_lsn)',
+  aggtranstype => 'pg_lsn' },
+{ aggfnoid => 'max(xid8)', aggtransfn => 'xid8_larger',
+  aggcombinefn => 'xid8_larger', aggsortop => '>(xid8,xid8)',
+  aggtranstype => 'xid8' },
 
 # min
 { aggfnoid => 'min(int8)', aggtransfn => 'int8smaller',
@@ -169,9 +172,6 @@
 { aggfnoid => 'min(float8)', aggtransfn => 'float8smaller',
   aggcombinefn => 'float8smaller', aggsortop => '<(float8,float8)',
   aggtranstype => 'float8' },
-{ aggfnoid => 'min(abstime)', aggtransfn => 'int4smaller',
-  aggcombinefn => 'int4smaller', aggsortop => '<(abstime,abstime)',
-  aggtranstype => 'abstime' },
 { aggfnoid => 'min(date)', aggtransfn => 'date_smaller',
   aggcombinefn => 'date_smaller', aggsortop => '<(date,date)',
   aggtranstype => 'date' },
@@ -214,6 +214,12 @@
 { aggfnoid => 'min(inet)', aggtransfn => 'network_smaller',
   aggcombinefn => 'network_smaller', aggsortop => '<(inet,inet)',
   aggtranstype => 'inet' },
+{ aggfnoid => 'min(pg_lsn)', aggtransfn => 'pg_lsn_smaller',
+  aggcombinefn => 'pg_lsn_smaller', aggsortop => '<(pg_lsn,pg_lsn)',
+  aggtranstype => 'pg_lsn' },
+{ aggfnoid => 'min(xid8)', aggtransfn => 'xid8_smaller',
+  aggcombinefn => 'xid8_smaller', aggsortop => '<(xid8,xid8)',
+  aggtranstype => 'xid8' },
 
 # count
 { aggfnoid => 'count(any)', aggtransfn => 'int8inc_any',
@@ -505,17 +511,25 @@
   aggcombinefn => 'int2and', aggtranstype => 'int2' },
 { aggfnoid => 'bit_or(int2)', aggtransfn => 'int2or', aggcombinefn => 'int2or',
   aggtranstype => 'int2' },
+{ aggfnoid => 'bit_xor(int2)', aggtransfn => 'int2xor',
+  aggcombinefn => 'int2xor', aggtranstype => 'int2' },
 { aggfnoid => 'bit_and(int4)', aggtransfn => 'int4and',
   aggcombinefn => 'int4and', aggtranstype => 'int4' },
 { aggfnoid => 'bit_or(int4)', aggtransfn => 'int4or', aggcombinefn => 'int4or',
   aggtranstype => 'int4' },
+{ aggfnoid => 'bit_xor(int4)', aggtransfn => 'int4xor',
+  aggcombinefn => 'int4xor', aggtranstype => 'int4' },
 { aggfnoid => 'bit_and(int8)', aggtransfn => 'int8and',
   aggcombinefn => 'int8and', aggtranstype => 'int8' },
 { aggfnoid => 'bit_or(int8)', aggtransfn => 'int8or', aggcombinefn => 'int8or',
   aggtranstype => 'int8' },
+{ aggfnoid => 'bit_xor(int8)', aggtransfn => 'int8xor',
+  aggcombinefn => 'int8xor', aggtranstype => 'int8' },
 { aggfnoid => 'bit_and(bit)', aggtransfn => 'bitand', aggcombinefn => 'bitand',
   aggtranstype => 'bit' },
 { aggfnoid => 'bit_or(bit)', aggtransfn => 'bitor', aggcombinefn => 'bitor',
+  aggtranstype => 'bit' },
+{ aggfnoid => 'bit_xor(bit)', aggtransfn => 'bitxor', aggcombinefn => 'bitxor',
   aggtranstype => 'bit' },
 
 # xml
@@ -537,6 +551,22 @@
 { aggfnoid => 'string_agg(bytea,bytea)',
   aggtransfn => 'bytea_string_agg_transfn',
   aggfinalfn => 'bytea_string_agg_finalfn', aggtranstype => 'internal' },
+
+# range
+{ aggfnoid => 'range_intersect_agg(anyrange)',
+  aggtransfn => 'range_intersect_agg_transfn',
+  aggcombinefn => 'range_intersect_agg_transfn', aggtranstype => 'anyrange' },
+{ aggfnoid => 'range_intersect_agg(anymultirange)',
+  aggtransfn => 'multirange_intersect_agg_transfn',
+  aggcombinefn => 'multirange_intersect_agg_transfn',
+  aggtranstype => 'anymultirange' },
+{ aggfnoid => 'range_agg(anyrange)', aggtransfn => 'range_agg_transfn',
+  aggfinalfn => 'range_agg_finalfn', aggfinalextra => 't',
+  aggtranstype => 'internal' },
+{ aggfnoid => 'range_agg(anymultirange)',
+  aggtransfn => 'multirange_agg_transfn',
+  aggfinalfn => 'multirange_agg_finalfn', aggfinalextra => 't',
+  aggtranstype => 'internal' },
 
 # json
 { aggfnoid => 'json_agg', aggtransfn => 'json_agg_transfn',

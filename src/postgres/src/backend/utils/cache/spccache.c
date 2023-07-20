@@ -8,7 +8,7 @@
  * be a measurable performance gain from doing this, but that might change
  * in the future as we add more options.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -16,29 +16,28 @@
  *
  *-------------------------------------------------------------------------
  */
-#include <float.h>
-
 #include "postgres.h"
 
 #include "access/reloptions.h"
 #include "catalog/pg_tablespace.h"
 #include "commands/tablespace.h"
-#include "common/pg_yb_common.h"
-
-#include "pg_yb_utils.h"
-
 #include "miscadmin.h"
-#include "optimizer/cost.h"
+#include "optimizer/optimizer.h"
 #include "storage/bufmgr.h"
-#include "utils/builtins.h"
 #include "utils/catcache.h"
 #include "utils/hsearch.h"
 #include "utils/inval.h"
-#include "utils/jsonfuncs.h"
-#include "utils/memutils.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
 
+/* Yugabyte includes */
+#include <float.h>
+#include "common/pg_yb_common.h"
+#include "optimizer/cost.h"
+#include "utils/builtins.h"
+#include "utils/jsonfuncs.h"
+#include "utils/memutils.h"
+#include "pg_yb_utils.h"
 
 /* Hash table for information about each tablespace */
 static HTAB *TableSpaceCacheHash = NULL;
@@ -91,7 +90,6 @@ InitializeTableSpaceCache(void)
 	HASHCTL		ctl;
 
 	/* Initialize the hash table. */
-	MemSet(&ctl, 0, sizeof(ctl));
 	ctl.keysize = sizeof(Oid);
 	ctl.entrysize = sizeof(TableSpaceCacheEntry);
 	TableSpaceCacheHash =
@@ -412,4 +410,18 @@ get_tablespace_io_concurrency(Oid spcid)
 		return effective_io_concurrency;
 	else
 		return spc->opts.pg_opts->effective_io_concurrency;
+}
+
+/*
+ * get_tablespace_maintenance_io_concurrency
+ */
+int
+get_tablespace_maintenance_io_concurrency(Oid spcid)
+{
+	TableSpaceCacheEntry *spc = get_tablespace(spcid);
+
+	if (!spc->opts.pg_opts || spc->opts.pg_opts->maintenance_io_concurrency < 0)
+		return maintenance_io_concurrency;
+	else
+		return spc->opts.pg_opts->maintenance_io_concurrency;
 }

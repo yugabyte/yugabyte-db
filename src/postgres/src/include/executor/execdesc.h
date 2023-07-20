@@ -5,7 +5,7 @@
  *	  and related modules.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/execdesc.h
@@ -62,13 +62,13 @@ typedef struct QueryDesc
 
 /* in pquery.c */
 extern QueryDesc *CreateQueryDesc(PlannedStmt *plannedstmt,
-				const char *sourceText,
-				Snapshot snapshot,
-				Snapshot crosscheck_snapshot,
-				DestReceiver *dest,
-				ParamListInfo params,
-				QueryEnvironment *queryEnv,
-				int instrument_options);
+								  const char *sourceText,
+								  Snapshot snapshot,
+								  Snapshot crosscheck_snapshot,
+								  DestReceiver *dest,
+								  ParamListInfo params,
+								  QueryEnvironment *queryEnv,
+								  int instrument_options);
 
 extern void FreeQueryDesc(QueryDesc *qdesc);
 

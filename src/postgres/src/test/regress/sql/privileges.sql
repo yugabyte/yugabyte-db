@@ -16,6 +16,7 @@ DROP ROLE IF EXISTS regress_priv_user3;
 DROP ROLE IF EXISTS regress_priv_user4;
 DROP ROLE IF EXISTS regress_priv_user5;
 DROP ROLE IF EXISTS regress_priv_user6;
+DROP ROLE IF EXISTS regress_priv_user7;
 
 SELECT lo_unlink(oid) FROM pg_largeobject_metadata WHERE oid >= 1000 AND oid < 3000 ORDER BY oid;
 
@@ -29,6 +30,41 @@ CREATE USER regress_priv_user3;
 CREATE USER regress_priv_user4;
 CREATE USER regress_priv_user5;
 CREATE USER regress_priv_user5;	-- duplicate
+CREATE USER regress_priv_user6;
+CREATE USER regress_priv_user7;
+CREATE USER regress_priv_user8;
+CREATE USER regress_priv_user9;
+CREATE USER regress_priv_user10;
+CREATE ROLE regress_priv_role;
+
+GRANT pg_read_all_data TO regress_priv_user6;
+GRANT pg_write_all_data TO regress_priv_user7;
+GRANT pg_read_all_settings TO regress_priv_user8 WITH ADMIN OPTION;
+
+SET SESSION AUTHORIZATION regress_priv_user8;
+GRANT pg_read_all_settings TO regress_priv_user9 WITH ADMIN OPTION;
+
+SET SESSION AUTHORIZATION regress_priv_user9;
+GRANT pg_read_all_settings TO regress_priv_user10;
+
+SET SESSION AUTHORIZATION regress_priv_user8;
+REVOKE pg_read_all_settings FROM regress_priv_user10;
+REVOKE ADMIN OPTION FOR pg_read_all_settings FROM regress_priv_user9;
+REVOKE pg_read_all_settings FROM regress_priv_user9;
+
+RESET SESSION AUTHORIZATION;
+REVOKE ADMIN OPTION FOR pg_read_all_settings FROM regress_priv_user8;
+
+SET SESSION AUTHORIZATION regress_priv_user8;
+SET ROLE pg_read_all_settings;
+RESET ROLE;
+
+RESET SESSION AUTHORIZATION;
+REVOKE pg_read_all_settings FROM regress_priv_user8;
+
+DROP USER regress_priv_user10;
+DROP USER regress_priv_user9;
+DROP USER regress_priv_user8;
 
 CREATE GROUP regress_priv_group1;
 CREATE GROUP regress_priv_group2 WITH USER regress_priv_user1, regress_priv_user2;
@@ -39,7 +75,20 @@ ALTER GROUP regress_priv_group2 ADD USER regress_priv_user2;	-- duplicate
 ALTER GROUP regress_priv_group2 DROP USER regress_priv_user2;
 GRANT regress_priv_group2 TO regress_priv_user4 WITH ADMIN OPTION;
 
+-- prepare non-leakproof function for later
+CREATE FUNCTION leak(integer,integer) RETURNS boolean
+  AS 'int4lt'
+  LANGUAGE internal IMMUTABLE STRICT;  -- but deliberately not LEAKPROOF
+ALTER FUNCTION leak(integer,integer) OWNER TO regress_priv_user1;
+
 -- test owner privileges
+
+GRANT regress_priv_role TO regress_priv_user1 WITH ADMIN OPTION GRANTED BY CURRENT_ROLE;
+REVOKE ADMIN OPTION FOR regress_priv_role FROM regress_priv_user1 GRANTED BY foo; -- error
+REVOKE ADMIN OPTION FOR regress_priv_role FROM regress_priv_user1 GRANTED BY regress_priv_user2; -- error
+REVOKE ADMIN OPTION FOR regress_priv_role FROM regress_priv_user1 GRANTED BY CURRENT_USER;
+REVOKE regress_priv_role FROM regress_priv_user1 GRANTED BY CURRENT_ROLE;
+DROP ROLE regress_priv_role;
 
 SET SESSION AUTHORIZATION regress_priv_user1;
 SELECT session_user, current_user;
@@ -64,8 +113,10 @@ SELECT * FROM atest1;
 CREATE TABLE atest2 (col1 varchar(10), col2 boolean);
 GRANT SELECT ON atest2 TO regress_priv_user2;
 GRANT UPDATE ON atest2 TO regress_priv_user3;
-GRANT INSERT ON atest2 TO regress_priv_user4;
-GRANT TRUNCATE ON atest2 TO regress_priv_user5;
+GRANT INSERT ON atest2 TO regress_priv_user4 GRANTED BY CURRENT_USER;
+GRANT TRUNCATE ON atest2 TO regress_priv_user5 GRANTED BY CURRENT_ROLE;
+
+GRANT TRUNCATE ON atest2 TO regress_priv_user4 GRANTED BY regress_priv_user5;  -- error
 
 
 SET SESSION AUTHORIZATION regress_priv_user2;
@@ -94,6 +145,22 @@ GRANT ALL ON atest1 TO PUBLIC; -- fail
 SELECT * FROM atest1 WHERE ( b IN ( SELECT col1 FROM atest2 ) );
 SELECT * FROM atest2 WHERE ( col1 IN ( SELECT b FROM atest1 ) );
 
+SET SESSION AUTHORIZATION regress_priv_user6;
+SELECT * FROM atest1; -- ok
+SELECT * FROM atest2; -- ok
+INSERT INTO atest2 VALUES ('foo', true); -- fail
+
+SET SESSION AUTHORIZATION regress_priv_user7;
+SELECT * FROM atest1; -- fail
+SELECT * FROM atest2; -- fail
+INSERT INTO atest2 VALUES ('foo', true); -- ok
+UPDATE atest2 SET col2 = true; -- ok
+DELETE FROM atest2; -- ok
+
+-- Make sure we are not able to modify system catalogs
+UPDATE pg_catalog.pg_class SET relname = '123'; -- fail
+DELETE FROM pg_catalog.pg_class; -- fail
+UPDATE pg_toast.pg_toast_1213 SET chunk_id = 1; -- fail
 
 SET SESSION AUTHORIZATION regress_priv_user3;
 SELECT session_user, current_user;
@@ -129,25 +196,29 @@ SELECT * FROM atest1; -- ok
 
 -- test leaky-function protections in selfuncs
 
--- regress_priv_user1 will own a table and provide a view for it.
+-- regress_priv_user1 will own a table and provide views for it.
 SET SESSION AUTHORIZATION regress_priv_user1;
 
 CREATE TABLE atest12 as
   SELECT x AS a, 10001 - x AS b FROM generate_series(1,10000) x;
 CREATE INDEX ON atest12 (a);
 CREATE INDEX ON atest12 (abs(a));
+-- results below depend on having quite accurate stats for atest12, so...
+ALTER TABLE atest12 SET (autovacuum_enabled = off);
+SET default_statistics_target = 10000;
 VACUUM ANALYZE atest12;
+RESET default_statistics_target;
 
-CREATE FUNCTION leak(integer,integer) RETURNS boolean
-  AS $$begin return $1 < $2; end$$
-  LANGUAGE plpgsql immutable;
 CREATE OPERATOR <<< (procedure = leak, leftarg = integer, rightarg = integer,
                      restrict = scalarltsel);
 
--- view with leaky operator
+-- views with leaky operator
 CREATE VIEW atest12v AS
   SELECT * FROM atest12 WHERE b <<< 5;
+CREATE VIEW atest12sbv WITH (security_barrier=true) AS
+  SELECT * FROM atest12 WHERE b <<< 5;
 GRANT SELECT ON atest12v TO PUBLIC;
+GRANT SELECT ON atest12sbv TO PUBLIC;
 
 -- This plan should use nestloop, knowing that few rows will be selected.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y WHERE x.a = y.b;
@@ -155,6 +226,10 @@ EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y WHERE x.a = y.b;
 -- And this one.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12 x, atest12 y
   WHERE x.a = y.b and abs(y.a) <<< 5;
+
+-- This should also be a nestloop, but the security barrier forces the inner
+-- scan to be materialized
+EXPLAIN (COSTS OFF) SELECT * FROM atest12sbv x, atest12sbv y WHERE x.a = y.b;
 
 -- Check if regress_priv_user2 can break security.
 SET SESSION AUTHORIZATION regress_priv_user2;
@@ -168,15 +243,25 @@ CREATE OPERATOR >>> (procedure = leak2, leftarg = integer, rightarg = integer,
 -- This should not show any "leak" notices before failing.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12 WHERE a >>> 0;
 
--- This plan should use hashjoin, as it will expect many rows to be selected.
+-- These plans should continue to use a nestloop, since they execute with the
+-- privileges of the view owner.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y WHERE x.a = y.b;
+EXPLAIN (COSTS OFF) SELECT * FROM atest12sbv x, atest12sbv y WHERE x.a = y.b;
+
+-- A non-security barrier view does not guard against information leakage.
+EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y
+  WHERE x.a = y.b and abs(y.a) <<< 5;
+
+-- But a security barrier view isolates the leaky operator.
+EXPLAIN (COSTS OFF) SELECT * FROM atest12sbv x, atest12sbv y
+  WHERE x.a = y.b and abs(y.a) <<< 5;
 
 -- Now regress_priv_user1 grants sufficient access to regress_priv_user2.
 SET SESSION AUTHORIZATION regress_priv_user1;
 GRANT SELECT (a, b) ON atest12 TO PUBLIC;
 SET SESSION AUTHORIZATION regress_priv_user2;
 
--- Now regress_priv_user2 will also get a good row estimate.
+-- regress_priv_user2 should continue to get a good row estimate.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y WHERE x.a = y.b;
 
 -- But not for this, due to lack of table-wide permissions needed
@@ -199,6 +284,12 @@ SET SESSION AUTHORIZATION regress_priv_user1;
 SELECT * FROM atest3; -- fail
 DELETE FROM atest3; -- ok
 
+BEGIN;
+RESET SESSION AUTHORIZATION;
+ALTER ROLE regress_priv_user1 NOINHERIT;
+SET SESSION AUTHORIZATION regress_priv_user1;
+DELETE FROM atest3;
+ROLLBACK;
 
 -- views
 
@@ -274,7 +365,26 @@ SELECT 1 FROM atest5; -- ok
 SELECT 1 FROM atest5 a JOIN atest5 b USING (one); -- ok
 SELECT 1 FROM atest5 a JOIN atest5 b USING (two); -- fail
 SELECT 1 FROM atest5 a NATURAL JOIN atest5 b; -- fail
+SELECT * FROM (atest5 a JOIN atest5 b USING (one)) j; -- fail
+SELECT j.* FROM (atest5 a JOIN atest5 b USING (one)) j; -- fail
 SELECT (j.*) IS NULL FROM (atest5 a JOIN atest5 b USING (one)) j; -- fail
+SELECT one FROM (atest5 a JOIN atest5 b(one,x,y,z) USING (one)) j; -- ok
+SELECT j.one FROM (atest5 a JOIN atest5 b(one,x,y,z) USING (one)) j; -- ok
+SELECT two FROM (atest5 a JOIN atest5 b(one,x,y,z) USING (one)) j; -- fail
+SELECT j.two FROM (atest5 a JOIN atest5 b(one,x,y,z) USING (one)) j; -- fail
+SELECT y FROM (atest5 a JOIN atest5 b(one,x,y,z) USING (one)) j; -- fail
+SELECT j.y FROM (atest5 a JOIN atest5 b(one,x,y,z) USING (one)) j; -- fail
+SELECT * FROM (atest5 a JOIN atest5 b USING (one)); -- fail
+SELECT a.* FROM (atest5 a JOIN atest5 b USING (one)); -- fail
+SELECT (a.*) IS NULL FROM (atest5 a JOIN atest5 b USING (one)); -- fail
+SELECT two FROM (atest5 a JOIN atest5 b(one,x,y,z) USING (one)); -- fail
+SELECT a.two FROM (atest5 a JOIN atest5 b(one,x,y,z) USING (one)); -- fail
+SELECT y FROM (atest5 a JOIN atest5 b(one,x,y,z) USING (one)); -- fail
+SELECT b.y FROM (atest5 a JOIN atest5 b(one,x,y,z) USING (one)); -- fail
+SELECT y FROM (atest5 a LEFT JOIN atest5 b(one,x,y,z) USING (one)); -- fail
+SELECT b.y FROM (atest5 a LEFT JOIN atest5 b(one,x,y,z) USING (one)); -- fail
+SELECT y FROM (atest5 a FULL JOIN atest5 b(one,x,y,z) USING (one)); -- fail
+SELECT b.y FROM (atest5 a FULL JOIN atest5 b(one,x,y,z) USING (one)); -- fail
 SELECT 1 FROM atest5 WHERE two = 2; -- fail
 SELECT * FROM atest1, atest5; -- fail
 SELECT atest1.* FROM atest1, atest5; -- ok
@@ -348,6 +458,114 @@ SELECT one FROM atest5; -- fail
 UPDATE atest5 SET one = 1; -- fail
 SELECT atest6 FROM atest6; -- ok
 COPY atest6 TO stdout; -- ok
+
+-- test column privileges with MERGE
+SET SESSION AUTHORIZATION regress_priv_user1;
+CREATE TABLE mtarget (a int, b text);
+CREATE TABLE msource (a int, b text);
+INSERT INTO mtarget VALUES (1, 'init1'), (2, 'init2');
+INSERT INTO msource VALUES (1, 'source1'), (2, 'source2'), (3, 'source3');
+
+GRANT SELECT (a) ON msource TO regress_priv_user4;
+GRANT SELECT (a) ON mtarget TO regress_priv_user4;
+GRANT INSERT (a,b) ON mtarget TO regress_priv_user4;
+GRANT UPDATE (b) ON mtarget TO regress_priv_user4;
+
+SET SESSION AUTHORIZATION regress_priv_user4;
+
+--
+-- test source privileges
+--
+
+-- fail (no SELECT priv on s.b)
+MERGE INTO mtarget t USING msource s ON t.a = s.a
+WHEN MATCHED THEN
+	UPDATE SET b = s.b
+WHEN NOT MATCHED THEN
+	INSERT VALUES (a, NULL);
+
+-- fail (s.b used in the INSERTed values)
+MERGE INTO mtarget t USING msource s ON t.a = s.a
+WHEN MATCHED THEN
+	UPDATE SET b = 'x'
+WHEN NOT MATCHED THEN
+	INSERT VALUES (a, b);
+
+-- fail (s.b used in the WHEN quals)
+MERGE INTO mtarget t USING msource s ON t.a = s.a
+WHEN MATCHED AND s.b = 'x' THEN
+	UPDATE SET b = 'x'
+WHEN NOT MATCHED THEN
+	INSERT VALUES (a, NULL);
+
+-- this should be ok since only s.a is accessed
+BEGIN;
+MERGE INTO mtarget t USING msource s ON t.a = s.a
+WHEN MATCHED THEN
+	UPDATE SET b = 'ok'
+WHEN NOT MATCHED THEN
+	INSERT VALUES (a, NULL);
+ROLLBACK;
+
+SET SESSION AUTHORIZATION regress_priv_user1;
+GRANT SELECT (b) ON msource TO regress_priv_user4;
+SET SESSION AUTHORIZATION regress_priv_user4;
+
+-- should now be ok
+BEGIN;
+MERGE INTO mtarget t USING msource s ON t.a = s.a
+WHEN MATCHED THEN
+	UPDATE SET b = s.b
+WHEN NOT MATCHED THEN
+	INSERT VALUES (a, b);
+ROLLBACK;
+
+--
+-- test target privileges
+--
+
+-- fail (no SELECT priv on t.b)
+MERGE INTO mtarget t USING msource s ON t.a = s.a
+WHEN MATCHED THEN
+	UPDATE SET b = t.b
+WHEN NOT MATCHED THEN
+	INSERT VALUES (a, NULL);
+
+-- fail (no UPDATE on t.a)
+MERGE INTO mtarget t USING msource s ON t.a = s.a
+WHEN MATCHED THEN
+	UPDATE SET b = s.b, a = t.a + 1
+WHEN NOT MATCHED THEN
+	INSERT VALUES (a, b);
+
+-- fail (no SELECT on t.b)
+MERGE INTO mtarget t USING msource s ON t.a = s.a
+WHEN MATCHED AND t.b IS NOT NULL THEN
+	UPDATE SET b = s.b
+WHEN NOT MATCHED THEN
+	INSERT VALUES (a, b);
+
+-- ok
+BEGIN;
+MERGE INTO mtarget t USING msource s ON t.a = s.a
+WHEN MATCHED THEN
+	UPDATE SET b = s.b;
+ROLLBACK;
+
+-- fail (no DELETE)
+MERGE INTO mtarget t USING msource s ON t.a = s.a
+WHEN MATCHED AND t.b IS NOT NULL THEN
+	DELETE;
+
+-- grant delete privileges
+SET SESSION AUTHORIZATION regress_priv_user1;
+GRANT DELETE ON mtarget TO regress_priv_user4;
+-- should be ok now
+BEGIN;
+MERGE INTO mtarget t USING msource s ON t.a = s.a
+WHEN MATCHED AND t.b IS NOT NULL THEN
+	DELETE;
+ROLLBACK;
 
 -- check error reporting with column privs
 SET SESSION AUTHORIZATION regress_priv_user1;
@@ -445,27 +663,47 @@ DELETE FROM atest5 WHERE two = 2; -- ok
 
 -- check inheritance cases
 SET SESSION AUTHORIZATION regress_priv_user1;
-CREATE TABLE atestp1 (f1 int, f2 int) WITH OIDS;
-CREATE TABLE atestp2 (fx int, fy int) WITH OIDS;
+CREATE TABLE atestp1 (f1 int, f2 int);
+CREATE TABLE atestp2 (fx int, fy int);
 CREATE TABLE atestc (fz int) INHERITS (atestp1, atestp2);
-GRANT SELECT(fx,fy,oid) ON atestp2 TO regress_priv_user2;
+GRANT SELECT(fx,fy,tableoid) ON atestp2 TO regress_priv_user2;
 GRANT SELECT(fx) ON atestc TO regress_priv_user2;
 
 SET SESSION AUTHORIZATION regress_priv_user2;
 SELECT fx FROM atestp2; -- ok
 SELECT fy FROM atestp2; -- ok
 SELECT atestp2 FROM atestp2; -- ok
-SELECT oid FROM atestp2; -- ok
+SELECT tableoid FROM atestp2; -- ok
 SELECT fy FROM atestc; -- fail
 
 SET SESSION AUTHORIZATION regress_priv_user1;
-GRANT SELECT(fy,oid) ON atestc TO regress_priv_user2;
+GRANT SELECT(fy,tableoid) ON atestc TO regress_priv_user2;
 
 SET SESSION AUTHORIZATION regress_priv_user2;
 SELECT fx FROM atestp2; -- still ok
 SELECT fy FROM atestp2; -- ok
 SELECT atestp2 FROM atestp2; -- ok
-SELECT oid FROM atestp2; -- ok
+SELECT tableoid FROM atestp2; -- ok
+
+-- child's permissions do not apply when operating on parent
+SET SESSION AUTHORIZATION regress_priv_user1;
+REVOKE ALL ON atestc FROM regress_priv_user2;
+GRANT ALL ON atestp1 TO regress_priv_user2;
+SET SESSION AUTHORIZATION regress_priv_user2;
+SELECT f2 FROM atestp1; -- ok
+SELECT f2 FROM atestc; -- fail
+DELETE FROM atestp1; -- ok
+DELETE FROM atestc; -- fail
+UPDATE atestp1 SET f1 = 1; -- ok
+UPDATE atestc SET f1 = 1; -- fail
+TRUNCATE atestp1; -- ok
+TRUNCATE atestc; -- fail
+BEGIN;
+LOCK atestp1;
+END;
+BEGIN;
+LOCK atestc;
+END;
 
 -- privileges on functions, languages
 
@@ -533,7 +771,7 @@ GRANT ALL PRIVILEGES ON LANGUAGE sql TO PUBLIC;
 BEGIN;
 SELECT '{1}'::int4[]::int8[];
 REVOKE ALL ON FUNCTION int8(integer) FROM PUBLIC;
-SELECT '{1}'::int4[]::int8[]; --superuser, suceed
+SELECT '{1}'::int4[]::int8[]; --superuser, succeed
 SET SESSION AUTHORIZATION regress_priv_user4;
 SELECT '{1}'::int4[]::int8[]; --other user, fail
 ROLLBACK;
@@ -768,8 +1006,10 @@ alter table mytable drop column f2;
 select has_column_privilege('mytable','f2','select');
 select has_column_privilege('mytable','........pg.dropped.2........','select');
 select has_column_privilege('mytable',2::int2,'select');
+select has_column_privilege('mytable',99::int2,'select');
 revoke select on table mytable from regress_priv_user3;
 select has_column_privilege('mytable',2::int2,'select');
+select has_column_privilege('mytable',99::int2,'select');
 drop table mytable;
 
 -- Grant options
@@ -913,11 +1153,7 @@ SET ROLE regress_priv_group2;
 GRANT regress_priv_group2 TO regress_priv_user5; -- fails: SET ROLE did not help
 
 SET SESSION AUTHORIZATION regress_priv_group2;
-GRANT regress_priv_group2 TO regress_priv_user5; -- ok: a role can self-admin
-CREATE FUNCTION dogrant_fails() RETURNS void LANGUAGE sql SECURITY DEFINER AS
-	'GRANT regress_priv_group2 TO regress_priv_user5';
-SELECT dogrant_fails();			-- fails: no self-admin in SECURITY DEFINER
-DROP FUNCTION dogrant_fails();
+GRANT regress_priv_group2 TO regress_priv_user5; -- fails: no self-admin
 
 SET SESSION AUTHORIZATION regress_priv_user4;
 DROP FUNCTION dogrant_ok();
@@ -1030,6 +1266,37 @@ SELECT * FROM pg_largeobject LIMIT 0;
 SET SESSION AUTHORIZATION regress_priv_user1;
 SELECT * FROM pg_largeobject LIMIT 0;			-- to be denied
 
+-- test pg_database_owner
+RESET SESSION AUTHORIZATION;
+GRANT pg_database_owner TO regress_priv_user1;
+GRANT regress_priv_user1 TO pg_database_owner;
+CREATE TABLE datdba_only ();
+ALTER TABLE datdba_only OWNER TO pg_database_owner;
+REVOKE DELETE ON datdba_only FROM pg_database_owner;
+SELECT
+	pg_has_role('regress_priv_user1', 'pg_database_owner', 'USAGE') as priv,
+	pg_has_role('regress_priv_user1', 'pg_database_owner', 'MEMBER') as mem,
+	pg_has_role('regress_priv_user1', 'pg_database_owner',
+				'MEMBER WITH ADMIN OPTION') as admin;
+
+BEGIN;
+DO $$BEGIN EXECUTE format(
+	'ALTER DATABASE %I OWNER TO regress_priv_group2', current_catalog); END$$;
+SELECT
+	pg_has_role('regress_priv_user1', 'pg_database_owner', 'USAGE') as priv,
+	pg_has_role('regress_priv_user1', 'pg_database_owner', 'MEMBER') as mem,
+	pg_has_role('regress_priv_user1', 'pg_database_owner',
+				'MEMBER WITH ADMIN OPTION') as admin;
+SET SESSION AUTHORIZATION regress_priv_user1;
+TABLE information_schema.enabled_roles ORDER BY role_name COLLATE "C";
+TABLE information_schema.applicable_roles ORDER BY role_name COLLATE "C";
+INSERT INTO datdba_only DEFAULT VALUES;
+SAVEPOINT q; DELETE FROM datdba_only; ROLLBACK TO q;
+SET SESSION AUTHORIZATION regress_priv_user2;
+TABLE information_schema.enabled_roles;
+INSERT INTO datdba_only DEFAULT VALUES;
+ROLLBACK;
+
 -- test default ACLs
 \c -
 
@@ -1084,6 +1351,7 @@ ALTER DEFAULT PRIVILEGES GRANT USAGE ON SCHEMAS TO regress_priv_user2;
 CREATE SCHEMA testns2;
 
 SELECT has_schema_privilege('regress_priv_user2', 'testns2', 'USAGE'); -- yes
+SELECT has_schema_privilege('regress_priv_user6', 'testns2', 'USAGE'); -- yes
 SELECT has_schema_privilege('regress_priv_user2', 'testns2', 'CREATE'); -- no
 
 ALTER DEFAULT PRIVILEGES REVOKE USAGE ON SCHEMAS FROM regress_priv_user2;
@@ -1103,6 +1371,26 @@ SELECT has_schema_privilege('regress_priv_user2', 'testns4', 'CREATE'); -- yes
 ALTER DEFAULT PRIVILEGES REVOKE ALL ON SCHEMAS FROM regress_priv_user2;
 
 COMMIT;
+
+-- Test for DROP OWNED BY with shared dependencies.  This is done in a
+-- separate, rollbacked, transaction to avoid any trouble with other
+-- regression sessions.
+BEGIN;
+ALTER DEFAULT PRIVILEGES GRANT ALL ON FUNCTIONS TO regress_priv_user2;
+ALTER DEFAULT PRIVILEGES GRANT ALL ON SCHEMAS TO regress_priv_user2;
+ALTER DEFAULT PRIVILEGES GRANT ALL ON SEQUENCES TO regress_priv_user2;
+ALTER DEFAULT PRIVILEGES GRANT ALL ON TABLES TO regress_priv_user2;
+ALTER DEFAULT PRIVILEGES GRANT ALL ON TYPES TO regress_priv_user2;
+SELECT count(*) FROM pg_shdepend
+  WHERE deptype = 'a' AND
+        refobjid = 'regress_priv_user2'::regrole AND
+	classid = 'pg_default_acl'::regclass;
+DROP OWNED BY regress_priv_user2, regress_priv_user2;
+SELECT count(*) FROM pg_shdepend
+  WHERE deptype = 'a' AND
+        refobjid = 'regress_priv_user2'::regrole AND
+	classid = 'pg_default_acl'::regclass;
+ROLLBACK;
 
 CREATE SCHEMA testns5;
 
@@ -1211,9 +1499,7 @@ SELECT has_function_privilege('regress_priv_user1', 'testns.priv_testfunc(int)',
 SELECT has_function_privilege('regress_priv_user1', 'testns.priv_testagg(int)', 'EXECUTE'); -- true
 SELECT has_function_privilege('regress_priv_user1', 'testns.priv_testproc(int)', 'EXECUTE'); -- true
 
-\set VERBOSITY terse \\ -- suppress cascade details
 DROP SCHEMA testns CASCADE;
-\set VERBOSITY default
 
 
 -- Change owner of the schema & and rename of new schema owner
@@ -1232,9 +1518,7 @@ ALTER ROLE regress_schemauser2 RENAME TO regress_schemauser_renamed;
 SELECT nspname, rolname FROM pg_namespace, pg_roles WHERE pg_namespace.nspname = 'testns' AND pg_namespace.nspowner = pg_roles.oid;
 
 set session role regress_schemauser_renamed;
-\set VERBOSITY terse \\ -- suppress cascade details
 DROP SCHEMA testns CASCADE;
-\set VERBOSITY default
 
 -- clean up
 \c -
@@ -1311,6 +1595,8 @@ DROP USER regress_priv_user3;
 DROP USER regress_priv_user4;
 DROP USER regress_priv_user5;
 DROP USER regress_priv_user6;
+DROP USER regress_priv_user7;
+DROP USER regress_priv_user8; -- does not exist
 
 
 -- permissions with LOCK TABLE
@@ -1395,3 +1681,28 @@ REVOKE TRUNCATE ON lock_table FROM regress_locktable_user;
 -- clean up
 DROP TABLE lock_table;
 DROP USER regress_locktable_user;
+
+-- test to check privileges of system views pg_shmem_allocations and
+-- pg_backend_memory_contexts.
+
+-- switch to superuser
+\c -
+
+CREATE ROLE regress_readallstats;
+
+SELECT has_table_privilege('regress_readallstats','pg_backend_memory_contexts','SELECT'); -- no
+SELECT has_table_privilege('regress_readallstats','pg_shmem_allocations','SELECT'); -- no
+
+GRANT pg_read_all_stats TO regress_readallstats;
+
+SELECT has_table_privilege('regress_readallstats','pg_backend_memory_contexts','SELECT'); -- yes
+SELECT has_table_privilege('regress_readallstats','pg_shmem_allocations','SELECT'); -- yes
+
+-- run query to ensure that functions within views can be executed
+SET ROLE regress_readallstats;
+SELECT COUNT(*) >= 0 AS ok FROM pg_backend_memory_contexts;
+SELECT COUNT(*) >= 0 AS ok FROM pg_shmem_allocations;
+RESET ROLE;
+
+-- clean up
+DROP ROLE regress_readallstats;

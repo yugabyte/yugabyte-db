@@ -11,7 +11,7 @@
  * (It's debatable whether the savings justifies carrying two plan node
  * types, though.)
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -153,7 +153,7 @@ ExecInitUnique(Unique *node, EState *estate, int eflags)
 	 * Initialize result slot and type. Unique nodes do no projections, so
 	 * initialize projection info for this node appropriately.
 	 */
-	ExecInitResultTupleSlotTL(&uniquestate->ps);
+	ExecInitResultTupleSlotTL(&uniquestate->ps, &TTSOpsMinimalTuple);
 	uniquestate->ps.ps_ProjInfo = NULL;
 
 	/*
@@ -164,6 +164,7 @@ ExecInitUnique(Unique *node, EState *estate, int eflags)
 							   node->numCols,
 							   node->uniqColIdx,
 							   node->uniqOperators,
+							   node->uniqCollations,
 							   &uniquestate->ps);
 
 	return uniquestate;

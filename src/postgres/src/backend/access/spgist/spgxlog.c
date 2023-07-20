@@ -4,7 +4,7 @@
  *	  WAL replay logic for SP-GiST
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -73,38 +73,6 @@ addOrReplaceTuple(Page page, Item tuple, int size, OffsetNumber offset)
 }
 
 static void
-spgRedoCreateIndex(XLogReaderState *record)
-{
-	XLogRecPtr	lsn = record->EndRecPtr;
-	Buffer		buffer;
-	Page		page;
-
-	buffer = XLogInitBufferForRedo(record, 0);
-	Assert(BufferGetBlockNumber(buffer) == SPGIST_METAPAGE_BLKNO);
-	page = (Page) BufferGetPage(buffer);
-	SpGistInitMetapage(page);
-	PageSetLSN(page, lsn);
-	MarkBufferDirty(buffer);
-	UnlockReleaseBuffer(buffer);
-
-	buffer = XLogInitBufferForRedo(record, 1);
-	Assert(BufferGetBlockNumber(buffer) == SPGIST_ROOT_BLKNO);
-	SpGistInitBuffer(buffer, SPGIST_LEAF);
-	page = (Page) BufferGetPage(buffer);
-	PageSetLSN(page, lsn);
-	MarkBufferDirty(buffer);
-	UnlockReleaseBuffer(buffer);
-
-	buffer = XLogInitBufferForRedo(record, 2);
-	Assert(BufferGetBlockNumber(buffer) == SPGIST_NULL_BLKNO);
-	SpGistInitBuffer(buffer, SPGIST_LEAF | SPGIST_NULLS);
-	page = (Page) BufferGetPage(buffer);
-	PageSetLSN(page, lsn);
-	MarkBufferDirty(buffer);
-	UnlockReleaseBuffer(buffer);
-}
-
-static void
 spgRedoAddLeaf(XLogReaderState *record)
 {
 	XLogRecPtr	lsn = record->EndRecPtr;
@@ -154,8 +122,8 @@ spgRedoAddLeaf(XLogReaderState *record)
 
 				head = (SpGistLeafTuple) PageGetItem(page,
 													 PageGetItemId(page, xldata->offnumHeadLeaf));
-				Assert(head->nextOffset == leafTupleHdr.nextOffset);
-				head->nextOffset = xldata->offnumLeaf;
+				Assert(SGLT_GET_NEXTOFFSET(head) == SGLT_GET_NEXTOFFSET(&leafTupleHdr));
+				SGLT_SET_NEXTOFFSET(head, xldata->offnumLeaf);
 			}
 		}
 		else
@@ -854,7 +822,7 @@ spgRedoVacuumLeaf(XLogReaderState *record)
 			lt = (SpGistLeafTuple) PageGetItem(page,
 											   PageGetItemId(page, chainSrc[i]));
 			Assert(lt->tupstate == SPGIST_LIVE);
-			lt->nextOffset = chainDest[i];
+			SGLT_SET_NEXTOFFSET(lt, chainDest[i]);
 		}
 
 		PageSetLSN(page, lsn);
@@ -976,9 +944,6 @@ spg_redo(XLogReaderState *record)
 	oldCxt = MemoryContextSwitchTo(opCtx);
 	switch (info)
 	{
-		case XLOG_SPGIST_CREATE_INDEX:
-			spgRedoCreateIndex(record);
-			break;
 		case XLOG_SPGIST_ADD_LEAF:
 			spgRedoAddLeaf(record);
 			break;
@@ -1043,6 +1008,6 @@ spg_mask(char *pagedata, BlockNumber blkno)
 	 * Mask the unused space, but only if the page's pd_lower appears to have
 	 * been set correctly.
 	 */
-	if (pagehdr->pd_lower > SizeOfPageHeaderData)
+	if (pagehdr->pd_lower >= SizeOfPageHeaderData)
 		mask_unused_space(page);
 }

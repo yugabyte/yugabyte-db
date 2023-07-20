@@ -1,4 +1,22 @@
 CREATE EXTENSION dblink;
+-- directory paths and dlsuffix are passed to us in environment variables
+\getenv abs_srcdir PG_ABS_SRCDIR
+\getenv libdir PG_LIBDIR
+\getenv dlsuffix PG_DLSUFFIX
+\set regresslib :libdir '/regress' :dlsuffix
+-- create some functions needed for tests
+CREATE FUNCTION setenv(text, text)
+   RETURNS void
+   AS :'regresslib', 'regress_setenv'
+   LANGUAGE C STRICT;
+CREATE FUNCTION wait_pid(int)
+   RETURNS void
+   AS :'regresslib'
+   LANGUAGE C STRICT;
+\set path :abs_srcdir '/'
+\set fnbody 'SELECT setenv(''PGSERVICEFILE'', ' :'path' ' || $1)'
+CREATE FUNCTION set_pgservicefile(text) RETURNS void LANGUAGE SQL
+    AS :'fnbody';
 -- want context for notices
 \set SHOW_CONTEXT always
 CREATE TABLE foo(f1 int, f2 text, f3 text[], primary key (f1,f2));
@@ -879,7 +897,7 @@ $d$;
 CREATE USER MAPPING FOR public SERVER fdtest
   OPTIONS (server 'localhost');  -- fail, can't specify server here
 ERROR:  invalid option "server"
-HINT:  Valid options in this context are: user, password
+HINT:  Valid options in this context are: user, password, sslpassword
 CREATE USER MAPPING FOR public SERVER fdtest OPTIONS (user :'USER');
 GRANT USAGE ON FOREIGN SERVER fdtest TO regress_dblink_user;
 GRANT EXECUTE ON FUNCTION dblink_connect_u(text, text) TO regress_dblink_user;
@@ -917,6 +935,10 @@ REVOKE EXECUTE ON FUNCTION dblink_connect_u(text, text) FROM regress_dblink_user
 DROP USER regress_dblink_user;
 DROP USER MAPPING FOR public SERVER fdtest;
 DROP SERVER fdtest;
+-- should fail
+ALTER FOREIGN DATA WRAPPER dblink_fdw OPTIONS (nonexistent 'fdw');
+ERROR:  invalid option "nonexistent"
+HINT:  There are no valid options in this context.
 -- test asynchronous notifications
 SELECT dblink_connect(connection_parameters());
  dblink_connect 
@@ -1154,7 +1176,7 @@ FROM dblink_fetch('myconn','error_cursor', 1) AS t(i int);
 
 SELECT *
 FROM dblink_fetch('myconn','error_cursor', 1) AS t(i int);
-ERROR:  invalid input syntax for integer: "not an int"
+ERROR:  invalid input syntax for type integer: "not an int"
 -- Make sure that the local settings have retained their values in spite
 -- of shenanigans on the connection.
 SHOW datestyle;

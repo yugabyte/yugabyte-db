@@ -2,7 +2,7 @@
 #
 # Makefile for src/bin/psql
 #
-# Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/bin/psql/Makefile
@@ -16,16 +16,32 @@ subdir = src/bin/psql
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
+# make this available to TAP test scripts
+export with_readline
+
 REFDOCDIR= $(top_srcdir)/doc/src/sgml/ref
 
 override CPPFLAGS := -I. -I$(srcdir) -I$(libpq_srcdir) $(CPPFLAGS)
 LDFLAGS_INTERNAL += -L$(top_builddir)/src/fe_utils -lpgfeutils $(libpq_pgport)
 
-OBJS=	command.o common.o copy.o crosstabview.o \
-	describe.o help.o input.o large_obj.o mainloop.o \
-	prompt.o psqlscanslash.o sql_help.o startup.o stringutils.o \
-	tab-complete.o variables.o \
-	$(WIN32RES)
+OBJS = \
+	$(WIN32RES) \
+	command.o \
+	common.o \
+	copy.o \
+	crosstabview.o \
+	describe.o \
+	help.o \
+	input.o \
+	large_obj.o \
+	mainloop.o \
+	prompt.o \
+	psqlscanslash.o \
+	sql_help.o \
+	startup.o \
+	stringutils.o \
+	tab-complete.o \
+	variables.o
 
 
 all: ysqlsh
@@ -60,8 +76,15 @@ uninstall:
 
 clean distclean:
 	rm -f ysqlsh$(X) $(OBJS) lex.backup
+	rm -rf tmp_check
 
 # files removed here are supposed to be in the distribution tarball,
 # so do not clean them in the clean/distclean rules
 maintainer-clean: distclean
 	rm -f sql_help.h sql_help.c psqlscanslash.c
+
+check:
+	$(prove_check)
+
+installcheck:
+	$(prove_installcheck)

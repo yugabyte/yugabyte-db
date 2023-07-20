@@ -24,7 +24,7 @@
   <para>
    The process of retrieving or the command to retrieve data from a
    database is called a <firstterm>query</firstterm>.  In SQL the
-   <xref linkend="sql-select"/> command is
+   <link linkend="sql-select"><command>SELECT</command></link> command is
    used to specify queries.  The general syntax of the
    <command>SELECT</command> command is
 <synopsis>
@@ -110,7 +110,7 @@ SELECT random();
    <title>The <literal>FROM</literal> Clause</title>
 
    <para>
-    The <xref linkend="sql-from" endterm="sql-from-title"/> derives a
+    The <link linkend="sql-from"><literal>FROM</literal></link> clause derives a
     table from one or more other tables given in a comma-separated
     table reference list.
 <synopsis>
@@ -762,7 +762,8 @@ SELECT * FROM vw_getfoo;
      In some cases it is useful to define table functions that can
      return different column sets depending on how they are invoked.
      To support this, the table function can be declared as returning
-     the pseudo-type <type>record</type>.  When such a function is used in
+     the pseudo-type <type>record</type> with no <literal>OUT</literal>
+     parameters.  When such a function is used in
      a query, the expected row structure must be specified in the
      query itself, so that the system can know how to parse and plan
      the query.  This syntax looks like:
@@ -802,6 +803,33 @@ SELECT *
      The actual column set must be specified in the calling query so
      that the parser knows, for example, what <literal>*</literal> should
      expand to.
+    </para>
+
+    <para>
+     This example uses <literal>ROWS FROM</literal>:
+<programlisting>
+SELECT *
+FROM ROWS FROM
+    (
+        json_to_recordset('[{"a":40,"b":"foo"},{"a":"100","b":"bar"}]')
+            AS (a INTEGER, b TEXT),
+        generate_series(1, 3)
+    ) AS x (p, q, s)
+ORDER BY p;
+
+  p  |  q  | s
+-----+-----+---
+  40 | foo | 1
+ 100 | bar | 2
+     |     | 3
+</programlisting>
+     It joins two functions into a single <literal>FROM</literal>
+     target.  <function>json_to_recordset()</function> is instructed
+     to return two columns, the first <type>integer</type>
+     and the second <type>text</type>.  The result of
+     <function>generate_series()</function> is used directly.
+     The <literal>ORDER BY</literal> clause sorts the column values
+     as integers.
     </para>
    </sect3>
 
@@ -907,8 +935,8 @@ WHERE pname IS NULL;
    </indexterm>
 
    <para>
-    The syntax of the <xref linkend="sql-where"
-    endterm="sql-where-title"/> is
+    The syntax of the <link linkend="sql-where"><literal>WHERE</literal></link>
+    clause is
 <synopsis>
 WHERE <replaceable>search_condition</replaceable>
 </synopsis>
@@ -1014,7 +1042,7 @@ SELECT <replaceable>select_list</replaceable>
 </synopsis>
 
    <para>
-    The <xref linkend="sql-groupby" endterm="sql-groupby-title"/> is
+    The <link linkend="sql-groupby"><literal>GROUP BY</literal></link> clause is
     used to group together those rows in a table that have the same
     values in all the columns listed. The order in which the columns
     are listed does not matter.  The effect is to combine each set
@@ -1256,7 +1284,7 @@ GROUPING SETS (
     ( )
 )
 </programlisting>
-    This is commonly used for analysis over hierarchical data; e.g. total
+    This is commonly used for analysis over hierarchical data; e.g., total
     salary by department, division, and company-wide total.
    </para>
 
@@ -1265,7 +1293,7 @@ GROUPING SETS (
 <programlisting>
 CUBE ( <replaceable>e1</replaceable>, <replaceable>e2</replaceable>, ... )
 </programlisting>
-    represents the given list and all of its possible subsets (i.e. the power
+    represents the given list and all of its possible subsets (i.e., the power
     set).  Thus
 <programlisting>
 CUBE ( a, b, c )
@@ -1342,6 +1370,55 @@ GROUP BY GROUPING SETS (
     (a, d),       (a, e)
 )
 </programlisting>
+   </para>
+
+   <para>
+    <indexterm zone="queries-grouping-sets">
+     <primary>ALL</primary>
+     <secondary>GROUP BY ALL</secondary>
+    </indexterm>
+    <indexterm zone="queries-grouping-sets">
+     <primary>DISTINCT</primary>
+     <secondary>GROUP BY DISTINCT</secondary>
+    </indexterm>
+    When specifying multiple grouping items together, the final set of grouping
+    sets might contain duplicates. For example:
+<programlisting>
+GROUP BY ROLLUP (a, b), ROLLUP (a, c)
+</programlisting>
+    is equivalent to
+<programlisting>
+GROUP BY GROUPING SETS (
+    (a, b, c),
+    (a, b),
+    (a, b),
+    (a, c),
+    (a),
+    (a),
+    (a, c),
+    (a),
+    ()
+)
+</programlisting>
+    If these duplicates are undesirable, they can be removed using the
+    <literal>DISTINCT</literal> clause directly on the <literal>GROUP BY</literal>.
+    Therefore:
+<programlisting>
+GROUP BY <emphasis>DISTINCT</emphasis> ROLLUP (a, b), ROLLUP (a, c)
+</programlisting>
+    is equivalent to
+<programlisting>
+GROUP BY GROUPING SETS (
+    (a, b, c),
+    (a, b),
+    (a, c),
+    (a),
+    ()
+)
+</programlisting>
+    This is not the same as using <literal>SELECT DISTINCT</literal> because the output
+    rows may still contain duplicates.  If any of the ungrouped columns contains NULL,
+    it will be indistinguishable from the NULL used when that same column is grouped.
    </para>
 
   <note>
@@ -1496,21 +1573,25 @@ SELECT a AS value, b + c AS sum FROM ...
    </para>
 
    <para>
-    The <literal>AS</literal> keyword is optional, but only if the new column
-    name does not match any
-    <productname>PostgreSQL</productname> keyword (see <xref
-    linkend="sql-keywords-appendix"/>).  To avoid an accidental match to
-    a keyword, you can double-quote the column name.  For example,
-    <literal>VALUE</literal> is a keyword, so this does not work:
+    The <literal>AS</literal> key word is usually optional, but in some
+    cases where the desired column name matches a
+    <productname>PostgreSQL</productname> key word, you must write
+    <literal>AS</literal> or double-quote the column name in order to
+    avoid ambiguity.
+    (<xref linkend="sql-keywords-appendix"/> shows which key words
+    require <literal>AS</literal> to be used as a column label.)
+    For example, <literal>FROM</literal> is one such key word, so this
+    does not work:
 <programlisting>
-SELECT a value, b + c AS sum FROM ...
+SELECT a from, b + c AS sum FROM ...
 </programlisting>
-    but this does:
+    but either of these do:
 <programlisting>
-SELECT a "value", b + c AS sum FROM ...
+SELECT a AS from, b + c AS sum FROM ...
+SELECT a "from", b + c AS sum FROM ...
 </programlisting>
-    For protection against possible
-    future keyword additions, it is recommended that you always either
+    For greatest safety against possible
+    future key word additions, it is recommended that you always either
     write <literal>AS</literal> or double-quote the output column name.
    </para>
 
@@ -1529,7 +1610,12 @@ SELECT a "value", b + c AS sum FROM ...
    <title><literal>DISTINCT</literal></title>
 
    <indexterm zone="queries-distinct">
+    <primary>ALL</primary>
+    <secondary>SELECT ALL</secondary>
+   </indexterm>
+   <indexterm zone="queries-distinct">
     <primary>DISTINCT</primary>
+    <secondary>SELECT DISTINCT</secondary>
    </indexterm>
 
    <indexterm zone="queries-distinct">
@@ -1589,7 +1675,7 @@ SELECT DISTINCT ON (<replaceable>expression</replaceable> <optional>, <replaceab
 
 
  <sect1 id="queries-union">
-  <title>Combining Queries</title>
+  <title>Combining Queries (<literal>UNION</literal>, <literal>INTERSECT</literal>, <literal>EXCEPT</literal>)</title>
 
   <indexterm zone="queries-union">
    <primary>UNION</primary>
@@ -1621,17 +1707,9 @@ SELECT DISTINCT ON (<replaceable>expression</replaceable> <optional>, <replaceab
 <replaceable>query1</replaceable> INTERSECT <optional>ALL</optional> <replaceable>query2</replaceable>
 <replaceable>query1</replaceable> EXCEPT <optional>ALL</optional> <replaceable>query2</replaceable>
 </synopsis>
-   <replaceable>query1</replaceable> and
+   where <replaceable>query1</replaceable> and
    <replaceable>query2</replaceable> are queries that can use any of
-   the features discussed up to this point.  Set operations can also
-   be nested and chained, for example
-<synopsis>
-<replaceable>query1</replaceable> UNION <replaceable>query2</replaceable> UNION <replaceable>query3</replaceable>
-</synopsis>
-   which is executed as:
-<synopsis>
-(<replaceable>query1</replaceable> UNION <replaceable>query2</replaceable>) UNION <replaceable>query3</replaceable>
-</synopsis>
+   the features discussed up to this point.
   </para>
 
   <para>
@@ -1665,11 +1743,52 @@ SELECT DISTINCT ON (<replaceable>expression</replaceable> <optional>, <replaceab
    the corresponding columns have compatible data types, as
    described in <xref linkend="typeconv-union-case"/>.
   </para>
+
+  <para>
+   Set operations can be combined, for example
+<synopsis>
+<replaceable>query1</replaceable> UNION <replaceable>query2</replaceable> EXCEPT <replaceable>query3</replaceable>
+</synopsis>
+   which is equivalent to
+<synopsis>
+(<replaceable>query1</replaceable> UNION <replaceable>query2</replaceable>) EXCEPT <replaceable>query3</replaceable>
+</synopsis>
+   As shown here, you can use parentheses to control the order of
+   evaluation.  Without parentheses, <literal>UNION</literal>
+   and <literal>EXCEPT</literal> associate left-to-right,
+   but <literal>INTERSECT</literal> binds more tightly than those two
+   operators.  Thus
+<synopsis>
+<replaceable>query1</replaceable> UNION <replaceable>query2</replaceable> INTERSECT <replaceable>query3</replaceable>
+</synopsis>
+   means
+<synopsis>
+<replaceable>query1</replaceable> UNION (<replaceable>query2</replaceable> INTERSECT <replaceable>query3</replaceable>)
+</synopsis>
+   You can also surround an individual <replaceable>query</replaceable>
+   with parentheses.  This is important if
+   the <replaceable>query</replaceable> needs to use any of the clauses
+   discussed in following sections, such as <literal>LIMIT</literal>.
+   Without parentheses, you'll get a syntax error, or else the clause will
+   be understood as applying to the output of the set operation rather
+   than one of its inputs.  For example,
+<synopsis>
+SELECT a FROM b UNION SELECT x FROM y LIMIT 10
+</synopsis>
+   is accepted, but it means
+<synopsis>
+(SELECT a FROM b UNION SELECT x FROM y) LIMIT 10
+</synopsis>
+   not
+<synopsis>
+SELECT a FROM b UNION (SELECT x FROM y LIMIT 10)
+</synopsis>
+  </para>
  </sect1>
 
 
  <sect1 id="queries-order">
-  <title>Sorting Rows</title>
+  <title>Sorting Rows (<literal>ORDER BY</literal>)</title>
 
   <indexterm zone="queries-order">
    <primary>sorting</primary>
@@ -1979,6 +2098,10 @@ GROUP BY region, product;
    but we'd have needed two levels of nested sub-<command>SELECT</command>s.  It's a bit
    easier to follow this way.
   </para>
+ </sect2>
+
+ <sect2 id="queries-with-recursive">
+  <title>Recursive Queries</title>
 
   <para>
    <indexterm>
@@ -2049,9 +2172,8 @@ SELECT sum(n) FROM t;
 
   <note>
    <para>
-    Strictly speaking, this process is iteration not recursion, but
-    <literal>RECURSIVE</literal> is the terminology chosen by the SQL standards
-    committee.
+    While <literal>RECURSIVE</literal> allows queries to be specified
+    recursively, internally such queries are evaluated iteratively.
    </para>
   </note>
 
@@ -2072,7 +2194,7 @@ SELECT sum(n) FROM t;
 WITH RECURSIVE included_parts(sub_part, part, quantity) AS (
     SELECT sub_part, part, quantity FROM parts WHERE part = 'our_product'
   UNION ALL
-    SELECT p.sub_part, p.part, p.quantity
+    SELECT p.sub_part, p.part, p.quantity * pr.quantity
     FROM included_parts pr, parts p
     WHERE p.part = pr.sub_part
 )
@@ -2081,6 +2203,144 @@ FROM included_parts
 GROUP BY sub_part
 </programlisting>
   </para>
+
+  <sect3 id="queries-with-search">
+   <title>Search Order</title>
+
+   <para>
+    When computing a tree traversal using a recursive query, you might want to
+    order the results in either depth-first or breadth-first order.  This can
+    be done by computing an ordering column alongside the other data columns
+    and using that to sort the results at the end.  Note that this does not
+    actually control in which order the query evaluation visits the rows; that
+    is as always in SQL implementation-dependent.  This approach merely
+    provides a convenient way to order the results afterwards.
+   </para>
+
+   <para>
+    To create a depth-first order, we compute for each result row an array of
+    rows that we have visited so far.  For example, consider the following
+    query that searches a table <structname>tree</structname> using a
+    <structfield>link</structfield> field:
+
+<programlisting>
+WITH RECURSIVE search_tree(id, link, data) AS (
+    SELECT t.id, t.link, t.data
+    FROM tree t
+  UNION ALL
+    SELECT t.id, t.link, t.data
+    FROM tree t, search_tree st
+    WHERE t.id = st.link
+)
+SELECT * FROM search_tree;
+</programlisting>
+
+    To add depth-first ordering information, you can write this:
+
+<programlisting>
+WITH RECURSIVE search_tree(id, link, data, <emphasis>path</emphasis>) AS (
+    SELECT t.id, t.link, t.data, <emphasis>ARRAY[t.id]</emphasis>
+    FROM tree t
+  UNION ALL
+    SELECT t.id, t.link, t.data, <emphasis>path || t.id</emphasis>
+    FROM tree t, search_tree st
+    WHERE t.id = st.link
+)
+SELECT * FROM search_tree <emphasis>ORDER BY path</emphasis>;
+</programlisting>
+   </para>
+
+   <para>
+    In the general case where more than one field needs to be used to identify
+    a row, use an array of rows.  For example, if we needed to track fields
+    <structfield>f1</structfield> and <structfield>f2</structfield>:
+
+<programlisting>
+WITH RECURSIVE search_tree(id, link, data, <emphasis>path</emphasis>) AS (
+    SELECT t.id, t.link, t.data, <emphasis>ARRAY[ROW(t.f1, t.f2)]</emphasis>
+    FROM tree t
+  UNION ALL
+    SELECT t.id, t.link, t.data, <emphasis>path || ROW(t.f1, t.f2)</emphasis>
+    FROM tree t, search_tree st
+    WHERE t.id = st.link
+)
+SELECT * FROM search_tree <emphasis>ORDER BY path</emphasis>;
+</programlisting>
+   </para>
+
+   <tip>
+    <para>
+     Omit the <literal>ROW()</literal> syntax in the common case where only one
+     field needs to be tracked.  This allows a simple array rather than a
+     composite-type array to be used, gaining efficiency.
+    </para>
+   </tip>
+
+   <para>
+    To create a breadth-first order, you can add a column that tracks the depth
+    of the search, for example:
+
+<programlisting>
+WITH RECURSIVE search_tree(id, link, data, <emphasis>depth</emphasis>) AS (
+    SELECT t.id, t.link, t.data, <emphasis>0</emphasis>
+    FROM tree t
+  UNION ALL
+    SELECT t.id, t.link, t.data, <emphasis>depth + 1</emphasis>
+    FROM tree t, search_tree st
+    WHERE t.id = st.link
+)
+SELECT * FROM search_tree <emphasis>ORDER BY depth</emphasis>;
+</programlisting>
+
+    To get a stable sort, add data columns as secondary sorting columns.
+   </para>
+
+   <tip>
+    <para>
+     The recursive query evaluation algorithm produces its output in
+     breadth-first search order.  However, this is an implementation detail and
+     it is perhaps unsound to rely on it.  The order of the rows within each
+     level is certainly undefined, so some explicit ordering might be desired
+     in any case.
+    </para>
+   </tip>
+
+   <para>
+    There is built-in syntax to compute a depth- or breadth-first sort column.
+    For example:
+
+<programlisting>
+WITH RECURSIVE search_tree(id, link, data) AS (
+    SELECT t.id, t.link, t.data
+    FROM tree t
+  UNION ALL
+    SELECT t.id, t.link, t.data
+    FROM tree t, search_tree st
+    WHERE t.id = st.link
+) <emphasis>SEARCH DEPTH FIRST BY id SET ordercol</emphasis>
+SELECT * FROM search_tree ORDER BY ordercol;
+
+WITH RECURSIVE search_tree(id, link, data) AS (
+    SELECT t.id, t.link, t.data
+    FROM tree t
+  UNION ALL
+    SELECT t.id, t.link, t.data
+    FROM tree t, search_tree st
+    WHERE t.id = st.link
+) <emphasis>SEARCH BREADTH FIRST BY id SET ordercol</emphasis>
+SELECT * FROM search_tree ORDER BY ordercol;
+</programlisting>
+    This syntax is internally expanded to something similar to the above
+    hand-written forms.  The <literal>SEARCH</literal> clause specifies whether
+    depth- or breadth first search is wanted, the list of columns to track for
+    sorting, and a column name that will contain the result data that can be
+    used for sorting.  That column will implicitly be added to the output rows
+    of the CTE.
+   </para>
+  </sect3>
+
+  <sect3 id="queries-with-cycle">
+   <title>Cycle Detection</title>
 
   <para>
    When working with recursive queries it is important to be sure that
@@ -2091,13 +2351,13 @@ GROUP BY sub_part
    cycle does not involve output rows that are completely duplicate: it may be
    necessary to check just one or a few fields to see if the same point has
    been reached before.  The standard method for handling such situations is
-   to compute an array of the already-visited values.  For example, consider
+   to compute an array of the already-visited values.  For example, consider again
    the following query that searches a table <structname>graph</structname> using a
    <structfield>link</structfield> field:
 
 <programlisting>
 WITH RECURSIVE search_graph(id, link, data, depth) AS (
-    SELECT g.id, g.link, g.data, 1
+    SELECT g.id, g.link, g.data, 0
     FROM graph g
   UNION ALL
     SELECT g.id, g.link, g.data, sg.depth + 1
@@ -2112,20 +2372,20 @@ SELECT * FROM search_graph;
    <literal>UNION ALL</literal> to <literal>UNION</literal> would not eliminate the looping.
    Instead we need to recognize whether we have reached the same row again
    while following a particular path of links.  We add two columns
-   <structfield>path</structfield> and <structfield>cycle</structfield> to the loop-prone query:
+   <structfield>is_cycle</structfield> and <structfield>path</structfield> to the loop-prone query:
 
 <programlisting>
-WITH RECURSIVE search_graph(id, link, data, depth, path, cycle) AS (
-    SELECT g.id, g.link, g.data, 1,
-      ARRAY[g.id],
-      false
+WITH RECURSIVE search_graph(id, link, data, depth, <emphasis>is_cycle, path</emphasis>) AS (
+    SELECT g.id, g.link, g.data, 0,
+      <emphasis>false,
+      ARRAY[g.id]</emphasis>
     FROM graph g
   UNION ALL
     SELECT g.id, g.link, g.data, sg.depth + 1,
-      path || g.id,
-      g.id = ANY(path)
+      <emphasis>g.id = ANY(path),
+      path || g.id</emphasis>
     FROM graph g, search_graph sg
-    WHERE g.id = sg.link AND NOT cycle
+    WHERE g.id = sg.link <emphasis>AND NOT is_cycle</emphasis>
 )
 SELECT * FROM search_graph;
 </programlisting>
@@ -2140,17 +2400,17 @@ SELECT * FROM search_graph;
    compare fields <structfield>f1</structfield> and <structfield>f2</structfield>:
 
 <programlisting>
-WITH RECURSIVE search_graph(id, link, data, depth, path, cycle) AS (
-    SELECT g.id, g.link, g.data, 1,
-      ARRAY[ROW(g.f1, g.f2)],
-      false
+WITH RECURSIVE search_graph(id, link, data, depth, <emphasis>is_cycle, path</emphasis>) AS (
+    SELECT g.id, g.link, g.data, 0,
+      <emphasis>false,
+      ARRAY[ROW(g.f1, g.f2)]</emphasis>
     FROM graph g
   UNION ALL
     SELECT g.id, g.link, g.data, sg.depth + 1,
-      path || ROW(g.f1, g.f2),
-      ROW(g.f1, g.f2) = ANY(path)
+      <emphasis>ROW(g.f1, g.f2) = ANY(path),
+      path || ROW(g.f1, g.f2)</emphasis>
     FROM graph g, search_graph sg
-    WHERE g.id = sg.link AND NOT cycle
+    WHERE g.id = sg.link <emphasis>AND NOT is_cycle</emphasis>
 )
 SELECT * FROM search_graph;
 </programlisting>
@@ -2164,12 +2424,38 @@ SELECT * FROM search_graph;
    </para>
   </tip>
 
+  <para>
+   There is built-in syntax to simplify cycle detection.  The above query can
+   also be written like this:
+<programlisting>
+WITH RECURSIVE search_graph(id, link, data, depth) AS (
+    SELECT g.id, g.link, g.data, 1
+    FROM graph g
+  UNION ALL
+    SELECT g.id, g.link, g.data, sg.depth + 1
+    FROM graph g, search_graph sg
+    WHERE g.id = sg.link
+) <emphasis>CYCLE id SET is_cycle USING path</emphasis>
+SELECT * FROM search_graph;
+</programlisting>
+   and it will be internally rewritten to the above form.  The
+   <literal>CYCLE</literal> clause specifies first the list of columns to
+   track for cycle detection, then a column name that will show whether a
+   cycle has been detected, and finally the name of another column that will track the
+   path.  The cycle and path columns will implicitly be added to the output
+   rows of the CTE.
+  </para>
+
   <tip>
    <para>
-    The recursive query evaluation algorithm produces its output in
-    breadth-first search order.  You can display the results in depth-first
-    search order by making the outer query <literal>ORDER BY</literal> a
-    <quote>path</quote> column constructed in this way.
+    The cycle path column is computed in the same way as the depth-first
+    ordering column show in the previous section.  A query can have both a
+    <literal>SEARCH</literal> and a <literal>CYCLE</literal> clause, but a
+    depth-first search specification and a cycle detection specification would
+    create redundant computations, so it's more efficient to just use the
+    <literal>CYCLE</literal> clause and order by the path column.  If
+    breadth-first ordering is wanted, then specifying both
+    <literal>SEARCH</literal> and <literal>CYCLE</literal> can be useful.
    </para>
   </tip>
 
@@ -2185,7 +2471,7 @@ WITH RECURSIVE t(n) AS (
   UNION ALL
     SELECT n+1 FROM t
 )
-SELECT n FROM t LIMIT 100;
+SELECT n FROM t <emphasis>LIMIT 100</emphasis>;
 </programlisting>
 
    This works because <productname>PostgreSQL</productname>'s implementation
@@ -2197,22 +2483,99 @@ SELECT n FROM t LIMIT 100;
    outer query will usually try to fetch all of the <literal>WITH</literal> query's
    output anyway.
   </para>
+  </sect3>
+ </sect2>
+
+ <sect2>
+  <title>Common Table Expression Materialization</title>
 
   <para>
-   A useful property of <literal>WITH</literal> queries is that they are evaluated
-   only once per execution of the parent query, even if they are referred to
-   more than once by the parent query or sibling <literal>WITH</literal> queries.
+   A useful property of <literal>WITH</literal> queries is that they are
+   normally evaluated only once per execution of the parent query, even if
+   they are referred to more than once by the parent query or
+   sibling <literal>WITH</literal> queries.
    Thus, expensive calculations that are needed in multiple places can be
    placed within a <literal>WITH</literal> query to avoid redundant work.  Another
    possible application is to prevent unwanted multiple evaluations of
    functions with side-effects.
-   However, the other side of this coin is that the optimizer is less able to
-   push restrictions from the parent query down into a <literal>WITH</literal> query
-   than an ordinary subquery.  The <literal>WITH</literal> query will generally be
+   However, the other side of this coin is that the optimizer is not able to
+   push restrictions from the parent query down into a multiply-referenced
+   <literal>WITH</literal> query, since that might affect all uses of the
+   <literal>WITH</literal> query's output when it should affect only one.
+   The multiply-referenced <literal>WITH</literal> query will be
    evaluated as written, without suppression of rows that the parent query
    might discard afterwards.  (But, as mentioned above, evaluation might stop
    early if the reference(s) to the query demand only a limited number of
    rows.)
+  </para>
+
+  <para>
+   However, if a <literal>WITH</literal> query is non-recursive and
+   side-effect-free (that is, it is a <literal>SELECT</literal> containing
+   no volatile functions) then it can be folded into the parent query,
+   allowing joint optimization of the two query levels.  By default, this
+   happens if the parent query references the <literal>WITH</literal> query
+   just once, but not if it references the <literal>WITH</literal> query
+   more than once.  You can override that decision by
+   specifying <literal>MATERIALIZED</literal> to force separate calculation
+   of the <literal>WITH</literal> query, or by specifying <literal>NOT
+   MATERIALIZED</literal> to force it to be merged into the parent query.
+   The latter choice risks duplicate computation of
+   the <literal>WITH</literal> query, but it can still give a net savings if
+   each usage of the <literal>WITH</literal> query needs only a small part
+   of the <literal>WITH</literal> query's full output.
+  </para>
+
+  <para>
+   A simple example of these rules is
+<programlisting>
+WITH w AS (
+    SELECT * FROM big_table
+)
+SELECT * FROM w WHERE key = 123;
+</programlisting>
+   This <literal>WITH</literal> query will be folded, producing the same
+   execution plan as
+<programlisting>
+SELECT * FROM big_table WHERE key = 123;
+</programlisting>
+   In particular, if there's an index on <structfield>key</structfield>,
+   it will probably be used to fetch just the rows having <literal>key =
+   123</literal>.  On the other hand, in
+<programlisting>
+WITH w AS (
+    SELECT * FROM big_table
+)
+SELECT * FROM w AS w1 JOIN w AS w2 ON w1.key = w2.ref
+WHERE w2.key = 123;
+</programlisting>
+   the <literal>WITH</literal> query will be materialized, producing a
+   temporary copy of <structname>big_table</structname> that is then
+   joined with itself &mdash; without benefit of any index.  This query
+   will be executed much more efficiently if written as
+<programlisting>
+WITH w AS NOT MATERIALIZED (
+    SELECT * FROM big_table
+)
+SELECT * FROM w AS w1 JOIN w AS w2 ON w1.key = w2.ref
+WHERE w2.key = 123;
+</programlisting>
+   so that the parent query's restrictions can be applied directly
+   to scans of <structname>big_table</structname>.
+  </para>
+
+  <para>
+   An example where <literal>NOT MATERIALIZED</literal> could be
+   undesirable is
+<programlisting>
+WITH w AS (
+    SELECT key, very_expensive_function(val) as f FROM some_table
+)
+SELECT * FROM w AS w1 JOIN w AS w2 ON w1.f = w2.f;
+</programlisting>
+   Here, materialization of the <literal>WITH</literal> query ensures
+   that <function>very_expensive_function</function> is evaluated only
+   once per table row, not twice.
   </para>
 
   <para>

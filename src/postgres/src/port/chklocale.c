@@ -4,7 +4,7 @@
  *		Functions for handling locale-related info
  *
  *
- * Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -212,7 +212,7 @@ win32_langinfo(const char *ctype)
 {
 	char	   *r = NULL;
 
-#if (_MSC_VER >= 1700) && (_MSC_VER < 1900)
+#if defined(_MSC_VER) && (_MSC_VER < 1900)
 	_locale_t	loct = NULL;
 
 	loct = _create_locale(LC_CTYPE, ctype);
@@ -226,7 +226,7 @@ win32_langinfo(const char *ctype)
 #else
 	char	   *codepage;
 
-#if (_MSC_VER >= 1900)
+#if defined(_MSC_VER) && (_MSC_VER >= 1900)
 	uint32		cp;
 	WCHAR		wctype[LOCALE_NAME_MAX_LENGTH];
 
@@ -239,27 +239,45 @@ win32_langinfo(const char *ctype)
 	{
 		r = malloc(16);			/* excess */
 		if (r != NULL)
-			sprintf(r, "CP%u", cp);
+		{
+			/*
+			 * If the return value is CP_ACP that means no ANSI code page is
+			 * available, so only Unicode can be used for the locale.
+			 */
+			if (cp == CP_ACP)
+				strcpy(r, "utf8");
+			else
+				sprintf(r, "CP%u", cp);
+		}
 	}
 	else
 #endif
 	{
 		/*
-		 * Locale format on Win32 is <Language>_<Country>.<CodePage> . For
-		 * example, English_United States.1252.
+		 * Locale format on Win32 is <Language>_<Country>.<CodePage>.  For
+		 * example, English_United States.1252.  If we see digits after the
+		 * last dot, assume it's a codepage number.  Otherwise, we might be
+		 * dealing with a Unix-style locale string; Windows' setlocale() will
+		 * take those even though GetLocaleInfoEx() won't, so we end up here.
+		 * In that case, just return what's after the last dot and hope we can
+		 * find it in our table.
 		 */
 		codepage = strrchr(ctype, '.');
 		if (codepage != NULL)
 		{
-			int			ln;
+			size_t		ln;
 
 			codepage++;
 			ln = strlen(codepage);
 			r = malloc(ln + 3);
 			if (r != NULL)
-				sprintf(r, "CP%s", codepage);
+			{
+				if (strspn(codepage, "0123456789") == ln)
+					sprintf(r, "CP%s", codepage);
+				else
+					strcpy(r, codepage);
+			}
 		}
-
 	}
 #endif
 

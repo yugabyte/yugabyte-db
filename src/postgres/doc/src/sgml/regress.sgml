@@ -47,7 +47,7 @@ make check
 <screen>
 <computeroutput>
 =======================
- All 115 tests passed.
+ All 193 tests passed.
 =======================
 </computeroutput>
 </screen>
@@ -98,7 +98,7 @@ make MAX_CONNECTIONS=10 check
 
   <para>
    To run the tests after installation (see <xref linkend="installation"/>),
-   initialize a data area and start the
+   initialize a data directory and start the
    server as explained in <xref linkend="runtime"/>, then type:
 <screen>
 make installcheck
@@ -116,10 +116,10 @@ make installcheck-parallel
 
   <para>
    The tests will also transiently create some cluster-wide objects, such as
-   roles and tablespaces.  These objects will have names beginning with
-   <literal>regress_</literal>.  Beware of using <literal>installcheck</literal>
-   mode in installations that have any actual users or tablespaces named
-   that way.
+   roles, tablespaces, and subscriptions.  These objects will have names
+   beginning with <literal>regress_</literal>.  Beware of
+   using <literal>installcheck</literal> mode with an installation that has
+   any actual global objects named that way.
   </para>
   </sect2>
 
@@ -130,7 +130,7 @@ make installcheck-parallel
    The <literal>make check</literal> and <literal>make installcheck</literal> commands
    run only the <quote>core</quote> regression tests, which test built-in
    functionality of the <productname>PostgreSQL</productname> server.  The source
-   distribution also contains additional test suites, most of them having
+   distribution contains many additional test suites, most of them having
    to do with add-on functionality such as optional procedural languages.
   </para>
 
@@ -146,9 +146,24 @@ make installcheck-world
    already-installed server, respectively, just as previously explained
    for <literal>make check</literal> and <literal>make installcheck</literal>.  Other
    considerations are the same as previously explained for each method.
-   Note that <literal>make check-world</literal> builds a separate temporary
-   installation tree for each tested module, so it requires a great deal
-   more time and disk space than <literal>make installcheck-world</literal>.
+   Note that <literal>make check-world</literal> builds a separate instance
+   (temporary data directory) for each tested module, so it requires more
+   time and disk space than <literal>make installcheck-world</literal>.
+  </para>
+
+  <para>
+   On a modern machine with multiple CPU cores and no tight operating-system
+   limits, you can make things go substantially faster with parallelism.
+   The recipe that most PostgreSQL developers actually use for running all
+   tests is something like
+<screen>
+make check-world -j8 >/dev/null
+</screen>
+   with a <option>-j</option> limit near to or a bit more than the number
+   of available cores.  Discarding <systemitem>stdout</systemitem>
+   eliminates chatter that's not interesting when you just want to verify
+   success.  (In case of failure, the <systemitem>stderr</systemitem>
+   messages are usually enough to determine where to look closer.)
   </para>
 
   <para>
@@ -166,8 +181,7 @@ make installcheck-world
   <itemizedlist>
    <listitem>
     <para>
-     Regression tests for optional procedural languages (other than
-     <application>PL/pgSQL</application>, which is tested by the core tests).
+     Regression tests for optional procedural languages.
      These are located under <filename>src/pl</filename>.
     </para>
    </listitem>
@@ -186,27 +200,49 @@ make installcheck-world
    </listitem>
    <listitem>
     <para>
+     Tests for core-supported authentication methods,
+     located in <filename>src/test/authentication</filename>.
+     (See below for additional authentication-related tests.)
+    </para>
+   </listitem>
+   <listitem>
+    <para>
      Tests stressing behavior of concurrent sessions,
      located in <filename>src/test/isolation</filename>.
     </para>
    </listitem>
    <listitem>
     <para>
-     Tests of client programs under <filename>src/bin</filename>.  See
-     also <xref linkend="regress-tap"/>.
+     Tests for crash recovery and physical replication,
+     located in <filename>src/test/recovery</filename>.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     Tests for logical replication,
+     located in <filename>src/test/subscription</filename>.
+    </para>
+   </listitem>
+   <listitem>
+    <para>
+     Tests of client programs, located under <filename>src/bin</filename>.
     </para>
    </listitem>
   </itemizedlist>
 
   <para>
-   When using <literal>installcheck</literal> mode, these tests will destroy any
-   existing databases named <literal>pl_regression</literal>,
-   <literal>contrib_regression</literal>, <literal>isolation_regression</literal>,
-   <literal>ecpg1_regression</literal>, or <literal>ecpg2_regression</literal>, as well as
-   <literal>regression</literal>.
+   When using <literal>installcheck</literal> mode, these tests will create
+   and destroy test databases whose names
+   include <literal>regression</literal>, for
+   example <literal>pl_regression</literal>
+   or <literal>contrib_regression</literal>.  Beware of
+   using <literal>installcheck</literal> mode with an installation that has
+   any non-test databases named that way.
   </para>
 
   <para>
+   Some of these auxiliary test suites use the TAP infrastructure explained
+   in <xref linkend="regress-tap"/>.
    The TAP-based tests are run only when PostgreSQL was configured with the
    option <option>--enable-tap-tests</option>.  This is recommended for
    development, but can be omitted if there is no suitable Perl installation.
@@ -253,11 +289,33 @@ make check-world PG_TEST_EXTRA='kerberos ldap ssl'
       </para>
      </listitem>
     </varlistentry>
+
+    <varlistentry>
+     <term><literal>wal_consistency_checking</literal></term>
+     <listitem>
+      <para>
+       Uses <literal>wal_consistency_checking=all</literal> while running
+       certain tests under <filename>src/test/recovery</filename>.  Not
+       enabled by default because it is resource intensive.
+      </para>
+     </listitem>
+    </varlistentry>
    </variablelist>
 
    Tests for features that are not supported by the current build
    configuration are not run even if they are mentioned in
    <varname>PG_TEST_EXTRA</varname>.
+  </para>
+
+  <para>
+   In addition, there are tests in <filename>src/test/modules</filename>
+   which will be run by <literal>make check-world</literal> but not
+   by <literal>make installcheck-world</literal>.  This is because they
+   install non-production extensions or have other side-effects that are
+   considered undesirable for a production installation.  You can
+   use <literal>make install</literal> and <literal>make
+   installcheck</literal> in one of those subdirectories if you wish,
+   but it's not recommended to do so with a non-test server.
   </para>
   </sect2>
 
@@ -305,6 +363,32 @@ make check LANG=C ENCODING=EUC_JP
   </sect2>
 
   <sect2>
+   <title>Custom Server Settings</title>
+
+   <para>
+    Custom server settings to use when running a regression test suite can be
+    set in the <varname>PGOPTIONS</varname> environment variable (for settings
+    that allow this):
+<screen>
+make check PGOPTIONS="-c force_parallel_mode=regress -c work_mem=50MB"
+</screen>
+    When running against a temporary installation, custom settings can also be
+    set by supplying a pre-written <filename>postgresql.conf</filename>:
+<screen>
+echo 'log_checkpoints = on' > test_postgresql.conf
+echo 'work_mem = 50MB' >> test_postgresql.conf
+make check EXTRA_REGRESS_OPTS="--temp-config=test_postgresql.conf"
+</screen>
+   </para>
+
+   <para>
+    This can be useful to enable additional logging, adjust resource limits,
+    or enable extra run-time checks such as <xref
+    linkend="guc-debug-discard-caches"/>.
+   </para>
+  </sect2>
+
+  <sect2>
    <title>Extra Tests</title>
 
    <para>
@@ -316,61 +400,7 @@ make check LANG=C ENCODING=EUC_JP
 <screen>
 make check EXTRA_TESTS=numeric_big
 </screen>
-    To run the collation tests:
-<screen>
-make check EXTRA_TESTS='collate.icu.utf8 collate.linux.utf8' LANG=en_US.utf8
-</screen>
-    The <literal>collate.linux.utf8</literal> test works only on Linux/glibc
-    platforms.  The <literal>collate.icu.utf8</literal> test only works when
-    support for ICU was built.  Both tests will only succeed when run in a
-    database that uses UTF-8 encoding.
    </para>
-  </sect2>
-
-  <sect2>
-   <title>Testing Hot Standby</title>
-
-  <para>
-   The source distribution also contains regression tests for the static
-   behavior of Hot Standby. These tests require a running primary server
-   and a running standby server that is accepting new WAL changes from the
-   primary (using either file-based log shipping or streaming replication).
-   Those servers are not automatically created for you, nor is replication
-   setup documented here. Please check the various sections of the
-   documentation devoted to the required commands and related issues.
-  </para>
-
-  <para>
-   To run the Hot Standby tests, first create a database
-   called <literal>regression</literal> on the primary:
-<screen>
-psql -h primary -c "CREATE DATABASE regression"
-</screen>
-   Next, run the preparatory script
-   <filename>src/test/regress/sql/hs_primary_setup.sql</filename>
-   on the primary in the regression database, for example:
-<screen>
-psql -h primary -f src/test/regress/sql/hs_primary_setup.sql regression
-</screen>
-   Allow these changes to propagate to the standby.
-  </para>
-
-  <para>
-   Now arrange for the default database connection to be to the standby
-   server under test (for example, by setting the <envar>PGHOST</envar> and
-   <envar>PGPORT</envar> environment variables).
-   Finally, run <literal>make standbycheck</literal> in the regression directory:
-<screen>
-cd src/test/regress
-make standbycheck
-</screen>
-  </para>
-
-  <para>
-   Some extreme behaviors can also be generated on the primary using the
-   script <filename>src/test/regress/sql/hs_primary_extremes.sql</filename>
-   to allow the behavior of the standby to be tested.
-  </para>
   </sect2>
   </sect1>
 
@@ -410,7 +440,7 @@ make standbycheck
     If you don't
     like the <command>diff</command> options that are used by default, set the
     environment variable <envar>PG_REGRESS_DIFF_OPTS</envar>, for
-    instance <literal>PG_REGRESS_DIFF_OPTS='-u'</literal>.  (Or you
+    instance <literal>PG_REGRESS_DIFF_OPTS='-c'</literal>.  (Or you
     can run <command>diff</command> yourself, if you prefer.)
    </para>
 
@@ -653,22 +683,21 @@ testname:output:platformpattern=comparisonfilename
    </para>
 
    <para>
-    For example: some systems interpret very small floating-point values
-    as zero, rather than reporting an underflow error.  This causes a
-    few differences in the <filename>float8</filename> regression test.
+    For example: some systems lack a working <literal>strtof</literal> function,
+    for which our workaround causes rounding errors in the
+    <filename>float4</filename> regression test.
     Therefore, we provide a variant comparison file,
-    <filename>float8-small-is-zero.out</filename>, which includes
+    <filename>float4-misrounded-input.out</filename>, which includes
     the results to be expected on these systems.  To silence the bogus
-    <quote>failure</quote> message on <systemitem>OpenBSD</systemitem>
+    <quote>failure</quote> message on <systemitem>HP-UX 10</systemitem>
     platforms, <filename>resultmap</filename> includes:
 <programlisting>
-float8:out:i.86-.*-openbsd=float8-small-is-zero.out
+float4:out:hppa.*-hp-hpux10.*=float4-misrounded-input.out
 </programlisting>
     which will trigger on any machine where the output of
-    <command>config.guess</command> matches <literal>i.86-.*-openbsd</literal>.
-    Other lines
-    in <filename>resultmap</filename> select the variant comparison file for other
-    platforms where it's appropriate.
+    <command>config.guess</command> matches <literal>hppa.*-hp-hpux10.*</literal>.
+    Other lines in <filename>resultmap</filename> select the variant comparison
+    file for other platforms where it's appropriate.
    </para>
 
    <para>
@@ -737,6 +766,28 @@ make check PROVE_TESTS='t/001_test1.pl t/003_test3.pl'
    <para>
     The TAP tests require the Perl module <literal>IPC::Run</literal>.
     This module is available from CPAN or an operating system package.
+    They also require <productname>PostgreSQL</productname> to be
+    configured with the option <option>--enable-tap-tests</option>.
+   </para>
+
+   <para>
+    Generically speaking, the TAP tests will test the executables in a
+    previously-installed installation tree if you say <literal>make
+    installcheck</literal>, or will build a new local installation tree from
+    current sources if you say <literal>make check</literal>.  In either
+    case they will initialize a local instance (data directory) and
+    transiently run a server in it.  Some of these tests run more than one
+    server.  Thus, these tests can be fairly resource-intensive.
+   </para>
+
+   <para>
+    It's important to realize that the TAP tests will start test server(s)
+    even when you say <literal>make installcheck</literal>; this is unlike
+    the traditional non-TAP testing infrastructure, which expects to use an
+    already-running test server in that case.  Some PostgreSQL
+    subdirectories contain both traditional-style and TAP-style tests,
+    meaning that <literal>make installcheck</literal> will produce a mix of
+    results from temporary servers and the already-running test server.
    </para>
   </sect1>
 
@@ -748,12 +799,12 @@ make check PROVE_TESTS='t/001_test1.pl t/003_test3.pl'
     instrumentation, so that it becomes possible to examine which
     parts of the code are covered by the regression tests or any other
     test suite that is run with the code.  This is currently supported
-    when compiling with GCC and requires the <command>gcov</command>
+    when compiling with GCC, and it requires the <command>gcov</command>
     and <command>lcov</command> programs.
    </para>
 
    <para>
-    A typical workflow would look like this:
+    A typical workflow looks like this:
 <screen>
 ./configure --enable-coverage ... OTHER OPTIONS ...
 make
@@ -762,12 +813,11 @@ make coverage-html
 </screen>
     Then point your HTML browser
     to <filename>coverage/index.html</filename>.
-    The <command>make</command> commands also work in subdirectories.
    </para>
 
    <para>
     If you don't have <command>lcov</command> or prefer text output over an
-    HTML report, you can also run
+    HTML report, you can run
 <screen>
 make coverage
 </screen>
@@ -779,10 +829,22 @@ make coverage
    </para>
 
    <para>
-    To reset the execution counts between test runs, run:
+    You can run several different tests before making the coverage report;
+    the execution counts will accumulate.  If you want
+    to reset the execution counts between test runs, run:
 <screen>
 make coverage-clean
 </screen>
+   </para>
+
+   <para>
+    You can run the <literal>make coverage-html</literal> or <literal>make
+    coverage</literal> command in a subdirectory if you want a coverage
+    report for only a portion of the code tree.
+   </para>
+
+   <para>
+    Use <literal>make distclean</literal> to clean up when done.
    </para>
   </sect1>
 

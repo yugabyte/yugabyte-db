@@ -1,6 +1,6 @@
 #! /usr/bin/perl
 #
-# Copyright (c) 2001-2018, PostgreSQL Global Development Group
+# Copyright (c) 2001-2022, PostgreSQL Global Development Group
 #
 # src/backend/utils/mb/Unicode/UCS_to_most.pl
 #
@@ -8,14 +8,16 @@
 # map files provided by Unicode organization.
 # Unfortunately it is prohibited by the organization
 # to distribute the map files. So if you try to use this script,
-# you have to obtain the map files from the organization's ftp site.
-# ftp://www.unicode.org/Public/MAPPINGS/
+# you have to obtain the map files from the organization's download site.
+# https://www.unicode.org/Public/MAPPINGS/
 # We assume the file include three tab-separated columns:
 #		 source character set code in hex
 #		 UCS-2 code in hex
 #		 # and Unicode name (not used in this script)
 
 use strict;
+use warnings;
+
 use convutils;
 
 my $this_script = 'src/backend/utils/mb/Unicode/UCS_to_most.pl';
@@ -52,7 +54,8 @@ my %filename = (
 # make maps for all encodings if not specified
 my @charsets = (scalar(@ARGV) > 0) ? @ARGV : sort keys(%filename);
 
-foreach my $charset (@charsets)
+# the sort is just so that the output is easier to eyeball
+foreach my $charset (sort @charsets)
 {
 	my $mapping = &read_source($filename{$charset});
 

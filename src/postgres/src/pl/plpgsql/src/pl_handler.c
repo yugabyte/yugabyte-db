@@ -3,7 +3,7 @@
  * pl_handler.c		- Handler for the PL/pgSQL
  *			  procedural language
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -20,14 +20,12 @@
 #include "catalog/pg_type.h"
 #include "funcapi.h"
 #include "miscadmin.h"
+#include "plpgsql.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
-
-#include "plpgsql.h"
-
 
 static bool plpgsql_extra_checks_check_hook(char **newvalue, void **extra, GucSource source);
 static void plpgsql_extra_warnings_assign_hook(const char *newvalue, void *extra);
@@ -199,7 +197,7 @@ _PG_init(void)
 							   plpgsql_extra_errors_assign_hook,
 							   NULL);
 
-	EmitWarningsOnPlaceholders("plpgsql");
+	MarkGUCPrefixReserved("plpgsql");
 
 	plpgsql_HashTableInit();
 	RegisterXactCallback(plpgsql_xact_cb, NULL);
@@ -226,7 +224,8 @@ plpgsql_call_handler(PG_FUNCTION_ARGS)
 	bool		nonatomic;
 	PLpgSQL_function *func;
 	PLpgSQL_execstate *save_cur_estate;
-	Datum		retval;
+	ResourceOwner procedure_resowner;
+	volatile Datum retval = (Datum) 0;
 	int			rc;
 
 	nonatomic = fcinfo->context &&
@@ -248,6 +247,17 @@ plpgsql_call_handler(PG_FUNCTION_ARGS)
 	/* Mark the function as busy, so it can't be deleted from under us */
 	func->use_count++;
 
+	/*
+	 * If we'll need a procedure-lifespan resowner to execute any CALL or DO
+	 * statements, create it now.  Since this resowner is not tied to any
+	 * parent, failing to free it would result in process-lifespan leaks.
+	 * Therefore, be very wary of adding any code between here and the PG_TRY
+	 * block.
+	 */
+	procedure_resowner =
+		(nonatomic && func->requires_procedure_resowner) ?
+		ResourceOwnerCreate(NULL, "PL/pgSQL procedure resources") : NULL;
+
 	PG_TRY();
 	{
 		/*
@@ -261,23 +271,28 @@ plpgsql_call_handler(PG_FUNCTION_ARGS)
 		{
 			plpgsql_exec_event_trigger(func,
 									   (EventTriggerData *) fcinfo->context);
-			retval = (Datum) 0;
+			/* there's no return value in this case */
 		}
 		else
-			retval = plpgsql_exec_function(func, fcinfo, NULL, !nonatomic);
+			retval = plpgsql_exec_function(func, fcinfo,
+										   NULL, NULL,
+										   procedure_resowner,
+										   !nonatomic);
 	}
-	PG_CATCH();
+	PG_FINALLY();
 	{
-		/* Decrement use-count, restore cur_estate, and propagate error */
+		/* Decrement use-count, restore cur_estate */
 		func->use_count--;
 		func->cur_estate = save_cur_estate;
-		PG_RE_THROW();
+
+		/* Be sure to release the procedure resowner if any */
+		if (procedure_resowner)
+		{
+			ResourceOwnerReleaseAllPlanCacheRefs(procedure_resowner);
+			ResourceOwnerDelete(procedure_resowner);
+		}
 	}
 	PG_END_TRY();
-
-	func->use_count--;
-
-	func->cur_estate = save_cur_estate;
 
 	/*
 	 * Disconnect from SPI manager
@@ -299,11 +314,12 @@ PG_FUNCTION_INFO_V1(plpgsql_inline_handler);
 Datum
 plpgsql_inline_handler(PG_FUNCTION_ARGS)
 {
+	LOCAL_FCINFO(fake_fcinfo, 0);
 	InlineCodeBlock *codeblock = castNode(InlineCodeBlock, DatumGetPointer(PG_GETARG_DATUM(0)));
 	PLpgSQL_function *func;
-	FunctionCallInfoData fake_fcinfo;
 	FmgrInfo	flinfo;
 	EState	   *simple_eval_estate;
+	ResourceOwner simple_eval_resowner;
 	Datum		retval;
 	int			rc;
 
@@ -324,28 +340,45 @@ plpgsql_inline_handler(PG_FUNCTION_ARGS)
 	 * plpgsql_exec_function().  In particular note that this sets things up
 	 * with no arguments passed.
 	 */
-	MemSet(&fake_fcinfo, 0, sizeof(fake_fcinfo));
+	MemSet(fake_fcinfo, 0, SizeForFunctionCallInfo(0));
 	MemSet(&flinfo, 0, sizeof(flinfo));
-	fake_fcinfo.flinfo = &flinfo;
+	fake_fcinfo->flinfo = &flinfo;
 	flinfo.fn_oid = InvalidOid;
 	flinfo.fn_mcxt = GetCurrentMemoryContext();
 
-	/* Create a private EState for simple-expression execution */
+	/*
+	 * Create a private EState and resowner for simple-expression execution.
+	 * Notice that these are NOT tied to transaction-level resources; they
+	 * must survive any COMMIT/ROLLBACK the DO block executes, since we will
+	 * unconditionally try to clean them up below.  (Hence, be wary of adding
+	 * anything that could fail between here and the PG_TRY block.)  See the
+	 * comments for shared_simple_eval_estate.
+	 *
+	 * Because this resowner isn't tied to the calling transaction, we can
+	 * also use it as the "procedure" resowner for any CALL statements.  That
+	 * helps reduce the opportunities for failure here.
+	 */
 	simple_eval_estate = CreateExecutorState();
+	simple_eval_resowner =
+		ResourceOwnerCreate(NULL, "PL/pgSQL DO block simple expressions");
 
 	/* And run the function */
 	PG_TRY();
 	{
-		retval = plpgsql_exec_function(func, &fake_fcinfo, simple_eval_estate, codeblock->atomic);
+		retval = plpgsql_exec_function(func, fake_fcinfo,
+									   simple_eval_estate,
+									   simple_eval_resowner,
+									   simple_eval_resowner,	/* see above */
+									   codeblock->atomic);
 	}
 	PG_CATCH();
 	{
 		/*
 		 * We need to clean up what would otherwise be long-lived resources
 		 * accumulated by the failed DO block, principally cached plans for
-		 * statements (which can be flushed with plpgsql_free_function_memory)
-		 * and execution trees for simple expressions, which are in the
-		 * private EState.
+		 * statements (which can be flushed by plpgsql_free_function_memory),
+		 * execution trees for simple expressions, which are in the private
+		 * EState, and cached-plan refcounts held by the private resowner.
 		 *
 		 * Before releasing the private EState, we must clean up any
 		 * simple_econtext_stack entries pointing into it, which we can do by
@@ -358,8 +391,10 @@ plpgsql_inline_handler(PG_FUNCTION_ARGS)
 						   GetCurrentSubTransactionId(),
 						   0, NULL);
 
-		/* Clean up the private EState */
+		/* Clean up the private EState and resowner */
 		FreeExecutorState(simple_eval_estate);
+		ResourceOwnerReleaseAllPlanCacheRefs(simple_eval_resowner);
+		ResourceOwnerDelete(simple_eval_resowner);
 
 		/* Function should now have no remaining use-counts ... */
 		func->use_count--;
@@ -373,8 +408,10 @@ plpgsql_inline_handler(PG_FUNCTION_ARGS)
 	}
 	PG_END_TRY();
 
-	/* Clean up the private EState */
+	/* Clean up the private EState and resowner */
 	FreeExecutorState(simple_eval_estate);
+	ResourceOwnerReleaseAllPlanCacheRefs(simple_eval_resowner);
+	ResourceOwnerDelete(simple_eval_resowner);
 
 	/* Function should now have no remaining use-counts ... */
 	func->use_count--;
@@ -428,14 +465,12 @@ plpgsql_validator(PG_FUNCTION_ARGS)
 	functyptype = get_typtype(proc->prorettype);
 
 	/* Disallow pseudotype result */
-	/* except for TRIGGER, RECORD, VOID, or polymorphic */
+	/* except for TRIGGER, EVTTRIGGER, RECORD, VOID, or polymorphic */
 	if (functyptype == TYPTYPE_PSEUDO)
 	{
-		/* we assume OPAQUE with no arguments means a trigger */
-		if (proc->prorettype == TRIGGEROID ||
-			(proc->prorettype == OPAQUEOID && proc->pronargs == 0))
+		if (proc->prorettype == TRIGGEROID)
 			is_dml_trigger = true;
-		else if (proc->prorettype == EVTTRIGGEROID)
+		else if (proc->prorettype == EVENT_TRIGGEROID)
 			is_event_trigger = true;
 		else if (proc->prorettype != RECORDOID &&
 				 proc->prorettype != VOIDOID &&
@@ -466,7 +501,7 @@ plpgsql_validator(PG_FUNCTION_ARGS)
 	/* Postpone body checks if !check_function_bodies */
 	if (check_function_bodies)
 	{
-		FunctionCallInfoData fake_fcinfo;
+		LOCAL_FCINFO(fake_fcinfo, 0);
 		FmgrInfo	flinfo;
 		int			rc;
 		TriggerData trigdata;
@@ -482,26 +517,26 @@ plpgsql_validator(PG_FUNCTION_ARGS)
 		 * Set up a fake fcinfo with just enough info to satisfy
 		 * plpgsql_compile().
 		 */
-		MemSet(&fake_fcinfo, 0, sizeof(fake_fcinfo));
+		MemSet(fake_fcinfo, 0, SizeForFunctionCallInfo(0));
 		MemSet(&flinfo, 0, sizeof(flinfo));
-		fake_fcinfo.flinfo = &flinfo;
+		fake_fcinfo->flinfo = &flinfo;
 		flinfo.fn_oid = funcoid;
 		flinfo.fn_mcxt = GetCurrentMemoryContext();
 		if (is_dml_trigger)
 		{
 			MemSet(&trigdata, 0, sizeof(trigdata));
 			trigdata.type = T_TriggerData;
-			fake_fcinfo.context = (Node *) &trigdata;
+			fake_fcinfo->context = (Node *) &trigdata;
 		}
 		else if (is_event_trigger)
 		{
 			MemSet(&etrigdata, 0, sizeof(etrigdata));
 			etrigdata.type = T_EventTriggerData;
-			fake_fcinfo.context = (Node *) &etrigdata;
+			fake_fcinfo->context = (Node *) &etrigdata;
 		}
 
 		/* Test-compile the function */
-		plpgsql_compile(&fake_fcinfo, true);
+		plpgsql_compile(fake_fcinfo, true);
 
 		/*
 		 * Disconnect from SPI manager

@@ -3,7 +3,7 @@
  * xlogdesc.c
  *	  rmgr descriptor routines for access/transam/xlog.c
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -14,6 +14,7 @@
  */
 #include "postgres.h"
 
+#include "access/transam.h"
 #include "access/xlog.h"
 #include "access/xlog_internal.h"
 #include "catalog/pg_control.h"
@@ -48,11 +49,12 @@ xlog_desc(StringInfo buf, XLogReaderState *record)
 						 "oldest xid %u in DB %u; oldest multi %u in DB %u; "
 						 "oldest/newest commit timestamp xid: %u/%u; "
 						 "oldest running xid %u; %s",
-						 (uint32) (checkpoint->redo >> 32), (uint32) checkpoint->redo,
+						 LSN_FORMAT_ARGS(checkpoint->redo),
 						 checkpoint->ThisTimeLineID,
 						 checkpoint->PrevTimeLineID,
 						 checkpoint->fullPageWrites ? "true" : "false",
-						 checkpoint->nextXidEpoch, checkpoint->nextXid,
+						 EpochFromFullTransactionId(checkpoint->nextXid),
+						 XidFromFullTransactionId(checkpoint->nextXid),
 						 checkpoint->nextOid,
 						 checkpoint->nextMulti,
 						 checkpoint->nextMultiOffset,
@@ -87,8 +89,7 @@ xlog_desc(StringInfo buf, XLogReaderState *record)
 		XLogRecPtr	startpoint;
 
 		memcpy(&startpoint, rec, sizeof(XLogRecPtr));
-		appendStringInfo(buf, "%X/%X",
-						 (uint32) (startpoint >> 32), (uint32) startpoint);
+		appendStringInfo(buf, "%X/%X", LSN_FORMAT_ARGS(startpoint));
 	}
 	else if (info == XLOG_PARAMETER_CHANGE)
 	{
@@ -110,11 +111,12 @@ xlog_desc(StringInfo buf, XLogReaderState *record)
 		}
 
 		appendStringInfo(buf, "max_connections=%d max_worker_processes=%d "
-						 "max_prepared_xacts=%d max_locks_per_xact=%d "
-						 "wal_level=%s wal_log_hints=%s "
-						 "track_commit_timestamp=%s",
+						 "max_wal_senders=%d max_prepared_xacts=%d "
+						 "max_locks_per_xact=%d wal_level=%s "
+						 "wal_log_hints=%s track_commit_timestamp=%s",
 						 xlrec.MaxConnections,
 						 xlrec.max_worker_processes,
+						 xlrec.max_wal_senders,
 						 xlrec.max_prepared_xacts,
 						 xlrec.max_locks_per_xact,
 						 wal_level_str,
@@ -136,6 +138,15 @@ xlog_desc(StringInfo buf, XLogReaderState *record)
 		appendStringInfo(buf, "tli %u; prev tli %u; time %s",
 						 xlrec.ThisTimeLineID, xlrec.PrevTimeLineID,
 						 timestamptz_to_str(xlrec.end_time));
+	}
+	else if (info == XLOG_OVERWRITE_CONTRECORD)
+	{
+		xl_overwrite_contrecord xlrec;
+
+		memcpy(&xlrec, rec, sizeof(xl_overwrite_contrecord));
+		appendStringInfo(buf, "lsn %X/%X; time %s",
+						 LSN_FORMAT_ARGS(xlrec.overwritten_lsn),
+						 timestamptz_to_str(xlrec.overwrite_time));
 	}
 }
 
@@ -176,6 +187,9 @@ xlog_identify(uint8 info)
 		case XLOG_END_OF_RECOVERY:
 			id = "END_OF_RECOVERY";
 			break;
+		case XLOG_OVERWRITE_CONTRECORD:
+			id = "OVERWRITE_CONTRECORD";
+			break;
 		case XLOG_FPI:
 			id = "FPI";
 			break;
@@ -185,4 +199,133 @@ xlog_identify(uint8 info)
 	}
 
 	return id;
+}
+
+/*
+ * Returns a string giving information about all the blocks in an
+ * XLogRecord.
+ */
+void
+XLogRecGetBlockRefInfo(XLogReaderState *record, bool pretty,
+					   bool detailed_format, StringInfo buf,
+					   uint32 *fpi_len)
+{
+	int			block_id;
+
+	Assert(record != NULL);
+
+	if (detailed_format && pretty)
+		appendStringInfoChar(buf, '\n');
+
+	for (block_id = 0; block_id <= XLogRecMaxBlockId(record); block_id++)
+	{
+		RelFileNode rnode;
+		ForkNumber	forknum;
+		BlockNumber blk;
+
+		if (!XLogRecGetBlockTagExtended(record, block_id,
+										&rnode, &forknum, &blk, NULL))
+			continue;
+
+		if (detailed_format)
+		{
+			/* Get block references in detailed format. */
+
+			if (pretty)
+				appendStringInfoChar(buf, '\t');
+			else if (block_id > 0)
+				appendStringInfoChar(buf, ' ');
+
+			appendStringInfo(buf,
+							 "blkref #%d: rel %u/%u/%u fork %s blk %u",
+							 block_id,
+							 rnode.spcNode, rnode.dbNode, rnode.relNode,
+							 forkNames[forknum],
+							 blk);
+
+			if (XLogRecHasBlockImage(record, block_id))
+			{
+				uint8		bimg_info = XLogRecGetBlock(record, block_id)->bimg_info;
+
+				/* Calculate the amount of FPI data in the record. */
+				if (fpi_len)
+					*fpi_len += XLogRecGetBlock(record, block_id)->bimg_len;
+
+				if (BKPIMAGE_COMPRESSED(bimg_info))
+				{
+					const char *method;
+
+					if ((bimg_info & BKPIMAGE_COMPRESS_PGLZ) != 0)
+						method = "pglz";
+					else if ((bimg_info & BKPIMAGE_COMPRESS_LZ4) != 0)
+						method = "lz4";
+					else if ((bimg_info & BKPIMAGE_COMPRESS_ZSTD) != 0)
+						method = "zstd";
+					else
+						method = "unknown";
+
+					appendStringInfo(buf,
+									 " (FPW%s); hole: offset: %u, length: %u, "
+									 "compression saved: %u, method: %s",
+									 XLogRecBlockImageApply(record, block_id) ?
+									 "" : " for WAL verification",
+									 XLogRecGetBlock(record, block_id)->hole_offset,
+									 XLogRecGetBlock(record, block_id)->hole_length,
+									 BLCKSZ -
+									 XLogRecGetBlock(record, block_id)->hole_length -
+									 XLogRecGetBlock(record, block_id)->bimg_len,
+									 method);
+				}
+				else
+				{
+					appendStringInfo(buf,
+									 " (FPW%s); hole: offset: %u, length: %u",
+									 XLogRecBlockImageApply(record, block_id) ?
+									 "" : " for WAL verification",
+									 XLogRecGetBlock(record, block_id)->hole_offset,
+									 XLogRecGetBlock(record, block_id)->hole_length);
+				}
+			}
+
+			if (pretty)
+				appendStringInfoChar(buf, '\n');
+		}
+		else
+		{
+			/* Get block references in short format. */
+
+			if (forknum != MAIN_FORKNUM)
+			{
+				appendStringInfo(buf,
+								 ", blkref #%d: rel %u/%u/%u fork %s blk %u",
+								 block_id,
+								 rnode.spcNode, rnode.dbNode, rnode.relNode,
+								 forkNames[forknum],
+								 blk);
+			}
+			else
+			{
+				appendStringInfo(buf,
+								 ", blkref #%d: rel %u/%u/%u blk %u",
+								 block_id,
+								 rnode.spcNode, rnode.dbNode, rnode.relNode,
+								 blk);
+			}
+
+			if (XLogRecHasBlockImage(record, block_id))
+			{
+				/* Calculate the amount of FPI data in the record. */
+				if (fpi_len)
+					*fpi_len += XLogRecGetBlock(record, block_id)->bimg_len;
+
+				if (XLogRecBlockImageApply(record, block_id))
+					appendStringInfo(buf, " FPW");
+				else
+					appendStringInfo(buf, " FPW for WAL verification");
+			}
+		}
+	}
+
+	if (!detailed_format && pretty)
+		appendStringInfoChar(buf, '\n');
 }

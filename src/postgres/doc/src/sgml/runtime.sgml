@@ -4,8 +4,20 @@
  <title>Server Setup and Operation</title>
 
  <para>
-  This chapter discusses how to set up and run the database server
+  This chapter discusses how to set up and run the database server,
   and its interactions with the operating system.
+ </para>
+
+ <para>
+  The directions in this chapter assume that you are working with
+  plain <productname>PostgreSQL</productname> without any additional
+  infrastructure, for example a copy that you built from source
+  according to the directions in the preceding chapters.
+  If you are working with a pre-packaged or vendor-supplied
+  version of <productname>PostgreSQL</productname>, it is likely that
+  the packager has made special provisions for installing and starting
+  the database server according to your system's conventions.
+  Consult the package-level documentation for details.
  </para>
 
  <sect1 id="postgres-user">
@@ -21,9 +33,15 @@
    separate user account. This user account should only own the data
    that is managed by the server, and should not be shared with other
    daemons. (For example, using the user <literal>nobody</literal> is a bad
-   idea.) It is not advisable to install executables owned by this
-   user because compromised systems could then modify their own
-   binaries.
+   idea.) In particular, it is advisable that this user account not own
+   the <productname>PostgreSQL</productname> executable files, to ensure
+   that a compromised server process could not modify those executables.
+  </para>
+
+  <para>
+   Pre-packaged versions of <productname>PostgreSQL</productname> will
+   typically create a suitable user account automatically during
+   package installation.
   </para>
 
   <para>
@@ -56,10 +74,10 @@
    which is meant as a default database for use by utilities, users and third
    party applications.  The database server itself does not require the
    <literal>postgres</literal> database to exist, but many external utility
-   programs assume it exists.  Another database created within each cluster
-   during initialization is called
-   <literal>template1</literal>.  As the name suggests, this will be used
-   as a template for subsequently created databases; it should not be
+   programs assume it exists.  There are two more databases created within
+   each cluster during initialization, named <literal>template1</literal>
+   and <literal>template0</literal>.  As the names suggest, these will be
+   used as templates for subsequently-created databases; they should not be
    used for actual work.  (See <xref linkend="managing-databases"/> for
    information about creating new databases within a cluster.)
   </para>
@@ -71,11 +89,26 @@
    completely up to you where you choose to store your data.  There is no
    default, although locations such as
    <filename>/usr/local/pgsql/data</filename> or
-   <filename>/var/lib/pgsql/data</filename> are popular. To initialize a
-   database cluster, use the command <xref
-   linkend="app-initdb"/>,<indexterm><primary>initdb</primary></indexterm> which is
-   installed with <productname>PostgreSQL</productname>. The desired
-   file system location of your database cluster is indicated by the
+   <filename>/var/lib/pgsql/data</filename> are popular.
+   The data directory must be initialized before being used, using the program
+   <xref linkend="app-initdb"/><indexterm><primary>initdb</primary></indexterm>
+   which is installed with <productname>PostgreSQL</productname>.
+  </para>
+
+  <para>
+   If you are using a pre-packaged version
+   of <productname>PostgreSQL</productname>, it may well have a specific
+   convention for where to place the data directory, and it may also
+   provide a script for creating the data directory.  In that case you
+   should use that script in preference to
+   running <command>initdb</command> directly.
+   Consult the package-level documentation for details.
+  </para>
+
+  <para>
+   To initialize a database cluster manually,
+   run <command>initdb</command> and specify the desired
+   file system location of the database cluster with the
    <option>-D</option> option, for example:
 <screen>
 <prompt>$</prompt> <userinput>initdb -D /usr/local/pgsql/data</userinput>
@@ -166,8 +199,8 @@ postgres$ <userinput>initdb -D /usr/local/pgsql/data</userinput>
      <primary>password</primary>
      <secondary>of the superuser</secondary>
    </indexterm>
-   Also, specify <option>-A md5</option> or
-   <option>-A password</option> so that the default <literal>trust</literal> authentication
+   Also, specify <option>-A scram-sha-256</option>
+   so that the default <literal>trust</literal> authentication
    mode is not used; or modify the generated <filename>pg_hba.conf</filename>
    file after running <command>initdb</command>, but
    <emphasis>before</emphasis> you start the server for the first time. (Other
@@ -229,42 +262,75 @@ postgres$ <userinput>initdb -D /usr/local/pgsql/data</userinput>
 
   </sect2>
 
-  <sect2 id="creating-cluster-nfs">
-   <title>Use of Network File Systems</title>
-
-   <indexterm zone="creating-cluster-nfs">
-    <primary>Network File Systems</primary>
-   </indexterm>
-   <indexterm><primary><acronym>NFS</acronym></primary><see>Network File Systems</see></indexterm>
-   <indexterm><primary>Network Attached Storage (<acronym>NAS</acronym>)</primary><see>Network File Systems</see></indexterm>
+  <sect2 id="creating-cluster-filesystem">
+   <title>File Systems</title>
 
    <para>
-    Many installations create their database clusters on network file
-    systems.  Sometimes this is done via <acronym>NFS</acronym>, or by using a
-    Network Attached Storage (<acronym>NAS</acronym>) device that uses
-    <acronym>NFS</acronym> internally.  <productname>PostgreSQL</productname> does nothing
-    special for <acronym>NFS</acronym> file systems, meaning it assumes
-    <acronym>NFS</acronym> behaves exactly like locally-connected drives.
-    If the client or server <acronym>NFS</acronym> implementation does not
-    provide standard file system semantics, this can
-    cause reliability problems (see <ulink
-    url="https://www.time-travellers.org/shane/papers/NFS_considered_harmful.html"></ulink>).
-    Specifically, delayed (asynchronous) writes to the <acronym>NFS</acronym>
-    server can cause data corruption problems.  If possible, mount the
-    <acronym>NFS</acronym> file system synchronously (without caching) to avoid
-    this hazard.  Also, soft-mounting the <acronym>NFS</acronym> file system is
-    not recommended.
+    Generally, any file system with POSIX semantics can be used for
+    PostgreSQL.  Users prefer different file systems for a variety of reasons,
+    including vendor support, performance, and familiarity.  Experience
+    suggests that, all other things being equal, one should not expect major
+    performance or behavior changes merely from switching file systems or
+    making minor file system configuration changes.
    </para>
 
-   <para>
-    Storage Area Networks (<acronym>SAN</acronym>) typically use communication
-    protocols other than <acronym>NFS</acronym>, and may or may not be subject
-    to hazards of this sort.  It's advisable to consult the vendor's
-    documentation concerning data consistency guarantees.
-    <productname>PostgreSQL</productname> cannot be more reliable than
-    the file system it's using.
-   </para>
+   <sect3 id="creating-cluster-nfs">
+    <title>NFS</title>
 
+    <indexterm zone="creating-cluster-nfs">
+     <primary>NFS</primary>
+    </indexterm>
+
+    <para>
+     It is possible to use an <acronym>NFS</acronym> file system for storing
+     the <productname>PostgreSQL</productname> data directory.
+     <productname>PostgreSQL</productname> does nothing special for
+     <acronym>NFS</acronym> file systems, meaning it assumes
+     <acronym>NFS</acronym> behaves exactly like locally-connected drives.
+     <productname>PostgreSQL</productname> does not use any functionality that
+     is known to have nonstandard behavior on <acronym>NFS</acronym>, such as
+     file locking.
+    </para>
+
+    <para>
+     The only firm requirement for using <acronym>NFS</acronym> with
+     <productname>PostgreSQL</productname> is that the file system is mounted
+     using the <literal>hard</literal> option.  With the
+     <literal>hard</literal> option, processes can <quote>hang</quote>
+     indefinitely if there are network problems, so this configuration will
+     require a careful monitoring setup.  The <literal>soft</literal> option
+     will interrupt system calls in case of network problems, but
+     <productname>PostgreSQL</productname> will not repeat system calls
+     interrupted in this way, so any such interruption will result in an I/O
+     error being reported.
+    </para>
+
+    <para>
+     It is not necessary to use the <literal>sync</literal> mount option.  The
+     behavior of the <literal>async</literal> option is sufficient, since
+     <productname>PostgreSQL</productname> issues <literal>fsync</literal>
+     calls at appropriate times to flush the write caches.  (This is analogous
+     to how it works on a local file system.)  However, it is strongly
+     recommended to use the <literal>sync</literal> export option on the NFS
+     <emphasis>server</emphasis> on systems where it exists (mainly Linux).
+     Otherwise, an <literal>fsync</literal> or equivalent on the NFS client is
+     not actually guaranteed to reach permanent storage on the server, which
+     could cause corruption similar to running with the parameter <xref
+     linkend="guc-fsync"/> off.  The defaults of these mount and export
+     options differ between vendors and versions, so it is recommended to
+     check and perhaps specify them explicitly in any case to avoid any
+     ambiguity.
+    </para>
+
+    <para>
+     In some cases, an external storage product can be accessed either via NFS
+     or a lower-level protocol such as iSCSI.  In the latter case, the storage
+     appears as a block device and any available file system can be created on
+     it.  That approach might relieve the DBA from having to deal with some of
+     the idiosyncrasies of NFS, but of course the complexity of managing
+     remote storage then happens at other levels.
+    </para>
+   </sect3>
   </sect2>
 
  </sect1>
@@ -276,10 +342,22 @@ postgres$ <userinput>initdb -D /usr/local/pgsql/data</userinput>
    Before anyone can access the database, you must start the database
    server. The database server program is called
    <command>postgres</command>.<indexterm><primary>postgres</primary></indexterm>
-   The <command>postgres</command> program must know where to
-   find the data it is supposed to use. This is done with the
-   <option>-D</option> option. Thus, the simplest way to start the
-   server is:
+  </para>
+
+  <para>
+   If you are using a pre-packaged version
+   of <productname>PostgreSQL</productname>, it almost certainly includes
+   provisions for running the server as a background task according to the
+   conventions of your operating system.  Using the package's
+   infrastructure to start the server will be much less work than figuring
+   out how to do this yourself.  Consult the package-level documentation
+   for details.
+  </para>
+
+  <para>
+   The bare-bones way to start the server manually is just to invoke
+   <command>postgres</command> directly, specifying the location of the
+   data directory with the <option>-D</option> option, for example:
 <screen>
 $ <userinput>postgres -D /usr/local/pgsql/data</userinput>
 </screen>
@@ -331,7 +409,7 @@ pg_ctl start -l logfile
      <secondary>starting the server during</secondary>
    </indexterm>
    Autostart scripts are operating-system-specific.
-   There are a few distributed with
+   There are a few example scripts distributed with
    <productname>PostgreSQL</productname> in the
    <filename>contrib/start-scripts</filename> directory. Installing one will require
    root privileges.
@@ -402,6 +480,8 @@ fi
 [Unit]
 Description=PostgreSQL database server
 Documentation=man:postgres(1)
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=notify
@@ -410,7 +490,7 @@ ExecStart=/usr/local/pgsql/bin/postgres -D /usr/local/pgsql/data
 ExecReload=/bin/kill -HUP $MAINPID
 KillMode=mixed
 KillSignal=SIGINT
-TimeoutSec=0
+TimeoutSec=infinity
 
 [Install]
 WantedBy=multi-user.target
@@ -422,11 +502,11 @@ WantedBy=multi-user.target
      <para>
       Consider carefully the timeout
       setting.  <application>systemd</application> has a default timeout of 90
-      seconds as of this writing and will kill a process that does not notify
+      seconds as of this writing and will kill a process that does not report
       readiness within that time.  But a <productname>PostgreSQL</productname>
       server that might have to perform crash recovery at startup could take
-      much longer to become ready.  The suggested value of 0 disables the
-      timeout logic.
+      much longer to become ready.  The suggested value
+      of <literal>infinity</literal> disables the timeout logic.
      </para>
     </listitem>
 
@@ -505,12 +585,12 @@ DETAIL:  Failed system call was shmget(key=5440001, size=4011376640, 03600).
 </screen>
      probably means your kernel's limit on the size of shared memory is
      smaller than the work area <productname>PostgreSQL</productname>
-     is trying to create (4011376640 bytes in this example). Or it could
-     mean that you do not have System-V-style shared memory support
-     configured into your kernel at all. As a temporary workaround, you
+     is trying to create (4011376640 bytes in this example).
+     This is only likely to happen if you have set <literal>shared_memory_type</literal>
+     to <literal>sysv</literal>.  In that case, you
      can try starting the server with a smaller-than-normal number of
-     buffers (<xref linkend="guc-shared-buffers"/>). You will eventually want
-     to reconfigure your kernel to increase the allowed shared memory
+     buffers (<xref linkend="guc-shared-buffers"/>), or
+     reconfigure your kernel to increase the allowed shared memory
      size. You might also see this message when trying to start multiple
      servers on the same machine, if their total space requested
      exceeds the kernel limit.
@@ -533,13 +613,6 @@ DETAIL:  Failed system call was semget(5440126, 17, 03600).
     </para>
 
     <para>
-     If you get an <quote>illegal system call</quote> error, it is likely that
-     shared memory or semaphores are not supported in your kernel at
-     all. In that case your only option is to reconfigure the kernel to
-     enable these features.
-    </para>
-
-    <para>
      Details about configuring <systemitem class="osname">System V</systemitem>
      <acronym>IPC</acronym> facilities are given in <xref linkend="sysvipc"/>.
     </para>
@@ -558,9 +631,8 @@ DETAIL:  Failed system call was semget(5440126, 17, 03600).
 
     <para>
 <screen>
-psql: could not connect to server: Connection refused
-        Is the server running on host "server.joe.com" and accepting
-        TCP/IP connections on port 5432?
+psql: error: connection to server at "server.joe.com" (123.123.123.123), port 5432 failed: Connection refused
+        Is the server running on that host and accepting TCP/IP connections?
 </screen>
      This is the generic <quote>I couldn't find a server to talk
      to</quote> failure. It looks like the above when TCP/IP
@@ -569,19 +641,22 @@ psql: could not connect to server: Connection refused
     </para>
 
     <para>
-     Alternatively, you'll get this when attempting Unix-domain socket
+     Alternatively, you might get this when attempting Unix-domain socket
      communication to a local server:
 <screen>
-psql: could not connect to server: No such file or directory
-        Is the server running locally and accepting
-        connections on Unix domain socket "/tmp/.s.PGSQL.5432"?
+psql: error: connection to server on socket "/tmp/.s.PGSQL.5432" failed: No such file or directory
+        Is the server running locally and accepting connections on that socket?
 </screen>
+     If the server is indeed running, check that the client's idea of the
+     socket path (here <literal>/tmp</literal>) agrees with the server's
+     <xref linkend="guc-unix-socket-directories"/> setting.
     </para>
 
     <para>
-     The last line is useful in verifying that the client is trying to
+     A connection failure message always shows the server address or socket
+     path name, which is useful in verifying that the client is trying to
      connect to the right place. If there is in fact no server
-     running there, the kernel error message will typically be either
+     listening there, the kernel error message will typically be either
      <computeroutput>Connection refused</computeroutput> or
      <computeroutput>No such file or directory</computeroutput>, as
      illustrated. (It is important to realize that
@@ -592,7 +667,7 @@ psql: could not connect to server: No such file or directory
      linkend="client-authentication-problems"/>.) Other error messages
      such as <computeroutput>Connection timed out</computeroutput> might
      indicate more fundamental problems, like lack of network
-     connectivity.
+     connectivity, or a firewall blocking the connection.
     </para>
    </sect2>
   </sect1>
@@ -630,34 +705,17 @@ psql: could not connect to server: No such file or directory
    </para>
 
    <para>
-    The complete lack of these facilities is usually manifested by an
-    <quote><errorname>Illegal system call</errorname></quote> error upon server
-    start.  In that case there is no alternative but to reconfigure your
-    kernel.  <productname>PostgreSQL</productname> won't work without them.
-    This situation is rare, however, among modern operating systems.
-   </para>
-
-   <para>
     By default, <productname>PostgreSQL</productname> allocates
     a very small amount of System V shared memory, as well as a much larger
     amount of anonymous <function>mmap</function> shared memory.
     Alternatively, a single large System V shared memory region can be used
     (see <xref linkend="guc-shared-memory-type"/>).
-    
+
     In addition a significant number of semaphores, which can be either
     System V or POSIX style, are created at server startup.  Currently,
     POSIX semaphores are used on Linux and FreeBSD systems while other
     platforms use System V semaphores.
    </para>
-
-   <note>
-    <para>
-     Prior to <productname>PostgreSQL</productname> 9.3, only System V shared memory
-     was used, so the amount of System V shared memory required to start the
-     server was much larger.  If you are running an older version of the
-     server, please consult the documentation for your server version.
-    </para>
-   </note>
 
    <para>
     System V <acronym>IPC</acronym> features are typically constrained by
@@ -676,6 +734,9 @@ psql: could not connect to server: No such file or directory
     <title><systemitem class="osname">System V</systemitem> <acronym>IPC</acronym> Parameters</title>
 
     <tgroup cols="3">
+     <colspec colname="col1" colwidth="1*"/>
+     <colspec colname="col2" colwidth="3*"/>
+     <colspec colname="col3" colwidth="3*"/>
      <thead>
       <row>
        <entry>Name</entry>
@@ -720,13 +781,13 @@ psql: could not connect to server: No such file or directory
        <row>
         <entry><varname>SEMMNI</varname></entry>
         <entry>Maximum number of semaphore identifiers (i.e., sets)</entry>
-        <entry>at least <literal>ceil((max_connections + autovacuum_max_workers + max_worker_processes + 5) / 16)</literal> plus room for other applications</entry>
+        <entry>at least <literal>ceil((max_connections + autovacuum_max_workers + max_wal_senders + max_worker_processes + 5) / 16)</literal> plus room for other applications</entry>
        </row>
 
        <row>
         <entry><varname>SEMMNS</varname></entry>
         <entry>Maximum number of semaphores system-wide</entry>
-        <entry><literal>ceil((max_connections + autovacuum_max_workers + max_worker_processes + 5) / 16) * 17</literal> plus room for other applications</entry>
+        <entry><literal>ceil((max_connections + autovacuum_max_workers + max_wal_senders + max_worker_processes + 5) / 16) * 17</literal> plus room for other applications</entry>
        </row>
 
        <row>
@@ -785,13 +846,13 @@ psql: could not connect to server: No such file or directory
     other applications. The maximum number of semaphores in the system
     is set by <varname>SEMMNS</varname>, which consequently must be at least
     as high as <varname>max_connections</varname> plus
-    <varname>autovacuum_max_workers</varname> plus <varname>max_worker_processes</varname>,
-    plus one extra for each 16
+    <varname>autovacuum_max_workers</varname> plus <varname>max_wal_senders</varname>,
+    plus <varname>max_worker_processes</varname>, plus one extra for each 16
     allowed connections plus workers (see the formula in <xref
     linkend="sysvipc-parameters"/>).  The parameter <varname>SEMMNI</varname>
     determines the limit on the number of semaphore sets that can
     exist on the system at one time.  Hence this parameter must be at
-    least <literal>ceil((max_connections + autovacuum_max_workers + max_worker_processes + 5) / 16)</literal>.
+    least <literal>ceil((max_connections + autovacuum_max_workers + max_wal_senders + max_worker_processes + 5) / 16)</literal>.
     Lowering the number
     of allowed connections is a temporary workaround for failures,
     which are usually confusingly worded <quote>No space
@@ -836,7 +897,7 @@ psql: could not connect to server: No such file or directory
       </term>
       <listitem>
        <para>
-        At least as of version 5.1, it should not be necessary to do
+        It should not be necessary to do
         any special configuration for such parameters as
         <varname>SHMMAX</varname>, as it appears this is configured to
         allow all memory to be used as shared memory.  That is the
@@ -859,6 +920,12 @@ psql: could not connect to server: No such file or directory
       </term>
       <listitem>
        <para>
+        The default shared memory settings are usually good enough, unless
+        you have set <literal>shared_memory_type</literal> to <literal>sysv</literal>.
+        System V semaphores are not used on this platform.
+       </para>
+
+       <para>
         The default IPC settings can be changed using
         the <command>sysctl</command> or
         <command>loader</command> interfaces.  The following
@@ -872,40 +939,22 @@ psql: could not connect to server: No such file or directory
        </para>
 
        <para>
-        These semaphore-related settings are read-only as far as
-        <command>sysctl</command> is concerned, but can be set in
-        <filename>/boot/loader.conf</filename>:
-<programlisting>
-kern.ipc.semmni=256
-kern.ipc.semmns=512
-</programlisting>
-        After modifying that file, a reboot is required for the new
-        settings to take effect.
-       </para>
-
-       <para>
-        You might also want to configure your kernel to lock System V shared
-        memory into RAM and prevent it from being paged out to swap.
-        This can be accomplished using the <command>sysctl</command>
+        If you have set <literal>shared_memory_type</literal> to
+        <literal>sysv</literal>, you might also want to configure your kernel
+        to lock System V shared memory into RAM and prevent it from being paged
+        out to swap.  This can be accomplished using the <command>sysctl</command>
         setting <literal>kern.ipc.shm_use_phys</literal>.
        </para>
 
        <para>
-        If running in FreeBSD jails by enabling <application>sysctl</application>'s
-        <literal>security.jail.sysvipc_allowed</literal>, <application>postmaster</application>s
-        running in different jails should be run by different operating system
-        users.  This improves security because it prevents non-root users
-        from interfering with shared memory or semaphores in different jails,
-        and it allows the PostgreSQL IPC cleanup code to function properly.
-        (In FreeBSD 6.0 and later the IPC cleanup code does not properly detect
-        processes in other jails, preventing the running of postmasters on the
-        same port in different jails.)
+        If running in a FreeBSD jail, you should set its
+        <literal>sysvshm</literal> parameter to <literal>new</literal>, so that
+        it has its own separate System V shared memory namespace.
+        (Before FreeBSD 11.0, it was necessary to enable shared access to
+        the host's IPC namespace from jails, and take measures to avoid
+        collisions.)
        </para>
 
-       <para>
-        <systemitem class="osname">FreeBSD</systemitem> versions before 4.0 work like
-        old <systemitem class="osname">OpenBSD</systemitem> (see below).
-       </para>
       </listitem>
      </varlistentry>
 
@@ -915,7 +964,15 @@ kern.ipc.semmns=512
       </term>
       <listitem>
        <para>
-        In <systemitem class="osname">NetBSD</systemitem> 5.0 and later,
+        The default shared memory settings are usually good enough, unless
+        you have set <literal>shared_memory_type</literal> to <literal>sysv</literal>.
+        You will usually want to increase <literal>kern.ipc.semmni</literal>
+        and <literal>kern.ipc.semmns</literal>,
+        as <systemitem class="osname">NetBSD</systemitem>'s default settings
+        for these are uncomfortably small.
+       </para>
+
+       <para>
         IPC parameters can be adjusted using <command>sysctl</command>,
         for example:
 <screen>
@@ -926,24 +983,11 @@ kern.ipc.semmns=512
        </para>
 
        <para>
-        You will usually want to increase <literal>kern.ipc.semmni</literal>
-        and <literal>kern.ipc.semmns</literal>,
-        as <systemitem class="osname">NetBSD</systemitem>'s default settings
-        for these are uncomfortably small.
-       </para>
-
-       <para>
-        You might also want to configure your kernel to lock System V shared
-        memory into RAM and prevent it from being paged out to swap.
-        This can be accomplished using the <command>sysctl</command>
+        If you have set <literal>shared_memory_type</literal> to
+        <literal>sysv</literal>, you might also want to configure your kernel
+        to lock System V shared memory into RAM and prevent it from being paged
+        out to swap.  This can be accomplished using the <command>sysctl</command>
         setting <literal>kern.ipc.shm_use_phys</literal>.
-       </para>
-
-       <para>
-        <systemitem class="osname">NetBSD</systemitem> versions before 5.0
-        work like old <systemitem class="osname">OpenBSD</systemitem>
-        (see below), except that kernel parameters should be set with the
-        keyword <literal>options</literal> not <literal>option</literal>.
        </para>
       </listitem>
      </varlistentry>
@@ -954,17 +998,8 @@ kern.ipc.semmns=512
       </term>
       <listitem>
        <para>
-        In <systemitem class="osname">OpenBSD</systemitem> 3.3 and later,
-        IPC parameters can be adjusted using <command>sysctl</command>,
-        for example:
-<screen>
-<prompt>#</prompt> <userinput>sysctl kern.seminfo.semmni=100</userinput>
-</screen>
-        To make these settings persist over reboots, modify
-        <filename>/etc/sysctl.conf</filename>.
-       </para>
-
-       <para>
+        The default shared memory settings are usually good enough, unless
+        you have set <literal>shared_memory_type</literal> to <literal>sysv</literal>.
         You will usually want to
         increase <literal>kern.seminfo.semmni</literal>
         and <literal>kern.seminfo.semmns</literal>,
@@ -973,22 +1008,13 @@ kern.ipc.semmns=512
        </para>
 
        <para>
-        In older <systemitem class="osname">OpenBSD</systemitem> versions,
-        you will need to build a custom kernel to change the IPC parameters.
-        Make sure that the options <varname>SYSVSHM</varname>
-        and <varname>SYSVSEM</varname> are enabled, too.  (They are by
-        default.)  The following shows an example of how to set the various
-        parameters in the kernel configuration file:
-<programlisting>
-option        SYSVSHM
-option        SHMMAXPGS=4096
-option        SHMSEG=256
-
-option        SYSVSEM
-option        SEMMNI=256
-option        SEMMNS=512
-option        SEMMNU=256
-</programlisting>
+        IPC parameters can be adjusted using <command>sysctl</command>,
+        for example:
+<screen>
+<prompt>#</prompt> <userinput>sysctl kern.seminfo.semmni=100</userinput>
+</screen>
+        To make these settings persist over reboots, modify
+        <filename>/etc/sysctl.conf</filename>.
        </para>
 
       </listitem>
@@ -1001,9 +1027,6 @@ option        SEMMNU=256
       <listitem>
        <para>
         The default settings tend to suffice for normal installations.
-        On <productname>HP-UX</productname> 10, the factory default for
-        <varname>SEMMNS</varname> is 128, which might be too low for larger
-        database sites.
        </para>
        <para>
         <acronym>IPC</acronym> parameters can be set in the <application>System
@@ -1022,11 +1045,10 @@ option        SEMMNU=256
       </term>
       <listitem>
        <para>
-        The default maximum segment size is 32 MB, and the
-        default maximum total size is 2097152
-        pages.  A page is almost always 4096 bytes except in unusual
-        kernel configurations with <quote>huge pages</quote>
-        (use <literal>getconf PAGE_SIZE</literal> to verify).
+        The default shared memory settings are usually good enough, unless
+        you have set <literal>shared_memory_type</literal> to <literal>sysv</literal>,
+        and even then only on older kernel versions that shipped with low defaults.
+        System V semaphores are not used on this platform.
        </para>
 
        <para>
@@ -1036,25 +1058,10 @@ option        SEMMNU=256
 <prompt>$</prompt> <userinput>sysctl -w kernel.shmmax=17179869184</userinput>
 <prompt>$</prompt> <userinput>sysctl -w kernel.shmall=4194304</userinput>
 </screen>
-        In addition these settings can be preserved between reboots in
-        the file <filename>/etc/sysctl.conf</filename>.  Doing that is
-        highly recommended.
+        To make these settings persist over reboots, see
+        <filename>/etc/sysctl.conf</filename>.
        </para>
 
-       <para>
-        Ancient distributions might not have the <command>sysctl</command> program,
-        but equivalent changes can be made by manipulating the
-        <filename>/proc</filename> file system:
-<screen>
-<prompt>$</prompt> <userinput>echo 17179869184 &gt;/proc/sys/kernel/shmmax</userinput>
-<prompt>$</prompt> <userinput>echo 4194304 &gt;/proc/sys/kernel/shmall</userinput>
-</screen>
-       </para>
-
-       <para>
-        The remaining defaults are quite generously sized, and usually
-        do not require changes.
-       </para>
       </listitem>
      </varlistentry>
 
@@ -1064,6 +1071,10 @@ option        SEMMNU=256
       <indexterm><primary>macOS</primary><secondary>IPC configuration</secondary></indexterm>
       </term>
       <listitem>
+       <para>
+        The default shared memory and semaphore settings are usually good enough, unless
+        you have set <literal>shared_memory_type</literal> to <literal>sysv</literal>.
+       </para>
        <para>
         The recommended method for configuring shared memory in macOS
         is to create a file named <filename>/etc/sysctl.conf</filename>,
@@ -1081,8 +1092,7 @@ kern.sysv.shmall=1024
        </para>
 
        <para>
-        Beware that recent releases of macOS ignore attempts to set
-        <varname>SHMMAX</varname> to a value that isn't an exact multiple of 4096.
+        <varname>SHMMAX</varname> can only be set to a multiple of 4096.
        </para>
 
        <para>
@@ -1090,75 +1100,22 @@ kern.sysv.shmall=1024
        </para>
 
        <para>
-        In older macOS versions, you will need to reboot to have changes in the
-        shared memory parameters take effect.  As of 10.5 it is possible to
-        change all but <varname>SHMMNI</varname> on the fly, using
+        It is possible to change all but <varname>SHMMNI</varname> on the fly, using
         <application>sysctl</application>.  But it's still best to set up your preferred
         values via <filename>/etc/sysctl.conf</filename>, so that the values will be
         kept across reboots.
        </para>
 
-       <para>
-        The file <filename>/etc/sysctl.conf</filename> is only honored in macOS
-        10.3.9 and later.  If you are running a previous 10.3.x release,
-        you must edit the file <filename>/etc/rc</filename>
-        and change the values in the following commands:
-<programlisting>
-sysctl -w kern.sysv.shmmax
-sysctl -w kern.sysv.shmmin
-sysctl -w kern.sysv.shmmni
-sysctl -w kern.sysv.shmseg
-sysctl -w kern.sysv.shmall
-</programlisting>
-        Note that
-        <filename>/etc/rc</filename> is usually overwritten by macOS system updates,
-        so you should expect to have to redo these edits after each update.
-       </para>
-
-       <para>
-        In macOS 10.2 and earlier, instead edit these commands in the file
-        <filename>/System/Library/StartupItems/SystemTuning/SystemTuning</filename>.
-       </para>
-      </listitem>
-     </varlistentry>
-
-
-     <varlistentry>
-      <term><systemitem class="osname">Solaris</systemitem> 2.6 to 2.9 (Solaris
-      6 to Solaris 9)
-      <indexterm><primary>Solaris</primary><secondary>IPC configuration</secondary></indexterm>
-      </term>
-      <listitem>
-       <para>
-        The relevant settings can be changed in
-        <filename>/etc/system</filename>, for example:
-<programlisting>
-set shmsys:shminfo_shmmax=0x2000000
-set shmsys:shminfo_shmmin=1
-set shmsys:shminfo_shmmni=256
-set shmsys:shminfo_shmseg=256
-
-set semsys:seminfo_semmap=256
-set semsys:seminfo_semmni=512
-set semsys:seminfo_semmns=512
-set semsys:seminfo_semmsl=32
-</programlisting>
-        You need to reboot for the changes to take effect.  See also
-        <ulink url="http://sunsite.uakom.sk/sunworldonline/swol-09-1997/swol-09-insidesolaris.html"></ulink>
-        for information on shared memory under older versions of Solaris.
-       </para>
       </listitem>
      </varlistentry>
 
      <varlistentry>
-      <term><systemitem class="osname">Solaris</systemitem> 2.10 (Solaris
-      10) and later</term>
-      <term><systemitem class="osname">OpenSolaris</systemitem></term>
+      <term><systemitem class="osname">Solaris</systemitem></term>
+      <term><systemitem class="osname">illumos</systemitem></term>
       <listitem>
        <para>
-        In Solaris 10 and later, and OpenSolaris, the default shared memory and
-        semaphore settings are good enough for most
-        <productname>PostgreSQL</productname> applications.  Solaris now defaults
+        The default shared memory and semaphore settings are usually good enough for most
+        <productname>PostgreSQL</productname> applications.  Solaris defaults
         to a <varname>SHMMAX</varname> of one-quarter of system <acronym>RAM</acronym>.
         To further adjust this setting, use a project setting associated
         with the <literal>postgres</literal> user.  For example, run the
@@ -1212,7 +1169,7 @@ project.max-msg-ids=(priv,4096,deny)
 
    <para>
     If <productname>systemd</productname> is in use, some care must be taken
-    that IPC resources (shared memory and semaphores) are not prematurely
+    that IPC resources (including shared memory) are not prematurely
     removed by the operating system.  This is especially of concern when
     installing PostgreSQL from source.  Users of distribution packages of
     PostgreSQL are less likely to be affected, as
@@ -1229,11 +1186,12 @@ project.max-msg-ids=(priv,4096,deny)
    </para>
 
    <para>
-    A typical observed effect when this setting is on is that the semaphore
-    objects used by a PostgreSQL server are removed at apparently random
-    times, leading to the server crashing with log messages like
+    A typical observed effect when this setting is on is that shared memory
+    objects used for parallel query execution are removed at apparently random
+    times, leading to errors and warnings while attempting to open and remove
+    them, like
 <screen>
-LOG: semctl(1234567890, 0, IPC_RMID, ...) failed: Invalid argument
+WARNING:  could not remove shared memory segment "/PostgreSQL.1450751626": No such file or directory
 </screen>
     Different types of IPC objects (shared memory vs. semaphores, System V
     vs. POSIX) are treated slightly differently
@@ -1321,11 +1279,12 @@ default:\
     <itemizedlist>
      <listitem>
       <para>
-      On <productname>Linux</productname>
-      <filename>/proc/sys/fs/file-max</filename> determines the
-      maximum number of open files that the kernel will support.  It can
-      be changed by writing a different number into the file or by
-      adding an assignment in <filename>/etc/sysctl.conf</filename>.
+      On <productname>Linux</productname> the kernel parameter
+      <varname>fs.file-max</varname> determines the maximum number of open
+      files that the kernel will support.  It can be changed with
+      <literal>sysctl -w fs.file-max=<replaceable>N</replaceable></literal>.
+      To make the setting persist across reboots, add an assignment
+      in <filename>/etc/sysctl.conf</filename>.
       The maximum limit of files per process is fixed at the time the
       kernel is compiled; see
       <filename>/usr/src/linux/Documentation/proc.txt</filename> for
@@ -1361,6 +1320,22 @@ default:\
     linkend="guc-max-files-per-process"/> configuration parameter to
     limit the consumption of open files.
    </para>
+
+   <para>
+    Another kernel limit that may be of concern when supporting large
+    numbers of client connections is the maximum socket connection queue
+    length.  If more than that many connection requests arrive within a very
+    short period, some may get rejected before the postmaster can service
+    the requests, with those clients receiving unhelpful connection failure
+    errors such as <quote>Resource temporarily unavailable</quote> or
+    <quote>Connection refused</quote>.  The default queue length limit is 128
+    on many platforms.  To raise it, adjust the appropriate kernel parameter
+    via <application>sysctl</application>, then restart the postmaster.
+    The parameter is variously named <varname>net.core.somaxconn</varname>
+    on Linux, <varname>kern.ipc.soacceptqueue</varname> on newer FreeBSD,
+    and <varname>kern.ipc.somaxconn</varname> on macOS and other BSD
+    variants.
+   </para>
   </sect2>
 
   <sect2 id="linux-memory-overcommit">
@@ -1379,11 +1354,11 @@ default:\
    </indexterm>
 
    <para>
-    In Linux 2.4 and later, the default virtual memory behavior is not
+    The default virtual memory behavior on Linux is not
     optimal for <productname>PostgreSQL</productname>. Because of the
     way that the kernel implements memory overcommit, the kernel might
     terminate the <productname>PostgreSQL</productname> postmaster (the
-    master server process) if the memory demands of either
+    supervisor server process) if the memory demands of either
     <productname>PostgreSQL</productname> or another process cause the
     system to run out of virtual memory.
    </para>
@@ -1417,16 +1392,18 @@ Out of Memory: Killed process 12345 (postgres).
     system running out of memory, you can avoid the problem by changing
     your configuration.  In some cases, it may help to lower memory-related
     configuration parameters, particularly
-    <link linkend="guc-shared-buffers"><varname>shared_buffers</varname></link>
-    and <link linkend="guc-work-mem"><varname>work_mem</varname></link>.  In
-    other cases, the problem may be caused by allowing too many connections
-    to the database server itself.  In many cases, it may be better to reduce
+    <link linkend="guc-shared-buffers"><varname>shared_buffers</varname></link>,
+    <link linkend="guc-work-mem"><varname>work_mem</varname></link>, and
+    <link linkend="guc-hash-mem-multiplier"><varname>hash_mem_multiplier</varname></link>.
+    In other cases, the problem may be caused by allowing too many
+    connections to the database server itself.  In many cases, it may
+    be better to reduce
     <link linkend="guc-max-connections"><varname>max_connections</varname></link>
     and instead make use of external connection-pooling software.
    </para>
 
    <para>
-    On Linux 2.6 and later, it is possible to modify the
+    It is possible to modify the
     kernel's behavior so that it will not <quote>overcommit</quote> memory.
     Although this setting will not prevent the <ulink
     url="https://lwn.net/Articles/104179/">OOM killer</ulink> from being invoked
@@ -1471,29 +1448,6 @@ export PG_OOM_ADJUST_VALUE=0
     whole point is to ensure that the postmaster has a preferential setting.
    </para>
 
-   <para>
-    Older Linux kernels do not offer <filename>/proc/self/oom_score_adj</filename>,
-    but may have a previous version of the same functionality called
-    <filename>/proc/self/oom_adj</filename>.  This works the same except the disable
-    value is <literal>-17</literal> not <literal>-1000</literal>.
-   </para>
-
-   <note>
-   <para>
-    Some vendors' Linux 2.4 kernels are reported to have early versions
-    of the 2.6 overcommit <command>sysctl</command> parameter.  However, setting
-    <literal>vm.overcommit_memory</literal> to 2
-    on a 2.4 kernel that does not have the relevant code will make
-    things worse, not better.  It is recommended that you inspect
-    the actual kernel source code (see the function
-    <function>vm_enough_memory</function> in the file <filename>mm/mmap.c</filename>)
-    to verify what is supported in your kernel before you try this in a 2.4
-    installation.  The presence of the <filename>overcommit-accounting</filename>
-    documentation file should <emphasis>not</emphasis> be taken as evidence that the
-    feature is there.  If in any doubt, consult a kernel expert or your
-    kernel vendor.
-   </para>
-   </note>
   </sect2>
 
   <sect2 id="linux-huge-pages">
@@ -1505,41 +1459,52 @@ export PG_OOM_ADJUST_VALUE=0
     using large values of <xref linkend="guc-shared-buffers"/>.  To use this
     feature in <productname>PostgreSQL</productname> you need a kernel
     with <varname>CONFIG_HUGETLBFS=y</varname> and
-    <varname>CONFIG_HUGETLB_PAGE=y</varname>. You will also have to adjust
-    the kernel setting <varname>vm.nr_hugepages</varname>. To estimate the
-    number of huge pages needed, start <productname>PostgreSQL</productname>
-    without huge pages enabled and check the
-    postmaster's anonymous shared memory segment size, as well as the system's
-    huge page size, using the <filename>/proc</filename> file system.  This might
-    look like:
+    <varname>CONFIG_HUGETLB_PAGE=y</varname>. You will also have to configure
+    the operating system to provide enough huge pages of the desired size.
+    To determine the number of huge pages needed, use the
+    <command>postgres</command> command to see the value of
+    <xref linkend="guc-shared-memory-size-in-huge-pages"/>.  Note that the
+    server must be shut down to view this runtime-computed parameter.
+    This might look like:
 <programlisting>
-$ <userinput>head -1 $PGDATA/postmaster.pid</userinput>
-4170
-$ <userinput>pmap 4170 | awk '/rw-s/ &amp;&amp; /zero/ {print $2}'</userinput>
-6490428K
+$ <userinput>postgres -D $PGDATA -C shared_memory_size_in_huge_pages</userinput>
+3170
 $ <userinput>grep ^Hugepagesize /proc/meminfo</userinput>
 Hugepagesize:       2048 kB
+$ <userinput>ls /sys/kernel/mm/hugepages</userinput>
+hugepages-1048576kB  hugepages-2048kB
 </programlisting>
-     <literal>6490428</literal> / <literal>2048</literal> gives approximately
-     <literal>3169.154</literal>, so in this example we need at
-     least <literal>3170</literal> huge pages, which we can set with:
+
+     In this example the default is 2MB, but you can also explicitly request
+     either 2MB or 1GB with <xref linkend="guc-huge-page-size"/> to adapt
+     the number of pages calculated by
+     <varname>shared_memory_size_in_huge_pages</varname>.
+
+     While we need at least <literal>3170</literal> huge pages in this example,
+     a larger setting would be appropriate if other programs on the machine
+     also need huge pages.
+     We can set this with:
 <programlisting>
-$ <userinput>sysctl -w vm.nr_hugepages=3170</userinput>
+# <userinput>sysctl -w vm.nr_hugepages=3170</userinput>
 </programlisting>
-    A larger setting would be appropriate if other programs on the machine
-    also need huge pages.  Don't forget to add this setting
-    to <filename>/etc/sysctl.conf</filename> so that it will be reapplied
-    after reboots.
+     Don't forget to add this setting to <filename>/etc/sysctl.conf</filename>
+     so that it is reapplied after reboots.  For non-default huge page sizes,
+     we can instead use:
+<programlisting>
+# <userinput>echo 3170 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages</userinput>
+</programlisting>
+    It is also possible to provide these settings at boot time using
+    kernel parameters such as <literal>hugepagesz=2M hugepages=3170</literal>.
    </para>
 
    <para>
     Sometimes the kernel is not able to allocate the desired number of huge
-    pages immediately, so it might be necessary to repeat the command or to
-    reboot.  (Immediately after a reboot, most of the machine's memory
-    should be available to convert into huge pages.)  To verify the huge
-    page allocation situation, use:
+    pages immediately due to fragmentation, so it might be necessary
+    to repeat the command or to reboot.  (Immediately after a reboot, most of
+    the machine's memory should be available to convert into huge pages.)
+    To verify the huge page allocation situation for a given size, use:
 <programlisting>
-$ <userinput>grep Huge /proc/meminfo</userinput>
+$ <userinput>cat /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages</userinput>
 </programlisting>
    </para>
 
@@ -1552,8 +1517,9 @@ $ <userinput>grep Huge /proc/meminfo</userinput>
 
    <para>
     The default behavior for huge pages in
-    <productname>PostgreSQL</productname> is to use them when possible and
-    to fall back to normal pages when failing. To enforce the use of huge
+    <productname>PostgreSQL</productname> is to use them when possible, with
+    the system's default huge page size, and
+    to fall back to normal pages on failure. To enforce the use of huge
     pages, you can set <xref linkend="guc-huge-pages"/>
     to <literal>on</literal> in <filename>postgresql.conf</filename>.
     Note that with this setting <productname>PostgreSQL</productname> will fail to
@@ -1578,9 +1544,23 @@ $ <userinput>grep Huge /proc/meminfo</userinput>
   </indexterm>
 
   <para>
-   There are several ways to shut down the database server. You control
-   the type of shutdown by sending different signals to the master
+   There are several ways to shut down the database server.
+   Under the hood, they all reduce to sending a signal to the supervisor
    <command>postgres</command> process.
+  </para>
+
+  <para>
+   If you are using a pre-packaged version
+   of <productname>PostgreSQL</productname>, and you used its provisions
+   for starting the server, then you should also use its provisions for
+   stopping the server.  Consult the package-level documentation for
+   details.
+  </para>
+
+  <para>
+   When managing the server directly, you can control the type of shutdown
+   by sending different signals to the <command>postgres</command>
+   process:
 
    <variablelist>
     <varlistentry>
@@ -1591,11 +1571,7 @@ $ <userinput>grep Huge /proc/meminfo</userinput>
        After receiving <systemitem>SIGTERM</systemitem>, the server
        disallows new connections, but lets existing sessions end their
        work normally. It shuts down only after all of the sessions terminate.
-       If the server is in online backup mode, it additionally waits
-       until online backup mode is no longer active.  While backup mode is
-       active, new connections will still be allowed, but only to superusers
-       (this exception allows a superuser to connect to terminate
-       online backup mode).  If the server is in recovery when a smart
+       If the server is in recovery when a smart
        shutdown is requested, recovery and streaming replication will be
        stopped only after all regular sessions have terminated.
       </para>
@@ -1611,8 +1587,6 @@ $ <userinput>grep Huge /proc/meminfo</userinput>
        server processes <systemitem>SIGTERM</systemitem>, which will cause them
        to abort their current transactions and exit promptly. It then
        waits for all server processes to exit and finally shuts down.
-       If the server is in online backup mode, backup mode will be
-       terminated, rendering the backup useless.
       </para>
      </listitem>
     </varlistentry>
@@ -1625,7 +1599,7 @@ $ <userinput>grep Huge /proc/meminfo</userinput>
       The server will send <systemitem>SIGQUIT</systemitem> to all child
       processes and wait for them to terminate.  If any do not terminate
       within 5 seconds, they will be sent <systemitem>SIGKILL</systemitem>.
-      The master server process exits as soon as all child processes have
+      The supervisor server process exits as soon as all child processes have
       exited, without doing normal database shutdown processing.
       This will lead to recovery (by
       replaying the WAL log) upon next start-up. This is recommended
@@ -1652,14 +1626,12 @@ $ <userinput>kill -INT `head -1 /usr/local/pgsql/data/postmaster.pid`</userinput
 
   <important>
    <para>
-    It is best not to use <systemitem>SIGKILL</systemitem> to shut down
-    the server.  Doing so will prevent the server from releasing
-    shared memory and semaphores, which might then have to be done
-    manually before a new server can be started.  Furthermore,
-    <systemitem>SIGKILL</systemitem> kills the <command>postgres</command>
-    process without letting it relay the signal to its subprocesses,
-    so it will be necessary to kill the individual subprocesses by hand as
-    well.
+    It is best not to use <systemitem>SIGKILL</systemitem> to shut down the
+    server.  Doing so will prevent the server from releasing shared memory and
+    semaphores.  Furthermore, <systemitem>SIGKILL</systemitem> kills
+    the <command>postgres</command> process without letting it relay the
+    signal to its subprocesses, so it might be necessary to kill the
+    individual subprocesses by hand as well.
    </para>
   </important>
 
@@ -1716,9 +1688,13 @@ $ <userinput>kill -INT `head -1 /usr/local/pgsql/data/postmaster.pid`</userinput
    For <emphasis>major</emphasis> releases of <productname>PostgreSQL</productname>, the
    internal data storage format is subject to change, thus complicating
    upgrades.  The traditional method for moving data to a new major version
-   is to dump and reload the database, though this can be slow.  A
+   is to dump and restore the database, though this can be slow.  A
    faster method is <xref linkend="pgupgrade"/>.  Replication methods are
    also available, as discussed below.
+   (If you are using a pre-packaged version
+   of <productname>PostgreSQL</productname>, it may provide scripts to
+   assist with major version upgrades.  Consult the package-level
+   documentation for details.)
   </para>
 
   <para>
@@ -1726,9 +1702,9 @@ $ <userinput>kill -INT `head -1 /usr/local/pgsql/data/postmaster.pid`</userinput
    incompatibilities, so application programming changes might be required.
    All user-visible changes are listed in the release notes (<xref
    linkend="release"/>);  pay particular attention to the section
-   labeled "Migration".  If you are upgrading across several major
-   versions, be sure to read the release notes for each intervening
-   version.
+   labeled "Migration".  Though you can upgrade from one major version
+   to another without upgrading to intervening versions, you should read
+   the major release notes of all intervening versions.
   </para>
 
   <para>
@@ -1798,7 +1774,7 @@ $ <userinput>kill -INT `head -1 /usr/local/pgsql/data/postmaster.pid`</userinput
 
    <para>
     One upgrade method is to dump data from one major version of
-    <productname>PostgreSQL</productname> and reload it in another &mdash;  to do
+    <productname>PostgreSQL</productname> and restore it in another &mdash;  to do
     this, you must use a <emphasis>logical</emphasis> backup tool like
     <application>pg_dumpall</application>; file system
     level backup methods will not work. (There are checks in place that prevent
@@ -1813,7 +1789,7 @@ $ <userinput>kill -INT `head -1 /usr/local/pgsql/data/postmaster.pid`</userinput
     version of
     <productname>PostgreSQL</productname>, to take advantage of enhancements
     that might have been made in these programs.  Current releases of the
-    dump programs can read data from any server version back to 7.0.
+    dump programs can read data from any server version back to 9.2.
    </para>
 
    <para>
@@ -1964,7 +1940,7 @@ pg_dumpall -p 5432 | psql -d postgres -p 5433
     be migrated in-place from one major <productname>PostgreSQL</productname>
     version to another.  Upgrades can be performed in minutes,
     particularly with <option>--link</option> mode.  It requires steps similar to
-    <application>pg_dumpall</application> above, e.g.  starting/stopping the server,
+    <application>pg_dumpall</application> above, e.g.,  starting/stopping the server,
     running <application>initdb</application>.  The <application>pg_upgrade</application> <link
     linkend="pgupgrade">documentation</link> outlines the necessary steps.
    </para>
@@ -1980,9 +1956,9 @@ pg_dumpall -p 5432 | psql -d postgres -p 5433
     This is possible because logical replication supports
     replication between different major versions of
     <productname>PostgreSQL</productname>.  The standby can be on the same computer or
-    a different computer.  Once it has synced up with the master server
+    a different computer.  Once it has synced up with the primary server
     (running the older version of <productname>PostgreSQL</productname>), you can
-    switch masters and make the standby the master and shut down the older
+    switch primaries and make the standby the primary and shut down the older
     database instance.  Such a switch-over results in only several seconds
     of downtime for an upgrade.
    </para>
@@ -2037,15 +2013,27 @@ pg_dumpall -p 5432 | psql -d postgres -p 5433
   </para>
 
   <para>
-   To prevent spoofing on TCP connections, the best solution is to use
-   SSL certificates and make sure that clients check the server's certificate.
-   To do that, the server
+   To prevent spoofing on TCP connections, either use
+   SSL certificates and make sure that clients check the server's certificate,
+   or use GSSAPI encryption (or both, if they're on separate connections).
+  </para>
+
+  <para>
+   To prevent spoofing with SSL, the server
    must be configured to accept only <literal>hostssl</literal> connections (<xref
    linkend="auth-pg-hba-conf"/>) and have SSL key and certificate files
    (<xref linkend="ssl-tcp"/>). The TCP client must connect using
    <literal>sslmode=verify-ca</literal> or
    <literal>verify-full</literal> and have the appropriate root certificate
    file installed (<xref linkend="libq-ssl-certificates"/>).
+  </para>
+
+  <para>
+    To prevent spoofing with GSSAPI, the server must be configured to accept
+    only <literal>hostgssenc</literal> connections
+    (<xref linkend="auth-pg-hba-conf"/>) and use <literal>gss</literal>
+    authentication with them.  The TCP client must connect
+    using <literal>gssencmode=require</literal>.
   </para>
  </sect1>
 
@@ -2143,8 +2131,24 @@ pg_dumpall -p 5432 | psql -d postgres -p 5433
       which hosts can use non-encrypted connections (<literal>host</literal>)
       and which require SSL-encrypted connections
       (<literal>hostssl</literal>). Also, clients can specify that they
-      connect to servers only via SSL. <application>Stunnel</application> or
-      <application>SSH</application> can also be used to encrypt transmissions.
+      connect to servers only via SSL.
+     </para>
+
+     <para>
+      GSSAPI-encrypted connections encrypt all data sent across the network,
+      including queries and data returned.  (No password is sent across the
+      network.)  The <filename>pg_hba.conf</filename> file allows
+      administrators to specify which hosts can use non-encrypted connections
+      (<literal>host</literal>) and which require GSSAPI-encrypted connections
+      (<literal>hostgssenc</literal>).  Also, clients can specify that they
+      connect to servers only on GSSAPI-encrypted connections
+      (<literal>gssencmode=require</literal>).
+     </para>
+
+     <para>
+      <application>Stunnel</application> or
+      <application>SSH</application> can also be used to encrypt
+      transmissions.
      </para>
     </listitem>
   </varlistentry>
@@ -2191,6 +2195,7 @@ pg_dumpall -p 5432 | psql -d postgres -p 5433
 
   <indexterm zone="ssl-tcp">
    <primary>SSL</primary>
+   <secondary>TLS</secondary>
   </indexterm>
 
   <para>
@@ -2202,13 +2207,25 @@ pg_dumpall -p 5432 | psql -d postgres -p 5433
    enabled at build time (see <xref linkend="installation"/>).
   </para>
 
+  <para>
+   The terms <acronym>SSL</acronym> and <acronym>TLS</acronym> are often used
+   interchangeably to mean a secure encrypted connection using a
+   <acronym>TLS</acronym> protocol. <acronym>SSL</acronym> protocols are the
+   precursors to <acronym>TLS</acronym> protocols, and the term
+   <acronym>SSL</acronym> is still used for encrypted connections even though
+   <acronym>SSL</acronym> protocols are no longer supported.
+   <acronym>SSL</acronym> is used interchangeably with <acronym>TLS</acronym>
+   in <productname>PostgreSQL</productname>.
+
+  </para>
   <sect2 id="ssl-setup">
    <title>Basic Setup</title>
 
   <para>
    With <acronym>SSL</acronym> support compiled in, the
    <productname>PostgreSQL</productname> server can be started with
-   <acronym>SSL</acronym> enabled by setting the parameter
+   support for encrypted connections using <acronym>TLS</acronym> protocols
+   enabled by setting the parameter
    <xref linkend="guc-ssl"/> to <literal>on</literal> in
    <filename>postgresql.conf</filename>.  The server will listen for both normal
    and <acronym>SSL</acronym> connections on the same TCP port, and will negotiate
@@ -2251,8 +2268,9 @@ pg_dumpall -p 5432 | psql -d postgres -p 5433
    If the private key is protected with a passphrase, the
    server will prompt for the passphrase and will not start until it has
    been entered.
-   Using a passphrase also disables the ability to change the server's SSL
-   configuration without a server restart.
+   Using a passphrase by default disables the ability to change the server's
+   SSL configuration without a server restart, but see <xref
+   linkend="guc-ssl-passphrase-command-supports-reload"/>.
    Furthermore, passphrase-protected private keys cannot be used at all
    on Windows.
   </para>
@@ -2264,7 +2282,9 @@ pg_dumpall -p 5432 | psql -d postgres -p 5433
    can also be appended to the file.  Doing this avoids the necessity of
    storing intermediate certificates on clients, assuming the root and
    intermediate certificates were created with <literal>v3_ca</literal>
-   extensions.  This allows easier expiration of intermediate certificates.
+   extensions.  (This sets the certificate's basic constraint of
+   <literal>CA</literal> to <literal>true</literal>.)
+   This allows easier expiration of intermediate certificates.
   </para>
 
   <para>
@@ -2316,13 +2336,25 @@ pg_dumpall -p 5432 | psql -d postgres -p 5433
    (<acronym>CA</acronym>s) you trust in a file in the data
    directory, set the parameter <xref linkend="guc-ssl-ca-file"/> in
    <filename>postgresql.conf</filename> to the new file name, and add the
-   authentication option <literal>clientcert=1</literal> to the appropriate
+   authentication option <literal>clientcert=verify-ca</literal> or
+   <literal>clientcert=verify-full</literal> to the appropriate
    <literal>hostssl</literal> line(s) in <filename>pg_hba.conf</filename>.
    A certificate will then be requested from the client during SSL
    connection startup.  (See <xref linkend="libpq-ssl"/> for a description
-   of how to set up certificates on the client.)  The server will
-   verify that the client's certificate is signed by one of the trusted
-   certificate authorities.
+   of how to set up certificates on the client.)
+  </para>
+
+  <para>
+   For a <literal>hostssl</literal> entry with
+   <literal>clientcert=verify-ca</literal>, the server will verify
+   that the client's certificate is signed by one of the trusted
+   certificate authorities. If <literal>clientcert=verify-full</literal>
+   is specified, the server will not only verify the certificate
+   chain, but it will also check whether the username or its mapping
+   matches the <literal>cn</literal> (Common Name) of the provided certificate.
+   Note that certificate chain validation is always ensured when the
+   <literal>cert</literal> authentication method is used
+   (see <xref linkend="auth-cert"/>).
   </para>
 
   <para>
@@ -2331,28 +2363,41 @@ pg_dumpall -p 5432 | psql -d postgres -p 5433
    you wish to avoid storing them on clients (assuming the root and
    intermediate certificates were created with <literal>v3_ca</literal>
    extensions).  Certificate Revocation List (CRL) entries are also
-   checked if the parameter <xref linkend="guc-ssl-crl-file"/> is set.
-   (See <ulink
-   url="http://h41379.www4.hpe.com/doc/83final/ba554_90007/ch04s02.html"></ulink>
-   for diagrams showing SSL certificate usage.)
+   checked if the parameter <xref linkend="guc-ssl-crl-file"/> or
+   <xref linkend="guc-ssl-crl-dir"/> is set.
   </para>
 
   <para>
    The <literal>clientcert</literal> authentication option is available for
    all authentication methods, but only in <filename>pg_hba.conf</filename> lines
    specified as <literal>hostssl</literal>.  When <literal>clientcert</literal> is
-   not specified or is set to 0, the server will still verify any presented
-   client certificates against its CA file, if one is configured &mdash; but
-   it will not insist that a client certificate be presented.
+   not specified, the server verifies the client certificate against its CA
+   file only if a client certificate is presented and the CA is configured.
   </para>
 
   <para>
-   If you are setting up client certificates, you may wish to use
-   the <literal>cert</literal> authentication method, so that the certificates
-   control user authentication as well as providing connection security.
-   See <xref linkend="auth-cert"/> for details.  (It is not necessary to
-   specify <literal>clientcert=1</literal> explicitly when using
-   the <literal>cert</literal> authentication method.)
+   There are two approaches to enforce that users provide a certificate during login.
+  </para>
+
+  <para>
+   The first approach makes use of the <literal>cert</literal> authentication
+   method for <literal>hostssl</literal> entries in <filename>pg_hba.conf</filename>,
+   such that the certificate itself is used for authentication while also
+   providing ssl connection security. See <xref linkend="auth-cert"/> for details.
+   (It is not necessary to specify any <literal>clientcert</literal> options
+   explicitly when using the <literal>cert</literal> authentication method.)
+   In this case, the <literal>cn</literal> (Common Name) provided in
+   the certificate is checked against the user name or an applicable mapping.
+  </para>
+
+  <para>
+   The second approach combines any authentication method for <literal>hostssl</literal>
+   entries with the verification of client certificates by setting the
+   <literal>clientcert</literal> authentication option to <literal>verify-ca</literal>
+   or <literal>verify-full</literal>. The former option only enforces that
+   the certificate is valid, while the latter also ensures that the
+   <literal>cn</literal> (Common Name) in the certificate matches
+   the user name or an applicable mapping.
   </para>
   </sect2>
 
@@ -2533,6 +2578,55 @@ openssl x509 -req -in server.csr -text -days 365 \
 
  </sect1>
 
+ <sect1 id="gssapi-enc">
+  <title>Secure TCP/IP Connections with GSSAPI Encryption</title>
+
+  <indexterm zone="gssapi-enc">
+   <primary>gssapi</primary>
+  </indexterm>
+
+  <para>
+   <productname>PostgreSQL</productname> also has native support for
+   using <acronym>GSSAPI</acronym> to encrypt client/server communications for
+   increased security.  Support requires that a <acronym>GSSAPI</acronym>
+   implementation (such as MIT Kerberos) is installed on both client and server
+   systems, and that support in <productname>PostgreSQL</productname> is
+   enabled at build time (see <xref linkend="installation"/>).
+  </para>
+
+  <sect2 id="gssapi-setup">
+   <title>Basic Setup</title>
+
+   <para>
+    The <productname>PostgreSQL</productname> server will listen for both
+    normal and <acronym>GSSAPI</acronym>-encrypted connections on the same TCP
+    port, and will negotiate with any connecting client whether to
+    use <acronym>GSSAPI</acronym> for encryption (and for authentication).  By
+    default, this decision is up to the client (which means it can be
+    downgraded by an attacker); see <xref linkend="auth-pg-hba-conf"/> about
+    setting up the server to require the use of <acronym>GSSAPI</acronym> for
+    some or all connections.
+   </para>
+
+   <para>
+    When using <acronym>GSSAPI</acronym> for encryption, it is common to
+    use <acronym>GSSAPI</acronym> for authentication as well, since the
+    underlying mechanism will determine both client and server identities
+    (according to the <acronym>GSSAPI</acronym> implementation) in any
+    case.  But this is not required;
+    another <productname>PostgreSQL</productname> authentication method
+    can be chosen to perform additional verification.
+   </para>
+
+   <para>
+    Other than configuration of the negotiation
+    behavior, <acronym>GSSAPI</acronym> encryption requires no setup beyond
+    that which is necessary for GSSAPI authentication.  (For more information
+    on configuring that, see <xref linkend="gssapi-auth"/>.)
+   </para>
+  </sect2>
+ </sect1>
+
  <sect1 id="ssh-tunnels">
   <title>Secure TCP/IP Connections with <application>SSH</application> Tunnels</title>
 
@@ -2552,34 +2646,39 @@ openssl x509 -req -in server.csr -text -days 365 \
    First make sure that an <application>SSH</application> server is
    running properly on the same machine as the
    <productname>PostgreSQL</productname> server and that you can log in using
-   <command>ssh</command> as some user. Then you can establish a secure
-   tunnel with a command like this from the client machine:
+   <command>ssh</command> as some user;  you then can establish a
+   secure tunnel to the remote server.  A secure tunnel listens on a
+   local port and forwards all traffic to a port on the remote machine.
+   Traffic sent to the remote port can arrive on its
+   <literal>localhost</literal> address, or different bind
+   address if desired;  it does not appear as coming from your
+   local machine.  This command creates a secure tunnel from the client
+   machine to the remote machine <literal>foo.com</literal>:
 <programlisting>
 ssh -L 63333:localhost:5432 joe@foo.com
 </programlisting>
    The first number in the <option>-L</option> argument, 63333, is the
-   port number of your end of the tunnel; it can be any unused port.
-   (IANA reserves ports 49152 through 65535 for private use.)  The
-   second number, 5432, is the remote end of the tunnel: the port
-   number your server is using. The name or IP address between the
-   port numbers is the host with the database server you are going to
-   connect to, as seen from the host you are logging in to, which
-   is <literal>foo.com</literal> in this example. In order to connect
-   to the database server using this tunnel, you connect to port 63333
-   on the local machine:
+   local port number of the tunnel; it can be any unused port.  (IANA
+   reserves ports 49152 through 65535 for private use.)  The name or IP
+   address after this is the remote bind address you are connecting to,
+   i.e., <literal>localhost</literal>, which is the default.  The second
+   number, 5432, is the remote end of the tunnel, e.g., the port number
+   your database server is using.  In order to connect to the database
+   server using this tunnel, you connect to port 63333 on the local
+   machine:
 <programlisting>
 psql -h localhost -p 63333 postgres
 </programlisting>
-   To the database server it will then look as though you are really
+   To the database server it will then look as though you are
    user <literal>joe</literal> on host <literal>foo.com</literal>
-   connecting to <literal>localhost</literal> in that context, and it
+   connecting to the <literal>localhost</literal> bind address, and it
    will use whatever authentication procedure was configured for
-   connections from this user and host.  Note that the server will not
+   connections by that user to that bind address.  Note that the server will not
    think the connection is SSL-encrypted, since in fact it is not
    encrypted between the
    <application>SSH</application> server and the
    <productname>PostgreSQL</productname> server.  This should not pose any
-   extra security risk as long as they are on the same machine.
+   extra security risk because they are on the same machine.
   </para>
 
   <para>
@@ -2591,12 +2690,12 @@ psql -h localhost -p 63333 postgres
   </para>
 
   <para>
-   You could also have set up the port forwarding as
+   You could also have set up port forwarding as
 <programlisting>
 ssh -L 63333:foo.com:5432 joe@foo.com
 </programlisting>
    but then the database server will see the connection as coming in
-   on its <literal>foo.com</literal> interface, which is not opened by
+   on its <literal>foo.com</literal> bind address, which is not opened by
    the default setting <literal>listen_addresses =
    'localhost'</literal>.  This is usually not what you want.
   </para>

@@ -11,7 +11,7 @@
  * bms_is_empty() in preference to testing for NULL.)
  *
  *
- * Copyright (c) 2003-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2003-2022, PostgreSQL Global Development Group
  *
  * src/include/nodes/bitmapset.h
  *
@@ -27,12 +27,24 @@ struct List;
 
 /*
  * Data representation
+ *
+ * Larger bitmap word sizes generally give better performance, so long as
+ * they're not wider than the processor can handle efficiently.  We use
+ * 64-bit words if pointers are that large, else 32-bit words.
  */
+#if SIZEOF_VOID_P >= 8
 
-/* The unit size can be adjusted by changing these three declarations: */
+#define BITS_PER_BITMAPWORD 64
+typedef uint64 bitmapword;		/* must be an unsigned type */
+typedef int64 signedbitmapword; /* must be the matching signed type */
+
+#else
+
 #define BITS_PER_BITMAPWORD 32
 typedef uint32 bitmapword;		/* must be an unsigned type */
 typedef int32 signedbitmapword; /* must be the matching signed type */
+
+#endif
 
 typedef struct Bitmapset
 {
@@ -75,6 +87,7 @@ extern Bitmapset *bms_difference(const Bitmapset *a, const Bitmapset *b);
 extern bool bms_is_subset(const Bitmapset *a, const Bitmapset *b);
 extern BMS_Comparison bms_subset_compare(const Bitmapset *a, const Bitmapset *b);
 extern bool bms_is_member(int x, const Bitmapset *a);
+extern int	bms_member_index(Bitmapset *a, int x);
 extern bool bms_overlap(const Bitmapset *a, const Bitmapset *b);
 extern bool bms_overlap_list(const Bitmapset *a, const struct List *b);
 extern bool bms_nonempty_difference(const Bitmapset *a, const Bitmapset *b);
@@ -103,5 +116,7 @@ extern int	bms_prev_member(const Bitmapset *a, int prevbit);
 
 /* support for hashtables using Bitmapsets as keys: */
 extern uint32 bms_hash_value(const Bitmapset *a);
+extern uint32 bitmap_hash(const void *key, Size keysize);
+extern int	bitmap_match(const void *key1, const void *key2, Size keysize);
 
 #endif							/* BITMAPSET_H */

@@ -4,7 +4,7 @@
  *	  POSTGRES disk item pointer definitions.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/itemptr.h
@@ -16,14 +16,15 @@
 
 #include "storage/block.h"
 #include "storage/off.h"
+#include "ybgate/yb_itemptr.h"
 
 /*
  * ItemPointer:
  *
  * This is a pointer to an item within a disk page of a known file
  * (for example, a cross-link from an index to its parent table).
- * blkid tells us which block, posid tells us which entry in the linp
- * (ItemIdData) array we want.
+ * ip_blkid tells us which block, ip_posid tells us which entry in
+ * the linp (ItemIdData) array we want.
  *
  * Note: because there is an item pointer in each tuple header and index
  * tuple header on disk, it's very important not to waste space with
@@ -37,12 +38,15 @@ typedef struct ItemPointerData
 {
 	BlockIdData ip_blkid;
 	OffsetNumber ip_posid;
+
+	/* In Yugabyte DB, a data location is represented by ybctid and not a disk location */
+	YbItemPointerData yb_item;
 }
 
 /* If compiler understands packed and aligned pragmas, use those */
 #if defined(pg_attribute_packed) && defined(pg_attribute_aligned)
-pg_attribute_packed()
-pg_attribute_aligned(2)
+			pg_attribute_packed()
+			pg_attribute_aligned(2)
 #endif
 ItemPointerData;
 
@@ -80,7 +84,8 @@ typedef ItemPointerData *ItemPointer;
  *		True iff the disk item pointer is not NULL.
  */
 #define ItemPointerIsValid(pointer) \
-	((bool) (PointerIsValid(pointer) && ((pointer)->ip_posid != 0)))
+	((bool) (PointerIsValid(pointer) && \
+			 ((pointer)->ip_posid != 0 || (pointer)->yb_item.ybctid != 0)))
 
 /*
  * ItemPointerGetBlockNumberNoCheck
@@ -123,12 +128,14 @@ typedef ItemPointerData *ItemPointer;
 /*
  * ItemPointerSet
  *		Sets a disk item pointer to the specified block and offset.
+ *      For Yugabyte, initialize yb_item to 0 here. It's then set to a valid value when being used.
  */
 #define ItemPointerSet(pointer, blockNumber, offNum) \
 ( \
 	AssertMacro(PointerIsValid(pointer)), \
 	BlockIdSet(&((pointer)->ip_blkid), blockNumber), \
-	(pointer)->ip_posid = offNum \
+	(pointer)->ip_posid = offNum, \
+	YbItemPointerSetInvalid(pointer) \
 )
 
 /*
@@ -163,7 +170,8 @@ typedef ItemPointerData *ItemPointer;
 	AssertMacro(PointerIsValid(toPointer)), \
 	AssertMacro(PointerIsValid(fromPointer)), \
 	*(toPointer) = *(fromPointer) \
-)
+);\
+COPY_YBITEM((fromPointer)->yb_item, (toPointer)->yb_item)
 
 /*
  * ItemPointerSetInvalid
@@ -173,7 +181,8 @@ typedef ItemPointerData *ItemPointer;
 ( \
 	AssertMacro(PointerIsValid(pointer)), \
 	BlockIdSet(&((pointer)->ip_blkid), InvalidBlockNumber), \
-	(pointer)->ip_posid = InvalidOffsetNumber \
+	(pointer)->ip_posid = InvalidOffsetNumber,				\
+	YbItemPointerSetInvalid(pointer)						\
 )
 
 /*
@@ -202,5 +211,7 @@ typedef ItemPointerData *ItemPointer;
 
 extern bool ItemPointerEquals(ItemPointer pointer1, ItemPointer pointer2);
 extern int32 ItemPointerCompare(ItemPointer arg1, ItemPointer arg2);
+extern void ItemPointerInc(ItemPointer pointer);
+extern void ItemPointerDec(ItemPointer pointer);
 
 #endif							/* ITEMPTR_H */

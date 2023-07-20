@@ -2,7 +2,7 @@
  * test_ddl_deparse.c
  *		Support functions for the test_ddl_deparse module
  *
- * Copyright (c) 2014-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2014-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/test/modules/test_ddl_deparse/test_ddl_deparse.c
@@ -74,7 +74,7 @@ get_command_tag(PG_FUNCTION_ARGS)
 	if (!cmd->parsetree)
 		PG_RETURN_NULL();
 
-	PG_RETURN_TEXT_P(cstring_to_text(CreateCommandTag(cmd->parsetree)));
+	PG_RETURN_TEXT_P(cstring_to_text(CreateCommandName(cmd->parsetree)));
 }
 
 /*
@@ -111,11 +111,17 @@ get_altertable_subcmdtypes(PG_FUNCTION_ARGS)
 			case AT_ColumnDefault:
 				strtype = "ALTER COLUMN SET DEFAULT";
 				break;
+			case AT_CookedColumnDefault:
+				strtype = "ALTER COLUMN SET DEFAULT (precooked)";
+				break;
 			case AT_DropNotNull:
 				strtype = "DROP NOT NULL";
 				break;
 			case AT_SetNotNull:
 				strtype = "SET NOT NULL";
+				break;
+			case AT_CheckNotNull:
+				strtype = "CHECK NOT NULL";
 				break;
 			case AT_SetStatistics:
 				strtype = "SET STATS";
@@ -159,9 +165,6 @@ get_altertable_subcmdtypes(PG_FUNCTION_ARGS)
 			case AT_ValidateConstraintRecurse:
 				strtype = "VALIDATE CONSTRAINT (and recurse)";
 				break;
-			case AT_ProcessedConstraint:
-				strtype = "ADD (processed) CONSTRAINT";
-				break;
 			case AT_AddIndexConstraint:
 				strtype = "ADD CONSTRAINT (using index)";
 				break;
@@ -194,12 +197,6 @@ get_altertable_subcmdtypes(PG_FUNCTION_ARGS)
 				break;
 			case AT_SetUnLogged:
 				strtype = "SET UNLOGGED";
-				break;
-			case AT_AddOids:
-				strtype = "ADD OIDS";
-				break;
-			case AT_AddOidsRecurse:
-				strtype = "ADD OIDS (and recurse)";
 				break;
 			case AT_DropOids:
 				strtype = "DROP OIDS";

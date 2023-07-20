@@ -2,7 +2,7 @@
 /*
  * Scanner for the configuration file
  *
- * Copyright (c) 2000-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2022, PostgreSQL Global Development Group
  *
  * src/backend/utils/misc/guc-file.l
  */
@@ -49,13 +49,12 @@ static sigjmp_buf *GUC_flex_fatal_jmp;
 static void FreeConfigVariable(ConfigVariable *item);
 
 static void record_config_file_error(const char *errmsg,
-						 const char *config_file,
-						 int lineno,
-						 ConfigVariable **head_p,
-						 ConfigVariable **tail_p);
+									 const char *config_file,
+									 int lineno,
+									 ConfigVariable **head_p,
+									 ConfigVariable **tail_p);
 
 static int	GUC_flex_fatal(const char *msg);
-static char *GUC_scanstr(const char *s);
 
 /* LCOV_EXCL_START */
 
@@ -283,7 +282,7 @@ ProcessConfigFileInternal(GucContext context, bool applySettings, int elevel)
 		 * Try to find the variable; but do not create a custom placeholder if
 		 * it's not there already.
 		 */
-		record = find_option(item->name, false, elevel);
+		record = find_option(item->name, false, true, elevel);
 
 		if (record)
 		{
@@ -307,12 +306,12 @@ ProcessConfigFileInternal(GucContext context, bool applySettings, int elevel)
 			/* Now mark it as present in file */
 			record->status |= GUC_IS_IN_FILE;
 		}
-		else if (strchr(item->name, GUC_QUALIFIER_SEPARATOR) == NULL)
+		else if (!valid_custom_variable_name(item->name))
 		{
 			/* Invalid non-custom variable, so complain */
 			ereport(elevel,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("unrecognized configuration parameter \"%s\" in file \"%s\" line %u",
+					 errmsg("unrecognized configuration parameter \"%s\" in file \"%s\" line %d",
 							item->name,
 							item->filename, item->sourceline)));
 			item->errmsg = pstrdup("unrecognized configuration parameter");
@@ -347,6 +346,8 @@ ProcessConfigFileInternal(GucContext context, bool applySettings, int elevel)
 			continue;
 		if (gconf->context < PGC_SIGHUP)
 		{
+			/* The removal can't be effective without a restart */
+			gconf->status |= GUC_PENDING_RESTART;
 			ereport(elevel,
 					(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
 					 errmsg("parameter \"%s\" cannot be changed without restarting the server",
@@ -400,9 +401,8 @@ ProcessConfigFileInternal(GucContext context, bool applySettings, int elevel)
 	 * be run only after initialization is complete.
 	 *
 	 * XXX this is an unmaintainable crock, because we have to know how to set
-	 * (or at least what to call to set) every variable that could potentially
-	 * have PGC_S_DYNAMIC_DEFAULT or PGC_S_ENV_VAR source. However, there's no
-	 * time to redesign it for 9.1.
+	 * (or at least what to call to set) every non-PGC_INTERNAL variable that
+	 * could potentially have PGC_S_DYNAMIC_DEFAULT or PGC_S_ENV_VAR source.
 	 */
 	if (context == PGC_SIGHUP && applySettings)
 	{
@@ -568,6 +568,22 @@ ParseConfigFile(const char *config_file, bool strict,
 	FILE	   *fp;
 
 	/*
+	 * Reject file name that is all-blank (including empty), as that leads to
+	 * confusion --- we'd try to read the containing directory as a file.
+	 */
+	if (strspn(config_file, " \t\r\n") == strlen(config_file))
+	{
+		ereport(elevel,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("empty configuration file name: \"%s\"",
+						config_file)));
+		record_config_file_error("empty configuration file name",
+								 calling_file, calling_lineno,
+								 head_p, tail_p);
+		return false;
+	}
+
+	/*
 	 * Reject too-deep include nesting depth.  This is just a safety check to
 	 * avoid dumping core due to stack overflow if an include file loops back
 	 * to itself.  The maximum nesting depth is pretty arbitrary.
@@ -585,6 +601,26 @@ ParseConfigFile(const char *config_file, bool strict,
 	}
 
 	abs_path = AbsoluteConfigLocation(config_file, calling_file);
+
+	/*
+	 * Reject direct recursion.  Indirect recursion is also possible, but it's
+	 * harder to detect and so doesn't seem worth the trouble.  (We test at
+	 * this step because the canonicalization done by AbsoluteConfigLocation
+	 * makes it more likely that a simple strcmp comparison will match.)
+	 */
+	if (calling_file && strcmp(abs_path, calling_file) == 0)
+	{
+		ereport(elevel,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("configuration file recursion in \"%s\"",
+						calling_file)));
+		record_config_file_error("configuration file recursion",
+								 calling_file, calling_lineno,
+								 head_p, tail_p);
+		pfree(abs_path);
+		return false;
+	}
+
 	fp = AllocateFile(abs_path, "r");
 	if (!fp)
 	{
@@ -761,7 +797,7 @@ ParseConfigFp(FILE *fp, const char *config_file, int depth, int elevel,
 			token != GUC_UNQUOTED_STRING)
 			goto parse_error;
 		if (token == GUC_STRING)	/* strip quotes and escapes */
-			opt_value = GUC_scanstr(yytext);
+			opt_value = DeescapeQuotedString(yytext);
 		else
 			opt_value = pstrdup(yytext);
 
@@ -933,6 +969,28 @@ ParseConfigDirectory(const char *includedir,
 	int			size_filenames;
 	bool		status;
 
+	/*
+	 * Reject directory name that is all-blank (including empty), as that
+	 * leads to confusion --- we'd read the containing directory, typically
+	 * resulting in recursive inclusion of the same file(s).
+	 */
+	if (strspn(includedir, " \t\r\n") == strlen(includedir))
+	{
+		ereport(elevel,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("empty configuration directory name: \"%s\"",
+						includedir)));
+		record_config_file_error("empty configuration directory name",
+								 calling_file, calling_lineno,
+								 head_p, tail_p);
+		return false;
+	}
+
+	/*
+	 * We don't check for recursion or too-deep nesting depth here; the
+	 * subsequent calls to ParseConfigFile will take care of that.
+	 */
+
 	directory = AbsoluteConfigLocation(includedir, calling_file);
 	d = AllocateDir(directory);
 	if (d == NULL)
@@ -1074,22 +1132,25 @@ FreeConfigVariable(ConfigVariable *item)
 
 
 /*
- *		scanstr
+ *		DeescapeQuotedString
  *
  * Strip the quotes surrounding the given string, and collapse any embedded
  * '' sequences and backslash escapes.
  *
- * the string returned is palloc'd and should eventually be pfree'd by the
+ * The string returned is palloc'd and should eventually be pfree'd by the
  * caller.
+ *
+ * This is exported because it is also used by the bootstrap scanner.
  */
-static char *
-GUC_scanstr(const char *s)
+char *
+DeescapeQuotedString(const char *s)
 {
 	char	   *newStr;
 	int			len,
 				i,
 				j;
 
+	/* We just Assert that there are leading and trailing quotes */
 	Assert(s != NULL && s[0] == '\'');
 	len = strlen(s);
 	Assert(len >= 2);

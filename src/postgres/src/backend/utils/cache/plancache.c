@@ -27,18 +27,24 @@
  * query to change output tupdesc on replan --- if so, it's up to the
  * caller to notice changes and cope with them.
  *
- * Currently, we track exactly the dependencies of plans on relations and
- * user-defined functions.  On relcache invalidation events or pg_proc
- * syscache invalidation events, we invalidate just those plans that depend
- * on the particular object being modified.  (Note: this scheme assumes
- * that any table modification that requires replanning will generate a
- * relcache inval event.)  We also watch for inval events on certain other
- * system catalogs, such as pg_namespace; but for them, our response is
- * just to invalidate all plans.  We expect updates on those catalogs to
- * be infrequent enough that more-detailed tracking is not worth the effort.
+ * Currently, we track exactly the dependencies of plans on relations,
+ * user-defined functions, and domains.  On relcache invalidation events or
+ * pg_proc or pg_type syscache invalidation events, we invalidate just those
+ * plans that depend on the particular object being modified.  (Note: this
+ * scheme assumes that any table modification that requires replanning will
+ * generate a relcache inval event.)  We also watch for inval events on
+ * certain other system catalogs, such as pg_namespace; but for them, our
+ * response is just to invalidate all plans.  We expect updates on those
+ * catalogs to be infrequent enough that more-detailed tracking is not worth
+ * the effort.
+ *
+ * In addition to full-fledged query plans, we provide a facility for
+ * detecting invalidations of simple scalar expressions.  This is fairly
+ * bare-bones; it's the caller's responsibility to build a new expression
+ * if the old one gets invalidated.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -56,9 +62,7 @@
 #include "executor/executor.h"
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
-#include "optimizer/cost.h"
-#include "optimizer/planmain.h"
-#include "optimizer/prep.h"
+#include "optimizer/optimizer.h"
 #include "parser/analyze.h"
 #include "parser/parsetree.h"
 #include "storage/lmgr.h"
@@ -72,6 +76,8 @@
 #include "utils/syscache.h"
 #include "optimizer/ybcplan.h"
 
+/* Yugabyte includes */
+#include "pg_yb_utils.h"
 
 /*
  * We must skip "overhead" operations that involve database access when the
@@ -84,19 +90,24 @@
 /*
  * This is the head of the backend's list of "saved" CachedPlanSources (i.e.,
  * those that are in long-lived storage and are examined for sinval events).
- * We thread the structs manually instead of using List cells so that we can
- * guarantee to save a CachedPlanSource without error.
+ * We use a dlist instead of separate List cells so that we can guarantee
+ * to save a CachedPlanSource without error.
  */
-static CachedPlanSource *first_saved_plan = NULL;
+static dlist_head saved_plan_list = DLIST_STATIC_INIT(saved_plan_list);
+
+/*
+ * This is the head of the backend's list of CachedExpressions.
+ */
+static dlist_head cached_expression_list = DLIST_STATIC_INIT(cached_expression_list);
 
 static void ReleaseGenericPlan(CachedPlanSource *plansource);
 static List *RevalidateCachedQuery(CachedPlanSource *plansource,
-					  QueryEnvironment *queryEnv);
+								   QueryEnvironment *queryEnv);
 static bool CheckCachedPlan(CachedPlanSource *plansource);
 static CachedPlan *BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
-				ParamListInfo boundParams, QueryEnvironment *queryEnv);
+								   ParamListInfo boundParams, QueryEnvironment *queryEnv);
 static bool choose_custom_plan(CachedPlanSource *plansource,
-				   ParamListInfo boundParams);
+							   ParamListInfo boundParams);
 static double cached_plan_cost(CachedPlan *plan, bool include_planner);
 static Query *QueryListGetPrimaryStmt(List *stmts);
 static void AcquireExecutorLocks(List *stmt_list, bool acquire);
@@ -105,8 +116,11 @@ static void ScanQueryForLocks(Query *parsetree, bool acquire);
 static bool ScanQueryWalker(Node *node, bool *acquire);
 static TupleDesc PlanCacheComputeResultDesc(List *stmt_list);
 static void PlanCacheRelCallback(Datum arg, Oid relid);
-static void PlanCacheFuncCallback(Datum arg, int cacheid, uint32 hashvalue);
+static void PlanCacheObjectCallback(Datum arg, int cacheid, uint32 hashvalue);
 static void PlanCacheSysCallback(Datum arg, int cacheid, uint32 hashvalue);
+
+/* GUC parameter */
+int			plan_cache_mode;
 
 /*
  * For prepared statements, generate custom plans for at least the first 5 runs
@@ -129,7 +143,8 @@ void
 InitPlanCache(void)
 {
 	CacheRegisterRelcacheCallback(PlanCacheRelCallback, (Datum) 0);
-	CacheRegisterSyscacheCallback(PROCOID, PlanCacheFuncCallback, (Datum) 0);
+	CacheRegisterSyscacheCallback(PROCOID, PlanCacheObjectCallback, (Datum) 0);
+	CacheRegisterSyscacheCallback(TYPEOID, PlanCacheObjectCallback, (Datum) 0);
 	CacheRegisterSyscacheCallback(NAMESPACEOID, PlanCacheSysCallback, (Datum) 0);
 	CacheRegisterSyscacheCallback(OPEROID, PlanCacheSysCallback, (Datum) 0);
 	CacheRegisterSyscacheCallback(AMOPOPID, PlanCacheSysCallback, (Datum) 0);
@@ -159,12 +174,12 @@ InitPlanCache(void)
  *
  * raw_parse_tree: output of raw_parser(), or NULL if empty query
  * query_string: original query text
- * commandTag: compile-time-constant tag for query, or NULL if empty query
+ * commandTag: command tag for query, or UNKNOWN if empty query
  */
 CachedPlanSource *
 CreateCachedPlan(RawStmt *raw_parse_tree,
 				 const char *query_string,
-				 const char *commandTag)
+				 CommandTag commandTag)
 {
 	CachedPlanSource *plansource;
 	MemoryContext source_context;
@@ -217,9 +232,9 @@ CreateCachedPlan(RawStmt *raw_parse_tree,
 	plansource->is_saved = false;
 	plansource->is_valid = false;
 	plansource->generation = 0;
-	plansource->next_saved = NULL;
 	plansource->generic_cost = -1;
 	plansource->total_custom_cost = 0;
+	plansource->num_generic_plans = 0;
 	plansource->num_custom_plans = 0;
 
 	MemoryContextSwitchTo(oldcxt);
@@ -243,12 +258,12 @@ CreateCachedPlan(RawStmt *raw_parse_tree,
  *
  * raw_parse_tree: output of raw_parser(), or NULL if empty query
  * query_string: original query text
- * commandTag: compile-time-constant tag for query, or NULL if empty query
+ * commandTag: command tag for query, or NULL if empty query
  */
 CachedPlanSource *
 CreateOneShotCachedPlan(RawStmt *raw_parse_tree,
 						const char *query_string,
-						const char *commandTag)
+						CommandTag commandTag)
 {
 	CachedPlanSource *plansource;
 
@@ -285,9 +300,9 @@ CreateOneShotCachedPlan(RawStmt *raw_parse_tree,
 	plansource->is_saved = false;
 	plansource->is_valid = false;
 	plansource->generation = 0;
-	plansource->next_saved = NULL;
 	plansource->generic_cost = -1;
 	plansource->total_custom_cost = 0;
+	plansource->num_generic_plans = 0;
 	plansource->num_custom_plans = 0;
 
 	return plansource;
@@ -485,8 +500,7 @@ SaveCachedPlan(CachedPlanSource *plansource)
 	/*
 	 * Add the entry to the global list of cached plans.
 	 */
-	plansource->next_saved = first_saved_plan;
-	first_saved_plan = plansource;
+	dlist_push_tail(&saved_plan_list, &plansource->node);
 
 	plansource->is_saved = true;
 }
@@ -507,25 +521,11 @@ DropCachedPlan(CachedPlanSource *plansource)
 	/* If it's been saved, remove it from the list */
 	if (plansource->is_saved)
 	{
-		if (first_saved_plan == plansource)
-			first_saved_plan = plansource->next_saved;
-		else
-		{
-			CachedPlanSource *psrc;
-
-			for (psrc = first_saved_plan; psrc; psrc = psrc->next_saved)
-			{
-				if (psrc->next_saved == plansource)
-				{
-					psrc->next_saved = plansource->next_saved;
-					break;
-				}
-			}
-		}
+		dlist_delete(&plansource->node);
 		plansource->is_saved = false;
 	}
 
-	/* Decrement generic CachePlan's refcount and drop if no longer needed */
+	/* Decrement generic CachedPlan's refcount and drop if no longer needed */
 	ReleaseGenericPlan(plansource);
 
 	/* Mark it no longer valid */
@@ -552,7 +552,7 @@ ReleaseGenericPlan(CachedPlanSource *plansource)
 
 		Assert(plan->magic == CACHEDPLAN_MAGIC);
 		plansource->gplan = NULL;
-		ReleaseCachedPlan(plan, false);
+		ReleaseCachedPlan(plan, NULL);
 	}
 }
 
@@ -701,17 +701,17 @@ RevalidateCachedQuery(CachedPlanSource *plansource,
 	if (rawtree == NULL)
 		tlist = NIL;
 	else if (plansource->parserSetup != NULL)
-		tlist = pg_analyze_and_rewrite_params(rawtree,
+		tlist = pg_analyze_and_rewrite_withcb(rawtree,
 											  plansource->query_string,
 											  plansource->parserSetup,
 											  plansource->parserSetupArg,
 											  queryEnv);
 	else
-		tlist = pg_analyze_and_rewrite(rawtree,
-									   plansource->query_string,
-									   plansource->param_types,
-									   plansource->num_params,
-									   queryEnv);
+		tlist = pg_analyze_and_rewrite_fixedparams(rawtree,
+												   plansource->query_string,
+												   plansource->param_types,
+												   plansource->num_params,
+												   queryEnv);
 
 	/* Release snapshot if we got one */
 	if (snapshot_set)
@@ -916,8 +916,8 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 	 * rejected a generic plan, it's possible to reach here with is_valid
 	 * false due to an invalidation while making the generic plan.  In theory
 	 * the invalidation must be a false positive, perhaps a consequence of an
-	 * sinval reset event or the CLOBBER_CACHE_ALWAYS debug code.  But for
-	 * safety, let's treat it as real and redo the RevalidateCachedQuery call.
+	 * sinval reset event or the debug_discard_caches code.  But for safety,
+	 * let's treat it as real and redo the RevalidateCachedQuery call.
 	 */
 	if (!plansource->is_valid)
 		qlist = RevalidateCachedQuery(plansource, queryEnv);
@@ -951,7 +951,8 @@ BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 	/*
 	 * Generate the plan.
 	 */
-	plist = pg_plan_queries(qlist, plansource->cursor_options, boundParams);
+	plist = pg_plan_queries(qlist, plansource->query_string,
+							plansource->cursor_options, boundParams);
 
 	/* Release snapshot if we got one */
 	if (snapshot_set)
@@ -1048,6 +1049,12 @@ choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams)
 	/* ... nor for transaction control statements */
 	if (IsTransactionStmtPlan(plansource))
 		return false;
+
+	/* Let settings force the decision */
+	if (plan_cache_mode == PLAN_CACHE_MODE_FORCE_GENERIC_PLAN)
+		return false;
+	if (plan_cache_mode == PLAN_CACHE_MODE_FORCE_CUSTOM_PLAN)
+		return true;
 
 	/* See if caller wants to force the decision */
 	if (plansource->cursor_options & CURSOR_OPT_GENERIC_PLAN)
@@ -1186,16 +1193,16 @@ cached_plan_cost(CachedPlan *plan, bool include_planner)
  * execution.
  *
  * On return, the refcount of the plan has been incremented; a later
- * ReleaseCachedPlan() call is expected.  The refcount has been reported
- * to the CurrentResourceOwner if useResOwner is true (note that that must
- * only be true if it's a "saved" CachedPlanSource).
+ * ReleaseCachedPlan() call is expected.  If "owner" is not NULL then
+ * the refcount has been reported to that ResourceOwner (note that this
+ * is only supported for "saved" CachedPlanSources).
  *
  * Note: if any replanning activity is required, the caller's memory context
  * is used for that work.
  */
 CachedPlan *
 GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
-			  bool useResOwner, QueryEnvironment *queryEnv)
+			  ResourceOwner owner, QueryEnvironment *queryEnv)
 {
 	CachedPlan *plan = NULL;
 	List	   *qlist;
@@ -1205,7 +1212,7 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 	Assert(plansource->magic == CACHEDPLANSOURCE_MAGIC);
 	Assert(plansource->is_complete);
 	/* This seems worth a real test, though */
-	if (useResOwner && !plansource->is_saved)
+	if (owner && !plansource->is_saved)
 		elog(ERROR, "cannot apply ResourceOwner to non-saved cached plan");
 
 	/* Make sure the querytree list is valid and we have parse-time locks */
@@ -1273,12 +1280,11 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 	{
 		/* Build a custom plan */
 		plan = BuildCachedPlan(plansource, qlist, boundParams, queryEnv);
-		/* Accumulate total costs of custom plans, but 'ware overflow */
-		if (plansource->num_custom_plans < INT_MAX)
-		{
-			plansource->total_custom_cost += cached_plan_cost(plan, true);
-			plansource->num_custom_plans++;
+		/* Accumulate total costs of custom plans */
+		plansource->total_custom_cost += cached_plan_cost(plan, true);
 
+		plansource->num_custom_plans++;
+		if (IsYugaByteEnabled()) {
 			/*
 			 * Store the maximum number of relations referenced across all
 			 * the runs using custom plan. In Yugabyte clusters, higher the
@@ -1294,15 +1300,19 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 				plansource->yb_custom_max_num_referenced_rels = nrelations;
 		}
 	}
+	else
+	{
+		plansource->num_generic_plans++;
+	}
 
 	Assert(plan != NULL);
 
 	/* Flag the plan as in use by caller */
-	if (useResOwner)
-		ResourceOwnerEnlargePlanCacheRefs(CurrentResourceOwner);
+	if (owner)
+		ResourceOwnerEnlargePlanCacheRefs(owner);
 	plan->refcount++;
-	if (useResOwner)
-		ResourceOwnerRememberPlanCacheRef(CurrentResourceOwner, plan);
+	if (owner)
+		ResourceOwnerRememberPlanCacheRef(owner, plan);
 
 	/*
 	 * Saved plans should be under CacheMemoryContext so they will not go away
@@ -1323,21 +1333,21 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
  * ReleaseCachedPlan: release active use of a cached plan.
  *
  * This decrements the reference count, and frees the plan if the count
- * has thereby gone to zero.  If useResOwner is true, it is assumed that
- * the reference count is managed by the CurrentResourceOwner.
+ * has thereby gone to zero.  If "owner" is not NULL, it is assumed that
+ * the reference count is managed by that ResourceOwner.
  *
- * Note: useResOwner = false is used for releasing references that are in
+ * Note: owner == NULL is used for releasing references that are in
  * persistent data structures, such as the parent CachedPlanSource or a
  * Portal.  Transient references should be protected by a resource owner.
  */
 void
-ReleaseCachedPlan(CachedPlan *plan, bool useResOwner)
+ReleaseCachedPlan(CachedPlan *plan, ResourceOwner owner)
 {
 	Assert(plan->magic == CACHEDPLAN_MAGIC);
-	if (useResOwner)
+	if (owner)
 	{
 		Assert(plan->is_saved);
-		ResourceOwnerForgetPlanCacheRef(CurrentResourceOwner, plan);
+		ResourceOwnerForgetPlanCacheRef(owner, plan);
 	}
 	Assert(plan->refcount > 0);
 	plan->refcount--;
@@ -1350,6 +1360,183 @@ ReleaseCachedPlan(CachedPlan *plan, bool useResOwner)
 		if (!plan->is_oneshot)
 			MemoryContextDelete(plan->context);
 	}
+}
+
+/*
+ * CachedPlanAllowsSimpleValidityCheck: can we use CachedPlanIsSimplyValid?
+ *
+ * This function, together with CachedPlanIsSimplyValid, provides a fast path
+ * for revalidating "simple" generic plans.  The core requirement to be simple
+ * is that the plan must not require taking any locks, which translates to
+ * not touching any tables; this happens to match up well with an important
+ * use-case in PL/pgSQL.  This function tests whether that's true, along
+ * with checking some other corner cases that we'd rather not bother with
+ * handling in the fast path.  (Note that it's still possible for such a plan
+ * to be invalidated, for example due to a change in a function that was
+ * inlined into the plan.)
+ *
+ * If the plan is simply valid, and "owner" is not NULL, record a refcount on
+ * the plan in that resowner before returning.  It is caller's responsibility
+ * to be sure that a refcount is held on any plan that's being actively used.
+ *
+ * This must only be called on known-valid generic plans (eg, ones just
+ * returned by GetCachedPlan).  If it returns true, the caller may re-use
+ * the cached plan as long as CachedPlanIsSimplyValid returns true; that
+ * check is much cheaper than the full revalidation done by GetCachedPlan.
+ * Nonetheless, no required checks are omitted.
+ */
+bool
+CachedPlanAllowsSimpleValidityCheck(CachedPlanSource *plansource,
+									CachedPlan *plan, ResourceOwner owner)
+{
+	ListCell   *lc;
+
+	/*
+	 * Sanity-check that the caller gave us a validated generic plan.  Notice
+	 * that we *don't* assert plansource->is_valid as you might expect; that's
+	 * because it's possible that that's already false when GetCachedPlan
+	 * returns, e.g. because ResetPlanCache happened partway through.  We
+	 * should accept the plan as long as plan->is_valid is true, and expect to
+	 * replan after the next CachedPlanIsSimplyValid call.
+	 */
+	Assert(plansource->magic == CACHEDPLANSOURCE_MAGIC);
+	Assert(plan->magic == CACHEDPLAN_MAGIC);
+	Assert(plan->is_valid);
+	Assert(plan == plansource->gplan);
+	Assert(plansource->search_path != NULL);
+	Assert(OverrideSearchPathMatchesCurrent(plansource->search_path));
+
+	/* We don't support oneshot plans here. */
+	if (plansource->is_oneshot)
+		return false;
+	Assert(!plan->is_oneshot);
+
+	/*
+	 * If the plan is dependent on RLS considerations, or it's transient,
+	 * reject.  These things probably can't ever happen for table-free
+	 * queries, but for safety's sake let's check.
+	 */
+	if (plansource->dependsOnRLS)
+		return false;
+	if (plan->dependsOnRole)
+		return false;
+	if (TransactionIdIsValid(plan->saved_xmin))
+		return false;
+
+	/*
+	 * Reject if AcquirePlannerLocks would have anything to do.  This is
+	 * simplistic, but there's no need to inquire any more carefully; indeed,
+	 * for current callers it shouldn't even be possible to hit any of these
+	 * checks.
+	 */
+	foreach(lc, plansource->query_list)
+	{
+		Query	   *query = lfirst_node(Query, lc);
+
+		if (query->commandType == CMD_UTILITY)
+			return false;
+		if (query->rtable || query->cteList || query->hasSubLinks)
+			return false;
+	}
+
+	/*
+	 * Reject if AcquireExecutorLocks would have anything to do.  This is
+	 * probably unnecessary given the previous check, but let's be safe.
+	 */
+	foreach(lc, plan->stmt_list)
+	{
+		PlannedStmt *plannedstmt = lfirst_node(PlannedStmt, lc);
+		ListCell   *lc2;
+
+		if (plannedstmt->commandType == CMD_UTILITY)
+			return false;
+
+		/*
+		 * We have to grovel through the rtable because it's likely to contain
+		 * an RTE_RESULT relation, rather than being totally empty.
+		 */
+		foreach(lc2, plannedstmt->rtable)
+		{
+			RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc2);
+
+			if (rte->rtekind == RTE_RELATION)
+				return false;
+		}
+	}
+
+	/*
+	 * Okay, it's simple.  Note that what we've primarily established here is
+	 * that no locks need be taken before checking the plan's is_valid flag.
+	 */
+
+	/* Bump refcount if requested. */
+	if (owner)
+	{
+		ResourceOwnerEnlargePlanCacheRefs(owner);
+		plan->refcount++;
+		ResourceOwnerRememberPlanCacheRef(owner, plan);
+	}
+
+	return true;
+}
+
+/*
+ * CachedPlanIsSimplyValid: quick check for plan still being valid
+ *
+ * This function must not be used unless CachedPlanAllowsSimpleValidityCheck
+ * previously said it was OK.
+ *
+ * If the plan is valid, and "owner" is not NULL, record a refcount on
+ * the plan in that resowner before returning.  It is caller's responsibility
+ * to be sure that a refcount is held on any plan that's being actively used.
+ *
+ * The code here is unconditionally safe as long as the only use of this
+ * CachedPlanSource is in connection with the particular CachedPlan pointer
+ * that's passed in.  If the plansource were being used for other purposes,
+ * it's possible that its generic plan could be invalidated and regenerated
+ * while the current caller wasn't looking, and then there could be a chance
+ * collision of address between this caller's now-stale plan pointer and the
+ * actual address of the new generic plan.  For current uses, that scenario
+ * can't happen; but with a plansource shared across multiple uses, it'd be
+ * advisable to also save plan->generation and verify that that still matches.
+ */
+bool
+CachedPlanIsSimplyValid(CachedPlanSource *plansource, CachedPlan *plan,
+						ResourceOwner owner)
+{
+	/*
+	 * Careful here: since the caller doesn't necessarily hold a refcount on
+	 * the plan to start with, it's possible that "plan" is a dangling
+	 * pointer.  Don't dereference it until we've verified that it still
+	 * matches the plansource's gplan (which is either valid or NULL).
+	 */
+	Assert(plansource->magic == CACHEDPLANSOURCE_MAGIC);
+
+	/*
+	 * Has cache invalidation fired on this plan?  We can check this right
+	 * away since there are no locks that we'd need to acquire first.  Note
+	 * that here we *do* check plansource->is_valid, so as to force plan
+	 * rebuild if that's become false.
+	 */
+	if (!plansource->is_valid || plan != plansource->gplan || !plan->is_valid)
+		return false;
+
+	Assert(plan->magic == CACHEDPLAN_MAGIC);
+
+	/* Is the search_path still the same as when we made it? */
+	Assert(plansource->search_path != NULL);
+	if (!OverrideSearchPathMatchesCurrent(plansource->search_path))
+		return false;
+
+	/* It's still good.  Bump refcount if requested. */
+	if (owner)
+	{
+		ResourceOwnerEnlargePlanCacheRefs(owner);
+		plan->refcount++;
+		ResourceOwnerRememberPlanCacheRef(owner, plan);
+	}
+
+	return true;
 }
 
 /*
@@ -1467,11 +1654,11 @@ CopyCachedPlan(CachedPlanSource *plansource)
 	newsource->is_saved = false;
 	newsource->is_valid = plansource->is_valid;
 	newsource->generation = plansource->generation;
-	newsource->next_saved = NULL;
 
 	/* We may as well copy any acquired cost knowledge */
 	newsource->generic_cost = plansource->generic_cost;
 	newsource->total_custom_cost = plansource->total_custom_cost;
+	newsource->num_generic_plans = plansource->num_generic_plans;
 	newsource->num_custom_plans = plansource->num_custom_plans;
 
 	MemoryContextSwitchTo(oldcxt);
@@ -1527,6 +1714,85 @@ CachedPlanGetTargetList(CachedPlanSource *plansource,
 }
 
 /*
+ * GetCachedExpression: construct a CachedExpression for an expression.
+ *
+ * This performs the same transformations on the expression as
+ * expression_planner(), ie, convert an expression as emitted by parse
+ * analysis to be ready to pass to the executor.
+ *
+ * The result is stashed in a private, long-lived memory context.
+ * (Note that this might leak a good deal of memory in the caller's
+ * context before that.)  The passed-in expr tree is not modified.
+ */
+CachedExpression *
+GetCachedExpression(Node *expr)
+{
+	CachedExpression *cexpr;
+	List	   *relationOids;
+	List	   *invalItems;
+	MemoryContext cexpr_context;
+	MemoryContext oldcxt;
+
+	/*
+	 * Pass the expression through the planner, and collect dependencies.
+	 * Everything built here is leaked in the caller's context; that's
+	 * intentional to minimize the size of the permanent data structure.
+	 */
+	expr = (Node *) expression_planner_with_deps((Expr *) expr,
+												 &relationOids,
+												 &invalItems);
+
+	/*
+	 * Make a private memory context, and copy what we need into that.  To
+	 * avoid leaking a long-lived context if we fail while copying data, we
+	 * initially make the context under the caller's context.
+	 */
+	cexpr_context = AllocSetContextCreate(CurrentMemoryContext,
+										  "CachedExpression",
+										  ALLOCSET_SMALL_SIZES);
+
+	oldcxt = MemoryContextSwitchTo(cexpr_context);
+
+	cexpr = (CachedExpression *) palloc(sizeof(CachedExpression));
+	cexpr->magic = CACHEDEXPR_MAGIC;
+	cexpr->expr = copyObject(expr);
+	cexpr->is_valid = true;
+	cexpr->relationOids = copyObject(relationOids);
+	cexpr->invalItems = copyObject(invalItems);
+	cexpr->context = cexpr_context;
+
+	MemoryContextSwitchTo(oldcxt);
+
+	/*
+	 * Reparent the expr's memory context under CacheMemoryContext so that it
+	 * will live indefinitely.
+	 */
+	MemoryContextSetParent(cexpr_context, CacheMemoryContext);
+
+	/*
+	 * Add the entry to the global list of cached expressions.
+	 */
+	dlist_push_tail(&cached_expression_list, &cexpr->node);
+
+	return cexpr;
+}
+
+/*
+ * FreeCachedExpression
+ *		Delete a CachedExpression.
+ */
+void
+FreeCachedExpression(CachedExpression *cexpr)
+{
+	/* Sanity check */
+	Assert(cexpr->magic == CACHEDEXPR_MAGIC);
+	/* Unlink from global list */
+	dlist_delete(&cexpr->node);
+	/* Free all storage associated with CachedExpression */
+	MemoryContextDelete(cexpr->context);
+}
+
+/*
  * QueryListGetPrimaryStmt
  *		Get the "primary" stmt within a list, ie, the one marked canSetTag.
  *
@@ -1561,7 +1827,6 @@ AcquireExecutorLocks(List *stmt_list, bool acquire)
 	foreach(lc1, stmt_list)
 	{
 		PlannedStmt *plannedstmt = lfirst_node(PlannedStmt, lc1);
-		int			rt_index;
 		ListCell   *lc2;
 
 		if (plannedstmt->commandType == CMD_UTILITY)
@@ -1580,14 +1845,9 @@ AcquireExecutorLocks(List *stmt_list, bool acquire)
 			continue;
 		}
 
-		rt_index = 0;
 		foreach(lc2, plannedstmt->rtable)
 		{
 			RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc2);
-			LOCKMODE	lockmode;
-			PlanRowMark *rc;
-
-			rt_index++;
 
 			if (rte->rtekind != RTE_RELATION)
 				continue;
@@ -1598,19 +1858,10 @@ AcquireExecutorLocks(List *stmt_list, bool acquire)
 			 * fail if it's been dropped entirely --- we'll just transiently
 			 * acquire a non-conflicting lock.
 			 */
-			if (list_member_int(plannedstmt->resultRelations, rt_index) ||
-				list_member_int(plannedstmt->nonleafResultRelations, rt_index))
-				lockmode = RowExclusiveLock;
-			else if ((rc = get_plan_rowmark(plannedstmt->rowMarks, rt_index)) != NULL &&
-					 RowMarkRequiresRowShareLock(rc->markType))
-				lockmode = RowShareLock;
-			else
-				lockmode = AccessShareLock;
-
 			if (acquire)
-				LockRelationOid(rte->relid, lockmode);
+				LockRelationOid(rte->relid, rte->rellockmode);
 			else
-				UnlockRelationOid(rte->relid, lockmode);
+				UnlockRelationOid(rte->relid, rte->rellockmode);
 		}
 	}
 }
@@ -1652,7 +1903,6 @@ static void
 ScanQueryForLocks(Query *parsetree, bool acquire)
 {
 	ListCell   *lc;
-	int			rt_index;
 
 	/* Shouldn't get called on utility commands */
 	Assert(parsetree->commandType != CMD_UTILITY);
@@ -1660,27 +1910,18 @@ ScanQueryForLocks(Query *parsetree, bool acquire)
 	/*
 	 * First, process RTEs of the current query level.
 	 */
-	rt_index = 0;
 	foreach(lc, parsetree->rtable)
 	{
 		RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
-		LOCKMODE	lockmode;
 
-		rt_index++;
 		switch (rte->rtekind)
 		{
 			case RTE_RELATION:
 				/* Acquire or release the appropriate type of lock */
-				if (rt_index == parsetree->resultRelation)
-					lockmode = RowExclusiveLock;
-				else if (get_parse_rowmark(parsetree, rt_index) != NULL)
-					lockmode = RowShareLock;
-				else
-					lockmode = AccessShareLock;
 				if (acquire)
-					LockRelationOid(rte->relid, lockmode);
+					LockRelationOid(rte->relid, rte->rellockmode);
 				else
-					UnlockRelationOid(rte->relid, lockmode);
+					UnlockRelationOid(rte->relid, rte->rellockmode);
 				break;
 
 			case RTE_SUBQUERY:
@@ -1756,12 +1997,12 @@ PlanCacheComputeResultDesc(List *stmt_list)
 		case PORTAL_ONE_SELECT:
 		case PORTAL_ONE_MOD_WITH:
 			query = linitial_node(Query, stmt_list);
-			return ExecCleanTypeFromTL(query->targetList, false);
+			return ExecCleanTypeFromTL(query->targetList);
 
 		case PORTAL_ONE_RETURNING:
 			query = QueryListGetPrimaryStmt(stmt_list);
 			Assert(query->returningList);
-			return ExecCleanTypeFromTL(query->returningList, false);
+			return ExecCleanTypeFromTL(query->returningList);
 
 		case PORTAL_UTIL_SELECT:
 			query = linitial_node(Query, stmt_list);
@@ -1785,10 +2026,13 @@ PlanCacheComputeResultDesc(List *stmt_list)
 static void
 PlanCacheRelCallback(Datum arg, Oid relid)
 {
-	CachedPlanSource *plansource;
+	dlist_iter	iter;
 
-	for (plansource = first_saved_plan; plansource; plansource = plansource->next_saved)
+	dlist_foreach(iter, &saved_plan_list)
 	{
+		CachedPlanSource *plansource = dlist_container(CachedPlanSource,
+													   node, iter.cur);
+
 		Assert(plansource->magic == CACHEDPLANSOURCE_MAGIC);
 
 		/* No work if it's already invalidated */
@@ -1835,25 +2079,43 @@ PlanCacheRelCallback(Datum arg, Oid relid)
 			}
 		}
 	}
+
+	/* Likewise check cached expressions */
+	dlist_foreach(iter, &cached_expression_list)
+	{
+		CachedExpression *cexpr = dlist_container(CachedExpression,
+												  node, iter.cur);
+
+		Assert(cexpr->magic == CACHEDEXPR_MAGIC);
+
+		/* No work if it's already invalidated */
+		if (!cexpr->is_valid)
+			continue;
+
+		if ((relid == InvalidOid) ? cexpr->relationOids != NIL :
+			list_member_oid(cexpr->relationOids, relid))
+		{
+			cexpr->is_valid = false;
+		}
+	}
 }
 
 /*
- * PlanCacheFuncCallback
- *		Syscache inval callback function for PROCOID cache
+ * PlanCacheObjectCallback
+ *		Syscache inval callback function for PROCOID and TYPEOID caches
  *
  * Invalidate all plans mentioning the object with the specified hash value,
  * or all plans mentioning any member of this cache if hashvalue == 0.
- *
- * Note that the coding would support use for multiple caches, but right
- * now only user-defined functions are tracked this way.
  */
 static void
-PlanCacheFuncCallback(Datum arg, int cacheid, uint32 hashvalue)
+PlanCacheObjectCallback(Datum arg, int cacheid, uint32 hashvalue)
 {
-	CachedPlanSource *plansource;
+	dlist_iter	iter;
 
-	for (plansource = first_saved_plan; plansource; plansource = plansource->next_saved)
+	dlist_foreach(iter, &saved_plan_list)
 	{
+		CachedPlanSource *plansource = dlist_container(CachedPlanSource,
+													   node, iter.cur);
 		ListCell   *lc;
 
 		Assert(plansource->magic == CACHEDPLANSOURCE_MAGIC);
@@ -1918,6 +2180,34 @@ PlanCacheFuncCallback(Datum arg, int cacheid, uint32 hashvalue)
 			}
 		}
 	}
+
+	/* Likewise check cached expressions */
+	dlist_foreach(iter, &cached_expression_list)
+	{
+		CachedExpression *cexpr = dlist_container(CachedExpression,
+												  node, iter.cur);
+		ListCell   *lc;
+
+		Assert(cexpr->magic == CACHEDEXPR_MAGIC);
+
+		/* No work if it's already invalidated */
+		if (!cexpr->is_valid)
+			continue;
+
+		foreach(lc, cexpr->invalItems)
+		{
+			PlanInvalItem *item = (PlanInvalItem *) lfirst(lc);
+
+			if (item->cacheId != cacheid)
+				continue;
+			if (hashvalue == 0 ||
+				item->hashValue == hashvalue)
+			{
+				cexpr->is_valid = false;
+				break;
+			}
+		}
+	}
 }
 
 /*
@@ -1938,10 +2228,12 @@ PlanCacheSysCallback(Datum arg, int cacheid, uint32 hashvalue)
 void
 ResetPlanCache(void)
 {
-	CachedPlanSource *plansource;
+	dlist_iter	iter;
 
-	for (plansource = first_saved_plan; plansource; plansource = plansource->next_saved)
+	dlist_foreach(iter, &saved_plan_list)
 	{
+		CachedPlanSource *plansource = dlist_container(CachedPlanSource,
+													   node, iter.cur);
 		ListCell   *lc;
 
 		Assert(plansource->magic == CACHEDPLANSOURCE_MAGIC);
@@ -1980,5 +2272,16 @@ ResetPlanCache(void)
 				break;
 			}
 		}
+	}
+
+	/* Likewise invalidate cached expressions */
+	dlist_foreach(iter, &cached_expression_list)
+	{
+		CachedExpression *cexpr = dlist_container(CachedExpression,
+												  node, iter.cur);
+
+		Assert(cexpr->magic == CACHEDEXPR_MAGIC);
+
+		cexpr->is_valid = false;
 	}
 }

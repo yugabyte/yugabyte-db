@@ -1,6 +1,6 @@
 #! /usr/bin/perl
 #
-# Copyright (c) 2007-2018, PostgreSQL Global Development Group
+# Copyright (c) 2007-2022, PostgreSQL Global Development Group
 #
 # src/backend/utils/mb/Unicode/UCS_to_GB18030.pl
 #
@@ -14,6 +14,8 @@
 # and the "b" field is the hex byte sequence for GB18030
 
 use strict;
+use warnings;
+
 use convutils;
 
 my $this_script = 'src/backend/utils/mb/Unicode/UCS_to_GB18030.pl';

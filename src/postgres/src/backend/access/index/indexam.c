@@ -3,7 +3,7 @@
  * indexam.c
  *	  general index access method routines
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -26,7 +26,7 @@
  *		index_beginscan_parallel - join parallel index scan
  *		index_getnext_tid	- get the next TID from a scan
  *		index_fetch_heap		- get the scan's next heap tuple
- *		index_getnext	- get the next heap tuple from a scan
+ *		index_getnext_slot	- get the next tuple from a scan
  *		index_getbitmap - get all tuples from a scan
  *		index_bulk_delete	- bulk deletion of index tuples
  *		index_vacuum_cleanup	- post-deletion cleanup of an index
@@ -38,48 +38,35 @@
  *		This file contains the index_ routines which used
  *		to be a scattered collection of stuff in access/genam.
  *
- *
- * old comments
- *		Scans are implemented as follows:
- *
- *		`0' represents an invalid item pointer.
- *		`-' represents an unknown item pointer.
- *		`X' represents a known item pointers.
- *		`+' represents known or invalid item pointers.
- *		`*' represents any item pointers.
- *
- *		State is represented by a triple of these symbols in the order of
- *		previous, current, next.  Note that the case of reverse scans works
- *		identically.
- *
- *				State	Result
- *		(1)		+ + -	+ 0 0			(if the next item pointer is invalid)
- *		(2)				+ X -			(otherwise)
- *		(3)		* 0 0	* 0 0			(no change)
- *		(4)		+ X 0	X 0 0			(shift)
- *		(5)		* + X	+ X -			(shift, add unknown)
- *
- *		All other states cannot occur.
- *
- *		Note: It would be possible to cache the status of the previous and
- *			  next item pointer using the flags.
- *
  *-------------------------------------------------------------------------
  */
 
 #include "postgres.h"
 
 #include "access/amapi.h"
+#include "access/heapam.h"
+#include "access/reloptions.h"
 #include "access/relscan.h"
+#include "access/tableam.h"
 #include "access/transam.h"
 #include "access/xlog.h"
 #include "catalog/index.h"
+#include "catalog/pg_amproc.h"
+#include "catalog/pg_type.h"
+#include "commands/defrem.h"
+#include "nodes/makefuncs.h"
 #include "pgstat.h"
 #include "storage/bufmgr.h"
 #include "storage/lmgr.h"
 #include "storage/predicate.h"
+#include "utils/ruleutils.h"
 #include "utils/snapmgr.h"
-#include "utils/tqual.h"
+#include "utils/syscache.h"
+
+/* Yugabyte includes */
+#include "pg_yb_utils.h"
+#include "access/yb_scan.h"
+#include "access/yb_lsm.h"
 
 /* ----------------------------------------------------------------
  *					macros used in index_ routines
@@ -96,7 +83,7 @@
 #define RELATION_CHECKS \
 ( \
 	AssertMacro(RelationIsValid(indexRelation)), \
-	AssertMacro(PointerIsValid(indexRelation->rd_amroutine)), \
+	AssertMacro(PointerIsValid(indexRelation->rd_indam)), \
 	AssertMacro(!ReindexIsProcessingIndex(RelationGetRelid(indexRelation))) \
 )
 
@@ -104,34 +91,36 @@
 ( \
 	AssertMacro(IndexScanIsValid(scan)), \
 	AssertMacro(RelationIsValid(scan->indexRelation)), \
-	AssertMacro(PointerIsValid(scan->indexRelation->rd_amroutine)) \
+	AssertMacro(PointerIsValid(scan->indexRelation->rd_indam)) \
 )
 
 #define CHECK_REL_PROCEDURE(pname) \
 do { \
-	if (indexRelation->rd_amroutine->pname == NULL) \
-		elog(ERROR, "function %s is not defined for index %s", \
+	if (indexRelation->rd_indam->pname == NULL) \
+		elog(ERROR, "function \"%s\" is not defined for index \"%s\"", \
 			 CppAsString(pname), RelationGetRelationName(indexRelation)); \
 } while(0)
 
+#ifdef NEIL
 #define CHECK_REL_PROCEDURE2(pname1, pname2) \
 do { \
-	if (indexRelation->rd_amroutine->pname1 == NULL && \
-	    indexRelation->rd_amroutine->pname2 == NULL) \
+	if (indexRelation->rd_indam->pname1 == NULL && \
+	    indexRelation->rd_indam->pname2 == NULL) \
 		elog(ERROR, "functions %s/%s are not defined for index %s", \
 			 CppAsString(pname1), CppAsString(pname2), RelationGetRelationName(indexRelation)); \
 } while(0)
+#endif
 
 #define CHECK_SCAN_PROCEDURE(pname) \
 do { \
-	if (scan->indexRelation->rd_amroutine->pname == NULL) \
-		elog(ERROR, "function %s is not defined for index %s", \
+	if (scan->indexRelation->rd_indam->pname == NULL) \
+		elog(ERROR, "function \"%s\" is not defined for index \"%s\"", \
 			 CppAsString(pname), RelationGetRelationName(scan->indexRelation)); \
 } while(0)
 
 static IndexScanDesc index_beginscan_internal(Relation indexRelation,
-						 int nkeys, int norderbys, Snapshot snapshot,
-						 ParallelIndexScanDesc pscan, bool temp_snap);
+											  int nkeys, int norderbys, Snapshot snapshot,
+											  ParallelIndexScanDesc pscan, bool temp_snap);
 
 
 /* ----------------------------------------------------------------
@@ -202,18 +191,22 @@ index_insert(Relation indexRelation,
 			 Datum *values,
 			 bool *isnull,
 			 ItemPointer heap_t_ctid,
-			 HeapTuple heapTuple,
 			 Relation heapRelation,
 			 IndexUniqueCheck checkUnique,
+			 bool indexUnchanged,
 			 IndexInfo *indexInfo,
 			 bool yb_shared_insert)
 {
 	RELATION_CHECKS;
+	if (IsYugaByteEnabled() && IsYBRelation(indexRelation))
+		CHECK_REL_PROCEDURE(yb_aminsert);
+	else
+		CHECK_REL_PROCEDURE(aminsert);
 
-	if (!(indexRelation->rd_amroutine->ampredlocks))
+	if (!(indexRelation->rd_indam->ampredlocks))
 		CheckForSerializableConflictIn(indexRelation,
-									   (HeapTuple) NULL,
-									   InvalidBuffer);
+									   (ItemPointer) NULL,
+									   InvalidBlockNumber);
 
 	/*
 	 * For YugaByte-based index, call the variant of aminsert that takes the full tuple instead of
@@ -221,19 +214,16 @@ index_insert(Relation indexRelation,
 	 */
 	if (IsYugaByteEnabled() && IsYBRelation(indexRelation))
 	{
-		CHECK_REL_PROCEDURE(yb_aminsert);
-		return indexRelation->rd_amroutine->yb_aminsert(indexRelation, values, isnull,
-														heapTuple->t_ybctid, heapRelation,
-														checkUnique, indexInfo,
-														yb_shared_insert);
+		return indexRelation->rd_indam->yb_aminsert(indexRelation, values, isnull,
+													heap_t_ctid, heapRelation,
+													checkUnique, indexInfo,
+													yb_shared_insert);
 	}
-	else
-	{
-		CHECK_REL_PROCEDURE(aminsert);
-		return indexRelation->rd_amroutine->aminsert(indexRelation, values, isnull,
-													 heap_t_ctid, heapRelation,
-													 checkUnique, indexInfo);
-	}
+
+	return indexRelation->rd_indam->aminsert(indexRelation, values, isnull,
+												heap_t_ctid, heapRelation,
+												checkUnique, indexUnchanged,
+												indexInfo);
 }
 
 /* ----------------
@@ -247,19 +237,19 @@ index_insert(Relation indexRelation,
  * ----------------
  */
 void
-index_delete(Relation indexRelation,
-			 Datum *values,
-			 bool *isnull,
-			 Datum ybctid,
-			 Relation heapRelation,
-			 IndexInfo *indexInfo)
+yb_index_delete(Relation indexRelation,
+				Datum *values,
+				bool *isnull,
+				Datum ybctid,
+				Relation heapRelation,
+				IndexInfo *indexInfo)
 {
 	RELATION_CHECKS;
 	CHECK_REL_PROCEDURE(yb_amdelete);
 
-	indexRelation->rd_amroutine->yb_amdelete(indexRelation, values, isnull,
-											 ybctid, heapRelation,
-											 indexInfo);
+	indexRelation->rd_indam->yb_amdelete(indexRelation, values, isnull,
+										 ybctid, heapRelation,
+										 indexInfo);
 }
 
 /*
@@ -283,6 +273,9 @@ index_beginscan(Relation heapRelation,
 	 */
 	scan->heapRelation = heapRelation;
 	scan->xs_snapshot = snapshot;
+
+	/* prepare to fetch index matches from table */
+	scan->xs_heapfetch = table_index_fetch_begin(heapRelation);
 
 	return scan;
 }
@@ -324,7 +317,7 @@ index_beginscan_internal(Relation indexRelation,
 	RELATION_CHECKS;
 	CHECK_REL_PROCEDURE(ambeginscan);
 
-	if (!(indexRelation->rd_amroutine->ampredlocks))
+	if (!(indexRelation->rd_indam->ampredlocks))
 		PredicateLockRelation(indexRelation, snapshot);
 
 	/*
@@ -335,8 +328,8 @@ index_beginscan_internal(Relation indexRelation,
 	/*
 	 * Tell the AM to open a scan.
 	 */
-	scan = indexRelation->rd_amroutine->ambeginscan(indexRelation, nkeys,
-													norderbys);
+	scan = indexRelation->rd_indam->ambeginscan(indexRelation, nkeys,
+												norderbys);
 	/* Initialize information for parallel scan. */
 	scan->parallel_scan = pscan;
 	scan->xs_temp_snap = temp_snap;
@@ -367,19 +360,15 @@ index_rescan(IndexScanDesc scan,
 	Assert(nkeys == scan->numberOfKeys);
 	Assert(norderbys == scan->numberOfOrderBys);
 
-	/* Release any held pin on a heap page */
-	if (BufferIsValid(scan->xs_cbuf))
-	{
-		ReleaseBuffer(scan->xs_cbuf);
-		scan->xs_cbuf = InvalidBuffer;
-	}
-
-	scan->xs_continue_hot = false;
+	/* Release resources (like buffer pins) from table accesses */
+	if (scan->xs_heapfetch)
+		table_index_fetch_reset(scan->xs_heapfetch);
 
 	scan->kill_prior_tuple = false; /* for safety */
+	scan->xs_heap_continue = false;
 
-	scan->indexRelation->rd_amroutine->amrescan(scan, keys, nkeys,
-												orderbys, norderbys);
+	scan->indexRelation->rd_indam->amrescan(scan, keys, nkeys,
+											orderbys, norderbys);
 }
 
 /* ----------------
@@ -392,15 +381,15 @@ index_endscan(IndexScanDesc scan)
 	SCAN_CHECKS;
 	CHECK_SCAN_PROCEDURE(amendscan);
 
-	/* Release any held pin on a heap page */
-	if (BufferIsValid(scan->xs_cbuf))
+	/* Release resources (like buffer pins) from table accesses */
+	if (scan->xs_heapfetch)
 	{
-		ReleaseBuffer(scan->xs_cbuf);
-		scan->xs_cbuf = InvalidBuffer;
+		table_index_fetch_end(scan->xs_heapfetch);
+		scan->xs_heapfetch = NULL;
 	}
 
 	/* End the AM's scan */
-	scan->indexRelation->rd_amroutine->amendscan(scan);
+	scan->indexRelation->rd_indam->amendscan(scan);
 
 	/* Release index refcount acquired by index_beginscan */
 	RelationDecrementReferenceCount(scan->indexRelation);
@@ -422,23 +411,22 @@ index_markpos(IndexScanDesc scan)
 	SCAN_CHECKS;
 	CHECK_SCAN_PROCEDURE(ammarkpos);
 
-	scan->indexRelation->rd_amroutine->ammarkpos(scan);
+	scan->indexRelation->rd_indam->ammarkpos(scan);
 }
 
 /* ----------------
  *		index_restrpos	- restore a scan position
  *
- * NOTE: this only restores the internal scan state of the index AM.
- * The current result tuple (scan->xs_ctup) doesn't change.  See comments
- * for ExecRestrPos().
+ * NOTE: this only restores the internal scan state of the index AM.  See
+ * comments for ExecRestrPos().
  *
- * NOTE: in the presence of HOT chains, mark/restore only works correctly
- * if the scan's snapshot is MVCC-safe; that ensures that there's at most one
- * returnable tuple in each HOT chain, and so restoring the prior state at the
- * granularity of the index AM is sufficient.  Since the only current user
- * of mark/restore functionality is nodeMergejoin.c, this effectively means
- * that merge-join plans only work for MVCC snapshots.  This could be fixed
- * if necessary, but for now it seems unimportant.
+ * NOTE: For heap, in the presence of HOT chains, mark/restore only works
+ * correctly if the scan's snapshot is MVCC-safe; that ensures that there's at
+ * most one returnable tuple in each HOT chain, and so restoring the prior
+ * state at the granularity of the index AM is sufficient.  Since the only
+ * current user of mark/restore functionality is nodeMergejoin.c, this
+ * effectively means that merge-join plans only work for MVCC snapshots.  This
+ * could be fixed if necessary, but for now it seems unimportant.
  * ----------------
  */
 void
@@ -449,11 +437,14 @@ index_restrpos(IndexScanDesc scan)
 	SCAN_CHECKS;
 	CHECK_SCAN_PROCEDURE(amrestrpos);
 
-	scan->xs_continue_hot = false;
+	/* release resources (like buffer pins) from table accesses */
+	if (scan->xs_heapfetch)
+		table_index_fetch_reset(scan->xs_heapfetch);
 
 	scan->kill_prior_tuple = false; /* for safety */
+	scan->xs_heap_continue = false;
 
-	scan->indexRelation->rd_amroutine->amrestrpos(scan);
+	scan->indexRelation->rd_indam->amrestrpos(scan);
 }
 
 /*
@@ -479,9 +470,9 @@ index_parallelscan_estimate(Relation indexRelation, Snapshot snapshot)
 	 * AM-specific data needed.  (It's hard to believe that could work, but
 	 * it's easy enough to cater to it here.)
 	 */
-	if (indexRelation->rd_amroutine->amestimateparallelscan != NULL)
+	if (indexRelation->rd_indam->amestimateparallelscan != NULL)
 		nbytes = add_size(nbytes,
-						  indexRelation->rd_amroutine->amestimateparallelscan());
+						  indexRelation->rd_indam->amestimateparallelscan());
 
 	return nbytes;
 }
@@ -514,12 +505,12 @@ index_parallelscan_initialize(Relation heapRelation, Relation indexRelation,
 	SerializeSnapshot(snapshot, target->ps_snapshot_data);
 
 	/* aminitparallelscan is optional; assume no-op if not provided by AM */
-	if (indexRelation->rd_amroutine->aminitparallelscan != NULL)
+	if (indexRelation->rd_indam->aminitparallelscan != NULL)
 	{
 		void	   *amtarget;
 
 		amtarget = OffsetToPointer(target, offset);
-		indexRelation->rd_amroutine->aminitparallelscan(amtarget);
+		indexRelation->rd_indam->aminitparallelscan(amtarget);
 	}
 }
 
@@ -532,9 +523,12 @@ index_parallelrescan(IndexScanDesc scan)
 {
 	SCAN_CHECKS;
 
+	if (scan->xs_heapfetch)
+		table_index_fetch_reset(scan->xs_heapfetch);
+
 	/* amparallelrescan is optional; assume no-op if not provided by AM */
-	if (scan->indexRelation->rd_amroutine->amparallelrescan != NULL)
-		scan->indexRelation->rd_amroutine->amparallelrescan(scan);
+	if (scan->indexRelation->rd_indam->amparallelrescan != NULL)
+		scan->indexRelation->rd_indam->amparallelrescan(scan);
 }
 
 /*
@@ -562,6 +556,9 @@ index_beginscan_parallel(Relation heaprel, Relation indexrel, int nkeys,
 	scan->heapRelation = heaprel;
 	scan->xs_snapshot = snapshot;
 
+	/* prepare to fetch index matches from table */
+	scan->xs_heapfetch = table_index_fetch_begin(heaprel);
+
 	return scan;
 }
 
@@ -580,35 +577,36 @@ index_getnext_tid(IndexScanDesc scan, ScanDirection direction)
 	SCAN_CHECKS;
 	CHECK_SCAN_PROCEDURE(amgettuple);
 
-	Assert(TransactionIdIsValid(RecentGlobalXmin));
+	/* XXX: we should assert that a snapshot is pushed or registered */
+	Assert(TransactionIdIsValid(RecentXmin));
 
 	/*
 	 * The AM's amgettuple proc finds the next index entry matching the scan
-	 * keys, and puts the TID into scan->xs_ctup.t_self.  It should also set
+	 * keys, and puts the TID into scan->xs_heaptid.  It should also set
 	 * scan->xs_recheck and possibly scan->xs_itup/scan->xs_hitup, though we
 	 * pay no attention to those fields here.
 	 */
-	found = scan->indexRelation->rd_amroutine->amgettuple(scan, direction);
+	found = scan->indexRelation->rd_indam->amgettuple(scan, direction);
 
 	/* Reset kill flag immediately for safety */
 	scan->kill_prior_tuple = false;
+	scan->xs_heap_continue = false;
 
 	/* If we're out of index entries, we're done */
 	if (!found)
 	{
-		/* ... but first, release any held pin on a heap page */
-		if (BufferIsValid(scan->xs_cbuf))
-		{
-			ReleaseBuffer(scan->xs_cbuf);
-			scan->xs_cbuf = InvalidBuffer;
-		}
+		/* release resources (like buffer pins) from table accesses */
+		if (scan->xs_heapfetch)
+			table_index_fetch_reset(scan->xs_heapfetch);
+
 		return NULL;
 	}
+	Assert(ItemPointerIsValid(&scan->xs_heaptid));
 
 	pgstat_count_index_tuples(scan->indexRelation, 1);
 
 	/* Return the TID of the tuple we found. */
-	return &scan->xs_ctup.t_self;
+	return &scan->xs_heaptid;
 }
 
 /* ----------------
@@ -629,56 +627,26 @@ index_getnext_tid(IndexScanDesc scan, ScanDirection direction)
  * enough information to do it efficiently in the general case.
  * ----------------
  */
-HeapTuple
-index_fetch_heap(IndexScanDesc scan)
+bool
+index_fetch_heap(IndexScanDesc scan, TupleTableSlot *slot)
 {
+	bool		all_dead = false;
+	bool		found;
+
+	/*
+	 * For YugaByte secondary indexes, there are two scenarios.
+	 * - If YugaByte returns an index-tuple, the returned ybctid value should be used to query data.
+	 * - If YugaByte returns a heap_tuple, all requested data was already selected in the tuple.
+	 */
 	if (IsYBRelation(scan->heapRelation))
 		return scan->xs_hitup;
 
-	ItemPointer tid = &scan->xs_ctup.t_self;
-	bool		all_dead = false;
-	bool		got_heap_tuple;
+	found = table_index_fetch_tuple(scan->xs_heapfetch, &scan->xs_heaptid,
+									scan->xs_snapshot, slot,
+									&scan->xs_heap_continue, &all_dead);
 
-	/* We can skip the buffer-switching logic if we're in mid-HOT chain. */
-	if (!scan->xs_continue_hot)
-	{
-		/* Switch to correct buffer if we don't have it already */
-		Buffer		prev_buf = scan->xs_cbuf;
-
-		scan->xs_cbuf = ReleaseAndReadBuffer(scan->xs_cbuf,
-											 scan->heapRelation,
-											 ItemPointerGetBlockNumber(tid));
-
-		/*
-		 * Prune page, but only if we weren't already on this page
-		 */
-		if (prev_buf != scan->xs_cbuf)
-			heap_page_prune_opt(scan->heapRelation, scan->xs_cbuf);
-	}
-
-	/* Obtain share-lock on the buffer so we can examine visibility */
-	LockBuffer(scan->xs_cbuf, BUFFER_LOCK_SHARE);
-	got_heap_tuple = heap_hot_search_buffer(tid, scan->heapRelation,
-											scan->xs_cbuf,
-											scan->xs_snapshot,
-											&scan->xs_ctup,
-											&all_dead,
-											!scan->xs_continue_hot);
-	LockBuffer(scan->xs_cbuf, BUFFER_LOCK_UNLOCK);
-
-	if (got_heap_tuple)
-	{
-		/*
-		 * Only in a non-MVCC snapshot can more than one member of the HOT
-		 * chain be visible.
-		 */
-		scan->xs_continue_hot = !IsMVCCSnapshot(scan->xs_snapshot);
+	if (found)
 		pgstat_count_heap_fetch(scan->indexRelation);
-		return &scan->xs_ctup;
-	}
-
-	/* We've reached the end of the HOT chain. */
-	scan->xs_continue_hot = false;
 
 	/*
 	 * If we scanned a whole HOT chain and found only dead tuples, tell index
@@ -690,17 +658,17 @@ index_fetch_heap(IndexScanDesc scan)
 	if (!scan->xactStartedInRecovery)
 		scan->kill_prior_tuple = all_dead;
 
-	return NULL;
+	return found;
 }
 
 /* ----------------
- *		index_getnext - get the next heap tuple from a scan
+ *		index_getnext_slot - get the next tuple from a scan
  *
- * The result is the next heap tuple satisfying the scan keys and the
- * snapshot, or NULL if no more matching tuples exist.
+ * The result is true if a tuple satisfying the scan keys and the snapshot was
+ * found, false otherwise.  The tuple is stored in the specified slot.
  *
- * On success, the buffer containing the heap tup is pinned (the pin will be
- * dropped in a future index_getnext_tid, index_fetch_heap or index_endscan
+ * On success, resources (like buffer pins) are likely to be held, and will be
+ * dropped by a future index_getnext_tid, index_fetch_heap or index_endscan
  * call).
  *
  * Note: caller must check scan->xs_recheck, and perform rechecking of the
@@ -708,32 +676,23 @@ index_fetch_heap(IndexScanDesc scan)
  * enough information to do it efficiently in the general case.
  * ----------------
  */
-HeapTuple
-index_getnext(IndexScanDesc scan, ScanDirection direction)
+bool
+index_getnext_slot(IndexScanDesc scan, ScanDirection direction, TupleTableSlot *slot)
 {
-	HeapTuple	heapTuple;
-	ItemPointer tid;
-
 	for (;;)
 	{
-		if (scan->xs_continue_hot)
+		if (!scan->xs_heap_continue)
 		{
-			/*
-			 * We are resuming scan of a HOT chain after having returned an
-			 * earlier member.  Must still hold pin on current heap page.
-			 */
-			Assert(BufferIsValid(scan->xs_cbuf));
-			Assert(ItemPointerGetBlockNumber(&scan->xs_ctup.t_self) ==
-				   BufferGetBlockNumber(scan->xs_cbuf));
-		}
-		else
-		{
+			ItemPointer tid;
+
 			/* Time to fetch the next TID from the index */
 			tid = index_getnext_tid(scan, direction);
 
 			/* If we're out of index entries, we're done */
 			if (tid == NULL)
 				break;
+
+			Assert(ItemPointerEquals(tid, &scan->xs_heaptid));
 		}
 
 		/*
@@ -741,12 +700,12 @@ index_getnext(IndexScanDesc scan, ScanDirection direction)
 		 * If we don't find anything, loop around and grab the next TID from
 		 * the index.
 		 */
-		heapTuple = index_fetch_heap(scan);
-		if (heapTuple != NULL)
-			return heapTuple;
+		Assert(ItemPointerIsValid(&scan->xs_heaptid));
+		if (index_fetch_heap(scan, slot))
+			return true;
 	}
 
-	return NULL;				/* failure exit */
+	return false;
 }
 
 /* ----------------
@@ -776,7 +735,7 @@ index_getbitmap(IndexScanDesc scan, TIDBitmap *bitmap)
 	/*
 	 * have the am's getbitmap proc do all the work.
 	 */
-	ntids = scan->indexRelation->rd_amroutine->amgetbitmap(scan, bitmap);
+	ntids = scan->indexRelation->rd_indam->amgetbitmap(scan, bitmap);
 
 	pgstat_count_index_tuples(scan->indexRelation, ntids);
 
@@ -794,7 +753,7 @@ index_getbitmap(IndexScanDesc scan, TIDBitmap *bitmap)
  */
 IndexBulkDeleteResult *
 index_bulk_delete(IndexVacuumInfo *info,
-				  IndexBulkDeleteResult *stats,
+				  IndexBulkDeleteResult *istat,
 				  IndexBulkDeleteCallback callback,
 				  void *callback_state)
 {
@@ -803,8 +762,8 @@ index_bulk_delete(IndexVacuumInfo *info,
 	RELATION_CHECKS;
 	CHECK_REL_PROCEDURE(ambulkdelete);
 
-	return indexRelation->rd_amroutine->ambulkdelete(info, stats,
-													 callback, callback_state);
+	return indexRelation->rd_indam->ambulkdelete(info, istat,
+												 callback, callback_state);
 }
 
 /* ----------------
@@ -815,14 +774,14 @@ index_bulk_delete(IndexVacuumInfo *info,
  */
 IndexBulkDeleteResult *
 index_vacuum_cleanup(IndexVacuumInfo *info,
-					 IndexBulkDeleteResult *stats)
+					 IndexBulkDeleteResult *istat)
 {
 	Relation	indexRelation = info->index;
 
 	RELATION_CHECKS;
 	CHECK_REL_PROCEDURE(amvacuumcleanup);
 
-	return indexRelation->rd_amroutine->amvacuumcleanup(info, stats);
+	return indexRelation->rd_indam->amvacuumcleanup(info, istat);
 }
 
 /* ----------------
@@ -838,10 +797,10 @@ index_can_return(Relation indexRelation, int attno)
 	RELATION_CHECKS;
 
 	/* amcanreturn is optional; assume false if not provided by AM */
-	if (indexRelation->rd_amroutine->amcanreturn == NULL)
+	if (indexRelation->rd_indam->amcanreturn == NULL)
 		return false;
 
-	return indexRelation->rd_amroutine->amcanreturn(indexRelation, attno);
+	return indexRelation->rd_indam->amcanreturn(indexRelation, attno);
 }
 
 /* ----------------
@@ -879,7 +838,7 @@ index_getprocid(Relation irel,
 	int			nproc;
 	int			procindex;
 
-	nproc = irel->rd_amroutine->amsupport;
+	nproc = irel->rd_indam->amsupport;
 
 	Assert(procnum > 0 && procnum <= (uint16) nproc);
 
@@ -911,9 +870,11 @@ index_getprocinfo(Relation irel,
 {
 	FmgrInfo   *locinfo;
 	int			nproc;
+	int			optsproc;
 	int			procindex;
 
-	nproc = irel->rd_amroutine->amsupport;
+	nproc = irel->rd_indam->amsupport;
+	optsproc = irel->rd_indam->amoptsprocnum;
 
 	Assert(procnum > 0 && procnum <= (uint16) nproc);
 
@@ -946,7 +907,142 @@ index_getprocinfo(Relation irel,
 				 procnum, attnum, RelationGetRelationName(irel));
 
 		fmgr_info_cxt(procId, locinfo, irel->rd_indexcxt);
+
+		if (procnum != optsproc)
+		{
+			/* Initialize locinfo->fn_expr with opclass options Const */
+			bytea	  **attoptions = RelationGetIndexAttOptions(irel, false);
+			MemoryContext oldcxt = MemoryContextSwitchTo(irel->rd_indexcxt);
+
+			set_fn_opclass_options(locinfo, attoptions[attnum - 1]);
+
+			MemoryContextSwitchTo(oldcxt);
+		}
 	}
 
 	return locinfo;
+}
+
+/* ----------------
+ *		index_store_float8_orderby_distances
+ *
+ *		Convert AM distance function's results (that can be inexact)
+ *		to ORDER BY types and save them into xs_orderbyvals/xs_orderbynulls
+ *		for a possible recheck.
+ * ----------------
+ */
+void
+index_store_float8_orderby_distances(IndexScanDesc scan, Oid *orderByTypes,
+									 IndexOrderByDistance *distances,
+									 bool recheckOrderBy)
+{
+	int			i;
+
+	Assert(distances || !recheckOrderBy);
+
+	scan->xs_recheckorderby = recheckOrderBy;
+
+	for (i = 0; i < scan->numberOfOrderBys; i++)
+	{
+		if (orderByTypes[i] == FLOAT8OID)
+		{
+#ifndef USE_FLOAT8_BYVAL
+			/* must free any old value to avoid memory leakage */
+			if (!scan->xs_orderbynulls[i])
+				pfree(DatumGetPointer(scan->xs_orderbyvals[i]));
+#endif
+			if (distances && !distances[i].isnull)
+			{
+				scan->xs_orderbyvals[i] = Float8GetDatum(distances[i].value);
+				scan->xs_orderbynulls[i] = false;
+			}
+			else
+			{
+				scan->xs_orderbyvals[i] = (Datum) 0;
+				scan->xs_orderbynulls[i] = true;
+			}
+		}
+		else if (orderByTypes[i] == FLOAT4OID)
+		{
+			/* convert distance function's result to ORDER BY type */
+			if (distances && !distances[i].isnull)
+			{
+				scan->xs_orderbyvals[i] = Float4GetDatum((float4) distances[i].value);
+				scan->xs_orderbynulls[i] = false;
+			}
+			else
+			{
+				scan->xs_orderbyvals[i] = (Datum) 0;
+				scan->xs_orderbynulls[i] = true;
+			}
+		}
+		else
+		{
+			/*
+			 * If the ordering operator's return value is anything else, we
+			 * don't know how to convert the float8 bound calculated by the
+			 * distance function to that.  The executor won't actually need
+			 * the order by values we return here, if there are no lossy
+			 * results, so only insist on converting if the *recheck flag is
+			 * set.
+			 */
+			if (scan->xs_recheckorderby)
+				elog(ERROR, "ORDER BY operator must return float8 or float4 if the distance function is lossy");
+			scan->xs_orderbynulls[i] = true;
+		}
+	}
+}
+
+/* ----------------
+ *      index_opclass_options
+ *
+ *      Parse opclass-specific options for index column.
+ * ----------------
+ */
+bytea *
+index_opclass_options(Relation indrel, AttrNumber attnum, Datum attoptions,
+					  bool validate)
+{
+	int			amoptsprocnum = indrel->rd_indam->amoptsprocnum;
+	Oid			procid = InvalidOid;
+	FmgrInfo   *procinfo;
+	local_relopts relopts;
+
+	/* fetch options support procedure if specified */
+	if (amoptsprocnum != 0)
+		procid = index_getprocid(indrel, attnum, amoptsprocnum);
+
+	if (!OidIsValid(procid))
+	{
+		Oid			opclass;
+		Datum		indclassDatum;
+		oidvector  *indclass;
+		bool		isnull;
+
+		if (!DatumGetPointer(attoptions))
+			return NULL;		/* ok, no options, no procedure */
+
+		/*
+		 * Report an error if the opclass's options-parsing procedure does not
+		 * exist but the opclass options are specified.
+		 */
+		indclassDatum = SysCacheGetAttr(INDEXRELID, indrel->rd_indextuple,
+										Anum_pg_index_indclass, &isnull);
+		Assert(!isnull);
+		indclass = (oidvector *) DatumGetPointer(indclassDatum);
+		opclass = indclass->values[attnum - 1];
+
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("operator class %s has no options",
+						generate_opclass_name(opclass))));
+	}
+
+	init_local_reloptions(&relopts, 0);
+
+	procinfo = index_getprocinfo(indrel, attnum, amoptsprocnum);
+
+	(void) FunctionCall1(procinfo, PointerGetDatum(&relopts));
+
+	return build_local_reloptions(&relopts, attoptions, validate);
 }

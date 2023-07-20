@@ -3,7 +3,7 @@
  * pg_operator.c
  *	  routines to support manipulation of the pg_operator relation
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -17,9 +17,10 @@
  */
 #include "postgres.h"
 
-#include "access/heapam.h"
 #include "access/htup_details.h"
+#include "access/table.h"
 #include "access/xact.h"
+#include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
@@ -37,27 +38,27 @@
 #include "utils/syscache.h"
 
 
-static Oid OperatorGet(const char *operatorName,
-			Oid operatorNamespace,
-			Oid leftObjectId,
-			Oid rightObjectId,
-			bool *defined);
+static Oid	OperatorGet(const char *operatorName,
+						Oid operatorNamespace,
+						Oid leftObjectId,
+						Oid rightObjectId,
+						bool *defined);
 
-static Oid OperatorLookup(List *operatorName,
-			   Oid leftObjectId,
-			   Oid rightObjectId,
-			   bool *defined);
+static Oid	OperatorLookup(List *operatorName,
+						   Oid leftObjectId,
+						   Oid rightObjectId,
+						   bool *defined);
 
-static Oid OperatorShellMake(const char *operatorName,
-				  Oid operatorNamespace,
-				  Oid leftTypeId,
-				  Oid rightTypeId);
+static Oid	OperatorShellMake(const char *operatorName,
+							  Oid operatorNamespace,
+							  Oid leftTypeId,
+							  Oid rightTypeId);
 
-static Oid get_other_operator(List *otherOp,
-				   Oid otherLeftTypeId, Oid otherRightTypeId,
-				   const char *operatorName, Oid operatorNamespace,
-				   Oid leftTypeId, Oid rightTypeId,
-				   bool isCommutator);
+static Oid	get_other_operator(List *otherOp,
+							   Oid otherLeftTypeId, Oid otherRightTypeId,
+							   const char *operatorName, Oid operatorNamespace,
+							   Oid leftTypeId, Oid rightTypeId,
+							   bool isCommutator);
 
 
 /*
@@ -142,10 +143,10 @@ OperatorGet(const char *operatorName,
 						  ObjectIdGetDatum(operatorNamespace));
 	if (HeapTupleIsValid(tup))
 	{
-		RegProcedure oprcode = ((Form_pg_operator) GETSTRUCT(tup))->oprcode;
+		Form_pg_operator oprform = (Form_pg_operator) GETSTRUCT(tup);
 
-		operatorObjectId = HeapTupleGetOid(tup);
-		*defined = RegProcedureIsValid(oprcode);
+		operatorObjectId = oprform->oid;
+		*defined = RegProcedureIsValid(oprform->oprcode);
 		ReleaseSysCache(tup);
 	}
 	else
@@ -219,6 +220,12 @@ OperatorShellMake(const char *operatorName,
 						operatorName)));
 
 	/*
+	 * open pg_operator
+	 */
+	pg_operator_desc = table_open(OperatorRelationId, RowExclusiveLock);
+	tupDesc = pg_operator_desc->rd_att;
+
+	/*
 	 * initialize our *nulls and *values arrays
 	 */
 	for (i = 0; i < Natts_pg_operator; ++i)
@@ -231,11 +238,14 @@ OperatorShellMake(const char *operatorName,
 	 * initialize values[] with the operator name and input data types. Note
 	 * that oprcode is set to InvalidOid, indicating it's a shell.
 	 */
+	operatorObjectId = GetNewOidWithIndex(pg_operator_desc, OperatorOidIndexId,
+										  Anum_pg_operator_oid);
+	values[Anum_pg_operator_oid - 1] = ObjectIdGetDatum(operatorObjectId);
 	namestrcpy(&oname, operatorName);
 	values[Anum_pg_operator_oprname - 1] = NameGetDatum(&oname);
 	values[Anum_pg_operator_oprnamespace - 1] = ObjectIdGetDatum(operatorNamespace);
 	values[Anum_pg_operator_oprowner - 1] = ObjectIdGetDatum(GetUserId());
-	values[Anum_pg_operator_oprkind - 1] = CharGetDatum(leftTypeId ? (rightTypeId ? 'b' : 'r') : 'l');
+	values[Anum_pg_operator_oprkind - 1] = CharGetDatum(leftTypeId ? 'b' : 'l');
 	values[Anum_pg_operator_oprcanmerge - 1] = BoolGetDatum(false);
 	values[Anum_pg_operator_oprcanhash - 1] = BoolGetDatum(false);
 	values[Anum_pg_operator_oprleft - 1] = ObjectIdGetDatum(leftTypeId);
@@ -248,12 +258,6 @@ OperatorShellMake(const char *operatorName,
 	values[Anum_pg_operator_oprjoin - 1] = ObjectIdGetDatum(InvalidOid);
 
 	/*
-	 * open pg_operator
-	 */
-	pg_operator_desc = heap_open(OperatorRelationId, RowExclusiveLock);
-	tupDesc = pg_operator_desc->rd_att;
-
-	/*
 	 * create a new operator tuple
 	 */
 	tup = heap_form_tuple(tupDesc, values, nulls);
@@ -261,10 +265,10 @@ OperatorShellMake(const char *operatorName,
 	/*
 	 * insert our "shell" operator tuple
 	 */
-	operatorObjectId = CatalogTupleInsert(pg_operator_desc, tup);
+	CatalogTupleInsert(pg_operator_desc, tup);
 
 	/* Add dependencies for the entry */
-	makeOperatorDependencies(tup, false);
+	makeOperatorDependencies(tup, true, false);
 
 	heap_freetuple(tup);
 
@@ -279,7 +283,7 @@ OperatorShellMake(const char *operatorName,
 	/*
 	 * close the operator relation and return the oid.
 	 */
-	heap_close(pg_operator_desc, RowExclusiveLock);
+	table_close(pg_operator_desc, RowExclusiveLock);
 
 	return operatorObjectId;
 }
@@ -490,7 +494,7 @@ OperatorCreate(const char *operatorName,
 	values[Anum_pg_operator_oprname - 1] = NameGetDatum(&oname);
 	values[Anum_pg_operator_oprnamespace - 1] = ObjectIdGetDatum(operatorNamespace);
 	values[Anum_pg_operator_oprowner - 1] = ObjectIdGetDatum(GetUserId());
-	values[Anum_pg_operator_oprkind - 1] = CharGetDatum(leftTypeId ? (rightTypeId ? 'b' : 'r') : 'l');
+	values[Anum_pg_operator_oprkind - 1] = CharGetDatum(leftTypeId ? 'b' : 'l');
 	values[Anum_pg_operator_oprcanmerge - 1] = BoolGetDatum(canMerge);
 	values[Anum_pg_operator_oprcanhash - 1] = BoolGetDatum(canHash);
 	values[Anum_pg_operator_oprleft - 1] = ObjectIdGetDatum(leftTypeId);
@@ -502,7 +506,7 @@ OperatorCreate(const char *operatorName,
 	values[Anum_pg_operator_oprrest - 1] = ObjectIdGetDatum(restrictionId);
 	values[Anum_pg_operator_oprjoin - 1] = ObjectIdGetDatum(joinId);
 
-	pg_operator_desc = heap_open(OperatorRelationId, RowExclusiveLock);
+	pg_operator_desc = table_open(OperatorRelationId, RowExclusiveLock);
 
 	/*
 	 * If we are replacing an operator shell, update; else insert
@@ -517,6 +521,7 @@ OperatorCreate(const char *operatorName,
 			elog(ERROR, "cache lookup failed for operator %u",
 				 operatorObjectId);
 
+		replaces[Anum_pg_operator_oid - 1] = false;
 		tup = heap_modify_tuple(tup,
 								RelationGetDescr(pg_operator_desc),
 								values,
@@ -529,19 +534,24 @@ OperatorCreate(const char *operatorName,
 	{
 		isUpdate = false;
 
+		operatorObjectId = GetNewOidWithIndex(pg_operator_desc,
+											  OperatorOidIndexId,
+											  Anum_pg_operator_oid);
+		values[Anum_pg_operator_oid - 1] = ObjectIdGetDatum(operatorObjectId);
+
 		tup = heap_form_tuple(RelationGetDescr(pg_operator_desc),
 							  values, nulls);
 
-		operatorObjectId = CatalogTupleInsert(pg_operator_desc, tup);
+		CatalogTupleInsert(pg_operator_desc, tup);
 	}
 
 	/* Add dependencies for the entry */
-	address = makeOperatorDependencies(tup, isUpdate);
+	address = makeOperatorDependencies(tup, true, isUpdate);
 
 	/* Post creation hook for new operator */
 	InvokeObjectPostCreateHook(OperatorRelationId, operatorObjectId, 0);
 
-	heap_close(pg_operator_desc, RowExclusiveLock);
+	table_close(pg_operator_desc, RowExclusiveLock);
 
 	/*
 	 * If a commutator and/or negator link is provided, update the other
@@ -656,7 +666,7 @@ OperatorUpd(Oid baseId, Oid commId, Oid negId, bool isDelete)
 		CommandCounterIncrement();
 
 	/* Open the relation. */
-	pg_operator_desc = heap_open(OperatorRelationId, RowExclusiveLock);
+	pg_operator_desc = table_open(OperatorRelationId, RowExclusiveLock);
 
 	/* Get a writable copy of the commutator's tuple. */
 	if (OidIsValid(commId))
@@ -748,7 +758,7 @@ OperatorUpd(Oid baseId, Oid commId, Oid negId, bool isDelete)
 	}
 
 	/* Close relation and release catalog lock. */
-	heap_close(pg_operator_desc, RowExclusiveLock);
+	table_close(pg_operator_desc, RowExclusiveLock);
 }
 
 /*
@@ -756,19 +766,24 @@ OperatorUpd(Oid baseId, Oid commId, Oid negId, bool isDelete)
  * complete operator, a new shell operator, a just-updated shell,
  * or an operator that's being modified by ALTER OPERATOR).
  *
+ * makeExtensionDep should be true when making a new operator or
+ * replacing a shell, false for ALTER OPERATOR.  Passing false
+ * will prevent any change in the operator's extension membership.
+ *
  * NB: the OidIsValid tests in this routine are necessary, in case
  * the given operator is a shell.
  */
 ObjectAddress
-makeOperatorDependencies(HeapTuple tuple, bool isUpdate)
+makeOperatorDependencies(HeapTuple tuple,
+						 bool makeExtensionDep,
+						 bool isUpdate)
 {
 	Form_pg_operator oper = (Form_pg_operator) GETSTRUCT(tuple);
 	ObjectAddress myself,
 				referenced;
+	ObjectAddresses *addrs;
 
-	myself.classId = OperatorRelationId;
-	myself.objectId = HeapTupleGetOid(tuple);
-	myself.objectSubId = 0;
+	ObjectAddressSet(myself, OperatorRelationId, oper->oid);
 
 	/*
 	 * If we are updating the operator, delete any existing entries, except
@@ -780,40 +795,34 @@ makeOperatorDependencies(HeapTuple tuple, bool isUpdate)
 		deleteSharedDependencyRecordsFor(myself.classId, myself.objectId, 0);
 	}
 
+	addrs = new_object_addresses();
+
 	/* Dependency on namespace */
 	if (OidIsValid(oper->oprnamespace))
 	{
-		referenced.classId = NamespaceRelationId;
-		referenced.objectId = oper->oprnamespace;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, NamespaceRelationId, oper->oprnamespace);
+		add_exact_object_address(&referenced, addrs);
 	}
 
 	/* Dependency on left type */
 	if (OidIsValid(oper->oprleft))
 	{
-		referenced.classId = TypeRelationId;
-		referenced.objectId = oper->oprleft;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, TypeRelationId, oper->oprleft);
+		add_exact_object_address(&referenced, addrs);
 	}
 
 	/* Dependency on right type */
 	if (OidIsValid(oper->oprright))
 	{
-		referenced.classId = TypeRelationId;
-		referenced.objectId = oper->oprright;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, TypeRelationId, oper->oprright);
+		add_exact_object_address(&referenced, addrs);
 	}
 
 	/* Dependency on result type */
 	if (OidIsValid(oper->oprresult))
 	{
-		referenced.classId = TypeRelationId;
-		referenced.objectId = oper->oprresult;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, TypeRelationId, oper->oprresult);
+		add_exact_object_address(&referenced, addrs);
 	}
 
 	/*
@@ -828,36 +837,34 @@ makeOperatorDependencies(HeapTuple tuple, bool isUpdate)
 	/* Dependency on implementation function */
 	if (OidIsValid(oper->oprcode))
 	{
-		referenced.classId = ProcedureRelationId;
-		referenced.objectId = oper->oprcode;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, ProcedureRelationId, oper->oprcode);
+		add_exact_object_address(&referenced, addrs);
 	}
 
 	/* Dependency on restriction selectivity function */
 	if (OidIsValid(oper->oprrest))
 	{
-		referenced.classId = ProcedureRelationId;
-		referenced.objectId = oper->oprrest;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, ProcedureRelationId, oper->oprrest);
+		add_exact_object_address(&referenced, addrs);
 	}
 
 	/* Dependency on join selectivity function */
 	if (OidIsValid(oper->oprjoin))
 	{
-		referenced.classId = ProcedureRelationId;
-		referenced.objectId = oper->oprjoin;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, ProcedureRelationId, oper->oprjoin);
+		add_exact_object_address(&referenced, addrs);
 	}
 
+	record_object_address_dependencies(&myself, addrs, DEPENDENCY_NORMAL);
+	free_object_addresses(addrs);
+
 	/* Dependency on owner */
-	recordDependencyOnOwner(OperatorRelationId, HeapTupleGetOid(tuple),
+	recordDependencyOnOwner(OperatorRelationId, oper->oid,
 							oper->oprowner);
 
 	/* Dependency on extension */
-	recordDependencyOnCurrentExtension(&myself, isUpdate);
+	if (makeExtensionDep)
+		recordDependencyOnCurrentExtension(&myself, isUpdate);
 
 	return myself;
 }

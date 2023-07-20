@@ -59,9 +59,8 @@ select testtext || testvarchar as concat, testnumeric + 42 as sum
 from basictest;
 
 -- check that union/case/coalesce type resolution handles domains properly
-select coalesce(4::domainint4, 7) is of (int4) as t;
-select coalesce(4::domainint4, 7) is of (domainint4) as f;
-select coalesce(4::domainint4, 7::domainint4) is of (domainint4) as t;
+select pg_typeof(coalesce(4::domainint4, 7));
+select pg_typeof(coalesce(4::domainint4, 7::domainint4));
 
 drop table basictest;
 drop domain domainvarchar restrict;
@@ -155,6 +154,15 @@ create rule silly as on delete to dcomptable do instead
   update dcomptable set d1.r = (d1).r - 1, d1.i = (d1).i + 1 where (d1).i > 0;
 \d+ dcomptable
 
+create function makedcomp(r float8, i float8) returns dcomptype
+as 'select row(r, i)' language sql;
+
+select makedcomp(1,2);
+select makedcomp(2,1);  -- fail
+select * from makedcomp(1,2) m;
+select m, m is not null from makedcomp(1,2) m;
+
+drop function makedcomp(float8, float8);
 drop table dcomptable;
 drop type comptype cascade;
 
@@ -266,6 +274,23 @@ update dposintatable set (f1[2])[1] = array[98];
 
 drop table dposintatable;
 drop domain posint cascade;
+
+
+-- Test arrays over domains of composite
+
+create type comptype as (cf1 int, cf2 int);
+create domain dcomptype as comptype check ((value).cf1 > 0);
+
+create table dcomptable (f1 dcomptype[]);
+insert into dcomptable values (null);
+update dcomptable set f1[1].cf2 = 5;
+table dcomptable;
+update dcomptable set f1[1].cf1 = -1;  -- fail
+update dcomptable set f1[1].cf1 = 1;
+table dcomptable;
+
+drop table dcomptable;
+drop type comptype cascade;
 
 
 -- Test not-null restrictions
@@ -678,6 +703,26 @@ drop function array_elem_check(int);
 create domain di as int;
 
 create function dom_check(int) returns di as $$
+declare d di;
+begin
+  d := $1::di;
+  return d;
+end
+$$ language plpgsql immutable;
+
+select dom_check(0);
+
+alter domain di add constraint pos check (value > 0);
+
+select dom_check(0); -- fail
+
+alter domain di drop constraint pos;
+
+select dom_check(0);
+
+-- implicit cast during assignment is a separate code path, test that too
+
+create or replace function dom_check(int) returns di as $$
 declare d di;
 begin
   d := $1;

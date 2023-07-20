@@ -229,35 +229,147 @@
    </indexterm>
 
     <para>
-     Five pseudo-types of special interest are <type>anyelement</type>,
-     <type>anyarray</type>, <type>anynonarray</type>, <type>anyenum</type>,
-     and <type>anyrange</type>,
-     which are collectively called <firstterm>polymorphic types</firstterm>.
-     Any function declared using these types is said to be
-     a <firstterm>polymorphic function</firstterm>.  A polymorphic function can
-     operate on many different data types, with the specific data type(s)
-     being determined by the data types actually passed to it in a particular
-     call.
+     Some pseudo-types of special interest are the <firstterm>polymorphic
+     types</firstterm>, which are used to declare <firstterm>polymorphic
+     functions</firstterm>.  This powerful feature allows a single function
+     definition to operate on many different data types, with the specific
+     data type(s) being determined by the data types actually passed to it
+     in a particular call.  The polymorphic types are shown in
+     <xref linkend="extend-types-polymorphic-table"/>.  Some examples of
+     their use appear in <xref linkend="xfunc-sql-polymorphic-functions"/>.
     </para>
+
+    <table id="extend-types-polymorphic-table">
+     <title>Polymorphic Types</title>
+     <tgroup cols="3">
+      <colspec colname="col1" colwidth="2*"/>
+      <colspec colname="col2" colwidth="1*"/>
+      <colspec colname="col3" colwidth="2*"/>
+      <thead>
+       <row>
+        <entry>Name</entry>
+        <entry>Family</entry>
+        <entry>Description</entry>
+       </row>
+      </thead>
+
+      <tbody>
+       <row>
+        <entry><type>anyelement</type></entry>
+        <entry>Simple</entry>
+        <entry>Indicates that a function accepts any data type</entry>
+       </row>
+
+       <row>
+        <entry><type>anyarray</type></entry>
+        <entry>Simple</entry>
+        <entry>Indicates that a function accepts any array data type</entry>
+       </row>
+
+       <row>
+        <entry><type>anynonarray</type></entry>
+        <entry>Simple</entry>
+        <entry>Indicates that a function accepts any non-array data type</entry>
+       </row>
+
+       <row>
+        <entry><type>anyenum</type></entry>
+        <entry>Simple</entry>
+        <entry>Indicates that a function accepts any enum data type
+        (see <xref linkend="datatype-enum"/>)
+        </entry>
+       </row>
+
+       <row>
+        <entry><type>anyrange</type></entry>
+        <entry>Simple</entry>
+        <entry>Indicates that a function accepts any range data type
+        (see <xref linkend="rangetypes"/>)
+        </entry>
+       </row>
+
+       <row>
+        <entry><type>anymultirange</type></entry>
+        <entry>Simple</entry>
+        <entry>Indicates that a function accepts any multirange data type
+        (see <xref linkend="rangetypes"/>)
+        </entry>
+       </row>
+
+       <row>
+        <entry><type>anycompatible</type></entry>
+        <entry>Common</entry>
+        <entry>Indicates that a function accepts any data type,
+        with automatic promotion of multiple arguments to a common data type
+        </entry>
+       </row>
+
+       <row>
+        <entry><type>anycompatiblearray</type></entry>
+        <entry>Common</entry>
+        <entry>Indicates that a function accepts any array data type,
+        with automatic promotion of multiple arguments to a common data type
+        </entry>
+       </row>
+
+       <row>
+        <entry><type>anycompatiblenonarray</type></entry>
+        <entry>Common</entry>
+        <entry>Indicates that a function accepts any non-array data type,
+        with automatic promotion of multiple arguments to a common data type
+        </entry>
+       </row>
+
+       <row>
+        <entry><type>anycompatiblerange</type></entry>
+        <entry>Common</entry>
+        <entry>Indicates that a function accepts any range data type,
+        with automatic promotion of multiple arguments to a common data type
+        </entry>
+       </row>
+
+       <row>
+        <entry><type>anycompatiblemultirange</type></entry>
+        <entry>Common</entry>
+        <entry>Indicates that a function accepts any multirange data type,
+        with automatic promotion of multiple arguments to a common data type
+        </entry>
+       </row>
+      </tbody>
+     </tgroup>
+    </table>
 
     <para>
      Polymorphic arguments and results are tied to each other and are resolved
-     to a specific data type when a query calling a polymorphic function is
-     parsed.  Each position (either argument or return value) declared as
+     to specific data types when a query calling a polymorphic function is
+     parsed.  When there is more than one polymorphic argument, the actual
+     data types of the input values must match up as described below.  If the
+     function's result type is polymorphic, or it has output parameters of
+     polymorphic types, the types of those results are deduced from the
+     actual types of the polymorphic inputs as described below.
+    </para>
+
+    <para>
+     For the <quote>simple</quote> family of polymorphic types, the
+     matching and deduction rules work like this:
+    </para>
+
+    <para>
+     Each position (either argument or return value) declared as
      <type>anyelement</type> is allowed to have any specific actual
      data type, but in any given call they must all be the
      <emphasis>same</emphasis> actual type. Each
      position declared as <type>anyarray</type> can have any array data type,
      but similarly they must all be the same type.  And similarly,
      positions declared as <type>anyrange</type> must all be the same range
-     type.  Furthermore, if there are
+     type.  Likewise for <type>anymultirange</type>.
+    </para>
+
+    <para>
+     Furthermore, if there are
      positions declared <type>anyarray</type> and others declared
      <type>anyelement</type>, the actual array type in the
      <type>anyarray</type> positions must be an array whose elements are
-     the same type appearing in the <type>anyelement</type> positions.
-     Similarly, if there are positions declared <type>anyrange</type>
-     and others declared <type>anyelement</type>, the actual range type in
-     the <type>anyrange</type> positions must be a range whose subtype is
      the same type appearing in the <type>anyelement</type> positions.
      <type>anynonarray</type> is treated exactly the same as <type>anyelement</type>,
      but adds the additional constraint that the actual type must not be
@@ -265,6 +377,19 @@
      <type>anyenum</type> is treated exactly the same as <type>anyelement</type>,
      but adds the additional constraint that the actual type must
      be an enum type.
+    </para>
+
+    <para>
+     Similarly, if there are positions declared <type>anyrange</type>
+     and others declared <type>anyelement</type> or <type>anyarray</type>,
+     the actual range type in the <type>anyrange</type> positions must be a
+     range whose subtype is the same type appearing in
+     the <type>anyelement</type> positions and the same as the element type
+     of the <type>anyarray</type> positions.
+     If there are positions declared <type>anymultirange</type>,
+     their actual multirange type must contain ranges matching parameters declared
+     <type>anyrange</type> and base elements matching parameters declared
+     <type>anyelement</type> and <type>anyarray</type>.
     </para>
 
     <para>
@@ -278,7 +403,8 @@
     <para>
      When the return value of a function is declared as a polymorphic type,
      there must be at least one argument position that is also polymorphic,
-     and the actual data type supplied as the argument determines the actual
+     and the actual data type(s) supplied for the polymorphic arguments
+     determine the actual
      result type for that call.  For example, if there were not already
      an array subscripting mechanism, one could define a function that
      implements subscripting as <literal>subscript(anyarray, integer)
@@ -287,6 +413,18 @@
      result type from the actual first argument's type.  Another example
      is that a function declared as <literal>f(anyarray) returns anyenum</literal>
      will only accept arrays of enum types.
+    </para>
+
+    <para>
+     In most cases, the parser can infer the actual data type for a
+     polymorphic result type from arguments that are of a different
+     polymorphic type in the same family; for example <type>anyarray</type>
+     can be deduced from <type>anyelement</type> or vice versa.
+     An exception is that a
+     polymorphic result of type <type>anyrange</type> requires an argument
+     of type <type>anyrange</type>; it cannot be deduced
+     from <type>anyarray</type> or <type>anyelement</type> arguments.  This
+     is because there could be multiple range types with the same subtype.
     </para>
 
     <para>
@@ -299,13 +437,73 @@
     </para>
 
     <para>
+     For the <quote>common</quote> family of polymorphic types, the
+     matching and deduction rules work approximately the same as for
+     the <quote>simple</quote> family, with one major difference: the
+     actual types of the arguments need not be identical, so long as they
+     can be implicitly cast to a single common type.  The common type is
+     selected following the same rules as for <literal>UNION</literal> and
+     related constructs (see <xref linkend="typeconv-union-case"/>).
+     Selection of the common type considers the actual types
+     of <type>anycompatible</type> and <type>anycompatiblenonarray</type>
+     inputs, the array element types of <type>anycompatiblearray</type>
+     inputs, the range subtypes of <type>anycompatiblerange</type> inputs,
+     and the multirange subtypes of <type>anycompatiblemultirange</type>
+     inputs.  If <type>anycompatiblenonarray</type> is present then the
+     common type is required to be a non-array type.  Once a common type is
+     identified, arguments in <type>anycompatible</type>
+     and <type>anycompatiblenonarray</type> positions are automatically
+     cast to that type, and arguments in <type>anycompatiblearray</type>
+     positions are automatically cast to the array type for that type.
+    </para>
+
+    <para>
+     Since there is no way to select a range type knowing only its subtype,
+     use of <type>anycompatiblerange</type> and/or
+     <type>anycompatiblemultirange</type> requires that all arguments declared
+     with that type have the same actual range and/or multirange type, and that
+     that type's subtype agree with the selected common type, so that no casting
+     of the range values is required.  As with <type>anyrange</type> and
+     <type>anymultirange</type>, use of <type>anycompatiblerange</type> and
+     <type>anymultirange</type> as a function result type requires that there be
+     an <type>anycompatiblerange</type> or <type>anycompatiblemultirange</type>
+     argument.
+    </para>
+
+    <para>
+     Notice that there is no <type>anycompatibleenum</type> type.  Such a
+     type would not be very useful, since there normally are not any
+     implicit casts to enum types, meaning that there would be no way to
+     resolve a common type for dissimilar enum inputs.
+    </para>
+
+    <para>
+     The <quote>simple</quote> and <quote>common</quote> polymorphic
+     families represent two independent sets of type variables.  Consider
+     for example
+<programlisting>
+CREATE FUNCTION myfunc(a anyelement, b anyelement,
+                       c anycompatible, d anycompatible)
+RETURNS anycompatible AS ...
+</programlisting>
+     In an actual call of this function, the first two inputs must have
+     exactly the same type.  The last two inputs must be promotable to a
+     common type, but this type need not have anything to do with the type
+     of the first two inputs.  The result will have the common type of the
+     last two inputs.
+    </para>
+
+    <para>
      A variadic function (one taking a variable number of arguments, as in
      <xref linkend="xfunc-sql-variadic-functions"/>) can be
      polymorphic: this is accomplished by declaring its last parameter as
-     <literal>VARIADIC</literal> <type>anyarray</type>.  For purposes of argument
+     <literal>VARIADIC</literal> <type>anyarray</type> or
+     <literal>VARIADIC</literal> <type>anycompatiblearray</type>.
+     For purposes of argument
      matching and determining the actual result type, such a function behaves
      the same as if you had written the appropriate number of
-     <type>anynonarray</type> parameters.
+     <type>anynonarray</type> or <type>anycompatiblenonarray</type>
+     parameters.
     </para>
    </sect2>
   </sect1>
@@ -337,7 +535,7 @@
     of the extension itself.  If the extension includes C code, there
     will typically also be a shared library file into which the C code
     has been built.  Once you have these files, a simple
-    <xref linkend="sql-createextension"/> command loads the objects into
+    <link linkend="sql-createextension"><command>CREATE EXTENSION</command></link> command loads the objects into
     your database.
    </para>
 
@@ -346,7 +544,7 @@
     <acronym>SQL</acronym> script to load a bunch of <quote>loose</quote> objects
     into your database, is that <productname>PostgreSQL</productname> will then
     understand that the objects of the extension go together.  You can
-    drop all the objects with a single <xref linkend="sql-dropextension"/>
+    drop all the objects with a single <link linkend="sql-dropextension"><command>DROP EXTENSION</command></link>
     command (no need to maintain a separate <quote>uninstall</quote> script).
     Even more useful, <application>pg_dump</application> knows that it should not
     dump the individual member objects of the extension &mdash; it will
@@ -405,7 +603,7 @@
 
    <para>
     The kinds of SQL objects that can be members of an extension are shown in
-    the description of <xref linkend="sql-alterextension"/>.  Notably, objects
+    the description of <link linkend="sql-alterextension"><command>ALTER EXTENSION</command></link>.  Notably, objects
     that are database-cluster-wide, such as databases, roles, and tablespaces,
     cannot be extension members since an extension is only known within one
     database.  (Although an extension script is not prohibited from creating
@@ -438,7 +636,7 @@
    </indexterm>
 
     <para>
-     The <xref linkend="sql-createextension"/> command relies on a control
+     The <command>CREATE EXTENSION</command> command relies on a control
      file for each extension, which must be named the same as the extension
      with a suffix of <literal>.control</literal>, and must be placed in the
      installation's <literal>SHAREDIR/extension</literal> directory.  There
@@ -547,9 +745,38 @@
        <para>
         If this parameter is <literal>true</literal> (which is the default),
         only superusers can create the extension or update it to a new
-        version.  If it is set to <literal>false</literal>, just the privileges
+        version (but see also <varname>trusted</varname>, below).
+        If it is set to <literal>false</literal>, just the privileges
         required to execute the commands in the installation or update script
         are required.
+        This should normally be set to <literal>true</literal> if any of the
+        script commands require superuser privileges.  (Such commands would
+        fail anyway, but it's more user-friendly to give the error up front.)
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><varname>trusted</varname> (<type>boolean</type>)</term>
+      <listitem>
+       <para>
+        This parameter, if set to <literal>true</literal> (which is not the
+        default), allows some non-superusers to install an extension that
+        has <varname>superuser</varname> set to <literal>true</literal>.
+        Specifically, installation will be permitted for anyone who has
+        <literal>CREATE</literal> privilege on the current database.
+        When the user executing <command>CREATE EXTENSION</command> is not
+        a superuser but is allowed to install by virtue of this parameter,
+        then the installation or update script is run as the bootstrap
+        superuser, not as the calling user.
+        This parameter is irrelevant if <varname>superuser</varname> is
+        <literal>false</literal>.
+        Generally, this should not be set true for extensions that could
+        allow access to otherwise-superuser-only abilities, such as
+        file system access.
+        Also, marking an extension trusted requires significant extra effort
+        to write the extension's installation and update script(s) securely;
+        see <xref linkend="extend-extensions-security"/>.
        </para>
       </listitem>
      </varlistentry>
@@ -560,7 +787,7 @@
        <para>
         An extension is <firstterm>relocatable</firstterm> if it is possible to move
         its contained objects into a different schema after initial creation
-        of the extension.  The default is <literal>false</literal>, i.e. the
+        of the extension.  The default is <literal>false</literal>, i.e., the
         extension is not relocatable.
         See <xref linkend="extend-extensions-relocation"/> for more information.
        </para>
@@ -598,7 +825,7 @@
     <para>
      An extension's <acronym>SQL</acronym> script files can contain any SQL commands,
      except for transaction control commands (<command>BEGIN</command>,
-     <command>COMMIT</command>, etc) and commands that cannot be executed inside a
+     <command>COMMIT</command>, etc.) and commands that cannot be executed inside a
      transaction block (such as <command>VACUUM</command>).  This is because the
      script files are implicitly executed within a transaction block.
     </para>
@@ -613,6 +840,18 @@
      Without that, users might accidentally load the
      extension's contents as <quote>loose</quote> objects rather than as an
      extension, a state of affairs that's a bit tedious to recover from.
+    </para>
+
+    <para>
+     If the extension script contains the
+     string <literal>@extowner@</literal>, that string is replaced with the
+     (suitably quoted) name of the user calling <command>CREATE
+     EXTENSION</command> or <command>ALTER EXTENSION</command>.  Typically
+     this feature is used by extensions that are marked trusted to assign
+     ownership of selected objects to the calling user rather than the
+     bootstrap superuser.  (One should be careful about doing so, however.
+     For example, assigning ownership of a C-language function to a
+     non-superuser would create a privilege escalation path for that user.)
     </para>
 
     <para>
@@ -743,7 +982,7 @@ SET LOCAL search_path TO @extschema@, pg_temp;
      <application>pg_dump</application>.  But that behavior is undesirable for a
      configuration table; any data changes made by the user need to be
      included in dumps, or the extension will behave differently after a dump
-     and reload.
+     and restore.
     </para>
 
    <indexterm>
@@ -836,7 +1075,7 @@ SELECT pg_catalog.pg_extension_config_dump('my_config', 'WHERE NOT standard_entr
      dynamically from one version to the next, you should provide
      <firstterm>update scripts</firstterm> that make the necessary changes to go from
      one version to the next.  Update scripts have names following the pattern
-     <literal><replaceable>extension</replaceable>--<replaceable>oldversion</replaceable>--<replaceable>newversion</replaceable>.sql</literal>
+     <literal><replaceable>extension</replaceable>--<replaceable>old_version</replaceable>--<replaceable>target_version</replaceable>.sql</literal>
      (for example, <literal>foo--1.0--1.1.sql</literal> contains the commands to modify
      version <literal>1.0</literal> of extension <literal>foo</literal> into version
      <literal>1.1</literal>).
@@ -857,33 +1096,6 @@ SELECT pg_catalog.pg_extension_config_dump('my_config', 'WHERE NOT standard_entr
      If an extension has secondary control files, the control parameters
      that are used for an update script are those associated with the script's
      target (new) version.
-    </para>
-
-    <para>
-     The update mechanism can be used to solve an important special case:
-     converting a <quote>loose</quote> collection of objects into an extension.
-     Before the extension mechanism was added to
-     <productname>PostgreSQL</productname> (in 9.1), many people wrote
-     extension modules that simply created assorted unpackaged objects.
-     Given an existing database containing such objects, how can we convert
-     the objects into a properly packaged extension?  Dropping them and then
-     doing a plain <command>CREATE EXTENSION</command> is one way, but it's not
-     desirable if the objects have dependencies (for example, if there are
-     table columns of a data type created by the extension).  The way to fix
-     this situation is to create an empty extension, then use <command>ALTER
-     EXTENSION ADD</command> to attach each pre-existing object to the extension,
-     then finally create any new objects that are in the current extension
-     version but were not in the unpackaged release.  <command>CREATE
-     EXTENSION</command> supports this case with its <literal>FROM</literal> <replaceable
-     class="parameter">old_version</replaceable> option, which causes it to not run the
-     normal installation script for the target version, but instead the update
-     script named
-     <literal><replaceable>extension</replaceable>--<replaceable>old_version</replaceable>--<replaceable>target_version</replaceable>.sql</literal>.
-     The choice of the dummy version name to use as <replaceable
-     class="parameter">old_version</replaceable> is up to the extension author, though
-     <literal>unpackaged</literal> is a common convention.  If you have multiple
-     prior versions you need to be able to update into extension style, use
-     multiple dummy version names to identify them.
     </para>
 
     <para>
@@ -933,7 +1145,7 @@ SELECT * FROM pg_extension_update_paths('<replaceable>extension_name</replaceabl
    </sect2>
 
    <sect2>
-    <title>Installing Extensions using Update Scripts</title>
+    <title>Installing Extensions Using Update Scripts</title>
 
     <para>
      An extension that has been around for awhile will probably exist in
@@ -990,6 +1202,15 @@ SELECT * FROM pg_extension_update_paths('<replaceable>extension_name</replaceabl
      a malicious user to create trojan-horse objects that will compromise
      later execution of a carelessly-written extension script, allowing that
      user to acquire superuser privileges.
+    </para>
+
+    <para>
+     If an extension is marked <varname>trusted</varname>, then its
+     installation schema can be selected by the installing user, who might
+     intentionally use an insecure schema in hopes of gaining superuser
+     privileges.  Therefore, a trusted extension is extremely exposed from a
+     security standpoint, and all its script commands must be carefully
+     examined to ensure that no compromise is possible.
     </para>
 
     <para>
@@ -1094,18 +1315,9 @@ SELECT * FROM pg_extension_update_paths('<replaceable>extension_name</replaceabl
       installed in the same schema, because then a hostile object cannot be
       placed ahead of the referenced extension in the installation-time
       <varname>search_path</varname>.  However, no mechanism currently exists
-      to require that.
-     </para>
-
-     <para>
-      Do <emphasis>not</emphasis> use <command>CREATE OR REPLACE
-      FUNCTION</command>, except in an update script that must change the
-      definition of a function that is known to be an extension member
-      already.  (Likewise for other <literal>OR REPLACE</literal> options.)
-      Using <literal>OR REPLACE</literal> unnecessarily not only has a risk
-      of accidentally overwriting someone else's function, but it creates a
-      security hazard since the overwritten function would still be owned by
-      its original owner, who could modify it.
+      to require that.  For now, best practice is to not mark an extension
+      trusted if it depends on another one, unless that other one is always
+      installed in <literal>pg_catalog</literal>.
      </para>
     </sect3>
    </sect2>
@@ -1181,7 +1393,7 @@ include $(PGXS)
 
     <para>
      Once the files are installed, use the
-     <xref linkend="sql-createextension"/> command to load the objects into
+     <command>CREATE EXTENSION</command> command to load the objects into
      any particular database.
     </para>
    </sect2>
@@ -1218,7 +1430,7 @@ include $(PGXS)
     and include the global <acronym>PGXS</acronym> makefile.
     Here is an example that builds an extension module named
     <literal>isbn_issn</literal>, consisting of a shared library containing
-    some C code, an extension control file, a SQL script, an include file
+    some C code, an extension control file, an SQL script, an include file
     (only needed if other modules might need to access the extension functions
     without going via SQL), and a documentation text file:
 <programlisting>
@@ -1422,10 +1634,48 @@ include $(PGXS)
      </varlistentry>
 
      <varlistentry>
+      <term><varname>ISOLATION</varname></term>
+      <listitem>
+       <para>
+        list of isolation test cases, see below for more details
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><varname>ISOLATION_OPTS</varname></term>
+      <listitem>
+       <para>
+        additional switches to pass to
+        <application>pg_isolation_regress</application>
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><varname>TAP_TESTS</varname></term>
+      <listitem>
+       <para>
+        switch defining if TAP tests need to be run, see below
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><varname>NO_INSTALL</varname></term>
+      <listitem>
+       <para>
+        don't define an <literal>install</literal> target, useful for test
+        modules that don't need their build products to be installed
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><varname>NO_INSTALLCHECK</varname></term>
       <listitem>
        <para>
-        don't define an <literal>installcheck</literal> target, useful e.g. if tests require special configuration, or don't use <application>pg_regress</application>
+        don't define an <literal>installcheck</literal> target, useful e.g., if tests require special configuration, or don't use <application>pg_regress</application>
        </para>
       </listitem>
      </varlistentry>
@@ -1568,13 +1818,42 @@ make VPATH=/path/to/extension/source/tree install
     have all expected files.
    </para>
 
+   <para>
+    The scripts listed in the <varname>ISOLATION</varname> variable are used
+    for tests stressing behavior of concurrent session with your module, which
+    can be invoked by <literal>make installcheck</literal> after doing
+    <literal>make install</literal>.  For this to work you must have a
+    running <productname>PostgreSQL</productname> server.  The script files
+    listed in <varname>ISOLATION</varname> must appear in a subdirectory
+    named <literal>specs/</literal> in your extension's directory.  These files
+    must have extension <literal>.spec</literal>, which must not be included
+    in the <varname>ISOLATION</varname> list in the makefile.  For each test
+    there should also be a file containing the expected output in a
+    subdirectory named <literal>expected/</literal>, with the same stem and
+    extension <literal>.out</literal>.  <literal>make installcheck</literal>
+    executes each test script, and compares the resulting output to the
+    matching expected file.  Any differences will be written to the file
+    <literal>output_iso/regression.diffs</literal> in
+    <command>diff -c</command> format.  Note that trying to run a test that is
+    missing its expected file will be reported as <quote>trouble</quote>, so
+    make sure you have all expected files.
+   </para>
+
+   <para>
+    <literal>TAP_TESTS</literal> enables the use of TAP tests.  Data from each
+    run is present in a subdirectory named <literal>tmp_check/</literal>.
+    See also <xref linkend="regress-tap"/> for more details.
+   </para>
+
    <tip>
     <para>
      The easiest way to create the expected files is to create empty files,
      then do a test run (which will of course report differences).  Inspect
      the actual result files found in the <literal>results/</literal>
-     directory, then copy them to <literal>expected/</literal> if they match
-     what you expect from the test.
+     directory (for tests in <literal>REGRESS</literal>), or
+     <literal>output_iso/results/</literal> directory (for tests in
+     <literal>ISOLATION</literal>), then copy them to
+     <literal>expected/</literal> if they match what you expect from the test.
     </para>
 
    </tip>

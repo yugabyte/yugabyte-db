@@ -1,3 +1,6 @@
+
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+
 #
 # Script that parses Unix style build environment and generates build files
 # for building with Visual Studio.
@@ -7,15 +10,14 @@
 use strict;
 use warnings;
 
-use File::Basename;
-use File::Spec;
-BEGIN  { use lib File::Spec->rel2abs(dirname(__FILE__)); }
+use FindBin;
+use lib $FindBin::RealBin;
 
 use Mkvcbuild;
 
-chdir('..\..\..') if (-d '..\msvc' && -d '..\..\..\src');
+chdir('../../..') if (-d '../msvc' && -d '../../../src');
 die 'Must run from root or msvc directory'
-  unless (-d 'src\tools\msvc' && -d 'src');
+  unless (-d 'src/tools/msvc' && -d 'src');
 
 die 'Could not find config_default.pl'
   unless (-f 'src/tools/msvc/config_default.pl');

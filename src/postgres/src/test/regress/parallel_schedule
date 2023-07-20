@@ -1,11 +1,17 @@
 # ----------
 # src/test/regress/parallel_schedule
 #
+# Most test scripts can be run after running just test_setup and possibly
+# create_index.  Exceptions to this rule are documented below.
+#
 # By convention, we put no more than twenty tests in any one parallel group;
 # this limits the number of connections needed to run the tests.
 # ----------
 
-# run tablespace by itself, and first, because it forces a checkpoint;
+# required setup steps
+test: test_setup
+
+# run tablespace by itself, and early, because it forces a checkpoint;
 # we'd prefer not to have checkpoints later in the tests because that
 # interferes with crash-recovery testing.
 test: tablespace
@@ -15,52 +21,39 @@ test: tablespace
 # ----------
 test: boolean char name varchar text int2 int4 int8 oid float4 float8 bit numeric txid uuid enum money rangetypes pg_lsn regproc
 
-# Depends on things setup during char, varchar and text
-test: strings
-# Depends on int2, int4, int8, float4, float8
-test: numerology
-
 # ----------
 # The second group of parallel tests
+# multirangetypes depends on rangetypes
+# multirangetypes shouldn't run concurrently with type_sanity
 # ----------
-test: point lseg line box path polygon circle date time timetz timestamp timestamptz interval abstime reltime tinterval inet macaddr macaddr8 tstypes
+test: strings numerology point lseg line box path polygon circle date time timetz timestamp timestamptz interval inet macaddr macaddr8 multirangetypes
 
 # ----------
 # Another group of parallel tests
-# geometry depends on point, lseg, box, path, polygon and circle
-# horology depends on interval, timetz, timestamp, timestamptz, reltime and abstime
+# geometry depends on point, lseg, line, box, path, polygon, circle
+# horology depends on date, time, timetz, timestamp, timestamptz, interval
 # ----------
-test: geometry horology regex oidjoins type_sanity opr_sanity misc_sanity comments expressions
-
-# ----------
-# These four each depend on the previous one
-# ----------
-test: insert
-test: insert_conflict
-test: create_function_1
-test: create_type
-test: create_table
-test: create_function_2
+test: geometry horology tstypes regex type_sanity opr_sanity misc_sanity comments expressions unicode xid mvcc
 
 # ----------
 # Load huge amounts of data
 # We should split the data files into single files and then
-# execute two copy tests parallel, to check that copy itself
+# execute two copy tests in parallel, to check that copy itself
 # is concurrent safe.
 # ----------
-test: copy copyselect copydml
+test: copy copyselect copydml insert insert_conflict
 
 # ----------
 # More groups of parallel tests
+# Note: many of the tests in later groups depend on create_index
 # ----------
-test: create_misc create_operator create_procedure
-# These depend on the above two
-test: create_index create_view index_including
+test: create_function_c create_misc create_operator create_procedure create_table create_type
+test: create_index create_index_spgist create_view index_including index_including_gist
 
 # ----------
 # Another group of parallel tests
 # ----------
-test: create_aggregate create_function_3 create_cast constraints triggers inherit create_table_like typed_table vacuum drop_if_exists updatable_views rolenames roleattributes create_am hash_func
+test: create_aggregate create_function_sql create_cast constraints triggers select inherit typed_table vacuum drop_if_exists updatable_views roleattributes create_am hash_func errors infinite_recurse
 
 # ----------
 # sanity_check does a vacuum, affecting the sort order of SELECT *
@@ -68,41 +61,50 @@ test: create_aggregate create_function_3 create_cast constraints triggers inheri
 # ----------
 test: sanity_check
 
-# ----------
-# Believe it or not, select creates a table, subsequent
-# tests need.
-# ----------
-test: errors
-test: select
+# Note: the ignore: line does not skip random, just mark it as ignorable
 ignore: random
 
 # ----------
 # Another group of parallel tests
+# aggregates depends on create_aggregate
+# join depends on create_misc
 # ----------
-test: select_into select_distinct select_distinct_on select_implicit select_having subselect union case join aggregates transactions random portals arrays btree_index hash_index update namespace prepared_xacts delete
+test: select_into select_distinct select_distinct_on select_implicit select_having subselect union case join aggregates transactions random portals arrays btree_index hash_index update delete namespace prepared_xacts
 
 # ----------
 # Another group of parallel tests
 # ----------
-test: brin gin gist spgist privileges init_privs security_label collate matview lock replica_identity rowsecurity object_address tablesample groupingsets drop_operator password
+test: brin gin gist spgist privileges init_privs security_label collate matview lock replica_identity rowsecurity object_address tablesample groupingsets drop_operator password identity generated join_hash
+
+# ----------
+# Additional BRIN tests
+# ----------
+test: brin_bloom brin_multi
 
 # ----------
 # Another group of parallel tests
+# psql depends on create_am
+# amutils depends on geometry, create_index_spgist, hash_index, brin
 # ----------
-test: alter_generic alter_operator misc psql async dbsize misc_functions sysviews tsrf tidscan stats_ext
+test: create_table_like alter_generic alter_operator misc async dbsize merge misc_functions sysviews tsrf tid tidscan tidrangescan collate.icu.utf8 incremental_sort create_role
 
-# rules cannot run concurrently with any test that creates a view
-test: rules psql_crosstab amutils
+# collate.*.utf8 tests cannot be run in parallel with each other
+test: rules psql psql_crosstab amutils stats_ext collate.linux.utf8
 
-# run by itself so it can run parallel workers
+# ----------
+# Run these alone so they don't run out of parallel workers
+# select_parallel depends on create_misc
+# ----------
 test: select_parallel
 test: write_parallel
+test: vacuum_parallel
 
 # no relation related tests can be put in this group
 test: publication subscription
 
 # ----------
 # Another group of parallel tests
+# select_views depends on create_view
 # ----------
 test: select_views portals_p2 foreign_key cluster dependency guc bitmapops combocid tsearch tsdicts foreign_data window xmlmap functional_deps advisory_lock indirect_toast equivclass
 
@@ -113,20 +115,23 @@ test: json jsonb json_encoding jsonpath jsonpath_encoding jsonb_jsonpath
 
 # ----------
 # Another group of parallel tests
+# with depends on create_misc
 # NB: temp.sql does a reconnect which transiently uses 2 connections,
 # so keep this parallel group to at most 19 tests
 # ----------
-test: plancache limit plpgsql copy2 temp domain rangefuncs prepare without_oid conversion truncate alter_table sequence polymorphism rowtypes returning largeobject with xml
+test: plancache limit plpgsql copy2 temp domain rangefuncs prepare conversion truncate alter_table sequence polymorphism rowtypes returning largeobject with xml
 
 # ----------
 # Another group of parallel tests
+#
+# The stats test resets stats, so nothing else needing stats access can be in
+# this group.
 # ----------
-test: identity partition_join partition_prune reloptions hash_part indexing partition_aggregate
+test: partition_join partition_prune reloptions hash_part indexing partition_aggregate partition_info tuplesort explain compression memoize stats
 
-# event triggers cannot run concurrently with any test that runs DDL
-test: event_trigger
+# event_trigger cannot run concurrently with any test that runs DDL
+# oidjoins is read-only, though, and should run late for best coverage
+test: event_trigger oidjoins
+
 # this test also uses event triggers, so likewise run it by itself
 test: fast_default
-
-# run stats by itself because its delay may be insufficient under heavy load
-test: stats

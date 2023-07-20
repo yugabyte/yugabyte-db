@@ -31,6 +31,9 @@
    <table id="datatype-table">
     <title>Data Types</title>
     <tgroup cols="3">
+     <colspec colname="col1" colwidth="2*"/>
+     <colspec colname="col2" colwidth="1*"/>
+     <colspec colname="col3" colwidth="2*"/>
      <thead>
       <row>
        <entry>Name</entry>
@@ -199,6 +202,12 @@
       </row>
 
       <row>
+       <entry><type>pg_snapshot</type></entry>
+       <entry></entry>
+       <entry>user-level transaction ID snapshot</entry>
+      </row>
+
+      <row>
        <entry><type>point</type></entry>
        <entry></entry>
        <entry>geometric point on a plane</entry>
@@ -279,7 +288,7 @@
       <row>
        <entry><type>txid_snapshot</type></entry>
        <entry></entry>
-       <entry>user-level transaction ID snapshot</entry>
+       <entry>user-level transaction ID snapshot (deprecated; see <type>pg_snapshot</type>)</entry>
       </row>
 
       <row>
@@ -343,6 +352,10 @@
     <table id="datatype-numeric-table">
      <title>Numeric Types</title>
      <tgroup cols="4">
+      <colspec colname="col1" colwidth="2*"/>
+      <colspec colname="col2" colwidth="1*"/>
+      <colspec colname="col3" colwidth="2*"/>
+      <colspec colname="col4" colwidth="2*"/>
       <thead>
        <row>
         <entry>Name</entry>
@@ -507,7 +520,7 @@
      very large number of digits. It is especially recommended for
      storing monetary amounts and other quantities where exactness is
      required.  Calculations with <type>numeric</type> values yield exact
-     results where possible, e.g.  addition, subtraction, multiplication.
+     results where possible, e.g.,  addition, subtraction, multiplication.
      However, calculations on <type>numeric</type> values are very slow
      compared to the integer types, or to the floating-point types
      described in the next section.
@@ -532,8 +545,8 @@
 <programlisting>
 NUMERIC(<replaceable>precision</replaceable>, <replaceable>scale</replaceable>)
 </programlisting>
-     The precision must be positive, the scale zero or positive.
-     Alternatively:
+     The precision must be positive, while the scale may be positive or
+     negative (see below).  Alternatively:
 <programlisting>
 NUMERIC(<replaceable>precision</replaceable>)
 </programlisting>
@@ -541,9 +554,9 @@ NUMERIC(<replaceable>precision</replaceable>)
 <programlisting>
 NUMERIC
 </programlisting>
-     without any precision or scale creates a column in which numeric
-     values of any precision and scale can be stored, up to the
-     implementation limit on precision.  A column of this kind will
+     without any precision or scale creates an <quote>unconstrained
+     numeric</quote> column in which numeric values of any length can be
+     stored, up to the implementation limits.  A column of this kind will
      not coerce input values to any particular scale, whereas
      <type>numeric</type> columns with a declared scale will coerce
      input values to that scale.  (The <acronym>SQL</acronym> standard
@@ -555,10 +568,10 @@ NUMERIC
 
     <note>
      <para>
-      The maximum allowed precision when explicitly specified in the
-      type declaration is 1000; <type>NUMERIC</type> without a specified
-      precision is subject to the limits described in <xref
-      linkend="datatype-numeric-table"/>.
+      The maximum precision that can be explicitly specified in
+      a <type>numeric</type> type declaration is 1000.  An
+      unconstrained <type>numeric</type> column is subject to the limits
+      described in <xref linkend="datatype-numeric-table"/>.
      </para>
     </note>
 
@@ -568,7 +581,47 @@ NUMERIC
      number of fractional digits.  Then, if the number of digits to the
      left of the decimal point exceeds the declared precision minus the
      declared scale, an error is raised.
+     For example, a column declared as
+<programlisting>
+NUMERIC(3, 1)
+</programlisting>
+     will round values to 1 decimal place and can store values between
+     -99.9 and 99.9, inclusive.
     </para>
+
+    <para>
+     Beginning in <productname>PostgreSQL</productname> 15, it is allowed
+     to declare a <type>numeric</type> column with a negative scale.  Then
+     values will be rounded to the left of the decimal point.  The
+     precision still represents the maximum number of non-rounded digits.
+     Thus, a column declared as
+<programlisting>
+NUMERIC(2, -3)
+</programlisting>
+     will round values to the nearest thousand and can store values
+     between -99000 and 99000, inclusive.
+     It is also allowed to declare a scale larger than the declared
+     precision.  Such a column can only hold fractional values, and it
+     requires the number of zero digits just to the right of the decimal
+     point to be at least the declared scale minus the declared precision.
+     For example, a column declared as
+<programlisting>
+NUMERIC(3, 5)
+</programlisting>
+     will round values to 5 decimal places and can store values between
+     -0.00999 and 0.00999, inclusive.
+    </para>
+
+    <note>
+     <para>
+      <productname>PostgreSQL</productname> permits the scale in a
+      <type>numeric</type> type declaration to be any value in the range
+      -1000 to 1000.  However, the <acronym>SQL</acronym> standard requires
+      the scale to be in the range 0 to <replaceable>precision</replaceable>.
+      Using scales outside that range may not be portable to other database
+      systems.
+     </para>
+    </note>
 
     <para>
      Numeric values are physically stored without any extra leading or
@@ -581,6 +634,11 @@ NUMERIC
     </para>
 
     <indexterm>
+     <primary>infinity</primary>
+     <secondary>numeric (data type)</secondary>
+    </indexterm>
+
+    <indexterm>
      <primary>NaN</primary>
      <see>not a number</see>
    </indexterm>
@@ -591,13 +649,44 @@ NUMERIC
     </indexterm>
 
     <para>
-     In addition to ordinary numeric values, the <type>numeric</type>
-     type allows the special value <literal>NaN</literal>, meaning
-     <quote>not-a-number</quote>.  Any operation on <literal>NaN</literal>
-     yields another <literal>NaN</literal>.  When writing this value
-     as a constant in an SQL command, you must put quotes around it,
-     for example <literal>UPDATE table SET x = 'NaN'</literal>.  On input,
-     the string <literal>NaN</literal> is recognized in a case-insensitive manner.
+     In addition to ordinary numeric values, the <type>numeric</type> type
+     has several special values:
+<literallayout>
+<literal>Infinity</literal>
+<literal>-Infinity</literal>
+<literal>NaN</literal>
+</literallayout>
+     These are adapted from the IEEE 754 standard, and represent
+     <quote>infinity</quote>, <quote>negative infinity</quote>, and
+     <quote>not-a-number</quote>, respectively. When writing these values
+     as constants in an SQL command, you must put quotes around them,
+     for example <literal>UPDATE table SET x = '-Infinity'</literal>.
+     On input, these strings are recognized in a case-insensitive manner.
+     The infinity values can alternatively be spelled <literal>inf</literal>
+     and <literal>-inf</literal>.
+    </para>
+
+    <para>
+     The infinity values behave as per mathematical expectations.  For
+     example, <literal>Infinity</literal> plus any finite value equals
+     <literal>Infinity</literal>, as does <literal>Infinity</literal>
+     plus <literal>Infinity</literal>; but <literal>Infinity</literal>
+     minus <literal>Infinity</literal> yields <literal>NaN</literal> (not a
+     number), because it has no well-defined interpretation.  Note that an
+     infinity can only be stored in an unconstrained <type>numeric</type>
+     column, because it notionally exceeds any finite precision limit.
+    </para>
+
+    <para>
+     The <literal>NaN</literal> (not a number) value is used to represent
+     undefined calculational results.  In general, any operation with
+     a <literal>NaN</literal> input yields another <literal>NaN</literal>.
+     The only exception is when the operation's other inputs are such that
+     the same output would be obtained if the <literal>NaN</literal> were to
+     be replaced by any finite or infinite numeric value; then, that output
+     value is used for <literal>NaN</literal> too.  (An example of this
+     principle is that <literal>NaN</literal> raised to the zero power
+     yields one.)
     </para>
 
     <note>
@@ -671,13 +760,12 @@ FROM generate_series(-3.5, 3.5, 1) as x;
     </indexterm>
 
     <para>
-     The data types <type>real</type> and <type>double
-     precision</type> are inexact, variable-precision numeric types.
-     In practice, these types are usually implementations of
-     <acronym>IEEE</acronym> Standard 754 for Binary Floating-Point
-     Arithmetic (single and double precision, respectively), to the
-     extent that the underlying processor, operating system, and
-     compiler support it.
+     The data types <type>real</type> and <type>double precision</type> are
+     inexact, variable-precision numeric types. On all currently supported
+     platforms, these types are implementations of <acronym>IEEE</acronym>
+     Standard 754 for Binary Floating-Point Arithmetic (single and double
+     precision, respectively), to the extent that the underlying processor,
+     operating system, and compiler support it.
     </para>
 
     <para>
@@ -715,30 +803,68 @@ FROM generate_series(-3.5, 3.5, 1) as x;
     </para>
 
     <para>
-     On most platforms, the <type>real</type> type has a range of at least
-     1E-37 to 1E+37 with a precision of at least 6 decimal digits.  The
-     <type>double precision</type> type typically has a range of around
-     1E-307 to 1E+308 with a precision of at least 15 digits.  Values that
-     are too large or too small will cause an error.  Rounding might
-     take place if the precision of an input number is too high.
-     Numbers too close to zero that are not representable as distinct
-     from zero will cause an underflow error.
+     On all currently supported platforms, the <type>real</type> type has a
+     range of around 1E-37 to 1E+37 with a precision of at least 6 decimal
+     digits. The <type>double precision</type> type has a range of around
+     1E-307 to 1E+308 with a precision of at least 15 digits. Values that are
+     too large or too small will cause an error. Rounding might take place if
+     the precision of an input number is too high. Numbers too close to zero
+     that are not representable as distinct from zero will cause an underflow
+     error.
+    </para>
+
+    <para>
+     By default, floating point values are output in text form in their
+     shortest precise decimal representation; the decimal value produced is
+     closer to the true stored binary value than to any other value
+     representable in the same binary precision. (However, the output value is
+     currently never <emphasis>exactly</emphasis> midway between two
+     representable values, in order to avoid a widespread bug where input
+     routines do not properly respect the round-to-nearest-even rule.) This value will
+     use at most 17 significant decimal digits for <type>float8</type>
+     values, and at most 9 digits for <type>float4</type> values.
     </para>
 
     <note>
      <para>
-      The <xref linkend="guc-extra-float-digits"/> setting controls the
-      number of extra significant digits included when a floating point
-      value is converted to text for output.  With the default value of
-      <literal>0</literal>, the output is the same on every platform
-      supported by PostgreSQL.  Increasing it will produce output that
-      more accurately represents the stored value, but may be unportable.
+      This shortest-precise output format is much faster to generate than the
+      historical rounded format.
+     </para>
+    </note>
+
+    <para>
+     For compatibility with output generated by older versions
+     of <productname>PostgreSQL</productname>, and to allow the output
+     precision to be reduced, the <xref linkend="guc-extra-float-digits"/>
+     parameter can be used to select rounded decimal output instead. Setting a
+     value of 0 restores the previous default of rounding the value to 6
+     (for <type>float4</type>) or 15 (for <type>float8</type>)
+     significant decimal digits. Setting a negative value reduces the number
+     of digits further; for example -2 would round output to 4 or 13 digits
+     respectively.
+    </para>
+
+    <para>
+     Any value of <xref linkend="guc-extra-float-digits"/> greater than 0
+     selects the shortest-precise format.
+    </para>
+
+    <note>
+     <para>
+      Applications that wanted precise values have historically had to set
+      <xref linkend="guc-extra-float-digits"/> to 3 to obtain them. For
+      maximum compatibility between versions, they should continue to do so.
      </para>
     </note>
 
     <indexterm>
+     <primary>infinity</primary>
+     <secondary>floating point</secondary>
+    </indexterm>
+
+    <indexterm>
      <primary>not a number</primary>
-     <secondary>double precision</secondary>
+     <secondary>floating point</secondary>
     </indexterm>
 
     <para>
@@ -751,17 +877,17 @@ FROM generate_series(-3.5, 3.5, 1) as x;
 </literallayout>
      These represent the IEEE 754 special values
      <quote>infinity</quote>, <quote>negative infinity</quote>, and
-     <quote>not-a-number</quote>, respectively.  (On a machine whose
-     floating-point arithmetic does not follow IEEE 754, these values
-     will probably not work as expected.)  When writing these values
+     <quote>not-a-number</quote>, respectively. When writing these values
      as constants in an SQL command, you must put quotes around them,
      for example <literal>UPDATE table SET x = '-Infinity'</literal>.  On input,
      these strings are recognized in a case-insensitive manner.
+     The infinity values can alternatively be spelled <literal>inf</literal>
+     and <literal>-inf</literal>.
     </para>
 
     <note>
      <para>
-      IEEE754 specifies that <literal>NaN</literal> should not compare equal
+      IEEE 754 specifies that <literal>NaN</literal> should not compare equal
       to any other floating-point value (including <literal>NaN</literal>).
       In order to allow floating-point values to be sorted and used
       in tree-based indexes, <productname>PostgreSQL</productname> treats
@@ -785,17 +911,6 @@ FROM generate_series(-3.5, 3.5, 1) as x;
      <type>float</type> with no precision specified is taken to mean
      <type>double precision</type>.
     </para>
-
-    <note>
-     <para>
-      The assumption that <type>real</type> and
-      <type>double precision</type> have exactly 24 and 53 bits in the
-      mantissa respectively is correct for IEEE-standard floating point
-      implementations.  On non-IEEE platforms it might be off a little, but
-      for simplicity the same ranges of <replaceable>p</replaceable> are used
-      on all platforms.
-     </para>
-    </note>
 
    </sect2>
 
@@ -861,7 +976,7 @@ CREATE TABLE <replaceable class="parameter">tablename</replaceable> (
      is equivalent to specifying:
 
 <programlisting>
-CREATE SEQUENCE <replaceable class="parameter">tablename</replaceable>_<replaceable class="parameter">colname</replaceable>_seq;
+CREATE SEQUENCE <replaceable class="parameter">tablename</replaceable>_<replaceable class="parameter">colname</replaceable>_seq AS integer;
 CREATE TABLE <replaceable class="parameter">tablename</replaceable> (
     <replaceable class="parameter">colname</replaceable> integer NOT NULL DEFAULT nextval('<replaceable class="parameter">tablename</replaceable>_<replaceable class="parameter">colname</replaceable>_seq')
 );
@@ -940,6 +1055,10 @@ ALTER SEQUENCE <replaceable class="parameter">tablename</replaceable>_<replaceab
     <table id="datatype-money-table">
      <title>Monetary Types</title>
      <tgroup cols="4">
+      <colspec colname="col1" colwidth="2*"/>
+      <colspec colname="col2" colwidth="1*"/>
+      <colspec colname="col3" colwidth="2*"/>
+      <colspec colname="col4" colwidth="2*"/>
       <thead>
        <row>
         <entry>Name</entry>
@@ -1098,6 +1217,8 @@ SELECT '52093.89'::money::numeric::float8;
     <type>char(<replaceable>n</replaceable>)</type> are aliases for <type>character
     varying(<replaceable>n</replaceable>)</type> and
     <type>character(<replaceable>n</replaceable>)</type>, respectively.
+    If specified, the length must be greater than zero and cannot exceed
+    10485760.
     <type>character</type> without length specifier is equivalent to
     <type>character(1)</type>. If <type>character varying</type> is used
     without length specifier, the type accepts strings of any size. The
@@ -1128,6 +1249,14 @@ SELECT '52093.89'::money::numeric::float8;
     <type>character varying</type> and <type>text</type> values, and
     when using pattern matching, that is <literal>LIKE</literal> and
     regular expressions.
+   </para>
+
+   <para>
+    The characters that can be stored in any of these data types are
+    determined by the database character set, which is selected when
+    the database is created.  Regardless of the specific character set,
+    the character with code zero (sometimes called NUL) cannot be stored.
+    For more information refer to <xref linkend="multibyte"/>.
    </para>
 
    <para>
@@ -1167,10 +1296,7 @@ SELECT '52093.89'::money::numeric::float8;
    <para>
     Refer to <xref linkend="sql-syntax-strings"/> for information about
     the syntax of string literals, and to <xref linkend="functions"/>
-    for information about available operators and functions. The
-    database character set determines the character set used to store
-    textual values; for more information on character set support,
-    refer to <xref linkend="multibyte"/>.
+    for information about available operators and functions.
    </para>
 
    <example>
@@ -1214,9 +1340,10 @@ SELECT b, char_length(b) FROM test2;
    <para>
     There are two other fixed-length character types in
     <productname>PostgreSQL</productname>, shown in <xref
-    linkend="datatype-character-special-table"/>. The <type>name</type>
-    type exists <emphasis>only</emphasis> for the storage of identifiers
-    in the internal system catalogs and is not intended for use by the general user. Its
+    linkend="datatype-character-special-table"/>.
+    These are not intended for general-purpose use, only for use
+    in the internal system catalogs.
+    The <type>name</type> type is used to store identifiers. Its
     length is currently defined as 64 bytes (63 usable characters plus
     terminator) but should be referenced using the constant
     <symbol>NAMEDATALEN</symbol> in <literal>C</literal> source code.
@@ -1224,7 +1351,8 @@ SELECT b, char_length(b) FROM test2;
     is therefore adjustable for special uses); the default maximum
     length might change in a future release. The type <type>"char"</type>
     (note the quotes) is different from <type>char(1)</type> in that it
-    only uses one byte of storage. It is internally used in the system
+    only uses one byte of storage, and therefore can store only a single
+    ASCII character. It is used in the system
     catalogs as a simplistic enumeration type.
    </para>
 
@@ -1274,6 +1402,9 @@ SELECT b, char_length(b) FROM test2;
    <table id="datatype-binary-table">
     <title>Binary Data Types</title>
     <tgroup cols="3">
+     <colspec colname="col1" colwidth="1*"/>
+     <colspec colname="col2" colwidth="3*"/>
+     <colspec colname="col3" colwidth="2*"/>
      <thead>
       <row>
        <entry>Name</entry>
@@ -1390,6 +1521,11 @@ SELECT '\xDEADBEEF';
    <table id="datatype-binary-sqlesc">
     <title><type>bytea</type> Literal Escaped Octets</title>
     <tgroup cols="5">
+     <colspec colname="col1" colwidth="1*"/>
+     <colspec colname="col2" colwidth="1*"/>
+     <colspec colname="col3" colwidth="1*"/>
+     <colspec colname="col4" colwidth="1.25*"/>
+     <colspec colname="col5" colwidth="1*"/>
      <thead>
       <row>
        <entry>Decimal Octet Value</entry>
@@ -1405,7 +1541,7 @@ SELECT '\xDEADBEEF';
        <entry>0</entry>
        <entry>zero octet</entry>
        <entry><literal>'\000'</literal></entry>
-       <entry><literal>SELECT '\000'::bytea;</literal></entry>
+       <entry><literal>'\000'::bytea</literal></entry>
        <entry><literal>\x00</literal></entry>
       </row>
 
@@ -1413,7 +1549,7 @@ SELECT '\xDEADBEEF';
        <entry>39</entry>
        <entry>single quote</entry>
        <entry><literal>''''</literal> or <literal>'\047'</literal></entry>
-       <entry><literal>SELECT ''''::bytea;</literal></entry>
+       <entry><literal>''''::bytea</literal></entry>
        <entry><literal>\x27</literal></entry>
       </row>
 
@@ -1421,7 +1557,7 @@ SELECT '\xDEADBEEF';
        <entry>92</entry>
        <entry>backslash</entry>
        <entry><literal>'\\'</literal> or <literal>'\134'</literal></entry>
-       <entry><literal>SELECT '\\'::bytea;</literal></entry>
+       <entry><literal>'\\'::bytea</literal></entry>
        <entry><literal>\x5c</literal></entry>
       </row>
 
@@ -1429,7 +1565,7 @@ SELECT '\xDEADBEEF';
        <entry>0 to 31 and 127 to 255</entry>
        <entry><quote>non-printable</quote> octets</entry>
        <entry><literal>'\<replaceable>xxx'</replaceable></literal> (octal value)</entry>
-       <entry><literal>SELECT '\001'::bytea;</literal></entry>
+       <entry><literal>'\001'::bytea</literal></entry>
        <entry><literal>\x01</literal></entry>
       </row>
 
@@ -1446,7 +1582,7 @@ SELECT '\xDEADBEEF';
    <para>
     The reason that single quotes must be doubled, as shown
     in <xref linkend="datatype-binary-sqlesc"/>, is that this
-    is true for any string literal in a SQL command.  The generic
+    is true for any string literal in an SQL command.  The generic
     string-literal parser consumes the outermost single quotes
     and reduces any pair of single quotes to one data character.
     What the <type>bytea</type> input function sees is just one
@@ -1489,6 +1625,11 @@ SELECT 'abc \153\154\155 \052\251\124'::bytea;
    <table id="datatype-binary-resesc">
     <title><type>bytea</type> Output Escaped Octets</title>
     <tgroup cols="5">
+     <colspec colname="col1" colwidth="1*"/>
+     <colspec colname="col2" colwidth="1*"/>
+     <colspec colname="col3" colwidth="1*"/>
+     <colspec colname="col4" colwidth="1.25*"/>
+     <colspec colname="col5" colwidth="1*"/>
      <thead>
       <row>
        <entry>Decimal Octet Value</entry>
@@ -1505,7 +1646,7 @@ SELECT 'abc \153\154\155 \052\251\124'::bytea;
        <entry>92</entry>
        <entry>backslash</entry>
        <entry><literal>\\</literal></entry>
-       <entry><literal>SELECT '\134'::bytea;</literal></entry>
+       <entry><literal>'\134'::bytea</literal></entry>
        <entry><literal>\\</literal></entry>
       </row>
 
@@ -1513,7 +1654,7 @@ SELECT 'abc \153\154\155 \052\251\124'::bytea;
        <entry>0 to 31 and 127 to 255</entry>
        <entry><quote>non-printable</quote> octets</entry>
        <entry><literal>\<replaceable>xxx</replaceable></literal> (octal value)</entry>
-       <entry><literal>SELECT '\001'::bytea;</literal></entry>
+       <entry><literal>'\001'::bytea</literal></entry>
        <entry><literal>\001</literal></entry>
       </row>
 
@@ -1521,7 +1662,7 @@ SELECT 'abc \153\154\155 \052\251\124'::bytea;
        <entry>32 to 126</entry>
        <entry><quote>printable</quote> octets</entry>
        <entry>client character set representation</entry>
-       <entry><literal>SELECT '\176'::bytea;</literal></entry>
+       <entry><literal>'\176'::bytea</literal></entry>
        <entry><literal>~</literal></entry>
       </row>
 
@@ -1635,8 +1776,9 @@ SELECT 'abc \153\154\155 \052\251\124'::bytea;
         <entry><type>time [ (<replaceable>p</replaceable>) ] with time zone</type></entry>
         <entry>12 bytes</entry>
         <entry>time of day (no date), with time zone</entry>
-        <entry>00:00:00+1459</entry>
-        <entry>24:00:00-1459</entry>
+        <!-- see MAX_TZDISP_HOUR in datatype/timestamp.h -->
+        <entry>00:00:00+1559</entry>
+        <entry>24:00:00-1559</entry>
         <entry>1 microsecond</entry>
        </row>
        <row>
@@ -1705,14 +1847,6 @@ MINUTE TO SECOND
     any application.
    </para>
 
-   <para>
-    The types <type>abstime</type>
-    and <type>reltime</type> are lower precision types which are used internally.
-    You are discouraged from using these types in
-    applications;  these internal types
-    might disappear in a future release.
-   </para>
-
    <sect2 id="datatype-datetime-input">
     <title>Date/Time Input</title>
 
@@ -1772,6 +1906,8 @@ MINUTE TO SECOND
      <table id="datatype-datetime-date-table">
       <title>Date Input</title>
       <tgroup cols="2">
+       <colspec colname="col1" colwidth="1*"/>
+       <colspec colname="col2" colwidth="2*"/>
        <thead>
         <row>
          <entry>Example</entry>
@@ -1893,6 +2029,8 @@ MINUTE TO SECOND
       <table id="datatype-datetime-time-table">
        <title>Time Input</title>
        <tgroup cols="2">
+        <colspec colname="col1" colwidth="3*"/>
+        <colspec colname="col2" colwidth="2*"/>
         <thead>
          <row>
           <entry>Example</entry>
@@ -1926,19 +2064,27 @@ MINUTE TO SECOND
          </row>
          <row>
           <entry><literal>04:05:06.789-8</literal></entry>
-          <entry>ISO 8601</entry>
+          <entry>ISO 8601, with time zone as UTC offset</entry>
          </row>
          <row>
           <entry><literal>04:05:06-08:00</literal></entry>
-          <entry>ISO 8601</entry>
+          <entry>ISO 8601, with time zone as UTC offset</entry>
          </row>
          <row>
           <entry><literal>04:05-08:00</literal></entry>
-          <entry>ISO 8601</entry>
+          <entry>ISO 8601, with time zone as UTC offset</entry>
          </row>
          <row>
           <entry><literal>040506-08</literal></entry>
-          <entry>ISO 8601</entry>
+          <entry>ISO 8601, with time zone as UTC offset</entry>
+         </row>
+         <row>
+          <entry><literal>040506+0730</literal></entry>
+          <entry>ISO 8601, with fractional-hour time zone as UTC offset</entry>
+         </row>
+         <row>
+          <entry><literal>040506+07:30:00</literal></entry>
+          <entry>UTC offset specified to seconds (not allowed in ISO 8601)</entry>
          </row>
          <row>
           <entry><literal>04:05:06 PST</literal></entry>
@@ -1975,16 +2121,20 @@ MINUTE TO SECOND
           <entry>POSIX-style time zone specification</entry>
          </row>
          <row>
+          <entry><literal>-8:00:00</literal></entry>
+          <entry>UTC offset for PST</entry>
+         </row>
+         <row>
           <entry><literal>-8:00</literal></entry>
-          <entry>ISO-8601 offset for PST</entry>
+          <entry>UTC offset for PST (ISO 8601 extended format)</entry>
          </row>
          <row>
           <entry><literal>-800</literal></entry>
-          <entry>ISO-8601 offset for PST</entry>
+          <entry>UTC offset for PST (ISO 8601 basic format)</entry>
          </row>
          <row>
           <entry><literal>-8</literal></entry>
-          <entry>ISO-8601 offset for PST</entry>
+          <entry>UTC offset for PST (ISO 8601 basic format)</entry>
          </row>
          <row>
           <entry><literal>zulu</literal></entry>
@@ -1992,7 +2142,7 @@ MINUTE TO SECOND
          </row>
          <row>
           <entry><literal>z</literal></entry>
-          <entry>Short form of <literal>zulu</literal></entry>
+          <entry>Short form of <literal>zulu</literal> (also in ISO 8601)</entry>
          </row>
         </tbody>
        </tgroup>
@@ -2050,11 +2200,15 @@ January 8 04:05:06 1999 PST
       <quote>+</quote> or <quote>-</quote> symbol and time zone offset after
       the time.  Hence, according to the standard,
 
-      <programlisting>TIMESTAMP '2004-10-19 10:23:54'</programlisting>
+<programlisting>
+TIMESTAMP '2004-10-19 10:23:54'
+</programlisting>
 
       is a <type>timestamp without time zone</type>, while
 
-      <programlisting>TIMESTAMP '2004-10-19 10:23:54+02'</programlisting>
+<programlisting>
+TIMESTAMP '2004-10-19 10:23:54+02'
+</programlisting>
 
       is a <type>timestamp with time zone</type>.
       <productname>PostgreSQL</productname> never examines the content of a
@@ -2063,7 +2217,9 @@ January 8 04:05:06 1999 PST
       ensure that a literal is treated as <type>timestamp with time
       zone</type>, give it the correct explicit type:
 
-      <programlisting>TIMESTAMP WITH TIME ZONE '2004-10-19 10:23:54+02'</programlisting>
+<programlisting>
+TIMESTAMP WITH TIME ZONE '2004-10-19 10:23:54+02'
+</programlisting>
 
       In a literal that has been determined to be <type>timestamp without time
       zone</type>, <productname>PostgreSQL</productname> will silently ignore
@@ -2102,7 +2258,7 @@ January 8 04:05:06 1999 PST
      </para>
     </sect3>
 
-    <sect3>
+    <sect3 id="datatype-datetime-special-values">
      <title>Special Values</title>
 
      <indexterm>
@@ -2163,17 +2319,17 @@ January 8 04:05:06 1999 PST
          <row>
           <entry><literal>today</literal></entry>
           <entry><type>date</type>, <type>timestamp</type></entry>
-          <entry>midnight today</entry>
+          <entry>midnight (<literal>00:00</literal>) today</entry>
          </row>
          <row>
           <entry><literal>tomorrow</literal></entry>
           <entry><type>date</type>, <type>timestamp</type></entry>
-          <entry>midnight tomorrow</entry>
+          <entry>midnight (<literal>00:00</literal>) tomorrow</entry>
          </row>
          <row>
           <entry><literal>yesterday</literal></entry>
           <entry><type>date</type>, <type>timestamp</type></entry>
-          <entry>midnight yesterday</entry>
+          <entry>midnight (<literal>00:00</literal>) yesterday</entry>
          </row>
          <row>
           <entry><literal>allballs</literal></entry>
@@ -2190,11 +2346,25 @@ January 8 04:05:06 1999 PST
       type:
       <literal>CURRENT_DATE</literal>, <literal>CURRENT_TIME</literal>,
       <literal>CURRENT_TIMESTAMP</literal>, <literal>LOCALTIME</literal>,
-      <literal>LOCALTIMESTAMP</literal>.  The latter four accept an
-      optional subsecond precision specification.  (See <xref
+      <literal>LOCALTIMESTAMP</literal>.  (See <xref
       linkend="functions-datetime-current"/>.)  Note that these are
       SQL functions and are <emphasis>not</emphasis> recognized in data input strings.
      </para>
+
+     <caution>
+      <para>
+       While the input strings <literal>now</literal>,
+       <literal>today</literal>, <literal>tomorrow</literal>,
+       and <literal>yesterday</literal> are fine to use in interactive SQL
+       commands, they can have surprising behavior when the command is
+       saved to be executed later, for example in prepared statements,
+       views, and function definitions.  The string can be converted to a
+       specific time value that continues to be used long after it becomes
+       stale.  Use one of the SQL functions instead in such contexts.
+       For example, <literal>CURRENT_DATE + 1</literal> is safer than
+       <literal>'tomorrow'::date</literal>.
+      </para>
+     </caution>
 
     </sect3>
    </sect2>
@@ -2235,6 +2405,9 @@ January 8 04:05:06 1999 PST
      <table id="datatype-datetime-output-table">
       <title>Date/Time Output Styles</title>
       <tgroup cols="3">
+       <colspec colname="col1" colwidth="1*"/>
+       <colspec colname="col2" colwidth="1*"/>
+       <colspec colname="col3" colwidth="2*"/>
        <thead>
         <row>
          <entry>Style Specification</entry>
@@ -2272,7 +2445,8 @@ January 8 04:05:06 1999 PST
       ISO 8601 specifies the use of uppercase letter <literal>T</literal> to separate
       the date and time.  <productname>PostgreSQL</productname> accepts that format on
       input, but on output it uses a space rather than <literal>T</literal>, as shown
-      above.  This is for readability and for consistency with RFC 3339 as
+      above.  This is for readability and for consistency with
+      <ulink url="https://tools.ietf.org/html/rfc3339">RFC 3339</ulink> as
       well as some other database systems.
      </para>
     </note>
@@ -2289,6 +2463,9 @@ January 8 04:05:06 1999 PST
      <table id="datatype-datetime-output2-table">
       <title>Date Order Conventions</title>
       <tgroup cols="3">
+       <colspec colname="col1" colwidth="1*"/>
+       <colspec colname="col2" colwidth="1*"/>
+       <colspec colname="col3" colwidth="2*"/>
        <thead>
         <row>
          <entry><varname>datestyle</varname> Setting</entry>
@@ -2315,6 +2492,24 @@ January 8 04:05:06 1999 PST
        </tbody>
       </tgroup>
      </table>
+
+    <para>
+     In the <acronym>ISO</acronym> style, the time zone is always shown as
+     a signed numeric offset from UTC, with positive sign used for zones
+     east of Greenwich.  The offset will be shown
+     as <replaceable>hh</replaceable> (hours only) if it is an integral
+     number of hours, else
+     as <replaceable>hh</replaceable>:<replaceable>mm</replaceable> if it
+     is an integral number of minutes, else as
+     <replaceable>hh</replaceable>:<replaceable>mm</replaceable>:<replaceable>ss</replaceable>.
+     (The third case is not possible with any modern time zone standard,
+     but it can appear when working with timestamps that predate the
+     adoption of standardized time zones.)
+     In the other date styles, the time zone is shown as an alphabetic
+     abbreviation if one is in common use in the current zone.  Otherwise
+     it appears as a signed numeric offset in ISO 8601 basic format
+     (<replaceable>hh</replaceable> or <replaceable>hhmm</replaceable>).
+    </para>
 
     <para>
      The date/time style can be selected by the user using the
@@ -2421,7 +2616,7 @@ January 8 04:05:06 1999 PST
         A time zone abbreviation, for example <literal>PST</literal>.  Such a
         specification merely defines a particular offset from UTC, in
         contrast to full time zone names which can imply a set of daylight
-        savings transition-date rules as well.  The recognized abbreviations
+        savings transition rules as well.  The recognized abbreviations
         are listed in the <literal>pg_timezone_abbrevs</literal> view (see <xref
         linkend="view-pg-timezone-abbrevs"/>).  You cannot set the
         configuration parameters <xref linkend="guc-timezone"/> or
@@ -2435,25 +2630,10 @@ January 8 04:05:06 1999 PST
        <para>
         In addition to the timezone names and abbreviations,
         <productname>PostgreSQL</productname> will accept POSIX-style time zone
-        specifications of the form <replaceable>STD</replaceable><replaceable>offset</replaceable> or
-        <replaceable>STD</replaceable><replaceable>offset</replaceable><replaceable>DST</replaceable>, where
-        <replaceable>STD</replaceable> is a zone abbreviation, <replaceable>offset</replaceable> is a
-        numeric offset in hours west from UTC, and <replaceable>DST</replaceable> is an
-        optional daylight-savings zone abbreviation, assumed to stand for one
-        hour ahead of the given offset. For example, if <literal>EST5EDT</literal>
-        were not already a recognized zone name, it would be accepted and would
-        be functionally equivalent to United States East Coast time.  In this
-        syntax, a zone abbreviation can be a string of letters, or an
-        arbitrary string surrounded by angle brackets (<literal>&lt;&gt;</literal>).
-        When a daylight-savings zone abbreviation is present,
-        it is assumed to be used
-        according to the same daylight-savings transition rules used in the
-        IANA time zone database's <filename>posixrules</filename> entry.
-        In a standard <productname>PostgreSQL</productname> installation,
-        <filename>posixrules</filename> is the same as <literal>US/Eastern</literal>, so
-        that POSIX-style time zone specifications follow USA daylight-savings
-        rules.  If needed, you can adjust this behavior by replacing the
-        <filename>posixrules</filename> file.
+        specifications, as described in
+        <xref linkend="datetime-posix-timezone-specs"/>.  This option is not
+        normally preferable to using a named time zone, but it may be
+        necessary if no suitable IANA time zone entry is available.
        </para>
       </listitem>
      </itemizedlist>
@@ -2478,19 +2658,6 @@ January 8 04:05:06 1999 PST
      abbreviations according to whatever they meant (or had most recently
      meant) on the specified date; but, as with the <literal>EST</literal> example
      above, this is not necessarily the same as local civil time on that date.
-    </para>
-
-    <para>
-     One should be wary that the POSIX-style time zone feature can
-     lead to silently accepting bogus input, since there is no check on the
-     reasonableness of the zone abbreviations.  For example, <literal>SET
-     TIMEZONE TO FOOBAR0</literal> will work, leaving the system effectively using
-     a rather peculiar abbreviation for UTC.
-     Another issue to keep in mind is that in POSIX time zone names,
-     positive offsets are used for locations <emphasis>west</emphasis> of Greenwich.
-     Everywhere else, <productname>PostgreSQL</productname> follows the
-     ISO-8601 convention that positive timezone offsets are <emphasis>east</emphasis>
-     of Greenwich.
     </para>
 
     <para>
@@ -2677,15 +2844,18 @@ P <optional> <replaceable>years</replaceable>-<replaceable>months</replaceable>-
     </para>
 
     <para>
-     In the verbose input format, and in some fields of the more compact
-     input formats, field values can have fractional parts; for example
-     <literal>'1.5 week'</literal> or <literal>'01:02:03.45'</literal>.  Such input is
-     converted to the appropriate number of months, days, and seconds
-     for storage.  When this would result in a fractional number of
-     months or days, the fraction is added to the lower-order fields
-     using the conversion factors 1 month = 30 days and 1 day = 24 hours.
-     For example, <literal>'1.5 month'</literal> becomes 1 month and 15 days.
-     Only seconds will ever be shown as fractional on output.
+     Field values can have fractional parts:  for example, <literal>'1.5
+     weeks'</literal> or <literal>'01:02:03.45'</literal>.  However,
+     because interval internally stores only three integer units (months,
+     days, microseconds), fractional units must be spilled to smaller
+     units.  Fractional parts of units greater than months are rounded to
+     be an integer number of months, e.g. <literal>'1.5 years'</literal>
+     becomes <literal>'1 year 6 mons'</literal>.  Fractional parts of
+     weeks and days are computed to be an integer number of days and
+     microseconds, assuming 30 days per month and 24 hours per day, e.g.,
+     <literal>'1.75 months'</literal> becomes <literal>1 mon 22 days
+     12:00:00</literal>.  Only seconds will ever be shown as fractional
+     on output.
     </para>
 
     <para>
@@ -2704,23 +2874,23 @@ P <optional> <replaceable>years</replaceable>-<replaceable>months</replaceable>-
        </thead>
        <tbody>
         <row>
-         <entry>1-2</entry>
+         <entry><literal>1-2</literal></entry>
          <entry>SQL standard format: 1 year 2 months</entry>
         </row>
         <row>
-         <entry>3 4:05:06</entry>
+         <entry><literal>3 4:05:06</literal></entry>
          <entry>SQL standard format: 3 days 4 hours 5 minutes 6 seconds</entry>
         </row>
         <row>
-         <entry>1 year 2 months 3 days 4 hours 5 minutes 6 seconds</entry>
+         <entry><literal>1 year 2 months 3 days 4 hours 5 minutes 6 seconds</literal></entry>
          <entry>Traditional Postgres format: 1 year 2 months 3 days 4 hours 5 minutes 6 seconds</entry>
         </row>
         <row>
-         <entry>P1Y2M3DT4H5M6S</entry>
+         <entry><literal>P1Y2M3DT4H5M6S</literal></entry>
          <entry>ISO 8601 <quote>format with designators</quote>: same meaning as above</entry>
         </row>
         <row>
-         <entry>P0001-02-03T04:05:06</entry>
+         <entry><literal>P0001-02-03T04:05:06</literal></entry>
          <entry>ISO 8601 <quote>alternative format</quote>: same meaning as above</entry>
         </row>
        </tbody>
@@ -2729,10 +2899,10 @@ P <optional> <replaceable>years</replaceable>-<replaceable>months</replaceable>-
 
     <para>
      Internally <type>interval</type> values are stored as months, days,
-     and seconds. This is done because the number of days in a month
+     and microseconds. This is done because the number of days in a month
      varies, and a day can have 23 or 25 hours if a daylight savings
      time adjustment is involved.  The months and days fields are integers
-     while the seconds field can store fractions.  Because intervals are
+     while the microseconds field can store fractional seconds.  Because intervals are
      usually created from constant strings or <type>timestamp</type> subtraction,
      this storage method works well in most cases, but can cause unexpected
      results:
@@ -2837,7 +3007,7 @@ SELECT EXTRACT(days from '80 hours'::interval);
           <entry><literal>iso_8601</literal></entry>
           <entry>P1Y2M</entry>
           <entry>P3DT4H5M6S</entry>
-          <entry>P-1Y-2M3DT-4H-5M-6S</entry>
+          <entry>P-1Y-2M3D&zwsp;T-4H-5M-6S</entry>
          </row>
         </tbody>
        </tgroup>
@@ -2894,37 +3064,36 @@ SELECT EXTRACT(days from '80 hours'::interval);
    </table>
 
    <para>
-    Valid literal values for the <quote>true</quote> state are:
-    <simplelist>
-     <member><literal>TRUE</literal></member>
-     <member><literal>'t'</literal></member>
-     <member><literal>'true'</literal></member>
-     <member><literal>'y'</literal></member>
-     <member><literal>'yes'</literal></member>
-     <member><literal>'on'</literal></member>
-     <member><literal>'1'</literal></member>
-    </simplelist>
-    For the <quote>false</quote> state, the following values can be
-    used:
-    <simplelist>
-     <member><literal>FALSE</literal></member>
-     <member><literal>'f'</literal></member>
-     <member><literal>'false'</literal></member>
-     <member><literal>'n'</literal></member>
-     <member><literal>'no'</literal></member>
-     <member><literal>'off'</literal></member>
-     <member><literal>'0'</literal></member>
-    </simplelist>
-    Leading or trailing whitespace is ignored, and case does not matter.
-    The key words
-    <literal>TRUE</literal> and <literal>FALSE</literal> are the preferred
-    (<acronym>SQL</acronym>-compliant) usage.
+    Boolean constants can be represented in SQL queries by the SQL
+    key words <literal>TRUE</literal>, <literal>FALSE</literal>,
+    and <literal>NULL</literal>.
    </para>
 
    <para>
-    <xref linkend="datatype-boolean-example"/> shows that
-    <type>boolean</type> values are output using the letters
-    <literal>t</literal> and <literal>f</literal>.
+    The datatype input function for type <type>boolean</type> accepts these
+    string representations for the <quote>true</quote> state:
+    <simplelist>
+     <member><literal>true</literal></member>
+     <member><literal>yes</literal></member>
+     <member><literal>on</literal></member>
+     <member><literal>1</literal></member>
+    </simplelist>
+    and these representations for the <quote>false</quote> state:
+    <simplelist>
+     <member><literal>false</literal></member>
+     <member><literal>no</literal></member>
+     <member><literal>off</literal></member>
+     <member><literal>0</literal></member>
+    </simplelist>
+    Unique prefixes of these strings are also accepted, for
+    example <literal>t</literal> or <literal>n</literal>.
+    Leading or trailing whitespace is ignored, and case does not matter.
+   </para>
+
+   <para>
+    The datatype output function for type <type>boolean</type> always emits
+    either <literal>t</literal> or <literal>f</literal>, as shown in
+    <xref linkend="datatype-boolean-example"/>.
    </para>
 
    <example id="datatype-boolean-example">
@@ -2946,6 +3115,27 @@ SELECT * FROM test1 WHERE a;
  t | sic est
 </programlisting>
    </example>
+
+   <para>
+    The key words <literal>TRUE</literal> and <literal>FALSE</literal> are
+    the preferred (<acronym>SQL</acronym>-compliant) method for writing
+    Boolean constants in SQL queries.  But you can also use the string
+    representations by following the generic string-literal constant syntax
+    described in <xref linkend="sql-syntax-constants-generic"/>, for
+    example <literal>'yes'::boolean</literal>.
+   </para>
+
+   <para>
+    Note that the parser automatically understands
+    that <literal>TRUE</literal> and <literal>FALSE</literal> are of
+    type <type>boolean</type>, but this is not so
+    for <literal>NULL</literal> because that can have any type.
+    So in some contexts you might have to cast <literal>NULL</literal>
+    to <type>boolean</type> explicitly, for
+    example <literal>NULL::boolean</literal>.  Conversely, the cast can be
+    omitted from a string-literal Boolean value in contexts where the parser
+    can deduce that the literal must be of type <type>boolean</type>.
+   </para>
   </sect1>
 
   <sect1 id="datatype-enum">
@@ -2991,7 +3181,7 @@ CREATE TABLE person (
 );
 INSERT INTO person VALUES ('Moe', 'happy');
 SELECT * FROM person WHERE current_mood = 'happy';
- name | current_mood 
+ name | current_mood
 ------+--------------
  Moe  | happy
 (1 row)
@@ -3012,14 +3202,14 @@ SELECT * FROM person WHERE current_mood = 'happy';
 INSERT INTO person VALUES ('Larry', 'sad');
 INSERT INTO person VALUES ('Curly', 'ok');
 SELECT * FROM person WHERE current_mood > 'sad';
- name  | current_mood 
+ name  | current_mood
 -------+--------------
  Moe   | happy
  Curly | ok
 (2 rows)
 
 SELECT * FROM person WHERE current_mood > 'sad' ORDER BY current_mood;
- name  | current_mood 
+ name  | current_mood
 -------+--------------
  Curly | ok
  Moe   | happy
@@ -3028,7 +3218,7 @@ SELECT * FROM person WHERE current_mood > 'sad' ORDER BY current_mood;
 SELECT name
 FROM person
 WHERE current_mood = (SELECT MIN(current_mood) FROM person);
- name  
+ name
 -------
  Larry
 (1 row)
@@ -3067,7 +3257,7 @@ ERROR:  operator does not exist: mood = happiness
 <programlisting>
 SELECT person.name, holidays.num_weeks FROM person, holidays
   WHERE person.current_mood::text = holidays.happiness::text;
- name | num_weeks 
+ name | num_weeks
 ------+-----------
  Moe  |         4
 (1 row)
@@ -3122,6 +3312,10 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
     <table id="datatype-geo-table">
      <title>Geometric Types</title>
      <tgroup cols="4">
+      <colspec colname="col1" colwidth="1*"/>
+      <colspec colname="col2" colwidth="1*"/>
+      <colspec colname="col3" colwidth="2*"/>
+      <colspec colname="col4" colwidth="1*"/>
       <thead>
        <row>
         <entry>Name</entry>
@@ -3372,8 +3566,9 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
 
     <para>
      Polygons are represented by lists of points (the vertexes of the
-     polygon). Polygons are very similar to closed paths, but are
-     stored differently and have their own set of support routines.
+     polygon). Polygons are very similar to closed paths; the essential
+     difference is that a polygon is considered to include the area
+     within it, while a path is not.
     </para>
 
     <para>
@@ -3448,6 +3643,9 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
     <table tocentry="1" id="datatype-net-types-table">
      <title>Network Address Types</title>
      <tgroup cols="3">
+      <colspec colname="col1" colwidth="1*"/>
+      <colspec colname="col2" colwidth="1*"/>
+      <colspec colname="col3" colwidth="2*"/>
       <thead>
        <row>
         <entry>Name</entry>
@@ -3522,8 +3720,9 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
       <replaceable class="parameter">y</replaceable>
       is the number of bits in the netmask.  If the
       <replaceable class="parameter">/y</replaceable>
-      portion is missing, the
-      netmask is 32 for IPv4 and 128 for IPv6, so the value represents
+      portion is omitted, the
+      netmask is taken to be 32 for IPv4 or 128 for IPv6,
+      so the value represents
       just a single host.  On display, the
       <replaceable class="parameter">/y</replaceable>
       portion is suppressed if the netmask specifies a single host.
@@ -3543,7 +3742,8 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
      conventions.
      The format for specifying networks is <replaceable
      class="parameter">address/y</replaceable> where <replaceable
-     class="parameter">address</replaceable> is the network represented as an
+     class="parameter">address</replaceable> is the network's lowest
+     address represented as an
      IPv4 or IPv6 address, and <replaceable
      class="parameter">y</replaceable> is the number of bits in the netmask.  If
      <replaceable class="parameter">y</replaceable> is omitted, it is calculated
@@ -3631,12 +3831,12 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
         <row>
          <entry>2001:4f8:3:ba::/64</entry>
          <entry>2001:4f8:3:ba::/64</entry>
-         <entry>2001:4f8:3:ba::/64</entry>
+         <entry>2001:4f8:3:ba/64</entry>
         </row>
         <row>
-         <entry>2001:4f8:3:ba:2e0:81ff:fe22:d1f1/128</entry>
-         <entry>2001:4f8:3:ba:2e0:81ff:fe22:d1f1/128</entry>
-         <entry>2001:4f8:3:ba:2e0:81ff:fe22:d1f1</entry>
+         <entry>2001:4f8:3:ba:&zwsp;2e0:81ff:fe22:d1f1/128</entry>
+         <entry>2001:4f8:3:ba:&zwsp;2e0:81ff:fe22:d1f1/128</entry>
+         <entry>2001:4f8:3:ba:&zwsp;2e0:81ff:fe22:d1f1/128</entry>
         </row>
         <row>
          <entry>::ffff:1.2.3.0/120</entry>
@@ -3701,20 +3901,20 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
       <member><literal>'08002b010203'</literal></member>
      </simplelist>
 
-     These examples would all specify the same address.  Upper and
+     These examples all specify the same address.  Upper and
      lower case is accepted for the digits
      <literal>a</literal> through <literal>f</literal>.  Output is always in the
      first of the forms shown.
     </para>
 
     <para>
-     IEEE Std 802-2001 specifies the second shown form (with hyphens)
+     IEEE Standard 802-2001 specifies the second form shown (with hyphens)
      as the canonical form for MAC addresses, and specifies the first
-     form (with colons) as the bit-reversed notation, so that
-     08-00-2b-01-02-03 = 01:00:4D:08:04:0C.  This convention is widely
+     form (with colons) as used with bit-reversed, MSB-first notation, so that
+     08-00-2b-01-02-03 = 10:00:D4:80:40:C0.  This convention is widely
      ignored nowadays, and it is relevant only for obsolete network
      protocols (such as Token Ring).  PostgreSQL makes no provisions
-     for bit reversal, and all accepted formats use the canonical LSB
+     for bit reversal; all accepted formats use the canonical LSB
      order.
     </para>
 
@@ -3768,14 +3968,17 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
       <member><literal>'08002b0102030405'</literal></member>
      </simplelist>
 
-     These examples would all specify the same address.  Upper and
+     These examples all specify the same address.  Upper and
      lower case is accepted for the digits
      <literal>a</literal> through <literal>f</literal>.  Output is always in the
      first of the forms shown.
+    </para>
 
-     The last six input formats that are mentioned above are not part
-     of any standard.
+    <para>
+     The last six input formats shown above are not part of any standard.
+    </para>
 
+    <para>
      To convert a traditional 48 bit MAC address in EUI-48 format to
      modified EUI-64 format to be included as the host portion of an
      IPv6 address, use <function>macaddr8_set7bit</function> as shown:
@@ -3783,7 +3986,7 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
 <programlisting>
 SELECT macaddr8_set7bit('08:00:2b:01:02:03');
 <computeroutput>
-    macaddr8_set7bit     
+    macaddr8_set7bit
 -------------------------
  0a:00:2b:ff:fe:01:02:03
 (1 row)
@@ -3925,7 +4128,7 @@ SELECT 'a fat cat sat on a mat and ate a fat rat'::tsvector;
 
 <programlisting>
 SELECT $$the lexeme '    ' contains spaces$$::tsvector;
-                 tsvector                  
+                 tsvector
 -------------------------------------------
  '    ' 'contains' 'lexeme' 'spaces' 'the'
 </programlisting>
@@ -3936,7 +4139,7 @@ SELECT $$the lexeme '    ' contains spaces$$::tsvector;
 
 <programlisting>
 SELECT $$the lexeme 'Joe''s' contains a quote$$::tsvector;
-                    tsvector                    
+                    tsvector
 ------------------------------------------------
  'Joe''s' 'a' 'contains' 'lexeme' 'quote' 'the'
 </programlisting>
@@ -3947,7 +4150,7 @@ SELECT $$the lexeme 'Joe''s' contains a quote$$::tsvector;
 <programlisting>
 SELECT 'a:1 fat:2 cat:3 sat:4 on:5 a:6 mat:7 and:8 ate:9 a:10 fat:11 rat:12'::tsvector;
                                   tsvector
--------------------------------------------------------------------------------
+-------------------------------------------------------------------&zwsp;------------
  'a':1,6,10 'and':8 'ate':9 'cat':3 'fat':2,11 'mat':7 'on':5 'rat':12 'sat':4
 </programlisting>
 
@@ -3966,7 +4169,7 @@ SELECT 'a:1 fat:2 cat:3 sat:4 on:5 a:6 mat:7 and:8 ate:9 a:10 fat:11 rat:12'::ts
 
 <programlisting>
 SELECT 'a:1A fat:2B,4C cat:5D'::tsvector;
-          tsvector          
+          tsvector
 ----------------------------
  'a':1A 'cat':5 'fat':2B,4C
 </programlisting>
@@ -3985,7 +4188,7 @@ SELECT 'a:1A fat:2B,4C cat:5D'::tsvector;
 
 <programlisting>
 SELECT 'The Fat Rats'::tsvector;
-      tsvector      
+      tsvector
 --------------------
  'Fat' 'Rats' 'The'
 </programlisting>
@@ -3998,7 +4201,7 @@ SELECT 'The Fat Rats'::tsvector;
 
 <programlisting>
 SELECT to_tsvector('english', 'The Fat Rats');
-   to_tsvector   
+   to_tsvector
 -----------------
  'fat':2 'rat':3
 </programlisting>
@@ -4040,17 +4243,17 @@ SELECT to_tsvector('english', 'The Fat Rats');
 
 <programlisting>
 SELECT 'fat &amp; rat'::tsquery;
-    tsquery    
+    tsquery
 ---------------
  'fat' &amp; 'rat'
 
 SELECT 'fat &amp; (rat | cat)'::tsquery;
-          tsquery          
+          tsquery
 ---------------------------
  'fat' &amp; ( 'rat' | 'cat' )
 
 SELECT 'fat &amp; rat &amp; ! cat'::tsquery;
-        tsquery         
+        tsquery
 ------------------------
  'fat' &amp; 'rat' &amp; !'cat'
 </programlisting>
@@ -4074,7 +4277,7 @@ SELECT 'fat:ab &amp; cat'::tsquery;
      to specify prefix matching:
 <programlisting>
 SELECT 'super:*'::tsquery;
-  tsquery  
+  tsquery
 -----------
  'super':*
 </programlisting>
@@ -4091,7 +4294,7 @@ SELECT 'super:*'::tsquery;
 
 <programlisting>
 SELECT to_tsquery('Fat:ab &amp; Cats');
-    to_tsquery    
+    to_tsquery
 ------------------
  'fat':AB &amp; 'cat'
 </programlisting>
@@ -4128,7 +4331,8 @@ SELECT to_tsvector( 'postgraduate' ), to_tsquery( 'postgres:*' );
 
    <para>
     The data type <type>uuid</type> stores Universally Unique Identifiers
-    (UUID) as defined by RFC 4122, ISO/IEC 9834-8:2005, and related standards.
+    (UUID) as defined by <ulink url="https://tools.ietf.org/html/rfc4122">RFC 4122</ulink>,
+    ISO/IEC 9834-8:2005, and related standards.
     (Some systems refer to this data type as a globally unique identifier, or
     GUID,<indexterm><primary>GUID</primary></indexterm> instead.)  This
     identifier is a 128-bit quantity that is generated by an algorithm chosen
@@ -4164,16 +4368,8 @@ a0ee-bc99-9c0b-4ef8-bb6d-6bb9-bd38-0a11
    </para>
 
    <para>
-    <productname>PostgreSQL</productname> provides storage and comparison
-    functions for UUIDs, but the core database does not include any
-    function for generating UUIDs, because no single algorithm is well
-    suited for every application.  The <xref
-    linkend="uuid-ossp"/> module
-    provides functions that implement several standard algorithms.
-    The <xref linkend="pgcrypto"/> module also provides a generation
-    function for random UUIDs.
-    Alternatively, UUIDs could be generated by client applications or
-    other libraries invoked through a server-side function.
+    See <xref linkend="functions-uuid"/> for how to generate a UUID in
+    <productname>PostgreSQL</productname>.
    </para>
   </sect1>
 
@@ -4197,13 +4393,20 @@ a0ee-bc99-9c0b-4ef8-bb6d-6bb9-bd38-0a11
    <para>
     The <type>xml</type> type can store well-formed
     <quote>documents</quote>, as defined by the XML standard, as well
-    as <quote>content</quote> fragments, which are defined by the
-    production <literal>XMLDecl? content</literal> in the XML
-    standard.  Roughly, this means that content fragments can have
+    as <quote>content</quote> fragments, which are defined by reference
+    to the more permissive
+    <ulink url="https://www.w3.org/TR/2010/REC-xpath-datamodel-20101214/#DocumentNode"><quote>document node</quote></ulink>
+    of the XQuery and XPath data model.
+    Roughly, this means that content fragments can have
     more than one top-level element or character node.  The expression
     <literal><replaceable>xmlvalue</replaceable> IS DOCUMENT</literal>
     can be used to evaluate whether a particular <type>xml</type>
     value is a full document or only a content fragment.
+   </para>
+
+   <para>
+    Limits and compatibility notes for the <type>xml</type> data type
+    can be found in <xref linkend="xml-limits-conformance"/>.
    </para>
 
    <sect2>
@@ -4273,16 +4476,6 @@ SET xmloption TO { DOCUMENT | CONTENT };
     The default is <literal>CONTENT</literal>, so all forms of XML
     data are allowed.
    </para>
-
-   <note>
-    <para>
-     With the default XML option setting, you cannot directly cast
-     character strings to type <type>xml</type> if they contain a
-     document type declaration, because the definition of XML content
-     fragment does not accept them.  If you need to do that, either
-     use <literal>XMLPARSE</literal> or change the XML option.
-    </para>
-   </note>
 
    </sect2>
 
@@ -4453,27 +4646,11 @@ INSERT INTO mytable VALUES(-1);  -- fails
    </indexterm>
 
    <indexterm zone="datatype-oid">
-    <primary>regproc</primary>
-   </indexterm>
-
-   <indexterm zone="datatype-oid">
-    <primary>regprocedure</primary>
-   </indexterm>
-
-   <indexterm zone="datatype-oid">
-    <primary>regoper</primary>
-   </indexterm>
-
-   <indexterm zone="datatype-oid">
-    <primary>regoperator</primary>
-   </indexterm>
-
-   <indexterm zone="datatype-oid">
     <primary>regclass</primary>
    </indexterm>
 
    <indexterm zone="datatype-oid">
-    <primary>regtype</primary>
+    <primary>regcollation</primary>
    </indexterm>
 
    <indexterm zone="datatype-oid">
@@ -4485,7 +4662,35 @@ INSERT INTO mytable VALUES(-1);  -- fails
    </indexterm>
 
    <indexterm zone="datatype-oid">
-    <primary>xid</primary>
+    <primary>regnamespace</primary>
+   </indexterm>
+
+   <indexterm zone="datatype-oid">
+    <primary>regoper</primary>
+   </indexterm>
+
+   <indexterm zone="datatype-oid">
+    <primary>regoperator</primary>
+   </indexterm>
+
+   <indexterm zone="datatype-oid">
+    <primary>regproc</primary>
+   </indexterm>
+
+   <indexterm zone="datatype-oid">
+    <primary>regprocedure</primary>
+   </indexterm>
+
+   <indexterm zone="datatype-oid">
+    <primary>regrole</primary>
+   </indexterm>
+
+   <indexterm zone="datatype-oid">
+    <primary>regtype</primary>
+   </indexterm>
+
+   <indexterm zone="datatype-oid">
+    <primary>xid8</primary>
    </indexterm>
 
    <indexterm zone="datatype-oid">
@@ -4496,28 +4701,26 @@ INSERT INTO mytable VALUES(-1);  -- fails
     <primary>tid</primary>
    </indexterm>
 
+   <indexterm zone="datatype-oid">
+    <primary>xid</primary>
+   </indexterm>
+
    <para>
     Object identifiers (OIDs) are used internally by
     <productname>PostgreSQL</productname> as primary keys for various
-    system tables.  OIDs are not added to user-created tables, unless
-    <literal>WITH OIDS</literal> is specified when the table is
-    created, or the <xref linkend="guc-default-with-oids"/>
-    configuration variable is enabled.  Type <type>oid</type> represents
-    an object identifier.  There are also several alias types for
-    <type>oid</type>: <type>regproc</type>, <type>regprocedure</type>,
-    <type>regoper</type>, <type>regoperator</type>, <type>regclass</type>,
-    <type>regtype</type>, <type>regrole</type>, <type>regnamespace</type>,
-    <type>regconfig</type>, and <type>regdictionary</type>.
-    <xref linkend="datatype-oid-table"/> shows an overview.
+    system tables.
+    Type <type>oid</type> represents an object identifier.  There are also
+    several alias types for <type>oid</type>, each
+    named <type>reg<replaceable>something</replaceable></type>.
+    <xref linkend="datatype-oid-table"/> shows an
+    overview.
    </para>
 
    <para>
     The <type>oid</type> type is currently implemented as an unsigned
     four-byte integer.  Therefore, it is not large enough to provide
     database-wide uniqueness in large databases, or even in large
-    individual tables.  So, using a user-created table's OID column as
-    a primary key is discouraged.  OIDs are best used only for
-    references to system tables.
+    individual tables.
    </para>
 
    <para>
@@ -4575,34 +4778,6 @@ SELECT * FROM pg_attribute
        </row>
 
        <row>
-        <entry><type>regproc</type></entry>
-        <entry><structname>pg_proc</structname></entry>
-        <entry>function name</entry>
-        <entry><literal>sum</literal></entry>
-       </row>
-
-       <row>
-        <entry><type>regprocedure</type></entry>
-        <entry><structname>pg_proc</structname></entry>
-        <entry>function with argument types</entry>
-        <entry><literal>sum(int4)</literal></entry>
-       </row>
-
-       <row>
-        <entry><type>regoper</type></entry>
-        <entry><structname>pg_operator</structname></entry>
-        <entry>operator name</entry>
-        <entry><literal>+</literal></entry>
-       </row>
-
-       <row>
-        <entry><type>regoperator</type></entry>
-        <entry><structname>pg_operator</structname></entry>
-        <entry>operator with argument types</entry>
-        <entry><literal>*(integer,integer)</literal> or <literal>-(NONE,integer)</literal></entry>
-       </row>
-
-       <row>
         <entry><type>regclass</type></entry>
         <entry><structname>pg_class</structname></entry>
         <entry>relation name</entry>
@@ -4610,24 +4785,10 @@ SELECT * FROM pg_attribute
        </row>
 
        <row>
-        <entry><type>regtype</type></entry>
-        <entry><structname>pg_type</structname></entry>
-        <entry>data type name</entry>
-        <entry><literal>integer</literal></entry>
-       </row>
-
-       <row>
-        <entry><type>regrole</type></entry>
-        <entry><structname>pg_authid</structname></entry>
-        <entry>role name</entry>
-        <entry><literal>smithee</literal></entry>
-       </row>
-
-       <row>
-        <entry><type>regnamespace</type></entry>
-        <entry><structname>pg_namespace</structname></entry>
-        <entry>namespace name</entry>
-        <entry><literal>pg_catalog</literal></entry>
+        <entry><type>regcollation</type></entry>
+        <entry><structname>pg_collation</structname></entry>
+        <entry>collation name</entry>
+        <entry><literal>"POSIX"</literal></entry>
        </row>
 
        <row>
@@ -4643,21 +4804,156 @@ SELECT * FROM pg_attribute
         <entry>text search dictionary</entry>
         <entry><literal>simple</literal></entry>
        </row>
+
+       <row>
+        <entry><type>regnamespace</type></entry>
+        <entry><structname>pg_namespace</structname></entry>
+        <entry>namespace name</entry>
+        <entry><literal>pg_catalog</literal></entry>
+       </row>
+
+       <row>
+        <entry><type>regoper</type></entry>
+        <entry><structname>pg_operator</structname></entry>
+        <entry>operator name</entry>
+        <entry><literal>+</literal></entry>
+       </row>
+
+       <row>
+        <entry><type>regoperator</type></entry>
+        <entry><structname>pg_operator</structname></entry>
+        <entry>operator with argument types</entry>
+        <entry><literal>*(integer,&zwsp;integer)</literal>
+         or <literal>-(NONE,&zwsp;integer)</literal></entry>
+       </row>
+
+       <row>
+        <entry><type>regproc</type></entry>
+        <entry><structname>pg_proc</structname></entry>
+        <entry>function name</entry>
+        <entry><literal>sum</literal></entry>
+       </row>
+
+       <row>
+        <entry><type>regprocedure</type></entry>
+        <entry><structname>pg_proc</structname></entry>
+        <entry>function with argument types</entry>
+        <entry><literal>sum(int4)</literal></entry>
+       </row>
+
+       <row>
+        <entry><type>regrole</type></entry>
+        <entry><structname>pg_authid</structname></entry>
+        <entry>role name</entry>
+        <entry><literal>smithee</literal></entry>
+       </row>
+
+       <row>
+        <entry><type>regtype</type></entry>
+        <entry><structname>pg_type</structname></entry>
+        <entry>data type name</entry>
+        <entry><literal>integer</literal></entry>
+       </row>
       </tbody>
      </tgroup>
     </table>
 
    <para>
-    All of the OID alias types for objects grouped by namespace accept
-    schema-qualified names, and will
+    All of the OID alias types for objects that are grouped by namespace
+    accept schema-qualified names, and will
     display schema-qualified names on output if the object would not
     be found in the current search path without being qualified.
+    For example, <literal>myschema.mytable</literal> is acceptable input
+    for <type>regclass</type> (if there is such a table).  That value
+    might be output as <literal>myschema.mytable</literal>, or
+    just <literal>mytable</literal>, depending on the current search path.
     The <type>regproc</type> and <type>regoper</type> alias types will only
     accept input names that are unique (not overloaded), so they are
     of limited use; for most uses <type>regprocedure</type> or
     <type>regoperator</type> are more appropriate.  For <type>regoperator</type>,
     unary operators are identified by writing <literal>NONE</literal> for the unused
     operand.
+   </para>
+
+   <para>
+    The input functions for these types allow whitespace between tokens,
+    and will fold upper-case letters to lower case, except within double
+    quotes; this is done to make the syntax rules similar to the way
+    object names are written in SQL.  Conversely, the output functions
+    will use double quotes if needed to make the output be a valid SQL
+    identifier.  For example, the OID of a function
+    named <literal>Foo</literal> (with upper case <literal>F</literal>)
+    taking two integer arguments could be entered as
+    <literal>' "Foo" ( int, integer ) '::regprocedure</literal>.  The
+    output would look like <literal>"Foo"(integer,integer)</literal>.
+    Both the function name and the argument type names could be
+    schema-qualified, too.
+   </para>
+
+   <para>
+    Many built-in <productname>PostgreSQL</productname> functions accept
+    the OID of a table, or another kind of database object, and for
+    convenience are declared as taking <type>regclass</type> (or the
+    appropriate OID alias type).  This means you do not have to look up
+    the object's OID by hand, but can just enter its name as a string
+    literal.  For example, the <function>nextval(regclass)</function> function
+    takes a sequence relation's OID, so you could call it like this:
+<programlisting>
+nextval('foo')              <lineannotation>operates on sequence <literal>foo</literal></lineannotation>
+nextval('FOO')              <lineannotation>same as above</lineannotation>
+nextval('"Foo"')            <lineannotation>operates on sequence <literal>Foo</literal></lineannotation>
+nextval('myschema.foo')     <lineannotation>operates on <literal>myschema.foo</literal></lineannotation>
+nextval('"myschema".foo')   <lineannotation>same as above</lineannotation>
+nextval('foo')              <lineannotation>searches search path for <literal>foo</literal></lineannotation>
+</programlisting>
+   </para>
+
+   <note>
+    <para>
+     When you write the argument of such a function as an unadorned
+     literal string, it becomes a constant of type <type>regclass</type>
+     (or the appropriate type).
+     Since this is really just an OID, it will track the originally
+     identified object despite later renaming, schema reassignment,
+     etc.  This <quote>early binding</quote> behavior is usually desirable for
+     object references in column defaults and views.  But sometimes you might
+     want <quote>late binding</quote> where the object reference is resolved
+     at run time.  To get late-binding behavior, force the constant to be
+     stored as a <type>text</type> constant instead of <type>regclass</type>:
+<programlisting>
+nextval('foo'::text)      <lineannotation><literal>foo</literal> is looked up at runtime</lineannotation>
+</programlisting>
+     The <function>to_regclass()</function> function and its siblings
+     can also be used to perform run-time lookups.  See
+     <xref linkend="functions-info-catalog-table"/>.
+    </para>
+   </note>
+
+   <para>
+    Another practical example of use of <type>regclass</type>
+    is to look up the OID of a table listed in
+    the <literal>information_schema</literal> views, which don't supply
+    such OIDs directly.  One might for example wish to call
+    the <function>pg_relation_size()</function> function, which requires
+    the table OID.  Taking the above rules into account, the correct way
+    to do that is
+<programlisting>
+SELECT table_schema, table_name,
+       pg_relation_size((quote_ident(table_schema) || '.' ||
+                         quote_ident(table_name))::regclass)
+FROM information_schema.tables
+WHERE ...
+</programlisting>
+    The <function>quote_ident()</function> function will take care of
+    double-quoting the identifiers where needed.  The seemingly easier
+<programlisting>
+SELECT pg_relation_size(table_name)
+FROM information_schema.tables
+WHERE ...
+</programlisting>
+    is <emphasis>not recommended</emphasis>, because it will fail for
+    tables that are outside your search path or have names that require
+    quoting.
    </para>
 
    <para>
@@ -4669,24 +4965,21 @@ SELECT * FROM pg_attribute
     expression <literal>nextval('my_seq'::regclass)</literal>,
     <productname>PostgreSQL</productname>
     understands that the default expression depends on the sequence
-    <literal>my_seq</literal>; the system will not let the sequence be dropped
-    without first removing the default expression.
-    <type>regrole</type> is the only exception for the property. Constants of this
-    type are not allowed in such expressions.
+    <literal>my_seq</literal>, so the system will not let the sequence
+    be dropped without first removing the default expression.  The
+    alternative of <literal>nextval('my_seq'::text)</literal> does not
+    create a dependency.
+    (<type>regrole</type> is an exception to this property. Constants of this
+    type are not allowed in stored expressions.)
    </para>
-
-   <note>
-   <para>
-    The OID alias types do not completely follow transaction isolation
-    rules. The planner also treats them as simple constants, which may
-    result in sub-optimal planning.
-   </para>
-   </note>
 
    <para>
     Another identifier type used by the system is <type>xid</type>, or transaction
     (abbreviated <abbrev>xact</abbrev>) identifier.  This is the data type of the system columns
     <structfield>xmin</structfield> and <structfield>xmax</structfield>.  Transaction identifiers are 32-bit quantities.
+    In some contexts, a 64-bit variant <type>xid8</type> is used.  Unlike
+    <type>xid</type> values, <type>xid8</type> values increase strictly
+    monotonically and cannot be reused in the lifetime of a database cluster.
    </para>
 
    <para>
@@ -4710,7 +5003,7 @@ SELECT * FROM pg_attribute
   </sect1>
 
   <sect1 id="datatype-pg-lsn">
-   <title><acronym>pg_lsn Type</acronym></title>
+   <title><type>pg_lsn</type> Type</title>
 
    <indexterm zone="datatype-pg-lsn">
     <primary>pg_lsn</primary>
@@ -4731,7 +5024,13 @@ SELECT * FROM pg_attribute
     standard comparison operators, like <literal>=</literal> and
     <literal>&gt;</literal>.  Two LSNs can be subtracted using the
     <literal>-</literal> operator; the result is the number of bytes separating
-    those write-ahead log locations.
+    those write-ahead log locations.  Also the number of bytes can be
+    added into and subtracted from LSN using the
+    <literal>+(pg_lsn,numeric)</literal> and
+    <literal>-(pg_lsn,numeric)</literal> operators, respectively. Note that
+    the calculated LSN should be in the range of <type>pg_lsn</type> type,
+    i.e., between <literal>0/0</literal> and
+    <literal>FFFFFFFF/FFFFFFFF</literal>.
    </para>
   </sect1>
 
@@ -4767,6 +5066,30 @@ SELECT * FROM pg_attribute
    </indexterm>
 
    <indexterm zone="datatype-pseudo">
+    <primary>anymultirange</primary>
+   </indexterm>
+
+   <indexterm zone="datatype-pseudo">
+    <primary>anycompatible</primary>
+   </indexterm>
+
+   <indexterm zone="datatype-pseudo">
+    <primary>anycompatiblearray</primary>
+   </indexterm>
+
+   <indexterm zone="datatype-pseudo">
+    <primary>anycompatiblenonarray</primary>
+   </indexterm>
+
+   <indexterm zone="datatype-pseudo">
+    <primary>anycompatiblerange</primary>
+   </indexterm>
+
+   <indexterm zone="datatype-pseudo">
+    <primary>anycompatiblemultirange</primary>
+   </indexterm>
+
+   <indexterm zone="datatype-pseudo">
     <primary>void</primary>
    </indexterm>
 
@@ -4791,6 +5114,10 @@ SELECT * FROM pg_attribute
    </indexterm>
 
    <indexterm zone="datatype-pseudo">
+    <primary>table_am_handler</primary>
+   </indexterm>
+
+   <indexterm zone="datatype-pseudo">
     <primary>index_am_handler</primary>
    </indexterm>
 
@@ -4810,10 +5137,6 @@ SELECT * FROM pg_attribute
     <primary>unknown</primary>
    </indexterm>
 
-   <indexterm zone="datatype-pseudo">
-    <primary>opaque</primary>
-   </indexterm>
-
    <para>
     The <productname>PostgreSQL</productname> type system contains a
     number of special-purpose entries that are collectively called
@@ -4830,6 +5153,8 @@ SELECT * FROM pg_attribute
     <table id="datatype-pseudotypes-table">
      <title>Pseudo-Types</title>
      <tgroup cols="2">
+      <colspec colname="col1" colwidth="2*"/>
+      <colspec colname="col2" colwidth="3*"/>
       <thead>
        <row>
         <entry>Name</entry>
@@ -4876,6 +5201,50 @@ SELECT * FROM pg_attribute
        </row>
 
        <row>
+        <entry><type>anymultirange</type></entry>
+        <entry>Indicates that a function accepts any multirange data type
+        (see <xref linkend="extend-types-polymorphic"/> and
+        <xref linkend="rangetypes"/>).</entry>
+       </row>
+
+       <row>
+        <entry><type>anycompatible</type></entry>
+        <entry>Indicates that a function accepts any data type,
+        with automatic promotion of multiple arguments to a common data type
+        (see <xref linkend="extend-types-polymorphic"/>).</entry>
+       </row>
+
+       <row>
+        <entry><type>anycompatiblearray</type></entry>
+        <entry>Indicates that a function accepts any array data type,
+        with automatic promotion of multiple arguments to a common data type
+        (see <xref linkend="extend-types-polymorphic"/>).</entry>
+       </row>
+
+       <row>
+        <entry><type>anycompatiblenonarray</type></entry>
+        <entry>Indicates that a function accepts any non-array data type,
+        with automatic promotion of multiple arguments to a common data type
+        (see <xref linkend="extend-types-polymorphic"/>).</entry>
+       </row>
+
+       <row>
+        <entry><type>anycompatiblerange</type></entry>
+        <entry>Indicates that a function accepts any range data type,
+        with automatic promotion of multiple arguments to a common data type
+        (see <xref linkend="extend-types-polymorphic"/> and
+        <xref linkend="rangetypes"/>).</entry>
+       </row>
+
+       <row>
+        <entry><type>anycompatiblemultirange</type></entry>
+        <entry>Indicates that a function accepts any multirange data type,
+        with automatic promotion of multiple arguments to a common data type
+        (see <xref linkend="extend-types-polymorphic"/> and
+        <xref linkend="rangetypes"/>).</entry>
+       </row>
+
+       <row>
         <entry><type>cstring</type></entry>
         <entry>Indicates that a function accepts or returns a null-terminated C string.</entry>
        </row>
@@ -4894,6 +5263,11 @@ SELECT * FROM pg_attribute
        <row>
         <entry><type>fdw_handler</type></entry>
         <entry>A foreign-data wrapper handler is declared to return <type>fdw_handler</type>.</entry>
+       </row>
+
+       <row>
+        <entry><type>table_am_handler</type></entry>
+        <entry>A table access method handler is declared to return <type>table_am_handler</type>.</entry>
        </row>
 
        <row>
@@ -4933,14 +5307,8 @@ SELECT * FROM pg_attribute
 
        <row>
         <entry><type>unknown</type></entry>
-        <entry>Identifies a not-yet-resolved type, e.g. of an undecorated
+        <entry>Identifies a not-yet-resolved type, e.g., of an undecorated
          string literal.</entry>
-       </row>
-
-       <row>
-        <entry><type>opaque</type></entry>
-        <entry>An obsolete type name that formerly served many of the above
-         purposes.</entry>
        </row>
       </tbody>
      </tgroup>
@@ -4948,7 +5316,7 @@ SELECT * FROM pg_attribute
 
    <para>
     Functions coded in C (whether built-in or dynamically loaded) can be
-    declared to accept or return any of these pseudo data types.  It is up to
+    declared to accept or return any of these pseudo-types.  It is up to
     the function author to ensure that the function will behave safely
     when a pseudo-type is used as an argument type.
    </para>
@@ -4959,10 +5327,9 @@ SELECT * FROM pg_attribute
     languages forbid use of a pseudo-type as an argument type, and allow
     only <type>void</type> and <type>record</type> as a result type (plus
     <type>trigger</type> or <type>event_trigger</type> when the function is used
-    as a trigger or event trigger).  Some also
-    support polymorphic functions using the types <type>anyelement</type>,
-    <type>anyarray</type>, <type>anynonarray</type>, <type>anyenum</type>, and
-    <type>anyrange</type>.
+    as a trigger or event trigger).  Some also support polymorphic functions
+    using the polymorphic pseudo-types, which are shown above and discussed
+    in detail in <xref linkend="extend-types-polymorphic"/>.
    </para>
 
    <para>

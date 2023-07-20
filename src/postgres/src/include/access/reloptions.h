@@ -9,7 +9,7 @@
  * into a lot of low-level code.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/reloptions.h
@@ -32,12 +32,14 @@ typedef enum relopt_type
 	RELOPT_TYPE_INT,
 	RELOPT_TYPE_OID,
 	RELOPT_TYPE_REAL,
+	RELOPT_TYPE_ENUM,
 	RELOPT_TYPE_STRING
 } relopt_type;
 
 /* kinds supported by reloptions */
 typedef enum relopt_kind
 {
+	RELOPT_KIND_LOCAL = 0,
 	RELOPT_KIND_HEAP = (1 << 0),
 	RELOPT_KIND_TOAST = (1 << 1),
 	RELOPT_KIND_BTREE = (1 << 2),
@@ -86,6 +88,7 @@ typedef struct relopt_value
 		int			int_val;
 		double		real_val;
 		Oid			oid_val;
+		int			enum_val;
 		char	   *string_val; /* allocated separately */
 	}			values;
 } relopt_value;
@@ -121,8 +124,31 @@ typedef struct relopt_oid
 	Oid			max;
 } relopt_oid;
 
+/*
+ * relopt_enum_elt_def -- One member of the array of acceptable values
+ * of an enum reloption.
+ */
+typedef struct relopt_enum_elt_def
+{
+	const char *string_val;
+	int			symbol_val;
+} relopt_enum_elt_def;
+
+typedef struct relopt_enum
+{
+	relopt_gen	gen;
+	relopt_enum_elt_def *members;
+	int			default_val;
+	const char *detailmsg;
+	/* null-terminated array of members */
+} relopt_enum;
+
 /* validation routines for strings */
 typedef void (*validate_string_relopt) (const char *value);
+typedef Size (*fill_string_relopt) (const char *value, void *ptr);
+
+/* validation routine for the whole option set */
+typedef void (*relopts_validator) (void *parsed_options, relopt_value *vals, int nvals);
 
 typedef struct relopt_string
 {
@@ -130,10 +156,11 @@ typedef struct relopt_string
 	int			default_len;
 	bool		default_isnull;
 	validate_string_relopt validate_cb;
+	fill_string_relopt fill_cb;
 	char	   *default_val;
 } relopt_string;
 
-/* This is the table datatype for fillRelOptions */
+/* This is the table datatype for build_reloptions() */
 typedef struct
 {
 	const char *optname;		/* option's name */
@@ -141,55 +168,12 @@ typedef struct
 	int			offset;			/* offset of field in result struct */
 } relopt_parse_elt;
 
-
-/*
- * These macros exist for the convenience of amoptions writers (but consider
- * using fillRelOptions, which is a lot simpler).  Beware of multiple
- * evaluation of arguments!
- *
- * The last argument in the HANDLE_*_RELOPTION macros allows the caller to
- * determine whether the option was set (true), or its value acquired from
- * defaults (false); it can be passed as (char *) NULL if the caller does not
- * need this information.
- *
- * optname is the option name (a string), var is the variable
- * on which the value should be stored (e.g. StdRdOptions->fillfactor), and
- * option is a relopt_value pointer.
- *
- * The normal way to use this is to loop on the relopt_value array returned by
- * parseRelOptions:
- * for (i = 0; options[i].gen->name; i++)
- * {
- *		if (HAVE_RELOPTION("fillfactor", options[i])
- *		{
- *			HANDLE_INT_RELOPTION("fillfactor", rdopts->fillfactor, options[i], &isset);
- *			continue;
- *		}
- *		if (HAVE_RELOPTION("default_row_acl", options[i])
- *		{
- *			...
- *		}
- *		...
- *		if (validate)
- *			ereport(ERROR,
- *					(errmsg("unknown option")));
- *	}
- *
- *	Note that this is more or less the same that fillRelOptions does, so only
- *	use this if you need to do something non-standard within some option's
- *	code block.
- */
-#define HAVE_RELOPTION(optname, option) \
-	(strncmp(option.gen->name, optname, option.gen->namelen + 1) == 0)
-
-#define HANDLE_INT_RELOPTION(optname, var, option, wasset)		\
-	do {														\
-		if (option.isset)										\
-			var = option.values.int_val;						\
-		else													\
-			var = ((relopt_int *) option.gen)->default_val;		\
-		(wasset) != NULL ? *(wasset) = option.isset : (dummyret)NULL; \
-	} while (0)
+/* Local reloption definition */
+typedef struct local_relopt
+{
+	relopt_gen *option;			/* option definition */
+	int			offset;			/* offset of parsed value in bytea structure */
+} local_relopt;
 
 #define HANDLE_OID_RELOPTION(optname, var, option, wasset)		\
 	do {														\
@@ -200,109 +184,93 @@ typedef struct
 		(wasset) != NULL ? *(wasset) = option.isset : (dummyret)NULL; \
 	} while (0)
 
-#define HANDLE_BOOL_RELOPTION(optname, var, option, wasset)			\
-	do {															\
-		if (option.isset)										\
-			var = option.values.bool_val;						\
-		else													\
-			var = ((relopt_bool *) option.gen)->default_val;	\
-		(wasset) != NULL ? *(wasset) = option.isset : (dummyret) NULL; \
-	} while (0)
-
-#define HANDLE_REAL_RELOPTION(optname, var, option, wasset)		\
-	do {														\
-		if (option.isset)										\
-			var = option.values.real_val;						\
-		else													\
-			var = ((relopt_real *) option.gen)->default_val;	\
-		(wasset) != NULL ? *(wasset) = option.isset : (dummyret) NULL; \
-	} while (0)
+/* Structure to hold local reloption data for build_local_reloptions() */
+typedef struct local_relopts
+{
+	List	   *options;		/* list of local_relopt definitions */
+	List	   *validators;		/* list of relopts_validator callbacks */
+	Size		relopt_struct_size; /* size of parsed bytea structure */
+} local_relopts;
 
 /*
- * Note that this assumes that the variable is already allocated at the tail of
- * reloptions structure (StdRdOptions or equivalent).
- *
- * "base" is a pointer to the reloptions structure, and "offset" is an integer
- * variable that must be initialized to sizeof(reloptions structure).  This
- * struct must have been allocated with enough space to hold any string option
- * present, including terminating \0 for every option.  SET_VARSIZE() must be
- * called on the struct with this offset as the second argument, after all the
- * string options have been processed.
- */
-#define HANDLE_STRING_RELOPTION(optname, var, option, base, offset, wasset) \
-	do {														\
-		relopt_string *optstring = (relopt_string *) option.gen;\
-		char *string_val;										\
-		if (option.isset)										\
-			string_val = option.values.string_val;				\
-		else if (!optstring->default_isnull)					\
-			string_val = optstring->default_val;				\
-		else													\
-			string_val = NULL;									\
-		(wasset) != NULL ? *(wasset) = option.isset : (dummyret) NULL; \
-		if (string_val == NULL)									\
-			var = 0;											\
-		else													\
-		{														\
-			strcpy(((char *)(base)) + (offset), string_val);	\
-			var = (offset);										\
-			(offset) += strlen(string_val) + 1;					\
-		}														\
-	} while (0)
-
-/*
- * For use during amoptions: get the strlen of a string option
- * (either default or the user defined value)
- */
-#define GET_STRING_RELOPTION_LEN(option) \
-	((option).isset ? strlen((option).values.string_val) : \
-	 ((relopt_string *) (option).gen)->default_len)
-
-/*
- * For use by code reading options already parsed: get a pointer to the string
- * value itself.  "optstruct" is the StdRdOption struct or equivalent, "member"
- * is the struct member corresponding to the string option
+ * Utility macro to get a value for a string reloption once the options
+ * are parsed.  This gets a pointer to the string value itself.  "optstruct"
+ * is the StdRdOptions struct or equivalent, "member" is the struct member
+ * corresponding to the string option.
  */
 #define GET_STRING_RELOPTION(optstruct, member) \
 	((optstruct)->member == 0 ? NULL : \
 	 (char *)(optstruct) + (optstruct)->member)
 
-
 extern relopt_kind add_reloption_kind(void);
 extern void add_bool_reloption(bits32 kinds, const char *name, const char *desc,
-				   bool default_val);
+							   bool default_val, LOCKMODE lockmode);
 extern void add_int_reloption(bits32 kinds, const char *name, const char *desc,
-				  int default_val, int min_val, int max_val);
+							  int default_val, int min_val, int max_val,
+							  LOCKMODE lockmode);
+#ifdef YB_TODO
+/* YB_TODO(alex@yugabyte) This function is no longer needed? */
 extern void add_oid_reloption(bits32 kinds, const char *name, const char *desc,
-				  Oid default_val, Oid min_val, Oid max_val);
+							  Oid default_val, Oid min_val, Oid max_val);
+#endif
 extern void add_real_reloption(bits32 kinds, const char *name, const char *desc,
-				   double default_val, double min_val, double max_val);
+							   double default_val, double min_val, double max_val,
+							   LOCKMODE lockmode);
+extern void add_enum_reloption(bits32 kinds, const char *name, const char *desc,
+							   relopt_enum_elt_def *members, int default_val,
+							   const char *detailmsg, LOCKMODE lockmode);
 extern void add_string_reloption(bits32 kinds, const char *name, const char *desc,
-					 const char *default_val, validate_string_relopt validator);
+								 const char *default_val, validate_string_relopt validator,
+								 LOCKMODE lockmode);
+
+extern void init_local_reloptions(local_relopts *opts, Size relopt_struct_size);
+extern void register_reloptions_validator(local_relopts *opts,
+										  relopts_validator validator);
+extern void add_local_bool_reloption(local_relopts *opts, const char *name,
+									 const char *desc, bool default_val,
+									 int offset);
+extern void add_local_int_reloption(local_relopts *opts, const char *name,
+									const char *desc, int default_val,
+									int min_val, int max_val, int offset);
+extern void add_local_real_reloption(local_relopts *opts, const char *name,
+									 const char *desc, double default_val,
+									 double min_val, double max_val,
+									 int offset);
+extern void add_local_enum_reloption(local_relopts *relopts,
+									 const char *name, const char *desc,
+									 relopt_enum_elt_def *members,
+									 int default_val, const char *detailmsg,
+									 int offset);
+extern void add_local_string_reloption(local_relopts *opts, const char *name,
+									   const char *desc,
+									   const char *default_val,
+									   validate_string_relopt validator,
+									   fill_string_relopt filler, int offset);
 
 extern Datum transformRelOptions(Datum oldOptions, List *defList,
-					const char *namspace, char *validnsps[],
-					bool ignoreOids, bool isReset);
+								 const char *namspace, char *validnsps[],
+								 bool acceptOidsOff, bool isReset);
 extern Datum ybExcludeNonPersistentReloptions(Datum options);
 extern List *untransformRelOptions(Datum options);
 extern bytea *extractRelOptions(HeapTuple tuple, TupleDesc tupdesc,
-				  amoptions_function amoptions);
-extern relopt_value *parseRelOptions(Datum options, bool validate,
-				relopt_kind kind, int *numrelopts);
-extern void *allocateReloptStruct(Size base, relopt_value *options,
-					 int numoptions);
-extern void fillRelOptions(void *rdopts, Size basesize,
-			   relopt_value *options, int numoptions,
-			   bool validate,
-			   const relopt_parse_elt *elems, int nelems);
+								amoptions_function amoptions);
+extern relopt_value *parseRelOptions(Datum options, bool validate, relopt_kind kind,
+									 int *numrelopts);
+extern void *build_reloptions(Datum reloptions, bool validate,
+							  relopt_kind kind,
+							  Size relopt_struct_size,
+							  const relopt_parse_elt *relopt_elems,
+							  int num_relopt_elems);
+extern void *build_local_reloptions(local_relopts *relopts, Datum options,
+									bool validate);
 
 extern bytea *default_reloptions(Datum reloptions, bool validate,
-				   relopt_kind kind);
+								 relopt_kind kind);
 extern bytea *heap_reloptions(char relkind, Datum reloptions, bool validate);
 extern bytea *view_reloptions(Datum reloptions, bool validate);
+extern bytea *partitioned_table_reloptions(Datum reloptions, bool validate);
 extern bytea *index_reloptions(amoptions_function amoptions, Datum reloptions,
-				 bool validate);
-extern bytea *index_generic_reloptions(Datum reloptions, bool validate);
+							   bool validate);
 extern bytea *attribute_reloptions(Datum reloptions, bool validate);
 extern bytea *tablespace_reloptions(Datum reloptions, bool validate);
 extern bytea *yb_tablespace_reloptions(Datum reloptions, bool validate);

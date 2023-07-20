@@ -4,7 +4,7 @@
  *	  Support routines for various kinds of object creation.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -58,12 +58,9 @@ defGetString(DefElem *def)
 		case T_Integer:
 			return psprintf("%ld", (long) intVal(def->arg));
 		case T_Float:
-
-			/*
-			 * T_Float values are kept in string form, so this type cheat
-			 * works (and doesn't risk losing precision)
-			 */
-			return strVal(def->arg);
+			return castNode(Float, def->arg)->fval;
+		case T_Boolean:
+			return boolVal(def->arg) ? "true" : "false";
 		case T_String:
 			return strVal(def->arg);
 		case T_TypeName:
@@ -139,7 +136,7 @@ defGetBoolean(DefElem *def)
 
 				/*
 				 * The set of strings accepted here should match up with the
-				 * grammar's opt_boolean production.
+				 * grammar's opt_boolean_or_string production.
 				 */
 				if (pg_strcasecmp(sval, "true") == 0)
 					return true;
@@ -206,7 +203,40 @@ defGetInt64(DefElem *def)
 			 * strings.
 			 */
 			return DatumGetInt64(DirectFunctionCall1(int8in,
-													 CStringGetDatum(strVal(def->arg))));
+													 CStringGetDatum(castNode(Float, def->arg)->fval)));
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("%s requires a numeric value",
+							def->defname)));
+	}
+	return 0;					/* keep compiler quiet */
+}
+
+/*
+ * Extract an OID value from a DefElem.
+ */
+Oid
+defGetObjectId(DefElem *def)
+{
+	if (def->arg == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("%s requires a numeric value",
+						def->defname)));
+	switch (nodeTag(def->arg))
+	{
+		case T_Integer:
+			return (Oid) intVal(def->arg);
+		case T_Float:
+
+			/*
+			 * Values too large for int4 will be represented as Float
+			 * constants by the lexer.  Accept these if they are valid OID
+			 * strings.
+			 */
+			return DatumGetObjectId(DirectFunctionCall1(oidin,
+														CStringGetDatum(castNode(Float, def->arg)->fval)));
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -346,4 +376,16 @@ defGetStringList(DefElem *def)
 	}
 
 	return (List *) def->arg;
+}
+
+/*
+ * Raise an error about a conflicting DefElem.
+ */
+void
+errorConflictingDefElem(DefElem *defel, ParseState *pstate)
+{
+	ereport(ERROR,
+			errcode(ERRCODE_SYNTAX_ERROR),
+			errmsg("conflicting or redundant options"),
+			parser_errposition(pstate, defel->location));
 }

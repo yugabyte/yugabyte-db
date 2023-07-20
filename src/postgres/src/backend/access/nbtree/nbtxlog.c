@@ -4,7 +4,7 @@
  *	  WAL replay logic for btrees.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -15,14 +15,16 @@
 #include "postgres.h"
 
 #include "access/bufmask.h"
-#include "access/heapam_xlog.h"
 #include "access/nbtree.h"
 #include "access/nbtxlog.h"
 #include "access/transam.h"
 #include "access/xlog.h"
 #include "access/xlogutils.h"
-#include "storage/procarray.h"
 #include "miscadmin.h"
+#include "storage/procarray.h"
+#include "utils/memutils.h"
+
+static MemoryContext opCtx;		/* working memory for operations */
 
 /*
  * _bt_restore_page -- re-enter all the index tuples on a page
@@ -75,7 +77,6 @@ _bt_restore_page(Page page, char *from, int len)
 		if (PageAddItem(page, items[i], itemsizes[i], nitems - i,
 						false, false) == InvalidOffsetNumber)
 			elog(PANIC, "_bt_restore_page: cannot add item to page");
-		from += itemsz;
 	}
 }
 
@@ -103,15 +104,18 @@ _bt_restore_meta(XLogReaderState *record, uint8 block_id)
 
 	md = BTPageGetMeta(metapg);
 	md->btm_magic = BTREE_MAGIC;
-	md->btm_version = BTREE_VERSION;
+	md->btm_version = xlrec->version;
 	md->btm_root = xlrec->root;
 	md->btm_level = xlrec->level;
 	md->btm_fastroot = xlrec->fastroot;
 	md->btm_fastlevel = xlrec->fastlevel;
-	md->btm_oldest_btpo_xact = xlrec->oldest_btpo_xact;
-	md->btm_last_cleanup_num_heap_tuples = xlrec->last_cleanup_num_heap_tuples;
+	/* Cannot log BTREE_MIN_VERSION index metapage without upgrade */
+	Assert(md->btm_version >= BTREE_NOVAC_VERSION);
+	md->btm_last_cleanup_num_delpages = xlrec->last_cleanup_num_delpages;
+	md->btm_last_cleanup_num_heap_tuples = -1.0;
+	md->btm_allequalimage = xlrec->allequalimage;
 
-	pageop = (BTPageOpaque) PageGetSpecialPointer(metapg);
+	pageop = BTPageGetOpaque(metapg);
 	pageop->btpo_flags = BTP_META;
 
 	/*
@@ -142,7 +146,7 @@ _bt_clear_incomplete_split(XLogReaderState *record, uint8 block_id)
 	if (XLogReadBufferForRedo(record, block_id, &buf) == BLK_NEEDS_REDO)
 	{
 		Page		page = (Page) BufferGetPage(buf);
-		BTPageOpaque pageop = (BTPageOpaque) PageGetSpecialPointer(page);
+		BTPageOpaque pageop = BTPageGetOpaque(page);
 
 		Assert(P_INCOMPLETE_SPLIT(pageop));
 		pageop->btpo_flags &= ~BTP_INCOMPLETE_SPLIT;
@@ -155,7 +159,8 @@ _bt_clear_incomplete_split(XLogReaderState *record, uint8 block_id)
 }
 
 static void
-btree_xlog_insert(bool isleaf, bool ismeta, XLogReaderState *record)
+btree_xlog_insert(bool isleaf, bool ismeta, bool posting,
+				  XLogReaderState *record)
 {
 	XLogRecPtr	lsn = record->EndRecPtr;
 	xl_btree_insert *xlrec = (xl_btree_insert *) XLogRecGetData(record);
@@ -166,10 +171,10 @@ btree_xlog_insert(bool isleaf, bool ismeta, XLogReaderState *record)
 	 * Insertion to an internal page finishes an incomplete split at the child
 	 * level.  Clear the incomplete-split flag in the child.  Note: during
 	 * normal operation, the child and parent pages are locked at the same
-	 * time, so that clearing the flag and inserting the downlink appear
-	 * atomic to other backends.  We don't bother with that during replay,
-	 * because readers don't care about the incomplete-split flag and there
-	 * cannot be updates happening.
+	 * time (the locks are coupled), so that clearing the flag and inserting
+	 * the downlink appear atomic to other backends.  We don't bother with
+	 * that during replay, because readers don't care about the
+	 * incomplete-split flag and there cannot be updates happening.
 	 */
 	if (!isleaf)
 		_bt_clear_incomplete_split(record, 1);
@@ -180,9 +185,52 @@ btree_xlog_insert(bool isleaf, bool ismeta, XLogReaderState *record)
 
 		page = BufferGetPage(buffer);
 
-		if (PageAddItem(page, (Item) datapos, datalen, xlrec->offnum,
-						false, false) == InvalidOffsetNumber)
-			elog(PANIC, "btree_insert_redo: failed to add item");
+		if (!posting)
+		{
+			/* Simple retail insertion */
+			if (PageAddItem(page, (Item) datapos, datalen, xlrec->offnum,
+							false, false) == InvalidOffsetNumber)
+				elog(PANIC, "failed to add new item");
+		}
+		else
+		{
+			ItemId		itemid;
+			IndexTuple	oposting,
+						newitem,
+						nposting;
+			uint16		postingoff;
+
+			/*
+			 * A posting list split occurred during leaf page insertion.  WAL
+			 * record data will start with an offset number representing the
+			 * point in an existing posting list that a split occurs at.
+			 *
+			 * Use _bt_swap_posting() to repeat posting list split steps from
+			 * primary.  Note that newitem from WAL record is 'orignewitem',
+			 * not the final version of newitem that is actually inserted on
+			 * page.
+			 */
+			postingoff = *((uint16 *) datapos);
+			datapos += sizeof(uint16);
+			datalen -= sizeof(uint16);
+
+			itemid = PageGetItemId(page, OffsetNumberPrev(xlrec->offnum));
+			oposting = (IndexTuple) PageGetItem(page, itemid);
+
+			/* Use mutable, aligned newitem copy in _bt_swap_posting() */
+			Assert(isleaf && postingoff > 0);
+			newitem = CopyIndexTuple((IndexTuple) datapos);
+			nposting = _bt_swap_posting(newitem, oposting, postingoff);
+
+			/* Replace existing posting list with post-split version */
+			memcpy(oposting, nposting, MAXALIGN(IndexTupleSize(nposting)));
+
+			/* Insert "final" new item (not orignewitem from WAL stream) */
+			Assert(IndexTupleSize(newitem) == datalen);
+			if (PageAddItem(page, (Item) newitem, datalen, xlrec->offnum,
+							false, false) == InvalidOffsetNumber)
+				elog(PANIC, "failed to add posting split new item");
+		}
 
 		PageSetLSN(page, lsn);
 		MarkBufferDirty(buffer);
@@ -202,32 +250,38 @@ btree_xlog_insert(bool isleaf, bool ismeta, XLogReaderState *record)
 }
 
 static void
-btree_xlog_split(bool onleft, bool lhighkey, XLogReaderState *record)
+btree_xlog_split(bool newitemonleft, XLogReaderState *record)
 {
 	XLogRecPtr	lsn = record->EndRecPtr;
 	xl_btree_split *xlrec = (xl_btree_split *) XLogRecGetData(record);
 	bool		isleaf = (xlrec->level == 0);
-	Buffer		lbuf;
+	Buffer		buf;
 	Buffer		rbuf;
 	Page		rpage;
 	BTPageOpaque ropaque;
 	char	   *datapos;
 	Size		datalen;
-	IndexTuple	left_hikey = NULL;
-	Size		left_hikeysz = 0;
-	BlockNumber leftsib;
-	BlockNumber rightsib;
-	BlockNumber rnext;
+	BlockNumber origpagenumber;
+	BlockNumber rightpagenumber;
+	BlockNumber spagenumber;
 
-	XLogRecGetBlockTag(record, 0, NULL, NULL, &leftsib);
-	XLogRecGetBlockTag(record, 1, NULL, NULL, &rightsib);
-	if (!XLogRecGetBlockTag(record, 2, NULL, NULL, &rnext))
-		rnext = P_NONE;
+	XLogRecGetBlockTag(record, 0, NULL, NULL, &origpagenumber);
+	XLogRecGetBlockTag(record, 1, NULL, NULL, &rightpagenumber);
+	if (!XLogRecGetBlockTagExtended(record, 2, NULL, NULL, &spagenumber, NULL))
+		spagenumber = P_NONE;
 
 	/*
-	 * Clear the incomplete split flag on the left sibling of the child page
-	 * this is a downlink for.  (Like in btree_xlog_insert, this can be done
-	 * before locking the other pages)
+	 * Clear the incomplete split flag on the appropriate child page one level
+	 * down when origpage/buf is an internal page (there must have been
+	 * cascading page splits during original execution in the event of an
+	 * internal page split).  This is like the corresponding btree_xlog_insert
+	 * call for internal pages.  We're not clearing the incomplete split flag
+	 * for the current page split here (you can think of this as part of the
+	 * insert of newitem that the page split action needs to perform in
+	 * passing).
+	 *
+	 * Like in btree_xlog_insert, this can be done before locking other pages.
+	 * We never need to couple cross-level locks in REDO routines.
 	 */
 	if (!isleaf)
 		_bt_clear_incomplete_split(record, 3);
@@ -238,160 +292,307 @@ btree_xlog_split(bool onleft, bool lhighkey, XLogReaderState *record)
 	rpage = (Page) BufferGetPage(rbuf);
 
 	_bt_pageinit(rpage, BufferGetPageSize(rbuf));
-	ropaque = (BTPageOpaque) PageGetSpecialPointer(rpage);
+	ropaque = BTPageGetOpaque(rpage);
 
-	ropaque->btpo_prev = leftsib;
-	ropaque->btpo_next = rnext;
-	ropaque->btpo.level = xlrec->level;
+	ropaque->btpo_prev = origpagenumber;
+	ropaque->btpo_next = spagenumber;
+	ropaque->btpo_level = xlrec->level;
 	ropaque->btpo_flags = isleaf ? BTP_LEAF : 0;
 	ropaque->btpo_cycleid = 0;
 
 	_bt_restore_page(rpage, datapos, datalen);
 
-	/*
-	 * When the high key isn't present is the wal record, then we assume it to
-	 * be equal to the first key on the right page.  It must be from the leaf
-	 * level.
-	 */
-	if (!lhighkey)
-	{
-		ItemId		hiItemId = PageGetItemId(rpage, P_FIRSTDATAKEY(ropaque));
-
-		Assert(isleaf);
-		left_hikey = (IndexTuple) PageGetItem(rpage, hiItemId);
-		left_hikeysz = ItemIdGetLength(hiItemId);
-	}
-
 	PageSetLSN(rpage, lsn);
 	MarkBufferDirty(rbuf);
 
-	/* don't release the buffer yet; we touch right page's first item below */
-
-	/* Now reconstruct left (original) sibling page */
-	if (XLogReadBufferForRedo(record, 0, &lbuf) == BLK_NEEDS_REDO)
+	/* Now reconstruct original page (left half of split) */
+	if (XLogReadBufferForRedo(record, 0, &buf) == BLK_NEEDS_REDO)
 	{
 		/*
 		 * To retain the same physical order of the tuples that they had, we
 		 * initialize a temporary empty page for the left page and add all the
 		 * items to that in item number order.  This mirrors how _bt_split()
-		 * works.  It's not strictly required to retain the same physical
-		 * order, as long as the items are in the correct item number order,
-		 * but it helps debugging.  See also _bt_restore_page(), which does
-		 * the same for the right page.
+		 * works.  Retaining the same physical order makes WAL consistency
+		 * checking possible.  See also _bt_restore_page(), which does the
+		 * same for the right page.
 		 */
-		Page		lpage = (Page) BufferGetPage(lbuf);
-		BTPageOpaque lopaque = (BTPageOpaque) PageGetSpecialPointer(lpage);
+		Page		origpage = (Page) BufferGetPage(buf);
+		BTPageOpaque oopaque = BTPageGetOpaque(origpage);
 		OffsetNumber off;
-		IndexTuple	newitem = NULL;
-		Size		newitemsz = 0;
-		Page		newlpage;
-		OffsetNumber leftoff;
+		IndexTuple	newitem = NULL,
+					left_hikey = NULL,
+					nposting = NULL;
+		Size		newitemsz = 0,
+					left_hikeysz = 0;
+		Page		leftpage;
+		OffsetNumber leftoff,
+					replacepostingoff = InvalidOffsetNumber;
 
 		datapos = XLogRecGetBlockData(record, 0, &datalen);
 
-		if (onleft)
+		if (newitemonleft || xlrec->postingoff != 0)
 		{
 			newitem = (IndexTuple) datapos;
 			newitemsz = MAXALIGN(IndexTupleSize(newitem));
 			datapos += newitemsz;
 			datalen -= newitemsz;
+
+			if (xlrec->postingoff != 0)
+			{
+				ItemId		itemid;
+				IndexTuple	oposting;
+
+				/* Posting list must be at offset number before new item's */
+				replacepostingoff = OffsetNumberPrev(xlrec->newitemoff);
+
+				/* Use mutable, aligned newitem copy in _bt_swap_posting() */
+				newitem = CopyIndexTuple(newitem);
+				itemid = PageGetItemId(origpage, replacepostingoff);
+				oposting = (IndexTuple) PageGetItem(origpage, itemid);
+				nposting = _bt_swap_posting(newitem, oposting,
+											xlrec->postingoff);
+			}
 		}
 
-		/* Extract left hikey and its size (assuming 16-bit alignment) */
-		if (lhighkey)
-		{
-			left_hikey = (IndexTuple) datapos;
-			left_hikeysz = MAXALIGN(IndexTupleSize(left_hikey));
-			datapos += left_hikeysz;
-			datalen -= left_hikeysz;
-		}
+		/*
+		 * Extract left hikey and its size.  We assume that 16-bit alignment
+		 * is enough to apply IndexTupleSize (since it's fetching from a
+		 * uint16 field).
+		 */
+		left_hikey = (IndexTuple) datapos;
+		left_hikeysz = MAXALIGN(IndexTupleSize(left_hikey));
+		datapos += left_hikeysz;
+		datalen -= left_hikeysz;
 
 		Assert(datalen == 0);
 
-		newlpage = PageGetTempPageCopySpecial(lpage);
+		leftpage = PageGetTempPageCopySpecial(origpage);
 
-		/* Set high key */
+		/* Add high key tuple from WAL record to temp page */
 		leftoff = P_HIKEY;
-		if (PageAddItem(newlpage, (Item) left_hikey, left_hikeysz,
-						P_HIKEY, false, false) == InvalidOffsetNumber)
-			elog(PANIC, "failed to add high key to left page after split");
+		if (PageAddItem(leftpage, (Item) left_hikey, left_hikeysz, P_HIKEY,
+						false, false) == InvalidOffsetNumber)
+			elog(ERROR, "failed to add high key to left page after split");
 		leftoff = OffsetNumberNext(leftoff);
 
-		for (off = P_FIRSTDATAKEY(lopaque); off < xlrec->firstright; off++)
+		for (off = P_FIRSTDATAKEY(oopaque); off < xlrec->firstrightoff; off++)
 		{
 			ItemId		itemid;
 			Size		itemsz;
 			IndexTuple	item;
 
-			/* add the new item if it was inserted on left page */
-			if (onleft && off == xlrec->newitemoff)
+			/* Add replacement posting list when required */
+			if (off == replacepostingoff)
 			{
-				if (PageAddItem(newlpage, (Item) newitem, newitemsz, leftoff,
+				Assert(newitemonleft ||
+					   xlrec->firstrightoff == xlrec->newitemoff);
+				if (PageAddItem(leftpage, (Item) nposting,
+								MAXALIGN(IndexTupleSize(nposting)), leftoff,
+								false, false) == InvalidOffsetNumber)
+					elog(ERROR, "failed to add new posting list item to left page after split");
+				leftoff = OffsetNumberNext(leftoff);
+				continue;		/* don't insert oposting */
+			}
+
+			/* add the new item if it was inserted on left page */
+			else if (newitemonleft && off == xlrec->newitemoff)
+			{
+				if (PageAddItem(leftpage, (Item) newitem, newitemsz, leftoff,
 								false, false) == InvalidOffsetNumber)
 					elog(ERROR, "failed to add new item to left page after split");
 				leftoff = OffsetNumberNext(leftoff);
 			}
 
-			itemid = PageGetItemId(lpage, off);
+			itemid = PageGetItemId(origpage, off);
 			itemsz = ItemIdGetLength(itemid);
-			item = (IndexTuple) PageGetItem(lpage, itemid);
-			if (PageAddItem(newlpage, (Item) item, itemsz, leftoff,
+			item = (IndexTuple) PageGetItem(origpage, itemid);
+			if (PageAddItem(leftpage, (Item) item, itemsz, leftoff,
 							false, false) == InvalidOffsetNumber)
 				elog(ERROR, "failed to add old item to left page after split");
 			leftoff = OffsetNumberNext(leftoff);
 		}
 
 		/* cope with possibility that newitem goes at the end */
-		if (onleft && off == xlrec->newitemoff)
+		if (newitemonleft && off == xlrec->newitemoff)
 		{
-			if (PageAddItem(newlpage, (Item) newitem, newitemsz, leftoff,
+			if (PageAddItem(leftpage, (Item) newitem, newitemsz, leftoff,
 							false, false) == InvalidOffsetNumber)
 				elog(ERROR, "failed to add new item to left page after split");
 			leftoff = OffsetNumberNext(leftoff);
 		}
 
-		PageRestoreTempPage(newlpage, lpage);
+		PageRestoreTempPage(leftpage, origpage);
 
 		/* Fix opaque fields */
-		lopaque->btpo_flags = BTP_INCOMPLETE_SPLIT;
+		oopaque->btpo_flags = BTP_INCOMPLETE_SPLIT;
 		if (isleaf)
-			lopaque->btpo_flags |= BTP_LEAF;
-		lopaque->btpo_next = rightsib;
-		lopaque->btpo_cycleid = 0;
+			oopaque->btpo_flags |= BTP_LEAF;
+		oopaque->btpo_next = rightpagenumber;
+		oopaque->btpo_cycleid = 0;
 
-		PageSetLSN(lpage, lsn);
-		MarkBufferDirty(lbuf);
+		PageSetLSN(origpage, lsn);
+		MarkBufferDirty(buf);
 	}
 
-	/* We no longer need the buffers */
-	if (BufferIsValid(lbuf))
-		UnlockReleaseBuffer(lbuf);
-	UnlockReleaseBuffer(rbuf);
+	/* Fix left-link of the page to the right of the new right sibling */
+	if (spagenumber != P_NONE)
+	{
+		Buffer		sbuf;
+
+		if (XLogReadBufferForRedo(record, 2, &sbuf) == BLK_NEEDS_REDO)
+		{
+			Page		spage = (Page) BufferGetPage(sbuf);
+			BTPageOpaque spageop = BTPageGetOpaque(spage);
+
+			spageop->btpo_prev = rightpagenumber;
+
+			PageSetLSN(spage, lsn);
+			MarkBufferDirty(sbuf);
+		}
+		if (BufferIsValid(sbuf))
+			UnlockReleaseBuffer(sbuf);
+	}
 
 	/*
-	 * Fix left-link of the page to the right of the new right sibling.
-	 *
-	 * Note: in normal operation, we do this while still holding lock on the
-	 * two split pages.  However, that's not necessary for correctness in WAL
-	 * replay, because no other index update can be in progress, and readers
-	 * will cope properly when following an obsolete left-link.
+	 * Finally, release the remaining buffers.  sbuf, rbuf, and buf must be
+	 * released together, so that readers cannot observe inconsistencies.
 	 */
-	if (rnext != P_NONE)
+	UnlockReleaseBuffer(rbuf);
+	if (BufferIsValid(buf))
+		UnlockReleaseBuffer(buf);
+}
+
+static void
+btree_xlog_dedup(XLogReaderState *record)
+{
+	XLogRecPtr	lsn = record->EndRecPtr;
+	xl_btree_dedup *xlrec = (xl_btree_dedup *) XLogRecGetData(record);
+	Buffer		buf;
+
+	if (XLogReadBufferForRedo(record, 0, &buf) == BLK_NEEDS_REDO)
 	{
-		Buffer		buffer;
+		char	   *ptr = XLogRecGetBlockData(record, 0, NULL);
+		Page		page = (Page) BufferGetPage(buf);
+		BTPageOpaque opaque = BTPageGetOpaque(page);
+		OffsetNumber offnum,
+					minoff,
+					maxoff;
+		BTDedupState state;
+		BTDedupInterval *intervals;
+		Page		newpage;
 
-		if (XLogReadBufferForRedo(record, 2, &buffer) == BLK_NEEDS_REDO)
+		state = (BTDedupState) palloc(sizeof(BTDedupStateData));
+		state->deduplicate = true;	/* unused */
+		state->nmaxitems = 0;	/* unused */
+		/* Conservatively use larger maxpostingsize than primary */
+		state->maxpostingsize = BTMaxItemSize(page);
+		state->base = NULL;
+		state->baseoff = InvalidOffsetNumber;
+		state->basetupsize = 0;
+		state->htids = palloc(state->maxpostingsize);
+		state->nhtids = 0;
+		state->nitems = 0;
+		state->phystupsize = 0;
+		state->nintervals = 0;
+
+		minoff = P_FIRSTDATAKEY(opaque);
+		maxoff = PageGetMaxOffsetNumber(page);
+		newpage = PageGetTempPageCopySpecial(page);
+
+		if (!P_RIGHTMOST(opaque))
 		{
-			Page		page = (Page) BufferGetPage(buffer);
-			BTPageOpaque pageop = (BTPageOpaque) PageGetSpecialPointer(page);
+			ItemId		itemid = PageGetItemId(page, P_HIKEY);
+			Size		itemsz = ItemIdGetLength(itemid);
+			IndexTuple	item = (IndexTuple) PageGetItem(page, itemid);
 
-			pageop->btpo_prev = rightsib;
-
-			PageSetLSN(page, lsn);
-			MarkBufferDirty(buffer);
+			if (PageAddItem(newpage, (Item) item, itemsz, P_HIKEY,
+							false, false) == InvalidOffsetNumber)
+				elog(ERROR, "deduplication failed to add highkey");
 		}
-		if (BufferIsValid(buffer))
-			UnlockReleaseBuffer(buffer);
+
+		intervals = (BTDedupInterval *) ptr;
+		for (offnum = minoff;
+			 offnum <= maxoff;
+			 offnum = OffsetNumberNext(offnum))
+		{
+			ItemId		itemid = PageGetItemId(page, offnum);
+			IndexTuple	itup = (IndexTuple) PageGetItem(page, itemid);
+
+			if (offnum == minoff)
+				_bt_dedup_start_pending(state, itup, offnum);
+			else if (state->nintervals < xlrec->nintervals &&
+					 state->baseoff == intervals[state->nintervals].baseoff &&
+					 state->nitems < intervals[state->nintervals].nitems)
+			{
+				if (!_bt_dedup_save_htid(state, itup))
+					elog(ERROR, "deduplication failed to add heap tid to pending posting list");
+			}
+			else
+			{
+				_bt_dedup_finish_pending(newpage, state);
+				_bt_dedup_start_pending(state, itup, offnum);
+			}
+		}
+
+		_bt_dedup_finish_pending(newpage, state);
+		Assert(state->nintervals == xlrec->nintervals);
+		Assert(memcmp(state->intervals, intervals,
+					  state->nintervals * sizeof(BTDedupInterval)) == 0);
+
+		if (P_HAS_GARBAGE(opaque))
+		{
+			BTPageOpaque nopaque = BTPageGetOpaque(newpage);
+
+			nopaque->btpo_flags &= ~BTP_HAS_GARBAGE;
+		}
+
+		PageRestoreTempPage(newpage, page);
+		PageSetLSN(page, lsn);
+		MarkBufferDirty(buf);
+	}
+
+	if (BufferIsValid(buf))
+		UnlockReleaseBuffer(buf);
+}
+
+static void
+btree_xlog_updates(Page page, OffsetNumber *updatedoffsets,
+				   xl_btree_update *updates, int nupdated)
+{
+	BTVacuumPosting vacposting;
+	IndexTuple	origtuple;
+	ItemId		itemid;
+	Size		itemsz;
+
+	for (int i = 0; i < nupdated; i++)
+	{
+		itemid = PageGetItemId(page, updatedoffsets[i]);
+		origtuple = (IndexTuple) PageGetItem(page, itemid);
+
+		vacposting = palloc(offsetof(BTVacuumPostingData, deletetids) +
+							updates->ndeletedtids * sizeof(uint16));
+		vacposting->updatedoffset = updatedoffsets[i];
+		vacposting->itup = origtuple;
+		vacposting->ndeletedtids = updates->ndeletedtids;
+		memcpy(vacposting->deletetids,
+			   (char *) updates + SizeOfBtreeUpdate,
+			   updates->ndeletedtids * sizeof(uint16));
+
+		_bt_update_posting(vacposting);
+
+		/* Overwrite updated version of tuple */
+		itemsz = MAXALIGN(IndexTupleSize(vacposting->itup));
+		if (!PageIndexTupleOverwrite(page, updatedoffsets[i],
+									 (Item) vacposting->itup, itemsz))
+			elog(PANIC, "failed to update partially dead item");
+
+		pfree(vacposting->itup);
+		pfree(vacposting);
+
+		/* advance to next xl_btree_update from array */
+		updates = (xl_btree_update *)
+			((char *) updates + SizeOfBtreeUpdate +
+			 updates->ndeletedtids * sizeof(uint16));
 	}
 }
 
@@ -399,116 +600,46 @@ static void
 btree_xlog_vacuum(XLogReaderState *record)
 {
 	XLogRecPtr	lsn = record->EndRecPtr;
+	xl_btree_vacuum *xlrec = (xl_btree_vacuum *) XLogRecGetData(record);
 	Buffer		buffer;
 	Page		page;
 	BTPageOpaque opaque;
-#ifdef UNUSED
-	xl_btree_vacuum *xlrec = (xl_btree_vacuum *) XLogRecGetData(record);
 
 	/*
-	 * This section of code is thought to be no longer needed, after analysis
-	 * of the calling paths. It is retained to allow the code to be reinstated
-	 * if a flaw is revealed in that thinking.
-	 *
-	 * If we are running non-MVCC scans using this index we need to do some
-	 * additional work to ensure correctness, which is known as a "pin scan"
-	 * described in more detail in next paragraphs. We used to do the extra
-	 * work in all cases, whereas we now avoid that work in most cases. If
-	 * lastBlockVacuumed is set to InvalidBlockNumber then we skip the
-	 * additional work required for the pin scan.
-	 *
-	 * Avoiding this extra work is important since it requires us to touch
-	 * every page in the index, so is an O(N) operation. Worse, it is an
-	 * operation performed in the foreground during redo, so it delays
-	 * replication directly.
-	 *
-	 * If queries might be active then we need to ensure every leaf page is
-	 * unpinned between the lastBlockVacuumed and the current block, if there
-	 * are any.  This prevents replay of the VACUUM from reaching the stage of
-	 * removing heap tuples while there could still be indexscans "in flight"
-	 * to those particular tuples for those scans which could be confused by
-	 * finding new tuples at the old TID locations (see nbtree/README).
-	 *
-	 * It might be worth checking if there are actually any backends running;
-	 * if not, we could just skip this.
-	 *
-	 * Since VACUUM can visit leaf pages out-of-order, it might issue records
-	 * with lastBlockVacuumed >= block; that's not an error, it just means
-	 * nothing to do now.
-	 *
-	 * Note: since we touch all pages in the range, we will lock non-leaf
-	 * pages, and also any empty (all-zero) pages that may be in the index. It
-	 * doesn't seem worth the complexity to avoid that.  But it's important
-	 * that HotStandbyActiveInReplay() will not return true if the database
-	 * isn't yet consistent; so we need not fear reading still-corrupt blocks
-	 * here during crash recovery.
-	 */
-	if (HotStandbyActiveInReplay() && BlockNumberIsValid(xlrec->lastBlockVacuumed))
-	{
-		RelFileNode thisrnode;
-		BlockNumber thisblkno;
-		BlockNumber blkno;
-
-		XLogRecGetBlockTag(record, 0, &thisrnode, NULL, &thisblkno);
-
-		for (blkno = xlrec->lastBlockVacuumed + 1; blkno < thisblkno; blkno++)
-		{
-			/*
-			 * We use RBM_NORMAL_NO_LOG mode because it's not an error
-			 * condition to see all-zero pages.  The original btvacuumpage
-			 * scan would have skipped over all-zero pages, noting them in FSM
-			 * but not bothering to initialize them just yet; so we mustn't
-			 * throw an error here.  (We could skip acquiring the cleanup lock
-			 * if PageIsNew, but it's probably not worth the cycles to test.)
-			 *
-			 * XXX we don't actually need to read the block, we just need to
-			 * confirm it is unpinned. If we had a special call into the
-			 * buffer manager we could optimise this so that if the block is
-			 * not in shared_buffers we confirm it as unpinned. Optimizing
-			 * this is now moot, since in most cases we avoid the scan.
-			 */
-			buffer = XLogReadBufferExtended(thisrnode, MAIN_FORKNUM, blkno,
-											RBM_NORMAL_NO_LOG);
-			if (BufferIsValid(buffer))
-			{
-				LockBufferForCleanup(buffer);
-				UnlockReleaseBuffer(buffer);
-			}
-		}
-	}
-#endif
-
-	/*
-	 * Like in btvacuumpage(), we need to take a cleanup lock on every leaf
-	 * page. See nbtree/README for details.
+	 * We need to take a cleanup lock here, just like btvacuumpage(). However,
+	 * it isn't necessary to exhaustively get a cleanup lock on every block in
+	 * the index during recovery (just getting a cleanup lock on pages with
+	 * items to kill suffices).  See nbtree/README for details.
 	 */
 	if (XLogReadBufferForRedoExtended(record, 0, RBM_NORMAL, true, &buffer)
 		== BLK_NEEDS_REDO)
 	{
-		char	   *ptr;
-		Size		len;
-
-		ptr = XLogRecGetBlockData(record, 0, &len);
+		char	   *ptr = XLogRecGetBlockData(record, 0, NULL);
 
 		page = (Page) BufferGetPage(buffer);
 
-		if (len > 0)
+		if (xlrec->nupdated > 0)
 		{
-			OffsetNumber *unused;
-			OffsetNumber *unend;
+			OffsetNumber *updatedoffsets;
+			xl_btree_update *updates;
 
-			unused = (OffsetNumber *) ptr;
-			unend = (OffsetNumber *) ((char *) ptr + len);
+			updatedoffsets = (OffsetNumber *)
+				(ptr + xlrec->ndeleted * sizeof(OffsetNumber));
+			updates = (xl_btree_update *) ((char *) updatedoffsets +
+										   xlrec->nupdated *
+										   sizeof(OffsetNumber));
 
-			if ((unend - unused) > 0)
-				PageIndexMultiDelete(page, unused, unend - unused);
+			btree_xlog_updates(page, updatedoffsets, updates, xlrec->nupdated);
 		}
+
+		if (xlrec->ndeleted > 0)
+			PageIndexMultiDelete(page, (OffsetNumber *) ptr, xlrec->ndeleted);
 
 		/*
 		 * Mark the page as not containing any LP_DEAD items --- see comments
 		 * in _bt_delitems_vacuum().
 		 */
-		opaque = (BTPageOpaque) PageGetSpecialPointer(page);
+		opaque = BTPageGetOpaque(page);
 		opaque->btpo_flags &= ~BTP_HAS_GARBAGE;
 
 		PageSetLSN(page, lsn);
@@ -516,159 +647,6 @@ btree_xlog_vacuum(XLogReaderState *record)
 	}
 	if (BufferIsValid(buffer))
 		UnlockReleaseBuffer(buffer);
-}
-
-/*
- * Get the latestRemovedXid from the heap pages pointed at by the index
- * tuples being deleted. This puts the work for calculating latestRemovedXid
- * into the recovery path rather than the primary path.
- *
- * It's possible that this generates a fair amount of I/O, since an index
- * block may have hundreds of tuples being deleted. Repeat accesses to the
- * same heap blocks are common, though are not yet optimised.
- *
- * XXX optimise later with something like XLogPrefetchBuffer()
- */
-static TransactionId
-btree_xlog_delete_get_latestRemovedXid(XLogReaderState *record)
-{
-	xl_btree_delete *xlrec = (xl_btree_delete *) XLogRecGetData(record);
-	OffsetNumber *unused;
-	Buffer		ibuffer,
-				hbuffer;
-	Page		ipage,
-				hpage;
-	RelFileNode rnode;
-	BlockNumber blkno;
-	ItemId		iitemid,
-				hitemid;
-	IndexTuple	itup;
-	HeapTupleHeader htuphdr;
-	BlockNumber hblkno;
-	OffsetNumber hoffnum;
-	TransactionId latestRemovedXid = InvalidTransactionId;
-	int			i;
-
-	/*
-	 * If there's nothing running on the standby we don't need to derive a
-	 * full latestRemovedXid value, so use a fast path out of here.  This
-	 * returns InvalidTransactionId, and so will conflict with all HS
-	 * transactions; but since we just worked out that that's zero people,
-	 * it's OK.
-	 *
-	 * XXX There is a race condition here, which is that a new backend might
-	 * start just after we look.  If so, it cannot need to conflict, but this
-	 * coding will result in throwing a conflict anyway.
-	 */
-	if (CountDBBackends(InvalidOid) == 0)
-		return latestRemovedXid;
-
-	/*
-	 * In what follows, we have to examine the previous state of the index
-	 * page, as well as the heap page(s) it points to.  This is only valid if
-	 * WAL replay has reached a consistent database state; which means that
-	 * the preceding check is not just an optimization, but is *necessary*. We
-	 * won't have let in any user sessions before we reach consistency.
-	 */
-	if (!reachedConsistency)
-		elog(PANIC, "btree_xlog_delete_get_latestRemovedXid: cannot operate with inconsistent data");
-
-	/*
-	 * Get index page.  If the DB is consistent, this should not fail, nor
-	 * should any of the heap page fetches below.  If one does, we return
-	 * InvalidTransactionId to cancel all HS transactions.  That's probably
-	 * overkill, but it's safe, and certainly better than panicking here.
-	 */
-	XLogRecGetBlockTag(record, 0, &rnode, NULL, &blkno);
-	ibuffer = XLogReadBufferExtended(rnode, MAIN_FORKNUM, blkno, RBM_NORMAL);
-	if (!BufferIsValid(ibuffer))
-		return InvalidTransactionId;
-	LockBuffer(ibuffer, BT_READ);
-	ipage = (Page) BufferGetPage(ibuffer);
-
-	/*
-	 * Loop through the deleted index items to obtain the TransactionId from
-	 * the heap items they point to.
-	 */
-	unused = (OffsetNumber *) ((char *) xlrec + SizeOfBtreeDelete);
-
-	for (i = 0; i < xlrec->nitems; i++)
-	{
-		/*
-		 * Identify the index tuple about to be deleted
-		 */
-		iitemid = PageGetItemId(ipage, unused[i]);
-		itup = (IndexTuple) PageGetItem(ipage, iitemid);
-
-		/*
-		 * Locate the heap page that the index tuple points at
-		 */
-		hblkno = ItemPointerGetBlockNumber(&(itup->t_tid));
-		hbuffer = XLogReadBufferExtended(xlrec->hnode, MAIN_FORKNUM, hblkno, RBM_NORMAL);
-		if (!BufferIsValid(hbuffer))
-		{
-			UnlockReleaseBuffer(ibuffer);
-			return InvalidTransactionId;
-		}
-		LockBuffer(hbuffer, BT_READ);
-		hpage = (Page) BufferGetPage(hbuffer);
-
-		/*
-		 * Look up the heap tuple header that the index tuple points at by
-		 * using the heap node supplied with the xlrec. We can't use
-		 * heap_fetch, since it uses ReadBuffer rather than XLogReadBuffer.
-		 * Note that we are not looking at tuple data here, just headers.
-		 */
-		hoffnum = ItemPointerGetOffsetNumber(&(itup->t_tid));
-		hitemid = PageGetItemId(hpage, hoffnum);
-
-		/*
-		 * Follow any redirections until we find something useful.
-		 */
-		while (ItemIdIsRedirected(hitemid))
-		{
-			hoffnum = ItemIdGetRedirect(hitemid);
-			hitemid = PageGetItemId(hpage, hoffnum);
-			CHECK_FOR_INTERRUPTS();
-		}
-
-		/*
-		 * If the heap item has storage, then read the header and use that to
-		 * set latestRemovedXid.
-		 *
-		 * Some LP_DEAD items may not be accessible, so we ignore them.
-		 */
-		if (ItemIdHasStorage(hitemid))
-		{
-			htuphdr = (HeapTupleHeader) PageGetItem(hpage, hitemid);
-
-			HeapTupleHeaderAdvanceLatestRemovedXid(htuphdr, &latestRemovedXid);
-		}
-		else if (ItemIdIsDead(hitemid))
-		{
-			/*
-			 * Conjecture: if hitemid is dead then it had xids before the xids
-			 * marked on LP_NORMAL items. So we just ignore this item and move
-			 * onto the next, for the purposes of calculating
-			 * latestRemovedxids.
-			 */
-		}
-		else
-			Assert(!ItemIdIsUsed(hitemid));
-
-		UnlockReleaseBuffer(hbuffer);
-	}
-
-	UnlockReleaseBuffer(ibuffer);
-
-	/*
-	 * If all heap tuples were LP_DEAD then we will be returning
-	 * InvalidTransactionId here, which avoids conflicts. This matches
-	 * existing logic which assumes that LP_DEAD tuples must already be older
-	 * than the latestRemovedXid on the cleanup record that set them as
-	 * LP_DEAD, hence must already have generated a conflict.
-	 */
-	return latestRemovedXid;
 }
 
 static void
@@ -682,23 +660,15 @@ btree_xlog_delete(XLogReaderState *record)
 
 	/*
 	 * If we have any conflict processing to do, it must happen before we
-	 * update the page.
-	 *
-	 * Btree delete records can conflict with standby queries.  You might
-	 * think that vacuum records would conflict as well, but we've handled
-	 * that already.  XLOG_HEAP2_CLEANUP_INFO records provide the highest xid
-	 * cleaned by the vacuum of the heap and so we can resolve any conflicts
-	 * just once when that arrives.  After that we know that no conflicts
-	 * exist from individual btree vacuum records on that index.
+	 * update the page
 	 */
 	if (InHotStandby)
 	{
-		TransactionId latestRemovedXid = btree_xlog_delete_get_latestRemovedXid(record);
 		RelFileNode rnode;
 
 		XLogRecGetBlockTag(record, 0, &rnode, NULL, NULL);
 
-		ResolveRecoveryConflictWithSnapshot(latestRemovedXid, rnode);
+		ResolveRecoveryConflictWithSnapshot(xlrec->latestRemovedXid, rnode);
 	}
 
 	/*
@@ -707,22 +677,29 @@ btree_xlog_delete(XLogReaderState *record)
 	 */
 	if (XLogReadBufferForRedo(record, 0, &buffer) == BLK_NEEDS_REDO)
 	{
+		char	   *ptr = XLogRecGetBlockData(record, 0, NULL);
+
 		page = (Page) BufferGetPage(buffer);
 
-		if (XLogRecGetDataLen(record) > SizeOfBtreeDelete)
+		if (xlrec->nupdated > 0)
 		{
-			OffsetNumber *unused;
+			OffsetNumber *updatedoffsets;
+			xl_btree_update *updates;
 
-			unused = (OffsetNumber *) ((char *) xlrec + SizeOfBtreeDelete);
+			updatedoffsets = (OffsetNumber *)
+				(ptr + xlrec->ndeleted * sizeof(OffsetNumber));
+			updates = (xl_btree_update *) ((char *) updatedoffsets +
+										   xlrec->nupdated *
+										   sizeof(OffsetNumber));
 
-			PageIndexMultiDelete(page, unused, xlrec->nitems);
+			btree_xlog_updates(page, updatedoffsets, updates, xlrec->nupdated);
 		}
 
-		/*
-		 * Mark the page as not containing any LP_DEAD items --- see comments
-		 * in _bt_delitems_delete().
-		 */
-		opaque = (BTPageOpaque) PageGetSpecialPointer(page);
+		if (xlrec->ndeleted > 0)
+			PageIndexMultiDelete(page, (OffsetNumber *) ptr, xlrec->ndeleted);
+
+		/* Mark the page as not containing any LP_DEAD items */
+		opaque = BTPageGetOpaque(page);
 		opaque->btpo_flags &= ~BTP_HAS_GARBAGE;
 
 		PageSetLSN(page, lsn);
@@ -750,7 +727,7 @@ btree_xlog_mark_page_halfdead(uint8 info, XLogReaderState *record)
 	 * target page or not (since it's surely empty).
 	 */
 
-	/* parent page */
+	/* to-be-deleted subtree's parent page */
 	if (XLogReadBufferForRedo(record, 1, &buffer) == BLK_NEEDS_REDO)
 	{
 		OffsetNumber poffset;
@@ -760,24 +737,29 @@ btree_xlog_mark_page_halfdead(uint8 info, XLogReaderState *record)
 		BlockNumber rightsib;
 
 		page = (Page) BufferGetPage(buffer);
-		pageop = (BTPageOpaque) PageGetSpecialPointer(page);
+		pageop = BTPageGetOpaque(page);
 
 		poffset = xlrec->poffset;
 
 		nextoffset = OffsetNumberNext(poffset);
 		itemid = PageGetItemId(page, nextoffset);
 		itup = (IndexTuple) PageGetItem(page, itemid);
-		rightsib = BTreeInnerTupleGetDownLink(itup);
+		rightsib = BTreeTupleGetDownLink(itup);
 
 		itemid = PageGetItemId(page, poffset);
 		itup = (IndexTuple) PageGetItem(page, itemid);
-		BTreeInnerTupleSetDownLink(itup, rightsib);
+		BTreeTupleSetDownLink(itup, rightsib);
 		nextoffset = OffsetNumberNext(poffset);
 		PageIndexTupleDelete(page, nextoffset);
 
 		PageSetLSN(page, lsn);
 		MarkBufferDirty(buffer);
 	}
+
+	/*
+	 * Don't need to couple cross-level locks in REDO routines, so release
+	 * lock on internal page immediately
+	 */
 	if (BufferIsValid(buffer))
 		UnlockReleaseBuffer(buffer);
 
@@ -786,17 +768,17 @@ btree_xlog_mark_page_halfdead(uint8 info, XLogReaderState *record)
 	page = (Page) BufferGetPage(buffer);
 
 	_bt_pageinit(page, BufferGetPageSize(buffer));
-	pageop = (BTPageOpaque) PageGetSpecialPointer(page);
+	pageop = BTPageGetOpaque(page);
 
 	pageop->btpo_prev = xlrec->leftblk;
 	pageop->btpo_next = xlrec->rightblk;
-	pageop->btpo.level = 0;
+	pageop->btpo_level = 0;
 	pageop->btpo_flags = BTP_HALF_DEAD | BTP_LEAF;
 	pageop->btpo_cycleid = 0;
 
 	/*
-	 * Construct a dummy hikey item that points to the next parent to be
-	 * deleted (if any).
+	 * Construct a dummy high key item that points to top parent page (value
+	 * is InvalidBlockNumber when the top parent page is the leaf page itself)
 	 */
 	MemSet(&trunctuple, 0, sizeof(IndexTupleData));
 	trunctuple.t_info = sizeof(IndexTupleData);
@@ -819,104 +801,131 @@ btree_xlog_unlink_page(uint8 info, XLogReaderState *record)
 	xl_btree_unlink_page *xlrec = (xl_btree_unlink_page *) XLogRecGetData(record);
 	BlockNumber leftsib;
 	BlockNumber rightsib;
-	Buffer		buffer;
+	uint32		level;
+	bool		isleaf;
+	FullTransactionId safexid;
+	Buffer		leftbuf;
+	Buffer		target;
+	Buffer		rightbuf;
 	Page		page;
 	BTPageOpaque pageop;
 
 	leftsib = xlrec->leftsib;
 	rightsib = xlrec->rightsib;
+	level = xlrec->level;
+	isleaf = (level == 0);
+	safexid = xlrec->safexid;
+
+	/* No leaftopparent for level 0 (leaf page) or level 1 target */
+	Assert(!BlockNumberIsValid(xlrec->leaftopparent) || level > 1);
 
 	/*
 	 * In normal operation, we would lock all the pages this WAL record
-	 * touches before changing any of them.  In WAL replay, it should be okay
-	 * to lock just one page at a time, since no concurrent index updates can
-	 * be happening, and readers should not care whether they arrive at the
-	 * target page or not (since it's surely empty).
+	 * touches before changing any of them.  In WAL replay, we at least lock
+	 * the pages in the same standard left-to-right order (leftsib, target,
+	 * rightsib), and don't release the sibling locks until the target is
+	 * marked deleted.
 	 */
-
-	/* Fix left-link of right sibling */
-	if (XLogReadBufferForRedo(record, 2, &buffer) == BLK_NEEDS_REDO)
-	{
-		page = (Page) BufferGetPage(buffer);
-		pageop = (BTPageOpaque) PageGetSpecialPointer(page);
-		pageop->btpo_prev = leftsib;
-
-		PageSetLSN(page, lsn);
-		MarkBufferDirty(buffer);
-	}
-	if (BufferIsValid(buffer))
-		UnlockReleaseBuffer(buffer);
 
 	/* Fix right-link of left sibling, if any */
 	if (leftsib != P_NONE)
 	{
-		if (XLogReadBufferForRedo(record, 1, &buffer) == BLK_NEEDS_REDO)
+		if (XLogReadBufferForRedo(record, 1, &leftbuf) == BLK_NEEDS_REDO)
 		{
-			page = (Page) BufferGetPage(buffer);
-			pageop = (BTPageOpaque) PageGetSpecialPointer(page);
+			page = (Page) BufferGetPage(leftbuf);
+			pageop = BTPageGetOpaque(page);
 			pageop->btpo_next = rightsib;
 
 			PageSetLSN(page, lsn);
-			MarkBufferDirty(buffer);
+			MarkBufferDirty(leftbuf);
 		}
-		if (BufferIsValid(buffer))
-			UnlockReleaseBuffer(buffer);
 	}
+	else
+		leftbuf = InvalidBuffer;
 
 	/* Rewrite target page as empty deleted page */
-	buffer = XLogInitBufferForRedo(record, 0);
-	page = (Page) BufferGetPage(buffer);
+	target = XLogInitBufferForRedo(record, 0);
+	page = (Page) BufferGetPage(target);
 
-	_bt_pageinit(page, BufferGetPageSize(buffer));
-	pageop = (BTPageOpaque) PageGetSpecialPointer(page);
+	_bt_pageinit(page, BufferGetPageSize(target));
+	pageop = BTPageGetOpaque(page);
 
 	pageop->btpo_prev = leftsib;
 	pageop->btpo_next = rightsib;
-	pageop->btpo.xact = xlrec->btpo_xact;
-	pageop->btpo_flags = BTP_DELETED;
+	pageop->btpo_level = level;
+	BTPageSetDeleted(page, safexid);
+	if (isleaf)
+		pageop->btpo_flags |= BTP_LEAF;
 	pageop->btpo_cycleid = 0;
 
 	PageSetLSN(page, lsn);
-	MarkBufferDirty(buffer);
-	UnlockReleaseBuffer(buffer);
+	MarkBufferDirty(target);
+
+	/* Fix left-link of right sibling */
+	if (XLogReadBufferForRedo(record, 2, &rightbuf) == BLK_NEEDS_REDO)
+	{
+		page = (Page) BufferGetPage(rightbuf);
+		pageop = BTPageGetOpaque(page);
+		pageop->btpo_prev = leftsib;
+
+		PageSetLSN(page, lsn);
+		MarkBufferDirty(rightbuf);
+	}
+
+	/* Release siblings */
+	if (BufferIsValid(leftbuf))
+		UnlockReleaseBuffer(leftbuf);
+	if (BufferIsValid(rightbuf))
+		UnlockReleaseBuffer(rightbuf);
+
+	/* Release target */
+	UnlockReleaseBuffer(target);
 
 	/*
 	 * If we deleted a parent of the targeted leaf page, instead of the leaf
 	 * itself, update the leaf to point to the next remaining child in the
-	 * branch.
+	 * to-be-deleted subtree
 	 */
 	if (XLogRecHasBlockRef(record, 3))
 	{
 		/*
 		 * There is no real data on the page, so we just re-create it from
 		 * scratch using the information from the WAL record.
+		 *
+		 * Note that we don't end up here when the target page is also the
+		 * leafbuf page.  There is no need to add a dummy hikey item with a
+		 * top parent link when deleting leafbuf because it's the last page
+		 * we'll delete in the subtree undergoing deletion.
 		 */
+		Buffer		leafbuf;
 		IndexTupleData trunctuple;
 
-		buffer = XLogInitBufferForRedo(record, 3);
-		page = (Page) BufferGetPage(buffer);
+		Assert(!isleaf);
 
-		_bt_pageinit(page, BufferGetPageSize(buffer));
-		pageop = (BTPageOpaque) PageGetSpecialPointer(page);
+		leafbuf = XLogInitBufferForRedo(record, 3);
+		page = (Page) BufferGetPage(leafbuf);
+
+		_bt_pageinit(page, BufferGetPageSize(leafbuf));
+		pageop = BTPageGetOpaque(page);
 
 		pageop->btpo_flags = BTP_HALF_DEAD | BTP_LEAF;
 		pageop->btpo_prev = xlrec->leafleftsib;
 		pageop->btpo_next = xlrec->leafrightsib;
-		pageop->btpo.level = 0;
+		pageop->btpo_level = 0;
 		pageop->btpo_cycleid = 0;
 
 		/* Add a dummy hikey item */
 		MemSet(&trunctuple, 0, sizeof(IndexTupleData));
 		trunctuple.t_info = sizeof(IndexTupleData);
-		BTreeTupleSetTopParent(&trunctuple, xlrec->topparent);
+		BTreeTupleSetTopParent(&trunctuple, xlrec->leaftopparent);
 
 		if (PageAddItem(page, (Item) &trunctuple, sizeof(IndexTupleData), P_HIKEY,
 						false, false) == InvalidOffsetNumber)
 			elog(ERROR, "could not add dummy high key to half-dead page");
 
 		PageSetLSN(page, lsn);
-		MarkBufferDirty(buffer);
-		UnlockReleaseBuffer(buffer);
+		MarkBufferDirty(leafbuf);
+		UnlockReleaseBuffer(leafbuf);
 	}
 
 	/* Update metapage if needed */
@@ -939,11 +948,11 @@ btree_xlog_newroot(XLogReaderState *record)
 	page = (Page) BufferGetPage(buffer);
 
 	_bt_pageinit(page, BufferGetPageSize(buffer));
-	pageop = (BTPageOpaque) PageGetSpecialPointer(page);
+	pageop = BTPageGetOpaque(page);
 
 	pageop->btpo_flags = BTP_ROOT;
 	pageop->btpo_prev = pageop->btpo_next = P_NONE;
-	pageop->btpo.level = xlrec->level;
+	pageop->btpo_level = xlrec->level;
 	if (xlrec->level == 0)
 		pageop->btpo_flags |= BTP_LEAF;
 	pageop->btpo_cycleid = 0;
@@ -964,55 +973,71 @@ btree_xlog_newroot(XLogReaderState *record)
 	_bt_restore_meta(record, 2);
 }
 
+/*
+ * In general VACUUM must defer recycling as a way of avoiding certain race
+ * conditions.  Deleted pages contain a safexid value that is used by VACUUM
+ * to determine whether or not it's safe to place a page that was deleted by
+ * VACUUM earlier into the FSM now.  See nbtree/README.
+ *
+ * As far as any backend operating during original execution is concerned, the
+ * FSM is a cache of recycle-safe pages; the mere presence of the page in the
+ * FSM indicates that the page must already be safe to recycle (actually,
+ * _bt_getbuf() verifies it's safe using BTPageIsRecyclable(), but that's just
+ * because it would be unwise to completely trust the FSM, given its current
+ * limitations).
+ *
+ * This isn't sufficient to prevent similar concurrent recycling race
+ * conditions during Hot Standby, though.  For that we need to log a
+ * xl_btree_reuse_page record at the point that a page is actually recycled
+ * and reused for an entirely unrelated page inside _bt_split().  These
+ * records include the same safexid value from the original deleted page,
+ * stored in the record's latestRemovedFullXid field.
+ *
+ * The GlobalVisCheckRemovableFullXid() test in BTPageIsRecyclable() is used
+ * to determine if it's safe to recycle a page.  This mirrors our own test:
+ * the PGPROC->xmin > limitXmin test inside GetConflictingVirtualXIDs().
+ * Consequently, one XID value achieves the same exclusion effect on primary
+ * and standby.
+ */
 static void
 btree_xlog_reuse_page(XLogReaderState *record)
 {
 	xl_btree_reuse_page *xlrec = (xl_btree_reuse_page *) XLogRecGetData(record);
 
-	/*
-	 * Btree reuse_page records exist to provide a conflict point when we
-	 * reuse pages in the index via the FSM.  That's all they do though.
-	 *
-	 * latestRemovedXid was the page's btpo.xact.  The btpo.xact <
-	 * RecentGlobalXmin test in _bt_page_recyclable() conceptually mirrors the
-	 * pgxact->xmin > limitXmin test in GetConflictingVirtualXIDs().
-	 * Consequently, one XID value achieves the same exclusion effect on
-	 * master and standby.
-	 */
 	if (InHotStandby)
-	{
-		ResolveRecoveryConflictWithSnapshot(xlrec->latestRemovedXid,
-											xlrec->node);
-	}
+		ResolveRecoveryConflictWithSnapshotFullXid(xlrec->latestRemovedFullXid,
+												   xlrec->node);
 }
 
 void
 btree_redo(XLogReaderState *record)
 {
 	uint8		info = XLogRecGetInfo(record) & ~XLR_INFO_MASK;
+	MemoryContext oldCtx;
 
+	oldCtx = MemoryContextSwitchTo(opCtx);
 	switch (info)
 	{
 		case XLOG_BTREE_INSERT_LEAF:
-			btree_xlog_insert(true, false, record);
+			btree_xlog_insert(true, false, false, record);
 			break;
 		case XLOG_BTREE_INSERT_UPPER:
-			btree_xlog_insert(false, false, record);
+			btree_xlog_insert(false, false, false, record);
 			break;
 		case XLOG_BTREE_INSERT_META:
-			btree_xlog_insert(false, true, record);
+			btree_xlog_insert(false, true, false, record);
 			break;
 		case XLOG_BTREE_SPLIT_L:
-			btree_xlog_split(true, false, record);
-			break;
-		case XLOG_BTREE_SPLIT_L_HIGHKEY:
-			btree_xlog_split(true, true, record);
+			btree_xlog_split(true, record);
 			break;
 		case XLOG_BTREE_SPLIT_R:
-			btree_xlog_split(false, false, record);
+			btree_xlog_split(false, record);
 			break;
-		case XLOG_BTREE_SPLIT_R_HIGHKEY:
-			btree_xlog_split(false, true, record);
+		case XLOG_BTREE_INSERT_POST:
+			btree_xlog_insert(true, false, true, record);
+			break;
+		case XLOG_BTREE_DEDUP:
+			btree_xlog_dedup(record);
 			break;
 		case XLOG_BTREE_VACUUM:
 			btree_xlog_vacuum(record);
@@ -1039,6 +1064,23 @@ btree_redo(XLogReaderState *record)
 		default:
 			elog(PANIC, "btree_redo: unknown op code %u", info);
 	}
+	MemoryContextSwitchTo(oldCtx);
+	MemoryContextReset(opCtx);
+}
+
+void
+btree_xlog_startup(void)
+{
+	opCtx = AllocSetContextCreate(CurrentMemoryContext,
+								  "Btree recovery temporary context",
+								  ALLOCSET_DEFAULT_SIZES);
+}
+
+void
+btree_xlog_cleanup(void)
+{
+	MemoryContextDelete(opCtx);
+	opCtx = NULL;
 }
 
 /*
@@ -1055,17 +1097,9 @@ btree_mask(char *pagedata, BlockNumber blkno)
 	mask_page_hint_bits(page);
 	mask_unused_space(page);
 
-	maskopaq = (BTPageOpaque) PageGetSpecialPointer(page);
+	maskopaq = BTPageGetOpaque(page);
 
-	if (P_ISDELETED(maskopaq))
-	{
-		/*
-		 * Mask page content on a DELETED page since it will be re-initialized
-		 * during replay. See btree_xlog_unlink_page() for details.
-		 */
-		mask_page_content(page);
-	}
-	else if (P_ISLEAF(maskopaq))
+	if (P_ISLEAF(maskopaq))
 	{
 		/*
 		 * In btree leaf pages, it is possible to modify the LP_FLAGS without
@@ -1077,7 +1111,8 @@ btree_mask(char *pagedata, BlockNumber blkno)
 
 	/*
 	 * BTP_HAS_GARBAGE is just an un-logged hint bit. So, mask it. See
-	 * _bt_killitems(), _bt_check_unique() for details.
+	 * _bt_delete_or_dedup_one_page(), _bt_killitems(), and _bt_check_unique()
+	 * for details.
 	 */
 	maskopaq->btpo_flags &= ~BTP_HAS_GARBAGE;
 

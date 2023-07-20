@@ -9,7 +9,7 @@
  * of XLogRecData structs by a call to XLogRecordAssemble(). See
  * access/transam/README for details.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/xloginsert.c
@@ -19,21 +19,48 @@
 
 #include "postgres.h"
 
+#ifdef USE_LZ4
+#include <lz4.h>
+#endif
+
+#ifdef USE_ZSTD
+#include <zstd.h>
+#endif
+
 #include "access/xact.h"
 #include "access/xlog.h"
 #include "access/xlog_internal.h"
 #include "access/xloginsert.h"
 #include "catalog/pg_control.h"
 #include "common/pg_lzcompress.h"
+#include "executor/instrument.h"
 #include "miscadmin.h"
+#include "pg_trace.h"
 #include "replication/origin.h"
 #include "storage/bufmgr.h"
 #include "storage/proc.h"
 #include "utils/memutils.h"
-#include "pg_trace.h"
+
+/*
+ * Guess the maximum buffer size required to store a compressed version of
+ * backup block image.
+ */
+#ifdef USE_LZ4
+#define	LZ4_MAX_BLCKSZ		LZ4_COMPRESSBOUND(BLCKSZ)
+#else
+#define LZ4_MAX_BLCKSZ		0
+#endif
+
+#ifdef USE_ZSTD
+#define ZSTD_MAX_BLCKSZ		ZSTD_COMPRESSBOUND(BLCKSZ)
+#else
+#define ZSTD_MAX_BLCKSZ		0
+#endif
+
+#define PGLZ_MAX_BLCKSZ		PGLZ_MAX_OUTPUT(BLCKSZ)
 
 /* Buffer size required to store a compressed version of backup block image */
-#define PGLZ_MAX_BLCKSZ PGLZ_MAX_OUTPUT(BLCKSZ)
+#define COMPRESS_BUFSIZE	Max(Max(PGLZ_MAX_BLCKSZ, LZ4_MAX_BLCKSZ), ZSTD_MAX_BLCKSZ)
 
 /*
  * For each block reference registered with XLogRegisterBuffer, we fill in
@@ -57,7 +84,7 @@ typedef struct
 								 * backup block data in XLogRecordAssemble() */
 
 	/* buffer to store a compressed version of backup block image */
-	char		compressed_page[PGLZ_MAX_BLCKSZ];
+	char		compressed_page[COMPRESS_BUFSIZE];
 } registered_buffer;
 
 static registered_buffer *registered_buffers;
@@ -88,11 +115,13 @@ static XLogRecData hdr_rdt;
 static char *hdr_scratch = NULL;
 
 #define SizeOfXlogOrigin	(sizeof(RepOriginId) + sizeof(char))
+#define SizeOfXLogTransactionId	(sizeof(TransactionId) + sizeof(char))
 
 #define HEADER_SCRATCH_SIZE \
 	(SizeOfXLogRecord + \
 	 MaxSizeOfXLogRecordBlockHeader * (XLR_MAX_BLOCK_ID + 1) + \
-	 SizeOfXLogRecordDataHeaderLong + SizeOfXlogOrigin)
+	 SizeOfXLogRecordDataHeaderLong + SizeOfXlogOrigin + \
+	 SizeOfXLogTransactionId)
 
 /*
  * An array of XLogRecData structs, to hold registered data.
@@ -107,10 +136,11 @@ static bool begininsert_called = false;
 static MemoryContext xloginsert_cxt;
 
 static XLogRecData *XLogRecordAssemble(RmgrId rmid, uint8 info,
-				   XLogRecPtr RedoRecPtr, bool doPageWrites,
-				   XLogRecPtr *fpw_lsn);
+									   XLogRecPtr RedoRecPtr, bool doPageWrites,
+									   XLogRecPtr *fpw_lsn, int *num_fpi,
+									   bool *topxid_included);
 static bool XLogCompressBackupBlock(char *page, uint16 hole_offset,
-						uint16 hole_length, char *dest, uint16 *dlen);
+									uint16 hole_length, char *dest, uint16 *dlen);
 
 /*
  * Begin constructing a WAL record. This must be called before the
@@ -268,8 +298,6 @@ XLogRegisterBlock(uint8 block_id, RelFileNode *rnode, ForkNumber forknum,
 {
 	registered_buffer *regbuf;
 
-	/* This is currently only used to WAL-log a full-page image of a page */
-	Assert(flags & REGBUF_FORCE_IMAGE);
 	Assert(begininsert_called);
 
 	if (block_id >= max_registered_block_id)
@@ -397,7 +425,7 @@ void
 XLogSetRecordFlags(uint8 flags)
 {
 	Assert(begininsert_called);
-	curinsert_flags = flags;
+	curinsert_flags |= flags;
 }
 
 /*
@@ -446,8 +474,10 @@ XLogInsert(RmgrId rmid, uint8 info)
 	{
 		XLogRecPtr	RedoRecPtr;
 		bool		doPageWrites;
+		bool		topxid_included = false;
 		XLogRecPtr	fpw_lsn;
 		XLogRecData *rdt;
+		int			num_fpi = 0;
 
 		/*
 		 * Get values needed to decide whether to do full-page writes. Since
@@ -457,9 +487,10 @@ XLogInsert(RmgrId rmid, uint8 info)
 		GetFullPageWriteInfo(&RedoRecPtr, &doPageWrites);
 
 		rdt = XLogRecordAssemble(rmid, info, RedoRecPtr, doPageWrites,
-								 &fpw_lsn);
+								 &fpw_lsn, &num_fpi, &topxid_included);
 
-		EndPos = XLogInsertRecord(rdt, fpw_lsn, curinsert_flags);
+		EndPos = XLogInsertRecord(rdt, fpw_lsn, curinsert_flags, num_fpi,
+								  topxid_included);
 	} while (EndPos == InvalidXLogRecPtr);
 
 	XLogResetInsertion();
@@ -478,11 +509,14 @@ XLogInsert(RmgrId rmid, uint8 info)
  * of all of them, *fpw_lsn is set to the lowest LSN among such pages. This
  * signals that the assembled record is only good for insertion on the
  * assumption that the RedoRecPtr and doPageWrites values were up-to-date.
+ *
+ * *topxid_included is set if the topmost transaction ID is logged with the
+ * current subtransaction.
  */
 static XLogRecData *
 XLogRecordAssemble(RmgrId rmid, uint8 info,
 				   XLogRecPtr RedoRecPtr, bool doPageWrites,
-				   XLogRecPtr *fpw_lsn)
+				   XLogRecPtr *fpw_lsn, int *num_fpi, bool *topxid_included)
 {
 	XLogRecData *rdt;
 	uint32		total_len = 0;
@@ -605,7 +639,7 @@ XLogRecordAssemble(RmgrId rmid, uint8 info,
 				}
 				else
 				{
-					/* No "hole" to compress out */
+					/* No "hole" to remove */
 					bimg.hole_offset = 0;
 					cbimg.hole_length = 0;
 				}
@@ -620,7 +654,7 @@ XLogRecordAssemble(RmgrId rmid, uint8 info,
 			/*
 			 * Try to compress a block image if wal_compression is enabled
 			 */
-			if (wal_compression)
+			if (wal_compression != WAL_COMPRESSION_NONE)
 			{
 				is_compressed =
 					XLogCompressBackupBlock(page, bimg.hole_offset,
@@ -634,6 +668,9 @@ XLogRecordAssemble(RmgrId rmid, uint8 info,
 			 * struct
 			 */
 			bkpb.fork_flags |= BKPBLOCK_HAS_IMAGE;
+
+			/* Report a full page image constructed for the WAL record */
+			*num_fpi += 1;
 
 			/*
 			 * Construct XLogRecData entries for the page content.
@@ -654,8 +691,37 @@ XLogRecordAssemble(RmgrId rmid, uint8 info,
 
 			if (is_compressed)
 			{
+				/* The current compression is stored in the WAL record */
 				bimg.length = compressed_len;
-				bimg.bimg_info |= BKPIMAGE_IS_COMPRESSED;
+
+				/* Set the compression method used for this block */
+				switch ((WalCompression) wal_compression)
+				{
+					case WAL_COMPRESSION_PGLZ:
+						bimg.bimg_info |= BKPIMAGE_COMPRESS_PGLZ;
+						break;
+
+					case WAL_COMPRESSION_LZ4:
+#ifdef USE_LZ4
+						bimg.bimg_info |= BKPIMAGE_COMPRESS_LZ4;
+#else
+						elog(ERROR, "LZ4 is not supported by this build");
+#endif
+						break;
+
+					case WAL_COMPRESSION_ZSTD:
+#ifdef USE_ZSTD
+						bimg.bimg_info |= BKPIMAGE_COMPRESS_ZSTD;
+#else
+						elog(ERROR, "zstd is not supported by this build");
+#endif
+						break;
+
+					case WAL_COMPRESSION_NONE:
+						Assert(false);	/* cannot happen */
+						break;
+						/* no default case, so that compiler will warn */
+				}
 
 				rdt_datas_last->data = regbuf->compressed_page;
 				rdt_datas_last->len = compressed_len;
@@ -743,6 +809,19 @@ XLogRecordAssemble(RmgrId rmid, uint8 info,
 		scratch += sizeof(replorigin_session_origin);
 	}
 
+	/* followed by toplevel XID, if not already included in previous record */
+	if (IsSubxactTopXidLogPending())
+	{
+		TransactionId xid = GetTopTransactionIdIfAny();
+
+		/* Set the flag that the top xid is included in the WAL */
+		*topxid_included = true;
+
+		*(scratch++) = (char) XLR_BLOCK_ID_TOPLEVEL_XID;
+		memcpy(scratch, &xid, sizeof(TransactionId));
+		scratch += sizeof(TransactionId);
+	}
+
 	/* followed by main data, if any */
 	if (mainrdata_len > 0)
 	{
@@ -806,7 +885,7 @@ XLogCompressBackupBlock(char *page, uint16 hole_offset, uint16 hole_length,
 						char *dest, uint16 *dlen)
 {
 	int32		orig_len = BLCKSZ - hole_length;
-	int32		len;
+	int32		len = -1;
 	int32		extra_bytes = 0;
 	char	   *source;
 	PGAlignedBlock tmp;
@@ -829,12 +908,45 @@ XLogCompressBackupBlock(char *page, uint16 hole_offset, uint16 hole_length,
 	else
 		source = page;
 
+	switch ((WalCompression) wal_compression)
+	{
+		case WAL_COMPRESSION_PGLZ:
+			len = pglz_compress(source, orig_len, dest, PGLZ_strategy_default);
+			break;
+
+		case WAL_COMPRESSION_LZ4:
+#ifdef USE_LZ4
+			len = LZ4_compress_default(source, dest, orig_len,
+									   COMPRESS_BUFSIZE);
+			if (len <= 0)
+				len = -1;		/* failure */
+#else
+			elog(ERROR, "LZ4 is not supported by this build");
+#endif
+			break;
+
+		case WAL_COMPRESSION_ZSTD:
+#ifdef USE_ZSTD
+			len = ZSTD_compress(dest, COMPRESS_BUFSIZE, source, orig_len,
+								ZSTD_CLEVEL_DEFAULT);
+			if (ZSTD_isError(len))
+				len = -1;		/* failure */
+#else
+			elog(ERROR, "zstd is not supported by this build");
+#endif
+			break;
+
+		case WAL_COMPRESSION_NONE:
+			Assert(false);		/* cannot happen */
+			break;
+			/* no default case, so that compiler will warn */
+	}
+
 	/*
-	 * We recheck the actual size even if pglz_compress() reports success and
-	 * see if the number of bytes saved by compression is larger than the
-	 * length of extra data needed for the compressed version of block image.
+	 * We recheck the actual size even if compression reports success and see
+	 * if the number of bytes saved by compression is larger than the length
+	 * of extra data needed for the compressed version of block image.
 	 */
-	len = pglz_compress(source, orig_len, dest, PGLZ_strategy_default);
 	if (len >= 0 &&
 		len + extra_bytes < orig_len)
 	{
@@ -899,7 +1011,7 @@ XLogSaveBufferForHint(Buffer buffer, bool buffer_std)
 	/*
 	 * Ensure no checkpoint can change our view of RedoRecPtr.
 	 */
-	Assert(MyPgXact->delayChkpt);
+	Assert((MyProc->delayChkptFlags & DELAY_CHKPT_START) != 0);
 
 	/*
 	 * Update RedoRecPtr so that we can make the right decision
@@ -916,7 +1028,7 @@ XLogSaveBufferForHint(Buffer buffer, bool buffer_std)
 
 	if (lsn <= RedoRecPtr)
 	{
-		int			flags;
+		int			flags = 0;
 		PGAlignedBlock copied_buffer;
 		char	   *origdata = (char *) BufferGetBlock(buffer);
 		RelFileNode rnode;
@@ -943,7 +1055,6 @@ XLogSaveBufferForHint(Buffer buffer, bool buffer_std)
 
 		XLogBeginInsert();
 
-		flags = REGBUF_FORCE_IMAGE;
 		if (buffer_std)
 			flags |= REGBUF_STANDARD;
 
@@ -996,6 +1107,63 @@ log_newpage(RelFileNode *rnode, ForkNumber forkNum, BlockNumber blkno,
 }
 
 /*
+ * Like log_newpage(), but allows logging multiple pages in one operation.
+ * It is more efficient than calling log_newpage() for each page separately,
+ * because we can write multiple pages in a single WAL record.
+ */
+void
+log_newpages(RelFileNode *rnode, ForkNumber forkNum, int num_pages,
+			 BlockNumber *blknos, Page *pages, bool page_std)
+{
+	int			flags;
+	XLogRecPtr	recptr;
+	int			i;
+	int			j;
+
+	flags = REGBUF_FORCE_IMAGE;
+	if (page_std)
+		flags |= REGBUF_STANDARD;
+
+	/*
+	 * Iterate over all the pages. They are collected into batches of
+	 * XLR_MAX_BLOCK_ID pages, and a single WAL-record is written for each
+	 * batch.
+	 */
+	XLogEnsureRecordSpace(XLR_MAX_BLOCK_ID - 1, 0);
+
+	i = 0;
+	while (i < num_pages)
+	{
+		int			batch_start = i;
+		int			nbatch;
+
+		XLogBeginInsert();
+
+		nbatch = 0;
+		while (nbatch < XLR_MAX_BLOCK_ID && i < num_pages)
+		{
+			XLogRegisterBlock(nbatch, rnode, forkNum, blknos[i], pages[i], flags);
+			i++;
+			nbatch++;
+		}
+
+		recptr = XLogInsert(RM_XLOG_ID, XLOG_FPI);
+
+		for (j = batch_start; j < i; j++)
+		{
+			/*
+			 * The page may be uninitialized. If so, we can't set the LSN
+			 * because that would corrupt the page.
+			 */
+			if (!PageIsNew(pages[j]))
+			{
+				PageSetLSN(pages[j], recptr);
+			}
+		}
+	}
+}
+
+/*
  * Write a WAL record containing a full image of a page.
  *
  * Caller should initialize the buffer and mark it dirty before calling this
@@ -1019,6 +1187,94 @@ log_newpage_buffer(Buffer buffer, bool page_std)
 	BufferGetTag(buffer, &rnode, &forkNum, &blkno);
 
 	return log_newpage(&rnode, forkNum, blkno, page, page_std);
+}
+
+/*
+ * WAL-log a range of blocks in a relation.
+ *
+ * An image of all pages with block numbers 'startblk' <= X < 'endblk' is
+ * written to the WAL. If the range is large, this is done in multiple WAL
+ * records.
+ *
+ * If all page follows the standard page layout, with a PageHeader and unused
+ * space between pd_lower and pd_upper, set 'page_std' to true. That allows
+ * the unused space to be left out from the WAL records, making them smaller.
+ *
+ * NOTE: This function acquires exclusive-locks on the pages. Typically, this
+ * is used on a newly-built relation, and the caller is holding a
+ * AccessExclusiveLock on it, so no other backend can be accessing it at the
+ * same time. If that's not the case, you must ensure that this does not
+ * cause a deadlock through some other means.
+ */
+void
+log_newpage_range(Relation rel, ForkNumber forkNum,
+				  BlockNumber startblk, BlockNumber endblk,
+				  bool page_std)
+{
+	int			flags;
+	BlockNumber blkno;
+
+	flags = REGBUF_FORCE_IMAGE;
+	if (page_std)
+		flags |= REGBUF_STANDARD;
+
+	/*
+	 * Iterate over all the pages in the range. They are collected into
+	 * batches of XLR_MAX_BLOCK_ID pages, and a single WAL-record is written
+	 * for each batch.
+	 */
+	XLogEnsureRecordSpace(XLR_MAX_BLOCK_ID - 1, 0);
+
+	blkno = startblk;
+	while (blkno < endblk)
+	{
+		Buffer		bufpack[XLR_MAX_BLOCK_ID];
+		XLogRecPtr	recptr;
+		int			nbufs;
+		int			i;
+
+		CHECK_FOR_INTERRUPTS();
+
+		/* Collect a batch of blocks. */
+		nbufs = 0;
+		while (nbufs < XLR_MAX_BLOCK_ID && blkno < endblk)
+		{
+			Buffer		buf = ReadBufferExtended(rel, forkNum, blkno,
+												 RBM_NORMAL, NULL);
+
+			LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
+
+			/*
+			 * Completely empty pages are not WAL-logged. Writing a WAL record
+			 * would change the LSN, and we don't want that. We want the page
+			 * to stay empty.
+			 */
+			if (!PageIsNew(BufferGetPage(buf)))
+				bufpack[nbufs++] = buf;
+			else
+				UnlockReleaseBuffer(buf);
+			blkno++;
+		}
+
+		/* Write WAL record for this batch. */
+		XLogBeginInsert();
+
+		START_CRIT_SECTION();
+		for (i = 0; i < nbufs; i++)
+		{
+			XLogRegisterBuffer(i, bufpack[i], flags);
+			MarkBufferDirty(bufpack[i]);
+		}
+
+		recptr = XLogInsert(RM_XLOG_ID, XLOG_FPI);
+
+		for (i = 0; i < nbufs; i++)
+		{
+			PageSetLSN(BufferGetPage(bufpack[i]), recptr);
+			UnlockReleaseBuffer(bufpack[i]);
+		}
+		END_CRIT_SECTION();
+	}
 }
 
 /*

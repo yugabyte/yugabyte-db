@@ -6,18 +6,12 @@
  *	  message integrity and endpoint authentication.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
  *	  src/interfaces/libpq/fe-secure.c
- *
- * NOTES
- *
- *	  We don't provide informational callbacks here (like
- *	  info_cb() in be-secure.c), since there's no good mechanism to
- *	  display such information to the user.
  *
  *-------------------------------------------------------------------------
  */
@@ -27,10 +21,6 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <ctype.h>
-
-#include "libpq-fe.h"
-#include "fe-auth.h"
-#include "libpq-int.h"
 
 #ifdef WIN32
 #include "win32.h"
@@ -54,6 +44,10 @@
 #include <pthread.h>
 #endif
 #endif
+
+#include "fe-auth.h"
+#include "libpq-fe.h"
+#include "libpq-int.h"
 
 /*
  * Macros to handle disabling and then restoring the state of SIGPIPE handling.
@@ -165,12 +159,12 @@ PQinitOpenSSL(int do_ssl, int do_crypto)
  *	Initialize global SSL context
  */
 int
-pqsecure_initialize(PGconn *conn)
+pqsecure_initialize(PGconn *conn, bool do_ssl, bool do_crypto)
 {
 	int			r = 0;
 
 #ifdef USE_SSL
-	r = pgtls_init(conn);
+	r = pgtls_init(conn, do_ssl, do_crypto);
 #endif
 
 	return r;
@@ -197,16 +191,15 @@ void
 pqsecure_close(PGconn *conn)
 {
 #ifdef USE_SSL
-	if (conn->ssl_in_use)
-		pgtls_close(conn);
+	pgtls_close(conn);
 #endif
 }
 
 /*
  *	Read data from a secure connection.
  *
- * On failure, this function is responsible for putting a suitable message
- * into conn->errorMessage.  The caller must still inspect errno, but only
+ * On failure, this function is responsible for appending a suitable message
+ * to conn->errorMessage.  The caller must still inspect errno, but only
  * to determine whether to continue/retry after error.
  */
 ssize_t
@@ -218,6 +211,13 @@ pqsecure_read(PGconn *conn, void *ptr, size_t len)
 	if (conn->ssl_in_use)
 	{
 		n = pgtls_read(conn, ptr, len);
+	}
+	else
+#endif
+#ifdef ENABLE_GSS
+	if (conn->gssenc)
+	{
+		n = pg_GSS_read(conn, ptr, len);
 	}
 	else
 #endif
@@ -233,7 +233,7 @@ pqsecure_raw_read(PGconn *conn, void *ptr, size_t len)
 {
 	ssize_t		n;
 	int			result_errno = 0;
-	char		sebuf[256];
+	char		sebuf[PG_STRERROR_R_BUFLEN];
 
 	n = recv(conn->sock, ptr, len, 0);
 
@@ -254,18 +254,16 @@ pqsecure_raw_read(PGconn *conn, void *ptr, size_t len)
 				/* no error message, caller is expected to retry */
 				break;
 
-#ifdef ECONNRESET
+			case EPIPE:
 			case ECONNRESET:
-				printfPQExpBuffer(&conn->errorMessage,
-								  libpq_gettext(
-												"server closed the connection unexpectedly\n"
-												"\tThis probably means the server terminated abnormally\n"
-												"\tbefore or while processing the request.\n"));
+				appendPQExpBufferStr(&conn->errorMessage,
+									 libpq_gettext("server closed the connection unexpectedly\n"
+												   "\tThis probably means the server terminated abnormally\n"
+												   "\tbefore or while processing the request.\n"));
 				break;
-#endif
 
 			default:
-				printfPQExpBuffer(&conn->errorMessage,
+				appendPQExpBuffer(&conn->errorMessage,
 								  libpq_gettext("could not receive data from server: %s\n"),
 								  SOCK_STRERROR(result_errno,
 												sebuf, sizeof(sebuf)));
@@ -282,9 +280,22 @@ pqsecure_raw_read(PGconn *conn, void *ptr, size_t len)
 /*
  *	Write data to a secure connection.
  *
- * On failure, this function is responsible for putting a suitable message
- * into conn->errorMessage.  The caller must still inspect errno, but only
- * to determine whether to continue/retry after error.
+ * Returns the number of bytes written, or a negative value (with errno
+ * set) upon failure.  The write count could be less than requested.
+ *
+ * Note that socket-level hard failures are masked from the caller,
+ * instead setting conn->write_failed and storing an error message
+ * in conn->write_err_msg; see pqsecure_raw_write.  This allows us to
+ * postpone reporting of write failures until we're sure no error
+ * message is available from the server.
+ *
+ * However, errors detected in the SSL or GSS management level are reported
+ * via a negative result, with message appended to conn->errorMessage.
+ * It's frequently unclear whether such errors should be considered read or
+ * write errors, so we don't attempt to postpone reporting them.
+ *
+ * The caller must still inspect errno upon failure, but only to determine
+ * whether to continue/retry; a message has been saved someplace in any case.
  */
 ssize_t
 pqsecure_write(PGconn *conn, const void *ptr, size_t len)
@@ -298,6 +309,13 @@ pqsecure_write(PGconn *conn, const void *ptr, size_t len)
 	}
 	else
 #endif
+#ifdef ENABLE_GSS
+	if (conn->gssenc)
+	{
+		n = pg_GSS_write(conn, ptr, len);
+	}
+	else
+#endif
 	{
 		n = pqsecure_raw_write(conn, ptr, len);
 	}
@@ -305,15 +323,49 @@ pqsecure_write(PGconn *conn, const void *ptr, size_t len)
 	return n;
 }
 
+/*
+ * Low-level implementation of pqsecure_write.
+ *
+ * This is used directly for an unencrypted connection.  For encrypted
+ * connections, this does the physical I/O on behalf of pgtls_write or
+ * pg_GSS_write.
+ *
+ * This function reports failure (i.e., returns a negative result) only
+ * for retryable errors such as EINTR.  Looping for such cases is to be
+ * handled at some outer level, maybe all the way up to the application.
+ * For hard failures, we set conn->write_failed and store an error message
+ * in conn->write_err_msg, but then claim to have written the data anyway.
+ * This is because we don't want to report write failures so long as there
+ * is a possibility of reading from the server and getting an error message
+ * that could explain why the connection dropped.  Many TCP stacks have
+ * race conditions such that a write failure may or may not be reported
+ * before all incoming data has been read.
+ *
+ * Note that this error behavior happens below the SSL management level when
+ * we are using SSL.  That's because at least some versions of OpenSSL are
+ * too quick to report a write failure when there's still a possibility to
+ * get a more useful error from the server.
+ */
 ssize_t
 pqsecure_raw_write(PGconn *conn, const void *ptr, size_t len)
 {
 	ssize_t		n;
 	int			flags = 0;
 	int			result_errno = 0;
-	char		sebuf[256];
+	char		msgbuf[1024];
+	char		sebuf[PG_STRERROR_R_BUFLEN];
 
 	DECLARE_SIGPIPE_INFO(spinfo);
+
+	/*
+	 * If we already had a write failure, we will never again try to send data
+	 * on that connection.  Even if the kernel would let us, we've probably
+	 * lost message boundary sync with the server.  conn->write_failed
+	 * therefore persists until the connection is reset, and we just discard
+	 * all data presented to be written.
+	 */
+	if (conn->write_failed)
+		return len;
 
 #ifdef MSG_NOSIGNAL
 	if (conn->sigpipe_flag)
@@ -361,23 +413,32 @@ retry_masked:
 				/* Set flag for EPIPE */
 				REMEMBER_EPIPE(spinfo, true);
 
-#ifdef ECONNRESET
 			switch_fallthrough();
 
 			case ECONNRESET:
-#endif
-				printfPQExpBuffer(&conn->errorMessage,
-								  libpq_gettext(
-												"server closed the connection unexpectedly\n"
-												"\tThis probably means the server terminated abnormally\n"
-												"\tbefore or while processing the request.\n"));
+				conn->write_failed = true;
+				/* Store error message in conn->write_err_msg, if possible */
+				/* (strdup failure is OK, we'll cope later) */
+				snprintf(msgbuf, sizeof(msgbuf),
+						 libpq_gettext("server closed the connection unexpectedly\n"
+									   "\tThis probably means the server terminated abnormally\n"
+									   "\tbefore or while processing the request.\n"));
+				conn->write_err_msg = strdup(msgbuf);
+				/* Now claim the write succeeded */
+				n = len;
 				break;
 
 			default:
-				printfPQExpBuffer(&conn->errorMessage,
-								  libpq_gettext("could not send data to server: %s\n"),
-								  SOCK_STRERROR(result_errno,
-												sebuf, sizeof(sebuf)));
+				conn->write_failed = true;
+				/* Store error message in conn->write_err_msg, if possible */
+				/* (strdup failure is OK, we'll cope later) */
+				snprintf(msgbuf, sizeof(msgbuf),
+						 libpq_gettext("could not send data to server: %s\n"),
+						 SOCK_STRERROR(result_errno,
+									   sebuf, sizeof(sebuf)));
+				conn->write_err_msg = strdup(msgbuf);
+				/* Now claim the write succeeded */
+				n = len;
 				break;
 		}
 	}
@@ -419,6 +480,48 @@ PQsslAttributeNames(PGconn *conn)
 	return result;
 }
 #endif							/* USE_SSL */
+
+/*
+ * Dummy versions of OpenSSL key password hook functions, when built without
+ * OpenSSL.
+ */
+#ifndef USE_OPENSSL
+
+PQsslKeyPassHook_OpenSSL_type
+PQgetSSLKeyPassHook_OpenSSL(void)
+{
+	return NULL;
+}
+
+void
+PQsetSSLKeyPassHook_OpenSSL(PQsslKeyPassHook_OpenSSL_type hook)
+{
+	return;
+}
+
+int
+PQdefaultSSLKeyPassHook_OpenSSL(char *buf, int size, PGconn *conn)
+{
+	return 0;
+}
+#endif							/* USE_OPENSSL */
+
+/* Dummy version of GSSAPI information functions, when built without GSS support */
+#ifndef ENABLE_GSS
+
+void *
+PQgetgssctx(PGconn *conn)
+{
+	return NULL;
+}
+
+int
+PQgssEncInUse(PGconn *conn)
+{
+	return 0;
+}
+
+#endif							/* ENABLE_GSS */
 
 
 #if defined(ENABLE_THREAD_SAFETY) && !defined(WIN32)

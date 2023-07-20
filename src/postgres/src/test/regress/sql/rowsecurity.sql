@@ -232,11 +232,11 @@ SET SESSION AUTHORIZATION regress_rls_alice;
 
 SET row_security TO ON;
 
-CREATE TABLE t1 (a int, junk1 text, b text) WITH OIDS;
+CREATE TABLE t1 (id int not null primary key, a int, junk1 text, b text);
 ALTER TABLE t1 DROP COLUMN junk1;    -- just a disturbing factor
 GRANT ALL ON t1 TO public;
 
-COPY t1 FROM stdin WITH (oids);
+COPY t1 FROM stdin WITH ;
 101	1	aba
 102	2	bbb
 103	3	ccc
@@ -246,18 +246,18 @@ COPY t1 FROM stdin WITH (oids);
 CREATE TABLE t2 (c float) INHERITS (t1);
 GRANT ALL ON t2 TO public;
 
-COPY t2 FROM stdin WITH (oids);
+COPY t2 FROM stdin;
 201	1	abc	1.1
 202	2	bcd	2.2
 203	3	cde	3.3
 204	4	def	4.4
 \.
 
-CREATE TABLE t3 (c text, b text, a int) WITH OIDS;
+CREATE TABLE t3 (id int not null primary key, c text, b text, a int);
 ALTER TABLE t3 INHERIT t1;
 GRANT ALL ON t3 TO public;
 
-COPY t3(a,b,c) FROM stdin WITH (oids);
+COPY t3(id, a,b,c) FROM stdin;
 301	1	xxx	X
 302	2	yyy	Y
 303	3	zzz	Z
@@ -278,7 +278,7 @@ SELECT * FROM t1 WHERE f_leak(b);
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
 
 -- reference to system column
-SELECT oid, * FROM t1;
+SELECT tableoid::regclass, * FROM t1;
 EXPLAIN (COSTS OFF) SELECT *, t1 FROM t1;
 
 -- reference to whole-row reference
@@ -293,8 +293,8 @@ SELECT * FROM t1 WHERE f_leak(b) FOR SHARE;
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b) FOR SHARE;
 
 -- union all query
-SELECT a, b, oid FROM t2 UNION ALL SELECT a, b, oid FROM t3;
-EXPLAIN (COSTS OFF) SELECT a, b, oid FROM t2 UNION ALL SELECT a, b, oid FROM t3;
+SELECT a, b, tableoid::regclass FROM t2 UNION ALL SELECT a, b, tableoid::regclass FROM t3;
+EXPLAIN (COSTS OFF) SELECT a, b, tableoid::regclass FROM t2 UNION ALL SELECT a, b, tableoid::regclass FROM t3;
 
 -- superuser is allowed to bypass RLS checks
 RESET SESSION AUTHORIZATION;
@@ -518,9 +518,7 @@ SELECT * FROM rec1;    -- fail, mutual recursion via views
 --
 SET SESSION AUTHORIZATION regress_rls_bob;
 
-\set VERBOSITY terse \\ -- suppress cascade details
 DROP VIEW rec1v, rec2v CASCADE;
-\set VERBOSITY default
 
 CREATE VIEW rec1v WITH (security_barrier) AS SELECT * FROM rec1;
 CREATE VIEW rec2v WITH (security_barrier) AS SELECT * FROM rec2;
@@ -614,9 +612,9 @@ EXPLAIN (COSTS OFF) UPDATE only t1 SET b = b || '_updt' WHERE f_leak(b);
 UPDATE only t1 SET b = b || '_updt' WHERE f_leak(b);
 
 -- returning clause with system column
-UPDATE only t1 SET b = b WHERE f_leak(b) RETURNING oid, *, t1;
+UPDATE only t1 SET b = b WHERE f_leak(b) RETURNING tableoid::regclass, *, t1;
 UPDATE t1 SET b = b WHERE f_leak(b) RETURNING *;
-UPDATE t1 SET b = b WHERE f_leak(b) RETURNING oid, *, t1;
+UPDATE t1 SET b = b WHERE f_leak(b) RETURNING tableoid::regclass, *, t1;
 
 -- updates with from clause
 EXPLAIN (COSTS OFF) UPDATE t2 SET b=t2.b FROM t3
@@ -663,8 +661,8 @@ SET row_security TO ON;
 EXPLAIN (COSTS OFF) DELETE FROM only t1 WHERE f_leak(b);
 EXPLAIN (COSTS OFF) DELETE FROM t1 WHERE f_leak(b);
 
-DELETE FROM only t1 WHERE f_leak(b) RETURNING oid, *, t1;
-DELETE FROM t1 WHERE f_leak(b) RETURNING oid, *, t1;
+DELETE FROM only t1 WHERE f_leak(b) RETURNING tableoid::regclass, *, t1;
+DELETE FROM t1 WHERE f_leak(b) RETURNING tableoid::regclass, *, t1;
 
 --
 -- S.b. view on top of Row-level security
@@ -813,6 +811,162 @@ INSERT INTO document VALUES (1, (SELECT cid from category WHERE cname = 'novel')
     ON CONFLICT (did) DO UPDATE SET dauthor = 'regress_rls_carol';
 
 --
+-- MERGE
+--
+RESET SESSION AUTHORIZATION;
+DROP POLICY p3_with_all ON document;
+
+ALTER TABLE document ADD COLUMN dnotes text DEFAULT '';
+-- all documents are readable
+CREATE POLICY p1 ON document FOR SELECT USING (true);
+-- one may insert documents only authored by them
+CREATE POLICY p2 ON document FOR INSERT WITH CHECK (dauthor = current_user);
+-- one may only update documents in 'novel' category
+CREATE POLICY p3 ON document FOR UPDATE
+  USING (cid = (SELECT cid from category WHERE cname = 'novel'))
+  WITH CHECK (dauthor = current_user);
+-- one may only delete documents in 'manga' category
+CREATE POLICY p4 ON document FOR DELETE
+  USING (cid = (SELECT cid from category WHERE cname = 'manga'));
+
+SELECT * FROM document;
+
+SET SESSION AUTHORIZATION regress_rls_bob;
+
+-- Fails, since update violates WITH CHECK qual on dauthor
+MERGE INTO document d
+USING (SELECT 1 as sdid) s
+ON did = s.sdid
+WHEN MATCHED THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge1 ', dauthor = 'regress_rls_alice';
+
+-- Should be OK since USING and WITH CHECK quals pass
+MERGE INTO document d
+USING (SELECT 1 as sdid) s
+ON did = s.sdid
+WHEN MATCHED THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge2 ';
+
+-- Even when dauthor is updated explicitly, but to the existing value
+MERGE INTO document d
+USING (SELECT 1 as sdid) s
+ON did = s.sdid
+WHEN MATCHED THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge3 ', dauthor = 'regress_rls_bob';
+
+-- There is a MATCH for did = 3, but UPDATE's USING qual does not allow
+-- updating an item in category 'science fiction'
+MERGE INTO document d
+USING (SELECT 3 as sdid) s
+ON did = s.sdid
+WHEN MATCHED THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge ';
+
+-- The same thing with DELETE action, but fails again because no permissions
+-- to delete items in 'science fiction' category that did 3 belongs to.
+MERGE INTO document d
+USING (SELECT 3 as sdid) s
+ON did = s.sdid
+WHEN MATCHED THEN
+	DELETE;
+
+-- Document with did 4 belongs to 'manga' category which is allowed for
+-- deletion. But this fails because the UPDATE action is matched first and
+-- UPDATE policy does not allow updation in the category.
+MERGE INTO document d
+USING (SELECT 4 as sdid) s
+ON did = s.sdid
+WHEN MATCHED AND dnotes = '' THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge '
+WHEN MATCHED THEN
+	DELETE;
+
+-- UPDATE action is not matched this time because of the WHEN qual.
+-- DELETE still fails because role regress_rls_bob does not have SELECT
+-- privileges on 'manga' category row in the category table.
+MERGE INTO document d
+USING (SELECT 4 as sdid) s
+ON did = s.sdid
+WHEN MATCHED AND dnotes <> '' THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge '
+WHEN MATCHED THEN
+	DELETE;
+
+SELECT * FROM document WHERE did = 4;
+
+-- Switch to regress_rls_carol role and try the DELETE again. It should succeed
+-- this time
+RESET SESSION AUTHORIZATION;
+SET SESSION AUTHORIZATION regress_rls_carol;
+
+MERGE INTO document d
+USING (SELECT 4 as sdid) s
+ON did = s.sdid
+WHEN MATCHED AND dnotes <> '' THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge '
+WHEN MATCHED THEN
+	DELETE;
+
+-- Switch back to regress_rls_bob role
+RESET SESSION AUTHORIZATION;
+SET SESSION AUTHORIZATION regress_rls_bob;
+
+-- Try INSERT action. This fails because we are trying to insert
+-- dauthor = regress_rls_dave and INSERT's WITH CHECK does not allow
+-- that
+MERGE INTO document d
+USING (SELECT 12 as sdid) s
+ON did = s.sdid
+WHEN MATCHED THEN
+	DELETE
+WHEN NOT MATCHED THEN
+	INSERT VALUES (12, 11, 1, 'regress_rls_dave', 'another novel');
+
+-- This should be fine
+MERGE INTO document d
+USING (SELECT 12 as sdid) s
+ON did = s.sdid
+WHEN MATCHED THEN
+	DELETE
+WHEN NOT MATCHED THEN
+	INSERT VALUES (12, 11, 1, 'regress_rls_bob', 'another novel');
+
+-- ok
+MERGE INTO document d
+USING (SELECT 1 as sdid) s
+ON did = s.sdid
+WHEN MATCHED THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge4 '
+WHEN NOT MATCHED THEN
+	INSERT VALUES (12, 11, 1, 'regress_rls_bob', 'another novel');
+
+-- drop and create a new SELECT policy which prevents us from reading
+-- any document except with category 'magna'
+RESET SESSION AUTHORIZATION;
+DROP POLICY p1 ON document;
+CREATE POLICY p1 ON document FOR SELECT
+  USING (cid = (SELECT cid from category WHERE cname = 'manga'));
+
+SET SESSION AUTHORIZATION regress_rls_bob;
+
+-- MERGE can no longer see the matching row and hence attempts the
+-- NOT MATCHED action, which results in unique key violation
+MERGE INTO document d
+USING (SELECT 1 as sdid) s
+ON did = s.sdid
+WHEN MATCHED THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge5 '
+WHEN NOT MATCHED THEN
+	INSERT VALUES (12, 11, 1, 'regress_rls_bob', 'another novel');
+
+RESET SESSION AUTHORIZATION;
+-- drop the restrictive SELECT policy so that we can look at the
+-- final state of the table
+DROP POLICY p1 ON document;
+-- Just check everything went per plan
+SELECT * FROM document;
+
+--
 -- ROLE/GROUP
 --
 SET SESSION AUTHORIZATION regress_rls_alice;
@@ -840,10 +994,10 @@ EXPLAIN (COSTS OFF) SELECT * FROM z1 WHERE f_leak(b);
 PREPARE plancache_test AS SELECT * FROM z1 WHERE f_leak(b);
 EXPLAIN (COSTS OFF) EXECUTE plancache_test;
 
-PREPARE plancache_test2 AS WITH q AS (SELECT * FROM z1 WHERE f_leak(b)) SELECT * FROM q,z2;
+PREPARE plancache_test2 AS WITH q AS MATERIALIZED (SELECT * FROM z1 WHERE f_leak(b)) SELECT * FROM q,z2;
 EXPLAIN (COSTS OFF) EXECUTE plancache_test2;
 
-PREPARE plancache_test3 AS WITH q AS (SELECT * FROM z2) SELECT * FROM q,z1 WHERE f_leak(z1.b);
+PREPARE plancache_test3 AS WITH q AS MATERIALIZED (SELECT * FROM z2) SELECT * FROM q,z1 WHERE f_leak(z1.b);
 EXPLAIN (COSTS OFF) EXECUTE plancache_test3;
 
 SET ROLE regress_rls_group1;
@@ -914,6 +1068,128 @@ EXPLAIN (COSTS OFF) SELECT * FROM rls_view; --fail - permission denied.
 -- Query as role that is not the owner of the table or view with permissions.
 SET SESSION AUTHORIZATION regress_rls_bob;
 GRANT SELECT ON rls_view TO regress_rls_carol;
+
+SET SESSION AUTHORIZATION regress_rls_carol;
+SELECT * FROM rls_view;
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+
+-- Policy requiring access to another table.
+SET SESSION AUTHORIZATION regress_rls_alice;
+CREATE TABLE z1_blacklist (a int);
+INSERT INTO z1_blacklist VALUES (3), (4);
+CREATE POLICY p3 ON z1 AS RESTRICTIVE USING (a NOT IN (SELECT a FROM z1_blacklist));
+
+-- Query as role that is not owner of table but is owner of view without permissions.
+SET SESSION AUTHORIZATION regress_rls_bob;
+SELECT * FROM rls_view; --fail - permission denied.
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view; --fail - permission denied.
+
+-- Query as role that is not the owner of the table or view without permissions.
+SET SESSION AUTHORIZATION regress_rls_carol;
+SELECT * FROM rls_view; --fail - permission denied.
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view; --fail - permission denied.
+
+-- Query as role that is not owner of table but is owner of view with permissions.
+SET SESSION AUTHORIZATION regress_rls_alice;
+GRANT SELECT ON z1_blacklist TO regress_rls_bob;
+
+SET SESSION AUTHORIZATION regress_rls_bob;
+SELECT * FROM rls_view;
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+
+-- Query as role that is not the owner of the table or view with permissions.
+SET SESSION AUTHORIZATION regress_rls_carol;
+SELECT * FROM rls_view;
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+
+SET SESSION AUTHORIZATION regress_rls_alice;
+REVOKE SELECT ON z1_blacklist FROM regress_rls_bob;
+DROP POLICY p3 ON z1;
+
+SET SESSION AUTHORIZATION regress_rls_bob;
+DROP VIEW rls_view;
+
+--
+-- Security invoker views should follow policy for current user.
+--
+-- View and table owner are the same.
+SET SESSION AUTHORIZATION regress_rls_alice;
+CREATE VIEW rls_view WITH (security_invoker) AS
+    SELECT * FROM z1 WHERE f_leak(b);
+GRANT SELECT ON rls_view TO regress_rls_bob;
+GRANT SELECT ON rls_view TO regress_rls_carol;
+
+-- Query as table owner.  Should return all records.
+SELECT * FROM rls_view;
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+
+-- Queries as other users.
+-- Should return records based on current user's policies.
+SET SESSION AUTHORIZATION regress_rls_bob;
+SELECT * FROM rls_view;
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+
+SET SESSION AUTHORIZATION regress_rls_carol;
+SELECT * FROM rls_view;
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+
+-- View and table owners are different.
+SET SESSION AUTHORIZATION regress_rls_alice;
+DROP VIEW rls_view;
+
+SET SESSION AUTHORIZATION regress_rls_bob;
+CREATE VIEW rls_view WITH (security_invoker) AS
+    SELECT * FROM z1 WHERE f_leak(b);
+GRANT SELECT ON rls_view TO regress_rls_alice;
+GRANT SELECT ON rls_view TO regress_rls_carol;
+
+-- Query as table owner.  Should return all records.
+SET SESSION AUTHORIZATION regress_rls_alice;
+SELECT * FROM rls_view;
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+
+-- Queries as other users.
+-- Should return records based on current user's policies.
+SET SESSION AUTHORIZATION regress_rls_bob;
+SELECT * FROM rls_view;
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+
+SET SESSION AUTHORIZATION regress_rls_carol;
+SELECT * FROM rls_view;
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+
+-- Policy requiring access to another table.
+SET SESSION AUTHORIZATION regress_rls_alice;
+CREATE POLICY p3 ON z1 AS RESTRICTIVE USING (a NOT IN (SELECT a FROM z1_blacklist));
+
+-- Query as role that is not owner of table but is owner of view without permissions.
+SET SESSION AUTHORIZATION regress_rls_bob;
+SELECT * FROM rls_view; --fail - permission denied.
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view; --fail - permission denied.
+
+-- Query as role that is not the owner of the table or view without permissions.
+SET SESSION AUTHORIZATION regress_rls_carol;
+SELECT * FROM rls_view; --fail - permission denied.
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view; --fail - permission denied.
+
+-- Query as role that is not owner of table but is owner of view with permissions.
+SET SESSION AUTHORIZATION regress_rls_alice;
+GRANT SELECT ON z1_blacklist TO regress_rls_bob;
+
+SET SESSION AUTHORIZATION regress_rls_bob;
+SELECT * FROM rls_view;
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+
+-- Query as role that is not the owner of the table or view without permissions.
+SET SESSION AUTHORIZATION regress_rls_carol;
+SELECT * FROM rls_view; --fail - permission denied.
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view; --fail - permission denied.
+
+-- Query as role that is not the owner of the table or view with permissions.
+SET SESSION AUTHORIZATION regress_rls_alice;
+GRANT SELECT ON z1_blacklist TO regress_rls_carol;
+
+SET SESSION AUTHORIZATION regress_rls_carol;
 SELECT * FROM rls_view;
 EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
 
@@ -1026,9 +1302,7 @@ DROP TABLE test_qual_pushdown;
 --
 RESET SESSION AUTHORIZATION;
 
-\set VERBOSITY terse \\ -- suppress cascade details
 DROP TABLE t1 CASCADE;
-\set VERBOSITY default
 
 CREATE TABLE t1 (a integer);
 
@@ -1071,8 +1345,9 @@ INSERT INTO t1 (SELECT x, md5(x::text) FROM generate_series(0,20) x);
 
 SET SESSION AUTHORIZATION regress_rls_bob;
 
-WITH cte1 AS (SELECT * FROM t1 WHERE f_leak(b)) SELECT * FROM cte1;
-EXPLAIN (COSTS OFF) WITH cte1 AS (SELECT * FROM t1 WHERE f_leak(b)) SELECT * FROM cte1;
+WITH cte1 AS MATERIALIZED (SELECT * FROM t1 WHERE f_leak(b)) SELECT * FROM cte1;
+EXPLAIN (COSTS OFF)
+WITH cte1 AS MATERIALIZED (SELECT * FROM t1 WHERE f_leak(b)) SELECT * FROM cte1;
 
 WITH cte1 AS (UPDATE t1 SET a = a + 1 RETURNING *) SELECT * FROM cte1; --fail
 WITH cte1 AS (UPDATE t1 SET a = a RETURNING *) SELECT * FROM cte1; --ok
@@ -1448,7 +1723,7 @@ ALTER TABLE t ENABLE ROW LEVEL SECURITY;
 
 SAVEPOINT q;
 CREATE RULE "_RETURN" AS ON SELECT TO t DO INSTEAD
-  SELECT * FROM generate_series(1,5) t0(c); -- fails due to row level security enabled
+  SELECT * FROM generate_series(1,5) t0(c); -- fails due to row-level security enabled
 ROLLBACK TO q;
 
 ALTER TABLE t DISABLE ROW LEVEL SECURITY;
@@ -1777,6 +2052,52 @@ DROP POLICY p1 ON dob_t2; -- should succeed
 DROP USER regress_rls_dob_role1;
 DROP USER regress_rls_dob_role2;
 
+-- Bug #15708: view + table with RLS should check policies as view owner
+CREATE TABLE ref_tbl (a int);
+INSERT INTO ref_tbl VALUES (1);
+
+CREATE TABLE rls_tbl (a int);
+INSERT INTO rls_tbl VALUES (10);
+ALTER TABLE rls_tbl ENABLE ROW LEVEL SECURITY;
+CREATE POLICY p1 ON rls_tbl USING (EXISTS (SELECT 1 FROM ref_tbl));
+
+GRANT SELECT ON ref_tbl TO regress_rls_bob;
+GRANT SELECT ON rls_tbl TO regress_rls_bob;
+
+CREATE VIEW rls_view AS SELECT * FROM rls_tbl;
+ALTER VIEW rls_view OWNER TO regress_rls_bob;
+GRANT SELECT ON rls_view TO regress_rls_alice;
+
+SET SESSION AUTHORIZATION regress_rls_alice;
+SELECT * FROM ref_tbl; -- Permission denied
+SELECT * FROM rls_tbl; -- Permission denied
+SELECT * FROM rls_view; -- OK
+RESET SESSION AUTHORIZATION;
+
+DROP VIEW rls_view;
+DROP TABLE rls_tbl;
+DROP TABLE ref_tbl;
+
+-- Leaky operator test
+CREATE TABLE rls_tbl (a int);
+INSERT INTO rls_tbl SELECT x/10 FROM generate_series(1, 100) x;
+ANALYZE rls_tbl;
+
+ALTER TABLE rls_tbl ENABLE ROW LEVEL SECURITY;
+GRANT SELECT ON rls_tbl TO regress_rls_alice;
+
+SET SESSION AUTHORIZATION regress_rls_alice;
+CREATE FUNCTION op_leak(int, int) RETURNS bool
+    AS 'BEGIN RAISE NOTICE ''op_leak => %, %'', $1, $2; RETURN $1 < $2; END'
+    LANGUAGE plpgsql;
+CREATE OPERATOR <<< (procedure = op_leak, leftarg = int, rightarg = int,
+                     restrict = scalarltsel);
+SELECT * FROM rls_tbl WHERE a <<< 1000;
+DROP OPERATOR <<< (int, int);
+DROP FUNCTION op_leak(int, int);
+RESET SESSION AUTHORIZATION;
+DROP TABLE rls_tbl;
+
 -- Bug #16006: whole-row Vars in a policy don't play nice with sub-selects
 SET SESSION AUTHORIZATION regress_rls_alice;
 CREATE TABLE rls_tbl (a int, b int, c int);
@@ -1841,9 +2162,7 @@ DROP TABLE rls_t;
 --
 RESET SESSION AUTHORIZATION;
 
-\set VERBOSITY terse \\ -- suppress cascade details
 DROP SCHEMA regress_rls_schema CASCADE;
-\set VERBOSITY default
 
 DROP USER regress_rls_alice;
 DROP USER regress_rls_bob;

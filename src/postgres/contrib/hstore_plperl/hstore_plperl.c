@@ -1,11 +1,9 @@
 #include "postgres.h"
 
-#undef _
-
 #include "fmgr.h"
+#include "hstore/hstore.h"
 #include "plperl.h"
 #include "plperl_helpers.h"
-#include "hstore/hstore.h"
 
 PG_MODULE_MAGIC;
 
@@ -118,7 +116,7 @@ plperl_to_hstore(PG_FUNCTION_ARGS)
 	if (SvTYPE(in) != SVt_PVHV)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 (errmsg("cannot transform non-hash Perl value to hstore"))));
+				 errmsg("cannot transform non-hash Perl value to hstore")));
 	hv = (HV *) in;
 
 	pcount = hv_iterinit(hv);

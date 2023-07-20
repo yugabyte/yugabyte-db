@@ -292,9 +292,6 @@ SELECT onek2.unique1, onek2.stringu1 FROM onek2
 RESET enable_seqscan;
 RESET enable_bitmapscan;
 RESET enable_sort;
-SELECT two, stringu1, ten, string4
-   INTO TABLE tmp
-   FROM onek;
 --
 -- awk '{print $1,$2;}' person.data |
 -- awk '{if(NF!=2){print $3,$2;}else{print;}}' - emp.data |
@@ -438,19 +435,19 @@ SELECT p.name, p.age FROM person* p ORDER BY age using >, name;
 --
 -- Test some cases involving whole-row Var referencing a subquery
 --
-select foo from (select 1) as foo;
+select foo from (select 1 offset 0) as foo;
  foo 
 -----
  (1)
 (1 row)
 
-select foo from (select null) as foo;
+select foo from (select null offset 0) as foo;
  foo 
 -----
  ()
 (1 row)
 
-select foo from (select 'xyzzy',1,null) as foo;
+select foo from (select 'xyzzy',1,null offset 0) as foo;
     foo     
 ------------
  (xyzzy,1,)
@@ -516,6 +513,13 @@ TABLE int8_tbl;
  4567890123456789 |  4567890123456789
  4567890123456789 | -4567890123456789
 (9 rows)
+
+-- corner case: VALUES with no columns
+CREATE TEMP TABLE nocols();
+INSERT INTO nocols DEFAULT VALUES;
+SELECT * FROM nocols n, LATERAL (VALUES(n.*)) v;
+--
+(1 row)
 
 --
 -- Test ORDER BY options

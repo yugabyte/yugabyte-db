@@ -3,7 +3,7 @@
  * test_rls_hooks.c
  *		Code for testing RLS hooks.
  *
- * Copyright (c) 2015-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2015-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/test/modules/test_rls_hooks/test_rls_hooks.c
@@ -13,51 +13,31 @@
 
 #include "postgres.h"
 
+#include "catalog/pg_type.h"
 #include "fmgr.h"
 #include "miscadmin.h"
-
-#include "test_rls_hooks.h"
-
-#include "catalog/pg_type.h"
-#include "nodes/makefuncs.h"
 #include "nodes/makefuncs.h"
 #include "parser/parse_clause.h"
 #include "parser/parse_collate.h"
 #include "parser/parse_node.h"
 #include "parser/parse_relation.h"
 #include "rewrite/rowsecurity.h"
+#include "test_rls_hooks.h"
 #include "utils/acl.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
 
 PG_MODULE_MAGIC;
 
-/* Saved hook values in case of unload */
-static row_security_policy_hook_type prev_row_security_policy_hook_permissive = NULL;
-static row_security_policy_hook_type prev_row_security_policy_hook_restrictive = NULL;
-
 void		_PG_init(void);
-void		_PG_fini(void);
 
 /* Install hooks */
 void
 _PG_init(void)
 {
-	/* Save values for unload  */
-	prev_row_security_policy_hook_permissive = row_security_policy_hook_permissive;
-	prev_row_security_policy_hook_restrictive = row_security_policy_hook_restrictive;
-
 	/* Set our hooks */
 	row_security_policy_hook_permissive = test_rls_hooks_permissive;
 	row_security_policy_hook_restrictive = test_rls_hooks_restrictive;
-}
-
-/* Uninstall hooks */
-void
-_PG_fini(void)
-{
-	row_security_policy_hook_permissive = prev_row_security_policy_hook_permissive;
-	row_security_policy_hook_restrictive = prev_row_security_policy_hook_restrictive;
 }
 
 /*
@@ -73,23 +53,24 @@ test_rls_hooks_permissive(CmdType cmdtype, Relation relation)
 	Node	   *e;
 	ColumnRef  *c;
 	ParseState *qual_pstate;
-	RangeTblEntry *rte;
+	ParseNamespaceItem *nsitem;
 
-	if (strcmp(RelationGetRelationName(relation), "rls_test_permissive")
-		&& strcmp(RelationGetRelationName(relation), "rls_test_both"))
+	if (strcmp(RelationGetRelationName(relation), "rls_test_permissive") != 0 &&
+		strcmp(RelationGetRelationName(relation), "rls_test_both") != 0)
 		return NIL;
 
 	qual_pstate = make_parsestate(NULL);
 
-	rte = addRangeTableEntryForRelation(qual_pstate, relation, NULL, false,
-										false);
-	addRTEtoQuery(qual_pstate, rte, false, true, true);
+	nsitem = addRangeTableEntryForRelation(qual_pstate,
+										   relation, AccessShareLock,
+										   NULL, false, false);
+	addNSItemToQuery(qual_pstate, nsitem, false, true, true);
 
 	role = ObjectIdGetDatum(ACL_ID_PUBLIC);
 
 	policy->policy_name = pstrdup("extension policy");
 	policy->polcmd = '*';
-	policy->roles = construct_array(&role, 1, OIDOID, sizeof(Oid), true, 'i');
+	policy->roles = construct_array(&role, 1, OIDOID, sizeof(Oid), true, TYPALIGN_INT);
 
 	/*
 	 * policy->qual = (Expr *) makeConst(BOOLOID, -1, InvalidOid,
@@ -97,7 +78,10 @@ test_rls_hooks_permissive(CmdType cmdtype, Relation relation)
 	 */
 
 	n = makeFuncCall(list_make2(makeString("pg_catalog"),
-								makeString("current_user")), NIL, 0);
+								makeString("current_user")),
+					 NIL,
+					 COERCE_EXPLICIT_CALL,
+					 -1);
 
 	c = makeNode(ColumnRef);
 	c->fields = list_make1(makeString("username"));
@@ -137,27 +121,30 @@ test_rls_hooks_restrictive(CmdType cmdtype, Relation relation)
 	Node	   *e;
 	ColumnRef  *c;
 	ParseState *qual_pstate;
-	RangeTblEntry *rte;
+	ParseNamespaceItem *nsitem;
 
-
-	if (strcmp(RelationGetRelationName(relation), "rls_test_restrictive")
-		&& strcmp(RelationGetRelationName(relation), "rls_test_both"))
+	if (strcmp(RelationGetRelationName(relation), "rls_test_restrictive") != 0 &&
+		strcmp(RelationGetRelationName(relation), "rls_test_both") != 0)
 		return NIL;
 
 	qual_pstate = make_parsestate(NULL);
 
-	rte = addRangeTableEntryForRelation(qual_pstate, relation, NULL, false,
-										false);
-	addRTEtoQuery(qual_pstate, rte, false, true, true);
+	nsitem = addRangeTableEntryForRelation(qual_pstate,
+										   relation, AccessShareLock,
+										   NULL, false, false);
+	addNSItemToQuery(qual_pstate, nsitem, false, true, true);
 
 	role = ObjectIdGetDatum(ACL_ID_PUBLIC);
 
 	policy->policy_name = pstrdup("extension policy");
 	policy->polcmd = '*';
-	policy->roles = construct_array(&role, 1, OIDOID, sizeof(Oid), true, 'i');
+	policy->roles = construct_array(&role, 1, OIDOID, sizeof(Oid), true, TYPALIGN_INT);
 
 	n = makeFuncCall(list_make2(makeString("pg_catalog"),
-								makeString("current_user")), NIL, 0);
+								makeString("current_user")),
+					 NIL,
+					 COERCE_EXPLICIT_CALL,
+					 -1);
 
 	c = makeNode(ColumnRef);
 	c->fields = list_make1(makeString("supervisor"));

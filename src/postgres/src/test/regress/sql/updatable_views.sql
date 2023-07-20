@@ -2,6 +2,9 @@
 -- UPDATABLE VIEWS
 --
 
+-- avoid bit-exact output here because operations may not be bit-exact.
+SET extra_float_digits = 0;
+
 -- check that non-updatable views and columns are rejected with useful error
 -- messages
 
@@ -98,6 +101,20 @@ DELETE FROM ro_view18;
 UPDATE ro_view19 SET last_value=1000;
 UPDATE ro_view20 SET b=upper(b);
 
+-- A view with a conditional INSTEAD rule but no unconditional INSTEAD rules
+-- or INSTEAD OF triggers should be non-updatable and generate useful error
+-- messages with appropriate detail
+CREATE RULE rw_view16_ins_rule AS ON INSERT TO rw_view16
+  WHERE NEW.a > 0 DO INSTEAD INSERT INTO base_tbl VALUES (NEW.a, NEW.b);
+CREATE RULE rw_view16_upd_rule AS ON UPDATE TO rw_view16
+  WHERE OLD.a > 0 DO INSTEAD UPDATE base_tbl SET b=NEW.b WHERE a=OLD.a;
+CREATE RULE rw_view16_del_rule AS ON DELETE TO rw_view16
+  WHERE OLD.a > 0 DO INSTEAD DELETE FROM base_tbl WHERE a=OLD.a;
+
+INSERT INTO rw_view16 (a, b) VALUES (3, 'Row 3'); -- should fail
+UPDATE rw_view16 SET b='ROW 2' WHERE a=2; -- should fail
+DELETE FROM rw_view16 WHERE a=2; -- should fail
+
 DROP TABLE base_tbl CASCADE;
 DROP VIEW ro_view10, ro_view12, ro_view18;
 DROP SEQUENCE uv_seq CASCADE;
@@ -131,7 +148,24 @@ SELECT * FROM base_tbl;
 EXPLAIN (costs off) UPDATE rw_view1 SET a=6 WHERE a=5;
 EXPLAIN (costs off) DELETE FROM rw_view1 WHERE a=5;
 
+-- it's still updatable if we add a DO ALSO rule
+
+CREATE TABLE base_tbl_hist(ts timestamptz default now(), a int, b text);
+
+CREATE RULE base_tbl_log AS ON INSERT TO rw_view1 DO ALSO
+  INSERT INTO base_tbl_hist(a,b) VALUES(new.a, new.b);
+
+SELECT table_name, is_updatable, is_insertable_into
+  FROM information_schema.views
+ WHERE table_name = 'rw_view1';
+
+-- Check behavior with DEFAULTs (bug #17633)
+
+INSERT INTO rw_view1 VALUES (9, DEFAULT), (10, DEFAULT);
+SELECT a, b FROM base_tbl_hist;
+
 DROP TABLE base_tbl CASCADE;
+DROP TABLE base_tbl_hist;
 
 -- view on top of view
 
@@ -393,6 +427,7 @@ DROP TABLE base_tbl CASCADE;
 
 CREATE USER regress_view_user1;
 CREATE USER regress_view_user2;
+CREATE USER regress_view_user3;
 
 SET SESSION AUTHORIZATION regress_view_user1;
 CREATE TABLE base_tbl(a int, b text, c float);
@@ -535,8 +570,187 @@ RESET SESSION AUTHORIZATION;
 
 DROP TABLE base_tbl CASCADE;
 
+-- security invoker view permissions
+
+SET SESSION AUTHORIZATION regress_view_user1;
+CREATE TABLE base_tbl(a int, b text, c float);
+INSERT INTO base_tbl VALUES (1, 'Row 1', 1.0);
+CREATE VIEW rw_view1 AS SELECT b AS bb, c AS cc, a AS aa FROM base_tbl;
+ALTER VIEW rw_view1 SET (security_invoker = true);
+INSERT INTO rw_view1 VALUES ('Row 2', 2.0, 2);
+GRANT SELECT ON rw_view1 TO regress_view_user2;
+GRANT UPDATE (bb,cc) ON rw_view1 TO regress_view_user2;
+
+SET SESSION AUTHORIZATION regress_view_user2;
+SELECT * FROM base_tbl; -- not allowed
+SELECT * FROM rw_view1; -- not allowed
+INSERT INTO base_tbl VALUES (3, 'Row 3', 3.0); -- not allowed
+INSERT INTO rw_view1 VALUES ('Row 3', 3.0, 3); -- not allowed
+UPDATE base_tbl SET a=a; -- not allowed
+UPDATE rw_view1 SET bb=bb, cc=cc; -- not allowed
+DELETE FROM base_tbl; -- not allowed
+DELETE FROM rw_view1; -- not allowed
+
+SET SESSION AUTHORIZATION regress_view_user1;
+GRANT SELECT ON base_tbl TO regress_view_user2;
+GRANT UPDATE (a,c) ON base_tbl TO regress_view_user2;
+
+SET SESSION AUTHORIZATION regress_view_user2;
+SELECT * FROM base_tbl; -- ok
+SELECT * FROM rw_view1; -- ok
+UPDATE base_tbl SET a=a, c=c; -- ok
+UPDATE base_tbl SET b=b; -- not allowed
+UPDATE rw_view1 SET cc=cc; -- ok
+UPDATE rw_view1 SET aa=aa; -- not allowed
+UPDATE rw_view1 SET bb=bb; -- not allowed
+
+SET SESSION AUTHORIZATION regress_view_user1;
+GRANT INSERT, DELETE ON base_tbl TO regress_view_user2;
+
+SET SESSION AUTHORIZATION regress_view_user2;
+INSERT INTO base_tbl VALUES (3, 'Row 3', 3.0); -- ok
+INSERT INTO rw_view1 VALUES ('Row 4', 4.0, 4); -- not allowed
+DELETE FROM base_tbl WHERE a=1; -- ok
+DELETE FROM rw_view1 WHERE aa=2; -- not allowed
+
+SET SESSION AUTHORIZATION regress_view_user1;
+REVOKE INSERT, DELETE ON base_tbl FROM regress_view_user2;
+GRANT INSERT, DELETE ON rw_view1 TO regress_view_user2;
+
+SET SESSION AUTHORIZATION regress_view_user2;
+INSERT INTO rw_view1 VALUES ('Row 4', 4.0, 4); -- not allowed
+DELETE FROM rw_view1 WHERE aa=2; -- not allowed
+
+SET SESSION AUTHORIZATION regress_view_user1;
+GRANT INSERT, DELETE ON base_tbl TO regress_view_user2;
+
+SET SESSION AUTHORIZATION regress_view_user2;
+INSERT INTO rw_view1 VALUES ('Row 4', 4.0, 4); -- ok
+DELETE FROM rw_view1 WHERE aa=2; -- ok
+SELECT * FROM base_tbl; -- ok
+
+RESET SESSION AUTHORIZATION;
+
+DROP TABLE base_tbl CASCADE;
+
+-- ordinary view on top of security invoker view permissions
+
+CREATE TABLE base_tbl(a int, b text, c float);
+INSERT INTO base_tbl VALUES (1, 'Row 1', 1.0);
+
+SET SESSION AUTHORIZATION regress_view_user1;
+CREATE VIEW rw_view1 AS SELECT b AS bb, c AS cc, a AS aa FROM base_tbl;
+ALTER VIEW rw_view1 SET (security_invoker = true);
+SELECT * FROM rw_view1;  -- not allowed
+UPDATE rw_view1 SET aa=aa;  -- not allowed
+
+SET SESSION AUTHORIZATION regress_view_user2;
+CREATE VIEW rw_view2 AS SELECT cc AS ccc, aa AS aaa, bb AS bbb FROM rw_view1;
+GRANT SELECT, UPDATE ON rw_view2 TO regress_view_user3;
+SELECT * FROM rw_view2;  -- not allowed
+UPDATE rw_view2 SET aaa=aaa;  -- not allowed
+
+RESET SESSION AUTHORIZATION;
+
+GRANT SELECT ON base_tbl TO regress_view_user1;
+GRANT UPDATE (a, b) ON base_tbl TO regress_view_user1;
+
+SET SESSION AUTHORIZATION regress_view_user1;
+SELECT * FROM rw_view1; -- ok
+UPDATE rw_view1 SET aa=aa, bb=bb;  -- ok
+UPDATE rw_view1 SET cc=cc;  -- not allowed
+
+SET SESSION AUTHORIZATION regress_view_user2;
+SELECT * FROM rw_view2;  -- not allowed
+UPDATE rw_view2 SET aaa=aaa;  -- not allowed
+
+SET SESSION AUTHORIZATION regress_view_user3;
+SELECT * FROM rw_view2;  -- not allowed
+UPDATE rw_view2 SET aaa=aaa;  -- not allowed
+
+SET SESSION AUTHORIZATION regress_view_user1;
+GRANT SELECT ON rw_view1 TO regress_view_user2;
+GRANT UPDATE (bb, cc) ON rw_view1 TO regress_view_user2;
+
+SET SESSION AUTHORIZATION regress_view_user2;
+SELECT * FROM rw_view2;  -- not allowed
+UPDATE rw_view2 SET bbb=bbb;  -- not allowed
+
+SET SESSION AUTHORIZATION regress_view_user3;
+SELECT * FROM rw_view2;  -- not allowed
+UPDATE rw_view2 SET bbb=bbb;  -- not allowed
+
+RESET SESSION AUTHORIZATION;
+
+GRANT SELECT ON base_tbl TO regress_view_user2;
+GRANT UPDATE (a, c) ON base_tbl TO regress_view_user2;
+
+SET SESSION AUTHORIZATION regress_view_user2;
+SELECT * FROM rw_view2;  -- ok
+UPDATE rw_view2 SET aaa=aaa;  -- not allowed
+UPDATE rw_view2 SET bbb=bbb;  -- not allowed
+UPDATE rw_view2 SET ccc=ccc;  -- ok
+
+SET SESSION AUTHORIZATION regress_view_user3;
+SELECT * FROM rw_view2;  -- not allowed
+UPDATE rw_view2 SET aaa=aaa;  -- not allowed
+UPDATE rw_view2 SET bbb=bbb;  -- not allowed
+UPDATE rw_view2 SET ccc=ccc;  -- not allowed
+
+RESET SESSION AUTHORIZATION;
+
+GRANT SELECT ON base_tbl TO regress_view_user3;
+GRANT UPDATE (a, c) ON base_tbl TO regress_view_user3;
+
+SET SESSION AUTHORIZATION regress_view_user3;
+SELECT * FROM rw_view2;  -- ok
+UPDATE rw_view2 SET aaa=aaa;  -- not allowed
+UPDATE rw_view2 SET bbb=bbb;  -- not allowed
+UPDATE rw_view2 SET ccc=ccc;  -- ok
+
+RESET SESSION AUTHORIZATION;
+
+REVOKE SELECT, UPDATE ON base_tbl FROM regress_view_user1;
+
+SET SESSION AUTHORIZATION regress_view_user1;
+SELECT * FROM rw_view1;  -- not allowed
+UPDATE rw_view1 SET aa=aa;  -- not allowed
+
+SET SESSION AUTHORIZATION regress_view_user2;
+SELECT * FROM rw_view2;  -- ok
+UPDATE rw_view2 SET aaa=aaa;  -- not allowed
+UPDATE rw_view2 SET bbb=bbb;  -- not allowed
+UPDATE rw_view2 SET ccc=ccc;  -- ok
+
+SET SESSION AUTHORIZATION regress_view_user3;
+SELECT * FROM rw_view2;  -- ok
+UPDATE rw_view2 SET aaa=aaa;  -- not allowed
+UPDATE rw_view2 SET bbb=bbb;  -- not allowed
+UPDATE rw_view2 SET ccc=ccc;  -- ok
+
+RESET SESSION AUTHORIZATION;
+
+REVOKE SELECT, UPDATE ON base_tbl FROM regress_view_user2;
+
+SET SESSION AUTHORIZATION regress_view_user2;
+SELECT * FROM rw_view2;  -- not allowed
+UPDATE rw_view2 SET aaa=aaa;  -- not allowed
+UPDATE rw_view2 SET bbb=bbb;  -- not allowed
+UPDATE rw_view2 SET ccc=ccc;  -- not allowed
+
+SET SESSION AUTHORIZATION regress_view_user3;
+SELECT * FROM rw_view2;  -- ok
+UPDATE rw_view2 SET aaa=aaa;  -- not allowed
+UPDATE rw_view2 SET bbb=bbb;  -- not allowed
+UPDATE rw_view2 SET ccc=ccc;  -- ok
+
+RESET SESSION AUTHORIZATION;
+
+DROP TABLE base_tbl CASCADE;
+
 DROP USER regress_view_user1;
 DROP USER regress_view_user2;
+DROP USER regress_view_user3;
 
 -- column defaults
 
@@ -680,6 +894,27 @@ SELECT events & 4 != 0 AS upd,
 
 DROP TABLE base_tbl CASCADE;
 
+-- view on table with GENERATED columns
+
+CREATE TABLE base_tbl (id int, idplus1 int GENERATED ALWAYS AS (id + 1) STORED);
+CREATE VIEW rw_view1 AS SELECT * FROM base_tbl;
+
+INSERT INTO base_tbl (id) VALUES (1);
+INSERT INTO rw_view1 (id) VALUES (2);
+INSERT INTO base_tbl (id, idplus1) VALUES (3, DEFAULT);
+INSERT INTO rw_view1 (id, idplus1) VALUES (4, DEFAULT);
+INSERT INTO base_tbl (id, idplus1) VALUES (5, 6);  -- error
+INSERT INTO rw_view1 (id, idplus1) VALUES (6, 7);  -- error
+
+SELECT * FROM base_tbl;
+
+UPDATE base_tbl SET id = 2000 WHERE id = 2;
+UPDATE rw_view1 SET id = 3000 WHERE id = 3;
+
+SELECT * FROM base_tbl;
+
+DROP TABLE base_tbl CASCADE;
+
 -- inheritance tests
 
 CREATE TABLE base_tbl_parent (a int);
@@ -710,7 +945,20 @@ DELETE FROM ONLY rw_view2 WHERE a IN (-8, 8); -- Should delete -8 only
 SELECT * FROM ONLY base_tbl_parent ORDER BY a;
 SELECT * FROM base_tbl_child ORDER BY a;
 
+CREATE TABLE other_tbl_parent (id int);
+CREATE TABLE other_tbl_child () INHERITS (other_tbl_parent);
+INSERT INTO other_tbl_parent VALUES (7),(200);
+INSERT INTO other_tbl_child VALUES (8),(100);
+
+EXPLAIN (costs off)
+UPDATE rw_view1 SET a = a + 1000 FROM other_tbl_parent WHERE a = id;
+UPDATE rw_view1 SET a = a + 1000 FROM other_tbl_parent WHERE a = id;
+
+SELECT * FROM ONLY base_tbl_parent ORDER BY a;
+SELECT * FROM base_tbl_child ORDER BY a;
+
 DROP TABLE base_tbl_parent, base_tbl_child CASCADE;
+DROP TABLE other_tbl_parent CASCADE;
 
 -- simple WITH CHECK OPTION
 
@@ -1379,3 +1627,105 @@ drop view rw_view1;
 drop table base_tbl;
 drop user regress_view_user1;
 drop user regress_view_user2;
+
+-- Test single- and multi-row inserts with table and view defaults.
+-- Table defaults should be used, unless overridden by view defaults.
+create table base_tab_def (a int, b text default 'Table default',
+                           c text default 'Table default', d text, e text);
+create view base_tab_def_view as select * from base_tab_def;
+alter view base_tab_def_view alter b set default 'View default';
+alter view base_tab_def_view alter d set default 'View default';
+insert into base_tab_def values (1);
+insert into base_tab_def values (2), (3);
+insert into base_tab_def values (4, default, default, default, default);
+insert into base_tab_def values (5, default, default, default, default),
+                                (6, default, default, default, default);
+insert into base_tab_def_view values (11);
+insert into base_tab_def_view values (12), (13);
+insert into base_tab_def_view values (14, default, default, default, default);
+insert into base_tab_def_view values (15, default, default, default, default),
+                                     (16, default, default, default, default);
+insert into base_tab_def_view values (17), (default);
+select * from base_tab_def order by a;
+
+-- Adding an INSTEAD OF trigger should cause NULLs to be inserted instead of
+-- table defaults, where there are no view defaults.
+create function base_tab_def_view_instrig_func() returns trigger
+as
+$$
+begin
+  insert into base_tab_def values (new.a, new.b, new.c, new.d, new.e);
+  return new;
+end;
+$$
+language plpgsql;
+create trigger base_tab_def_view_instrig instead of insert on base_tab_def_view
+  for each row execute function base_tab_def_view_instrig_func();
+truncate base_tab_def;
+insert into base_tab_def values (1);
+insert into base_tab_def values (2), (3);
+insert into base_tab_def values (4, default, default, default, default);
+insert into base_tab_def values (5, default, default, default, default),
+                                (6, default, default, default, default);
+insert into base_tab_def_view values (11);
+insert into base_tab_def_view values (12), (13);
+insert into base_tab_def_view values (14, default, default, default, default);
+insert into base_tab_def_view values (15, default, default, default, default),
+                                     (16, default, default, default, default);
+insert into base_tab_def_view values (17), (default);
+select * from base_tab_def order by a;
+
+-- Using an unconditional DO INSTEAD rule should also cause NULLs to be
+-- inserted where there are no view defaults.
+drop trigger base_tab_def_view_instrig on base_tab_def_view;
+drop function base_tab_def_view_instrig_func;
+create rule base_tab_def_view_ins_rule as on insert to base_tab_def_view
+  do instead insert into base_tab_def values (new.a, new.b, new.c, new.d, new.e);
+truncate base_tab_def;
+insert into base_tab_def values (1);
+insert into base_tab_def values (2), (3);
+insert into base_tab_def values (4, default, default, default, default);
+insert into base_tab_def values (5, default, default, default, default),
+                                (6, default, default, default, default);
+insert into base_tab_def_view values (11);
+insert into base_tab_def_view values (12), (13);
+insert into base_tab_def_view values (14, default, default, default, default);
+insert into base_tab_def_view values (15, default, default, default, default),
+                                     (16, default, default, default, default);
+insert into base_tab_def_view values (17), (default);
+select * from base_tab_def order by a;
+
+-- A DO ALSO rule should cause each row to be inserted twice. The first
+-- insert should behave the same as an auto-updatable view (using table
+-- defaults, unless overridden by view defaults). The second insert should
+-- behave the same as a rule-updatable view (inserting NULLs where there are
+-- no view defaults).
+drop rule base_tab_def_view_ins_rule on base_tab_def_view;
+create rule base_tab_def_view_ins_rule as on insert to base_tab_def_view
+  do also insert into base_tab_def values (new.a, new.b, new.c, new.d, new.e);
+truncate base_tab_def;
+insert into base_tab_def values (1);
+insert into base_tab_def values (2), (3);
+insert into base_tab_def values (4, default, default, default, default);
+insert into base_tab_def values (5, default, default, default, default),
+                                (6, default, default, default, default);
+insert into base_tab_def_view values (11);
+insert into base_tab_def_view values (12), (13);
+insert into base_tab_def_view values (14, default, default, default, default);
+insert into base_tab_def_view values (15, default, default, default, default),
+                                     (16, default, default, default, default);
+insert into base_tab_def_view values (17), (default);
+select * from base_tab_def order by a, c NULLS LAST;
+
+drop view base_tab_def_view;
+drop table base_tab_def;
+
+-- Test defaults with array assignments
+create table base_tab (a serial, b int[], c text, d text default 'Table default');
+create view base_tab_view as select c, a, b from base_tab;
+alter view base_tab_view alter column c set default 'View default';
+insert into base_tab_view (b[1], b[2], c, b[5], b[4], a, b[3])
+values (1, 2, default, 5, 4, default, 3), (10, 11, 'C value', 14, 13, 100, 12);
+select * from base_tab order by a;
+drop view base_tab_view;
+drop table base_tab;

@@ -1,3 +1,4 @@
+#ifdef NEIL
 /*-------------------------------------------------------------------------
  *
  * jsonapi.c
@@ -1081,3 +1082,4 @@ extract_token(JsonLexContext *lex)
 	token[toklen] = '\0';
 	return token;
 }
+#endif

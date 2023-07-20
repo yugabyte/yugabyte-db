@@ -3,7 +3,7 @@
  * amapi.h
  *	  API for Postgres index access methods.
  *
- * Copyright (c) 2015-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2015-2022, PostgreSQL Global Development Group
  *
  * src/include/access/amapi.h
  *
@@ -60,6 +60,42 @@ typedef enum IndexAMProperty
 	AMPROP_CAN_INCLUDE
 } IndexAMProperty;
 
+/*
+ * We use lists of this struct type to keep track of both operators and
+ * support functions while building or adding to an opclass or opfamily.
+ * amadjustmembers functions receive lists of these structs, and are allowed
+ * to alter their "ref" fields.
+ *
+ * The "ref" fields define how the pg_amop or pg_amproc entry should depend
+ * on the associated objects (that is, which dependency type to use, and
+ * which opclass or opfamily it should depend on).
+ *
+ * If ref_is_hard is true, the entry will have a NORMAL dependency on the
+ * operator or support func, and an INTERNAL dependency on the opclass or
+ * opfamily.  This forces the opclass or opfamily to be dropped if the
+ * operator or support func is dropped, and requires the CASCADE option
+ * to do so.  Nor will ALTER OPERATOR FAMILY DROP be allowed.  This is
+ * the right behavior for objects that are essential to an opclass.
+ *
+ * If ref_is_hard is false, the entry will have an AUTO dependency on the
+ * operator or support func, and also an AUTO dependency on the opclass or
+ * opfamily.  This allows ALTER OPERATOR FAMILY DROP, and causes that to
+ * happen automatically if the operator or support func is dropped.  This
+ * is the right behavior for inessential ("loose") objects.
+ */
+typedef struct OpFamilyMember
+{
+	bool		is_func;		/* is this an operator, or support func? */
+	Oid			object;			/* operator or support func's OID */
+	int			number;			/* strategy or support func number */
+	Oid			lefttype;		/* lefttype */
+	Oid			righttype;		/* righttype */
+	Oid			sortfamily;		/* ordering operator's sort opfamily, or 0 */
+	bool		ref_is_hard;	/* hard or soft dependency? */
+	bool		ref_is_family;	/* is dependency on opclass or opfamily? */
+	Oid			refobjid;		/* OID of opclass or opfamily */
+} OpFamilyMember;
+
 
 /*
  * Callback function signatures --- see indexam.sgml for more info.
@@ -80,13 +116,14 @@ typedef bool (*aminsert_function) (Relation indexRelation,
 								   ItemPointer heap_tid,
 								   Relation heapRelation,
 								   IndexUniqueCheck checkUnique,
+								   bool indexUnchanged,
 								   struct IndexInfo *indexInfo);
 
 /* alternate insert callback for YugaByte-based index that passs ybctid instead of ctid */
 typedef bool (*yb_aminsert_function) (Relation indexRelation,
 									  Datum *values,
 									  bool *isnull,
-									  Datum ybctid,
+									  ItemPointer heap_tid, /* contains ybctid */
 									  Relation heapRelation,
 									  IndexUniqueCheck checkUnique,
 									  struct IndexInfo *indexInfo,
@@ -139,8 +176,17 @@ typedef bool (*amproperty_function) (Oid index_oid, int attno,
 									 IndexAMProperty prop, const char *propname,
 									 bool *res, bool *isnull);
 
+/* name of phase as used in progress reporting */
+typedef char *(*ambuildphasename_function) (int64 phasenum);
+
 /* validate definition of an opclass for this AM */
 typedef bool (*amvalidate_function) (Oid opclassoid);
+
+/* validate operators and support functions to be added to an opclass/family */
+typedef void (*amadjustmembers_function) (Oid opfamilyoid,
+										  Oid opclassoid,
+										  List *operators,
+										  List *functions);
 
 /* prepare for index scan */
 typedef IndexScanDesc (*ambeginscan_function) (Relation indexRelation,
@@ -199,6 +245,8 @@ typedef struct IndexAmRoutine
 	uint16		amstrategies;
 	/* total number of support functions that this AM uses */
 	uint16		amsupport;
+	/* opclass options support function number or 0 */
+	uint16		amoptsprocnum;
 	/* does AM support ORDER BY indexed column's value? */
 	bool		amcanorder;
 	/* does AM support ORDER BY result of an operator on indexed column? */
@@ -225,6 +273,10 @@ typedef struct IndexAmRoutine
 	bool		amcanparallel;
 	/* does AM support columns included with clause INCLUDE? */
 	bool		amcaninclude;
+	/* does AM use maintenance_work_mem? */
+	bool		amusemaintenanceworkmem;
+	/* OR of parallel vacuum flags.  See vacuum.h for flags. */
+	uint8		amparallelvacuumoptions;
 	/* type of data stored in index, or InvalidOid if variable */
 	Oid			amkeytype;
 
@@ -244,7 +296,9 @@ typedef struct IndexAmRoutine
 	amcostestimate_function amcostestimate;
 	amoptions_function amoptions;
 	amproperty_function amproperty; /* can be NULL */
+	ambuildphasename_function ambuildphasename; /* can be NULL */
 	amvalidate_function amvalidate;
+	amadjustmembers_function amadjustmembers;	/* can be NULL */
 	ambeginscan_function ambeginscan;
 	amrescan_function amrescan;
 	amgettuple_function amgettuple; /* can be NULL */

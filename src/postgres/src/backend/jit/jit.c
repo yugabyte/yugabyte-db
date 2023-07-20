@@ -8,7 +8,7 @@
  * should end up here.
  *
  *
- * Copyright (c) 2016-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/jit/jit.c
@@ -17,22 +17,19 @@
  */
 #include "postgres.h"
 
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
-
-#include "fmgr.h"
 #include "executor/execExpr.h"
+#include "fmgr.h"
 #include "jit/jit.h"
 #include "miscadmin.h"
-#include "utils/resowner_private.h"
 #include "utils/fmgrprotos.h"
-
+#include "utils/resowner_private.h"
 
 /* GUCs */
-bool		jit_enabled = false;
+bool		jit_enabled = true;
 char	   *jit_provider = NULL;
 bool		jit_debugging_support = false;
 bool		jit_dump_bitcode = false;
@@ -201,7 +198,7 @@ file_exists(const char *name)
 	AssertArg(name != NULL);
 
 	if (stat(name, &st) == 0)
-		return S_ISDIR(st.st_mode) ? false : true;
+		return !S_ISDIR(st.st_mode);
 	else if (!(errno == ENOENT || errno == ENOTDIR))
 		ereport(ERROR,
 				(errcode_for_file_access(),

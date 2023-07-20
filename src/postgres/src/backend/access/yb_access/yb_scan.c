@@ -41,11 +41,10 @@
 #include "catalog/pg_opfamily.h"
 #include "catalog/pg_type.h"
 #include "miscadmin.h"
-#include "nodes/relation.h"
+#include "access/relation.h"
 #include "optimizer/cost.h"
-#include "optimizer/var.h"
+#include "optimizer/optimizer.h"
 #include "utils/datum.h"
-#include "utils/elog.h"
 #include "utils/rel.h"
 #include "utils/lsyscache.h"
 #include "utils/resowner_private.h"
@@ -53,12 +52,15 @@
 #include "utils/selfuncs.h"
 #include "utils/snapmgr.h"
 #include "utils/spccache.h"
-#include "utils/typcache.h"
 
+/* Yugabyte includes */
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 #include "access/nbtree.h"
+#include "access/yb_scan.h"
 #include "catalog/yb_type.h"
+#include "utils/elog.h"
+#include "utils/typcache.h"
 
 typedef struct YbScanPlanData
 {
@@ -79,6 +81,12 @@ typedef struct YbScanPlanData
 
 typedef YbScanPlanData *YbScanPlan;
 
+#ifdef YB_TODO
+	/* YB_TODO(ram kannan@yugabyte) Reimplement cost functions.
+	 * - PG13 removed IndexQualInfo.
+	 * - PG13 introduced IndexClause.
+	 * - Yugabyte needs to reimplement the cost calculation using IndexClause.
+	 */
 static void ybcAddAttributeColumn(YbScanPlan scan_plan, AttrNumber attnum)
 {
 	const int idx = YBAttnumToBmsIndex(scan_plan->target_relation, attnum);
@@ -86,6 +94,7 @@ static void ybcAddAttributeColumn(YbScanPlan scan_plan, AttrNumber attnum)
 	if (bms_is_member(idx, scan_plan->primary_key))
 		scan_plan->sk_cols = bms_add_member(scan_plan->sk_cols, idx);
 }
+#endif
 
 /*
  * Checks if an attribute is a hash or primary key column and note it in
@@ -136,10 +145,14 @@ static void ybcLoadTableInfo(Relation relation, YbScanPlan scan_plan)
 	{
 		ybcCheckPrimaryKeyAttribute(scan_plan, ybc_table_desc, attnum);
 	}
+
+#ifdef NEIL_OID
+	/* OID is now a regular column */
 	if (relation->rd_rel->relhasoids)
 	{
 		ybcCheckPrimaryKeyAttribute(scan_plan, ybc_table_desc, ObjectIdAttributeNumber);
 	}
+#endif
 }
 
 static Oid ybc_get_atttypid(TupleDesc bind_desc, AttrNumber attnum)
@@ -370,7 +383,7 @@ static void ybcUpdateFKCache(YbScanDesc ybScan, Datum ybctid)
 	case ROW_MARK_NOKEYEXCLUSIVE:
 	case ROW_MARK_SHARE:
 	case ROW_MARK_KEYSHARE:
-		YBCPgAddIntoForeignKeyReferenceCache(RelationGetRelid(ybScan->relation), ybctid);
+		YBCPgAddIntoForeignKeyReferenceCache(RelationGetRelid(ybScan->rs_base.rs_rd), ybctid);
 		break;
 	case ROW_MARK_REFERENCE:
 	case ROW_MARK_COPY:
@@ -383,6 +396,7 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
 	HeapTuple tuple    = NULL;
 	bool      has_data = false;
 	TupleDesc tupdesc  = ybScan->target_desc;
+	TableScanDesc tsdesc = (TableScanDesc)ybScan;
 
 	Datum           *values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
 	bool            *nulls  = (bool *) palloc(tupdesc->natts * sizeof(bool));
@@ -419,7 +433,7 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
 			if (ybScan->exec_params->pg_wait_policy == LockWaitError)
 				ereport(ERROR, (errcode(ERRCODE_LOCK_NOT_AVAILABLE),
 								errmsg("could not obtain lock on row in relation \"%s\"",
-									   RelationGetRelationName(ybScan->relation))));
+									   RelationGetRelationName(tsdesc->rs_rd))));
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
@@ -437,16 +451,19 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
 	{
 		tuple = heap_form_tuple(tupdesc, values, nulls);
 
+#ifdef NEIL_OID
+		/* OID is now a regular column */
 		if (syscols.oid != InvalidOid)
 		{
 			HeapTupleSetOid(tuple, syscols.oid);
 		}
+#endif
 		if (syscols.ybctid != NULL)
 		{
-			tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
-			ybcUpdateFKCache(ybScan, tuple->t_ybctid);
+			HEAPTUPLE_YBCTID(tuple) = PointerGetDatum(syscols.ybctid);
+			ybcUpdateFKCache(ybScan, HEAPTUPLE_YBCTID(tuple));
 		}
-		tuple->t_tableOid = RelationGetRelid(ybScan->relation);
+		tuple->t_tableOid = RelationGetRelid(tsdesc->rs_rd);
 	}
 	pfree(values);
 	pfree(nulls);
@@ -503,8 +520,8 @@ static IndexTuple ybcFetchNextIndexTuple(YbScanDesc ybScan, Relation index, bool
 			tuple = index_form_tuple(RelationGetDescr(index), ivalues, inulls);
 			if (syscols.ybctid != NULL)
 			{
-				tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
-				ybcUpdateFKCache(ybScan, tuple->t_ybctid);
+				INDEXTUPLE_YBCTID(tuple) = PointerGetDatum(syscols.ybctid);
+				ybcUpdateFKCache(ybScan, INDEXTUPLE_YBCTID(tuple));
 			}
 		}
 		else
@@ -512,8 +529,8 @@ static IndexTuple ybcFetchNextIndexTuple(YbScanDesc ybScan, Relation index, bool
 			tuple = index_form_tuple(tupdesc, values, nulls);
 			if (syscols.ybbasectid != NULL)
 			{
-				tuple->t_ybctid = PointerGetDatum(syscols.ybbasectid);
-				ybcUpdateFKCache(ybScan, tuple->t_ybctid);
+				INDEXTUPLE_YBCTID(tuple) = PointerGetDatum(syscols.ybbasectid);
+				ybcUpdateFKCache(ybScan, INDEXTUPLE_YBCTID(tuple));
 			}
 		}
 
@@ -554,7 +571,8 @@ static IndexTuple ybcFetchNextIndexTuple(YbScanDesc ybScan, Relation index, bool
 static void
 ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 {
-	Relation relation = ybScan->relation;
+	TableScanDesc tsdesc = (TableScanDesc)ybScan;
+	Relation relation = tsdesc->rs_rd;
 	Relation index = ybScan->index;
 	int i;
 	memset(scan_plan, 0, sizeof(*scan_plan));
@@ -875,16 +893,16 @@ YbShouldPushdownScanPrimaryKey(YbScanPlan scan_plan, AttrNumber attnum,
 /* int comparator for qsort() */
 static int int_compar_cb(const void *v1, const void *v2)
 {
-  const int *k1 = v1;
-  const int *k2 = v2;
+	const int *k1 = v1;
+	const int *k2 = v2;
 
-  if (*k1 < *k2)
-    return -1;
+	if (*k1 < *k2)
+		return -1;
 
-  if (*k1 > *k2)
-    return 1;
+	if (*k1 > *k2)
+		return 1;
 
-  return 0;
+	return 0;
 }
 
 /* Use the scan-descriptor and scan-plan to setup scan key for filtering */
@@ -1032,6 +1050,7 @@ YbCheckScanTypes(YbScanDesc ybScan, YbScanPlan scan_plan, int i)
 	Oid atttypid = valtypid == RECORDOID ? RECORDOID :
 		ybc_get_atttypid(scan_plan->bind_desc, scan_plan->bind_key_attnums[i]);
 	Assert(OidIsValid(atttypid));
+
 	/*
 	 * Example: CREATE TABLE t1(c0 REAL, c1 TEXT, PRIMARY KEY(c0 asc));
 	 *          INSERT INTO t1(c0, c1) VALUES(0.4, 'SHOULD BE IN RESULT');
@@ -1251,7 +1270,7 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	Oid 	   *colids;
 	bool is_row = false;
 	int length_of_key = YbGetLengthOfKey(&ybScan->keys[skey_index]);
-	Relation relation = ybScan->relation;
+	Relation relation = ((TableScanDesc)ybScan)->rs_rd;
 	Relation index = ybScan->index;
 
 	ScanKey key = ybScan->keys[skey_index];
@@ -1411,7 +1430,8 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 static bool
 YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 {
-	Relation relation = ybScan->relation;
+	Relation relation = ((TableScanDesc)ybScan)->rs_rd;
+
 	ybScan->is_full_cond_bound = yb_bypass_cond_recheck &&
 								 yb_pushdown_strict_inequality &&
 								 yb_pushdown_is_not_null;
@@ -1475,6 +1495,181 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 		{
 			YbBindRowComparisonKeys(ybScan, scan_plan, i);
 		}
+#ifdef YB_TODO
+	/* YB_TODO(neil) recheck the following code. */
+	int offsets[ybScan->nkeys + 1]; /* VLA - scratch space: +1 to avoid zero elements */
+
+	for (int i = 0; i < ybScan->nkeys; i++)
+	{
+		ScanKey key = ybScan->keys[i];
+		/* Check if this is full key row comparison expression */
+		if (key->sk_flags & SK_ROW_HEADER)
+		{
+			int j = 0;
+			ScanKey subkeys = (ScanKey) DatumGetPointer(key->sk_argument);
+			int last_att_no = YBFirstLowInvalidAttributeNumber;
+
+			/*
+			 * We can only push down right now if the primary key columns
+			 * are specified in the correct order and the primary key
+			 * has no hashed columns. We also need to ensure that
+			 * the same comparison operation is done to all subkeys.
+			 */
+			bool can_pushdown = true;
+
+			int strategy = subkeys[0].sk_strategy;
+			int count = 0;
+			do {
+				ScanKey current = &subkeys[j];
+				/* Make sure that the specified keys are in the right order. */
+				if (!(current->sk_attno > last_att_no))
+				{
+					can_pushdown = false;
+					break;
+				}
+
+				/*
+				 * Make sure that the same comparator is applied to
+				 * all subkeys.
+				 */
+				if (strategy != current->sk_strategy)
+				{
+					can_pushdown = false;
+					break;
+				}
+				last_att_no = current->sk_attno;
+
+				/* Make sure that there are no hash key columns. */
+				if (index->rd_indoption[current->sk_attno - 1]
+					& INDOPTION_HASH)
+				{
+					can_pushdown = false;
+					break;
+				}
+				count++;
+			}
+			while((subkeys[j++].sk_flags & SK_ROW_END) == 0);
+
+			/*
+			 * Make sure that the primary key has no hash columns in order
+			 * to push down.
+			 */
+
+			for (int i = 0; i < index->rd_index->indnkeyatts; i++)
+			{
+				if (index->rd_indoption[i] & INDOPTION_HASH)
+				{
+					can_pushdown = false;
+					break;
+				}
+			}
+
+			if (can_pushdown)
+			{
+
+				YBCPgExpr *col_values = palloc(sizeof(YBCPgExpr)
+											* index->rd_index->indnkeyatts);
+				/*
+				 * Prepare upper/lower bound tuples determined from this
+				 * clause for bind. Care must be taken in the case
+				 * that primary key columns in the index are ordered
+				 * differently from each other. For example, consider
+				 * if the underlying index has primary key
+				 * (r1 ASC, r2 DESC, r3 ASC) and we are dealing with
+				 * a clause like (r1, r2, r3) <= (40, 35, 12).
+				 * We cannot simply bind (40, 35, 12) as an upper bound
+				 * as that will miss tuples such as (40, 32, 0).
+				 * Instead we must push down (40, Inf, 12) in this case
+				 * for correctness. (Note that +Inf in this context
+				 * is higher in STORAGE order than all other values not
+				 * necessarily logical order, similar to the role of
+				 * docdb::ValueType::kHighest.
+				 */
+
+				/*
+				 * Is the first column in ascending order in the index?
+				 * This is important because whether or not the RHS of a
+				 * (row key) >= (row key values) expression is
+				 * considered an upper bound is dependent on the answer
+				 * to this question. The RHS of such an expression will
+				 * be the scan upper bound if the first column is in
+				 * descending order and lower if else. Similar logic
+				 * applies to the RHS of (row key) <= (row key values)
+				 * expressions.
+				 */
+				bool is_direction_asc =
+									(index->rd_indoption[
+										subkeys[0].sk_attno - 1]
+										& INDOPTION_DESC) == 0;
+				bool gt = strategy == BTGreaterEqualStrategyNumber
+								|| strategy == BTGreaterStrategyNumber;
+				bool is_inclusive = strategy != BTGreaterStrategyNumber
+										&& strategy != BTLessStrategyNumber;
+
+				bool is_point_scan = (count == index->rd_index->indnatts)
+										&& (strategy == BTEqualStrategyNumber);
+
+				/* Whether or not the RHS values make up a DocDB upper bound */
+				bool is_upper_bound = gt ^ is_direction_asc;
+				size_t subkey_index = 0;
+
+				for (j = 0; j < index->rd_index->indnkeyatts; j++)
+				{
+					bool is_column_specified = subkey_index < count
+											&& (subkeys[subkey_index]
+												.sk_attno - 1) == j;
+					/*
+					 * Is the current column stored in ascending order in the
+					 * underlying index?
+					 */
+					bool asc = (index->rd_indoption[j] & INDOPTION_DESC) == 0;
+
+					/*
+					 * If this column has different directionality than the
+					 * first column then we have to adjust the bounds on this
+					 * column.
+					 */
+					if(!is_column_specified
+						|| (asc != is_direction_asc &&
+							!is_point_scan))
+					{
+						col_values[j] = NULL;
+					}
+					else
+					{
+						ScanKey current = &subkeys[subkey_index];
+						col_values[j] = YBCNewConstant(ybScan->handle,
+											ybc_get_atttypid
+												(scan_plan->bind_desc,
+											current->sk_attno),
+											current->sk_collation,
+											current->sk_argument,
+											false);
+					}
+
+					if (is_column_specified)
+					{
+						subkey_index++;
+					}
+				}
+
+				if (is_upper_bound || strategy == BTEqualStrategyNumber)
+				{
+					HandleYBStatus(YBCPgDmlAddRowUpperBound(ybScan->handle,
+												index->rd_index->indnkeyatts,
+												col_values, is_inclusive));
+				}
+
+				if (!is_upper_bound || strategy == BTEqualStrategyNumber)
+				{
+					HandleYBStatus(YBCPgDmlAddRowLowerBound(ybScan->handle,
+												index->rd_index->indnkeyatts,
+												col_values, is_inclusive));
+				}
+			}
+			continue;
+		}
+#endif
 
 		/* Check if this is primary columns */
 		int bind_key_attnum = scan_plan->bind_key_attnums[i];
@@ -1584,6 +1779,68 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 									  	  &bail_out);
 					if (bail_out)
 						return false;
+
+#ifdef YB_TODO
+/* YB_TODO(neil) Recheck the following code. */
+					/* based on _bt_preprocess_array_keys() */
+					ArrayType  *arrayval;
+					int16		elmlen;
+					bool		elmbyval;
+					char		elmalign;
+					int			num_elems;
+					Datum	   *elem_values;
+					bool	   *elem_nulls;
+					int			num_valid;
+					int			j;
+
+					/*
+					 * First, deconstruct the array into elements.  Anything allocated
+					 * here (including a possibly detoasted array value) is in the
+					 * workspace context.
+					 */
+					arrayval = DatumGetArrayTypeP(key->sk_argument);
+					Assert(key->sk_subtype == ARR_ELEMTYPE(arrayval));
+					/* We could cache this data, but not clear it's worth it */
+					get_typlenbyvalalign(ARR_ELEMTYPE(arrayval), &elmlen,
+											&elmbyval, &elmalign);
+					deconstruct_array(arrayval,
+										ARR_ELEMTYPE(arrayval),
+										elmlen, elmbyval, elmalign,
+										&elem_values, &elem_nulls, &num_elems);
+
+					/*
+					 * Compress out any null elements.  We can ignore them since we assume
+					 * all btree operators are strict. Also remove elements that are too large or
+					 * too small. eg. WHERE element = INT_MAX + k, where k is positive and element
+					 * is of integer type.
+					 */
+					Oid atttype = ybc_get_atttypid(scan_plan->bind_desc, scan_plan->bind_key_attnums[i]);
+
+					num_valid = 0;
+					for (j = 0; j < num_elems; j++)
+					{
+						if (elem_nulls[j])
+							continue;
+
+						/* Skip integer element where the value overflows the column type */
+						if ((atttype == INT2OID || atttype == INT4OID) &&
+							!YbIsIntegerInRange(elem_values[j], ybScan->keys[i]->sk_subtype,
+                                  			   atttype == INT2OID ? SHRT_MIN : INT_MIN,
+								               atttype == INT2OID ? SHRT_MAX : INT_MAX))
+							continue;
+
+						elem_values[num_valid++] = elem_values[j];
+					}
+
+					/* We could pfree(elem_nulls) now, but not worth the cycles */
+
+					/*
+						* If there's no non-nulls, the scan qual is unsatisfiable
+						* Example: SELECT ... FROM ... WHERE h = ... AND r IN (NULL,NULL);
+						*/
+					if (num_valid == 0)
+						return false;
+#endif
 
 					is_column_bound[idx] |= is_bound;
 				}
@@ -1816,8 +2073,9 @@ static void
 YbInitColumnFilter(
 	YbColumnFilter *filter, YbScanDesc ybScan, Scan *pg_scan_plan)
 {
+	TableScanDesc tsdesc = (TableScanDesc)ybScan;
 	const int min_attr = YBGetFirstLowInvalidAttributeNumber(
-		ybScan->index ? ybScan->index : ybScan->relation);
+		ybScan->index ? ybScan->index : tsdesc->rs_rd);
 
 	filter->required_attrs = NULL;
 	filter->ybScan = ybScan;
@@ -1932,11 +2190,14 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 		}
 	}
 
+#ifdef NEIL_OID
+	/* OID is now a regular column */
 	if (scan_plan->target_relation->rd_rel->relhasoids)
 	{
 		YbDmlAppendTargetSystem(ObjectIdAttributeNumber, ybScan->handle);
 		target_added = true;
 	}
+#endif
 
 	if (is_index_only_scan)
 	{
@@ -2043,7 +2304,7 @@ YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc,
 					 * Use original attribute number (varoattno) instead of projected one (varattno)
 					 * as projection is disabled for tuples produced by pushed down operators.
 					 */
-					int attno = castNode(Var, tle->expr)->varoattno;
+					int attno = castNode(Var, tle->expr)->varattnosyn;
 					/*
 					 * For index (only) scans, translate the table-based
 					 * attribute number to an index-based one.
@@ -2187,7 +2448,8 @@ YbScanDesc
 ybcBeginScan(Relation relation,
 			 Relation index,
 			 bool xs_want_itup,
-			 int nkeys, ScanKey keys,
+			 int nkeys,
+			 ScanKey keys,
 			 Scan *pg_scan_plan,
 			 PushdownExprs *rel_pushdown,
 			 PushdownExprs *idx_pushdown,
@@ -2202,6 +2464,15 @@ ybcBeginScan(Relation relation,
 
 	/* Set up Yugabyte scan description */
 	YbScanDesc ybScan = (YbScanDesc) palloc0(sizeof(YbScanDescData));
+	TableScanDesc tsdesc = (TableScanDesc)ybScan;
+	tsdesc->rs_rd = relation;
+	tsdesc->rs_key = keys;
+	tsdesc->rs_nkeys = nkeys;
+
+	/* Reorder the keys to regular key first then yb_hash_code. */
+	ybScan->keys = (ScanKey*) palloc(sizeof(ScanKey) * nkeys);
+	ybScan->nkeys = 0;
+	ybScan->nhash_keys = 0;
 	for (int i = 0; i < nkeys; ++i)
 	{
 		ScanKey key = &keys[i];
@@ -2231,7 +2502,6 @@ ybcBeginScan(Relation relation,
 		return ybScan;
 	}
 	ybScan->exec_params = exec_params;
-	ybScan->relation = relation;
 	ybScan->index = index;
 	ybScan->quit_scan = false;
 
@@ -2360,8 +2630,7 @@ ybc_keys_match(HeapTuple tup, YbScanDesc ybScan, bool *recheck)
 	return true;
 }
 
-static bool
-is_index_functional(Relation index)
+static bool is_index_functional(Relation index)
 {
 	if (!index->rd_indexprs)
 		return false;
@@ -2380,9 +2649,7 @@ is_index_functional(Relation index)
 	return false;
 }
 
-HeapTuple
-ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan,
-					  bool *recheck)
+HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
 {
 	HeapTuple   tup      = NULL;
 
@@ -2421,8 +2688,7 @@ ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan,
 	return tup;
 }
 
-IndexTuple
-ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
+IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
 {
 	if (ybScan->quit_scan)
 		return NULL;
@@ -2527,11 +2793,11 @@ void ybc_systable_endscan(SysScanDesc scan_desc)
 	pfree(scan_desc);
 }
 
-HeapScanDesc ybc_heap_beginscan(Relation relation,
-                                Snapshot snapshot,
-                                int nkeys,
-                                ScanKey key,
-                                bool temp_snap)
+TableScanDesc ybc_heap_beginscan(Relation relation,
+								 Snapshot snapshot,
+								 int nkeys,
+								 ScanKey key,
+								 uint32 flags)
 {
 	/* Restart should not be prevented if operation caused by system read of system table. */
 	Scan *pg_scan_plan = NULL; /* In current context scan plan is not available */
@@ -2547,36 +2813,33 @@ HeapScanDesc ybc_heap_beginscan(Relation relation,
 									 NULL /* exec_params */);
 
 	/* Set up Postgres sys table scan description */
-	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
-	scan_desc->rs_rd        = relation;
-	scan_desc->rs_snapshot  = snapshot;
-	scan_desc->rs_temp_snap = temp_snap;
-	scan_desc->rs_cblock    = InvalidBlockNumber;
-	scan_desc->ybscan       = ybScan;
+	TableScanDesc tsdesc = (TableScanDesc)ybScan;
+	tsdesc->rs_snapshot = snapshot;
+	tsdesc->rs_flags = flags;
 
-	return scan_desc;
+	return tsdesc;
 }
 
-HeapTuple ybc_heap_getnext(HeapScanDesc scan_desc)
+HeapTuple ybc_heap_getnext(TableScanDesc tsdesc)
 {
 	bool recheck = false;
+	YbScanDesc ybdesc = (YbScanDesc) tsdesc;
+	HeapTuple tuple;
 
-	Assert(PointerIsValid(scan_desc->ybscan));
-
-	HeapTuple tuple = ybc_getnext_heaptuple(scan_desc->ybscan, true /* is_forward_scan */,
-											&recheck);
-
+	Assert(PointerIsValid(tsdesc));
+	tuple = ybc_getnext_heaptuple(ybdesc, true /* is_forward_scan */, &recheck);
 	Assert(!recheck);
 
 	return tuple;
 }
 
-void ybc_heap_endscan(HeapScanDesc scan_desc)
+void ybc_heap_endscan(TableScanDesc tsdesc)
 {
-	ybc_free_ybscan(scan_desc->ybscan);
-	if (scan_desc->rs_temp_snap)
-		UnregisterSnapshot(scan_desc->rs_snapshot);
-	pfree(scan_desc);
+	YbScanDesc ybdesc = (YbScanDesc) tsdesc;
+
+	if (tsdesc->rs_flags & SO_TEMP_SNAPSHOT)
+		UnregisterSnapshot(tsdesc->rs_snapshot);
+	ybc_free_ybscan(ybdesc);
 }
 
 /*
@@ -2590,7 +2853,7 @@ void ybc_heap_endscan(HeapScanDesc scan_desc)
  * ybc_heap_getnext and ybc_heap_endscan are respectively used to fetch tuples
  * and finish the scan.
  */
-HeapScanDesc
+TableScanDesc
 ybc_remote_beginscan(Relation relation,
 					 Snapshot snapshot,
 					 Scan *pg_scan_plan,
@@ -2610,14 +2873,11 @@ ybc_remote_beginscan(Relation relation,
 									 exec_params);
 
 	/* Set up Postgres sys table scan description */
-	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
-	scan_desc->rs_rd        = relation;
-	scan_desc->rs_snapshot  = snapshot;
-	scan_desc->rs_temp_snap = false;
-	scan_desc->rs_cblock    = InvalidBlockNumber;
-	scan_desc->ybscan       = ybScan;
+	TableScanDesc tsdesc = (TableScanDesc)ybScan;
+	tsdesc->rs_snapshot = snapshot;
+	tsdesc->rs_flags = SO_TYPE_SEQSCAN;
 
-	return scan_desc;
+	return tsdesc;
 }
 
 /* --------------------------------------------------------------------------------------------- */
@@ -2671,6 +2931,12 @@ void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 	*total_cost   = *startup_cost + cost_per_tuple * baserel->tuples * selectivity;
 }
 
+#ifdef YB_TODO
+/* YB_TODO(ram kannan@yugabyte) Reimplement cost functions.
+ * - PG13 removed IndexQualInfo.
+ * - PG13 introduced IndexClause.
+ * - Yugabyte needs to reimplement the cost calculation using IndexClause.
+ */
 /*
  * Evaluate the selectivity for yb_hash_code qualifiers.
  * Returns 1.0 if there are no yb_hash_code comparison expressions for this
@@ -2762,7 +3028,6 @@ static double ybcEvalHashSelectivity(List *hashed_qinfos)
 	return selectivity;
 }
 
-
 /*
  * Evaluate the selectivity for some qualified cols given the hash and primary key cols.
  */
@@ -2798,6 +3063,7 @@ static double ybcIndexEvalClauseSelectivity(Relation index,
 
 	return YBC_HASH_SCAN_SELECTIVITY;
 }
+#endif
 
 Oid ybc_get_attcollation(TupleDesc desc, AttrNumber attnum)
 {
@@ -2808,6 +3074,13 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 						  Selectivity *selectivity, Cost *startup_cost,
 						  Cost *total_cost)
 {
+#ifdef YB_TODO
+	/* YB_TODO(ram kannan@yugabyte) Reimplement cost functions.
+	 * - PG13 removed IndexQualInfo.
+	 * - PG13 introduced IndexClause.
+	 * - Yugabyte needs to reimplement the cost calculation using IndexClause.
+	 */
+
 	Relation	index = RelationIdGetRelation(path->indexinfo->indexoid);
 	bool		isprimary = index->rd_index->indisprimary;
 	Relation	relation = isprimary ? RelationIdGetRelation(index->rd_index->indrelid) : NULL;
@@ -2831,11 +3104,8 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 	scan_plan.target_relation = isprimary ? relation : index;
 	ybcLoadTableInfo(scan_plan.target_relation, &scan_plan);
 
-	/* Do preliminary analysis of indexquals */
-	qinfos = deconstruct_indexquals(path);
-
 	/* Find out the search conditions on the primary key columns */
-	foreach(lc, qinfos)
+	foreach(lc, path->indexclauses)
 	{
 		IndexQualInfo *qinfo = (IndexQualInfo *) lfirst(lc);
 		RestrictInfo *rinfo = qinfo->rinfo;
@@ -2942,32 +3212,35 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 		RelationClose(relation);
 
 	RelationClose(index);
+#endif
 }
 
-HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
+static bool
+YbFetchRowData(YBCPgStatement ybc_stmt, Relation relation, ItemPointer tid,
+			   Datum *values, bool *nulls, YBCPgSysColumns *syscols)
 {
-	YBCPgStatement ybc_stmt;
-	TupleDesc      tupdesc = RelationGetDescr(relation);
-
-	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-								  YbGetStorageRelid(relation),
-								  NULL /* prepare_params */,
-								  YBCIsRegionLocal(relation),
-								  &ybc_stmt));
+	bool has_data = false;
+	TupleDesc tupdesc = RelationGetDescr(relation);
 
 	/* Bind ybctid to identify the current row. */
 	YBCPgExpr ybctid_expr = YBCNewConstant(ybc_stmt,
 										   BYTEAOID,
 										   InvalidOid,
-										   ybctid,
+										   YbItemPointerYbctid(tid),
 										   false);
 	HandleYBStatus(YBCPgDmlBindColumn(ybc_stmt, YBTupleIdAttributeNumber, ybctid_expr));
 
 	/*
 	 * Set up the scan targets. For index-based scan we need to return all "real" columns.
 	 */
+#ifdef YB_TODO
+	/* YB_TODO(neil@yugabyte)
+	 * - OID is now a regular column.
+	 * - Yugabyte code might need modification when selecting column 'oid'
+	 */
 	if (RelationGetForm(relation)->relhasoids)
 		YbDmlAppendTargetSystem(ObjectIdAttributeNumber, ybc_stmt);
+#endif
 	for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
 	{
 		if (!TupleDescAttr(tupdesc, attnum - 1)->attisdropped)
@@ -2981,42 +3254,105 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	 */
 	HandleYBStatus(YBCPgExecSelect(ybc_stmt, NULL /* exec_params */));
 
-	HeapTuple tuple    = NULL;
-	bool      has_data = false;
-
-	Datum           *values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
-	bool            *nulls  = (bool *) palloc(tupdesc->natts * sizeof(bool));
-	YBCPgSysColumns syscols;
-
 	/* Fetch one row. */
 	HandleYBStatus(YBCPgDmlFetch(ybc_stmt,
 								 tupdesc->natts,
 								 (uint64_t *) values,
 								 nulls,
-								 &syscols,
+								 syscols,
 								 &has_data));
 
+	return has_data;
+}
+
+bool
+YbFetchTableSlot(Relation relation, ItemPointer tid,  TupleTableSlot *slot)
+{
+	bool has_data = false;
+	YBCPgStatement ybc_stmt;
+
+	TupleDesc tupdesc = RelationGetDescr(relation);
+	slot->tts_values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
+	slot->tts_isnull  = (bool *) palloc(tupdesc->natts * sizeof(bool));
+	YBCPgSysColumns syscols;
+
+	/* Read data */
+	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
+								  YbGetStorageRelid(relation),
+								  NULL /* prepare_params */,
+								  YBCIsRegionLocal(relation),
+								  &ybc_stmt));
+	has_data = YbFetchRowData(ybc_stmt, relation, tid, slot->tts_values, slot->tts_isnull, &syscols);
+
+	/* Write into the given slot */
 	if (has_data)
 	{
-		tuple = heap_form_tuple(tupdesc, values, nulls);
+		slot->tts_nvalid = tupdesc->natts;
+		slot->tts_tableOid = RelationGetRelid(relation);
+		if (syscols.ybctid != NULL)
+		{
+			TABLETUPLE_YBCTID(slot) = PointerGetDatum(syscols.ybctid);
+		}
+	}
 
+	#ifdef YB_TODO
+	/* YB_TODO(neil): pfree values and nulls at appropriate place. */
+	pfree(values);
+	pfree(nulls);
+	#endif
+	YBCPgDeleteStatement(ybc_stmt);
+	return has_data;
+}
+
+bool
+YbFetchHeapTuple(Relation relation, ItemPointer tid, HeapTuple* tuple)
+{
+	bool has_data = false;
+	YBCPgStatement ybc_stmt;
+
+	TupleDesc tupdesc = RelationGetDescr(relation);
+	Datum *values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
+	bool *nulls  = (bool *) palloc(tupdesc->natts * sizeof(bool));
+	YBCPgSysColumns syscols;
+
+	/* Read data */
+	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
+								  YbGetStorageRelid(relation),
+								  NULL /* prepare_params */,
+								  YBCIsRegionLocal(relation),
+								  &ybc_stmt));
+	has_data = YbFetchRowData(ybc_stmt, relation, tid, values, nulls, &syscols);
+
+	/* Write into the given tuple */
+	if (has_data)
+	{
+		*tuple = heap_form_tuple(tupdesc, values, nulls);
+#ifdef YB_TODO
+		/* YB_TODO(neil@yugabyte)
+		 * - OID is now a regular column.
+		 * - Yugabyte code might need modification when selecting column 'oid'
+		 */
 		if (syscols.oid != InvalidOid)
 		{
 			HeapTupleSetOid(tuple, syscols.oid);
 		}
+#endif
+		(*tuple)->t_tableOid = RelationGetRelid(relation);
 		if (syscols.ybctid != NULL)
 		{
-			tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
+			HEAPTUPLE_YBCTID(*tuple) = PointerGetDatum(syscols.ybctid);
 		}
-		tuple->t_tableOid = RelationGetRelid(relation);
 	}
+
+	
+	/* Free up memory and return data */
 	pfree(values);
 	pfree(nulls);
 	YBCPgDeleteStatement(ybc_stmt);
-	return tuple;
+	return has_data;
 }
 
-HTSU_Result
+TM_Result
 YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy pg_wait_policy,
 			 EState* estate)
 {
@@ -3043,7 +3379,7 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy p
 	exec_params.stmt_in_txn_limit_ht_for_reads =
 		estate->yb_exec_params.stmt_in_txn_limit_ht_for_reads;
 
-	HTSU_Result res = HeapTupleMayBeUpdated;
+	TM_Result res = TM_Ok;
 	MemoryContext exec_context = GetCurrentMemoryContext();
 
 	PG_TRY();
@@ -3081,9 +3417,9 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy p
 			 pg_wait_policy, docdb_wait_policy, edata->yb_txn_errcode, edata->message);
 
 		if (YBCIsTxnConflictError(edata->yb_txn_errcode))
-			res = HeapTupleUpdated;
+			res = TM_Updated;
 		else if (YBCIsTxnSkipLockingError(edata->yb_txn_errcode))
-			res = HeapTupleWouldBlock;
+			res = TM_WouldBlock;
 		else {
 			YBCPgDeleteStatement(ybc_stmt);
 			MemoryContextSwitchTo(error_context);
@@ -3126,11 +3462,14 @@ ybBeginSample(Relation rel, int targrows)
 								  YBCIsRegionLocal(rel),
 								  &ybSample->handle));
 
+#ifdef YB_TODO
+	/* YB_TODO(neil) OID is now a regular column */
 	/*
 	 * Set up the scan targets. We need to return all "real" columns.
 	 */
 	if (RelationGetForm(ybSample->relation)->relhasoids)
 		YbDmlAppendTargetSystem(ObjectIdAttributeNumber, ybSample->handle);
+#endif
 	for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
 	{
 		if (!TupleDescAttr(tupdesc, attnum - 1)->attisdropped)
@@ -3141,9 +3480,12 @@ ybBeginSample(Relation rel, int targrows)
 	 * Initialize sampler random state
 	 */
 	reservoir_init_selection_state(&rstate, targrows);
+#ifdef YB_TODO
+	/* YB_TODO(neil) Random state is no longer an array */
 	HandleYBStatus(YBCPgInitRandomState(ybSample->handle,
 										rstate.W,
 										SamplerRandomStateToUint64(rstate.randstate)));
+#endif
 
 	return ybSample;
 }
@@ -3213,13 +3555,16 @@ ybFetchSample(YbSample ybSample, HeapTuple *rows)
 
 		/* Make a heap tuple in current memory context */
 		rows[numrows] = heap_form_tuple(tupdesc, values, nulls);
+#ifdef NEIL_OID
+		/* OID is now a regular column */
 		if (syscols.oid != InvalidOid)
 		{
 			HeapTupleSetOid(rows[numrows], syscols.oid);
 		}
+#endif
 		if (syscols.ybctid != NULL)
 		{
-			rows[numrows]->t_ybctid = PointerGetDatum(syscols.ybctid);
+			HEAPTUPLE_YBCTID(rows[numrows]) = PointerGetDatum(syscols.ybctid);
 		}
 		rows[numrows]->t_tableOid = relid;
 	}
@@ -3244,7 +3589,7 @@ ybFetchSample(YbSample ybSample, HeapTuple *rows)
  *
  * By default the slot holds a virtual tuple, a heap tuple is only formed if
  * the DocDB returns oid. If heap tuple is formed, its t_tableOid field is
- * updated with provided relid and t_ybctid field is set to returned ybctid
+ * updated with provided relid and ybctid field is set to returned ybctid
  * value. The heap tuple is allocated in the slot's memory context.
  */
 TupleTableSlot *
@@ -3268,18 +3613,21 @@ ybFetchNext(YBCPgStatement handle,
 	if (has_data)
 	{
 		slot->tts_nvalid = tupdesc->natts;
-		slot->tts_isempty = false;
-		slot->tts_ybctid = PointerGetDatum(syscols.ybctid);
+		slot->tts_flags &= ~TTS_FLAG_EMPTY; /* Not empty */
+		TABLETUPLE_YBCTID(slot) = PointerGetDatum(syscols.ybctid);
+#ifdef YB_TODO
+		/* OID is now a regular column */
 		if (syscols.oid != InvalidOid)
 		{
 			MemoryContext oldcontext = MemoryContextSwitchTo(slot->tts_mcxt);
 			HeapTuple tuple = heap_form_tuple(tupdesc, values, nulls);
 			HeapTupleSetOid(tuple, syscols.oid);
 			tuple->t_tableOid = relid;
-			tuple->t_ybctid = slot->tts_ybctid;
+			HEAPTUPLE_YBCTID(tuple) = TABLETUPLE_YBCTID(slot);
 			slot = ExecStoreHeapTuple(tuple, slot, true);
 			MemoryContextSwitchTo(oldcontext);
 		}
+#endif
 	}
 
 	return slot;

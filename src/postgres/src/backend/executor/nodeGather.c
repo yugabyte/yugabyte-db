@@ -3,7 +3,7 @@
  * nodeGather.c
  *	  Support routines for scanning a plan via multiple workers.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * A Gather executor launches parallel workers to run multiple copies of a
@@ -38,7 +38,7 @@
 #include "executor/nodeSubplan.h"
 #include "executor/tqueue.h"
 #include "miscadmin.h"
-#include "optimizer/planmain.h"
+#include "optimizer/optimizer.h"
 #include "pgstat.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
@@ -46,7 +46,7 @@
 
 static TupleTableSlot *ExecGather(PlanState *pstate);
 static TupleTableSlot *gather_getnext(GatherState *gatherstate);
-static HeapTuple gather_readnext(GatherState *gatherstate);
+static MinimalTuple gather_readnext(GatherState *gatherstate);
 static void ExecShutdownGatherWorkers(GatherState *node);
 
 
@@ -92,15 +92,35 @@ ExecInitGather(Gather *node, EState *estate, int eflags)
 	tupDesc = ExecGetResultType(outerPlanState(gatherstate));
 
 	/*
+	 * Leader may access ExecProcNode result directly (if
+	 * need_to_scan_locally), or from workers via tuple queue.  So we can't
+	 * trivially rely on the slot type being fixed for expressions evaluated
+	 * within this node.
+	 */
+	gatherstate->ps.outeropsset = true;
+	gatherstate->ps.outeropsfixed = false;
+
+	/*
 	 * Initialize result type and projection.
 	 */
 	ExecInitResultTypeTL(&gatherstate->ps);
 	ExecConditionalAssignProjectionInfo(&gatherstate->ps, tupDesc, OUTER_VAR);
 
 	/*
+	 * Without projections result slot type is not trivially known, see
+	 * comment above.
+	 */
+	if (gatherstate->ps.ps_ProjInfo == NULL)
+	{
+		gatherstate->ps.resultopsset = true;
+		gatherstate->ps.resultopsfixed = false;
+	}
+
+	/*
 	 * Initialize funnel slot to same tuple descriptor as outer plan.
 	 */
-	gatherstate->funnel_slot = ExecInitExtraTupleSlot(estate, tupDesc);
+	gatherstate->funnel_slot = ExecInitExtraTupleSlot(estate, tupDesc,
+													  &TTSOpsMinimalTuple);
 
 	/*
 	 * Gather doesn't support checking a qual (it's always more efficient to
@@ -246,7 +266,7 @@ gather_getnext(GatherState *gatherstate)
 	PlanState  *outerPlan = outerPlanState(gatherstate);
 	TupleTableSlot *outerTupleSlot;
 	TupleTableSlot *fslot = gatherstate->funnel_slot;
-	HeapTuple	tup;
+	MinimalTuple tup;
 
 	while (gatherstate->nreaders > 0 || gatherstate->need_to_scan_locally)
 	{
@@ -258,9 +278,9 @@ gather_getnext(GatherState *gatherstate)
 
 			if (HeapTupleIsValid(tup))
 			{
-				ExecStoreHeapTuple(tup, /* tuple to store */
-								   fslot,	/* slot to store the tuple */
-								   true);	/* pfree tuple when done with it */
+				ExecStoreMinimalTuple(tup,	/* tuple to store */
+									  fslot,	/* slot to store the tuple */
+									  false);	/* don't pfree tuple  */
 				return fslot;
 			}
 		}
@@ -288,7 +308,7 @@ gather_getnext(GatherState *gatherstate)
 /*
  * Attempt to read a tuple from one of our parallel workers.
  */
-static HeapTuple
+static MinimalTuple
 gather_readnext(GatherState *gatherstate)
 {
 	int			nvisited = 0;
@@ -296,7 +316,7 @@ gather_readnext(GatherState *gatherstate)
 	for (;;)
 	{
 		TupleQueueReader *reader;
-		HeapTuple	tup;
+		MinimalTuple tup;
 		bool		readerdone;
 
 		/* Check for async events, particularly messages from workers. */
@@ -363,7 +383,8 @@ gather_readnext(GatherState *gatherstate)
 				return NULL;
 
 			/* Nothing to do except wait for developments. */
-			WaitLatch(MyLatch, WL_LATCH_SET, 0, WAIT_EVENT_EXECUTE_GATHER);
+			(void) WaitLatch(MyLatch, WL_LATCH_SET | WL_EXIT_ON_PM_DEATH, 0,
+							 WAIT_EVENT_EXECUTE_GATHER);
 			ResetLatch(MyLatch);
 			nvisited = 0;
 		}

@@ -41,23 +41,20 @@ struct error_desc
 
 static const struct error_desc px_err_list[] = {
 	{PXE_OK, "Everything ok"},
-	{PXE_ERR_GENERIC, "Some PX error (not specified)"},
 	{PXE_NO_HASH, "No such hash algorithm"},
 	{PXE_NO_CIPHER, "No such cipher algorithm"},
-	{PXE_NOTBLOCKSIZE, "Data not a multiple of block size"},
 	{PXE_BAD_OPTION, "Unknown option"},
 	{PXE_BAD_FORMAT, "Badly formatted type"},
 	{PXE_KEY_TOO_BIG, "Key was too big"},
-	{PXE_CIPHER_INIT, "Cipher cannot be initialized ?"},
+	{PXE_CIPHER_INIT, "Cipher cannot be initialized"},
 	{PXE_HASH_UNUSABLE_FOR_HMAC, "This hash algorithm is unusable for HMAC"},
-	{PXE_DEV_READ_ERROR, "Error reading from random device"},
 	{PXE_BUG, "pgcrypto bug"},
 	{PXE_ARGUMENT_ERROR, "Illegal argument to function"},
 	{PXE_UNKNOWN_SALT_ALGO, "Unknown salt algorithm"},
 	{PXE_BAD_SALT_ROUNDS, "Incorrect number of rounds"},
-	{PXE_MCRYPT_INTERNAL, "mcrypt internal error"},
-	{PXE_NO_RANDOM, "No strong random source"},
+	{PXE_NO_RANDOM, "Failed to generate strong random bits"},
 	{PXE_DECRYPT_FAILED, "Decryption failed"},
+	{PXE_ENCRYPT_FAILED, "Encryption failed"},
 	{PXE_PGP_CORRUPT_DATA, "Wrong key or corrupt data"},
 	{PXE_PGP_CORRUPT_ARMOR, "Corrupt ascii-armor"},
 	{PXE_PGP_UNSUPPORTED_COMPR, "Unsupported compression algorithm"},
@@ -97,17 +94,9 @@ px_THROW_ERROR(int err)
 {
 	if (err == PXE_NO_RANDOM)
 	{
-#ifdef HAVE_STRONG_RANDOM
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
 				 errmsg("could not generate a random number")));
-#else
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("generating random data is not supported by this build"),
-				 errdetail("This functionality requires a source of strong random numbers."),
-				 errhint("You need to rebuild PostgreSQL using --enable-strong-random.")));
-#endif
 	}
 	else
 	{
@@ -204,8 +193,7 @@ combo_init(PX_Combo *cx, const uint8 *key, unsigned klen,
 	ivs = px_cipher_iv_size(c);
 	if (ivs > 0)
 	{
-		ivbuf = px_alloc(ivs);
-		memset(ivbuf, 0, ivs);
+		ivbuf = palloc0(ivs);
 		if (ivlen > ivs)
 			memcpy(ivbuf, iv, ivs);
 		else if (ivlen > 0)
@@ -214,15 +202,15 @@ combo_init(PX_Combo *cx, const uint8 *key, unsigned klen,
 
 	if (klen > ks)
 		klen = ks;
-	keybuf = px_alloc(ks);
+	keybuf = palloc0(ks);
 	memset(keybuf, 0, ks);
 	memcpy(keybuf, key, klen);
 
 	err = px_cipher_init(c, keybuf, klen, ivbuf);
 
 	if (ivbuf)
-		px_free(ivbuf);
-	px_free(keybuf);
+		pfree(ivbuf);
+	pfree(keybuf);
 
 	return err;
 }
@@ -231,126 +219,14 @@ static int
 combo_encrypt(PX_Combo *cx, const uint8 *data, unsigned dlen,
 			  uint8 *res, unsigned *rlen)
 {
-	int			err = 0;
-	uint8	   *bbuf;
-	unsigned	bs,
-				bpos,
-				i,
-				pad;
-
-	PX_Cipher  *c = cx->cipher;
-
-	bbuf = NULL;
-	bs = px_cipher_block_size(c);
-
-	/* encrypt */
-	if (bs > 1)
-	{
-		bbuf = px_alloc(bs * 4);
-		bpos = dlen % bs;
-		*rlen = dlen - bpos;
-		memcpy(bbuf, data + *rlen, bpos);
-
-		/* encrypt full-block data */
-		if (*rlen)
-		{
-			err = px_cipher_encrypt(c, data, *rlen, res);
-			if (err)
-				goto out;
-		}
-
-		/* bbuf has now bpos bytes of stuff */
-		if (cx->padding)
-		{
-			pad = bs - (bpos % bs);
-			for (i = 0; i < pad; i++)
-				bbuf[bpos++] = pad;
-		}
-		else if (bpos % bs)
-		{
-			/* ERROR? */
-			pad = bs - (bpos % bs);
-			for (i = 0; i < pad; i++)
-				bbuf[bpos++] = 0;
-		}
-
-		/* encrypt the rest - pad */
-		if (bpos)
-		{
-			err = px_cipher_encrypt(c, bbuf, bpos, res + *rlen);
-			*rlen += bpos;
-		}
-	}
-	else
-	{
-		/* stream cipher/mode - no pad needed */
-		err = px_cipher_encrypt(c, data, dlen, res);
-		if (err)
-			goto out;
-		*rlen = dlen;
-	}
-out:
-	if (bbuf)
-		px_free(bbuf);
-
-	return err;
+	return px_cipher_encrypt(cx->cipher, cx->padding, data, dlen, res, rlen);
 }
 
 static int
 combo_decrypt(PX_Combo *cx, const uint8 *data, unsigned dlen,
 			  uint8 *res, unsigned *rlen)
 {
-	unsigned	bs,
-				i,
-				pad;
-	unsigned	pad_ok;
-
-	PX_Cipher  *c = cx->cipher;
-
-	/* decide whether zero-length input is allowed */
-	if (dlen == 0)
-	{
-		/* with padding, empty ciphertext is not allowed */
-		if (cx->padding)
-			return PXE_DECRYPT_FAILED;
-
-		/* without padding, report empty result */
-		*rlen = 0;
-		return 0;
-	}
-
-	bs = px_cipher_block_size(c);
-	if (bs > 1 && (dlen % bs) != 0)
-		goto block_error;
-
-	/* decrypt */
-	*rlen = dlen;
-	px_cipher_decrypt(c, data, dlen, res);
-
-	/* unpad */
-	if (bs > 1 && cx->padding)
-	{
-		pad = res[*rlen - 1];
-		pad_ok = 0;
-		if (pad > 0 && pad <= bs && pad <= *rlen)
-		{
-			pad_ok = 1;
-			for (i = *rlen - pad; i < *rlen; i++)
-				if (res[i] != pad)
-				{
-					pad_ok = 0;
-					break;
-				}
-		}
-
-		if (pad_ok)
-			*rlen -= pad;
-	}
-
-	return 0;
-
-block_error:
-	return PXE_NOTBLOCKSIZE;
+	return px_cipher_decrypt(cx->cipher, cx->padding, data, dlen, res, rlen);
 }
 
 static void
@@ -359,7 +235,7 @@ combo_free(PX_Combo *cx)
 	if (cx->cipher)
 		px_cipher_free(cx->cipher);
 	px_memset(cx, 0, sizeof(*cx));
-	px_free(cx);
+	pfree(cx);
 }
 
 /* PARSER */
@@ -416,17 +292,14 @@ px_find_combo(const char *name, PX_Combo **res)
 
 	PX_Combo   *cx;
 
-	cx = px_alloc(sizeof(*cx));
-	memset(cx, 0, sizeof(*cx));
-
-	buf = px_alloc(strlen(name) + 1);
-	strcpy(buf, name);
+	cx = palloc0(sizeof(*cx));
+	buf = pstrdup(name);
 
 	err = parse_cipher_name(buf, &s_cipher, &s_pad);
 	if (err)
 	{
-		px_free(buf);
-		px_free(cx);
+		pfree(buf);
+		pfree(cx);
 		return err;
 	}
 
@@ -453,7 +326,7 @@ px_find_combo(const char *name, PX_Combo **res)
 	cx->decrypt_len = combo_decrypt_len;
 	cx->free = combo_free;
 
-	px_free(buf);
+	pfree(buf);
 
 	*res = cx;
 
@@ -462,7 +335,7 @@ px_find_combo(const char *name, PX_Combo **res)
 err1:
 	if (cx->cipher)
 		px_cipher_free(cx->cipher);
-	px_free(cx);
-	px_free(buf);
+	pfree(cx);
+	pfree(buf);
 	return PXE_NO_CIPHER;
 }

@@ -4,7 +4,7 @@
  *	  rmgr descriptor routines for access/transam/generic_xlog.c
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/rmgrdesc/genericdesc.c
@@ -43,8 +43,6 @@ generic_desc(StringInfo buf, XLogReaderState *record)
 		else
 			appendStringInfo(buf, "offset %u, length %u", offset, length);
 	}
-
-	return;
 }
 
 /*

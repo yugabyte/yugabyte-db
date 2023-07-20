@@ -4,7 +4,7 @@
  *	  Definitions for tagged nodes.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/nodes.h
@@ -35,6 +35,7 @@ typedef enum NodeTag
 	T_ProjectionInfo,
 	T_JunkFilter,
 	T_OnConflictSetState,
+	T_MergeActionState,
 	T_ResultRelInfo,
 	T_EState,
 	T_TupleTableSlot,
@@ -59,6 +60,7 @@ typedef enum NodeTag
 	T_BitmapIndexScan,
 	T_BitmapHeapScan,
 	T_TidScan,
+	T_TidRangeScan,
 	T_SubqueryScan,
 	T_FunctionScan,
 	T_ValuesScan,
@@ -73,7 +75,9 @@ typedef enum NodeTag
 	T_MergeJoin,
 	T_HashJoin,
 	T_Material,
+	T_Memoize,
 	T_Sort,
+	T_IncrementalSort,
 	T_Group,
 	T_Agg,
 	T_WindowAgg,
@@ -115,6 +119,7 @@ typedef enum NodeTag
 	T_BitmapIndexScanState,
 	T_BitmapHeapScanState,
 	T_TidScanState,
+	T_TidRangeScanState,
 	T_SubqueryScanState,
 	T_FunctionScanState,
 	T_TableFuncScanState,
@@ -129,7 +134,9 @@ typedef enum NodeTag
 	T_MergeJoinState,
 	T_HashJoinState,
 	T_MaterialState,
+	T_MemoizeState,
 	T_SortState,
+	T_IncrementalSortState,
 	T_GroupState,
 	T_AggState,
 	T_WindowAggState,
@@ -147,7 +154,6 @@ typedef enum NodeTag
 	T_Alias,
 	T_RangeVar,
 	T_TableFunc,
-	T_Expr,
 	T_Var,
 	T_Const,
 	T_Param,
@@ -155,7 +161,7 @@ typedef enum NodeTag
 	T_Aggref,
 	T_GroupingFunc,
 	T_WindowFunc,
-	T_ArrayRef,
+	T_SubscriptingRef,
 	T_FuncExpr,
 	T_NamedArgExpr,
 	T_OpExpr,
@@ -205,18 +211,16 @@ typedef enum NodeTag
 	 * Most Expr-based plan nodes do not have a corresponding expression state
 	 * node, they're fully handled within execExpr* - but sometimes the state
 	 * needs to be shared with other parts of the executor, as for example
-	 * with AggrefExprState, which nodeAgg.c has to modify.
+	 * with SubPlanState, which nodeSubplan.c has to modify.
 	 */
 	T_ExprState,
-	T_AggrefExprState,
 	T_WindowFuncExprState,
 	T_SetExprState,
 	T_SubPlanState,
-	T_AlternativeSubPlanState,
 	T_DomainConstraintState,
 
 	/*
-	 * TAGS FOR PLANNER NODES (relation.h)
+	 * TAGS FOR PLANNER NODES (pathnodes.h)
 	 */
 	T_PlannerInfo,
 	T_PlannerGlobal,
@@ -230,6 +234,7 @@ typedef enum NodeTag
 	T_BitmapAndPath,
 	T_BitmapOrPath,
 	T_TidPath,
+	T_TidRangePath,
 	T_SubqueryScanPath,
 	T_ForeignPath,
 	T_CustomPath,
@@ -238,14 +243,16 @@ typedef enum NodeTag
 	T_HashPath,
 	T_AppendPath,
 	T_MergeAppendPath,
-	T_ResultPath,
+	T_GroupResultPath,
 	T_MaterialPath,
+	T_MemoizePath,
 	T_UniquePath,
 	T_GatherPath,
 	T_GatherMergePath,
 	T_ProjectionPath,
 	T_ProjectSetPath,
 	T_SortPath,
+	T_IncrementalSortPath,
 	T_GroupPath,
 	T_UpperUniquePath,
 	T_AggPath,
@@ -261,22 +268,25 @@ typedef enum NodeTag
 	T_EquivalenceClass,
 	T_EquivalenceMember,
 	T_PathKey,
+	T_PathKeyInfo,
 	T_PathTarget,
 	T_RestrictInfo,
+	T_IndexClause,
 	T_PlaceHolderVar,
 	T_SpecialJoinInfo,
 	T_AppendRelInfo,
+	T_RowIdentityVarInfo,
 	T_PlaceHolderInfo,
 	T_MinMaxAggInfo,
 	T_PlannerParamItem,
 	T_RollupData,
 	T_GroupingSetData,
 	T_StatisticExtInfo,
+	T_MergeAction,
 
 	/*
 	 * TAGS FOR MEMORY NODES (memnodes.h)
 	 */
-	T_MemoryContext,
 	T_AllocSetContext,
 	T_SlabContext,
 	T_GenerationContext,
@@ -284,12 +294,11 @@ typedef enum NodeTag
 	/*
 	 * TAGS FOR VALUE NODES (value.h)
 	 */
-	T_Value,
 	T_Integer,
 	T_Float,
+	T_Boolean,
 	T_String,
 	T_BitString,
-	T_Null,
 
 	/*
 	 * TAGS FOR LIST NODES (pg_list.h)
@@ -312,7 +321,10 @@ typedef enum NodeTag
 	T_InsertStmt,
 	T_DeleteStmt,
 	T_UpdateStmt,
+	T_MergeStmt,
 	T_SelectStmt,
+	T_ReturnStmt,
+	T_PLAssignStmt,
 	T_AlterTableStmt,
 	T_AlterTableCmd,
 	T_AlterDomainStmt,
@@ -364,6 +376,7 @@ typedef enum NodeTag
 	T_CheckPointStmt,
 	T_CreateSchemaStmt,
 	T_AlterDatabaseStmt,
+	T_AlterDatabaseRefreshCollStmt,
 	T_AlterDatabaseSetStmt,
 	T_AlterRoleSetStmt,
 	T_CreateConversionStmt,
@@ -382,6 +395,7 @@ typedef enum NodeTag
 	T_AlterObjectSchemaStmt,
 	T_AlterOwnerStmt,
 	T_AlterOperatorStmt,
+	T_AlterTypeStmt,
 	T_DropOwnedStmt,
 	T_ReassignOwnedStmt,
 	T_CompositeTypeStmt,
@@ -422,6 +436,7 @@ typedef enum NodeTag
 	T_CreateStatsStmt,
 	T_AlterCollationStmt,
 	T_CallStmt,
+	T_AlterStatsStmt,
 
 	/*
 	 * TAGS FOR PARSE TREE NODES (parsenodes.h)
@@ -449,6 +464,7 @@ typedef enum NodeTag
 	T_TypeName,
 	T_ColumnDef,
 	T_IndexElem,
+	T_StatsElem,
 	T_Constraint,
 	T_DefElem,
 	T_RangeTblEntry,
@@ -469,7 +485,10 @@ typedef enum NodeTag
 	T_WithClause,
 	T_InferClause,
 	T_OnConflictClause,
+	T_CTESearchClause,
+	T_CTECycleClause,
 	T_CommonTableExpr,
+	T_MergeWhenClause,
 	T_RoleSpec,
 	T_TriggerTransition,
 	T_PartitionElem,
@@ -478,6 +497,8 @@ typedef enum NodeTag
 	T_PartitionRangeDatum,
 	T_PartitionCmd,
 	T_VacuumRelation,
+	T_PublicationObjSpec,
+	T_PublicationTable,
 	T_OptSplit,
 	T_RowBounds,
 
@@ -488,9 +509,9 @@ typedef enum NodeTag
 	T_BaseBackupCmd,
 	T_CreateReplicationSlotCmd,
 	T_DropReplicationSlotCmd,
+	T_ReadReplicationSlotCmd,
 	T_StartReplicationCmd,
 	T_TimeLineHistoryCmd,
-	T_SQLCmd,
 
 	/*
 	 * TAGS FOR RANDOM OTHER STUFF
@@ -508,9 +529,16 @@ typedef enum NodeTag
 	T_InlineCodeBlock,			/* in nodes/parsenodes.h */
 	T_FdwRoutine,				/* in foreign/fdwapi.h */
 	T_IndexAmRoutine,			/* in access/amapi.h */
+	T_TableAmRoutine,			/* in access/tableam.h */
 	T_TsmRoutine,				/* in access/tsmapi.h */
 	T_ForeignKeyCacheInfo,		/* in utils/rel.h */
 	T_CallContext,				/* in nodes/parsenodes.h */
+	T_SupportRequestSimplify,	/* in nodes/supportnodes.h */
+	T_SupportRequestSelectivity,	/* in nodes/supportnodes.h */
+	T_SupportRequestCost,		/* in nodes/supportnodes.h */
+	T_SupportRequestRows,		/* in nodes/supportnodes.h */
+	T_SupportRequestIndexCondition, /* in nodes/supportnodes.h */
+	T_SupportRequestWFuncMonotonic,	/* in nodes/supportnodes.h */
 
 	/*
 	 * TAGS FOR YUGABYTE NODES.
@@ -525,7 +553,6 @@ typedef enum NodeTag
 	T_YbBatchedNestLoopState,
 	T_YbCreateProfileStmt,
 	T_YbDropProfileStmt,
-
 } NodeTag;
 
 /*
@@ -621,16 +648,19 @@ struct StringInfoData;			/* not to include stringinfo.h here */
 extern void outNode(struct StringInfoData *str, const void *obj);
 extern void outToken(struct StringInfoData *str, const char *s);
 extern void outBitmapset(struct StringInfoData *str,
-			 const struct Bitmapset *bms);
+						 const struct Bitmapset *bms);
 extern void outDatum(struct StringInfoData *str, uintptr_t value,
-		 int typlen, bool typbyval);
+					 int typlen, bool typbyval);
 extern char *nodeToString(const void *obj);
 extern char *bmsToString(const struct Bitmapset *bms);
 
 /*
  * nodes/{readfuncs.c,read.c}
  */
-extern void *stringToNode(char *str);
+extern void *stringToNode(const char *str);
+#ifdef WRITE_READ_PARSE_PLAN_TREES
+extern void *stringToNodeWithLocations(const char *str);
+#endif
 extern struct Bitmapset *readBitmapset(void);
 extern uintptr_t readDatum(bool typbyval);
 extern bool *readBoolCols(int numCols);
@@ -666,6 +696,8 @@ extern bool equal(const void *a, const void *b);
  */
 typedef double Selectivity;		/* fraction of tuples a qualifier will pass */
 typedef double Cost;			/* execution cost (in page-access units) */
+typedef double Cardinality;		/* (estimated) number of rows or other integer
+								 * count */
 
 
 /*
@@ -680,7 +712,8 @@ typedef enum CmdType
 	CMD_SELECT,					/* select stmt */
 	CMD_UPDATE,					/* update stmt */
 	CMD_INSERT,					/* insert stmt */
-	CMD_DELETE,
+	CMD_DELETE,					/* delete stmt */
+	CMD_MERGE,					/* merge stmt */
 	CMD_UTILITY,				/* cmds like create, destroy, copy, vacuum,
 								 * etc. */
 	CMD_NOTHING					/* dummy command for instead nothing rules
@@ -758,7 +791,7 @@ typedef enum JoinType
  * AggStrategy -
  *	  overall execution strategies for Agg plan nodes
  *
- * This is needed in both plannodes.h and relation.h, so put it here...
+ * This is needed in both pathnodes.h and plannodes.h, so put it here...
  */
 typedef enum AggStrategy
 {
@@ -772,14 +805,14 @@ typedef enum AggStrategy
  * AggSplit -
  *	  splitting (partial aggregation) modes for Agg plan nodes
  *
- * This is needed in both plannodes.h and relation.h, so put it here...
+ * This is needed in both pathnodes.h and plannodes.h, so put it here...
  */
 
 /* Primitive options supported by nodeAgg.c: */
 #define AGGSPLITOP_COMBINE		0x01	/* substitute combinefn for transfn */
 #define AGGSPLITOP_SKIPFINAL	0x02	/* skip finalfn, return state as-is */
-#define AGGSPLITOP_SERIALIZE	0x04	/* apply serializefn to output */
-#define AGGSPLITOP_DESERIALIZE	0x08	/* apply deserializefn to input */
+#define AGGSPLITOP_SERIALIZE	0x04	/* apply serialfn to output */
+#define AGGSPLITOP_DESERIALIZE	0x08	/* apply deserialfn to input */
 
 /* Supported operating modes (i.e., useful combinations of these options): */
 typedef enum AggSplit
@@ -802,7 +835,7 @@ typedef enum AggSplit
  * SetOpCmd and SetOpStrategy -
  *	  overall semantics and execution strategies for SetOp plan nodes
  *
- * This is needed in both plannodes.h and relation.h, so put it here...
+ * This is needed in both pathnodes.h and plannodes.h, so put it here...
  */
 typedef enum SetOpCmd
 {
@@ -831,5 +864,18 @@ typedef enum OnConflictAction
 	ONCONFLICT_UPDATE,			/* ON CONFLICT ... DO UPDATE */
 	ONCONFLICT_YB_REPLACE		/* Replace the existing tuple (upsert mode) */
 } OnConflictAction;
+
+/*
+ * LimitOption -
+ *	LIMIT option of query
+ *
+ * This is needed in both parsenodes.h and plannodes.h, so put it here...
+ */
+typedef enum LimitOption
+{
+	LIMIT_OPTION_COUNT,			/* FETCH FIRST... ONLY */
+	LIMIT_OPTION_WITH_TIES,		/* FETCH FIRST... WITH TIES */
+	LIMIT_OPTION_DEFAULT,		/* No limit present */
+} LimitOption;
 
 #endif							/* NODES_H */

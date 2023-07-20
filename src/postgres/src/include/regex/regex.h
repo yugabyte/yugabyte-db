@@ -56,21 +56,23 @@ typedef struct
 {
 	int			re_magic;		/* magic number */
 	size_t		re_nsub;		/* number of subexpressions */
-	long		re_info;		/* information about RE */
-#define  REG_UBACKREF		 000001
-#define  REG_ULOOKAROUND	 000002
-#define  REG_UBOUNDS	 000004
-#define  REG_UBRACES	 000010
-#define  REG_UBSALNUM		 000020
-#define  REG_UPBOTCH	 000040
-#define  REG_UBBS		 000100
-#define  REG_UNONPOSIX		 000200
-#define  REG_UUNSPEC	 000400
-#define  REG_UUNPORT	 001000
-#define  REG_ULOCALE	 002000
-#define  REG_UEMPTYMATCH	 004000
-#define  REG_UIMPOSSIBLE	 010000
-#define  REG_USHORTEST		 020000
+	long		re_info;		/* bitmask of the following flags: */
+#define  REG_UBACKREF		000001	/* has back-reference (\n) */
+#define  REG_ULOOKAROUND	000002	/* has lookahead/lookbehind constraint */
+#define  REG_UBOUNDS		000004	/* has bounded quantifier ({m,n}) */
+#define  REG_UBRACES		000010	/* has { that doesn't begin a quantifier */
+#define  REG_UBSALNUM		000020	/* has backslash-alphanumeric in non-ARE */
+#define  REG_UPBOTCH		000040	/* has unmatched right paren in ERE (legal
+									 * per spec, but that was a mistake) */
+#define  REG_UBBS			000100	/* has backslash within bracket expr */
+#define  REG_UNONPOSIX		000200	/* has any construct that extends POSIX */
+#define  REG_UUNSPEC		000400	/* has any case disallowed by POSIX, e.g.
+									 * an empty branch */
+#define  REG_UUNPORT		001000	/* has numeric character code dependency */
+#define  REG_ULOCALE		002000	/* has locale dependency */
+#define  REG_UEMPTYMATCH	004000	/* can match a zero-length string */
+#define  REG_UIMPOSSIBLE	010000	/* provably cannot match anything */
+#define  REG_USHORTEST		020000	/* has non-greedy quantifier */
 	int			re_csize;		/* sizeof(character) */
 	char	   *re_endp;		/* backward compatibility kludge */
 	Oid			re_collation;	/* Collation that defines LC_CTYPE behavior */
@@ -104,7 +106,7 @@ typedef struct
 #define REG_QUOTE	000004		/* no special characters, none */
 #define REG_NOSPEC	REG_QUOTE	/* historical synonym */
 #define REG_ICASE	000010		/* ignore case */
-#define REG_NOSUB	000020		/* don't care about subexpressions */
+#define REG_NOSUB	000020		/* caller doesn't need subexpr match data */
 #define REG_EXPANDED	000040	/* expanded format, white space & comments */
 #define REG_NLSTOP	000100		/* \n doesn't match . or [^ ] */
 #define REG_NLANCH	000200		/* ^ matches after \n, $ before */
@@ -178,7 +180,7 @@ extern size_t pg_regerror(int, const regex_t *, char *, size_t);
 /* regexp.c */
 extern regex_t *RE_compile_and_cache(text *text_re, int cflags, Oid collation);
 extern bool RE_compile_and_execute(text *text_re, char *dat, int dat_len,
-					   int cflags, Oid collation,
-					   int nmatch, regmatch_t *pmatch);
+								   int cflags, Oid collation,
+								   int nmatch, regmatch_t *pmatch);
 
 #endif							/* _REGEX_H_ */

@@ -7,14 +7,14 @@
 #include <ctype.h>
 #include <limits.h>
 
-#include <ecpgtype.h>
-#include <ecpg_informix.h>
-#include <pgtypes_error.h>
-#include <pgtypes_date.h>
-#include <pgtypes_numeric.h>
-#include <sqltypes.h>
-#include <sqlca.h>
-#include <ecpgerrno.h>
+#include "ecpg_informix.h"
+#include "ecpgerrno.h"
+#include "ecpgtype.h"
+#include "pgtypes_date.h"
+#include "pgtypes_error.h"
+#include "pgtypes_numeric.h"
+#include "sqlca.h"
+#include "sqltypes.h"
 
 /* this is also defined in ecpglib/misc.c, by defining it twice we don't have to export the symbol */
 
@@ -175,25 +175,6 @@ deccopy(decimal *src, decimal *target)
 	memcpy(target, src, sizeof(decimal));
 }
 
-static char *
-ecpg_strndup(const char *str, size_t len)
-{
-	size_t		real_len = strlen(str);
-	int			use_len = (int) ((real_len > len) ? len : real_len);
-
-	char	   *new = malloc(use_len + 1);
-
-	if (new)
-	{
-		memcpy(new, str, use_len);
-		new[use_len] = '\0';
-	}
-	else
-		errno = ENOMEM;
-
-	return new;
-}
-
 int
 deccvasc(const char *cp, int len, decimal *np)
 {
@@ -205,8 +186,8 @@ deccvasc(const char *cp, int len, decimal *np)
 	if (risnull(CSTRINGTYPE, cp))
 		return 0;
 
-	str = ecpg_strndup(cp, len);	/* decimal_in always converts the complete
-									 * string */
+	str = pnstrdup(cp, len);	/* decimal_in always converts the complete
+								 * string */
 	if (!str)
 		ret = ECPG_INFORMIX_NUM_UNDERFLOW;
 	else
@@ -529,11 +510,10 @@ void
 rtoday(date * d)
 {
 	PGTYPESdate_today(d);
-	return;
 }
 
 int
-rjulmdy(date d, short* mdy)
+rjulmdy(date d, short *mdy)
 {
 	int			mdy_int[3];
 
@@ -584,7 +564,7 @@ rfmtdate(date d, const char *fmt, char *str)
 }
 
 int
-rmdyjul(short* mdy, date * d)
+rmdyjul(short *mdy, date * d)
 {
 	int			mdy_int[3];
 
@@ -679,11 +659,6 @@ intoasc(interval * i, char *str)
 	return 0;
 }
 
-/*
- *	rfmt.c	-  description
- *	by Carsten Wolff <carsten.wolff@credativ.de>, Wed Apr 2 2003
- */
-
 static struct
 {
 	long		val;
@@ -745,7 +720,7 @@ initValue(long lng_val)
 	return 0;
 }
 
-/* return the position oft the right-most dot in some string */
+/* return the position of the right-most dot in some string */
 static int
 getRightMostDot(const char *str)
 {
@@ -811,7 +786,7 @@ rfmtlong(long lng_val, const char *fmt, char *outbuf)
 	/* and fill the temp-string wit '0's up to there. */
 	dotpos = getRightMostDot(fmt);
 
-	/* start to parse the formatstring */
+	/* start to parse the format-string */
 	temp[0] = '\0';
 	k = value.digits - 1;		/* position in the value_string */
 	for (i = fmt_len - 1, j = 0; i >= 0; i--, j++)
@@ -824,7 +799,7 @@ rfmtlong(long lng_val, const char *fmt, char *outbuf)
 				sign = 1;
 			if (leftalign)
 			{
-				/* can't use strncat(,,0) here, Solaris would freek out */
+				/* can't use strncat(,,0) here, Solaris would freak out */
 				if (sign)
 					if (signdone)
 					{
@@ -964,7 +939,6 @@ rupshift(char *str)
 	for (; *str != '\0'; str++)
 		if (islower((unsigned char) *str))
 			*str = toupper((unsigned char) *str);
-	return;
 }
 
 int

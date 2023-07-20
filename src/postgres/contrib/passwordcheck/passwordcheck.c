@@ -45,6 +45,9 @@ static char *password_special_chars = "!@#$%^&*()_+{}|<>?=";
 #define PASSWORD_HAS_SPECIAL	0x0004	/* Special character */
 #define PASSWORD_HAS_NUMBER		0x0008	/* Number */
 
+/* Saved hook value in case of unload */
+static check_password_hook_type prev_check_password_hook = NULL;
+
 extern void _PG_init(void);
 
 /*
@@ -77,10 +80,23 @@ check_password(const char *username,
 	int			i;
 	int			password_flag = 0;
 
+	/* YB_TODO(rajat@yugabyte)
+	 * - Need to check if Postgres's new code is needed.
+	 * - PLEASE don't delete or modify postgres code.  Instead do something similar to the following
+	 *   o Write YbCheckPassword() { ... }
+	 *   o Call it from this function.
+	 *     if (IsYugabyteEnabled()) {
+	 *         return YbCheckPassword();
+	 *     }
+	 */
+	if (prev_check_password_hook)
+		prev_check_password_hook(username, shadow_pass,
+								 password_type, validuntil_time,
+								 validuntil_null);
+
 	switch (password_type)
 	{
 		case PASSWORD_TYPE_MD5:
-
 			/*
 			 * Unfortunately we cannot perform exhaustive checks on encrypted
 			 * passwords - we are restricted to guessing. (Alternatively, we
@@ -292,5 +308,6 @@ _PG_init(void)
 	passwordcheck_load_params();
 
 	/* activate password checks when the module is loaded */
+	prev_check_password_hook = check_password_hook;
 	check_password_hook = check_password;
 }

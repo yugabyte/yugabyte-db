@@ -11,20 +11,16 @@
 #include "funcapi.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "plpy_elog.h"
+#include "plpy_main.h"
+#include "plpy_procedure.h"
+#include "plpython.h"
 #include "utils/builtins.h"
 #include "utils/hsearch.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
-
-#include "plpython.h"
-
-#include "plpy_procedure.h"
-
-#include "plpy_elog.h"
-#include "plpy_main.h"
-
 
 static HTAB *PLy_procedure_cache = NULL;
 
@@ -38,7 +34,6 @@ init_procedure_caches(void)
 {
 	HASHCTL		hash_ctl;
 
-	memset(&hash_ctl, 0, sizeof(hash_ctl));
 	hash_ctl.keysize = sizeof(PLyProcedureKey);
 	hash_ctl.entrysize = sizeof(PLyProcedureEntry);
 	PLy_procedure_cache = hash_create("PL/Python procedures", 32, &hash_ctl,
@@ -225,7 +220,7 @@ PLy_procedure_create(HeapTuple procTup, Oid fn_oid, bool is_trigger)
 				if (rettype == VOIDOID ||
 					rettype == RECORDOID)
 					 /* okay */ ;
-				else if (rettype == TRIGGEROID || rettype == EVTTRIGGEROID)
+				else if (rettype == TRIGGEROID || rettype == EVENT_TRIGGEROID)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("trigger functions can only be called as triggers")));
@@ -473,7 +468,7 @@ PLy_procedure_munge_source(const char *name, const char *src)
 	*mp = '\0';
 
 	if (mp > (mrc + mlen))
-		elog(FATAL, "buffer overrun in PLy_munge_source");
+		elog(FATAL, "buffer overrun in PLy_procedure_munge_source");
 
 	return mrc;
 }

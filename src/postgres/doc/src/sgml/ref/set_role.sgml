@@ -48,14 +48,21 @@ RESET ROLE
 
   <para>
    The <literal>SESSION</literal> and <literal>LOCAL</literal> modifiers act the same
-   as for the regular <xref linkend="sql-set"/>
+   as for the regular <link linkend="sql-set"><command>SET</command></link>
    command.
   </para>
 
   <para>
-   The <literal>NONE</literal> and <literal>RESET</literal> forms reset the current
-   user identifier to be the current session user identifier.
-   These forms can be executed by any user.
+   <literal>SET ROLE NONE</literal> sets the current user identifier to the
+   current session user identifier, as returned by
+   <function>session_user</function>.  <literal>RESET ROLE</literal> sets the
+   current user identifier to the connection-time setting specified by the
+   <link linkend="libpq-connect-options">command-line options</link>,
+   <link linkend="sql-alterrole"><command>ALTER ROLE</command></link>, or
+   <link linkend="sql-alterdatabase"><command>ALTER DATABASE</command></link>,
+   if any such settings exist.  Otherwise, <literal>RESET ROLE</literal> sets
+   the current user identifier to the current session user identifier.  These
+   forms can be executed by any user.
   </para>
  </refsect1>
 
@@ -64,13 +71,13 @@ RESET ROLE
 
   <para>
    Using this command, it is possible to either add privileges or restrict
-   one's privileges.  If the session user role has the <literal>INHERITS</literal>
+   one's privileges.  If the session user role has the <literal>INHERIT</literal>
    attribute, then it automatically has all the privileges of every role that
    it could <command>SET ROLE</command> to; in this case <command>SET ROLE</command>
    effectively drops all the privileges assigned directly to the session user
    and to the other roles it is a member of, leaving only the privileges
    available to the named role.  On the other hand, if the session user role
-   has the <literal>NOINHERITS</literal> attribute, <command>SET ROLE</command> drops the
+   has the <literal>NOINHERIT</literal> attribute, <command>SET ROLE</command> drops the
    privileges assigned directly to the session user and instead acquires the
    privileges available to the named role.
   </para>
@@ -82,7 +89,7 @@ RESET ROLE
 
   <para>
    <command>SET ROLE</command> has effects comparable to
-   <xref linkend="sql-set-session-authorization"/>, but the privilege
+   <link linkend="sql-set-session-authorization"><command>SET SESSION AUTHORIZATION</command></link>, but the privilege
    checks involved are quite different.  Also,
    <command>SET SESSION AUTHORIZATION</command> determines which roles are
    allowable for later <command>SET ROLE</command> commands, whereas changing
@@ -92,7 +99,7 @@ RESET ROLE
 
   <para>
    <command>SET ROLE</command> does not process session variables as specified by
-   the role's <xref linkend="sql-alterrole"/> settings;  this only happens during
+   the role's <link linkend="sql-alterrole"><command>ALTER ROLE</command></link> settings;  this only happens during
    login.
   </para>
 
@@ -108,7 +115,7 @@ RESET ROLE
 <programlisting>
 SELECT SESSION_USER, CURRENT_USER;
 
- session_user | current_user 
+ session_user | current_user
 --------------+--------------
  peter        | peter
 
@@ -116,7 +123,7 @@ SET ROLE 'paul';
 
 SELECT SESSION_USER, CURRENT_USER;
 
- session_user | current_user 
+ session_user | current_user
 --------------+--------------
  peter        | paul
 </programlisting>

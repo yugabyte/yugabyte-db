@@ -3,7 +3,7 @@
  * adminpack.c
  *
  *
- * Copyright (c) 2002-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2002-2022, PostgreSQL Global Development Group
  *
  * Author: Andreas Pflug <pgadmin@pse-consulting.de>
  *
@@ -24,6 +24,7 @@
 #include "miscadmin.h"
 #include "postmaster/syslogger.h"
 #include "storage/fd.h"
+#include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/datetime.h"
 
@@ -46,6 +47,7 @@ PG_MODULE_MAGIC;
 
 PG_FUNCTION_INFO_V1(pg_file_write);
 PG_FUNCTION_INFO_V1(pg_file_write_v1_1);
+PG_FUNCTION_INFO_V1(pg_file_sync);
 PG_FUNCTION_INFO_V1(pg_file_rename);
 PG_FUNCTION_INFO_V1(pg_file_rename_v1_1);
 PG_FUNCTION_INFO_V1(pg_file_unlink);
@@ -57,11 +59,6 @@ static int64 pg_file_write_internal(text *file, text *data, bool replace);
 static bool pg_file_rename_internal(text *file1, text *file2, text *file3);
 static Datum pg_logdir_ls_internal(FunctionCallInfo fcinfo);
 
-typedef struct
-{
-	char	   *location;
-	DIR		   *dirdesc;
-} directory_fctx;
 
 /*-----------------------
  * some helper functions
@@ -71,10 +68,10 @@ typedef struct
  * Convert a "text" filename argument to C string, and check it's allowable.
  *
  * Filename may be absolute or relative to the DataDir, but we only allow
- * absolute paths that match DataDir or Log_directory.
+ * absolute paths that match DataDir.
  */
 static char *
-convert_and_check_filename(text *arg, bool logAllowed)
+convert_and_check_filename(text *arg)
 {
 	char	   *filename = text_to_cstring(arg);
 
@@ -87,33 +84,25 @@ convert_and_check_filename(text *arg, bool logAllowed)
 	 * files on the server as the PG user, so no need to do any further checks
 	 * here.
 	 */
-	if (is_member_of_role(GetUserId(), DEFAULT_ROLE_WRITE_SERVER_FILES))
+	if (has_privs_of_role(GetUserId(), ROLE_PG_WRITE_SERVER_FILES))
 		return filename;
 
-	/* User isn't a member of the default role, so check if it's allowable */
+	/*
+	 * User isn't a member of the pg_write_server_files role, so check if it's
+	 * allowable
+	 */
 	if (is_absolute_path(filename))
 	{
-		/* Disallow '/a/b/data/..' */
-		if (path_contains_parent_reference(filename))
+		/* Allow absolute paths if within DataDir */
+		if (!path_is_prefix_of_path(DataDir, filename))
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 (errmsg("reference to parent directory (\"..\") not allowed"))));
-
-		/*
-		 * Allow absolute paths if within DataDir or Log_directory, even
-		 * though Log_directory might be outside DataDir.
-		 */
-		if (!path_is_prefix_of_path(DataDir, filename) &&
-			(!logAllowed || !is_absolute_path(Log_directory) ||
-			 !path_is_prefix_of_path(Log_directory, filename)))
-			ereport(ERROR,
-					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 (errmsg("absolute path not allowed"))));
+					 errmsg("absolute path not allowed")));
 	}
 	else if (!path_is_relative_and_below_cwd(filename))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("path must be in or below the current directory"))));
+				 errmsg("path must be in or below the current directory")));
 
 	return filename;
 }
@@ -128,7 +117,7 @@ requireSuperuser(void)
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("only superuser may access generic file functions"))));
+				 errmsg("only superuser may access generic file functions")));
 }
 
 
@@ -189,7 +178,7 @@ pg_file_write_internal(text *file, text *data, bool replace)
 	char	   *filename;
 	int64		count = 0;
 
-	filename = convert_and_check_filename(file, false);
+	filename = convert_and_check_filename(file);
 
 	if (!replace)
 	{
@@ -197,7 +186,7 @@ pg_file_write_internal(text *file, text *data, bool replace)
 
 		if (stat(filename, &fst) >= 0)
 			ereport(ERROR,
-					(ERRCODE_DUPLICATE_FILE,
+					(errcode(ERRCODE_DUPLICATE_FILE),
 					 errmsg("file \"%s\" exists", filename)));
 
 		f = AllocateFile(filename, "wb");
@@ -218,6 +207,30 @@ pg_file_write_internal(text *file, text *data, bool replace)
 				 errmsg("could not write file \"%s\": %m", filename)));
 
 	return (count);
+}
+
+/* ------------------------------------
+ * pg_file_sync
+ *
+ * We REVOKE EXECUTE on the function from PUBLIC.
+ * Users can then grant access to it based on their policies.
+ */
+Datum
+pg_file_sync(PG_FUNCTION_ARGS)
+{
+	char	   *filename;
+	struct stat fst;
+
+	filename = convert_and_check_filename(PG_GETARG_TEXT_PP(0));
+
+	if (stat(filename, &fst) < 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not stat file \"%s\": %m", filename)));
+
+	fsync_fname_ext(filename, S_ISDIR(fst.st_mode), false, ERROR);
+
+	PG_RETURN_VOID();
 }
 
 /* ------------------------------------
@@ -299,13 +312,13 @@ pg_file_rename_internal(text *file1, text *file2, text *file3)
 			   *fn3;
 	int			rc;
 
-	fn1 = convert_and_check_filename(file1, false);
-	fn2 = convert_and_check_filename(file2, false);
+	fn1 = convert_and_check_filename(file1);
+	fn2 = convert_and_check_filename(file2);
 
 	if (file3 == NULL)
 		fn3 = NULL;
 	else
-		fn3 = convert_and_check_filename(file3, false);
+		fn3 = convert_and_check_filename(file3);
 
 	if (access(fn1, W_OK) < 0)
 	{
@@ -329,7 +342,7 @@ pg_file_rename_internal(text *file1, text *file2, text *file3)
 	if (rc >= 0 || errno != ENOENT)
 	{
 		ereport(ERROR,
-				(ERRCODE_DUPLICATE_FILE,
+				(errcode(ERRCODE_DUPLICATE_FILE),
 				 errmsg("cannot rename to target file \"%s\"",
 						fn3 ? fn3 : fn2)));
 	}
@@ -360,7 +373,7 @@ pg_file_rename_internal(text *file1, text *file2, text *file3)
 			else
 			{
 				ereport(ERROR,
-						(ERRCODE_UNDEFINED_FILE,
+						(errcode(ERRCODE_UNDEFINED_FILE),
 						 errmsg("renaming \"%s\" to \"%s\" was reverted",
 								fn2, fn3)));
 			}
@@ -391,7 +404,7 @@ pg_file_unlink(PG_FUNCTION_ARGS)
 
 	requireSuperuser();
 
-	filename = convert_and_check_filename(PG_GETARG_TEXT_PP(0), false);
+	filename = convert_and_check_filename(PG_GETARG_TEXT_PP(0));
 
 	if (access(filename, W_OK) < 0)
 	{
@@ -429,7 +442,7 @@ pg_file_unlink_v1_1(PG_FUNCTION_ARGS)
 {
 	char	   *filename;
 
-	filename = convert_and_check_filename(PG_GETARG_TEXT_PP(0), false);
+	filename = convert_and_check_filename(PG_GETARG_TEXT_PP(0));
 
 	if (access(filename, W_OK) < 0)
 	{
@@ -465,7 +478,7 @@ pg_logdir_ls(PG_FUNCTION_ARGS)
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("only superuser can list the log directory"))));
+				 errmsg("only superuser can list the log directory")));
 
 	return (pg_logdir_ls_internal(fcinfo));
 }
@@ -488,52 +501,53 @@ pg_logdir_ls_v1_1(PG_FUNCTION_ARGS)
 static Datum
 pg_logdir_ls_internal(FunctionCallInfo fcinfo)
 {
-	FuncCallContext *funcctx;
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	bool		randomAccess;
+	TupleDesc	tupdesc;
+	Tuplestorestate *tupstore;
+	AttInMetadata *attinmeta;
+	DIR		   *dirdesc;
 	struct dirent *de;
-	directory_fctx *fctx;
+	MemoryContext oldcontext;
 
 	YBCheckServerAccessIsAllowed();
 
 	if (strcmp(Log_filename, "postgresql-%Y-%m-%d_%H%M%S.log") != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 (errmsg("the log_filename parameter must equal 'postgresql-%%Y-%%m-%%d_%%H%%M%%S.log'"))));
+				 errmsg("the log_filename parameter must equal 'postgresql-%%Y-%%m-%%d_%%H%%M%%S.log'")));
 
-	if (SRF_IS_FIRSTCALL())
-	{
-		MemoryContext oldcontext;
-		TupleDesc	tupdesc;
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("materialize mode required, but it is not allowed in this context")));
 
-		funcctx = SRF_FIRSTCALL_INIT();
-		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+	/* The tupdesc and tuplestore must be created in ecxt_per_query_memory */
+	oldcontext = MemoryContextSwitchTo(rsinfo->econtext->ecxt_per_query_memory);
 
-		fctx = palloc(sizeof(directory_fctx));
+	tupdesc = CreateTemplateTupleDesc(2);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "starttime",
+					   TIMESTAMPOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "filename",
+					   TEXTOID, -1, 0);
 
-		tupdesc = CreateTemplateTupleDesc(2, false);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "starttime",
-						   TIMESTAMPOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "filename",
-						   TEXTOID, -1, 0);
+	randomAccess = (rsinfo->allowedModes & SFRM_Materialize_Random) != 0;
+	tupstore = tuplestore_begin_heap(randomAccess, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
 
-		funcctx->attinmeta = TupleDescGetAttInMetadata(tupdesc);
+	MemoryContextSwitchTo(oldcontext);
 
-		fctx->location = pstrdup(Log_directory);
-		fctx->dirdesc = AllocateDir(fctx->location);
+	attinmeta = TupleDescGetAttInMetadata(tupdesc);
 
-		if (!fctx->dirdesc)
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not open directory \"%s\": %m",
-							fctx->location)));
-
-		funcctx->user_fctx = fctx;
-		MemoryContextSwitchTo(oldcontext);
-	}
-
-	funcctx = SRF_PERCALL_SETUP();
-	fctx = (directory_fctx *) funcctx->user_fctx;
-
-	while ((de = ReadDir(fctx->dirdesc, fctx->location)) != NULL)
+	dirdesc = AllocateDir(Log_directory);
+	while ((de = ReadDir(dirdesc, Log_directory)) != NULL)
 	{
 		char	   *values[2];
 		HeapTuple	tuple;
@@ -570,13 +584,13 @@ pg_logdir_ls_internal(FunctionCallInfo fcinfo)
 		/* Seems the timestamp is OK; prepare and return tuple */
 
 		values[0] = timestampbuf;
-		values[1] = psprintf("%s/%s", fctx->location, de->d_name);
+		values[1] = psprintf("%s/%s", Log_directory, de->d_name);
 
-		tuple = BuildTupleFromCStrings(funcctx->attinmeta, values);
+		tuple = BuildTupleFromCStrings(attinmeta, values);
 
-		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+		tuplestore_puttuple(tupstore, tuple);
 	}
 
-	FreeDir(fctx->dirdesc);
-	SRF_RETURN_DONE(funcctx);
+	FreeDir(dirdesc);
+	return (Datum) 0;
 }

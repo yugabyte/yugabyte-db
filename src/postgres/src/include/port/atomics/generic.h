@@ -4,7 +4,7 @@
  *	  Implement higher level operations based on some lower level atomic
  *	  operations.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/port/atomics/generic.h
@@ -160,7 +160,7 @@ pg_atomic_clear_flag_impl(volatile pg_atomic_flag *ptr)
 static inline void
 pg_atomic_init_u32_impl(volatile pg_atomic_uint32 *ptr, uint32 val_)
 {
-	pg_atomic_write_u32_impl(ptr, val_);
+	ptr->value = val_;
 }
 #endif
 
@@ -330,7 +330,7 @@ pg_atomic_read_u64_impl(volatile pg_atomic_uint64 *ptr)
 static inline void
 pg_atomic_init_u64_impl(volatile pg_atomic_uint64 *ptr, uint64 val_)
 {
-	pg_atomic_write_u64_impl(ptr, val_);
+	ptr->value = val_;
 }
 #endif
 

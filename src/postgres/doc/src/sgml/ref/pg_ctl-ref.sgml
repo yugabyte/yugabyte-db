@@ -99,6 +99,13 @@ PostgreSQL documentation
 
   <cmdsynopsis>
    <command>pg_ctl</command>
+   <arg choice="plain"><option>logrotate</option></arg>
+   <arg choice="opt"><option>-D</option> <replaceable>datadir</replaceable></arg>
+   <arg choice="opt"><option>-s</option></arg>
+  </cmdsynopsis>
+
+  <cmdsynopsis>
+   <command>pg_ctl</command>
    <arg choice="plain"><option>kill</option></arg>
    <arg choice="plain"><replaceable>signal_name</replaceable></arg>
    <arg choice="plain"><replaceable>process_id</replaceable></arg>
@@ -178,12 +185,12 @@ PostgreSQL documentation
    <option>stop</option> mode shuts down the server that is running in
    the specified data directory.  Three different
    shutdown methods can be selected with the <option>-m</option>
-   option.  <quote>Smart</quote> mode waits for all active
-   clients to disconnect and any online backup to finish.
+   option.  <quote>Smart</quote> mode disallows new connections, then waits
+   for all existing clients to disconnect.
    If the server is in hot standby, recovery and streaming replication
    will be terminated once all clients have disconnected.
-   <quote>Fast</quote> mode (the default) does not wait for clients to disconnect and
-   will terminate an online backup in progress.  All active transactions are
+   <quote>Fast</quote> mode (the default) does not wait for clients to disconnect.
+   All active transactions are
    rolled back and clients are forcibly disconnected, then the
    server is shut down.  <quote>Immediate</quote> mode will abort
    all server processes immediately, without a clean shutdown.  This choice
@@ -224,6 +231,12 @@ PostgreSQL documentation
    <option>promote</option> mode commands the standby server that is
    running in the specified data directory to end standby mode
    and begin read-write operations.
+  </para>
+
+  <para>
+   <option>logrotate</option> mode rotates the server log file.
+   For details on how to use this mode with external log rotation tools, see
+   <xref linkend="logfile-maintenance"/>.
   </para>
 
   <para>

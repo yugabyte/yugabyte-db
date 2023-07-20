@@ -1,5 +1,6 @@
 <!--
 doc/src/sgml/ref/create_function.sgml
+PostgreSQL documentation
 -->
 
 <refentry id="sql-createfunction">
@@ -27,15 +28,18 @@ CREATE [ OR REPLACE ] FUNCTION
   { LANGUAGE <replaceable class="parameter">lang_name</replaceable>
     | TRANSFORM { FOR TYPE <replaceable class="parameter">type_name</replaceable> } [, ... ]
     | WINDOW
-    | IMMUTABLE | STABLE | VOLATILE | [ NOT ] LEAKPROOF
-    | CALLED ON NULL INPUT | RETURNS NULL ON NULL INPUT | STRICT
-    | [ EXTERNAL ] SECURITY INVOKER | [ EXTERNAL ] SECURITY DEFINER
+    | { IMMUTABLE | STABLE | VOLATILE }
+    | [ NOT ] LEAKPROOF
+    | { CALLED ON NULL INPUT | RETURNS NULL ON NULL INPUT | STRICT }
+    | { [ EXTERNAL ] SECURITY INVOKER | [ EXTERNAL ] SECURITY DEFINER }
     | PARALLEL { UNSAFE | RESTRICTED | SAFE }
     | COST <replaceable class="parameter">execution_cost</replaceable>
     | ROWS <replaceable class="parameter">result_rows</replaceable>
+    | SUPPORT <replaceable class="parameter">support_function</replaceable>
     | SET <replaceable class="parameter">configuration_parameter</replaceable> { TO <replaceable class="parameter">value</replaceable> | = <replaceable class="parameter">value</replaceable> | FROM CURRENT }
     | AS '<replaceable class="parameter">definition</replaceable>'
     | AS '<replaceable class="parameter">obj_file</replaceable>', '<replaceable class="parameter">link_symbol</replaceable>'
+    | <replaceable class="parameter">sql_body</replaceable>
   } ...
 </synopsis>
  </refsynopsisdiv>
@@ -97,6 +101,11 @@ CREATE [ OR REPLACE ] FUNCTION
   <para>
    To be able to create a function, you must have <literal>USAGE</literal>
    privilege on the argument types and the return type.
+  </para>
+
+  <para>
+   Refer to <xref linkend="xfunc"/> for further information on writing
+   functions.
   </para>
  </refsect1>
 
@@ -255,7 +264,9 @@ CREATE [ OR REPLACE ] FUNCTION
        The name of the language that the function is implemented in.
        It can be <literal>sql</literal>, <literal>c</literal>,
        <literal>internal</literal>, or the name of a user-defined
-       procedural language, e.g. <literal>plpgsql</literal>.  Enclosing the
+       procedural language, e.g., <literal>plpgsql</literal>.  The default is
+       <literal>sql</literal> if <replaceable
+       class="parameter">sql_body</replaceable> is specified.  Enclosing the
        name in single quotes is deprecated and requires matching case.
       </para>
      </listitem>
@@ -429,11 +440,11 @@ CREATE [ OR REPLACE ] FUNCTION
       Functions should be labeled parallel unsafe if they modify any database
       state, or if they make changes to the transaction such as using
       sub-transactions, or if they access sequences or attempt to make
-      persistent changes to settings (e.g. <literal>setval</literal>).  They should
+      persistent changes to settings (e.g., <literal>setval</literal>).  They should
       be labeled as parallel restricted if they access temporary tables,
       client connection state, cursors, prepared statements, or miscellaneous
       backend-local state which the system cannot synchronize in parallel mode
-      (e.g.  <literal>setseed</literal> cannot be executed other than by the group
+      (e.g.,  <literal>setseed</literal> cannot be executed other than by the group
       leader because a change made by another process would not be reflected
       in the leader).  In general, if a function is labeled as being safe when
       it is restricted or unsafe, or if it is labeled as being restricted when
@@ -473,6 +484,19 @@ CREATE [ OR REPLACE ] FUNCTION
        should expect the function to return.  This is only allowed when the
        function is declared to return a set.  The default assumption is
        1000 rows.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>SUPPORT</literal> <replaceable class="parameter">support_function</replaceable></term>
+
+     <listitem>
+      <para>
+       The name (optionally schema-qualified) of a <firstterm>planner support
+       function</firstterm> to use for this function.  See
+       <xref linkend="xfunc-optimization"/> for details.
+       You must be superuser to use this option.
       </para>
      </listitem>
     </varlistentry>
@@ -542,7 +566,7 @@ CREATE [ OR REPLACE ] FUNCTION
        the SQL function. The string <replaceable
        class="parameter">obj_file</replaceable> is the name of the shared
        library file containing the compiled C function, and is interpreted
-       as for the <xref linkend="sql-load"/> command.  The string
+       as for the <link linkend="sql-load"><command>LOAD</command></link> command.  The string
        <replaceable class="parameter">link_symbol</replaceable> is the
        function's link symbol, that is, the name of the function in the C
        language source code.  If the link symbol is omitted, it is assumed to
@@ -562,13 +586,45 @@ CREATE [ OR REPLACE ] FUNCTION
      </listitem>
     </varlistentry>
 
+    <varlistentry>
+     <term><replaceable class="parameter">sql_body</replaceable></term>
+
+     <listitem>
+      <para>
+       The body of a <literal>LANGUAGE SQL</literal> function.  This can
+       either be a single statement
+<programlisting>
+RETURN <replaceable>expression</replaceable>
+</programlisting>
+       or a block
+<programlisting>
+BEGIN ATOMIC
+  <replaceable>statement</replaceable>;
+  <replaceable>statement</replaceable>;
+  ...
+  <replaceable>statement</replaceable>;
+END
+</programlisting>
+      </para>
+
+      <para>
+       This is similar to writing the text of the function body as a string
+       constant (see <replaceable>definition</replaceable> above), but there
+       are some differences: This form only works for <literal>LANGUAGE
+       SQL</literal>, the string constant form works for all languages.  This
+       form is parsed at function definition time, the string constant form is
+       parsed at execution time; therefore this form cannot support
+       polymorphic argument types and other constructs that are not resolvable
+       at function definition time.  This form tracks dependencies between the
+       function and objects used in the function body, so <literal>DROP
+       ... CASCADE</literal> will work correctly, whereas the form using
+       string literals may leave dangling functions.  Finally, this form is
+       more compatible with the SQL standard and other SQL implementations.
+      </para>
+     </listitem>
+    </varlistentry>
+
    </variablelist>
-
-   <para>
-    Refer to <xref linkend="xfunc"/> for further information on writing
-    functions.
-   </para>
-
  </refsect1>
 
  <refsect1 id="sql-createfunction-overloading">
@@ -646,14 +702,22 @@ CREATE FUNCTION foo(int, int default 42) ...
   <title>Examples</title>
 
   <para>
-   Here are some trivial examples to help you get started.  For more
-   information and examples, see <xref linkend="xfunc"/>.
+   Add two integers using an SQL function:
 <programlisting>
 CREATE FUNCTION add(integer, integer) RETURNS integer
     AS 'select $1 + $2;'
     LANGUAGE SQL
     IMMUTABLE
     RETURNS NULL ON NULL INPUT;
+</programlisting>
+   The same function written in a more SQL-conforming style, using argument
+   names and an unquoted body:
+<programlisting>
+CREATE FUNCTION add(a integer, b integer) RETURNS integer
+    LANGUAGE SQL
+    IMMUTABLE
+    RETURNS NULL ON NULL INPUT
+    RETURN a + b;
 </programlisting>
   </para>
 
@@ -761,7 +825,7 @@ $$  LANGUAGE plpgsql
    <para>
     Another point to keep in mind is that by default, execute privilege
     is granted to <literal>PUBLIC</literal> for newly created functions
-    (see <xref linkend="sql-grant"/> for more
+    (see <xref linkend="ddl-priv"/> for more
     information).  Frequently you will wish to restrict use of a security
     definer function to only some users.  To do that, you must revoke
     the default <literal>PUBLIC</literal> privileges and then grant execute
@@ -784,23 +848,74 @@ COMMIT;
   <title>Compatibility</title>
 
   <para>
-   A <command>CREATE FUNCTION</command> command is defined in the SQL standard.
-   The <productname>PostgreSQL</productname> version is similar but
-   not fully compatible.  The attributes are not portable, neither are the
-   different available languages.
+   A <command>CREATE FUNCTION</command> command is defined in the SQL
+   standard.  The <productname>PostgreSQL</productname> implementation can be
+   used in a compatible way but has many extensions.  Conversely, the SQL
+   standard specifies a number of optional features that are not implemented
+   in <productname>PostgreSQL</productname>.
   </para>
 
   <para>
-   For compatibility with some other database systems,
-   <replaceable class="parameter">argmode</replaceable> can be written
-   either before or after <replaceable class="parameter">argname</replaceable>.
-   But only the first way is standard-compliant.
+   The following are important compatibility issues:
+
+   <itemizedlist>
+    <listitem>
+     <para>
+      <literal>OR REPLACE</literal> is a PostgreSQL extension.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      For compatibility with some other database systems, <replaceable
+      class="parameter">argmode</replaceable> can be written either before or
+      after <replaceable class="parameter">argname</replaceable>.  But only
+      the first way is standard-compliant.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      For parameter defaults, the SQL standard specifies only the syntax with
+      the <literal>DEFAULT</literal> key word.  The syntax with
+      <literal>=</literal> is used in T-SQL and Firebird.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      The <literal>SETOF</literal> modifier is a PostgreSQL extension.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      Only <literal>SQL</literal> is standardized as a language.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      All other attributes except <literal>CALLED ON NULL INPUT</literal> and
+      <literal>RETURNS NULL ON NULL INPUT</literal> are not standardized.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      For the body of <literal>LANGUAGE SQL</literal> functions, the SQL
+      standard only specifies the <replaceable>sql_body</replaceable> form.
+     </para>
+    </listitem>
+   </itemizedlist>
   </para>
 
   <para>
-   For parameter defaults, the SQL standard specifies only the syntax with
-   the <literal>DEFAULT</literal> key word.  The syntax
-   with <literal>=</literal> is used in T-SQL and Firebird.
+   Simple <literal>LANGUAGE SQL</literal> functions can be written in a way
+   that is both standard-conforming and portable to other implementations.
+   More complex functions using advanced features, optimization attributes, or
+   other languages will necessarily be specific to PostgreSQL in a significant
+   way.
   </para>
  </refsect1>
 

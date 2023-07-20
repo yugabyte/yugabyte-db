@@ -26,11 +26,11 @@ ALTER PROCEDURE <replaceable>name</replaceable> [ ( [ [ <replaceable class="para
 ALTER PROCEDURE <replaceable>name</replaceable> [ ( [ [ <replaceable class="parameter">argmode</replaceable> ] [ <replaceable class="parameter">argname</replaceable> ] <replaceable class="parameter">argtype</replaceable> [, ...] ] ) ]
     RENAME TO <replaceable>new_name</replaceable>
 ALTER PROCEDURE <replaceable>name</replaceable> [ ( [ [ <replaceable class="parameter">argmode</replaceable> ] [ <replaceable class="parameter">argname</replaceable> ] <replaceable class="parameter">argtype</replaceable> [, ...] ] ) ]
-    OWNER TO { <replaceable>new_owner</replaceable> | CURRENT_USER | SESSION_USER }
+    OWNER TO { <replaceable>new_owner</replaceable> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
 ALTER PROCEDURE <replaceable>name</replaceable> [ ( [ [ <replaceable class="parameter">argmode</replaceable> ] [ <replaceable class="parameter">argname</replaceable> ] <replaceable class="parameter">argtype</replaceable> [, ...] ] ) ]
     SET SCHEMA <replaceable>new_schema</replaceable>
 ALTER PROCEDURE <replaceable>name</replaceable> [ ( [ [ <replaceable class="parameter">argmode</replaceable> ] [ <replaceable class="parameter">argname</replaceable> ] <replaceable class="parameter">argtype</replaceable> [, ...] ] ) ]
-    DEPENDS ON EXTENSION <replaceable>extension_name</replaceable>
+    [ NO ] DEPENDS ON EXTENSION <replaceable>extension_name</replaceable>
 
 <phrase>where <replaceable class="parameter">action</replaceable> is one of:</phrase>
 
@@ -81,8 +81,9 @@ ALTER PROCEDURE <replaceable>name</replaceable> [ ( [ [ <replaceable class="para
 
     <listitem>
      <para>
-      The mode of an argument: <literal>IN</literal>  or <literal>VARIADIC</literal>.
-      If omitted, the default is <literal>IN</literal>.
+      The mode of an argument: <literal>IN</literal>, <literal>OUT</literal>,
+      <literal>INOUT</literal>, or <literal>VARIADIC</literal>.  If omitted,
+      the default is <literal>IN</literal>.
      </para>
     </listitem>
    </varlistentry>
@@ -95,7 +96,7 @@ ALTER PROCEDURE <replaceable>name</replaceable> [ ( [ [ <replaceable class="para
       The name of an argument.
       Note that <command>ALTER PROCEDURE</command> does not actually pay
       any attention to argument names, since only the argument data
-      types are needed to determine the procedure's identity.
+      types are used to determine the procedure's identity.
      </para>
     </listitem>
    </varlistentry>
@@ -107,6 +108,8 @@ ALTER PROCEDURE <replaceable>name</replaceable> [ ( [ [ <replaceable class="para
      <para>
       The data type(s) of the procedure's arguments (optionally
       schema-qualified), if any.
+      See <xref linkend="sql-dropprocedure"/> for the details of how
+      the procedure is looked up using the argument data type(s).
      </para>
     </listitem>
    </varlistentry>
@@ -144,7 +147,12 @@ ALTER PROCEDURE <replaceable>name</replaceable> [ ( [ [ <replaceable class="para
     <term><replaceable class="parameter">extension_name</replaceable></term>
     <listitem>
      <para>
-      The name of the extension that the procedure is to depend on.
+      This form marks the procedure as dependent on the extension, or no longer
+      dependent on the extension if <literal>NO</literal> is specified.
+      A procedure that's marked as dependent on an extension is dropped when the
+      extension is dropped, even if cascade is not specified.
+      A procedure can depend upon multiple extensions, and will be dropped when
+      any one of those extensions is dropped.
      </para>
     </listitem>
    </varlistentry>

@@ -28,10 +28,11 @@
 #include "postgres.h"
 
 #include "access/gin_private.h"
-#include "access/heapam.h"
 #include "access/hash.h"
 #include "access/htup_details.h"
 #include "access/nbtree.h"
+#include "access/relation.h"
+#include "access/table.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_am.h"
 #include "funcapi.h"
@@ -127,8 +128,8 @@ typedef struct HashIndexStat
 } HashIndexStat;
 
 static Datum pgstatindex_impl(Relation rel, FunctionCallInfo fcinfo);
+static int64 pg_relpages_impl(Relation rel);
 static void GetHashPageStats(Page page, HashIndexStat *stats);
-static void check_relation_relkind(Relation rel);
 
 /* ------------------------------------------------------
  * pgstatindex()
@@ -150,7 +151,7 @@ pgstatindex(PG_FUNCTION_ARGS)
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("must be superuser to use pgstattuple functions"))));
+				 errmsg("must be superuser to use pgstattuple functions")));
 
 	relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
 	rel = relation_openrv(relrv, AccessShareLock);
@@ -192,7 +193,7 @@ pgstatindexbyid(PG_FUNCTION_ARGS)
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("must be superuser to use pgstattuple functions"))));
+				 errmsg("must be superuser to use pgstattuple functions")));
 
 	rel = relation_open(relid, AccessShareLock);
 
@@ -280,10 +281,14 @@ pgstatindex_impl(Relation rel, FunctionCallInfo fcinfo)
 		LockBuffer(buffer, BUFFER_LOCK_SHARE);
 
 		page = BufferGetPage(buffer);
-		opaque = (BTPageOpaque) PageGetSpecialPointer(page);
+		opaque = BTPageGetOpaque(page);
 
-		/* Determine page type, and update totals */
-
+		/*
+		 * Determine page type, and update totals.
+		 *
+		 * Note that we arbitrarily bucket deleted pages together without
+		 * considering if they're leaf pages or internal pages.
+		 */
 		if (P_ISDELETED(opaque))
 			indexStat.deleted_pages++;
 		else if (P_IGNORE(opaque))
@@ -378,28 +383,18 @@ Datum
 pg_relpages(PG_FUNCTION_ARGS)
 {
 	text	   *relname = PG_GETARG_TEXT_PP(0);
-	int64		relpages;
 	Relation	rel;
 	RangeVar   *relrv;
 
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("must be superuser to use pgstattuple functions"))));
+				 errmsg("must be superuser to use pgstattuple functions")));
 
 	relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
 	rel = relation_openrv(relrv, AccessShareLock);
 
-	/* only some relkinds have storage */
-	check_relation_relkind(rel);
-
-	/* note: this will work OK on non-local temp tables */
-
-	relpages = RelationGetNumberOfBlocks(rel);
-
-	relation_close(rel, AccessShareLock);
-
-	PG_RETURN_INT64(relpages);
+	PG_RETURN_INT64(pg_relpages_impl(rel));
 }
 
 /* No need for superuser checks in v1.5, see above */
@@ -407,23 +402,13 @@ Datum
 pg_relpages_v1_5(PG_FUNCTION_ARGS)
 {
 	text	   *relname = PG_GETARG_TEXT_PP(0);
-	int64		relpages;
 	Relation	rel;
 	RangeVar   *relrv;
 
 	relrv = makeRangeVarFromNameList(textToQualifiedNameList(relname));
 	rel = relation_openrv(relrv, AccessShareLock);
 
-	/* only some relkinds have storage */
-	check_relation_relkind(rel);
-
-	/* note: this will work OK on non-local temp tables */
-
-	relpages = RelationGetNumberOfBlocks(rel);
-
-	relation_close(rel, AccessShareLock);
-
-	PG_RETURN_INT64(relpages);
+	PG_RETURN_INT64(pg_relpages_impl(rel));
 }
 
 /* Must keep superuser() check, see above. */
@@ -431,26 +416,16 @@ Datum
 pg_relpagesbyid(PG_FUNCTION_ARGS)
 {
 	Oid			relid = PG_GETARG_OID(0);
-	int64		relpages;
 	Relation	rel;
 
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("must be superuser to use pgstattuple functions"))));
+				 errmsg("must be superuser to use pgstattuple functions")));
 
 	rel = relation_open(relid, AccessShareLock);
 
-	/* only some relkinds have storage */
-	check_relation_relkind(rel);
-
-	/* note: this will work OK on non-local temp tables */
-
-	relpages = RelationGetNumberOfBlocks(rel);
-
-	relation_close(rel, AccessShareLock);
-
-	PG_RETURN_INT64(relpages);
+	PG_RETURN_INT64(pg_relpages_impl(rel));
 }
 
 /* No need for superuser checks in v1.5, see above */
@@ -458,13 +433,24 @@ Datum
 pg_relpagesbyid_v1_5(PG_FUNCTION_ARGS)
 {
 	Oid			relid = PG_GETARG_OID(0);
-	int64		relpages;
 	Relation	rel;
 
 	rel = relation_open(relid, AccessShareLock);
 
-	/* only some relkinds have storage */
-	check_relation_relkind(rel);
+	PG_RETURN_INT64(pg_relpages_impl(rel));
+}
+
+static int64
+pg_relpages_impl(Relation rel)
+{
+	int64		relpages;
+
+	if (!RELKIND_HAS_STORAGE(rel->rd_rel->relkind))
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("cannot get page count of relation \"%s\"",
+						RelationGetRelationName(rel)),
+				 errdetail_relkind_not_supported(rel->rd_rel->relkind)));
 
 	/* note: this will work OK on non-local temp tables */
 
@@ -472,7 +458,7 @@ pg_relpagesbyid_v1_5(PG_FUNCTION_ARGS)
 
 	relation_close(rel, AccessShareLock);
 
-	PG_RETURN_INT64(relpages);
+	return relpages;
 }
 
 /* ------------------------------------------------------
@@ -491,7 +477,7 @@ pgstatginindex(PG_FUNCTION_ARGS)
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("must be superuser to use pgstattuple functions"))));
+				 errmsg("must be superuser to use pgstattuple functions")));
 
 	PG_RETURN_DATUM(pgstatginindex_internal(relid, fcinfo));
 }
@@ -655,7 +641,7 @@ pgstathashindex(PG_FUNCTION_ARGS)
 			HashPageOpaque opaque;
 			int			pagetype;
 
-			opaque = (HashPageOpaque) PageGetSpecialPointer(page);
+			opaque = HashPageGetOpaque(page);
 			pagetype = opaque->hasho_flag & LH_PAGE_TYPE;
 
 			if (pagetype == LH_BUCKET_PAGE)
@@ -726,7 +712,7 @@ pgstathashindex(PG_FUNCTION_ARGS)
 }
 
 /* -------------------------------------------------
- * GetHashPageStatis()
+ * GetHashPageStats()
  *
  * Collect statistics of single hash page
  * -------------------------------------------------
@@ -748,22 +734,4 @@ GetHashPageStats(Page page, HashIndexStat *stats)
 			stats->dead_items++;
 	}
 	stats->free_space += PageGetExactFreeSpace(page);
-}
-
-/*
- * check_relation_relkind - convenience routine to check that relation
- * is of the relkind supported by the callers
- */
-static void
-check_relation_relkind(Relation rel)
-{
-	if (rel->rd_rel->relkind != RELKIND_RELATION &&
-		rel->rd_rel->relkind != RELKIND_INDEX &&
-		rel->rd_rel->relkind != RELKIND_MATVIEW &&
-		rel->rd_rel->relkind != RELKIND_SEQUENCE &&
-		rel->rd_rel->relkind != RELKIND_TOASTVALUE)
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("\"%s\" is not a table, index, materialized view, sequence, or TOAST table",
-						RelationGetRelationName(rel))));
 }

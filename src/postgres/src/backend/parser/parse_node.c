@@ -3,7 +3,7 @@
  * parse_node.c
  *	  various routines that make nodes for querytrees
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -14,22 +14,21 @@
  */
 #include "postgres.h"
 
-#include "access/heapam.h"
 #include "access/htup_details.h"
+#include "access/table.h"
 #include "catalog/pg_type.h"
 #include "mb/pg_wchar.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
-#include "parser/parsetree.h"
+#include "nodes/subscripting.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_relation.h"
+#include "parser/parsetree.h"
 #include "utils/builtins.h"
-#include "utils/int8.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/varbit.h"
-
 
 static void pcb_error_callback(void *arg);
 
@@ -83,12 +82,12 @@ free_parsestate(ParseState *pstate)
 	 */
 	if (pstate->p_next_resno - 1 > MaxTupleAttributeNumber)
 		ereport(ERROR,
-				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				(errcode(ERRCODE_TOO_MANY_COLUMNS),
 				 errmsg("target lists can have at most %d entries",
 						MaxTupleAttributeNumber)));
 
 	if (pstate->p_target_relation != NULL)
-		heap_close(pstate->p_target_relation, NoLock);
+		table_close(pstate->p_target_relation, NoLock);
 
 	pfree(pstate);
 }
@@ -182,52 +181,25 @@ pcb_error_callback(void *arg)
 
 
 /*
- * make_var
- *		Build a Var node for an attribute identified by RTE and attrno
- */
-Var *
-make_var(ParseState *pstate, RangeTblEntry *rte, int attrno, int location)
-{
-	Var		   *result;
-	int			vnum,
-				sublevels_up;
-	Oid			vartypeid;
-	int32		type_mod;
-	Oid			varcollid;
-
-	vnum = RTERangeTablePosn(pstate, rte, &sublevels_up);
-	get_rte_attribute_type(rte, attrno, &vartypeid, &type_mod, &varcollid);
-	result = makeVar(vnum, attrno, vartypeid, type_mod, varcollid, sublevels_up);
-	result->location = location;
-	return result;
-}
-
-/*
- * transformArrayType()
- *		Identify the types involved in a subscripting operation
+ * transformContainerType()
+ *		Identify the actual container type for a subscripting operation.
  *
- * On entry, arrayType/arrayTypmod identify the type of the input value
- * to be subscripted (which could be a domain type).  These are modified
- * if necessary to identify the actual array type and typmod, and the
- * array's element type is returned.  An error is thrown if the input isn't
- * an array type.
+ * containerType/containerTypmod are modified if necessary to identify
+ * the actual container type and typmod.  This mainly involves smashing
+ * any domain to its base type, but there are some special considerations.
+ * Note that caller still needs to check if the result type is a container.
  */
-Oid
-transformArrayType(Oid *arrayType, int32 *arrayTypmod)
+void
+transformContainerType(Oid *containerType, int32 *containerTypmod)
 {
-	Oid			origArrayType = *arrayType;
-	Oid			elementType;
-	HeapTuple	type_tuple_array;
-	Form_pg_type type_struct_array;
-
 	/*
 	 * If the input is a domain, smash to base type, and extract the actual
-	 * typmod to be applied to the base type.  Subscripting a domain is an
-	 * operation that necessarily works on the base array type, not the domain
-	 * itself.  (Note that we provide no method whereby the creator of a
-	 * domain over an array type could hide its ability to be subscripted.)
+	 * typmod to be applied to the base type. Subscripting a domain is an
+	 * operation that necessarily works on the base container type, not the
+	 * domain itself. (Note that we provide no method whereby the creator of a
+	 * domain over a container type could hide its ability to be subscripted.)
 	 */
-	*arrayType = getBaseTypeAndTypmod(*arrayType, arrayTypmod);
+	*containerType = getBaseTypeAndTypmod(*containerType, containerTypmod);
 
 	/*
 	 * We treat int2vector and oidvector as though they were domains over
@@ -236,94 +208,85 @@ transformArrayType(Oid *arrayType, int32 *arrayTypmod)
 	 * xxxvector type; so we want the result of a slice operation to be
 	 * considered to be of the more general type.
 	 */
-	if (*arrayType == INT2VECTOROID)
-		*arrayType = INT2ARRAYOID;
-	else if (*arrayType == OIDVECTOROID)
-		*arrayType = OIDARRAYOID;
-
-	/* Get the type tuple for the array */
-	type_tuple_array = SearchSysCache1(TYPEOID, ObjectIdGetDatum(*arrayType));
-	if (!HeapTupleIsValid(type_tuple_array))
-		elog(ERROR, "cache lookup failed for type %u", *arrayType);
-	type_struct_array = (Form_pg_type) GETSTRUCT(type_tuple_array);
-
-	/* needn't check typisdefined since this will fail anyway */
-
-	elementType = type_struct_array->typelem;
-	if (elementType == InvalidOid)
-		ereport(ERROR,
-				(errcode(ERRCODE_DATATYPE_MISMATCH),
-				 errmsg("cannot subscript type %s because it is not an array",
-						format_type_be(origArrayType))));
-
-	ReleaseSysCache(type_tuple_array);
-
-	return elementType;
+	if (*containerType == INT2VECTOROID)
+		*containerType = INT2ARRAYOID;
+	else if (*containerType == OIDVECTOROID)
+		*containerType = OIDARRAYOID;
 }
 
 /*
- * transformArraySubscripts()
- *		Transform array subscripting.  This is used for both
- *		array fetch and array assignment.
+ * transformContainerSubscripts()
+ *		Transform container (array, etc) subscripting.  This is used for both
+ *		container fetch and container assignment.
  *
- * In an array fetch, we are given a source array value and we produce an
- * expression that represents the result of extracting a single array element
- * or an array slice.
+ * In a container fetch, we are given a source container value and we produce
+ * an expression that represents the result of extracting a single container
+ * element or a container slice.
  *
- * In an array assignment, we are given a destination array value plus a
- * source value that is to be assigned to a single element or a slice of
- * that array.  We produce an expression that represents the new array value
- * with the source data inserted into the right part of the array.
+ * Container assignments are treated basically the same as container fetches
+ * here.  The caller will modify the result node to insert the source value
+ * that is to be assigned to the element or slice that a fetch would have
+ * retrieved.  The execution result will be a new container value with
+ * the source value inserted into the right part of the container.
  *
- * For both cases, if the source array is of a domain-over-array type,
- * the result is of the base array type or its element type; essentially,
+ * For both cases, if the source is of a domain-over-container type, the
+ * result is the same as if it had been of the container type; essentially,
  * we must fold a domain to its base type before applying subscripting.
  * (Note that int2vector and oidvector are treated as domains here.)
  *
- * pstate		Parse state
- * arrayBase	Already-transformed expression for the array as a whole
- * arrayType	OID of array's datatype (should match type of arrayBase,
- *				or be the base type of arrayBase's domain type)
- * elementType	OID of array's element type (fetch with transformArrayType,
- *				or pass InvalidOid to do it here)
- * arrayTypMod	typmod for the array (which is also typmod for the elements)
- * indirection	Untransformed list of subscripts (must not be NIL)
- * assignFrom	NULL for array fetch, else transformed expression for source.
+ * pstate			Parse state
+ * containerBase	Already-transformed expression for the container as a whole
+ * containerType	OID of container's datatype (should match type of
+ *					containerBase, or be the base type of containerBase's
+ *					domain type)
+ * containerTypMod	typmod for the container
+ * indirection		Untransformed list of subscripts (must not be NIL)
+ * isAssignment		True if this will become a container assignment.
  */
-ArrayRef *
-transformArraySubscripts(ParseState *pstate,
-						 Node *arrayBase,
-						 Oid arrayType,
-						 Oid elementType,
-						 int32 arrayTypMod,
-						 List *indirection,
-						 Node *assignFrom)
+SubscriptingRef *
+transformContainerSubscripts(ParseState *pstate,
+							 Node *containerBase,
+							 Oid containerType,
+							 int32 containerTypMod,
+							 List *indirection,
+							 bool isAssignment)
 {
+	SubscriptingRef *sbsref;
+	const SubscriptRoutines *sbsroutines;
+	Oid			elementType;
 	bool		isSlice = false;
-	List	   *upperIndexpr = NIL;
-	List	   *lowerIndexpr = NIL;
 	ListCell   *idx;
-	ArrayRef   *aref;
 
 	/*
-	 * Caller may or may not have bothered to determine elementType.  Note
-	 * that if the caller did do so, arrayType/arrayTypMod must be as modified
-	 * by transformArrayType, ie, smash domain to base type.
+	 * Determine the actual container type, smashing any domain.  In the
+	 * assignment case the caller already did this, since it also needs to
+	 * know the actual container type.
 	 */
-	if (!OidIsValid(elementType))
-		elementType = transformArrayType(&arrayType, &arrayTypMod);
+	if (!isAssignment)
+		transformContainerType(&containerType, &containerTypMod);
 
 	/*
-	 * A list containing only simple subscripts refers to a single array
+	 * Verify that the container type is subscriptable, and get its support
+	 * functions and typelem.
+	 */
+	sbsroutines = getSubscriptingRoutines(containerType, &elementType);
+	if (!sbsroutines)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("cannot subscript type %s because it does not support subscripting",
+						format_type_be(containerType)),
+				 parser_errposition(pstate, exprLocation(containerBase))));
+
+	/*
+	 * Detect whether any of the indirection items are slice specifiers.
+	 *
+	 * A list containing only simple subscripts refers to a single container
 	 * element.  If any of the items are slice specifiers (lower:upper), then
-	 * the subscript expression means an array slice operation.  In this case,
-	 * we convert any non-slice items to slices by treating the single
-	 * subscript as the upper bound and supplying an assumed lower bound of 1.
-	 * We have to prescan the list to see if there are any slice items.
+	 * the subscript expression means a container slice operation.
 	 */
 	foreach(idx, indirection)
 	{
-		A_Indices  *ai = (A_Indices *) lfirst(idx);
+		A_Indices  *ai = lfirst_node(A_Indices, idx);
 
 		if (ai->is_slice)
 		{
@@ -333,125 +296,43 @@ transformArraySubscripts(ParseState *pstate,
 	}
 
 	/*
-	 * Transform the subscript expressions.
+	 * Ready to build the SubscriptingRef node.
 	 */
-	foreach(idx, indirection)
-	{
-		A_Indices  *ai = lfirst_node(A_Indices, idx);
-		Node	   *subexpr;
+	sbsref = makeNode(SubscriptingRef);
 
-		if (isSlice)
-		{
-			if (ai->lidx)
-			{
-				subexpr = transformExpr(pstate, ai->lidx, pstate->p_expr_kind);
-				/* If it's not int4 already, try to coerce */
-				subexpr = coerce_to_target_type(pstate,
-												subexpr, exprType(subexpr),
-												INT4OID, -1,
-												COERCION_ASSIGNMENT,
-												COERCE_IMPLICIT_CAST,
-												-1);
-				if (subexpr == NULL)
-					ereport(ERROR,
-							(errcode(ERRCODE_DATATYPE_MISMATCH),
-							 errmsg("array subscript must have type integer"),
-							 parser_errposition(pstate, exprLocation(ai->lidx))));
-			}
-			else if (!ai->is_slice)
-			{
-				/* Make a constant 1 */
-				subexpr = (Node *) makeConst(INT4OID,
-											 -1,
-											 InvalidOid,
-											 sizeof(int32),
-											 Int32GetDatum(1),
-											 false,
-											 true); /* pass by value */
-			}
-			else
-			{
-				/* Slice with omitted lower bound, put NULL into the list */
-				subexpr = NULL;
-			}
-			lowerIndexpr = lappend(lowerIndexpr, subexpr);
-		}
-		else
-			Assert(ai->lidx == NULL && !ai->is_slice);
-
-		if (ai->uidx)
-		{
-			subexpr = transformExpr(pstate, ai->uidx, pstate->p_expr_kind);
-			/* If it's not int4 already, try to coerce */
-			subexpr = coerce_to_target_type(pstate,
-											subexpr, exprType(subexpr),
-											INT4OID, -1,
-											COERCION_ASSIGNMENT,
-											COERCE_IMPLICIT_CAST,
-											-1);
-			if (subexpr == NULL)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATATYPE_MISMATCH),
-						 errmsg("array subscript must have type integer"),
-						 parser_errposition(pstate, exprLocation(ai->uidx))));
-		}
-		else
-		{
-			/* Slice with omitted upper bound, put NULL into the list */
-			Assert(isSlice && ai->is_slice);
-			subexpr = NULL;
-		}
-		upperIndexpr = lappend(upperIndexpr, subexpr);
-	}
-
-	/*
-	 * If doing an array store, coerce the source value to the right type.
-	 * (This should agree with the coercion done by transformAssignedExpr.)
-	 */
-	if (assignFrom != NULL)
-	{
-		Oid			typesource = exprType(assignFrom);
-		Oid			typeneeded = isSlice ? arrayType : elementType;
-		Node	   *newFrom;
-
-		newFrom = coerce_to_target_type(pstate,
-										assignFrom, typesource,
-										typeneeded, arrayTypMod,
-										COERCION_ASSIGNMENT,
-										COERCE_IMPLICIT_CAST,
-										-1);
-		if (newFrom == NULL)
-			ereport(ERROR,
-					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("array assignment requires type %s"
-							" but expression is of type %s",
-							format_type_be(typeneeded),
-							format_type_be(typesource)),
-					 errhint("You will need to rewrite or cast the expression."),
-					 parser_errposition(pstate, exprLocation(assignFrom))));
-		assignFrom = newFrom;
-	}
-
-	/*
-	 * Ready to build the ArrayRef node.
-	 */
-	aref = makeNode(ArrayRef);
-	aref->refarraytype = arrayType;
-	aref->refelemtype = elementType;
-	aref->reftypmod = arrayTypMod;
+	sbsref->refcontainertype = containerType;
+	sbsref->refelemtype = elementType;
+	/* refrestype is to be set by container-specific logic */
+	sbsref->reftypmod = containerTypMod;
 	/* refcollid will be set by parse_collate.c */
-	aref->refupperindexpr = upperIndexpr;
-	aref->reflowerindexpr = lowerIndexpr;
-	aref->refexpr = (Expr *) arrayBase;
-	aref->refassgnexpr = (Expr *) assignFrom;
+	/* refupperindexpr, reflowerindexpr are to be set by container logic */
+	sbsref->refexpr = (Expr *) containerBase;
+	sbsref->refassgnexpr = NULL;	/* caller will fill if it's an assignment */
 
-	return aref;
+	/*
+	 * Call the container-type-specific logic to transform the subscripts and
+	 * determine the subscripting result type.
+	 */
+	sbsroutines->transform(sbsref, indirection, pstate,
+						   isSlice, isAssignment);
+
+	/*
+	 * Verify we got a valid type (this defends, for example, against someone
+	 * using array_subscript_handler as typsubscript without setting typelem).
+	 */
+	if (!OidIsValid(sbsref->refrestype))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("cannot subscript type %s because it does not support subscripting",
+						format_type_be(containerType))));
+
+	return sbsref;
 }
 
 /*
  * make_const
  *
- *	Convert a Value node (as returned by the grammar) to a Const node
+ *	Convert an A_Const node (as returned by the grammar) to a Const node
  *	of the "natural" type for the constant.  Note that this routine is
  *	only used when there is no explicit cast for the constant, so we
  *	have to guess what type is wanted.
@@ -467,20 +348,33 @@ transformArraySubscripts(ParseState *pstate,
  *	too many examples that fail if we try.
  */
 Const *
-make_const(ParseState *pstate, Value *value, int location)
+make_const(ParseState *pstate, A_Const *aconst)
 {
 	Const	   *con;
 	Datum		val;
-	int64		val64;
 	Oid			typeid;
 	int			typelen;
 	bool		typebyval;
 	ParseCallbackState pcbstate;
 
-	switch (nodeTag(value))
+	if (aconst->isnull)
+	{
+		/* return a null const */
+		con = makeConst(UNKNOWNOID,
+						-1,
+						InvalidOid,
+						-2,
+						(Datum) 0,
+						true,
+						false);
+		con->location = aconst->location;
+		return con;
+	}
+
+	switch (nodeTag(&aconst->val))
 	{
 		case T_Integer:
-			val = Int32GetDatum(intVal(value));
+			val = Int32GetDatum(intVal(&aconst->val));
 
 			typeid = INT4OID;
 			typelen = sizeof(int32);
@@ -488,46 +382,63 @@ make_const(ParseState *pstate, Value *value, int location)
 			break;
 
 		case T_Float:
-			/* could be an oversize integer as well as a float ... */
-			if (scanint8(strVal(value), true, &val64))
 			{
-				/*
-				 * It might actually fit in int32. Probably only INT_MIN can
-				 * occur, but we'll code the test generally just to be sure.
-				 */
-				int32		val32 = (int32) val64;
+				/* could be an oversize integer as well as a float ... */
 
-				if (val64 == (int64) val32)
+				int64		val64;
+				char	   *endptr;
+
+				errno = 0;
+				val64 = strtoi64(aconst->val.fval.fval, &endptr, 10);
+				if (errno == 0 && *endptr == '\0')
 				{
-					val = Int32GetDatum(val32);
+					/*
+					 * It might actually fit in int32. Probably only INT_MIN
+					 * can occur, but we'll code the test generally just to be
+					 * sure.
+					 */
+					int32		val32 = (int32) val64;
 
-					typeid = INT4OID;
-					typelen = sizeof(int32);
-					typebyval = true;
+					if (val64 == (int64) val32)
+					{
+						val = Int32GetDatum(val32);
+
+						typeid = INT4OID;
+						typelen = sizeof(int32);
+						typebyval = true;
+					}
+					else
+					{
+						val = Int64GetDatum(val64);
+
+						typeid = INT8OID;
+						typelen = sizeof(int64);
+						typebyval = FLOAT8PASSBYVAL;	/* int8 and float8 alike */
+					}
 				}
 				else
 				{
-					val = Int64GetDatum(val64);
+					/* arrange to report location if numeric_in() fails */
+					setup_parser_errposition_callback(&pcbstate, pstate, aconst->location);
+					val = DirectFunctionCall3(numeric_in,
+											  CStringGetDatum(aconst->val.fval.fval),
+											  ObjectIdGetDatum(InvalidOid),
+											  Int32GetDatum(-1));
+					cancel_parser_errposition_callback(&pcbstate);
 
-					typeid = INT8OID;
-					typelen = sizeof(int64);
-					typebyval = FLOAT8PASSBYVAL;	/* int8 and float8 alike */
+					typeid = NUMERICOID;
+					typelen = -1;	/* variable len */
+					typebyval = false;
 				}
+				break;
 			}
-			else
-			{
-				/* arrange to report location if numeric_in() fails */
-				setup_parser_errposition_callback(&pcbstate, pstate, location);
-				val = DirectFunctionCall3(numeric_in,
-										  CStringGetDatum(strVal(value)),
-										  ObjectIdGetDatum(InvalidOid),
-										  Int32GetDatum(-1));
-				cancel_parser_errposition_callback(&pcbstate);
 
-				typeid = NUMERICOID;
-				typelen = -1;	/* variable len */
-				typebyval = false;
-			}
+		case T_Boolean:
+			val = BoolGetDatum(boolVal(&aconst->val));
+
+			typeid = BOOLOID;
+			typelen = 1;
+			typebyval = true;
 			break;
 
 		case T_String:
@@ -536,7 +447,7 @@ make_const(ParseState *pstate, Value *value, int location)
 			 * We assume here that UNKNOWN's internal representation is the
 			 * same as CSTRING
 			 */
-			val = CStringGetDatum(strVal(value));
+			val = CStringGetDatum(strVal(&aconst->val));
 
 			typeid = UNKNOWNOID;	/* will be coerced later */
 			typelen = -2;		/* cstring-style varwidth type */
@@ -545,9 +456,9 @@ make_const(ParseState *pstate, Value *value, int location)
 
 		case T_BitString:
 			/* arrange to report location if bit_in() fails */
-			setup_parser_errposition_callback(&pcbstate, pstate, location);
+			setup_parser_errposition_callback(&pcbstate, pstate, aconst->location);
 			val = DirectFunctionCall3(bit_in,
-									  CStringGetDatum(strVal(value)),
+									  CStringGetDatum(aconst->val.bsval.bsval),
 									  ObjectIdGetDatum(InvalidOid),
 									  Int32GetDatum(-1));
 			cancel_parser_errposition_callback(&pcbstate);
@@ -556,20 +467,8 @@ make_const(ParseState *pstate, Value *value, int location)
 			typebyval = false;
 			break;
 
-		case T_Null:
-			/* return a null const */
-			con = makeConst(UNKNOWNOID,
-							-1,
-							InvalidOid,
-							-2,
-							(Datum) 0,
-							true,
-							false);
-			con->location = location;
-			return con;
-
 		default:
-			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(value));
+			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(&aconst->val));
 			return NULL;		/* keep compiler quiet */
 	}
 
@@ -580,7 +479,7 @@ make_const(ParseState *pstate, Value *value, int location)
 					val,
 					false,
 					typebyval);
-	con->location = location;
+	con->location = aconst->location;
 
 	return con;
 }

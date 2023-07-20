@@ -4,7 +4,7 @@
  *	  Tuple conversion support.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/tupconvert.h
@@ -14,17 +14,20 @@
 #ifndef TUPCONVERT_H
 #define TUPCONVERT_H
 
+#include "access/attmap.h"
 #include "access/htup.h"
 #include "access/tupdesc.h"
 #include "executor/tuptable.h"
 #include "nodes/bitmapset.h"
+
+/* Yugabyte includes */
 #include "utils/rel.h"
 
 typedef struct TupleConversionMap
 {
 	TupleDesc	indesc;			/* tupdesc for source rowtype */
 	TupleDesc	outdesc;		/* tupdesc for result rowtype */
-	AttrNumber *attrMap;		/* indexes of input fields, or 0 for null */
+	AttrMap    *attrMap;		/* indexes of input fields, or 0 for null */
 	Datum	   *invalues;		/* workspace for deconstructing source */
 	bool	   *inisnull;
 	Datum	   *outvalues;		/* workspace for constructing result */
@@ -33,25 +36,24 @@ typedef struct TupleConversionMap
 
 
 extern TupleConversionMap *convert_tuples_by_position(TupleDesc indesc,
-						   TupleDesc outdesc,
-						   const char *msg);
+													  TupleDesc outdesc,
+													  const char *msg);
 
 extern TupleConversionMap *convert_tuples_by_name(TupleDesc indesc,
-					   TupleDesc outdesc,
-					   const char *msg);
+												  TupleDesc outdesc);
 
+#ifdef YB_TODO
+/* YB_TODO(neil) This function is not found here in Pg15 */
 extern AttrNumber *convert_tuples_by_name_map(TupleDesc	  indesc,
 											  TupleDesc	  outdesc,
 											  const char *msg,
-											  bool yb_ignore_type_mismatch);
-extern AttrNumber *convert_tuples_by_name_map_if_req(TupleDesc indesc,
-								  TupleDesc outdesc,
-								  const char *msg);
+#endif
 
 extern HeapTuple execute_attr_map_tuple(HeapTuple tuple, TupleConversionMap *map);
-extern TupleTableSlot *execute_attr_map_slot(AttrNumber *attrMap,
-					  TupleTableSlot *in_slot, TupleTableSlot *out_slot);
-extern Bitmapset *execute_attr_map_cols(Bitmapset *inbitmap, TupleConversionMap *map, Relation rel);
+extern TupleTableSlot *execute_attr_map_slot(AttrMap *attrMap,
+											 TupleTableSlot *in_slot,
+											 TupleTableSlot *out_slot);
+extern Bitmapset *execute_attr_map_cols(AttrMap *attrMap, Bitmapset *inbitmap, Relation rel);
 
 extern void free_conversion_map(TupleConversionMap *map);
 

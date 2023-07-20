@@ -2,8 +2,8 @@
 
 #include "postgres_fe.h"
 
-#include "extern.h"
 #include "pgtypes.h"
+#include "pgtypeslib_extern.h"
 
 /* Return value is zero-filled. */
 char *

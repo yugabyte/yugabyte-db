@@ -11,59 +11,55 @@
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+#include "plpy_elog.h"
+#include "plpy_main.h"
+#include "plpy_typeio.h"
+#include "plpython.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 
-#include "plpython.h"
-
-#include "plpy_typeio.h"
-
-#include "plpy_elog.h"
-#include "plpy_main.h"
-
-
 /* conversion from Datums to Python objects */
 static PyObject *PLyBool_FromBool(PLyDatumToOb *arg, Datum d);
 static PyObject *PLyFloat_FromFloat4(PLyDatumToOb *arg, Datum d);
 static PyObject *PLyFloat_FromFloat8(PLyDatumToOb *arg, Datum d);
 static PyObject *PLyDecimal_FromNumeric(PLyDatumToOb *arg, Datum d);
-static PyObject *PLyInt_FromInt16(PLyDatumToOb *arg, Datum d);
-static PyObject *PLyInt_FromInt32(PLyDatumToOb *arg, Datum d);
+static PyObject *PLyLong_FromInt16(PLyDatumToOb *arg, Datum d);
+static PyObject *PLyLong_FromInt32(PLyDatumToOb *arg, Datum d);
 static PyObject *PLyLong_FromInt64(PLyDatumToOb *arg, Datum d);
 static PyObject *PLyLong_FromOid(PLyDatumToOb *arg, Datum d);
 static PyObject *PLyBytes_FromBytea(PLyDatumToOb *arg, Datum d);
-static PyObject *PLyString_FromScalar(PLyDatumToOb *arg, Datum d);
+static PyObject *PLyUnicode_FromScalar(PLyDatumToOb *arg, Datum d);
 static PyObject *PLyObject_FromTransform(PLyDatumToOb *arg, Datum d);
 static PyObject *PLyList_FromArray(PLyDatumToOb *arg, Datum d);
 static PyObject *PLyList_FromArray_recurse(PLyDatumToOb *elm, int *dims, int ndim, int dim,
-						  char **dataptr_p, bits8 **bitmap_p, int *bitmask_p);
+										   char **dataptr_p, bits8 **bitmap_p, int *bitmask_p);
 static PyObject *PLyDict_FromComposite(PLyDatumToOb *arg, Datum d);
-static PyObject *PLyDict_FromTuple(PLyDatumToOb *arg, HeapTuple tuple, TupleDesc desc);
+static PyObject *PLyDict_FromTuple(PLyDatumToOb *arg, HeapTuple tuple, TupleDesc desc, bool include_generated);
 
 /* conversion from Python objects to Datums */
 static Datum PLyObject_ToBool(PLyObToDatum *arg, PyObject *plrv,
-				 bool *isnull, bool inarray);
+							  bool *isnull, bool inarray);
 static Datum PLyObject_ToBytea(PLyObToDatum *arg, PyObject *plrv,
-				  bool *isnull, bool inarray);
+							   bool *isnull, bool inarray);
 static Datum PLyObject_ToComposite(PLyObToDatum *arg, PyObject *plrv,
-					  bool *isnull, bool inarray);
+								   bool *isnull, bool inarray);
 static Datum PLyObject_ToScalar(PLyObToDatum *arg, PyObject *plrv,
-				   bool *isnull, bool inarray);
+								bool *isnull, bool inarray);
 static Datum PLyObject_ToDomain(PLyObToDatum *arg, PyObject *plrv,
-				   bool *isnull, bool inarray);
+								bool *isnull, bool inarray);
 static Datum PLyObject_ToTransform(PLyObToDatum *arg, PyObject *plrv,
-					  bool *isnull, bool inarray);
+								   bool *isnull, bool inarray);
 static Datum PLySequence_ToArray(PLyObToDatum *arg, PyObject *plrv,
-					bool *isnull, bool inarray);
+								 bool *isnull, bool inarray);
 static void PLySequence_ToArray_recurse(PLyObToDatum *elm, PyObject *list,
-							int *dims, int ndim, int dim,
-							Datum *elems, bool *nulls, int *currelem);
+										int *dims, int ndim, int dim,
+										Datum *elems, bool *nulls, int *currelem);
 
 /* conversion from Python objects to composite Datums */
-static Datum PLyString_ToComposite(PLyObToDatum *arg, PyObject *string, bool inarray);
+static Datum PLyUnicode_ToComposite(PLyObToDatum *arg, PyObject *string, bool inarray);
 static Datum PLyMapping_ToComposite(PLyObToDatum *arg, TupleDesc desc, PyObject *mapping);
 static Datum PLySequence_ToComposite(PLyObToDatum *arg, TupleDesc desc, PyObject *sequence);
 static Datum PLyGenericObject_ToComposite(PLyObToDatum *arg, TupleDesc desc, PyObject *object, bool inarray);
@@ -134,7 +130,7 @@ PLy_output_convert(PLyObToDatum *arg, PyObject *val, bool *isnull)
  * but in practice all callers have the right tupdesc available.
  */
 PyObject *
-PLy_input_from_tuple(PLyDatumToOb *arg, HeapTuple tuple, TupleDesc desc)
+PLy_input_from_tuple(PLyDatumToOb *arg, HeapTuple tuple, TupleDesc desc, bool include_generated)
 {
 	PyObject   *dict;
 	PLyExecutionContext *exec_ctx = PLy_current_execution_context();
@@ -148,7 +144,7 @@ PLy_input_from_tuple(PLyDatumToOb *arg, HeapTuple tuple, TupleDesc desc)
 
 	oldcontext = MemoryContextSwitchTo(scratch_context);
 
-	dict = PLyDict_FromTuple(arg, tuple, desc);
+	dict = PLyDict_FromTuple(arg, tuple, desc, include_generated);
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -332,7 +328,7 @@ PLy_output_setup_func(PLyObToDatum *arg, MemoryContext arg_mcxt,
 		/* hard-wired knowledge about type RECORD: */
 		arg->typbyval = false;
 		arg->typlen = -1;
-		arg->typalign = 'd';
+		arg->typalign = TYPALIGN_DOUBLE;
 	}
 
 	/*
@@ -356,9 +352,9 @@ PLy_output_setup_func(PLyObToDatum *arg, MemoryContext arg_mcxt,
 							  proc);
 	}
 	else if (typentry &&
-			 OidIsValid(typentry->typelem) && typentry->typlen == -1)
+			 IsTrueArrayType(typentry))
 	{
-		/* Standard varlena array (cf. get_element_type) */
+		/* Standard array */
 		arg->func = PLySequence_ToArray;
 		/* Get base type OID to insert into constructed array */
 		/* (note this might not be the same as the immediate child type) */
@@ -455,7 +451,7 @@ PLy_input_setup_func(PLyDatumToOb *arg, MemoryContext arg_mcxt,
 		/* hard-wired knowledge about type RECORD: */
 		arg->typbyval = false;
 		arg->typlen = -1;
-		arg->typalign = 'd';
+		arg->typalign = TYPALIGN_DOUBLE;
 	}
 
 	/*
@@ -474,9 +470,9 @@ PLy_input_setup_func(PLyDatumToOb *arg, MemoryContext arg_mcxt,
 							 proc);
 	}
 	else if (typentry &&
-			 OidIsValid(typentry->typelem) && typentry->typlen == -1)
+			 IsTrueArrayType(typentry))
 	{
-		/* Standard varlena array (cf. get_element_type) */
+		/* Standard array */
 		arg->func = PLyList_FromArray;
 		/* Recursively set up conversion info for the element type */
 		arg->u.array.elm = (PLyDatumToOb *)
@@ -521,10 +517,10 @@ PLy_input_setup_func(PLyDatumToOb *arg, MemoryContext arg_mcxt,
 				arg->func = PLyDecimal_FromNumeric;
 				break;
 			case INT2OID:
-				arg->func = PLyInt_FromInt16;
+				arg->func = PLyLong_FromInt16;
 				break;
 			case INT4OID:
-				arg->func = PLyInt_FromInt32;
+				arg->func = PLyLong_FromInt32;
 				break;
 			case INT8OID:
 				arg->func = PLyLong_FromInt64;
@@ -536,7 +532,7 @@ PLy_input_setup_func(PLyDatumToOb *arg, MemoryContext arg_mcxt,
 				arg->func = PLyBytes_FromBytea;
 				break;
 			default:
-				arg->func = PLyString_FromScalar;
+				arg->func = PLyUnicode_FromScalar;
 				getTypeOutputInfo(typeOid, &typoutput, &typisvarlena);
 				fmgr_info_cxt(typoutput, &arg->u.scalar.typfunc, arg_mcxt);
 				break;
@@ -604,15 +600,15 @@ PLyDecimal_FromNumeric(PLyDatumToOb *arg, Datum d)
 }
 
 static PyObject *
-PLyInt_FromInt16(PLyDatumToOb *arg, Datum d)
+PLyLong_FromInt16(PLyDatumToOb *arg, Datum d)
 {
-	return PyInt_FromLong(DatumGetInt16(d));
+	return PyLong_FromLong(DatumGetInt16(d));
 }
 
 static PyObject *
-PLyInt_FromInt32(PLyDatumToOb *arg, Datum d)
+PLyLong_FromInt32(PLyDatumToOb *arg, Datum d)
 {
-	return PyInt_FromLong(DatumGetInt32(d));
+	return PyLong_FromLong(DatumGetInt32(d));
 }
 
 static PyObject *
@@ -642,10 +638,10 @@ PLyBytes_FromBytea(PLyDatumToOb *arg, Datum d)
  * Generic input conversion using a SQL type's output function.
  */
 static PyObject *
-PLyString_FromScalar(PLyDatumToOb *arg, Datum d)
+PLyUnicode_FromScalar(PLyDatumToOb *arg, Datum d)
 {
 	char	   *x = OutputFunctionCall(&arg->u.scalar.typfunc, d);
-	PyObject   *r = PyString_FromString(x);
+	PyObject   *r = PLyUnicode_FromString(x);
 
 	pfree(x);
 	return r;
@@ -683,7 +679,7 @@ PLyList_FromArray(PLyDatumToOb *arg, Datum d)
 	/* Array dimensions and left bounds */
 	ndim = ARR_NDIM(array);
 	dims = ARR_DIMS(array);
-	Assert(ndim < MAXDIM);
+	Assert(ndim <= MAXDIM);
 
 	/*
 	 * We iterate the SQL array in the physical order it's stored in the
@@ -804,7 +800,7 @@ PLyDict_FromComposite(PLyDatumToOb *arg, Datum d)
 	tmptup.t_len = HeapTupleHeaderGetDatumLength(td);
 	tmptup.t_data = td;
 
-	dict = PLyDict_FromTuple(arg, &tmptup, tupdesc);
+	dict = PLyDict_FromTuple(arg, &tmptup, tupdesc, true);
 
 	ReleaseTupleDesc(tupdesc);
 
@@ -815,7 +811,7 @@ PLyDict_FromComposite(PLyDatumToOb *arg, Datum d)
  * Transform a tuple into a Python dict object.
  */
 static PyObject *
-PLyDict_FromTuple(PLyDatumToOb *arg, HeapTuple tuple, TupleDesc desc)
+PLyDict_FromTuple(PLyDatumToOb *arg, HeapTuple tuple, TupleDesc desc, bool include_generated)
 {
 	PyObject   *volatile dict;
 
@@ -841,6 +837,13 @@ PLyDict_FromTuple(PLyDatumToOb *arg, HeapTuple tuple, TupleDesc desc)
 
 			if (attr->attisdropped)
 				continue;
+
+			if (attr->attgenerated)
+			{
+				/* don't include unless requested */
+				if (!include_generated)
+					continue;
+			}
 
 			key = NameStr(attr->attname);
 			vattr = heap_getattr(tuple, (i + 1), desc, &is_null);
@@ -894,7 +897,7 @@ PLyObject_ToBytea(PLyObToDatum *arg, PyObject *plrv,
 				  bool *isnull, bool inarray)
 {
 	PyObject   *volatile plrv_so = NULL;
-	Datum		rv;
+	Datum		rv = (Datum) 0;
 
 	if (plrv == Py_None)
 	{
@@ -918,14 +921,11 @@ PLyObject_ToBytea(PLyObToDatum *arg, PyObject *plrv,
 		memcpy(VARDATA(result), plrv_sc, len);
 		rv = PointerGetDatum(result);
 	}
-	PG_CATCH();
+	PG_FINALLY();
 	{
 		Py_XDECREF(plrv_so);
-		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
-	Py_XDECREF(plrv_so);
 
 	return rv;
 }
@@ -954,8 +954,8 @@ PLyObject_ToComposite(PLyObToDatum *arg, PyObject *plrv,
 	 * The string conversion case doesn't require a tupdesc, nor per-field
 	 * conversion data, so just go for it if that's the case to use.
 	 */
-	if (PyString_Check(plrv) || PyUnicode_Check(plrv))
-		return PLyString_ToComposite(arg, plrv, inarray);
+	if (PyUnicode_Check(plrv))
+		return PLyUnicode_ToComposite(arg, plrv, inarray);
 
 	/*
 	 * If we're dealing with a named composite type, we must look up the
@@ -1032,25 +1032,17 @@ PLyObject_AsString(PyObject *plrv)
 	else if (PyFloat_Check(plrv))
 	{
 		/* use repr() for floats, str() is lossy */
-#if PY_MAJOR_VERSION >= 3
 		PyObject   *s = PyObject_Repr(plrv);
 
 		plrv_bo = PLyUnicode_Bytes(s);
 		Py_XDECREF(s);
-#else
-		plrv_bo = PyObject_Repr(plrv);
-#endif
 	}
 	else
 	{
-#if PY_MAJOR_VERSION >= 3
 		PyObject   *s = PyObject_Str(plrv);
 
 		plrv_bo = PLyUnicode_Bytes(s);
 		Py_XDECREF(s);
-#else
-		plrv_bo = PyObject_Str(plrv);
-#endif
 	}
 	if (!plrv_bo)
 		PLy_elog(ERROR, "could not create string representation of Python object");
@@ -1173,18 +1165,25 @@ PLySequence_ToArray(PLyObToDatum *arg, PyObject *plrv,
 			break;
 
 		if (ndim == MAXDIM)
-			PLy_elog(ERROR, "number of array dimensions exceeds the maximum allowed (%d)", MAXDIM);
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("number of array dimensions exceeds the maximum allowed (%d)",
+							MAXDIM)));
 
 		dims[ndim] = PySequence_Length(pyptr);
 		if (dims[ndim] < 0)
 			PLy_elog(ERROR, "could not determine sequence length for function return value");
 
 		if (dims[ndim] > MaxAllocSize)
-			PLy_elog(ERROR, "array size exceeds the maximum allowed");
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("array size exceeds the maximum allowed")));
 
 		len *= dims[ndim];
 		if (len > MaxAllocSize)
-			PLy_elog(ERROR, "array size exceeds the maximum allowed");
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("array size exceeds the maximum allowed")));
 
 		if (dims[ndim] == 0)
 		{
@@ -1210,7 +1209,9 @@ PLySequence_ToArray(PLyObToDatum *arg, PyObject *plrv,
 	if (ndim == 0)
 	{
 		if (!PySequence_Check(plrv))
-			PLy_elog(ERROR, "return value of function with array return type is not a Python sequence");
+			ereport(ERROR,
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+					 errmsg("return value of function with array return type is not a Python sequence")));
 
 		ndim = 1;
 		len = dims[0] = PySequence_Length(plrv);
@@ -1256,7 +1257,8 @@ PLySequence_ToArray_recurse(PLyObToDatum *elm, PyObject *list,
 
 	if (PySequence_Length(list) != dims[dim])
 		ereport(ERROR,
-				(errmsg("wrong length of inner sequence: has length %d, but %d was expected",
+				(errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR),
+				 errmsg("wrong length of inner sequence: has length %d, but %d was expected",
 						(int) PySequence_Length(list), dims[dim]),
 				 (errdetail("To construct a multidimensional array, the inner sequences must all have the same length."))));
 
@@ -1289,7 +1291,7 @@ PLySequence_ToArray_recurse(PLyObToDatum *elm, PyObject *list,
  * Convert a Python string to composite, using record_in.
  */
 static Datum
-PLyString_ToComposite(PLyObToDatum *arg, PyObject *string, bool inarray)
+PLyUnicode_ToComposite(PLyObToDatum *arg, PyObject *string, bool inarray)
 {
 	char	   *str;
 

@@ -3,7 +3,7 @@
  *
  * Definitions for the WAL record format.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/xlogrecord.h
@@ -107,16 +107,15 @@ typedef struct XLogRecordBlockHeader
  * Additional header information when a full-page image is included
  * (i.e. when BKPBLOCK_HAS_IMAGE is set).
  *
- * As a trivial form of data compression, the XLOG code is aware that
- * PG data pages usually contain an unused "hole" in the middle, which
- * contains only zero bytes.  If the length of "hole" > 0 then we have removed
- * such a "hole" from the stored data (and it's not counted in the
- * XLOG record's CRC, either).  Hence, the amount of block data actually
- * present is BLCKSZ - the length of "hole" bytes.
+ * The XLOG code is aware that PG data pages usually contain an unused "hole"
+ * in the middle, which contains only zero bytes.  Since we know that the
+ * "hole" is all zeros, we remove it from the stored data (and it's not counted
+ * in the XLOG record's CRC, either).  Hence, the amount of block data actually
+ * present is (BLCKSZ - <length of "hole" bytes>).
  *
- * When wal_compression is enabled, a full page image which "hole" was
- * removed is additionally compressed using PGLZ compression algorithm.
- * This can reduce the WAL volume, but at some extra cost of CPU spent
+ * Additionally, when wal_compression is enabled, we will try to compress full
+ * page images using one of the supported algorithms, after removing the
+ * "hole". This can reduce the WAL volume, but at some extra cost of CPU spent
  * on the compression during WAL logging. In this case, since the "hole"
  * length cannot be calculated by subtracting the number of page image bytes
  * from BLCKSZ, basically it needs to be stored as an extra information.
@@ -135,7 +134,7 @@ typedef struct XLogRecordBlockImageHeader
 	uint8		bimg_info;		/* flag bits, see below */
 
 	/*
-	 * If BKPIMAGE_HAS_HOLE and BKPIMAGE_IS_COMPRESSED, an
+	 * If BKPIMAGE_HAS_HOLE and BKPIMAGE_COMPRESSED(), an
 	 * XLogRecordBlockCompressHeader struct follows.
 	 */
 } XLogRecordBlockImageHeader;
@@ -145,9 +144,16 @@ typedef struct XLogRecordBlockImageHeader
 
 /* Information stored in bimg_info */
 #define BKPIMAGE_HAS_HOLE		0x01	/* page image has "hole" */
-#define BKPIMAGE_IS_COMPRESSED		0x02	/* page image is compressed */
-#define BKPIMAGE_APPLY		0x04	/* page image should be restored during
-									 * replay */
+#define BKPIMAGE_APPLY			0x02	/* page image should be restored
+										 * during replay */
+/* compression methods supported */
+#define BKPIMAGE_COMPRESS_PGLZ	0x04
+#define BKPIMAGE_COMPRESS_LZ4	0x08
+#define BKPIMAGE_COMPRESS_ZSTD	0x10
+
+#define	BKPIMAGE_COMPRESSED(info) \
+	((info & (BKPIMAGE_COMPRESS_PGLZ | BKPIMAGE_COMPRESS_LZ4 | \
+			  BKPIMAGE_COMPRESS_ZSTD)) != 0)
 
 /*
  * Extra header information used when page image has "hole" and
@@ -212,8 +218,9 @@ typedef struct XLogRecordDataHeaderLong
  * Block IDs used to distinguish different kinds of record fragments. Block
  * references are numbered from 0 to XLR_MAX_BLOCK_ID. A rmgr is free to use
  * any ID number in that range (although you should stick to small numbers,
- * because the WAL machinery is optimized for that case). A couple of ID
- * numbers are reserved to denote the "main" data portion of the record.
+ * because the WAL machinery is optimized for that case). A few ID
+ * numbers are reserved to denote the "main" data portion of the record,
+ * as well as replication-supporting transaction metadata.
  *
  * The maximum is currently set at 32, quite arbitrarily. Most records only
  * need a handful of block references, but there are a few exceptions that
@@ -224,5 +231,6 @@ typedef struct XLogRecordDataHeaderLong
 #define XLR_BLOCK_ID_DATA_SHORT		255
 #define XLR_BLOCK_ID_DATA_LONG		254
 #define XLR_BLOCK_ID_ORIGIN			253
+#define XLR_BLOCK_ID_TOPLEVEL_XID	252
 
 #endif							/* XLOGRECORD_H */

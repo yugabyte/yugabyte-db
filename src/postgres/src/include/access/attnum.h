@@ -4,7 +4,7 @@
  *	  POSTGRES attribute number definitions.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/attnum.h
@@ -36,7 +36,7 @@ typedef int16 AttrNumber;
 
 /*
  * AttrNumberIsForUserDefinedAttr
- *		True iff the attribute number corresponds to an user defined attribute.
+ *		True iff the attribute number corresponds to a user defined attribute.
  */
 #define AttrNumberIsForUserDefinedAttr(attributeNumber) \
 	((bool) ((attributeNumber) > 0))
@@ -55,7 +55,7 @@ typedef int16 AttrNumber;
 )
 
 /*
- * AttributeOffsetGetAttributeNumber
+ * AttrOffsetGetAttrNumber
  *		Returns the attribute number for an attribute offset.
  */
 #define AttrOffsetGetAttrNumber(attributeOffset) \

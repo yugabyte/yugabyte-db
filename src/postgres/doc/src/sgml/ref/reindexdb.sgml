@@ -15,7 +15,7 @@ PostgreSQL documentation
  </refmeta>
 
  <refnamediv>
-  <refname id="reindexdb">reindexdb</refname>
+  <refname>reindexdb</refname>
   <refpurpose>reindex a <productname>PostgreSQL</productname> database</refpurpose>
  </refnamediv>
 
@@ -28,8 +28,8 @@ PostgreSQL documentation
    <arg choice="plain" rep="repeat">
     <arg choice="opt">
      <group choice="plain">
-      <arg choice="plain"><option>--schema</option></arg>
       <arg choice="plain"><option>-S</option></arg>
+      <arg choice="plain"><option>--schema</option></arg>
      </group>
      <replaceable>schema</replaceable>
     </arg>
@@ -38,8 +38,8 @@ PostgreSQL documentation
    <arg choice="plain" rep="repeat">
     <arg choice="opt">
      <group choice="plain">
-      <arg choice="plain"><option>--table</option></arg>
       <arg choice="plain"><option>-t</option></arg>
+      <arg choice="plain"><option>--table</option></arg>
      </group>
      <replaceable>table</replaceable>
     </arg>
@@ -48,8 +48,8 @@ PostgreSQL documentation
    <arg choice="plain" rep="repeat">
     <arg choice="opt">
      <group choice="plain">
-      <arg choice="plain"><option>--index</option></arg>
       <arg choice="plain"><option>-i</option></arg>
+      <arg choice="plain"><option>--index</option></arg>
      </group>
      <replaceable>index</replaceable>
     </arg>
@@ -64,8 +64,8 @@ PostgreSQL documentation
    <arg rep="repeat"><replaceable>option</replaceable></arg>
 
    <group choice="plain">
-    <arg choice="plain"><option>--all</option></arg>
     <arg choice="plain"><option>-a</option></arg>
+    <arg choice="plain"><option>--all</option></arg>
    </group>
   </cmdsynopsis>
 
@@ -75,8 +75,8 @@ PostgreSQL documentation
    <arg rep="repeat"><replaceable>option</replaceable></arg>
 
    <group choice="plain">
-    <arg choice="plain"><option>--system</option></arg>
     <arg choice="plain"><option>-s</option></arg>
+    <arg choice="plain"><option>--system</option></arg>
    </group>
    <arg choice="opt"><replaceable>dbname</replaceable></arg>
   </cmdsynopsis>
@@ -93,7 +93,7 @@ PostgreSQL documentation
 
   <para>
    <application>reindexdb</application> is a wrapper around the SQL
-   command <xref linkend="sql-reindex"/>.
+   command <link linkend="sql-reindex"><command>REINDEX</command></link>.
    There is no effective difference between reindexing databases via
    this utility and via other methods for accessing the server.
   </para>
@@ -119,6 +119,17 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+      <term><option>--concurrently</option></term>
+      <listitem>
+       <para>
+        Use the <literal>CONCURRENTLY</literal> option.  See
+        <xref linkend="sql-reindex"/>, where all the caveats of this option
+        are explained in detail.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option><optional>-d</optional> <replaceable class="parameter">dbname</replaceable></option></term>
       <term><option><optional>--dbname=</optional><replaceable class="parameter">dbname</replaceable></option></term>
       <listitem>
@@ -128,7 +139,10 @@ PostgreSQL documentation
         If this is not specified, the database name is read
         from the environment variable <envar>PGDATABASE</envar>.  If
         that is not set, the user name specified for the connection is
-        used.
+        used.  The <replaceable>dbname</replaceable> can be a <link
+        linkend="libpq-connstring">connection string</link>.  If so,
+        connection string parameters will override any conflicting command
+        line options.
        </para>
       </listitem>
      </varlistentry>
@@ -157,6 +171,29 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+      <term><option>-j <replaceable class="parameter">njobs</replaceable></option></term>
+      <term><option>--jobs=<replaceable class="parameter">njobs</replaceable></option></term>
+      <listitem>
+       <para>
+        Execute the reindex commands in parallel by running
+        <replaceable class="parameter">njobs</replaceable>
+        commands simultaneously.  This option may reduce the processing time
+        but it also increases the load on the database server.
+       </para>
+       <para>
+        <application>reindexdb</application> will open
+        <replaceable class="parameter">njobs</replaceable> connections to the
+        database, so make sure your <xref linkend="guc-max-connections"/>
+        setting is high enough to accommodate all connections.
+       </para>
+       <para>
+        Note that this option is incompatible with the <option>--index</option>
+        and <option>--system</option> options.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>-q</option></term>
       <term><option>--quiet</option></term>
       <listitem>
@@ -171,7 +208,7 @@ PostgreSQL documentation
       <term><option>--system</option></term>
       <listitem>
        <para>
-        Reindex database's system catalogs.
+        Reindex database's system catalogs only.
        </para>
       </listitem>
      </varlistentry>
@@ -196,6 +233,16 @@ PostgreSQL documentation
         Reindex <replaceable class="parameter">table</replaceable> only.
         Multiple tables can be reindexed by writing multiple
         <option>-t</option> switches.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--tablespace=<replaceable class="parameter">tablespace</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the tablespace where indexes are rebuilt. (This name is
+        processed as a double-quoted identifier.)
        </para>
       </listitem>
      </varlistentry>
@@ -345,6 +392,17 @@ PostgreSQL documentation
     <listitem>
      <para>
       Default connection parameters
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><envar>PG_COLOR</envar></term>
+    <listitem>
+     <para>
+      Specifies whether to use color in diagnostic messages. Possible values
+      are <literal>always</literal>, <literal>auto</literal> and
+      <literal>never</literal>.
      </para>
     </listitem>
    </varlistentry>

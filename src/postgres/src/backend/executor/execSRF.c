@@ -7,7 +7,7 @@
  * common code for calling set-returning functions according to the
  * ReturnSetInfo API.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -35,15 +35,15 @@
 
 /* static function decls */
 static void init_sexpr(Oid foid, Oid input_collation, Expr *node,
-		   SetExprState *sexpr, PlanState *parent,
-		   MemoryContext sexprCxt, bool allowSRF, bool needDescForSRF);
+					   SetExprState *sexpr, PlanState *parent,
+					   MemoryContext sexprCxt, bool allowSRF, bool needDescForSRF);
 static void ShutdownSetExpr(Datum arg);
 static void ExecEvalFuncArgs(FunctionCallInfo fcinfo,
-				 List *argList, ExprContext *econtext);
+							 List *argList, ExprContext *econtext);
 static void ExecPrepareTuplestoreResult(SetExprState *sexpr,
-							ExprContext *econtext,
-							Tuplestorestate *resultStore,
-							TupleDesc resultDesc);
+										ExprContext *econtext,
+										Tuplestorestate *resultStore,
+										TupleDesc resultDesc);
 static void tupledesc_match(TupleDesc dst_tupdesc, TupleDesc src_tupdesc);
 
 
@@ -109,15 +109,28 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 	Oid			funcrettype;
 	bool		returnsTuple;
 	bool		returnsSet = false;
-	FunctionCallInfoData fcinfo;
+	FunctionCallInfo fcinfo;
 	PgStat_FunctionCallUsage fcusage;
 	ReturnSetInfo rsinfo;
 	HeapTupleData tmptup;
 	MemoryContext callerContext;
-	MemoryContext oldcontext;
 	bool		first_time = true;
 
-	callerContext = GetCurrentMemoryContext();
+	/*
+	 * Execute per-tablefunc actions in appropriate context.
+	 *
+	 * The FunctionCallInfo needs to live across all the calls to a
+	 * ValuePerCall function, so it can't be allocated in the per-tuple
+	 * context. Similarly, the function arguments need to be evaluated in a
+	 * context that is longer lived than the per-tuple context: The argument
+	 * values would otherwise disappear when we reset that context in the
+	 * inner loop.  As the caller's CurrentMemoryContext is typically a
+	 * query-lifespan context, we don't want to leak memory there.  We require
+	 * the caller to pass a separate memory context that can be used for this,
+	 * and can be reset each time through to avoid bloat.
+	 */
+	MemoryContextReset(argContext);
+	callerContext = MemoryContextSwitchTo(argContext);
 
 	funcrettype = exprType((Node *) setexpr->expr);
 
@@ -141,6 +154,8 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 	rsinfo.setResult = NULL;
 	rsinfo.setDesc = NULL;
 
+	fcinfo = palloc(SizeForFunctionCallInfo(list_length(setexpr->args)));
+
 	/*
 	 * Normally the passed expression tree will be a SetExprState, since the
 	 * grammar only allows a function call at the top level of a table
@@ -157,25 +172,13 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 		 * This path is similar to ExecMakeFunctionResultSet.
 		 */
 		returnsSet = setexpr->funcReturnsSet;
-		InitFunctionCallInfoData(fcinfo, &(setexpr->func),
+		InitFunctionCallInfoData(*fcinfo, &(setexpr->func),
 								 list_length(setexpr->args),
-								 setexpr->fcinfo_data.fncollation,
+								 setexpr->fcinfo->fncollation,
 								 NULL, (Node *) &rsinfo);
-
-		/*
-		 * Evaluate the function's argument list.
-		 *
-		 * We can't do this in the per-tuple context: the argument values
-		 * would disappear when we reset that context in the inner loop.  And
-		 * the caller's GetCurrentMemoryContext() is typically a query-lifespan
-		 * context, so we don't want to leak memory there.  We require the
-		 * caller to pass a separate memory context that can be used for this,
-		 * and can be reset each time through to avoid bloat.
-		 */
-		MemoryContextReset(argContext);
-		oldcontext = MemoryContextSwitchTo(argContext);
-		ExecEvalFuncArgs(&fcinfo, setexpr->args, econtext);
-		MemoryContextSwitchTo(oldcontext);
+		/* evaluate the function's argument list */
+		Assert(GetCurrentMemoryContext() == argContext);
+		ExecEvalFuncArgs(fcinfo, setexpr->args, econtext);
 
 		/*
 		 * If function is strict, and there are any NULL arguments, skip
@@ -186,9 +189,9 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 		{
 			int			i;
 
-			for (i = 0; i < fcinfo.nargs; i++)
+			for (i = 0; i < fcinfo->nargs; i++)
 			{
-				if (fcinfo.argnull[i])
+				if (fcinfo->args[i].isnull)
 					goto no_function_result;
 			}
 		}
@@ -196,7 +199,7 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 	else
 	{
 		/* Treat setexpr as a generic expression */
-		InitFunctionCallInfoData(fcinfo, NULL, 0, InvalidOid, NULL, NULL);
+		InitFunctionCallInfoData(*fcinfo, NULL, 0, InvalidOid, NULL, NULL);
 	}
 
 	/*
@@ -215,7 +218,7 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 		CHECK_FOR_INTERRUPTS();
 
 		/*
-		 * reset per-tuple memory context before each call of the function or
+		 * Reset per-tuple memory context before each call of the function or
 		 * expression. This cleans up any local memory the function may leak
 		 * when called.
 		 */
@@ -224,11 +227,11 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 		/* Call the function or expression one time */
 		if (!setexpr->elidedFuncState)
 		{
-			pgstat_init_function_usage(&fcinfo, &fcusage);
+			pgstat_init_function_usage(fcinfo, &fcusage);
 
-			fcinfo.isnull = false;
+			fcinfo->isnull = false;
 			rsinfo.isDone = ExprSingleResult;
-			result = FunctionCallInvoke(&fcinfo);
+			result = FunctionCallInvoke(fcinfo);
 
 			pgstat_end_function_usage(&fcusage,
 									  rsinfo.isDone != ExprMultipleResult);
@@ -236,7 +239,7 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 		else
 		{
 			result =
-				ExecEvalExpr(setexpr->elidedFuncState, econtext, &fcinfo.isnull);
+				ExecEvalExpr(setexpr->elidedFuncState, econtext, &fcinfo->isnull);
 			rsinfo.isDone = ExprSingleResult;
 		}
 
@@ -255,12 +258,14 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 			 */
 			if (first_time)
 			{
-				oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
+				MemoryContext oldcontext =
+				MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
+
 				tupstore = tuplestore_begin_heap(randomAccess, false, work_mem);
 				rsinfo.setResult = tupstore;
 				if (!returnsTuple)
 				{
-					tupdesc = CreateTemplateTupleDesc(1, false);
+					tupdesc = CreateTemplateTupleDesc(1);
 					TupleDescInitEntry(tupdesc,
 									   (AttrNumber) 1,
 									   "column",
@@ -277,19 +282,21 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 			 */
 			if (returnsTuple)
 			{
-				if (!fcinfo.isnull)
+				if (!fcinfo->isnull)
 				{
 					HeapTupleHeader td = DatumGetHeapTupleHeader(result);
 
 					if (tupdesc == NULL)
 					{
+						MemoryContext oldcontext =
+						MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
+
 						/*
 						 * This is the first non-NULL result from the
 						 * function.  Use the type info embedded in the
 						 * rowtype Datum to look up the needed tupdesc.  Make
 						 * a copy for the query.
 						 */
-						oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
 						tupdesc = lookup_rowtype_tupdesc_copy(HeapTupleHeaderGetTypeId(td),
 															  HeapTupleHeaderGetTypMod(td));
 						rsinfo.setDesc = tupdesc;
@@ -338,7 +345,7 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 			else
 			{
 				/* Scalar-type case: just store the function result */
-				tuplestore_putvalues(tupstore, tupdesc, &result, &fcinfo.isnull);
+				tuplestore_putvalues(tupstore, tupdesc, &result, &fcinfo->isnull);
 			}
 
 			/*
@@ -346,11 +353,21 @@ ExecMakeTableFunctionResult(SetExprState *setexpr,
 			 */
 			if (rsinfo.isDone != ExprMultipleResult)
 				break;
+
+			/*
+			 * Check that set-returning functions were properly declared.
+			 * (Note: for historical reasons, we don't complain if a non-SRF
+			 * returns ExprEndResult; that's treated as returning NULL.)
+			 */
+			if (!returnsSet)
+				ereport(ERROR,
+						(errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED),
+						 errmsg("table-function protocol for value-per-call mode was not followed")));
 		}
 		else if (rsinfo.returnMode == SFRM_Materialize)
 		{
 			/* check we're on the same page as the function author */
-			if (!first_time || rsinfo.isDone != ExprSingleResult)
+			if (!first_time || rsinfo.isDone != ExprSingleResult || !returnsSet)
 				ereport(ERROR,
 						(errcode(ERRCODE_E_R_I_E_SRF_PROTOCOL_VIOLATED),
 						 errmsg("table-function protocol for materialize mode was not followed")));
@@ -376,15 +393,18 @@ no_function_result:
 	 */
 	if (rsinfo.setResult == NULL)
 	{
+		MemoryContext oldcontext =
 		MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
+
 		tupstore = tuplestore_begin_heap(randomAccess, false, work_mem);
 		rsinfo.setResult = tupstore;
+		MemoryContextSwitchTo(oldcontext);
+
 		if (!returnsSet)
 		{
 			int			natts = expectedDesc->natts;
 			bool	   *nullflags;
 
-			MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 			nullflags = (bool *) palloc(natts * sizeof(bool));
 			memset(nullflags, true, natts * sizeof(bool));
 			tuplestore_putvalues(tupstore, expectedDesc, NULL, nullflags);
@@ -521,7 +541,7 @@ restart:
 			{
 				/* We must return the whole tuple as a Datum. */
 				*isNull = false;
-				return ExecFetchSlotTupleDatum(fcache->funcResultSlot);
+				return ExecFetchSlotHeapTupleDatum(fcache->funcResultSlot);
 			}
 			else
 			{
@@ -547,7 +567,7 @@ restart:
 	 * rows from this SRF have been returned, otherwise ValuePerCall SRFs
 	 * would reference freed memory after the first returned row.
 	 */
-	fcinfo = &fcache->fcinfo_data;
+	fcinfo = fcache->fcinfo;
 	arguments = fcache->args;
 	if (!fcache->setArgsValid)
 	{
@@ -587,7 +607,7 @@ restart:
 	{
 		for (i = 0; i < fcinfo->nargs; i++)
 		{
-			if (fcinfo->argnull[i])
+			if (fcinfo->args[i].isnull)
 			{
 				callit = false;
 				break;
@@ -678,6 +698,7 @@ init_sexpr(Oid foid, Oid input_collation, Expr *node,
 		   MemoryContext sexprCxt, bool allowSRF, bool needDescForSRF)
 {
 	AclResult	aclresult;
+	size_t		numargs = list_length(sexpr->args);
 
 	/* Check permission to call function */
 	aclresult = pg_proc_aclcheck(foid, GetUserId(), ACL_EXECUTE);
@@ -704,8 +725,10 @@ init_sexpr(Oid foid, Oid input_collation, Expr *node,
 	fmgr_info_set_expr((Node *) sexpr->expr, &(sexpr->func));
 
 	/* Initialize the function call parameter struct as well */
-	InitFunctionCallInfoData(sexpr->fcinfo_data, &(sexpr->func),
-							 list_length(sexpr->args),
+	sexpr->fcinfo =
+		(FunctionCallInfo) palloc(SizeForFunctionCallInfo(numargs));
+	InitFunctionCallInfoData(*sexpr->fcinfo, &(sexpr->func),
+							 numargs,
 							 input_collation, NULL, NULL);
 
 	/* If function returns set, check if that's allowed by caller */
@@ -746,7 +769,7 @@ init_sexpr(Oid foid, Oid input_collation, Expr *node,
 		else if (functypclass == TYPEFUNC_SCALAR)
 		{
 			/* Base data type, i.e. scalar */
-			tupdesc = CreateTemplateTupleDesc(1, false);
+			tupdesc = CreateTemplateTupleDesc(1);
 			TupleDescInitEntry(tupdesc,
 							   (AttrNumber) 1,
 							   NULL,
@@ -820,9 +843,9 @@ ExecEvalFuncArgs(FunctionCallInfo fcinfo,
 	{
 		ExprState  *argstate = (ExprState *) lfirst(arg);
 
-		fcinfo->arg[i] = ExecEvalExpr(argstate,
-									  econtext,
-									  &fcinfo->argnull[i]);
+		fcinfo->args[i].value = ExecEvalExpr(argstate,
+											 econtext,
+											 &fcinfo->args[i].isnull);
 		i++;
 	}
 
@@ -873,7 +896,8 @@ ExecPrepareTuplestoreResult(SetExprState *sexpr,
 			slotDesc = NULL;	/* keep compiler quiet */
 		}
 
-		sexpr->funcResultSlot = MakeSingleTupleTableSlot(slotDesc);
+		sexpr->funcResultSlot = MakeSingleTupleTableSlot(slotDesc,
+														 &TTSOpsMinimalTuple);
 		MemoryContextSwitchTo(oldcontext);
 	}
 

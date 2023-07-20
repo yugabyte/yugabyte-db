@@ -3,17 +3,16 @@
  *
  *	utility functions
  *
- *	Copyright (c) 2010-2018, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/util.c
  */
 
 #include "postgres_fe.h"
 
-#include "common/username.h"
-#include "pg_upgrade.h"
-
 #include <signal.h>
 
+#include "common/username.h"
+#include "pg_upgrade.h"
 
 LogOpts		log_opts;
 
@@ -39,17 +38,65 @@ report_status(eLogType type, const char *fmt,...)
 }
 
 
-/* force blank output for progress display */
 void
 end_progress_output(void)
 {
 	/*
-	 * In case nothing printed; pass a space so gcc doesn't complain about
-	 * empty format string.
+	 * For output to a tty, erase prior contents of progress line. When either
+	 * tty or verbose, indent so that report_status() output will align
+	 * nicely.
 	 */
-	prep_status(" ");
+	if (log_opts.isatty)
+	{
+		printf("\r");
+		pg_log(PG_REPORT, "%-*s", MESSAGE_WIDTH, "");
+	}
+	else if (log_opts.verbose)
+		pg_log(PG_REPORT, "%-*s", MESSAGE_WIDTH, "");
 }
 
+/*
+ * Remove any logs generated internally.  To be used once when exiting.
+ */
+void
+cleanup_output_dirs(void)
+{
+	fclose(log_opts.internal);
+
+	/* Remove dump and log files? */
+	if (log_opts.retain)
+		return;
+
+	(void) rmtree(log_opts.basedir, true);
+
+	/* Remove pg_upgrade_output.d only if empty */
+	switch (pg_check_dir(log_opts.rootdir))
+	{
+		case 0:					/* non-existent */
+		case 3:					/* exists and contains a mount point */
+			Assert(false);
+			break;
+
+		case 1:					/* exists and empty */
+		case 2:					/* exists and contains only dot files */
+			(void) rmtree(log_opts.rootdir, true);
+			break;
+
+		case 4:					/* exists */
+
+			/*
+			 * Keep the root directory as this includes some past log
+			 * activity.
+			 */
+			break;
+
+		default:
+			/* different failure, just report it */
+			pg_log(PG_WARNING, "could not access directory \"%s\": %m\n",
+				   log_opts.rootdir);
+			break;
+	}
+}
 
 /*
  * prep_status
@@ -76,13 +123,42 @@ prep_status(const char *fmt,...)
 	vsnprintf(message, sizeof(message), fmt, args);
 	va_end(args);
 
-	if (strlen(message) > 0 && message[strlen(message) - 1] == '\n')
-		pg_log(PG_REPORT, "%s", message);
-	else
-		/* trim strings that don't end in a newline */
-		pg_log(PG_REPORT, "%-*s", MESSAGE_WIDTH, message);
+	/* trim strings */
+	pg_log(PG_REPORT, "%-*s", MESSAGE_WIDTH, message);
 }
 
+/*
+ * prep_status_progress
+ *
+ *   Like prep_status(), but for potentially longer running operations.
+ *   Details about what item is currently being processed can be displayed
+ *   with pg_log(PG_STATUS, ...). A typical sequence would look like this:
+ *
+ *   prep_status_progress("copying files");
+ *   for (...)
+ *     pg_log(PG_STATUS, "%s", filename);
+ *   end_progress_output();
+ *   report_status(PG_REPORT, "ok");
+ */
+void
+prep_status_progress(const char *fmt,...)
+{
+	va_list		args;
+	char		message[MAX_STRING];
+
+	va_start(args, fmt);
+	vsnprintf(message, sizeof(message), fmt, args);
+	va_end(args);
+
+	/*
+	 * If outputting to a tty or in verbose, append newline. pg_log_v() will
+	 * put the individual progress items onto the next line.
+	 */
+	if (log_opts.isatty || log_opts.verbose)
+		pg_log(PG_REPORT, "%-*s\n", MESSAGE_WIDTH, message);
+	else
+		pg_log(PG_REPORT, "%-*s", MESSAGE_WIDTH, message);
+}
 
 static void
 pg_log_v(eLogType type, const char *fmt, va_list ap)
@@ -112,8 +188,16 @@ pg_log_v(eLogType type, const char *fmt, va_list ap)
 			break;
 
 		case PG_STATUS:
-			/* for output to a display, do leading truncation and append \r */
-			if (isatty(fileno(stdout)))
+
+			/*
+			 * For output to a display, do leading truncation. Append \r so
+			 * that the next message is output at the start of the line.
+			 *
+			 * If going to non-interactive output, only display progress if
+			 * verbose is enabled. Otherwise the output gets unreasonably
+			 * large by default.
+			 */
+			if (log_opts.isatty)
 				/* -2 because we use a 2-space indent */
 				printf("  %s%-*.*s\r",
 				/* prefix with "..." if we do leading truncation */
@@ -122,7 +206,7 @@ pg_log_v(eLogType type, const char *fmt, va_list ap)
 				/* optional leading truncation */
 					   strlen(message) <= MESSAGE_WIDTH - 2 ? message :
 					   message + strlen(message) - MESSAGE_WIDTH + 3 + 2);
-			else
+			else if (log_opts.verbose)
 				printf("  %s\n", message);
 			break;
 
@@ -241,40 +325,4 @@ unsigned int
 str2uint(const char *str)
 {
 	return strtoul(str, NULL, 10);
-}
-
-
-/*
- *	pg_putenv()
- *
- *	This is like putenv(), but takes two arguments.
- *	It also does unsetenv() if val is NULL.
- */
-void
-pg_putenv(const char *var, const char *val)
-{
-	if (val)
-	{
-#ifndef WIN32
-		char	   *envstr;
-
-		envstr = psprintf("%s=%s", var, val);
-		putenv(envstr);
-
-		/*
-		 * Do not free envstr because it becomes part of the environment on
-		 * some operating systems.  See port/unsetenv.c::unsetenv.
-		 */
-#else
-		SetEnvironmentVariableA(var, val);
-#endif
-	}
-	else
-	{
-#ifndef WIN32
-		unsetenv(var);
-#else
-		SetEnvironmentVariableA(var, "");
-#endif
-	}
 }

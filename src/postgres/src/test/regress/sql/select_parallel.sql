@@ -5,9 +5,7 @@
 create function sp_parallel_restricted(int) returns int as
   $$begin return $1; end$$ language plpgsql parallel restricted;
 
--- Serializable isolation would disable parallel query, so explicitly use an
--- arbitrary other level.
-begin isolation level repeatable read;
+begin;
 
 -- encourage use of parallel plans
 set parallel_setup_cost=0;
@@ -168,9 +166,29 @@ select * from
   (select count(*) from tenk1 where thousand > 99) ss
   right join (values (1),(2),(3)) v(x) on true;
 
-reset enable_material;
+-- test rescans for a Limit node with a parallel node beneath it.
 reset enable_seqscan;
+set enable_indexonlyscan to off;
+set enable_indexscan to off;
+alter table tenk1 set (parallel_workers = 0);
+alter table tenk2 set (parallel_workers = 1);
+explain (costs off)
+select count(*) from tenk1
+  left join (select tenk2.unique1 from tenk2 order by 1 limit 1000) ss
+  on tenk1.unique1 < ss.unique1 + 1
+  where tenk1.unique1 < 2;
+select count(*) from tenk1
+  left join (select tenk2.unique1 from tenk2 order by 1 limit 1000) ss
+  on tenk1.unique1 < ss.unique1 + 1
+  where tenk1.unique1 < 2;
+--reset the value of workers for each table as it was before this test.
+alter table tenk1 set (parallel_workers = 4);
+alter table tenk2 reset (parallel_workers);
+
+reset enable_material;
 reset enable_bitmapscan;
+reset enable_indexonlyscan;
+reset enable_indexscan;
 
 -- test parallel bitmap heap scan.
 set enable_seqscan to off;
@@ -411,6 +429,16 @@ ORDER BY 1;
 SELECT * FROM information_schema.foreign_data_wrapper_options
 ORDER BY 1, 2, 3;
 
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT generate_series(1, two), array(select generate_series(1, two))
+  FROM tenk1 ORDER BY tenthous;
+
+-- must disallow pushing sort below gather when pathkey contains an SRF
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT unnest(ARRAY[]::integer[]) + 1 AS pathkey
+  FROM tenk1 t1 JOIN tenk1 t2 ON TRUE
+  ORDER BY pathkey;
+
 -- test passing expanded-value representations to workers
 CREATE FUNCTION make_some_array(int,int) returns int[] as
 $$declare x int[];
@@ -428,9 +456,9 @@ EXECUTE pstmt('1', make_some_array(1,2));
 DEALLOCATE pstmt;
 
 -- test interaction between subquery and partial_paths
-SET LOCAL min_parallel_table_scan_size TO 0;
 CREATE VIEW tenk1_vw_sec WITH (security_barrier) AS SELECT * FROM tenk1;
 EXPLAIN (COSTS OFF)
-SELECT 1 FROM tenk1_vw_sec WHERE EXISTS (SELECT 1 WHERE unique1 = 0);
+SELECT 1 FROM tenk1_vw_sec
+  WHERE (SELECT sum(f1) FROM int4_tbl WHERE f1 < unique1) < 100;
 
 rollback;

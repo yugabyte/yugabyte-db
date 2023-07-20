@@ -342,17 +342,6 @@ CREATE RULE "_RETURN" AS ON SELECT TO myview DO INSTEAD
 </para>
 
 <para>
-For the example, we need a little <literal>min</literal> function that
-returns the lower of 2 integer values. We create that as:
-
-<programlisting>
-CREATE FUNCTION min(integer, integer) RETURNS integer AS $$
-    SELECT CASE WHEN $1 &lt; $2 THEN $1 ELSE $2 END
-$$ LANGUAGE SQL STRICT;
-</programlisting>
-</para>
-
-<para>
     The real tables we need in the first two rule system descriptions
     are these:
 
@@ -414,7 +403,7 @@ CREATE VIEW shoe_ready AS
            rsh.sh_avail,
            rsl.sl_name,
            rsl.sl_avail,
-           min(rsh.sh_avail, rsl.sl_avail) AS total_avail
+           least(rsh.sh_avail, rsl.sl_avail) AS total_avail
       FROM shoe rsh, shoelace rsl
      WHERE rsl.sl_color = rsh.slcolor
        AND rsl.sl_len_cm &gt;= rsh.slminlen_cm
@@ -557,7 +546,7 @@ SELECT shoelace.sl_name, shoelace.sl_avail,
 <para>
     Now we want to write a query that finds out for which shoes currently in the store
     we have the matching shoelaces (color and length) and where the
-    total number of exactly matching pairs is greater or equal to two.
+    total number of exactly matching pairs is greater than or equal to two.
 
 <programlisting>
 SELECT * FROM shoe_ready WHERE total_avail &gt;= 2;
@@ -593,7 +582,7 @@ SELECT shoe_ready.shoename, shoe_ready.sh_avail,
                rsh.sh_avail,
                rsl.sl_name,
                rsl.sl_avail,
-               min(rsh.sh_avail, rsl.sl_avail) AS total_avail
+               least(rsh.sh_avail, rsl.sl_avail) AS total_avail
           FROM shoe rsh, shoelace rsl
          WHERE rsl.sl_color = rsh.slcolor
            AND rsl.sl_len_cm &gt;= rsh.slminlen_cm
@@ -613,7 +602,7 @@ SELECT shoe_ready.shoename, shoe_ready.sh_avail,
                rsh.sh_avail,
                rsl.sl_name,
                rsl.sl_avail,
-               min(rsh.sh_avail, rsl.sl_avail) AS total_avail
+               least(rsh.sh_avail, rsl.sl_avail) AS total_avail
           FROM (SELECT sh.shoename,
                        sh.sh_avail,
                        sh.slcolor,
@@ -640,16 +629,11 @@ SELECT shoe_ready.shoename, shoe_ready.sh_avail,
    </para>
 
    <para>
-    It turns out that the planner will collapse this tree into a
-    two-level query tree: the bottommost <command>SELECT</command>
-    commands will be <quote>pulled up</quote> into the middle
-    <command>SELECT</command> since there's no need to process them
-    separately.  But the middle <command>SELECT</command> will remain
-    separate from the top, because it contains aggregate functions.
-    If we pulled those up it would change the behavior of the topmost
-    <command>SELECT</command>, which we don't want.  However,
-    collapsing the query tree is an optimization that the rewrite
-    system doesn't have to concern itself with.
+    This might look inefficient, but the planner will collapse this into a
+    single-level query tree by <quote>pulling up</quote> the subqueries,
+    and then it will plan the joins just as if we'd written them out
+    manually.  So collapsing the query tree is an optimization that the
+    rewrite system doesn't have to concern itself with.
    </para>
 </sect2>
 
@@ -785,7 +769,7 @@ SELECT t1.a, t2.b, t1.ctid FROM t1, t2 WHERE t1.a = t2.a;
 </para>
 
 <para>
-    The benefit of implementing views with the rule system is,
+    The benefit of implementing views with the rule system is
     that the planner has all
     the information about which tables have to be scanned plus the
     relationships between these tables plus the restrictive
@@ -797,7 +781,7 @@ SELECT t1.a, t2.b, t1.ctid FROM t1, t2 WHERE t1.a = t2.a;
     the best path to execute the query, and the more information
     the planner has, the better this decision can be. And
     the rule system as implemented in <productname>PostgreSQL</productname>
-    ensures, that this is all information available about the query
+    ensures that this is all information available about the query
     up to that point.
 </para>
 </sect2>
@@ -813,6 +797,10 @@ SELECT t1.a, t2.b, t1.ctid FROM t1, t2 WHERE t1.a = t2.a;
     relation points at a subquery range-table entry, which will not
     work.  There are several ways in which <productname>PostgreSQL</productname>
     can support the appearance of updating a view, however.
+    In order of user-experienced complexity those are: automatically substitute
+    in the underlying table for the view, execute a user-defined trigger,
+    or rewrite the query per a user-defined rule.
+    These options are discussed below.
 </para>
 
 <para>
@@ -828,7 +816,8 @@ SELECT t1.a, t2.b, t1.ctid FROM t1, t2 WHERE t1.a = t2.a;
 
 <para>
     Alternatively, the operation may be handled by a user-provided
-    <literal>INSTEAD OF</literal> trigger on the view.
+    <literal>INSTEAD OF</literal> trigger on the view
+    (see <xref linkend="sql-createtrigger"/>).
     Rewriting works slightly differently
     in this case.  For <command>INSERT</command>, the rewriter does
     nothing at all with the view, leaving it as the result relation
@@ -973,9 +962,6 @@ CREATE MATERIALIZED VIEW sales_summary AS
     WHERE invoice_date &lt; CURRENT_DATE
     GROUP BY
       seller_no,
-      invoice_date
-    ORDER BY
-      seller_no,
       invoice_date;
 
 CREATE UNIQUE INDEX sales_summary_seller
@@ -1024,7 +1010,7 @@ VACUUM ANALYZE wrd;
 <programlisting>
 SELECT count(*) FROM words WHERE word = 'caterpiler';
 
- count 
+ count
 -------
      0
 (1 row)
@@ -1055,12 +1041,13 @@ SELECT count(*) FROM words WHERE word = 'caterpiler';
 </programlisting>
 
     Either way, the word is spelled wrong, so let's look for what we might
-    have wanted.  Again using <literal>file_fdw</literal>:
+    have wanted.  Again using <literal>file_fdw</literal> and
+    <literal>pg_trgm</literal>:
 
 <programlisting>
 SELECT word FROM words ORDER BY word &lt;-&gt; 'caterpiler' LIMIT 10;
 
-     word     
+     word
 ---------------
  cater
  caterpillar
@@ -1281,7 +1268,7 @@ CREATE [ OR REPLACE ] RULE <replaceable class="parameter">name</replaceable> AS 
 <para>
     The query trees generated from rule actions are thrown into the
     rewrite system again, and maybe more rules get applied resulting
-    in more or less query trees.
+    in additional or fewer query trees.
     So a rule's actions must have either a different
     command type or a different result relation than the rule itself is
     on, otherwise this recursive process will end up in an infinite loop.
@@ -1350,7 +1337,7 @@ UPDATE shoelace_data SET sl_avail = 6 WHERE sl_name = 'sl7';
 <programlisting>
 SELECT * FROM shoelace_log;
 
- sl_name | sl_avail | log_who | log_when                        
+ sl_name | sl_avail | log_who | log_when
 ---------+----------+---------+----------------------------------
  sl7     |        6 | Al      | Tue Oct 20 16:14:45 1998 MET DST
 (1 row)
@@ -1731,7 +1718,7 @@ SELECT * FROM shoelace ORDER BY sl_name;
 
 SELECT * FROM shoelace_log;
 
- sl_name | sl_avail | log_who| log_when                        
+ sl_name | sl_avail | log_who| log_when
 ---------+----------+--------+----------------------------------
  sl7     |        6 | Al     | Tue Oct 20 19:14:45 1998 MET DST
  sl3     |       10 | Al     | Tue Oct 20 19:25:16 1998 MET DST
@@ -1956,7 +1943,7 @@ DELETE FROM shoelace WHERE EXISTS
              WHERE sl_name = shoelace.sl_name);
 </programlisting>
 
-    <foreignphrase>Voil&agrave;</foreignphrase>:
+    The results are:
 
 <programlisting>
 SELECT * FROM shoelace;
@@ -2020,11 +2007,14 @@ SELECT * FROM shoelace;
     a relation (table or view) is automatically the owner of the
     rewrite rules that are defined for it.
     The <productname>PostgreSQL</productname> rule system changes the
-    behavior of the default access control system. Relations that
-    are used due to rules get checked against the
+    behavior of the default access control system. With the exception of
+    <literal>SELECT</literal> rules associated with security invoker views
+    (see <link linkend="sql-createview"><command>CREATE VIEW</command></link>),
+    all relations that are used due to rules get checked against the
     privileges of the rule owner, not the user invoking the rule.
-    This means that users only need the required privileges
-    for the tables/views that are explicitly named in their queries.
+    This means that, except for security invoker views, users only need the
+    required privileges for the tables/views that are explicitly named in
+    their queries.
 </para>
 
 <para>
@@ -2102,7 +2092,7 @@ CREATE FUNCTION tricky(text, text) RETURNS bool AS $$
 BEGIN
     RAISE NOTICE '% =&gt; %', $1, $2;
     RETURN true;
-END
+END;
 $$ LANGUAGE plpgsql COST 0.0000000000000000000001;
 
 SELECT * FROM phone_number WHERE tricky(person, phone);
@@ -2133,7 +2123,7 @@ SELECT * FROM phone_number WHERE tricky(person, phone);
 </para>
 
 <para>
-    When it is necessary for a view to provide row level security, the
+    When it is necessary for a view to provide row-level security, the
     <literal>security_barrier</literal> attribute should be applied to
     the view.  This prevents maliciously-chosen functions and operators from
     being passed values from rows until after the view has done its work.  For
@@ -2433,30 +2423,6 @@ Nestloop
     will be more or less independent from the number of affected rows
     in a command.
 </para>
-
-<!-- What's happening with this?  If it doesn't come back, remove this section. -->
-<!--
-<para>
-    Another situation is cases on <command>UPDATE</command> where it depends on the
-    change of an attribute if an action should be performed or
-    not. The only way to
-    create a rule as in the shoelace_log example is to do it with
-    a rule qualification. That results in an extra query that is
-    performed always, even if the attribute of interest cannot
-    change at all because it does not appear in the target list
-    of the initial query. When this is enabled again, it will be
-    one more advantage of rules over triggers. Optimization of
-    a trigger must fail by definition in this case, because the
-    fact that its actions will only be done when a specific attribute
-    is updated is hidden in its functionality. The definition of
-    a trigger only allows to specify it on row level, so whenever a
-    row is touched, the trigger must be called to make its
-    decision. The rule system will know it by looking up the
-    target list and will suppress the additional query completely
-    if the attribute isn't touched. So the rule, qualified or not,
-    will only do its scans if there ever could be something to do.
-</para>
--->
 
 <para>
     The summary is, rules will only be significantly slower than

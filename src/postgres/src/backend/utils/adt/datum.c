@@ -3,7 +3,7 @@
  * datum.c
  *	  POSTGRES Datum (abstract data type) manipulation routines.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -42,6 +42,10 @@
 
 #include "postgres.h"
 
+#include "access/detoast.h"
+#include "common/hashfn.h"
+#include "fmgr.h"
+#include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/expandeddatum.h"
 
@@ -249,6 +253,152 @@ datumIsEqual(Datum value1, Datum value2, bool typByVal, int typLen)
 		res = (memcmp(s1, s2, size1) == 0);
 	}
 	return res;
+}
+
+/*-------------------------------------------------------------------------
+ * datum_image_eq
+ *
+ * Compares two datums for identical contents, based on byte images.  Return
+ * true if the two datums are equal, false otherwise.
+ *-------------------------------------------------------------------------
+ */
+bool
+datum_image_eq(Datum value1, Datum value2, bool typByVal, int typLen)
+{
+	Size		len1,
+				len2;
+	bool		result = true;
+
+	if (typByVal)
+	{
+		result = (value1 == value2);
+	}
+	else if (typLen > 0)
+	{
+		result = (memcmp(DatumGetPointer(value1),
+						 DatumGetPointer(value2),
+						 typLen) == 0);
+	}
+	else if (typLen == -1)
+	{
+		len1 = toast_raw_datum_size(value1);
+		len2 = toast_raw_datum_size(value2);
+		/* No need to de-toast if lengths don't match. */
+		if (len1 != len2)
+			result = false;
+		else
+		{
+			struct varlena *arg1val;
+			struct varlena *arg2val;
+
+			arg1val = PG_DETOAST_DATUM_PACKED(value1);
+			arg2val = PG_DETOAST_DATUM_PACKED(value2);
+
+			result = (memcmp(VARDATA_ANY(arg1val),
+							 VARDATA_ANY(arg2val),
+							 len1 - VARHDRSZ) == 0);
+
+			/* Only free memory if it's a copy made here. */
+			if ((Pointer) arg1val != (Pointer) value1)
+				pfree(arg1val);
+			if ((Pointer) arg2val != (Pointer) value2)
+				pfree(arg2val);
+		}
+	}
+	else if (typLen == -2)
+	{
+		char	   *s1,
+				   *s2;
+
+		/* Compare cstring datums */
+		s1 = DatumGetCString(value1);
+		s2 = DatumGetCString(value2);
+		len1 = strlen(s1) + 1;
+		len2 = strlen(s2) + 1;
+		if (len1 != len2)
+			return false;
+		result = (memcmp(s1, s2, len1) == 0);
+	}
+	else
+		elog(ERROR, "unexpected typLen: %d", typLen);
+
+	return result;
+}
+
+/*-------------------------------------------------------------------------
+ * datum_image_hash
+ *
+ * Generate a hash value based on the binary representation of 'value'.  Most
+ * use cases will want to use the hash function specific to the Datum's type,
+ * however, some corner cases require generating a hash value based on the
+ * actual bits rather than the logical value.
+ *-------------------------------------------------------------------------
+ */
+uint32
+datum_image_hash(Datum value, bool typByVal, int typLen)
+{
+	Size		len;
+	uint32		result;
+
+	if (typByVal)
+		result = hash_bytes((unsigned char *) &value, sizeof(Datum));
+	else if (typLen > 0)
+		result = hash_bytes((unsigned char *) DatumGetPointer(value), typLen);
+	else if (typLen == -1)
+	{
+		struct varlena *val;
+
+		len = toast_raw_datum_size(value);
+
+		val = PG_DETOAST_DATUM_PACKED(value);
+
+		result = hash_bytes((unsigned char *) VARDATA_ANY(val), len - VARHDRSZ);
+
+		/* Only free memory if it's a copy made here. */
+		if ((Pointer) val != (Pointer) value)
+			pfree(val);
+	}
+	else if (typLen == -2)
+	{
+		char	   *s;
+
+		s = DatumGetCString(value);
+		len = strlen(s) + 1;
+
+		result = hash_bytes((unsigned char *) s, len);
+	}
+	else
+	{
+		elog(ERROR, "unexpected typLen: %d", typLen);
+		result = 0;				/* keep compiler quiet */
+	}
+
+	return result;
+}
+
+/*-------------------------------------------------------------------------
+ * btequalimage
+ *
+ * Generic "equalimage" support function.
+ *
+ * B-Tree operator classes whose equality function could safely be replaced by
+ * datum_image_eq() in all cases can use this as their "equalimage" support
+ * function.
+ *
+ * Currently, we unconditionally assume that any B-Tree operator class that
+ * registers btequalimage as its support function 4 must be able to safely use
+ * optimizations like deduplication (i.e. we return true unconditionally).  If
+ * it ever proved necessary to rescind support for an operator class, we could
+ * do that in a targeted fashion by doing something with the opcintype
+ * argument.
+ *-------------------------------------------------------------------------
+ */
+Datum
+btequalimage(PG_FUNCTION_ARGS)
+{
+	/* Oid		opcintype = PG_GETARG_OID(0); */
+
+	PG_RETURN_BOOL(true);
 }
 
 /*-------------------------------------------------------------------------

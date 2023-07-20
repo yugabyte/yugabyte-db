@@ -4,7 +4,7 @@
  *	  POSTGRES heap access XLOG definitions.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/heapam_xlog.h
@@ -51,9 +51,9 @@
  * these, too.
  */
 #define XLOG_HEAP2_REWRITE		0x00
-#define XLOG_HEAP2_CLEAN		0x10
-#define XLOG_HEAP2_FREEZE_PAGE	0x20
-#define XLOG_HEAP2_CLEANUP_INFO 0x30
+#define XLOG_HEAP2_PRUNE		0x10
+#define XLOG_HEAP2_VACUUM		0x20
+#define XLOG_HEAP2_FREEZE_PAGE	0x30
 #define XLOG_HEAP2_VISIBLE		0x40
 #define XLOG_HEAP2_MULTI_INSERT 0x50
 #define XLOG_HEAP2_LOCK_UPDATED 0x60
@@ -67,6 +67,10 @@
 #define XLH_INSERT_LAST_IN_MULTI				(1<<1)
 #define XLH_INSERT_IS_SPECULATIVE				(1<<2)
 #define XLH_INSERT_CONTAINS_NEW_TUPLE			(1<<3)
+#define XLH_INSERT_ON_TOAST_RELATION			(1<<4)
+
+/* all_frozen_set always implies all_visible_set */
+#define XLH_INSERT_ALL_FROZEN_SET				(1<<5)
 
 /*
  * xl_heap_update flag values, 8 bits are available.
@@ -111,7 +115,7 @@ typedef struct xl_heap_delete
 #define SizeOfHeapDelete	(offsetof(xl_heap_delete, flags) + sizeof(uint8))
 
 /*
- * xl_heap_delete flag values, 8 bits are available.
+ * xl_heap_truncate flag values, 8 bits are available.
  */
 #define XLH_TRUNCATE_CASCADE					(1<<0)
 #define XLH_TRUNCATE_RESTART_SEQS				(1<<1)
@@ -136,8 +140,6 @@ typedef struct xl_heap_truncate
  * or updated tuple in WAL; we can save a few bytes by reconstructing the
  * fields that are available elsewhere in the WAL record, or perhaps just
  * plain needn't be reconstructed.  These are the fields we must store.
- * NOTE: t_hoff could be recomputed, but we may as well store it because
- * it will come for free due to alignment considerations.
  */
 typedef struct xl_heap_header
 {
@@ -168,7 +170,7 @@ typedef struct xl_heap_insert
  *
  * In block 0's data portion, there is an xl_multi_insert_tuple struct,
  * followed by the tuple data for each tuple. There is padding to align
- * each xl_multi_insert struct.
+ * each xl_multi_insert_tuple struct.
  */
 typedef struct xl_heap_multi_insert
 {
@@ -225,7 +227,8 @@ typedef struct xl_heap_update
 #define SizeOfHeapUpdate	(offsetof(xl_heap_update, new_offnum) + sizeof(OffsetNumber))
 
 /*
- * This is what we need to know about vacuum page cleanup/redirect
+ * This is what we need to know about page pruning (both during VACUUM and
+ * during opportunistic pruning)
  *
  * The array of OffsetNumbers following the fixed part of the record contains:
  *	* for each redirected item: the item offset, then the offset redirected to
@@ -234,29 +237,32 @@ typedef struct xl_heap_update
  * The total number of OffsetNumbers is therefore 2*nredirected+ndead+nunused.
  * Note that nunused is not explicitly stored, but may be found by reference
  * to the total record length.
+ *
+ * Acquires a full cleanup lock.
  */
-typedef struct xl_heap_clean
+typedef struct xl_heap_prune
 {
 	TransactionId latestRemovedXid;
 	uint16		nredirected;
 	uint16		ndead;
 	/* OFFSET NUMBERS are in the block reference 0 */
-} xl_heap_clean;
+} xl_heap_prune;
 
-#define SizeOfHeapClean (offsetof(xl_heap_clean, ndead) + sizeof(uint16))
+#define SizeOfHeapPrune (offsetof(xl_heap_prune, ndead) + sizeof(uint16))
 
 /*
- * Cleanup_info is required in some cases during a lazy VACUUM.
- * Used for reporting the results of HeapTupleHeaderAdvanceLatestRemovedXid()
- * see vacuumlazy.c for full explanation
+ * The vacuum page record is similar to the prune record, but can only mark
+ * already LP_DEAD items LP_UNUSED (during VACUUM's second heap pass)
+ *
+ * Acquires an ordinary exclusive lock only.
  */
-typedef struct xl_heap_cleanup_info
+typedef struct xl_heap_vacuum
 {
-	RelFileNode node;
-	TransactionId latestRemovedXid;
-} xl_heap_cleanup_info;
+	uint16		nunused;
+	/* OFFSET NUMBERS are in the block reference 0 */
+} xl_heap_vacuum;
 
-#define SizeOfHeapCleanupInfo (sizeof(xl_heap_cleanup_info))
+#define SizeOfHeapVacuum (offsetof(xl_heap_vacuum, nunused) + sizeof(uint16))
 
 /* flags for infobits_set */
 #define XLHL_XMAX_IS_MULTI		0x01
@@ -384,7 +390,7 @@ typedef struct xl_heap_rewrite_mapping
 } xl_heap_rewrite_mapping;
 
 extern void HeapTupleHeaderAdvanceLatestRemovedXid(HeapTupleHeader tuple,
-									   TransactionId *latestRemovedXid);
+												   TransactionId *latestRemovedXid);
 
 extern void heap_redo(XLogReaderState *record);
 extern void heap_desc(StringInfo buf, XLogReaderState *record);
@@ -395,26 +401,21 @@ extern void heap2_desc(StringInfo buf, XLogReaderState *record);
 extern const char *heap2_identify(uint8 info);
 extern void heap_xlog_logical_rewrite(XLogReaderState *r);
 
-extern XLogRecPtr log_heap_cleanup_info(RelFileNode rnode,
-					  TransactionId latestRemovedXid);
-extern XLogRecPtr log_heap_clean(Relation reln, Buffer buffer,
-			   OffsetNumber *redirected, int nredirected,
-			   OffsetNumber *nowdead, int ndead,
-			   OffsetNumber *nowunused, int nunused,
-			   TransactionId latestRemovedXid);
 extern XLogRecPtr log_heap_freeze(Relation reln, Buffer buffer,
-				TransactionId cutoff_xid, xl_heap_freeze_tuple *tuples,
-				int ntuples);
+								  TransactionId cutoff_xid, xl_heap_freeze_tuple *tuples,
+								  int ntuples);
 extern bool heap_prepare_freeze_tuple(HeapTupleHeader tuple,
-						  TransactionId relfrozenxid,
-						  TransactionId relminmxid,
-						  TransactionId cutoff_xid,
-						  TransactionId cutoff_multi,
-						  xl_heap_freeze_tuple *frz,
-						  bool *totally_frozen);
+									  TransactionId relfrozenxid,
+									  TransactionId relminmxid,
+									  TransactionId cutoff_xid,
+									  TransactionId cutoff_multi,
+									  xl_heap_freeze_tuple *frz,
+									  bool *totally_frozen,
+									  TransactionId *relfrozenxid_out,
+									  MultiXactId *relminmxid_out);
 extern void heap_execute_freeze_tuple(HeapTupleHeader tuple,
-						  xl_heap_freeze_tuple *xlrec_tp);
+									  xl_heap_freeze_tuple *xlrec_tp);
 extern XLogRecPtr log_heap_visible(RelFileNode rnode, Buffer heap_buffer,
-				 Buffer vm_buffer, TransactionId cutoff_xid, uint8 flags);
+								   Buffer vm_buffer, TransactionId cutoff_xid, uint8 flags);
 
 #endif							/* HEAPAM_XLOG_H */

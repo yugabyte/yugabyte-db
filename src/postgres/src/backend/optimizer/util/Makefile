@@ -12,8 +12,21 @@ subdir = src/backend/optimizer/util
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
-OBJS = clauses.o joininfo.o orclauses.o \
-       paramassign.o pathnode.o placeholder.o \
-       plancat.o predtest.o relnode.o restrictinfo.o tlist.o var.o ybcplan.o
+OBJS = \
+	appendinfo.o \
+	clauses.o \
+	inherit.o \
+	joininfo.o \
+	orclauses.o \
+	paramassign.o \
+	pathnode.o \
+	placeholder.o \
+	plancat.o \
+	predtest.o \
+	relnode.o \
+	restrictinfo.o \
+	tlist.o \
+	var.o \
+	ybcplan.o
 
 include $(top_srcdir)/src/backend/common.mk

@@ -7,7 +7,7 @@
  * equivalent but might have columns in a different order or different sets of
  * dropped columns.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -18,22 +18,20 @@
  */
 #include "postgres.h"
 
-#include "access/htup_details.h"
-#include "access/sysattr.h"
 #include "access/tupconvert.h"
 #include "executor/tuptable.h"
-#include "utils/builtins.h"
 
 #include "pg_yb_utils.h"
+#include "access/sysattr.h"
 
 /*
  * The conversion setup routines have the following common API:
  *
- * The setup routine checks whether the given source and destination tuple
- * descriptors are logically compatible.  If not, it throws an error.
- * If so, it returns NULL if they are physically compatible (ie, no conversion
- * is needed), else a TupleConversionMap that can be used by execute_attr_map_tuple
- * to perform the conversion.
+ * The setup routine checks using attmap.c whether the given source and
+ * destination tuple descriptors are logically compatible.  If not, it throws
+ * an error.  If so, it returns NULL if they are physically compatible (ie, no
+ * conversion is needed), else a TupleConversionMap that can be used by
+ * execute_attr_map_tuple or execute_attr_map_slot to perform the conversion.
  *
  * The TupleConversionMap, if needed, is palloc'd in the caller's memory
  * context.  Also, the given tuple descriptors are referenced by the map,
@@ -58,10 +56,6 @@
 /*
  * Set up for tuple conversion, matching input and output columns by
  * position.  (Dropped columns are ignored in both input and output.)
- *
- * Note: the errdetail messages speak of indesc as the "returned" rowtype,
- * outdesc as the "expected" rowtype.  This is okay for current uses but
- * might need generalization in future.
  */
 TupleConversionMap *
 convert_tuples_by_position(TupleDesc indesc,
@@ -69,117 +63,15 @@ convert_tuples_by_position(TupleDesc indesc,
 						   const char *msg)
 {
 	TupleConversionMap *map;
-	AttrNumber *attrMap;
-	int			nincols;
-	int			noutcols;
 	int			n;
-	int			i;
-	int			j;
-	bool		same;
+	AttrMap    *attrMap;
 
 	/* Verify compatibility and prepare attribute-number map */
-	n = outdesc->natts;
-	attrMap = (AttrNumber *) palloc0(n * sizeof(AttrNumber));
-	j = 0;						/* j is next physical input attribute */
-	nincols = noutcols = 0;		/* these count non-dropped attributes */
-	same = true;
-	for (i = 0; i < n; i++)
+	attrMap = build_attrmap_by_position(indesc, outdesc, msg);
+
+	if (attrMap == NULL)
 	{
-		Form_pg_attribute att = TupleDescAttr(outdesc, i);
-		Oid			atttypid;
-		int32		atttypmod;
-
-		if (att->attisdropped)
-			continue;			/* attrMap[i] is already 0 */
-		noutcols++;
-		atttypid = att->atttypid;
-		atttypmod = att->atttypmod;
-		for (; j < indesc->natts; j++)
-		{
-			att = TupleDescAttr(indesc, j);
-			if (att->attisdropped)
-				continue;
-			nincols++;
-			/* Found matching column, check type */
-			if (atttypid != att->atttypid ||
-				(atttypmod != att->atttypmod && atttypmod >= 0))
-				ereport(ERROR,
-						(errcode(ERRCODE_DATATYPE_MISMATCH),
-						 errmsg_internal("%s", _(msg)),
-						 errdetail("Returned type %s does not match expected type %s in column %d.",
-								   format_type_with_typemod(att->atttypid,
-															att->atttypmod),
-								   format_type_with_typemod(atttypid,
-															atttypmod),
-								   noutcols)));
-			attrMap[i] = (AttrNumber) (j + 1);
-			j++;
-			break;
-		}
-		if (attrMap[i] == 0)
-			same = false;		/* we'll complain below */
-	}
-
-	/* Check for unused input columns */
-	for (; j < indesc->natts; j++)
-	{
-		if (TupleDescAttr(indesc, j)->attisdropped)
-			continue;
-		nincols++;
-		same = false;			/* we'll complain below */
-	}
-
-	/* Report column count mismatch using the non-dropped-column counts */
-	if (!same)
-		ereport(ERROR,
-				(errcode(ERRCODE_DATATYPE_MISMATCH),
-				 errmsg_internal("%s", _(msg)),
-				 errdetail("Number of returned columns (%d) does not match "
-						   "expected column count (%d).",
-						   nincols, noutcols)));
-
-	/*
-	 * Check to see if the map is one-to-one, in which case we need not do a
-	 * tuple conversion.  We must also insist that both tupdescs either
-	 * specify or don't specify an OID column, else we need a conversion to
-	 * add/remove space for that.  (For some callers, presence or absence of
-	 * an OID column perhaps would not really matter, but let's be safe.)
-	 */
-	if (indesc->natts == outdesc->natts &&
-		indesc->tdhasoid == outdesc->tdhasoid)
-	{
-		for (i = 0; i < n; i++)
-		{
-			Form_pg_attribute inatt;
-			Form_pg_attribute outatt;
-
-			if (attrMap[i] == (i + 1))
-				continue;
-
-			/*
-			 * If it's a dropped column and the corresponding input column is
-			 * also dropped, we needn't convert.  However, attlen and attalign
-			 * must agree.
-			 */
-			inatt = TupleDescAttr(indesc, i);
-			outatt = TupleDescAttr(outdesc, i);
-			if (attrMap[i] == 0 &&
-				inatt->attisdropped &&
-				inatt->attlen == outatt->attlen &&
-				inatt->attalign == outatt->attalign)
-				continue;
-
-			same = false;
-			break;
-		}
-	}
-	else
-		same = false;
-
-	if (same)
-	{
-		/* Runtime conversion is not needed */
-		pfree(attrMap);
+		/* runtime conversion is not needed */
 		return NULL;
 	}
 
@@ -189,6 +81,7 @@ convert_tuples_by_position(TupleDesc indesc,
 	map->outdesc = outdesc;
 	map->attrMap = attrMap;
 	/* preallocate workspace for Datum arrays */
+	n = outdesc->natts + 1;		/* +1 for NULL */
 	map->outvalues = (Datum *) palloc(n * sizeof(Datum));
 	map->outisnull = (bool *) palloc(n * sizeof(bool));
 	n = indesc->natts + 1;		/* +1 for NULL */
@@ -209,15 +102,14 @@ convert_tuples_by_position(TupleDesc indesc,
  */
 TupleConversionMap *
 convert_tuples_by_name(TupleDesc indesc,
-					   TupleDesc outdesc,
-					   const char *msg)
+					   TupleDesc outdesc)
 {
 	TupleConversionMap *map;
-	AttrNumber *attrMap;
+	AttrMap    *attrMap;
 	int			n = outdesc->natts;
 
 	/* Verify compatibility and prepare attribute-number map */
-	attrMap = convert_tuples_by_name_map_if_req(indesc, outdesc, msg);
+	attrMap = build_attrmap_by_name_if_req(indesc, outdesc);
 
 	if (attrMap == NULL)
 	{
@@ -242,6 +134,8 @@ convert_tuples_by_name(TupleDesc indesc,
 	return map;
 }
 
+#ifdef YB_TODO
+/* YB_TODO(neil) This function is no longer in Pg15 */
 /*
  * Return a palloc'd bare attribute map for tuple conversion, matching input
  * and output columns by name.  (Dropped columns are ignored in both input and
@@ -374,6 +268,7 @@ convert_tuples_by_name_map_if_req(TupleDesc indesc,
 	else
 		return attrMap;
 }
+#endif
 
 /*
  * Perform conversion of a tuple according to the map.
@@ -381,12 +276,11 @@ convert_tuples_by_name_map_if_req(TupleDesc indesc,
 HeapTuple
 execute_attr_map_tuple(HeapTuple tuple, TupleConversionMap *map)
 {
-	AttrNumber *attrMap = map->attrMap;
+	AttrMap    *attrMap = map->attrMap;
 	Datum	   *invalues = map->invalues;
 	bool	   *inisnull = map->inisnull;
 	Datum	   *outvalues = map->outvalues;
 	bool	   *outisnull = map->outisnull;
-	int			outnatts = map->outdesc->natts;
 	int			i;
 
 	/*
@@ -399,9 +293,10 @@ execute_attr_map_tuple(HeapTuple tuple, TupleConversionMap *map)
 	/*
 	 * Transpose into proper fields of the new tuple.
 	 */
-	for (i = 0; i < outnatts; i++)
+	Assert(attrMap->maplen == map->outdesc->natts);
+	for (i = 0; i < attrMap->maplen; i++)
 	{
-		int			j = attrMap[i];
+		int			j = attrMap->attnums[i];
 
 		outvalues[i] = invalues[j];
 		outisnull[i] = inisnull[j];
@@ -417,7 +312,7 @@ execute_attr_map_tuple(HeapTuple tuple, TupleConversionMap *map)
  * Perform conversion of a tuple slot according to the map.
  */
 TupleTableSlot *
-execute_attr_map_slot(AttrNumber *attrMap,
+execute_attr_map_slot(AttrMap *attrMap,
 					  TupleTableSlot *in_slot,
 					  TupleTableSlot *out_slot)
 {
@@ -449,9 +344,9 @@ execute_attr_map_slot(AttrNumber *attrMap,
 	/* Transpose into proper fields of the out slot. */
 	for (i = 0; i < outnatts; i++)
 	{
-		int			j = attrMap[i] - 1;
+		int			j = attrMap->attnums[i] - 1;
 
-		/* attrMap[i] == 0 means it's a NULL datum. */
+		/* attrMap->attnums[i] == 0 means it's a NULL datum. */
 		if (j == -1)
 		{
 			outvalues[i] = (Datum) 0;
@@ -475,12 +370,13 @@ execute_attr_map_slot(AttrNumber *attrMap,
  * The input and output bitmaps are offset by
  * YBGetFirstLowInvalidAttributeNumber to accommodate system cols, like the
  * column-bitmaps in RangeTblEntry.
+ *
+ * Note: Postgres uses FirstLowInvalidHeapAttributeNumber.
  */
+/* YB_TODO(neil) Need to choose between attrMap and map when fixing compiling errors */
 Bitmapset *
-execute_attr_map_cols(Bitmapset *in_cols, TupleConversionMap *map, Relation rel)
+execute_attr_map_cols(AttrMap *attrMap, Bitmapset *in_cols, Relation rel)
 {
-	AttrNumber *attrMap = map->attrMap;
-	int			maplen = map->outdesc->natts;
 	Bitmapset  *out_cols;
 	int			out_attnum;
 
@@ -494,7 +390,7 @@ execute_attr_map_cols(Bitmapset *in_cols, TupleConversionMap *map, Relation rel)
 	out_cols = NULL;
 
 	for (out_attnum = YBGetFirstLowInvalidAttributeNumber(rel) + 1;
-		 out_attnum <= maplen;
+		 out_attnum <= attrMap->maplen;
 		 out_attnum++)
 	{
 		int			in_attnum;
@@ -509,14 +405,15 @@ execute_attr_map_cols(Bitmapset *in_cols, TupleConversionMap *map, Relation rel)
 		else
 		{
 			/* normal user column */
-			in_attnum = attrMap[out_attnum - 1];
+			in_attnum = attrMap->attnums[out_attnum - 1];
 
 			if (in_attnum == 0)
 				continue;
 		}
 
 		if (bms_is_member(in_attnum - YBGetFirstLowInvalidAttributeNumber(rel), in_cols))
-			out_cols = bms_add_member(out_cols, out_attnum - YBGetFirstLowInvalidAttributeNumber(rel));
+			out_cols = bms_add_member(out_cols,
+									  out_attnum - YBGetFirstLowInvalidAttributeNumber(rel));
 	}
 
 	return out_cols;
@@ -529,7 +426,7 @@ void
 free_conversion_map(TupleConversionMap *map)
 {
 	/* indesc and outdesc are not ours to free */
-	pfree(map->attrMap);
+	free_attrmap(map->attrMap);
 	pfree(map->invalues);
 	pfree(map->inisnull);
 	pfree(map->outvalues);

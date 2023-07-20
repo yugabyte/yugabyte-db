@@ -3,7 +3,7 @@
  * planner.c
  *	  The query optimizer external interface.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -18,27 +18,33 @@
 #include <limits.h>
 #include <math.h>
 
+#include "access/genam.h"
 #include "access/htup_details.h"
 #include "access/parallel.h"
 #include "access/sysattr.h"
+#include "access/table.h"
 #include "access/xact.h"
 #include "catalog/pg_constraint.h"
+#include "catalog/pg_inherits.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "executor/executor.h"
 #include "executor/nodeAgg.h"
 #include "foreign/fdwapi.h"
-#include "miscadmin.h"
 #include "jit/jit.h"
 #include "lib/bipartite_match.h"
 #include "lib/knapsack.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #ifdef OPTIMIZER_DEBUG
 #include "nodes/print.h"
 #endif
+#include "optimizer/appendinfo.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
+#include "optimizer/inherit.h"
+#include "optimizer/optimizer.h"
 #include "optimizer/paramassign.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
@@ -48,17 +54,16 @@
 #include "optimizer/prep.h"
 #include "optimizer/subselect.h"
 #include "optimizer/tlist.h"
-#include "optimizer/var.h"
 #include "parser/analyze.h"
-#include "parser/parsetree.h"
 #include "parser/parse_agg.h"
+#include "parser/parsetree.h"
+#include "partitioning/partdesc.h"
 #include "rewrite/rewriteManip.h"
 #include "storage/dsm_impl.h"
+#include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/selfuncs.h"
-#include "utils/lsyscache.h"
 #include "utils/syscache.h"
-
 
 /* GUC parameters */
 double		cursor_tuple_fraction = DEFAULT_CURSOR_TUPLE_FRACTION;
@@ -90,7 +95,6 @@ create_upper_paths_hook_type create_upper_paths_hook = NULL;
 /* Passthrough data for standard_qp_callback */
 typedef struct
 {
-	List	   *tlist;			/* preprocessed query targetlist */
 	List	   *activeWindows;	/* active windows, if any */
 	List	   *groupClause;	/* overrides parse->groupClause */
 } standard_qp_extra;
@@ -111,132 +115,141 @@ typedef struct
 	int		   *tleref_to_colnum_map;
 } grouping_sets_data;
 
+/*
+ * Temporary structure for use during WindowClause reordering in order to be
+ * able to sort WindowClauses on partitioning/ordering prefix.
+ */
+typedef struct
+{
+	WindowClause *wc;
+	List	   *uniqueOrder;	/* A List of unique ordering/partitioning
+								 * clauses per Window */
+} WindowClauseSortData;
+
 /* Local functions */
 static Node *preprocess_expression(PlannerInfo *root, Node *expr, int kind);
 static void preprocess_qual_conditions(PlannerInfo *root, Node *jtnode);
-static void inheritance_planner(PlannerInfo *root);
-static void grouping_planner(PlannerInfo *root, bool inheritance_update,
-				 double tuple_fraction);
+static void grouping_planner(PlannerInfo *root, double tuple_fraction);
 static grouping_sets_data *preprocess_grouping_sets(PlannerInfo *root);
 static List *remap_to_groupclause_idx(List *groupClause, List *gsets,
-						 int *tleref_to_colnum_map);
+									  int *tleref_to_colnum_map);
 static void preprocess_rowmarks(PlannerInfo *root);
 static double preprocess_limit(PlannerInfo *root,
-				 double tuple_fraction,
-				 int64 *offset_est, int64 *count_est);
+							   double tuple_fraction,
+							   int64 *offset_est, int64 *count_est);
 static void remove_useless_groupby_columns(PlannerInfo *root);
 static List *preprocess_groupclause(PlannerInfo *root, List *force);
 static List *extract_rollup_sets(List *groupingSets);
 static List *reorder_grouping_sets(List *groupingSets, List *sortclause);
 static void standard_qp_callback(PlannerInfo *root, void *extra);
 static double get_number_of_groups(PlannerInfo *root,
-					 double path_rows,
-					 grouping_sets_data *gd,
-					 List *target_list);
-static Size estimate_hashagg_tablesize(Path *path,
-						   const AggClauseCosts *agg_costs,
-						   double dNumGroups);
+								   double path_rows,
+								   grouping_sets_data *gd,
+								   List *target_list);
 static RelOptInfo *create_grouping_paths(PlannerInfo *root,
-					  RelOptInfo *input_rel,
-					  PathTarget *target,
-					  bool target_parallel_safe,
-					  const AggClauseCosts *agg_costs,
-					  grouping_sets_data *gd);
+										 RelOptInfo *input_rel,
+										 PathTarget *target,
+										 bool target_parallel_safe,
+										 grouping_sets_data *gd);
 static bool is_degenerate_grouping(PlannerInfo *root);
 static void create_degenerate_grouping_paths(PlannerInfo *root,
-								 RelOptInfo *input_rel,
-								 RelOptInfo *grouped_rel);
+											 RelOptInfo *input_rel,
+											 RelOptInfo *grouped_rel);
 static RelOptInfo *make_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
-				  PathTarget *target, bool target_parallel_safe,
-				  Node *havingQual);
+									 PathTarget *target, bool target_parallel_safe,
+									 Node *havingQual);
 static void create_ordinary_grouping_paths(PlannerInfo *root,
-							   RelOptInfo *input_rel,
-							   RelOptInfo *grouped_rel,
-							   const AggClauseCosts *agg_costs,
-							   grouping_sets_data *gd,
-							   GroupPathExtraData *extra,
-							   RelOptInfo **partially_grouped_rel_p);
+										   RelOptInfo *input_rel,
+										   RelOptInfo *grouped_rel,
+										   const AggClauseCosts *agg_costs,
+										   grouping_sets_data *gd,
+										   GroupPathExtraData *extra,
+										   RelOptInfo **partially_grouped_rel_p);
 static void consider_groupingsets_paths(PlannerInfo *root,
-							RelOptInfo *grouped_rel,
-							Path *path,
-							bool is_sorted,
-							bool can_hash,
-							grouping_sets_data *gd,
-							const AggClauseCosts *agg_costs,
-							double dNumGroups);
+										RelOptInfo *grouped_rel,
+										Path *path,
+										bool is_sorted,
+										bool can_hash,
+										grouping_sets_data *gd,
+										const AggClauseCosts *agg_costs,
+										double dNumGroups);
 static RelOptInfo *create_window_paths(PlannerInfo *root,
-					RelOptInfo *input_rel,
-					PathTarget *input_target,
-					PathTarget *output_target,
-					bool output_target_parallel_safe,
-					List *tlist,
-					WindowFuncLists *wflists,
-					List *activeWindows);
+									   RelOptInfo *input_rel,
+									   PathTarget *input_target,
+									   PathTarget *output_target,
+									   bool output_target_parallel_safe,
+									   WindowFuncLists *wflists,
+									   List *activeWindows);
 static void create_one_window_path(PlannerInfo *root,
-					   RelOptInfo *window_rel,
-					   Path *path,
-					   PathTarget *input_target,
-					   PathTarget *output_target,
-					   List *tlist,
-					   WindowFuncLists *wflists,
-					   List *activeWindows);
+								   RelOptInfo *window_rel,
+								   Path *path,
+								   PathTarget *input_target,
+								   PathTarget *output_target,
+								   WindowFuncLists *wflists,
+								   List *activeWindows);
 static RelOptInfo *create_distinct_paths(PlannerInfo *root,
-					  RelOptInfo *input_rel);
+										 RelOptInfo *input_rel);
+static void create_partial_distinct_paths(PlannerInfo *root,
+										  RelOptInfo *input_rel,
+										  RelOptInfo *final_distinct_rel);
+static RelOptInfo *create_final_distinct_paths(PlannerInfo *root,
+											   RelOptInfo *input_rel,
+											   RelOptInfo *distinct_rel);
 static RelOptInfo *create_ordered_paths(PlannerInfo *root,
-					 RelOptInfo *input_rel,
-					 PathTarget *target,
-					 bool target_parallel_safe,
-					 double limit_tuples);
+										RelOptInfo *input_rel,
+										PathTarget *target,
+										bool target_parallel_safe,
+										double limit_tuples);
 static PathTarget *make_group_input_target(PlannerInfo *root,
-						PathTarget *final_target);
+										   PathTarget *final_target);
 static PathTarget *make_partial_grouping_target(PlannerInfo *root,
-							 PathTarget *grouping_target,
-							 Node *havingQual);
+												PathTarget *grouping_target,
+												Node *havingQual);
 static List *postprocess_setop_tlist(List *new_tlist, List *orig_tlist);
 static List *select_active_windows(PlannerInfo *root, WindowFuncLists *wflists);
 static PathTarget *make_window_input_target(PlannerInfo *root,
-						 PathTarget *final_target,
-						 List *activeWindows);
+											PathTarget *final_target,
+											List *activeWindows);
 static List *make_pathkeys_for_window(PlannerInfo *root, WindowClause *wc,
-						 List *tlist);
+									  List *tlist);
 static PathTarget *make_sort_input_target(PlannerInfo *root,
-					   PathTarget *final_target,
-					   bool *have_postponed_srfs);
+										  PathTarget *final_target,
+										  bool *have_postponed_srfs);
 static void adjust_paths_for_srfs(PlannerInfo *root, RelOptInfo *rel,
-					  List *targets, List *targets_contain_srfs);
+								  List *targets, List *targets_contain_srfs);
 static void add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
-						  RelOptInfo *grouped_rel,
-						  RelOptInfo *partially_grouped_rel,
-						  const AggClauseCosts *agg_costs,
-						  grouping_sets_data *gd,
-						  double dNumGroups,
-						  GroupPathExtraData *extra);
+									  RelOptInfo *grouped_rel,
+									  RelOptInfo *partially_grouped_rel,
+									  const AggClauseCosts *agg_costs,
+									  grouping_sets_data *gd,
+									  double dNumGroups,
+									  GroupPathExtraData *extra);
 static RelOptInfo *create_partial_grouping_paths(PlannerInfo *root,
-							  RelOptInfo *grouped_rel,
-							  RelOptInfo *input_rel,
-							  grouping_sets_data *gd,
-							  GroupPathExtraData *extra,
-							  bool force_rel_creation);
+												 RelOptInfo *grouped_rel,
+												 RelOptInfo *input_rel,
+												 grouping_sets_data *gd,
+												 GroupPathExtraData *extra,
+												 bool force_rel_creation);
 static void gather_grouping_paths(PlannerInfo *root, RelOptInfo *rel);
-static bool can_partial_agg(PlannerInfo *root,
-				const AggClauseCosts *agg_costs);
+static bool can_partial_agg(PlannerInfo *root);
 static void apply_scanjoin_target_to_paths(PlannerInfo *root,
-							   RelOptInfo *rel,
-							   List *scanjoin_targets,
-							   List *scanjoin_targets_contain_srfs,
-							   bool scanjoin_target_parallel_safe,
-							   bool tlist_same_exprs);
+										   RelOptInfo *rel,
+										   List *scanjoin_targets,
+										   List *scanjoin_targets_contain_srfs,
+										   bool scanjoin_target_parallel_safe,
+										   bool tlist_same_exprs);
 static void create_partitionwise_grouping_paths(PlannerInfo *root,
-									RelOptInfo *input_rel,
-									RelOptInfo *grouped_rel,
-									RelOptInfo *partially_grouped_rel,
-									const AggClauseCosts *agg_costs,
-									grouping_sets_data *gd,
-									PartitionwiseAggregateType patype,
-									GroupPathExtraData *extra);
+												RelOptInfo *input_rel,
+												RelOptInfo *grouped_rel,
+												RelOptInfo *partially_grouped_rel,
+												const AggClauseCosts *agg_costs,
+												grouping_sets_data *gd,
+												PartitionwiseAggregateType patype,
+												GroupPathExtraData *extra);
 static bool group_by_has_partkey(RelOptInfo *input_rel,
-					 List *targetList,
-					 List *groupClause);
+								 List *targetList,
+								 List *groupClause);
+static int	common_prefix_cmp(const void *a, const void *b);
 
 
 /*****************************************************************************
@@ -253,19 +266,21 @@ static bool group_by_has_partkey(RelOptInfo *input_rel,
  *
  *****************************************************************************/
 PlannedStmt *
-planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
+planner(Query *parse, const char *query_string, int cursorOptions,
+		ParamListInfo boundParams)
 {
 	PlannedStmt *result;
 
 	if (planner_hook)
-		result = (*planner_hook) (parse, cursorOptions, boundParams);
+		result = (*planner_hook) (parse, query_string, cursorOptions, boundParams);
 	else
-		result = standard_planner(parse, cursorOptions, boundParams);
+		result = standard_planner(parse, query_string, cursorOptions, boundParams);
 	return result;
 }
 
 PlannedStmt *
-standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
+standard_planner(Query *parse, const char *query_string, int cursorOptions,
+				 ParamListInfo boundParams)
 {
 	PlannedStmt *result;
 	PlannerGlobal *glob;
@@ -292,8 +307,7 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	glob->finalrtable = NIL;
 	glob->finalrowmarks = NIL;
 	glob->resultRelations = NIL;
-	glob->nonleafResultRelations = NIL;
-	glob->rootResultRelations = NIL;
+	glob->appendRelations = NIL;
 	glob->relationOids = NIL;
 	glob->invalItems = NIL;
 	glob->paramExecTypes = NIL;
@@ -311,36 +325,23 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * functions are present in the query tree.
 	 *
 	 * (Note that we do allow CREATE TABLE AS, SELECT INTO, and CREATE
-	 * MATERIALIZED VIEW to use parallel plans, but this is safe only because
-	 * the command is writing into a completely new table which workers won't
-	 * be able to see.  If the workers could see the table, the fact that
-	 * group locking would cause them to ignore the leader's heavyweight
-	 * relation extension lock and GIN page locks would make this unsafe.
-	 * We'll have to fix that somehow if we want to allow parallel inserts in
-	 * general; updates and deletes have additional problems especially around
-	 * combo CIDs.)
+	 * MATERIALIZED VIEW to use parallel plans, but as of now, only the leader
+	 * backend writes into a completely new table.  In the future, we can
+	 * extend it to allow workers to write into the table.  However, to allow
+	 * parallel updates and deletes, we have to solve other problems,
+	 * especially around combo CIDs.)
 	 *
 	 * For now, we don't try to use parallel mode if we're running inside a
 	 * parallel worker.  We might eventually be able to relax this
 	 * restriction, but for now it seems best not to have parallel workers
 	 * trying to create their own parallel workers.
-	 *
-	 * We can't use parallelism in serializable mode because the predicate
-	 * locking code is not parallel-aware.  It's not catastrophic if someone
-	 * tries to run a parallel plan in serializable mode; it just won't get
-	 * any workers and will run serially.  But it seems like a good heuristic
-	 * to assume that the same serialization level will be in effect at plan
-	 * time and execution time, so don't generate a parallel plan if we're in
-	 * serializable mode.
 	 */
 	if ((cursorOptions & CURSOR_OPT_PARALLEL_OK) != 0 &&
 		IsUnderPostmaster &&
-		dynamic_shared_memory_type != DSM_IMPL_NONE &&
 		parse->commandType == CMD_SELECT &&
 		!parse->hasModifyingCTE &&
 		max_parallel_workers_per_gather > 0 &&
-		!IsParallelWorker() &&
-		!IsolationIsSerializable())
+		!IsParallelWorker())
 	{
 		/* all the cheap tests pass, so scan the query tree */
 		glob->maxParallelHazard = max_parallel_hazard(parse);
@@ -367,7 +368,7 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * parallel-restricted, and in either case it should be OK to impose
 	 * parallel-mode restrictions.  If that ends up breaking something, then
 	 * either some function the user included in the query is incorrectly
-	 * labelled as parallel-safe or parallel-restricted when in reality it's
+	 * labeled as parallel-safe or parallel-restricted when in reality it's
 	 * parallel-unsafe, or else the query planner itself has a bug.
 	 */
 	glob->parallelModeNeeded = glob->parallelModeOK &&
@@ -493,8 +494,7 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	Assert(glob->finalrtable == NIL);
 	Assert(glob->finalrowmarks == NIL);
 	Assert(glob->resultRelations == NIL);
-	Assert(glob->nonleafResultRelations == NIL);
-	Assert(glob->rootResultRelations == NIL);
+	Assert(glob->appendRelations == NIL);
 	top_plan = set_plan_references(root, top_plan);
 	/* ... and the subplans (both regular subplans and initplans) */
 	Assert(list_length(glob->subplans) == list_length(glob->subroots));
@@ -520,8 +520,7 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	result->planTree = top_plan;
 	result->rtable = glob->finalrtable;
 	result->resultRelations = glob->resultRelations;
-	result->nonleafResultRelations = glob->nonleafResultRelations;
-	result->rootResultRelations = glob->rootResultRelations;
+	result->appendRelations = glob->appendRelations;
 	result->subplans = glob->subplans;
 	result->rewindPlanIDs = glob->rewindPlanIDs;
 	result->rowMarks = glob->finalrowmarks;
@@ -558,6 +557,9 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		if (jit_tuple_deforming)
 			result->jitFlags |= PGJIT_DEFORM;
 	}
+
+	if (glob->partition_directory != NULL)
+		DestroyPartitionDirectory(glob->partition_directory);
 
 	return result;
 }
@@ -600,6 +602,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	List	   *newWithCheckOptions;
 	List	   *newHaving;
 	bool		hasOuterJoins;
+	bool		hasResultRTEs;
 	RelOptInfo *final_rel;
 	ListCell   *l;
 
@@ -616,15 +619,22 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	root->cte_plan_ids = NIL;
 	root->multiexpr_params = NIL;
 	root->eq_classes = NIL;
+	root->ec_merging_done = false;
+	root->all_result_relids =
+		parse->resultRelation ? bms_make_singleton(parse->resultRelation) : NULL;
+	root->leaf_result_relids = NULL;	/* we'll find out leaf-ness later */
 	root->append_rel_list = NIL;
+	root->row_identity_vars = NIL;
 	root->rowMarks = NIL;
 	memset(root->upper_rels, 0, sizeof(root->upper_rels));
 	memset(root->upper_targets, 0, sizeof(root->upper_targets));
 	root->processed_tlist = NIL;
+	root->update_colnos = NIL;
 	root->grouping_map = NULL;
 	root->minmax_aggs = NIL;
 	root->qual_security_level = 0;
-	root->inhTargetKind = INHKIND_NONE;
+	root->hasPseudoConstantQuals = false;
+	root->hasAlternativeSubPlans = false;
 	root->hasRecursion = hasRecursion;
 	root->yb_cur_batched_relids =
 		parent_root ? parent_root->yb_cur_batched_relids
@@ -643,11 +653,22 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	root->yb_num_referenced_relations = 0;
 
 	/*
-	 * If there is a WITH list, process each WITH query and build an initplan
-	 * SubPlan structure for it.
+	 * If there is a WITH list, process each WITH query and either convert it
+	 * to RTE_SUBQUERY RTE(s) or build an initplan SubPlan structure for it.
 	 */
 	if (parse->cteList)
 		SS_process_ctes(root);
+
+	/*
+	 * If it's a MERGE command, transform the joinlist as appropriate.
+	 */
+	transform_MERGE_to_join(parse);
+
+	/*
+	 * If the FROM clause is empty, replace it with a dummy RTE_RESULT RTE, so
+	 * that we don't need so many special cases to deal with that situation.
+	 */
+	replace_empty_jointree(parse);
 
 	/*
 	 * Look for ANY and EXISTS SubLinks in WHERE and JOIN/ON clauses, and try
@@ -659,11 +680,12 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 		pull_up_sublinks(root);
 
 	/*
-	 * Scan the rangetable for set-returning functions, and inline them if
-	 * possible (producing subqueries that might get pulled up next).
-	 * Recursion issues here are handled in the same way as for SubLinks.
+	 * Scan the rangetable for function RTEs, do const-simplification on them,
+	 * and then inline them if possible (producing subqueries that might get
+	 * pulled up next).  Recursion issues here are handled in the same way as
+	 * for SubLinks.
 	 */
-	inline_set_returning_functions(root);
+	preprocess_function_rtes(root);
 
 	/*
 	 * Check to see if any subqueries in the jointree can be merged into this
@@ -681,46 +703,87 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 		flatten_simple_union_all(root);
 
 	/*
-	 * Detect whether any rangetable entries are RTE_JOIN kind; if not, we can
-	 * avoid the expense of doing flatten_join_alias_vars().  Also check for
-	 * outer joins --- if none, we can skip reduce_outer_joins().  And check
-	 * for LATERAL RTEs, too.  This must be done after we have done
-	 * pull_up_subqueries(), of course.
+	 * Survey the rangetable to see what kinds of entries are present.  We can
+	 * skip some later processing if relevant SQL features are not used; for
+	 * example if there are no JOIN RTEs we can avoid the expense of doing
+	 * flatten_join_alias_vars().  This must be done after we have finished
+	 * adding rangetable entries, of course.  (Note: actually, processing of
+	 * inherited or partitioned rels can cause RTEs for their child tables to
+	 * get added later; but those must all be RTE_RELATION entries, so they
+	 * don't invalidate the conclusions drawn here.)
 	 */
 	root->hasJoinRTEs = false;
 	root->hasLateralRTEs = false;
 	hasOuterJoins = false;
+	hasResultRTEs = false;
 	foreach(l, parse->rtable)
 	{
 		RangeTblEntry *rte = lfirst_node(RangeTblEntry, l);
 
-		if (rte->rtekind == RTE_JOIN)
+		switch (rte->rtekind)
 		{
-			root->hasJoinRTEs = true;
-			if (IS_OUTER_JOIN(rte->jointype))
-				hasOuterJoins = true;
+			case RTE_RELATION:
+				if (rte->inh)
+				{
+					/*
+					 * Check to see if the relation actually has any children;
+					 * if not, clear the inh flag so we can treat it as a
+					 * plain base relation.
+					 *
+					 * Note: this could give a false-positive result, if the
+					 * rel once had children but no longer does.  We used to
+					 * be able to clear rte->inh later on when we discovered
+					 * that, but no more; we have to handle such cases as
+					 * full-fledged inheritance.
+					 */
+					rte->inh = has_subclass(rte->relid);
+				}
+				break;
+			case RTE_JOIN:
+				root->hasJoinRTEs = true;
+				if (IS_OUTER_JOIN(rte->jointype))
+					hasOuterJoins = true;
+				break;
+			case RTE_RESULT:
+				hasResultRTEs = true;
+				break;
+			default:
+				/* No work here for other RTE types */
+				break;
 		}
+
 		if (rte->lateral)
 			root->hasLateralRTEs = true;
+
+		/*
+		 * We can also determine the maximum security level required for any
+		 * securityQuals now.  Addition of inheritance-child RTEs won't affect
+		 * this, because child tables don't have their own securityQuals; see
+		 * expand_single_inheritance_child().
+		 */
+		if (rte->securityQuals)
+			root->qual_security_level = Max(root->qual_security_level,
+											list_length(rte->securityQuals));
+	}
+
+	/*
+	 * If we have now verified that the query target relation is
+	 * non-inheriting, mark it as a leaf target.
+	 */
+	if (parse->resultRelation)
+	{
+		RangeTblEntry *rte = rt_fetch(parse->resultRelation, parse->rtable);
+
+		if (!rte->inh)
+			root->leaf_result_relids =
+				bms_make_singleton(parse->resultRelation);
 	}
 
 	/*
 	 * Preprocess RowMark information.  We need to do this after subquery
-	 * pullup (so that all non-inherited RTEs are present) and before
-	 * inheritance expansion (so that the info is available for
-	 * expand_inherited_tables to examine and modify).
+	 * pullup, so that all base relations are present.
 	 */
 	preprocess_rowmarks(root);
-
-	/*
-	 * Expand any rangetable entries that are inheritance sets into "append
-	 * relations".  This can add entries to the rangetable, but they must be
-	 * plain base relations not joins, so it's OK (and marginally more
-	 * efficient) to do it after checking for join RTEs.  We must do it after
-	 * pulling up subqueries, else we'd fail to handle inherited tables in
-	 * subqueries.
-	 */
-	expand_inherited_tables(root);
 
 	/*
 	 * Set hasHavingQual to remember if HAVING clause is present.  Needed
@@ -728,9 +791,6 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	 * an empty qual list ... but "HAVING TRUE" is not a semantic no-op.
 	 */
 	root->hasHavingQual = (parse->havingQual != NULL);
-
-	/* Clear this flag; might get set in distribute_qual_to_rels */
-	root->hasPseudoConstantQuals = false;
 
 	/*
 	 * Do expression preprocessing on targetlist and quals, as well as other
@@ -776,6 +836,9 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 												EXPRKIND_LIMIT);
 		wc->endOffset = preprocess_expression(root, wc->endOffset,
 											  EXPRKIND_LIMIT);
+		wc->runCondition = (List *) preprocess_expression(root,
+														  (Node *) wc->runCondition,
+														  EXPRKIND_TARGET);
 	}
 
 	parse->limitOffset = preprocess_expression(root, parse->limitOffset,
@@ -802,6 +865,20 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 								  parse->onConflict->onConflictWhere,
 								  EXPRKIND_QUAL);
 		/* exclRelTlist contains only Vars, so no preprocessing needed */
+	}
+
+	foreach(l, parse->mergeActionList)
+	{
+		MergeAction *action = (MergeAction *) lfirst(l);
+
+		action->targetList = (List *)
+			preprocess_expression(root,
+								  (Node *) action->targetList,
+								  EXPRKIND_TARGET);
+		action->qual =
+			preprocess_expression(root,
+								  (Node *) action->qual,
+								  EXPRKIND_QUAL);
 	}
 
 	root->append_rel_list = (List *)
@@ -834,7 +911,8 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 			 */
 			if (rte->lateral && root->hasJoinRTEs)
 				rte->subquery = (Query *)
-					flatten_join_alias_vars(root, (Node *) rte->subquery);
+					flatten_join_alias_vars(root->parse,
+											(Node *) rte->subquery);
 		}
 		else if (rte->rtekind == RTE_FUNCTION)
 		{
@@ -966,14 +1044,17 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 		reduce_outer_joins(root);
 
 	/*
-	 * Do the main planning.  If we have an inherited target relation, that
-	 * needs special processing, else go straight to grouping_planner.
+	 * If we have any RTE_RESULT relations, see if they can be deleted from
+	 * the jointree.  This step is most effectively done after we've done
+	 * expression preprocessing and outer join reduction.
 	 */
-	if (parse->resultRelation &&
-		rt_fetch(parse->resultRelation, parse->rtable)->inh)
-		inheritance_planner(root);
-	else
-		grouping_planner(root, false, tuple_fraction);
+	if (hasResultRTEs)
+		remove_useless_result_rtes(root);
+
+	/*
+	 * Do the main planning.
+	 */
+	grouping_planner(root, tuple_fraction);
 
 	/*
 	 * Capture the set of outer-level param IDs we have access to, for use in
@@ -1039,10 +1120,14 @@ preprocess_expression(PlannerInfo *root, Node *expr, int kind)
 		  kind == EXPRKIND_VALUES ||
 		  kind == EXPRKIND_TABLESAMPLE ||
 		  kind == EXPRKIND_TABLEFUNC))
-		expr = flatten_join_alias_vars(root, expr);
+		expr = flatten_join_alias_vars(root->parse, expr);
 
 	/*
-	 * Simplify constant expressions.
+	 * Simplify constant expressions.  For function RTEs, this was already
+	 * done by preprocess_function_rtes.  (But note we must do it again for
+	 * EXPRKIND_RTFUNC_LATERAL, because those might by now contain
+	 * un-simplified subexpressions inserted by flattening of subqueries or
+	 * join alias variables.)
 	 *
 	 * Note: an essential effect of this is to convert named-argument function
 	 * calls to positional notation and insert the current actual values of
@@ -1056,7 +1141,8 @@ preprocess_expression(PlannerInfo *root, Node *expr, int kind)
 	 * careful to maintain AND/OR flatness --- that is, do not generate a tree
 	 * with AND directly under AND, nor OR directly under OR.
 	 */
-	expr = eval_const_expressions(root, expr);
+	if (kind != EXPRKIND_RTFUNC)
+		expr = eval_const_expressions(root, expr);
 
 	/*
 	 * If it's a qual or havingQual, canonicalize it.
@@ -1069,6 +1155,16 @@ preprocess_expression(PlannerInfo *root, Node *expr, int kind)
 		printf("After canonicalize_qual()\n");
 		pprint(expr);
 #endif
+	}
+
+	/*
+	 * Check for ANY ScalarArrayOpExpr with Const arrays and set the
+	 * hashfuncid of any that might execute more quickly by using hash lookups
+	 * instead of a linear search.
+	 */
+	if (kind == EXPRKIND_QUAL || kind == EXPRKIND_TARGET)
+	{
+		convert_saop_to_hashed_saop(expr);
 	}
 
 	/* Expand SubLinks to SubPlans */
@@ -1151,530 +1247,12 @@ preprocess_phv_expression(PlannerInfo *root, Expr *expr)
 	return (Expr *) preprocess_expression(root, (Node *) expr, EXPRKIND_PHV);
 }
 
-/*
- * inheritance_planner
- *	  Generate Paths in the case where the result relation is an
- *	  inheritance set.
- *
- * We have to handle this case differently from cases where a source relation
- * is an inheritance set. Source inheritance is expanded at the bottom of the
- * plan tree (see allpaths.c), but target inheritance has to be expanded at
- * the top.  The reason is that for UPDATE, each target relation needs a
- * different targetlist matching its own column set.  Fortunately,
- * the UPDATE/DELETE target can never be the nullable side of an outer join,
- * so it's OK to generate the plan this way.
- *
- * Returns nothing; the useful output is in the Paths we attach to
- * the (UPPERREL_FINAL, NULL) upperrel stored in *root.
- *
- * Note that we have not done set_cheapest() on the final rel; it's convenient
- * to leave this to the caller.
- */
-static void
-inheritance_planner(PlannerInfo *root)
-{
-	Query	   *parse = root->parse;
-	int			top_parentRTindex = parse->resultRelation;
-	Bitmapset  *subqueryRTindexes;
-	Bitmapset  *modifiableARIindexes;
-	int			nominalRelation = -1;
-	List	   *final_rtable = NIL;
-	int			save_rel_array_size = 0;
-	RelOptInfo **save_rel_array = NULL;
-	AppendRelInfo **save_append_rel_array = NULL;
-	List	   *subpaths = NIL;
-	List	   *subroots = NIL;
-	List	   *resultRelations = NIL;
-	List	   *withCheckOptionLists = NIL;
-	List	   *returningLists = NIL;
-	List	   *rowMarks;
-	RelOptInfo *final_rel;
-	ListCell   *lc;
-	Index		rti;
-	RangeTblEntry *parent_rte;
-	Relids		partitioned_relids = NULL;
-	List	   *partitioned_rels = NIL;
-	PlannerInfo *parent_root;
-	Query	   *parent_parse;
-	Bitmapset  *parent_relids = bms_make_singleton(top_parentRTindex);
-	PlannerInfo **parent_roots = NULL;
-
-	Assert(parse->commandType != CMD_INSERT);
-
-	/*
-	 * We generate a modified instance of the original Query for each target
-	 * relation, plan that, and put all the plans into a list that will be
-	 * controlled by a single ModifyTable node.  All the instances share the
-	 * same rangetable, but each instance must have its own set of subquery
-	 * RTEs within the finished rangetable because (1) they are likely to get
-	 * scribbled on during planning, and (2) it's not inconceivable that
-	 * subqueries could get planned differently in different cases.  We need
-	 * not create duplicate copies of other RTE kinds, in particular not the
-	 * target relations, because they don't have either of those issues.  Not
-	 * having to duplicate the target relations is important because doing so
-	 * (1) would result in a rangetable of length O(N^2) for N targets, with
-	 * at least O(N^3) work expended here; and (2) would greatly complicate
-	 * management of the rowMarks list.
-	 *
-	 * To begin with, generate a bitmapset of the relids of the subquery RTEs.
-	 */
-	subqueryRTindexes = NULL;
-	rti = 1;
-	foreach(lc, parse->rtable)
-	{
-		RangeTblEntry *rte = lfirst_node(RangeTblEntry, lc);
-
-		if (rte->rtekind == RTE_SUBQUERY)
-			subqueryRTindexes = bms_add_member(subqueryRTindexes, rti);
-		rti++;
-	}
-
-	/*
-	 * Next, we want to identify which AppendRelInfo items contain references
-	 * to any of the aforesaid subquery RTEs.  These items will need to be
-	 * copied and modified to adjust their subquery references; whereas the
-	 * other ones need not be touched.  It's worth being tense over this
-	 * because we can usually avoid processing most of the AppendRelInfo
-	 * items, thereby saving O(N^2) space and time when the target is a large
-	 * inheritance tree.  We can identify AppendRelInfo items by their
-	 * child_relid, since that should be unique within the list.
-	 */
-	modifiableARIindexes = NULL;
-	if (subqueryRTindexes != NULL)
-	{
-		foreach(lc, root->append_rel_list)
-		{
-			AppendRelInfo *appinfo = lfirst_node(AppendRelInfo, lc);
-
-			if (bms_is_member(appinfo->parent_relid, subqueryRTindexes) ||
-				bms_is_member(appinfo->child_relid, subqueryRTindexes) ||
-				bms_overlap(pull_varnos((Node *) appinfo->translated_vars),
-							subqueryRTindexes))
-				modifiableARIindexes = bms_add_member(modifiableARIindexes,
-													  appinfo->child_relid);
-		}
-	}
-
-	/*
-	 * If the parent RTE is a partitioned table, we should use that as the
-	 * nominal relation, because the RTEs added for partitioned tables
-	 * (including the root parent) as child members of the inheritance set do
-	 * not appear anywhere else in the plan.  The situation is exactly the
-	 * opposite in the case of non-partitioned inheritance parent as described
-	 * below. For the same reason, collect the list of descendant partitioned
-	 * tables to be saved in ModifyTable node, so that executor can lock those
-	 * as well.
-	 */
-	parent_rte = rt_fetch(top_parentRTindex, root->parse->rtable);
-	if (parent_rte->relkind == RELKIND_PARTITIONED_TABLE)
-	{
-		nominalRelation = top_parentRTindex;
-
-		/*
-		 * Root parent's RT index is always present in the partitioned_rels of
-		 * the ModifyTable node, if one is needed at all.
-		 */
-		partitioned_relids = bms_make_singleton(top_parentRTindex);
-	}
-
-	/*
-	 * The PlannerInfo for each child is obtained by translating the relevant
-	 * members of the PlannerInfo for its immediate parent, which we find
-	 * using the parent_relid in its AppendRelInfo.  We save the PlannerInfo
-	 * for each parent in an array indexed by relid for fast retrieval. Since
-	 * the maximum number of parents is limited by the number of RTEs in the
-	 * query, we use that number to allocate the array. An extra entry is
-	 * needed since relids start from 1.
-	 */
-	parent_roots = (PlannerInfo **) palloc0((list_length(parse->rtable) + 1) *
-											sizeof(PlannerInfo *));
-	parent_roots[top_parentRTindex] = root;
-
-	/*
-	 * And now we can get on with generating a plan for each child table.
-	 */
-	foreach(lc, root->append_rel_list)
-	{
-		AppendRelInfo *appinfo = lfirst_node(AppendRelInfo, lc);
-		PlannerInfo *subroot;
-		RangeTblEntry *child_rte;
-		RelOptInfo *sub_final_rel;
-		Path	   *subpath;
-
-		/* append_rel_list contains all append rels; ignore others */
-		if (!bms_is_member(appinfo->parent_relid, parent_relids))
-			continue;
-
-		/*
-		 * expand_inherited_rtentry() always processes a parent before any of
-		 * that parent's children, so the parent_root for this relation should
-		 * already be available.
-		 */
-		parent_root = parent_roots[appinfo->parent_relid];
-		Assert(parent_root != NULL);
-		parent_parse = parent_root->parse;
-
-		/*
-		 * We need a working copy of the PlannerInfo so that we can control
-		 * propagation of information back to the main copy.
-		 */
-		subroot = makeNode(PlannerInfo);
-		memcpy(subroot, parent_root, sizeof(PlannerInfo));
-
-		/*
-		 * Generate modified query with this rel as target.  We first apply
-		 * adjust_appendrel_attrs, which copies the Query and changes
-		 * references to the parent RTE to refer to the current child RTE,
-		 * then fool around with subquery RTEs.
-		 */
-		subroot->parse = (Query *)
-			adjust_appendrel_attrs(parent_root,
-								   (Node *) parent_parse,
-								   1, &appinfo);
-
-		/*
-		 * If there are securityQuals attached to the parent, move them to the
-		 * child rel (they've already been transformed properly for that).
-		 */
-		parent_rte = rt_fetch(appinfo->parent_relid, subroot->parse->rtable);
-		child_rte = rt_fetch(appinfo->child_relid, subroot->parse->rtable);
-		child_rte->securityQuals = parent_rte->securityQuals;
-		parent_rte->securityQuals = NIL;
-
-		/*
-		 * Mark whether we're planning a query to a partitioned table or an
-		 * inheritance parent.
-		 */
-		subroot->inhTargetKind =
-			partitioned_relids ? INHKIND_PARTITIONED : INHKIND_INHERITED;
-
-		/*
-		 * If this child is further partitioned, remember it as a parent.
-		 * Since a partitioned table does not have any data, we don't need to
-		 * create a plan for it, and we can stop processing it here.  We do,
-		 * however, need to remember its modified PlannerInfo for use when
-		 * processing its children, since we'll update their varnos based on
-		 * the delta from immediate parent to child, not from top to child.
-		 *
-		 * Note: a very non-obvious point is that we have not yet added
-		 * duplicate subquery RTEs to the subroot's rtable.  We mustn't,
-		 * because then its children would have two sets of duplicates,
-		 * confusing matters.
-		 */
-		if (child_rte->inh)
-		{
-			Assert(child_rte->relkind == RELKIND_PARTITIONED_TABLE);
-			parent_relids = bms_add_member(parent_relids, appinfo->child_relid);
-			parent_roots[appinfo->child_relid] = subroot;
-
-			continue;
-		}
-
-		/*
-		 * Set the nominal target relation of the ModifyTable node if not
-		 * already done.  We use the inheritance parent RTE as the nominal
-		 * target relation if it's a partitioned table (see just above this
-		 * loop).  In the non-partitioned parent case, we'll use the first
-		 * child relation (even if it's excluded) as the nominal target
-		 * relation.  Because of the way expand_inherited_rtentry works, the
-		 * latter should be the RTE representing the parent table in its role
-		 * as a simple member of the inheritance set.
-		 *
-		 * It would be logically cleaner to *always* use the inheritance
-		 * parent RTE as the nominal relation; but that RTE is not otherwise
-		 * referenced in the plan in the non-partitioned inheritance case.
-		 * Instead the duplicate child RTE created by expand_inherited_rtentry
-		 * is used elsewhere in the plan, so using the original parent RTE
-		 * would give rise to confusing use of multiple aliases in EXPLAIN
-		 * output for what the user will think is the "same" table.  OTOH,
-		 * it's not a problem in the partitioned inheritance case, because the
-		 * duplicate child RTE added for the parent does not appear anywhere
-		 * else in the plan tree.
-		 */
-		if (nominalRelation < 0)
-			nominalRelation = appinfo->child_relid;
-
-		/*
-		 * The rowMarks list might contain references to subquery RTEs, so
-		 * make a copy that we can apply ChangeVarNodes to.  (Fortunately, the
-		 * executor doesn't need to see the modified copies --- we can just
-		 * pass it the original rowMarks list.)
-		 */
-		subroot->rowMarks = copyObject(parent_root->rowMarks);
-
-		/*
-		 * The append_rel_list likewise might contain references to subquery
-		 * RTEs (if any subqueries were flattenable UNION ALLs).  So prepare
-		 * to apply ChangeVarNodes to that, too.  As explained above, we only
-		 * want to copy items that actually contain such references; the rest
-		 * can just get linked into the subroot's append_rel_list.
-		 *
-		 * If we know there are no such references, we can just use the outer
-		 * append_rel_list unmodified.
-		 */
-		if (modifiableARIindexes != NULL)
-		{
-			ListCell   *lc2;
-
-			subroot->append_rel_list = NIL;
-			foreach(lc2, parent_root->append_rel_list)
-			{
-				AppendRelInfo *appinfo2 = lfirst_node(AppendRelInfo, lc2);
-
-				if (bms_is_member(appinfo2->child_relid, modifiableARIindexes))
-					appinfo2 = copyObject(appinfo2);
-
-				subroot->append_rel_list = lappend(subroot->append_rel_list,
-												   appinfo2);
-			}
-		}
-
-		/*
-		 * Add placeholders to the child Query's rangetable list to fill the
-		 * RT indexes already reserved for subqueries in previous children.
-		 * These won't be referenced, so there's no need to make them very
-		 * valid-looking.
-		 */
-		while (list_length(subroot->parse->rtable) < list_length(final_rtable))
-			subroot->parse->rtable = lappend(subroot->parse->rtable,
-											 makeNode(RangeTblEntry));
-
-		/*
-		 * If this isn't the first child Query, generate duplicates of all
-		 * subquery RTEs, and adjust Var numbering to reference the
-		 * duplicates. To simplify the loop logic, we scan the original rtable
-		 * not the copy just made by adjust_appendrel_attrs; that should be OK
-		 * since subquery RTEs couldn't contain any references to the target
-		 * rel.
-		 */
-		if (final_rtable != NIL && subqueryRTindexes != NULL)
-		{
-			ListCell   *lr;
-
-			rti = 1;
-			foreach(lr, parent_parse->rtable)
-			{
-				RangeTblEntry *rte = lfirst_node(RangeTblEntry, lr);
-
-				if (bms_is_member(rti, subqueryRTindexes))
-				{
-					Index		newrti;
-
-					/*
-					 * The RTE can't contain any references to its own RT
-					 * index, except in its securityQuals, so we can save a
-					 * few cycles by applying ChangeVarNodes to the rest of
-					 * the rangetable before we append the RTE to it.
-					 */
-					newrti = list_length(subroot->parse->rtable) + 1;
-					ChangeVarNodes((Node *) subroot->parse, rti, newrti, 0);
-					ChangeVarNodes((Node *) subroot->rowMarks, rti, newrti, 0);
-					/* Skip processing unchanging parts of append_rel_list */
-					if (modifiableARIindexes != NULL)
-					{
-						ListCell   *lc2;
-
-						foreach(lc2, subroot->append_rel_list)
-						{
-							AppendRelInfo *appinfo2 = lfirst_node(AppendRelInfo, lc2);
-
-							if (bms_is_member(appinfo2->child_relid,
-											  modifiableARIindexes))
-								ChangeVarNodes((Node *) appinfo2, rti, newrti, 0);
-						}
-					}
-					rte = copyObject(rte);
-					ChangeVarNodes((Node *) rte->securityQuals, rti, newrti, 0);
-					subroot->parse->rtable = lappend(subroot->parse->rtable,
-													 rte);
-				}
-				rti++;
-			}
-		}
-
-		/* There shouldn't be any OJ info to translate, as yet */
-		Assert(subroot->join_info_list == NIL);
-		/* and we haven't created PlaceHolderInfos, either */
-		Assert(subroot->placeholder_list == NIL);
-
-		/* Generate Path(s) for accessing this result relation */
-		grouping_planner(subroot, true, 0.0 /* retrieve all tuples */ );
-
-		/*
-		 * Select cheapest path in case there's more than one.  We always run
-		 * modification queries to conclusion, so we care only for the
-		 * cheapest-total path.
-		 */
-		sub_final_rel = fetch_upper_rel(subroot, UPPERREL_FINAL, NULL);
-		set_cheapest(sub_final_rel);
-		subpath = sub_final_rel->cheapest_total_path;
-
-		/*
-		 * If this child rel was excluded by constraint exclusion, exclude it
-		 * from the result plan.
-		 */
-		if (IS_DUMMY_PATH(subpath))
-			continue;
-
-		root->yb_num_referenced_relations++;
-
-		/*
-		 * Add the current parent's RT index to the partitioned_relids set if
-		 * we're creating the ModifyTable path for a partitioned root table.
-		 * (We only care about parents of non-excluded children.)
-		 */
-		if (partitioned_relids)
-			partitioned_relids = bms_add_member(partitioned_relids,
-												appinfo->parent_relid);
-
-		/*
-		 * If this is the first non-excluded child, its post-planning rtable
-		 * becomes the initial contents of final_rtable; otherwise, append
-		 * just its modified subquery RTEs to final_rtable.
-		 */
-		if (final_rtable == NIL)
-			final_rtable = subroot->parse->rtable;
-		else
-			final_rtable = list_concat(final_rtable,
-									   list_copy_tail(subroot->parse->rtable,
-													  list_length(final_rtable)));
-
-		/*
-		 * We need to collect all the RelOptInfos from all child plans into
-		 * the main PlannerInfo, since setrefs.c will need them.  We use the
-		 * last child's simple_rel_array (previous ones are too short), so we
-		 * have to propagate forward the RelOptInfos that were already built
-		 * in previous children.
-		 */
-		Assert(subroot->simple_rel_array_size >= save_rel_array_size);
-		for (rti = 1; rti < save_rel_array_size; rti++)
-		{
-			RelOptInfo *brel = save_rel_array[rti];
-
-			if (brel)
-				subroot->simple_rel_array[rti] = brel;
-		}
-		save_rel_array_size = subroot->simple_rel_array_size;
-		save_rel_array = subroot->simple_rel_array;
-		save_append_rel_array = subroot->append_rel_array;
-
-		/* Make sure any initplans from this rel get into the outer list */
-		root->init_plans = subroot->init_plans;
-
-		/* Build list of sub-paths */
-		subpaths = lappend(subpaths, subpath);
-
-		/* Build list of modified subroots, too */
-		subroots = lappend(subroots, subroot);
-
-		/* Build list of target-relation RT indexes */
-		resultRelations = lappend_int(resultRelations, appinfo->child_relid);
-
-		/* Build lists of per-relation WCO and RETURNING targetlists */
-		if (parse->withCheckOptions)
-			withCheckOptionLists = lappend(withCheckOptionLists,
-										   subroot->parse->withCheckOptions);
-		if (parse->returningList)
-			returningLists = lappend(returningLists,
-									 subroot->parse->returningList);
-
-		Assert(!parse->onConflict);
-	}
-
-	/* Result path must go into outer query's FINAL upperrel */
-	final_rel = fetch_upper_rel(root, UPPERREL_FINAL, NULL);
-
-	/*
-	 * We don't currently worry about setting final_rel's consider_parallel
-	 * flag in this case, nor about allowing FDWs or create_upper_paths_hook
-	 * to get control here.
-	 */
-
-	/*
-	 * If we managed to exclude every child rel, return a dummy plan; it
-	 * doesn't even need a ModifyTable node.
-	 */
-	if (subpaths == NIL)
-	{
-		set_dummy_rel_pathlist(final_rel);
-		return;
-	}
-
-	/*
-	 * Put back the final adjusted rtable into the master copy of the Query.
-	 * (We mustn't do this if we found no non-excluded children.)
-	 */
-	parse->rtable = final_rtable;
-	root->simple_rel_array_size = save_rel_array_size;
-	root->simple_rel_array = save_rel_array;
-	root->append_rel_array = save_append_rel_array;
-
-	/* Must reconstruct master's simple_rte_array, too */
-	root->simple_rte_array = (RangeTblEntry **)
-		palloc0((list_length(final_rtable) + 1) * sizeof(RangeTblEntry *));
-	rti = 1;
-	foreach(lc, final_rtable)
-	{
-		RangeTblEntry *rte = lfirst_node(RangeTblEntry, lc);
-
-		root->simple_rte_array[rti++] = rte;
-	}
-
-	/*
-	 * If there was a FOR [KEY] UPDATE/SHARE clause, the LockRows node will
-	 * have dealt with fetching non-locked marked rows, else we need to have
-	 * ModifyTable do that.
-	 */
-	if (parse->rowMarks)
-		rowMarks = NIL;
-	else
-		rowMarks = root->rowMarks;
-
-	if (partitioned_relids)
-	{
-		int			i;
-
-		i = -1;
-		while ((i = bms_next_member(partitioned_relids, i)) >= 0)
-			partitioned_rels = lappend_int(partitioned_rels, i);
-
-		/*
-		 * If we're going to create ModifyTable at all, the list should
-		 * contain at least one member, that is, the root parent's index.
-		 */
-		Assert(list_length(partitioned_rels) >= 1);
-		partitioned_rels = list_make1(partitioned_rels);
-	}
-
-	/* Create Path representing a ModifyTable to do the UPDATE/DELETE work */
-	add_path(final_rel, (Path *)
-			 create_modifytable_path(root, final_rel,
-									 parse->commandType,
-									 parse->canSetTag,
-									 nominalRelation,
-									 partitioned_rels,
-									 root->partColsUpdated,
-									 resultRelations,
-									 subpaths,
-									 subroots,
-									 withCheckOptionLists,
-									 returningLists,
-									 rowMarks,
-									 NULL,
-									 assign_special_exec_param(root)));
-}
-
 /*--------------------
  * grouping_planner
  *	  Perform planning steps related to grouping, aggregation, etc.
  *
  * This function adds all required top-level processing to the scan/join
  * Path(s) produced by query_planner.
- *
- * If inheritance_update is true, we're being called from inheritance_planner
- * and should not include a ModifyTable step in the resulting Path(s).
- * (inheritance_planner will create a single ModifyTable node covering all the
- * target tables.)
  *
  * tuple_fraction is the fraction of tuples we expect will be retrieved.
  * tuple_fraction is interpreted as follows:
@@ -1693,11 +1271,9 @@ inheritance_planner(PlannerInfo *root)
  *--------------------
  */
 static void
-grouping_planner(PlannerInfo *root, bool inheritance_update,
-				 double tuple_fraction)
+grouping_planner(PlannerInfo *root, double tuple_fraction)
 {
 	Query	   *parse = root->parse;
-	List	   *tlist;
 	int64		offset_est = 0;
 	int64		count_est = 0;
 	double		limit_tuples = -1.0;
@@ -1708,6 +1284,7 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 	bool		final_target_parallel_safe;
 	RelOptInfo *current_rel;
 	RelOptInfo *final_rel;
+	FinalPathExtraData extra;
 	ListCell   *lc;
 
 	/* Tweak caller-supplied tuple_fraction if have LIMIT/OFFSET */
@@ -1750,20 +1327,17 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 
 		/*
 		 * We should not need to call preprocess_targetlist, since we must be
-		 * in a SELECT query node.  Instead, use the targetlist returned by
-		 * plan_set_operations (since this tells whether it returned any
+		 * in a SELECT query node.  Instead, use the processed_tlist returned
+		 * by plan_set_operations (since this tells whether it returned any
 		 * resjunk columns!), and transfer any sort key information from the
 		 * original tlist.
 		 */
 		Assert(parse->commandType == CMD_SELECT);
 
-		tlist = root->processed_tlist;	/* from plan_set_operations */
-
 		/* for safety, copy processed_tlist instead of modifying in-place */
-		tlist = postprocess_setop_tlist(copyObject(tlist), parse->targetList);
-
-		/* Save aside the final decorated tlist */
-		root->processed_tlist = tlist;
+		root->processed_tlist =
+			postprocess_setop_tlist(copyObject(root->processed_tlist),
+									parse->targetList);
 
 		/* Also extract the PathTarget form of the setop result tlist */
 		final_target = current_rel->cheapest_total_path->pathtarget;
@@ -1795,7 +1369,7 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 		Assert(parse->distinctClause == NIL);
 		root->sort_pathkeys = make_pathkeys_for_sortclauses(root,
 															parse->sortClause,
-															tlist);
+															root->processed_tlist);
 	}
 	else
 	{
@@ -1814,7 +1388,6 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 		bool		scanjoin_target_parallel_safe;
 		bool		scanjoin_target_same_exprs;
 		bool		have_grouping;
-		AggClauseCosts agg_costs;
 		WindowFuncLists *wflists = NULL;
 		List	   *activeWindows = NIL;
 		grouping_sets_data *gset_data = NULL;
@@ -1835,38 +1408,31 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 				parse->groupClause = preprocess_groupclause(root, NIL);
 		}
 
-		/* Preprocess targetlist */
-		tlist = preprocess_targetlist(root);
-
 		/*
-		 * We are now done hacking up the query's targetlist.  Most of the
-		 * remaining planning work will be done with the PathTarget
-		 * representation of tlists, but save aside the full representation so
+		 * Preprocess targetlist.  Note that much of the remaining planning
+		 * work will be done with the PathTarget representation of tlists, but
+		 * we must also maintain the full representation of the final tlist so
 		 * that we can transfer its decoration (resnames etc) to the topmost
-		 * tlist of the finished Plan.
+		 * tlist of the finished Plan.  This is kept in processed_tlist.
 		 */
-		root->processed_tlist = tlist;
+		preprocess_targetlist(root);
+
+		/* YB_TODO(Deepthi@yugabyte)
+		 * Need to reintroduce the following code for PG13 which reimplement this function.
+		 *   	root->yb_num_referenced_relations++;
+		 */
 
 		/*
-		 * Collect statistics about aggregates for estimating costs, and mark
-		 * all the aggregates with resolved aggtranstypes.  We must do this
-		 * before slicing and dicing the tlist into various pathtargets, else
-		 * some copies of the Aggref nodes might escape being marked with the
-		 * correct transtypes.
-		 *
-		 * Note: currently, we do not detect duplicate aggregates here.  This
-		 * may result in somewhat-overestimated cost, which is fine for our
-		 * purposes since all Paths will get charged the same.  But at some
-		 * point we might wish to do that detection in the planner, rather
-		 * than during executor startup.
+		 * Mark all the aggregates with resolved aggtranstypes, and detect
+		 * aggregates that are duplicates or can share transition state.  We
+		 * must do this before slicing and dicing the tlist into various
+		 * pathtargets, else some copies of the Aggref nodes might escape
+		 * being marked.
 		 */
-		MemSet(&agg_costs, 0, sizeof(AggClauseCosts));
 		if (parse->hasAggs)
 		{
-			get_agg_clause_costs(root, (Node *) tlist, AGGSPLIT_SIMPLE,
-								 &agg_costs);
-			get_agg_clause_costs(root, parse->havingQual, AGGSPLIT_SIMPLE,
-								 &agg_costs);
+			preprocess_aggrefs(root, (Node *) root->processed_tlist);
+			preprocess_aggrefs(root, (Node *) parse->havingQual);
 		}
 
 		/*
@@ -1877,7 +1443,7 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 		 */
 		if (parse->hasWindowFuncs)
 		{
-			wflists = find_window_functions((Node *) tlist,
+			wflists = find_window_functions((Node *) root->processed_tlist,
 											list_length(parse->windowClause));
 			if (wflists->numWindowFuncs > 0)
 				activeWindows = select_active_windows(root, wflists);
@@ -1892,7 +1458,7 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 		 * duplicated in planagg.c.
 		 */
 		if (parse->hasAggs)
-			preprocess_minmax_aggregates(root, tlist);
+			preprocess_minmax_aggregates(root);
 
 		/*
 		 * Figure out whether there's a hard limit on the number of rows that
@@ -1912,7 +1478,6 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 			root->limit_tuples = limit_tuples;
 
 		/* Set up data needed by standard_qp_callback */
-		qp_extra.tlist = tlist;
 		qp_extra.activeWindows = activeWindows;
 		qp_extra.groupClause = (gset_data
 								? (gset_data->rollups ? linitial_node(RollupData, gset_data->rollups)->groupClause : NIL)
@@ -1925,17 +1490,18 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 		 * We also generate (in standard_qp_callback) pathkey representations
 		 * of the query's sort clause, distinct clause, etc.
 		 */
-		current_rel = query_planner(root, tlist,
-									standard_qp_callback, &qp_extra);
+		current_rel = query_planner(root, standard_qp_callback, &qp_extra);
 
 		/*
 		 * Convert the query's result tlist into PathTarget format.
 		 *
-		 * Note: it's desirable to not do this till after query_planner(),
+		 * Note: this cannot be done before query_planner() has performed
+		 * appendrel expansion, because that might add resjunk entries to
+		 * root->processed_tlist.  Waiting till afterwards is also helpful
 		 * because the target width estimates can use per-Var width numbers
 		 * that were obtained within query_planner().
 		 */
-		final_target = create_pathtarget(root, tlist);
+		final_target = create_pathtarget(root, root->processed_tlist);
 		final_target_parallel_safe =
 			is_parallel_safe(root, (Node *) final_target->exprs);
 
@@ -1988,7 +1554,7 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 		{
 			scanjoin_target = make_group_input_target(root, final_target);
 			scanjoin_target_parallel_safe =
-				is_parallel_safe(root, (Node *) grouping_target->exprs);
+				is_parallel_safe(root, (Node *) scanjoin_target->exprs);
 		}
 		else
 		{
@@ -2055,6 +1621,9 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 		 * of the corresponding upperrels might not be needed for this query.
 		 */
 		root->upper_targets[UPPERREL_FINAL] = final_target;
+		root->upper_targets[UPPERREL_ORDERED] = final_target;
+		root->upper_targets[UPPERREL_PARTIAL_DISTINCT] = sort_input_target;
+		root->upper_targets[UPPERREL_DISTINCT] = sort_input_target;
 		root->upper_targets[UPPERREL_WINDOW] = sort_input_target;
 		root->upper_targets[UPPERREL_GROUP_AGG] = grouping_target;
 
@@ -2069,7 +1638,6 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 												current_rel,
 												grouping_target,
 												grouping_target_parallel_safe,
-												&agg_costs,
 												gset_data);
 			/* Fix things up if grouping_target contains SRFs */
 			if (parse->hasTargetSRFs)
@@ -2089,7 +1657,6 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 											  grouping_target,
 											  sort_input_target,
 											  sort_input_target_parallel_safe,
-											  tlist,
 											  wflists,
 											  activeWindows);
 			/* Fix things up if sort_input_target contains SRFs */
@@ -2190,32 +1757,173 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 			path = (Path *) create_limit_path(root, final_rel, path,
 											  parse->limitOffset,
 											  parse->limitCount,
+											  parse->limitOption,
 											  offset_est, count_est);
 		}
 
 		/*
-		 * If this is an INSERT/UPDATE/DELETE, and we're not being called from
-		 * inheritance_planner, add the ModifyTable node.
+		 * If this is an INSERT/UPDATE/DELETE/MERGE, add the ModifyTable node.
 		 */
-		if (parse->commandType != CMD_SELECT && !inheritance_update)
+		if (parse->commandType != CMD_SELECT)
 		{
-			List	   *withCheckOptionLists;
-			List	   *returningLists;
+			Index		rootRelation;
+			List	   *resultRelations = NIL;
+			List	   *updateColnosLists = NIL;
+			List	   *withCheckOptionLists = NIL;
+			List	   *returningLists = NIL;
+			List	   *mergeActionLists = NIL;
 			List	   *rowMarks;
 
-			/*
-			 * Set up the WITH CHECK OPTION and RETURNING lists-of-lists, if
-			 * needed.
-			 */
-			if (parse->withCheckOptions)
-				withCheckOptionLists = list_make1(parse->withCheckOptions);
-			else
-				withCheckOptionLists = NIL;
+			if (bms_membership(root->all_result_relids) == BMS_MULTIPLE)
+			{
+				/* Inherited UPDATE/DELETE/MERGE */
+				RelOptInfo *top_result_rel = find_base_rel(root,
+														   parse->resultRelation);
+				int			resultRelation = -1;
 
-			if (parse->returningList)
-				returningLists = list_make1(parse->returningList);
+				/* Add only leaf children to ModifyTable. */
+				while ((resultRelation = bms_next_member(root->leaf_result_relids,
+														 resultRelation)) >= 0)
+				{
+					RelOptInfo *this_result_rel = find_base_rel(root,
+																resultRelation);
+
+					/*
+					 * Also exclude any leaf rels that have turned dummy since
+					 * being added to the list, for example, by being excluded
+					 * by constraint exclusion.
+					 */
+					if (IS_DUMMY_REL(this_result_rel))
+						continue;
+
+					/* Build per-target-rel lists needed by ModifyTable */
+					resultRelations = lappend_int(resultRelations,
+												  resultRelation);
+					if (parse->commandType == CMD_UPDATE)
+					{
+						List	   *update_colnos = root->update_colnos;
+
+						if (this_result_rel != top_result_rel)
+							update_colnos =
+								adjust_inherited_attnums_multilevel(root,
+																	update_colnos,
+																	this_result_rel->relid,
+																	top_result_rel->relid);
+						updateColnosLists = lappend(updateColnosLists,
+													update_colnos);
+					}
+					if (parse->withCheckOptions)
+					{
+						List	   *withCheckOptions = parse->withCheckOptions;
+
+						if (this_result_rel != top_result_rel)
+							withCheckOptions = (List *)
+								adjust_appendrel_attrs_multilevel(root,
+																  (Node *) withCheckOptions,
+																  this_result_rel->relids,
+																  top_result_rel->relids);
+						withCheckOptionLists = lappend(withCheckOptionLists,
+													   withCheckOptions);
+					}
+					if (parse->returningList)
+					{
+						List	   *returningList = parse->returningList;
+
+						if (this_result_rel != top_result_rel)
+							returningList = (List *)
+								adjust_appendrel_attrs_multilevel(root,
+																  (Node *) returningList,
+																  this_result_rel->relids,
+																  top_result_rel->relids);
+						returningLists = lappend(returningLists,
+												 returningList);
+					}
+					if (parse->mergeActionList)
+					{
+						ListCell   *l;
+						List	   *mergeActionList = NIL;
+
+						/*
+						 * Copy MergeActions and translate stuff that
+						 * references attribute numbers.
+						 */
+						foreach(l, parse->mergeActionList)
+						{
+							MergeAction *action = lfirst(l),
+									   *leaf_action = copyObject(action);
+
+							leaf_action->qual =
+								adjust_appendrel_attrs_multilevel(root,
+																  (Node *) action->qual,
+																  this_result_rel->relids,
+																  top_result_rel->relids);
+							leaf_action->targetList = (List *)
+								adjust_appendrel_attrs_multilevel(root,
+																  (Node *) action->targetList,
+																  this_result_rel->relids,
+																  top_result_rel->relids);
+							if (leaf_action->commandType == CMD_UPDATE)
+								leaf_action->updateColnos =
+									adjust_inherited_attnums_multilevel(root,
+																		action->updateColnos,
+																		this_result_rel->relid,
+																		top_result_rel->relid);
+							mergeActionList = lappend(mergeActionList,
+													  leaf_action);
+						}
+
+						mergeActionLists = lappend(mergeActionLists,
+												   mergeActionList);
+					}
+				}
+
+				if (resultRelations == NIL)
+				{
+					/*
+					 * We managed to exclude every child rel, so generate a
+					 * dummy one-relation plan using info for the top target
+					 * rel (even though that may not be a leaf target).
+					 * Although it's clear that no data will be updated or
+					 * deleted, we still need to have a ModifyTable node so
+					 * that any statement triggers will be executed.  (This
+					 * could be cleaner if we fixed nodeModifyTable.c to allow
+					 * zero target relations, but that probably wouldn't be a
+					 * net win.)
+					 */
+					resultRelations = list_make1_int(parse->resultRelation);
+					if (parse->commandType == CMD_UPDATE)
+						updateColnosLists = list_make1(root->update_colnos);
+					if (parse->withCheckOptions)
+						withCheckOptionLists = list_make1(parse->withCheckOptions);
+					if (parse->returningList)
+						returningLists = list_make1(parse->returningList);
+					if (parse->mergeActionList)
+						mergeActionLists = list_make1(parse->mergeActionList);
+				}
+			}
 			else
-				returningLists = NIL;
+			{
+				/* Single-relation INSERT/UPDATE/DELETE/MERGE. */
+				resultRelations = list_make1_int(parse->resultRelation);
+				if (parse->commandType == CMD_UPDATE)
+					updateColnosLists = list_make1(root->update_colnos);
+				if (parse->withCheckOptions)
+					withCheckOptionLists = list_make1(parse->withCheckOptions);
+				if (parse->returningList)
+					returningLists = list_make1(parse->returningList);
+				if (parse->mergeActionList)
+					mergeActionLists = list_make1(parse->mergeActionList);
+			}
+
+			/*
+			 * If target is a partition root table, we need to mark the
+			 * ModifyTable node appropriately for that.
+			 */
+			if (rt_fetch(parse->resultRelation, parse->rtable)->relkind ==
+				RELKIND_PARTITIONED_TABLE)
+				rootRelation = parse->resultRelation;
+			else
+				rootRelation = 0;
 
 			/*
 			 * If there was a FOR [KEY] UPDATE/SHARE clause, the LockRows node
@@ -2229,18 +1937,19 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 
 			path = (Path *)
 				create_modifytable_path(root, final_rel,
+										path,
 										parse->commandType,
 										parse->canSetTag,
 										parse->resultRelation,
-										NIL,
-										false,
-										list_make1_int(parse->resultRelation),
-										list_make1(path),
-										list_make1(root),
+										rootRelation,
+										root->partColsUpdated,
+										resultRelations,
+										updateColnosLists,
 										withCheckOptionLists,
 										returningLists,
 										rowMarks,
 										parse->onConflict,
+										mergeActionLists,
 										assign_special_exec_param(root));
 		}
 
@@ -2264,6 +1973,11 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 		}
 	}
 
+	extra.limit_needed = limit_needed(parse);
+	extra.limit_tuples = limit_tuples;
+	extra.count_est = count_est;
+	extra.offset_est = offset_est;
+
 	/*
 	 * If there is an FDW that's responsible for all baserels of the query,
 	 * let it consider adding ForeignPaths.
@@ -2272,12 +1986,12 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 		final_rel->fdwroutine->GetForeignUpperPaths)
 		final_rel->fdwroutine->GetForeignUpperPaths(root, UPPERREL_FINAL,
 													current_rel, final_rel,
-													NULL);
+													&extra);
 
 	/* Let extensions possibly add some more paths */
 	if (create_upper_paths_hook)
 		(*create_upper_paths_hook) (root, UPPERREL_FINAL,
-									current_rel, final_rel, NULL);
+									current_rel, final_rel, &extra);
 
 	/* Note: currently, we leave it to callers to do set_cheapest() */
 }
@@ -2298,7 +2012,7 @@ preprocess_grouping_sets(PlannerInfo *root)
 	ListCell   *lc_set;
 	grouping_sets_data *gd = palloc0(sizeof(grouping_sets_data));
 
-	parse->groupingSets = expand_grouping_sets(parse->groupingSets, -1);
+	parse->groupingSets = expand_grouping_sets(parse->groupingSets, parse->groupDistinct, -1);
 
 	gd->any_hashable = false;
 	gd->unhashable_refs = NULL;
@@ -2496,38 +2210,6 @@ remap_to_groupclause_idx(List *groupClause,
 	return result;
 }
 
-
-
-/*
- * Detect whether a plan node is a "dummy" plan created when a relation
- * is deemed not to need scanning due to constraint exclusion.
- *
- * Currently, such dummy plans are Result nodes with constant FALSE
- * filter quals (see set_dummy_rel_pathlist and create_append_plan).
- *
- * XXX this probably ought to be somewhere else, but not clear where.
- */
-bool
-is_dummy_plan(Plan *plan)
-{
-	if (IsA(plan, Result))
-	{
-		List	   *rcqual = (List *) ((Result *) plan)->resconstantqual;
-
-		if (list_length(rcqual) == 1)
-		{
-			Const	   *constqual = (Const *) linitial(rcqual);
-
-			if (constqual && IsA(constqual, Const))
-			{
-				if (!constqual->constisnull &&
-					!DatumGetBool(constqual->constvalue))
-					return true;
-			}
-		}
-	}
-	return false;
-}
 
 /*
  * preprocess_rowmarks - set up PlanRowMarks if needed
@@ -2942,14 +2624,16 @@ limit_needed(Query *parse)
  * Since some other DBMSes do not allow references to ungrouped columns, it's
  * not unusual to find all columns listed in GROUP BY even though listing the
  * primary-key columns would be sufficient.  Deleting such excess columns
- * avoids redundant sorting work, so it's worth doing.  When we do this, we
- * must mark the plan as dependent on the pkey constraint (compare the
- * parser's check_ungrouped_columns() and check_functional_grouping()).
+ * avoids redundant sorting work, so it's worth doing.
  *
- * In principle, we could treat any NOT-NULL columns appearing in a UNIQUE
- * index as the determining columns.  But as with check_functional_grouping(),
- * there's currently no way to represent dependency on a NOT NULL constraint,
- * so we consider only the pkey for now.
+ * Relcache invalidations will ensure that cached plans become invalidated
+ * when the underlying index of the pkey constraint is dropped.
+ *
+ * Currently, we only make use of pkey constraints for this, however, we may
+ * wish to take this further in the future and also use unique constraints
+ * which have NOT NULL columns.  In that case, plan invalidation will still
+ * work since relations will receive a relcache invalidation when a NOT NULL
+ * constraint is dropped.
  */
 static void
 remove_useless_groupby_columns(PlannerInfo *root)
@@ -3021,6 +2705,14 @@ remove_useless_groupby_columns(PlannerInfo *root)
 		if (rte->rtekind != RTE_RELATION)
 			continue;
 
+		/*
+		 * We must skip inheritance parent tables as some of the child rels
+		 * may cause duplicate rows.  This cannot happen with partitioned
+		 * tables, however.
+		 */
+		if (rte->inh && rte->relkind != RELKIND_PARTITIONED_TABLE)
+			continue;
+
 		/* Nothing to do unless this rel has multiple Vars in GROUP BY */
 		relattnos = groupbyattnos[relid];
 		if (bms_membership(relattnos) != BMS_MULTIPLE)
@@ -3050,10 +2742,6 @@ remove_useless_groupby_columns(PlannerInfo *root)
 
 			/* Remember the attnos of the removable columns */
 			surplusvars[relid] = bms_difference(relattnos, pkattnos);
-
-			/* Also, mark the resulting plan as dependent on this constraint */
-			parse->constraintDeps = lappend_oid(parse->constraintDeps,
-												constraintOid);
 		}
 	}
 
@@ -3240,7 +2928,7 @@ extract_rollup_sets(List *groupingSets)
 	while (lc1 && lfirst(lc1) == NIL)
 	{
 		++num_empty;
-		lc1 = lnext(lc1);
+		lc1 = lnext(groupingSets, lc1);
 	}
 
 	/* bail out now if it turns out that all we had were empty sets. */
@@ -3274,7 +2962,7 @@ extract_rollup_sets(List *groupingSets)
 	j = 0;
 	i = 1;
 
-	for_each_cell(lc, lc1)
+	for_each_cell(lc, groupingSets, lc1)
 	{
 		List	   *candidate = (List *) lfirst(lc);
 		Bitmapset  *candidate_set = NULL;
@@ -3427,7 +3115,6 @@ static List *
 reorder_grouping_sets(List *groupingsets, List *sortclause)
 {
 	ListCell   *lc;
-	ListCell   *lc2;
 	List	   *previous = NIL;
 	List	   *result = NIL;
 
@@ -3437,35 +3124,29 @@ reorder_grouping_sets(List *groupingsets, List *sortclause)
 		List	   *new_elems = list_difference_int(candidate, previous);
 		GroupingSetData *gs = makeNode(GroupingSetData);
 
-		if (list_length(new_elems) > 0)
+		while (list_length(sortclause) > list_length(previous) &&
+			   list_length(new_elems) > 0)
 		{
-			while (list_length(sortclause) > list_length(previous))
-			{
-				SortGroupClause *sc = list_nth(sortclause, list_length(previous));
-				int			ref = sc->tleSortGroupRef;
+			SortGroupClause *sc = list_nth(sortclause, list_length(previous));
+			int			ref = sc->tleSortGroupRef;
 
-				if (list_member_int(new_elems, ref))
-				{
-					previous = lappend_int(previous, ref);
-					new_elems = list_delete_int(new_elems, ref);
-				}
-				else
-				{
-					/* diverged from the sortclause; give up on it */
-					sortclause = NIL;
-					break;
-				}
+			if (list_member_int(new_elems, ref))
+			{
+				previous = lappend_int(previous, ref);
+				new_elems = list_delete_int(new_elems, ref);
 			}
-
-			foreach(lc2, new_elems)
+			else
 			{
-				previous = lappend_int(previous, lfirst_int(lc2));
+				/* diverged from the sortclause; give up on it */
+				sortclause = NIL;
+				break;
 			}
 		}
 
+		previous = list_concat(previous, new_elems);
+
 		gs->set = list_copy(previous);
 		result = lcons(gs, result);
-		list_free(new_elems);
 	}
 
 	list_free(previous);
@@ -3481,7 +3162,7 @@ standard_qp_callback(PlannerInfo *root, void *extra)
 {
 	Query	   *parse = root->parse;
 	standard_qp_extra *qp_extra = (standard_qp_extra *) extra;
-	List	   *tlist = qp_extra->tlist;
+	List	   *tlist = root->processed_tlist;
 	List	   *activeWindows = qp_extra->activeWindows;
 
 	/*
@@ -3606,7 +3287,8 @@ get_number_of_groups(PlannerInfo *root,
 					double		numGroups = estimate_num_groups(root,
 																groupExprs,
 																path_rows,
-																&gset);
+																&gset,
+																NULL);
 
 					gs->numGroups = numGroups;
 					rollup->numGroups += numGroups;
@@ -3631,7 +3313,8 @@ get_number_of_groups(PlannerInfo *root,
 					double		numGroups = estimate_num_groups(root,
 																groupExprs,
 																path_rows,
-																&gset);
+																&gset,
+																NULL);
 
 					gs->numGroups = numGroups;
 					gd->dNumHashGroups += numGroups;
@@ -3647,7 +3330,7 @@ get_number_of_groups(PlannerInfo *root,
 												 target_list);
 
 			dNumGroups = estimate_num_groups(root, groupExprs, path_rows,
-											 NULL);
+											 NULL, NULL);
 		}
 	}
 	else if (parse->groupingSets)
@@ -3670,40 +3353,6 @@ get_number_of_groups(PlannerInfo *root,
 }
 
 /*
- * estimate_hashagg_tablesize
- *	  estimate the number of bytes that a hash aggregate hashtable will
- *	  require based on the agg_costs, path width and dNumGroups.
- *
- * XXX this may be over-estimating the size now that hashagg knows to omit
- * unneeded columns from the hashtable. Also for mixed-mode grouping sets,
- * grouping columns not in the hashed set are counted here even though hashagg
- * won't store them. Is this a problem?
- */
-static Size
-estimate_hashagg_tablesize(Path *path, const AggClauseCosts *agg_costs,
-						   double dNumGroups)
-{
-	Size		hashentrysize;
-
-	/* Estimate per-hash-entry space at tuple width... */
-	hashentrysize = MAXALIGN(path->pathtarget->width) +
-		MAXALIGN(SizeofMinimalTupleHeader);
-
-	/* plus space for pass-by-ref transition values... */
-	hashentrysize += agg_costs->transitionSpace;
-	/* plus the per-hash-entry overhead */
-	hashentrysize += hash_agg_entry_size(agg_costs->numAggs);
-
-	/*
-	 * Note that this disregards the effect of fill-factor and growth policy
-	 * of the hash-table. That's probably ok, given default the default
-	 * fill-factor is relatively high. It'd be hard to meaningfully factor in
-	 * "double-in-size" growth policies here.
-	 */
-	return hashentrysize * dNumGroups;
-}
-
-/*
  * create_grouping_paths
  *
  * Build a new upperrel containing Paths for grouping and/or aggregation.
@@ -3715,7 +3364,6 @@ estimate_hashagg_tablesize(Path *path, const AggClauseCosts *agg_costs,
  *
  * input_rel: contains the source-data Paths
  * target: the pathtarget for the result Paths to compute
- * agg_costs: cost info about all aggregates in query (in AGGSPLIT_SIMPLE mode)
  * gd: grouping sets data including list of grouping sets and their clauses
  *
  * Note: all Paths in input_rel are expected to return the target computed
@@ -3726,12 +3374,15 @@ create_grouping_paths(PlannerInfo *root,
 					  RelOptInfo *input_rel,
 					  PathTarget *target,
 					  bool target_parallel_safe,
-					  const AggClauseCosts *agg_costs,
 					  grouping_sets_data *gd)
 {
 	Query	   *parse = root->parse;
 	RelOptInfo *grouped_rel;
 	RelOptInfo *partially_grouped_rel;
+	AggClauseCosts agg_costs;
+
+	MemSet(&agg_costs, 0, sizeof(AggClauseCosts));
+	get_agg_clause_costs(root, AGGSPLIT_SIMPLE, &agg_costs);
 
 	/*
 	 * Create grouping relation to hold fully aggregated grouping and/or
@@ -3787,14 +3438,14 @@ create_grouping_paths(PlannerInfo *root,
 		 * the other gating conditions, so we want to do it last.
 		 */
 		if ((parse->groupClause != NIL &&
-			 agg_costs->numOrderedAggs == 0 &&
+			 root->numOrderedAggs == 0 &&
 			 (gd ? gd->any_hashable : grouping_is_hashable(parse->groupClause))))
 			flags |= GROUPING_CAN_USE_HASH;
 
 		/*
 		 * Determine whether partial aggregation is possible.
 		 */
-		if (can_partial_agg(root, agg_costs))
+		if (can_partial_agg(root))
 			flags |= GROUPING_CAN_PARTIAL_AGG;
 
 		extra.flags = flags;
@@ -3815,7 +3466,7 @@ create_grouping_paths(PlannerInfo *root,
 			extra.patype = PARTITIONWISE_AGGREGATE_NONE;
 
 		create_ordinary_grouping_paths(root, input_rel, grouped_rel,
-									   agg_costs, gd, &extra,
+									   &agg_costs, gd, &extra,
 									   &partially_grouped_rel);
 	}
 
@@ -3928,9 +3579,9 @@ create_degenerate_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 		while (--nrows >= 0)
 		{
 			path = (Path *)
-				create_result_path(root, grouped_rel,
-								   grouped_rel->reltarget,
-								   (List *) parse->havingQual);
+				create_group_result_path(root, grouped_rel,
+										 grouped_rel->reltarget,
+										 (List *) parse->havingQual);
 			paths = lappend(paths, path);
 		}
 		path = (Path *)
@@ -3938,19 +3589,19 @@ create_degenerate_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 							   grouped_rel,
 							   paths,
 							   NIL,
+							   NIL,
 							   NULL,
 							   0,
 							   false,
-							   NIL,
 							   -1);
 	}
 	else
 	{
 		/* No grouping sets, or just one, so one output row */
 		path = (Path *)
-			create_result_path(root, grouped_rel,
-							   grouped_rel->reltarget,
-							   (List *) parse->havingQual);
+			create_group_result_path(root, grouped_rel,
+									 grouped_rel->reltarget,
+									 (List *) parse->havingQual);
 	}
 
 	add_path(grouped_rel, path);
@@ -3986,12 +3637,10 @@ create_ordinary_grouping_paths(PlannerInfo *root, RelOptInfo *input_rel,
 	 * If this is the topmost grouping relation or if the parent relation is
 	 * doing some form of partitionwise aggregation, then we may be able to do
 	 * it at this level also.  However, if the input relation is not
-	 * partitioned, partitionwise aggregate is impossible, and if it is dummy,
-	 * partitionwise aggregate is pointless.
+	 * partitioned, partitionwise aggregate is impossible.
 	 */
 	if (extra->patype != PARTITIONWISE_AGGREGATE_NONE &&
-		input_rel->part_scheme && input_rel->part_rels &&
-		!IS_DUMMY_REL(input_rel))
+		IS_PARTITIONED_REL(input_rel))
 	{
 		/*
 		 * If this is the topmost relation or if the parent relation is doing
@@ -4118,16 +3767,17 @@ consider_groupingsets_paths(PlannerInfo *root,
 							double dNumGroups)
 {
 	Query	   *parse = root->parse;
+	Size		hash_mem_limit = get_hash_memory_limit();
 
 	/*
 	 * If we're not being offered sorted input, then only consider plans that
 	 * can be done entirely by hashing.
 	 *
-	 * We can hash everything if it looks like it'll fit in work_mem. But if
+	 * We can hash everything if it looks like it'll fit in hash_mem. But if
 	 * the input is actually sorted despite not being advertised as such, we
 	 * prefer to make use of that in order to use less memory.
 	 *
-	 * If none of the grouping sets are sortable, then ignore the work_mem
+	 * If none of the grouping sets are sortable, then ignore the hash_mem
 	 * limit and generate a path anyway, since otherwise we'll just fail.
 	 */
 	if (!is_sorted)
@@ -4140,7 +3790,7 @@ consider_groupingsets_paths(PlannerInfo *root,
 		ListCell   *lc;
 		ListCell   *l_start = list_head(gd->rollups);
 		AggStrategy strat = AGG_HASHED;
-		Size		hashsize;
+		double		hashsize;
 		double		exclude_groups = 0.0;
 
 		Assert(can_hash);
@@ -4163,26 +3813,27 @@ consider_groupingsets_paths(PlannerInfo *root,
 		 * 2) If there are no empty sets and only unsortable sets, then the
 		 * rollups list will be empty (and thus l_start == NULL), and
 		 * group_pathkeys will be NIL; we must ensure that the vacuously-true
-		 * pathkeys_contain_in test doesn't cause us to crash.
+		 * pathkeys_contained_in test doesn't cause us to crash.
 		 */
 		if (l_start != NULL &&
 			pathkeys_contained_in(root->group_pathkeys, path->pathkeys))
 		{
 			unhashed_rollup = lfirst_node(RollupData, l_start);
 			exclude_groups = unhashed_rollup->numGroups;
-			l_start = lnext(l_start);
+			l_start = lnext(gd->rollups, l_start);
 		}
 
-		hashsize = estimate_hashagg_tablesize(path,
+		hashsize = estimate_hashagg_tablesize(root,
+											  path,
 											  agg_costs,
 											  dNumGroups - exclude_groups);
 
 		/*
 		 * gd->rollups is empty if we have only unsortable columns to work
-		 * with.  Override work_mem in that case; otherwise, we'll rely on the
+		 * with.  Override hash_mem in that case; otherwise, we'll rely on the
 		 * sorted-input case to generate usable mixed paths.
 		 */
-		if (hashsize > work_mem * 1024L && gd->rollups)
+		if (hashsize > hash_mem_limit && gd->rollups)
 			return;				/* nope, won't fit */
 
 		/*
@@ -4191,7 +3842,7 @@ consider_groupingsets_paths(PlannerInfo *root,
 		 */
 		sets_data = list_copy(gd->unsortable_sets);
 
-		for_each_cell(lc, l_start)
+		for_each_cell(lc, gd->rollups, l_start)
 		{
 			RollupData *rollup = lfirst_node(RollupData, lc);
 
@@ -4208,8 +3859,8 @@ consider_groupingsets_paths(PlannerInfo *root,
 			 */
 			if (!rollup->hashable)
 				return;
-			else
-				sets_data = list_concat(sets_data, list_copy(rollup->gsets_data));
+
+			sets_data = list_concat(sets_data, rollup->gsets_data);
 		}
 		foreach(lc, sets_data)
 		{
@@ -4301,15 +3952,16 @@ consider_groupingsets_paths(PlannerInfo *root,
 	{
 		List	   *rollups = NIL;
 		List	   *hash_sets = list_copy(gd->unsortable_sets);
-		double		availspace = (work_mem * 1024.0);
+		double		availspace = hash_mem_limit;
 		ListCell   *lc;
 
 		/*
 		 * Account first for space needed for groups we can't sort at all.
 		 */
-		availspace -= (double) estimate_hashagg_tablesize(path,
-														  agg_costs,
-														  gd->dNumHashGroups);
+		availspace -= estimate_hashagg_tablesize(root,
+												 path,
+												 agg_costs,
+												 gd->dNumHashGroups);
 
 		if (availspace > 0 && list_length(gd->rollups) > 1)
 		{
@@ -4322,7 +3974,7 @@ consider_groupingsets_paths(PlannerInfo *root,
 
 			/*
 			 * We treat this as a knapsack problem: the knapsack capacity
-			 * represents work_mem, the item weights are the estimated memory
+			 * represents hash_mem, the item weights are the estimated memory
 			 * usage of the hashtables needed to implement a single rollup,
 			 * and we really ought to use the cost saving as the item value;
 			 * however, currently the costs assigned to sort nodes don't
@@ -4352,18 +4004,19 @@ consider_groupingsets_paths(PlannerInfo *root,
 			 * below, must use the same condition.
 			 */
 			i = 0;
-			for_each_cell(lc, lnext(list_head(gd->rollups)))
+			for_each_from(lc, gd->rollups, 1)
 			{
 				RollupData *rollup = lfirst_node(RollupData, lc);
 
 				if (rollup->hashable)
 				{
-					double		sz = estimate_hashagg_tablesize(path,
+					double		sz = estimate_hashagg_tablesize(root,
+																path,
 																agg_costs,
 																rollup->numGroups);
 
 					/*
-					 * If sz is enormous, but work_mem (and hence scale) is
+					 * If sz is enormous, but hash_mem (and hence scale) is
 					 * small, avoid integer overflow here.
 					 */
 					k_weights[i] = (int) Min(floor(sz / scale),
@@ -4386,7 +4039,7 @@ consider_groupingsets_paths(PlannerInfo *root,
 				rollups = list_make1(linitial(gd->rollups));
 
 				i = 0;
-				for_each_cell(lc, lnext(list_head(gd->rollups)))
+				for_each_from(lc, gd->rollups, 1)
 				{
 					RollupData *rollup = lfirst_node(RollupData, lc);
 
@@ -4394,7 +4047,7 @@ consider_groupingsets_paths(PlannerInfo *root,
 					{
 						if (bms_is_member(i, hash_items))
 							hash_sets = list_concat(hash_sets,
-													list_copy(rollup->gsets_data));
+													rollup->gsets_data);
 						else
 							rollups = lappend(rollups, rollup);
 						++i;
@@ -4463,7 +4116,6 @@ consider_groupingsets_paths(PlannerInfo *root,
  * input_rel: contains the source-data Paths
  * input_target: result of make_window_input_target
  * output_target: what the topmost WindowAggPath should return
- * tlist: query's target list (needed to look up pathkeys)
  * wflists: result of find_window_functions
  * activeWindows: result of select_active_windows
  *
@@ -4475,7 +4127,6 @@ create_window_paths(PlannerInfo *root,
 					PathTarget *input_target,
 					PathTarget *output_target,
 					bool output_target_parallel_safe,
-					List *tlist,
 					WindowFuncLists *wflists,
 					List *activeWindows)
 {
@@ -4505,20 +4156,22 @@ create_window_paths(PlannerInfo *root,
 	/*
 	 * Consider computing window functions starting from the existing
 	 * cheapest-total path (which will likely require a sort) as well as any
-	 * existing paths that satisfy root->window_pathkeys (which won't).
+	 * existing paths that satisfy or partially satisfy root->window_pathkeys.
 	 */
 	foreach(lc, input_rel->pathlist)
 	{
 		Path	   *path = (Path *) lfirst(lc);
+		int			presorted_keys;
 
 		if (path == input_rel->cheapest_total_path ||
-			pathkeys_contained_in(root->window_pathkeys, path->pathkeys))
+			pathkeys_count_contained_in(root->window_pathkeys, path->pathkeys,
+										&presorted_keys) ||
+			presorted_keys > 0)
 			create_one_window_path(root,
 								   window_rel,
 								   path,
 								   input_target,
 								   output_target,
-								   tlist,
 								   wflists,
 								   activeWindows);
 	}
@@ -4552,7 +4205,6 @@ create_window_paths(PlannerInfo *root,
  * path: input Path to use (must return input_target)
  * input_target: result of make_window_input_target
  * output_target: what the topmost WindowAggPath should return
- * tlist: query's target list (needed to look up pathkeys)
  * wflists: result of find_window_functions
  * activeWindows: result of select_active_windows
  */
@@ -4562,12 +4214,12 @@ create_one_window_path(PlannerInfo *root,
 					   Path *path,
 					   PathTarget *input_target,
 					   PathTarget *output_target,
-					   List *tlist,
 					   WindowFuncLists *wflists,
 					   List *activeWindows)
 {
 	PathTarget *window_target;
 	ListCell   *l;
+	List	   *topqual = NIL;
 
 	/*
 	 * Since each window clause could require a different sort order, we stack
@@ -4590,21 +4242,46 @@ create_one_window_path(PlannerInfo *root,
 	{
 		WindowClause *wc = lfirst_node(WindowClause, l);
 		List	   *window_pathkeys;
+		int			presorted_keys;
+		bool		is_sorted;
+		bool		topwindow;
 
 		window_pathkeys = make_pathkeys_for_window(root,
 												   wc,
-												   tlist);
+												   root->processed_tlist);
+
+		is_sorted = pathkeys_count_contained_in(window_pathkeys,
+												path->pathkeys,
+												&presorted_keys);
 
 		/* Sort if necessary */
-		if (!pathkeys_contained_in(window_pathkeys, path->pathkeys))
+		if (!is_sorted)
 		{
-			path = (Path *) create_sort_path(root, window_rel,
-											 path,
-											 window_pathkeys,
-											 -1.0);
+			/*
+			 * No presorted keys or incremental sort disabled, just perform a
+			 * complete sort.
+			 */
+			if (presorted_keys == 0 || !enable_incremental_sort)
+				path = (Path *) create_sort_path(root, window_rel,
+												 path,
+												 window_pathkeys,
+												 -1.0);
+			else
+			{
+				/*
+				 * Since we have presorted keys and incremental sort is
+				 * enabled, just use incremental sort.
+				 */
+				path = (Path *) create_incremental_sort_path(root,
+															 window_rel,
+															 path,
+															 window_pathkeys,
+															 presorted_keys,
+															 -1.0);
+			}
 		}
 
-		if (lnext(l))
+		if (lnext(activeWindows, l))
 		{
 			/*
 			 * Add the current WindowFuncs to the output target for this
@@ -4631,10 +4308,21 @@ create_one_window_path(PlannerInfo *root,
 			window_target = output_target;
 		}
 
+		/* mark the final item in the list as the top-level window */
+		topwindow = foreach_current_index(l) == list_length(activeWindows) - 1;
+
+		/*
+		 * Accumulate all of the runConditions from each intermediate
+		 * WindowClause.  The top-level WindowAgg must pass these as a qual so
+		 * that it filters out unwanted tuples correctly.
+		 */
+		if (!topwindow)
+			topqual = list_concat(topqual, wc->runCondition);
+
 		path = (Path *)
 			create_windowagg_path(root, window_rel, path, window_target,
 								  wflists->windowFuncs[wc->winref],
-								  wc);
+								  wc, topwindow ? topqual : NIL, topwindow);
 	}
 
 	add_path(window_rel, path);
@@ -4651,16 +4339,9 @@ create_one_window_path(PlannerInfo *root,
  * Sort/Unique won't project anything.
  */
 static RelOptInfo *
-create_distinct_paths(PlannerInfo *root,
-					  RelOptInfo *input_rel)
+create_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel)
 {
-	Query	   *parse = root->parse;
-	Path	   *cheapest_input_path = input_rel->cheapest_total_path;
 	RelOptInfo *distinct_rel;
-	double		numDistinctRows;
-	bool		allow_hash;
-	Path	   *path;
-	ListCell   *lc;
 
 	/* For now, do all work in the (DISTINCT, NULL) upperrel */
 	distinct_rel = fetch_upper_rel(root, UPPERREL_DISTINCT, NULL);
@@ -4681,6 +4362,184 @@ create_distinct_paths(PlannerInfo *root,
 	distinct_rel->userid = input_rel->userid;
 	distinct_rel->useridiscurrent = input_rel->useridiscurrent;
 	distinct_rel->fdwroutine = input_rel->fdwroutine;
+
+	/* build distinct paths based on input_rel's pathlist */
+	create_final_distinct_paths(root, input_rel, distinct_rel);
+
+	/* now build distinct paths based on input_rel's partial_pathlist */
+	create_partial_distinct_paths(root, input_rel, distinct_rel);
+
+	/* Give a helpful error if we failed to create any paths */
+	if (distinct_rel->pathlist == NIL)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("could not implement DISTINCT"),
+				 errdetail("Some of the datatypes only support hashing, while others only support sorting.")));
+
+	/*
+	 * If there is an FDW that's responsible for all baserels of the query,
+	 * let it consider adding ForeignPaths.
+	 */
+	if (distinct_rel->fdwroutine &&
+		distinct_rel->fdwroutine->GetForeignUpperPaths)
+		distinct_rel->fdwroutine->GetForeignUpperPaths(root,
+													   UPPERREL_DISTINCT,
+													   input_rel,
+													   distinct_rel,
+													   NULL);
+
+	/* Let extensions possibly add some more paths */
+	if (create_upper_paths_hook)
+		(*create_upper_paths_hook) (root, UPPERREL_DISTINCT, input_rel,
+									distinct_rel, NULL);
+
+	/* Now choose the best path(s) */
+	set_cheapest(distinct_rel);
+
+	return distinct_rel;
+}
+
+/*
+ * create_partial_distinct_paths
+ *
+ * Process 'input_rel' partial paths and add unique/aggregate paths to the
+ * UPPERREL_PARTIAL_DISTINCT rel.  For paths created, add Gather/GatherMerge
+ * paths on top and add a final unique/aggregate path to remove any duplicate
+ * produced from combining rows from parallel workers.
+ */
+static void
+create_partial_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
+							  RelOptInfo *final_distinct_rel)
+{
+	RelOptInfo *partial_distinct_rel;
+	Query	   *parse;
+	List	   *distinctExprs;
+	double		numDistinctRows;
+	Path	   *cheapest_partial_path;
+	ListCell   *lc;
+
+	/* nothing to do when there are no partial paths in the input rel */
+	if (!input_rel->consider_parallel || input_rel->partial_pathlist == NIL)
+		return;
+
+	parse = root->parse;
+
+	/* can't do parallel DISTINCT ON */
+	if (parse->hasDistinctOn)
+		return;
+
+	partial_distinct_rel = fetch_upper_rel(root, UPPERREL_PARTIAL_DISTINCT,
+										   NULL);
+	partial_distinct_rel->reltarget = root->upper_targets[UPPERREL_PARTIAL_DISTINCT];
+	partial_distinct_rel->consider_parallel = input_rel->consider_parallel;
+
+	/*
+	 * If input_rel belongs to a single FDW, so does the partial_distinct_rel.
+	 */
+	partial_distinct_rel->serverid = input_rel->serverid;
+	partial_distinct_rel->userid = input_rel->userid;
+	partial_distinct_rel->useridiscurrent = input_rel->useridiscurrent;
+	partial_distinct_rel->fdwroutine = input_rel->fdwroutine;
+
+	cheapest_partial_path = linitial(input_rel->partial_pathlist);
+
+	distinctExprs = get_sortgrouplist_exprs(parse->distinctClause,
+											parse->targetList);
+
+	/* estimate how many distinct rows we'll get from each worker */
+	numDistinctRows = estimate_num_groups(root, distinctExprs,
+										  cheapest_partial_path->rows,
+										  NULL, NULL);
+
+	/* first try adding unique paths atop of sorted paths */
+	if (grouping_is_sortable(parse->distinctClause))
+	{
+		foreach(lc, input_rel->partial_pathlist)
+		{
+			Path	   *path = (Path *) lfirst(lc);
+
+			if (pathkeys_contained_in(root->distinct_pathkeys, path->pathkeys))
+			{
+				add_partial_path(partial_distinct_rel, (Path *)
+								 create_upper_unique_path(root,
+														  partial_distinct_rel,
+														  path,
+														  list_length(root->distinct_pathkeys),
+														  numDistinctRows));
+			}
+		}
+	}
+
+	/*
+	 * Now try hash aggregate paths, if enabled and hashing is possible. Since
+	 * we're not on the hook to ensure we do our best to create at least one
+	 * path here, we treat enable_hashagg as a hard off-switch rather than the
+	 * slightly softer variant in create_final_distinct_paths.
+	 */
+	if (enable_hashagg && grouping_is_hashable(parse->distinctClause))
+	{
+		add_partial_path(partial_distinct_rel, (Path *)
+						 create_agg_path(root,
+										 partial_distinct_rel,
+										 cheapest_partial_path,
+										 cheapest_partial_path->pathtarget,
+										 AGG_HASHED,
+										 AGGSPLIT_SIMPLE,
+										 parse->distinctClause,
+										 NIL,
+										 NULL,
+										 numDistinctRows));
+	}
+
+	/*
+	 * If there is an FDW that's responsible for all baserels of the query,
+	 * let it consider adding ForeignPaths.
+	 */
+	if (partial_distinct_rel->fdwroutine &&
+		partial_distinct_rel->fdwroutine->GetForeignUpperPaths)
+		partial_distinct_rel->fdwroutine->GetForeignUpperPaths(root,
+															   UPPERREL_PARTIAL_DISTINCT,
+															   input_rel,
+															   partial_distinct_rel,
+															   NULL);
+
+	/* Let extensions possibly add some more partial paths */
+	if (create_upper_paths_hook)
+		(*create_upper_paths_hook) (root, UPPERREL_PARTIAL_DISTINCT,
+									input_rel, partial_distinct_rel, NULL);
+
+	if (partial_distinct_rel->partial_pathlist != NIL)
+	{
+		generate_gather_paths(root, partial_distinct_rel, true);
+		set_cheapest(partial_distinct_rel);
+
+		/*
+		 * Finally, create paths to distinctify the final result.  This step
+		 * is needed to remove any duplicates due to combining rows from
+		 * parallel workers.
+		 */
+		create_final_distinct_paths(root, partial_distinct_rel,
+									final_distinct_rel);
+	}
+}
+
+/*
+ * create_final_distinct_paths
+ *		Create distinct paths in 'distinct_rel' based on 'input_rel' pathlist
+ *
+ * input_rel: contains the source-data paths
+ * distinct_rel: destination relation for storing created paths
+ */
+static RelOptInfo *
+create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
+							RelOptInfo *distinct_rel)
+{
+	Query	   *parse = root->parse;
+	Path	   *cheapest_input_path = input_rel->cheapest_total_path;
+	double		numDistinctRows;
+	bool		allow_hash;
+	Path	   *path;
+	ListCell   *lc;
 
 	/* Estimate number of distinct rows there will be */
 	if (parse->groupClause || parse->groupingSets || parse->hasAggs ||
@@ -4704,7 +4563,7 @@ create_distinct_paths(PlannerInfo *root,
 												parse->targetList);
 		numDistinctRows = estimate_num_groups(root, distinctExprs,
 											  cheapest_input_path->rows,
-											  NULL);
+											  NULL, NULL);
 	}
 
 	/*
@@ -4777,11 +4636,10 @@ create_distinct_paths(PlannerInfo *root,
 	 * Consider hash-based implementations of DISTINCT, if possible.
 	 *
 	 * If we were not able to make any other types of path, we *must* hash or
-	 * die trying.  If we do have other choices, there are several things that
+	 * die trying.  If we do have other choices, there are two things that
 	 * should prevent selection of hashing: if the query uses DISTINCT ON
 	 * (because it won't really have the expected behavior if we hash), or if
-	 * enable_hashagg is off, or if it looks like the hashtable will exceed
-	 * work_mem.
+	 * enable_hashagg is off.
 	 *
 	 * Note: grouping_is_hashable() is much more expensive to check than the
 	 * other gating conditions, so we want to do it last.
@@ -4791,18 +4649,7 @@ create_distinct_paths(PlannerInfo *root,
 	else if (parse->hasDistinctOn || !enable_hashagg)
 		allow_hash = false;		/* policy-based decision not to hash */
 	else
-	{
-		Size		hashentrysize;
-
-		/* Estimate per-hash-entry space at tuple width... */
-		hashentrysize = MAXALIGN(cheapest_input_path->pathtarget->width) +
-			MAXALIGN(SizeofMinimalTupleHeader);
-		/* plus the per-hash-entry overhead */
-		hashentrysize += hash_agg_entry_size(0);
-
-		/* Allow hashing only if hashtable is predicted to fit in work_mem */
-		allow_hash = (hashentrysize * numDistinctRows <= work_mem * 1024L);
-	}
+		allow_hash = true;		/* default */
 
 	if (allow_hash && grouping_is_hashable(parse->distinctClause))
 	{
@@ -4820,31 +4667,6 @@ create_distinct_paths(PlannerInfo *root,
 								 numDistinctRows));
 	}
 
-	/* Give a helpful error if we failed to find any implementation */
-	if (distinct_rel->pathlist == NIL)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("could not implement DISTINCT"),
-				 errdetail("Some of the datatypes only support hashing, while others only support sorting.")));
-
-	/*
-	 * If there is an FDW that's responsible for all baserels of the query,
-	 * let it consider adding ForeignPaths.
-	 */
-	if (distinct_rel->fdwroutine &&
-		distinct_rel->fdwroutine->GetForeignUpperPaths)
-		distinct_rel->fdwroutine->GetForeignUpperPaths(root, UPPERREL_DISTINCT,
-													   input_rel, distinct_rel,
-													   NULL);
-
-	/* Let extensions possibly add some more paths */
-	if (create_upper_paths_hook)
-		(*create_upper_paths_hook) (root, UPPERREL_DISTINCT,
-									input_rel, distinct_rel, NULL);
-
-	/* Now choose the best path(s) */
-	set_cheapest(distinct_rel);
-
 	return distinct_rel;
 }
 
@@ -4854,13 +4676,16 @@ create_distinct_paths(PlannerInfo *root,
  * Build a new upperrel containing Paths for ORDER BY evaluation.
  *
  * All paths in the result must satisfy the ORDER BY ordering.
- * The only new path we need consider is an explicit sort on the
- * cheapest-total existing path.
+ * The only new paths we need consider are an explicit full sort
+ * and incremental sort on the cheapest-total existing path.
  *
  * input_rel: contains the source-data Paths
  * target: the output tlist the result Paths must emit
  * limit_tuples: estimated bound on the number of output tuples,
  *		or -1 if no LIMIT or couldn't estimate
+ *
+ * XXX This only looks at sort_pathkeys. I wonder if it needs to look at the
+ * other pathkeys (grouping, ...) like generate_useful_gather_paths.
  */
 static RelOptInfo *
 create_ordered_paths(PlannerInfo *root,
@@ -4894,29 +4719,77 @@ create_ordered_paths(PlannerInfo *root,
 
 	foreach(lc, input_rel->pathlist)
 	{
-		Path	   *path = (Path *) lfirst(lc);
+		Path	   *input_path = (Path *) lfirst(lc);
+		Path	   *sorted_path = input_path;
 		bool		is_sorted;
+		int			presorted_keys;
 
-		is_sorted = pathkeys_contained_in(root->sort_pathkeys,
-										  path->pathkeys);
-		if (path == cheapest_input_path || is_sorted)
+		is_sorted = pathkeys_count_contained_in(root->sort_pathkeys,
+												input_path->pathkeys, &presorted_keys);
+
+		if (is_sorted)
 		{
-			if (!is_sorted)
+			/* Use the input path as is, but add a projection step if needed */
+			if (sorted_path->pathtarget != target)
+				sorted_path = apply_projection_to_path(root, ordered_rel,
+													   sorted_path, target);
+
+			add_path(ordered_rel, sorted_path);
+		}
+		else
+		{
+			/*
+			 * Try adding an explicit sort, but only to the cheapest total
+			 * path since a full sort should generally add the same cost to
+			 * all paths.
+			 */
+			if (input_path == cheapest_input_path)
 			{
-				/* An explicit sort here can take advantage of LIMIT */
-				path = (Path *) create_sort_path(root,
-												 ordered_rel,
-												 path,
-												 root->sort_pathkeys,
-												 limit_tuples);
+				/*
+				 * Sort the cheapest input path. An explicit sort here can
+				 * take advantage of LIMIT.
+				 */
+				sorted_path = (Path *) create_sort_path(root,
+														ordered_rel,
+														input_path,
+														root->sort_pathkeys,
+														limit_tuples);
+				/* Add projection step if needed */
+				if (sorted_path->pathtarget != target)
+					sorted_path = apply_projection_to_path(root, ordered_rel,
+														   sorted_path, target);
+
+				add_path(ordered_rel, sorted_path);
 			}
 
-			/* Add projection step if needed */
-			if (path->pathtarget != target)
-				path = apply_projection_to_path(root, ordered_rel,
-												path, target);
+			/*
+			 * If incremental sort is enabled, then try it as well. Unlike
+			 * with regular sorts, we can't just look at the cheapest path,
+			 * because the cost of incremental sort depends on how well
+			 * presorted the path is. Additionally incremental sort may enable
+			 * a cheaper startup path to win out despite higher total cost.
+			 */
+			if (!enable_incremental_sort)
+				continue;
 
-			add_path(ordered_rel, path);
+			/* Likewise, if the path can't be used for incremental sort. */
+			if (!presorted_keys)
+				continue;
+
+			/* Also consider incremental sort. */
+			sorted_path = (Path *) create_incremental_sort_path(root,
+																ordered_rel,
+																input_path,
+																root->sort_pathkeys,
+																presorted_keys,
+																limit_tuples);
+
+			/* Add projection step if needed */
+			if (sorted_path->pathtarget != target)
+				sorted_path = apply_projection_to_path(root, ordered_rel,
+													   sorted_path, target);
+
+			add_path(ordered_rel, sorted_path);
 		}
 	}
 
@@ -4968,6 +4841,68 @@ create_ordered_paths(PlannerInfo *root,
 												path, target);
 
 			add_path(ordered_rel, path);
+		}
+
+		/*
+		 * Consider incremental sort with a gather merge on partial paths.
+		 *
+		 * We can also skip the entire loop when we only have a single-item
+		 * sort_pathkeys because then we can't possibly have a presorted
+		 * prefix of the list without having the list be fully sorted.
+		 */
+		if (enable_incremental_sort && list_length(root->sort_pathkeys) > 1)
+		{
+			ListCell   *lc;
+
+			foreach(lc, input_rel->partial_pathlist)
+			{
+				Path	   *input_path = (Path *) lfirst(lc);
+				Path	   *sorted_path;
+				bool		is_sorted;
+				int			presorted_keys;
+				double		total_groups;
+
+				/*
+				 * We don't care if this is the cheapest partial path - we
+				 * can't simply skip it, because it may be partially sorted in
+				 * which case we want to consider adding incremental sort
+				 * (instead of full sort, which is what happens above).
+				 */
+
+				is_sorted = pathkeys_count_contained_in(root->sort_pathkeys,
+														input_path->pathkeys,
+														&presorted_keys);
+
+				/* No point in adding incremental sort on fully sorted paths. */
+				if (is_sorted)
+					continue;
+
+				if (presorted_keys == 0)
+					continue;
+
+				/* Since we have presorted keys, consider incremental sort. */
+				sorted_path = (Path *) create_incremental_sort_path(root,
+																	ordered_rel,
+																	input_path,
+																	root->sort_pathkeys,
+																	presorted_keys,
+																	limit_tuples);
+				total_groups = input_path->rows *
+					input_path->parallel_workers;
+				sorted_path = (Path *)
+					create_gather_merge_path(root, ordered_rel,
+											 sorted_path,
+											 sorted_path->pathtarget,
+											 root->sort_pathkeys, NULL,
+											 &total_groups);
+
+				/* Add projection step if needed */
+				if (sorted_path->pathtarget != target)
+					sorted_path = apply_projection_to_path(root, ordered_rel,
+														   sorted_path, target);
+
+				add_path(ordered_rel, sorted_path);
+			}
 		}
 	}
 
@@ -5103,7 +5038,7 @@ make_group_input_target(PlannerInfo *root, PathTarget *final_target)
  * a regular aggregation node would, plus any aggregates used in HAVING;
  * except that the Aggref nodes should be marked as partial aggregates.
  *
- * In addition, we'd better emit any Vars and PlaceholderVars that are
+ * In addition, we'd better emit any Vars and PlaceHolderVars that are
  * used outside of Aggrefs in the aggregation tlist and HAVING.  (Presumably,
  * these would be Vars that are grouped by or used in grouping expressions.)
  *
@@ -5265,7 +5200,7 @@ postprocess_setop_tlist(List *new_tlist, List *orig_tlist)
 
 		Assert(orig_tlist_item != NULL);
 		orig_tle = lfirst_node(TargetEntry, orig_tlist_item);
-		orig_tlist_item = lnext(orig_tlist_item);
+		orig_tlist_item = lnext(orig_tlist, orig_tlist_item);
 		if (orig_tle->resjunk)	/* should not happen */
 			elog(ERROR, "resjunk output columns are not implemented");
 		Assert(new_tle->resno == orig_tle->resno);
@@ -5284,65 +5219,117 @@ postprocess_setop_tlist(List *new_tlist, List *orig_tlist)
 static List *
 select_active_windows(PlannerInfo *root, WindowFuncLists *wflists)
 {
-	List	   *result;
-	List	   *actives;
+	List	   *windowClause = root->parse->windowClause;
+	List	   *result = NIL;
 	ListCell   *lc;
+	int			nActive = 0;
+	WindowClauseSortData *actives = palloc(sizeof(WindowClauseSortData)
+										   * list_length(windowClause));
 
-	/* First, make a list of the active windows */
-	actives = NIL;
-	foreach(lc, root->parse->windowClause)
+	/* First, construct an array of the active windows */
+	foreach(lc, windowClause)
 	{
 		WindowClause *wc = lfirst_node(WindowClause, lc);
 
 		/* It's only active if wflists shows some related WindowFuncs */
 		Assert(wc->winref <= wflists->maxWinRef);
-		if (wflists->windowFuncs[wc->winref] != NIL)
-			actives = lappend(actives, wc);
+		if (wflists->windowFuncs[wc->winref] == NIL)
+			continue;
+
+		actives[nActive].wc = wc;	/* original clause */
+
+		/*
+		 * For sorting, we want the list of partition keys followed by the
+		 * list of sort keys. But pathkeys construction will remove duplicates
+		 * between the two, so we can as well (even though we can't detect all
+		 * of the duplicates, since some may come from ECs - that might mean
+		 * we miss optimization chances here). We must, however, ensure that
+		 * the order of entries is preserved with respect to the ones we do
+		 * keep.
+		 *
+		 * partitionClause and orderClause had their own duplicates removed in
+		 * parse analysis, so we're only concerned here with removing
+		 * orderClause entries that also appear in partitionClause.
+		 */
+		actives[nActive].uniqueOrder =
+			list_concat_unique(list_copy(wc->partitionClause),
+							   wc->orderClause);
+		nActive++;
 	}
 
 	/*
-	 * Now, ensure that windows with identical partitioning/ordering clauses
-	 * are adjacent in the list.  This is required by the SQL standard, which
-	 * says that only one sort is to be used for such windows, even if they
-	 * are otherwise distinct (eg, different names or framing clauses).
+	 * Sort active windows by their partitioning/ordering clauses, ignoring
+	 * any framing clauses, so that the windows that need the same sorting are
+	 * adjacent in the list. When we come to generate paths, this will avoid
+	 * inserting additional Sort nodes.
 	 *
-	 * There is room to be much smarter here, for example detecting whether
-	 * one window's sort keys are a prefix of another's (so that sorting for
-	 * the latter would do for the former), or putting windows first that
-	 * match a sort order available for the underlying query.  For the moment
-	 * we are content with meeting the spec.
+	 * This is how we implement a specific requirement from the SQL standard,
+	 * which says that when two or more windows are order-equivalent (i.e.
+	 * have matching partition and order clauses, even if their names or
+	 * framing clauses differ), then all peer rows must be presented in the
+	 * same order in all of them. If we allowed multiple sort nodes for such
+	 * cases, we'd risk having the peer rows end up in different orders in
+	 * equivalent windows due to sort instability. (See General Rule 4 of
+	 * <window clause> in SQL2008 - SQL2016.)
+	 *
+	 * Additionally, if the entire list of clauses of one window is a prefix
+	 * of another, put first the window with stronger sorting requirements.
+	 * This way we will first sort for stronger window, and won't have to sort
+	 * again for the weaker one.
 	 */
-	result = NIL;
-	while (actives != NIL)
-	{
-		WindowClause *wc = linitial_node(WindowClause, actives);
-		ListCell   *prev;
-		ListCell   *next;
+	qsort(actives, nActive, sizeof(WindowClauseSortData), common_prefix_cmp);
 
-		/* Move wc from actives to result */
-		actives = list_delete_first(actives);
-		result = lappend(result, wc);
+	/* build ordered list of the original WindowClause nodes */
+	for (int i = 0; i < nActive; i++)
+		result = lappend(result, actives[i].wc);
 
-		/* Now move any matching windows from actives to result */
-		prev = NULL;
-		for (lc = list_head(actives); lc; lc = next)
-		{
-			WindowClause *wc2 = lfirst_node(WindowClause, lc);
-
-			next = lnext(lc);
-			/* framing options are NOT to be compared here! */
-			if (equal(wc->partitionClause, wc2->partitionClause) &&
-				equal(wc->orderClause, wc2->orderClause))
-			{
-				actives = list_delete_cell(actives, lc, prev);
-				result = lappend(result, wc2);
-			}
-			else
-				prev = lc;
-		}
-	}
+	pfree(actives);
 
 	return result;
+}
+
+/*
+ * common_prefix_cmp
+ *	  QSort comparison function for WindowClauseSortData
+ *
+ * Sort the windows by the required sorting clauses. First, compare the sort
+ * clauses themselves. Second, if one window's clauses are a prefix of another
+ * one's clauses, put the window with more sort clauses first.
+ */
+static int
+common_prefix_cmp(const void *a, const void *b)
+{
+	const WindowClauseSortData *wcsa = a;
+	const WindowClauseSortData *wcsb = b;
+	ListCell   *item_a;
+	ListCell   *item_b;
+
+	forboth(item_a, wcsa->uniqueOrder, item_b, wcsb->uniqueOrder)
+	{
+		SortGroupClause *sca = lfirst_node(SortGroupClause, item_a);
+		SortGroupClause *scb = lfirst_node(SortGroupClause, item_b);
+
+		if (sca->tleSortGroupRef > scb->tleSortGroupRef)
+			return -1;
+		else if (sca->tleSortGroupRef < scb->tleSortGroupRef)
+			return 1;
+		else if (sca->sortop > scb->sortop)
+			return -1;
+		else if (sca->sortop < scb->sortop)
+			return 1;
+		else if (sca->nulls_first && !scb->nulls_first)
+			return -1;
+		else if (!sca->nulls_first && scb->nulls_first)
+			return 1;
+		/* no need to compare eqop, since it is fully determined by sortop */
+	}
+
+	if (list_length(wcsa->uniqueOrder) > list_length(wcsb->uniqueOrder))
+		return -1;
+	else if (list_length(wcsa->uniqueOrder) < list_length(wcsb->uniqueOrder))
+		return 1;
+
+	return 0;
 }
 
 /*
@@ -5516,8 +5503,7 @@ make_pathkeys_for_window(PlannerInfo *root, WindowClause *wc,
 				 errdetail("Window ordering columns must be of sortable datatypes.")));
 
 	/* Okay, make the combined pathkeys */
-	window_sortclauses = list_concat(list_copy(wc->partitionClause),
-									 list_copy(wc->orderClause));
+	window_sortclauses = list_concat_copy(wc->partitionClause, wc->orderClause);
 	window_pathkeys = make_pathkeys_for_sortclauses(root,
 													window_sortclauses,
 													tlist);
@@ -5910,10 +5896,16 @@ adjust_paths_for_srfs(PlannerInfo *root, RelOptInfo *rel,
  * side-effect that is useful when the expression will get evaluated more than
  * once.  Also, we must fix operator function IDs.
  *
+ * This does not return any information about dependencies of the expression.
+ * Hence callers should use the results only for the duration of the current
+ * query.  Callers that would like to cache the results for longer should use
+ * expression_planner_with_deps, probably via the plancache.
+ *
  * Note: this must not make any damaging changes to the passed-in expression
  * tree.  (It would actually be okay to apply fix_opfuncids to it, but since
  * we first do an expression_tree_mutator-based walk, what is returned will
- * be a new node tree.)
+ * be a new node tree.)  The result is constructed in the current memory
+ * context; beware that this can leak a lot of additional stuff there, too.
  */
 Expr *
 expression_planner(Expr *expr)
@@ -5928,6 +5920,57 @@ expression_planner(Expr *expr)
 
 	/* Fill in opfuncid values if missing */
 	fix_opfuncids(result);
+
+	return (Expr *) result;
+}
+
+/*
+ * expression_planner_with_deps
+ *		Perform planner's transformations on a standalone expression,
+ *		returning expression dependency information along with the result.
+ *
+ * This is identical to expression_planner() except that it also returns
+ * information about possible dependencies of the expression, ie identities of
+ * objects whose definitions affect the result.  As in a PlannedStmt, these
+ * are expressed as a list of relation Oids and a list of PlanInvalItems.
+ */
+Expr *
+expression_planner_with_deps(Expr *expr,
+							 List **relationOids,
+							 List **invalItems)
+{
+	Node	   *result;
+	PlannerGlobal glob;
+	PlannerInfo root;
+
+	/* Make up dummy planner state so we can use setrefs machinery */
+	MemSet(&glob, 0, sizeof(glob));
+	glob.type = T_PlannerGlobal;
+	glob.relationOids = NIL;
+	glob.invalItems = NIL;
+
+	MemSet(&root, 0, sizeof(root));
+	root.type = T_PlannerInfo;
+	root.glob = &glob;
+
+	/*
+	 * Convert named-argument function calls, insert default arguments and
+	 * simplify constant subexprs.  Collect identities of inlined functions
+	 * and elided domains, too.
+	 */
+	result = eval_const_expressions(&root, (Node *) expr);
+
+	/* Fill in opfuncid values if missing */
+	fix_opfuncids(result);
+
+	/*
+	 * Now walk the finished expression to find anything else we ought to
+	 * record as an expression dependency.
+	 */
+	(void) extract_query_dependencies_walker(result, &root);
+
+	*relationOids = glob.relationOids;
+	*invalItems = glob.invalItems;
 
 	return (Expr *) result;
 }
@@ -5982,6 +6025,7 @@ plan_cluster_use_sort(Oid tableOid, Oid indexOid)
 	rte->rtekind = RTE_RELATION;
 	rte->relid = tableOid;
 	rte->relkind = RELKIND_RELATION;	/* Don't be too picky. */
+	rte->rellockmode = AccessShareLock;
 	rte->lateral = false;
 	rte->inh = false;
 	rte->inFromCl = true;
@@ -6038,7 +6082,7 @@ plan_cluster_use_sort(Oid tableOid, Oid indexOid)
 
 	/* Estimate the cost of index scan */
 	indexScanPath = create_index_path(root, indexInfo,
-									  NIL, NIL, NIL, NIL, NIL,
+									  NIL, NIL, NIL, NIL,
 									  ForwardScanDirection, false,
 									  NULL, 1.0, false);
 
@@ -6076,9 +6120,11 @@ plan_create_index_workers(Oid tableOid, Oid indexOid)
 	double		reltuples;
 	double		allvisfrac;
 
-	/* Return immediately when parallelism disabled */
-	if (dynamic_shared_memory_type == DSM_IMPL_NONE ||
-		max_parallel_maintenance_workers == 0)
+	/*
+	 * We don't allow performing parallel operation in standalone backend or
+	 * when parallelism is disabled.
+	 */
+	if (!IsUnderPostmaster || max_parallel_maintenance_workers == 0)
 		return 0;
 
 	/* Set up largely-dummy planner state */
@@ -6097,14 +6143,16 @@ plan_create_index_workers(Oid tableOid, Oid indexOid)
 	/*
 	 * Build a minimal RTE.
 	 *
-	 * Set the target's table to be an inheritance parent.  This is a kludge
-	 * that prevents problems within get_relation_info(), which does not
-	 * expect that any IndexOptInfo is currently undergoing REINDEX.
+	 * Mark the RTE with inh = true.  This is a kludge to prevent
+	 * get_relation_info() from fetching index info, which is necessary
+	 * because it does not expect that any IndexOptInfo is currently
+	 * undergoing REINDEX.
 	 */
 	rte = makeNode(RangeTblEntry);
 	rte->rtekind = RTE_RELATION;
 	rte->relid = tableOid;
 	rte->relkind = RELKIND_RELATION;	/* Don't be too picky. */
+	rte->rellockmode = AccessShareLock;
 	rte->lateral = false;
 	rte->inh = true;
 	rte->inFromCl = true;
@@ -6116,19 +6164,18 @@ plan_create_index_workers(Oid tableOid, Oid indexOid)
 	/* Build RelOptInfo */
 	rel = build_simple_rel(root, 1, NULL);
 
-	heap = heap_open(tableOid, NoLock);
+	/* Rels are assumed already locked by the caller */
+	heap = table_open(tableOid, NoLock);
 	index = index_open(indexOid, NoLock);
 
 	/*
 	 * Determine if it's safe to proceed.
 	 *
-	 * Currently, parallel workers can't access the leader's temporary tables,
-	 * or the leader's relmapper.c state, which is needed for builds on mapped
-	 * relations.  Furthermore, any index predicate or index expressions must
-	 * be parallel safe.
+	 * Currently, parallel workers can't access the leader's temporary tables.
+	 * Furthermore, any index predicate or index expressions must be parallel
+	 * safe.
 	 */
 	if (heap->rd_rel->relpersistence == RELPERSISTENCE_TEMP ||
-		RelationIsMapped(heap) ||
 		!is_parallel_safe(root, (Node *) RelationGetIndexExpressions(index)) ||
 		!is_parallel_safe(root, (Node *) RelationGetIndexPredicate(index)))
 	{
@@ -6179,7 +6226,7 @@ plan_create_index_workers(Oid tableOid, Oid indexOid)
 
 done:
 	index_close(index, NoLock);
-	heap_close(heap, NoLock);
+	table_close(heap, NoLock);
 
 	return parallel_workers;
 }
@@ -6214,10 +6261,14 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 		foreach(lc, input_rel->pathlist)
 		{
 			Path	   *path = (Path *) lfirst(lc);
+			Path	   *path_original = path;
 			bool		is_sorted;
+			int			presorted_keys;
 
-			is_sorted = pathkeys_contained_in(root->group_pathkeys,
-											  path->pathkeys);
+			is_sorted = pathkeys_count_contained_in(root->group_pathkeys,
+													path->pathkeys,
+													&presorted_keys);
+
 			if (path == cheapest_path || is_sorted)
 			{
 				/* Sort the cheapest-total path if it isn't already sorted */
@@ -6273,6 +6324,79 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 					Assert(false);
 				}
 			}
+
+			/*
+			 * Now we may consider incremental sort on this path, but only
+			 * when the path is not already sorted and when incremental sort
+			 * is enabled.
+			 */
+			if (is_sorted || !enable_incremental_sort)
+				continue;
+
+			/* Restore the input path (we might have added Sort on top). */
+			path = path_original;
+
+			/* no shared prefix, no point in building incremental sort */
+			if (presorted_keys == 0)
+				continue;
+
+			/*
+			 * We should have already excluded pathkeys of length 1 because
+			 * then presorted_keys > 0 would imply is_sorted was true.
+			 */
+			Assert(list_length(root->group_pathkeys) != 1);
+
+			path = (Path *) create_incremental_sort_path(root,
+														 grouped_rel,
+														 path,
+														 root->group_pathkeys,
+														 presorted_keys,
+														 -1.0);
+
+			/* Now decide what to stick atop it */
+			if (parse->groupingSets)
+			{
+				consider_groupingsets_paths(root, grouped_rel,
+											path, true, can_hash,
+											gd, agg_costs, dNumGroups);
+			}
+			else if (parse->hasAggs)
+			{
+				/*
+				 * We have aggregation, possibly with plain GROUP BY. Make an
+				 * AggPath.
+				 */
+				add_path(grouped_rel, (Path *)
+						 create_agg_path(root,
+										 grouped_rel,
+										 path,
+										 grouped_rel->reltarget,
+										 parse->groupClause ? AGG_SORTED : AGG_PLAIN,
+										 AGGSPLIT_SIMPLE,
+										 parse->groupClause,
+										 havingQual,
+										 agg_costs,
+										 dNumGroups));
+			}
+			else if (parse->groupClause)
+			{
+				/*
+				 * We have GROUP BY without aggregation or grouping sets. Make
+				 * a GroupPath.
+				 */
+				add_path(grouped_rel, (Path *)
+						 create_group_path(root,
+										   grouped_rel,
+										   path,
+										   parse->groupClause,
+										   havingQual,
+										   dNumGroups));
+			}
+			else
+			{
+				/* Other cases should have been handled above */
+				Assert(false);
+			}
 		}
 
 		/*
@@ -6284,12 +6408,19 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 			foreach(lc, partially_grouped_rel->pathlist)
 			{
 				Path	   *path = (Path *) lfirst(lc);
+				Path	   *path_original = path;
+				bool		is_sorted;
+				int			presorted_keys;
+
+				is_sorted = pathkeys_count_contained_in(root->group_pathkeys,
+														path->pathkeys,
+														&presorted_keys);
 
 				/*
 				 * Insert a Sort node, if required.  But there's no point in
 				 * sorting anything but the cheapest path.
 				 */
-				if (!pathkeys_contained_in(root->group_pathkeys, path->pathkeys))
+				if (!is_sorted)
 				{
 					if (path != partially_grouped_rel->cheapest_total_path)
 						continue;
@@ -6320,14 +6451,62 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 											   parse->groupClause,
 											   havingQual,
 											   dNumGroups));
+
+				/*
+				 * Now we may consider incremental sort on this path, but only
+				 * when the path is not already sorted and when incremental
+				 * sort is enabled.
+				 */
+				if (is_sorted || !enable_incremental_sort)
+					continue;
+
+				/* Restore the input path (we might have added Sort on top). */
+				path = path_original;
+
+				/* no shared prefix, not point in building incremental sort */
+				if (presorted_keys == 0)
+					continue;
+
+				/*
+				 * We should have already excluded pathkeys of length 1
+				 * because then presorted_keys > 0 would imply is_sorted was
+				 * true.
+				 */
+				Assert(list_length(root->group_pathkeys) != 1);
+
+				path = (Path *) create_incremental_sort_path(root,
+															 grouped_rel,
+															 path,
+															 root->group_pathkeys,
+															 presorted_keys,
+															 -1.0);
+
+				if (parse->hasAggs)
+					add_path(grouped_rel, (Path *)
+							 create_agg_path(root,
+											 grouped_rel,
+											 path,
+											 grouped_rel->reltarget,
+											 parse->groupClause ? AGG_SORTED : AGG_PLAIN,
+											 AGGSPLIT_FINAL_DESERIAL,
+											 parse->groupClause,
+											 havingQual,
+											 agg_final_costs,
+											 dNumGroups));
+				else
+					add_path(grouped_rel, (Path *)
+							 create_group_path(root,
+											   grouped_rel,
+											   path,
+											   parse->groupClause,
+											   havingQual,
+											   dNumGroups));
 			}
 		}
 	}
 
 	if (can_hash)
 	{
-		Size		hashaggtablesize;
-
 		if (parse->groupingSets)
 		{
 			/*
@@ -6339,61 +6518,41 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 		}
 		else
 		{
-			hashaggtablesize = estimate_hashagg_tablesize(cheapest_path,
-														  agg_costs,
-														  dNumGroups);
-
 			/*
-			 * Provided that the estimated size of the hashtable does not
-			 * exceed work_mem, we'll generate a HashAgg Path, although if we
-			 * were unable to sort above, then we'd better generate a Path, so
-			 * that we at least have one.
+			 * Generate a HashAgg Path.  We just need an Agg over the
+			 * cheapest-total input path, since input order won't matter.
 			 */
-			if (hashaggtablesize < work_mem * 1024L ||
-				grouped_rel->pathlist == NIL)
-			{
-				/*
-				 * We just need an Agg over the cheapest-total input path,
-				 * since input order won't matter.
-				 */
-				add_path(grouped_rel, (Path *)
-						 create_agg_path(root, grouped_rel,
-										 cheapest_path,
-										 grouped_rel->reltarget,
-										 AGG_HASHED,
-										 AGGSPLIT_SIMPLE,
-										 parse->groupClause,
-										 havingQual,
-										 agg_costs,
-										 dNumGroups));
-			}
+			add_path(grouped_rel, (Path *)
+					 create_agg_path(root, grouped_rel,
+									 cheapest_path,
+									 grouped_rel->reltarget,
+									 AGG_HASHED,
+									 AGGSPLIT_SIMPLE,
+									 parse->groupClause,
+									 havingQual,
+									 agg_costs,
+									 dNumGroups));
 		}
 
 		/*
 		 * Generate a Finalize HashAgg Path atop of the cheapest partially
-		 * grouped path, assuming there is one. Once again, we'll only do this
-		 * if it looks as though the hash table won't exceed work_mem.
+		 * grouped path, assuming there is one
 		 */
 		if (partially_grouped_rel && partially_grouped_rel->pathlist)
 		{
 			Path	   *path = partially_grouped_rel->cheapest_total_path;
 
-			hashaggtablesize = estimate_hashagg_tablesize(path,
-														  agg_final_costs,
-														  dNumGroups);
-
-			if (hashaggtablesize < work_mem * 1024L)
-				add_path(grouped_rel, (Path *)
-						 create_agg_path(root,
-										 grouped_rel,
-										 path,
-										 grouped_rel->reltarget,
-										 AGG_HASHED,
-										 AGGSPLIT_FINAL_DESERIAL,
-										 parse->groupClause,
-										 havingQual,
-										 agg_final_costs,
-										 dNumGroups));
+			add_path(grouped_rel, (Path *)
+					 create_agg_path(root,
+									 grouped_rel,
+									 path,
+									 grouped_rel->reltarget,
+									 AGG_HASHED,
+									 AGGSPLIT_FINAL_DESERIAL,
+									 parse->groupClause,
+									 havingQual,
+									 agg_final_costs,
+									 dNumGroups));
 		}
 	}
 
@@ -6507,20 +6666,12 @@ create_partial_grouping_paths(PlannerInfo *root,
 		MemSet(agg_final_costs, 0, sizeof(AggClauseCosts));
 		if (parse->hasAggs)
 		{
-			List	   *partial_target_exprs;
-
 			/* partial phase */
-			partial_target_exprs = partially_grouped_rel->reltarget->exprs;
-			get_agg_clause_costs(root, (Node *) partial_target_exprs,
-								 AGGSPLIT_INITIAL_SERIAL,
+			get_agg_clause_costs(root, AGGSPLIT_INITIAL_SERIAL,
 								 agg_partial_costs);
 
 			/* final phase */
-			get_agg_clause_costs(root, (Node *) grouped_rel->reltarget->exprs,
-								 AGGSPLIT_FINAL_DESERIAL,
-								 agg_final_costs);
-			get_agg_clause_costs(root, extra->havingQual,
-								 AGGSPLIT_FINAL_DESERIAL,
+			get_agg_clause_costs(root, AGGSPLIT_FINAL_DESERIAL,
 								 agg_final_costs);
 		}
 
@@ -6589,6 +6740,63 @@ create_partial_grouping_paths(PlannerInfo *root,
 											   dNumPartialGroups));
 			}
 		}
+
+		/*
+		 * Consider incremental sort on all partial paths, if enabled.
+		 *
+		 * We can also skip the entire loop when we only have a single-item
+		 * group_pathkeys because then we can't possibly have a presorted
+		 * prefix of the list without having the list be fully sorted.
+		 */
+		if (enable_incremental_sort && list_length(root->group_pathkeys) > 1)
+		{
+			foreach(lc, input_rel->pathlist)
+			{
+				Path	   *path = (Path *) lfirst(lc);
+				bool		is_sorted;
+				int			presorted_keys;
+
+				is_sorted = pathkeys_count_contained_in(root->group_pathkeys,
+														path->pathkeys,
+														&presorted_keys);
+
+				/* Ignore already sorted paths */
+				if (is_sorted)
+					continue;
+
+				if (presorted_keys == 0)
+					continue;
+
+				/* Since we have presorted keys, consider incremental sort. */
+				path = (Path *) create_incremental_sort_path(root,
+															 partially_grouped_rel,
+															 path,
+															 root->group_pathkeys,
+															 presorted_keys,
+															 -1.0);
+
+				if (parse->hasAggs)
+					add_path(partially_grouped_rel, (Path *)
+							 create_agg_path(root,
+											 partially_grouped_rel,
+											 path,
+											 partially_grouped_rel->reltarget,
+											 parse->groupClause ? AGG_SORTED : AGG_PLAIN,
+											 AGGSPLIT_INITIAL_SERIAL,
+											 parse->groupClause,
+											 NIL,
+											 agg_partial_costs,
+											 dNumPartialGroups));
+				else
+					add_path(partially_grouped_rel, (Path *)
+							 create_group_path(root,
+											   partially_grouped_rel,
+											   path,
+											   parse->groupClause,
+											   NIL,
+											   dNumPartialGroups));
+			}
+		}
 	}
 
 	if (can_sort && cheapest_partial_path != NULL)
@@ -6597,10 +6805,14 @@ create_partial_grouping_paths(PlannerInfo *root,
 		foreach(lc, input_rel->partial_pathlist)
 		{
 			Path	   *path = (Path *) lfirst(lc);
+			Path	   *path_original = path;
 			bool		is_sorted;
+			int			presorted_keys;
 
-			is_sorted = pathkeys_contained_in(root->group_pathkeys,
-											  path->pathkeys);
+			is_sorted = pathkeys_count_contained_in(root->group_pathkeys,
+													path->pathkeys,
+													&presorted_keys);
+
 			if (path == cheapest_partial_path || is_sorted)
 			{
 				/* Sort the cheapest partial path, if it isn't already */
@@ -6632,67 +6844,95 @@ create_partial_grouping_paths(PlannerInfo *root,
 													   NIL,
 													   dNumPartialPartialGroups));
 			}
+
+			/*
+			 * Now we may consider incremental sort on this path, but only
+			 * when the path is not already sorted and when incremental sort
+			 * is enabled.
+			 */
+			if (is_sorted || !enable_incremental_sort)
+				continue;
+
+			/* Restore the input path (we might have added Sort on top). */
+			path = path_original;
+
+			/* no shared prefix, not point in building incremental sort */
+			if (presorted_keys == 0)
+				continue;
+
+			/*
+			 * We should have already excluded pathkeys of length 1 because
+			 * then presorted_keys > 0 would imply is_sorted was true.
+			 */
+			Assert(list_length(root->group_pathkeys) != 1);
+
+			path = (Path *) create_incremental_sort_path(root,
+														 partially_grouped_rel,
+														 path,
+														 root->group_pathkeys,
+														 presorted_keys,
+														 -1.0);
+
+			if (parse->hasAggs)
+				add_partial_path(partially_grouped_rel, (Path *)
+								 create_agg_path(root,
+												 partially_grouped_rel,
+												 path,
+												 partially_grouped_rel->reltarget,
+												 parse->groupClause ? AGG_SORTED : AGG_PLAIN,
+												 AGGSPLIT_INITIAL_SERIAL,
+												 parse->groupClause,
+												 NIL,
+												 agg_partial_costs,
+												 dNumPartialPartialGroups));
+			else
+				add_partial_path(partially_grouped_rel, (Path *)
+								 create_group_path(root,
+												   partially_grouped_rel,
+												   path,
+												   parse->groupClause,
+												   NIL,
+												   dNumPartialPartialGroups));
 		}
 	}
 
+	/*
+	 * Add a partially-grouped HashAgg Path where possible
+	 */
 	if (can_hash && cheapest_total_path != NULL)
 	{
-		Size		hashaggtablesize;
-
 		/* Checked above */
 		Assert(parse->hasAggs || parse->groupClause);
 
-		hashaggtablesize =
-			estimate_hashagg_tablesize(cheapest_total_path,
-									   agg_partial_costs,
-									   dNumPartialGroups);
-
-		/*
-		 * Tentatively produce a partial HashAgg Path, depending on if it
-		 * looks as if the hash table will fit in work_mem.
-		 */
-		if (hashaggtablesize < work_mem * 1024L &&
-			cheapest_total_path != NULL)
-		{
-			add_path(partially_grouped_rel, (Path *)
-					 create_agg_path(root,
-									 partially_grouped_rel,
-									 cheapest_total_path,
-									 partially_grouped_rel->reltarget,
-									 AGG_HASHED,
-									 AGGSPLIT_INITIAL_SERIAL,
-									 parse->groupClause,
-									 NIL,
-									 agg_partial_costs,
-									 dNumPartialGroups));
-		}
+		add_path(partially_grouped_rel, (Path *)
+				 create_agg_path(root,
+								 partially_grouped_rel,
+								 cheapest_total_path,
+								 partially_grouped_rel->reltarget,
+								 AGG_HASHED,
+								 AGGSPLIT_INITIAL_SERIAL,
+								 parse->groupClause,
+								 NIL,
+								 agg_partial_costs,
+								 dNumPartialGroups));
 	}
 
+	/*
+	 * Now add a partially-grouped HashAgg partial Path where possible
+	 */
 	if (can_hash && cheapest_partial_path != NULL)
 	{
-		Size		hashaggtablesize;
-
-		hashaggtablesize =
-			estimate_hashagg_tablesize(cheapest_partial_path,
-									   agg_partial_costs,
-									   dNumPartialPartialGroups);
-
-		/* Do the same for partial paths. */
-		if (hashaggtablesize < work_mem * 1024L &&
-			cheapest_partial_path != NULL)
-		{
-			add_partial_path(partially_grouped_rel, (Path *)
-							 create_agg_path(root,
-											 partially_grouped_rel,
-											 cheapest_partial_path,
-											 partially_grouped_rel->reltarget,
-											 AGG_HASHED,
-											 AGGSPLIT_INITIAL_SERIAL,
-											 parse->groupClause,
-											 NIL,
-											 agg_partial_costs,
-											 dNumPartialPartialGroups));
-		}
+		add_partial_path(partially_grouped_rel, (Path *)
+						 create_agg_path(root,
+										 partially_grouped_rel,
+										 cheapest_partial_path,
+										 partially_grouped_rel->reltarget,
+										 AGG_HASHED,
+										 AGGSPLIT_INITIAL_SERIAL,
+										 parse->groupClause,
+										 NIL,
+										 agg_partial_costs,
+										 dNumPartialPartialGroups));
 	}
 
 	/*
@@ -6717,22 +6957,23 @@ create_partial_grouping_paths(PlannerInfo *root,
  * Generate Gather and Gather Merge paths for a grouping relation or partial
  * grouping relation.
  *
- * generate_gather_paths does most of the work, but we also consider a special
- * case: we could try sorting the data by the group_pathkeys and then applying
- * Gather Merge.
+ * generate_useful_gather_paths does most of the work, but we also consider a
+ * special case: we could try sorting the data by the group_pathkeys and then
+ * applying Gather Merge.
  *
  * NB: This function shouldn't be used for anything other than a grouped or
  * partially grouped relation not only because of the fact that it explicitly
  * references group_pathkeys but we pass "true" as the third argument to
- * generate_gather_paths().
+ * generate_useful_gather_paths().
  */
 static void
 gather_grouping_paths(PlannerInfo *root, RelOptInfo *rel)
 {
+	ListCell   *lc;
 	Path	   *cheapest_partial_path;
 
 	/* Try Gather for unordered paths and Gather Merge for ordered ones. */
-	generate_gather_paths(root, rel, true);
+	generate_useful_gather_paths(root, rel, true);
 
 	/* Try cheapest partial path + explicit Sort + Gather Merge. */
 	cheapest_partial_path = linitial(rel->partial_pathlist);
@@ -6758,6 +6999,53 @@ gather_grouping_paths(PlannerInfo *root, RelOptInfo *rel)
 
 		add_path(rel, path);
 	}
+
+	/*
+	 * Consider incremental sort on all partial paths, if enabled.
+	 *
+	 * We can also skip the entire loop when we only have a single-item
+	 * group_pathkeys because then we can't possibly have a presorted prefix
+	 * of the list without having the list be fully sorted.
+	 */
+	if (!enable_incremental_sort || list_length(root->group_pathkeys) == 1)
+		return;
+
+	/* also consider incremental sort on partial paths, if enabled */
+	foreach(lc, rel->partial_pathlist)
+	{
+		Path	   *path = (Path *) lfirst(lc);
+		bool		is_sorted;
+		int			presorted_keys;
+		double		total_groups;
+
+		is_sorted = pathkeys_count_contained_in(root->group_pathkeys,
+												path->pathkeys,
+												&presorted_keys);
+
+		if (is_sorted)
+			continue;
+
+		if (presorted_keys == 0)
+			continue;
+
+		path = (Path *) create_incremental_sort_path(root,
+													 rel,
+													 path,
+													 root->group_pathkeys,
+													 presorted_keys,
+													 -1.0);
+
+		path = (Path *)
+			create_gather_merge_path(root,
+									 rel,
+									 path,
+									 rel->reltarget,
+									 root->group_pathkeys,
+									 NULL,
+									 &total_groups);
+
+		add_path(rel, path);
+	}
 }
 
 /*
@@ -6767,7 +7055,7 @@ gather_grouping_paths(PlannerInfo *root, RelOptInfo *rel)
  * Returns true when possible, false otherwise.
  */
 static bool
-can_partial_agg(PlannerInfo *root, const AggClauseCosts *agg_costs)
+can_partial_agg(PlannerInfo *root)
 {
 	Query	   *parse = root->parse;
 
@@ -6784,7 +7072,7 @@ can_partial_agg(PlannerInfo *root, const AggClauseCosts *agg_costs)
 		/* We don't know how to do grouping sets in parallel. */
 		return false;
 	}
-	else if (agg_costs->hasNonPartial || agg_costs->hasNonSerial)
+	else if (root->hasNonPartialAggs || root->hasNonSerialAggs)
 	{
 		/* Insufficient support for partial mode. */
 		return false;
@@ -6816,11 +7104,34 @@ apply_scanjoin_target_to_paths(PlannerInfo *root,
 							   bool scanjoin_target_parallel_safe,
 							   bool tlist_same_exprs)
 {
-	ListCell   *lc;
+	bool		rel_is_partitioned = IS_PARTITIONED_REL(rel);
 	PathTarget *scanjoin_target;
-	bool		is_dummy_rel = IS_DUMMY_REL(rel);
+	ListCell   *lc;
 
+	/* This recurses, so be paranoid. */
 	check_stack_depth();
+
+	/*
+	 * If the rel is partitioned, we want to drop its existing paths and
+	 * generate new ones.  This function would still be correct if we kept the
+	 * existing paths: we'd modify them to generate the correct target above
+	 * the partitioning Append, and then they'd compete on cost with paths
+	 * generating the target below the Append.  However, in our current cost
+	 * model the latter way is always the same or cheaper cost, so modifying
+	 * the existing paths would just be useless work.  Moreover, when the cost
+	 * is the same, varying roundoff errors might sometimes allow an existing
+	 * path to be picked, resulting in undesirable cross-platform plan
+	 * variations.  So we drop old paths and thereby force the work to be done
+	 * below the Append, except in the case of a non-parallel-safe target.
+	 *
+	 * Some care is needed, because we have to allow
+	 * generate_useful_gather_paths to see the old partial paths in the next
+	 * stanza.  Hence, zap the main pathlist here, then allow
+	 * generate_useful_gather_paths to add path(s) to the main list, and
+	 * finally zap the partial pathlist.
+	 */
+	if (rel_is_partitioned)
+		rel->pathlist = NIL;
 
 	/*
 	 * If the scan/join target is not parallel-safe, partial paths cannot
@@ -6829,95 +7140,40 @@ apply_scanjoin_target_to_paths(PlannerInfo *root,
 	if (!scanjoin_target_parallel_safe)
 	{
 		/*
-		 * Since we can't generate the final scan/join target, this is our
-		 * last opportunity to use any partial paths that exist.  We don't do
-		 * this if the case where the target is parallel-safe, since we will
-		 * be able to generate superior paths by doing it after the final
-		 * scan/join target has been applied.
-		 *
-		 * Note that this may invalidate rel->cheapest_total_path, so we must
-		 * not rely on it after this point without first calling set_cheapest.
+		 * Since we can't generate the final scan/join target in parallel
+		 * workers, this is our last opportunity to use any partial paths that
+		 * exist; so build Gather path(s) that use them and emit whatever the
+		 * current reltarget is.  We don't do this in the case where the
+		 * target is parallel-safe, since we will be able to generate superior
+		 * paths by doing it after the final scan/join target has been
+		 * applied.
 		 */
-		generate_gather_paths(root, rel, false);
+		generate_useful_gather_paths(root, rel, false);
 
 		/* Can't use parallel query above this level. */
 		rel->partial_pathlist = NIL;
 		rel->consider_parallel = false;
 	}
 
-	/*
-	 * Update the reltarget.  This may not be strictly necessary in all cases,
-	 * but it is at least necessary when create_append_path() gets called
-	 * below directly or indirectly, since that function uses the reltarget as
-	 * the pathtarget for the resulting path.  It seems like a good idea to do
-	 * it unconditionally.
-	 */
-	rel->reltarget = llast_node(PathTarget, scanjoin_targets);
-
-	/* Special case: handle dummy relations separately. */
-	if (is_dummy_rel)
-	{
-		/*
-		 * Since this is a dummy rel, it's got a single Append path with no
-		 * child paths.  Replace it with a new path having the final scan/join
-		 * target.  (Note that since Append is not projection-capable, it
-		 * would be bad to handle this using the general purpose code below;
-		 * we'd end up putting a ProjectionPath on top of the existing Append
-		 * node, which would cause this relation to stop appearing to be a
-		 * dummy rel.)
-		 */
-		rel->pathlist = list_make1(create_append_path(root, rel, NIL, NIL,
-													  NULL, 0, false, NIL,
-													  -1));
+	/* Finish dropping old paths for a partitioned rel, per comment above */
+	if (rel_is_partitioned)
 		rel->partial_pathlist = NIL;
-		set_cheapest(rel);
-		Assert(IS_DUMMY_REL(rel));
-
-		/*
-		 * Forget about any child relations.  There's no point in adjusting
-		 * them and no point in using them for later planning stages (in
-		 * particular, partitionwise aggregate).
-		 */
-		rel->nparts = 0;
-		rel->part_rels = NULL;
-		rel->boundinfo = NULL;
-
-		return;
-	}
 
 	/* Extract SRF-free scan/join target. */
 	scanjoin_target = linitial_node(PathTarget, scanjoin_targets);
 
 	/*
-	 * Adjust each input path.  If the tlist exprs are the same, we can just
-	 * inject the sortgroupref information into the existing pathtarget.
-	 * Otherwise, replace each path with a projection path that generates the
-	 * SRF-free scan/join target.  This can't change the ordering of paths
-	 * within rel->pathlist, so we just modify the list in place.
+	 * Apply the SRF-free scan/join target to each existing path.
+	 *
+	 * If the tlist exprs are the same, we can just inject the sortgroupref
+	 * information into the existing pathtargets.  Otherwise, replace each
+	 * path with a projection path that generates the SRF-free scan/join
+	 * target.  This can't change the ordering of paths within rel->pathlist,
+	 * so we just modify the list in place.
 	 */
 	foreach(lc, rel->pathlist)
 	{
 		Path	   *subpath = (Path *) lfirst(lc);
-		Path	   *newpath;
-
-		Assert(subpath->param_info == NULL);
-
-		if (tlist_same_exprs)
-			subpath->pathtarget->sortgrouprefs =
-				scanjoin_target->sortgrouprefs;
-		else
-		{
-			newpath = (Path *) create_projection_path(root, rel, subpath,
-													  scanjoin_target);
-			lfirst(lc) = newpath;
-		}
-	}
-
-	/* Same for partial paths. */
-	foreach(lc, rel->partial_pathlist)
-	{
-		Path	   *subpath = (Path *) lfirst(lc);
-		Path	   *newpath;
 
 		/* Shouldn't have any parameterized paths anymore */
 		Assert(subpath->param_info == NULL);
@@ -6927,39 +7183,86 @@ apply_scanjoin_target_to_paths(PlannerInfo *root,
 				scanjoin_target->sortgrouprefs;
 		else
 		{
-			newpath = (Path *) create_projection_path(root,
-													  rel,
-													  subpath,
+			Path	   *newpath;
+
+			newpath = (Path *) create_projection_path(root, rel, subpath,
 													  scanjoin_target);
 			lfirst(lc) = newpath;
 		}
 	}
 
-	/* Now fix things up if scan/join target contains SRFs */
+	/* Likewise adjust the targets for any partial paths. */
+	foreach(lc, rel->partial_pathlist)
+	{
+		Path	   *subpath = (Path *) lfirst(lc);
+
+		/* Shouldn't have any parameterized paths anymore */
+		Assert(subpath->param_info == NULL);
+
+		if (tlist_same_exprs)
+			subpath->pathtarget->sortgrouprefs =
+				scanjoin_target->sortgrouprefs;
+		else
+		{
+			Path	   *newpath;
+
+			newpath = (Path *) create_projection_path(root, rel, subpath,
+													  scanjoin_target);
+			lfirst(lc) = newpath;
+		}
+	}
+
+	/*
+	 * Now, if final scan/join target contains SRFs, insert ProjectSetPath(s)
+	 * atop each existing path.  (Note that this function doesn't look at the
+	 * cheapest-path fields, which is a good thing because they're bogus right
+	 * now.)
+	 */
 	if (root->parse->hasTargetSRFs)
 		adjust_paths_for_srfs(root, rel,
 							  scanjoin_targets,
 							  scanjoin_targets_contain_srfs);
 
 	/*
-	 * If the relation is partitioned, recursively apply the same changes to
-	 * all partitions and generate new Append paths.  Since Append is not
-	 * projection-capable, that might save a separate Result node, and it also
-	 * is important for partitionwise aggregate.
+	 * Update the rel's target to be the final (with SRFs) scan/join target.
+	 * This now matches the actual output of all the paths, and we might get
+	 * confused in createplan.c if they don't agree.  We must do this now so
+	 * that any append paths made in the next part will use the correct
+	 * pathtarget (cf. create_append_path).
+	 *
+	 * Note that this is also necessary if GetForeignUpperPaths() gets called
+	 * on the final scan/join relation or on any of its children, since the
+	 * FDW might look at the rel's target to create ForeignPaths.
 	 */
-	if (rel->part_scheme && rel->part_rels)
+	rel->reltarget = llast_node(PathTarget, scanjoin_targets);
+
+	/*
+	 * If the relation is partitioned, recursively apply the scan/join target
+	 * to all partitions, and generate brand-new Append paths in which the
+	 * scan/join target is computed below the Append rather than above it.
+	 * Since Append is not projection-capable, that might save a separate
+	 * Result node, and it also is important for partitionwise aggregate.
+	 */
+	if (rel_is_partitioned)
 	{
-		int			partition_idx;
 		List	   *live_children = NIL;
+		int			i;
 
 		/* Adjust each partition. */
-		for (partition_idx = 0; partition_idx < rel->nparts; partition_idx++)
+		i = -1;
+		while ((i = bms_next_member(rel->live_parts, i)) >= 0)
 		{
-			RelOptInfo *child_rel = rel->part_rels[partition_idx];
-			ListCell   *lc;
+			RelOptInfo *child_rel = rel->part_rels[i];
 			AppendRelInfo **appinfos;
 			int			nappinfos;
 			List	   *child_scanjoin_targets = NIL;
+			ListCell   *lc;
+
+			Assert(child_rel != NULL);
+
+			/* Dummy children can be ignored. */
+			if (IS_DUMMY_REL(child_rel))
+				continue;
 
 			/* Translate scan/join targets for this child. */
 			appinfos = find_appinfos_by_relids(root, child_rel->relids,
@@ -6991,8 +7294,7 @@ apply_scanjoin_target_to_paths(PlannerInfo *root,
 		}
 
 		/* Build new paths for this relation by appending child paths. */
-		if (live_children != NIL)
-			add_paths_to_append_rel(root, rel, live_children);
+		add_paths_to_append_rel(root, rel, live_children);
 	}
 
 	/*
@@ -7003,7 +7305,7 @@ apply_scanjoin_target_to_paths(PlannerInfo *root,
 	 * one of the generated paths may turn out to be the cheapest one.
 	 */
 	if (rel->consider_parallel && !IS_OTHER_REL(rel))
-		generate_gather_paths(root, rel, false);
+		generate_useful_gather_paths(root, rel, false);
 
 	/*
 	 * Reassess which paths are the cheapest, now that we've potentially added
@@ -7040,30 +7342,35 @@ create_partitionwise_grouping_paths(PlannerInfo *root,
 									PartitionwiseAggregateType patype,
 									GroupPathExtraData *extra)
 {
-	int			nparts = input_rel->nparts;
-	int			cnt_parts;
 	List	   *grouped_live_children = NIL;
 	List	   *partially_grouped_live_children = NIL;
 	PathTarget *target = grouped_rel->reltarget;
 	bool		partial_grouping_valid = true;
+	int			i;
 
 	Assert(patype != PARTITIONWISE_AGGREGATE_NONE);
 	Assert(patype != PARTITIONWISE_AGGREGATE_PARTIAL ||
 		   partially_grouped_rel != NULL);
 
 	/* Add paths for partitionwise aggregation/grouping. */
-	for (cnt_parts = 0; cnt_parts < nparts; cnt_parts++)
+	i = -1;
+	while ((i = bms_next_member(input_rel->live_parts, i)) >= 0)
 	{
-		RelOptInfo *child_input_rel = input_rel->part_rels[cnt_parts];
-		PathTarget *child_target = copy_pathtarget(target);
+		RelOptInfo *child_input_rel = input_rel->part_rels[i];
+		PathTarget *child_target;
 		AppendRelInfo **appinfos;
 		int			nappinfos;
 		GroupPathExtraData child_extra;
 		RelOptInfo *child_grouped_rel;
 		RelOptInfo *child_partially_grouped_rel;
 
-		/* Input child rel must have a path */
-		Assert(child_input_rel->pathlist != NIL);
+		Assert(child_input_rel != NULL);
+
+		/* Dummy children can be ignored. */
+		if (IS_DUMMY_REL(child_input_rel))
+			continue;
+
+		child_target = copy_pathtarget(target);
 
 		/*
 		 * Copy the given "extra" structure as is and then override the
@@ -7104,14 +7411,6 @@ create_partitionwise_grouping_paths(PlannerInfo *root,
 											  child_target,
 											  extra->target_parallel_safe,
 											  child_extra.havingQual);
-
-		/* Ignore empty children. They contribute nothing. */
-		if (IS_DUMMY_REL(child_input_rel))
-		{
-			mark_dummy_rel(child_grouped_rel);
-
-			continue;
-		}
 
 		/* Create grouping paths for this child relation. */
 		create_ordinary_grouping_paths(root, child_input_rel,

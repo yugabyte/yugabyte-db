@@ -3,7 +3,7 @@
  * xactdesc.c
  *	  rmgr descriptor routines for access/transam/xact.c
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -16,6 +16,7 @@
 
 #include "access/transam.h"
 #include "access/xact.h"
+#include "replication/origin.h"
 #include "storage/sinval.h"
 #include "storage/standbydefs.h"
 #include "utils/timestamp.h"
@@ -81,6 +82,17 @@ ParseCommitRecord(uint8 info, xl_xact_commit *xlrec, xl_xact_parsed_commit *pars
 
 		data += MinSizeOfXactRelfilenodes;
 		data += xl_relfilenodes->nrels * sizeof(RelFileNode);
+	}
+
+	if (parsed->xinfo & XACT_XINFO_HAS_DROPPED_STATS)
+	{
+		xl_xact_stats_items *xl_drops = (xl_xact_stats_items *) data;
+
+		parsed->nstats = xl_drops->nitems;
+		parsed->stats = xl_drops->items;
+
+		data += MinSizeOfXactStatsItems;
+		data += xl_drops->nitems * sizeof(xl_xact_stats_item);
 	}
 
 	if (parsed->xinfo & XACT_XINFO_HAS_INVALS)
@@ -178,6 +190,17 @@ ParseAbortRecord(uint8 info, xl_xact_abort *xlrec, xl_xact_parsed_abort *parsed)
 		data += xl_relfilenodes->nrels * sizeof(RelFileNode);
 	}
 
+	if (parsed->xinfo & XACT_XINFO_HAS_DROPPED_STATS)
+	{
+		xl_xact_stats_items *xl_drops = (xl_xact_stats_items *) data;
+
+		parsed->nstats = xl_drops->nitems;
+		parsed->stats = xl_drops->items;
+
+		data += MinSizeOfXactStatsItems;
+		data += xl_drops->nitems * sizeof(xl_xact_stats_item);
+	}
+
 	if (parsed->xinfo & XACT_XINFO_HAS_TWOPHASE)
 	{
 		xl_xact_twophase *xl_twophase = (xl_xact_twophase *) data;
@@ -209,11 +232,105 @@ ParseAbortRecord(uint8 info, xl_xact_abort *xlrec, xl_xact_parsed_abort *parsed)
 	}
 }
 
+/*
+ * ParsePrepareRecord
+ */
+void
+ParsePrepareRecord(uint8 info, xl_xact_prepare *xlrec, xl_xact_parsed_prepare *parsed)
+{
+	char	   *bufptr;
+
+	bufptr = ((char *) xlrec) + MAXALIGN(sizeof(xl_xact_prepare));
+
+	memset(parsed, 0, sizeof(*parsed));
+
+	parsed->xact_time = xlrec->prepared_at;
+	parsed->origin_lsn = xlrec->origin_lsn;
+	parsed->origin_timestamp = xlrec->origin_timestamp;
+	parsed->twophase_xid = xlrec->xid;
+	parsed->dbId = xlrec->database;
+	parsed->nsubxacts = xlrec->nsubxacts;
+	parsed->nrels = xlrec->ncommitrels;
+	parsed->nabortrels = xlrec->nabortrels;
+	parsed->nmsgs = xlrec->ninvalmsgs;
+
+	strncpy(parsed->twophase_gid, bufptr, xlrec->gidlen);
+	bufptr += MAXALIGN(xlrec->gidlen);
+
+	parsed->subxacts = (TransactionId *) bufptr;
+	bufptr += MAXALIGN(xlrec->nsubxacts * sizeof(TransactionId));
+
+	parsed->xnodes = (RelFileNode *) bufptr;
+	bufptr += MAXALIGN(xlrec->ncommitrels * sizeof(RelFileNode));
+
+	parsed->abortnodes = (RelFileNode *) bufptr;
+	bufptr += MAXALIGN(xlrec->nabortrels * sizeof(RelFileNode));
+
+	parsed->stats = (xl_xact_stats_item *) bufptr;
+	bufptr += MAXALIGN(xlrec->ncommitstats * sizeof(xl_xact_stats_item));
+
+	parsed->abortstats = (xl_xact_stats_item *) bufptr;
+	bufptr += MAXALIGN(xlrec->nabortstats * sizeof(xl_xact_stats_item));
+
+	parsed->msgs = (SharedInvalidationMessage *) bufptr;
+	bufptr += MAXALIGN(xlrec->ninvalmsgs * sizeof(SharedInvalidationMessage));
+}
+
+static void
+xact_desc_relations(StringInfo buf, char *label, int nrels,
+					RelFileNode *xnodes)
+{
+	int			i;
+
+	if (nrels > 0)
+	{
+		appendStringInfo(buf, "; %s:", label);
+		for (i = 0; i < nrels; i++)
+		{
+			char	   *path = relpathperm(xnodes[i], MAIN_FORKNUM);
+
+			appendStringInfo(buf, " %s", path);
+			pfree(path);
+		}
+	}
+}
+
+static void
+xact_desc_subxacts(StringInfo buf, int nsubxacts, TransactionId *subxacts)
+{
+	int			i;
+
+	if (nsubxacts > 0)
+	{
+		appendStringInfoString(buf, "; subxacts:");
+		for (i = 0; i < nsubxacts; i++)
+			appendStringInfo(buf, " %u", subxacts[i]);
+	}
+}
+
+static void
+xact_desc_stats(StringInfo buf, const char *label,
+				int ndropped, xl_xact_stats_item *dropped_stats)
+{
+	int			i;
+
+	if (ndropped > 0)
+	{
+		appendStringInfo(buf, "; %sdropped stats:", label);
+		for (i = 0; i < ndropped; i++)
+		{
+			appendStringInfo(buf, " %d/%u/%u",
+							 dropped_stats[i].kind,
+							 dropped_stats[i].dboid,
+							 dropped_stats[i].objoid);
+		}
+	}
+}
+
 static void
 xact_desc_commit(StringInfo buf, uint8 info, xl_xact_commit *xlrec, RepOriginId origin_id)
 {
 	xl_xact_parsed_commit parsed;
-	int			i;
 
 	ParseCommitRecord(info, xlrec, &parsed);
 
@@ -223,29 +340,16 @@ xact_desc_commit(StringInfo buf, uint8 info, xl_xact_commit *xlrec, RepOriginId 
 
 	appendStringInfoString(buf, timestamptz_to_str(xlrec->xact_time));
 
-	if (parsed.nrels > 0)
-	{
-		appendStringInfoString(buf, "; rels:");
-		for (i = 0; i < parsed.nrels; i++)
-		{
-			char	   *path = relpathperm(parsed.xnodes[i], MAIN_FORKNUM);
+	xact_desc_relations(buf, "rels", parsed.nrels, parsed.xnodes);
+	xact_desc_subxacts(buf, parsed.nsubxacts, parsed.subxacts);
+	xact_desc_stats(buf, "", parsed.nstats, parsed.stats);
 
-			appendStringInfo(buf, " %s", path);
-			pfree(path);
-		}
-	}
-	if (parsed.nsubxacts > 0)
-	{
-		appendStringInfoString(buf, "; subxacts:");
-		for (i = 0; i < parsed.nsubxacts; i++)
-			appendStringInfo(buf, " %u", parsed.subxacts[i]);
-	}
-	if (parsed.nmsgs > 0)
-	{
-		standby_desc_invalidations(
-								   buf, parsed.nmsgs, parsed.msgs, parsed.dbId, parsed.tsId,
-								   XactCompletionRelcacheInitFileInval(parsed.xinfo));
-	}
+	standby_desc_invalidations(buf, parsed.nmsgs, parsed.msgs, parsed.dbId,
+							   parsed.tsId,
+							   XactCompletionRelcacheInitFileInval(parsed.xinfo));
+
+	if (XactCompletionApplyFeedback(parsed.xinfo))
+		appendStringInfoString(buf, "; apply_feedback");
 
 	if (XactCompletionForceSyncCommit(parsed.xinfo))
 		appendStringInfoString(buf, "; sync");
@@ -254,17 +358,15 @@ xact_desc_commit(StringInfo buf, uint8 info, xl_xact_commit *xlrec, RepOriginId 
 	{
 		appendStringInfo(buf, "; origin: node %u, lsn %X/%X, at %s",
 						 origin_id,
-						 (uint32) (parsed.origin_lsn >> 32),
-						 (uint32) parsed.origin_lsn,
+						 LSN_FORMAT_ARGS(parsed.origin_lsn),
 						 timestamptz_to_str(parsed.origin_timestamp));
 	}
 }
 
 static void
-xact_desc_abort(StringInfo buf, uint8 info, xl_xact_abort *xlrec)
+xact_desc_abort(StringInfo buf, uint8 info, xl_xact_abort *xlrec, RepOriginId origin_id)
 {
 	xl_xact_parsed_abort parsed;
-	int			i;
 
 	ParseAbortRecord(info, xlrec, &parsed);
 
@@ -273,24 +375,50 @@ xact_desc_abort(StringInfo buf, uint8 info, xl_xact_abort *xlrec)
 		appendStringInfo(buf, "%u: ", parsed.twophase_xid);
 
 	appendStringInfoString(buf, timestamptz_to_str(xlrec->xact_time));
-	if (parsed.nrels > 0)
-	{
-		appendStringInfoString(buf, "; rels:");
-		for (i = 0; i < parsed.nrels; i++)
-		{
-			char	   *path = relpathperm(parsed.xnodes[i], MAIN_FORKNUM);
 
-			appendStringInfo(buf, " %s", path);
-			pfree(path);
-		}
+	xact_desc_relations(buf, "rels", parsed.nrels, parsed.xnodes);
+	xact_desc_subxacts(buf, parsed.nsubxacts, parsed.subxacts);
+
+	if (parsed.xinfo & XACT_XINFO_HAS_ORIGIN)
+	{
+		appendStringInfo(buf, "; origin: node %u, lsn %X/%X, at %s",
+						 origin_id,
+						 LSN_FORMAT_ARGS(parsed.origin_lsn),
+						 timestamptz_to_str(parsed.origin_timestamp));
 	}
 
-	if (parsed.nsubxacts > 0)
-	{
-		appendStringInfoString(buf, "; subxacts:");
-		for (i = 0; i < parsed.nsubxacts; i++)
-			appendStringInfo(buf, " %u", parsed.subxacts[i]);
-	}
+	xact_desc_stats(buf, "", parsed.nstats, parsed.stats);
+}
+
+static void
+xact_desc_prepare(StringInfo buf, uint8 info, xl_xact_prepare *xlrec, RepOriginId origin_id)
+{
+	xl_xact_parsed_prepare parsed;
+
+	ParsePrepareRecord(info, xlrec, &parsed);
+
+	appendStringInfo(buf, "gid %s: ", parsed.twophase_gid);
+	appendStringInfoString(buf, timestamptz_to_str(parsed.xact_time));
+
+	xact_desc_relations(buf, "rels(commit)", parsed.nrels, parsed.xnodes);
+	xact_desc_relations(buf, "rels(abort)", parsed.nabortrels,
+						parsed.abortnodes);
+	xact_desc_stats(buf, "commit ", parsed.nstats, parsed.stats);
+	xact_desc_stats(buf, "abort ", parsed.nabortstats, parsed.abortstats);
+	xact_desc_subxacts(buf, parsed.nsubxacts, parsed.subxacts);
+
+	standby_desc_invalidations(buf, parsed.nmsgs, parsed.msgs, parsed.dbId,
+							   parsed.tsId, xlrec->initfileinval);
+
+	/*
+	 * Check if the replication origin has been set in this record in the same
+	 * way as PrepareRedoAdd().
+	 */
+	if (origin_id != InvalidRepOriginId)
+		appendStringInfo(buf, "; origin: node %u, lsn %X/%X, at %s",
+						 origin_id,
+						 LSN_FORMAT_ARGS(parsed.origin_lsn),
+						 timestamptz_to_str(parsed.origin_timestamp));
 }
 
 static void
@@ -321,7 +449,15 @@ xact_desc(StringInfo buf, XLogReaderState *record)
 	{
 		xl_xact_abort *xlrec = (xl_xact_abort *) rec;
 
-		xact_desc_abort(buf, XLogRecGetInfo(record), xlrec);
+		xact_desc_abort(buf, XLogRecGetInfo(record), xlrec,
+						XLogRecGetOrigin(record));
+	}
+	else if (info == XLOG_XACT_PREPARE)
+	{
+		xl_xact_prepare *xlrec = (xl_xact_prepare *) rec;
+
+		xact_desc_prepare(buf, XLogRecGetInfo(record), xlrec,
+						  XLogRecGetOrigin(record));
 	}
 	else if (info == XLOG_XACT_ASSIGNMENT)
 	{
@@ -334,6 +470,13 @@ xact_desc(StringInfo buf, XLogReaderState *record)
 		 */
 		appendStringInfo(buf, "xtop %u: ", xlrec->xtop);
 		xact_desc_assignment(buf, xlrec);
+	}
+	else if (info == XLOG_XACT_INVALIDATIONS)
+	{
+		xl_xact_invals *xlrec = (xl_xact_invals *) rec;
+
+		standby_desc_invalidations(buf, xlrec->nmsgs, xlrec->msgs, InvalidOid,
+								   InvalidOid, false);
 	}
 }
 
@@ -361,6 +504,9 @@ xact_identify(uint8 info)
 			break;
 		case XLOG_XACT_ASSIGNMENT:
 			id = "ASSIGNMENT";
+			break;
+		case XLOG_XACT_INVALIDATIONS:
+			id = "INVALIDATION";
 			break;
 	}
 

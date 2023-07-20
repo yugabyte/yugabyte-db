@@ -7,14 +7,10 @@
 #include "postgres.h"
 
 #include "lib/stringinfo.h"
-
-#include "plpython.h"
-
 #include "plpy_elog.h"
-
 #include "plpy_main.h"
 #include "plpy_procedure.h"
-
+#include "plpython.h"
 
 PyObject   *PLy_exc_error = NULL;
 PyObject   *PLy_exc_fatal = NULL;
@@ -22,14 +18,14 @@ PyObject   *PLy_exc_spi_error = NULL;
 
 
 static void PLy_traceback(PyObject *e, PyObject *v, PyObject *tb,
-			  char **xmsg, char **tbmsg, int *tb_depth);
+						  char **xmsg, char **tbmsg, int *tb_depth);
 static void PLy_get_spi_error_data(PyObject *exc, int *sqlerrcode, char **detail,
-					   char **hint, char **query, int *position,
-					   char **schema_name, char **table_name, char **column_name,
-					   char **datatype_name, char **constraint_name);
+								   char **hint, char **query, int *position,
+								   char **schema_name, char **table_name, char **column_name,
+								   char **datatype_name, char **constraint_name);
 static void PLy_get_error_data(PyObject *exc, int *sqlerrcode, char **detail,
-				   char **hint, char **schema_name, char **table_name, char **column_name,
-				   char **datatype_name, char **constraint_name);
+							   char **hint, char **schema_name, char **table_name, char **column_name,
+							   char **datatype_name, char **constraint_name);
 static char *get_source_line(const char *src, int lineno);
 
 static void get_string_attr(PyObject *obj, char *attrname, char **str);
@@ -46,6 +42,7 @@ static bool set_string_attr(PyObject *obj, char *attrname, char *str);
 void
 PLy_elog_impl(int elevel, const char *fmt,...)
 {
+	int			save_errno = errno;
 	char	   *xmsg;
 	char	   *tbmsg;
 	int			tb_depth;
@@ -96,6 +93,7 @@ PLy_elog_impl(int elevel, const char *fmt,...)
 			va_list		ap;
 			int			needed;
 
+			errno = save_errno;
 			va_start(ap, fmt);
 			needed = appendStringInfoVA(&emsg, dgettext(TEXTDOMAIN, fmt), ap);
 			va_end(ap);
@@ -139,7 +137,7 @@ PLy_elog_impl(int elevel, const char *fmt,...)
 				 (constraint_name) ? err_generic_string(PG_DIAG_CONSTRAINT_NAME,
 														constraint_name) : 0));
 	}
-	PG_CATCH();
+	PG_FINALLY();
 	{
 		if (fmt)
 			pfree(emsg.data);
@@ -149,19 +147,8 @@ PLy_elog_impl(int elevel, const char *fmt,...)
 			pfree(tbmsg);
 		Py_XDECREF(exc);
 		Py_XDECREF(val);
-
-		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
-	if (fmt)
-		pfree(emsg.data);
-	if (xmsg)
-		pfree(xmsg);
-	if (tbmsg)
-		pfree(tbmsg);
-	Py_XDECREF(exc);
-	Py_XDECREF(val);
 }
 
 /*
@@ -206,30 +193,26 @@ PLy_traceback(PyObject *e, PyObject *v, PyObject *tb,
 	e_type_o = PyObject_GetAttrString(e, "__name__");
 	e_module_o = PyObject_GetAttrString(e, "__module__");
 	if (e_type_o)
-		e_type_s = PyString_AsString(e_type_o);
+		e_type_s = PLyUnicode_AsString(e_type_o);
 	if (e_type_s)
-		e_module_s = PyString_AsString(e_module_o);
+		e_module_s = PLyUnicode_AsString(e_module_o);
 
 	if (v && ((vob = PyObject_Str(v)) != NULL))
-		vstr = PyString_AsString(vob);
+		vstr = PLyUnicode_AsString(vob);
 	else
 		vstr = "unknown";
 
 	initStringInfo(&xstr);
 	if (!e_type_s || !e_module_s)
 	{
-		if (PyString_Check(e))
-			/* deprecated string exceptions */
-			appendStringInfoString(&xstr, PyString_AsString(e));
-		else
-			/* shouldn't happen */
-			appendStringInfoString(&xstr, "unrecognized exception");
+		/* shouldn't happen */
+		appendStringInfoString(&xstr, "unrecognized exception");
 	}
 	/* mimics behavior of traceback.format_exception_only */
 	else if (strcmp(e_module_s, "builtins") == 0
 			 || strcmp(e_module_s, "__main__") == 0
 			 || strcmp(e_module_s, "exceptions") == 0)
-		appendStringInfo(&xstr, "%s", e_type_s);
+		appendStringInfoString(&xstr, e_type_s);
 	else
 		appendStringInfo(&xstr, "%s.%s", e_module_s, e_type_s);
 	appendStringInfo(&xstr, ": %s", vstr);
@@ -255,12 +238,6 @@ PLy_traceback(PyObject *e, PyObject *v, PyObject *tb,
 
 		PG_TRY();
 		{
-			/*
-			 * Ancient versions of Python (circa 2.3) contain a bug whereby
-			 * the fetches below can fail if the error indicator is set.
-			 */
-			PyErr_Clear();
-
 			lineno = PyObject_GetAttrString(tb, "tb_lineno");
 			if (lineno == NULL)
 				elog(ERROR, "could not get line number from Python traceback");
@@ -309,19 +286,17 @@ PLy_traceback(PyObject *e, PyObject *v, PyObject *tb,
 			if (*tb_depth == 1)
 				fname = "<module>";
 			else
-				fname = PyString_AsString(name);
+				fname = PLyUnicode_AsString(name);
 
 			proname = PLy_procedure_name(exec_ctx->curr_proc);
-			plain_filename = PyString_AsString(filename);
-			plain_lineno = PyInt_AsLong(lineno);
+			plain_filename = PLyUnicode_AsString(filename);
+			plain_lineno = PyLong_AsLong(lineno);
 
 			if (proname == NULL)
-				appendStringInfo(
-								 &tbstr, "\n  PL/Python anonymous code block, line %ld, in %s",
+				appendStringInfo(&tbstr, "\n  PL/Python anonymous code block, line %ld, in %s",
 								 plain_lineno - 1, fname);
 			else
-				appendStringInfo(
-								 &tbstr, "\n  PL/Python function \"%s\", line %ld, in %s",
+				appendStringInfo(&tbstr, "\n  PL/Python function \"%s\", line %ld, in %s",
 								 proname, plain_lineno - 1, fname);
 
 			/*
@@ -386,7 +361,7 @@ PLy_get_sqlerrcode(PyObject *exc, int *sqlerrcode)
 	if (sqlstate == NULL)
 		return;
 
-	buffer = PyString_AsString(sqlstate);
+	buffer = PLyUnicode_AsString(sqlstate);
 	if (strlen(buffer) == 5 &&
 		strspn(buffer, "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ") == 5)
 	{
@@ -594,7 +569,7 @@ get_string_attr(PyObject *obj, char *attrname, char **str)
 	val = PyObject_GetAttrString(obj, attrname);
 	if (val != NULL && val != Py_None)
 	{
-		*str = pstrdup(PyString_AsString(val));
+		*str = pstrdup(PLyUnicode_AsString(val));
 	}
 	Py_XDECREF(val);
 }
@@ -610,7 +585,7 @@ set_string_attr(PyObject *obj, char *attrname, char *str)
 
 	if (str != NULL)
 	{
-		val = PyString_FromString(str);
+		val = PLyUnicode_FromString(str);
 		if (!val)
 			return false;
 	}

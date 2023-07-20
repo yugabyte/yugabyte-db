@@ -4,7 +4,7 @@
  *		Functions for direct access to files
  *
  *
- * Copyright (c) 2004-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2004-2022, PostgreSQL Global Development Group
  *
  * Author: Andreas Pflug <pgadmin@pse-consulting.de>
  *
@@ -23,26 +23,22 @@
 #include "access/htup_details.h"
 #include "access/xlog_internal.h"
 #include "catalog/pg_authid.h"
+#include "catalog/pg_tablespace_d.h"
 #include "catalog/pg_type.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "postmaster/syslogger.h"
+#include "replication/slot.h"
 #include "storage/fd.h"
+#include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
+#include "utils/syscache.h"
 #include "utils/timestamp.h"
 
 /* YB includes. */
 #include "pg_yb_utils.h"
-
-typedef struct
-{
-	char	   *location;
-	DIR		   *dirdesc;
-	bool		include_dot_dirs;
-} directory_fctx;
-
 
 /*
  * Convert a "text" filename argument to C string, and check it's allowable.
@@ -67,22 +63,19 @@ convert_and_check_filename(text *arg)
 	canonicalize_path(filename);	/* filename can change length here */
 
 	/*
-	 * Members of the 'pg_read_server_files' role are allowed to access any
-	 * files on the server as the PG user, so no need to do any further checks
-	 * here.
+	 * Roles with privileges of the 'pg_read_server_files' role are allowed to
+	 * access any files on the server as the PG user, so no need to do any
+	 * further checks here.
 	 */
-	if (is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_SERVER_FILES))
+	if (has_privs_of_role(GetUserId(), ROLE_PG_READ_SERVER_FILES))
 		return filename;
 
-	/* User isn't a member of the default role, so check if it's allowable */
+	/*
+	 * User isn't a member of the pg_read_server_files role, so check if it's
+	 * allowable
+	 */
 	if (is_absolute_path(filename))
 	{
-		/* Disallow '/a/b/data/..' */
-		if (path_contains_parent_reference(filename))
-			ereport(ERROR,
-					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 (errmsg("reference to parent directory (\"..\") not allowed"))));
-
 		/*
 		 * Allow absolute paths if within DataDir or Log_directory, even
 		 * though Log_directory might be outside DataDir.
@@ -92,12 +85,12 @@ convert_and_check_filename(text *arg)
 			 !path_is_prefix_of_path(Log_directory, filename)))
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 (errmsg("absolute path not allowed"))));
+					 errmsg("absolute path not allowed")));
 	}
 	else if (!path_is_relative_and_below_cwd(filename))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("path must be in or below the current directory"))));
+				 errmsg("path must be in or below the current directory")));
 
 	return filename;
 }
@@ -115,33 +108,11 @@ read_binary_file(const char *filename, int64 seek_offset, int64 bytes_to_read,
 				 bool missing_ok)
 {
 	bytea	   *buf;
-	size_t		nbytes;
+	size_t		nbytes = 0;
 	FILE	   *file;
 
-	if (bytes_to_read < 0)
-	{
-		if (seek_offset < 0)
-			bytes_to_read = -seek_offset;
-		else
-		{
-			struct stat fst;
-
-			if (stat(filename, &fst) < 0)
-			{
-				if (missing_ok && errno == ENOENT)
-					return NULL;
-				else
-					ereport(ERROR,
-							(errcode_for_file_access(),
-							 errmsg("could not stat file \"%s\": %m", filename)));
-			}
-
-			bytes_to_read = fst.st_size - seek_offset;
-		}
-	}
-
-	/* not sure why anyone thought that int64 length was a good idea */
-	if (bytes_to_read > (MaxAllocSize - VARHDRSZ))
+	/* clamp request size to what we can actually deliver */
+	if (bytes_to_read > (int64) (MaxAllocSize - VARHDRSZ))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("requested length too large")));
@@ -163,9 +134,66 @@ read_binary_file(const char *filename, int64 seek_offset, int64 bytes_to_read,
 				(errcode_for_file_access(),
 				 errmsg("could not seek in file \"%s\": %m", filename)));
 
-	buf = (bytea *) palloc((Size) bytes_to_read + VARHDRSZ);
+	if (bytes_to_read >= 0)
+	{
+		/* If passed explicit read size just do it */
+		buf = (bytea *) palloc((Size) bytes_to_read + VARHDRSZ);
 
-	nbytes = fread(VARDATA(buf), 1, (size_t) bytes_to_read, file);
+		nbytes = fread(VARDATA(buf), 1, (size_t) bytes_to_read, file);
+	}
+	else
+	{
+		/* Negative read size, read rest of file */
+		StringInfoData sbuf;
+
+		initStringInfo(&sbuf);
+		/* Leave room in the buffer for the varlena length word */
+		sbuf.len += VARHDRSZ;
+		Assert(sbuf.len < sbuf.maxlen);
+
+		while (!(feof(file) || ferror(file)))
+		{
+			size_t		rbytes;
+
+			/* Minimum amount to read at a time */
+#define MIN_READ_SIZE 4096
+
+			/*
+			 * If not at end of file, and sbuf.len is equal to MaxAllocSize -
+			 * 1, then either the file is too large, or there is nothing left
+			 * to read. Attempt to read one more byte to see if the end of
+			 * file has been reached. If not, the file is too large; we'd
+			 * rather give the error message for that ourselves.
+			 */
+			if (sbuf.len == MaxAllocSize - 1)
+			{
+				char		rbuf[1];
+
+				if (fread(rbuf, 1, 1, file) != 0 || !feof(file))
+					ereport(ERROR,
+							(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+							 errmsg("file length too large")));
+				else
+					break;
+			}
+
+			/* OK, ensure that we can read at least MIN_READ_SIZE */
+			enlargeStringInfo(&sbuf, MIN_READ_SIZE);
+
+			/*
+			 * stringinfo.c likes to allocate in powers of 2, so it's likely
+			 * that much more space is available than we asked for.  Use all
+			 * of it, rather than making more fread calls than necessary.
+			 */
+			rbytes = fread(sbuf.data + sbuf.len, 1,
+						   (size_t) (sbuf.maxlen - sbuf.len - 1), file);
+			sbuf.len += rbytes;
+			nbytes += rbytes;
+		}
+
+		/* Now we can commandeer the stringinfo's buffer as the result */
+		buf = (bytea *) sbuf.data;
+	}
 
 	if (ferror(file))
 		ereport(ERROR,
@@ -221,8 +249,10 @@ pg_read_file(PG_FUNCTION_ARGS)
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 (errmsg("must be superuser to read files with adminpack 1.0"),
-				  errhint("Consider using pg_file_read(), which is part of core, instead."))));
+				 errmsg("must be superuser to read files with adminpack 1.0"),
+		/* translator: %s is a SQL function name */
+				 errhint("Consider using %s, which is part of core, instead.",
+						 "pg_read_file()")));
 
 	/* handle optional arguments */
 	if (PG_NARGS() >= 3)
@@ -326,7 +356,7 @@ pg_read_binary_file(PG_FUNCTION_ARGS)
 
 /*
  * Wrapper functions for the 1 and 3 argument variants of pg_read_file_v2()
- * and pg_binary_read_file().
+ * and pg_read_binary_file().
  *
  * These are necessary to pass the sanity check in opr_sanity, which checks
  * that all built-in functions that share the implementing C function take
@@ -391,7 +421,7 @@ pg_stat_file(PG_FUNCTION_ARGS)
 	 * This record type had better match the output parameters declared for me
 	 * in pg_proc.h.
 	 */
-	tupdesc = CreateTemplateTupleDesc(6, false);
+	tupdesc = CreateTemplateTupleDesc(6);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1,
 					   "size", INT8OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 2,
@@ -447,67 +477,54 @@ pg_stat_file_1arg(PG_FUNCTION_ARGS)
 Datum
 pg_ls_dir(PG_FUNCTION_ARGS)
 {
-	FuncCallContext *funcctx;
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	char	   *location;
+	bool		missing_ok = false;
+	bool		include_dot_dirs = false;
+	DIR		   *dirdesc;
 	struct dirent *de;
-	directory_fctx *fctx;
-	MemoryContext oldcontext;
 
-	if (SRF_IS_FIRSTCALL())
+	location = convert_and_check_filename(PG_GETARG_TEXT_PP(0));
+
+	/* check the optional arguments */
+	if (PG_NARGS() == 3)
 	{
-		bool		missing_ok = false;
-		bool		include_dot_dirs = false;
-
-		/* check the optional arguments */
-		if (PG_NARGS() == 3)
-		{
-			if (!PG_ARGISNULL(1))
-				missing_ok = PG_GETARG_BOOL(1);
-			if (!PG_ARGISNULL(2))
-				include_dot_dirs = PG_GETARG_BOOL(2);
-		}
-
-		funcctx = SRF_FIRSTCALL_INIT();
-		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
-
-		fctx = palloc(sizeof(directory_fctx));
-		fctx->location = convert_and_check_filename(PG_GETARG_TEXT_PP(0));
-
-		fctx->include_dot_dirs = include_dot_dirs;
-		fctx->dirdesc = AllocateDir(fctx->location);
-
-		if (!fctx->dirdesc)
-		{
-			if (missing_ok && errno == ENOENT)
-			{
-				MemoryContextSwitchTo(oldcontext);
-				SRF_RETURN_DONE(funcctx);
-			}
-			else
-				ereport(ERROR,
-						(errcode_for_file_access(),
-						 errmsg("could not open directory \"%s\": %m",
-								fctx->location)));
-		}
-		funcctx->user_fctx = fctx;
-		MemoryContextSwitchTo(oldcontext);
+		if (!PG_ARGISNULL(1))
+			missing_ok = PG_GETARG_BOOL(1);
+		if (!PG_ARGISNULL(2))
+			include_dot_dirs = PG_GETARG_BOOL(2);
 	}
 
-	funcctx = SRF_PERCALL_SETUP();
-	fctx = (directory_fctx *) funcctx->user_fctx;
+	InitMaterializedSRF(fcinfo, MAT_SRF_USE_EXPECTED_DESC);
 
-	while ((de = ReadDir(fctx->dirdesc, fctx->location)) != NULL)
+	dirdesc = AllocateDir(location);
+	if (!dirdesc)
 	{
-		if (!fctx->include_dot_dirs &&
+		/* Return empty tuplestore if appropriate */
+		if (missing_ok && errno == ENOENT)
+			return (Datum) 0;
+		/* Otherwise, we can let ReadDir() throw the error */
+	}
+
+	while ((de = ReadDir(dirdesc, location)) != NULL)
+	{
+		Datum		values[1];
+		bool		nulls[1];
+
+		if (!include_dot_dirs &&
 			(strcmp(de->d_name, ".") == 0 ||
 			 strcmp(de->d_name, "..") == 0))
 			continue;
 
-		SRF_RETURN_NEXT(funcctx, CStringGetTextDatum(de->d_name));
+		values[0] = CStringGetTextDatum(de->d_name);
+		nulls[0] = false;
+
+		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc,
+							 values, nulls);
 	}
 
-	FreeDir(fctx->dirdesc);
-
-	SRF_RETURN_DONE(funcctx);
+	FreeDir(dirdesc);
+	return (Datum) 0;
 }
 
 /*
@@ -523,69 +540,59 @@ pg_ls_dir_1arg(PG_FUNCTION_ARGS)
 	return pg_ls_dir(fcinfo);
 }
 
-/* Generic function to return a directory listing of files */
+/*
+ * Generic function to return a directory listing of files.
+ *
+ * If the directory isn't there, silently return an empty set if missing_ok.
+ * Other unreadable-directory cases throw an error.
+ */
 static Datum
-pg_ls_dir_files(FunctionCallInfo fcinfo, const char *dir)
+pg_ls_dir_files(FunctionCallInfo fcinfo, const char *dir, bool missing_ok)
 {
-	FuncCallContext *funcctx;
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	DIR		   *dirdesc;
 	struct dirent *de;
-	directory_fctx *fctx;
 
 	YBCheckServerAccessIsAllowed();
 
-	if (SRF_IS_FIRSTCALL())
+	InitMaterializedSRF(fcinfo, 0);
+
+	/*
+	 * Now walk the directory.  Note that we must do this within a single SRF
+	 * call, not leave the directory open across multiple calls, since we
+	 * can't count on the SRF being run to completion.
+	 */
+	dirdesc = AllocateDir(dir);
+	if (!dirdesc)
 	{
-		MemoryContext oldcontext;
-		TupleDesc	tupdesc;
-
-		funcctx = SRF_FIRSTCALL_INIT();
-		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
-
-		fctx = palloc(sizeof(directory_fctx));
-
-		tupdesc = CreateTemplateTupleDesc(3, false);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "name",
-						   TEXTOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "size",
-						   INT8OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "modification",
-						   TIMESTAMPTZOID, -1, 0);
-		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
-
-		fctx->location = pstrdup(dir);
-		fctx->dirdesc = AllocateDir(fctx->location);
-
-		if (!fctx->dirdesc)
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not open directory \"%s\": %m",
-							fctx->location)));
-
-		funcctx->user_fctx = fctx;
-		MemoryContextSwitchTo(oldcontext);
+		/* Return empty tuplestore if appropriate */
+		if (missing_ok && errno == ENOENT)
+			return (Datum) 0;
+		/* Otherwise, we can let ReadDir() throw the error */
 	}
 
-	funcctx = SRF_PERCALL_SETUP();
-	fctx = (directory_fctx *) funcctx->user_fctx;
-
-	while ((de = ReadDir(fctx->dirdesc, fctx->location)) != NULL)
+	while ((de = ReadDir(dirdesc, dir)) != NULL)
 	{
 		Datum		values[3];
 		bool		nulls[3];
 		char		path[MAXPGPATH * 2];
 		struct stat attrib;
-		HeapTuple	tuple;
 
 		/* Skip hidden files */
 		if (de->d_name[0] == '.')
 			continue;
 
 		/* Get the file info */
-		snprintf(path, sizeof(path), "%s/%s", fctx->location, de->d_name);
+		snprintf(path, sizeof(path), "%s/%s", dir, de->d_name);
 		if (stat(path, &attrib) < 0)
+		{
+			/* Ignore concurrently-deleted files, else complain */
+			if (errno == ENOENT)
+				continue;
 			ereport(ERROR,
 					(errcode_for_file_access(),
-					 errmsg("could not stat directory \"%s\": %m", dir)));
+					 errmsg("could not stat file \"%s\": %m", path)));
+		}
 
 		/* Ignore anything but regular files */
 		if (!S_ISREG(attrib.st_mode))
@@ -596,24 +603,113 @@ pg_ls_dir_files(FunctionCallInfo fcinfo, const char *dir)
 		values[2] = TimestampTzGetDatum(time_t_to_timestamptz(attrib.st_mtime));
 		memset(nulls, 0, sizeof(nulls));
 
-		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
-		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
 	}
 
-	FreeDir(fctx->dirdesc);
-	SRF_RETURN_DONE(funcctx);
+	FreeDir(dirdesc);
+	return (Datum) 0;
 }
 
 /* Function to return the list of files in the log directory */
 Datum
 pg_ls_logdir(PG_FUNCTION_ARGS)
 {
-	return pg_ls_dir_files(fcinfo, Log_directory);
+	return pg_ls_dir_files(fcinfo, Log_directory, false);
 }
 
 /* Function to return the list of files in the WAL directory */
 Datum
 pg_ls_waldir(PG_FUNCTION_ARGS)
 {
-	return pg_ls_dir_files(fcinfo, XLOGDIR);
+	return pg_ls_dir_files(fcinfo, XLOGDIR, false);
+}
+
+/*
+ * Generic function to return the list of files in pgsql_tmp
+ */
+static Datum
+pg_ls_tmpdir(FunctionCallInfo fcinfo, Oid tblspc)
+{
+	char		path[MAXPGPATH];
+
+	if (!SearchSysCacheExists1(TABLESPACEOID, ObjectIdGetDatum(tblspc)))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("tablespace with OID %u does not exist",
+						tblspc)));
+
+	TempTablespacePath(path, tblspc);
+	return pg_ls_dir_files(fcinfo, path, true);
+}
+
+/*
+ * Function to return the list of temporary files in the pg_default tablespace's
+ * pgsql_tmp directory
+ */
+Datum
+pg_ls_tmpdir_noargs(PG_FUNCTION_ARGS)
+{
+	return pg_ls_tmpdir(fcinfo, DEFAULTTABLESPACE_OID);
+}
+
+/*
+ * Function to return the list of temporary files in the specified tablespace's
+ * pgsql_tmp directory
+ */
+Datum
+pg_ls_tmpdir_1arg(PG_FUNCTION_ARGS)
+{
+	return pg_ls_tmpdir(fcinfo, PG_GETARG_OID(0));
+}
+
+/*
+ * Function to return the list of files in the WAL archive status directory.
+ */
+Datum
+pg_ls_archive_statusdir(PG_FUNCTION_ARGS)
+{
+	return pg_ls_dir_files(fcinfo, XLOGDIR "/archive_status", true);
+}
+
+/*
+ * Function to return the list of files in the pg_logical/snapshots directory.
+ */
+Datum
+pg_ls_logicalsnapdir(PG_FUNCTION_ARGS)
+{
+	return pg_ls_dir_files(fcinfo, "pg_logical/snapshots", false);
+}
+
+/*
+ * Function to return the list of files in the pg_logical/mappings directory.
+ */
+Datum
+pg_ls_logicalmapdir(PG_FUNCTION_ARGS)
+{
+	return pg_ls_dir_files(fcinfo, "pg_logical/mappings", false);
+}
+
+/*
+ * Function to return the list of files in the pg_replslot/<replication_slot>
+ * directory.
+ */
+Datum
+pg_ls_replslotdir(PG_FUNCTION_ARGS)
+{
+	text	   *slotname_t;
+	char		path[MAXPGPATH];
+	char	   *slotname;
+
+	slotname_t = PG_GETARG_TEXT_PP(0);
+
+	slotname = text_to_cstring(slotname_t);
+
+	if (!SearchNamedReplicationSlot(slotname, true))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("replication slot \"%s\" does not exist",
+						slotname)));
+
+	snprintf(path, sizeof(path), "pg_replslot/%s", slotname);
+	return pg_ls_dir_files(fcinfo, path, false);
 }

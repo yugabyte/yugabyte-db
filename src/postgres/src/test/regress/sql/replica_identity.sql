@@ -5,13 +5,12 @@ CREATE TABLE test_replica_identity (
        nonkey text,
        CONSTRAINT test_replica_identity_unique_defer UNIQUE (keya, keyb) DEFERRABLE,
        CONSTRAINT test_replica_identity_unique_nondefer UNIQUE (keya, keyb)
-) WITH OIDS;
+) ;
 
 CREATE TABLE test_replica_identity_othertable (id serial primary key);
 
 CREATE INDEX test_replica_identity_keyab ON test_replica_identity (keya, keyb);
 CREATE UNIQUE INDEX test_replica_identity_keyab_key ON test_replica_identity (keya, keyb);
-CREATE UNIQUE INDEX test_replica_identity_oid_idx ON test_replica_identity (oid);
 CREATE UNIQUE INDEX test_replica_identity_nonkey ON test_replica_identity (keya, nonkey);
 CREATE INDEX test_replica_identity_hash ON test_replica_identity USING hash (nonkey);
 CREATE UNIQUE INDEX test_replica_identity_expr ON test_replica_identity (keya, keyb, (3));
@@ -53,9 +52,6 @@ ALTER TABLE test_replica_identity REPLICA IDENTITY USING INDEX test_replica_iden
 SELECT relreplident FROM pg_class WHERE oid = 'test_replica_identity'::regclass;
 \d test_replica_identity
 
--- succeed, oid unique index
-ALTER TABLE test_replica_identity REPLICA IDENTITY USING INDEX test_replica_identity_oid_idx;
-
 -- succeed, nondeferrable unique constraint over nonnullable cols
 ALTER TABLE test_replica_identity REPLICA IDENTITY USING INDEX test_replica_identity_unique_nondefer;
 
@@ -79,5 +75,50 @@ SELECT relreplident FROM pg_class WHERE oid = 'test_replica_identity'::regclass;
 ALTER TABLE test_replica_identity REPLICA IDENTITY NOTHING;
 SELECT relreplident FROM pg_class WHERE oid = 'test_replica_identity'::regclass;
 
+---
+-- Test that ALTER TABLE rewrite preserves nondefault replica identity
+---
+
+-- constraint variant
+CREATE TABLE test_replica_identity2 (id int UNIQUE NOT NULL);
+ALTER TABLE test_replica_identity2 REPLICA IDENTITY USING INDEX test_replica_identity2_id_key;
+\d test_replica_identity2
+ALTER TABLE test_replica_identity2 ALTER COLUMN id TYPE bigint;
+\d test_replica_identity2
+
+-- straight index variant
+CREATE TABLE test_replica_identity3 (id int NOT NULL);
+CREATE UNIQUE INDEX test_replica_identity3_id_key ON test_replica_identity3 (id);
+ALTER TABLE test_replica_identity3 REPLICA IDENTITY USING INDEX test_replica_identity3_id_key;
+\d test_replica_identity3
+ALTER TABLE test_replica_identity3 ALTER COLUMN id TYPE bigint;
+\d test_replica_identity3
+
+-- ALTER TABLE DROP NOT NULL is not allowed for columns part of an index
+-- used as replica identity.
+ALTER TABLE test_replica_identity3 ALTER COLUMN id DROP NOT NULL;
+
+--
+-- Test that replica identity can be set on an index that's not yet valid.
+-- (This matches the way pg_dump will try to dump a partitioned table.)
+--
+CREATE TABLE test_replica_identity4(id integer NOT NULL) PARTITION BY LIST (id);
+CREATE TABLE test_replica_identity4_1(id integer NOT NULL);
+ALTER TABLE ONLY test_replica_identity4
+  ATTACH PARTITION test_replica_identity4_1 FOR VALUES IN (1);
+ALTER TABLE ONLY test_replica_identity4
+  ADD CONSTRAINT test_replica_identity4_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY test_replica_identity4
+  REPLICA IDENTITY USING INDEX test_replica_identity4_pkey;
+ALTER TABLE ONLY test_replica_identity4_1
+  ADD CONSTRAINT test_replica_identity4_1_pkey PRIMARY KEY (id);
+\d+ test_replica_identity4
+ALTER INDEX test_replica_identity4_pkey
+  ATTACH PARTITION test_replica_identity4_1_pkey;
+\d+ test_replica_identity4
+
 DROP TABLE test_replica_identity;
+DROP TABLE test_replica_identity2;
+DROP TABLE test_replica_identity3;
+DROP TABLE test_replica_identity4;
 DROP TABLE test_replica_identity_othertable;

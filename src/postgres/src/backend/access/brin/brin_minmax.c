@@ -2,7 +2,7 @@
  * brin_minmax.c
  *		Implementation of Min/Max opclass for BRIN
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -10,18 +10,17 @@
  */
 #include "postgres.h"
 
-#include "access/genam.h"
 #include "access/brin_internal.h"
 #include "access/brin_tuple.h"
+#include "access/genam.h"
 #include "access/stratnum.h"
-#include "catalog/pg_type.h"
 #include "catalog/pg_amop.h"
+#include "catalog/pg_type.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
-
 
 typedef struct MinmaxOpaque
 {
@@ -30,7 +29,7 @@ typedef struct MinmaxOpaque
 } MinmaxOpaque;
 
 static FmgrInfo *minmax_get_strategy_procinfo(BrinDesc *bdesc, uint16 attno,
-							 Oid subtype, uint16 strategynum);
+											  Oid subtype, uint16 strategynum);
 
 
 Datum
@@ -47,6 +46,7 @@ brin_minmax_opcinfo(PG_FUNCTION_ARGS)
 	result = palloc0(MAXALIGN(SizeofBrinOpcInfo(2)) +
 					 sizeof(MinmaxOpaque));
 	result->oi_nstored = 2;
+	result->oi_regular_nulls = true;
 	result->oi_opaque = (MinmaxOpaque *)
 		MAXALIGN((char *) result + SizeofBrinOpcInfo(2));
 	result->oi_typcache[0] = result->oi_typcache[1] =
@@ -68,7 +68,7 @@ brin_minmax_add_value(PG_FUNCTION_ARGS)
 	BrinDesc   *bdesc = (BrinDesc *) PG_GETARG_POINTER(0);
 	BrinValues *column = (BrinValues *) PG_GETARG_POINTER(1);
 	Datum		newval = PG_GETARG_DATUM(2);
-	bool		isnull = PG_GETARG_DATUM(3);
+	bool		isnull PG_USED_FOR_ASSERTS_ONLY = PG_GETARG_DATUM(3);
 	Oid			colloid = PG_GET_COLLATION();
 	FmgrInfo   *cmpFn;
 	Datum		compar;
@@ -76,18 +76,7 @@ brin_minmax_add_value(PG_FUNCTION_ARGS)
 	Form_pg_attribute attr;
 	AttrNumber	attno;
 
-	/*
-	 * If the new value is null, we record that we saw it if it's the first
-	 * one; otherwise, there's nothing to do.
-	 */
-	if (isnull)
-	{
-		if (column->bv_hasnulls)
-			PG_RETURN_BOOL(false);
-
-		column->bv_hasnulls = true;
-		PG_RETURN_BOOL(true);
-	}
+	Assert(!isnull);
 
 	attno = column->bv_attno;
 	attr = TupleDescAttr(bdesc->bd_tupdesc, attno - 1);
@@ -141,6 +130,10 @@ brin_minmax_add_value(PG_FUNCTION_ARGS)
  * Given an index tuple corresponding to a certain page range and a scan key,
  * return whether the scan key is consistent with the index tuple's min/max
  * values.  Return true if so, false otherwise.
+ *
+ * We're no longer dealing with NULL keys in the consistent function, that is
+ * now handled by the AM code. That means we should not get any all-NULL ranges
+ * either, because those can't be consistent with regular (not [IS] NULL) keys.
  */
 Datum
 brin_minmax_consistent(PG_FUNCTION_ARGS)
@@ -155,35 +148,11 @@ brin_minmax_consistent(PG_FUNCTION_ARGS)
 	Datum		matches;
 	FmgrInfo   *finfo;
 
-	Assert(key->sk_attno == column->bv_attno);
+	/* This opclass uses the old signature with only three arguments. */
+	Assert(PG_NARGS() == 3);
 
-	/* handle IS NULL/IS NOT NULL tests */
-	if (key->sk_flags & SK_ISNULL)
-	{
-		if (key->sk_flags & SK_SEARCHNULL)
-		{
-			if (column->bv_allnulls || column->bv_hasnulls)
-				PG_RETURN_BOOL(true);
-			PG_RETURN_BOOL(false);
-		}
-
-		/*
-		 * For IS NOT NULL, we can only skip ranges that are known to have
-		 * only nulls.
-		 */
-		if (key->sk_flags & SK_SEARCHNOTNULL)
-			PG_RETURN_BOOL(!column->bv_allnulls);
-
-		/*
-		 * Neither IS NULL nor IS NOT NULL was used; assume all indexable
-		 * operators are strict and return false.
-		 */
-		PG_RETURN_BOOL(false);
-	}
-
-	/* if the range is all empty, it cannot possibly be consistent */
-	if (column->bv_allnulls)
-		PG_RETURN_BOOL(false);
+	/* Should not be dealing with all-NULL ranges. */
+	Assert(!column->bv_allnulls);
 
 	attno = key->sk_attno;
 	subtype = key->sk_subtype;
@@ -250,33 +219,10 @@ brin_minmax_union(PG_FUNCTION_ARGS)
 	bool		needsadj;
 
 	Assert(col_a->bv_attno == col_b->bv_attno);
-
-	/* Adjust "hasnulls" */
-	if (!col_a->bv_hasnulls && col_b->bv_hasnulls)
-		col_a->bv_hasnulls = true;
-
-	/* If there are no values in B, there's nothing left to do */
-	if (col_b->bv_allnulls)
-		PG_RETURN_VOID();
+	Assert(!col_a->bv_allnulls && !col_b->bv_allnulls);
 
 	attno = col_a->bv_attno;
 	attr = TupleDescAttr(bdesc->bd_tupdesc, attno - 1);
-
-	/*
-	 * Adjust "allnulls".  If A doesn't have values, just copy the values from
-	 * B into A, and we're done.  We cannot run the operators in this case,
-	 * because values in A might contain garbage.  Note we already established
-	 * that B contains values.
-	 */
-	if (col_a->bv_allnulls)
-	{
-		col_a->bv_allnulls = false;
-		col_a->bv_values[0] = datumCopy(col_b->bv_values[0],
-										attr->attbyval, attr->attlen);
-		col_a->bv_values[1] = datumCopy(col_b->bv_values[1],
-										attr->attbyval, attr->attlen);
-		PG_RETURN_VOID();
-	}
 
 	/* Adjust minimum, if B's min is less than A's min */
 	finfo = minmax_get_strategy_procinfo(bdesc, attno, attr->atttypid,

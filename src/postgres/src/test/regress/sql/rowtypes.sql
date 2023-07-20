@@ -63,6 +63,10 @@ select * from people;
 
 insert into quadtable (f1, q.c1.r, q.c2.i) values(44,55,66);
 
+update quadtable set q.c1.r = 12 where f1 = 2;
+
+update quadtable set q.c1 = 12;  -- error, type mismatch
+
 select * from quadtable;
 
 -- The object here is to ensure that toasted references inside
@@ -119,6 +123,33 @@ select thousand, tenthous from tenk1
 where (thousand, tenthous) >= (997, 5000)
 order by thousand, tenthous;
 
+explain (costs off)
+select thousand, tenthous, four from tenk1
+where (thousand, tenthous, four) > (998, 5000, 3)
+order by thousand, tenthous;
+
+select thousand, tenthous, four from tenk1
+where (thousand, tenthous, four) > (998, 5000, 3)
+order by thousand, tenthous;
+
+explain (costs off)
+select thousand, tenthous from tenk1
+where (998, 5000) < (thousand, tenthous)
+order by thousand, tenthous;
+
+select thousand, tenthous from tenk1
+where (998, 5000) < (thousand, tenthous)
+order by thousand, tenthous;
+
+explain (costs off)
+select thousand, hundred from tenk1
+where (998, 5000) < (thousand, hundred)
+order by thousand, hundred;
+
+select thousand, hundred from tenk1
+where (998, 5000) < (thousand, hundred)
+order by thousand, hundred;
+
 -- Test case for bug #14010: indexed row comparisons fail with nulls
 create temp table test_table (a text, b text);
 insert into test_table values ('a', 'b');
@@ -143,6 +174,15 @@ where i8 in (row(123,456)::int8_tbl, '(4567890123456789,123)');
 
 select * from int8_tbl i8
 where i8 in (row(123,456)::int8_tbl, '(4567890123456789,123)');
+
+-- Check ability to select columns from an anonymous rowtype
+select (row(1, 2.0)).f1;
+select (row(1, 2.0)).f2;
+select (row(1, 2.0)).nosuch;  -- fail
+select (row(1, 2.0)).*;
+select (r).f1 from (select row(1, 2.0) as r) ss;
+select (r).f3 from (select row(1, 2.0) as r) ss;  -- fail
+select (r).* from (select row(1, 2.0) as r) ss;
 
 -- Check some corner cases involving empty rowtypes
 select ROW();
@@ -259,6 +299,12 @@ select row(1, '(1,2)')::testtype6 *< row(1, '(1,3)')::testtype6;
 select row(1, '(1,2)')::testtype6 *>= row(1, '(1,3)')::testtype6;
 select row(1, '(1,2)')::testtype6 *<> row(1, '(1,3)')::testtype6;
 
+-- anonymous rowtypes in coldeflists
+select q.a, q.b = row(2), q.c = array[row(3)], q.d = row(row(4)) from
+    unnest(array[row(1, row(2), array[row(3)], row(row(4))),
+                 row(2, row(3), array[row(4)], row(row(5)))])
+      as q(a int, b record, c record[], d record);
+
 drop type testtype1, testtype2, testtype3, testtype4, testtype5, testtype6;
 
 
@@ -371,12 +417,10 @@ select longname(f) from fullname f;
 --
 
 select row_to_json(i) from int8_tbl i;
+-- since "i" is of type "int8_tbl", attaching aliases doesn't change anything:
 select row_to_json(i) from int8_tbl i(x,y);
 
-create temp view vv1 as select * from int8_tbl;
-select row_to_json(i) from vv1 i;
-select row_to_json(i) from vv1 i(x,y);
-
+-- in these examples, we'll report the exposed column names of the subselect:
 select row_to_json(ss) from
   (select q1, q2 from int8_tbl) as ss;
 select row_to_json(ss) from
@@ -428,12 +472,12 @@ from (values (1,row(1,2)), (1,row(null,null)), (1,null),
              (null,row(1,2)), (null,row(null,null)), (null,null) ) r(a,b);
 
 explain (verbose, costs off)
-with r(a,b) as
+with r(a,b) as materialized
   (values (1,row(1,2)), (1,row(null,null)), (1,null),
           (null,row(1,2)), (null,row(null,null)), (null,null) )
 select r, r is null as isnull, r is not null as isnotnull from r;
 
-with r(a,b) as
+with r(a,b) as materialized
   (values (1,row(1,2)), (1,row(null,null)), (1,null),
           (null,row(1,2)), (null,row(null,null)), (null,null) )
 select r, r is null as isnull, r is not null as isnotnull from r;
@@ -442,18 +486,18 @@ select r, r is null as isnull, r is not null as isnotnull from r;
 --
 -- Tests for component access / FieldSelect
 --
-CREATE TABLE compositetable(a text, b text) WITH OIDS;
+CREATE TABLE compositetable(a text, b text);
 INSERT INTO compositetable(a, b) VALUES('fa', 'fb');
 
 -- composite type columns can't directly be accessed (error)
 SELECT d.a FROM (SELECT compositetable AS d FROM compositetable) s;
 -- but can be accessed with proper parens
 SELECT (d).a, (d).b FROM (SELECT compositetable AS d FROM compositetable) s;
--- oids can't be accessed in composite types (error)
-SELECT (d).oid FROM (SELECT compositetable AS d FROM compositetable) s;
+-- system columns can't be accessed in composite types (error)
+SELECT (d).ctid FROM (SELECT compositetable AS d FROM compositetable) s;
 
 -- accessing non-existing column in NULL datum errors out
-SELECT (NULL::compositetable).nonexistant;
+SELECT (NULL::compositetable).nonexistent;
 -- existing column in a NULL composite yield NULL
 SELECT (NULL::compositetable).a;
 -- oids can't be accessed in composite types (error)

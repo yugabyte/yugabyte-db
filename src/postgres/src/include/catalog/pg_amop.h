@@ -29,7 +29,7 @@
  * intentional denormalization of the catalogs to buy lookup speed.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_amop.h
@@ -53,6 +53,8 @@
  */
 CATALOG(pg_amop,2602,AccessMethodOperatorRelationId)
 {
+	Oid			oid;			/* oid */
+
 	/* the index opfamily this entry is for */
 	Oid			amopfamily BKI_LOOKUP(pg_opfamily);
 
@@ -75,7 +77,7 @@ CATALOG(pg_amop,2602,AccessMethodOperatorRelationId)
 	Oid			amopmethod BKI_LOOKUP(pg_am);
 
 	/* ordering opfamily OID, or 0 if search op */
-	Oid			amopsortfamily BKI_DEFAULT(0) BKI_LOOKUP(pg_opfamily);
+	Oid			amopsortfamily BKI_DEFAULT(0) BKI_LOOKUP_OPT(pg_opfamily);
 } FormData_pg_amop;
 
 /* ----------------
@@ -84,6 +86,10 @@ CATALOG(pg_amop,2602,AccessMethodOperatorRelationId)
  * ----------------
  */
 typedef FormData_pg_amop *Form_pg_amop;
+
+DECLARE_UNIQUE_INDEX(pg_amop_fam_strat_index, 2653, AccessMethodStrategyIndexId, on pg_amop using btree(amopfamily oid_ops, amoplefttype oid_ops, amoprighttype oid_ops, amopstrategy int2_ops));
+DECLARE_UNIQUE_INDEX(pg_amop_opr_fam_index, 2654, AccessMethodOperatorIndexId, on pg_amop using btree(amopopr oid_ops, amoppurpose char_ops, amopfamily oid_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_amop_oid_index, 2756, AccessMethodOperatorOidIndexId, on pg_amop using btree(oid oid_ops));
 
 #ifdef EXPOSE_TO_CLIENT_CODE
 

@@ -70,22 +70,16 @@ from basictest;
 (3 rows)
 
 -- check that union/case/coalesce type resolution handles domains properly
-select coalesce(4::domainint4, 7) is of (int4) as t;
- t 
----
- t
+select pg_typeof(coalesce(4::domainint4, 7));
+ pg_typeof 
+-----------
+ integer
 (1 row)
 
-select coalesce(4::domainint4, 7) is of (domainint4) as f;
- f 
----
- f
-(1 row)
-
-select coalesce(4::domainint4, 7::domainint4) is of (domainint4) as t;
- t 
----
- t
+select pg_typeof(coalesce(4::domainint4, 7::domainint4));
+ pg_typeof  
+------------
+ domainint4
 (1 row)
 
 drop table basictest;
@@ -283,6 +277,29 @@ Rules:
     ON DELETE TO dcomptable DO INSTEAD  UPDATE dcomptable SET d1.r = (dcomptable.d1).r - 1::double precision, d1.i = (dcomptable.d1).i + 1::double precision
   WHERE (dcomptable.d1).i > 0::double precision
 
+create function makedcomp(r float8, i float8) returns dcomptype
+as 'select row(r, i)' language sql;
+select makedcomp(1,2);
+ makedcomp 
+-----------
+ (1,2)
+(1 row)
+
+select makedcomp(2,1);  -- fail
+ERROR:  value for domain dcomptype violates check constraint "c1"
+select * from makedcomp(1,2) m;
+ r | i 
+---+---
+ 1 | 2
+(1 row)
+
+select m, m is not null from makedcomp(1,2) m;
+   m   | ?column? 
+-------+----------
+ (1,2) | t
+(1 row)
+
+drop function makedcomp(float8, float8);
 drop table dcomptable;
 drop type comptype cascade;
 NOTICE:  drop cascades to type dcomptype
@@ -518,6 +535,30 @@ LINE 1: update dposintatable set (f1[2])[1] = array[98];
 drop table dposintatable;
 drop domain posint cascade;
 NOTICE:  drop cascades to type dposinta
+-- Test arrays over domains of composite
+create type comptype as (cf1 int, cf2 int);
+create domain dcomptype as comptype check ((value).cf1 > 0);
+create table dcomptable (f1 dcomptype[]);
+insert into dcomptable values (null);
+update dcomptable set f1[1].cf2 = 5;
+table dcomptable;
+    f1    
+----------
+ {"(,5)"}
+(1 row)
+
+update dcomptable set f1[1].cf1 = -1;  -- fail
+ERROR:  value for domain dcomptype violates check constraint "dcomptype_check"
+update dcomptable set f1[1].cf1 = 1;
+table dcomptable;
+    f1     
+-----------
+ {"(1,5)"}
+(1 row)
+
+drop table dcomptable;
+drop type comptype cascade;
+NOTICE:  drop cascades to type dcomptype
 -- Test not-null restrictions
 create domain dnotnull varchar(15) NOT NULL;
 create domain dnull    varchar(15);
@@ -542,12 +583,12 @@ ERROR:  domain dnotnull does not allow null values
 INSERT INTO nulltest values ('a', NULL, 'c', 'd', 'c');
 ERROR:  domain dnotnull does not allow null values
 INSERT INTO nulltest values ('a', 'b', NULL, 'd', 'c');
-ERROR:  null value in column "col3" violates not-null constraint
+ERROR:  null value in column "col3" of relation "nulltest" violates not-null constraint
 DETAIL:  Failing row contains (a, b, null, d, c).
 INSERT INTO nulltest values ('a', 'b', 'c', NULL, 'd'); -- Good
 -- Test copy
 COPY nulltest FROM stdin; --fail
-ERROR:  null value in column "col3" violates not-null constraint
+ERROR:  null value in column "col3" of relation "nulltest" violates not-null constraint
 DETAIL:  Failing row contains (a, b, null, d, d).
 CONTEXT:  COPY nulltest, line 1: "a	b	\N	d	d"
 COPY nulltest FROM stdin; --fail
@@ -601,14 +642,14 @@ create table defaulttest
             , col8 ddef5
             );
 insert into defaulttest(col4) values(0); -- fails, col5 defaults to null
-ERROR:  null value in column "col5" violates not-null constraint
+ERROR:  null value in column "col5" of relation "defaulttest" violates not-null constraint
 DETAIL:  Failing row contains (3, 12, 5, 0, null, 88, 8000, 12.12).
 alter table defaulttest alter column col5 drop default;
 insert into defaulttest default values; -- succeeds, inserts domain default
 -- We used to treat SET DEFAULT NULL as equivalent to DROP DEFAULT; wrong
 alter table defaulttest alter column col5 set default null;
 insert into defaulttest(col4) values(0); -- fails
-ERROR:  null value in column "col5" violates not-null constraint
+ERROR:  null value in column "col5" of relation "defaulttest" violates not-null constraint
 DETAIL:  Failing row contains (3, 12, 5, 0, null, 88, 8000, 12.12).
 alter table defaulttest alter column col5 drop default;
 insert into defaulttest default values;
@@ -645,8 +686,8 @@ alter domain dnotnulltest drop not null;
 update domnotnull set col1 = null;
 drop domain dnotnulltest cascade;
 NOTICE:  drop cascades to 2 other objects
-DETAIL:  drop cascades to column col1 of table domnotnull
-drop cascades to column col2 of table domnotnull
+DETAIL:  drop cascades to column col2 of table domnotnull
+drop cascades to column col1 of table domnotnull
 -- Test ALTER DOMAIN .. DEFAULT ..
 create table domdeftest (col1 ddef1);
 insert into domdeftest default values;
@@ -829,7 +870,7 @@ begin
 end$$ language plpgsql;
 select doubledecrement(3); -- fail because of implicit null assignment
 ERROR:  domain pos_int does not allow null values
-CONTEXT:  PL/pgSQL function doubledecrement(pos_int) line 3 during statement block local variable initialization
+CONTEXT:  PL/pgSQL function doubledecrement(pos_int) line 2 during statement block local variable initialization
 create or replace function doubledecrement(p1 pos_int) returns pos_int as $$
 declare v pos_int := 0;
 begin
@@ -837,7 +878,7 @@ begin
 end$$ language plpgsql;
 select doubledecrement(3); -- fail at initialization assignment
 ERROR:  value for domain pos_int violates check constraint "pos_int_check"
-CONTEXT:  PL/pgSQL function doubledecrement(pos_int) line 3 during statement block local variable initialization
+CONTEXT:  PL/pgSQL function doubledecrement(pos_int) line 2 during statement block local variable initialization
 create or replace function doubledecrement(p1 pos_int) returns pos_int as $$
 declare v pos_int := 1;
 begin
@@ -1018,6 +1059,31 @@ drop function array_elem_check(int);
 --
 create domain di as int;
 create function dom_check(int) returns di as $$
+declare d di;
+begin
+  d := $1::di;
+  return d;
+end
+$$ language plpgsql immutable;
+select dom_check(0);
+ dom_check 
+-----------
+         0
+(1 row)
+
+alter domain di add constraint pos check (value > 0);
+select dom_check(0); -- fail
+ERROR:  value for domain di violates check constraint "pos"
+CONTEXT:  PL/pgSQL function dom_check(integer) line 4 at assignment
+alter domain di drop constraint pos;
+select dom_check(0);
+ dom_check 
+-----------
+         0
+(1 row)
+
+-- implicit cast during assignment is a separate code path, test that too
+create or replace function dom_check(int) returns di as $$
 declare d di;
 begin
   d := $1;

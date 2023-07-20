@@ -29,7 +29,7 @@
  * at runtime.  If we knew exactly which functions require collation
  * information, we could throw those errors at parse time instead.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -74,19 +74,19 @@ typedef struct
 
 static bool assign_query_collations_walker(Node *node, ParseState *pstate);
 static bool assign_collations_walker(Node *node,
-						 assign_collations_context *context);
+									 assign_collations_context *context);
 static void merge_collation_state(Oid collation,
-					  CollateStrength strength,
-					  int location,
-					  Oid collation2,
-					  int location2,
-					  assign_collations_context *context);
+								  CollateStrength strength,
+								  int location,
+								  Oid collation2,
+								  int location2,
+								  assign_collations_context *context);
 static void assign_aggregate_collations(Aggref *aggref,
-							assign_collations_context *loccontext);
+										assign_collations_context *loccontext);
 static void assign_ordered_set_collations(Aggref *aggref,
-							  assign_collations_context *loccontext);
+										  assign_collations_context *loccontext);
 static void assign_hypothetical_collations(Aggref *aggref,
-							   assign_collations_context *loccontext);
+										   assign_collations_context *loccontext);
 
 
 /*
@@ -485,6 +485,7 @@ assign_collations_walker(Node *node, assign_collations_context *context)
 		case T_FromExpr:
 		case T_OnConflictExpr:
 		case T_SortGroupClause:
+		case T_MergeAction:
 			(void) expression_tree_walker(node,
 										  assign_collations_walker,
 										  (void *) &loccontext);
@@ -664,6 +665,29 @@ assign_collations_walker(Node *node, assign_collations_context *context)
 																&loccontext);
 							}
 							(void) assign_collations_walker((Node *) expr->defresult,
+															&loccontext);
+						}
+						break;
+					case T_SubscriptingRef:
+						{
+							/*
+							 * The subscripts are treated as independent
+							 * expressions not contributing to the node's
+							 * collation.  Only the container, and the source
+							 * expression if any, contribute.  (This models
+							 * the old behavior, in which the subscripts could
+							 * be counted on to be integers and thus not
+							 * contribute anything.)
+							 */
+							SubscriptingRef *sbsref = (SubscriptingRef *) node;
+
+							assign_expr_collations(context->pstate,
+												   (Node *) sbsref->refupperindexpr);
+							assign_expr_collations(context->pstate,
+												   (Node *) sbsref->reflowerindexpr);
+							(void) assign_collations_walker((Node *) sbsref->refexpr,
+															&loccontext);
+							(void) assign_collations_walker((Node *) sbsref->refassgnexpr,
 															&loccontext);
 						}
 						break;
@@ -946,7 +970,7 @@ assign_hypothetical_collations(Aggref *aggref,
 	while (extra_args-- > 0)
 	{
 		(void) assign_collations_walker((Node *) lfirst(h_cell), loccontext);
-		h_cell = lnext(h_cell);
+		h_cell = lnext(aggref->aggdirectargs, h_cell);
 	}
 
 	/* Scan hypothetical args and aggregated args in parallel */
@@ -1027,8 +1051,8 @@ assign_hypothetical_collations(Aggref *aggref,
 								  paircontext.location2,
 								  loccontext);
 
-		h_cell = lnext(h_cell);
-		s_cell = lnext(s_cell);
+		h_cell = lnext(aggref->aggdirectargs, h_cell);
+		s_cell = lnext(aggref->args, s_cell);
 	}
 	Assert(h_cell == NULL && s_cell == NULL);
 }

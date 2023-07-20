@@ -311,7 +311,7 @@ yb_test(YbGateTestCase case_no)
 			{
 				MemoryContext	ctx;
 				ErrorData	   *edata;
-				ctx = CreateThreadLocalMemoryContext(NULL, "test context");
+				ctx = CreateThreadLocalCurrentMemoryContext(NULL, "test context");
 				SetThreadLocalCurrentMemoryContext(ctx);
 				edata = CopyErrorData();
 				FlushErrorState();

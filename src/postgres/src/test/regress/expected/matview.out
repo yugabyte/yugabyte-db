@@ -311,12 +311,12 @@ SELECT type, m.totamt AS mtot, v.totamt AS vtot FROM mvtest_tm m LEFT JOIN mvtes
 DROP TABLE mvtest_t;
 ERROR:  cannot drop table mvtest_t because other objects depend on it
 DETAIL:  view mvtest_tv depends on table mvtest_t
+materialized view mvtest_mvschema.mvtest_tvm depends on view mvtest_tv
+materialized view mvtest_tvmm depends on materialized view mvtest_mvschema.mvtest_tvm
 view mvtest_tvv depends on view mvtest_tv
 materialized view mvtest_tvvm depends on view mvtest_tvv
 view mvtest_tvvmv depends on materialized view mvtest_tvvm
 materialized view mvtest_bb depends on view mvtest_tvvmv
-materialized view mvtest_mvschema.mvtest_tvm depends on view mvtest_tv
-materialized view mvtest_tvmm depends on materialized view mvtest_mvschema.mvtest_tvm
 materialized view mvtest_tm depends on table mvtest_t
 materialized view mvtest_tmm depends on materialized view mvtest_tm
 HINT:  Use DROP ... CASCADE to drop the dependent objects too.
@@ -327,12 +327,12 @@ BEGIN;
 DROP TABLE mvtest_t CASCADE;
 NOTICE:  drop cascades to 9 other objects
 DETAIL:  drop cascades to view mvtest_tv
+drop cascades to materialized view mvtest_mvschema.mvtest_tvm
+drop cascades to materialized view mvtest_tvmm
 drop cascades to view mvtest_tvv
 drop cascades to materialized view mvtest_tvvm
 drop cascades to view mvtest_tvvmv
 drop cascades to materialized view mvtest_bb
-drop cascades to materialized view mvtest_mvschema.mvtest_tvm
-drop cascades to materialized view mvtest_tvmm
 drop cascades to materialized view mvtest_tm
 drop cascades to materialized view mvtest_tmm
 ROLLBACK;
@@ -347,7 +347,7 @@ CREATE VIEW mvtest_vt2 AS SELECT moo, 2*moo FROM mvtest_vt1 UNION ALL SELECT moo
  ?column? | integer |           |          |         | plain   | 
 View definition:
  SELECT mvtest_vt1.moo,
-    2 * mvtest_vt1.moo
+    2 * mvtest_vt1.moo AS "?column?"
    FROM mvtest_vt1
 UNION ALL
  SELECT mvtest_vt1.moo,
@@ -363,7 +363,7 @@ CREATE MATERIALIZED VIEW mv_test2 AS SELECT moo, 2*moo FROM mvtest_vt2 UNION ALL
  ?column? | integer |           |          |         | plain   |              | 
 View definition:
  SELECT mvtest_vt2.moo,
-    2 * mvtest_vt2.moo
+    2 * mvtest_vt2.moo AS "?column?"
    FROM mvtest_vt2
 UNION ALL
  SELECT mvtest_vt2.moo,
@@ -551,7 +551,15 @@ NOTICE:  drop cascades to materialized view mvtest_mv_v
 -- make sure running as superuser works when MV owned by another role (bug #11208)
 CREATE ROLE regress_user_mvtest;
 SET ROLE regress_user_mvtest;
-CREATE TABLE mvtest_foo_data AS SELECT i, md5(random()::text)
+-- this test case also checks for ambiguity in the queries issued by
+-- refresh_by_match_merge(), by choosing column names that intentionally
+-- duplicate all the aliases used in those queries
+CREATE TABLE mvtest_foo_data AS SELECT i,
+  i+1 AS tid,
+  md5(random()::text) AS mv,
+  md5(random()::text) AS newdata,
+  md5(random()::text) AS newdata2,
+  md5(random()::text) AS diff
   FROM generate_series(1, 10) i;
 CREATE MATERIALIZED VIEW mvtest_mv_foo AS SELECT * FROM mvtest_foo_data;
 CREATE MATERIALIZED VIEW mvtest_mv_foo AS SELECT * FROM mvtest_foo_data;
@@ -589,3 +597,82 @@ SELECT * FROM mvtest2;
 ERROR:  materialized view "mvtest2" has not been populated
 HINT:  Use the REFRESH MATERIALIZED VIEW command.
 ROLLBACK;
+-- INSERT privileges if relation owner is not allowed to insert.
+CREATE SCHEMA matview_schema;
+CREATE USER regress_matview_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_matview_user
+  REVOKE INSERT ON TABLES FROM regress_matview_user;
+GRANT ALL ON SCHEMA matview_schema TO public;
+SET SESSION AUTHORIZATION regress_matview_user;
+CREATE MATERIALIZED VIEW matview_schema.mv_withdata1 (a) AS
+  SELECT generate_series(1, 10) WITH DATA;
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+  CREATE MATERIALIZED VIEW matview_schema.mv_withdata2 (a) AS
+  SELECT generate_series(1, 10) WITH DATA;
+              QUERY PLAN              
+--------------------------------------
+ ProjectSet (actual rows=10 loops=1)
+   ->  Result (actual rows=1 loops=1)
+(2 rows)
+
+REFRESH MATERIALIZED VIEW matview_schema.mv_withdata2;
+CREATE MATERIALIZED VIEW matview_schema.mv_nodata1 (a) AS
+  SELECT generate_series(1, 10) WITH NO DATA;
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+  CREATE MATERIALIZED VIEW matview_schema.mv_nodata2 (a) AS
+  SELECT generate_series(1, 10) WITH NO DATA;
+          QUERY PLAN           
+-------------------------------
+ ProjectSet (never executed)
+   ->  Result (never executed)
+(2 rows)
+
+REFRESH MATERIALIZED VIEW matview_schema.mv_nodata2;
+RESET SESSION AUTHORIZATION;
+ALTER DEFAULT PRIVILEGES FOR ROLE regress_matview_user
+  GRANT INSERT ON TABLES TO regress_matview_user;
+DROP SCHEMA matview_schema CASCADE;
+NOTICE:  drop cascades to 4 other objects
+DETAIL:  drop cascades to materialized view matview_schema.mv_withdata1
+drop cascades to materialized view matview_schema.mv_withdata2
+drop cascades to materialized view matview_schema.mv_nodata1
+drop cascades to materialized view matview_schema.mv_nodata2
+DROP USER regress_matview_user;
+-- CREATE MATERIALIZED VIEW ... IF NOT EXISTS
+CREATE MATERIALIZED VIEW matview_ine_tab AS SELECT 1;
+CREATE MATERIALIZED VIEW matview_ine_tab AS SELECT 1 / 0; -- error
+ERROR:  relation "matview_ine_tab" already exists
+CREATE MATERIALIZED VIEW IF NOT EXISTS matview_ine_tab AS
+  SELECT 1 / 0; -- ok
+NOTICE:  relation "matview_ine_tab" already exists, skipping
+CREATE MATERIALIZED VIEW matview_ine_tab AS
+  SELECT 1 / 0 WITH NO DATA; -- error
+ERROR:  relation "matview_ine_tab" already exists
+CREATE MATERIALIZED VIEW IF NOT EXISTS matview_ine_tab AS
+  SELECT 1 / 0 WITH NO DATA; -- ok
+NOTICE:  relation "matview_ine_tab" already exists, skipping
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+  CREATE MATERIALIZED VIEW matview_ine_tab AS
+    SELECT 1 / 0; -- error
+ERROR:  relation "matview_ine_tab" already exists
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+  CREATE MATERIALIZED VIEW IF NOT EXISTS matview_ine_tab AS
+    SELECT 1 / 0; -- ok
+NOTICE:  relation "matview_ine_tab" already exists, skipping
+ QUERY PLAN 
+------------
+(0 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+  CREATE MATERIALIZED VIEW matview_ine_tab AS
+    SELECT 1 / 0 WITH NO DATA; -- error
+ERROR:  relation "matview_ine_tab" already exists
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF)
+  CREATE MATERIALIZED VIEW IF NOT EXISTS matview_ine_tab AS
+    SELECT 1 / 0 WITH NO DATA; -- ok
+NOTICE:  relation "matview_ine_tab" already exists, skipping
+ QUERY PLAN 
+------------
+(0 rows)
+
+DROP MATERIALIZED VIEW matview_ine_tab;

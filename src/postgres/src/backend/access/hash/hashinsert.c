@@ -3,7 +3,7 @@
  * hashinsert.c
  *	  Item insertion in hash tables for Postgres.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -17,15 +17,15 @@
 
 #include "access/hash.h"
 #include "access/hash_xlog.h"
-#include "access/heapam.h"
+#include "access/xloginsert.h"
 #include "miscadmin.h"
-#include "utils/rel.h"
-#include "storage/lwlock.h"
 #include "storage/buf_internals.h"
+#include "storage/lwlock.h"
 #include "storage/predicate.h"
+#include "utils/rel.h"
 
-static void _hash_vacuum_one_page(Relation rel, Buffer metabuf, Buffer buf,
-					  RelFileNode hnode);
+static void _hash_vacuum_one_page(Relation rel, Relation hrel,
+								  Buffer metabuf, Buffer buf);
 
 /*
  *	_hash_doinsert() -- Handle insertion of a single index tuple.
@@ -89,13 +89,13 @@ restart_insert:
 										  &usedmetap);
 	Assert(usedmetap != NULL);
 
-	CheckForSerializableConflictIn(rel, NULL, buf);
+	CheckForSerializableConflictIn(rel, NULL, BufferGetBlockNumber(buf));
 
 	/* remember the primary bucket buffer to release the pin on it at end. */
 	bucket_buf = buf;
 
 	page = BufferGetPage(buf);
-	pageopaque = (HashPageOpaque) PageGetSpecialPointer(page);
+	pageopaque = HashPageGetOpaque(page);
 	bucket = pageopaque->hasho_bucket;
 
 	/*
@@ -138,7 +138,7 @@ restart_insert:
 
 			if (IsBufferCleanupOK(buf))
 			{
-				_hash_vacuum_one_page(rel, metabuf, buf, heapRel->rd_node);
+				_hash_vacuum_one_page(rel, heapRel, metabuf, buf);
 
 				if (PageGetFreeSpace(page) >= itemsz)
 					break;		/* OK, now we have enough space */
@@ -177,13 +177,13 @@ restart_insert:
 			LockBuffer(buf, BUFFER_LOCK_UNLOCK);
 
 			/* chain to a new overflow page */
-			buf = _hash_addovflpage(rel, metabuf, buf, (buf == bucket_buf) ? true : false);
+			buf = _hash_addovflpage(rel, metabuf, buf, (buf == bucket_buf));
 			page = BufferGetPage(buf);
 
 			/* should fit now, given test above */
 			Assert(PageGetFreeSpace(page) >= itemsz);
 		}
-		pageopaque = (HashPageOpaque) PageGetSpecialPointer(page);
+		pageopaque = HashPageGetOpaque(page);
 		Assert((pageopaque->hasho_flag & LH_PAGE_TYPE) == LH_OVERFLOW_PAGE);
 		Assert(pageopaque->hasho_bucket == bucket);
 	}
@@ -258,8 +258,8 @@ restart_insert:
  *	_hash_pgaddtup() -- add a tuple to a particular page in the index.
  *
  * This routine adds the tuple to the page as requested; it does not write out
- * the page.  It is an error to call pgaddtup() without pin and write lock on
- * the target buffer.
+ * the page.  It is an error to call this function without pin and write lock
+ * on the target buffer.
  *
  * Returns the offset number at which the tuple was inserted.  This function
  * is responsible for preserving the condition that tuples in a hash index
@@ -336,8 +336,7 @@ _hash_pgaddmultitup(Relation rel, Buffer buf, IndexTuple *itups,
  */
 
 static void
-_hash_vacuum_one_page(Relation rel, Buffer metabuf, Buffer buf,
-					  RelFileNode hnode)
+_hash_vacuum_one_page(Relation rel, Relation hrel, Buffer metabuf, Buffer buf)
 {
 	OffsetNumber deletable[MaxOffsetNumber];
 	int			ndeletable = 0;
@@ -361,6 +360,12 @@ _hash_vacuum_one_page(Relation rel, Buffer metabuf, Buffer buf,
 
 	if (ndeletable > 0)
 	{
+		TransactionId latestRemovedXid;
+
+		latestRemovedXid =
+			index_compute_xid_horizon_for_tuples(rel, hrel, buf,
+												 deletable, ndeletable);
+
 		/*
 		 * Write-lock the meta page so that we can decrement tuple count.
 		 */
@@ -379,7 +384,7 @@ _hash_vacuum_one_page(Relation rel, Buffer metabuf, Buffer buf,
 		 * check it. Remember that LH_PAGE_HAS_DEAD_TUPLES is only a hint
 		 * anyway.
 		 */
-		pageopaque = (HashPageOpaque) PageGetSpecialPointer(page);
+		pageopaque = HashPageGetOpaque(page);
 		pageopaque->hasho_flag &= ~LH_PAGE_HAS_DEAD_TUPLES;
 
 		metap = HashPageGetMeta(BufferGetPage(metabuf));
@@ -394,7 +399,7 @@ _hash_vacuum_one_page(Relation rel, Buffer metabuf, Buffer buf,
 			xl_hash_vacuum_one_page xlrec;
 			XLogRecPtr	recptr;
 
-			xlrec.hnode = hnode;
+			xlrec.latestRemovedXid = latestRemovedXid;
 			xlrec.ntuples = ndeletable;
 
 			XLogBeginInsert();

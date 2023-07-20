@@ -4,7 +4,7 @@
  *	  definition of the "access method" system catalog (pg_am)
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_am.h
@@ -28,6 +28,8 @@
  */
 CATALOG(pg_am,2601,AccessMethodRelationId)
 {
+	Oid			oid;			/* oid */
+
 	/* access method name */
 	NameData	amname;
 
@@ -45,12 +47,16 @@ CATALOG(pg_am,2601,AccessMethodRelationId)
  */
 typedef FormData_pg_am *Form_pg_am;
 
+DECLARE_UNIQUE_INDEX(pg_am_name_index, 2651, AmNameIndexId, on pg_am using btree(amname name_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_am_oid_index, 2652, AmOidIndexId, on pg_am using btree(oid oid_ops));
+
 #ifdef EXPOSE_TO_CLIENT_CODE
 
 /*
  * Allowed values for amtype
  */
 #define AMTYPE_INDEX					'i' /* index access method */
+#define AMTYPE_TABLE					't' /* table access method */
 
 #endif							/* EXPOSE_TO_CLIENT_CODE */
 

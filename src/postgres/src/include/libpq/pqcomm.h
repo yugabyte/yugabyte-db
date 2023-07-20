@@ -6,7 +6,7 @@
  * NOTE: for historical reasons, this does not correspond to pqcomm.c.
  * pqcomm.c's routines are declared in libpq.h.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/libpq/pqcomm.h
@@ -62,16 +62,16 @@ struct sockaddr_storage
 typedef struct
 {
 	struct sockaddr_storage addr;
-	ACCEPT_TYPE_ARG3 salen;
+	socklen_t	salen;
 } SockAddr;
 
 /* Configure the UNIX socket location for the well known port. */
 
 #define UNIXSOCK_PATH(path, port, sockdir) \
+	   (AssertMacro(sockdir), \
+		AssertMacro(*(sockdir) != '\0'), \
 		snprintf(path, sizeof(path), "%s/.s.PGSQL.%d", \
-				((sockdir) && *(sockdir) != '\0') ? (sockdir) : \
-				DEFAULT_PGSOCKET_DIR, \
-				(port))
+				 (sockdir), (port)))
 
 /*
  * The maximum workable length of a socket path is what will fit into
@@ -85,6 +85,15 @@ typedef struct
  */
 #define UNIXSOCK_PATH_BUFLEN sizeof(((struct sockaddr_un *) NULL)->sun_path)
 
+/*
+ * A host that looks either like an absolute path or starts with @ is
+ * interpreted as a Unix-domain socket address.
+ */
+static inline bool
+is_unixsock_path(const char *path)
+{
+	return is_absolute_path(path) || path[0] == '@';
+}
 
 /*
  * These manipulate the frontend/backend protocol version number.
@@ -105,9 +114,12 @@ typedef struct
 #define PG_PROTOCOL_MINOR(v)	((v) & 0x0000ffff)
 #define PG_PROTOCOL(m,n)	(((m) << 16) | (n))
 
-/* The earliest and latest frontend/backend protocol version supported. */
+/*
+ * The earliest and latest frontend/backend protocol version supported.
+ * (Only protocol version 3 is currently supported)
+ */
 
-#define PG_PROTOCOL_EARLIEST	PG_PROTOCOL(2,0)
+#define PG_PROTOCOL_EARLIEST	PG_PROTOCOL(3,0)
 #define PG_PROTOCOL_LATEST		PG_PROTOCOL(3,0)
 
 typedef uint32 ProtocolVersion; /* FE/BE protocol version number */
@@ -123,33 +135,7 @@ typedef ProtocolVersion MsgType;
 
 typedef uint32 PacketLen;
 
-
-/*
- * Old-style startup packet layout with fixed-width fields.  This is used in
- * protocol 1.0 and 2.0, but not in later versions.  Note that the fields
- * in this layout are '\0' terminated only if there is room.
- */
-
-#define SM_DATABASE		64
-#define SM_USER			32
-/* We append database name if db_user_namespace true. */
-#define SM_DATABASE_USER (SM_DATABASE+SM_USER+1)	/* +1 for @ */
-#define SM_OPTIONS		64
-#define SM_UNUSED		64
-#define SM_TTY			64
-
-typedef struct StartupPacket
-{
-	ProtocolVersion protoVersion;	/* Protocol version */
-	char		database[SM_DATABASE];	/* Database name */
-	/* Db_user_namespace appends dbname */
-	char		user[SM_USER];	/* User name */
-	char		options[SM_OPTIONS];	/* Optional additional args */
-	char		unused[SM_UNUSED];	/* Unused */
-	char		tty[SM_TTY];	/* Tty for debug output */
-} StartupPacket;
-
-extern bool Db_user_namespace;
+extern PGDLLIMPORT bool Db_user_namespace;
 
 /*
  * In protocol 3.0 and later, the startup packet length is not fixed, but
@@ -199,9 +185,10 @@ typedef struct CancelRequestPacket
 
 
 /*
- * A client can also start by sending a SSL negotiation request, to get a
- * secure channel.
+ * A client can also start by sending a SSL or GSSAPI negotiation request to
+ * get a secure channel.
  */
 #define NEGOTIATE_SSL_CODE PG_PROTOCOL(1234,5679)
+#define NEGOTIATE_GSS_CODE PG_PROTOCOL(1234,5680)
 
 #endif							/* PQCOMM_H */

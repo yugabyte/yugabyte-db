@@ -1,5 +1,7 @@
 # pg_stat_statements extension
-comment = 'track execution statistics of all SQL statements executed'
+comment = 'track planning and execution statistics of all SQL statements executed'
+# YB_TODO() Postgres default version is the following
+# default_version = '1.10'
 default_version = '1.6-yb-1.0'
 module_pathname = '$libdir/pg_stat_statements'
 relocatable = true

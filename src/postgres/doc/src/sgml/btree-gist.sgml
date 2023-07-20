@@ -17,7 +17,7 @@
   <type>oid</type>, <type>money</type>, <type>char</type>,
   <type>varchar</type>, <type>text</type>, <type>bytea</type>, <type>bit</type>,
   <type>varbit</type>, <type>macaddr</type>, <type>macaddr8</type>, <type>inet</type>,
-  <type>cidr</type>, <type>uuid</type>, and all <type>enum</type> types.
+  <type>cidr</type>, <type>uuid</type>, <type>bool</type> and all <type>enum</type> types.
  </para>
 
  <para>
@@ -50,6 +50,12 @@
   <type>timestamp without time zone</type>,
   <type>time without time zone</type>, <type>date</type>, <type>interval</type>,
   <type>oid</type>, and <type>money</type>.
+ </para>
+
+ <para>
+  This module is considered <quote>trusted</quote>, that is, it can be
+  installed by non-superusers who have <literal>CREATE</literal> privilege
+  on the current database.
  </para>
 
  <sect2>

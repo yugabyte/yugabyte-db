@@ -2,7 +2,7 @@
  * pg_db_role_setting.c
  *		Routines to support manipulation of the pg_db_role_setting relation
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -13,12 +13,12 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/htup_details.h"
+#include "access/tableam.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_db_role_setting.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
-#include "utils/tqual.h"
 
 void
 AlterSetting(Oid databaseid, Oid roleid, VariableSetStmt *setstmt)
@@ -33,7 +33,7 @@ AlterSetting(Oid databaseid, Oid roleid, VariableSetStmt *setstmt)
 
 	/* Get the old tuple, if any. */
 
-	rel = heap_open(DbRoleSettingRelationId, RowExclusiveLock);
+	rel = table_open(DbRoleSettingRelationId, RowExclusiveLock);
 	ScanKeyInit(&scankey[0],
 				Anum_pg_db_role_setting_setdatabase,
 				BTEqualStrategyNumber, F_OIDEQ,
@@ -158,7 +158,7 @@ AlterSetting(Oid databaseid, Oid roleid, VariableSetStmt *setstmt)
 	systable_endscan(scan);
 
 	/* Close pg_db_role_setting, but keep lock till commit */
-	heap_close(rel, NoLock);
+	table_close(rel, NoLock);
 }
 
 /*
@@ -170,12 +170,12 @@ void
 DropSetting(Oid databaseid, Oid roleid)
 {
 	Relation	relsetting;
-	HeapScanDesc scan;
+	TableScanDesc scan;
 	ScanKeyData keys[2];
 	HeapTuple	tup;
 	int			numkeys = 0;
 
-	relsetting = heap_open(DbRoleSettingRelationId, RowExclusiveLock);
+	relsetting = table_open(DbRoleSettingRelationId, RowExclusiveLock);
 
 	if (OidIsValid(databaseid))
 	{
@@ -196,14 +196,14 @@ DropSetting(Oid databaseid, Oid roleid)
 		numkeys++;
 	}
 
-	scan = heap_beginscan_catalog(relsetting, numkeys, keys);
+	scan = table_beginscan_catalog(relsetting, numkeys, keys);
 	while (HeapTupleIsValid(tup = heap_getnext(scan, ForwardScanDirection)))
 	{
 		CatalogTupleDelete(relsetting, tup);
 	}
-	heap_endscan(scan);
+	table_endscan(scan);
 
-	heap_close(relsetting, RowExclusiveLock);
+	table_close(relsetting, RowExclusiveLock);
 }
 
 /*

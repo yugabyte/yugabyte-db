@@ -3,7 +3,7 @@
  * sampling.h
  *	  definitions for sampling functions
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/sampling.h
@@ -13,12 +13,11 @@
 #ifndef SAMPLING_H
 #define SAMPLING_H
 
+#include "common/pg_prng.h"
 #include "storage/block.h"		/* for typedef BlockNumber */
 
 
 /* Random generator for sampling code */
-typedef unsigned short SamplerRandomState[3];
-
 #define SamplerRandomStateToUint64(randstate) \
 	(((uint64) (randstate)[0] << 32) | \
 	 ((uint64) (randstate)[1] << 16) | \
@@ -29,9 +28,9 @@ typedef unsigned short SamplerRandomState[3];
 	 (randstate)[1] = (unsigned short) ((value) >> 16), \
 	 (randstate)[2] = (unsigned short) (value))
 
-extern void sampler_random_init_state(long seed,
-						  SamplerRandomState randstate);
-extern double sampler_random_fract(SamplerRandomState randstate);
+extern void sampler_random_init_state(uint32 seed,
+									  pg_prng_state *randstate);
+extern double sampler_random_fract(pg_prng_state *randstate);
 
 /* Block sampling methods */
 
@@ -42,13 +41,13 @@ typedef struct
 	int			n;				/* desired sample size */
 	BlockNumber t;				/* current block number */
 	int			m;				/* blocks selected so far */
-	SamplerRandomState randstate;	/* random generator state */
+	pg_prng_state randstate;	/* random generator state */
 } BlockSamplerData;
 
 typedef BlockSamplerData *BlockSampler;
 
-extern void BlockSampler_Init(BlockSampler bs, BlockNumber nblocks,
-				  int samplesize, long randseed);
+extern BlockNumber BlockSampler_Init(BlockSampler bs, BlockNumber nblocks,
+									 int samplesize, uint32 randseed);
 extern bool BlockSampler_HasMore(BlockSampler bs);
 extern BlockNumber BlockSampler_Next(BlockSampler bs);
 
@@ -57,7 +56,7 @@ extern BlockNumber BlockSampler_Next(BlockSampler bs);
 typedef struct
 {
 	double		W;
-	SamplerRandomState randstate;	/* random generator state */
+	pg_prng_state randstate;	/* random generator state */
 } ReservoirStateData;
 
 typedef ReservoirStateData *ReservoirState;

@@ -160,6 +160,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY listen             SYSTEM "listen.sgml">
 <!ENTITY load               SYSTEM "load.sgml">
 <!ENTITY lock               SYSTEM "lock.sgml">
+<!ENTITY merge              SYSTEM "merge.sgml">
 <!ENTITY move               SYSTEM "move.sgml">
 <!ENTITY notify             SYSTEM "notify.sgml">
 <!ENTITY prepare            SYSTEM "prepare.sgml">
@@ -198,9 +199,11 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY dropuser           SYSTEM "dropuser.sgml">
 <!ENTITY ecpgRef            SYSTEM "ecpg-ref.sgml">
 <!ENTITY initdb             SYSTEM "initdb.sgml">
+<!ENTITY pgamcheck          SYSTEM "pg_amcheck.sgml">
 <!ENTITY pgarchivecleanup   SYSTEM "pgarchivecleanup.sgml">
 <!ENTITY pgBasebackup       SYSTEM "pg_basebackup.sgml">
 <!ENTITY pgbench            SYSTEM "pgbench.sgml">
+<!ENTITY pgChecksums        SYSTEM "pg_checksums.sgml">
 <!ENTITY pgConfig           SYSTEM "pg_config-ref.sgml">
 <!ENTITY pgControldata      SYSTEM "pg_controldata.sgml">
 <!ENTITY pgCtl              SYSTEM "pg_ctl-ref.sgml">
@@ -212,11 +215,11 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY pgResetwal         SYSTEM "pg_resetwal.sgml">
 <!ENTITY pgRestore          SYSTEM "pg_restore.sgml">
 <!ENTITY pgRewind           SYSTEM "pg_rewind.sgml">
-<!ENTITY pgVerifyChecksums  SYSTEM "pg_verify_checksums.sgml">
+<!ENTITY pgVerifyBackup     SYSTEM "pg_verifybackup.sgml">
 <!ENTITY pgtestfsync        SYSTEM "pgtestfsync.sgml">
 <!ENTITY pgtesttiming       SYSTEM "pgtesttiming.sgml">
 <!ENTITY pgupgrade          SYSTEM "pgupgrade.sgml">
-<!ENTITY pgwaldump         SYSTEM "pg_waldump.sgml">
+<!ENTITY pgwaldump          SYSTEM "pg_waldump.sgml">
 <!ENTITY postgres           SYSTEM "postgres-ref.sgml">
 <!ENTITY postmaster         SYSTEM "postmaster.sgml">
 <!ENTITY psqlRef            SYSTEM "psql-ref.sgml">

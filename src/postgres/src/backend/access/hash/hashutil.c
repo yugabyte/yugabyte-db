@@ -3,7 +3,7 @@
  * hashutil.c
  *	  Utility code for Postgres hash implementation.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -17,9 +17,10 @@
 #include "access/hash.h"
 #include "access/reloptions.h"
 #include "access/relscan.h"
+#include "port/pg_bitutils.h"
+#include "storage/buf_internals.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
-#include "storage/buf_internals.h"
 
 #define CALC_NEW_BUCKET(old_bucket, lowmask) \
 			old_bucket | (lowmask + 1)
@@ -135,21 +136,6 @@ _hash_hashkey2bucket(uint32 hashkey, uint32 maxbucket,
 }
 
 /*
- * _hash_log2 -- returns ceil(lg2(num))
- */
-uint32
-_hash_log2(uint32 num)
-{
-	uint32		i,
-				limit;
-
-	limit = 1;
-	for (i = 0; limit < num; limit <<= 1, i++)
-		;
-	return i;
-}
-
-/*
  * _hash_spareindex -- returns spare index / global splitpoint phase of the
  *					   bucket
  */
@@ -159,7 +145,7 @@ _hash_spareindex(uint32 num_bucket)
 	uint32		splitpoint_group;
 	uint32		splitpoint_phases;
 
-	splitpoint_group = _hash_log2(num_bucket);
+	splitpoint_group = pg_ceil_log2_32(num_bucket);
 
 	if (splitpoint_group < HASH_SPLITPOINT_GROUPS_WITH_ONE_PHASE)
 		return splitpoint_group;
@@ -253,7 +239,7 @@ _hash_checkpage(Relation rel, Buffer buf, int flags)
 
 	if (flags)
 	{
-		HashPageOpaque opaque = (HashPageOpaque) PageGetSpecialPointer(page);
+		HashPageOpaque opaque = HashPageGetOpaque(page);
 
 		if ((opaque->hasho_flag & flags) == 0)
 			ereport(ERROR,
@@ -289,7 +275,14 @@ _hash_checkpage(Relation rel, Buffer buf, int flags)
 bytea *
 hashoptions(Datum reloptions, bool validate)
 {
-	return default_reloptions(reloptions, validate, RELOPT_KIND_HASH);
+	static const relopt_parse_elt tab[] = {
+		{"fillfactor", RELOPT_TYPE_INT, offsetof(HashOptions, fillfactor)},
+	};
+
+	return (bytea *) build_reloptions(reloptions, validate,
+									  RELOPT_KIND_HASH,
+									  sizeof(HashOptions),
+									  tab, lengthof(tab));
 }
 
 /*
@@ -581,7 +574,7 @@ _hash_kill_items(IndexScanDesc scan)
 		buf = _hash_getbuf(rel, blkno, HASH_READ, LH_OVERFLOW_PAGE);
 
 	page = BufferGetPage(buf);
-	opaque = (HashPageOpaque) PageGetSpecialPointer(page);
+	opaque = HashPageGetOpaque(page);
 	maxoff = PageGetMaxOffsetNumber(page);
 
 	for (i = 0; i < numKilled; i++)

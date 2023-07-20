@@ -3,7 +3,7 @@
  * pg_type.c
  *	  routines to support manipulation of the pg_type relation
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -14,10 +14,11 @@
  */
 #include "postgres.h"
 
-#include "access/heapam.h"
 #include "access/htup_details.h"
+#include "access/table.h"
 #include "access/xact.h"
 #include "catalog/binary_upgrade.h"
+#include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
@@ -26,6 +27,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "commands/typecmds.h"
+#include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "parser/scansup.h"
 #include "utils/acl.h"
@@ -38,6 +40,9 @@
 /* YB includes. */
 #include "catalog/catalog.h"
 #include "pg_yb_utils.h"
+
+static char *makeUniqueTypeName(const char *typeName, Oid typeNamespace,
+								bool tryOriginal);
 
 /* Potentially set by pg_upgrade_support functions */
 Oid			binary_upgrade_next_pg_type_oid = InvalidOid;
@@ -73,7 +78,7 @@ TypeShellMake(const char *typeName, Oid typeNamespace, Oid ownerId)
 	/*
 	 * open pg_type
 	 */
-	pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
+	pg_type_desc = table_open(TypeRelationId, RowExclusiveLock);
 	tupDesc = pg_type_desc->rd_att;
 
 	/*
@@ -105,6 +110,7 @@ TypeShellMake(const char *typeName, Oid typeNamespace, Oid ownerId)
 	values[Anum_pg_type_typisdefined - 1] = BoolGetDatum(false);
 	values[Anum_pg_type_typdelim - 1] = CharGetDatum(DEFAULT_TYPDELIM);
 	values[Anum_pg_type_typrelid - 1] = ObjectIdGetDatum(InvalidOid);
+	values[Anum_pg_type_typsubscript - 1] = ObjectIdGetDatum(InvalidOid);
 	values[Anum_pg_type_typelem - 1] = ObjectIdGetDatum(InvalidOid);
 	values[Anum_pg_type_typarray - 1] = ObjectIdGetDatum(InvalidOid);
 	values[Anum_pg_type_typinput - 1] = ObjectIdGetDatum(F_SHELL_IN);
@@ -114,8 +120,8 @@ TypeShellMake(const char *typeName, Oid typeNamespace, Oid ownerId)
 	values[Anum_pg_type_typmodin - 1] = ObjectIdGetDatum(InvalidOid);
 	values[Anum_pg_type_typmodout - 1] = ObjectIdGetDatum(InvalidOid);
 	values[Anum_pg_type_typanalyze - 1] = ObjectIdGetDatum(InvalidOid);
-	values[Anum_pg_type_typalign - 1] = CharGetDatum('i');
-	values[Anum_pg_type_typstorage - 1] = CharGetDatum('p');
+	values[Anum_pg_type_typalign - 1] = CharGetDatum(TYPALIGN_INT);
+	values[Anum_pg_type_typstorage - 1] = CharGetDatum(TYPSTORAGE_PLAIN);
 	values[Anum_pg_type_typnotnull - 1] = BoolGetDatum(false);
 	values[Anum_pg_type_typbasetype - 1] = ObjectIdGetDatum(InvalidOid);
 	values[Anum_pg_type_typtypmod - 1] = Int32GetDatum(-1);
@@ -125,11 +131,6 @@ TypeShellMake(const char *typeName, Oid typeNamespace, Oid ownerId)
 	nulls[Anum_pg_type_typdefault - 1] = true;
 	nulls[Anum_pg_type_typacl - 1] = true;
 
-	/*
-	 * create a new type tuple
-	 */
-	tup = heap_form_tuple(tupDesc, values, nulls);
-
 	/* Use binary-upgrade override for pg_type.oid? */
 	if (IsBinaryUpgrade || yb_binary_restore)
 	{
@@ -138,26 +139,39 @@ TypeShellMake(const char *typeName, Oid typeNamespace, Oid ownerId)
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("pg_type OID value not set when in binary upgrade mode")));
 
-		HeapTupleSetOid(tup, binary_upgrade_next_pg_type_oid);
+		typoid = binary_upgrade_next_pg_type_oid;
 		binary_upgrade_next_pg_type_oid = InvalidOid;
 	}
+	else
+	{
+		typoid = GetNewOidWithIndex(pg_type_desc, TypeOidIndexId,
+									Anum_pg_type_oid);
+	}
+
+	values[Anum_pg_type_oid - 1] = ObjectIdGetDatum(typoid);
+
+	/*
+	 * create a new type tuple
+	 */
+	tup = heap_form_tuple(tupDesc, values, nulls);
 
 	/*
 	 * insert the tuple in the relation and get the tuple's oid.
 	 */
-	typoid = CatalogTupleInsert(pg_type_desc, tup);
+	CatalogTupleInsert(pg_type_desc, tup);
 
 	/*
 	 * Create dependencies.  We can/must skip this in bootstrap mode.
 	 */
 	if (!IsBootstrapProcessingMode())
-		GenerateTypeDependencies(typoid,
-								 (Form_pg_type) GETSTRUCT(tup),
+		GenerateTypeDependencies(tup,
+								 pg_type_desc,
 								 NULL,
 								 NULL,
 								 0,
 								 false,
 								 false,
+								 true,	/* make extension dependency */
 								 false,
 								 false, /* ybRelationIsSystem */
 								 false /* ybRelationIsShared */);
@@ -171,7 +185,7 @@ TypeShellMake(const char *typeName, Oid typeNamespace, Oid ownerId)
 	 * clean up and return the type-oid
 	 */
 	heap_freetuple(tup);
-	heap_close(pg_type_desc, RowExclusiveLock);
+	table_close(pg_type_desc, RowExclusiveLock);
 
 	return address;
 }
@@ -210,11 +224,12 @@ TypeCreate(Oid newTypeOid,
 		   Oid typmodinProcedure,
 		   Oid typmodoutProcedure,
 		   Oid analyzeProcedure,
+		   Oid subscriptProcedure,
 		   Oid elementType,
 		   bool isImplicitArray,
 		   Oid arrayType,
 		   Oid baseType,
-		   const char *defaultTypeValue,	/* human readable rep */
+		   const char *defaultTypeValue,	/* human-readable rep */
 		   char *defaultTypeBin,	/* cooked rep */
 		   bool passedByValue,
 		   char alignment,
@@ -238,7 +253,7 @@ TypeCreate(Oid newTypeOid,
 	int			i;
 	ObjectAddress address;
 
-	bool		isSystem = IsSystemNamespace(typeNamespace);
+	bool		isSystem = IsCatalogNamespace(typeNamespace);
 	bool		ybSharedInsert = ybRelationIsShared && !IsBootstrapProcessingMode();
 
 	/*
@@ -266,7 +281,7 @@ TypeCreate(Oid newTypeOid,
 		 */
 		if (internalSize == (int16) sizeof(char))
 		{
-			if (alignment != 'c')
+			if (alignment != TYPALIGN_CHAR)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 						 errmsg("alignment \"%c\" is invalid for passed-by-value type of size %d",
@@ -274,7 +289,7 @@ TypeCreate(Oid newTypeOid,
 		}
 		else if (internalSize == (int16) sizeof(int16))
 		{
-			if (alignment != 's')
+			if (alignment != TYPALIGN_SHORT)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 						 errmsg("alignment \"%c\" is invalid for passed-by-value type of size %d",
@@ -282,7 +297,7 @@ TypeCreate(Oid newTypeOid,
 		}
 		else if (internalSize == (int16) sizeof(int32))
 		{
-			if (alignment != 'i')
+			if (alignment != TYPALIGN_INT)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 						 errmsg("alignment \"%c\" is invalid for passed-by-value type of size %d",
@@ -291,7 +306,7 @@ TypeCreate(Oid newTypeOid,
 #if SIZEOF_DATUM == 8
 		else if (internalSize == (int16) sizeof(Datum))
 		{
-			if (alignment != 'd')
+			if (alignment != TYPALIGN_DOUBLE)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 						 errmsg("alignment \"%c\" is invalid for passed-by-value type of size %d",
@@ -307,13 +322,14 @@ TypeCreate(Oid newTypeOid,
 	else
 	{
 		/* varlena types must have int align or better */
-		if (internalSize == -1 && !(alignment == 'i' || alignment == 'd'))
+		if (internalSize == -1 &&
+			!(alignment == TYPALIGN_INT || alignment == TYPALIGN_DOUBLE))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("alignment \"%c\" is invalid for variable-length type",
 							alignment)));
 		/* cstring must have char alignment */
-		if (internalSize == -2 && !(alignment == 'c'))
+		if (internalSize == -2 && !(alignment == TYPALIGN_CHAR))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("alignment \"%c\" is invalid for variable-length type",
@@ -321,7 +337,7 @@ TypeCreate(Oid newTypeOid,
 	}
 
 	/* Only varlena types can be toasted */
-	if (storage != 'p' && internalSize != -1)
+	if (storage != TYPSTORAGE_PLAIN && internalSize != -1)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 				 errmsg("fixed-size types must have storage PLAIN")));
@@ -362,6 +378,7 @@ TypeCreate(Oid newTypeOid,
 	values[Anum_pg_type_typisdefined - 1] = BoolGetDatum(true);
 	values[Anum_pg_type_typdelim - 1] = CharGetDatum(typDelim);
 	values[Anum_pg_type_typrelid - 1] = ObjectIdGetDatum(relationOid);
+	values[Anum_pg_type_typsubscript - 1] = ObjectIdGetDatum(subscriptProcedure);
 	values[Anum_pg_type_typelem - 1] = ObjectIdGetDatum(elementType);
 	values[Anum_pg_type_typarray - 1] = ObjectIdGetDatum(arrayType);
 	values[Anum_pg_type_typinput - 1] = ObjectIdGetDatum(inputProcedure);
@@ -415,18 +432,20 @@ TypeCreate(Oid newTypeOid,
 	 * NOTE: updating will not work correctly in bootstrap mode; but we don't
 	 * expect to be overwriting any shell types in bootstrap mode.
 	 */
-	pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
+	pg_type_desc = table_open(TypeRelationId, RowExclusiveLock);
 
 	tup = SearchSysCacheCopy2(TYPENAMENSP,
 							  CStringGetDatum(typeName),
 							  ObjectIdGetDatum(typeNamespace));
 	if (HeapTupleIsValid(tup))
 	{
+		Form_pg_type typform = (Form_pg_type) GETSTRUCT(tup);
+
 		/*
 		 * check that the type is not already defined.  It may exist as a
 		 * shell type, however.
 		 */
-		if (((Form_pg_type) GETSTRUCT(tup))->typisdefined)
+		if (typform->typisdefined)
 			ereport(ERROR,
 					(errcode(ERRCODE_DUPLICATE_OBJECT),
 					 errmsg("type \"%s\" already exists", typeName)));
@@ -434,12 +453,14 @@ TypeCreate(Oid newTypeOid,
 		/*
 		 * shell type must have been created by same owner
 		 */
-		if (((Form_pg_type) GETSTRUCT(tup))->typowner != ownerId)
+		if (typform->typowner != ownerId)
 			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_TYPE, typeName);
 
 		/* trouble if caller wanted to force the OID */
 		if (OidIsValid(newTypeOid))
 			elog(ERROR, "cannot assign new OID to existing shell type");
+
+		replaces[Anum_pg_type_oid - 1] = false;
 
 		/*
 		 * Okay to update existing shell type tuple
@@ -452,27 +473,21 @@ TypeCreate(Oid newTypeOid,
 
 		CatalogTupleUpdate(pg_type_desc, &tup->t_self, tup);
 
-		typeObjectId = HeapTupleGetOid(tup);
+		typeObjectId = typform->oid;
 
 		rebuildDeps = true;		/* get rid of shell type's dependencies */
 	}
 	else
 	{
-		tup = heap_form_tuple(RelationGetDescr(pg_type_desc),
-							  values,
-							  nulls);
-
 		/* Force the OID if requested by caller */
 		if (OidIsValid(newTypeOid))
-			HeapTupleSetOid(tup, newTypeOid);
-
+			typeObjectId = newTypeOid;
 		/*
 		 * This is already checked by transformCreateStmt for system relations,
 		 * but just in case.
 		 */
 		else if (ybRelationIsShared && IsYsqlUpgrade)
 			elog(ERROR, "shared relations must have an explicit type OID");
-
 		/* Use binary-upgrade override for pg_type.oid, if supplied. */
 		else if (IsBinaryUpgrade || yb_binary_restore)
 		{
@@ -481,7 +496,7 @@ TypeCreate(Oid newTypeOid,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("pg_type OID value not set when in binary upgrade mode")));
 
-			HeapTupleSetOid(tup, binary_upgrade_next_pg_type_oid);
+			typeObjectId = binary_upgrade_next_pg_type_oid;
 			binary_upgrade_next_pg_type_oid = InvalidOid;
 		}
 		else if (IsYsqlUpgrade && isSystem && relationKind != RELKIND_VIEW)
@@ -502,20 +517,30 @@ TypeCreate(Oid newTypeOid,
 					 errmsg("system relations must have an explicit type OID!")));
 		}
 		/* else allow system to assign oid */
+		else
+		{
+			typeObjectId = GetNewOidWithIndex(pg_type_desc, TypeOidIndexId,
+											  Anum_pg_type_oid);
+		}
+
+		values[Anum_pg_type_oid - 1] = ObjectIdGetDatum(typeObjectId);
+
+		tup = heap_form_tuple(RelationGetDescr(pg_type_desc),
+							  values, nulls);
 
 		/*
 		 * pg_type has PK(oid), so if row type OID for the shared relation
 		 * is taken in any DB, this step will fail gracefully.
 		 */
-		typeObjectId = YBCatalogTupleInsert(pg_type_desc, tup, ybSharedInsert);
+		YBCatalogTupleInsert(pg_type_desc, tup, ybSharedInsert);
 	}
 
 	/*
 	 * Create dependencies.  We can/must skip this in bootstrap mode.
 	 */
 	if (!IsBootstrapProcessingMode())
-		GenerateTypeDependencies(typeObjectId,
-								 (Form_pg_type) GETSTRUCT(tup),
+		GenerateTypeDependencies(tup,
+								 pg_type_desc,
 								 (defaultTypeBin ?
 								  stringToNode(defaultTypeBin) :
 								  NULL),
@@ -523,6 +548,7 @@ TypeCreate(Oid newTypeOid,
 								 relationKind,
 								 isImplicitArray,
 								 isDependentType,
+								 true,	/* make extension dependency */
 								 rebuildDeps,
 								 isSystem,
 								 ybSharedInsert);
@@ -535,7 +561,7 @@ TypeCreate(Oid newTypeOid,
 	/*
 	 * finish up
 	 */
-	heap_close(pg_type_desc, RowExclusiveLock);
+	table_close(pg_type_desc, RowExclusiveLock);
 
 	return address;
 }
@@ -544,37 +570,72 @@ TypeCreate(Oid newTypeOid,
  * GenerateTypeDependencies: build the dependencies needed for a type
  *
  * Most of what this function needs to know about the type is passed as the
- * new pg_type row, typeForm.  But we can't get at the varlena fields through
- * that, so defaultExpr and typacl are passed separately.  (typacl is really
+ * new pg_type row, typeTuple.  We make callers pass the pg_type Relation
+ * as well, so that we have easy access to a tuple descriptor for the row.
+ *
+ * While this is able to extract the defaultExpr and typacl from the tuple,
+ * doing so is relatively expensive, and callers may have those values at
+ * hand already.  Pass those if handy, otherwise pass NULL.  (typacl is really
  * "Acl *", but we declare it "void *" to avoid including acl.h in pg_type.h.)
  *
- * relationKind and isImplicitArray aren't visible in the pg_type row either,
- * so they're also passed separately.
+ * relationKind and isImplicitArray are likewise somewhat expensive to deduce
+ * from the tuple, so we make callers pass those (they're not optional).
  *
  * isDependentType is true if this is an implicit array or relation rowtype;
  * that means it doesn't need its own dependencies on owner etc.
  *
- * If rebuild is true, we remove existing dependencies and rebuild them
- * from scratch.  This is needed for ALTER TYPE, and also when replacing
- * a shell type.  We don't remove an existing extension dependency, though.
- * That means an extension can't absorb a shell type that is free-standing
- * or belongs to another extension, nor ALTER a type that is free-standing or
- * belongs to another extension.
+ * We make an extension-membership dependency if we're in an extension
+ * script and makeExtensionDep is true (and isDependentType isn't true).
+ * makeExtensionDep should be true when creating a new type or replacing a
+ * shell type, but not for ALTER TYPE on an existing type.  Passing false
+ * causes the type's extension membership to be left alone.
+ *
+ * rebuild should be true if this is a pre-existing type.  We will remove
+ * existing dependencies and rebuild them from scratch.  This is needed for
+ * ALTER TYPE, and also when replacing a shell type.  We don't remove any
+ * existing extension dependency, though; hence, if makeExtensionDep is also
+ * true and we're in an extension script, an error will occur unless the
+ * type already belongs to the current extension.  That's the behavior we
+ * want when replacing a shell type, which is the only case where both flags
+ * are true.
  */
 void
-GenerateTypeDependencies(Oid typeObjectId,
-						 Form_pg_type typeForm,
+GenerateTypeDependencies(HeapTuple typeTuple,
+						 Relation typeCatalog,
 						 Node *defaultExpr,
 						 void *typacl,
 						 char relationKind, /* only for relation rowtypes */
 						 bool isImplicitArray,
 						 bool isDependentType,
+						 bool makeExtensionDep,
 						 bool rebuild,
 						 bool ybRelationIsSystem,
 						 bool ybRelationIsShared)
 {
+	Form_pg_type typeForm = (Form_pg_type) GETSTRUCT(typeTuple);
+	Oid			typeObjectId = typeForm->oid;
+	Datum		datum;
+	bool		isNull;
 	ObjectAddress myself,
 				referenced;
+	ObjectAddresses *addrs_normal;
+
+	/* Extract defaultExpr if caller didn't pass it */
+	if (defaultExpr == NULL)
+	{
+		datum = heap_getattr(typeTuple, Anum_pg_type_typdefaultbin,
+							 RelationGetDescr(typeCatalog), &isNull);
+		if (!isNull)
+			defaultExpr = stringToNode(TextDatumGetCString(datum));
+	}
+	/* Extract typacl if caller didn't pass it */
+	if (typacl == NULL)
+	{
+		datum = heap_getattr(typeTuple, Anum_pg_type_typacl,
+							 RelationGetDescr(typeCatalog), &isNull);
+		if (!isNull)
+			typacl = DatumGetAclPCopy(datum);
+	}
 
 	/* If rebuild, first flush old dependencies, except extension deps */
 	if (rebuild)
@@ -583,9 +644,7 @@ GenerateTypeDependencies(Oid typeObjectId,
 		deleteSharedDependencyRecordsFor(TypeRelationId, typeObjectId, 0);
 	}
 
-	myself.classId = TypeRelationId;
-	myself.objectId = typeObjectId;
-	myself.objectSubId = 0;
+	ObjectAddressSet(myself, TypeRelationId, typeObjectId);
 
 	/*
 	 * For non-view system relations during YSQL upgrade, we only need to
@@ -606,11 +665,14 @@ GenerateTypeDependencies(Oid typeObjectId,
 	 * Skip these for a dependent type, since it will have such dependencies
 	 * indirectly through its depended-on type or relation.
 	 */
+
+	/* placeholder for all normal dependencies */
+	addrs_normal = new_object_addresses();
+
 	if (!isDependentType)
 	{
-		referenced.classId = NamespaceRelationId;
-		referenced.objectId = typeForm->typnamespace;
-		referenced.objectSubId = 0;
+		ObjectAddressSet(referenced, NamespaceRelationId,
+						 typeForm->typnamespace);
 		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
 
 		recordDependencyOnOwner(TypeRelationId, typeObjectId,
@@ -619,65 +681,83 @@ GenerateTypeDependencies(Oid typeObjectId,
 		recordDependencyOnNewAcl(TypeRelationId, typeObjectId, 0,
 								 typeForm->typowner, typacl);
 
-		recordDependencyOnCurrentExtension(&myself, rebuild);
+		if (makeExtensionDep)
+			recordDependencyOnCurrentExtension(&myself, rebuild);
 	}
 
-	/* Normal dependencies on the I/O functions */
+	/* Normal dependencies on the I/O and support functions */
 	if (OidIsValid(typeForm->typinput))
 	{
-		referenced.classId = ProcedureRelationId;
-		referenced.objectId = typeForm->typinput;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, ProcedureRelationId, typeForm->typinput);
+		add_exact_object_address(&referenced, addrs_normal);
 	}
 
 	if (OidIsValid(typeForm->typoutput))
 	{
-		referenced.classId = ProcedureRelationId;
-		referenced.objectId = typeForm->typoutput;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, ProcedureRelationId, typeForm->typoutput);
+		add_exact_object_address(&referenced, addrs_normal);
 	}
 
 	if (OidIsValid(typeForm->typreceive))
 	{
-		referenced.classId = ProcedureRelationId;
-		referenced.objectId = typeForm->typreceive;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, ProcedureRelationId, typeForm->typreceive);
+		add_exact_object_address(&referenced, addrs_normal);
 	}
 
 	if (OidIsValid(typeForm->typsend))
 	{
-		referenced.classId = ProcedureRelationId;
-		referenced.objectId = typeForm->typsend;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, ProcedureRelationId, typeForm->typsend);
+		add_exact_object_address(&referenced, addrs_normal);
 	}
 
 	if (OidIsValid(typeForm->typmodin))
 	{
-		referenced.classId = ProcedureRelationId;
-		referenced.objectId = typeForm->typmodin;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, ProcedureRelationId, typeForm->typmodin);
+		add_exact_object_address(&referenced, addrs_normal);
 	}
 
 	if (OidIsValid(typeForm->typmodout))
 	{
-		referenced.classId = ProcedureRelationId;
-		referenced.objectId = typeForm->typmodout;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, ProcedureRelationId, typeForm->typmodout);
+		add_exact_object_address(&referenced, addrs_normal);
 	}
 
 	if (OidIsValid(typeForm->typanalyze))
 	{
-		referenced.classId = ProcedureRelationId;
-		referenced.objectId = typeForm->typanalyze;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+		ObjectAddressSet(referenced, ProcedureRelationId, typeForm->typanalyze);
+		add_exact_object_address(&referenced, addrs_normal);
 	}
+
+	if (OidIsValid(typeForm->typsubscript))
+	{
+		ObjectAddressSet(referenced, ProcedureRelationId, typeForm->typsubscript);
+		add_exact_object_address(&referenced, addrs_normal);
+	}
+
+	/* Normal dependency from a domain to its base type. */
+	if (OidIsValid(typeForm->typbasetype))
+	{
+		ObjectAddressSet(referenced, TypeRelationId, typeForm->typbasetype);
+		add_exact_object_address(&referenced, addrs_normal);
+	}
+
+	/*
+	 * Normal dependency from a domain to its collation.  We know the default
+	 * collation is pinned, so don't bother recording it.
+	 */
+	if (OidIsValid(typeForm->typcollation) &&
+		typeForm->typcollation != DEFAULT_COLLATION_OID)
+	{
+		ObjectAddressSet(referenced, CollationRelationId, typeForm->typcollation);
+		add_exact_object_address(&referenced, addrs_normal);
+	}
+
+	record_object_address_dependencies(&myself, addrs_normal, DEPENDENCY_NORMAL);
+	free_object_addresses(addrs_normal);
+
+	/* Normal dependency on the default expression. */
+	if (defaultExpr)
+		recordDependencyOnExpr(&myself, defaultExpr, NIL, DEPENDENCY_NORMAL);
 
 	/*
 	 * If the type is a rowtype for a relation, mark it as internally
@@ -690,9 +770,7 @@ GenerateTypeDependencies(Oid typeObjectId,
 	 */
 	if (OidIsValid(typeForm->typrelid))
 	{
-		referenced.classId = RelationRelationId;
-		referenced.objectId = typeForm->typrelid;
-		referenced.objectSubId = 0;
+		ObjectAddressSet(referenced, RelationRelationId, typeForm->typrelid);
 
 		if (relationKind != RELKIND_COMPOSITE_TYPE)
 			recordDependencyOn(&myself, &referenced, DEPENDENCY_INTERNAL);
@@ -707,36 +785,10 @@ GenerateTypeDependencies(Oid typeObjectId,
 	 */
 	if (OidIsValid(typeForm->typelem))
 	{
-		referenced.classId = TypeRelationId;
-		referenced.objectId = typeForm->typelem;
-		referenced.objectSubId = 0;
+		ObjectAddressSet(referenced, TypeRelationId, typeForm->typelem);
 		recordDependencyOn(&myself, &referenced,
 						   isImplicitArray ? DEPENDENCY_INTERNAL : DEPENDENCY_NORMAL);
 	}
-
-	/* Normal dependency from a domain to its base type. */
-	if (OidIsValid(typeForm->typbasetype))
-	{
-		referenced.classId = TypeRelationId;
-		referenced.objectId = typeForm->typbasetype;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
-	}
-
-	/* Normal dependency from a domain to its collation. */
-	/* We know the default collation is pinned, so don't bother recording it */
-	if (OidIsValid(typeForm->typcollation) &&
-		typeForm->typcollation != DEFAULT_COLLATION_OID)
-	{
-		referenced.classId = CollationRelationId;
-		referenced.objectId = typeForm->typcollation;
-		referenced.objectSubId = 0;
-		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
-	}
-
-	/* Normal dependency on the default expression. */
-	if (defaultExpr)
-		recordDependencyOnExpr(&myself, defaultExpr, NIL, DEPENDENCY_NORMAL);
 }
 
 /*
@@ -757,7 +809,7 @@ RenameTypeInternal(Oid typeOid, const char *newTypeName, Oid typeNamespace)
 	Oid			arrayOid;
 	Oid			oldTypeOid;
 
-	pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
+	pg_type_desc = table_open(TypeRelationId, RowExclusiveLock);
 
 	tuple = SearchSysCacheCopy1(TYPEOID, ObjectIdGetDatum(typeOid));
 	if (!HeapTupleIsValid(tuple))
@@ -770,7 +822,7 @@ RenameTypeInternal(Oid typeOid, const char *newTypeName, Oid typeNamespace)
 	arrayOid = typ->typarray;
 
 	/* Check for a conflicting type name. */
-	oldTypeOid = GetSysCacheOid2(TYPENAMENSP,
+	oldTypeOid = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
 								 CStringGetDatum(newTypeName),
 								 ObjectIdGetDatum(typeNamespace));
 
@@ -800,7 +852,7 @@ RenameTypeInternal(Oid typeOid, const char *newTypeName, Oid typeNamespace)
 	InvokeObjectPostAlterHook(TypeRelationId, typeOid, 0);
 
 	heap_freetuple(tuple);
-	heap_close(pg_type_desc, RowExclusiveLock);
+	table_close(pg_type_desc, RowExclusiveLock);
 
 	/*
 	 * If the type has an array type, recurse to handle that.  But we don't
@@ -826,36 +878,10 @@ RenameTypeInternal(Oid typeOid, const char *newTypeName, Oid typeNamespace)
 char *
 makeArrayTypeName(const char *typeName, Oid typeNamespace)
 {
-	char	   *arr = (char *) palloc(NAMEDATALEN);
-	int			namelen = strlen(typeName);
-	Relation	pg_type_desc;
-	int			i;
+	char	   *arr;
 
-	/*
-	 * The idea is to prepend underscores as needed until we make a name that
-	 * doesn't collide with anything...
-	 */
-	pg_type_desc = heap_open(TypeRelationId, AccessShareLock);
-
-	for (i = 1; i < NAMEDATALEN - 1; i++)
-	{
-		arr[i - 1] = '_';
-		if (i + namelen < NAMEDATALEN)
-			strcpy(arr + i, typeName);
-		else
-		{
-			memcpy(arr + i, typeName, NAMEDATALEN - i);
-			truncate_identifier(arr, NAMEDATALEN, false);
-		}
-		if (!SearchSysCacheExists2(TYPENAMENSP,
-								   CStringGetDatum(arr),
-								   ObjectIdGetDatum(typeNamespace)))
-			break;
-	}
-
-	heap_close(pg_type_desc, AccessShareLock);
-
-	if (i >= NAMEDATALEN - 1)
+	arr = makeUniqueTypeName(typeName, typeNamespace, false);
+	if (arr == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
 				 errmsg("could not form array type name for type \"%s\"",
@@ -925,4 +951,91 @@ moveArrayTypeName(Oid typeOid, const char *typeName, Oid typeNamespace)
 	pfree(newname);
 
 	return true;
+}
+
+
+/*
+ * makeMultirangeTypeName
+ *	  - given a range type name, make a multirange type name for it
+ *
+ * caller is responsible for pfreeing the result
+ */
+char *
+makeMultirangeTypeName(const char *rangeTypeName, Oid typeNamespace)
+{
+	char	   *buf;
+	char	   *rangestr;
+
+	/*
+	 * If the range type name contains "range" then change that to
+	 * "multirange". Otherwise add "_multirange" to the end.
+	 */
+	rangestr = strstr(rangeTypeName, "range");
+	if (rangestr)
+	{
+		char	   *prefix = pnstrdup(rangeTypeName, rangestr - rangeTypeName);
+
+		buf = psprintf("%s%s%s", prefix, "multi", rangestr);
+	}
+	else
+		buf = psprintf("%s_multirange", pnstrdup(rangeTypeName, NAMEDATALEN - 12));
+
+	/* clip it at NAMEDATALEN-1 bytes */
+	buf[pg_mbcliplen(buf, strlen(buf), NAMEDATALEN - 1)] = '\0';
+
+	if (SearchSysCacheExists2(TYPENAMENSP,
+							  CStringGetDatum(buf),
+							  ObjectIdGetDatum(typeNamespace)))
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_OBJECT),
+				 errmsg("type \"%s\" already exists", buf),
+				 errdetail("Failed while creating a multirange type for type \"%s\".", rangeTypeName),
+				 errhint("You can manually specify a multirange type name using the \"multirange_type_name\" attribute.")));
+
+	return pstrdup(buf);
+}
+
+/*
+ * makeUniqueTypeName
+ *		Generate a unique name for a prospective new type
+ *
+ * Given a typeName, return a new palloc'ed name by prepending underscores
+ * until a non-conflicting name results.
+ *
+ * If tryOriginal, first try with zero underscores.
+ */
+static char *
+makeUniqueTypeName(const char *typeName, Oid typeNamespace, bool tryOriginal)
+{
+	int			i;
+	int			namelen;
+	char		dest[NAMEDATALEN];
+
+	Assert(strlen(typeName) <= NAMEDATALEN - 1);
+
+	if (tryOriginal &&
+		!SearchSysCacheExists2(TYPENAMENSP,
+							   CStringGetDatum(typeName),
+							   ObjectIdGetDatum(typeNamespace)))
+		return pstrdup(typeName);
+
+	/*
+	 * The idea is to prepend underscores as needed until we make a name that
+	 * doesn't collide with anything ...
+	 */
+	namelen = strlen(typeName);
+	for (i = 1; i < NAMEDATALEN - 1; i++)
+	{
+		dest[i - 1] = '_';
+		strlcpy(dest + i, typeName, NAMEDATALEN - i);
+		if (namelen + i >= NAMEDATALEN)
+			truncate_identifier(dest, NAMEDATALEN, false);
+
+		if (!SearchSysCacheExists2(TYPENAMENSP,
+								   CStringGetDatum(dest),
+								   ObjectIdGetDatum(typeNamespace)))
+			return pstrdup(dest);
+	}
+
+	return NULL;
 }

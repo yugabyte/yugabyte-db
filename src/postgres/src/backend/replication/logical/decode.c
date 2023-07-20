@@ -16,7 +16,7 @@
  *		contents of records in here except turning them into a more usable
  *		format.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -31,35 +31,17 @@
 #include "access/transam.h"
 #include "access/xact.h"
 #include "access/xlog_internal.h"
-#include "access/xlogutils.h"
 #include "access/xlogreader.h"
 #include "access/xlogrecord.h"
-
+#include "access/xlogutils.h"
 #include "catalog/pg_control.h"
-
 #include "replication/decode.h"
 #include "replication/logical.h"
 #include "replication/message.h"
-#include "replication/reorderbuffer.h"
 #include "replication/origin.h"
+#include "replication/reorderbuffer.h"
 #include "replication/snapbuild.h"
-
 #include "storage/standby.h"
-
-typedef struct XLogRecordBuffer
-{
-	XLogRecPtr	origptr;
-	XLogRecPtr	endptr;
-	XLogReaderState *record;
-} XLogRecordBuffer;
-
-/* RMGR Handlers */
-static void DecodeXLogOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf);
-static void DecodeHeapOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf);
-static void DecodeHeap2Op(LogicalDecodingContext *ctx, XLogRecordBuffer *buf);
-static void DecodeXactOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf);
-static void DecodeStandbyOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf);
-static void DecodeLogicalMsgOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf);
 
 /* individual record(group)'s handlers */
 static void DecodeInsert(LogicalDecodingContext *ctx, XLogRecordBuffer *buf);
@@ -70,12 +52,24 @@ static void DecodeMultiInsert(LogicalDecodingContext *ctx, XLogRecordBuffer *buf
 static void DecodeSpecConfirm(LogicalDecodingContext *ctx, XLogRecordBuffer *buf);
 
 static void DecodeCommit(LogicalDecodingContext *ctx, XLogRecordBuffer *buf,
-			 xl_xact_parsed_commit *parsed, TransactionId xid);
+						 xl_xact_parsed_commit *parsed, TransactionId xid,
+						 bool two_phase);
 static void DecodeAbort(LogicalDecodingContext *ctx, XLogRecordBuffer *buf,
-			xl_xact_parsed_abort *parsed, TransactionId xid);
+						xl_xact_parsed_abort *parsed, TransactionId xid,
+						bool two_phase);
+static void DecodePrepare(LogicalDecodingContext *ctx, XLogRecordBuffer *buf,
+						  xl_xact_parsed_prepare *parsed);
+
 
 /* common function to decode tuples */
 static void DecodeXLogTuple(char *data, Size len, ReorderBufferTupleBuf *tup);
+
+/* helper functions for decoding transactions */
+static inline bool FilterPrepare(LogicalDecodingContext *ctx,
+								 TransactionId xid, const char *gid);
+static bool DecodeTXNNeedSkip(LogicalDecodingContext *ctx,
+							  XLogRecordBuffer *buf, Oid dbId,
+							  RepOriginId origin_id);
 
 /*
  * Take every XLogReadRecord()ed record and perform the actions required to
@@ -97,77 +91,45 @@ void
 LogicalDecodingProcessRecord(LogicalDecodingContext *ctx, XLogReaderState *record)
 {
 	XLogRecordBuffer buf;
+	TransactionId txid;
+	RmgrData	rmgr;
 
 	buf.origptr = ctx->reader->ReadRecPtr;
 	buf.endptr = ctx->reader->EndRecPtr;
 	buf.record = record;
 
-	/* cast so we get a warning when new rmgrs are added */
-	switch ((RmgrIds) XLogRecGetRmid(record))
+	txid = XLogRecGetTopXid(record);
+
+	/*
+	 * If the top-level xid is valid, we need to assign the subxact to the
+	 * top-level xact. We need to do this for all records, hence we do it
+	 * before the switch.
+	 */
+	if (TransactionIdIsValid(txid))
 	{
-			/*
-			 * Rmgrs we care about for logical decoding. Add new rmgrs in
-			 * rmgrlist.h's order.
-			 */
-		case RM_XLOG_ID:
-			DecodeXLogOp(ctx, &buf);
-			break;
+		ReorderBufferAssignChild(ctx->reorder,
+								 txid,
+								 XLogRecGetXid(record),
+								 buf.origptr);
+	}
 
-		case RM_XACT_ID:
-			DecodeXactOp(ctx, &buf);
-			break;
+	rmgr = GetRmgr(XLogRecGetRmid(record));
 
-		case RM_STANDBY_ID:
-			DecodeStandbyOp(ctx, &buf);
-			break;
-
-		case RM_HEAP2_ID:
-			DecodeHeap2Op(ctx, &buf);
-			break;
-
-		case RM_HEAP_ID:
-			DecodeHeapOp(ctx, &buf);
-			break;
-
-		case RM_LOGICALMSG_ID:
-			DecodeLogicalMsgOp(ctx, &buf);
-			break;
-
-			/*
-			 * Rmgrs irrelevant for logical decoding; they describe stuff not
-			 * represented in logical decoding. Add new rmgrs in rmgrlist.h's
-			 * order.
-			 */
-		case RM_SMGR_ID:
-		case RM_CLOG_ID:
-		case RM_DBASE_ID:
-		case RM_TBLSPC_ID:
-		case RM_MULTIXACT_ID:
-		case RM_RELMAP_ID:
-		case RM_BTREE_ID:
-		case RM_HASH_ID:
-		case RM_GIN_ID:
-		case RM_GIST_ID:
-		case RM_SEQ_ID:
-		case RM_SPGIST_ID:
-		case RM_BRIN_ID:
-		case RM_COMMIT_TS_ID:
-		case RM_REPLORIGIN_ID:
-		case RM_GENERIC_ID:
-			/* just deal with xid, and done */
-			ReorderBufferProcessXid(ctx->reorder, XLogRecGetXid(record),
-									buf.origptr);
-			break;
-		case RM_NEXT_ID:
-			elog(ERROR, "unexpected RM_NEXT_ID rmgr_id: %u", (RmgrIds) XLogRecGetRmid(buf.record));
+	if (rmgr.rm_decode != NULL)
+		rmgr.rm_decode(ctx, &buf);
+	else
+	{
+		/* just deal with xid, and done */
+		ReorderBufferProcessXid(ctx->reorder, XLogRecGetXid(record),
+								buf.origptr);
 	}
 }
 
 /*
  * Handle rmgr XLOG_ID records for DecodeRecordIntoReorderBuffer().
  */
-static void
-DecodeXLogOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
+void
+xlog_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 {
 	SnapBuild  *builder = ctx->snapshot_builder;
 	uint8		info = XLogRecGetInfo(buf->record) & ~XLR_INFO_MASK;
@@ -199,6 +161,7 @@ DecodeXLogOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 		case XLOG_FPW_CHANGE:
 		case XLOG_FPI_FOR_HINT:
 		case XLOG_FPI:
+		case XLOG_OVERWRITE_CONTRECORD:
 			break;
 		default:
 			elog(ERROR, "unexpected RM_XLOG_ID record type: %u", info);
@@ -208,8 +171,8 @@ DecodeXLogOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 /*
  * Handle rmgr XACT_ID records for DecodeRecordIntoReorderBuffer().
  */
-static void
-DecodeXactOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
+void
+xact_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 {
 	SnapBuild  *builder = ctx->snapshot_builder;
 	ReorderBuffer *reorder = ctx->reorder;
@@ -217,10 +180,8 @@ DecodeXactOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	uint8		info = XLogRecGetInfo(r) & XLOG_XACT_OPMASK;
 
 	/*
-	 * No point in doing anything yet, data could not be decoded anyway. It's
-	 * ok not to call ReorderBufferProcessXid() in that case, except in the
-	 * assignment case there'll not be any later records with the same xid;
-	 * and in the assignment case we'll not decode those xacts.
+	 * If the snapshot isn't yet fully built, we cannot decode anything, so
+	 * bail out.
 	 */
 	if (SnapBuildCurrentState(builder) < SNAPBUILD_FULL_SNAPSHOT)
 		return;
@@ -233,6 +194,7 @@ DecodeXactOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 				xl_xact_commit *xlrec;
 				xl_xact_parsed_commit parsed;
 				TransactionId xid;
+				bool		two_phase = false;
 
 				xlrec = (xl_xact_commit *) XLogRecGetData(r);
 				ParseCommitRecord(XLogRecGetInfo(buf->record), xlrec, &parsed);
@@ -242,7 +204,16 @@ DecodeXactOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 				else
 					xid = parsed.twophase_xid;
 
-				DecodeCommit(ctx, buf, &parsed, xid);
+				/*
+				 * We would like to process the transaction in a two-phase
+				 * manner iff output plugin supports two-phase commits and
+				 * doesn't filter the transaction at prepare time.
+				 */
+				if (info == XLOG_XACT_COMMIT_PREPARED)
+					two_phase = !(FilterPrepare(ctx, xid,
+												parsed.twophase_gid));
+
+				DecodeCommit(ctx, buf, &parsed, xid, two_phase);
 				break;
 			}
 		case XLOG_XACT_ABORT:
@@ -251,6 +222,7 @@ DecodeXactOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 				xl_xact_abort *xlrec;
 				xl_xact_parsed_abort parsed;
 				TransactionId xid;
+				bool		two_phase = false;
 
 				xlrec = (xl_xact_abort *) XLogRecGetData(r);
 				ParseAbortRecord(XLogRecGetInfo(buf->record), xlrec, &parsed);
@@ -260,38 +232,94 @@ DecodeXactOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 				else
 					xid = parsed.twophase_xid;
 
-				DecodeAbort(ctx, buf, &parsed, xid);
+				/*
+				 * We would like to process the transaction in a two-phase
+				 * manner iff output plugin supports two-phase commits and
+				 * doesn't filter the transaction at prepare time.
+				 */
+				if (info == XLOG_XACT_ABORT_PREPARED)
+					two_phase = !(FilterPrepare(ctx, xid,
+												parsed.twophase_gid));
+
+				DecodeAbort(ctx, buf, &parsed, xid, two_phase);
 				break;
 			}
 		case XLOG_XACT_ASSIGNMENT:
-			{
-				xl_xact_assignment *xlrec;
-				int			i;
-				TransactionId *sub_xid;
-
-				xlrec = (xl_xact_assignment *) XLogRecGetData(r);
-
-				sub_xid = &xlrec->xsub[0];
-
-				for (i = 0; i < xlrec->nsubxacts; i++)
-				{
-					ReorderBufferAssignChild(reorder, xlrec->xtop,
-											 *(sub_xid++), buf->origptr);
-				}
-				break;
-			}
-		case XLOG_XACT_PREPARE:
 
 			/*
-			 * Currently decoding ignores PREPARE TRANSACTION and will just
-			 * decode the transaction when the COMMIT PREPARED is sent or
-			 * throw away the transaction's contents when a ROLLBACK PREPARED
-			 * is received. In the future we could add code to expose prepared
-			 * transactions in the changestream allowing for a kind of
-			 * distributed 2PC.
+			 * We assign subxact to the toplevel xact while processing each
+			 * record if required.  So, we don't need to do anything here. See
+			 * LogicalDecodingProcessRecord.
 			 */
-			ReorderBufferProcessXid(reorder, XLogRecGetXid(r), buf->origptr);
 			break;
+		case XLOG_XACT_INVALIDATIONS:
+			{
+				TransactionId xid;
+				xl_xact_invals *invals;
+
+				xid = XLogRecGetXid(r);
+				invals = (xl_xact_invals *) XLogRecGetData(r);
+
+				/*
+				 * Execute the invalidations for xid-less transactions,
+				 * otherwise, accumulate them so that they can be processed at
+				 * the commit time.
+				 */
+				if (TransactionIdIsValid(xid))
+				{
+					if (!ctx->fast_forward)
+						ReorderBufferAddInvalidations(reorder, xid,
+													  buf->origptr,
+													  invals->nmsgs,
+													  invals->msgs);
+					ReorderBufferXidSetCatalogChanges(ctx->reorder, xid,
+													  buf->origptr);
+				}
+				else if ((!ctx->fast_forward))
+					ReorderBufferImmediateInvalidation(ctx->reorder,
+													   invals->nmsgs,
+													   invals->msgs);
+			}
+			break;
+		case XLOG_XACT_PREPARE:
+			{
+				xl_xact_parsed_prepare parsed;
+				xl_xact_prepare *xlrec;
+
+				/* ok, parse it */
+				xlrec = (xl_xact_prepare *) XLogRecGetData(r);
+				ParsePrepareRecord(XLogRecGetInfo(buf->record),
+								   xlrec, &parsed);
+
+				/*
+				 * We would like to process the transaction in a two-phase
+				 * manner iff output plugin supports two-phase commits and
+				 * doesn't filter the transaction at prepare time.
+				 */
+				if (FilterPrepare(ctx, parsed.twophase_xid,
+								  parsed.twophase_gid))
+				{
+					ReorderBufferProcessXid(reorder, parsed.twophase_xid,
+											buf->origptr);
+					break;
+				}
+
+				/*
+				 * Note that if the prepared transaction has locked [user]
+				 * catalog tables exclusively then decoding prepare can block
+				 * till the main transaction is committed because it needs to
+				 * lock the catalog tables.
+				 *
+				 * XXX Now, this can even lead to a deadlock if the prepare
+				 * transaction is waiting to get it logically replicated for
+				 * distributed 2PC. This can be avoided by disallowing
+				 * preparing transactions that have locked [user] catalog
+				 * tables exclusively but as of now, we ask users not to do
+				 * such an operation.
+				 */
+				DecodePrepare(ctx, buf, &parsed);
+				break;
+			}
 		default:
 			elog(ERROR, "unexpected RM_XACT_ID record type: %u", info);
 	}
@@ -300,8 +328,8 @@ DecodeXactOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 /*
  * Handle rmgr STANDBY_ID records for DecodeRecordIntoReorderBuffer().
  */
-static void
-DecodeStandbyOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
+void
+standby_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 {
 	SnapBuild  *builder = ctx->snapshot_builder;
 	XLogReaderState *r = buf->record;
@@ -332,15 +360,11 @@ DecodeStandbyOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 		case XLOG_STANDBY_LOCK:
 			break;
 		case XLOG_INVALIDATIONS:
-			{
-				xl_invalidations *invalidations =
-				(xl_invalidations *) XLogRecGetData(r);
 
-				if (!ctx->fast_forward)
-					ReorderBufferImmediateInvalidation(ctx->reorder,
-													   invalidations->nmsgs,
-													   invalidations->msgs);
-			}
+			/*
+			 * We are processing the invalidations at the command level via
+			 * XLOG_XACT_INVALIDATIONS.  So we don't need to do anything here.
+			 */
 			break;
 		default:
 			elog(ERROR, "unexpected RM_STANDBY_ID record type: %u", info);
@@ -350,8 +374,8 @@ DecodeStandbyOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 /*
  * Handle rmgr HEAP2_ID records for DecodeRecordIntoReorderBuffer().
  */
-static void
-DecodeHeap2Op(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
+void
+heap2_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 {
 	uint8		info = XLogRecGetInfo(buf->record) & XLOG_HEAP_OPMASK;
 	TransactionId xid = XLogRecGetXid(buf->record);
@@ -397,8 +421,8 @@ DecodeHeap2Op(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 			 * interested in.
 			 */
 		case XLOG_HEAP2_FREEZE_PAGE:
-		case XLOG_HEAP2_CLEAN:
-		case XLOG_HEAP2_CLEANUP_INFO:
+		case XLOG_HEAP2_PRUNE:
+		case XLOG_HEAP2_VACUUM:
 		case XLOG_HEAP2_VISIBLE:
 		case XLOG_HEAP2_LOCK_UPDATED:
 			break;
@@ -410,8 +434,8 @@ DecodeHeap2Op(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 /*
  * Handle rmgr HEAP_ID records for DecodeRecordIntoReorderBuffer().
  */
-static void
-DecodeHeapOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
+void
+heap_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 {
 	uint8		info = XLogRecGetInfo(buf->record) & XLOG_HEAP_OPMASK;
 	TransactionId xid = XLogRecGetXid(buf->record);
@@ -474,7 +498,7 @@ DecodeHeapOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 			if (!TransactionIdIsValid(xid))
 				break;
 
-			SnapBuildProcessChange(builder, xid, buf->origptr);
+			(void) SnapBuildProcessChange(builder, xid, buf->origptr);
 			ReorderBufferXidSetCatalogChanges(ctx->reorder, xid, buf->origptr);
 			break;
 
@@ -493,6 +517,33 @@ DecodeHeapOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	}
 }
 
+/*
+ * Ask output plugin whether we want to skip this PREPARE and send
+ * this transaction as a regular commit later.
+ */
+static inline bool
+FilterPrepare(LogicalDecodingContext *ctx, TransactionId xid,
+			  const char *gid)
+{
+	/*
+	 * Skip if decoding of two-phase transactions at PREPARE time is not
+	 * enabled. In that case, all two-phase transactions are considered
+	 * filtered out and will be applied as regular transactions at COMMIT
+	 * PREPARED.
+	 */
+	if (!ctx->twophase)
+		return true;
+
+	/*
+	 * The filter_prepare callback is optional. When not supplied, all
+	 * prepared transactions should go through.
+	 */
+	if (ctx->callbacks.filter_prepare_cb == NULL)
+		return false;
+
+	return filter_prepare_cb_wrapper(ctx, xid, gid);
+}
+
 static inline bool
 FilterByOrigin(LogicalDecodingContext *ctx, RepOriginId origin_id)
 {
@@ -505,8 +556,8 @@ FilterByOrigin(LogicalDecodingContext *ctx, RepOriginId origin_id)
 /*
  * Handle rmgr LOGICALMSG_ID records for DecodeRecordIntoReorderBuffer().
  */
-static void
-DecodeLogicalMsgOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
+void
+logicalmsg_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 {
 	SnapBuild  *builder = ctx->snapshot_builder;
 	XLogReaderState *r = buf->record;
@@ -555,10 +606,15 @@ DecodeLogicalMsgOp(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 /*
  * Consolidated commit record handling between the different form of commit
  * records.
+ *
+ * 'two_phase' indicates that caller wants to process the transaction in two
+ * phases, first process prepare if not already done and then process
+ * commit_prepared.
  */
 static void
 DecodeCommit(LogicalDecodingContext *ctx, XLogRecordBuffer *buf,
-			 xl_xact_parsed_commit *parsed, TransactionId xid)
+			 xl_xact_parsed_commit *parsed, TransactionId xid,
+			 bool two_phase)
 {
 	XLogRecPtr	origin_lsn = InvalidXLogRecPtr;
 	TimestampTz commit_time = parsed->xact_time;
@@ -572,17 +628,19 @@ DecodeCommit(LogicalDecodingContext *ctx, XLogRecordBuffer *buf,
 	}
 
 	/*
-	 * Process invalidation messages, even if we're not interested in the
-	 * transaction's contents, since the various caches need to always be
-	 * consistent.
+	 * If the COMMIT record has invalidation messages, it could have catalog
+	 * changes. It is possible that we didn't mark this transaction as
+	 * containing catalog changes when the decoding starts from a commit
+	 * record without decoding the transaction's other changes. So, we ensure
+	 * to mark such transactions as containing catalog change.
+	 *
+	 * This must be done before SnapBuildCommitTxn() so that we can include
+	 * these transactions in the historic snapshot.
 	 */
-	if (parsed->nmsgs > 0)
-	{
-		if (!ctx->fast_forward)
-			ReorderBufferAddInvalidations(ctx->reorder, xid, buf->origptr,
-										  parsed->nmsgs, parsed->msgs);
-		ReorderBufferXidSetCatalogChanges(ctx->reorder, xid, buf->origptr);
-	}
+	if (parsed->xinfo & XACT_XINFO_HAS_INVALS)
+		SnapBuildXidSetCatalogChanges(ctx->snapshot_builder, xid,
+									  parsed->nsubxacts, parsed->subxacts,
+									  buf->origptr);
 
 	SnapBuildCommitTxn(ctx->snapshot_builder, buf->origptr, xid,
 					   parsed->nsubxacts, parsed->subxacts);
@@ -592,30 +650,19 @@ DecodeCommit(LogicalDecodingContext *ctx, XLogRecordBuffer *buf,
 	 * the reorderbuffer to forget the content of the (sub-)transactions
 	 * if not.
 	 *
-	 * There can be several reasons we might not be interested in this
-	 * transaction:
-	 * 1) We might not be interested in decoding transactions up to this
-	 *	  LSN. This can happen because we previously decoded it and now just
-	 *	  are restarting or if we haven't assembled a consistent snapshot yet.
-	 * 2) The transaction happened in another database.
-	 * 3) The output plugin is not interested in the origin.
-	 * 4) We are doing fast-forwarding
-	 *
 	 * We can't just use ReorderBufferAbort() here, because we need to execute
 	 * the transaction's invalidations.  This currently won't be needed if
 	 * we're just skipping over the transaction because currently we only do
 	 * so during startup, to get to the first transaction the client needs. As
 	 * we have reset the catalog caches before starting to read WAL, and we
 	 * haven't yet touched any catalogs, there can't be anything to invalidate.
-	 * But if we're "forgetting" this commit because it's it happened in
-	 * another database, the invalidations might be important, because they
-	 * could be for shared catalogs and we might have loaded data into the
-	 * relevant syscaches.
+	 * But if we're "forgetting" this commit because it happened in another
+	 * database, the invalidations might be important, because they could be
+	 * for shared catalogs and we might have loaded data into the relevant
+	 * syscaches.
 	 * ---
 	 */
-	if (SnapBuildXactNeedsSkip(ctx->snapshot_builder, buf->origptr) ||
-		(parsed->dbId != InvalidOid && parsed->dbId != ctx->slot->data.database) ||
-		ctx->fast_forward || FilterByOrigin(ctx, origin_id))
+	if (DecodeTXNNeedSkip(ctx, buf, parsed->dbId, origin_id))
 	{
 		for (i = 0; i < parsed->nsubxacts; i++)
 		{
@@ -633,28 +680,170 @@ DecodeCommit(LogicalDecodingContext *ctx, XLogRecordBuffer *buf,
 								 buf->origptr, buf->endptr);
 	}
 
-	/* replay actions of all transaction + subtransactions in order */
-	ReorderBufferCommit(ctx->reorder, xid, buf->origptr, buf->endptr,
-						commit_time, origin_id, origin_lsn);
+	/*
+	 * Send the final commit record if the transaction data is already
+	 * decoded, otherwise, process the entire transaction.
+	 */
+	if (two_phase)
+	{
+		ReorderBufferFinishPrepared(ctx->reorder, xid, buf->origptr, buf->endptr,
+									SnapBuildGetTwoPhaseAt(ctx->snapshot_builder),
+									commit_time, origin_id, origin_lsn,
+									parsed->twophase_gid, true);
+	}
+	else
+	{
+		ReorderBufferCommit(ctx->reorder, xid, buf->origptr, buf->endptr,
+							commit_time, origin_id, origin_lsn);
+	}
+
+	/*
+	 * Update the decoding stats at transaction prepare/commit/abort.
+	 * Additionally we send the stats when we spill or stream the changes to
+	 * avoid losing them in case the decoding is interrupted. It is not clear
+	 * that sending more or less frequently than this would be better.
+	 */
+	UpdateDecodingStats(ctx);
 }
 
 /*
+ * Decode PREPARE record. Similar logic as in DecodeCommit.
+ *
+ * Note that we don't skip prepare even if have detected concurrent abort
+ * because it is quite possible that we had already sent some changes before we
+ * detect abort in which case we need to abort those changes in the subscriber.
+ * To abort such changes, we do send the prepare and then the rollback prepared
+ * which is what happened on the publisher-side as well. Now, we can invent a
+ * new abort API wherein in such cases we send abort and skip sending prepared
+ * and rollback prepared but then it is not that straightforward because we
+ * might have streamed this transaction by that time in which case it is
+ * handled when the rollback is encountered. It is not impossible to optimize
+ * the concurrent abort case but it can introduce design complexity w.r.t
+ * handling different cases so leaving it for now as it doesn't seem worth it.
+ */
+static void
+DecodePrepare(LogicalDecodingContext *ctx, XLogRecordBuffer *buf,
+			  xl_xact_parsed_prepare *parsed)
+{
+	SnapBuild  *builder = ctx->snapshot_builder;
+	XLogRecPtr	origin_lsn = parsed->origin_lsn;
+	TimestampTz prepare_time = parsed->xact_time;
+	RepOriginId	origin_id = XLogRecGetOrigin(buf->record);
+	int			i;
+	TransactionId xid = parsed->twophase_xid;
+
+	if (parsed->origin_timestamp != 0)
+		prepare_time = parsed->origin_timestamp;
+
+	/*
+	 * Remember the prepare info for a txn so that it can be used later in
+	 * commit prepared if required. See ReorderBufferFinishPrepared.
+	 */
+	if (!ReorderBufferRememberPrepareInfo(ctx->reorder, xid, buf->origptr,
+										  buf->endptr, prepare_time, origin_id,
+										  origin_lsn))
+		return;
+
+	/* We can't start streaming unless a consistent state is reached. */
+	if (SnapBuildCurrentState(builder) < SNAPBUILD_CONSISTENT)
+	{
+		ReorderBufferSkipPrepare(ctx->reorder, xid);
+		return;
+	}
+
+	/*
+	 * Check whether we need to process this transaction. See
+	 * DecodeTXNNeedSkip for the reasons why we sometimes want to skip the
+	 * transaction.
+	 *
+	 * We can't call ReorderBufferForget as we did in DecodeCommit as the txn
+	 * hasn't yet been committed, removing this txn before a commit might
+	 * result in the computation of an incorrect restart_lsn. See
+	 * SnapBuildProcessRunningXacts. But we need to process cache
+	 * invalidations if there are any for the reasons mentioned in
+	 * DecodeCommit.
+	 */
+	if (DecodeTXNNeedSkip(ctx, buf, parsed->dbId, origin_id))
+	{
+		ReorderBufferSkipPrepare(ctx->reorder, xid);
+		ReorderBufferInvalidate(ctx->reorder, xid, buf->origptr);
+		return;
+	}
+
+	/* Tell the reorderbuffer about the surviving subtransactions. */
+	for (i = 0; i < parsed->nsubxacts; i++)
+	{
+		ReorderBufferCommitChild(ctx->reorder, xid, parsed->subxacts[i],
+								 buf->origptr, buf->endptr);
+	}
+
+	/* replay actions of all transaction + subtransactions in order */
+	ReorderBufferPrepare(ctx->reorder, xid, parsed->twophase_gid);
+
+	/*
+	 * Update the decoding stats at transaction prepare/commit/abort.
+	 * Additionally we send the stats when we spill or stream the changes to
+	 * avoid losing them in case the decoding is interrupted. It is not clear
+	 * that sending more or less frequently than this would be better.
+	 */
+	UpdateDecodingStats(ctx);
+}
+
+
+/*
  * Get the data from the various forms of abort records and pass it on to
- * snapbuild.c and reorderbuffer.c
+ * snapbuild.c and reorderbuffer.c.
+ *
+ * 'two_phase' indicates to finish prepared transaction.
  */
 static void
 DecodeAbort(LogicalDecodingContext *ctx, XLogRecordBuffer *buf,
-			xl_xact_parsed_abort *parsed, TransactionId xid)
+			xl_xact_parsed_abort *parsed, TransactionId xid,
+			bool two_phase)
 {
 	int			i;
+	XLogRecPtr	origin_lsn = InvalidXLogRecPtr;
+	TimestampTz abort_time = parsed->xact_time;
+	RepOriginId	origin_id = XLogRecGetOrigin(buf->record);
+	bool		skip_xact;
 
-	for (i = 0; i < parsed->nsubxacts; i++)
+	if (parsed->xinfo & XACT_XINFO_HAS_ORIGIN)
 	{
-		ReorderBufferAbort(ctx->reorder, parsed->subxacts[i],
-						   buf->record->EndRecPtr);
+		origin_lsn = parsed->origin_lsn;
+		abort_time = parsed->origin_timestamp;
 	}
 
-	ReorderBufferAbort(ctx->reorder, xid, buf->record->EndRecPtr);
+	/*
+	 * Check whether we need to process this transaction. See
+	 * DecodeTXNNeedSkip for the reasons why we sometimes want to skip the
+	 * transaction.
+	 */
+	skip_xact = DecodeTXNNeedSkip(ctx, buf, parsed->dbId, origin_id);
+
+	/*
+	 * Send the final rollback record for a prepared transaction unless we
+	 * need to skip it. For non-two-phase xacts, simply forget the xact.
+	 */
+	if (two_phase && !skip_xact)
+	{
+		ReorderBufferFinishPrepared(ctx->reorder, xid, buf->origptr, buf->endptr,
+									InvalidXLogRecPtr,
+									abort_time, origin_id, origin_lsn,
+									parsed->twophase_gid, false);
+	}
+	else
+	{
+		for (i = 0; i < parsed->nsubxacts; i++)
+		{
+			ReorderBufferAbort(ctx->reorder, parsed->subxacts[i],
+							   buf->record->EndRecPtr);
+		}
+
+		ReorderBufferAbort(ctx->reorder, xid, buf->record->EndRecPtr);
+	}
+
+	/* update the decoding stats */
+	UpdateDecodingStats(ctx);
 }
 
 /*
@@ -710,7 +899,9 @@ DecodeInsert(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 
 	change->data.tp.clear_toast_afterwards = true;
 
-	ReorderBufferQueueChange(ctx->reorder, XLogRecGetXid(r), buf->origptr, change);
+	ReorderBufferQueueChange(ctx->reorder, XLogRecGetXid(r), buf->origptr,
+							 change,
+							 xlrec->flags & XLH_INSERT_ON_TOAST_RELATION);
 }
 
 /*
@@ -777,7 +968,8 @@ DecodeUpdate(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 
 	change->data.tp.clear_toast_afterwards = true;
 
-	ReorderBufferQueueChange(ctx->reorder, XLogRecGetXid(r), buf->origptr, change);
+	ReorderBufferQueueChange(ctx->reorder, XLogRecGetXid(r), buf->origptr,
+							 change, false);
 }
 
 /*
@@ -800,19 +992,17 @@ DecodeDelete(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	if (target_node.dbNode != ctx->slot->data.database)
 		return;
 
-	/*
-	 * Super deletions are irrelevant for logical decoding, it's driven by the
-	 * confirmation records.
-	 */
-	if (xlrec->flags & XLH_DELETE_IS_SUPER)
-		return;
-
 	/* output plugin doesn't look for this origin, no need to queue */
 	if (FilterByOrigin(ctx, XLogRecGetOrigin(r)))
 		return;
 
 	change = ReorderBufferGetChange(ctx->reorder);
-	change->action = REORDER_BUFFER_CHANGE_DELETE;
+
+	if (xlrec->flags & XLH_DELETE_IS_SUPER)
+		change->action = REORDER_BUFFER_CHANGE_INTERNAL_SPEC_ABORT;
+	else
+		change->action = REORDER_BUFFER_CHANGE_DELETE;
+
 	change->origin_id = XLogRecGetOrigin(r);
 
 	memcpy(&change->data.tp.relnode, &target_node, sizeof(RelFileNode));
@@ -834,7 +1024,8 @@ DecodeDelete(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 
 	change->data.tp.clear_toast_afterwards = true;
 
-	ReorderBufferQueueChange(ctx->reorder, XLogRecGetXid(r), buf->origptr, change);
+	ReorderBufferQueueChange(ctx->reorder, XLogRecGetXid(r), buf->origptr,
+							 change, false);
 }
 
 /*
@@ -870,7 +1061,7 @@ DecodeTruncate(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	memcpy(change->data.truncate.relids, xlrec->relids,
 		   xlrec->nrelids * sizeof(Oid));
 	ReorderBufferQueueChange(ctx->reorder, XLogRecGetXid(r),
-							 buf->origptr, change);
+							 buf->origptr, change, false);
 }
 
 /*
@@ -891,6 +1082,13 @@ DecodeMultiInsert(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 
 	xlrec = (xl_heap_multi_insert *) XLogRecGetData(r);
 
+	/*
+	 * Ignore insert records without new tuples.  This happens when a
+	 * multi_insert is done on a catalog or on a non-persistent relation.
+	 */
+	if (!(xlrec->flags & XLH_INSERT_CONTAINS_NEW_TUPLE))
+		return;
+
 	/* only interested in our database */
 	XLogRecGetBlockTag(r, 0, &rnode, NULL, NULL);
 	if (rnode.dbNode != ctx->slot->data.database)
@@ -900,7 +1098,12 @@ DecodeMultiInsert(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	if (FilterByOrigin(ctx, XLogRecGetOrigin(r)))
 		return;
 
+	/*
+	 * We know that this multi_insert isn't for a catalog, so the block should
+	 * always have data even if a full-page write of it is taken.
+	 */
 	tupledata = XLogRecGetBlockData(r, 0, &tuplelen);
+	Assert(tupledata != NULL);
 
 	data = tupledata;
 	for (i = 0; i < xlrec->ntuples; i++)
@@ -909,6 +1112,7 @@ DecodeMultiInsert(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 		xl_multi_insert_tuple *xlhdr;
 		int			datalen;
 		ReorderBufferTupleBuf *tuple;
+		HeapTupleHeader header;
 
 		change = ReorderBufferGetChange(ctx->reorder);
 		change->action = REORDER_BUFFER_CHANGE_INSERT;
@@ -916,49 +1120,34 @@ DecodeMultiInsert(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 
 		memcpy(&change->data.tp.relnode, &rnode, sizeof(RelFileNode));
 
+		xlhdr = (xl_multi_insert_tuple *) SHORTALIGN(data);
+		data = ((char *) xlhdr) + SizeOfMultiInsertTuple;
+		datalen = xlhdr->datalen;
+
+		change->data.tp.newtuple =
+			ReorderBufferGetTupleBuf(ctx->reorder, datalen);
+
+		tuple = change->data.tp.newtuple;
+		header = tuple->tuple.t_data;
+
+		/* not a disk based tuple */
+		ItemPointerSetInvalid(&tuple->tuple.t_self);
+
 		/*
-		 * CONTAINS_NEW_TUPLE will always be set currently as multi_insert
-		 * isn't used for catalogs, but better be future proof.
-		 *
-		 * We decode the tuple in pretty much the same way as DecodeXLogTuple,
-		 * but since the layout is slightly different, we can't use it here.
+		 * We can only figure this out after reassembling the transactions.
 		 */
-		if (xlrec->flags & XLH_INSERT_CONTAINS_NEW_TUPLE)
-		{
-			HeapTupleHeader header;
+		tuple->tuple.t_tableOid = InvalidOid;
 
-			xlhdr = (xl_multi_insert_tuple *) SHORTALIGN(data);
-			data = ((char *) xlhdr) + SizeOfMultiInsertTuple;
-			datalen = xlhdr->datalen;
+		tuple->tuple.t_len = datalen + SizeofHeapTupleHeader;
 
-			change->data.tp.newtuple =
-				ReorderBufferGetTupleBuf(ctx->reorder, datalen);
+		memset(header, 0, SizeofHeapTupleHeader);
 
-			tuple = change->data.tp.newtuple;
-			header = tuple->tuple.t_data;
-
-			/* not a disk based tuple */
-			ItemPointerSetInvalid(&tuple->tuple.t_self);
-
-			/*
-			 * We can only figure this out after reassembling the
-			 * transactions.
-			 */
-			tuple->tuple.t_tableOid = InvalidOid;
-
-			tuple->tuple.t_len = datalen + SizeofHeapTupleHeader;
-
-			memset(header, 0, SizeofHeapTupleHeader);
-
-			memcpy((char *) tuple->tuple.t_data + SizeofHeapTupleHeader,
-				   (char *) data,
-				   datalen);
-			data += datalen;
-
-			header->t_infomask = xlhdr->t_infomask;
-			header->t_infomask2 = xlhdr->t_infomask2;
-			header->t_hoff = xlhdr->t_hoff;
-		}
+		memcpy((char *) tuple->tuple.t_data + SizeofHeapTupleHeader,
+			   (char *) data,
+			   datalen);
+		header->t_infomask = xlhdr->t_infomask;
+		header->t_infomask2 = xlhdr->t_infomask2;
+		header->t_hoff = xlhdr->t_hoff;
 
 		/*
 		 * Reset toast reassembly state only after the last row in the last
@@ -972,7 +1161,10 @@ DecodeMultiInsert(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 			change->data.tp.clear_toast_afterwards = false;
 
 		ReorderBufferQueueChange(ctx->reorder, XLogRecGetXid(r),
-								 buf->origptr, change);
+								 buf->origptr, change, false);
+
+		/* move to the next xl_multi_insert_tuple entry */
+		data += datalen;
 	}
 	Assert(data == tupledata + tuplelen);
 }
@@ -1007,7 +1199,8 @@ DecodeSpecConfirm(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 
 	change->data.tp.clear_toast_afterwards = true;
 
-	ReorderBufferQueueChange(ctx->reorder, XLogRecGetXid(r), buf->origptr, change);
+	ReorderBufferQueueChange(ctx->reorder, XLogRecGetXid(r), buf->origptr,
+							 change, false);
 }
 
 
@@ -1050,4 +1243,25 @@ DecodeXLogTuple(char *data, Size len, ReorderBufferTupleBuf *tuple)
 	header->t_infomask = xlhdr.t_infomask;
 	header->t_infomask2 = xlhdr.t_infomask2;
 	header->t_hoff = xlhdr.t_hoff;
+}
+
+/*
+ * Check whether we are interested in this specific transaction.
+ *
+ * There can be several reasons we might not be interested in this
+ * transaction:
+ * 1) We might not be interested in decoding transactions up to this
+ *	  LSN. This can happen because we previously decoded it and now just
+ *	  are restarting or if we haven't assembled a consistent snapshot yet.
+ * 2) The transaction happened in another database.
+ * 3) The output plugin is not interested in the origin.
+ * 4) We are doing fast-forwarding
+ */
+static bool
+DecodeTXNNeedSkip(LogicalDecodingContext *ctx, XLogRecordBuffer *buf,
+				  Oid txn_dbid, RepOriginId origin_id)
+{
+	return (SnapBuildXactNeedsSkip(ctx->snapshot_builder, buf->origptr) ||
+			(txn_dbid != InvalidOid && txn_dbid != ctx->slot->data.database) ||
+			ctx->fast_forward || FilterByOrigin(ctx, origin_id));
 }

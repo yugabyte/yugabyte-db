@@ -115,6 +115,18 @@ INSERT INTO upsert_test VALUES (1, 'Bat'), (3, 'Zot') ON CONFLICT(a)
   DO UPDATE SET (b, a) = (SELECT b || ', Excluded', a from upsert_test i WHERE i.a = excluded.a)
   RETURNING *;
 
+-- ON CONFLICT using system attributes in RETURNING, testing both the
+-- inserting and updating paths. See bug report at:
+-- https://www.postgresql.org/message-id/73436355-6432-49B1-92ED-1FE4F7E7E100%40finefun.com.au
+INSERT INTO upsert_test VALUES (2, 'Beeble') ON CONFLICT(a)
+  DO UPDATE SET (b, a) = (SELECT b || ', Excluded', a from upsert_test i WHERE i.a = excluded.a)
+  RETURNING tableoid::regclass, xmin = pg_current_xact_id()::xid AS xmin_correct, xmax = 0 AS xmax_correct;
+-- currently xmax is set after a conflict - that's probably not good,
+-- but it seems worthwhile to have to be explicit if that changes.
+INSERT INTO upsert_test VALUES (2, 'Brox') ON CONFLICT(a)
+  DO UPDATE SET (b, a) = (SELECT b || ', Excluded', a from upsert_test i WHERE i.a = excluded.a)
+  RETURNING tableoid::regclass, xmin = pg_current_xact_id()::xid AS xmin_correct, xmax = pg_current_xact_id()::xid AS xmax_correct;
+
 DROP TABLE update_test;
 DROP TABLE upsert_test;
 
@@ -512,6 +524,38 @@ UPDATE list_default set a = 'a' WHERE a = 'd';
 UPDATE list_default set a = 'x' WHERE a = 'd';
 
 DROP TABLE list_parted;
+
+-- Test retrieval of system columns with non-consistent partition row types.
+-- This is only partially supported, as seen in the results.
+
+create table utrtest (a int, b text) partition by list (a);
+create table utr1 (a int check (a in (1)), q text, b text);
+create table utr2 (a int check (a in (2)), b text);
+alter table utr1 drop column q;
+alter table utrtest attach partition utr1 for values in (1);
+alter table utrtest attach partition utr2 for values in (2);
+
+insert into utrtest values (1, 'foo')
+  returning *, tableoid::regclass, xmin = pg_current_xact_id()::xid as xmin_ok;
+insert into utrtest values (2, 'bar')
+  returning *, tableoid::regclass, xmin = pg_current_xact_id()::xid as xmin_ok;  -- fails
+insert into utrtest values (2, 'bar')
+  returning *, tableoid::regclass;
+
+update utrtest set b = b || b from (values (1), (2)) s(x) where a = s.x
+  returning *, tableoid::regclass, xmin = pg_current_xact_id()::xid as xmin_ok;
+
+update utrtest set a = 3 - a from (values (1), (2)) s(x) where a = s.x
+  returning *, tableoid::regclass, xmin = pg_current_xact_id()::xid as xmin_ok;  -- fails
+
+update utrtest set a = 3 - a from (values (1), (2)) s(x) where a = s.x
+  returning *, tableoid::regclass;
+
+delete from utrtest
+  returning *, tableoid::regclass, xmax = pg_current_xact_id()::xid as xmax_ok;
+
+drop table utrtest;
+
 
 --------------
 -- Some more update-partition-key test scenarios below. This time use list

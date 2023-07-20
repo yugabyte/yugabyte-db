@@ -53,6 +53,14 @@ SELECT v,
        SUBSTRING(v FROM 6) AS sub_6
        FROM VARBIT_TABLE;
 
+-- test overflow cases
+SELECT SUBSTRING('01010101'::bit(8) FROM 2 FOR 2147483646) AS "1010101";
+SELECT SUBSTRING('01010101'::bit(8) FROM -10 FOR 2147483646) AS "01010101";
+SELECT SUBSTRING('01010101'::bit(8) FROM -10 FOR -2147483646) AS "error";
+SELECT SUBSTRING('01010101'::varbit FROM 2 FOR 2147483646) AS "1010101";
+SELECT SUBSTRING('01010101'::varbit FROM -10 FOR 2147483646) AS "01010101";
+SELECT SUBSTRING('01010101'::varbit FROM -10 FOR -2147483646) AS "error";
+
 --- Bit operations
 DROP TABLE varbit_table;
 CREATE TABLE varbit_table (a BIT VARYING(16), b BIT VARYING(16));
@@ -168,6 +176,14 @@ SELECT POSITION(B'1101' IN b),
        POSITION(B'11011' IN b),
        b
        FROM BIT_SHIFT_TABLE ;
+SELECT b, b >> 1 AS bsr, b << 1 AS bsl
+       FROM BIT_SHIFT_TABLE ;
+SELECT b, b >> 8 AS bsr8, b << 8 AS bsl8
+       FROM BIT_SHIFT_TABLE ;
+SELECT b::bit(15), b::bit(15) >> 1 AS bsr, b::bit(15) << 1 AS bsl
+       FROM BIT_SHIFT_TABLE ;
+SELECT b::bit(15), b::bit(15) >> 8 AS bsr8, b::bit(15) << 8 AS bsl8
+       FROM BIT_SHIFT_TABLE ;
 
 
 CREATE TABLE VARBIT_SHIFT_TABLE(v BIT VARYING(20));
@@ -180,7 +196,10 @@ SELECT POSITION(B'1101' IN v),
        POSITION(B'11011' IN v),
        v
        FROM VARBIT_SHIFT_TABLE ;
-
+SELECT v, v >> 1 AS vsr, v << 1 AS vsl
+       FROM VARBIT_SHIFT_TABLE ;
+SELECT v, v >> 8 AS vsr8, v << 8 AS vsl8
+       FROM VARBIT_SHIFT_TABLE ;
 
 DROP TABLE BIT_SHIFT_TABLE;
 DROP TABLE VARBIT_SHIFT_TABLE;
@@ -195,6 +214,10 @@ SELECT overlay(B'0101011100' placing '001' from 2 for 3);
 SELECT overlay(B'0101011100' placing '101' from 6);
 SELECT overlay(B'0101011100' placing '001' from 11);
 SELECT overlay(B'0101011100' placing '001' from 20);
+
+-- bit_count
+SELECT bit_count(B'0101011100'::bit(10));
+SELECT bit_count(B'1111111111'::bit(10));
 
 -- This table is intentionally left around to exercise pg_dump/pg_upgrade
 CREATE TABLE bit_defaults(

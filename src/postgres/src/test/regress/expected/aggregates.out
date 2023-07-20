@@ -1,6 +1,18 @@
 --
 -- AGGREGATES
 --
+-- directory paths are passed to us in environment variables
+\getenv abs_srcdir PG_ABS_SRCDIR
+-- avoid bit-exact output here because operations may not be bit-exact.
+SET extra_float_digits = 0;
+-- prepare some test data
+CREATE TABLE aggtest (
+	a 			int2,
+	b			float4
+);
+\set filename :abs_srcdir '/data/agg.data'
+COPY aggtest FROM :'filename';
+ANALYZE aggtest;
 SELECT avg(four) AS avg_1 FROM onek;
        avg_1        
 --------------------
@@ -125,7 +137,79 @@ SELECT var_samp(b::numeric) FROM aggtest;
 
 -- population variance is defined for a single tuple, sample variance
 -- is not
-SELECT var_pop(1.0), var_samp(2.0);
+SELECT var_pop(1.0::float8), var_samp(2.0::float8);
+ var_pop | var_samp 
+---------+----------
+       0 |         
+(1 row)
+
+SELECT stddev_pop(3.0::float8), stddev_samp(4.0::float8);
+ stddev_pop | stddev_samp 
+------------+-------------
+          0 |            
+(1 row)
+
+SELECT var_pop('inf'::float8), var_samp('inf'::float8);
+ var_pop | var_samp 
+---------+----------
+     NaN |         
+(1 row)
+
+SELECT stddev_pop('inf'::float8), stddev_samp('inf'::float8);
+ stddev_pop | stddev_samp 
+------------+-------------
+        NaN |            
+(1 row)
+
+SELECT var_pop('nan'::float8), var_samp('nan'::float8);
+ var_pop | var_samp 
+---------+----------
+     NaN |         
+(1 row)
+
+SELECT stddev_pop('nan'::float8), stddev_samp('nan'::float8);
+ stddev_pop | stddev_samp 
+------------+-------------
+        NaN |            
+(1 row)
+
+SELECT var_pop(1.0::float4), var_samp(2.0::float4);
+ var_pop | var_samp 
+---------+----------
+       0 |         
+(1 row)
+
+SELECT stddev_pop(3.0::float4), stddev_samp(4.0::float4);
+ stddev_pop | stddev_samp 
+------------+-------------
+          0 |            
+(1 row)
+
+SELECT var_pop('inf'::float4), var_samp('inf'::float4);
+ var_pop | var_samp 
+---------+----------
+     NaN |         
+(1 row)
+
+SELECT stddev_pop('inf'::float4), stddev_samp('inf'::float4);
+ stddev_pop | stddev_samp 
+------------+-------------
+        NaN |            
+(1 row)
+
+SELECT var_pop('nan'::float4), var_samp('nan'::float4);
+ var_pop | var_samp 
+---------+----------
+     NaN |         
+(1 row)
+
+SELECT stddev_pop('nan'::float4), stddev_samp('nan'::float4);
+ stddev_pop | stddev_samp 
+------------+-------------
+        NaN |            
+(1 row)
+
+SELECT var_pop(1.0::numeric), var_samp(2.0::numeric);
  var_pop | var_samp 
 ---------+----------
        0 |         
@@ -135,6 +219,30 @@ SELECT stddev_pop(3.0::numeric), stddev_samp(4.0::numeric);
  stddev_pop | stddev_samp 
 ------------+-------------
           0 |            
+(1 row)
+
+SELECT var_pop('inf'::numeric), var_samp('inf'::numeric);
+ var_pop | var_samp 
+---------+----------
+     NaN |         
+(1 row)
+
+SELECT stddev_pop('inf'::numeric), stddev_samp('inf'::numeric);
+ stddev_pop | stddev_samp 
+------------+-------------
+        NaN |            
+(1 row)
+
+SELECT var_pop('nan'::numeric), var_samp('nan'::numeric);
+ var_pop | var_samp 
+---------+----------
+     NaN |         
+(1 row)
+
+SELECT stddev_pop('nan'::numeric), stddev_samp('nan'::numeric);
+ stddev_pop | stddev_samp 
+------------+-------------
+        NaN |            
 (1 row)
 
 -- verify correct results for null and NaN inputs
@@ -198,6 +306,92 @@ select avg('NaN'::numeric) from generate_series(1,3);
  NaN
 (1 row)
 
+-- verify correct results for infinite inputs
+SELECT sum(x::float8), avg(x::float8), var_pop(x::float8)
+FROM (VALUES ('1'), ('infinity')) v(x);
+   sum    |   avg    | var_pop 
+----------+----------+---------
+ Infinity | Infinity |     NaN
+(1 row)
+
+SELECT sum(x::float8), avg(x::float8), var_pop(x::float8)
+FROM (VALUES ('infinity'), ('1')) v(x);
+   sum    |   avg    | var_pop 
+----------+----------+---------
+ Infinity | Infinity |     NaN
+(1 row)
+
+SELECT sum(x::float8), avg(x::float8), var_pop(x::float8)
+FROM (VALUES ('infinity'), ('infinity')) v(x);
+   sum    |   avg    | var_pop 
+----------+----------+---------
+ Infinity | Infinity |     NaN
+(1 row)
+
+SELECT sum(x::float8), avg(x::float8), var_pop(x::float8)
+FROM (VALUES ('-infinity'), ('infinity')) v(x);
+ sum | avg | var_pop 
+-----+-----+---------
+ NaN | NaN |     NaN
+(1 row)
+
+SELECT sum(x::float8), avg(x::float8), var_pop(x::float8)
+FROM (VALUES ('-infinity'), ('-infinity')) v(x);
+    sum    |    avg    | var_pop 
+-----------+-----------+---------
+ -Infinity | -Infinity |     NaN
+(1 row)
+
+SELECT sum(x::numeric), avg(x::numeric), var_pop(x::numeric)
+FROM (VALUES ('1'), ('infinity')) v(x);
+   sum    |   avg    | var_pop 
+----------+----------+---------
+ Infinity | Infinity |     NaN
+(1 row)
+
+SELECT sum(x::numeric), avg(x::numeric), var_pop(x::numeric)
+FROM (VALUES ('infinity'), ('1')) v(x);
+   sum    |   avg    | var_pop 
+----------+----------+---------
+ Infinity | Infinity |     NaN
+(1 row)
+
+SELECT sum(x::numeric), avg(x::numeric), var_pop(x::numeric)
+FROM (VALUES ('infinity'), ('infinity')) v(x);
+   sum    |   avg    | var_pop 
+----------+----------+---------
+ Infinity | Infinity |     NaN
+(1 row)
+
+SELECT sum(x::numeric), avg(x::numeric), var_pop(x::numeric)
+FROM (VALUES ('-infinity'), ('infinity')) v(x);
+ sum | avg | var_pop 
+-----+-----+---------
+ NaN | NaN |     NaN
+(1 row)
+
+SELECT sum(x::numeric), avg(x::numeric), var_pop(x::numeric)
+FROM (VALUES ('-infinity'), ('-infinity')) v(x);
+    sum    |    avg    | var_pop 
+-----------+-----------+---------
+ -Infinity | -Infinity |     NaN
+(1 row)
+
+-- test accuracy with a large input offset
+SELECT avg(x::float8), var_pop(x::float8)
+FROM (VALUES (100000003), (100000004), (100000006), (100000007)) v(x);
+    avg    | var_pop 
+-----------+---------
+ 100000005 |     2.5
+(1 row)
+
+SELECT avg(x::float8), var_pop(x::float8)
+FROM (VALUES (7000000000005), (7000000000007)) v(x);
+      avg      | var_pop 
+---------------+---------
+ 7000000000006 |       1
+(1 row)
+
 -- SQL2003 binary aggregates
 SELECT regr_count(b, a) FROM aggtest;
  regr_count 
@@ -253,6 +447,109 @@ SELECT corr(b, a) FROM aggtest;
  0.139634516517873
 (1 row)
 
+-- check single-tuple behavior
+SELECT covar_pop(1::float8,2::float8), covar_samp(3::float8,4::float8);
+ covar_pop | covar_samp 
+-----------+------------
+         0 |           
+(1 row)
+
+SELECT covar_pop(1::float8,'inf'::float8), covar_samp(3::float8,'inf'::float8);
+ covar_pop | covar_samp 
+-----------+------------
+       NaN |           
+(1 row)
+
+SELECT covar_pop(1::float8,'nan'::float8), covar_samp(3::float8,'nan'::float8);
+ covar_pop | covar_samp 
+-----------+------------
+       NaN |           
+(1 row)
+
+-- test accum and combine functions directly
+CREATE TABLE regr_test (x float8, y float8);
+INSERT INTO regr_test VALUES (10,150),(20,250),(30,350),(80,540),(100,200);
+SELECT count(*), sum(x), regr_sxx(y,x), sum(y),regr_syy(y,x), regr_sxy(y,x)
+FROM regr_test WHERE x IN (10,20,30,80);
+ count | sum | regr_sxx | sum  | regr_syy | regr_sxy 
+-------+-----+----------+------+----------+----------
+     4 | 140 |     2900 | 1290 |    83075 |    15050
+(1 row)
+
+SELECT count(*), sum(x), regr_sxx(y,x), sum(y),regr_syy(y,x), regr_sxy(y,x)
+FROM regr_test;
+ count | sum | regr_sxx | sum  | regr_syy | regr_sxy 
+-------+-----+----------+------+----------+----------
+     5 | 240 |     6280 | 1490 |    95080 |     8680
+(1 row)
+
+SELECT float8_accum('{4,140,2900}'::float8[], 100);
+ float8_accum 
+--------------
+ {5,240,6280}
+(1 row)
+
+SELECT float8_regr_accum('{4,140,2900,1290,83075,15050}'::float8[], 200, 100);
+      float8_regr_accum       
+------------------------------
+ {5,240,6280,1490,95080,8680}
+(1 row)
+
+SELECT count(*), sum(x), regr_sxx(y,x), sum(y),regr_syy(y,x), regr_sxy(y,x)
+FROM regr_test WHERE x IN (10,20,30);
+ count | sum | regr_sxx | sum | regr_syy | regr_sxy 
+-------+-----+----------+-----+----------+----------
+     3 |  60 |      200 | 750 |    20000 |     2000
+(1 row)
+
+SELECT count(*), sum(x), regr_sxx(y,x), sum(y),regr_syy(y,x), regr_sxy(y,x)
+FROM regr_test WHERE x IN (80,100);
+ count | sum | regr_sxx | sum | regr_syy | regr_sxy 
+-------+-----+----------+-----+----------+----------
+     2 | 180 |      200 | 740 |    57800 |    -3400
+(1 row)
+
+SELECT float8_combine('{3,60,200}'::float8[], '{0,0,0}'::float8[]);
+ float8_combine 
+----------------
+ {3,60,200}
+(1 row)
+
+SELECT float8_combine('{0,0,0}'::float8[], '{2,180,200}'::float8[]);
+ float8_combine 
+----------------
+ {2,180,200}
+(1 row)
+
+SELECT float8_combine('{3,60,200}'::float8[], '{2,180,200}'::float8[]);
+ float8_combine 
+----------------
+ {5,240,6280}
+(1 row)
+
+SELECT float8_regr_combine('{3,60,200,750,20000,2000}'::float8[],
+                           '{0,0,0,0,0,0}'::float8[]);
+    float8_regr_combine    
+---------------------------
+ {3,60,200,750,20000,2000}
+(1 row)
+
+SELECT float8_regr_combine('{0,0,0,0,0,0}'::float8[],
+                           '{2,180,200,740,57800,-3400}'::float8[]);
+     float8_regr_combine     
+-----------------------------
+ {2,180,200,740,57800,-3400}
+(1 row)
+
+SELECT float8_regr_combine('{3,60,200,750,20000,2000}'::float8[],
+                           '{2,180,200,740,57800,-3400}'::float8[]);
+     float8_regr_combine      
+------------------------------
+ {5,240,6280,1490,95080,8680}
+(1 row)
+
+DROP TABLE regr_test;
+-- test count, distinct
 SELECT count(four) AS cnt_1000 FROM onek;
  cnt_1000 
 ----------
@@ -455,11 +752,12 @@ CREATE TEMPORARY TABLE bitwise_test(
 -- empty case
 SELECT
   BIT_AND(i2) AS "?",
-  BIT_OR(i4)  AS "?"
+  BIT_OR(i4)  AS "?",
+  BIT_XOR(i8) AS "?"
 FROM bitwise_test;
- ? | ? 
----+---
-   |  
+ ? | ? | ? 
+---+---+---
+   |   |  
 (1 row)
 
 COPY bitwise_test FROM STDIN NULL 'null';
@@ -475,11 +773,17 @@ SELECT
   BIT_OR(i8)  AS "7",
   BIT_OR(i)   AS "?",
   BIT_OR(x)   AS "7",
-  BIT_OR(y)   AS "1101"
+  BIT_OR(y)   AS "1101",
+  BIT_XOR(i2) AS "5",
+  BIT_XOR(i4) AS "5",
+  BIT_XOR(i8) AS "5",
+  BIT_XOR(i)  AS "?",
+  BIT_XOR(x)  AS "7",
+  BIT_XOR(y)  AS "1101"
 FROM bitwise_test;
- 1 | 1 | 1 | ? | 0 | 0100 | 7 | 7 | 7 | ? | 7 | 1101 
----+---+---+---+---+------+---+---+---+---+---+------
- 1 | 1 | 1 | 1 | 0 | 0100 | 7 | 7 | 7 | 3 | 7 | 1101
+ 1 | 1 | 1 | ? | 0 | 0100 | 7 | 7 | 7 | ? | 7 | 1101 | 5 | 5 | 5 | ? | 7 | 1101 
+---+---+---+---+---+------+---+---+---+---+---+------+---+---+---+---+---+------
+ 1 | 1 | 1 | 1 | 0 | 0100 | 7 | 7 | 7 | 3 | 7 | 1101 | 5 | 5 | 5 | 2 | 7 | 1101
 (1 row)
 
 --
@@ -868,31 +1172,31 @@ insert into minmaxtest2 values(15), (16);
 insert into minmaxtest3 values(17), (18);
 explain (costs off)
   select min(f1), max(f1) from minmaxtest;
-                                          QUERY PLAN                                          
-----------------------------------------------------------------------------------------------
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
  Result
    InitPlan 1 (returns $0)
      ->  Limit
            ->  Merge Append
                  Sort Key: minmaxtest.f1
-                 ->  Index Only Scan using minmaxtesti on minmaxtest
+                 ->  Index Only Scan using minmaxtesti on minmaxtest minmaxtest_1
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan using minmaxtest1i on minmaxtest1
+                 ->  Index Only Scan using minmaxtest1i on minmaxtest1 minmaxtest_2
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan Backward using minmaxtest2i on minmaxtest2
+                 ->  Index Only Scan Backward using minmaxtest2i on minmaxtest2 minmaxtest_3
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan using minmaxtest3i on minmaxtest3
+                 ->  Index Only Scan using minmaxtest3i on minmaxtest3 minmaxtest_4
    InitPlan 2 (returns $1)
      ->  Limit
            ->  Merge Append
-                 Sort Key: minmaxtest_1.f1 DESC
-                 ->  Index Only Scan Backward using minmaxtesti on minmaxtest minmaxtest_1
+                 Sort Key: minmaxtest_5.f1 DESC
+                 ->  Index Only Scan Backward using minmaxtesti on minmaxtest minmaxtest_6
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan Backward using minmaxtest1i on minmaxtest1 minmaxtest1_1
+                 ->  Index Only Scan Backward using minmaxtest1i on minmaxtest1 minmaxtest_7
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan using minmaxtest2i on minmaxtest2 minmaxtest2_1
+                 ->  Index Only Scan using minmaxtest2i on minmaxtest2 minmaxtest_8
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan Backward using minmaxtest3i on minmaxtest3 minmaxtest3_1
+                 ->  Index Only Scan Backward using minmaxtest3i on minmaxtest3 minmaxtest_9
 (23 rows)
 
 select min(f1), max(f1) from minmaxtest;
@@ -904,31 +1208,31 @@ select min(f1), max(f1) from minmaxtest;
 -- DISTINCT doesn't do anything useful here, but it shouldn't fail
 explain (costs off)
   select distinct min(f1), max(f1) from minmaxtest;
-                                          QUERY PLAN                                          
-----------------------------------------------------------------------------------------------
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
  Unique
    InitPlan 1 (returns $0)
      ->  Limit
            ->  Merge Append
                  Sort Key: minmaxtest.f1
-                 ->  Index Only Scan using minmaxtesti on minmaxtest
+                 ->  Index Only Scan using minmaxtesti on minmaxtest minmaxtest_1
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan using minmaxtest1i on minmaxtest1
+                 ->  Index Only Scan using minmaxtest1i on minmaxtest1 minmaxtest_2
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan Backward using minmaxtest2i on minmaxtest2
+                 ->  Index Only Scan Backward using minmaxtest2i on minmaxtest2 minmaxtest_3
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan using minmaxtest3i on minmaxtest3
+                 ->  Index Only Scan using minmaxtest3i on minmaxtest3 minmaxtest_4
    InitPlan 2 (returns $1)
      ->  Limit
            ->  Merge Append
-                 Sort Key: minmaxtest_1.f1 DESC
-                 ->  Index Only Scan Backward using minmaxtesti on minmaxtest minmaxtest_1
+                 Sort Key: minmaxtest_5.f1 DESC
+                 ->  Index Only Scan Backward using minmaxtesti on minmaxtest minmaxtest_6
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan Backward using minmaxtest1i on minmaxtest1 minmaxtest1_1
+                 ->  Index Only Scan Backward using minmaxtest1i on minmaxtest1 minmaxtest_7
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan using minmaxtest2i on minmaxtest2 minmaxtest2_1
+                 ->  Index Only Scan using minmaxtest2i on minmaxtest2 minmaxtest_8
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan Backward using minmaxtest3i on minmaxtest3 minmaxtest3_1
+                 ->  Index Only Scan Backward using minmaxtest3i on minmaxtest3 minmaxtest_9
    ->  Sort
          Sort Key: ($0), ($1)
          ->  Result
@@ -1017,9 +1321,78 @@ explain (costs off) select * from t3 group by a,b,c;
    ->  Seq Scan on t3
 (3 rows)
 
-drop table t1;
+create temp table t1c () inherits (t1);
+-- Ensure we don't remove any columns when t1 has a child table
+explain (costs off) select * from t1 group by a,b,c,d;
+             QUERY PLAN              
+-------------------------------------
+ HashAggregate
+   Group Key: t1.a, t1.b, t1.c, t1.d
+   ->  Append
+         ->  Seq Scan on t1 t1_1
+         ->  Seq Scan on t1c t1_2
+(5 rows)
+
+-- Okay to remove columns if we're only querying the parent.
+explain (costs off) select * from only t1 group by a,b,c,d;
+      QUERY PLAN      
+----------------------
+ HashAggregate
+   Group Key: a, b
+   ->  Seq Scan on t1
+(3 rows)
+
+create temp table p_t1 (
+  a int,
+  b int,
+  c int,
+  d int,
+  primary key(a,b)
+) partition by list(a);
+create temp table p_t1_1 partition of p_t1 for values in(1);
+create temp table p_t1_2 partition of p_t1 for values in(2);
+-- Ensure we can remove non-PK columns for partitioned tables.
+explain (costs off) select * from p_t1 group by a,b,c,d;
+           QUERY PLAN           
+--------------------------------
+ HashAggregate
+   Group Key: p_t1.a, p_t1.b
+   ->  Append
+         ->  Seq Scan on p_t1_1
+         ->  Seq Scan on p_t1_2
+(5 rows)
+
+drop table t1 cascade;
+NOTICE:  drop cascades to table t1c
 drop table t2;
 drop table t3;
+drop table p_t1;
+--
+-- Test GROUP BY matching of join columns that are type-coerced due to USING
+--
+create temp table t1(f1 int, f2 bigint);
+create temp table t2(f1 bigint, f22 bigint);
+select f1 from t1 left join t2 using (f1) group by f1;
+ f1 
+----
+(0 rows)
+
+select f1 from t1 left join t2 using (f1) group by t1.f1;
+ f1 
+----
+(0 rows)
+
+select t1.f1 from t1 left join t2 using (f1) group by t1.f1;
+ f1 
+----
+(0 rows)
+
+-- only this one should fail:
+select t1.f1 from t1 left join t2 using (f1) group by f1;
+ERROR:  column "t1.f1" must appear in the GROUP BY clause or be used in an aggregate function
+LINE 1: select t1.f1 from t1 left join t2 using (f1) group by f1;
+               ^
+drop table t1, t2;
 --
 -- Test combinations of DISTINCT and/or ORDER BY
 --
@@ -1542,14 +1915,14 @@ from generate_series(1,5) x,
      (values (0::float8),(0.1),(0.25),(0.4),(0.5),(0.6),(0.75),(0.9),(1)) v(p)
 group by p order by p;
 ERROR:  sum is not an ordered-set aggregate, so it cannot have WITHIN GROUP
-LINE 1: select p, sum() within group (order by x::float8)  
+LINE 1: select p, sum() within group (order by x::float8)  -- error
                   ^
 select p, percentile_cont(p,p)  -- error
 from generate_series(1,5) x,
      (values (0::float8),(0.1),(0.25),(0.4),(0.5),(0.6),(0.75),(0.9),(1)) v(p)
 group by p order by p;
 ERROR:  WITHIN GROUP is required for ordered-set aggregate percentile_cont
-LINE 1: select p, percentile_cont(p,p)  
+LINE 1: select p, percentile_cont(p,p)  -- error
                   ^
 select percentile_cont(0.5) within group (order by b) from aggtest;
  percentile_cont  
@@ -1704,7 +2077,7 @@ LINE 1: select rank(3) within group (order by stringu1,stringu2) fro...
                ^
 HINT:  To use the hypothetical-set aggregate rank, the number of hypothetical direct arguments (here 1) must match the number of ordering columns (here 2).
 select rank('fred') within group (order by x) from generate_series(1,5) x;
-ERROR:  invalid input syntax for integer: "fred"
+ERROR:  invalid input syntax for type integer: "fred"
 LINE 1: select rank('fred') within group (order by x) from generate_...
                     ^
 select rank('adam'::text collate "C") within group (order by x collate "POSIX")
@@ -1779,6 +2152,30 @@ select least_agg(variadic array[q1,q2]) from int8_tbl;
      least_agg     
 -------------------
  -4567890123456789
+(1 row)
+
+select cleast_agg(q1,q2) from int8_tbl;
+    cleast_agg     
+-------------------
+ -4567890123456789
+(1 row)
+
+select cleast_agg(4.5,f1) from int4_tbl;
+ cleast_agg  
+-------------
+ -2147483647
+(1 row)
+
+select cleast_agg(variadic array[4.5,f1]) from int4_tbl;
+ cleast_agg  
+-------------
+ -2147483647
+(1 row)
+
+select pg_typeof(cleast_agg(variadic array[4.5,f1])) from int4_tbl;
+ pg_typeof 
+-----------
+ numeric
 (1 row)
 
 -- test aggregates with common transition functions share the same states
@@ -1887,10 +2284,10 @@ NOTICE:  avg_transfn called with 3
 
 -- this should not share the state due to different input columns.
 select my_avg(one),my_sum(two) from (values(1,2),(3,4)) t(one,two);
-NOTICE:  avg_transfn called with 2
 NOTICE:  avg_transfn called with 1
-NOTICE:  avg_transfn called with 4
+NOTICE:  avg_transfn called with 2
 NOTICE:  avg_transfn called with 3
+NOTICE:  avg_transfn called with 4
  my_avg | my_sum 
 --------+--------
       2 |      6
@@ -2054,7 +2451,7 @@ ROLLBACK;
 -- Secondly test the case of a parallel aggregate combiner function
 -- returning NULL. For that use normal transition function, but a
 -- combiner function returning NULL.
-BEGIN ISOLATION LEVEL REPEATABLE READ;
+BEGIN;
 CREATE FUNCTION balkifnull(int8, int8)
 RETURNS int8
 PARALLEL SAFE
@@ -2096,29 +2493,88 @@ SELECT balk(hundred) FROM tenk1;
 
 ROLLBACK;
 -- test coverage for aggregate combine/serial/deserial functions
-BEGIN ISOLATION LEVEL REPEATABLE READ;
+BEGIN;
 SET parallel_setup_cost = 0;
 SET parallel_tuple_cost = 0;
 SET min_parallel_table_scan_size = 0;
 SET max_parallel_workers_per_gather = 4;
+SET parallel_leader_participation = off;
 SET enable_indexonlyscan = off;
 -- variance(int4) covers numeric_poly_combine
 -- sum(int8) covers int8_avg_combine
-EXPLAIN (COSTS OFF)
-  SELECT variance(unique1::int4), sum(unique1::int8) FROM tenk1;
-                  QUERY PLAN                  
-----------------------------------------------
+-- regr_count(float8, float8) covers int8inc_float8_float8 and aggregates with > 1 arg
+EXPLAIN (COSTS OFF, VERBOSE)
+SELECT variance(unique1::int4), sum(unique1::int8), regr_count(unique1::float8, unique1::float8)
+FROM (SELECT * FROM tenk1
+      UNION ALL SELECT * FROM tenk1
+      UNION ALL SELECT * FROM tenk1
+      UNION ALL SELECT * FROM tenk1) u;
+                                                                                      QUERY PLAN                                                                                       
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Finalize Aggregate
+   Output: variance(tenk1.unique1), sum((tenk1.unique1)::bigint), regr_count((tenk1.unique1)::double precision, (tenk1.unique1)::double precision)
    ->  Gather
+         Output: (PARTIAL variance(tenk1.unique1)), (PARTIAL sum((tenk1.unique1)::bigint)), (PARTIAL regr_count((tenk1.unique1)::double precision, (tenk1.unique1)::double precision))
          Workers Planned: 4
          ->  Partial Aggregate
-               ->  Parallel Seq Scan on tenk1
-(5 rows)
+               Output: PARTIAL variance(tenk1.unique1), PARTIAL sum((tenk1.unique1)::bigint), PARTIAL regr_count((tenk1.unique1)::double precision, (tenk1.unique1)::double precision)
+               ->  Parallel Append
+                     ->  Parallel Seq Scan on public.tenk1
+                           Output: tenk1.unique1
+                     ->  Parallel Seq Scan on public.tenk1 tenk1_1
+                           Output: tenk1_1.unique1
+                     ->  Parallel Seq Scan on public.tenk1 tenk1_2
+                           Output: tenk1_2.unique1
+                     ->  Parallel Seq Scan on public.tenk1 tenk1_3
+                           Output: tenk1_3.unique1
+(16 rows)
 
-SELECT variance(unique1::int4), sum(unique1::int8) FROM tenk1;
-       variance       |   sum    
-----------------------+----------
- 8334166.666666666667 | 49995000
+SELECT variance(unique1::int4), sum(unique1::int8), regr_count(unique1::float8, unique1::float8)
+FROM (SELECT * FROM tenk1
+      UNION ALL SELECT * FROM tenk1
+      UNION ALL SELECT * FROM tenk1
+      UNION ALL SELECT * FROM tenk1) u;
+       variance       |    sum    | regr_count 
+----------------------+-----------+------------
+ 8333541.588539713493 | 199980000 |      40000
+(1 row)
+
+-- variance(int8) covers numeric_combine
+-- avg(numeric) covers numeric_avg_combine
+EXPLAIN (COSTS OFF, VERBOSE)
+SELECT variance(unique1::int8), avg(unique1::numeric)
+FROM (SELECT * FROM tenk1
+      UNION ALL SELECT * FROM tenk1
+      UNION ALL SELECT * FROM tenk1
+      UNION ALL SELECT * FROM tenk1) u;
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ Finalize Aggregate
+   Output: variance((tenk1.unique1)::bigint), avg((tenk1.unique1)::numeric)
+   ->  Gather
+         Output: (PARTIAL variance((tenk1.unique1)::bigint)), (PARTIAL avg((tenk1.unique1)::numeric))
+         Workers Planned: 4
+         ->  Partial Aggregate
+               Output: PARTIAL variance((tenk1.unique1)::bigint), PARTIAL avg((tenk1.unique1)::numeric)
+               ->  Parallel Append
+                     ->  Parallel Seq Scan on public.tenk1
+                           Output: tenk1.unique1
+                     ->  Parallel Seq Scan on public.tenk1 tenk1_1
+                           Output: tenk1_1.unique1
+                     ->  Parallel Seq Scan on public.tenk1 tenk1_2
+                           Output: tenk1_2.unique1
+                     ->  Parallel Seq Scan on public.tenk1 tenk1_3
+                           Output: tenk1_3.unique1
+(16 rows)
+
+SELECT variance(unique1::int8), avg(unique1::numeric)
+FROM (SELECT * FROM tenk1
+      UNION ALL SELECT * FROM tenk1
+      UNION ALL SELECT * FROM tenk1
+      UNION ALL SELECT * FROM tenk1) u;
+       variance       |          avg          
+----------------------+-----------------------
+ 8333541.588539713493 | 4999.5000000000000000
 (1 row)
 
 ROLLBACK;
@@ -2165,3 +2621,205 @@ select v||'a', case when v||'a' = 'aa' then 1 else 0 end, count(*)
  ba       |    0 |     1
 (2 rows)
 
+-- Make sure that generation of HashAggregate for uniqification purposes
+-- does not lead to array overflow due to unexpected duplicate hash keys
+-- see CAFeeJoKKu0u+A_A9R9316djW-YW3-+Gtgvy3ju655qRHR3jtdA@mail.gmail.com
+set enable_memoize to off;
+explain (costs off)
+  select 1 from tenk1
+   where (hundred, thousand) in (select twothousand, twothousand from onek);
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Hash Join
+   Hash Cond: (tenk1.hundred = onek.twothousand)
+   ->  Seq Scan on tenk1
+         Filter: (hundred = thousand)
+   ->  Hash
+         ->  HashAggregate
+               Group Key: onek.twothousand, onek.twothousand
+               ->  Seq Scan on onek
+(8 rows)
+
+reset enable_memoize;
+--
+-- Hash Aggregation Spill tests
+--
+set enable_sort=false;
+set work_mem='64kB';
+select unique1, count(*), sum(twothousand) from tenk1
+group by unique1
+having sum(fivethous) > 4975
+order by sum(twothousand);
+ unique1 | count | sum  
+---------+-------+------
+    4976 |     1 |  976
+    4977 |     1 |  977
+    4978 |     1 |  978
+    4979 |     1 |  979
+    4980 |     1 |  980
+    4981 |     1 |  981
+    4982 |     1 |  982
+    4983 |     1 |  983
+    4984 |     1 |  984
+    4985 |     1 |  985
+    4986 |     1 |  986
+    4987 |     1 |  987
+    4988 |     1 |  988
+    4989 |     1 |  989
+    4990 |     1 |  990
+    4991 |     1 |  991
+    4992 |     1 |  992
+    4993 |     1 |  993
+    4994 |     1 |  994
+    4995 |     1 |  995
+    4996 |     1 |  996
+    4997 |     1 |  997
+    4998 |     1 |  998
+    4999 |     1 |  999
+    9976 |     1 | 1976
+    9977 |     1 | 1977
+    9978 |     1 | 1978
+    9979 |     1 | 1979
+    9980 |     1 | 1980
+    9981 |     1 | 1981
+    9982 |     1 | 1982
+    9983 |     1 | 1983
+    9984 |     1 | 1984
+    9985 |     1 | 1985
+    9986 |     1 | 1986
+    9987 |     1 | 1987
+    9988 |     1 | 1988
+    9989 |     1 | 1989
+    9990 |     1 | 1990
+    9991 |     1 | 1991
+    9992 |     1 | 1992
+    9993 |     1 | 1993
+    9994 |     1 | 1994
+    9995 |     1 | 1995
+    9996 |     1 | 1996
+    9997 |     1 | 1997
+    9998 |     1 | 1998
+    9999 |     1 | 1999
+(48 rows)
+
+set work_mem to default;
+set enable_sort to default;
+--
+-- Compare results between plans using sorting and plans using hash
+-- aggregation. Force spilling in both cases by setting work_mem low.
+--
+set work_mem='64kB';
+create table agg_data_2k as
+select g from generate_series(0, 1999) g;
+analyze agg_data_2k;
+create table agg_data_20k as
+select g from generate_series(0, 19999) g;
+analyze agg_data_20k;
+-- Produce results with sorting.
+set enable_hashagg = false;
+set jit_above_cost = 0;
+explain (costs off)
+select g%10000 as c1, sum(g::numeric) as c2, count(*) as c3
+  from agg_data_20k group by g%10000;
+              QUERY PLAN              
+--------------------------------------
+ GroupAggregate
+   Group Key: ((g % 10000))
+   ->  Sort
+         Sort Key: ((g % 10000))
+         ->  Seq Scan on agg_data_20k
+(5 rows)
+
+create table agg_group_1 as
+select g%10000 as c1, sum(g::numeric) as c2, count(*) as c3
+  from agg_data_20k group by g%10000;
+create table agg_group_2 as
+select * from
+  (values (100), (300), (500)) as r(a),
+  lateral (
+    select (g/2)::numeric as c1,
+           array_agg(g::numeric) as c2,
+	   count(*) as c3
+    from agg_data_2k
+    where g < r.a
+    group by g/2) as s;
+set jit_above_cost to default;
+create table agg_group_3 as
+select (g/2)::numeric as c1, sum(7::int4) as c2, count(*) as c3
+  from agg_data_2k group by g/2;
+create table agg_group_4 as
+select (g/2)::numeric as c1, array_agg(g::numeric) as c2, count(*) as c3
+  from agg_data_2k group by g/2;
+-- Produce results with hash aggregation
+set enable_hashagg = true;
+set enable_sort = false;
+set jit_above_cost = 0;
+explain (costs off)
+select g%10000 as c1, sum(g::numeric) as c2, count(*) as c3
+  from agg_data_20k group by g%10000;
+           QUERY PLAN           
+--------------------------------
+ HashAggregate
+   Group Key: (g % 10000)
+   ->  Seq Scan on agg_data_20k
+(3 rows)
+
+create table agg_hash_1 as
+select g%10000 as c1, sum(g::numeric) as c2, count(*) as c3
+  from agg_data_20k group by g%10000;
+create table agg_hash_2 as
+select * from
+  (values (100), (300), (500)) as r(a),
+  lateral (
+    select (g/2)::numeric as c1,
+           array_agg(g::numeric) as c2,
+	   count(*) as c3
+    from agg_data_2k
+    where g < r.a
+    group by g/2) as s;
+set jit_above_cost to default;
+create table agg_hash_3 as
+select (g/2)::numeric as c1, sum(7::int4) as c2, count(*) as c3
+  from agg_data_2k group by g/2;
+create table agg_hash_4 as
+select (g/2)::numeric as c1, array_agg(g::numeric) as c2, count(*) as c3
+  from agg_data_2k group by g/2;
+set enable_sort = true;
+set work_mem to default;
+-- Compare group aggregation results to hash aggregation results
+(select * from agg_hash_1 except select * from agg_group_1)
+  union all
+(select * from agg_group_1 except select * from agg_hash_1);
+ c1 | c2 | c3 
+----+----+----
+(0 rows)
+
+(select * from agg_hash_2 except select * from agg_group_2)
+  union all
+(select * from agg_group_2 except select * from agg_hash_2);
+ a | c1 | c2 | c3 
+---+----+----+----
+(0 rows)
+
+(select * from agg_hash_3 except select * from agg_group_3)
+  union all
+(select * from agg_group_3 except select * from agg_hash_3);
+ c1 | c2 | c3 
+----+----+----
+(0 rows)
+
+(select * from agg_hash_4 except select * from agg_group_4)
+  union all
+(select * from agg_group_4 except select * from agg_hash_4);
+ c1 | c2 | c3 
+----+----+----
+(0 rows)
+
+drop table agg_group_1;
+drop table agg_group_2;
+drop table agg_group_3;
+drop table agg_group_4;
+drop table agg_hash_1;
+drop table agg_hash_2;
+drop table agg_hash_3;
+drop table agg_hash_4;

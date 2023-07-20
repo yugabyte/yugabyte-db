@@ -4,7 +4,7 @@
  *	  PREPARE, EXECUTE and DEALLOCATE commands, and prepared-stmt storage
  *
  *
- * Copyright (c) 2002-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2002-2022, PostgreSQL Global Development Group
  *
  * src/include/commands/prepare.h
  *
@@ -35,22 +35,23 @@ typedef struct
 
 
 /* Utility statements PREPARE, EXECUTE, DEALLOCATE, EXPLAIN EXECUTE */
-extern void PrepareQuery(PrepareStmt *stmt, const char *queryString,
-			 int stmt_location, int stmt_len);
-extern void ExecuteQuery(ExecuteStmt *stmt, IntoClause *intoClause,
-			 const char *queryString, ParamListInfo params,
-			 DestReceiver *dest, char *completionTag);
+extern void PrepareQuery(ParseState *pstate, PrepareStmt *stmt,
+						 int stmt_location, int stmt_len);
+extern void ExecuteQuery(ParseState *pstate,
+						 ExecuteStmt *stmt, IntoClause *intoClause,
+						 ParamListInfo params,
+						 DestReceiver *dest, QueryCompletion *qc);
 extern void DeallocateQuery(DeallocateStmt *stmt);
 extern void ExplainExecuteQuery(ExecuteStmt *execstmt, IntoClause *into,
-					ExplainState *es, const char *queryString,
-					ParamListInfo params, QueryEnvironment *queryEnv);
+								ExplainState *es, const char *queryString,
+								ParamListInfo params, QueryEnvironment *queryEnv);
 
 /* Low-level access to stored prepared statements */
 extern void StorePreparedStatement(const char *stmt_name,
-					   CachedPlanSource *plansource,
-					   bool from_sql);
+								   CachedPlanSource *plansource,
+								   bool from_sql);
 extern PreparedStatement *FetchPreparedStatement(const char *stmt_name,
-					   bool throwError);
+												 bool throwError);
 extern void DropPreparedStatement(const char *stmt_name, bool showError);
 extern TupleDesc FetchPreparedStatementResultDesc(PreparedStatement *stmt);
 extern List *FetchPreparedStatementTargetList(PreparedStatement *stmt);

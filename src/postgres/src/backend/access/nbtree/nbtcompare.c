@@ -3,7 +3,7 @@
  * nbtcompare.c
  *	  Comparison functions for btree access method.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -119,26 +119,12 @@ btint4cmp(PG_FUNCTION_ARGS)
 		PG_RETURN_INT32(A_LESS_THAN_B);
 }
 
-static int
-btint4fastcmp(Datum x, Datum y, SortSupport ssup)
-{
-	int32		a = DatumGetInt32(x);
-	int32		b = DatumGetInt32(y);
-
-	if (a > b)
-		return A_GREATER_THAN_B;
-	else if (a == b)
-		return 0;
-	else
-		return A_LESS_THAN_B;
-}
-
 Datum
 btint4sortsupport(PG_FUNCTION_ARGS)
 {
 	SortSupport ssup = (SortSupport) PG_GETARG_POINTER(0);
 
-	ssup->comparator = btint4fastcmp;
+	ssup->comparator = ssup_datum_int32_cmp;
 	PG_RETURN_VOID();
 }
 
@@ -156,6 +142,7 @@ btint8cmp(PG_FUNCTION_ARGS)
 		PG_RETURN_INT32(A_LESS_THAN_B);
 }
 
+#if SIZEOF_DATUM < 8
 static int
 btint8fastcmp(Datum x, Datum y, SortSupport ssup)
 {
@@ -169,13 +156,18 @@ btint8fastcmp(Datum x, Datum y, SortSupport ssup)
 	else
 		return A_LESS_THAN_B;
 }
+#endif
 
 Datum
 btint8sortsupport(PG_FUNCTION_ARGS)
 {
 	SortSupport ssup = (SortSupport) PG_GETARG_POINTER(0);
 
+#if SIZEOF_DATUM >= 8
+	ssup->comparator = ssup_datum_signed_cmp;
+#else
 	ssup->comparator = btint8fastcmp;
+#endif
 	PG_RETURN_VOID();
 }
 
@@ -332,31 +324,4 @@ btcharcmp(PG_FUNCTION_ARGS)
 
 	/* Be careful to compare chars as unsigned */
 	PG_RETURN_INT32((int32) ((uint8) a) - (int32) ((uint8) b));
-}
-
-Datum
-btnamecmp(PG_FUNCTION_ARGS)
-{
-	Name		a = PG_GETARG_NAME(0);
-	Name		b = PG_GETARG_NAME(1);
-
-	PG_RETURN_INT32(strncmp(NameStr(*a), NameStr(*b), NAMEDATALEN));
-}
-
-static int
-btnamefastcmp(Datum x, Datum y, SortSupport ssup)
-{
-	Name		a = DatumGetName(x);
-	Name		b = DatumGetName(y);
-
-	return strncmp(NameStr(*a), NameStr(*b), NAMEDATALEN);
-}
-
-Datum
-btnamesortsupport(PG_FUNCTION_ARGS)
-{
-	SortSupport ssup = (SortSupport) PG_GETARG_POINTER(0);
-
-	ssup->comparator = btnamefastcmp;
-	PG_RETURN_VOID();
 }

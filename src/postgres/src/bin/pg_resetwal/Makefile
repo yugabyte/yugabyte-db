@@ -2,7 +2,7 @@
 #
 # Makefile for src/bin/pg_resetwal
 #
-# Copyright (c) 1998-2018, PostgreSQL Global Development Group
+# Copyright (c) 1998-2022, PostgreSQL Global Development Group
 #
 # src/bin/pg_resetwal/Makefile
 #
@@ -15,7 +15,9 @@ subdir = src/bin/pg_resetwal
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-OBJS= pg_resetwal.o $(WIN32RES)
+OBJS = \
+	$(WIN32RES) \
+	pg_resetwal.o
 
 all: pg_resetwal
 

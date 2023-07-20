@@ -77,7 +77,7 @@ SELECT substr(data, 1, 200) FROM pg_logical_slot_get_changes('regression_slot', 
  table public.toasted_key: INSERT: id[integer]:1 toasted_key[text]:'1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123
  COMMIT
  BEGIN
- table public.toasted_key: UPDATE: id[integer]:1 toasted_key[text]:unchanged-toast-datum toasted_col1[text]:unchanged-toast-datum toasted_col2[text]:'987654321098765432109876543210987654321098765432109
+ table public.toasted_key: UPDATE: old-key: toasted_key[text]:'123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678
  COMMIT
  BEGIN
  table public.toasted_key: UPDATE: old-key: toasted_key[text]:'123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678
@@ -305,6 +305,10 @@ ALTER TABLE toasted_several REPLICA IDENTITY FULL;
 ALTER TABLE toasted_several ALTER COLUMN toasted_key SET STORAGE EXTERNAL;
 ALTER TABLE toasted_several ALTER COLUMN toasted_col1 SET STORAGE EXTERNAL;
 ALTER TABLE toasted_several ALTER COLUMN toasted_col2 SET STORAGE EXTERNAL;
+-- Change the storage of the index back to EXTENDED, separately from
+-- the table.  This is currently not doable via DDL, but it is
+-- supported internally.
+UPDATE pg_attribute SET attstorage = 'x' WHERE attrelid = 'toasted_several_pkey'::regclass AND attname = 'toasted_key';
 INSERT INTO toasted_several(toasted_key) VALUES(repeat('9876543210', 10000));
 SELECT pg_column_size(toasted_key) > 2^16 FROM toasted_several;
  ?column? 
@@ -353,6 +357,28 @@ WHERE data NOT LIKE '%INSERT: %';
  BEGIN
  table public.toasted_several: UPDATE: old-key: id[integer]:1 toasted_key[text]:'98765432109876543210..7654321098765432109876543210987654321098765432109876543210' toasted_col2[text]:unchanged-toast-datum
  table public.toasted_several: DELETE: id[integer]:1 toasted_key[text]:'98765432109876543210987654321..876543210987654321098765432109876543210987654321098765432109876543210987654321098765432109876543210'
+ COMMIT
+(4 rows)
+
+/*
+ * Test decoding relation rewrite with toast. The insert into tbl2 within the
+ * same transaction is there to check that there is no remaining toast_hash not
+ * being reset.
+ */
+CREATE TABLE tbl1 (a INT, b TEXT);
+CREATE TABLE tbl2 (a INT);
+ALTER TABLE tbl1 ALTER COLUMN b SET STORAGE EXTERNAL;
+BEGIN;
+INSERT INTO tbl1 VALUES(1, repeat('a', 4000)) ;
+ALTER TABLE tbl1 ADD COLUMN id serial primary key;
+INSERT INTO tbl2 VALUES(1);
+commit;
+SELECT substr(data, 1, 200) FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1');
+                                                                                                  substr                                                                                                  
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ BEGIN
+ table public.tbl1: INSERT: a[integer]:1 b[text]:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+ table public.tbl2: INSERT: a[integer]:1
  COMMIT
 (4 rows)
 

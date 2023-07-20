@@ -12,7 +12,7 @@ create index gist_pointidx4 on gist_point_tbl using gist(p) with (buffering = au
 drop index gist_pointidx2, gist_pointidx3, gist_pointidx4;
 -- Make sure bad values are refused
 create index gist_pointidx5 on gist_point_tbl using gist(p) with (buffering = invalid_value);
-ERROR:  invalid value for "buffering" option
+ERROR:  invalid value for enum option "buffering": invalid_value
 DETAIL:  Valid values are "on", "off", and "auto".
 create index gist_pointidx5 on gist_point_tbl using gist(p) with (fillfactor=9);
 ERROR:  value 9 out of bounds for option "fillfactor"
@@ -27,10 +27,8 @@ insert into gist_point_tbl (id, p)
 select g+100000, point(g*10+1, g*10+1) from generate_series(1, 10000) g;
 -- To test vacuum, delete some entries from all over the index.
 delete from gist_point_tbl where id % 2 = 1;
--- And also delete some concentration of values. (GiST doesn't currently
--- attempt to delete pages even when they become empty, but if it did, this
--- would exercise it)
-delete from gist_point_tbl where id < 10000;
+-- And also delete some concentration of values.
+delete from gist_point_tbl where id > 5000;
 vacuum analyze gist_point_tbl;
 -- rebuild the index with a different fillfactor
 alter index gist_pointidx SET (fillfactor = 40);
@@ -205,6 +203,82 @@ select b from gist_tbl where b <@ box(point(5,5), point(6,6));
  (6,6),(6,6)
 (21 rows)
 
+-- Also test an index-only knn-search
+explain (costs off)
+select b from gist_tbl where b <@ box(point(5,5), point(6,6))
+order by b <-> point(5.2, 5.91);
+                      QUERY PLAN                      
+------------------------------------------------------
+ Index Only Scan using gist_tbl_box_index on gist_tbl
+   Index Cond: (b <@ '(6,6),(5,5)'::box)
+   Order By: (b <-> '(5.2,5.91)'::point)
+(3 rows)
+
+select b from gist_tbl where b <@ box(point(5,5), point(6,6))
+order by b <-> point(5.2, 5.91);
+            b            
+-------------------------
+ (5.55,5.55),(5.55,5.55)
+ (5.6,5.6),(5.6,5.6)
+ (5.5,5.5),(5.5,5.5)
+ (5.65,5.65),(5.65,5.65)
+ (5.45,5.45),(5.45,5.45)
+ (5.7,5.7),(5.7,5.7)
+ (5.4,5.4),(5.4,5.4)
+ (5.75,5.75),(5.75,5.75)
+ (5.35,5.35),(5.35,5.35)
+ (5.8,5.8),(5.8,5.8)
+ (5.3,5.3),(5.3,5.3)
+ (5.85,5.85),(5.85,5.85)
+ (5.25,5.25),(5.25,5.25)
+ (5.9,5.9),(5.9,5.9)
+ (5.2,5.2),(5.2,5.2)
+ (5.95,5.95),(5.95,5.95)
+ (5.15,5.15),(5.15,5.15)
+ (6,6),(6,6)
+ (5.1,5.1),(5.1,5.1)
+ (5.05,5.05),(5.05,5.05)
+ (5,5),(5,5)
+(21 rows)
+
+-- Check commuted case as well
+explain (costs off)
+select b from gist_tbl where b <@ box(point(5,5), point(6,6))
+order by point(5.2, 5.91) <-> b;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Index Only Scan using gist_tbl_box_index on gist_tbl
+   Index Cond: (b <@ '(6,6),(5,5)'::box)
+   Order By: (b <-> '(5.2,5.91)'::point)
+(3 rows)
+
+select b from gist_tbl where b <@ box(point(5,5), point(6,6))
+order by point(5.2, 5.91) <-> b;
+            b            
+-------------------------
+ (5.55,5.55),(5.55,5.55)
+ (5.6,5.6),(5.6,5.6)
+ (5.5,5.5),(5.5,5.5)
+ (5.65,5.65),(5.65,5.65)
+ (5.45,5.45),(5.45,5.45)
+ (5.7,5.7),(5.7,5.7)
+ (5.4,5.4),(5.4,5.4)
+ (5.75,5.75),(5.75,5.75)
+ (5.35,5.35),(5.35,5.35)
+ (5.8,5.8),(5.8,5.8)
+ (5.3,5.3),(5.3,5.3)
+ (5.85,5.85),(5.85,5.85)
+ (5.25,5.25),(5.25,5.25)
+ (5.9,5.9),(5.9,5.9)
+ (5.2,5.2),(5.2,5.2)
+ (5.95,5.95),(5.95,5.95)
+ (5.15,5.15),(5.15,5.15)
+ (6,6),(6,6)
+ (5.1,5.1),(5.1,5.1)
+ (5.05,5.05),(5.05,5.05)
+ (5,5),(5,5)
+(21 rows)
+
 drop index gist_tbl_box_index;
 -- Test that an index-only scan is not chosen, when the query involves the
 -- circle column (the circle opclass does not support index-only scans).
@@ -238,6 +312,81 @@ and p <@ box(point(5,5), point(6, 6));
 (11 rows)
 
 drop index gist_tbl_multi_index;
+-- Test that we don't try to return the value of a non-returnable
+-- column in an index-only scan.  (This isn't GIST-specific, but
+-- it only applies to index AMs that can return some columns and not
+-- others, so GIST with appropriate opclasses is a convenient test case.)
+create index gist_tbl_multi_index on gist_tbl using gist (circle(p,1), p);
+explain (verbose, costs off)
+select circle(p,1) from gist_tbl
+where p <@ box(point(5, 5), point(5.3, 5.3));
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Index Only Scan using gist_tbl_multi_index on public.gist_tbl
+   Output: circle(p, '1'::double precision)
+   Index Cond: (gist_tbl.p <@ '(5.3,5.3),(5,5)'::box)
+(3 rows)
+
+select circle(p,1) from gist_tbl
+where p <@ box(point(5, 5), point(5.3, 5.3));
+     circle      
+-----------------
+ <(5,5),1>
+ <(5.05,5.05),1>
+ <(5.1,5.1),1>
+ <(5.15,5.15),1>
+ <(5.2,5.2),1>
+ <(5.25,5.25),1>
+ <(5.3,5.3),1>
+(7 rows)
+
+-- Similarly, test that index rechecks involving a non-returnable column
+-- are done correctly.
+explain (verbose, costs off)
+select p from gist_tbl where circle(p,1) @> circle(point(0,0),0.95);
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Index Only Scan using gist_tbl_multi_index on public.gist_tbl
+   Output: p
+   Index Cond: ((circle(gist_tbl.p, '1'::double precision)) @> '<(0,0),0.95>'::circle)
+(3 rows)
+
+select p from gist_tbl where circle(p,1) @> circle(point(0,0),0.95);
+   p   
+-------
+ (0,0)
+(1 row)
+
+-- Also check that use_physical_tlist doesn't trigger in such cases.
+explain (verbose, costs off)
+select count(*) from gist_tbl;
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Aggregate
+   Output: count(*)
+   ->  Index Only Scan using gist_tbl_multi_index on public.gist_tbl
+(3 rows)
+
+select count(*) from gist_tbl;
+ count 
+-------
+ 10001
+(1 row)
+
+-- This case isn't supported, but it should at least EXPLAIN correctly.
+explain (verbose, costs off)
+select p from gist_tbl order by circle(p,1) <-> point(0,0) limit 1;
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Limit
+   Output: p, ((circle(p, '1'::double precision) <-> '(0,0)'::point))
+   ->  Index Only Scan using gist_tbl_multi_index on public.gist_tbl
+         Output: p, (circle(p, '1'::double precision) <-> '(0,0)'::point)
+         Order By: ((circle(gist_tbl.p, '1'::double precision)) <-> '(0,0)'::point)
+(5 rows)
+
+select p from gist_tbl order by circle(p,1) <-> point(0,0) limit 1;
+ERROR:  lossy distance functions are not supported in index-only scans
 -- Clean up
 reset enable_seqscan;
 reset enable_bitmapscan;
@@ -260,3 +409,9 @@ select count(*) from gist_tbl;
  10001
 (1 row)
 
+-- test an unlogged table, mostly to get coverage of gistbuildempty
+create unlogged table gist_tbl (b box);
+create index gist_tbl_box_index on gist_tbl using gist (b);
+insert into gist_tbl
+  select box(point(0.05*i, 0.05*i)) from generate_series(0,10) as i;
+drop table gist_tbl;

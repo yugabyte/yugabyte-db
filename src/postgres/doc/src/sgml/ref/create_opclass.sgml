@@ -161,7 +161,7 @@ CREATE OPERATOR CLASS <replaceable class="parameter">name</replaceable> [ DEFAUL
      <para>
       In an <literal>OPERATOR</literal> clause,
       the operand data type(s) of the operator, or <literal>NONE</literal> to
-      signify a left-unary or right-unary operator.  The operand data
+      signify a prefix operator.  The operand data
       types can be omitted in the normal case where they are the same
       as the operator class's data type.
      </para>
@@ -171,12 +171,14 @@ CREATE OPERATOR CLASS <replaceable class="parameter">name</replaceable> [ DEFAUL
       function is intended to support, if different from
       the input data type(s) of the function (for B-tree comparison functions
       and hash functions)
-      or the class's data type (for B-tree sort support functions and all
-      functions in GiST, SP-GiST, GIN and BRIN operator classes).  These defaults
-      are correct, and so <replaceable
-      class="parameter">op_type</replaceable> need not be specified in
-      <literal>FUNCTION</literal> clauses, except for the case of a B-tree sort
-      support function that is meant to support cross-data-type comparisons.
+      or the class's data type (for B-tree sort support functions,
+      B-tree equal image functions, and all functions in GiST,
+      SP-GiST, GIN and BRIN operator classes).  These defaults are
+      correct, and so <replaceable
+       class="parameter">op_type</replaceable> need not be specified
+      in <literal>FUNCTION</literal> clauses, except for the case of a
+      B-tree sort support function that is meant to support
+      cross-data-type comparisons.
      </para>
     </listitem>
    </varlistentry>
@@ -232,7 +234,7 @@ CREATE OPERATOR CLASS <replaceable class="parameter">name</replaceable> [ DEFAUL
      <para>
       The data type actually stored in the index.  Normally this is
       the same as the column data type, but some index methods
-      (currently GiST, GIN and BRIN) allow it to be different.  The
+      (currently GiST, GIN, SP-GiST and BRIN) allow it to be different.  The
       <literal>STORAGE</literal> clause must be omitted unless the index
       method allows a different type to be used.
       If the column <replaceable class="parameter">data_type</replaceable> is specified
@@ -263,7 +265,7 @@ CREATE OPERATOR CLASS <replaceable class="parameter">name</replaceable> [ DEFAUL
   </para>
 
   <para>
-   The operators should not be defined by SQL functions.  A SQL function
+   The operators should not be defined by SQL functions.  An SQL function
    is likely to be inlined into the calling query, which will prevent
    the optimizer from recognizing that the query matches an index.
   </para>

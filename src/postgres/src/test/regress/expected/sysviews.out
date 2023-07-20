@@ -19,6 +19,15 @@ select count(*) >= 0 as ok from pg_available_extensions;
  t
 (1 row)
 
+-- The entire output of pg_backend_memory_contexts is not stable,
+-- we test only the existence and basic condition of TopMemoryContext.
+select name, ident, parent, level, total_bytes >= free_bytes
+  from pg_backend_memory_contexts where level = 0;
+       name       | ident | parent | level | ?column? 
+------------------+-------+--------+-------+----------
+ TopMemoryContext |       |        |     0 | t
+(1 row)
+
 -- At introduction, pg_config had 23 entries; it may grow
 select count(*) > 20 as ok from pg_config;
  ok 
@@ -39,11 +48,20 @@ select count(*) >= 0 as ok from pg_file_settings;
  t
 (1 row)
 
--- There will surely be at least one rule
-select count(*) > 0 as ok from pg_hba_file_rules;
- ok 
-----
- t
+-- There will surely be at least one rule, with no errors.
+select count(*) > 0 as ok, count(*) FILTER (WHERE error IS NOT NULL) = 0 AS no_err
+  from pg_hba_file_rules;
+ ok | no_err 
+----+--------
+ t  | t
+(1 row)
+
+-- There may be no rules, and there should be no errors.
+select count(*) >= 0 as ok, count(*) FILTER (WHERE error IS NOT NULL) = 0 AS no_err
+  from pg_ident_file_mappings;
+ ok | no_err 
+----+--------
+ t  | t
 (1 row)
 
 -- There will surely be at least one active lock
@@ -67,18 +85,42 @@ select count(*) >= 0 as ok from pg_prepared_xacts;
  t
 (1 row)
 
+-- There will surely be at least one SLRU cache
+select count(*) > 0 as ok from pg_stat_slru;
+ ok 
+----
+ t
+(1 row)
+
+-- There must be only one record
+select count(*) = 1 as ok from pg_stat_wal;
+ ok 
+----
+ t
+(1 row)
+
+-- We expect no walreceiver running in this test
+select count(*) = 0 as ok from pg_stat_wal_receiver;
+ ok 
+----
+ t
+(1 row)
+
 -- This is to record the prevailing planner enable_foo settings during
 -- a regression test run.
 select name, setting from pg_settings where name like 'enable%';
               name              | setting 
 --------------------------------+---------
+ enable_async_append            | on
  enable_bitmapscan              | on
  enable_gathermerge             | on
  enable_hashagg                 | on
  enable_hashjoin                | on
+ enable_incremental_sort        | on
  enable_indexonlyscan           | on
  enable_indexscan               | on
  enable_material                | on
+ enable_memoize                 | on
  enable_mergejoin               | on
  enable_nestloop                | on
  enable_parallel_append         | on
@@ -89,7 +131,7 @@ select name, setting from pg_settings where name like 'enable%';
  enable_seqscan                 | on
  enable_sort                    | on
  enable_tidscan                 | on
-(17 rows)
+(20 rows)
 
 -- Test that the pg_timezone_names and pg_timezone_abbrevs views are
 -- more-or-less working.  We can't test their contents in any great detail

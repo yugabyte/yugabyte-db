@@ -3,7 +3,7 @@
  *
  * A simple binary heap implementation
  *
- * Portions Copyright (c) 2012-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2012-2022, PostgreSQL Global Development Group
  *
  * src/include/lib/binaryheap.h
  */
@@ -38,8 +38,8 @@ typedef struct binaryheap
 } binaryheap;
 
 extern binaryheap *binaryheap_allocate(int capacity,
-					binaryheap_comparator compare,
-					void *arg);
+									   binaryheap_comparator compare,
+									   void *arg);
 extern void binaryheap_reset(binaryheap *heap);
 extern void binaryheap_free(binaryheap *heap);
 extern void binaryheap_add_unordered(binaryheap *heap, Datum d);

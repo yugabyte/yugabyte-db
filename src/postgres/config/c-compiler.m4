@@ -2,41 +2,40 @@
 # config/c-compiler.m4
 
 
-# PGAC_C_SIGNED
-# -------------
-# Check if the C compiler understands signed types.
-AC_DEFUN([PGAC_C_SIGNED],
-[AC_CACHE_CHECK(for signed types, pgac_cv_c_signed,
-[AC_COMPILE_IFELSE([AC_LANG_PROGRAM([],
-[signed char c; signed short s; signed int i;])],
-[pgac_cv_c_signed=yes],
-[pgac_cv_c_signed=no])])
-if test x"$pgac_cv_c_signed" = xno ; then
-  AC_DEFINE(signed,, [Define to empty if the C compiler does not understand signed types.])
-fi])# PGAC_C_SIGNED
-
-
-
-# PGAC_C_PRINTF_ARCHETYPE
-# -----------------------
-# Set the format archetype used by gcc to check printf type functions.  We
-# prefer "gnu_printf", which includes what glibc uses, such as %m for error
-# strings and %lld for 64 bit long longs.  GCC 4.4 introduced it.  It makes a
-# dramatic difference on Windows.
+# PGAC_PRINTF_ARCHETYPE
+# ---------------------
+# Select the format archetype to be used by gcc to check printf-type functions.
+# We prefer "gnu_printf", as that most closely matches the features supported
+# by src/port/snprintf.c (particularly the %m conversion spec).  However,
+# on some NetBSD versions, that doesn't work while "__syslog__" does.
+# If all else fails, use "printf".
 AC_DEFUN([PGAC_PRINTF_ARCHETYPE],
 [AC_CACHE_CHECK([for printf format archetype], pgac_cv_printf_archetype,
+[pgac_cv_printf_archetype=gnu_printf
+PGAC_TEST_PRINTF_ARCHETYPE
+if [[ "$ac_archetype_ok" = no ]]; then
+  pgac_cv_printf_archetype=__syslog__
+  PGAC_TEST_PRINTF_ARCHETYPE
+  if [[ "$ac_archetype_ok" = no ]]; then
+    pgac_cv_printf_archetype=printf
+  fi
+fi])
+AC_DEFINE_UNQUOTED([PG_PRINTF_ATTRIBUTE], [$pgac_cv_printf_archetype],
+[Define to best printf format archetype, usually gnu_printf if available.])
+])# PGAC_PRINTF_ARCHETYPE
+
+# Subroutine: test $pgac_cv_printf_archetype, set $ac_archetype_ok to yes or no
+AC_DEFUN([PGAC_TEST_PRINTF_ARCHETYPE],
 [ac_save_c_werror_flag=$ac_c_werror_flag
 ac_c_werror_flag=yes
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM(
-[extern int
-pgac_write(int ignore, const char *fmt,...)
-__attribute__((format(gnu_printf, 2, 3)));], [])],
-                  [pgac_cv_printf_archetype=gnu_printf],
-                  [pgac_cv_printf_archetype=printf])
-ac_c_werror_flag=$ac_save_c_werror_flag])
-AC_DEFINE_UNQUOTED([PG_PRINTF_ATTRIBUTE], [$pgac_cv_printf_archetype],
-                   [Define to gnu_printf if compiler supports it, else printf.])
-])# PGAC_PRINTF_ARCHETYPE
+[extern void pgac_write(int ignore, const char *fmt,...)
+__attribute__((format($pgac_cv_printf_archetype, 2, 3)));],
+[pgac_write(0, "error %s: %m", "foo");])],
+                  [ac_archetype_ok=yes],
+                  [ac_archetype_ok=no])
+ac_c_werror_flag=$ac_save_c_werror_flag
+])# PGAC_TEST_PRINTF_ARCHETYPE
 
 
 # PGAC_TYPE_64BIT_INT(TYPE)
@@ -94,7 +93,7 @@ undefine([Ac_cachevar])dnl
 
 
 # PGAC_TYPE_128BIT_INT
-# ---------------------
+# --------------------
 # Check if __int128 is a working 128 bit integer type, and if so
 # define PG_INT128_TYPE to that typename, and define ALIGNOF_PG_INT128_TYPE
 # as its alignment requirement.
@@ -259,60 +258,6 @@ AC_DEFINE(HAVE__BUILTIN_TYPES_COMPATIBLE_P, 1,
 fi])# PGAC_C_TYPES_COMPATIBLE
 
 
-# PGAC_C_BUILTIN_BSWAP16
-# -------------------------
-# Check if the C compiler understands __builtin_bswap16(),
-# and define HAVE__BUILTIN_BSWAP16 if so.
-AC_DEFUN([PGAC_C_BUILTIN_BSWAP16],
-[AC_CACHE_CHECK(for __builtin_bswap16, pgac_cv__builtin_bswap16,
-[AC_COMPILE_IFELSE([AC_LANG_SOURCE(
-[static unsigned long int x = __builtin_bswap16(0xaabb);]
-)],
-[pgac_cv__builtin_bswap16=yes],
-[pgac_cv__builtin_bswap16=no])])
-if test x"$pgac_cv__builtin_bswap16" = xyes ; then
-AC_DEFINE(HAVE__BUILTIN_BSWAP16, 1,
-          [Define to 1 if your compiler understands __builtin_bswap16.])
-fi])# PGAC_C_BUILTIN_BSWAP16
-
-
-
-# PGAC_C_BUILTIN_BSWAP32
-# -------------------------
-# Check if the C compiler understands __builtin_bswap32(),
-# and define HAVE__BUILTIN_BSWAP32 if so.
-AC_DEFUN([PGAC_C_BUILTIN_BSWAP32],
-[AC_CACHE_CHECK(for __builtin_bswap32, pgac_cv__builtin_bswap32,
-[AC_COMPILE_IFELSE([AC_LANG_SOURCE(
-[static unsigned long int x = __builtin_bswap32(0xaabbccdd);]
-)],
-[pgac_cv__builtin_bswap32=yes],
-[pgac_cv__builtin_bswap32=no])])
-if test x"$pgac_cv__builtin_bswap32" = xyes ; then
-AC_DEFINE(HAVE__BUILTIN_BSWAP32, 1,
-          [Define to 1 if your compiler understands __builtin_bswap32.])
-fi])# PGAC_C_BUILTIN_BSWAP32
-
-
-
-# PGAC_C_BUILTIN_BSWAP64
-# -------------------------
-# Check if the C compiler understands __builtin_bswap64(),
-# and define HAVE__BUILTIN_BSWAP64 if so.
-AC_DEFUN([PGAC_C_BUILTIN_BSWAP64],
-[AC_CACHE_CHECK(for __builtin_bswap64, pgac_cv__builtin_bswap64,
-[AC_COMPILE_IFELSE([AC_LANG_SOURCE(
-[static unsigned long int x = __builtin_bswap64(0xaabbccddeeff0011);]
-)],
-[pgac_cv__builtin_bswap64=yes],
-[pgac_cv__builtin_bswap64=no])])
-if test x"$pgac_cv__builtin_bswap64" = xyes ; then
-AC_DEFINE(HAVE__BUILTIN_BSWAP64, 1,
-          [Define to 1 if your compiler understands __builtin_bswap64.])
-fi])# PGAC_C_BUILTIN_BSWAP64
-
-
-
 # PGAC_C_BUILTIN_CONSTANT_P
 # -------------------------
 # Check if the C compiler understands __builtin_constant_p(),
@@ -337,7 +282,7 @@ fi])# PGAC_C_BUILTIN_CONSTANT_P
 
 
 # PGAC_C_BUILTIN_OP_OVERFLOW
-# -------------------------
+# --------------------------
 # Check if the C compiler understands __builtin_$op_overflow(),
 # and define HAVE__BUILTIN_OP_OVERFLOW if so.
 #
@@ -386,7 +331,7 @@ fi])# PGAC_C_BUILTIN_UNREACHABLE
 
 
 # PGAC_C_COMPUTED_GOTO
-# -----------------------
+# --------------------
 # Check if the C compiler knows computed gotos (gcc extension, also
 # available in at least clang).  If so, define HAVE_COMPUTED_GOTO.
 #
@@ -409,27 +354,57 @@ fi])# PGAC_C_COMPUTED_GOTO
 
 
 
-# PGAC_C_VA_ARGS
-# --------------
-# Check if the C compiler understands C99-style variadic macros,
-# and define HAVE__VA_ARGS if so.
-AC_DEFUN([PGAC_C_VA_ARGS],
-[AC_CACHE_CHECK(for __VA_ARGS__, pgac_cv__va_args,
-[AC_COMPILE_IFELSE([AC_LANG_PROGRAM([#include <stdio.h>],
-[#define debug(...) fprintf(stderr, __VA_ARGS__)
-debug("%s", "blarg");
-])],
-[pgac_cv__va_args=yes],
-[pgac_cv__va_args=no])])
-if test x"$pgac_cv__va_args" = xyes ; then
-AC_DEFINE(HAVE__VA_ARGS, 1,
-          [Define to 1 if your compiler understands __VA_ARGS__ in macros.])
-fi])# PGAC_C_VA_ARGS
+# PGAC_CHECK_BUILTIN_FUNC
+# -----------------------
+# This is similar to AC_CHECK_FUNCS(), except that it will work for compiler
+# builtin functions, as that usually fails to.
+# The first argument is the function name, eg [__builtin_clzl], and the
+# second is its argument list, eg [unsigned long x].  The current coding
+# works only for a single argument named x; we might generalize that later.
+# It's assumed that the function's result type is coercible to int.
+# On success, we define "HAVEfuncname" (there's usually more than enough
+# underscores already, so we don't add another one).
+AC_DEFUN([PGAC_CHECK_BUILTIN_FUNC],
+[AC_CACHE_CHECK(for $1, pgac_cv$1,
+[AC_LINK_IFELSE([AC_LANG_PROGRAM([
+int
+call$1($2)
+{
+    return $1(x);
+}], [])],
+[pgac_cv$1=yes],
+[pgac_cv$1=no])])
+if test x"${pgac_cv$1}" = xyes ; then
+AC_DEFINE_UNQUOTED(AS_TR_CPP([HAVE$1]), 1,
+                   [Define to 1 if your compiler understands $1.])
+fi])# PGAC_CHECK_BUILTIN_FUNC
+
+
+
+# PGAC_CHECK_BUILTIN_FUNC_PTR
+# -----------------------
+# Like PGAC_CHECK_BUILTIN_FUNC, except that the function is assumed to
+# return a pointer type, and the argument(s) should be given literally.
+# This handles some cases that PGAC_CHECK_BUILTIN_FUNC doesn't.
+AC_DEFUN([PGAC_CHECK_BUILTIN_FUNC_PTR],
+[AC_CACHE_CHECK(for $1, pgac_cv$1,
+[AC_LINK_IFELSE([AC_LANG_PROGRAM([
+void *
+call$1(void)
+{
+    return $1($2);
+}], [])],
+[pgac_cv$1=yes],
+[pgac_cv$1=no])])
+if test x"${pgac_cv$1}" = xyes ; then
+AC_DEFINE_UNQUOTED(AS_TR_CPP([HAVE$1]), 1,
+                   [Define to 1 if your compiler understands $1.])
+fi])# PGAC_CHECK_BUILTIN_FUNC_PTR
 
 
 
 # PGAC_PROG_VARCC_VARFLAGS_OPT
-# -----------------------
+# ----------------------------
 # Given a compiler, variable name and a string, check if the compiler
 # supports the string as a command-line option. If it does, add the
 # string to the given variable.
@@ -467,7 +442,7 @@ PGAC_PROG_VARCC_VARFLAGS_OPT(CC, CFLAGS, $1)
 
 
 # PGAC_PROG_CC_VAR_OPT
-# -----------------------
+# --------------------
 # Given a variable name and a string, check if the compiler supports
 # the string as a command-line option. If it does, add the string to
 # the given variable.
@@ -478,7 +453,7 @@ AC_DEFUN([PGAC_PROG_CC_VAR_OPT],
 
 
 # PGAC_PROG_VARCXX_VARFLAGS_OPT
-# -----------------------
+# -----------------------------
 # Given a compiler, variable name and a string, check if the compiler
 # supports the string as a command-line option. If it does, add the
 # string to the given variable.
@@ -508,12 +483,12 @@ undefine([Ac_cachevar])dnl
 
 
 # PGAC_PROG_CXX_CFLAGS_OPT
-# -----------------------
+# ------------------------
 # Given a string, check if the compiler supports the string as a
 # command-line option. If it does, add the string to CXXFLAGS.
 AC_DEFUN([PGAC_PROG_CXX_CFLAGS_OPT],
 [PGAC_PROG_VARCXX_VARFLAGS_OPT(CXX, CXXFLAGS, $1)
-])# PGAC_PROG_CXX_VAR_OPT
+])# PGAC_PROG_CXX_CFLAGS_OPT
 
 
 
@@ -541,7 +516,7 @@ undefine([Ac_cachevar])dnl
 ])# PGAC_PROG_CC_LDFLAGS_OPT
 
 # PGAC_HAVE_GCC__SYNC_CHAR_TAS
-# -------------------------
+# ----------------------------
 # Check if the C compiler understands __sync_lock_test_and_set(char),
 # and define HAVE_GCC__SYNC_CHAR_TAS
 #
@@ -561,7 +536,7 @@ if test x"$pgac_cv_gcc_sync_char_tas" = x"yes"; then
 fi])# PGAC_HAVE_GCC__SYNC_CHAR_TAS
 
 # PGAC_HAVE_GCC__SYNC_INT32_TAS
-# -------------------------
+# -----------------------------
 # Check if the C compiler understands __sync_lock_test_and_set(),
 # and define HAVE_GCC__SYNC_INT32_TAS
 AC_DEFUN([PGAC_HAVE_GCC__SYNC_INT32_TAS],
@@ -577,7 +552,7 @@ if test x"$pgac_cv_gcc_sync_int32_tas" = x"yes"; then
 fi])# PGAC_HAVE_GCC__SYNC_INT32_TAS
 
 # PGAC_HAVE_GCC__SYNC_INT32_CAS
-# -------------------------
+# -----------------------------
 # Check if the C compiler understands __sync_compare_and_swap() for 32bit
 # types, and define HAVE_GCC__SYNC_INT32_CAS if so.
 AC_DEFUN([PGAC_HAVE_GCC__SYNC_INT32_CAS],
@@ -592,7 +567,7 @@ if test x"$pgac_cv_gcc_sync_int32_cas" = x"yes"; then
 fi])# PGAC_HAVE_GCC__SYNC_INT32_CAS
 
 # PGAC_HAVE_GCC__SYNC_INT64_CAS
-# -------------------------
+# -----------------------------
 # Check if the C compiler understands __sync_compare_and_swap() for 64bit
 # types, and define HAVE_GCC__SYNC_INT64_CAS if so.
 AC_DEFUN([PGAC_HAVE_GCC__SYNC_INT64_CAS],
@@ -607,7 +582,7 @@ if test x"$pgac_cv_gcc_sync_int64_cas" = x"yes"; then
 fi])# PGAC_HAVE_GCC__SYNC_INT64_CAS
 
 # PGAC_HAVE_GCC__ATOMIC_INT32_CAS
-# -------------------------
+# -------------------------------
 # Check if the C compiler understands __atomic_compare_exchange_n() for 32bit
 # types, and define HAVE_GCC__ATOMIC_INT32_CAS if so.
 AC_DEFUN([PGAC_HAVE_GCC__ATOMIC_INT32_CAS],
@@ -623,7 +598,7 @@ if test x"$pgac_cv_gcc_atomic_int32_cas" = x"yes"; then
 fi])# PGAC_HAVE_GCC__ATOMIC_INT32_CAS
 
 # PGAC_HAVE_GCC__ATOMIC_INT64_CAS
-# -------------------------
+# -------------------------------
 # Check if the C compiler understands __atomic_compare_exchange_n() for 64bit
 # types, and define HAVE_GCC__ATOMIC_INT64_CAS if so.
 AC_DEFUN([PGAC_HAVE_GCC__ATOMIC_INT64_CAS],
@@ -639,7 +614,7 @@ if test x"$pgac_cv_gcc_atomic_int64_cas" = x"yes"; then
 fi])# PGAC_HAVE_GCC__ATOMIC_INT64_CAS
 
 # PGAC_SSE42_CRC32_INTRINSICS
-# -----------------------
+# ---------------------------
 # Check if the compiler supports the x86 CRC instructions added in SSE 4.2,
 # using the _mm_crc32_u8 and _mm_crc32_u32 intrinsic functions. (We don't
 # test the 8-byte variant, _mm_crc32_u64, but it is assumed to be present if
@@ -670,7 +645,7 @@ undefine([Ac_cachevar])dnl
 
 
 # PGAC_ARMV8_CRC32C_INTRINSICS
-# -----------------------
+# ----------------------------
 # Check if the compiler supports the CRC32C instructions using the __crc32cb,
 # __crc32ch, __crc32cw, and __crc32cd intrinsic functions. These instructions
 # were first introduced in ARMv8 in the optional CRC Extension, and became

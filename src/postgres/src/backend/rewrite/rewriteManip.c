@@ -2,7 +2,7 @@
  *
  * rewriteManip.c
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -16,8 +16,8 @@
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
+#include "nodes/pathnodes.h"
 #include "nodes/plannodes.h"
-#include "optimizer/clauses.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_relation.h"
 #include "parser/parsetree.h"
@@ -41,12 +41,12 @@ typedef struct
 } locate_windowfunc_context;
 
 static bool contain_aggs_of_level_walker(Node *node,
-							 contain_aggs_of_level_context *context);
+										 contain_aggs_of_level_context *context);
 static bool locate_agg_of_level_walker(Node *node,
-						   locate_agg_of_level_context *context);
+									   locate_agg_of_level_context *context);
 static bool contain_windowfuncs_walker(Node *node, void *context);
 static bool locate_windowfunc_walker(Node *node,
-						 locate_windowfunc_context *context);
+									 locate_windowfunc_context *context);
 static bool checkExprHasSubLink_walker(Node *node, void *context);
 static Relids offset_relid_set(Relids relids, int offset);
 static Relids adjust_relid_set(Relids relids, int oldrelid, int newrelid);
@@ -322,7 +322,7 @@ contains_multiexpr_param(Node *node, void *context)
  *
  * Find all Var nodes in the given tree with varlevelsup == sublevels_up,
  * and increment their varno fields (rangetable indexes) by 'offset'.
- * The varnoold fields are adjusted similarly.  Also, adjust other nodes
+ * The varnosyn fields are adjusted similarly.  Also, adjust other nodes
  * that contain rangetable indexes, such as RangeTblRef and JoinExpr.
  *
  * NOTE: although this has the form of a walker, we cheat and modify the
@@ -348,7 +348,8 @@ OffsetVarNodes_walker(Node *node, OffsetVarNodes_context *context)
 		if (var->varlevelsup == context->sublevels_up)
 		{
 			var->varno += context->offset;
-			var->varnoold += context->offset;
+			if (var->varnosyn > 0)
+				var->varnosyn += context->offset;
 		}
 		return false;
 	}
@@ -485,7 +486,7 @@ offset_relid_set(Relids relids, int offset)
  *
  * Find all Var nodes in the given tree belonging to a specific relation
  * (identified by sublevels_up and rt_index), and change their varno fields
- * to 'new_index'.  The varnoold fields are changed too.  Also, adjust other
+ * to 'new_index'.  The varnosyn fields are changed too.  Also, adjust other
  * nodes that contain rangetable indexes, such as RangeTblRef and JoinExpr.
  *
  * NOTE: although this has the form of a walker, we cheat and modify the
@@ -513,7 +514,9 @@ ChangeVarNodes_walker(Node *node, ChangeVarNodes_context *context)
 			var->varno == context->rt_index)
 		{
 			var->varno = context->new_index;
-			var->varnoold = context->new_index;
+			/* If the syntactic referent is same RTE, fix it too */
+			if (var->varnosyn == context->rt_index)
+				var->varnosyn = context->new_index;
 		}
 		return false;
 	}
@@ -761,7 +764,7 @@ IncrementVarSublevelsUp_walker(Node *node,
 		result = query_tree_walker((Query *) node,
 								   IncrementVarSublevelsUp_walker,
 								   (void *) context,
-								   QTW_EXAMINE_RTES);
+								   QTW_EXAMINE_RTES_BEFORE);
 		context->min_sublevels_up--;
 		return result;
 	}
@@ -785,7 +788,7 @@ IncrementVarSublevelsUp(Node *node, int delta_sublevels_up,
 	query_or_expression_tree_walker(node,
 									IncrementVarSublevelsUp_walker,
 									(void *) &context,
-									QTW_EXAMINE_RTES);
+									QTW_EXAMINE_RTES_BEFORE);
 }
 
 /*
@@ -804,7 +807,7 @@ IncrementVarSublevelsUp_rtable(List *rtable, int delta_sublevels_up,
 	range_table_walker(rtable,
 					   IncrementVarSublevelsUp_walker,
 					   (void *) &context,
-					   QTW_EXAMINE_RTES);
+					   QTW_EXAMINE_RTES_BEFORE);
 }
 
 
@@ -1015,7 +1018,7 @@ AddQual(Query *parsetree, Node *qual)
 				 errmsg("conditional UNION/INTERSECT/EXCEPT statements are not implemented")));
 	}
 
-	/* INTERSECT want's the original, but we need to copy - Jan */
+	/* INTERSECT wants the original, but we need to copy - Jan */
 	copy = copyObject(qual);
 
 	parsetree->jointree->quals = make_and_qual(parsetree->jointree->quals,
@@ -1208,7 +1211,7 @@ replace_rte_variables_mutator(Node *node,
  * a ConvertRowtypeExpr to map back to the rowtype expected by the expression.
  * (Therefore, to_rowtype had better be a child rowtype of the rowtype of the
  * RTE we're changing references to.)  Callers that don't provide to_rowtype
- * should report an error if *found_row_type is true; we don't do that here
+ * should report an error if *found_whole_row is true; we don't do that here
  * because we don't know exactly what wording for the error message would
  * be most appropriate.  The caller will be aware of the context.
  *
@@ -1221,8 +1224,7 @@ typedef struct
 {
 	int			target_varno;	/* RTE index to search for */
 	int			sublevels_up;	/* (current) nesting depth */
-	const AttrNumber *attno_map;	/* map array for user attnos */
-	int			map_length;		/* number of entries in attno_map[] */
+	const AttrMap *attno_map;	/* map array for user attnos */
 	Oid			to_rowtype;		/* change whole-row Vars to this type */
 	bool	   *found_whole_row;	/* output flag */
 } map_variable_attnos_context;
@@ -1249,11 +1251,14 @@ map_variable_attnos_mutator(Node *node,
 			if (attno > 0)
 			{
 				/* user-defined column, replace attno */
-				if (attno > context->map_length ||
-					context->attno_map[attno - 1] == 0)
+				if (attno > context->attno_map->maplen ||
+					context->attno_map->attnums[attno - 1] == 0)
 					elog(ERROR, "unexpected varattno %d in expression to be mapped",
 						 attno);
-				newvar->varattno = newvar->varoattno = context->attno_map[attno - 1];
+				newvar->varattno = context->attno_map->attnums[attno - 1];
+				/* If the syntactic referent is same RTE, fix it too */
+				if (newvar->varnosyn == context->target_varno)
+					newvar->varattnosyn = newvar->varattno;
 			}
 			else if (attno == 0)
 			{
@@ -1350,7 +1355,7 @@ map_variable_attnos_mutator(Node *node,
 Node *
 map_variable_attnos(Node *node,
 					int target_varno, int sublevels_up,
-					const AttrNumber *attno_map, int map_length,
+					const AttrMap *attno_map,
 					Oid to_rowtype, bool *found_whole_row)
 {
 	map_variable_attnos_context context;
@@ -1358,7 +1363,6 @@ map_variable_attnos(Node *node,
 	context.target_varno = target_varno;
 	context.sublevels_up = sublevels_up;
 	context.attno_map = attno_map;
-	context.map_length = map_length;
 	context.to_rowtype = to_rowtype;
 	context.found_whole_row = found_whole_row;
 
@@ -1420,8 +1424,8 @@ ReplaceVarsFromTargetList_callback(Var *var,
 		 * If generating an expansion for a var of a named rowtype (ie, this
 		 * is a plain relation RTE), then we must include dummy items for
 		 * dropped columns.  If the var is RECORD (ie, this is a JOIN), then
-		 * omit dropped columns.  Either way, attach column names to the
-		 * RowExpr for use of ruleutils.c.
+		 * omit dropped columns.  In the latter case, attach column names to
+		 * the RowExpr for use of the executor and ruleutils.c.
 		 */
 		expandRTE(rcon->target_rte,
 				  var->varno, var->varlevelsup, var->location,
@@ -1434,7 +1438,7 @@ ReplaceVarsFromTargetList_callback(Var *var,
 		rowexpr->args = fields;
 		rowexpr->row_typeid = var->vartype;
 		rowexpr->row_format = COERCE_IMPLICIT_CAST;
-		rowexpr->colnames = colnames;
+		rowexpr->colnames = (var->vartype == RECORDOID) ? colnames : NIL;
 		rowexpr->location = var->location;
 
 		return (Node *) rowexpr;
@@ -1455,7 +1459,7 @@ ReplaceVarsFromTargetList_callback(Var *var,
 			case REPLACEVARS_CHANGE_VARNO:
 				var = (Var *) copyObject(var);
 				var->varno = rcon->nomatch_varno;
-				var->varnoold = rcon->nomatch_varno;
+				/* we leave the syntactic referent alone */
 				return (Node *) var;
 
 			case REPLACEVARS_SUBSTITUTE_NULL:

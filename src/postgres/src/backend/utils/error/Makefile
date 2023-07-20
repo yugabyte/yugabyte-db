@@ -12,6 +12,10 @@ subdir = src/backend/utils/error
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
-OBJS = assert.o elog.o
+OBJS = \
+	assert.o \
+	csvlog.o \
+	elog.o \
+	jsonlog.o
 
 include $(top_srcdir)/src/backend/common.mk

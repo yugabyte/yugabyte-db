@@ -95,6 +95,8 @@ initdb --locale=sv_SE
 
     <informaltable>
      <tgroup cols="2">
+      <colspec colname="col1" colwidth="1*"/>
+      <colspec colname="col2" colwidth="3*"/>
       <tbody>
        <row>
         <entry><envar>LC_COLLATE</envar></entry>
@@ -275,6 +277,108 @@ initdb --locale=sv_SE
   </sect2>
 
   <sect2>
+   <title>Selecting Locales</title>
+
+   <para>
+    Locales can be selected in different scopes depending on requirements.
+    The above overview showed how locales are specified using
+    <command>initdb</command> to set the defaults for the entire cluster.  The
+    following list shows where locales can be selected.  Each item provides
+    the defaults for the subsequent items, and each lower item allows
+    overriding the defaults on a finer granularity.
+   </para>
+
+   <orderedlist>
+    <listitem>
+     <para>
+      As explained above, the environment of the operating system provides the
+      defaults for the locales of a newly initialized database cluster.  In
+      many cases, this is enough: If the operating system is configured for
+      the desired language/territory, then
+      <productname>PostgreSQL</productname> will by default also behave
+      according to that locale.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      As shown above, command-line options for <command>initdb</command>
+      specify the locale settings for a newly initialized database cluster.
+      Use this if the operating system does not have the locale configuration
+      you want for your database system.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      A locale can be selected separately for each database.  The SQL command
+      <command>CREATE DATABASE</command> and its command-line equivalent
+      <command>createdb</command> have options for that.  Use this for example
+      if a database cluster houses databases for multiple tenants with
+      different requirements.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      Locale settings can be made for individual table columns.  This uses an
+      SQL object called <firstterm>collation</firstterm> and is explained in
+      <xref linkend="collation"/>.  Use this for example to sort data in
+      different languages or customize the sort order of a particular table.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      Finally, locales can be selected for an individual query.  Again, this
+      uses SQL collation objects.  This could be used to change the sort order
+      based on run-time choices or for ad-hoc experimentation.
+     </para>
+    </listitem>
+   </orderedlist>
+  </sect2>
+
+  <sect2>
+   <title>Locale Providers</title>
+
+   <para>
+    <productname>PostgreSQL</productname> supports multiple <firstterm>locale
+    providers</firstterm>.  This specifies which library supplies the locale
+    data.  One standard provider name is <literal>libc</literal>, which uses
+    the locales provided by the operating system C library.  These are the
+    locales used by most tools provided by the operating system.  Another
+    provider is <literal>icu</literal>, which uses the external
+    ICU<indexterm><primary>ICU</primary></indexterm> library.  ICU locales can
+    only be used if support for ICU was configured when PostgreSQL was built.
+   </para>
+
+   <para>
+    The commands and tools that select the locale settings, as described
+    above, each have an option to select the locale provider.  The examples
+    shown earlier all use the <literal>libc</literal> provider, which is the
+    default.  Here is an example to initialize a database cluster using the
+    ICU provider:
+<programlisting>
+initdb --locale-provider=icu --icu-locale=en
+</programlisting>
+    See the description of the respective commands and programs for
+    details.  Note that you can mix locale providers at different
+    granularities, for example use <literal>libc</literal> by default for the
+    cluster but have one database that uses the <literal>icu</literal>
+    provider, and then have collation objects using either provider within
+    those databases.
+   </para>
+
+   <para>
+    Which locale provider to use depends on individual requirements.  For most
+    basic uses, either provider will give adequate results.  For the libc
+    provider, it depends on what the operating system offers; some operating
+    systems are better than others.  For advanced uses, ICU offers more locale
+    variants and customization options.
+   </para>
+  </sect2>
+
+  <sect2>
    <title>Problems</title>
 
    <para>
@@ -344,7 +448,8 @@ initdb --locale=sv_SE
     collation.  (The built-in collatable data types are
     <type>text</type>, <type>varchar</type>, and <type>char</type>.
     User-defined base types can also be marked collatable, and of course
-    a domain over a collatable data type is collatable.)  If the
+    a <glossterm linkend="glossary-domain">domain</glossterm> over a
+    collatable data type is collatable.)  If the
     expression is a column reference, the collation of the expression is the
     defined collation of the column.  If the expression is a constant, the
     collation is the default collation of the data type of the
@@ -505,8 +610,8 @@ SELECT * FROM test1 ORDER BY a || b COLLATE "fr_FR";
     definition has a <firstterm>provider</firstterm> that specifies which
     library supplies the locale data.  One standard provider name
     is <literal>libc</literal>, which uses the locales provided by the
-    operating system C library.  These are the locales that most tools
-    provided by the operating system use.  Another provider
+    operating system C library.  These are the locales used by most tools
+    provided by the operating system.  Another provider
     is <literal>icu</literal>, which uses the external
     ICU<indexterm><primary>ICU</primary></indexterm> library.  ICU locales can only be
     used if support for ICU was configured when PostgreSQL was built.
@@ -580,7 +685,7 @@ SELECT * FROM test1 ORDER BY a || b COLLATE "fr_FR";
    </para>
 
   <sect4>
-   <title>libc collations</title>
+   <title>libc Collations</title>
 
    <para>
     For example, the operating system might
@@ -617,7 +722,7 @@ SELECT * FROM test1 ORDER BY a || b COLLATE "fr_FR";
     name such as <literal>de_DE</literal> can be considered unique
     within a given database even though it would not be unique globally.
     Use of the stripped collation names is recommended, since it will
-    make one less thing you need to change if you decide to change to
+    make one fewer thing you need to change if you decide to change to
     another database encoding.  Note however that the <literal>default</literal>,
     <literal>C</literal>, and <literal>POSIX</literal> collations can be used regardless of
     the database encoding.
@@ -637,7 +742,7 @@ SELECT a COLLATE "C" &lt; b COLLATE "POSIX" FROM test1;
   </sect4>
 
   <sect4>
-   <title>ICU collations</title>
+   <title>ICU Collations</title>
 
    <para>
     With ICU, it is not sensible to enumerate all possible locale names.  ICU
@@ -713,7 +818,7 @@ SELECT a COLLATE "C" &lt; b COLLATE "POSIX" FROM test1;
    </para>
 
    <sect4>
-    <title>libc collations</title>
+    <title>libc Collations</title>
 
     <para>
      New libc collations can be created like this:
@@ -737,15 +842,15 @@ CREATE COLLATION german (provider = libc, locale = 'de_DE');
    </sect4>
 
    <sect4>
-    <title>ICU collations</title>
+    <title>ICU Collations</title>
 
    <para>
     ICU allows collations to be customized beyond the basic language+country
     set that is preloaded by <command>initdb</command>.  Users are encouraged
     to define their own collation objects that make use of these facilities to
     suit the sorting behavior to their requirements.
-    See <ulink url="http://userguide.icu-project.org/locale"></ulink>
-    and <ulink url="http://userguide.icu-project.org/collation/api"></ulink> for
+    See <ulink url="https://unicode-org.github.io/icu/userguide/locale/"></ulink>
+    and <ulink url="https://unicode-org.github.io/icu/userguide/collation/api.html"></ulink> for
     information on ICU locale naming.  The set of acceptable names and
     attributes depends on the particular ICU version.
    </para>
@@ -789,11 +894,11 @@ CREATE COLLATION german (provider = libc, locale = 'de_DE');
      </varlistentry>
 
      <varlistentry>
-      <term><literal>CREATE COLLATION digitslast (provider = icu, locale = 'en-u-kr-latn-digit');</literal></term>
-      <term><literal>CREATE COLLATION digitslast (provider = icu, locale = 'en@colReorder=latn-digit');</literal></term>
+      <term><literal>CREATE COLLATION latinlast (provider = icu, locale = 'en-u-kr-grek-latn');</literal></term>
+      <term><literal>CREATE COLLATION latinlast (provider = icu, locale = 'en@colReorder=grek-latn');</literal></term>
       <listitem>
        <para>
-        Sort digits after Latin letters.  (The default is digits before letters.)
+        Sort Greek letters before Latin ones.  (The default is Latin before Greek.)
        </para>
       </listitem>
      </varlistentry>
@@ -809,9 +914,9 @@ CREATE COLLATION german (provider = libc, locale = 'de_DE');
       </listitem>
      </varlistentry>
 
-     <varlistentry>
-      <term><literal>CREATE COLLATION special (provider = icu, locale = 'en-u-kf-upper-kr-latn-digit');</literal></term>
-      <term><literal>CREATE COLLATION special (provider = icu, locale = 'en@colCaseFirst=upper;colReorder=latn-digit');</literal></term>
+    <varlistentry>
+      <term><literal>CREATE COLLATION special (provider = icu, locale = 'en-u-kf-upper-kr-grek-latn');</literal></term>
+      <term><literal>CREATE COLLATION special (provider = icu, locale = 'en@colCaseFirst=upper;colReorder=grek-latn');</literal></term>
       <listitem>
        <para>
         Combines both of the above options.
@@ -832,26 +937,24 @@ CREATE COLLATION german (provider = libc, locale = 'de_DE');
      </varlistentry>
     </variablelist>
 
-    See <ulink url="http://unicode.org/reports/tr35/tr35-collation.html">Unicode
+    See <ulink url="https://www.unicode.org/reports/tr35/tr35-collation.html">Unicode
     Technical Standard #35</ulink>
     and <ulink url="https://tools.ietf.org/html/bcp47">BCP 47</ulink> for
     details.  The list of possible collation types (<literal>co</literal>
     subtag) can be found in
-    the <ulink url="http://www.unicode.org/repos/cldr/trunk/common/bcp47/collation.xml">CLDR
+    the <ulink url="https://github.com/unicode-org/cldr/blob/master/common/bcp47/collation.xml">CLDR
     repository</ulink>.
-    The <ulink url="https://ssl.icu-project.org/icu-bin/locexp">ICU Locale
-    Explorer</ulink> can be used to check the details of a particular locale
-    definition.  The examples using the <literal>k*</literal> subtags require
-    at least ICU version 54.
    </para>
 
    <para>
     Note that while this system allows creating collations that <quote>ignore
-    case</quote> or <quote>ignore accents</quote> or similar (using
-    the <literal>ks</literal> key), PostgreSQL does not at the moment allow
-    such collations to act in a truly case- or accent-insensitive manner.  Any
-    strings that compare equal according to the collation but are not
-    byte-wise equal will be sorted according to their byte values.
+    case</quote> or <quote>ignore accents</quote> or similar (using the
+    <literal>ks</literal> key), in order for such collations to act in a
+    truly case- or accent-insensitive manner, they also need to be declared as not
+    <firstterm>deterministic</firstterm> in <command>CREATE COLLATION</command>;
+    see <xref linkend="collation-nondeterministic"/>.
+    Otherwise, any strings that compare equal according to the collation but
+    are not byte-wise equal will be sorted according to their byte values.
    </para>
 
    <note>
@@ -882,6 +985,66 @@ CREATE COLLATION french FROM "fr-x-icu";
 </programlisting>
    </para>
    </sect4>
+   </sect3>
+
+   <sect3 id="collation-nondeterministic">
+    <title>Nondeterministic Collations</title>
+
+    <para>
+     A collation is either <firstterm>deterministic</firstterm> or
+     <firstterm>nondeterministic</firstterm>.  A deterministic collation uses
+     deterministic comparisons, which means that it considers strings to be
+     equal only if they consist of the same byte sequence.  Nondeterministic
+     comparison may determine strings to be equal even if they consist of
+     different bytes.  Typical situations include case-insensitive comparison,
+     accent-insensitive comparison, as well as comparison of strings in
+     different Unicode normal forms.  It is up to the collation provider to
+     actually implement such insensitive comparisons; the deterministic flag
+     only determines whether ties are to be broken using bytewise comparison.
+     See also <ulink url="https://www.unicode.org/reports/tr10">Unicode Technical
+     Standard 10</ulink> for more information on the terminology.
+    </para>
+
+    <para>
+     To create a nondeterministic collation, specify the property
+     <literal>deterministic = false</literal> to <command>CREATE
+     COLLATION</command>, for example:
+<programlisting>
+CREATE COLLATION ndcoll (provider = icu, locale = 'und', deterministic = false);
+</programlisting>
+     This example would use the standard Unicode collation in a
+     nondeterministic way.  In particular, this would allow strings in
+     different normal forms to be compared correctly.  More interesting
+     examples make use of the ICU customization facilities explained above.
+     For example:
+<programlisting>
+CREATE COLLATION case_insensitive (provider = icu, locale = 'und-u-ks-level2', deterministic = false);
+CREATE COLLATION ignore_accents (provider = icu, locale = 'und-u-ks-level1-kc-true', deterministic = false);
+</programlisting>
+    </para>
+
+    <para>
+     All standard and predefined collations are deterministic, all
+     user-defined collations are deterministic by default.  While
+     nondeterministic collations give a more <quote>correct</quote> behavior,
+     especially when considering the full power of Unicode and its many
+     special cases, they also have some drawbacks.  Foremost, their use leads
+     to a performance penalty.  Note, in particular, that B-tree cannot use
+     deduplication with indexes that use a nondeterministic collation.  Also,
+     certain operations are not possible with nondeterministic collations,
+     such as pattern matching operations.  Therefore, they should be used
+     only in cases where they are specifically wanted.
+    </para>
+
+    <tip>
+     <para>
+      To deal with text in different Unicode normalization forms, it is also
+      an option to use the functions/expressions
+      <function>normalize</function> and <literal>is normalized</literal> to
+      preprocess or check the strings, instead of using nondeterministic
+      collations.  There are different trade-offs for each approach.
+     </para>
+    </tip>
    </sect3>
   </sect2>
  </sect1>
@@ -931,6 +1094,13 @@ CREATE COLLATION french FROM "fr-x-icu";
      <table id="charset-table">
       <title><productname>PostgreSQL</productname> Character Sets</title>
       <tgroup cols="7">
+       <colspec colname="col1" colwidth="3*"/>
+       <colspec colname="col2" colwidth="2*"/>
+       <colspec colname="col3" colwidth="2*"/>
+       <colspec colname="col4" colwidth="1.25*"/>
+       <colspec colname="col5" colwidth="1*"/>
+       <colspec colname="col6" colwidth="1*"/>
+       <colspec colname="col7" colwidth="2*"/>
        <thead>
         <row>
          <entry>Name</entry>
@@ -942,7 +1112,7 @@ CREATE COLLATION french FROM "fr-x-icu";
           The Bytes/Char field is populated by looking at the values returned
           by pg_wchar_table.mblen function for each encoding.
          -->
-         <entry>Bytes/Char</entry>
+         <entry>Bytes/&zwsp;Char</entry>
          <entry>Aliases</entry>
         </row>
        </thead>
@@ -953,7 +1123,7 @@ CREATE COLLATION french FROM "fr-x-icu";
          <entry>Traditional Chinese</entry>
          <entry>No</entry>
          <entry>No</entry>
-         <entry>1-2</entry>
+         <entry>1&ndash;2</entry>
          <entry><literal>WIN950</literal>, <literal>Windows950</literal></entry>
         </row>
         <row>
@@ -962,7 +1132,7 @@ CREATE COLLATION french FROM "fr-x-icu";
          <entry>Simplified Chinese</entry>
          <entry>Yes</entry>
          <entry>Yes</entry>
-         <entry>1-3</entry>
+         <entry>1&ndash;3</entry>
          <entry></entry>
         </row>
         <row>
@@ -971,7 +1141,7 @@ CREATE COLLATION french FROM "fr-x-icu";
          <entry>Japanese</entry>
          <entry>Yes</entry>
          <entry>Yes</entry>
-         <entry>1-3</entry>
+         <entry>1&ndash;3</entry>
          <entry></entry>
         </row>
         <row>
@@ -980,7 +1150,7 @@ CREATE COLLATION french FROM "fr-x-icu";
          <entry>Japanese</entry>
          <entry>Yes</entry>
          <entry>No</entry>
-         <entry>1-3</entry>
+         <entry>1&ndash;3</entry>
          <entry></entry>
         </row>
         <row>
@@ -989,7 +1159,7 @@ CREATE COLLATION french FROM "fr-x-icu";
          <entry>Korean</entry>
          <entry>Yes</entry>
          <entry>Yes</entry>
-         <entry>1-3</entry>
+         <entry>1&ndash;3</entry>
          <entry></entry>
         </row>
         <row>
@@ -998,7 +1168,7 @@ CREATE COLLATION french FROM "fr-x-icu";
          <entry>Traditional Chinese, Taiwanese</entry>
          <entry>Yes</entry>
          <entry>Yes</entry>
-         <entry>1-3</entry>
+         <entry>1&ndash;3</entry>
          <entry></entry>
         </row>
         <row>
@@ -1007,7 +1177,7 @@ CREATE COLLATION french FROM "fr-x-icu";
          <entry>Chinese</entry>
          <entry>No</entry>
          <entry>No</entry>
-         <entry>1-4</entry>
+         <entry>1&ndash;4</entry>
          <entry></entry>
         </row>
         <row>
@@ -1016,7 +1186,7 @@ CREATE COLLATION french FROM "fr-x-icu";
          <entry>Simplified Chinese</entry>
          <entry>No</entry>
          <entry>No</entry>
-         <entry>1-2</entry>
+         <entry>1&ndash;2</entry>
          <entry><literal>WIN936</literal>, <literal>Windows936</literal></entry>
         </row>
         <row>
@@ -1061,7 +1231,7 @@ CREATE COLLATION french FROM "fr-x-icu";
          <entry>Korean (Hangul)</entry>
          <entry>No</entry>
          <entry>No</entry>
-         <entry>1-3</entry>
+         <entry>1&ndash;3</entry>
          <entry></entry>
         </row>
         <row>
@@ -1178,7 +1348,7 @@ CREATE COLLATION french FROM "fr-x-icu";
          <entry>Multilingual Emacs</entry>
          <entry>Yes</entry>
          <entry>No</entry>
-         <entry>1-4</entry>
+         <entry>1&ndash;4</entry>
          <entry></entry>
         </row>
         <row>
@@ -1187,7 +1357,7 @@ CREATE COLLATION french FROM "fr-x-icu";
          <entry>Japanese</entry>
          <entry>No</entry>
          <entry>No</entry>
-         <entry>1-2</entry>
+         <entry>1&ndash;2</entry>
          <entry><literal>Mskanji</literal>, <literal>ShiftJIS</literal>, <literal>WIN932</literal>, <literal>Windows932</literal></entry>
         </row>
         <row>
@@ -1196,7 +1366,7 @@ CREATE COLLATION french FROM "fr-x-icu";
          <entry>Japanese</entry>
          <entry>No</entry>
          <entry>No</entry>
-         <entry>1-2</entry>
+         <entry>1&ndash;2</entry>
          <entry></entry>
         </row>
         <row>
@@ -1214,7 +1384,7 @@ CREATE COLLATION french FROM "fr-x-icu";
          <entry>Korean</entry>
          <entry>No</entry>
          <entry>No</entry>
-         <entry>1-2</entry>
+         <entry>1&ndash;2</entry>
          <entry><literal>WIN949</literal>, <literal>Windows949</literal></entry>
         </row>
         <row>
@@ -1223,7 +1393,7 @@ CREATE COLLATION french FROM "fr-x-icu";
          <entry><emphasis>all</emphasis></entry>
          <entry>Yes</entry>
          <entry>Yes</entry>
-         <entry>1-4</entry>
+         <entry>1&ndash;4</entry>
          <entry><literal>Unicode</literal></entry>
         </row>
         <row>
@@ -1339,8 +1509,8 @@ CREATE COLLATION french FROM "fr-x-icu";
      <para>
       The <literal>SQL_ASCII</literal> setting behaves considerably differently
       from the other settings.  When the server character set is
-      <literal>SQL_ASCII</literal>, the server interprets byte values 0-127
-      according to the ASCII standard, while byte values 128-255 are taken
+      <literal>SQL_ASCII</literal>, the server interprets byte values 0&ndash;127
+      according to the ASCII standard, while byte values 128&ndash;255 are taken
       as uninterpreted characters.  No encoding conversion will be done when
       the setting is <literal>SQL_ASCII</literal>.  Thus, this setting is not so
       much a declaration that a specific encoding is in use, as a declaration
@@ -1404,13 +1574,13 @@ CREATE DATABASE korean WITH ENCODING 'EUC_KR' LC_COLLATE='ko_KR.euckr' LC_CTYPE=
 <screen>
 $ <userinput>psql -l</userinput>
                                          List of databases
-   Name    |  Owner   | Encoding  |  Collation  |    Ctype    |          Access Privileges          
+   Name    |  Owner   | Encoding  |  Collation  |    Ctype    |          Access Privileges
 -----------+----------+-----------+-------------+-------------+-------------------------------------
- clocaledb | hlinnaka | SQL_ASCII | C           | C           | 
- englishdb | hlinnaka | UTF8      | en_GB.UTF8  | en_GB.UTF8  | 
- japanese  | hlinnaka | UTF8      | ja_JP.UTF8  | ja_JP.UTF8  | 
- korean    | hlinnaka | EUC_KR    | ko_KR.euckr | ko_KR.euckr | 
- postgres  | hlinnaka | UTF8      | fi_FI.UTF8  | fi_FI.UTF8  | 
+ clocaledb | hlinnaka | SQL_ASCII | C           | C           |
+ englishdb | hlinnaka | UTF8      | en_GB.UTF8  | en_GB.UTF8  |
+ japanese  | hlinnaka | UTF8      | ja_JP.UTF8  | ja_JP.UTF8  |
+ korean    | hlinnaka | EUC_KR    | ko_KR.euckr | ko_KR.euckr |
+ postgres  | hlinnaka | UTF8      | fi_FI.UTF8  | fi_FI.UTF8  |
  template0 | hlinnaka | UTF8      | fi_FI.UTF8  | fi_FI.UTF8  | {=c/hlinnaka,hlinnaka=CTc/hlinnaka}
  template1 | hlinnaka | UTF8      | fi_FI.UTF8  | fi_FI.UTF8  | {=c/hlinnaka,hlinnaka=CTc/hlinnaka}
 (7 rows)
@@ -1444,312 +1614,11 @@ $ <userinput>psql -l</userinput>
     <title>Automatic Character Set Conversion Between Server and Client</title>
 
     <para>
-     <productname>PostgreSQL</productname> supports automatic
-     character set conversion between server and client for certain
-     character set combinations. The conversion information is stored in the
-     <literal>pg_conversion</literal> system catalog.  <productname>PostgreSQL</productname>
-     comes with some predefined conversions, as shown in <xref
-     linkend="multibyte-translation-table"/>. You can create a new
-     conversion using the SQL command <command>CREATE CONVERSION</command>.
+     <productname>PostgreSQL</productname> supports automatic character
+     set conversion between server and client for many combinations of
+     character sets (<xref linkend="multibyte-conversions-supported"/>
+     shows which ones).
     </para>
-
-     <table id="multibyte-translation-table">
-      <title>Client/Server Character Set Conversions</title>
-      <tgroup cols="2">
-       <thead>
-        <row>
-         <entry>Server Character Set</entry>
-         <entry>Available Client Character Sets</entry>
-        </row>
-       </thead>
-       <tbody>
-        <row>
-         <entry><literal>BIG5</literal></entry>
-         <entry><emphasis>not supported as a server encoding</emphasis>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>EUC_CN</literal></entry>
-         <entry><emphasis>EUC_CN</emphasis>,
-         <literal>MULE_INTERNAL</literal>,
-         <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>EUC_JP</literal></entry>
-         <entry><emphasis>EUC_JP</emphasis>,
-         <literal>MULE_INTERNAL</literal>,
-         <literal>SJIS</literal>,
-         <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>EUC_JIS_2004</literal></entry>
-         <entry><emphasis>EUC_JIS_2004</emphasis>,
-         <literal>SHIFT_JIS_2004</literal>,
-         <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>EUC_KR</literal></entry>
-         <entry><emphasis>EUC_KR</emphasis>,
-         <literal>MULE_INTERNAL</literal>,
-         <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>EUC_TW</literal></entry>
-         <entry><emphasis>EUC_TW</emphasis>,
-         <literal>BIG5</literal>,
-         <literal>MULE_INTERNAL</literal>,
-         <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>GB18030</literal></entry>
-         <entry><emphasis>not supported as a server encoding</emphasis>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>GBK</literal></entry>
-         <entry><emphasis>not supported as a server encoding</emphasis>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>ISO_8859_5</literal></entry>
-         <entry><emphasis>ISO_8859_5</emphasis>,
-         <literal>KOI8R</literal>,
-         <literal>MULE_INTERNAL</literal>,
-         <literal>UTF8</literal>,
-         <literal>WIN866</literal>,
-         <literal>WIN1251</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>ISO_8859_6</literal></entry>
-         <entry><emphasis>ISO_8859_6</emphasis>,
-         <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>ISO_8859_7</literal></entry>
-         <entry><emphasis>ISO_8859_7</emphasis>,
-         <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>ISO_8859_8</literal></entry>
-         <entry><emphasis>ISO_8859_8</emphasis>,
-         <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>JOHAB</literal></entry>
-         <entry><emphasis>not supported as a server encoding</emphasis>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>KOI8R</literal></entry>
-         <entry><emphasis>KOI8R</emphasis>,
-         <literal>ISO_8859_5</literal>,
-         <literal>MULE_INTERNAL</literal>,
-         <literal>UTF8</literal>,
-         <literal>WIN866</literal>,
-         <literal>WIN1251</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>KOI8U</literal></entry>
-         <entry><emphasis>KOI8U</emphasis>,
-         <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>LATIN1</literal></entry>
-         <entry><emphasis>LATIN1</emphasis>,
-         <literal>MULE_INTERNAL</literal>,
-         <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>LATIN2</literal></entry>
-         <entry><emphasis>LATIN2</emphasis>,
-         <literal>MULE_INTERNAL</literal>,
-         <literal>UTF8</literal>,
-         <literal>WIN1250</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>LATIN3</literal></entry>
-         <entry><emphasis>LATIN3</emphasis>,
-         <literal>MULE_INTERNAL</literal>,
-         <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>LATIN4</literal></entry>
-         <entry><emphasis>LATIN4</emphasis>,
-         <literal>MULE_INTERNAL</literal>,
-         <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>LATIN5</literal></entry>
-         <entry><emphasis>LATIN5</emphasis>,
-         <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>LATIN6</literal></entry>
-         <entry><emphasis>LATIN6</emphasis>,
-         <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>LATIN7</literal></entry>
-         <entry><emphasis>LATIN7</emphasis>,
-         <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>LATIN8</literal></entry>
-         <entry><emphasis>LATIN8</emphasis>,
-         <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>LATIN9</literal></entry>
-         <entry><emphasis>LATIN9</emphasis>,
-         <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>LATIN10</literal></entry>
-         <entry><emphasis>LATIN10</emphasis>,
-         <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>MULE_INTERNAL</literal></entry>
-         <entry><emphasis>MULE_INTERNAL</emphasis>,
-          <literal>BIG5</literal>,
-          <literal>EUC_CN</literal>,
-          <literal>EUC_JP</literal>,
-          <literal>EUC_KR</literal>,
-          <literal>EUC_TW</literal>,
-          <literal>ISO_8859_5</literal>,
-          <literal>KOI8R</literal>,
-          <literal>LATIN1</literal> to <literal>LATIN4</literal>,
-          <literal>SJIS</literal>,
-          <literal>WIN866</literal>,
-          <literal>WIN1250</literal>,
-          <literal>WIN1251</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>SJIS</literal></entry>
-         <entry><emphasis>not supported as a server encoding</emphasis>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>SHIFT_JIS_2004</literal></entry>
-         <entry><emphasis>not supported as a server encoding</emphasis>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>SQL_ASCII</literal></entry>
-         <entry><emphasis>any (no conversion will be performed)</emphasis>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>UHC</literal></entry>
-         <entry><emphasis>not supported as a server encoding</emphasis>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>UTF8</literal></entry>
-         <entry><emphasis>all supported encodings</emphasis>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>WIN866</literal></entry>
-         <entry><emphasis>WIN866</emphasis>,
-          <literal>ISO_8859_5</literal>,
-          <literal>KOI8R</literal>,
-          <literal>MULE_INTERNAL</literal>,
-          <literal>UTF8</literal>,
-          <literal>WIN1251</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>WIN874</literal></entry>
-         <entry><emphasis>WIN874</emphasis>,
-         <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>WIN1250</literal></entry>
-         <entry><emphasis>WIN1250</emphasis>,
-          <literal>LATIN2</literal>,
-          <literal>MULE_INTERNAL</literal>,
-          <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>WIN1251</literal></entry>
-         <entry><emphasis>WIN1251</emphasis>,
-          <literal>ISO_8859_5</literal>,
-          <literal>KOI8R</literal>,
-          <literal>MULE_INTERNAL</literal>,
-          <literal>UTF8</literal>,
-          <literal>WIN866</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>WIN1252</literal></entry>
-         <entry><emphasis>WIN1252</emphasis>,
-          <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>WIN1253</literal></entry>
-         <entry><emphasis>WIN1253</emphasis>,
-          <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>WIN1254</literal></entry>
-         <entry><emphasis>WIN1254</emphasis>,
-          <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>WIN1255</literal></entry>
-         <entry><emphasis>WIN1255</emphasis>,
-          <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>WIN1256</literal></entry>
-         <entry><emphasis>WIN1256</emphasis>,
-         <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>WIN1257</literal></entry>
-         <entry><emphasis>WIN1257</emphasis>,
-          <literal>UTF8</literal>
-         </entry>
-        </row>
-        <row>
-         <entry><literal>WIN1258</literal></entry>
-         <entry><emphasis>WIN1258</emphasis>,
-         <literal>UTF8</literal>
-         </entry>
-        </row>
-       </tbody>
-      </tgroup>
-     </table>
 
     <para>
      To enable automatic character set conversion, you have to
@@ -1845,9 +1714,982 @@ RESET client_encoding;
     <para>
      If the client character set is defined as <literal>SQL_ASCII</literal>,
      encoding conversion is disabled, regardless of the server's character
-     set.  Just as for the server, use of <literal>SQL_ASCII</literal> is unwise
+     set.  (However, if the server's character set is
+     not <literal>SQL_ASCII</literal>, the server will still check that
+     incoming data is valid for that encoding; so the net effect is as
+     though the client character set were the same as the server's.)
+     Just as for the server, use of <literal>SQL_ASCII</literal> is unwise
      unless you are working with all-ASCII data.
     </para>
+   </sect2>
+
+   <sect2 id="multibyte-conversions-supported">
+    <title>Available Character Set Conversions</title>
+
+    <para>
+     <productname>PostgreSQL</productname> allows conversion between any
+     two character sets for which a conversion function is listed in the
+     <link linkend="catalog-pg-conversion"><structname>pg_conversion</structname></link>
+     system catalog.  <productname>PostgreSQL</productname> comes with
+     some predefined conversions, as summarized in
+     <xref linkend="multibyte-translation-table"/> and shown in more
+     detail in <xref linkend="builtin-conversions-table"/>.  You can
+     create a new conversion using the SQL command
+     <xref linkend="sql-createconversion"/>.  (To be used for automatic
+     client/server conversions, a conversion must be marked
+     as <quote>default</quote> for its character set pair.)
+    </para>
+
+    <table id="multibyte-translation-table">
+     <title>Built-in Client/Server Character Set Conversions</title>
+     <tgroup cols="2">
+      <colspec colname="col1" colwidth="1*"/>
+      <colspec colname="col2" colwidth="3*"/>
+      <thead>
+       <row>
+        <entry>Server Character Set</entry>
+        <entry>Available Client Character Sets</entry>
+       </row>
+      </thead>
+      <tbody>
+       <row>
+        <entry><literal>BIG5</literal></entry>
+        <entry><emphasis>not supported as a server encoding</emphasis>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>EUC_CN</literal></entry>
+        <entry><emphasis>EUC_CN</emphasis>,
+        <literal>MULE_INTERNAL</literal>,
+        <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>EUC_JP</literal></entry>
+        <entry><emphasis>EUC_JP</emphasis>,
+        <literal>MULE_INTERNAL</literal>,
+        <literal>SJIS</literal>,
+        <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>EUC_JIS_2004</literal></entry>
+        <entry><emphasis>EUC_JIS_2004</emphasis>,
+        <literal>SHIFT_JIS_2004</literal>,
+        <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>EUC_KR</literal></entry>
+        <entry><emphasis>EUC_KR</emphasis>,
+        <literal>MULE_INTERNAL</literal>,
+        <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>EUC_TW</literal></entry>
+        <entry><emphasis>EUC_TW</emphasis>,
+        <literal>BIG5</literal>,
+        <literal>MULE_INTERNAL</literal>,
+        <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>GB18030</literal></entry>
+        <entry><emphasis>not supported as a server encoding</emphasis>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>GBK</literal></entry>
+        <entry><emphasis>not supported as a server encoding</emphasis>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>ISO_8859_5</literal></entry>
+        <entry><emphasis>ISO_8859_5</emphasis>,
+        <literal>KOI8R</literal>,
+        <literal>MULE_INTERNAL</literal>,
+        <literal>UTF8</literal>,
+        <literal>WIN866</literal>,
+        <literal>WIN1251</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>ISO_8859_6</literal></entry>
+        <entry><emphasis>ISO_8859_6</emphasis>,
+        <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>ISO_8859_7</literal></entry>
+        <entry><emphasis>ISO_8859_7</emphasis>,
+        <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>ISO_8859_8</literal></entry>
+        <entry><emphasis>ISO_8859_8</emphasis>,
+        <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>JOHAB</literal></entry>
+        <entry><emphasis>not supported as a server encoding</emphasis>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>KOI8R</literal></entry>
+        <entry><emphasis>KOI8R</emphasis>,
+        <literal>ISO_8859_5</literal>,
+        <literal>MULE_INTERNAL</literal>,
+        <literal>UTF8</literal>,
+        <literal>WIN866</literal>,
+        <literal>WIN1251</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>KOI8U</literal></entry>
+        <entry><emphasis>KOI8U</emphasis>,
+        <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>LATIN1</literal></entry>
+        <entry><emphasis>LATIN1</emphasis>,
+        <literal>MULE_INTERNAL</literal>,
+        <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>LATIN2</literal></entry>
+        <entry><emphasis>LATIN2</emphasis>,
+        <literal>MULE_INTERNAL</literal>,
+        <literal>UTF8</literal>,
+        <literal>WIN1250</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>LATIN3</literal></entry>
+        <entry><emphasis>LATIN3</emphasis>,
+        <literal>MULE_INTERNAL</literal>,
+        <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>LATIN4</literal></entry>
+        <entry><emphasis>LATIN4</emphasis>,
+        <literal>MULE_INTERNAL</literal>,
+        <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>LATIN5</literal></entry>
+        <entry><emphasis>LATIN5</emphasis>,
+        <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>LATIN6</literal></entry>
+        <entry><emphasis>LATIN6</emphasis>,
+        <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>LATIN7</literal></entry>
+        <entry><emphasis>LATIN7</emphasis>,
+        <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>LATIN8</literal></entry>
+        <entry><emphasis>LATIN8</emphasis>,
+        <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>LATIN9</literal></entry>
+        <entry><emphasis>LATIN9</emphasis>,
+        <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>LATIN10</literal></entry>
+        <entry><emphasis>LATIN10</emphasis>,
+        <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+        <entry><emphasis>MULE_INTERNAL</emphasis>,
+         <literal>BIG5</literal>,
+         <literal>EUC_CN</literal>,
+         <literal>EUC_JP</literal>,
+         <literal>EUC_KR</literal>,
+         <literal>EUC_TW</literal>,
+         <literal>ISO_8859_5</literal>,
+         <literal>KOI8R</literal>,
+         <literal>LATIN1</literal> to <literal>LATIN4</literal>,
+         <literal>SJIS</literal>,
+         <literal>WIN866</literal>,
+         <literal>WIN1250</literal>,
+         <literal>WIN1251</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>SJIS</literal></entry>
+        <entry><emphasis>not supported as a server encoding</emphasis>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>SHIFT_JIS_2004</literal></entry>
+        <entry><emphasis>not supported as a server encoding</emphasis>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>SQL_ASCII</literal></entry>
+        <entry><emphasis>any (no conversion will be performed)</emphasis>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>UHC</literal></entry>
+        <entry><emphasis>not supported as a server encoding</emphasis>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>UTF8</literal></entry>
+        <entry><emphasis>all supported encodings</emphasis>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>WIN866</literal></entry>
+        <entry><emphasis>WIN866</emphasis>,
+         <literal>ISO_8859_5</literal>,
+         <literal>KOI8R</literal>,
+         <literal>MULE_INTERNAL</literal>,
+         <literal>UTF8</literal>,
+         <literal>WIN1251</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>WIN874</literal></entry>
+        <entry><emphasis>WIN874</emphasis>,
+        <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>WIN1250</literal></entry>
+        <entry><emphasis>WIN1250</emphasis>,
+         <literal>LATIN2</literal>,
+         <literal>MULE_INTERNAL</literal>,
+         <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>WIN1251</literal></entry>
+        <entry><emphasis>WIN1251</emphasis>,
+         <literal>ISO_8859_5</literal>,
+         <literal>KOI8R</literal>,
+         <literal>MULE_INTERNAL</literal>,
+         <literal>UTF8</literal>,
+         <literal>WIN866</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>WIN1252</literal></entry>
+        <entry><emphasis>WIN1252</emphasis>,
+         <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>WIN1253</literal></entry>
+        <entry><emphasis>WIN1253</emphasis>,
+         <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>WIN1254</literal></entry>
+        <entry><emphasis>WIN1254</emphasis>,
+         <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>WIN1255</literal></entry>
+        <entry><emphasis>WIN1255</emphasis>,
+         <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>WIN1256</literal></entry>
+        <entry><emphasis>WIN1256</emphasis>,
+        <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>WIN1257</literal></entry>
+        <entry><emphasis>WIN1257</emphasis>,
+         <literal>UTF8</literal>
+        </entry>
+       </row>
+       <row>
+        <entry><literal>WIN1258</literal></entry>
+        <entry><emphasis>WIN1258</emphasis>,
+        <literal>UTF8</literal>
+        </entry>
+       </row>
+      </tbody>
+     </tgroup>
+    </table>
+
+    <table id="builtin-conversions-table">
+     <title>All Built-in Character Set Conversions</title>
+     <tgroup cols="3">
+      <colspec colname="col1" colwidth="2*"/>
+      <colspec colname="col2" colwidth="1*"/>
+      <colspec colname="col3" colwidth="1*"/>
+      <thead>
+       <row>
+        <entry>Conversion Name
+         <footnote>
+          <para>
+           The conversion names follow a standard naming scheme: The
+           official name of the source encoding with all
+           non-alphanumeric characters replaced by underscores, followed
+           by <literal>_to_</literal>, followed by the similarly processed
+           destination encoding name.  Therefore, these names sometimes
+           deviate from the customary encoding names shown in
+           <xref linkend="charset-table"/>.
+          </para>
+         </footnote>
+        </entry>
+        <entry>Source Encoding</entry>
+        <entry>Destination Encoding</entry>
+       </row>
+      </thead>
+
+      <tbody>
+       <row>
+        <entry><literal>big5_to_euc_tw</literal></entry>
+        <entry><literal>BIG5</literal></entry>
+        <entry><literal>EUC_TW</literal></entry>
+       </row>
+       <row>
+        <entry><literal>big5_to_mic</literal></entry>
+        <entry><literal>BIG5</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+       </row>
+       <row>
+        <entry><literal>big5_to_utf8</literal></entry>
+        <entry><literal>BIG5</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>euc_cn_to_mic</literal></entry>
+        <entry><literal>EUC_CN</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+       </row>
+       <row>
+        <entry><literal>euc_cn_to_utf8</literal></entry>
+        <entry><literal>EUC_CN</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>euc_jp_to_mic</literal></entry>
+        <entry><literal>EUC_JP</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+       </row>
+       <row>
+        <entry><literal>euc_jp_to_sjis</literal></entry>
+        <entry><literal>EUC_JP</literal></entry>
+        <entry><literal>SJIS</literal></entry>
+       </row>
+       <row>
+        <entry><literal>euc_jp_to_utf8</literal></entry>
+        <entry><literal>EUC_JP</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>euc_kr_to_mic</literal></entry>
+        <entry><literal>EUC_KR</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+       </row>
+       <row>
+        <entry><literal>euc_kr_to_utf8</literal></entry>
+        <entry><literal>EUC_KR</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>euc_tw_to_big5</literal></entry>
+        <entry><literal>EUC_TW</literal></entry>
+        <entry><literal>BIG5</literal></entry>
+       </row>
+       <row>
+        <entry><literal>euc_tw_to_mic</literal></entry>
+        <entry><literal>EUC_TW</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+       </row>
+       <row>
+        <entry><literal>euc_tw_to_utf8</literal></entry>
+        <entry><literal>EUC_TW</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>gb18030_to_utf8</literal></entry>
+        <entry><literal>GB18030</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>gbk_to_utf8</literal></entry>
+        <entry><literal>GBK</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_10_to_utf8</literal></entry>
+        <entry><literal>LATIN6</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_13_to_utf8</literal></entry>
+        <entry><literal>LATIN7</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_14_to_utf8</literal></entry>
+        <entry><literal>LATIN8</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_15_to_utf8</literal></entry>
+        <entry><literal>LATIN9</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_16_to_utf8</literal></entry>
+        <entry><literal>LATIN10</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_1_to_mic</literal></entry>
+        <entry><literal>LATIN1</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_1_to_utf8</literal></entry>
+        <entry><literal>LATIN1</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_2_to_mic</literal></entry>
+        <entry><literal>LATIN2</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_2_to_utf8</literal></entry>
+        <entry><literal>LATIN2</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_2_to_windows_1250</literal></entry>
+        <entry><literal>LATIN2</literal></entry>
+        <entry><literal>WIN1250</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_3_to_mic</literal></entry>
+        <entry><literal>LATIN3</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_3_to_utf8</literal></entry>
+        <entry><literal>LATIN3</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_4_to_mic</literal></entry>
+        <entry><literal>LATIN4</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_4_to_utf8</literal></entry>
+        <entry><literal>LATIN4</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_5_to_koi8_r</literal></entry>
+        <entry><literal>ISO_8859_5</literal></entry>
+        <entry><literal>KOI8R</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_5_to_mic</literal></entry>
+        <entry><literal>ISO_8859_5</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_5_to_utf8</literal></entry>
+        <entry><literal>ISO_8859_5</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_5_to_windows_1251</literal></entry>
+        <entry><literal>ISO_8859_5</literal></entry>
+        <entry><literal>WIN1251</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_5_to_windows_866</literal></entry>
+        <entry><literal>ISO_8859_5</literal></entry>
+        <entry><literal>WIN866</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_6_to_utf8</literal></entry>
+        <entry><literal>ISO_8859_6</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_7_to_utf8</literal></entry>
+        <entry><literal>ISO_8859_7</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_8_to_utf8</literal></entry>
+        <entry><literal>ISO_8859_8</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>iso_8859_9_to_utf8</literal></entry>
+        <entry><literal>LATIN5</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>johab_to_utf8</literal></entry>
+        <entry><literal>JOHAB</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>koi8_r_to_iso_8859_5</literal></entry>
+        <entry><literal>KOI8R</literal></entry>
+        <entry><literal>ISO_8859_5</literal></entry>
+       </row>
+       <row>
+        <entry><literal>koi8_r_to_mic</literal></entry>
+        <entry><literal>KOI8R</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+       </row>
+       <row>
+        <entry><literal>koi8_r_to_utf8</literal></entry>
+        <entry><literal>KOI8R</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>koi8_r_to_windows_1251</literal></entry>
+        <entry><literal>KOI8R</literal></entry>
+        <entry><literal>WIN1251</literal></entry>
+       </row>
+       <row>
+        <entry><literal>koi8_r_to_windows_866</literal></entry>
+        <entry><literal>KOI8R</literal></entry>
+        <entry><literal>WIN866</literal></entry>
+       </row>
+       <row>
+        <entry><literal>koi8_u_to_utf8</literal></entry>
+        <entry><literal>KOI8U</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>mic_to_big5</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+        <entry><literal>BIG5</literal></entry>
+       </row>
+       <row>
+        <entry><literal>mic_to_euc_cn</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+        <entry><literal>EUC_CN</literal></entry>
+       </row>
+       <row>
+        <entry><literal>mic_to_euc_jp</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+        <entry><literal>EUC_JP</literal></entry>
+       </row>
+       <row>
+        <entry><literal>mic_to_euc_kr</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+        <entry><literal>EUC_KR</literal></entry>
+       </row>
+       <row>
+        <entry><literal>mic_to_euc_tw</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+        <entry><literal>EUC_TW</literal></entry>
+       </row>
+       <row>
+        <entry><literal>mic_to_iso_8859_1</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+        <entry><literal>LATIN1</literal></entry>
+       </row>
+       <row>
+        <entry><literal>mic_to_iso_8859_2</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+        <entry><literal>LATIN2</literal></entry>
+       </row>
+       <row>
+        <entry><literal>mic_to_iso_8859_3</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+        <entry><literal>LATIN3</literal></entry>
+       </row>
+       <row>
+        <entry><literal>mic_to_iso_8859_4</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+        <entry><literal>LATIN4</literal></entry>
+       </row>
+       <row>
+        <entry><literal>mic_to_iso_8859_5</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+        <entry><literal>ISO_8859_5</literal></entry>
+       </row>
+       <row>
+        <entry><literal>mic_to_koi8_r</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+        <entry><literal>KOI8R</literal></entry>
+       </row>
+       <row>
+        <entry><literal>mic_to_sjis</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+        <entry><literal>SJIS</literal></entry>
+       </row>
+       <row>
+        <entry><literal>mic_to_windows_1250</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+        <entry><literal>WIN1250</literal></entry>
+       </row>
+       <row>
+        <entry><literal>mic_to_windows_1251</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+        <entry><literal>WIN1251</literal></entry>
+       </row>
+       <row>
+        <entry><literal>mic_to_windows_866</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+        <entry><literal>WIN866</literal></entry>
+       </row>
+       <row>
+        <entry><literal>sjis_to_euc_jp</literal></entry>
+        <entry><literal>SJIS</literal></entry>
+        <entry><literal>EUC_JP</literal></entry>
+       </row>
+       <row>
+        <entry><literal>sjis_to_mic</literal></entry>
+        <entry><literal>SJIS</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+       </row>
+       <row>
+        <entry><literal>sjis_to_utf8</literal></entry>
+        <entry><literal>SJIS</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>windows_1258_to_utf8</literal></entry>
+        <entry><literal>WIN1258</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>uhc_to_utf8</literal></entry>
+        <entry><literal>UHC</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_big5</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>BIG5</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_euc_cn</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>EUC_CN</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_euc_jp</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>EUC_JP</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_euc_kr</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>EUC_KR</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_euc_tw</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>EUC_TW</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_gb18030</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>GB18030</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_gbk</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>GBK</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_iso_8859_1</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>LATIN1</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_iso_8859_10</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>LATIN6</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_iso_8859_13</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>LATIN7</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_iso_8859_14</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>LATIN8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_iso_8859_15</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>LATIN9</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_iso_8859_16</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>LATIN10</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_iso_8859_2</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>LATIN2</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_iso_8859_3</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>LATIN3</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_iso_8859_4</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>LATIN4</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_iso_8859_5</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>ISO_8859_5</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_iso_8859_6</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>ISO_8859_6</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_iso_8859_7</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>ISO_8859_7</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_iso_8859_8</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>ISO_8859_8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_iso_8859_9</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>LATIN5</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_johab</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>JOHAB</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_koi8_r</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>KOI8R</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_koi8_u</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>KOI8U</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_sjis</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>SJIS</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_windows_1258</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>WIN1258</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_uhc</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>UHC</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_windows_1250</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>WIN1250</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_windows_1251</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>WIN1251</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_windows_1252</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>WIN1252</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_windows_1253</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>WIN1253</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_windows_1254</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>WIN1254</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_windows_1255</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>WIN1255</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_windows_1256</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>WIN1256</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_windows_1257</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>WIN1257</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_windows_866</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>WIN866</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_windows_874</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>WIN874</literal></entry>
+       </row>
+       <row>
+        <entry><literal>windows_1250_to_iso_8859_2</literal></entry>
+        <entry><literal>WIN1250</literal></entry>
+        <entry><literal>LATIN2</literal></entry>
+       </row>
+       <row>
+        <entry><literal>windows_1250_to_mic</literal></entry>
+        <entry><literal>WIN1250</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+       </row>
+       <row>
+        <entry><literal>windows_1250_to_utf8</literal></entry>
+        <entry><literal>WIN1250</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>windows_1251_to_iso_8859_5</literal></entry>
+        <entry><literal>WIN1251</literal></entry>
+        <entry><literal>ISO_8859_5</literal></entry>
+       </row>
+       <row>
+        <entry><literal>windows_1251_to_koi8_r</literal></entry>
+        <entry><literal>WIN1251</literal></entry>
+        <entry><literal>KOI8R</literal></entry>
+       </row>
+       <row>
+        <entry><literal>windows_1251_to_mic</literal></entry>
+        <entry><literal>WIN1251</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+       </row>
+       <row>
+        <entry><literal>windows_1251_to_utf8</literal></entry>
+        <entry><literal>WIN1251</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>windows_1251_to_windows_866</literal></entry>
+        <entry><literal>WIN1251</literal></entry>
+        <entry><literal>WIN866</literal></entry>
+       </row>
+       <row>
+        <entry><literal>windows_1252_to_utf8</literal></entry>
+        <entry><literal>WIN1252</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>windows_1256_to_utf8</literal></entry>
+        <entry><literal>WIN1256</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>windows_866_to_iso_8859_5</literal></entry>
+        <entry><literal>WIN866</literal></entry>
+        <entry><literal>ISO_8859_5</literal></entry>
+       </row>
+       <row>
+        <entry><literal>windows_866_to_koi8_r</literal></entry>
+        <entry><literal>WIN866</literal></entry>
+        <entry><literal>KOI8R</literal></entry>
+       </row>
+       <row>
+        <entry><literal>windows_866_to_mic</literal></entry>
+        <entry><literal>WIN866</literal></entry>
+        <entry><literal>MULE_INTERNAL</literal></entry>
+       </row>
+       <row>
+        <entry><literal>windows_866_to_utf8</literal></entry>
+        <entry><literal>WIN866</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>windows_866_to_windows_1251</literal></entry>
+        <entry><literal>WIN866</literal></entry>
+        <entry><literal>WIN</literal></entry>
+       </row>
+       <row>
+        <entry><literal>windows_874_to_utf8</literal></entry>
+        <entry><literal>WIN874</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>euc_jis_2004_to_utf8</literal></entry>
+        <entry><literal>EUC_JIS_2004</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_euc_jis_2004</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>EUC_JIS_2004</literal></entry>
+       </row>
+       <row>
+        <entry><literal>shift_jis_2004_to_utf8</literal></entry>
+        <entry><literal>SHIFT_JIS_2004</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+       </row>
+       <row>
+        <entry><literal>utf8_to_shift_jis_2004</literal></entry>
+        <entry><literal>UTF8</literal></entry>
+        <entry><literal>SHIFT_JIS_2004</literal></entry>
+       </row>
+       <row>
+        <entry><literal>euc_jis_2004_to_shift_jis_2004</literal></entry>
+        <entry><literal>EUC_JIS_2004</literal></entry>
+        <entry><literal>SHIFT_JIS_2004</literal></entry>
+       </row>
+       <row>
+        <entry><literal>shift_jis_2004_to_euc_jis_2004</literal></entry>
+        <entry><literal>SHIFT_JIS_2004</literal></entry>
+        <entry><literal>EUC_JIS_2004</literal></entry>
+       </row>
+      </tbody>
+     </tgroup>
+    </table>
    </sect2>
 
    <sect2>
@@ -1871,7 +2713,7 @@ RESET client_encoding;
       </varlistentry>
 
       <varlistentry>
-       <term><ulink url="http://www.unicode.org/"></ulink></term>
+       <term><ulink url="https://www.unicode.org/"></ulink></term>
 
        <listitem>
         <para>
@@ -1881,7 +2723,7 @@ RESET client_encoding;
       </varlistentry>
 
       <varlistentry>
-       <term>RFC 3629</term>
+       <term><ulink url="https://tools.ietf.org/html/rfc3629">RFC 3629</ulink></term>
 
        <listitem>
         <para>

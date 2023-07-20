@@ -866,7 +866,7 @@ static void log_select_dml(Oid auditOid, List *rangeTabls) {
     relOid = rte->relid;
     relNamespaceOid = get_rel_namespace(relOid);
 
-    if (!auditLogCatalog && IsSystemNamespace(relNamespaceOid)) continue;
+    if (!auditLogCatalog && IsCatalogNamespace(relNamespaceOid)) continue;
 
     /*
      * Default is that this was not through a grant, to support session
@@ -1044,7 +1044,7 @@ static void log_function_execute(Oid objectId) {
    * Logging execution of all pg_catalog functions would make the log
    * unusably noisy.
    */
-  if (IsSystemNamespace(proc->pronamespace)) {
+  if (IsCatalogNamespace(proc->pronamespace)) {
     ReleaseSysCache(proctup);
     return;
   }

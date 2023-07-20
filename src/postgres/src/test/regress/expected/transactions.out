@@ -2,9 +2,12 @@
 -- TRANSACTIONS
 --
 BEGIN;
-SELECT *
-   INTO TABLE xacttest
-   FROM aggtest;
+CREATE TABLE xacttest (a smallint, b real);
+INSERT INTO xacttest VALUES
+  (56, 7.8),
+  (100, 99.097),
+  (0, 0.09561),
+  (42, 324.78);
 INSERT INTO xacttest (a, b) VALUES (777, 777.777);
 END;
 -- should retrieve one value--
@@ -16,9 +19,9 @@ SELECT a FROM xacttest WHERE a > 100;
 
 BEGIN;
 CREATE TABLE disappear (a int4);
-DELETE FROM aggtest;
+DELETE FROM xacttest;
 -- should be empty
-SELECT * FROM aggtest;
+SELECT * FROM xacttest;
  a | b 
 ---+---
 (0 rows)
@@ -31,14 +34,15 @@ SELECT oid FROM pg_class WHERE relname = 'disappear';
 (0 rows)
 
 -- should have members again
-SELECT * FROM aggtest;
+SELECT * FROM xacttest;
   a  |    b    
 -----+---------
   56 |     7.8
  100 |  99.097
    0 | 0.09561
   42 |  324.78
-(4 rows)
+ 777 | 777.777
+(5 rows)
 
 -- Read-only tests
 CREATE TABLE writetest (a int);
@@ -659,13 +663,259 @@ ERROR:  portal "ctt" cannot be run
 COMMIT;
 DROP FUNCTION create_temp_tab();
 DROP FUNCTION invert(x float8);
+-- Tests for AND CHAIN
+CREATE TABLE abc (a int);
+-- set nondefault value so we have something to override below
+SET default_transaction_read_only = on;
+START TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ WRITE, DEFERRABLE;
+SHOW transaction_isolation;
+ transaction_isolation 
+-----------------------
+ repeatable read
+(1 row)
+
+SHOW transaction_read_only;
+ transaction_read_only 
+-----------------------
+ off
+(1 row)
+
+SHOW transaction_deferrable;
+ transaction_deferrable 
+------------------------
+ on
+(1 row)
+
+INSERT INTO abc VALUES (1);
+INSERT INTO abc VALUES (2);
+COMMIT AND CHAIN;  -- TBLOCK_END
+SHOW transaction_isolation;
+ transaction_isolation 
+-----------------------
+ repeatable read
+(1 row)
+
+SHOW transaction_read_only;
+ transaction_read_only 
+-----------------------
+ off
+(1 row)
+
+SHOW transaction_deferrable;
+ transaction_deferrable 
+------------------------
+ on
+(1 row)
+
+INSERT INTO abc VALUES ('error');
+ERROR:  invalid input syntax for type integer: "error"
+LINE 1: INSERT INTO abc VALUES ('error');
+                                ^
+INSERT INTO abc VALUES (3);  -- check it's really aborted
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+COMMIT AND CHAIN;  -- TBLOCK_ABORT_END
+SHOW transaction_isolation;
+ transaction_isolation 
+-----------------------
+ repeatable read
+(1 row)
+
+SHOW transaction_read_only;
+ transaction_read_only 
+-----------------------
+ off
+(1 row)
+
+SHOW transaction_deferrable;
+ transaction_deferrable 
+------------------------
+ on
+(1 row)
+
+INSERT INTO abc VALUES (4);
+COMMIT;
+START TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ WRITE, DEFERRABLE;
+SHOW transaction_isolation;
+ transaction_isolation 
+-----------------------
+ repeatable read
+(1 row)
+
+SHOW transaction_read_only;
+ transaction_read_only 
+-----------------------
+ off
+(1 row)
+
+SHOW transaction_deferrable;
+ transaction_deferrable 
+------------------------
+ on
+(1 row)
+
+SAVEPOINT x;
+INSERT INTO abc VALUES ('error');
+ERROR:  invalid input syntax for type integer: "error"
+LINE 1: INSERT INTO abc VALUES ('error');
+                                ^
+COMMIT AND CHAIN;  -- TBLOCK_ABORT_PENDING
+SHOW transaction_isolation;
+ transaction_isolation 
+-----------------------
+ repeatable read
+(1 row)
+
+SHOW transaction_read_only;
+ transaction_read_only 
+-----------------------
+ off
+(1 row)
+
+SHOW transaction_deferrable;
+ transaction_deferrable 
+------------------------
+ on
+(1 row)
+
+INSERT INTO abc VALUES (5);
+COMMIT;
+START TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ WRITE, DEFERRABLE;
+SHOW transaction_isolation;
+ transaction_isolation 
+-----------------------
+ repeatable read
+(1 row)
+
+SHOW transaction_read_only;
+ transaction_read_only 
+-----------------------
+ off
+(1 row)
+
+SHOW transaction_deferrable;
+ transaction_deferrable 
+------------------------
+ on
+(1 row)
+
+SAVEPOINT x;
+COMMIT AND CHAIN;  -- TBLOCK_SUBCOMMIT
+SHOW transaction_isolation;
+ transaction_isolation 
+-----------------------
+ repeatable read
+(1 row)
+
+SHOW transaction_read_only;
+ transaction_read_only 
+-----------------------
+ off
+(1 row)
+
+SHOW transaction_deferrable;
+ transaction_deferrable 
+------------------------
+ on
+(1 row)
+
+COMMIT;
+-- different mix of options just for fun
+START TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ WRITE, NOT DEFERRABLE;
+SHOW transaction_isolation;
+ transaction_isolation 
+-----------------------
+ serializable
+(1 row)
+
+SHOW transaction_read_only;
+ transaction_read_only 
+-----------------------
+ off
+(1 row)
+
+SHOW transaction_deferrable;
+ transaction_deferrable 
+------------------------
+ off
+(1 row)
+
+INSERT INTO abc VALUES (6);
+ROLLBACK AND CHAIN;  -- TBLOCK_ABORT_PENDING
+SHOW transaction_isolation;
+ transaction_isolation 
+-----------------------
+ serializable
+(1 row)
+
+SHOW transaction_read_only;
+ transaction_read_only 
+-----------------------
+ off
+(1 row)
+
+SHOW transaction_deferrable;
+ transaction_deferrable 
+------------------------
+ off
+(1 row)
+
+INSERT INTO abc VALUES ('error');
+ERROR:  invalid input syntax for type integer: "error"
+LINE 1: INSERT INTO abc VALUES ('error');
+                                ^
+ROLLBACK AND CHAIN;  -- TBLOCK_ABORT_END
+SHOW transaction_isolation;
+ transaction_isolation 
+-----------------------
+ serializable
+(1 row)
+
+SHOW transaction_read_only;
+ transaction_read_only 
+-----------------------
+ off
+(1 row)
+
+SHOW transaction_deferrable;
+ transaction_deferrable 
+------------------------
+ off
+(1 row)
+
+ROLLBACK;
+-- not allowed outside a transaction block
+COMMIT AND CHAIN;  -- error
+ERROR:  COMMIT AND CHAIN can only be used in transaction blocks
+ROLLBACK AND CHAIN;  -- error
+ERROR:  ROLLBACK AND CHAIN can only be used in transaction blocks
+SELECT * FROM abc ORDER BY 1;
+ a 
+---
+ 1
+ 2
+ 4
+ 5
+(4 rows)
+
+RESET default_transaction_read_only;
+DROP TABLE abc;
 -- Test assorted behaviors around the implicit transaction block created
 -- when multiple SQL commands are sent in a single Query message.  These
 -- tests rely on the fact that psql will not break SQL commands apart at a
 -- backslash-quoted semicolon, but will send them as one Query.
 create temp table i_table (f1 int);
--- psql will show only the last result in a multi-statement Query
+-- psql will show all results of a multi-statement Query
 SELECT 1\; SELECT 2\; SELECT 3;
+ ?column? 
+----------
+        1
+(1 row)
+
+ ?column? 
+----------
+        2
+(1 row)
+
  ?column? 
 ----------
         3
@@ -680,6 +930,12 @@ insert into i_table values(1)\; select * from i_table;
 
 -- 1/0 error will cause rolling back the whole implicit transaction
 insert into i_table values(2)\; select * from i_table\; select 1/0;
+ f1 
+----
+  1
+  2
+(2 rows)
+
 ERROR:  division by zero
 select * from i_table;
  f1 
@@ -699,8 +955,18 @@ WARNING:  there is no transaction in progress
 -- begin converts implicit transaction into a regular one that
 -- can extend past the end of the Query
 select 1\; begin\; insert into i_table values(5);
+ ?column? 
+----------
+        1
+(1 row)
+
 commit;
 select 1\; begin\; insert into i_table values(6);
+ ?column? 
+----------
+        1
+(1 row)
+
 rollback;
 -- commit in implicit-transaction state commits but issues a warning.
 insert into i_table values(7)\; commit\; insert into i_table values(8)\; select 1/0;
@@ -727,22 +993,127 @@ rollback;  -- we are not in a transaction at this point
 WARNING:  there is no transaction in progress
 -- implicit transaction block is still a transaction block, for e.g. VACUUM
 SELECT 1\; VACUUM;
+ ?column? 
+----------
+        1
+(1 row)
+
 ERROR:  VACUUM cannot run inside a transaction block
 SELECT 1\; COMMIT\; VACUUM;
 WARNING:  there is no transaction in progress
+ ?column? 
+----------
+        1
+(1 row)
+
 ERROR:  VACUUM cannot run inside a transaction block
 -- we disallow savepoint-related commands in implicit-transaction state
 SELECT 1\; SAVEPOINT sp;
+ ?column? 
+----------
+        1
+(1 row)
+
 ERROR:  SAVEPOINT can only be used in transaction blocks
 SELECT 1\; COMMIT\; SAVEPOINT sp;
 WARNING:  there is no transaction in progress
+ ?column? 
+----------
+        1
+(1 row)
+
 ERROR:  SAVEPOINT can only be used in transaction blocks
 ROLLBACK TO SAVEPOINT sp\; SELECT 2;
 ERROR:  ROLLBACK TO SAVEPOINT can only be used in transaction blocks
 SELECT 2\; RELEASE SAVEPOINT sp\; SELECT 3;
+ ?column? 
+----------
+        2
+(1 row)
+
 ERROR:  RELEASE SAVEPOINT can only be used in transaction blocks
 -- but this is OK, because the BEGIN converts it to a regular xact
 SELECT 1\; BEGIN\; SAVEPOINT sp\; ROLLBACK TO SAVEPOINT sp\; COMMIT;
+ ?column? 
+----------
+        1
+(1 row)
+
+-- Tests for AND CHAIN in implicit transaction blocks
+SET TRANSACTION READ ONLY\; COMMIT AND CHAIN;  -- error
+ERROR:  COMMIT AND CHAIN can only be used in transaction blocks
+SHOW transaction_read_only;
+ transaction_read_only 
+-----------------------
+ off
+(1 row)
+
+SET TRANSACTION READ ONLY\; ROLLBACK AND CHAIN;  -- error
+ERROR:  ROLLBACK AND CHAIN can only be used in transaction blocks
+SHOW transaction_read_only;
+ transaction_read_only 
+-----------------------
+ off
+(1 row)
+
+CREATE TABLE abc (a int);
+-- COMMIT/ROLLBACK + COMMIT/ROLLBACK AND CHAIN
+INSERT INTO abc VALUES (7)\; COMMIT\; INSERT INTO abc VALUES (8)\; COMMIT AND CHAIN;  -- 7 commit, 8 error
+WARNING:  there is no transaction in progress
+ERROR:  COMMIT AND CHAIN can only be used in transaction blocks
+INSERT INTO abc VALUES (9)\; ROLLBACK\; INSERT INTO abc VALUES (10)\; ROLLBACK AND CHAIN;  -- 9 rollback, 10 error
+WARNING:  there is no transaction in progress
+ERROR:  ROLLBACK AND CHAIN can only be used in transaction blocks
+-- COMMIT/ROLLBACK AND CHAIN + COMMIT/ROLLBACK
+INSERT INTO abc VALUES (11)\; COMMIT AND CHAIN\; INSERT INTO abc VALUES (12)\; COMMIT;  -- 11 error, 12 not reached
+ERROR:  COMMIT AND CHAIN can only be used in transaction blocks
+INSERT INTO abc VALUES (13)\; ROLLBACK AND CHAIN\; INSERT INTO abc VALUES (14)\; ROLLBACK;  -- 13 error, 14 not reached
+ERROR:  ROLLBACK AND CHAIN can only be used in transaction blocks
+-- START TRANSACTION + COMMIT/ROLLBACK AND CHAIN
+START TRANSACTION ISOLATION LEVEL REPEATABLE READ\; INSERT INTO abc VALUES (15)\; COMMIT AND CHAIN;  -- 15 ok
+SHOW transaction_isolation;  -- transaction is active at this point
+ transaction_isolation 
+-----------------------
+ repeatable read
+(1 row)
+
+COMMIT;
+START TRANSACTION ISOLATION LEVEL REPEATABLE READ\; INSERT INTO abc VALUES (16)\; ROLLBACK AND CHAIN;  -- 16 ok
+SHOW transaction_isolation;  -- transaction is active at this point
+ transaction_isolation 
+-----------------------
+ repeatable read
+(1 row)
+
+ROLLBACK;
+SET default_transaction_isolation = 'read committed';
+-- START TRANSACTION + COMMIT/ROLLBACK + COMMIT/ROLLBACK AND CHAIN
+START TRANSACTION ISOLATION LEVEL REPEATABLE READ\; INSERT INTO abc VALUES (17)\; COMMIT\; INSERT INTO abc VALUES (18)\; COMMIT AND CHAIN;  -- 17 commit, 18 error
+ERROR:  COMMIT AND CHAIN can only be used in transaction blocks
+SHOW transaction_isolation;  -- out of transaction block
+ transaction_isolation 
+-----------------------
+ read committed
+(1 row)
+
+START TRANSACTION ISOLATION LEVEL REPEATABLE READ\; INSERT INTO abc VALUES (19)\; ROLLBACK\; INSERT INTO abc VALUES (20)\; ROLLBACK AND CHAIN;  -- 19 rollback, 20 error
+ERROR:  ROLLBACK AND CHAIN can only be used in transaction blocks
+SHOW transaction_isolation;  -- out of transaction block
+ transaction_isolation 
+-----------------------
+ read committed
+(1 row)
+
+RESET default_transaction_isolation;
+SELECT * FROM abc ORDER BY 1;
+ a  
+----
+  7
+ 15
+ 17
+(3 rows)
+
+DROP TABLE abc;
 -- Test for successful cleanup of an aborted transaction at session exit.
 -- THIS MUST BE THE LAST TEST IN THIS FILE.
 begin;

@@ -3,7 +3,7 @@
  * pg_proc.h
  *	  definition of the "procedure" system catalog (pg_proc)
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_proc.h
@@ -18,9 +18,8 @@
 #define PG_PROC_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_proc_d.h"
-
 #include "catalog/objectaddress.h"
+#include "catalog/pg_proc_d.h"
 #include "nodes/pg_list.h"
 
 /* ----------------
@@ -30,17 +29,19 @@
  */
 CATALOG(pg_proc,1255,ProcedureRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(81,ProcedureRelation_Rowtype_Id) BKI_SCHEMA_MACRO
 {
+	Oid			oid;			/* oid */
+
 	/* procedure name */
 	NameData	proname;
 
 	/* OID of namespace containing this proc */
-	Oid			pronamespace BKI_DEFAULT(PGNSP);
+	Oid			pronamespace BKI_DEFAULT(pg_catalog) BKI_LOOKUP(pg_namespace);
 
 	/* procedure owner */
-	Oid			proowner BKI_DEFAULT(PGUID);
+	Oid			proowner BKI_DEFAULT(POSTGRES) BKI_LOOKUP(pg_authid);
 
 	/* OID of pg_language entry */
-	Oid			prolang BKI_DEFAULT(12);
+	Oid			prolang BKI_DEFAULT(internal) BKI_LOOKUP(pg_language);
 
 	/* estimated execution cost */
 	float4		procost BKI_DEFAULT(1);
@@ -48,11 +49,11 @@ CATALOG(pg_proc,1255,ProcedureRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(81,Proce
 	/* estimated # of rows out (if proretset) */
 	float4		prorows BKI_DEFAULT(0);
 
-	/* element type of variadic array, or 0 */
-	Oid			provariadic BKI_DEFAULT(0) BKI_LOOKUP(pg_type);
+	/* element type of variadic array, or 0 if not variadic */
+	Oid			provariadic BKI_DEFAULT(0) BKI_LOOKUP_OPT(pg_type);
 
-	/* transforms calls to it during planning */
-	regproc		protransform BKI_DEFAULT(0) BKI_LOOKUP(pg_proc);
+	/* planner support function for this function, or 0 if none */
+	regproc		prosupport BKI_DEFAULT(0) BKI_LOOKUP_OPT(pg_proc);
 
 	/* see PROKIND_ categories below */
 	char		prokind BKI_DEFAULT(f);
@@ -91,7 +92,7 @@ CATALOG(pg_proc,1255,ProcedureRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(81,Proce
 	 */
 
 	/* parameter types (excludes OUT params) */
-	oidvector	proargtypes BKI_LOOKUP(pg_type);
+	oidvector	proargtypes BKI_LOOKUP(pg_type) BKI_FORCE_NOT_NULL;
 
 #ifdef CATALOG_VARLEN
 
@@ -108,13 +109,16 @@ CATALOG(pg_proc,1255,ProcedureRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(81,Proce
 	pg_node_tree proargdefaults BKI_DEFAULT(_null_);
 
 	/* types for which to apply transforms */
-	Oid			protrftypes[1] BKI_DEFAULT(_null_);
+	Oid			protrftypes[1] BKI_DEFAULT(_null_) BKI_LOOKUP(pg_type);
 
 	/* procedure source text */
 	text		prosrc BKI_FORCE_NOT_NULL;
 
 	/* secondary procedure info (can be NULL) */
 	text		probin BKI_DEFAULT(_null_);
+
+	/* pre-parsed SQL function body */
+	pg_node_tree prosqlbody BKI_DEFAULT(_null_);
 
 	/* procedure-local GUC settings */
 	text		proconfig[1] BKI_DEFAULT(_null_);
@@ -130,6 +134,11 @@ CATALOG(pg_proc,1255,ProcedureRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(81,Proce
  * ----------------
  */
 typedef FormData_pg_proc *Form_pg_proc;
+
+DECLARE_TOAST(pg_proc, 2836, 2837);
+
+DECLARE_UNIQUE_INDEX_PKEY(pg_proc_oid_index, 2690, ProcedureOidIndexId, on pg_proc using btree(oid oid_ops));
+DECLARE_UNIQUE_INDEX(pg_proc_proname_args_nsp_index, 2691, ProcedureNameArgsNspIndexId, on pg_proc using btree(proname name_ops, proargtypes oidvector_ops, pronamespace oid_ops));
 
 #ifdef EXPOSE_TO_CLIENT_CODE
 
@@ -156,10 +165,10 @@ typedef FormData_pg_proc *Form_pg_proc;
 /*
  * Symbolic values for proparallel column: these indicate whether a function
  * can be safely be run in a parallel backend, during parallelism but
- * necessarily in the master, or only in non-parallel mode.
+ * necessarily in the leader, or only in non-parallel mode.
  */
-#define PROPARALLEL_SAFE		's' /* can run in worker or master */
-#define PROPARALLEL_RESTRICTED	'r' /* can run in parallel master only */
+#define PROPARALLEL_SAFE		's' /* can run in worker or leader */
+#define PROPARALLEL_RESTRICTED	'r' /* can run in parallel leader only */
 #define PROPARALLEL_UNSAFE		'u' /* banned while in parallel mode */
 
 /*
@@ -177,30 +186,32 @@ typedef FormData_pg_proc *Form_pg_proc;
 
 
 extern ObjectAddress ProcedureCreate(const char *procedureName,
-				Oid procNamespace,
-				bool replace,
-				bool returnsSet,
-				Oid returnType,
-				Oid proowner,
-				Oid languageObjectId,
-				Oid languageValidator,
-				const char *prosrc,
-				const char *probin,
-				char prokind,
-				bool security_definer,
-				bool isLeakProof,
-				bool isStrict,
-				char volatility,
-				char parallel,
-				oidvector *parameterTypes,
-				Datum allParameterTypes,
-				Datum parameterModes,
-				Datum parameterNames,
-				List *parameterDefaults,
-				Datum trftypes,
-				Datum proconfig,
-				float4 procost,
-				float4 prorows);
+									 Oid procNamespace,
+									 bool replace,
+									 bool returnsSet,
+									 Oid returnType,
+									 Oid proowner,
+									 Oid languageObjectId,
+									 Oid languageValidator,
+									 const char *prosrc,
+									 const char *probin,
+									 Node *prosqlbody,
+									 char prokind,
+									 bool security_definer,
+									 bool isLeakProof,
+									 bool isStrict,
+									 char volatility,
+									 char parallel,
+									 oidvector *parameterTypes,
+									 Datum allParameterTypes,
+									 Datum parameterModes,
+									 Datum parameterNames,
+									 List *parameterDefaults,
+									 Datum trftypes,
+									 Datum proconfig,
+									 Oid prosupport,
+									 float4 procost,
+									 float4 prorows);
 
 extern bool function_parse_error_transpose(const char *prosrc);
 

@@ -7,7 +7,7 @@
  * it's all we need in, eg, pg_dump.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/fe_utils/simple_list.c
@@ -100,6 +100,44 @@ simple_string_list_member(SimpleStringList *list, const char *val)
 }
 
 /*
+ * Destroy an OID list
+ */
+void
+simple_oid_list_destroy(SimpleOidList *list)
+{
+	SimpleOidListCell *cell;
+
+	cell = list->head;
+	while (cell != NULL)
+	{
+		SimpleOidListCell *next;
+
+		next = cell->next;
+		pg_free(cell);
+		cell = next;
+	}
+}
+
+/*
+ * Destroy a string list
+ */
+void
+simple_string_list_destroy(SimpleStringList *list)
+{
+	SimpleStringListCell *cell;
+
+	cell = list->head;
+	while (cell != NULL)
+	{
+		SimpleStringListCell *next;
+
+		next = cell->next;
+		pg_free(cell);
+		cell = next;
+	}
+}
+
+/*
  * Find first not-touched list entry, if there is one.
  */
 const char *
@@ -113,4 +151,25 @@ simple_string_list_not_touched(SimpleStringList *list)
 			return cell->val;
 	}
 	return NULL;
+}
+
+/*
+ * Append a pointer to the list.
+ *
+ * Caller must ensure that the pointer remains valid.
+ */
+void
+simple_ptr_list_append(SimplePtrList *list, void *ptr)
+{
+	SimplePtrListCell *cell;
+
+	cell = (SimplePtrListCell *) pg_malloc(sizeof(SimplePtrListCell));
+	cell->next = NULL;
+	cell->ptr = ptr;
+
+	if (list->tail)
+		list->tail->next = cell;
+	else
+		list->head = cell;
+	list->tail = cell;
 }

@@ -2,7 +2,7 @@
  * oracle_compat.c
  *	Oracle compatible functions.
  *
- * Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  *	Author: Edmund Mergl <E.Mergl@bawue.de>
  *	Multibyte enhancement: Tatsuo Ishii <ishii@postgresql.org>
@@ -16,14 +16,18 @@
 #include "postgres.h"
 
 #include "common/int.h"
+#include "mb/pg_wchar.h"
+#include "miscadmin.h"
 #include "utils/builtins.h"
 #include "utils/formatting.h"
-#include "mb/pg_wchar.h"
+#include "utils/memutils.h"
 
 
 static text *dotrim(const char *string, int stringlen,
-	   const char *set, int setlen,
-	   bool doltrim, bool dortrim);
+					const char *set, int setlen,
+					bool doltrim, bool dortrim);
+static bytea *dobyteatrim(bytea *string, bytea *set,
+						  bool doltrim, bool dortrim);
 
 
 /********************************************************************
@@ -153,7 +157,6 @@ lpad(PG_FUNCTION_ARGS)
 	int			m,
 				s1len,
 				s2len;
-
 	int			bytelen;
 
 	/* Negative len is silently taken as zero */
@@ -176,15 +179,16 @@ lpad(PG_FUNCTION_ARGS)
 	if (s2len <= 0)
 		len = s1len;			/* nothing to pad with, so don't pad */
 
-	bytelen = pg_database_encoding_max_length() * len;
-
-	/* check for integer overflow */
-	if (len != 0 && bytelen / pg_database_encoding_max_length() != len)
+	/* compute worst-case output length */
+	if (unlikely(pg_mul_s32_overflow(pg_database_encoding_max_length(), len,
+									 &bytelen)) ||
+		unlikely(pg_add_s32_overflow(bytelen, VARHDRSZ, &bytelen)) ||
+		unlikely(!AllocSizeIsValid(bytelen)))
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("requested length too large")));
 
-	ret = (text *) palloc(VARHDRSZ + bytelen);
+	ret = (text *) palloc(bytelen);
 
 	m = len - s1len;
 
@@ -251,7 +255,6 @@ rpad(PG_FUNCTION_ARGS)
 	int			m,
 				s1len,
 				s2len;
-
 	int			bytelen;
 
 	/* Negative len is silently taken as zero */
@@ -274,15 +277,17 @@ rpad(PG_FUNCTION_ARGS)
 	if (s2len <= 0)
 		len = s1len;			/* nothing to pad with, so don't pad */
 
-	bytelen = pg_database_encoding_max_length() * len;
-
-	/* Check for integer overflow */
-	if (len != 0 && bytelen / pg_database_encoding_max_length() != len)
+	/* compute worst-case output length */
+	if (unlikely(pg_mul_s32_overflow(pg_database_encoding_max_length(), len,
+									 &bytelen)) ||
+		unlikely(pg_add_s32_overflow(bytelen, VARHDRSZ, &bytelen)) ||
+		unlikely(!AllocSizeIsValid(bytelen)))
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("requested length too large")));
 
-	ret = (text *) palloc(VARHDRSZ + bytelen);
+	ret = (text *) palloc(bytelen);
+
 	m = len - s1len;
 
 	ptr1 = VARDATA_ANY(string1);
@@ -521,13 +526,83 @@ dotrim(const char *string, int stringlen,
 	return cstring_to_text_with_len(string, stringlen);
 }
 
+/*
+ * Common implementation for bytea versions of btrim, ltrim, rtrim
+ */
+bytea *
+dobyteatrim(bytea *string, bytea *set, bool doltrim, bool dortrim)
+{
+	bytea	   *ret;
+	char	   *ptr,
+			   *end,
+			   *ptr2,
+			   *ptr2start,
+			   *end2;
+	int			m,
+				stringlen,
+				setlen;
+
+	stringlen = VARSIZE_ANY_EXHDR(string);
+	setlen = VARSIZE_ANY_EXHDR(set);
+
+	if (stringlen <= 0 || setlen <= 0)
+		return string;
+
+	m = stringlen;
+	ptr = VARDATA_ANY(string);
+	end = ptr + stringlen - 1;
+	ptr2start = VARDATA_ANY(set);
+	end2 = ptr2start + setlen - 1;
+
+	if (doltrim)
+	{
+		while (m > 0)
+		{
+			ptr2 = ptr2start;
+			while (ptr2 <= end2)
+			{
+				if (*ptr == *ptr2)
+					break;
+				++ptr2;
+			}
+			if (ptr2 > end2)
+				break;
+			ptr++;
+			m--;
+		}
+	}
+
+	if (dortrim)
+	{
+		while (m > 0)
+		{
+			ptr2 = ptr2start;
+			while (ptr2 <= end2)
+			{
+				if (*end == *ptr2)
+					break;
+				++ptr2;
+			}
+			if (ptr2 > end2)
+				break;
+			end--;
+			m--;
+		}
+	}
+
+	ret = (bytea *) palloc(VARHDRSZ + m);
+	SET_VARSIZE(ret, VARHDRSZ + m);
+	memcpy(VARDATA(ret), ptr, m);
+	return ret;
+}
+
 /********************************************************************
  *
  * byteatrim
  *
  * Syntax:
  *
- *	 bytea byteatrim(byta string, bytea set)
+ *	 bytea byteatrim(bytea string, bytea set)
  *
  * Purpose:
  *
@@ -543,60 +618,62 @@ byteatrim(PG_FUNCTION_ARGS)
 	bytea	   *string = PG_GETARG_BYTEA_PP(0);
 	bytea	   *set = PG_GETARG_BYTEA_PP(1);
 	bytea	   *ret;
-	char	   *ptr,
-			   *end,
-			   *ptr2,
-			   *ptr2start,
-			   *end2;
-	int			m,
-				stringlen,
-				setlen;
 
-	stringlen = VARSIZE_ANY_EXHDR(string);
-	setlen = VARSIZE_ANY_EXHDR(set);
+	ret = dobyteatrim(string, set, true, true);
 
-	if (stringlen <= 0 || setlen <= 0)
-		PG_RETURN_BYTEA_P(string);
+	PG_RETURN_BYTEA_P(ret);
+}
 
-	m = stringlen;
-	ptr = VARDATA_ANY(string);
-	end = ptr + stringlen - 1;
-	ptr2start = VARDATA_ANY(set);
-	end2 = ptr2start + setlen - 1;
+/********************************************************************
+ *
+ * bytealtrim
+ *
+ * Syntax:
+ *
+ *	 bytea bytealtrim(bytea string, bytea set)
+ *
+ * Purpose:
+ *
+ *	 Returns string with initial characters removed up to the first
+ *	 character not in set.
+ *
+ ********************************************************************/
 
-	while (m > 0)
-	{
-		ptr2 = ptr2start;
-		while (ptr2 <= end2)
-		{
-			if (*ptr == *ptr2)
-				break;
-			++ptr2;
-		}
-		if (ptr2 > end2)
-			break;
-		ptr++;
-		m--;
-	}
+Datum
+bytealtrim(PG_FUNCTION_ARGS)
+{
+	bytea	   *string = PG_GETARG_BYTEA_PP(0);
+	bytea	   *set = PG_GETARG_BYTEA_PP(1);
+	bytea	   *ret;
 
-	while (m > 0)
-	{
-		ptr2 = ptr2start;
-		while (ptr2 <= end2)
-		{
-			if (*end == *ptr2)
-				break;
-			++ptr2;
-		}
-		if (ptr2 > end2)
-			break;
-		end--;
-		m--;
-	}
+	ret = dobyteatrim(string, set, true, false);
 
-	ret = (bytea *) palloc(VARHDRSZ + m);
-	SET_VARSIZE(ret, VARHDRSZ + m);
-	memcpy(VARDATA(ret), ptr, m);
+	PG_RETURN_BYTEA_P(ret);
+}
+
+/********************************************************************
+ *
+ * byteartrim
+ *
+ * Syntax:
+ *
+ *	 bytea byteartrim(bytea string, bytea set)
+ *
+ * Purpose:
+ *
+ *	 Returns string with final characters removed after the last
+ *	 character not in set.
+ *
+ ********************************************************************/
+
+Datum
+byteartrim(PG_FUNCTION_ARGS)
+{
+	bytea	   *string = PG_GETARG_BYTEA_PP(0);
+	bytea	   *set = PG_GETARG_BYTEA_PP(1);
+	bytea	   *ret;
+
+	ret = dobyteatrim(string, set, false, true);
 
 	PG_RETURN_BYTEA_P(ret);
 }
@@ -731,7 +808,7 @@ translate(PG_FUNCTION_ARGS)
 				tolen,
 				retlen,
 				i;
-	int			worst_len;
+	int			bytelen;
 	int			len;
 	int			source_len;
 	int			from_index;
@@ -750,15 +827,16 @@ translate(PG_FUNCTION_ARGS)
 	 * The worst-case expansion is to substitute a max-length character for a
 	 * single-byte character at each position of the string.
 	 */
-	worst_len = pg_database_encoding_max_length() * m;
-
-	/* check for integer overflow */
-	if (worst_len / pg_database_encoding_max_length() != m)
+	if (unlikely(pg_mul_s32_overflow(pg_database_encoding_max_length(), m,
+									 &bytelen)) ||
+		unlikely(pg_add_s32_overflow(bytelen, VARHDRSZ, &bytelen)) ||
+		unlikely(!AllocSizeIsValid(bytelen)))
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("requested length too large")));
 
-	result = (text *) palloc(worst_len + VARHDRSZ);
+	result = (text *) palloc(bytelen);
+
 	target = VARDATA(result);
 	retlen = 0;
 
@@ -794,7 +872,6 @@ translate(PG_FUNCTION_ARGS)
 				target += len;
 				retlen += len;
 			}
-
 		}
 		else
 		{
@@ -925,9 +1002,25 @@ ascii(PG_FUNCTION_ARGS)
 Datum
 chr			(PG_FUNCTION_ARGS)
 {
-	uint32		cvalue = PG_GETARG_UINT32(0);
+	int32		arg = PG_GETARG_INT32(0);
+	uint32		cvalue;
 	text	   *result;
 	int			encoding = GetDatabaseEncoding();
+
+	/*
+	 * Error out on arguments that make no sense or that we can't validly
+	 * represent in the encoding.
+	 */
+	if (arg < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("character number must be positive")));
+	else if (arg == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("null character not permitted")));
+
+	cvalue = arg;
 
 	if (encoding == PG_UTF8 && cvalue > 127)
 	{
@@ -943,7 +1036,7 @@ chr			(PG_FUNCTION_ARGS)
 		if (cvalue > 0x0010ffff)
 			ereport(ERROR,
 					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					 errmsg("requested character too large for encoding: %d",
+					 errmsg("requested character too large for encoding: %u",
 							cvalue)));
 
 		if (cvalue > 0xffff)
@@ -984,28 +1077,19 @@ chr			(PG_FUNCTION_ARGS)
 		if (!pg_utf8_islegal(wch, bytes))
 			ereport(ERROR,
 					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					 errmsg("requested character not valid for encoding: %d",
+					 errmsg("requested character not valid for encoding: %u",
 							cvalue)));
 	}
 	else
 	{
 		bool		is_mb;
 
-		/*
-		 * Error out on arguments that make no sense or that we can't validly
-		 * represent in the encoding.
-		 */
-		if (cvalue == 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					 errmsg("null character not permitted")));
-
 		is_mb = pg_encoding_max_length(encoding) > 1;
 
 		if ((is_mb && (cvalue > 127)) || (!is_mb && (cvalue > 255)))
 			ereport(ERROR,
 					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					 errmsg("requested character too large for encoding: %d",
+					 errmsg("requested character too large for encoding: %u",
 							cvalue)));
 
 		result = (text *) palloc(VARHDRSZ + 1);
@@ -1048,7 +1132,8 @@ repeat(PG_FUNCTION_ARGS)
 	slen = VARSIZE_ANY_EXHDR(string);
 
 	if (unlikely(pg_mul_s32_overflow(count, slen, &tlen)) ||
-		unlikely(pg_add_s32_overflow(tlen, VARHDRSZ, &tlen)))
+		unlikely(pg_add_s32_overflow(tlen, VARHDRSZ, &tlen)) ||
+		unlikely(!AllocSizeIsValid(tlen)))
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("requested length too large")));
@@ -1062,6 +1147,7 @@ repeat(PG_FUNCTION_ARGS)
 	{
 		memcpy(cp, sp, slen);
 		cp += slen;
+		CHECK_FOR_INTERRUPTS();
 	}
 
 	PG_RETURN_TEXT_P(result);

@@ -3,7 +3,7 @@
  * pg_recvlogical.c - receive data from a logical decoding slot in a streaming
  *					  fashion and write it to a local file.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/bin/pg_basebackup/pg_recvlogical.c
@@ -13,23 +13,23 @@
 #include "postgres_fe.h"
 
 #include <dirent.h>
+#include <limits.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #ifdef HAVE_SYS_SELECT_H
 #include <sys/select.h>
 #endif
 
-/* local includes */
-#include "streamutil.h"
-
 #include "access/xlog_internal.h"
-#include "common/file_perm.h"
 #include "common/fe_memutils.h"
+#include "common/file_perm.h"
+#include "common/logging.h"
+#include "fe_utils/option_utils.h"
 #include "getopt_long.h"
 #include "libpq-fe.h"
 #include "libpq/pqsignal.h"
 #include "pqexpbuffer.h"
-
+#include "streamutil.h"
 
 /* Time to sleep between reconnection attempts */
 #define RECONNECT_SLEEP_TIME 5
@@ -37,6 +37,7 @@
 /* Global Options */
 static char *outfile = NULL;
 static int	verbose = 0;
+static bool two_phase = false;
 static int	noloop = 0;
 static int	standby_message_timeout = 10 * 1000;	/* 10 sec = default */
 static int	fsync_interval = 10 * 1000; /* 10 sec = default */
@@ -65,10 +66,9 @@ static XLogRecPtr output_fsync_lsn = InvalidXLogRecPtr;
 
 static void usage(void);
 static void StreamLogicalLog(void);
-static void disconnect_and_exit(int code) pg_attribute_noreturn();
 static bool flushAndSendFeedback(PGconn *conn, TimestampTz *now);
 static void prepareToTerminate(PGconn *conn, XLogRecPtr endpos,
-				   bool keepalive, XLogRecPtr lsn);
+							   bool keepalive, XLogRecPtr lsn);
 
 static void
 usage(void)
@@ -96,6 +96,7 @@ usage(void)
 	printf(_("  -s, --status-interval=SECS\n"
 			 "                         time between status packets sent to server (default: %d)\n"), (standby_message_timeout / 1000));
 	printf(_("  -S, --slot=SLOTNAME    name of the logical replication slot\n"));
+	printf(_("  -t, --two-phase        enable decoding of prepared transactions when creating a slot\n"));
 	printf(_("  -v, --verbose          output verbose messages\n"));
 	printf(_("  -V, --version          output version information, then exit\n"));
 	printf(_("  -?, --help             show this help, then exit\n"));
@@ -106,7 +107,8 @@ usage(void)
 	printf(_("  -U, --username=NAME    connect as specified database user\n"));
 	printf(_("  -w, --no-password      never prompt for password\n"));
 	printf(_("  -W, --password         force password prompt (should happen automatically)\n"));
-	printf(_("\nReport bugs to <pgsql-bugs@postgresql.org>.\n"));
+	printf(_("\nReport bugs to <%s>.\n"), PACKAGE_BUGREPORT);
+	printf(_("%s home page: <%s>\n"), PACKAGE_NAME, PACKAGE_URL);
 }
 
 /*
@@ -128,16 +130,14 @@ sendFeedback(PGconn *conn, TimestampTz now, bool force, bool replyRequested)
 	 */
 	if (!force &&
 		last_written_lsn == output_written_lsn &&
-		last_fsync_lsn != output_fsync_lsn)
+		last_fsync_lsn == output_fsync_lsn)
 		return true;
 
 	if (verbose)
-		fprintf(stderr,
-				_("%s: confirming write up to %X/%X, flush to %X/%X (slot %s)\n"),
-				progname,
-				(uint32) (output_written_lsn >> 32), (uint32) output_written_lsn,
-				(uint32) (output_fsync_lsn >> 32), (uint32) output_fsync_lsn,
-				replication_slot);
+		pg_log_info("confirming write up to %X/%X, flush to %X/%X (slot %s)",
+					LSN_FORMAT_ARGS(output_written_lsn),
+					LSN_FORMAT_ARGS(output_fsync_lsn),
+					replication_slot);
 
 	replybuf[len] = 'r';
 	len += 1;
@@ -158,8 +158,8 @@ sendFeedback(PGconn *conn, TimestampTz now, bool force, bool replyRequested)
 
 	if (PQputCopyData(conn, replybuf, len) <= 0 || PQflush(conn))
 	{
-		fprintf(stderr, _("%s: could not send feedback packet: %s"),
-				progname, PQerrorMessage(conn));
+		pg_log_error("could not send feedback packet: %s",
+					 PQerrorMessage(conn));
 		return false;
 	}
 
@@ -167,12 +167,10 @@ sendFeedback(PGconn *conn, TimestampTz now, bool force, bool replyRequested)
 }
 
 static void
-disconnect_and_exit(int code)
+disconnect_atexit(void)
 {
 	if (conn != NULL)
 		PQfinish(conn);
-
-	exit(code);
 }
 
 static bool
@@ -195,12 +193,7 @@ OutputFsync(TimestampTz now)
 		return true;
 
 	if (fsync(outfd) != 0)
-	{
-		fprintf(stderr,
-				_("%s: could not fsync log file \"%s\": %s\n"),
-				progname, outfile, strerror(errno));
-		return false;
-	}
+		pg_fatal("could not fsync file \"%s\": %m", outfile);
 
 	return true;
 }
@@ -220,8 +213,6 @@ StreamLogicalLog(void)
 	output_written_lsn = InvalidXLogRecPtr;
 	output_fsync_lsn = InvalidXLogRecPtr;
 
-	query = createPQExpBuffer();
-
 	/*
 	 * Connect in replication mode to the server
 	 */
@@ -235,14 +226,14 @@ StreamLogicalLog(void)
 	 * Start the replication
 	 */
 	if (verbose)
-		fprintf(stderr,
-				_("%s: starting log streaming at %X/%X (slot %s)\n"),
-				progname, (uint32) (startpos >> 32), (uint32) startpos,
-				replication_slot);
+		pg_log_info("starting log streaming at %X/%X (slot %s)",
+					LSN_FORMAT_ARGS(startpos),
+					replication_slot);
 
 	/* Initiate the replication stream at specified location */
+	query = createPQExpBuffer();
 	appendPQExpBuffer(query, "START_REPLICATION SLOT \"%s\" LOGICAL %X/%X",
-					  replication_slot, (uint32) (startpos >> 32), (uint32) startpos);
+					  replication_slot, LSN_FORMAT_ARGS(startpos));
 
 	/* print options if there are any */
 	if (noptions)
@@ -268,8 +259,8 @@ StreamLogicalLog(void)
 	res = PQexec(conn, query->data);
 	if (PQresultStatus(res) != PGRES_COPY_BOTH)
 	{
-		fprintf(stderr, _("%s: could not send replication command \"%s\": %s"),
-				progname, query->data, PQresultErrorMessage(res));
+		pg_log_error("could not send replication command \"%s\": %s",
+					 query->data, PQresultErrorMessage(res));
 		PQclear(res);
 		goto error;
 	}
@@ -277,9 +268,7 @@ StreamLogicalLog(void)
 	resetPQExpBuffer(query);
 
 	if (verbose)
-		fprintf(stderr,
-				_("%s: streaming initiated\n"),
-				progname);
+		pg_log_info("streaming initiated");
 
 	while (!time_to_abort)
 	{
@@ -297,7 +286,7 @@ StreamLogicalLog(void)
 		}
 
 		/*
-		 * Potentially send a status message to the master
+		 * Potentially send a status message to the primary.
 		 */
 		now = feGetCurrentTimestamp();
 
@@ -343,16 +332,15 @@ StreamLogicalLog(void)
 							 S_IRUSR | S_IWUSR);
 			if (outfd == -1)
 			{
-				fprintf(stderr,
-						_("%s: could not open log file \"%s\": %s\n"),
-						progname, outfile, strerror(errno));
+				pg_log_error("could not open log file \"%s\": %m", outfile);
 				goto error;
 			}
 
 			if (fstat(outfd, &statbuf) != 0)
-				fprintf(stderr,
-						_("%s: could not stat file \"%s\": %s\n"),
-						progname, outfile, strerror(errno));
+			{
+				pg_log_error("could not stat file \"%s\": %m", outfile);
+				goto error;
+			}
 
 			output_isfile = S_ISREG(statbuf.st_mode) && !isatty(outfd);
 		}
@@ -373,9 +361,7 @@ StreamLogicalLog(void)
 
 			if (PQsocket(conn) < 0)
 			{
-				fprintf(stderr,
-						_("%s: invalid socket: %s"),
-						progname, PQerrorMessage(conn));
+				pg_log_error("invalid socket: %s", PQerrorMessage(conn));
 				goto error;
 			}
 
@@ -428,17 +414,15 @@ StreamLogicalLog(void)
 			}
 			else if (r < 0)
 			{
-				fprintf(stderr, _("%s: select() failed: %s\n"),
-						progname, strerror(errno));
+				pg_log_error("%s() failed: %m", "select");
 				goto error;
 			}
 
 			/* Else there is actually data on the socket */
 			if (PQconsumeInput(conn) == 0)
 			{
-				fprintf(stderr,
-						_("%s: could not receive data from WAL stream: %s"),
-						progname, PQerrorMessage(conn));
+				pg_log_error("could not receive data from WAL stream: %s",
+							 PQerrorMessage(conn));
 				goto error;
 			}
 			continue;
@@ -451,8 +435,8 @@ StreamLogicalLog(void)
 		/* Failure while reading the copy stream */
 		if (r == -2)
 		{
-			fprintf(stderr, _("%s: could not read COPY data: %s"),
-					progname, PQerrorMessage(conn));
+			pg_log_error("could not read COPY data: %s",
+						 PQerrorMessage(conn));
 			goto error;
 		}
 
@@ -479,8 +463,7 @@ StreamLogicalLog(void)
 
 			if (r < pos + 1)
 			{
-				fprintf(stderr, _("%s: streaming header too small: %d\n"),
-						progname, r);
+				pg_log_error("streaming header too small: %d", r);
 				goto error;
 			}
 			replyRequested = copybuf[pos];
@@ -515,8 +498,8 @@ StreamLogicalLog(void)
 		}
 		else if (copybuf[0] != 'w')
 		{
-			fprintf(stderr, _("%s: unrecognized streaming header: \"%c\"\n"),
-					progname, copybuf[0]);
+			pg_log_error("unrecognized streaming header: \"%c\"",
+						 copybuf[0]);
 			goto error;
 		}
 
@@ -531,8 +514,7 @@ StreamLogicalLog(void)
 		hdr_len += 8;			/* sendTime */
 		if (r < hdr_len + 1)
 		{
-			fprintf(stderr, _("%s: streaming header too small: %d\n"),
-					progname, r);
+			pg_log_error("streaming header too small: %d", r);
 			goto error;
 		}
 
@@ -570,10 +552,8 @@ StreamLogicalLog(void)
 
 			if (ret < 0)
 			{
-				fprintf(stderr,
-						_("%s: could not write %u bytes to log file \"%s\": %s\n"),
-						progname, bytes_left, outfile,
-						strerror(errno));
+				pg_log_error("could not write %d bytes to log file \"%s\": %m",
+							 bytes_left, outfile);
 				goto error;
 			}
 
@@ -584,10 +564,8 @@ StreamLogicalLog(void)
 
 		if (write(outfd, "\n", 1) != 1)
 		{
-			fprintf(stderr,
-					_("%s: could not write %u bytes to log file \"%s\": %s\n"),
-					progname, 1, outfile,
-					strerror(errno));
+			pg_log_error("could not write %d bytes to log file \"%s\": %m",
+						 1, outfile);
 			goto error;
 		}
 
@@ -605,18 +583,43 @@ StreamLogicalLog(void)
 	res = PQgetResult(conn);
 	if (PQresultStatus(res) == PGRES_COPY_OUT)
 	{
+		PQclear(res);
+
 		/*
 		 * We're doing a client-initiated clean exit and have sent CopyDone to
-		 * the server. We've already sent replay confirmation and fsync'd so
-		 * we can just clean up the connection now.
+		 * the server. Drain any messages, so we don't miss a last-minute
+		 * ErrorResponse. The walsender stops generating XLogData records once
+		 * it sees CopyDone, so expect this to finish quickly. After CopyDone,
+		 * it's too late for sendFeedback(), even if this were to take a long
+		 * time. Hence, use synchronous-mode PQgetCopyData().
 		 */
-		goto error;
+		while (1)
+		{
+			int			r;
+
+			if (copybuf != NULL)
+			{
+				PQfreemem(copybuf);
+				copybuf = NULL;
+			}
+			r = PQgetCopyData(conn, &copybuf, 0);
+			if (r == -1)
+				break;
+			if (r == -2)
+			{
+				pg_log_error("could not read COPY data: %s",
+							 PQerrorMessage(conn));
+				time_to_abort = false;	/* unclean exit */
+				goto error;
+			}
+		}
+
+		res = PQgetResult(conn);
 	}
-	else if (PQresultStatus(res) != PGRES_COMMAND_OK)
+	if (PQresultStatus(res) != PGRES_COMMAND_OK)
 	{
-		fprintf(stderr,
-				_("%s: unexpected termination of replication stream: %s"),
-				progname, PQresultErrorMessage(res));
+		pg_log_error("unexpected termination of replication stream: %s",
+					 PQresultErrorMessage(res));
 		goto error;
 	}
 	PQclear(res);
@@ -629,8 +632,7 @@ StreamLogicalLog(void)
 		OutputFsync(t);
 
 		if (close(outfd) != 0)
-			fprintf(stderr, _("%s: could not close file \"%s\": %s\n"),
-					progname, outfile, strerror(errno));
+			pg_log_error("could not close file \"%s\": %m", outfile);
 	}
 	outfd = -1;
 error:
@@ -679,6 +681,7 @@ main(int argc, char **argv)
 		{"fsync-interval", required_argument, NULL, 'F'},
 		{"no-loop", no_argument, NULL, 'n'},
 		{"verbose", no_argument, NULL, 'v'},
+		{"two-phase", no_argument, NULL, 't'},
 		{"version", no_argument, NULL, 'V'},
 		{"help", no_argument, NULL, '?'},
 /* connection options */
@@ -708,6 +711,7 @@ main(int argc, char **argv)
 				lo;
 	char	   *db_name;
 
+	pg_logging_init(argv[0]);
 	progname = get_progname(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_basebackup"));
 
@@ -726,7 +730,7 @@ main(int argc, char **argv)
 		}
 	}
 
-	while ((c = getopt_long(argc, argv, "E:f:F:nvd:h:p:U:wWI:o:P:s:S:",
+	while ((c = getopt_long(argc, argv, "E:f:F:nvtd:h:p:U:wWI:o:P:s:S:",
 							long_options, &option_index)) != -1)
 	{
 		switch (c)
@@ -736,19 +740,20 @@ main(int argc, char **argv)
 				outfile = pg_strdup(optarg);
 				break;
 			case 'F':
-				fsync_interval = atoi(optarg) * 1000;
-				if (fsync_interval < 0)
-				{
-					fprintf(stderr, _("%s: invalid fsync interval \"%s\"\n"),
-							progname, optarg);
+				if (!option_parse_int(optarg, "-F/--fsync-interval", 0,
+									  INT_MAX / 1000,
+									  &fsync_interval))
 					exit(1);
-				}
+				fsync_interval *= 1000;
 				break;
 			case 'n':
 				noloop = 1;
 				break;
 			case 'v':
 				verbose++;
+				break;
+			case 't':
+				two_phase = true;
 				break;
 /* connection options */
 			case 'd':
@@ -758,12 +763,6 @@ main(int argc, char **argv)
 				dbhost = pg_strdup(optarg);
 				break;
 			case 'p':
-				if (atoi(optarg) <= 0)
-				{
-					fprintf(stderr, _("%s: invalid port number \"%s\"\n"),
-							progname, optarg);
-					exit(1);
-				}
 				dbport = pg_strdup(optarg);
 				break;
 			case 'U':
@@ -778,22 +777,12 @@ main(int argc, char **argv)
 /* replication options */
 			case 'I':
 				if (sscanf(optarg, "%X/%X", &hi, &lo) != 2)
-				{
-					fprintf(stderr,
-							_("%s: could not parse start position \"%s\"\n"),
-							progname, optarg);
-					exit(1);
-				}
+					pg_fatal("could not parse start position \"%s\"", optarg);
 				startpos = ((uint64) hi) << 32 | lo;
 				break;
 			case 'E':
 				if (sscanf(optarg, "%X/%X", &hi, &lo) != 2)
-				{
-					fprintf(stderr,
-							_("%s: could not parse end position \"%s\"\n"),
-							progname, optarg);
-					exit(1);
-				}
+					pg_fatal("could not parse end position \"%s\"", optarg);
 				endpos = ((uint64) hi) << 32 | lo;
 				break;
 			case 'o':
@@ -820,13 +809,11 @@ main(int argc, char **argv)
 				plugin = pg_strdup(optarg);
 				break;
 			case 's':
-				standby_message_timeout = atoi(optarg) * 1000;
-				if (standby_message_timeout < 0)
-				{
-					fprintf(stderr, _("%s: invalid status interval \"%s\"\n"),
-							progname, optarg);
+				if (!option_parse_int(optarg, "-s/--status-interval", 0,
+									  INT_MAX / 1000,
+									  &standby_message_timeout))
 					exit(1);
-				}
+				standby_message_timeout *= 1000;
 				break;
 			case 'S':
 				replication_slot = pg_strdup(optarg);
@@ -846,12 +833,8 @@ main(int argc, char **argv)
 				break;
 
 			default:
-
-				/*
-				 * getopt_long already emitted a complaint
-				 */
-				fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-						progname);
+				/* getopt_long already emitted a complaint */
+				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 				exit(1);
 		}
 	}
@@ -861,11 +844,9 @@ main(int argc, char **argv)
 	 */
 	if (optind < argc)
 	{
-		fprintf(stderr,
-				_("%s: too many command-line arguments (first is \"%s\")\n"),
-				progname, argv[optind]);
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-				progname);
+		pg_log_error("too many command-line arguments (first is \"%s\")",
+					 argv[optind]);
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 
@@ -874,91 +855,88 @@ main(int argc, char **argv)
 	 */
 	if (replication_slot == NULL)
 	{
-		fprintf(stderr, _("%s: no slot specified\n"), progname);
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-				progname);
+		pg_log_error("no slot specified");
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 
 	if (do_start_slot && outfile == NULL)
 	{
-		fprintf(stderr, _("%s: no target file specified\n"), progname);
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-				progname);
+		pg_log_error("no target file specified");
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 
 	if (!do_drop_slot && dbname == NULL)
 	{
-		fprintf(stderr, _("%s: no database specified\n"), progname);
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-				progname);
+		pg_log_error("no database specified");
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 
 	if (!do_drop_slot && !do_create_slot && !do_start_slot)
 	{
-		fprintf(stderr, _("%s: at least one action needs to be specified\n"), progname);
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-				progname);
+		pg_log_error("at least one action needs to be specified");
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 
 	if (do_drop_slot && (do_create_slot || do_start_slot))
 	{
-		fprintf(stderr, _("%s: cannot use --create-slot or --start together with --drop-slot\n"), progname);
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-				progname);
+		pg_log_error("cannot use --create-slot or --start together with --drop-slot");
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 
 	if (startpos != InvalidXLogRecPtr && (do_create_slot || do_drop_slot))
 	{
-		fprintf(stderr, _("%s: cannot use --create-slot or --drop-slot together with --startpos\n"), progname);
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-				progname);
+		pg_log_error("cannot use --create-slot or --drop-slot together with --startpos");
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 
 	if (endpos != InvalidXLogRecPtr && !do_start_slot)
 	{
-		fprintf(stderr,
-				_("%s: --endpos may only be specified with --start\n"),
-				progname);
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-				progname);
+		pg_log_error("--endpos may only be specified with --start");
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 
+	if (two_phase && !do_create_slot)
+	{
+		pg_log_error("--two-phase may only be specified with --create-slot");
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
+		exit(1);
+	}
+
+	/*
+	 * Obtain a connection to server.  Notably, if we need a password, we want
+	 * to collect it from the user immediately.
+	 */
+	conn = GetConnection();
+	if (!conn)
+		/* Error message already written in GetConnection() */
+		exit(1);
+	atexit(disconnect_atexit);
+
+	/*
+	 * Trap signals.  (Don't do this until after the initial password prompt,
+	 * if one is needed, in GetConnection.)
+	 */
 #ifndef WIN32
 	pqsignal(SIGINT, sigint_handler);
 	pqsignal(SIGHUP, sighup_handler);
 #endif
 
 	/*
-	 * Obtain a connection to server. This is not really necessary but it
-	 * helps to get more precise error messages about authentication, required
-	 * GUC parameters and such.
-	 */
-	conn = GetConnection();
-	if (!conn)
-		/* Error message already written in GetConnection() */
-		exit(1);
-
-	/*
 	 * Run IDENTIFY_SYSTEM to make sure we connected using a database specific
 	 * replication connection.
 	 */
 	if (!RunIdentifySystem(conn, NULL, NULL, NULL, &db_name))
-		disconnect_and_exit(1);
+		exit(1);
 
 	if (db_name == NULL)
-	{
-		fprintf(stderr,
-				_("%s: could not establish database-specific replication connection\n"),
-				progname);
-		disconnect_and_exit(1);
-	}
+		pg_fatal("could not establish database-specific replication connection");
 
 	/*
 	 * Set umask so that directories/files are created with the same
@@ -974,30 +952,26 @@ main(int argc, char **argv)
 	if (do_drop_slot)
 	{
 		if (verbose)
-			fprintf(stderr,
-					_("%s: dropping replication slot \"%s\"\n"),
-					progname, replication_slot);
+			pg_log_info("dropping replication slot \"%s\"", replication_slot);
 
 		if (!DropReplicationSlot(conn, replication_slot))
-			disconnect_and_exit(1);
+			exit(1);
 	}
 
 	/* Create a replication slot. */
 	if (do_create_slot)
 	{
 		if (verbose)
-			fprintf(stderr,
-					_("%s: creating replication slot \"%s\"\n"),
-					progname, replication_slot);
+			pg_log_info("creating replication slot \"%s\"", replication_slot);
 
 		if (!CreateReplicationSlot(conn, replication_slot, plugin, false,
-								   false, false, slot_exists_ok))
-			disconnect_and_exit(1);
+								   false, false, slot_exists_ok, two_phase))
+			exit(1);
 		startpos = InvalidXLogRecPtr;
 	}
 
 	if (!do_start_slot)
-		disconnect_and_exit(0);
+		exit(0);
 
 	/* Stream loop */
 	while (true)
@@ -1009,19 +983,15 @@ main(int argc, char **argv)
 			 * We've been Ctrl-C'ed or reached an exit limit condition. That's
 			 * not an error, so exit without an errorcode.
 			 */
-			disconnect_and_exit(0);
+			exit(0);
 		}
 		else if (noloop)
-		{
-			fprintf(stderr, _("%s: disconnected\n"), progname);
-			exit(1);
-		}
+			pg_fatal("disconnected");
 		else
 		{
-			fprintf(stderr,
 			/* translator: check source for value for %d */
-					_("%s: disconnected; waiting %d seconds to try again\n"),
-					progname, RECONNECT_SLEEP_TIME);
+			pg_log_info("disconnected; waiting %d seconds to try again",
+						RECONNECT_SLEEP_TIME);
 			pg_usleep(RECONNECT_SLEEP_TIME * 1000000);
 		}
 	}
@@ -1060,13 +1030,10 @@ prepareToTerminate(PGconn *conn, XLogRecPtr endpos, bool keepalive, XLogRecPtr l
 	if (verbose)
 	{
 		if (keepalive)
-			fprintf(stderr, "%s: endpos %X/%X reached by keepalive\n",
-					progname,
-					(uint32) (endpos >> 32), (uint32) endpos);
+			pg_log_info("end position %X/%X reached by keepalive",
+						LSN_FORMAT_ARGS(endpos));
 		else
-			fprintf(stderr, "%s: endpos %X/%X reached by record at %X/%X\n",
-					progname, (uint32) (endpos >> 32), (uint32) (endpos),
-					(uint32) (lsn >> 32), (uint32) lsn);
-
+			pg_log_info("end position %X/%X reached by WAL record at %X/%X",
+						LSN_FORMAT_ARGS(endpos), LSN_FORMAT_ARGS(lsn));
 	}
 }

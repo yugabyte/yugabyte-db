@@ -5,7 +5,7 @@
  *
  * See Ross Williams' excellent introduction
  * A PAINLESS GUIDE TO CRC ERROR DETECTION ALGORITHMS, available from
- * http://www.ross.net/crc/ or several other net sites.
+ * http://ross.net/crc/ or several other net sites.
  *
  * We have three slightly different variants of a 32-bit CRC calculation:
  * CRC-32C (Castagnoli polynomial), CRC-32 (Ethernet polynomial), and a legacy
@@ -26,7 +26,7 @@
  *
  * The CRC-32C variant is in port/pg_crc32c.h.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/pg_crc.h

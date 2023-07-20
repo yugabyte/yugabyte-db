@@ -3,7 +3,7 @@
 # pg_cast.dat
 #    Initial contents of the pg_cast system catalog.
 #
-# Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/include/catalog/pg_cast.dat
@@ -91,6 +91,10 @@
 { castsource => 'int4', casttarget => 'bool', castfunc => 'bool(int4)',
   castcontext => 'e', castmethod => 'f' },
 { castsource => 'bool', casttarget => 'int4', castfunc => 'int4(bool)',
+  castcontext => 'e', castmethod => 'f' },
+
+# Allow explicit coercions between xid8 and xid
+{ castsource => 'xid8', casttarget => 'xid', castfunc => 'xid(xid8)',
   castcontext => 'e', castmethod => 'f' },
 
 # OID category: allow implicit conversion from any integral type (including
@@ -188,6 +192,20 @@
 { castsource => 'regclass', casttarget => 'int8', castfunc => 'int8(oid)',
   castcontext => 'a', castmethod => 'f' },
 { castsource => 'regclass', casttarget => 'int4', castfunc => '0',
+  castcontext => 'a', castmethod => 'b' },
+{ castsource => 'oid', casttarget => 'regcollation', castfunc => '0',
+  castcontext => 'i', castmethod => 'b' },
+{ castsource => 'regcollation', casttarget => 'oid', castfunc => '0',
+  castcontext => 'i', castmethod => 'b' },
+{ castsource => 'int8', casttarget => 'regcollation', castfunc => 'oid',
+  castcontext => 'i', castmethod => 'f' },
+{ castsource => 'int2', casttarget => 'regcollation', castfunc => 'int4(int2)',
+  castcontext => 'i', castmethod => 'f' },
+{ castsource => 'int4', casttarget => 'regcollation', castfunc => '0',
+  castcontext => 'i', castmethod => 'b' },
+{ castsource => 'regcollation', casttarget => 'int8', castfunc => 'int8(oid)',
+  castcontext => 'a', castmethod => 'f' },
+{ castsource => 'regcollation', casttarget => 'int4', castfunc => '0',
   castcontext => 'a', castmethod => 'b' },
 { castsource => 'oid', casttarget => 'regtype', castfunc => '0',
   castcontext => 'i', castmethod => 'b' },
@@ -324,17 +342,13 @@
 { castsource => 'pg_dependencies', casttarget => 'text', castfunc => '0',
   castcontext => 'i', castmethod => 'i' },
 
+# pg_mcv_list can be coerced to, but not from, bytea and text
+{ castsource => 'pg_mcv_list', casttarget => 'bytea', castfunc => '0',
+  castcontext => 'i', castmethod => 'b' },
+{ castsource => 'pg_mcv_list', casttarget => 'text', castfunc => '0',
+  castcontext => 'i', castmethod => 'i' },
+
 # Datetime category
-{ castsource => 'abstime', casttarget => 'date', castfunc => 'date(abstime)',
-  castcontext => 'a', castmethod => 'f' },
-{ castsource => 'abstime', casttarget => 'time', castfunc => 'time(abstime)',
-  castcontext => 'a', castmethod => 'f' },
-{ castsource => 'abstime', casttarget => 'timestamp',
-  castfunc => 'timestamp(abstime)', castcontext => 'i', castmethod => 'f' },
-{ castsource => 'abstime', casttarget => 'timestamptz',
-  castfunc => 'timestamptz(abstime)', castcontext => 'i', castmethod => 'f' },
-{ castsource => 'reltime', casttarget => 'interval',
-  castfunc => 'interval(reltime)', castcontext => 'i', castmethod => 'f' },
 { castsource => 'date', casttarget => 'timestamp',
   castfunc => 'timestamp(date)', castcontext => 'i', castmethod => 'f' },
 { castsource => 'date', casttarget => 'timestamptz',
@@ -343,16 +357,12 @@
   castcontext => 'i', castmethod => 'f' },
 { castsource => 'time', casttarget => 'timetz', castfunc => 'timetz(time)',
   castcontext => 'i', castmethod => 'f' },
-{ castsource => 'timestamp', casttarget => 'abstime',
-  castfunc => 'abstime(timestamp)', castcontext => 'a', castmethod => 'f' },
 { castsource => 'timestamp', casttarget => 'date',
   castfunc => 'date(timestamp)', castcontext => 'a', castmethod => 'f' },
 { castsource => 'timestamp', casttarget => 'time',
   castfunc => 'time(timestamp)', castcontext => 'a', castmethod => 'f' },
 { castsource => 'timestamp', casttarget => 'timestamptz',
   castfunc => 'timestamptz(timestamp)', castcontext => 'i', castmethod => 'f' },
-{ castsource => 'timestamptz', casttarget => 'abstime',
-  castfunc => 'abstime(timestamptz)', castcontext => 'a', castmethod => 'f' },
 { castsource => 'timestamptz', casttarget => 'date',
   castfunc => 'date(timestamptz)', castcontext => 'a', castmethod => 'f' },
 { castsource => 'timestamptz', casttarget => 'time',
@@ -361,29 +371,15 @@
   castfunc => 'timestamp(timestamptz)', castcontext => 'a', castmethod => 'f' },
 { castsource => 'timestamptz', casttarget => 'timetz',
   castfunc => 'timetz(timestamptz)', castcontext => 'a', castmethod => 'f' },
-{ castsource => 'interval', casttarget => 'reltime', castfunc => 'reltime',
-  castcontext => 'a', castmethod => 'f' },
 { castsource => 'interval', casttarget => 'time', castfunc => 'time(interval)',
   castcontext => 'a', castmethod => 'f' },
 { castsource => 'timetz', casttarget => 'time', castfunc => 'time(timetz)',
   castcontext => 'a', castmethod => 'f' },
 
-# Cross-category casts between int4 and abstime, reltime
-{ castsource => 'int4', casttarget => 'abstime', castfunc => '0',
-  castcontext => 'e', castmethod => 'b' },
-{ castsource => 'abstime', casttarget => 'int4', castfunc => '0',
-  castcontext => 'e', castmethod => 'b' },
-{ castsource => 'int4', casttarget => 'reltime', castfunc => '0',
-  castcontext => 'e', castmethod => 'b' },
-{ castsource => 'reltime', casttarget => 'int4', castfunc => '0',
-  castcontext => 'e', castmethod => 'b' },
-
 # Geometric category
 { castsource => 'point', casttarget => 'box', castfunc => 'box(point)',
   castcontext => 'a', castmethod => 'f' },
 { castsource => 'lseg', casttarget => 'point', castfunc => 'point(lseg)',
-  castcontext => 'e', castmethod => 'f' },
-{ castsource => 'path', casttarget => 'point', castfunc => 'point(path)',
   castcontext => 'e', castmethod => 'f' },
 { castsource => 'path', casttarget => 'polygon', castfunc => 'polygon(path)',
   castcontext => 'a', castmethod => 'f' },
@@ -532,4 +528,22 @@
 { castsource => 'jsonb', casttarget => 'float8', castfunc => 'float8(jsonb)',
   castcontext => 'e', castmethod => 'f' },
 
+# range to multirange
+{ castsource => 'int4range', casttarget => 'int4multirange',
+  castfunc => 'int4multirange(int4range)', castcontext => 'e',
+  castmethod => 'f' },
+{ castsource => 'int8range', casttarget => 'int8multirange',
+  castfunc => 'int8multirange(int8range)', castcontext => 'e',
+  castmethod => 'f' },
+{ castsource => 'numrange', casttarget => 'nummultirange',
+  castfunc => 'nummultirange(numrange)', castcontext => 'e',
+  castmethod => 'f' },
+{ castsource => 'daterange', casttarget => 'datemultirange',
+  castfunc => 'datemultirange(daterange)', castcontext => 'e',
+  castmethod => 'f' },
+{ castsource => 'tsrange', casttarget => 'tsmultirange',
+  castfunc => 'tsmultirange(tsrange)', castcontext => 'e', castmethod => 'f' },
+{ castsource => 'tstzrange', casttarget => 'tstzmultirange',
+  castfunc => 'tstzmultirange(tstzrange)', castcontext => 'e',
+  castmethod => 'f' },
 ]

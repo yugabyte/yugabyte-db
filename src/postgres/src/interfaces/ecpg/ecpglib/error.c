@@ -4,9 +4,9 @@
 #include "postgres_fe.h"
 
 #include "ecpgerrno.h"
-#include "ecpgtype.h"
 #include "ecpglib.h"
-#include "extern.h"
+#include "ecpglib_extern.h"
+#include "ecpgtype.h"
 #include "sqlca.h"
 
 void
@@ -229,18 +229,17 @@ ecpg_raise_backend(int line, PGresult *result, PGconn *conn, int compat)
 		return;
 	}
 
-	if (result)
-	{
-		sqlstate = PQresultErrorField(result, PG_DIAG_SQLSTATE);
-		if (sqlstate == NULL)
-			sqlstate = ECPG_SQLSTATE_ECPG_INTERNAL_ERROR;
-		message = PQresultErrorField(result, PG_DIAG_MESSAGE_PRIMARY);
-	}
-	else
-	{
+	/*
+	 * PQresultErrorField will return NULL if "result" is NULL, or if there is
+	 * no such field, which will happen for libpq-generated errors.  Fall back
+	 * to PQerrorMessage in such cases.
+	 */
+	sqlstate = PQresultErrorField(result, PG_DIAG_SQLSTATE);
+	if (sqlstate == NULL)
 		sqlstate = ECPG_SQLSTATE_ECPG_INTERNAL_ERROR;
+	message = PQresultErrorField(result, PG_DIAG_MESSAGE_PRIMARY);
+	if (message == NULL)
 		message = PQerrorMessage(conn);
-	}
 
 	if (strcmp(sqlstate, ECPG_SQLSTATE_ECPG_INTERNAL_ERROR) == 0)
 	{
@@ -270,7 +269,6 @@ ecpg_raise_backend(int line, PGresult *result, PGconn *conn, int compat)
 	else
 		sqlca->sqlcode = ECPG_PGSQL;
 
-	/* %.*s is safe here as long as sqlstate is all-ASCII */
 	ecpg_log("raising sqlstate %.*s (sqlcode %ld): %s\n",
 			 (int) sizeof(sqlca->sqlstate), sqlca->sqlstate, sqlca->sqlcode, sqlca->sqlerrm.sqlerrmc);
 

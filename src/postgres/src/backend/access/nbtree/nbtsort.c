@@ -31,22 +31,10 @@
  * them.  They will need to be re-read into shared buffers on first use after
  * the build finishes.
  *
- * Since the index will never be used unless it is completely built,
- * from a crash-recovery point of view there is no need to WAL-log the
- * steps of the build.  After completing the index build, we can just sync
- * the whole file to disk using smgrimmedsync() before exiting this module.
- * This can be seen to be sufficient for crash recovery by considering that
- * it's effectively equivalent to what would happen if a CHECKPOINT occurred
- * just after the index build.  However, it is clearly not sufficient if the
- * DBA is using the WAL log for PITR or replication purposes, since another
- * machine would not be able to reconstruct the index from WAL.  Therefore,
- * we log the completed index pages to WAL if and only if WAL archiving is
- * active.
- *
  * This code isn't concerned about the FSM at all. The caller is responsible
  * for initializing that.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -60,10 +48,13 @@
 #include "access/nbtree.h"
 #include "access/parallel.h"
 #include "access/relscan.h"
+#include "access/table.h"
 #include "access/xact.h"
 #include "access/xlog.h"
 #include "access/xloginsert.h"
 #include "catalog/index.h"
+#include "commands/progress.h"
+#include "executor/instrument.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "storage/smgr.h"
@@ -78,6 +69,8 @@
 #define PARALLEL_KEY_TUPLESORT			UINT64CONST(0xA000000000000002)
 #define PARALLEL_KEY_TUPLESORT_SPOOL2	UINT64CONST(0xA000000000000003)
 #define PARALLEL_KEY_QUERY_TEXT			UINT64CONST(0xA000000000000004)
+#define PARALLEL_KEY_WAL_USAGE			UINT64CONST(0xA000000000000005)
+#define PARALLEL_KEY_BUFFER_USAGE		UINT64CONST(0xA000000000000006)
 
 /*
  * DISABLE_LEADER_PARTICIPATION disables the leader's participation in
@@ -96,6 +89,7 @@ typedef struct BTSpool
 	Relation	heap;
 	Relation	index;
 	bool		isunique;
+	bool		nulls_not_distinct;
 } BTSpool;
 
 /*
@@ -113,6 +107,7 @@ typedef struct BTShared
 	Oid			heaprelid;
 	Oid			indexrelid;
 	bool		isunique;
+	bool		nulls_not_distinct;
 	bool		isconcurrent;
 	int			scantuplesortstates;
 
@@ -155,12 +150,20 @@ typedef struct BTShared
 	bool		brokenhotchain;
 
 	/*
-	 * This variable-sized field must come last.
-	 *
-	 * See _bt_parallel_estimate_shared().
+	 * ParallelTableScanDescData data follows. Can't directly embed here, as
+	 * implementations of the parallel table scan desc interface might need
+	 * stronger alignment.
 	 */
-	ParallelHeapScanDescData heapdesc;
 } BTShared;
+
+/*
+ * Return pointer to a BTShared's parallel table scan.
+ *
+ * c.f. shm_toc_allocate as to why BUFFERALIGN is used, rather than just
+ * MAXALIGN.
+ */
+#define ParallelTableScanFromBTShared(shared) \
+	(ParallelTableScanDesc) ((char *) (shared) + BUFFERALIGN(sizeof(BTShared)))
 
 /*
  * Status for leader in parallel index build.
@@ -192,6 +195,8 @@ typedef struct BTLeader
 	Sharedsort *sharedsort;
 	Sharedsort *sharedsort2;
 	Snapshot	snapshot;
+	WalUsage   *walusage;
+	BufferUsage *bufferusage;
 } BTLeader;
 
 /*
@@ -203,6 +208,7 @@ typedef struct BTLeader
 typedef struct BTBuildState
 {
 	bool		isunique;
+	bool		nulls_not_distinct;
 	bool		havedead;
 	Relation	heap;
 	BTSpool    *spool;
@@ -225,22 +231,14 @@ typedef struct BTBuildState
 /*
  * Status record for a btree page being built.  We have one of these
  * for each active tree level.
- *
- * The reason we need to store a copy of the minimum key is that we'll
- * need to propagate it to the parent node when this page is linked
- * into its parent.  However, if the page is not a leaf page, the first
- * entry on the page doesn't need to contain a key, so we will not have
- * stored the key itself on the page.  (You might think we could skip
- * copying the minimum key on leaf pages, but actually we must have a
- * writable copy anyway because we'll poke the page's address into it
- * before passing it up to the parent...)
  */
 typedef struct BTPageState
 {
 	Page		btps_page;		/* workspace for page building */
 	BlockNumber btps_blkno;		/* block # to write this page at */
-	IndexTuple	btps_minkey;	/* copy of minimum key (first item) on page */
+	IndexTuple	btps_lowkey;	/* page's strict lower bound pivot tuple */
 	OffsetNumber btps_lastoff;	/* last item offset loaded */
+	Size		btps_lastextra; /* last item's extra posting list space */
 	uint32		btps_level;		/* tree level (0 = leaf) */
 	Size		btps_full;		/* "full" if less than this much free space */
 	struct BTPageState *btps_next;	/* link to parent level, if any */
@@ -253,6 +251,7 @@ typedef struct BTWriteState
 {
 	Relation	heap;
 	Relation	index;
+	BTScanInsert inskey;		/* generic insertion scankey */
 	bool		btws_use_wal;	/* dump pages to WAL? */
 	BlockNumber btws_pages_alloced; /* # pages allocated */
 	BlockNumber btws_pages_written; /* # pages written out */
@@ -261,33 +260,38 @@ typedef struct BTWriteState
 
 
 static double _bt_spools_heapscan(Relation heap, Relation index,
-					BTBuildState *buildstate, IndexInfo *indexInfo);
+								  BTBuildState *buildstate, IndexInfo *indexInfo);
 static void _bt_spooldestroy(BTSpool *btspool);
 static void _bt_spool(BTSpool *btspool, ItemPointer self,
-		  Datum *values, bool *isnull);
+					  Datum *values, bool *isnull);
 static void _bt_leafbuild(BTSpool *btspool, BTSpool *btspool2);
-static void _bt_build_callback(Relation index, HeapTuple htup, Datum *values,
-				   bool *isnull, bool tupleIsAlive, void *state);
+static void _bt_build_callback(Relation index, ItemPointer tid, Datum *values,
+							   bool *isnull, bool tupleIsAlive, void *state);
 static Page _bt_blnewpage(uint32 level);
 static BTPageState *_bt_pagestate(BTWriteState *wstate, uint32 level);
-static void _bt_slideleft(Page page);
+static void _bt_slideleft(Page rightmostpage);
 static void _bt_sortaddtup(Page page, Size itemsize,
-			   IndexTuple itup, OffsetNumber itup_off);
+						   IndexTuple itup, OffsetNumber itup_off,
+						   bool newfirstdataitem);
 static void _bt_buildadd(BTWriteState *wstate, BTPageState *state,
-			 IndexTuple itup);
+						 IndexTuple itup, Size truncextra);
+static void _bt_sort_dedup_finish_pending(BTWriteState *wstate,
+										  BTPageState *state,
+										  BTDedupState dstate);
 static void _bt_uppershutdown(BTWriteState *wstate, BTPageState *state);
 static void _bt_load(BTWriteState *wstate,
-		 BTSpool *btspool, BTSpool *btspool2);
+					 BTSpool *btspool, BTSpool *btspool2);
 static void _bt_begin_parallel(BTBuildState *buildstate, bool isconcurrent,
-				   int request);
+							   int request);
 static void _bt_end_parallel(BTLeader *btleader);
-static Size _bt_parallel_estimate_shared(Snapshot snapshot);
+static Size _bt_parallel_estimate_shared(Relation heap, Snapshot snapshot);
 static double _bt_parallel_heapscan(BTBuildState *buildstate,
-					  bool *brokenhotchain);
+									bool *brokenhotchain);
 static void _bt_leader_participate_as_worker(BTBuildState *buildstate);
 static void _bt_parallel_scan_and_sort(BTSpool *btspool, BTSpool *btspool2,
-						   BTShared *btshared, Sharedsort *sharedsort,
-						   Sharedsort *sharedsort2, int sortmem);
+									   BTShared *btshared, Sharedsort *sharedsort,
+									   Sharedsort *sharedsort2, int sortmem,
+									   bool progress);
 
 
 /*
@@ -306,6 +310,7 @@ btbuild(Relation heap, Relation index, IndexInfo *indexInfo)
 #endif							/* BTREE_BUILD_STATS */
 
 	buildstate.isunique = indexInfo->ii_Unique;
+	buildstate.nulls_not_distinct = indexInfo->ii_NullsNotDistinct;
 	buildstate.havedead = false;
 	buildstate.heap = heap;
 	buildstate.spool = NULL;
@@ -379,9 +384,14 @@ _bt_spools_heapscan(Relation heap, Relation index, BTBuildState *buildstate,
 	btspool->heap = heap;
 	btspool->index = index;
 	btspool->isunique = indexInfo->ii_Unique;
+	btspool->nulls_not_distinct = indexInfo->ii_NullsNotDistinct;
 
 	/* Save as primary spool */
 	buildstate->spool = btspool;
+
+	/* Report table scan phase started */
+	pgstat_progress_update_param(PROGRESS_CREATEIDX_SUBPHASE,
+								 PROGRESS_BTREE_PHASE_INDEXBUILD_TABLESCAN);
 
 	/* Attempt to launch parallel worker scan when required */
 	if (indexInfo->ii_ParallelWorkers > 0)
@@ -424,8 +434,9 @@ _bt_spools_heapscan(Relation heap, Relation index, BTBuildState *buildstate,
 	 */
 	buildstate->spool->sortstate =
 		tuplesort_begin_index_btree(heap, index, buildstate->isunique,
+									buildstate->nulls_not_distinct,
 									maintenance_work_mem, coordinate,
-									false);
+									TUPLESORT_NONE);
 
 	/*
 	 * If building a unique index, put dead tuples in a second spool to keep
@@ -463,18 +474,36 @@ _bt_spools_heapscan(Relation heap, Relation index, BTBuildState *buildstate,
 		 * full, so we give it only work_mem
 		 */
 		buildstate->spool2->sortstate =
-			tuplesort_begin_index_btree(heap, index, false, work_mem,
-										coordinate2, false);
+			tuplesort_begin_index_btree(heap, index, false, false, work_mem,
+										coordinate2, TUPLESORT_NONE);
 	}
 
 	/* Fill spool using either serial or parallel heap scan */
 	if (!buildstate->btleader)
-		reltuples = IndexBuildHeapScan(heap, index, indexInfo, true,
-									   _bt_build_callback, (void *) buildstate,
-									   NULL);
+		reltuples = table_index_build_scan(heap, index, indexInfo, true, true,
+										   _bt_build_callback, (void *) buildstate,
+										   NULL);
 	else
 		reltuples = _bt_parallel_heapscan(buildstate,
 										  &indexInfo->ii_BrokenHotChain);
+
+	/*
+	 * Set the progress target for the next phase.  Reset the block number
+	 * values set by table_index_build_scan
+	 */
+	{
+		const int	progress_index[] = {
+			PROGRESS_CREATEIDX_TUPLES_TOTAL,
+			PROGRESS_SCAN_BLOCKS_TOTAL,
+			PROGRESS_SCAN_BLOCKS_DONE
+		};
+		const int64 progress_vals[] = {
+			buildstate->indtuples,
+			0, 0
+		};
+
+		pgstat_progress_update_multi_param(3, progress_index, progress_vals);
+	}
 
 	/* okay, all heap tuples are spooled */
 	if (buildstate->spool2 && !buildstate->havedead)
@@ -524,33 +553,40 @@ _bt_leafbuild(BTSpool *btspool, BTSpool *btspool2)
 	}
 #endif							/* BTREE_BUILD_STATS */
 
+	/* Execute the sort */
+	pgstat_progress_update_param(PROGRESS_CREATEIDX_SUBPHASE,
+								 PROGRESS_BTREE_PHASE_PERFORMSORT_1);
 	tuplesort_performsort(btspool->sortstate);
 	if (btspool2)
+	{
+		pgstat_progress_update_param(PROGRESS_CREATEIDX_SUBPHASE,
+									 PROGRESS_BTREE_PHASE_PERFORMSORT_2);
 		tuplesort_performsort(btspool2->sortstate);
+	}
 
 	wstate.heap = btspool->heap;
 	wstate.index = btspool->index;
-
-	/*
-	 * We need to log index creation in WAL iff WAL archiving/streaming is
-	 * enabled UNLESS the index isn't WAL-logged anyway.
-	 */
-	wstate.btws_use_wal = XLogIsNeeded() && RelationNeedsWAL(wstate.index);
+	wstate.inskey = _bt_mkscankey(wstate.index, NULL);
+	/* _bt_mkscankey() won't set allequalimage without metapage */
+	wstate.inskey->allequalimage = _bt_allequalimage(wstate.index, true);
+	wstate.btws_use_wal = RelationNeedsWAL(wstate.index);
 
 	/* reserve the metapage */
 	wstate.btws_pages_alloced = BTREE_METAPAGE + 1;
 	wstate.btws_pages_written = 0;
 	wstate.btws_zeropage = NULL;	/* until needed */
 
+	pgstat_progress_update_param(PROGRESS_CREATEIDX_SUBPHASE,
+								 PROGRESS_BTREE_PHASE_LEAF_LOAD);
 	_bt_load(&wstate, btspool, btspool2);
 }
 
 /*
- * Per-tuple callback from IndexBuildHeapScan
+ * Per-tuple callback for table_index_build_scan
  */
 static void
 _bt_build_callback(Relation index,
-				   HeapTuple htup,
+				   ItemPointer tid,
 				   Datum *values,
 				   bool *isnull,
 				   bool tupleIsAlive,
@@ -563,12 +599,12 @@ _bt_build_callback(Relation index,
 	 * processing
 	 */
 	if (tupleIsAlive || buildstate->spool2 == NULL)
-		_bt_spool(buildstate->spool, &htup->t_self, values, isnull);
+		_bt_spool(buildstate->spool, tid, values, isnull);
 	else
 	{
 		/* dead tuples are put into spool2 */
 		buildstate->havedead = true;
-		_bt_spool(buildstate->spool2, &htup->t_self, values, isnull);
+		_bt_spool(buildstate->spool2, tid, values, isnull);
 	}
 
 	buildstate->indtuples += 1;
@@ -589,9 +625,9 @@ _bt_blnewpage(uint32 level)
 	_bt_pageinit(page, BLCKSZ);
 
 	/* Initialize BT opaque state */
-	opaque = (BTPageOpaque) PageGetSpecialPointer(page);
+	opaque = BTPageGetOpaque(page);
 	opaque->btpo_prev = opaque->btpo_next = P_NONE;
-	opaque->btpo.level = level;
+	opaque->btpo_level = level;
 	opaque->btpo_flags = (level > 0) ? 0 : BTP_LEAF;
 	opaque->btpo_cycleid = 0;
 
@@ -607,13 +643,10 @@ _bt_blnewpage(uint32 level)
 static void
 _bt_blwritepage(BTWriteState *wstate, Page page, BlockNumber blkno)
 {
-	/* Ensure rd_smgr is open (could have been closed by relcache flush!) */
-	RelationOpenSmgr(wstate->index);
-
 	/* XLOG stuff */
 	if (wstate->btws_use_wal)
 	{
-		/* We use the heap NEWPAGE record type for this */
+		/* We use the XLOG_FPI record type for this */
 		log_newpage(&wstate->index->rd_node, MAIN_FORKNUM, blkno, page, true);
 	}
 
@@ -629,7 +662,7 @@ _bt_blwritepage(BTWriteState *wstate, Page page, BlockNumber blkno)
 		if (!wstate->btws_zeropage)
 			wstate->btws_zeropage = (Page) palloc0(BLCKSZ);
 		/* don't set checksum for all-zero page */
-		smgrextend(wstate->index->rd_smgr, MAIN_FORKNUM,
+		smgrextend(RelationGetSmgr(wstate->index), MAIN_FORKNUM,
 				   wstate->btws_pages_written++,
 				   (char *) wstate->btws_zeropage,
 				   true);
@@ -644,14 +677,14 @@ _bt_blwritepage(BTWriteState *wstate, Page page, BlockNumber blkno)
 	if (blkno == wstate->btws_pages_written)
 	{
 		/* extending the file... */
-		smgrextend(wstate->index->rd_smgr, MAIN_FORKNUM, blkno,
+		smgrextend(RelationGetSmgr(wstate->index), MAIN_FORKNUM, blkno,
 				   (char *) page, true);
 		wstate->btws_pages_written++;
 	}
 	else
 	{
 		/* overwriting a block we zero-filled before */
-		smgrwrite(wstate->index->rd_smgr, MAIN_FORKNUM, blkno,
+		smgrwrite(RelationGetSmgr(wstate->index), MAIN_FORKNUM, blkno,
 				  (char *) page, true);
 	}
 
@@ -673,16 +706,17 @@ _bt_pagestate(BTWriteState *wstate, uint32 level)
 	/* and assign it a page position */
 	state->btps_blkno = wstate->btws_pages_alloced++;
 
-	state->btps_minkey = NULL;
+	state->btps_lowkey = NULL;
 	/* initialize lastoff so first item goes into P_FIRSTKEY */
 	state->btps_lastoff = P_HIKEY;
+	state->btps_lastextra = 0;
 	state->btps_level = level;
 	/* set "full" threshold based on level.  See notes at head of file. */
 	if (level > 0)
 		state->btps_full = (BLCKSZ * (100 - BTREE_NONLEAF_FILLFACTOR) / 100);
 	else
-		state->btps_full = RelationGetTargetPageFreeSpace(wstate->index,
-														  BTREE_DEFAULT_FILLFACTOR);
+		state->btps_full = BTGetTargetPageFreeSpace(wstate->index);
+
 	/* no parent level, yet */
 	state->btps_next = NULL;
 
@@ -690,60 +724,59 @@ _bt_pagestate(BTWriteState *wstate, uint32 level)
 }
 
 /*
- * slide an array of ItemIds back one slot (from P_FIRSTKEY to
- * P_HIKEY, overwriting P_HIKEY).  we need to do this when we discover
- * that we have built an ItemId array in what has turned out to be a
- * P_RIGHTMOST page.
+ * Slide the array of ItemIds from the page back one slot (from P_FIRSTKEY to
+ * P_HIKEY, overwriting P_HIKEY).
+ *
+ * _bt_blnewpage() makes the P_HIKEY line pointer appear allocated, but the
+ * rightmost page on its level is not supposed to get a high key.  Now that
+ * it's clear that this page is a rightmost page, remove the unneeded empty
+ * P_HIKEY line pointer space.
  */
 static void
-_bt_slideleft(Page page)
+_bt_slideleft(Page rightmostpage)
 {
 	OffsetNumber off;
 	OffsetNumber maxoff;
 	ItemId		previi;
-	ItemId		thisii;
 
-	if (!PageIsEmpty(page))
+	maxoff = PageGetMaxOffsetNumber(rightmostpage);
+	Assert(maxoff >= P_FIRSTKEY);
+	previi = PageGetItemId(rightmostpage, P_HIKEY);
+	for (off = P_FIRSTKEY; off <= maxoff; off = OffsetNumberNext(off))
 	{
-		maxoff = PageGetMaxOffsetNumber(page);
-		previi = PageGetItemId(page, P_HIKEY);
-		for (off = P_FIRSTKEY; off <= maxoff; off = OffsetNumberNext(off))
-		{
-			thisii = PageGetItemId(page, off);
-			*previi = *thisii;
-			previi = thisii;
-		}
-		((PageHeader) page)->pd_lower -= sizeof(ItemIdData);
+		ItemId		thisii = PageGetItemId(rightmostpage, off);
+
+		*previi = *thisii;
+		previi = thisii;
 	}
+	((PageHeader) rightmostpage)->pd_lower -= sizeof(ItemIdData);
 }
 
 /*
  * Add an item to a page being built.
  *
- * The main difference between this routine and a bare PageAddItem call
- * is that this code knows that the leftmost data item on a non-leaf
- * btree page doesn't need to have a key.  Therefore, it strips such
- * items down to just the item header.
+ * This is very similar to nbtinsert.c's _bt_pgaddtup(), but this variant
+ * raises an error directly.
  *
- * This is almost like nbtinsert.c's _bt_pgaddtup(), but we can't use
- * that because it assumes that P_RIGHTMOST() will return the correct
- * answer for the page.  Here, we don't know yet if the page will be
- * rightmost.  Offset P_FIRSTKEY is always the first data key.
+ * Note that our nbtsort.c caller does not know yet if the page will be
+ * rightmost.  Offset P_FIRSTKEY is always assumed to be the first data key by
+ * caller.  Page that turns out to be the rightmost on its level is fixed by
+ * calling _bt_slideleft().
  */
 static void
 _bt_sortaddtup(Page page,
 			   Size itemsize,
 			   IndexTuple itup,
-			   OffsetNumber itup_off)
+			   OffsetNumber itup_off,
+			   bool newfirstdataitem)
 {
-	BTPageOpaque opaque = (BTPageOpaque) PageGetSpecialPointer(page);
 	IndexTupleData trunctuple;
 
-	if (!P_ISLEAF(opaque) && itup_off == P_FIRSTKEY)
+	if (newfirstdataitem)
 	{
 		trunctuple = *itup;
 		trunctuple.t_info = sizeof(IndexTupleData);
-		BTreeTupleSetNAtts(&trunctuple, 0);
+		BTreeTupleSetNAtts(&trunctuple, 0, false);
 		itup = &trunctuple;
 		itemsize = sizeof(IndexTupleData);
 	}
@@ -754,7 +787,8 @@ _bt_sortaddtup(Page page,
 }
 
 /*----------
- * Add an item to a disk page from the sort output.
+ * Add an item to a disk page from the sort output (or add a posting list
+ * item formed from the sort output).
  *
  * We must be careful to observe the page layout conventions of nbtsearch.c:
  * - rightmost pages start data items at P_HIKEY instead of at P_FIRSTKEY.
@@ -786,18 +820,30 @@ _bt_sortaddtup(Page page,
  * the truncated high key at offset 1.
  *
  * 'last' pointer indicates the last offset added to the page.
+ *
+ * 'truncextra' is the size of the posting list in itup, if any.  This
+ * information is stashed for the next call here, when we may benefit
+ * from considering the impact of truncating away the posting list on
+ * the page before deciding to finish the page off.  Posting lists are
+ * often relatively large, so it is worth going to the trouble of
+ * accounting for the saving from truncating away the posting list of
+ * the tuple that becomes the high key (that may be the only way to
+ * get close to target free space on the page).  Note that this is
+ * only used for the soft fillfactor-wise limit, not the critical hard
+ * limit.
  *----------
  */
 static void
-_bt_buildadd(BTWriteState *wstate, BTPageState *state, IndexTuple itup)
+_bt_buildadd(BTWriteState *wstate, BTPageState *state, IndexTuple itup,
+			 Size truncextra)
 {
 	Page		npage;
 	BlockNumber nblkno;
 	OffsetNumber last_off;
+	Size		last_truncextra;
 	Size		pgspc;
 	Size		itupsz;
-	int			indnatts = IndexRelationGetNumberOfAttributes(wstate->index);
-	int			indnkeyatts = IndexRelationGetNumberOfKeyAttributes(wstate->index);
+	bool		isleaf;
 
 	/*
 	 * This is a handy place to check for cancel interrupts during the btree
@@ -808,41 +854,55 @@ _bt_buildadd(BTWriteState *wstate, BTPageState *state, IndexTuple itup)
 	npage = state->btps_page;
 	nblkno = state->btps_blkno;
 	last_off = state->btps_lastoff;
+	last_truncextra = state->btps_lastextra;
+	state->btps_lastextra = truncextra;
 
 	pgspc = PageGetFreeSpace(npage);
 	itupsz = IndexTupleSize(itup);
 	itupsz = MAXALIGN(itupsz);
+	/* Leaf case has slightly different rules due to suffix truncation */
+	isleaf = (state->btps_level == 0);
 
 	/*
-	 * Check whether the item can fit on a btree page at all. (Eventually, we
-	 * ought to try to apply TOAST methods if not.) We actually need to be
-	 * able to fit three items on every page, so restrict any one item to 1/3
-	 * the per-page available space. Note that at this point, itupsz doesn't
-	 * include the ItemId.
+	 * Check whether the new item can fit on a btree page on current level at
+	 * all.
 	 *
-	 * NOTE: similar code appears in _bt_insertonpg() to defend against
-	 * oversize items being inserted into an already-existing index. But
-	 * during creation of an index, we don't go through there.
+	 * Every newly built index will treat heap TID as part of the keyspace,
+	 * which imposes the requirement that new high keys must occasionally have
+	 * a heap TID appended within _bt_truncate().  That may leave a new pivot
+	 * tuple one or two MAXALIGN() quantums larger than the original
+	 * firstright tuple it's derived from.  v4 deals with the problem by
+	 * decreasing the limit on the size of tuples inserted on the leaf level
+	 * by the same small amount.  Enforce the new v4+ limit on the leaf level,
+	 * and the old limit on internal levels, since pivot tuples may need to
+	 * make use of the reserved space.  This should never fail on internal
+	 * pages.
 	 */
-	if (itupsz > BTMaxItemSize(npage))
-		ereport(ERROR,
-				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				 errmsg("index row size %zu exceeds maximum %zu for index \"%s\"",
-						itupsz, BTMaxItemSize(npage),
-						RelationGetRelationName(wstate->index)),
-				 errhint("Values larger than 1/3 of a buffer page cannot be indexed.\n"
-						 "Consider a function index of an MD5 hash of the value, "
-						 "or use full text indexing."),
-				 errtableconstraint(wstate->heap,
-									RelationGetRelationName(wstate->index))));
+	if (unlikely(itupsz > BTMaxItemSize(npage)))
+		_bt_check_third_page(wstate->index, wstate->heap, isleaf, npage,
+							 itup);
 
 	/*
-	 * Check to see if page is "full".  It's definitely full if the item won't
-	 * fit.  Otherwise, compare to the target freespace derived from the
-	 * fillfactor.  However, we must put at least two items on each page, so
-	 * disregard fillfactor if we don't have that many.
+	 * Check to see if current page will fit new item, with space left over to
+	 * append a heap TID during suffix truncation when page is a leaf page.
+	 *
+	 * It is guaranteed that we can fit at least 2 non-pivot tuples plus a
+	 * high key with heap TID when finishing off a leaf page, since we rely on
+	 * _bt_check_third_page() rejecting oversized non-pivot tuples.  On
+	 * internal pages we can always fit 3 pivot tuples with larger internal
+	 * page tuple limit (includes page high key).
+	 *
+	 * Most of the time, a page is only "full" in the sense that the soft
+	 * fillfactor-wise limit has been exceeded.  However, we must always leave
+	 * at least two items plus a high key on each page before starting a new
+	 * page.  Disregard fillfactor and insert on "full" current page if we
+	 * don't have the minimum number of items yet.  (Note that we deliberately
+	 * assume that suffix truncation neither enlarges nor shrinks new high key
+	 * when applying soft limit, except when last tuple has a posting list.)
 	 */
-	if (pgspc < itupsz || (pgspc < state->btps_full && last_off > P_FIRSTKEY))
+	Assert(last_truncextra == 0 || isleaf);
+	if (pgspc < itupsz + (isleaf ? MAXALIGN(sizeof(ItemPointerData)) : 0) ||
+		(pgspc + last_truncextra < state->btps_full && last_off > P_FIRSTKEY))
 	{
 		/*
 		 * Finish off the page and write it out.
@@ -852,7 +912,6 @@ _bt_buildadd(BTWriteState *wstate, BTPageState *state, IndexTuple itup)
 		ItemId		ii;
 		ItemId		hii;
 		IndexTuple	oitup;
-		BTPageOpaque opageop = (BTPageOpaque) PageGetSpecialPointer(opage);
 
 		/* Create new page of same level */
 		npage = _bt_blnewpage(state->btps_level);
@@ -870,45 +929,60 @@ _bt_buildadd(BTWriteState *wstate, BTPageState *state, IndexTuple itup)
 		Assert(last_off > P_FIRSTKEY);
 		ii = PageGetItemId(opage, last_off);
 		oitup = (IndexTuple) PageGetItem(opage, ii);
-		_bt_sortaddtup(npage, ItemIdGetLength(ii), oitup, P_FIRSTKEY);
+		_bt_sortaddtup(npage, ItemIdGetLength(ii), oitup, P_FIRSTKEY,
+					   !isleaf);
 
 		/*
-		 * Move 'last' into the high key position on opage
+		 * Move 'last' into the high key position on opage.  _bt_blnewpage()
+		 * allocated empty space for a line pointer when opage was first
+		 * created, so this is a matter of rearranging already-allocated space
+		 * on page, and initializing high key line pointer. (Actually, leaf
+		 * pages must also swap oitup with a truncated version of oitup, which
+		 * is sometimes larger than oitup, though never by more than the space
+		 * needed to append a heap TID.)
 		 */
 		hii = PageGetItemId(opage, P_HIKEY);
 		*hii = *ii;
 		ItemIdSetUnused(ii);	/* redundant */
 		((PageHeader) opage)->pd_lower -= sizeof(ItemIdData);
 
-		if (indnkeyatts != indnatts && P_ISLEAF(opageop))
+		if (isleaf)
 		{
+			IndexTuple	lastleft;
 			IndexTuple	truncated;
-			Size		truncsz;
 
 			/*
-			 * Truncate any non-key attributes from high key on leaf level
-			 * (i.e. truncate on leaf level if we're building an INCLUDE
-			 * index).  This is only done at the leaf level because downlinks
+			 * Truncate away any unneeded attributes from high key on leaf
+			 * level.  This is only done at the leaf level because downlinks
 			 * in internal pages are either negative infinity items, or get
 			 * their contents from copying from one level down.  See also:
 			 * _bt_split().
 			 *
-			 * Since the truncated tuple is probably smaller than the
-			 * original, it cannot just be copied in place (besides, we want
-			 * to actually save space on the leaf page).  We delete the
-			 * original high key, and add our own truncated high key at the
-			 * same offset.
+			 * We don't try to bias our choice of split point to make it more
+			 * likely that _bt_truncate() can truncate away more attributes,
+			 * whereas the split point used within _bt_split() is chosen much
+			 * more delicately.  Even still, the lastleft and firstright
+			 * tuples passed to _bt_truncate() here are at least not fully
+			 * equal to each other when deduplication is used, unless there is
+			 * a large group of duplicates (also, unique index builds usually
+			 * have few or no spool2 duplicates).  When the split point is
+			 * between two unequal tuples, _bt_truncate() will avoid including
+			 * a heap TID in the new high key, which is the most important
+			 * benefit of suffix truncation.
 			 *
-			 * Note that the page layout won't be changed very much.  oitup is
-			 * already located at the physical beginning of tuple space, so we
-			 * only shift the line pointer array back and forth, and overwrite
-			 * the latter portion of the space occupied by the original tuple.
-			 * This is fairly cheap.
+			 * Overwrite the old item with new truncated high key directly.
+			 * oitup is already located at the physical beginning of tuple
+			 * space, so this should directly reuse the existing tuple space.
 			 */
-			truncated = _bt_nonkey_truncate(wstate->index, oitup);
-			truncsz = IndexTupleSize(truncated);
-			PageIndexTupleDelete(opage, P_HIKEY);
-			_bt_sortaddtup(opage, truncsz, truncated, P_HIKEY);
+			ii = PageGetItemId(opage, OffsetNumberPrev(last_off));
+			lastleft = (IndexTuple) PageGetItem(opage, ii);
+
+			Assert(IndexTupleSize(oitup) > last_truncextra);
+			truncated = _bt_truncate(wstate->index, lastleft, oitup,
+									 wstate->inskey);
+			if (!PageIndexTupleOverwrite(opage, P_HIKEY, (Item) truncated,
+										 IndexTupleSize(truncated)))
+				elog(ERROR, "failed to add high key to the index page");
 			pfree(truncated);
 
 			/* oitup should continue to point to the page's high key */
@@ -917,35 +991,34 @@ _bt_buildadd(BTWriteState *wstate, BTPageState *state, IndexTuple itup)
 		}
 
 		/*
-		 * Link the old page into its parent, using its minimum key. If we
-		 * don't have a parent, we have to create one; this adds a new btree
-		 * level.
+		 * Link the old page into its parent, using its low key.  If we don't
+		 * have a parent, we have to create one; this adds a new btree level.
 		 */
 		if (state->btps_next == NULL)
 			state->btps_next = _bt_pagestate(wstate, state->btps_level + 1);
 
-		Assert(BTreeTupleGetNAtts(state->btps_minkey, wstate->index) ==
-			   IndexRelationGetNumberOfKeyAttributes(wstate->index) ||
-			   P_LEFTMOST(opageop));
-		Assert(BTreeTupleGetNAtts(state->btps_minkey, wstate->index) == 0 ||
-			   !P_LEFTMOST(opageop));
-		BTreeInnerTupleSetDownLink(state->btps_minkey, oblkno);
-		_bt_buildadd(wstate, state->btps_next, state->btps_minkey);
-		pfree(state->btps_minkey);
+		Assert((BTreeTupleGetNAtts(state->btps_lowkey, wstate->index) <=
+				IndexRelationGetNumberOfKeyAttributes(wstate->index) &&
+				BTreeTupleGetNAtts(state->btps_lowkey, wstate->index) > 0) ||
+			   P_LEFTMOST(BTPageGetOpaque(opage)));
+		Assert(BTreeTupleGetNAtts(state->btps_lowkey, wstate->index) == 0 ||
+			   !P_LEFTMOST(BTPageGetOpaque(opage)));
+		BTreeTupleSetDownLink(state->btps_lowkey, oblkno);
+		_bt_buildadd(wstate, state->btps_next, state->btps_lowkey, 0);
+		pfree(state->btps_lowkey);
 
 		/*
-		 * Save a copy of the minimum key for the new page.  We have to copy
-		 * it off the old page, not the new one, in case we are not at leaf
-		 * level.
+		 * Save a copy of the high key from the old page.  It is also the low
+		 * key for the new page.
 		 */
-		state->btps_minkey = CopyIndexTuple(oitup);
+		state->btps_lowkey = CopyIndexTuple(oitup);
 
 		/*
 		 * Set the sibling links for both pages.
 		 */
 		{
-			BTPageOpaque oopaque = (BTPageOpaque) PageGetSpecialPointer(opage);
-			BTPageOpaque nopaque = (BTPageOpaque) PageGetSpecialPointer(npage);
+			BTPageOpaque oopaque = BTPageGetOpaque(opage);
+			BTPageOpaque nopaque = BTPageGetOpaque(npage);
 
 			oopaque->btpo_next = nblkno;
 			nopaque->btpo_prev = oblkno;
@@ -965,30 +1038,71 @@ _bt_buildadd(BTWriteState *wstate, BTPageState *state, IndexTuple itup)
 	}
 
 	/*
-	 * If the new item is the first for its page, stash a copy for later. Note
-	 * this will only happen for the first item on a level; on later pages,
-	 * the first item for a page is copied from the prior page in the code
-	 * above.  Since the minimum key for an entire level is only used as a
-	 * minus infinity downlink, and never as a high key, there is no need to
-	 * truncate away non-key attributes at this point.
+	 * By here, either original page is still the current page, or a new page
+	 * was created that became the current page.  Either way, the current page
+	 * definitely has space for new item.
+	 *
+	 * If the new item is the first for its page, it must also be the first
+	 * item on its entire level.  On later same-level pages, a low key for a
+	 * page will be copied from the prior page in the code above.  Generate a
+	 * minus infinity low key here instead.
 	 */
 	if (last_off == P_HIKEY)
 	{
-		Assert(state->btps_minkey == NULL);
-		state->btps_minkey = CopyIndexTuple(itup);
-		/* _bt_sortaddtup() will perform full truncation later */
-		BTreeTupleSetNAtts(state->btps_minkey, 0);
+		Assert(state->btps_lowkey == NULL);
+		state->btps_lowkey = palloc0(sizeof(IndexTupleData));
+		state->btps_lowkey->t_info = sizeof(IndexTupleData);
+		BTreeTupleSetNAtts(state->btps_lowkey, 0, false);
 	}
 
 	/*
 	 * Add the new item into the current page.
 	 */
 	last_off = OffsetNumberNext(last_off);
-	_bt_sortaddtup(npage, itupsz, itup, last_off);
+	_bt_sortaddtup(npage, itupsz, itup, last_off,
+				   !isleaf && last_off == P_FIRSTKEY);
 
 	state->btps_page = npage;
 	state->btps_blkno = nblkno;
 	state->btps_lastoff = last_off;
+}
+
+/*
+ * Finalize pending posting list tuple, and add it to the index.  Final tuple
+ * is based on saved base tuple, and saved list of heap TIDs.
+ *
+ * This is almost like _bt_dedup_finish_pending(), but it adds a new tuple
+ * using _bt_buildadd().
+ */
+static void
+_bt_sort_dedup_finish_pending(BTWriteState *wstate, BTPageState *state,
+							  BTDedupState dstate)
+{
+	Assert(dstate->nitems > 0);
+
+	if (dstate->nitems == 1)
+		_bt_buildadd(wstate, state, dstate->base, 0);
+	else
+	{
+		IndexTuple	postingtuple;
+		Size		truncextra;
+
+		/* form a tuple with a posting list */
+		postingtuple = _bt_form_posting(dstate->base,
+										dstate->htids,
+										dstate->nhtids);
+		/* Calculate posting list overhead */
+		truncextra = IndexTupleSize(postingtuple) -
+			BTreeTupleGetPostingOffset(postingtuple);
+
+		_bt_buildadd(wstate, state, postingtuple, truncextra);
+		pfree(postingtuple);
+	}
+
+	dstate->nmaxitems = 0;
+	dstate->nhtids = 0;
+	dstate->nitems = 0;
+	dstate->phystupsize = 0;
 }
 
 /*
@@ -1011,13 +1125,13 @@ _bt_uppershutdown(BTWriteState *wstate, BTPageState *state)
 		BTPageOpaque opaque;
 
 		blkno = s->btps_blkno;
-		opaque = (BTPageOpaque) PageGetSpecialPointer(s->btps_page);
+		opaque = BTPageGetOpaque(s->btps_page);
 
 		/*
 		 * We have to link the last page on this level to somewhere.
 		 *
 		 * If we're at the top, it's the root, so attach it to the metapage.
-		 * Otherwise, add an entry for it to its parent using its minimum key.
+		 * Otherwise, add an entry for it to its parent using its low key.
 		 * This may cause the last page of the parent level to split, but
 		 * that's not a problem -- we haven't gotten to it yet.
 		 */
@@ -1029,15 +1143,16 @@ _bt_uppershutdown(BTWriteState *wstate, BTPageState *state)
 		}
 		else
 		{
-			Assert(BTreeTupleGetNAtts(s->btps_minkey, wstate->index) ==
-				   IndexRelationGetNumberOfKeyAttributes(wstate->index) ||
+			Assert((BTreeTupleGetNAtts(s->btps_lowkey, wstate->index) <=
+					IndexRelationGetNumberOfKeyAttributes(wstate->index) &&
+					BTreeTupleGetNAtts(s->btps_lowkey, wstate->index) > 0) ||
 				   P_LEFTMOST(opaque));
-			Assert(BTreeTupleGetNAtts(s->btps_minkey, wstate->index) == 0 ||
+			Assert(BTreeTupleGetNAtts(s->btps_lowkey, wstate->index) == 0 ||
 				   !P_LEFTMOST(opaque));
-			BTreeInnerTupleSetDownLink(s->btps_minkey, blkno);
-			_bt_buildadd(wstate, s->btps_next, s->btps_minkey);
-			pfree(s->btps_minkey);
-			s->btps_minkey = NULL;
+			BTreeTupleSetDownLink(s->btps_lowkey, blkno);
+			_bt_buildadd(wstate, s->btps_next, s->btps_lowkey, 0);
+			pfree(s->btps_lowkey);
+			s->btps_lowkey = NULL;
 		}
 
 		/*
@@ -1056,7 +1171,8 @@ _bt_uppershutdown(BTWriteState *wstate, BTPageState *state)
 	 * by filling in a valid magic number in the metapage.
 	 */
 	metapage = (Page) palloc(BLCKSZ);
-	_bt_initmetapage(metapage, rootblkno, rootlevel);
+	_bt_initmetapage(metapage, rootblkno, rootlevel,
+					 wstate->inskey->allequalimage);
 	_bt_blwritepage(wstate, metapage, BTREE_METAPAGE);
 }
 
@@ -1075,8 +1191,12 @@ _bt_load(BTWriteState *wstate, BTSpool *btspool, BTSpool *btspool2)
 	TupleDesc	tupdes = RelationGetDescr(wstate->index);
 	int			i,
 				keysz = IndexRelationGetNumberOfKeyAttributes(wstate->index);
-	ScanKey		indexScanKey = NULL;
 	SortSupport sortKeys;
+	int64		tuples_done = 0;
+	bool		deduplicate;
+
+	deduplicate = wstate->inskey->allequalimage && !btspool->isunique &&
+		BTGetDeduplicateItems(wstate->index);
 
 	if (merge)
 	{
@@ -1088,7 +1208,6 @@ _bt_load(BTWriteState *wstate, BTSpool *btspool, BTSpool *btspool2)
 		/* the preparation of merge */
 		itup = tuplesort_getindextuple(btspool->sortstate, true);
 		itup2 = tuplesort_getindextuple(btspool2->sortstate, true);
-		indexScanKey = _bt_mkscankey_nodata(wstate->index);
 
 		/* Prepare SortSupport data for each column */
 		sortKeys = (SortSupport) palloc0(keysz * sizeof(SortSupportData));
@@ -1096,7 +1215,7 @@ _bt_load(BTWriteState *wstate, BTSpool *btspool, BTSpool *btspool2)
 		for (i = 0; i < keysz; i++)
 		{
 			SortSupport sortKey = sortKeys + i;
-			ScanKey		scanKey = indexScanKey + i;
+			ScanKey		scanKey = wstate->inskey->scankeys + i;
 			int16		strategy;
 
 			sortKey->ssup_cxt = GetCurrentMemoryContext();
@@ -1115,8 +1234,6 @@ _bt_load(BTWriteState *wstate, BTSpool *btspool, BTSpool *btspool2)
 			PrepareSortSupportFromIndexRel(wstate->index, strategy, sortKey);
 		}
 
-		_bt_freeskey(indexScanKey);
-
 		for (;;)
 		{
 			load1 = true;		/* load BTSpool next ? */
@@ -1127,6 +1244,8 @@ _bt_load(BTWriteState *wstate, BTSpool *btspool, BTSpool *btspool2)
 			}
 			else if (itup != NULL)
 			{
+				int32		compare = 0;
+
 				for (i = 1; i <= keysz; i++)
 				{
 					SortSupport entry;
@@ -1134,7 +1253,6 @@ _bt_load(BTWriteState *wstate, BTSpool *btspool, BTSpool *btspool2)
 								attrDatum2;
 					bool		isNull1,
 								isNull2;
-					int32		compare;
 
 					entry = sortKeys + i - 1;
 					attrDatum1 = index_getattr(itup, i, tupdes, &isNull1);
@@ -1151,6 +1269,20 @@ _bt_load(BTWriteState *wstate, BTSpool *btspool, BTSpool *btspool2)
 					else if (compare < 0)
 						break;
 				}
+
+				/*
+				 * If key values are equal, we sort on ItemPointer.  This is
+				 * required for btree indexes, since heap TID is treated as an
+				 * implicit last key attribute in order to ensure that all
+				 * keys in the index are physically unique.
+				 */
+				if (compare == 0)
+				{
+					compare = ItemPointerCompare(&itup->t_tid, &itup2->t_tid);
+					Assert(compare != 0);
+					if (compare > 0)
+						load1 = false;
+				}
 			}
 			else
 				load1 = false;
@@ -1161,20 +1293,116 @@ _bt_load(BTWriteState *wstate, BTSpool *btspool, BTSpool *btspool2)
 
 			if (load1)
 			{
-				_bt_buildadd(wstate, state, itup);
+				_bt_buildadd(wstate, state, itup, 0);
 				itup = tuplesort_getindextuple(btspool->sortstate, true);
 			}
 			else
 			{
-				_bt_buildadd(wstate, state, itup2);
+				_bt_buildadd(wstate, state, itup2, 0);
 				itup2 = tuplesort_getindextuple(btspool2->sortstate, true);
 			}
+
+			/* Report progress */
+			pgstat_progress_update_param(PROGRESS_CREATEIDX_TUPLES_DONE,
+										 ++tuples_done);
 		}
 		pfree(sortKeys);
 	}
+	else if (deduplicate)
+	{
+		/* merge is unnecessary, deduplicate into posting lists */
+		BTDedupState dstate;
+
+		dstate = (BTDedupState) palloc(sizeof(BTDedupStateData));
+		dstate->deduplicate = true; /* unused */
+		dstate->nmaxitems = 0;	/* unused */
+		dstate->maxpostingsize = 0; /* set later */
+		/* Metadata about base tuple of current pending posting list */
+		dstate->base = NULL;
+		dstate->baseoff = InvalidOffsetNumber;	/* unused */
+		dstate->basetupsize = 0;
+		/* Metadata about current pending posting list TIDs */
+		dstate->htids = NULL;
+		dstate->nhtids = 0;
+		dstate->nitems = 0;
+		dstate->phystupsize = 0;	/* unused */
+		dstate->nintervals = 0; /* unused */
+
+		while ((itup = tuplesort_getindextuple(btspool->sortstate,
+											   true)) != NULL)
+		{
+			/* When we see first tuple, create first index page */
+			if (state == NULL)
+			{
+				state = _bt_pagestate(wstate, 0);
+
+				/*
+				 * Limit size of posting list tuples to 1/10 space we want to
+				 * leave behind on the page, plus space for final item's line
+				 * pointer.  This is equal to the space that we'd like to
+				 * leave behind on each leaf page when fillfactor is 90,
+				 * allowing us to get close to fillfactor% space utilization
+				 * when there happen to be a great many duplicates.  (This
+				 * makes higher leaf fillfactor settings ineffective when
+				 * building indexes that have many duplicates, but packing
+				 * leaf pages full with few very large tuples doesn't seem
+				 * like a useful goal.)
+				 */
+				dstate->maxpostingsize = MAXALIGN_DOWN((BLCKSZ * 10 / 100)) -
+					sizeof(ItemIdData);
+				Assert(dstate->maxpostingsize <= BTMaxItemSize(state->btps_page) &&
+					   dstate->maxpostingsize <= INDEX_SIZE_MASK);
+				dstate->htids = palloc(dstate->maxpostingsize);
+
+				/* start new pending posting list with itup copy */
+				_bt_dedup_start_pending(dstate, CopyIndexTuple(itup),
+										InvalidOffsetNumber);
+			}
+			else if (_bt_keep_natts_fast(wstate->index, dstate->base,
+										 itup) > keysz &&
+					 _bt_dedup_save_htid(dstate, itup))
+			{
+				/*
+				 * Tuple is equal to base tuple of pending posting list.  Heap
+				 * TID from itup has been saved in state.
+				 */
+			}
+			else
+			{
+				/*
+				 * Tuple is not equal to pending posting list tuple, or
+				 * _bt_dedup_save_htid() opted to not merge current item into
+				 * pending posting list.
+				 */
+				_bt_sort_dedup_finish_pending(wstate, state, dstate);
+				pfree(dstate->base);
+
+				/* start new pending posting list with itup copy */
+				_bt_dedup_start_pending(dstate, CopyIndexTuple(itup),
+										InvalidOffsetNumber);
+			}
+
+			/* Report progress */
+			pgstat_progress_update_param(PROGRESS_CREATEIDX_TUPLES_DONE,
+										 ++tuples_done);
+		}
+
+		if (state)
+		{
+			/*
+			 * Handle the last item (there must be a last item when the
+			 * tuplesort returned one or more tuples)
+			 */
+			_bt_sort_dedup_finish_pending(wstate, state, dstate);
+			pfree(dstate->base);
+			pfree(dstate->htids);
+		}
+
+		pfree(dstate);
+	}
 	else
 	{
-		/* merge is unnecessary */
+		/* merging and deduplication are both unnecessary */
 		while ((itup = tuplesort_getindextuple(btspool->sortstate,
 											   true)) != NULL)
 		{
@@ -1182,7 +1410,11 @@ _bt_load(BTWriteState *wstate, BTSpool *btspool, BTSpool *btspool2)
 			if (state == NULL)
 				state = _bt_pagestate(wstate, 0);
 
-			_bt_buildadd(wstate, state, itup);
+			_bt_buildadd(wstate, state, itup, 0);
+
+			/* Report progress */
+			pgstat_progress_update_param(PROGRESS_CREATEIDX_TUPLES_DONE,
+										 ++tuples_done);
 		}
 	}
 
@@ -1190,25 +1422,16 @@ _bt_load(BTWriteState *wstate, BTSpool *btspool, BTSpool *btspool2)
 	_bt_uppershutdown(wstate, state);
 
 	/*
-	 * If the index is WAL-logged, we must fsync it down to disk before it's
-	 * safe to commit the transaction.  (For a non-WAL-logged index we don't
-	 * care since the index will be uninteresting after a crash anyway.)
-	 *
-	 * It's obvious that we must do this when not WAL-logging the build. It's
-	 * less obvious that we have to do it even if we did WAL-log the index
-	 * pages.  The reason is that since we're building outside shared buffers,
-	 * a CHECKPOINT occurring during the build has no way to flush the
-	 * previously written data to disk (indeed it won't know the index even
-	 * exists).  A crash later on would replay WAL from the checkpoint,
-	 * therefore it wouldn't replay our earlier WAL entries. If we do not
-	 * fsync those pages here, they might still not be on disk when the crash
-	 * occurs.
+	 * When we WAL-logged index pages, we must nonetheless fsync index files.
+	 * Since we're building outside shared buffers, a CHECKPOINT occurring
+	 * during the build has no way to flush the previously written data to
+	 * disk (indeed it won't know the index even exists).  A crash later on
+	 * would replay WAL from the checkpoint, therefore it wouldn't replay our
+	 * earlier WAL entries. If we do not fsync those pages here, they might
+	 * still not be on disk when the crash occurs.
 	 */
-	if (RelationNeedsWAL(wstate->index))
-	{
-		RelationOpenSmgr(wstate->index);
-		smgrimmedsync(wstate->index->rd_smgr, MAIN_FORKNUM);
-	}
+	if (wstate->btws_use_wal)
+		smgrimmedsync(RelationGetSmgr(wstate->index), MAIN_FORKNUM);
 }
 
 /*
@@ -1240,8 +1463,9 @@ _bt_begin_parallel(BTBuildState *buildstate, bool isconcurrent, int request)
 	Sharedsort *sharedsort2;
 	BTSpool    *btspool = buildstate->spool;
 	BTLeader   *btleader = (BTLeader *) palloc0(sizeof(BTLeader));
+	WalUsage   *walusage;
+	BufferUsage *bufferusage;
 	bool		leaderparticipates = true;
-	char	   *sharedquery;
 	int			querylen;
 
 #ifdef DISABLE_LEADER_PARTICIPATION
@@ -1255,7 +1479,8 @@ _bt_begin_parallel(BTBuildState *buildstate, bool isconcurrent, int request)
 	EnterParallelMode();
 	Assert(request > 0);
 	pcxt = CreateParallelContext("postgres", "_bt_parallel_build_main",
-								 request, true);
+								 request);
+
 	scantuplesortstates = leaderparticipates ? request + 1 : request;
 
 	/*
@@ -1274,7 +1499,7 @@ _bt_begin_parallel(BTBuildState *buildstate, bool isconcurrent, int request)
 	 * Estimate size for our own PARALLEL_KEY_BTREE_SHARED workspace, and
 	 * PARALLEL_KEY_TUPLESORT tuplesort workspace
 	 */
-	estbtshared = _bt_parallel_estimate_shared(snapshot);
+	estbtshared = _bt_parallel_estimate_shared(btspool->heap, snapshot);
 	shm_toc_estimate_chunk(&pcxt->estimator, estbtshared);
 	estsort = tuplesort_estimate_shared(scantuplesortstates);
 	shm_toc_estimate_chunk(&pcxt->estimator, estsort);
@@ -1291,13 +1516,43 @@ _bt_begin_parallel(BTBuildState *buildstate, bool isconcurrent, int request)
 		shm_toc_estimate_keys(&pcxt->estimator, 3);
 	}
 
-	/* Finally, estimate PARALLEL_KEY_QUERY_TEXT space */
-	querylen = strlen(debug_query_string);
-	shm_toc_estimate_chunk(&pcxt->estimator, querylen + 1);
+	/*
+	 * Estimate space for WalUsage and BufferUsage -- PARALLEL_KEY_WAL_USAGE
+	 * and PARALLEL_KEY_BUFFER_USAGE.
+	 *
+	 * If there are no extensions loaded that care, we could skip this.  We
+	 * have no way of knowing whether anyone's looking at pgWalUsage or
+	 * pgBufferUsage, so do it unconditionally.
+	 */
+	shm_toc_estimate_chunk(&pcxt->estimator,
+						   mul_size(sizeof(WalUsage), pcxt->nworkers));
 	shm_toc_estimate_keys(&pcxt->estimator, 1);
+	shm_toc_estimate_chunk(&pcxt->estimator,
+						   mul_size(sizeof(BufferUsage), pcxt->nworkers));
+	shm_toc_estimate_keys(&pcxt->estimator, 1);
+
+	/* Finally, estimate PARALLEL_KEY_QUERY_TEXT space */
+	if (debug_query_string)
+	{
+		querylen = strlen(debug_query_string);
+		shm_toc_estimate_chunk(&pcxt->estimator, querylen + 1);
+		shm_toc_estimate_keys(&pcxt->estimator, 1);
+	}
+	else
+		querylen = 0;			/* keep compiler quiet */
 
 	/* Everyone's had a chance to ask for space, so now create the DSM */
 	InitializeParallelDSM(pcxt);
+
+	/* If no DSM segment was available, back out (do serial build) */
+	if (pcxt->seg == NULL)
+	{
+		if (IsMVCCSnapshot(snapshot))
+			UnregisterSnapshot(snapshot);
+		DestroyParallelContext(pcxt);
+		ExitParallelMode();
+		return;
+	}
 
 	/* Store shared build state, for which we reserved space */
 	btshared = (BTShared *) shm_toc_allocate(pcxt->toc, estbtshared);
@@ -1305,6 +1560,7 @@ _bt_begin_parallel(BTBuildState *buildstate, bool isconcurrent, int request)
 	btshared->heaprelid = RelationGetRelid(btspool->heap);
 	btshared->indexrelid = RelationGetRelid(btspool->index);
 	btshared->isunique = btspool->isunique;
+	btshared->nulls_not_distinct = btspool->nulls_not_distinct;
 	btshared->isconcurrent = isconcurrent;
 	btshared->scantuplesortstates = scantuplesortstates;
 	ConditionVariableInit(&btshared->workersdonecv);
@@ -1315,7 +1571,9 @@ _bt_begin_parallel(BTBuildState *buildstate, bool isconcurrent, int request)
 	btshared->havedead = false;
 	btshared->indtuples = 0.0;
 	btshared->brokenhotchain = false;
-	heap_parallelscan_initialize(&btshared->heapdesc, btspool->heap, snapshot);
+	table_parallelscan_initialize(btspool->heap,
+								  ParallelTableScanFromBTShared(btshared),
+								  snapshot);
 
 	/*
 	 * Store shared tuplesort-private state, for which we reserved space.
@@ -1346,9 +1604,25 @@ _bt_begin_parallel(BTBuildState *buildstate, bool isconcurrent, int request)
 	}
 
 	/* Store query string for workers */
-	sharedquery = (char *) shm_toc_allocate(pcxt->toc, querylen + 1);
-	memcpy(sharedquery, debug_query_string, querylen + 1);
-	shm_toc_insert(pcxt->toc, PARALLEL_KEY_QUERY_TEXT, sharedquery);
+	if (debug_query_string)
+	{
+		char	   *sharedquery;
+
+		sharedquery = (char *) shm_toc_allocate(pcxt->toc, querylen + 1);
+		memcpy(sharedquery, debug_query_string, querylen + 1);
+		shm_toc_insert(pcxt->toc, PARALLEL_KEY_QUERY_TEXT, sharedquery);
+	}
+
+	/*
+	 * Allocate space for each worker's WalUsage and BufferUsage; no need to
+	 * initialize.
+	 */
+	walusage = shm_toc_allocate(pcxt->toc,
+								mul_size(sizeof(WalUsage), pcxt->nworkers));
+	shm_toc_insert(pcxt->toc, PARALLEL_KEY_WAL_USAGE, walusage);
+	bufferusage = shm_toc_allocate(pcxt->toc,
+								   mul_size(sizeof(BufferUsage), pcxt->nworkers));
+	shm_toc_insert(pcxt->toc, PARALLEL_KEY_BUFFER_USAGE, bufferusage);
 
 	/* Launch workers, saving status for leader/caller */
 	LaunchParallelWorkers(pcxt);
@@ -1360,6 +1634,8 @@ _bt_begin_parallel(BTBuildState *buildstate, bool isconcurrent, int request)
 	btleader->sharedsort = sharedsort;
 	btleader->sharedsort2 = sharedsort2;
 	btleader->snapshot = snapshot;
+	btleader->walusage = walusage;
+	btleader->bufferusage = bufferusage;
 
 	/* If no workers were successfully launched, back out (do serial build) */
 	if (pcxt->nworkers_launched == 0)
@@ -1388,8 +1664,18 @@ _bt_begin_parallel(BTBuildState *buildstate, bool isconcurrent, int request)
 static void
 _bt_end_parallel(BTLeader *btleader)
 {
+	int			i;
+
 	/* Shutdown worker processes */
 	WaitForParallelWorkersToFinish(btleader->pcxt);
+
+	/*
+	 * Next, accumulate WAL usage.  (This must wait for the workers to finish,
+	 * or we might get incomplete data.)
+	 */
+	for (i = 0; i < btleader->pcxt->nworkers_launched; i++)
+		InstrAccumParallelQuery(&btleader->bufferusage[i], &btleader->walusage[i]);
+
 	/* Free last reference to MVCC snapshot, if one was used */
 	if (IsMVCCSnapshot(btleader->snapshot))
 		UnregisterSnapshot(btleader->snapshot);
@@ -1402,17 +1688,11 @@ _bt_end_parallel(BTLeader *btleader)
  * btree index build based on the snapshot its parallel scan will use.
  */
 static Size
-_bt_parallel_estimate_shared(Snapshot snapshot)
+_bt_parallel_estimate_shared(Relation heap, Snapshot snapshot)
 {
-	if (!IsMVCCSnapshot(snapshot))
-	{
-		Assert(snapshot == SnapshotAny);
-		return sizeof(BTShared);
-	}
-
-	return add_size(offsetof(BTShared, heapdesc) +
-					offsetof(ParallelHeapScanDescData, phs_snapshot_data),
-					EstimateSnapshotSpace(snapshot));
+	/* c.f. shm_toc_allocate as to why BUFFERALIGN is used */
+	return add_size(BUFFERALIGN(sizeof(BTShared)),
+					table_parallelscan_estimate(heap, snapshot));
 }
 
 /*
@@ -1474,6 +1754,7 @@ _bt_leader_participate_as_worker(BTBuildState *buildstate)
 	leaderworker->heap = buildstate->spool->heap;
 	leaderworker->index = buildstate->spool->index;
 	leaderworker->isunique = buildstate->spool->isunique;
+	leaderworker->nulls_not_distinct = buildstate->spool->nulls_not_distinct;
 
 	/* Initialize second spool, if required */
 	if (!btleader->btshared->isunique)
@@ -1499,7 +1780,7 @@ _bt_leader_participate_as_worker(BTBuildState *buildstate)
 	/* Perform work common to all participants */
 	_bt_parallel_scan_and_sort(leaderworker, leaderworker2, btleader->btshared,
 							   btleader->sharedsort, btleader->sharedsort2,
-							   sortmem);
+							   sortmem, true);
 
 #ifdef BTREE_BUILD_STATS
 	if (log_btree_build_stats)
@@ -1526,6 +1807,8 @@ _bt_parallel_build_main(dsm_segment *seg, shm_toc *toc)
 	Relation	indexRel;
 	LOCKMODE	heapLockmode;
 	LOCKMODE	indexLockmode;
+	WalUsage   *walusage;
+	BufferUsage *bufferusage;
 	int			sortmem;
 
 #ifdef BTREE_BUILD_STATS
@@ -1533,8 +1816,15 @@ _bt_parallel_build_main(dsm_segment *seg, shm_toc *toc)
 		ResetUsage();
 #endif							/* BTREE_BUILD_STATS */
 
+	/*
+	 * The only possible status flag that can be set to the parallel worker is
+	 * PROC_IN_SAFE_IC.
+	 */
+	Assert((MyProc->statusFlags == 0) ||
+		   (MyProc->statusFlags == PROC_IN_SAFE_IC));
+
 	/* Set debug_query_string for individual workers first */
-	sharedquery = shm_toc_lookup(toc, PARALLEL_KEY_QUERY_TEXT, false);
+	sharedquery = shm_toc_lookup(toc, PARALLEL_KEY_QUERY_TEXT, true);
 	debug_query_string = sharedquery;
 
 	/* Report the query string from leader */
@@ -1556,7 +1846,7 @@ _bt_parallel_build_main(dsm_segment *seg, shm_toc *toc)
 	}
 
 	/* Open relations within worker */
-	heapRel = heap_open(btshared->heaprelid, heapLockmode);
+	heapRel = table_open(btshared->heaprelid, heapLockmode);
 	indexRel = index_open(btshared->indexrelid, indexLockmode);
 
 	/* Initialize worker's own spool */
@@ -1564,6 +1854,7 @@ _bt_parallel_build_main(dsm_segment *seg, shm_toc *toc)
 	btspool->heap = heapRel;
 	btspool->index = indexRel;
 	btspool->isunique = btshared->isunique;
+	btspool->nulls_not_distinct = btshared->nulls_not_distinct;
 
 	/* Look up shared state private to tuplesort.c */
 	sharedsort = shm_toc_lookup(toc, PARALLEL_KEY_TUPLESORT, false);
@@ -1587,10 +1878,19 @@ _bt_parallel_build_main(dsm_segment *seg, shm_toc *toc)
 		tuplesort_attach_shared(sharedsort2, seg);
 	}
 
+	/* Prepare to track buffer usage during parallel execution */
+	InstrStartParallelQuery();
+
 	/* Perform sorting of spool, and possibly a spool2 */
 	sortmem = maintenance_work_mem / btshared->scantuplesortstates;
 	_bt_parallel_scan_and_sort(btspool, btspool2, btshared, sharedsort,
-							   sharedsort2, sortmem);
+							   sharedsort2, sortmem, false);
+
+	/* Report WAL/buffer usage during parallel execution */
+	bufferusage = shm_toc_lookup(toc, PARALLEL_KEY_BUFFER_USAGE, false);
+	walusage = shm_toc_lookup(toc, PARALLEL_KEY_WAL_USAGE, false);
+	InstrEndParallelQuery(&bufferusage[ParallelWorkerNumber],
+						  &walusage[ParallelWorkerNumber]);
 
 #ifdef BTREE_BUILD_STATS
 	if (log_btree_build_stats)
@@ -1601,7 +1901,7 @@ _bt_parallel_build_main(dsm_segment *seg, shm_toc *toc)
 #endif							/* BTREE_BUILD_STATS */
 
 	index_close(indexRel, indexLockmode);
-	heap_close(heapRel, heapLockmode);
+	table_close(heapRel, heapLockmode);
 }
 
 /*
@@ -1619,11 +1919,11 @@ _bt_parallel_build_main(dsm_segment *seg, shm_toc *toc)
 static void
 _bt_parallel_scan_and_sort(BTSpool *btspool, BTSpool *btspool2,
 						   BTShared *btshared, Sharedsort *sharedsort,
-						   Sharedsort *sharedsort2, int sortmem)
+						   Sharedsort *sharedsort2, int sortmem, bool progress)
 {
 	SortCoordinate coordinate;
 	BTBuildState buildstate;
-	HeapScanDesc scan;
+	TableScanDesc scan;
 	double		reltuples;
 	IndexInfo  *indexInfo;
 
@@ -1637,8 +1937,9 @@ _bt_parallel_scan_and_sort(BTSpool *btspool, BTSpool *btspool2,
 	btspool->sortstate = tuplesort_begin_index_btree(btspool->heap,
 													 btspool->index,
 													 btspool->isunique,
+													 btspool->nulls_not_distinct,
 													 sortmem, coordinate,
-													 false);
+													 TUPLESORT_NONE);
 
 	/*
 	 * Just as with serial case, there may be a second spool.  If so, a
@@ -1659,13 +1960,14 @@ _bt_parallel_scan_and_sort(BTSpool *btspool, BTSpool *btspool2,
 		coordinate2->nParticipants = -1;
 		coordinate2->sharedsort = sharedsort2;
 		btspool2->sortstate =
-			tuplesort_begin_index_btree(btspool->heap, btspool->index, false,
+			tuplesort_begin_index_btree(btspool->heap, btspool->index, false, false,
 										Min(sortmem, work_mem), coordinate2,
 										false);
 	}
 
 	/* Fill in buildstate for _bt_build_callback() */
 	buildstate.isunique = btshared->isunique;
+	buildstate.nulls_not_distinct = btshared->nulls_not_distinct;
 	buildstate.havedead = false;
 	buildstate.heap = btspool->heap;
 	buildstate.spool = btspool;
@@ -1676,21 +1978,24 @@ _bt_parallel_scan_and_sort(BTSpool *btspool, BTSpool *btspool2,
 	/* Join parallel scan */
 	indexInfo = BuildIndexInfo(btspool->index);
 	indexInfo->ii_Concurrent = btshared->isconcurrent;
-	scan = heap_beginscan_parallel(btspool->heap, &btshared->heapdesc);
-	reltuples = IndexBuildHeapScan(btspool->heap, btspool->index, indexInfo,
-								   true, _bt_build_callback,
-								   (void *) &buildstate, scan);
+	scan = table_beginscan_parallel(btspool->heap,
+									ParallelTableScanFromBTShared(btshared));
+	reltuples = table_index_build_scan(btspool->heap, btspool->index, indexInfo,
+									   true, progress, _bt_build_callback,
+									   (void *) &buildstate, scan);
 
-	/*
-	 * Execute this worker's part of the sort.
-	 *
-	 * Unlike leader and serial cases, we cannot avoid calling
-	 * tuplesort_performsort() for spool2 if it ends up containing no dead
-	 * tuples (this is disallowed for workers by tuplesort).
-	 */
+	/* Execute this worker's part of the sort */
+	if (progress)
+		pgstat_progress_update_param(PROGRESS_CREATEIDX_SUBPHASE,
+									 PROGRESS_BTREE_PHASE_PERFORMSORT_1);
 	tuplesort_performsort(btspool->sortstate);
 	if (btspool2)
+	{
+		if (progress)
+			pgstat_progress_update_param(PROGRESS_CREATEIDX_SUBPHASE,
+										 PROGRESS_BTREE_PHASE_PERFORMSORT_2);
 		tuplesort_performsort(btspool2->sortstate);
+	}
 
 	/*
 	 * Done.  Record ambuild statistics, and whether we encountered a broken

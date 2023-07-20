@@ -3,7 +3,7 @@
  * sinvaladt.c
  *	  POSTGRES shared cache invalidation data manager.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -17,6 +17,7 @@
 #include <signal.h>
 #include <unistd.h>
 
+#include "access/transam.h"
 #include "miscadmin.h"
 #include "storage/backendid.h"
 #include "storage/ipc.h"
@@ -25,8 +26,6 @@
 #include "storage/shmem.h"
 #include "storage/sinvaladt.h"
 #include "storage/spin.h"
-#include "access/transam.h"
-
 
 /*
  * Conceptually, the shared cache invalidation messages are stored in an
@@ -204,6 +203,15 @@ SInvalShmemSize(void)
 	Size		size;
 
 	size = offsetof(SISeg, procState);
+
+	/*
+	 * In Hot Standby mode, the startup process requests a procState array
+	 * slot using InitRecoveryTransactionEnvironment(). Even though
+	 * MaxBackends doesn't account for the startup process, it is guaranteed
+	 * to get a free slot. This is because the autovacuum launcher and worker
+	 * processes, which are included in MaxBackends, are not started in Hot
+	 * Standby mode.
+	 */
 	size = add_size(size, mul_size(sizeof(ProcState), MaxBackends));
 
 	return size;
@@ -439,10 +447,8 @@ BackendIdGetTransactionIds(int backendID, TransactionId *xid, TransactionId *xmi
 
 		if (proc != NULL)
 		{
-			PGXACT	   *xact = &ProcGlobal->allPgXact[proc->pgprocno];
-
-			*xid = xact->xid;
-			*xmin = xact->xmin;
+			*xid = proc->xid;
+			*xmin = proc->xmin;
 		}
 	}
 

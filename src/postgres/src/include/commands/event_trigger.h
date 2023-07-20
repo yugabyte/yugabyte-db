@@ -3,7 +3,7 @@
  * event_trigger.h
  *	  Declarations for command trigger handling.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/commands/event_trigger.h
@@ -17,21 +17,22 @@
 #include "catalog/objectaddress.h"
 #include "catalog/pg_event_trigger.h"
 #include "nodes/parsenodes.h"
-#include "utils/aclchk_internal.h"
+#include "tcop/cmdtag.h"
 #include "tcop/deparse_utility.h"
+#include "utils/aclchk_internal.h"
 
 typedef struct EventTriggerData
 {
 	NodeTag		type;
 	const char *event;			/* event name */
 	Node	   *parsetree;		/* parse tree */
-	const char *tag;			/* command tag */
+	CommandTag	tag;
 } EventTriggerData;
 
 #define AT_REWRITE_ALTER_PERSISTENCE	0x01
 #define AT_REWRITE_DEFAULT_VAL			0x02
 #define AT_REWRITE_COLUMN_REWRITE		0x04
-#define AT_REWRITE_ALTER_OID			0x08
+#define AT_REWRITE_ACCESS_METHOD		0x08
 
 /*
  * EventTriggerData is the node type that is passed as fmgr "context" info
@@ -41,7 +42,6 @@ typedef struct EventTriggerData
 	((fcinfo)->context != NULL && IsA((fcinfo)->context, EventTriggerData))
 
 extern Oid	CreateEventTrigger(CreateEventTrigStmt *stmt);
-extern void RemoveEventTriggerById(Oid ctrigOid);
 extern Oid	get_event_trigger_oid(const char *trigname, bool missing_ok);
 
 extern Oid	AlterEventTrigger(AlterEventTrigStmt *stmt);
@@ -59,30 +59,30 @@ extern bool EventTriggerBeginCompleteQuery(void);
 extern void EventTriggerEndCompleteQuery(void);
 extern bool trackDroppedObjectsNeeded(void);
 extern void EventTriggerSQLDropAddObject(const ObjectAddress *object,
-							 bool original, bool normal);
+										 bool original, bool normal);
 
 extern void EventTriggerInhibitCommandCollection(void);
 extern void EventTriggerUndoInhibitCommandCollection(void);
 
 extern void EventTriggerCollectSimpleCommand(ObjectAddress address,
-								 ObjectAddress secondaryObject,
-								 Node *parsetree);
+											 ObjectAddress secondaryObject,
+											 Node *parsetree);
 
 extern void EventTriggerAlterTableStart(Node *parsetree);
 extern void EventTriggerAlterTableRelid(Oid objectId);
 extern void EventTriggerCollectAlterTableSubcmd(Node *subcmd,
-									ObjectAddress address);
+												ObjectAddress address);
 extern void EventTriggerAlterTableEnd(void);
 
 extern void EventTriggerCollectGrant(InternalGrant *istmt);
 extern void EventTriggerCollectAlterOpFam(AlterOpFamilyStmt *stmt,
-							  Oid opfamoid, List *operators,
-							  List *procedures);
+										  Oid opfamoid, List *operators,
+										  List *procedures);
 extern void EventTriggerCollectCreateOpClass(CreateOpClassStmt *stmt,
-								 Oid opcoid, List *operators,
-								 List *procedures);
+											 Oid opcoid, List *operators,
+											 List *procedures);
 extern void EventTriggerCollectAlterTSConfig(AlterTSConfigurationStmt *stmt,
-								 Oid cfgId, Oid *dictIds, int ndicts);
+											 Oid cfgId, Oid *dictIds, int ndicts);
 extern void EventTriggerCollectAlterDefPrivs(AlterDefaultPrivilegesStmt *stmt);
 
 #endif							/* EVENT_TRIGGER_H */

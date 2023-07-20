@@ -44,7 +44,7 @@ static double extract_from_match(const char *str, regmatch_t *match, int match_n
 	return atof(num_str);
 }
 
-static HistInterval extract_interval(regex_t *regex, const char *str, int len)
+static HistInterval yb_extract_interval(regex_t *regex, const char *str, int len)
 {
 	regmatch_t match[7];
 	double start;
@@ -119,7 +119,7 @@ yb_get_percentile(PG_FUNCTION_ARGS)
 				if (val.type != jbvString)
 					elog(ERROR, "Invalid histogram: Unexpected key that is not of string type");
 				h_state = KEY;
-				interval = extract_interval(&regex, val.val.string.val,
+				interval = yb_extract_interval(&regex, val.val.string.val,
 					val.val.string.len);
 				if (interval.start < last_interval_end)
 					elog(ERROR, "Invalid histogram: Unexpected interval intersection between keys");

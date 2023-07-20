@@ -44,7 +44,7 @@ SECURITY LABEL [ FOR <replaceable class="parameter">provider</replaceable> ] ON
   TABLESPACE <replaceable class="parameter">object_name</replaceable> |
   TYPE <replaceable class="parameter">object_name</replaceable> |
   VIEW <replaceable class="parameter">object_name</replaceable>
-} IS '<replaceable class="parameter">label</replaceable>'
+} IS { <replaceable class="parameter">string_literal</replaceable> | NULL }
 
 <phrase>where <replaceable>aggregate_signature</replaceable> is:</phrase>
 
@@ -80,7 +80,7 @@ SECURITY LABEL [ FOR <replaceable class="parameter">provider</replaceable> ] ON
    label provider must interpret security labels; it merely provides a
    mechanism for storing them.  In practice, this facility is intended to allow
    integration with label-based mandatory access control (MAC) systems such as
-   <productname>SE-Linux</productname>.  Such systems make all access control decisions
+   <productname>SELinux</productname>.  Such systems make all access control decisions
    based on object labels, rather than traditional discretionary access control
    (DAC) concepts such as users and groups.
   </para>
@@ -99,9 +99,8 @@ SECURITY LABEL [ FOR <replaceable class="parameter">provider</replaceable> ] ON
     <term><replaceable class="parameter">routine_name</replaceable></term>
     <listitem>
      <para>
-      The name of the object to be labeled.  Names of tables,
-      aggregates, domains, foreign tables, functions, procedures, routines, sequences, types, and
-      views can be schema-qualified.
+      The name of the object to be labeled.  Names of objects that reside in
+      schemas (tables, functions, etc.) can be schema-qualified.
      </para>
     </listitem>
    </varlistentry>
@@ -179,11 +178,19 @@ SECURITY LABEL [ FOR <replaceable class="parameter">provider</replaceable> ] ON
     </varlistentry>
 
    <varlistentry>
-    <term><replaceable class="parameter">label</replaceable></term>
+    <term><replaceable class="parameter">string_literal</replaceable></term>
     <listitem>
      <para>
-      The new security label, written as a string literal; or <literal>NULL</literal>
-      to drop the security label.
+      The new setting of the security label, written as a string literal.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>NULL</literal></term>
+    <listitem>
+     <para>
+      Write <literal>NULL</literal> to drop the security label.
      </para>
     </listitem>
    </varlistentry>
@@ -194,12 +201,19 @@ SECURITY LABEL [ FOR <replaceable class="parameter">provider</replaceable> ] ON
   <title>Examples</title>
 
   <para>
-   The following example shows how the security label of a table might
-   be changed.
+   The following example shows how the security label of a table could
+   be set or changed:
 
 <programlisting>
 SECURITY LABEL FOR selinux ON TABLE mytable IS 'system_u:object_r:sepgsql_table_t:s0';
-</programlisting></para>
+</programlisting>
+
+   To remove the label:
+
+<programlisting>
+SECURITY LABEL FOR selinux ON TABLE mytable IS NULL;
+</programlisting>
+  </para>
  </refsect1>
 
  <refsect1>

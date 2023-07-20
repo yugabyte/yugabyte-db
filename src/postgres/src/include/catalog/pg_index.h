@@ -4,7 +4,7 @@
  *	  definition of the "index" system catalog (pg_index)
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_index.h
@@ -26,13 +26,15 @@
  *		typedef struct FormData_pg_index.
  * ----------------
  */
-CATALOG(pg_index,2610,IndexRelationId) BKI_WITHOUT_OIDS BKI_SCHEMA_MACRO
+CATALOG(pg_index,2610,IndexRelationId) BKI_SCHEMA_MACRO
 {
-	Oid			indexrelid;		/* OID of the index */
-	Oid			indrelid;		/* OID of the relation it indexes */
+	Oid			indexrelid BKI_LOOKUP(pg_class);	/* OID of the index */
+	Oid			indrelid BKI_LOOKUP(pg_class);	/* OID of the relation it
+												 * indexes */
 	int16		indnatts;		/* total number of columns in index */
 	int16		indnkeyatts;	/* number of key columns in index */
 	bool		indisunique;	/* is this a unique index? */
+	bool		indnullsnotdistinct;	/* null treatment in unique index */
 	bool		indisprimary;	/* is this index for primary key? */
 	bool		indisexclusion; /* is this index for exclusion constraint? */
 	bool		indimmediate;	/* is uniqueness enforced immediately? */
@@ -44,12 +46,14 @@ CATALOG(pg_index,2610,IndexRelationId) BKI_WITHOUT_OIDS BKI_SCHEMA_MACRO
 	bool		indisreplident; /* is this index the identity for replication? */
 
 	/* variable-length fields start here, but we allow direct access to indkey */
-	int2vector	indkey;			/* column numbers of indexed cols, or 0 */
+	int2vector	indkey BKI_FORCE_NOT_NULL;	/* column numbers of indexed cols,
+											 * or 0 */
 
 #ifdef CATALOG_VARLEN
-	oidvector	indcollation;	/* collation identifiers */
-	oidvector	indclass;		/* opclass identifiers */
-	int2vector	indoption;		/* per-column flags (AM-specific meanings) */
+	oidvector	indcollation BKI_LOOKUP_OPT(pg_collation) BKI_FORCE_NOT_NULL;	/* collation identifiers */
+	oidvector	indclass BKI_LOOKUP(pg_opclass) BKI_FORCE_NOT_NULL; /* opclass identifiers */
+	int2vector	indoption BKI_FORCE_NOT_NULL;	/* per-column flags
+												 * (AM-specific meanings) */
 	pg_node_tree indexprs;		/* expression trees for index attributes that
 								 * are not simple column references; one for
 								 * each zero entry in indkey[] */
@@ -65,6 +69,12 @@ CATALOG(pg_index,2610,IndexRelationId) BKI_WITHOUT_OIDS BKI_SCHEMA_MACRO
  */
 typedef FormData_pg_index *Form_pg_index;
 
+DECLARE_INDEX(pg_index_indrelid_index, 2678, IndexIndrelidIndexId, on pg_index using btree(indrelid oid_ops));
+DECLARE_UNIQUE_INDEX_PKEY(pg_index_indexrelid_index, 2679, IndexRelidIndexId, on pg_index using btree(indexrelid oid_ops));
+
+/* indkey can contain zero (InvalidAttrNumber) to represent expressions */
+DECLARE_ARRAY_FOREIGN_KEY_OPT((indrelid, indkey), pg_attribute, (attrelid, attnum));
+
 #ifdef EXPOSE_TO_CLIENT_CODE
 
 /*
@@ -79,14 +89,5 @@ typedef FormData_pg_index *Form_pg_index;
 #define INDOPTION_HASH			0x0004	/* values are hash-indexed */
 
 #endif							/* EXPOSE_TO_CLIENT_CODE */
-
-/*
- * Use of these macros is recommended over direct examination of the state
- * flag columns where possible; this allows source code compatibility with
- * the hacky representation used in 9.2.
- */
-#define IndexIsValid(indexForm) ((indexForm)->indisvalid)
-#define IndexIsReady(indexForm) ((indexForm)->indisready)
-#define IndexIsLive(indexForm)	((indexForm)->indislive)
 
 #endif							/* PG_INDEX_H */

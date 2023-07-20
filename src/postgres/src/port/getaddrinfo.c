@@ -13,7 +13,7 @@
  * use the Windows native routines, but if not, we use our own.
  *
  *
- * Copyright (c) 2003-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2003-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/port/getaddrinfo.c
@@ -34,6 +34,14 @@
 #include "port/pg_bswap.h"
 
 
+#ifdef FRONTEND
+static int	pqGethostbyname(const char *name,
+							struct hostent *resultbuf,
+							char *buffer, size_t buflen,
+							struct hostent **result,
+							int *herrno);
+#endif
+
 #ifdef WIN32
 /*
  * The native routines may or may not exist on the Windows platform we are on,
@@ -49,8 +57,8 @@ typedef void (__stdcall * freeaddrinfo_ptr_t) (struct addrinfo *ai);
 
 typedef int (__stdcall * getnameinfo_ptr_t) (const struct sockaddr *sa,
 											 int salen,
-											 char *host, int hostlen,
-											 char *serv, int servlen,
+											 char *node, int nodelen,
+											 char *service, int servicelen,
 											 int flags);
 
 /* static pointers to the native routines, so we only do the lookup once. */
@@ -69,40 +77,22 @@ haveNativeWindowsIPv6routines(void)
 		return (getaddrinfo_ptr != NULL);
 
 	/*
-	 * For Windows XP and Windows 2003 (and longhorn/vista), the IPv6 routines
-	 * are present in the WinSock 2 library (ws2_32.dll). Try that first
+	 * For Windows XP and later versions, the IPv6 routines are present in the
+	 * WinSock 2 library (ws2_32.dll).
 	 */
-
 	hLibrary = LoadLibraryA("ws2_32");
-
-	if (hLibrary == NULL || GetProcAddress(hLibrary, "getaddrinfo") == NULL)
-	{
-		/*
-		 * Well, ws2_32 doesn't exist, or more likely doesn't have
-		 * getaddrinfo.
-		 */
-		if (hLibrary != NULL)
-			FreeLibrary(hLibrary);
-
-		/*
-		 * In Windows 2000, there was only the IPv6 Technology Preview look in
-		 * the IPv6 WinSock library (wship6.dll).
-		 */
-
-		hLibrary = LoadLibraryA("wship6");
-	}
 
 	/* If hLibrary is null, we couldn't find a dll with functions */
 	if (hLibrary != NULL)
 	{
 		/* We found a dll, so now get the addresses of the routines */
 
-		getaddrinfo_ptr = (getaddrinfo_ptr_t) GetProcAddress(hLibrary,
-															 "getaddrinfo");
-		freeaddrinfo_ptr = (freeaddrinfo_ptr_t) GetProcAddress(hLibrary,
-															   "freeaddrinfo");
-		getnameinfo_ptr = (getnameinfo_ptr_t) GetProcAddress(hLibrary,
-															 "getnameinfo");
+		getaddrinfo_ptr = (getaddrinfo_ptr_t) (pg_funcptr_t) GetProcAddress(hLibrary,
+																			"getaddrinfo");
+		freeaddrinfo_ptr = (freeaddrinfo_ptr_t) (pg_funcptr_t) GetProcAddress(hLibrary,
+																			  "freeaddrinfo");
+		getnameinfo_ptr = (getnameinfo_ptr_t) (pg_funcptr_t) GetProcAddress(hLibrary,
+																			"getnameinfo");
 
 		/*
 		 * If any one of the routines is missing, let's play it safe and
@@ -387,9 +377,10 @@ getnameinfo(const struct sockaddr *sa, int salen,
 	{
 		if (sa->sa_family == AF_INET)
 		{
-			if (inet_net_ntop(AF_INET, &((struct sockaddr_in *) sa)->sin_addr,
-							  sa->sa_family == AF_INET ? 32 : 128,
-							  node, nodelen) == NULL)
+			if (pg_inet_net_ntop(AF_INET,
+								 &((struct sockaddr_in *) sa)->sin_addr,
+								 sa->sa_family == AF_INET ? 32 : 128,
+								 node, nodelen) == NULL)
 				return EAI_MEMORY;
 		}
 		else
@@ -411,3 +402,39 @@ getnameinfo(const struct sockaddr *sa, int salen,
 
 	return 0;
 }
+
+/*
+ * Wrapper around gethostbyname() or gethostbyname_r() to mimic
+ * POSIX gethostbyname_r() behaviour, if it is not available or required.
+ */
+#ifdef FRONTEND
+static int
+pqGethostbyname(const char *name,
+				struct hostent *resultbuf,
+				char *buffer, size_t buflen,
+				struct hostent **result,
+				int *herrno)
+{
+#if defined(ENABLE_THREAD_SAFETY) && defined(HAVE_GETHOSTBYNAME_R)
+
+	/*
+	 * broken (well early POSIX draft) gethostbyname_r() which returns 'struct
+	 * hostent *'
+	 */
+	*result = gethostbyname_r(name, resultbuf, buffer, buflen, herrno);
+	return (*result == NULL) ? -1 : 0;
+#else
+
+	/* no gethostbyname_r(), just use gethostbyname() */
+	*result = gethostbyname(name);
+
+	if (*result != NULL)
+		*herrno = h_errno;
+
+	if (*result != NULL)
+		return 0;
+	else
+		return -1;
+#endif
+}
+#endif							/* FRONTEND */

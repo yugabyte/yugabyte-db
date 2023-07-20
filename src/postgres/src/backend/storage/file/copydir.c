@@ -3,7 +3,7 @@
  * copydir.c
  *	  copies a directory
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	While "xcopy /e /i /q" works fine for copying directories, on Windows XP
@@ -22,10 +22,10 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
-#include "storage/copydir.h"
-#include "storage/fd.h"
 #include "miscadmin.h"
 #include "pgstat.h"
+#include "storage/copydir.h"
+#include "storage/fd.h"
 
 /*
  * copydir: copy a directory
@@ -199,7 +199,6 @@ copy_file(char *fromfile, char *tofile)
 		pgstat_report_wait_start(WAIT_EVENT_COPY_FILE_WRITE);
 		if ((int) write(dstfd, buffer, nbytes) != nbytes)
 		{
-			pgstat_report_wait_end();
 			/* if write didn't set errno, assume problem is no disk space */
 			if (errno == 0)
 				errno = ENOSPC;
@@ -213,12 +212,15 @@ copy_file(char *fromfile, char *tofile)
 	if (offset > flush_offset)
 		pg_flush_data(dstfd, flush_offset, offset - flush_offset);
 
-	if (CloseTransientFile(dstfd))
+	if (CloseTransientFile(dstfd) != 0)
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not close file \"%s\": %m", tofile)));
 
-	CloseTransientFile(srcfd);
+	if (CloseTransientFile(srcfd) != 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not close file \"%s\": %m", fromfile)));
 
 	pfree(buffer);
 }

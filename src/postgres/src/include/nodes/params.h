@@ -4,7 +4,7 @@
  *	  Support for finding the values associated with Param nodes.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/params.h
@@ -115,6 +115,7 @@ typedef struct ParamListInfoData
 	void	   *paramCompileArg;
 	ParserSetupHook parserSetup;	/* parser setup hook */
 	void	   *parserSetupArg;
+	char	   *paramValuesStr; /* params as a single string for errors */
 	int			numParams;		/* nominal/maximum # of Params represented */
 
 	/*
@@ -149,11 +150,21 @@ typedef struct ParamExecData
 	bool		isnull;
 } ParamExecData;
 
+/* type of argument for ParamsErrorCallback */
+typedef struct ParamsErrorCbData
+{
+	const char *portalName;
+	ParamListInfo params;
+} ParamsErrorCbData;
 
 /* Functions found in src/backend/nodes/params.c */
+extern ParamListInfo makeParamList(int numParams);
 extern ParamListInfo copyParamList(ParamListInfo from);
 extern Size EstimateParamListSpace(ParamListInfo paramLI);
 extern void SerializeParamList(ParamListInfo paramLI, char **start_address);
 extern ParamListInfo RestoreParamList(char **start_address);
+extern char *BuildParamLogString(ParamListInfo params, char **paramTextValues,
+								 int valueLen);
+extern void ParamsErrorCallback(void *arg);
 
 #endif							/* PARAMS_H */

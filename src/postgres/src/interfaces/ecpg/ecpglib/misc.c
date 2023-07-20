@@ -5,19 +5,19 @@
 
 #include <limits.h>
 #include <unistd.h>
-#include "ecpg-pthread-win32.h"
-#include "ecpgtype.h"
-#include "ecpglib.h"
-#include "ecpgerrno.h"
-#include "extern.h"
-#include "sqlca.h"
-#include "pgtypes_numeric.h"
-#include "pgtypes_date.h"
-#include "pgtypes_timestamp.h"
-#include "pgtypes_interval.h"
-#include "pg_config_paths.h"
 
-#ifdef HAVE_LONG_LONG_INT
+#include "ecpg-pthread-win32.h"
+#include "ecpgerrno.h"
+#include "ecpglib.h"
+#include "ecpglib_extern.h"
+#include "ecpgtype.h"
+#include "pg_config_paths.h"
+#include "pgtypes_date.h"
+#include "pgtypes_interval.h"
+#include "pgtypes_numeric.h"
+#include "pgtypes_timestamp.h"
+#include "sqlca.h"
+
 #ifndef LONG_LONG_MIN
 #ifdef LLONG_MIN
 #define LONG_LONG_MIN LLONG_MIN
@@ -25,7 +25,6 @@
 #define LONG_LONG_MIN LONGLONG_MIN
 #endif							/* LLONG_MIN */
 #endif							/* LONG_LONG_MIN */
-#endif							/* HAVE_LONG_LONG_INT */
 
 bool		ecpg_internal_regression_mode = false;
 
@@ -192,7 +191,6 @@ ECPGtransactionStatus(const char *connection_name)
 	}
 
 	return PQtransactionStatus(con->connection);
-
 }
 
 bool
@@ -339,12 +337,10 @@ ECPGset_noind_null(enum ECPGttype type, void *ptr)
 		case ECPGt_date:
 			*((long *) ptr) = LONG_MIN;
 			break;
-#ifdef HAVE_LONG_LONG_INT
 		case ECPGt_long_long:
 		case ECPGt_unsigned_long_long:
 			*((long long *) ptr) = LONG_LONG_MIN;
 			break;
-#endif							/* HAVE_LONG_LONG_INT */
 		case ECPGt_float:
 			memset((char *) ptr, 0xff, sizeof(float));
 			break;
@@ -354,6 +350,9 @@ ECPGset_noind_null(enum ECPGttype type, void *ptr)
 		case ECPGt_varchar:
 			*(((struct ECPGgeneric_varchar *) ptr)->arr) = 0x00;
 			((struct ECPGgeneric_varchar *) ptr)->len = 0;
+			break;
+		case ECPGt_bytea:
+			((struct ECPGgeneric_bytea *) ptr)->len = 0;
 			break;
 		case ECPGt_decimal:
 			memset((char *) ptr, 0, sizeof(decimal));
@@ -411,13 +410,11 @@ ECPGis_noind_null(enum ECPGttype type, const void *ptr)
 			if (*((const long *) ptr) == LONG_MIN)
 				return true;
 			break;
-#ifdef HAVE_LONG_LONG_INT
 		case ECPGt_long_long:
 		case ECPGt_unsigned_long_long:
 			if (*((const long long *) ptr) == LONG_LONG_MIN)
 				return true;
 			break;
-#endif							/* HAVE_LONG_LONG_INT */
 		case ECPGt_float:
 			return _check(ptr, sizeof(float));
 			break;
@@ -426,6 +423,10 @@ ECPGis_noind_null(enum ECPGttype type, const void *ptr)
 			break;
 		case ECPGt_varchar:
 			if (*(((const struct ECPGgeneric_varchar *) ptr)->arr) == 0x00)
+				return true;
+			break;
+		case ECPGt_bytea:
+			if (((const struct ECPGgeneric_bytea *) ptr)->len == 0)
 				return true;
 			break;
 		case ECPGt_decimal:
@@ -475,8 +476,8 @@ win32_pthread_once(volatile pthread_once_t *once, void (*fn) (void))
 		pthread_mutex_lock(&win32_pthread_once_lock);
 		if (!*once)
 		{
-			*once = true;
 			fn();
+			*once = true;
 		}
 		pthread_mutex_unlock(&win32_pthread_once_lock);
 	}
@@ -489,7 +490,14 @@ win32_pthread_once(volatile pthread_once_t *once, void (*fn) (void))
 char *
 ecpg_gettext(const char *msgid)
 {
-	static bool already_bound = false;
+	/*
+	 * If multiple threads come through here at about the same time, it's okay
+	 * for more than one of them to call bindtextdomain().  But it's not okay
+	 * for any of them to reach dgettext() before bindtextdomain() is
+	 * complete, so don't set the flag till that's done.  Use "volatile" just
+	 * to be sure the compiler doesn't try to get cute.
+	 */
+	static volatile bool already_bound = false;
 
 	if (!already_bound)
 	{
@@ -501,12 +509,12 @@ ecpg_gettext(const char *msgid)
 #endif
 		const char *ldir;
 
-		already_bound = true;
 		/* No relocatable lookup here because the binary could be anywhere */
 		ldir = getenv("PGLOCALEDIR");
 		if (!ldir)
 			ldir = LOCALEDIR;
 		bindtextdomain(PG_TEXTDOMAIN("ecpglib"), ldir);
+		already_bound = true;
 #ifdef WIN32
 		SetLastError(save_errno);
 #else
@@ -524,6 +532,17 @@ void
 ECPGset_var(int number, void *pointer, int lineno)
 {
 	struct var_list *ptr;
+
+	struct sqlca_t *sqlca = ECPGget_sqlca();
+
+	if (sqlca == NULL)
+	{
+		ecpg_raise(lineno, ECPG_OUT_OF_MEMORY,
+				   ECPG_SQLSTATE_ECPG_OUT_OF_MEMORY, NULL);
+		return;
+	}
+
+	ecpg_init_sqlca(sqlca);
 
 	for (ptr = ivlist; ptr != NULL; ptr = ptr->next)
 	{

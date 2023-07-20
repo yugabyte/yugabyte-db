@@ -11,7 +11,7 @@
  * at the same address.  This means shared memory pointers can be passed
  * around directly between different processes.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/shmem.h
@@ -40,7 +40,7 @@ extern void *ShmemAllocUnlocked(Size size);
 extern bool ShmemAddrIsValid(const void *addr);
 extern void InitShmemIndex(void);
 extern HTAB *ShmemInitHash(const char *name, long init_size, long max_size,
-			  HASHCTL *infoP, int hash_flags);
+						   HASHCTL *infoP, int hash_flags);
 extern void *ShmemInitStruct(const char *name, Size size, bool *foundPtr);
 extern Size add_size(Size s1, Size s2);
 extern Size mul_size(Size s1, Size s2);
@@ -59,7 +59,8 @@ typedef struct
 {
 	char		key[SHMEM_INDEX_KEYSIZE];	/* string name */
 	void	   *location;		/* location in shared mem */
-	Size		size;			/* # bytes allocated for the structure */
+	Size		size;			/* # bytes requested for the structure */
+	Size		allocated_size; /* # bytes actually allocated */
 } ShmemIndexEnt;
 
 /*
@@ -71,9 +72,9 @@ extern void SHMQueueDelete(SHM_QUEUE *queue);
 extern void SHMQueueInsertBefore(SHM_QUEUE *queue, SHM_QUEUE *elem);
 extern void SHMQueueInsertAfter(SHM_QUEUE *queue, SHM_QUEUE *elem);
 extern Pointer SHMQueueNext(const SHM_QUEUE *queue, const SHM_QUEUE *curElem,
-			 Size linkOffset);
+							Size linkOffset);
 extern Pointer SHMQueuePrev(const SHM_QUEUE *queue, const SHM_QUEUE *curElem,
-			 Size linkOffset);
+							Size linkOffset);
 extern bool SHMQueueEmpty(const SHM_QUEUE *queue);
 extern bool SHMQueueIsDetached(const SHM_QUEUE *queue);
 

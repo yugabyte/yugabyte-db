@@ -3,7 +3,7 @@
  *
  *	tablespace functions
  *
- *	Copyright (c) 2010-2018, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/tablespace.c
  */
 
@@ -46,19 +46,16 @@ get_tablespace_paths(void)
 	char		query[QUERY_ALLOC];
 
 	snprintf(query, sizeof(query),
-			 "SELECT	%s "
+			 "SELECT pg_catalog.pg_tablespace_location(oid) AS spclocation "
 			 "FROM	pg_catalog.pg_tablespace "
 			 "WHERE	spcname != 'pg_default' AND "
-			 "		spcname != 'pg_global'",
-	/* 9.2 removed the spclocation column */
-			 (GET_MAJOR_VERSION(old_cluster.major_version) <= 901) ?
-			 "spclocation" : "pg_catalog.pg_tablespace_location(oid) AS spclocation");
+			 "		spcname != 'pg_global'");
 
 	res = executeQueryOrDie(conn, "%s", query);
 
 	if ((os_info.num_old_tablespaces = PQntuples(res)) != 0)
-		os_info.old_tablespaces = (char **) pg_malloc(
-													  os_info.num_old_tablespaces * sizeof(char *));
+		os_info.old_tablespaces =
+			(char **) pg_malloc(os_info.num_old_tablespaces * sizeof(char *));
 	else
 		os_info.old_tablespaces = NULL;
 
@@ -68,8 +65,7 @@ get_tablespace_paths(void)
 	{
 		struct stat statBuf;
 
-		os_info.old_tablespaces[tblnum] = pg_strdup(
-													PQgetvalue(res, tblnum, i_spclocation));
+		os_info.old_tablespaces[tblnum] = pg_strdup(PQgetvalue(res, tblnum, i_spclocation));
 
 		/*
 		 * Check that the tablespace path exists and is a directory.
@@ -100,23 +96,16 @@ get_tablespace_paths(void)
 	PQclear(res);
 
 	PQfinish(conn);
-
-	return;
 }
 
 
 static void
 set_tablespace_directory_suffix(ClusterInfo *cluster)
 {
-	if (GET_MAJOR_VERSION(cluster->major_version) <= 804)
-		cluster->tablespace_suffix = pg_strdup("");
-	else
-	{
-		/* This cluster has a version-specific subdirectory */
+	/* This cluster has a version-specific subdirectory */
 
-		/* The leading slash is needed to start a new directory. */
-		cluster->tablespace_suffix = psprintf("/PG_%s_%d",
-											  cluster->major_version_str,
-											  cluster->controldata.cat_ver);
-	}
+	/* The leading slash is needed to start a new directory. */
+	cluster->tablespace_suffix = psprintf("/PG_%s_%d",
+										  cluster->major_version_str,
+										  cluster->controldata.cat_ver);
 }

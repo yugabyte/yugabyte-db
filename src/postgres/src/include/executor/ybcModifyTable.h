@@ -51,6 +51,13 @@ typedef void (*yb_bind_for_write_function) (YBCPgStatement stmt,
 											Datum ybbasectid,
 											bool ybctid_as_value);
 
+extern void YBCTupleTableMultiInsert(ResultRelInfo	 *resultRelInfo,
+									 TupleTableSlot **slots, int num,
+									 EState *estate);
+
+extern void YBCTupleTableInsert(ResultRelInfo  *resultRelInfo,
+								TupleTableSlot *slot, EState *estate);
+
 /*
  * Insert data into YugaByte table.
  * This function is equivalent to "heap_insert", but it sends data to DocDB (YugaByte storage).
@@ -59,10 +66,12 @@ typedef void (*yb_bind_for_write_function) (YBCPgStatement stmt,
  * If non-zero, it will be used instead of generation, otherwise it will be set
  * to the generated value.
  */
-extern Oid YBCHeapInsert(TupleTableSlot *slot,
+extern Oid YBCHeapInsert(ResultRelInfo *resultRelInfo,
+						 TupleTableSlot *slot,
                          HeapTuple tuple,
                          EState *estate);
-extern Oid YBCHeapInsertForDb(Oid dboid,
+extern Oid YBCHeapInsertForDb(ResultRelInfo *resultRelInfo,
+							  Oid dboid,
                               TupleTableSlot *slot,
                               HeapTuple tuple,
                               EState *estate,
@@ -112,7 +121,7 @@ extern Oid YBCExecuteNonTxnInsertForDb(Oid dboid,
 extern void YBCExecuteInsertIndex(Relation rel,
 								  Datum *values,
 								  bool *isnull,
-								  Datum ybctid,
+								  ItemPointer tid,
 								  const uint64_t* backfill_write_time,
 								  yb_bind_for_write_function callback,
 								  void *indexstate);
@@ -120,7 +129,7 @@ extern void YBCExecuteInsertIndexForDb(Oid dboid,
 									   Relation rel,
 									   Datum* values,
 									   bool* isnull,
-									   Datum ybctid,
+									   ItemPointer tid,
 									   const uint64_t* backfill_write_time,
 									   yb_bind_for_write_function callback,
 									   void *indexstate);
@@ -145,11 +154,19 @@ extern bool YBCExecuteDelete(Relation rel,
  * index's backing YugaByte index table.
  */
 extern void YBCExecuteDeleteIndex(Relation index,
-								  Datum *values,
-								  bool *isnull,
-								  Datum ybctid,
+                                  Datum *values,
+                                  bool *isnull,
+                                  Datum ybctid,
 								  yb_bind_for_write_function callback,
 								  void *indexstate);
+
+extern bool YBCTupleTableExecuteUpdate(Relation		   rel,
+									   ResultRelInfo  *resultRelInfo,
+									   TupleTableSlot *slot, HeapTuple oldtuple,
+									   EState *estate, ModifyTable *mt_plan,
+									   bool		  target_tuple_fetched,
+									   bool		  is_single_row_txn,
+									   Bitmapset *updatedCols, bool canSetTag);
 
 /*
  * Update a row (identified by ybctid) in a YugaByte table.
@@ -158,6 +175,7 @@ extern void YBCExecuteDeleteIndex(Relation index,
  * it is a single row op.
  */
 extern bool YBCExecuteUpdate(Relation rel,
+							 ResultRelInfo *resultRelInfo,
 							 TupleTableSlot *slot,
 							 HeapTuple oldtuple,
 							 HeapTuple tuple,
@@ -180,6 +198,8 @@ extern bool YBCExecuteUpdateLoginAttempts(Oid roleid,
 										  int failed_attempts,
 										  char rolprfstatus);
 
+extern Oid YBCTupleTableExecuteUpdateReplace(Relation rel, TupleTableSlot *slot,
+											 EState *estate);
 /*
  * Replace a row in a YugaByte table by first deleting an existing row
  * (identified by ybctid) and then inserting a tuple to replace it.

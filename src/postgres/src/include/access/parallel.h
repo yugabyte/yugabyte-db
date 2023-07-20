@@ -3,7 +3,7 @@
  * parallel.h
  *	  Infrastructure for launching parallel workers
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/parallel.h
@@ -33,7 +33,8 @@ typedef struct ParallelContext
 {
 	dlist_node	node;
 	SubTransactionId subid;
-	int			nworkers;
+	int			nworkers;		/* Maximum number of workers to launch */
+	int			nworkers_to_launch; /* Actual number of workers to launch */
 	int			nworkers_launched;
 	char	   *library_name;
 	char	   *function_name;
@@ -53,17 +54,17 @@ typedef struct ParallelWorkerContext
 	shm_toc    *toc;
 } ParallelWorkerContext;
 
-extern volatile bool ParallelMessagePending;
+extern PGDLLIMPORT volatile bool ParallelMessagePending;
 extern PGDLLIMPORT int ParallelWorkerNumber;
 extern PGDLLIMPORT bool InitializingParallelWorker;
 
 #define		IsParallelWorker()		(ParallelWorkerNumber >= 0)
 
 extern ParallelContext *CreateParallelContext(const char *library_name,
-					  const char *function_name, int nworkers,
-					  bool serializable_okay);
+											  const char *function_name, int nworkers);
 extern void InitializeParallelDSM(ParallelContext *pcxt);
 extern void ReinitializeParallelDSM(ParallelContext *pcxt);
+extern void ReinitializeParallelWorkers(ParallelContext *pcxt, int nworkers_to_launch);
 extern void LaunchParallelWorkers(ParallelContext *pcxt);
 extern void WaitForParallelWorkersToAttach(ParallelContext *pcxt);
 extern void WaitForParallelWorkersToFinish(ParallelContext *pcxt);

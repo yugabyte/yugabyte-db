@@ -4,7 +4,7 @@
  *
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/nodeAppend.h
@@ -24,5 +24,7 @@ extern void ExecAppendEstimate(AppendState *node, ParallelContext *pcxt);
 extern void ExecAppendInitializeDSM(AppendState *node, ParallelContext *pcxt);
 extern void ExecAppendReInitializeDSM(AppendState *node, ParallelContext *pcxt);
 extern void ExecAppendInitializeWorker(AppendState *node, ParallelWorkerContext *pwcxt);
+
+extern void ExecAsyncAppendResponse(AsyncRequest *areq);
 
 #endif							/* NODEAPPEND_H */

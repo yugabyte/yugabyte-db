@@ -3,7 +3,7 @@
  * be-fsstubs.c
  *	  Builtin functions for open/close/read/write operations on large objects
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -42,6 +42,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "access/xact.h"
 #include "libpq/be-fsstubs.h"
 #include "libpq/libpq-fs.h"
 #include "miscadmin.h"
@@ -50,6 +51,7 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
+#include "utils/snapmgr.h"
 
 /* define this to enable debug logging */
 /* #define FSDB 1 */
@@ -62,24 +64,16 @@
  * A non-null entry is a pointer to a LargeObjectDesc allocated in the
  * LO private memory context "fscxt".  The cookies array itself is also
  * dynamically allocated in that context.  Its current allocated size is
- * cookies_len entries, of which any unused entries will be NULL.
+ * cookies_size entries, of which any unused entries will be NULL.
  */
 static LargeObjectDesc **cookies = NULL;
 static int	cookies_size = 0;
 
+static bool lo_cleanup_needed = false;
 static MemoryContext fscxt = NULL;
 
-#define CreateFSContext() \
-	do { \
-		if (fscxt == NULL) \
-			fscxt = AllocSetContextCreate(TopMemoryContext, \
-										  "Filesystem", \
-										  ALLOCSET_DEFAULT_SIZES); \
-	} while (0)
-
-
-static int	newLOfd(LargeObjectDesc *lobjCookie);
-static void deleteLOfd(int fd);
+static int	newLOfd(void);
+static void closeLOfd(int fd);
 static Oid	lo_import_internal(text *filename, Oid lobjOid);
 
 
@@ -95,15 +89,30 @@ be_lo_open(PG_FUNCTION_ARGS)
 	LargeObjectDesc *lobjDesc;
 	int			fd;
 
-#if FSDB
+#ifdef FSDB
 	elog(DEBUG4, "lo_open(%u,%d)", lobjId, mode);
 #endif
 
-	CreateFSContext();
+	/*
+	 * Allocate a large object descriptor first.  This will also create
+	 * 'fscxt' if this is the first LO opened in this transaction.
+	 */
+	fd = newLOfd();
 
 	lobjDesc = inv_open(lobjId, mode, fscxt);
+	lobjDesc->subid = GetCurrentSubTransactionId();
 
-	fd = newLOfd(lobjDesc);
+	/*
+	 * We must register the snapshot in TopTransaction's resowner so that it
+	 * stays alive until the LO is closed rather than until the current portal
+	 * shuts down.
+	 */
+	if (lobjDesc->snapshot)
+		lobjDesc->snapshot = RegisterSnapshotOnOwner(lobjDesc->snapshot,
+													 TopTransactionResourceOwner);
+
+	Assert(cookies[fd] == NULL);
+	cookies[fd] = lobjDesc;
 
 	PG_RETURN_INT32(fd);
 }
@@ -118,13 +127,11 @@ be_lo_close(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("invalid large-object descriptor: %d", fd)));
 
-#if FSDB
+#ifdef FSDB
 	elog(DEBUG4, "lo_close(%d)", fd);
 #endif
 
-	inv_close(cookies[fd]);
-
-	deleteLOfd(fd);
+	closeLOfd(fd);
 
 	PG_RETURN_INT32(0);
 }
@@ -238,12 +245,7 @@ be_lo_creat(PG_FUNCTION_ARGS)
 {
 	Oid			lobjId;
 
-	/*
-	 * We don't actually need to store into fscxt, but create it anyway to
-	 * ensure that AtEOXact_LargeObject knows there is state to clean up
-	 */
-	CreateFSContext();
-
+	lo_cleanup_needed = true;
 	lobjId = inv_create(InvalidOid);
 
 	PG_RETURN_OID(lobjId);
@@ -254,12 +256,7 @@ be_lo_create(PG_FUNCTION_ARGS)
 {
 	Oid			lobjId = PG_GETARG_OID(0);
 
-	/*
-	 * We don't actually need to store into fscxt, but create it anyway to
-	 * ensure that AtEOXact_LargeObject knows there is state to clean up
-	 */
-	CreateFSContext();
-
+	lo_cleanup_needed = true;
 	lobjId = inv_create(lobjId);
 
 	PG_RETURN_OID(lobjId);
@@ -330,16 +327,13 @@ be_lo_unlink(PG_FUNCTION_ARGS)
 		for (i = 0; i < cookies_size; i++)
 		{
 			if (cookies[i] != NULL && cookies[i]->id == lobjId)
-			{
-				inv_close(cookies[i]);
-				deleteLOfd(i);
-			}
+				closeLOfd(i);
 		}
 	}
 
 	/*
 	 * inv_drop does not create a need for end-of-transaction cleanup and
-	 * hence we don't need to have created fscxt.
+	 * hence we don't need to set lo_cleanup_needed.
 	 */
 	PG_RETURN_INT32(inv_drop(lobjId));
 }
@@ -419,8 +413,6 @@ lo_import_internal(text *filename, Oid lobjOid)
 	LargeObjectDesc *lobj;
 	Oid			oid;
 
-	CreateFSContext();
-
 	/*
 	 * open the file to be read in
 	 */
@@ -435,12 +427,13 @@ lo_import_internal(text *filename, Oid lobjOid)
 	/*
 	 * create an inversion object
 	 */
+	lo_cleanup_needed = true;
 	oid = inv_create(lobjOid);
 
 	/*
 	 * read in from the filesystem and write to the inversion object
 	 */
-	lobj = inv_open(oid, INV_WRITE, fscxt);
+	lobj = inv_open(oid, INV_WRITE, CurrentMemoryContext);
 
 	while ((nbytes = read(fd, buf, BUFSIZE)) > 0)
 	{
@@ -455,7 +448,12 @@ lo_import_internal(text *filename, Oid lobjOid)
 						fnamebuf)));
 
 	inv_close(lobj);
-	CloseTransientFile(fd);
+
+	if (CloseTransientFile(fd) != 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not close file \"%s\": %m",
+						fnamebuf)));
 
 	return oid;
 }
@@ -477,12 +475,11 @@ be_lo_export(PG_FUNCTION_ARGS)
 	LargeObjectDesc *lobj;
 	mode_t		oumask;
 
-	CreateFSContext();
-
 	/*
 	 * open the inversion object (no need to test for failure)
 	 */
-	lobj = inv_open(lobjId, INV_READ, fscxt);
+	lo_cleanup_needed = true;
+	lobj = inv_open(lobjId, INV_READ, CurrentMemoryContext);
 
 	/*
 	 * open the file to be written to
@@ -498,13 +495,11 @@ be_lo_export(PG_FUNCTION_ARGS)
 		fd = OpenTransientFilePerm(fnamebuf, O_CREAT | O_WRONLY | O_TRUNC | PG_BINARY,
 								   S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 	}
-	PG_CATCH();
+	PG_FINALLY();
 	{
 		umask(oumask);
-		PG_RE_THROW();
 	}
 	PG_END_TRY();
-	umask(oumask);
 	if (fd < 0)
 		ereport(ERROR,
 				(errcode_for_file_access(),
@@ -524,7 +519,12 @@ be_lo_export(PG_FUNCTION_ARGS)
 							fnamebuf)));
 	}
 
-	CloseTransientFile(fd);
+	if (CloseTransientFile(fd) != 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not close file \"%s\": %m",
+						fnamebuf)));
+
 	inv_close(lobj);
 
 	PG_RETURN_INT32(1);
@@ -584,20 +584,22 @@ AtEOXact_LargeObject(bool isCommit)
 {
 	int			i;
 
-	if (fscxt == NULL)
+	if (!lo_cleanup_needed)
 		return;					/* no LO operations in this xact */
 
 	/*
 	 * Close LO fds and clear cookies array so that LO fds are no longer good.
-	 * On abort we skip the close step.
+	 * The memory context and resource owner holding them are going away at
+	 * the end-of-transaction anyway, but on commit, we need to close them to
+	 * avoid warnings about leaked resources at commit.  On abort we can skip
+	 * this step.
 	 */
-	for (i = 0; i < cookies_size; i++)
+	if (isCommit)
 	{
-		if (cookies[i] != NULL)
+		for (i = 0; i < cookies_size; i++)
 		{
-			if (isCommit)
-				inv_close(cookies[i]);
-			deleteLOfd(i);
+			if (cookies[i] != NULL)
+				closeLOfd(i);
 		}
 	}
 
@@ -606,11 +608,14 @@ AtEOXact_LargeObject(bool isCommit)
 	cookies_size = 0;
 
 	/* Release the LO memory context to prevent permanent memory leaks. */
-	MemoryContextDelete(fscxt);
+	if (fscxt)
+		MemoryContextDelete(fscxt);
 	fscxt = NULL;
 
 	/* Give inv_api.c a chance to clean up, too */
 	close_lo_relation(isCommit);
+
+	lo_cleanup_needed = false;
 }
 
 /*
@@ -638,14 +643,7 @@ AtEOSubXact_LargeObject(bool isCommit, SubTransactionId mySubid,
 			if (isCommit)
 				lo->subid = parentSubid;
 			else
-			{
-				/*
-				 * Make sure we do not call inv_close twice if it errors out
-				 * for some reason.  Better a leak than a crash.
-				 */
-				deleteLOfd(i);
-				inv_close(lo);
-			}
+				closeLOfd(i);
 		}
 	}
 }
@@ -655,19 +653,22 @@ AtEOSubXact_LargeObject(bool isCommit, SubTransactionId mySubid,
  *****************************************************************************/
 
 static int
-newLOfd(LargeObjectDesc *lobjCookie)
+newLOfd(void)
 {
 	int			i,
 				newsize;
+
+	lo_cleanup_needed = true;
+	if (fscxt == NULL)
+		fscxt = AllocSetContextCreate(TopMemoryContext,
+									  "Filesystem",
+									  ALLOCSET_DEFAULT_SIZES);
 
 	/* Try to find a free slot */
 	for (i = 0; i < cookies_size; i++)
 	{
 		if (cookies[i] == NULL)
-		{
-			cookies[i] = lobjCookie;
 			return i;
-		}
 	}
 
 	/* No free slot, so make the array bigger */
@@ -692,15 +693,25 @@ newLOfd(LargeObjectDesc *lobjCookie)
 		cookies_size = newsize;
 	}
 
-	Assert(cookies[i] == NULL);
-	cookies[i] = lobjCookie;
 	return i;
 }
 
 static void
-deleteLOfd(int fd)
+closeLOfd(int fd)
 {
+	LargeObjectDesc *lobj;
+
+	/*
+	 * Make sure we do not try to free twice if this errors out for some
+	 * reason.  Better a leak than a crash.
+	 */
+	lobj = cookies[fd];
 	cookies[fd] = NULL;
+
+	if (lobj->snapshot)
+		UnregisterSnapshotFromOwner(lobj->snapshot,
+									TopTransactionResourceOwner);
+	inv_close(lobj);
 }
 
 /*****************************************************************************
@@ -719,13 +730,8 @@ lo_get_fragment_internal(Oid loOid, int64 offset, int32 nbytes)
 	int			total_read PG_USED_FOR_ASSERTS_ONLY;
 	bytea	   *result = NULL;
 
-	/*
-	 * We don't actually need to store into fscxt, but create it anyway to
-	 * ensure that AtEOXact_LargeObject knows there is state to clean up
-	 */
-	CreateFSContext();
-
-	loDesc = inv_open(loOid, INV_READ, fscxt);
+	lo_cleanup_needed = true;
+	loDesc = inv_open(loOid, INV_READ, CurrentMemoryContext);
 
 	/*
 	 * Compute number of bytes we'll actually read, accommodating nbytes == -1
@@ -809,10 +815,9 @@ be_lo_from_bytea(PG_FUNCTION_ARGS)
 	LargeObjectDesc *loDesc;
 	int			written PG_USED_FOR_ASSERTS_ONLY;
 
-	CreateFSContext();
-
+	lo_cleanup_needed = true;
 	loOid = inv_create(loOid);
-	loDesc = inv_open(loOid, INV_WRITE, fscxt);
+	loDesc = inv_open(loOid, INV_WRITE, CurrentMemoryContext);
 	written = inv_write(loDesc, VARDATA_ANY(str), VARSIZE_ANY_EXHDR(str));
 	Assert(written == VARSIZE_ANY_EXHDR(str));
 	inv_close(loDesc);
@@ -832,9 +837,8 @@ be_lo_put(PG_FUNCTION_ARGS)
 	LargeObjectDesc *loDesc;
 	int			written PG_USED_FOR_ASSERTS_ONLY;
 
-	CreateFSContext();
-
-	loDesc = inv_open(loOid, INV_WRITE, fscxt);
+	lo_cleanup_needed = true;
+	loDesc = inv_open(loOid, INV_WRITE, CurrentMemoryContext);
 
 	/* Permission check */
 	if (!lo_compat_privileges &&

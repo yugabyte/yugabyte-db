@@ -51,8 +51,8 @@
    operating system users. In practice it might be convenient to
    maintain a correspondence, but this is not required. Database roles
    are global across a database cluster installation (and not
-   per individual database). To create a role use the <xref
-   linkend="sql-createrole"/> SQL command:
+   per individual database). To create a role use the <link
+   linkend="sql-createrole"><command>CREATE ROLE</command></link> SQL command:
 <synopsis>
 CREATE ROLE <replaceable>name</replaceable>;
 </synopsis>
@@ -61,7 +61,7 @@ CREATE ROLE <replaceable>name</replaceable>;
    double-quoted.  (In practice, you will usually want to add additional
    options, such as <literal>LOGIN</literal>, to the command.  More details appear
    below.)  To remove an existing role, use the analogous
-   <xref linkend="sql-droprole"/> command:
+   <link linkend="sql-droprole"><command>DROP ROLE</command></link> command:
 <synopsis>
 DROP ROLE <replaceable>name</replaceable>;
 </synopsis>
@@ -191,7 +191,7 @@ CREATE USER <replaceable>name</replaceable>;
      </varlistentry>
 
      <varlistentry>
-      <term>role creation<indexterm><primary>role</primary><secondary>privilege to create</secondary></indexterm></term>
+      <term id='role-creation'>role creation<indexterm><primary>role</primary><secondary>privilege to create</secondary></indexterm></term>
       <listitem>
        <para>
         A role must be explicitly given permission to create more roles
@@ -200,9 +200,38 @@ CREATE USER <replaceable>name</replaceable>;
         <replaceable>name</replaceable> CREATEROLE</literal>.
         A role with <literal>CREATEROLE</literal> privilege can alter and drop
         other roles, too, as well as grant or revoke membership in them.
-        However, to create, alter, drop, or change membership of a
-        superuser role, superuser status is required;
-        <literal>CREATEROLE</literal> is insufficient for that.
+        Altering a role includes most changes that can be made using
+        <literal>ALTER ROLE</literal>, including, for example, changing
+        passwords.  It also includes modifications to a role that can
+        be made using the <literal>COMMENT</literal> and
+        <literal>SECURITY LABEL</literal> commands.
+       </para>
+       <para>
+        However, <literal>CREATEROLE</literal> does not convey the ability to
+        create <literal>SUPERUSER</literal> roles, nor does it convey any
+        power over <literal>SUPERUSER</literal> roles that already exist.
+        Furthermore, <literal>CREATEROLE</literal> does not convey the power
+        to create <literal>REPLICATION</literal> users, nor the ability to
+        grant or revoke the <literal>REPLICATION</literal> privilege, nor the
+        ability to modify the role properties of such users.  However, it does
+        allow <literal>ALTER ROLE ... SET</literal> and
+        <literal>ALTER ROLE ... RENAME</literal> to be used on
+        <literal>REPLICATION</literal> roles, as well as the use of
+        <literal>COMMENT ON ROLE</literal>,
+        <literal>SECURITY LABEL ON ROLE</literal>,
+        and <literal>DROP ROLE</literal>.
+        Finally, <literal>CREATEROLE</literal> does not
+        confer the ability to grant or revoke the <literal>BYPASSRLS</literal>
+        privilege.
+       </para>
+       <para>
+        Because the <literal>CREATEROLE</literal> privilege allows a user
+        to grant or revoke membership even in roles to which it does not (yet)
+        have any access, a <literal>CREATEROLE</literal> user can obtain access
+        to the capabilities of every predefined role in the system, including
+        highly privileged roles such as
+        <literal>pg_execute_server_program</literal> and
+        <literal>pg_write_server_files</literal>.
        </para>
       </listitem>
      </varlistentry>
@@ -236,6 +265,39 @@ CREATE USER <replaceable>name</replaceable>;
        </para>
       </listitem>
      </varlistentry>
+
+     <varlistentry>
+      <term>inheritance of privileges<indexterm><primary>role</primary><secondary>privilege to inherit</secondary></indexterm></term>
+      <listitem>
+       <para>
+        A role is given permission to inherit the privileges of roles it is a
+        member of, by default. However, to create a role without the permission,
+        use <literal>CREATE ROLE <replaceable>name</replaceable> NOINHERIT</literal>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term>bypassing row-level security<indexterm><primary>role</primary><secondary>privilege to bypass</secondary></indexterm></term>
+      <listitem>
+       <para>
+        A role must be explicitly given permission to bypass every row-level security (RLS) policy
+        (except for superusers, since those bypass all permission checks).
+        To create such a role, use <literal>CREATE ROLE <replaceable>name</replaceable> BYPASSRLS</literal> as a superuser.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term>connection limit<indexterm><primary>role</primary><secondary>privilege to limit connection</secondary></indexterm></term>
+      <listitem>
+       <para>
+        Connection limit can specify how many concurrent connections a role can make.
+        -1 (the default) means no limit. Specify connection limit upon role creation with
+        <literal>CREATE ROLE <replaceable>name</replaceable> CONNECTION LIMIT '<replaceable>integer</replaceable>'</literal>.
+       </para>
+      </listitem>
+     </varlistentry>
     </variablelist>
 
     A role's attributes can be modified after creation with
@@ -243,16 +305,6 @@ CREATE USER <replaceable>name</replaceable>;
     See the reference pages for the <xref linkend="sql-createrole"/>
     and <xref linkend="sql-alterrole"/> commands for details.
    </para>
-
-  <tip>
-   <para>
-    It is good practice to create a role that has the <literal>CREATEDB</literal>
-    and <literal>CREATEROLE</literal> privileges, but is not a superuser, and then
-    use this role for all routine management of databases and roles.  This
-    approach avoids the dangers of operating as a superuser for tasks that
-    do not really require it.
-   </para>
-  </tip>
 
   <para>
    A role can also have role-specific defaults for many of the run-time
@@ -303,8 +355,8 @@ CREATE ROLE <replaceable>name</replaceable>;
 
   <para>
    Once the group role exists, you can add and remove members using the
-   <xref linkend="sql-grant"/> and
-   <xref linkend="sql-revoke"/> commands:
+   <link linkend="sql-grant"><command>GRANT</command></link> and
+   <link linkend="sql-revoke"><command>REVOKE</command></link> commands:
 <synopsis>
 GRANT <replaceable>group_role</replaceable> TO <replaceable>role1</replaceable>, ... ;
 REVOKE <replaceable>group_role</replaceable> FROM <replaceable>role1</replaceable>, ... ;
@@ -319,7 +371,7 @@ REVOKE <replaceable>group_role</replaceable> FROM <replaceable>role1</replaceabl
   <para>
    The members of a group role can use the privileges of the role in two
    ways.  First, every member of a group can explicitly do
-   <xref linkend="sql-set-role"/> to
+   <link linkend="sql-set-role"><command>SET ROLE</command></link> to
    temporarily <quote>become</quote> the group role.  In this state, the
    database session has access to the privileges of the group role rather
    than the original login role, and any database objects created are
@@ -402,8 +454,8 @@ RESET ROLE;
   </para>
 
   <para>
-   To destroy a group role, use <xref
-   linkend="sql-droprole"/>:
+   To destroy a group role, use <link
+   linkend="sql-droprole"><command>DROP ROLE</command></link>:
 <synopsis>
 DROP ROLE <replaceable>name</replaceable>;
 </synopsis>
@@ -418,7 +470,7 @@ DROP ROLE <replaceable>name</replaceable>;
   <para>
    Because roles can own database objects and can hold privileges
    to access other objects, dropping a role is often not just a matter of a
-   quick <xref linkend="sql-droprole"/>.  Any objects owned by the role must
+   quick <link linkend="sql-droprole"><command>DROP ROLE</command></link>.  Any objects owned by the role must
    first be dropped or reassigned to other owners; and any permissions
    granted to the role must be revoked.
   </para>
@@ -429,7 +481,7 @@ DROP ROLE <replaceable>name</replaceable>;
 <programlisting>
 ALTER TABLE bobs_table OWNER TO alice;
 </programlisting>
-   Alternatively, the <xref linkend="sql-reassign-owned"/> command can be
+   Alternatively, the <link linkend="sql-reassign-owned"><command>REASSIGN OWNED</command></link> command can be
    used to reassign ownership of all objects owned by the role-to-be-dropped
    to a single other role.  Because <command>REASSIGN OWNED</command> cannot access
    objects in other databases, it is necessary to run it in each database
@@ -442,7 +494,7 @@ ALTER TABLE bobs_table OWNER TO alice;
   <para>
    Once any valuable objects have been transferred to new owners, any
    remaining objects owned by the role-to-be-dropped can be dropped with
-   the <xref linkend="sql-drop-owned"/> command.  Again, this command cannot
+   the <link linkend="sql-drop-owned"><command>DROP OWNED</command></link> command.  Again, this command cannot
    access objects in other databases, so it is necessary to run it in each
    database that contains objects owned by the role.  Also, <command>DROP
    OWNED</command> will not drop entire databases or tablespaces, so it is
@@ -483,31 +535,34 @@ DROP ROLE doomed_role;
   </para>
  </sect1>
 
- <sect1 id="default-roles">
-  <title>Default Roles</title>
+ <sect1 id="predefined-roles">
+  <title>Predefined Roles</title>
 
-  <indexterm zone="default-roles">
+  <indexterm zone="predefined-roles">
    <primary>role</primary>
   </indexterm>
 
   <para>
-   <productname>PostgreSQL</productname> provides a set of default roles
-   which provide access to certain, commonly needed, privileged capabilities
-   and information.  Administrators can GRANT these roles to users and/or
-   other roles in their environment, providing those users with access to
-   the specified capabilities and information.
+   <productname>PostgreSQL</productname> provides a set of predefined roles
+   that provide access to certain, commonly needed, privileged capabilities
+   and information.  Administrators (including roles that have the
+   <literal>CREATEROLE</literal> privilege) can <command>GRANT</command> these
+   roles to users and/or other roles in their environment, providing those
+   users with access to the specified capabilities and information.
   </para>
 
   <para>
-   The default roles are described in <xref linkend="default-roles-table"/>.
-   Note that the specific permissions for each of the default roles may
-   change in the future as additional capabilities are added.  Administrators
+   The predefined roles are described in <xref linkend="predefined-roles-table"/>.
+   Note that the specific permissions for each of the roles may change in
+   the future as additional capabilities are added.  Administrators
    should monitor the release notes for changes.
   </para>
 
-   <table tocentry="1" id="default-roles-table">
-    <title>Default Roles</title>
+   <table tocentry="1" id="predefined-roles-table">
+    <title>Predefined Roles</title>
     <tgroup cols="2">
+     <colspec colname="col1" colwidth="1*"/>
+     <colspec colname="col2" colwidth="2*"/>
      <thead>
       <row>
        <entry>Role</entry>
@@ -515,6 +570,25 @@ DROP ROLE doomed_role;
       </row>
      </thead>
      <tbody>
+      <row>
+       <entry>pg_read_all_data</entry>
+       <entry>Read all data (tables, views, sequences), as if having
+       <command>SELECT</command> rights on those objects, and USAGE rights on
+       all schemas, even without having it explicitly.  This role does not have
+       the role attribute <literal>BYPASSRLS</literal> set.  If RLS is being
+       used, an administrator may wish to set <literal>BYPASSRLS</literal> on
+       roles which this role is GRANTed to.</entry>
+      </row>
+      <row>
+       <entry>pg_write_all_data</entry>
+       <entry>Write all data (tables, views, sequences), as if having
+       <command>INSERT</command>, <command>UPDATE</command>, and
+       <command>DELETE</command> rights on those objects, and USAGE rights on
+       all schemas, even without having it explicitly.  This role does not have
+       the role attribute <literal>BYPASSRLS</literal> set.  If RLS is being
+       used, an administrator may wish to set <literal>BYPASSRLS</literal> on
+       roles which this role is GRANTed to.</entry>
+      </row>
       <row>
        <entry>pg_read_all_settings</entry>
        <entry>Read all configuration variables, even those normally visible only to
@@ -531,8 +605,19 @@ DROP ROLE doomed_role;
        potentially for a long time.</entry>
       </row>
       <row>
+       <entry>pg_monitor</entry>
+       <entry>Read/execute various monitoring views and functions.
+       This role is a member of <literal>pg_read_all_settings</literal>,
+       <literal>pg_read_all_stats</literal> and
+       <literal>pg_stat_scan_tables</literal>.</entry>
+      </row>
+      <row>
+       <entry>pg_database_owner</entry>
+       <entry>None.  Membership consists, implicitly, of the current database owner.</entry>
+      </row>
+      <row>
        <entry>pg_signal_backend</entry>
-       <entry>Send signals to other backends (eg: cancel query, terminate).</entry>
+       <entry>Signal another backend to cancel a query or terminate its session.</entry>
       </row>
       <row>
        <entry>pg_read_server_files</entry>
@@ -550,25 +635,14 @@ DROP ROLE doomed_role;
        COPY and other functions which allow executing a server-side program.</entry>
       </row>
       <row>
-       <entry>pg_monitor</entry>
-       <entry>Read/execute various monitoring views and functions.
-       This role is a member of <literal>pg_read_all_settings</literal>,
-       <literal>pg_read_all_stats</literal> and
-       <literal>pg_stat_scan_tables</literal>.</entry>
+       <entry>pg_checkpoint</entry>
+       <entry>Allow executing
+       the <link linkend="sql-checkpoint"><command>CHECKPOINT</command></link>
+       command.</entry>
       </row>
      </tbody>
     </tgroup>
    </table>
-
-  <para>
-  The <literal>pg_read_server_files</literal>, <literal>pg_write_server_files</literal> and
-  <literal>pg_execute_server_program</literal> roles are intended to allow administrators to have
-  trusted, but non-superuser, roles which are able to access files and run programs on the
-  database server as the user the database runs as.  As these roles are able to access any file on
-  the server file system, they bypass all database-level permission checks when accessing files
-  directly and they could be used to gain superuser-level access, therefore care should be taken
-  when granting these roles to users.
-  </para>
 
   <para>
   The <literal>pg_monitor</literal>, <literal>pg_read_all_settings</literal>,
@@ -580,14 +654,45 @@ DROP ROLE doomed_role;
   </para>
 
   <para>
+  The <literal>pg_database_owner</literal> role has one implicit,
+  situation-dependent member, namely the owner of the current database.  Like
+  any role, it can own objects or receive grants of access privileges.
+  Consequently, once <literal>pg_database_owner</literal> has rights within a
+  template database, each owner of a database instantiated from that template
+  will exercise those rights.  <literal>pg_database_owner</literal> cannot be
+  a member of any role, and it cannot have non-implicit members.  Initially,
+  this role owns the <literal>public</literal> schema, so each database owner
+  governs local use of the schema.
+  </para>
+
+  <para>
+  The <literal>pg_signal_backend</literal> role is intended to allow
+  administrators to enable trusted, but non-superuser, roles to send signals
+  to other backends. Currently this role enables sending of signals for
+  canceling a query on another backend or terminating its session. A user
+  granted this role cannot however send signals to a backend owned by a
+  superuser.  See <xref linkend="functions-admin-signal"/>.
+  </para>
+
+  <para>
+  The <literal>pg_read_server_files</literal>, <literal>pg_write_server_files</literal> and
+  <literal>pg_execute_server_program</literal> roles are intended to allow administrators to have
+  trusted, but non-superuser, roles which are able to access files and run programs on the
+  database server as the user the database runs as.  As these roles are able to access any file on
+  the server file system, they bypass all database-level permission checks when accessing files
+  directly and they could be used to gain superuser-level access, therefore
+  great care should be taken when granting these roles to users.
+  </para>
+
+  <para>
   Care should be taken when granting these roles to ensure they are only used where
   needed and with the understanding that these roles grant access to privileged
   information.
   </para>
 
   <para>
-   Administrators can grant access to these roles to users using the GRANT
-   command:
+   Administrators can grant access to these roles to users using the
+   <link linkend="sql-grant"><command>GRANT</command></link> command, for example:
 
 <programlisting>
 GRANT pg_signal_backend TO admin_user;
@@ -606,8 +711,8 @@ GRANT pg_signal_backend TO admin_user;
    horse</quote> others with relative ease. The strongest protection is tight
    control over who can define objects. Where that is infeasible, write
    queries referring only to objects having trusted owners.  Remove
-   from <varname>search_path</varname> the public schema and any other schemas
-   that permit untrusted users to create objects.
+   from <varname>search_path</varname> any schemas that permit untrusted users
+   to create objects.
   </para>
 
   <para>

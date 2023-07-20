@@ -5,7 +5,7 @@
  *
  * See src/backend/utils/misc/README for design notes.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  *	  src/include/utils/guc_tables.h
  *
@@ -50,53 +50,48 @@ typedef struct config_var_value
 } config_var_value;
 
 /*
- * Groupings to help organize all the run-time options for display
+ * Groupings to help organize all the run-time options for display.
+ * Be sure this agrees with the way the options are categorized in config.sgml!
  */
 enum config_group
 {
-	UNGROUPED,
+	UNGROUPED,					/* use for options not shown in pg_settings */
 	FILE_LOCATIONS,
-	CONN_AUTH,
 	CONN_AUTH_SETTINGS,
 	CONN_AUTH_AUTH,
 	CONN_AUTH_SSL,
-	RESOURCES,
 	RESOURCES_MEM,
 	RESOURCES_DISK,
 	RESOURCES_KERNEL,
 	RESOURCES_VACUUM_DELAY,
 	RESOURCES_BGWRITER,
 	RESOURCES_ASYNCHRONOUS,
-	WAL,
 	WAL_SETTINGS,
 	WAL_CHECKPOINTS,
 	WAL_ARCHIVING,
-	REPLICATION,
+	WAL_RECOVERY,
+	WAL_ARCHIVE_RECOVERY,
+	WAL_RECOVERY_TARGET,
 	REPLICATION_SENDING,
-	REPLICATION_MASTER,
+	REPLICATION_PRIMARY,
 	REPLICATION_STANDBY,
 	REPLICATION_SUBSCRIBERS,
-	QUERY_TUNING,
 	QUERY_TUNING_METHOD,
 	QUERY_TUNING_COST,
 	QUERY_TUNING_GEQO,
 	QUERY_TUNING_OTHER,
-	LOGGING,
 	LOGGING_WHERE,
 	LOGGING_WHEN,
 	LOGGING_WHAT,
 	PROCESS_TITLE,
-	STATS,
 	STATS_MONITORING,
-	STATS_COLLECTOR,
+	STATS_CUMULATIVE,
 	AUTOVACUUM,
-	CLIENT_CONN,
 	CLIENT_CONN_STATEMENT,
 	CLIENT_CONN_LOCALE,
 	CLIENT_CONN_PRELOAD,
 	CLIENT_CONN_OTHER,
 	LOCK_MANAGEMENT,
-	COMPAT_OPTIONS,
 	COMPAT_OPTIONS_PREVIOUS,
 	COMPAT_OPTIONS_CLIENT,
 	ERROR_HANDLING_OPTIONS,
@@ -127,6 +122,8 @@ typedef struct guc_stack
 	/* masked value's source must be PGC_S_SESSION, so no need to store it */
 	GucContext	scontext;		/* context that set the prior value */
 	GucContext	masked_scontext;	/* context that set the masked value */
+	Oid			srole;			/* role that set the prior value */
+	Oid			masked_srole;	/* role that set the masked value */
 	config_var_value prior;		/* previous value of variable */
 	config_var_value masked;	/* SET value in a GUC_SET_LOCAL entry */
 } GucStack;
@@ -137,6 +134,10 @@ typedef struct guc_stack
  * The short description should be less than 80 chars in length. Some
  * applications may use the long description as well, and will append
  * it to the short description. (separated by a newline or '. ')
+ *
+ * srole is the role that set the current value, or BOOTSTRAP_SUPERUSERID
+ * if the value came from an internal source or the config file.  Similarly
+ * for reset_srole (which is usually BOOTSTRAP_SUPERUSERID, but not always).
  *
  * Note that sourcefile/sourceline are kept here, and not pushed into stacked
  * values, although in principle they belong with some stacked value if the
@@ -159,8 +160,12 @@ struct config_generic
 	GucSource	reset_source;	/* source of the reset_value */
 	GucContext	scontext;		/* context that set the current value */
 	GucContext	reset_scontext; /* context that set the reset value */
+	Oid			srole;			/* role that set the current value */
+	Oid			reset_srole;	/* role that set the reset value */
 	GucStack   *stack;			/* stacked prior values */
 	void	   *extra;			/* "extra" pointer for current actual value */
+	char	   *last_reported;	/* if variable is GUC_REPORT, value last sent
+								 * to client (NULL if not yet sent) */
 	char	   *sourcefile;		/* file current setting is from (NULL if not
 								 * set in config file) */
 	int			sourceline;		/* line in source file */
@@ -172,7 +177,8 @@ struct config_generic
  * Caution: the GUC_IS_IN_FILE bit is transient state for ProcessConfigFile.
  * Do not assume that its value represents useful information elsewhere.
  */
-#define GUC_PENDING_RESTART 0x0002
+#define GUC_PENDING_RESTART 0x0002	/* changed value cannot be applied yet */
+#define GUC_NEEDS_REPORT	0x0004	/* new value must be reported to client */
 
 
 /* GUC records for specific variable types */
@@ -269,10 +275,10 @@ struct config_enum
 };
 
 /* constant tables corresponding to enums above and in guc.h */
-extern const char *const config_group_names[];
-extern const char *const config_type_names[];
-extern const char *const GucContext_Names[];
-extern const char *const GucSource_Names[];
+extern PGDLLIMPORT const char *const config_group_names[];
+extern PGDLLIMPORT const char *const config_type_names[];
+extern PGDLLIMPORT const char *const GucContext_Names[];
+extern PGDLLIMPORT const char *const GucSource_Names[];
 
 /* get the current set of variables */
 extern struct config_generic **get_guc_variables(void);
@@ -282,6 +288,7 @@ extern void build_guc_variables(void);
 /* search in enum options */
 extern const char *config_enum_lookup_by_value(struct config_enum *record, int val);
 extern bool config_enum_lookup_by_name(struct config_enum *record,
-						   const char *value, int *retval);
+									   const char *value, int *retval);
+extern struct config_generic **get_explain_guc_options(int *num);
 
 #endif							/* GUC_TABLES_H */

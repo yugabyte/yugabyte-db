@@ -4,8 +4,9 @@
  *	  definition of the "dependency" system catalog (pg_depend)
  *
  * pg_depend has no preloaded contents, so there is no pg_depend.dat
- * file; system-defined dependencies are loaded into it during a late stage
- * of the initdb process.
+ * file; dependencies for system-defined objects are loaded into it
+ * on-the-fly during initdb.  Most built-in objects are pinned anyway,
+ * and hence need no explicit entries in pg_depend.
  *
  * NOTE: we do not represent all possible dependency pairs in pg_depend;
  * for example, there's not much value in creating an explicit dependency
@@ -16,7 +17,7 @@
  * convenient to find from the contents of other catalogs.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_depend.h
@@ -38,21 +39,21 @@
  *		typedef struct FormData_pg_depend
  * ----------------
  */
-CATALOG(pg_depend,2608,DependRelationId) BKI_WITHOUT_OIDS
+CATALOG(pg_depend,2608,DependRelationId)
 {
 	/*
 	 * Identification of the dependent (referencing) object.
-	 *
-	 * These fields are all zeroes for a DEPENDENCY_PIN entry.
 	 */
-	Oid			classid;		/* OID of table containing object */
+	Oid			classid BKI_LOOKUP(pg_class);	/* OID of table containing
+												 * object */
 	Oid			objid;			/* OID of object itself */
 	int32		objsubid;		/* column number, or 0 if not used */
 
 	/*
 	 * Identification of the independent (referenced) object.
 	 */
-	Oid			refclassid;		/* OID of table containing object */
+	Oid			refclassid BKI_LOOKUP(pg_class);	/* OID of table containing
+													 * object */
 	Oid			refobjid;		/* OID of object itself */
 	int32		refobjsubid;	/* column number, or 0 if not used */
 
@@ -69,5 +70,8 @@ CATALOG(pg_depend,2608,DependRelationId) BKI_WITHOUT_OIDS
  * ----------------
  */
 typedef FormData_pg_depend *Form_pg_depend;
+
+DECLARE_INDEX(pg_depend_depender_index, 2673, DependDependerIndexId, on pg_depend using btree(classid oid_ops, objid oid_ops, objsubid int4_ops));
+DECLARE_INDEX(pg_depend_reference_index, 2674, DependReferenceIndexId, on pg_depend using btree(refclassid oid_ops, refobjid oid_ops, refobjsubid int4_ops));
 
 #endif							/* PG_DEPEND_H */

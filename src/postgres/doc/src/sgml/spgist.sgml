@@ -68,119 +68,112 @@
     <thead>
      <row>
       <entry>Name</entry>
-      <entry>Indexed Data Type</entry>
       <entry>Indexable Operators</entry>
+      <entry>Ordering Operators</entry>
      </row>
     </thead>
     <tbody>
      <row>
-      <entry><literal>kd_point_ops</literal></entry>
-      <entry><type>point</type></entry>
-      <entry>
-       <literal>&lt;&lt;</literal>
-       <literal>&lt;@</literal>
-       <literal>&lt;^</literal>
-       <literal>&gt;&gt;</literal>
-       <literal>&gt;^</literal>
-       <literal>~=</literal>
-      </entry>
+      <entry valign="middle" morerows="11"><literal>box_ops</literal></entry>
+      <entry><literal>&lt;&lt; (box,box)</literal></entry>
+      <entry valign="middle" morerows="11"><literal>&lt;-&gt; (box,point)</literal></entry>
      </row>
+     <row><entry><literal>&amp;&lt; (box,box)</literal></entry></row>
+     <row><entry><literal>&amp;&gt; (box,box)</literal></entry></row>
+     <row><entry><literal>&gt;&gt; (box,box)</literal></entry></row>
+     <row><entry><literal>&lt;@ (box,box)</literal></entry></row>
+     <row><entry><literal>@&gt; (box,box)</literal></entry></row>
+     <row><entry><literal>~= (box,box)</literal></entry></row>
+     <row><entry><literal>&amp;&amp; (box,box)</literal></entry></row>
+     <row><entry><literal>&lt;&lt;| (box,box)</literal></entry></row>
+     <row><entry><literal>&amp;&lt;| (box,box)</literal></entry></row>
+     <row><entry><literal>|&amp;&gt; (box,box)</literal></entry></row>
+     <row><entry><literal>|&gt;&gt; (box,box)</literal></entry></row>
+
      <row>
-      <entry><literal>quad_point_ops</literal></entry>
-      <entry><type>point</type></entry>
-      <entry>
-       <literal>&lt;&lt;</literal>
-       <literal>&lt;@</literal>
-       <literal>&lt;^</literal>
-       <literal>&gt;&gt;</literal>
-       <literal>&gt;^</literal>
-       <literal>~=</literal>
-      </entry>
+      <entry valign="middle" morerows="10"><literal>inet_ops</literal></entry>
+      <entry><literal>&lt;&lt; (inet,inet)</literal></entry>
+      <entry valign="middle" morerows="10"></entry>
      </row>
+     <row><entry><literal>&lt;&lt;= (inet,inet)</literal></entry></row>
+     <row><entry><literal>&gt;&gt; (inet,inet)</literal></entry></row>
+     <row><entry><literal>&gt;&gt;= (inet,inet)</literal></entry></row>
+     <row><entry><literal>= (inet,inet)</literal></entry></row>
+     <row><entry><literal>&lt;&gt; (inet,inet)</literal></entry></row>
+     <row><entry><literal>&lt; (inet,inet)</literal></entry></row>
+     <row><entry><literal>&lt;= (inet,inet)</literal></entry></row>
+     <row><entry><literal>&gt; (inet,inet)</literal></entry></row>
+     <row><entry><literal>&gt;= (inet,inet)</literal></entry></row>
+     <row><entry><literal>&amp;&amp; (inet,inet)</literal></entry></row>
+
      <row>
-      <entry><literal>range_ops</literal></entry>
-      <entry>any range type</entry>
-      <entry>
-       <literal>&amp;&amp;</literal>
-       <literal>&amp;&lt;</literal>
-       <literal>&amp;&gt;</literal>
-       <literal>-|-</literal>
-       <literal>&lt;&lt;</literal>
-       <literal>&lt;@</literal>
-       <literal>=</literal>
-       <literal>&gt;&gt;</literal>
-       <literal>@&gt;</literal>
-      </entry>
+      <entry valign="middle" morerows="5"><literal>kd_point_ops</literal></entry>
+      <entry><literal>|&gt;&gt; (point,point)</literal></entry>
+      <entry valign="middle" morerows="5"><literal>&lt;-&gt; (point,point)</literal></entry>
      </row>
+     <row><entry><literal>&lt;&lt; (point,point)</literal></entry></row>
+     <row><entry><literal>&gt;&gt; (point,point)</literal></entry></row>
+     <row><entry><literal>&lt;&lt;| (point,point)</literal></entry></row>
+     <row><entry><literal>~= (point,point)</literal></entry></row>
+     <row><entry><literal>&lt;@ (point,box)</literal></entry></row>
+
      <row>
-      <entry><literal>box_ops</literal></entry>
-      <entry><type>box</type></entry>
-      <entry>
-       <literal>&lt;&lt;</literal>
-       <literal>&amp;&lt;</literal>
-       <literal>&amp;&amp;</literal>
-       <literal>&amp;&gt;</literal>
-       <literal>&gt;&gt;</literal>
-       <literal>~=</literal>
-       <literal>@&gt;</literal>
-       <literal>&lt;@</literal>
-       <literal>&amp;&lt;|</literal>
-       <literal>&lt;&lt;|</literal>
-       <literal>|&gt;&gt;</literal>
-       <literal>|&amp;&gt;</literal>
-      </entry>
+      <entry valign="middle" morerows="11"><literal>poly_ops</literal></entry>
+      <entry><literal>&lt;&lt; (polygon,polygon)</literal></entry>
+      <entry valign="middle" morerows="11"><literal>&lt;-&gt; (polygon,point)</literal></entry>
      </row>
+     <row><entry><literal>&amp;&lt; (polygon,polygon)</literal></entry></row>
+     <row><entry><literal>&amp;&gt; (polygon,polygon)</literal></entry></row>
+     <row><entry><literal>&gt;&gt; (polygon,polygon)</literal></entry></row>
+     <row><entry><literal>&lt;@ (polygon,polygon)</literal></entry></row>
+     <row><entry><literal>@&gt; (polygon,polygon)</literal></entry></row>
+     <row><entry><literal>~= (polygon,polygon)</literal></entry></row>
+     <row><entry><literal>&amp;&amp; (polygon,polygon)</literal></entry></row>
+     <row><entry><literal>&lt;&lt;| (polygon,polygon)</literal></entry></row>
+     <row><entry><literal>&amp;&lt;| (polygon,polygon)</literal></entry></row>
+     <row><entry><literal>|&gt;&gt; (polygon,polygon)</literal></entry></row>
+     <row><entry><literal>|&amp;&gt; (polygon,polygon)</literal></entry></row>
+
      <row>
-      <entry><literal>poly_ops</literal></entry>
-      <entry><type>polygon</type></entry>
-      <entry>
-       <literal>&lt;&lt;</literal>
-       <literal>&amp;&lt;</literal>
-       <literal>&amp;&amp;</literal>
-       <literal>&amp;&gt;</literal>
-       <literal>&gt;&gt;</literal>
-       <literal>~=</literal>
-       <literal>@&gt;</literal>
-       <literal>&lt;@</literal>
-       <literal>&amp;&lt;|</literal>
-       <literal>&lt;&lt;|</literal>
-       <literal>|&gt;&gt;</literal>
-       <literal>|&amp;&gt;</literal>
-      </entry>
+      <entry valign="middle" morerows="5"><literal>quad_point_ops</literal></entry>
+      <entry><literal>|&gt;&gt; (point,point)</literal></entry>
+      <entry valign="middle" morerows="5"><literal>&lt;-&gt; (point,point)</literal></entry>
      </row>
+     <row><entry><literal>&lt;&lt; (point,point)</literal></entry></row>
+     <row><entry><literal>&gt;&gt; (point,point)</literal></entry></row>
+     <row><entry><literal>&lt;&lt;| (point,point)</literal></entry></row>
+     <row><entry><literal>~= (point,point)</literal></entry></row>
+     <row><entry><literal>&lt;@ (point,box)</literal></entry></row>
+
      <row>
-      <entry><literal>text_ops</literal></entry>
-      <entry><type>text</type></entry>
-      <entry>
-       <literal>&lt;</literal>
-       <literal>&lt;=</literal>
-       <literal>=</literal>
-       <literal>&gt;</literal>
-       <literal>&gt;=</literal>
-       <literal>~&lt;=~</literal>
-       <literal>~&lt;~</literal>
-       <literal>~&gt;=~</literal>
-       <literal>~&gt;~</literal>
-       <literal>^@</literal>
-      </entry>
+      <entry valign="middle" morerows="9"><literal>range_ops</literal></entry>
+      <entry><literal>= (anyrange,anyrange)</literal></entry>
+      <entry valign="middle" morerows="9"></entry>
      </row>
+     <row><entry><literal>&amp;&amp; (anyrange,anyrange)</literal></entry></row>
+     <row><entry><literal>@&gt; (anyrange,anyelement)</literal></entry></row>
+     <row><entry><literal>@&gt; (anyrange,anyrange)</literal></entry></row>
+     <row><entry><literal>&lt;@ (anyrange,anyrange)</literal></entry></row>
+     <row><entry><literal>&lt;&lt; (anyrange,anyrange)</literal></entry></row>
+     <row><entry><literal>&gt;&gt; (anyrange,anyrange)</literal></entry></row>
+     <row><entry><literal>&amp;&lt; (anyrange,anyrange)</literal></entry></row>
+     <row><entry><literal>&amp;&gt; (anyrange,anyrange)</literal></entry></row>
+     <row><entry><literal>-|- (anyrange,anyrange)</literal></entry></row>
+
      <row>
-      <entry><literal>inet_ops</literal></entry>
-      <entry><type>inet</type>, <type>cidr</type></entry>
-      <entry>
-       <literal>&amp;&amp;</literal>
-       <literal>&gt;&gt;</literal>
-       <literal>&gt;&gt;=</literal>
-       <literal>&gt;</literal>
-       <literal>&gt;=</literal>
-       <literal>&lt;&gt;</literal>
-       <literal>&lt;&lt;</literal>
-       <literal>&lt;&lt;=</literal>
-       <literal>&lt;</literal>
-       <literal>&lt;=</literal>
-       <literal>=</literal>
-      </entry>
+      <entry valign="middle" morerows="9"><literal>text_ops</literal></entry>
+      <entry><literal>= (text,text)</literal></entry>
+      <entry valign="middle" morerows="9"></entry>
      </row>
+     <row><entry><literal>&lt; (text,text)</literal></entry></row>
+     <row><entry><literal>&lt;= (text,text)</literal></entry></row>
+     <row><entry><literal>&gt; (text,text)</literal></entry></row>
+     <row><entry><literal>&gt;= (text,text)</literal></entry></row>
+     <row><entry><literal>~&lt;~ (text,text)</literal></entry></row>
+     <row><entry><literal>~&lt;=~ (text,text)</literal></entry></row>
+     <row><entry><literal>~&gt;=~ (text,text)</literal></entry></row>
+     <row><entry><literal>~&gt;~ (text,text)</literal></entry></row>
+     <row><entry><literal>^@ (text,text)</literal></entry></row>
     </tbody>
    </tgroup>
   </table>
@@ -188,8 +181,14 @@
  <para>
   Of the two operator classes for type <type>point</type>,
   <literal>quad_point_ops</literal> is the default.  <literal>kd_point_ops</literal>
-  supports the same operators but uses a different index data structure which
+  supports the same operators but uses a different index data structure that
   may offer better performance in some applications.
+ </para>
+ <para>
+  The <literal>quad_point_ops</literal>, <literal>kd_point_ops</literal> and
+  <literal>poly_ops</literal> operator classes support the <literal>&lt;-&gt;</literal>
+  ordering operator, which enables the k-nearest neighbor (<literal>k-NN</literal>)
+  search over indexed point or polygon data sets.
  </para>
 
 </sect1>
@@ -206,13 +205,23 @@
  </para>
 
  <para>
-  Leaf tuples of an <acronym>SP-GiST</acronym> tree contain values of the
-  same data type as the indexed column.  Leaf tuples at the root level will
-  always contain the original indexed data value, but leaf tuples at lower
-  levels might contain only a compressed representation, such as a suffix.
+  Leaf tuples of an <acronym>SP-GiST</acronym> tree usually contain values
+  of the same data type as the indexed column, although it is also possible
+  for them to contain lossy representations of the indexed column.
+  Leaf tuples stored at the root level will directly represent
+  the original indexed data value, but leaf tuples at lower
+  levels might contain only a partial value, such as a suffix.
   In that case the operator class support functions must be able to
   reconstruct the original value using information accumulated from the
   inner tuples that are passed through to reach the leaf level.
+ </para>
+
+ <para>
+  When an <acronym>SP-GiST</acronym> index is created with
+  <literal>INCLUDE</literal> columns, the values of those columns are also
+  stored in leaf tuples.  The <literal>INCLUDE</literal> columns are of no
+  concern to the <acronym>SP-GiST</acronym> operator class, so they are
+  not discussed further here.
  </para>
 
  <para>
@@ -259,18 +268,20 @@
 
  <para>
   There are five user-defined methods that an index operator class for
-  <acronym>SP-GiST</acronym> must provide, and one is optional.  All five
+  <acronym>SP-GiST</acronym> must provide, and two are optional.  All five
   mandatory methods follow the convention of accepting two <type>internal</type>
   arguments, the first of which is a pointer to a C struct containing input
   values for the support method, while the second argument is a pointer to a
   C struct where output values must be placed.  Four of the mandatory methods just
   return <type>void</type>, since all their results appear in the output struct; but
-  <function>leaf_consistent</function> additionally returns a <type>boolean</type> result.
+  <function>leaf_consistent</function> returns a <type>boolean</type> result.
   The methods must not modify any fields of their input structs.  In all
   cases, the output struct is initialized to zeroes before calling the
-  user-defined method.  Optional sixth method <function>compress</function>
-  accepts datum to be indexed as the only argument and returns value suitable
-  for physical storage in leaf tuple.
+  user-defined method.  The optional sixth method <function>compress</function>
+  accepts a <type>datum</type> to be indexed as the only argument and returns a value suitable
+  for physical storage in a leaf tuple.  The optional seventh method
+  <function>options</function> accepts an <type>internal</type> pointer to a C struct, where
+  opclass-specific parameters should be placed, and returns <type>void</type>.
  </para>
 
  <para>
@@ -329,19 +340,29 @@ typedef struct spgConfigOut
      </para>
 
      <para>
-      <structfield>leafType</structfield> is typically the same as
-      <structfield>attType</structfield>.  For the reasons of backward
-      compatibility, method <function>config</function> can
-      leave <structfield>leafType</structfield> uninitialized; that would
-      give the same effect as setting <structfield>leafType</structfield> equal
-      to <structfield>attType</structfield>.  When <structfield>attType</structfield>
-      and <structfield>leafType</structfield> are different, then optional
+      <structfield>leafType</structfield> should match the index storage type
+      defined by the operator class's <structfield>opckeytype</structfield>
+      catalog entry.
+      (Note that <structfield>opckeytype</structfield> can be zero,
+      implying the storage type is the same as the operator class's input
+      type, which is the most common situation.)
+      For reasons of backward compatibility, the <function>config</function>
+      method can set <structfield>leafType</structfield> to some other value,
+      and that value will be used; but this is deprecated since the index
+      contents are then incorrectly identified in the catalogs.
+      Also, it's permissible to
+      leave <structfield>leafType</structfield> uninitialized (zero);
+      that is interpreted as meaning the index storage type derived from
+      <structfield>opckeytype</structfield>.
+     </para>
+
+     <para>
+      When <structfield>attType</structfield>
+      and <structfield>leafType</structfield> are different, the optional
       method <function>compress</function> must be provided.
       Method <function>compress</function> is responsible
       for transformation of datums to be indexed from <structfield>attType</structfield>
       to <structfield>leafType</structfield>.
-      Note: both consistent functions will get <structfield>scankeys</structfield>
-      unchanged, without transformation using <function>compress</function>.
      </para>
      </listitem>
     </varlistentry>
@@ -423,9 +444,9 @@ typedef struct spgChooseOut
        type that was to be inserted into the index.
        <structfield>leafDatum</structfield> is a value of
        <structname>spgConfigOut</structname>.<structfield>leafType</structfield>
-       type which is initially an result of method
+       type, which is initially a result of method
        <function>compress</function> applied to <structfield>datum</structfield>
-       when method <function>compress</function> is provided, or same value as
+       when method <function>compress</function> is provided, or the same value as
        <structfield>datum</structfield> otherwise.
        <structfield>leafDatum</structfield> can change at lower levels of the tree
        if the <function>choose</function> or <function>picksplit</function>
@@ -630,7 +651,10 @@ CREATE FUNCTION my_inner_consistent(internal, internal) RETURNS void ...
 typedef struct spgInnerConsistentIn
 {
     ScanKey     scankeys;       /* array of operators and comparison values */
-    int         nkeys;          /* length of array */
+    ScanKey     orderbys;       /* array of ordering operators and comparison
+                                 * values */
+    int         nkeys;          /* length of scankeys array */
+    int         norderbys;      /* length of orderbys array */
 
     Datum       reconstructedValue;     /* value reconstructed at parent */
     void       *traversalValue; /* opclass-specific traverse value */
@@ -653,6 +677,7 @@ typedef struct spgInnerConsistentOut
     int        *levelAdds;      /* increment level by this much for each */
     Datum      *reconstructedValues;    /* associated reconstructed values */
     void      **traversalValues;        /* opclass-specific traverse values */
+    double    **distances;              /* associated distances */
 } spgInnerConsistentOut;
 </programlisting>
 
@@ -667,11 +692,12 @@ typedef struct spgInnerConsistentOut
        In particular it is not necessary to check <structfield>sk_flags</structfield> to
        see if the comparison value is NULL, because the SP-GiST core code
        will filter out such conditions.
+       The array <structfield>orderbys</structfield>, of length <structfield>norderbys</structfield>,
+       describes ordering operators (if any) in the same manner.
        <structfield>reconstructedValue</structfield> is the value reconstructed for the
        parent tuple; it is <literal>(Datum) 0</literal> at the root level or if the
        <function>inner_consistent</function> function did not provide a value at the
-       parent level. <structfield>reconstructedValue</structfield> is always of
-       <structname>spgConfigOut</structname>.<structfield>leafType</structfield> type.
+       parent level.
        <structfield>traversalValue</structfield> is a pointer to any traverse data
        passed down from the previous call of <function>inner_consistent</function>
        on the parent index tuple, or NULL at the root level.
@@ -706,9 +732,18 @@ typedef struct spgInnerConsistentOut
        necessarily so, so an array is used.)
        If value reconstruction is needed, set
        <structfield>reconstructedValues</structfield> to an array of the values
-       of <structname>spgConfigOut</structname>.<structfield>leafType</structfield> type
        reconstructed for each child node to be visited; otherwise, leave
        <structfield>reconstructedValues</structfield> as NULL.
+       The reconstructed values are assumed to be of type
+       <structname>spgConfigOut</structname>.<structfield>leafType</structfield>.
+       (However, since the core system will do nothing with them except
+       possibly copy them, it is sufficient for them to have the
+       same <literal>typlen</literal> and <literal>typbyval</literal>
+       properties as <structfield>leafType</structfield>.)
+       If ordered search is performed, set <structfield>distances</structfield>
+       to an array of distance values according to <structfield>orderbys</structfield>
+       array (nodes with lowest distances will be processed first).  Leave it
+       NULL otherwise.
        If it is desired to pass down additional out-of-band information
        (<quote>traverse values</quote>) to lower levels of the tree search,
        set <structfield>traversalValues</structfield> to an array of the appropriate
@@ -717,6 +752,7 @@ typedef struct spgInnerConsistentOut
        Note that the <function>inner_consistent</function> function is
        responsible for palloc'ing the
        <structfield>nodeNumbers</structfield>, <structfield>levelAdds</structfield>,
+       <structfield>distances</structfield>,
        <structfield>reconstructedValues</structfield>, and
        <structfield>traversalValues</structfield> arrays in the current memory context.
        However, any output traverse values pointed to by
@@ -747,7 +783,10 @@ CREATE FUNCTION my_leaf_consistent(internal, internal) RETURNS bool ...
 typedef struct spgLeafConsistentIn
 {
     ScanKey     scankeys;       /* array of operators and comparison values */
-    int         nkeys;          /* length of array */
+    ScanKey     orderbys;       /* array of ordering operators and comparison
+                                 * values */
+    int         nkeys;          /* length of scankeys array */
+    int         norderbys;      /* length of orderbys array */
 
     Datum       reconstructedValue;     /* value reconstructed at parent */
     void       *traversalValue; /* opclass-specific traverse value */
@@ -759,8 +798,10 @@ typedef struct spgLeafConsistentIn
 
 typedef struct spgLeafConsistentOut
 {
-    Datum       leafValue;      /* reconstructed original data, if any */
-    bool        recheck;        /* set true if operator must be rechecked */
+    Datum       leafValue;        /* reconstructed original data, if any */
+    bool        recheck;          /* set true if operator must be rechecked */
+    bool        recheckDistances; /* set true if distances must be rechecked */
+    double     *distances;        /* associated distances */
 } spgLeafConsistentOut;
 </programlisting>
 
@@ -775,11 +816,12 @@ typedef struct spgLeafConsistentOut
        In particular it is not necessary to check <structfield>sk_flags</structfield> to
        see if the comparison value is NULL, because the SP-GiST core code
        will filter out such conditions.
+       The array <structfield>orderbys</structfield>, of length <structfield>norderbys</structfield>,
+       describes the ordering operators in the same manner.
        <structfield>reconstructedValue</structfield> is the value reconstructed for the
        parent tuple; it is <literal>(Datum) 0</literal> at the root level or if the
        <function>inner_consistent</function> function did not provide a value at the
-       parent level. <structfield>reconstructedValue</structfield> is always of
-       <structname>spgConfigOut</structname>.<structfield>leafType</structfield> type.
+       parent level.
        <structfield>traversalValue</structfield> is a pointer to any traverse data
        passed down from the previous call of <function>inner_consistent</function>
        on the parent index tuple, or NULL at the root level.
@@ -797,19 +839,25 @@ typedef struct spgLeafConsistentOut
        The function must return <literal>true</literal> if the leaf tuple matches the
        query, or <literal>false</literal> if not.  In the <literal>true</literal> case,
        if <structfield>returnData</structfield> is <literal>true</literal> then
-       <structfield>leafValue</structfield> must be set to the value of
-       <structname>spgConfigIn</structname>.<structfield>attType</structfield> type
+       <structfield>leafValue</structfield> must be set to the value (of type
+       <structname>spgConfigIn</structname>.<structfield>attType</structfield>)
        originally supplied to be indexed for this leaf tuple.  Also,
        <structfield>recheck</structfield> may be set to <literal>true</literal> if the match
        is uncertain and so the operator(s) must be re-applied to the actual
        heap tuple to verify the match.
+       If ordered search is performed, set <structfield>distances</structfield>
+       to an array of distance values according to <structfield>orderbys</structfield>
+       array.  Leave it NULL otherwise.  If at least one of returned distances
+       is not exact, set <structfield>recheckDistances</structfield> to true.
+       In this case, the executor will calculate the exact distances after
+       fetching the tuple from the heap, and will reorder the tuples if needed.
       </para>
      </listitem>
     </varlistentry>
    </variablelist>
 
  <para>
-  The optional user-defined method is:
+  The optional user-defined methods are:
  </para>
 
  <variablelist>
@@ -817,12 +865,53 @@ typedef struct spgLeafConsistentOut
      <term><function>Datum compress(Datum in)</function></term>
      <listitem>
       <para>
-       Converts the data item into a format suitable for physical storage in
-       a leaf tuple of index page.  It accepts
+       Converts a data item into a format suitable for physical storage in
+       a leaf tuple of the index.  It accepts a value of type
        <structname>spgConfigIn</structname>.<structfield>attType</structfield>
-       value and return
-       <structname>spgConfigOut</structname>.<structfield>leafType</structfield>
-       value.  Output value should not be toasted.
+       and returns a value of type
+       <structname>spgConfigOut</structname>.<structfield>leafType</structfield>.
+       The output value must not contain an out-of-line TOAST pointer.
+      </para>
+
+      <para>
+       Note: the <function>compress</function> method is only applied to
+       values to be stored.  The consistent methods receive query
+       <structfield>scankeys</structfield> unchanged, without transformation
+       using <function>compress</function>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><function>options</function></term>
+     <listitem>
+      <para>
+       Defines a set of user-visible parameters that control operator class
+       behavior.
+      </para>
+
+      <para>
+        The <acronym>SQL</acronym> declaration of the function must look like this:
+
+<programlisting>
+CREATE OR REPLACE FUNCTION my_options(internal)
+RETURNS void
+AS 'MODULE_PATHNAME'
+LANGUAGE C STRICT;
+</programlisting>
+      </para>
+
+      <para>
+       The function is passed a pointer to a <structname>local_relopts</structname>
+       struct, which needs to be filled with a set of operator class
+       specific options.  The options can be accessed from other support
+       functions using the <literal>PG_HAS_OPCLASS_OPTIONS()</literal> and
+       <literal>PG_GET_OPCLASS_OPTIONS()</literal> macros.
+      </para>
+
+      <para>
+       Since the representation of the key in <acronym>SP-GiST</acronym> is
+       flexible, it may depend on user-specified parameters.
       </para>
      </listitem>
     </varlistentry>
@@ -890,6 +979,18 @@ typedef struct spgLeafConsistentOut
    fails to do that, the <acronym>SP-GiST</acronym> core resorts to
    extraordinary measures described in <xref linkend="spgist-all-the-same"/>.
   </para>
+
+  <para>
+   When <structfield>longValuesOK</structfield> is true, it is expected
+   that successive levels of the <acronym>SP-GiST</acronym> tree will
+   absorb more and more information into the prefixes and node labels of
+   the inner tuples, making the required leaf datum smaller and smaller,
+   so that eventually it will fit on a page.
+   To prevent bugs in operator classes from causing infinite insertion
+   loops, the <acronym>SP-GiST</acronym> core will raise an error if the
+   leaf datum does not become any smaller within ten cycles
+   of <function>choose</function> method calls.
+  </para>
  </sect2>
 
  <sect2 id="spgist-null-labels">
@@ -920,7 +1021,7 @@ typedef struct spgLeafConsistentOut
  </sect2>
 
  <sect2 id="spgist-all-the-same">
-  <title><quote>All-the-same</quote> Inner Tuples</title>
+  <title><quote>All-the-Same</quote> Inner Tuples</title>
 
   <para>
    The <acronym>SP-GiST</acronym> core can override the results of the

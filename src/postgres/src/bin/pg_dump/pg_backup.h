@@ -11,7 +11,7 @@
  *		as this notice is not removed.
  *
  *	The author is not responsible for loss or damages that may
- *	result from it's use.
+ *	result from its use.
  *
  *
  * IDENTIFICATION
@@ -58,6 +58,23 @@ typedef enum _teSection
 	SECTION_POST_DATA			/* stuff to be processed after data */
 } teSection;
 
+/* We need one enum entry per prepared query in pg_dump */
+enum _dumpPreparedQueries
+{
+	PREPQUERY_DUMPAGG,
+	PREPQUERY_DUMPBASETYPE,
+	PREPQUERY_DUMPCOMPOSITETYPE,
+	PREPQUERY_DUMPDOMAIN,
+	PREPQUERY_DUMPENUMTYPE,
+	PREPQUERY_DUMPFUNC,
+	PREPQUERY_DUMPOPR,
+	PREPQUERY_DUMPRANGETYPE,
+	PREPQUERY_DUMPTABLEATTACH,
+	PREPQUERY_GETCOLUMNACLS,
+	PREPQUERY_GETDOMAINCONSTRAINTS,
+	NUM_PREP_QUERIES			/* must be last */
+};
+
 /* Parameters needed by ConnectDatabase; same for dump and restore */
 typedef struct _connParams
 {
@@ -76,6 +93,7 @@ typedef struct _restoreOptions
 {
 	int			createDB;		/* Issue commands to create the database */
 	int			noOwner;		/* Don't try to match original object owner */
+	int			noTableAm;		/* Don't issue table-AM-related commands */
 	int			noTablespace;	/* Don't issue tablespace-related commands */
 	int			disable_triggers;	/* disable triggers during data-only
 									 * restore */
@@ -85,7 +103,7 @@ typedef struct _restoreOptions
 	char	   *use_role;		/* Issue SET ROLE to this */
 	int			dropSchema;
 	int			disable_dollar_quoting;
-	int			dump_inserts;
+	int			dump_inserts;	/* 0 = COPY, otherwise rows per INSERT */
 	int			column_inserts;
 	int			if_exists;
 	int			no_comments;	/* Skip comments */
@@ -140,8 +158,6 @@ typedef struct _dumpOptions
 {
 	ConnParams	cparams;
 	const char *master_hosts;		/* YB Master hosts */
-	bool		oids;
-
 	int			binary_upgrade;
 
 	/* various user-settable parameters */
@@ -150,23 +166,23 @@ typedef struct _dumpOptions
 	int			dumpSections;	/* bitmask of chosen sections */
 	bool		aclsSkip;
 	const char *lockWaitTimeout;
+	int			dump_inserts;	/* 0 = COPY, otherwise rows per INSERT */
 
 	/* flags for various command-line long options */
 	int			disable_dollar_quoting;
-	int			dump_inserts;
 	int			column_inserts;
 	int			if_exists;
 	int			no_comments;
 	int			no_security_labels;
 	int			no_publications;
 	int			no_subscriptions;
-	int			no_synchronized_snapshots;
+	int			no_toast_compression;
 	int			no_unlogged_table_data;
 	int			no_tablegroups;
 	int			no_tablegroup_creations;
 	int			serializable_deferrable;
-	int			quote_all_identifiers;
 	int			disable_triggers;
+	int			outputNoTableAm;
 	int			outputNoTablespaces;
 	int			use_setsessauth;
 	int			enable_row_security;
@@ -184,6 +200,7 @@ typedef struct _dumpOptions
 	char	   *outputSuperuser;
 
 	int			sequence_data;	/* dump sequence data even in schema-only mode */
+	int			do_nothing;
 
 	Oid			db_oid;			/* initiated only if include-yb-metadata flag is set */
 } DumpOptions;
@@ -220,6 +237,9 @@ typedef struct Archive
 	bool		exit_on_error;	/* whether to exit on SQL errors... */
 	int			n_errors;		/* number of errors (if no die) */
 
+	/* prepared-query status */
+	bool	   *is_prepared;	/* indexed by enum _dumpPreparedQueries */
+
 	/* The rest is private */
 } Archive;
 
@@ -242,13 +262,20 @@ typedef struct Archive
 
 typedef struct
 {
+	/* Note: this struct must not contain any unused bytes */
 	Oid			tableoid;
 	Oid			oid;
 } CatalogId;
 
 typedef int DumpId;
 
-typedef int (*DataDumperPtr) (Archive *AH, void *userArg);
+#define InvalidDumpId 0
+
+/*
+ * Function pointer prototypes for assorted callback methods.
+ */
+
+typedef int (*DataDumperPtr) (Archive *AH, const void *userArg);
 
 typedef void (*SetupWorkerPtrType) (Archive *AH);
 
@@ -261,18 +288,6 @@ extern void ConnectDatabase(Archive *AHX,
 							bool isReconnect);
 extern void DisconnectDatabase(Archive *AHX);
 extern PGconn *GetConnection(Archive *AHX);
-
-/* Called to add a TOC entry */
-extern void ArchiveEntry(Archive *AHX,
-			 CatalogId catalogId, DumpId dumpId,
-			 const char *tag,
-			 const char *namespace, const char *tablespace,
-			 const char *owner, bool withOids,
-			 const char *desc, teSection section,
-			 const char *defn,
-			 const char *dropStmt, const char *copyStmt,
-			 const DumpId *deps, int nDeps,
-			 DataDumperPtr dumpFn, void *dumpArg);
 
 /* Called to write *data* to the archive */
 extern void WriteData(Archive *AH, const void *data, size_t dLen);
@@ -293,8 +308,8 @@ extern Archive *OpenArchive(const char *FileSpec, const ArchiveFormat fmt);
 
 /* Create a new archive */
 extern Archive *CreateArchive(const char *FileSpec, const ArchiveFormat fmt,
-			  const int compression, bool dosync, ArchiveMode mode,
-			  SetupWorkerPtrType setupDumpWorker);
+							  const int compression, bool dosync, ArchiveMode mode,
+							  SetupWorkerPtrType setupDumpWorker);
 
 /* The --list option */
 extern void PrintTOCSummary(Archive *AH);

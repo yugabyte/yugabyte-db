@@ -1,11 +1,13 @@
 # contrib/btree_gin/Makefile
 
 MODULE_big = btree_gin
-OBJS = btree_gin.o $(WIN32RES)
+OBJS = \
+	$(WIN32RES) \
+	btree_gin.o
 
 EXTENSION = btree_gin
 DATA = btree_gin--1.0.sql btree_gin--1.0--1.1.sql btree_gin--1.1--1.2.sql \
-	 btree_gin--1.2--1.3.sql btree_gin--unpackaged--1.0.sql
+	 btree_gin--1.2--1.3.sql
 PGFILEDESC = "btree_gin - B-tree equivalent GIN operator classes"
 
 REGRESS = install_btree_gin int2 int4 int8 float4 float8 money oid \

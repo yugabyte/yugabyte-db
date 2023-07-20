@@ -88,7 +88,7 @@ View definition:
 
 -- check a sampled query doesn't affect cursor in progress
 BEGIN;
-DECLARE tablesample_cur CURSOR FOR
+DECLARE tablesample_cur SCROLL CURSOR FOR
   SELECT id FROM test_tablesample TABLESAMPLE SYSTEM (50) REPEATABLE (0);
 FETCH FIRST FROM tablesample_cur;
  id 
@@ -198,13 +198,13 @@ explain (costs off)
 -------------------------------------------------
  Aggregate
    ->  Append
-         ->  Sample Scan on person
+         ->  Sample Scan on person person_1
                Sampling: bernoulli ('100'::real)
-         ->  Sample Scan on emp
+         ->  Sample Scan on emp person_2
                Sampling: bernoulli ('100'::real)
-         ->  Sample Scan on student
+         ->  Sample Scan on student person_3
                Sampling: bernoulli ('100'::real)
-         ->  Sample Scan on stud_emp
+         ->  Sample Scan on stud_emp person_4
                Sampling: bernoulli ('100'::real)
 (10 rows)
 

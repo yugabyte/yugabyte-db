@@ -20,15 +20,14 @@ namespace yb {
 enum class PgSystemAttrNum : int {
   // Postgres system columns.
   kSelfItemPointer      = -1, // ctid.
-  kObjectId             = -2, // oid.
-  kMinTransactionId     = -3, // xmin
-  kMinCommandId         = -4, // cmin
-  kMaxTransactionId     = -5, // xmax
-  kMaxCommandId         = -6, // cmax
-  kTableOid             = -7, // tableoid
+  kMinTransactionId     = -2, // xmin
+  kMinCommandId         = -3, // cmin
+  kMaxTransactionId     = -4, // xmax
+  kMaxCommandId         = -5, // cmax
+  kTableOid             = -6, // tableoid
 
   // YugaByte system columns.
-  kYBTupleId            = -8, // ybctid: virtual column representing DocDB-encoded key.
+  kYBTupleId            = -7, // ybctid: virtual column representing DocDB-encoded key.
                               // YB analogue of Postgres's SelfItemPointer/ctid column.
 
   // The following attribute numbers are stored persistently in the table schema. For this reason,
@@ -40,6 +39,8 @@ enum class PgSystemAttrNum : int {
                                 // (where null == null). For each index row will be set to:
                                 //  - the base table ctid when one or more indexed cols are null
                                 //  - to null otherwise (all indexed cols are non-null).
+  kObjectId             = -104, // YB_TODO(arpan): remove it, added it temporarily for consistency
+                                // with sysattr.h.
 };
 
 } // namespace yb

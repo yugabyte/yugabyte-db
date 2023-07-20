@@ -3,7 +3,7 @@
  * tsquery_op.c
  *	  Various operations with tsquery
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -14,6 +14,7 @@
 
 #include "postgres.h"
 
+#include "lib/qunique.h"
 #include "tsearch/ts_utils.h"
 #include "utils/builtins.h"
 
@@ -120,7 +121,7 @@ tsquery_phrase_distance(PG_FUNCTION_ARGS)
 	if (distance < 0 || distance > MAXENTRYPOS)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("distance in phrase operator should be non-negative and less than %d",
+				 errmsg("distance in phrase operator must be an integer value between zero and %d inclusive",
 						MAXENTRYPOS)));
 	if (a->size == 0)
 	{
@@ -147,8 +148,7 @@ tsquery_phrase_distance(PG_FUNCTION_ARGS)
 Datum
 tsquery_phrase(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_POINTER(DirectFunctionCall3(
-										  tsquery_phrase_distance,
+	PG_RETURN_POINTER(DirectFunctionCall3(tsquery_phrase_distance,
 										  PG_GETARG_DATUM(0),
 										  PG_GETARG_DATUM(1),
 										  Int32GetDatum(1)));
@@ -296,33 +296,10 @@ collectTSQueryValues(TSQuery a, int *nvalues_p)
 static int
 cmp_string(const void *a, const void *b)
 {
-	const char *sa = *((const char **) a);
-	const char *sb = *((const char **) b);
+	const char *sa = *((char *const *) a);
+	const char *sb = *((char *const *) b);
 
 	return strcmp(sa, sb);
-}
-
-static int
-remove_duplicates(char **strings, int n)
-{
-	if (n <= 1)
-		return n;
-	else
-	{
-		int			i;
-		char	   *prev = strings[0];
-		int			new_n = 1;
-
-		for (i = 1; i < n; i++)
-		{
-			if (strcmp(strings[i], prev) != 0)
-			{
-				strings[new_n++] = strings[i];
-				prev = strings[i];
-			}
-		}
-		return new_n;
-	}
 }
 
 Datum
@@ -342,9 +319,10 @@ tsq_mcontains(PG_FUNCTION_ARGS)
 
 	/* Sort and remove duplicates from both arrays */
 	qsort(query_values, query_nvalues, sizeof(char *), cmp_string);
-	query_nvalues = remove_duplicates(query_values, query_nvalues);
+	query_nvalues = qunique(query_values, query_nvalues, sizeof(char *),
+							cmp_string);
 	qsort(ex_values, ex_nvalues, sizeof(char *), cmp_string);
-	ex_nvalues = remove_duplicates(ex_values, ex_nvalues);
+	ex_nvalues = qunique(ex_values, ex_nvalues, sizeof(char *), cmp_string);
 
 	if (ex_nvalues > query_nvalues)
 		result = false;
@@ -374,11 +352,7 @@ tsq_mcontains(PG_FUNCTION_ARGS)
 Datum
 tsq_mcontained(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_DATUM(
-					DirectFunctionCall2(
-										tsq_mcontains,
+	PG_RETURN_DATUM(DirectFunctionCall2(tsq_mcontains,
 										PG_GETARG_DATUM(1),
-										PG_GETARG_DATUM(0)
-										)
-		);
+										PG_GETARG_DATUM(0)));
 }

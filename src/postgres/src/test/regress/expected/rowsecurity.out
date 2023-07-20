@@ -632,41 +632,41 @@ SELECT * FROM category;
 --
 SET SESSION AUTHORIZATION regress_rls_alice;
 SET row_security TO ON;
-CREATE TABLE t1 (a int, junk1 text, b text) WITH OIDS;
+CREATE TABLE t1 (id int not null primary key, a int, junk1 text, b text);
 ALTER TABLE t1 DROP COLUMN junk1;    -- just a disturbing factor
 GRANT ALL ON t1 TO public;
-COPY t1 FROM stdin WITH (oids);
+COPY t1 FROM stdin WITH ;
 CREATE TABLE t2 (c float) INHERITS (t1);
 GRANT ALL ON t2 TO public;
-COPY t2 FROM stdin WITH (oids);
-CREATE TABLE t3 (c text, b text, a int) WITH OIDS;
+COPY t2 FROM stdin;
+CREATE TABLE t3 (id int not null primary key, c text, b text, a int);
 ALTER TABLE t3 INHERIT t1;
 GRANT ALL ON t3 TO public;
-COPY t3(a,b,c) FROM stdin WITH (oids);
+COPY t3(id, a,b,c) FROM stdin;
 CREATE POLICY p1 ON t1 FOR ALL TO PUBLIC USING (a % 2 = 0); -- be even number
 CREATE POLICY p2 ON t2 FOR ALL TO PUBLIC USING (a % 2 = 1); -- be odd number
 ALTER TABLE t1 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE t2 ENABLE ROW LEVEL SECURITY;
 SET SESSION AUTHORIZATION regress_rls_bob;
 SELECT * FROM t1;
- a |  b  
----+-----
- 2 | bbb
- 4 | dad
- 2 | bcd
- 4 | def
- 2 | yyy
+ id  | a |  b  
+-----+---+-----
+ 102 | 2 | bbb
+ 104 | 4 | dad
+ 202 | 2 | bcd
+ 204 | 4 | def
+ 302 | 2 | yyy
 (5 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM t1;
           QUERY PLAN           
 -------------------------------
  Append
-   ->  Seq Scan on t1
+   ->  Seq Scan on t1 t1_1
          Filter: ((a % 2) = 0)
-   ->  Seq Scan on t2
+   ->  Seq Scan on t2 t1_2
          Filter: ((a % 2) = 0)
-   ->  Seq Scan on t3
+   ->  Seq Scan on t3 t1_3
          Filter: ((a % 2) = 0)
 (7 rows)
 
@@ -676,30 +676,7 @@ NOTICE:  f_leak => dad
 NOTICE:  f_leak => bcd
 NOTICE:  f_leak => def
 NOTICE:  f_leak => yyy
- a |  b  
----+-----
- 2 | bbb
- 4 | dad
- 2 | bcd
- 4 | def
- 2 | yyy
-(5 rows)
-
-EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
-                  QUERY PLAN                   
------------------------------------------------
- Append
-   ->  Seq Scan on t1
-         Filter: (((a % 2) = 0) AND f_leak(b))
-   ->  Seq Scan on t2
-         Filter: (((a % 2) = 0) AND f_leak(b))
-   ->  Seq Scan on t3
-         Filter: (((a % 2) = 0) AND f_leak(b))
-(7 rows)
-
--- reference to system column
-SELECT oid, * FROM t1;
- oid | a |  b  
+ id  | a |  b  
 -----+---+-----
  102 | 2 | bbb
  104 | 4 | dad
@@ -708,50 +685,73 @@ SELECT oid, * FROM t1;
  302 | 2 | yyy
 (5 rows)
 
-EXPLAIN (COSTS OFF) SELECT *, t1 FROM t1;
-          QUERY PLAN           
--------------------------------
+EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
+                  QUERY PLAN                   
+-----------------------------------------------
  Append
-   ->  Seq Scan on t1
-         Filter: ((a % 2) = 0)
-   ->  Seq Scan on t2
-         Filter: ((a % 2) = 0)
-   ->  Seq Scan on t3
-         Filter: ((a % 2) = 0)
+   ->  Seq Scan on t1 t1_1
+         Filter: (((a % 2) = 0) AND f_leak(b))
+   ->  Seq Scan on t2 t1_2
+         Filter: (((a % 2) = 0) AND f_leak(b))
+   ->  Seq Scan on t3 t1_3
+         Filter: (((a % 2) = 0) AND f_leak(b))
 (7 rows)
 
--- reference to whole-row reference
-SELECT *, t1 FROM t1;
- a |  b  |   t1    
----+-----+---------
- 2 | bbb | (2,bbb)
- 4 | dad | (4,dad)
- 2 | bcd | (2,bcd)
- 4 | def | (4,def)
- 2 | yyy | (2,yyy)
+-- reference to system column
+SELECT tableoid::regclass, * FROM t1;
+ tableoid | id  | a |  b  
+----------+-----+---+-----
+ t1       | 102 | 2 | bbb
+ t1       | 104 | 4 | dad
+ t2       | 202 | 2 | bcd
+ t2       | 204 | 4 | def
+ t3       | 302 | 2 | yyy
 (5 rows)
 
 EXPLAIN (COSTS OFF) SELECT *, t1 FROM t1;
           QUERY PLAN           
 -------------------------------
  Append
-   ->  Seq Scan on t1
+   ->  Seq Scan on t1 t1_1
          Filter: ((a % 2) = 0)
-   ->  Seq Scan on t2
+   ->  Seq Scan on t2 t1_2
          Filter: ((a % 2) = 0)
-   ->  Seq Scan on t3
+   ->  Seq Scan on t3 t1_3
+         Filter: ((a % 2) = 0)
+(7 rows)
+
+-- reference to whole-row reference
+SELECT *, t1 FROM t1;
+ id  | a |  b  |     t1      
+-----+---+-----+-------------
+ 102 | 2 | bbb | (102,2,bbb)
+ 104 | 4 | dad | (104,4,dad)
+ 202 | 2 | bcd | (202,2,bcd)
+ 204 | 4 | def | (204,4,def)
+ 302 | 2 | yyy | (302,2,yyy)
+(5 rows)
+
+EXPLAIN (COSTS OFF) SELECT *, t1 FROM t1;
+          QUERY PLAN           
+-------------------------------
+ Append
+   ->  Seq Scan on t1 t1_1
+         Filter: ((a % 2) = 0)
+   ->  Seq Scan on t2 t1_2
+         Filter: ((a % 2) = 0)
+   ->  Seq Scan on t3 t1_3
          Filter: ((a % 2) = 0)
 (7 rows)
 
 -- for share/update lock
 SELECT * FROM t1 FOR SHARE;
- a |  b  
----+-----
- 2 | bbb
- 4 | dad
- 2 | bcd
- 4 | def
- 2 | yyy
+ id  | a |  b  
+-----+---+-----
+ 102 | 2 | bbb
+ 104 | 4 | dad
+ 202 | 2 | bcd
+ 204 | 4 | def
+ 302 | 2 | yyy
 (5 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM t1 FOR SHARE;
@@ -759,11 +759,11 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 FOR SHARE;
 -------------------------------------
  LockRows
    ->  Append
-         ->  Seq Scan on t1
+         ->  Seq Scan on t1 t1_1
                Filter: ((a % 2) = 0)
-         ->  Seq Scan on t2
+         ->  Seq Scan on t2 t1_2
                Filter: ((a % 2) = 0)
-         ->  Seq Scan on t3
+         ->  Seq Scan on t3 t1_3
                Filter: ((a % 2) = 0)
 (8 rows)
 
@@ -773,13 +773,13 @@ NOTICE:  f_leak => dad
 NOTICE:  f_leak => bcd
 NOTICE:  f_leak => def
 NOTICE:  f_leak => yyy
- a |  b  
----+-----
- 2 | bbb
- 4 | dad
- 2 | bcd
- 4 | def
- 2 | yyy
+ id  | a |  b  
+-----+---+-----
+ 102 | 2 | bbb
+ 104 | 4 | dad
+ 202 | 2 | bcd
+ 204 | 4 | def
+ 302 | 2 | yyy
 (5 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b) FOR SHARE;
@@ -787,26 +787,26 @@ EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b) FOR SHARE;
 -----------------------------------------------------
  LockRows
    ->  Append
-         ->  Seq Scan on t1
+         ->  Seq Scan on t1 t1_1
                Filter: (((a % 2) = 0) AND f_leak(b))
-         ->  Seq Scan on t2
+         ->  Seq Scan on t2 t1_2
                Filter: (((a % 2) = 0) AND f_leak(b))
-         ->  Seq Scan on t3
+         ->  Seq Scan on t3 t1_3
                Filter: (((a % 2) = 0) AND f_leak(b))
 (8 rows)
 
 -- union all query
-SELECT a, b, oid FROM t2 UNION ALL SELECT a, b, oid FROM t3;
- a |  b  | oid 
----+-----+-----
- 1 | abc | 201
- 3 | cde | 203
- 1 | xxx | 301
- 2 | yyy | 302
- 3 | zzz | 303
+SELECT a, b, tableoid::regclass FROM t2 UNION ALL SELECT a, b, tableoid::regclass FROM t3;
+ a |  b  | tableoid 
+---+-----+----------
+ 1 | abc | t2
+ 3 | cde | t2
+ 1 | xxx | t3
+ 2 | yyy | t3
+ 3 | zzz | t3
 (5 rows)
 
-EXPLAIN (COSTS OFF) SELECT a, b, oid FROM t2 UNION ALL SELECT a, b, oid FROM t3;
+EXPLAIN (COSTS OFF) SELECT a, b, tableoid::regclass FROM t2 UNION ALL SELECT a, b, tableoid::regclass FROM t3;
           QUERY PLAN           
 -------------------------------
  Append
@@ -830,30 +830,30 @@ NOTICE:  f_leak => def
 NOTICE:  f_leak => xxx
 NOTICE:  f_leak => yyy
 NOTICE:  f_leak => zzz
- a |  b  
----+-----
- 1 | aba
- 2 | bbb
- 3 | ccc
- 4 | dad
- 1 | abc
- 2 | bcd
- 3 | cde
- 4 | def
- 1 | xxx
- 2 | yyy
- 3 | zzz
+ id  | a |  b  
+-----+---+-----
+ 101 | 1 | aba
+ 102 | 2 | bbb
+ 103 | 3 | ccc
+ 104 | 4 | dad
+ 201 | 1 | abc
+ 202 | 2 | bcd
+ 203 | 3 | cde
+ 204 | 4 | def
+ 301 | 1 | xxx
+ 302 | 2 | yyy
+ 303 | 3 | zzz
 (11 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
         QUERY PLAN         
 ---------------------------
  Append
-   ->  Seq Scan on t1
+   ->  Seq Scan on t1 t1_1
          Filter: f_leak(b)
-   ->  Seq Scan on t2
+   ->  Seq Scan on t2 t1_2
          Filter: f_leak(b)
-   ->  Seq Scan on t3
+   ->  Seq Scan on t3 t1_3
          Filter: f_leak(b)
 (7 rows)
 
@@ -872,30 +872,30 @@ NOTICE:  f_leak => def
 NOTICE:  f_leak => xxx
 NOTICE:  f_leak => yyy
 NOTICE:  f_leak => zzz
- a |  b  
----+-----
- 1 | aba
- 2 | bbb
- 3 | ccc
- 4 | dad
- 1 | abc
- 2 | bcd
- 3 | cde
- 4 | def
- 1 | xxx
- 2 | yyy
- 3 | zzz
+ id  | a |  b  
+-----+---+-----
+ 101 | 1 | aba
+ 102 | 2 | bbb
+ 103 | 3 | ccc
+ 104 | 4 | dad
+ 201 | 1 | abc
+ 202 | 2 | bcd
+ 203 | 3 | cde
+ 204 | 4 | def
+ 301 | 1 | xxx
+ 302 | 2 | yyy
+ 303 | 3 | zzz
 (11 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
         QUERY PLAN         
 ---------------------------
  Append
-   ->  Seq Scan on t1
+   ->  Seq Scan on t1 t1_1
          Filter: f_leak(b)
-   ->  Seq Scan on t2
+   ->  Seq Scan on t2 t1_2
          Filter: f_leak(b)
-   ->  Seq Scan on t3
+   ->  Seq Scan on t3 t1_3
          Filter: f_leak(b)
 (7 rows)
 
@@ -938,7 +938,7 @@ CREATE POLICY pp1 ON part_document AS PERMISSIVE
 CREATE POLICY pp1r ON part_document AS RESTRICTIVE TO regress_rls_dave
     USING (cid < 55);
 \d+ part_document
-                          Table "regress_rls_schema.part_document"
+                    Partitioned table "regress_rls_schema.part_document"
  Column  |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
 ---------+---------+-----------+----------+---------+----------+--------------+-------------
  did     | integer |           |          |         | plain    |              | 
@@ -985,17 +985,17 @@ NOTICE:  f_leak => my first satire
 (4 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
-                     QUERY PLAN                      
------------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Append
    InitPlan 1 (returns $0)
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
-   ->  Seq Scan on part_document_fiction
+   ->  Seq Scan on part_document_fiction part_document_1
          Filter: ((dlevel <= $0) AND f_leak(dtitle))
-   ->  Seq Scan on part_document_satire
+   ->  Seq Scan on part_document_satire part_document_2
          Filter: ((dlevel <= $0) AND f_leak(dtitle))
-   ->  Seq Scan on part_document_nonfiction
+   ->  Seq Scan on part_document_nonfiction part_document_3
          Filter: ((dlevel <= $0) AND f_leak(dtitle))
 (10 rows)
 
@@ -1027,17 +1027,17 @@ NOTICE:  f_leak => awesome technology book
 (10 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
-                     QUERY PLAN                      
------------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Append
    InitPlan 1 (returns $0)
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
-   ->  Seq Scan on part_document_fiction
+   ->  Seq Scan on part_document_fiction part_document_1
          Filter: ((dlevel <= $0) AND f_leak(dtitle))
-   ->  Seq Scan on part_document_satire
+   ->  Seq Scan on part_document_satire part_document_2
          Filter: ((dlevel <= $0) AND f_leak(dtitle))
-   ->  Seq Scan on part_document_nonfiction
+   ->  Seq Scan on part_document_nonfiction part_document_3
          Filter: ((dlevel <= $0) AND f_leak(dtitle))
 (10 rows)
 
@@ -1057,15 +1057,14 @@ NOTICE:  f_leak => awesome science fiction
 (4 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
-                             QUERY PLAN                             
---------------------------------------------------------------------
- Append
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Seq Scan on part_document_fiction part_document
+   Filter: ((cid < 55) AND (dlevel <= $0) AND f_leak(dtitle))
    InitPlan 1 (returns $0)
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
-   ->  Seq Scan on part_document_fiction
-         Filter: ((cid < 55) AND (dlevel <= $0) AND f_leak(dtitle))
-(6 rows)
+(5 rows)
 
 -- pp1 ERROR
 INSERT INTO part_document VALUES (100, 11, 5, 'regress_rls_dave', 'testing pp1'); -- fail
@@ -1136,15 +1135,14 @@ NOTICE:  f_leak => awesome science fiction
 (4 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
-                             QUERY PLAN                             
---------------------------------------------------------------------
- Append
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Seq Scan on part_document_fiction part_document
+   Filter: ((cid < 55) AND (dlevel <= $0) AND f_leak(dtitle))
    InitPlan 1 (returns $0)
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
-   ->  Seq Scan on part_document_fiction
-         Filter: ((cid < 55) AND (dlevel <= $0) AND f_leak(dtitle))
-(6 rows)
+(5 rows)
 
 -- viewpoint from regress_rls_carol
 SET SESSION AUTHORIZATION regress_rls_carol;
@@ -1176,17 +1174,17 @@ NOTICE:  f_leak => awesome technology book
 (11 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
-                     QUERY PLAN                      
------------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Append
    InitPlan 1 (returns $0)
      ->  Index Scan using uaccount_pkey on uaccount
            Index Cond: (pguser = CURRENT_USER)
-   ->  Seq Scan on part_document_fiction
+   ->  Seq Scan on part_document_fiction part_document_1
          Filter: ((dlevel <= $0) AND f_leak(dtitle))
-   ->  Seq Scan on part_document_satire
+   ->  Seq Scan on part_document_satire part_document_2
          Filter: ((dlevel <= $0) AND f_leak(dtitle))
-   ->  Seq Scan on part_document_nonfiction
+   ->  Seq Scan on part_document_nonfiction part_document_3
          Filter: ((dlevel <= $0) AND f_leak(dtitle))
 (10 rows)
 
@@ -1231,11 +1229,11 @@ EXPLAIN (COSTS OFF) SELECT * FROM part_document WHERE f_leak(dtitle);
                           QUERY PLAN                           
 ---------------------------------------------------------------
  Append
-   ->  Seq Scan on part_document_fiction
+   ->  Seq Scan on part_document_fiction part_document_1
          Filter: ((dauthor = CURRENT_USER) AND f_leak(dtitle))
-   ->  Seq Scan on part_document_satire
+   ->  Seq Scan on part_document_satire part_document_2
          Filter: ((dauthor = CURRENT_USER) AND f_leak(dtitle))
-   ->  Seq Scan on part_document_nonfiction
+   ->  Seq Scan on part_document_nonfiction part_document_3
          Filter: ((dauthor = CURRENT_USER) AND f_leak(dtitle))
 (7 rows)
 
@@ -1393,10 +1391,10 @@ ERROR:  infinite recursion detected in policy for relation "rec1"
 -- Mutual recursion via .s.b views
 --
 SET SESSION AUTHORIZATION regress_rls_bob;
-\set VERBOSITY terse \\ -- suppress cascade details
 DROP VIEW rec1v, rec2v CASCADE;
 NOTICE:  drop cascades to 2 other objects
-\set VERBOSITY default
+DETAIL:  drop cascades to policy r1 on table rec1
+drop cascades to policy r2 on table rec2
 CREATE VIEW rec1v WITH (security_barrier) AS SELECT * FROM rec1;
 CREATE VIEW rec2v WITH (security_barrier) AS SELECT * FROM rec2;
 SET SESSION AUTHORIZATION regress_rls_alice;
@@ -1500,22 +1498,22 @@ ERROR:  infinite recursion detected in policy for relation "s1"
 -- prepared statement with regress_rls_alice privilege
 PREPARE p1(int) AS SELECT * FROM t1 WHERE a <= $1;
 EXECUTE p1(2);
- a |  b  
----+-----
- 2 | bbb
- 2 | bcd
- 2 | yyy
+ id  | a |  b  
+-----+---+-----
+ 102 | 2 | bbb
+ 202 | 2 | bcd
+ 302 | 2 | yyy
 (3 rows)
 
 EXPLAIN (COSTS OFF) EXECUTE p1(2);
                   QUERY PLAN                  
 ----------------------------------------------
  Append
-   ->  Seq Scan on t1
+   ->  Seq Scan on t1 t1_1
          Filter: ((a <= 2) AND ((a % 2) = 0))
-   ->  Seq Scan on t2
+   ->  Seq Scan on t2 t1_2
          Filter: ((a <= 2) AND ((a % 2) = 0))
-   ->  Seq Scan on t3
+   ->  Seq Scan on t3 t1_3
          Filter: ((a <= 2) AND ((a % 2) = 0))
 (7 rows)
 
@@ -1534,75 +1532,75 @@ NOTICE:  f_leak => def
 NOTICE:  f_leak => xxx
 NOTICE:  f_leak => yyy
 NOTICE:  f_leak => zzz
- a |  b  
----+-----
- 1 | aba
- 2 | bbb
- 3 | ccc
- 4 | dad
- 1 | abc
- 2 | bcd
- 3 | cde
- 4 | def
- 1 | xxx
- 2 | yyy
- 3 | zzz
+ id  | a |  b  
+-----+---+-----
+ 101 | 1 | aba
+ 102 | 2 | bbb
+ 103 | 3 | ccc
+ 104 | 4 | dad
+ 201 | 1 | abc
+ 202 | 2 | bcd
+ 203 | 3 | cde
+ 204 | 4 | def
+ 301 | 1 | xxx
+ 302 | 2 | yyy
+ 303 | 3 | zzz
 (11 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM t1 WHERE f_leak(b);
         QUERY PLAN         
 ---------------------------
  Append
-   ->  Seq Scan on t1
+   ->  Seq Scan on t1 t1_1
          Filter: f_leak(b)
-   ->  Seq Scan on t2
+   ->  Seq Scan on t2 t1_2
          Filter: f_leak(b)
-   ->  Seq Scan on t3
+   ->  Seq Scan on t3 t1_3
          Filter: f_leak(b)
 (7 rows)
 
 -- plan cache should be invalidated
 EXECUTE p1(2);
- a |  b  
----+-----
- 1 | aba
- 2 | bbb
- 1 | abc
- 2 | bcd
- 1 | xxx
- 2 | yyy
+ id  | a |  b  
+-----+---+-----
+ 101 | 1 | aba
+ 102 | 2 | bbb
+ 201 | 1 | abc
+ 202 | 2 | bcd
+ 301 | 1 | xxx
+ 302 | 2 | yyy
 (6 rows)
 
 EXPLAIN (COSTS OFF) EXECUTE p1(2);
-        QUERY PLAN        
---------------------------
+        QUERY PLAN         
+---------------------------
  Append
-   ->  Seq Scan on t1
+   ->  Seq Scan on t1 t1_1
          Filter: (a <= 2)
-   ->  Seq Scan on t2
+   ->  Seq Scan on t2 t1_2
          Filter: (a <= 2)
-   ->  Seq Scan on t3
+   ->  Seq Scan on t3 t1_3
          Filter: (a <= 2)
 (7 rows)
 
 PREPARE p2(int) AS SELECT * FROM t1 WHERE a = $1;
 EXECUTE p2(2);
- a |  b  
----+-----
- 2 | bbb
- 2 | bcd
- 2 | yyy
+ id  | a |  b  
+-----+---+-----
+ 102 | 2 | bbb
+ 202 | 2 | bcd
+ 302 | 2 | yyy
 (3 rows)
 
 EXPLAIN (COSTS OFF) EXECUTE p2(2);
-       QUERY PLAN        
--------------------------
+        QUERY PLAN         
+---------------------------
  Append
-   ->  Seq Scan on t1
+   ->  Seq Scan on t1 t1_1
          Filter: (a = 2)
-   ->  Seq Scan on t2
+   ->  Seq Scan on t2 t1_2
          Filter: (a = 2)
-   ->  Seq Scan on t3
+   ->  Seq Scan on t3 t1_3
          Filter: (a = 2)
 (7 rows)
 
@@ -1610,22 +1608,22 @@ EXPLAIN (COSTS OFF) EXECUTE p2(2);
 SET SESSION AUTHORIZATION regress_rls_bob;
 SET row_security TO ON;
 EXECUTE p2(2);
- a |  b  
----+-----
- 2 | bbb
- 2 | bcd
- 2 | yyy
+ id  | a |  b  
+-----+---+-----
+ 102 | 2 | bbb
+ 202 | 2 | bcd
+ 302 | 2 | yyy
 (3 rows)
 
 EXPLAIN (COSTS OFF) EXECUTE p2(2);
                  QUERY PLAN                  
 ---------------------------------------------
  Append
-   ->  Seq Scan on t1
+   ->  Seq Scan on t1 t1_1
          Filter: ((a = 2) AND ((a % 2) = 0))
-   ->  Seq Scan on t2
+   ->  Seq Scan on t2 t1_2
          Filter: ((a = 2) AND ((a % 2) = 0))
-   ->  Seq Scan on t3
+   ->  Seq Scan on t3 t1_3
          Filter: ((a = 2) AND ((a % 2) = 0))
 (7 rows)
 
@@ -1634,19 +1632,21 @@ EXPLAIN (COSTS OFF) EXECUTE p2(2);
 --
 SET SESSION AUTHORIZATION regress_rls_bob;
 EXPLAIN (COSTS OFF) UPDATE t1 SET b = b || b WHERE f_leak(b);
-                  QUERY PLAN                   
------------------------------------------------
+                        QUERY PLAN                         
+-----------------------------------------------------------
  Update on t1
-   Update on t1
-   Update on t2
-   Update on t3
-   ->  Seq Scan on t1
-         Filter: (((a % 2) = 0) AND f_leak(b))
-   ->  Seq Scan on t2
-         Filter: (((a % 2) = 0) AND f_leak(b))
-   ->  Seq Scan on t3
-         Filter: (((a % 2) = 0) AND f_leak(b))
-(10 rows)
+   Update on t1 t1_1
+   Update on t2 t1_2
+   Update on t3 t1_3
+   ->  Result
+         ->  Append
+               ->  Seq Scan on t1 t1_1
+                     Filter: (((a % 2) = 0) AND f_leak(b))
+               ->  Seq Scan on t2 t1_2
+                     Filter: (((a % 2) = 0) AND f_leak(b))
+               ->  Seq Scan on t3 t1_3
+                     Filter: (((a % 2) = 0) AND f_leak(b))
+(12 rows)
 
 UPDATE t1 SET b = b || b WHERE f_leak(b);
 NOTICE:  f_leak => bbb
@@ -1666,13 +1666,13 @@ UPDATE only t1 SET b = b || '_updt' WHERE f_leak(b);
 NOTICE:  f_leak => bbbbbb
 NOTICE:  f_leak => daddad
 -- returning clause with system column
-UPDATE only t1 SET b = b WHERE f_leak(b) RETURNING oid, *, t1;
+UPDATE only t1 SET b = b WHERE f_leak(b) RETURNING tableoid::regclass, *, t1;
 NOTICE:  f_leak => bbbbbb_updt
 NOTICE:  f_leak => daddad_updt
- oid | a |      b      |       t1        
------+---+-------------+-----------------
- 102 | 2 | bbbbbb_updt | (2,bbbbbb_updt)
- 104 | 4 | daddad_updt | (4,daddad_updt)
+ tableoid | id  | a |      b      |         t1          
+----------+-----+---+-------------+---------------------
+ t1       | 102 | 2 | bbbbbb_updt | (102,2,bbbbbb_updt)
+ t1       | 104 | 4 | daddad_updt | (104,4,daddad_updt)
 (2 rows)
 
 UPDATE t1 SET b = b WHERE f_leak(b) RETURNING *;
@@ -1681,28 +1681,28 @@ NOTICE:  f_leak => daddad_updt
 NOTICE:  f_leak => bcdbcd
 NOTICE:  f_leak => defdef
 NOTICE:  f_leak => yyyyyy
- a |      b      
----+-------------
- 2 | bbbbbb_updt
- 4 | daddad_updt
- 2 | bcdbcd
- 4 | defdef
- 2 | yyyyyy
+ id  | a |      b      
+-----+---+-------------
+ 102 | 2 | bbbbbb_updt
+ 104 | 4 | daddad_updt
+ 202 | 2 | bcdbcd
+ 204 | 4 | defdef
+ 302 | 2 | yyyyyy
 (5 rows)
 
-UPDATE t1 SET b = b WHERE f_leak(b) RETURNING oid, *, t1;
+UPDATE t1 SET b = b WHERE f_leak(b) RETURNING tableoid::regclass, *, t1;
 NOTICE:  f_leak => bbbbbb_updt
 NOTICE:  f_leak => daddad_updt
 NOTICE:  f_leak => bcdbcd
 NOTICE:  f_leak => defdef
 NOTICE:  f_leak => yyyyyy
- oid | a |      b      |       t1        
------+---+-------------+-----------------
- 102 | 2 | bbbbbb_updt | (2,bbbbbb_updt)
- 104 | 4 | daddad_updt | (4,daddad_updt)
- 202 | 2 | bcdbcd      | (2,bcdbcd)
- 204 | 4 | defdef      | (4,defdef)
- 302 | 2 | yyyyyy      | (2,yyyyyy)
+ tableoid | id  | a |      b      |         t1          
+----------+-----+---+-------------+---------------------
+ t1       | 102 | 2 | bbbbbb_updt | (102,2,bbbbbb_updt)
+ t1       | 104 | 4 | daddad_updt | (104,4,daddad_updt)
+ t2       | 202 | 2 | bcdbcd      | (202,2,bcdbcd)
+ t2       | 204 | 4 | defdef      | (204,4,defdef)
+ t3       | 302 | 2 | yyyyyy      | (302,2,yyyyyy)
 (5 rows)
 
 -- updates with from clause
@@ -1724,31 +1724,27 @@ NOTICE:  f_leak => cde
 NOTICE:  f_leak => yyyyyy
 EXPLAIN (COSTS OFF) UPDATE t1 SET b=t1.b FROM t2
 WHERE t1.a = 3 and t2.a = 3 AND f_leak(t1.b) AND f_leak(t2.b);
-                           QUERY PLAN                            
------------------------------------------------------------------
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
  Update on t1
-   Update on t1
-   Update on t2 t2_1
-   Update on t3
+   Update on t1 t1_1
+   Update on t2 t1_2
+   Update on t3 t1_3
    ->  Nested Loop
-         ->  Seq Scan on t1
-               Filter: ((a = 3) AND ((a % 2) = 0) AND f_leak(b))
          ->  Seq Scan on t2
                Filter: ((a = 3) AND ((a % 2) = 1) AND f_leak(b))
-   ->  Nested Loop
-         ->  Seq Scan on t2 t2_1
-               Filter: ((a = 3) AND ((a % 2) = 0) AND f_leak(b))
-         ->  Seq Scan on t2
-               Filter: ((a = 3) AND ((a % 2) = 1) AND f_leak(b))
-   ->  Nested Loop
-         ->  Seq Scan on t3
-               Filter: ((a = 3) AND ((a % 2) = 0) AND f_leak(b))
-         ->  Seq Scan on t2
-               Filter: ((a = 3) AND ((a % 2) = 1) AND f_leak(b))
-(19 rows)
+         ->  Append
+               ->  Seq Scan on t1 t1_1
+                     Filter: ((a = 3) AND ((a % 2) = 0) AND f_leak(b))
+               ->  Seq Scan on t2 t1_2
+                     Filter: ((a = 3) AND ((a % 2) = 0) AND f_leak(b))
+               ->  Seq Scan on t3 t1_3
+                     Filter: ((a = 3) AND ((a % 2) = 0) AND f_leak(b))
+(14 rows)
 
 UPDATE t1 SET b=t1.b FROM t2
 WHERE t1.a = 3 and t2.a = 3 AND f_leak(t1.b) AND f_leak(t2.b);
+NOTICE:  f_leak => cde
 EXPLAIN (COSTS OFF) UPDATE t2 SET b=t2.b FROM t1
 WHERE t1.a = 3 and t2.a = 3 AND f_leak(t1.b) AND f_leak(t2.b);
                               QUERY PLAN                               
@@ -1758,11 +1754,11 @@ WHERE t1.a = 3 and t2.a = 3 AND f_leak(t1.b) AND f_leak(t2.b);
          ->  Seq Scan on t2
                Filter: ((a = 3) AND ((a % 2) = 1) AND f_leak(b))
          ->  Append
-               ->  Seq Scan on t1
+               ->  Seq Scan on t1 t1_1
                      Filter: ((a = 3) AND ((a % 2) = 0) AND f_leak(b))
-               ->  Seq Scan on t2 t2_1
+               ->  Seq Scan on t2 t1_2
                      Filter: ((a = 3) AND ((a % 2) = 0) AND f_leak(b))
-               ->  Seq Scan on t3
+               ->  Seq Scan on t3 t1_3
                      Filter: ((a = 3) AND ((a % 2) = 0) AND f_leak(b))
 (11 rows)
 
@@ -1789,54 +1785,38 @@ WHERE t2_1.a = 3 AND t2_2.a = t2_1.a AND t2_2.b = t2_1.b
 AND f_leak(t2_1.b) AND f_leak(t2_2.b) RETURNING *, t2_1, t2_2;
 NOTICE:  f_leak => cde
 NOTICE:  f_leak => cde
- a |  b  |  c  | a |  b  |  c  |    t2_1     |    t2_2     
----+-----+-----+---+-----+-----+-------------+-------------
- 3 | cde | 3.3 | 3 | cde | 3.3 | (3,cde,3.3) | (3,cde,3.3)
+ id  | a |  b  |  c  | id  | a |  b  |  c  |      t2_1       |      t2_2       
+-----+---+-----+-----+-----+---+-----+-----+-----------------+-----------------
+ 203 | 3 | cde | 3.3 | 203 | 3 | cde | 3.3 | (203,3,cde,3.3) | (203,3,cde,3.3)
 (1 row)
 
 EXPLAIN (COSTS OFF) UPDATE t1 t1_1 SET b = t1_2.b FROM t1 t1_2
 WHERE t1_1.a = 4 AND t1_2.a = t1_1.a AND t1_2.b = t1_1.b
 AND f_leak(t1_1.b) AND f_leak(t1_2.b) RETURNING *, t1_1, t1_2;
-                              QUERY PLAN                               
------------------------------------------------------------------------
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
  Update on t1 t1_1
-   Update on t1 t1_1
-   Update on t2 t1_1_1
-   Update on t3 t1_1_2
+   Update on t1 t1_1_1
+   Update on t2 t1_1_2
+   Update on t3 t1_1_3
    ->  Nested Loop
          Join Filter: (t1_1.b = t1_2.b)
-         ->  Seq Scan on t1 t1_1
-               Filter: ((a = 4) AND ((a % 2) = 0) AND f_leak(b))
          ->  Append
-               ->  Seq Scan on t1 t1_2
+               ->  Seq Scan on t1 t1_1_1
                      Filter: ((a = 4) AND ((a % 2) = 0) AND f_leak(b))
-               ->  Seq Scan on t2 t1_2_1
+               ->  Seq Scan on t2 t1_1_2
                      Filter: ((a = 4) AND ((a % 2) = 0) AND f_leak(b))
-               ->  Seq Scan on t3 t1_2_2
+               ->  Seq Scan on t3 t1_1_3
                      Filter: ((a = 4) AND ((a % 2) = 0) AND f_leak(b))
-   ->  Nested Loop
-         Join Filter: (t1_1_1.b = t1_2.b)
-         ->  Seq Scan on t2 t1_1_1
-               Filter: ((a = 4) AND ((a % 2) = 0) AND f_leak(b))
-         ->  Append
-               ->  Seq Scan on t1 t1_2
-                     Filter: ((a = 4) AND ((a % 2) = 0) AND f_leak(b))
-               ->  Seq Scan on t2 t1_2_1
-                     Filter: ((a = 4) AND ((a % 2) = 0) AND f_leak(b))
-               ->  Seq Scan on t3 t1_2_2
-                     Filter: ((a = 4) AND ((a % 2) = 0) AND f_leak(b))
-   ->  Nested Loop
-         Join Filter: (t1_1_2.b = t1_2.b)
-         ->  Seq Scan on t3 t1_1_2
-               Filter: ((a = 4) AND ((a % 2) = 0) AND f_leak(b))
-         ->  Append
-               ->  Seq Scan on t1 t1_2
-                     Filter: ((a = 4) AND ((a % 2) = 0) AND f_leak(b))
-               ->  Seq Scan on t2 t1_2_1
-                     Filter: ((a = 4) AND ((a % 2) = 0) AND f_leak(b))
-               ->  Seq Scan on t3 t1_2_2
-                     Filter: ((a = 4) AND ((a % 2) = 0) AND f_leak(b))
-(37 rows)
+         ->  Materialize
+               ->  Append
+                     ->  Seq Scan on t1 t1_2_1
+                           Filter: ((a = 4) AND ((a % 2) = 0) AND f_leak(b))
+                     ->  Seq Scan on t2 t1_2_2
+                           Filter: ((a = 4) AND ((a % 2) = 0) AND f_leak(b))
+                     ->  Seq Scan on t3 t1_2_3
+                           Filter: ((a = 4) AND ((a % 2) = 0) AND f_leak(b))
+(21 rows)
 
 UPDATE t1 t1_1 SET b = t1_2.b FROM t1 t1_2
 WHERE t1_1.a = 4 AND t1_2.a = t1_1.a AND t1_2.b = t1_1.b
@@ -1845,30 +1825,28 @@ NOTICE:  f_leak => daddad_updt
 NOTICE:  f_leak => daddad_updt
 NOTICE:  f_leak => defdef
 NOTICE:  f_leak => defdef
-NOTICE:  f_leak => daddad_updt
-NOTICE:  f_leak => defdef
- a |      b      | a |      b      |      t1_1       |      t1_2       
----+-------------+---+-------------+-----------------+-----------------
- 4 | daddad_updt | 4 | daddad_updt | (4,daddad_updt) | (4,daddad_updt)
- 4 | defdef      | 4 | defdef      | (4,defdef)      | (4,defdef)
+ id  | a |      b      | id  | a |      b      |        t1_1         |        t1_2         
+-----+---+-------------+-----+---+-------------+---------------------+---------------------
+ 104 | 4 | daddad_updt | 104 | 4 | daddad_updt | (104,4,daddad_updt) | (104,4,daddad_updt)
+ 204 | 4 | defdef      | 204 | 4 | defdef      | (204,4,defdef)      | (204,4,defdef)
 (2 rows)
 
 RESET SESSION AUTHORIZATION;
 SET row_security TO OFF;
 SELECT * FROM t1 ORDER BY a,b;
- a |      b      
----+-------------
- 1 | aba
- 1 | abc
- 1 | xxx
- 2 | bbbbbb_updt
- 2 | bcdbcd
- 2 | yyyyyy
- 3 | ccc
- 3 | cde
- 3 | zzz
- 4 | daddad_updt
- 4 | defdef
+ id  | a |      b      
+-----+---+-------------
+ 101 | 1 | aba
+ 201 | 1 | abc
+ 301 | 1 | xxx
+ 102 | 2 | bbbbbb_updt
+ 202 | 2 | bcdbcd
+ 302 | 2 | yyyyyy
+ 103 | 3 | ccc
+ 203 | 3 | cde
+ 303 | 3 | zzz
+ 104 | 4 | daddad_updt
+ 204 | 4 | defdef
 (11 rows)
 
 SET SESSION AUTHORIZATION regress_rls_bob;
@@ -1882,38 +1860,39 @@ EXPLAIN (COSTS OFF) DELETE FROM only t1 WHERE f_leak(b);
 (3 rows)
 
 EXPLAIN (COSTS OFF) DELETE FROM t1 WHERE f_leak(b);
-                  QUERY PLAN                   
------------------------------------------------
+                     QUERY PLAN                      
+-----------------------------------------------------
  Delete on t1
-   Delete on t1
-   Delete on t2
-   Delete on t3
-   ->  Seq Scan on t1
-         Filter: (((a % 2) = 0) AND f_leak(b))
-   ->  Seq Scan on t2
-         Filter: (((a % 2) = 0) AND f_leak(b))
-   ->  Seq Scan on t3
-         Filter: (((a % 2) = 0) AND f_leak(b))
-(10 rows)
+   Delete on t1 t1_1
+   Delete on t2 t1_2
+   Delete on t3 t1_3
+   ->  Append
+         ->  Seq Scan on t1 t1_1
+               Filter: (((a % 2) = 0) AND f_leak(b))
+         ->  Seq Scan on t2 t1_2
+               Filter: (((a % 2) = 0) AND f_leak(b))
+         ->  Seq Scan on t3 t1_3
+               Filter: (((a % 2) = 0) AND f_leak(b))
+(11 rows)
 
-DELETE FROM only t1 WHERE f_leak(b) RETURNING oid, *, t1;
+DELETE FROM only t1 WHERE f_leak(b) RETURNING tableoid::regclass, *, t1;
 NOTICE:  f_leak => bbbbbb_updt
 NOTICE:  f_leak => daddad_updt
- oid | a |      b      |       t1        
------+---+-------------+-----------------
- 102 | 2 | bbbbbb_updt | (2,bbbbbb_updt)
- 104 | 4 | daddad_updt | (4,daddad_updt)
+ tableoid | id  | a |      b      |         t1          
+----------+-----+---+-------------+---------------------
+ t1       | 102 | 2 | bbbbbb_updt | (102,2,bbbbbb_updt)
+ t1       | 104 | 4 | daddad_updt | (104,4,daddad_updt)
 (2 rows)
 
-DELETE FROM t1 WHERE f_leak(b) RETURNING oid, *, t1;
+DELETE FROM t1 WHERE f_leak(b) RETURNING tableoid::regclass, *, t1;
 NOTICE:  f_leak => bcdbcd
 NOTICE:  f_leak => defdef
 NOTICE:  f_leak => yyyyyy
- oid | a |   b    |     t1     
------+---+--------+------------
- 202 | 2 | bcdbcd | (2,bcdbcd)
- 204 | 4 | defdef | (4,defdef)
- 302 | 2 | yyyyyy | (2,yyyyyy)
+ tableoid | id  | a |   b    |       t1       
+----------+-----+---+--------+----------------
+ t2       | 202 | 2 | bcdbcd | (202,2,bcdbcd)
+ t2       | 204 | 4 | defdef | (204,4,defdef)
+ t3       | 302 | 2 | yyyyyy | (302,2,yyyyyy)
 (3 rows)
 
 --
@@ -2139,6 +2118,188 @@ INSERT INTO document VALUES (1, (SELECT cid from category WHERE cname = 'novel')
     ON CONFLICT (did) DO UPDATE SET dauthor = 'regress_rls_carol';
 ERROR:  new row violates row-level security policy for table "document"
 --
+-- MERGE
+--
+RESET SESSION AUTHORIZATION;
+DROP POLICY p3_with_all ON document;
+ALTER TABLE document ADD COLUMN dnotes text DEFAULT '';
+-- all documents are readable
+CREATE POLICY p1 ON document FOR SELECT USING (true);
+-- one may insert documents only authored by them
+CREATE POLICY p2 ON document FOR INSERT WITH CHECK (dauthor = current_user);
+-- one may only update documents in 'novel' category
+CREATE POLICY p3 ON document FOR UPDATE
+  USING (cid = (SELECT cid from category WHERE cname = 'novel'))
+  WITH CHECK (dauthor = current_user);
+-- one may only delete documents in 'manga' category
+CREATE POLICY p4 ON document FOR DELETE
+  USING (cid = (SELECT cid from category WHERE cname = 'manga'));
+SELECT * FROM document;
+ did | cid | dlevel |      dauthor      |              dtitle              | dnotes 
+-----+-----+--------+-------------------+----------------------------------+--------
+   1 |  11 |      1 | regress_rls_bob   | my first novel                   | 
+   3 |  22 |      2 | regress_rls_bob   | my science fiction               | 
+   4 |  44 |      1 | regress_rls_bob   | my first manga                   | 
+   5 |  44 |      2 | regress_rls_bob   | my second manga                  | 
+   6 |  22 |      1 | regress_rls_carol | great science fiction            | 
+   7 |  33 |      2 | regress_rls_carol | great technology book            | 
+   8 |  44 |      1 | regress_rls_carol | great manga                      | 
+   9 |  22 |      1 | regress_rls_dave  | awesome science fiction          | 
+  10 |  33 |      2 | regress_rls_dave  | awesome technology book          | 
+  11 |  33 |      1 | regress_rls_carol | hoge                             | 
+  33 |  22 |      1 | regress_rls_bob   | okay science fiction             | 
+   2 |  11 |      2 | regress_rls_bob   | my first novel                   | 
+  78 |  33 |      1 | regress_rls_bob   | some technology novel            | 
+  79 |  33 |      1 | regress_rls_bob   | technology book, can only insert | 
+(14 rows)
+
+SET SESSION AUTHORIZATION regress_rls_bob;
+-- Fails, since update violates WITH CHECK qual on dauthor
+MERGE INTO document d
+USING (SELECT 1 as sdid) s
+ON did = s.sdid
+WHEN MATCHED THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge1 ', dauthor = 'regress_rls_alice';
+ERROR:  new row violates row-level security policy for table "document"
+-- Should be OK since USING and WITH CHECK quals pass
+MERGE INTO document d
+USING (SELECT 1 as sdid) s
+ON did = s.sdid
+WHEN MATCHED THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge2 ';
+-- Even when dauthor is updated explicitly, but to the existing value
+MERGE INTO document d
+USING (SELECT 1 as sdid) s
+ON did = s.sdid
+WHEN MATCHED THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge3 ', dauthor = 'regress_rls_bob';
+-- There is a MATCH for did = 3, but UPDATE's USING qual does not allow
+-- updating an item in category 'science fiction'
+MERGE INTO document d
+USING (SELECT 3 as sdid) s
+ON did = s.sdid
+WHEN MATCHED THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge ';
+ERROR:  target row violates row-level security policy (USING expression) for table "document"
+-- The same thing with DELETE action, but fails again because no permissions
+-- to delete items in 'science fiction' category that did 3 belongs to.
+MERGE INTO document d
+USING (SELECT 3 as sdid) s
+ON did = s.sdid
+WHEN MATCHED THEN
+	DELETE;
+ERROR:  target row violates row-level security policy (USING expression) for table "document"
+-- Document with did 4 belongs to 'manga' category which is allowed for
+-- deletion. But this fails because the UPDATE action is matched first and
+-- UPDATE policy does not allow updation in the category.
+MERGE INTO document d
+USING (SELECT 4 as sdid) s
+ON did = s.sdid
+WHEN MATCHED AND dnotes = '' THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge '
+WHEN MATCHED THEN
+	DELETE;
+ERROR:  target row violates row-level security policy (USING expression) for table "document"
+-- UPDATE action is not matched this time because of the WHEN qual.
+-- DELETE still fails because role regress_rls_bob does not have SELECT
+-- privileges on 'manga' category row in the category table.
+MERGE INTO document d
+USING (SELECT 4 as sdid) s
+ON did = s.sdid
+WHEN MATCHED AND dnotes <> '' THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge '
+WHEN MATCHED THEN
+	DELETE;
+ERROR:  target row violates row-level security policy (USING expression) for table "document"
+SELECT * FROM document WHERE did = 4;
+ did | cid | dlevel |     dauthor     |     dtitle     | dnotes 
+-----+-----+--------+-----------------+----------------+--------
+   4 |  44 |      1 | regress_rls_bob | my first manga | 
+(1 row)
+
+-- Switch to regress_rls_carol role and try the DELETE again. It should succeed
+-- this time
+RESET SESSION AUTHORIZATION;
+SET SESSION AUTHORIZATION regress_rls_carol;
+MERGE INTO document d
+USING (SELECT 4 as sdid) s
+ON did = s.sdid
+WHEN MATCHED AND dnotes <> '' THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge '
+WHEN MATCHED THEN
+	DELETE;
+-- Switch back to regress_rls_bob role
+RESET SESSION AUTHORIZATION;
+SET SESSION AUTHORIZATION regress_rls_bob;
+-- Try INSERT action. This fails because we are trying to insert
+-- dauthor = regress_rls_dave and INSERT's WITH CHECK does not allow
+-- that
+MERGE INTO document d
+USING (SELECT 12 as sdid) s
+ON did = s.sdid
+WHEN MATCHED THEN
+	DELETE
+WHEN NOT MATCHED THEN
+	INSERT VALUES (12, 11, 1, 'regress_rls_dave', 'another novel');
+ERROR:  new row violates row-level security policy for table "document"
+-- This should be fine
+MERGE INTO document d
+USING (SELECT 12 as sdid) s
+ON did = s.sdid
+WHEN MATCHED THEN
+	DELETE
+WHEN NOT MATCHED THEN
+	INSERT VALUES (12, 11, 1, 'regress_rls_bob', 'another novel');
+-- ok
+MERGE INTO document d
+USING (SELECT 1 as sdid) s
+ON did = s.sdid
+WHEN MATCHED THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge4 '
+WHEN NOT MATCHED THEN
+	INSERT VALUES (12, 11, 1, 'regress_rls_bob', 'another novel');
+-- drop and create a new SELECT policy which prevents us from reading
+-- any document except with category 'magna'
+RESET SESSION AUTHORIZATION;
+DROP POLICY p1 ON document;
+CREATE POLICY p1 ON document FOR SELECT
+  USING (cid = (SELECT cid from category WHERE cname = 'manga'));
+SET SESSION AUTHORIZATION regress_rls_bob;
+-- MERGE can no longer see the matching row and hence attempts the
+-- NOT MATCHED action, which results in unique key violation
+MERGE INTO document d
+USING (SELECT 1 as sdid) s
+ON did = s.sdid
+WHEN MATCHED THEN
+	UPDATE SET dnotes = dnotes || ' notes added by merge5 '
+WHEN NOT MATCHED THEN
+	INSERT VALUES (12, 11, 1, 'regress_rls_bob', 'another novel');
+ERROR:  duplicate key value violates unique constraint "document_pkey"
+RESET SESSION AUTHORIZATION;
+-- drop the restrictive SELECT policy so that we can look at the
+-- final state of the table
+DROP POLICY p1 ON document;
+-- Just check everything went per plan
+SELECT * FROM document;
+ did | cid | dlevel |      dauthor      |              dtitle              |                                dnotes                                 
+-----+-----+--------+-------------------+----------------------------------+-----------------------------------------------------------------------
+   3 |  22 |      2 | regress_rls_bob   | my science fiction               | 
+   5 |  44 |      2 | regress_rls_bob   | my second manga                  | 
+   6 |  22 |      1 | regress_rls_carol | great science fiction            | 
+   7 |  33 |      2 | regress_rls_carol | great technology book            | 
+   8 |  44 |      1 | regress_rls_carol | great manga                      | 
+   9 |  22 |      1 | regress_rls_dave  | awesome science fiction          | 
+  10 |  33 |      2 | regress_rls_dave  | awesome technology book          | 
+  11 |  33 |      1 | regress_rls_carol | hoge                             | 
+  33 |  22 |      1 | regress_rls_bob   | okay science fiction             | 
+   2 |  11 |      2 | regress_rls_bob   | my first novel                   | 
+  78 |  33 |      1 | regress_rls_bob   | some technology novel            | 
+  79 |  33 |      1 | regress_rls_bob   | technology book, can only insert | 
+  12 |  11 |      1 | regress_rls_bob   | another novel                    | 
+   1 |  11 |      1 | regress_rls_bob   | my first novel                   |  notes added by merge2  notes added by merge3  notes added by merge4 
+(14 rows)
+
+--
 -- ROLE/GROUP
 --
 SET SESSION AUTHORIZATION regress_rls_alice;
@@ -2179,7 +2340,7 @@ EXPLAIN (COSTS OFF) EXECUTE plancache_test;
    Filter: (((a % 2) = 0) AND f_leak(b))
 (2 rows)
 
-PREPARE plancache_test2 AS WITH q AS (SELECT * FROM z1 WHERE f_leak(b)) SELECT * FROM q,z2;
+PREPARE plancache_test2 AS WITH q AS MATERIALIZED (SELECT * FROM z1 WHERE f_leak(b)) SELECT * FROM q,z2;
 EXPLAIN (COSTS OFF) EXECUTE plancache_test2;
                    QUERY PLAN                    
 -------------------------------------------------
@@ -2192,7 +2353,7 @@ EXPLAIN (COSTS OFF) EXECUTE plancache_test2;
          ->  Seq Scan on z2
 (7 rows)
 
-PREPARE plancache_test3 AS WITH q AS (SELECT * FROM z2) SELECT * FROM q,z1 WHERE f_leak(z1.b);
+PREPARE plancache_test3 AS WITH q AS MATERIALIZED (SELECT * FROM z2) SELECT * FROM q,z1 WHERE f_leak(z1.b);
 EXPLAIN (COSTS OFF) EXECUTE plancache_test3;
                      QUERY PLAN                      
 -----------------------------------------------------
@@ -2452,6 +2613,7 @@ ERROR:  permission denied for view rls_view
 -- Query as role that is not the owner of the table or view with permissions.
 SET SESSION AUTHORIZATION regress_rls_bob;
 GRANT SELECT ON rls_view TO regress_rls_carol;
+SET SESSION AUTHORIZATION regress_rls_carol;
 SELECT * FROM rls_view;
 NOTICE:  f_leak => bbb
 NOTICE:  f_leak => dad
@@ -2467,6 +2629,259 @@ EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
  Seq Scan on z1
    Filter: (((a % 2) = 0) AND f_leak(b))
 (2 rows)
+
+-- Policy requiring access to another table.
+SET SESSION AUTHORIZATION regress_rls_alice;
+CREATE TABLE z1_blacklist (a int);
+INSERT INTO z1_blacklist VALUES (3), (4);
+CREATE POLICY p3 ON z1 AS RESTRICTIVE USING (a NOT IN (SELECT a FROM z1_blacklist));
+-- Query as role that is not owner of table but is owner of view without permissions.
+SET SESSION AUTHORIZATION regress_rls_bob;
+SELECT * FROM rls_view; --fail - permission denied.
+ERROR:  permission denied for table z1_blacklist
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view; --fail - permission denied.
+ERROR:  permission denied for table z1_blacklist
+-- Query as role that is not the owner of the table or view without permissions.
+SET SESSION AUTHORIZATION regress_rls_carol;
+SELECT * FROM rls_view; --fail - permission denied.
+ERROR:  permission denied for table z1_blacklist
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view; --fail - permission denied.
+ERROR:  permission denied for table z1_blacklist
+-- Query as role that is not owner of table but is owner of view with permissions.
+SET SESSION AUTHORIZATION regress_rls_alice;
+GRANT SELECT ON z1_blacklist TO regress_rls_bob;
+SET SESSION AUTHORIZATION regress_rls_bob;
+SELECT * FROM rls_view;
+NOTICE:  f_leak => bbb
+ a |  b  
+---+-----
+ 2 | bbb
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Seq Scan on z1
+   Filter: ((NOT (hashed SubPlan 1)) AND ((a % 2) = 0) AND f_leak(b))
+   SubPlan 1
+     ->  Seq Scan on z1_blacklist
+(4 rows)
+
+-- Query as role that is not the owner of the table or view with permissions.
+SET SESSION AUTHORIZATION regress_rls_carol;
+SELECT * FROM rls_view;
+NOTICE:  f_leak => bbb
+ a |  b  
+---+-----
+ 2 | bbb
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Seq Scan on z1
+   Filter: ((NOT (hashed SubPlan 1)) AND ((a % 2) = 0) AND f_leak(b))
+   SubPlan 1
+     ->  Seq Scan on z1_blacklist
+(4 rows)
+
+SET SESSION AUTHORIZATION regress_rls_alice;
+REVOKE SELECT ON z1_blacklist FROM regress_rls_bob;
+DROP POLICY p3 ON z1;
+SET SESSION AUTHORIZATION regress_rls_bob;
+DROP VIEW rls_view;
+--
+-- Security invoker views should follow policy for current user.
+--
+-- View and table owner are the same.
+SET SESSION AUTHORIZATION regress_rls_alice;
+CREATE VIEW rls_view WITH (security_invoker) AS
+    SELECT * FROM z1 WHERE f_leak(b);
+GRANT SELECT ON rls_view TO regress_rls_bob;
+GRANT SELECT ON rls_view TO regress_rls_carol;
+-- Query as table owner.  Should return all records.
+SELECT * FROM rls_view;
+NOTICE:  f_leak => aba
+NOTICE:  f_leak => bbb
+NOTICE:  f_leak => ccc
+NOTICE:  f_leak => dad
+ a |  b  
+---+-----
+ 1 | aba
+ 2 | bbb
+ 3 | ccc
+ 4 | dad
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+     QUERY PLAN      
+---------------------
+ Seq Scan on z1
+   Filter: f_leak(b)
+(2 rows)
+
+-- Queries as other users.
+-- Should return records based on current user's policies.
+SET SESSION AUTHORIZATION regress_rls_bob;
+SELECT * FROM rls_view;
+NOTICE:  f_leak => bbb
+NOTICE:  f_leak => dad
+ a |  b  
+---+-----
+ 2 | bbb
+ 4 | dad
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+               QUERY PLAN                
+-----------------------------------------
+ Seq Scan on z1
+   Filter: (((a % 2) = 0) AND f_leak(b))
+(2 rows)
+
+SET SESSION AUTHORIZATION regress_rls_carol;
+SELECT * FROM rls_view;
+NOTICE:  f_leak => aba
+NOTICE:  f_leak => ccc
+ a |  b  
+---+-----
+ 1 | aba
+ 3 | ccc
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+               QUERY PLAN                
+-----------------------------------------
+ Seq Scan on z1
+   Filter: (((a % 2) = 1) AND f_leak(b))
+(2 rows)
+
+-- View and table owners are different.
+SET SESSION AUTHORIZATION regress_rls_alice;
+DROP VIEW rls_view;
+SET SESSION AUTHORIZATION regress_rls_bob;
+CREATE VIEW rls_view WITH (security_invoker) AS
+    SELECT * FROM z1 WHERE f_leak(b);
+GRANT SELECT ON rls_view TO regress_rls_alice;
+GRANT SELECT ON rls_view TO regress_rls_carol;
+-- Query as table owner.  Should return all records.
+SET SESSION AUTHORIZATION regress_rls_alice;
+SELECT * FROM rls_view;
+NOTICE:  f_leak => aba
+NOTICE:  f_leak => bbb
+NOTICE:  f_leak => ccc
+NOTICE:  f_leak => dad
+ a |  b  
+---+-----
+ 1 | aba
+ 2 | bbb
+ 3 | ccc
+ 4 | dad
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+     QUERY PLAN      
+---------------------
+ Seq Scan on z1
+   Filter: f_leak(b)
+(2 rows)
+
+-- Queries as other users.
+-- Should return records based on current user's policies.
+SET SESSION AUTHORIZATION regress_rls_bob;
+SELECT * FROM rls_view;
+NOTICE:  f_leak => bbb
+NOTICE:  f_leak => dad
+ a |  b  
+---+-----
+ 2 | bbb
+ 4 | dad
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+               QUERY PLAN                
+-----------------------------------------
+ Seq Scan on z1
+   Filter: (((a % 2) = 0) AND f_leak(b))
+(2 rows)
+
+SET SESSION AUTHORIZATION regress_rls_carol;
+SELECT * FROM rls_view;
+NOTICE:  f_leak => aba
+NOTICE:  f_leak => ccc
+ a |  b  
+---+-----
+ 1 | aba
+ 3 | ccc
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+               QUERY PLAN                
+-----------------------------------------
+ Seq Scan on z1
+   Filter: (((a % 2) = 1) AND f_leak(b))
+(2 rows)
+
+-- Policy requiring access to another table.
+SET SESSION AUTHORIZATION regress_rls_alice;
+CREATE POLICY p3 ON z1 AS RESTRICTIVE USING (a NOT IN (SELECT a FROM z1_blacklist));
+-- Query as role that is not owner of table but is owner of view without permissions.
+SET SESSION AUTHORIZATION regress_rls_bob;
+SELECT * FROM rls_view; --fail - permission denied.
+ERROR:  permission denied for table z1_blacklist
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view; --fail - permission denied.
+ERROR:  permission denied for table z1_blacklist
+-- Query as role that is not the owner of the table or view without permissions.
+SET SESSION AUTHORIZATION regress_rls_carol;
+SELECT * FROM rls_view; --fail - permission denied.
+ERROR:  permission denied for table z1_blacklist
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view; --fail - permission denied.
+ERROR:  permission denied for table z1_blacklist
+-- Query as role that is not owner of table but is owner of view with permissions.
+SET SESSION AUTHORIZATION regress_rls_alice;
+GRANT SELECT ON z1_blacklist TO regress_rls_bob;
+SET SESSION AUTHORIZATION regress_rls_bob;
+SELECT * FROM rls_view;
+NOTICE:  f_leak => bbb
+ a |  b  
+---+-----
+ 2 | bbb
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Seq Scan on z1
+   Filter: ((NOT (hashed SubPlan 1)) AND ((a % 2) = 0) AND f_leak(b))
+   SubPlan 1
+     ->  Seq Scan on z1_blacklist
+(4 rows)
+
+-- Query as role that is not the owner of the table or view without permissions.
+SET SESSION AUTHORIZATION regress_rls_carol;
+SELECT * FROM rls_view; --fail - permission denied.
+ERROR:  permission denied for table z1_blacklist
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view; --fail - permission denied.
+ERROR:  permission denied for table z1_blacklist
+-- Query as role that is not the owner of the table or view with permissions.
+SET SESSION AUTHORIZATION regress_rls_alice;
+GRANT SELECT ON z1_blacklist TO regress_rls_carol;
+SET SESSION AUTHORIZATION regress_rls_carol;
+SELECT * FROM rls_view;
+NOTICE:  f_leak => aba
+ a |  b  
+---+-----
+ 1 | aba
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT * FROM rls_view;
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Seq Scan on z1
+   Filter: ((NOT (hashed SubPlan 1)) AND ((a % 2) = 1) AND f_leak(b))
+   SubPlan 1
+     ->  Seq Scan on z1_blacklist
+(4 rows)
 
 SET SESSION AUTHORIZATION regress_rls_bob;
 DROP VIEW rls_view;
@@ -2775,10 +3190,10 @@ DROP TABLE test_qual_pushdown;
 -- Plancache invalidate on user change.
 --
 RESET SESSION AUTHORIZATION;
-\set VERBOSITY terse \\ -- suppress cascade details
 DROP TABLE t1 CASCADE;
 NOTICE:  drop cascades to 2 other objects
-\set VERBOSITY default
+DETAIL:  drop cascades to table t2
+drop cascades to table t3
 CREATE TABLE t1 (a integer);
 GRANT SELECT ON t1 TO regress_rls_bob, regress_rls_carol;
 CREATE POLICY p1 ON t1 TO regress_rls_bob USING ((a % 2) = 0);
@@ -2826,7 +3241,7 @@ ALTER TABLE t1 ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON t1 TO regress_rls_bob;
 INSERT INTO t1 (SELECT x, md5(x::text) FROM generate_series(0,20) x);
 SET SESSION AUTHORIZATION regress_rls_bob;
-WITH cte1 AS (SELECT * FROM t1 WHERE f_leak(b)) SELECT * FROM cte1;
+WITH cte1 AS MATERIALIZED (SELECT * FROM t1 WHERE f_leak(b)) SELECT * FROM cte1;
 NOTICE:  f_leak => cfcd208495d565ef66e7dff9f98764da
 NOTICE:  f_leak => c81e728d9d4c2f636f067f89cc14862c
 NOTICE:  f_leak => a87ff679a2f3e71d9181a67b7542122c
@@ -2853,7 +3268,8 @@ NOTICE:  f_leak => 98f13708210194c475687be6106a3b84
  20 | 98f13708210194c475687be6106a3b84
 (11 rows)
 
-EXPLAIN (COSTS OFF) WITH cte1 AS (SELECT * FROM t1 WHERE f_leak(b)) SELECT * FROM cte1;
+EXPLAIN (COSTS OFF)
+WITH cte1 AS MATERIALIZED (SELECT * FROM t1 WHERE f_leak(b)) SELECT * FROM cte1;
                    QUERY PLAN                    
 -------------------------------------------------
  CTE Scan on cte1
@@ -3502,8 +3918,8 @@ SELECT refclassid::regclass, deptype
 SAVEPOINT q;
 DROP ROLE regress_rls_eve; --fails due to dependency on POLICY p
 ERROR:  role "regress_rls_eve" cannot be dropped because some objects depend on it
-DETAIL:  target of policy p on table tbl1
-privileges for table tbl1
+DETAIL:  privileges for table tbl1
+target of policy p on table tbl1
 ROLLBACK TO q;
 ALTER POLICY p ON tbl1 TO regress_rls_frank USING (true);
 SAVEPOINT q;
@@ -3534,7 +3950,7 @@ CREATE POLICY p ON t USING (c % 2 = 1);
 ALTER TABLE t ENABLE ROW LEVEL SECURITY;
 SAVEPOINT q;
 CREATE RULE "_RETURN" AS ON SELECT TO t DO INSTEAD
-  SELECT * FROM generate_series(1,5) t0(c); -- fails due to row level security enabled
+  SELECT * FROM generate_series(1,5) t0(c); -- fails due to row-level security enabled
 ERROR:  could not convert table "t" to a view because it has row security enabled
 ROLLBACK TO q;
 ALTER TABLE t DISABLE ROW LEVEL SECURITY;
@@ -3920,6 +4336,54 @@ DROP OWNED BY regress_rls_dob_role1;
 DROP POLICY p1 ON dob_t2; -- should succeed
 DROP USER regress_rls_dob_role1;
 DROP USER regress_rls_dob_role2;
+-- Bug #15708: view + table with RLS should check policies as view owner
+CREATE TABLE ref_tbl (a int);
+INSERT INTO ref_tbl VALUES (1);
+CREATE TABLE rls_tbl (a int);
+INSERT INTO rls_tbl VALUES (10);
+ALTER TABLE rls_tbl ENABLE ROW LEVEL SECURITY;
+CREATE POLICY p1 ON rls_tbl USING (EXISTS (SELECT 1 FROM ref_tbl));
+GRANT SELECT ON ref_tbl TO regress_rls_bob;
+GRANT SELECT ON rls_tbl TO regress_rls_bob;
+CREATE VIEW rls_view AS SELECT * FROM rls_tbl;
+ALTER VIEW rls_view OWNER TO regress_rls_bob;
+GRANT SELECT ON rls_view TO regress_rls_alice;
+SET SESSION AUTHORIZATION regress_rls_alice;
+SELECT * FROM ref_tbl; -- Permission denied
+ERROR:  permission denied for table ref_tbl
+SELECT * FROM rls_tbl; -- Permission denied
+ERROR:  permission denied for table rls_tbl
+SELECT * FROM rls_view; -- OK
+ a  
+----
+ 10
+(1 row)
+
+RESET SESSION AUTHORIZATION;
+DROP VIEW rls_view;
+DROP TABLE rls_tbl;
+DROP TABLE ref_tbl;
+-- Leaky operator test
+CREATE TABLE rls_tbl (a int);
+INSERT INTO rls_tbl SELECT x/10 FROM generate_series(1, 100) x;
+ANALYZE rls_tbl;
+ALTER TABLE rls_tbl ENABLE ROW LEVEL SECURITY;
+GRANT SELECT ON rls_tbl TO regress_rls_alice;
+SET SESSION AUTHORIZATION regress_rls_alice;
+CREATE FUNCTION op_leak(int, int) RETURNS bool
+    AS 'BEGIN RAISE NOTICE ''op_leak => %, %'', $1, $2; RETURN $1 < $2; END'
+    LANGUAGE plpgsql;
+CREATE OPERATOR <<< (procedure = op_leak, leftarg = int, rightarg = int,
+                     restrict = scalarltsel);
+SELECT * FROM rls_tbl WHERE a <<< 1000;
+ a 
+---
+(0 rows)
+
+DROP OPERATOR <<< (int, int);
+DROP FUNCTION op_leak(int, int);
+RESET SESSION AUTHORIZATION;
+DROP TABLE rls_tbl;
 -- Bug #16006: whole-row Vars in a policy don't play nice with sub-selects
 SET SESSION AUTHORIZATION regress_rls_alice;
 CREATE TABLE rls_tbl (a int, b int, c int);
@@ -4006,10 +4470,38 @@ DROP TABLE rls_t;
 -- Clean up objects
 --
 RESET SESSION AUTHORIZATION;
-\set VERBOSITY terse \\ -- suppress cascade details
 DROP SCHEMA regress_rls_schema CASCADE;
-NOTICE:  drop cascades to 29 other objects
-\set VERBOSITY default
+NOTICE:  drop cascades to 30 other objects
+DETAIL:  drop cascades to function f_leak(text)
+drop cascades to table uaccount
+drop cascades to table category
+drop cascades to table document
+drop cascades to table part_document
+drop cascades to table dependent
+drop cascades to table rec1
+drop cascades to table rec2
+drop cascades to view rec1v
+drop cascades to view rec2v
+drop cascades to table s1
+drop cascades to table s2
+drop cascades to view v2
+drop cascades to table b1
+drop cascades to view bv1
+drop cascades to table z1
+drop cascades to table z2
+drop cascades to table z1_blacklist
+drop cascades to table x1
+drop cascades to table y1
+drop cascades to table y2
+drop cascades to table t1
+drop cascades to table t2
+drop cascades to table t3
+drop cascades to table t4
+drop cascades to table current_check
+drop cascades to table dep1
+drop cascades to table dep2
+drop cascades to table dob_t1
+drop cascades to table dob_t2
 DROP USER regress_rls_alice;
 DROP USER regress_rls_bob;
 DROP USER regress_rls_carol;

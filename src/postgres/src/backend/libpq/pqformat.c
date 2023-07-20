@@ -21,7 +21,7 @@
  * are different.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	src/backend/libpq/pqformat.c
@@ -308,7 +308,7 @@ pq_endmessage(StringInfo buf)
  *		pq_endmessage_reuse	- send the completed message to the frontend
  *
  * The data buffer is *not* freed, allowing to reuse the buffer with
- * pg_beginmessage_reuse.
+ * pq_beginmessage_reuse.
  --------------------------------
  */
 

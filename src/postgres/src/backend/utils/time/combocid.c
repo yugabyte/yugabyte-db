@@ -14,8 +14,8 @@
  * real cmin and cmax using a backend-private array, which is managed by
  * this module.
  *
- * To allow reusing existing combo cids, we also keep a hash table that
- * maps cmin,cmax pairs to combo cids.  This keeps the data structure size
+ * To allow reusing existing combo CIDs, we also keep a hash table that
+ * maps cmin,cmax pairs to combo CIDs.  This keeps the data structure size
  * reasonable in most cases, since the number of unique pairs used by any
  * one transaction is likely to be small.
  *
@@ -30,7 +30,7 @@
  * destroyed at the end of each transaction.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -41,16 +41,15 @@
 
 #include "postgres.h"
 
-#include "miscadmin.h"
 #include "access/htup_details.h"
 #include "access/xact.h"
+#include "miscadmin.h"
 #include "storage/shmem.h"
 #include "utils/combocid.h"
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
 
-
-/* Hash table to lookup combo cids by cmin and cmax */
+/* Hash table to lookup combo CIDs by cmin and cmax */
 static HTAB *comboHash = NULL;
 
 /* Key and entry structures for the hash table */
@@ -76,7 +75,7 @@ typedef ComboCidEntryData *ComboCidEntry;
 
 /*
  * An array of cmin,cmax pairs, indexed by combo command id.
- * To convert a combo cid to cmin and cmax, you do a simple array lookup.
+ * To convert a combo CID to cmin and cmax, you do a simple array lookup.
  */
 static ComboCidKey comboCids = NULL;
 static int	usedComboCids = 0;	/* number of elements in comboCids */
@@ -224,7 +223,6 @@ GetComboCommandId(CommandId cmin, CommandId cmax)
 		sizeComboCids = CCID_ARRAY_SIZE;
 		usedComboCids = 0;
 
-		memset(&hash_ctl, 0, sizeof(hash_ctl));
 		hash_ctl.keysize = sizeof(ComboCidKeyData);
 		hash_ctl.entrysize = sizeof(ComboCidEntryData);
 		hash_ctl.hcxt = TopTransactionContext;
@@ -261,11 +259,11 @@ GetComboCommandId(CommandId cmin, CommandId cmax)
 
 	if (found)
 	{
-		/* Reuse an existing combo cid */
+		/* Reuse an existing combo CID */
 		return entry->combocid;
 	}
 
-	/* We have to create a new combo cid; we already made room in the array */
+	/* We have to create a new combo CID; we already made room in the array */
 	combocid = usedComboCids;
 
 	comboCids[combocid].cmin = cmin;
@@ -292,7 +290,7 @@ GetRealCmax(CommandId combocid)
 }
 
 /*
- * Estimate the amount of space required to serialize the current ComboCID
+ * Estimate the amount of space required to serialize the current combo CID
  * state.
  */
 Size
@@ -303,14 +301,14 @@ EstimateComboCIDStateSpace(void)
 	/* Add space required for saving usedComboCids */
 	size = sizeof(int);
 
-	/* Add space required for saving the combocids key */
+	/* Add space required for saving ComboCidKeyData */
 	size = add_size(size, mul_size(sizeof(ComboCidKeyData), usedComboCids));
 
 	return size;
 }
 
 /*
- * Serialize the ComboCID state into the memory, beginning at start_address.
+ * Serialize the combo CID state into the memory, beginning at start_address.
  * maxsize should be at least as large as the value returned by
  * EstimateComboCIDStateSpace.
  */
@@ -319,7 +317,7 @@ SerializeComboCIDState(Size maxsize, char *start_address)
 {
 	char	   *endptr;
 
-	/* First, we store the number of currently-existing ComboCIDs. */
+	/* First, we store the number of currently-existing combo CIDs. */
 	*(int *) start_address = usedComboCids;
 
 	/* If maxsize is too small, throw an error. */
@@ -335,9 +333,9 @@ SerializeComboCIDState(Size maxsize, char *start_address)
 }
 
 /*
- * Read the ComboCID state at the specified address and initialize this
- * backend with the same ComboCIDs.  This is only valid in a backend that
- * currently has no ComboCIDs (and only makes sense if the transaction state
+ * Read the combo CID state at the specified address and initialize this
+ * backend with the same combo CIDs.  This is only valid in a backend that
+ * currently has no combo CIDs (and only makes sense if the transaction state
  * is serialized and restored as well).
  */
 void
@@ -350,11 +348,11 @@ RestoreComboCIDState(char *comboCIDstate)
 
 	Assert(!comboCids && !comboHash);
 
-	/* First, we retrieve the number of ComboCIDs that were serialized. */
+	/* First, we retrieve the number of combo CIDs that were serialized. */
 	num_elements = *(int *) comboCIDstate;
 	keydata = (ComboCidKeyData *) (comboCIDstate + sizeof(int));
 
-	/* Use GetComboCommandId to restore each ComboCID. */
+	/* Use GetComboCommandId to restore each combo CID. */
 	for (i = 0; i < num_elements; i++)
 	{
 		cid = GetComboCommandId(keydata[i].cmin, keydata[i].cmax);

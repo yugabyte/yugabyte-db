@@ -3,7 +3,7 @@
  * enum.c
  *	  I/O functions, operators, aggregates etc for enum types
  *
- * Copyright (c) 2006-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2006-2022, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -14,9 +14,8 @@
 #include "postgres.h"
 
 #include "access/genam.h"
-#include "access/heapam.h"
 #include "access/htup_details.h"
-#include "catalog/indexing.h"
+#include "access/table.h"
 #include "catalog/pg_enum.h"
 #include "libpq/pqformat.h"
 #include "storage/procarray.h"
@@ -64,7 +63,7 @@ static void
 check_safe_enum_use(HeapTuple enumval_tup)
 {
 	TransactionId xmin;
-	Form_pg_enum en;
+	Form_pg_enum en = (Form_pg_enum) GETSTRUCT(enumval_tup);
 
 	/*
 	 * If the row is hinted as committed, it's surely safe.  This provides a
@@ -83,19 +82,18 @@ check_safe_enum_use(HeapTuple enumval_tup)
 		return;
 
 	/*
-	 * Check if the enum value is blacklisted.  If not, it's safe, because it
+	 * Check if the enum value is uncommitted.  If not, it's safe, because it
 	 * was made during CREATE TYPE AS ENUM and can't be shorter-lived than its
 	 * owning type.  (This'd also be false for values made by other
 	 * transactions; but the previous tests should have handled all of those.)
 	 */
-	if (!EnumBlacklisted(HeapTupleGetOid(enumval_tup)))
+	if (!EnumUncommitted(en->oid))
 		return;
 
 	/*
 	 * There might well be other tests we could do here to narrow down the
 	 * unsafe conditions, but for now just raise an exception.
 	 */
-	en = (Form_pg_enum) GETSTRUCT(enumval_tup);
 	ereport(ERROR,
 			(errcode(ERRCODE_UNSAFE_NEW_ENUM_VALUE_USAGE),
 			 errmsg("unsafe use of new value \"%s\" of enum type %s",
@@ -140,7 +138,7 @@ enum_in(PG_FUNCTION_ARGS)
 	 * This comes from pg_enum.oid and stores system oids in user tables. This
 	 * oid must be preserved by binary upgrades.
 	 */
-	enumoid = HeapTupleGetOid(tup);
+	enumoid = ((Form_pg_enum) GETSTRUCT(tup))->oid;
 
 	ReleaseSysCache(tup);
 
@@ -204,7 +202,7 @@ enum_recv(PG_FUNCTION_ARGS)
 	/* check it's safe to use in SQL */
 	check_safe_enum_use(tup);
 
-	enumoid = HeapTupleGetOid(tup);
+	enumoid = ((Form_pg_enum) GETSTRUCT(tup))->oid;
 
 	ReleaseSysCache(tup);
 
@@ -404,7 +402,7 @@ enum_endpoint(Oid enumtypoid, ScanDirection direction)
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(enumtypoid));
 
-	enum_rel = heap_open(EnumRelationId, AccessShareLock);
+	enum_rel = table_open(EnumRelationId, AccessShareLock);
 	enum_idx = index_open(EnumTypIdSortOrderIndexId, AccessShareLock);
 	enum_scan = systable_beginscan_ordered(enum_rel, enum_idx, NULL,
 										   1, &skey);
@@ -414,7 +412,7 @@ enum_endpoint(Oid enumtypoid, ScanDirection direction)
 	{
 		/* check it's safe to use in SQL */
 		check_safe_enum_use(enum_tuple);
-		minmax = HeapTupleGetOid(enum_tuple);
+		minmax = ((Form_pg_enum) GETSTRUCT(enum_tuple))->oid;
 	}
 	else
 	{
@@ -424,7 +422,7 @@ enum_endpoint(Oid enumtypoid, ScanDirection direction)
 
 	systable_endscan_ordered(enum_scan);
 	index_close(enum_idx, AccessShareLock);
-	heap_close(enum_rel, AccessShareLock);
+	table_close(enum_rel, AccessShareLock);
 
 	return minmax;
 }
@@ -563,7 +561,7 @@ enum_range_internal(Oid enumtypoid, Oid lower, Oid upper)
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(enumtypoid));
 
-	enum_rel = heap_open(EnumRelationId, AccessShareLock);
+	enum_rel = table_open(EnumRelationId, AccessShareLock);
 	enum_idx = index_open(EnumTypIdSortOrderIndexId, AccessShareLock);
 	enum_scan = systable_beginscan_ordered(enum_rel, enum_idx, NULL, 1, &skey);
 
@@ -574,7 +572,7 @@ enum_range_internal(Oid enumtypoid, Oid lower, Oid upper)
 
 	while (HeapTupleIsValid(enum_tuple = systable_getnext_ordered(enum_scan, ForwardScanDirection)))
 	{
-		Oid			enum_oid = HeapTupleGetOid(enum_tuple);
+		Oid			enum_oid = ((Form_pg_enum) GETSTRUCT(enum_tuple))->oid;
 
 		if (!left_found && lower == enum_oid)
 			left_found = true;
@@ -599,11 +597,12 @@ enum_range_internal(Oid enumtypoid, Oid lower, Oid upper)
 
 	systable_endscan_ordered(enum_scan);
 	index_close(enum_idx, AccessShareLock);
-	heap_close(enum_rel, AccessShareLock);
+	table_close(enum_rel, AccessShareLock);
 
 	/* and build the result array */
 	/* note this hardwires some details about the representation of Oid */
-	result = construct_array(elems, cnt, enumtypoid, sizeof(Oid), true, 'i');
+	result = construct_array(elems, cnt, enumtypoid,
+							 sizeof(Oid), true, TYPALIGN_INT);
 
 	pfree(elems);
 

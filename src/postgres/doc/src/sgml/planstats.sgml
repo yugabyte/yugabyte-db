@@ -80,7 +80,7 @@ SELECT relpages, reltuples FROM pg_class WHERE relname = 'tenk1';
 EXPLAIN SELECT * FROM tenk1 WHERE unique1 &lt; 1000;
 
                                    QUERY PLAN
---------------------------------------------------------------------------------
+-------------------------------------------------------------------&zwsp;-------------
  Bitmap Heap Scan on tenk1  (cost=24.06..394.64 rows=1007 width=244)
    Recheck Cond: (unique1 &lt; 1000)
    -&gt;  Bitmap Index Scan on tenk1_unique1  (cost=0.00..23.80 rows=1007 width=0)
@@ -112,7 +112,7 @@ WHERE tablename='tenk1' AND attname='unique1';
    into equal frequency buckets, so all we have to do is locate the bucket
    that our value is in and count <emphasis>part</emphasis> of it and
    <emphasis>all</emphasis> of the ones before. The value 1000 is clearly in
-   the second bucket (993-1997).  Assuming a linear distribution of
+   the second bucket (993&ndash;1997).  Assuming a linear distribution of
    values inside each bucket, we can calculate the selectivity as:
 
 <programlisting>
@@ -160,8 +160,8 @@ WHERE tablename='tenk1' AND attname='stringu1';
 
 null_frac         | 0
 n_distinct        | 676
-most_common_vals  | {EJAAAA,BBAAAA,CRAAAA,FCAAAA,FEAAAA,GSAAAA,JOAAAA,MCAAAA,NAAAAA,WGAAAA}
-most_common_freqs | {0.00333333,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003}
+most_common_vals  | {EJAAAA,BBAAAA,CRAAAA,FCAAAA,FEAAAA,GSAAAA,&zwsp;JOAAAA,MCAAAA,NAAAAA,WGAAAA}
+most_common_freqs | {0.00333333,0.003,0.003,0.003,0.003,0.003,&zwsp;0.003,0.003,0.003,0.003}
 
 </programlisting>
 
@@ -261,8 +261,8 @@ SELECT histogram_bounds FROM pg_stats
 WHERE tablename='tenk1' AND attname='stringu1';
 
                                 histogram_bounds
---------------------------------------------------------------------------------
- {AAAAAA,CQAAAA,FRAAAA,IBAAAA,KRAAAA,NFAAAA,PSAAAA,SGAAAA,VAAAAA,XLAAAA,ZZAAAA}
+-------------------------------------------------------------------&zwsp;-------------
+ {AAAAAA,CQAAAA,FRAAAA,IBAAAA,KRAAAA,NFAAAA,PSAAAA,SGAAAA,VAAAAA,&zwsp;XLAAAA,ZZAAAA}
 </programlisting>
 
    Checking the MCV list, we find that the condition <literal>stringu1 &lt;
@@ -312,7 +312,7 @@ rows        = 10000 * 0.307669
 EXPLAIN SELECT * FROM tenk1 WHERE unique1 &lt; 1000 AND stringu1 = 'xxx';
 
                                    QUERY PLAN
---------------------------------------------------------------------------------
+-------------------------------------------------------------------&zwsp;-------------
  Bitmap Heap Scan on tenk1  (cost=23.80..396.91 rows=1 width=244)
    Recheck Cond: (unique1 &lt; 1000)
    Filter: (stringu1 = 'xxx'::name)
@@ -346,7 +346,7 @@ EXPLAIN SELECT * FROM tenk1 t1, tenk2 t2
 WHERE t1.unique1 &lt; 50 AND t1.unique2 = t2.unique2;
 
                                       QUERY PLAN
---------------------------------------------------------------------------------------
+-------------------------------------------------------------------&zwsp;-------------------
  Nested Loop  (cost=4.64..456.23 rows=50 width=488)
    -&gt;  Bitmap Heap Scan on tenk1 t1  (cost=4.64..142.17 rows=50 width=244)
          Recheck Cond: (unique1 &lt; 50)
@@ -455,7 +455,7 @@ rows = (outer_cardinality * inner_cardinality) * selectivity
    <secondary>multivariate</secondary>
   </indexterm>
 
-  <sect2>
+  <sect2 id="functional-dependencies">
    <title>Functional Dependencies</title>
 
    <para>
@@ -490,8 +490,8 @@ SELECT relpages, reltuples FROM pg_class WHERE relname = 't';
 
 <programlisting>
 EXPLAIN (ANALYZE, TIMING OFF) SELECT * FROM t WHERE a = 1;
-                                 QUERY PLAN                                  
--------------------------------------------------------------------------------
+                                 QUERY PLAN
+-------------------------------------------------------------------&zwsp;------------
  Seq Scan on t  (cost=0.00..170.00 rows=100 width=8) (actual rows=100 loops=1)
    Filter: (a = 1)
    Rows Removed by Filter: 9900
@@ -507,8 +507,8 @@ EXPLAIN (ANALYZE, TIMING OFF) SELECT * FROM t WHERE a = 1;
 
 <programlisting>
 EXPLAIN (ANALYZE, TIMING OFF) SELECT * FROM t WHERE a = 1 AND b = 1;
-                                 QUERY PLAN                                  
------------------------------------------------------------------------------
+                                 QUERY PLAN
+-------------------------------------------------------------------&zwsp;----------
  Seq Scan on t  (cost=0.00..195.00 rows=1 width=8) (actual rows=100 loops=1)
    Filter: ((a = 1) AND (b = 1))
    Rows Removed by Filter: 9900
@@ -531,8 +531,8 @@ EXPLAIN (ANALYZE, TIMING OFF) SELECT * FROM t WHERE a = 1 AND b = 1;
 CREATE STATISTICS stts (dependencies) ON a, b FROM t;
 ANALYZE t;
 EXPLAIN (ANALYZE, TIMING OFF) SELECT * FROM t WHERE a = 1 AND b = 1;
-                                  QUERY PLAN                                   
--------------------------------------------------------------------------------
+                                  QUERY PLAN
+-------------------------------------------------------------------&zwsp;------------
  Seq Scan on t  (cost=0.00..195.00 rows=100 width=8) (actual rows=100 loops=1)
    Filter: ((a = 1) AND (b = 1))
    Rows Removed by Filter: 9900
@@ -540,7 +540,7 @@ EXPLAIN (ANALYZE, TIMING OFF) SELECT * FROM t WHERE a = 1 AND b = 1;
    </para>
   </sect2>
 
-  <sect2>
+  <sect2 id="multivariate-ndistinct-counts">
    <title>Multivariate N-Distinct Counts</title>
 
    <para>
@@ -552,8 +552,8 @@ EXPLAIN (ANALYZE, TIMING OFF) SELECT * FROM t WHERE a = 1 AND b = 1;
     accurate:
 <programlisting>
 EXPLAIN (ANALYZE, TIMING OFF) SELECT COUNT(*) FROM t GROUP BY a;
-                                       QUERY PLAN                                        
------------------------------------------------------------------------------------------
+                                       QUERY PLAN
+-------------------------------------------------------------------&zwsp;----------------------
  HashAggregate  (cost=195.00..196.00 rows=100 width=12) (actual rows=100 loops=1)
    Group Key: a
    -&gt;  Seq Scan on t  (cost=0.00..145.00 rows=10000 width=4) (actual rows=10000 loops=1)
@@ -563,8 +563,8 @@ EXPLAIN (ANALYZE, TIMING OFF) SELECT COUNT(*) FROM t GROUP BY a;
     in the following example, is off by an order of magnitude:
 <programlisting>
 EXPLAIN (ANALYZE, TIMING OFF) SELECT COUNT(*) FROM t GROUP BY a, b;
-                                       QUERY PLAN                                        
---------------------------------------------------------------------------------------------
+                                       QUERY PLAN
+-------------------------------------------------------------------&zwsp;-------------------------
  HashAggregate  (cost=220.00..230.00 rows=1000 width=16) (actual rows=100 loops=1)
    Group Key: a, b
    -&gt;  Seq Scan on t  (cost=0.00..145.00 rows=10000 width=8) (actual rows=10000 loops=1)
@@ -576,8 +576,8 @@ DROP STATISTICS stts;
 CREATE STATISTICS stts (dependencies, ndistinct) ON a, b FROM t;
 ANALYZE t;
 EXPLAIN (ANALYZE, TIMING OFF) SELECT COUNT(*) FROM t GROUP BY a, b;
-                                       QUERY PLAN                                        
---------------------------------------------------------------------------------------------
+                                       QUERY PLAN
+-------------------------------------------------------------------&zwsp;-------------------------
  HashAggregate  (cost=220.00..221.00 rows=100 width=16) (actual rows=100 loops=1)
    Group Key: a, b
    -&gt;  Seq Scan on t  (cost=0.00..145.00 rows=10000 width=8) (actual rows=10000 loops=1)
@@ -585,6 +585,118 @@ EXPLAIN (ANALYZE, TIMING OFF) SELECT COUNT(*) FROM t GROUP BY a, b;
    </para>
 
   </sect2>
+
+  <sect2 id="mcv-lists">
+   <title>MCV Lists</title>
+
+   <para>
+    As explained in <xref linkend="functional-dependencies"/>, functional
+    dependencies are very cheap and efficient type of statistics, but their
+    main limitation is their global nature (only tracking dependencies at
+    the column level, not between individual column values).
+   </para>
+
+   <para>
+    This section introduces multivariate variant of <acronym>MCV</acronym>
+    (most-common values) lists, a straightforward extension of the per-column
+    statistics described in <xref linkend="row-estimation-examples"/>.  These
+    statistics address the limitation by storing individual values, but it is
+    naturally more expensive, both in terms of building the statistics in
+    <command>ANALYZE</command>, storage and planning time.
+   </para>
+
+   <para>
+    Let's look at the query from <xref linkend="functional-dependencies"/>
+    again, but this time with a <acronym>MCV</acronym> list created on the
+    same set of columns (be sure to drop the functional dependencies, to
+    make sure the planner uses the newly created statistics).
+
+<programlisting>
+DROP STATISTICS stts;
+CREATE STATISTICS stts2 (mcv) ON a, b FROM t;
+ANALYZE t;
+EXPLAIN (ANALYZE, TIMING OFF) SELECT * FROM t WHERE a = 1 AND b = 1;
+                                   QUERY PLAN
+-------------------------------------------------------------------&zwsp;------------
+ Seq Scan on t  (cost=0.00..195.00 rows=100 width=8) (actual rows=100 loops=1)
+   Filter: ((a = 1) AND (b = 1))
+   Rows Removed by Filter: 9900
+</programlisting>
+
+    The estimate is as accurate as with the functional dependencies, mostly
+    thanks to the table being fairly small and having a simple distribution
+    with a low number of distinct values. Before looking at the second query,
+    which was not handled by functional dependencies particularly well,
+    let's inspect the <acronym>MCV</acronym> list a bit.
+   </para>
+
+   <para>
+    Inspecting the <acronym>MCV</acronym> list is possible using
+    <function>pg_mcv_list_items</function> set-returning function.
+
+<programlisting>
+SELECT m.* FROM pg_statistic_ext join pg_statistic_ext_data on (oid = stxoid),
+                pg_mcv_list_items(stxdmcv) m WHERE stxname = 'stts2';
+ index |  values  | nulls | frequency | base_frequency
+-------+----------+-------+-----------+----------------
+     0 | {0, 0}   | {f,f} |      0.01 |         0.0001
+     1 | {1, 1}   | {f,f} |      0.01 |         0.0001
+   ...
+    49 | {49, 49} | {f,f} |      0.01 |         0.0001
+    50 | {50, 50} | {f,f} |      0.01 |         0.0001
+   ...
+    97 | {97, 97} | {f,f} |      0.01 |         0.0001
+    98 | {98, 98} | {f,f} |      0.01 |         0.0001
+    99 | {99, 99} | {f,f} |      0.01 |         0.0001
+(100 rows)
+</programlisting>
+
+    This confirms there are 100 distinct combinations in the two columns, and
+    all of them are about equally likely (1% frequency for each one).  The
+    base frequency is the frequency computed from per-column statistics, as if
+    there were no multi-column statistics. Had there been any null values in
+    either of the columns, this would be identified in the
+    <structfield>nulls</structfield> column.
+   </para>
+
+   <para>
+    When estimating the selectivity, the planner applies all the conditions
+    on items in the <acronym>MCV</acronym> list, and then sums the frequencies
+    of the matching ones. See <function>mcv_clauselist_selectivity</function>
+    in <filename>src/backend/statistics/mcv.c</filename> for details.
+   </para>
+
+   <para>
+    Compared to functional dependencies, <acronym>MCV</acronym> lists have two
+    major advantages. Firstly, the list stores actual values, making it possible
+    to decide which combinations are compatible.
+
+<programlisting>
+EXPLAIN (ANALYZE, TIMING OFF) SELECT * FROM t WHERE a = 1 AND b = 10;
+                                 QUERY PLAN
+-------------------------------------------------------------------&zwsp;--------
+ Seq Scan on t  (cost=0.00..195.00 rows=1 width=8) (actual rows=0 loops=1)
+   Filter: ((a = 1) AND (b = 10))
+   Rows Removed by Filter: 10000
+</programlisting>
+
+    Secondly, <acronym>MCV</acronym> lists handle a wider range of clause types,
+    not just equality clauses like functional dependencies. For example,
+    consider the following range query for the same table:
+
+<programlisting>
+EXPLAIN (ANALYZE, TIMING OFF) SELECT * FROM t WHERE a &lt;= 49 AND b &gt; 49;
+                                QUERY PLAN
+-------------------------------------------------------------------&zwsp;--------
+ Seq Scan on t  (cost=0.00..195.00 rows=1 width=8) (actual rows=0 loops=1)
+   Filter: ((a &lt;= 49) AND (b &gt; 49))
+   Rows Removed by Filter: 10000
+</programlisting>
+
+   </para>
+
+  </sect2>
+
  </sect1>
 
  <sect1 id="planner-stats-security">

@@ -117,11 +117,18 @@ extern int32_t yb_follower_read_staleness_ms;
  * Iterate over databases and execute a given code snippet.
  * Should terminate with YB_FOR_EACH_DB_END.
  */
+#define YB_HACK_INVALID_OID -1
+#define YB_HACK_INVALID_FLAG -1
+
+#define YbHeapTupleGetOid(x) YB_HACK_INVALID_OID
+
+#define YbFirstBootstrapObjectId 10000
+
 #define YB_FOR_EACH_DB(pg_db_tuple) \
 	{ \
 		/* Shared operations shouldn't be used during initdb. */ \
 		Assert(!IsBootstrapProcessingMode()); \
-		Relation    pg_db      = heap_open(DatabaseRelationId, AccessExclusiveLock); \
+		Relation    pg_db      = table_open(DatabaseRelationId, AccessExclusiveLock); \
 		HeapTuple   pg_db_tuple; \
 		SysScanDesc pg_db_scan = systable_beginscan( \
 			pg_db, \
@@ -136,7 +143,7 @@ extern int32_t yb_follower_read_staleness_ms;
 #define YB_FOR_EACH_DB_END \
 		} \
 		systable_endscan(pg_db_scan); \
-		heap_close(pg_db, AccessExclusiveLock); \
+		table_close(pg_db, AccessExclusiveLock); \
 	}
 
 /*
@@ -177,6 +184,8 @@ extern bool IsRealYBColumn(Relation rel, int attrNum);
 extern bool IsYBSystemColumn(int attrNum);
 
 extern void YBReportFeatureUnsupported(const char *err_msg);
+
+extern AttrNumber YBGetFirstLowInvalidAttrNumber(bool is_yb_relation);
 
 extern AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation);
 
@@ -697,7 +706,7 @@ bool IsYbDbAdminUserNosuper(Oid member);
 /*
  * Check unsupported system columns and report error.
  */
-void YbCheckUnsupportedSystemColumns(Var *var, const char *colname, RangeTblEntry *rte);
+void YbCheckUnsupportedSystemColumns(int attnum, const char *colname, RangeTblEntry *rte);
 
 /*
  * Register system table for prefetching.
@@ -839,16 +848,16 @@ void YbSetIsBatchedExecution(bool value);
 										   &detail_buf, &detail_nargs, \
 										   &detail_args); \
 			YBCFreeStatus(_status); \
-			if (errstart(elevel, filename ? filename : __FILE__, \
-						 lineno > 0 ? lineno : __LINE__, \
-						 funcname ? funcname : PG_FUNCNAME_MACRO, TEXTDOMAIN)) \
+			if (errstart(elevel, TEXTDOMAIN)) \
 			{ \
 				yb_errmsg_from_status_data(msg_buf, msg_nargs, msg_args); \
 				yb_detail_from_status_data(detail_buf, detail_nargs, detail_args); \
 				errcode(pg_err_code); \
 				yb_txn_errcode(txn_err_code); \
 				errhidecontext(true); \
-				errfinish(0); \
+				errfinish(filename ? filename : __FILE__, \
+						  lineno > 0 ? lineno : __LINE__, \
+						  funcname ? funcname : PG_FUNCNAME_MACRO);	   \
 				if (__builtin_constant_p(elevel) && (elevel) >= ERROR) \
 					pg_unreachable(); \
 			} \
@@ -878,16 +887,16 @@ void YbSetIsBatchedExecution(bool value);
 										   &msg_nargs, &msg_args, &detail_buf, \
 										   &detail_nargs, &detail_args); \
 			YBCFreeStatus(_status); \
-			if (errstart(elevel_, filename ? filename : __FILE__, \
-						 lineno > 0 ? lineno : __LINE__, \
-						 funcname ? funcname : PG_FUNCNAME_MACRO, TEXTDOMAIN)) \
+			if (errstart(elevel_, TEXTDOMAIN)) \
 			{ \
 				yb_errmsg_from_status_data(msg_buf, msg_nargs, msg_args); \
 				yb_detail_from_status_data(detail_buf, detail_nargs, detail_args); \
 				errcode(pg_err_code); \
 				yb_txn_errcode(txn_err_code); \
 				errhidecontext(true); \
-				errfinish(0); \
+				errfinish(filename ? filename : __FILE__, \
+						  lineno > 0 ? lineno : __LINE__, \
+						  funcname ? funcname : PG_FUNCNAME_MACRO); \
 				if (elevel_ >= ERROR) \
 					pg_unreachable(); \
 			} \

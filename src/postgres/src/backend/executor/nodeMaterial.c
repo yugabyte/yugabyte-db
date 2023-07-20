@@ -3,7 +3,7 @@
  * nodeMaterial.c
  *	  Routines to handle materialization nodes.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -146,10 +146,8 @@ ExecMaterial(PlanState *pstate)
 		if (tuplestorestate)
 			tuplestore_puttupleslot(tuplestorestate, outerslot);
 
-		/*
-		 * We can just return the subplan's returned tuple, without copying.
-		 */
-		return outerslot;
+		ExecCopySlot(slot, outerslot);
+		return slot;
 	}
 
 	/*
@@ -223,13 +221,13 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 	 *
 	 * material nodes only return tuples from their materialized relation.
 	 */
-	ExecInitResultTupleSlotTL(&matstate->ss.ps);
+	ExecInitResultTupleSlotTL(&matstate->ss.ps, &TTSOpsMinimalTuple);
 	matstate->ss.ps.ps_ProjInfo = NULL;
 
 	/*
 	 * initialize tuple type.
 	 */
-	ExecCreateScanSlotFromOuterPlan(estate, &matstate->ss);
+	ExecCreateScanSlotFromOuterPlan(estate, &matstate->ss, &TTSOpsMinimalTuple);
 
 	return matstate;
 }

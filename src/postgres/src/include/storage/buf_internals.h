@@ -5,7 +5,7 @@
  *	  strategy.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/buf_internals.h
@@ -15,16 +15,16 @@
 #ifndef BUFMGR_INTERNALS_H
 #define BUFMGR_INTERNALS_H
 
+#include "port/atomics.h"
 #include "storage/buf.h"
 #include "storage/bufmgr.h"
+#include "storage/condition_variable.h"
 #include "storage/latch.h"
 #include "storage/lwlock.h"
 #include "storage/shmem.h"
 #include "storage/smgr.h"
-#include "port/atomics.h"
 #include "storage/spin.h"
 #include "utils/relcache.h"
-
 
 /*
  * Buffer state is a single 32-bit variable where following data is combined.
@@ -52,7 +52,7 @@
 /*
  * Flags for buffer descriptors
  *
- * Note: TAG_VALID essentially means that there is a buffer hashtable
+ * Note: BM_TAG_VALID essentially means that there is a buffer hashtable
  * entry associated with the buffer's tag.
  */
 #define BM_LOCKED				(1U << 22)	/* buffer header is locked */
@@ -136,7 +136,7 @@ typedef struct buftag
  *	BufferDesc -- shared descriptor/state data for a single shared buffer.
  *
  * Note: Buffer header lock (BM_LOCKED flag) must be held to examine or change
- * the tag, state or wait_backend_pid fields.  In general, buffer header lock
+ * tag, state or wait_backend_pgprocno fields.  In general, buffer header lock
  * is a spinlock which is combined with flags, refcount and usagecount into
  * single atomic variable.  This layout allow us to do some operations in a
  * single atomic operation, without actually acquiring and releasing spinlock;
@@ -161,8 +161,8 @@ typedef struct buftag
  *
  * We can't physically remove items from a disk page if another backend has
  * the buffer pinned.  Hence, a backend may need to wait for all other pins
- * to go away.  This is signaled by storing its own PID into
- * wait_backend_pid and setting flag bit BM_PIN_COUNT_WAITER.  At present,
+ * to go away.  This is signaled by storing its own pgprocno into
+ * wait_backend_pgprocno and setting flag bit BM_PIN_COUNT_WAITER.  At present,
  * there can be only one such waiter per buffer.
  *
  * We use this same struct for local buffer headers, but the locks are not
@@ -174,6 +174,10 @@ typedef struct buftag
  * Be careful to avoid increasing the size of the struct when adding or
  * reordering members.  Keeping it below 64 bytes (the most common CPU
  * cache line size) is fairly important for performance.
+ *
+ * Per-buffer I/O condition variables are currently kept outside this struct in
+ * a separate array.  They could be moved in here and still fit within that
+ * limit on common systems, but for now that is not done.
  */
 typedef struct BufferDesc
 {
@@ -183,9 +187,8 @@ typedef struct BufferDesc
 	/* state of the tag, containing flags, refcount and usagecount */
 	pg_atomic_uint32 state;
 
-	int			wait_backend_pid;	/* backend PID of pin-count waiter */
+	int			wait_backend_pgprocno;	/* backend of pin-count waiter */
 	int			freeNext;		/* link in freelist chain */
-
 	LWLock		content_lock;	/* to lock access to buffer contents */
 } BufferDesc;
 
@@ -204,7 +207,7 @@ typedef struct BufferDesc
  * Note that local buffer descriptors aren't forced to be aligned - as there's
  * no concurrent access to those it's unlikely to be beneficial.
  *
- * We use 64bit as the cache line size here, because that's the most common
+ * We use a 64-byte cache line size here, because that's the most common
  * size. Making it bigger would be a waste of memory. Even if running on a
  * platform with either 32 or 128 byte line sizes, it's good to align to
  * boundaries and avoid false sharing.
@@ -222,12 +225,12 @@ typedef union BufferDescPadded
 
 #define BufferDescriptorGetBuffer(bdesc) ((bdesc)->buf_id + 1)
 
-#define BufferDescriptorGetIOLock(bdesc) \
-	(&(BufferIOLWLockArray[(bdesc)->buf_id]).lock)
+#define BufferDescriptorGetIOCV(bdesc) \
+	(&(BufferIOCVArray[(bdesc)->buf_id]).cv)
 #define BufferDescriptorGetContentLock(bdesc) \
 	((LWLock*) (&(bdesc)->content_lock))
 
-extern PGDLLIMPORT LWLockMinimallyPadded *BufferIOLWLockArray;
+extern PGDLLIMPORT ConditionVariableMinimallyPadded *BufferIOCVArray;
 
 /*
  * The freeNext field is either the index of the next freelist entry,
@@ -276,7 +279,7 @@ extern PGDLLIMPORT BufferDescPadded *BufferDescriptors;
 extern PGDLLIMPORT WritebackContext BackendWritebackContext;
 
 /* in localbuf.c */
-extern BufferDesc *LocalBufferDescriptors;
+extern PGDLLIMPORT BufferDesc *LocalBufferDescriptors;
 
 /* in bufmgr.c */
 
@@ -295,7 +298,7 @@ typedef struct CkptSortItem
 	int			buf_id;
 } CkptSortItem;
 
-extern CkptSortItem *CkptBufferIds;
+extern PGDLLIMPORT CkptSortItem *CkptBufferIds;
 
 /*
  * Internal buffer management routines
@@ -307,10 +310,10 @@ extern void ScheduleBufferTagForWriteback(WritebackContext *context, BufferTag *
 
 /* freelist.c */
 extern BufferDesc *StrategyGetBuffer(BufferAccessStrategy strategy,
-				  uint32 *buf_state);
+									 uint32 *buf_state);
 extern void StrategyFreeBuffer(BufferDesc *buf);
 extern bool StrategyRejectBuffer(BufferAccessStrategy strategy,
-					 BufferDesc *buf);
+								 BufferDesc *buf);
 
 extern int	StrategySyncStart(uint32 *complete_passes, uint32 *num_buf_alloc);
 extern void StrategyNotifyBgWriter(int bgwprocno);
@@ -328,13 +331,14 @@ extern int	BufTableInsert(BufferTag *tagPtr, uint32 hashcode, int buf_id);
 extern void BufTableDelete(BufferTag *tagPtr, uint32 hashcode);
 
 /* localbuf.c */
-extern void LocalPrefetchBuffer(SMgrRelation smgr, ForkNumber forkNum,
-					BlockNumber blockNum);
+extern PrefetchBufferResult PrefetchLocalBuffer(SMgrRelation smgr,
+												ForkNumber forkNum,
+												BlockNumber blockNum);
 extern BufferDesc *LocalBufferAlloc(SMgrRelation smgr, ForkNumber forkNum,
-				 BlockNumber blockNum, bool *foundPtr);
+									BlockNumber blockNum, bool *foundPtr);
 extern void MarkLocalBufferDirty(Buffer buffer);
 extern void DropRelFileNodeLocalBuffers(RelFileNode rnode, ForkNumber forkNum,
-							BlockNumber firstDelBlock);
+										BlockNumber firstDelBlock);
 extern void DropRelFileNodeAllLocalBuffers(RelFileNode rnode);
 extern void AtEOXact_LocalBuffers(bool isCommit);
 

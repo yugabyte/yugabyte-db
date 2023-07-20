@@ -2,7 +2,7 @@
  * dbsize.c
  *		Database object size functions, and related inquiries
  *
- * Copyright (c) 2002-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2002-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/adt/dbsize.c
@@ -13,8 +13,8 @@
 
 #include <sys/stat.h>
 
-#include "access/heapam.h"
 #include "access/htup_details.h"
+#include "access/relation.h"
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_authid.h"
@@ -37,6 +37,28 @@
 
 /* Divide by two and round away from zero */
 #define half_rounded(x)   (((x) + ((x) < 0 ? -1 : 1)) / 2)
+
+/* Units used in pg_size_pretty functions.  All units must be powers of 2 */
+struct size_pretty_unit
+{
+	const char *name;			/* bytes, kB, MB, GB etc */
+	uint32		limit;			/* upper limit, prior to half rounding after
+								 * converting to this unit. */
+	bool		round;			/* do half rounding for this unit */
+	uint8		unitbits;		/* (1 << unitbits) bytes to make 1 of this
+								 * unit */
+};
+
+/* When adding units here also update the error message in pg_size_bytes */
+static const struct size_pretty_unit size_pretty_units[] = {
+	{"bytes", 10 * 1024, false, 0},
+	{"kB", 20 * 1024 - 1, true, 10},
+	{"MB", 20 * 1024 - 1, true, 20},
+	{"GB", 20 * 1024 - 1, true, 30},
+	{"TB", 20 * 1024 - 1, true, 40},
+	{"PB", 20 * 1024 - 1, true, 50},
+	{NULL, 0, false, 0}
+};
 
 /* Return physical size of directory contents, or 0 if dir doesn't exist */
 static int64
@@ -94,12 +116,12 @@ calculate_database_size(Oid dbOid)
 	AclResult	aclresult;
 
 	/*
-	 * User must have connect privilege for target database or be a member of
-	 * pg_read_all_stats
+	 * User must have connect privilege for target database or have privileges
+	 * of pg_read_all_stats
 	 */
 	aclresult = pg_database_aclcheck(dbOid, GetUserId(), ACL_CONNECT);
 	if (aclresult != ACLCHECK_OK &&
-		!is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_STATS))
+		!has_privs_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS))
 	{
 		aclcheck_error(aclresult, OBJECT_DATABASE,
 					   get_database_name(dbOid));
@@ -178,12 +200,12 @@ calculate_tablespace_size(Oid tblspcOid)
 	AclResult	aclresult;
 
 	/*
-	 * User must be a member of pg_read_all_stats or have CREATE privilege for
-	 * target tablespace, either explicitly granted or implicitly because it
-	 * is default for current database.
+	 * User must have privileges of pg_read_all_stats or have CREATE privilege
+	 * for target tablespace, either explicitly granted or implicitly because
+	 * it is default for current database.
 	 */
 	if (tblspcOid != MyDatabaseTableSpace &&
-		!is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_STATS))
+		!has_privs_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS))
 	{
 		aclresult = pg_tablespace_aclcheck(tblspcOid, GetUserId(), ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
@@ -582,41 +604,34 @@ pg_size_pretty(PG_FUNCTION_ARGS)
 {
 	int64		size = PG_GETARG_INT64(0);
 	char		buf[64];
-	int64		limit = 10 * 1024;
-	int64		limit2 = limit * 2 - 1;
+	const struct size_pretty_unit *unit;
 
-	if (Abs(size) < limit)
-		snprintf(buf, sizeof(buf), INT64_FORMAT " bytes", size);
-	else
+	for (unit = size_pretty_units; unit->name != NULL; unit++)
 	{
-		/*
-		 * We use divide instead of bit shifting so that behavior matches for
-		 * both positive and negative size values.
-		 */
-		size /= (1 << 9);		/* keep one extra bit for rounding */
-		if (Abs(size) < limit2)
-			snprintf(buf, sizeof(buf), INT64_FORMAT " kB",
-					 half_rounded(size));
-		else
+		uint8		bits;
+
+		/* use this unit if there are no more units or we're below the limit */
+		if (unit[1].name == NULL || Abs(size) < unit->limit)
 		{
-			size /= (1 << 10);
-			if (Abs(size) < limit2)
-				snprintf(buf, sizeof(buf), INT64_FORMAT " MB",
-						 half_rounded(size));
-			else
-			{
-				size /= (1 << 10);
-				if (Abs(size) < limit2)
-					snprintf(buf, sizeof(buf), INT64_FORMAT " GB",
-							 half_rounded(size));
-				else
-				{
-					size /= (1 << 10);
-					snprintf(buf, sizeof(buf), INT64_FORMAT " TB",
-							 half_rounded(size));
-				}
-			}
+			if (unit->round)
+				size = half_rounded(size);
+
+			snprintf(buf, sizeof(buf), INT64_FORMAT " %s", size, unit->name);
+			break;
 		}
+
+		/*
+		 * Determine the number of bits to use to build the divisor.  We may
+		 * need to use 1 bit less than the difference between this and the
+		 * next unit if the next unit uses half rounding.  Or we may need to
+		 * shift an extra bit if this unit uses half rounding and the next one
+		 * does not.  We use division rather than shifting right by this
+		 * number of bits to ensure positive and negative values are rounded
+		 * in the same way.
+		 */
+		bits = (unit[1].unitbits - unit->unitbits - (unit[1].round == true)
+				+ (unit->round == true));
+		size /= ((int64) 1) << bits;
 	}
 
 	PG_RETURN_TEXT_P(cstring_to_text(buf));
@@ -628,14 +643,6 @@ numeric_to_cstring(Numeric n)
 	Datum		d = NumericGetDatum(n);
 
 	return DatumGetCString(DirectFunctionCall1(numeric_out, d));
-}
-
-static Numeric
-int64_to_numeric(int64 v)
-{
-	Datum		d = Int64GetDatum(v);
-
-	return DatumGetNumeric(DirectFunctionCall1(int8_numeric, d));
 }
 
 static bool
@@ -666,9 +673,9 @@ numeric_half_rounded(Numeric n)
 	Datum		two;
 	Datum		result;
 
-	zero = DirectFunctionCall1(int8_numeric, Int64GetDatum(0));
-	one = DirectFunctionCall1(int8_numeric, Int64GetDatum(1));
-	two = DirectFunctionCall1(int8_numeric, Int64GetDatum(2));
+	zero = NumericGetDatum(int64_to_numeric(0));
+	one = NumericGetDatum(int64_to_numeric(1));
+	two = NumericGetDatum(int64_to_numeric(2));
 
 	if (DatumGetBool(DirectFunctionCall2(numeric_ge, d, zero)))
 		d = DirectFunctionCall2(numeric_add, d, one);
@@ -686,8 +693,7 @@ numeric_truncated_divide(Numeric n, int64 divisor)
 	Datum		divisor_numeric;
 	Datum		result;
 
-	divisor_numeric = DirectFunctionCall1(int8_numeric,
-										  Int64GetDatum(divisor));
+	divisor_numeric = NumericGetDatum(int64_to_numeric(divisor));
 	result = DirectFunctionCall2(numeric_div_trunc, d, divisor_numeric);
 	return DatumGetNumeric(result);
 }
@@ -696,57 +702,35 @@ Datum
 pg_size_pretty_numeric(PG_FUNCTION_ARGS)
 {
 	Numeric		size = PG_GETARG_NUMERIC(0);
-	Numeric		limit,
-				limit2;
-	char	   *result;
+	char	   *result = NULL;
+	const struct size_pretty_unit *unit;
 
-	limit = int64_to_numeric(10 * 1024);
-	limit2 = int64_to_numeric(10 * 1024 * 2 - 1);
-
-	if (numeric_is_less(numeric_absolute(size), limit))
+	for (unit = size_pretty_units; unit->name != NULL; unit++)
 	{
-		result = psprintf("%s bytes", numeric_to_cstring(size));
-	}
-	else
-	{
-		/* keep one extra bit for rounding */
-		/* size /= (1 << 9) */
-		size = numeric_truncated_divide(size, 1 << 9);
+		unsigned int shiftby;
 
-		if (numeric_is_less(numeric_absolute(size), limit2))
+		/* use this unit if there are no more units or we're below the limit */
+		if (unit[1].name == NULL ||
+			numeric_is_less(numeric_absolute(size),
+							int64_to_numeric(unit->limit)))
 		{
-			size = numeric_half_rounded(size);
-			result = psprintf("%s kB", numeric_to_cstring(size));
-		}
-		else
-		{
-			/* size /= (1 << 10) */
-			size = numeric_truncated_divide(size, 1 << 10);
-
-			if (numeric_is_less(numeric_absolute(size), limit2))
-			{
+			if (unit->round)
 				size = numeric_half_rounded(size);
-				result = psprintf("%s MB", numeric_to_cstring(size));
-			}
-			else
-			{
-				/* size /= (1 << 10) */
-				size = numeric_truncated_divide(size, 1 << 10);
 
-				if (numeric_is_less(numeric_absolute(size), limit2))
-				{
-					size = numeric_half_rounded(size);
-					result = psprintf("%s GB", numeric_to_cstring(size));
-				}
-				else
-				{
-					/* size /= (1 << 10) */
-					size = numeric_truncated_divide(size, 1 << 10);
-					size = numeric_half_rounded(size);
-					result = psprintf("%s TB", numeric_to_cstring(size));
-				}
-			}
+			result = psprintf("%s %s", numeric_to_cstring(size), unit->name);
+			break;
 		}
+
+		/*
+		 * Determine the number of bits to use to build the divisor.  We may
+		 * need to use 1 bit less than the difference between this and the
+		 * next unit if the next unit uses half rounding.  Or we may need to
+		 * shift an extra bit if this unit uses half rounding and the next one
+		 * does not.
+		 */
+		shiftby = (unit[1].unitbits - unit->unitbits - (unit[1].round == true)
+				   + (unit->round == true));
+		size = numeric_truncated_divide(size, ((int64) 1) << shiftby);
 	}
 
 	PG_RETURN_TEXT_P(cstring_to_text(result));
@@ -847,6 +831,7 @@ pg_size_bytes(PG_FUNCTION_ARGS)
 	/* Handle possible unit */
 	if (*strptr != '\0')
 	{
+		const struct size_pretty_unit *unit;
 		int64		multiplier = 0;
 
 		/* Trim any trailing whitespace */
@@ -858,33 +843,29 @@ pg_size_bytes(PG_FUNCTION_ARGS)
 		endptr++;
 		*endptr = '\0';
 
-		/* Parse the unit case-insensitively */
-		if (pg_strcasecmp(strptr, "bytes") == 0)
-			multiplier = (int64) 1;
-		else if (pg_strcasecmp(strptr, "kb") == 0)
-			multiplier = (int64) 1024;
-		else if (pg_strcasecmp(strptr, "mb") == 0)
-			multiplier = ((int64) 1024) * 1024;
+		for (unit = size_pretty_units; unit->name != NULL; unit++)
+		{
+			/* Parse the unit case-insensitively */
+			if (pg_strcasecmp(strptr, unit->name) == 0)
+			{
+				multiplier = ((int64) 1) << unit->unitbits;
+				break;
+			}
+		}
 
-		else if (pg_strcasecmp(strptr, "gb") == 0)
-			multiplier = ((int64) 1024) * 1024 * 1024;
-
-		else if (pg_strcasecmp(strptr, "tb") == 0)
-			multiplier = ((int64) 1024) * 1024 * 1024 * 1024;
-
-		else
+		/* Verify we found a valid unit in the loop above */
+		if (unit->name == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("invalid size: \"%s\"", text_to_cstring(arg)),
 					 errdetail("Invalid size unit: \"%s\".", strptr),
-					 errhint("Valid units are \"bytes\", \"kB\", \"MB\", \"GB\", and \"TB\".")));
+					 errhint("Valid units are \"bytes\", \"kB\", \"MB\", \"GB\", \"TB\", and \"PB\".")));
 
 		if (multiplier > 1)
 		{
 			Numeric		mul_num;
 
-			mul_num = DatumGetNumeric(DirectFunctionCall1(int8_numeric,
-														  Int64GetDatum(multiplier)));
+			mul_num = int64_to_numeric(multiplier);
 
 			num = DatumGetNumeric(DirectFunctionCall2(numeric_mul,
 													  NumericGetDatum(mul_num),
@@ -925,25 +906,18 @@ pg_relation_filenode(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	relform = (Form_pg_class) GETSTRUCT(tuple);
 
-	switch (relform->relkind)
+	if (RELKIND_HAS_STORAGE(relform->relkind))
 	{
-		case RELKIND_RELATION:
-		case RELKIND_MATVIEW:
-		case RELKIND_INDEX:
-		case RELKIND_SEQUENCE:
-		case RELKIND_TOASTVALUE:
-			/* okay, these have storage */
-			if (relform->relfilenode)
-				result = relform->relfilenode;
-			else				/* Consult the relation mapper */
-				result = RelationMapOidToFilenode(relid,
-												  relform->relisshared);
-			break;
-
-		default:
-			/* no storage, return NULL */
-			result = InvalidOid;
-			break;
+		if (relform->relfilenode)
+			result = relform->relfilenode;
+		else					/* Consult the relation mapper */
+			result = RelationMapOidToFilenode(relid,
+											  relform->relisshared);
+	}
+	else
+	{
+		/* no storage, return NULL */
+		result = InvalidOid;
 	}
 
 	ReleaseSysCache(tuple);
@@ -972,7 +946,11 @@ pg_filenode_relation(PG_FUNCTION_ARGS)
 {
 	Oid			reltablespace = PG_GETARG_OID(0);
 	Oid			relfilenode = PG_GETARG_OID(1);
-	Oid			heaprel = InvalidOid;
+	Oid			heaprel;
+
+	/* test needed so RelidByRelfilenode doesn't misbehave */
+	if (!OidIsValid(relfilenode))
+		PG_RETURN_NULL();
 
 	heaprel = RelidByRelfilenode(reltablespace, relfilenode);
 
@@ -1002,38 +980,30 @@ pg_relation_filepath(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	relform = (Form_pg_class) GETSTRUCT(tuple);
 
-	switch (relform->relkind)
+	if (RELKIND_HAS_STORAGE(relform->relkind))
 	{
-		case RELKIND_RELATION:
-		case RELKIND_MATVIEW:
-		case RELKIND_INDEX:
-		case RELKIND_SEQUENCE:
-		case RELKIND_TOASTVALUE:
-			/* okay, these have storage */
-
-			/* This logic should match RelationInitPhysicalAddr */
-			if (relform->reltablespace)
-				rnode.spcNode = relform->reltablespace;
-			else
-				rnode.spcNode = MyDatabaseTableSpace;
-			if (rnode.spcNode == GLOBALTABLESPACE_OID)
-				rnode.dbNode = InvalidOid;
-			else
-				rnode.dbNode = MyDatabaseId;
-			if (relform->relfilenode)
-				rnode.relNode = relform->relfilenode;
-			else				/* Consult the relation mapper */
-				rnode.relNode = RelationMapOidToFilenode(relid,
-														 relform->relisshared);
-			break;
-
-		default:
-			/* no storage, return NULL */
-			rnode.relNode = InvalidOid;
-			/* some compilers generate warnings without these next two lines */
+		/* This logic should match RelationInitPhysicalAddr */
+		if (relform->reltablespace)
+			rnode.spcNode = relform->reltablespace;
+		else
+			rnode.spcNode = MyDatabaseTableSpace;
+		if (rnode.spcNode == GLOBALTABLESPACE_OID)
 			rnode.dbNode = InvalidOid;
-			rnode.spcNode = InvalidOid;
-			break;
+		else
+			rnode.dbNode = MyDatabaseId;
+		if (relform->relfilenode)
+			rnode.relNode = relform->relfilenode;
+		else					/* Consult the relation mapper */
+			rnode.relNode = RelationMapOidToFilenode(relid,
+													 relform->relisshared);
+	}
+	else
+	{
+		/* no storage, return NULL */
+		rnode.relNode = InvalidOid;
+		/* some compilers generate warnings without these next two lines */
+		rnode.dbNode = InvalidOid;
+		rnode.spcNode = InvalidOid;
 	}
 
 	if (!OidIsValid(rnode.relNode))

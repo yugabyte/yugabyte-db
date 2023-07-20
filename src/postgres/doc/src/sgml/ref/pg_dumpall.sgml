@@ -38,7 +38,8 @@ PostgreSQL documentation
    linkend="app-psql"/> to restore the databases.  It does this by
    calling <xref linkend="app-pgdump"/> for each database in the cluster.
    <application>pg_dumpall</application> also dumps global objects
-   that are common to all databases, that is, database roles and tablespaces.
+   that are common to all databases, namely database roles, tablespaces,
+   and privilege grants for configuration parameters.
    (<application>pg_dump</application> does not save these objects.)
   </para>
 
@@ -52,7 +53,8 @@ PostgreSQL documentation
 
   <para>
    The SQL script will be written to the standard output.  Use the
-   [-f|file] option or shell operators to redirect it into a file.
+   <option>-f</option>/<option>--file</option> option or shell operators to
+   redirect it into a file.
   </para>
 
   <para>
@@ -131,20 +133,6 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
-      <term><option>-o</option></term>
-      <term><option>--oids</option></term>
-      <listitem>
-       <para>
-        Dump object identifiers (<acronym>OID</acronym>s) as part of the
-        data for every table.  Use this option if your application references
-        the <acronym>OID</acronym>
-        columns in some way (e.g., in a foreign key constraint).
-        Otherwise, this option should not be used.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry>
       <term><option>-O</option></term>
       <term><option>--no-owner</option></term>
       <listitem>
@@ -215,7 +203,9 @@ PostgreSQL documentation
         Specifies verbose mode.  This will cause
         <application>pg_dumpall</application> to output start/stop
         times to the dump file, and progress messages to standard error.
-        It will also enable verbose output in <application>pg_dump</application>.
+        Repeating the option causes additional debug-level messages
+        to appear on standard error.
+        The option is also passed down to <application>pg_dump</application>.
        </para>
       </listitem>
      </varlistentry>
@@ -286,9 +276,9 @@ PostgreSQL documentation
         This option is relevant only when creating a data-only dump.
         It instructs <application>pg_dumpall</application> to include commands
         to temporarily disable triggers on the target tables while
-        the data is reloaded.  Use this if you have referential
+        the data is restored.  Use this if you have referential
         integrity checks or other triggers on the tables that you
-        do not want to invoke during data reload.
+        do not want to invoke during data restore.
        </para>
 
        <para>
@@ -301,10 +291,40 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+      <term><option>--exclude-database=<replaceable class="parameter">pattern</replaceable></option></term>
+      <listitem>
+       <para>
+        Do not dump databases whose name matches
+        <replaceable class="parameter">pattern</replaceable>.
+        Multiple patterns can be excluded by writing multiple
+        <option>--exclude-database</option> switches.  The
+        <replaceable class="parameter">pattern</replaceable> parameter is
+        interpreted as a pattern according to the same rules used by
+        <application>psql</application>'s <literal>\d</literal>
+        commands (see <xref linkend="app-psql-patterns"/> below),
+        so multiple databases can also be excluded by writing wildcard
+        characters in the pattern.  When using wildcards, be careful to
+        quote the pattern if needed to prevent shell wildcard expansion.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--extra-float-digits=<replaceable class="parameter">ndigits</replaceable></option></term>
+      <listitem>
+       <para>
+        Use the specified value of extra_float_digits when dumping
+        floating-point data, instead of the maximum available precision.
+        Routine dumps made for backup purposes should not use this option.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>--if-exists</option></term>
       <listitem>
        <para>
-        Use conditional commands (i.e. add an <literal>IF EXISTS</literal>
+        Use conditional commands (i.e., add an <literal>IF EXISTS</literal>
         clause) to drop databases and other objects.  This option is not valid
         unless <option>--clean</option> is also specified.
        </para>
@@ -335,7 +355,7 @@ PostgreSQL documentation
         target the root of the partitioning hierarchy that contains it, rather
         than the partition itself.  This causes the appropriate partition to
         be re-determined for each row when the data is loaded.  This may be
-        useful when reloading data on a server where rows do not always fall
+        useful when restoring data on a server where rows do not always fall
         into the same partitions as they did on the original server.  That
         could happen, for example, if the partitioning column is of type text
         and the two systems have different definitions of the collation used
@@ -356,10 +376,7 @@ PostgreSQL documentation
         the dump. Instead, fail if unable to lock a table within the specified
         <replaceable class="parameter">timeout</replaceable>. The timeout may be
         specified in any of the formats accepted by <command>SET
-        statement_timeout</command>.  Allowed values vary depending on the server
-        version you are dumping from, but an integer number of milliseconds
-        is accepted by all versions since 7.3.  This option is ignored when
-        dumping from a pre-7.3 server.
+        statement_timeout</command>.
        </para>
       </listitem>
      </varlistentry>
@@ -431,6 +448,17 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+      <term><option>--no-table-access-method</option></term>
+      <listitem>
+       <para>
+        Do not output commands to select table access methods.
+        With this option, all objects will be created with whichever
+        table access method is the default during restore.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>--no-tablespaces</option></term>
       <listitem>
        <para>
@@ -443,12 +471,36 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+      <term><option>--no-toast-compression</option></term>
+      <listitem>
+       <para>
+        Do not output commands to set <acronym>TOAST</acronym> compression
+        methods.
+        With this option, all columns will be restored with the default
+        compression setting.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>--no-unlogged-table-data</option></term>
       <listitem>
        <para>
         Do not dump the contents of unlogged tables.  This option has no
         effect on whether or not the table definitions (schema) are dumped;
         it only suppresses dumping the table data.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--on-conflict-do-nothing</option></term>
+      <listitem>
+       <para>
+        Add <literal>ON CONFLICT DO NOTHING</literal> to
+        <command>INSERT</command> commands.
+        This option is not valid unless <option>--inserts</option> or
+        <option>--column-inserts</option> is also specified.
        </para>
       </listitem>
      </varlistentry>
@@ -467,6 +519,20 @@ PostgreSQL documentation
         servers of other versions that may have slightly different sets
         of reserved words.  Using <option>--quote-all-identifiers</option> prevents
         such issues, at the price of a harder-to-read dump script.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--rows-per-insert=<replaceable class="parameter">nrows</replaceable></option></term>
+      <listitem>
+       <para>
+        Dump data as <command>INSERT</command> commands (rather than
+        <command>COPY</command>).  Controls the maximum number of rows per
+        <command>INSERT</command> command. The value specified must be a
+        number greater than zero.  Any error during restoring will cause only
+        rows that are part of the problematic <command>INSERT</command> to be
+        lost, rather than the entire table contents.
        </para>
       </listitem>
      </varlistentry>
@@ -507,8 +573,9 @@ PostgreSQL documentation
       <term><option>--dbname=<replaceable class="parameter">connstr</replaceable></option></term>
       <listitem>
        <para>
-        Specifies parameters used to connect to the server, as a connection
-        string. See <xref linkend="libpq-connstring"/> for more information.
+        Specifies parameters used to connect to the server, as a <link
+        linkend="libpq-connstring">connection string</link>;  these
+        will override any conflicting command line options.
        </para>
        <para>
         The option is called <literal>--dbname</literal> for consistency with other
@@ -651,6 +718,17 @@ PostgreSQL documentation
      </para>
     </listitem>
    </varlistentry>
+
+   <varlistentry>
+    <term><envar>PG_COLOR</envar></term>
+    <listitem>
+     <para>
+      Specifies whether to use color in diagnostic messages. Possible values
+      are <literal>always</literal>, <literal>auto</literal> and
+      <literal>never</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
   </variablelist>
 
   <para>
@@ -721,7 +799,7 @@ PostgreSQL documentation
   </para>
 
   <para>
-   To reload database(s) from this file, you can use:
+   To restore database(s) from this file, you can use:
 <screen>
 <prompt>$</prompt> <userinput>psql -f db.out postgres</userinput>
 </screen>

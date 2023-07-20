@@ -36,7 +36,7 @@
  * the probability of unintended failure) than to fix the total time
  * spent.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -50,9 +50,9 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "storage/s_lock.h"
+#include "common/pg_prng.h"
 #include "port/atomics.h"
-
+#include "storage/s_lock.h"
 
 #define MIN_SPINS_PER_DELAY 10
 #define MAX_SPINS_PER_DELAY 1000
@@ -145,7 +145,7 @@ perform_spin_delay(SpinDelayStatus *status)
 
 		/* increase delay by a random fraction between 1X and 2X */
 		status->cur_delay += (int) (status->cur_delay *
-									((double) random() / (double) MAX_RANDOM_VALUE) + 0.5);
+									pg_prng_double(&pg_global_prng_state) + 0.5);
 		/* wrap back to minimum delay when max is exceeded */
 		if (status->cur_delay > MAX_DELAY_USEC)
 			status->cur_delay = MIN_DELAY_USEC;
@@ -304,7 +304,7 @@ volatile struct test_lock_struct test_lock;
 int
 main()
 {
-	srandom((unsigned int) time(NULL));
+	pg_prng_seed(&pg_global_prng_state, (uint64) time(NULL));
 
 	test_lock.pad1 = test_lock.pad2 = 0x44;
 
@@ -369,7 +369,7 @@ main()
 	printf("             if S_LOCK() and TAS() are working.\n");
 	fflush(stdout);
 
-	s_lock(&test_lock.lock, __FILE__, __LINE__);
+	s_lock(&test_lock.lock, __FILE__, __LINE__, PG_FUNCNAME_MACRO);
 
 	printf("S_LOCK_TEST: failed, lock not locked\n");
 	return 1;

@@ -5,7 +5,7 @@
  *
  * Code originally contributed by Adriaan Joubert.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/varbit.h
@@ -21,6 +21,11 @@
 
 /*
  * Modeled on struct varlena from postgres.h, but data type is bits8.
+ *
+ * Caution: if bit_len is not a multiple of BITS_PER_BYTE, the low-order
+ * bits of the last byte of bit_dat[] are unused and MUST be zeroes.
+ * (This allows bit_cmp() to not bother masking the last byte.)
+ * Also, there should not be any excess bytes counted in the header length.
  */
 typedef struct
 {

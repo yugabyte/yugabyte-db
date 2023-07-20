@@ -8,7 +8,7 @@
  *
  * See fe_utils/psqlscan_int.h for additional commentary.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -19,6 +19,7 @@
 #include "postgres_fe.h"
 
 #include "psqlscanslash.h"
+#include "common/logging.h"
 #include "fe_utils/conditional.h"
 
 #include "libpq-fe.h"
@@ -26,8 +27,6 @@
 
 %{
 #include "fe_utils/psqlscan_int.h"
-
-#define PQmblenBounded(s, e)  strnlen(s, PQmblen(s, e))
 
 /*
  * We must have a typedef YYSTYPE for yylex's first argument, but this lexer
@@ -635,7 +634,7 @@ psql_scan_slash_option(PsqlScanState state,
 		case xslashbackquote:
 		case xslashdquote:
 			/* must have hit EOL inside quotes */
-			state->callbacks->write_error("unterminated quoted string\n");
+			pg_log_error("unterminated quoted string");
 			termPQExpBuffer(&mybuf);
 			return NULL;
 		case xslashwholeline:
@@ -778,10 +777,10 @@ evaluate_backtick(PsqlScanState state)
 
 	initPQExpBuffer(&cmd_output);
 
-	fd = popen(cmd, PG_BINARY_R);
+	fd = popen(cmd, "r");
 	if (!fd)
 	{
-		state->callbacks->write_error("%s: %s\n", cmd, strerror(errno));
+		pg_log_error("%s: %m", cmd);
 		error = true;
 	}
 
@@ -792,7 +791,7 @@ evaluate_backtick(PsqlScanState state)
 			result = fread(buf, 1, sizeof(buf), fd);
 			if (ferror(fd))
 			{
-				state->callbacks->write_error("%s: %s\n", cmd, strerror(errno));
+				pg_log_error("%s: %m", cmd);
 				error = true;
 				break;
 			}
@@ -802,13 +801,13 @@ evaluate_backtick(PsqlScanState state)
 
 	if (fd && pclose(fd) == -1)
 	{
-		state->callbacks->write_error("%s: %s\n", cmd, strerror(errno));
+		pg_log_error("%s: %m", cmd);
 		error = true;
 	}
 
 	if (PQExpBufferDataBroken(cmd_output))
 	{
-		state->callbacks->write_error("%s: out of memory\n", cmd);
+		pg_log_error("%s: out of memory", cmd);
 		error = true;
 	}
 
@@ -819,7 +818,7 @@ evaluate_backtick(PsqlScanState state)
 	/* If no error, transfer result to output_buf */
 	if (!error)
 	{
-		/* strip any trailing newline */
+		/* strip any trailing newline (but only one) */
 		if (cmd_output.len > 0 &&
 			cmd_output.data[cmd_output.len - 1] == '\n')
 			cmd_output.len--;

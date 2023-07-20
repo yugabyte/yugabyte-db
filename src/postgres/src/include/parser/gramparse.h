@@ -8,7 +8,7 @@
  * Definitions that are needed outside the core parser should be in parser.h.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/parser/gramparse.h
@@ -65,8 +65,8 @@ typedef struct base_yy_extra_type
 
 
 /* from parser.c */
-extern int base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp,
-		   core_yyscan_t yyscanner);
+extern int	base_yylex(YYSTYPE *lvalp, YYLTYPE *llocp,
+					   core_yyscan_t yyscanner);
 
 /* from gram.y */
 extern void parser_init(base_yy_extra_type *yyext);

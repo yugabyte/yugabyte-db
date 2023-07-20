@@ -4,7 +4,7 @@
  *	Utility routines shared by pg_dump and pg_restore.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/bin/pg_dump/pg_backup_utils.h
@@ -15,24 +15,27 @@
 #ifndef PG_BACKUP_UTILS_H
 #define PG_BACKUP_UTILS_H
 
-typedef enum					/* bits returned by set_dump_section */
-{
-	DUMP_PRE_DATA = 0x01,
-	DUMP_DATA = 0x02,
-	DUMP_POST_DATA = 0x04,
-	DUMP_UNSECTIONED = 0xff
-} DumpSections;
+#include "common/logging.h"
+
+/* bits returned by set_dump_section */
+#define DUMP_PRE_DATA		0x01
+#define DUMP_DATA			0x02
+#define DUMP_POST_DATA		0x04
+#define DUMP_UNSECTIONED	0xff
 
 typedef void (*on_exit_nicely_callback) (int code, void *arg);
 
 extern const char *progname;
 
 extern void set_dump_section(const char *arg, int *dumpSections);
-extern void write_msg(const char *modulename, const char *fmt,...) pg_attribute_printf(2, 3);
-extern void vwrite_msg(const char *modulename, const char *fmt, va_list ap) pg_attribute_printf(2, 0);
 extern void on_exit_nicely(on_exit_nicely_callback function, void *arg);
 extern void exit_nicely(int code) pg_attribute_noreturn();
 
-extern void exit_horribly(const char *modulename, const char *fmt,...) pg_attribute_printf(2, 3) pg_attribute_noreturn();
+/* In pg_dump, we modify pg_fatal to call exit_nicely instead of exit */
+#undef pg_fatal
+#define pg_fatal(...) do { \
+		pg_log_generic(PG_LOG_ERROR, PG_LOG_PRIMARY, __VA_ARGS__); \
+		exit_nicely(1); \
+	} while(0)
 
 #endif							/* PG_BACKUP_UTILS_H */

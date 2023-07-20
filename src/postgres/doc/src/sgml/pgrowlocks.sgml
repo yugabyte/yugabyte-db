@@ -13,7 +13,7 @@
  </para>
 
  <para>
-  By default use is restricted to superusers, members of the
+  By default use is restricted to superusers, roles with privileges of the
   <literal>pg_stat_scan_tables</literal> role, and users with
   <literal>SELECT</literal> permissions on the table.
  </para>
@@ -97,8 +97,8 @@ pgrowlocks(text) returns setof record
   <orderedlist>
    <listitem>
     <para>
-    If the table as a whole is exclusive-locked by someone else,
-    <function>pgrowlocks</function> will be blocked.
+     If an <literal>ACCESS EXCLUSIVE</literal> lock is taken on the table,
+     <function>pgrowlocks</function> will be blocked.
     </para>
    </listitem>
    <listitem>

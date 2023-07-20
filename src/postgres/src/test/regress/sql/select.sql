@@ -90,11 +90,6 @@ RESET enable_seqscan;
 RESET enable_bitmapscan;
 RESET enable_sort;
 
-
-SELECT two, stringu1, ten, string4
-   INTO TABLE tmp
-   FROM onek;
-
 --
 -- awk '{print $1,$2;}' person.data |
 -- awk '{if(NF!=2){print $3,$2;}else{print;}}' - emp.data |
@@ -116,9 +111,9 @@ SELECT p.name, p.age FROM person* p ORDER BY age using >, name;
 --
 -- Test some cases involving whole-row Var referencing a subquery
 --
-select foo from (select 1) as foo;
-select foo from (select null) as foo;
-select foo from (select 'xyzzy',1,null) as foo;
+select foo from (select 1 offset 0) as foo;
+select foo from (select null offset 0) as foo;
+select foo from (select 'xyzzy',1,null offset 0) as foo;
 
 --
 -- Test VALUES lists
@@ -147,6 +142,11 @@ UNION ALL
 SELECT 2+2, 57
 UNION ALL
 TABLE int8_tbl;
+
+-- corner case: VALUES with no columns
+CREATE TEMP TABLE nocols();
+INSERT INTO nocols DEFAULT VALUES;
+SELECT * FROM nocols n, LATERAL (VALUES(n.*)) v;
 
 --
 -- Test ORDER BY options

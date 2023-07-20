@@ -1,6 +1,14 @@
 --
 -- Test for ALTER some_object {RENAME TO, OWNER TO, SET SCHEMA}
 --
+-- directory paths and dlsuffix are passed to us in environment variables
+\getenv libdir PG_LIBDIR
+\getenv dlsuffix PG_DLSUFFIX
+\set regresslib :libdir '/regress' :dlsuffix
+CREATE FUNCTION test_opclass_options_func(internal)
+    RETURNS void
+    AS :'regresslib', 'test_opclass_options_func'
+    LANGUAGE C;
 -- Clean up in case a prior regression run failed
 SET client_min_messages TO 'warning';
 DROP ROLE IF EXISTS regress_alter_generic_user1;
@@ -353,10 +361,10 @@ ALTER OPERATOR FAMILY alt_opf4 USING btree ADD OPERATOR 0 < (int4, int2); -- ope
 ERROR:  invalid operator number 0, must be between 1 and 5
 ALTER OPERATOR FAMILY alt_opf4 USING btree ADD OPERATOR 1 < ; -- operator without argument types
 ERROR:  operator argument types must be specified in ALTER OPERATOR FAMILY
-ALTER OPERATOR FAMILY alt_opf4 USING btree ADD FUNCTION 0 btint42cmp(int4, int2); -- function number should be between 1 and 5
-ERROR:  invalid function number 0, must be between 1 and 3
+ALTER OPERATOR FAMILY alt_opf4 USING btree ADD FUNCTION 0 btint42cmp(int4, int2); -- invalid options parsing function
+ERROR:  invalid function number 0, must be between 1 and 5
 ALTER OPERATOR FAMILY alt_opf4 USING btree ADD FUNCTION 6 btint42cmp(int4, int2); -- function number should be between 1 and 5
-ERROR:  invalid function number 6, must be between 1 and 3
+ERROR:  invalid function number 6, must be between 1 and 5
 ALTER OPERATOR FAMILY alt_opf4 USING btree ADD STORAGE invalid_storage; -- Ensure STORAGE is not a part of ALTER OPERATOR FAMILY
 ERROR:  STORAGE cannot be specified in ALTER OPERATOR FAMILY
 DROP OPERATOR FAMILY alt_opf4 USING btree;
@@ -493,9 +501,25 @@ ALTER OPERATOR FAMILY alt_opf18 USING btree ADD
   OPERATOR 4 >= (int4, int2) ,
   OPERATOR 5 > (int4, int2) ,
   FUNCTION 1 btint42cmp(int4, int2);
+-- Should fail. Not allowed to have cross-type equalimage function.
+ALTER OPERATOR FAMILY alt_opf18 USING btree
+  ADD FUNCTION 4 (int4, int2) btequalimage(oid);
+ERROR:  btree equal image functions must not be cross-type
 ALTER OPERATOR FAMILY alt_opf18 USING btree DROP FUNCTION 2 (int4, int4);
 ERROR:  function 2(integer,integer) does not exist in operator family "alt_opf18"
 DROP OPERATOR FAMILY alt_opf18 USING btree;
+-- Should fail. Invalid opclass options function (#5) specifications.
+CREATE OPERATOR FAMILY alt_opf19 USING btree;
+ALTER OPERATOR FAMILY alt_opf19 USING btree ADD FUNCTION 5 test_opclass_options_func(internal, text[], bool);
+ERROR:  function test_opclass_options_func(internal, text[], boolean) does not exist
+ALTER OPERATOR FAMILY alt_opf19 USING btree ADD FUNCTION 5 (int4) btint42cmp(int4, int2);
+ERROR:  invalid operator class options parsing function
+HINT:  Valid signature of operator class options parsing function is (internal) RETURNS void.
+ALTER OPERATOR FAMILY alt_opf19 USING btree ADD FUNCTION 5 (int4, int2) btint42cmp(int4, int2);
+ERROR:  left and right associated data types for operator class options parsing functions must match
+ALTER OPERATOR FAMILY alt_opf19 USING btree ADD FUNCTION 5 (int4) test_opclass_options_func(internal); -- Ok
+ALTER OPERATOR FAMILY alt_opf19 USING btree DROP FUNCTION 5 (int4, int4);
+DROP OPERATOR FAMILY alt_opf19 USING btree;
 --
 -- Statistics
 --
@@ -505,7 +529,7 @@ CREATE STATISTICS alt_stat1 ON a, b FROM alt_regress_1;
 CREATE STATISTICS alt_stat2 ON a, b FROM alt_regress_1;
 ALTER STATISTICS alt_stat1 RENAME TO alt_stat2;   -- failed (name conflict)
 ERROR:  statistics object "alt_stat2" already exists in schema "alt_nsp1"
-ALTER STATISTICS alt_stat1 RENAME TO alt_stat3;   -- failed (name conflict)
+ALTER STATISTICS alt_stat1 RENAME TO alt_stat3;   -- OK
 ALTER STATISTICS alt_stat2 OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
 ERROR:  must be member of role "regress_alter_generic_user2"
 ALTER STATISTICS alt_stat2 OWNER TO regress_alter_generic_user3;  -- OK
@@ -679,7 +703,6 @@ SELECT nspname, prsname
 ---
 --- Cleanup resources
 ---
-\set VERBOSITY terse \\ -- suppress cascade details
 DROP FOREIGN DATA WRAPPER alt_fdw2 CASCADE;
 NOTICE:  drop cascades to server alt_fserv2
 DROP FOREIGN DATA WRAPPER alt_fdw3 CASCADE;
@@ -688,8 +711,45 @@ DROP LANGUAGE alt_lang2 CASCADE;
 DROP LANGUAGE alt_lang3 CASCADE;
 DROP SCHEMA alt_nsp1 CASCADE;
 NOTICE:  drop cascades to 28 other objects
+DETAIL:  drop cascades to function alt_func3(integer)
+drop cascades to function alt_agg3(integer)
+drop cascades to function alt_func4(integer)
+drop cascades to function alt_func2(integer)
+drop cascades to function alt_agg4(integer)
+drop cascades to function alt_agg2(integer)
+drop cascades to conversion alt_conv3
+drop cascades to conversion alt_conv4
+drop cascades to conversion alt_conv2
+drop cascades to operator @+@(integer,integer)
+drop cascades to operator @-@(integer,integer)
+drop cascades to operator family alt_opf3 for access method hash
+drop cascades to operator family alt_opc1 for access method hash
+drop cascades to operator family alt_opc2 for access method hash
+drop cascades to operator family alt_opf4 for access method hash
+drop cascades to operator family alt_opf2 for access method hash
+drop cascades to table alt_regress_1
+drop cascades to table alt_regress_2
+drop cascades to text search dictionary alt_ts_dict3
+drop cascades to text search dictionary alt_ts_dict4
+drop cascades to text search dictionary alt_ts_dict2
+drop cascades to text search configuration alt_ts_conf3
+drop cascades to text search configuration alt_ts_conf4
+drop cascades to text search configuration alt_ts_conf2
+drop cascades to text search template alt_ts_temp3
+drop cascades to text search template alt_ts_temp2
+drop cascades to text search parser alt_ts_prs3
+drop cascades to text search parser alt_ts_prs2
 DROP SCHEMA alt_nsp2 CASCADE;
 NOTICE:  drop cascades to 9 other objects
+DETAIL:  drop cascades to function alt_nsp2.alt_func2(integer)
+drop cascades to function alt_nsp2.alt_agg2(integer)
+drop cascades to conversion alt_nsp2.alt_conv2
+drop cascades to operator alt_nsp2.@-@(integer,integer)
+drop cascades to operator family alt_nsp2.alt_opf2 for access method hash
+drop cascades to text search dictionary alt_nsp2.alt_ts_dict2
+drop cascades to text search configuration alt_nsp2.alt_ts_conf2
+drop cascades to text search template alt_nsp2.alt_ts_temp2
+drop cascades to text search parser alt_nsp2.alt_ts_prs2
 DROP USER regress_alter_generic_user1;
 DROP USER regress_alter_generic_user2;
 DROP USER regress_alter_generic_user3;

@@ -15,7 +15,7 @@ PostgreSQL documentation
  </refmeta>
 
  <refnamediv>
-  <refname id="vacuumdb">vacuumdb</refname>
+  <refname>vacuumdb</refname>
   <refpurpose>garbage-collect and analyze a <productname>PostgreSQL</productname> database</refpurpose>
  </refnamediv>
 
@@ -28,8 +28,8 @@ PostgreSQL documentation
    <arg choice="plain" rep="repeat">
     <arg choice="opt">
      <group choice="plain">
-      <arg choice="plain"><option>--table</option></arg>
       <arg choice="plain"><option>-t</option></arg>
+      <arg choice="plain"><option>--table</option></arg>
      </group>
      <replaceable>table</replaceable>
      <arg choice="opt">( <replaceable class="parameter">column</replaceable> [,...] )</arg>
@@ -44,8 +44,8 @@ PostgreSQL documentation
    <arg rep="repeat"><replaceable>connection-option</replaceable></arg>
    <arg rep="repeat"><replaceable>option</replaceable></arg>
    <group choice="plain">
-    <arg choice="plain"><option>--all</option></arg>
     <arg choice="plain"><option>-a</option></arg>
+    <arg choice="plain"><option>--all</option></arg>
    </group>
   </cmdsynopsis>
  </refsynopsisdiv>
@@ -62,7 +62,7 @@ PostgreSQL documentation
 
   <para>
    <application>vacuumdb</application> is a wrapper around the SQL
-   command <xref linkend="sql-vacuum"/>.
+   command <link linkend="sql-vacuum"><command>VACUUM</command></link>.
    There is no effective difference between vacuuming and analyzing
    databases via this utility and via other methods for accessing the
    server.
@@ -97,8 +97,26 @@ PostgreSQL documentation
         If this is not specified, the database name is read
         from the environment variable <envar>PGDATABASE</envar>.  If
         that is not set, the user name specified for the connection is
-        used.
+        used.  The <replaceable>dbname</replaceable> can be a <link
+        linkend="libpq-connstring">connection string</link>.  If so,
+        connection string parameters will override any conflicting command
+        line options.
        </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--disable-page-skipping</option></term>
+      <listitem>
+       <para>
+        Disable skipping pages based on the contents of the visibility map.
+       </para>
+       <note>
+        <para>
+         This option is only available for servers running
+         <productname>PostgreSQL</productname> 9.6 and later.
+        </para>
+       </note>
       </listitem>
      </varlistentry>
 
@@ -134,14 +152,29 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+      <term><option>--force-index-cleanup</option></term>
+      <listitem>
+       <para>
+        Always remove index entries pointing to dead tuples.
+       </para>
+       <note>
+        <para>
+         This option is only available for servers running
+         <productname>PostgreSQL</productname> 12 and later.
+        </para>
+       </note>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>-j <replaceable class="parameter">njobs</replaceable></option></term>
       <term><option>--jobs=<replaceable class="parameter">njobs</replaceable></option></term>
       <listitem>
        <para>
         Execute the vacuum or analyze commands in parallel by running
         <replaceable class="parameter">njobs</replaceable>
-        commands simultaneously.  This option reduces the time of the
-        processing but it also increases the load on the database server.
+        commands simultaneously.  This option may reduce the processing time
+        but it also increases the load on the database server.
        </para>
        <para>
         <application>vacuumdb</application> will open
@@ -158,12 +191,144 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+      <term><option>--min-mxid-age <replaceable class="parameter">mxid_age</replaceable></option></term>
+      <listitem>
+       <para>
+        Only execute the vacuum or analyze commands on tables with a multixact
+        ID age of at least <replaceable class="parameter">mxid_age</replaceable>.
+        This setting is useful for prioritizing tables to process to prevent
+        multixact ID wraparound (see
+        <xref linkend="vacuum-for-multixact-wraparound"/>).
+       </para>
+       <para>
+        For the purposes of this option, the multixact ID age of a relation is
+        the greatest of the ages of the main relation and its associated
+        <acronym>TOAST</acronym> table, if one exists.  Since the commands
+        issued by <application>vacuumdb</application> will also process the
+        <acronym>TOAST</acronym> table for the relation if necessary, it does
+        not need to be considered separately.
+       </para>
+       <note>
+        <para>
+         This option is only available for servers running
+         <productname>PostgreSQL</productname> 9.6 and later.
+        </para>
+       </note>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--min-xid-age <replaceable class="parameter">xid_age</replaceable></option></term>
+      <listitem>
+       <para>
+        Only execute the vacuum or analyze commands on tables with a
+        transaction ID age of at least
+        <replaceable class="parameter">xid_age</replaceable>.  This setting
+        is useful for prioritizing tables to process to prevent transaction
+        ID wraparound (see <xref linkend="vacuum-for-wraparound"/>).
+       </para>
+       <para>
+        For the purposes of this option, the transaction ID age of a relation
+        is the greatest of the ages of the main relation and its associated
+        <acronym>TOAST</acronym> table, if one exists.  Since the commands
+        issued by <application>vacuumdb</application> will also process the
+        <acronym>TOAST</acronym> table for the relation if necessary, it does
+        not need to be considered separately.
+       </para>
+       <note>
+        <para>
+         This option is only available for servers running
+         <productname>PostgreSQL</productname> 9.6 and later.
+        </para>
+       </note>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--no-index-cleanup</option></term>
+      <listitem>
+       <para>
+        Do not remove index entries pointing to dead tuples.
+       </para>
+       <note>
+        <para>
+         This option is only available for servers running
+         <productname>PostgreSQL</productname> 12 and later.
+        </para>
+       </note>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--no-process-toast</option></term>
+      <listitem>
+       <para>
+        Skip the TOAST table associated with the table to vacuum, if any.
+       </para>
+       <note>
+        <para>
+         This option is only available for servers running
+         <productname>PostgreSQL</productname> 14 and later.
+        </para>
+       </note>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--no-truncate</option></term>
+      <listitem>
+       <para>
+        Do not truncate empty pages at the end of the table.
+       </para>
+       <note>
+        <para>
+         This option is only available for servers running
+         <productname>PostgreSQL</productname> 12 and later.
+        </para>
+       </note>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-P <replaceable class="parameter">parallel_workers</replaceable></option></term>
+      <term><option>--parallel=<replaceable class="parameter">parallel_workers</replaceable></option></term>
+      <listitem>
+       <para>
+        Specify the number of parallel workers for <firstterm>parallel vacuum</firstterm>.
+        This allows the vacuum to leverage multiple CPUs to process indexes.
+        See <xref linkend="sql-vacuum"/>.
+       </para>
+       <note>
+        <para>
+         This option is only available for servers running
+         <productname>PostgreSQL</productname> 13 and later.
+        </para>
+       </note>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>-q</option></term>
       <term><option>--quiet</option></term>
       <listitem>
        <para>
         Do not display progress messages.
        </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--skip-locked</option></term>
+      <listitem>
+       <para>
+        Skip relations that cannot be immediately locked for processing.
+       </para>
+       <note>
+        <para>
+         This option is only available for servers running
+         <productname>PostgreSQL</productname> 12 and later.
+        </para>
+       </note>
       </listitem>
      </varlistentry>
 
@@ -232,16 +397,20 @@ PostgreSQL documentation
       <listitem>
        <para>
         Only calculate statistics for use by the optimizer (no vacuum),
-        like <option>--analyze-only</option>.  Run several (currently three)
-        stages of analyze with different configuration settings, to produce
-        usable statistics faster.
+        like <option>--analyze-only</option>.  Run three
+        stages of analyze; the first stage uses the lowest possible statistics
+        target (see <xref linkend="guc-default-statistics-target"/>)
+        to produce usable statistics faster, and subsequent stages build the
+        full statistics.
        </para>
 
        <para>
-        This option is useful to analyze a database that was newly populated
-        from a restored dump or by <command>pg_upgrade</command>.  This option
-        will try to create some statistics as fast as possible, to make the
-        database usable, and then produce full statistics in the subsequent
+        This option is only useful to analyze a database that currently has
+        no statistics or has wholly incorrect ones, such as if it is newly
+        populated from a restored dump or by <command>pg_upgrade</command>.
+        Be aware that running with this option in a database with existing
+        statistics may cause the query optimizer choices to become
+        transiently worse due to the low statistics targets of the early
         stages.
        </para>
       </listitem>
@@ -370,6 +539,17 @@ PostgreSQL documentation
     <listitem>
      <para>
       Default connection parameters
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><envar>PG_COLOR</envar></term>
+    <listitem>
+     <para>
+      Specifies whether to use color in diagnostic messages. Possible values
+      are <literal>always</literal>, <literal>auto</literal> and
+      <literal>never</literal>.
      </para>
     </listitem>
    </varlistentry>

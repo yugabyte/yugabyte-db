@@ -32,10 +32,14 @@ includes a RETURNING clause, the ModifyTable node delivers the computed
 RETURNING rows as output, otherwise it returns nothing.  Handling INSERT
 is pretty straightforward: the tuples returned from the plan tree below
 ModifyTable are inserted into the correct result relation.  For UPDATE,
-the plan tree returns the computed tuples to be updated, plus a "junk"
-(hidden) CTID column identifying which table row is to be replaced by each
-one.  For DELETE, the plan tree need only deliver a CTID column, and the
-ModifyTable node visits each of those rows and marks the row deleted.
+the plan tree returns the new values of the updated columns, plus "junk"
+(hidden) column(s) identifying which table row is to be updated.  The
+ModifyTable node must fetch that row to extract values for the unchanged
+columns, combine the values into a new row, and apply the update.  (For a
+heap table, the row-identity junk column is a CTID, but other things may
+be used for other table types.)  For DELETE, the plan tree need only deliver
+junk row-identity column(s), and the ModifyTable node visits each of those
+rows and marks the row deleted.  MERGE is described below.
 
 XXX a great deal more documentation needs to be written here...
 
@@ -186,9 +190,9 @@ Expression Evaluation
 
 To allow for different methods of expression evaluation, and for
 better branch/jump target prediction, expressions are evaluated by
-calling ExprState->evalfunc (via ExprEvalExpr() and friends).
+calling ExprState->evalfunc (via ExecEvalExpr() and friends).
 
-ExprReadyExpr() can choose the method of interpretation by setting
+ExecReadyExpr() can choose the method of interpretation by setting
 evalfunc to an appropriate function.  The default execution function,
 ExecInterpExpr, is implemented in execExprInterp.c; see its header
 comment for details.  Special-case evalfuncs are used for certain
@@ -217,6 +221,45 @@ EEOP_ASSIGN_TMP step to move the result into the appropriate tts_values[]
 and tts_isnull[] array elements of the result slot.  There are special
 fast-path step types (EEOP_ASSIGN_*_VAR) to handle targetlist entries that
 are simple Vars using only one step instead of two.
+
+
+MERGE
+-----
+
+MERGE is a multiple-table, multiple-action command: It specifies a target
+table and a source relation, and can contain multiple WHEN MATCHED and
+WHEN NOT MATCHED clauses, each of which specifies one UPDATE, INSERT,
+DELETE, or DO NOTHING actions.  The target table is modified by MERGE,
+and the source relation supplies additional data for the actions.  Each action
+optionally specifies a qualifying expression that is evaluated for each tuple.
+
+In the planner, transform_MERGE_to_join constructs a join between the target
+table and the source relation, with row-identifying junk columns from the target
+table.  This join is an outer join if the MERGE command contains any WHEN NOT
+MATCHED clauses; the ModifyTable node fetches tuples from the plan tree of that
+join.  If the row-identifying columns in the fetched tuple are NULL, then the
+source relation contains a tuple that is not matched by any tuples in the
+target table, so the qualifying expression for each WHEN NOT MATCHED clause is
+evaluated given that tuple as returned by the plan.  If the expression returns
+true, the action indicated by the clause is executed, and no further clauses
+are evaluated.  On the other hand, if the row-identifying columns are not
+NULL, then the matching tuple from the target table can be fetched; qualifying
+expression of each WHEN MATCHED clause is evaluated given both the fetched
+tuple and the tuple returned by the plan.
+
+If no WHEN NOT MATCHED clauses are present, then the join constructed by
+the planner is an inner join, and the row-identifying junk columns are
+always non NULL.
+
+If WHEN MATCHED ends up processing a row that is concurrently updated or deleted,
+EvalPlanQual (see below) is used to find the latest version of the row, and
+that is re-fetched; if it exists, the search for a matching WHEN MATCHED clause
+to use starts at the top.
+
+MERGE does not allow its own type of triggers, but instead fires UPDATE, DELETE,
+and INSERT triggers: row triggers are fired for each row when an action is
+executed for that row.  Statement triggers are fired always, regardless of
+whether any rows match the corresponding clauses.
 
 
 Memory Management
@@ -359,3 +402,43 @@ query returning the same set of scan tuples multiple times.  Likewise,
 SRFs are disallowed in an UPDATE's targetlist.  There, they would have the
 effect of the same row being updated multiple times, which is not very
 useful --- and updates after the first would have no effect anyway.
+
+
+Asynchronous Execution
+----------------------
+
+In cases where a node is waiting on an event external to the database system,
+such as a ForeignScan awaiting network I/O, it's desirable for the node to
+indicate that it cannot return any tuple immediately but may be able to do so
+at a later time.  A process which discovers this type of situation can always
+handle it simply by blocking, but this may waste time that could be spent
+executing some other part of the plan tree where progress could be made
+immediately.  This is particularly likely to occur when the plan tree contains
+an Append node.  Asynchronous execution runs multiple parts of an Append node
+concurrently rather than serially to improve performance.
+
+For asynchronous execution, an Append node must first request a tuple from an
+async-capable child node using ExecAsyncRequest.  Next, it must execute the
+asynchronous event loop using ExecAppendAsyncEventWait.  Eventually, when a
+child node to which an asynchronous request has been made produces a tuple,
+the Append node will receive it from the event loop via ExecAsyncResponse.  In
+the current implementation of asynchronous execution, the only node type that
+requests tuples from an async-capable child node is an Append, while the only
+node type that might be async-capable is a ForeignScan.
+
+Typically, the ExecAsyncResponse callback is the only one required for nodes
+that wish to request tuples asynchronously.  On the other hand, async-capable
+nodes generally need to implement three methods:
+
+1. When an asynchronous request is made, the node's ExecAsyncRequest callback
+   will be invoked; it should use ExecAsyncRequestPending to indicate that the
+   request is pending for a callback described below.  Alternatively, it can
+   instead use ExecAsyncRequestDone if a result is available immediately.
+
+2. When the event loop wishes to wait or poll for file descriptor events, the
+   node's ExecAsyncConfigureWait callback will be invoked to configure the
+   file descriptor event for which the node wishes to wait.
+
+3. When the file descriptor becomes ready, the node's ExecAsyncNotify callback
+   will be invoked; like #1, it should use ExecAsyncRequestPending for another
+   callback or ExecAsyncRequestDone to return a result immediately.

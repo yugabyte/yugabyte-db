@@ -9,7 +9,7 @@
  * proper FooMain() routine for the incarnation.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -21,6 +21,10 @@
 #include "postgres.h"
 
 #include <unistd.h>
+
+#if defined(WIN32)
+#include <crtdbg.h>
+#endif
 
 #if defined(__NetBSD__)
 #include <sys/param.h>
@@ -35,7 +39,6 @@
 #include "common/username.h"
 #include "port/atomics.h"
 #include "postmaster/postmaster.h"
-#include "storage/s_lock.h"
 #include "storage/spin.h"
 #include "tcop/tcopprot.h"
 #include "utils/help_config.h"
@@ -101,42 +104,24 @@ PostgresServerProcessMain(int argc, char *argv[])
 	MemoryContextInit();
 
 	/*
-	 * Set up locale information from environment.  Note that LC_CTYPE and
-	 * LC_COLLATE will be overridden later from pg_control if we are in an
-	 * already-initialized database.  We set them here so that they will be
-	 * available to fill pg_control during initdb.  LC_MESSAGES will get set
-	 * later during GUC option processing, but we set it here to allow startup
-	 * error messages to be localized.
+	 * Set up locale information
 	 */
-
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("postgres"));
 
-#ifdef WIN32
-
 	/*
-	 * Windows uses codepages rather than the environment, so we work around
-	 * that by querying the environment explicitly first for LC_COLLATE and
-	 * LC_CTYPE. We have to do this because initdb passes those values in the
-	 * environment. If there is nothing there we fall back on the codepage.
+	 * In the postmaster, absorb the environment values for LC_COLLATE and
+	 * LC_CTYPE.  Individual backends will change these later to settings
+	 * taken from pg_database, but the postmaster cannot do that.  If we leave
+	 * these set to "C" then message localization might not work well in the
+	 * postmaster.
 	 */
-	{
-		char	   *env_locale;
-
-		if ((env_locale = getenv("LC_COLLATE")) != NULL)
-			init_locale("LC_COLLATE", LC_COLLATE, env_locale);
-		else
-			init_locale("LC_COLLATE", LC_COLLATE, "");
-
-		if ((env_locale = getenv("LC_CTYPE")) != NULL)
-			init_locale("LC_CTYPE", LC_CTYPE, env_locale);
-		else
-			init_locale("LC_CTYPE", LC_CTYPE, "");
-	}
-#else
 	init_locale("LC_COLLATE", LC_COLLATE, "");
 	init_locale("LC_CTYPE", LC_CTYPE, "");
-#endif
 
+	/*
+	 * LC_MESSAGES will get set later during GUC option processing, but we set
+	 * it here to allow startup error messages to be localized.
+	 */
 #ifdef LC_MESSAGES
 	init_locale("LC_MESSAGES", LC_MESSAGES, "");
 #endif
@@ -206,33 +191,23 @@ PostgresServerProcessMain(int argc, char *argv[])
 	 * Dispatch to one of various subprograms depending on first argument.
 	 */
 
+	if (argc > 1 && strcmp(argv[1], "--check") == 0)
+		BootstrapModeMain(argc, argv, true);
+	else if (argc > 1 && strcmp(argv[1], "--boot") == 0)
+		BootstrapModeMain(argc, argv, false);
 #ifdef EXEC_BACKEND
-	if (argc > 1 && strncmp(argv[1], "--fork", 6) == 0)
-		SubPostmasterMain(argc, argv);	/* does not return */
+	else if (argc > 1 && strncmp(argv[1], "--fork", 6) == 0)
+		SubPostmasterMain(argc, argv);
 #endif
-
-#ifdef WIN32
-
-	/*
-	 * Start our win32 signal implementation
-	 *
-	 * SubPostmasterMain() will do this for itself, but the remaining modes
-	 * need it here
-	 */
-	pgwin32_signal_initialize();
-#endif
-
-	if (argc > 1 && strcmp(argv[1], "--boot") == 0)
-		AuxiliaryProcessMain(argc, argv);	/* does not return */
 	else if (argc > 1 && strcmp(argv[1], "--describe-config") == 0)
-		GucInfoMain();			/* does not return */
+		GucInfoMain();
 	else if (argc > 1 && strcmp(argv[1], "--single") == 0)
-		PostgresMain(argc, argv,
-					 NULL,		/* no dbname */
-					 strdup(get_user_name_or_exit(progname)));	/* does not return */
+		PostgresSingleUserMain(argc, argv,
+							   strdup(get_user_name_or_exit(progname)));
 	else
-		PostmasterMain(argc, argv); /* does not return */
-	abort();					/* should not get here */
+		PostmasterMain(argc, argv);
+	/* the functions above should not return */
+	abort();
 }
 
 
@@ -272,8 +247,55 @@ startup_hacks(const char *progname)
 			exit(1);
 		}
 
-		/* In case of general protection fault, don't show GUI popup box */
-		SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+		/*
+		 * By default abort() only generates a crash-dump in *non* debug
+		 * builds. As our Assert() / ExceptionalCondition() uses abort(),
+		 * leaving the default in place would make debugging harder.
+		 *
+		 * MINGW's own C runtime doesn't have _set_abort_behavior(). When
+		 * targeting Microsoft's UCRT with mingw, it never links to the debug
+		 * version of the library and thus doesn't need the call to
+		 * _set_abort_behavior() either.
+		 */
+#if !defined(__MINGW32__) && !defined(__MINGW64__)
+		_set_abort_behavior(_CALL_REPORTFAULT | _WRITE_ABORT_MSG,
+							_CALL_REPORTFAULT | _WRITE_ABORT_MSG);
+#endif							/* !defined(__MINGW32__) &&
+								 * !defined(__MINGW64__) */
+
+		/*
+		 * SEM_FAILCRITICALERRORS causes more errors to be reported to
+		 * callers.
+		 *
+		 * We used to also specify SEM_NOGPFAULTERRORBOX, but that prevents
+		 * windows crash reporting from working. Which includes registered
+		 * just-in-time debuggers, making it unnecessarily hard to debug
+		 * problems on windows. Now we try to disable sources of popups
+		 * separately below (note that SEM_NOGPFAULTERRORBOX did not actually
+		 * prevent all sources of such popups).
+		 */
+		SetErrorMode(SEM_FAILCRITICALERRORS);
+
+		/*
+		 * Show errors on stderr instead of popup box (note this doesn't
+		 * affect errors originating in the C runtime, see below).
+		 */
+		_set_error_mode(_OUT_TO_STDERR);
+
+		/*
+		 * In DEBUG builds, errors, including assertions, C runtime errors are
+		 * reported via _CrtDbgReport. By default such errors are displayed
+		 * with a popup (even with NOGPFAULTERRORBOX), preventing forward
+		 * progress. Instead report such errors stderr (and the debugger).
+		 * This is C runtime specific and thus the above incantations aren't
+		 * sufficient to suppress these popups.
+		 */
+		_CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE | _CRTDBG_MODE_DEBUG);
+		_CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
+		_CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE | _CRTDBG_MODE_DEBUG);
+		_CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+		_CrtSetReportMode(_CRT_WARN, _CRTDBG_MODE_FILE | _CRTDBG_MODE_DEBUG);
+		_CrtSetReportFile(_CRT_WARN, _CRTDBG_FILE_STDERR);
 
 #if defined(_M_AMD64) && _MSC_VER == 1800
 
@@ -348,7 +370,6 @@ help(const char *progname)
 	printf(_("  -l                 enable SSL connections\n"));
 #endif
 	printf(_("  -N MAX-CONNECT     maximum number of allowed connections\n"));
-	printf(_("  -o OPTIONS         pass \"OPTIONS\" to each server process (obsolete)\n"));
 	printf(_("  -p PORT            port number to listen on\n"));
 	printf(_("  -s                 show statistics after each query\n"));
 	printf(_("  -S WORK-MEM        set amount of memory for sorts (in kB)\n"));
@@ -358,7 +379,7 @@ help(const char *progname)
 	printf(_("  -?, --help         show this help, then exit\n"));
 
 	printf(_("\nDeveloper options:\n"));
-	printf(_("  -f s|i|n|m|h       forbid use of some plan types\n"));
+	printf(_("  -f s|i|o|b|t|n|m|h forbid use of some plan types\n"));
 	printf(_("  -n                 do not reinitialize shared memory after abnormal exit\n"));
 	printf(_("  -O                 allow system table structure changes\n"));
 	printf(_("  -P                 disable system indexes\n"));
@@ -376,14 +397,15 @@ help(const char *progname)
 
 	printf(_("\nOptions for bootstrapping mode:\n"));
 	printf(_("  --boot             selects bootstrapping mode (must be first argument)\n"));
+	printf(_("  --check            selects check mode (must be first argument)\n"));
 	printf(_("  DBNAME             database name (mandatory argument in bootstrapping mode)\n"));
 	printf(_("  -r FILENAME        send stdout and stderr to given file\n"));
-	printf(_("  -x NUM             internal use\n"));
 
 	printf(_("\nPlease read the documentation for the complete list of run-time\n"
 			 "configuration settings and how to set them on the command line or in\n"
 			 "the configuration file.\n\n"
-			 "Report bugs to <pgsql-bugs@postgresql.org>.\n"));
+			 "Report bugs to <%s>.\n"), PACKAGE_BUGREPORT);
+	printf(_("%s home page: <%s>\n"), PACKAGE_NAME, PACKAGE_URL);
 }
 
 

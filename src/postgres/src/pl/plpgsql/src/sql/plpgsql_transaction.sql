@@ -354,6 +354,48 @@ $$;
 SELECT * FROM test1;
 
 
+-- test commit/rollback inside exception handler, too
+TRUNCATE test1;
+
+DO LANGUAGE plpgsql $$
+BEGIN
+    FOR i IN 1..10 LOOP
+      BEGIN
+        INSERT INTO test1 VALUES (i, 'good');
+        INSERT INTO test1 VALUES (i/0, 'bad');
+      EXCEPTION
+        WHEN division_by_zero THEN
+            INSERT INTO test1 VALUES (i, 'exception');
+            IF (i % 3) > 0 THEN COMMIT; ELSE ROLLBACK; END IF;
+      END;
+    END LOOP;
+END;
+$$;
+
+SELECT * FROM test1;
+
+
+-- detoast result of simple expression after commit
+CREATE TEMP TABLE test4(f1 text);
+ALTER TABLE test4 ALTER COLUMN f1 SET STORAGE EXTERNAL; -- disable compression
+INSERT INTO test4 SELECT repeat('xyzzy', 2000);
+
+-- immutable mark is a bit of a lie, but it serves to make call a simple expr
+-- that will return a still-toasted value
+CREATE FUNCTION data_source(i int) RETURNS TEXT LANGUAGE sql
+AS 'select f1 from test4' IMMUTABLE;
+
+DO $$
+declare x text;
+begin
+  for i in 1..3 loop
+    x := data_source(i);
+    commit;
+  end loop;
+  raise notice 'length(x) = %', length(x);
+end $$;
+
+
 -- operations on composite types vs. internal transactions
 DO LANGUAGE plpgsql $$
 declare
@@ -389,6 +431,44 @@ END;
 $$;
 
 SELECT * FROM test3;
+
+-- failure while trying to persist a cursor across a transaction (bug #15703)
+CREATE PROCEDURE cursor_fail_during_commit()
+ LANGUAGE plpgsql
+AS $$
+  DECLARE id int;
+  BEGIN
+    FOR id IN SELECT 1/(x-1000) FROM generate_series(1,1000) x LOOP
+        INSERT INTO test1 VALUES(id);
+        COMMIT;
+    END LOOP;
+  END;
+$$;
+
+TRUNCATE test1;
+
+CALL cursor_fail_during_commit();
+
+-- note that error occurs during first COMMIT, hence nothing is in test1
+SELECT count(*) FROM test1;
+
+CREATE PROCEDURE cursor_fail_during_rollback()
+ LANGUAGE plpgsql
+AS $$
+  DECLARE id int;
+  BEGIN
+    FOR id IN SELECT 1/(x-1000) FROM generate_series(1,1000) x LOOP
+        INSERT INTO test1 VALUES(id);
+        ROLLBACK;
+    END LOOP;
+  END;
+$$;
+
+TRUNCATE test1;
+
+CALL cursor_fail_during_rollback();
+
+SELECT count(*) FROM test1;
 
 
 -- SET TRANSACTION
@@ -448,6 +528,29 @@ $$;
 SELECT * FROM test2;
 
 
+-- another snapshot handling case: argument expressions of a CALL need
+-- to be evaluated with an up-to-date snapshot
+CREATE FUNCTION report_count() RETURNS int
+STABLE LANGUAGE sql
+AS $$ SELECT COUNT(*) FROM test2 $$;
+
+CREATE PROCEDURE transaction_test9b(cnt int)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RAISE NOTICE 'count = %', cnt;
+END
+$$;
+
+DO $$
+BEGIN
+    CALL transaction_test9b(report_count());
+    INSERT INTO test2 VALUES(43);
+    CALL transaction_test9b(report_count());
+END
+$$;
+
+
 -- Test transaction in procedure with output parameters.  This uses a
 -- different portal strategy and different code paths in pquery.c.
 CREATE PROCEDURE transaction_test10a(INOUT x int)
@@ -504,6 +607,29 @@ END;
 $$;
 
 CALL transaction_test11();
+
+
+-- transaction chain
+
+TRUNCATE test1;
+
+DO LANGUAGE plpgsql $$
+BEGIN
+    ROLLBACK;
+    SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+    FOR i IN 0..3 LOOP
+        RAISE INFO 'transaction_isolation = %', current_setting('transaction_isolation');
+        INSERT INTO test1 (a) VALUES (i);
+        IF i % 2 = 0 THEN
+            COMMIT AND CHAIN;
+        ELSE
+            ROLLBACK AND CHAIN;
+        END IF;
+    END LOOP;
+END
+$$;
+
+SELECT * FROM test1;
 
 
 DROP TABLE test1;

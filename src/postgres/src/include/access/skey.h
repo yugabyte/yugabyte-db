@@ -4,7 +4,7 @@
  *	  POSTGRES scan key definitions.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/skey.h
@@ -128,25 +128,25 @@ typedef ScanKeyData *ScanKey;
  * prototypes for functions in access/common/scankey.c
  */
 extern void ScanKeyInit(ScanKey entry,
-			AttrNumber attributeNumber,
-			StrategyNumber strategy,
-			RegProcedure procedure,
-			Datum argument);
+						AttrNumber attributeNumber,
+						StrategyNumber strategy,
+						RegProcedure procedure,
+						Datum argument);
 extern void ScanKeyEntryInitialize(ScanKey entry,
-					   int flags,
-					   AttrNumber attributeNumber,
-					   StrategyNumber strategy,
-					   Oid subtype,
-					   Oid collation,
-					   RegProcedure procedure,
-					   Datum argument);
+								   int flags,
+								   AttrNumber attributeNumber,
+								   StrategyNumber strategy,
+								   Oid subtype,
+								   Oid collation,
+								   RegProcedure procedure,
+								   Datum argument);
 extern void ScanKeyEntryInitializeWithInfo(ScanKey entry,
-							   int flags,
-							   AttrNumber attributeNumber,
-							   StrategyNumber strategy,
-							   Oid subtype,
-							   Oid collation,
-							   FmgrInfo *finfo,
-							   Datum argument);
+										   int flags,
+										   AttrNumber attributeNumber,
+										   StrategyNumber strategy,
+										   Oid subtype,
+										   Oid collation,
+										   FmgrInfo *finfo,
+										   Datum argument);
 
 #endif							/* SKEY_H */

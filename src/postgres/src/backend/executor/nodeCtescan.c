@@ -3,7 +3,7 @@
  * nodeCtescan.c
  *	  routines to handle CteScan nodes.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -260,7 +260,8 @@ ExecInitCteScan(CteScan *node, EState *estate, int eflags)
 	 * table) is the same as the result rowtype of the CTE query.
 	 */
 	ExecInitScanTupleSlot(estate, &scanstate->ss,
-						  ExecGetResultType(scanstate->cteplanstate));
+						  ExecGetResultType(scanstate->cteplanstate),
+						  &TTSOpsMinimalTuple);
 
 	/*
 	 * Initialize result type and projection.

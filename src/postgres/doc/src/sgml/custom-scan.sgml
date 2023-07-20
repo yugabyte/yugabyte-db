@@ -1,7 +1,7 @@
 <!-- doc/src/sgml/custom-scan.sgml -->
 
 <chapter id="custom-scan">
- <title>Writing A Custom Scan Provider</title>
+ <title>Writing a Custom Scan Provider</title>
 
  <indexterm zone="custom-scan">
   <primary>custom scan provider</primary>
@@ -71,10 +71,17 @@ typedef struct CustomPath
   <para>
     <structfield>path</structfield> must be initialized as for any other path, including
     the row-count estimate, start and total cost, and sort ordering provided
-    by this path.  <structfield>flags</structfield> is a bit mask, which should include
+    by this path.  <structfield>flags</structfield> is a bit mask, which
+    specifies whether the scan provider can support certain optional
+    capabilities.  <structfield>flags</structfield> should include
     <literal>CUSTOMPATH_SUPPORT_BACKWARD_SCAN</literal> if the custom path can support
-    a backward scan and <literal>CUSTOMPATH_SUPPORT_MARK_RESTORE</literal> if it
-    can support mark and restore.  Both capabilities are optional.
+    a backward scan, <literal>CUSTOMPATH_SUPPORT_MARK_RESTORE</literal> if it
+    can support mark and restore,
+    and <literal>CUSTOMPATH_SUPPORT_PROJECTION</literal> if it can perform
+    projections.  (If <literal>CUSTOMPATH_SUPPORT_PROJECTION</literal> is not
+    set, the scan node will only be asked to produce Vars of the scanned
+    relation; while if that flag is set, the scan node must be able to
+    evaluate scalar expressions over these Vars.)
     An optional <structfield>custom_paths</structfield> is a list of <structname>Path</structname>
     nodes used by this custom-path node; these will be transformed into
     <structname>Plan</structname> nodes by planner.
@@ -83,10 +90,7 @@ typedef struct CustomPath
     by <literal>nodeToString</literal>, so that debugging routines that attempt to
     print the custom path will work as designed.  <structfield>methods</structfield> must
     point to a (usually statically allocated) object implementing the required
-    custom path methods, of which there is currently only one.  The
-    <structfield>LibraryName</structfield> and <structfield>SymbolName</structfield> fields must also
-    be initialized so that the dynamic loader can resolve them to locate the
-    method table.
+    custom path methods, of which there is currently only one.
   </para>
 
   <para>

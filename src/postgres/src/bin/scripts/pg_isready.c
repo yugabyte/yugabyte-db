@@ -2,7 +2,7 @@
  *
  * pg_isready --- checks the status of the PostgreSQL server
  *
- * Copyright (c) 2013-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2022, PostgreSQL Global Development Group
  *
  * src/bin/scripts/pg_isready.c
  *
@@ -11,6 +11,8 @@
 
 #include "postgres_fe.h"
 #include "common.h"
+#include "common/logging.h"
+#include "fe_utils/option_utils.h"
 
 #define DEFAULT_CONNECT_TIMEOUT "3"
 
@@ -63,6 +65,7 @@ main(int argc, char **argv)
 		{NULL, 0, NULL, 0}
 	};
 
+	pg_logging_init(argv[0]);
 	progname = get_progname(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pgscripts"));
 	handle_help_version_opts(argc, argv, progname, help);
@@ -90,7 +93,8 @@ main(int argc, char **argv)
 				pguser = pg_strdup(optarg);
 				break;
 			default:
-				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+				/* getopt_long already emitted a complaint */
+				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 
 				/*
 				 * We need to make sure we don't return 1 here because someone
@@ -102,9 +106,9 @@ main(int argc, char **argv)
 
 	if (optind < argc)
 	{
-		fprintf(stderr, _("%s: too many command-line arguments (first is \"%s\")\n"),
-				progname, argv[optind]);
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+		pg_log_error("too many command-line arguments (first is \"%s\")",
+					 argv[optind]);
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 
 		/*
 		 * We need to make sure we don't return 1 here because someone
@@ -139,7 +143,7 @@ main(int argc, char **argv)
 		opts = PQconninfoParse(pgdbname, &errmsg);
 		if (opts == NULL)
 		{
-			fprintf(stderr, _("%s: %s"), progname, errmsg);
+			pg_log_error("%s", errmsg);
 			exit(PQPING_NO_ATTEMPT);
 		}
 	}
@@ -147,7 +151,7 @@ main(int argc, char **argv)
 	defs = PQconndefaults();
 	if (defs == NULL)
 	{
-		fprintf(stderr, _("%s: could not fetch default options\n"), progname);
+		pg_log_error("could not fetch default options");
 		exit(PQPING_NO_ATTEMPT);
 	}
 
@@ -233,5 +237,6 @@ help(const char *progname)
 	printf(_("  -p, --port=PORT          database server port\n"));
 	printf(_("  -t, --timeout=SECS       seconds to wait when attempting connection, 0 disables (default: %s)\n"), DEFAULT_CONNECT_TIMEOUT);
 	printf(_("  -U, --username=USERNAME  user name to connect as\n"));
-	printf(_("\nReport bugs to <pgsql-bugs@postgresql.org>.\n"));
+	printf(_("\nReport bugs to <%s>.\n"), PACKAGE_BUGREPORT);
+	printf(_("%s home page: <%s>\n"), PACKAGE_NAME, PACKAGE_URL);
 }

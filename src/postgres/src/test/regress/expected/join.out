@@ -31,196 +31,200 @@ INSERT INTO J2_TBL VALUES (5, -5);
 INSERT INTO J2_TBL VALUES (0, NULL);
 INSERT INTO J2_TBL VALUES (NULL, NULL);
 INSERT INTO J2_TBL VALUES (NULL, 0);
+-- useful in some tests below
+create temp table onerow();
+insert into onerow default values;
+analyze onerow;
 --
 -- CORRELATION NAMES
 -- Make sure that table/column aliases are supported
 -- before diving into more complex join syntax.
 --
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL AS tx;
- xxx | i | j |   t   
------+---+---+-------
-     | 1 | 4 | one
-     | 2 | 3 | two
-     | 3 | 2 | three
-     | 4 | 1 | four
-     | 5 | 0 | five
-     | 6 | 6 | six
-     | 7 | 7 | seven
-     | 8 | 8 | eight
-     | 0 |   | zero
-     |   |   | null
-     |   | 0 | zero
+ i | j |   t   
+---+---+-------
+ 1 | 4 | one
+ 2 | 3 | two
+ 3 | 2 | three
+ 4 | 1 | four
+ 5 | 0 | five
+ 6 | 6 | six
+ 7 | 7 | seven
+ 8 | 8 | eight
+ 0 |   | zero
+   |   | null
+   | 0 | zero
 (11 rows)
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL tx;
- xxx | i | j |   t   
------+---+---+-------
-     | 1 | 4 | one
-     | 2 | 3 | two
-     | 3 | 2 | three
-     | 4 | 1 | four
-     | 5 | 0 | five
-     | 6 | 6 | six
-     | 7 | 7 | seven
-     | 8 | 8 | eight
-     | 0 |   | zero
-     |   |   | null
-     |   | 0 | zero
+ i | j |   t   
+---+---+-------
+ 1 | 4 | one
+ 2 | 3 | two
+ 3 | 2 | three
+ 4 | 1 | four
+ 5 | 0 | five
+ 6 | 6 | six
+ 7 | 7 | seven
+ 8 | 8 | eight
+ 0 |   | zero
+   |   | null
+   | 0 | zero
 (11 rows)
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL AS t1 (a, b, c);
- xxx | a | b |   c   
------+---+---+-------
-     | 1 | 4 | one
-     | 2 | 3 | two
-     | 3 | 2 | three
-     | 4 | 1 | four
-     | 5 | 0 | five
-     | 6 | 6 | six
-     | 7 | 7 | seven
-     | 8 | 8 | eight
-     | 0 |   | zero
-     |   |   | null
-     |   | 0 | zero
+ a | b |   c   
+---+---+-------
+ 1 | 4 | one
+ 2 | 3 | two
+ 3 | 2 | three
+ 4 | 1 | four
+ 5 | 0 | five
+ 6 | 6 | six
+ 7 | 7 | seven
+ 8 | 8 | eight
+ 0 |   | zero
+   |   | null
+   | 0 | zero
 (11 rows)
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL t1 (a, b, c);
- xxx | a | b |   c   
------+---+---+-------
-     | 1 | 4 | one
-     | 2 | 3 | two
-     | 3 | 2 | three
-     | 4 | 1 | four
-     | 5 | 0 | five
-     | 6 | 6 | six
-     | 7 | 7 | seven
-     | 8 | 8 | eight
-     | 0 |   | zero
-     |   |   | null
-     |   | 0 | zero
+ a | b |   c   
+---+---+-------
+ 1 | 4 | one
+ 2 | 3 | two
+ 3 | 2 | three
+ 4 | 1 | four
+ 5 | 0 | five
+ 6 | 6 | six
+ 7 | 7 | seven
+ 8 | 8 | eight
+ 0 |   | zero
+   |   | null
+   | 0 | zero
 (11 rows)
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e);
- xxx | a | b |   c   | d | e  
------+---+---+-------+---+----
-     | 1 | 4 | one   | 1 | -1
-     | 2 | 3 | two   | 1 | -1
-     | 3 | 2 | three | 1 | -1
-     | 4 | 1 | four  | 1 | -1
-     | 5 | 0 | five  | 1 | -1
-     | 6 | 6 | six   | 1 | -1
-     | 7 | 7 | seven | 1 | -1
-     | 8 | 8 | eight | 1 | -1
-     | 0 |   | zero  | 1 | -1
-     |   |   | null  | 1 | -1
-     |   | 0 | zero  | 1 | -1
-     | 1 | 4 | one   | 2 |  2
-     | 2 | 3 | two   | 2 |  2
-     | 3 | 2 | three | 2 |  2
-     | 4 | 1 | four  | 2 |  2
-     | 5 | 0 | five  | 2 |  2
-     | 6 | 6 | six   | 2 |  2
-     | 7 | 7 | seven | 2 |  2
-     | 8 | 8 | eight | 2 |  2
-     | 0 |   | zero  | 2 |  2
-     |   |   | null  | 2 |  2
-     |   | 0 | zero  | 2 |  2
-     | 1 | 4 | one   | 3 | -3
-     | 2 | 3 | two   | 3 | -3
-     | 3 | 2 | three | 3 | -3
-     | 4 | 1 | four  | 3 | -3
-     | 5 | 0 | five  | 3 | -3
-     | 6 | 6 | six   | 3 | -3
-     | 7 | 7 | seven | 3 | -3
-     | 8 | 8 | eight | 3 | -3
-     | 0 |   | zero  | 3 | -3
-     |   |   | null  | 3 | -3
-     |   | 0 | zero  | 3 | -3
-     | 1 | 4 | one   | 2 |  4
-     | 2 | 3 | two   | 2 |  4
-     | 3 | 2 | three | 2 |  4
-     | 4 | 1 | four  | 2 |  4
-     | 5 | 0 | five  | 2 |  4
-     | 6 | 6 | six   | 2 |  4
-     | 7 | 7 | seven | 2 |  4
-     | 8 | 8 | eight | 2 |  4
-     | 0 |   | zero  | 2 |  4
-     |   |   | null  | 2 |  4
-     |   | 0 | zero  | 2 |  4
-     | 1 | 4 | one   | 5 | -5
-     | 2 | 3 | two   | 5 | -5
-     | 3 | 2 | three | 5 | -5
-     | 4 | 1 | four  | 5 | -5
-     | 5 | 0 | five  | 5 | -5
-     | 6 | 6 | six   | 5 | -5
-     | 7 | 7 | seven | 5 | -5
-     | 8 | 8 | eight | 5 | -5
-     | 0 |   | zero  | 5 | -5
-     |   |   | null  | 5 | -5
-     |   | 0 | zero  | 5 | -5
-     | 1 | 4 | one   | 5 | -5
-     | 2 | 3 | two   | 5 | -5
-     | 3 | 2 | three | 5 | -5
-     | 4 | 1 | four  | 5 | -5
-     | 5 | 0 | five  | 5 | -5
-     | 6 | 6 | six   | 5 | -5
-     | 7 | 7 | seven | 5 | -5
-     | 8 | 8 | eight | 5 | -5
-     | 0 |   | zero  | 5 | -5
-     |   |   | null  | 5 | -5
-     |   | 0 | zero  | 5 | -5
-     | 1 | 4 | one   | 0 |   
-     | 2 | 3 | two   | 0 |   
-     | 3 | 2 | three | 0 |   
-     | 4 | 1 | four  | 0 |   
-     | 5 | 0 | five  | 0 |   
-     | 6 | 6 | six   | 0 |   
-     | 7 | 7 | seven | 0 |   
-     | 8 | 8 | eight | 0 |   
-     | 0 |   | zero  | 0 |   
-     |   |   | null  | 0 |   
-     |   | 0 | zero  | 0 |   
-     | 1 | 4 | one   |   |   
-     | 2 | 3 | two   |   |   
-     | 3 | 2 | three |   |   
-     | 4 | 1 | four  |   |   
-     | 5 | 0 | five  |   |   
-     | 6 | 6 | six   |   |   
-     | 7 | 7 | seven |   |   
-     | 8 | 8 | eight |   |   
-     | 0 |   | zero  |   |   
-     |   |   | null  |   |   
-     |   | 0 | zero  |   |   
-     | 1 | 4 | one   |   |  0
-     | 2 | 3 | two   |   |  0
-     | 3 | 2 | three |   |  0
-     | 4 | 1 | four  |   |  0
-     | 5 | 0 | five  |   |  0
-     | 6 | 6 | six   |   |  0
-     | 7 | 7 | seven |   |  0
-     | 8 | 8 | eight |   |  0
-     | 0 |   | zero  |   |  0
-     |   |   | null  |   |  0
-     |   | 0 | zero  |   |  0
+ a | b |   c   | d | e  
+---+---+-------+---+----
+ 1 | 4 | one   | 1 | -1
+ 2 | 3 | two   | 1 | -1
+ 3 | 2 | three | 1 | -1
+ 4 | 1 | four  | 1 | -1
+ 5 | 0 | five  | 1 | -1
+ 6 | 6 | six   | 1 | -1
+ 7 | 7 | seven | 1 | -1
+ 8 | 8 | eight | 1 | -1
+ 0 |   | zero  | 1 | -1
+   |   | null  | 1 | -1
+   | 0 | zero  | 1 | -1
+ 1 | 4 | one   | 2 |  2
+ 2 | 3 | two   | 2 |  2
+ 3 | 2 | three | 2 |  2
+ 4 | 1 | four  | 2 |  2
+ 5 | 0 | five  | 2 |  2
+ 6 | 6 | six   | 2 |  2
+ 7 | 7 | seven | 2 |  2
+ 8 | 8 | eight | 2 |  2
+ 0 |   | zero  | 2 |  2
+   |   | null  | 2 |  2
+   | 0 | zero  | 2 |  2
+ 1 | 4 | one   | 3 | -3
+ 2 | 3 | two   | 3 | -3
+ 3 | 2 | three | 3 | -3
+ 4 | 1 | four  | 3 | -3
+ 5 | 0 | five  | 3 | -3
+ 6 | 6 | six   | 3 | -3
+ 7 | 7 | seven | 3 | -3
+ 8 | 8 | eight | 3 | -3
+ 0 |   | zero  | 3 | -3
+   |   | null  | 3 | -3
+   | 0 | zero  | 3 | -3
+ 1 | 4 | one   | 2 |  4
+ 2 | 3 | two   | 2 |  4
+ 3 | 2 | three | 2 |  4
+ 4 | 1 | four  | 2 |  4
+ 5 | 0 | five  | 2 |  4
+ 6 | 6 | six   | 2 |  4
+ 7 | 7 | seven | 2 |  4
+ 8 | 8 | eight | 2 |  4
+ 0 |   | zero  | 2 |  4
+   |   | null  | 2 |  4
+   | 0 | zero  | 2 |  4
+ 1 | 4 | one   | 5 | -5
+ 2 | 3 | two   | 5 | -5
+ 3 | 2 | three | 5 | -5
+ 4 | 1 | four  | 5 | -5
+ 5 | 0 | five  | 5 | -5
+ 6 | 6 | six   | 5 | -5
+ 7 | 7 | seven | 5 | -5
+ 8 | 8 | eight | 5 | -5
+ 0 |   | zero  | 5 | -5
+   |   | null  | 5 | -5
+   | 0 | zero  | 5 | -5
+ 1 | 4 | one   | 5 | -5
+ 2 | 3 | two   | 5 | -5
+ 3 | 2 | three | 5 | -5
+ 4 | 1 | four  | 5 | -5
+ 5 | 0 | five  | 5 | -5
+ 6 | 6 | six   | 5 | -5
+ 7 | 7 | seven | 5 | -5
+ 8 | 8 | eight | 5 | -5
+ 0 |   | zero  | 5 | -5
+   |   | null  | 5 | -5
+   | 0 | zero  | 5 | -5
+ 1 | 4 | one   | 0 |   
+ 2 | 3 | two   | 0 |   
+ 3 | 2 | three | 0 |   
+ 4 | 1 | four  | 0 |   
+ 5 | 0 | five  | 0 |   
+ 6 | 6 | six   | 0 |   
+ 7 | 7 | seven | 0 |   
+ 8 | 8 | eight | 0 |   
+ 0 |   | zero  | 0 |   
+   |   | null  | 0 |   
+   | 0 | zero  | 0 |   
+ 1 | 4 | one   |   |   
+ 2 | 3 | two   |   |   
+ 3 | 2 | three |   |   
+ 4 | 1 | four  |   |   
+ 5 | 0 | five  |   |   
+ 6 | 6 | six   |   |   
+ 7 | 7 | seven |   |   
+ 8 | 8 | eight |   |   
+ 0 |   | zero  |   |   
+   |   | null  |   |   
+   | 0 | zero  |   |   
+ 1 | 4 | one   |   |  0
+ 2 | 3 | two   |   |  0
+ 3 | 2 | three |   |  0
+ 4 | 1 | four  |   |  0
+ 5 | 0 | five  |   |  0
+ 6 | 6 | six   |   |  0
+ 7 | 7 | seven |   |  0
+ 8 | 8 | eight |   |  0
+ 0 |   | zero  |   |  0
+   |   | null  |   |  0
+   | 0 | zero  |   |  0
 (99 rows)
 
-SELECT '' AS "xxx", t1.a, t2.e
+SELECT t1.a, t2.e
   FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e)
   WHERE t1.a = t2.d;
- xxx | a | e  
------+---+----
-     | 0 |   
-     | 1 | -1
-     | 2 |  2
-     | 2 |  4
-     | 3 | -3
-     | 5 | -5
-     | 5 | -5
+ a | e  
+---+----
+ 0 |   
+ 1 | -1
+ 2 |  2
+ 2 |  4
+ 3 | -3
+ 5 | -5
+ 5 | -5
 (7 rows)
 
 --
@@ -228,1330 +232,1330 @@ SELECT '' AS "xxx", t1.a, t2.e
 -- Qualifications are not allowed on cross joins,
 -- which degenerate into a standard unqualified inner join.
 --
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL CROSS JOIN J2_TBL;
- xxx | i | j |   t   | i | k  
------+---+---+-------+---+----
-     | 1 | 4 | one   | 1 | -1
-     | 2 | 3 | two   | 1 | -1
-     | 3 | 2 | three | 1 | -1
-     | 4 | 1 | four  | 1 | -1
-     | 5 | 0 | five  | 1 | -1
-     | 6 | 6 | six   | 1 | -1
-     | 7 | 7 | seven | 1 | -1
-     | 8 | 8 | eight | 1 | -1
-     | 0 |   | zero  | 1 | -1
-     |   |   | null  | 1 | -1
-     |   | 0 | zero  | 1 | -1
-     | 1 | 4 | one   | 2 |  2
-     | 2 | 3 | two   | 2 |  2
-     | 3 | 2 | three | 2 |  2
-     | 4 | 1 | four  | 2 |  2
-     | 5 | 0 | five  | 2 |  2
-     | 6 | 6 | six   | 2 |  2
-     | 7 | 7 | seven | 2 |  2
-     | 8 | 8 | eight | 2 |  2
-     | 0 |   | zero  | 2 |  2
-     |   |   | null  | 2 |  2
-     |   | 0 | zero  | 2 |  2
-     | 1 | 4 | one   | 3 | -3
-     | 2 | 3 | two   | 3 | -3
-     | 3 | 2 | three | 3 | -3
-     | 4 | 1 | four  | 3 | -3
-     | 5 | 0 | five  | 3 | -3
-     | 6 | 6 | six   | 3 | -3
-     | 7 | 7 | seven | 3 | -3
-     | 8 | 8 | eight | 3 | -3
-     | 0 |   | zero  | 3 | -3
-     |   |   | null  | 3 | -3
-     |   | 0 | zero  | 3 | -3
-     | 1 | 4 | one   | 2 |  4
-     | 2 | 3 | two   | 2 |  4
-     | 3 | 2 | three | 2 |  4
-     | 4 | 1 | four  | 2 |  4
-     | 5 | 0 | five  | 2 |  4
-     | 6 | 6 | six   | 2 |  4
-     | 7 | 7 | seven | 2 |  4
-     | 8 | 8 | eight | 2 |  4
-     | 0 |   | zero  | 2 |  4
-     |   |   | null  | 2 |  4
-     |   | 0 | zero  | 2 |  4
-     | 1 | 4 | one   | 5 | -5
-     | 2 | 3 | two   | 5 | -5
-     | 3 | 2 | three | 5 | -5
-     | 4 | 1 | four  | 5 | -5
-     | 5 | 0 | five  | 5 | -5
-     | 6 | 6 | six   | 5 | -5
-     | 7 | 7 | seven | 5 | -5
-     | 8 | 8 | eight | 5 | -5
-     | 0 |   | zero  | 5 | -5
-     |   |   | null  | 5 | -5
-     |   | 0 | zero  | 5 | -5
-     | 1 | 4 | one   | 5 | -5
-     | 2 | 3 | two   | 5 | -5
-     | 3 | 2 | three | 5 | -5
-     | 4 | 1 | four  | 5 | -5
-     | 5 | 0 | five  | 5 | -5
-     | 6 | 6 | six   | 5 | -5
-     | 7 | 7 | seven | 5 | -5
-     | 8 | 8 | eight | 5 | -5
-     | 0 |   | zero  | 5 | -5
-     |   |   | null  | 5 | -5
-     |   | 0 | zero  | 5 | -5
-     | 1 | 4 | one   | 0 |   
-     | 2 | 3 | two   | 0 |   
-     | 3 | 2 | three | 0 |   
-     | 4 | 1 | four  | 0 |   
-     | 5 | 0 | five  | 0 |   
-     | 6 | 6 | six   | 0 |   
-     | 7 | 7 | seven | 0 |   
-     | 8 | 8 | eight | 0 |   
-     | 0 |   | zero  | 0 |   
-     |   |   | null  | 0 |   
-     |   | 0 | zero  | 0 |   
-     | 1 | 4 | one   |   |   
-     | 2 | 3 | two   |   |   
-     | 3 | 2 | three |   |   
-     | 4 | 1 | four  |   |   
-     | 5 | 0 | five  |   |   
-     | 6 | 6 | six   |   |   
-     | 7 | 7 | seven |   |   
-     | 8 | 8 | eight |   |   
-     | 0 |   | zero  |   |   
-     |   |   | null  |   |   
-     |   | 0 | zero  |   |   
-     | 1 | 4 | one   |   |  0
-     | 2 | 3 | two   |   |  0
-     | 3 | 2 | three |   |  0
-     | 4 | 1 | four  |   |  0
-     | 5 | 0 | five  |   |  0
-     | 6 | 6 | six   |   |  0
-     | 7 | 7 | seven |   |  0
-     | 8 | 8 | eight |   |  0
-     | 0 |   | zero  |   |  0
-     |   |   | null  |   |  0
-     |   | 0 | zero  |   |  0
+ i | j |   t   | i | k  
+---+---+-------+---+----
+ 1 | 4 | one   | 1 | -1
+ 2 | 3 | two   | 1 | -1
+ 3 | 2 | three | 1 | -1
+ 4 | 1 | four  | 1 | -1
+ 5 | 0 | five  | 1 | -1
+ 6 | 6 | six   | 1 | -1
+ 7 | 7 | seven | 1 | -1
+ 8 | 8 | eight | 1 | -1
+ 0 |   | zero  | 1 | -1
+   |   | null  | 1 | -1
+   | 0 | zero  | 1 | -1
+ 1 | 4 | one   | 2 |  2
+ 2 | 3 | two   | 2 |  2
+ 3 | 2 | three | 2 |  2
+ 4 | 1 | four  | 2 |  2
+ 5 | 0 | five  | 2 |  2
+ 6 | 6 | six   | 2 |  2
+ 7 | 7 | seven | 2 |  2
+ 8 | 8 | eight | 2 |  2
+ 0 |   | zero  | 2 |  2
+   |   | null  | 2 |  2
+   | 0 | zero  | 2 |  2
+ 1 | 4 | one   | 3 | -3
+ 2 | 3 | two   | 3 | -3
+ 3 | 2 | three | 3 | -3
+ 4 | 1 | four  | 3 | -3
+ 5 | 0 | five  | 3 | -3
+ 6 | 6 | six   | 3 | -3
+ 7 | 7 | seven | 3 | -3
+ 8 | 8 | eight | 3 | -3
+ 0 |   | zero  | 3 | -3
+   |   | null  | 3 | -3
+   | 0 | zero  | 3 | -3
+ 1 | 4 | one   | 2 |  4
+ 2 | 3 | two   | 2 |  4
+ 3 | 2 | three | 2 |  4
+ 4 | 1 | four  | 2 |  4
+ 5 | 0 | five  | 2 |  4
+ 6 | 6 | six   | 2 |  4
+ 7 | 7 | seven | 2 |  4
+ 8 | 8 | eight | 2 |  4
+ 0 |   | zero  | 2 |  4
+   |   | null  | 2 |  4
+   | 0 | zero  | 2 |  4
+ 1 | 4 | one   | 5 | -5
+ 2 | 3 | two   | 5 | -5
+ 3 | 2 | three | 5 | -5
+ 4 | 1 | four  | 5 | -5
+ 5 | 0 | five  | 5 | -5
+ 6 | 6 | six   | 5 | -5
+ 7 | 7 | seven | 5 | -5
+ 8 | 8 | eight | 5 | -5
+ 0 |   | zero  | 5 | -5
+   |   | null  | 5 | -5
+   | 0 | zero  | 5 | -5
+ 1 | 4 | one   | 5 | -5
+ 2 | 3 | two   | 5 | -5
+ 3 | 2 | three | 5 | -5
+ 4 | 1 | four  | 5 | -5
+ 5 | 0 | five  | 5 | -5
+ 6 | 6 | six   | 5 | -5
+ 7 | 7 | seven | 5 | -5
+ 8 | 8 | eight | 5 | -5
+ 0 |   | zero  | 5 | -5
+   |   | null  | 5 | -5
+   | 0 | zero  | 5 | -5
+ 1 | 4 | one   | 0 |   
+ 2 | 3 | two   | 0 |   
+ 3 | 2 | three | 0 |   
+ 4 | 1 | four  | 0 |   
+ 5 | 0 | five  | 0 |   
+ 6 | 6 | six   | 0 |   
+ 7 | 7 | seven | 0 |   
+ 8 | 8 | eight | 0 |   
+ 0 |   | zero  | 0 |   
+   |   | null  | 0 |   
+   | 0 | zero  | 0 |   
+ 1 | 4 | one   |   |   
+ 2 | 3 | two   |   |   
+ 3 | 2 | three |   |   
+ 4 | 1 | four  |   |   
+ 5 | 0 | five  |   |   
+ 6 | 6 | six   |   |   
+ 7 | 7 | seven |   |   
+ 8 | 8 | eight |   |   
+ 0 |   | zero  |   |   
+   |   | null  |   |   
+   | 0 | zero  |   |   
+ 1 | 4 | one   |   |  0
+ 2 | 3 | two   |   |  0
+ 3 | 2 | three |   |  0
+ 4 | 1 | four  |   |  0
+ 5 | 0 | five  |   |  0
+ 6 | 6 | six   |   |  0
+ 7 | 7 | seven |   |  0
+ 8 | 8 | eight |   |  0
+ 0 |   | zero  |   |  0
+   |   | null  |   |  0
+   | 0 | zero  |   |  0
 (99 rows)
 
 -- ambiguous column
-SELECT '' AS "xxx", i, k, t
+SELECT i, k, t
   FROM J1_TBL CROSS JOIN J2_TBL;
 ERROR:  column reference "i" is ambiguous
-LINE 1: SELECT '' AS "xxx", i, k, t
-                            ^
+LINE 1: SELECT i, k, t
+               ^
 -- resolve previous ambiguity by specifying the table name
-SELECT '' AS "xxx", t1.i, k, t
+SELECT t1.i, k, t
   FROM J1_TBL t1 CROSS JOIN J2_TBL t2;
- xxx | i | k  |   t   
------+---+----+-------
-     | 1 | -1 | one
-     | 2 | -1 | two
-     | 3 | -1 | three
-     | 4 | -1 | four
-     | 5 | -1 | five
-     | 6 | -1 | six
-     | 7 | -1 | seven
-     | 8 | -1 | eight
-     | 0 | -1 | zero
-     |   | -1 | null
-     |   | -1 | zero
-     | 1 |  2 | one
-     | 2 |  2 | two
-     | 3 |  2 | three
-     | 4 |  2 | four
-     | 5 |  2 | five
-     | 6 |  2 | six
-     | 7 |  2 | seven
-     | 8 |  2 | eight
-     | 0 |  2 | zero
-     |   |  2 | null
-     |   |  2 | zero
-     | 1 | -3 | one
-     | 2 | -3 | two
-     | 3 | -3 | three
-     | 4 | -3 | four
-     | 5 | -3 | five
-     | 6 | -3 | six
-     | 7 | -3 | seven
-     | 8 | -3 | eight
-     | 0 | -3 | zero
-     |   | -3 | null
-     |   | -3 | zero
-     | 1 |  4 | one
-     | 2 |  4 | two
-     | 3 |  4 | three
-     | 4 |  4 | four
-     | 5 |  4 | five
-     | 6 |  4 | six
-     | 7 |  4 | seven
-     | 8 |  4 | eight
-     | 0 |  4 | zero
-     |   |  4 | null
-     |   |  4 | zero
-     | 1 | -5 | one
-     | 2 | -5 | two
-     | 3 | -5 | three
-     | 4 | -5 | four
-     | 5 | -5 | five
-     | 6 | -5 | six
-     | 7 | -5 | seven
-     | 8 | -5 | eight
-     | 0 | -5 | zero
-     |   | -5 | null
-     |   | -5 | zero
-     | 1 | -5 | one
-     | 2 | -5 | two
-     | 3 | -5 | three
-     | 4 | -5 | four
-     | 5 | -5 | five
-     | 6 | -5 | six
-     | 7 | -5 | seven
-     | 8 | -5 | eight
-     | 0 | -5 | zero
-     |   | -5 | null
-     |   | -5 | zero
-     | 1 |    | one
-     | 2 |    | two
-     | 3 |    | three
-     | 4 |    | four
-     | 5 |    | five
-     | 6 |    | six
-     | 7 |    | seven
-     | 8 |    | eight
-     | 0 |    | zero
-     |   |    | null
-     |   |    | zero
-     | 1 |    | one
-     | 2 |    | two
-     | 3 |    | three
-     | 4 |    | four
-     | 5 |    | five
-     | 6 |    | six
-     | 7 |    | seven
-     | 8 |    | eight
-     | 0 |    | zero
-     |   |    | null
-     |   |    | zero
-     | 1 |  0 | one
-     | 2 |  0 | two
-     | 3 |  0 | three
-     | 4 |  0 | four
-     | 5 |  0 | five
-     | 6 |  0 | six
-     | 7 |  0 | seven
-     | 8 |  0 | eight
-     | 0 |  0 | zero
-     |   |  0 | null
-     |   |  0 | zero
+ i | k  |   t   
+---+----+-------
+ 1 | -1 | one
+ 2 | -1 | two
+ 3 | -1 | three
+ 4 | -1 | four
+ 5 | -1 | five
+ 6 | -1 | six
+ 7 | -1 | seven
+ 8 | -1 | eight
+ 0 | -1 | zero
+   | -1 | null
+   | -1 | zero
+ 1 |  2 | one
+ 2 |  2 | two
+ 3 |  2 | three
+ 4 |  2 | four
+ 5 |  2 | five
+ 6 |  2 | six
+ 7 |  2 | seven
+ 8 |  2 | eight
+ 0 |  2 | zero
+   |  2 | null
+   |  2 | zero
+ 1 | -3 | one
+ 2 | -3 | two
+ 3 | -3 | three
+ 4 | -3 | four
+ 5 | -3 | five
+ 6 | -3 | six
+ 7 | -3 | seven
+ 8 | -3 | eight
+ 0 | -3 | zero
+   | -3 | null
+   | -3 | zero
+ 1 |  4 | one
+ 2 |  4 | two
+ 3 |  4 | three
+ 4 |  4 | four
+ 5 |  4 | five
+ 6 |  4 | six
+ 7 |  4 | seven
+ 8 |  4 | eight
+ 0 |  4 | zero
+   |  4 | null
+   |  4 | zero
+ 1 | -5 | one
+ 2 | -5 | two
+ 3 | -5 | three
+ 4 | -5 | four
+ 5 | -5 | five
+ 6 | -5 | six
+ 7 | -5 | seven
+ 8 | -5 | eight
+ 0 | -5 | zero
+   | -5 | null
+   | -5 | zero
+ 1 | -5 | one
+ 2 | -5 | two
+ 3 | -5 | three
+ 4 | -5 | four
+ 5 | -5 | five
+ 6 | -5 | six
+ 7 | -5 | seven
+ 8 | -5 | eight
+ 0 | -5 | zero
+   | -5 | null
+   | -5 | zero
+ 1 |    | one
+ 2 |    | two
+ 3 |    | three
+ 4 |    | four
+ 5 |    | five
+ 6 |    | six
+ 7 |    | seven
+ 8 |    | eight
+ 0 |    | zero
+   |    | null
+   |    | zero
+ 1 |    | one
+ 2 |    | two
+ 3 |    | three
+ 4 |    | four
+ 5 |    | five
+ 6 |    | six
+ 7 |    | seven
+ 8 |    | eight
+ 0 |    | zero
+   |    | null
+   |    | zero
+ 1 |  0 | one
+ 2 |  0 | two
+ 3 |  0 | three
+ 4 |  0 | four
+ 5 |  0 | five
+ 6 |  0 | six
+ 7 |  0 | seven
+ 8 |  0 | eight
+ 0 |  0 | zero
+   |  0 | null
+   |  0 | zero
 (99 rows)
 
-SELECT '' AS "xxx", ii, tt, kk
+SELECT ii, tt, kk
   FROM (J1_TBL CROSS JOIN J2_TBL)
     AS tx (ii, jj, tt, ii2, kk);
- xxx | ii |  tt   | kk 
------+----+-------+----
-     |  1 | one   | -1
-     |  2 | two   | -1
-     |  3 | three | -1
-     |  4 | four  | -1
-     |  5 | five  | -1
-     |  6 | six   | -1
-     |  7 | seven | -1
-     |  8 | eight | -1
-     |  0 | zero  | -1
-     |    | null  | -1
-     |    | zero  | -1
-     |  1 | one   |  2
-     |  2 | two   |  2
-     |  3 | three |  2
-     |  4 | four  |  2
-     |  5 | five  |  2
-     |  6 | six   |  2
-     |  7 | seven |  2
-     |  8 | eight |  2
-     |  0 | zero  |  2
-     |    | null  |  2
-     |    | zero  |  2
-     |  1 | one   | -3
-     |  2 | two   | -3
-     |  3 | three | -3
-     |  4 | four  | -3
-     |  5 | five  | -3
-     |  6 | six   | -3
-     |  7 | seven | -3
-     |  8 | eight | -3
-     |  0 | zero  | -3
-     |    | null  | -3
-     |    | zero  | -3
-     |  1 | one   |  4
-     |  2 | two   |  4
-     |  3 | three |  4
-     |  4 | four  |  4
-     |  5 | five  |  4
-     |  6 | six   |  4
-     |  7 | seven |  4
-     |  8 | eight |  4
-     |  0 | zero  |  4
-     |    | null  |  4
-     |    | zero  |  4
-     |  1 | one   | -5
-     |  2 | two   | -5
-     |  3 | three | -5
-     |  4 | four  | -5
-     |  5 | five  | -5
-     |  6 | six   | -5
-     |  7 | seven | -5
-     |  8 | eight | -5
-     |  0 | zero  | -5
-     |    | null  | -5
-     |    | zero  | -5
-     |  1 | one   | -5
-     |  2 | two   | -5
-     |  3 | three | -5
-     |  4 | four  | -5
-     |  5 | five  | -5
-     |  6 | six   | -5
-     |  7 | seven | -5
-     |  8 | eight | -5
-     |  0 | zero  | -5
-     |    | null  | -5
-     |    | zero  | -5
-     |  1 | one   |   
-     |  2 | two   |   
-     |  3 | three |   
-     |  4 | four  |   
-     |  5 | five  |   
-     |  6 | six   |   
-     |  7 | seven |   
-     |  8 | eight |   
-     |  0 | zero  |   
-     |    | null  |   
-     |    | zero  |   
-     |  1 | one   |   
-     |  2 | two   |   
-     |  3 | three |   
-     |  4 | four  |   
-     |  5 | five  |   
-     |  6 | six   |   
-     |  7 | seven |   
-     |  8 | eight |   
-     |  0 | zero  |   
-     |    | null  |   
-     |    | zero  |   
-     |  1 | one   |  0
-     |  2 | two   |  0
-     |  3 | three |  0
-     |  4 | four  |  0
-     |  5 | five  |  0
-     |  6 | six   |  0
-     |  7 | seven |  0
-     |  8 | eight |  0
-     |  0 | zero  |  0
-     |    | null  |  0
-     |    | zero  |  0
+ ii |  tt   | kk 
+----+-------+----
+  1 | one   | -1
+  2 | two   | -1
+  3 | three | -1
+  4 | four  | -1
+  5 | five  | -1
+  6 | six   | -1
+  7 | seven | -1
+  8 | eight | -1
+  0 | zero  | -1
+    | null  | -1
+    | zero  | -1
+  1 | one   |  2
+  2 | two   |  2
+  3 | three |  2
+  4 | four  |  2
+  5 | five  |  2
+  6 | six   |  2
+  7 | seven |  2
+  8 | eight |  2
+  0 | zero  |  2
+    | null  |  2
+    | zero  |  2
+  1 | one   | -3
+  2 | two   | -3
+  3 | three | -3
+  4 | four  | -3
+  5 | five  | -3
+  6 | six   | -3
+  7 | seven | -3
+  8 | eight | -3
+  0 | zero  | -3
+    | null  | -3
+    | zero  | -3
+  1 | one   |  4
+  2 | two   |  4
+  3 | three |  4
+  4 | four  |  4
+  5 | five  |  4
+  6 | six   |  4
+  7 | seven |  4
+  8 | eight |  4
+  0 | zero  |  4
+    | null  |  4
+    | zero  |  4
+  1 | one   | -5
+  2 | two   | -5
+  3 | three | -5
+  4 | four  | -5
+  5 | five  | -5
+  6 | six   | -5
+  7 | seven | -5
+  8 | eight | -5
+  0 | zero  | -5
+    | null  | -5
+    | zero  | -5
+  1 | one   | -5
+  2 | two   | -5
+  3 | three | -5
+  4 | four  | -5
+  5 | five  | -5
+  6 | six   | -5
+  7 | seven | -5
+  8 | eight | -5
+  0 | zero  | -5
+    | null  | -5
+    | zero  | -5
+  1 | one   |   
+  2 | two   |   
+  3 | three |   
+  4 | four  |   
+  5 | five  |   
+  6 | six   |   
+  7 | seven |   
+  8 | eight |   
+  0 | zero  |   
+    | null  |   
+    | zero  |   
+  1 | one   |   
+  2 | two   |   
+  3 | three |   
+  4 | four  |   
+  5 | five  |   
+  6 | six   |   
+  7 | seven |   
+  8 | eight |   
+  0 | zero  |   
+    | null  |   
+    | zero  |   
+  1 | one   |  0
+  2 | two   |  0
+  3 | three |  0
+  4 | four  |  0
+  5 | five  |  0
+  6 | six   |  0
+  7 | seven |  0
+  8 | eight |  0
+  0 | zero  |  0
+    | null  |  0
+    | zero  |  0
 (99 rows)
 
-SELECT '' AS "xxx", tx.ii, tx.jj, tx.kk
+SELECT tx.ii, tx.jj, tx.kk
   FROM (J1_TBL t1 (a, b, c) CROSS JOIN J2_TBL t2 (d, e))
     AS tx (ii, jj, tt, ii2, kk);
- xxx | ii | jj | kk 
------+----+----+----
-     |  1 |  4 | -1
-     |  2 |  3 | -1
-     |  3 |  2 | -1
-     |  4 |  1 | -1
-     |  5 |  0 | -1
-     |  6 |  6 | -1
-     |  7 |  7 | -1
-     |  8 |  8 | -1
-     |  0 |    | -1
-     |    |    | -1
-     |    |  0 | -1
-     |  1 |  4 |  2
-     |  2 |  3 |  2
-     |  3 |  2 |  2
-     |  4 |  1 |  2
-     |  5 |  0 |  2
-     |  6 |  6 |  2
-     |  7 |  7 |  2
-     |  8 |  8 |  2
-     |  0 |    |  2
-     |    |    |  2
-     |    |  0 |  2
-     |  1 |  4 | -3
-     |  2 |  3 | -3
-     |  3 |  2 | -3
-     |  4 |  1 | -3
-     |  5 |  0 | -3
-     |  6 |  6 | -3
-     |  7 |  7 | -3
-     |  8 |  8 | -3
-     |  0 |    | -3
-     |    |    | -3
-     |    |  0 | -3
-     |  1 |  4 |  4
-     |  2 |  3 |  4
-     |  3 |  2 |  4
-     |  4 |  1 |  4
-     |  5 |  0 |  4
-     |  6 |  6 |  4
-     |  7 |  7 |  4
-     |  8 |  8 |  4
-     |  0 |    |  4
-     |    |    |  4
-     |    |  0 |  4
-     |  1 |  4 | -5
-     |  2 |  3 | -5
-     |  3 |  2 | -5
-     |  4 |  1 | -5
-     |  5 |  0 | -5
-     |  6 |  6 | -5
-     |  7 |  7 | -5
-     |  8 |  8 | -5
-     |  0 |    | -5
-     |    |    | -5
-     |    |  0 | -5
-     |  1 |  4 | -5
-     |  2 |  3 | -5
-     |  3 |  2 | -5
-     |  4 |  1 | -5
-     |  5 |  0 | -5
-     |  6 |  6 | -5
-     |  7 |  7 | -5
-     |  8 |  8 | -5
-     |  0 |    | -5
-     |    |    | -5
-     |    |  0 | -5
-     |  1 |  4 |   
-     |  2 |  3 |   
-     |  3 |  2 |   
-     |  4 |  1 |   
-     |  5 |  0 |   
-     |  6 |  6 |   
-     |  7 |  7 |   
-     |  8 |  8 |   
-     |  0 |    |   
-     |    |    |   
-     |    |  0 |   
-     |  1 |  4 |   
-     |  2 |  3 |   
-     |  3 |  2 |   
-     |  4 |  1 |   
-     |  5 |  0 |   
-     |  6 |  6 |   
-     |  7 |  7 |   
-     |  8 |  8 |   
-     |  0 |    |   
-     |    |    |   
-     |    |  0 |   
-     |  1 |  4 |  0
-     |  2 |  3 |  0
-     |  3 |  2 |  0
-     |  4 |  1 |  0
-     |  5 |  0 |  0
-     |  6 |  6 |  0
-     |  7 |  7 |  0
-     |  8 |  8 |  0
-     |  0 |    |  0
-     |    |    |  0
-     |    |  0 |  0
+ ii | jj | kk 
+----+----+----
+  1 |  4 | -1
+  2 |  3 | -1
+  3 |  2 | -1
+  4 |  1 | -1
+  5 |  0 | -1
+  6 |  6 | -1
+  7 |  7 | -1
+  8 |  8 | -1
+  0 |    | -1
+    |    | -1
+    |  0 | -1
+  1 |  4 |  2
+  2 |  3 |  2
+  3 |  2 |  2
+  4 |  1 |  2
+  5 |  0 |  2
+  6 |  6 |  2
+  7 |  7 |  2
+  8 |  8 |  2
+  0 |    |  2
+    |    |  2
+    |  0 |  2
+  1 |  4 | -3
+  2 |  3 | -3
+  3 |  2 | -3
+  4 |  1 | -3
+  5 |  0 | -3
+  6 |  6 | -3
+  7 |  7 | -3
+  8 |  8 | -3
+  0 |    | -3
+    |    | -3
+    |  0 | -3
+  1 |  4 |  4
+  2 |  3 |  4
+  3 |  2 |  4
+  4 |  1 |  4
+  5 |  0 |  4
+  6 |  6 |  4
+  7 |  7 |  4
+  8 |  8 |  4
+  0 |    |  4
+    |    |  4
+    |  0 |  4
+  1 |  4 | -5
+  2 |  3 | -5
+  3 |  2 | -5
+  4 |  1 | -5
+  5 |  0 | -5
+  6 |  6 | -5
+  7 |  7 | -5
+  8 |  8 | -5
+  0 |    | -5
+    |    | -5
+    |  0 | -5
+  1 |  4 | -5
+  2 |  3 | -5
+  3 |  2 | -5
+  4 |  1 | -5
+  5 |  0 | -5
+  6 |  6 | -5
+  7 |  7 | -5
+  8 |  8 | -5
+  0 |    | -5
+    |    | -5
+    |  0 | -5
+  1 |  4 |   
+  2 |  3 |   
+  3 |  2 |   
+  4 |  1 |   
+  5 |  0 |   
+  6 |  6 |   
+  7 |  7 |   
+  8 |  8 |   
+  0 |    |   
+    |    |   
+    |  0 |   
+  1 |  4 |   
+  2 |  3 |   
+  3 |  2 |   
+  4 |  1 |   
+  5 |  0 |   
+  6 |  6 |   
+  7 |  7 |   
+  8 |  8 |   
+  0 |    |   
+    |    |   
+    |  0 |   
+  1 |  4 |  0
+  2 |  3 |  0
+  3 |  2 |  0
+  4 |  1 |  0
+  5 |  0 |  0
+  6 |  6 |  0
+  7 |  7 |  0
+  8 |  8 |  0
+  0 |    |  0
+    |    |  0
+    |  0 |  0
 (99 rows)
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL CROSS JOIN J2_TBL a CROSS JOIN J2_TBL b;
- xxx | i | j |   t   | i | k  | i | k  
------+---+---+-------+---+----+---+----
-     | 1 | 4 | one   | 1 | -1 | 1 | -1
-     | 1 | 4 | one   | 1 | -1 | 2 |  2
-     | 1 | 4 | one   | 1 | -1 | 3 | -3
-     | 1 | 4 | one   | 1 | -1 | 2 |  4
-     | 1 | 4 | one   | 1 | -1 | 5 | -5
-     | 1 | 4 | one   | 1 | -1 | 5 | -5
-     | 1 | 4 | one   | 1 | -1 | 0 |   
-     | 1 | 4 | one   | 1 | -1 |   |   
-     | 1 | 4 | one   | 1 | -1 |   |  0
-     | 2 | 3 | two   | 1 | -1 | 1 | -1
-     | 2 | 3 | two   | 1 | -1 | 2 |  2
-     | 2 | 3 | two   | 1 | -1 | 3 | -3
-     | 2 | 3 | two   | 1 | -1 | 2 |  4
-     | 2 | 3 | two   | 1 | -1 | 5 | -5
-     | 2 | 3 | two   | 1 | -1 | 5 | -5
-     | 2 | 3 | two   | 1 | -1 | 0 |   
-     | 2 | 3 | two   | 1 | -1 |   |   
-     | 2 | 3 | two   | 1 | -1 |   |  0
-     | 3 | 2 | three | 1 | -1 | 1 | -1
-     | 3 | 2 | three | 1 | -1 | 2 |  2
-     | 3 | 2 | three | 1 | -1 | 3 | -3
-     | 3 | 2 | three | 1 | -1 | 2 |  4
-     | 3 | 2 | three | 1 | -1 | 5 | -5
-     | 3 | 2 | three | 1 | -1 | 5 | -5
-     | 3 | 2 | three | 1 | -1 | 0 |   
-     | 3 | 2 | three | 1 | -1 |   |   
-     | 3 | 2 | three | 1 | -1 |   |  0
-     | 4 | 1 | four  | 1 | -1 | 1 | -1
-     | 4 | 1 | four  | 1 | -1 | 2 |  2
-     | 4 | 1 | four  | 1 | -1 | 3 | -3
-     | 4 | 1 | four  | 1 | -1 | 2 |  4
-     | 4 | 1 | four  | 1 | -1 | 5 | -5
-     | 4 | 1 | four  | 1 | -1 | 5 | -5
-     | 4 | 1 | four  | 1 | -1 | 0 |   
-     | 4 | 1 | four  | 1 | -1 |   |   
-     | 4 | 1 | four  | 1 | -1 |   |  0
-     | 5 | 0 | five  | 1 | -1 | 1 | -1
-     | 5 | 0 | five  | 1 | -1 | 2 |  2
-     | 5 | 0 | five  | 1 | -1 | 3 | -3
-     | 5 | 0 | five  | 1 | -1 | 2 |  4
-     | 5 | 0 | five  | 1 | -1 | 5 | -5
-     | 5 | 0 | five  | 1 | -1 | 5 | -5
-     | 5 | 0 | five  | 1 | -1 | 0 |   
-     | 5 | 0 | five  | 1 | -1 |   |   
-     | 5 | 0 | five  | 1 | -1 |   |  0
-     | 6 | 6 | six   | 1 | -1 | 1 | -1
-     | 6 | 6 | six   | 1 | -1 | 2 |  2
-     | 6 | 6 | six   | 1 | -1 | 3 | -3
-     | 6 | 6 | six   | 1 | -1 | 2 |  4
-     | 6 | 6 | six   | 1 | -1 | 5 | -5
-     | 6 | 6 | six   | 1 | -1 | 5 | -5
-     | 6 | 6 | six   | 1 | -1 | 0 |   
-     | 6 | 6 | six   | 1 | -1 |   |   
-     | 6 | 6 | six   | 1 | -1 |   |  0
-     | 7 | 7 | seven | 1 | -1 | 1 | -1
-     | 7 | 7 | seven | 1 | -1 | 2 |  2
-     | 7 | 7 | seven | 1 | -1 | 3 | -3
-     | 7 | 7 | seven | 1 | -1 | 2 |  4
-     | 7 | 7 | seven | 1 | -1 | 5 | -5
-     | 7 | 7 | seven | 1 | -1 | 5 | -5
-     | 7 | 7 | seven | 1 | -1 | 0 |   
-     | 7 | 7 | seven | 1 | -1 |   |   
-     | 7 | 7 | seven | 1 | -1 |   |  0
-     | 8 | 8 | eight | 1 | -1 | 1 | -1
-     | 8 | 8 | eight | 1 | -1 | 2 |  2
-     | 8 | 8 | eight | 1 | -1 | 3 | -3
-     | 8 | 8 | eight | 1 | -1 | 2 |  4
-     | 8 | 8 | eight | 1 | -1 | 5 | -5
-     | 8 | 8 | eight | 1 | -1 | 5 | -5
-     | 8 | 8 | eight | 1 | -1 | 0 |   
-     | 8 | 8 | eight | 1 | -1 |   |   
-     | 8 | 8 | eight | 1 | -1 |   |  0
-     | 0 |   | zero  | 1 | -1 | 1 | -1
-     | 0 |   | zero  | 1 | -1 | 2 |  2
-     | 0 |   | zero  | 1 | -1 | 3 | -3
-     | 0 |   | zero  | 1 | -1 | 2 |  4
-     | 0 |   | zero  | 1 | -1 | 5 | -5
-     | 0 |   | zero  | 1 | -1 | 5 | -5
-     | 0 |   | zero  | 1 | -1 | 0 |   
-     | 0 |   | zero  | 1 | -1 |   |   
-     | 0 |   | zero  | 1 | -1 |   |  0
-     |   |   | null  | 1 | -1 | 1 | -1
-     |   |   | null  | 1 | -1 | 2 |  2
-     |   |   | null  | 1 | -1 | 3 | -3
-     |   |   | null  | 1 | -1 | 2 |  4
-     |   |   | null  | 1 | -1 | 5 | -5
-     |   |   | null  | 1 | -1 | 5 | -5
-     |   |   | null  | 1 | -1 | 0 |   
-     |   |   | null  | 1 | -1 |   |   
-     |   |   | null  | 1 | -1 |   |  0
-     |   | 0 | zero  | 1 | -1 | 1 | -1
-     |   | 0 | zero  | 1 | -1 | 2 |  2
-     |   | 0 | zero  | 1 | -1 | 3 | -3
-     |   | 0 | zero  | 1 | -1 | 2 |  4
-     |   | 0 | zero  | 1 | -1 | 5 | -5
-     |   | 0 | zero  | 1 | -1 | 5 | -5
-     |   | 0 | zero  | 1 | -1 | 0 |   
-     |   | 0 | zero  | 1 | -1 |   |   
-     |   | 0 | zero  | 1 | -1 |   |  0
-     | 1 | 4 | one   | 2 |  2 | 1 | -1
-     | 1 | 4 | one   | 2 |  2 | 2 |  2
-     | 1 | 4 | one   | 2 |  2 | 3 | -3
-     | 1 | 4 | one   | 2 |  2 | 2 |  4
-     | 1 | 4 | one   | 2 |  2 | 5 | -5
-     | 1 | 4 | one   | 2 |  2 | 5 | -5
-     | 1 | 4 | one   | 2 |  2 | 0 |   
-     | 1 | 4 | one   | 2 |  2 |   |   
-     | 1 | 4 | one   | 2 |  2 |   |  0
-     | 2 | 3 | two   | 2 |  2 | 1 | -1
-     | 2 | 3 | two   | 2 |  2 | 2 |  2
-     | 2 | 3 | two   | 2 |  2 | 3 | -3
-     | 2 | 3 | two   | 2 |  2 | 2 |  4
-     | 2 | 3 | two   | 2 |  2 | 5 | -5
-     | 2 | 3 | two   | 2 |  2 | 5 | -5
-     | 2 | 3 | two   | 2 |  2 | 0 |   
-     | 2 | 3 | two   | 2 |  2 |   |   
-     | 2 | 3 | two   | 2 |  2 |   |  0
-     | 3 | 2 | three | 2 |  2 | 1 | -1
-     | 3 | 2 | three | 2 |  2 | 2 |  2
-     | 3 | 2 | three | 2 |  2 | 3 | -3
-     | 3 | 2 | three | 2 |  2 | 2 |  4
-     | 3 | 2 | three | 2 |  2 | 5 | -5
-     | 3 | 2 | three | 2 |  2 | 5 | -5
-     | 3 | 2 | three | 2 |  2 | 0 |   
-     | 3 | 2 | three | 2 |  2 |   |   
-     | 3 | 2 | three | 2 |  2 |   |  0
-     | 4 | 1 | four  | 2 |  2 | 1 | -1
-     | 4 | 1 | four  | 2 |  2 | 2 |  2
-     | 4 | 1 | four  | 2 |  2 | 3 | -3
-     | 4 | 1 | four  | 2 |  2 | 2 |  4
-     | 4 | 1 | four  | 2 |  2 | 5 | -5
-     | 4 | 1 | four  | 2 |  2 | 5 | -5
-     | 4 | 1 | four  | 2 |  2 | 0 |   
-     | 4 | 1 | four  | 2 |  2 |   |   
-     | 4 | 1 | four  | 2 |  2 |   |  0
-     | 5 | 0 | five  | 2 |  2 | 1 | -1
-     | 5 | 0 | five  | 2 |  2 | 2 |  2
-     | 5 | 0 | five  | 2 |  2 | 3 | -3
-     | 5 | 0 | five  | 2 |  2 | 2 |  4
-     | 5 | 0 | five  | 2 |  2 | 5 | -5
-     | 5 | 0 | five  | 2 |  2 | 5 | -5
-     | 5 | 0 | five  | 2 |  2 | 0 |   
-     | 5 | 0 | five  | 2 |  2 |   |   
-     | 5 | 0 | five  | 2 |  2 |   |  0
-     | 6 | 6 | six   | 2 |  2 | 1 | -1
-     | 6 | 6 | six   | 2 |  2 | 2 |  2
-     | 6 | 6 | six   | 2 |  2 | 3 | -3
-     | 6 | 6 | six   | 2 |  2 | 2 |  4
-     | 6 | 6 | six   | 2 |  2 | 5 | -5
-     | 6 | 6 | six   | 2 |  2 | 5 | -5
-     | 6 | 6 | six   | 2 |  2 | 0 |   
-     | 6 | 6 | six   | 2 |  2 |   |   
-     | 6 | 6 | six   | 2 |  2 |   |  0
-     | 7 | 7 | seven | 2 |  2 | 1 | -1
-     | 7 | 7 | seven | 2 |  2 | 2 |  2
-     | 7 | 7 | seven | 2 |  2 | 3 | -3
-     | 7 | 7 | seven | 2 |  2 | 2 |  4
-     | 7 | 7 | seven | 2 |  2 | 5 | -5
-     | 7 | 7 | seven | 2 |  2 | 5 | -5
-     | 7 | 7 | seven | 2 |  2 | 0 |   
-     | 7 | 7 | seven | 2 |  2 |   |   
-     | 7 | 7 | seven | 2 |  2 |   |  0
-     | 8 | 8 | eight | 2 |  2 | 1 | -1
-     | 8 | 8 | eight | 2 |  2 | 2 |  2
-     | 8 | 8 | eight | 2 |  2 | 3 | -3
-     | 8 | 8 | eight | 2 |  2 | 2 |  4
-     | 8 | 8 | eight | 2 |  2 | 5 | -5
-     | 8 | 8 | eight | 2 |  2 | 5 | -5
-     | 8 | 8 | eight | 2 |  2 | 0 |   
-     | 8 | 8 | eight | 2 |  2 |   |   
-     | 8 | 8 | eight | 2 |  2 |   |  0
-     | 0 |   | zero  | 2 |  2 | 1 | -1
-     | 0 |   | zero  | 2 |  2 | 2 |  2
-     | 0 |   | zero  | 2 |  2 | 3 | -3
-     | 0 |   | zero  | 2 |  2 | 2 |  4
-     | 0 |   | zero  | 2 |  2 | 5 | -5
-     | 0 |   | zero  | 2 |  2 | 5 | -5
-     | 0 |   | zero  | 2 |  2 | 0 |   
-     | 0 |   | zero  | 2 |  2 |   |   
-     | 0 |   | zero  | 2 |  2 |   |  0
-     |   |   | null  | 2 |  2 | 1 | -1
-     |   |   | null  | 2 |  2 | 2 |  2
-     |   |   | null  | 2 |  2 | 3 | -3
-     |   |   | null  | 2 |  2 | 2 |  4
-     |   |   | null  | 2 |  2 | 5 | -5
-     |   |   | null  | 2 |  2 | 5 | -5
-     |   |   | null  | 2 |  2 | 0 |   
-     |   |   | null  | 2 |  2 |   |   
-     |   |   | null  | 2 |  2 |   |  0
-     |   | 0 | zero  | 2 |  2 | 1 | -1
-     |   | 0 | zero  | 2 |  2 | 2 |  2
-     |   | 0 | zero  | 2 |  2 | 3 | -3
-     |   | 0 | zero  | 2 |  2 | 2 |  4
-     |   | 0 | zero  | 2 |  2 | 5 | -5
-     |   | 0 | zero  | 2 |  2 | 5 | -5
-     |   | 0 | zero  | 2 |  2 | 0 |   
-     |   | 0 | zero  | 2 |  2 |   |   
-     |   | 0 | zero  | 2 |  2 |   |  0
-     | 1 | 4 | one   | 3 | -3 | 1 | -1
-     | 1 | 4 | one   | 3 | -3 | 2 |  2
-     | 1 | 4 | one   | 3 | -3 | 3 | -3
-     | 1 | 4 | one   | 3 | -3 | 2 |  4
-     | 1 | 4 | one   | 3 | -3 | 5 | -5
-     | 1 | 4 | one   | 3 | -3 | 5 | -5
-     | 1 | 4 | one   | 3 | -3 | 0 |   
-     | 1 | 4 | one   | 3 | -3 |   |   
-     | 1 | 4 | one   | 3 | -3 |   |  0
-     | 2 | 3 | two   | 3 | -3 | 1 | -1
-     | 2 | 3 | two   | 3 | -3 | 2 |  2
-     | 2 | 3 | two   | 3 | -3 | 3 | -3
-     | 2 | 3 | two   | 3 | -3 | 2 |  4
-     | 2 | 3 | two   | 3 | -3 | 5 | -5
-     | 2 | 3 | two   | 3 | -3 | 5 | -5
-     | 2 | 3 | two   | 3 | -3 | 0 |   
-     | 2 | 3 | two   | 3 | -3 |   |   
-     | 2 | 3 | two   | 3 | -3 |   |  0
-     | 3 | 2 | three | 3 | -3 | 1 | -1
-     | 3 | 2 | three | 3 | -3 | 2 |  2
-     | 3 | 2 | three | 3 | -3 | 3 | -3
-     | 3 | 2 | three | 3 | -3 | 2 |  4
-     | 3 | 2 | three | 3 | -3 | 5 | -5
-     | 3 | 2 | three | 3 | -3 | 5 | -5
-     | 3 | 2 | three | 3 | -3 | 0 |   
-     | 3 | 2 | three | 3 | -3 |   |   
-     | 3 | 2 | three | 3 | -3 |   |  0
-     | 4 | 1 | four  | 3 | -3 | 1 | -1
-     | 4 | 1 | four  | 3 | -3 | 2 |  2
-     | 4 | 1 | four  | 3 | -3 | 3 | -3
-     | 4 | 1 | four  | 3 | -3 | 2 |  4
-     | 4 | 1 | four  | 3 | -3 | 5 | -5
-     | 4 | 1 | four  | 3 | -3 | 5 | -5
-     | 4 | 1 | four  | 3 | -3 | 0 |   
-     | 4 | 1 | four  | 3 | -3 |   |   
-     | 4 | 1 | four  | 3 | -3 |   |  0
-     | 5 | 0 | five  | 3 | -3 | 1 | -1
-     | 5 | 0 | five  | 3 | -3 | 2 |  2
-     | 5 | 0 | five  | 3 | -3 | 3 | -3
-     | 5 | 0 | five  | 3 | -3 | 2 |  4
-     | 5 | 0 | five  | 3 | -3 | 5 | -5
-     | 5 | 0 | five  | 3 | -3 | 5 | -5
-     | 5 | 0 | five  | 3 | -3 | 0 |   
-     | 5 | 0 | five  | 3 | -3 |   |   
-     | 5 | 0 | five  | 3 | -3 |   |  0
-     | 6 | 6 | six   | 3 | -3 | 1 | -1
-     | 6 | 6 | six   | 3 | -3 | 2 |  2
-     | 6 | 6 | six   | 3 | -3 | 3 | -3
-     | 6 | 6 | six   | 3 | -3 | 2 |  4
-     | 6 | 6 | six   | 3 | -3 | 5 | -5
-     | 6 | 6 | six   | 3 | -3 | 5 | -5
-     | 6 | 6 | six   | 3 | -3 | 0 |   
-     | 6 | 6 | six   | 3 | -3 |   |   
-     | 6 | 6 | six   | 3 | -3 |   |  0
-     | 7 | 7 | seven | 3 | -3 | 1 | -1
-     | 7 | 7 | seven | 3 | -3 | 2 |  2
-     | 7 | 7 | seven | 3 | -3 | 3 | -3
-     | 7 | 7 | seven | 3 | -3 | 2 |  4
-     | 7 | 7 | seven | 3 | -3 | 5 | -5
-     | 7 | 7 | seven | 3 | -3 | 5 | -5
-     | 7 | 7 | seven | 3 | -3 | 0 |   
-     | 7 | 7 | seven | 3 | -3 |   |   
-     | 7 | 7 | seven | 3 | -3 |   |  0
-     | 8 | 8 | eight | 3 | -3 | 1 | -1
-     | 8 | 8 | eight | 3 | -3 | 2 |  2
-     | 8 | 8 | eight | 3 | -3 | 3 | -3
-     | 8 | 8 | eight | 3 | -3 | 2 |  4
-     | 8 | 8 | eight | 3 | -3 | 5 | -5
-     | 8 | 8 | eight | 3 | -3 | 5 | -5
-     | 8 | 8 | eight | 3 | -3 | 0 |   
-     | 8 | 8 | eight | 3 | -3 |   |   
-     | 8 | 8 | eight | 3 | -3 |   |  0
-     | 0 |   | zero  | 3 | -3 | 1 | -1
-     | 0 |   | zero  | 3 | -3 | 2 |  2
-     | 0 |   | zero  | 3 | -3 | 3 | -3
-     | 0 |   | zero  | 3 | -3 | 2 |  4
-     | 0 |   | zero  | 3 | -3 | 5 | -5
-     | 0 |   | zero  | 3 | -3 | 5 | -5
-     | 0 |   | zero  | 3 | -3 | 0 |   
-     | 0 |   | zero  | 3 | -3 |   |   
-     | 0 |   | zero  | 3 | -3 |   |  0
-     |   |   | null  | 3 | -3 | 1 | -1
-     |   |   | null  | 3 | -3 | 2 |  2
-     |   |   | null  | 3 | -3 | 3 | -3
-     |   |   | null  | 3 | -3 | 2 |  4
-     |   |   | null  | 3 | -3 | 5 | -5
-     |   |   | null  | 3 | -3 | 5 | -5
-     |   |   | null  | 3 | -3 | 0 |   
-     |   |   | null  | 3 | -3 |   |   
-     |   |   | null  | 3 | -3 |   |  0
-     |   | 0 | zero  | 3 | -3 | 1 | -1
-     |   | 0 | zero  | 3 | -3 | 2 |  2
-     |   | 0 | zero  | 3 | -3 | 3 | -3
-     |   | 0 | zero  | 3 | -3 | 2 |  4
-     |   | 0 | zero  | 3 | -3 | 5 | -5
-     |   | 0 | zero  | 3 | -3 | 5 | -5
-     |   | 0 | zero  | 3 | -3 | 0 |   
-     |   | 0 | zero  | 3 | -3 |   |   
-     |   | 0 | zero  | 3 | -3 |   |  0
-     | 1 | 4 | one   | 2 |  4 | 1 | -1
-     | 1 | 4 | one   | 2 |  4 | 2 |  2
-     | 1 | 4 | one   | 2 |  4 | 3 | -3
-     | 1 | 4 | one   | 2 |  4 | 2 |  4
-     | 1 | 4 | one   | 2 |  4 | 5 | -5
-     | 1 | 4 | one   | 2 |  4 | 5 | -5
-     | 1 | 4 | one   | 2 |  4 | 0 |   
-     | 1 | 4 | one   | 2 |  4 |   |   
-     | 1 | 4 | one   | 2 |  4 |   |  0
-     | 2 | 3 | two   | 2 |  4 | 1 | -1
-     | 2 | 3 | two   | 2 |  4 | 2 |  2
-     | 2 | 3 | two   | 2 |  4 | 3 | -3
-     | 2 | 3 | two   | 2 |  4 | 2 |  4
-     | 2 | 3 | two   | 2 |  4 | 5 | -5
-     | 2 | 3 | two   | 2 |  4 | 5 | -5
-     | 2 | 3 | two   | 2 |  4 | 0 |   
-     | 2 | 3 | two   | 2 |  4 |   |   
-     | 2 | 3 | two   | 2 |  4 |   |  0
-     | 3 | 2 | three | 2 |  4 | 1 | -1
-     | 3 | 2 | three | 2 |  4 | 2 |  2
-     | 3 | 2 | three | 2 |  4 | 3 | -3
-     | 3 | 2 | three | 2 |  4 | 2 |  4
-     | 3 | 2 | three | 2 |  4 | 5 | -5
-     | 3 | 2 | three | 2 |  4 | 5 | -5
-     | 3 | 2 | three | 2 |  4 | 0 |   
-     | 3 | 2 | three | 2 |  4 |   |   
-     | 3 | 2 | three | 2 |  4 |   |  0
-     | 4 | 1 | four  | 2 |  4 | 1 | -1
-     | 4 | 1 | four  | 2 |  4 | 2 |  2
-     | 4 | 1 | four  | 2 |  4 | 3 | -3
-     | 4 | 1 | four  | 2 |  4 | 2 |  4
-     | 4 | 1 | four  | 2 |  4 | 5 | -5
-     | 4 | 1 | four  | 2 |  4 | 5 | -5
-     | 4 | 1 | four  | 2 |  4 | 0 |   
-     | 4 | 1 | four  | 2 |  4 |   |   
-     | 4 | 1 | four  | 2 |  4 |   |  0
-     | 5 | 0 | five  | 2 |  4 | 1 | -1
-     | 5 | 0 | five  | 2 |  4 | 2 |  2
-     | 5 | 0 | five  | 2 |  4 | 3 | -3
-     | 5 | 0 | five  | 2 |  4 | 2 |  4
-     | 5 | 0 | five  | 2 |  4 | 5 | -5
-     | 5 | 0 | five  | 2 |  4 | 5 | -5
-     | 5 | 0 | five  | 2 |  4 | 0 |   
-     | 5 | 0 | five  | 2 |  4 |   |   
-     | 5 | 0 | five  | 2 |  4 |   |  0
-     | 6 | 6 | six   | 2 |  4 | 1 | -1
-     | 6 | 6 | six   | 2 |  4 | 2 |  2
-     | 6 | 6 | six   | 2 |  4 | 3 | -3
-     | 6 | 6 | six   | 2 |  4 | 2 |  4
-     | 6 | 6 | six   | 2 |  4 | 5 | -5
-     | 6 | 6 | six   | 2 |  4 | 5 | -5
-     | 6 | 6 | six   | 2 |  4 | 0 |   
-     | 6 | 6 | six   | 2 |  4 |   |   
-     | 6 | 6 | six   | 2 |  4 |   |  0
-     | 7 | 7 | seven | 2 |  4 | 1 | -1
-     | 7 | 7 | seven | 2 |  4 | 2 |  2
-     | 7 | 7 | seven | 2 |  4 | 3 | -3
-     | 7 | 7 | seven | 2 |  4 | 2 |  4
-     | 7 | 7 | seven | 2 |  4 | 5 | -5
-     | 7 | 7 | seven | 2 |  4 | 5 | -5
-     | 7 | 7 | seven | 2 |  4 | 0 |   
-     | 7 | 7 | seven | 2 |  4 |   |   
-     | 7 | 7 | seven | 2 |  4 |   |  0
-     | 8 | 8 | eight | 2 |  4 | 1 | -1
-     | 8 | 8 | eight | 2 |  4 | 2 |  2
-     | 8 | 8 | eight | 2 |  4 | 3 | -3
-     | 8 | 8 | eight | 2 |  4 | 2 |  4
-     | 8 | 8 | eight | 2 |  4 | 5 | -5
-     | 8 | 8 | eight | 2 |  4 | 5 | -5
-     | 8 | 8 | eight | 2 |  4 | 0 |   
-     | 8 | 8 | eight | 2 |  4 |   |   
-     | 8 | 8 | eight | 2 |  4 |   |  0
-     | 0 |   | zero  | 2 |  4 | 1 | -1
-     | 0 |   | zero  | 2 |  4 | 2 |  2
-     | 0 |   | zero  | 2 |  4 | 3 | -3
-     | 0 |   | zero  | 2 |  4 | 2 |  4
-     | 0 |   | zero  | 2 |  4 | 5 | -5
-     | 0 |   | zero  | 2 |  4 | 5 | -5
-     | 0 |   | zero  | 2 |  4 | 0 |   
-     | 0 |   | zero  | 2 |  4 |   |   
-     | 0 |   | zero  | 2 |  4 |   |  0
-     |   |   | null  | 2 |  4 | 1 | -1
-     |   |   | null  | 2 |  4 | 2 |  2
-     |   |   | null  | 2 |  4 | 3 | -3
-     |   |   | null  | 2 |  4 | 2 |  4
-     |   |   | null  | 2 |  4 | 5 | -5
-     |   |   | null  | 2 |  4 | 5 | -5
-     |   |   | null  | 2 |  4 | 0 |   
-     |   |   | null  | 2 |  4 |   |   
-     |   |   | null  | 2 |  4 |   |  0
-     |   | 0 | zero  | 2 |  4 | 1 | -1
-     |   | 0 | zero  | 2 |  4 | 2 |  2
-     |   | 0 | zero  | 2 |  4 | 3 | -3
-     |   | 0 | zero  | 2 |  4 | 2 |  4
-     |   | 0 | zero  | 2 |  4 | 5 | -5
-     |   | 0 | zero  | 2 |  4 | 5 | -5
-     |   | 0 | zero  | 2 |  4 | 0 |   
-     |   | 0 | zero  | 2 |  4 |   |   
-     |   | 0 | zero  | 2 |  4 |   |  0
-     | 1 | 4 | one   | 5 | -5 | 1 | -1
-     | 1 | 4 | one   | 5 | -5 | 2 |  2
-     | 1 | 4 | one   | 5 | -5 | 3 | -3
-     | 1 | 4 | one   | 5 | -5 | 2 |  4
-     | 1 | 4 | one   | 5 | -5 | 5 | -5
-     | 1 | 4 | one   | 5 | -5 | 5 | -5
-     | 1 | 4 | one   | 5 | -5 | 0 |   
-     | 1 | 4 | one   | 5 | -5 |   |   
-     | 1 | 4 | one   | 5 | -5 |   |  0
-     | 2 | 3 | two   | 5 | -5 | 1 | -1
-     | 2 | 3 | two   | 5 | -5 | 2 |  2
-     | 2 | 3 | two   | 5 | -5 | 3 | -3
-     | 2 | 3 | two   | 5 | -5 | 2 |  4
-     | 2 | 3 | two   | 5 | -5 | 5 | -5
-     | 2 | 3 | two   | 5 | -5 | 5 | -5
-     | 2 | 3 | two   | 5 | -5 | 0 |   
-     | 2 | 3 | two   | 5 | -5 |   |   
-     | 2 | 3 | two   | 5 | -5 |   |  0
-     | 3 | 2 | three | 5 | -5 | 1 | -1
-     | 3 | 2 | three | 5 | -5 | 2 |  2
-     | 3 | 2 | three | 5 | -5 | 3 | -3
-     | 3 | 2 | three | 5 | -5 | 2 |  4
-     | 3 | 2 | three | 5 | -5 | 5 | -5
-     | 3 | 2 | three | 5 | -5 | 5 | -5
-     | 3 | 2 | three | 5 | -5 | 0 |   
-     | 3 | 2 | three | 5 | -5 |   |   
-     | 3 | 2 | three | 5 | -5 |   |  0
-     | 4 | 1 | four  | 5 | -5 | 1 | -1
-     | 4 | 1 | four  | 5 | -5 | 2 |  2
-     | 4 | 1 | four  | 5 | -5 | 3 | -3
-     | 4 | 1 | four  | 5 | -5 | 2 |  4
-     | 4 | 1 | four  | 5 | -5 | 5 | -5
-     | 4 | 1 | four  | 5 | -5 | 5 | -5
-     | 4 | 1 | four  | 5 | -5 | 0 |   
-     | 4 | 1 | four  | 5 | -5 |   |   
-     | 4 | 1 | four  | 5 | -5 |   |  0
-     | 5 | 0 | five  | 5 | -5 | 1 | -1
-     | 5 | 0 | five  | 5 | -5 | 2 |  2
-     | 5 | 0 | five  | 5 | -5 | 3 | -3
-     | 5 | 0 | five  | 5 | -5 | 2 |  4
-     | 5 | 0 | five  | 5 | -5 | 5 | -5
-     | 5 | 0 | five  | 5 | -5 | 5 | -5
-     | 5 | 0 | five  | 5 | -5 | 0 |   
-     | 5 | 0 | five  | 5 | -5 |   |   
-     | 5 | 0 | five  | 5 | -5 |   |  0
-     | 6 | 6 | six   | 5 | -5 | 1 | -1
-     | 6 | 6 | six   | 5 | -5 | 2 |  2
-     | 6 | 6 | six   | 5 | -5 | 3 | -3
-     | 6 | 6 | six   | 5 | -5 | 2 |  4
-     | 6 | 6 | six   | 5 | -5 | 5 | -5
-     | 6 | 6 | six   | 5 | -5 | 5 | -5
-     | 6 | 6 | six   | 5 | -5 | 0 |   
-     | 6 | 6 | six   | 5 | -5 |   |   
-     | 6 | 6 | six   | 5 | -5 |   |  0
-     | 7 | 7 | seven | 5 | -5 | 1 | -1
-     | 7 | 7 | seven | 5 | -5 | 2 |  2
-     | 7 | 7 | seven | 5 | -5 | 3 | -3
-     | 7 | 7 | seven | 5 | -5 | 2 |  4
-     | 7 | 7 | seven | 5 | -5 | 5 | -5
-     | 7 | 7 | seven | 5 | -5 | 5 | -5
-     | 7 | 7 | seven | 5 | -5 | 0 |   
-     | 7 | 7 | seven | 5 | -5 |   |   
-     | 7 | 7 | seven | 5 | -5 |   |  0
-     | 8 | 8 | eight | 5 | -5 | 1 | -1
-     | 8 | 8 | eight | 5 | -5 | 2 |  2
-     | 8 | 8 | eight | 5 | -5 | 3 | -3
-     | 8 | 8 | eight | 5 | -5 | 2 |  4
-     | 8 | 8 | eight | 5 | -5 | 5 | -5
-     | 8 | 8 | eight | 5 | -5 | 5 | -5
-     | 8 | 8 | eight | 5 | -5 | 0 |   
-     | 8 | 8 | eight | 5 | -5 |   |   
-     | 8 | 8 | eight | 5 | -5 |   |  0
-     | 0 |   | zero  | 5 | -5 | 1 | -1
-     | 0 |   | zero  | 5 | -5 | 2 |  2
-     | 0 |   | zero  | 5 | -5 | 3 | -3
-     | 0 |   | zero  | 5 | -5 | 2 |  4
-     | 0 |   | zero  | 5 | -5 | 5 | -5
-     | 0 |   | zero  | 5 | -5 | 5 | -5
-     | 0 |   | zero  | 5 | -5 | 0 |   
-     | 0 |   | zero  | 5 | -5 |   |   
-     | 0 |   | zero  | 5 | -5 |   |  0
-     |   |   | null  | 5 | -5 | 1 | -1
-     |   |   | null  | 5 | -5 | 2 |  2
-     |   |   | null  | 5 | -5 | 3 | -3
-     |   |   | null  | 5 | -5 | 2 |  4
-     |   |   | null  | 5 | -5 | 5 | -5
-     |   |   | null  | 5 | -5 | 5 | -5
-     |   |   | null  | 5 | -5 | 0 |   
-     |   |   | null  | 5 | -5 |   |   
-     |   |   | null  | 5 | -5 |   |  0
-     |   | 0 | zero  | 5 | -5 | 1 | -1
-     |   | 0 | zero  | 5 | -5 | 2 |  2
-     |   | 0 | zero  | 5 | -5 | 3 | -3
-     |   | 0 | zero  | 5 | -5 | 2 |  4
-     |   | 0 | zero  | 5 | -5 | 5 | -5
-     |   | 0 | zero  | 5 | -5 | 5 | -5
-     |   | 0 | zero  | 5 | -5 | 0 |   
-     |   | 0 | zero  | 5 | -5 |   |   
-     |   | 0 | zero  | 5 | -5 |   |  0
-     | 1 | 4 | one   | 5 | -5 | 1 | -1
-     | 1 | 4 | one   | 5 | -5 | 2 |  2
-     | 1 | 4 | one   | 5 | -5 | 3 | -3
-     | 1 | 4 | one   | 5 | -5 | 2 |  4
-     | 1 | 4 | one   | 5 | -5 | 5 | -5
-     | 1 | 4 | one   | 5 | -5 | 5 | -5
-     | 1 | 4 | one   | 5 | -5 | 0 |   
-     | 1 | 4 | one   | 5 | -5 |   |   
-     | 1 | 4 | one   | 5 | -5 |   |  0
-     | 2 | 3 | two   | 5 | -5 | 1 | -1
-     | 2 | 3 | two   | 5 | -5 | 2 |  2
-     | 2 | 3 | two   | 5 | -5 | 3 | -3
-     | 2 | 3 | two   | 5 | -5 | 2 |  4
-     | 2 | 3 | two   | 5 | -5 | 5 | -5
-     | 2 | 3 | two   | 5 | -5 | 5 | -5
-     | 2 | 3 | two   | 5 | -5 | 0 |   
-     | 2 | 3 | two   | 5 | -5 |   |   
-     | 2 | 3 | two   | 5 | -5 |   |  0
-     | 3 | 2 | three | 5 | -5 | 1 | -1
-     | 3 | 2 | three | 5 | -5 | 2 |  2
-     | 3 | 2 | three | 5 | -5 | 3 | -3
-     | 3 | 2 | three | 5 | -5 | 2 |  4
-     | 3 | 2 | three | 5 | -5 | 5 | -5
-     | 3 | 2 | three | 5 | -5 | 5 | -5
-     | 3 | 2 | three | 5 | -5 | 0 |   
-     | 3 | 2 | three | 5 | -5 |   |   
-     | 3 | 2 | three | 5 | -5 |   |  0
-     | 4 | 1 | four  | 5 | -5 | 1 | -1
-     | 4 | 1 | four  | 5 | -5 | 2 |  2
-     | 4 | 1 | four  | 5 | -5 | 3 | -3
-     | 4 | 1 | four  | 5 | -5 | 2 |  4
-     | 4 | 1 | four  | 5 | -5 | 5 | -5
-     | 4 | 1 | four  | 5 | -5 | 5 | -5
-     | 4 | 1 | four  | 5 | -5 | 0 |   
-     | 4 | 1 | four  | 5 | -5 |   |   
-     | 4 | 1 | four  | 5 | -5 |   |  0
-     | 5 | 0 | five  | 5 | -5 | 1 | -1
-     | 5 | 0 | five  | 5 | -5 | 2 |  2
-     | 5 | 0 | five  | 5 | -5 | 3 | -3
-     | 5 | 0 | five  | 5 | -5 | 2 |  4
-     | 5 | 0 | five  | 5 | -5 | 5 | -5
-     | 5 | 0 | five  | 5 | -5 | 5 | -5
-     | 5 | 0 | five  | 5 | -5 | 0 |   
-     | 5 | 0 | five  | 5 | -5 |   |   
-     | 5 | 0 | five  | 5 | -5 |   |  0
-     | 6 | 6 | six   | 5 | -5 | 1 | -1
-     | 6 | 6 | six   | 5 | -5 | 2 |  2
-     | 6 | 6 | six   | 5 | -5 | 3 | -3
-     | 6 | 6 | six   | 5 | -5 | 2 |  4
-     | 6 | 6 | six   | 5 | -5 | 5 | -5
-     | 6 | 6 | six   | 5 | -5 | 5 | -5
-     | 6 | 6 | six   | 5 | -5 | 0 |   
-     | 6 | 6 | six   | 5 | -5 |   |   
-     | 6 | 6 | six   | 5 | -5 |   |  0
-     | 7 | 7 | seven | 5 | -5 | 1 | -1
-     | 7 | 7 | seven | 5 | -5 | 2 |  2
-     | 7 | 7 | seven | 5 | -5 | 3 | -3
-     | 7 | 7 | seven | 5 | -5 | 2 |  4
-     | 7 | 7 | seven | 5 | -5 | 5 | -5
-     | 7 | 7 | seven | 5 | -5 | 5 | -5
-     | 7 | 7 | seven | 5 | -5 | 0 |   
-     | 7 | 7 | seven | 5 | -5 |   |   
-     | 7 | 7 | seven | 5 | -5 |   |  0
-     | 8 | 8 | eight | 5 | -5 | 1 | -1
-     | 8 | 8 | eight | 5 | -5 | 2 |  2
-     | 8 | 8 | eight | 5 | -5 | 3 | -3
-     | 8 | 8 | eight | 5 | -5 | 2 |  4
-     | 8 | 8 | eight | 5 | -5 | 5 | -5
-     | 8 | 8 | eight | 5 | -5 | 5 | -5
-     | 8 | 8 | eight | 5 | -5 | 0 |   
-     | 8 | 8 | eight | 5 | -5 |   |   
-     | 8 | 8 | eight | 5 | -5 |   |  0
-     | 0 |   | zero  | 5 | -5 | 1 | -1
-     | 0 |   | zero  | 5 | -5 | 2 |  2
-     | 0 |   | zero  | 5 | -5 | 3 | -3
-     | 0 |   | zero  | 5 | -5 | 2 |  4
-     | 0 |   | zero  | 5 | -5 | 5 | -5
-     | 0 |   | zero  | 5 | -5 | 5 | -5
-     | 0 |   | zero  | 5 | -5 | 0 |   
-     | 0 |   | zero  | 5 | -5 |   |   
-     | 0 |   | zero  | 5 | -5 |   |  0
-     |   |   | null  | 5 | -5 | 1 | -1
-     |   |   | null  | 5 | -5 | 2 |  2
-     |   |   | null  | 5 | -5 | 3 | -3
-     |   |   | null  | 5 | -5 | 2 |  4
-     |   |   | null  | 5 | -5 | 5 | -5
-     |   |   | null  | 5 | -5 | 5 | -5
-     |   |   | null  | 5 | -5 | 0 |   
-     |   |   | null  | 5 | -5 |   |   
-     |   |   | null  | 5 | -5 |   |  0
-     |   | 0 | zero  | 5 | -5 | 1 | -1
-     |   | 0 | zero  | 5 | -5 | 2 |  2
-     |   | 0 | zero  | 5 | -5 | 3 | -3
-     |   | 0 | zero  | 5 | -5 | 2 |  4
-     |   | 0 | zero  | 5 | -5 | 5 | -5
-     |   | 0 | zero  | 5 | -5 | 5 | -5
-     |   | 0 | zero  | 5 | -5 | 0 |   
-     |   | 0 | zero  | 5 | -5 |   |   
-     |   | 0 | zero  | 5 | -5 |   |  0
-     | 1 | 4 | one   | 0 |    | 1 | -1
-     | 1 | 4 | one   | 0 |    | 2 |  2
-     | 1 | 4 | one   | 0 |    | 3 | -3
-     | 1 | 4 | one   | 0 |    | 2 |  4
-     | 1 | 4 | one   | 0 |    | 5 | -5
-     | 1 | 4 | one   | 0 |    | 5 | -5
-     | 1 | 4 | one   | 0 |    | 0 |   
-     | 1 | 4 | one   | 0 |    |   |   
-     | 1 | 4 | one   | 0 |    |   |  0
-     | 2 | 3 | two   | 0 |    | 1 | -1
-     | 2 | 3 | two   | 0 |    | 2 |  2
-     | 2 | 3 | two   | 0 |    | 3 | -3
-     | 2 | 3 | two   | 0 |    | 2 |  4
-     | 2 | 3 | two   | 0 |    | 5 | -5
-     | 2 | 3 | two   | 0 |    | 5 | -5
-     | 2 | 3 | two   | 0 |    | 0 |   
-     | 2 | 3 | two   | 0 |    |   |   
-     | 2 | 3 | two   | 0 |    |   |  0
-     | 3 | 2 | three | 0 |    | 1 | -1
-     | 3 | 2 | three | 0 |    | 2 |  2
-     | 3 | 2 | three | 0 |    | 3 | -3
-     | 3 | 2 | three | 0 |    | 2 |  4
-     | 3 | 2 | three | 0 |    | 5 | -5
-     | 3 | 2 | three | 0 |    | 5 | -5
-     | 3 | 2 | three | 0 |    | 0 |   
-     | 3 | 2 | three | 0 |    |   |   
-     | 3 | 2 | three | 0 |    |   |  0
-     | 4 | 1 | four  | 0 |    | 1 | -1
-     | 4 | 1 | four  | 0 |    | 2 |  2
-     | 4 | 1 | four  | 0 |    | 3 | -3
-     | 4 | 1 | four  | 0 |    | 2 |  4
-     | 4 | 1 | four  | 0 |    | 5 | -5
-     | 4 | 1 | four  | 0 |    | 5 | -5
-     | 4 | 1 | four  | 0 |    | 0 |   
-     | 4 | 1 | four  | 0 |    |   |   
-     | 4 | 1 | four  | 0 |    |   |  0
-     | 5 | 0 | five  | 0 |    | 1 | -1
-     | 5 | 0 | five  | 0 |    | 2 |  2
-     | 5 | 0 | five  | 0 |    | 3 | -3
-     | 5 | 0 | five  | 0 |    | 2 |  4
-     | 5 | 0 | five  | 0 |    | 5 | -5
-     | 5 | 0 | five  | 0 |    | 5 | -5
-     | 5 | 0 | five  | 0 |    | 0 |   
-     | 5 | 0 | five  | 0 |    |   |   
-     | 5 | 0 | five  | 0 |    |   |  0
-     | 6 | 6 | six   | 0 |    | 1 | -1
-     | 6 | 6 | six   | 0 |    | 2 |  2
-     | 6 | 6 | six   | 0 |    | 3 | -3
-     | 6 | 6 | six   | 0 |    | 2 |  4
-     | 6 | 6 | six   | 0 |    | 5 | -5
-     | 6 | 6 | six   | 0 |    | 5 | -5
-     | 6 | 6 | six   | 0 |    | 0 |   
-     | 6 | 6 | six   | 0 |    |   |   
-     | 6 | 6 | six   | 0 |    |   |  0
-     | 7 | 7 | seven | 0 |    | 1 | -1
-     | 7 | 7 | seven | 0 |    | 2 |  2
-     | 7 | 7 | seven | 0 |    | 3 | -3
-     | 7 | 7 | seven | 0 |    | 2 |  4
-     | 7 | 7 | seven | 0 |    | 5 | -5
-     | 7 | 7 | seven | 0 |    | 5 | -5
-     | 7 | 7 | seven | 0 |    | 0 |   
-     | 7 | 7 | seven | 0 |    |   |   
-     | 7 | 7 | seven | 0 |    |   |  0
-     | 8 | 8 | eight | 0 |    | 1 | -1
-     | 8 | 8 | eight | 0 |    | 2 |  2
-     | 8 | 8 | eight | 0 |    | 3 | -3
-     | 8 | 8 | eight | 0 |    | 2 |  4
-     | 8 | 8 | eight | 0 |    | 5 | -5
-     | 8 | 8 | eight | 0 |    | 5 | -5
-     | 8 | 8 | eight | 0 |    | 0 |   
-     | 8 | 8 | eight | 0 |    |   |   
-     | 8 | 8 | eight | 0 |    |   |  0
-     | 0 |   | zero  | 0 |    | 1 | -1
-     | 0 |   | zero  | 0 |    | 2 |  2
-     | 0 |   | zero  | 0 |    | 3 | -3
-     | 0 |   | zero  | 0 |    | 2 |  4
-     | 0 |   | zero  | 0 |    | 5 | -5
-     | 0 |   | zero  | 0 |    | 5 | -5
-     | 0 |   | zero  | 0 |    | 0 |   
-     | 0 |   | zero  | 0 |    |   |   
-     | 0 |   | zero  | 0 |    |   |  0
-     |   |   | null  | 0 |    | 1 | -1
-     |   |   | null  | 0 |    | 2 |  2
-     |   |   | null  | 0 |    | 3 | -3
-     |   |   | null  | 0 |    | 2 |  4
-     |   |   | null  | 0 |    | 5 | -5
-     |   |   | null  | 0 |    | 5 | -5
-     |   |   | null  | 0 |    | 0 |   
-     |   |   | null  | 0 |    |   |   
-     |   |   | null  | 0 |    |   |  0
-     |   | 0 | zero  | 0 |    | 1 | -1
-     |   | 0 | zero  | 0 |    | 2 |  2
-     |   | 0 | zero  | 0 |    | 3 | -3
-     |   | 0 | zero  | 0 |    | 2 |  4
-     |   | 0 | zero  | 0 |    | 5 | -5
-     |   | 0 | zero  | 0 |    | 5 | -5
-     |   | 0 | zero  | 0 |    | 0 |   
-     |   | 0 | zero  | 0 |    |   |   
-     |   | 0 | zero  | 0 |    |   |  0
-     | 1 | 4 | one   |   |    | 1 | -1
-     | 1 | 4 | one   |   |    | 2 |  2
-     | 1 | 4 | one   |   |    | 3 | -3
-     | 1 | 4 | one   |   |    | 2 |  4
-     | 1 | 4 | one   |   |    | 5 | -5
-     | 1 | 4 | one   |   |    | 5 | -5
-     | 1 | 4 | one   |   |    | 0 |   
-     | 1 | 4 | one   |   |    |   |   
-     | 1 | 4 | one   |   |    |   |  0
-     | 2 | 3 | two   |   |    | 1 | -1
-     | 2 | 3 | two   |   |    | 2 |  2
-     | 2 | 3 | two   |   |    | 3 | -3
-     | 2 | 3 | two   |   |    | 2 |  4
-     | 2 | 3 | two   |   |    | 5 | -5
-     | 2 | 3 | two   |   |    | 5 | -5
-     | 2 | 3 | two   |   |    | 0 |   
-     | 2 | 3 | two   |   |    |   |   
-     | 2 | 3 | two   |   |    |   |  0
-     | 3 | 2 | three |   |    | 1 | -1
-     | 3 | 2 | three |   |    | 2 |  2
-     | 3 | 2 | three |   |    | 3 | -3
-     | 3 | 2 | three |   |    | 2 |  4
-     | 3 | 2 | three |   |    | 5 | -5
-     | 3 | 2 | three |   |    | 5 | -5
-     | 3 | 2 | three |   |    | 0 |   
-     | 3 | 2 | three |   |    |   |   
-     | 3 | 2 | three |   |    |   |  0
-     | 4 | 1 | four  |   |    | 1 | -1
-     | 4 | 1 | four  |   |    | 2 |  2
-     | 4 | 1 | four  |   |    | 3 | -3
-     | 4 | 1 | four  |   |    | 2 |  4
-     | 4 | 1 | four  |   |    | 5 | -5
-     | 4 | 1 | four  |   |    | 5 | -5
-     | 4 | 1 | four  |   |    | 0 |   
-     | 4 | 1 | four  |   |    |   |   
-     | 4 | 1 | four  |   |    |   |  0
-     | 5 | 0 | five  |   |    | 1 | -1
-     | 5 | 0 | five  |   |    | 2 |  2
-     | 5 | 0 | five  |   |    | 3 | -3
-     | 5 | 0 | five  |   |    | 2 |  4
-     | 5 | 0 | five  |   |    | 5 | -5
-     | 5 | 0 | five  |   |    | 5 | -5
-     | 5 | 0 | five  |   |    | 0 |   
-     | 5 | 0 | five  |   |    |   |   
-     | 5 | 0 | five  |   |    |   |  0
-     | 6 | 6 | six   |   |    | 1 | -1
-     | 6 | 6 | six   |   |    | 2 |  2
-     | 6 | 6 | six   |   |    | 3 | -3
-     | 6 | 6 | six   |   |    | 2 |  4
-     | 6 | 6 | six   |   |    | 5 | -5
-     | 6 | 6 | six   |   |    | 5 | -5
-     | 6 | 6 | six   |   |    | 0 |   
-     | 6 | 6 | six   |   |    |   |   
-     | 6 | 6 | six   |   |    |   |  0
-     | 7 | 7 | seven |   |    | 1 | -1
-     | 7 | 7 | seven |   |    | 2 |  2
-     | 7 | 7 | seven |   |    | 3 | -3
-     | 7 | 7 | seven |   |    | 2 |  4
-     | 7 | 7 | seven |   |    | 5 | -5
-     | 7 | 7 | seven |   |    | 5 | -5
-     | 7 | 7 | seven |   |    | 0 |   
-     | 7 | 7 | seven |   |    |   |   
-     | 7 | 7 | seven |   |    |   |  0
-     | 8 | 8 | eight |   |    | 1 | -1
-     | 8 | 8 | eight |   |    | 2 |  2
-     | 8 | 8 | eight |   |    | 3 | -3
-     | 8 | 8 | eight |   |    | 2 |  4
-     | 8 | 8 | eight |   |    | 5 | -5
-     | 8 | 8 | eight |   |    | 5 | -5
-     | 8 | 8 | eight |   |    | 0 |   
-     | 8 | 8 | eight |   |    |   |   
-     | 8 | 8 | eight |   |    |   |  0
-     | 0 |   | zero  |   |    | 1 | -1
-     | 0 |   | zero  |   |    | 2 |  2
-     | 0 |   | zero  |   |    | 3 | -3
-     | 0 |   | zero  |   |    | 2 |  4
-     | 0 |   | zero  |   |    | 5 | -5
-     | 0 |   | zero  |   |    | 5 | -5
-     | 0 |   | zero  |   |    | 0 |   
-     | 0 |   | zero  |   |    |   |   
-     | 0 |   | zero  |   |    |   |  0
-     |   |   | null  |   |    | 1 | -1
-     |   |   | null  |   |    | 2 |  2
-     |   |   | null  |   |    | 3 | -3
-     |   |   | null  |   |    | 2 |  4
-     |   |   | null  |   |    | 5 | -5
-     |   |   | null  |   |    | 5 | -5
-     |   |   | null  |   |    | 0 |   
-     |   |   | null  |   |    |   |   
-     |   |   | null  |   |    |   |  0
-     |   | 0 | zero  |   |    | 1 | -1
-     |   | 0 | zero  |   |    | 2 |  2
-     |   | 0 | zero  |   |    | 3 | -3
-     |   | 0 | zero  |   |    | 2 |  4
-     |   | 0 | zero  |   |    | 5 | -5
-     |   | 0 | zero  |   |    | 5 | -5
-     |   | 0 | zero  |   |    | 0 |   
-     |   | 0 | zero  |   |    |   |   
-     |   | 0 | zero  |   |    |   |  0
-     | 1 | 4 | one   |   |  0 | 1 | -1
-     | 1 | 4 | one   |   |  0 | 2 |  2
-     | 1 | 4 | one   |   |  0 | 3 | -3
-     | 1 | 4 | one   |   |  0 | 2 |  4
-     | 1 | 4 | one   |   |  0 | 5 | -5
-     | 1 | 4 | one   |   |  0 | 5 | -5
-     | 1 | 4 | one   |   |  0 | 0 |   
-     | 1 | 4 | one   |   |  0 |   |   
-     | 1 | 4 | one   |   |  0 |   |  0
-     | 2 | 3 | two   |   |  0 | 1 | -1
-     | 2 | 3 | two   |   |  0 | 2 |  2
-     | 2 | 3 | two   |   |  0 | 3 | -3
-     | 2 | 3 | two   |   |  0 | 2 |  4
-     | 2 | 3 | two   |   |  0 | 5 | -5
-     | 2 | 3 | two   |   |  0 | 5 | -5
-     | 2 | 3 | two   |   |  0 | 0 |   
-     | 2 | 3 | two   |   |  0 |   |   
-     | 2 | 3 | two   |   |  0 |   |  0
-     | 3 | 2 | three |   |  0 | 1 | -1
-     | 3 | 2 | three |   |  0 | 2 |  2
-     | 3 | 2 | three |   |  0 | 3 | -3
-     | 3 | 2 | three |   |  0 | 2 |  4
-     | 3 | 2 | three |   |  0 | 5 | -5
-     | 3 | 2 | three |   |  0 | 5 | -5
-     | 3 | 2 | three |   |  0 | 0 |   
-     | 3 | 2 | three |   |  0 |   |   
-     | 3 | 2 | three |   |  0 |   |  0
-     | 4 | 1 | four  |   |  0 | 1 | -1
-     | 4 | 1 | four  |   |  0 | 2 |  2
-     | 4 | 1 | four  |   |  0 | 3 | -3
-     | 4 | 1 | four  |   |  0 | 2 |  4
-     | 4 | 1 | four  |   |  0 | 5 | -5
-     | 4 | 1 | four  |   |  0 | 5 | -5
-     | 4 | 1 | four  |   |  0 | 0 |   
-     | 4 | 1 | four  |   |  0 |   |   
-     | 4 | 1 | four  |   |  0 |   |  0
-     | 5 | 0 | five  |   |  0 | 1 | -1
-     | 5 | 0 | five  |   |  0 | 2 |  2
-     | 5 | 0 | five  |   |  0 | 3 | -3
-     | 5 | 0 | five  |   |  0 | 2 |  4
-     | 5 | 0 | five  |   |  0 | 5 | -5
-     | 5 | 0 | five  |   |  0 | 5 | -5
-     | 5 | 0 | five  |   |  0 | 0 |   
-     | 5 | 0 | five  |   |  0 |   |   
-     | 5 | 0 | five  |   |  0 |   |  0
-     | 6 | 6 | six   |   |  0 | 1 | -1
-     | 6 | 6 | six   |   |  0 | 2 |  2
-     | 6 | 6 | six   |   |  0 | 3 | -3
-     | 6 | 6 | six   |   |  0 | 2 |  4
-     | 6 | 6 | six   |   |  0 | 5 | -5
-     | 6 | 6 | six   |   |  0 | 5 | -5
-     | 6 | 6 | six   |   |  0 | 0 |   
-     | 6 | 6 | six   |   |  0 |   |   
-     | 6 | 6 | six   |   |  0 |   |  0
-     | 7 | 7 | seven |   |  0 | 1 | -1
-     | 7 | 7 | seven |   |  0 | 2 |  2
-     | 7 | 7 | seven |   |  0 | 3 | -3
-     | 7 | 7 | seven |   |  0 | 2 |  4
-     | 7 | 7 | seven |   |  0 | 5 | -5
-     | 7 | 7 | seven |   |  0 | 5 | -5
-     | 7 | 7 | seven |   |  0 | 0 |   
-     | 7 | 7 | seven |   |  0 |   |   
-     | 7 | 7 | seven |   |  0 |   |  0
-     | 8 | 8 | eight |   |  0 | 1 | -1
-     | 8 | 8 | eight |   |  0 | 2 |  2
-     | 8 | 8 | eight |   |  0 | 3 | -3
-     | 8 | 8 | eight |   |  0 | 2 |  4
-     | 8 | 8 | eight |   |  0 | 5 | -5
-     | 8 | 8 | eight |   |  0 | 5 | -5
-     | 8 | 8 | eight |   |  0 | 0 |   
-     | 8 | 8 | eight |   |  0 |   |   
-     | 8 | 8 | eight |   |  0 |   |  0
-     | 0 |   | zero  |   |  0 | 1 | -1
-     | 0 |   | zero  |   |  0 | 2 |  2
-     | 0 |   | zero  |   |  0 | 3 | -3
-     | 0 |   | zero  |   |  0 | 2 |  4
-     | 0 |   | zero  |   |  0 | 5 | -5
-     | 0 |   | zero  |   |  0 | 5 | -5
-     | 0 |   | zero  |   |  0 | 0 |   
-     | 0 |   | zero  |   |  0 |   |   
-     | 0 |   | zero  |   |  0 |   |  0
-     |   |   | null  |   |  0 | 1 | -1
-     |   |   | null  |   |  0 | 2 |  2
-     |   |   | null  |   |  0 | 3 | -3
-     |   |   | null  |   |  0 | 2 |  4
-     |   |   | null  |   |  0 | 5 | -5
-     |   |   | null  |   |  0 | 5 | -5
-     |   |   | null  |   |  0 | 0 |   
-     |   |   | null  |   |  0 |   |   
-     |   |   | null  |   |  0 |   |  0
-     |   | 0 | zero  |   |  0 | 1 | -1
-     |   | 0 | zero  |   |  0 | 2 |  2
-     |   | 0 | zero  |   |  0 | 3 | -3
-     |   | 0 | zero  |   |  0 | 2 |  4
-     |   | 0 | zero  |   |  0 | 5 | -5
-     |   | 0 | zero  |   |  0 | 5 | -5
-     |   | 0 | zero  |   |  0 | 0 |   
-     |   | 0 | zero  |   |  0 |   |   
-     |   | 0 | zero  |   |  0 |   |  0
+ i | j |   t   | i | k  | i | k  
+---+---+-------+---+----+---+----
+ 1 | 4 | one   | 1 | -1 | 1 | -1
+ 1 | 4 | one   | 1 | -1 | 2 |  2
+ 1 | 4 | one   | 1 | -1 | 3 | -3
+ 1 | 4 | one   | 1 | -1 | 2 |  4
+ 1 | 4 | one   | 1 | -1 | 5 | -5
+ 1 | 4 | one   | 1 | -1 | 5 | -5
+ 1 | 4 | one   | 1 | -1 | 0 |   
+ 1 | 4 | one   | 1 | -1 |   |   
+ 1 | 4 | one   | 1 | -1 |   |  0
+ 2 | 3 | two   | 1 | -1 | 1 | -1
+ 2 | 3 | two   | 1 | -1 | 2 |  2
+ 2 | 3 | two   | 1 | -1 | 3 | -3
+ 2 | 3 | two   | 1 | -1 | 2 |  4
+ 2 | 3 | two   | 1 | -1 | 5 | -5
+ 2 | 3 | two   | 1 | -1 | 5 | -5
+ 2 | 3 | two   | 1 | -1 | 0 |   
+ 2 | 3 | two   | 1 | -1 |   |   
+ 2 | 3 | two   | 1 | -1 |   |  0
+ 3 | 2 | three | 1 | -1 | 1 | -1
+ 3 | 2 | three | 1 | -1 | 2 |  2
+ 3 | 2 | three | 1 | -1 | 3 | -3
+ 3 | 2 | three | 1 | -1 | 2 |  4
+ 3 | 2 | three | 1 | -1 | 5 | -5
+ 3 | 2 | three | 1 | -1 | 5 | -5
+ 3 | 2 | three | 1 | -1 | 0 |   
+ 3 | 2 | three | 1 | -1 |   |   
+ 3 | 2 | three | 1 | -1 |   |  0
+ 4 | 1 | four  | 1 | -1 | 1 | -1
+ 4 | 1 | four  | 1 | -1 | 2 |  2
+ 4 | 1 | four  | 1 | -1 | 3 | -3
+ 4 | 1 | four  | 1 | -1 | 2 |  4
+ 4 | 1 | four  | 1 | -1 | 5 | -5
+ 4 | 1 | four  | 1 | -1 | 5 | -5
+ 4 | 1 | four  | 1 | -1 | 0 |   
+ 4 | 1 | four  | 1 | -1 |   |   
+ 4 | 1 | four  | 1 | -1 |   |  0
+ 5 | 0 | five  | 1 | -1 | 1 | -1
+ 5 | 0 | five  | 1 | -1 | 2 |  2
+ 5 | 0 | five  | 1 | -1 | 3 | -3
+ 5 | 0 | five  | 1 | -1 | 2 |  4
+ 5 | 0 | five  | 1 | -1 | 5 | -5
+ 5 | 0 | five  | 1 | -1 | 5 | -5
+ 5 | 0 | five  | 1 | -1 | 0 |   
+ 5 | 0 | five  | 1 | -1 |   |   
+ 5 | 0 | five  | 1 | -1 |   |  0
+ 6 | 6 | six   | 1 | -1 | 1 | -1
+ 6 | 6 | six   | 1 | -1 | 2 |  2
+ 6 | 6 | six   | 1 | -1 | 3 | -3
+ 6 | 6 | six   | 1 | -1 | 2 |  4
+ 6 | 6 | six   | 1 | -1 | 5 | -5
+ 6 | 6 | six   | 1 | -1 | 5 | -5
+ 6 | 6 | six   | 1 | -1 | 0 |   
+ 6 | 6 | six   | 1 | -1 |   |   
+ 6 | 6 | six   | 1 | -1 |   |  0
+ 7 | 7 | seven | 1 | -1 | 1 | -1
+ 7 | 7 | seven | 1 | -1 | 2 |  2
+ 7 | 7 | seven | 1 | -1 | 3 | -3
+ 7 | 7 | seven | 1 | -1 | 2 |  4
+ 7 | 7 | seven | 1 | -1 | 5 | -5
+ 7 | 7 | seven | 1 | -1 | 5 | -5
+ 7 | 7 | seven | 1 | -1 | 0 |   
+ 7 | 7 | seven | 1 | -1 |   |   
+ 7 | 7 | seven | 1 | -1 |   |  0
+ 8 | 8 | eight | 1 | -1 | 1 | -1
+ 8 | 8 | eight | 1 | -1 | 2 |  2
+ 8 | 8 | eight | 1 | -1 | 3 | -3
+ 8 | 8 | eight | 1 | -1 | 2 |  4
+ 8 | 8 | eight | 1 | -1 | 5 | -5
+ 8 | 8 | eight | 1 | -1 | 5 | -5
+ 8 | 8 | eight | 1 | -1 | 0 |   
+ 8 | 8 | eight | 1 | -1 |   |   
+ 8 | 8 | eight | 1 | -1 |   |  0
+ 0 |   | zero  | 1 | -1 | 1 | -1
+ 0 |   | zero  | 1 | -1 | 2 |  2
+ 0 |   | zero  | 1 | -1 | 3 | -3
+ 0 |   | zero  | 1 | -1 | 2 |  4
+ 0 |   | zero  | 1 | -1 | 5 | -5
+ 0 |   | zero  | 1 | -1 | 5 | -5
+ 0 |   | zero  | 1 | -1 | 0 |   
+ 0 |   | zero  | 1 | -1 |   |   
+ 0 |   | zero  | 1 | -1 |   |  0
+   |   | null  | 1 | -1 | 1 | -1
+   |   | null  | 1 | -1 | 2 |  2
+   |   | null  | 1 | -1 | 3 | -3
+   |   | null  | 1 | -1 | 2 |  4
+   |   | null  | 1 | -1 | 5 | -5
+   |   | null  | 1 | -1 | 5 | -5
+   |   | null  | 1 | -1 | 0 |   
+   |   | null  | 1 | -1 |   |   
+   |   | null  | 1 | -1 |   |  0
+   | 0 | zero  | 1 | -1 | 1 | -1
+   | 0 | zero  | 1 | -1 | 2 |  2
+   | 0 | zero  | 1 | -1 | 3 | -3
+   | 0 | zero  | 1 | -1 | 2 |  4
+   | 0 | zero  | 1 | -1 | 5 | -5
+   | 0 | zero  | 1 | -1 | 5 | -5
+   | 0 | zero  | 1 | -1 | 0 |   
+   | 0 | zero  | 1 | -1 |   |   
+   | 0 | zero  | 1 | -1 |   |  0
+ 1 | 4 | one   | 2 |  2 | 1 | -1
+ 1 | 4 | one   | 2 |  2 | 2 |  2
+ 1 | 4 | one   | 2 |  2 | 3 | -3
+ 1 | 4 | one   | 2 |  2 | 2 |  4
+ 1 | 4 | one   | 2 |  2 | 5 | -5
+ 1 | 4 | one   | 2 |  2 | 5 | -5
+ 1 | 4 | one   | 2 |  2 | 0 |   
+ 1 | 4 | one   | 2 |  2 |   |   
+ 1 | 4 | one   | 2 |  2 |   |  0
+ 2 | 3 | two   | 2 |  2 | 1 | -1
+ 2 | 3 | two   | 2 |  2 | 2 |  2
+ 2 | 3 | two   | 2 |  2 | 3 | -3
+ 2 | 3 | two   | 2 |  2 | 2 |  4
+ 2 | 3 | two   | 2 |  2 | 5 | -5
+ 2 | 3 | two   | 2 |  2 | 5 | -5
+ 2 | 3 | two   | 2 |  2 | 0 |   
+ 2 | 3 | two   | 2 |  2 |   |   
+ 2 | 3 | two   | 2 |  2 |   |  0
+ 3 | 2 | three | 2 |  2 | 1 | -1
+ 3 | 2 | three | 2 |  2 | 2 |  2
+ 3 | 2 | three | 2 |  2 | 3 | -3
+ 3 | 2 | three | 2 |  2 | 2 |  4
+ 3 | 2 | three | 2 |  2 | 5 | -5
+ 3 | 2 | three | 2 |  2 | 5 | -5
+ 3 | 2 | three | 2 |  2 | 0 |   
+ 3 | 2 | three | 2 |  2 |   |   
+ 3 | 2 | three | 2 |  2 |   |  0
+ 4 | 1 | four  | 2 |  2 | 1 | -1
+ 4 | 1 | four  | 2 |  2 | 2 |  2
+ 4 | 1 | four  | 2 |  2 | 3 | -3
+ 4 | 1 | four  | 2 |  2 | 2 |  4
+ 4 | 1 | four  | 2 |  2 | 5 | -5
+ 4 | 1 | four  | 2 |  2 | 5 | -5
+ 4 | 1 | four  | 2 |  2 | 0 |   
+ 4 | 1 | four  | 2 |  2 |   |   
+ 4 | 1 | four  | 2 |  2 |   |  0
+ 5 | 0 | five  | 2 |  2 | 1 | -1
+ 5 | 0 | five  | 2 |  2 | 2 |  2
+ 5 | 0 | five  | 2 |  2 | 3 | -3
+ 5 | 0 | five  | 2 |  2 | 2 |  4
+ 5 | 0 | five  | 2 |  2 | 5 | -5
+ 5 | 0 | five  | 2 |  2 | 5 | -5
+ 5 | 0 | five  | 2 |  2 | 0 |   
+ 5 | 0 | five  | 2 |  2 |   |   
+ 5 | 0 | five  | 2 |  2 |   |  0
+ 6 | 6 | six   | 2 |  2 | 1 | -1
+ 6 | 6 | six   | 2 |  2 | 2 |  2
+ 6 | 6 | six   | 2 |  2 | 3 | -3
+ 6 | 6 | six   | 2 |  2 | 2 |  4
+ 6 | 6 | six   | 2 |  2 | 5 | -5
+ 6 | 6 | six   | 2 |  2 | 5 | -5
+ 6 | 6 | six   | 2 |  2 | 0 |   
+ 6 | 6 | six   | 2 |  2 |   |   
+ 6 | 6 | six   | 2 |  2 |   |  0
+ 7 | 7 | seven | 2 |  2 | 1 | -1
+ 7 | 7 | seven | 2 |  2 | 2 |  2
+ 7 | 7 | seven | 2 |  2 | 3 | -3
+ 7 | 7 | seven | 2 |  2 | 2 |  4
+ 7 | 7 | seven | 2 |  2 | 5 | -5
+ 7 | 7 | seven | 2 |  2 | 5 | -5
+ 7 | 7 | seven | 2 |  2 | 0 |   
+ 7 | 7 | seven | 2 |  2 |   |   
+ 7 | 7 | seven | 2 |  2 |   |  0
+ 8 | 8 | eight | 2 |  2 | 1 | -1
+ 8 | 8 | eight | 2 |  2 | 2 |  2
+ 8 | 8 | eight | 2 |  2 | 3 | -3
+ 8 | 8 | eight | 2 |  2 | 2 |  4
+ 8 | 8 | eight | 2 |  2 | 5 | -5
+ 8 | 8 | eight | 2 |  2 | 5 | -5
+ 8 | 8 | eight | 2 |  2 | 0 |   
+ 8 | 8 | eight | 2 |  2 |   |   
+ 8 | 8 | eight | 2 |  2 |   |  0
+ 0 |   | zero  | 2 |  2 | 1 | -1
+ 0 |   | zero  | 2 |  2 | 2 |  2
+ 0 |   | zero  | 2 |  2 | 3 | -3
+ 0 |   | zero  | 2 |  2 | 2 |  4
+ 0 |   | zero  | 2 |  2 | 5 | -5
+ 0 |   | zero  | 2 |  2 | 5 | -5
+ 0 |   | zero  | 2 |  2 | 0 |   
+ 0 |   | zero  | 2 |  2 |   |   
+ 0 |   | zero  | 2 |  2 |   |  0
+   |   | null  | 2 |  2 | 1 | -1
+   |   | null  | 2 |  2 | 2 |  2
+   |   | null  | 2 |  2 | 3 | -3
+   |   | null  | 2 |  2 | 2 |  4
+   |   | null  | 2 |  2 | 5 | -5
+   |   | null  | 2 |  2 | 5 | -5
+   |   | null  | 2 |  2 | 0 |   
+   |   | null  | 2 |  2 |   |   
+   |   | null  | 2 |  2 |   |  0
+   | 0 | zero  | 2 |  2 | 1 | -1
+   | 0 | zero  | 2 |  2 | 2 |  2
+   | 0 | zero  | 2 |  2 | 3 | -3
+   | 0 | zero  | 2 |  2 | 2 |  4
+   | 0 | zero  | 2 |  2 | 5 | -5
+   | 0 | zero  | 2 |  2 | 5 | -5
+   | 0 | zero  | 2 |  2 | 0 |   
+   | 0 | zero  | 2 |  2 |   |   
+   | 0 | zero  | 2 |  2 |   |  0
+ 1 | 4 | one   | 3 | -3 | 1 | -1
+ 1 | 4 | one   | 3 | -3 | 2 |  2
+ 1 | 4 | one   | 3 | -3 | 3 | -3
+ 1 | 4 | one   | 3 | -3 | 2 |  4
+ 1 | 4 | one   | 3 | -3 | 5 | -5
+ 1 | 4 | one   | 3 | -3 | 5 | -5
+ 1 | 4 | one   | 3 | -3 | 0 |   
+ 1 | 4 | one   | 3 | -3 |   |   
+ 1 | 4 | one   | 3 | -3 |   |  0
+ 2 | 3 | two   | 3 | -3 | 1 | -1
+ 2 | 3 | two   | 3 | -3 | 2 |  2
+ 2 | 3 | two   | 3 | -3 | 3 | -3
+ 2 | 3 | two   | 3 | -3 | 2 |  4
+ 2 | 3 | two   | 3 | -3 | 5 | -5
+ 2 | 3 | two   | 3 | -3 | 5 | -5
+ 2 | 3 | two   | 3 | -3 | 0 |   
+ 2 | 3 | two   | 3 | -3 |   |   
+ 2 | 3 | two   | 3 | -3 |   |  0
+ 3 | 2 | three | 3 | -3 | 1 | -1
+ 3 | 2 | three | 3 | -3 | 2 |  2
+ 3 | 2 | three | 3 | -3 | 3 | -3
+ 3 | 2 | three | 3 | -3 | 2 |  4
+ 3 | 2 | three | 3 | -3 | 5 | -5
+ 3 | 2 | three | 3 | -3 | 5 | -5
+ 3 | 2 | three | 3 | -3 | 0 |   
+ 3 | 2 | three | 3 | -3 |   |   
+ 3 | 2 | three | 3 | -3 |   |  0
+ 4 | 1 | four  | 3 | -3 | 1 | -1
+ 4 | 1 | four  | 3 | -3 | 2 |  2
+ 4 | 1 | four  | 3 | -3 | 3 | -3
+ 4 | 1 | four  | 3 | -3 | 2 |  4
+ 4 | 1 | four  | 3 | -3 | 5 | -5
+ 4 | 1 | four  | 3 | -3 | 5 | -5
+ 4 | 1 | four  | 3 | -3 | 0 |   
+ 4 | 1 | four  | 3 | -3 |   |   
+ 4 | 1 | four  | 3 | -3 |   |  0
+ 5 | 0 | five  | 3 | -3 | 1 | -1
+ 5 | 0 | five  | 3 | -3 | 2 |  2
+ 5 | 0 | five  | 3 | -3 | 3 | -3
+ 5 | 0 | five  | 3 | -3 | 2 |  4
+ 5 | 0 | five  | 3 | -3 | 5 | -5
+ 5 | 0 | five  | 3 | -3 | 5 | -5
+ 5 | 0 | five  | 3 | -3 | 0 |   
+ 5 | 0 | five  | 3 | -3 |   |   
+ 5 | 0 | five  | 3 | -3 |   |  0
+ 6 | 6 | six   | 3 | -3 | 1 | -1
+ 6 | 6 | six   | 3 | -3 | 2 |  2
+ 6 | 6 | six   | 3 | -3 | 3 | -3
+ 6 | 6 | six   | 3 | -3 | 2 |  4
+ 6 | 6 | six   | 3 | -3 | 5 | -5
+ 6 | 6 | six   | 3 | -3 | 5 | -5
+ 6 | 6 | six   | 3 | -3 | 0 |   
+ 6 | 6 | six   | 3 | -3 |   |   
+ 6 | 6 | six   | 3 | -3 |   |  0
+ 7 | 7 | seven | 3 | -3 | 1 | -1
+ 7 | 7 | seven | 3 | -3 | 2 |  2
+ 7 | 7 | seven | 3 | -3 | 3 | -3
+ 7 | 7 | seven | 3 | -3 | 2 |  4
+ 7 | 7 | seven | 3 | -3 | 5 | -5
+ 7 | 7 | seven | 3 | -3 | 5 | -5
+ 7 | 7 | seven | 3 | -3 | 0 |   
+ 7 | 7 | seven | 3 | -3 |   |   
+ 7 | 7 | seven | 3 | -3 |   |  0
+ 8 | 8 | eight | 3 | -3 | 1 | -1
+ 8 | 8 | eight | 3 | -3 | 2 |  2
+ 8 | 8 | eight | 3 | -3 | 3 | -3
+ 8 | 8 | eight | 3 | -3 | 2 |  4
+ 8 | 8 | eight | 3 | -3 | 5 | -5
+ 8 | 8 | eight | 3 | -3 | 5 | -5
+ 8 | 8 | eight | 3 | -3 | 0 |   
+ 8 | 8 | eight | 3 | -3 |   |   
+ 8 | 8 | eight | 3 | -3 |   |  0
+ 0 |   | zero  | 3 | -3 | 1 | -1
+ 0 |   | zero  | 3 | -3 | 2 |  2
+ 0 |   | zero  | 3 | -3 | 3 | -3
+ 0 |   | zero  | 3 | -3 | 2 |  4
+ 0 |   | zero  | 3 | -3 | 5 | -5
+ 0 |   | zero  | 3 | -3 | 5 | -5
+ 0 |   | zero  | 3 | -3 | 0 |   
+ 0 |   | zero  | 3 | -3 |   |   
+ 0 |   | zero  | 3 | -3 |   |  0
+   |   | null  | 3 | -3 | 1 | -1
+   |   | null  | 3 | -3 | 2 |  2
+   |   | null  | 3 | -3 | 3 | -3
+   |   | null  | 3 | -3 | 2 |  4
+   |   | null  | 3 | -3 | 5 | -5
+   |   | null  | 3 | -3 | 5 | -5
+   |   | null  | 3 | -3 | 0 |   
+   |   | null  | 3 | -3 |   |   
+   |   | null  | 3 | -3 |   |  0
+   | 0 | zero  | 3 | -3 | 1 | -1
+   | 0 | zero  | 3 | -3 | 2 |  2
+   | 0 | zero  | 3 | -3 | 3 | -3
+   | 0 | zero  | 3 | -3 | 2 |  4
+   | 0 | zero  | 3 | -3 | 5 | -5
+   | 0 | zero  | 3 | -3 | 5 | -5
+   | 0 | zero  | 3 | -3 | 0 |   
+   | 0 | zero  | 3 | -3 |   |   
+   | 0 | zero  | 3 | -3 |   |  0
+ 1 | 4 | one   | 2 |  4 | 1 | -1
+ 1 | 4 | one   | 2 |  4 | 2 |  2
+ 1 | 4 | one   | 2 |  4 | 3 | -3
+ 1 | 4 | one   | 2 |  4 | 2 |  4
+ 1 | 4 | one   | 2 |  4 | 5 | -5
+ 1 | 4 | one   | 2 |  4 | 5 | -5
+ 1 | 4 | one   | 2 |  4 | 0 |   
+ 1 | 4 | one   | 2 |  4 |   |   
+ 1 | 4 | one   | 2 |  4 |   |  0
+ 2 | 3 | two   | 2 |  4 | 1 | -1
+ 2 | 3 | two   | 2 |  4 | 2 |  2
+ 2 | 3 | two   | 2 |  4 | 3 | -3
+ 2 | 3 | two   | 2 |  4 | 2 |  4
+ 2 | 3 | two   | 2 |  4 | 5 | -5
+ 2 | 3 | two   | 2 |  4 | 5 | -5
+ 2 | 3 | two   | 2 |  4 | 0 |   
+ 2 | 3 | two   | 2 |  4 |   |   
+ 2 | 3 | two   | 2 |  4 |   |  0
+ 3 | 2 | three | 2 |  4 | 1 | -1
+ 3 | 2 | three | 2 |  4 | 2 |  2
+ 3 | 2 | three | 2 |  4 | 3 | -3
+ 3 | 2 | three | 2 |  4 | 2 |  4
+ 3 | 2 | three | 2 |  4 | 5 | -5
+ 3 | 2 | three | 2 |  4 | 5 | -5
+ 3 | 2 | three | 2 |  4 | 0 |   
+ 3 | 2 | three | 2 |  4 |   |   
+ 3 | 2 | three | 2 |  4 |   |  0
+ 4 | 1 | four  | 2 |  4 | 1 | -1
+ 4 | 1 | four  | 2 |  4 | 2 |  2
+ 4 | 1 | four  | 2 |  4 | 3 | -3
+ 4 | 1 | four  | 2 |  4 | 2 |  4
+ 4 | 1 | four  | 2 |  4 | 5 | -5
+ 4 | 1 | four  | 2 |  4 | 5 | -5
+ 4 | 1 | four  | 2 |  4 | 0 |   
+ 4 | 1 | four  | 2 |  4 |   |   
+ 4 | 1 | four  | 2 |  4 |   |  0
+ 5 | 0 | five  | 2 |  4 | 1 | -1
+ 5 | 0 | five  | 2 |  4 | 2 |  2
+ 5 | 0 | five  | 2 |  4 | 3 | -3
+ 5 | 0 | five  | 2 |  4 | 2 |  4
+ 5 | 0 | five  | 2 |  4 | 5 | -5
+ 5 | 0 | five  | 2 |  4 | 5 | -5
+ 5 | 0 | five  | 2 |  4 | 0 |   
+ 5 | 0 | five  | 2 |  4 |   |   
+ 5 | 0 | five  | 2 |  4 |   |  0
+ 6 | 6 | six   | 2 |  4 | 1 | -1
+ 6 | 6 | six   | 2 |  4 | 2 |  2
+ 6 | 6 | six   | 2 |  4 | 3 | -3
+ 6 | 6 | six   | 2 |  4 | 2 |  4
+ 6 | 6 | six   | 2 |  4 | 5 | -5
+ 6 | 6 | six   | 2 |  4 | 5 | -5
+ 6 | 6 | six   | 2 |  4 | 0 |   
+ 6 | 6 | six   | 2 |  4 |   |   
+ 6 | 6 | six   | 2 |  4 |   |  0
+ 7 | 7 | seven | 2 |  4 | 1 | -1
+ 7 | 7 | seven | 2 |  4 | 2 |  2
+ 7 | 7 | seven | 2 |  4 | 3 | -3
+ 7 | 7 | seven | 2 |  4 | 2 |  4
+ 7 | 7 | seven | 2 |  4 | 5 | -5
+ 7 | 7 | seven | 2 |  4 | 5 | -5
+ 7 | 7 | seven | 2 |  4 | 0 |   
+ 7 | 7 | seven | 2 |  4 |   |   
+ 7 | 7 | seven | 2 |  4 |   |  0
+ 8 | 8 | eight | 2 |  4 | 1 | -1
+ 8 | 8 | eight | 2 |  4 | 2 |  2
+ 8 | 8 | eight | 2 |  4 | 3 | -3
+ 8 | 8 | eight | 2 |  4 | 2 |  4
+ 8 | 8 | eight | 2 |  4 | 5 | -5
+ 8 | 8 | eight | 2 |  4 | 5 | -5
+ 8 | 8 | eight | 2 |  4 | 0 |   
+ 8 | 8 | eight | 2 |  4 |   |   
+ 8 | 8 | eight | 2 |  4 |   |  0
+ 0 |   | zero  | 2 |  4 | 1 | -1
+ 0 |   | zero  | 2 |  4 | 2 |  2
+ 0 |   | zero  | 2 |  4 | 3 | -3
+ 0 |   | zero  | 2 |  4 | 2 |  4
+ 0 |   | zero  | 2 |  4 | 5 | -5
+ 0 |   | zero  | 2 |  4 | 5 | -5
+ 0 |   | zero  | 2 |  4 | 0 |   
+ 0 |   | zero  | 2 |  4 |   |   
+ 0 |   | zero  | 2 |  4 |   |  0
+   |   | null  | 2 |  4 | 1 | -1
+   |   | null  | 2 |  4 | 2 |  2
+   |   | null  | 2 |  4 | 3 | -3
+   |   | null  | 2 |  4 | 2 |  4
+   |   | null  | 2 |  4 | 5 | -5
+   |   | null  | 2 |  4 | 5 | -5
+   |   | null  | 2 |  4 | 0 |   
+   |   | null  | 2 |  4 |   |   
+   |   | null  | 2 |  4 |   |  0
+   | 0 | zero  | 2 |  4 | 1 | -1
+   | 0 | zero  | 2 |  4 | 2 |  2
+   | 0 | zero  | 2 |  4 | 3 | -3
+   | 0 | zero  | 2 |  4 | 2 |  4
+   | 0 | zero  | 2 |  4 | 5 | -5
+   | 0 | zero  | 2 |  4 | 5 | -5
+   | 0 | zero  | 2 |  4 | 0 |   
+   | 0 | zero  | 2 |  4 |   |   
+   | 0 | zero  | 2 |  4 |   |  0
+ 1 | 4 | one   | 5 | -5 | 1 | -1
+ 1 | 4 | one   | 5 | -5 | 2 |  2
+ 1 | 4 | one   | 5 | -5 | 3 | -3
+ 1 | 4 | one   | 5 | -5 | 2 |  4
+ 1 | 4 | one   | 5 | -5 | 5 | -5
+ 1 | 4 | one   | 5 | -5 | 5 | -5
+ 1 | 4 | one   | 5 | -5 | 0 |   
+ 1 | 4 | one   | 5 | -5 |   |   
+ 1 | 4 | one   | 5 | -5 |   |  0
+ 2 | 3 | two   | 5 | -5 | 1 | -1
+ 2 | 3 | two   | 5 | -5 | 2 |  2
+ 2 | 3 | two   | 5 | -5 | 3 | -3
+ 2 | 3 | two   | 5 | -5 | 2 |  4
+ 2 | 3 | two   | 5 | -5 | 5 | -5
+ 2 | 3 | two   | 5 | -5 | 5 | -5
+ 2 | 3 | two   | 5 | -5 | 0 |   
+ 2 | 3 | two   | 5 | -5 |   |   
+ 2 | 3 | two   | 5 | -5 |   |  0
+ 3 | 2 | three | 5 | -5 | 1 | -1
+ 3 | 2 | three | 5 | -5 | 2 |  2
+ 3 | 2 | three | 5 | -5 | 3 | -3
+ 3 | 2 | three | 5 | -5 | 2 |  4
+ 3 | 2 | three | 5 | -5 | 5 | -5
+ 3 | 2 | three | 5 | -5 | 5 | -5
+ 3 | 2 | three | 5 | -5 | 0 |   
+ 3 | 2 | three | 5 | -5 |   |   
+ 3 | 2 | three | 5 | -5 |   |  0
+ 4 | 1 | four  | 5 | -5 | 1 | -1
+ 4 | 1 | four  | 5 | -5 | 2 |  2
+ 4 | 1 | four  | 5 | -5 | 3 | -3
+ 4 | 1 | four  | 5 | -5 | 2 |  4
+ 4 | 1 | four  | 5 | -5 | 5 | -5
+ 4 | 1 | four  | 5 | -5 | 5 | -5
+ 4 | 1 | four  | 5 | -5 | 0 |   
+ 4 | 1 | four  | 5 | -5 |   |   
+ 4 | 1 | four  | 5 | -5 |   |  0
+ 5 | 0 | five  | 5 | -5 | 1 | -1
+ 5 | 0 | five  | 5 | -5 | 2 |  2
+ 5 | 0 | five  | 5 | -5 | 3 | -3
+ 5 | 0 | five  | 5 | -5 | 2 |  4
+ 5 | 0 | five  | 5 | -5 | 5 | -5
+ 5 | 0 | five  | 5 | -5 | 5 | -5
+ 5 | 0 | five  | 5 | -5 | 0 |   
+ 5 | 0 | five  | 5 | -5 |   |   
+ 5 | 0 | five  | 5 | -5 |   |  0
+ 6 | 6 | six   | 5 | -5 | 1 | -1
+ 6 | 6 | six   | 5 | -5 | 2 |  2
+ 6 | 6 | six   | 5 | -5 | 3 | -3
+ 6 | 6 | six   | 5 | -5 | 2 |  4
+ 6 | 6 | six   | 5 | -5 | 5 | -5
+ 6 | 6 | six   | 5 | -5 | 5 | -5
+ 6 | 6 | six   | 5 | -5 | 0 |   
+ 6 | 6 | six   | 5 | -5 |   |   
+ 6 | 6 | six   | 5 | -5 |   |  0
+ 7 | 7 | seven | 5 | -5 | 1 | -1
+ 7 | 7 | seven | 5 | -5 | 2 |  2
+ 7 | 7 | seven | 5 | -5 | 3 | -3
+ 7 | 7 | seven | 5 | -5 | 2 |  4
+ 7 | 7 | seven | 5 | -5 | 5 | -5
+ 7 | 7 | seven | 5 | -5 | 5 | -5
+ 7 | 7 | seven | 5 | -5 | 0 |   
+ 7 | 7 | seven | 5 | -5 |   |   
+ 7 | 7 | seven | 5 | -5 |   |  0
+ 8 | 8 | eight | 5 | -5 | 1 | -1
+ 8 | 8 | eight | 5 | -5 | 2 |  2
+ 8 | 8 | eight | 5 | -5 | 3 | -3
+ 8 | 8 | eight | 5 | -5 | 2 |  4
+ 8 | 8 | eight | 5 | -5 | 5 | -5
+ 8 | 8 | eight | 5 | -5 | 5 | -5
+ 8 | 8 | eight | 5 | -5 | 0 |   
+ 8 | 8 | eight | 5 | -5 |   |   
+ 8 | 8 | eight | 5 | -5 |   |  0
+ 0 |   | zero  | 5 | -5 | 1 | -1
+ 0 |   | zero  | 5 | -5 | 2 |  2
+ 0 |   | zero  | 5 | -5 | 3 | -3
+ 0 |   | zero  | 5 | -5 | 2 |  4
+ 0 |   | zero  | 5 | -5 | 5 | -5
+ 0 |   | zero  | 5 | -5 | 5 | -5
+ 0 |   | zero  | 5 | -5 | 0 |   
+ 0 |   | zero  | 5 | -5 |   |   
+ 0 |   | zero  | 5 | -5 |   |  0
+   |   | null  | 5 | -5 | 1 | -1
+   |   | null  | 5 | -5 | 2 |  2
+   |   | null  | 5 | -5 | 3 | -3
+   |   | null  | 5 | -5 | 2 |  4
+   |   | null  | 5 | -5 | 5 | -5
+   |   | null  | 5 | -5 | 5 | -5
+   |   | null  | 5 | -5 | 0 |   
+   |   | null  | 5 | -5 |   |   
+   |   | null  | 5 | -5 |   |  0
+   | 0 | zero  | 5 | -5 | 1 | -1
+   | 0 | zero  | 5 | -5 | 2 |  2
+   | 0 | zero  | 5 | -5 | 3 | -3
+   | 0 | zero  | 5 | -5 | 2 |  4
+   | 0 | zero  | 5 | -5 | 5 | -5
+   | 0 | zero  | 5 | -5 | 5 | -5
+   | 0 | zero  | 5 | -5 | 0 |   
+   | 0 | zero  | 5 | -5 |   |   
+   | 0 | zero  | 5 | -5 |   |  0
+ 1 | 4 | one   | 5 | -5 | 1 | -1
+ 1 | 4 | one   | 5 | -5 | 2 |  2
+ 1 | 4 | one   | 5 | -5 | 3 | -3
+ 1 | 4 | one   | 5 | -5 | 2 |  4
+ 1 | 4 | one   | 5 | -5 | 5 | -5
+ 1 | 4 | one   | 5 | -5 | 5 | -5
+ 1 | 4 | one   | 5 | -5 | 0 |   
+ 1 | 4 | one   | 5 | -5 |   |   
+ 1 | 4 | one   | 5 | -5 |   |  0
+ 2 | 3 | two   | 5 | -5 | 1 | -1
+ 2 | 3 | two   | 5 | -5 | 2 |  2
+ 2 | 3 | two   | 5 | -5 | 3 | -3
+ 2 | 3 | two   | 5 | -5 | 2 |  4
+ 2 | 3 | two   | 5 | -5 | 5 | -5
+ 2 | 3 | two   | 5 | -5 | 5 | -5
+ 2 | 3 | two   | 5 | -5 | 0 |   
+ 2 | 3 | two   | 5 | -5 |   |   
+ 2 | 3 | two   | 5 | -5 |   |  0
+ 3 | 2 | three | 5 | -5 | 1 | -1
+ 3 | 2 | three | 5 | -5 | 2 |  2
+ 3 | 2 | three | 5 | -5 | 3 | -3
+ 3 | 2 | three | 5 | -5 | 2 |  4
+ 3 | 2 | three | 5 | -5 | 5 | -5
+ 3 | 2 | three | 5 | -5 | 5 | -5
+ 3 | 2 | three | 5 | -5 | 0 |   
+ 3 | 2 | three | 5 | -5 |   |   
+ 3 | 2 | three | 5 | -5 |   |  0
+ 4 | 1 | four  | 5 | -5 | 1 | -1
+ 4 | 1 | four  | 5 | -5 | 2 |  2
+ 4 | 1 | four  | 5 | -5 | 3 | -3
+ 4 | 1 | four  | 5 | -5 | 2 |  4
+ 4 | 1 | four  | 5 | -5 | 5 | -5
+ 4 | 1 | four  | 5 | -5 | 5 | -5
+ 4 | 1 | four  | 5 | -5 | 0 |   
+ 4 | 1 | four  | 5 | -5 |   |   
+ 4 | 1 | four  | 5 | -5 |   |  0
+ 5 | 0 | five  | 5 | -5 | 1 | -1
+ 5 | 0 | five  | 5 | -5 | 2 |  2
+ 5 | 0 | five  | 5 | -5 | 3 | -3
+ 5 | 0 | five  | 5 | -5 | 2 |  4
+ 5 | 0 | five  | 5 | -5 | 5 | -5
+ 5 | 0 | five  | 5 | -5 | 5 | -5
+ 5 | 0 | five  | 5 | -5 | 0 |   
+ 5 | 0 | five  | 5 | -5 |   |   
+ 5 | 0 | five  | 5 | -5 |   |  0
+ 6 | 6 | six   | 5 | -5 | 1 | -1
+ 6 | 6 | six   | 5 | -5 | 2 |  2
+ 6 | 6 | six   | 5 | -5 | 3 | -3
+ 6 | 6 | six   | 5 | -5 | 2 |  4
+ 6 | 6 | six   | 5 | -5 | 5 | -5
+ 6 | 6 | six   | 5 | -5 | 5 | -5
+ 6 | 6 | six   | 5 | -5 | 0 |   
+ 6 | 6 | six   | 5 | -5 |   |   
+ 6 | 6 | six   | 5 | -5 |   |  0
+ 7 | 7 | seven | 5 | -5 | 1 | -1
+ 7 | 7 | seven | 5 | -5 | 2 |  2
+ 7 | 7 | seven | 5 | -5 | 3 | -3
+ 7 | 7 | seven | 5 | -5 | 2 |  4
+ 7 | 7 | seven | 5 | -5 | 5 | -5
+ 7 | 7 | seven | 5 | -5 | 5 | -5
+ 7 | 7 | seven | 5 | -5 | 0 |   
+ 7 | 7 | seven | 5 | -5 |   |   
+ 7 | 7 | seven | 5 | -5 |   |  0
+ 8 | 8 | eight | 5 | -5 | 1 | -1
+ 8 | 8 | eight | 5 | -5 | 2 |  2
+ 8 | 8 | eight | 5 | -5 | 3 | -3
+ 8 | 8 | eight | 5 | -5 | 2 |  4
+ 8 | 8 | eight | 5 | -5 | 5 | -5
+ 8 | 8 | eight | 5 | -5 | 5 | -5
+ 8 | 8 | eight | 5 | -5 | 0 |   
+ 8 | 8 | eight | 5 | -5 |   |   
+ 8 | 8 | eight | 5 | -5 |   |  0
+ 0 |   | zero  | 5 | -5 | 1 | -1
+ 0 |   | zero  | 5 | -5 | 2 |  2
+ 0 |   | zero  | 5 | -5 | 3 | -3
+ 0 |   | zero  | 5 | -5 | 2 |  4
+ 0 |   | zero  | 5 | -5 | 5 | -5
+ 0 |   | zero  | 5 | -5 | 5 | -5
+ 0 |   | zero  | 5 | -5 | 0 |   
+ 0 |   | zero  | 5 | -5 |   |   
+ 0 |   | zero  | 5 | -5 |   |  0
+   |   | null  | 5 | -5 | 1 | -1
+   |   | null  | 5 | -5 | 2 |  2
+   |   | null  | 5 | -5 | 3 | -3
+   |   | null  | 5 | -5 | 2 |  4
+   |   | null  | 5 | -5 | 5 | -5
+   |   | null  | 5 | -5 | 5 | -5
+   |   | null  | 5 | -5 | 0 |   
+   |   | null  | 5 | -5 |   |   
+   |   | null  | 5 | -5 |   |  0
+   | 0 | zero  | 5 | -5 | 1 | -1
+   | 0 | zero  | 5 | -5 | 2 |  2
+   | 0 | zero  | 5 | -5 | 3 | -3
+   | 0 | zero  | 5 | -5 | 2 |  4
+   | 0 | zero  | 5 | -5 | 5 | -5
+   | 0 | zero  | 5 | -5 | 5 | -5
+   | 0 | zero  | 5 | -5 | 0 |   
+   | 0 | zero  | 5 | -5 |   |   
+   | 0 | zero  | 5 | -5 |   |  0
+ 1 | 4 | one   | 0 |    | 1 | -1
+ 1 | 4 | one   | 0 |    | 2 |  2
+ 1 | 4 | one   | 0 |    | 3 | -3
+ 1 | 4 | one   | 0 |    | 2 |  4
+ 1 | 4 | one   | 0 |    | 5 | -5
+ 1 | 4 | one   | 0 |    | 5 | -5
+ 1 | 4 | one   | 0 |    | 0 |   
+ 1 | 4 | one   | 0 |    |   |   
+ 1 | 4 | one   | 0 |    |   |  0
+ 2 | 3 | two   | 0 |    | 1 | -1
+ 2 | 3 | two   | 0 |    | 2 |  2
+ 2 | 3 | two   | 0 |    | 3 | -3
+ 2 | 3 | two   | 0 |    | 2 |  4
+ 2 | 3 | two   | 0 |    | 5 | -5
+ 2 | 3 | two   | 0 |    | 5 | -5
+ 2 | 3 | two   | 0 |    | 0 |   
+ 2 | 3 | two   | 0 |    |   |   
+ 2 | 3 | two   | 0 |    |   |  0
+ 3 | 2 | three | 0 |    | 1 | -1
+ 3 | 2 | three | 0 |    | 2 |  2
+ 3 | 2 | three | 0 |    | 3 | -3
+ 3 | 2 | three | 0 |    | 2 |  4
+ 3 | 2 | three | 0 |    | 5 | -5
+ 3 | 2 | three | 0 |    | 5 | -5
+ 3 | 2 | three | 0 |    | 0 |   
+ 3 | 2 | three | 0 |    |   |   
+ 3 | 2 | three | 0 |    |   |  0
+ 4 | 1 | four  | 0 |    | 1 | -1
+ 4 | 1 | four  | 0 |    | 2 |  2
+ 4 | 1 | four  | 0 |    | 3 | -3
+ 4 | 1 | four  | 0 |    | 2 |  4
+ 4 | 1 | four  | 0 |    | 5 | -5
+ 4 | 1 | four  | 0 |    | 5 | -5
+ 4 | 1 | four  | 0 |    | 0 |   
+ 4 | 1 | four  | 0 |    |   |   
+ 4 | 1 | four  | 0 |    |   |  0
+ 5 | 0 | five  | 0 |    | 1 | -1
+ 5 | 0 | five  | 0 |    | 2 |  2
+ 5 | 0 | five  | 0 |    | 3 | -3
+ 5 | 0 | five  | 0 |    | 2 |  4
+ 5 | 0 | five  | 0 |    | 5 | -5
+ 5 | 0 | five  | 0 |    | 5 | -5
+ 5 | 0 | five  | 0 |    | 0 |   
+ 5 | 0 | five  | 0 |    |   |   
+ 5 | 0 | five  | 0 |    |   |  0
+ 6 | 6 | six   | 0 |    | 1 | -1
+ 6 | 6 | six   | 0 |    | 2 |  2
+ 6 | 6 | six   | 0 |    | 3 | -3
+ 6 | 6 | six   | 0 |    | 2 |  4
+ 6 | 6 | six   | 0 |    | 5 | -5
+ 6 | 6 | six   | 0 |    | 5 | -5
+ 6 | 6 | six   | 0 |    | 0 |   
+ 6 | 6 | six   | 0 |    |   |   
+ 6 | 6 | six   | 0 |    |   |  0
+ 7 | 7 | seven | 0 |    | 1 | -1
+ 7 | 7 | seven | 0 |    | 2 |  2
+ 7 | 7 | seven | 0 |    | 3 | -3
+ 7 | 7 | seven | 0 |    | 2 |  4
+ 7 | 7 | seven | 0 |    | 5 | -5
+ 7 | 7 | seven | 0 |    | 5 | -5
+ 7 | 7 | seven | 0 |    | 0 |   
+ 7 | 7 | seven | 0 |    |   |   
+ 7 | 7 | seven | 0 |    |   |  0
+ 8 | 8 | eight | 0 |    | 1 | -1
+ 8 | 8 | eight | 0 |    | 2 |  2
+ 8 | 8 | eight | 0 |    | 3 | -3
+ 8 | 8 | eight | 0 |    | 2 |  4
+ 8 | 8 | eight | 0 |    | 5 | -5
+ 8 | 8 | eight | 0 |    | 5 | -5
+ 8 | 8 | eight | 0 |    | 0 |   
+ 8 | 8 | eight | 0 |    |   |   
+ 8 | 8 | eight | 0 |    |   |  0
+ 0 |   | zero  | 0 |    | 1 | -1
+ 0 |   | zero  | 0 |    | 2 |  2
+ 0 |   | zero  | 0 |    | 3 | -3
+ 0 |   | zero  | 0 |    | 2 |  4
+ 0 |   | zero  | 0 |    | 5 | -5
+ 0 |   | zero  | 0 |    | 5 | -5
+ 0 |   | zero  | 0 |    | 0 |   
+ 0 |   | zero  | 0 |    |   |   
+ 0 |   | zero  | 0 |    |   |  0
+   |   | null  | 0 |    | 1 | -1
+   |   | null  | 0 |    | 2 |  2
+   |   | null  | 0 |    | 3 | -3
+   |   | null  | 0 |    | 2 |  4
+   |   | null  | 0 |    | 5 | -5
+   |   | null  | 0 |    | 5 | -5
+   |   | null  | 0 |    | 0 |   
+   |   | null  | 0 |    |   |   
+   |   | null  | 0 |    |   |  0
+   | 0 | zero  | 0 |    | 1 | -1
+   | 0 | zero  | 0 |    | 2 |  2
+   | 0 | zero  | 0 |    | 3 | -3
+   | 0 | zero  | 0 |    | 2 |  4
+   | 0 | zero  | 0 |    | 5 | -5
+   | 0 | zero  | 0 |    | 5 | -5
+   | 0 | zero  | 0 |    | 0 |   
+   | 0 | zero  | 0 |    |   |   
+   | 0 | zero  | 0 |    |   |  0
+ 1 | 4 | one   |   |    | 1 | -1
+ 1 | 4 | one   |   |    | 2 |  2
+ 1 | 4 | one   |   |    | 3 | -3
+ 1 | 4 | one   |   |    | 2 |  4
+ 1 | 4 | one   |   |    | 5 | -5
+ 1 | 4 | one   |   |    | 5 | -5
+ 1 | 4 | one   |   |    | 0 |   
+ 1 | 4 | one   |   |    |   |   
+ 1 | 4 | one   |   |    |   |  0
+ 2 | 3 | two   |   |    | 1 | -1
+ 2 | 3 | two   |   |    | 2 |  2
+ 2 | 3 | two   |   |    | 3 | -3
+ 2 | 3 | two   |   |    | 2 |  4
+ 2 | 3 | two   |   |    | 5 | -5
+ 2 | 3 | two   |   |    | 5 | -5
+ 2 | 3 | two   |   |    | 0 |   
+ 2 | 3 | two   |   |    |   |   
+ 2 | 3 | two   |   |    |   |  0
+ 3 | 2 | three |   |    | 1 | -1
+ 3 | 2 | three |   |    | 2 |  2
+ 3 | 2 | three |   |    | 3 | -3
+ 3 | 2 | three |   |    | 2 |  4
+ 3 | 2 | three |   |    | 5 | -5
+ 3 | 2 | three |   |    | 5 | -5
+ 3 | 2 | three |   |    | 0 |   
+ 3 | 2 | three |   |    |   |   
+ 3 | 2 | three |   |    |   |  0
+ 4 | 1 | four  |   |    | 1 | -1
+ 4 | 1 | four  |   |    | 2 |  2
+ 4 | 1 | four  |   |    | 3 | -3
+ 4 | 1 | four  |   |    | 2 |  4
+ 4 | 1 | four  |   |    | 5 | -5
+ 4 | 1 | four  |   |    | 5 | -5
+ 4 | 1 | four  |   |    | 0 |   
+ 4 | 1 | four  |   |    |   |   
+ 4 | 1 | four  |   |    |   |  0
+ 5 | 0 | five  |   |    | 1 | -1
+ 5 | 0 | five  |   |    | 2 |  2
+ 5 | 0 | five  |   |    | 3 | -3
+ 5 | 0 | five  |   |    | 2 |  4
+ 5 | 0 | five  |   |    | 5 | -5
+ 5 | 0 | five  |   |    | 5 | -5
+ 5 | 0 | five  |   |    | 0 |   
+ 5 | 0 | five  |   |    |   |   
+ 5 | 0 | five  |   |    |   |  0
+ 6 | 6 | six   |   |    | 1 | -1
+ 6 | 6 | six   |   |    | 2 |  2
+ 6 | 6 | six   |   |    | 3 | -3
+ 6 | 6 | six   |   |    | 2 |  4
+ 6 | 6 | six   |   |    | 5 | -5
+ 6 | 6 | six   |   |    | 5 | -5
+ 6 | 6 | six   |   |    | 0 |   
+ 6 | 6 | six   |   |    |   |   
+ 6 | 6 | six   |   |    |   |  0
+ 7 | 7 | seven |   |    | 1 | -1
+ 7 | 7 | seven |   |    | 2 |  2
+ 7 | 7 | seven |   |    | 3 | -3
+ 7 | 7 | seven |   |    | 2 |  4
+ 7 | 7 | seven |   |    | 5 | -5
+ 7 | 7 | seven |   |    | 5 | -5
+ 7 | 7 | seven |   |    | 0 |   
+ 7 | 7 | seven |   |    |   |   
+ 7 | 7 | seven |   |    |   |  0
+ 8 | 8 | eight |   |    | 1 | -1
+ 8 | 8 | eight |   |    | 2 |  2
+ 8 | 8 | eight |   |    | 3 | -3
+ 8 | 8 | eight |   |    | 2 |  4
+ 8 | 8 | eight |   |    | 5 | -5
+ 8 | 8 | eight |   |    | 5 | -5
+ 8 | 8 | eight |   |    | 0 |   
+ 8 | 8 | eight |   |    |   |   
+ 8 | 8 | eight |   |    |   |  0
+ 0 |   | zero  |   |    | 1 | -1
+ 0 |   | zero  |   |    | 2 |  2
+ 0 |   | zero  |   |    | 3 | -3
+ 0 |   | zero  |   |    | 2 |  4
+ 0 |   | zero  |   |    | 5 | -5
+ 0 |   | zero  |   |    | 5 | -5
+ 0 |   | zero  |   |    | 0 |   
+ 0 |   | zero  |   |    |   |   
+ 0 |   | zero  |   |    |   |  0
+   |   | null  |   |    | 1 | -1
+   |   | null  |   |    | 2 |  2
+   |   | null  |   |    | 3 | -3
+   |   | null  |   |    | 2 |  4
+   |   | null  |   |    | 5 | -5
+   |   | null  |   |    | 5 | -5
+   |   | null  |   |    | 0 |   
+   |   | null  |   |    |   |   
+   |   | null  |   |    |   |  0
+   | 0 | zero  |   |    | 1 | -1
+   | 0 | zero  |   |    | 2 |  2
+   | 0 | zero  |   |    | 3 | -3
+   | 0 | zero  |   |    | 2 |  4
+   | 0 | zero  |   |    | 5 | -5
+   | 0 | zero  |   |    | 5 | -5
+   | 0 | zero  |   |    | 0 |   
+   | 0 | zero  |   |    |   |   
+   | 0 | zero  |   |    |   |  0
+ 1 | 4 | one   |   |  0 | 1 | -1
+ 1 | 4 | one   |   |  0 | 2 |  2
+ 1 | 4 | one   |   |  0 | 3 | -3
+ 1 | 4 | one   |   |  0 | 2 |  4
+ 1 | 4 | one   |   |  0 | 5 | -5
+ 1 | 4 | one   |   |  0 | 5 | -5
+ 1 | 4 | one   |   |  0 | 0 |   
+ 1 | 4 | one   |   |  0 |   |   
+ 1 | 4 | one   |   |  0 |   |  0
+ 2 | 3 | two   |   |  0 | 1 | -1
+ 2 | 3 | two   |   |  0 | 2 |  2
+ 2 | 3 | two   |   |  0 | 3 | -3
+ 2 | 3 | two   |   |  0 | 2 |  4
+ 2 | 3 | two   |   |  0 | 5 | -5
+ 2 | 3 | two   |   |  0 | 5 | -5
+ 2 | 3 | two   |   |  0 | 0 |   
+ 2 | 3 | two   |   |  0 |   |   
+ 2 | 3 | two   |   |  0 |   |  0
+ 3 | 2 | three |   |  0 | 1 | -1
+ 3 | 2 | three |   |  0 | 2 |  2
+ 3 | 2 | three |   |  0 | 3 | -3
+ 3 | 2 | three |   |  0 | 2 |  4
+ 3 | 2 | three |   |  0 | 5 | -5
+ 3 | 2 | three |   |  0 | 5 | -5
+ 3 | 2 | three |   |  0 | 0 |   
+ 3 | 2 | three |   |  0 |   |   
+ 3 | 2 | three |   |  0 |   |  0
+ 4 | 1 | four  |   |  0 | 1 | -1
+ 4 | 1 | four  |   |  0 | 2 |  2
+ 4 | 1 | four  |   |  0 | 3 | -3
+ 4 | 1 | four  |   |  0 | 2 |  4
+ 4 | 1 | four  |   |  0 | 5 | -5
+ 4 | 1 | four  |   |  0 | 5 | -5
+ 4 | 1 | four  |   |  0 | 0 |   
+ 4 | 1 | four  |   |  0 |   |   
+ 4 | 1 | four  |   |  0 |   |  0
+ 5 | 0 | five  |   |  0 | 1 | -1
+ 5 | 0 | five  |   |  0 | 2 |  2
+ 5 | 0 | five  |   |  0 | 3 | -3
+ 5 | 0 | five  |   |  0 | 2 |  4
+ 5 | 0 | five  |   |  0 | 5 | -5
+ 5 | 0 | five  |   |  0 | 5 | -5
+ 5 | 0 | five  |   |  0 | 0 |   
+ 5 | 0 | five  |   |  0 |   |   
+ 5 | 0 | five  |   |  0 |   |  0
+ 6 | 6 | six   |   |  0 | 1 | -1
+ 6 | 6 | six   |   |  0 | 2 |  2
+ 6 | 6 | six   |   |  0 | 3 | -3
+ 6 | 6 | six   |   |  0 | 2 |  4
+ 6 | 6 | six   |   |  0 | 5 | -5
+ 6 | 6 | six   |   |  0 | 5 | -5
+ 6 | 6 | six   |   |  0 | 0 |   
+ 6 | 6 | six   |   |  0 |   |   
+ 6 | 6 | six   |   |  0 |   |  0
+ 7 | 7 | seven |   |  0 | 1 | -1
+ 7 | 7 | seven |   |  0 | 2 |  2
+ 7 | 7 | seven |   |  0 | 3 | -3
+ 7 | 7 | seven |   |  0 | 2 |  4
+ 7 | 7 | seven |   |  0 | 5 | -5
+ 7 | 7 | seven |   |  0 | 5 | -5
+ 7 | 7 | seven |   |  0 | 0 |   
+ 7 | 7 | seven |   |  0 |   |   
+ 7 | 7 | seven |   |  0 |   |  0
+ 8 | 8 | eight |   |  0 | 1 | -1
+ 8 | 8 | eight |   |  0 | 2 |  2
+ 8 | 8 | eight |   |  0 | 3 | -3
+ 8 | 8 | eight |   |  0 | 2 |  4
+ 8 | 8 | eight |   |  0 | 5 | -5
+ 8 | 8 | eight |   |  0 | 5 | -5
+ 8 | 8 | eight |   |  0 | 0 |   
+ 8 | 8 | eight |   |  0 |   |   
+ 8 | 8 | eight |   |  0 |   |  0
+ 0 |   | zero  |   |  0 | 1 | -1
+ 0 |   | zero  |   |  0 | 2 |  2
+ 0 |   | zero  |   |  0 | 3 | -3
+ 0 |   | zero  |   |  0 | 2 |  4
+ 0 |   | zero  |   |  0 | 5 | -5
+ 0 |   | zero  |   |  0 | 5 | -5
+ 0 |   | zero  |   |  0 | 0 |   
+ 0 |   | zero  |   |  0 |   |   
+ 0 |   | zero  |   |  0 |   |  0
+   |   | null  |   |  0 | 1 | -1
+   |   | null  |   |  0 | 2 |  2
+   |   | null  |   |  0 | 3 | -3
+   |   | null  |   |  0 | 2 |  4
+   |   | null  |   |  0 | 5 | -5
+   |   | null  |   |  0 | 5 | -5
+   |   | null  |   |  0 | 0 |   
+   |   | null  |   |  0 |   |   
+   |   | null  |   |  0 |   |  0
+   | 0 | zero  |   |  0 | 1 | -1
+   | 0 | zero  |   |  0 | 2 |  2
+   | 0 | zero  |   |  0 | 3 | -3
+   | 0 | zero  |   |  0 | 2 |  4
+   | 0 | zero  |   |  0 | 5 | -5
+   | 0 | zero  |   |  0 | 5 | -5
+   | 0 | zero  |   |  0 | 0 |   
+   | 0 | zero  |   |  0 |   |   
+   | 0 | zero  |   |  0 |   |  0
 (891 rows)
 
 --
@@ -1565,284 +1569,336 @@ SELECT '' AS "xxx", *
 -- by including a column in the USING clause only once in the result.
 --
 -- Inner equi-join on specified column
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL INNER JOIN J2_TBL USING (i);
- xxx | i | j |   t   | k  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
+ i | j |   t   | k  
+---+---+-------+----
+ 0 |   | zero  |   
+ 1 | 4 | one   | -1
+ 2 | 3 | two   |  2
+ 2 | 3 | two   |  4
+ 3 | 2 | three | -3
+ 5 | 0 | five  | -5
+ 5 | 0 | five  | -5
 (7 rows)
 
 -- Same as above, slightly different syntax
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL JOIN J2_TBL USING (i);
- xxx | i | j |   t   | k  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
+ i | j |   t   | k  
+---+---+-------+----
+ 0 |   | zero  |   
+ 1 | 4 | one   | -1
+ 2 | 3 | two   |  2
+ 2 | 3 | two   |  4
+ 3 | 2 | three | -3
+ 5 | 0 | five  | -5
+ 5 | 0 | five  | -5
 (7 rows)
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL t1 (a, b, c) JOIN J2_TBL t2 (a, d) USING (a)
   ORDER BY a, d;
- xxx | a | b |   c   | d  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
+ a | b |   c   | d  
+---+---+-------+----
+ 0 |   | zero  |   
+ 1 | 4 | one   | -1
+ 2 | 3 | two   |  2
+ 2 | 3 | two   |  4
+ 3 | 2 | three | -3
+ 5 | 0 | five  | -5
+ 5 | 0 | five  | -5
 (7 rows)
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL t1 (a, b, c) JOIN J2_TBL t2 (a, b) USING (b)
   ORDER BY b, t1.a;
- xxx | b | a |   c   | a 
------+---+---+-------+---
-     | 0 | 5 | five  |  
-     | 0 |   | zero  |  
-     | 2 | 3 | three | 2
-     | 4 | 1 | one   | 2
+ b | a |   c   | a 
+---+---+-------+---
+ 0 | 5 | five  |  
+ 0 |   | zero  |  
+ 2 | 3 | three | 2
+ 4 | 1 | one   | 2
 (4 rows)
+
+-- test join using aliases
+SELECT * FROM J1_TBL JOIN J2_TBL USING (i) WHERE J1_TBL.t = 'one';  -- ok
+ i | j |  t  | k  
+---+---+-----+----
+ 1 | 4 | one | -1
+(1 row)
+
+SELECT * FROM J1_TBL JOIN J2_TBL USING (i) AS x WHERE J1_TBL.t = 'one';  -- ok
+ i | j |  t  | k  
+---+---+-----+----
+ 1 | 4 | one | -1
+(1 row)
+
+SELECT * FROM (J1_TBL JOIN J2_TBL USING (i)) AS x WHERE J1_TBL.t = 'one';  -- error
+ERROR:  invalid reference to FROM-clause entry for table "j1_tbl"
+LINE 1: ... * FROM (J1_TBL JOIN J2_TBL USING (i)) AS x WHERE J1_TBL.t =...
+                                                             ^
+HINT:  There is an entry for table "j1_tbl", but it cannot be referenced from this part of the query.
+SELECT * FROM J1_TBL JOIN J2_TBL USING (i) AS x WHERE x.i = 1;  -- ok
+ i | j |  t  | k  
+---+---+-----+----
+ 1 | 4 | one | -1
+(1 row)
+
+SELECT * FROM J1_TBL JOIN J2_TBL USING (i) AS x WHERE x.t = 'one';  -- error
+ERROR:  column x.t does not exist
+LINE 1: ...CT * FROM J1_TBL JOIN J2_TBL USING (i) AS x WHERE x.t = 'one...
+                                                             ^
+SELECT * FROM (J1_TBL JOIN J2_TBL USING (i) AS x) AS xx WHERE x.i = 1;  -- error (XXX could use better hint)
+ERROR:  missing FROM-clause entry for table "x"
+LINE 1: ...ROM (J1_TBL JOIN J2_TBL USING (i) AS x) AS xx WHERE x.i = 1;
+                                                               ^
+SELECT * FROM J1_TBL a1 JOIN J2_TBL a2 USING (i) AS a1;  -- error
+ERROR:  table name "a1" specified more than once
+SELECT x.* FROM J1_TBL JOIN J2_TBL USING (i) AS x WHERE J1_TBL.t = 'one';
+ i 
+---
+ 1
+(1 row)
+
+SELECT ROW(x.*) FROM J1_TBL JOIN J2_TBL USING (i) AS x WHERE J1_TBL.t = 'one';
+ row 
+-----
+ (1)
+(1 row)
+
+SELECT row_to_json(x.*) FROM J1_TBL JOIN J2_TBL USING (i) AS x WHERE J1_TBL.t = 'one';
+ row_to_json 
+-------------
+ {"i":1}
+(1 row)
 
 --
 -- NATURAL JOIN
 -- Inner equi-join on all columns with the same name
 --
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL NATURAL JOIN J2_TBL;
- xxx | i | j |   t   | k  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
+ i | j |   t   | k  
+---+---+-------+----
+ 0 |   | zero  |   
+ 1 | 4 | one   | -1
+ 2 | 3 | two   |  2
+ 2 | 3 | two   |  4
+ 3 | 2 | three | -3
+ 5 | 0 | five  | -5
+ 5 | 0 | five  | -5
 (7 rows)
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL t1 (a, b, c) NATURAL JOIN J2_TBL t2 (a, d);
- xxx | a | b |   c   | d  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
+ a | b |   c   | d  
+---+---+-------+----
+ 0 |   | zero  |   
+ 1 | 4 | one   | -1
+ 2 | 3 | two   |  2
+ 2 | 3 | two   |  4
+ 3 | 2 | three | -3
+ 5 | 0 | five  | -5
+ 5 | 0 | five  | -5
 (7 rows)
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL t1 (a, b, c) NATURAL JOIN J2_TBL t2 (d, a);
- xxx | a | b |  c   | d 
------+---+---+------+---
-     | 0 |   | zero |  
-     | 2 | 3 | two  | 2
-     | 4 | 1 | four | 2
+ a | b |  c   | d 
+---+---+------+---
+ 0 |   | zero |  
+ 2 | 3 | two  | 2
+ 4 | 1 | four | 2
 (3 rows)
 
 -- mismatch number of columns
 -- currently, Postgres will fill in with underlying names
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL t1 (a, b) NATURAL JOIN J2_TBL t2 (a);
- xxx | a | b |   t   | k  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
+ a | b |   t   | k  
+---+---+-------+----
+ 0 |   | zero  |   
+ 1 | 4 | one   | -1
+ 2 | 3 | two   |  2
+ 2 | 3 | two   |  4
+ 3 | 2 | three | -3
+ 5 | 0 | five  | -5
+ 5 | 0 | five  | -5
 (7 rows)
 
 --
 -- Inner joins (equi-joins)
 --
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i = J2_TBL.i);
- xxx | i | j |   t   | i | k  
------+---+---+-------+---+----
-     | 0 |   | zero  | 0 |   
-     | 1 | 4 | one   | 1 | -1
-     | 2 | 3 | two   | 2 |  2
-     | 2 | 3 | two   | 2 |  4
-     | 3 | 2 | three | 3 | -3
-     | 5 | 0 | five  | 5 | -5
-     | 5 | 0 | five  | 5 | -5
+ i | j |   t   | i | k  
+---+---+-------+---+----
+ 0 |   | zero  | 0 |   
+ 1 | 4 | one   | 1 | -1
+ 2 | 3 | two   | 2 |  2
+ 2 | 3 | two   | 2 |  4
+ 3 | 2 | three | 3 | -3
+ 5 | 0 | five  | 5 | -5
+ 5 | 0 | five  | 5 | -5
 (7 rows)
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i = J2_TBL.k);
- xxx | i | j |  t   | i | k 
------+---+---+------+---+---
-     | 0 |   | zero |   | 0
-     | 2 | 3 | two  | 2 | 2
-     | 4 | 1 | four | 2 | 4
+ i | j |  t   | i | k 
+---+---+------+---+---
+ 0 |   | zero |   | 0
+ 2 | 3 | two  | 2 | 2
+ 4 | 1 | four | 2 | 4
 (3 rows)
 
 --
 -- Non-equi-joins
 --
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i <= J2_TBL.k);
- xxx | i | j |   t   | i | k 
------+---+---+-------+---+---
-     | 1 | 4 | one   | 2 | 2
-     | 2 | 3 | two   | 2 | 2
-     | 0 |   | zero  | 2 | 2
-     | 1 | 4 | one   | 2 | 4
-     | 2 | 3 | two   | 2 | 4
-     | 3 | 2 | three | 2 | 4
-     | 4 | 1 | four  | 2 | 4
-     | 0 |   | zero  | 2 | 4
-     | 0 |   | zero  |   | 0
+ i | j |   t   | i | k 
+---+---+-------+---+---
+ 1 | 4 | one   | 2 | 2
+ 2 | 3 | two   | 2 | 2
+ 0 |   | zero  | 2 | 2
+ 1 | 4 | one   | 2 | 4
+ 2 | 3 | two   | 2 | 4
+ 3 | 2 | three | 2 | 4
+ 4 | 1 | four  | 2 | 4
+ 0 |   | zero  | 2 | 4
+ 0 |   | zero  |   | 0
 (9 rows)
 
 --
 -- Outer joins
 -- Note that OUTER is a noise word
 --
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL LEFT OUTER JOIN J2_TBL USING (i)
   ORDER BY i, k, t;
- xxx | i | j |   t   | k  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 4 | 1 | four  |   
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
-     | 6 | 6 | six   |   
-     | 7 | 7 | seven |   
-     | 8 | 8 | eight |   
-     |   |   | null  |   
-     |   | 0 | zero  |   
+ i | j |   t   | k  
+---+---+-------+----
+ 0 |   | zero  |   
+ 1 | 4 | one   | -1
+ 2 | 3 | two   |  2
+ 2 | 3 | two   |  4
+ 3 | 2 | three | -3
+ 4 | 1 | four  |   
+ 5 | 0 | five  | -5
+ 5 | 0 | five  | -5
+ 6 | 6 | six   |   
+ 7 | 7 | seven |   
+ 8 | 8 | eight |   
+   |   | null  |   
+   | 0 | zero  |   
 (13 rows)
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL LEFT JOIN J2_TBL USING (i)
   ORDER BY i, k, t;
- xxx | i | j |   t   | k  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 4 | 1 | four  |   
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
-     | 6 | 6 | six   |   
-     | 7 | 7 | seven |   
-     | 8 | 8 | eight |   
-     |   |   | null  |   
-     |   | 0 | zero  |   
+ i | j |   t   | k  
+---+---+-------+----
+ 0 |   | zero  |   
+ 1 | 4 | one   | -1
+ 2 | 3 | two   |  2
+ 2 | 3 | two   |  4
+ 3 | 2 | three | -3
+ 4 | 1 | four  |   
+ 5 | 0 | five  | -5
+ 5 | 0 | five  | -5
+ 6 | 6 | six   |   
+ 7 | 7 | seven |   
+ 8 | 8 | eight |   
+   |   | null  |   
+   | 0 | zero  |   
 (13 rows)
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL RIGHT OUTER JOIN J2_TBL USING (i);
- xxx | i | j |   t   | k  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
-     |   |   |       |   
-     |   |   |       |  0
+ i | j |   t   | k  
+---+---+-------+----
+ 0 |   | zero  |   
+ 1 | 4 | one   | -1
+ 2 | 3 | two   |  2
+ 2 | 3 | two   |  4
+ 3 | 2 | three | -3
+ 5 | 0 | five  | -5
+ 5 | 0 | five  | -5
+   |   |       |   
+   |   |       |  0
 (9 rows)
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL RIGHT JOIN J2_TBL USING (i);
- xxx | i | j |   t   | k  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
-     |   |   |       |   
-     |   |   |       |  0
+ i | j |   t   | k  
+---+---+-------+----
+ 0 |   | zero  |   
+ 1 | 4 | one   | -1
+ 2 | 3 | two   |  2
+ 2 | 3 | two   |  4
+ 3 | 2 | three | -3
+ 5 | 0 | five  | -5
+ 5 | 0 | five  | -5
+   |   |       |   
+   |   |       |  0
 (9 rows)
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL FULL OUTER JOIN J2_TBL USING (i)
   ORDER BY i, k, t;
- xxx | i | j |   t   | k  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 4 | 1 | four  |   
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
-     | 6 | 6 | six   |   
-     | 7 | 7 | seven |   
-     | 8 | 8 | eight |   
-     |   |   |       |  0
-     |   |   | null  |   
-     |   | 0 | zero  |   
-     |   |   |       |   
+ i | j |   t   | k  
+---+---+-------+----
+ 0 |   | zero  |   
+ 1 | 4 | one   | -1
+ 2 | 3 | two   |  2
+ 2 | 3 | two   |  4
+ 3 | 2 | three | -3
+ 4 | 1 | four  |   
+ 5 | 0 | five  | -5
+ 5 | 0 | five  | -5
+ 6 | 6 | six   |   
+ 7 | 7 | seven |   
+ 8 | 8 | eight |   
+   |   |       |  0
+   |   | null  |   
+   | 0 | zero  |   
+   |   |       |   
 (15 rows)
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL FULL JOIN J2_TBL USING (i)
   ORDER BY i, k, t;
- xxx | i | j |   t   | k  
------+---+---+-------+----
-     | 0 |   | zero  |   
-     | 1 | 4 | one   | -1
-     | 2 | 3 | two   |  2
-     | 2 | 3 | two   |  4
-     | 3 | 2 | three | -3
-     | 4 | 1 | four  |   
-     | 5 | 0 | five  | -5
-     | 5 | 0 | five  | -5
-     | 6 | 6 | six   |   
-     | 7 | 7 | seven |   
-     | 8 | 8 | eight |   
-     |   |   |       |  0
-     |   |   | null  |   
-     |   | 0 | zero  |   
-     |   |   |       |   
+ i | j |   t   | k  
+---+---+-------+----
+ 0 |   | zero  |   
+ 1 | 4 | one   | -1
+ 2 | 3 | two   |  2
+ 2 | 3 | two   |  4
+ 3 | 2 | three | -3
+ 4 | 1 | four  |   
+ 5 | 0 | five  | -5
+ 5 | 0 | five  | -5
+ 6 | 6 | six   |   
+ 7 | 7 | seven |   
+ 8 | 8 | eight |   
+   |   |       |  0
+   |   | null  |   
+   | 0 | zero  |   
+   |   |       |   
 (15 rows)
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL LEFT JOIN J2_TBL USING (i) WHERE (k = 1);
- xxx | i | j | t | k 
------+---+---+---+---
+ i | j | t | k 
+---+---+---+---
 (0 rows)
 
-SELECT '' AS "xxx", *
+SELECT *
   FROM J1_TBL LEFT JOIN J2_TBL USING (i) WHERE (i = 1);
- xxx | i | j |  t  | k  
------+---+---+-----+----
-     | 1 | 4 | one | -1
+ i | j |  t  | k  
+---+---+-----+----
+ 1 | 4 | one | -1
 (1 row)
 
 --
@@ -2024,6 +2080,20 @@ NATURAL FULL JOIN
  ee   |      |   42 |    2 |     
 (4 rows)
 
+-- Constants as join keys can also be problematic
+SELECT * FROM
+  (SELECT name, n as s1_n FROM t1) as s1
+FULL JOIN
+  (SELECT name, 2 as s2_n FROM t2) as s2
+ON (s1_n = s2_n);
+ name | s1_n | name | s2_n 
+------+------+------+------
+      |      | bb   |    2
+      |      | cc   |    2
+      |      | ee   |    2
+ bb   |   11 |      |     
+(4 rows)
+
 -- Test for propagation of nullability constraints into sub-joins
 create temp table x (x1 int, x2 int);
 insert into x values (1,11);
@@ -2191,7 +2261,7 @@ rollback;
 --
 explain (costs off)
 select aa, bb, unique1, unique1
-  from tenk1 right join b on aa = unique1
+  from tenk1 right join b_star on aa = unique1
   where bb < bb and bb is null;
         QUERY PLAN        
 --------------------------
@@ -2200,7 +2270,7 @@ select aa, bb, unique1, unique1
 (2 rows)
 
 select aa, bb, unique1, unique1
-  from tenk1 right join b on aa = unique1
+  from tenk1 right join b_star on aa = unique1
   where bb < bb and bb is null;
  aa | bb | unique1 | unique1 
 ----+----+---------+---------
@@ -2213,20 +2283,17 @@ explain (costs off)
 select * from int8_tbl i1 left join (int8_tbl i2 join
   (select 123 as x) ss on i2.q1 = x) on i1.q2 = i2.q2
 order by 1, 2;
-                   QUERY PLAN                    
--------------------------------------------------
+                QUERY PLAN                 
+-------------------------------------------
  Sort
    Sort Key: i1.q1, i1.q2
    ->  Hash Left Join
          Hash Cond: (i1.q2 = i2.q2)
          ->  Seq Scan on int8_tbl i1
          ->  Hash
-               ->  Hash Join
-                     Hash Cond: (i2.q1 = (123))
-                     ->  Seq Scan on int8_tbl i2
-                     ->  Hash
-                           ->  Result
-(11 rows)
+               ->  Seq Scan on int8_tbl i2
+                     Filter: (q1 = 123)
+(8 rows)
 
 select * from int8_tbl i1 left join (int8_tbl i2 join
   (select 123 as x) ss on i2.q1 = x) on i1.q2 = i2.q2
@@ -2434,6 +2501,39 @@ ERROR:  column t1.x does not exist
 LINE 1: select t1.x from t1 join t3 on (t1.a = t3.x);
                ^
 HINT:  Perhaps you meant to reference the column "t3.x".
+-- Test matching of locking clause with wrong alias
+select t1.*, t2.*, unnamed_join.* from
+  t1 join t2 on (t1.a = t2.a), t3 as unnamed_join
+  for update of unnamed_join;
+ a | b | a | b | x | y 
+---+---+---+---+---+---
+(0 rows)
+
+select foo.*, unnamed_join.* from
+  t1 join t2 using (a) as foo, t3 as unnamed_join
+  for update of unnamed_join;
+ a | x | y 
+---+---+---
+(0 rows)
+
+select foo.*, unnamed_join.* from
+  t1 join t2 using (a) as foo, t3 as unnamed_join
+  for update of foo;
+ERROR:  FOR UPDATE cannot be applied to a join
+LINE 3:   for update of foo;
+                        ^
+select bar.*, unnamed_join.* from
+  (t1 join t2 using (a) as foo) as bar, t3 as unnamed_join
+  for update of foo;
+ERROR:  relation "foo" in FOR UPDATE clause not found in FROM clause
+LINE 3:   for update of foo;
+                        ^
+select bar.*, unnamed_join.* from
+  (t1 join t2 using (a) as foo) as bar, t3 as unnamed_join
+  for update of bar;
+ERROR:  FOR UPDATE cannot be applied to a join
+LINE 3:   for update of bar;
+                        ^
 --
 -- regression test for 8.1 merge right join bug
 --
@@ -2469,6 +2569,7 @@ reset enable_nestloop;
 --
 set work_mem to '64kB';
 set enable_mergejoin to off;
+set enable_memoize to off;
 explain (costs off)
 select count(*) from tenk1 a, tenk1 b
   where a.hundred = b.thousand and (b.fivethous % 10) < 10;
@@ -2492,6 +2593,7 @@ select count(*) from tenk1 a, tenk1 b
 
 reset work_mem;
 reset enable_mergejoin;
+reset enable_memoize;
 --
 -- regression test for 8.2 bug with improper re-ordering of left joins
 --
@@ -2692,6 +2794,7 @@ select a.idv, b.idv from tidv a, tidv b where a.idv = b.idv;
 (5 rows)
 
 set enable_mergejoin = 0;
+set enable_hashjoin = 0;
 explain (costs off)
 select a.idv, b.idv from tidv a, tidv b where a.idv = b.idv;
                      QUERY PLAN                     
@@ -2854,7 +2957,7 @@ SELECT qq, unique1
 ---------------------------------------------------------------------------------------------------------
  Nested Loop
    ->  Hash Full Join
-         Hash Cond: (COALESCE(a.q1, '0'::bigint) = COALESCE(b.q2, '-1'::bigint))
+         Hash Cond: ((COALESCE(a.q1, '0'::bigint)) = (COALESCE(b.q2, '-1'::bigint)))
          ->  Seq Scan on int8_tbl a
          ->  Hash
                ->  Seq Scan on int8_tbl b
@@ -2995,6 +3098,70 @@ order by 1,2;
 (8 rows)
 
 --
+-- variant where a PlaceHolderVar is needed at a join, but not above the join
+--
+explain (costs off)
+select * from
+  int4_tbl as i41,
+  lateral
+    (select 1 as x from
+      (select i41.f1 as lat,
+              i42.f1 as loc from
+         int8_tbl as i81, int4_tbl as i42) as ss1
+      right join int4_tbl as i43 on (i43.f1 > 1)
+      where ss1.loc = ss1.lat) as ss2
+where i41.f1 > 0;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Nested Loop
+   ->  Nested Loop
+         ->  Seq Scan on int4_tbl i41
+               Filter: (f1 > 0)
+         ->  Nested Loop
+               Join Filter: (i41.f1 = i42.f1)
+               ->  Seq Scan on int8_tbl i81
+               ->  Materialize
+                     ->  Seq Scan on int4_tbl i42
+   ->  Materialize
+         ->  Seq Scan on int4_tbl i43
+               Filter: (f1 > 1)
+(12 rows)
+
+select * from
+  int4_tbl as i41,
+  lateral
+    (select 1 as x from
+      (select i41.f1 as lat,
+              i42.f1 as loc from
+         int8_tbl as i81, int4_tbl as i42) as ss1
+      right join int4_tbl as i43 on (i43.f1 > 1)
+      where ss1.loc = ss1.lat) as ss2
+where i41.f1 > 0;
+     f1     | x 
+------------+---
+     123456 | 1
+     123456 | 1
+     123456 | 1
+     123456 | 1
+     123456 | 1
+     123456 | 1
+     123456 | 1
+     123456 | 1
+     123456 | 1
+     123456 | 1
+ 2147483647 | 1
+ 2147483647 | 1
+ 2147483647 | 1
+ 2147483647 | 1
+ 2147483647 | 1
+ 2147483647 | 1
+ 2147483647 | 1
+ 2147483647 | 1
+ 2147483647 | 1
+ 2147483647 | 1
+(20 rows)
+
+--
 -- test the corner cases FULL JOIN ON TRUE and FULL JOIN ON FALSE
 --
 select * from int4_tbl a full join int4_tbl b on true;
@@ -3045,11 +3212,14 @@ select * from int4_tbl a full join int4_tbl b on false;
 --
 -- test for ability to use a cartesian join when necessary
 --
+create temp table q1 as select 1 as q1;
+create temp table q2 as select 0 as q2;
+analyze q1;
+analyze q2;
 explain (costs off)
 select * from
   tenk1 join int4_tbl on f1 = twothousand,
-  int4(sin(1)) q1,
-  int4(sin(0)) q2
+  q1, q2
 where q1 = thousand or q2 = thousand;
                                QUERY PLAN                               
 ------------------------------------------------------------------------
@@ -3057,15 +3227,15 @@ where q1 = thousand or q2 = thousand;
    Hash Cond: (tenk1.twothousand = int4_tbl.f1)
    ->  Nested Loop
          ->  Nested Loop
-               ->  Function Scan on q1
-               ->  Function Scan on q2
+               ->  Seq Scan on q1
+               ->  Seq Scan on q2
          ->  Bitmap Heap Scan on tenk1
                Recheck Cond: ((q1.q1 = thousand) OR (q2.q2 = thousand))
                ->  BitmapOr
                      ->  Bitmap Index Scan on tenk1_thous_tenthous
-                           Index Cond: (q1.q1 = thousand)
+                           Index Cond: (thousand = q1.q1)
                      ->  Bitmap Index Scan on tenk1_thous_tenthous
-                           Index Cond: (q2.q2 = thousand)
+                           Index Cond: (thousand = q2.q2)
    ->  Hash
          ->  Seq Scan on int4_tbl
 (15 rows)
@@ -3073,8 +3243,7 @@ where q1 = thousand or q2 = thousand;
 explain (costs off)
 select * from
   tenk1 join int4_tbl on f1 = twothousand,
-  int4(sin(1)) q1,
-  int4(sin(0)) q2
+  q1, q2
 where thousand = (q1 + q2);
                           QUERY PLAN                          
 --------------------------------------------------------------
@@ -3082,8 +3251,8 @@ where thousand = (q1 + q2);
    Hash Cond: (tenk1.twothousand = int4_tbl.f1)
    ->  Nested Loop
          ->  Nested Loop
-               ->  Function Scan on q1
-               ->  Function Scan on q2
+               ->  Seq Scan on q1
+               ->  Seq Scan on q2
          ->  Bitmap Heap Scan on tenk1
                Recheck Cond: (thousand = (q1.q1 + q2.q2))
                ->  Bitmap Index Scan on tenk1_thous_tenthous
@@ -3119,8 +3288,8 @@ select t1.unique2, t1.stringu1, t2.unique1, t2.stringu2 from
   tenk1 t1
   inner join int4_tbl i1
     left join (select v1.x2, v2.y1, 11 AS d1
-               from (values(1,0)) v1(x1,x2)
-               left join (values(3,1)) v2(y1,y2)
+               from (select 1,0 from onerow) v1(x1,x2)
+               left join (select 3,1 from onerow) v2(y1,y2)
                on v1.x1 = v2.y2) subq1
     on (i1.f1 = subq1.x2)
   on (t1.unique2 = subq1.d1)
@@ -3130,27 +3299,26 @@ where t1.unique2 < 42 and t1.stringu1 > t2.stringu2;
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Nested Loop
-   Join Filter: (t1.stringu1 > t2.stringu2)
    ->  Nested Loop
-         Join Filter: ((0) = i1.f1)
+         Join Filter: (t1.stringu1 > t2.stringu2)
          ->  Nested Loop
                ->  Nested Loop
-                     Join Filter: ((1) = (1))
-                     ->  Result
-                     ->  Result
+                     ->  Seq Scan on onerow
+                     ->  Seq Scan on onerow onerow_1
                ->  Index Scan using tenk1_unique2 on tenk1 t1
                      Index Cond: ((unique2 = (11)) AND (unique2 < 42))
-         ->  Seq Scan on int4_tbl i1
-   ->  Index Scan using tenk1_unique1 on tenk1 t2
-         Index Cond: (unique1 = (3))
-(14 rows)
+         ->  Index Scan using tenk1_unique1 on tenk1 t2
+               Index Cond: (unique1 = (3))
+   ->  Seq Scan on int4_tbl i1
+         Filter: (f1 = 0)
+(13 rows)
 
 select t1.unique2, t1.stringu1, t2.unique1, t2.stringu2 from
   tenk1 t1
   inner join int4_tbl i1
     left join (select v1.x2, v2.y1, 11 AS d1
-               from (values(1,0)) v1(x1,x2)
-               left join (values(3,1)) v2(y1,y2)
+               from (select 1,0 from onerow) v1(x1,x2)
+               left join (select 3,1 from onerow) v2(y1,y2)
                on v1.x1 = v2.y2) subq1
     on (i1.f1 = subq1.x2)
   on (t1.unique2 = subq1.d1)
@@ -3182,6 +3350,300 @@ where t1.unique1 < i4.f1;
 ----
 (0 rows)
 
+-- this variant is foldable by the remove-useless-RESULT-RTEs code
+explain (costs off)
+select t1.unique2, t1.stringu1, t2.unique1, t2.stringu2 from
+  tenk1 t1
+  inner join int4_tbl i1
+    left join (select v1.x2, v2.y1, 11 AS d1
+               from (values(1,0)) v1(x1,x2)
+               left join (values(3,1)) v2(y1,y2)
+               on v1.x1 = v2.y2) subq1
+    on (i1.f1 = subq1.x2)
+  on (t1.unique2 = subq1.d1)
+  left join tenk1 t2
+  on (subq1.y1 = t2.unique1)
+where t1.unique2 < 42 and t1.stringu1 > t2.stringu2;
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Nested Loop
+   Join Filter: (t1.stringu1 > t2.stringu2)
+   ->  Nested Loop
+         ->  Seq Scan on int4_tbl i1
+               Filter: (f1 = 0)
+         ->  Index Scan using tenk1_unique2 on tenk1 t1
+               Index Cond: ((unique2 = (11)) AND (unique2 < 42))
+   ->  Index Scan using tenk1_unique1 on tenk1 t2
+         Index Cond: (unique1 = (3))
+(9 rows)
+
+select t1.unique2, t1.stringu1, t2.unique1, t2.stringu2 from
+  tenk1 t1
+  inner join int4_tbl i1
+    left join (select v1.x2, v2.y1, 11 AS d1
+               from (values(1,0)) v1(x1,x2)
+               left join (values(3,1)) v2(y1,y2)
+               on v1.x1 = v2.y2) subq1
+    on (i1.f1 = subq1.x2)
+  on (t1.unique2 = subq1.d1)
+  left join tenk1 t2
+  on (subq1.y1 = t2.unique1)
+where t1.unique2 < 42 and t1.stringu1 > t2.stringu2;
+ unique2 | stringu1 | unique1 | stringu2 
+---------+----------+---------+----------
+      11 | WFAAAA   |       3 | LKIAAA
+(1 row)
+
+-- Here's a variant that we can't fold too aggressively, though,
+-- or we end up with noplace to evaluate the lateral PHV
+explain (verbose, costs off)
+select * from
+  (select 1 as x) ss1 left join (select 2 as y) ss2 on (true),
+  lateral (select ss2.y as z limit 1) ss3;
+        QUERY PLAN         
+---------------------------
+ Nested Loop
+   Output: 1, (2), ((2))
+   ->  Result
+         Output: 2
+   ->  Limit
+         Output: ((2))
+         ->  Result
+               Output: (2)
+(8 rows)
+
+select * from
+  (select 1 as x) ss1 left join (select 2 as y) ss2 on (true),
+  lateral (select ss2.y as z limit 1) ss3;
+ x | y | z 
+---+---+---
+ 1 | 2 | 2
+(1 row)
+
+-- Test proper handling of appendrel PHVs during useless-RTE removal
+explain (costs off)
+select * from
+  (select 0 as z) as t1
+  left join
+  (select true as a) as t2
+  on true,
+  lateral (select true as b
+           union all
+           select a as b) as t3
+where b;
+              QUERY PLAN               
+---------------------------------------
+ Nested Loop
+   ->  Result
+   ->  Append
+         ->  Result
+         ->  Result
+               One-Time Filter: (true)
+(6 rows)
+
+select * from
+  (select 0 as z) as t1
+  left join
+  (select true as a) as t2
+  on true,
+  lateral (select true as b
+           union all
+           select a as b) as t3
+where b;
+ z | a | b 
+---+---+---
+ 0 | t | t
+ 0 | t | t
+(2 rows)
+
+-- Test PHV in a semijoin qual, which confused useless-RTE removal (bug #17700)
+explain (verbose, costs off)
+with ctetable as not materialized ( select 1 as f1 )
+select * from ctetable c1
+where f1 in ( select c3.f1 from ctetable c2 full join ctetable c3 on true );
+         QUERY PLAN         
+----------------------------
+ Result
+   Output: 1
+   One-Time Filter: (1 = 1)
+(3 rows)
+
+with ctetable as not materialized ( select 1 as f1 )
+select * from ctetable c1
+where f1 in ( select c3.f1 from ctetable c2 full join ctetable c3 on true );
+ f1 
+----
+  1
+(1 row)
+
+--
+-- test inlining of immutable functions
+--
+create function f_immutable_int4(i integer) returns integer as
+$$ begin return i; end; $$ language plpgsql immutable;
+-- check optimization of function scan with join
+explain (costs off)
+select unique1 from tenk1, (select * from f_immutable_int4(1) x) x
+where x = unique1;
+                  QUERY PLAN                  
+----------------------------------------------
+ Index Only Scan using tenk1_unique1 on tenk1
+   Index Cond: (unique1 = 1)
+(2 rows)
+
+explain (verbose, costs off)
+select unique1, x.*
+from tenk1, (select *, random() from f_immutable_int4(1) x) x
+where x = unique1;
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Nested Loop
+   Output: tenk1.unique1, (1), (random())
+   ->  Result
+         Output: 1, random()
+   ->  Index Only Scan using tenk1_unique1 on public.tenk1
+         Output: tenk1.unique1
+         Index Cond: (tenk1.unique1 = (1))
+(7 rows)
+
+explain (costs off)
+select unique1 from tenk1, f_immutable_int4(1) x where x = unique1;
+                  QUERY PLAN                  
+----------------------------------------------
+ Index Only Scan using tenk1_unique1 on tenk1
+   Index Cond: (unique1 = 1)
+(2 rows)
+
+explain (costs off)
+select unique1 from tenk1, lateral f_immutable_int4(1) x where x = unique1;
+                  QUERY PLAN                  
+----------------------------------------------
+ Index Only Scan using tenk1_unique1 on tenk1
+   Index Cond: (unique1 = 1)
+(2 rows)
+
+explain (costs off)
+select unique1 from tenk1, lateral f_immutable_int4(1) x where x in (select 17);
+        QUERY PLAN        
+--------------------------
+ Result
+   One-Time Filter: false
+(2 rows)
+
+explain (costs off)
+select unique1, x from tenk1 join f_immutable_int4(1) x on unique1 = x;
+                  QUERY PLAN                  
+----------------------------------------------
+ Index Only Scan using tenk1_unique1 on tenk1
+   Index Cond: (unique1 = 1)
+(2 rows)
+
+explain (costs off)
+select unique1, x from tenk1 left join f_immutable_int4(1) x on unique1 = x;
+                     QUERY PLAN                     
+----------------------------------------------------
+ Nested Loop Left Join
+   Join Filter: (tenk1.unique1 = 1)
+   ->  Index Only Scan using tenk1_unique1 on tenk1
+   ->  Materialize
+         ->  Result
+(5 rows)
+
+explain (costs off)
+select unique1, x from tenk1 right join f_immutable_int4(1) x on unique1 = x;
+                     QUERY PLAN                     
+----------------------------------------------------
+ Nested Loop Left Join
+   ->  Result
+   ->  Index Only Scan using tenk1_unique1 on tenk1
+         Index Cond: (unique1 = 1)
+(4 rows)
+
+explain (costs off)
+select unique1, x from tenk1 full join f_immutable_int4(1) x on unique1 = x;
+                     QUERY PLAN                     
+----------------------------------------------------
+ Merge Full Join
+   Merge Cond: (tenk1.unique1 = (1))
+   ->  Index Only Scan using tenk1_unique1 on tenk1
+   ->  Sort
+         Sort Key: (1)
+         ->  Result
+(6 rows)
+
+-- check that pullup of a const function allows further const-folding
+explain (costs off)
+select unique1 from tenk1, f_immutable_int4(1) x where x = 42;
+        QUERY PLAN        
+--------------------------
+ Result
+   One-Time Filter: false
+(2 rows)
+
+-- test inlining of immutable functions with PlaceHolderVars
+explain (costs off)
+select nt3.id
+from nt3 as nt3
+  left join
+    (select nt2.*, (nt2.b1 or i4 = 42) AS b3
+     from nt2 as nt2
+       left join
+         f_immutable_int4(0) i4
+         on i4 = nt2.nt1_id
+    ) as ss2
+    on ss2.id = nt3.nt2_id
+where nt3.id = 1 and ss2.b3;
+                  QUERY PLAN                  
+----------------------------------------------
+ Nested Loop Left Join
+   Filter: ((nt2.b1 OR ((0) = 42)))
+   ->  Index Scan using nt3_pkey on nt3
+         Index Cond: (id = 1)
+   ->  Nested Loop Left Join
+         Join Filter: (0 = nt2.nt1_id)
+         ->  Index Scan using nt2_pkey on nt2
+               Index Cond: (id = nt3.nt2_id)
+         ->  Result
+(9 rows)
+
+drop function f_immutable_int4(int);
+-- test inlining when function returns composite
+create function mki8(bigint, bigint) returns int8_tbl as
+$$select row($1,$2)::int8_tbl$$ language sql;
+create function mki4(int) returns int4_tbl as
+$$select row($1)::int4_tbl$$ language sql;
+explain (verbose, costs off)
+select * from mki8(1,2);
+             QUERY PLAN             
+------------------------------------
+ Function Scan on mki8
+   Output: q1, q2
+   Function Call: '(1,2)'::int8_tbl
+(3 rows)
+
+select * from mki8(1,2);
+ q1 | q2 
+----+----
+  1 |  2
+(1 row)
+
+explain (verbose, costs off)
+select * from mki4(42);
+            QUERY PLAN             
+-----------------------------------
+ Function Scan on mki4
+   Output: f1
+   Function Call: '(42)'::int4_tbl
+(3 rows)
+
+select * from mki4(42);
+ f1 
+----
+ 42
+(1 row)
+
+drop function mki8(bigint, bigint);
+drop function mki4(int);
 --
 -- test extraction of restriction OR clauses from join OR clause
 -- (we used to only do this for indexable clauses)
@@ -3274,7 +3736,7 @@ where t1.unique1 = 1;
          ->  Bitmap Heap Scan on tenk1 t2
                Recheck Cond: (t1.hundred = hundred)
                ->  Bitmap Index Scan on tenk1_hundred
-                     Index Cond: (t1.hundred = hundred)
+                     Index Cond: (hundred = t1.hundred)
          ->  Index Scan using tenk1_unique2 on tenk1 t3
                Index Cond: (unique2 = t2.thousand)
 (11 rows)
@@ -3294,7 +3756,7 @@ where t1.unique1 = 1;
          ->  Bitmap Heap Scan on tenk1 t2
                Recheck Cond: (t1.hundred = hundred)
                ->  Bitmap Index Scan on tenk1_hundred
-                     Index Cond: (t1.hundred = hundred)
+                     Index Cond: (hundred = t1.hundred)
          ->  Index Scan using tenk1_unique2 on tenk1 t3
                Index Cond: (unique2 = t2.thousand)
 (11 rows)
@@ -3350,7 +3812,7 @@ select b.unique1 from
                      ->  Nested Loop
                            ->  Seq Scan on int4_tbl i1
                            ->  Index Scan using tenk1_thous_tenthous on tenk1 b
-                                 Index Cond: ((thousand = i1.f1) AND (i2.f1 = tenthous))
+                                 Index Cond: ((thousand = i1.f1) AND (tenthous = i2.f1))
                      ->  Index Scan using tenk1_unique1 on tenk1 a
                            Index Cond: (unique1 = b.unique2)
                ->  Index Only Scan using tenk1_thous_tenthous on tenk1 c
@@ -3386,7 +3848,7 @@ order by fault;
    Filter: ((COALESCE(tenk1.unique1, '-1'::integer) + int8_tbl.q1) = 122)
    ->  Seq Scan on int8_tbl
    ->  Index Scan using tenk1_unique2 on tenk1
-         Index Cond: (int8_tbl.q2 = unique2)
+         Index Cond: (unique2 = int8_tbl.q2)
 (5 rows)
 
 select * from
@@ -3441,7 +3903,7 @@ select q1, unique2, thousand, hundred
    Filter: ((COALESCE(b.thousand, 123) = a.q1) AND (a.q1 = COALESCE(b.hundred, 123)))
    ->  Seq Scan on int8_tbl a
    ->  Index Scan using tenk1_unique2 on tenk1 b
-         Index Cond: (a.q1 = unique2)
+         Index Cond: (unique2 = a.q1)
 (5 rows)
 
 select q1, unique2, thousand, hundred
@@ -3582,7 +4044,7 @@ select t1.* from
                ->  Hash Right Join
                      Output: i8.q2
                      Hash Cond: ((NULL::integer) = i8b1.q2)
-                     ->  Hash Left Join
+                     ->  Hash Join
                            Output: i8.q2, (NULL::integer)
                            Hash Cond: (i8.q1 = i8b2.q1)
                            ->  Seq Scan on public.int8_tbl i8
@@ -3822,11 +4284,15 @@ where t1.f1 = ss.f1;
                ->  Seq Scan on public.int8_tbl i8
                      Output: i8.q1, i8.q2
                      Filter: (i8.q2 = 123)
-   ->  Limit
+   ->  Memoize
          Output: (i8.q1), t2.f1
-         ->  Seq Scan on public.text_tbl t2
-               Output: i8.q1, t2.f1
-(16 rows)
+         Cache Key: i8.q1
+         Cache Mode: binary
+         ->  Limit
+               Output: (i8.q1), t2.f1
+               ->  Seq Scan on public.text_tbl t2
+                     Output: i8.q1, t2.f1
+(20 rows)
 
 select * from
   text_tbl t1
@@ -3863,15 +4329,23 @@ where t1.f1 = ss2.f1;
                      ->  Seq Scan on public.int8_tbl i8
                            Output: i8.q1, i8.q2
                            Filter: (i8.q2 = 123)
-         ->  Limit
+         ->  Memoize
                Output: (i8.q1), t2.f1
-               ->  Seq Scan on public.text_tbl t2
-                     Output: i8.q1, t2.f1
-   ->  Limit
+               Cache Key: i8.q1
+               Cache Mode: binary
+               ->  Limit
+                     Output: (i8.q1), t2.f1
+                     ->  Seq Scan on public.text_tbl t2
+                           Output: i8.q1, t2.f1
+   ->  Memoize
          Output: ((i8.q1)), (t2.f1)
-         ->  Seq Scan on public.text_tbl t3
-               Output: (i8.q1), t2.f1
-(22 rows)
+         Cache Key: (i8.q1), t2.f1
+         Cache Mode: binary
+         ->  Limit
+               Output: ((i8.q1)), (t2.f1)
+               ->  Seq Scan on public.text_tbl t3
+                     Output: (i8.q1), t2.f1
+(30 rows)
 
 select * from
   text_tbl t1
@@ -3917,14 +4391,18 @@ where tt1.f1 = ss1.c0;
                      ->  Seq Scan on public.text_tbl tt4
                            Output: tt4.f1
                            Filter: (tt4.f1 = 'foo'::text)
-   ->  Subquery Scan on ss1
+   ->  Memoize
          Output: ss1.c0
-         Filter: (ss1.c0 = 'foo'::text)
-         ->  Limit
-               Output: (tt4.f1)
-               ->  Seq Scan on public.text_tbl tt5
-                     Output: tt4.f1
-(29 rows)
+         Cache Key: tt4.f1
+         Cache Mode: binary
+         ->  Subquery Scan on ss1
+               Output: ss1.c0
+               Filter: (ss1.c0 = 'foo'::text)
+               ->  Limit
+                     Output: (tt4.f1)
+                     ->  Seq Scan on public.text_tbl tt5
+                           Output: tt4.f1
+(33 rows)
 
 select 1 from
   text_tbl as tt1
@@ -4004,10 +4482,10 @@ select * from
               QUERY PLAN               
 ---------------------------------------
  Nested Loop Left Join
-   Join Filter: ((1) = COALESCE((1)))
    ->  Result
    ->  Hash Full Join
          Hash Cond: (a1.unique1 = (1))
+         Filter: (1 = COALESCE((1)))
          ->  Seq Scan on tenk1 a1
          ->  Hash
                ->  Result
@@ -4409,6 +4887,70 @@ where ss.stringu2 !~* ss.case1;
 (1 row)
 
 rollback;
+-- test case to expose miscomputation of required relid set for a PHV
+explain (verbose, costs off)
+select i8.*, ss.v, t.unique2
+  from int8_tbl i8
+    left join int4_tbl i4 on i4.f1 = 1
+    left join lateral (select i4.f1 + 1 as v) as ss on true
+    left join tenk1 t on t.unique2 = ss.v
+where q2 = 456;
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Nested Loop Left Join
+   Output: i8.q1, i8.q2, ((i4.f1 + 1)), t.unique2
+   ->  Nested Loop Left Join
+         Output: i8.q1, i8.q2, (i4.f1 + 1)
+         ->  Seq Scan on public.int8_tbl i8
+               Output: i8.q1, i8.q2
+               Filter: (i8.q2 = 456)
+         ->  Seq Scan on public.int4_tbl i4
+               Output: i4.f1
+               Filter: (i4.f1 = 1)
+   ->  Index Only Scan using tenk1_unique2 on public.tenk1 t
+         Output: t.unique2
+         Index Cond: (t.unique2 = ((i4.f1 + 1)))
+(13 rows)
+
+select i8.*, ss.v, t.unique2
+  from int8_tbl i8
+    left join int4_tbl i4 on i4.f1 = 1
+    left join lateral (select i4.f1 + 1 as v) as ss on true
+    left join tenk1 t on t.unique2 = ss.v
+where q2 = 456;
+ q1  | q2  | v | unique2 
+-----+-----+---+---------
+ 123 | 456 |   |        
+(1 row)
+
+-- and check a related issue where we miscompute required relids for
+-- a PHV that's been translated to a child rel
+create temp table parttbl (a integer primary key) partition by range (a);
+create temp table parttbl1 partition of parttbl for values from (1) to (100);
+insert into parttbl values (11), (12);
+explain (costs off)
+select * from
+  (select *, 12 as phv from parttbl) as ss
+  right join int4_tbl on true
+where ss.a = ss.phv and f1 = 0;
+             QUERY PLAN             
+------------------------------------
+ Nested Loop
+   ->  Seq Scan on int4_tbl
+         Filter: (f1 = 0)
+   ->  Seq Scan on parttbl1 parttbl
+         Filter: (a = 12)
+(5 rows)
+
+select * from
+  (select *, 12 as phv from parttbl) as ss
+  right join int4_tbl on true
+where ss.a = ss.phv and f1 = 0;
+ a  | phv | f1 
+----+-----+----
+ 12 |  12 |  0
+(1 row)
+
 -- bug #8444: we've historically allowed duplicate aliases within aliased JOINs
 select * from
   int8_tbl x join (int4_tbl x cross join int4_tbl y) j on q1 = f1; -- error
@@ -4528,7 +5070,7 @@ explain (costs off)
  Nested Loop Left Join
    ->  Seq Scan on int4_tbl x
    ->  Index Scan using tenk1_unique1 on tenk1
-         Index Cond: (x.f1 = unique1)
+         Index Cond: (unique1 = x.f1)
 (4 rows)
 
 -- check scoping of lateral versus parent references
@@ -4562,34 +5104,43 @@ select count(*) from tenk1 a, lateral generate_series(1,two) g;
 
 explain (costs off)
   select count(*) from tenk1 a, lateral generate_series(1,two) g;
-                   QUERY PLAN                   
-------------------------------------------------
+                      QUERY PLAN                      
+------------------------------------------------------
  Aggregate
    ->  Nested Loop
          ->  Seq Scan on tenk1 a
-         ->  Function Scan on generate_series g
-(4 rows)
+         ->  Memoize
+               Cache Key: a.two
+               Cache Mode: binary
+               ->  Function Scan on generate_series g
+(7 rows)
 
 explain (costs off)
   select count(*) from tenk1 a cross join lateral generate_series(1,two) g;
-                   QUERY PLAN                   
-------------------------------------------------
+                      QUERY PLAN                      
+------------------------------------------------------
  Aggregate
    ->  Nested Loop
          ->  Seq Scan on tenk1 a
-         ->  Function Scan on generate_series g
-(4 rows)
+         ->  Memoize
+               Cache Key: a.two
+               Cache Mode: binary
+               ->  Function Scan on generate_series g
+(7 rows)
 
 -- don't need the explicit LATERAL keyword for functions
 explain (costs off)
   select count(*) from tenk1 a, generate_series(1,two) g;
-                   QUERY PLAN                   
-------------------------------------------------
+                      QUERY PLAN                      
+------------------------------------------------------
  Aggregate
    ->  Nested Loop
          ->  Seq Scan on tenk1 a
-         ->  Function Scan on generate_series g
-(4 rows)
+         ->  Memoize
+               Cache Key: a.two
+               Cache Mode: binary
+               ->  Function Scan on generate_series g
+(7 rows)
 
 -- lateral with UNION ALL subselect
 explain (costs off)
@@ -4644,14 +5195,16 @@ explain (costs off)
                             QUERY PLAN                            
 ------------------------------------------------------------------
  Aggregate
-   ->  Hash Join
-         Hash Cond: ("*VALUES*".column1 = b.unique2)
+   ->  Nested Loop
          ->  Nested Loop
                ->  Index Only Scan using tenk1_unique1 on tenk1 a
                ->  Values Scan on "*VALUES*"
-         ->  Hash
+         ->  Memoize
+               Cache Key: "*VALUES*".column1
+               Cache Mode: logical
                ->  Index Only Scan using tenk1_unique2 on tenk1 b
-(8 rows)
+                     Index Cond: (unique2 = "*VALUES*".column1)
+(10 rows)
 
 select count(*) from tenk1 a,
   tenk1 b join lateral (values(a.unique1),(-1)) ss(x) on b.unique2 = ss.x;
@@ -4937,13 +5490,10 @@ select v.* from
  -4567890123456789 |                  
 (20 rows)
 
-create temp table dual();
-insert into dual default values;
-analyze dual;
 select v.* from
   (int8_tbl x left join (select q1,(select coalesce(q2,0)) q2 from int8_tbl) y on x.q2 = y.q1)
   left join int4_tbl z on z.f1 = x.q2,
-  lateral (select x.q1,y.q1 from dual union all select x.q2,y.q2 from dual) v(vx,vy);
+  lateral (select x.q1,y.q1 from onerow union all select x.q2,y.q2 from onerow) v(vx,vy);
         vx         |        vy         
 -------------------+-------------------
   4567890123456789 |               123
@@ -5325,6 +5875,35 @@ select * from
          Output: 3
 (11 rows)
 
+-- check dummy rels with lateral references (bug #15694)
+explain (verbose, costs off)
+select * from int8_tbl i8 left join lateral
+  (select *, i8.q2 from int4_tbl where false) ss on true;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop Left Join
+   Output: i8.q1, i8.q2, f1, (i8.q2)
+   ->  Seq Scan on public.int8_tbl i8
+         Output: i8.q1, i8.q2
+   ->  Result
+         Output: f1, i8.q2
+         One-Time Filter: false
+(7 rows)
+
+explain (verbose, costs off)
+select * from int8_tbl i8 left join lateral
+  (select *, i8.q2 from int4_tbl i1, int4_tbl i2 where false) ss on true;
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop Left Join
+   Output: i8.q1, i8.q2, f1, f1, (i8.q2)
+   ->  Seq Scan on public.int8_tbl i8
+         Output: i8.q1, i8.q2
+   ->  Result
+         Output: f1, f1, i8.q2
+         One-Time Filter: false
+(7 rows)
+
 -- check handling of nested appendrels inside LATERAL
 select * from
   ((select 2 as v) union all (select 3 as v)) as q1
@@ -5344,6 +5923,9 @@ select * from
  3 | 3
 (6 rows)
 
+-- check the number of columns specified
+SELECT * FROM (int8_tbl i cross join int4_tbl j) ss(a,b,c,d);
+ERROR:  join expression "ss" has 3 columns available but 4 columns specified
 -- check we don't try to do a unique-ified semijoin with LATERAL
 explain (verbose, costs off)
 select * from
@@ -5533,8 +6115,8 @@ select t1.b, ss.phv from join_ut1 t1 left join lateral
               (select t2.a as t2a, t3.a t3a, least(t1.a, t2.a, t3.a) phv
 					  from join_pt1 t2 join join_ut1 t3 on t2.a = t3.b) ss
               on t1.a = ss.t2a order by t1.a;
-                            QUERY PLAN                            
-------------------------------------------------------------------
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Sort
    Output: t1.b, (LEAST(t1.a, t2.a, t3.a)), t1.a
    Sort Key: t1.a
@@ -5550,12 +6132,12 @@ select t1.b, ss.phv from join_ut1 t1 left join lateral
                ->  Hash
                      Output: t2.a
                      ->  Append
-                           ->  Seq Scan on public.join_pt1p1p1 t2
-                                 Output: t2.a
-                                 Filter: (t1.a = t2.a)
-                           ->  Seq Scan on public.join_pt1p2 t2_1
+                           ->  Seq Scan on public.join_pt1p1p1 t2_1
                                  Output: t2_1.a
                                  Filter: (t1.a = t2_1.a)
+                           ->  Seq Scan on public.join_pt1p2 t2_2
+                                 Output: t2_2.a
+                                 Filter: (t1.a = t2_2.a)
 (21 rows)
 
 select t1.b, ss.phv from join_ut1 t1 left join lateral
@@ -5570,6 +6152,56 @@ select t1.b, ss.phv from join_ut1 t1 left join lateral
 
 drop table join_pt1;
 drop table join_ut1;
+--
+-- test estimation behavior with multi-column foreign key and constant qual
+--
+begin;
+create table fkest (x integer, x10 integer, x10b integer, x100 integer);
+insert into fkest select x, x/10, x/10, x/100 from generate_series(1,1000) x;
+create unique index on fkest(x, x10, x100);
+analyze fkest;
+explain (costs off)
+select * from fkest f1
+  join fkest f2 on (f1.x = f2.x and f1.x10 = f2.x10b and f1.x100 = f2.x100)
+  join fkest f3 on f1.x = f3.x
+  where f1.x100 = 2;
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Nested Loop
+   ->  Hash Join
+         Hash Cond: ((f2.x = f1.x) AND (f2.x10b = f1.x10))
+         ->  Seq Scan on fkest f2
+               Filter: (x100 = 2)
+         ->  Hash
+               ->  Seq Scan on fkest f1
+                     Filter: (x100 = 2)
+   ->  Index Scan using fkest_x_x10_x100_idx on fkest f3
+         Index Cond: (x = f1.x)
+(10 rows)
+
+alter table fkest add constraint fk
+  foreign key (x, x10b, x100) references fkest (x, x10, x100);
+explain (costs off)
+select * from fkest f1
+  join fkest f2 on (f1.x = f2.x and f1.x10 = f2.x10b and f1.x100 = f2.x100)
+  join fkest f3 on f1.x = f3.x
+  where f1.x100 = 2;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Hash Join
+   Hash Cond: ((f2.x = f1.x) AND (f2.x10b = f1.x10))
+   ->  Hash Join
+         Hash Cond: (f3.x = f2.x)
+         ->  Seq Scan on fkest f3
+         ->  Hash
+               ->  Seq Scan on fkest f2
+                     Filter: (x100 = 2)
+   ->  Hash
+         ->  Seq Scan on fkest f1
+               Filter: (x100 = 2)
+(11 rows)
+
+rollback;
 --
 -- test that foreign key join estimation performs sanely for outer joins
 --
@@ -5877,23 +6509,74 @@ left join j2 on j1.id1 = j2.id1 where j1.id2 = 1;
 set enable_nestloop to 0;
 set enable_hashjoin to 0;
 set enable_sort to 0;
--- create an index that will be preferred over the PK to perform the join
+-- create indexes that will be preferred over the PKs to perform the join
 create index j1_id1_idx on j1 (id1) where id1 % 1000 = 1;
-explain (costs off) select * from j1 j1
-inner join j1 j2 on j1.id1 = j2.id1 and j1.id2 = j2.id2
+create index j2_id1_idx on j2 (id1) where id1 % 1000 = 1;
+-- need an additional row in j2, if we want j2_id1_idx to be preferred
+insert into j2 values(1,2);
+analyze j2;
+explain (costs off) select * from j1
+inner join j2 on j1.id1 = j2.id1 and j1.id2 = j2.id2
 where j1.id1 % 1000 = 1 and j2.id1 % 1000 = 1;
-                 QUERY PLAN                 
---------------------------------------------
+               QUERY PLAN                
+-----------------------------------------
  Merge Join
    Merge Cond: (j1.id1 = j2.id1)
    Join Filter: (j1.id2 = j2.id2)
    ->  Index Scan using j1_id1_idx on j1
-   ->  Index Scan using j1_id1_idx on j1 j2
+   ->  Index Scan using j2_id1_idx on j2
 (5 rows)
 
-select * from j1 j1
-inner join j1 j2 on j1.id1 = j2.id1 and j1.id2 = j2.id2
+select * from j1
+inner join j2 on j1.id1 = j2.id1 and j1.id2 = j2.id2
 where j1.id1 % 1000 = 1 and j2.id1 % 1000 = 1;
+ id1 | id2 | id1 | id2 
+-----+-----+-----+-----
+   1 |   1 |   1 |   1
+   1 |   2 |   1 |   2
+(2 rows)
+
+-- Exercise array keys mark/restore B-Tree code
+explain (costs off) select * from j1
+inner join j2 on j1.id1 = j2.id1 and j1.id2 = j2.id2
+where j1.id1 % 1000 = 1 and j2.id1 % 1000 = 1 and j2.id1 = any (array[1]);
+                     QUERY PLAN                     
+----------------------------------------------------
+ Merge Join
+   Merge Cond: (j1.id1 = j2.id1)
+   Join Filter: (j1.id2 = j2.id2)
+   ->  Index Scan using j1_id1_idx on j1
+   ->  Index Scan using j2_id1_idx on j2
+         Index Cond: (id1 = ANY ('{1}'::integer[]))
+(6 rows)
+
+select * from j1
+inner join j2 on j1.id1 = j2.id1 and j1.id2 = j2.id2
+where j1.id1 % 1000 = 1 and j2.id1 % 1000 = 1 and j2.id1 = any (array[1]);
+ id1 | id2 | id1 | id2 
+-----+-----+-----+-----
+   1 |   1 |   1 |   1
+   1 |   2 |   1 |   2
+(2 rows)
+
+-- Exercise array keys "find extreme element" B-Tree code
+explain (costs off) select * from j1
+inner join j2 on j1.id1 = j2.id1 and j1.id2 = j2.id2
+where j1.id1 % 1000 = 1 and j2.id1 % 1000 = 1 and j2.id1 >= any (array[1,5]);
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Merge Join
+   Merge Cond: (j1.id1 = j2.id1)
+   Join Filter: (j1.id2 = j2.id2)
+   ->  Index Scan using j1_id1_idx on j1
+   ->  Index Only Scan using j2_pkey on j2
+         Index Cond: (id1 >= ANY ('{1,5}'::integer[]))
+         Filter: ((id1 % 1000) = 1)
+(7 rows)
+
+select * from j1
+inner join j2 on j1.id1 = j2.id1 and j1.id2 = j2.id2
+where j1.id1 % 1000 = 1 and j2.id1 % 1000 = 1 and j2.id1 >= any (array[1,5]);
  id1 | id2 | id1 | id2 
 -----+-----+-----+-----
    1 |   1 |   1 |   1
@@ -5963,883 +6646,3 @@ where exists (select 1 from j3
 (13 rows)
 
 drop table j3;
---
--- exercises for the hash join code
---
-begin;
-set local min_parallel_table_scan_size = 0;
-set local parallel_setup_cost = 0;
--- Extract bucket and batch counts from an explain analyze plan.  In
--- general we can't make assertions about how many batches (or
--- buckets) will be required because it can vary, but we can in some
--- special cases and we can check for growth.
-create or replace function find_hash(node json)
-returns json language plpgsql
-as
-$$
-declare
-  x json;
-  child json;
-begin
-  if node->>'Node Type' = 'Hash' then
-    return node;
-  else
-    for child in select json_array_elements(node->'Plans')
-    loop
-      x := find_hash(child);
-      if x is not null then
-        return x;
-      end if;
-    end loop;
-    return null;
-  end if;
-end;
-$$;
-create or replace function hash_join_batches(query text)
-returns table (original int, final int) language plpgsql
-as
-$$
-declare
-  whole_plan json;
-  hash_node json;
-begin
-  for whole_plan in
-    execute 'explain (analyze, format ''json'') ' || query
-  loop
-    hash_node := find_hash(json_extract_path(whole_plan, '0', 'Plan'));
-    original := hash_node->>'Original Hash Batches';
-    final := hash_node->>'Hash Batches';
-    return next;
-  end loop;
-end;
-$$;
--- Make a simple relation with well distributed keys and correctly
--- estimated size.
-create table simple as
-  select generate_series(1, 20000) AS id, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
-alter table simple set (parallel_workers = 2);
-analyze simple;
--- Make a relation whose size we will under-estimate.  We want stats
--- to say 1000 rows, but actually there are 20,000 rows.
-create table bigger_than_it_looks as
-  select generate_series(1, 20000) as id, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
-alter table bigger_than_it_looks set (autovacuum_enabled = 'false');
-alter table bigger_than_it_looks set (parallel_workers = 2);
-analyze bigger_than_it_looks;
-update pg_class set reltuples = 1000 where relname = 'bigger_than_it_looks';
--- Make a relation whose size we underestimate and that also has a
--- kind of skew that breaks our batching scheme.  We want stats to say
--- 2 rows, but actually there are 20,000 rows with the same key.
-create table extremely_skewed (id int, t text);
-alter table extremely_skewed set (autovacuum_enabled = 'false');
-alter table extremely_skewed set (parallel_workers = 2);
-analyze extremely_skewed;
-insert into extremely_skewed
-  select 42 as id, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-  from generate_series(1, 20000);
-update pg_class
-  set reltuples = 2, relpages = pg_relation_size('extremely_skewed') / 8192
-  where relname = 'extremely_skewed';
--- Make a relation with a couple of enormous tuples.
-create table wide as select generate_series(1, 2) as id, rpad('', 320000, 'x') as t;
-alter table wide set (parallel_workers = 2);
--- The "optimal" case: the hash table fits in memory; we plan for 1
--- batch, we stick to that number, and peak memory usage stays within
--- our work_mem budget
--- non-parallel
-savepoint settings;
-set local max_parallel_workers_per_gather = 0;
-set local work_mem = '4MB';
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-               QUERY PLAN               
-----------------------------------------
- Aggregate
-   ->  Hash Join
-         Hash Cond: (r.id = s.id)
-         ->  Seq Scan on simple r
-         ->  Hash
-               ->  Seq Scan on simple s
-(6 rows)
-
-select count(*) from simple r join simple s using (id);
- count 
--------
- 20000
-(1 row)
-
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
- initially_multibatch | increased_batches 
-----------------------+-------------------
- f                    | f
-(1 row)
-
-rollback to settings;
--- parallel with parallel-oblivious hash join
-savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '4MB';
-set local enable_parallel_hash = off;
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-                      QUERY PLAN                       
--------------------------------------------------------
- Finalize Aggregate
-   ->  Gather
-         Workers Planned: 2
-         ->  Partial Aggregate
-               ->  Hash Join
-                     Hash Cond: (r.id = s.id)
-                     ->  Parallel Seq Scan on simple r
-                     ->  Hash
-                           ->  Seq Scan on simple s
-(9 rows)
-
-select count(*) from simple r join simple s using (id);
- count 
--------
- 20000
-(1 row)
-
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
- initially_multibatch | increased_batches 
-----------------------+-------------------
- f                    | f
-(1 row)
-
-rollback to settings;
--- parallel with parallel-aware hash join
-savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '4MB';
-set local enable_parallel_hash = on;
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-                         QUERY PLAN                          
--------------------------------------------------------------
- Finalize Aggregate
-   ->  Gather
-         Workers Planned: 2
-         ->  Partial Aggregate
-               ->  Parallel Hash Join
-                     Hash Cond: (r.id = s.id)
-                     ->  Parallel Seq Scan on simple r
-                     ->  Parallel Hash
-                           ->  Parallel Seq Scan on simple s
-(9 rows)
-
-select count(*) from simple r join simple s using (id);
- count 
--------
- 20000
-(1 row)
-
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
- initially_multibatch | increased_batches 
-----------------------+-------------------
- f                    | f
-(1 row)
-
-rollback to settings;
--- The "good" case: batches required, but we plan the right number; we
--- plan for some number of batches, and we stick to that number, and
--- peak memory usage says within our work_mem budget
--- non-parallel
-savepoint settings;
-set local max_parallel_workers_per_gather = 0;
-set local work_mem = '128kB';
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-               QUERY PLAN               
-----------------------------------------
- Aggregate
-   ->  Hash Join
-         Hash Cond: (r.id = s.id)
-         ->  Seq Scan on simple r
-         ->  Hash
-               ->  Seq Scan on simple s
-(6 rows)
-
-select count(*) from simple r join simple s using (id);
- count 
--------
- 20000
-(1 row)
-
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
- initially_multibatch | increased_batches 
-----------------------+-------------------
- t                    | f
-(1 row)
-
-rollback to settings;
--- parallel with parallel-oblivious hash join
-savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '128kB';
-set local enable_parallel_hash = off;
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-                      QUERY PLAN                       
--------------------------------------------------------
- Finalize Aggregate
-   ->  Gather
-         Workers Planned: 2
-         ->  Partial Aggregate
-               ->  Hash Join
-                     Hash Cond: (r.id = s.id)
-                     ->  Parallel Seq Scan on simple r
-                     ->  Hash
-                           ->  Seq Scan on simple s
-(9 rows)
-
-select count(*) from simple r join simple s using (id);
- count 
--------
- 20000
-(1 row)
-
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
- initially_multibatch | increased_batches 
-----------------------+-------------------
- t                    | f
-(1 row)
-
-rollback to settings;
--- parallel with parallel-aware hash join
-savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '192kB';
-set local enable_parallel_hash = on;
-explain (costs off)
-  select count(*) from simple r join simple s using (id);
-                         QUERY PLAN                          
--------------------------------------------------------------
- Finalize Aggregate
-   ->  Gather
-         Workers Planned: 2
-         ->  Partial Aggregate
-               ->  Parallel Hash Join
-                     Hash Cond: (r.id = s.id)
-                     ->  Parallel Seq Scan on simple r
-                     ->  Parallel Hash
-                           ->  Parallel Seq Scan on simple s
-(9 rows)
-
-select count(*) from simple r join simple s using (id);
- count 
--------
- 20000
-(1 row)
-
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
- initially_multibatch | increased_batches 
-----------------------+-------------------
- t                    | f
-(1 row)
-
-rollback to settings;
--- The "bad" case: during execution we need to increase number of
--- batches; in this case we plan for 1 batch, and increase at least a
--- couple of times, and peak memory usage stays within our work_mem
--- budget
--- non-parallel
-savepoint settings;
-set local max_parallel_workers_per_gather = 0;
-set local work_mem = '128kB';
-explain (costs off)
-  select count(*) FROM simple r JOIN bigger_than_it_looks s USING (id);
-                      QUERY PLAN                      
-------------------------------------------------------
- Aggregate
-   ->  Hash Join
-         Hash Cond: (r.id = s.id)
-         ->  Seq Scan on simple r
-         ->  Hash
-               ->  Seq Scan on bigger_than_it_looks s
-(6 rows)
-
-select count(*) FROM simple r JOIN bigger_than_it_looks s USING (id);
- count 
--------
- 20000
-(1 row)
-
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) FROM simple r JOIN bigger_than_it_looks s USING (id);
-$$);
- initially_multibatch | increased_batches 
-----------------------+-------------------
- f                    | t
-(1 row)
-
-rollback to settings;
--- parallel with parallel-oblivious hash join
-savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '128kB';
-set local enable_parallel_hash = off;
-explain (costs off)
-  select count(*) from simple r join bigger_than_it_looks s using (id);
-                            QUERY PLAN                            
-------------------------------------------------------------------
- Finalize Aggregate
-   ->  Gather
-         Workers Planned: 2
-         ->  Partial Aggregate
-               ->  Hash Join
-                     Hash Cond: (r.id = s.id)
-                     ->  Parallel Seq Scan on simple r
-                     ->  Hash
-                           ->  Seq Scan on bigger_than_it_looks s
-(9 rows)
-
-select count(*) from simple r join bigger_than_it_looks s using (id);
- count 
--------
- 20000
-(1 row)
-
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join bigger_than_it_looks s using (id);
-$$);
- initially_multibatch | increased_batches 
-----------------------+-------------------
- f                    | t
-(1 row)
-
-rollback to settings;
--- parallel with parallel-aware hash join
-savepoint settings;
-set local max_parallel_workers_per_gather = 1;
-set local work_mem = '192kB';
-set local enable_parallel_hash = on;
-explain (costs off)
-  select count(*) from simple r join bigger_than_it_looks s using (id);
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Finalize Aggregate
-   ->  Gather
-         Workers Planned: 1
-         ->  Partial Aggregate
-               ->  Parallel Hash Join
-                     Hash Cond: (r.id = s.id)
-                     ->  Parallel Seq Scan on simple r
-                     ->  Parallel Hash
-                           ->  Parallel Seq Scan on bigger_than_it_looks s
-(9 rows)
-
-select count(*) from simple r join bigger_than_it_looks s using (id);
- count 
--------
- 20000
-(1 row)
-
-select original > 1 as initially_multibatch, final > original as increased_batches
-  from hash_join_batches(
-$$
-  select count(*) from simple r join bigger_than_it_looks s using (id);
-$$);
- initially_multibatch | increased_batches 
-----------------------+-------------------
- f                    | t
-(1 row)
-
-rollback to settings;
--- The "ugly" case: increasing the number of batches during execution
--- doesn't help, so stop trying to fit in work_mem and hope for the
--- best; in this case we plan for 1 batch, increases just once and
--- then stop increasing because that didn't help at all, so we blow
--- right through the work_mem budget and hope for the best...
--- non-parallel
-savepoint settings;
-set local max_parallel_workers_per_gather = 0;
-set local work_mem = '128kB';
-explain (costs off)
-  select count(*) from simple r join extremely_skewed s using (id);
-                    QUERY PLAN                    
---------------------------------------------------
- Aggregate
-   ->  Hash Join
-         Hash Cond: (r.id = s.id)
-         ->  Seq Scan on simple r
-         ->  Hash
-               ->  Seq Scan on extremely_skewed s
-(6 rows)
-
-select count(*) from simple r join extremely_skewed s using (id);
- count 
--------
- 20000
-(1 row)
-
-select * from hash_join_batches(
-$$
-  select count(*) from simple r join extremely_skewed s using (id);
-$$);
- original | final 
-----------+-------
-        1 |     2
-(1 row)
-
-rollback to settings;
--- parallel with parallel-oblivious hash join
-savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '128kB';
-set local enable_parallel_hash = off;
-explain (costs off)
-  select count(*) from simple r join extremely_skewed s using (id);
-                       QUERY PLAN                       
---------------------------------------------------------
- Aggregate
-   ->  Gather
-         Workers Planned: 2
-         ->  Hash Join
-               Hash Cond: (r.id = s.id)
-               ->  Parallel Seq Scan on simple r
-               ->  Hash
-                     ->  Seq Scan on extremely_skewed s
-(8 rows)
-
-select count(*) from simple r join extremely_skewed s using (id);
- count 
--------
- 20000
-(1 row)
-
-select * from hash_join_batches(
-$$
-  select count(*) from simple r join extremely_skewed s using (id);
-$$);
- original | final 
-----------+-------
-        1 |     2
-(1 row)
-
-rollback to settings;
--- parallel with parallel-aware hash join
-savepoint settings;
-set local max_parallel_workers_per_gather = 1;
-set local work_mem = '128kB';
-set local enable_parallel_hash = on;
-explain (costs off)
-  select count(*) from simple r join extremely_skewed s using (id);
-                              QUERY PLAN                               
------------------------------------------------------------------------
- Finalize Aggregate
-   ->  Gather
-         Workers Planned: 1
-         ->  Partial Aggregate
-               ->  Parallel Hash Join
-                     Hash Cond: (r.id = s.id)
-                     ->  Parallel Seq Scan on simple r
-                     ->  Parallel Hash
-                           ->  Parallel Seq Scan on extremely_skewed s
-(9 rows)
-
-select count(*) from simple r join extremely_skewed s using (id);
- count 
--------
- 20000
-(1 row)
-
-select * from hash_join_batches(
-$$
-  select count(*) from simple r join extremely_skewed s using (id);
-$$);
- original | final 
-----------+-------
-        1 |     4
-(1 row)
-
-rollback to settings;
--- A couple of other hash join tests unrelated to work_mem management.
--- Check that EXPLAIN ANALYZE has data even if the leader doesn't participate
-savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-set local work_mem = '4MB';
-set local parallel_leader_participation = off;
-select * from hash_join_batches(
-$$
-  select count(*) from simple r join simple s using (id);
-$$);
- original | final 
-----------+-------
-        1 |     1
-(1 row)
-
-rollback to settings;
--- Exercise rescans.  We'll turn off parallel_leader_participation so
--- that we can check that instrumentation comes back correctly.
-create table join_foo as select generate_series(1, 3) as id, 'xxxxx'::text as t;
-alter table join_foo set (parallel_workers = 0);
-create table join_bar as select generate_series(1, 10000) as id, 'xxxxx'::text as t;
-alter table join_bar set (parallel_workers = 2);
--- multi-batch with rescan, parallel-oblivious
-savepoint settings;
-set enable_parallel_hash = off;
-set parallel_leader_participation = off;
-set min_parallel_table_scan_size = 0;
-set parallel_setup_cost = 0;
-set parallel_tuple_cost = 0;
-set max_parallel_workers_per_gather = 2;
-set enable_material = off;
-set enable_mergejoin = off;
-set work_mem = '64kB';
-explain (costs off)
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Aggregate
-   ->  Nested Loop Left Join
-         Join Filter: ((join_foo.id < (b1.id + 1)) AND (join_foo.id > (b1.id - 1)))
-         ->  Seq Scan on join_foo
-         ->  Gather
-               Workers Planned: 2
-               ->  Hash Join
-                     Hash Cond: (b1.id = b2.id)
-                     ->  Parallel Seq Scan on join_bar b1
-                     ->  Hash
-                           ->  Seq Scan on join_bar b2
-(11 rows)
-
-select count(*) from join_foo
-  left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-  on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
- count 
--------
-     3
-(1 row)
-
-select final > 1 as multibatch
-  from hash_join_batches(
-$$
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-$$);
- multibatch 
-------------
- t
-(1 row)
-
-rollback to settings;
--- single-batch with rescan, parallel-oblivious
-savepoint settings;
-set enable_parallel_hash = off;
-set parallel_leader_participation = off;
-set min_parallel_table_scan_size = 0;
-set parallel_setup_cost = 0;
-set parallel_tuple_cost = 0;
-set max_parallel_workers_per_gather = 2;
-set enable_material = off;
-set enable_mergejoin = off;
-set work_mem = '4MB';
-explain (costs off)
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Aggregate
-   ->  Nested Loop Left Join
-         Join Filter: ((join_foo.id < (b1.id + 1)) AND (join_foo.id > (b1.id - 1)))
-         ->  Seq Scan on join_foo
-         ->  Gather
-               Workers Planned: 2
-               ->  Hash Join
-                     Hash Cond: (b1.id = b2.id)
-                     ->  Parallel Seq Scan on join_bar b1
-                     ->  Hash
-                           ->  Seq Scan on join_bar b2
-(11 rows)
-
-select count(*) from join_foo
-  left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-  on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
- count 
--------
-     3
-(1 row)
-
-select final > 1 as multibatch
-  from hash_join_batches(
-$$
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-$$);
- multibatch 
-------------
- f
-(1 row)
-
-rollback to settings;
--- multi-batch with rescan, parallel-aware
-savepoint settings;
-set enable_parallel_hash = on;
-set parallel_leader_participation = off;
-set min_parallel_table_scan_size = 0;
-set parallel_setup_cost = 0;
-set parallel_tuple_cost = 0;
-set max_parallel_workers_per_gather = 2;
-set enable_material = off;
-set enable_mergejoin = off;
-set work_mem = '64kB';
-explain (costs off)
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Aggregate
-   ->  Nested Loop Left Join
-         Join Filter: ((join_foo.id < (b1.id + 1)) AND (join_foo.id > (b1.id - 1)))
-         ->  Seq Scan on join_foo
-         ->  Gather
-               Workers Planned: 2
-               ->  Parallel Hash Join
-                     Hash Cond: (b1.id = b2.id)
-                     ->  Parallel Seq Scan on join_bar b1
-                     ->  Parallel Hash
-                           ->  Parallel Seq Scan on join_bar b2
-(11 rows)
-
-select count(*) from join_foo
-  left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-  on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
- count 
--------
-     3
-(1 row)
-
-select final > 1 as multibatch
-  from hash_join_batches(
-$$
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-$$);
- multibatch 
-------------
- t
-(1 row)
-
-rollback to settings;
--- single-batch with rescan, parallel-aware
-savepoint settings;
-set enable_parallel_hash = on;
-set parallel_leader_participation = off;
-set min_parallel_table_scan_size = 0;
-set parallel_setup_cost = 0;
-set parallel_tuple_cost = 0;
-set max_parallel_workers_per_gather = 2;
-set enable_material = off;
-set enable_mergejoin = off;
-set work_mem = '4MB';
-explain (costs off)
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Aggregate
-   ->  Nested Loop Left Join
-         Join Filter: ((join_foo.id < (b1.id + 1)) AND (join_foo.id > (b1.id - 1)))
-         ->  Seq Scan on join_foo
-         ->  Gather
-               Workers Planned: 2
-               ->  Parallel Hash Join
-                     Hash Cond: (b1.id = b2.id)
-                     ->  Parallel Seq Scan on join_bar b1
-                     ->  Parallel Hash
-                           ->  Parallel Seq Scan on join_bar b2
-(11 rows)
-
-select count(*) from join_foo
-  left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-  on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
- count 
--------
-     3
-(1 row)
-
-select final > 1 as multibatch
-  from hash_join_batches(
-$$
-  select count(*) from join_foo
-    left join (select b1.id, b1.t from join_bar b1 join join_bar b2 using (id)) ss
-    on join_foo.id < ss.id + 1 and join_foo.id > ss.id - 1;
-$$);
- multibatch 
-------------
- f
-(1 row)
-
-rollback to settings;
--- A full outer join where every record is matched.
--- non-parallel
-savepoint settings;
-set local max_parallel_workers_per_gather = 0;
-explain (costs off)
-     select  count(*) from simple r full outer join simple s using (id);
-               QUERY PLAN               
-----------------------------------------
- Aggregate
-   ->  Hash Full Join
-         Hash Cond: (r.id = s.id)
-         ->  Seq Scan on simple r
-         ->  Hash
-               ->  Seq Scan on simple s
-(6 rows)
-
-select  count(*) from simple r full outer join simple s using (id);
- count 
--------
- 20000
-(1 row)
-
-rollback to settings;
--- parallelism not possible with parallel-oblivious outer hash join
-savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-explain (costs off)
-     select  count(*) from simple r full outer join simple s using (id);
-               QUERY PLAN               
-----------------------------------------
- Aggregate
-   ->  Hash Full Join
-         Hash Cond: (r.id = s.id)
-         ->  Seq Scan on simple r
-         ->  Hash
-               ->  Seq Scan on simple s
-(6 rows)
-
-select  count(*) from simple r full outer join simple s using (id);
- count 
--------
- 20000
-(1 row)
-
-rollback to settings;
--- An full outer join where every record is not matched.
--- non-parallel
-savepoint settings;
-set local max_parallel_workers_per_gather = 0;
-explain (costs off)
-     select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
-               QUERY PLAN               
-----------------------------------------
- Aggregate
-   ->  Hash Full Join
-         Hash Cond: ((0 - s.id) = r.id)
-         ->  Seq Scan on simple s
-         ->  Hash
-               ->  Seq Scan on simple r
-(6 rows)
-
-select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
- count 
--------
- 40000
-(1 row)
-
-rollback to settings;
--- parallelism not possible with parallel-oblivious outer hash join
-savepoint settings;
-set local max_parallel_workers_per_gather = 2;
-explain (costs off)
-     select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
-               QUERY PLAN               
-----------------------------------------
- Aggregate
-   ->  Hash Full Join
-         Hash Cond: ((0 - s.id) = r.id)
-         ->  Seq Scan on simple s
-         ->  Hash
-               ->  Seq Scan on simple r
-(6 rows)
-
-select  count(*) from simple r full outer join simple s on (r.id = 0 - s.id);
- count 
--------
- 40000
-(1 row)
-
-rollback to settings;
--- exercise special code paths for huge tuples (note use of non-strict
--- expression and left join required to get the detoasted tuple into
--- the hash table)
--- parallel with parallel-aware hash join (hits ExecParallelHashLoadTuple and
--- sts_puttuple oversized tuple cases because it's multi-batch)
-savepoint settings;
-set max_parallel_workers_per_gather = 2;
-set enable_parallel_hash = on;
-set work_mem = '128kB';
-explain (costs off)
-  select length(max(s.t))
-  from wide left join (select id, coalesce(t, '') || '' as t from wide) s using (id);
-                           QUERY PLAN                           
-----------------------------------------------------------------
- Finalize Aggregate
-   ->  Gather
-         Workers Planned: 2
-         ->  Partial Aggregate
-               ->  Parallel Hash Left Join
-                     Hash Cond: (wide.id = wide_1.id)
-                     ->  Parallel Seq Scan on wide
-                     ->  Parallel Hash
-                           ->  Parallel Seq Scan on wide wide_1
-(9 rows)
-
-select length(max(s.t))
-from wide left join (select id, coalesce(t, '') || '' as t from wide) s using (id);
- length 
---------
- 320000
-(1 row)
-
-select final > 1 as multibatch
-  from hash_join_batches(
-$$
-  select length(max(s.t))
-  from wide left join (select id, coalesce(t, '') || '' as t from wide) s using (id);
-$$);
- multibatch 
-------------
- t
-(1 row)
-
-rollback to settings;
-rollback;

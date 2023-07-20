@@ -17,7 +17,7 @@
  * scan all the rows anyway.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -35,21 +35,21 @@
 #include "nodes/nodeFuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
+#include "optimizer/optimizer.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
 #include "optimizer/planmain.h"
 #include "optimizer/subselect.h"
 #include "optimizer/tlist.h"
-#include "parser/parsetree.h"
 #include "parser/parse_clause.h"
+#include "parser/parsetree.h"
 #include "rewrite/rewriteManip.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
-
-static bool find_minmax_aggs_walker(Node *node, List **context);
+static bool can_minmax_aggs(PlannerInfo *root, List **context);
 static bool build_minmax_path(PlannerInfo *root, MinMaxAggInfo *mminfo,
-				  Oid eqop, Oid sortop, bool nulls_first);
+							  Oid eqop, Oid sortop, bool nulls_first);
 static void minmax_qp_callback(PlannerInfo *root, void *extra);
 static Oid	fetch_agg_sort_op(Oid aggfnoid);
 
@@ -66,13 +66,11 @@ static Oid	fetch_agg_sort_op(Oid aggfnoid);
  * query_planner(), because we generate indexscan paths by cloning the
  * planner's state and invoking query_planner() on a modified version of
  * the query parsetree.  Thus, all preprocessing needed before query_planner()
- * must already be done.
- *
- * Note: we are passed the preprocessed targetlist separately, because it's
- * not necessarily equal to root->parse->targetList.
+ * must already be done.  This relies on the list of aggregates in
+ * root->agginfos, so preprocess_aggrefs() must have been called already, too.
  */
 void
-preprocess_minmax_aggregates(PlannerInfo *root, List *tlist)
+preprocess_minmax_aggregates(PlannerInfo *root)
 {
 	Query	   *parse = root->parse;
 	FromExpr   *jtnode;
@@ -143,9 +141,7 @@ preprocess_minmax_aggregates(PlannerInfo *root, List *tlist)
 	 * all are MIN/MAX aggregates.  Stop as soon as we find one that isn't.
 	 */
 	aggs_list = NIL;
-	if (find_minmax_aggs_walker((Node *) tlist, &aggs_list))
-		return;
-	if (find_minmax_aggs_walker(parse->havingQual, &aggs_list))
+	if (!can_minmax_aggs(root, &aggs_list))
 		return;
 
 	/*
@@ -217,48 +213,46 @@ preprocess_minmax_aggregates(PlannerInfo *root, List *tlist)
 	 * consider_parallel value in it, but MinMaxAggPath paths are currently
 	 * never parallel-safe anyway, so that doesn't matter.  Likewise, it
 	 * doesn't matter that we haven't filled FDW-related fields in the rel.
+	 * Also, because there are no rowmarks, we know that the processed_tlist
+	 * doesn't need to change anymore, so making the pathtarget now is safe.
 	 */
 	grouped_rel = fetch_upper_rel(root, UPPERREL_GROUP_AGG, NULL);
 	add_path(grouped_rel, (Path *)
 			 create_minmaxagg_path(root, grouped_rel,
-								   create_pathtarget(root, tlist),
+								   create_pathtarget(root,
+													 root->processed_tlist),
 								   aggs_list,
 								   (List *) parse->havingQual));
 }
 
 /*
- * find_minmax_aggs_walker
- *		Recursively scan the Aggref nodes in an expression tree, and check
- *		that each one is a MIN/MAX aggregate.  If so, build a list of the
+ * can_minmax_aggs
+ *		Walk through all the aggregates in the query, and check
+ *		if they are all MIN/MAX aggregates.  If so, build a list of the
  *		distinct aggregate calls in the tree.
  *
- * Returns true if a non-MIN/MAX aggregate is found, false otherwise.
- * (This seemingly-backward definition is used because expression_tree_walker
- * aborts the scan on true return, which is what we want.)
- *
- * Found aggregates are added to the list at *context; it's up to the caller
- * to initialize the list to NIL.
+ * Returns false if a non-MIN/MAX aggregate is found, true otherwise.
  *
  * This does not descend into subqueries, and so should be used only after
  * reduction of sublinks to subplans.  There mustn't be outer-aggregate
  * references either.
  */
 static bool
-find_minmax_aggs_walker(Node *node, List **context)
+can_minmax_aggs(PlannerInfo *root, List **context)
 {
-	if (node == NULL)
-		return false;
-	if (IsA(node, Aggref))
+	ListCell   *lc;
+
+	foreach(lc, root->agginfos)
 	{
-		Aggref	   *aggref = (Aggref *) node;
+		AggInfo    *agginfo = (AggInfo *) lfirst(lc);
+		Aggref	   *aggref = agginfo->representative_aggref;
 		Oid			aggsortop;
 		TargetEntry *curTarget;
 		MinMaxAggInfo *mminfo;
-		ListCell   *l;
 
 		Assert(aggref->agglevelsup == 0);
 		if (list_length(aggref->args) != 1)
-			return true;		/* it couldn't be MIN/MAX */
+			return false;		/* it couldn't be MIN/MAX */
 
 		/*
 		 * ORDER BY is usually irrelevant for MIN/MAX, but it can change the
@@ -274,7 +268,7 @@ find_minmax_aggs_walker(Node *node, List **context)
 		 * quickly.
 		 */
 		if (aggref->aggorder != NIL)
-			return true;
+			return false;
 		/* note: we do not care if DISTINCT is mentioned ... */
 
 		/*
@@ -283,30 +277,19 @@ find_minmax_aggs_walker(Node *node, List **context)
 		 * now, just punt.
 		 */
 		if (aggref->aggfilter != NULL)
-			return true;
+			return false;
 
 		aggsortop = fetch_agg_sort_op(aggref->aggfnoid);
 		if (!OidIsValid(aggsortop))
-			return true;		/* not a MIN/MAX aggregate */
+			return false;		/* not a MIN/MAX aggregate */
 
 		curTarget = (TargetEntry *) linitial(aggref->args);
 
 		if (contain_mutable_functions((Node *) curTarget->expr))
-			return true;		/* not potentially indexable */
+			return false;		/* not potentially indexable */
 
 		if (type_is_rowtype(exprType((Node *) curTarget->expr)))
-			return true;		/* IS NOT NULL would have weird semantics */
-
-		/*
-		 * Check whether it's already in the list, and add it if not.
-		 */
-		foreach(l, *context)
-		{
-			mminfo = (MinMaxAggInfo *) lfirst(l);
-			if (mminfo->aggfnoid == aggref->aggfnoid &&
-				equal(mminfo->target, curTarget->expr))
-				return false;
-		}
+			return false;		/* IS NOT NULL would have weird semantics */
 
 		mminfo = makeNode(MinMaxAggInfo);
 		mminfo->aggfnoid = aggref->aggfnoid;
@@ -318,16 +301,8 @@ find_minmax_aggs_walker(Node *node, List **context)
 		mminfo->param = NULL;
 
 		*context = lappend(*context, mminfo);
-
-		/*
-		 * We need not recurse into the argument, since it can't contain any
-		 * aggregates.
-		 */
-		return false;
 	}
-	Assert(!IsA(node, SubLink));
-	return expression_tree_walker(node, find_minmax_aggs_walker,
-								  (void *) context);
+	return true;
 }
 
 /*
@@ -368,6 +343,8 @@ build_minmax_path(PlannerInfo *root, MinMaxAggInfo *mminfo,
 	subroot->plan_params = NIL;
 	subroot->outer_params = NULL;
 	subroot->init_plans = NIL;
+	subroot->agginfos = NIL;
+	subroot->aggtransinfos = NIL;
 
 	subroot->parse = parse = copyObject(root->parse);
 	IncrementVarSublevelsUp((Node *) parse, 1, 1);
@@ -420,7 +397,7 @@ build_minmax_path(PlannerInfo *root, MinMaxAggInfo *mminfo,
 
 	/* Build suitable ORDER BY clause */
 	sortcl = makeNode(SortGroupClause);
-	sortcl->tleSortGroupRef = assignSortGroupRef(tle, tlist);
+	sortcl->tleSortGroupRef = assignSortGroupRef(tle, subroot->processed_tlist);
 	sortcl->eqop = eqop;
 	sortcl->sortop = sortop;
 	sortcl->nulls_first = nulls_first;
@@ -441,7 +418,7 @@ build_minmax_path(PlannerInfo *root, MinMaxAggInfo *mminfo,
 	subroot->tuple_fraction = 1.0;
 	subroot->limit_tuples = 1.0;
 
-	final_rel = query_planner(subroot, tlist, minmax_qp_callback, NULL);
+	final_rel = query_planner(subroot, minmax_qp_callback, NULL);
 
 	/*
 	 * Since we didn't go through subquery_planner() to handle the subquery,
@@ -475,7 +452,8 @@ build_minmax_path(PlannerInfo *root, MinMaxAggInfo *mminfo,
 	 * cheapest path.)
 	 */
 	sorted_path = apply_projection_to_path(subroot, final_rel, sorted_path,
-										   create_pathtarget(subroot, tlist));
+										   create_pathtarget(subroot,
+															 subroot->processed_tlist));
 
 	/*
 	 * Determine cost to get just the first row of the presorted path.

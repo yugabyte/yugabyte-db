@@ -3,7 +3,7 @@
  * getpeereid.c
  *		get peer userid for UNIX-domain socket connection
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -37,7 +37,7 @@ getpeereid(int sock, uid_t *uid, gid_t *gid)
 #if defined(SO_PEERCRED)
 	/* Linux: use getsockopt(SO_PEERCRED) */
 	struct ucred peercred;
-	ACCEPT_TYPE_ARG3 so_len = sizeof(peercred);
+	socklen_t	so_len = sizeof(peercred);
 
 	if (getsockopt(sock, SOL_SOCKET, SO_PEERCRED, &peercred, &so_len) != 0 ||
 		so_len != sizeof(peercred))
@@ -48,7 +48,7 @@ getpeereid(int sock, uid_t *uid, gid_t *gid)
 #elif defined(LOCAL_PEERCRED)
 	/* Debian with FreeBSD kernel: use getsockopt(LOCAL_PEERCRED) */
 	struct xucred peercred;
-	ACCEPT_TYPE_ARG3 so_len = sizeof(peercred);
+	socklen_t	so_len = sizeof(peercred);
 
 	if (getsockopt(sock, 0, LOCAL_PEERCRED, &peercred, &so_len) != 0 ||
 		so_len != sizeof(peercred) ||

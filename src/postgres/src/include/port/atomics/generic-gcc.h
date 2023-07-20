@@ -3,16 +3,16 @@
  * generic-gcc.h
  *	  Atomic operations, implemented using gcc (or compatible) intrinsics.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES:
  *
  * Documentation:
  * * Legacy __sync Built-in Functions for Atomic Memory Access
- *   http://gcc.gnu.org/onlinedocs/gcc-4.8.2/gcc/_005f_005fsync-Builtins.html
+ *   https://gcc.gnu.org/onlinedocs/gcc-4.8.2/gcc/_005f_005fsync-Builtins.html
  * * Built-in functions for memory model aware atomic operations
- *   http://gcc.gnu.org/onlinedocs/gcc-4.8.2/gcc/_005f_005fatomic-Builtins.html
+ *   https://gcc.gnu.org/onlinedocs/gcc-4.8.2/gcc/_005f_005fatomic-Builtins.html
  *
  * src/include/port/atomics/generic-gcc.h
  *

@@ -1,4 +1,7 @@
-<!-- doc/src/sgml/ref/checkpoint.sgml -->
+<!--
+doc/src/sgml/ref/checkpoint.sgml
+PostgreSQL documentation
+-->
 
 <refentry id="sql-checkpoint">
  <indexterm zone="sql-checkpoint">
@@ -49,7 +52,9 @@ CHECKPOINT
   </para>
 
   <para>
-   Only superusers can call <command>CHECKPOINT</command>.
+   Only superusers or users with the privileges of
+   the <link linkend="predefined-roles-table"><literal>pg_checkpoint</literal></link>
+   role can call <command>CHECKPOINT</command>.
   </para>
  </refsect1>
 

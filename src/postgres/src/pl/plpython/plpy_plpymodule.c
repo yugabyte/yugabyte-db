@@ -8,29 +8,25 @@
 
 #include "access/xact.h"
 #include "mb/pg_wchar.h"
-#include "utils/builtins.h"
-#include "utils/snapmgr.h"
-
-#include "plpython.h"
-
-#include "plpy_plpymodule.h"
-
 #include "plpy_cursorobject.h"
 #include "plpy_elog.h"
 #include "plpy_main.h"
 #include "plpy_planobject.h"
+#include "plpy_plpymodule.h"
 #include "plpy_resultobject.h"
 #include "plpy_spi.h"
 #include "plpy_subxactobject.h"
-
+#include "plpython.h"
+#include "utils/builtins.h"
+#include "utils/snapmgr.h"
 
 HTAB	   *PLy_spi_exceptions = NULL;
 
 
 static void PLy_add_exceptions(PyObject *plpy);
 static PyObject *PLy_create_exception(char *name,
-					 PyObject *base, PyObject *dict,
-					 const char *modname, PyObject *mod);
+									  PyObject *base, PyObject *dict,
+									  const char *modname, PyObject *mod);
 static void PLy_generate_spi_exceptions(PyObject *mod, PyObject *base);
 
 /* module functions */
@@ -44,8 +40,6 @@ static PyObject *PLy_fatal(PyObject *self, PyObject *args, PyObject *kw);
 static PyObject *PLy_quote_literal(PyObject *self, PyObject *args);
 static PyObject *PLy_quote_nullable(PyObject *self, PyObject *args);
 static PyObject *PLy_quote_ident(PyObject *self, PyObject *args);
-static PyObject *PLy_commit(PyObject *self, PyObject *args);
-static PyObject *PLy_rollback(PyObject *self, PyObject *args);
 
 
 /* A list of all known exceptions, generated from backend/utils/errcodes.txt */
@@ -65,13 +59,13 @@ static PyMethodDef PLy_methods[] = {
 	/*
 	 * logging methods
 	 */
-	{"debug", (PyCFunction) PLy_debug, METH_VARARGS | METH_KEYWORDS, NULL},
-	{"log", (PyCFunction) PLy_log, METH_VARARGS | METH_KEYWORDS, NULL},
-	{"info", (PyCFunction) PLy_info, METH_VARARGS | METH_KEYWORDS, NULL},
-	{"notice", (PyCFunction) PLy_notice, METH_VARARGS | METH_KEYWORDS, NULL},
-	{"warning", (PyCFunction) PLy_warning, METH_VARARGS | METH_KEYWORDS, NULL},
-	{"error", (PyCFunction) PLy_error, METH_VARARGS | METH_KEYWORDS, NULL},
-	{"fatal", (PyCFunction) PLy_fatal, METH_VARARGS | METH_KEYWORDS, NULL},
+	{"debug", (PyCFunction) (pg_funcptr_t) PLy_debug, METH_VARARGS | METH_KEYWORDS, NULL},
+	{"log", (PyCFunction) (pg_funcptr_t) PLy_log, METH_VARARGS | METH_KEYWORDS, NULL},
+	{"info", (PyCFunction) (pg_funcptr_t) PLy_info, METH_VARARGS | METH_KEYWORDS, NULL},
+	{"notice", (PyCFunction) (pg_funcptr_t) PLy_notice, METH_VARARGS | METH_KEYWORDS, NULL},
+	{"warning", (PyCFunction) (pg_funcptr_t) PLy_warning, METH_VARARGS | METH_KEYWORDS, NULL},
+	{"error", (PyCFunction) (pg_funcptr_t) PLy_error, METH_VARARGS | METH_KEYWORDS, NULL},
+	{"fatal", (PyCFunction) (pg_funcptr_t) PLy_fatal, METH_VARARGS | METH_KEYWORDS, NULL},
 
 	/*
 	 * create a stored plan
@@ -113,25 +107,18 @@ static PyMethodDef PLy_exc_methods[] = {
 	{NULL, NULL, 0, NULL}
 };
 
-#if PY_MAJOR_VERSION >= 3
 static PyModuleDef PLy_module = {
-	PyModuleDef_HEAD_INIT,		/* m_base */
-	"plpy",						/* m_name */
-	NULL,						/* m_doc */
-	-1,							/* m_size */
-	PLy_methods,				/* m_methods */
+	PyModuleDef_HEAD_INIT,
+	.m_name = "plpy",
+	.m_size = -1,
+	.m_methods = PLy_methods,
 };
 
 static PyModuleDef PLy_exc_module = {
-	PyModuleDef_HEAD_INIT,		/* m_base */
-	"spiexceptions",			/* m_name */
-	NULL,						/* m_doc */
-	-1,							/* m_size */
-	PLy_exc_methods,			/* m_methods */
-	NULL,						/* m_reload */
-	NULL,						/* m_traverse */
-	NULL,						/* m_clear */
-	NULL						/* m_free */
+	PyModuleDef_HEAD_INIT,
+	.m_name = "spiexceptions",
+	.m_size = -1,
+	.m_methods = PLy_exc_methods,
 };
 
 /*
@@ -151,7 +138,6 @@ PyInit_plpy(void)
 
 	return m;
 }
-#endif							/* PY_MAJOR_VERSION >= 3 */
 
 void
 PLy_init_plpy(void)
@@ -159,10 +145,6 @@ PLy_init_plpy(void)
 	PyObject   *main_mod,
 			   *main_dict,
 			   *plpy_mod;
-
-#if PY_MAJOR_VERSION < 3
-	PyObject   *plpy;
-#endif
 
 	/*
 	 * initialize plpy module
@@ -172,13 +154,7 @@ PLy_init_plpy(void)
 	PLy_subtransaction_init_type();
 	PLy_cursor_init_type();
 
-#if PY_MAJOR_VERSION >= 3
 	PyModule_Create(&PLy_module);
-	/* for Python 3 we initialized the exceptions in PyInit_plpy */
-#else
-	plpy = Py_InitModule("plpy", PLy_methods);
-	PLy_add_exceptions(plpy);
-#endif
 
 	/* PyDict_SetItemString(plpy, "PlanType", (PyObject *) &PLy_PlanType); */
 
@@ -201,11 +177,7 @@ PLy_add_exceptions(PyObject *plpy)
 	PyObject   *excmod;
 	HASHCTL		hash_ctl;
 
-#if PY_MAJOR_VERSION < 3
-	excmod = Py_InitModule("spiexceptions", PLy_exc_methods);
-#else
 	excmod = PyModule_Create(&PLy_exc_module);
-#endif
 	if (excmod == NULL)
 		PLy_elog(ERROR, "could not create the spiexceptions module");
 
@@ -224,7 +196,6 @@ PLy_add_exceptions(PyObject *plpy)
 	PLy_exc_spi_error = PLy_create_exception("plpy.SPIError", NULL, NULL,
 											 "SPIError", plpy);
 
-	memset(&hash_ctl, 0, sizeof(hash_ctl));
 	hash_ctl.keysize = sizeof(int);
 	hash_ctl.entrysize = sizeof(PLyExceptionEntry);
 	PLy_spi_exceptions = hash_create("PL/Python SPI exceptions", 256,
@@ -281,7 +252,7 @@ PLy_generate_spi_exceptions(PyObject *mod, PyObject *base)
 		if (dict == NULL)
 			PLy_elog(ERROR, NULL);
 
-		sqlstate = PyString_FromString(unpack_sql_state(exception_map[i].sqlstate));
+		sqlstate = PLyUnicode_FromString(unpack_sql_state(exception_map[i].sqlstate));
 		if (sqlstate == NULL)
 			PLy_elog(ERROR, "could not generate SPI exceptions");
 
@@ -304,7 +275,7 @@ PLy_generate_spi_exceptions(PyObject *mod, PyObject *base)
  * don't confuse these with PLy_elog
  */
 static PyObject *PLy_output(volatile int level, PyObject *self,
-		   PyObject *args, PyObject *kw);
+							PyObject *args, PyObject *kw);
 
 static PyObject *
 PLy_debug(PyObject *self, PyObject *args, PyObject *kw)
@@ -359,7 +330,7 @@ PLy_quote_literal(PyObject *self, PyObject *args)
 		return NULL;
 
 	quoted = quote_literal_cstr(str);
-	ret = PyString_FromString(quoted);
+	ret = PLyUnicode_FromString(quoted);
 	pfree(quoted);
 
 	return ret;
@@ -376,10 +347,10 @@ PLy_quote_nullable(PyObject *self, PyObject *args)
 		return NULL;
 
 	if (str == NULL)
-		return PyString_FromString("NULL");
+		return PLyUnicode_FromString("NULL");
 
 	quoted = quote_literal_cstr(str);
-	ret = PyString_FromString(quoted);
+	ret = PLyUnicode_FromString(quoted);
 	pfree(quoted);
 
 	return ret;
@@ -396,7 +367,7 @@ PLy_quote_ident(PyObject *self, PyObject *args)
 		return NULL;
 
 	quoted = quote_identifier(str);
-	ret = PyString_FromString(quoted);
+	ret = PLyUnicode_FromString(quoted);
 
 	return ret;
 }
@@ -413,7 +384,7 @@ object_to_string(PyObject *obj)
 		{
 			char	   *str;
 
-			str = pstrdup(PyString_AsString(so));
+			str = pstrdup(PLyUnicode_AsString(so));
 			Py_DECREF(so);
 
 			return str;
@@ -457,7 +428,7 @@ PLy_output(volatile int level, PyObject *self, PyObject *args, PyObject *kw)
 	else
 		so = PyObject_Str(args);
 
-	if (so == NULL || ((message = PyString_AsString(so)) == NULL))
+	if (so == NULL || ((message = PLyUnicode_AsString(so)) == NULL))
 	{
 		level = ERROR;
 		message = dgettext(TEXTDOMAIN, "could not parse error message in plpy.elog");
@@ -470,7 +441,7 @@ PLy_output(volatile int level, PyObject *self, PyObject *args, PyObject *kw)
 	{
 		while (PyDict_Next(kw, &pos, &key, &value))
 		{
-			char	   *keyword = PyString_AsString(key);
+			char	   *keyword = PLyUnicode_AsString(key);
 
 			if (strcmp(keyword, "message") == 0)
 			{
@@ -586,37 +557,5 @@ PLy_output(volatile int level, PyObject *self, PyObject *args, PyObject *kw)
 	/*
 	 * return a legal object so the interpreter will continue on its merry way
 	 */
-	Py_RETURN_NONE;
-}
-
-static PyObject *
-PLy_commit(PyObject *self, PyObject *args)
-{
-	PLyExecutionContext *exec_ctx = PLy_current_execution_context();
-
-	HoldPinnedPortals();
-
-	SPI_commit();
-	SPI_start_transaction();
-
-	/* was cleared at transaction end, reset pointer */
-	exec_ctx->scratch_ctx = NULL;
-
-	Py_RETURN_NONE;
-}
-
-static PyObject *
-PLy_rollback(PyObject *self, PyObject *args)
-{
-	PLyExecutionContext *exec_ctx = PLy_current_execution_context();
-
-	HoldPinnedPortals();
-
-	SPI_rollback();
-	SPI_start_transaction();
-
-	/* was cleared at transaction end, reset pointer */
-	exec_ctx->scratch_ctx = NULL;
-
 	Py_RETURN_NONE;
 }

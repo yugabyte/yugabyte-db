@@ -19,7 +19,7 @@
  * memory context given to inv_open (for LargeObjectDesc structs).
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -32,10 +32,11 @@
 
 #include <limits.h>
 
+#include "access/detoast.h"
 #include "access/genam.h"
-#include "access/heapam.h"
+#include "access/htup_details.h"
 #include "access/sysattr.h"
-#include "access/tuptoaster.h"
+#include "access/table.h"
 #include "access/xact.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
@@ -45,10 +46,10 @@
 #include "libpq/libpq-fs.h"
 #include "miscadmin.h"
 #include "storage/large_object.h"
+#include "utils/acl.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
-#include "utils/tqual.h"
 
 
 /*
@@ -84,7 +85,7 @@ open_lo_relation(void)
 
 	/* Use RowExclusiveLock since we might either read or write */
 	if (lo_heap_r == NULL)
-		lo_heap_r = heap_open(LargeObjectRelationId, RowExclusiveLock);
+		lo_heap_r = table_open(LargeObjectRelationId, RowExclusiveLock);
 	if (lo_index_r == NULL)
 		lo_index_r = index_open(LargeObjectLOidPNIndexId, RowExclusiveLock);
 
@@ -113,7 +114,7 @@ close_lo_relation(bool isCommit)
 			if (lo_index_r)
 				index_close(lo_index_r, NoLock);
 			if (lo_heap_r)
-				heap_close(lo_heap_r, NoLock);
+				table_close(lo_heap_r, NoLock);
 
 			CurrentResourceOwner = currentOwner;
 		}
@@ -137,12 +138,12 @@ myLargeObjectExists(Oid loid, Snapshot snapshot)
 	bool		retval = false;
 
 	ScanKeyInit(&skey[0],
-				ObjectIdAttributeNumber,
+				Anum_pg_largeobject_metadata_oid,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(loid));
 
-	pg_lo_meta = heap_open(LargeObjectMetadataRelationId,
-						   AccessShareLock);
+	pg_lo_meta = table_open(LargeObjectMetadataRelationId,
+							AccessShareLock);
 
 	sd = systable_beginscan(pg_lo_meta,
 							LargeObjectMetadataOidIndexId, true,
@@ -154,7 +155,7 @@ myLargeObjectExists(Oid loid, Snapshot snapshot)
 
 	systable_endscan(sd);
 
-	heap_close(pg_lo_meta, AccessShareLock);
+	table_close(pg_lo_meta, AccessShareLock);
 
 	return retval;
 }
@@ -180,7 +181,7 @@ getdatafield(Form_pg_largeobject tuple,
 	if (VARATT_IS_EXTENDED(datafield))
 	{
 		datafield = (bytea *)
-			heap_tuple_untoast_attr((struct varlena *) datafield);
+			detoast_attr((struct varlena *) datafield);
 		freeit = true;
 	}
 	len = VARSIZE(datafield) - VARHDRSZ;
@@ -243,10 +244,12 @@ inv_create(Oid lobjId)
 /*
  *	inv_open -- access an existing large object.
  *
- *		Returns:
- *		  Large object descriptor, appropriately filled in.  The descriptor
- *		  and subsidiary data are allocated in the specified memory context,
- *		  which must be suitably long-lived for the caller's purposes.
+ * Returns a large object descriptor, appropriately filled in.
+ * The descriptor and subsidiary data are allocated in the specified
+ * memory context, which must be suitably long-lived for the caller's
+ * purposes.  If the returned descriptor has a snapshot associated
+ * with it, the caller must ensure that it also lives long enough,
+ * e.g. by calling RegisterSnapshotOnOwner
  */
 LargeObjectDesc *
 inv_open(Oid lobjId, int flags, MemoryContext mcxt)
@@ -313,19 +316,16 @@ inv_open(Oid lobjId, int flags, MemoryContext mcxt)
 	retval = (LargeObjectDesc *) MemoryContextAlloc(mcxt,
 													sizeof(LargeObjectDesc));
 	retval->id = lobjId;
-	retval->subid = GetCurrentSubTransactionId();
 	retval->offset = 0;
 	retval->flags = descflags;
 
+	/* caller sets if needed, not used by the functions in this file */
+	retval->subid = InvalidSubTransactionId;
+
 	/*
-	 * We must register the snapshot in TopTransaction's resowner, because it
-	 * must stay alive until the LO is closed rather than until the current
-	 * portal shuts down.  Do this last to avoid uselessly leaking the
-	 * snapshot if an error is thrown above.
+	 * The snapshot (if any) is just the currently active snapshot.  The
+	 * caller will replace it with a longer-lived copy if needed.
 	 */
-	if (snapshot)
-		snapshot = RegisterSnapshotOnOwner(snapshot,
-										   TopTransactionResourceOwner);
 	retval->snapshot = snapshot;
 
 	return retval;
@@ -339,10 +339,6 @@ void
 inv_close(LargeObjectDesc *obj_desc)
 {
 	Assert(PointerIsValid(obj_desc));
-
-	UnregisterSnapshotFromOwner(obj_desc->snapshot,
-								TopTransactionResourceOwner);
-
 	pfree(obj_desc);
 }
 

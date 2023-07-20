@@ -1,8 +1,12 @@
 #!/usr/bin/perl
 
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+
 # contrib/intarray/bench/create_test.pl
 
 use strict;
+use warnings;
+
 print <<EOT;
 create table message (
 	mid	int not null,
@@ -47,7 +51,7 @@ foreach my $i (1 .. 200000)
 	else
 	{
 		print $msg "$i\t{" . join(',', @sect) . "}\n";
-		map { print $map "$i\t$_\n" } @sect;
+		print $map "$i\t$_\n" foreach @sect;
 	}
 }
 close $map;

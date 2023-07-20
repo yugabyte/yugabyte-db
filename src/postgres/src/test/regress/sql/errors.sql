@@ -77,7 +77,7 @@ alter table nonesuch rename to newnonesuch;
 alter table nonesuch rename to stud_emp;
 
 -- conflict
-alter table stud_emp rename to aggtest;
+alter table stud_emp rename to student;
 
 -- self-conflict
 alter table stud_emp rename to stud_emp;
@@ -95,7 +95,7 @@ alter table emp rename column nonesuchatt to newnonesuchatt;
 alter table emp rename column salary to manager;
 
 -- conflict
-alter table emp rename column salary to oid;
+alter table emp rename column salary to ctid;
 
 
 --
@@ -368,10 +368,3 @@ INT4
 UNIQUE
 NOT
 NULL);
-
--- Check that stack depth detection mechanism works and
--- max_stack_depth is not set too high
-create function infinite_recurse() returns int as
-'select infinite_recurse()' language sql;
-\set VERBOSITY terse
-select infinite_recurse();

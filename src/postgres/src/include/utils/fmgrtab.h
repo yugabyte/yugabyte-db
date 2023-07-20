@@ -3,7 +3,7 @@
  * fmgrtab.h
  *	  The function manager's table of internal functions.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/fmgrtab.h
@@ -25,24 +25,27 @@
 typedef struct
 {
 	Oid			foid;			/* OID of the function */
-	const char *funcName;		/* C name of the function */
 	short		nargs;			/* 0..FUNC_MAX_ARGS, or -1 if variable count */
 	bool		strict;			/* T if function is "strict" */
 	bool		retset;			/* T if function returns a set */
+	const char *funcName;		/* C name of the function */
 	PGFunction	func;			/* pointer to compiled function */
 	void*       alt_func;       /* alternative function implementation for
                                  * special cases */
 } FmgrBuiltin;
 
-extern FmgrBuiltin fmgr_builtins[];
+extern PGDLLIMPORT FmgrBuiltin fmgr_builtins[];
 
-extern const int fmgr_nbuiltins;	/* number of entries in table */
+extern PGDLLIMPORT const int fmgr_nbuiltins;	/* number of entries in table */
+
+extern PGDLLIMPORT const Oid fmgr_last_builtin_oid; /* highest function OID in
+													 * table */
 
 /*
- * Mapping from a builtin function's oid to the index in the fmgr_builtins
- * array.
+ * Mapping from a builtin function's OID to its index in the fmgr_builtins
+ * array.  This is indexed from 0 through fmgr_last_builtin_oid.
  */
 #define InvalidOidBuiltinMapping PG_UINT16_MAX
-extern const uint16 fmgr_builtin_oid_index[FirstBootstrapObjectId];
+extern PGDLLIMPORT const uint16 fmgr_builtin_oid_index[];
 
 #endif							/* FMGRTAB_H */

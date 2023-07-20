@@ -315,7 +315,7 @@ set up for recursive handling of subqueries
   preprocess target list for non-SELECT queries
   handle UNION/INTERSECT/EXCEPT, GROUP BY, HAVING, aggregates,
 	ORDER BY, DISTINCT, LIMIT
---query_planner()
+---query_planner()
    make list of base relations used in query
    split up the qual into restrictions (a=1) and joins (b=c)
    find qual clauses that enable merge and hash joins
@@ -325,7 +325,7 @@ set up for recursive handling of subqueries
       find selectivity of columns used in joins
      make_rel_from_joinlist()
       hand off join subproblems to a plugin, GEQO, or standard_join_search()
------standard_join_search()
+------standard_join_search()
       call join_search_one_level() for each level of join tree needed
       join_search_one_level():
         For each joinrel of the prior level, do make_rels_by_clause_joins()
@@ -361,23 +361,35 @@ RelOptInfo      - a relation or joined relations
                    join clauses)
 
  Path           - every way to generate a RelOptInfo(sequential,index,joins)
-  SeqScan       - represents a sequential scan plan
+  A plain Path node can represent several simple plans, per its pathtype:
+    T_SeqScan   - sequential scan
+    T_SampleScan - tablesample scan
+    T_FunctionScan - function-in-FROM scan
+    T_TableFuncScan - table function scan
+    T_ValuesScan - VALUES scan
+    T_CteScan   - CTE (WITH) scan
+    T_NamedTuplestoreScan - ENR scan
+    T_WorkTableScan - scan worktable of a recursive CTE
+    T_Result    - childless Result plan node (used for FROM-less SELECT)
   IndexPath     - index scan
   BitmapHeapPath - top of a bitmapped index scan
   TidPath       - scan by CTID
+  TidRangePath  - scan a contiguous range of CTIDs
   SubqueryScanPath - scan a subquery-in-FROM
   ForeignPath   - scan a foreign table, foreign join or foreign upper-relation
   CustomPath    - for custom scan providers
   AppendPath    - append multiple subpaths together
   MergeAppendPath - merge multiple subpaths, preserving their common sort order
-  ResultPath    - a childless Result plan node (used for FROM-less SELECT)
+  GroupResultPath - childless Result plan node (used for degenerate grouping)
   MaterialPath  - a Material plan node
+  MemoizePath   - a Memoize plan node for caching tuples from sub-paths
   UniquePath    - remove duplicate rows (either by hashing or sorting)
   GatherPath    - collect the results of parallel workers
   GatherMergePath - collect parallel results, preserving their common sort order
   ProjectionPath - a Result plan node with child (used for projection)
   ProjectSetPath - a ProjectSet plan node applied to some sub-path
   SortPath      - a Sort plan node applied to some sub-path
+  IncrementalSortPath - an IncrementalSort plan node applied to some sub-path
   GroupPath     - a Group plan node applied to some sub-path
   UpperUniquePath - a Unique plan node applied to some sub-path
   AggPath       - an Agg plan node applied to some sub-path
@@ -1003,6 +1015,7 @@ UPPERREL_SETOP		result of UNION/INTERSECT/EXCEPT, if any
 UPPERREL_PARTIAL_GROUP_AGG	result of partial grouping/aggregation, if any
 UPPERREL_GROUP_AGG	result of grouping/aggregation, if any
 UPPERREL_WINDOW		result of window functions, if any
+UPPERREL_PARTIAL_DISTINCT	result of partial "SELECT DISTINCT", if any
 UPPERREL_DISTINCT	result of "SELECT DISTINCT", if any
 UPPERREL_ORDERED	result of ORDER BY, if any
 UPPERREL_FINAL		result of any remaining top-level actions
@@ -1096,6 +1109,33 @@ partitions. This technique of breaking down a join between partitioned tables
 into joins between their partitions is called partitionwise join. We will use
 term "partitioned relation" for either a partitioned table or a join between
 compatibly partitioned tables.
+
+Even if the joining relations don't have exactly the same partition bounds,
+partitionwise join can still be applied by using an advanced
+partition-matching algorithm.  For both the joining relations, the algorithm
+checks whether every partition of one joining relation only matches one
+partition of the other joining relation at most.  In such a case the join
+between the joining relations can be broken down into joins between the
+matching partitions.  The join relation can then be considered partitioned.
+The algorithm produces the pairs of the matching partitions, plus the
+partition bounds for the join relation, to allow partitionwise join for
+computing the join.  The algorithm is implemented in partition_bounds_merge().
+For an N-way join relation considered partitioned this way, not every pair of
+joining relations can use partitionwise join.  For example:
+
+	(A leftjoin B on (Pab)) innerjoin C on (Pac)
+
+where A, B, and C are partitioned tables, and A has an extra partition
+compared to B and C.  When considering partitionwise join for the join {A B},
+the extra partition of A doesn't have a matching partition on the nullable
+side, which is the case that the current implementation of partitionwise join
+can't handle.  So {A B} is not considered partitioned, and the pair of {A B}
+and C considered for the 3-way join can't use partitionwise join.  On the
+other hand, the pair of {A C} and B can use partitionwise join because {A C}
+is considered partitioned by eliminating the extra partition (see identity 1
+on outer join reordering).  Whether an N-way join can use partitionwise join
+is determined based on the first pair of joining relations that are both
+partitioned and can use partitionwise join.
 
 The partitioning properties of a partitioned relation are stored in its
 RelOptInfo.  The information about data types of partition keys are stored in

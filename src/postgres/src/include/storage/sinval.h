@@ -4,7 +4,7 @@
  *	  POSTGRES shared cache invalidation communication definitions.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/sinval.h
@@ -137,15 +137,14 @@ typedef union
 
 
 /* Counter of messages processed; don't worry about overflow. */
-extern uint64 SharedInvalidMessageCounter;
+extern PGDLLIMPORT uint64 SharedInvalidMessageCounter;
 
-extern volatile sig_atomic_t catchupInterruptPending;
+extern PGDLLIMPORT volatile sig_atomic_t catchupInterruptPending;
 
 extern void SendSharedInvalidMessages(const SharedInvalidationMessage *msgs,
-						  int n);
-extern void ReceiveSharedInvalidMessages(
-							 void (*invalFunction) (SharedInvalidationMessage *msg),
-							 void (*resetFunction) (void));
+									  int n);
+extern void ReceiveSharedInvalidMessages(void (*invalFunction) (SharedInvalidationMessage *msg),
+										 void (*resetFunction) (void));
 
 /* signal handler for catchup events (PROCSIG_CATCHUP_INTERRUPT) */
 extern void HandleCatchupInterrupt(void);
@@ -157,11 +156,11 @@ extern void HandleCatchupInterrupt(void);
  */
 extern void ProcessCatchupInterrupt(void);
 
-extern int xactGetCommittedInvalidationMessages(SharedInvalidationMessage **msgs,
-									 bool *RelcacheInitFileInval);
+extern int	xactGetCommittedInvalidationMessages(SharedInvalidationMessage **msgs,
+												 bool *RelcacheInitFileInval);
 extern void ProcessCommittedInvalidationMessages(SharedInvalidationMessage *msgs,
-									 int nmsgs, bool RelcacheInitFileInval,
-									 Oid dbid, Oid tsid);
+												 int nmsgs, bool RelcacheInitFileInval,
+												 Oid dbid, Oid tsid);
 
 extern void LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg);
 

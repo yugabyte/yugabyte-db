@@ -5,7 +5,7 @@
  *
  * Author: Magnus Hagander <magnus@hagander.net>
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/bin/pg_basebackup/streamutil.c
@@ -17,18 +17,17 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-/* local includes */
-#include "receivelog.h"
-#include "streamutil.h"
-
 #include "access/xlog_internal.h"
+#include "common/connect.h"
 #include "common/fe_memutils.h"
 #include "common/file_perm.h"
+#include "common/logging.h"
 #include "common/string.h"
 #include "datatype/timestamp.h"
-#include "fe_utils/connect.h"
 #include "port/pg_bswap.h"
 #include "pqexpbuffer.h"
+#include "receivelog.h"
+#include "streamutil.h"
 
 #define ERRCODE_DUPLICATE_OBJECT  "42710"
 
@@ -89,10 +88,7 @@ GetConnection(void)
 	{
 		conn_opts = PQconninfoParse(connection_string, &err_msg);
 		if (conn_opts == NULL)
-		{
-			fprintf(stderr, "%s: %s", progname, err_msg);
-			exit(1);
-		}
+			pg_fatal("%s", err_msg);
 
 		for (conn_opt = conn_opts; conn_opt->keyword != NULL; conn_opt++)
 		{
@@ -183,11 +179,7 @@ GetConnection(void)
 		 * and PQconnectdbParams returns NULL, we call exit(1) directly.
 		 */
 		if (!tmpconn)
-		{
-			fprintf(stderr, _("%s: could not connect to server\n"),
-					progname);
-			exit(1);
-		}
+			pg_fatal("could not connect to server");
 
 		/* If we need a password and -w wasn't given, loop back and get one */
 		if (PQstatus(tmpconn) == CONNECTION_BAD &&
@@ -202,8 +194,7 @@ GetConnection(void)
 
 	if (PQstatus(tmpconn) != CONNECTION_OK)
 	{
-		fprintf(stderr, _("%s: could not connect to server: %s"),
-				progname, PQerrorMessage(tmpconn));
+		pg_log_error("%s", PQerrorMessage(tmpconn));
 		PQfinish(tmpconn);
 		free(values);
 		free(keywords);
@@ -231,8 +222,8 @@ GetConnection(void)
 		res = PQexec(tmpconn, ALWAYS_SECURE_SEARCH_PATH_SQL);
 		if (PQresultStatus(res) != PGRES_TUPLES_OK)
 		{
-			fprintf(stderr, _("%s: could not clear search_path: %s"),
-					progname, PQerrorMessage(tmpconn));
+			pg_log_error("could not clear search_path: %s",
+						 PQerrorMessage(tmpconn));
 			PQclear(res);
 			PQfinish(tmpconn);
 			exit(1);
@@ -247,18 +238,14 @@ GetConnection(void)
 	tmpparam = PQparameterStatus(tmpconn, "integer_datetimes");
 	if (!tmpparam)
 	{
-		fprintf(stderr,
-				_("%s: could not determine server setting for integer_datetimes\n"),
-				progname);
+		pg_log_error("could not determine server setting for integer_datetimes");
 		PQfinish(tmpconn);
 		exit(1);
 	}
 
 	if (strcmp(tmpparam, "on") != 0)
 	{
-		fprintf(stderr,
-				_("%s: integer_datetimes compile flag does not match server\n"),
-				progname);
+		pg_log_error("integer_datetimes compile flag does not match server");
 		PQfinish(tmpconn);
 		exit(1);
 	}
@@ -301,29 +288,30 @@ RetrieveWalSegSize(PGconn *conn)
 	res = PQexec(conn, "SHOW wal_segment_size");
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
-		fprintf(stderr, _("%s: could not send replication command \"%s\": %s"),
-				progname, "SHOW wal_segment_size", PQerrorMessage(conn));
+		pg_log_error("could not send replication command \"%s\": %s",
+					 "SHOW wal_segment_size", PQerrorMessage(conn));
 
 		PQclear(res);
 		return false;
 	}
 	if (PQntuples(res) != 1 || PQnfields(res) < 1)
 	{
-		fprintf(stderr,
-				_("%s: could not fetch WAL segment size: got %d rows and %d fields, expected %d rows and %d or more fields\n"),
-				progname, PQntuples(res), PQnfields(res), 1, 1);
+		pg_log_error("could not fetch WAL segment size: got %d rows and %d fields, expected %d rows and %d or more fields",
+					 PQntuples(res), PQnfields(res), 1, 1);
 
 		PQclear(res);
 		return false;
 	}
 
 	/* fetch xlog value and unit from the result */
-	if (sscanf(PQgetvalue(res, 0, 0), "%d%s", &xlog_val, xlog_unit) != 2)
+	if (sscanf(PQgetvalue(res, 0, 0), "%d%2s", &xlog_val, xlog_unit) != 2)
 	{
-		fprintf(stderr, _("%s: WAL segment size could not be parsed\n"),
-				progname);
+		pg_log_error("WAL segment size could not be parsed");
+		PQclear(res);
 		return false;
 	}
+
+	PQclear(res);
 
 	/* set the multiplier based on unit to convert xlog_val to bytes */
 	if (strcmp(xlog_unit, "MB") == 0)
@@ -336,15 +324,13 @@ RetrieveWalSegSize(PGconn *conn)
 
 	if (!IsValidWalSegSize(WalSegSz))
 	{
-		fprintf(stderr,
-				ngettext("%s: WAL segment size must be a power of two between 1 MB and 1 GB, but the remote server reported a value of %d byte\n",
-						 "%s: WAL segment size must be a power of two between 1 MB and 1 GB, but the remote server reported a value of %d bytes\n",
-						 WalSegSz),
-				progname, WalSegSz);
+		pg_log_error(ngettext("WAL segment size must be a power of two between 1 MB and 1 GB, but the remote server reported a value of %d byte",
+							  "WAL segment size must be a power of two between 1 MB and 1 GB, but the remote server reported a value of %d bytes",
+							  WalSegSz),
+					 WalSegSz);
 		return false;
 	}
 
-	PQclear(res);
 	return true;
 }
 
@@ -375,17 +361,16 @@ RetrieveDataDirCreatePerm(PGconn *conn)
 	res = PQexec(conn, "SHOW data_directory_mode");
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
-		fprintf(stderr, _("%s: could not send replication command \"%s\": %s"),
-				progname, "SHOW data_directory_mode", PQerrorMessage(conn));
+		pg_log_error("could not send replication command \"%s\": %s",
+					 "SHOW data_directory_mode", PQerrorMessage(conn));
 
 		PQclear(res);
 		return false;
 	}
 	if (PQntuples(res) != 1 || PQnfields(res) < 1)
 	{
-		fprintf(stderr,
-				_("%s: could not fetch group access flag: got %d rows and %d fields, expected %d rows and %d or more fields\n"),
-				progname, PQntuples(res), PQnfields(res), 1, 1);
+		pg_log_error("could not fetch group access flag: got %d rows and %d fields, expected %d rows and %d or more fields",
+					 PQntuples(res), PQnfields(res), 1, 1);
 
 		PQclear(res);
 		return false;
@@ -393,8 +378,8 @@ RetrieveDataDirCreatePerm(PGconn *conn)
 
 	if (sscanf(PQgetvalue(res, 0, 0), "%o", &data_directory_mode) != 1)
 	{
-		fprintf(stderr, _("%s: group access flag could not be parsed: %s\n"),
-				progname, PQgetvalue(res, 0, 0));
+		pg_log_error("group access flag could not be parsed: %s",
+					 PQgetvalue(res, 0, 0));
 
 		PQclear(res);
 		return false;
@@ -428,17 +413,16 @@ RunIdentifySystem(PGconn *conn, char **sysid, TimeLineID *starttli,
 	res = PQexec(conn, "IDENTIFY_SYSTEM");
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
-		fprintf(stderr, _("%s: could not send replication command \"%s\": %s"),
-				progname, "IDENTIFY_SYSTEM", PQerrorMessage(conn));
+		pg_log_error("could not send replication command \"%s\": %s",
+					 "IDENTIFY_SYSTEM", PQerrorMessage(conn));
 
 		PQclear(res);
 		return false;
 	}
 	if (PQntuples(res) != 1 || PQnfields(res) < 3)
 	{
-		fprintf(stderr,
-				_("%s: could not identify system: got %d rows and %d fields, expected %d rows and %d or more fields\n"),
-				progname, PQntuples(res), PQnfields(res), 1, 3);
+		pg_log_error("could not identify system: got %d rows and %d fields, expected %d rows and %d or more fields",
+					 PQntuples(res), PQnfields(res), 1, 3);
 
 		PQclear(res);
 		return false;
@@ -457,9 +441,8 @@ RunIdentifySystem(PGconn *conn, char **sysid, TimeLineID *starttli,
 	{
 		if (sscanf(PQgetvalue(res, 0, 2), "%X/%X", &hi, &lo) != 2)
 		{
-			fprintf(stderr,
-					_("%s: could not parse write-ahead log location \"%s\"\n"),
-					progname, PQgetvalue(res, 0, 2));
+			pg_log_error("could not parse write-ahead log location \"%s\"",
+						 PQgetvalue(res, 0, 2));
 
 			PQclear(res);
 			return false;
@@ -475,9 +458,8 @@ RunIdentifySystem(PGconn *conn, char **sysid, TimeLineID *starttli,
 		{
 			if (PQnfields(res) < 4)
 			{
-				fprintf(stderr,
-						_("%s: could not identify system: got %d rows and %d fields, expected %d rows and %d or more fields\n"),
-						progname, PQntuples(res), PQnfields(res), 1, 4);
+				pg_log_error("could not identify system: got %d rows and %d fields, expected %d rows and %d or more fields",
+							 PQntuples(res), PQnfields(res), 1, 4);
 
 				PQclear(res);
 				return false;
@@ -492,41 +474,170 @@ RunIdentifySystem(PGconn *conn, char **sysid, TimeLineID *starttli,
 }
 
 /*
+ * Run READ_REPLICATION_SLOT through a given connection and give back to
+ * caller some result information if requested for this slot:
+ * - Start LSN position, InvalidXLogRecPtr if unknown.
+ * - Current timeline ID, 0 if unknown.
+ * Returns false on failure, and true otherwise.
+ */
+bool
+GetSlotInformation(PGconn *conn, const char *slot_name,
+				   XLogRecPtr *restart_lsn, TimeLineID *restart_tli)
+{
+	PGresult   *res;
+	PQExpBuffer query;
+	XLogRecPtr	lsn_loc = InvalidXLogRecPtr;
+	TimeLineID	tli_loc = 0;
+
+	if (restart_lsn)
+		*restart_lsn = lsn_loc;
+	if (restart_tli)
+		*restart_tli = tli_loc;
+
+	query = createPQExpBuffer();
+	appendPQExpBuffer(query, "READ_REPLICATION_SLOT %s", slot_name);
+	res = PQexec(conn, query->data);
+	destroyPQExpBuffer(query);
+
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		pg_log_error("could not send replication command \"%s\": %s",
+					 "READ_REPLICATION_SLOT", PQerrorMessage(conn));
+		PQclear(res);
+		return false;
+	}
+
+	/* The command should always return precisely one tuple and three fields */
+	if (PQntuples(res) != 1 || PQnfields(res) != 3)
+	{
+		pg_log_error("could not read replication slot \"%s\": got %d rows and %d fields, expected %d rows and %d fields",
+					 slot_name, PQntuples(res), PQnfields(res), 1, 3);
+		PQclear(res);
+		return false;
+	}
+
+	/*
+	 * When the slot doesn't exist, the command returns a tuple with NULL
+	 * values.  This checks only the slot type field.
+	 */
+	if (PQgetisnull(res, 0, 0))
+	{
+		pg_log_error("replication slot \"%s\" does not exist", slot_name);
+		PQclear(res);
+		return false;
+	}
+
+	/*
+	 * Note that this cannot happen as READ_REPLICATION_SLOT supports only
+	 * physical slots, but play it safe.
+	 */
+	if (strcmp(PQgetvalue(res, 0, 0), "physical") != 0)
+	{
+		pg_log_error("expected a physical replication slot, got type \"%s\" instead",
+					 PQgetvalue(res, 0, 0));
+		PQclear(res);
+		return false;
+	}
+
+	/* restart LSN */
+	if (!PQgetisnull(res, 0, 1))
+	{
+		uint32		hi,
+					lo;
+
+		if (sscanf(PQgetvalue(res, 0, 1), "%X/%X", &hi, &lo) != 2)
+		{
+			pg_log_error("could not parse restart_lsn \"%s\" for replication slot \"%s\"",
+						 PQgetvalue(res, 0, 1), slot_name);
+			PQclear(res);
+			return false;
+		}
+		lsn_loc = ((uint64) hi) << 32 | lo;
+	}
+
+	/* current TLI */
+	if (!PQgetisnull(res, 0, 2))
+		tli_loc = (TimeLineID) atol(PQgetvalue(res, 0, 2));
+
+	PQclear(res);
+
+	/* Assign results if requested */
+	if (restart_lsn)
+		*restart_lsn = lsn_loc;
+	if (restart_tli)
+		*restart_tli = tli_loc;
+
+	return true;
+}
+
+/*
  * Create a replication slot for the given connection. This function
  * returns true in case of success.
  */
 bool
 CreateReplicationSlot(PGconn *conn, const char *slot_name, const char *plugin,
 					  bool is_temporary, bool is_physical, bool reserve_wal,
-					  bool slot_exists_ok)
+					  bool slot_exists_ok, bool two_phase)
 {
 	PQExpBuffer query;
 	PGresult   *res;
+	bool		use_new_option_syntax = (PQserverVersion(conn) >= 150000);
 
 	query = createPQExpBuffer();
 
 	Assert((is_physical && plugin == NULL) ||
 		   (!is_physical && plugin != NULL));
+	Assert(!(two_phase && is_physical));
 	Assert(slot_name != NULL);
 
-	/* Build query */
+	/* Build base portion of query */
 	appendPQExpBuffer(query, "CREATE_REPLICATION_SLOT \"%s\"", slot_name);
 	if (is_temporary)
-		appendPQExpBuffer(query, " TEMPORARY");
+		appendPQExpBufferStr(query, " TEMPORARY");
+	if (is_physical)
+		appendPQExpBufferStr(query, " PHYSICAL");
+	else
+		appendPQExpBuffer(query, " LOGICAL \"%s\"", plugin);
+
+	/* Add any requested options */
+	if (use_new_option_syntax)
+		appendPQExpBufferStr(query, " (");
 	if (is_physical)
 	{
-		appendPQExpBuffer(query, " PHYSICAL");
 		if (reserve_wal)
-			appendPQExpBuffer(query, " RESERVE_WAL");
+			AppendPlainCommandOption(query, use_new_option_syntax,
+									 "RESERVE_WAL");
 	}
 	else
 	{
-		appendPQExpBuffer(query, " LOGICAL \"%s\"", plugin);
+		if (two_phase && PQserverVersion(conn) >= 150000)
+			AppendPlainCommandOption(query, use_new_option_syntax,
+									 "TWO_PHASE");
+
 		if (PQserverVersion(conn) >= 100000)
+		{
 			/* pg_recvlogical doesn't use an exported snapshot, so suppress */
-			appendPQExpBuffer(query, " NOEXPORT_SNAPSHOT");
+			if (use_new_option_syntax)
+				AppendStringCommandOption(query, use_new_option_syntax,
+										  "SNAPSHOT", "nothing");
+			else
+				AppendPlainCommandOption(query, use_new_option_syntax,
+										 "NOEXPORT_SNAPSHOT");
+		}
+	}
+	if (use_new_option_syntax)
+	{
+		/* Suppress option list if it would be empty, otherwise terminate */
+		if (query->data[query->len - 1] == '(')
+		{
+			query->len -= 2;
+			query->data[query->len] = '\0';
+		}
+		else
+			appendPQExpBufferChar(query, ')');
 	}
 
+	/* Now run the query */
 	res = PQexec(conn, query->data);
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
@@ -542,8 +653,8 @@ CreateReplicationSlot(PGconn *conn, const char *slot_name, const char *plugin,
 		}
 		else
 		{
-			fprintf(stderr, _("%s: could not send replication command \"%s\": %s"),
-					progname, query->data, PQerrorMessage(conn));
+			pg_log_error("could not send replication command \"%s\": %s",
+						 query->data, PQerrorMessage(conn));
 
 			destroyPQExpBuffer(query);
 			PQclear(res);
@@ -553,10 +664,9 @@ CreateReplicationSlot(PGconn *conn, const char *slot_name, const char *plugin,
 
 	if (PQntuples(res) != 1 || PQnfields(res) != 4)
 	{
-		fprintf(stderr,
-				_("%s: could not create replication slot \"%s\": got %d rows and %d fields, expected %d rows and %d fields\n"),
-				progname, slot_name,
-				PQntuples(res), PQnfields(res), 1, 4);
+		pg_log_error("could not create replication slot \"%s\": got %d rows and %d fields, expected %d rows and %d fields",
+					 slot_name,
+					 PQntuples(res), PQnfields(res), 1, 4);
 
 		destroyPQExpBuffer(query);
 		PQclear(res);
@@ -588,8 +698,8 @@ DropReplicationSlot(PGconn *conn, const char *slot_name)
 	res = PQexec(conn, query->data);
 	if (PQresultStatus(res) != PGRES_COMMAND_OK)
 	{
-		fprintf(stderr, _("%s: could not send replication command \"%s\": %s"),
-				progname, query->data, PQerrorMessage(conn));
+		pg_log_error("could not send replication command \"%s\": %s",
+					 query->data, PQerrorMessage(conn));
 
 		destroyPQExpBuffer(query);
 		PQclear(res);
@@ -598,10 +708,9 @@ DropReplicationSlot(PGconn *conn, const char *slot_name)
 
 	if (PQntuples(res) != 0 || PQnfields(res) != 0)
 	{
-		fprintf(stderr,
-				_("%s: could not drop replication slot \"%s\": got %d rows and %d fields, expected %d rows and %d fields\n"),
-				progname, slot_name,
-				PQntuples(res), PQnfields(res), 0, 0);
+		pg_log_error("could not drop replication slot \"%s\": got %d rows and %d fields, expected %d rows and %d fields",
+					 slot_name,
+					 PQntuples(res), PQnfields(res), 0, 0);
 
 		destroyPQExpBuffer(query);
 		PQclear(res);
@@ -613,6 +722,67 @@ DropReplicationSlot(PGconn *conn, const char *slot_name)
 	return true;
 }
 
+/*
+ * Append a "plain" option - one with no value - to a server command that
+ * is being constructed.
+ *
+ * In the old syntax, all options were parser keywords, so you could just
+ * write things like SOME_COMMAND OPTION1 OPTION2 'opt2value' OPTION3 42. The
+ * new syntax uses a comma-separated list surrounded by parentheses, so the
+ * equivalent is SOME_COMMAND (OPTION1, OPTION2 'optvalue', OPTION3 42).
+ */
+void
+AppendPlainCommandOption(PQExpBuffer buf, bool use_new_option_syntax,
+						 char *option_name)
+{
+	if (buf->len > 0 && buf->data[buf->len - 1] != '(')
+	{
+		if (use_new_option_syntax)
+			appendPQExpBufferStr(buf, ", ");
+		else
+			appendPQExpBufferChar(buf, ' ');
+	}
+
+	appendPQExpBuffer(buf, " %s", option_name);
+}
+
+/*
+ * Append an option with an associated string value to a server command that
+ * is being constructed.
+ *
+ * See comments for AppendPlainCommandOption, above.
+ */
+void
+AppendStringCommandOption(PQExpBuffer buf, bool use_new_option_syntax,
+						  char *option_name, char *option_value)
+{
+	AppendPlainCommandOption(buf, use_new_option_syntax, option_name);
+
+	if (option_value != NULL)
+	{
+		size_t		length = strlen(option_value);
+		char	   *escaped_value = palloc(1 + 2 * length);
+
+		PQescapeStringConn(conn, escaped_value, option_value, length, NULL);
+		appendPQExpBuffer(buf, " '%s'", escaped_value);
+		pfree(escaped_value);
+	}
+}
+
+/*
+ * Append an option with an associated integer value to a server command
+ * is being constructed.
+ *
+ * See comments for AppendPlainCommandOption, above.
+ */
+void
+AppendIntegerCommandOption(PQExpBuffer buf, bool use_new_option_syntax,
+						   char *option_name, int32 option_value)
+{
+	AppendPlainCommandOption(buf, use_new_option_syntax, option_name);
+
+	appendPQExpBuffer(buf, " %d", option_value);
+}
 
 /*
  * Frontend version of GetCurrentTimestamp(), since we are not linked with

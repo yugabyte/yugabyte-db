@@ -208,7 +208,10 @@ typedef unsigned int YBCPgOid;
 // Structure to hold the values of hidden columns when passing tuple from YB to PG.
 typedef struct PgSysColumns {
   // Postgres system columns.
+  #ifdef YB_TODO
+  // oid is a regular column PG15 onwards.
   uint32_t oid;
+  #endif
   uint32_t tableoid;
   uint32_t xmin;
   uint32_t cmin;

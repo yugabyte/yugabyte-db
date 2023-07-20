@@ -650,6 +650,8 @@ SELECT int_add(1, 1);
 
 CREATE AGGREGATE public.sum_test(INT) (SFUNC=public.int_add, STYPE=INT, INITCOND='0');
 ALTER AGGREGATE public.sum_test(integer) RENAME TO sum_test2;
+-- YB note: bump audit number to stay same with upstream.
+SELECT 'yb';
 
 --
 -- Test conversion

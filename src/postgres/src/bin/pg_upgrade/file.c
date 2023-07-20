@@ -3,26 +3,71 @@
  *
  *	file system operations
  *
- *	Copyright (c) 2010-2018, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/file.c
  */
 
 #include "postgres_fe.h"
 
-#include "access/visibilitymap.h"
+#include <sys/stat.h>
+#include <fcntl.h>
+#ifdef HAVE_COPYFILE_H
+#include <copyfile.h>
+#endif
+#ifdef __linux__
+#include <sys/ioctl.h>
+#include <linux/fs.h>
+#endif
+
+#include "access/visibilitymapdefs.h"
 #include "common/file_perm.h"
 #include "pg_upgrade.h"
 #include "storage/bufpage.h"
 #include "storage/checksum.h"
 #include "storage/checksum_impl.h"
 
-#include <sys/stat.h>
-#include <fcntl.h>
 
+/*
+ * cloneFile()
+ *
+ * Clones/reflinks a relation file from src to dst.
+ *
+ * schemaName/relName are relation's SQL name (used for error messages only).
+ */
+void
+cloneFile(const char *src, const char *dst,
+		  const char *schemaName, const char *relName)
+{
+#if defined(HAVE_COPYFILE) && defined(COPYFILE_CLONE_FORCE)
+	if (copyfile(src, dst, NULL, COPYFILE_CLONE_FORCE) < 0)
+		pg_fatal("error while cloning relation \"%s.%s\" (\"%s\" to \"%s\"): %s\n",
+				 schemaName, relName, src, dst, strerror(errno));
+#elif defined(__linux__) && defined(FICLONE)
+	int			src_fd;
+	int			dest_fd;
 
-#ifdef WIN32
-static int	win32_pghardlink(const char *src, const char *dst);
+	if ((src_fd = open(src, O_RDONLY | PG_BINARY, 0)) < 0)
+		pg_fatal("error while cloning relation \"%s.%s\": could not open file \"%s\": %s\n",
+				 schemaName, relName, src, strerror(errno));
+
+	if ((dest_fd = open(dst, O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
+						pg_file_create_mode)) < 0)
+		pg_fatal("error while cloning relation \"%s.%s\": could not create file \"%s\": %s\n",
+				 schemaName, relName, dst, strerror(errno));
+
+	if (ioctl(dest_fd, FICLONE, src_fd) < 0)
+	{
+		int			save_errno = errno;
+
+		unlink(dst);
+		pg_fatal("error while cloning relation \"%s.%s\" (\"%s\" to \"%s\"): %s\n",
+				 schemaName, relName, src, dst, strerror(save_errno));
+	}
+
+	close(src_fd);
+	close(dest_fd);
 #endif
+}
 
 
 /*
@@ -104,7 +149,7 @@ void
 linkFile(const char *src, const char *dst,
 		 const char *schemaName, const char *relName)
 {
-	if (pg_link_file(src, dst) < 0)
+	if (link(src, dst) < 0)
 		pg_fatal("error while creating link for relation \"%s.%s\" (\"%s\" to \"%s\"): %s\n",
 				 schemaName, relName, src, dst, strerror(errno));
 }
@@ -271,6 +316,48 @@ rewriteVisibilityMap(const char *fromfile, const char *tofile,
 }
 
 void
+check_file_clone(void)
+{
+	char		existing_file[MAXPGPATH];
+	char		new_link_file[MAXPGPATH];
+
+	snprintf(existing_file, sizeof(existing_file), "%s/PG_VERSION", old_cluster.pgdata);
+	snprintf(new_link_file, sizeof(new_link_file), "%s/PG_VERSION.clonetest", new_cluster.pgdata);
+	unlink(new_link_file);		/* might fail */
+
+#if defined(HAVE_COPYFILE) && defined(COPYFILE_CLONE_FORCE)
+	if (copyfile(existing_file, new_link_file, NULL, COPYFILE_CLONE_FORCE) < 0)
+		pg_fatal("could not clone file between old and new data directories: %s\n",
+				 strerror(errno));
+#elif defined(__linux__) && defined(FICLONE)
+	{
+		int			src_fd;
+		int			dest_fd;
+
+		if ((src_fd = open(existing_file, O_RDONLY | PG_BINARY, 0)) < 0)
+			pg_fatal("could not open file \"%s\": %s\n",
+					 existing_file, strerror(errno));
+
+		if ((dest_fd = open(new_link_file, O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
+							pg_file_create_mode)) < 0)
+			pg_fatal("could not create file \"%s\": %s\n",
+					 new_link_file, strerror(errno));
+
+		if (ioctl(dest_fd, FICLONE, src_fd) < 0)
+			pg_fatal("could not clone file between old and new data directories: %s\n",
+					 strerror(errno));
+
+		close(src_fd);
+		close(dest_fd);
+	}
+#else
+	pg_fatal("file cloning not supported on this platform\n");
+#endif
+
+	unlink(new_link_file);
+}
+
+void
 check_hard_link(void)
 {
 	char		existing_file[MAXPGPATH];
@@ -280,29 +367,10 @@ check_hard_link(void)
 	snprintf(new_link_file, sizeof(new_link_file), "%s/PG_VERSION.linktest", new_cluster.pgdata);
 	unlink(new_link_file);		/* might fail */
 
-	if (pg_link_file(existing_file, new_link_file) < 0)
+	if (link(existing_file, new_link_file) < 0)
 		pg_fatal("could not create hard link between old and new data directories: %s\n"
 				 "In link mode the old and new data directories must be on the same file system.\n",
 				 strerror(errno));
 
 	unlink(new_link_file);
 }
-
-#ifdef WIN32
-/* implementation of pg_link_file() on Windows */
-static int
-win32_pghardlink(const char *src, const char *dst)
-{
-	/*
-	 * CreateHardLinkA returns zero for failure
-	 * http://msdn.microsoft.com/en-us/library/aa363860(VS.85).aspx
-	 */
-	if (CreateHardLinkA(dst, src, NULL) == 0)
-	{
-		_dosmaperr(GetLastError());
-		return -1;
-	}
-	else
-		return 0;
-}
-#endif

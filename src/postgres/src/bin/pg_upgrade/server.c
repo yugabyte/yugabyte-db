@@ -3,16 +3,16 @@
  *
  *	database server functions
  *
- *	Copyright (c) 2010-2018, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/server.c
  */
 
 #include "postgres_fe.h"
 
-#include "fe_utils/connect.h"
+#include "common/connect.h"
 #include "fe_utils/string_utils.h"
+#include "libpq/pqcomm.h"
 #include "pg_upgrade.h"
-
 
 static PGconn *get_db_conn(ClusterInfo *cluster, const char *db_name);
 
@@ -31,8 +31,7 @@ connectToServer(ClusterInfo *cluster, const char *db_name)
 
 	if (conn == NULL || PQstatus(conn) != CONNECTION_OK)
 	{
-		pg_log(PG_REPORT, "connection to database failed: %s",
-			   PQerrorMessage(conn));
+		pg_log(PG_REPORT, "%s", PQerrorMessage(conn));
 
 		if (conn)
 			PQfinish(conn);
@@ -51,6 +50,8 @@ connectToServer(ClusterInfo *cluster, const char *db_name)
  * get_db_conn()
  *
  * get database connection, using named database + standard params for cluster
+ *
+ * Caller must check for connection failure!
  */
 static PGconn *
 get_db_conn(ClusterInfo *cluster, const char *db_name)
@@ -165,11 +166,11 @@ get_major_server_version(ClusterInfo *cluster)
 	snprintf(ver_filename, sizeof(ver_filename), "%s/PG_VERSION",
 			 cluster->pgdata);
 	if ((version_fd = fopen(ver_filename, "r")) == NULL)
-		pg_fatal("could not open version file: %s\n", ver_filename);
+		pg_fatal("could not open version file \"%s\": %m\n", ver_filename);
 
 	if (fscanf(version_fd, "%63s", cluster->major_version_str) == 0 ||
 		sscanf(cluster->major_version_str, "%d.%d", &v1, &v2) < 1)
-		pg_fatal("could not parse PG_VERSION file from %s\n", cluster->pgdata);
+		pg_fatal("could not parse version file \"%s\"\n", ver_filename);
 
 	fclose(version_fd);
 
@@ -211,7 +212,7 @@ start_postmaster(ClusterInfo *cluster, bool report_and_exit_on_error)
 
 	socket_string[0] = '\0';
 
-#ifdef HAVE_UNIX_SOCKETS
+#if defined(HAVE_UNIX_SOCKETS) && !defined(WIN32)
 	/* prevent TCP/IP connections, restrict socket access */
 	strcat(socket_string,
 		   " -c listen_addresses='' -c unix_socket_permissions=0700");
@@ -221,34 +222,29 @@ start_postmaster(ClusterInfo *cluster, bool report_and_exit_on_error)
 		snprintf(socket_string + strlen(socket_string),
 				 sizeof(socket_string) - strlen(socket_string),
 				 " -c %s='%s'",
-				 (GET_MAJOR_VERSION(cluster->major_version) < 903) ?
+				 (GET_MAJOR_VERSION(cluster->major_version) <= 902) ?
 				 "unix_socket_directory" : "unix_socket_directories",
 				 cluster->sockdir);
 #endif
 
 	/*
-	 * Since PG 9.1, we have used -b to disable autovacuum.  For earlier
-	 * releases, setting autovacuum=off disables cleanup vacuum and analyze,
-	 * but freeze vacuums can still happen, so we set
-	 * autovacuum_freeze_max_age to its maximum.
-	 * (autovacuum_multixact_freeze_max_age was introduced after 9.1, so there
-	 * is no need to set that.)  We assume all datfrozenxid and relfrozenxid
-	 * values are less than a gap of 2000000000 from the current xid counter,
-	 * so autovacuum will not touch them.
+	 * Use -b to disable autovacuum.
 	 *
 	 * Turn off durability requirements to improve object creation speed, and
 	 * we only modify the new cluster, so only use it there.  If there is a
 	 * crash, the new cluster has to be recreated anyway.  fsync=off is a big
 	 * win on ext4.
+	 *
+	 * Force vacuum_defer_cleanup_age to 0 on the new cluster, so that
+	 * vacuumdb --freeze actually freezes the tuples.
 	 */
 	snprintf(cmd, sizeof(cmd),
-			 "\"%s/pg_ctl\" -w -l \"%s\" -D \"%s\" -o \"-p %d%s%s %s%s\" start",
-			 cluster->bindir, SERVER_LOG_FILE, cluster->pgconfig, cluster->port,
-			 (cluster->controldata.cat_ver >=
-			  BINARY_UPGRADE_SERVER_FLAG_CAT_VER) ? " -b" :
-			 " -c autovacuum=off -c autovacuum_freeze_max_age=2000000000",
+			 "\"%s/pg_ctl\" -w -l \"%s/%s\" -D \"%s\" -o \"-p %d -b%s %s%s\" start",
+			 cluster->bindir,
+			 log_opts.logdir,
+			 SERVER_LOG_FILE, cluster->pgconfig, cluster->port,
 			 (cluster == &new_cluster) ?
-			 " -c synchronous_commit=off -c fsync=off -c full_page_writes=off" : "",
+			 " -c synchronous_commit=off -c fsync=off -c full_page_writes=off -c vacuum_defer_cleanup_age=0" : "",
 			 cluster->pgopts ? cluster->pgopts : "", socket_string);
 
 	/*
@@ -292,8 +288,7 @@ start_postmaster(ClusterInfo *cluster, bool report_and_exit_on_error)
 	if ((conn = get_db_conn(cluster, "template1")) == NULL ||
 		PQstatus(conn) != CONNECTION_OK)
 	{
-		pg_log(PG_REPORT, "\nconnection to database failed: %s",
-			   PQerrorMessage(conn));
+		pg_log(PG_REPORT, "\n%s", PQerrorMessage(conn));
 		if (conn)
 			PQfinish(conn);
 		if (cluster == &old_cluster)
@@ -374,7 +369,7 @@ check_pghost_envvar(void)
 			if (value && strlen(value) > 0 &&
 			/* check for 'local' host values */
 				(strcmp(value, "localhost") != 0 && strcmp(value, "127.0.0.1") != 0 &&
-				 strcmp(value, "::1") != 0 && value[0] != '/'))
+				 strcmp(value, "::1") != 0 && !is_unixsock_path(value)))
 				pg_fatal("libpq environment variable %s has a non-local server value: %s\n",
 						 option->envvar, value);
 		}

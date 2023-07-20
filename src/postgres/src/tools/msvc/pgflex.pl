@@ -1,8 +1,12 @@
 # -*-perl-*- hey - emacs - this is a perl file
 
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+
 # src/tools/msvc/pgflex.pl
 
 use strict;
+use warnings;
+
 use File::Basename;
 
 # silence flex bleatings about file path style

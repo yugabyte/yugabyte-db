@@ -3,7 +3,7 @@
  * parse_oper.c
  *		handle operator things for parser
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -52,7 +52,7 @@ typedef struct OprCacheKey
 {
 	char		oprname[NAMEDATALEN];
 	Oid			left_arg;		/* Left input OID, or 0 if prefix op */
-	Oid			right_arg;		/* Right input OID, or 0 if postfix op */
+	Oid			right_arg;		/* Right input OID */
 	Oid			search_path[MAX_CACHED_PATH_LEN];
 } OprCacheKey;
 
@@ -67,17 +67,17 @@ typedef struct OprCacheEntry
 
 static Oid	binary_oper_exact(List *opname, Oid arg1, Oid arg2);
 static FuncDetailCode oper_select_candidate(int nargs,
-					  Oid *input_typeids,
-					  FuncCandidateList candidates,
-					  Oid *operOid);
+											Oid *input_typeids,
+											FuncCandidateList candidates,
+											Oid *operOid);
 static const char *op_signature_string(List *op, char oprkind,
-					Oid arg1, Oid arg2);
+									   Oid arg1, Oid arg2);
 static void op_error(ParseState *pstate, List *op, char oprkind,
-		 Oid arg1, Oid arg2,
-		 FuncDetailCode fdresult, int location);
+					 Oid arg1, Oid arg2,
+					 FuncDetailCode fdresult, int location);
 static bool make_oper_cache_key(ParseState *pstate, OprCacheKey *key,
-					List *opname, Oid ltypeId, Oid rtypeId,
-					int location);
+								List *opname, Oid ltypeId, Oid rtypeId,
+								int location);
 static Oid	find_oper_cache_entry(OprCacheKey *key);
 static void make_oper_cache_entry(OprCacheKey *key, Oid opr_oid);
 static void InvalidateOprCacheCallBack(Datum arg, int cacheid, uint32 hashvalue);
@@ -88,8 +88,7 @@ static void InvalidateOprCacheCallBack(Datum arg, int cacheid, uint32 hashvalue)
  *		Given a possibly-qualified operator name and exact input datatypes,
  *		look up the operator.
  *
- * Pass oprleft = InvalidOid for a prefix op, oprright = InvalidOid for
- * a postfix op.
+ * Pass oprleft = InvalidOid for a prefix op.
  *
  * If the operator name is not schema-qualified, it is sought in the current
  * namespace search path.
@@ -115,10 +114,16 @@ LookupOperName(ParseState *pstate, List *opername, Oid oprleft, Oid oprright,
 
 		if (!OidIsValid(oprleft))
 			oprkind = 'l';
-		else if (!OidIsValid(oprright))
-			oprkind = 'r';
-		else
+		else if (OidIsValid(oprright))
 			oprkind = 'b';
+		else
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("postfix operators are not supported"),
+					 parser_errposition(pstate, location)));
+			oprkind = 0;		/* keep compiler quiet */
+		}
 
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_FUNCTION),
@@ -134,7 +139,7 @@ LookupOperName(ParseState *pstate, List *opername, Oid oprleft, Oid oprright,
 /*
  * LookupOperWithArgs
  *		Like LookupOperName, but the argument types are specified by
- *		a ObjectWithArg node.
+ *		a ObjectWithArgs node.
  */
 Oid
 LookupOperWithArgs(ObjectWithArgs *oper, bool noError)
@@ -145,8 +150,8 @@ LookupOperWithArgs(ObjectWithArgs *oper, bool noError)
 				rightoid;
 
 	Assert(list_length(oper->objargs) == 2);
-	oprleft = linitial(oper->objargs);
-	oprright = lsecond(oper->objargs);
+	oprleft = linitial_node(TypeName, oper->objargs);
+	oprright = lsecond_node(TypeName, oper->objargs);
 
 	if (oprleft == NULL)
 		leftoid = InvalidOid;
@@ -244,7 +249,7 @@ get_sort_group_operators(Oid argtype,
 Oid
 oprid(Operator op)
 {
-	return HeapTupleGetOid(op);
+	return ((Form_pg_operator) GETSTRUCT(op))->oid;
 }
 
 /* given operator tuple, return the underlying function's OID */
@@ -507,85 +512,6 @@ compatible_oper_opid(List *op, Oid arg1, Oid arg2, bool noError)
 }
 
 
-/* right_oper() -- search for a unary right operator (postfix operator)
- * Given operator name and type of arg, return oper struct.
- *
- * IMPORTANT: the returned operator (if any) is only promised to be
- * coercion-compatible with the input datatype.  Do not use this if
- * you need an exact- or binary-compatible match.
- *
- * If no matching operator found, return NULL if noError is true,
- * raise an error if it is false.  pstate and location are used only to report
- * the error position; pass NULL/-1 if not available.
- *
- * NOTE: on success, the returned object is a syscache entry.  The caller
- * must ReleaseSysCache() the entry when done with it.
- */
-Operator
-right_oper(ParseState *pstate, List *op, Oid arg, bool noError, int location)
-{
-	Oid			operOid;
-	OprCacheKey key;
-	bool		key_ok;
-	FuncDetailCode fdresult = FUNCDETAIL_NOTFOUND;
-	HeapTuple	tup = NULL;
-
-	/*
-	 * Try to find the mapping in the lookaside cache.
-	 */
-	key_ok = make_oper_cache_key(pstate, &key, op, arg, InvalidOid, location);
-
-	if (key_ok)
-	{
-		operOid = find_oper_cache_entry(&key);
-		if (OidIsValid(operOid))
-		{
-			tup = SearchSysCache1(OPEROID, ObjectIdGetDatum(operOid));
-			if (HeapTupleIsValid(tup))
-				return (Operator) tup;
-		}
-	}
-
-	/*
-	 * First try for an "exact" match.
-	 */
-	operOid = OpernameGetOprid(op, arg, InvalidOid);
-	if (!OidIsValid(operOid))
-	{
-		/*
-		 * Otherwise, search for the most suitable candidate.
-		 */
-		FuncCandidateList clist;
-
-		/* Get postfix operators of given name */
-		clist = OpernameGetCandidates(op, 'r', false);
-
-		/* No operators found? Then fail... */
-		if (clist != NULL)
-		{
-			/*
-			 * We must run oper_select_candidate even if only one candidate,
-			 * otherwise we may falsely return a non-type-compatible operator.
-			 */
-			fdresult = oper_select_candidate(1, &arg, clist, &operOid);
-		}
-	}
-
-	if (OidIsValid(operOid))
-		tup = SearchSysCache1(OPEROID, ObjectIdGetDatum(operOid));
-
-	if (HeapTupleIsValid(tup))
-	{
-		if (key_ok)
-			make_oper_cache_entry(&key, operOid);
-	}
-	else if (!noError)
-		op_error(pstate, op, 'r', arg, InvalidOid, fdresult, location);
-
-	return (Operator) tup;
-}
-
-
 /* left_oper() -- search for a unary left operator (prefix operator)
  * Given operator name and type of arg, return oper struct.
  *
@@ -696,8 +622,7 @@ op_signature_string(List *op, char oprkind, Oid arg1, Oid arg2)
 
 	appendStringInfoString(&argbuf, NameListToString(op));
 
-	if (oprkind != 'r')
-		appendStringInfo(&argbuf, " %s", format_type_be(arg2));
+	appendStringInfo(&argbuf, " %s", format_type_be(arg2));
 
 	return argbuf.data;			/* return palloc'd string buffer */
 }
@@ -758,17 +683,16 @@ make_op(ParseState *pstate, List *opname, Node *ltree, Node *rtree,
 	Oid			rettype;
 	OpExpr	   *result;
 
-	/* Select the operator */
+	/* Check it's not a postfix operator */
 	if (rtree == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("postfix operators are not supported")));
+
+	/* Select the operator */
+	if (ltree == NULL)
 	{
-		/* right operator */
-		ltypeId = exprType(ltree);
-		rtypeId = InvalidOid;
-		tup = right_oper(pstate, opname, ltypeId, false, location);
-	}
-	else if (ltree == NULL)
-	{
-		/* left operator */
+		/* prefix operator */
 		rtypeId = exprType(rtree);
 		ltypeId = InvalidOid;
 		tup = left_oper(pstate, opname, rtypeId, false, location);
@@ -795,17 +719,9 @@ make_op(ParseState *pstate, List *opname, Node *ltree, Node *rtree,
 				 parser_errposition(pstate, location)));
 
 	/* Do typecasting and build the expression tree */
-	if (rtree == NULL)
+	if (ltree == NULL)
 	{
-		/* right operator */
-		args = list_make1(ltree);
-		actual_arg_types[0] = ltypeId;
-		declared_arg_types[0] = opform->oprleft;
-		nargs = 1;
-	}
-	else if (ltree == NULL)
-	{
-		/* left operator */
+		/* prefix operator */
 		args = list_make1(rtree);
 		actual_arg_types[0] = rtypeId;
 		declared_arg_types[0] = opform->oprright;
@@ -978,6 +894,8 @@ make_scalar_array_op(ParseState *pstate, List *opname,
 	result = makeNode(ScalarArrayOpExpr);
 	result->opno = oprid(tup);
 	result->opfuncid = opform->oprcode;
+	result->hashfuncid = InvalidOid;
+	result->negfuncid = InvalidOid;
 	result->useOr = useOr;
 	/* inputcollid will be set by parse_collate.c */
 	result->args = args;
@@ -1083,7 +1001,6 @@ find_oper_cache_entry(OprCacheKey *key)
 		/* First time through: initialize the hash table */
 		HASHCTL		ctl;
 
-		MemSet(&ctl, 0, sizeof(ctl));
 		ctl.keysize = sizeof(OprCacheKey);
 		ctl.entrysize = sizeof(OprCacheEntry);
 		OprCacheHash = hash_create("Operator lookup cache", 256,

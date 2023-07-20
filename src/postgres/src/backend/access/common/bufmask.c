@@ -5,12 +5,12 @@
  *	  in a page which can be different when the WAL is generated
  *	  and when the WAL is applied.
  *
- * Portions Copyright (c) 2016-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2016-2022, PostgreSQL Global Development Group
  *
  * Contains common routines required for masking a page.
  *
  * IDENTIFICATION
- *	  src/backend/storage/buffer/bufmask.c
+ *	  src/backend/access/common/bufmask.c
  *
  *-------------------------------------------------------------------------
  */
@@ -20,7 +20,7 @@
 #include "access/bufmask.h"
 
 /*
- * mask_page_lsn
+ * mask_page_lsn_and_checksum
  *
  * In consistency checks, the LSN of the two pages compared will likely be
  * different because of concurrent operations when the WAL is generated and
@@ -78,7 +78,7 @@ mask_unused_space(Page page)
 	if (pd_lower > pd_upper || pd_special < pd_upper ||
 		pd_lower < SizeOfPageHeaderData || pd_special > BLCKSZ)
 	{
-		elog(ERROR, "invalid page pd_lower %u pd_upper %u pd_special %u\n",
+		elog(ERROR, "invalid page pd_lower %u pd_upper %u pd_special %u",
 			 pd_lower, pd_upper, pd_special);
 	}
 
@@ -88,8 +88,8 @@ mask_unused_space(Page page)
 /*
  * mask_lp_flags
  *
- * In some index AMs, line pointer flags can be modified in master without
- * emitting any WAL record.
+ * In some index AMs, line pointer flags can be modified on the primary
+ * without emitting any WAL record.
  */
 void
 mask_lp_flags(Page page)

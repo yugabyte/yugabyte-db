@@ -1,10 +1,10 @@
 /*-------------------------------------------------------------------------
  *
  * makefuncs.c
- *	  creator functions for primitive nodes. The functions here are for
- *	  the most frequently created nodes.
+ *	  creator functions for various nodes. The functions here are for the
+ *	  most frequently created nodes.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -17,7 +17,6 @@
 
 #include "catalog/pg_class.h"
 #include "catalog/pg_type.h"
-#include "fmgr.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "utils/lsyscache.h"
@@ -66,7 +65,7 @@ makeSimpleA_Expr(A_Expr_Kind kind, char *name,
  *	  creates a Var node
  */
 Var *
-makeVar(Index varno,
+makeVar(int varno,
 		AttrNumber varattno,
 		Oid vartype,
 		int32 vartypmod,
@@ -83,13 +82,13 @@ makeVar(Index varno,
 	var->varlevelsup = varlevelsup;
 
 	/*
-	 * Since few if any routines ever create Var nodes with varnoold/varoattno
-	 * different from varno/varattno, we don't provide separate arguments for
-	 * them, but just initialize them to the given varno/varattno. This
+	 * Only a few callers need to make Var nodes with varnosyn/varattnosyn
+	 * different from varno/varattno.  We don't provide separate arguments for
+	 * them, but just initialize them to the given varno/varattno.  This
 	 * reduces code clutter and chance of error for most callers.
 	 */
-	var->varnoold = varno;
-	var->varoattno = varattno;
+	var->varnosyn = (Index) varno;
+	var->varattnosyn = varattno;
 
 	/* Likewise, we just set location to "unknown" here */
 	var->location = -1;
@@ -103,7 +102,7 @@ makeVar(Index varno,
  *		TargetEntry
  */
 Var *
-makeVarFromTargetEntry(Index varno,
+makeVarFromTargetEntry(int varno,
 					   TargetEntry *tle)
 {
 	return makeVar(varno,
@@ -134,7 +133,7 @@ makeVarFromTargetEntry(Index varno,
  */
 Var *
 makeWholeRowVar(RangeTblEntry *rte,
-				Index varno,
+				int varno,
 				Index varlevelsup,
 				bool allowScalar)
 {
@@ -148,8 +147,10 @@ makeWholeRowVar(RangeTblEntry *rte,
 			/* relation: the rowtype is a named composite type */
 			toid = get_rel_type_id(rte->relid);
 			if (!OidIsValid(toid))
-				elog(ERROR, "could not find type OID for relation %u",
-					 rte->relid);
+				ereport(ERROR,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("relation \"%s\" does not have a composite type",
+								get_rel_name(rte->relid))));
 			result = makeVar(varno,
 							 InvalidAttrNumber,
 							 toid,
@@ -583,7 +584,7 @@ makeDefElemExtended(char *nameSpace, char *name, Node *arg,
  * supply.  Any non-default parameters have to be inserted by the caller.
  */
 FuncCall *
-makeFuncCall(List *name, List *args, int location)
+makeFuncCall(List *name, List *args, CoercionForm funcformat, int location)
 {
 	FuncCall   *n = makeNode(FuncCall);
 
@@ -591,12 +592,202 @@ makeFuncCall(List *name, List *args, int location)
 	n->args = args;
 	n->agg_order = NIL;
 	n->agg_filter = NULL;
+	n->over = NULL;
 	n->agg_within_group = false;
 	n->agg_star = false;
 	n->agg_distinct = false;
 	n->func_variadic = false;
-	n->over = NULL;
+	n->funcformat = funcformat;
 	n->location = location;
+	return n;
+}
+
+/*
+ * make_opclause
+ *	  Creates an operator clause given its operator info, left operand
+ *	  and right operand (pass NULL to create single-operand clause),
+ *	  and collation info.
+ */
+Expr *
+make_opclause(Oid opno, Oid opresulttype, bool opretset,
+			  Expr *leftop, Expr *rightop,
+			  Oid opcollid, Oid inputcollid)
+{
+	OpExpr	   *expr = makeNode(OpExpr);
+
+	expr->opno = opno;
+	expr->opfuncid = InvalidOid;
+	expr->opresulttype = opresulttype;
+	expr->opretset = opretset;
+	expr->opcollid = opcollid;
+	expr->inputcollid = inputcollid;
+	if (rightop)
+		expr->args = list_make2(leftop, rightop);
+	else
+		expr->args = list_make1(leftop);
+	expr->location = -1;
+	return (Expr *) expr;
+}
+
+/*
+ * make_andclause
+ *
+ * Creates an 'and' clause given a list of its subclauses.
+ */
+Expr *
+make_andclause(List *andclauses)
+{
+	BoolExpr   *expr = makeNode(BoolExpr);
+
+	expr->boolop = AND_EXPR;
+	expr->args = andclauses;
+	expr->location = -1;
+	return (Expr *) expr;
+}
+
+/*
+ * make_orclause
+ *
+ * Creates an 'or' clause given a list of its subclauses.
+ */
+Expr *
+make_orclause(List *orclauses)
+{
+	BoolExpr   *expr = makeNode(BoolExpr);
+
+	expr->boolop = OR_EXPR;
+	expr->args = orclauses;
+	expr->location = -1;
+	return (Expr *) expr;
+}
+
+/*
+ * make_notclause
+ *
+ * Create a 'not' clause given the expression to be negated.
+ */
+Expr *
+make_notclause(Expr *notclause)
+{
+	BoolExpr   *expr = makeNode(BoolExpr);
+
+	expr->boolop = NOT_EXPR;
+	expr->args = list_make1(notclause);
+	expr->location = -1;
+	return (Expr *) expr;
+}
+
+/*
+ * make_and_qual
+ *
+ * Variant of make_andclause for ANDing two qual conditions together.
+ * Qual conditions have the property that a NULL nodetree is interpreted
+ * as 'true'.
+ *
+ * NB: this makes no attempt to preserve AND/OR flatness; so it should not
+ * be used on a qual that has already been run through prepqual.c.
+ */
+Node *
+make_and_qual(Node *qual1, Node *qual2)
+{
+	if (qual1 == NULL)
+		return qual2;
+	if (qual2 == NULL)
+		return qual1;
+	return (Node *) make_andclause(list_make2(qual1, qual2));
+}
+
+/*
+ * The planner and executor usually represent qualification expressions
+ * as lists of boolean expressions with implicit AND semantics.
+ *
+ * These functions convert between an AND-semantics expression list and the
+ * ordinary representation of a boolean expression.
+ *
+ * Note that an empty list is considered equivalent to TRUE.
+ */
+Expr *
+make_ands_explicit(List *andclauses)
+{
+	if (andclauses == NIL)
+		return (Expr *) makeBoolConst(true, false);
+	else if (list_length(andclauses) == 1)
+		return (Expr *) linitial(andclauses);
+	else
+		return make_andclause(andclauses);
+}
+
+List *
+make_ands_implicit(Expr *clause)
+{
+	/*
+	 * NB: because the parser sets the qual field to NULL in a query that has
+	 * no WHERE clause, we must consider a NULL input clause as TRUE, even
+	 * though one might more reasonably think it FALSE.
+	 */
+	if (clause == NULL)
+		return NIL;				/* NULL -> NIL list == TRUE */
+	else if (is_andclause(clause))
+		return ((BoolExpr *) clause)->args;
+	else if (IsA(clause, Const) &&
+			 !((Const *) clause)->constisnull &&
+			 DatumGetBool(((Const *) clause)->constvalue))
+		return NIL;				/* constant TRUE input -> NIL list */
+	else
+		return list_make1(clause);
+}
+
+/*
+ * makeIndexInfo
+ *	  create an IndexInfo node
+ */
+IndexInfo *
+makeIndexInfo(int numattrs, int numkeyattrs, Oid amoid, List *expressions,
+			  List *predicates, bool unique, bool nulls_not_distinct, bool isready, bool concurrent)
+{
+	IndexInfo  *n = makeNode(IndexInfo);
+
+	n->ii_NumIndexAttrs = numattrs;
+	n->ii_NumIndexKeyAttrs = numkeyattrs;
+	Assert(n->ii_NumIndexKeyAttrs != 0);
+	Assert(n->ii_NumIndexKeyAttrs <= n->ii_NumIndexAttrs);
+	n->ii_Unique = unique;
+	n->ii_NullsNotDistinct = nulls_not_distinct;
+	n->ii_ReadyForInserts = isready;
+	n->ii_CheckedUnchanged = false;
+	n->ii_IndexUnchanged = false;
+	n->ii_Concurrent = concurrent;
+
+	/* expressions */
+	n->ii_Expressions = expressions;
+	n->ii_ExpressionsState = NIL;
+
+	/* predicates  */
+	n->ii_Predicate = predicates;
+	n->ii_PredicateState = NULL;
+
+	/* exclusion constraints */
+	n->ii_ExclusionOps = NULL;
+	n->ii_ExclusionProcs = NULL;
+	n->ii_ExclusionStrats = NULL;
+
+	/* opclass options */
+	n->ii_OpclassOptions = NULL;
+
+	/* speculative inserts */
+	n->ii_UniqueOps = NULL;
+	n->ii_UniqueProcs = NULL;
+	n->ii_UniqueStrats = NULL;
+
+	/* initialize index-build state to default */
+	n->ii_BrokenHotChain = false;
+	n->ii_ParallelWorkers = 0;
+
+	/* set up for possible use by index AM */
+	n->ii_Am = amoid;
+	n->ii_AmCache = NULL;
+	n->ii_Context = GetCurrentMemoryContext();
+
 	return n;
 }
 

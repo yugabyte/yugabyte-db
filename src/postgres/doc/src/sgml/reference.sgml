@@ -186,6 +186,7 @@
    &listen;
    &load;
    &lock;
+   &merge;
    &move;
    &notify;
    &prepare;
@@ -246,6 +247,7 @@
    &dropdb;
    &dropuser;
    &ecpgRef;
+   &pgamcheck;
    &pgBasebackup;
    &pgbench;
    &pgConfig;
@@ -255,6 +257,7 @@
    &pgReceivewal;
    &pgRecvlogical;
    &pgRestore;
+   &pgVerifyBackup;
    &psqlRef;
    &reindexdb;
    &vacuumdb;
@@ -276,6 +279,7 @@
 
    &initdb;
    &pgarchivecleanup;
+   &pgChecksums;
    &pgControldata;
    &pgCtl;
    &pgResetwal;
@@ -283,7 +287,6 @@
    &pgtestfsync;
    &pgtesttiming;
    &pgupgrade;
-   &pgVerifyChecksums;
    &pgwaldump;
    &postgres;
    &postmaster;

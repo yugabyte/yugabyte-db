@@ -13,7 +13,7 @@
  * "delta" type.  Delta rows will be deleted by this worker and their values
  * aggregated into the total.
  *
- * Copyright (c) 2013-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/test/modules/worker_spi/worker_spi.c
@@ -25,6 +25,7 @@
 /* These are always necessary for a bgworker */
 #include "miscadmin.h"
 #include "postmaster/bgworker.h"
+#include "postmaster/interrupt.h"
 #include "storage/ipc.h"
 #include "storage/latch.h"
 #include "storage/lwlock.h"
@@ -48,13 +49,10 @@ PG_FUNCTION_INFO_V1(worker_spi_launch);
 void		_PG_init(void);
 void		worker_spi_main(Datum) pg_attribute_noreturn();
 
-/* flags set by signal handlers */
-static volatile sig_atomic_t got_sighup = false;
-static volatile sig_atomic_t got_sigterm = false;
-
 /* GUC variables */
 static int	worker_spi_naptime = 10;
 static int	worker_spi_total_workers = 2;
+static char *worker_spi_database = NULL;
 
 
 typedef struct worktable
@@ -62,38 +60,6 @@ typedef struct worktable
 	const char *schema;
 	const char *name;
 } worktable;
-
-/*
- * Signal handler for SIGTERM
- *		Set a flag to let the main loop to terminate, and set our latch to wake
- *		it up.
- */
-static void
-worker_spi_sigterm(SIGNAL_ARGS)
-{
-	int			save_errno = errno;
-
-	got_sigterm = true;
-	SetLatch(MyLatch);
-
-	errno = save_errno;
-}
-
-/*
- * Signal handler for SIGHUP
- *		Set a flag to tell the main loop to reread the config file, and set
- *		our latch to wake it up.
- */
-static void
-worker_spi_sighup(SIGNAL_ARGS)
-{
-	int			save_errno = errno;
-
-	got_sighup = true;
-	SetLatch(MyLatch);
-
-	errno = save_errno;
-}
 
 /*
  * Initialize workspace for a worker process: create the schema if it doesn't
@@ -118,6 +84,7 @@ initialize_worker_spi(worktable *table)
 	appendStringInfo(&buf, "select count(*) from pg_namespace where nspname = '%s'",
 					 table->schema);
 
+	debug_query_string = buf.data;
 	ret = SPI_execute(buf.data, true, 0);
 	if (ret != SPI_OK_SELECT)
 		elog(FATAL, "SPI_execute failed: error code %d", ret);
@@ -133,6 +100,7 @@ initialize_worker_spi(worktable *table)
 
 	if (ntup == 0)
 	{
+		debug_query_string = NULL;
 		resetStringInfo(&buf);
 		appendStringInfo(&buf,
 						 "CREATE SCHEMA \"%s\" "
@@ -146,15 +114,19 @@ initialize_worker_spi(worktable *table)
 		/* set statement start time */
 		SetCurrentStatementStartTimestamp();
 
+		debug_query_string = buf.data;
 		ret = SPI_execute(buf.data, false, 0);
 
 		if (ret != SPI_OK_UTILITY)
 			elog(FATAL, "failed to create my schema");
+
+		debug_query_string = NULL;	/* rest is not statement-specific */
 	}
 
 	SPI_finish();
 	PopActiveSnapshot();
 	CommitTransactionCommand();
+	debug_query_string = NULL;
 	pgstat_report_activity(STATE_IDLE, NULL);
 }
 
@@ -172,14 +144,14 @@ worker_spi_main(Datum main_arg)
 	table->name = pstrdup("counted");
 
 	/* Establish signal handlers before unblocking signals. */
-	pqsignal(SIGHUP, worker_spi_sighup);
-	pqsignal(SIGTERM, worker_spi_sigterm);
+	pqsignal(SIGHUP, SignalHandlerForConfigReload);
+	pqsignal(SIGTERM, die);
 
 	/* We're now ready to receive signals */
 	BackgroundWorkerUnblockSignals();
 
 	/* Connect to our database */
-	BackgroundWorkerInitializeConnection("postgres", NULL, 0);
+	BackgroundWorkerInitializeConnection(worker_spi_database, NULL, 0);
 
 	elog(LOG, "%s initialized with %s.%s",
 		 MyBgworkerEntry->bgw_name, table->schema, table->name);
@@ -212,12 +184,12 @@ worker_spi_main(Datum main_arg)
 					 table->name);
 
 	/*
-	 * Main loop: do this until the SIGTERM handler tells us to terminate
+	 * Main loop: do this until SIGTERM is received and processed by
+	 * ProcessInterrupts.
 	 */
-	while (!got_sigterm)
+	for (;;)
 	{
 		int			ret;
-		int			rc;
 
 		/*
 		 * Background workers mustn't call usleep() or any direct equivalent:
@@ -225,24 +197,20 @@ worker_spi_main(Datum main_arg)
 		 * necessary, but is awakened if postmaster dies.  That way the
 		 * background process goes away immediately in an emergency.
 		 */
-		rc = WaitLatch(MyLatch,
-					   WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
-					   worker_spi_naptime * 1000L,
-					   PG_WAIT_EXTENSION);
+		(void) WaitLatch(MyLatch,
+						 WL_LATCH_SET | WL_TIMEOUT | WL_EXIT_ON_PM_DEATH,
+						 worker_spi_naptime * 1000L,
+						 PG_WAIT_EXTENSION);
 		ResetLatch(MyLatch);
-
-		/* emergency bailout if postmaster has died */
-		if (rc & WL_POSTMASTER_DEATH)
-			proc_exit(1);
 
 		CHECK_FOR_INTERRUPTS();
 
 		/*
 		 * In case of a SIGHUP, just reload the configuration.
 		 */
-		if (got_sighup)
+		if (ConfigReloadPending)
 		{
-			got_sighup = false;
+			ConfigReloadPending = false;
 			ProcessConfigFile(PGC_SIGHUP);
 		}
 
@@ -266,6 +234,7 @@ worker_spi_main(Datum main_arg)
 		StartTransactionCommand();
 		SPI_connect();
 		PushActiveSnapshot(GetTransactionSnapshot());
+		debug_query_string = buf.data;
 		pgstat_report_activity(STATE_RUNNING, buf.data);
 
 		/* We can now execute queries via SPI */
@@ -295,11 +264,12 @@ worker_spi_main(Datum main_arg)
 		SPI_finish();
 		PopActiveSnapshot();
 		CommitTransactionCommand();
-		pgstat_report_stat(false);
+		debug_query_string = NULL;
+		pgstat_report_stat(true);
 		pgstat_report_activity(STATE_IDLE, NULL);
 	}
 
-	proc_exit(1);
+	/* Not reachable */
 }
 
 /*
@@ -312,7 +282,6 @@ void
 _PG_init(void)
 {
 	BackgroundWorker worker;
-	unsigned int i;
 
 	/* get the configuration */
 	DefineCustomIntVariable("worker_spi.naptime",
@@ -344,6 +313,17 @@ _PG_init(void)
 							NULL,
 							NULL);
 
+	DefineCustomStringVariable("worker_spi.database",
+							   "Database to connect to.",
+							   NULL,
+							   &worker_spi_database,
+							   "postgres",
+							   PGC_POSTMASTER,
+							   0,
+							   NULL, NULL, NULL);
+
+	MarkGUCPrefixReserved("worker_spi");
+
 	/* set up common data for all our workers */
 	memset(&worker, 0, sizeof(worker));
 	worker.bgw_flags = BGWORKER_SHMEM_ACCESS |
@@ -357,7 +337,7 @@ _PG_init(void)
 	/*
 	 * Now fill in worker-specific data, and do the actual registrations.
 	 */
-	for (i = 1; i <= worker_spi_total_workers; i++)
+	for (int i = 1; i <= worker_spi_total_workers; i++)
 	{
 		snprintf(worker.bgw_name, BGW_MAXLEN, "worker_spi worker %d", i);
 		snprintf(worker.bgw_type, BGW_MAXLEN, "worker_spi");

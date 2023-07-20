@@ -1,3 +1,10 @@
+-- directory paths are passed to us in environment variables
+\getenv abs_srcdir PG_ABS_SRCDIR
+CREATE TABLE testjsonb (
+       j jsonb
+);
+\set filename :abs_srcdir '/data/jsonb.data'
+COPY testjsonb FROM :'filename';
 -- Strings.
 SELECT '""'::jsonb;				-- OK.
  jsonb 
@@ -272,6 +279,37 @@ LINE 1: SELECT '    '::jsonb;
                ^
 DETAIL:  The input string ended unexpectedly.
 CONTEXT:  JSON data, line 1:     
+-- Multi-line JSON input to check ERROR reporting
+SELECT '{
+		"one": 1,
+		"two":"two",
+		"three":
+		true}'::jsonb; -- OK
+                  jsonb                  
+-----------------------------------------
+ {"one": 1, "two": "two", "three": true}
+(1 row)
+
+SELECT '{
+		"one": 1,
+		"two":,"two",  -- ERROR extraneous comma before field "two"
+		"three":
+		true}'::jsonb;
+ERROR:  invalid input syntax for type json
+LINE 1: SELECT '{
+               ^
+DETAIL:  Expected JSON value, but found ",".
+CONTEXT:  JSON data, line 3: 		"two":,...
+SELECT '{
+		"one": 1,
+		"two":"two",
+		"averyveryveryveryveryveryveryveryveryverylongfieldname":}'::jsonb;
+ERROR:  invalid input syntax for type json
+LINE 1: SELECT '{
+               ^
+DETAIL:  Expected JSON value, but found "}".
+CONTEXT:  JSON data, line 4: ...yveryveryveryveryveryveryveryverylongfieldname":}
+-- ERROR missing value for last field
 -- make sure jsonb is passed through json generators without being escaped
 SELECT array_to_json(ARRAY [jsonb '{"a":1}', jsonb '{"b":[2,3]}']);
       array_to_json       
@@ -280,13 +318,20 @@ SELECT array_to_json(ARRAY [jsonb '{"a":1}', jsonb '{"b":[2,3]}']);
 (1 row)
 
 -- anyarray column
-select to_jsonb(histogram_bounds) histogram_bounds
+CREATE TEMP TABLE rows AS
+SELECT x, 'txt' || x as y
+FROM generate_series(1,3) AS x;
+analyze rows;
+select attname, to_jsonb(histogram_bounds) histogram_bounds
 from pg_stats
-where attname = 'tmplname' and tablename = 'pg_pltemplate';
-                                       histogram_bounds                                       
-----------------------------------------------------------------------------------------------
- ["plperl", "plperlu", "plpgsql", "plpython2u", "plpython3u", "plpythonu", "pltcl", "pltclu"]
-(1 row)
+where tablename = 'rows' and
+      schemaname = pg_my_temp_schema()::regnamespace::text
+order by 1;
+ attname |     histogram_bounds     
+---------+--------------------------
+ x       | [1, 2, 3]
+ y       | ["txt1", "txt2", "txt3"]
+(2 rows)
 
 -- to_jsonb, timestamps
 select to_jsonb(timestamp '2014-05-28 12:22:35.614298');
@@ -354,9 +399,6 @@ select to_jsonb(timestamptz '-Infinity');
 (1 row)
 
 --jsonb_agg
-CREATE TEMP TABLE rows AS
-SELECT x, 'txt' || x as y
-FROM generate_series(1,3) AS x;
 SELECT jsonb_agg(q)
   FROM ( SELECT $$a$$ || x AS b, y AS c,
                ARRAY[ROW(x.*,ARRAY[1,2,3]),
@@ -4107,9 +4149,41 @@ select '{"a":"b"}'::jsonb || '[]'::jsonb;
 (1 row)
 
 select '"a"'::jsonb || '{"a":1}';
-ERROR:  invalid concatenation of jsonb objects
+    ?column?     
+-----------------
+ ["a", {"a": 1}]
+(1 row)
+
 select '{"a":1}' || '"a"'::jsonb;
-ERROR:  invalid concatenation of jsonb objects
+    ?column?     
+-----------------
+ [{"a": 1}, "a"]
+(1 row)
+
+select '[3]'::jsonb || '{}'::jsonb;
+ ?column? 
+----------
+ [3, {}]
+(1 row)
+
+select '3'::jsonb || '[]'::jsonb;
+ ?column? 
+----------
+ [3]
+(1 row)
+
+select '3'::jsonb || '4'::jsonb;
+ ?column? 
+----------
+ [3, 4]
+(1 row)
+
+select '3'::jsonb || '{}'::jsonb;
+ ?column? 
+----------
+ [3, {}]
+(1 row)
+
 select '["a", "b"]'::jsonb || '{"c":1}';
        ?column?       
 ----------------------
@@ -4563,7 +4637,7 @@ select jsonb_set_lax('{"a":1,"b":2}', '{b}', null, null_value_treatment => 'use_
  {"a": 1, "b": null}
 (1 row)
 
-\pset null
+\pset null ''
 -- jsonb_insert
 select jsonb_insert('{"a": [0,1,2]}', '{a, 1}', '"new_value"');
          jsonb_insert          
@@ -4693,6 +4767,472 @@ HINT:  Try using the function jsonb_set to replace key value.
 select jsonb_insert('{"a": {"b": "value"}}', '{a, b}', '"new_value"', true);
 ERROR:  cannot replace existing key
 HINT:  Try using the function jsonb_set to replace key value.
+-- jsonb subscript
+select ('123'::jsonb)['a'];
+ jsonb 
+-------
+ 
+(1 row)
+
+select ('123'::jsonb)[0];
+ jsonb 
+-------
+ 
+(1 row)
+
+select ('123'::jsonb)[NULL];
+ jsonb 
+-------
+ 
+(1 row)
+
+select ('{"a": 1}'::jsonb)['a'];
+ jsonb 
+-------
+ 1
+(1 row)
+
+select ('{"a": 1}'::jsonb)[0];
+ jsonb 
+-------
+ 
+(1 row)
+
+select ('{"a": 1}'::jsonb)['not_exist'];
+ jsonb 
+-------
+ 
+(1 row)
+
+select ('{"a": 1}'::jsonb)[NULL];
+ jsonb 
+-------
+ 
+(1 row)
+
+select ('[1, "2", null]'::jsonb)['a'];
+ jsonb 
+-------
+ 
+(1 row)
+
+select ('[1, "2", null]'::jsonb)[0];
+ jsonb 
+-------
+ 1
+(1 row)
+
+select ('[1, "2", null]'::jsonb)['1'];
+ jsonb 
+-------
+ "2"
+(1 row)
+
+select ('[1, "2", null]'::jsonb)[1.0];
+ERROR:  subscript type numeric is not supported
+LINE 1: select ('[1, "2", null]'::jsonb)[1.0];
+                                         ^
+HINT:  jsonb subscript must be coercible to either integer or text.
+select ('[1, "2", null]'::jsonb)[2];
+ jsonb 
+-------
+ null
+(1 row)
+
+select ('[1, "2", null]'::jsonb)[3];
+ jsonb 
+-------
+ 
+(1 row)
+
+select ('[1, "2", null]'::jsonb)[-2];
+ jsonb 
+-------
+ "2"
+(1 row)
+
+select ('[1, "2", null]'::jsonb)[1]['a'];
+ jsonb 
+-------
+ 
+(1 row)
+
+select ('[1, "2", null]'::jsonb)[1][0];
+ jsonb 
+-------
+ 
+(1 row)
+
+select ('{"a": 1, "b": "c", "d": [1, 2, 3]}'::jsonb)['b'];
+ jsonb 
+-------
+ "c"
+(1 row)
+
+select ('{"a": 1, "b": "c", "d": [1, 2, 3]}'::jsonb)['d'];
+   jsonb   
+-----------
+ [1, 2, 3]
+(1 row)
+
+select ('{"a": 1, "b": "c", "d": [1, 2, 3]}'::jsonb)['d'][1];
+ jsonb 
+-------
+ 2
+(1 row)
+
+select ('{"a": 1, "b": "c", "d": [1, 2, 3]}'::jsonb)['d']['a'];
+ jsonb 
+-------
+ 
+(1 row)
+
+select ('{"a": {"a1": {"a2": "aaa"}}, "b": "bbb", "c": "ccc"}'::jsonb)['a']['a1'];
+     jsonb     
+---------------
+ {"a2": "aaa"}
+(1 row)
+
+select ('{"a": {"a1": {"a2": "aaa"}}, "b": "bbb", "c": "ccc"}'::jsonb)['a']['a1']['a2'];
+ jsonb 
+-------
+ "aaa"
+(1 row)
+
+select ('{"a": {"a1": {"a2": "aaa"}}, "b": "bbb", "c": "ccc"}'::jsonb)['a']['a1']['a2']['a3'];
+ jsonb 
+-------
+ 
+(1 row)
+
+select ('{"a": ["a1", {"b1": ["aaa", "bbb", "ccc"]}], "b": "bb"}'::jsonb)['a'][1]['b1'];
+         jsonb         
+-----------------------
+ ["aaa", "bbb", "ccc"]
+(1 row)
+
+select ('{"a": ["a1", {"b1": ["aaa", "bbb", "ccc"]}], "b": "bb"}'::jsonb)['a'][1]['b1'][2];
+ jsonb 
+-------
+ "ccc"
+(1 row)
+
+-- slices are not supported
+select ('{"a": 1}'::jsonb)['a':'b'];
+ERROR:  jsonb subscript does not support slices
+LINE 1: select ('{"a": 1}'::jsonb)['a':'b'];
+                                       ^
+select ('[1, "2", null]'::jsonb)[1:2];
+ERROR:  jsonb subscript does not support slices
+LINE 1: select ('[1, "2", null]'::jsonb)[1:2];
+                                           ^
+select ('[1, "2", null]'::jsonb)[:2];
+ERROR:  jsonb subscript does not support slices
+LINE 1: select ('[1, "2", null]'::jsonb)[:2];
+                                          ^
+select ('[1, "2", null]'::jsonb)[1:];
+ERROR:  jsonb subscript does not support slices
+LINE 1: select ('[1, "2", null]'::jsonb)[1:];
+                                         ^
+select ('[1, "2", null]'::jsonb)[:];
+ERROR:  jsonb subscript does not support slices
+create TEMP TABLE test_jsonb_subscript (
+       id int,
+       test_json jsonb
+);
+insert into test_jsonb_subscript values
+(1, '{}'), -- empty jsonb
+(2, '{"key": "value"}'); -- jsonb with data
+-- update empty jsonb
+update test_jsonb_subscript set test_json['a'] = '1' where id = 1;
+select * from test_jsonb_subscript;
+ id |    test_json     
+----+------------------
+  2 | {"key": "value"}
+  1 | {"a": 1}
+(2 rows)
+
+-- update jsonb with some data
+update test_jsonb_subscript set test_json['a'] = '1' where id = 2;
+select * from test_jsonb_subscript;
+ id |        test_json         
+----+--------------------------
+  1 | {"a": 1}
+  2 | {"a": 1, "key": "value"}
+(2 rows)
+
+-- replace jsonb
+update test_jsonb_subscript set test_json['a'] = '"test"';
+select * from test_jsonb_subscript;
+ id |           test_json           
+----+-------------------------------
+  1 | {"a": "test"}
+  2 | {"a": "test", "key": "value"}
+(2 rows)
+
+-- replace by object
+update test_jsonb_subscript set test_json['a'] = '{"b": 1}'::jsonb;
+select * from test_jsonb_subscript;
+ id |            test_json            
+----+---------------------------------
+  1 | {"a": {"b": 1}}
+  2 | {"a": {"b": 1}, "key": "value"}
+(2 rows)
+
+-- replace by array
+update test_jsonb_subscript set test_json['a'] = '[1, 2, 3]'::jsonb;
+select * from test_jsonb_subscript;
+ id |            test_json             
+----+----------------------------------
+  1 | {"a": [1, 2, 3]}
+  2 | {"a": [1, 2, 3], "key": "value"}
+(2 rows)
+
+-- use jsonb subscription in where clause
+select * from test_jsonb_subscript where test_json['key'] = '"value"';
+ id |            test_json             
+----+----------------------------------
+  2 | {"a": [1, 2, 3], "key": "value"}
+(1 row)
+
+select * from test_jsonb_subscript where test_json['key_doesnt_exists'] = '"value"';
+ id | test_json 
+----+-----------
+(0 rows)
+
+select * from test_jsonb_subscript where test_json['key'] = '"wrong_value"';
+ id | test_json 
+----+-----------
+(0 rows)
+
+-- NULL
+update test_jsonb_subscript set test_json[NULL] = '1';
+ERROR:  jsonb subscript in assignment must not be null
+update test_jsonb_subscript set test_json['another_key'] = NULL;
+select * from test_jsonb_subscript;
+ id |                       test_json                       
+----+-------------------------------------------------------
+  1 | {"a": [1, 2, 3], "another_key": null}
+  2 | {"a": [1, 2, 3], "key": "value", "another_key": null}
+(2 rows)
+
+-- NULL as jsonb source
+insert into test_jsonb_subscript values (3, NULL);
+update test_jsonb_subscript set test_json['a'] = '1' where id = 3;
+select * from test_jsonb_subscript;
+ id |                       test_json                       
+----+-------------------------------------------------------
+  1 | {"a": [1, 2, 3], "another_key": null}
+  2 | {"a": [1, 2, 3], "key": "value", "another_key": null}
+  3 | {"a": 1}
+(3 rows)
+
+update test_jsonb_subscript set test_json = NULL where id = 3;
+update test_jsonb_subscript set test_json[0] = '1';
+select * from test_jsonb_subscript;
+ id |                           test_json                           
+----+---------------------------------------------------------------
+  1 | {"0": 1, "a": [1, 2, 3], "another_key": null}
+  2 | {"0": 1, "a": [1, 2, 3], "key": "value", "another_key": null}
+  3 | [1]
+(3 rows)
+
+-- Fill the gaps logic
+delete from test_jsonb_subscript;
+insert into test_jsonb_subscript values (1, '[0]');
+update test_jsonb_subscript set test_json[5] = '1';
+select * from test_jsonb_subscript;
+ id |           test_json            
+----+--------------------------------
+  1 | [0, null, null, null, null, 1]
+(1 row)
+
+update test_jsonb_subscript set test_json[-4] = '1';
+select * from test_jsonb_subscript;
+ id |          test_json          
+----+-----------------------------
+  1 | [0, null, 1, null, null, 1]
+(1 row)
+
+update test_jsonb_subscript set test_json[-8] = '1';
+ERROR:  path element at position 1 is out of range: -8
+select * from test_jsonb_subscript;
+ id |          test_json          
+----+-----------------------------
+  1 | [0, null, 1, null, null, 1]
+(1 row)
+
+-- keep consistent values position
+delete from test_jsonb_subscript;
+insert into test_jsonb_subscript values (1, '[]');
+update test_jsonb_subscript set test_json[5] = '1';
+select * from test_jsonb_subscript;
+ id |             test_json             
+----+-----------------------------------
+  1 | [null, null, null, null, null, 1]
+(1 row)
+
+-- create the whole path
+delete from test_jsonb_subscript;
+insert into test_jsonb_subscript values (1, '{}');
+update test_jsonb_subscript set test_json['a'][0]['b'][0]['c'] = '1';
+select * from test_jsonb_subscript;
+ id |         test_json          
+----+----------------------------
+  1 | {"a": [{"b": [{"c": 1}]}]}
+(1 row)
+
+delete from test_jsonb_subscript;
+insert into test_jsonb_subscript values (1, '{}');
+update test_jsonb_subscript set test_json['a'][2]['b'][2]['c'][2] = '1';
+select * from test_jsonb_subscript;
+ id |                            test_json                             
+----+------------------------------------------------------------------
+  1 | {"a": [null, null, {"b": [null, null, {"c": [null, null, 1]}]}]}
+(1 row)
+
+-- create the whole path with already existing keys
+delete from test_jsonb_subscript;
+insert into test_jsonb_subscript values (1, '{"b": 1}');
+update test_jsonb_subscript set test_json['a'][0] = '2';
+select * from test_jsonb_subscript;
+ id |     test_json      
+----+--------------------
+  1 | {"a": [2], "b": 1}
+(1 row)
+
+-- the start jsonb is an object, first subscript is treated as a key
+delete from test_jsonb_subscript;
+insert into test_jsonb_subscript values (1, '{}');
+update test_jsonb_subscript set test_json[0]['a'] = '1';
+select * from test_jsonb_subscript;
+ id |    test_json    
+----+-----------------
+  1 | {"0": {"a": 1}}
+(1 row)
+
+-- the start jsonb is an array
+delete from test_jsonb_subscript;
+insert into test_jsonb_subscript values (1, '[]');
+update test_jsonb_subscript set test_json[0]['a'] = '1';
+update test_jsonb_subscript set test_json[2]['b'] = '2';
+select * from test_jsonb_subscript;
+ id |         test_json          
+----+----------------------------
+  1 | [{"a": 1}, null, {"b": 2}]
+(1 row)
+
+-- overwriting an existing path
+delete from test_jsonb_subscript;
+insert into test_jsonb_subscript values (1, '{}');
+update test_jsonb_subscript set test_json['a']['b'][1] = '1';
+update test_jsonb_subscript set test_json['a']['b'][10] = '1';
+select * from test_jsonb_subscript;
+ id |                                 test_json                                  
+----+----------------------------------------------------------------------------
+  1 | {"a": {"b": [null, 1, null, null, null, null, null, null, null, null, 1]}}
+(1 row)
+
+delete from test_jsonb_subscript;
+insert into test_jsonb_subscript values (1, '[]');
+update test_jsonb_subscript set test_json[0][0][0] = '1';
+update test_jsonb_subscript set test_json[0][0][1] = '1';
+select * from test_jsonb_subscript;
+ id | test_json  
+----+------------
+  1 | [[[1, 1]]]
+(1 row)
+
+delete from test_jsonb_subscript;
+insert into test_jsonb_subscript values (1, '{}');
+update test_jsonb_subscript set test_json['a']['b'][10] = '1';
+update test_jsonb_subscript set test_json['a'][10][10] = '1';
+select * from test_jsonb_subscript;
+ id |                                                                      test_json                                                                       
+----+------------------------------------------------------------------------------------------------------------------------------------------------------
+  1 | {"a": {"b": [null, null, null, null, null, null, null, null, null, null, 1], "10": [null, null, null, null, null, null, null, null, null, null, 1]}}
+(1 row)
+
+-- an empty sub element
+delete from test_jsonb_subscript;
+insert into test_jsonb_subscript values (1, '{"a": {}}');
+update test_jsonb_subscript set test_json['a']['b']['c'][2] = '1';
+select * from test_jsonb_subscript;
+ id |              test_json               
+----+--------------------------------------
+  1 | {"a": {"b": {"c": [null, null, 1]}}}
+(1 row)
+
+delete from test_jsonb_subscript;
+insert into test_jsonb_subscript values (1, '{"a": []}');
+update test_jsonb_subscript set test_json['a'][1]['c'][2] = '1';
+select * from test_jsonb_subscript;
+ id |               test_json               
+----+---------------------------------------
+  1 | {"a": [null, {"c": [null, null, 1]}]}
+(1 row)
+
+-- trying replace assuming a composite object, but it's an element or a value
+delete from test_jsonb_subscript;
+insert into test_jsonb_subscript values (1, '{"a": 1}');
+update test_jsonb_subscript set test_json['a']['b'] = '1';
+ERROR:  cannot replace existing key
+DETAIL:  The path assumes key is a composite object, but it is a scalar value.
+update test_jsonb_subscript set test_json['a']['b']['c'] = '1';
+ERROR:  cannot replace existing key
+DETAIL:  The path assumes key is a composite object, but it is a scalar value.
+update test_jsonb_subscript set test_json['a'][0] = '1';
+ERROR:  cannot replace existing key
+DETAIL:  The path assumes key is a composite object, but it is a scalar value.
+update test_jsonb_subscript set test_json['a'][0]['c'] = '1';
+ERROR:  cannot replace existing key
+DETAIL:  The path assumes key is a composite object, but it is a scalar value.
+update test_jsonb_subscript set test_json['a'][0][0] = '1';
+ERROR:  cannot replace existing key
+DETAIL:  The path assumes key is a composite object, but it is a scalar value.
+-- trying replace assuming a composite object, but it's a raw scalar
+delete from test_jsonb_subscript;
+insert into test_jsonb_subscript values (1, 'null');
+update test_jsonb_subscript set test_json[0] = '1';
+ERROR:  cannot replace existing key
+DETAIL:  The path assumes key is a composite object, but it is a scalar value.
+update test_jsonb_subscript set test_json[0][0] = '1';
+ERROR:  cannot replace existing key
+DETAIL:  The path assumes key is a composite object, but it is a scalar value.
+-- try some things with short-header and toasted subscript values
+drop table test_jsonb_subscript;
+create temp table test_jsonb_subscript (
+       id text,
+       test_json jsonb
+);
+insert into test_jsonb_subscript values('foo', '{"foo": "bar"}');
+insert into test_jsonb_subscript
+  select s, ('{"' || s || '": "bar"}')::jsonb from repeat('xyzzy', 500) s;
+select length(id), test_json[id] from test_jsonb_subscript;
+ length | test_json 
+--------+-----------
+      3 | "bar"
+   2500 | "bar"
+(2 rows)
+
+update test_jsonb_subscript set test_json[id] = '"baz"';
+select length(id), test_json[id] from test_jsonb_subscript;
+ length | test_json 
+--------+-----------
+      3 | "baz"
+   2500 | "baz"
+(2 rows)
+
+\x
+table test_jsonb_subscript;
+-[ RECORD 1 ]--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+id        | foo
+test_json | {"foo": "baz"}
+-[ RECORD 2 ]--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+id        | xyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzy
+test_json | {"xyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzyxyzzy": "baz"}
+
+\x
 -- jsonb to tsvector
 select to_tsvector('{"a": "aaa bbb ddd ccc", "b": ["eee fff ggg"], "c": {"d": "hhh iii"}}'::jsonb);
                                 to_tsvector                                
@@ -4794,7 +5334,7 @@ select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d"
  '123':5 '456':7 'aaa':1 'bbb':3
 (1 row)
 
--- ts_vector corner cases
+-- to_tsvector corner cases
 select to_tsvector('""'::jsonb);
  to_tsvector 
 -------------
@@ -4945,9 +5485,9 @@ select '12345.05'::jsonb::numeric;
 (1 row)
 
 select '12345.05'::jsonb::float4;
- float4 
---------
-  12345
+  float4  
+----------
+ 12345.05
 (1 row)
 
 select '12345.05'::jsonb::float8;

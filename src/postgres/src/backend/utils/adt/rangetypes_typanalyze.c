@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * ragetypes_typanalyze.c
+ * rangetypes_typanalyze.c
  *	  Functions for gathering statistics from range columns
  *
  * For a range type column, histograms of lower and upper bounds, and
@@ -13,7 +13,7 @@
  * come from different tuples. In theory, the standard scalar selectivity
  * functions could be used with the combined histogram.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -30,11 +30,13 @@
 #include "utils/fmgrprotos.h"
 #include "utils/lsyscache.h"
 #include "utils/rangetypes.h"
+#include "utils/multirangetypes.h"
 
-static int	float8_qsort_cmp(const void *a1, const void *a2);
+static int	float8_qsort_cmp(const void *a1, const void *a2, void *arg);
 static int	range_bound_qsort_cmp(const void *a1, const void *a2, void *arg);
 static void compute_range_stats(VacAttrStats *stats,
-					AnalyzeAttrFetchFunc fetchfunc, int samplerows, double totalrows);
+								AnalyzeAttrFetchFunc fetchfunc, int samplerows,
+								double totalrows);
 
 /*
  * range_typanalyze -- typanalyze function for range columns
@@ -61,10 +63,37 @@ range_typanalyze(PG_FUNCTION_ARGS)
 }
 
 /*
+ * multirange_typanalyze -- typanalyze function for multirange columns
+ *
+ * We do the same analysis as for ranges, but on the smallest range that
+ * completely includes the multirange.
+ */
+Datum
+multirange_typanalyze(PG_FUNCTION_ARGS)
+{
+	VacAttrStats *stats = (VacAttrStats *) PG_GETARG_POINTER(0);
+	TypeCacheEntry *typcache;
+	Form_pg_attribute attr = stats->attr;
+
+	/* Get information about multirange type; note column might be a domain */
+	typcache = multirange_get_typcache(fcinfo, getBaseType(stats->attrtypid));
+
+	if (attr->attstattarget < 0)
+		attr->attstattarget = default_statistics_target;
+
+	stats->compute_stats = compute_range_stats;
+	stats->extra_data = typcache;
+	/* same as in std_typanalyze */
+	stats->minrows = 300 * attr->attstattarget;
+
+	PG_RETURN_BOOL(true);
+}
+
+/*
  * Comparison function for sorting float8s, used for range lengths.
  */
 static int
-float8_qsort_cmp(const void *a1, const void *a2)
+float8_qsort_cmp(const void *a1, const void *a2, void *arg)
 {
 	const float8 *f1 = (const float8 *) a1;
 	const float8 *f2 = (const float8 *) a2;
@@ -98,7 +127,8 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 					int samplerows, double totalrows)
 {
 	TypeCacheEntry *typcache = (TypeCacheEntry *) stats->extra_data;
-	bool		has_subdiff = OidIsValid(typcache->rng_subdiff_finfo.fn_oid);
+	TypeCacheEntry *mltrng_typcache = NULL;
+	bool		has_subdiff;
 	int			null_cnt = 0;
 	int			non_null_cnt = 0;
 	int			non_empty_cnt = 0;
@@ -112,6 +142,15 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 			   *uppers;
 	double		total_width = 0;
 
+	if (typcache->typtype == TYPTYPE_MULTIRANGE)
+	{
+		mltrng_typcache = typcache;
+		typcache = typcache->rngtype;
+	}
+	else
+		Assert(typcache->typtype == TYPTYPE_RANGE);
+	has_subdiff = OidIsValid(typcache->rng_subdiff_finfo.fn_oid);
+
 	/* Allocate memory to hold range bounds and lengths of the sample ranges. */
 	lowers = (RangeBound *) palloc(sizeof(RangeBound) * samplerows);
 	uppers = (RangeBound *) palloc(sizeof(RangeBound) * samplerows);
@@ -123,6 +162,7 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 		Datum		value;
 		bool		isnull,
 					empty;
+		MultirangeType *multirange;
 		RangeType  *range;
 		RangeBound	lower,
 					upper;
@@ -145,8 +185,31 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 		total_width += VARSIZE_ANY(DatumGetPointer(value));
 
 		/* Get range and deserialize it for further analysis. */
-		range = DatumGetRangeTypeP(value);
-		range_deserialize(typcache, range, &lower, &upper, &empty);
+		if (mltrng_typcache != NULL)
+		{
+			/* Treat multiranges like a big range without gaps. */
+			multirange = DatumGetMultirangeTypeP(value);
+			if (!MultirangeIsEmpty(multirange))
+			{
+				RangeBound	tmp;
+
+				multirange_get_bounds(typcache, multirange, 0,
+									  &lower, &tmp);
+				multirange_get_bounds(typcache, multirange,
+									  multirange->rangeCount - 1,
+									  &tmp, &upper);
+				empty = false;
+			}
+			else
+			{
+				empty = true;
+			}
+		}
+		else
+		{
+			range = DatumGetRangeTypeP(value);
+			range_deserialize(typcache, range, &lower, &upper, &empty);
+		}
 
 		if (!empty)
 		{
@@ -165,8 +228,7 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 				 * For an ordinary range, use subdiff function between upper
 				 * and lower bound values.
 				 */
-				length = DatumGetFloat8(FunctionCall2Coll(
-														  &typcache->rng_subdiff_finfo,
+				length = DatumGetFloat8(FunctionCall2Coll(&typcache->rng_subdiff_finfo,
 														  typcache->rng_collation,
 														  upper.val, lower.val));
 			}
@@ -218,10 +280,10 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 		if (non_empty_cnt >= 2)
 		{
 			/* Sort bound values */
-			qsort_arg(lowers, non_empty_cnt, sizeof(RangeBound),
-					  range_bound_qsort_cmp, typcache);
-			qsort_arg(uppers, non_empty_cnt, sizeof(RangeBound),
-					  range_bound_qsort_cmp, typcache);
+			qsort_interruptible(lowers, non_empty_cnt, sizeof(RangeBound),
+								range_bound_qsort_cmp, typcache);
+			qsort_interruptible(uppers, non_empty_cnt, sizeof(RangeBound),
+								range_bound_qsort_cmp, typcache);
 
 			num_hist = non_empty_cnt;
 			if (num_hist > num_bins)
@@ -246,8 +308,10 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 
 			for (i = 0; i < num_hist; i++)
 			{
-				bound_hist_values[i] = PointerGetDatum(range_serialize(
-																	   typcache, &lowers[pos], &uppers[pos], false));
+				bound_hist_values[i] = PointerGetDatum(range_serialize(typcache,
+																	   &lowers[pos],
+																	   &uppers[pos],
+																	   false));
 				pos += delta;
 				posfrac += deltafrac;
 				if (posfrac >= (num_hist - 1))
@@ -261,6 +325,13 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 			stats->stakind[slot_idx] = STATISTIC_KIND_BOUNDS_HISTOGRAM;
 			stats->stavalues[slot_idx] = bound_hist_values;
 			stats->numvalues[slot_idx] = num_hist;
+
+			/* Store ranges even if we're analyzing a multirange column */
+			stats->statypid[slot_idx] = typcache->type_id;
+			stats->statyplen[slot_idx] = typcache->typlen;
+			stats->statypbyval[slot_idx] = typcache->typbyval;
+			stats->statypalign[slot_idx] = typcache->typalign;
+
 			slot_idx++;
 		}
 
@@ -274,7 +345,8 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 			 * Ascending sort of range lengths for further filling of
 			 * histogram
 			 */
-			qsort(lengths, non_empty_cnt, sizeof(float8), float8_qsort_cmp);
+			qsort_interruptible(lengths, non_empty_cnt, sizeof(float8),
+								float8_qsort_cmp, NULL);
 
 			num_hist = non_empty_cnt;
 			if (num_hist > num_bins)
@@ -320,15 +392,12 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 			num_hist = 0;
 		}
 		stats->staop[slot_idx] = Float8LessOperator;
+		stats->stacoll[slot_idx] = InvalidOid;
 		stats->stavalues[slot_idx] = length_hist_values;
 		stats->numvalues[slot_idx] = num_hist;
 		stats->statypid[slot_idx] = FLOAT8OID;
 		stats->statyplen[slot_idx] = sizeof(float8);
-#ifdef USE_FLOAT8_BYVAL
-		stats->statypbyval[slot_idx] = true;
-#else
-		stats->statypbyval[slot_idx] = false;
-#endif
+		stats->statypbyval[slot_idx] = FLOAT8PASSBYVAL;
 		stats->statypalign[slot_idx] = 'd';
 
 		/* Store the fraction of empty ranges */

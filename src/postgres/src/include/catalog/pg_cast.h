@@ -6,7 +6,7 @@
  * As of Postgres 8.0, pg_cast describes not only type coercion functions
  * but also length coercion functions.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_cast.h
@@ -20,6 +20,7 @@
 #ifndef PG_CAST_H
 #define PG_CAST_H
 
+#include "catalog/dependency.h"
 #include "catalog/genbki.h"
 #include "catalog/pg_cast_d.h"
 
@@ -30,6 +31,8 @@
  */
 CATALOG(pg_cast,2605,CastRelationId)
 {
+	Oid			oid;			/* oid */
+
 	/* source datatype for cast */
 	Oid			castsource BKI_LOOKUP(pg_type);
 
@@ -37,7 +40,7 @@ CATALOG(pg_cast,2605,CastRelationId)
 	Oid			casttarget BKI_LOOKUP(pg_type);
 
 	/* cast function; 0 = binary coercible */
-	Oid			castfunc BKI_LOOKUP(pg_proc);
+	Oid			castfunc BKI_LOOKUP_OPT(pg_proc);
 
 	/* contexts in which cast can be used */
 	char		castcontext;
@@ -52,6 +55,9 @@ CATALOG(pg_cast,2605,CastRelationId)
  * ----------------
  */
 typedef FormData_pg_cast *Form_pg_cast;
+
+DECLARE_UNIQUE_INDEX_PKEY(pg_cast_oid_index, 2660, CastOidIndexId, on pg_cast using btree(oid oid_ops));
+DECLARE_UNIQUE_INDEX(pg_cast_source_target_index, 2661, CastSourceTargetIndexId, on pg_cast using btree(castsource oid_ops, casttarget oid_ops));
 
 #ifdef EXPOSE_TO_CLIENT_CODE
 
@@ -84,5 +90,13 @@ typedef enum CoercionMethod
 } CoercionMethod;
 
 #endif							/* EXPOSE_TO_CLIENT_CODE */
+
+
+extern ObjectAddress CastCreate(Oid sourcetypeid,
+								Oid targettypeid,
+								Oid funcid,
+								char castcontext,
+								char castmethod,
+								DependencyType behavior);
 
 #endif							/* PG_CAST_H */

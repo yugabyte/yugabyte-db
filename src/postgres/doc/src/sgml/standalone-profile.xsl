@@ -16,8 +16,8 @@ variant without links and references to the main documentation.
 -->
 
 <xsl:output
-    doctype-public="-//OASIS//DTD DocBook XML V4.2//EN"
-    doctype-system="http://www.oasis-open.org/docbook/xml/4.2/docbookx.dtd"/>
+    doctype-public="-//OASIS//DTD DocBook XML V4.5//EN"
+    doctype-system="http://www.oasis-open.org/docbook/xml/4.5/docbookx.dtd"/>
 
 <!-- copy everything by default -->
 
@@ -48,12 +48,16 @@ variant without links and references to the main documentation.
   <xsl:text>the documentation</xsl:text>
 </xsl:template>
 
-<xsl:template match="xref[@linkend='install-windows']">
-  <xsl:text>the documentation</xsl:text>
+<xsl:template match="xref[@linkend='guc-default-toast-compression']">
+  <xsl:text>the configuration parameter default_toast_compression</xsl:text>
 </xsl:template>
 
-<xsl:template match="xref[@linkend='pgcrypto']">
-  <xsl:text>pgcrypto</xsl:text>
+<xsl:template match="xref[@linkend='guc-wal-compression']">
+  <xsl:text>the configuration parameter wal_compression</xsl:text>
+</xsl:template>
+
+<xsl:template match="xref[@linkend='install-windows']">
+  <xsl:text>the documentation</xsl:text>
 </xsl:template>
 
 <xsl:template match="xref[@linkend='plpython-python23']">

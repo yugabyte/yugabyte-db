@@ -1,7 +1,10 @@
+
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+
 package MSBuildProject;
 
 #
-# Package that encapsulates a MSBuild project file (Visual C++ 2010 or greater)
+# Package that encapsulates a MSBuild project file (Visual C++ 2013 or greater)
 #
 # src/tools/msvc/MSBuildProject.pm
 #
@@ -40,6 +43,19 @@ EOF
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>$self->{guid}</ProjectGuid>
+EOF
+	# Check whether WindowsSDKVersion env variable is present.
+	# Add WindowsTargetPlatformVersion node if so.
+	my $sdkVersion = $ENV{'WindowsSDKVersion'};
+	if (defined($sdkVersion))
+	{
+		# remove trailing backslash if necessary.
+		$sdkVersion =~ s/\\$//;
+		print $f <<EOF
+    <WindowsTargetPlatformVersion>$sdkVersion</WindowsTargetPlatformVersion>
+EOF
+	}
+	print $f <<EOF;
   </PropertyGroup>
   <Import Project="\$(VCTargetsPath)\\Microsoft.Cpp.Default.props" />
 EOF
@@ -257,6 +273,7 @@ sub WriteConfigurationPropertyGroup
     <UseOfMfc>false</UseOfMfc>
     <CharacterSet>MultiByte</CharacterSet>
     <WholeProgramOptimization>$p->{wholeopt}</WholeProgramOptimization>
+    <PlatformToolset>$self->{PlatformToolset}</PlatformToolset>
   </PropertyGroup>
 EOF
 	return;
@@ -296,17 +313,14 @@ sub WriteItemDefinitionGroup
 	my $targetmachine =
 	  $self->{platform} eq 'Win32' ? 'MachineX86' : 'MachineX64';
 
-	my $includes = $self->{includes};
-	unless ($includes eq '' or $includes =~ /;$/)
-	{
-		$includes .= ';';
-	}
+	my $includes = join ';', @{ $self->{includes} }, "";
+
 	print $f <<EOF;
   <ItemDefinitionGroup Condition="'\$(Configuration)|\$(Platform)'=='$cfgname|$self->{platform}'">
     <ClCompile>
       <Optimization>$p->{opt}</Optimization>
       <AdditionalIncludeDirectories>$self->{prefixincludes}src/include;src/include/port/win32;src/include/port/win32_msvc;$includes\%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;__WINDOWS__;__WIN32__;EXEC_BACKEND;WIN32_STACK_RLIMIT=4194304;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE$self->{defines}$p->{defs}\%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;__WINDOWS__;__WIN32__;WIN32_STACK_RLIMIT=4194304;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE$self->{defines}$p->{defs}\%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>$p->{strpool}</StringPooling>
       <RuntimeLibrary>$p->{runtime}</RuntimeLibrary>
       <DisableSpecificWarnings>$self->{disablewarnings};\%(DisableSpecificWarnings)</DisableSpecificWarnings>
@@ -391,75 +405,6 @@ EOF
 	return;
 }
 
-package VC2010Project;
-
-#
-# Package that encapsulates a Visual C++ 2010 project file
-#
-
-use strict;
-use warnings;
-use base qw(MSBuildProject);
-
-no warnings qw(redefine);    ## no critic
-
-sub new
-{
-	my $classname = shift;
-	my $self      = $classname->SUPER::_new(@_);
-	bless($self, $classname);
-
-	$self->{vcver} = '10.00';
-
-	return $self;
-}
-
-package VC2012Project;
-
-#
-# Package that encapsulates a Visual C++ 2012 project file
-#
-
-use strict;
-use warnings;
-use base qw(MSBuildProject);
-
-no warnings qw(redefine);    ## no critic
-
-sub new
-{
-	my $classname = shift;
-	my $self      = $classname->SUPER::_new(@_);
-	bless($self, $classname);
-
-	$self->{vcver}           = '11.00';
-	$self->{PlatformToolset} = 'v110';
-
-	return $self;
-}
-
-# This override adds the <PlatformToolset> element
-# to the PropertyGroup labeled "Configuration"
-sub WriteConfigurationPropertyGroup
-{
-	my ($self, $f, $cfgname, $p) = @_;
-	my $cfgtype =
-	  ($self->{type} eq "exe")
-	  ? 'Application'
-	  : ($self->{type} eq "dll" ? 'DynamicLibrary' : 'StaticLibrary');
-
-	print $f <<EOF;
-  <PropertyGroup Condition="'\$(Configuration)|\$(Platform)'=='$cfgname|$self->{platform}'" Label="Configuration">
-    <ConfigurationType>$cfgtype</ConfigurationType>
-    <UseOfMfc>false</UseOfMfc>
-    <CharacterSet>MultiByte</CharacterSet>
-    <WholeProgramOptimization>$p->{wholeopt}</WholeProgramOptimization>
-    <PlatformToolset>$self->{PlatformToolset}</PlatformToolset>
-  </PropertyGroup>
-EOF
-	return;
-}
-
 package VC2013Project;
 
 #
@@ -468,7 +413,7 @@ package VC2013Project;
 
 use strict;
 use warnings;
-use base qw(VC2012Project);
+use base qw(MSBuildProject);
 
 no warnings qw(redefine);    ## no critic
 
@@ -493,7 +438,7 @@ package VC2015Project;
 
 use strict;
 use warnings;
-use base qw(VC2012Project);
+use base qw(MSBuildProject);
 
 no warnings qw(redefine);    ## no critic
 
@@ -518,7 +463,7 @@ package VC2017Project;
 
 use strict;
 use warnings;
-use base qw(VC2012Project);
+use base qw(MSBuildProject);
 
 no warnings qw(redefine);    ## no critic
 
@@ -531,6 +476,56 @@ sub new
 	$self->{vcver}           = '15.00';
 	$self->{PlatformToolset} = 'v141';
 	$self->{ToolsVersion}    = '15.0';
+
+	return $self;
+}
+
+package VC2019Project;
+
+#
+# Package that encapsulates a Visual C++ 2019 project file
+#
+
+use strict;
+use warnings;
+use base qw(MSBuildProject);
+
+no warnings qw(redefine);    ## no critic
+
+sub new
+{
+	my $classname = shift;
+	my $self      = $classname->SUPER::_new(@_);
+	bless($self, $classname);
+
+	$self->{vcver}           = '16.00';
+	$self->{PlatformToolset} = 'v142';
+	$self->{ToolsVersion}    = '16.0';
+
+	return $self;
+}
+
+package VC2022Project;
+
+#
+# Package that encapsulates a Visual C++ 2022 project file
+#
+
+use strict;
+use warnings;
+use base qw(MSBuildProject);
+
+no warnings qw(redefine);    ## no critic
+
+sub new
+{
+	my $classname = shift;
+	my $self      = $classname->SUPER::_new(@_);
+	bless($self, $classname);
+
+	$self->{vcver}           = '17.00';
+	$self->{PlatformToolset} = 'v143';
+	$self->{ToolsVersion}    = '17.0';
 
 	return $self;
 }

@@ -47,7 +47,6 @@
 #include "optimizer/paths.h"
 #include "optimizer/planmain.h"
 #include "optimizer/restrictinfo.h"
-#include "optimizer/var.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/sampling.h"
@@ -64,7 +63,7 @@
 #include "access/yb_scan.h"
 #include "executor/ybcExpr.h"
 #include "executor/ybc_fdw.h"
-
+#include "optimizer/optimizer.h"
 #include "utils/resowner_private.h"
 
 /* -------------------------------------------------------------------------- */
@@ -256,7 +255,10 @@ ybcGetForeignPlan(PlannerInfo *root,
 				case TableOidAttributeNumber:
 					/* Nothing to do in YugaByte: Postgres will handle this. */
 					break;
+				#ifdef YB_TODO
+					/* OID is a regular column PG15 onwards. */
 				case ObjectIdAttributeNumber:
+				#endif
 				case YBTupleIdAttributeNumber:
 				default: /* Regular column: attnum > 0.
 							NOTE: dropped columns may be included. */
@@ -283,6 +285,7 @@ ybcGetForeignPlan(PlannerInfo *root,
 
 /* ------------------------------------------------------------------------- */
 /*  Scanning functions */
+/* YB_TODO(neil) Need to review all of these scan functions. */
 
 /*
  * FDW-specific information for ForeignScanState.fdw_state.
@@ -334,9 +337,8 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 		 * INSERTion of new rows that satisfy the query predicate. So, we set the rowmark on all
 		 * read requests sent to tserver instead of locking each tuple one by one in LockRows node.
 		 */
-		ListCell   *l;
-		foreach(l, estate->es_rowMarks) {
-			ExecRowMark *erm = (ExecRowMark *) lfirst(l);
+		if (estate->es_rowmarks && estate->es_range_table_size > 0) {
+			ExecRowMark *erm = estate->es_rowmarks[0];
 			// Do not propagate non-row-locking row marks.
 			if (erm->markType != ROW_MARK_REFERENCE && erm->markType != ROW_MARK_COPY)
 			{
@@ -345,7 +347,6 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 				YBSetRowLockPolicy(&ybc_state->exec_params->docdb_wait_policy,
 								   erm->waitPolicy);
 			}
-			break;
 		}
 	}
 
@@ -392,10 +393,8 @@ ybcSetupScanTargets(ForeignScanState *node)
 		 * scan slot to hold that as many attributes as there are pushed
 		 * aggregates.
 		 */
-		TupleDesc tupdesc =
-			CreateTemplateTupleDesc(list_length(node->yb_fdw_aggrefs),
-									false /* hasoid */);
-		ExecInitScanTupleSlot(estate, ss, tupdesc);
+		TupleDesc tupdesc =	CreateTemplateTupleDesc(list_length(node->yb_fdw_aggrefs));
+		ExecInitScanTupleSlot(estate, ss, tupdesc, &TTSOpsVirtual);
 
 		/*
 		 * Consider the example "SELECT COUNT(oid) FROM pg_type", Postgres would have to do a
@@ -550,6 +549,59 @@ ybcIterateForeignScan(ForeignScanState *node)
 					   node->ss.ss_ScanTupleSlot,
 					   InvalidOid);
 }
+
+#ifdef NEIL_TODO
+/* Keep this code till I look at ybFetchNext() */
+{
+	/* Clear tuple slot before starting */
+	slot = node->ss.ss_ScanTupleSlot;
+	ExecClearTuple(slot);
+
+	TupleDesc       tupdesc = slot->tts_tupleDescriptor;
+	Datum           *values = slot->tts_values;
+	bool            *isnull = slot->tts_isnull;
+	YBCPgSysColumns syscols;
+
+	/* Fetch one row. */
+	HandleYBStatus(YBCPgDmlFetch(ybc_state->handle,
+	                             tupdesc->natts,
+	                             (uint64_t *) values,
+	                             isnull,
+	                             &syscols,
+	                             &has_data));
+
+	/* If we have result(s) update the tuple slot. */
+	if (has_data)
+	{
+		if (node->yb_fdw_aggs == NIL)
+		{
+			HeapTuple tuple = heap_form_tuple(tupdesc, values, isnull);
+#ifdef NEIL_OID
+	/* OID is now a regular column */
+			if (syscols.oid != InvalidOid)
+			{
+				HeapTupleSetOid(tuple, syscols.oid);
+			}
+#endif
+			slot = ExecStoreHeapTuple(tuple, slot, false);
+
+			/* Setup special columns in the slot */
+			TABLETUPLE_YBCTID(slot) = PointerGetDatum(syscols.ybctid);
+		}
+		else
+		{
+			/*
+			 * Aggregate results stored in virtual slot (no tuple). Set the
+			 * number of valid values and mark as non-empty.
+			 */
+			slot->tts_nvalid = tupdesc->natts;
+			slot->tts_flags &= ~TTS_FLAG_EMPTY;
+		}
+	}
+
+	return slot;
+}
+#endif
 
 static void
 ybcFreeStatementObject(YbFdwExecState* yb_fdw_exec_state)

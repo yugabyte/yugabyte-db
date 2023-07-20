@@ -3,7 +3,7 @@
  * bloom.h
  *	  Header for bloom index.
  *
- * Copyright (c) 2016-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/bloom/bloom.h
@@ -17,12 +17,13 @@
 #include "access/generic_xlog.h"
 #include "access/itup.h"
 #include "access/xlog.h"
-#include "nodes/relation.h"
 #include "fmgr.h"
+#include "nodes/pathnodes.h"
 
 /* Support procedures numbers */
 #define BLOOM_HASH_PROC			1
-#define BLOOM_NPROC				1
+#define BLOOM_OPTIONS_PROC		2
+#define BLOOM_NPROC				2
 
 /* Scan strategies */
 #define BLOOM_EQUAL_STRATEGY	1
@@ -137,6 +138,7 @@ typedef struct BloomMetaPageData
 typedef struct BloomState
 {
 	FmgrInfo	hashFn[INDEX_MAX_KEYS];
+	Oid			collations[INDEX_MAX_KEYS];
 	BloomOptions opts;			/* copy of options on index's metapage */
 	int32		nColumns;
 
@@ -188,26 +190,27 @@ extern bool blvalidate(Oid opclassoid);
 
 /* index access method interface functions */
 extern bool blinsert(Relation index, Datum *values, bool *isnull,
-		 ItemPointer ht_ctid, Relation heapRel,
-		 IndexUniqueCheck checkUnique,
-		 struct IndexInfo *indexInfo);
+					 ItemPointer ht_ctid, Relation heapRel,
+					 IndexUniqueCheck checkUnique,
+					 bool indexUnchanged,
+					 struct IndexInfo *indexInfo);
 extern IndexScanDesc blbeginscan(Relation r, int nkeys, int norderbys);
 extern int64 blgetbitmap(IndexScanDesc scan, TIDBitmap *tbm);
 extern void blrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
-		 ScanKey orderbys, int norderbys);
+					 ScanKey orderbys, int norderbys);
 extern void blendscan(IndexScanDesc scan);
 extern IndexBuildResult *blbuild(Relation heap, Relation index,
-		struct IndexInfo *indexInfo);
+								 struct IndexInfo *indexInfo);
 extern void blbuildempty(Relation index);
 extern IndexBulkDeleteResult *blbulkdelete(IndexVacuumInfo *info,
-			 IndexBulkDeleteResult *stats, IndexBulkDeleteCallback callback,
-			 void *callback_state);
+										   IndexBulkDeleteResult *stats, IndexBulkDeleteCallback callback,
+										   void *callback_state);
 extern IndexBulkDeleteResult *blvacuumcleanup(IndexVacuumInfo *info,
-				IndexBulkDeleteResult *stats);
+											  IndexBulkDeleteResult *stats);
 extern bytea *bloptions(Datum reloptions, bool validate);
 extern void blcostestimate(PlannerInfo *root, IndexPath *path,
-			   double loop_count, Cost *indexStartupCost,
-			   Cost *indexTotalCost, Selectivity *indexSelectivity,
-			   double *indexCorrelation, double *indexPages);
+						   double loop_count, Cost *indexStartupCost,
+						   Cost *indexTotalCost, Selectivity *indexSelectivity,
+						   double *indexCorrelation, double *indexPages);
 
 #endif

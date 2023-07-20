@@ -1,5 +1,7 @@
 #!/usr/bin/perl
 
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+
 use strict;
 use warnings;
 use 5.008001;
@@ -12,7 +14,7 @@ use IO::Handle;
 use Getopt::Long;
 
 # Update for pg_bsd_indent version
-my $INDENT_VERSION = "2.0";
+my $INDENT_VERSION = "2.1.1";
 
 # Our standard indent settings
 my $indent_opts =
@@ -54,12 +56,12 @@ $excludes ||= "$code_base/src/tools/pgindent/exclude_file_patterns"
 # some names we want to treat like typedefs, e.g. "bool" (which is a macro
 # according to <stdbool.h>), and may include some names we don't want
 # treated as typedefs, although various headers that some builds include
-# might make them so.  For the moment we just hardwire a whitelist of names
-# to add and a blacklist of names to remove; eventually this may need to be
+# might make them so.  For the moment we just hardwire a list of names
+# to add and a list of names to exclude; eventually this may need to be
 # easier to configure.  Note that the typedefs need trailing newlines.
-my @whitelist = ("bool\n");
+my @additional = ("bool\n");
 
-my %blacklist = map { +"$_\n" => 1 } qw(
+my %excluded = map { +"$_\n" => 1 } qw(
   ANY FD_SET U abs allocfunc boolean date digit ilist interval iterator other
   pointer printfunc reference string timestamp type wrap
 );
@@ -79,7 +81,7 @@ sub check_indent
 		exit 1;
 	}
 
-	if (`$indent --version` !~ m/ $INDENT_VERSION$/)
+	if (`$indent --version` !~ m/ $INDENT_VERSION /)
 	{
 		print STDERR
 		  "You do not appear to have $indent version $INDENT_VERSION installed on your system.\n";
@@ -134,11 +136,11 @@ sub load_typedefs
 		}
 	}
 
-	# add whitelisted entries
-	push(@typedefs, @whitelist);
+	# add additional entries
+	push(@typedefs, @additional);
 
-	# remove blacklisted entries
-	@typedefs = grep { !$blacklist{$_} } @typedefs;
+	# remove excluded entries
+	@typedefs = grep { !$excluded{$_} } @typedefs;
 
 	# write filtered typedefs
 	my $filter_typedefs_fh = new File::Temp(TEMPLATE => "pgtypedefXXXXX");
@@ -159,6 +161,7 @@ sub process_exclude
 		while (my $line = <$eh>)
 		{
 			chomp $line;
+			next if $line =~ m/^#/;
 			my $rgx = qr!$line!;
 			@files = grep { $_ !~ /$rgx/ } @files if $rgx;
 		}
@@ -249,22 +252,6 @@ sub post_indent
 
 	# Use a single space before '*' in function return types
 	$source =~ s!^([A-Za-z_]\S*)[ \t]+\*$!$1 *!gm;
-
-	# Move prototype names to the same line as return type.  Useful
-	# for ctags.  Indent should do this, but it does not.  It formats
-	# prototypes just like real functions.
-
-	my $ident   = qr/[a-zA-Z_][a-zA-Z_0-9]*/;
-	my $comment = qr!/\*.*\*/!;
-
-	$source =~ s!
-			(\n$ident[^(\n]*)\n                  # e.g. static void
-			(
-				$ident\(\n?                      # func_name(
-				(.*,([ \t]*$comment)?\n)*        # args b4 final ln
-				.*\);([ \t]*$comment)?$          # final line
-			)
-		!$1 . (substr($1,-1,1) eq '*' ? '' : ' ') . $2!gmxe;
 
 	return $source;
 }

@@ -2,7 +2,7 @@
  * execPartition.h
  *		POSTGRES partitioning executor interface
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -18,74 +18,20 @@
 #include "nodes/plannodes.h"
 #include "partitioning/partprune.h"
 
-/* See execPartition.c for the definition. */
+/* See execPartition.c for the definitions. */
 typedef struct PartitionDispatchData *PartitionDispatch;
+typedef struct PartitionTupleRouting PartitionTupleRouting;
 
-/*-----------------------
- * PartitionTupleRouting - Encapsulates all information required to execute
- * tuple-routing between partitions.
- *
- * partition_dispatch_info		Array of PartitionDispatch objects with one
- *								entry for every partitioned table in the
- *								partition tree.
- * num_dispatch					number of partitioned tables in the partition
- *								tree (= length of partition_dispatch_info[])
- * partition_oids				Array of leaf partitions OIDs with one entry
- *								for every leaf partition in the partition tree,
- *								initialized in full by
- *								ExecSetupPartitionTupleRouting.
- * partitions					Array of ResultRelInfo* objects with one entry
- *								for every leaf partition in the partition tree,
- *								initialized lazily by ExecInitPartitionInfo.
- * num_partitions				Number of leaf partitions in the partition tree
- *								(= 'partitions_oid'/'partitions' array length)
- * parent_child_tupconv_maps	Array of TupleConversionMap objects with one
- *								entry for every leaf partition (required to
- *								convert tuple from the root table's rowtype to
- *								a leaf partition's rowtype after tuple routing
- *								is done)
- * child_parent_tupconv_maps	Array of TupleConversionMap objects with one
- *								entry for every leaf partition (required to
- *								convert an updated tuple from the leaf
- *								partition's rowtype to the root table's rowtype
- *								so that tuple routing can be done)
- * child_parent_map_not_required  Array of bool. True value means that a map is
- *								determined to be not required for the given
- *								partition. False means either we haven't yet
- *								checked if a map is required, or it was
- *								determined to be required.
- * subplan_partition_offsets	Integer array ordered by UPDATE subplans. Each
- *								element of this array has the index into the
- *								corresponding partition in partitions array.
- * num_subplan_partition_offsets  Length of 'subplan_partition_offsets' array
- * partition_tuple_slots		Array of TupleTableSlot objects; if non-NULL,
- *								contains one entry for every leaf partition,
- *								of which only those of the leaf partitions
- *								whose attribute numbers differ from the root
- *								parent have a non-NULL value.  NULL if all of
- *								the partitions encountered by a given command
- *								happen to have same rowtype as the root parent
- * root_tuple_slot				TupleTableSlot to be used to transiently hold
- *								copy of a tuple that's being moved across
- *								partitions in the root partitioned table's
- *								rowtype
- *-----------------------
- */
-typedef struct PartitionTupleRouting
-{
-	PartitionDispatch *partition_dispatch_info;
-	int			num_dispatch;
-	Oid		   *partition_oids;
-	ResultRelInfo **partitions;
-	int			num_partitions;
-	TupleConversionMap **parent_child_tupconv_maps;
-	TupleConversionMap **child_parent_tupconv_maps;
-	bool	   *child_parent_map_not_required;
-	int		   *subplan_partition_offsets;
-	int			num_subplan_partition_offsets;
-	TupleTableSlot **partition_tuple_slots;
-	TupleTableSlot *root_tuple_slot;
-} PartitionTupleRouting;
+extern PartitionTupleRouting *ExecSetupPartitionTupleRouting(EState *estate,
+															 Relation rel);
+extern ResultRelInfo *ExecFindPartition(ModifyTableState *mtstate,
+										ResultRelInfo *rootResultRelInfo,
+										PartitionTupleRouting *proute,
+										TupleTableSlot *slot,
+										EState *estate);
+extern void ExecCleanupTupleRouting(ModifyTableState *mtstate,
+									PartitionTupleRouting *proute);
+
 
 /*
  * PartitionedRelPruningData - Per-partitioned-table data for run-time pruning
@@ -96,28 +42,30 @@ typedef struct PartitionTupleRouting
  * PartitionedRelPruneInfo (see plannodes.h); though note that here,
  * subpart_map contains indexes into PartitionPruningData.partrelprunedata[].
  *
+ * nparts						Length of subplan_map[] and subpart_map[].
  * subplan_map					Subplan index by partition index, or -1.
  * subpart_map					Subpart index by partition index, or -1.
  * present_parts				A Bitmapset of the partition indexes that we
  *								have subplans or subparts for.
- * context						Contains the context details required to call
- *								the partition pruning code.
- * pruning_steps				List of PartitionPruneSteps used to
- *								perform the actual pruning.
- * do_initial_prune				true if pruning should be performed during
- *								executor startup (for this partitioning level).
- * do_exec_prune				true if pruning should be performed during
- *								executor run (for this partitioning level).
+ * initial_pruning_steps		List of PartitionPruneSteps used to
+ *								perform executor startup pruning.
+ * exec_pruning_steps			List of PartitionPruneSteps used to
+ *								perform per-scan pruning.
+ * initial_context				If initial_pruning_steps isn't NIL, contains
+ *								the details needed to execute those steps.
+ * exec_context					If exec_pruning_steps isn't NIL, contains
+ *								the details needed to execute those steps.
  */
 typedef struct PartitionedRelPruningData
 {
+	int			nparts;
 	int		   *subplan_map;
 	int		   *subpart_map;
 	Bitmapset  *present_parts;
-	PartitionPruneContext context;
-	List	   *pruning_steps;
-	bool		do_initial_prune;
-	bool		do_exec_prune;
+	List	   *initial_pruning_steps;
+	List	   *exec_pruning_steps;
+	PartitionPruneContext initial_context;
+	PartitionPruneContext exec_context;
 } PartitionedRelPruningData;
 
 /*
@@ -173,31 +121,11 @@ typedef struct PartitionPruneState
 	PartitionPruningData *partprunedata[FLEXIBLE_ARRAY_MEMBER];
 } PartitionPruneState;
 
-extern PartitionTupleRouting *ExecSetupPartitionTupleRouting(ModifyTableState *mtstate,
-							   ResultRelInfo *rootResultRelInfo);
-extern int ExecFindPartition(ResultRelInfo *resultRelInfo,
-				  PartitionDispatch *pd,
-				  TupleTableSlot *slot,
-				  EState *estate);
-extern ResultRelInfo *ExecInitPartitionInfo(ModifyTableState *mtstate,
-					  ResultRelInfo *rootResultRelInfo,
-					  PartitionTupleRouting *proute,
-					  EState *estate, int partidx);
-extern void ExecInitRoutingInfo(ModifyTableState *mtstate,
-					EState *estate,
-					PartitionTupleRouting *proute,
-					ResultRelInfo *partRelInfo,
-					int partidx);
-extern void ExecSetupChildParentMapForLeaf(PartitionTupleRouting *proute);
-extern TupleConversionMap *TupConvMapForLeaf(PartitionTupleRouting *proute,
-				  ResultRelInfo *rootRelInfo, int leaf_index);
-extern void ExecCleanupTupleRouting(ModifyTableState *mtstate,
-						PartitionTupleRouting *proute);
-extern PartitionPruneState *ExecCreatePartitionPruneState(PlanState *planstate,
-							  PartitionPruneInfo *partitionpruneinfo);
-extern void ExecDestroyPartitionPruneState(PartitionPruneState *prunestate);
-extern Bitmapset *ExecFindMatchingSubPlans(PartitionPruneState *prunestate);
-extern Bitmapset *ExecFindInitialMatchingSubPlans(PartitionPruneState *prunestate,
-								int nsubplans);
+extern PartitionPruneState *ExecInitPartitionPruning(PlanState *planstate,
+													 int n_total_subplans,
+													 PartitionPruneInfo *pruneinfo,
+													 Bitmapset **initially_valid_subplans);
+extern Bitmapset *ExecFindMatchingSubPlans(PartitionPruneState *prunestate,
+										   bool initial_prune);
 
 #endif							/* EXECPARTITION_H */

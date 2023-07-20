@@ -3,7 +3,7 @@
  * gistdesc.c
  *	  rmgr descriptor routines for access/gist/gistxlog.c
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -24,10 +24,36 @@ out_gistxlogPageUpdate(StringInfo buf, gistxlogPageUpdate *xlrec)
 }
 
 static void
+out_gistxlogPageReuse(StringInfo buf, gistxlogPageReuse *xlrec)
+{
+	appendStringInfo(buf, "rel %u/%u/%u; blk %u; latestRemovedXid %u:%u",
+					 xlrec->node.spcNode, xlrec->node.dbNode,
+					 xlrec->node.relNode, xlrec->block,
+					 EpochFromFullTransactionId(xlrec->latestRemovedFullXid),
+					 XidFromFullTransactionId(xlrec->latestRemovedFullXid));
+}
+
+static void
+out_gistxlogDelete(StringInfo buf, gistxlogDelete *xlrec)
+{
+	appendStringInfo(buf, "delete: latestRemovedXid %u, nitems: %u",
+					 xlrec->latestRemovedXid, xlrec->ntodelete);
+}
+
+static void
 out_gistxlogPageSplit(StringInfo buf, gistxlogPageSplit *xlrec)
 {
 	appendStringInfo(buf, "page_split: splits to %d pages",
 					 xlrec->npage);
+}
+
+static void
+out_gistxlogPageDelete(StringInfo buf, gistxlogPageDelete *xlrec)
+{
+	appendStringInfo(buf, "deleteXid %u:%u; downlink %u",
+					 EpochFromFullTransactionId(xlrec->deleteXid),
+					 XidFromFullTransactionId(xlrec->deleteXid),
+					 xlrec->downlinkOffset);
 }
 
 void
@@ -41,10 +67,20 @@ gist_desc(StringInfo buf, XLogReaderState *record)
 		case XLOG_GIST_PAGE_UPDATE:
 			out_gistxlogPageUpdate(buf, (gistxlogPageUpdate *) rec);
 			break;
+		case XLOG_GIST_PAGE_REUSE:
+			out_gistxlogPageReuse(buf, (gistxlogPageReuse *) rec);
+			break;
+		case XLOG_GIST_DELETE:
+			out_gistxlogDelete(buf, (gistxlogDelete *) rec);
+			break;
 		case XLOG_GIST_PAGE_SPLIT:
 			out_gistxlogPageSplit(buf, (gistxlogPageSplit *) rec);
 			break;
-		case XLOG_GIST_CREATE_INDEX:
+		case XLOG_GIST_PAGE_DELETE:
+			out_gistxlogPageDelete(buf, (gistxlogPageDelete *) rec);
+			break;
+		case XLOG_GIST_ASSIGN_LSN:
+			/* No details to write out */
 			break;
 	}
 }
@@ -59,11 +95,20 @@ gist_identify(uint8 info)
 		case XLOG_GIST_PAGE_UPDATE:
 			id = "PAGE_UPDATE";
 			break;
+		case XLOG_GIST_DELETE:
+			id = "DELETE";
+			break;
+		case XLOG_GIST_PAGE_REUSE:
+			id = "PAGE_REUSE";
+			break;
 		case XLOG_GIST_PAGE_SPLIT:
 			id = "PAGE_SPLIT";
 			break;
-		case XLOG_GIST_CREATE_INDEX:
-			id = "CREATE_INDEX";
+		case XLOG_GIST_PAGE_DELETE:
+			id = "PAGE_DELETE";
+			break;
+		case XLOG_GIST_ASSIGN_LSN:
+			id = "ASSIGN_LSN";
 			break;
 	}
 

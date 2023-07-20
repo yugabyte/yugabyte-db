@@ -6,7 +6,7 @@
  * See utils/resowner/README for more info.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/resowner_private.h
@@ -38,62 +38,76 @@ extern void ResourceOwnerForgetLock(ResourceOwner owner, LOCALLOCK *locallock);
 /* support for catcache refcount management */
 extern void ResourceOwnerEnlargeCatCacheRefs(ResourceOwner owner);
 extern void ResourceOwnerRememberCatCacheRef(ResourceOwner owner,
-								 HeapTuple tuple);
+											 HeapTuple tuple);
 extern void ResourceOwnerForgetCatCacheRef(ResourceOwner owner,
-							   HeapTuple tuple);
+										   HeapTuple tuple);
 extern void ResourceOwnerEnlargeCatCacheListRefs(ResourceOwner owner);
 extern void ResourceOwnerRememberCatCacheListRef(ResourceOwner owner,
-									 CatCList *list);
+												 CatCList *list);
 extern void ResourceOwnerForgetCatCacheListRef(ResourceOwner owner,
-								   CatCList *list);
+											   CatCList *list);
 
 /* support for relcache refcount management */
 extern void ResourceOwnerEnlargeRelationRefs(ResourceOwner owner);
 extern void ResourceOwnerRememberRelationRef(ResourceOwner owner,
-								 Relation rel);
+											 Relation rel);
 extern void ResourceOwnerForgetRelationRef(ResourceOwner owner,
-							   Relation rel);
+										   Relation rel);
 
 /* support for plancache refcount management */
 extern void ResourceOwnerEnlargePlanCacheRefs(ResourceOwner owner);
 extern void ResourceOwnerRememberPlanCacheRef(ResourceOwner owner,
-								  CachedPlan *plan);
+											  CachedPlan *plan);
 extern void ResourceOwnerForgetPlanCacheRef(ResourceOwner owner,
-								CachedPlan *plan);
+											CachedPlan *plan);
 
 /* support for tupledesc refcount management */
 extern void ResourceOwnerEnlargeTupleDescs(ResourceOwner owner);
 extern void ResourceOwnerRememberTupleDesc(ResourceOwner owner,
-							   TupleDesc tupdesc);
+										   TupleDesc tupdesc);
 extern void ResourceOwnerForgetTupleDesc(ResourceOwner owner,
-							 TupleDesc tupdesc);
+										 TupleDesc tupdesc);
 
 /* support for snapshot refcount management */
 extern void ResourceOwnerEnlargeSnapshots(ResourceOwner owner);
 extern void ResourceOwnerRememberSnapshot(ResourceOwner owner,
-							  Snapshot snapshot);
+										  Snapshot snapshot);
 extern void ResourceOwnerForgetSnapshot(ResourceOwner owner,
-							Snapshot snapshot);
+										Snapshot snapshot);
 
 /* support for temporary file management */
 extern void ResourceOwnerEnlargeFiles(ResourceOwner owner);
 extern void ResourceOwnerRememberFile(ResourceOwner owner,
-						  File file);
+									  File file);
 extern void ResourceOwnerForgetFile(ResourceOwner owner,
-						File file);
+									File file);
 
 /* support for dynamic shared memory management */
 extern void ResourceOwnerEnlargeDSMs(ResourceOwner owner);
 extern void ResourceOwnerRememberDSM(ResourceOwner owner,
-						 dsm_segment *);
+									 dsm_segment *);
 extern void ResourceOwnerForgetDSM(ResourceOwner owner,
-					   dsm_segment *);
+								   dsm_segment *);
 
 /* support for JITContext management */
 extern void ResourceOwnerEnlargeJIT(ResourceOwner owner);
 extern void ResourceOwnerRememberJIT(ResourceOwner owner,
-						 Datum handle);
+									 Datum handle);
 extern void ResourceOwnerForgetJIT(ResourceOwner owner,
-					   Datum handle);
+								   Datum handle);
+
+/* support for cryptohash context management */
+extern void ResourceOwnerEnlargeCryptoHash(ResourceOwner owner);
+extern void ResourceOwnerRememberCryptoHash(ResourceOwner owner,
+											Datum handle);
+extern void ResourceOwnerForgetCryptoHash(ResourceOwner owner,
+										  Datum handle);
+
+/* support for HMAC context management */
+extern void ResourceOwnerEnlargeHMAC(ResourceOwner owner);
+extern void ResourceOwnerRememberHMAC(ResourceOwner owner,
+									  Datum handle);
+extern void ResourceOwnerForgetHMAC(ResourceOwner owner,
+									Datum handle);
 
 #endif							/* RESOWNER_PRIVATE_H */

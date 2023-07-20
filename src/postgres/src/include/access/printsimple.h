@@ -3,7 +3,7 @@
  * printsimple.h
  *	  print simple tuples without catalog access
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/printsimple.h
@@ -18,6 +18,6 @@
 
 extern bool printsimple(TupleTableSlot *slot, DestReceiver *self);
 extern void printsimple_startup(DestReceiver *self, int operation,
-					TupleDesc tupdesc);
+								TupleDesc tupdesc);
 
 #endif							/* PRINTSIMPLE_H */

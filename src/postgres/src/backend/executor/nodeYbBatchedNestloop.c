@@ -34,7 +34,7 @@
 #include "executor/execdebug.h"
 #include "executor/executor.h"
 #include "executor/nodeYbBatchedNestloop.h"
-#include "nodes/relation.h"
+#include "access/relation.h"
 #include "miscadmin.h"
 #include "utils/memutils.h"
 
@@ -370,8 +370,12 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 								   eqops,
 								   (PlanState *) bnlstate);
 
+	/* YB_TODO(tanuj@yugabyte)
+	 * - &TTSOpsVirtual is used so that I can compile.
+	 * - Please pass appropriate argument.
+	 */
 	bnlstate->hashslot =
-		ExecAllocTableSlot(&estate->es_tupleTable, outer_tdesc);
+		ExecAllocTableSlot(&estate->es_tupleTable, outer_tdesc, &TTSOpsVirtual);
 
 	/* Per batch memory context for the hash table to work with */
 	MemoryContext tablecxt =
@@ -379,6 +383,10 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 							  "BNL_HASHTABLE",
 							  ALLOCSET_DEFAULT_SIZES);
 
+	/* YB_TODO(tanuj@yugabyte)
+	 * - "NULL // collations" is used to compile.
+	 * - Please pass appropriate argument.
+	 */
 	bnlstate->hashtable =
 		YbBuildTupleHashTableExt(&bnlstate->js.ps, outer_tdesc,
 								 num_hashClauseInfos, keyexprs, tab_eq_fn,
@@ -407,6 +415,12 @@ FlushTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 	TupleHashEntry entry = bnlstate->current_hash_entry;
 	if (entry == NULL)
 		entry = ScanTupleHashTable(bnlstate->hashtable, &bnlstate->hashiter);
+#ifdef YB_TODO
+	/* YB_TODO(tanuj)
+	 * - List structure has change.
+	 * - In the future, please don't access list attribute directly, but use the provided API by
+	 *   Postgres, such as lnext().
+	 */
 	while (entry != NULL)
 	{
 		NLBucketInfo *binfo = entry->additional;
@@ -427,6 +441,7 @@ FlushTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 		}
 		entry = ScanTupleHashTable(bnlstate->hashtable, &bnlstate->hashiter);
 	}
+#endif
 	TermTupleHashIterator(&bnlstate->hashiter);
 	bnlstate->hashiterinit = false;
 	bnlstate->current_hash_entry = NULL;
@@ -455,6 +470,12 @@ GetNewOuterTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 	}
 
 	NLBucketInfo *binfo = (NLBucketInfo*) data->additional;
+#ifdef YB_TODO
+	/* YB_TODO(tanuj)
+	 * - List structure has change.
+	 * - In the future, please don't access list attribute directly, but use the provided API by
+	 *   Postgres, such as lnext().
+	 */
 	while (binfo->current != NULL)
 	{
 		BucketTupleInfo *curr_btinfo = lfirst(binfo->current);
@@ -480,6 +501,7 @@ GetNewOuterTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 		Assert(data != NULL);
 		return true;	
 	}
+#endif
 
 	/* 
 	 * There are no more matches for the current inner tuple so reset
@@ -523,6 +545,12 @@ void
 AddTupleToOuterBatchHash(YbBatchedNestLoopState *bnlstate,
 						 TupleTableSlot *slot)
 {
+#ifdef YB_TODO
+	/* YB_TODO(tanuj)
+	 * - List structure has change.
+	 * - In the future, please don't access list attribute directly, but use the provided API by
+	 *   Postgres in pg_list.h - such as lnext().
+	 */
 	TupleHashTable ht = bnlstate->hashtable;
 	bool isnew = false;
 
@@ -554,6 +582,7 @@ AddTupleToOuterBatchHash(YbBatchedNestLoopState *bnlstate,
 	binfo->current = list_head(binfo->tuples);
 	ExecStoreMinimalTuple(tuple, slot, false);
 	MemoryContextSwitchTo(cxt);
+#endif
 }
 
 /*
@@ -621,12 +650,19 @@ FlushTupleTS(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 void
 RegisterOuterMatchTS(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 {
+#ifdef YB_TODO
+	/* YB_TODO(tanuj)
+	 * - List structure has change.
+	 * - In the future, please don't access list attribute directly, but use the provided API by
+	 *   Postgres in pg_list.h - such as lnext().
+	 */
 	Assert(bnlstate->bnl_tupleStoreState != NULL);
 	(void) econtext;
 	ListCell *lc = list_nth_cell(bnlstate->bnl_batchMatchedInfo, 
 								 bnlstate->bnl_batchTupNo - 1);
-	lc->data.int_value = 1;
+	lc->data.int_value = 1; /* Instead of hardcoding, please use lfirst_int() */
 	return;
+#endif
 }
 
 bool
@@ -846,7 +882,10 @@ ExecInitYbBatchedNestLoop(YbBatchedNestLoop *plan, EState *estate, int eflags)
 	/*
 	 * Initialize result slot, type and projection.
 	 */
-	ExecInitResultTupleSlotTL(&bnlstate->js.ps);
+	/* YB_TODO(tanuj@yugabyte)
+	 * Please verify if TTSOpsVirtual is the right choice here.
+	 */
+	ExecInitResultTupleSlotTL(&bnlstate->js.ps, &TTSOpsVirtual);
 	ExecAssignProjectionInfo(&bnlstate->js.ps, NULL);
 
 	/*
@@ -872,10 +911,14 @@ ExecInitYbBatchedNestLoop(YbBatchedNestLoop *plan, EState *estate, int eflags)
 			break;
 		case JOIN_LEFT:
 		case JOIN_ANTI:
+			/* YB_TODO(tanuj@yugabyte)
+			 * Please verify if TTSOpsVirtual is the right choice here.
+			 */
 			bnlstate->nl_NullInnerTupleSlot =
 				ExecInitNullTupleSlot(
 					estate,
-					ExecGetResultType(innerPlanState(bnlstate)));
+					ExecGetResultType(innerPlanState(bnlstate)),
+					&TTSOpsVirtual);
 			break;
 		default:
 			elog(ERROR, "unrecognized join type: %d",

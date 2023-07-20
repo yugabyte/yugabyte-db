@@ -154,9 +154,9 @@ doBindsForIdxWrite(YBCPgStatement stmt,
  */
 static int32
 ybginTupleWrite(GinState *ginstate, OffsetNumber attnum,
-				 Relation index, Datum value, bool isNull,
-				 Datum ybctid, uint64_t *backfilltime,
-				 bool isinsert)
+				Relation index, Datum value, bool isNull,
+				ItemPointer tid, uint64_t *backfilltime,
+				bool isinsert)
 {
 	Datum	   *entries;
 	GinNullCategory *categories;
@@ -182,13 +182,13 @@ ybginTupleWrite(GinState *ginstate, OffsetNumber attnum,
 
 		/* Assume single-column index for parameters values and isnull. */
 		if (isinsert)
-			YBCExecuteInsertIndex(index, &entries[i], &isnull, ybctid,
+			YBCExecuteInsertIndex(index, &entries[i], &isnull, tid,
 								  backfilltime /* backfill_write_time */,
 								  doBindsForIdxWrite, (void *) ginstate);
 		else
 		{
 			Assert(!backfilltime);
-			YBCExecuteDeleteIndex(index, &entries[i], &isnull, ybctid,
+			YBCExecuteDeleteIndex(index, &entries[i], &isnull, YbItemPointerYbctid(tid),
 								  doBindsForIdxWrite, (void *) ginstate);
 		}
 	}
@@ -203,9 +203,9 @@ ybginTupleWrite(GinState *ginstate, OffsetNumber attnum,
 static int32
 ybginTupleInsert(GinState *ginstate, OffsetNumber attnum,
 				 Relation index, Datum value, bool isNull,
-				 Datum ybctid, uint64_t *backfilltime)
+				 ItemPointer tid, uint64_t *backfilltime)
 {
-	return ybginTupleWrite(ginstate, attnum, index, value, isNull, ybctid,
+	return ybginTupleWrite(ginstate, attnum, index, value, isNull, tid,
 						   backfilltime, true /* isinsert */);
 }
 
@@ -216,9 +216,9 @@ ybginTupleInsert(GinState *ginstate, OffsetNumber attnum,
 static int32
 ybginTupleDelete(GinState *ginstate, OffsetNumber attnum,
 				 Relation index, Datum value, bool isNull,
-				 Datum ybctid)
+				 ItemPointer tid)
 {
-	return ybginTupleWrite(ginstate, attnum, index, value, isNull, ybctid,
+	return ybginTupleWrite(ginstate, attnum, index, value, isNull, tid,
 						   NULL /* backfilltime */, false /* isinsert */);
 }
 
@@ -227,7 +227,7 @@ ybginTupleDelete(GinState *ginstate, OffsetNumber attnum,
  * similar ybcinbuildCallback.
  */
 static void
-ybginBuildCallback(Relation index, HeapTuple heapTuple, Datum *values,
+ybginBuildCallback(Relation index, ItemPointer tid, Datum *values,
 				   bool *isnull, bool tupleIsAlive, void *state)
 {
 	YbginBuildState *buildstate = (YbginBuildState *) state;
@@ -240,7 +240,7 @@ ybginBuildCallback(Relation index, HeapTuple heapTuple, Datum *values,
 	for (i = 0; i < ginstate->origTupdesc->natts; i++)
 		nentries += ybginTupleInsert(ginstate, (OffsetNumber) (i + 1),
 									 index, values[i], isnull[i],
-									 heapTuple->t_ybctid,
+									 tid,
 									 buildstate->backfilltime);
 
 	buildstate->indtuples += nentries;
@@ -285,9 +285,9 @@ ybginBuildCommon(Relation heap, Relation index, struct IndexInfo *indexInfo,
 	 * Do the heap scan.
 	 */
 	if (!bfinfo)
-		reltuples = IndexBuildHeapScan(heap, index, indexInfo, true,
-									   ybginBuildCallback, (void *) &buildstate,
-									   NULL /* HeapScanDesc */);
+		reltuples = table_index_build_scan(heap, index, indexInfo, true, true,
+										   ybginBuildCallback, (void *) &buildstate,
+										   NULL /* HeapScanDesc */);
 	else
 		reltuples = IndexBackfillHeapRangeScan(heap, index, indexInfo,
 											   ybginBuildCallback,
@@ -345,7 +345,7 @@ ybginvacuumcleanup(IndexVacuumInfo *info, IndexBulkDeleteResult *stats)
  * - name memory context Ybgin
  */
 static void
-ybginWrite(Relation index, Datum *values, bool *isnull, Datum ybctid,
+ybginWrite(Relation index, Datum *values, bool *isnull, ItemPointer heap_tid,
 		   Relation heap, struct IndexInfo *indexInfo, bool isinsert)
 {
 	GinState   *ginstate = (GinState *) indexInfo->ii_AmCache;
@@ -377,11 +377,11 @@ ybginWrite(Relation index, Datum *values, bool *isnull, Datum ybctid,
 		if (isinsert)
 			ybginTupleInsert(ginstate, (OffsetNumber) (i + 1),
 							 index, values[i], isnull[i],
-							 ybctid, NULL /* backfilltime */);
+							 heap_tid, NULL /* backfilltime */);
 		else
 			ybginTupleDelete(ginstate, (OffsetNumber) (i + 1),
 							 index, values[i], isnull[i],
-							 ybctid);
+							 heap_tid);
 	}
 
 	MemoryContextSwitchTo(oldCtx);
@@ -389,23 +389,21 @@ ybginWrite(Relation index, Datum *values, bool *isnull, Datum ybctid,
 }
 
 bool
-ybgininsert(Relation index, Datum *values, bool *isnull, Datum ybctid,
+ybgininsert(Relation index, Datum *values, bool *isnull, ItemPointer heap_tid,
 			Relation heap, IndexUniqueCheck checkUnique,
 			struct IndexInfo *indexInfo, bool shared_insert)
 {
-	ybginWrite(index, values, isnull, ybctid, heap, indexInfo,
-			   true /* isinsert */);
+	ybginWrite(index, values, isnull, heap_tid, heap, indexInfo, true /* isinsert */);
 
 	/* index cannot be unique */
 	return false;
 }
 
 void
-ybgindelete(Relation index, Datum *values, bool *isnull, Datum ybctid,
+ybgindelete(Relation index, Datum *values, bool *isnull, ItemPointer heap_tid,
 			Relation heap, struct IndexInfo *indexInfo)
 {
-	ybginWrite(index, values, isnull, ybctid, heap, indexInfo,
-			   false /* isinsert */);
+	ybginWrite(index, values, isnull, heap_tid, heap, indexInfo, false /* isinsert */);
 }
 
 IndexBuildResult *

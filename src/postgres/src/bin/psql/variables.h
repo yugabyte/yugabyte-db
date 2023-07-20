@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2022, PostgreSQL Global Development Group
  *
  * This implements a sort of variable repository.  One could also think of it
  * as a cheap version of an associative array.  Each variable has a string
@@ -21,7 +21,7 @@
  * An assign hook function is called before any attempted assignment, with the
  * proposed new value of the variable (or with NULL, if an \unset is being
  * attempted).  If it returns false, the assignment doesn't occur --- it
- * should print an error message with psql_error() to tell the user why.
+ * should print an error message with pg_log_error() to tell the user why.
  *
  * When an assign hook function is installed with SetVariableHooks(), it is
  * called with the variable's current value (or with NULL, if it wasn't set
@@ -75,21 +75,20 @@ typedef struct _variable *VariableSpace;
 VariableSpace CreateVariableSpace(void);
 const char *GetVariable(VariableSpace space, const char *name);
 
-bool ParseVariableBool(const char *value, const char *name,
-				  bool *result);
+bool		ParseVariableBool(const char *value, const char *name,
+							  bool *result);
 
-bool ParseVariableNum(const char *value, const char *name,
-				 int *result);
+bool		ParseVariableNum(const char *value, const char *name,
+							 int *result);
 
 void		PrintVariables(VariableSpace space);
 
 bool		SetVariable(VariableSpace space, const char *name, const char *value);
 bool		SetVariableBool(VariableSpace space, const char *name);
 bool		DeleteVariable(VariableSpace space, const char *name);
-
-void SetVariableHooks(VariableSpace space, const char *name,
-				 VariableSubstituteHook shook,
-				 VariableAssignHook ahook);
+void		SetVariableHooks(VariableSpace space, const char *name,
+							 VariableSubstituteHook shook,
+							 VariableAssignHook ahook);
 bool		VariableHasHook(VariableSpace space, const char *name);
 
 void		PsqlVarEnumError(const char *name, const char *value, const char *suggestions);

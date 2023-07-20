@@ -28,6 +28,8 @@ hash_page_type | bitmap
 
 SELECT hash_page_type(get_raw_page('test_hash_a_idx', 6));
 ERROR:  block number 6 is out of range for relation "test_hash_a_idx"
+SELECT * FROM hash_bitmap_info('test_hash_a_idx', -1);
+ERROR:  invalid block number
 SELECT * FROM hash_bitmap_info('test_hash_a_idx', 0);
 ERROR:  invalid overflow block number 0
 SELECT * FROM hash_bitmap_info('test_hash_a_idx', 1);
@@ -40,6 +42,8 @@ SELECT * FROM hash_bitmap_info('test_hash_a_idx', 4);
 ERROR:  invalid overflow block number 4
 SELECT * FROM hash_bitmap_info('test_hash_a_idx', 5);
 ERROR:  invalid overflow block number 5
+SELECT * FROM hash_bitmap_info('test_hash_a_idx', 6);
+ERROR:  block number 6 is out of range for relation "test_hash_a_idx"
 SELECT magic, version, ntuples, bsize, bmsize, bmshift, maxbucket, highmask,
 lowmask, ovflpoint, firstfree, nmaps, procid, spares, mapp FROM
 hash_metapage_info(get_raw_page('test_hash_a_idx', 0));
@@ -159,4 +163,43 @@ SELECT * FROM hash_page_items(get_raw_page('test_hash_a_idx', 4));
 
 SELECT * FROM hash_page_items(get_raw_page('test_hash_a_idx', 5));
 ERROR:  page is not a hash bucket or overflow page
+-- Failure with non-hash index
+CREATE INDEX test_hash_a_btree ON test_hash USING btree (a);
+SELECT hash_bitmap_info('test_hash_a_btree', 0);
+ERROR:  "test_hash_a_btree" is not a hash index
+-- Failure with various modes.
+-- Suppress the DETAIL message, to allow the tests to work across various
+-- page sizes and architectures.
+\set VERBOSITY terse
+-- invalid page size
+SELECT hash_metapage_info('aaa'::bytea);
+ERROR:  invalid page size
+SELECT hash_page_items('bbb'::bytea);
+ERROR:  invalid page size
+SELECT hash_page_stats('ccc'::bytea);
+ERROR:  invalid page size
+SELECT hash_page_type('ddd'::bytea);
+ERROR:  invalid page size
+-- invalid special area size
+SELECT hash_metapage_info(get_raw_page('test_hash', 0));
+ERROR:  input page is not a valid hash page
+SELECT hash_page_items(get_raw_page('test_hash', 0));
+ERROR:  input page is not a valid hash page
+SELECT hash_page_stats(get_raw_page('test_hash', 0));
+ERROR:  input page is not a valid hash page
+SELECT hash_page_type(get_raw_page('test_hash', 0));
+ERROR:  input page is not a valid hash page
+\set VERBOSITY default
+-- Tests with all-zero pages.
+SHOW block_size \gset
+SELECT hash_metapage_info(decode(repeat('00', :block_size), 'hex'));
+ERROR:  page is not a hash meta page
+SELECT hash_page_items(decode(repeat('00', :block_size), 'hex'));
+ERROR:  page is not a hash bucket or overflow page
+SELECT hash_page_stats(decode(repeat('00', :block_size), 'hex'));
+ERROR:  page is not a hash bucket or overflow page
+SELECT hash_page_type(decode(repeat('00', :block_size), 'hex'));
+-[ RECORD 1 ]--+-------
+hash_page_type | unused
+
 DROP TABLE test_hash;

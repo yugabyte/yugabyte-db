@@ -41,7 +41,7 @@ PostgreSQL documentation
 
   <para>
    <application>dropdb</application> is a wrapper around the
-   <acronym>SQL</acronym> command <xref linkend="sql-dropdatabase"/>.
+   <acronym>SQL</acronym> command <link linkend="sql-dropdatabase"><command>DROP DATABASE</command></link>.
    There is no effective difference between dropping databases via
    this utility and via other methods for accessing the server.
   </para>
@@ -77,16 +77,6 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
-      <term><option>-i</option></term>
-      <term><option>--interactive</option></term>
-      <listitem>
-       <para>
-       Issues a verification prompt before doing anything destructive.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry>
       <term><option>-f</option></term>
       <term><option>--force</option></term>
       <listitem>
@@ -94,6 +84,16 @@ PostgreSQL documentation
         Attempt to terminate all existing connections to the target database
         before dropping it.   See <xref linkend="sql-dropdatabase"/> for more
         information on this option.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-i</option></term>
+      <term><option>--interactive</option></term>
+      <listitem>
+       <para>
+       Issues a verification prompt before doing anything destructive.
        </para>
       </listitem>
      </varlistentry>
@@ -240,6 +240,17 @@ PostgreSQL documentation
     <listitem>
      <para>
       Default connection parameters
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><envar>PG_COLOR</envar></term>
+    <listitem>
+     <para>
+      Specifies whether to use color in diagnostic messages. Possible values
+      are <literal>always</literal>, <literal>auto</literal> and
+      <literal>never</literal>.
      </para>
     </listitem>
    </varlistentry>

@@ -5,8 +5,8 @@
  * allow a manage nested conditionals.
  *
  * It is used by:
- * - "psql" interpretor for handling \if ... \endif
- * - "pgbench" interpretor for handling \if ... \endif
+ * - "psql" interpreter for handling \if ... \endif
+ * - "pgbench" interpreter for handling \if ... \endif
  * - "pgbench" syntax checker to test for proper nesting
  *
  * The stack holds the state of enclosing conditionals (are we in
@@ -14,7 +14,7 @@
  * a true branch?) so that the interpreter knows whether to execute
  * code and whether to evaluate conditions.
  *
- * Copyright (c) 2000-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2022, PostgreSQL Global Development Group
  *
  * src/include/fe_utils/conditional.h
  *
@@ -72,6 +72,8 @@ typedef struct ConditionalStackData *ConditionalStack;
 
 
 extern ConditionalStack conditional_stack_create(void);
+
+extern void conditional_stack_reset(ConditionalStack cstack);
 
 extern void conditional_stack_destroy(ConditionalStack cstack);
 

@@ -66,7 +66,7 @@ COMMENT ON
   TRIGGER <replaceable class="parameter">trigger_name</replaceable> ON <replaceable class="parameter">table_name</replaceable> |
   TYPE <replaceable class="parameter">object_name</replaceable> |
   VIEW <replaceable class="parameter">object_name</replaceable>
-} IS '<replaceable class="parameter">text</replaceable>'
+} IS { <replaceable class="parameter">string_literal</replaceable> | NULL }
 
 <phrase>where <replaceable>aggregate_signature</replaceable> is:</phrase>
 
@@ -88,6 +88,11 @@ COMMENT ON
    issue a new <command>COMMENT</command> command for the same object.  To remove a
    comment, write <literal>NULL</literal> in place of the text string.
    Comments are automatically dropped when their object is dropped.
+  </para>
+
+  <para>
+   A <literal>SHARE UPDATE EXCLUSIVE</literal> lock is acquired on the
+   object to be commented.
   </para>
 
   <para>
@@ -129,10 +134,8 @@ COMMENT ON
     <term><replaceable class="parameter">trigger_name</replaceable></term>
     <listitem>
      <para>
-      The name of the object to be commented.  Names of tables,
-      aggregates, collations, conversions, domains, foreign tables, functions,
-      indexes, operators, operator classes, operator families, procedures, routines, sequences,
-      statistics, text search objects, types, and views can be
+      The name of the object to be commented.  Names of objects that reside in
+      schemas (tables, functions, etc.) can be
       schema-qualified. When commenting on a column,
       <replaceable class="parameter">relation_name</replaceable> must refer
       to a table, view, composite type, or foreign table.
@@ -224,7 +227,7 @@ COMMENT ON
      <para>
       The data type(s) of the operator's arguments (optionally
       schema-qualified).  Write <literal>NONE</literal> for the missing argument
-      of a prefix or postfix operator.
+      of a prefix operator.
      </para>
     </listitem>
    </varlistentry>
@@ -259,11 +262,19 @@ COMMENT ON
     </varlistentry>
 
    <varlistentry>
-    <term><replaceable class="parameter">text</replaceable></term>
+    <term><replaceable class="parameter">string_literal</replaceable></term>
     <listitem>
      <para>
-      The new comment, written as a string literal; or <literal>NULL</literal>
-      to drop the comment.
+      The new comment contents, written as a string literal.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>NULL</literal></term>
+    <listitem>
+     <para>
+      Write <literal>NULL</literal> to drop the comment.
      </para>
     </listitem>
    </varlistentry>
@@ -306,7 +317,7 @@ COMMENT ON TABLE mytable IS NULL;
    Some more examples:
 
 <programlisting>
-COMMENT ON ACCESS METHOD rtree IS 'R-Tree access method';
+COMMENT ON ACCESS METHOD gin IS 'GIN index access method';
 COMMENT ON AGGREGATE my_aggregate (double precision) IS 'Computes sample variance';
 COMMENT ON CAST (text AS int4) IS 'Allow casts from text to int4';
 COMMENT ON COLLATION "fr_CA" IS 'Canadian French';
@@ -316,6 +327,7 @@ COMMENT ON CONSTRAINT bar_col_cons ON bar IS 'Constrains column col';
 COMMENT ON CONSTRAINT dom_col_constr ON DOMAIN dom IS 'Constrains col of domain';
 COMMENT ON DATABASE my_database IS 'Development Database';
 COMMENT ON DOMAIN my_domain IS 'Email Address Domain';
+COMMENT ON EVENT TRIGGER abort_ddl IS 'Aborts all DDL commands';
 COMMENT ON EXTENSION hstore IS 'implements the hstore data type';
 COMMENT ON FOREIGN DATA WRAPPER mywrapper IS 'my foreign data wrapper';
 COMMENT ON FOREIGN TABLE my_foreign_table IS 'Employee Information in other database';
@@ -330,19 +342,22 @@ COMMENT ON OPERATOR CLASS int4ops USING btree IS '4 byte integer operators for b
 COMMENT ON OPERATOR FAMILY integer_ops USING btree IS 'all integer operators for btrees';
 COMMENT ON POLICY my_policy ON mytable IS 'Filter rows by users';
 COMMENT ON PROCEDURE my_proc (integer, integer) IS 'Runs a report';
+COMMENT ON PUBLICATION alltables IS 'Publishes all operations on all tables';
 COMMENT ON ROLE my_role IS 'Administration group for finance tables';
+COMMENT ON ROUTINE my_routine (integer, integer) IS 'Runs a routine (which is a function or procedure)';
 COMMENT ON RULE my_rule ON my_table IS 'Logs updates of employee records';
 COMMENT ON SCHEMA my_schema IS 'Departmental data';
 COMMENT ON SEQUENCE my_sequence IS 'Used to generate primary keys';
 COMMENT ON SERVER myserver IS 'my foreign server';
 COMMENT ON STATISTICS my_statistics IS 'Improves planner row estimations';
+COMMENT ON SUBSCRIPTION alltables IS 'Subscription for all operations on all tables';
 COMMENT ON TABLE my_schema.my_table IS 'Employee Information';
 COMMENT ON TABLESPACE my_tablespace IS 'Tablespace for indexes';
 COMMENT ON TEXT SEARCH CONFIGURATION my_config IS 'Special word filtering';
 COMMENT ON TEXT SEARCH DICTIONARY swedish IS 'Snowball stemmer for Swedish language';
 COMMENT ON TEXT SEARCH PARSER my_parser IS 'Splits text into words';
 COMMENT ON TEXT SEARCH TEMPLATE snowball IS 'Snowball stemmer';
-COMMENT ON TRANSFORM FOR hstore LANGUAGE plpythonu IS 'Transform between hstore and Python dict';
+COMMENT ON TRANSFORM FOR hstore LANGUAGE plpython3u IS 'Transform between hstore and Python dict';
 COMMENT ON TRIGGER my_trigger ON my_table IS 'Used for RI';
 COMMENT ON TYPE complex IS 'Complex number data type';
 COMMENT ON VIEW my_view IS 'View of departmental costs';

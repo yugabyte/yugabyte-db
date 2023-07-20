@@ -22,34 +22,52 @@
   </indexterm>
 
   <para>
-   A database is a named collection of <acronym>SQL</acronym> objects
-   (<quote>database objects</quote>).  Generally, every database
-   object (tables, functions, etc.) belongs to one and only one
-   database.  (However there are a few system catalogs, for example
-   <literal>pg_database</literal>, that belong to a whole cluster and
-   are accessible from each database within the cluster.)  More
-   accurately, a database is a collection of schemas and the schemas
-   contain the tables, functions, etc.  So the full hierarchy is:
-   server, database, schema, table (or some other kind of object,
+   A small number of objects, like role, database, and tablespace
+   names, are defined at the cluster level and stored in the
+   <literal>pg_global</literal> tablespace.  Inside the cluster are
+   multiple databases, which are isolated from each other but can access
+   cluster-level objects.  Inside each database are multiple schemas,
+   which contain objects like tables and functions.  So the full hierarchy
+   is: cluster, database, schema, table (or some other kind of object,
    such as a function).
   </para>
 
   <para>
-   When connecting to the database server, a client must specify in
-   its connection request the name of the database it wants to connect
-   to. It is not possible to access more than one database per
-   connection. However, an application is not restricted in the number of
-   connections it opens to the same or other databases.  Databases are
-   physically separated and access control is managed at the
-   connection level.  If one <productname>PostgreSQL</productname> server
-   instance is to house projects or users that should be separate and
-   for the most part unaware of each other, it is therefore
-   recommended to put them into separate databases.  If the projects
-   or users are interrelated and should be able to use each other's
-   resources, they should be put in the same database but possibly
-   into separate schemas.  Schemas are a purely logical structure and who can
-   access what is managed by the privilege system.  More information about
-   managing schemas is in <xref linkend="ddl-schemas"/>.
+   When connecting to the database server, a client must specify the
+   database name in its connection request.
+   It is not possible to access more than one database per
+   connection. However, clients can open multiple connections to
+   the same database, or different databases.
+   Database-level security has two components: access control
+   (see <xref linkend="auth-pg-hba-conf"/>), managed at the
+   connection level, and authorization control
+   (see <xref linkend="ddl-priv"/>), managed via the grant system.
+   Foreign data wrappers (see <xref linkend="postgres-fdw"/>)
+   allow for objects within one database to act as proxies for objects in
+   other database or clusters.
+   The older dblink module (see <xref linkend="dblink"/>) provides a similar capability.
+   By default, all users can connect to all databases using all connection methods.
+  </para>
+
+  <para>
+   If one <productname>PostgreSQL</productname> server cluster is planned to contain
+   unrelated projects or users that should be, for the most part, unaware
+   of each other, it is recommended to put them into separate databases and
+   adjust authorizations and access controls accordingly.
+   If the projects or users are interrelated, and thus should be able to use
+   each other's resources, they should be put in the same database but probably
+   into separate schemas;  this provides a modular structure with namespace
+   isolation and authorization control.
+   More information about managing schemas is in <xref linkend="ddl-schemas"/>.
+  </para>
+
+  <para>
+   While multiple databases can be created within a single cluster, it is advised
+   to consider carefully whether the benefits outweigh the risks and limitations.
+   In particular, the impact that having a shared WAL (see <xref linkend="wal"/>)
+   has on backup and recovery options. While individual databases in the cluster
+   are isolated when considered from the user's perspective, they are closely bound
+   from the database administrator's point-of-view.
   </para>
 
   <para>
@@ -118,15 +136,21 @@ CREATE DATABASE <replaceable>name</replaceable>;
   </para>
 
   <para>
-   A second database,
-   <literal>template1</literal>,<indexterm><primary>template1</primary></indexterm>
-   is also created during database cluster initialization.  Whenever a
+   Two additional databases,
+   <literal>template1</literal><indexterm><primary>template1</primary></indexterm>
+   and
+   <literal>template0</literal>,<indexterm><primary>template0</primary></indexterm>
+   are also created during database cluster initialization.  Whenever a
    new database is created within the
    cluster, <literal>template1</literal> is essentially cloned.
    This means that any changes you make in <literal>template1</literal> are
    propagated to all subsequently created databases. Because of this,
    avoid creating objects in <literal>template1</literal> unless you want them
-   propagated to every newly created database.  More details
+   propagated to every newly created database.
+   <literal>template0</literal> is meant as a pristine copy of the original
+   contents of <literal>template1</literal>.  It can be cloned instead
+   of <literal>template1</literal> when it is important to make a database
+   without any such site-local additions.  More details
    appear in <xref linkend="manage-ag-templatedbs"/>.
   </para>
 
@@ -199,11 +223,12 @@ createdb -O <replaceable>rolename</replaceable> <replaceable>dbname</replaceable
    should never be changed after the database cluster has been
    initialized.  By instructing
    <command>CREATE DATABASE</command> to copy <literal>template0</literal> instead
-   of <literal>template1</literal>, you can create a <quote>virgin</quote> user
-   database that contains none of the site-local additions in
+   of <literal>template1</literal>, you can create a <quote>pristine</quote> user
+   database (one where no user-defined objects exist and where the system
+   objects have not been altered) that contains none of the site-local additions in
    <literal>template1</literal>.  This is particularly handy when restoring a
    <literal>pg_dump</literal> dump: the dump script should be restored in a
-   virgin database to ensure that one recreates the correct contents
+   pristine database to ensure that one recreates the correct contents
    of the dumped database, without conflicting with objects that
    might have been added to <literal>template1</literal> later on.
   </para>
@@ -387,7 +412,7 @@ dropdb <replaceable class="parameter">dbname</replaceable>
      of data files. They are dependent on metadata contained in the main
      data directory, and therefore cannot be attached to a different
      database cluster or backed up individually.  Similarly, if you lose
-     a tablespace (file deletion, disk failure, etc), the database cluster
+     a tablespace (file deletion, disk failure, etc.), the database cluster
      might become unreadable or unable to start.  Placing a tablespace
      on a temporary file system like a RAM disk risks the reliability of
      the entire cluster.

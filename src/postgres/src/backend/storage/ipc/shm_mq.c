@@ -8,10 +8,10 @@
  * and only the receiver may receive.  This is intended to allow a user
  * backend to communicate with worker backends that it has registered.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * src/include/storage/shm_mq.h
+ * src/backend/storage/ipc/shm_mq.c
  *
  *-------------------------------------------------------------------------
  */
@@ -20,10 +20,12 @@
 
 #include "miscadmin.h"
 #include "pgstat.h"
+#include "port/pg_bitutils.h"
 #include "postmaster/bgworker.h"
 #include "storage/procsignal.h"
 #include "storage/shm_mq.h"
 #include "storage/spin.h"
+#include "utils/memutils.h"
 
 /*
  * This structure represents the actual queue, stored in shared memory.
@@ -107,6 +109,12 @@ struct shm_mq
  * locally by copying the chunks into a backend-local buffer.  mqh_buffer is
  * the buffer, and mqh_buflen is the number of bytes allocated for it.
  *
+ * mqh_send_pending, is number of bytes that is written to the queue but not
+ * yet updated in the shared memory.  We will not update it until the written
+ * data is 1/4th of the ring size or the tuple queue is full.  This will
+ * prevent frequent CPU cache misses, and it will also avoid frequent
+ * SetLatch() calls, which are quite expensive.
+ *
  * mqh_partial_bytes, mqh_expected_bytes, and mqh_length_word_complete
  * are used to track the state of non-blocking operations.  When the caller
  * attempts a non-blocking operation that returns SHM_MQ_WOULD_BLOCK, they
@@ -135,6 +143,7 @@ struct shm_mq_handle
 	char	   *mqh_buffer;
 	Size		mqh_buflen;
 	Size		mqh_consume_pending;
+	Size		mqh_send_pending;
 	Size		mqh_partial_bytes;
 	Size		mqh_expected_bytes;
 	bool		mqh_length_word_complete;
@@ -144,14 +153,14 @@ struct shm_mq_handle
 
 static void shm_mq_detach_internal(shm_mq *mq);
 static shm_mq_result shm_mq_send_bytes(shm_mq_handle *mqh, Size nbytes,
-				  const void *data, bool nowait, Size *bytes_written);
+									   const void *data, bool nowait, Size *bytes_written);
 static shm_mq_result shm_mq_receive_bytes(shm_mq_handle *mqh,
-					 Size bytes_needed, bool nowait, Size *nbytesp,
-					 void **datap);
+										  Size bytes_needed, bool nowait, Size *nbytesp,
+										  void **datap);
 static bool shm_mq_counterparty_gone(shm_mq *mq,
-						 BackgroundWorkerHandle *handle);
+									 BackgroundWorkerHandle *handle);
 static bool shm_mq_wait_internal(shm_mq *mq, PGPROC **ptr,
-					 BackgroundWorkerHandle *handle);
+								 BackgroundWorkerHandle *handle);
 static void shm_mq_inc_bytes_read(shm_mq *mq, Size n);
 static void shm_mq_inc_bytes_written(shm_mq *mq, Size n);
 static void shm_mq_detach_callback(dsm_segment *seg, Datum arg);
@@ -290,6 +299,7 @@ shm_mq_attach(shm_mq *mq, dsm_segment *seg, BackgroundWorkerHandle *handle)
 	mqh->mqh_buffer = NULL;
 	mqh->mqh_buflen = 0;
 	mqh->mqh_consume_pending = 0;
+	mqh->mqh_send_pending = 0;
 	mqh->mqh_partial_bytes = 0;
 	mqh->mqh_expected_bytes = 0;
 	mqh->mqh_length_word_complete = false;
@@ -317,14 +327,15 @@ shm_mq_set_handle(shm_mq_handle *mqh, BackgroundWorkerHandle *handle)
  * Write a message into a shared message queue.
  */
 shm_mq_result
-shm_mq_send(shm_mq_handle *mqh, Size nbytes, const void *data, bool nowait)
+shm_mq_send(shm_mq_handle *mqh, Size nbytes, const void *data, bool nowait,
+			bool force_flush)
 {
 	shm_mq_iovec iov;
 
 	iov.data = data;
 	iov.len = nbytes;
 
-	return shm_mq_sendv(mqh, &iov, 1, nowait);
+	return shm_mq_sendv(mqh, &iov, 1, nowait, force_flush);
 }
 
 /*
@@ -341,9 +352,15 @@ shm_mq_send(shm_mq_handle *mqh, Size nbytes, const void *data, bool nowait)
  * arguments, each time the process latch is set.  (Once begun, the sending
  * of a message cannot be aborted except by detaching from the queue; changing
  * the length or payload will corrupt the queue.)
+ *
+ * When force_flush = true, we immediately update the shm_mq's mq_bytes_written
+ * and notify the receiver (if it is already attached).  Otherwise, we don't
+ * update it until we have written an amount of data greater than 1/4th of the
+ * ring size.
  */
 shm_mq_result
-shm_mq_sendv(shm_mq_handle *mqh, shm_mq_iovec *iov, int iovcnt, bool nowait)
+shm_mq_sendv(shm_mq_handle *mqh, shm_mq_iovec *iov, int iovcnt, bool nowait,
+			 bool force_flush)
 {
 	shm_mq_result res;
 	shm_mq	   *mq = mqh->mqh_queue;
@@ -359,6 +376,13 @@ shm_mq_sendv(shm_mq_handle *mqh, shm_mq_iovec *iov, int iovcnt, bool nowait)
 	/* Compute total size of write. */
 	for (i = 0; i < iovcnt; ++i)
 		nbytes += iov[i].len;
+
+	/* Prevent writing messages overwhelming the receiver. */
+	if (nbytes > MaxAllocSize)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("cannot send a message of size %zu via shared memory queue",
+						nbytes)));
 
 	/* Try to write, or finish writing, the length word into the buffer. */
 	while (!mqh->mqh_length_word_complete)
@@ -494,8 +518,7 @@ shm_mq_sendv(shm_mq_handle *mqh, shm_mq_iovec *iov, int iovcnt, bool nowait)
 
 	/*
 	 * If the counterparty is known to have attached, we can read mq_receiver
-	 * without acquiring the spinlock and assume it isn't NULL.  Otherwise,
-	 * more caution is needed.
+	 * without acquiring the spinlock.  Otherwise, more caution is needed.
 	 */
 	if (mqh->mqh_counterparty_attached)
 		receiver = mq->mq_receiver;
@@ -504,13 +527,23 @@ shm_mq_sendv(shm_mq_handle *mqh, shm_mq_iovec *iov, int iovcnt, bool nowait)
 		SpinLockAcquire(&mq->mq_mutex);
 		receiver = mq->mq_receiver;
 		SpinLockRelease(&mq->mq_mutex);
-		if (receiver == NULL)
-			return SHM_MQ_SUCCESS;
-		mqh->mqh_counterparty_attached = true;
+		if (receiver != NULL)
+			mqh->mqh_counterparty_attached = true;
 	}
 
-	/* Notify receiver of the newly-written data, and return. */
-	SetLatch(&receiver->procLatch);
+	/*
+	 * If the caller has requested force flush or we have written more than
+	 * 1/4 of the ring size, mark it as written in shared memory and notify
+	 * the receiver.
+	 */
+	if (force_flush || mqh->mqh_send_pending > (mq->mq_ring_size >> 2))
+	{
+		shm_mq_inc_bytes_written(mq, mqh->mqh_send_pending);
+		if (receiver != NULL)
+			SetLatch(&receiver->procLatch);
+		mqh->mqh_send_pending = 0;
+	}
+
 	return SHM_MQ_SUCCESS;
 }
 
@@ -675,6 +708,17 @@ shm_mq_receive(shm_mq_handle *mqh, Size *nbytesp, void **datap, bool nowait)
 	}
 	nbytes = mqh->mqh_expected_bytes;
 
+	/*
+	 * Should be disallowed on the sending side already, but better check and
+	 * error out on the receiver side as well rather than trying to read a
+	 * prohibitively large message.
+	 */
+	if (nbytes > MaxAllocSize)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("invalid message size %zu in shared memory queue",
+						nbytes)));
+
 	if (mqh->mqh_partial_bytes == 0)
 	{
 		/*
@@ -701,10 +745,14 @@ shm_mq_receive(shm_mq_handle *mqh, Size *nbytesp, void **datap, bool nowait)
 		 */
 		if (mqh->mqh_buflen < nbytes)
 		{
-			Size		newbuflen = Max(mqh->mqh_buflen, MQH_INITIAL_BUFSIZE);
+			Size		newbuflen;
 
-			while (newbuflen < nbytes)
-				newbuflen *= 2;
+			/*
+			 * Increase size to the next power of 2 that's >= nbytes, but
+			 * limit to MaxAllocSize.
+			 */
+			newbuflen = pg_nextpower2_size_t(nbytes);
+			newbuflen = Min(newbuflen, MaxAllocSize);
 
 			if (mqh->mqh_buffer != NULL)
 			{
@@ -724,8 +772,11 @@ shm_mq_receive(shm_mq_handle *mqh, Size *nbytesp, void **datap, bool nowait)
 
 		/* Copy as much as we can. */
 		Assert(mqh->mqh_partial_bytes + rb <= nbytes);
-		memcpy(&mqh->mqh_buffer[mqh->mqh_partial_bytes], rawdata, rb);
-		mqh->mqh_partial_bytes += rb;
+		if (rb > 0)
+		{
+			memcpy(&mqh->mqh_buffer[mqh->mqh_partial_bytes], rawdata, rb);
+			mqh->mqh_partial_bytes += rb;
+		}
 
 		/*
 		 * Update count of bytes that can be consumed, accounting for
@@ -792,6 +843,13 @@ shm_mq_wait_for_attach(shm_mq_handle *mqh)
 void
 shm_mq_detach(shm_mq_handle *mqh)
 {
+	/* Before detaching, notify the receiver about any already-written data. */
+	if (mqh->mqh_send_pending > 0)
+	{
+		shm_mq_inc_bytes_written(mqh->mqh_queue, mqh->mqh_send_pending);
+		mqh->mqh_send_pending = 0;
+	}
+
 	/* Notify counterparty that we're outta here. */
 	shm_mq_detach_internal(mqh->mqh_queue);
 
@@ -870,7 +928,7 @@ shm_mq_send_bytes(shm_mq_handle *mqh, Size nbytes, const void *data,
 
 		/* Compute number of ring buffer bytes used and available. */
 		rb = pg_atomic_read_u64(&mq->mq_bytes_read);
-		wb = pg_atomic_read_u64(&mq->mq_bytes_written);
+		wb = pg_atomic_read_u64(&mq->mq_bytes_written) + mqh->mqh_send_pending;
 		Assert(wb >= rb);
 		used = wb - rb;
 		Assert(used <= ringsize);
@@ -927,6 +985,9 @@ shm_mq_send_bytes(shm_mq_handle *mqh, Size nbytes, const void *data,
 		}
 		else if (available == 0)
 		{
+			/* Update the pending send bytes in the shared memory. */
+			shm_mq_inc_bytes_written(mq, mqh->mqh_send_pending);
+
 			/*
 			 * Since mq->mqh_counterparty_attached is known to be true at this
 			 * point, mq_receiver has been set, and it can't change once set.
@@ -934,6 +995,12 @@ shm_mq_send_bytes(shm_mq_handle *mqh, Size nbytes, const void *data,
 			 */
 			Assert(mqh->mqh_counterparty_attached);
 			SetLatch(&mq->mq_receiver->procLatch);
+
+			/*
+			 * We have just updated the mqh_send_pending bytes in the shared
+			 * memory so reset it.
+			 */
+			mqh->mqh_send_pending = 0;
 
 			/* Skip manipulation of our latch if nowait = true. */
 			if (nowait)
@@ -949,7 +1016,8 @@ shm_mq_send_bytes(shm_mq_handle *mqh, Size nbytes, const void *data,
 			 * at top of loop, because setting an already-set latch is much
 			 * cheaper than setting one that has been reset.
 			 */
-			WaitLatch(MyLatch, WL_LATCH_SET, 0, WAIT_EVENT_MQ_SEND);
+			(void) WaitLatch(MyLatch, WL_LATCH_SET | WL_EXIT_ON_PM_DEATH, 0,
+							 WAIT_EVENT_MQ_SEND);
 
 			/* Reset the latch so we don't spin. */
 			ResetLatch(MyLatch);
@@ -984,13 +1052,14 @@ shm_mq_send_bytes(shm_mq_handle *mqh, Size nbytes, const void *data,
 			 * MAXIMUM_ALIGNOF, and each read is as well.
 			 */
 			Assert(sent == nbytes || sendnow == MAXALIGN(sendnow));
-			shm_mq_inc_bytes_written(mq, MAXALIGN(sendnow));
 
 			/*
-			 * For efficiency, we don't set the reader's latch here.  We'll do
-			 * that only when the buffer fills up or after writing an entire
-			 * message.
+			 * For efficiency, we don't update the bytes written in the shared
+			 * memory and also don't set the reader's latch here.  Refer to
+			 * the comments atop the shm_mq_handle structure for more
+			 * information.
 			 */
+			mqh->mqh_send_pending += MAXALIGN(sendnow);
 		}
 	}
 
@@ -1093,7 +1162,8 @@ shm_mq_receive_bytes(shm_mq_handle *mqh, Size bytes_needed, bool nowait,
 		 * loop, because setting an already-set latch is much cheaper than
 		 * setting one that has been reset.
 		 */
-		WaitLatch(MyLatch, WL_LATCH_SET, 0, WAIT_EVENT_MQ_RECEIVE);
+		(void) WaitLatch(MyLatch, WL_LATCH_SET | WL_EXIT_ON_PM_DEATH, 0,
+						 WAIT_EVENT_MQ_RECEIVE);
 
 		/* Reset the latch so we don't spin. */
 		ResetLatch(MyLatch);
@@ -1180,8 +1250,9 @@ shm_mq_wait_internal(shm_mq *mq, PGPROC **ptr, BackgroundWorkerHandle *handle)
 			}
 		}
 
-		/* Wait to be signalled. */
-		WaitLatch(MyLatch, WL_LATCH_SET, 0, WAIT_EVENT_MQ_INTERNAL);
+		/* Wait to be signaled. */
+		(void) WaitLatch(MyLatch, WL_LATCH_SET | WL_EXIT_ON_PM_DEATH, 0,
+						 WAIT_EVENT_MQ_INTERNAL);
 
 		/* Reset the latch so we don't spin. */
 		ResetLatch(MyLatch);
@@ -1235,7 +1306,7 @@ shm_mq_inc_bytes_written(shm_mq *mq, Size n)
 	/*
 	 * Separate prior reads of mq_ring from the write of mq_bytes_written
 	 * which we're about to do.  Pairs with the read barrier found in
-	 * shm_mq_get_receive_bytes.
+	 * shm_mq_receive_bytes.
 	 */
 	pg_write_barrier();
 
@@ -1248,7 +1319,7 @@ shm_mq_inc_bytes_written(shm_mq *mq, Size n)
 						pg_atomic_read_u64(&mq->mq_bytes_written) + n);
 }
 
-/* Shim for on_dsm_callback. */
+/* Shim for on_dsm_detach callback. */
 static void
 shm_mq_detach_callback(dsm_segment *seg, Datum arg)
 {

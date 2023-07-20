@@ -9,7 +9,7 @@
  * contains variables.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -22,8 +22,9 @@
 
 #include "access/sysattr.h"
 #include "nodes/nodeFuncs.h"
+#include "optimizer/optimizer.h"
+#include "optimizer/placeholder.h"
 #include "optimizer/prep.h"
-#include "optimizer/var.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteManip.h"
 
@@ -31,6 +32,7 @@
 typedef struct
 {
 	Relids		varnos;
+	PlannerInfo *root;
 	int			sublevels_up;
 } pull_varnos_context;
 
@@ -38,6 +40,13 @@ typedef struct
 {
 	Bitmapset  *varattnos;
 	Index		varno;
+
+	/* Because of special hidden columns, the actual column attribute number has some offset
+	 * from the logical number. Column "1" would have attribute number as "1 - offset". In
+	 * postgres original code, this offset is always FirstLowInvalidHeapAttributeNumber. For
+	 * Yugabyte, this offset can be flexible.
+	 */
+	AttrNumber  yb_attr_offset;
 } pull_varattnos_context;
 
 typedef struct
@@ -60,27 +69,26 @@ typedef struct
 
 typedef struct
 {
-	PlannerInfo *root;
+	Query	   *query;			/* outer Query */
 	int			sublevels_up;
 	bool		possible_sublink;	/* could aliases include a SubLink? */
 	bool		inserted_sublink;	/* have we inserted a SubLink? */
 } flatten_join_alias_vars_context;
 
-static bool pull_varnos_walker(Node *node, pull_varnos_context *context);
+static bool pull_varnos_walker(Node *node,
+							   pull_varnos_context *context);
 static bool pull_varattnos_walker(Node *node, pull_varattnos_context *context);
-static bool pull_varattnos_walker_min_attr(Node *node, pull_varattnos_context *context,
-																					 AttrNumber min_attr);
 static bool pull_vars_walker(Node *node, pull_vars_context *context);
 
 static bool contain_var_clause_walker(Node *node, void *context);
 static bool contain_vars_of_level_walker(Node *node, int *sublevels_up);
 static bool locate_var_of_level_walker(Node *node,
-						   locate_var_of_level_context *context);
+									   locate_var_of_level_context *context);
 static bool pull_var_clause_walker(Node *node,
-					   pull_var_clause_context *context);
+								   pull_var_clause_context *context);
 static Node *flatten_join_alias_vars_mutator(Node *node,
-								flatten_join_alias_vars_context *context);
-static Relids alias_relid_set(PlannerInfo *root, Relids relids);
+											 flatten_join_alias_vars_context *context);
+static Relids alias_relid_set(Query *query, Relids relids);
 
 
 /*
@@ -88,17 +96,21 @@ static Relids alias_relid_set(PlannerInfo *root, Relids relids);
  *		Create a set of all the distinct varnos present in a parsetree.
  *		Only varnos that reference level-zero rtable entries are considered.
  *
+ * "root" can be passed as NULL if it is not necessary to process
+ * PlaceHolderVars.
+ *
  * NOTE: this is used on not-yet-planned expressions.  It may therefore find
  * bare SubLinks, and if so it needs to recurse into them to look for uplevel
  * references to the desired rtable level!	But when we find a completed
  * SubPlan, we only need to look at the parameters passed to the subplan.
  */
 Relids
-pull_varnos(Node *node)
+pull_varnos(PlannerInfo *root, Node *node)
 {
 	pull_varnos_context context;
 
 	context.varnos = NULL;
+	context.root = root;
 	context.sublevels_up = 0;
 
 	/*
@@ -119,11 +131,12 @@ pull_varnos(Node *node)
  *		Only Vars of the specified level are considered.
  */
 Relids
-pull_varnos_of_level(Node *node, int levelsup)
+pull_varnos_of_level(PlannerInfo *root, Node *node, int levelsup)
 {
 	pull_varnos_context context;
 
 	context.varnos = NULL;
+	context.root = root;
 	context.sublevels_up = levelsup;
 
 	/*
@@ -161,33 +174,95 @@ pull_varnos_walker(Node *node, pull_varnos_context *context)
 	}
 	if (IsA(node, PlaceHolderVar))
 	{
-		/*
-		 * A PlaceHolderVar acts as a variable of its syntactic scope, or
-		 * lower than that if it references only a subset of the rels in its
-		 * syntactic scope.  It might also contain lateral references, but we
-		 * should ignore such references when computing the set of varnos in
-		 * an expression tree.  Also, if the PHV contains no variables within
-		 * its syntactic scope, it will be forced to be evaluated exactly at
-		 * the syntactic scope, so take that as the relid set.
-		 */
 		PlaceHolderVar *phv = (PlaceHolderVar *) node;
-		pull_varnos_context subcontext;
 
-		subcontext.varnos = NULL;
-		subcontext.sublevels_up = context->sublevels_up;
-		(void) pull_varnos_walker((Node *) phv->phexpr, &subcontext);
-		if (phv->phlevelsup == context->sublevels_up)
+		/*
+		 * If a PlaceHolderVar is not of the target query level, ignore it,
+		 * instead recursing into its expression to see if it contains any
+		 * vars that are of the target level.  We'll also do that when the
+		 * caller doesn't pass a "root" pointer.  (We probably shouldn't see
+		 * PlaceHolderVars at all in such cases, but if we do, this is a
+		 * reasonable behavior.)
+		 */
+		if (phv->phlevelsup == context->sublevels_up &&
+			context->root != NULL)
 		{
-			subcontext.varnos = bms_int_members(subcontext.varnos,
-												phv->phrels);
-			if (bms_is_empty(subcontext.varnos))
+			/*
+			 * Ideally, the PHV's contribution to context->varnos is its
+			 * ph_eval_at set.  However, this code can be invoked before
+			 * that's been computed.  If we cannot find a PlaceHolderInfo,
+			 * fall back to the conservative assumption that the PHV will be
+			 * evaluated at its syntactic level (phv->phrels).
+			 *
+			 * There is a second hazard: this code is also used to examine
+			 * qual clauses during deconstruct_jointree, when we may have a
+			 * PlaceHolderInfo but its ph_eval_at value is not yet final, so
+			 * that theoretically we could obtain a relid set that's smaller
+			 * than we'd see later on.  That should never happen though,
+			 * because we deconstruct the jointree working upwards.  Any outer
+			 * join that forces delay of evaluation of a given qual clause
+			 * will be processed before we examine that clause here, so the
+			 * ph_eval_at value should have been updated to include it.
+			 *
+			 * Another problem is that a PlaceHolderVar can appear in quals or
+			 * tlists that have been translated for use in a child appendrel.
+			 * Typically such a PHV is a parameter expression sourced by some
+			 * other relation, so that the translation from parent appendrel
+			 * to child doesn't change its phrels, and we should still take
+			 * ph_eval_at at face value.  But in corner cases, the PHV's
+			 * original phrels can include the parent appendrel itself, in
+			 * which case the translated PHV will have the child appendrel in
+			 * phrels, and we must translate ph_eval_at to match.
+			 */
+			PlaceHolderInfo *phinfo = NULL;
+
+			if (phv->phlevelsup == 0)
+			{
+				ListCell   *lc;
+
+				foreach(lc, context->root->placeholder_list)
+				{
+					phinfo = (PlaceHolderInfo *) lfirst(lc);
+					if (phinfo->phid == phv->phid)
+						break;
+					phinfo = NULL;
+				}
+			}
+			if (phinfo == NULL)
+			{
+				/* No PlaceHolderInfo yet, use phrels */
 				context->varnos = bms_add_members(context->varnos,
 												  phv->phrels);
+			}
+			else if (bms_equal(phv->phrels, phinfo->ph_var->phrels))
+			{
+				/* Normal case: use ph_eval_at */
+				context->varnos = bms_add_members(context->varnos,
+												  phinfo->ph_eval_at);
+			}
+			else
+			{
+				/* Translated PlaceHolderVar: translate ph_eval_at to match */
+				Relids		newevalat,
+							delta;
+
+				/* remove what was removed from phv->phrels ... */
+				delta = bms_difference(phinfo->ph_var->phrels, phv->phrels);
+				newevalat = bms_difference(phinfo->ph_eval_at, delta);
+				/* ... then if that was in fact part of ph_eval_at ... */
+				if (!bms_equal(newevalat, phinfo->ph_eval_at))
+				{
+					/* ... add what was added */
+					delta = bms_difference(phv->phrels, phinfo->ph_var->phrels);
+					newevalat = bms_join(newevalat, delta);
+				}
+				context->varnos = bms_join(context->varnos,
+										   newevalat);
+			}
+			return false;		/* don't recurse into expression */
 		}
-		context->varnos = bms_join(context->varnos, subcontext.varnos);
-		return false;
 	}
-	if (IsA(node, Query))
+	else if (IsA(node, Query))
 	{
 		/* Recurse into RTE subquery or not-yet-planned sublink subquery */
 		bool		result;
@@ -225,6 +300,9 @@ pull_varattnos(Node *node, Index varno, Bitmapset **varattnos)
 	context.varattnos = *varattnos;
 	context.varno = varno;
 
+	/* For Postgres processing, min attribute is always FirstLowInvalidHeapAttributeNumber. */
+	context.yb_attr_offset = FirstLowInvalidHeapAttributeNumber;
+
 	(void) pull_varattnos_walker(node, &context);
 
 	*varattnos = context.varattnos;
@@ -241,8 +319,7 @@ pull_varattnos_walker(Node *node, pull_varattnos_context *context)
 
 		if (var->varno == context->varno && var->varlevelsup == 0)
 			context->varattnos =
-				bms_add_member(context->varattnos,
-							   var->varattno - FirstLowInvalidHeapAttributeNumber);
+				bms_add_member(context->varattnos, var->varattno - context->yb_attr_offset);
 		return false;
 	}
 
@@ -254,8 +331,10 @@ pull_varattnos_walker(Node *node, pull_varattnos_context *context)
 }
 
 /*
- * The same as pull_varattnos() but attribute numbers are offset by
- * (rel->min_attr - 1) instead of FirstLowInvalidHeapAttributeNumber.
+ * This is the same as pull_varattnos(), but Yugabyte will offset the attr by (rel->min_attr - 1)
+ * instead of hardcoding to FirstLowInvalidHeapAttributeNumber.
+ *
+ * TODO(neil) Combine "pull_varattnos_min_attr" with postgres function. No need to have two.
  */
 void
 pull_varattnos_min_attr(Node *node, Index varno, Bitmapset **varattnos, AttrNumber min_attr)
@@ -264,38 +343,12 @@ pull_varattnos_min_attr(Node *node, Index varno, Bitmapset **varattnos, AttrNumb
 
 	context.varattnos = *varattnos;
 	context.varno = varno;
+	context.yb_attr_offset = min_attr - 1;
 
-	(void) pull_varattnos_walker_min_attr(node, &context, min_attr);
+	(void) pull_varattnos_walker(node, &context);
 
 	*varattnos = context.varattnos;
 }
-
-/*
- * The same as pull_varattnos_walker() but attribute numbers are offset by
- * (rel->min_attr - 1) instead of FirstLowInvalidHeapAttributeNumber.
- */
-static bool
-pull_varattnos_walker_min_attr(Node *node, pull_varattnos_context *context, AttrNumber min_attr)
-{
-	if (node == NULL)
-		return false;
-	if (IsA(node, Var))
-	{
-		Var		   *var = (Var *) node;
-
-		if (var->varno == context->varno && var->varlevelsup == 0)
-			context->varattnos = bms_add_member(context->varattnos, var->varattno - min_attr + 1);
-		return false;
-	}
-
-	/* Should not find an unplanned subquery */
-	Assert(!IsA(node, Query));
-
-	return expression_tree_walker_min_attr(node,
-																				 (pull_varattnos_walker_ptr)pull_varattnos_walker_min_attr,
-																				 (void *) context, min_attr);
-}
-
 
 /*
  * pull_vars_of_level
@@ -562,7 +615,7 @@ locate_var_of_level_walker(Node *node,
  *	  Vars within a PHV's expression are included in the result only
  *	  when PVC_RECURSE_PLACEHOLDERS is specified.
  *
- *	  GroupingFuncs are treated mostly like Aggrefs, and so do not need
+ *	  GroupingFuncs are treated exactly like Aggrefs, and so do not need
  *	  their own flag bits.
  *
  *	  CurrentOfExpr nodes are ignored in all cases.
@@ -637,13 +690,7 @@ pull_var_clause_walker(Node *node, pull_var_clause_context *context)
 		}
 		else if (context->flags & PVC_RECURSE_AGGREGATES)
 		{
-			/*
-			 * We do NOT descend into the contained expression, even if the
-			 * caller asked for it, because we never actually evaluate it -
-			 * the result is driven entirely off the associated GROUP BY
-			 * clause, so we never need to extract the actual Vars here.
-			 */
-			return false;
+			/* fall through to recurse into the GroupingFunc's arguments */
 		}
 		else
 			elog(ERROR, "GROUPING found where not expected");
@@ -712,16 +759,16 @@ pull_var_clause_walker(Node *node, pull_var_clause_context *context)
  * subqueries).
  */
 Node *
-flatten_join_alias_vars(PlannerInfo *root, Node *node)
+flatten_join_alias_vars(Query *query, Node *node)
 {
 	flatten_join_alias_vars_context context;
 
-	context.root = root;
+	context.query = query;
 	context.sublevels_up = 0;
 	/* flag whether join aliases could possibly contain SubLinks */
-	context.possible_sublink = root->parse->hasSubLinks;
+	context.possible_sublink = query->hasSubLinks;
 	/* if hasSubLinks is already true, no need to work hard */
-	context.inserted_sublink = root->parse->hasSubLinks;
+	context.inserted_sublink = query->hasSubLinks;
 
 	return flatten_join_alias_vars_mutator(node, &context);
 }
@@ -741,7 +788,7 @@ flatten_join_alias_vars_mutator(Node *node,
 		/* No change unless Var belongs to a JOIN of the target level */
 		if (var->varlevelsup != context->sublevels_up)
 			return node;		/* no need to copy, really */
-		rte = rt_fetch(var->varno, context->root->parse->rtable);
+		rte = rt_fetch(var->varno, context->query->rtable);
 		if (rte->rtekind != RTE_JOIN)
 			return node;
 		if (var->varattno == InvalidAttrNumber)
@@ -750,16 +797,13 @@ flatten_join_alias_vars_mutator(Node *node,
 			RowExpr    *rowexpr;
 			List	   *fields = NIL;
 			List	   *colnames = NIL;
-			AttrNumber	attnum;
 			ListCell   *lv;
 			ListCell   *ln;
 
-			attnum = 0;
 			Assert(list_length(rte->joinaliasvars) == list_length(rte->eref->colnames));
 			forboth(lv, rte->joinaliasvars, ln, rte->eref->colnames)
 			{
 				newvar = (Node *) lfirst(lv);
-				attnum++;
 				/* Ignore dropped columns */
 				if (newvar == NULL)
 					continue;
@@ -785,6 +829,7 @@ flatten_join_alias_vars_mutator(Node *node,
 			rowexpr->args = fields;
 			rowexpr->row_typeid = var->vartype;
 			rowexpr->row_format = COERCE_IMPLICIT_CAST;
+			/* vartype will always be RECORDOID, so we always need colnames */
 			rowexpr->colnames = colnames;
 			rowexpr->location = var->location;
 
@@ -828,7 +873,7 @@ flatten_join_alias_vars_mutator(Node *node,
 		/* now fix PlaceHolderVar's relid sets */
 		if (phv->phlevelsup == context->sublevels_up)
 		{
-			phv->phrels = alias_relid_set(context->root,
+			phv->phrels = alias_relid_set(context->query,
 										  phv->phrels);
 		}
 		return (Node *) phv;
@@ -868,7 +913,7 @@ flatten_join_alias_vars_mutator(Node *node,
  * underlying base relids
  */
 static Relids
-alias_relid_set(PlannerInfo *root, Relids relids)
+alias_relid_set(Query *query, Relids relids)
 {
 	Relids		result = NULL;
 	int			rtindex;
@@ -876,10 +921,10 @@ alias_relid_set(PlannerInfo *root, Relids relids)
 	rtindex = -1;
 	while ((rtindex = bms_next_member(relids, rtindex)) >= 0)
 	{
-		RangeTblEntry *rte = rt_fetch(rtindex, root->parse->rtable);
+		RangeTblEntry *rte = rt_fetch(rtindex, query->rtable);
 
 		if (rte->rtekind == RTE_JOIN)
-			result = bms_join(result, get_relids_for_join(root, rtindex));
+			result = bms_join(result, get_relids_for_join(query, rtindex));
 		else
 			result = bms_add_member(result, rtindex);
 	}

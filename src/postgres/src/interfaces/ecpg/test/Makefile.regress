@@ -15,13 +15,11 @@ ECPG = ../../preproc/ecpg --regression -I$(srcdir)/../../include -I$(srcdir)
 # Files that most or all ecpg preprocessor test outputs depend on
 ECPG_TEST_DEPENDENCIES = ../../preproc/ecpg$(X) \
 	$(srcdir)/../regression.h \
+	$(srcdir)/../printf_hack.h \
 	$(srcdir)/../../include/sqlca.h \
 	$(srcdir)/../../include/sqlda.h \
 	$(srcdir)/../../include/sqltypes.h \
 	$(srcdir)/../../include/sql3types.h
-
-%: %.o
-	$(CC) $(CFLAGS) $< $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@
 
 # Caution: this build rule is overridden in some child Makefiles
 # where it's necessary to use nondefault switches to ecpg;

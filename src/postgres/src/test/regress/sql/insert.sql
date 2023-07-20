@@ -38,6 +38,28 @@ select col1, col2, char_length(col3) from inserttest;
 drop table inserttest;
 
 --
+-- tuple larger than fillfactor
+--
+CREATE TABLE large_tuple_test (a int, b text) WITH (fillfactor = 10);
+ALTER TABLE large_tuple_test ALTER COLUMN b SET STORAGE plain;
+
+-- create page w/ free space in range [nearlyEmptyFreeSpace, MaxHeapTupleSize)
+INSERT INTO large_tuple_test (select 1, NULL);
+
+-- should still fit on the page
+INSERT INTO large_tuple_test (select 2, repeat('a', 1000));
+SELECT pg_size_pretty(pg_relation_size('large_tuple_test'::regclass, 'main'));
+
+-- add small record to the second page
+INSERT INTO large_tuple_test (select 3, NULL);
+
+-- now this tuple won't fit on the second page, but the insert should
+-- still succeed by extending the relation
+INSERT INTO large_tuple_test (select 4, repeat('a', 8126));
+
+DROP TABLE large_tuple_test;
+
+--
 -- check indirection (field/array assignment), cf bug #14265
 --
 -- these tests are aware that transformInsertStmt has 3 separate code paths
@@ -228,33 +250,6 @@ select tableoid::regclass::text, a, min(b) as min_b, max(b) as max_b from list_p
 
 -- direct partition inserts should check hash partition bound constraint
 
--- Use hand-rolled hash functions and operator classes to get predictable
--- result on different matchines.  The hash function for int4 simply returns
--- the sum of the values passed to it and the one for text returns the length
--- of the non-empty string value passed to it or 0.
-
-create or replace function part_hashint4_noop(value int4, seed int8)
-returns int8 as $$
-select value + seed;
-$$ language sql immutable;
-
-create operator class part_test_int4_ops
-for type int4
-using hash as
-operator 1 =,
-function 2 part_hashint4_noop(int4, int8);
-
-create or replace function part_hashtext_length(value text, seed int8)
-RETURNS int8 AS $$
-select length(coalesce(value, ''))::int8
-$$ language sql immutable;
-
-create operator class part_test_text_ops
-for type text
-using hash as
-operator 1 =,
-function 2 part_hashtext_length(text, int8);
-
 create table hash_parted (
 	a int
 ) partition by hash (a part_test_int4_ops);
@@ -401,6 +396,41 @@ insert into mlparted values (70, 100);
 
 select tableoid::regclass, * from mlparted_def;
 
+-- Check multi-level tuple routing with attributes dropped from the
+-- top-most parent.  First remove the last attribute.
+alter table mlparted add d int, add e int;
+alter table mlparted drop e;
+create table mlparted5 partition of mlparted
+  for values from (1, 40) to (1, 50) partition by range (c);
+create table mlparted5_ab partition of mlparted5
+  for values from ('a') to ('c') partition by list (c);
+-- This partitioned table should remain with no partitions.
+create table mlparted5_cd partition of mlparted5
+  for values from ('c') to ('e') partition by list (c);
+create table mlparted5_a partition of mlparted5_ab for values in ('a');
+create table mlparted5_b (d int, b int, c text, a int);
+alter table mlparted5_ab attach partition mlparted5_b for values in ('b');
+truncate mlparted;
+insert into mlparted values (1, 2, 'a', 1);
+insert into mlparted values (1, 40, 'a', 1);  -- goes to mlparted5_a
+insert into mlparted values (1, 45, 'b', 1);  -- goes to mlparted5_b
+insert into mlparted values (1, 45, 'c', 1);  -- goes to mlparted5_cd, fails
+insert into mlparted values (1, 45, 'f', 1);  -- goes to mlparted5, fails
+select tableoid::regclass, * from mlparted order by a, b, c, d;
+alter table mlparted drop d;
+truncate mlparted;
+-- Remove the before last attribute.
+alter table mlparted add e int, add d int;
+alter table mlparted drop e;
+insert into mlparted values (1, 2, 'a', 1);
+insert into mlparted values (1, 40, 'a', 1);  -- goes to mlparted5_a
+insert into mlparted values (1, 45, 'b', 1);  -- goes to mlparted5_b
+insert into mlparted values (1, 45, 'c', 1);  -- goes to mlparted5_cd, fails
+insert into mlparted values (1, 45, 'f', 1);  -- goes to mlparted5, fails
+select tableoid::regclass, * from mlparted order by a, b, c, d;
+alter table mlparted drop d;
+drop table mlparted5;
+
 -- check that message shown after failure to find a partition shows the
 -- appropriate key description (or none) in various situations
 create table key_desc (a int, b int) partition by list ((a+0));
@@ -507,9 +537,7 @@ drop table inserttest3;
 drop table brtrigpartcon;
 drop function brtrigpartcon1trigf();
 
--- check that "do nothing" BR triggers work with tuple-routing (this checks
--- that estate->es_result_relation_info is appropriately set/reset for each
--- routed tuple)
+-- check that "do nothing" BR triggers work with tuple-routing
 create table donothingbrtrig_test (a int, b text) partition by list (a);
 create table donothingbrtrig_test1 (b text, a int);
 create table donothingbrtrig_test2 (c text, b text, a int);

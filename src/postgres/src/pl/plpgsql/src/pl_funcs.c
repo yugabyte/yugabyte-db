@@ -3,7 +3,7 @@
  * pl_funcs.c		- Misc functions for the PL/pgSQL
  *			  procedural language
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -15,10 +15,8 @@
 
 #include "postgres.h"
 
-#include "utils/memutils.h"
-
 #include "plpgsql.h"
-
+#include "utils/memutils.h"
 
 /* ----------
  * Local variables for namespace handling
@@ -290,8 +288,6 @@ plpgsql_stmt_typename(PLpgSQL_stmt *stmt)
 			return "COMMIT";
 		case PLPGSQL_STMT_ROLLBACK:
 			return "ROLLBACK";
-		case PLPGSQL_STMT_SET:
-			return "SET";
 	}
 
 	return "unknown";
@@ -307,8 +303,6 @@ plpgsql_getdiag_kindname(PLpgSQL_getdiag_kind kind)
 	{
 		case PLPGSQL_GETDIAG_ROW_COUNT:
 			return "ROW_COUNT";
-		case PLPGSQL_GETDIAG_RESULT_OID:
-			return "RESULT_OID";
 		case PLPGSQL_GETDIAG_CONTEXT:
 			return "PG_CONTEXT";
 		case PLPGSQL_GETDIAG_ERROR_CONTEXT:
@@ -374,7 +368,6 @@ static void free_perform(PLpgSQL_stmt_perform *stmt);
 static void free_call(PLpgSQL_stmt_call *stmt);
 static void free_commit(PLpgSQL_stmt_commit *stmt);
 static void free_rollback(PLpgSQL_stmt_rollback *stmt);
-static void free_set(PLpgSQL_stmt_set *stmt);
 static void free_expr(PLpgSQL_expr *expr);
 
 
@@ -463,9 +456,6 @@ free_stmt(PLpgSQL_stmt *stmt)
 			break;
 		case PLPGSQL_STMT_ROLLBACK:
 			free_rollback((PLpgSQL_stmt_rollback *) stmt);
-			break;
-		case PLPGSQL_STMT_SET:
-			free_set((PLpgSQL_stmt_set *) stmt);
 			break;
 		default:
 			elog(ERROR, "unrecognized cmd_type: %d", stmt->cmd_type);
@@ -631,12 +621,6 @@ free_rollback(PLpgSQL_stmt_rollback *stmt)
 }
 
 static void
-free_set(PLpgSQL_stmt_set *stmt)
-{
-	free_expr(stmt->expr);
-}
-
-static void
 free_exit(PLpgSQL_stmt_exit *stmt)
 {
 	free_expr(stmt->cond);
@@ -772,9 +756,6 @@ plpgsql_free_function_memory(PLpgSQL_function *func)
 				break;
 			case PLPGSQL_DTYPE_RECFIELD:
 				break;
-			case PLPGSQL_DTYPE_ARRAYELEM:
-				free_expr(((PLpgSQL_arrayelem *) d)->subscript);
-				break;
 			default:
 				elog(ERROR, "unrecognized data type: %d", d->dtype);
 		}
@@ -832,7 +813,6 @@ static void dump_perform(PLpgSQL_stmt_perform *stmt);
 static void dump_call(PLpgSQL_stmt_call *stmt);
 static void dump_commit(PLpgSQL_stmt_commit *stmt);
 static void dump_rollback(PLpgSQL_stmt_rollback *stmt);
-static void dump_set(PLpgSQL_stmt_set *stmt);
 static void dump_expr(PLpgSQL_expr *expr);
 
 
@@ -931,9 +911,6 @@ dump_stmt(PLpgSQL_stmt *stmt)
 			break;
 		case PLPGSQL_STMT_ROLLBACK:
 			dump_rollback((PLpgSQL_stmt_rollback *) stmt);
-			break;
-		case PLPGSQL_STMT_SET:
-			dump_set((PLpgSQL_stmt_set *) stmt);
 			break;
 		default:
 			elog(ERROR, "unrecognized cmd_type: %d", stmt->cmd_type);
@@ -1320,21 +1297,20 @@ static void
 dump_commit(PLpgSQL_stmt_commit *stmt)
 {
 	dump_ind();
-	printf("COMMIT\n");
+	if (stmt->chain)
+		printf("COMMIT AND CHAIN\n");
+	else
+		printf("COMMIT\n");
 }
 
 static void
 dump_rollback(PLpgSQL_stmt_rollback *stmt)
 {
 	dump_ind();
-	printf("ROLLBACK\n");
-}
-
-static void
-dump_set(PLpgSQL_stmt_set *stmt)
-{
-	dump_ind();
-	printf("%s\n", stmt->expr->query);
+	if (stmt->chain)
+		printf("ROLLBACK AND CHAIN\n");
+	else
+		printf("ROLLBACK\n");
 }
 
 static void
@@ -1701,12 +1677,6 @@ plpgsql_dumptree(PLpgSQL_function *func)
 				printf("RECFIELD %-16s of REC %d\n",
 					   ((PLpgSQL_recfield *) d)->fieldname,
 					   ((PLpgSQL_recfield *) d)->recparentno);
-				break;
-			case PLPGSQL_DTYPE_ARRAYELEM:
-				printf("ARRAYELEM of VAR %d subscript ",
-					   ((PLpgSQL_arrayelem *) d)->arrayparentno);
-				dump_expr(((PLpgSQL_arrayelem *) d)->subscript);
-				printf("\n");
 				break;
 			default:
 				printf("??? unknown data type %d\n", d->dtype);

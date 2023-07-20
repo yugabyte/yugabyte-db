@@ -3,13 +3,10 @@
  * geo_decls.h - Declarations for various 2D constructs.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/geo_decls.h
- *
- * NOTE
- *	  These routines do *not* use the float types from adt/.
  *
  *	  XXX These routines were not written by a numerical analyst.
  *
@@ -27,19 +24,60 @@
 
 /*--------------------------------------------------------------------
  * Useful floating point utilities and constants.
- *-------------------------------------------------------------------*/
-
+ *--------------------------------------------------------------------
+ *
+ * "Fuzzy" floating-point comparisons: values within EPSILON of each other
+ * are considered equal.  Beware of normal reasoning about the behavior of
+ * these comparisons, since for example FPeq does not behave transitively.
+ *
+ * Note that these functions are not NaN-aware and will give FALSE for
+ * any case involving NaN inputs.
+ *
+ * Also note that these will give sane answers for infinite inputs,
+ * where it's important to avoid computing Inf minus Inf; we do so
+ * by eliminating equality cases before subtracting.
+ */
 
 #define EPSILON					1.0E-06
 
 #ifdef EPSILON
 #define FPzero(A)				(fabs(A) <= EPSILON)
-#define FPeq(A,B)				(fabs((A) - (B)) <= EPSILON)
-#define FPne(A,B)				(fabs((A) - (B)) > EPSILON)
-#define FPlt(A,B)				((B) - (A) > EPSILON)
-#define FPle(A,B)				((A) - (B) <= EPSILON)
-#define FPgt(A,B)				((A) - (B) > EPSILON)
-#define FPge(A,B)				((B) - (A) <= EPSILON)
+
+static inline bool
+FPeq(double A, double B)
+{
+	return A == B || fabs(A - B) <= EPSILON;
+}
+
+static inline bool
+FPne(double A, double B)
+{
+	return A != B && fabs(A - B) > EPSILON;
+}
+
+static inline bool
+FPlt(double A, double B)
+{
+	return A + EPSILON < B;
+}
+
+static inline bool
+FPle(double A, double B)
+{
+	return A <= B + EPSILON;
+}
+
+static inline bool
+FPgt(double A, double B)
+{
+	return A > B + EPSILON;
+}
+
+static inline bool
+FPge(double A, double B)
+{
+	return A + EPSILON >= B;
+}
 #else
 #define FPzero(A)				((A) == 0)
 #define FPeq(A,B)				((A) == (B))
@@ -57,7 +95,7 @@
  *-------------------------------------------------------------------*/
 typedef struct
 {
-	double		x,
+	float8		x,
 				y;
 } Point;
 
@@ -89,7 +127,7 @@ typedef struct
  *-------------------------------------------------------------------*/
 typedef struct
 {
-	double		A,
+	float8		A,
 				B,
 				C;
 } LINE;
@@ -124,7 +162,7 @@ typedef struct
 typedef struct
 {
 	Point		center;
-	double		radius;
+	float8		radius;
 } CIRCLE;
 
 /*
@@ -178,10 +216,6 @@ typedef struct
  * in geo_ops.c
  */
 
-/* private routines */
-extern double point_dt(Point *pt1, Point *pt2);
-extern double point_sl(Point *pt1, Point *pt2);
-extern double pg_hypot(double x, double y);
-extern BOX *box_copy(BOX *box);
+extern float8 pg_hypot(float8 x, float8 y);
 
 #endif							/* GEO_DECLS_H */

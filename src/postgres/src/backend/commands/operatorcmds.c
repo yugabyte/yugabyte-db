@@ -4,7 +4,7 @@
  *
  *	  Routines for operator manipulation commands
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -27,15 +27,12 @@
  *		"create operator":
  *				operators
  *
- *		Most of the parse-tree manipulation routines are defined in
- *		commands/manip.c.
- *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "access/heapam.h"
 #include "access/htup_details.h"
+#include "access/table.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
@@ -47,6 +44,7 @@
 #include "parser/parse_func.h"
 #include "parser/parse_oper.h"
 #include "parser/parse_type.h"
+#include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
@@ -170,10 +168,22 @@ DefineOperator(List *names, List *parameters)
 	if (typeName2)
 		typeId2 = typenameTypeId(NULL, typeName2);
 
+	/*
+	 * If only the right argument is missing, the user is likely trying to
+	 * create a postfix operator, so give them a hint about why that does not
+	 * work.  But if both arguments are missing, do not mention postfix
+	 * operators, as the user most likely simply neglected to mention the
+	 * arguments.
+	 */
 	if (!OidIsValid(typeId1) && !OidIsValid(typeId2))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-				 errmsg("at least one of leftarg or rightarg must be specified")));
+				 errmsg("operator argument types must be specified")));
+	if (!OidIsValid(typeId2))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+				 errmsg("operator right argument type must be specified"),
+				 errdetail("Postfix operators are not supported.")));
 
 	if (typeName1)
 	{
@@ -255,7 +265,7 @@ DefineOperator(List *names, List *parameters)
 }
 
 /*
- * Look up a restriction estimator function ny name, and verify that it has
+ * Look up a restriction estimator function by name, and verify that it has
  * the correct signature and we have the permissions to attach it to an
  * operator.
  */
@@ -290,7 +300,7 @@ ValidateRestrictionEstimator(List *restrictionName)
 }
 
 /*
- * Look up a join estimator function ny name, and verify that it has the
+ * Look up a join estimator function by name, and verify that it has the
  * correct signature and we have the permissions to attach it to an
  * operator.
  */
@@ -357,7 +367,7 @@ RemoveOperatorById(Oid operOid)
 	HeapTuple	tup;
 	Form_pg_operator op;
 
-	relation = heap_open(OperatorRelationId, RowExclusiveLock);
+	relation = table_open(OperatorRelationId, RowExclusiveLock);
 
 	tup = SearchSysCache1(OPEROID, ObjectIdGetDatum(operOid));
 	if (!HeapTupleIsValid(tup)) /* should not happen */
@@ -386,7 +396,7 @@ RemoveOperatorById(Oid operOid)
 
 	ReleaseSysCache(tup);
 
-	heap_close(relation, RowExclusiveLock);
+	table_close(relation, RowExclusiveLock);
 }
 
 /*
@@ -417,9 +427,9 @@ AlterOperator(AlterOperatorStmt *stmt)
 
 	/* Look up the operator */
 	oprId = LookupOperWithArgs(stmt->opername, false);
-	catalog = heap_open(OperatorRelationId, RowExclusiveLock);
+	catalog = table_open(OperatorRelationId, RowExclusiveLock);
 	tup = SearchSysCacheCopy1(OPEROID, ObjectIdGetDatum(oprId));
-	if (tup == NULL)
+	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for operator %u", oprId);
 	oprForm = (Form_pg_operator) GETSTRUCT(tup);
 
@@ -532,11 +542,11 @@ AlterOperator(AlterOperatorStmt *stmt)
 
 	CatalogTupleUpdate(catalog, &tup->t_self, tup);
 
-	address = makeOperatorDependencies(tup, true);
+	address = makeOperatorDependencies(tup, false, true);
 
 	InvokeObjectPostAlterHook(OperatorRelationId, oprId, 0);
 
-	heap_close(catalog, NoLock);
+	table_close(catalog, NoLock);
 
 	return address;
 }

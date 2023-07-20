@@ -3,7 +3,7 @@
  * nbtdesc.c
  *	  rmgr descriptor routines for access/nbtree/nbtxlog.c
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -27,6 +27,7 @@ btree_desc(StringInfo buf, XLogReaderState *record)
 		case XLOG_BTREE_INSERT_LEAF:
 		case XLOG_BTREE_INSERT_UPPER:
 		case XLOG_BTREE_INSERT_META:
+		case XLOG_BTREE_INSERT_POST:
 			{
 				xl_btree_insert *xlrec = (xl_btree_insert *) rec;
 
@@ -35,28 +36,35 @@ btree_desc(StringInfo buf, XLogReaderState *record)
 			}
 		case XLOG_BTREE_SPLIT_L:
 		case XLOG_BTREE_SPLIT_R:
-		case XLOG_BTREE_SPLIT_L_HIGHKEY:
-		case XLOG_BTREE_SPLIT_R_HIGHKEY:
 			{
 				xl_btree_split *xlrec = (xl_btree_split *) rec;
 
-				appendStringInfo(buf, "level %u, firstright %d",
-								 xlrec->level, xlrec->firstright);
+				appendStringInfo(buf, "level %u, firstrightoff %d, newitemoff %d, postingoff %d",
+								 xlrec->level, xlrec->firstrightoff,
+								 xlrec->newitemoff, xlrec->postingoff);
+				break;
+			}
+		case XLOG_BTREE_DEDUP:
+			{
+				xl_btree_dedup *xlrec = (xl_btree_dedup *) rec;
+
+				appendStringInfo(buf, "nintervals %u", xlrec->nintervals);
 				break;
 			}
 		case XLOG_BTREE_VACUUM:
 			{
 				xl_btree_vacuum *xlrec = (xl_btree_vacuum *) rec;
 
-				appendStringInfo(buf, "lastBlockVacuumed %u",
-								 xlrec->lastBlockVacuumed);
+				appendStringInfo(buf, "ndeleted %u; nupdated %u",
+								 xlrec->ndeleted, xlrec->nupdated);
 				break;
 			}
 		case XLOG_BTREE_DELETE:
 			{
 				xl_btree_delete *xlrec = (xl_btree_delete *) rec;
 
-				appendStringInfo(buf, "%d items", xlrec->nitems);
+				appendStringInfo(buf, "latestRemovedXid %u; ndeleted %u; nupdated %u",
+								 xlrec->latestRemovedXid, xlrec->ndeleted, xlrec->nupdated);
 				break;
 			}
 		case XLOG_BTREE_MARK_PAGE_HALFDEAD:
@@ -72,12 +80,13 @@ btree_desc(StringInfo buf, XLogReaderState *record)
 			{
 				xl_btree_unlink_page *xlrec = (xl_btree_unlink_page *) rec;
 
-				appendStringInfo(buf, "left %u; right %u; btpo_xact %u; ",
-								 xlrec->leftsib, xlrec->rightsib,
-								 xlrec->btpo_xact);
-				appendStringInfo(buf, "leafleft %u; leafright %u; topparent %u",
+				appendStringInfo(buf, "left %u; right %u; level %u; safexid %u:%u; ",
+								 xlrec->leftsib, xlrec->rightsib, xlrec->level,
+								 EpochFromFullTransactionId(xlrec->safexid),
+								 XidFromFullTransactionId(xlrec->safexid));
+				appendStringInfo(buf, "leafleft %u; leafright %u; leaftopparent %u",
 								 xlrec->leafleftsib, xlrec->leafrightsib,
-								 xlrec->topparent);
+								 xlrec->leaftopparent);
 				break;
 			}
 		case XLOG_BTREE_NEWROOT:
@@ -91,18 +100,21 @@ btree_desc(StringInfo buf, XLogReaderState *record)
 			{
 				xl_btree_reuse_page *xlrec = (xl_btree_reuse_page *) rec;
 
-				appendStringInfo(buf, "rel %u/%u/%u; latestRemovedXid %u",
+				appendStringInfo(buf, "rel %u/%u/%u; latestRemovedXid %u:%u",
 								 xlrec->node.spcNode, xlrec->node.dbNode,
-								 xlrec->node.relNode, xlrec->latestRemovedXid);
+								 xlrec->node.relNode,
+								 EpochFromFullTransactionId(xlrec->latestRemovedFullXid),
+								 XidFromFullTransactionId(xlrec->latestRemovedFullXid));
 				break;
 			}
 		case XLOG_BTREE_META_CLEANUP:
 			{
-				xl_btree_metadata *xlrec = (xl_btree_metadata *) rec;
+				xl_btree_metadata *xlrec;
 
-				appendStringInfo(buf, "oldest_btpo_xact %u; last_cleanup_num_heap_tuples: %f",
-								 xlrec->oldest_btpo_xact,
-								 xlrec->last_cleanup_num_heap_tuples);
+				xlrec = (xl_btree_metadata *) XLogRecGetBlockData(record, 0,
+																  NULL);
+				appendStringInfo(buf, "last_cleanup_num_delpages %u",
+								 xlrec->last_cleanup_num_delpages);
 				break;
 			}
 	}
@@ -130,11 +142,11 @@ btree_identify(uint8 info)
 		case XLOG_BTREE_SPLIT_R:
 			id = "SPLIT_R";
 			break;
-		case XLOG_BTREE_SPLIT_L_HIGHKEY:
-			id = "SPLIT_L_HIGHKEY";
+		case XLOG_BTREE_INSERT_POST:
+			id = "INSERT_POST";
 			break;
-		case XLOG_BTREE_SPLIT_R_HIGHKEY:
-			id = "SPLIT_R_HIGHKEY";
+		case XLOG_BTREE_DEDUP:
+			id = "DEDUP";
 			break;
 		case XLOG_BTREE_VACUUM:
 			id = "VACUUM";

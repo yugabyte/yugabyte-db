@@ -3,7 +3,7 @@
  * jsonb_gin.c
  *	 GIN support functions for jsonb
  *
- * Copyright (c) 2014-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2014-2022, PostgreSQL Global Development Group
  *
  * We provide two opclasses for jsonb indexing: jsonb_ops and jsonb_path_ops.
  * For their description see json.sgml and comments in jsonb.h.
@@ -60,10 +60,10 @@
 #include "postgres.h"
 
 #include "access/gin.h"
-#include "access/hash.h"
 #include "access/stratnum.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
+#include "common/hashfn.h"
 #include "miscadmin.h"
 #include "utils/builtins.h"
 #include "utils/jsonb.h"
@@ -155,7 +155,7 @@ static Datum make_text_key(char flag, const char *str, int len);
 static Datum make_scalar_key(const JsonbValue *scalarVal, bool is_key);
 
 static JsonPathGinNode *extract_jsp_bool_expr(JsonPathGinContext *cxt,
-					  JsonPathGinPath path, JsonPathItem *jsp, bool not);
+											  JsonPathGinPath path, JsonPathItem *jsp, bool not);
 
 
 /* Initialize GinEntries struct */
@@ -886,7 +886,7 @@ gin_extract_jsonb_query(PG_FUNCTION_ARGS)
 					j;
 
 		deconstruct_array(query,
-						  TEXTOID, -1, false, 'i',
+						  TEXTOID, -1, false, TYPALIGN_INT,
 						  &key_datums, &key_nulls, &key_count);
 
 		entries = (Datum *) palloc(sizeof(Datum) * key_count);
@@ -896,9 +896,10 @@ gin_extract_jsonb_query(PG_FUNCTION_ARGS)
 			/* Nulls in the array are ignored */
 			if (key_nulls[i])
 				continue;
+			/* We rely on the array elements not being toasted */
 			entries[j++] = make_text_key(JGINFLAG_KEY,
-										 VARDATA(key_datums[i]),
-										 VARSIZE(key_datums[i]) - VARHDRSZ);
+										 VARDATA_ANY(key_datums[i]),
+										 VARSIZE_ANY_EXHDR(key_datums[i]));
 		}
 
 		*nentries = j;

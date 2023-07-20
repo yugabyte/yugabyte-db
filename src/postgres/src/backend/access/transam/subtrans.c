@@ -19,7 +19,7 @@
  * data across crashes.  During database startup, we simply force the
  * currently-active page of SUBTRANS to zeroes.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/access/transam/subtrans.c
@@ -81,7 +81,7 @@ SubTransSetParent(TransactionId xid, TransactionId parent)
 	Assert(TransactionIdIsValid(parent));
 	Assert(TransactionIdFollows(xid, parent));
 
-	LWLockAcquire(SubtransControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(SubtransSLRULock, LW_EXCLUSIVE);
 
 	slotno = SimpleLruReadPage(SubTransCtl, pageno, true, xid);
 	ptr = (TransactionId *) SubTransCtl->shared->page_buffer[slotno];
@@ -99,7 +99,7 @@ SubTransSetParent(TransactionId xid, TransactionId parent)
 		SubTransCtl->shared->page_dirty[slotno] = true;
 	}
 
-	LWLockRelease(SubtransControlLock);
+	LWLockRelease(SubtransSLRULock);
 }
 
 /*
@@ -129,7 +129,7 @@ SubTransGetParent(TransactionId xid)
 
 	parent = *ptr;
 
-	LWLockRelease(SubtransControlLock);
+	LWLockRelease(SubtransSLRULock);
 
 	return parent;
 }
@@ -191,11 +191,10 @@ void
 SUBTRANSShmemInit(void)
 {
 	SubTransCtl->PagePrecedes = SubTransPagePrecedes;
-	SimpleLruInit(SubTransCtl, "subtrans", NUM_SUBTRANS_BUFFERS, 0,
-				  SubtransControlLock, "pg_subtrans",
-				  LWTRANCHE_SUBTRANS_BUFFERS);
-	/* Override default assumption that writes should be fsync'd */
-	SubTransCtl->do_fsync = false;
+	SimpleLruInit(SubTransCtl, "Subtrans", NUM_SUBTRANS_BUFFERS, 0,
+				  SubtransSLRULock, "pg_subtrans",
+				  LWTRANCHE_SUBTRANS_BUFFER, SYNC_HANDLER_NONE);
+	SlruPagePrecedesUnitTests(SubTransCtl, SUBTRANS_XACTS_PER_PAGE);
 }
 
 /*
@@ -213,7 +212,7 @@ BootStrapSUBTRANS(void)
 {
 	int			slotno;
 
-	LWLockAcquire(SubtransControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(SubtransSLRULock, LW_EXCLUSIVE);
 
 	/* Create and zero the first page of the subtrans log */
 	slotno = ZeroSUBTRANSPage(0);
@@ -222,7 +221,7 @@ BootStrapSUBTRANS(void)
 	SimpleLruWritePage(SubTransCtl, slotno);
 	Assert(!SubTransCtl->shared->page_dirty[slotno]);
 
-	LWLockRelease(SubtransControlLock);
+	LWLockRelease(SubtransSLRULock);
 }
 
 /*
@@ -249,6 +248,7 @@ ZeroSUBTRANSPage(int pageno)
 void
 StartupSUBTRANS(TransactionId oldestActiveXID)
 {
+	FullTransactionId nextXid;
 	int			startPage;
 	int			endPage;
 
@@ -258,10 +258,11 @@ StartupSUBTRANS(TransactionId oldestActiveXID)
 	 * Whenever we advance into a new page, ExtendSUBTRANS will likewise zero
 	 * the new page without regard to whatever was previously on disk.
 	 */
-	LWLockAcquire(SubtransControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(SubtransSLRULock, LW_EXCLUSIVE);
 
 	startPage = TransactionIdToPage(oldestActiveXID);
-	endPage = TransactionIdToPage(ShmemVariableCache->nextXid);
+	nextXid = ShmemVariableCache->nextXid;
+	endPage = TransactionIdToPage(XidFromFullTransactionId(nextXid));
 
 	while (startPage != endPage)
 	{
@@ -273,24 +274,7 @@ StartupSUBTRANS(TransactionId oldestActiveXID)
 	}
 	(void) ZeroSUBTRANSPage(startPage);
 
-	LWLockRelease(SubtransControlLock);
-}
-
-/*
- * This must be called ONCE during postmaster or standalone-backend shutdown
- */
-void
-ShutdownSUBTRANS(void)
-{
-	/*
-	 * Flush dirty SUBTRANS pages to disk
-	 *
-	 * This is not actually necessary from a correctness point of view. We do
-	 * it merely as a debugging aid.
-	 */
-	TRACE_POSTGRESQL_SUBTRANS_CHECKPOINT_START(false);
-	SimpleLruFlush(SubTransCtl, false);
-	TRACE_POSTGRESQL_SUBTRANS_CHECKPOINT_DONE(false);
+	LWLockRelease(SubtransSLRULock);
 }
 
 /*
@@ -300,14 +284,14 @@ void
 CheckPointSUBTRANS(void)
 {
 	/*
-	 * Flush dirty SUBTRANS pages to disk
+	 * Write dirty SUBTRANS pages to disk
 	 *
 	 * This is not actually necessary from a correctness point of view. We do
 	 * it merely to improve the odds that writing of dirty pages is done by
 	 * the checkpoint process and not by backends.
 	 */
 	TRACE_POSTGRESQL_SUBTRANS_CHECKPOINT_START(true);
-	SimpleLruFlush(SubTransCtl, true);
+	SimpleLruWriteAll(SubTransCtl, true);
 	TRACE_POSTGRESQL_SUBTRANS_CHECKPOINT_DONE(true);
 }
 
@@ -335,20 +319,20 @@ ExtendSUBTRANS(TransactionId newestXact)
 
 	pageno = TransactionIdToPage(newestXact);
 
-	LWLockAcquire(SubtransControlLock, LW_EXCLUSIVE);
+	LWLockAcquire(SubtransSLRULock, LW_EXCLUSIVE);
 
 	/* Zero the page */
 	ZeroSUBTRANSPage(pageno);
 
-	LWLockRelease(SubtransControlLock);
+	LWLockRelease(SubtransSLRULock);
 }
 
 
 /*
  * Remove all SUBTRANS segments before the one holding the passed transaction ID
  *
- * This is normally called during checkpoint, with oldestXact being the
- * oldest TransactionXmin of any running transaction.
+ * oldestXact is the oldest TransactionXmin of any running transaction.  This
+ * is called only during checkpoint.
  */
 void
 TruncateSUBTRANS(TransactionId oldestXact)
@@ -371,13 +355,8 @@ TruncateSUBTRANS(TransactionId oldestXact)
 
 
 /*
- * Decide which of two SUBTRANS page numbers is "older" for truncation purposes.
- *
- * We need to use comparison of TransactionIds here in order to do the right
- * thing with wraparound XID arithmetic.  However, if we are asked about
- * page number zero, we don't want to hand InvalidTransactionId to
- * TransactionIdPrecedes: it'll get weird about permanent xact IDs.  So,
- * offset both xids by FirstNormalTransactionId to avoid that.
+ * Decide whether a SUBTRANS page number is "older" for truncation purposes.
+ * Analogous to CLOGPagePrecedes().
  */
 static bool
 SubTransPagePrecedes(int page1, int page2)
@@ -386,9 +365,10 @@ SubTransPagePrecedes(int page1, int page2)
 	TransactionId xid2;
 
 	xid1 = ((TransactionId) page1) * SUBTRANS_XACTS_PER_PAGE;
-	xid1 += FirstNormalTransactionId;
+	xid1 += FirstNormalTransactionId + 1;
 	xid2 = ((TransactionId) page2) * SUBTRANS_XACTS_PER_PAGE;
-	xid2 += FirstNormalTransactionId;
+	xid2 += FirstNormalTransactionId + 1;
 
-	return TransactionIdPrecedes(xid1, xid2);
+	return (TransactionIdPrecedes(xid1, xid2) &&
+			TransactionIdPrecedes(xid1, xid2 + SUBTRANS_XACTS_PER_PAGE - 1));
 }

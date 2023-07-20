@@ -3,7 +3,7 @@
  * json.c
  *		JSON data type support.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -13,8 +13,6 @@
  */
 #include "postgres.h"
 
-#include "access/htup_details.h"
-#include "access/transam.h"
 #include "catalog/pg_type.h"
 #include "funcapi.h"
 #include "libpq/pqformat.h"
@@ -24,11 +22,10 @@
 #include "utils/builtins.h"
 #include "utils/date.h"
 #include "utils/datetime.h"
-#include "utils/lsyscache.h"
 #include "utils/json.h"
 #include "utils/jsonfuncs.h"
+#include "utils/lsyscache.h"
 #include "utils/typcache.h"
-
 
 typedef enum					/* type categories for datum_to_json */
 {
@@ -55,21 +52,21 @@ typedef struct JsonAggState
 } JsonAggState;
 
 static void composite_to_json(Datum composite, StringInfo result,
-				  bool use_line_feeds);
+							  bool use_line_feeds);
 static void array_dim_to_json(StringInfo result, int dim, int ndims, int *dims,
-				  Datum *vals, bool *nulls, int *valcount,
-				  JsonTypeCategory tcategory, Oid outfuncoid,
-				  bool use_line_feeds);
+							  Datum *vals, bool *nulls, int *valcount,
+							  JsonTypeCategory tcategory, Oid outfuncoid,
+							  bool use_line_feeds);
 static void array_to_json_internal(Datum array, StringInfo result,
-					   bool use_line_feeds);
+								   bool use_line_feeds);
 static void json_categorize_type(Oid typoid,
-					 JsonTypeCategory *tcategory,
-					 Oid *outfuncoid);
+								 JsonTypeCategory *tcategory,
+								 Oid *outfuncoid);
 static void datum_to_json(Datum val, bool is_null, StringInfo result,
-			  JsonTypeCategory tcategory, Oid outfuncoid,
-			  bool key_scalar);
+						  JsonTypeCategory tcategory, Oid outfuncoid,
+						  bool key_scalar);
 static void add_json(Datum val, bool is_null, StringInfo result,
-		 Oid val_type, bool key_scalar);
+					 Oid val_type, bool key_scalar);
 static text *catenate_stringinfo_string(StringInfo buffer, const char *addon);
 
 /*
@@ -130,7 +127,7 @@ json_recv(PG_FUNCTION_ARGS)
 	str = pq_getmsgtext(buf, buf->len - buf->cursor, &nbytes);
 
 	/* Validate it. */
-	lex = makeJsonLexContextCstringLen(str, nbytes, false);
+	lex = makeJsonLexContextCstringLen(str, nbytes, GetDatabaseEncoding(), false);
 	pg_parse_json_or_ereport(lex, &nullSemAction);
 
 	PG_RETURN_TEXT_P(cstring_to_text_with_len(str, nbytes));
@@ -198,7 +195,7 @@ json_categorize_type(Oid typoid,
 		default:
 			/* Check for arrays and composites */
 			if (OidIsValid(get_element_type(typoid)) || typoid == ANYARRAYOID
-				|| typoid == RECORDARRAYOID)
+				|| typoid == ANYCOMPATIBLEARRAYOID || typoid == RECORDARRAYOID)
 				*tcategory = JSONTYPE_ARRAY;
 			else if (type_is_rowtype(typoid))	/* includes RECORDOID */
 				*tcategory = JSONTYPE_COMPOSITE;
@@ -461,7 +458,7 @@ JsonEncodeDateTime(char *buf, Datum value, Oid typid, const int *tzp)
 			}
 			break;
 		default:
-			elog(ERROR, "unknown jsonb value datetime type oid %d", typid);
+			elog(ERROR, "unknown jsonb value datetime type oid %u", typid);
 			return NULL;
 	}
 
@@ -993,7 +990,7 @@ catenate_stringinfo_string(StringInfo buffer, const char *addon)
 Datum
 json_build_object(PG_FUNCTION_ARGS)
 {
-	int			nargs = PG_NARGS();
+	int			nargs;
 	int			i;
 	const char *sep = "";
 	StringInfo	result;
@@ -1011,7 +1008,9 @@ json_build_object(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("argument list must have even number of elements"),
-				 errhint("The arguments of json_build_object() must consist of alternating keys and values.")));
+		/* translator: %s is a SQL function name */
+				 errhint("The arguments of %s must consist of alternating keys and values.",
+						 "json_build_object()")));
 
 	result = makeStringInfo();
 
@@ -1143,7 +1142,7 @@ json_object(PG_FUNCTION_ARGS)
 	}
 
 	deconstruct_array(in_array,
-					  TEXTOID, -1, false, 'i',
+					  TEXTOID, -1, false, TYPALIGN_INT,
 					  &in_datums, &in_nulls, &in_count);
 
 	count = in_count / 2;
@@ -1184,7 +1183,6 @@ json_object(PG_FUNCTION_ARGS)
 	pfree(result.data);
 
 	PG_RETURN_TEXT_P(rval);
-
 }
 
 /*
@@ -1220,11 +1218,11 @@ json_object_two_arg(PG_FUNCTION_ARGS)
 		PG_RETURN_DATUM(CStringGetTextDatum("{}"));
 
 	deconstruct_array(key_array,
-					  TEXTOID, -1, false, 'i',
+					  TEXTOID, -1, false, TYPALIGN_INT,
 					  &key_datums, &key_nulls, &key_count);
 
 	deconstruct_array(val_array,
-					  TEXTOID, -1, false, 'i',
+					  TEXTOID, -1, false, TYPALIGN_INT,
 					  &val_datums, &val_nulls, &val_count);
 
 	if (key_count != val_count)
@@ -1338,7 +1336,7 @@ json_typeof(PG_FUNCTION_ARGS)
 	JsonLexContext *lex;
 	JsonTokenType tok;
 	char	   *type;
-	JsonParseErrorType	result;
+	JsonParseErrorType result;
 
 	json = PG_GETARG_TEXT_PP(0);
 	lex = makeJsonLexContext(json, false);

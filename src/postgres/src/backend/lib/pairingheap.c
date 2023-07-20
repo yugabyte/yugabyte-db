@@ -14,7 +14,7 @@
  *	The pairing heap: a new form of self-adjusting heap.
  *	Algorithmica 1, 1 (January 1986), pages 111-129. DOI: 10.1007/BF01840439
  *
- * Portions Copyright (c) 2012-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2012-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/lib/pairingheap.c
@@ -27,9 +27,9 @@
 #include "lib/pairingheap.h"
 
 static pairingheap_node *merge(pairingheap *heap, pairingheap_node *a,
-	  pairingheap_node *b);
+							   pairingheap_node *b);
 static pairingheap_node *merge_children(pairingheap *heap,
-			   pairingheap_node *children);
+										pairingheap_node *children);
 
 /*
  * pairingheap_allocate

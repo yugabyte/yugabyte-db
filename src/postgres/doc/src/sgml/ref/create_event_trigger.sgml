@@ -23,7 +23,7 @@ PostgreSQL documentation
 <synopsis>
 CREATE EVENT TRIGGER <replaceable class="parameter">name</replaceable>
     ON <replaceable class="parameter">event</replaceable>
-    [ WHEN <replaceable class="parameter">filter_variable</replaceable> IN (filter_value [, ... ]) [ AND ... ] ]
+    [ WHEN <replaceable class="parameter">filter_variable</replaceable> IN (<replaceable class="parameter">filter_value</replaceable> [, ... ]) [ AND ... ] ]
     EXECUTE { FUNCTION | PROCEDURE } <replaceable class="parameter">function_name</replaceable>()
 </synopsis>
  </refsynopsisdiv>
@@ -86,7 +86,7 @@ CREATE EVENT TRIGGER <replaceable class="parameter">name</replaceable>
       A list of values for the
       associated <replaceable class="parameter">filter_variable</replaceable>
       for which the trigger should fire.  For <literal>TAG</literal>, this means a
-      list of command tags (e.g. <literal>'DROP FUNCTION'</literal>).
+      list of command tags (e.g., <literal>'DROP FUNCTION'</literal>).
      </para>
     </listitem>
    </varlistentry>

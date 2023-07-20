@@ -3,7 +3,7 @@
  * pg_crc32c_armv8.c
  *	  Compute CRC-32C checksum using ARMv8 CRC Extension instructions
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -14,9 +14,9 @@
  */
 #include "c.h"
 
-#include "port/pg_crc32c.h"
-
 #include <arm_acle.h>
+
+#include "port/pg_crc32c.h"
 
 pg_crc32c
 pg_comp_crc32c_armv8(pg_crc32c crc, const void *data, size_t len)

@@ -43,7 +43,7 @@ CREATE TABLE datatype_table (
     v_json         JSON,
     v_xml          XML,
     v_uuid         UUID,
-    v_txid_snapshot txid_snapshot,
+    v_pg_snapshot  pg_snapshot,
     v_enum         ENUM_TEST,
     v_postal_code  japanese_postal_code,
     v_int2range    int2range,
@@ -85,6 +85,8 @@ CREATE TABLE employees OF employee_type (
     salary WITH OPTIONS DEFAULT 1000
 );
 NOTICE:  DDL test: type simple, tag CREATE TABLE
+NOTICE:  DDL test: type alter table, tag ALTER TABLE
+NOTICE:    subcommand: SET NOT NULL
 NOTICE:  DDL test: type simple, tag CREATE INDEX
 -- Inheritance
 CREATE TABLE person (
@@ -98,7 +100,7 @@ NOTICE:  DDL test: type simple, tag CREATE INDEX
 CREATE TABLE emp (
 	salary 		int4,
 	manager 	name
-) INHERITS (person) WITH OIDS;
+) INHERITS (person);
 NOTICE:  DDL test: type simple, tag CREATE TABLE
 CREATE TABLE student (
 	gpa 		float8
@@ -133,6 +135,8 @@ CREATE TABLE like_fkey_table (
   INCLUDING STORAGE
 );
 NOTICE:  DDL test: type simple, tag CREATE TABLE
+NOTICE:  DDL test: type alter table, tag ALTER TABLE
+NOTICE:    subcommand: ALTER COLUMN SET DEFAULT (precooked)
 NOTICE:  DDL test: type simple, tag CREATE INDEX
 NOTICE:  DDL test: type simple, tag CREATE INDEX
 -- Volatile table types

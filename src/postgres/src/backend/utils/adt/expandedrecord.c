@@ -7,7 +7,7 @@
  * store values of named composite types, domains over named composite types,
  * and record types (registered or anonymous).
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -18,8 +18,9 @@
  */
 #include "postgres.h"
 
+#include "access/detoast.h"
+#include "access/heaptoast.h"
 #include "access/htup_details.h"
-#include "access/tuptoaster.h"
 #include "catalog/heap.h"
 #include "catalog/pg_type.h"
 #include "utils/builtins.h"
@@ -32,7 +33,7 @@
 /* "Methods" required for an expanded object */
 static Size ER_get_flat_size(ExpandedObjectHeader *eohptr);
 static void ER_flatten_into(ExpandedObjectHeader *eohptr,
-				void *result, Size allocated_size);
+							void *result, Size allocated_size);
 
 static const ExpandedObjectMethods ER_methods =
 {
@@ -45,10 +46,10 @@ static void ER_mc_callback(void *arg);
 static MemoryContext get_short_term_cxt(ExpandedRecordHeader *erh);
 static void build_dummy_expanded_header(ExpandedRecordHeader *main_erh);
 static pg_noinline void check_domain_for_new_field(ExpandedRecordHeader *erh,
-						   int fnumber,
-						   Datum newValue, bool isnull);
+												   int fnumber,
+												   Datum newValue, bool isnull);
 static pg_noinline void check_domain_for_new_tuple(ExpandedRecordHeader *erh,
-						   HeapTuple tuple);
+												   HeapTuple tuple);
 
 
 /*
@@ -170,7 +171,7 @@ make_expanded_record_from_typeid(Oid type_id, int32 typmod,
 
 		/* If we called lookup_rowtype_tupdesc, release the pin it took */
 		if (type_id == RECORDOID)
-			DecrTupleDescRefCount(tupdesc);
+			ReleaseTupleDesc(tupdesc);
 	}
 	else
 	{
@@ -741,9 +742,6 @@ ER_get_flat_size(ExpandedObjectHeader *eohptr)
 	if (hasnull)
 		len += BITMAPLEN(tupdesc->natts);
 
-	if (tupdesc->tdhasoid)
-		len += sizeof(Oid);
-
 	hoff = len = MAXALIGN(len); /* align user data safely */
 
 	data_len = heap_compute_data_size(tupdesc, erh->dvalues, erh->dnulls);
@@ -804,9 +802,6 @@ ER_flatten_into(ExpandedObjectHeader *eohptr,
 	HeapTupleHeaderSetNatts(tuphdr, tupdesc->natts);
 	tuphdr->t_hoff = erh->hoff;
 
-	if (tupdesc->tdhasoid)		/* else leave infomask = 0 */
-		tuphdr->t_infomask = HEAP_HASOID;
-
 	/* And fill the data area from dvalues/dnulls */
 	heap_fill_tuple(tupdesc,
 					erh->dvalues,
@@ -859,7 +854,7 @@ expanded_record_fetch_tupdesc(ExpandedRecordHeader *erh)
 		tupdesc->tdrefcount++;
 
 		/* Release the pin lookup_rowtype_tupdesc acquired */
-		DecrTupleDescRefCount(tupdesc);
+		ReleaseTupleDesc(tupdesc);
 	}
 	else
 	{
@@ -1025,6 +1020,7 @@ expanded_record_lookup_field(ExpandedRecordHeader *erh, const char *fieldname,
 	TupleDesc	tupdesc;
 	int			fno;
 	Form_pg_attribute attr;
+	const FormData_pg_attribute *sysattr;
 
 	tupdesc = expanded_record_get_tupdesc(erh);
 
@@ -1044,13 +1040,13 @@ expanded_record_lookup_field(ExpandedRecordHeader *erh, const char *fieldname,
 	}
 
 	/* How about system attributes? */
-	attr = SystemAttributeByName(fieldname, tupdesc->tdhasoid);
-	if (attr != NULL)
+	sysattr = SystemAttributeByName(fieldname);
+	if (sysattr != NULL)
 	{
-		finfo->fnumber = attr->attnum;
-		finfo->ftypeid = attr->atttypid;
-		finfo->ftypmod = attr->atttypmod;
-		finfo->fcollation = attr->attcollation;
+		finfo->fnumber = sysattr->attnum;
+		finfo->ftypeid = sysattr->atttypid;
+		finfo->ftypmod = sysattr->atttypmod;
+		finfo->fcollation = sysattr->attcollation;
 		return true;
 	}
 
@@ -1163,7 +1159,7 @@ expanded_record_set_field_internal(ExpandedRecordHeader *erh, int fnumber,
 			{
 				/* Detoasting should be done in short-lived context. */
 				oldcxt = MemoryContextSwitchTo(get_short_term_cxt(erh));
-				newValue = PointerGetDatum(heap_tuple_fetch_attr((struct varlena *) DatumGetPointer(newValue)));
+				newValue = PointerGetDatum(detoast_external_attr((struct varlena *) DatumGetPointer(newValue)));
 				MemoryContextSwitchTo(oldcxt);
 			}
 			else
@@ -1309,7 +1305,7 @@ expanded_record_set_fields(ExpandedRecordHeader *erh,
 					if (expand_external)
 					{
 						/* Detoast as requested while copying the value */
-						newValue = PointerGetDatum(heap_tuple_fetch_attr((struct varlena *) DatumGetPointer(newValue)));
+						newValue = PointerGetDatum(detoast_external_attr((struct varlena *) DatumGetPointer(newValue)));
 					}
 					else
 					{

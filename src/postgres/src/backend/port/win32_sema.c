@@ -3,7 +3,7 @@
  * win32_sema.c
  *	  Microsoft Windows Win32 Semaphores Emulation
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/port/win32_sema.c
@@ -44,7 +44,7 @@ PGSemaphoreShmemSize(int maxSemas)
  * process exits.
  */
 void
-PGReserveSemaphores(int maxSemas, int port)
+PGReserveSemaphores(int maxSemas)
 {
 	mySemSet = (HANDLE *) malloc(maxSemas * sizeof(HANDLE));
 	if (mySemSet == NULL)

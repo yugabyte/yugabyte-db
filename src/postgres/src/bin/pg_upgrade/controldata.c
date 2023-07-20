@@ -3,15 +3,15 @@
  *
  *	controldata functions
  *
- *	Copyright (c) 2010-2018, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/controldata.c
  */
 
 #include "postgres_fe.h"
 
-#include "pg_upgrade.h"
-
 #include <ctype.h>
+
+#include "pg_upgrade.h"
 
 /*
  * get_control_data()
@@ -44,6 +44,7 @@ get_control_data(ClusterInfo *cluster, bool live_check)
 	bool		got_oid = false;
 	bool		got_multi = false;
 	bool		got_oldestmulti = false;
+	bool		got_oldestxid = false;
 	bool		got_mxoff = false;
 	bool		got_nextxlogfile = false;
 	bool		got_float8_pass_by_value = false;
@@ -97,21 +98,20 @@ get_control_data(ClusterInfo *cluster, bool live_check)
 	if (getenv("LC_MESSAGES"))
 		lc_messages = pg_strdup(getenv("LC_MESSAGES"));
 
-	pg_putenv("LC_COLLATE", NULL);
-	pg_putenv("LC_CTYPE", NULL);
-	pg_putenv("LC_MONETARY", NULL);
-	pg_putenv("LC_NUMERIC", NULL);
-	pg_putenv("LC_TIME", NULL);
-	pg_putenv("LANG",
+	unsetenv("LC_COLLATE");
+	unsetenv("LC_CTYPE");
+	unsetenv("LC_MONETARY");
+	unsetenv("LC_NUMERIC");
+	unsetenv("LC_TIME");
 #ifndef WIN32
-			  NULL);
+	unsetenv("LANG");
 #else
-	/* On Windows the default locale cannot be English, so force it */
-			  "en");
+	/* On Windows the default locale may not be English, so force it */
+	setenv("LANG", "en", 1);
 #endif
-	pg_putenv("LANGUAGE", NULL);
-	pg_putenv("LC_ALL", NULL);
-	pg_putenv("LC_MESSAGES", "C");
+	unsetenv("LANGUAGE");
+	unsetenv("LC_ALL");
+	setenv("LC_MESSAGES", "C", 1);
 
 	/*
 	 * Check for clean shutdown
@@ -138,14 +138,15 @@ get_control_data(ClusterInfo *cluster, bool live_check)
 				if (p == NULL || strlen(p) <= 1)
 					pg_fatal("%d: database cluster state problem\n", __LINE__);
 
-				p++;				/* remove ':' char */
+				p++;			/* remove ':' char */
 
 				/*
-				 * We checked earlier for a postmaster lock file, and if we found
-				 * one, we tried to start/stop the server to replay the WAL.  However,
-				 * pg_ctl -m immediate doesn't leave a lock file, but does require
-				 * WAL replay, so we check here that the server was shut down cleanly,
-				 * from the controldata perspective.
+				 * We checked earlier for a postmaster lock file, and if we
+				 * found one, we tried to start/stop the server to replay the
+				 * WAL.  However, pg_ctl -m immediate doesn't leave a lock
+				 * file, but does require WAL replay, so we check here that
+				 * the server was shut down cleanly, from the controldata
+				 * perspective.
 				 */
 				/* remove leading spaces */
 				while (*p == ' ')
@@ -180,7 +181,7 @@ get_control_data(ClusterInfo *cluster, bool live_check)
 	}
 
 	/* pg_resetxlog has been renamed to pg_resetwal in version 10 */
-	if (GET_MAJOR_VERSION(cluster->bin_version) < 1000)
+	if (GET_MAJOR_VERSION(cluster->bin_version) <= 906)
 		resetwal_bin = "pg_resetxlog\" -n";
 	else
 		resetwal_bin = "pg_resetwal\" -n";
@@ -311,6 +312,17 @@ get_control_data(ClusterInfo *cluster, bool live_check)
 			p++;				/* remove ':' char */
 			cluster->controldata.chkpnt_nxtmulti = str2uint(p);
 			got_multi = true;
+		}
+		else if ((p = strstr(bufin, "Latest checkpoint's oldestXID:")) != NULL)
+		{
+			p = strchr(p, ':');
+
+			if (p == NULL || strlen(p) <= 1)
+				pg_fatal("%d: controldata retrieval problem\n", __LINE__);
+
+			p++;				/* remove ':' char */
+			cluster->controldata.chkpnt_oldstxid = str2uint(p);
+			got_oldestxid = true;
 		}
 		else if ((p = strstr(bufin, "Latest checkpoint's oldestMultiXid:")) != NULL)
 		{
@@ -481,7 +493,6 @@ get_control_data(ClusterInfo *cluster, bool live_check)
 				pg_fatal("%d: controldata retrieval problem\n", __LINE__);
 
 			p++;				/* remove ':' char */
-			/* used later for contrib check */
 			cluster->controldata.data_checksum_version = str2uint(p);
 			got_data_checksum_version = true;
 		}
@@ -490,17 +501,31 @@ get_control_data(ClusterInfo *cluster, bool live_check)
 	pclose(output);
 
 	/*
-	 * Restore environment variables
+	 * Restore environment variables.  Note all but LANG and LC_MESSAGES were
+	 * unset above.
 	 */
-	pg_putenv("LC_COLLATE", lc_collate);
-	pg_putenv("LC_CTYPE", lc_ctype);
-	pg_putenv("LC_MONETARY", lc_monetary);
-	pg_putenv("LC_NUMERIC", lc_numeric);
-	pg_putenv("LC_TIME", lc_time);
-	pg_putenv("LANG", lang);
-	pg_putenv("LANGUAGE", language);
-	pg_putenv("LC_ALL", lc_all);
-	pg_putenv("LC_MESSAGES", lc_messages);
+	if (lc_collate)
+		setenv("LC_COLLATE", lc_collate, 1);
+	if (lc_ctype)
+		setenv("LC_CTYPE", lc_ctype, 1);
+	if (lc_monetary)
+		setenv("LC_MONETARY", lc_monetary, 1);
+	if (lc_numeric)
+		setenv("LC_NUMERIC", lc_numeric, 1);
+	if (lc_time)
+		setenv("LC_TIME", lc_time, 1);
+	if (lang)
+		setenv("LANG", lang, 1);
+	else
+		unsetenv("LANG");
+	if (language)
+		setenv("LANGUAGE", language, 1);
+	if (lc_all)
+		setenv("LC_ALL", lc_all, 1);
+	if (lc_messages)
+		setenv("LC_MESSAGES", lc_messages, 1);
+	else
+		unsetenv("LC_MESSAGES");
 
 	pg_free(lc_collate);
 	pg_free(lc_ctype);
@@ -530,7 +555,7 @@ get_control_data(ClusterInfo *cluster, bool live_check)
 
 	/* verify that we got all the mandatory pg_control data */
 	if (!got_xid || !got_oid ||
-		!got_multi ||
+		!got_multi || !got_oldestxid ||
 		(!got_oldestmulti &&
 		 cluster->controldata.cat_ver >= MULTIXACT_FORMATCHANGE_CAT_VER) ||
 		!got_mxoff || (!live_check && !got_nextxlogfile) ||
@@ -560,6 +585,9 @@ get_control_data(ClusterInfo *cluster, bool live_check)
 		if (!got_oldestmulti &&
 			cluster->controldata.cat_ver >= MULTIXACT_FORMATCHANGE_CAT_VER)
 			pg_log(PG_REPORT, "  latest checkpoint oldest MultiXactId\n");
+
+		if (!got_oldestxid)
+			pg_log(PG_REPORT, "  latest checkpoint oldestXID\n");
 
 		if (!got_mxoff)
 			pg_log(PG_REPORT, "  latest checkpoint next MultiXactOffset\n");

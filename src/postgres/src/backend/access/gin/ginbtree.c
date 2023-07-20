@@ -4,7 +4,7 @@
  *	  page utilities routines for the postgres inverted index access method.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -17,17 +17,17 @@
 #include "access/gin_private.h"
 #include "access/ginxlog.h"
 #include "access/xloginsert.h"
-#include "storage/predicate.h"
 #include "miscadmin.h"
+#include "storage/predicate.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
 static void ginFindParents(GinBtree btree, GinBtreeStack *stack);
 static bool ginPlaceToPage(GinBtree btree, GinBtreeStack *stack,
-			   void *insertdata, BlockNumber updateblkno,
-			   Buffer childbuf, GinStatsData *buildStats);
+						   void *insertdata, BlockNumber updateblkno,
+						   Buffer childbuf, GinStatsData *buildStats);
 static void ginFinishSplit(GinBtree btree, GinBtreeStack *stack,
-			   bool freestack, GinStatsData *buildStats);
+						   bool freestack, GinStatsData *buildStats);
 
 /*
  * Lock buffer by needed method for search.
@@ -89,7 +89,7 @@ ginFindLeafPage(GinBtree btree, bool searchMode,
 	stack->predictNumber = 1;
 
 	if (rootConflictCheck)
-		CheckForSerializableConflictIn(btree->index, NULL, stack->buffer);
+		CheckForSerializableConflictIn(btree->index, NULL, btree->rootBlkno);
 
 	for (;;)
 	{
@@ -187,13 +187,6 @@ ginStepRight(Buffer buffer, Relation index, int lockmode)
 	if (isLeaf != GinPageIsLeaf(page) || isData != GinPageIsData(page))
 		elog(ERROR, "right sibling of GIN page is of different type");
 
-	/*
-	 * Given the proper lock sequence above, we should never land on a deleted
-	 * page.
-	 */
-	if (GinPageIsDeleted(page))
-		elog(ERROR, "right sibling of GIN page was deleted");
-
 	return nextbuffer;
 }
 
@@ -215,7 +208,7 @@ freeGinBtreeStack(GinBtreeStack *stack)
 /*
  * Try to find parent for current stack position. Returns correct parent and
  * child's offset in stack->parent. The root page is never released, to
- * to prevent conflict with vacuum process.
+ * prevent conflict with vacuum process.
  */
 static void
 ginFindParents(GinBtree btree, GinBtreeStack *stack)
@@ -248,7 +241,6 @@ ginFindParents(GinBtree btree, GinBtreeStack *stack)
 
 	blkno = root->blkno;
 	buffer = root->buffer;
-	offset = InvalidOffsetNumber;
 
 	ptr = (GinBtreeStack *) palloc(sizeof(GinBtreeStack));
 
@@ -396,7 +388,7 @@ ginPlaceToPage(GinBtree btree, GinBtreeStack *stack,
 		/* It will fit, perform the insertion */
 		START_CRIT_SECTION();
 
-		if (RelationNeedsWAL(btree->index))
+		if (RelationNeedsWAL(btree->index) && !btree->isBuild)
 		{
 			XLogBeginInsert();
 			XLogRegisterBuffer(0, stack->buffer, REGBUF_STANDARD);
@@ -417,7 +409,7 @@ ginPlaceToPage(GinBtree btree, GinBtreeStack *stack,
 			MarkBufferDirty(childbuf);
 		}
 
-		if (RelationNeedsWAL(btree->index))
+		if (RelationNeedsWAL(btree->index) && !btree->isBuild)
 		{
 			XLogRecPtr	recptr;
 			ginxlogInsert xlrec;
@@ -535,7 +527,6 @@ ginPlaceToPage(GinBtree btree, GinBtreeStack *stack,
 									   BufferGetBlockNumber(stack->buffer),
 									   BufferGetBlockNumber(rbuffer));
 			}
-
 		}
 		else
 		{
@@ -595,7 +586,7 @@ ginPlaceToPage(GinBtree btree, GinBtreeStack *stack,
 		}
 
 		/* write WAL record */
-		if (RelationNeedsWAL(btree->index))
+		if (RelationNeedsWAL(btree->index) && !btree->isBuild)
 		{
 			XLogRecPtr	recptr;
 
@@ -650,7 +641,7 @@ ginPlaceToPage(GinBtree btree, GinBtreeStack *stack,
 	}
 	else
 	{
-		elog(ERROR, "invalid return code from GIN placeToPage method: %d", rc);
+		elog(ERROR, "invalid return code from GIN beginPlaceToPage method: %d", rc);
 		result = false;			/* keep compiler quiet */
 	}
 

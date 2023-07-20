@@ -8,7 +8,7 @@
  *
  * A TupleQueueReader reads tuples from a shm_mq and returns the tuples.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -54,12 +54,16 @@ static bool
 tqueueReceiveSlot(TupleTableSlot *slot, DestReceiver *self)
 {
 	TQueueDestReceiver *tqueue = (TQueueDestReceiver *) self;
-	HeapTuple	tuple;
+	MinimalTuple tuple;
 	shm_mq_result result;
+	bool		should_free;
 
 	/* Send the tuple itself. */
-	tuple = ExecMaterializeSlot(slot);
-	result = shm_mq_send(tqueue->queue, tuple->t_len, tuple->t_data, false);
+	tuple = ExecFetchSlotMinimalTuple(slot, &should_free);
+	result = shm_mq_send(tqueue->queue, tuple->t_len, tuple, false, false);
+
+	if (should_free)
+		pfree(tuple);
 
 	/* Check for failure. */
 	if (result == SHM_MQ_DETACHED)
@@ -160,18 +164,18 @@ DestroyTupleQueueReader(TupleQueueReader *reader)
  * nowait = true and no tuple is ready to return.  *done, if not NULL,
  * is set to true when there are no remaining tuples and otherwise to false.
  *
- * The returned tuple, if any, is allocated in GetCurrentMemoryContext().
- * Note that this routine must not leak memory!  (We used to allow that,
- * but not any more.)
+ * The returned tuple, if any, is either in shared memory or a private buffer
+ * and should not be freed.  The pointer is invalid after the next call to
+ * TupleQueueReaderNext().
  *
  * Even when shm_mq_receive() returns SHM_MQ_WOULD_BLOCK, this can still
  * accumulate bytes from a partially-read message, so it's useful to call
  * this with nowait = true even if nothing is returned.
  */
-HeapTuple
+MinimalTuple
 TupleQueueReaderNext(TupleQueueReader *reader, bool nowait, bool *done)
 {
-	HeapTupleData htup;
+	MinimalTuple tuple;
 	shm_mq_result result;
 	Size		nbytes;
 	void	   *data;
@@ -196,13 +200,11 @@ TupleQueueReaderNext(TupleQueueReader *reader, bool nowait, bool *done)
 	Assert(result == SHM_MQ_SUCCESS);
 
 	/*
-	 * Set up a dummy HeapTupleData pointing to the data from the shm_mq
-	 * (which had better be sufficiently aligned).
+	 * Return a pointer to the queue memory directly (which had better be
+	 * sufficiently aligned).
 	 */
-	ItemPointerSetInvalid(&htup.t_self);
-	htup.t_tableOid = InvalidOid;
-	htup.t_len = nbytes;
-	htup.t_data = data;
+	tuple = (MinimalTuple) data;
+	Assert(tuple->t_len == nbytes);
 
-	return heap_copytuple(&htup);
+	return tuple;
 }

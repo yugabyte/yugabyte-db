@@ -15,7 +15,7 @@
  *
  * This code is released under the terms of the PostgreSQL License.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * src/bin/pg_config/pg_config.c
  *
@@ -24,8 +24,8 @@
 
 #include "postgres_fe.h"
 
-#include "port.h"
 #include "common/config_info.h"
+#include "port.h"
 
 static const char *progname;
 
@@ -102,7 +102,8 @@ help(void)
 	printf(_("  --version             show the PostgreSQL version\n"));
 	printf(_("  -?, --help            show this help, then exit\n"));
 	printf(_("\nWith no arguments, all known items are shown.\n\n"));
-	printf(_("Report bugs to <pgsql-bugs@postgresql.org>.\n"));
+	printf(_("Report bugs to <%s>.\n"), PACKAGE_BUGREPORT);
+	printf(_("%s home page: <%s>\n"), PACKAGE_NAME, PACKAGE_URL);
 }
 
 static void

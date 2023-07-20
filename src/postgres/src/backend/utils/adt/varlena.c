@@ -3,7 +3,7 @@
  * varlena.c
  *	  Functions for the variable-length built-in types.
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -17,14 +17,18 @@
 #include <ctype.h>
 #include <limits.h>
 
-#include "access/hash.h"
-#include "access/tuptoaster.h"
+#include "access/detoast.h"
+#include "access/toast_compression.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
+#include "common/hashfn.h"
 #include "common/int.h"
+#include "common/unicode_norm.h"
+#include "funcapi.h"
 #include "lib/hyperloglog.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
+#include "nodes/execnodes.h"
 #include "parser/scansup.h"
 #include "port/pg_bswap.h"
 #include "regex/regex.h"
@@ -43,18 +47,32 @@ int			bytea_output = BYTEA_OUTPUT_HEX;
 typedef struct varlena unknown;
 typedef struct varlena VarString;
 
+/*
+ * State for text_position_* functions.
+ */
 typedef struct
 {
-	bool		use_wchar;		/* T if multibyte encoding */
-	char	   *str1;			/* use these if not use_wchar */
-	char	   *str2;			/* note: these point to original texts */
-	pg_wchar   *wstr1;			/* use these if use_wchar */
-	pg_wchar   *wstr2;			/* note: these are palloc'd */
-	int			len1;			/* string lengths in logical characters */
+	bool		is_multibyte_char_in_char;	/* need to check char boundaries? */
+
+	char	   *str1;			/* haystack string */
+	char	   *str2;			/* needle string */
+	int			len1;			/* string lengths in bytes */
 	int			len2;
+
 	/* Skip table for Boyer-Moore-Horspool search algorithm: */
 	int			skiptablemask;	/* mask for ANDing with skiptable subscripts */
 	int			skiptable[256]; /* skip distance for given mismatched char */
+
+	char	   *last_match;		/* pointer to last match in 'str1' */
+
+	/*
+	 * Sometimes we need to convert the byte position of a match to a
+	 * character position.  These store the last position that was converted,
+	 * so that on the next call, we can continue from that point, rather than
+	 * count characters from the very beginning.
+	 */
+	char	   *refpoint;		/* pointer within original haystack string */
+	int			refpos;			/* 0-based character offset of the same point */
 } TextPositionState;
 
 typedef struct
@@ -62,19 +80,30 @@ typedef struct
 	char	   *buf1;			/* 1st string, or abbreviation original string
 								 * buf */
 	char	   *buf2;			/* 2nd string, or abbreviation strxfrm() buf */
-	int			buflen1;
-	int			buflen2;
+	int			buflen1;		/* Allocated length of buf1 */
+	int			buflen2;		/* Allocated length of buf2 */
 	int			last_len1;		/* Length of last buf1 string/strxfrm() input */
 	int			last_len2;		/* Length of last buf2 string/strxfrm() blob */
 	int			last_returned;	/* Last comparison result (cache) */
 	bool		cache_blob;		/* Does buf2 contain strxfrm() blob, etc? */
 	bool		collate_c;
-	bool		bpchar;			/* Sorting bpchar, not varchar/text/bytea? */
+	Oid			typid;			/* Actual datatype (text/bpchar/bytea/name) */
 	hyperLogLogState abbr_card; /* Abbreviated key cardinality state */
 	hyperLogLogState full_card; /* Full key cardinality state */
 	double		prop_card;		/* Required cardinality proportion */
 	pg_locale_t locale;
 } VarStringSortSupport;
+
+/*
+ * Output data for split_text(): we output either to an array or a table.
+ * tupstore and tupdesc must be set up in advance to output to a table.
+ */
+typedef struct
+{
+	ArrayBuildState *astate;
+	Tuplestorestate *tupstore;
+	TupleDesc	tupdesc;
+} SplitTextOutputData;
 
 /*
  * This should be large enough that most strings will fit, but small enough
@@ -93,45 +122,55 @@ typedef struct
 
 static int	varstrfastcmp_c(Datum x, Datum y, SortSupport ssup);
 static int	bpcharfastcmp_c(Datum x, Datum y, SortSupport ssup);
-static int	varstrfastcmp_locale(Datum x, Datum y, SortSupport ssup);
-static int	varstrcmp_abbrev(Datum x, Datum y, SortSupport ssup);
+static int	namefastcmp_c(Datum x, Datum y, SortSupport ssup);
+static int	varlenafastcmp_locale(Datum x, Datum y, SortSupport ssup);
+static int	namefastcmp_locale(Datum x, Datum y, SortSupport ssup);
+static int	varstrfastcmp_locale(char *a1p, int len1, char *a2p, int len2, SortSupport ssup);
 static Datum varstr_abbrev_convert(Datum original, SortSupport ssup);
 static bool varstr_abbrev_abort(int memtupcount, SortSupport ssup);
 static int32 text_length(Datum str);
 static text *text_catenate(text *t1, text *t2);
 static text *text_substring(Datum str,
-			   int32 start,
-			   int32 length,
-			   bool length_not_specified);
+							int32 start,
+							int32 length,
+							bool length_not_specified);
 static text *text_overlay(text *t1, text *t2, int sp, int sl);
-static int	text_position(text *t1, text *t2);
-static void text_position_setup(text *t1, text *t2, TextPositionState *state);
-static int	text_position_next(int start_pos, TextPositionState *state);
+static int	text_position(text *t1, text *t2, Oid collid);
+static void text_position_setup(text *t1, text *t2, Oid collid, TextPositionState *state);
+static bool text_position_next(TextPositionState *state);
+static char *text_position_next_internal(char *start_ptr, TextPositionState *state);
+static char *text_position_get_match_ptr(TextPositionState *state);
+static int	text_position_get_match_pos(TextPositionState *state);
 static void text_position_cleanup(TextPositionState *state);
+static void check_collation_set(Oid collid);
 static int	text_cmp(text *arg1, text *arg2, Oid collid);
 static bytea *bytea_catenate(bytea *t1, bytea *t2);
 static bytea *bytea_substring(Datum str,
-				int S,
-				int L,
-				bool length_not_specified);
+							  int S,
+							  int L,
+							  bool length_not_specified);
 static bytea *bytea_overlay(bytea *t1, bytea *t2, int sp, int sl);
 static void appendStringInfoText(StringInfo str, const text *t);
-static Datum text_to_array_internal(PG_FUNCTION_ARGS);
+static bool split_text(FunctionCallInfo fcinfo, SplitTextOutputData *tstate);
+static void split_text_accum_result(SplitTextOutputData *tstate,
+									text *field_value,
+									text *null_string,
+									Oid collation);
 static text *array_to_text_internal(FunctionCallInfo fcinfo, ArrayType *v,
-					   const char *fldsep, const char *null_string);
+									const char *fldsep, const char *null_string);
 static StringInfo makeStringAggState(FunctionCallInfo fcinfo);
 static bool text_format_parse_digits(const char **ptr, const char *end_ptr,
-						 int *value);
+									 int *value);
 static const char *text_format_parse_format(const char *start_ptr,
-						 const char *end_ptr,
-						 int *argpos, int *widthpos,
-						 int *flags, int *width);
+											const char *end_ptr,
+											int *argpos, int *widthpos,
+											int *flags, int *width);
 static void text_format_string_conversion(StringInfo buf, char conversion,
-							  FmgrInfo *typOutputInfo,
-							  Datum value, bool isNull,
-							  int flags, int width);
+										  FmgrInfo *typOutputInfo,
+										  Datum value, bool isNull,
+										  int flags, int width);
 static void text_format_append_string(StringInfo buf, const char *str,
-						  int flags, int width);
+									  int flags, int width);
 
 
 /*****************************************************************************
@@ -182,7 +221,7 @@ char *
 text_to_cstring(const text *t)
 {
 	/* must cast away the const, unfortunately */
-	text	   *tunpacked = pg_detoast_datum_packed((struct varlena *) t);
+	text	   *tunpacked = pg_detoast_datum_packed(unconstify(text *, t));
 	int			len = VARSIZE_ANY_EXHDR(tunpacked);
 	char	   *result;
 
@@ -213,7 +252,7 @@ void
 text_to_cstring_buffer(const text *src, char *dst, size_t dst_len)
 {
 	/* must cast away the const, unfortunately */
-	text	   *srcunpacked = pg_detoast_datum_packed((struct varlena *) src);
+	text	   *srcunpacked = pg_detoast_datum_packed(unconstify(text *, src));
 	size_t		src_len = VARSIZE_ANY_EXHDR(srcunpacked);
 
 	if (dst_len > 0)
@@ -366,7 +405,7 @@ byteaout(PG_FUNCTION_ARGS)
 	{
 		/* Print traditional escaped format */
 		char	   *vp;
-		int			len;
+		uint64		len;
 		int			i;
 
 		len = 1;				/* empty string has 1 char */
@@ -380,7 +419,18 @@ byteaout(PG_FUNCTION_ARGS)
 			else
 				len++;
 		}
+
+		/*
+		 * In principle len can't overflow uint32 if the input fit in 1GB, but
+		 * for safety let's check rather than relying on palloc's internal
+		 * check.
+		 */
+		if (len > MaxAllocSize)
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg_internal("result of bytea output conversion is too large")));
 		rp = result = (char *) palloc(len);
+
 		vp = VARDATA_ANY(vlena);
 		for (i = VARSIZE_ANY_EXHDR(vlena); i != 0; i--, vp++)
 		{
@@ -817,29 +867,38 @@ text_substring(Datum str, int32 start, int32 length, bool length_not_specified)
 	int32		S = start;		/* start position */
 	int32		S1;				/* adjusted start position */
 	int32		L1;				/* adjusted substring length */
+	int32		E;				/* end position */
+
+	/*
+	 * SQL99 says S can be zero or negative, but we still must fetch from the
+	 * start of the string.
+	 */
+	S1 = Max(S, 1);
 
 	/* life is easy if the encoding max length is 1 */
 	if (eml == 1)
 	{
-		S1 = Max(S, 1);
-
 		if (length_not_specified)	/* special case - get length to end of
 									 * string */
 			L1 = -1;
+		else if (length < 0)
+		{
+			/* SQL99 says to throw an error for E < S, i.e., negative length */
+			ereport(ERROR,
+					(errcode(ERRCODE_SUBSTRING_ERROR),
+					 errmsg("negative substring length not allowed")));
+			L1 = -1;			/* silence stupider compilers */
+		}
+		else if (pg_add_s32_overflow(S, length, &E))
+		{
+			/*
+			 * L could be large enough for S + L to overflow, in which case
+			 * the substring must run to end of string.
+			 */
+			L1 = -1;
+		}
 		else
 		{
-			/* end position */
-			int			E = S + length;
-
-			/*
-			 * A negative value for L is the only way for the end position to
-			 * be before the start. SQL99 says to throw an error.
-			 */
-			if (E < S)
-				ereport(ERROR,
-						(errcode(ERRCODE_SUBSTRING_ERROR),
-						 errmsg("negative substring length not allowed")));
-
 			/*
 			 * A zero or negative value for the end position can happen if the
 			 * start was negative or one. SQL99 says to return a zero-length
@@ -853,8 +912,8 @@ text_substring(Datum str, int32 start, int32 length, bool length_not_specified)
 
 		/*
 		 * If the start position is past the end of the string, SQL99 says to
-		 * return a zero-length string -- PG_GETARG_TEXT_P_SLICE() will do
-		 * that for us. Convert to zero-based starting position
+		 * return a zero-length string -- DatumGetTextPSlice() will do that
+		 * for us.  We need only convert S1 to zero-based starting position.
 		 */
 		return DatumGetTextPSlice(str, S1 - 1, L1);
 	}
@@ -876,12 +935,6 @@ text_substring(Datum str, int32 start, int32 length, bool length_not_specified)
 		text	   *ret;
 
 		/*
-		 * if S is past the end of the string, the tuple toaster will return a
-		 * zero-length string to us
-		 */
-		S1 = Max(S, 1);
-
-		/*
 		 * We need to start at position zero because there is no way to know
 		 * in advance which byte offset corresponds to the supplied start
 		 * position.
@@ -891,19 +944,24 @@ text_substring(Datum str, int32 start, int32 length, bool length_not_specified)
 		if (length_not_specified)	/* special case - get length to end of
 									 * string */
 			slice_size = L1 = -1;
+		else if (length < 0)
+		{
+			/* SQL99 says to throw an error for E < S, i.e., negative length */
+			ereport(ERROR,
+					(errcode(ERRCODE_SUBSTRING_ERROR),
+					 errmsg("negative substring length not allowed")));
+			slice_size = L1 = -1;	/* silence stupider compilers */
+		}
+		else if (pg_add_s32_overflow(S, length, &E))
+		{
+			/*
+			 * L could be large enough for S + L to overflow, in which case
+			 * the substring must run to end of string.
+			 */
+			slice_size = L1 = -1;
+		}
 		else
 		{
-			int			E = S + length;
-
-			/*
-			 * A negative value for L is the only way for the end position to
-			 * be before the start. SQL99 says to throw an error.
-			 */
-			if (E < S)
-				ereport(ERROR,
-						(errcode(ERRCODE_SUBSTRING_ERROR),
-						 errmsg("negative substring length not allowed")));
-
 			/*
 			 * A zero or negative value for the end position can happen if the
 			 * start was negative or one. SQL99 says to return a zero-length
@@ -921,8 +979,10 @@ text_substring(Datum str, int32 start, int32 length, bool length_not_specified)
 			/*
 			 * Total slice size in bytes can't be any longer than the start
 			 * position plus substring length times the encoding max length.
+			 * If that overflows, we can just use -1.
 			 */
-			slice_size = (S1 + L1) * eml;
+			if (pg_mul_s32_overflow(E, eml, &slice_size))
+				slice_size = -1;
 		}
 
 		/*
@@ -1073,7 +1133,7 @@ textpos(PG_FUNCTION_ARGS)
 	text	   *str = PG_GETARG_TEXT_PP(0);
 	text	   *search_str = PG_GETARG_TEXT_PP(1);
 
-	PG_RETURN_INT32((int32) text_position(str, search_str));
+	PG_RETURN_INT32((int32) text_position(str, search_str, PG_GET_COLLATION()));
 }
 
 /*
@@ -1091,13 +1151,24 @@ textpos(PG_FUNCTION_ARGS)
  *	functions.
  */
 static int
-text_position(text *t1, text *t2)
+text_position(text *t1, text *t2, Oid collid)
 {
 	TextPositionState state;
 	int			result;
 
-	text_position_setup(t1, t2, &state);
-	result = text_position_next(1, &state);
+	/* Empty needle always matches at position 1 */
+	if (VARSIZE_ANY_EXHDR(t2) < 1)
+		return 1;
+
+	/* Otherwise, can't match if haystack is shorter than needle */
+	if (VARSIZE_ANY_EXHDR(t1) < VARSIZE_ANY_EXHDR(t2))
+		return 0;
+
+	text_position_setup(t1, t2, collid, &state);
+	if (!text_position_next(&state))
+		result = 0;
+	else
+		result = text_position_get_match_pos(&state);
 	text_position_cleanup(&state);
 	return result;
 }
@@ -1109,43 +1180,59 @@ text_position(text *t1, text *t2)
  *
  * These are broken out so that a string can be efficiently searched for
  * multiple occurrences of the same pattern.  text_position_next may be
- * called multiple times with increasing values of start_pos, which is
- * the 1-based character position to start the search from.  The "state"
- * variable is normally just a local variable in the caller.
+ * called multiple times, and it advances to the next match on each call.
+ * text_position_get_match_ptr() and text_position_get_match_pos() return
+ * a pointer or 1-based character position of the last match, respectively.
+ *
+ * The "state" variable is normally just a local variable in the caller.
+ *
+ * NOTE: text_position_next skips over the matched portion.  For example,
+ * searching for "xx" in "xxx" returns only one match, not two.
  */
 
 static void
-text_position_setup(text *t1, text *t2, TextPositionState *state)
+text_position_setup(text *t1, text *t2, Oid collid, TextPositionState *state)
 {
 	int			len1 = VARSIZE_ANY_EXHDR(t1);
 	int			len2 = VARSIZE_ANY_EXHDR(t2);
+	pg_locale_t mylocale = 0;
 
+	check_collation_set(collid);
+
+	if (!lc_collate_is_c(collid))
+		mylocale = pg_newlocale_from_collation(collid);
+
+	if (mylocale && !mylocale->deterministic)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("nondeterministic collations are not supported for substring searches")));
+
+	Assert(len1 > 0);
+	Assert(len2 > 0);
+
+	/*
+	 * Even with a multi-byte encoding, we perform the search using the raw
+	 * byte sequence, ignoring multibyte issues.  For UTF-8, that works fine,
+	 * because in UTF-8 the byte sequence of one character cannot contain
+	 * another character.  For other multi-byte encodings, we do the search
+	 * initially as a simple byte search, ignoring multibyte issues, but
+	 * verify afterwards that the match we found is at a character boundary,
+	 * and continue the search if it was a false match.
+	 */
 	if (pg_database_encoding_max_length() == 1)
-	{
-		/* simple case - single byte encoding */
-		state->use_wchar = false;
-		state->str1 = VARDATA_ANY(t1);
-		state->str2 = VARDATA_ANY(t2);
-		state->len1 = len1;
-		state->len2 = len2;
-	}
+		state->is_multibyte_char_in_char = false;
+	else if (GetDatabaseEncoding() == PG_UTF8)
+		state->is_multibyte_char_in_char = false;
 	else
-	{
-		/* not as simple - multibyte encoding */
-		pg_wchar   *p1,
-				   *p2;
+		state->is_multibyte_char_in_char = true;
 
-		p1 = (pg_wchar *) palloc((len1 + 1) * sizeof(pg_wchar));
-		len1 = pg_mb2wchar_with_len(VARDATA_ANY(t1), p1, len1);
-		p2 = (pg_wchar *) palloc((len2 + 1) * sizeof(pg_wchar));
-		len2 = pg_mb2wchar_with_len(VARDATA_ANY(t2), p2, len2);
-
-		state->use_wchar = true;
-		state->wstr1 = p1;
-		state->wstr2 = p2;
-		state->len1 = len1;
-		state->len2 = len2;
-	}
+	state->str1 = VARDATA_ANY(t1);
+	state->str2 = VARDATA_ANY(t2);
+	state->len1 = len1;
+	state->len2 = len2;
+	state->last_match = NULL;
+	state->refpoint = state->str1;
+	state->refpos = 0;
 
 	/*
 	 * Prepare the skip table for Boyer-Moore-Horspool searching.  In these
@@ -1163,6 +1250,7 @@ text_position_setup(text *t1, text *t2, TextPositionState *state)
 		int			skiptablemask;
 		int			last;
 		int			i;
+		const char *str2 = state->str2;
 
 		/*
 		 * First we must determine how much of the skip table to use.  The
@@ -1209,164 +1297,206 @@ text_position_setup(text *t1, text *t2, TextPositionState *state)
 		 */
 		last = len2 - 1;
 
-		if (!state->use_wchar)
-		{
-			const char *str2 = state->str2;
-
-			for (i = 0; i < last; i++)
-				state->skiptable[(unsigned char) str2[i] & skiptablemask] = last - i;
-		}
-		else
-		{
-			const pg_wchar *wstr2 = state->wstr2;
-
-			for (i = 0; i < last; i++)
-				state->skiptable[wstr2[i] & skiptablemask] = last - i;
-		}
+		for (i = 0; i < last; i++)
+			state->skiptable[(unsigned char) str2[i] & skiptablemask] = last - i;
 	}
 }
 
-static int
-text_position_next(int start_pos, TextPositionState *state)
+/*
+ * Advance to the next match, starting from the end of the previous match
+ * (or the beginning of the string, on first call).  Returns true if a match
+ * is found.
+ *
+ * Note that this refuses to match an empty-string needle.  Most callers
+ * will have handled that case specially and we'll never see it here.
+ */
+static bool
+text_position_next(TextPositionState *state)
+{
+	int			needle_len = state->len2;
+	char	   *start_ptr;
+	char	   *matchptr;
+
+	if (needle_len <= 0)
+		return false;			/* result for empty pattern */
+
+	/* Start from the point right after the previous match. */
+	if (state->last_match)
+		start_ptr = state->last_match + needle_len;
+	else
+		start_ptr = state->str1;
+
+retry:
+	matchptr = text_position_next_internal(start_ptr, state);
+
+	if (!matchptr)
+		return false;
+
+	/*
+	 * Found a match for the byte sequence.  If this is a multibyte encoding,
+	 * where one character's byte sequence can appear inside a longer
+	 * multi-byte character, we need to verify that the match was at a
+	 * character boundary, not in the middle of a multi-byte character.
+	 */
+	if (state->is_multibyte_char_in_char)
+	{
+		/* Walk one character at a time, until we reach the match. */
+
+		/* the search should never move backwards. */
+		Assert(state->refpoint <= matchptr);
+
+		while (state->refpoint < matchptr)
+		{
+			/* step to next character. */
+			state->refpoint += pg_mblen(state->refpoint);
+			state->refpos++;
+
+			/*
+			 * If we stepped over the match's start position, then it was a
+			 * false positive, where the byte sequence appeared in the middle
+			 * of a multi-byte character.  Skip it, and continue the search at
+			 * the next character boundary.
+			 */
+			if (state->refpoint > matchptr)
+			{
+				start_ptr = state->refpoint;
+				goto retry;
+			}
+		}
+	}
+
+	state->last_match = matchptr;
+	return true;
+}
+
+/*
+ * Subroutine of text_position_next().  This searches for the raw byte
+ * sequence, ignoring any multi-byte encoding issues.  Returns the first
+ * match starting at 'start_ptr', or NULL if no match is found.
+ */
+static char *
+text_position_next_internal(char *start_ptr, TextPositionState *state)
 {
 	int			haystack_len = state->len1;
 	int			needle_len = state->len2;
 	int			skiptablemask = state->skiptablemask;
+	const char *haystack = state->str1;
+	const char *needle = state->str2;
+	const char *haystack_end = &haystack[haystack_len];
+	const char *hptr;
 
-	Assert(start_pos > 0);		/* else caller error */
+	Assert(start_ptr >= haystack && start_ptr <= haystack_end);
 
-	if (needle_len <= 0)
-		return start_pos;		/* result for empty pattern */
-
-	start_pos--;				/* adjust for zero based arrays */
-
-	/* Done if the needle can't possibly fit */
-	if (haystack_len < start_pos + needle_len)
-		return 0;
-
-	if (!state->use_wchar)
+	if (needle_len == 1)
 	{
-		/* simple case - single byte encoding */
-		const char *haystack = state->str1;
-		const char *needle = state->str2;
-		const char *haystack_end = &haystack[haystack_len];
-		const char *hptr;
+		/* No point in using B-M-H for a one-character needle */
+		char		nchar = *needle;
 
-		if (needle_len == 1)
+		hptr = start_ptr;
+		while (hptr < haystack_end)
 		{
-			/* No point in using B-M-H for a one-character needle */
-			char		nchar = *needle;
-
-			hptr = &haystack[start_pos];
-			while (hptr < haystack_end)
-			{
-				if (*hptr == nchar)
-					return hptr - haystack + 1;
-				hptr++;
-			}
-		}
-		else
-		{
-			const char *needle_last = &needle[needle_len - 1];
-
-			/* Start at startpos plus the length of the needle */
-			hptr = &haystack[start_pos + needle_len - 1];
-			while (hptr < haystack_end)
-			{
-				/* Match the needle scanning *backward* */
-				const char *nptr;
-				const char *p;
-
-				nptr = needle_last;
-				p = hptr;
-				while (*nptr == *p)
-				{
-					/* Matched it all?	If so, return 1-based position */
-					if (nptr == needle)
-						return p - haystack + 1;
-					nptr--, p--;
-				}
-
-				/*
-				 * No match, so use the haystack char at hptr to decide how
-				 * far to advance.  If the needle had any occurrence of that
-				 * character (or more precisely, one sharing the same
-				 * skiptable entry) before its last character, then we advance
-				 * far enough to align the last such needle character with
-				 * that haystack position.  Otherwise we can advance by the
-				 * whole needle length.
-				 */
-				hptr += state->skiptable[(unsigned char) *hptr & skiptablemask];
-			}
+			if (*hptr == nchar)
+				return (char *) hptr;
+			hptr++;
 		}
 	}
 	else
 	{
-		/* The multibyte char version. This works exactly the same way. */
-		const pg_wchar *haystack = state->wstr1;
-		const pg_wchar *needle = state->wstr2;
-		const pg_wchar *haystack_end = &haystack[haystack_len];
-		const pg_wchar *hptr;
+		const char *needle_last = &needle[needle_len - 1];
 
-		if (needle_len == 1)
+		/* Start at startpos plus the length of the needle */
+		hptr = start_ptr + needle_len - 1;
+		while (hptr < haystack_end)
 		{
-			/* No point in using B-M-H for a one-character needle */
-			pg_wchar	nchar = *needle;
+			/* Match the needle scanning *backward* */
+			const char *nptr;
+			const char *p;
 
-			hptr = &haystack[start_pos];
-			while (hptr < haystack_end)
+			nptr = needle_last;
+			p = hptr;
+			while (*nptr == *p)
 			{
-				if (*hptr == nchar)
-					return hptr - haystack + 1;
-				hptr++;
+				/* Matched it all?	If so, return 1-based position */
+				if (nptr == needle)
+					return (char *) p;
+				nptr--, p--;
 			}
-		}
-		else
-		{
-			const pg_wchar *needle_last = &needle[needle_len - 1];
 
-			/* Start at startpos plus the length of the needle */
-			hptr = &haystack[start_pos + needle_len - 1];
-			while (hptr < haystack_end)
-			{
-				/* Match the needle scanning *backward* */
-				const pg_wchar *nptr;
-				const pg_wchar *p;
-
-				nptr = needle_last;
-				p = hptr;
-				while (*nptr == *p)
-				{
-					/* Matched it all?	If so, return 1-based position */
-					if (nptr == needle)
-						return p - haystack + 1;
-					nptr--, p--;
-				}
-
-				/*
-				 * No match, so use the haystack char at hptr to decide how
-				 * far to advance.  If the needle had any occurrence of that
-				 * character (or more precisely, one sharing the same
-				 * skiptable entry) before its last character, then we advance
-				 * far enough to align the last such needle character with
-				 * that haystack position.  Otherwise we can advance by the
-				 * whole needle length.
-				 */
-				hptr += state->skiptable[*hptr & skiptablemask];
-			}
+			/*
+			 * No match, so use the haystack char at hptr to decide how far to
+			 * advance.  If the needle had any occurrence of that character
+			 * (or more precisely, one sharing the same skiptable entry)
+			 * before its last character, then we advance far enough to align
+			 * the last such needle character with that haystack position.
+			 * Otherwise we can advance by the whole needle length.
+			 */
+			hptr += state->skiptable[(unsigned char) *hptr & skiptablemask];
 		}
 	}
 
 	return 0;					/* not found */
 }
 
+/*
+ * Return a pointer to the current match.
+ *
+ * The returned pointer points into the original haystack string.
+ */
+static char *
+text_position_get_match_ptr(TextPositionState *state)
+{
+	return state->last_match;
+}
+
+/*
+ * Return the offset of the current match.
+ *
+ * The offset is in characters, 1-based.
+ */
+static int
+text_position_get_match_pos(TextPositionState *state)
+{
+	/* Convert the byte position to char position. */
+	state->refpos += pg_mbstrlen_with_len(state->refpoint,
+										  state->last_match - state->refpoint);
+	state->refpoint = state->last_match;
+	return state->refpos + 1;
+}
+
+/*
+ * Reset search state to the initial state installed by text_position_setup.
+ *
+ * The next call to text_position_next will search from the beginning
+ * of the string.
+ */
+static void
+text_position_reset(TextPositionState *state)
+{
+	state->last_match = NULL;
+	state->refpoint = state->str1;
+	state->refpos = 0;
+}
+
 static void
 text_position_cleanup(TextPositionState *state)
 {
-	if (state->use_wchar)
+	/* no cleanup needed */
+}
+
+
+static void
+check_collation_set(Oid collid)
+{
+	if (!OidIsValid(collid))
 	{
-		pfree(state->wstr1);
-		pfree(state->wstr2);
+		/*
+		 * This typically means that the parser could not resolve a conflict
+		 * of implicit collations, so report it that way.
+		 */
+		ereport(ERROR,
+				(errcode(ERRCODE_INDETERMINATE_COLLATION),
+				 errmsg("could not determine which collation to use for string comparison"),
+				 errhint("Use the COLLATE clause to set the collation explicitly.")));
 	}
 }
 
@@ -1376,11 +1506,19 @@ text_position_cleanup(TextPositionState *state)
  *	to allow null-termination for inputs to strcoll().
  * Returns an integer less than, equal to, or greater than zero, indicating
  * whether arg1 is less than, equal to, or greater than arg2.
+ *
+ * Note: many functions that depend on this are marked leakproof; therefore,
+ * avoid reporting the actual contents of the input when throwing errors.
+ * All errors herein should be things that can't happen except on corrupt
+ * data, anyway; otherwise we will have trouble with indexing strings that
+ * would cause them.
  */
 int
 varstr_cmp(const char *arg1, int len1, const char *arg2, int len2, Oid collid)
 {
 	int			result;
+
+	check_collation_set(collid);
 
 	/*
 	 * Unfortunately, there is no strncoll(), so in the non-C locale case we
@@ -1400,23 +1538,9 @@ varstr_cmp(const char *arg1, int len1, const char *arg2, int len2, Oid collid)
 		char		a2buf[TEXTBUFLEN];
 		char	   *a1p,
 				   *a2p;
-		pg_locale_t mylocale = 0;
+		pg_locale_t mylocale;
 
-		if (collid != DEFAULT_COLLATION_OID)
-		{
-			if (!OidIsValid(collid))
-			{
-				/*
-				 * This typically means that the parser could not resolve a
-				 * conflict of implicit collations, so report it that way.
-				 */
-				ereport(ERROR,
-						(errcode(ERRCODE_INDETERMINATE_COLLATION),
-						 errmsg("could not determine which collation to use for string comparison"),
-						 errhint("Use the COLLATE clause to set the collation explicitly.")));
-			}
-			mylocale = pg_newlocale_from_collation(collid);
-		}
+		mylocale = pg_newlocale_from_collation(collid);
 
 		/*
 		 * memcmp() can't tell us which of two unequal strings sorts first,
@@ -1499,13 +1623,9 @@ varstr_cmp(const char *arg1, int len1, const char *arg2, int len2, Oid collid)
 				ereport(ERROR,
 						(errmsg("could not compare Unicode strings: %m")));
 
-			/*
-			 * In some locales wcscoll() can claim that nonidentical strings
-			 * are equal.  Believing that would be bad news for a number of
-			 * reasons, so we follow Perl's lead and sort "equal" strings
-			 * according to strcmp (on the UTF-8 representation).
-			 */
-			if (result == 0)
+			/* Break tie if necessary. */
+			if (result == 0 &&
+				(!mylocale || mylocale->deterministic))
 			{
 				result = memcmp(arg1, arg2, Min(len1, len2));
 				if ((result == 0) && (len1 != len2))
@@ -1590,13 +1710,9 @@ varstr_cmp(const char *arg1, int len1, const char *arg2, int len2, Oid collid)
 		else
 			result = strcoll(a1p, a2p);
 
-		/*
-		 * In some locales strcoll() can claim that nonidentical strings are
-		 * equal.  Believing that would be bad news for a number of reasons,
-		 * so we follow Perl's lead and sort "equal" strings according to
-		 * strcmp().
-		 */
-		if (result == 0)
+		/* Break tie if necessary. */
+		if (result == 0 &&
+			(!mylocale || mylocale->deterministic))
 			result = strcmp(a1p, a2p);
 
 		if (a1p != a1buf)
@@ -1640,33 +1756,57 @@ text_cmp(text *arg1, text *arg2, Oid collid)
 Datum
 texteq(PG_FUNCTION_ARGS)
 {
-	Datum		arg1 = PG_GETARG_DATUM(0);
-	Datum		arg2 = PG_GETARG_DATUM(1);
+	Oid			collid = PG_GET_COLLATION();
+	bool		locale_is_c = false;
+	pg_locale_t mylocale = 0;
 	bool		result;
-	Size		len1,
-				len2;
 
-	/*
-	 * Since we only care about equality or not-equality, we can avoid all the
-	 * expense of strcoll() here, and just do bitwise comparison.  In fact, we
-	 * don't even have to do a bitwise comparison if we can show the lengths
-	 * of the strings are unequal; which might save us from having to detoast
-	 * one or both values.
-	 */
-	len1 = toast_raw_datum_size(arg1);
-	len2 = toast_raw_datum_size(arg2);
-	if (len1 != len2)
-		result = false;
+	check_collation_set(collid);
+
+	if (lc_collate_is_c(collid))
+		locale_is_c = true;
+	else
+		mylocale = pg_newlocale_from_collation(collid);
+
+	if (locale_is_c || !mylocale || mylocale->deterministic)
+	{
+		Datum		arg1 = PG_GETARG_DATUM(0);
+		Datum		arg2 = PG_GETARG_DATUM(1);
+		Size		len1,
+					len2;
+
+		/*
+		 * Since we only care about equality or not-equality, we can avoid all
+		 * the expense of strcoll() here, and just do bitwise comparison.  In
+		 * fact, we don't even have to do a bitwise comparison if we can show
+		 * the lengths of the strings are unequal; which might save us from
+		 * having to detoast one or both values.
+		 */
+		len1 = toast_raw_datum_size(arg1);
+		len2 = toast_raw_datum_size(arg2);
+		if (len1 != len2)
+			result = false;
+		else
+		{
+			text	   *targ1 = DatumGetTextPP(arg1);
+			text	   *targ2 = DatumGetTextPP(arg2);
+
+			result = (memcmp(VARDATA_ANY(targ1), VARDATA_ANY(targ2),
+							 len1 - VARHDRSZ) == 0);
+
+			PG_FREE_IF_COPY(targ1, 0);
+			PG_FREE_IF_COPY(targ2, 1);
+		}
+	}
 	else
 	{
-		text	   *targ1 = DatumGetTextPP(arg1);
-		text	   *targ2 = DatumGetTextPP(arg2);
+		text	   *arg1 = PG_GETARG_TEXT_PP(0);
+		text	   *arg2 = PG_GETARG_TEXT_PP(1);
 
-		result = (memcmp(VARDATA_ANY(targ1), VARDATA_ANY(targ2),
-						 len1 - VARHDRSZ) == 0);
+		result = (text_cmp(arg1, arg2, collid) == 0);
 
-		PG_FREE_IF_COPY(targ1, 0);
-		PG_FREE_IF_COPY(targ2, 1);
+		PG_FREE_IF_COPY(arg1, 0);
+		PG_FREE_IF_COPY(arg2, 1);
 	}
 
 	PG_RETURN_BOOL(result);
@@ -1675,27 +1815,51 @@ texteq(PG_FUNCTION_ARGS)
 Datum
 textne(PG_FUNCTION_ARGS)
 {
-	Datum		arg1 = PG_GETARG_DATUM(0);
-	Datum		arg2 = PG_GETARG_DATUM(1);
+	Oid			collid = PG_GET_COLLATION();
+	bool		locale_is_c = false;
+	pg_locale_t mylocale = 0;
 	bool		result;
-	Size		len1,
-				len2;
 
-	/* See comment in texteq() */
-	len1 = toast_raw_datum_size(arg1);
-	len2 = toast_raw_datum_size(arg2);
-	if (len1 != len2)
-		result = true;
+	check_collation_set(collid);
+
+	if (lc_collate_is_c(collid))
+		locale_is_c = true;
+	else
+		mylocale = pg_newlocale_from_collation(collid);
+
+	if (locale_is_c || !mylocale || mylocale->deterministic)
+	{
+		Datum		arg1 = PG_GETARG_DATUM(0);
+		Datum		arg2 = PG_GETARG_DATUM(1);
+		Size		len1,
+					len2;
+
+		/* See comment in texteq() */
+		len1 = toast_raw_datum_size(arg1);
+		len2 = toast_raw_datum_size(arg2);
+		if (len1 != len2)
+			result = true;
+		else
+		{
+			text	   *targ1 = DatumGetTextPP(arg1);
+			text	   *targ2 = DatumGetTextPP(arg2);
+
+			result = (memcmp(VARDATA_ANY(targ1), VARDATA_ANY(targ2),
+							 len1 - VARHDRSZ) != 0);
+
+			PG_FREE_IF_COPY(targ1, 0);
+			PG_FREE_IF_COPY(targ2, 1);
+		}
+	}
 	else
 	{
-		text	   *targ1 = DatumGetTextPP(arg1);
-		text	   *targ2 = DatumGetTextPP(arg2);
+		text	   *arg1 = PG_GETARG_TEXT_PP(0);
+		text	   *arg2 = PG_GETARG_TEXT_PP(1);
 
-		result = (memcmp(VARDATA_ANY(targ1), VARDATA_ANY(targ2),
-						 len1 - VARHDRSZ) != 0);
+		result = (text_cmp(arg1, arg2, collid) != 0);
 
-		PG_FREE_IF_COPY(targ1, 0);
-		PG_FREE_IF_COPY(targ2, 1);
+		PG_FREE_IF_COPY(arg1, 0);
+		PG_FREE_IF_COPY(arg2, 1);
 	}
 
 	PG_RETURN_BOOL(result);
@@ -1766,9 +1930,21 @@ text_starts_with(PG_FUNCTION_ARGS)
 {
 	Datum		arg1 = PG_GETARG_DATUM(0);
 	Datum		arg2 = PG_GETARG_DATUM(1);
+	Oid			collid = PG_GET_COLLATION();
+	pg_locale_t mylocale = 0;
 	bool		result;
 	Size		len1,
 				len2;
+
+	check_collation_set(collid);
+
+	if (!lc_collate_is_c(collid))
+		mylocale = pg_newlocale_from_collation(collid);
+
+	if (mylocale && !mylocale->deterministic)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("nondeterministic collations are not supported for substring searches")));
 
 	len1 = toast_raw_datum_size(arg1);
 	len2 = toast_raw_datum_size(arg2);
@@ -1776,7 +1952,7 @@ text_starts_with(PG_FUNCTION_ARGS)
 		result = false;
 	else
 	{
-		text	   *targ1 = DatumGetTextPP(arg1);
+		text	   *targ1 = text_substring(arg1, 1, len2, false);
 		text	   *targ2 = DatumGetTextPP(arg2);
 
 		result = (memcmp(VARDATA_ANY(targ1), VARDATA_ANY(targ2),
@@ -1814,7 +1990,7 @@ bttextsortsupport(PG_FUNCTION_ARGS)
 	oldcontext = MemoryContextSwitchTo(ssup->ssup_cxt);
 
 	/* Use generic string SortSupport */
-	varstr_sortsupport(ssup, collid, false);
+	varstr_sortsupport(ssup, TEXTOID, collid);
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -1832,12 +2008,14 @@ bttextsortsupport(PG_FUNCTION_ARGS)
  * this will not work with any other collation, though.
  */
 void
-varstr_sortsupport(SortSupport ssup, Oid collid, bool bpchar)
+varstr_sortsupport(SortSupport ssup, Oid typid, Oid collid)
 {
 	bool		abbreviate = ssup->abbreviate;
 	bool		collate_c = false;
 	VarStringSortSupport *sss;
 	pg_locale_t locale = 0;
+
+	check_collation_set(collid);
 
 	/*
 	 * If possible, set ssup->comparator to a function which can be used to
@@ -1845,18 +2023,25 @@ varstr_sortsupport(SortSupport ssup, Oid collid, bool bpchar)
 	 * overhead of a trip through the fmgr layer for every comparison, which
 	 * can be substantial.
 	 *
-	 * Most typically, we'll set the comparator to varstrfastcmp_locale, which
-	 * uses strcoll() to perform comparisons and knows about the special
-	 * requirements of BpChar callers.  However, if LC_COLLATE = C, we can
-	 * make things quite a bit faster with varstrfastcmp_c or bpcharfastcmp_c,
-	 * both of which use memcmp() rather than strcoll().
+	 * Most typically, we'll set the comparator to varlenafastcmp_locale,
+	 * which uses strcoll() to perform comparisons.  We use that for the
+	 * BpChar case too, but type NAME uses namefastcmp_locale. However, if
+	 * LC_COLLATE = C, we can make things quite a bit faster with
+	 * varstrfastcmp_c, bpcharfastcmp_c, or namefastcmp_c, all of which use
+	 * memcmp() rather than strcoll().
 	 */
 	if (lc_collate_is_c(collid))
 	{
-		if (!bpchar)
-			ssup->comparator = varstrfastcmp_c;
-		else
+		if (typid == BPCHAROID)
 			ssup->comparator = bpcharfastcmp_c;
+		else if (typid == NAMEOID)
+		{
+			ssup->comparator = namefastcmp_c;
+			/* Not supporting abbreviation with type NAME, for now */
+			abbreviate = false;
+		}
+		else
+			ssup->comparator = varstrfastcmp_c;
 
 		collate_c = true;
 	}
@@ -1867,21 +2052,7 @@ varstr_sortsupport(SortSupport ssup, Oid collid, bool bpchar)
 		 * we'll figure out the collation based on the locale id and cache the
 		 * result.
 		 */
-		if (collid != DEFAULT_COLLATION_OID)
-		{
-			if (!OidIsValid(collid))
-			{
-				/*
-				 * This typically means that the parser could not resolve a
-				 * conflict of implicit collations, so report it that way.
-				 */
-				ereport(ERROR,
-						(errcode(ERRCODE_INDETERMINATE_COLLATION),
-						 errmsg("could not determine which collation to use for string comparison"),
-						 errhint("Use the COLLATE clause to set the collation explicitly.")));
-			}
-			locale = pg_newlocale_from_collation(collid);
-		}
+		locale = pg_newlocale_from_collation(collid);
 
 		/*
 		 * There is a further exception on Windows.  When the database
@@ -1897,7 +2068,17 @@ varstr_sortsupport(SortSupport ssup, Oid collid, bool bpchar)
 			return;
 #endif
 
-		ssup->comparator = varstrfastcmp_locale;
+		/*
+		 * We use varlenafastcmp_locale except for type NAME.
+		 */
+		if (typid == NAMEOID)
+		{
+			ssup->comparator = namefastcmp_locale;
+			/* Not supporting abbreviation with type NAME, for now */
+			abbreviate = false;
+		}
+		else
+			ssup->comparator = varlenafastcmp_locale;
 	}
 
 	/*
@@ -1928,7 +2109,7 @@ varstr_sortsupport(SortSupport ssup, Oid collid, bool bpchar)
 
 	/*
 	 * If we're using abbreviated keys, or if we're using a locale-aware
-	 * comparison, we need to initialize a StringSortSupport object.  Both
+	 * comparison, we need to initialize a VarStringSortSupport object. Both
 	 * cases will make use of the temporary buffers we initialize here for
 	 * scratch space (and to detect requirement for BpChar semantics from
 	 * caller), and the abbreviation case requires additional state.
@@ -1963,7 +2144,7 @@ varstr_sortsupport(SortSupport ssup, Oid collid, bool bpchar)
 		 */
 		sss->cache_blob = true;
 		sss->collate_c = collate_c;
-		sss->bpchar = bpchar;
+		sss->typid = typid;
 		ssup->ssup_extra = sss;
 
 		/*
@@ -1977,7 +2158,7 @@ varstr_sortsupport(SortSupport ssup, Oid collid, bool bpchar)
 			initHyperLogLog(&sss->abbr_card, 10);
 			initHyperLogLog(&sss->full_card, 10);
 			ssup->abbrev_full_comparator = ssup->comparator;
-			ssup->comparator = varstrcmp_abbrev;
+			ssup->comparator = ssup_datum_unsigned_cmp;
 			ssup->abbrev_converter = varstr_abbrev_convert;
 			ssup->abbrev_abort = varstr_abbrev_abort;
 		}
@@ -2055,17 +2236,25 @@ bpcharfastcmp_c(Datum x, Datum y, SortSupport ssup)
 }
 
 /*
- * sortsupport comparison func (for locale case)
+ * sortsupport comparison func (for NAME C locale case)
  */
 static int
-varstrfastcmp_locale(Datum x, Datum y, SortSupport ssup)
+namefastcmp_c(Datum x, Datum y, SortSupport ssup)
+{
+	Name		arg1 = DatumGetName(x);
+	Name		arg2 = DatumGetName(y);
+
+	return strncmp(NameStr(*arg1), NameStr(*arg2), NAMEDATALEN);
+}
+
+/*
+ * sortsupport comparison func (for locale case with all varlena types)
+ */
+static int
+varlenafastcmp_locale(Datum x, Datum y, SortSupport ssup)
 {
 	VarString  *arg1 = DatumGetVarStringPP(x);
 	VarString  *arg2 = DatumGetVarStringPP(y);
-	bool		arg1_match;
-	VarStringSortSupport *sss = (VarStringSortSupport *) ssup->ssup_extra;
-
-	/* working state */
 	char	   *a1p,
 			   *a2p;
 	int			len1,
@@ -2077,6 +2266,41 @@ varstrfastcmp_locale(Datum x, Datum y, SortSupport ssup)
 
 	len1 = VARSIZE_ANY_EXHDR(arg1);
 	len2 = VARSIZE_ANY_EXHDR(arg2);
+
+	result = varstrfastcmp_locale(a1p, len1, a2p, len2, ssup);
+
+	/* We can't afford to leak memory here. */
+	if (PointerGetDatum(arg1) != x)
+		pfree(arg1);
+	if (PointerGetDatum(arg2) != y)
+		pfree(arg2);
+
+	return result;
+}
+
+/*
+ * sortsupport comparison func (for locale case with NAME type)
+ */
+static int
+namefastcmp_locale(Datum x, Datum y, SortSupport ssup)
+{
+	Name		arg1 = DatumGetName(x);
+	Name		arg2 = DatumGetName(y);
+
+	return varstrfastcmp_locale(NameStr(*arg1), strlen(NameStr(*arg1)),
+								NameStr(*arg2), strlen(NameStr(*arg2)),
+								ssup);
+}
+
+/*
+ * sortsupport comparison func for locale cases
+ */
+static int
+varstrfastcmp_locale(char *a1p, int len1, char *a2p, int len2, SortSupport ssup)
+{
+	VarStringSortSupport *sss = (VarStringSortSupport *) ssup->ssup_extra;
+	int			result;
+	bool		arg1_match;
 
 	/* Fast pre-check for equality, as discussed in varstr_cmp() */
 	if (len1 == len2 && memcmp(a1p, a2p, len1) == 0)
@@ -2094,11 +2318,10 @@ varstrfastcmp_locale(Datum x, Datum y, SortSupport ssup)
 		 * (not limited to padding), so we need make no distinction between
 		 * padding space characters and "real" space characters.
 		 */
-		result = 0;
-		goto done;
+		return 0;
 	}
 
-	if (sss->bpchar)
+	if (sss->typid == BPCHAROID)
 	{
 		/* Get true number of bytes, ignoring trailing spaces */
 		len1 = bpchartruelen(a1p, len1);
@@ -2107,15 +2330,13 @@ varstrfastcmp_locale(Datum x, Datum y, SortSupport ssup)
 
 	if (len1 >= sss->buflen1)
 	{
-		pfree(sss->buf1);
 		sss->buflen1 = Max(len1 + 1, Min(sss->buflen1 * 2, MaxAllocSize));
-		sss->buf1 = MemoryContextAlloc(ssup->ssup_cxt, sss->buflen1);
+		sss->buf1 = repalloc(sss->buf1, sss->buflen1);
 	}
 	if (len2 >= sss->buflen2)
 	{
-		pfree(sss->buf2);
 		sss->buflen2 = Max(len2 + 1, Min(sss->buflen2 * 2, MaxAllocSize));
-		sss->buf2 = MemoryContextAlloc(ssup->ssup_cxt, sss->buflen2);
+		sss->buf2 = repalloc(sss->buf2, sss->buflen2);
 	}
 
 	/*
@@ -2152,8 +2373,7 @@ varstrfastcmp_locale(Datum x, Datum y, SortSupport ssup)
 	else if (arg1_match && !sss->cache_blob)
 	{
 		/* Use result cached following last actual strcoll() call */
-		result = sss->last_returned;
-		goto done;
+		return sss->last_returned;
 	}
 
 	if (sss->locale)
@@ -2211,46 +2431,15 @@ varstrfastcmp_locale(Datum x, Datum y, SortSupport ssup)
 	else
 		result = strcoll(sss->buf1, sss->buf2);
 
-	/*
-	 * In some locales strcoll() can claim that nonidentical strings are
-	 * equal. Believing that would be bad news for a number of reasons, so we
-	 * follow Perl's lead and sort "equal" strings according to strcmp().
-	 */
-	if (result == 0)
+	/* Break tie if necessary. */
+	if (result == 0 &&
+		(!sss->locale || sss->locale->deterministic))
 		result = strcmp(sss->buf1, sss->buf2);
 
 	/* Cache result, perhaps saving an expensive strcoll() call next time */
 	sss->cache_blob = false;
 	sss->last_returned = result;
-done:
-	/* We can't afford to leak memory here. */
-	if (PointerGetDatum(arg1) != x)
-		pfree(arg1);
-	if (PointerGetDatum(arg2) != y)
-		pfree(arg2);
-
 	return result;
-}
-
-/*
- * Abbreviated key comparison func
- */
-static int
-varstrcmp_abbrev(Datum x, Datum y, SortSupport ssup)
-{
-	/*
-	 * When 0 is returned, the core system will call varstrfastcmp_c()
-	 * (bpcharfastcmp_c() in BpChar case) or varstrfastcmp_locale().  Even a
-	 * strcmp() on two non-truncated strxfrm() blobs cannot indicate *equality*
-	 * authoritatively, for the same reason that there is a strcoll()
-	 * tie-breaker call to strcmp() in varstr_cmp().
-	 */
-	if (x > y)
-		return 1;
-	else if (x == y)
-		return 0;
-	else
-		return -1;
 }
 
 /*
@@ -2279,7 +2468,7 @@ varstr_abbrev_convert(Datum original, SortSupport ssup)
 	len = VARSIZE_ANY_EXHDR(authoritative);
 
 	/* Get number of bytes, ignoring trailing spaces */
-	if (sss->bpchar)
+	if (sss->typid == BPCHAROID)
 		len = bpchartruelen(authoritative_data, len);
 
 	/*
@@ -2291,7 +2480,7 @@ varstr_abbrev_convert(Datum original, SortSupport ssup)
 	 * strings may contain NUL bytes.  Besides, this should be faster, too.
 	 *
 	 * More generally, it's okay that bytea callers can have NUL bytes in
-	 * strings because varstrcmp_abbrev() need not make a distinction between
+	 * strings because abbreviated cmp need not make a distinction between
 	 * terminating NUL bytes, and NUL bytes representing actual NULs in the
 	 * authoritative representation.  Hopefully a comparison at or past one
 	 * abbreviated key's terminating NUL byte will resolve the comparison
@@ -2327,9 +2516,8 @@ varstr_abbrev_convert(Datum original, SortSupport ssup)
 		/* By convention, we use buffer 1 to store and NUL-terminate */
 		if (len >= sss->buflen1)
 		{
-			pfree(sss->buf1);
 			sss->buflen1 = Max(len + 1, Min(sss->buflen1 * 2, MaxAllocSize));
-			sss->buf1 = palloc(sss->buflen1);
+			sss->buf1 = repalloc(sss->buf1, sss->buflen1);
 		}
 
 		/* Might be able to reuse strxfrm() blob from last call */
@@ -2416,10 +2604,9 @@ varstr_abbrev_convert(Datum original, SortSupport ssup)
 			/*
 			 * Grow buffer and retry.
 			 */
-			pfree(sss->buf2);
 			sss->buflen2 = Max(bsize + 1,
 							   Min(sss->buflen2 * 2, MaxAllocSize));
-			sss->buf2 = palloc(sss->buflen2);
+			sss->buf2 = repalloc(sss->buf2, sss->buflen2);
 		}
 
 		/*
@@ -2481,10 +2668,10 @@ done:
 	/*
 	 * Byteswap on little-endian machines.
 	 *
-	 * This is needed so that varstrcmp_abbrev() (an unsigned integer 3-way
-	 * comparator) works correctly on all platforms.  If we didn't do this,
-	 * the comparator would have to call memcmp() with a pair of pointers to
-	 * the first byte of each abbreviated key, which is slower.
+	 * This is needed so that ssup_datum_unsigned_cmp() (an unsigned integer
+	 * 3-way comparator) works correctly on all platforms.  If we didn't do
+	 * this, the comparator would have to call memcmp() with a pair of
+	 * pointers to the first byte of each abbreviated key, which is slower.
 	 */
 	res = DatumBigEndianToNative(res);
 
@@ -2614,6 +2801,26 @@ varstr_abbrev_abort(int memtupcount, SortSupport ssup)
 	return true;
 }
 
+/*
+ * Generic equalimage support function for character type's operator classes.
+ * Disables the use of deduplication with nondeterministic collations.
+ */
+Datum
+btvarstrequalimage(PG_FUNCTION_ARGS)
+{
+	/* Oid		opcintype = PG_GETARG_OID(0); */
+	Oid			collid = PG_GET_COLLATION();
+
+	check_collation_set(collid);
+
+	if (lc_collate_is_c(collid) ||
+		collid == DEFAULT_COLLATION_OID ||
+		get_collation_isdeterministic(collid))
+		PG_RETURN_BOOL(true);
+	else
+		PG_RETURN_BOOL(false);
+}
+
 Datum
 text_larger(PG_FUNCTION_ARGS)
 {
@@ -2637,6 +2844,199 @@ text_smaller(PG_FUNCTION_ARGS)
 
 	PG_RETURN_TEXT_P(result);
 }
+
+
+/*
+ * Cross-type comparison functions for types text and name.
+ */
+
+Datum
+nameeqtext(PG_FUNCTION_ARGS)
+{
+	Name		arg1 = PG_GETARG_NAME(0);
+	text	   *arg2 = PG_GETARG_TEXT_PP(1);
+	size_t		len1 = strlen(NameStr(*arg1));
+	size_t		len2 = VARSIZE_ANY_EXHDR(arg2);
+	Oid			collid = PG_GET_COLLATION();
+	bool		result;
+
+	check_collation_set(collid);
+
+	if (collid == C_COLLATION_OID)
+		result = (len1 == len2 &&
+				  memcmp(NameStr(*arg1), VARDATA_ANY(arg2), len1) == 0);
+	else
+		result = (varstr_cmp(NameStr(*arg1), len1,
+							 VARDATA_ANY(arg2), len2,
+							 collid) == 0);
+
+	PG_FREE_IF_COPY(arg2, 1);
+
+	PG_RETURN_BOOL(result);
+}
+
+Datum
+texteqname(PG_FUNCTION_ARGS)
+{
+	text	   *arg1 = PG_GETARG_TEXT_PP(0);
+	Name		arg2 = PG_GETARG_NAME(1);
+	size_t		len1 = VARSIZE_ANY_EXHDR(arg1);
+	size_t		len2 = strlen(NameStr(*arg2));
+	Oid			collid = PG_GET_COLLATION();
+	bool		result;
+
+	check_collation_set(collid);
+
+	if (collid == C_COLLATION_OID)
+		result = (len1 == len2 &&
+				  memcmp(VARDATA_ANY(arg1), NameStr(*arg2), len1) == 0);
+	else
+		result = (varstr_cmp(VARDATA_ANY(arg1), len1,
+							 NameStr(*arg2), len2,
+							 collid) == 0);
+
+	PG_FREE_IF_COPY(arg1, 0);
+
+	PG_RETURN_BOOL(result);
+}
+
+Datum
+namenetext(PG_FUNCTION_ARGS)
+{
+	Name		arg1 = PG_GETARG_NAME(0);
+	text	   *arg2 = PG_GETARG_TEXT_PP(1);
+	size_t		len1 = strlen(NameStr(*arg1));
+	size_t		len2 = VARSIZE_ANY_EXHDR(arg2);
+	Oid			collid = PG_GET_COLLATION();
+	bool		result;
+
+	check_collation_set(collid);
+
+	if (collid == C_COLLATION_OID)
+		result = !(len1 == len2 &&
+				   memcmp(NameStr(*arg1), VARDATA_ANY(arg2), len1) == 0);
+	else
+		result = !(varstr_cmp(NameStr(*arg1), len1,
+							  VARDATA_ANY(arg2), len2,
+							  collid) == 0);
+
+	PG_FREE_IF_COPY(arg2, 1);
+
+	PG_RETURN_BOOL(result);
+}
+
+Datum
+textnename(PG_FUNCTION_ARGS)
+{
+	text	   *arg1 = PG_GETARG_TEXT_PP(0);
+	Name		arg2 = PG_GETARG_NAME(1);
+	size_t		len1 = VARSIZE_ANY_EXHDR(arg1);
+	size_t		len2 = strlen(NameStr(*arg2));
+	Oid			collid = PG_GET_COLLATION();
+	bool		result;
+
+	check_collation_set(collid);
+
+	if (collid == C_COLLATION_OID)
+		result = !(len1 == len2 &&
+				   memcmp(VARDATA_ANY(arg1), NameStr(*arg2), len1) == 0);
+	else
+		result = !(varstr_cmp(VARDATA_ANY(arg1), len1,
+							  NameStr(*arg2), len2,
+							  collid) == 0);
+
+	PG_FREE_IF_COPY(arg1, 0);
+
+	PG_RETURN_BOOL(result);
+}
+
+Datum
+btnametextcmp(PG_FUNCTION_ARGS)
+{
+	Name		arg1 = PG_GETARG_NAME(0);
+	text	   *arg2 = PG_GETARG_TEXT_PP(1);
+	int32		result;
+
+	result = varstr_cmp(NameStr(*arg1), strlen(NameStr(*arg1)),
+						VARDATA_ANY(arg2), VARSIZE_ANY_EXHDR(arg2),
+						PG_GET_COLLATION());
+
+	PG_FREE_IF_COPY(arg2, 1);
+
+	PG_RETURN_INT32(result);
+}
+
+Datum
+bttextnamecmp(PG_FUNCTION_ARGS)
+{
+	text	   *arg1 = PG_GETARG_TEXT_PP(0);
+	Name		arg2 = PG_GETARG_NAME(1);
+	int32		result;
+
+	result = varstr_cmp(VARDATA_ANY(arg1), VARSIZE_ANY_EXHDR(arg1),
+						NameStr(*arg2), strlen(NameStr(*arg2)),
+						PG_GET_COLLATION());
+
+	PG_FREE_IF_COPY(arg1, 0);
+
+	PG_RETURN_INT32(result);
+}
+
+#define CmpCall(cmpfunc) \
+	DatumGetInt32(DirectFunctionCall2Coll(cmpfunc, \
+										  PG_GET_COLLATION(), \
+										  PG_GETARG_DATUM(0), \
+										  PG_GETARG_DATUM(1)))
+
+Datum
+namelttext(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_BOOL(CmpCall(btnametextcmp) < 0);
+}
+
+Datum
+nameletext(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_BOOL(CmpCall(btnametextcmp) <= 0);
+}
+
+Datum
+namegttext(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_BOOL(CmpCall(btnametextcmp) > 0);
+}
+
+Datum
+namegetext(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_BOOL(CmpCall(btnametextcmp) >= 0);
+}
+
+Datum
+textltname(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_BOOL(CmpCall(bttextnamecmp) < 0);
+}
+
+Datum
+textlename(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_BOOL(CmpCall(bttextnamecmp) <= 0);
+}
+
+Datum
+textgtname(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_BOOL(CmpCall(bttextnamecmp) > 0);
+}
+
+Datum
+textgename(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_BOOL(CmpCall(bttextnamecmp) >= 0);
+}
+
+#undef CmpCall
 
 
 /*
@@ -2758,7 +3158,7 @@ bttext_pattern_sortsupport(PG_FUNCTION_ARGS)
 	oldcontext = MemoryContextSwitchTo(ssup->ssup_cxt);
 
 	/* Use generic string SortSupport, forcing "C" collation */
-	varstr_sortsupport(ssup, C_COLLATION_OID, false);
+	varstr_sortsupport(ssup, TEXTOID, C_COLLATION_OID);
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -2884,9 +3284,13 @@ bytea_substring(Datum str,
 				int L,
 				bool length_not_specified)
 {
-	int			S1;				/* adjusted start position */
-	int			L1;				/* adjusted substring length */
+	int32		S1;				/* adjusted start position */
+	int32		L1;				/* adjusted substring length */
+	int32		E;				/* end position */
 
+	/*
+	 * The logic here should generally match text_substring().
+	 */
 	S1 = Max(S, 1);
 
 	if (length_not_specified)
@@ -2897,20 +3301,24 @@ bytea_substring(Datum str,
 		 */
 		L1 = -1;
 	}
+	else if (L < 0)
+	{
+		/* SQL99 says to throw an error for E < S, i.e., negative length */
+		ereport(ERROR,
+				(errcode(ERRCODE_SUBSTRING_ERROR),
+				 errmsg("negative substring length not allowed")));
+		L1 = -1;				/* silence stupider compilers */
+	}
+	else if (pg_add_s32_overflow(S, L, &E))
+	{
+		/*
+		 * L could be large enough for S + L to overflow, in which case the
+		 * substring must run to end of string.
+		 */
+		L1 = -1;
+	}
 	else
 	{
-		/* end position */
-		int			E = S + L;
-
-		/*
-		 * A negative value for L is the only way for the end position to be
-		 * before the start. SQL99 says to throw an error.
-		 */
-		if (E < S)
-			ereport(ERROR,
-					(errcode(ERRCODE_SUBSTRING_ERROR),
-					 errmsg("negative substring length not allowed")));
-
 		/*
 		 * A zero or negative value for the end position can happen if the
 		 * start was negative or one. SQL99 says to return a zero-length
@@ -2925,7 +3333,7 @@ bytea_substring(Datum str,
 	/*
 	 * If the start position is past the end of the string, SQL99 says to
 	 * return a zero-length string -- DatumGetByteaPSlice() will do that for
-	 * us. Convert to zero-based starting position
+	 * us.  We need only convert S1 to zero-based starting position.
 	 */
 	return DatumGetByteaPSlice(str, S1 - 1, L1);
 }
@@ -2988,6 +3396,17 @@ bytea_overlay(bytea *t1, bytea *t2, int sp, int sl)
 	result = bytea_catenate(result, s2);
 
 	return result;
+}
+
+/*
+ * bit_count
+ */
+Datum
+bytea_bit_count(PG_FUNCTION_ARGS)
+{
+	bytea	   *t1 = PG_GETARG_BYTEA_PP(0);
+
+	PG_RETURN_INT64(pg_popcount(VARDATA_ANY(t1), VARSIZE_ANY_EXHDR(t1)));
 }
 
 /*
@@ -3073,7 +3492,7 @@ Datum
 byteaGetBit(PG_FUNCTION_ARGS)
 {
 	bytea	   *v = PG_GETARG_BYTEA_PP(0);
-	int32		n = PG_GETARG_INT32(1);
+	int64		n = PG_GETARG_INT64(1);
 	int			byteNo,
 				bitNo;
 	int			len;
@@ -3081,14 +3500,15 @@ byteaGetBit(PG_FUNCTION_ARGS)
 
 	len = VARSIZE_ANY_EXHDR(v);
 
-	if (n < 0 || n >= len * 8)
+	if (n < 0 || n >= (int64) len * 8)
 		ereport(ERROR,
 				(errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR),
-				 errmsg("index %d out of valid range, 0..%d",
-						n, len * 8 - 1)));
+				 errmsg("index %lld out of valid range, 0..%lld",
+						(long long) n, (long long) len * 8 - 1)));
 
-	byteNo = n / 8;
-	bitNo = n % 8;
+	/* n/8 is now known < len, so safe to cast to int */
+	byteNo = (int) (n / 8);
+	bitNo = (int) (n % 8);
 
 	byte = ((unsigned char *) VARDATA_ANY(v))[byteNo];
 
@@ -3142,7 +3562,7 @@ Datum
 byteaSetBit(PG_FUNCTION_ARGS)
 {
 	bytea	   *res = PG_GETARG_BYTEA_P_COPY(0);
-	int32		n = PG_GETARG_INT32(1);
+	int64		n = PG_GETARG_INT64(1);
 	int32		newBit = PG_GETARG_INT32(2);
 	int			len;
 	int			oldByte,
@@ -3152,14 +3572,15 @@ byteaSetBit(PG_FUNCTION_ARGS)
 
 	len = VARSIZE(res) - VARHDRSZ;
 
-	if (n < 0 || n >= len * 8)
+	if (n < 0 || n >= (int64) len * 8)
 		ereport(ERROR,
 				(errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR),
-				 errmsg("index %d out of valid range, 0..%d",
-						n, len * 8 - 1)));
+				 errmsg("index %lld out of valid range, 0..%lld",
+						(long long) n, (long long) len * 8 - 1)));
 
-	byteNo = n / 8;
-	bitNo = n % 8;
+	/* n/8 is now known < len, so safe to cast to int */
+	byteNo = (int) (n / 8);
+	bitNo = (int) (n % 8);
 
 	/*
 	 * sanity check!
@@ -3798,7 +4219,7 @@ bytea_sortsupport(PG_FUNCTION_ARGS)
 	oldcontext = MemoryContextSwitchTo(ssup->ssup_cxt);
 
 	/* Use generic string SortSupport, forcing "C" collation */
-	varstr_sortsupport(ssup, C_COLLATION_OID, false);
+	varstr_sortsupport(ssup, BYTEAOID, C_COLLATION_OID);
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -3835,39 +4256,32 @@ replace_text(PG_FUNCTION_ARGS)
 	int			from_sub_text_len;
 	TextPositionState state;
 	text	   *ret_text;
-	int			start_posn;
-	int			curr_posn;
 	int			chunk_len;
+	char	   *curr_ptr;
 	char	   *start_ptr;
 	StringInfoData str;
+	bool		found;
 
-	text_position_setup(src_text, from_sub_text, &state);
-
-	/*
-	 * Note: we check the converted string length, not the original, because
-	 * they could be different if the input contained invalid encoding.
-	 */
-	src_text_len = state.len1;
-	from_sub_text_len = state.len2;
+	src_text_len = VARSIZE_ANY_EXHDR(src_text);
+	from_sub_text_len = VARSIZE_ANY_EXHDR(from_sub_text);
 
 	/* Return unmodified source string if empty source or pattern */
 	if (src_text_len < 1 || from_sub_text_len < 1)
 	{
-		text_position_cleanup(&state);
 		PG_RETURN_TEXT_P(src_text);
 	}
 
-	start_posn = 1;
-	curr_posn = text_position_next(1, &state);
+	text_position_setup(src_text, from_sub_text, PG_GET_COLLATION(), &state);
+
+	found = text_position_next(&state);
 
 	/* When the from_sub_text is not found, there is nothing to do. */
-	if (curr_posn == 0)
+	if (!found)
 	{
 		text_position_cleanup(&state);
 		PG_RETURN_TEXT_P(src_text);
 	}
-
-	/* start_ptr points to the start_posn'th character of src_text */
+	curr_ptr = text_position_get_match_ptr(&state);
 	start_ptr = VARDATA_ANY(src_text);
 
 	initStringInfo(&str);
@@ -3877,19 +4291,18 @@ replace_text(PG_FUNCTION_ARGS)
 		CHECK_FOR_INTERRUPTS();
 
 		/* copy the data skipped over by last text_position_next() */
-		chunk_len = charlen_to_bytelen(start_ptr, curr_posn - start_posn);
+		chunk_len = curr_ptr - start_ptr;
 		appendBinaryStringInfo(&str, start_ptr, chunk_len);
 
 		appendStringInfoText(&str, to_sub_text);
 
-		start_posn = curr_posn;
-		start_ptr += chunk_len;
-		start_posn += from_sub_text_len;
-		start_ptr += charlen_to_bytelen(start_ptr, from_sub_text_len);
+		start_ptr = curr_ptr + from_sub_text_len;
 
-		curr_posn = text_position_next(start_posn, &state);
+		found = text_position_next(&state);
+		if (found)
+			curr_ptr = text_position_get_match_ptr(&state);
 	}
-	while (curr_posn > 0);
+	while (found);
 
 	/* copy trailing data */
 	chunk_len = ((char *) src_text + VARSIZE_ANY(src_text)) - start_ptr;
@@ -3904,34 +4317,36 @@ replace_text(PG_FUNCTION_ARGS)
 }
 
 /*
- * check_replace_text_has_escape_char
+ * check_replace_text_has_escape
  *
- * check whether replace_text contains escape char.
+ * Returns 0 if text contains no backslashes that need processing.
+ * Returns 1 if text contains backslashes, but not regexp submatch specifiers.
+ * Returns 2 if text contains regexp submatch specifiers (\1 .. \9).
  */
-static bool
-check_replace_text_has_escape_char(const text *replace_text)
+static int
+check_replace_text_has_escape(const text *replace_text)
 {
+	int			result = 0;
 	const char *p = VARDATA_ANY(replace_text);
 	const char *p_end = p + VARSIZE_ANY_EXHDR(replace_text);
 
-	if (pg_database_encoding_max_length() == 1)
+	while (p < p_end)
 	{
-		for (; p < p_end; p++)
+		/* Find next escape char, if any. */
+		p = memchr(p, '\\', p_end - p);
+		if (p == NULL)
+			break;
+		p++;
+		/* Note: a backslash at the end doesn't require extra processing. */
+		if (p < p_end)
 		{
-			if (*p == '\\')
-				return true;
+			if (*p >= '1' && *p <= '9')
+				return 2;		/* Found a submatch specifier, so done */
+			result = 1;			/* Found some other sequence, keep looking */
+			p++;
 		}
 	}
-	else
-	{
-		for (; p < p_end; p += pg_mblen(p))
-		{
-			if (*p == '\\')
-				return true;
-		}
-	}
-
-	return false;
+	return result;
 }
 
 /*
@@ -3948,25 +4363,17 @@ appendStringInfoRegexpSubstr(StringInfo str, text *replace_text,
 {
 	const char *p = VARDATA_ANY(replace_text);
 	const char *p_end = p + VARSIZE_ANY_EXHDR(replace_text);
-	int			eml = pg_database_encoding_max_length();
 
-	for (;;)
+	while (p < p_end)
 	{
 		const char *chunk_start = p;
 		int			so;
 		int			eo;
 
-		/* Find next escape char. */
-		if (eml == 1)
-		{
-			for (; p < p_end && *p != '\\'; p++)
-				 /* nothing */ ;
-		}
-		else
-		{
-			for (; p < p_end && *p != '\\'; p += pg_mblen(p))
-				 /* nothing */ ;
-		}
+		/* Find next escape char, if any. */
+		p = memchr(p, '\\', p_end - p);
+		if (p == NULL)
+			p = p_end;
 
 		/* Copy the text we just scanned over, if any. */
 		if (p > chunk_start)
@@ -4018,7 +4425,7 @@ appendStringInfoRegexpSubstr(StringInfo str, text *replace_text,
 			continue;
 		}
 
-		if (so != -1 && eo != -1)
+		if (so >= 0 && eo >= 0)
 		{
 			/*
 			 * Copy the text that is back reference of regexp.  Note so and eo
@@ -4036,31 +4443,37 @@ appendStringInfoRegexpSubstr(StringInfo str, text *replace_text,
 	}
 }
 
-#define REGEXP_REPLACE_BACKREF_CNT		10
-
 /*
  * replace_text_regexp
  *
- * replace text that matches to regexp in src_text to replace_text.
+ * replace substring(s) in src_text that match pattern with replace_text.
+ * The replace_text can contain backslash markers to substitute
+ * (parts of) the matched text.
  *
- * Note: to avoid having to include regex.h in builtins.h, we declare
- * the regexp argument as void *, but really it's regex_t *.
+ * cflags: regexp compile flags.
+ * collation: collation to use.
+ * search_start: the character (not byte) offset in src_text at which to
+ * begin searching.
+ * n: if 0, replace all matches; if > 0, replace only the N'th match.
  */
 text *
-replace_text_regexp(text *src_text, void *regexp,
-					text *replace_text, bool glob)
+replace_text_regexp(text *src_text, text *pattern_text,
+					text *replace_text,
+					int cflags, Oid collation,
+					int search_start, int n)
 {
 	text	   *ret_text;
-	regex_t    *re = (regex_t *) regexp;
+	regex_t    *re;
 	int			src_text_len = VARSIZE_ANY_EXHDR(src_text);
+	int			nmatches = 0;
 	StringInfoData buf;
-	regmatch_t	pmatch[REGEXP_REPLACE_BACKREF_CNT];
+	regmatch_t	pmatch[10];		/* main match, plus \1 to \9 */
+	int			nmatch = lengthof(pmatch);
 	pg_wchar   *data;
 	size_t		data_len;
-	int			search_start;
 	int			data_pos;
 	char	   *start_ptr;
-	bool		have_escape;
+	int			escape_status;
 
 	initStringInfo(&buf);
 
@@ -4068,14 +4481,24 @@ replace_text_regexp(text *src_text, void *regexp,
 	data = (pg_wchar *) palloc((src_text_len + 1) * sizeof(pg_wchar));
 	data_len = pg_mb2wchar_with_len(VARDATA_ANY(src_text), data, src_text_len);
 
-	/* Check whether replace_text has escape char. */
-	have_escape = check_replace_text_has_escape_char(replace_text);
+	/* Check whether replace_text has escapes, especially regexp submatches. */
+	escape_status = check_replace_text_has_escape(replace_text);
+
+	/* If no regexp submatches, we can use REG_NOSUB. */
+	if (escape_status < 2)
+	{
+		cflags |= REG_NOSUB;
+		/* Also tell pg_regexec we only want the whole-match location. */
+		nmatch = 1;
+	}
+
+	/* Prepare the regexp. */
+	re = RE_compile_and_cache(pattern_text, cflags, collation);
 
 	/* start_ptr points to the data_pos'th character of src_text */
 	start_ptr = (char *) VARDATA_ANY(src_text);
 	data_pos = 0;
 
-	search_start = 0;
 	while (search_start <= data_len)
 	{
 		int			regexec_result;
@@ -4087,7 +4510,7 @@ replace_text_regexp(text *src_text, void *regexp,
 									data_len,
 									search_start,
 									NULL,	/* no details */
-									REGEXP_REPLACE_BACKREF_CNT,
+									nmatch,
 									pmatch,
 									0);
 
@@ -4103,6 +4526,23 @@ replace_text_regexp(text *src_text, void *regexp,
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_REGULAR_EXPRESSION),
 					 errmsg("regular expression failed: %s", errMsg)));
+		}
+
+		/*
+		 * Count matches, and decide whether to replace this match.
+		 */
+		nmatches++;
+		if (n > 0 && nmatches != n)
+		{
+			/*
+			 * No, so advance search_start, but not start_ptr/data_pos. (Thus,
+			 * we treat the matched text as if it weren't matched, and copy it
+			 * to the output later.)
+			 */
+			search_start = pmatch[0].rm_eo;
+			if (pmatch[0].rm_so == pmatch[0].rm_eo)
+				search_start++;
+			continue;
 		}
 
 		/*
@@ -4126,10 +4566,9 @@ replace_text_regexp(text *src_text, void *regexp,
 		}
 
 		/*
-		 * Copy the replace_text. Process back references when the
-		 * replace_text has escape characters.
+		 * Copy the replace_text, processing escapes if any are present.
 		 */
-		if (have_escape)
+		if (escape_status > 0)
 			appendStringInfoRegexpSubstr(&buf, replace_text, pmatch,
 										 start_ptr, data_pos);
 		else
@@ -4141,9 +4580,9 @@ replace_text_regexp(text *src_text, void *regexp,
 		data_pos = pmatch[0].rm_eo;
 
 		/*
-		 * When global option is off, replace the first instance only.
+		 * If we only want to replace one occurrence, we're done.
 		 */
-		if (!glob)
+		if (n > 0)
 			break;
 
 		/*
@@ -4176,13 +4615,12 @@ replace_text_regexp(text *src_text, void *regexp,
 }
 
 /*
- * split_text
- * parse input string
- * return ord item (1 based)
- * based on provided field separator
+ * split_part
+ * parse input string based on provided field separator
+ * return N'th item (1 based, negative counts from end)
  */
 Datum
-split_text(PG_FUNCTION_ARGS)
+split_part(PG_FUNCTION_ARGS)
 {
 	text	   *inputstring = PG_GETARG_TEXT_PP(0);
 	text	   *fldsep = PG_GETARG_TEXT_PP(1);
@@ -4190,63 +4628,99 @@ split_text(PG_FUNCTION_ARGS)
 	int			inputstring_len;
 	int			fldsep_len;
 	TextPositionState state;
-	int			start_posn;
-	int			end_posn;
+	char	   *start_ptr;
+	char	   *end_ptr;
 	text	   *result_text;
+	bool		found;
 
 	/* field number is 1 based */
-	if (fldnum < 1)
+	if (fldnum == 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("field position must be greater than zero")));
+				 errmsg("field position must not be zero")));
 
-	text_position_setup(inputstring, fldsep, &state);
-
-	/*
-	 * Note: we check the converted string length, not the original, because
-	 * they could be different if the input contained invalid encoding.
-	 */
-	inputstring_len = state.len1;
-	fldsep_len = state.len2;
+	inputstring_len = VARSIZE_ANY_EXHDR(inputstring);
+	fldsep_len = VARSIZE_ANY_EXHDR(fldsep);
 
 	/* return empty string for empty input string */
 	if (inputstring_len < 1)
-	{
-		text_position_cleanup(&state);
 		PG_RETURN_TEXT_P(cstring_to_text(""));
-	}
 
-	/* empty field separator */
+	/* handle empty field separator */
 	if (fldsep_len < 1)
 	{
-		text_position_cleanup(&state);
-		/* if first field, return input string, else empty string */
-		if (fldnum == 1)
+		/* if first or last field, return input string, else empty string */
+		if (fldnum == 1 || fldnum == -1)
 			PG_RETURN_TEXT_P(inputstring);
 		else
 			PG_RETURN_TEXT_P(cstring_to_text(""));
+	}
+
+	/* find the first field separator */
+	text_position_setup(inputstring, fldsep, PG_GET_COLLATION(), &state);
+
+	found = text_position_next(&state);
+
+	/* special case if fldsep not found at all */
+	if (!found)
+	{
+		text_position_cleanup(&state);
+		/* if first or last field, return input string, else empty string */
+		if (fldnum == 1 || fldnum == -1)
+			PG_RETURN_TEXT_P(inputstring);
+		else
+			PG_RETURN_TEXT_P(cstring_to_text(""));
+	}
+
+	/*
+	 * take care of a negative field number (i.e. count from the right) by
+	 * converting to a positive field number; we need total number of fields
+	 */
+	if (fldnum < 0)
+	{
+		/* we found a fldsep, so there are at least two fields */
+		int			numfields = 2;
+
+		while (text_position_next(&state))
+			numfields++;
+
+		/* special case of last field does not require an extra pass */
+		if (fldnum == -1)
+		{
+			start_ptr = text_position_get_match_ptr(&state) + fldsep_len;
+			end_ptr = VARDATA_ANY(inputstring) + inputstring_len;
+			text_position_cleanup(&state);
+			PG_RETURN_TEXT_P(cstring_to_text_with_len(start_ptr,
+													  end_ptr - start_ptr));
+		}
+
+		/* else, convert fldnum to positive notation */
+		fldnum += numfields + 1;
+
+		/* if nonexistent field, return empty string */
+		if (fldnum <= 0)
+		{
+			text_position_cleanup(&state);
+			PG_RETURN_TEXT_P(cstring_to_text(""));
+		}
+
+		/* reset to pointing at first match, but now with positive fldnum */
+		text_position_reset(&state);
+		found = text_position_next(&state);
+		Assert(found);
 	}
 
 	/* identify bounds of first field */
-	start_posn = 1;
-	end_posn = text_position_next(1, &state);
+	start_ptr = VARDATA_ANY(inputstring);
+	end_ptr = text_position_get_match_ptr(&state);
 
-	/* special case if fldsep not found at all */
-	if (end_posn == 0)
-	{
-		text_position_cleanup(&state);
-		/* if field 1 requested, return input string, else empty string */
-		if (fldnum == 1)
-			PG_RETURN_TEXT_P(inputstring);
-		else
-			PG_RETURN_TEXT_P(cstring_to_text(""));
-	}
-
-	while (end_posn > 0 && --fldnum > 0)
+	while (found && --fldnum > 0)
 	{
 		/* identify bounds of next field */
-		start_posn = end_posn + fldsep_len;
-		end_posn = text_position_next(start_posn, &state);
+		start_ptr = end_ptr + fldsep_len;
+		found = text_position_next(&state);
+		if (found)
+			end_ptr = text_position_get_match_ptr(&state);
 	}
 
 	text_position_cleanup(&state);
@@ -4256,20 +4730,19 @@ split_text(PG_FUNCTION_ARGS)
 		/* N'th field separator not found */
 		/* if last field requested, return it, else empty string */
 		if (fldnum == 1)
-			result_text = text_substring(PointerGetDatum(inputstring),
-										 start_posn,
-										 -1,
-										 true);
+		{
+			int			last_len = start_ptr - VARDATA_ANY(inputstring);
+
+			result_text = cstring_to_text_with_len(start_ptr,
+												   inputstring_len - last_len);
+		}
 		else
 			result_text = cstring_to_text("");
 	}
 	else
 	{
 		/* non-last field requested */
-		result_text = text_substring(PointerGetDatum(inputstring),
-									 start_posn,
-									 end_posn - start_posn,
-									 false);
+		result_text = cstring_to_text_with_len(start_ptr, end_ptr - start_ptr);
 	}
 
 	PG_RETURN_TEXT_P(result_text);
@@ -4279,11 +4752,12 @@ split_text(PG_FUNCTION_ARGS)
  * Convenience function to return true when two text params are equal.
  */
 static bool
-text_isequal(text *txt1, text *txt2)
+text_isequal(text *txt1, text *txt2, Oid collid)
 {
-	return DatumGetBool(DirectFunctionCall2(texteq,
-											PointerGetDatum(txt1),
-											PointerGetDatum(txt2)));
+	return DatumGetBool(DirectFunctionCall2Coll(texteq,
+												collid,
+												PointerGetDatum(txt1),
+												PointerGetDatum(txt2)));
 }
 
 /*
@@ -4294,7 +4768,19 @@ text_isequal(text *txt1, text *txt2)
 Datum
 text_to_array(PG_FUNCTION_ARGS)
 {
-	return text_to_array_internal(fcinfo);
+	SplitTextOutputData tstate;
+
+	/* For array output, tstate should start as all zeroes */
+	memset(&tstate, 0, sizeof(tstate));
+
+	if (!split_text(fcinfo, &tstate))
+		PG_RETURN_NULL();
+
+	if (tstate.astate == NULL)
+		PG_RETURN_ARRAYTYPE_P(construct_empty_array(TEXTOID));
+
+	PG_RETURN_ARRAYTYPE_P(makeArrayResult(tstate.astate,
+										  CurrentMemoryContext));
 }
 
 /*
@@ -4308,30 +4794,69 @@ text_to_array(PG_FUNCTION_ARGS)
 Datum
 text_to_array_null(PG_FUNCTION_ARGS)
 {
-	return text_to_array_internal(fcinfo);
+	return text_to_array(fcinfo);
 }
 
 /*
- * common code for text_to_array and text_to_array_null functions
+ * text_to_table
+ * parse input string and return table of elements,
+ * based on provided field separator
+ */
+Datum
+text_to_table(PG_FUNCTION_ARGS)
+{
+	ReturnSetInfo *rsi = (ReturnSetInfo *) fcinfo->resultinfo;
+	SplitTextOutputData tstate;
+
+	tstate.astate = NULL;
+	InitMaterializedSRF(fcinfo, MAT_SRF_USE_EXPECTED_DESC);
+	tstate.tupstore = rsi->setResult;
+	tstate.tupdesc = rsi->setDesc;
+
+	(void) split_text(fcinfo, &tstate);
+
+	return (Datum) 0;
+}
+
+/*
+ * text_to_table_null
+ * parse input string and return table of elements,
+ * based on provided field separator and null string
+ *
+ * This is a separate entry point only to prevent the regression tests from
+ * complaining about different argument sets for the same internal function.
+ */
+Datum
+text_to_table_null(PG_FUNCTION_ARGS)
+{
+	return text_to_table(fcinfo);
+}
+
+/*
+ * Common code for text_to_array, text_to_array_null, text_to_table
+ * and text_to_table_null functions.
  *
  * These are not strict so we have to test for null inputs explicitly.
+ * Returns false if result is to be null, else returns true.
+ *
+ * Note that if the result is valid but empty (zero elements), we return
+ * without changing *tstate --- caller must handle that case, too.
  */
-static Datum
-text_to_array_internal(PG_FUNCTION_ARGS)
+static bool
+split_text(FunctionCallInfo fcinfo, SplitTextOutputData *tstate)
 {
 	text	   *inputstring;
 	text	   *fldsep;
 	text	   *null_string;
+	Oid			collation = PG_GET_COLLATION();
 	int			inputstring_len;
 	int			fldsep_len;
 	char	   *start_ptr;
 	text	   *result_text;
-	bool		is_null;
-	ArrayBuildState *astate = NULL;
 
 	/* when input string is NULL, then result is NULL too */
 	if (PG_ARGISNULL(0))
-		PG_RETURN_NULL();
+		return false;
 
 	inputstring = PG_GETARG_TEXT_PP(0);
 
@@ -4354,94 +4879,61 @@ text_to_array_internal(PG_FUNCTION_ARGS)
 		 * to search for occurrences of fldsep.
 		 */
 		TextPositionState state;
-		int			fldnum;
-		int			start_posn;
-		int			end_posn;
-		int			chunk_len;
 
-		text_position_setup(inputstring, fldsep, &state);
+		inputstring_len = VARSIZE_ANY_EXHDR(inputstring);
+		fldsep_len = VARSIZE_ANY_EXHDR(fldsep);
 
-		/*
-		 * Note: we check the converted string length, not the original,
-		 * because they could be different if the input contained invalid
-		 * encoding.
-		 */
-		inputstring_len = state.len1;
-		fldsep_len = state.len2;
-
-		/* return empty array for empty input string */
+		/* return empty set for empty input string */
 		if (inputstring_len < 1)
-		{
-			text_position_cleanup(&state);
-			PG_RETURN_ARRAYTYPE_P(construct_empty_array(TEXTOID));
-		}
+			return true;
 
-		/*
-		 * empty field separator: return the input string as a one-element
-		 * array
-		 */
+		/* empty field separator: return input string as a one-element set */
 		if (fldsep_len < 1)
 		{
-			Datum		elems[1];
-			bool		nulls[1];
-			int			dims[1];
-			int			lbs[1];
-
-			text_position_cleanup(&state);
-			/* single element can be a NULL too */
-			is_null = null_string ? text_isequal(inputstring, null_string) : false;
-
-			elems[0] = PointerGetDatum(inputstring);
-			nulls[0] = is_null;
-			dims[0] = 1;
-			lbs[0] = 1;
-			/* XXX: this hardcodes assumptions about the text type */
-			PG_RETURN_ARRAYTYPE_P(construct_md_array(elems, nulls,
-													 1, dims, lbs,
-													 TEXTOID, -1, false, 'i'));
+			split_text_accum_result(tstate, inputstring,
+									null_string, collation);
+			return true;
 		}
 
-		start_posn = 1;
-		/* start_ptr points to the start_posn'th character of inputstring */
+		text_position_setup(inputstring, fldsep, collation, &state);
+
 		start_ptr = VARDATA_ANY(inputstring);
 
-		for (fldnum = 1;; fldnum++) /* field number is 1 based */
+		for (;;)
 		{
+			bool		found;
+			char	   *end_ptr;
+			int			chunk_len;
+
 			CHECK_FOR_INTERRUPTS();
 
-			end_posn = text_position_next(start_posn, &state);
-
-			if (end_posn == 0)
+			found = text_position_next(&state);
+			if (!found)
 			{
 				/* fetch last field */
 				chunk_len = ((char *) inputstring + VARSIZE_ANY(inputstring)) - start_ptr;
+				end_ptr = NULL; /* not used, but some compilers complain */
 			}
 			else
 			{
 				/* fetch non-last field */
-				chunk_len = charlen_to_bytelen(start_ptr, end_posn - start_posn);
+				end_ptr = text_position_get_match_ptr(&state);
+				chunk_len = end_ptr - start_ptr;
 			}
 
-			/* must build a temp text datum to pass to accumArrayResult */
+			/* build a temp text datum to pass to split_text_accum_result */
 			result_text = cstring_to_text_with_len(start_ptr, chunk_len);
-			is_null = null_string ? text_isequal(result_text, null_string) : false;
 
 			/* stash away this field */
-			astate = accumArrayResult(astate,
-									  PointerGetDatum(result_text),
-									  is_null,
-									  TEXTOID,
-									  GetCurrentMemoryContext());
+			split_text_accum_result(tstate, result_text,
+									null_string, collation);
 
 			pfree(result_text);
 
-			if (end_posn == 0)
+			if (!found)
 				break;
 
-			start_posn = end_posn;
-			start_ptr += chunk_len;
-			start_posn += fldsep_len;
-			start_ptr += charlen_to_bytelen(start_ptr, fldsep_len);
+			start_ptr = end_ptr + fldsep_len;
 		}
 
 		text_position_cleanup(&state);
@@ -4449,15 +4941,11 @@ text_to_array_internal(PG_FUNCTION_ARGS)
 	else
 	{
 		/*
-		 * When fldsep is NULL, each character in the inputstring becomes an
-		 * element in the result array.  The separator is effectively the
-		 * space between characters.
+		 * When fldsep is NULL, each character in the input string becomes a
+		 * separate element in the result set.  The separator is effectively
+		 * the space between characters.
 		 */
 		inputstring_len = VARSIZE_ANY_EXHDR(inputstring);
-
-		/* return empty array for empty input string */
-		if (inputstring_len < 1)
-			PG_RETURN_ARRAYTYPE_P(construct_empty_array(TEXTOID));
 
 		start_ptr = VARDATA_ANY(inputstring);
 
@@ -4467,16 +4955,12 @@ text_to_array_internal(PG_FUNCTION_ARGS)
 
 			CHECK_FOR_INTERRUPTS();
 
-			/* must build a temp text datum to pass to accumArrayResult */
+			/* build a temp text datum to pass to split_text_accum_result */
 			result_text = cstring_to_text_with_len(start_ptr, chunk_len);
-			is_null = null_string ? text_isequal(result_text, null_string) : false;
 
 			/* stash away this field */
-			astate = accumArrayResult(astate,
-									  PointerGetDatum(result_text),
-									  is_null,
-									  TEXTOID,
-									  GetCurrentMemoryContext());
+			split_text_accum_result(tstate, result_text,
+									null_string, collation);
 
 			pfree(result_text);
 
@@ -4485,8 +4969,47 @@ text_to_array_internal(PG_FUNCTION_ARGS)
 		}
 	}
 
-	PG_RETURN_ARRAYTYPE_P(makeArrayResult(astate,
-										  GetCurrentMemoryContext()));
+	return true;
+}
+
+/*
+ * Add text item to result set (table or array).
+ *
+ * This is also responsible for checking to see if the item matches
+ * the null_string, in which case we should emit NULL instead.
+ */
+static void
+split_text_accum_result(SplitTextOutputData *tstate,
+						text *field_value,
+						text *null_string,
+						Oid collation)
+{
+	bool		is_null = false;
+
+	if (null_string && text_isequal(field_value, null_string, collation))
+		is_null = true;
+
+	if (tstate->tupstore)
+	{
+		Datum		values[1];
+		bool		nulls[1];
+
+		values[0] = PointerGetDatum(field_value);
+		nulls[0] = is_null;
+
+		tuplestore_putvalues(tstate->tupstore,
+							 tstate->tupdesc,
+							 values,
+							 nulls);
+	}
+	else
+	{
+		tstate->astate = accumArrayResult(tstate->astate,
+										  PointerGetDatum(field_value),
+										  is_null,
+										  TEXTOID,
+										  GetCurrentMemoryContext());
+	}
 }
 
 /*
@@ -4752,6 +5275,59 @@ pg_column_size(PG_FUNCTION_ARGS)
 }
 
 /*
+ * Return the compression method stored in the compressed attribute.  Return
+ * NULL for non varlena type or uncompressed data.
+ */
+Datum
+pg_column_compression(PG_FUNCTION_ARGS)
+{
+	int			typlen;
+	char	   *result;
+	ToastCompressionId cmid;
+
+	/* On first call, get the input type's typlen, and save at *fn_extra */
+	if (fcinfo->flinfo->fn_extra == NULL)
+	{
+		/* Lookup the datatype of the supplied argument */
+		Oid			argtypeid = get_fn_expr_argtype(fcinfo->flinfo, 0);
+
+		typlen = get_typlen(argtypeid);
+		if (typlen == 0)		/* should not happen */
+			elog(ERROR, "cache lookup failed for type %u", argtypeid);
+
+		fcinfo->flinfo->fn_extra = MemoryContextAlloc(fcinfo->flinfo->fn_mcxt,
+													  sizeof(int));
+		*((int *) fcinfo->flinfo->fn_extra) = typlen;
+	}
+	else
+		typlen = *((int *) fcinfo->flinfo->fn_extra);
+
+	if (typlen != -1)
+		PG_RETURN_NULL();
+
+	/* get the compression method id stored in the compressed varlena */
+	cmid = toast_get_compression_id((struct varlena *)
+									DatumGetPointer(PG_GETARG_DATUM(0)));
+	if (cmid == TOAST_INVALID_COMPRESSION_ID)
+		PG_RETURN_NULL();
+
+	/* convert compression method id to compression method name */
+	switch (cmid)
+	{
+		case TOAST_PGLZ_COMPRESSION_ID:
+			result = "pglz";
+			break;
+		case TOAST_LZ4_COMPRESSION_ID:
+			result = "lz4";
+			break;
+		default:
+			elog(ERROR, "invalid compression method id %d", cmid);
+	}
+
+	PG_RETURN_TEXT_P(cstring_to_text(result));
+}
+
+/*
  * string_agg - Concatenates values and returns string.
  *
  * Syntax: string_agg(value text, delimiter text) RETURNS text
@@ -4991,17 +5567,21 @@ text_concat_ws(PG_FUNCTION_ARGS)
 Datum
 text_left(PG_FUNCTION_ARGS)
 {
-	text	   *str = PG_GETARG_TEXT_PP(0);
-	const char *p = VARDATA_ANY(str);
-	int			len = VARSIZE_ANY_EXHDR(str);
 	int			n = PG_GETARG_INT32(1);
-	int			rlen;
 
 	if (n < 0)
-		n = pg_mbstrlen_with_len(p, len) + n;
-	rlen = pg_mbcharcliplen(p, len, n);
+	{
+		text	   *str = PG_GETARG_TEXT_PP(0);
+		const char *p = VARDATA_ANY(str);
+		int			len = VARSIZE_ANY_EXHDR(str);
+		int			rlen;
 
-	PG_RETURN_TEXT_P(cstring_to_text_with_len(p, rlen));
+		n = pg_mbstrlen_with_len(p, len) + n;
+		rlen = pg_mbcharcliplen(p, len, n);
+		PG_RETURN_TEXT_P(cstring_to_text_with_len(p, rlen));
+	}
+	else
+		PG_RETURN_TEXT_P(text_substring(PG_GETARG_DATUM(0), 1, n, false));
 }
 
 /*
@@ -5210,8 +5790,8 @@ text_format(PG_FUNCTION_ARGS)
 		if (strchr("sIL", *cp) == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("unrecognized format() type specifier \"%c\"",
-							*cp),
+					 errmsg("unrecognized format() type specifier \"%.*s\"",
+							pg_mblen(cp), cp),
 					 errhint("For a single \"%%\" use \"%%%%\".")));
 
 		/* If indirect width was specified, get its value */
@@ -5267,8 +5847,8 @@ text_format(PG_FUNCTION_ARGS)
 
 				str = OutputFunctionCall(&typoutputinfo_width, value);
 
-				/* pg_atoi will complain about bad data or overflow */
-				width = pg_atoi(str, sizeof(int), '\0');
+				/* pg_strtoint32 will complain about bad data or overflow */
+				width = pg_strtoint32(str);
 
 				pfree(str);
 			}
@@ -5331,8 +5911,8 @@ text_format(PG_FUNCTION_ARGS)
 				/* should not get here, because of previous check */
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("unrecognized format() type specifier \"%c\"",
-								*cp),
+						 errmsg("unrecognized format() type specifier \"%.*s\"",
+								pg_mblen(cp), cp),
 						 errhint("For a single \"%%\" use \"%%%%\".")));
 				break;
 		}
@@ -5614,3 +6194,363 @@ rest_of_char_same(const char *s1, const char *s2, int len)
 #include "levenshtein.c"
 #define LEVENSHTEIN_LESS_EQUAL
 #include "levenshtein.c"
+
+
+/*
+ * Unicode support
+ */
+
+static UnicodeNormalizationForm
+unicode_norm_form_from_string(const char *formstr)
+{
+	UnicodeNormalizationForm form = -1;
+
+	/*
+	 * Might as well check this while we're here.
+	 */
+	if (GetDatabaseEncoding() != PG_UTF8)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("Unicode normalization can only be performed if server encoding is UTF8")));
+
+	if (pg_strcasecmp(formstr, "NFC") == 0)
+		form = UNICODE_NFC;
+	else if (pg_strcasecmp(formstr, "NFD") == 0)
+		form = UNICODE_NFD;
+	else if (pg_strcasecmp(formstr, "NFKC") == 0)
+		form = UNICODE_NFKC;
+	else if (pg_strcasecmp(formstr, "NFKD") == 0)
+		form = UNICODE_NFKD;
+	else
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid normalization form: %s", formstr)));
+
+	return form;
+}
+
+Datum
+unicode_normalize_func(PG_FUNCTION_ARGS)
+{
+	text	   *input = PG_GETARG_TEXT_PP(0);
+	char	   *formstr = text_to_cstring(PG_GETARG_TEXT_PP(1));
+	UnicodeNormalizationForm form;
+	int			size;
+	pg_wchar   *input_chars;
+	pg_wchar   *output_chars;
+	unsigned char *p;
+	text	   *result;
+	int			i;
+
+	form = unicode_norm_form_from_string(formstr);
+
+	/* convert to pg_wchar */
+	size = pg_mbstrlen_with_len(VARDATA_ANY(input), VARSIZE_ANY_EXHDR(input));
+	input_chars = palloc((size + 1) * sizeof(pg_wchar));
+	p = (unsigned char *) VARDATA_ANY(input);
+	for (i = 0; i < size; i++)
+	{
+		input_chars[i] = utf8_to_unicode(p);
+		p += pg_utf_mblen(p);
+	}
+	input_chars[i] = (pg_wchar) '\0';
+	Assert((char *) p == VARDATA_ANY(input) + VARSIZE_ANY_EXHDR(input));
+
+	/* action */
+	output_chars = unicode_normalize(form, input_chars);
+
+	/* convert back to UTF-8 string */
+	size = 0;
+	for (pg_wchar *wp = output_chars; *wp; wp++)
+	{
+		unsigned char buf[4];
+
+		unicode_to_utf8(*wp, buf);
+		size += pg_utf_mblen(buf);
+	}
+
+	result = palloc(size + VARHDRSZ);
+	SET_VARSIZE(result, size + VARHDRSZ);
+
+	p = (unsigned char *) VARDATA_ANY(result);
+	for (pg_wchar *wp = output_chars; *wp; wp++)
+	{
+		unicode_to_utf8(*wp, p);
+		p += pg_utf_mblen(p);
+	}
+	Assert((char *) p == (char *) result + size + VARHDRSZ);
+
+	PG_RETURN_TEXT_P(result);
+}
+
+/*
+ * Check whether the string is in the specified Unicode normalization form.
+ *
+ * This is done by converting the string to the specified normal form and then
+ * comparing that to the original string.  To speed that up, we also apply the
+ * "quick check" algorithm specified in UAX #15, which can give a yes or no
+ * answer for many strings by just scanning the string once.
+ *
+ * This function should generally be optimized for the case where the string
+ * is in fact normalized.  In that case, we'll end up looking at the entire
+ * string, so it's probably not worth doing any incremental conversion etc.
+ */
+Datum
+unicode_is_normalized(PG_FUNCTION_ARGS)
+{
+	text	   *input = PG_GETARG_TEXT_PP(0);
+	char	   *formstr = text_to_cstring(PG_GETARG_TEXT_PP(1));
+	UnicodeNormalizationForm form;
+	int			size;
+	pg_wchar   *input_chars;
+	pg_wchar   *output_chars;
+	unsigned char *p;
+	int			i;
+	UnicodeNormalizationQC quickcheck;
+	int			output_size;
+	bool		result;
+
+	form = unicode_norm_form_from_string(formstr);
+
+	/* convert to pg_wchar */
+	size = pg_mbstrlen_with_len(VARDATA_ANY(input), VARSIZE_ANY_EXHDR(input));
+	input_chars = palloc((size + 1) * sizeof(pg_wchar));
+	p = (unsigned char *) VARDATA_ANY(input);
+	for (i = 0; i < size; i++)
+	{
+		input_chars[i] = utf8_to_unicode(p);
+		p += pg_utf_mblen(p);
+	}
+	input_chars[i] = (pg_wchar) '\0';
+	Assert((char *) p == VARDATA_ANY(input) + VARSIZE_ANY_EXHDR(input));
+
+	/* quick check (see UAX #15) */
+	quickcheck = unicode_is_normalized_quickcheck(form, input_chars);
+	if (quickcheck == UNICODE_NORM_QC_YES)
+		PG_RETURN_BOOL(true);
+	else if (quickcheck == UNICODE_NORM_QC_NO)
+		PG_RETURN_BOOL(false);
+
+	/* normalize and compare with original */
+	output_chars = unicode_normalize(form, input_chars);
+
+	output_size = 0;
+	for (pg_wchar *wp = output_chars; *wp; wp++)
+		output_size++;
+
+	result = (size == output_size) &&
+		(memcmp(input_chars, output_chars, size * sizeof(pg_wchar)) == 0);
+
+	PG_RETURN_BOOL(result);
+}
+
+/*
+ * Check if first n chars are hexadecimal digits
+ */
+static bool
+isxdigits_n(const char *instr, size_t n)
+{
+	for (size_t i = 0; i < n; i++)
+		if (!isxdigit((unsigned char) instr[i]))
+			return false;
+
+	return true;
+}
+
+static unsigned int
+hexval(unsigned char c)
+{
+	if (c >= '0' && c <= '9')
+		return c - '0';
+	if (c >= 'a' && c <= 'f')
+		return c - 'a' + 0xA;
+	if (c >= 'A' && c <= 'F')
+		return c - 'A' + 0xA;
+	elog(ERROR, "invalid hexadecimal digit");
+	return 0;					/* not reached */
+}
+
+/*
+ * Translate string with hexadecimal digits to number
+ */
+static unsigned int
+hexval_n(const char *instr, size_t n)
+{
+	unsigned int result = 0;
+
+	for (size_t i = 0; i < n; i++)
+		result += hexval(instr[i]) << (4 * (n - i - 1));
+
+	return result;
+}
+
+/*
+ * Replaces Unicode escape sequences by Unicode characters
+ */
+Datum
+unistr(PG_FUNCTION_ARGS)
+{
+	text	   *input_text = PG_GETARG_TEXT_PP(0);
+	char	   *instr;
+	int			len;
+	StringInfoData str;
+	text	   *result;
+	pg_wchar	pair_first = 0;
+	char		cbuf[MAX_UNICODE_EQUIVALENT_STRING + 1];
+
+	instr = VARDATA_ANY(input_text);
+	len = VARSIZE_ANY_EXHDR(input_text);
+
+	initStringInfo(&str);
+
+	while (len > 0)
+	{
+		if (instr[0] == '\\')
+		{
+			if (len >= 2 &&
+				instr[1] == '\\')
+			{
+				if (pair_first)
+					goto invalid_pair;
+				appendStringInfoChar(&str, '\\');
+				instr += 2;
+				len -= 2;
+			}
+			else if ((len >= 5 && isxdigits_n(instr + 1, 4)) ||
+					 (len >= 6 && instr[1] == 'u' && isxdigits_n(instr + 2, 4)))
+			{
+				pg_wchar	unicode;
+				int			offset = instr[1] == 'u' ? 2 : 1;
+
+				unicode = hexval_n(instr + offset, 4);
+
+				if (!is_valid_unicode_codepoint(unicode))
+					ereport(ERROR,
+							errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							errmsg("invalid Unicode code point: %04X", unicode));
+
+				if (pair_first)
+				{
+					if (is_utf16_surrogate_second(unicode))
+					{
+						unicode = surrogate_pair_to_codepoint(pair_first, unicode);
+						pair_first = 0;
+					}
+					else
+						goto invalid_pair;
+				}
+				else if (is_utf16_surrogate_second(unicode))
+					goto invalid_pair;
+
+				if (is_utf16_surrogate_first(unicode))
+					pair_first = unicode;
+				else
+				{
+					pg_unicode_to_server(unicode, (unsigned char *) cbuf);
+					appendStringInfoString(&str, cbuf);
+				}
+
+				instr += 4 + offset;
+				len -= 4 + offset;
+			}
+			else if (len >= 8 && instr[1] == '+' && isxdigits_n(instr + 2, 6))
+			{
+				pg_wchar	unicode;
+
+				unicode = hexval_n(instr + 2, 6);
+
+				if (!is_valid_unicode_codepoint(unicode))
+					ereport(ERROR,
+							errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							errmsg("invalid Unicode code point: %04X", unicode));
+
+				if (pair_first)
+				{
+					if (is_utf16_surrogate_second(unicode))
+					{
+						unicode = surrogate_pair_to_codepoint(pair_first, unicode);
+						pair_first = 0;
+					}
+					else
+						goto invalid_pair;
+				}
+				else if (is_utf16_surrogate_second(unicode))
+					goto invalid_pair;
+
+				if (is_utf16_surrogate_first(unicode))
+					pair_first = unicode;
+				else
+				{
+					pg_unicode_to_server(unicode, (unsigned char *) cbuf);
+					appendStringInfoString(&str, cbuf);
+				}
+
+				instr += 8;
+				len -= 8;
+			}
+			else if (len >= 10 && instr[1] == 'U' && isxdigits_n(instr + 2, 8))
+			{
+				pg_wchar	unicode;
+
+				unicode = hexval_n(instr + 2, 8);
+
+				if (!is_valid_unicode_codepoint(unicode))
+					ereport(ERROR,
+							errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							errmsg("invalid Unicode code point: %04X", unicode));
+
+				if (pair_first)
+				{
+					if (is_utf16_surrogate_second(unicode))
+					{
+						unicode = surrogate_pair_to_codepoint(pair_first, unicode);
+						pair_first = 0;
+					}
+					else
+						goto invalid_pair;
+				}
+				else if (is_utf16_surrogate_second(unicode))
+					goto invalid_pair;
+
+				if (is_utf16_surrogate_first(unicode))
+					pair_first = unicode;
+				else
+				{
+					pg_unicode_to_server(unicode, (unsigned char *) cbuf);
+					appendStringInfoString(&str, cbuf);
+				}
+
+				instr += 10;
+				len -= 10;
+			}
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("invalid Unicode escape"),
+						 errhint("Unicode escapes must be \\XXXX, \\+XXXXXX, \\uXXXX, or \\UXXXXXXXX.")));
+		}
+		else
+		{
+			if (pair_first)
+				goto invalid_pair;
+
+			appendStringInfoChar(&str, *instr++);
+			len--;
+		}
+	}
+
+	/* unfinished surrogate pair? */
+	if (pair_first)
+		goto invalid_pair;
+
+	result = cstring_to_text_with_len(str.data, str.len);
+	pfree(str.data);
+
+	PG_RETURN_TEXT_P(result);
+
+invalid_pair:
+	ereport(ERROR,
+			(errcode(ERRCODE_SYNTAX_ERROR),
+			 errmsg("invalid Unicode surrogate pair")));
+	PG_RETURN_NULL();			/* keep compiler quiet */
+}

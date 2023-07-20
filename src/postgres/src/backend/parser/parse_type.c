@@ -3,7 +3,7 @@
  * parse_type.c
  *		handle type operations for parser
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -19,16 +19,15 @@
 #include "catalog/pg_type.h"
 #include "lib/stringinfo.h"
 #include "nodes/makefuncs.h"
-#include "parser/parser.h"
 #include "parser/parse_type.h"
+#include "parser/parser.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
-
 static int32 typenameTypeMod(ParseState *pstate, const TypeName *typeName,
-				Type typ);
+							 Type typ);
 
 
 /*
@@ -179,7 +178,7 @@ LookupTypeNameExtended(ParseState *pstate,
 
 			namespaceId = LookupExplicitNamespace(schemaname, missing_ok);
 			if (OidIsValid(namespaceId))
-				typoid = GetSysCacheOid2(TYPENAMENSP,
+				typoid = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
 										 PointerGetDatum(typname),
 										 ObjectIdGetDatum(namespaceId));
 			else
@@ -248,7 +247,7 @@ LookupTypeNameOid(ParseState *pstate, const TypeName *typeName, bool missing_ok)
 		return InvalidOid;
 	}
 
-	typoid = HeapTupleGetOid(tup);
+	typoid = ((Form_pg_type) GETSTRUCT(tup))->oid;
 	ReleaseSysCache(tup);
 
 	return typoid;
@@ -295,7 +294,7 @@ typenameTypeId(ParseState *pstate, const TypeName *typeName)
 	Type		tup;
 
 	tup = typenameType(pstate, typeName, NULL);
-	typoid = HeapTupleGetOid(tup);
+	typoid = ((Form_pg_type) GETSTRUCT(tup))->oid;
 	ReleaseSysCache(tup);
 
 	return typoid;
@@ -314,7 +313,7 @@ typenameTypeIdAndMod(ParseState *pstate, const TypeName *typeName,
 	Type		tup;
 
 	tup = typenameType(pstate, typeName, typmod_p);
-	*typeid_p = HeapTupleGetOid(tup);
+	*typeid_p = ((Form_pg_type) GETSTRUCT(tup))->oid;
 	ReleaseSysCache(tup);
 }
 
@@ -383,13 +382,17 @@ typenameTypeMod(ParseState *pstate, const TypeName *typeName, Type typ)
 
 			if (IsA(&ac->val, Integer))
 			{
-				cstr = psprintf("%ld", (long) ac->val.val.ival);
+				cstr = psprintf("%ld", (long) intVal(&ac->val));
 			}
-			else if (IsA(&ac->val, Float) ||
-					 IsA(&ac->val, String))
+			else if (IsA(&ac->val, Float))
 			{
-				/* we can just use the str field directly. */
-				cstr = ac->val.val.str;
+				/* we can just use the string representation directly. */
+				cstr = ac->val.fval.fval;
+			}
+			else if (IsA(&ac->val, String))
+			{
+				/* we can just use the string representation directly. */
+				cstr = strVal(&ac->val);
 			}
 		}
 		else if (IsA(tm, ColumnRef))
@@ -410,7 +413,7 @@ typenameTypeMod(ParseState *pstate, const TypeName *typeName, Type typ)
 
 	/* hardwired knowledge about cstring's representation details here */
 	arrtypmod = construct_array(datums, n, CSTRINGOID,
-								-2, false, 'c');
+								-2, false, TYPALIGN_CHAR);
 
 	/* arrange to report location if type's typmodin function fails */
 	setup_parser_errposition_callback(&pcbstate, pstate, typeName->location);
@@ -590,7 +593,7 @@ typeTypeId(Type tp)
 {
 	if (tp == NULL)				/* probably useless */
 		elog(ERROR, "typeTypeId() called with NULL type struct");
-	return HeapTupleGetOid(tp);
+	return ((Form_pg_type) GETSTRUCT(tp))->oid;
 }
 
 /* given type (as type struct), return the length of type */
@@ -720,13 +723,6 @@ pts_error_callback(void *arg)
 	const char *str = (const char *) arg;
 
 	errcontext("invalid type name \"%s\"", str);
-
-	/*
-	 * Currently we just suppress any syntax error position report, rather
-	 * than transforming to an "internal query" error.  It's unlikely that a
-	 * type name is complex enough to need positioning.
-	 */
-	errposition(0);
 }
 
 /*
@@ -738,11 +734,7 @@ pts_error_callback(void *arg)
 TypeName *
 typeStringToTypeName(const char *str)
 {
-	StringInfoData buf;
 	List	   *raw_parsetree_list;
-	SelectStmt *stmt;
-	ResTarget  *restarget;
-	TypeCast   *typecast;
 	TypeName   *typeName;
 	ErrorContextCallback ptserrcontext;
 
@@ -750,68 +742,25 @@ typeStringToTypeName(const char *str)
 	if (strspn(str, " \t\n\r\f") == strlen(str))
 		goto fail;
 
-	initStringInfo(&buf);
-	appendStringInfo(&buf, "SELECT NULL::%s", str);
-
 	/*
 	 * Setup error traceback support in case of ereport() during parse
 	 */
 	ptserrcontext.callback = pts_error_callback;
-	ptserrcontext.arg = (void *) str;
+	ptserrcontext.arg = unconstify(char *, str);
 	ptserrcontext.previous = error_context_stack;
 	error_context_stack = &ptserrcontext;
 
-	raw_parsetree_list = raw_parser(buf.data);
+	raw_parsetree_list = raw_parser(str, RAW_PARSE_TYPE_NAME);
 
 	error_context_stack = ptserrcontext.previous;
 
-	/*
-	 * Make sure we got back exactly what we expected and no more; paranoia is
-	 * justified since the string might contain anything.
-	 */
-	if (list_length(raw_parsetree_list) != 1)
-		goto fail;
-	stmt = (SelectStmt *) linitial_node(RawStmt, raw_parsetree_list)->stmt;
-	if (stmt == NULL ||
-		!IsA(stmt, SelectStmt) ||
-		stmt->distinctClause != NIL ||
-		stmt->intoClause != NULL ||
-		stmt->fromClause != NIL ||
-		stmt->whereClause != NULL ||
-		stmt->groupClause != NIL ||
-		stmt->havingClause != NULL ||
-		stmt->windowClause != NIL ||
-		stmt->valuesLists != NIL ||
-		stmt->sortClause != NIL ||
-		stmt->limitOffset != NULL ||
-		stmt->limitCount != NULL ||
-		stmt->lockingClause != NIL ||
-		stmt->withClause != NULL ||
-		stmt->op != SETOP_NONE)
-		goto fail;
-	if (list_length(stmt->targetList) != 1)
-		goto fail;
-	restarget = (ResTarget *) linitial(stmt->targetList);
-	if (restarget == NULL ||
-		!IsA(restarget, ResTarget) ||
-		restarget->name != NULL ||
-		restarget->indirection != NIL)
-		goto fail;
-	typecast = (TypeCast *) restarget->val;
-	if (typecast == NULL ||
-		!IsA(typecast, TypeCast) ||
-		typecast->arg == NULL ||
-		!IsA(typecast->arg, A_Const))
-		goto fail;
+	/* We should get back exactly one TypeName node. */
+	Assert(list_length(raw_parsetree_list) == 1);
+	typeName = linitial_node(TypeName, raw_parsetree_list);
 
-	typeName = typecast->typeName;
-	if (typeName == NULL ||
-		!IsA(typeName, TypeName))
-		goto fail;
+	/* The grammar allows SETOF in TypeName, but we don't want that here. */
 	if (typeName->setof)
 		goto fail;
-
-	pfree(buf.data);
 
 	return typeName;
 
@@ -850,13 +799,15 @@ parseTypeString(const char *str, Oid *typeid_p, int32 *typmod_p, bool missing_ok
 	}
 	else
 	{
-		if (!((Form_pg_type) GETSTRUCT(tup))->typisdefined)
+		Form_pg_type typ = (Form_pg_type) GETSTRUCT(tup);
+
+		if (!typ->typisdefined)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("type \"%s\" is only a shell",
 							TypeNameToString(typeName)),
 					 parser_errposition(NULL, typeName->location)));
-		*typeid_p = HeapTupleGetOid(tup);
+		*typeid_p = typ->oid;
 		ReleaseSysCache(tup);
 	}
 }

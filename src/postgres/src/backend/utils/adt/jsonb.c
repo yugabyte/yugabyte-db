@@ -3,7 +3,7 @@
  * jsonb.c
  *		I/O routines for jsonb type
  *
- * Copyright (c) 2014-2018, PostgreSQL Global Development Group
+ * Copyright (c) 2014-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/adt/jsonb.c
@@ -12,20 +12,20 @@
  */
 #include "postgres.h"
 
-#include "miscadmin.h"
 #include "access/htup_details.h"
 #include "access/transam.h"
 #include "catalog/pg_type.h"
 #include "funcapi.h"
 #include "libpq/pqformat.h"
+#include "miscadmin.h"
 #include "parser/parse_coerce.h"
 #include "utils/builtins.h"
 #include "utils/date.h"
 #include "utils/datetime.h"
-#include "utils/lsyscache.h"
 #include "utils/json.h"
 #include "utils/jsonb.h"
 #include "utils/jsonfuncs.h"
+#include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
@@ -71,21 +71,21 @@ static void jsonb_in_object_field_start(void *pstate, char *fname, bool isnull);
 static void jsonb_put_escaped_value(StringInfo out, JsonbValue *scalarVal);
 static void jsonb_in_scalar(void *pstate, char *token, JsonTokenType tokentype);
 static void jsonb_categorize_type(Oid typoid,
-					  JsonbTypeCategory *tcategory,
-					  Oid *outfuncoid);
+								  JsonbTypeCategory *tcategory,
+								  Oid *outfuncoid);
 static void composite_to_jsonb(Datum composite, JsonbInState *result);
 static void array_dim_to_jsonb(JsonbInState *result, int dim, int ndims, int *dims,
-				   Datum *vals, bool *nulls, int *valcount,
-				   JsonbTypeCategory tcategory, Oid outfuncoid);
+							   Datum *vals, bool *nulls, int *valcount,
+							   JsonbTypeCategory tcategory, Oid outfuncoid);
 static void array_to_jsonb_internal(Datum array, JsonbInState *result);
 static void jsonb_categorize_type(Oid typoid,
-					  JsonbTypeCategory *tcategory,
-					  Oid *outfuncoid);
+								  JsonbTypeCategory *tcategory,
+								  Oid *outfuncoid);
 static void datum_to_jsonb(Datum val, bool is_null, JsonbInState *result,
-			   JsonbTypeCategory tcategory, Oid outfuncoid,
-			   bool key_scalar);
+						   JsonbTypeCategory tcategory, Oid outfuncoid,
+						   bool key_scalar);
 static void add_jsonb(Datum val, bool is_null, JsonbInState *result,
-		  Oid val_type, bool key_scalar);
+					  Oid val_type, bool key_scalar);
 static JsonbParseState *clone_parse_state(JsonbParseState *state);
 static char *JsonbToCStringWorker(StringInfo out, JsonbContainer *in, int estimated_len, bool indent);
 static void add_indent(StringInfo out, bool indent, int level);
@@ -261,7 +261,7 @@ jsonb_from_cstring(char *json, int len)
 
 	memset(&state, 0, sizeof(state));
 	memset(&sem, 0, sizeof(sem));
-	lex = makeJsonLexContextCstringLen(json, len, true);
+	lex = makeJsonLexContextCstringLen(json, len, GetDatabaseEncoding(), true);
 
 	sem.semstate = (void *) &state;
 
@@ -677,7 +677,7 @@ jsonb_categorize_type(Oid typoid,
 		default:
 			/* Check for arrays and composites */
 			if (OidIsValid(get_element_type(typoid)) || typoid == ANYARRAYOID
-				|| typoid == RECORDARRAYOID)
+				|| typoid == ANYCOMPATIBLEARRAYOID || typoid == RECORDARRAYOID)
 				*tcategory = JSONBTYPE_ARRAY;
 			else if (type_is_rowtype(typoid))	/* includes RECORDOID */
 				*tcategory = JSONBTYPE_COMPOSITE;
@@ -861,7 +861,6 @@ datum_to_jsonb(Datum val, bool is_null, JsonbInState *result,
 					sem.object_field_start = jsonb_in_object_field_start;
 
 					pg_parse_json_or_ereport(lex, &sem);
-
 				}
 				break;
 			case JSONBTYPE_JSONB:
@@ -1176,7 +1175,9 @@ jsonb_build_object(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("argument list must have even number of elements"),
-				 errhint("The arguments of jsonb_build_object() must consist of alternating keys and values.")));
+		/* translator: %s is a SQL function name */
+				 errhint("The arguments of %s must consist of alternating keys and values.",
+						 "jsonb_build_object()")));
 
 	memset(&result, 0, sizeof(JsonbInState));
 
@@ -1315,7 +1316,7 @@ jsonb_object(PG_FUNCTION_ARGS)
 	}
 
 	deconstruct_array(in_array,
-					  TEXTOID, -1, false, 'i',
+					  TEXTOID, -1, false, TYPALIGN_INT,
 					  &in_datums, &in_nulls, &in_count);
 
 	count = in_count / 2;
@@ -1403,11 +1404,11 @@ jsonb_object_two_arg(PG_FUNCTION_ARGS)
 		goto close_object;
 
 	deconstruct_array(key_array,
-					  TEXTOID, -1, false, 'i',
+					  TEXTOID, -1, false, TYPALIGN_INT,
 					  &key_datums, &key_nulls, &key_count);
 
 	deconstruct_array(val_array,
-					  TEXTOID, -1, false, 'i',
+					  TEXTOID, -1, false, TYPALIGN_INT,
 					  &val_datums, &val_nulls, &val_count);
 
 	if (key_count != val_count)

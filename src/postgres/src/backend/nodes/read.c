@@ -4,7 +4,7 @@
  *	  routines to convert a string (legal ascii representation of node) back
  *	  to nodes
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -28,9 +28,14 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 /* Static state for pg_strtok */
-static char *pg_strtok_ptr = NULL;
+static const char *pg_strtok_ptr = NULL;
 
-static char *GetPgStrTokPtr()
+/* State flag that determines how readfuncs.c should treat location fields */
+#ifdef WRITE_READ_PARSE_PLAN_TREES
+bool		restore_location_fields = false;
+#endif
+
+static const char *GetPgStrTokPtr()
 {
 	if (IsMultiThreadedMode())
 	{
@@ -42,11 +47,11 @@ static char *GetPgStrTokPtr()
 	}
 }
 
-static void SetPgStrTokPtr(char *new_pg_strtok_ptr)
+static void SetPgStrTokPtr(const char *new_pg_strtok_ptr)
 {
 	if (IsMultiThreadedMode())
 	{
-		YBCPgSetThreadLocalStrTokPtr(new_pg_strtok_ptr);
+		YBCPgSetThreadLocalStrTokPtr((char*)new_pg_strtok_ptr);
 	}
 	else
 	{
@@ -56,13 +61,20 @@ static void SetPgStrTokPtr(char *new_pg_strtok_ptr)
 
 /*
  * stringToNode -
- *	  returns a Node with a given legal ASCII representation
+ *	  builds a Node tree from its string representation (assumed valid)
+ *
+ * restore_loc_fields instructs readfuncs.c whether to restore location
+ * fields rather than set them to -1.  This is currently only supported
+ * in builds with the WRITE_READ_PARSE_PLAN_TREES debugging flag set.
  */
-void *
-stringToNode(char *str)
+static void *
+stringToNodeInternal(const char *str, bool restore_loc_fields)
 {
-	char	   *save_strtok;
 	void	   *retval;
+	const char *save_strtok;
+#ifdef WRITE_READ_PARSE_PLAN_TREES
+	bool		save_restore_location_fields;
+#endif
 
 	/*
 	 * We save and restore the pre-existing state of pg_strtok. This makes the
@@ -74,12 +86,44 @@ stringToNode(char *str)
 
 	SetPgStrTokPtr(str);		/* point pg_strtok at the string to read */
 
+	/*
+	 * If enabled, likewise save/restore the location field handling flag.
+	 */
+#ifdef WRITE_READ_PARSE_PLAN_TREES
+	save_restore_location_fields = restore_location_fields;
+	restore_location_fields = restore_loc_fields;
+#endif
+
 	retval = nodeRead(NULL, 0); /* do the reading */
 
 	SetPgStrTokPtr(save_strtok);
 
+#ifdef WRITE_READ_PARSE_PLAN_TREES
+	restore_location_fields = save_restore_location_fields;
+#endif
+
 	return retval;
 }
+
+/*
+ * Externally visible entry points
+ */
+void *
+stringToNode(const char *str)
+{
+	return stringToNodeInternal(str, false);
+}
+
+#ifdef WRITE_READ_PARSE_PLAN_TREES
+
+void *
+stringToNodeWithLocations(const char *str)
+{
+	return stringToNodeInternal(str, true);
+}
+
+#endif
+
 
 /*****************************************************************************
  *
@@ -127,11 +171,11 @@ stringToNode(char *str)
  * code should add backslashes to a string constant to ensure it is treated
  * as a single token.
  */
-char *
+const char *
 pg_strtok(int *length)
 {
-	char	   *local_str;		/* working pointer to string */
-	char	   *ret_str;		/* start of token to return */
+	const char *local_str;		/* working pointer to string */
+	const char *ret_str;		/* start of token to return */
 
 	local_str = GetPgStrTokPtr();
 
@@ -189,7 +233,7 @@ pg_strtok(int *length)
  *	  any protective backslashes in the token are removed.
  */
 char *
-debackslash(char *token, int length)
+debackslash(const char *token, int length)
 {
 	char	   *result = palloc(length + 1);
 	char	   *ptr = result;
@@ -214,17 +258,17 @@ debackslash(char *token, int length)
  * nodeTokenType -
  *	  returns the type of the node token contained in token.
  *	  It returns one of the following valid NodeTags:
- *		T_Integer, T_Float, T_String, T_BitString
+ *		T_Integer, T_Float, T_Boolean, T_String, T_BitString
  *	  and some of its own:
  *		RIGHT_PAREN, LEFT_PAREN, LEFT_BRACE, OTHER_TOKEN
  *
  *	  Assumption: the ascii representation is legal
  */
 static NodeTag
-nodeTokenType(char *token, int length)
+nodeTokenType(const char *token, int length)
 {
 	NodeTag		retval;
-	char	   *numptr;
+	const char *numptr;
 	int			numlen;
 
 	/*
@@ -262,6 +306,9 @@ nodeTokenType(char *token, int length)
 		retval = RIGHT_PAREN;
 	else if (*token == '{')
 		retval = LEFT_BRACE;
+	else if ((length == 4 && strncmp(token, "true", 4) == 0) ||
+			 (length == 5 && strncmp(token, "false", 5) == 0))
+		retval = T_Boolean;
 	else if (*token == '"' && length > 1 && token[length - 1] == '"')
 		retval = T_String;
 	else if (*token == 'b')
@@ -277,7 +324,7 @@ nodeTokenType(char *token, int length)
  *
  * This routine applies some semantic knowledge on top of the purely
  * lexical tokenizer pg_strtok().   It can read
- *	* Value token nodes (integers, floats, or strings);
+ *	* Value token nodes (integers, floats, booleans, or strings);
  *	* General nodes (via parseNodeString() from readfuncs.c);
  *	* Lists of the above;
  *	* Lists of integers or OIDs.
@@ -292,7 +339,7 @@ nodeTokenType(char *token, int length)
  * this should only be invoked from within a stringToNode operation).
  */
 void *
-nodeRead(char *token, int tok_len)
+nodeRead(const char *token, int tok_len)
 {
 	Node	   *result;
 	NodeTag		type;
@@ -416,6 +463,9 @@ nodeRead(char *token, int tok_len)
 				fval[tok_len] = '\0';
 				result = (Node *) makeFloat(fval);
 			}
+			break;
+		case T_Boolean:
+			result = (Node *) makeBoolean(token[0] == 't');
 			break;
 		case T_String:
 			/* need to remove leading and trailing quotes, and backslashes */

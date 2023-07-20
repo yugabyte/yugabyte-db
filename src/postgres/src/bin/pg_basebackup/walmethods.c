@@ -5,7 +5,7 @@
  * NOTE! The caller must ensure that only one method is instantiated in
  *		 any given program, and that it's only instantiated once!
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/bin/pg_basebackup/walmethods.c
@@ -17,19 +17,26 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+
+#ifdef USE_LZ4
+#include <lz4frame.h>
+#endif
 #ifdef HAVE_LIBZ
 #include <zlib.h>
 #endif
 
-#include "pgtar.h"
 #include "common/file_perm.h"
 #include "common/file_utils.h"
-
+#include "common/logging.h"
+#include "pgtar.h"
 #include "receivelog.h"
 #include "streamutil.h"
 
 /* Size of zlib buffer for .tar.gz */
 #define ZLIB_OUT_SIZE 4096
+
+/* Size of LZ4 input chunk for .lz4 */
+#define LZ4_IN_SIZE  4096
 
 /*-------------------------------------------------------------------------
  * WalDirectoryMethod - write wal to a directory looking like pg_wal
@@ -42,8 +49,11 @@
 typedef struct DirectoryMethodData
 {
 	char	   *basedir;
-	int			compression;
+	pg_compress_algorithm compression_algorithm;
+	int			compression_level;
 	bool		sync;
+	const char *lasterrstring;	/* if set, takes precedence over lasterrno */
+	int			lasterrno;
 } DirectoryMethodData;
 static DirectoryMethodData *dir_data = NULL;
 
@@ -60,29 +70,62 @@ typedef struct DirectoryMethodFile
 #ifdef HAVE_LIBZ
 	gzFile		gzfp;
 #endif
+#ifdef USE_LZ4
+	LZ4F_compressionContext_t ctx;
+	size_t		lz4bufsize;
+	void	   *lz4buf;
+#endif
 } DirectoryMethodFile;
+
+#define dir_clear_error() \
+	(dir_data->lasterrstring = NULL, dir_data->lasterrno = 0)
+#define dir_set_error(msg) \
+	(dir_data->lasterrstring = _(msg))
 
 static const char *
 dir_getlasterror(void)
 {
-	/* Directory method always sets errno, so just use strerror */
-	return strerror(errno);
+	if (dir_data->lasterrstring)
+		return dir_data->lasterrstring;
+	return strerror(dir_data->lasterrno);
+}
+
+static char *
+dir_get_file_name(const char *pathname, const char *temp_suffix)
+{
+	char	   *filename = pg_malloc0(MAXPGPATH * sizeof(char));
+
+	snprintf(filename, MAXPGPATH, "%s%s%s",
+			 pathname,
+			 dir_data->compression_algorithm == PG_COMPRESSION_GZIP ? ".gz" :
+			 dir_data->compression_algorithm == PG_COMPRESSION_LZ4 ? ".lz4" : "",
+			 temp_suffix ? temp_suffix : "");
+
+	return filename;
 }
 
 static Walfile
 dir_open_for_write(const char *pathname, const char *temp_suffix, size_t pad_to_size)
 {
-	static char tmppath[MAXPGPATH];
+	char		tmppath[MAXPGPATH];
+	char	   *filename;
 	int			fd;
 	DirectoryMethodFile *f;
 #ifdef HAVE_LIBZ
 	gzFile		gzfp = NULL;
 #endif
+#ifdef USE_LZ4
+	LZ4F_compressionContext_t ctx = NULL;
+	size_t		lz4bufsize = 0;
+	void	   *lz4buf = NULL;
+#endif
 
-	snprintf(tmppath, sizeof(tmppath), "%s/%s%s%s",
-			 dir_data->basedir, pathname,
-			 dir_data->compression > 0 ? ".gz" : "",
-			 temp_suffix ? temp_suffix : "");
+	dir_clear_error();
+
+	filename = dir_get_file_name(pathname, temp_suffix);
+	snprintf(tmppath, sizeof(tmppath), "%s/%s",
+			 dir_data->basedir, filename);
+	pg_free(filename);
 
 	/*
 	 * Open a file for non-compressed as well as compressed files. Tracking
@@ -92,29 +135,79 @@ dir_open_for_write(const char *pathname, const char *temp_suffix, size_t pad_to_
 	 */
 	fd = open(tmppath, O_WRONLY | O_CREAT | PG_BINARY, pg_file_create_mode);
 	if (fd < 0)
+	{
+		dir_data->lasterrno = errno;
 		return NULL;
+	}
 
 #ifdef HAVE_LIBZ
-	if (dir_data->compression > 0)
+	if (dir_data->compression_algorithm == PG_COMPRESSION_GZIP)
 	{
 		gzfp = gzdopen(fd, "wb");
 		if (gzfp == NULL)
 		{
+			dir_data->lasterrno = errno;
 			close(fd);
 			return NULL;
 		}
 
-		if (gzsetparams(gzfp, dir_data->compression,
+		if (gzsetparams(gzfp, dir_data->compression_level,
 						Z_DEFAULT_STRATEGY) != Z_OK)
 		{
+			dir_data->lasterrno = errno;
 			gzclose(gzfp);
+			return NULL;
+		}
+	}
+#endif
+#ifdef USE_LZ4
+	if (dir_data->compression_algorithm == PG_COMPRESSION_LZ4)
+	{
+		size_t		ctx_out;
+		size_t		header_size;
+		LZ4F_preferences_t prefs;
+
+		ctx_out = LZ4F_createCompressionContext(&ctx, LZ4F_VERSION);
+		if (LZ4F_isError(ctx_out))
+		{
+			dir_data->lasterrstring = LZ4F_getErrorName(ctx_out);
+			close(fd);
+			return NULL;
+		}
+
+		lz4bufsize = LZ4F_compressBound(LZ4_IN_SIZE, NULL);
+		lz4buf = pg_malloc0(lz4bufsize);
+
+		/* assign the compression level, default is 0 */
+		memset(&prefs, 0, sizeof(prefs));
+		prefs.compressionLevel = dir_data->compression_level;
+
+		/* add the header */
+		header_size = LZ4F_compressBegin(ctx, lz4buf, lz4bufsize, &prefs);
+		if (LZ4F_isError(header_size))
+		{
+			dir_data->lasterrstring = LZ4F_getErrorName(header_size);
+			(void) LZ4F_freeCompressionContext(ctx);
+			pg_free(lz4buf);
+			close(fd);
+			return NULL;
+		}
+
+		errno = 0;
+		if (write(fd, lz4buf, header_size) != header_size)
+		{
+			/* If write didn't set errno, assume problem is no disk space */
+			dir_data->lasterrno = errno ? errno : ENOSPC;
+			(void) LZ4F_freeCompressionContext(ctx);
+			pg_free(lz4buf);
+			close(fd);
 			return NULL;
 		}
 	}
 #endif
 
 	/* Do pre-padding on non-compressed files */
-	if (pad_to_size && dir_data->compression == 0)
+	if (pad_to_size && dir_data->compression_algorithm == PG_COMPRESSION_NONE)
 	{
 		PGAlignedXLogBlock zerobuf;
 		int			bytes;
@@ -125,24 +218,17 @@ dir_open_for_write(const char *pathname, const char *temp_suffix, size_t pad_to_
 			errno = 0;
 			if (write(fd, zerobuf.data, XLOG_BLCKSZ) != XLOG_BLCKSZ)
 			{
-				int			save_errno = errno;
-
+				/* If write didn't set errno, assume problem is no disk space */
+				dir_data->lasterrno = errno ? errno : ENOSPC;
 				close(fd);
-
-				/*
-				 * If write didn't set errno, assume problem is no disk space.
-				 */
-				errno = save_errno ? save_errno : ENOSPC;
 				return NULL;
 			}
 		}
 
 		if (lseek(fd, 0, SEEK_SET) != 0)
 		{
-			int			save_errno = errno;
-
+			dir_data->lasterrno = errno;
 			close(fd);
-			errno = save_errno;
 			return NULL;
 		}
 	}
@@ -155,12 +241,23 @@ dir_open_for_write(const char *pathname, const char *temp_suffix, size_t pad_to_
 	 */
 	if (dir_data->sync)
 	{
-		if (fsync_fname(tmppath, false, progname) != 0 ||
-			fsync_parent_path(tmppath, progname) != 0)
+		if (fsync_fname(tmppath, false) != 0 ||
+			fsync_parent_path(tmppath) != 0)
 		{
+			dir_data->lasterrno = errno;
 #ifdef HAVE_LIBZ
-			if (dir_data->compression > 0)
+			if (dir_data->compression_algorithm == PG_COMPRESSION_GZIP)
 				gzclose(gzfp);
+			else
+#endif
+#ifdef USE_LZ4
+			if (dir_data->compression_algorithm == PG_COMPRESSION_LZ4)
+			{
+				(void) LZ4F_compressEnd(ctx, lz4buf, lz4bufsize, NULL);
+				(void) LZ4F_freeCompressionContext(ctx);
+				pg_free(lz4buf);
+				close(fd);
+			}
 			else
 #endif
 				close(fd);
@@ -170,9 +267,18 @@ dir_open_for_write(const char *pathname, const char *temp_suffix, size_t pad_to_
 
 	f = pg_malloc0(sizeof(DirectoryMethodFile));
 #ifdef HAVE_LIBZ
-	if (dir_data->compression > 0)
+	if (dir_data->compression_algorithm == PG_COMPRESSION_GZIP)
 		f->gzfp = gzfp;
 #endif
+#ifdef USE_LZ4
+	if (dir_data->compression_algorithm == PG_COMPRESSION_LZ4)
+	{
+		f->ctx = ctx;
+		f->lz4buf = lz4buf;
+		f->lz4bufsize = lz4bufsize;
+	}
+#endif
+
 	f->fd = fd;
 	f->currpos = 0;
 	f->pathname = pg_strdup(pathname);
@@ -190,13 +296,75 @@ dir_write(Walfile f, const void *buf, size_t count)
 	DirectoryMethodFile *df = (DirectoryMethodFile *) f;
 
 	Assert(f != NULL);
+	dir_clear_error();
 
 #ifdef HAVE_LIBZ
-	if (dir_data->compression > 0)
+	if (dir_data->compression_algorithm == PG_COMPRESSION_GZIP)
+	{
+		errno = 0;
 		r = (ssize_t) gzwrite(df->gzfp, buf, count);
+		if (r != count)
+		{
+			/* If write didn't set errno, assume problem is no disk space */
+			dir_data->lasterrno = errno ? errno : ENOSPC;
+		}
+	}
 	else
 #endif
+#ifdef USE_LZ4
+	if (dir_data->compression_algorithm == PG_COMPRESSION_LZ4)
+	{
+		size_t		chunk;
+		size_t		remaining;
+		const void *inbuf = buf;
+
+		remaining = count;
+		while (remaining > 0)
+		{
+			size_t		compressed;
+
+			if (remaining > LZ4_IN_SIZE)
+				chunk = LZ4_IN_SIZE;
+			else
+				chunk = remaining;
+
+			remaining -= chunk;
+			compressed = LZ4F_compressUpdate(df->ctx,
+											 df->lz4buf, df->lz4bufsize,
+											 inbuf, chunk,
+											 NULL);
+
+			if (LZ4F_isError(compressed))
+			{
+				dir_data->lasterrstring = LZ4F_getErrorName(compressed);
+				return -1;
+			}
+
+			errno = 0;
+			if (write(df->fd, df->lz4buf, compressed) != compressed)
+			{
+				/* If write didn't set errno, assume problem is no disk space */
+				dir_data->lasterrno = errno ? errno : ENOSPC;
+				return -1;
+			}
+
+			inbuf = ((char *) inbuf) + chunk;
+		}
+
+		/* Our caller keeps track of the uncompressed size. */
+		r = (ssize_t) count;
+	}
+	else
+#endif
+	{
+		errno = 0;
 		r = write(df->fd, buf, count);
+		if (r != count)
+		{
+			/* If write didn't set errno, assume problem is no disk space */
+			dir_data->lasterrno = errno ? errno : ENOSPC;
+		}
+	}
 	if (r > 0)
 		df->currpos += r;
 	return r;
@@ -206,6 +374,7 @@ static off_t
 dir_get_current_pos(Walfile f)
 {
 	Assert(f != NULL);
+	dir_clear_error();
 
 	/* Use a cached value to prevent lots of reseeks */
 	return ((DirectoryMethodFile *) f)->currpos;
@@ -216,14 +385,45 @@ dir_close(Walfile f, WalCloseMethod method)
 {
 	int			r;
 	DirectoryMethodFile *df = (DirectoryMethodFile *) f;
-	static char tmppath[MAXPGPATH];
-	static char tmppath2[MAXPGPATH];
+	char		tmppath[MAXPGPATH];
+	char		tmppath2[MAXPGPATH];
 
 	Assert(f != NULL);
+	dir_clear_error();
 
 #ifdef HAVE_LIBZ
-	if (dir_data->compression > 0)
+	if (dir_data->compression_algorithm == PG_COMPRESSION_GZIP)
+	{
+		errno = 0;				/* in case gzclose() doesn't set it */
 		r = gzclose(df->gzfp);
+	}
+	else
+#endif
+#ifdef USE_LZ4
+	if (dir_data->compression_algorithm == PG_COMPRESSION_LZ4)
+	{
+		size_t		compressed;
+
+		compressed = LZ4F_compressEnd(df->ctx,
+									  df->lz4buf, df->lz4bufsize,
+									  NULL);
+
+		if (LZ4F_isError(compressed))
+		{
+			dir_data->lasterrstring = LZ4F_getErrorName(compressed);
+			return -1;
+		}
+
+		errno = 0;
+		if (write(df->fd, df->lz4buf, compressed) != compressed)
+		{
+			/* If write didn't set errno, assume problem is no disk space */
+			dir_data->lasterrno = errno ? errno : ENOSPC;
+			return -1;
+		}
+
+		r = close(df->fd);
+	}
 	else
 #endif
 		r = close(df->fd);
@@ -233,26 +433,44 @@ dir_close(Walfile f, WalCloseMethod method)
 		/* Build path to the current version of the file */
 		if (method == CLOSE_NORMAL && df->temp_suffix)
 		{
+			char	   *filename;
+			char	   *filename2;
+
 			/*
 			 * If we have a temp prefix, normal operation is to rename the
 			 * file.
 			 */
-			snprintf(tmppath, sizeof(tmppath), "%s/%s%s%s",
-					 dir_data->basedir, df->pathname,
-					 dir_data->compression > 0 ? ".gz" : "",
-					 df->temp_suffix);
-			snprintf(tmppath2, sizeof(tmppath2), "%s/%s%s",
-					 dir_data->basedir, df->pathname,
-					 dir_data->compression > 0 ? ".gz" : "");
-			r = durable_rename(tmppath, tmppath2, progname);
+			filename = dir_get_file_name(df->pathname, df->temp_suffix);
+			snprintf(tmppath, sizeof(tmppath), "%s/%s",
+					 dir_data->basedir, filename);
+			pg_free(filename);
+
+			/* permanent name, so no need for the prefix */
+			filename2 = dir_get_file_name(df->pathname, NULL);
+			snprintf(tmppath2, sizeof(tmppath2), "%s/%s",
+					 dir_data->basedir, filename2);
+			pg_free(filename2);
+			if (dir_data->sync)
+				r = durable_rename(tmppath, tmppath2);
+			else
+			{
+				if (rename(tmppath, tmppath2) != 0)
+				{
+					pg_log_error("could not rename file \"%s\" to \"%s\": %m",
+								 tmppath, tmppath2);
+					r = -1;
+				}
+			}
 		}
 		else if (method == CLOSE_UNLINK)
 		{
+			char	   *filename;
+
 			/* Unlink the file once it's closed */
-			snprintf(tmppath, sizeof(tmppath), "%s/%s%s%s",
-					 dir_data->basedir, df->pathname,
-					 dir_data->compression > 0 ? ".gz" : "",
-					 df->temp_suffix ? df->temp_suffix : "");
+			filename = dir_get_file_name(df->pathname, df->temp_suffix);
+			snprintf(tmppath, sizeof(tmppath), "%s/%s",
+					 dir_data->basedir, filename);
+			pg_free(filename);
 			r = unlink(tmppath);
 		}
 		else
@@ -264,12 +482,21 @@ dir_close(Walfile f, WalCloseMethod method)
 			 */
 			if (dir_data->sync)
 			{
-				r = fsync_fname(df->fullpath, false, progname);
+				r = fsync_fname(df->fullpath, false);
 				if (r == 0)
-					r = fsync_parent_path(df->fullpath, progname);
+					r = fsync_parent_path(df->fullpath);
 			}
 		}
 	}
+
+	if (r != 0)
+		dir_data->lasterrno = errno;
+
+#ifdef USE_LZ4
+	pg_free(df->lz4buf);
+	/* supports free on NULL */
+	LZ4F_freeCompressionContext(df->ctx);
+#endif
 
 	pg_free(df->pathname);
 	pg_free(df->fullpath);
@@ -283,42 +510,85 @@ dir_close(Walfile f, WalCloseMethod method)
 static int
 dir_sync(Walfile f)
 {
+	int			r;
+
 	Assert(f != NULL);
+	dir_clear_error();
 
 	if (!dir_data->sync)
 		return 0;
 
 #ifdef HAVE_LIBZ
-	if (dir_data->compression > 0)
+	if (dir_data->compression_algorithm == PG_COMPRESSION_GZIP)
 	{
 		if (gzflush(((DirectoryMethodFile *) f)->gzfp, Z_SYNC_FLUSH) != Z_OK)
+		{
+			dir_data->lasterrno = errno;
 			return -1;
+		}
+	}
+#endif
+#ifdef USE_LZ4
+	if (dir_data->compression_algorithm == PG_COMPRESSION_LZ4)
+	{
+		DirectoryMethodFile *df = (DirectoryMethodFile *) f;
+		size_t		compressed;
+
+		/* Flush any internal buffers */
+		compressed = LZ4F_flush(df->ctx, df->lz4buf, df->lz4bufsize, NULL);
+		if (LZ4F_isError(compressed))
+		{
+			dir_data->lasterrstring = LZ4F_getErrorName(compressed);
+			return -1;
+		}
+
+		errno = 0;
+		if (write(df->fd, df->lz4buf, compressed) != compressed)
+		{
+			/* If write didn't set errno, assume problem is no disk space */
+			dir_data->lasterrno = errno ? errno : ENOSPC;
+			return -1;
+		}
 	}
 #endif
 
-	return fsync(((DirectoryMethodFile *) f)->fd);
+	r = fsync(((DirectoryMethodFile *) f)->fd);
+	if (r < 0)
+		dir_data->lasterrno = errno;
+	return r;
 }
 
 static ssize_t
 dir_get_file_size(const char *pathname)
 {
 	struct stat statbuf;
-	static char tmppath[MAXPGPATH];
+	char		tmppath[MAXPGPATH];
 
 	snprintf(tmppath, sizeof(tmppath), "%s/%s",
 			 dir_data->basedir, pathname);
 
 	if (stat(tmppath, &statbuf) != 0)
+	{
+		dir_data->lasterrno = errno;
 		return -1;
+	}
 
 	return statbuf.st_size;
+}
+
+static pg_compress_algorithm
+dir_compression_algorithm(void)
+{
+	return dir_data->compression_algorithm;
 }
 
 static bool
 dir_existsfile(const char *pathname)
 {
-	static char tmppath[MAXPGPATH];
+	char		tmppath[MAXPGPATH];
 	int			fd;
+
+	dir_clear_error();
 
 	snprintf(tmppath, sizeof(tmppath), "%s/%s",
 			 dir_data->basedir, pathname);
@@ -333,21 +603,28 @@ dir_existsfile(const char *pathname)
 static bool
 dir_finish(void)
 {
+	dir_clear_error();
+
 	if (dir_data->sync)
 	{
 		/*
 		 * Files are fsynced when they are closed, but we need to fsync the
 		 * directory entry here as well.
 		 */
-		if (fsync_fname(dir_data->basedir, true, progname) != 0)
+		if (fsync_fname(dir_data->basedir, true) != 0)
+		{
+			dir_data->lasterrno = errno;
 			return false;
+		}
 	}
 	return true;
 }
 
 
 WalWriteMethod *
-CreateWalDirectoryMethod(const char *basedir, int compression, bool sync)
+CreateWalDirectoryMethod(const char *basedir,
+						 pg_compress_algorithm compression_algorithm,
+						 int compression_level, bool sync)
 {
 	WalWriteMethod *method;
 
@@ -356,6 +633,8 @@ CreateWalDirectoryMethod(const char *basedir, int compression, bool sync)
 	method->write = dir_write;
 	method->get_current_pos = dir_get_current_pos;
 	method->get_file_size = dir_get_file_size;
+	method->get_file_name = dir_get_file_name;
+	method->compression_algorithm = dir_compression_algorithm;
 	method->close = dir_close;
 	method->sync = dir_sync;
 	method->existsfile = dir_existsfile;
@@ -363,7 +642,8 @@ CreateWalDirectoryMethod(const char *basedir, int compression, bool sync)
 	method->getlasterror = dir_getlasterror;
 
 	dir_data = pg_malloc0(sizeof(DirectoryMethodData));
-	dir_data->compression = compression;
+	dir_data->compression_algorithm = compression_algorithm;
+	dir_data->compression_level = compression_level;
 	dir_data->basedir = pg_strdup(basedir);
 	dir_data->sync = sync;
 
@@ -375,6 +655,7 @@ FreeWalDirectoryMethod(void)
 {
 	pg_free(dir_data->basedir);
 	pg_free(dir_data);
+	dir_data = NULL;
 }
 
 
@@ -387,7 +668,7 @@ typedef struct TarMethodFile
 {
 	off_t		ofs_start;		/* Where does the *header* for this file start */
 	off_t		currpos;
-	char		header[512];
+	char		header[TAR_BLOCK_SIZE];
 	char	   *pathname;
 	size_t		pad_to_size;
 } TarMethodFile;
@@ -396,10 +677,12 @@ typedef struct TarMethodData
 {
 	char	   *tarfilename;
 	int			fd;
-	int			compression;
+	pg_compress_algorithm compression_algorithm;
+	int			compression_level;
 	bool		sync;
 	TarMethodFile *currentfile;
-	char		lasterror[1024];
+	const char *lasterrstring;	/* if set, takes precedence over lasterrno */
+	int			lasterrno;
 #ifdef HAVE_LIBZ
 	z_streamp	zp;
 	void	   *zlibOut;
@@ -407,19 +690,17 @@ typedef struct TarMethodData
 } TarMethodData;
 static TarMethodData *tar_data = NULL;
 
-#define tar_clear_error() tar_data->lasterror[0] = '\0'
-#define tar_set_error(msg) strlcpy(tar_data->lasterror, _(msg), sizeof(tar_data->lasterror))
+#define tar_clear_error() \
+	(tar_data->lasterrstring = NULL, tar_data->lasterrno = 0)
+#define tar_set_error(msg) \
+	(tar_data->lasterrstring = _(msg))
 
 static const char *
 tar_getlasterror(void)
 {
-	/*
-	 * If a custom error is set, return that one. Otherwise, assume errno is
-	 * set and return that one.
-	 */
-	if (tar_data->lasterror[0])
-		return tar_data->lasterror;
-	return strerror(errno);
+	if (tar_data->lasterrstring)
+		return tar_data->lasterrstring;
+	return strerror(tar_data->lasterrno);
 }
 
 #ifdef HAVE_LIBZ
@@ -447,11 +728,8 @@ tar_write_compressed_data(void *buf, size_t count, bool flush)
 			errno = 0;
 			if (write(tar_data->fd, tar_data->zlibOut, len) != len)
 			{
-				/*
-				 * If write didn't set errno, assume problem is no disk space.
-				 */
-				if (errno == 0)
-					errno = ENOSPC;
+				/* If write didn't set errno, assume problem is no disk space */
+				tar_data->lasterrno = errno ? errno : ENOSPC;
 				return false;
 			}
 
@@ -486,26 +764,34 @@ tar_write(Walfile f, const void *buf, size_t count)
 	tar_clear_error();
 
 	/* Tarfile will always be positioned at the end */
-	if (!tar_data->compression)
+	if (tar_data->compression_algorithm == PG_COMPRESSION_NONE)
 	{
+		errno = 0;
 		r = write(tar_data->fd, buf, count);
-		if (r > 0)
-			((TarMethodFile *) f)->currpos += r;
+		if (r != count)
+		{
+			/* If write didn't set errno, assume problem is no disk space */
+			tar_data->lasterrno = errno ? errno : ENOSPC;
+			return -1;
+		}
+		((TarMethodFile *) f)->currpos += r;
 		return r;
 	}
 #ifdef HAVE_LIBZ
-	else
+	else if (tar_data->compression_algorithm == PG_COMPRESSION_GZIP)
 	{
-		if (!tar_write_compressed_data((void *) buf, count, false))
+		if (!tar_write_compressed_data(unconstify(void *, buf), count, false))
 			return -1;
 		((TarMethodFile *) f)->currpos += count;
 		return count;
 	}
-#else
-	else
-		/* Can't happen - compression enabled with no libz */
-		return -1;
 #endif
+	else
+	{
+		/* Can't happen - compression enabled with no method set */
+		tar_data->lasterrno = ENOSYS;
+		return -1;
+	}
 }
 
 static bool
@@ -528,11 +814,21 @@ tar_write_padding_data(TarMethodFile *f, size_t bytes)
 	return true;
 }
 
+static char *
+tar_get_file_name(const char *pathname, const char *temp_suffix)
+{
+	char	   *filename = pg_malloc0(MAXPGPATH * sizeof(char));
+
+	snprintf(filename, MAXPGPATH, "%s%s",
+			 pathname, temp_suffix ? temp_suffix : "");
+
+	return filename;
+}
+
 static Walfile
 tar_open_for_write(const char *pathname, const char *temp_suffix, size_t pad_to_size)
 {
-	int			save_errno;
-	static char tmppath[MAXPGPATH];
+	char	   *tmppath;
 
 	tar_clear_error();
 
@@ -545,10 +841,13 @@ tar_open_for_write(const char *pathname, const char *temp_suffix, size_t pad_to_
 							O_WRONLY | O_CREAT | PG_BINARY,
 							pg_file_create_mode);
 		if (tar_data->fd < 0)
+		{
+			tar_data->lasterrno = errno;
 			return NULL;
+		}
 
 #ifdef HAVE_LIBZ
-		if (tar_data->compression)
+		if (tar_data->compression_algorithm == PG_COMPRESSION_GZIP)
 		{
 			tar_data->zp = (z_streamp) pg_malloc(sizeof(z_stream));
 			tar_data->zp->zalloc = Z_NULL;
@@ -562,7 +861,8 @@ tar_open_for_write(const char *pathname, const char *temp_suffix, size_t pad_to_
 			 * default 15 for the windowBits parameter makes the output be
 			 * gzip instead of zlib.
 			 */
-			if (deflateInit2(tar_data->zp, tar_data->compression, Z_DEFLATED, 15 + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK)
+			if (deflateInit2(tar_data->zp, tar_data->compression_level,
+							 Z_DEFLATED, 15 + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK)
 			{
 				pg_free(tar_data->zp);
 				tar_data->zp = NULL;
@@ -575,7 +875,6 @@ tar_open_for_write(const char *pathname, const char *temp_suffix, size_t pad_to_
 		/* There's no tar header itself, the file starts with regular files */
 	}
 
-	Assert(tar_data->currentfile == NULL);
 	if (tar_data->currentfile != NULL)
 	{
 		tar_set_error("implementation error: tar files can't have more than one open file");
@@ -584,27 +883,29 @@ tar_open_for_write(const char *pathname, const char *temp_suffix, size_t pad_to_
 
 	tar_data->currentfile = pg_malloc0(sizeof(TarMethodFile));
 
-	snprintf(tmppath, sizeof(tmppath), "%s%s",
-			 pathname, temp_suffix ? temp_suffix : "");
+	tmppath = tar_get_file_name(pathname, temp_suffix);
 
 	/* Create a header with size set to 0 - we will fill out the size on close */
 	if (tarCreateHeader(tar_data->currentfile->header, tmppath, NULL, 0, S_IRUSR | S_IWUSR, 0, 0, time(NULL)) != TAR_OK)
 	{
 		pg_free(tar_data->currentfile);
+		pg_free(tmppath);
 		tar_data->currentfile = NULL;
 		tar_set_error("could not create tar header");
 		return NULL;
 	}
 
+	pg_free(tmppath);
+
 #ifdef HAVE_LIBZ
-	if (tar_data->compression)
+	if (tar_data->compression_algorithm == PG_COMPRESSION_GZIP)
 	{
 		/* Flush existing data */
 		if (!tar_write_compressed_data(NULL, 0, true))
 			return NULL;
 
 		/* Turn off compression for header */
-		if (deflateParams(tar_data->zp, 0, 0) != Z_OK)
+		if (deflateParams(tar_data->zp, 0, Z_DEFAULT_STRATEGY) != Z_OK)
 		{
 			tar_set_error("could not change compression parameters");
 			return NULL;
@@ -615,42 +916,48 @@ tar_open_for_write(const char *pathname, const char *temp_suffix, size_t pad_to_
 	tar_data->currentfile->ofs_start = lseek(tar_data->fd, 0, SEEK_CUR);
 	if (tar_data->currentfile->ofs_start == -1)
 	{
-		save_errno = errno;
+		tar_data->lasterrno = errno;
 		pg_free(tar_data->currentfile);
 		tar_data->currentfile = NULL;
-		errno = save_errno;
 		return NULL;
 	}
 	tar_data->currentfile->currpos = 0;
 
-	if (!tar_data->compression)
+	if (tar_data->compression_algorithm == PG_COMPRESSION_NONE)
 	{
 		errno = 0;
-		if (write(tar_data->fd, tar_data->currentfile->header, 512) != 512)
+		if (write(tar_data->fd, tar_data->currentfile->header,
+				  TAR_BLOCK_SIZE) != TAR_BLOCK_SIZE)
 		{
-			save_errno = errno;
+			/* If write didn't set errno, assume problem is no disk space */
+			tar_data->lasterrno = errno ? errno : ENOSPC;
 			pg_free(tar_data->currentfile);
 			tar_data->currentfile = NULL;
-			/* if write didn't set errno, assume problem is no disk space */
-			errno = save_errno ? save_errno : ENOSPC;
 			return NULL;
 		}
 	}
 #ifdef HAVE_LIBZ
-	else
+	else if (tar_data->compression_algorithm == PG_COMPRESSION_GZIP)
 	{
 		/* Write header through the zlib APIs but with no compression */
-		if (!tar_write_compressed_data(tar_data->currentfile->header, 512, true))
+		if (!tar_write_compressed_data(tar_data->currentfile->header,
+									   TAR_BLOCK_SIZE, true))
 			return NULL;
 
 		/* Re-enable compression for the rest of the file */
-		if (deflateParams(tar_data->zp, tar_data->compression, 0) != Z_OK)
+		if (deflateParams(tar_data->zp, tar_data->compression_level,
+						  Z_DEFAULT_STRATEGY) != Z_OK)
 		{
 			tar_set_error("could not change compression parameters");
 			return NULL;
 		}
 	}
 #endif
+	else
+	{
+		/* not reachable */
+		Assert(false);
+	}
 
 	tar_data->currentfile->pathname = pg_strdup(pathname);
 
@@ -661,13 +968,19 @@ tar_open_for_write(const char *pathname, const char *temp_suffix, size_t pad_to_
 	if (pad_to_size)
 	{
 		tar_data->currentfile->pad_to_size = pad_to_size;
-		if (!tar_data->compression)
+		if (tar_data->compression_algorithm == PG_COMPRESSION_NONE)
 		{
 			/* Uncompressed, so pad now */
-			tar_write_padding_data(tar_data->currentfile, pad_to_size);
-			/* Seek back to start */
-			if (lseek(tar_data->fd, tar_data->currentfile->ofs_start + 512, SEEK_SET) != tar_data->currentfile->ofs_start + 512)
+			if (!tar_write_padding_data(tar_data->currentfile, pad_to_size))
 				return NULL;
+			/* Seek back to start */
+			if (lseek(tar_data->fd,
+					  tar_data->currentfile->ofs_start + TAR_BLOCK_SIZE,
+					  SEEK_SET) != tar_data->currentfile->ofs_start + TAR_BLOCK_SIZE)
+			{
+				tar_data->lasterrno = errno;
+				return NULL;
+			}
 
 			tar_data->currentfile->currpos = 0;
 		}
@@ -682,8 +995,14 @@ tar_get_file_size(const char *pathname)
 	tar_clear_error();
 
 	/* Currently not used, so not supported */
-	errno = ENOSYS;
+	tar_data->lasterrno = ENOSYS;
 	return -1;
+}
+
+static pg_compress_algorithm
+tar_compression_algorithm(void)
+{
+	return tar_data->compression_algorithm;
 }
 
 static off_t
@@ -698,6 +1017,8 @@ tar_get_current_pos(Walfile f)
 static int
 tar_sync(Walfile f)
 {
+	int			r;
+
 	Assert(f != NULL);
 	tar_clear_error();
 
@@ -708,10 +1029,13 @@ tar_sync(Walfile f)
 	 * Always sync the whole tarfile, because that's all we can do. This makes
 	 * no sense on compressed files, so just ignore those.
 	 */
-	if (tar_data->compression)
+	if (tar_data->compression_algorithm != PG_COMPRESSION_NONE)
 		return 0;
 
-	return fsync(tar_data->fd);
+	r = fsync(tar_data->fd);
+	if (r < 0)
+		tar_data->lasterrno = errno;
+	return r;
 }
 
 static int
@@ -726,7 +1050,7 @@ tar_close(Walfile f, WalCloseMethod method)
 
 	if (method == CLOSE_UNLINK)
 	{
-		if (tar_data->compression)
+		if (tar_data->compression_algorithm != PG_COMPRESSION_NONE)
 		{
 			tar_set_error("unlink not supported with compression");
 			return -1;
@@ -738,7 +1062,10 @@ tar_close(Walfile f, WalCloseMethod method)
 		 * allow writing of the very last file.
 		 */
 		if (ftruncate(tar_data->fd, tf->ofs_start) != 0)
+		{
+			tar_data->lasterrno = errno;
 			return -1;
+		}
 
 		pg_free(tf->pathname);
 		pg_free(tf);
@@ -754,7 +1081,7 @@ tar_close(Walfile f, WalCloseMethod method)
 	 */
 	if (tf->pad_to_size)
 	{
-		if (tar_data->compression)
+		if (tar_data->compression_algorithm == PG_COMPRESSION_GZIP)
 		{
 			/*
 			 * A compressed tarfile is padded on close since we cannot know
@@ -779,14 +1106,14 @@ tar_close(Walfile f, WalCloseMethod method)
 	}
 
 	/*
-	 * Get the size of the file, and pad the current data up to the nearest
-	 * 512 byte boundary.
+	 * Get the size of the file, and pad out to a multiple of the tar block
+	 * size.
 	 */
 	filesize = tar_get_current_pos(f);
-	padding = ((filesize + 511) & ~511) - filesize;
+	padding = tarPaddingBytesRequired(filesize);
 	if (padding)
 	{
-		char		zerobuf[512];
+		char		zerobuf[TAR_BLOCK_SIZE];
 
 		MemSet(zerobuf, 0, padding);
 		if (tar_write(f, zerobuf, padding) != padding)
@@ -795,14 +1122,11 @@ tar_close(Walfile f, WalCloseMethod method)
 
 
 #ifdef HAVE_LIBZ
-	if (tar_data->compression)
+	if (tar_data->compression_algorithm == PG_COMPRESSION_GZIP)
 	{
 		/* Flush the current buffer */
 		if (!tar_write_compressed_data(NULL, 0, true))
-		{
-			errno = EINVAL;
 			return -1;
-		}
 	}
 #endif
 
@@ -823,48 +1147,64 @@ tar_close(Walfile f, WalCloseMethod method)
 
 	print_tar_number(&(tf->header[148]), 8, tarChecksum(((TarMethodFile *) f)->header));
 	if (lseek(tar_data->fd, tf->ofs_start, SEEK_SET) != ((TarMethodFile *) f)->ofs_start)
+	{
+		tar_data->lasterrno = errno;
 		return -1;
-	if (!tar_data->compression)
+	}
+	if (tar_data->compression_algorithm == PG_COMPRESSION_NONE)
 	{
 		errno = 0;
-		if (write(tar_data->fd, tf->header, 512) != 512)
+		if (write(tar_data->fd, tf->header, TAR_BLOCK_SIZE) != TAR_BLOCK_SIZE)
 		{
-			/* if write didn't set errno, assume problem is no disk space */
-			if (errno == 0)
-				errno = ENOSPC;
+			/* If write didn't set errno, assume problem is no disk space */
+			tar_data->lasterrno = errno ? errno : ENOSPC;
 			return -1;
 		}
 	}
 #ifdef HAVE_LIBZ
-	else
+	else if (tar_data->compression_algorithm == PG_COMPRESSION_GZIP)
 	{
 		/* Turn off compression */
-		if (deflateParams(tar_data->zp, 0, 0) != Z_OK)
+		if (deflateParams(tar_data->zp, 0, Z_DEFAULT_STRATEGY) != Z_OK)
 		{
 			tar_set_error("could not change compression parameters");
 			return -1;
 		}
 
 		/* Overwrite the header, assuming the size will be the same */
-		if (!tar_write_compressed_data(tar_data->currentfile->header, 512, true))
+		if (!tar_write_compressed_data(tar_data->currentfile->header,
+									   TAR_BLOCK_SIZE, true))
 			return -1;
 
 		/* Turn compression back on */
-		if (deflateParams(tar_data->zp, tar_data->compression, 0) != Z_OK)
+		if (deflateParams(tar_data->zp, tar_data->compression_level,
+						  Z_DEFAULT_STRATEGY) != Z_OK)
 		{
 			tar_set_error("could not change compression parameters");
 			return -1;
 		}
 	}
 #endif
+	else
+	{
+		/* not reachable */
+		Assert(false);
+	}
 
 	/* Move file pointer back down to end, so we can write the next file */
 	if (lseek(tar_data->fd, 0, SEEK_END) < 0)
+	{
+		tar_data->lasterrno = errno;
 		return -1;
+	}
 
 	/* Always fsync on close, so the padding gets fsynced */
 	if (tar_sync(f) < 0)
-		return -1;
+	{
+		/* XXX this seems pretty bogus; why is only this case fatal? */
+		pg_fatal("could not fsync file \"%s\": %s",
+				 tf->pathname, tar_getlasterror());
+	}
 
 	/* Clean up and done */
 	pg_free(tf->pathname);
@@ -897,19 +1237,18 @@ tar_finish(void)
 
 	/* A tarfile always ends with two empty blocks */
 	MemSet(zerobuf, 0, sizeof(zerobuf));
-	if (!tar_data->compression)
+	if (tar_data->compression_algorithm == PG_COMPRESSION_NONE)
 	{
 		errno = 0;
 		if (write(tar_data->fd, zerobuf, sizeof(zerobuf)) != sizeof(zerobuf))
 		{
-			/* if write didn't set errno, assume problem is no disk space */
-			if (errno == 0)
-				errno = ENOSPC;
+			/* If write didn't set errno, assume problem is no disk space */
+			tar_data->lasterrno = errno ? errno : ENOSPC;
 			return false;
 		}
 	}
 #ifdef HAVE_LIBZ
-	else
+	else if (tar_data->compression_algorithm == PG_COMPRESSION_GZIP)
 	{
 		if (!tar_write_compressed_data(zerobuf, sizeof(zerobuf), false))
 			return false;
@@ -939,8 +1278,7 @@ tar_finish(void)
 					 * If write didn't set errno, assume problem is no disk
 					 * space.
 					 */
-					if (errno == 0)
-						errno = ENOSPC;
+					tar_data->lasterrno = errno ? errno : ENOSPC;
 					return false;
 				}
 			}
@@ -955,41 +1293,65 @@ tar_finish(void)
 		}
 	}
 #endif
+	else
+	{
+		/* not reachable */
+		Assert(false);
+	}
 
 	/* sync the empty blocks as well, since they're after the last file */
 	if (tar_data->sync)
 	{
 		if (fsync(tar_data->fd) != 0)
+		{
+			tar_data->lasterrno = errno;
 			return false;
+		}
 	}
 
 	if (close(tar_data->fd) != 0)
+	{
+		tar_data->lasterrno = errno;
 		return false;
+	}
 
 	tar_data->fd = -1;
 
 	if (tar_data->sync)
 	{
-		if (fsync_fname(tar_data->tarfilename, false, progname) != 0)
+		if (fsync_fname(tar_data->tarfilename, false) != 0 ||
+			fsync_parent_path(tar_data->tarfilename) != 0)
+		{
+			tar_data->lasterrno = errno;
 			return false;
-		if (fsync_parent_path(tar_data->tarfilename, progname) != 0)
-			return false;
+		}
 	}
 
 	return true;
 }
 
+/*
+ * The argument compression_algorithm is currently ignored. It is in place for
+ * symmetry with CreateWalDirectoryMethod which uses it for distinguishing
+ * between the different compression methods. CreateWalTarMethod and its family
+ * of functions handle only zlib compression.
+ */
 WalWriteMethod *
-CreateWalTarMethod(const char *tarbase, int compression, bool sync)
+CreateWalTarMethod(const char *tarbase,
+				   pg_compress_algorithm compression_algorithm,
+				   int compression_level, bool sync)
 {
 	WalWriteMethod *method;
-	const char *suffix = (compression != 0) ? ".tar.gz" : ".tar";
+	const char *suffix = (compression_algorithm == PG_COMPRESSION_GZIP) ?
+	".tar.gz" : ".tar";
 
 	method = pg_malloc0(sizeof(WalWriteMethod));
 	method->open_for_write = tar_open_for_write;
 	method->write = tar_write;
 	method->get_current_pos = tar_get_current_pos;
 	method->get_file_size = tar_get_file_size;
+	method->get_file_name = tar_get_file_name;
+	method->compression_algorithm = tar_compression_algorithm;
 	method->close = tar_close;
 	method->sync = tar_sync;
 	method->existsfile = tar_existsfile;
@@ -1000,10 +1362,11 @@ CreateWalTarMethod(const char *tarbase, int compression, bool sync)
 	tar_data->tarfilename = pg_malloc0(strlen(tarbase) + strlen(suffix) + 1);
 	sprintf(tar_data->tarfilename, "%s%s", tarbase, suffix);
 	tar_data->fd = -1;
-	tar_data->compression = compression;
+	tar_data->compression_algorithm = compression_algorithm;
+	tar_data->compression_level = compression_level;
 	tar_data->sync = sync;
 #ifdef HAVE_LIBZ
-	if (compression)
+	if (compression_algorithm == PG_COMPRESSION_GZIP)
 		tar_data->zlibOut = (char *) pg_malloc(ZLIB_OUT_SIZE + 1);
 #endif
 
@@ -1015,8 +1378,9 @@ FreeWalTarMethod(void)
 {
 	pg_free(tar_data->tarfilename);
 #ifdef HAVE_LIBZ
-	if (tar_data->compression)
+	if (tar_data->compression_algorithm == PG_COMPRESSION_GZIP)
 		pg_free(tar_data->zlibOut);
 #endif
 	pg_free(tar_data);
+	tar_data = NULL;
 }

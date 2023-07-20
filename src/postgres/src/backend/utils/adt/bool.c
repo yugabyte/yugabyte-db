@@ -3,7 +3,7 @@
  * bool.c
  *	  Functions for the built-in type "bool".
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -184,7 +184,7 @@ boolrecv(PG_FUNCTION_ARGS)
 	int			ext;
 
 	ext = pq_getmsgbyte(buf);
-	PG_RETURN_BOOL((ext != 0) ? true : false);
+	PG_RETURN_BOOL(ext != 0);
 }
 
 /*

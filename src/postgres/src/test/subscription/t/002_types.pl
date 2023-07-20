@@ -1,18 +1,21 @@
+
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
+
 # This tests that more complex datatypes are replicated correctly
 # by logical replication
 use strict;
 use warnings;
-use PostgresNode;
-use TestLib;
-use Test::More tests => 4;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
 # Initialize publisher node
-my $node_publisher = get_new_node('publisher');
+my $node_publisher = PostgreSQL::Test::Cluster->new('publisher');
 $node_publisher->init(allows_streaming => 'logical');
 $node_publisher->start;
 
 # Create subscriber node
-my $node_subscriber = get_new_node('subscriber');
+my $node_subscriber = PostgreSQL::Test::Cluster->new('subscriber');
 $node_subscriber->init(allows_streaming => 'logical');
 $node_subscriber->start;
 
@@ -107,18 +110,12 @@ my $publisher_connstr = $node_publisher->connstr . ' dbname=postgres';
 $node_publisher->safe_psql('postgres',
 	"CREATE PUBLICATION tap_pub FOR ALL TABLES");
 
-my $appname = 'tap_sub';
 $node_subscriber->safe_psql('postgres',
-	"CREATE SUBSCRIPTION tap_sub CONNECTION '$publisher_connstr application_name=$appname' PUBLICATION tap_pub WITH (slot_name = tap_sub_slot)"
+	"CREATE SUBSCRIPTION tap_sub CONNECTION '$publisher_connstr' PUBLICATION tap_pub WITH (slot_name = tap_sub_slot)"
 );
 
-$node_publisher->wait_for_catchup($appname);
-
 # Wait for initial sync to finish as well
-my $synced_query =
-  "SELECT count(1) = 0 FROM pg_subscription_rel WHERE srsubstate NOT IN ('s', 'r');";
-$node_subscriber->poll_query_until('postgres', $synced_query)
-  or die "Timed out while waiting for subscriber to synchronize data";
+$node_subscriber->wait_for_subscription_sync($node_publisher, 'tap_sub');
 
 # Insert initial test data
 $node_publisher->safe_psql(
@@ -235,9 +232,9 @@ $node_publisher->safe_psql(
 	-- test_tbl_range_array
 	INSERT INTO tst_range_array (a, b, c) VALUES
 		(1, tstzrange('Mon Aug 04 00:00:00 2014 CEST'::timestamptz, 'infinity'), '{"[1,2]", "[10,20]"}'),
-		(2, tstzrange('Mon Aug 04 00:00:00 2014 CEST'::timestamptz - interval '2 days', 'Mon Aug 04 00:00:00 2014 CEST'::timestamptz), '{"[2,3]", "[20,30]"}'),
-		(3, tstzrange('Mon Aug 04 00:00:00 2014 CEST'::timestamptz - interval '3 days', 'Mon Aug 04 00:00:00 2014 CEST'::timestamptz), '{"[3,4]"}'),
-		(4, tstzrange('Mon Aug 04 00:00:00 2014 CEST'::timestamptz - interval '4 days', 'Mon Aug 04 00:00:00 2014 CEST'::timestamptz), '{"[4,5]", NULL, "[40,50]"}'),
+		(2, tstzrange('Sat Aug 02 00:00:00 2014 CEST'::timestamptz, 'Mon Aug 04 00:00:00 2014 CEST'::timestamptz), '{"[2,3]", "[20,30]"}'),
+		(3, tstzrange('Fri Aug 01 00:00:00 2014 CEST'::timestamptz, 'Mon Aug 04 00:00:00 2014 CEST'::timestamptz), '{"[3,4]"}'),
+		(4, tstzrange('Thu Jul 31 00:00:00 2014 CEST'::timestamptz, 'Mon Aug 04 00:00:00 2014 CEST'::timestamptz), '{"[4,5]", NULL, "[40,50]"}'),
 		(5, NULL, NULL);
 
 	-- tst_hstore
@@ -251,7 +248,7 @@ $node_publisher->safe_psql(
 	INSERT INTO tst_dom_constr VALUES (10);
 ));
 
-$node_publisher->wait_for_catchup($appname);
+$node_publisher->wait_for_catchup('tap_sub');
 
 # Check the data on subscriber
 my $result = $node_subscriber->safe_psql(
@@ -372,7 +369,7 @@ $node_publisher->safe_psql(
 	UPDATE tst_hstore SET b = '"also"=>"updated"' WHERE a = 3;
 ));
 
-$node_publisher->wait_for_catchup($appname);
+$node_publisher->wait_for_catchup('tap_sub');
 
 # Check the data on subscriber
 $result = $node_subscriber->safe_psql(
@@ -492,7 +489,7 @@ $node_publisher->safe_psql(
 	DELETE FROM tst_hstore WHERE a = 1;
 ));
 
-$node_publisher->wait_for_catchup($appname);
+$node_publisher->wait_for_catchup('tap_sub');
 
 # Check the data on subscriber
 $result = $node_subscriber->safe_psql(
@@ -552,13 +549,17 @@ e|{e,d}
 
 # Test a domain with a constraint backed by a SQL-language function,
 # which needs an active snapshot in order to operate.
-$node_publisher->safe_psql('postgres', "INSERT INTO tst_dom_constr VALUES (11)");
+$node_publisher->safe_psql('postgres',
+	"INSERT INTO tst_dom_constr VALUES (11)");
 
-$node_publisher->wait_for_catchup($appname);
+$node_publisher->wait_for_catchup('tap_sub');
 
 $result =
-  $node_subscriber->safe_psql('postgres', "SELECT sum(a) FROM tst_dom_constr");
+  $node_subscriber->safe_psql('postgres',
+	"SELECT sum(a) FROM tst_dom_constr");
 is($result, '21', 'sql-function constraint on domain');
 
 $node_subscriber->stop('fast');
 $node_publisher->stop('fast');
+
+done_testing();

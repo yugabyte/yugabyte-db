@@ -4,7 +4,7 @@
  *
  * Declarations for fast regex subset, used by ISpell
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * src/include/tsearch/dicts/regis.h
  *
@@ -38,12 +38,12 @@ typedef struct Regis
 				unused:15;
 } Regis;
 
-bool		RS_isRegis(const char *str);
+extern bool RS_isRegis(const char *str);
 
-void		RS_compile(Regis *r, bool issuffix, const char *str);
-void		RS_free(Regis *r);
+extern void RS_compile(Regis *r, bool issuffix, const char *str);
+extern void RS_free(Regis *r);
 
 /*returns true if matches */
-bool		RS_execute(Regis *r, char *str);
+extern bool RS_execute(Regis *r, char *str);
 
 #endif

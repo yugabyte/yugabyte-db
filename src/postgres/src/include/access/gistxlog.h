@@ -3,7 +3,7 @@
  * gistxlog.h
  *	  gist xlog routines
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/gistxlog.h
@@ -18,11 +18,15 @@
 #include "lib/stringinfo.h"
 
 #define XLOG_GIST_PAGE_UPDATE		0x00
- /* #define XLOG_GIST_NEW_ROOT			 0x20 */	/* not used anymore */
+#define XLOG_GIST_DELETE			0x10	/* delete leaf index tuples for a
+											 * page */
+#define XLOG_GIST_PAGE_REUSE		0x20	/* old page is about to be reused
+											 * from FSM */
 #define XLOG_GIST_PAGE_SPLIT		0x30
  /* #define XLOG_GIST_INSERT_COMPLETE	 0x40 */	/* not used anymore */
-#define XLOG_GIST_CREATE_INDEX		0x50
- /* #define XLOG_GIST_PAGE_DELETE		 0x60 */	/* not used anymore */
+ /* #define XLOG_GIST_CREATE_INDEX		 0x50 */	/* not used anymore */
+#define XLOG_GIST_PAGE_DELETE		0x60
+#define XLOG_GIST_ASSIGN_LSN		0x70	/* nop, assign new LSN */
 
 /*
  * Backup Blk 0: updated page.
@@ -39,6 +43,21 @@ typedef struct gistxlogPageUpdate
 	 * In payload of blk 0 : 1. todelete OffsetNumbers 2. tuples to insert
 	 */
 } gistxlogPageUpdate;
+
+/*
+ * Backup Blk 0: Leaf page, whose index tuples are deleted.
+ */
+typedef struct gistxlogDelete
+{
+	TransactionId latestRemovedXid;
+	uint16		ntodelete;		/* number of deleted offsets */
+
+	/*
+	 * In payload of blk 0 : todelete OffsetNumbers
+	 */
+} gistxlogDelete;
+
+#define SizeOfGistxlogDelete	(offsetof(gistxlogDelete, ntodelete) + sizeof(uint16))
 
 /*
  * Backup Blk 0: If this operation completes a page split, by inserting a
@@ -58,6 +77,32 @@ typedef struct gistxlogPageSplit
 	 * follow: 1. gistxlogPage and array of IndexTupleData per page
 	 */
 } gistxlogPageSplit;
+
+/*
+ * Backup Blk 0: page that was deleted.
+ * Backup Blk 1: parent page, containing the downlink to the deleted page.
+ */
+typedef struct gistxlogPageDelete
+{
+	FullTransactionId deleteXid;	/* last Xid which could see page in scan */
+	OffsetNumber downlinkOffset;	/* Offset of downlink referencing this
+									 * page */
+} gistxlogPageDelete;
+
+#define SizeOfGistxlogPageDelete	(offsetof(gistxlogPageDelete, downlinkOffset) + sizeof(OffsetNumber))
+
+
+/*
+ * This is what we need to know about page reuse, for hot standby.
+ */
+typedef struct gistxlogPageReuse
+{
+	RelFileNode node;
+	BlockNumber block;
+	FullTransactionId latestRemovedFullXid;
+} gistxlogPageReuse;
+
+#define SizeOfGistxlogPageReuse	(offsetof(gistxlogPageReuse, latestRemovedFullXid) + sizeof(FullTransactionId))
 
 extern void gist_redo(XLogReaderState *record);
 extern void gist_desc(StringInfo buf, XLogReaderState *record);

@@ -2,11 +2,36 @@
 -- CREATE_TYPE
 --
 
+-- directory path and dlsuffix are passed to us in environment variables
+\getenv libdir PG_LIBDIR
+\getenv dlsuffix PG_DLSUFFIX
+
+\set regresslib :libdir '/regress' :dlsuffix
+
 --
--- Note: widget_in/out were created in create_function_1, without any
--- prior shell-type creation.  These commands therefore complete a test
--- of the "old style" approach of making the functions first.
+-- Test the "old style" approach of making the I/O functions first,
+-- with no explicit shell type creation.
 --
+CREATE FUNCTION widget_in(cstring)
+   RETURNS widget
+   AS :'regresslib'
+   LANGUAGE C STRICT IMMUTABLE;
+
+CREATE FUNCTION widget_out(widget)
+   RETURNS cstring
+   AS :'regresslib'
+   LANGUAGE C STRICT IMMUTABLE;
+
+CREATE FUNCTION int44in(cstring)
+   RETURNS city_budget
+   AS :'regresslib'
+   LANGUAGE C STRICT IMMUTABLE;
+
+CREATE FUNCTION int44out(city_budget)
+   RETURNS cstring
+   AS :'regresslib'
+   LANGUAGE C STRICT IMMUTABLE;
+
 CREATE TYPE widget (
    internallength = 24,
    input = widget_in,
@@ -84,8 +109,11 @@ INSERT INTO default_test DEFAULT VALUES;
 
 SELECT * FROM default_test;
 
+-- We need a shell type to test some CREATE TYPE failure cases with
+CREATE TYPE bogus_type;
+
 -- invalid: non-lowercase quoted identifiers
-CREATE TYPE case_int42 (
+CREATE TYPE bogus_type (
 	"Internallength" = 4,
 	"Input" = int42_in,
 	"Output" = int42_out,
@@ -93,6 +121,20 @@ CREATE TYPE case_int42 (
 	"Default" = 42,
 	"Passedbyvalue"
 );
+
+-- invalid: input/output function incompatibility
+CREATE TYPE bogus_type (INPUT = array_in,
+    OUTPUT = array_out,
+    ELEMENT = int,
+    INTERNALLENGTH = 32);
+
+DROP TYPE bogus_type;
+
+-- It no longer is possible to issue CREATE TYPE without making a shell first
+CREATE TYPE bogus_type (INPUT = array_in,
+    OUTPUT = array_out,
+    ELEMENT = int,
+    INTERNALLENGTH = 32);
 
 -- Test stand-alone composite type
 
@@ -119,20 +161,15 @@ DROP TYPE default_test_row CASCADE;
 
 DROP TABLE default_test;
 
--- Check type create with input/output incompatibility
-CREATE TYPE not_existing_type (INPUT = array_in,
-    OUTPUT = array_out,
-    ELEMENT = int,
-    INTERNALLENGTH = 32);
-
--- Check dependency transfer of opaque functions when creating a new type
-CREATE FUNCTION base_fn_in(cstring) RETURNS opaque AS 'boolin'
+-- Check dependencies are established when creating a new type
+CREATE TYPE base_type;
+CREATE FUNCTION base_fn_in(cstring) RETURNS base_type AS 'boolin'
     LANGUAGE internal IMMUTABLE STRICT;
-CREATE FUNCTION base_fn_out(opaque) RETURNS opaque AS 'boolout'
+CREATE FUNCTION base_fn_out(base_type) RETURNS cstring AS 'boolout'
     LANGUAGE internal IMMUTABLE STRICT;
 CREATE TYPE base_type(INPUT = base_fn_in, OUTPUT = base_fn_out);
 DROP FUNCTION base_fn_in(cstring); -- error
-DROP FUNCTION base_fn_out(opaque); -- error
+DROP FUNCTION base_fn_out(base_type); -- error
 DROP TYPE base_type; -- error
 DROP TYPE base_type CASCADE;
 
@@ -154,3 +191,101 @@ select format_type('varchar'::regtype, 42);
 select format_type('bpchar'::regtype, null);
 -- this behavior difference is intentional
 select format_type('bpchar'::regtype, -1);
+
+-- Test creation of an operator over a user-defined type
+
+CREATE FUNCTION pt_in_widget(point, widget)
+   RETURNS bool
+   AS :'regresslib'
+   LANGUAGE C STRICT;
+
+CREATE OPERATOR <% (
+   leftarg = point,
+   rightarg = widget,
+   procedure = pt_in_widget,
+   commutator = >% ,
+   negator = >=%
+);
+
+SELECT point '(1,2)' <% widget '(0,0,3)' AS t,
+       point '(1,2)' <% widget '(0,0,1)' AS f;
+
+-- exercise city_budget type
+CREATE TABLE city (
+	name		name,
+	location 	box,
+	budget 		city_budget
+);
+
+INSERT INTO city VALUES
+('Podunk', '(1,2),(3,4)', '100,127,1000'),
+('Gotham', '(1000,34),(1100,334)', '123456,127,-1000,6789');
+
+TABLE city;
+
+--
+-- Test CREATE/ALTER TYPE using a type that's compatible with varchar,
+-- so we can re-use those support functions
+--
+CREATE TYPE myvarchar;
+
+CREATE FUNCTION myvarcharin(cstring, oid, integer) RETURNS myvarchar
+LANGUAGE internal IMMUTABLE PARALLEL SAFE STRICT AS 'varcharin';
+
+CREATE FUNCTION myvarcharout(myvarchar) RETURNS cstring
+LANGUAGE internal IMMUTABLE PARALLEL SAFE STRICT AS 'varcharout';
+
+CREATE FUNCTION myvarcharsend(myvarchar) RETURNS bytea
+LANGUAGE internal STABLE PARALLEL SAFE STRICT AS 'varcharsend';
+
+CREATE FUNCTION myvarcharrecv(internal, oid, integer) RETURNS myvarchar
+LANGUAGE internal STABLE PARALLEL SAFE STRICT AS 'varcharrecv';
+
+-- fail, it's still a shell:
+ALTER TYPE myvarchar SET (storage = extended);
+
+CREATE TYPE myvarchar (
+    input = myvarcharin,
+    output = myvarcharout,
+    alignment = integer,
+    storage = main
+);
+
+-- want to check updating of a domain over the target type, too
+CREATE DOMAIN myvarchardom AS myvarchar;
+
+ALTER TYPE myvarchar SET (storage = plain);  -- not allowed
+
+ALTER TYPE myvarchar SET (storage = extended);
+
+ALTER TYPE myvarchar SET (
+    send = myvarcharsend,
+    receive = myvarcharrecv,
+    typmod_in = varchartypmodin,
+    typmod_out = varchartypmodout,
+    -- these are bogus, but it's safe as long as we don't use the type:
+    analyze = ts_typanalyze,
+    subscript = raw_array_subscript_handler
+);
+
+SELECT typinput, typoutput, typreceive, typsend, typmodin, typmodout,
+       typanalyze, typsubscript, typstorage
+FROM pg_type WHERE typname = 'myvarchar';
+
+SELECT typinput, typoutput, typreceive, typsend, typmodin, typmodout,
+       typanalyze, typsubscript, typstorage
+FROM pg_type WHERE typname = '_myvarchar';
+
+SELECT typinput, typoutput, typreceive, typsend, typmodin, typmodout,
+       typanalyze, typsubscript, typstorage
+FROM pg_type WHERE typname = 'myvarchardom';
+
+SELECT typinput, typoutput, typreceive, typsend, typmodin, typmodout,
+       typanalyze, typsubscript, typstorage
+FROM pg_type WHERE typname = '_myvarchardom';
+
+-- ensure dependencies are straight
+DROP FUNCTION myvarcharsend(myvarchar);  -- fail
+DROP TYPE myvarchar;  -- fail
+
+DROP TYPE myvarchar CASCADE;

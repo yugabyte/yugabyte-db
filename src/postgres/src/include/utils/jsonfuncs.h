@@ -3,10 +3,10 @@
  * jsonfuncs.h
  *	  Functions to process JSON data types.
  *
- * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * src/include/utils/jsonapi.h
+ * src/include/utils/jsonfuncs.h
  *
  *-------------------------------------------------------------------------
  */
@@ -14,7 +14,7 @@
 #ifndef JSONFUNCS_H
 #define JSONFUNCS_H
 
-#include "utils/jsonapi.h"
+#include "common/jsonapi.h"
 #include "utils/jsonb.h"
 
 /*

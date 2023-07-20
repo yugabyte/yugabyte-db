@@ -5,14 +5,19 @@
  * Assorted utility functions to work on files.
  *
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/common/file_utils.c
  *
  *-------------------------------------------------------------------------
  */
+
+#ifndef FRONTEND
+#include "postgres.h"
+#else
 #include "postgres_fe.h"
+#endif
 
 #include <dirent.h>
 #include <fcntl.h>
@@ -20,7 +25,11 @@
 #include <unistd.h>
 
 #include "common/file_utils.h"
+#ifdef FRONTEND
+#include "common/logging.h"
+#endif
 
+#ifdef FRONTEND
 
 /* Define PG_FLUSH_DATA_WORKS if we have an implementation for pg_flush_data */
 #if defined(HAVE_SYNC_FILE_RANGE)
@@ -35,12 +44,11 @@
 #define MINIMUM_VERSION_FOR_PG_WAL	100000
 
 #ifdef PG_FLUSH_DATA_WORKS
-static int pre_sync_fname(const char *fname, bool isdir,
-			   const char *progname);
+static int	pre_sync_fname(const char *fname, bool isdir);
 #endif
 static void walkdir(const char *path,
-		int (*action) (const char *fname, bool isdir, const char *progname),
-		bool process_symlinks, const char *progname);
+					int (*action) (const char *fname, bool isdir),
+					bool process_symlinks);
 
 /*
  * Issue fsync recursively on PGDATA and all its contents.
@@ -51,12 +59,9 @@ static void walkdir(const char *path,
  * fsyncing, and might not have privileges to write at all.
  *
  * serverVersion indicates the version of the server to be fsync'd.
- *
- * Errors are reported but not considered fatal.
  */
 void
 fsync_pgdata(const char *pg_data,
-			 const char *progname,
 			 int serverVersion)
 {
 	bool		xlog_is_symlink;
@@ -79,8 +84,7 @@ fsync_pgdata(const char *pg_data,
 		struct stat st;
 
 		if (lstat(pg_wal, &st) < 0)
-			fprintf(stderr, _("%s: could not stat file \"%s\": %s\n"),
-					progname, pg_wal, strerror(errno));
+			pg_log_error("could not stat file \"%s\": %m", pg_wal);
 		else if (S_ISLNK(st.st_mode))
 			xlog_is_symlink = true;
 	}
@@ -94,10 +98,10 @@ fsync_pgdata(const char *pg_data,
 	 * directory and its contents.
 	 */
 #ifdef PG_FLUSH_DATA_WORKS
-	walkdir(pg_data, pre_sync_fname, false, progname);
+	walkdir(pg_data, pre_sync_fname, false);
 	if (xlog_is_symlink)
-		walkdir(pg_wal, pre_sync_fname, false, progname);
-	walkdir(pg_tblspc, pre_sync_fname, true, progname);
+		walkdir(pg_wal, pre_sync_fname, false);
+	walkdir(pg_tblspc, pre_sync_fname, true);
 #endif
 
 	/*
@@ -109,10 +113,10 @@ fsync_pgdata(const char *pg_data,
 	 * in pg_tblspc, they'll get fsync'd twice.  That's not an expected case
 	 * so we don't worry about optimizing it.
 	 */
-	walkdir(pg_data, fsync_fname, false, progname);
+	walkdir(pg_data, fsync_fname, false);
 	if (xlog_is_symlink)
-		walkdir(pg_wal, fsync_fname, false, progname);
-	walkdir(pg_tblspc, fsync_fname, true, progname);
+		walkdir(pg_wal, fsync_fname, false);
+	walkdir(pg_tblspc, fsync_fname, true);
 }
 
 /*
@@ -121,17 +125,17 @@ fsync_pgdata(const char *pg_data,
  * This is a convenient wrapper on top of walkdir().
  */
 void
-fsync_dir_recurse(const char *dir, const char *progname)
+fsync_dir_recurse(const char *dir)
 {
 	/*
 	 * If possible, hint to the kernel that we're soon going to fsync the data
 	 * directory and its contents.
 	 */
 #ifdef PG_FLUSH_DATA_WORKS
-	walkdir(dir, pre_sync_fname, false, progname);
+	walkdir(dir, pre_sync_fname, false);
 #endif
 
-	walkdir(dir, fsync_fname, false, progname);
+	walkdir(dir, fsync_fname, false);
 }
 
 /*
@@ -150,8 +154,8 @@ fsync_dir_recurse(const char *dir, const char *progname)
  */
 static void
 walkdir(const char *path,
-		int (*action) (const char *fname, bool isdir, const char *progname),
-		bool process_symlinks, const char *progname)
+		int (*action) (const char *fname, bool isdir),
+		bool process_symlinks)
 {
 	DIR		   *dir;
 	struct dirent *de;
@@ -159,16 +163,13 @@ walkdir(const char *path,
 	dir = opendir(path);
 	if (dir == NULL)
 	{
-		fprintf(stderr, _("%s: could not open directory \"%s\": %s\n"),
-				progname, path, strerror(errno));
+		pg_log_error("could not open directory \"%s\": %m", path);
 		return;
 	}
 
 	while (errno = 0, (de = readdir(dir)) != NULL)
 	{
 		char		subpath[MAXPGPATH * 2];
-		struct stat fst;
-		int			sret;
 
 		if (strcmp(de->d_name, ".") == 0 ||
 			strcmp(de->d_name, "..") == 0)
@@ -176,27 +177,27 @@ walkdir(const char *path,
 
 		snprintf(subpath, sizeof(subpath), "%s/%s", path, de->d_name);
 
-		if (process_symlinks)
-			sret = stat(subpath, &fst);
-		else
-			sret = lstat(subpath, &fst);
-
-		if (sret < 0)
+		switch (get_dirent_type(subpath, de, process_symlinks, PG_LOG_ERROR))
 		{
-			fprintf(stderr, _("%s: could not stat file \"%s\": %s\n"),
-					progname, subpath, strerror(errno));
-			continue;
-		}
+			case PGFILETYPE_REG:
+				(*action) (subpath, false);
+				break;
+			case PGFILETYPE_DIR:
+				walkdir(subpath, action, false);
+				break;
+			default:
 
-		if (S_ISREG(fst.st_mode))
-			(*action) (subpath, false, progname);
-		else if (S_ISDIR(fst.st_mode))
-			walkdir(subpath, action, false, progname);
+				/*
+				 * Errors are already reported directly by get_dirent_type(),
+				 * and any remaining symlinks and unknown file types are
+				 * ignored.
+				 */
+				break;
+		}
 	}
 
 	if (errno)
-		fprintf(stderr, _("%s: could not read directory \"%s\": %s\n"),
-				progname, path, strerror(errno));
+		pg_log_error("could not read directory \"%s\": %m", path);
 
 	(void) closedir(dir);
 
@@ -206,7 +207,7 @@ walkdir(const char *path,
 	 * synced.  Recent versions of ext4 have made the window much wider but
 	 * it's been an issue for ext3 and other filesystems in the past.
 	 */
-	(*action) (path, true, progname);
+	(*action) (path, true);
 }
 
 /*
@@ -218,18 +219,17 @@ walkdir(const char *path,
 #ifdef PG_FLUSH_DATA_WORKS
 
 static int
-pre_sync_fname(const char *fname, bool isdir, const char *progname)
+pre_sync_fname(const char *fname, bool isdir)
 {
 	int			fd;
 
-	fd = open(fname, O_RDONLY | PG_BINARY);
+	fd = open(fname, O_RDONLY | PG_BINARY, 0);
 
 	if (fd < 0)
 	{
 		if (errno == EACCES || (isdir && errno == EISDIR))
 			return 0;
-		fprintf(stderr, _("%s: could not open file \"%s\": %s\n"),
-				progname, fname, strerror(errno));
+		pg_log_error("could not open file \"%s\": %m", fname);
 		return -1;
 	}
 
@@ -256,11 +256,11 @@ pre_sync_fname(const char *fname, bool isdir, const char *progname)
  * fsync_fname -- Try to fsync a file or directory
  *
  * Ignores errors trying to open unreadable files, or trying to fsync
- * directories on systems where that isn't allowed/required.  Reports
- * other errors non-fatally.
+ * directories on systems where that isn't allowed/required.  All other errors
+ * are fatal.
  */
 int
-fsync_fname(const char *fname, bool isdir, const char *progname)
+fsync_fname(const char *fname, bool isdir)
 {
 	int			fd;
 	int			flags;
@@ -283,13 +283,12 @@ fsync_fname(const char *fname, bool isdir, const char *progname)
 	 * unsupported operations, e.g. opening a directory under Windows), and
 	 * logging others.
 	 */
-	fd = open(fname, flags);
+	fd = open(fname, flags, 0);
 	if (fd < 0)
 	{
 		if (errno == EACCES || (isdir && errno == EISDIR))
 			return 0;
-		fprintf(stderr, _("%s: could not open file \"%s\": %s\n"),
-				progname, fname, strerror(errno));
+		pg_log_error("could not open file \"%s\": %m", fname);
 		return -1;
 	}
 
@@ -299,12 +298,11 @@ fsync_fname(const char *fname, bool isdir, const char *progname)
 	 * Some OSes don't allow us to fsync directories at all, so we can ignore
 	 * those errors. Anything else needs to be reported.
 	 */
-	if (returncode != 0 && !(isdir && errno == EBADF))
+	if (returncode != 0 && !(isdir && (errno == EBADF || errno == EINVAL)))
 	{
-		fprintf(stderr, _("%s: could not fsync file \"%s\": %s\n"),
-				progname, fname, strerror(errno));
+		pg_log_error("could not fsync file \"%s\": %m", fname);
 		(void) close(fd);
-		return -1;
+		exit(EXIT_FAILURE);
 	}
 
 	(void) close(fd);
@@ -318,7 +316,7 @@ fsync_fname(const char *fname, bool isdir, const char *progname)
  * an OS crash or power failure.
  */
 int
-fsync_parent_path(const char *fname, const char *progname)
+fsync_parent_path(const char *fname)
 {
 	char		parentpath[MAXPGPATH];
 
@@ -333,7 +331,7 @@ fsync_parent_path(const char *fname, const char *progname)
 	if (strlen(parentpath) == 0)
 		strlcpy(parentpath, ".", MAXPGPATH);
 
-	if (fsync_fname(parentpath, true, progname) != 0)
+	if (fsync_fname(parentpath, true) != 0)
 		return -1;
 
 	return 0;
@@ -345,7 +343,7 @@ fsync_parent_path(const char *fname, const char *progname)
  * Wrapper around rename, similar to the backend version.
  */
 int
-durable_rename(const char *oldfile, const char *newfile, const char *progname)
+durable_rename(const char *oldfile, const char *newfile)
 {
 	int			fd;
 
@@ -356,7 +354,7 @@ durable_rename(const char *oldfile, const char *newfile, const char *progname)
 	 * because it's then guaranteed that either source or target file exists
 	 * after a crash.
 	 */
-	if (fsync_fname(oldfile, false, progname) != 0)
+	if (fsync_fname(oldfile, false) != 0)
 		return -1;
 
 	fd = open(newfile, PG_BINARY | O_RDWR, 0);
@@ -364,8 +362,7 @@ durable_rename(const char *oldfile, const char *newfile, const char *progname)
 	{
 		if (errno != ENOENT)
 		{
-			fprintf(stderr, _("%s: could not open file \"%s\": %s\n"),
-					progname, newfile, strerror(errno));
+			pg_log_error("could not open file \"%s\": %m", newfile);
 			return -1;
 		}
 	}
@@ -373,10 +370,9 @@ durable_rename(const char *oldfile, const char *newfile, const char *progname)
 	{
 		if (fsync(fd) != 0)
 		{
-			fprintf(stderr, _("%s: could not fsync file \"%s\": %s\n"),
-					progname, newfile, strerror(errno));
+			pg_log_error("could not fsync file \"%s\": %m", newfile);
 			close(fd);
-			return -1;
+			exit(EXIT_FAILURE);
 		}
 		close(fd);
 	}
@@ -384,8 +380,8 @@ durable_rename(const char *oldfile, const char *newfile, const char *progname)
 	/* Time to do the real deal... */
 	if (rename(oldfile, newfile) != 0)
 	{
-		fprintf(stderr, _("%s: could not rename file \"%s\" to \"%s\": %s\n"),
-				progname, oldfile, newfile, strerror(errno));
+		pg_log_error("could not rename file \"%s\" to \"%s\": %m",
+					 oldfile, newfile);
 		return -1;
 	}
 
@@ -393,11 +389,97 @@ durable_rename(const char *oldfile, const char *newfile, const char *progname)
 	 * To guarantee renaming the file is persistent, fsync the file with its
 	 * new name, and its containing directory.
 	 */
-	if (fsync_fname(newfile, false, progname) != 0)
+	if (fsync_fname(newfile, false) != 0)
 		return -1;
 
-	if (fsync_parent_path(newfile, progname) != 0)
+	if (fsync_parent_path(newfile) != 0)
 		return -1;
 
 	return 0;
+}
+
+#endif							/* FRONTEND */
+
+/*
+ * Return the type of a directory entry.
+ *
+ * In frontend code, elevel should be a level from logging.h; in backend code
+ * it should be a level from elog.h.
+ */
+PGFileType
+get_dirent_type(const char *path,
+				const struct dirent *de,
+				bool look_through_symlinks,
+				int elevel)
+{
+	PGFileType	result;
+
+	/*
+	 * Some systems tell us the type directly in the dirent struct, but that's
+	 * a BSD and Linux extension not required by POSIX.  Even when the
+	 * interface is present, sometimes the type is unknown, depending on the
+	 * filesystem.
+	 */
+#if defined(DT_REG) && defined(DT_DIR) && defined(DT_LNK)
+	if (de->d_type == DT_REG)
+		result = PGFILETYPE_REG;
+	else if (de->d_type == DT_DIR)
+		result = PGFILETYPE_DIR;
+	else if (de->d_type == DT_LNK && !look_through_symlinks)
+		result = PGFILETYPE_LNK;
+	else
+		result = PGFILETYPE_UNKNOWN;
+#else
+	result = PGFILETYPE_UNKNOWN;
+#endif
+
+	if (result == PGFILETYPE_UNKNOWN)
+	{
+		struct stat fst;
+		int			sret;
+
+
+		if (look_through_symlinks)
+			sret = stat(path, &fst);
+		else
+			sret = lstat(path, &fst);
+
+		if (sret < 0)
+		{
+			result = PGFILETYPE_ERROR;
+#ifdef FRONTEND
+			pg_log_generic(elevel, PG_LOG_PRIMARY, "could not stat file \"%s\": %m", path);
+#else
+			ereport(elevel,
+					(errcode_for_file_access(),
+					 errmsg("could not stat file \"%s\": %m", path)));
+#endif
+		}
+		else if (S_ISREG(fst.st_mode))
+			result = PGFILETYPE_REG;
+		else if (S_ISDIR(fst.st_mode))
+			result = PGFILETYPE_DIR;
+#ifdef S_ISLNK
+		else if (S_ISLNK(fst.st_mode))
+			result = PGFILETYPE_LNK;
+#endif
+	}
+
+#if defined(WIN32) && !defined(_MSC_VER)
+
+	/*
+	 * If we're on native Windows (not Cygwin, which has its own POSIX
+	 * symlinks), but not using the MSVC compiler, then we're using a
+	 * readdir() emulation provided by the MinGW runtime that has no d_type.
+	 * Since the lstat() fallback code reports junction points as directories,
+	 * we need an extra system call to check if we should report them as
+	 * symlinks instead, following our convention.
+	 */
+	if (result == PGFILETYPE_DIR &&
+		!look_through_symlinks &&
+		pgwin32_is_junction(path))
+		result = PGFILETYPE_LNK;
+#endif
+
+	return result;
 }

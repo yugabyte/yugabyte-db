@@ -69,6 +69,7 @@
 #include "catalog/yb_type.h"
 #include "mb/pg_wchar.h"
 #include "parser/parse_type.h"
+#include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/cash.h"
 #include "utils/date.h"
@@ -104,7 +105,10 @@ YbDataTypeFromOidMod(int attnum, Oid type_id)
 			case SelfItemPointerAttributeNumber: /* ctid */
 				type_id = TIDOID;
 				break;
+			#ifdef YB_TODO
+			/* OID is a regular column PG15 onwards. */
 			case ObjectIdAttributeNumber: /* oid */
+			#endif
 			case TableOidAttributeNumber: /* tableoid */
 				type_id = OIDOID;
 				break;
@@ -313,8 +317,13 @@ Datum YbBPCharToDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type_
 	}
 
 	/* Convert YugaByte cstring to Postgres internal representation */
-	FunctionCallInfoData fargs;
-	FunctionCallInfo fcinfo = &fargs;
+	/* YB_TODO(neil) Check if LOCAL_FCINFO is correctly used.
+	 * - Old code uses FUNC_MAX_ARGS.
+	 * - We use `3`.
+	 */
+	LOCAL_FCINFO(fcinfo, 3);
+	InitFunctionCallInfoData(*fcinfo, NULL, 3, InvalidOid, NULL, NULL);
+
 	PG_GETARG_DATUM(0) = CStringGetDatum(data);
 	PG_GETARG_DATUM(2) = Int32GetDatum(type_attrs->typmod);
 	return bpcharin(fcinfo);
@@ -333,8 +342,13 @@ Datum YbVarcharToDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type
 	}
 
 	/* Convert YugaByte cstring to Postgres internal representation */
-	FunctionCallInfoData fargs;
-	FunctionCallInfo fcinfo = &fargs;
+	/* YB_TODO(neil) Check if LOCAL_FCINFO is correctly used.
+	 * - Old code uses FUNC_MAX_ARGS.
+	 * - We use `3`.
+	 */
+	LOCAL_FCINFO(fcinfo, 3);
+	InitFunctionCallInfoData(*fcinfo, NULL, 3, InvalidOid, NULL, NULL);
+
 	PG_GETARG_DATUM(0) = CStringGetDatum(data);
 	PG_GETARG_DATUM(2) = Int32GetDatum(type_attrs->typmod);
 	return varcharin(fcinfo);
@@ -533,8 +547,13 @@ void YbDatumToDecimalText(Datum datum, char *plaintext[], int64 *bytes) {
 }
 
 Datum YbDecimalTextToDatum(const char plaintext[], int64 bytes, const YBCPgTypeAttrs *type_attrs) {
-	FunctionCallInfoData fargs;
-	FunctionCallInfo fcinfo = &fargs;
+	/* YB_TODO(neil) Check if LOCAL_FCINFO is correctly used.
+	 * - Old code uses FUNC_MAX_ARGS.
+	 * - We use `3`.
+	 */
+	LOCAL_FCINFO(fcinfo, 3);
+	InitFunctionCallInfoData(*fcinfo, NULL, 3, InvalidOid, NULL, NULL);
+
 	PG_GETARG_DATUM(0) = CStringGetDatum(plaintext);
 	PG_GETARG_DATUM(2) = Int32GetDatum(type_attrs->typmod);
 	return numeric_in(fcinfo);
@@ -672,6 +691,14 @@ Datum YbDocdbToDatum(const uint8 *data, int64 bytes, const YBCPgTypeAttrs *type_
  * - Change NOT_SUPPORTED to proper datatype.
  * - Turn ON or OFF certain type for KEY (true or false) when testing its support.
  **************************************************************************************************/
+/* YB_TODO(mihnea@yugabyte)
+ * Assign an engineer to go through a list of PG13 new datatype to check the following.
+ * For each new entry.
+ * - Check sizeof(type) is correct.
+ * - Check yugabyte storage type is correct.
+ * - Check conversion method is correct.
+ * - Add tests for all new PG13 datatypes.
+ */
 static const YBCPgTypeEntity YbTypeEntityTable[] = {
 	{ BOOLOID, YB_YQL_DATA_TYPE_BOOL, true, sizeof(bool), true,
 		(YBCPgDatumToData)YbDatumToBool,
@@ -745,29 +772,29 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 		(YBCPgDatumToData)YbDatumToDocdb,
 		(YBCPgDatumFromData)YbDocdbToDatum },
 
-	{ XMLARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToDocdb,
-		(YBCPgDatumFromData)YbDocdbToDatum },
-
-	{ PGNODETREEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+	{ PG_NODE_TREEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ PGNDISTINCTOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+	{ PG_NDISTINCTOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ PGDEPENDENCIESOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+	{ PG_DEPENDENCIESOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ PGDDLCOMMANDOID, YB_YQL_DATA_TYPE_INT64, true, sizeof(int64), true,
+	{ PG_MCV_LISTOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ PG_DDL_COMMANDOID, YB_YQL_DATA_TYPE_INT64, true, sizeof(int64), true,
 		(YBCPgDatumToData)YbDatumToInt64,
 		(YBCPgDatumFromData)YbInt64ToDatum },
 
-	{ SMGROID, YB_YQL_DATA_TYPE_INT16, true, sizeof(int16), true,
-		(YBCPgDatumToData)YbDatumToInt16,
-		(YBCPgDatumFromData)YbInt16ToDatum },
+	{ XID8OID, YB_YQL_DATA_TYPE_UINT64, true, sizeof(TransactionId), true,
+		(YBCPgDatumToData)YbDatumToTransactionId,
+		(YBCPgDatumFromData)YbTransactionIdToDatum },
 
 	{ POINTOID, YB_YQL_DATA_TYPE_BINARY, false, sizeof(Point), false,
 		(YBCPgDatumToData)YbDatumToDocdb,
@@ -793,10 +820,6 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 		(YBCPgDatumToData)YbDatumToDocdb,
 		(YBCPgDatumFromData)YbDocdbToDatum },
 
-	{ LINEARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToDocdb,
-		(YBCPgDatumFromData)YbDocdbToDatum },
-
 	{ FLOAT4OID, YB_YQL_DATA_TYPE_FLOAT, true, sizeof(int64), true,
 		(YBCPgDatumToData)YbDatumToFloat4,
 		(YBCPgDatumFromData)YbFloat4ToDatum },
@@ -805,22 +828,6 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 		(YBCPgDatumToData)YbDatumToFloat8,
 		(YBCPgDatumFromData)YbFloat8ToDatum },
 
-	/* Deprecated datatype in postgres since 6.3 release */
-	{ ABSTIMEOID, YB_YQL_DATA_TYPE_NOT_SUPPORTED, true, sizeof(int32), false,
-		(YBCPgDatumToData)YbDatumToInt32,
-		(YBCPgDatumFromData)YbInt32ToDatum },
-
-	/* Deprecated datatype in postgres since 6.3 release */
-	{ RELTIMEOID, YB_YQL_DATA_TYPE_NOT_SUPPORTED, false, -1, false,
-		(YBCPgDatumToData)YbDatumToDocdb,
-		(YBCPgDatumFromData)YbDocdbToDatum },
-
-	/* Deprecated datatype in postgres since 6.3 release */
-	{ TINTERVALOID, YB_YQL_DATA_TYPE_NOT_SUPPORTED, false, -1, false,
-		(YBCPgDatumToData)YbDatumToDocdb,
-		(YBCPgDatumFromData)YbDocdbToDatum },
-
-	/* Deprecated datatype in postgres since 6.3 release */
 	{ UNKNOWNOID, YB_YQL_DATA_TYPE_NOT_SUPPORTED, false, -1, false,
 		(YBCPgDatumToData)YbDatumToDocdb,
 		(YBCPgDatumFromData)YbDocdbToDatum },
@@ -829,18 +836,10 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 		(YBCPgDatumToData)YbDatumToDocdb,
 		(YBCPgDatumFromData)YbDocdbToDatum },
 
-	{ CIRCLEARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToDocdb,
-		(YBCPgDatumFromData)YbDocdbToDatum },
-
 	/* We're using int64 to represent monetary type, just like Postgres does. */
-	{ CASHOID, YB_YQL_DATA_TYPE_INT64, true, sizeof(int64), true,
+	{ MONEYOID, YB_YQL_DATA_TYPE_INT64, true, sizeof(int64), true,
 		(YBCPgDatumToData)YbDatumToMoneyInt64,
 		(YBCPgDatumFromData)YbMoneyInt64ToDatum },
-
-	{ MONEYARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToDocdb,
-		(YBCPgDatumFromData)YbDocdbToDatum },
 
 	{ MACADDROID, YB_YQL_DATA_TYPE_BINARY, false, sizeof(macaddr), false,
 		(YBCPgDatumToData)YbDatumToDocdb,
@@ -862,6 +861,283 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 		(YBCPgDatumToData)YbDatumToDocdb,
 		(YBCPgDatumFromData)YbDocdbToDatum },
 
+	{ ACLITEMOID, YB_YQL_DATA_TYPE_BINARY, false, sizeof(AclItem), false,
+		(YBCPgDatumToData)YbDatumToDocdb,
+		(YBCPgDatumFromData)YbDocdbToDatum },
+
+	{ BPCHAROID, YB_YQL_DATA_TYPE_STRING, true, -1, false,
+		(YBCPgDatumToData)YbDatumToBPChar,
+		(YBCPgDatumFromData)YbBPCharToDatum },
+
+	{ VARCHAROID, YB_YQL_DATA_TYPE_STRING, true, -1, false,
+		(YBCPgDatumToData)YbDatumToVarchar,
+		(YBCPgDatumFromData)YbVarcharToDatum },
+
+	{ DATEOID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32), true,
+		(YBCPgDatumToData)YbDatumToDate,
+		(YBCPgDatumFromData)YbDateToDatum },
+
+	{ TIMEOID, YB_YQL_DATA_TYPE_INT64, true, sizeof(int64), true,
+		(YBCPgDatumToData)YbDatumToTime,
+		(YBCPgDatumFromData)YbTimeToDatum },
+
+	{ TIMESTAMPOID, YB_YQL_DATA_TYPE_INT64, true, sizeof(int64), true,
+		(YBCPgDatumToData)YbDatumToInt64,
+		(YBCPgDatumFromData)YbInt64ToDatum },
+
+	{ TIMESTAMPTZOID, YB_YQL_DATA_TYPE_INT64, true, sizeof(int64), true,
+		(YBCPgDatumToData)YbDatumToInt64,
+		(YBCPgDatumFromData)YbInt64ToDatum },
+
+	{ INTERVALOID, YB_YQL_DATA_TYPE_BINARY, false, sizeof(Interval), false,
+		(YBCPgDatumToData)YbDatumToInterval,
+		(YBCPgDatumFromData)YbIntervalToDatum },
+
+	{ TIMETZOID, YB_YQL_DATA_TYPE_BINARY, false, sizeof(TimeTzADT), false,
+		(YBCPgDatumToData)YbDatumToDocdb,
+		(YBCPgDatumFromData)YbDocdbToDatum },
+
+	{ BITOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToDocdb,
+		(YBCPgDatumFromData)YbDocdbToDatum },
+
+	{ VARBITOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToDocdb,
+		(YBCPgDatumFromData)YbDocdbToDatum },
+
+	{ NUMERICOID, YB_YQL_DATA_TYPE_DECIMAL, true, -1, false,
+		(YBCPgDatumToData)YbDatumToDecimalText,
+		(YBCPgDatumFromData)YbDecimalTextToDatum },
+
+	{ REFCURSOROID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToDocdb,
+		(YBCPgDatumFromData)YbDocdbToDatum },
+
+	{ REGPROCEDUREOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
+		(YBCPgDatumToData)YbDatumToOid,
+		(YBCPgDatumFromData)YbOidToDatum },
+
+	{ REGOPEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
+		(YBCPgDatumToData)YbDatumToOid,
+		(YBCPgDatumFromData)YbOidToDatum },
+
+	{ REGOPERATOROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
+		(YBCPgDatumToData)YbDatumToOid,
+		(YBCPgDatumFromData)YbOidToDatum },
+
+	{ REGCLASSOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
+		(YBCPgDatumToData)YbDatumToOid,
+		(YBCPgDatumFromData)YbOidToDatum },
+
+	{ REGCOLLATIONOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
+		(YBCPgDatumToData)YbDatumToOid,
+		(YBCPgDatumFromData)YbOidToDatum },
+
+	{ REGTYPEOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
+		(YBCPgDatumToData)YbDatumToOid,
+		(YBCPgDatumFromData)YbOidToDatum },
+
+	{ REGROLEOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
+		(YBCPgDatumToData)YbDatumToOid,
+		(YBCPgDatumFromData)YbOidToDatum },
+
+	{ REGNAMESPACEOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
+		(YBCPgDatumToData)YbDatumToOid,
+		(YBCPgDatumFromData)YbOidToDatum },
+
+	{ UUIDOID, YB_YQL_DATA_TYPE_BINARY, true, -1, false,
+		(YBCPgDatumToData)YbDatumToUuid,
+		(YBCPgDatumFromData)YbUuidToDatum },
+
+	{ PG_LSNOID, YB_YQL_DATA_TYPE_UINT64, true, sizeof(uint64), true,
+		(YBCPgDatumToData)YbDatumToUInt64,
+		(YBCPgDatumFromData)YbUInt64ToDatum },
+
+	{ TSVECTOROID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToDocdb,
+		(YBCPgDatumFromData)YbDocdbToDatum },
+
+	{ GTSVECTOROID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToDocdb,
+		(YBCPgDatumFromData)YbDocdbToDatum },
+
+	{ TSQUERYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToDocdb,
+		(YBCPgDatumFromData)YbDocdbToDatum },
+
+	{ REGCONFIGOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
+		(YBCPgDatumToData)YbDatumToOid,
+		(YBCPgDatumFromData)YbOidToDatum },
+
+	{ REGDICTIONARYOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
+		(YBCPgDatumToData)YbDatumToOid,
+		(YBCPgDatumFromData)YbOidToDatum },
+
+	{ JSONBOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ JSONPATHOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ TXID_SNAPSHOTOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ PG_SNAPSHOTOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ INT4RANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ NUMRANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ TSRANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ TSTZRANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ DATERANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ INT8RANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ INT4MULTIRANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ NUMMULTIRANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ TSMULTIRANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ TSTZMULTIRANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ DATEMULTIRANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ INT8MULTIRANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ RECORDOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToDocdb,
+		(YBCPgDatumFromData)YbDocdbToDatum },
+
+	{ RECORDARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToDocdb,
+		(YBCPgDatumFromData)YbDocdbToDatum },
+
+	/* Length(cstring) == -2 to be consistent with Postgres's 'typlen' attribute */
+	{ CSTRINGOID, YB_YQL_DATA_TYPE_STRING, true, -2, false,
+		(YBCPgDatumToData)YbDatumToCStr,
+		(YBCPgDatumFromData)YbCStrToDatum },
+
+	{ ANYARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ VOIDOID, YB_YQL_DATA_TYPE_INT64, true, sizeof(int64), true,
+		(YBCPgDatumToData)YbDatumToInt64,
+		(YBCPgDatumFromData)YbInt64ToDatum },
+
+	{ TRIGGEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
+		(YBCPgDatumToData)YbDatumToOid,
+		(YBCPgDatumFromData)YbOidToDatum },
+
+	{ EVENT_TRIGGEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
+		(YBCPgDatumToData)YbDatumToOid,
+		(YBCPgDatumFromData)YbOidToDatum },
+
+	{ LANGUAGE_HANDLEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
+		(YBCPgDatumToData)YbDatumToOid,
+		(YBCPgDatumFromData)YbOidToDatum },
+
+	{ INTERNALOID, YB_YQL_DATA_TYPE_INT64, true, sizeof(int64), true,
+		(YBCPgDatumToData)YbDatumToInt64,
+		(YBCPgDatumFromData)YbInt64ToDatum },
+
+	{ ANYELEMENTOID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32), true,
+		(YBCPgDatumToData)YbDatumToInt32,
+		(YBCPgDatumFromData)YbInt32ToDatum },
+
+	{ ANYNONARRAYOID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32), true,
+		(YBCPgDatumToData)YbDatumToInt32,
+		(YBCPgDatumFromData)YbInt32ToDatum },
+
+	{ ANYENUMOID, YB_YQL_DATA_TYPE_INT64, true, sizeof(int64), false,
+		(YBCPgDatumToData)YbDatumToEnum,
+		(YBCPgDatumFromData)YbEnumToDatum },
+
+	{ FDW_HANDLEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
+		(YBCPgDatumToData)YbDatumToOid,
+		(YBCPgDatumFromData)YbOidToDatum },
+
+	{ INDEX_AM_HANDLEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
+		(YBCPgDatumToData)YbDatumToOid,
+		(YBCPgDatumFromData)YbOidToDatum },
+
+	{ TSM_HANDLEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
+		(YBCPgDatumToData)YbDatumToOid,
+		(YBCPgDatumFromData)YbOidToDatum },
+
+	{ TABLE_AM_HANDLEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
+		(YBCPgDatumToData)YbDatumToOid,
+		(YBCPgDatumFromData)YbOidToDatum },
+
+	{ ANYRANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToDocdb,
+		(YBCPgDatumFromData)YbDocdbToDatum },
+
+	{ ANYCOMPATIBLEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToDocdb,
+		(YBCPgDatumFromData)YbDocdbToDatum },
+
+	{ ANYCOMPATIBLEARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToDocdb,
+		(YBCPgDatumFromData)YbDocdbToDatum },
+
+	{ ANYCOMPATIBLENONARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToDocdb,
+		(YBCPgDatumFromData)YbDocdbToDatum },
+
+	{ ANYCOMPATIBLERANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToDocdb,
+		(YBCPgDatumFromData)YbDocdbToDatum },
+
+	{ ANYMULTIRANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToDocdb,
+		(YBCPgDatumFromData)YbDocdbToDatum },
+
+	{ ANYCOMPATIBLEMULTIRANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToDocdb,
+		(YBCPgDatumFromData)YbDocdbToDatum },
+
+	{ PG_BRIN_BLOOM_SUMMARYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ PG_BRIN_MINMAX_MULTI_SUMMARYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
 	{ BOOLARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToDocdb,
 		(YBCPgDatumFromData)YbDocdbToDatum },
@@ -874,7 +1150,11 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ NAMEARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+	{ NAMEARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1,  false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ INT8ARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
@@ -918,15 +1198,31 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ BPCHARARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+	{ PG_TYPEARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ VARCHARARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+	{ PG_ATTRIBUTEARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ INT8ARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+	{ PG_PROCARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ PG_CLASSARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ JSONARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ XMLARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToDocdb,
+		(YBCPgDatumFromData)YbDocdbToDatum },
+
+	{ XID8ARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
@@ -946,6 +1242,14 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
+	{ POLYGONARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ LINEARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToDocdb,
+		(YBCPgDatumFromData)YbDocdbToDatum },
+
 	{ FLOAT4ARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
@@ -954,35 +1258,15 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ ABSTIMEARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToBinary,
-		(YBCPgDatumFromData)YbBinaryToDatum },
-
-	{ RELTIMEARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToBinary,
-		(YBCPgDatumFromData)YbBinaryToDatum },
-
-	{ TINTERVALARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToBinary,
-		(YBCPgDatumFromData)YbBinaryToDatum },
-
-	{ POLYGONARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToBinary,
-		(YBCPgDatumFromData)YbBinaryToDatum },
-
-	{ ACLITEMOID, YB_YQL_DATA_TYPE_BINARY, false, sizeof(AclItem), false,
+	{ CIRCLEARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToDocdb,
 		(YBCPgDatumFromData)YbDocdbToDatum },
 
-	{ ACLITEMARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToBinary,
-		(YBCPgDatumFromData)YbBinaryToDatum },
+	{ MONEYARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToDocdb,
+		(YBCPgDatumFromData)YbDocdbToDatum },
 
 	{ MACADDRARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToBinary,
-		(YBCPgDatumFromData)YbBinaryToDatum },
-
-	{ MACADDR8ARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
@@ -990,35 +1274,23 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ CIDARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+	{ CIDRARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ CSTRINGARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+	{ MACADDR8ARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ BPCHAROID, YB_YQL_DATA_TYPE_STRING, true, -1, false,
-		(YBCPgDatumToData)YbDatumToBPChar,
-		(YBCPgDatumFromData)YbBPCharToDatum },
+	{ ACLITEMARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ VARCHAROID, YB_YQL_DATA_TYPE_STRING, true, -1, false,
-		(YBCPgDatumToData)YbDatumToVarchar,
-		(YBCPgDatumFromData)YbVarcharToDatum },
+	{ BPCHARARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ DATEOID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32), true,
-		(YBCPgDatumToData)YbDatumToDate,
-		(YBCPgDatumFromData)YbDateToDatum },
-
-	{ TIMEOID, YB_YQL_DATA_TYPE_INT64, true, sizeof(int64), true,
-		(YBCPgDatumToData)YbDatumToTime,
-		(YBCPgDatumFromData)YbTimeToDatum },
-
-	{ TIMESTAMPOID, YB_YQL_DATA_TYPE_INT64, true, sizeof(int64), true,
-		(YBCPgDatumToData)YbDatumToInt64,
-		(YBCPgDatumFromData)YbInt64ToDatum },
-
-	{ TIMESTAMPARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+	{ VARCHARARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
@@ -1030,19 +1302,27 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ TIMESTAMPTZOID, YB_YQL_DATA_TYPE_INT64, true, sizeof(int64), true,
-		(YBCPgDatumToData)YbDatumToInt64,
-		(YBCPgDatumFromData)YbInt64ToDatum },
+	{ TIMESTAMPARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
 
 	{ TIMESTAMPTZARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ INTERVALOID, YB_YQL_DATA_TYPE_BINARY, false, sizeof(Interval), false,
-		(YBCPgDatumToData)YbDatumToInterval,
-		(YBCPgDatumFromData)YbIntervalToDatum },
-
 	{ INTERVALARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ TIMETZARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ BITARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
+	{ VARBITARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
@@ -1050,65 +1330,9 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ TIMETZOID, YB_YQL_DATA_TYPE_BINARY, false, sizeof(TimeTzADT), false,
-		(YBCPgDatumToData)YbDatumToDocdb,
-		(YBCPgDatumFromData)YbDocdbToDatum },
-
-	{ TIMETZARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+	{ REFCURSORARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
-
-	{ BITOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToDocdb,
-		(YBCPgDatumFromData)YbDocdbToDatum },
-
-	{ BITARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToBinary,
-		(YBCPgDatumFromData)YbBinaryToDatum },
-
-	{ VARBITOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToDocdb,
-		(YBCPgDatumFromData)YbDocdbToDatum },
-
-	{ VARBITARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToBinary,
-		(YBCPgDatumFromData)YbBinaryToDatum },
-
-	{ NUMERICOID, YB_YQL_DATA_TYPE_DECIMAL, true, -1, false,
-		(YBCPgDatumToData)YbDatumToDecimalText,
-		(YBCPgDatumFromData)YbDecimalTextToDatum },
-
-	{ REFCURSOROID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToDocdb,
-		(YBCPgDatumFromData)YbDocdbToDatum },
-
-	{ REGPROCEDUREOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
-		(YBCPgDatumToData)YbDatumToOid,
-		(YBCPgDatumFromData)YbOidToDatum },
-
-	{ REGOPEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
-		(YBCPgDatumToData)YbDatumToOid,
-		(YBCPgDatumFromData)YbOidToDatum },
-
-	{ REGOPERATOROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
-		(YBCPgDatumToData)YbDatumToOid,
-		(YBCPgDatumFromData)YbOidToDatum },
-
-	{ REGCLASSOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
-		(YBCPgDatumToData)YbDatumToOid,
-		(YBCPgDatumFromData)YbOidToDatum },
-
-	{ REGTYPEOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
-		(YBCPgDatumToData)YbDatumToOid,
-		(YBCPgDatumFromData)YbOidToDatum },
-
-	{ REGROLEOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
-		(YBCPgDatumToData)YbDatumToOid,
-		(YBCPgDatumFromData)YbOidToDatum },
-
-	{ REGNAMESPACEOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
-		(YBCPgDatumToData)YbDatumToOid,
-		(YBCPgDatumFromData)YbOidToDatum },
 
 	{ REGPROCEDUREARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
@@ -1126,6 +1350,10 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
+	{ REGCOLLATIONARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
+
 	{ REGTYPEARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
@@ -1138,41 +1366,13 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ UUIDOID, YB_YQL_DATA_TYPE_BINARY, true, -1, false,
-		(YBCPgDatumToData)YbDatumToUuid,
-		(YBCPgDatumFromData)YbUuidToDatum },
-
 	{ UUIDARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ LSNOID, YB_YQL_DATA_TYPE_UINT64, true, sizeof(uint64), true,
-		(YBCPgDatumToData)YbDatumToUInt64,
-		(YBCPgDatumFromData)YbUInt64ToDatum },
-
 	{ PG_LSNARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
-
-	{ TSVECTOROID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToDocdb,
-		(YBCPgDatumFromData)YbDocdbToDatum },
-
-	{ GTSVECTOROID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToDocdb,
-		(YBCPgDatumFromData)YbDocdbToDatum },
-
-	{ TSQUERYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToDocdb,
-		(YBCPgDatumFromData)YbDocdbToDatum },
-
-	{ REGCONFIGOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
-		(YBCPgDatumToData)YbDatumToOid,
-		(YBCPgDatumFromData)YbOidToDatum },
-
-	{ REGDICTIONARYOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
-		(YBCPgDatumToData)YbDatumToOid,
-		(YBCPgDatumFromData)YbOidToDatum },
 
 	{ TSVECTORARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
@@ -1194,15 +1394,11 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ JSONBOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToBinary,
-		(YBCPgDatumFromData)YbBinaryToDatum },
-
 	{ JSONBARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ TXID_SNAPSHOTOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+	{ JSONPATHARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
@@ -1210,7 +1406,7 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ INT4RANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+	{ PG_SNAPSHOTARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
@@ -1218,15 +1414,7 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ NUMRANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToBinary,
-		(YBCPgDatumFromData)YbBinaryToDatum },
-
 	{ NUMRANGEARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToBinary,
-		(YBCPgDatumFromData)YbBinaryToDatum },
-
-	{ TSRANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
@@ -1234,15 +1422,7 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ TSTZRANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToBinary,
-		(YBCPgDatumFromData)YbBinaryToDatum },
-
 	{ TSTZRANGEARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToBinary,
-		(YBCPgDatumFromData)YbBinaryToDatum },
-
-	{ DATERANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
@@ -1250,82 +1430,37 @@ static const YBCPgTypeEntity YbTypeEntityTable[] = {
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ INT8RANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToBinary,
-		(YBCPgDatumFromData)YbBinaryToDatum },
-
 	{ INT8RANGEARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ RECORDOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToDocdb,
-		(YBCPgDatumFromData)YbDocdbToDatum },
-
-	{ RECORDARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToDocdb,
-		(YBCPgDatumFromData)YbDocdbToDatum },
-
-	/* Length(cstring) == -2 to be consistent with Postgres's 'typlen' attribute */
-	{ CSTRINGOID, YB_YQL_DATA_TYPE_STRING, true, -2, false,
-		(YBCPgDatumToData)YbDatumToCStr,
-		(YBCPgDatumFromData)YbCStrToDatum },
-
-	{ ANYARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+	{ INT4MULTIRANGEARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YBCPgDatumToData)YbDatumToBinary,
 		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ VOIDOID, YB_YQL_DATA_TYPE_INT64, true, sizeof(int64), true,
-		(YBCPgDatumToData)YbDatumToInt64,
-		(YBCPgDatumFromData)YbInt64ToDatum },
+	{ NUMMULTIRANGEARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ TRIGGEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
-		(YBCPgDatumToData)YbDatumToOid,
-		(YBCPgDatumFromData)YbOidToDatum },
+	{ TSMULTIRANGEARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ EVTTRIGGEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
-		(YBCPgDatumToData)YbDatumToOid,
-		(YBCPgDatumFromData)YbOidToDatum },
+	{ TSTZMULTIRANGEARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ LANGUAGE_HANDLEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
-		(YBCPgDatumToData)YbDatumToOid,
-		(YBCPgDatumFromData)YbOidToDatum },
+	{ DATEMULTIRANGEARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ INTERNALOID, YB_YQL_DATA_TYPE_INT64, true, sizeof(int64), true,
-		(YBCPgDatumToData)YbDatumToInt64,
-		(YBCPgDatumFromData)YbInt64ToDatum },
+	{ INT8MULTIRANGEARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
 
-	{ OPAQUEOID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32), true,
-		(YBCPgDatumToData)YbDatumToInt32,
-		(YBCPgDatumFromData)YbInt32ToDatum },
-
-	{ ANYELEMENTOID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32), true,
-		(YBCPgDatumToData)YbDatumToInt32,
-		(YBCPgDatumFromData)YbInt32ToDatum },
-
-	{ ANYNONARRAYOID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32), true,
-		(YBCPgDatumToData)YbDatumToInt32,
-		(YBCPgDatumFromData)YbInt32ToDatum },
-
-	{ ANYENUMOID, YB_YQL_DATA_TYPE_INT64, true, sizeof(int64), false,
-		(YBCPgDatumToData)YbDatumToEnum,
-		(YBCPgDatumFromData)YbEnumToDatum },
-
-	{ FDW_HANDLEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
-		(YBCPgDatumToData)YbDatumToOid,
-		(YBCPgDatumFromData)YbOidToDatum },
-
-	{ INDEX_AM_HANDLEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
-		(YBCPgDatumToData)YbDatumToOid,
-		(YBCPgDatumFromData)YbOidToDatum },
-
-	{ TSM_HANDLEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid), true,
-		(YBCPgDatumToData)YbDatumToOid,
-		(YBCPgDatumFromData)YbOidToDatum },
-
-	{ ANYRANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
-		(YBCPgDatumToData)YbDatumToDocdb,
-		(YBCPgDatumFromData)YbDocdbToDatum },
+	{ CSTRINGARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
+		(YBCPgDatumToData)YbDatumToBinary,
+		(YBCPgDatumFromData)YbBinaryToDatum },
 };
 
 /*

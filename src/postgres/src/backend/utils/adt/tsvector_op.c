@@ -3,7 +3,7 @@
  * tsvector_op.c
  *	  operations over tsvector
  *
- * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -21,10 +21,12 @@
 #include "commands/trigger.h"
 #include "executor/spi.h"
 #include "funcapi.h"
+#include "lib/qunique.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "parser/parse_coerce.h"
 #include "tsearch/ts_utils.h"
+#include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/regproc.h"
@@ -65,10 +67,13 @@ typedef struct
 	StatEntry  *root;
 } TSVectorStat;
 
-#define STATHDRSIZE (offsetof(TSVectorStat, data))
 
-static Datum tsvector_update_trigger(PG_FUNCTION_ARGS, bool config_column);
+static TSTernaryValue TS_execute_recurse(QueryItem *curitem, void *arg,
+										 uint32 flags,
+										 TSExecuteCallback chkcond);
 static int	tsvector_bsearch(const TSVector tsv, char *lexeme, int lexeme_len);
+static Datum tsvector_update_trigger(PG_FUNCTION_ARGS, bool config_column);
+
 
 /*
  * Order: haspos, len, word, for all positions (pos, weight)
@@ -303,7 +308,7 @@ tsvector_setweight_by_filter(PG_FUNCTION_ARGS)
 	memcpy(tsout, tsin, VARSIZE(tsin));
 	entry = ARRPTR(tsout);
 
-	deconstruct_array(lexemes, TEXTOID, -1, false, 'i',
+	deconstruct_array(lexemes, TEXTOID, -1, false, TYPALIGN_INT,
 					  &dlexemes, &nulls, &nlexemes);
 
 	/*
@@ -317,10 +322,9 @@ tsvector_setweight_by_filter(PG_FUNCTION_ARGS)
 		int			lex_len,
 					lex_pos;
 
+		/* Ignore null array elements, they surely don't match */
 		if (nulls[i])
-			ereport(ERROR,
-					(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-					 errmsg("lexeme array may not contain nulls")));
+			continue;
 
 		lex = VARDATA(dlexemes[i]);
 		lex_len = VARSIZE(dlexemes[i]) - VARHDRSZ;
@@ -476,16 +480,9 @@ tsvector_delete_by_indices(TSVector tsv, int *indices_to_delete,
 	 */
 	if (indices_count > 1)
 	{
-		int			kp;
-
 		qsort(indices_to_delete, indices_count, sizeof(int), compare_int);
-		kp = 0;
-		for (k = 1; k < indices_count; k++)
-		{
-			if (indices_to_delete[k] != indices_to_delete[kp])
-				indices_to_delete[++kp] = indices_to_delete[k];
-		}
-		indices_count = ++kp;
+		indices_count = qunique(indices_to_delete, indices_count, sizeof(int),
+								compare_int);
 	}
 
 	/*
@@ -589,7 +586,7 @@ tsvector_delete_arr(PG_FUNCTION_ARGS)
 	Datum	   *dlexemes;
 	bool	   *nulls;
 
-	deconstruct_array(lexemes, TEXTOID, -1, false, 'i',
+	deconstruct_array(lexemes, TEXTOID, -1, false, TYPALIGN_INT,
 					  &dlexemes, &nulls, &nlex);
 
 	/*
@@ -604,10 +601,9 @@ tsvector_delete_arr(PG_FUNCTION_ARGS)
 		int			lex_len,
 					lex_pos;
 
+		/* Ignore null array elements, they surely don't match */
 		if (nulls[i])
-			ereport(ERROR,
-					(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-					 errmsg("lexeme array may not contain nulls")));
+			continue;
 
 		lex = VARDATA(dlexemes[i]);
 		lex_len = VARSIZE(dlexemes[i]) - VARHDRSZ;
@@ -646,7 +642,7 @@ tsvector_unnest(PG_FUNCTION_ARGS)
 		funcctx = SRF_FIRSTCALL_INIT();
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
-		tupdesc = CreateTemplateTupleDesc(3, false);
+		tupdesc = CreateTemplateTupleDesc(3);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "lexeme",
 						   TEXTOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "positions",
@@ -673,9 +669,7 @@ tsvector_unnest(PG_FUNCTION_ARGS)
 		bool		nulls[] = {false, false, false};
 		Datum		values[3];
 
-		values[0] = PointerGetDatum(
-									cstring_to_text_with_len(data + arrin[i].pos, arrin[i].len)
-			);
+		values[0] = PointerGetDatum(cstring_to_text_with_len(data + arrin[i].pos, arrin[i].len));
 
 		if (arrin[i].haspos)
 		{
@@ -696,15 +690,14 @@ tsvector_unnest(PG_FUNCTION_ARGS)
 			{
 				positions[j] = Int16GetDatum(WEP_GETPOS(posv->pos[j]));
 				weight = 'D' - WEP_GETWEIGHT(posv->pos[j]);
-				weights[j] = PointerGetDatum(
-											 cstring_to_text_with_len(&weight, 1)
-					);
+				weights[j] = PointerGetDatum(cstring_to_text_with_len(&weight,
+																	  1));
 			}
 
-			values[1] = PointerGetDatum(
-										construct_array(positions, posv->npos, INT2OID, 2, true, 's'));
-			values[2] = PointerGetDatum(
-										construct_array(weights, posv->npos, TEXTOID, -1, false, 'i'));
+			values[1] = PointerGetDatum(construct_array(positions, posv->npos,
+														INT2OID, 2, true, TYPALIGN_SHORT));
+			values[2] = PointerGetDatum(construct_array(weights, posv->npos,
+														TEXTOID, -1, false, TYPALIGN_INT));
 		}
 		else
 		{
@@ -716,7 +709,6 @@ tsvector_unnest(PG_FUNCTION_ARGS)
 	}
 	else
 	{
-		pfree(tsin);
 		SRF_RETURN_DONE(funcctx);
 	}
 }
@@ -737,12 +729,11 @@ tsvector_to_array(PG_FUNCTION_ARGS)
 
 	for (i = 0; i < tsin->size; i++)
 	{
-		elements[i] = PointerGetDatum(
-									  cstring_to_text_with_len(STRPTR(tsin) + arrin[i].pos, arrin[i].len)
-			);
+		elements[i] = PointerGetDatum(cstring_to_text_with_len(STRPTR(tsin) + arrin[i].pos,
+															   arrin[i].len));
 	}
 
-	array = construct_array(elements, tsin->size, TEXTOID, -1, false, 'i');
+	array = construct_array(elements, tsin->size, TEXTOID, -1, false, TYPALIGN_INT);
 
 	pfree(elements);
 	PG_FREE_IF_COPY(tsin, 0);
@@ -762,33 +753,35 @@ array_to_tsvector(PG_FUNCTION_ARGS)
 	bool	   *nulls;
 	int			nitems,
 				i,
-				j,
 				tslen,
 				datalen = 0;
 	char	   *cur;
 
-	deconstruct_array(v, TEXTOID, -1, false, 'i', &dlexemes, &nulls, &nitems);
+	deconstruct_array(v, TEXTOID, -1, false, TYPALIGN_INT, &dlexemes, &nulls, &nitems);
 
-	/* Reject nulls (maybe we should just ignore them, instead?) */
+	/*
+	 * Reject nulls and zero length strings (maybe we should just ignore them,
+	 * instead?)
+	 */
 	for (i = 0; i < nitems; i++)
 	{
 		if (nulls[i])
 			ereport(ERROR,
 					(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
 					 errmsg("lexeme array may not contain nulls")));
+
+		if (VARSIZE(dlexemes[i]) - VARHDRSZ == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_ZERO_LENGTH_CHARACTER_STRING),
+					 errmsg("lexeme array may not contain empty strings")));
 	}
 
 	/* Sort and de-dup, because this is required for a valid tsvector. */
 	if (nitems > 1)
 	{
 		qsort(dlexemes, nitems, sizeof(Datum), compare_text_lexemes);
-		j = 0;
-		for (i = 1; i < nitems; i++)
-		{
-			if (compare_text_lexemes(&dlexemes[j], &dlexemes[i]) < 0)
-				dlexemes[++j] = dlexemes[i];
-		}
-		nitems = ++j;
+		nitems = qunique(dlexemes, nitems, sizeof(Datum),
+						 compare_text_lexemes);
 	}
 
 	/* Calculate space needed for surviving lexemes. */
@@ -840,7 +833,7 @@ tsvector_filter(PG_FUNCTION_ARGS)
 	int			cur_pos = 0;
 	char		mask = 0;
 
-	deconstruct_array(weights, CHAROID, 1, true, 'c',
+	deconstruct_array(weights, CHAROID, 1, true, TYPALIGN_CHAR,
 					  &dweights, &nulls, &nweights);
 
 	for (i = 0; i < nweights; i++)
@@ -1174,7 +1167,7 @@ tsCompareString(char *a, int lena, char *b, int lenb, bool prefix)
 	}
 	else
 	{
-		cmp = memcmp(a, b, Min(lena, lenb));
+		cmp = memcmp(a, b, Min((unsigned int) lena, (unsigned int) lenb));
 
 		if (prefix)
 		{
@@ -1193,13 +1186,15 @@ tsCompareString(char *a, int lena, char *b, int lenb, bool prefix)
 /*
  * Check weight info or/and fill 'data' with the required positions
  */
-static bool
+static TSTernaryValue
 checkclass_str(CHKVAL *chkval, WordEntry *entry, QueryOperand *val,
 			   ExecPhraseData *data)
 {
-	bool		result = false;
+	TSTernaryValue result = TS_NO;
 
-	if (entry->haspos && (val->weight || data))
+	Assert(data == NULL || data->npos == 0);
+
+	if (entry->haspos)
 	{
 		WordEntryPosVector *posvec;
 
@@ -1237,7 +1232,13 @@ checkclass_str(CHKVAL *chkval, WordEntry *entry, QueryOperand *val,
 			data->npos = dptr - data->pos;
 
 			if (data->npos > 0)
-				result = true;
+				result = TS_YES;
+			else
+			{
+				pfree(data->pos);
+				data->pos = NULL;
+				data->allocated = false;
+			}
 		}
 		else if (val->weight)
 		{
@@ -1248,78 +1249,63 @@ checkclass_str(CHKVAL *chkval, WordEntry *entry, QueryOperand *val,
 			{
 				if (val->weight & (1 << WEP_GETWEIGHT(*posvec_iter)))
 				{
-					result = true;
+					result = TS_YES;
 					break;		/* no need to go further */
 				}
 
 				posvec_iter++;
 			}
 		}
-		else					/* data != NULL */
+		else if (data)
 		{
 			data->npos = posvec->npos;
 			data->pos = posvec->pos;
 			data->allocated = false;
-			result = true;
+			result = TS_YES;
+		}
+		else
+		{
+			/* simplest case: no weight check, positions not needed */
+			result = TS_YES;
 		}
 	}
 	else
 	{
-		result = true;
+		/*
+		 * Position info is lacking, so if the caller requires it, we can only
+		 * say that maybe there is a match.
+		 *
+		 * Notice, however, that we *don't* check val->weight here.
+		 * Historically, stripped tsvectors are considered to match queries
+		 * whether or not the query has a weight restriction; that's a little
+		 * dubious but we'll preserve the behavior.
+		 */
+		if (data)
+			result = TS_MAYBE;
+		else
+			result = TS_YES;
 	}
 
 	return result;
 }
 
 /*
- * Removes duplicate pos entries. We can't use uniquePos() from
- * tsvector.c because array might be longer than MAXENTRYPOS
- *
- * Returns new length.
+ * TS_execute callback for matching a tsquery operand to plain tsvector data
  */
-static int
-uniqueLongPos(WordEntryPos *pos, int npos)
-{
-	WordEntryPos *pos_iter,
-			   *result;
-
-	if (npos <= 1)
-		return npos;
-
-	qsort((void *) pos, npos, sizeof(WordEntryPos), compareWordEntryPos);
-
-	result = pos;
-	pos_iter = pos + 1;
-	while (pos_iter < pos + npos)
-	{
-		if (WEP_GETPOS(*pos_iter) != WEP_GETPOS(*result))
-		{
-			result++;
-			*result = WEP_GETPOS(*pos_iter);
-		}
-
-		pos_iter++;
-	}
-
-	return result + 1 - pos;
-}
-
-/*
- * is there value 'val' in array or not ?
- */
-static bool
+static TSTernaryValue
 checkcondition_str(void *checkval, QueryOperand *val, ExecPhraseData *data)
 {
 	CHKVAL	   *chkval = (CHKVAL *) checkval;
 	WordEntry  *StopLow = chkval->arrb;
 	WordEntry  *StopHigh = chkval->arre;
 	WordEntry  *StopMiddle = StopHigh;
-	int			difference = -1;
-	bool		res = false;
+	TSTernaryValue res = TS_NO;
 
 	/* Loop invariant: StopLow <= val < StopHigh */
 	while (StopLow < StopHigh)
 	{
+		int			difference;
+
 		StopMiddle = StopLow + (StopHigh - StopLow) / 2;
 		difference = tsCompareString(chkval->operand + val->distance,
 									 val->length,
@@ -1339,36 +1325,69 @@ checkcondition_str(void *checkval, QueryOperand *val, ExecPhraseData *data)
 			StopHigh = StopMiddle;
 	}
 
-	if ((!res || data) && val->prefix)
+	/*
+	 * If it's a prefix search, we should also consider lexemes that the
+	 * search term is a prefix of (which will necessarily immediately follow
+	 * the place we found in the above loop).  But we can skip them if there
+	 * was a definite match on the exact term AND the caller doesn't need
+	 * position info.
+	 */
+	if (val->prefix && (res != TS_YES || data))
 	{
 		WordEntryPos *allpos = NULL;
 		int			npos = 0,
 					totalpos = 0;
 
-		/*
-		 * there was a failed exact search, so we should scan further to find
-		 * a prefix match. We also need to do so if caller needs position info
-		 */
+		/* adjust start position for corner case */
 		if (StopLow >= StopHigh)
 			StopMiddle = StopHigh;
 
-		while ((!res || data) && StopMiddle < chkval->arre &&
+		/* we don't try to re-use any data from the initial match */
+		if (data)
+		{
+			if (data->allocated)
+				pfree(data->pos);
+			data->pos = NULL;
+			data->allocated = false;
+			data->npos = 0;
+		}
+		res = TS_NO;
+
+		while ((res != TS_YES || data) &&
+			   StopMiddle < chkval->arre &&
 			   tsCompareString(chkval->operand + val->distance,
 							   val->length,
 							   chkval->values + StopMiddle->pos,
 							   StopMiddle->len,
 							   true) == 0)
 		{
-			if (data)
-			{
-				/*
-				 * We need to join position information
-				 */
-				res = checkclass_str(chkval, StopMiddle, val, data);
+			TSTernaryValue subres;
 
-				if (res)
+			subres = checkclass_str(chkval, StopMiddle, val, data);
+
+			if (subres != TS_NO)
+			{
+				if (data)
 				{
-					while (npos + data->npos >= totalpos)
+					/*
+					 * We need to join position information
+					 */
+					if (subres == TS_MAYBE)
+					{
+						/*
+						 * No position info for this match, so we must report
+						 * MAYBE overall.
+						 */
+						res = TS_MAYBE;
+						/* forget any previous positions */
+						npos = 0;
+						/* don't leak storage */
+						if (allpos)
+							pfree(allpos);
+						break;
+					}
+
+					while (npos + data->npos > totalpos)
 					{
 						if (totalpos == 0)
 						{
@@ -1384,22 +1403,35 @@ checkcondition_str(void *checkval, QueryOperand *val, ExecPhraseData *data)
 
 					memcpy(allpos + npos, data->pos, sizeof(WordEntryPos) * data->npos);
 					npos += data->npos;
+
+					/* don't leak storage from individual matches */
+					if (data->allocated)
+						pfree(data->pos);
+					data->pos = NULL;
+					data->allocated = false;
+					/* it's important to reset data->npos before next loop */
+					data->npos = 0;
 				}
-			}
-			else
-			{
-				res = checkclass_str(chkval, StopMiddle, val, NULL);
+				else
+				{
+					/* Don't need positions, just handle YES/MAYBE */
+					if (subres == TS_YES || res == TS_NO)
+						res = subres;
+				}
 			}
 
 			StopMiddle++;
 		}
 
-		if (res && data)
+		if (data && npos > 0)
 		{
 			/* Sort and make unique array of found positions */
 			data->pos = allpos;
-			data->npos = uniqueLongPos(allpos, npos);
+			qsort(data->pos, npos, sizeof(WordEntryPos), compareWordEntryPos);
+			data->npos = qunique(data->pos, npos, sizeof(WordEntryPos),
+								 compareWordEntryPos);
 			data->allocated = true;
+			res = TS_YES;
 		}
 	}
 
@@ -1423,14 +1455,17 @@ checkcondition_str(void *checkval, QueryOperand *val, ExecPhraseData *data)
  * Loffset and Roffset should not be negative, else we risk trying to output
  * negative positions, which won't fit into WordEntryPos.
  *
- * Returns true if any positions were emitted to *data; or if data is NULL,
- * returns true if any positions would have been emitted.
+ * The result is boolean (TS_YES or TS_NO), but for the caller's convenience
+ * we return it as TSTernaryValue.
+ *
+ * Returns TS_YES if any positions were emitted to *data; or if data is NULL,
+ * returns TS_YES if any positions would have been emitted.
  */
 #define TSPO_L_ONLY		0x01	/* emit positions appearing only in L */
 #define TSPO_R_ONLY		0x02	/* emit positions appearing only in R */
 #define TSPO_BOTH		0x04	/* emit positions appearing in both L&R */
 
-static bool
+static TSTernaryValue
 TS_phrase_output(ExecPhraseData *data,
 				 ExecPhraseData *Ldata,
 				 ExecPhraseData *Rdata,
@@ -1513,10 +1548,10 @@ TS_phrase_output(ExecPhraseData *data,
 			else
 			{
 				/*
-				 * Exact positions not needed, so return true as soon as we
+				 * Exact positions not needed, so return TS_YES as soon as we
 				 * know there is at least one.
 				 */
-				return true;
+				return TS_YES;
 			}
 		}
 	}
@@ -1525,9 +1560,9 @@ TS_phrase_output(ExecPhraseData *data,
 	{
 		/* Let's assert we didn't overrun the array */
 		Assert(data->npos <= max_npos);
-		return true;
+		return TS_YES;
 	}
-	return false;
+	return TS_NO;
 }
 
 /*
@@ -1545,17 +1580,16 @@ TS_phrase_output(ExecPhraseData *data,
  * This is OK because an outside call always starts from an OP_PHRASE node.
  *
  * The detailed semantics of the match data, given that the function returned
- * "true" (successful match, or possible match), are:
+ * TS_YES (successful match), are:
  *
  * npos > 0, negate = false:
  *	 query is matched at specified position(s) (and only those positions)
  * npos > 0, negate = true:
  *	 query is matched at all positions *except* specified position(s)
- * npos = 0, negate = false:
- *	 query is possibly matched, matching position(s) are unknown
- *	 (this should only be returned when TS_EXEC_PHRASE_NO_POS flag is set)
  * npos = 0, negate = true:
  *	 query is matched at all positions
+ * npos = 0, negate = false:
+ *	 disallowed (this should result in TS_NO or TS_MAYBE, as appropriate)
  *
  * Successful matches also return a "width" value which is the match width in
  * lexemes, less one.  Hence, "width" is zero for simple one-lexeme matches,
@@ -1564,18 +1598,22 @@ TS_phrase_output(ExecPhraseData *data,
  * the starts.  (This unintuitive rule is needed to avoid possibly generating
  * negative positions, which wouldn't fit into the WordEntryPos arrays.)
  *
- * When the function returns "false" (no match), it must return npos = 0,
+ * If the TSExecuteCallback function reports that an operand is present
+ * but fails to provide position(s) for it, we will return TS_MAYBE when
+ * it is possible but not certain that the query is matched.
+ *
+ * When the function returns TS_NO or TS_MAYBE, it must return npos = 0,
  * negate = false (which is the state initialized by the caller); but the
  * "width" output in such cases is undefined.
  */
-static bool
+static TSTernaryValue
 TS_phrase_execute(QueryItem *curitem, void *arg, uint32 flags,
 				  TSExecuteCallback chkcond,
 				  ExecPhraseData *data)
 {
 	ExecPhraseData Ldata,
 				Rdata;
-	bool		lmatch,
+	TSTernaryValue lmatch,
 				rmatch;
 	int			Loffset,
 				Roffset,
@@ -1583,6 +1621,9 @@ TS_phrase_execute(QueryItem *curitem, void *arg, uint32 flags,
 
 	/* since this function recurses, it could be driven to stack overflow */
 	check_stack_depth();
+
+	/* ... and let's check for query cancel while we're at it */
+	CHECK_FOR_INTERRUPTS();
 
 	if (curitem->type == QI_VAL)
 		return chkcond(arg, (QueryOperand *) curitem, data);
@@ -1592,60 +1633,66 @@ TS_phrase_execute(QueryItem *curitem, void *arg, uint32 flags,
 		case OP_NOT:
 
 			/*
-			 * Because a "true" result with no specific positions is taken as
-			 * uncertain, we need no special care here for !TS_EXEC_CALC_NOT.
-			 * If it's a false positive, the right things happen anyway.
-			 *
-			 * Also, we need not touch data->width, since a NOT operation does
-			 * not change the match width.
+			 * We need not touch data->width, since a NOT operation does not
+			 * change the match width.
 			 */
-			if (TS_phrase_execute(curitem + 1, arg, flags, chkcond, data))
+			if (flags & TS_EXEC_SKIP_NOT)
 			{
-				if (data->npos > 0)
-				{
-					/* we have some positions, invert negate flag */
-					data->negate = !data->negate;
-					return true;
-				}
-				else if (data->negate)
-				{
-					/* change "match everywhere" to "match nowhere" */
-					data->negate = false;
-					return false;
-				}
-				/* match positions are, and remain, uncertain */
-				return true;
-			}
-			else
-			{
-				/* change "match nowhere" to "match everywhere" */
+				/* with SKIP_NOT, report NOT as "match everywhere" */
 				Assert(data->npos == 0 && !data->negate);
 				data->negate = true;
-				return true;
+				return TS_YES;
 			}
+			switch (TS_phrase_execute(curitem + 1, arg, flags, chkcond, data))
+			{
+				case TS_NO:
+					/* change "match nowhere" to "match everywhere" */
+					Assert(data->npos == 0 && !data->negate);
+					data->negate = true;
+					return TS_YES;
+				case TS_YES:
+					if (data->npos > 0)
+					{
+						/* we have some positions, invert negate flag */
+						data->negate = !data->negate;
+						return TS_YES;
+					}
+					else if (data->negate)
+					{
+						/* change "match everywhere" to "match nowhere" */
+						data->negate = false;
+						return TS_NO;
+					}
+					/* Should not get here if result was TS_YES */
+					Assert(false);
+					break;
+				case TS_MAYBE:
+					/* match positions are, and remain, uncertain */
+					return TS_MAYBE;
+			}
+			break;
 
 		case OP_PHRASE:
 		case OP_AND:
 			memset(&Ldata, 0, sizeof(Ldata));
 			memset(&Rdata, 0, sizeof(Rdata));
 
-			if (!TS_phrase_execute(curitem + curitem->qoperator.left,
-								   arg, flags, chkcond, &Ldata))
-				return false;
+			lmatch = TS_phrase_execute(curitem + curitem->qoperator.left,
+									   arg, flags, chkcond, &Ldata);
+			if (lmatch == TS_NO)
+				return TS_NO;
 
-			if (!TS_phrase_execute(curitem + 1,
-								   arg, flags, chkcond, &Rdata))
-				return false;
+			rmatch = TS_phrase_execute(curitem + 1,
+									   arg, flags, chkcond, &Rdata);
+			if (rmatch == TS_NO)
+				return TS_NO;
 
 			/*
 			 * If either operand has no position information, then we can't
-			 * return position data, only a "possible match" result. "Possible
-			 * match" answers are only wanted when TS_EXEC_PHRASE_NO_POS flag
-			 * is set, otherwise return false.
+			 * return reliable position data, only a MAYBE result.
 			 */
-			if ((Ldata.npos == 0 && !Ldata.negate) ||
-				(Rdata.npos == 0 && !Rdata.negate))
-				return (flags & TS_EXEC_PHRASE_NO_POS) ? true : false;
+			if (lmatch == TS_MAYBE || rmatch == TS_MAYBE)
+				return TS_MAYBE;
 
 			if (curitem->qoperator.oper == OP_PHRASE)
 			{
@@ -1681,7 +1728,7 @@ TS_phrase_execute(QueryItem *curitem, void *arg, uint32 flags,
 										Ldata.npos + Rdata.npos);
 				if (data)
 					data->negate = true;
-				return true;
+				return TS_YES;
 			}
 			else if (Ldata.negate)
 			{
@@ -1717,27 +1764,24 @@ TS_phrase_execute(QueryItem *curitem, void *arg, uint32 flags,
 			rmatch = TS_phrase_execute(curitem + 1,
 									   arg, flags, chkcond, &Rdata);
 
-			if (!lmatch && !rmatch)
-				return false;
+			if (lmatch == TS_NO && rmatch == TS_NO)
+				return TS_NO;
 
 			/*
-			 * If a valid operand has no position information, then we can't
-			 * return position data, only a "possible match" result. "Possible
-			 * match" answers are only wanted when TS_EXEC_PHRASE_NO_POS flag
-			 * is set, otherwise return false.
+			 * If either operand has no position information, then we can't
+			 * return reliable position data, only a MAYBE result.
 			 */
-			if ((lmatch && Ldata.npos == 0 && !Ldata.negate) ||
-				(rmatch && Rdata.npos == 0 && !Rdata.negate))
-				return (flags & TS_EXEC_PHRASE_NO_POS) ? true : false;
+			if (lmatch == TS_MAYBE || rmatch == TS_MAYBE)
+				return TS_MAYBE;
 
 			/*
 			 * Cope with undefined output width from failed submatch.  (This
 			 * takes less code than trying to ensure that all failure returns
 			 * set data->width to zero.)
 			 */
-			if (!lmatch)
+			if (lmatch == TS_NO)
 				Ldata.width = 0;
-			if (!rmatch)
+			if (rmatch == TS_NO)
 				Rdata.width = 0;
 
 			/*
@@ -1759,7 +1803,7 @@ TS_phrase_execute(QueryItem *curitem, void *arg, uint32 flags,
 										Loffset, Roffset,
 										Min(Ldata.npos, Rdata.npos));
 				data->negate = true;
-				return true;
+				return TS_YES;
 			}
 			else if (Ldata.negate)
 			{
@@ -1769,7 +1813,7 @@ TS_phrase_execute(QueryItem *curitem, void *arg, uint32 flags,
 										Loffset, Roffset,
 										Ldata.npos);
 				data->negate = true;
-				return true;
+				return TS_YES;
 			}
 			else if (Rdata.negate)
 			{
@@ -1779,7 +1823,7 @@ TS_phrase_execute(QueryItem *curitem, void *arg, uint32 flags,
 										Loffset, Roffset,
 										Rdata.npos);
 				data->negate = true;
-				return true;
+				return TS_YES;
 			}
 			else
 			{
@@ -1795,7 +1839,7 @@ TS_phrase_execute(QueryItem *curitem, void *arg, uint32 flags,
 	}
 
 	/* not reachable, but keep compiler quiet */
-	return false;
+	return TS_NO;
 }
 
 
@@ -1806,51 +1850,128 @@ TS_phrase_execute(QueryItem *curitem, void *arg, uint32 flags,
  * arg: opaque value to pass through to callback function
  * flags: bitmask of flag bits shown in ts_utils.h
  * chkcond: callback function to check whether a primitive value is present
- *
- * The logic here deals only with operators above any phrase operator, for
- * which we do not need to worry about lexeme positions.  As soon as we hit an
- * OP_PHRASE operator, we pass it off to TS_phrase_execute which does worry.
  */
 bool
 TS_execute(QueryItem *curitem, void *arg, uint32 flags,
 		   TSExecuteCallback chkcond)
 {
+	/*
+	 * If we get TS_MAYBE from the recursion, return true.  We could only see
+	 * that result if the caller passed TS_EXEC_PHRASE_NO_POS, so there's no
+	 * need to check again.
+	 */
+	return TS_execute_recurse(curitem, arg, flags, chkcond) != TS_NO;
+}
+
+/*
+ * Evaluate tsquery boolean expression.
+ *
+ * This is the same as TS_execute except that TS_MAYBE is returned as-is.
+ */
+TSTernaryValue
+TS_execute_ternary(QueryItem *curitem, void *arg, uint32 flags,
+				   TSExecuteCallback chkcond)
+{
+	return TS_execute_recurse(curitem, arg, flags, chkcond);
+}
+
+/*
+ * TS_execute recursion for operators above any phrase operator.  Here we do
+ * not need to worry about lexeme positions.  As soon as we hit an OP_PHRASE
+ * operator, we pass it off to TS_phrase_execute which does worry.
+ */
+static TSTernaryValue
+TS_execute_recurse(QueryItem *curitem, void *arg, uint32 flags,
+				   TSExecuteCallback chkcond)
+{
+	TSTernaryValue lmatch;
+
 	/* since this function recurses, it could be driven to stack overflow */
 	check_stack_depth();
 
+	/* ... and let's check for query cancel while we're at it */
+	CHECK_FOR_INTERRUPTS();
+
 	if (curitem->type == QI_VAL)
 		return chkcond(arg, (QueryOperand *) curitem,
-					   NULL /* we don't need position info */ );
+					   NULL /* don't need position info */ );
 
 	switch (curitem->qoperator.oper)
 	{
 		case OP_NOT:
-			if (flags & TS_EXEC_CALC_NOT)
-				return !TS_execute(curitem + 1, arg, flags, chkcond);
-			else
-				return true;
+			if (flags & TS_EXEC_SKIP_NOT)
+				return TS_YES;
+			switch (TS_execute_recurse(curitem + 1, arg, flags, chkcond))
+			{
+				case TS_NO:
+					return TS_YES;
+				case TS_YES:
+					return TS_NO;
+				case TS_MAYBE:
+					return TS_MAYBE;
+			}
+			break;
 
 		case OP_AND:
-			if (TS_execute(curitem + curitem->qoperator.left, arg, flags, chkcond))
-				return TS_execute(curitem + 1, arg, flags, chkcond);
-			else
-				return false;
+			lmatch = TS_execute_recurse(curitem + curitem->qoperator.left, arg,
+										flags, chkcond);
+			if (lmatch == TS_NO)
+				return TS_NO;
+			switch (TS_execute_recurse(curitem + 1, arg, flags, chkcond))
+			{
+				case TS_NO:
+					return TS_NO;
+				case TS_YES:
+					return lmatch;
+				case TS_MAYBE:
+					return TS_MAYBE;
+			}
+			break;
 
 		case OP_OR:
-			if (TS_execute(curitem + curitem->qoperator.left, arg, flags, chkcond))
-				return true;
-			else
-				return TS_execute(curitem + 1, arg, flags, chkcond);
+			lmatch = TS_execute_recurse(curitem + curitem->qoperator.left, arg,
+										flags, chkcond);
+			if (lmatch == TS_YES)
+				return TS_YES;
+			switch (TS_execute_recurse(curitem + 1, arg, flags, chkcond))
+			{
+				case TS_NO:
+					return lmatch;
+				case TS_YES:
+					return TS_YES;
+				case TS_MAYBE:
+					return TS_MAYBE;
+			}
+			break;
 
 		case OP_PHRASE:
-			return TS_phrase_execute(curitem, arg, flags, chkcond, NULL);
+
+			/*
+			 * If we get a MAYBE result, and the caller doesn't want that,
+			 * convert it to NO.  It would be more consistent, perhaps, to
+			 * return the result of TS_phrase_execute() verbatim and then
+			 * convert MAYBE results at the top of the recursion.  But
+			 * converting at the topmost phrase operator gives results that
+			 * are bug-compatible with the old implementation, so do it like
+			 * this for now.
+			 */
+			switch (TS_phrase_execute(curitem, arg, flags, chkcond, NULL))
+			{
+				case TS_NO:
+					return TS_NO;
+				case TS_YES:
+					return TS_YES;
+				case TS_MAYBE:
+					return (flags & TS_EXEC_PHRASE_NO_POS) ? TS_MAYBE : TS_NO;
+			}
+			break;
 
 		default:
 			elog(ERROR, "unrecognized operator: %d", curitem->qoperator.oper);
 	}
 
 	/* not reachable, but keep compiler quiet */
-	return false;
+	return TS_NO;
 }
 
 /*
@@ -1941,7 +2062,7 @@ ts_match_vq(PG_FUNCTION_ARGS)
 	chkval.operand = GETOPERAND(query);
 	result = TS_execute(GETQUERY(query),
 						&chkval,
-						TS_EXEC_CALC_NOT,
+						TS_EXEC_EMPTY,
 						checkcondition_str);
 
 	PG_FREE_IF_COPY(val, 0);
@@ -2078,7 +2199,6 @@ insertStatEntry(MemoryContext persistentContext, TSVectorStat *stat, TSVector tx
 			else
 				pnode->right = node;
 		}
-
 	}
 	else
 	{
@@ -2187,7 +2307,7 @@ ts_setup_firstcall(FunctionCallInfo fcinfo, FuncCallContext *funcctx,
 		}
 	Assert(stat->stackpos <= stat->maxdepth);
 
-	tupdesc = CreateTemplateTupleDesc(3, false);
+	tupdesc = CreateTemplateTupleDesc(3);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "word",
 					   TEXTOID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "ndoc",
@@ -2464,6 +2584,7 @@ tsvector_update_trigger(PG_FUNCTION_ARGS, bool config_column)
 	bool		isnull;
 	text	   *txt;
 	Oid			cfgId;
+	bool		update_needed;
 
 	/* Check call context */
 	if (!CALLED_AS_TRIGGER(fcinfo)) /* internal error */
@@ -2476,9 +2597,15 @@ tsvector_update_trigger(PG_FUNCTION_ARGS, bool config_column)
 		elog(ERROR, "tsvector_update_trigger: must be fired BEFORE event");
 
 	if (TRIGGER_FIRED_BY_INSERT(trigdata->tg_event))
+	{
 		rettuple = trigdata->tg_trigtuple;
+		update_needed = true;
+	}
 	else if (TRIGGER_FIRED_BY_UPDATE(trigdata->tg_event))
+	{
 		rettuple = trigdata->tg_newtuple;
+		update_needed = false;	/* computed below */
+	}
 	else
 		elog(ERROR, "tsvector_update_trigger: must be fired for INSERT or UPDATE");
 
@@ -2566,6 +2693,9 @@ tsvector_update_trigger(PG_FUNCTION_ARGS, bool config_column)
 					 errmsg("column \"%s\" is not of a character type",
 							trigger->tgargs[i])));
 
+		if (bms_is_member(numattr - FirstLowInvalidHeapAttributeNumber, trigdata->tg_updatedcols))
+			update_needed = true;
+
 		datum = SPI_getbinval(rettuple, rel->rd_att, numattr, &isnull);
 		if (isnull)
 			continue;
@@ -2578,16 +2708,19 @@ tsvector_update_trigger(PG_FUNCTION_ARGS, bool config_column)
 			pfree(txt);
 	}
 
-	/* make tsvector value */
-	datum = TSVectorGetDatum(make_tsvector(&prs));
-	isnull = false;
+	if (update_needed)
+	{
+		/* make tsvector value */
+		datum = TSVectorGetDatum(make_tsvector(&prs));
+		isnull = false;
 
-	/* and insert it into tuple */
-	rettuple = heap_modify_tuple_by_cols(rettuple, rel->rd_att,
-										 1, &tsvector_attr_num,
-										 &datum, &isnull);
+		/* and insert it into tuple */
+		rettuple = heap_modify_tuple_by_cols(rettuple, rel->rd_att,
+											 1, &tsvector_attr_num,
+											 &datum, &isnull);
 
-	pfree(DatumGetPointer(datum));
+		pfree(DatumGetPointer(datum));
+	}
 
 	return PointerGetDatum(rettuple);
 }
