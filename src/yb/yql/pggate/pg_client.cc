@@ -55,6 +55,9 @@ DEFINE_UNKNOWN_uint64(pg_client_heartbeat_interval_ms, 10000,
 DECLARE_bool(TEST_index_read_multiple_partitions);
 DECLARE_bool(TEST_enable_db_catalog_version_mode);
 
+extern int yb_locks_min_txn_age;
+extern int yb_locks_max_transactions;
+
 using namespace std::literals;
 
 namespace yb {
@@ -610,9 +613,7 @@ class PgClient::Impl {
     if (!transaction_id.empty()) {
       req.set_transaction_id(transaction_id);
     }
-    // TODO(pg_locks): Remove static variable initialization and populate max_num_txns from the GUC
-    // variable instead. Refer https://github.com/yugabyte/yugabyte-db/issues/18178 for details.
-    static const auto yb_locks_max_transactions = 1024;
+    req.set_min_txn_age_ms(yb_locks_min_txn_age);
     req.set_max_num_txns(yb_locks_max_transactions);
 
     RETURN_NOT_OK(proxy_->GetLockStatus(req, &resp, PrepareController()));

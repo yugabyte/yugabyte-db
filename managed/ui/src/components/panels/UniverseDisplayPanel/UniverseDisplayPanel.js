@@ -153,16 +153,6 @@ export default class UniverseDisplayPanel extends Component {
               <h2>Universes</h2>
             </Col>
             <Col className="universe-table-header-action dashboard-universe-actions">
-              {isNotHidden(currentCustomer.data.features, 'universe.import') && (
-                <Link to="/universes/import">
-                  <YBButton
-                    btnClass="universe-button btn btn-lg btn-default"
-                    disabled={isDisabled(currentCustomer.data.features, 'universe.import')}
-                    btnText="Import Universe"
-                    btnIcon="fa fa-mail-forward"
-                  />
-                </Link>
-              )}
               {isNotHidden(currentCustomer.data.features, 'universe.create') && (
                 <Link to="/universes/create">
                   <YBButton

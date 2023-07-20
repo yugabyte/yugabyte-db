@@ -612,10 +612,28 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	 */
 	pg_database_rel = heap_open(DatabaseRelationId, RowExclusiveLock);
 
-	do
+	/*
+	 * In vanilla PG, OIDs are assigned by a cluster-wide counter.
+	 * For YSQL, we allocate OIDs on a per-database level and share the
+	 * per-database OID range on tserver for all databases. OID collision
+	 * happens due to the same range of OIDs allocated to different tservers.
+	 * OID collision can happen for CREATE DATABASE. If it happens, we want to
+	 * keep retrying CREATE DATABASE using the next available OID.
+	 * This is needed for xcluster.
+	 */
+	bool retry_on_oid_collision = false;
+	do 
 	{
-		dboid = GetNewOid(pg_database_rel);
-	} while (check_db_file_conflict(dboid));
+		do
+		{
+			dboid = GetNewOid(pg_database_rel);
+		} while (check_db_file_conflict(dboid));
+
+		retry_on_oid_collision = false;
+		if (IsYugaByteEnabled())
+			YBCCreateDatabase(dboid, dbname, src_dboid, InvalidOid, dbcolocated,
+							  &retry_on_oid_collision);
+	} while (retry_on_oid_collision);
 
 	/*
 	 * Insert a new tuple into pg_database.  This establishes our ownership of
@@ -642,9 +660,6 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	new_record[Anum_pg_database_datfrozenxid - 1] = TransactionIdGetDatum(src_frozenxid);
 	new_record[Anum_pg_database_datminmxid - 1] = TransactionIdGetDatum(src_minmxid);
 	new_record[Anum_pg_database_dattablespace - 1] = ObjectIdGetDatum(dst_deftablespace);
-
-	if (IsYugaByteEnabled())
-		YBCCreateDatabase(dboid, dbname, src_dboid, InvalidOid, dbcolocated);
 
 	/*
 	 * We deliberately set datacl to default (NULL), rather than copying it
