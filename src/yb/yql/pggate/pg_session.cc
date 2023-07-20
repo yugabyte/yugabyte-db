@@ -906,6 +906,7 @@ Result<client::RpcsInfo> PgSession::ActiveUniverseHistory() {
 Status PgSession::SetAUHMetadata(const char* remote_host, int remote_port) {
   auto node_uuid = VERIFY_RESULT(pg_client_.GetTServerUUID());
   pg_callbacks_.ProcSetNodeUUID(node_uuid.c_str());
+  auh_metadata_.top_level_node_id = node_uuid;
   auh_metadata_.client_node_ip = yb::Format("$0:$1", remote_host, remote_port);
   return Status::OK();
 }
@@ -916,9 +917,6 @@ void PgSession::SetQueryId(int64_t query_id) {
 
 void PgSession::SetTopLevelRequestId() {
   auh_metadata_.top_level_request_id = {yb::OtelRandom::GenerateRandom64(), yb::OtelRandom::GenerateRandom64()};
-
-  // LOG(ERROR) << "PGSESSION tlri " << auh_metadata_.top_level_request_id[0] << " ------ " << auh_metadata_.top_level_request_id[1];
-
   pg_callbacks_.ProcSetTopRequestId(&auh_metadata_.top_level_request_id[0]);
 }
 

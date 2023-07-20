@@ -3362,6 +3362,4 @@ void ProcSetNodeUUID(const char *node_uuid) {
 void ProcSetTopRequestId(const uint64_t *top_level_request_id) {
 	MyProc->top_level_request_id[0] = top_level_request_id[0];
 	MyProc->top_level_request_id[1] = top_level_request_id[1];
-	// ereport(LOG, (errmsg("myprc tlri: %llu ---- %llu", MyProc->top_level_request_id[0], MyProc->top_level_request_id[1])));
-	// memcpy(MyProc->top_level_request_id, top_level_request_id, 2);
 }

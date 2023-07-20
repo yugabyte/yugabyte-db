@@ -224,6 +224,7 @@ class WaitStateInfo {
 
   void UpdateMetadata(const AUHMetadata& meta) EXCLUDES(mutex_);
   void set_current_request_id(int64_t id) EXCLUDES(mutex_);
+  void set_top_level_request_id(uint64_t id) EXCLUDES(mutex_);
 
   template <class PB>
   static void UpdateMetadataFromPB(const PB& pb) {

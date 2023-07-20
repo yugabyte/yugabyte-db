@@ -335,23 +335,6 @@ ybauh_startup_hook(void)
 }
 
 static void
-top_level_request_id_uint_to_char(char *top_level_request_id, uint64_t top_level_request_id_uint[2])
-{
-    uint64_t nth_request_id = top_level_request_id_uint[0];
-    int index = 15;
-    for (; index >= 0; index--)
-    {
-      if (index == 8)
-        nth_request_id = top_level_request_id_uint[1];
-      if (nth_request_id % 16 < 10)
-        top_level_request_id[index] = '0' + (nth_request_id % 16);
-      else
-        top_level_request_id[index] = 'a' + ((nth_request_id % 16) % 10);
-      nth_request_id /= 10;
-    }
-}
-
-static void
 pg_active_universe_history_internal(FunctionCallInfo fcinfo)
 {
   ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
