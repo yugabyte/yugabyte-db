@@ -4239,7 +4239,8 @@ reindex_relation(Oid relid, int flags, ReindexParams *params)
 
 			Relation new_rel = table_open(YbGetStorageRelid(rel), AccessExclusiveLock);
 			AttrMap *new_to_old_attmap = build_attrmap_by_name(RelationGetDescr(new_rel),
-															   RelationGetDescr(rel));
+															   RelationGetDescr(rel),
+															   false /* yb_ignore_type_mismatch */);
 			table_close(new_rel, AccessExclusiveLock);
 			YbDropAndRecreateIndex(indexOid, relid, rel, new_to_old_attmap);
 			RemoveReindexPending(indexOid);

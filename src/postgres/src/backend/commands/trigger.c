@@ -6546,13 +6546,7 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 
 		if (IsYBBackedRelation(rel) && RI_FKey_trigger_type(trigger->tgfoid) == RI_TRIGGER_FK)
 		{
-			/*
-			 * YB_TODO(neil@yugabyte) Write Yugabyte API to work with slot.
-			 *
-			 * Current Yugabyte API works with HeapTuple instead of slot.
-			 * - Create tuple as a workaround to compile.
-			 * - Pass slot to Yugabyte call once the API is fixed.
-			 */
+			/* YB_TODO(API for Slot) Wait for slot API */
 			bool shouldFree = true;
 			HeapTuple newtup = ExecFetchSlotHeapTuple(newslot, true, &shouldFree);
 			YbAddTriggerFKReferenceIntent(trigger, rel, newtup);

@@ -329,6 +329,7 @@ EndCopy(CopyToState cstate)
 	}
 
 	pgstat_progress_end_command();
+	pgstat_progress_update_param(PROGRESS_COPY_STATUS, CP_SUCCESS);
 
 	MemoryContextDelete(cstate->copycontext);
 	pfree(cstate);
@@ -407,7 +408,7 @@ BeginCopyTo(ParseState *pstate,
 	 * We allocate everything used by a cstate in a new memory context. This
 	 * avoids memory leaks during repeated use of COPY in a query.
 	 */
-	cstate->copycontext = AllocSetContextCreate(CurrentMemoryContext,
+	cstate->copycontext = AllocSetContextCreate(GetCurrentMemoryContext(),
 												"COPY",
 												ALLOCSET_DEFAULT_SIZES);
 
@@ -656,6 +657,11 @@ BeginCopyTo(ParseState *pstate,
 
 	cstate->copy_dest = COPY_FILE;	/* default */
 
+	/* YB_REVIEW() Stat for PROGRESS_COPY_STATUS comes from
+	 *   https://phabricator.dev.yugabyte.com/D17504
+	 */
+	pgstat_progress_update_param(PROGRESS_COPY_STATUS, CP_IN_PROG);
+
 	if (pipe)
 	{
 		progress_vals[1] = PROGRESS_COPY_TYPE_PIPE;
@@ -815,7 +821,7 @@ DoCopyTo(CopyToState cstate)
 	 * datatype output routines, and should be faster than retail pfree's
 	 * anyway.  (We don't need a whole econtext as CopyFrom does.)
 	 */
-	cstate->rowcontext = AllocSetContextCreate(CurrentMemoryContext,
+	cstate->rowcontext = AllocSetContextCreate(GetCurrentMemoryContext(),
 											   "COPY TO",
 											   ALLOCSET_DEFAULT_SIZES);
 
@@ -875,9 +881,25 @@ DoCopyTo(CopyToState cstate)
 	{
 		TupleTableSlot *slot;
 		TableScanDesc scandesc;
+		bool is_yb_relation;
+		MemoryContext oldcontext;
+		MemoryContext yb_context;
 
 		scandesc = table_beginscan(cstate->rel, GetActiveSnapshot(), 0, NULL);
 		slot = table_slot_create(cstate->rel, NULL);
+
+		/*
+		 * Create and switch to a temporary memory context that we can reset
+		 * once per row to recover Yugabyte palloc'd memory.
+		 */
+		is_yb_relation = IsYBRelation(cstate->rel);
+		if (is_yb_relation)
+		{
+			yb_context = AllocSetContextCreate(GetCurrentMemoryContext(),
+											   "COPY TO (YB)",
+											   ALLOCSET_DEFAULT_SIZES);
+			oldcontext = MemoryContextSwitchTo(yb_context);
+		}
 
 		processed = 0;
 		while (table_scan_getnextslot(scandesc, ForwardScanDirection, slot))
@@ -896,6 +918,9 @@ DoCopyTo(CopyToState cstate)
 			 */
 			pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED,
 										 ++processed);
+			/* Free Yugabyte memory for this row */
+			if (is_yb_relation)
+				MemoryContextReset(yb_context);
 		}
 
 		ExecDropSingleTupleTableSlot(slot);

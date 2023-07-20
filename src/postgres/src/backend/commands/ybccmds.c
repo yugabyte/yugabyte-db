@@ -98,7 +98,8 @@ ColumnSortingOptions(SortByDir dir, SortByNulls nulls, bool* is_desc, bool* is_n
 /*  Database Functions. */
 
 void
-YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated)
+YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated,
+				  bool *retry_on_oid_collision)
 {
 	if (YBIsDBCatalogVersionMode())
 	{
@@ -123,7 +124,24 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bo
 										  next_oid,
 										  colocated,
 										  &handle));
-	HandleYBStatus(YBCPgExecCreateDatabase(handle));
+	
+	YBCStatus createdb_status = YBCPgExecCreateDatabase(handle);
+	/* If OID collision happends for CREATE DATABASE, then we need to retry CREATE DATABASE. */
+	if (retry_on_oid_collision)
+	{
+		*retry_on_oid_collision = createdb_status &&
+				YBCStatusPgsqlError(createdb_status) == ERRCODE_DUPLICATE_DATABASE &&
+				*YBCGetGFlags()->ysql_enable_create_database_oid_collision_retry;
+		
+		if (*retry_on_oid_collision)
+		{
+			YBCFreeStatus(createdb_status);
+			return;
+		}
+	}
+
+	HandleYBStatus(createdb_status);
+
 	if (YBIsDBCatalogVersionMode())
 		YbCreateMasterDBCatalogVersionTableEntry(dboid);
 }
@@ -564,10 +582,8 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 			IndexStmt *idxstmt;
 			Oid constraintOid;
 
-			/* YB_TODO "convert_tuples_by_name_map" is no longer called here.
-			 * Need to pass `false yb_ignore_type_mismatch` differently.
-			 */
-			attmap = build_attrmap_by_name(RelationGetDescr(rel), RelationGetDescr(parentRel));
+			attmap = build_attrmap_by_name(RelationGetDescr(rel), RelationGetDescr(parentRel),
+										   false /* yb_ignore_type_mismatch */);
 			idxstmt = generateClonedIndexStmt(NULL, idxRel, attmap, &constraintOid);
 
 			primary_key = makeNode(Constraint);
@@ -894,7 +910,8 @@ static void
 CreateIndexHandleSplitOptions(YBCPgStatement handle,
                               TupleDesc desc,
                               OptSplit *split_options,
-                              int16 * coloptions)
+                              int16 * coloptions,
+                              int numIndexKeyAttrs)
 {
 	/* Address both types of split options */
 	switch (split_options->split_type)
@@ -914,7 +931,7 @@ CreateIndexHandleSplitOptions(YBCPgStatement handle,
 			/* Construct array to SPLIT column datatypes */
 			Form_pg_attribute attrs[INDEX_MAX_KEYS];
 			int attr_count;
-			for (attr_count = 0; attr_count < desc->natts; ++attr_count)
+			for (attr_count = 0; attr_count < numIndexKeyAttrs; ++attr_count)
 			{
 				attrs[attr_count] = TupleDescAttr(desc, attr_count);
 			}
@@ -1007,7 +1024,8 @@ YBCCreateIndex(const char *indexName,
 
 	/* Handle SPLIT statement, if present */
 	if (split_options)
-		CreateIndexHandleSplitOptions(handle, indexTupleDesc, split_options, coloptions);
+		CreateIndexHandleSplitOptions(handle, indexTupleDesc, split_options, coloptions,
+		                              indexInfo->ii_NumIndexKeyAttrs);
 
 	/* Create the index. */
 	HandleYBStatus(YBCPgExecCreateIndex(handle));

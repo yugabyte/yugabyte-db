@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V38__14445__alter_pg_stat_statements.sql
-{ major => '38', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V42__16918__pg_locks_view.sql
+{ major => '42', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

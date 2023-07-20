@@ -14,12 +14,14 @@
 #ifndef PLANNODES_H
 #define PLANNODES_H
 
+#include "access/relation.h"
 #include "access/sdir.h"
 #include "access/stratnum.h"
 #include "lib/stringinfo.h"
 #include "nodes/bitmapset.h"
 #include "nodes/lockoptions.h"
 #include "nodes/parsenodes.h"
+#include "nodes/pathnodes.h"
 #include "nodes/primnodes.h"
 
 
@@ -357,8 +359,9 @@ typedef struct BitmapOr
  */
 typedef struct Scan
 {
-	Plan		plan;
-	Index		scanrelid;		/* relid is index into the range table */
+	Plan			plan;
+	Index			scanrelid;		/* relid is index into the range table */
+	YbLockMechanism	yb_lock_mechanism;	/* locks taken as part of the scan */
 } Scan;
 
 /* ----------------

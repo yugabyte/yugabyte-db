@@ -605,13 +605,7 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 
 		if (IsYBRelation(myState->rel))
 		{
-			/*
-			 * YB_TODO(neil@yugabyte) Write Yugabyte API to work with slot.
-			 *
-			 * Current Yugabyte API works with HeapTuple instead of slot.
-			 * - Create tuple as a workaround to compile.
-			 * - Pass slot to Yugabyte call once the API is fixed.
-			 */
+			/* YB_TODO(API for Slot) Wait for slot API */
 			bool shouldFree = true;
 			HeapTuple tuple = ExecFetchSlotHeapTuple(slot, true, &shouldFree);
 

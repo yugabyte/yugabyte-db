@@ -377,12 +377,7 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 		else
 		{
 			/* Binary output */
-			bytea	   *outputbytes;
-
-			outputbytes = SendFunctionCall(&thisState->finfo, attr);
-			pq_sendint32(buf, VARSIZE(outputbytes) - VARHDRSZ);
-			pq_sendbytes(buf, VARDATA(outputbytes),
-						 VARSIZE(outputbytes) - VARHDRSZ);
+			StringInfoSendFunctionCall(buf, &thisState->finfo, attr);
 		}
 	}
 

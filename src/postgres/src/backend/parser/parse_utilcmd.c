@@ -1472,7 +1472,8 @@ expandTableLikeClause(RangeVar *heapRel, TableLikeClause *table_like_clause, Lis
 	 * have a failure since both tables are locked.
 	 */
 	attmap = build_attrmap_by_name(RelationGetDescr(childrel),
-								   tupleDesc);
+								   tupleDesc,
+								   false /* yb_ignore_type_mismatch */);
 
 	/*
 	 * Process defaults, if required.

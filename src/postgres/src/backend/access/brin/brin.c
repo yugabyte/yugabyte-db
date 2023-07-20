@@ -491,7 +491,7 @@ bringetbitmap(IndexScanDesc scan, TIDBitmap *tbm)
 			tmp = index_getprocinfo(idxRel, keyattno,
 									BRIN_PROCNUM_CONSISTENT);
 			fmgr_info_copy(&consistentFn[keyattno - 1], tmp,
-						   CurrentMemoryContext);
+						   GetCurrentMemoryContext());
 		}
 
 		/* Add key to the proper per-attribute array. */

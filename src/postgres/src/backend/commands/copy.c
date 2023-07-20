@@ -473,32 +473,6 @@ ProcessCopyOptions(ParseState *pstate,
 				errorConflictingDefElem(defel, pstate);
 			opts_out->delim = defGetString(defel);
 		}
-		else if (strcmp(defel->defname, "rows_per_transaction") == 0)
-		{
-			int rows = defGetInt32(defel);
-			if (rows >= 0)
-				opts_out->batch_size = rows;
-			else
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("argument to option \"%s\" must be a positive integer", defel->defname),
-						 parser_errposition(pstate, defel->location)));
-		}
-		else if (strcmp(defel->defname, "skip") == 0)
-		{
-			int64_t num_initial_skipped_rows = defGetInt64(defel);
-			if (num_initial_skipped_rows >= 0)
-				opts_out->num_initial_skipped_rows = num_initial_skipped_rows;
-			else
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("argument to option \"%s\" must be a nonnegative integer", defel->defname),
-						 parser_errposition(pstate, defel->location)));
-		}
-		else if (strcmp(defel->defname, "disable_fk_check") == 0)
-			opts_out->disable_fk_check = true;
-		else if (strcmp(defel->defname, "replace") == 0)
-			opts_out->on_conflict_action = ONCONFLICT_YB_REPLACE;
 		else if (strcmp(defel->defname, "null") == 0)
 		{
 			if (opts_out->null_print)
@@ -596,6 +570,32 @@ ProcessCopyOptions(ParseState *pstate,
 								defel->defname),
 						 parser_errposition(pstate, defel->location)));
 		}
+		else if (strcmp(defel->defname, "rows_per_transaction") == 0)
+		{
+			int rows = defGetInt32(defel);
+			if (rows >= 0)
+				opts_out->batch_size = rows;
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("argument to option \"%s\" must be a positive integer", defel->defname),
+						 parser_errposition(pstate, defel->location)));
+		}
+		else if (strcmp(defel->defname, "skip") == 0)
+		{
+			int64_t num_initial_skipped_rows = defGetInt64(defel);
+			if (num_initial_skipped_rows >= 0)
+				opts_out->num_initial_skipped_rows = num_initial_skipped_rows;
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("argument to option \"%s\" must be a nonnegative integer", defel->defname),
+						 parser_errposition(pstate, defel->location)));
+		}
+		else if (strcmp(defel->defname, "disable_fk_check") == 0)
+			opts_out->disable_fk_check = true;
+		else if (strcmp(defel->defname, "replace") == 0)
+			opts_out->on_conflict_action = ONCONFLICT_YB_REPLACE;
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),

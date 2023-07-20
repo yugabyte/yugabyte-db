@@ -104,6 +104,11 @@ extern GeolocationDistance get_tablespace_distance (Oid tablespaceoid);
  */
 extern bool IsYugaByteEnabled();
 
+/*
+ * Check whether the connection is made from Ysql Connection Manager.
+ */
+extern bool YbIsClientYsqlConnMgr();
+
 extern bool yb_enable_docdb_tracing;
 extern bool yb_read_from_followers;
 extern int32_t yb_follower_read_staleness_ms;
@@ -177,8 +182,6 @@ extern bool IsRealYBColumn(Relation rel, int attrNum);
  * Returns whether a relation's attribute is a YB system column.
  */
 extern bool IsYBSystemColumn(int attrNum);
-
-extern bool YBNeedRetryAfterCacheRefresh(ErrorData *edata);
 
 extern void YBReportFeatureUnsupported(const char *err_msg);
 
@@ -437,6 +440,12 @@ extern int yb_index_state_flags_update_delay;
  * If true, planner sends supported expressions to DocDB for evaluation
  */
 extern bool yb_enable_expression_pushdown;
+
+/*
+ * Enables distinct pushdown.
+ * If true, send supported DISTINCT operations to DocDB
+ */
+extern bool yb_enable_distinct_pushdown;
 
 /*
  * YSQL guc variable that is used to enable the use of Postgres's selectivity
@@ -762,24 +771,32 @@ uint64_t YbGetSharedCatalogVersion();
 uint32_t YbGetNumberOfDatabases();
 
 /*
- * This function helps map the user intended row-level lock policy i.e., "userLockWaitPolicy" of
- * type enum LockWaitPolicy to the "effectiveWaitPolicy" of type enum WaitPolicy as defined in
+ * This function maps the user intended row-level lock policy i.e., "pg_wait_policy" of
+ * type enum LockWaitPolicy to the "docdb_wait_policy" of type enum WaitPolicy as defined in
  * common.proto.
  *
- * The semantics of the WaitPolicy enum differs slightly from the traditional LockWaitPolicy in
- * Postgres as explained in common.proto. This is due to historical reasons. WaitPolicy in
+ * The semantics of the WaitPolicy enum differ slightly from those of the traditional LockWaitPolicy
+ * in Postgres, as explained in common.proto. This is for historical reasons. WaitPolicy in
  * common.proto was created as a copy of LockWaitPolicy to be passed to the Tserver to help in
  * appropriate conflict-resolution steps for the different row-level lock policies.
  *
- * This function does the following:
- * 1. Log a warning for a userLockWaitPolicy of LockWaitSkip and LockWaitError because SKIP LOCKED
- *		and NO WAIT are not supported yet.
- * 2. Set effectiveWaitPolicy to either WAIT_BLOCK if wait queues are enabled. Else, set it to
- *		WAIT_ERROR (which actually uses the "Fail on Conflict" conflict management policy instead
- *		of "no wait" semantics as explained in "enum WaitPolicy" in common.proto).
+ * In isolation level SERIALIZABLE, this function sets docdb_wait_policy to WAIT_BLOCK as
+ * this is the only policy currently supported for SERIALIZABLE.
+ *
+ * However, if wait queues aren't enabled in the following cases:
+ *  * Isolation level SERIALIZABLE
+ *  * The user requested LockWaitBlock in another isolation level
+ * this function sets docdb_wait_policy to WAIT_ERROR (which actually uses the "Fail on Conflict"
+ * conflict management policy instead of "no wait" semantics, as explained in "enum WaitPolicy" in
+ * common.proto).
+ *
+ * Logs a warning:
+ * 1. In isolation level SERIALIZABLE for a pg_wait_policy of LockWaitSkip and LockWaitError
+ *    because SKIP LOCKED and NOWAIT are not supported yet.
+ * 2. In isolation level REPEATABLE READ for a pg_wait_policy of LockWaitError because NOWAIT
+ *    is not supported.
  */
-void YBUpdateRowLockPolicyForSerializable(
-		int *effectiveWaitPolicy, LockWaitPolicy userLockWaitPolicy);
+void YBSetRowLockPolicy(int *docdb_wait_policy, LockWaitPolicy pg_wait_policy);
 
 const char* yb_fetch_current_transaction_priority(void);
 
@@ -886,5 +903,7 @@ void YbSetIsBatchedExecution(bool value);
 		} \
 	} while (0)
 #endif
+
+extern bool yb_is_client_ysqlconnmgr;
 
 #endif /* PG_YB_UTILS_H */

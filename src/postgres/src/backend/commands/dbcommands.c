@@ -1393,12 +1393,30 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	}
 	else
 	{
-		/* Select an OID for the new database if is not explicitly configured. */
-		do
+		/*
+		 * In vanilla PG, OIDs are assigned by a cluster-wide counter.
+		 * For YSQL, we allocate OIDs on a per-database level and share the
+		 * per-database OID range on tserver for all databases. OID collision
+		 * happens due to the same range of OIDs allocated to different tservers.
+		 * OID collision can happen for CREATE DATABASE. If it happens, we want to
+		 * keep retrying CREATE DATABASE using the next available OID.
+		 * This is needed for xcluster.
+		 */
+		bool retry_on_oid_collision = false;
+		do 
 		{
-			dboid = GetNewOidWithIndex(pg_database_rel, DatabaseOidIndexId,
-									   Anum_pg_database_oid);
-		} while (check_db_file_conflict(dboid));
+			/* Select an OID for the new database if is not explicitly configured. */
+			do
+			{
+				dboid = GetNewOidWithIndex(pg_database_rel, DatabaseOidIndexId,
+										   Anum_pg_database_oid);
+			} while (check_db_file_conflict(dboid));
+
+			retry_on_oid_collision = false;
+			if (IsYugaByteEnabled())
+				YBCCreateDatabase(dboid, dbname, src_dboid, InvalidOid, dbcolocated,
+								  &retry_on_oid_collision);
+		} while (retry_on_oid_collision);
 	}
 
 	/*
@@ -1426,9 +1444,6 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	new_record[Anum_pg_database_datfrozenxid - 1] = TransactionIdGetDatum(src_frozenxid);
 	new_record[Anum_pg_database_datminmxid - 1] = TransactionIdGetDatum(src_minmxid);
 	new_record[Anum_pg_database_dattablespace - 1] = ObjectIdGetDatum(dst_deftablespace);
-
-	if (IsYugaByteEnabled())
-		YBCCreateDatabase(dboid, dbname, src_dboid, InvalidOid, dbcolocated);
 
 	new_record[Anum_pg_database_datcollate - 1] = CStringGetTextDatum(dbcollate);
 	new_record[Anum_pg_database_datctype - 1] = CStringGetTextDatum(dbctype);
