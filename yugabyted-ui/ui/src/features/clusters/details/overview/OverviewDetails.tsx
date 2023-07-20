@@ -15,6 +15,7 @@ import {
   useGetIsLoadBalancerIdleQuery,
   useGetClusterActivitiesQuery,
   useGetClusterAlertsQuery,
+  useGetClusterTabletsQuery,
 } from "@app/api/src";
 
 const useStyles = makeStyles((theme) => ({
@@ -80,6 +81,7 @@ export const OverviewDetails: FC = () => {
 
   const { refetch: refetchNodes } = useGetClusterNodesQuery({ query: { enabled: false } });
   const { refetch: refetchCluster } = useGetClusterQuery({ query: { enabled: false } });
+  const { refetch: refetchTablets } = useGetClusterTabletsQuery({ query: { enabled: false } });
   const { refetch: refetchHealth } = useGetClusterHealthCheckQuery({ query: { enabled: false } });
   const { refetch: refetchLoadBalancer } = useGetIsLoadBalancerIdleQuery({
     query: { enabled: false },
@@ -92,6 +94,7 @@ export const OverviewDetails: FC = () => {
 
   const refetch = () => {
     refetchNodes();
+    refetchTablets();
     refetchCluster();
     refetchHealth();
     refetchLoadBalancer();
