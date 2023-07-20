@@ -399,7 +399,7 @@ libraryDependencies ++= Seq(
 
 
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "latest.integration"
-dependencyOverrides += "com.google.guava" % "guava" % "23.0"
+dependencyOverrides += "com.google.guava" % "guava" % "32.1.1-jre"
 // TODO(Shashank): Remove these in Step 3:
 dependencyOverrides += "com.fasterxml.jackson.core" % "jackson-databind" % "2.13.4.2"
 
