@@ -4210,7 +4210,7 @@ void CDCServiceImpl::IsBootstrapRequired(
         CDCErrorPB::LEADER_NOT_READY, context);
     std::shared_ptr<CDCTabletMetrics> tablet_metric = NULL;
 
-    OpId op_id;
+    OpId op_id = OpId::Invalid();
     if (req->has_stream_id() && !req->stream_id().empty()) {
       auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
       // Check that requested tablet_id is part of the CDC stream.
@@ -4254,7 +4254,7 @@ Result<bool> CDCServiceImpl::IsBootstrapRequiredForTablet(
   auto log = tablet_peer->log();
   const auto latest_opid = log->GetLatestEntryOpId();
 
-  if (min_op_id.index <= 0) {
+  if (min_op_id.index < 0) {
     // The first index is a NoOp which can be ignored.
     if (latest_opid.index > 1) {
       // Bootstrap is needed if there is any data in the log.
