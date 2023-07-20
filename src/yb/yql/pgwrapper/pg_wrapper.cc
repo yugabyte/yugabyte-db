@@ -83,6 +83,8 @@ DEFINE_UNKNOWN_string(ysql_pg_conf_csv, "",
 DEFINE_UNKNOWN_string(ysql_hba_conf_csv, "",
               "CSV formatted line represented list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf_csv, sensitive_info);
+DEFINE_NON_RUNTIME_string(ysql_ident_conf_csv, "",
+              "CSV formatted line represented list of postgres ident map rules (in order)");
 
 DEFINE_UNKNOWN_string(ysql_pg_conf, "",
               "Deprecated, use the `ysql_pg_conf_csv` flag instead. " \
@@ -434,6 +436,28 @@ Result<string> WritePgHbaConfig(const PgProcessConf& conf) {
   return "hba_file=" + conf_path;
 }
 
+Result<string> WritePgIdentConfig(const PgProcessConf& conf) {
+  vector<string> lines;
+
+  // Add the user-defined custom configuration lines if any.
+  if (!FLAGS_ysql_ident_conf_csv.empty()) {
+    RETURN_NOT_OK(ReadCSVValues(FLAGS_ysql_ident_conf_csv, &lines));
+  }
+
+  if (lines.empty()) {
+    LOG(INFO) << "No user name mapping configuration lines found.";
+  }
+
+  // Add comments to the ident config file noting the record structure.
+  lines.insert(lines.begin(), {
+      "# MAPNAME IDP-USERNAME YB-USERNAME"
+  });
+
+  const auto conf_path = JoinPathSegments(conf.data_dir, "ysql_ident.conf");
+  RETURN_NOT_OK(WriteConfigFile(conf_path, lines));
+  return "ident_file=" + conf_path;
+}
+
 Result<vector<string>> WritePgConfigFiles(const PgProcessConf& conf) {
   vector<string> args;
   args.push_back("-c");
@@ -442,6 +466,9 @@ Result<vector<string>> WritePgConfigFiles(const PgProcessConf& conf) {
   args.push_back("-c");
   args.push_back(VERIFY_RESULT_PREPEND(WritePgHbaConfig(conf),
       "Failed to write ysql hba configuration: "));
+  args.push_back("-c");
+  args.push_back(VERIFY_RESULT_PREPEND(WritePgIdentConfig(conf),
+      "Failed to write ysql ident configuration: "));
   return args;
 }
 
