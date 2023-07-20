@@ -918,6 +918,11 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
   auto& options = *data->req.mutable_options();
   if (options.has_auh_metadata()) {
     util::WaitStateInfo::UpdateMetadataFromPB(options.auh_metadata());
+    // {
+    //   auto wait_state = util::WaitStateInfo::CurrentWaitState();
+    //   std::lock_guard<simple_spinlock> l(*wait_state->get_mutex());
+    //   LOG(ERROR) << "rpc received: " << wait_state->metadata().ToString();
+    // }
   }
   if (!options.ddl_mode() && xcluster_context_ && xcluster_context_->is_xcluster_read_only_mode()) {
     for (const auto& op : data->req.ops()) {

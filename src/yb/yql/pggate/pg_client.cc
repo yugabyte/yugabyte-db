@@ -696,6 +696,8 @@ class PgClient::Impl {
     result.reserve(resp.wait_states_size());
     for (const auto& wait_state : resp.wait_states()) {
       result.push_back(client::YBActiveUniverseHistoryInfo::FromPB(wait_state));
+      // LOG(ERROR) << "AUH RPC: "
+      //            << "top_level_req_id: " << wait_state.metadata().top_level_request_id(0) << " -- " << wait_state.metadata().top_level_request_id(1);
     }
     return result;
   }

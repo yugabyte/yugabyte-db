@@ -915,7 +915,10 @@ void PgSession::SetQueryId(int64_t query_id) {
 }
 
 void PgSession::SetTopLevelRequestId() {
-  auh_metadata_.top_level_request_id = {GenerateRandomId(), GenerateRandomId()};
+  auh_metadata_.top_level_request_id = {yb::OtelRandom::GenerateRandom64(), yb::OtelRandom::GenerateRandom64()};
+
+  // LOG(ERROR) << "PGSESSION tlri " << auh_metadata_.top_level_request_id[0] << " ------ " << auh_metadata_.top_level_request_id[1];
+
   pg_callbacks_.ProcSetTopRequestId(&auh_metadata_.top_level_request_id[0]);
 }
 

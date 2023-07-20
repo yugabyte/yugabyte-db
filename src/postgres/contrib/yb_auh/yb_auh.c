@@ -293,8 +293,16 @@ static void auh_entry_store(TimestampTz auh_time,
   AUHEntryArray[inserted].wait_event = wait_event;
   AUHEntryArray[inserted].request_id = request_id;
 
-  int len = 2;
-  memcpy(AUHEntryArray[inserted].top_level_request_id, top_level_request_id, len);
+  int len = 1;
+
+  if (top_level_request_id) {
+    AUHEntryArray[inserted].top_level_request_id[0] = top_level_request_id[0];
+    AUHEntryArray[inserted].top_level_request_id[1] = top_level_request_id[1];
+
+    // ereport(LOG, (errmsg("top_level_reqid : %llu - %llu", top_level_request_id[0], top_level_request_id[1])));
+  }
+
+  // memcpy(AUHEntryArray[inserted].top_level_request_id, top_level_request_id, len);
 
   len = Min(strlen(wait_event_aux) + 1, 15);
   memcpy(AUHEntryArray[inserted].wait_event_aux, wait_event_aux, len);
@@ -335,12 +343,15 @@ static void
 top_level_request_id_uint_to_char(char *top_level_request_id, uint64_t top_level_request_id_uint[2])
 {
     uint64_t nth_request_id = top_level_request_id_uint[0];
-    int index = 0;
-    for (; index < 16; index++)
+    int index = 15;
+    for (; index >= 0; index--)
     {
       if (index == 8)
         nth_request_id = top_level_request_id_uint[1];
-      top_level_request_id[index] = '0' + (nth_request_id % 10);
+      if (nth_request_id % 16 < 10)
+        top_level_request_id[index] = '0' + (nth_request_id % 16);
+      else
+        top_level_request_id[index] = 'a' + ((nth_request_id % 16) % 10);
       nth_request_id /= 10;
     }
 }
@@ -406,6 +417,8 @@ pg_active_universe_history_internal(FunctionCallInfo fcinfo)
 
     char top_level_request_id[16];
     top_level_request_id_uint_to_char(top_level_request_id, AUHEntryArray[i].top_level_request_id);
+
+    ereport(LOG, (errmsg("%llu --- %llu :: %s", AUHEntryArray[i].top_level_request_id[0], AUHEntryArray[i].top_level_request_id[1], top_level_request_id)));
 
     // top level request id
     if (AUHEntryArray[i].top_level_request_id[0] != '\0')
