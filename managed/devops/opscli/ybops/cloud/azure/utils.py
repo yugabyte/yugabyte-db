@@ -449,6 +449,73 @@ class AzureCloudAdmin():
             res.wait()
             logging.info("[app] Successfully changed disk size for {}".format(disk.name))
 
+    def clone_disk(self, vm_name, location, zone, source_disk, num_disks):
+        snapshot = self.compute_client.snapshots.begin_create_or_update(
+            RESOURCE_GROUP,
+            "{}-Snapshot".format(vm_name),
+            {
+                'location': location,
+                'creation_data': {
+                    'create_option': 'Copy',
+                    'source_resource_id': source_disk
+                }
+            }).result().id
+        res = []
+        for x in range(num_disks):
+            diskName = "{}-Disk-{}".format(vm_name, x)
+            try:
+                logging.info("[app] Creating Azure disk {} from snapshot {}".format(diskName,
+                                                                                    snapshot))
+                disk = self.compute_client.disks.begin_create_or_update(RESOURCE_GROUP, diskName, {
+                    'location': location,
+                    'creation_data': {
+                        'create_option': 'Copy',
+                        'source_resource_id': snapshot
+                    },
+                    'zones': [zone]
+
+                })
+                disk.wait()
+                res.append(disk.result().id)
+            except Exception as e:
+                logging.error("Error cloning Azure root volume {}. Failed with error {}.".
+                              format(diskName, e))
+                while x >= 0:
+                    diskdel = "{}-Disk-{}".format(vm_name, x)
+                    self.delete_disk(diskdel)
+                    x -= 1
+                self.delete_disk(source_disk)
+        self.compute_client.snapshots.begin_delete(RESOURCE_GROUP, os.path.basename(snapshot))
+        return res
+
+    def update_os_disk(self, vm_name, os_disk):
+        logging.info("[app] Updating OS disk for {} to {}.".format(vm_name, os_disk))
+        vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name).as_dict()
+        vm["storage_profile"]["os_disk"] = {
+            "create_option": vm["storage_profile"]["os_disk"]["create_option"],
+            "managed_disk": {
+                "id": os_disk,
+                "storage_account_type": "Standard_LRS"
+            }}
+        disk = self.compute_client.disks.get(RESOURCE_GROUP, os.path.basename(os_disk)).as_dict()
+        if disk.get("purchase_plan"):
+            vm["plan"] = disk.get("purchase_plan")
+        else:
+            vm.pop("plan", None)
+        try:
+            res = self.compute_client.virtual_machines.begin_create_or_update(RESOURCE_GROUP,
+                                                                              vm_name, vm)
+            res.wait()
+            logging.info("[app] Successfully updated OS disk for {}.".format(vm_name))
+        except Exception as e:
+            logging.error("Error updating {} to OS disk {}. Failed with error {}"
+                          .format(vm_name, os_disk, e))
+            self.delete_disk(os_disk)
+
+    # Deletes a disk. Accepts both disk name and full resource id.
+    def delete_disk(self, disk_name):
+        return self.compute_client.disks.begin_delete(RESOURCE_GROUP, os.path.basename(disk_name))
+
     def tag_disks(self, vm, tags):
         # Updating requires Disk as input rather than OSDisk. Retrieve Disk class with OSDisk name.
         disk = self.compute_client.disks.get(
@@ -508,6 +575,7 @@ class AzureCloudAdmin():
             vm_name, vnet, subnet - String representing name of resource
             public_ip - bool if public_ip should be assigned
         """
+        logging.info("[app] Creating network interface card for {}.".format(vm_name))
         nic_params = {
             "location": region,
             "ip_configurations": [{
@@ -529,8 +597,10 @@ class AzureCloudAdmin():
             self.get_nic_name(vm_name),
             nic_params
         )
-
-        return creation_result.result().id
+        nic_id = creation_result.result().id
+        logging.info("[app] Successfully created network interface card {}.".
+                     format(creation_result.result().name))
+        return nic_id
 
     # The method is idempotent. Any failure raises exception such that it can be retried.
     def destroy_orphaned_resources(self, vm_name, node_uuid):
@@ -546,7 +616,7 @@ class AzureCloudAdmin():
                 if (disk.name.startswith(vm_name) and disk.tags
                         and disk.tags.get('node-uuid') == node_uuid):
                     logging.info("[app] Deleting disk {}".format(disk.name))
-                    disk_del = self.compute_client.disks.begin_delete(RESOURCE_GROUP, disk.name)
+                    disk_del = self.delete_disk(disk.name)
                     disk_dels[disk.name] = disk_del
 
         nic_name = self.get_nic_name(vm_name)
@@ -623,7 +693,7 @@ class AzureCloudAdmin():
         logging.info("[app] Successfully changed instance type for {}".format(vm_name))
 
     # The method is idempotent. Any failure raises exception such that it can be retried.
-    def destroy_instance(self, vm_name, node_uuid):
+    def destroy_instance(self, vm_name, node_uuid, skip_os_delete=False):
         vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
         if not vm:
             logging.info("[app] VM {} is not found".format(vm_name))
@@ -637,16 +707,18 @@ class AzureCloudAdmin():
         logging.info("[app] Deleted vm {}".format(vm_name))
 
         disk_dels = {}
-        os_disk_name = vm.storage_profile.os_disk.name
         data_disks = vm.storage_profile.data_disks
         for disk in data_disks:
             logging.info("[app] Deleting disk {}".format(disk.name))
-            disk_del = self.compute_client.disks.begin_delete(RESOURCE_GROUP, disk.name)
+            disk_del = self.delete_disk(disk.name)
             disk_dels[disk.name] = disk_del
 
-        logging.info("[app] Deleting os disk {}".format(os_disk_name))
-        disk_del = self.compute_client.disks.begin_delete(RESOURCE_GROUP, os_disk_name)
-        disk_dels[os_disk_name] = disk_del
+        # Skip OS delete during VM image upgrade so disk can be cloned and remounted.
+        if not skip_os_delete:
+            os_disk_name = vm.storage_profile.os_disk.name
+            logging.info("[app] Deleting os disk {}".format(os_disk_name))
+            disk_del = self.delete_disk(os_disk_name)
+            disk_dels[os_disk_name] = disk_del
 
         nic_name = self.get_nic_name(vm_name)
         ip_name = self.get_public_ip_name(vm_name)
@@ -938,6 +1010,7 @@ class AzureCloudAdmin():
         private_ip = nic.ip_configurations[0].private_ip_address
         public_ip = None
         ip_name = None
+        root_volume = vm.storage_profile.os_disk.managed_disk.id
         if (nic.ip_configurations[0].public_ip_address):
             ip_name = id_to_name(nic.ip_configurations[0].public_ip_address.id)
             public_ip = (self.network_client.public_ip_addresses
@@ -962,7 +1035,7 @@ class AzureCloudAdmin():
                 "instance_type": vm.hardware_profile.vm_size, "server_type": server_type,
                 "subnet": subnet, "nic": nic_name, "id": vm.name, "node_uuid": node_uuid,
                 "universe_uuid": universe_uuid, "instance_state": instance_state,
-                "is_running": is_running}
+                "is_running": is_running, "root_volume": root_volume}
 
     def get_dns_client(self, subscription_id):
         if self.dns_client is None:

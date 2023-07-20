@@ -562,7 +562,8 @@ class ReplaceRootVolumeMethod(AbstractInstancesMethod):
             id = args.search_pattern
             logging.info("==> Stopping instance {}".format(id))
             self.cloud.stop_instance(host_info)
-            if current_root_volume:
+            # Azure does not require unmounting because replacement is done in one API call.
+            if current_root_volume and self.cloud.name != "azu":
                 self.cloud.unmount_disk(host_info, current_root_volume)
                 unmounted = True
                 logging.info("==> Root volume {} unmounted from {}".format(
@@ -891,6 +892,7 @@ class CreateRootVolumesMethod(AbstractInstancesMethod):
         args.search_pattern = "{}-".format(unique_string) + args.search_pattern
         volume_id = self.create_master_volume(args)
         output = [volume_id]
+        logging.info("Create master volume output {}".format(output))
         num_disks = int(args.num_disks) - 1
         snapshot_creation_delay = None
         snapshot_creation_max_attempts = None
@@ -909,8 +911,9 @@ class CreateRootVolumesMethod(AbstractInstancesMethod):
         if num_disks > 0:
             logging.info("Cloning {} other disks using volume_id {}".format(num_disks, volume_id))
             if snapshot_creation_delay is not None and snapshot_creation_max_attempts is not None:
-                output.extend(self.cloud.clone_disk(args, volume_id, num_disks,
-                              args.snapshot_creation_delay, args.snapshot_creation_max_attempts))
+                output.extend(self.cloud.clone_disk(
+                    args, volume_id, num_disks,
+                    args.snapshot_creation_delay, args.snapshot_creation_max_attempts))
             else:
                 output.extend(self.cloud.clone_disk(args, volume_id, num_disks))
 

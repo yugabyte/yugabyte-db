@@ -990,7 +990,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
-    assertBadRequest(result, "VM image upgrade is only supported for AWS / GCP");
+    assertBadRequest(result, "VM image upgrade is only supported for cloud providers");
 
     ArgumentCaptor<VMImageUpgradeParams> argCaptor =
         ArgumentCaptor.forClass(VMImageUpgradeParams.class);
