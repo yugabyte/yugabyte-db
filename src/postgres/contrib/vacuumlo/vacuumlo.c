@@ -22,6 +22,7 @@
 #endif
 
 #include "catalog/pg_class_d.h"
+
 #include "common/connect.h"
 #include "common/logging.h"
 #include "common/string.h"

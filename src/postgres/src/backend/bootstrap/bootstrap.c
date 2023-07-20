@@ -381,7 +381,8 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 		                  "template1",
 		                  InvalidOid,
 		                  YbFirstBootstrapObjectId,
-		                  false /* colocated */);
+		                  false /* colocated */,
+		                  NULL /* retry_on_oid_collision */);
 	}
 
 	/*

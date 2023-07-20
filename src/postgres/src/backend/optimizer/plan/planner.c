@@ -1738,8 +1738,11 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		 * here.  If there are only non-locking rowmarks, they should be
 		 * handled by the ModifyTable node instead.  However, root->rowMarks
 		 * is what goes into the LockRows node.)
+		 *
+		 * For Yugabyte, some locks can be pushed down into an underlying scan.
+		 * We avoid adding a LockRows node in this case.
 		 */
-		if (parse->rowMarks)
+		if (parse->rowMarks && path->yb_path_info.yb_lock_mechanism == YB_NO_SCAN_LOCK)
 		{
 			path = (Path *) create_lockrows_path(root, final_rel, path,
 												 root->rowMarks,

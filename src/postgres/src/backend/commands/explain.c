@@ -256,6 +256,52 @@ YbExplainRpcRequestStat(YbExplainState *yb_es, YbStatLabel label, double count,
 							 timing / 1000000.0, 3, yb_es->es);
 }
 
+/* Maps a row mark type to a string. */
+static const char *
+YbRowMarkTypeToPgsqlString(RowMarkType row_mark_type)
+{
+	switch (row_mark_type)
+	{
+		case ROW_MARK_EXCLUSIVE:
+			return "FOR UPDATE";
+		case ROW_MARK_NOKEYEXCLUSIVE:
+			return "FOR NO KEY UPDATE";
+		case ROW_MARK_SHARE:
+			return "FOR SHARE";
+		case ROW_MARK_KEYSHARE:
+			return "FOR KEY SHARE";
+		default:
+			return "";
+	}
+}
+
+/* Explains a scan lock using row marks. */
+static void
+YbExplainScanLocks(YbLockMechanism yb_lock_mechanism, ExplainState *es)
+{
+	ListCell   *l;
+	const char *lock_mode;
+
+	if (yb_lock_mechanism == YB_NO_SCAN_LOCK)
+		return;
+
+	foreach(l, es->pstmt->rowMarks)
+	{
+		PlanRowMark *erm = (PlanRowMark *) lfirst(l);
+		if (erm->markType != ROW_MARK_REFERENCE &&
+			erm->markType != ROW_MARK_COPY)
+		{
+			lock_mode = YbRowMarkTypeToPgsqlString(erm->markType);
+			break;
+		}
+	}
+
+	if (es->format == EXPLAIN_FORMAT_TEXT)
+		appendStringInfo(es->str, " (Locked %s)", lock_mode);
+	else
+		ExplainPropertyText("Lock Type", lock_mode, es);
+}
+
 /*
  * ExplainQuery -
  *	  execute an EXPLAIN command
@@ -1653,10 +1699,12 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_ValuesScan:
 		case T_CteScan:
 		case T_WorkTableScan:
+			YbExplainScanLocks(((Scan *) plan)->yb_lock_mechanism, es);
 			ExplainScanTarget((Scan *) plan, es);
 			break;
 		case T_ForeignScan:
 		case T_CustomScan:
+			YbExplainScanLocks(((Scan *) plan)->yb_lock_mechanism, es);
 			if (((Scan *) plan)->scanrelid > 0)
 				ExplainScanTarget((Scan *) plan, es);
 			break;
@@ -1664,6 +1712,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			{
 				IndexScan  *indexscan = (IndexScan *) plan;
 
+				YbExplainScanLocks(((Scan *) plan)->yb_lock_mechanism, es);
 				ExplainIndexScanDetails(indexscan->indexid,
 										indexscan->indexorderdir,
 										es);
@@ -2278,6 +2327,14 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			break;
 		default:
 			break;
+	}
+
+	/* YB aggregate pushdown */
+	if (IsYugaByteEnabled())
+	{
+		List **aggrefs = YbPlanStateTryGetAggrefs(planstate);
+		if (aggrefs && *aggrefs != NIL)
+			ExplainPropertyBool("Partial Aggregate", true, es);
 	}
 
 	/*

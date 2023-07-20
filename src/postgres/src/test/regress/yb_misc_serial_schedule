@@ -16,3 +16,4 @@ test: yb_dependency
 test: yb_create_language
 test: yb_get_range_split_clause
 test: yb_create_table_like
+test: yb_explicit_row_lock_planning

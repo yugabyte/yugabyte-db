@@ -56,8 +56,6 @@
 /* Yugabyte includes */
 #include "executor/ybcModifyTable.h"
 
-/* YB_TODO(ena & mihnea@yugabyte) Rework COPY command */
-
 /*
  * No more than this many tuples per CopyMultiInsertBuffer
  *
@@ -120,6 +118,8 @@ void
 CopyFromErrorCallback(void *arg)
 {
 	CopyFromState cstate = (CopyFromState) arg;
+
+	pgstat_progress_update_param(PROGRESS_COPY_STATUS, CP_ERROR);
 
 	if (cstate->opts.binary)
 	{
@@ -543,7 +543,7 @@ CopyFrom(CopyFromState cstate)
 	ModifyTableState *mtstate;
 	ExprContext *econtext;
 	TupleTableSlot *singleslot = NULL;
-	MemoryContext oldcontext = CurrentMemoryContext;
+	MemoryContext oldcontext = GetCurrentMemoryContext();
 
 	PartitionTupleRouting *proute = NULL;
 	ErrorContextCallback errcallback;
@@ -558,8 +558,22 @@ CopyFrom(CopyFromState cstate)
 	bool		has_instead_insert_row_trig;
 	bool		leafpart_use_multi_insert = false;
 
+	/* Yb variables */
+	bool		useYBMultiInsert;
+	bool		useNonTxnInsert;
+	bool		has_more_tuples;
+
 	Assert(cstate->rel);
 	Assert(list_length(cstate->range_table) == 1);
+
+	/*
+	 * If the batch size is not explicitly set in the query by the user,
+	 * use the session variable value.
+	 */
+	if (cstate->opts.batch_size < 0)
+	{
+		cstate->opts.batch_size = yb_default_copy_from_rows_per_transaction;
+	}
 
 	/*
 	 * The target must be a plain, foreign, or partitioned relation, or have
@@ -665,6 +679,7 @@ CopyFrom(CopyFromState cstate)
 	ExecInitRangeTable(estate, cstate->range_table);
 	resultRelInfo = target_resultRelInfo = makeNode(ResultRelInfo);
 	ExecInitResultRelation(estate, resultRelInfo, 1);
+	estate->yb_es_is_fk_check_disabled = cstate->opts.disable_fk_check;
 
 	/* Verify the named relation is a valid target for INSERT */
 	CheckValidResultRel(resultRelInfo, CMD_INSERT);
@@ -714,6 +729,48 @@ CopyFrom(CopyFromState cstate)
 	if (cstate->whereClause)
 		cstate->qualexpr = ExecInitQual(castNode(List, cstate->whereClause),
 										&mtstate->ps);
+
+	if (cstate->opts.batch_size > 0)
+	{
+		/*
+		 * Batched copy is not supported
+		 * under the following use cases in which case
+		 * all rows will be copied over in a single transaction.
+		 */
+		int batch_size = 0;
+
+		if (!IsYBRelation(resultRelInfo->ri_RelationDesc))
+		{
+			Assert(resultRelInfo->ri_RelationDesc->rd_rel->relpersistence == RELPERSISTENCE_TEMP ||
+					resultRelInfo->ri_RelationDesc->rd_rel->relkind == RELKIND_FOREIGN_TABLE);
+			ereport(WARNING,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			 	 errmsg("Batched COPY is not supported on %s tables. "
+						"Defaulting to using one transaction for the entire copy.",
+						YbIsTempRelation(resultRelInfo->ri_RelationDesc) ? "temporary" : "foreign"),
+				 errhint("Either copy onto non-temporary table or set rows_per_transaction "
+						 "option to `0` to disable batching and remove this warning.")));
+		}
+		else if (YBIsDataSent())
+			ereport(WARNING,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("Batched COPY is not supported in transaction blocks. "
+						"Defaulting to using one transaction for the entire copy."),
+				 errhint("Either run this COPY outside of a transaction block or set "
+						 "rows_per_transaction option to `0` to disable batching and "
+						 "remove this warning.")));
+		else if (HasNonRITrigger(cstate->rel->trigdesc))
+			ereport(WARNING,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			 	 errmsg("Batched COPY is not supported on table with non RI trigger. "
+						"Defaulting to using one transaction for the entire copy."),
+				 errhint("Set rows_per_transaction option to `0` to disable batching "
+				 		 "and remove this warning.")));
+		else			
+			batch_size = cstate->opts.batch_size;
+
+		cstate->opts.batch_size = batch_size;
+	}
 
 	/*
 	 * It's generally more efficient to prepare a bunch of tuples for
@@ -784,6 +841,7 @@ CopyFrom(CopyFromState cstate)
 		 * flag that we must later determine if we can use bulk-inserts for
 		 * the partition being inserted into.
 		 */
+		useYBMultiInsert = IsYBRelation(resultRelInfo->ri_RelationDesc);
 		if (proute)
 			insertMethod = CIM_MULTI_CONDITIONAL;
 		else
@@ -791,6 +849,21 @@ CopyFrom(CopyFromState cstate)
 
 		CopyMultiInsertInfoInit(&multiInsertInfo, resultRelInfo, cstate,
 								estate, mycid, ti_options);
+	}
+
+	/*
+	 * Only use non-txn insert if it's explicitly enabled, the relation meets criteria for
+	 * multi insert (e.g. no triggers), and the relation does not have secondary indices.
+	 */
+	if (YBIsNonTxnCopyEnabled() &&
+		useYBMultiInsert &&
+		!YBCRelInfoHasSecondaryIndices(resultRelInfo))
+	{
+		useNonTxnInsert = true;
+	}
+	else
+	{
+		useNonTxnInsert = false;
 	}
 
 	/*
@@ -828,18 +901,51 @@ CopyFrom(CopyFromState cstate)
 	errcallback.previous = error_context_stack;
 	error_context_stack = &errcallback;
 
-	for (;;)
+	/* Warn if non-txn COPY enabled and relation does not meet non-txn criteria. */
+	if (YBIsNonTxnCopyEnabled() && !useNonTxnInsert)
+		ereport(WARNING,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("non-transactional COPY is not supported on this relation; "
+						"using transactional COPY instead"),
+				 errhint("Non-transactional COPY is not supported on relations with "
+						 "secondary indices or triggers.")));
+
+	has_more_tuples = true;
+
+	/* Skip num_initial_skipped_rows. */
+	for (uint64 i = 0; i < cstate->opts.num_initial_skipped_rows; i++)
+	{
+		has_more_tuples = NextCopyFrom(cstate, econtext, NULL, NULL, true /* skip_row */);
+		if (!has_more_tuples)
+			break;
+	}
+
+	/*
+	 * When batch size is not provided from the query option,
+	 * default behavior is to read each line from the file
+	 * until no more lines are left. If batch size is provided,
+	 * lines will be read in batch sizes at a time.
+	 */
+yb_process_more_batches:
+	for (int i = 0; cstate->opts.batch_size == 0 || i < cstate->opts.batch_size; i++)
 	{
 		TupleTableSlot *myslot;
 		bool		skip_tuple;
 
+		if (IsYBRelation(resultRelInfo->ri_RelationDesc))
+			MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+
 		CHECK_FOR_INTERRUPTS();
 
-		/*
-		 * Reset the per-tuple exprcontext. We do this after every tuple, to
-		 * clean-up after expression evaluations etc.
-		 */
-		ResetPerTupleExprContext(estate);
+		/* YB_REVIEW(neil) Find equivalent code for (nBufferedTuples == 0) */
+		if (!IsYBRelation(resultRelInfo->ri_RelationDesc))
+		{
+			/*
+			 * Reset the per-tuple exprcontext. We do this after every tuple, to
+			 * clean-up after expression evaluations etc.
+			 */
+			ResetPerTupleExprContext(estate);
+		}
 
 		/* select slot to (initially) load row into */
 		if (insertMethod == CIM_SINGLE || proute)
@@ -860,13 +966,15 @@ CopyFrom(CopyFromState cstate)
 		 * Switch to per-tuple context before calling NextCopyFrom, which does
 		 * evaluate default expressions etc. and requires per-tuple context.
 		 */
-		MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+		if (!IsYBRelation(resultRelInfo->ri_RelationDesc))
+			MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
 		ExecClearTuple(myslot);
 
 		/* Directly store the values/nulls array in the slot */
-		if (!NextCopyFrom(cstate, econtext, myslot->tts_values, myslot->tts_isnull,
-						  true /* skip_row */))
+		has_more_tuples = NextCopyFrom(cstate, econtext, myslot->tts_values, myslot->tts_isnull,
+									   true /* skip_row */);
+		if (!has_more_tuples)
 			break;
 
 		ExecStoreVirtualTuple(myslot);
@@ -878,7 +986,8 @@ CopyFrom(CopyFromState cstate)
 		myslot->tts_tableOid = RelationGetRelid(target_resultRelInfo->ri_RelationDesc);
 
 		/* Triggers and stuff need to be invoked in query context. */
-		MemoryContextSwitchTo(oldcontext);
+		if (!IsYBRelation(resultRelInfo->ri_RelationDesc))
+			MemoryContextSwitchTo(oldcontext);
 
 		if (cstate->whereClause)
 		{
@@ -1007,6 +1116,14 @@ CopyFrom(CopyFromState cstate)
 				}
 			}
 
+			/*
+			 * Tuple memory will be allocated to per row memory context
+			 * which will be cleaned up after every row gets processed.
+			 * Thus there is no need to clean the tuple memory.
+			 */
+			if (IsYBRelation(resultRelInfo->ri_RelationDesc))
+				myslot->tts_flags &= ~TTS_FLAG_SHOULDFREE;
+
 			/* ensure that triggers etc see the right relation  */
 			myslot->tts_tableOid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
 		}
@@ -1084,13 +1201,36 @@ CopyFrom(CopyFromState cstate)
 					List	   *recheckIndexes = NIL;
 
 					/* OK, store the tuple */
-					if (resultRelInfo->ri_FdwRoutine != NULL)
+					if (IsYBRelation(resultRelInfo->ri_RelationDesc))
 					{
+						/* YB_REVIEW(neil) Change executor to work with slot */
+						TupleDesc tupDesc = RelationGetDescr(cstate->rel);
+						HeapTuple tuple = ExecCopySlotHeapTuple(myslot);
+						if (useNonTxnInsert)
+						{
+							YBCExecuteNonTxnInsert(resultRelInfo->ri_RelationDesc,
+												   tupDesc,
+												   tuple,
+												   cstate->opts.on_conflict_action);
+						}
+						else
+						{
+							YBCExecuteInsert(resultRelInfo->ri_RelationDesc,
+											 tupDesc,
+											 tuple,
+											 cstate->opts.on_conflict_action);
+						}
+					}
+					else if (resultRelInfo->ri_FdwRoutine != NULL)
+					{
+						MemoryContext saved_context;
+						saved_context = MemoryContextSwitchTo(estate->es_query_cxt);
 						myslot = resultRelInfo->ri_FdwRoutine->ExecForeignInsert(estate,
 																				 resultRelInfo,
 																				 myslot,
 																				 NULL);
 
+						MemoryContextSwitchTo(saved_context);
 						if (myslot == NULL) /* "do nothing" */
 							continue;	/* next tuple please */
 
@@ -1127,6 +1267,12 @@ CopyFrom(CopyFromState cstate)
 			}
 
 			/*
+			 * Free context per row.
+			 */
+			if (IsYBRelation(cstate->rel))
+				ResetPerTupleExprContext(estate);
+
+			/*
 			 * We count only tuples not suppressed by a BEFORE INSERT trigger
 			 * or FDW; this is the same definition used by nodeModifyTable.c
 			 * for counting tuples inserted by an INSERT command.  Update
@@ -1134,8 +1280,40 @@ CopyFrom(CopyFromState cstate)
 			 */
 			pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED,
 										 ++processed);
+			pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
 		}
 	}
+
+	if (cstate->opts.batch_size > 0)
+	{
+		/* 
+		 * Handle queued AFTER triggers before committing. If there are errors,
+		 * do not commit the current batch. 
+		 */
+		AfterTriggerEndQuery(estate);
+
+		/*
+		 * Commit transaction per batch.
+		 * When CopyFrom method is called, we are already inside a transaction block
+		 * and relevant transaction state properties have been previously set.
+		 */
+		YBCCommitTransaction();
+
+		/* Update progress of the COPY command as well.
+		 */
+		YBInitializeTransaction();
+
+		/* Start a new AFTER trigger */
+		AfterTriggerBeginQuery();
+	}
+	else
+	{
+		/* We need to flush buffered operations so that error callback is executed */
+		YBFlushBufferedOperations();
+	}
+
+	if (has_more_tuples)
+		goto yb_process_more_batches;
 
 	/* Flush any remaining buffered tuples */
 	if (insertMethod != CIM_SINGLE)
@@ -1237,7 +1415,7 @@ BeginCopyFrom(ParseState *pstate,
 	 * We allocate everything used by a cstate in a new memory context. This
 	 * avoids memory leaks during repeated use of COPY in a query.
 	 */
-	cstate->copycontext = AllocSetContextCreate(CurrentMemoryContext,
+	cstate->copycontext = AllocSetContextCreate(GetCurrentMemoryContext(),
 												"COPY",
 												ALLOCSET_DEFAULT_SIZES);
 
@@ -1351,6 +1529,7 @@ BeginCopyFrom(ParseState *pstate,
 	}
 
 	cstate->copy_src = COPY_FILE;	/* default */
+	pgstat_progress_update_param(PROGRESS_COPY_STATUS, CP_IN_PROG);
 
 	cstate->whereClause = whereClause;
 
@@ -1492,7 +1671,20 @@ BeginCopyFrom(ParseState *pstate,
 		progress_vals[1] = PROGRESS_COPY_TYPE_PIPE;
 		Assert(!is_program);	/* the grammar does not allow this */
 		if (whereToSendOutput == DestRemote)
+		{
+			bool isDataSent = YBIsDataSent();
+			bool isDataSentForCurrQuery = YBIsDataSentForCurrQuery();
 			ReceiveCopyBegin(cstate);
+			/*
+			 * ReceiveCopyBegin sends a message back to the client
+			 * with the expected format of the copy data.
+			 * This implicitly causes YB data to be marked as sent
+			 * although the message does not contain any data from YB.
+			 * So we can safely roll back YBIsDataSent to its previous value.
+			 */
+			if (!isDataSent) YBMarkDataNotSent();
+			if (!isDataSentForCurrQuery) YBMarkDataNotSentForCurrQuery();
+		}
 		else
 			cstate->copy_file = stdin;
 	}
@@ -1588,6 +1780,7 @@ EndCopyFrom(CopyFromState cstate)
 	}
 
 	pgstat_progress_end_command();
+	pgstat_progress_update_param(PROGRESS_COPY_STATUS, CP_SUCCESS);
 
 	MemoryContextDelete(cstate->copycontext);
 	pfree(cstate);

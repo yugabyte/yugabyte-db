@@ -232,7 +232,8 @@ map_partition_varattnos(List *expr, int fromrel_varno,
 		 * Need to pass "yb_ignore_type_mismatch" else where for this process.
 		 */
 		part_attmap = build_attrmap_by_name(RelationGetDescr(to_rel),
-											RelationGetDescr(from_rel));
+											RelationGetDescr(from_rel),
+											false /* yb_ignore_type_mismatch */);
 
 		expr = (List *) map_variable_attnos((Node *) expr,
 											fromrel_varno, 0,

@@ -78,9 +78,10 @@ OBJS = \
 	spi.o \
 	tqueue.o \
 	tstoreReceiver.o \
+	ybcExpr.o \
+	ybcFunction.o \
 	ybc_fdw.o \
 	ybcModifyTable.o \
-	ybcExpr.o \
     nodeYbBatchedNestloop.o \
     nodeYbSeqscan.o
 

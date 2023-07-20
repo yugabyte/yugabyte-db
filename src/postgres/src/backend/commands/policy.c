@@ -209,7 +209,7 @@ RelationBuildRowSecurity(Relation relation)
 	 * a relcache flush.  However, to cover the possibility of an error
 	 * partway through, we don't make the context long-lived till we're done.
 	 */
-	rscxt = AllocSetContextCreate(CurrentMemoryContext,
+	rscxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 								  "row security descriptor",
 								  ALLOCSET_SMALL_SIZES);
 	MemoryContextCopyAndSetIdentifier(rscxt,

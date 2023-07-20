@@ -1577,13 +1577,10 @@ DefineIndex(Oid relationId,
 				}
 
 				childidxs = RelationGetIndexList(childrel);
-
-				/* YB_TODO "convert_tuples_by_name_map" is no longer called here.
-				 * Need to pass `false yb_ignore_type_mismatch` differently.
-				 */
 				attmap =
 					build_attrmap_by_name(RelationGetDescr(childrel),
-										  parentDesc);
+										  parentDesc,
+										  false /* yb_ignore_type_mismatch */);
 
 				foreach(cell, childidxs)
 				{

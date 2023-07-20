@@ -23,5 +23,6 @@ OBJS = \
 	knapsack.o \
 	pairingheap.o \
 	rbtree.o \
+	yb_percentile.o
 
 include $(top_srcdir)/src/backend/common.mk

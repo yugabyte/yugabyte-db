@@ -299,6 +299,7 @@ extern PGDLLIMPORT bool trace_sort;
 extern PGDLLIMPORT bool yb_enable_memory_tracking;
 extern PGDLLIMPORT int	yb_bnl_batch_size;
 extern PGDLLIMPORT bool  yb_bnl_enable_hashing;
+extern PGDLLIMPORT bool yb_lock_pk_single_rpc;
 
 /*
  * Functions exported by guc.c

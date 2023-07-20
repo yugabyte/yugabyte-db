@@ -942,7 +942,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		i++;
 	}
 
-	queryDesc->yb_query_stats = InstrAlloc(1, queryDesc->instrument_options);
+	queryDesc->yb_query_stats = InstrAlloc(1, queryDesc->instrument_options, false);
 
 	/*
 	 * Initialize the private state information for all the nodes in the query

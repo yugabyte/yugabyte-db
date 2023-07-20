@@ -84,6 +84,7 @@
 #include "utils/rel.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
+#include "utils/uuid.h"
 #include "fmgr.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
@@ -190,6 +191,12 @@ IsYugaByteEnabled()
 	return YBCPgIsYugaByteEnabled();
 }
 
+bool
+YbIsClientYsqlConnMgr()
+{
+	return IsYugaByteEnabled() && yb_is_client_ysqlconnmgr;
+}
+
 void
 CheckIsYBSupportedRelation(Relation relation)
 {
@@ -270,13 +277,6 @@ bool IsYBSystemColumn(int attrNum)
 	return (attrNum == YBRowIdAttributeNumber ||
 			attrNum == YBIdxBaseTupleIdAttributeNumber ||
 			attrNum == YBUniqueIdxKeySuffixAttributeNumber);
-}
-
-bool
-YBNeedRetryAfterCacheRefresh(ErrorData *edata)
-{
-	// TODO Inspect error code to distinguish retryable errors.
-	return true;
 }
 
 AttrNumber YBGetFirstLowInvalidAttrNumber(bool is_yb_relation)
@@ -451,10 +451,15 @@ IsYBReadCommitted()
 bool
 YBIsWaitQueueEnabled()
 {
+#ifdef NDEBUG
+  static bool kEnableWaitQueues = false;
+#else
+	static bool kEnableWaitQueues = true;
+#endif
 	static int cached_value = -1;
 	if (cached_value == -1)
 	{
-		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_wait_queues", false);
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_wait_queues", kEnableWaitQueues);
 	}
 	return IsYugaByteEnabled() && cached_value;
 }
@@ -657,6 +662,9 @@ YBInitPostgresBackend(
 		callbacks.GetCurrentYbMemctx = &GetCurrentYbMemctx;
 		callbacks.GetDebugQueryString = &GetDebugQueryString;
 		callbacks.WriteExecOutParam = &YbWriteExecOutParam;
+		callbacks.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch;
+		callbacks.PostgresEpochToUnixEpoch= &YbPostgresEpochToUnixEpoch;
+		callbacks.ConstructTextArrayDatum = &YbConstructTextArrayDatum;
 		YBCInitPgGate(type_table, count, callbacks);
 		YBCInstallTxnDdlHook();
 
@@ -1179,6 +1187,7 @@ PowerWithUpperLimit(double base, int exp, double upper_limit)
 bool yb_enable_create_with_table_oid = false;
 int yb_index_state_flags_update_delay = 1000;
 bool yb_enable_expression_pushdown = true;
+bool yb_enable_distinct_pushdown = true;
 bool yb_enable_optimizer_statistics = false;
 bool yb_bypass_cond_recheck = true;
 bool yb_make_next_ddl_statement_nonbreaking = false;
@@ -1579,6 +1588,34 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 *		  order to correctly invalidate negative cache entries
 			 */
 			*is_breaking_catalog_change = false;
+			if (node_tag == T_CreateRoleStmt) {
+				/*
+				 * If a create role statement does not reference another existing
+				 * role there is no need to increment catalog version.
+				 */
+				CreateRoleStmt *stmt = castNode(CreateRoleStmt, parsetree);
+				int nopts = list_length(stmt->options);
+				if (nopts == 0)
+					*is_catalog_version_increment = false;
+				else
+				{
+					bool reference_other_role = false;
+					ListCell   *lc;
+					foreach(lc, stmt->options)
+					{
+						DefElem *def = (DefElem *) lfirst(lc);
+						if (strcmp(def->defname, "rolemembers") == 0 ||
+							strcmp(def->defname, "adminmembers") == 0 ||
+							strcmp(def->defname, "addroleto") == 0)
+						{
+							reference_other_role = true;
+							break;
+						}
+					}
+					if (!reference_other_role)
+						*is_catalog_version_increment = false;
+				}
+			}
 			break;
 		}
 		case T_CreateStmt:
@@ -1691,7 +1728,6 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_AlterPolicyStmt:
 		case T_AlterPublicationStmt:
 		case T_AlterRoleSetStmt:
-		case T_AlterRoleStmt:
 		case T_AlterSeqStmt:
 		case T_AlterSubscriptionStmt:
 		case T_AlterSystemStmt:
@@ -1706,6 +1742,28 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		/* ALTER .. RENAME TO syntax gets parsed into a T_RenameStmt node. */
 		case T_RenameStmt:
 			break;
+
+		case T_AlterRoleStmt:
+		{
+			/*
+			 * If this is a simple alter role change password statement,
+			 * there is no need to increment catalog version. Password
+			 * is only used for authentication at connection setup time.
+			 * A new password does not affect existing connections that
+			 * were authenticated using the old password.
+			 */
+			AlterRoleStmt *stmt = castNode(AlterRoleStmt, parsetree);
+			if (list_length(stmt->options) == 1)
+			{
+				DefElem *def = (DefElem *) linitial(stmt->options);
+				if (strcmp(def->defname, "password") == 0)
+				{
+					*is_breaking_catalog_change = false;
+					*is_catalog_version_increment = false;
+				}
+			}
+			break;
+		}
 
 		case T_AlterTableStmt:
 		{
@@ -2656,6 +2714,26 @@ yb_get_effective_transaction_isolation_level(PG_FUNCTION_ARGS)
 	PG_RETURN_CSTRING(yb_fetch_effective_transaction_isolation_level());
 }
 
+Datum
+yb_cancel_transaction(PG_FUNCTION_ARGS)
+{
+	if (!IsYbDbAdminUser(GetUserId()))
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("permission denied to cancel transaction")));
+
+	pg_uuid_t *id = PG_GETARG_UUID_P(0);
+	YBCStatus status = YBCPgCancelTransaction(id->data);
+	if (status)
+	{
+		ereport(NOTICE,
+				(errmsg("failed to cancel transaction"),
+				 errdetail("%s", YBCMessageAsCString(status))));
+		PG_RETURN_BOOL(false);
+	}
+	PG_RETURN_BOOL(true);
+}
+
 /*
  * This PG function takes one optional bool input argument (legacy).
  * If the input argument is not specified or its value is false, this function
@@ -3418,19 +3496,34 @@ uint64_t YbGetSharedCatalogVersion()
 	return version;
 }
 
-void YBUpdateRowLockPolicyForSerializable(
-		int *effectiveWaitPolicy, LockWaitPolicy userLockWaitPolicy)
+void YBSetRowLockPolicy(int *docdb_wait_policy, LockWaitPolicy pg_wait_policy)
 {
-	/*
-	 * TODO(concurrency-control): We don't honour SKIP LOCKED/ NO WAIT yet in serializable isolation
-	 * level.
-	 */
-	if (userLockWaitPolicy == LockWaitSkip || userLockWaitPolicy == LockWaitError)
-		elog(WARNING, "%s clause is not supported yet for SERIALIZABLE isolation (GH issue #11761)",
-			userLockWaitPolicy == LockWaitSkip ? "SKIP LOCKED" : "NO WAIT");
+	if (XactIsoLevel == XACT_REPEATABLE_READ && pg_wait_policy == LockWaitError)
+	{
+		/* The user requested NOWAIT, which isn't allowed in RR. */
+		elog(WARNING, "Setting wait policy to NOWAIT which is not allowed in "
+					  "REPEATABLE READ isolation (GH issue #12166)");
+	}
 
-	*effectiveWaitPolicy = LockWaitBlock;
-	if (!YBIsWaitQueueEnabled())
+	if (IsolationIsSerializable())
+	{
+		/*
+		 * TODO(concurrency-control): We don't honour SKIP LOCKED/ NO WAIT yet in serializable
+		 * isolation level.
+		 */
+		if (pg_wait_policy == LockWaitSkip || pg_wait_policy == LockWaitError)
+			elog(WARNING, "%s clause is not supported yet for SERIALIZABLE isolation "
+						  "(GH issue #11761)",
+						  pg_wait_policy == LockWaitSkip ? "SKIP LOCKED" : "NO WAIT");
+
+		*docdb_wait_policy = LockWaitBlock;
+	}
+	else
+	{
+		*docdb_wait_policy = pg_wait_policy;
+	}
+
+	if (*docdb_wait_policy == LockWaitBlock && !YBIsWaitQueueEnabled())
 	{
 		/*
 		 * If wait-queues are not enabled, we default to the "Fail-on-Conflict" policy which is
@@ -3438,7 +3531,7 @@ void YBUpdateRowLockPolicyForSerializable(
 		 * "Fail-on-Conflict" and the reason why LockWaitError is not mapped to no-wait
 		 * semantics but to Fail-on-Conflict semantics).
 		 */
-		*effectiveWaitPolicy = LockWaitError;
+		*docdb_wait_policy = LockWaitError;
 	}
 }
 
@@ -3456,6 +3549,8 @@ static bool yb_is_batched_execution = false;
 bool YbIsBatchedExecution() {
 	return yb_is_batched_execution;
 }
+
+bool yb_is_client_ysqlconnmgr = false;
 
 void YbSetIsBatchedExecution(bool value) {
 	yb_is_batched_execution = value;

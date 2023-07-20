@@ -12,7 +12,9 @@ AlignAfterOpenBracket: Align
 AlignConsecutiveMacros: true
 AlignConsecutiveAssignments: false
 AlignConsecutiveBitFields: false
-AlignConsecutiveDeclarations: true
+# Leave AlignConsecutiveDeclarations to default as YB team can use either of the
+# styles. Not aligned is preferred in most cases but this is not enforced.
+# AlignConsecutiveDeclarations: false
 AlignEscapedNewlines: DontAlign
 AlignOperands: Align
 AlignTrailingComments: true

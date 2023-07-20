@@ -492,7 +492,7 @@ ybpgm_ExecutorStart(QueryDesc *queryDesc, int eflags)
   {
     MemoryContext oldcxt;
     oldcxt = MemoryContextSwitchTo(queryDesc->estate->es_query_cxt);
-    queryDesc->totaltime = InstrAlloc(1, INSTRUMENT_TIMER);
+    queryDesc->totaltime = InstrAlloc(1, INSTRUMENT_TIMER, false);
     MemoryContextSwitchTo(oldcxt);
   }
 }

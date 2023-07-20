@@ -639,11 +639,7 @@ index_fetch_heap(IndexScanDesc scan, TupleTableSlot *slot)
 	 * - If YugaByte returns a heap_tuple, all requested data was already selected in the tuple.
 	 */
 	if (IsYBRelation(scan->heapRelation))
-	{
-		if (scan->xs_hitup != 0)
-			return scan->xs_hitup;
-		return YbFetchTableSlot(scan->heapRelation, &scan->xs_heaptid, slot);
-	}
+		return scan->xs_hitup;
 
 	found = table_index_fetch_tuple(scan->xs_heapfetch, &scan->xs_heaptid,
 									scan->xs_snapshot, slot,

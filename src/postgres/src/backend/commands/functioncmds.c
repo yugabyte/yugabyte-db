@@ -2400,7 +2400,6 @@ CallStmtResultDesc(CallStmt *stmt)
 ObjectAddress
 AlterFunctionOwner(AlterOwnerStmt *stmt, Oid newOwnerId)
 {
-	Oid			procId;
 	Relation	relation;
 	ObjectAddress address;
 	HeapTuple	tup;
@@ -2420,18 +2419,11 @@ AlterFunctionOwner(AlterOwnerStmt *stmt, Oid newOwnerId)
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("function with OID %u does not exist", address.objectId)));
 
-	/* YB_TODO(paullee@yugabyte)
-	 * - OID is now a regular column.
-	 * - Change code to select its value accordingly.
-	 */
-#ifdef YB_TODO
-	procId = HeapTupleGetOid(tup);
-#endif
-	procId = YB_HACK_INVALID_OID;
-
 	AlterFunctionOwner_internal(relation, tup, newOwnerId);
 
-	ObjectAddressSet(address, ProcedureRelationId, procId);
+	/* YB_TEST(neil) address should already have procid (address.objectid == tup->oid?)
+	 *   ObjectAddressSet(address, ProcedureRelationId, procId);
+	 */
 
 	heap_freetuple(tup);
 
@@ -2446,10 +2438,12 @@ AlterFunctionOwner(AlterOwnerStmt *stmt, Oid newOwnerId)
 void
 AlterFunctionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 {
+	Oid procId;
 	Form_pg_proc proc;
 	Oid namespaceId;
 
 	proc = (Form_pg_proc) GETSTRUCT(tup);
+	procId = proc->oid;
 	
 	/* Assigning a function to the same owner is a no-op */
 	if (proc->proowner == newOwnerId)
@@ -2484,17 +2478,13 @@ AlterFunctionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 	proc->proowner = newOwnerId;
 	CatalogTupleUpdate(rel, &tup->t_self, tup);
 
-	/* YB_TODO(paullee@yugabyte)
-	 * - OID is now a regular column.
-	 * - Change code to select its value accordingly.
-	 */
 	/* Update owner dependency reference */
 	changeDependencyOnOwner(ProcedureRelationId,
-							YB_HACK_INVALID_OID /* HeapTupleGetOid(tup) */,
+							procId,
 							newOwnerId);
 
 	InvokeObjectPostAlterHook(ProcedureRelationId,
-							  YB_HACK_INVALID_OID /* HeapTupleGetOid(tup) */,
+							  procId,
 							  0);
 }
 
@@ -2543,12 +2533,8 @@ RenameFunction(RenameStmt *stmt, const char *newname)
 	namestrcpy(&(((Form_pg_proc) GETSTRUCT(tup))->proname), newname);
 	CatalogTupleUpdate(relation, &tup->t_self, tup);
 
-	/* YB_TODO(paullee@yugabyte)
-	 * - OID is now a regular column.
-	 * - Change code to select its value accordingly.
-	 */
 	InvokeObjectPostAlterHook(ProcedureRelationId,
-							  YB_HACK_INVALID_OID /* HeapTupleGetOid(tup) */,
+							  proc->oid,
 							  0);
 
 	heap_freetuple(tup);

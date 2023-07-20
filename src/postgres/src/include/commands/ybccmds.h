@@ -36,7 +36,8 @@
 /*  Database Functions -------------------------------------------------------------------------- */
 
 extern void YBCCreateDatabase(
-	Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated);
+	Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated,
+	bool *retry_on_oid_collision);
 
 extern void YBCDropDatabase(Oid dboid, const char *dbname);
 
