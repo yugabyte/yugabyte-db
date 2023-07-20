@@ -446,6 +446,10 @@ Status ExternalMiniCluster::Restart() {
 
   RETURN_NOT_OK(WaitForTabletServerCount(tablet_servers_.size(), kTabletServerRegistrationTimeout));
 
+  // Give some more time for the cluster to be ready. If we proceed to run the
+  // unit test prematurely before the master/tserver are fully ready, deadlock
+  // can happen which leads to test flakiness.
+  SleepFor(2s);
   running_ = true;
   return Status::OK();
 }
