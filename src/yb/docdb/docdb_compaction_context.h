@@ -83,9 +83,10 @@ constexpr SchemaVersion kLatestSchemaVersion = std::numeric_limits<SchemaVersion
 class SchemaPackingProvider {
  public:
   // Returns schema packing for provided cotable_id and schema version.
+  // Passing Uuid::Nil() for cotable_id indicates the primary table.
   // If schema_version is kLatestSchemaVersion, then latest possible schema packing is returned.
   virtual Result<CompactionSchemaInfo> CotablePacking(
-      const Uuid& table_id, uint32_t schema_version, HybridTime history_cutoff) = 0;
+      const Uuid& cotable_id, uint32_t schema_version, HybridTime history_cutoff) = 0;
 
   // Returns schema packing for provided colocation_id and schema version.
   // If schema_version is kLatestSchemaVersion, then latest possible schema packing is returned.

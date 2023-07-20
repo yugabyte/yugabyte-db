@@ -12,6 +12,7 @@
 //
 #include "yb/docdb/kv_debug.h"
 
+#include <functional>
 #include <string>
 
 #include "yb/common/common.pb.h"
@@ -19,6 +20,7 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/docdb-internal.h"
+#include "yb/docdb/docdb_compaction_context.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/schema_packing.h"
@@ -35,44 +37,39 @@
 namespace yb {
 namespace docdb {
 
-Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type,
-                                       HybridTimeRequired ht_required) {
+Result<std::string> DocDBKeyToDebugStr(
+    Slice key_slice, StorageDbType db_type, HybridTimeRequired ht_required) {
   auto key_type = GetKeyType(key_slice, db_type);
   SubDocKey subdoc_key;
   switch (key_type) {
-    case KeyType::kIntentKey:
-    {
+    case KeyType::kIntentKey: {
       auto decoded_intent_key = VERIFY_RESULT(DecodeIntentKey(key_slice));
-      RETURN_NOT_OK(subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(
-          decoded_intent_key.intent_prefix));
+      RETURN_NOT_OK(
+          subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(decoded_intent_key.intent_prefix));
       return subdoc_key.ToString(AutoDecodeKeys::kTrue) + " " +
-             ToString(decoded_intent_key.intent_types) + " " +
-             decoded_intent_key.doc_ht.ToString();
+             ToString(decoded_intent_key.intent_types) + " " + decoded_intent_key.doc_ht.ToString();
     }
-    case KeyType::kReverseTxnKey:
-    {
+    case KeyType::kReverseTxnKey: {
       RETURN_NOT_OK(key_slice.consume_byte(KeyEntryTypeAsChar::kTransactionId));
       auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&key_slice));
       auto doc_ht = VERIFY_RESULT_PREPEND(
           DecodeInvertedDocHt(key_slice), Format("Reverse txn record for: $0", transaction_id));
       return Format("TXN REV $0 $1", transaction_id, doc_ht);
     }
-    case KeyType::kTransactionMetadata:
-    {
+    case KeyType::kTransactionMetadata: {
       RETURN_NOT_OK(key_slice.consume_byte(KeyEntryTypeAsChar::kTransactionId));
       auto transaction_id = DecodeTransactionId(&key_slice);
       RETURN_NOT_OK(transaction_id);
       return Format("TXN META $0", *transaction_id);
     }
-    case KeyType::kEmpty: FALLTHROUGH_INTENDED;
+    case KeyType::kEmpty:
+      FALLTHROUGH_INTENDED;
     case KeyType::kPlainSubDocKey:
       RETURN_NOT_OK_PREPEND(
           subdoc_key.FullyDecodeFrom(key_slice, ht_required),
-          "Error: failed decoding SubDocKey " +
-          FormatSliceAsStr(key_slice));
+          "Error: failed decoding SubDocKey " + FormatSliceAsStr(key_slice));
       return subdoc_key.ToString(AutoDecodeKeys::kTrue);
-    case KeyType::kExternalIntents:
-    {
+    case KeyType::kExternalIntents: {
       RETURN_NOT_OK(key_slice.consume_byte(KeyEntryTypeAsChar::kExternalTransactionId));
       auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&key_slice));
       auto doc_hybrid_time = VERIFY_RESULT_PREPEND(
@@ -85,9 +82,50 @@ Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type,
 
 namespace {
 
+using PackingInfoPtr = std::shared_ptr<const SchemaPacking>;
+using PackedRowToPackingInfoPtrFunc = std::function<Result<PackingInfoPtr>(Slice* packed_row)>;
+
+Result<PackedRowToPackingInfoPtrFunc> GetPackedRowToPackingInfoPtrFunc(
+    const Slice& key, KeyType key_type,
+    SchemaPackingProvider* schema_packing_provider /*null ok*/) {
+  // Extract cotable_id and/or colocation_id from key if present.
+  Uuid cotable_id = Uuid::Nil();
+  ColocationId colocation_id = kColocationIdNotSet;
+  if (key_type == KeyType::kPlainSubDocKey || key_type == KeyType::kIntentKey) {
+    SubDocKey subdoc_key;
+    RETURN_NOT_OK(subdoc_key.FullyDecodeFrom(key, HybridTimeRequired::kFalse));
+    auto& doc_key = subdoc_key.doc_key();
+    if (doc_key.has_cotable_id()) {
+      cotable_id = doc_key.cotable_id();
+    }
+    colocation_id = doc_key.colocation_id();
+  }
+
+  // We are done processing the key, now wait for the value.
+  return [schema_packing_provider, cotable_id,
+          colocation_id](Slice* packed_row) -> Result<PackingInfoPtr> {
+    auto schema_version =
+        narrow_cast<SchemaVersion>(VERIFY_RESULT(util::FastDecodeUnsignedVarInt(packed_row)));
+    if (!schema_packing_provider) {
+      return STATUS(NotFound, "No packing information available");
+    }
+    CompactionSchemaInfo compaction_schema_info;
+    if (colocation_id != kColocationIdNotSet) {
+      compaction_schema_info = VERIFY_RESULT(schema_packing_provider->ColocationPacking(
+          colocation_id, schema_version, HybridTime::kMax));
+    } else {
+      compaction_schema_info = VERIFY_RESULT(
+          schema_packing_provider->CotablePacking(cotable_id, schema_version, HybridTime::kMax));
+    }
+    return compaction_schema_info.schema_packing;
+  };
+}
+
 Result<std::string> DocDBValueToDebugStrInternal(
-    Slice value_slice, KeyType key_type,
-    const SchemaPackingStorage& schema_packing_storage) {
+    KeyType key_type, Slice key, Slice value_slice,
+    SchemaPackingProvider* schema_packing_provider /*null ok*/) {
+  auto packed_row_to_packing_info_func =
+      VERIFY_RESULT(GetPackedRowToPackingInfoPtrFunc(key, key_type, schema_packing_provider));
   std::string prefix;
   if (key_type == KeyType::kIntentKey) {
     auto txn_id_res = VERIFY_RESULT(DecodeTransactionIdFromIntentValue(&value_slice));
@@ -113,11 +151,11 @@ Result<std::string> DocDBValueToDebugStrInternal(
           Format("Error: failed to decode value $0", prefix));
       return prefix + v.ToString();
     } else {
-      const SchemaPacking& packing = VERIFY_RESULT(schema_packing_storage.GetPacking(&value_slice));
+      auto packing = VERIFY_RESULT(packed_row_to_packing_info_func(&value_slice));
       prefix += "{";
-      for (size_t i = 0; i != packing.columns(); ++i) {
-        auto slice = packing.GetValue(i, value_slice);
-        const auto& column_data = packing.column_packing_data(i);
+      for (size_t i = 0; i != packing->columns(); ++i) {
+        auto slice = packing->GetValue(i, value_slice);
+        const auto& column_data = packing->column_packing_data(i);
         prefix += " ";
         prefix += column_data.id.ToString();
         prefix += ": ";
@@ -147,15 +185,13 @@ Result<std::string> DocDBValueToDebugStrInternal(
 }  // namespace
 
 Result<std::string> DocDBValueToDebugStr(
-    Slice key, StorageDbType db_type, Slice value,
-    const SchemaPackingStorage& schema_packing_storage) {
-
+    Slice key, StorageDbType db_type, Slice value, SchemaPackingProvider* schema_packing_provider) {
   auto key_type = GetKeyType(key, db_type);
-  return DocDBValueToDebugStr(key_type, key, value, schema_packing_storage);
+  return DocDBValueToDebugStr(key_type, key, value, schema_packing_provider);
 }
 
 Result<std::string> DocDBValueToDebugStr(
-    KeyType key_type, Slice key, Slice value, const SchemaPackingStorage& schema_packing_storage) {
+    KeyType key_type, Slice key, Slice value, SchemaPackingProvider* schema_packing_provider) {
   switch (key_type) {
     case KeyType::kTransactionMetadata: {
       TransactionMetadataPB metadata_pb;
@@ -167,10 +203,13 @@ Result<std::string> DocDBValueToDebugStr(
     case KeyType::kReverseTxnKey:
       return DocDBKeyToDebugStr(value, StorageDbType::kIntents);
 
-    case KeyType::kEmpty: FALLTHROUGH_INTENDED;
-    case KeyType::kIntentKey: FALLTHROUGH_INTENDED;
-    case KeyType::kPlainSubDocKey:
-      return DocDBValueToDebugStrInternal(value, key_type, schema_packing_storage);
+    case KeyType::kEmpty:
+      FALLTHROUGH_INTENDED;
+    case KeyType::kIntentKey:
+      FALLTHROUGH_INTENDED;
+    case KeyType::kPlainSubDocKey: {
+      return DocDBValueToDebugStrInternal(key_type, key, value, schema_packing_provider);
+    }
 
     case KeyType::kExternalIntents: {
       std::vector<std::string> intents;
@@ -197,16 +236,17 @@ Result<std::string> DocDBValueToDebugStr(
         if (len == 0) {
           break;
         }
-        RETURN_NOT_OK(
-            sub_doc_key.FullyDecodeFrom(value.Prefix(len), docdb::HybridTimeRequired::kFalse));
+        Slice local_key = value.Prefix(len);
         value.remove_prefix(len);
+        RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(local_key, HybridTimeRequired::kFalse));
         len = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&value));
+        Slice local_value = value.Prefix(len);
+        value.remove_prefix(len);
         intents.push_back(Format(
             "$0 -> $1",
             sub_doc_key,
             VERIFY_RESULT(DocDBValueToDebugStrInternal(
-                value.Prefix(len), KeyType::kPlainSubDocKey, schema_packing_storage))));
-        value.remove_prefix(len);
+                KeyType::kPlainSubDocKey, local_key, local_value, schema_packing_provider))));
       }
       DCHECK(value.empty());
       if (header_byte == docdb::KeyEntryTypeAsChar::kSubTransactionId) {
@@ -219,6 +259,53 @@ Result<std::string> DocDBValueToDebugStr(
     }
   }
   FATAL_INVALID_ENUM_VALUE(KeyType, key_type);
+}
+
+// TODO(mlillibridge): remove this class and the next two functions in part two of
+// [#16665,14308] DocDB: fix logging of RocksDB write batches when packing is used
+class SchemaPackingProviderFromSchemaPackingStorage : public SchemaPackingProvider {
+ public:
+  explicit SchemaPackingProviderFromSchemaPackingStorage(
+      const SchemaPackingStorage& schema_packing_storage)
+      : schema_packing_storage_(schema_packing_storage) {}
+
+  Result<CompactionSchemaInfo> CotablePacking(
+      const Uuid& table_id, uint32_t schema_version, HybridTime history_cutoff) override {
+    // ignoring the table_id is not strictly correct but it's what the current code does
+    if (schema_version == kLatestSchemaVersion) {
+      schema_version = 0;
+    }
+    auto& packing = VERIFY_RESULT_REF(schema_packing_storage_.GetPacking(schema_version));
+    return CompactionSchemaInfo{
+        .table_type = TableType::YQL_TABLE_TYPE,
+        .schema_version = schema_version,
+        .schema_packing = std::make_shared<SchemaPacking>(packing),
+        .cotable_id = table_id,
+        .deleted_cols = {},
+        .enabled = PackedRowEnabled(TableType::YQL_TABLE_TYPE, false)};
+  }
+
+  Result<CompactionSchemaInfo> ColocationPacking(
+      ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) override {
+    // this is not strictly correct but it's what the current code does
+    return CotablePacking(Uuid::Nil(), schema_version, history_cutoff);
+  }
+
+  const SchemaPackingStorage& schema_packing_storage_;
+};
+
+Result<std::string> DocDBValueToDebugStr(
+    KeyType key_type, Slice key, Slice value,
+    const SchemaPackingStorage& schema_packing_storage) {
+  SchemaPackingProviderFromSchemaPackingStorage schema_packing_provider{schema_packing_storage};
+  return DocDBValueToDebugStr(key_type, key, value, &schema_packing_provider);
+}
+
+Result<std::string> DocDBValueToDebugStr(
+    Slice key, StorageDbType db_type, Slice value,
+    const SchemaPackingStorage& schema_packing_storage) {
+  SchemaPackingProviderFromSchemaPackingStorage schema_packing_provider{schema_packing_storage};
+  return DocDBValueToDebugStr(key, db_type, value, &schema_packing_provider);
 }
 
 }  // namespace docdb

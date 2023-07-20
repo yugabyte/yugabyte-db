@@ -136,6 +136,8 @@ class SchemaPackingStorage {
 
   bool HasVersionBelow(SchemaVersion version) const;
 
+  std::string ToString() const;
+
   bool operator==(const SchemaPackingStorage&) const = default;
 
  private:

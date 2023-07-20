@@ -825,6 +825,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return external_txn_intents_state_.get();
   }
 
+  docdb::SchemaPackingProvider& GetSchemaPackingProvider();
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;

@@ -48,6 +48,7 @@ class RedisWriteOperation;
 class RowPacker;
 class ScanChoices;
 class SchemaPacking;
+class SchemaPackingProvider;
 class SchemaPackingStorage;
 class SharedLockManager;
 class TransactionStatusCache;

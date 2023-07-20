@@ -904,12 +904,11 @@ DocWriteBatchFormatter::DocWriteBatchFormatter(
     StorageDbType storage_db_type,
     BinaryOutputFormat binary_output_format,
     WriteBatchOutputFormat batch_output_format,
-    std::string line_prefix)
-    : WriteBatchFormatter(binary_output_format,
-                          batch_output_format,
-                          std::move(line_prefix)),
-      storage_db_type_(storage_db_type) {
-}
+    std::string line_prefix,
+    SchemaPackingProvider* schema_packing_provider)
+    : WriteBatchFormatter(binary_output_format, batch_output_format, std::move(line_prefix)),
+      storage_db_type_(storage_db_type),
+      schema_packing_provider_(schema_packing_provider) {}
 
 std::string DocWriteBatchFormatter::FormatKey(const Slice& key) {
   const auto key_result = DocDBKeyToDebugStr(key, storage_db_type_);
@@ -924,8 +923,7 @@ std::string DocWriteBatchFormatter::FormatKey(const Slice& key) {
 
 std::string DocWriteBatchFormatter::FormatValue(const Slice& key, const Slice& value) {
   auto key_type = GetKeyType(key, storage_db_type_);
-  const auto value_result = DocDBValueToDebugStr(
-      key_type, key, value, SchemaPackingStorage(TableType::YQL_TABLE_TYPE));
+  const auto value_result = DocDBValueToDebugStr(key_type, key, value, schema_packing_provider_);
   if (value_result.ok()) {
     return *value_result;
   }
@@ -940,9 +938,11 @@ Result<std::string> WriteBatchToString(
     StorageDbType storage_db_type,
     BinaryOutputFormat binary_output_format,
     WriteBatchOutputFormat batch_output_format,
-    const std::string& line_prefix) {
+    std::string line_prefix,
+    SchemaPackingProvider* schema_packing_provider) {
   DocWriteBatchFormatter formatter(
-      storage_db_type, binary_output_format, batch_output_format, line_prefix);
+      storage_db_type, binary_output_format, batch_output_format, line_prefix,
+      schema_packing_provider);
   RETURN_NOT_OK(write_batch.Iterate(&formatter));
   return formatter.str();
 }

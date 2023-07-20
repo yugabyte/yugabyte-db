@@ -45,7 +45,7 @@ std::pair<Result<std::string>, Result<std::string>> DumpEntryToString(
     return { key_str.status(), value.ToDebugHexString() };
   }
   const KeyType key_type = GetKeyType(key, db_type);
-  return { key_str, DocDBValueToDebugStr(key_type, *key_str, value, packing_storage) };
+  return { key_str, DocDBValueToDebugStr(key_type, key, value, packing_storage) };
 }
 
 template <class DumpStringFunc>
