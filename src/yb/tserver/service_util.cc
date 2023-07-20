@@ -301,12 +301,20 @@ Result<TabletPeerTablet> DoLookupTabletPeer(
 Result<TabletPeerTablet> LookupTabletPeer(
     TabletPeerLookupIf* tablet_manager,
     const TabletId& tablet_id) {
+  auto wait_state = util::WaitStateInfo::CurrentWaitState();
+  if (wait_state) {
+    wait_state->UpdateAuxInfo(util::AUHAuxInfo{ .tablet_id = tablet_id });
+  }
   return DoLookupTabletPeer(tablet_manager, tablet_id);
 }
 
 Result<TabletPeerTablet> LookupTabletPeer(
     TabletPeerLookupIf* tablet_manager,
     const Slice& tablet_id) {
+  auto wait_state = util::WaitStateInfo::CurrentWaitState();
+  if (wait_state) {
+    wait_state->UpdateAuxInfo(util::AUHAuxInfo{ .tablet_id = tablet_id.ToBuffer() });
+  }
   return DoLookupTabletPeer(tablet_manager, tablet_id);
 }
 
