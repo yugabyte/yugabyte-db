@@ -38,6 +38,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/trace.h"
+#include "yb/util/wait_state.h"
 
 using namespace std::literals;
 
@@ -540,6 +541,7 @@ Status ReadQuery::Complete() {
 }
 
 Result<ReadHybridTime> ReadQuery::DoRead() {
+  SCOPED_WAIT_STATUS(util::WaitStateCode::DoRead);
   Result<ReadHybridTime> result{ReadHybridTime()};
   {
     LongOperationTracker long_operation_tracker("Read", 1s);

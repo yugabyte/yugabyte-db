@@ -82,8 +82,20 @@ ybcstat_get_wait_event_type(uint32_t wait_event_info) {
         case YB_PG_WAIT_PERFORM:
             event_type = "Perform";
             break;
-        case YB_TSERVER_WAIT_RPC:
-            event_type = "RPC Wait";
+        case YB_RPC:
+            event_type = "RPC";
+            break;
+        case YB_TABLET_WAIT:
+            event_type = "Tablet";
+            break;
+        case YB_CONSENSUS:
+            event_type = "Consensus";
+            break;
+        case YB_CLIENT:
+            event_type = "YBClient";
+            break;
+        case YB_ROCKSDB:
+            event_type = "Rocksdb";
             break;
         case YB_FLUSH_AND_COMPACTION:
             event_type = "Flush and Compaction";

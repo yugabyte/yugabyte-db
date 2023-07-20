@@ -72,6 +72,7 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
+#include "yb/util/wait_state.h"
 
 // When this flag is set to false and we have separate errors for operation, then batcher would
 // report IO Error status. Otherwise we will try to combine errors from separate operation to
@@ -195,6 +196,7 @@ void Batcher::FlushFinished() {
 
 void Batcher::Run() {
   flush_callback_(combined_error_);
+  SET_WAIT_STATUS(util::WaitStateCode::YBCCallbackCalled);
   flush_callback_ = StatusFunctor();
 }
 
@@ -310,6 +312,7 @@ void Batcher::CombineError(const InFlightOp& in_flight_op) {
 }
 
 void Batcher::LookupTabletFor(InFlightOp* op) {
+  SET_WAIT_STATUS(util::WaitStateCode::LookingUpTablet);
   auto shared_this = shared_from_this();
   client_->data_->meta_cache_->LookupTabletByKey(
       op->yb_op->mutable_table(), op->partition_key, deadline_,
@@ -407,6 +410,7 @@ std::pair<std::map<PartitionKey, Status>, std::map<RetryableRequestId, Status>>
 }
 
 void Batcher::AllLookupsDone() {
+  SET_WAIT_STATUS(util::WaitStateCode::TabletLookupFinished);
   // We're only ready to flush if both of the following conditions are true:
   // 1. The batcher is in the "resolving tablets" state (i.e. FlushAsync was called).
   // 2. All outstanding ops have finished lookup. Why? To avoid a situation
@@ -567,6 +571,7 @@ void Batcher::ExecuteOperations(Initial initial) {
     }
     rpc->SendRpc();
   }
+  SET_WAIT_STATUS(util::WaitStateCode::YBClientRpcsSent);
 }
 
 rpc::Messenger* Batcher::messenger() const {
