@@ -293,18 +293,13 @@ static void auh_entry_store(TimestampTz auh_time,
   AUHEntryArray[inserted].wait_event = wait_event;
   AUHEntryArray[inserted].request_id = request_id;
 
-  int len = 1;
 
   if (top_level_request_id) {
     AUHEntryArray[inserted].top_level_request_id[0] = top_level_request_id[0];
     AUHEntryArray[inserted].top_level_request_id[1] = top_level_request_id[1];
-
-    // ereport(LOG, (errmsg("top_level_reqid : %llu - %llu", top_level_request_id[0], top_level_request_id[1])));
   }
 
-  // memcpy(AUHEntryArray[inserted].top_level_request_id, top_level_request_id, len);
-
-  len = Min(strlen(wait_event_aux) + 1, 15);
+  int len = Min(strlen(wait_event_aux) + 1, 15);
   memcpy(AUHEntryArray[inserted].wait_event_aux, wait_event_aux, len);
   AUHEntryArray[inserted].wait_event_aux[len] = '\0';
 
@@ -415,10 +410,10 @@ pg_active_universe_history_internal(FunctionCallInfo fcinfo)
     else
       break;
 
-    char top_level_request_id[16];
+    char top_level_request_id[17];
     top_level_request_id_uint_to_char(top_level_request_id, AUHEntryArray[i].top_level_request_id);
 
-    ereport(LOG, (errmsg("%llu --- %llu :: %s", AUHEntryArray[i].top_level_request_id[0], AUHEntryArray[i].top_level_request_id[1], top_level_request_id)));
+    top_level_request_id[16] = '\0';
 
     // top level request id
     if (AUHEntryArray[i].top_level_request_id[0] != '\0')
