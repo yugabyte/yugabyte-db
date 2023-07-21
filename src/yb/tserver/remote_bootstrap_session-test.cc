@@ -191,7 +191,7 @@ void RemoteBootstrapSessionTest::PopulateTablet() {
 void RemoteBootstrapSessionTest::InitSession() {
   session_.reset(new RemoteBootstrapSession(
       tablet_peer_, "TestSession", "FakeUUID", nullptr /* nsessions */));
-  ASSERT_OK(session_->Init());
+  ASSERT_OK(session_->InitBootstrapSession());
 }
 
 }  // namespace tserver
