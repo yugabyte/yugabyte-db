@@ -504,7 +504,11 @@ Status TabletServer::InitAutoFlags() {
         options_.HostsString(), *opts_.GetMasterAddresses(), ApplyNonRuntimeAutoFlags::kTrue));
   }
 
-  return Status::OK();
+  return RpcAndWebServerBase::InitAutoFlags();
+}
+
+Result<std::unordered_set<std::string>> TabletServer::GetAvailableAutoFlagsForServer() const {
+  return auto_flags_manager_->GetAvailableAutoFlagsForServer();
 }
 
 uint32_t TabletServer::GetAutoFlagConfigVersion() const {
