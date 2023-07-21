@@ -1253,8 +1253,11 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.update_ansible_vars_with_args(args)
 
         if args.gflags is not None:
-            if args.package:
-                raise YBOpsRuntimeError("When changing gflags, do not set packages info.")
+            # Allow gflag to be set during software upgrade 'install-software' to include
+            #   cluster_uuid gflag for newer db releases.
+            if args.package and "install-software" not in args.tags:
+                raise YBOpsRuntimeError("When changing gflags, do not set packages info " +
+                                        "unless installing software during software upgrade.")
             self.extra_vars["gflags"] = json.loads(args.gflags)
 
         if args.package is not None:

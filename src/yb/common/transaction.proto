@@ -104,18 +104,20 @@ message LockInfoPB {
 
   repeated bytes range_cols = 2;
 
-  optional uint32 column_id = 3;
+  optional int32 attnum = 3;
 
-  optional bool multiple_rows_locked = 4;
+  optional uint32 column_id = 4;
+
+  optional bool multiple_rows_locked = 5;
 
   // If this is set, then the lock has been granted.
-  optional fixed64 wait_end_ht = 5;
+  optional fixed64 wait_end_ht = 6;
 
-  optional uint32 subtransaction_id = 6;
+  optional uint32 subtransaction_id = 7;
 
-  optional bool is_explicit = 7;
+  optional bool is_explicit = 8;
 
-  repeated LockMode modes = 8;
+  repeated LockMode modes = 9;
 }
 
 message TabletLockInfoPB {

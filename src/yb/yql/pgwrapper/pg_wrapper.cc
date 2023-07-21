@@ -177,6 +177,12 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_pg_locks, kLocalVolatile, false, tru
     "Enable the pg_locks view. This view provides information about the locks held by "
     "active postgres sessions.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_min_txn_age, 1000,
+    "Sets the minimum transaction age for results from pg_locks.");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_max_transactions, 16,
+    "Sets the maximum number of transactions for which to return rows in pg_locks.");
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_index_state_flags_update_delay, 0,
     "Delay in milliseconds between stages of online index build. For testing purposes.");
 

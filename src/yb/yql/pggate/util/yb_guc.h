@@ -111,6 +111,16 @@ extern int yb_xcluster_consistency_level;
 extern int yb_fetch_row_limit;
 extern int yb_fetch_size_limit;
 
+/*
+ * GUC flag: Minimum transaction age, in ms, to report when using yb_lock_status().
+ */
+extern int yb_locks_min_txn_age;
+
+/*
+ * GUC flag: Maximum number of transactions to return results for in yb_lock_status().
+ */
+extern int yb_locks_max_transactions;
+
 #ifdef __cplusplus
 } // extern "C"
 #endif
