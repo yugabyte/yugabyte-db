@@ -1236,9 +1236,9 @@ class WaitQueue::Impl {
     MaybeSignalWaitingTransactions(id, res);
   }
 
-  Status GetLockStatus(
-      const std::set<TransactionId>& transaction_ids, SchemaPtr schema_ptr,
-      TabletLockInfoPB* tablet_lock_info) const {
+  Status GetLockStatus(const std::set<TransactionId>& transaction_ids,
+                       const TableInfoProvider& table_info_provider,
+                       TabletLockInfoPB* tablet_lock_info) const {
     std::vector<WaiterLockStatusInfo> waiter_lock_entries;
     {
       SharedLock l(mutex_);
@@ -1302,7 +1302,7 @@ class WaitQueue::Impl {
         // TODO(pglocks): Populate 'subtransaction_id' & 'is_explicit' info of waiter txn(s) in
         // the LockInfoPB response. Currently we don't track either for waiter txn(s).
         RETURN_NOT_OK(docdb::PopulateLockInfoFromParsedIntent(
-            parsed_intent, DecodedIntentValue{}, schema_ptr, waiter_info->add_locks(),
+            parsed_intent, DecodedIntentValue{}, table_info_provider, waiter_info->add_locks(),
             /* intent_has_ht */ false));
       }
     }
@@ -1614,10 +1614,10 @@ void WaitQueue::SignalPromoted(const TransactionId& id, TransactionStatusResult&
   return impl_->SignalPromoted(id, std::move(res));
 }
 
-Status WaitQueue::GetLockStatus(
-    const std::set<TransactionId>& transaction_ids, SchemaPtr schema_ptr,
-    TabletLockInfoPB* tablet_lock_info) const {
-  return impl_->GetLockStatus(transaction_ids, schema_ptr, tablet_lock_info);
+Status WaitQueue::GetLockStatus(const std::set<TransactionId>& transaction_ids,
+                                const TableInfoProvider& table_info_provider,
+                                TabletLockInfoPB* tablet_lock_info) const {
+  return impl_->GetLockStatus(transaction_ids, table_info_provider, tablet_lock_info);
 }
 
 }  // namespace docdb
