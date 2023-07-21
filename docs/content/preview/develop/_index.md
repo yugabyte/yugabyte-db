@@ -3,7 +3,7 @@ title: Develop applications
 headerTitle: Develop
 linkTitle: Develop
 description: Build YugabyteDB application that use ecosystem integrations and GraphQL.
-headcontent: Get started building applications based on YugabyteDB.
+headcontent: Get started building applications based on YugabyteDB
 image: /images/section_icons/index/develop.png
 type: indexpage
 ---
@@ -36,7 +36,7 @@ type: indexpage
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="multi-cloud/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/public_clouds.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/deploy/public-clouds.png" aria-hidden="true" />
         <div class="title">Build multi-cloud applications</div>
       </div>
       <div class="body">
