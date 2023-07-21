@@ -29,6 +29,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/monotime.h"
+#include "yb/yql/pgwrapper/pg_locks_test_base.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 
@@ -109,15 +110,11 @@ class GetOldTransactionsValidator {
   const tserver::GetOldTransactionsResponsePB resp_;
 };
 
-class PgGetOldTxnsTest : public PgMiniTestBase {
+class PgGetOldTxnsTest : public PgLocksTestBase {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) = 1;
-    PgMiniTestBase::SetUp();
-
-    ts_proxy_ = std::make_unique<tserver::TabletServerServiceProxy>(
-        &client_->proxy_cache(),
-        HostPort::FromBoundEndpoint(cluster_->mini_tablet_server(0)->bound_rpc_addr()));
+    PgLocksTestBase::SetUp();
   }
 
   size_t NumTabletServers() override {
@@ -163,19 +160,7 @@ class PgGetOldTxnsTest : public PgMiniTestBase {
   Result<tserver::GetOldTransactionsResponsePB> GetOldTransactions(
       uint32_t min_txn_age_ms, uint32_t max_num_txns) {
     auto tablet_id = VERIFY_RESULT(GetSinglularStatusTabletId());
-
-    constexpr int kTimeoutMs = 1000;
-    tserver::GetOldTransactionsRequestPB req;
-    tserver::GetOldTransactionsResponsePB resp;
-    rpc::RpcController rpc;
-    req.set_tablet_id(tablet_id);
-    req.set_min_txn_age_ms(min_txn_age_ms);
-    req.set_max_num_txns(max_num_txns);
-    rpc.set_timeout(kTimeoutMs * 1ms);
-
-    RETURN_NOT_OK(ts_proxy_->GetOldTransactions(req, &resp, &rpc));
-
-    return resp;
+    return PgLocksTestBase::GetOldTransactions(tablet_id, min_txn_age_ms, max_num_txns);
   }
 
   Result<TransactionId> GetSingularTransactionOn(const TabletId& tablet_id) {
@@ -226,9 +211,6 @@ class PgGetOldTxnsTest : public PgMiniTestBase {
     s.txn_id = VERIFY_RESULT(GetSingularTransactionOn(s.first_involved_tablet));
     return s;
   }
-
- private:
-  std::unique_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
 };
 
 TEST_F(PgGetOldTxnsTest, DoesNotReturnNewTransactions) {
@@ -311,7 +293,11 @@ TEST_F(PgGetOldTxnsTest, ReturnsOnlyOldEnoughTransactions) {
                 .WithTablets({s4.first_involved_tablet});
 }
 
-class PgCancelTxnTest : public PgGetOldTxnsTest {};
+class PgCancelTxnTest : public PgGetOldTxnsTest {
+  size_t NumTabletServers() override {
+    return 3;
+  }
+};
 
 TEST_F(PgCancelTxnTest, Simple) {
   auto s = ASSERT_RESULT(InitSession("foo"));
@@ -339,13 +325,16 @@ TEST_F(PgCancelTxnTest, CancelSelf) {
 }
 
 TEST_F(PgCancelTxnTest, InvalidArgs) {
+  auto s = ASSERT_RESULT(InitSession("foo"));
   auto cancel_session = ASSERT_RESULT(Connect());
   // Null arg should return null result since proisstrict=true
   auto null_result = ASSERT_RESULT(cancel_session.Fetch("SELECT yb_cancel_transaction(null)"));
   ASSERT_EQ(ASSERT_RESULT(ToString(null_result.get(), 0, 0)), "NULL");
   // Non-existent transaction should return false
+  const std::string non_existent_txnid = "abcdabcd-abcd-abcd-abcd-abcd00000075";
+  DCHECK_NE(non_existent_txnid, s.txn_id.ToString());
   ASSERT_FALSE(ASSERT_RESULT(cancel_session.FetchValue<bool>(
-      "SELECT yb_cancel_transaction('abcdabcd-abcd-abcd-abcd-abcd00000075')")));
+      Format("SELECT yb_cancel_transaction('$0')", non_existent_txnid))));
   // Invalid uuid should return error
   auto invalid_result = cancel_session.FetchValue<bool>("SELECT yb_cancel_transaction('1234')");
   ASSERT_NOK(invalid_result);
