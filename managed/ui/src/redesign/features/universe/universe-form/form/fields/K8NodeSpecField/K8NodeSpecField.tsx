@@ -1,4 +1,4 @@
-import React, { ReactElement, useEffect } from 'react';
+import { ReactElement, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Controller, useFormContext, useWatch } from 'react-hook-form';
 import { useQuery } from 'react-query';
@@ -50,7 +50,7 @@ export const K8NodeSpecField = ({ isDedicatedMasterField }: K8NodeSpecFieldProps
     const getProviderRuntimeConfigs = async () => {
       await providerConfigsRefetch();
       const { memorySize, CPUCores } = getDefaultK8NodeSpec(providerRuntimeConfigs);
-      setValue(UPDATE_FIELD, { memory: memorySize, cpu: CPUCores });
+      setValue(UPDATE_FIELD, { memoryGib: memorySize, cpuCoreCount: CPUCores });
     };
     getProviderRuntimeConfigs();
   }, []);
@@ -60,7 +60,10 @@ export const K8NodeSpecField = ({ isDedicatedMasterField }: K8NodeSpecFieldProps
   const onNumCoresChanged = (value: any) => {
     const decimalPaces = value?.split?.('.')[1]?.length ?? 0;
     const numCores = decimalPaces > 2 ? Number(value).toFixed(2) : Number(value);
-    setValue(UPDATE_FIELD, { ...fieldValue, cpu: numCores > maxCPUCores ? maxCPUCores : numCores });
+    setValue(UPDATE_FIELD, {
+      ...fieldValue,
+      cpuCoreCount: numCores > maxCPUCores ? maxCPUCores : numCores
+    });
   };
 
   const onMemoryChanged = (value: any) => {
@@ -68,7 +71,7 @@ export const K8NodeSpecField = ({ isDedicatedMasterField }: K8NodeSpecFieldProps
     const memory = decimalPaces > 2 ? Number(value).toFixed(2) : Number(value);
     setValue(UPDATE_FIELD, {
       ...fieldValue,
-      memory: memory > maxMemorySize ? maxMemorySize : memory
+      memoryGib: memory > maxMemorySize ? maxMemorySize : memory
     });
   };
 
@@ -98,7 +101,7 @@ export const K8NodeSpecField = ({ isDedicatedMasterField }: K8NodeSpecFieldProps
                         min: minCPUCores,
                         'data-testid': `K8NodeSpecField-${nodeTypeTag}-NumCoresInput`
                       }}
-                      value={convertToString(fieldValue?.cpu)}
+                      value={convertToString(fieldValue?.cpuCoreCount)}
                       onChange={(event) => onNumCoresChanged(event.target.value)}
                       inputMode="numeric"
                     />
@@ -121,7 +124,7 @@ export const K8NodeSpecField = ({ isDedicatedMasterField }: K8NodeSpecFieldProps
                         min: minMemorySize,
                         'data-testid': `K8NodeSpecField-${nodeTypeTag}-MemoryInput`
                       }}
-                      value={convertToString(fieldValue?.memory)}
+                      value={convertToString(fieldValue?.memoryGib)}
                       onChange={(event) => onMemoryChanged(event.target.value)}
                       inputMode="numeric"
                     />

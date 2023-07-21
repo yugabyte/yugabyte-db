@@ -79,49 +79,76 @@ Status RemoteBootstrapSnapshotsComponent::CreateDirectories(
 }
 
 Status RemoteBootstrapSnapshotsComponent::Download() {
+  return Download(/* snapshot_id = */ nullptr);
+}
+
+Status RemoteBootstrapSnapshotsComponent::Download(const SnapshotId* snapshot_id) {
   const auto& kv_store = new_superblock_.kv_store();
   const string& rocksdb_dir = kv_store.rocksdb_dir();
   const string top_snapshots_dir = tablet::TabletSnapshots::SnapshotsDirName(rocksdb_dir);
   // Create the snapshots directory first.
+  RETURN_NOT_OK_PREPEND(
+      fs_manager().CreateDirIfMissingAndSync(top_snapshots_dir),
+      Format("Failed to create & sync top snapshots directory $0", top_snapshots_dir));
+
+  // Used to skip snapshot files from a failed download in a previous iteration of the loop.
+  std::unordered_set<SnapshotId> failed_snapshot_ids;
+  for (auto const& file_pb : kv_store.snapshot_files()) {
+    // If we specified a snapshot_id, we should only download files relevant to the given snapshot.
+    // Otherwise, download all snapshot files.
+    if (snapshot_id != nullptr && *snapshot_id != file_pb.snapshot_id()) {
+      continue;
+    }
+    RETURN_NOT_OK(Download(top_snapshots_dir, file_pb, &failed_snapshot_ids));
+  }
+
+  // For the original RBS flow, they intentionally don't return bad status if downloading snapshot
+  // files fail https://phabricator.dev.yugabyte.com/D8757. However, for the RFT flow, the only
+  // purpose is to download the snapshot files, and thus we should return bad status here if we fail
+  // to download.
+  if (snapshot_id != nullptr && !failed_snapshot_ids.empty()) {
+    return STATUS(InternalError, "Failed to download all files for snapshot", *snapshot_id);
+  }
+
+  return Status::OK();
+}
+
+Status RemoteBootstrapSnapshotsComponent::Download(
+    const std::string& top_snapshots_dir, const tablet::SnapshotFilePB& file_pb,
+    std::unordered_set<SnapshotId>* failed_snapshot_ids) {
+  CHECK(failed_snapshot_ids != nullptr);
+  if (failed_snapshot_ids->find(file_pb.snapshot_id()) != failed_snapshot_ids->end()) {
+    LOG(WARNING) << "Skipping download for file " << file_pb.file().name()
+                 << " because it is part of failed snapshot " << file_pb.snapshot_id();
+    return Status::OK();
+  }
+
+  const string snapshot_dir = JoinPathSegments(top_snapshots_dir, file_pb.snapshot_id());
+  const std::string file_path = JoinPathSegments(snapshot_dir, file_pb.file().name());
+
   RETURN_NOT_OK_PREPEND(fs_manager().CreateDirIfMissingAndSync(top_snapshots_dir),
                         Format("Failed to create & sync top snapshots directory $0",
                                top_snapshots_dir));
 
   DataIdPB data_id;
   data_id.set_type(DataIdPB::SNAPSHOT_FILE);
-  // Used to skip snapshot files from a failed download in a previous iteration of the loop.
-  std::unordered_set<SnapshotId> failed_snapshot_ids;
-  for (auto const& file_pb : kv_store.snapshot_files()) {
-    if (failed_snapshot_ids.find(file_pb.snapshot_id()) != failed_snapshot_ids.end()) {
-      LOG(WARNING) << "Skipping download for file " << file_pb.file().name()
-                   << " because it is part of failed snapshot " << file_pb.snapshot_id();
-      continue;
+  data_id.set_snapshot_id(file_pb.snapshot_id());
+  auto s = downloader_.DownloadFile(file_pb.file(), snapshot_dir, &data_id);
+  if (!s.ok()) {
+    // If we fail to fetch a snapshot file, delete the snapshot directory, log the error,
+    // but don't fail the remote bootstrap as snapshot files are not needed for running
+    // the tablet.
+    LOG(ERROR) << "Error downloading snapshot file " << file_path << ": " << s;
+    failed_snapshot_ids->insert(file_pb.snapshot_id());
+    LOG(INFO) << "Deleting snapshot dir " << snapshot_dir;
+    auto delete_status = Env::Default()->DeleteRecursively(snapshot_dir);
+    if (!delete_status.ok()) {
+      LOG(ERROR) << "Error deleting corrupted snapshot directory " << snapshot_dir << ": "
+                 << delete_status;
     }
-    const string snapshot_dir = JoinPathSegments(top_snapshots_dir, file_pb.snapshot_id());
-
-    RETURN_NOT_OK_PREPEND(fs_manager().CreateDirIfMissingAndSync(snapshot_dir),
-                          Format("Failed to create & sync snapshot directory $0", snapshot_dir));
-
-    const std::string file_path = JoinPathSegments(snapshot_dir, file_pb.file().name());
-    data_id.set_snapshot_id(file_pb.snapshot_id());
-    auto s = downloader_.DownloadFile(file_pb.file(), snapshot_dir, &data_id);
-    if (!s.ok()) {
-      // If we fail to fetch a snapshot file, delete the snapshot directory, log the error,
-      // but don't fail the remote bootstrap as snapshot files are not needed for running
-      // the tablet.
-      LOG(ERROR) << "Error downloading snapshot file " << file_path << ": " << s;
-      failed_snapshot_ids.insert(file_pb.snapshot_id());
-      LOG(INFO) << "Deleting snapshot dir " << snapshot_dir;
-      auto delete_status = Env::Default()->DeleteRecursively(snapshot_dir);
-      if (!delete_status.ok()) {
-        LOG(ERROR) << "Error deleting corrupted snapshot directory "
-                   << snapshot_dir << ": " << delete_status;
-      }
-    } else {
-      LOG(INFO) << "Downloaded file " << file_path << " for snapshot " << file_pb.snapshot_id();
-    }
+  } else {
+    LOG(INFO) << "Downloaded file " << file_path << " for snapshot " << file_pb.snapshot_id();
   }
-
   return Status::OK();
 }
 

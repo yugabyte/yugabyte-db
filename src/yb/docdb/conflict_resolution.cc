@@ -1396,7 +1396,19 @@ Status PopulateLockInfoFromParsedIntent(
     lock_info->add_range_cols(range_key.ToString());
   }
   if (subdoc_key.num_subkeys() > 0 && subdoc_key.last_subkey().IsColumnId()) {
-    lock_info->set_column_id(subdoc_key.last_subkey().GetColumnId());
+    const ColumnId& column_id = subdoc_key.last_subkey().GetColumnId();
+
+    // Don't print the attnum for the liveness column
+    if (column_id != 0) {
+      const ColumnSchema& column = VERIFY_RESULT(schema->column_by_id(column_id));
+
+      // If the order field is negative, it doesn't correspond to a column in pg_attribute
+      if (column.order() > 0) {
+        lock_info->set_attnum(column.order());
+      }
+    }
+
+    lock_info->set_column_id(column_id);
   }
 
   lock_info->set_subtransaction_id(decoded_value.subtransaction_id);

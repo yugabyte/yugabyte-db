@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
 import Cookies from 'js-cookie';
-import React from 'react';
 import { Route, IndexRoute, browserHistory } from 'react-router';
 import _ from 'lodash';
 import axios from 'axios';
@@ -11,9 +10,7 @@ import {
   validateFromTokenResponse,
   fetchCustomerCount,
   customerTokenError,
-  resetCustomer,
-  insecureLogin,
-  insecureLoginResponse
+  resetCustomer
 } from './actions/customers';
 import { App } from './app/App';
 import Login from './pages/Login';
@@ -138,20 +135,6 @@ function validateSession(store, replacePath, callback) {
   const searchParam = new URLSearchParams(window.location.search);
   if (_.isEmpty(customerId) || _.isEmpty(userId)) {
     const location = searchParam.get('orig_url') ?? window.location.pathname;
-    store.dispatch(insecureLogin()).then((response) => {
-      if (response.payload.status === 200) {
-        store.dispatch(insecureLoginResponse(response));
-        localStorage.setItem('apiToken', response.payload.data.apiToken);
-        localStorage.setItem('customerId', response.payload.data.customerUUID);
-        localStorage.setItem('userId', response.payload.data.userUUID);
-        // Show the intro modal if OSS version
-        // eslint-disable-next-line eqeqeq
-        if (localStorage.getItem('__yb_new_user__') == null) {
-          localStorage.setItem('__yb_new_user__', true);
-        }
-        browserHistory.push('/');
-      }
-    });
     store.dispatch(fetchCustomerCount()).then((response) => {
       if (!response.error) {
         const responseData = response.payload.data;

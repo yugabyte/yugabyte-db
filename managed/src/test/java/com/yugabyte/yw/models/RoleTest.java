@@ -40,6 +40,7 @@ public class RoleTest extends FakeDBApplication {
         Role.create(
             customer.getUuid(),
             "FakeRole1",
+            "testDescription",
             RoleType.Custom,
             new HashSet<>(Arrays.asList(permission1)));
     assertNotNull(role.getRoleUUID());

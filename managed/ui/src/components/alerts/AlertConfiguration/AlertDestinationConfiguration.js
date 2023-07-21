@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { Field, reduxForm } from 'redux-form';
 import { connect } from 'react-redux';
@@ -17,7 +17,6 @@ const required = (value) => (value ? undefined : 'This field is required.');
 
 const AlertDestinationConfiguration = (props) => {
   const [destinationChannelList, setDestinationChannelList] = useState([]);
-
 
   const onInit = () => {
     props.getAlertChannels().then((channels) => {
@@ -49,19 +48,19 @@ const AlertDestinationConfiguration = (props) => {
 
     values.type === 'update'
       ? props.updateAlertDestination(payload, values.uuid).then((response) => {
-        const status = response?.payload?.response?.status || response?.payload?.status;
-        if (status === 200 || status === 201) {
-          props.setInitialValues();
-          props.onAddCancel();
-        }
-      })
+          const status = response?.payload?.response?.status || response?.payload?.status;
+          if (status === 200 || status === 201) {
+            props.setInitialValues();
+            props.onAddCancel();
+          }
+        })
       : props.createAlertDestination(payload).then((response) => {
-        const status = response?.payload?.response?.status || response?.payload?.status;
-        if (status === 200 || status === 201) {
-          props.setInitialValues();
-          props.onAddCancel();
-        }
-      });
+          const status = response?.payload?.response?.status || response?.payload?.status;
+          if (status === 200 || status === 201) {
+            props.setInitialValues();
+            props.onAddCancel();
+          }
+        });
   };
 
   const {
@@ -71,8 +70,7 @@ const AlertDestinationConfiguration = (props) => {
     setInitialValues,
     modal: { showModal, visibleModal }
   } = props;
-  const isReadOnly = isNonAvailable(
-    customer.data.features, 'alert.destinations.actions');
+  const isReadOnly = isNonAvailable(customer.data.features, 'alert.destinations.actions');
 
   return (
     <>
@@ -123,7 +121,7 @@ const AlertDestinationConfiguration = (props) => {
                         className="fa fa-plus-circle fa-2x on-prem-row-add-btn"
                         onClick={props.showAddChannelModal}
                       />
-                    Add Channel
+                      Add Channel
                     </a>
                   </Col>
                 </Row>

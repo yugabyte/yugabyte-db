@@ -1,4 +1,4 @@
-package db.migration.default_.common;
+package db.migration.default_.postgres;
 
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 

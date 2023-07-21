@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import clsx from 'clsx';
 import { PageHeader } from 'react-bootstrap';
 import { YBButton } from '../fields';

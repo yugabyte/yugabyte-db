@@ -16,6 +16,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
+import com.yugabyte.yw.common.LdapUtil.TlsProtocol;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.LdapDnToYbaRole;
 import com.yugabyte.yw.models.Users;
@@ -110,7 +111,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 "",
                 false,
                 false,
-                Role.ReadOnly));
+                Role.ReadOnly,
+                TlsProtocol.TLSv1_2));
 
     assertNotNull(user);
     assertEquals("test-user", user.getEmail());
@@ -151,7 +153,8 @@ public class LdapUtilTest extends FakeDBApplication {
                     "",
                     false,
                     false,
-                    Role.ReadOnly)));
+                    Role.ReadOnly,
+                    TlsProtocol.TLSv1_2)));
   }
 
   @Test
@@ -191,7 +194,8 @@ public class LdapUtilTest extends FakeDBApplication {
                     "",
                     false,
                     false,
-                    Role.ReadOnly)));
+                    Role.ReadOnly,
+                    TlsProtocol.TLSv1_2)));
     assertNull(Users.getByEmail(user.getEmail()));
   }
 
@@ -227,7 +231,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 "",
                 false,
                 false,
-                Role.ReadOnly));
+                Role.ReadOnly,
+                TlsProtocol.TLSv1_2));
 
     assertNotNull(user);
     assertEquals(Users.Role.BackupAdmin, user.getRole());
@@ -271,7 +276,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 "",
                 false,
                 false,
-                Role.ReadOnly));
+                Role.ReadOnly,
+                TlsProtocol.TLSv1_2));
 
     assertNotNull(updatedUser);
     assertEquals(Users.Role.BackupAdmin, updatedUser.getRole());
@@ -315,7 +321,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 "",
                 false,
                 false,
-                Role.ReadOnly));
+                Role.ReadOnly,
+                TlsProtocol.TLSv1_2));
 
     assertEquals(user, oldUser);
   }
@@ -396,7 +403,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 memberOfAttribute,
                 false,
                 groupMappingOn,
-                defaultLdapRole));
+                defaultLdapRole,
+                TlsProtocol.TLSv1_2));
 
     if (newLdapRoleValid) {
       assertEquals(true, loggedInUser.isLdapSpecifiedRole());
@@ -447,7 +455,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 "",
                 false,
                 false,
-                Role.ReadOnly));
+                Role.ReadOnly,
+                TlsProtocol.TLSv1_2));
 
     assertNotNull(user);
     assertEquals("test-user", user.getEmail());
@@ -484,7 +493,8 @@ public class LdapUtilTest extends FakeDBApplication {
                     "",
                     false,
                     false,
-                    Role.ReadOnly)));
+                    Role.ReadOnly,
+                    TlsProtocol.TLSv1_2)));
   }
 
   @Test
@@ -555,7 +565,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 "",
                 true,
                 true,
-                Role.ReadOnly));
+                Role.ReadOnly,
+                TlsProtocol.TLSv1_2));
 
     assertNotNull(user);
     assertEquals(username, user.getEmail());
@@ -602,7 +613,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 memberOfAttribute,
                 false,
                 true,
-                Role.ReadOnly));
+                Role.ReadOnly,
+                TlsProtocol.TLSv1_2));
 
     assertNotNull(user);
     assertEquals(username, user.getEmail());
@@ -639,7 +651,8 @@ public class LdapUtilTest extends FakeDBApplication {
                     memberOfAttribute,
                     false,
                     true,
-                    Role.ReadOnly));
+                    Role.ReadOnly,
+                    TlsProtocol.TLSv1_2));
           } catch (LdapException e) {
             throw new RuntimeException(e);
           }

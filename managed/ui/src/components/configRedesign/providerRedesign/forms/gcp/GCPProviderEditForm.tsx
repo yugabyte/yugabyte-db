@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -66,7 +66,8 @@ import {
   GCPAvailabilityZoneMutation,
   YBProviderMutation,
   GCPProvider,
-  GCPRegion
+  GCPRegion,
+  ImageBundle
 } from '../../types';
 
 interface GCPProviderEditFormProps {
@@ -86,6 +87,7 @@ interface GCPProviderEditFormFieldValues {
   ntpSetupType: NTPSetupType;
   providerCredentialType: ProviderCredentialType;
   providerName: string;
+  imageBundles: ImageBundle[];
   regions: CloudVendorRegionField[];
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
@@ -587,6 +589,7 @@ const constructDefaultFormValues = (
   providerCredentialType: providerConfig.details.cloudInfo.gcp.useHostCredentials
     ? ProviderCredentialType.HOST_INSTANCE_SERVICE_ACCOUNT
     : ProviderCredentialType.SPECIFIED_SERVICE_ACCOUNT,
+  imageBundles: providerConfig.imageBundles,
   regions: providerConfig.regions.map((region) => ({
     code: region.code,
     fieldId: generateLowerCaseAlphanumericId(),
@@ -698,6 +701,7 @@ const constructProviderPayload = async (
       ...(formValues.sshPort && { sshPort: formValues.sshPort }),
       ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
+    imageBundles: formValues.imageBundles,
     regions: [
       ...formValues.regions.map<GCPRegionMutation>((regionFormValues) => {
         const existingRegion = findExistingRegion<GCPProvider, GCPRegion>(

@@ -43,6 +43,7 @@ public class RoleBindingTest extends FakeDBApplication {
         Role.create(
             customer.getUuid(),
             "FakeRole1",
+            "testDescription",
             RoleType.Custom,
             new HashSet<>(
                 Arrays.asList(
@@ -92,6 +93,7 @@ public class RoleBindingTest extends FakeDBApplication {
         Role.create(
             customer.getUuid(),
             "FakeRole1",
+            "testDescription",
             RoleType.Custom,
             new HashSet<>(
                 Arrays.asList(

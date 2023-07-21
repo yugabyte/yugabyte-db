@@ -392,7 +392,7 @@ struct IsNonConstResultRvalue<Result<T>&&> : std::true_type {};
 #define ASSERT_RESULT(expr) \
   RESULT_CHECKER_HELPER(expr, ASSERT_OK(__result))
 
-// Asserts that result is ok, extracts result value is case of success.
+// Expects that result is ok, extracts result value is case of success.
 #define EXPECT_RESULT(expr) \
   RESULT_CHECKER_HELPER(expr, EXPECT_OK(__result))
 

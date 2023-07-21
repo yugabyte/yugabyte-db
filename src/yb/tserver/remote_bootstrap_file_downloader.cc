@@ -12,6 +12,7 @@
 //
 
 #include "yb/tserver/remote_bootstrap_file_downloader.h"
+#include "yb/tserver/remote_client_base.h"
 
 #include <iomanip>
 
@@ -77,7 +78,6 @@ Status ExtractRemoteError(
 
 } // namespace
 
-extern std::atomic<int32_t> remote_bootstrap_clients_started_;
 
 RemoteBootstrapFileDownloader::RemoteBootstrapFileDownloader(
     const std::string* log_prefix, FsManager* fs_manager)
@@ -151,8 +151,7 @@ Status RemoteBootstrapFileDownloader::DownloadFile(
 
   if (FLAGS_remote_bootstrap_rate_limit_bytes_per_sec > 0) {
     static auto rate_updater = []() {
-      auto remote_bootstrap_clients_started =
-          remote_bootstrap_clients_started_.load(std::memory_order_acquire);
+      auto remote_bootstrap_clients_started = RemoteClientBase::StartedClientsCount();
       if (remote_bootstrap_clients_started < 1) {
         YB_LOG_EVERY_N(ERROR, 100) << "Invalid number of remote bootstrap sessions: "
                                    << remote_bootstrap_clients_started;

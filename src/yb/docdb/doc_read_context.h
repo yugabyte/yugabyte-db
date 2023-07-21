@@ -76,6 +76,10 @@ struct DocReadContext {
     return Slice(shared_key_prefix_buffer_.data(), shared_key_prefix_len_);
   }
 
+  Slice upperbound() const {
+    return Slice(upperbound_buffer_.data(), upperbound_len_);
+  }
+
   void TEST_SetDefaultTimeToLive(uint64_t ttl_msec) {
     schema_.SetDefaultTimeToLive(ttl_msec);
   }
@@ -113,6 +117,11 @@ struct DocReadContext {
   // in the table, then it will also be present here.
   size_t shared_key_prefix_len_ = 0;
   std::array<uint8_t, 0x20> shared_key_prefix_buffer_;
+
+  // The data about upperbound for this table. I.e. we know that all entries from this table
+  // are before the upperbound. And all entries from next table are after this upperbound.
+  size_t upperbound_len_ = 0;
+  std::array<uint8_t, 0x20> upperbound_buffer_;
 
   // This field contains number of bytes in encoded key before column values.
   // I.e. it is sum of sizes of cotable id, colocation id, hash code.

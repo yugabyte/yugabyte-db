@@ -64,47 +64,67 @@ class RemoteBootstrapRocksDBTest : public RemoteBootstrapSessionTest {
     }
     ASSERT_TRUE(env_->FileExists(extra_file));
   }
+
+  void CheckSuperBlockHasSnapshotFields() {
+    auto superblock = session_->tablet_superblock();
+    LOG(INFO) << superblock.ShortDebugString();
+    ASSERT_TRUE(superblock.obsolete_table_type() == YQL_TABLE_TYPE);
+
+    const auto& kv_store = superblock.kv_store();
+    ASSERT_TRUE(kv_store.has_rocksdb_dir());
+
+    const string& rocksdb_dir = kv_store.rocksdb_dir();
+    ASSERT_TRUE(env_->FileExists(rocksdb_dir));
+
+    const string top_snapshots_dir = tablet::TabletSnapshots::SnapshotsDirName(rocksdb_dir);
+    ASSERT_TRUE(env_->FileExists(top_snapshots_dir));
+
+    const string snapshot_dir = JoinPathSegments(top_snapshots_dir, kSnapshotId);
+    ASSERT_TRUE(env_->FileExists(snapshot_dir));
+
+    vector<string> snapshot_files;
+    ASSERT_OK(env_->GetChildren(snapshot_dir, &snapshot_files));
+
+    // Ignore "." and ".." entries in snapshot_dir.
+    ASSERT_EQ(kv_store.snapshot_files().size(), snapshot_files.size() - 2)
+        << "KV store snapshot files: " << AsString(kv_store.snapshot_files())
+        << ", filesystem: " << AsString(snapshot_files);
+
+    for (int i = 0; i < kv_store.snapshot_files().size(); ++i) {
+      const auto& snapshot_file = kv_store.snapshot_files(i);
+      const string& snapshot_id = snapshot_file.snapshot_id();
+      const string& snapshot_file_name = snapshot_file.file().name();
+      const uint64_t snapshot_file_size_bytes = snapshot_file.file().size_bytes();
+
+      ASSERT_EQ(snapshot_id, kSnapshotId);
+
+      const string file_path = JoinPathSegments(snapshot_dir, snapshot_file_name);
+      ASSERT_TRUE(env_->FileExists(file_path));
+
+      uint64 file_size_bytes = ASSERT_RESULT(env_->GetFileSize(file_path));
+      ASSERT_EQ(snapshot_file_size_bytes, file_size_bytes);
+    }
+  }
 };
 
 TEST_F(RemoteBootstrapRocksDBTest, CheckSuperBlockHasSnapshotFields) {
-  auto superblock = session_->tablet_superblock();
-  LOG(INFO) << superblock.ShortDebugString();
-  ASSERT_TRUE(superblock.obsolete_table_type() == YQL_TABLE_TYPE);
+  CheckSuperBlockHasSnapshotFields();
+}
 
-  const auto& kv_store = superblock.kv_store();
-  ASSERT_TRUE(kv_store.has_rocksdb_dir());
+class RemoteSnapshotTransferRocksDBTest : public RemoteBootstrapRocksDBTest {
+ public:
+  RemoteSnapshotTransferRocksDBTest() : RemoteBootstrapRocksDBTest() {}
 
-  const string& rocksdb_dir = kv_store.rocksdb_dir();
-  ASSERT_TRUE(env_->FileExists(rocksdb_dir));
-
-  const string top_snapshots_dir = tablet::TabletSnapshots::SnapshotsDirName(rocksdb_dir);
-  ASSERT_TRUE(env_->FileExists(top_snapshots_dir));
-
-  const string snapshot_dir = JoinPathSegments(top_snapshots_dir, kSnapshotId);
-  ASSERT_TRUE(env_->FileExists(snapshot_dir));
-
-  vector<string> snapshot_files;
-  ASSERT_OK(env_->GetChildren(snapshot_dir, &snapshot_files));
-
-  // Ignore "." and ".." entries in snapshot_dir.
-  ASSERT_EQ(kv_store.snapshot_files().size(), snapshot_files.size() - 2)
-      << "KV store snapshot files: " << AsString(kv_store.snapshot_files())
-      << ", filesystem: " << AsString(snapshot_files);
-
-  for (int i = 0; i < kv_store.snapshot_files().size(); ++i) {
-    const auto& snapshot_file = kv_store.snapshot_files(i);
-    const string& snapshot_id = snapshot_file.snapshot_id();
-    const string& snapshot_file_name = snapshot_file.file().name();
-    const uint64_t snapshot_file_size_bytes = snapshot_file.file().size_bytes();
-
-    ASSERT_EQ(snapshot_id, kSnapshotId);
-
-    const string file_path = JoinPathSegments(snapshot_dir, snapshot_file_name);
-    ASSERT_TRUE(env_->FileExists(file_path));
-
-    uint64 file_size_bytes = ASSERT_RESULT(env_->GetFileSize(file_path));
-    ASSERT_EQ(snapshot_file_size_bytes, file_size_bytes);
+  void InitSession() override {
+    CreateSnapshot();
+    session_.reset(new RemoteBootstrapSession(
+        tablet_peer_, "TestSession", "FakeUUID", nullptr /* nsessions */));
+    ASSERT_OK(session_->InitSnapshotTransferSession());
   }
+};
+
+TEST_F(RemoteSnapshotTransferRocksDBTest, CheckSuperBlockHasSnapshotFields) {
+  CheckSuperBlockHasSnapshotFields();
 }
 
 }  // namespace tserver

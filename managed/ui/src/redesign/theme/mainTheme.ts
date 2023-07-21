@@ -348,7 +348,7 @@ export const mainTheme = createTheme({
         },
         '&$focused': {
           borderColor: colors.ybacolors.ybOrangeFocus,
-          boxShadow: colors.ybacolors.inputBoxShadow
+          boxShadow: colors.ybaShadows.inputBoxShadow
         },
         '&$error': {
           color: colors.error[500],
@@ -605,6 +605,22 @@ export const mainTheme = createTheme({
         '@media (min-width: 600px)': {
           margin: '8px -2px'
         }
+      }
+    },
+    MuiTabs: {
+      root: {
+        '& .MuiTabs-indicator': {
+          backgroundColor: colors.orange[500],
+          height: 4
+        },
+        '& .MuiButtonBase-root': {
+          padding: 0,
+          textTransform: 'none',
+          fontSize: 14,
+          fontWeight: 500,
+          color: colors.ybacolors.labelBackground
+        },
+        borderBottom: `1px solid ${colors.ybacolors.ybBorderGray}`
       }
     },
     MuiSnackbar: {

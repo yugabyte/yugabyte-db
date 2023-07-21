@@ -1044,7 +1044,7 @@ static struct config_bool ConfigureNamesBool[] =
 						 "REPEATABLE READ and READ COMMITTED.")
 		},
 		&yb_lock_pk_single_rpc,
-		true,
+		false,
 		NULL, NULL, NULL
 	},
 	{
@@ -2395,6 +2395,27 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&DeadlockTimeout,
 		1000, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_locks_min_txn_age", PGC_USERSET, LOCK_MANAGEMENT,
+			gettext_noop("Sets the minimum transaction age for results from pg_locks."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_locks_min_txn_age,
+		1000, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_locks_max_transactions", PGC_USERSET, LOCK_MANAGEMENT,
+			gettext_noop("Sets the maximum number of transactions for which to return rows in pg_locks."),
+			NULL
+		},
+		&yb_locks_max_transactions,
+		16, 1, INT_MAX,
 		NULL, NULL, NULL
 	},
 

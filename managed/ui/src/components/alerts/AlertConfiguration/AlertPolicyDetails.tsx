@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC, useCallback } from 'react';
+import { FC, useCallback } from 'react';
 import {
   Accordion,
   AccordionDetails,

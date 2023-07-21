@@ -18,17 +18,8 @@
 import React, { FC, useState } from 'react';
 import { findIndex, has } from 'lodash';
 import { Alert, Col, Row } from 'react-bootstrap';
-import {
-  getKMSConfigs,
-  IBackup,
-  ITable,
-  IUniverse,
-  Keyspace_Table,
-  restoreEntireBackup,
-  fetchIncrementalBackup,
-  Backup_States,
-  ICommonBackupInfo
-} from '..';
+import { IBackup, ITable, IUniverse, Keyspace_Table, Backup_States, ICommonBackupInfo } from '..';
+import { getKMSConfigs, restoreEntireBackup, fetchIncrementalBackup } from '../common/BackupAPI';
 import { YBModalForm } from '../../common/forms';
 import { KEYSPACE_VALIDATION_REGEX, SPINNER_ICON } from '../common/BackupUtils';
 
@@ -55,6 +46,7 @@ import clsx from 'clsx';
 import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import { handleCACertErrMsg } from '../../customCACerts';
 import './BackupRestoreModal.scss';
 
 interface RestoreModalProps {
@@ -170,7 +162,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
       onError: (resp: any) => {
         onHide();
         setCurrentStep(0);
-        toast.error(resp.response.data.error);
+        !handleCACertErrMsg(resp) && toast.error(resp.response.data.error);
       }
     }
   );
@@ -230,10 +222,10 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({
       if (!renamedKeyspacemap[k]) {
         renamedKeyspacemap[k] = keyspaceToMatch;
       } else if (renamedKeyspacemap[k] !== keyspaceToMatch) {
-          isFunction(options.setFieldError) &&
-            options.setFieldError(`keyspaces[${i}]`, 'Duplicate keyspace name');
-          hasduplicateName = true;
-        }
+        isFunction(options.setFieldError) &&
+          options.setFieldError(`keyspaces[${i}]`, 'Duplicate keyspace name');
+        hasduplicateName = true;
+      }
     });
     // return if duplicate keyspace name is found.
     if (hasduplicateName) {

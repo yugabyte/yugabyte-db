@@ -1,4 +1,4 @@
-import React, { ReactNode } from 'react';
+import { ReactNode } from 'react';
 import clsx from 'clsx';
 
 import styles from './stylesheets/YBBanner.module.scss';
@@ -17,8 +17,6 @@ interface YBBannerProps {
   showBannerIcon?: boolean;
   variant?: YBBannerVariant;
 }
-
-
 
 export const YBBanner = ({
   className,

@@ -3,7 +3,7 @@ title: Develop applications
 headerTitle: Develop
 linkTitle: Develop
 description: Build YugabyteDB application that use ecosystem integrations and GraphQL.
-headcontent: Get started building applications based on YugabyteDB.
+headcontent: Get started building applications based on YugabyteDB
 image: /images/section_icons/index/develop.png
 type: indexpage
 ---
@@ -22,6 +22,30 @@ type: indexpage
   </div>
 
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="build-global-apps/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
+        <div class="title">Build global applications</div>
+      </div>
+      <div class="body">
+        Build globally distributed applications using design patterns.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="multi-cloud/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/deploy/public-clouds.png" aria-hidden="true" />
+        <div class="title">Build multi-cloud applications</div>
+      </div>
+      <div class="body">
+        Build multi-cloud applications for YugabyteDB.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="common-patterns/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/distributed_acid.png" aria-hidden="true" />
@@ -29,30 +53,6 @@ type: indexpage
       </div>
       <div class="body">
         Learn how to use multiple data models with YugabyteDB.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="multi-cloud/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/sample_apps.png" aria-hidden="true" />
-        <div class="title">Build multi-cloud applications</div>
-      </div>
-      <div class="body">
-        Build multi-cloud applications for YugabyteDB.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="multi-cloud/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/sample_apps.png" aria-hidden="true" />
-        <div class="title">Build multi-cloud applications</div>
-      </div>
-      <div class="body">
-        Build multi-cloud applications for YugabyteDB.
       </div>
     </a>
   </div>

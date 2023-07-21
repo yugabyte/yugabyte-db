@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Link } from 'react-router';
 import { Row, Col } from 'react-bootstrap';
 import { isFinite } from 'lodash';
@@ -73,11 +73,9 @@ class UniverseDisplayItem extends Component {
         />
       );
     }
-    const universeCreationDate = universe.creationDate ? (
-      ybFormatDate(universe.creationDate, YBTimeFormats.YB_DATE_ONLY_TIMESTAMP)
-    ) : (
-      ''
-    );
+    const universeCreationDate = universe.creationDate
+      ? ybFormatDate(universe.creationDate, YBTimeFormats.YB_DATE_ONLY_TIMESTAMP)
+      : '';
 
     return (
       <Col sm={4} md={3} lg={2}>
@@ -155,16 +153,6 @@ export default class UniverseDisplayPanel extends Component {
               <h2>Universes</h2>
             </Col>
             <Col className="universe-table-header-action dashboard-universe-actions">
-              {isNotHidden(currentCustomer.data.features, 'universe.import') && (
-                <Link to="/universes/import">
-                  <YBButton
-                    btnClass="universe-button btn btn-lg btn-default"
-                    disabled={isDisabled(currentCustomer.data.features, 'universe.import')}
-                    btnText="Import Universe"
-                    btnIcon="fa fa-mail-forward"
-                  />
-                </Link>
-              )}
               {isNotHidden(currentCustomer.data.features, 'universe.create') && (
                 <Link to="/universes/create">
                   <YBButton

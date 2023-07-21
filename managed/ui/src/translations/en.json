@@ -225,6 +225,7 @@
         "hbaLDAPConflocal": "local database user auth-method [auth-options]",
         "hbaLDAPConfHost": "host database user address auth-method [auth-options]",
         "hbaLDAPConfHostSSL": "hostssl database user IP-address auth-method [auth-options]",
+        "InvalidLDAPKey": "Invalid LDAP key or missing '=' between key value pair",
         "LDAPMissingAttributeValue": "Missing value for the attribute",
         "LDAPMissingQuote": "Attribute value should be enclosed in quotes",
         "nonASCIIDetected": "Non-ASCII value detected"

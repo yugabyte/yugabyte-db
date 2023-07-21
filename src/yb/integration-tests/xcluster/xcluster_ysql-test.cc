@@ -219,15 +219,6 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
     return yb_tables;
   }
 
-  static Status CreateDatabase(Cluster* cluster,
-                               const std::string& namespace_name = kNamespaceName,
-                               bool colocated = false) {
-    auto conn = EXPECT_RESULT(cluster->Connect());
-    EXPECT_OK(conn.ExecuteFormat("CREATE DATABASE $0$1",
-                                 namespace_name, colocated ? " colocation = true" : ""));
-    return Status::OK();
-  }
-
   std::string GetCompleteTableName(const YBTableName& table) {
     // Append schema name before table name, if schema is available.
     return table.has_pgschema_name()
@@ -1009,16 +1000,14 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionWithSavepointsOpt)
   // Test that SAVEPOINTs work correctly with xCluster replication.
   // Case I: skipping optimization pathway (see next test).
 
+  const auto [producer_table, consumer_table] = ASSERT_RESULT(CreateTableAndSetupReplication());
+  auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table->name().namespace_name()));
+  std::string table_name = GetCompleteTableName(producer_table->name());
+
   // This flag produces important information for interpreting the results of this test when it
   // fails.  It is also turned on here to make sure we don't have a regression where the flag causes
   // crashes (this has happened before).
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_log_write_batches) = true;
-  // Workaround for issue #16665
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = false;
-  const auto [producer_table, consumer_table] = ASSERT_RESULT(CreateTableAndSetupReplication());
-
-  auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table->name().namespace_name()));
-  std::string table_name = GetCompleteTableName(producer_table->name());
 
   // Attempt to get all of the changes from the transaction in a single CDC replication batch so the
   // optimization will kick in:
@@ -1048,16 +1037,14 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionWithSavepointsNoOp
   // Test that SAVEPOINTs work correctly with xCluster replication.
   // Case II: using optimization pathway (see below).
 
+  const auto [producer_table, consumer_table] = ASSERT_RESULT(CreateTableAndSetupReplication());
+  auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table->name().namespace_name()));
+  std::string table_name = GetCompleteTableName(producer_table->name());
+
   // This flag produces important information for interpreting the results of this test when it
   // fails.  It is also turned on here to make sure we don't have a regression where the flag causes
   // crashes (this has happened before).
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_log_write_batches) = true;
-  // Workaround for issue #16665
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_dcheck_for_missing_schema_packing) = false;
-  const auto [producer_table, consumer_table] = ASSERT_RESULT(CreateTableAndSetupReplication());
-
-  auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table->name().namespace_name()));
-  std::string table_name = GetCompleteTableName(producer_table->name());
 
   // Create two SAVEPOINTs but abort only one of them; all the writes except the aborted one should
   // be replicated and visible on the consumer side.
@@ -3736,8 +3723,8 @@ class XClusterYsqlTestReadOnly : public XClusterYsqlTest {
     RETURN_NOT_OK(Initialize(3 /* replication factor */));
     const std::vector<std::string> namespaces{kNamespaceName, "test_namespace2"};
     for (const auto& namespace_name : namespaces) {
-      RETURN_NOT_OK(RunOnBothClusters([&namespace_name](Cluster* cluster) -> Status {
-        RETURN_NOT_OK(CreateDatabase(cluster, namespace_name));
+      RETURN_NOT_OK(RunOnBothClusters([&namespace_name, this](Cluster* cluster) -> Status {
+        RETURN_NOT_OK(this->CreateDatabase(cluster, namespace_name));
         auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
         return conn.ExecuteFormat("CREATE TABLE $0(id INT PRIMARY KEY, balance INT)", kTableName);
       }));

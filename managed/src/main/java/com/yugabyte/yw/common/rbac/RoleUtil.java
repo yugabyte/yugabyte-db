@@ -22,6 +22,7 @@ public class RoleUtil {
   public Role createRole(
       UUID customerUUID,
       String name,
+      String description,
       RoleType roleType,
       Set<PermissionInfoIdentifier> permissionList)
       throws PlatformServiceException {
@@ -32,12 +33,16 @@ public class RoleUtil {
         name,
         customerUUID,
         permissionList);
-    return Role.create(customerUUID, name, roleType, permissionList);
+    return Role.create(customerUUID, name, description, roleType, permissionList);
   }
 
-  public Role editRolePermissions(UUID roleUUID, Set<PermissionInfoIdentifier> permissionList)
+  public Role editRole(
+      UUID customerUUID,
+      UUID roleUUID,
+      String description,
+      Set<PermissionInfoIdentifier> permissionList)
       throws PlatformServiceException {
-    Role role = Role.getOrBadRequest(roleUUID);
+    Role role = Role.getOrBadRequest(customerUUID, roleUUID);
     permissionUtil.validatePermissionList(permissionList);
     log.info(
         "Editing {} Role ('{}':'{}') with permissions {}.",
@@ -45,13 +50,13 @@ public class RoleUtil {
         role.getName(),
         role.getRoleUUID(),
         permissionList);
-    role.updatePermissionList(permissionList);
+    role.updateRole(description, permissionList);
     return role;
   }
 
-  public void deleteRole(UUID roleUUID) throws PlatformServiceException {
+  public void deleteRole(UUID customerUUID, UUID roleUUID) throws PlatformServiceException {
     // Later need to check if any policy uses this role.
-    Role role = Role.getOrBadRequest(roleUUID);
+    Role role = Role.getOrBadRequest(customerUUID, roleUUID);
     log.info(
         "Deleting {} Role ('{}':'{}').", role.getRoleType(), role.getName(), role.getRoleUUID());
     role.delete();

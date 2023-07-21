@@ -345,9 +345,8 @@ void RunningTransaction::DoStatusReceived(const Status& status,
       return;
     }
 
-    if (response.status_hybrid_time().size() != 1 ||
-        response.status().size() != 1 || response.deadlock_reason().size() != 1 ||
-        (response.aborted_subtxn_set().size() != 0 && response.aborted_subtxn_set().size() != 1)) {
+    if (response.status_hybrid_time().size() != 1 || response.status().size() != 1 ||
+        response.aborted_subtxn_set().size() > 1 || response.deadlock_reason().size() > 1) {
       LOG_WITH_PREFIX(DFATAL)
           << "Wrong number of status, status hybrid time, deadlock_reason, or aborted subtxn "
           << "set entries, exactly one entry expected: "
@@ -363,7 +362,8 @@ void RunningTransaction::DoStatusReceived(const Status& status,
         time_of_status = HybridTime(response.status_hybrid_time()[0]);
         transaction_status = response.status(0);
         aborted_subtxn_set = aborted_subtxn_set_or_status.get();
-        if (response.deadlock_reason(0).code() != AppStatusPB::OK) {
+        if (!response.deadlock_reason().empty() &&
+            response.deadlock_reason(0).code() != AppStatusPB::OK) {
           // response contains a deadlock specific error.
           expected_deadlock_status = StatusFromPB(response.deadlock_reason(0));
         }

@@ -1,4 +1,4 @@
-import React, { FC, useState } from 'react';
+import { FC, useState } from 'react';
 import moment from 'moment';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';

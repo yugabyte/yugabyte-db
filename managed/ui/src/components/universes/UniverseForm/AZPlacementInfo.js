@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import PropTypes from 'prop-types';
 import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 const statusTypes = {
@@ -57,7 +57,10 @@ export default class AZPlacementInfo extends Component {
     let currentStatusType;
 
     // If placementInfo and placementCloud is empty and provier is not onprem then return
-    if ((!isNonEmptyObject(placementInfo) || !isNonEmptyObject(placementCloud)) && providerCode !== "onprem") {
+    if (
+      (!isNonEmptyObject(placementInfo) || !isNonEmptyObject(placementCloud)) &&
+      providerCode !== 'onprem'
+    ) {
       return <span />;
     }
 
@@ -80,8 +83,8 @@ export default class AZPlacementInfo extends Component {
             multiAz = false;
           }
         } else if ((replicationFactor - 1) / 2 < az.replicationFactor) {
-            multiAz = false;
-          }
+          multiAz = false;
+        }
       });
 
       if (replicationFactor % 2 === 0) {
@@ -89,10 +92,9 @@ export default class AZPlacementInfo extends Component {
           multiRegion = false;
         }
       } else if ((replicationFactor - 1) / 2 < regionNumReplicas) {
-          multiRegion = false;
-        }
+        multiRegion = false;
+      }
     });
-    
 
     if (placementInfo.error) {
       currentStatusType = placementInfo.error.type;

@@ -43,6 +43,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/tserver/remote_bootstrap_anchor_client.h"
 #include "yb/tserver/remote_bootstrap.pb.h"
 #include "yb/tserver/remote_bootstrap.proxy.h"
@@ -104,13 +105,19 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 
   // Initialize the session, including anchoring files (TODO) and fetching the
   // tablet superblock and list of WAL segments.
-  Status Init();
+  Status InitBootstrapSession();
+
+  // Initialize the session: fetching superblock.
+  Status InitSnapshotTransferSession();
 
   // Return ID of tablet corresponding to this session.
   const std::string& tablet_id() const;
 
   // Return UUID of the requestor that initiated this session.
   const std::string& requestor_uuid() const;
+
+  // Return ID of session created.
+  const std::string& session_id() const { return session_id_; }
 
   Status GetDataPiece(const DataIdPB& data_id, GetDataPieceInfo* info);
 
@@ -173,6 +180,12 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   void AddSource() {
     sources_[Source::id_type()] = std::make_unique<Source>(tablet_peer_, &tablet_superblock_);
   }
+
+  Status ReadSuperblockFromDisk();
+
+  Result<tablet::TabletPtr> GetRunningTablet();
+
+  Status InitSources();
 
   // Snapshot the log segment's length and put it into segment map.
   Status OpenLogSegment(uint64_t segment_seqno, RemoteBootstrapErrorPB::Code* error_code)

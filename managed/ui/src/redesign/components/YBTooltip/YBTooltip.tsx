@@ -1,4 +1,4 @@
-import React, { VFC, ReactElement } from 'react';
+import { VFC, ReactElement } from 'react';
 import { Box, makeStyles, Theme, Tooltip, TooltipProps } from '@material-ui/core';
 // import InfoSolidIcon from '@app/assets/info-solid.svg';
 

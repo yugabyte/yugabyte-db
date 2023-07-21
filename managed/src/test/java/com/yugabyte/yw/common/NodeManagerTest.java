@@ -554,6 +554,7 @@ public class NodeManagerTest extends FakeDBApplication {
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.ansibleLocalTemp)))
         .thenReturn("/tmp/ansible_tmp/");
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybTmpDirectoryPath))).thenReturn("/tmp");
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.installLocalesDbNodes))).thenReturn(false);
   }
 
   private String getMountPoints(AnsibleConfigureServers.Params taskParam) {
@@ -676,8 +677,8 @@ public class NodeManagerTest extends FakeDBApplication {
       gflags.put("start_cql_proxy", "false");
     }
 
+    gflags.put("cluster_uuid", String.valueOf(configureParams.getUniverseUUID()));
     if (configureParams.isMaster) {
-      gflags.put("cluster_uuid", String.valueOf(configureParams.getUniverseUUID()));
       gflags.put("replication_factor", String.valueOf(userIntent.replicationFactor));
     }
 
@@ -859,6 +860,7 @@ public class NodeManagerTest extends FakeDBApplication {
         break;
       case Configure:
         AnsibleConfigureServers.Params configureParams = (AnsibleConfigureServers.Params) params;
+        Map<String, String> gflags = new TreeMap<>(configureParams.gflags);
 
         expectedCommand.add("--master_addresses_for_tserver");
         expectedCommand.add(MASTER_ADDRESSES);
@@ -920,6 +922,10 @@ public class NodeManagerTest extends FakeDBApplication {
             case Install:
               expectedCommand.add("--tags");
               expectedCommand.add("install-software");
+              expectedCommand.add("--tags");
+              expectedCommand.add("override_gflags");
+              expectedCommand.add("--gflags");
+              expectedCommand.add(Json.stringify(Json.toJson(gflags)));
               break;
             case None:
               break;
@@ -930,8 +936,6 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("--num_releases_to_keep");
           expectedCommand.add("3");
         }
-
-        Map<String, String> gflags = new TreeMap<>(configureParams.gflags);
 
         if (configureParams.type == Everything) {
           if ((configureParams.enableNodeToNodeEncrypt

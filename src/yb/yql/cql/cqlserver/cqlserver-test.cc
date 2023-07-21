@@ -598,12 +598,26 @@ TEST_F(TestCQLService, TestCQLStatementEndpoint) {
                std::bind(&CQLServiceImpl::TransactionPool, cql_service));
 
   cql_service->AllocateStatement("dummyqueryid", "dummyquery", &ql_env, IsPrepare::kTrue);
+  cql_service->UpdateStmtCounters("dummyqueryid", 1, IsPrepare::kTrue);
 
   ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addr)), &buf));
   string result = buf.ToString();
   ASSERT_STR_CONTAINS(result, "prepared_statements");
   ASSERT_STR_CONTAINS(result, "dummyquery");
   ASSERT_STR_CONTAINS(result, b2a_hex("dummyqueryid"));
+
+  // reset the counters and verify
+  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements-reset",
+                                              ToString(addr)), &buf));
+  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements",
+                                              ToString(addr)), &buf));
+
+  JsonReader json_post_reset(buf.ToString());
+  ASSERT_OK(json_post_reset.Init());
+  std::vector<const rapidjson::Value*> stmt_stats_post_reset;
+  ASSERT_OK(json_post_reset.ExtractObjectArray(json_post_reset.root(), "unprepared_statements",
+                                               &stmt_stats_post_reset));
+  ASSERT_EQ(stmt_stats_post_reset.size(), 0);
 }
 
 TEST_F(TestCQLService, TestCQLDumpStatementLimit) {
@@ -617,7 +631,10 @@ TEST_F(TestCQLService, TestCQLDumpStatementLimit) {
   const string dummyqueryid1 = CQLStatement::GetQueryId(ql_env.CurrentKeyspace(), "dummyquery1");
   const string dummyqueryid2 = CQLStatement::GetQueryId(ql_env.CurrentKeyspace(), "dummyquery2");
   cql_service->AllocateStatement(dummyqueryid1, "dummyquery1", &ql_env, IsPrepare::kTrue);
+  cql_service->UpdateStmtCounters(dummyqueryid1, 1, IsPrepare::kTrue);
   cql_service->AllocateStatement(dummyqueryid2, "dummyquery2", &ql_env, IsPrepare::kTrue);
+  cql_service->UpdateStmtCounters(dummyqueryid2, 1, IsPrepare::kTrue);
+
   // Dump should only return one prepared statement.
   StmtCountersMap counters = cql_service->GetStatementCountersForMetrics(IsPrepare::kTrue);
   ASSERT_EQ(1, counters.size());

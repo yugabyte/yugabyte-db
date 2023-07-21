@@ -1055,6 +1055,8 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
               SpecificGFlags.construct(ImmutableMap.of("master-flag", "m1"), ImmutableMap.of());
           universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
               specificGFlags;
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+              "2.17.1.0-b30";
         });
     expectedUniverseVersion++;
 

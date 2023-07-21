@@ -282,8 +282,8 @@ export interface DeviceInfo {
 }
 
 export interface K8NodeSpec {
-  memory: number;
-  cpu: number;
+  memoryGib: number;
+  cpuCoreCount: number;
 }
 //-------------------------------------------------------- Most Used OR Common Types - Ends --------------------------------------------------------
 

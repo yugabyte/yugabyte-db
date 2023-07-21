@@ -12,6 +12,7 @@ import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
+import io.ebean.annotation.WhenCreated;
 import io.ebean.annotation.WhenModified;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
@@ -51,9 +52,14 @@ public class Role extends Model {
   @ApiModelProperty(value = "Role name", accessMode = READ_WRITE)
   private String name;
 
+  @Column(name = "description", nullable = false)
+  @ApiModelProperty(value = "Role description")
+  private String description;
+
   @Column(name = "created_on", nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(value = "Role create time", example = "2022-12-12T13:07:18Z")
+  @WhenCreated
   private Date createdOn;
 
   @Setter
@@ -84,15 +90,10 @@ public class Role extends Model {
 
   public static final Finder<UUID, Role> find = new Finder<UUID, Role>(Role.class) {};
 
-  public void updatePermissionList(Set<PermissionInfoIdentifier> permissionList) {
-    this.permissionDetails.setPermissionList(permissionList);
-    this.setUpdatedOn(new Date());
-    this.update();
-  }
-
   public static Role create(
       UUID customerUUID,
       String name,
+      String description,
       RoleType roleType,
       Set<PermissionInfoIdentifier> permissionList) {
     Role role =
@@ -100,6 +101,7 @@ public class Role extends Model {
             UUID.randomUUID(),
             customerUUID,
             name,
+            description,
             new Date(),
             new Date(),
             roleType,
@@ -108,27 +110,48 @@ public class Role extends Model {
     return role;
   }
 
-  public static Role get(UUID roleUUID) {
-    return find.query().where().eq("role_uuid", roleUUID).findOne();
+  public void updateRole(String description, Set<PermissionInfoIdentifier> permissionList) {
+    if (description != null) {
+      this.description = description;
+    }
+    if (permissionList != null) {
+      this.permissionDetails.setPermissionList(permissionList);
+    }
+    this.update();
   }
 
-  public static Role getOrBadRequest(UUID roleUUID) throws PlatformServiceException {
-    Role role = get(roleUUID);
+  public static Role get(UUID customerUUID, UUID roleUUID) {
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("role_uuid", roleUUID)
+        .findOne();
+  }
+
+  public static Role getOrBadRequest(UUID customerUUID, UUID roleUUID)
+      throws PlatformServiceException {
+    Role role = get(customerUUID, roleUUID);
     if (role == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Invalid role UUID: " + roleUUID);
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format("Invalid role UUID '%s' for customer '%s'.", roleUUID, customerUUID));
     }
     return role;
   }
 
-  public static Role get(String name) {
-    return find.query().where().eq("name", name).findOne();
+  public static Role get(UUID customerUUID, String name) {
+    return find.query().where().eq("customer_uuid", customerUUID).eq("name", name).findOne();
   }
 
-  public static List<Role> getAll() {
-    return find.query().findList();
+  public static List<Role> getAll(UUID customerUUID) {
+    return find.query().where().eq("customer_uuid", customerUUID).findList();
   }
 
-  public static List<Role> getAll(RoleType roleType) {
-    return find.query().where().eq("role_type", roleType.toString()).findList();
+  public static List<Role> getAll(UUID customerUUID, RoleType roleType) {
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .eq("role_type", roleType.toString())
+        .findList();
   }
 }

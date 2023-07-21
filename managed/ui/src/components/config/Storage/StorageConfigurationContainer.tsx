@@ -1,5 +1,4 @@
 // Copyright (c) YugaByte, Inc.
-import React from 'react';
 import { connect } from 'react-redux';
 import { reduxForm } from 'redux-form';
 import { StorageConfiguration } from '..';
@@ -17,6 +16,7 @@ import {
 import { openDialog, closeDialog } from '../../../actions/modal';
 import { toast } from 'react-toastify';
 import { isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { handleCACertErrMsg } from '../../customCACerts';
 
 // TODO: Add specific types or replace with hooks.
 //       This file was converted to Typescript to resolve type errors
@@ -52,6 +52,9 @@ const mapDispatchToProps = (dispatch: any) => {
     addCustomerConfig: (config: any) => {
       return dispatch(addCustomerConfig(config)).then((response: any) => {
         if (response.error) {
+          if(handleCACertErrMsg(response.payload)){
+            return;
+          }
           const errorMessageObject =
             response.payload?.response?.data?.error || response.payload.message;
           customerConfigToasterHandler(errorMessageObject);
@@ -69,6 +72,9 @@ const mapDispatchToProps = (dispatch: any) => {
     editCustomerConfig: (config: any) => {
       return dispatch(editCustomerConfig(config)).then((response: any) => {
         if (response.error) {
+          if(handleCACertErrMsg(response.payload)){
+            return;
+          }
           const errorMessageObject =
             response.payload?.response?.data?.error || response.payload.message;
           customerConfigToasterHandler(errorMessageObject);

@@ -30,6 +30,7 @@ import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck.Details;
 import com.yugabyte.yw.models.HealthCheck.Details.NodeData;
+import com.yugabyte.yw.models.MasterInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.extended.DetailsExt;
 import com.yugabyte.yw.models.extended.NodeDataExt;
@@ -286,6 +287,19 @@ public class UniverseInfoController extends AuthenticatedController {
               .withHeader("Content-Disposition", "attachment; filename=" + file.getName());
         },
         ec.current());
+  }
+
+  @ApiOperation(
+      value = "Get master information list",
+      nickname = "getMasterInfos",
+      response = MasterInfo.class,
+      responseContainer = "List")
+  public Result getMasterInfos(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+
+    List<MasterInfo> masterInfos = universeInfoHandler.getMasterInfos(universe);
+    return PlatformResults.withData(masterInfos);
   }
 
   private List<DetailsExt> convertDetails(List<Details> details) {

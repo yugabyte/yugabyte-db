@@ -14,6 +14,8 @@
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/pg_locks_test_base.h"
 
 DECLARE_uint64(transaction_heartbeat_usec);
@@ -24,6 +26,8 @@ DECLARE_bool(auto_create_local_transaction_tables);
 DECLARE_bool(force_global_transactions);
 DECLARE_bool(TEST_mock_tablet_hosts_all_transactions);
 DECLARE_bool(TEST_fail_abort_request_with_try_again);
+DECLARE_bool(enable_wait_queues);
+DECLARE_bool(enable_deadlock_detection);
 
 using namespace std::literals;
 using std::string;
@@ -38,6 +42,12 @@ using TabletTxnLocksMap = std::unordered_map<TabletId, TxnLocksMap>;
 
 class PgGetLockStatusTest : public PgLocksTestBase {
  protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = true;
+    PgLocksTestBase::SetUp();
+  }
+
   Result<TransactionIdSet> GetTxnsInLockStatusResponse(
       const tserver::GetLockStatusResponsePB& resp) {
     if (resp.has_error()) {
@@ -89,7 +99,10 @@ class PgGetLockStatusTest : public PgLocksTestBase {
           auto id = ASSERT_RESULT(TransactionId::FromString(txn_lock_pair.first));
           auto txn_map_it = tablet_map_it->second.find(id);
           ASSERT_NE(txn_map_it, tablet_map_it->second.end());
-          ASSERT_EQ(txn_lock_pair.second.locks_size(), txn_map_it->second);
+          const auto& lock_info = txn_lock_pair.second;
+          ASSERT_EQ(
+              lock_info.granted_locks_size() + lock_info.waiting_locks().locks_size(),
+              txn_map_it->second);
           tablet_map_it->second.erase(txn_map_it);
         }
         ASSERT_TRUE(tablet_map_it->second.empty());
@@ -314,6 +327,100 @@ TEST_F(PgGetLockStatusTest, TestGetLockStatusLimitNumOldTxns) {
       }
     }
   });
+}
+
+TEST_F(PgGetLockStatusTest, TestGetWaitStart) {
+  const auto table = "foo";
+  const auto locked_key = "2";
+  auto session = ASSERT_RESULT(Init(table, "1"));
+
+  auto blocker = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(blocker.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(blocker.FetchFormat("SELECT * FROM $0 WHERE k=$1 FOR UPDATE", table, locked_key));
+
+  std::atomic<bool> txn_finished = false;
+  std::thread th([&session, &table, &locked_key, &txn_finished] {
+    ASSERT_OK(session.conn->FetchFormat(
+        "SELECT * FROM $0 WHERE k=$1 FOR UPDATE", table, locked_key));
+    txn_finished.store(true);
+  });
+
+  SleepFor(1ms * kTimeMultiplier);
+
+  auto res = ASSERT_RESULT(blocker.FetchValue<int64_t>(
+    "SELECT COUNT(*) FROM yb_lock_status(null, null) WHERE waitstart IS NOT NULL"));
+  // The statement above acquires two locks --
+  // {STRONG_READ,STRONG_WRITE} on the primary key
+  // {WEAK_READ,WEAK_WRITE} on the table
+  ASSERT_EQ(res, 2);
+
+  ASSERT_OK(blocker.CommitTransaction());
+  ASSERT_OK(WaitFor([&] {
+    return txn_finished.load();
+  }, 5s * kTimeMultiplier, "select for update to unblock and execute"));
+  th.join();
+  ASSERT_OK(session.conn->CommitTransaction());
+}
+
+TEST_F(PgGetLockStatusTest, TestBlockedBy) {
+  const auto table = "waiter_table";
+  const auto locked_key = "2";
+
+  // Start waiter txn first to ensure it is the oldest
+  auto waiter_session = ASSERT_RESULT(Init(table, "1"));
+
+  SleepFor(10ms * kTimeMultiplier);
+
+  auto session1 = ASSERT_RESULT(Init("foo", "1"));
+  auto session2 = ASSERT_RESULT(Init("bar", "1"));
+
+  // Have both sessions acquire lock on locked_key so they will both block our waiter
+  ASSERT_OK(session1.conn->FetchFormat(
+      "SELECT * FROM $0 WHERE k=$1 FOR KEY SHARE", table, locked_key));
+  ASSERT_OK(session2.conn->FetchFormat(
+      "SELECT * FROM $0 WHERE k=$1 FOR KEY SHARE", table, locked_key));
+
+  // Try acquiring exclusive lock on locked_key async
+  std::atomic<bool> lock_acquired = false;
+  std::thread th([&waiter_session, &table, &locked_key, &lock_acquired] {
+    ASSERT_OK(waiter_session.conn->FetchFormat(
+        "SELECT * FROM $0 WHERE k=$1 FOR UPDATE", table, locked_key));
+    lock_acquired.store(true);
+  });
+
+  SleepFor(2 * FLAGS_heartbeat_interval_ms * 1ms * kTimeMultiplier);
+
+  tserver::PgGetLockStatusRequestPB req;
+  req.set_max_num_txns(1);
+  auto resp = ASSERT_RESULT(GetLockStatus(req));
+
+  ASSERT_EQ(resp.node_locks_size(), 1);
+  ASSERT_EQ(resp.node_locks(0).tablet_lock_infos_size(), 1);
+  ASSERT_EQ(resp.node_locks(0).tablet_lock_infos(0).transaction_locks_size(), 1);
+  for (const auto& [txn_id, txn_lock] :
+          resp.node_locks(0).tablet_lock_infos(0).transaction_locks()) {
+    auto waiter_txn_id = ASSERT_RESULT(TransactionId::FromString(txn_id));
+    ASSERT_EQ(waiter_txn_id, waiter_session.txn_id);
+
+    ASSERT_EQ(txn_lock.waiting_locks().locks().size(), 2);
+
+    std::set<TransactionId> blockers;
+    for (const auto& blocking_txn_id : txn_lock.waiting_locks().blocking_txn_ids()) {
+      auto decoded = ASSERT_RESULT(FullyDecodeTransactionId(blocking_txn_id));
+      blockers.insert(decoded);
+      ASSERT_TRUE(decoded == session1.txn_id || decoded == session2.txn_id);
+    }
+    ASSERT_EQ(blockers.size(), 2);
+  }
+
+  ASSERT_OK(session1.conn->CommitTransaction());
+  ASSERT_OK(session2.conn->CommitTransaction());
+  ASSERT_OK(WaitFor([&] {
+    return lock_acquired.load();
+  }, 5s * kTimeMultiplier, "select for update to unblock and execute"));
+  th.join();
+  ASSERT_OK(waiter_session.conn->CommitTransaction());
 }
 
 } // namespace pgwrapper

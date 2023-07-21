@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Fragment, Component } from 'react';
+import { Fragment, Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { YBFormInput, YBFormSelect, YBButton } from '../common/forms/fields';
 import { getPromiseState } from '../../utils/PromiseUtils';
@@ -142,8 +142,8 @@ export default class Importer extends Component {
         (!this.props.universeImport.error && idx === currentStep && currentStep !== 0)
           ? 'finished'
           : this.props.universeImport.error && idx === currentStep + 1
-            ? 'failed'
-            : '';
+          ? 'failed'
+          : '';
       return (
         <li key={idx} className={itemClass + ' ' + item.class}>
           <span>{item.replace('_', ' ')}</span>

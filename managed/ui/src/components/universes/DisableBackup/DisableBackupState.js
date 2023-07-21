@@ -1,10 +1,9 @@
-import React from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { YBModal } from '../../common/forms/fields';
 
 /**
  * recieves current universe details with modal controls.
- * @param {visible, onHide, universe, updateBackupState} props 
+ * @param {visible, onHide, universe, updateBackupState} props
  * @returns - confirmation modal to toggle backup state
  */
 export const ToggleBackupState = (props) => {
