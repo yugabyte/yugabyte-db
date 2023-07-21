@@ -47,6 +47,11 @@ service RemoteBootstrapService {
   rpc BeginRemoteBootstrapSession(BeginRemoteBootstrapSessionRequestPB)
       returns (BeginRemoteBootstrapSessionResponsePB);
 
+  // Establish a remote snapshot transfer session.
+  rpc BeginRemoteSnapshotTransferSession(
+      BeginRemoteSnapshotTransferSessionRequestPB)
+      returns (BeginRemoteSnapshotTransferSessionResponsePB);
+
   // Check whether the specified session is active.
   rpc CheckRemoteBootstrapSessionActive(CheckRemoteBootstrapSessionActiveRequestPB)
       returns (CheckRemoteBootstrapSessionActiveResponsePB);
@@ -174,6 +179,28 @@ message BeginRemoteBootstrapSessionResponsePB {
 
   // If the tablet has a retryable requests file flushed to disk.
   optional bool retryable_requests_file_flushed = 7 [default = false];
+}
+
+message BeginRemoteSnapshotTransferSessionRequestPB {
+  // permanent_uuid of the requesting peer.
+  required bytes requestor_uuid = 1;
+
+  // tablet_id of the tablet the requester desires to bootstrap from.
+  required bytes tablet_id = 2;
+}
+
+message BeginRemoteSnapshotTransferSessionResponsePB {
+  // Opaque session id assigned by the server.
+  // No guarantees are made as to the format of the session id.
+  required bytes session_id = 1;
+
+  // Maximum session idle timeout between requests.
+  // Learners will have to start over again if they reach this timeout.
+  // A value of 0 means there is no timeout.
+  required uint64 session_idle_timeout_millis = 2;
+
+  // Active superblock at the time of the request.
+  required tablet.RaftGroupReplicaSuperBlockPB superblock = 3;
 }
 
 message CheckRemoteBootstrapSessionActiveRequestPB {
