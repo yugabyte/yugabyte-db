@@ -192,7 +192,7 @@ Ensure that YugabyteDB is up and running. To install YugabyteDB on your cloud vi
 
     ```sh
     ./yb-admin -master_addresses <master_addresses>:7100 \
-         create_change_data_stream ysql.yugabyte
+         create_change_data_stream ysql.yugabyte \
         -certs_dir_name /home/yugabyte/yugabyte-tls-config/
     ```
 
