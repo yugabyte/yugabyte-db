@@ -19,6 +19,9 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/status_log.h"
+#include "yb/client/table.h"
+#include "yb/consensus/log-test-base.h"
+#include "yb/util/test_thread_holder.h"
 
 DECLARE_bool(TEST_simulate_fs_create_with_empty_uuid);
 DECLARE_int32(num_replicas);
@@ -79,6 +82,29 @@ TEST_F(TabletServerITest, TestTServerCrashWithEmptyUUID) {
   mini_server_ = std::move(*mini_ts);
   auto status = mini_server_->Start();
   ASSERT_TRUE(status.IsCorruption());
+}
+
+TEST_F(TabletServerITest, TestTserverInitWaitsForMasterLeader) {
+  FLAGS_num_tablet_servers = 1;
+  FLAGS_num_replicas = 1;
+  CreateCluster("tablet_server-itest-cluster");
+  ASSERT_EQ(cluster_->num_tablet_servers(), 1);
+  ASSERT_EQ(cluster_->num_masters(), 1);
+
+  // shutdown master
+  auto master = cluster_->master();
+  auto ts = cluster_->tablet_server(0);
+  master->Shutdown();
+  ts->Shutdown();
+  auto test_thread_holder = TestThreadHolder();
+
+  test_thread_holder.AddThread([&]() { ASSERT_OK(ts->Restart()); });
+  test_thread_holder.AddThread([&]() {
+    std::this_thread::sleep_for(45s);
+    ASSERT_OK(master->Start());
+  });
+
+  test_thread_holder.JoinAll();
 }
 
 TEST_F(TabletServerITest, TestProxyAddrs) {

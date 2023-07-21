@@ -99,6 +99,7 @@ using std::string;
 using yb::rpc::ServiceIf;
 using yb::tablet::TabletPeer;
 
+using namespace std::literals;
 using namespace yb::size_literals;
 using namespace std::placeholders;
 
@@ -174,6 +175,20 @@ DEFINE_NON_RUNTIME_bool(allow_encryption_at_rest, true,
                         "Whether or not to allow encryption at rest to be enabled. Toggling this "
                         "flag does not turn on or off encryption at rest, but rather allows or "
                         "disallows a user from enabling it on in the future.");
+
+DEFINE_int32(
+    get_universe_key_registry_backoff_increment_ms, 100,
+    "Number of milliseconds added to the delay between retries of fetching the full universe key "
+    "registry from master leader. This delay is applied after the RPC reties have been exhausted.");
+TAG_FLAG(get_universe_key_registry_backoff_increment_ms, stable);
+TAG_FLAG(get_universe_key_registry_backoff_increment_ms, advanced);
+
+DEFINE_int32(
+    get_universe_key_registry_max_backoff_sec, 3,
+    "Maximum number of seconds to delay between retries of fetching the full universe key registry "
+    "from master leader. This delay is applied after the RPC reties have been exhausted.");
+TAG_FLAG(get_universe_key_registry_max_backoff_sec, stable);
+TAG_FLAG(get_universe_key_registry_max_backoff_sec, advanced);
 
 namespace yb {
 namespace tserver {
@@ -313,9 +328,35 @@ Status TabletServer::Init() {
         master_addresses.push_back(hp.ToString());
       }
     }
-    auto universe_key_registry =
-        VERIFY_RESULT(client::UniverseKeyClient::GetFullUniverseKeyRegistry(
-            options_.HostsString(), JoinStrings(master_addresses, ","), *fs_manager()));
+
+    const auto delay_increment =
+        MonoDelta::FromMilliseconds(FLAGS_get_universe_key_registry_backoff_increment_ms);
+    const auto max_delay_time =
+        MonoDelta::FromSeconds(FLAGS_get_universe_key_registry_max_backoff_sec);
+    auto delay_time = delay_increment;
+
+    uint32_t attempts = 1;
+    auto start_time = CoarseMonoClock::Now();
+    encryption::UniverseKeyRegistryPB universe_key_registry;
+    while (true) {
+      auto res = client::UniverseKeyClient::GetFullUniverseKeyRegistry(
+          options_.HostsString(), JoinStrings(master_addresses, ","), *fs_manager());
+      if (res.ok()) {
+        universe_key_registry = *res;
+        break;
+      }
+      auto total_time = std::to_string((CoarseMonoClock::Now() - start_time).count()) + "ms";
+      LOG(WARNING) << "Getting full universe key registry from master Leader failed: '"
+                   << res.status() << "'. Attempts: " << attempts << ", Total Time: " << total_time
+                   << ". Retrying...";
+
+      // Delay before retrying so that we don't accidentally DDoS the mater.
+      // Time increases linearly by delay_increment up to max_delay.
+      SleepFor(delay_time);
+      delay_time = std::min(max_delay_time, delay_time + delay_increment);
+      attempts++;
+    }
+
     universe_key_manager_ = std::make_unique<encryption::UniverseKeyManager>();
     universe_key_manager_->SetUniverseKeyRegistry(universe_key_registry);
     rocksdb_env_ = NewRocksDBEncryptedEnv(DefaultHeaderManager(universe_key_manager_.get()));
