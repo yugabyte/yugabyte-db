@@ -498,10 +498,10 @@
     showSection = true
 
 [[preview_releases]]
-  name = "Releases"
+  name = "Release versioning"
   weight = 2
   identifier = "release-versioning"
-  url = "/releases/versioning/"
+  url = "/preview/releases/versioning/"
   [preview_releases.params]
     showSection = true
 
@@ -514,7 +514,7 @@
     showSection = true
 
 [[preview_releases]]
-  name = "YBA Releases"
+  name = "YugabyteDB Anywhere releases"
   weight = 4
   identifier = "yba-releases"
   url = "/preview/releases/yba-releases/"
