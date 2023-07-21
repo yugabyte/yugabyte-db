@@ -20,8 +20,8 @@ resources:
     url: /preview/yugabyte-cloud/release-notes/
   - title: YugabyteDB Managed FAQ
     url: /preview/faq/yugabytedb-managed-faq/
-  - title: Build applications
-    url: /preview/develop/build-apps/
+  - title: Video Tutorials
+    url: https://www.youtube.com/playlist?list=PL8Z3vt4qJTkIAYWaUOE_CIntxTHho_pBh
 cascade:
   unversioned: true
 ---
