@@ -1209,6 +1209,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const GetUDTypeMetadataRequestPB* req, GetUDTypeMetadataResponsePB* resp,
       rpc::RpcContext* rpc);
 
+  // Bootstrap namespace and setup replication to consume data from another YB universe.
+  Status SetupNamespaceReplicationWithBootstrap(
+      const SetupNamespaceReplicationWithBootstrapRequestPB* req,
+      SetupNamespaceReplicationWithBootstrapResponsePB* resp, rpc::RpcContext* rpc);
+
   // Setup Universe Replication to consume data from another YB universe.
   Status SetupUniverseReplication(
       const SetupUniverseReplicationRequestPB* req,
@@ -2549,6 +2554,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     std::unordered_map<TableId, xrepl::StreamId> table_bootstrap_ids;
     bool transactional;
   };
+
+  Status ValidateMasterAddressesBelongToDifferentCluster(
+      const google::protobuf::RepeatedPtrField<HostPortPB>& master_addresses);
 
   // Validates a single table's schema with the corresponding table on the consumer side, and
   // updates consumer_table_id with the new table id. Return the consumer table schema if the
