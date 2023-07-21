@@ -16,7 +16,7 @@ showRightNav: true
 
 {{<srcdiagram href="https://docs.google.com/presentation/d/1lEajQyVZLhmHRKmBxunf1LucWkQkrJ3rIthoHxZvyQc/edit#slide=id.g22bc5dd47b0_0_18">}}
 
-In today's fast-paced world, the internet and cloud technology have revolutionized the way people interact and operate. Cloud introduces multiple regions leading to data being distributed and replicated over various geographies. A new class of applications must be developed to access and maintain globally distributed data. Let's understand the reasons why today's applications have to be global and look at some patterns that YugabyteDB offers to design your global applications with ease.
+Internet and cloud technologies have revolutionized the way people interact and operate. Cloud introduces the possibility of distributing and replicating data across multiple geographies. Accessing and maintaining that globally distributed data demands a new class of global application.
 
 ## The need for global applications
 
@@ -26,11 +26,11 @@ The reasons for making your applications global are the same as those for adopti
 
 - **Data residency for compliance** To comply with data residency laws (for example, the [GDPR](https://en.wikipedia.org/wiki/General_Data_Protection_Regulation)), you need to ensure that the data of citizens is stored on servers located in their country. This means that you need to design your applications to split data across geographies accordingly.
 
-- **Moving data closer to users** When designing an application with global reach (for example, email, e-commerce, or broadcasting events like the Olympics), you need to take into account that users could be located in various geographies. If your application is hosted in data centers located in the US, users in Europe might encounter high latency when trying to access your application. To provide the best user experience, you need to run your applications closer to your users.
+- **Moving data closer to users** When designing an application with global reach (for example, email, e-commerce, or broadcasting events like the Olympics), you need to take into account where your users are located. If your application is hosted in data centers located in the US, users in Europe might encounter high latency when trying to access your application. To provide the best user experience, you need to run your applications closer to your users.
 
 ## Application design patterns
 
-Running applications in multiple data centers with data split across them is not a trivial task. When designing global applications, you need to answer the following questions:
+Running applications in multiple data centers with data split across them is not a trivial task. When designing global applications, you need to answer questions such as:
 
 - How will multiple instances of the application run in different fault domains (regions/data centers)?
 - Will the application instances be identical or different?
@@ -40,7 +40,7 @@ Running applications in multiple data centers with data split across them is not
 - How will the application evolve?
 - How will the application behave on a fault domain failure?
 
-To help you answer these questions, we have defined several architectural concepts that you can use to choose a suitable design pattern for your application.
+To help you answer these questions, use the following architectural concepts to choose a suitable design pattern for your application.
 
 ### Application Architecture
 
@@ -58,7 +58,7 @@ Depending on whether the application instances operate on the entire dataset or 
 - **Follow the application** - Only one application instance is active, while the others (one or more) can serve stale reads.
 - **Geo-local dataset** - Applications act on geographically placed local data. On failure, the application does not move.
 
-### Data Access Architectures
+### Data Access Architecture
 
 Depending on whether the application should read the latest data or stale data, choose from the following data access architectures:
 
