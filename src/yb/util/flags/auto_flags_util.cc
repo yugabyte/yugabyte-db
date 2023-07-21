@@ -33,6 +33,15 @@ using rapidjson::Value;
 using std::string;
 using yb::common::AddMember;
 
+#define VALIDATE_MEMBER(doc, member_name, is_type, expected_type_name) \
+  SCHECK( \
+      doc.HasMember(member_name), NotFound, \
+      AutoFlagsJsonParseErrorMsg() + Format("'$0' member not found.", member_name)); \
+  SCHECK( \
+      doc[member_name].is_type(), InvalidArgument, \
+      AutoFlagsJsonParseErrorMsg() + \
+          Format("'$0' member should be of type $1.", member_name, expected_type_name))
+
 namespace yb {
 const char kAutoFlagsJsonFileName[] = "auto_flags.json";
 const char kAutoFlagsMember[] = "auto_flags";
@@ -42,7 +51,18 @@ const char kNameMember[] = "name";
 const char kClassMember[] = "class";
 const char kRuntimeMember[] = "is_runtime";
 
-string AutoFlagsUtil::DumpAutoFlagsToJSON(const std::string& program_name) {
+namespace {
+
+// Function wrapper for the prefix error message to avoid static initialization order issues.
+string AutoFlagsJsonParseErrorMsg() {
+  static const string error_msg = Format("Failed to parse $0.", kAutoFlagsJsonFileName);
+  return error_msg;
+}
+
+}  // namespace
+
+namespace AutoFlagsUtil {
+string DumpAutoFlagsToJSON(const std::string& program_name) {
   // Format:
   //  {
   //     "auto_flags": [
@@ -85,23 +105,6 @@ string AutoFlagsUtil::DumpAutoFlagsToJSON(const std::string& program_name) {
   doc.Accept(writer);
   return str_buf.GetString();
 }
-
-namespace {
-
-// Function wrapper for the prefix error message to avoid static initialization order issues
-string AutoFlagsJsonParseErrorMsg() {
-  static const string error_msg = Format("Failed to parse $0.", kAutoFlagsJsonFileName);
-  return error_msg;
-}
-
-#define VALIDATE_MEMBER(doc, member_name, is_type, expected_type_name) \
-  SCHECK( \
-      doc.HasMember(member_name), NotFound, \
-      AutoFlagsJsonParseErrorMsg() + Format("'$0' member not found.", member_name)); \
-  SCHECK( \
-      doc[member_name].is_type(), InvalidArgument, \
-      AutoFlagsJsonParseErrorMsg() + \
-          Format("'$0' member should be of type $1.", member_name, expected_type_name))
 
 // Read kAutoFlagsJsonFileName and get the list of available auto flags for all processes.
 Result<AutoFlagsInfoMap> GetAvailableAutoFlags() {
@@ -151,9 +154,8 @@ Result<AutoFlagsInfoMap> GetAvailableAutoFlags() {
 
   return available_flags;
 }
-}  // namespace
 
-AutoFlagsInfoMap AutoFlagsUtil::GetFlagsEligibleForPromotion(
+AutoFlagsInfoMap GetFlagsEligibleForPromotion(
     const AutoFlagsInfoMap& available_flags, const AutoFlagClass max_flag_class,
     const PromoteNonRuntimeAutoFlags promote_non_runtime) {
   AutoFlagsInfoMap eligible_flags;
@@ -169,11 +171,12 @@ AutoFlagsInfoMap AutoFlagsUtil::GetFlagsEligibleForPromotion(
   return eligible_flags;
 }
 
-Result<AutoFlagsInfoMap> AutoFlagsUtil::GetFlagsEligibleForPromotion(
+Result<AutoFlagsInfoMap> GetFlagsEligibleForPromotion(
     const AutoFlagClass max_flag_class, const PromoteNonRuntimeAutoFlags promote_non_runtime) {
   auto available_flags = VERIFY_RESULT(GetAvailableAutoFlags());
 
   return GetFlagsEligibleForPromotion(available_flags, max_flag_class, promote_non_runtime);
 }
+}  // namespace AutoFlagsUtil
 
 }  // namespace yb
