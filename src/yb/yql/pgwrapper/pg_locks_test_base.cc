@@ -108,6 +108,32 @@ Result<TabletId> PgLocksTestBase::CreateTableAndGetTabletId(const string& table_
   return VERIFY_RESULT(GetSingularTabletOfTable(table_name));
 }
 
+Result<tserver::GetOldTransactionsResponsePB> PgLocksTestBase::GetOldTransactions(
+    const TabletId& status_tablet, uint32_t min_txn_age_ms, uint32_t max_num_txns) {
+  rpc::RpcController controller;
+  controller.set_timeout(kTimeoutMs * 1ms * kTimeMultiplier);
+
+  tserver::GetOldTransactionsRequestPB req;
+  req.set_tablet_id(status_tablet);
+  req.set_min_txn_age_ms(min_txn_age_ms);
+  req.set_max_num_txns(max_num_txns);
+
+  Status s;
+  for (auto& proxy : get_ts_proxies()) {
+    tserver::GetOldTransactionsResponsePB resp;
+    controller.Reset();
+
+    RETURN_NOT_OK(proxy->GetOldTransactions(req, &resp, &controller));
+    if (!resp.has_error()) {
+      return resp;
+    }
+    s = StatusFromPB(resp.error().status()).CloneAndAppend("\n").CloneAndAppend(s.message());
+  }
+
+  return STATUS_FORMAT(IllegalState,
+                       "GetLockStatus request failed: $0", s);
+}
+
 Result<tserver::PgGetLockStatusResponsePB> PgLocksTestBase::GetLockStatus(
     const tserver::PgGetLockStatusRequestPB& req) {
   RSTATUS_DCHECK(!pg_client_service_proxies_.empty(),
