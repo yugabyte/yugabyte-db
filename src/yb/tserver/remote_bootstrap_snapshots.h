@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/common/entity_ids_types.h"
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/tserver/remote_bootstrap_client.h"
@@ -28,11 +29,16 @@ class RemoteBootstrapSnapshotsComponent : public RemoteBootstrapComponent {
 
   Status CreateDirectories(const std::string& db_dir, FsManager* fs) override;
   Status Download() override;
+  Status Download(const SnapshotId* snapshot_id);
 
  private:
   FsManager& fs_manager() const {
     return downloader_.fs_manager();
   }
+
+  Status Download(
+      const std::string& top_snapshots_dir, const tablet::SnapshotFilePB& snapshot,
+      std::unordered_set<SnapshotId>* failed_snapshot_ids);
 
   RemoteBootstrapFileDownloader& downloader_;
   tablet::RaftGroupReplicaSuperBlockPB& new_superblock_;
