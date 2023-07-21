@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { YBCheckBox } from '../../../common/forms/fields';
 import { Alert, DropdownButton, MenuItem } from 'react-bootstrap';
 import { CustomDateRangePicker } from '../DateRangePicker/DateRangePicker';

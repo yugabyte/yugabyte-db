@@ -22,33 +22,33 @@
       "isLTS": false,
       "isSTS": true,
       "initialRelease": "2023-05-16",
-      "endOfMaintenance": "2024-01-16",
-      "endOfLife": "2025-07-16"
+      "endOfMaintenance": "2024-05-16",
+      "endOfLife": "2025-11-16"
     },
     {
       "series": "v2.16",
       "display": "v2.16 (STS)",
-      "version": "2.16.5.0",
-      "versionShort": "2.16.5",
-      "appVersion": "2.16.5.0-b24",
+      "version": "2.16.6.0",
+      "versionShort": "2.16.6",
+      "appVersion": "2.16.6.0-b43",
       "isStable": true,
       "isLTS": false,
       "isSTS": true,
       "initialRelease": "2022-12-14",
-      "endOfMaintenance": "2023-08-14",
-      "endOfLife": "2024-02-14"
+      "endOfMaintenance": "2023-12-14",
+      "endOfLife": "2024-06-14"
     },
     {
       "series": "v2.14",
       "display": "v2.14 (LTS)",
-      "version": "2.14.10.2",
-      "versionShort": "2.14.10",
-      "appVersion": "2.14.10.2-b1",
+      "version": "2.14.11.0",
+      "versionShort": "2.14.11",
+      "appVersion": "2.14.11.0-b35",
       "isStable": true,
       "isLTS": true,
       "initialRelease": "2022-07-14",
-      "endOfMaintenance": "2024-01-14",
-      "endOfLife": "2024-07-14"
+      "endOfMaintenance": "2024-07-14",
+      "endOfLife": "2025-01-14"
     },
     {
       "series": "v2.12",

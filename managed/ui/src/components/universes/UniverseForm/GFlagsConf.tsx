@@ -1,4 +1,4 @@
-import React, { FC, useState } from 'react';
+import { FC, useState } from 'react';
 import { makeStyles, Box, Typography } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { EditGFlagsConf } from './EditGFlagsConf';

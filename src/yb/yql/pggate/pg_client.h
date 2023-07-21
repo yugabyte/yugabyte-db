@@ -109,6 +109,9 @@ class PgClient {
   Status GetIndexBackfillProgress(const std::vector<PgObjectId>& index_ids,
                                   uint64_t** backfill_statuses);
 
+  Result<yb::tserver::PgGetLockStatusResponsePB> GetLockStatusData(
+      const std::string& table_id, const std::string& transaction_id);
+
   Result<int32> TabletServerCount(bool primary_only);
 
   Result<client::TabletServersInfo> ListLiveTabletServers(bool primary_only);
@@ -174,6 +177,8 @@ class PgClient {
       CoarseTimePoint deadline);
 
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_SIMPLE_METHOD_DECLARE, ~, YB_PG_CLIENT_SIMPLE_METHODS);
+
+  Status CancelTransaction(const unsigned char* transaction_id);
 
  private:
   class Impl;

@@ -9,8 +9,11 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.client.SnapshotInfo;
+import org.yb.client.SnapshotRestorationInfo;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterBackupOuterClass.SnapshotInfoPB;
+import org.yb.master.MasterBackupOuterClass.SysRestorationEntryPB;
+import org.yb.master.MasterBackupOuterClass.RestorationInfoPB;
 import org.yb.annotations.InterfaceAudience;
 
 @InterfaceAudience.Private
@@ -47,5 +50,27 @@ public class SnapshotUtil {
             new SnapshotInfo(snapshotUUID, snapshotTimeInMillis,
                             previousSnapshotTimeInMillis, state);
         return snapshotInfo;
+    }
+
+    public static SnapshotRestorationInfo parseSnapshotRestorationInfoPB(
+        RestorationInfoPB restorationInfoPB) {
+        UUID restorationUUID = convertToUUID(restorationInfoPB.getId());
+        SysRestorationEntryPB restorationEntry = restorationInfoPB.getEntry();
+        UUID snapshotUUID = convertToUUID(restorationEntry.getSnapshotId());
+        UUID scheduleUUID = convertToUUID(restorationEntry.getScheduleId());
+        long restoreTime = HTTimestampToPhysicalAndLogical(
+                            restorationEntry.getRestoreAtHt())[0]/1000L;
+        long completionTime = HTTimestampToPhysicalAndLogical(
+                            restorationEntry.getCompleteTimeHt())[0]/1000L;
+        CatalogEntityInfo.SysSnapshotEntryPB.State state = restorationEntry.getState();
+        SnapshotRestorationInfo snapshotRestorationInfo =
+            new SnapshotRestorationInfo(
+                    restorationUUID,
+                    snapshotUUID,
+                    scheduleUUID,
+                    restoreTime,
+                    completionTime,
+                    state);
+        return snapshotRestorationInfo;
     }
 }

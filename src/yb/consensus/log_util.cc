@@ -111,14 +111,13 @@ DEFINE_UNKNOWN_bool(require_durable_wal_write, false, "Whether durable WAL write
     "the system will soft downgrade the durable_wal_write flag.");
 TAG_FLAG(require_durable_wal_write, stable);
 
-// We only keep this disabled by default to prevent backward compatibility issues during rolling
-// upgrade. Nodes that don't support log index embedded into WAL segments won't be able to do
-// local bootstrap based on data from nodes that has log index embedded into WAL segments.
-//
-// TODO(logindex): should be switched to DEFINE_RUNTIME_AUTO_bool after
-// https://github.com/yugabyte/yugabyte-db/issues/11912.
-DEFINE_UNKNOWN_bool(
-    save_index_into_wal_segments, yb::IsDebug(), "Whether to save log index into WAL segments.");
+#ifdef NDEBUG
+DEFINE_RUNTIME_AUTO_bool(save_index_into_wal_segments, kLocalPersisted, false, true,
+#else
+// We set it to false in debug builds to keep testing the old approach in auto tests.
+DEFINE_RUNTIME_bool(save_index_into_wal_segments, false,
+#endif
+    "Whether to save log index into WAL segments.");
 TAG_FLAG(save_index_into_wal_segments, hidden);
 TAG_FLAG(save_index_into_wal_segments, advanced);
 

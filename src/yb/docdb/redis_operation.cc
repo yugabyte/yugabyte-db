@@ -2042,8 +2042,8 @@ Status RedisReadOperation::ExecuteKeys() {
     if (!key_data) {
       break;
     }
-    if (deadline_info_.get_ptr() && deadline_info_->CheckAndSetDeadlinePassed()) {
-      return STATUS(Expired, "Deadline for query passed.");
+    if (deadline_info_.get_ptr()) {
+      RETURN_NOT_OK(deadline_info_->CheckDeadlinePassed());
     }
     auto key = key_data.key;
 

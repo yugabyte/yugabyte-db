@@ -15,6 +15,7 @@ package org.yb.pgsql;
 
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.Arrays;
 
 import org.junit.After;
 import org.junit.Before;
@@ -213,10 +214,14 @@ public class TestPgAlterTableColumnType extends BasePgSQLTest {
       runInvalidQuery(statement, "ALTER TABLE default_table ALTER c2 TYPE int USING length(c2)",
         "default for column \"c2\" cannot be cast automatically to type integer");
 
-      statement.execute("CREATE TABLE default_table2(c1 int, c2 int default 10)");
-      statement.execute("ALTER TABLE default_table2 ALTER c2 TYPE varchar");
+      statement.execute("CREATE TABLE default_table2(c1 int, c2 int default 10,"
+        + " c3 text default 'x')");
+      // DROP a column to change attribute mapping before running alter type.
+      statement.execute("ALTER TABLE default_table2 DROP COLUMN c1");
+      statement.execute("ALTER TABLE default_table2 ADD COLUMN c1 int");
+      statement.execute("ALTER TABLE default_table2 ALTER c2 TYPE varchar(10)");
 
-      statement.execute("INSERT INTO default_table2 VALUES (1)");
+      statement.execute("INSERT INTO default_table2(c1) VALUES (1)");
 
       ResultSet rs = statement.executeQuery("SELECT * from default_table2");
       assertTrue(rs.next());
@@ -224,6 +229,58 @@ public class TestPgAlterTableColumnType extends BasePgSQLTest {
       // The default is converted automatically, not with the cast expression
       // length(c2).
       assertEquals(Integer.toString(10), rs.getString("c2"));
+      assertEquals("x", rs.getString("c3"));
+
+      // Verify that ALTER TYPE + ALTER ... SET DEFAULT works.
+      statement.execute("ALTER TABLE default_table2 ALTER c2 TYPE varchar(3),"
+        + " ALTER c2 SET DEFAULT 'xyz'");
+      statement.execute("INSERT INTO default_table2(c1) VALUES (2)");
+      assertRowList(statement, "SELECT * FROM default_table2 ORDER BY c1", Arrays.asList(
+          new Row("10", "x", 1),
+          new Row("xyz", "x", 2)));
+    }
+  }
+
+  @Test
+  public void testMiscColumnDependencies() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TYPE test_type AS (t text)");
+      statement.execute("CREATE TABLE test_table(c1 int, c2 int, c3 int)");
+      statement.execute("INSERT INTO test_table VALUES(1, 2, 3)");
+      statement.execute("ANALYZE test_table");
+      // DROP a column to change attribute mapping before running alter type.
+      statement.execute("ALTER TABLE test_table DROP COLUMN c1");
+      // Verify that there's a pg_statistic entry for the column we are about to alter.
+      assertQuery(statement, "SELECT count(*) FROM pg_statistic JOIN pg_attribute ON"
+        + " starelid=attrelid AND staattnum=attnum WHERE attrelid='test_table'::regclass AND"
+        + " attname='c2'", new Row(1));
+      statement.execute("ALTER TABLE test_table ALTER c2 TYPE test_type USING"
+        + " ROW(c2)::test_type");
+      // Verify that the pg_statistic entry for the altered column (c2) was removed.
+      assertQuery(statement, "SELECT count(*) FROM pg_statistic JOIN pg_attribute ON"
+        + " starelid=attrelid AND staattnum=attnum WHERE attrelid='test_table'::regclass AND"
+        + " attname='c2'", new Row(0));
+      // Verify that the pg_statistic entry for the other column (c3) still exists.
+      assertQuery(statement, "SELECT count(*) FROM pg_statistic JOIN pg_attribute ON"
+        + " starelid=attrelid AND staattnum=attnum WHERE attrelid='test_table'::regclass AND"
+        + " attname='c3'", new Row(1));
+      // Verify that a dependency between the altered column and the type exists.
+      assertQuery(statement, "SELECT count(*) FROM pg_depend JOIN pg_attribute ON objid=attrelid"
+        + " AND objsubid=attnum AND refobjid=atttypid WHERE attrelid='test_table'::regclass"
+        + " AND attname='c2'", new Row(1));
+      statement.execute("DROP TYPE test_type CASCADE");
+      assertQuery(statement, "SELECT * FROM test_table", new Row(3));
+      statement.execute("ALTER TABLE test_table ALTER c3 TYPE text COLLATE \"en_US\"");
+      // Verify that the pg_statistic entry for the altered column (c3) was removed.
+      assertQuery(statement, "SELECT count(*) FROM pg_statistic JOIN pg_attribute ON"
+        + " starelid=attrelid AND staattnum=attnum WHERE attrelid='test_table'::regclass AND"
+        + " attname='c3'", new Row(0));
+      // Verify that a dependency was created between the altered column and the collation.
+      assertQuery(statement, "SELECT count(*) FROM pg_depend JOIN pg_attribute ON objid=attrelid"
+        + " AND objsubid=attnum AND refobjid=attcollation WHERE attrelid='test_table'::regclass"
+        + " AND attname='c3'", new Row(1));
+      statement.execute("DROP COLLATION \"en_US\" CASCADE");
+      assertQuery(statement, "SELECT * FROM test_table", new Row());
     }
   }
 }

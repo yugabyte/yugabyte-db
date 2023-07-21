@@ -16,8 +16,8 @@ import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.RoleFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Role;
-import com.yugabyte.yw.models.Role.RoleType;
+import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.Role.RoleType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
@@ -85,7 +85,7 @@ public class RBACController extends AuthenticatedController {
   public Result getRole(UUID customerUUID, UUID roleUUID) {
     // Check if customer exists.
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Role role = Role.getOrBadRequest(roleUUID);
+    Role role = Role.getOrBadRequest(customerUUID, roleUUID);
     return PlatformResults.withData(role);
   }
 
@@ -108,12 +108,12 @@ public class RBACController extends AuthenticatedController {
     // Check if customer exists.
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
-    // Get all roles if 'roleType' is not a valid enum
+    // Get all roles for the customer if 'roleType' is not a valid enum
     List<Role> roleList = Collections.emptyList();
     if (EnumUtils.isValidEnum(RoleType.class, roleType)) {
-      roleList = Role.getAll(RoleType.valueOf(roleType));
+      roleList = Role.getAll(customerUUID, RoleType.valueOf(roleType));
     } else {
-      roleList = Role.getAll();
+      roleList = Role.getAll(customerUUID);
     }
     return PlatformResults.withData(roleList);
   }
@@ -135,8 +135,8 @@ public class RBACController extends AuthenticatedController {
     RoleFormData roleFormData =
         formFactory.getFormDataOrBadRequest(requestBody, RoleFormData.class);
 
-    // Check if role with given name already exists.
-    if (Role.get(roleFormData.name) != null) {
+    // Check if role with given name for that customer already exists.
+    if (Role.get(customerUUID, roleFormData.name) != null) {
       String errorMsg = "Role with given name already exists: " + roleFormData.name;
       log.error(errorMsg);
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
@@ -145,7 +145,11 @@ public class RBACController extends AuthenticatedController {
     // Create a custom role now.
     Role role =
         roleUtil.createRole(
-            customerUUID, roleFormData.name, RoleType.Custom, roleFormData.permissionList);
+            customerUUID,
+            roleFormData.name,
+            roleFormData.description,
+            RoleType.Custom,
+            roleFormData.permissionList);
     auditService()
         .createAuditEntryWithReqBody(
             request,
@@ -174,10 +178,12 @@ public class RBACController extends AuthenticatedController {
     RoleFormData roleFormData =
         formFactory.getFormDataOrBadRequest(requestBody, RoleFormData.class);
 
-    // Check if role with given UUID exists.
-    Role role = Role.get(roleUUID);
+    // Check if role with given UUID exists for that customer.
+    Role role = Role.get(customerUUID, roleUUID);
     if (role == null) {
-      String errorMsg = "Role with given UUID doesn't exist: " + roleUUID;
+      String errorMsg =
+          String.format(
+              "Role with UUID '%s' doesn't exist for customer '%s'.", roleUUID, customerUUID);
       log.error(errorMsg);
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
@@ -189,9 +195,11 @@ public class RBACController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
 
-    // Edit the custom role with given permissions.
-    // Set of permissions is the only editable field in a role.
-    role = roleUtil.editRolePermissions(roleUUID, roleFormData.permissionList);
+    // Edit the custom role with given description and permissions.
+    // Description and set of permissions are the only editable fields in a role.
+    role =
+        roleUtil.editRole(
+            customerUUID, roleUUID, roleFormData.description, roleFormData.permissionList);
     auditService()
         .createAuditEntryWithReqBody(
             request,
@@ -219,9 +227,11 @@ public class RBACController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     // Check if role with given UUID exists.
-    Role role = Role.get(roleUUID);
-    if (Role.get(roleUUID) == null) {
-      String errorMsg = "Role with given UUID doesn't exist: " + roleUUID;
+    Role role = Role.get(customerUUID, roleUUID);
+    if (role == null) {
+      String errorMsg =
+          String.format(
+              "Role with UUID '%s' doesn't exist for customer '%s'.", roleUUID, customerUUID);
       log.error(errorMsg);
       throw new PlatformServiceException(BAD_REQUEST, errorMsg);
     }
@@ -234,10 +244,12 @@ public class RBACController extends AuthenticatedController {
     }
 
     // Delete the custom role.
-    roleUtil.deleteRole(roleUUID);
+    roleUtil.deleteRole(customerUUID, roleUUID);
     auditService()
         .createAuditEntryWithReqBody(
             request, Audit.TargetType.Role, roleUUID.toString(), Audit.ActionType.Delete);
-    return YBPSuccess.withMessage("Successfully deleted role with UUID: " + roleUUID);
+    return YBPSuccess.withMessage(
+        String.format(
+            "Successfully deleted role with UUID '%s' for customer '%s'", roleUUID, customerUUID));
   }
 }

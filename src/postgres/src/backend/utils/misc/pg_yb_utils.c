@@ -83,6 +83,7 @@
 #include "utils/rel.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
+#include "utils/uuid.h"
 #include "fmgr.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
@@ -261,13 +262,6 @@ bool IsYBSystemColumn(int attrNum)
 	return (attrNum == YBRowIdAttributeNumber ||
 			attrNum == YBIdxBaseTupleIdAttributeNumber ||
 			attrNum == YBUniqueIdxKeySuffixAttributeNumber);
-}
-
-bool
-YBNeedRetryAfterCacheRefresh(ErrorData *edata)
-{
-	// TODO Inspect error code to distinguish retryable errors.
-	return true;
 }
 
 AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation)
@@ -648,6 +642,9 @@ YBInitPostgresBackend(
 		callbacks.GetCurrentYbMemctx = &GetCurrentYbMemctx;
 		callbacks.GetDebugQueryString = &GetDebugQueryString;
 		callbacks.WriteExecOutParam = &YbWriteExecOutParam;
+		callbacks.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch;
+		callbacks.PostgresEpochToUnixEpoch= &YbPostgresEpochToUnixEpoch;
+		callbacks.ConstructTextArrayDatum = &YbConstructTextArrayDatum;
 		YBCInitPgGate(type_table, count, callbacks);
 		YBCInstallTxnDdlHook();
 
@@ -2598,6 +2595,26 @@ yb_get_effective_transaction_isolation_level(PG_FUNCTION_ARGS)
 	PG_RETURN_CSTRING(yb_fetch_effective_transaction_isolation_level());
 }
 
+Datum
+yb_cancel_transaction(PG_FUNCTION_ARGS)
+{
+	if (!IsYbDbAdminUser(GetUserId()))
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("permission denied to cancel transaction")));
+
+	pg_uuid_t *id = PG_GETARG_UUID_P(0);
+	YBCStatus status = YBCPgCancelTransaction(id->data);
+	if (status)
+	{
+		ereport(NOTICE,
+				(errmsg("failed to cancel transaction"),
+				 errdetail("%s", YBCMessageAsCString(status))));
+		PG_RETURN_BOOL(false);
+	}
+	PG_RETURN_BOOL(true);
+}
+
 /*
  * This PG function takes one optional bool input argument (legacy).
  * If the input argument is not specified or its value is false, this function
@@ -3368,19 +3385,34 @@ uint64_t YbGetSharedCatalogVersion()
 	return version;
 }
 
-void YBUpdateRowLockPolicyForSerializable(
-		int *effectiveWaitPolicy, LockWaitPolicy userLockWaitPolicy)
+void YBSetRowLockPolicy(int *docdb_wait_policy, LockWaitPolicy pg_wait_policy)
 {
-	/*
-	 * TODO(concurrency-control): We don't honour SKIP LOCKED/ NO WAIT yet in serializable isolation
-	 * level.
-	 */
-	if (userLockWaitPolicy == LockWaitSkip || userLockWaitPolicy == LockWaitError)
-		elog(WARNING, "%s clause is not supported yet for SERIALIZABLE isolation (GH issue #11761)",
-			userLockWaitPolicy == LockWaitSkip ? "SKIP LOCKED" : "NO WAIT");
+	if (XactIsoLevel == XACT_REPEATABLE_READ && pg_wait_policy == LockWaitError)
+	{
+		/* The user requested NOWAIT, which isn't allowed in RR. */
+		elog(WARNING, "Setting wait policy to NOWAIT which is not allowed in "
+					  "REPEATABLE READ isolation (GH issue #12166)");
+	}
 
-	*effectiveWaitPolicy = LockWaitBlock;
-	if (!YBIsWaitQueueEnabled())
+	if (IsolationIsSerializable())
+	{
+		/*
+		 * TODO(concurrency-control): We don't honour SKIP LOCKED/ NO WAIT yet in serializable
+		 * isolation level.
+		 */
+		if (pg_wait_policy == LockWaitSkip || pg_wait_policy == LockWaitError)
+			elog(WARNING, "%s clause is not supported yet for SERIALIZABLE isolation "
+						  "(GH issue #11761)",
+						  pg_wait_policy == LockWaitSkip ? "SKIP LOCKED" : "NO WAIT");
+
+		*docdb_wait_policy = LockWaitBlock;
+	}
+	else
+	{
+		*docdb_wait_policy = pg_wait_policy;
+	}
+
+	if (*docdb_wait_policy == LockWaitBlock && !YBIsWaitQueueEnabled())
 	{
 		/*
 		 * If wait-queues are not enabled, we default to the "Fail-on-Conflict" policy which is
@@ -3388,7 +3420,7 @@ void YBUpdateRowLockPolicyForSerializable(
 		 * "Fail-on-Conflict" and the reason why LockWaitError is not mapped to no-wait
 		 * semantics but to Fail-on-Conflict semantics).
 		 */
-		*effectiveWaitPolicy = LockWaitError;
+		*docdb_wait_policy = LockWaitError;
 	}
 }
 

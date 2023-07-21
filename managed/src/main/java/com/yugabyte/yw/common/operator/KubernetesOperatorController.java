@@ -12,6 +12,8 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
+import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -239,9 +241,7 @@ public class KubernetesOperatorController {
               Universe.maybeGetUniverseByName(cust.getId(), ybUniverse.getMetadata().getName());
           u.ifPresent(
               universe -> {
-                Result result =
-                    editUniverse(
-                        cust, universe, ybUniverse); /* gives null Result if not a real edit */
+                editUniverse(cust, universe, ybUniverse); /* gives null Result if not a real edit */
               });
         }
       } else if (action == OperatorAction.UPDATED) {
@@ -249,9 +249,7 @@ public class KubernetesOperatorController {
         Optional<Universe> u = Universe.maybeGetUniverseByName(cust.getId(), universeName);
         u.ifPresent(
             universe -> {
-              Result result =
-                  editUniverse(
-                      cust, universe, ybUniverse); /* gives null Result if not a real edit */
+              editUniverse(cust, universe, ybUniverse); /* gives null Result if not a real edit */
             });
       }
     } catch (Exception e) {
@@ -316,7 +314,7 @@ public class KubernetesOperatorController {
     return new YBPTask(universeResp.taskUUID, universeResp.universeUUID).asResult();
   }
 
-  private Result editUniverse(Customer cust, Universe universe, YBUniverse ybUniverse) {
+  private void editUniverse(Customer cust, Universe universe, YBUniverse ybUniverse) {
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     if (taskParams != null && taskParams.getPrimaryCluster() != null) {
       UserIntent currentUserIntent = taskParams.getPrimaryCluster().userIntent;
@@ -347,12 +345,6 @@ public class KubernetesOperatorController {
             }
           }
 
-          incomingIntent = forTaskIntent;
-          if (!field.getName().equals("universeOverrides")) {
-            incomingIntent.universeOverrides = currentUserIntent.universeOverrides;
-            LOG.info("removed overrides for upgrade/update");
-          }
-
           Cluster primaryCluster = taskParams.getPrimaryCluster();
           primaryCluster.userIntent = incomingIntent;
           taskParams.clusters =
@@ -365,20 +357,32 @@ public class KubernetesOperatorController {
               String.format("Starting task on universe %s", currentUserIntent.universeName);
           KubernetesOperatorStatusUpdater.doKubernetesEventUpdate(
               currentUserIntent.universeName, startingTask);
-          if (currentUserIntent.numNodes != incomingIntent.numNodes || updateVersion(pair)) {
+          if (!incomingIntent.universeOverrides.equals(currentUserIntent.universeOverrides)) {
+            LOG.info("Updating Kubernetes Overrides");
+            updateOverridesYbUniverse(
+                taskParams, cust, ybUniverse, incomingIntent.universeOverrides);
+          } else if (!(currentUserIntent.masterGFlags.equals(incomingIntent.masterGFlags))
+              || !(currentUserIntent.tserverGFlags.equals(incomingIntent.tserverGFlags))) {
+            LOG.info("Updating Gflags");
+            updateGflagsYbUniverse(
+                taskParams,
+                cust,
+                ybUniverse,
+                incomingIntent.masterGFlags,
+                incomingIntent.tserverGFlags);
+          } else if (currentUserIntent.numNodes != incomingIntent.numNodes || updateVersion(pair)) {
             LOG.info("Updating nodes");
-            return updateYBUniverse(taskParams, cust, ybUniverse);
+            updateYBUniverse(taskParams, cust, ybUniverse);
           } else if (!currentUserIntent.ybSoftwareVersion.equals(
               incomingIntent.ybSoftwareVersion)) {
             LOG.info("Upgrading software");
-            return upgradeYBUniverse(taskParams, cust, ybUniverse);
+            upgradeYBUniverse(taskParams, cust, ybUniverse);
           } else {
             LOG.info("No update made");
           }
         }
       }
     }
-    return null;
   }
 
   private boolean updateVersion(Pair<Field, UserIntent> pair) {
@@ -391,7 +395,69 @@ public class KubernetesOperatorController {
     return false;
   }
 
-  private Result upgradeYBUniverse(
+  private UUID updateOverridesYbUniverse(
+      UniverseDefinitionTaskParams taskParams,
+      Customer cust,
+      YBUniverse ybUniverse,
+      String universeOverrides) {
+    KubernetesOverridesUpgradeParams requestParams = new KubernetesOverridesUpgradeParams();
+
+    ObjectMapper mapper =
+        Json.mapper()
+            .copy()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+    try {
+      requestParams =
+          mapper.readValue(
+              mapper.writeValueAsString(taskParams), KubernetesOverridesUpgradeParams.class);
+    } catch (Exception e) {
+      LOG.error("Failed at creating upgrade software params", e);
+    }
+    requestParams.universeOverrides = universeOverrides;
+
+    Universe oldUniverse =
+        Universe.maybeGetUniverseByName(cust.getId(), ybUniverse.getMetadata().getName())
+            .orElse(null);
+
+    UUID taskUUID =
+        upgradeUniverseHandler.upgradeKubernetesOverrides(requestParams, cust, oldUniverse);
+    LOG.info("Submitted task to upgrade universe overrides with new overrides");
+    return taskUUID;
+  }
+
+  private UUID updateGflagsYbUniverse(
+      UniverseDefinitionTaskParams taskParams,
+      Customer cust,
+      YBUniverse ybUniverse,
+      Map<String, String> masterGflags,
+      Map<String, String> tserverGflags) {
+    GFlagsUpgradeParams requestParams = new GFlagsUpgradeParams();
+
+    ObjectMapper mapper =
+        Json.mapper()
+            .copy()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+    try {
+      requestParams =
+          mapper.readValue(mapper.writeValueAsString(taskParams), GFlagsUpgradeParams.class);
+    } catch (Exception e) {
+      LOG.error("Failed at creating upgrade software params", e);
+    }
+    requestParams.masterGFlags = masterGflags;
+    requestParams.tserverGFlags = tserverGflags;
+
+    Universe oldUniverse =
+        Universe.maybeGetUniverseByName(cust.getId(), ybUniverse.getMetadata().getName())
+            .orElse(null);
+
+    UUID taskUUID = upgradeUniverseHandler.upgradeGFlags(requestParams, cust, oldUniverse);
+    LOG.info("Submitted task to upgrade universe with new GFlags");
+    return taskUUID;
+  }
+
+  private UUID upgradeYBUniverse(
       UniverseDefinitionTaskParams taskParams, Customer cust, YBUniverse ybUniverse) {
     ObjectMapper mapper =
         Json.mapper()
@@ -415,12 +481,11 @@ public class KubernetesOperatorController {
     // requestParams.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
     requestParams.ybSoftwareVersion = taskParams.getPrimaryCluster().userIntent.ybSoftwareVersion;
     requestParams.setUniverseUUID(oldUniverse.getUniverseUUID());
-    UUID taskUUID = upgradeUniverseHandler.upgradeSoftware(requestParams, cust, oldUniverse);
     LOG.info("Upgrading universe with new info now");
-    return new YBPTask(taskUUID, oldUniverse.getUniverseUUID()).asResult();
+    return upgradeUniverseHandler.upgradeSoftware(requestParams, cust, oldUniverse);
   }
 
-  private Result updateYBUniverse(
+  private UUID updateYBUniverse(
       UniverseDefinitionTaskParams taskParams, Customer cust, YBUniverse ybUniverse) {
     // Converting details to configure task params using JSON
     ObjectMapper mapper =
@@ -436,6 +501,7 @@ public class KubernetesOperatorController {
     } catch (Exception e) {
       LOG.error("Failed at creating configure task params for edit", e);
     }
+
     taskConfigParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.EDIT;
     taskConfigParams.currentClusterType = ClusterType.PRIMARY;
     Universe oldUniverse =
@@ -443,8 +509,7 @@ public class KubernetesOperatorController {
             .orElse(null);
     LOG.info("Updating universe with new info now");
     universeCRUDHandler.configure(cust, taskConfigParams);
-    UUID taskUUID = universeCRUDHandler.update(cust, oldUniverse, taskConfigParams);
-    return new YBPTask(taskUUID, oldUniverse.getUniverseUUID()).asResult();
+    return universeCRUDHandler.update(cust, oldUniverse, taskConfigParams);
   }
 
   private UniverseConfigureTaskParams createTaskParams(YBUniverse ybUniverse, UUID customerUUID)
@@ -556,6 +621,8 @@ public class KubernetesOperatorController {
       userIntent.enableYCQLAuth = true;
       userIntent.ycqlPassword = password;
     }
+    userIntent.masterGFlags = new HashMap<>(ybUniverse.getSpec().getMasterGFlags());
+    userIntent.tserverGFlags = new HashMap<>(ybUniverse.getSpec().getTserverGFlags());
     return userIntent;
   }
 

@@ -61,7 +61,6 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
   private BackupHelper mockBackupHelper;
   private YbcManager mockYbcManager;
   private CustomerConfig s3StorageConfig;
-
   private Users defaultUser;
 
   @Before

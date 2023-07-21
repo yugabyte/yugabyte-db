@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V39__17700__yb_percentile.sql
-{ major => '39', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V42__16918__pg_locks_view.sql
+{ major => '42', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

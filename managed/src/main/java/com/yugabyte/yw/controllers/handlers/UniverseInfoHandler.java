@@ -12,6 +12,7 @@ package com.yugabyte.yw.controllers.handlers;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.NOT_FOUND;
 import static play.mvc.Http.Status.SERVICE_UNAVAILABLE;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -34,6 +35,7 @@ import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.HealthCheck.Details;
+import com.yugabyte.yw.models.MasterInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -51,6 +53,7 @@ import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
+import org.yb.client.GetMasterRegistrationResponse;
 import org.yb.client.YBClient;
 import play.libs.Json;
 import play.mvc.Http;
@@ -156,6 +159,30 @@ public class UniverseInfoHandler {
             BAD_REQUEST, "Leader master not found for universe " + universe.getUniverseUUID());
       }
       return leaderMasterHostAndPort;
+    } catch (RuntimeException e) {
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+    } finally {
+      ybService.closeClient(client, hostPorts);
+    }
+  }
+
+  public List<MasterInfo> getMasterInfos(Universe universe) {
+    final String hostPorts = universe.getMasterAddresses();
+    String certificate = universe.getCertificateNodetoNode();
+    YBClient client = null;
+    // Get and return Leader IP
+    try {
+      client = ybService.getClient(hostPorts, certificate);
+      List<GetMasterRegistrationResponse> masterRegistrationResponseList =
+          client.getMasterRegistrationResponseList();
+      if (masterRegistrationResponseList == null) {
+        throw new PlatformServiceException(
+            NOT_FOUND,
+            "Cannot find master registration list for universe " + universe.getUniverseUUID());
+      }
+      return masterRegistrationResponseList.stream()
+          .map(MasterInfo::convertFrom)
+          .collect(Collectors.toList());
     } catch (RuntimeException e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     } finally {

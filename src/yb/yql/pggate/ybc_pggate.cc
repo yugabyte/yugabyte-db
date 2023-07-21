@@ -1084,6 +1084,32 @@ YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec
   return ToYBCStatus(pgapi->ExecSelect(handle, exec_params));
 }
 
+//------------------------------------------------------------------------------------------------
+// Functions
+//------------------------------------------------------------------------------------------------
+
+YBCStatus YBCAddFunctionParam(
+    YBCPgFunction handle, const char *name, const YBCPgTypeEntity *type_entity, uint64_t datum,
+    bool is_null) {
+  return ToYBCStatus(
+      pgapi->AddFunctionParam(handle, std::string(name), type_entity, datum, is_null));
+}
+
+YBCStatus YBCAddFunctionTarget(
+    YBCPgFunction handle, const char *attr_name, const YBCPgTypeEntity *type_entity,
+    const YBCPgTypeAttrs type_attrs) {
+  return ToYBCStatus(
+      pgapi->AddFunctionTarget(handle, std::string(attr_name), type_entity, type_attrs));
+}
+
+YBCStatus YBCFinalizeFunctionTargets(YBCPgFunction handle) {
+  return ToYBCStatus(pgapi->FinalizeFunctionTargets(handle));
+}
+
+YBCStatus YBCSRFGetNext(YBCPgFunction handle, uint64_t *values, bool *is_nulls, bool *has_data) {
+  return ToYBCStatus(pgapi->SRFGetNext(handle, values, is_nulls, has_data));
+}
+
 //--------------------------------------------------------------------------------------------------
 // Expression Operations
 //--------------------------------------------------------------------------------------------------
@@ -1403,6 +1429,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_disable_global_impact_ddl_statements =
           &FLAGS_ysql_disable_global_impact_ddl_statements,
       .ysql_minimal_catalog_caches_preload      = &FLAGS_ysql_minimal_catalog_caches_preload,
+      .ysql_enable_create_database_oid_collision_retry =
+          &FLAGS_ysql_enable_create_database_oid_collision_retry
   };
   return &accessor;
 }
@@ -1434,6 +1462,10 @@ void YBCSetTimeout(int timeout_ms, void* extra) {
   // The statement timeout is lesser than default_client_timeout, hence the rpcs would
   // need to use a shorter timeout.
   pgapi->SetTimeout(timeout_ms);
+}
+
+YBCStatus YBCNewGetLockStatusDataSRF(YBCPgFunction *handle) {
+  return ToYBCStatus(pgapi->NewGetLockStatusDataSRF(handle));
 }
 
 YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **servers, size_t *count) {
@@ -1572,6 +1604,10 @@ YBCStatus YBCIsObjectPartOfXRepl(YBCPgOid database_oid, YBCPgOid table_oid,
     return YBCStatusOK();
   }
   return ToYBCStatus(res.status());
+}
+
+YBCStatus YBCPgCancelTransaction(const unsigned char* transaction_id) {
+  return ToYBCStatus(pgapi->CancelTransaction(transaction_id));
 }
 
 } // extern "C"

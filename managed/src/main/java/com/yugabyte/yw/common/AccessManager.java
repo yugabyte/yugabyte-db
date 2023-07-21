@@ -88,13 +88,19 @@ public class AccessManager extends DevopsBase {
 
   @Transactional
   private void writeKeyFileData(AccessKey.KeyInfo keyInfo) {
-    FileData.writeFileToDB(keyInfo.vaultFile);
-    FileData.writeFileToDB(keyInfo.vaultPasswordFile);
-    if (keyInfo.privateKey != null) {
-      FileData.writeFileToDB(keyInfo.privateKey);
-    }
-    if (keyInfo.publicKey != null) {
-      FileData.writeFileToDB(keyInfo.publicKey);
+    try {
+      FileData.upsertFileInDB(keyInfo.vaultFile);
+      FileData.upsertFileInDB(keyInfo.vaultPasswordFile);
+      if (keyInfo.privateKey != null) {
+        FileData.upsertFileInDB(keyInfo.privateKey);
+      }
+      if (keyInfo.publicKey != null) {
+        FileData.upsertFileInDB(keyInfo.publicKey);
+      }
+    } catch (IOException e) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format("Failed to write key file in DB: %s", e.getMessage()));
     }
   }
 
@@ -602,7 +608,7 @@ public class AccessManager extends DevopsBase {
       ObjectMapper mapper = new ObjectMapper();
       String credentialsFilePath = getOrCreateKeyFilePath(providerUUID) + "/credentials.json";
       mapper.writeValue(new File(credentialsFilePath), credentials);
-      FileData.writeFileToDB(credentialsFilePath);
+      FileData.upsertFileInDB(credentialsFilePath);
       return credentialsFilePath;
     } catch (Exception e) {
       throw new RuntimeException("Failed to create credentials file", e);
@@ -644,7 +650,7 @@ public class AccessManager extends DevopsBase {
     try {
       Files.write(configFile, configFileContent.getBytes());
       Files.setPosixFilePermissions(configFile, ownerRW);
-      FileData.writeFileToDB(configFile.toAbsolutePath().toString());
+      FileData.upsertFileInDB(configFile.toAbsolutePath().toString());
       return configFile.toAbsolutePath().toString();
     } catch (Exception e) {
       throw new RuntimeException("Failed to create kubernetes config", e);
@@ -669,7 +675,7 @@ public class AccessManager extends DevopsBase {
     }
     try {
       Files.write(pullSecretFile, pullSecretFileContent.getBytes());
-      FileData.writeFileToDB(pullSecretFile.toAbsolutePath().toString());
+      FileData.upsertFileInDB(pullSecretFile.toAbsolutePath().toString());
       return pullSecretFile.toAbsolutePath().toString();
     } catch (Exception e) {
       throw new RuntimeException("Failed to create pull secret", e);

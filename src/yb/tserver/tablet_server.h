@@ -38,6 +38,7 @@
 #include <vector>
 #include <atomic>
 
+#include "yb/common/pg_catversions.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/cdc/cdc_fwd.h"
 #include "yb/cdc/cdc_consumer.fwd.h"
@@ -292,6 +293,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void SetXClusterDDLOnlyMode(bool is_xcluster_read_only_mode);
 
+  std::optional<uint64_t> GetCatalogVersionsFingerprint() const {
+    return catalog_versions_fingerprint_.load(std::memory_order_acquire);
+  }
+
  protected:
   virtual Status RegisterServices();
 
@@ -358,6 +363,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   uint64_t ysql_catalog_version_ = 0;
   uint64_t ysql_last_breaking_catalog_version_ = 0;
   tserver::DbOidToCatalogVersionInfoMap ysql_db_catalog_version_map_;
+
+  // Fingerprint of the catalog versions map.
+  std::atomic<std::optional<uint64_t>> catalog_versions_fingerprint_;
 
   // If shared memory array db_catalog_versions_ slot is used by a database OID, the
   // corresponding slot in this boolean array is set to true.

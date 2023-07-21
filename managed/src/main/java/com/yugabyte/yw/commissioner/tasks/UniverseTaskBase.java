@@ -133,7 +133,6 @@ import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
-import com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
@@ -489,37 +488,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       case UNDEFINED:
         break;
     }
-
-    UniverseUpdater updater =
-        universe -> {
-          log.info(
-              String.format(
-                  "Setting encryption at rest status to %s for universe %s",
-                  taskParams().encryptionAtRestConfig.opType.name(),
-                  universe.getUniverseUUID().toString()));
-          // Persist the updated information about the universe.
-          // It should have been marked as being edited in lockUniverseForUpdate().
-          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          if (!universeDetails.updateInProgress) {
-            String msg =
-                "Universe "
-                    + taskParams().getUniverseUUID()
-                    + " has not been marked as being updated.";
-            log.error(msg);
-            throw new RuntimeException(msg);
-          }
-
-          universeDetails.encryptionAtRestConfig = taskParams().encryptionAtRestConfig;
-
-          universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled =
-              taskParams().encryptionAtRestConfig.opType.equals(OpType.ENABLE);
-          universe.setUniverseDetails(universeDetails);
-        };
-    // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
-    // catch as we want to fail.
-    saveUniverseDetails(updater);
-    log.trace("Wrote user intent for universe {}.", taskParams().getUniverseUUID());
-
     return subTaskGroup;
   }
 
@@ -800,6 +768,28 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       String ycqlPassword,
       String ycqlCurrentPassword,
       String ycqlUserName) {
+    return createChangeAdminPasswordTask(
+        primaryCluster,
+        ysqlPassword,
+        ysqlCurrentPassword,
+        ysqlUserName,
+        ysqlDbName,
+        ycqlPassword,
+        ycqlCurrentPassword,
+        ycqlUsername,
+        false /* validateCurrentPassword */);
+  }
+
+  public SubTaskGroup createChangeAdminPasswordTask(
+      Cluster primaryCluster,
+      String ysqlPassword,
+      String ysqlCurrentPassword,
+      String ysqlUserName,
+      String ysqlDbName,
+      String ycqlPassword,
+      String ycqlCurrentPassword,
+      String ycqlUserName,
+      boolean validateCurrentPassword) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("ChangeAdminPassword");
     ChangeAdminPassword.Params params = new ChangeAdminPassword.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
@@ -811,6 +801,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.ycqlUserName = ycqlUserName;
     params.ysqlUserName = ysqlUserName;
     params.ysqlDbName = ysqlDbName;
+    params.validateCurrentPassword = validateCurrentPassword;
     ChangeAdminPassword task = createTask(ChangeAdminPassword.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
@@ -2281,6 +2272,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             if (!keyspaceMap.containsKey(tableKeySpace)) {
               BackupTableParams backupParams =
                   new BackupTableParams(backupRequestParams, tableKeySpace);
+              backupParams.allTables = true;
               keyspaceMap.put(tableKeySpace, backupParams);
               backupTableParamsList.add(backupParams);
               if (tablesToBackup != null) {
@@ -2292,6 +2284,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             if (!keyspaceMap.containsKey(tableKeySpace)) {
               BackupTableParams backupParams =
                   new BackupTableParams(backupRequestParams, tableKeySpace);
+              backupParams.allTables = true;
               keyspaceMap.put(tableKeySpace, backupParams);
               backupTableParamsList.add(backupParams);
             }
@@ -2897,20 +2890,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  public SubTaskGroup createDnsManipulationTask(
+      DnsManager.DnsCommandType eventType, boolean isForceDelete, Universe universe) {
+    Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    return createDnsManipulationTask(eventType, isForceDelete, primaryCluster);
+  }
+
   /**
    * Creates a task list to manipulate the DNS record available for this universe.
    *
    * @param eventType the type of manipulation to do on the DNS records.
    * @param isForceDelete if this is a delete operation, set this to true to ignore errors
-   * @param intent universe information.
+   * @param primaryCluster primary cluster information.
    * @return subtask group
    */
   public SubTaskGroup createDnsManipulationTask(
-      DnsManager.DnsCommandType eventType,
-      boolean isForceDelete,
-      UniverseDefinitionTaskParams.UserIntent intent) {
+      DnsManager.DnsCommandType eventType, boolean isForceDelete, Cluster primaryCluster) {
+    UserIntent userIntent = primaryCluster.userIntent;
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateDnsEntry");
-    Provider p = Provider.getOrBadRequest(UUID.fromString(intent.provider));
+    Provider p = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
     if (!p.getCloudCode().isHostedZoneEnabled()) {
       return subTaskGroup;
     }
@@ -2922,10 +2920,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     ManipulateDnsRecordTask.Params params = new ManipulateDnsRecordTask.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.type = eventType;
-    params.providerUUID = UUID.fromString(intent.provider);
+    params.providerUUID = UUID.fromString(userIntent.provider);
     params.hostedZoneId = hostedZoneId;
     params.domainNamePrefix =
-        String.format("%s.%s", intent.universeName, Customer.get(p.getCustomerUUID()).getCode());
+        String.format(
+            "%s.%s", userIntent.universeName, Customer.get(p.getCustomerUUID()).getCode());
     params.isForceDelete = isForceDelete;
     // Create the task to update DNS entries.
     ManipulateDnsRecordTask task = createTask(ManipulateDnsRecordTask.class);
@@ -3449,7 +3448,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
     // Update the DNS entry for all the nodes once, using the primary cluster type.
-    createDnsManipulationTask(DnsManager.DnsCommandType.Create, false, primaryCluster.userIntent)
+    createDnsManipulationTask(DnsManager.DnsCommandType.Create, false, primaryCluster)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
     // Update the swamper target file.

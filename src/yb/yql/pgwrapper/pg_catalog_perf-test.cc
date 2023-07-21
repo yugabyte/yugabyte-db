@@ -169,9 +169,11 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
     // Force version increment. Next new connection will do cache refresh on start.
     RETURN_NOT_OK(conn.Execute("ALTER TABLE cache_refresh_trigger ADD COLUMN v INT"));
     auto aux_conn = VERIFY_RESULT(Connect());
-    return VERIFY_RESULT(metrics_->Delta([&functor, &aux_conn] {
+    auto res = VERIFY_RESULT(metrics_->Delta([&functor, &aux_conn] {
       return functor(&aux_conn);
     })).master_read_rpc;
+    RETURN_NOT_OK(conn.Execute("DROP TABLE cache_refresh_trigger"));
+    return res;
   }
 
   std::optional<MetricWatcher<MetricCountersDescriber>> metrics_;
@@ -431,6 +433,57 @@ TEST_F_EX(PgCatalogPerfTest, ResponseCacheMemoryLimit, PgCatalogWithLimitedCache
   const auto peak_consumption = response_cache_mem_tracker->peak_consumption();
   ASSERT_GT(peak_consumption, 0);
   ASSERT_LE(peak_consumption, FLAGS_pg_response_cache_size_bytes);
+}
+
+TEST_F(PgCatalogPerfTest, RPCCountAfterDdlFailure) {
+  auto rpc_count_for_ddl_success = ASSERT_RESULT(RPCCountAfterCacheRefresh([](PGConn* conn) {
+    return conn->Execute("CREATE TABLE mytable1 (id int)");
+  }));
+  auto rpc_count_for_ddl_failure = ASSERT_RESULT(RPCCountAfterCacheRefresh([](PGConn* conn) {
+    RETURN_NOT_OK(conn->Execute("SET yb_test_fail_next_ddl=true"));
+    if (conn->Execute("CREATE TABLE mytable (id int)").ok()) {
+      return STATUS(RuntimeError, "Expected to fail Ddl");
+    }
+    return static_cast<Status>(Status::OK());
+  }));
+  // The failed DDL will trigger a lookup for the catalog version. This will result in a read call
+  // to the master.
+  ASSERT_EQ(rpc_count_for_ddl_failure, rpc_count_for_ddl_success + 1);
+}
+
+TEST_F(PgCatalogPerfTest, RPCCountAfterDmlFailure) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE mytable (id INT PRIMARY KEY)"));
+  auto rpc_count = ASSERT_RESULT(RPCCountAfterCacheRefresh([](PGConn* conn) {
+    if (conn->Execute("INSERT INTO mytable VALUES (1), (1)").ok()) {
+      return STATUS(RuntimeError, "Expected to fail Insert due to violation");
+    }
+    return static_cast<Status>(Status::OK());
+  }));
+  // We expect 2 reads. One read to lookup the table in pg_class and the other to lookup the
+  // pg_catalog_version to check if cache refresh is required.
+  ASSERT_EQ(rpc_count, 2);
+}
+
+TEST_F(PgCatalogPerfTest, RPCCountAfterConflictError) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE mytable (id INT PRIMARY KEY)"));
+  ASSERT_OK(conn1.Execute("SET transaction_isolation='repeatable read'"));
+  ASSERT_OK(conn1.Execute("BEGIN"));
+  ASSERT_OK(conn1.Execute("INSERT INTO mytable VALUES (1)"));
+  auto rpc_count = ASSERT_RESULT(RPCCountAfterCacheRefresh([&](PGConn* conn) {
+    RETURN_NOT_OK(conn->Execute("SET transaction_isolation='repeatable read'"));
+    RETURN_NOT_OK(conn->Execute("BEGIN"));
+    RETURN_NOT_OK(conn->Execute("INSERT INTO mytable VALUES (3)"));
+    RETURN_NOT_OK(conn1.Execute("COMMIT"));
+    if (conn->Execute("INSERT INTO mytable VALUES (1)").ok()) {
+      return STATUS(RuntimeError, "Expected to fail insert with conflict");
+    }
+    return static_cast<Status>(Status::OK());
+  }));
+  // The transaction failed due to conflict. This means we would not have checked whether any
+  // intervening DDL occurred, so the only read call must be the one to lookup pg_class.
+  ASSERT_EQ(rpc_count, 1);
 }
 
 } // namespace yb::pgwrapper

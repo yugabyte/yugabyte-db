@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -49,7 +50,6 @@ import play.libs.Json;
 public class NodeUniverseManager extends DevopsBase {
   private static final ShellProcessContext DEFAULT_CONTEXT =
       ShellProcessContext.builder().logCmdOutput(true).build();
-  public static final long YSQL_COMMAND_DEFAULT_TIMEOUT_SEC = TimeUnit.MINUTES.toSeconds(3);
   public static final String NODE_ACTION_SSH_SCRIPT = "bin/run_node_action.py";
   public static final String CERTS_DIR = "/yugabyte-tls-config";
   public static final String K8S_CERTS_DIR = "/opt/certs/yugabyte";
@@ -325,7 +325,12 @@ public class NodeUniverseManager extends DevopsBase {
 
   public ShellResponse runYsqlCommand(
       NodeDetails node, Universe universe, String dbName, String ysqlCommand) {
-    return runYsqlCommand(node, universe, dbName, ysqlCommand, YSQL_COMMAND_DEFAULT_TIMEOUT_SEC);
+    return runYsqlCommand(
+        node,
+        universe,
+        dbName,
+        ysqlCommand,
+        confGetter.getConfForScope(universe, UniverseConfKeys.ysqlTimeoutSecs));
   }
 
   public ShellResponse runYsqlCommand(

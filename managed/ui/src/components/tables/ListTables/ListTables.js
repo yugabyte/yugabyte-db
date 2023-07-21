@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import { Link } from 'react-router';
 import { Image, ProgressBar, ButtonGroup, DropdownButton } from 'react-bootstrap';
 import { toast } from 'react-toastify';

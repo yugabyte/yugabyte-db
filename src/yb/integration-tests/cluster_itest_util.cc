@@ -49,6 +49,7 @@
 #include "yb/client/schema.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/entity_ids_types.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
@@ -65,6 +66,7 @@
 
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/mini_master.h"
@@ -1189,6 +1191,28 @@ std::set<TabletId> GetClusterTabletIds(MiniCluster* cluster) {
   return tablet_ids;
 }
 
+Result<vector<master::TabletLocationsPB::ReplicaPB>>
+GetTabletsOnTsAccordingToMaster(ExternalMiniCluster* cluster,
+                                const TabletServerId& ts_uuid,
+                                const YBTableName& table_name,
+                                const MonoDelta& timeout,
+                                const RequireTabletsRunning require_tablets_running) {
+  master::GetTableLocationsResponsePB table_locations;
+  RETURN_NOT_OK(GetTableLocations(
+      cluster, table_name, timeout, require_tablets_running, &table_locations));
+
+  vector<master::TabletLocationsPB::ReplicaPB> replicas;
+  for (auto& tablet_locs : table_locations.tablet_locations()) {
+    for (auto& replica : tablet_locs.replicas()) {
+      LOG(INFO) << "Replica has permanent uuid " << replica.ts_info().permanent_uuid();
+      if (replica.ts_info().permanent_uuid() == ts_uuid) {
+        replicas.push_back(std::move(replica));
+      }
+    }
+  }
+  return replicas;
+}
+
 Status GetTabletLocations(ExternalMiniCluster* cluster,
                           const string& tablet_id,
                           const MonoDelta& timeout,
@@ -1223,7 +1247,7 @@ Status GetTableLocations(ExternalMiniCluster* cluster,
   req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
   rpc::RpcController rpc;
   rpc.set_timeout(timeout);
-  RETURN_NOT_OK(cluster->GetMasterProxy<master::MasterClientProxy>().GetTableLocations(
+  RETURN_NOT_OK(cluster->GetLeaderMasterProxy<master::MasterClientProxy>().GetTableLocations(
       req, table_locations, &rpc));
   if (table_locations->has_error()) {
     return StatusFromPB(table_locations->error().status());

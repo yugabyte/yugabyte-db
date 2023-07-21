@@ -152,7 +152,8 @@ extern HeapScanDesc ybc_remote_beginscan(Relation relation,
 										 Snapshot snapshot,
 										 Scan *pg_scan_plan,
 										 PushdownExprs *pushdown,
-										 List *aggrefs);
+										 List *aggrefs,
+										 YBCPgExecParameters *exec_params);
 
 /* Add targets to the given statement. */
 extern void YbDmlAppendTargetSystem(AttrNumber attnum, YBCPgStatement handle);
@@ -181,7 +182,8 @@ extern YbScanDesc ybcBeginScan(Relation relation,
 							   Scan *pg_scan_plan,
 							   PushdownExprs *rel_pushdown,
 							   PushdownExprs *idx_pushdown,
-							   List *aggrefs);
+							   List *aggrefs,
+							   YBCPgExecParameters *exec_params);
 
 HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
 IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);

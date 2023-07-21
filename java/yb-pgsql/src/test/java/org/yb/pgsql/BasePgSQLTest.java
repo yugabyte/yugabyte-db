@@ -266,6 +266,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     flagMap.put("client_read_write_timeout_ms",
         String.valueOf(BuildTypeUtil.adjustTimeout(120000)));
     flagMap.put("memory_limit_hard_bytes", String.valueOf(2L * 1024 * 1024 * 1024));
+    flagMap.put("TEST_assert_no_future_catalog_version", "true");
     return flagMap;
   }
 

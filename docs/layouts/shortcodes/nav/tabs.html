@@ -1,4 +1,4 @@
-{{- $tabs := .Get "list" -}}
+{{- $tabs := default "local,cloud,anywhere" (.Get "list") -}}
 {{- $mode := default "local" (.Get "active") -}}
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
     {{if strings.Contains $tabs "local"}}

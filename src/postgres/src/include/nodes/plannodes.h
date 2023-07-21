@@ -20,6 +20,7 @@
 #include "nodes/bitmapset.h"
 #include "nodes/lockoptions.h"
 #include "nodes/primnodes.h"
+#include "nodes/relation.h"
 
 
 /* ----------------------------------------------------------------
@@ -357,8 +358,9 @@ typedef struct BitmapOr
  */
 typedef struct Scan
 {
-	Plan		plan;
-	Index		scanrelid;		/* relid is index into the range table */
+	Plan			plan;
+	Index			scanrelid;		/* relid is index into the range table */
+	YbLockMechanism	yb_lock_mechanism;	/* locks taken as part of the scan */
 } Scan;
 
 /* ----------------

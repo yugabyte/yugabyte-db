@@ -44,8 +44,8 @@ service PgClientService {
   rpc GetCatalogMasterVersion(PgGetCatalogMasterVersionRequestPB)
       returns (PgGetCatalogMasterVersionResponsePB);
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
-  rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
   rpc GetLockStatus(PgGetLockStatusRequestPB) returns (PgGetLockStatusResponsePB);
+  rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
   rpc ListLiveTabletServers(PgListLiveTabletServersRequestPB)
       returns (PgListLiveTabletServersResponsePB);
   rpc GetIndexBackfillProgress(PgGetIndexBackfillProgressRequestPB)
@@ -304,8 +304,15 @@ message PgGetLockStatusRequestPB {
   // The table to scan. If unset, scan all tables
   bytes table_id = 1;
 
-  // If specified, only read the locks associated with this txn_id.
+  // If set, only read the locks associated with this txn_id and ignore the fields
+  // min_txn_age_ms and max_num_txns.
   bytes transaction_id = 2;
+
+  // Return lock statuses of transactions with age >= 'min_txn_age_ms'
+  uint32 min_txn_age_ms = 3;
+
+  // Limit number of old transactions whose lock info is retrieved.
+  uint32 max_num_txns = 4;
 }
 
 message PgGetLockStatusResponsePB {
@@ -318,6 +325,13 @@ message PgGetLockStatusResponsePB {
   }
 
   repeated NodeLockStatusResponsePB node_locks = 2;
+
+  message TransactionList {
+    repeated bytes transaction_ids = 1;
+  }
+
+  // Map of transactions keyed by the host node uuid.
+  map<string, TransactionList> transactions_by_node = 3;
 }
 
 message PgListLiveTabletServersRequestPB {

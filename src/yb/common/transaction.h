@@ -121,13 +121,17 @@ struct TransactionStatusResult {
   // Populating status_tablet field is optional, except when we report transaction promotion.
   TabletId status_tablet;
 
+  // Status containing the deadlock info if the transaction was aborted due to a deadlock.
+  // Defaults to Status::OK() in all other cases.
+  Status expected_deadlock_status = Status::OK();
+
   TransactionStatusResult() {}
 
   TransactionStatusResult(TransactionStatus status_, HybridTime status_time_);
 
   TransactionStatusResult(
       TransactionStatus status_, HybridTime status_time_,
-      SubtxnSet aborted_subtxn_set_);
+      SubtxnSet aborted_subtxn_set_, Status expected_deadlock_status_ = Status::OK());
 
   TransactionStatusResult(
       TransactionStatus status_, HybridTime status_time_, SubtxnSet aborted_subtxn_set_,

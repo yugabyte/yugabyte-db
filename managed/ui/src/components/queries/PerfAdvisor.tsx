@@ -11,7 +11,7 @@ import { YBButton } from '../common/forms/fields';
 import { performanceRecommendationApi, QUERY_KEY } from './helpers/api';
 import { formatPerfRecommendationsData } from './helpers/utils';
 import { EXTERNAL_LINKS } from './helpers/constants';
-import { ybFormatDate } from '../../redesign/helpers/DateUtils';
+import { ybFormatDateTimezone } from '../../redesign/helpers/DateUtils';
 import { isEmptyString, isNonEmptyString } from '../../utils/ObjectUtils';
 import {
   IndexAndShardingRecommendationData,
@@ -69,6 +69,7 @@ const DATABASE_TYPE_SUGGESTIONS = [
 
 export const PerfAdvisor: FC = () => {
   // Initialize state variables
+  const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
   const [isLoading, setIsLoading] = useState<Boolean>(true);
   const [lastScanTime, setLastScanTime] = useState('');
   const [isLastRunCompleted, setIsLastRunCompleted] = useState<boolean>(false);
@@ -315,7 +316,7 @@ export const PerfAdvisor: FC = () => {
   });
   const recommendationTypes = Object.keys(recommendationTypeList);
   const recommendationLabel =
-    displayedRecomendations?.length > 0 ? 'Recommendations' : 'Recommendation';
+    displayedRecomendations?.length > 1 ? 'Recommendations' : 'Recommendation';
 
   if (isLoading) {
     return (
@@ -443,7 +444,7 @@ export const PerfAdvisor: FC = () => {
             <p className="scanTime">
               {t('clusterDetail.performance.advisor.ScanTime')}
               {t('clusterDetail.performance.advisor.Separator')}
-              {ybFormatDate(lastScanTime)}
+              {ybFormatDateTimezone(new Date(), currentUserTimezone)}
             </p>
             <YBButton
               btnClass="btn btn-orange rescanBtnRecPage"

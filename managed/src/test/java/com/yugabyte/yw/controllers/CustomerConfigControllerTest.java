@@ -20,6 +20,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
@@ -30,6 +31,7 @@ import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigUI;
 import com.yugabyte.yw.models.Backup;
@@ -68,7 +70,10 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
         new StubbedCustomerConfigValidator(
             app.injector().instanceOf(BeanValidator.class),
             allowedBuckets,
-            mockStorageUtilFactory));
+            mockStorageUtilFactory,
+            app.injector().instanceOf(RuntimeConfGetter.class),
+            mockAWSUtil));
+    doCallRealMethod().when(mockAWSUtil).getConfigLocationInfo(any());
   }
 
   @Test

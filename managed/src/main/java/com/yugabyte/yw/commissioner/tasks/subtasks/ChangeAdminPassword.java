@@ -38,6 +38,7 @@ public class ChangeAdminPassword extends UniverseTaskBase {
     public String ycqlCurrentPassword;
     public String ycqlNewPassword;
     public String ysqlDbName;
+    public boolean validateCurrentPassword;
   }
 
   protected Params taskParams() {
@@ -66,6 +67,14 @@ public class ChangeAdminPassword extends UniverseTaskBase {
         dbData.ycqlCurrAdminPassword = taskParams().ycqlCurrentPassword;
         dbData.ycqlAdminUsername = taskParams().ycqlUserName;
         dbData.ycqlAdminPassword = taskParams().ycqlNewPassword;
+
+        if (taskParams().validateCurrentPassword) {
+          DatabaseSecurityFormData testDBCreds = new DatabaseSecurityFormData();
+          testDBCreds.ycqlAdminPassword = dbData.ycqlCurrAdminPassword;
+          testDBCreds.ycqlAdminUsername = dbData.ycqlAdminUsername;
+          ycqlQueryExecutor.validateAdminPassword(universe, testDBCreds);
+        }
+
         try {
           // Check if the password already works.
           ycqlQueryExecutor.validateAdminPassword(universe, dbData);
@@ -86,6 +95,15 @@ public class ChangeAdminPassword extends UniverseTaskBase {
         dbData.ysqlCurrAdminPassword = taskParams().ysqlCurrentPassword;
         dbData.ysqlAdminUsername = taskParams().ysqlUserName;
         dbData.ysqlAdminPassword = taskParams().ysqlNewPassword;
+
+        if (taskParams().validateCurrentPassword) {
+          DatabaseSecurityFormData testDBCreds = new DatabaseSecurityFormData();
+          testDBCreds.ysqlAdminPassword = dbData.ysqlCurrAdminPassword;
+          testDBCreds.dbName = dbData.dbName;
+          testDBCreds.ysqlAdminUsername = dbData.ysqlAdminUsername;
+          ysqlQueryExecutor.validateAdminPassword(universe, testDBCreds);
+        }
+
         try {
           // Check if the password already works.
           ysqlQueryExecutor.validateAdminPassword(universe, dbData);

@@ -185,7 +185,7 @@ class CDCSDKTestBase : public YBTest {
       const CDCRecordType& record_type = CDCRecordType::CHANGE,
       const std::string& namespace_name = kNamespaceName);
 
-  Result<std::string> CreateDBStream(
+  Result<xrepl::StreamId> CreateDBStream(
       CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
       CDCRecordType record_type = CDCRecordType::CHANGE);
 

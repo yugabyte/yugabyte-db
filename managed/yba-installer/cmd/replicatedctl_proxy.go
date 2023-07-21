@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/replicated/replflow"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/replicated/replicatedctl"
 )
 
@@ -68,9 +69,21 @@ var appConfigCmd = &cobra.Command{
 	},
 }
 
+var uninstallCmd = &cobra.Command{
+	Use:   "uninstall",
+	Short: "uninstall replicated",
+	Run: func(cmd *cobra.Command, args []string) {
+		if err := replflow.Uninstall(); err != nil {
+			fmt.Printf("failed to uninstall replicated: %s\n", err.Error())
+		}
+		fmt.Println("uninstalled replicated")
+	},
+}
+
 func init() {
 	if os.Getenv("YBA_MODE") == "dev" {
 		rootCmd.AddCommand(replicatedctlCmd)
-		replicatedctlCmd.AddCommand(appInspectCmd, appStatusCmd, appStopCmd, appStartCmd, appConfigCmd)
+		replicatedctlCmd.AddCommand(appInspectCmd, appStatusCmd, appStopCmd, appStartCmd, appConfigCmd,
+			uninstallCmd)
 	}
 }

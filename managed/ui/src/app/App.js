@@ -1,6 +1,5 @@
 // Copyright (c) YugaByte, Inc.
 
-import React from 'react';
 import { ToastContainer } from 'react-toastify';
 import { ToastNotificationDuration } from '../redesign/helpers/constants';
 import 'bootstrap/dist/css/bootstrap.css';

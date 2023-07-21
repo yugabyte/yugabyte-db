@@ -2726,43 +2726,71 @@ void TabletServiceImpl::ListMasterServers(const ListMasterServersRequestPB* req,
 void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
                                       GetLockStatusResponsePB* resp,
                                       rpc::RpcContext context) {
-  std::set<TransactionId> transaction_ids;
+  TRACE("GetLockStatus");
+
+  // Only one among transactions_by_tablet and transaction_ids should be set.
+  if (req->transactions_by_tablet().empty() == (req->transaction_ids_size() == 0)) {
+    auto s = STATUS(
+        IllegalState,
+        "Request must specify either txns_by_tablet or txn_ids, and cannot specify both.");
+    LOG(DFATAL) << s;
+    SetupErrorAndRespond(resp->mutable_error(), s, &context);
+    return;
+  }
+
+  TabletPeers tablet_peers;
+  std::set<TransactionId> limit_resp_to_txns;
+  for (const auto& [tablet_id, _] : req->transactions_by_tablet()) {
+    // GetLockStatusRequestPB may include tablets that aren't hosted by at this tablet server.
+    auto res = LookupTabletPeer(server_->tablet_manager(), tablet_id);
+    if (!res.ok()) {
+      continue;
+    }
+    tablet_peers.push_back(res->tablet_peer);
+  }
+
+  if (req->transaction_ids().size() > 0) {
+    // If this request specifies transaction_ids, then we check every tablet leader at this tserver
+    tablet_peers = server_->tablet_manager()->GetTabletPeers();
+  }
   for (auto& txn_id : req->transaction_ids()) {
     auto id_or_status = FullyDecodeTransactionId(txn_id);
     if (!id_or_status.ok()) {
       SetupErrorAndRespond(resp->mutable_error(), id_or_status.status(), &context);
       return;
     }
-    transaction_ids.insert(*id_or_status);
+    limit_resp_to_txns.insert(*id_or_status);
   }
 
-  if (req->has_tablet_id() && !req->tablet_id().empty()) {
-    PerformAtLeader(req, resp, &context,
-      [resp, &transaction_ids](const LeaderTabletPeer& tablet_peer) -> Status {
-        auto s = tablet_peer.tablet->GetLockStatus(transaction_ids, resp->add_tablet_lock_infos());
-        if (!s.ok()) {
-          resp->Clear();
-        }
-        return s;
-      });
-    return;
-  }
-
-  auto tablet_peers = server_->tablet_manager()->GetTabletPeers();
   for (const auto& tablet_peer : tablet_peers) {
     auto leader_term = tablet_peer->LeaderTerm();
     if (leader_term != OpId::kUnknownTerm &&
         tablet_peer->tablet_metadata()->table_type() == PGSQL_TABLE_TYPE) {
-      // TODO(pglocks): https://github.com/yugabyte/yugabyte-db/issues/15647
-      // Include leader_term in response so client may pick only the latest leader if multiple
-      // tablets respond.
-      auto s = tablet_peer->shared_tablet()->GetLockStatus(
-          transaction_ids, resp->add_tablet_lock_infos());
+      const auto& tablet_id = tablet_peer->tablet_id();
+      auto* tablet_lock_info = resp->add_tablet_lock_infos();
+      Status s = Status::OK();
+      if (req->transactions_by_tablet().count(tablet_id) > 0) {
+        std::set<TransactionId> transaction_ids;
+        for (auto& txn_id : req->transactions_by_tablet().at(tablet_id).transaction_ids()) {
+          auto id_or_status = FullyDecodeTransactionId(txn_id);
+          if (!id_or_status.ok()) {
+            resp->Clear();
+            SetupErrorAndRespond(resp->mutable_error(), id_or_status.status(), &context);
+            return;
+          }
+          transaction_ids.insert(*id_or_status);
+        }
+        s = tablet_peer->shared_tablet()->GetLockStatus(transaction_ids, tablet_lock_info);
+      } else {
+        DCHECK(!limit_resp_to_txns.empty());
+        s = tablet_peer->shared_tablet()->GetLockStatus(limit_resp_to_txns, tablet_lock_info);
+      }
       if (!s.ok()) {
         resp->Clear();
         SetupErrorAndRespond(resp->mutable_error(), s, &context);
         return;
       }
+      tablet_lock_info->set_term(leader_term);
     }
   }
   context.RespondSuccess();

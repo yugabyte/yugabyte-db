@@ -28,6 +28,15 @@ spec:
                   type: string
                 assignPublicIP:
                   type: boolean
+                masterGFlags:
+                  type: object
+                  additionalProperties:
+                    type: string
+                tserverGFlags:
+                  type: object
+                  additionalProperties:
+                    type: string
+                    x-kubernetes-preserve-unknown-fields: true
                 useTimeSync:
                   type: boolean
                 enableYSQL:

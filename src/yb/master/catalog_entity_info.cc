@@ -294,7 +294,7 @@ void TabletInfo::UpdateReplicaInfo(const std::string& ts_uuid,
   it->second.UpdateLeaderLeaseInfo(leader_lease_info);
 }
 
-std::unordered_map<CDCStreamId, uint64_t>  TabletInfo::GetReplicationStatus() {
+std::unordered_map<xrepl::StreamId, uint64_t> TabletInfo::GetReplicationStatus() {
   std::lock_guard l(lock_);
   return replication_stream_to_status_bitmask_;
 }
@@ -1302,7 +1302,7 @@ Status UniverseReplicationInfo::GetSetupUniverseReplicationErrorStatus() const {
 
 void UniverseReplicationInfo::StoreReplicationError(
     const TableId& consumer_table_id,
-    const CDCStreamId& stream_id,
+    const xrepl::StreamId& stream_id,
     const ReplicationErrorPb error,
     const std::string& error_detail) {
   std::lock_guard l(lock_);
@@ -1311,7 +1311,7 @@ void UniverseReplicationInfo::StoreReplicationError(
 
 void UniverseReplicationInfo::ClearReplicationError(
     const TableId& consumer_table_id,
-    const CDCStreamId& stream_id,
+    const xrepl::StreamId& stream_id,
     const ReplicationErrorPb error) {
   std::lock_guard l(lock_);
 

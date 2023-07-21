@@ -1,5 +1,4 @@
 import _ from 'lodash';
-import React from 'react';
 import userEvent from '@testing-library/user-event';
 import { render } from '../../../test-utils';
 import { HAInstances } from './HAInstances';

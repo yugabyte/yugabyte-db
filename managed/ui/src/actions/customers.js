@@ -9,6 +9,10 @@ import { getCustomerEndpoint } from './common';
 export const VALIDATE_FROM_TOKEN = 'VALIDATE_FROM_TOKEN';
 export const VALIDATE_FROM_TOKEN_RESPONSE = 'VALIDATE_FROM_TOKEN_RESPONSE';
 
+// Get OIDC token
+export const FETCH_OIDC_TOKEN = 'FETCH_OIDC_TOKEN';
+export const FETCH_OIDC_TOKEN_RESPONSE = 'FETCH_OIDC_TOKEN_RESPONSE';
+
 // Sign Up Customer
 export const REGISTER = 'REGISTER';
 export const REGISTER_RESPONSE = 'REGISTER_RESPONSE';
@@ -24,8 +28,6 @@ export const FETCH_ADMIN_NOTIFICATIONS_RESPONSE = 'FETCH_ADMIN_NOTIFICATIONS_RES
 // Sign In Customer
 export const LOGIN = 'LOGIN';
 export const LOGIN_RESPONSE = 'LOGIN_RESPONSE';
-export const INSECURE_LOGIN = 'INSECURE_LOGIN';
-export const INSECURE_LOGIN_RESPONSE = 'INSECURE_LOGIN_RESPONSE';
 
 export const RESET_CUSTOMER = 'RESET_CUSTOMER';
 
@@ -280,21 +282,6 @@ export function loginResponse(response) {
   return {
     type: LOGIN_RESPONSE,
     payload: response
-  };
-}
-
-export function insecureLogin() {
-  const request = axios.get(`${ROOT_URL}/insecure_login`);
-  return {
-    type: INSECURE_LOGIN,
-    payload: request
-  };
-}
-
-export function insecureLoginResponse(response) {
-  return {
-    type: INSECURE_LOGIN_RESPONSE,
-    payload: response.payload
   };
 }
 
@@ -1082,6 +1069,22 @@ export function getYugaByteReleases() {
 export function getYugaByteReleasesResponse(response) {
   return {
     type: GET_RELEASES_RESPONSE,
+    payload: response
+  };
+}
+
+export function fetchOIDCToken(userUUID) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/users/${userUUID}/oidc_auth_token`);
+  return {
+    type: FETCH_OIDC_TOKEN,
+    payload: request
+  };
+}
+
+export function fetchOIDCTokenResponse(response) {
+  return {
+    type: FETCH_OIDC_TOKEN_RESPONSE,
     payload: response
   };
 }

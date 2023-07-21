@@ -1037,6 +1037,17 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 	{
+		{"yb_lock_pk_single_rpc", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Use single RPC to select and lock when PK is specified."),
+			gettext_noop("If possible (no conflicting filters in the plan), use a single RPC to "
+						 "select and lock, when a locking clause is provided, in isolation levels "
+						 "REPEATABLE READ and READ COMMITTED.")
+		},
+		&yb_lock_pk_single_rpc,
+		false,
+		NULL, NULL, NULL
+	},
+	{
 		{"enable_partition_pruning", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enable plan-time and run-time partition pruning."),
 			gettext_noop("Allows the query planner and executor to compare partition "
@@ -2038,6 +2049,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_pg_locks", PGC_SUSET, LOCK_MANAGEMENT,
+			gettext_noop("Enable the pg_locks view. This view provides information about the locks held by active postgres sessions."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_pg_locks,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_upgrade_mode", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enter a special mode designed specifically for YSQL cluster upgrades. "
 						 "Allows creating new system tables with given relation and type OID. "
@@ -2373,6 +2395,27 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&DeadlockTimeout,
 		1000, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_locks_min_txn_age", PGC_USERSET, LOCK_MANAGEMENT,
+			gettext_noop("Sets the minimum transaction age for results from pg_locks."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_locks_min_txn_age,
+		1000, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_locks_max_transactions", PGC_USERSET, LOCK_MANAGEMENT,
+			gettext_noop("Sets the maximum number of transactions for which to return rows in pg_locks."),
+			NULL
+		},
+		&yb_locks_max_transactions,
+		16, 1, INT_MAX,
 		NULL, NULL, NULL
 	},
 

@@ -10,7 +10,8 @@
 import React, { FC, useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { Link } from 'react-router';
-import { Backup_States, IBackup, ICommonBackupInfo, ITable, Keyspace_Table, fetchIncrementalBackup } from '..';
+import { Backup_States, IBackup, ICommonBackupInfo, ITable, Keyspace_Table } from '..';
+import { fetchIncrementalBackup } from '.././common/BackupAPI';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton } from '../../common/forms/fields';
 import { BACKUP_REFETCH_INTERVAL, RevealBadge, calculateDuration } from '../common/BackupUtils';
@@ -32,14 +33,20 @@ import { toast } from 'react-toastify';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { YBLoadingCircleIcon } from '../../common/indicators';
+import { handleCACertErrMsg } from '../../customCACerts';
 import './BackupDetails.scss';
 
+export type IncrementalBackupProps = {
+  isRestoreEntireBackup?: boolean; // if the restore entire backup button is clicked
+  incrementalBackupUUID?: string; // if restore to point button is clicked
+  singleKeyspaceRestore?: boolean; // if restore button is clicked inside the incremental backup
+};
 interface BackupDetailsProps {
   backupDetails: IBackup | null;
   onHide: () => void;
   storageConfigName: string;
   onDelete: () => void;
-  onRestore: (backup?: IBackup) => void;
+  onRestore: (backup?: IBackup, incrementalProps?: IncrementalBackupProps) => void;
   storageConfigs: {
     data?: any[];
   };
@@ -98,14 +105,17 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
       }
 
       if (backupDetails!.backupType === TableType.YQL_TABLE_TYPE) {
-
         const allTableAvailableForBackup = responseList.every((r) => {
-          if(r.allTables) return true;
+          if (r.allTables) return true;
           return r.tableUUIDList?.every((tableUUID) => find(tablesInUniverse, { tableUUID }));
         });
 
-        if(!allTableAvailableForBackup){
-          return Promise.reject({ response: { data: { error: `One or more of selected tables to backup do not exist in keyspace` } } });
+        if (!allTableAvailableForBackup) {
+          return Promise.reject({
+            response: {
+              data: { error: `One or more of selected tables to backup do not exist in keyspace` }
+            }
+          });
         }
 
         responseList = responseList.map((r) => {
@@ -119,9 +129,9 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             tableUUIDList: r.allTables
               ? []
               : backupTablesPresentInUniverse.map(
-                (tableName) =>
-                  find(tablesInUniverse, { tableName, keySpace: r.keyspace })?.tableUUID ?? ''
-              )
+                  (tableName) =>
+                    find(tablesInUniverse, { tableName, keySpace: r.keyspace })?.tableUUID ?? ''
+                )
           };
         });
       }
@@ -147,7 +157,6 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
         }
       });
 
-
       return addIncrementalBackup({
         ...backupDetails!,
         commonBackupInfo: {
@@ -166,15 +175,15 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
         setShowAddIncrementalBackupModal(false);
       },
       onError: (resp: any) => {
-        toast.error(createErrorMessage(resp));
+        !handleCACertErrMsg(resp) && toast.error(createErrorMessage(resp));
       }
     }
   );
 
   const kmsConfig = kmsConfigs
     ? kmsConfigs.find((config: any) => {
-      return config.metadata.configUUID === backupDetails?.commonBackupInfo?.kmsConfigUUID;
-    })
+        return config.metadata.configUUID === backupDetails?.commonBackupInfo?.kmsConfigUUID;
+      })
     : undefined;
 
   if (!backupDetails) return null;
@@ -231,18 +240,27 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             {!hideRestore && (
               <YBButton
                 btnText="Restore Entire Backup"
+                btnIcon="fa fa-share"
                 onClick={() => {
-                  if (backupDetails.hasIncrementalBackups && backupDetails.commonBackupInfo.tableByTableBackup) {
+                  if (backupDetails.hasIncrementalBackups) {
                     if (incrementalBackups?.data) {
                       const recentBackup = incrementalBackups.data.filter(
                         (e: ICommonBackupInfo) => e.state === Backup_States.COMPLETED
                       )[0];
-                      onRestore({ ...backupDetails, commonBackupInfo: recentBackup });
+                      onRestore(
+                        { ...backupDetails, commonBackupInfo: recentBackup },
+                        {
+                          isRestoreEntireBackup: true,
+                          incrementalBackupUUID: recentBackup.backupUUID,
+                          singleKeyspaceRestore: false
+                        }
+                      );
                     }
-
-                  }
-                  else {
-                    onRestore();
+                  } else {
+                    onRestore(undefined, {
+                      isRestoreEntireBackup: true,
+                      singleKeyspaceRestore: false
+                    });
                   }
                 }}
                 disabled={
@@ -253,7 +271,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             )}
             {onEdit && (
               <YBButton
-                btnText="Edit Backup"
+                btnText="Change Retention Period"
                 btnIcon="fa fa-pencil"
                 onClick={() => onEdit()}
                 disabled={
@@ -388,14 +406,24 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 <TableListComponent
                   backup={backupDetails}
                   keyspaceSearch={searchKeyspaceText}
-                  onRestore={(tablesList: Keyspace_Table[]) => {
-                    onRestore({
-                      ...backupDetails,
-                      commonBackupInfo: {
-                        ...backupDetails.commonBackupInfo,
-                        responseList: tablesList
+                  onRestore={(
+                    tablesList: Keyspace_Table[],
+                    incrementalBackupProps: IncrementalBackupProps
+                  ) => {
+                    onRestore(
+                      {
+                        ...backupDetails,
+                        commonBackupInfo: {
+                          ...backupDetails.commonBackupInfo,
+                          responseList: tablesList
+                        }
+                      },
+                      {
+                        isRestoreEntireBackup: true,
+                        incrementalBackupUUID: incrementalBackupProps.incrementalBackupUUID,
+                        singleKeyspaceRestore: incrementalBackupProps.singleKeyspaceRestore
                       }
-                    });
+                    );
                   }}
                   hideRestore={hideRestore}
                 />

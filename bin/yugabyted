@@ -1680,10 +1680,18 @@ class ControlScript(object):
                         Output.make_underline(SLACK_LINK), Output.SHIRT,
                         Output.make_underline(COMMUNITY_REWARDS_LINK))
 
-                if self.configs.saved_data.get("secure") and not join_ip:
-                    status += "\n{} is stored at {}\n".format(Output.make_cyan("Credentials File"),
-                    os.path.join(self.configs.saved_data.get("data_dir"),
-                        "{}_credentials.txt".format(SCRIPT_NAME)))
+                if self.configs.saved_data.get("secure"):
+                    if not join_ip:
+                        status += "\n{} is saved in the {}.\n{} is stored at {}\n".format(
+                            Output.make_cyan("DB_PASSWORD"),
+                            Output.make_cyan("Credentials File"),
+                            Output.make_cyan("Credentials File"),
+                            os.path.join(self.configs.saved_data.get("data_dir"),
+                                "{}_credentials.txt".format(SCRIPT_NAME)))
+                    else:
+                        status += "\n{} is saved in ".format(Output.make_cyan("DB_PASSWORD")) + \
+                            "the {} which has been generated on the 1st node.\n".format(
+                                Output.make_cyan("Credentials File"))
 
                 if len(self.setup_env_init.get_ysql_password()) > 99:
                     status = status + Output.make_red(YSQL_PASSWORD_LENGTH_WARNING)
@@ -2069,6 +2077,34 @@ class ControlScript(object):
                     tserver_flags[ysql_hba_conf_csv_end_index:]
 
             yb_tserver_cmd.extend(["--ysql_hba_conf_csv={}".format(ysql_hba_conf_csv_flag)])
+
+        # If ysql_ident_conf_csv is present
+        # Extract the value of ysql_ident_conf_csv
+        # Remove the flag present in the tserver_flags string
+        if tserver_flags.find("ysql_ident_conf_csv") != -1:
+            ysql_ident_conf_csv_start_index = tserver_flags.find('ysql_ident_conf_csv')
+            ysql_ident_conf_csv_end_index = \
+                tserver_flags.find('}', ysql_ident_conf_csv_start_index) + 1
+            ysql_ident_conf_csv_flag = tserver_flags[ysql_ident_conf_csv_start_index:\
+                    ysql_ident_conf_csv_end_index]
+            ysql_ident_conf_csv_flag = \
+                ysql_ident_conf_csv_flag[ysql_ident_conf_csv_flag.find("{")+1:-1]
+
+            # If the value was given through the config file
+            # remove the starting and ending quotes.
+            if ysql_ident_conf_csv_flag[0] == "'" and ysql_ident_conf_csv_flag[-1] == "'":
+                ysql_ident_conf_csv_flag = ysql_ident_conf_csv_flag[1:-1]
+            elif ysql_ident_conf_csv_flag[0] == '"' and ysql_ident_conf_csv_flag[-1] == '"':
+                ysql_ident_conf_csv_flag = ysql_ident_conf_csv_flag[1:-1]
+
+            # Remove the flag present in tserver_flags
+            if ysql_ident_conf_csv_start_index == 0:
+                tserver_flags = tserver_flags[ysql_ident_conf_csv_end_index+1:]
+            else:
+                tserver_flags = tserver_flags[:ysql_ident_conf_csv_start_index-1] + \
+                    tserver_flags[ysql_ident_conf_csv_end_index:]
+
+            yb_tserver_cmd.extend(["--ysql_ident_conf_csv={}".format(ysql_ident_conf_csv_flag)])
 
         # If ysql_pg_conf_csv is present
         # Extract the value of ysql_pg_conf_csv given through CLI
@@ -3457,6 +3493,7 @@ class ControlScript(object):
         ysql_username, ysql_password, ysql_db = self.setup_env_init.get_ysql_credentials()
 
         status_info = []
+        status_display_info = dict()
         # Make sure ascii escape characters for color encoding do not count towards char limit.
         if self.get_failed_node_processes():
             title = Output.make_bold(Output.make_red(SCRIPT_NAME))
@@ -3557,9 +3594,18 @@ class ControlScript(object):
         else:
             status_info += [ (Output.make_yellow(console_desc), yb_master_status), ]
 
+        jdbc_string = "jdbc:postgresql://{}:{}/{}?user={}&password=".format(advertise_ip,
+                                                                            ysql_port,
+                                                                            ysql_db,
+                                                                            ysql_username)
+        if self.configs.saved_data.get("secure"):
+            jdbc_string += Output.make_cyan("<DB_PASSWORD>")
+        else:
+            jdbc_string += "yugabyte"
+        status_display_info[jdbc_string] = Output.make_cyan
+
         status_info += [
-            (Output.make_yellow("JDBC"), "jdbc:postgresql://{}:{}/{}?user={}&password={}".
-                format(advertise_ip, ysql_port, ysql_db, ysql_username, ysql_password)),
+            (Output.make_yellow("JDBC"), jdbc_string),
             (Output.make_yellow("YSQL"), "bin/ysqlsh{}".format(ysql_flags)),
             (Output.make_yellow("YCQL"), "bin/ycqlsh{}".format(ycql_flags)),
             (Output.make_yellow("Data Dir"), self.configs.saved_data.get("data_dir")),
@@ -3572,10 +3618,17 @@ class ControlScript(object):
          + extra_len) + "} |\n").format(title)
         status += div_line
         for k, v in status_info:
+            func = None
+            if status_display_info is not None and v in status_display_info.keys():
+                func = status_display_info.get(v)
+
             extra_len = len(Output.make_yellow(""))
-            status += ("| {:" + str(20 + extra_len) + "}: {:<82} |\n").format(k,
-                                                                              v if v is not None
-                                                                              else "None")
+            status += ("| {:" + str(20 + extra_len) + "}: ").format(k)
+            if func is not None:
+                status += ("{:<" + str(82 + len(func(""))) + "} |\n").format(v)
+            else:
+                status += ("{:<" + str(82) + "} |\n").format(v if v is not None else "None")
+
         status += div_line
         return status
 
@@ -3762,9 +3815,11 @@ class ControlScript(object):
             return encryptionFlag[0].get("value") == "true"
 
         except HTTPError as http_err:
-            print('HTTP error occurred while checking for security of leader master: {}', http_err)
+            Output.log_error_and_exit("HTTP error occurred while checking for security of " +
+                                    "leader master: {}".format(http_err))
         except Exception as err:
-            print('Other error occurred while checking for security of leader master: {}', err)
+            Output.log_error_and_exit("Other error occurred while checking for security of " +
+                                    "leader master: {}".format(err))
 
     # Parse the config file and input parent flags to validate and set them.
     # Parent flags: --config, --data_dir, --log_dir

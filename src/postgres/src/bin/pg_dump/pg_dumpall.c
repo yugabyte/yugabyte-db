@@ -23,6 +23,7 @@
 #include "dumputils.h"
 #include "pg_backup.h"
 #include "common/file_utils.h"
+#include "common/string.h"
 #include "fe_utils/connect.h"
 #include "fe_utils/string_utils.h"
 
@@ -1581,14 +1582,10 @@ connectDatabase(const char *dbname, const char *connection_string,
 	const char **keywords = NULL;
 	const char **values = NULL;
 	PQconninfoOption *conn_opts = NULL;
-	static bool have_password = false;
-	static char password[100];
+	static char *password = NULL;
 
-	if (prompt_password == TRI_YES && !have_password)
-	{
-		simple_prompt("Password: ", password, sizeof(password), false);
-		have_password = true;
-	}
+	if (prompt_password == TRI_YES && !password)
+		password = simple_prompt("Password: ", false);
 
 	/*
 	 * Start the connection.  Loop until we have a password if requested by
@@ -1668,7 +1665,7 @@ connectDatabase(const char *dbname, const char *connection_string,
 			values[i] = pguser;
 			i++;
 		}
-		if (have_password)
+		if (password)
 		{
 			keywords[i] = "password";
 			values[i] = password;
@@ -1696,12 +1693,11 @@ connectDatabase(const char *dbname, const char *connection_string,
 
 		if (PQstatus(conn) == CONNECTION_BAD &&
 			PQconnectionNeedsPassword(conn) &&
-			!have_password &&
+			!password &&
 			prompt_password != TRI_NO)
 		{
 			PQfinish(conn);
-			simple_prompt("Password: ", password, sizeof(password), false);
-			have_password = true;
+			password = simple_prompt("Password: ", false);
 			new_pass = true;
 		}
 	} while (new_pass);

@@ -56,6 +56,11 @@ extern bool yb_pushdown_strict_inequality;
 extern bool yb_pushdown_is_not_null;
 
 /*
+ * Guc that toggles the pg_locks view on/off.
+ */
+extern bool yb_enable_pg_locks;
+
+/*
  * Guc variable to suppress non-Postgres logs from appearing in Postgres log file.
  */
 extern bool suppress_nonpg_logs;
@@ -105,6 +110,16 @@ extern int yb_xcluster_consistency_level;
  */
 extern int yb_fetch_row_limit;
 extern int yb_fetch_size_limit;
+
+/*
+ * GUC flag: Minimum transaction age, in ms, to report when using yb_lock_status().
+ */
+extern int yb_locks_min_txn_age;
+
+/*
+ * GUC flag: Maximum number of transactions to return results for in yb_lock_status().
+ */
+extern int yb_locks_max_transactions;
 
 #ifdef __cplusplus
 } // extern "C"

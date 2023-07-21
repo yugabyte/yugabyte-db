@@ -25,16 +25,7 @@ namespace tserver {
 class TServerSharedData;
 typedef SharedMemoryObject<TServerSharedData> TServerSharedObject;
 
-// This records catalog version information for a given database.
-struct CatalogVersionInfo {
-  // Latest known version from pg_yb_catalog_version for the database.
-  uint64_t current_version;
-  uint64_t last_breaking_version;
-
-  // Shared memory array db_catalog_versions_ index of the slot allocated for the database.
-  int32_t  shm_index;
-};
-
+struct CatalogVersionInfo;
 // Use ordered map to make computing fingerprint of the map easier.
 using DbOidToCatalogVersionInfoMap = std::map<uint32_t, CatalogVersionInfo>;
 

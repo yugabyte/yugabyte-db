@@ -62,7 +62,7 @@ std::shared_ptr<StreamMetadata::StreamTabletMetadata> StreamMetadata::GetTabletM
 }
 
 Status StreamMetadata::InitOrReloadIfNeeded(
-    const std::string& stream_id, RefreshStreamMapOption opts, client::YBClient* client) {
+    const xrepl::StreamId& stream_id, RefreshStreamMapOption opts, client::YBClient* client) {
   std::lock_guard l(load_mutex_);
   if (!loaded_ || opts == RefreshStreamMapOption::kAlways ||
       (opts == RefreshStreamMapOption::kIfInitiatedState &&
@@ -74,7 +74,7 @@ Status StreamMetadata::InitOrReloadIfNeeded(
 }
 
 Status StreamMetadata::GetStreamInfoFromMaster(
-    const std::string& stream_id, client::YBClient* client) {
+    const xrepl::StreamId& stream_id, client::YBClient* client) {
   bool is_refresh = loaded_.load(std::memory_order_acquire);
   // If this is the first time we are loading the metadata then we populate all the fields.
   // If this is a refresh, then only table_ids_, state_, tablet_metadata_map_ and transactional_ are

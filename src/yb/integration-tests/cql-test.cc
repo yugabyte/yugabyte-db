@@ -895,6 +895,19 @@ TEST_F(CqlTest, TestCQLUnpreparedStmtStats) {
     }
   }
 
+  // reset the counters and verify
+  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements-reset",
+                                              ToString(addrs[0])), &buf));
+  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements",
+                                              ToString(addrs[0])), &buf));
+
+  JsonReader json_post_reset(buf.ToString());
+  ASSERT_OK(json_post_reset.Init());
+  std::vector<const rapidjson::Value*> stmt_stats_post_reset;
+  ASSERT_OK(json_post_reset.ExtractObjectArray(json_post_reset.root(), "unprepared_statements",
+                                               &stmt_stats_post_reset));
+  ASSERT_EQ(stmt_stats_post_reset.size(), 0);
+
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 

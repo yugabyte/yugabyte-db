@@ -21,7 +21,7 @@ Options:
 EOT
 }
 
-num_cores_to_keep=5
+num_cores_to_keep={{ yb_num_clean_cores_to_keep }}
 YB_CRASH_DIR=({{ yb_cores_dir }}/)
 while [[ $# -gt 0 ]]; do
   case "$1" in

@@ -1,12 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import clsx from 'clsx';
 
 import './YBPanelItem.scss';
 
 export default class YBPanelItem extends Component {
-
   render() {
     const { noBackground, className, bodyClassName, children } = this.props;
     const panelBodyClassName = clsx('body', noBackground && 'body-transparent', bodyClassName);

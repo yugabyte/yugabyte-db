@@ -95,8 +95,21 @@ class YsqlTransactionDdl {
   Result<bool> PgEntryExists(const TableId& tableId,
                              PgOid entry_oid,
                              boost::optional<PgOid> relfilenode_oid);
+  Status PgEntryExistsWithReadTime(
+      const TableId& tableId,
+      PgOid entry_oid,
+      boost::optional<PgOid>
+          relfilenode_oid,
+      const ReadHybridTime& read_time,
+      bool* result,
+      HybridTime* read_restart_ht);
 
   Result<bool> PgSchemaChecker(const scoped_refptr<TableInfo>& table);
+  Status PgSchemaCheckerWithReadTime(
+      const scoped_refptr<TableInfo>& table,
+      const ReadHybridTime& read_time,
+      bool* result,
+      HybridTime* read_restart_ht);
 
  protected:
   void TransactionReceived(const TransactionMetadata& transaction,
@@ -111,6 +124,11 @@ class YsqlTransactionDdl {
                                  const std::vector<YsqlTransactionDdl::PgColumnFields>& pg_cols);
 
   Result<std::vector<PgColumnFields>> ReadPgAttribute(scoped_refptr<TableInfo> table);
+  Status ReadPgAttributeWithReadTime(
+      scoped_refptr<TableInfo> table,
+      const ReadHybridTime& read_time,
+      std::vector<PgColumnFields>* pg_cols,
+      HybridTime* read_restart_ht);
 
   // Scan table 'pg_table_id' for all rows that satisfy the SQL filter
   // 'WHERE old_col_name = oid_value'. Each returned row contains the columns specified in
@@ -118,7 +136,8 @@ class YsqlTransactionDdl {
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> GetPgCatalogTableScanIterator(
       const PgTableReadData& read_data,
       PgOid oid_value,
-      const dockv::ReaderProjection& projection);
+      const dockv::ReaderProjection& projection,
+      RequestScope* request_scope);
 
   const SysCatalogTable* sys_catalog_;
   std::shared_future<client::YBClient*> client_future_;

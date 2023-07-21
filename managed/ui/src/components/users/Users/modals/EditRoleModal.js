@@ -1,4 +1,3 @@
-import React from 'react';
 import { Field, Formik } from 'formik';
 import { Col, Row } from 'react-bootstrap';
 import { YBModal, YBFormSelect } from '../../../common/forms/fields';

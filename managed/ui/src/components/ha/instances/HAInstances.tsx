@@ -1,5 +1,5 @@
 import _ from 'lodash';
-import React, { FC, ReactElement, useState } from 'react';
+import { FC, ReactElement, useState } from 'react';
 import { Col, Grid, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 

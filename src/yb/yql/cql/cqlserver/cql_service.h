@@ -136,6 +136,9 @@ class CQLServiceImpl : public CQLServerServiceIf,
   // Returns nullptr if query doesn't exist in the prepared_stmt_map_.
   std::shared_ptr<StmtCounters> GetWritablePrepStmtCounters(const std::string& query_id);
 
+  // Reset counters for prepared and unprepared statements.
+  void ResetStatementsCounters();
+
  private:
   constexpr static int kRpcTimeoutSec = 5;
 
@@ -165,6 +168,9 @@ class CQLServiceImpl : public CQLServerServiceIf,
   // The corresponding mutex needs to be locked before this call.
   void UpdateCountersUnlocked(
       double execute_time_in_msec, std::shared_ptr<StmtCounters> stmt_counters);
+
+  // Resets prepared statement counters.
+  void ResetPreparedStatementsCounters();
 
   // CQLServer of this service.
   CQLServer* const server_;

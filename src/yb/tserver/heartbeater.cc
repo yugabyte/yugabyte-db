@@ -417,7 +417,12 @@ Status Heartbeater::Thread::TryHeartbeat() {
   req.mutable_tablet_report()->set_is_incremental(!sending_full_report_);
   req.set_num_live_tablets(server_->tablet_manager()->GetNumLiveTablets());
   req.set_leader_count(server_->tablet_manager()->GetLeaderCount());
-
+  if (FLAGS_TEST_enable_db_catalog_version_mode) {
+    auto fingerprint = server_->GetCatalogVersionsFingerprint();
+    if (fingerprint.has_value()) {
+      req.set_ysql_db_catalog_versions_fingerprint(*fingerprint);
+    }
+  }
   for (auto& data_provider : data_providers_) {
     data_provider->AddData(last_hb_response_, &req);
   }
@@ -568,6 +573,18 @@ Status Heartbeater::Thread::TryHeartbeat() {
                           << last_hb_response_.db_catalog_version_data().ShortDebugString();
       }
       server_->SetYsqlDBCatalogVersions(last_hb_response_.db_catalog_version_data());
+    } else {
+      // The master does not pass back any catalog versions. This can happen in
+      // several cases:
+      // * The fingerprints matched at master side which we assume tserver and
+      //   master have identical catalog versions.
+      // * If catalog versions cache is used, the cache is empty, either becuase it
+      //   has never been populated yet, or because master reading of the table
+      //   pg_yb_catalog_version has failed so the cache is cleared.
+      // * If catalog versions cache is not used, master reading of the table
+      //   pg_yb_catalog_version has failed, this is an unexpected case that is
+      //   ignored by the heartbeat service at the master side.
+      VLOG_WITH_FUNC(2) << "got no master catalog version data";
     }
   } else {
     // We never expect rolling gflag change of --TEST_enable_db_catalog_version_mode. In

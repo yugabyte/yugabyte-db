@@ -106,8 +106,8 @@ Status PgDropDatabase::Exec() {
 }
 
 PgAlterDatabase::PgAlterDatabase(PgSession::ScopedRefPtr pg_session,
-                               const char *database_name,
-                               PgOid database_oid)
+                                 const char *database_name,
+                                 PgOid database_oid)
     : PgDdl(pg_session) {
   req_.set_database_name(database_name);
   req_.set_database_oid(database_oid);

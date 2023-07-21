@@ -33,6 +33,8 @@ bool yb_pushdown_strict_inequality = true;
 
 bool yb_pushdown_is_not_null = true;
 
+bool yb_enable_pg_locks = true;
+
 bool yb_run_with_explain_analyze = false;
 
 // If this is set in the user's session to a positive value, it will supersede the gflag
@@ -46,3 +48,7 @@ int yb_xcluster_consistency_level = XCLUSTER_CONSISTENCY_DATABASE;
 int yb_fetch_row_limit = 0;
 
 int yb_fetch_size_limit = 0;
+
+int yb_locks_min_txn_age = 1000;
+
+int yb_locks_max_transactions = 16;

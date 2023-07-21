@@ -6,7 +6,7 @@
 // alert creation.
 
 import { Field, reduxForm, FieldArray } from 'redux-form';
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import {
   YBButton,
@@ -167,9 +167,9 @@ const CreateAlert = (props) => {
       targetType: !enablePlatformAlert ? 'UNIVERSE' : 'PLATFORM',
       target: !enablePlatformAlert
         ? {
-          all: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? false : true,
-          uuids: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? [] : null
-        }
+            all: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? false : true,
+            uuids: isNonEmptyArray(values['ALERT_UNIVERSE_LIST']) ? [] : null
+          }
         : { all: true },
       thresholds: '',
       thresholdUnit: currentMetric.thresholdUnit,
@@ -219,9 +219,9 @@ const CreateAlert = (props) => {
     <form name="alertConfigForm" onSubmit={handleSubmit(handleOnSubmit)}>
       <Row className="config-section-header">
         <Col md={12}>
-          <Row className='flex-container'>
+          <Row className="flex-container">
             <h4>New Alert Policy</h4>
-            <Row className='component-flex'>
+            <Row className="component-flex">
               <Col lg={5}>
                 <Field
                   name="ALERT_STATUS"
@@ -237,7 +237,6 @@ const CreateAlert = (props) => {
               </Col>
             </Row>
           </Row>
-
         </Col>
         <Row>
           <Col md={6}>
@@ -353,7 +352,7 @@ const CreateAlert = (props) => {
         )}
         {currentMetric && (
           <div className="actionBtnsMargin">
-            <Row >
+            <Row>
               <Col md={6}>
                 <span className="form-item-custom-label marginRight">Alert Destination</span>
                 <YBInfoTip
@@ -368,16 +367,14 @@ const CreateAlert = (props) => {
                 />
               </Col>
             </Row>
-            {
-              (featureFlags.test.enableCustomEmailTemplates || featureFlags.released.enableCustomEmailTemplates) && (
-                <Row>
-                  <Col md={6}>
-                    <AlertPolicyDetails currentMetric={currentMetric} />
-                  </Col>
-                </Row>
-              )
-            }
-
+            {(featureFlags.test.enableCustomEmailTemplates ||
+              featureFlags.released.enableCustomEmailTemplates) && (
+              <Row>
+                <Col md={6}>
+                  <AlertPolicyDetails currentMetric={currentMetric} />
+                </Col>
+              </Row>
+            )}
           </div>
         )}
 

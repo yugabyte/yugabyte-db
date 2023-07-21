@@ -1,4 +1,4 @@
-import React, { useContext, FC } from 'react';
+import { useContext, FC } from 'react';
 import _ from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { useForm, FormProvider } from 'react-hook-form';

@@ -15,7 +15,9 @@ import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
@@ -105,6 +107,7 @@ public class QueryHelper {
   }
 
   @Inject YsqlQueryExecutor ysqlQueryExecutor;
+  @Inject RuntimeConfGetter confGetter;
 
   public JsonNode liveQueries(Universe universe) {
     return queryUniverseNodes(universe, QueryAction.FETCH_LIVE_QUERIES);
@@ -183,7 +186,12 @@ public class QueryHelper {
                     ysqlQuery.query =
                         slowQuerySqlWithLimit(config, universe, supportsLatencyHistogram);
                     ysqlQuery.db_name = "postgres";
-                    return ysqlQueryExecutor.executeQueryInNodeShell(universe, ysqlQuery, node);
+                    return ysqlQueryExecutor.executeQueryInNodeShell(
+                        universe,
+                        ysqlQuery,
+                        node,
+                        confGetter.getConfForScope(
+                            universe, UniverseConfKeys.slowQueryTimeoutSecs));
                   };
 
               Future<JsonNode> future = threadPool.submit(callable);

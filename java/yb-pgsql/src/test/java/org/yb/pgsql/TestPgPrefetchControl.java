@@ -28,6 +28,8 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_YB_SEQ_SCAN;
 
 import org.yb.util.json.Checker;
 import org.yb.util.json.Checkers;
@@ -73,7 +75,7 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
 
   @Test
   public void testSimplePrefetch() throws Exception {
-    String tableName = "TestPrefetch";
+    String tableName = "testprefetch";
     createPrefetchTable(tableName);
 
     int tableRowCount = 5000;
@@ -97,55 +99,70 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
         assertEquals(insertedRows, getRowList(rs));
       }
 
-      // Check that ysql_prefetch_limit is respected.
-      ExplainAnalyzeUtils.testExplain(
-        statement,
-        stmt,
-        makeTopLevelBuilder()
-          .storageReadRequests(Checkers.greaterOrEqual(51))
-          .storageWriteRequests(Checkers.equal(0))
-          .storageExecutionTime(Checkers.greaterOrEqual(0.0))
-          .plan(makePlanBuilder().build())
-          .build());
+      checkSeqScanFetchLimitReadRequests(statement, tableName, 51);
+      checkYbSeqScanFetchLimitReadRequests(statement, tableName, 51);
     }
   }
 
-  public void checkFetchLimitReadRequests(Statement statement, String stmt,
-    int rowLimit, int sizeLimit, int expectedReadRequests) throws Exception {
+  private void setRowAndSizeLimit(Statement statement, int rowLimit, int sizeLimit)
+      throws Exception {
+    LOG.info(String.format("Row limit = %d, Size limit = %d", rowLimit, sizeLimit));
+    statement.execute(String.format("SET yb_fetch_row_limit = %d", rowLimit));
+    statement.execute(String.format("SET yb_fetch_size_limit = %d", sizeLimit));
+  }
 
-    statement.execute(String.format("SET yb_fetch_row_limit=%d", rowLimit));
-    statement.execute(String.format("SET yb_fetch_size_limit=%d", sizeLimit));
+  private void checkYbSeqScanFetchLimitReadRequests(Statement statement, String tableName,
+      int expectedReadRequests) throws Exception {
     ExplainAnalyzeUtils.testExplain(
-      statement,
-      stmt,
-      makeTopLevelBuilder()
-        .storageReadRequests(Checkers.equal(expectedReadRequests))
-        .storageWriteRequests(Checkers.equal(0))
-        .storageExecutionTime(Checkers.greaterOrEqual(0.0))
-        .plan(makePlanBuilder().build())
-        .build());
+        statement,
+        String.format("/*+ SeqScan(%s) */ SELECT * FROM %s", tableName, tableName),
+        makeTopLevelBuilder()
+            .plan(makePlanBuilder().nodeType(NODE_YB_SEQ_SCAN).build())
+            .storageReadRequests(Checkers.equal(expectedReadRequests))
+            .build());
+  }
+
+  private void checkSeqScanFetchLimitReadRequests(Statement statement, String tableName,
+      int expectedReadRequests) throws Exception {
+    ExplainAnalyzeUtils.testExplain(
+        statement,
+        String.format("SELECT * FROM %s", tableName),
+        makeTopLevelBuilder()
+            .plan(makePlanBuilder().nodeType(NODE_SEQ_SCAN).build())
+            .storageReadRequests(Checkers.equal(expectedReadRequests))
+            .build());
   }
 
   @Test
   public void testSizeBasedFetch() throws Exception {
     try (Statement statement = connection.createStatement()) {
-      String tableName = "TestPrefetch";
+      String tableName = "testfetch";
       int charLength = 109;
       String fillerData = makeFillerString(charLength);
 
-      String stmt = String.format("create table %s (k bigint, v char(%d), primary key (k asc))",
-        tableName, charLength);
-      statement.execute(stmt);
-      stmt = String.format("insert into %s (select s, '%s' from generate_series(1, 100000) as s)",
-        tableName, fillerData);
-      statement.execute(stmt);
+      statement.execute(String.format(
+          "create table %s (k bigint, v char(%d), primary key (k asc))",
+          tableName, charLength));
+      statement.execute(String.format(
+          "insert into %s (select s, '%s' from generate_series(1, 100000) as s)",
+          tableName, fillerData));
 
-      stmt = String.format("SELECT * FROM %s", tableName);
+      setRowAndSizeLimit(statement, 1024, 0);
+      checkSeqScanFetchLimitReadRequests(statement, tableName, 98);
+      checkYbSeqScanFetchLimitReadRequests(statement, tableName, 98);
 
-      checkFetchLimitReadRequests(statement, stmt, 1024,  0,    98);
-      checkFetchLimitReadRequests(statement, stmt, 0,     512,  25);
-      checkFetchLimitReadRequests(statement, stmt, 0,     1024, 13);
-      checkFetchLimitReadRequests(statement, stmt, 0,     0,    1);
+      setRowAndSizeLimit(statement, 0, 0);
+      checkSeqScanFetchLimitReadRequests(statement, tableName, 1);
+      checkYbSeqScanFetchLimitReadRequests(statement, tableName, 1);
+
+      // row buffer fills up faster in YbSeqScan
+      setRowAndSizeLimit(statement, 0, 512);
+      checkSeqScanFetchLimitReadRequests(statement, tableName, 25);
+      checkYbSeqScanFetchLimitReadRequests(statement, tableName, 29);
+
+      setRowAndSizeLimit(statement, 0, 1024);
+      checkSeqScanFetchLimitReadRequests(statement, tableName, 13);
+      checkYbSeqScanFetchLimitReadRequests(statement, tableName, 15);
     }
   }
 

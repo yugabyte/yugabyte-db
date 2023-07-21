@@ -35,25 +35,25 @@ export interface ClusterSpec  {
    */
   name: string;
   /**
-   *
+   * 
    * @type {CloudInfo}
    * @memberof ClusterSpec
    */
   cloud_info: CloudInfo;
   /**
-   *
+   * 
    * @type {ClusterInfo}
    * @memberof ClusterSpec
    */
   cluster_info: ClusterInfo;
   /**
-   *
+   * 
    * @type {ClusterRegionInfo[]}
    * @memberof ClusterSpec
    */
   cluster_region_info?: ClusterRegionInfo[];
   /**
-   *
+   * 
    * @type {EncryptionInfo}
    * @memberof ClusterSpec
    */

@@ -562,7 +562,8 @@ class ReplaceRootVolumeMethod(AbstractInstancesMethod):
             id = args.search_pattern
             logging.info("==> Stopping instance {}".format(id))
             self.cloud.stop_instance(host_info)
-            if current_root_volume:
+            # Azure does not require unmounting because replacement is done in one API call.
+            if current_root_volume and self.cloud.name != "azu":
                 self.cloud.unmount_disk(host_info, current_root_volume)
                 unmounted = True
                 logging.info("==> Root volume {} unmounted from {}".format(
@@ -764,7 +765,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="NTP server to connect to.")
         self.parser.add_argument("--lun_indexes", default="",
                                  help="Comma-separated LUN indexes for mounted on instance disks.")
-        self.parser.add_argument("--ansible_exec_timeout_sec", default=None)
+        self.parser.add_argument("--install_locales", action="store_true", default=False,
+                                 help="If enabled YBA will install locale on the DB nodes")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -803,8 +805,6 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
         if args.local_package_path:
             self.extra_vars.update({"local_package_path": args.local_package_path})
-        if args.ansible_exec_timeout_sec is not None:
-            self.extra_vars.update({"ansible_exec_timeout_sec": args.ansible_exec_timeout_sec})
         if args.air_gap:
             self.extra_vars.update({"air_gap": args.air_gap})
         if args.node_exporter_port:
@@ -858,6 +858,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         use_default_ssh_port = not ssh_port_updated
         host_info = self.wait_for_host(args, use_default_ssh_port)
         ansible = self.cloud.setup_ansible(args)
+        if args.install_locales:
+            self.extra_vars["install_locales"] = True
         ansible.run("preprovision.yml", self.extra_vars, host_info, disable_offloading=True)
 
         # Disabling custom_ssh_port for onprem provider when ssh2_enabled, because
@@ -894,6 +896,7 @@ class CreateRootVolumesMethod(AbstractInstancesMethod):
         args.search_pattern = "{}-".format(unique_string) + args.search_pattern
         volume_id = self.create_master_volume(args)
         output = [volume_id]
+        logging.info("Create master volume output {}".format(output))
         num_disks = int(args.num_disks) - 1
         snapshot_creation_delay = None
         snapshot_creation_max_attempts = None
@@ -912,8 +915,9 @@ class CreateRootVolumesMethod(AbstractInstancesMethod):
         if num_disks > 0:
             logging.info("Cloning {} other disks using volume_id {}".format(num_disks, volume_id))
             if snapshot_creation_delay is not None and snapshot_creation_max_attempts is not None:
-                output.extend(self.cloud.clone_disk(args, volume_id, num_disks,
-                              args.snapshot_creation_delay, args.snapshot_creation_max_attempts))
+                output.extend(self.cloud.clone_disk(
+                    args, volume_id, num_disks,
+                    args.snapshot_creation_delay, args.snapshot_creation_max_attempts))
             else:
                 output.extend(self.cloud.clone_disk(args, volume_id, num_disks))
 
@@ -1138,7 +1142,6 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--package', default=None)
         self.parser.add_argument('--num_releases_to_keep', type=int,
                                  help="Number of releases to keep after upgrade.")
-        self.parser.add_argument("--ansible_exec_timeout_sec", default=None)
         self.parser.add_argument('--ybc_package', default=None)
         self.parser.add_argument('--ybc_dir', default=None)
         self.parser.add_argument('--yb_process_type', default=None,
@@ -1164,6 +1167,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--client_key_path')
         self.parser.add_argument('--cert_rotate_action', default=None,
                                  choices=self.CERT_ROTATE_ACTIONS)
+        self.parser.add_argument('--num_cores_to_keep', type=int, default=5,
+                                 help="number of clean cores to keep in the ansible layer")
         self.parser.add_argument('--skip_cert_validation',
                                  default=None, choices=self.SKIP_CERT_VALIDATION_OPTIONS)
         self.parser.add_argument('--cert_valid_duration', default=365)
@@ -1231,9 +1236,6 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
             if args.master_addresses_for_master is not None:
                 self.extra_vars["master_addresses_for_master"] = args.master_addresses_for_master
 
-            if args.ansible_exec_timeout_sec is not None:
-                self.extra_vars.update({"ansible_exec_timeout_sec": args.ansible_exec_timeout_sec})
-
             if args.server_broadcast_addresses is not None:
                 self.extra_vars["server_broadcast_addresses"] = args.server_broadcast_addresses
 
@@ -1245,13 +1247,17 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
 
         self.extra_vars["systemd_option"] = args.systemd_services
         self.extra_vars["configure_ybc"] = args.configure_ybc
+        self.extra_vars["yb_num_cores_to_keep"] = args.num_cores_to_keep
 
         # Make sure we set server_type so we pick the right configure.
         self.update_ansible_vars_with_args(args)
 
         if args.gflags is not None:
-            if args.package:
-                raise YBOpsRuntimeError("When changing gflags, do not set packages info.")
+            # Allow gflag to be set during software upgrade 'install-software' to include
+            #   cluster_uuid gflag for newer db releases.
+            if args.package and "install-software" not in args.tags:
+                raise YBOpsRuntimeError("When changing gflags, do not set packages info " +
+                                        "unless installing software during software upgrade.")
             self.extra_vars["gflags"] = json.loads(args.gflags)
 
         if args.package is not None:

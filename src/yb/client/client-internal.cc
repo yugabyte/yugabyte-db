@@ -1524,8 +1524,9 @@ void GetColocatedTabletSchemaRpc::CallRemoteMethod() {
 }
 
 string GetColocatedTabletSchemaRpc::ToString() const {
-  return Substitute("GetColocatedTabletSchemaRpc(table_identifier: $0, num_attempts: $1)",
-                    table_identifier_.ShortDebugString(), num_attempts());
+  return Format(
+      "GetColocatedTabletSchemaRpc(table_identifier: $0, num_attempts: $1)",
+      table_identifier_.ShortDebugString(), num_attempts());
 }
 
 void GetColocatedTabletSchemaRpc::ProcessResponse(const Status& status) {
@@ -1603,7 +1604,7 @@ string CreateCDCStreamRpc::ToString() const {
 
 void CreateCDCStreamRpc::ProcessResponse(const Status& status) {
   if (status.ok()) {
-    user_cb_(resp_.stream_id());
+    user_cb_(xrepl::StreamId::FromString(resp_.stream_id()));
   } else {
     LOG(WARNING) << ToString() << " failed: " << status.ToString();
     user_cb_(status);
@@ -1613,10 +1614,11 @@ void CreateCDCStreamRpc::ProcessResponse(const Status& status) {
 class DeleteCDCStreamRpc
     : public ClientMasterRpc<DeleteCDCStreamRequestPB, DeleteCDCStreamResponsePB> {
  public:
-  DeleteCDCStreamRpc(YBClient* client,
-                     StatusCallback user_cb,
-                     const CDCStreamId& stream_id,
-                     CoarseTimePoint deadline);
+  DeleteCDCStreamRpc(
+      YBClient* client,
+      StatusCallback user_cb,
+      const xrepl::StreamId& stream_id,
+      CoarseTimePoint deadline);
 
   string ToString() const override;
 
@@ -1627,17 +1629,16 @@ class DeleteCDCStreamRpc
   void ProcessResponse(const Status& status) override;
 
   StatusCallback user_cb_;
-  std::string stream_id_;
+  xrepl::StreamId stream_id_;
 };
 
-DeleteCDCStreamRpc::DeleteCDCStreamRpc(YBClient* client,
-                                       StatusCallback user_cb,
-                                       const CDCStreamId& stream_id,
-                                       CoarseTimePoint deadline)
-    : ClientMasterRpc(client, deadline),
-      user_cb_(std::move(user_cb)),
-      stream_id_(stream_id) {
-  req_.add_stream_id(stream_id_);
+DeleteCDCStreamRpc::DeleteCDCStreamRpc(
+    YBClient* client,
+    StatusCallback user_cb,
+    const xrepl::StreamId& stream_id,
+    CoarseTimePoint deadline)
+    : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)), stream_id_(stream_id) {
+  req_.add_stream_id(stream_id_.ToString());
 }
 
 DeleteCDCStreamRpc::~DeleteCDCStreamRpc() {
@@ -1650,8 +1651,7 @@ void DeleteCDCStreamRpc::CallRemoteMethod() {
 }
 
 string DeleteCDCStreamRpc::ToString() const {
-  return Substitute("DeleteCDCStream(stream_id: $0, num_attempts: $1)",
-                    stream_id_, num_attempts());
+  return Format("DeleteCDCStream(stream_id: $0, num_attempts: $1)", stream_id_, num_attempts());
 }
 
 void DeleteCDCStreamRpc::ProcessResponse(const Status& status) {
@@ -1822,12 +1822,13 @@ void GetCDCDBStreamInfoRpc::ProcessResponse(const Status& status) {
 
 class GetCDCStreamRpc : public ClientMasterRpc<GetCDCStreamRequestPB, GetCDCStreamResponsePB> {
  public:
-  GetCDCStreamRpc(YBClient* client,
-                  StdStatusCallback user_cb,
-                  const CDCStreamId& stream_id,
-                  ObjectId* object_id,
-                  std::unordered_map<std::string, std::string>* options,
-                  CoarseTimePoint deadline);
+  GetCDCStreamRpc(
+      YBClient* client,
+      StdStatusCallback user_cb,
+      const xrepl::StreamId& stream_id,
+      ObjectId* object_id,
+      std::unordered_map<std::string, std::string>* options,
+      CoarseTimePoint deadline);
 
   std::string ToString() const override;
 
@@ -1838,23 +1839,24 @@ class GetCDCStreamRpc : public ClientMasterRpc<GetCDCStreamRequestPB, GetCDCStre
   void ProcessResponse(const Status& status) override;
 
   StdStatusCallback user_cb_;
-  std::string stream_id_;
+  xrepl::StreamId stream_id_;
   ObjectId* object_id_;
   std::unordered_map<std::string, std::string>* options_;
 };
 
-GetCDCStreamRpc::GetCDCStreamRpc(YBClient* client,
-                                 StdStatusCallback user_cb,
-                                 const CDCStreamId& stream_id,
-                                 TableId* object_id,
-                                 std::unordered_map<std::string, std::string>* options,
-                                 CoarseTimePoint deadline)
+GetCDCStreamRpc::GetCDCStreamRpc(
+    YBClient* client,
+    StdStatusCallback user_cb,
+    const xrepl::StreamId& stream_id,
+    TableId* object_id,
+    std::unordered_map<std::string, std::string>* options,
+    CoarseTimePoint deadline)
     : ClientMasterRpc(client, deadline),
       user_cb_(std::move(user_cb)),
       stream_id_(stream_id),
       object_id_(DCHECK_NOTNULL(object_id)),
       options_(DCHECK_NOTNULL(options)) {
-  req_.set_stream_id(stream_id_);
+  req_.set_stream_id(stream_id_.ToString());
 }
 
 GetCDCStreamRpc::~GetCDCStreamRpc() {
@@ -1867,8 +1869,7 @@ void GetCDCStreamRpc::CallRemoteMethod() {
 }
 
 string GetCDCStreamRpc::ToString() const {
-  return Substitute("GetCDCStream(stream_id: $0, num_attempts: $1)",
-                    stream_id_, num_attempts());
+  return Format("GetCDCStream(stream_id: $0, num_attempts: $1)", stream_id_, num_attempts());
 }
 
 void GetCDCStreamRpc::ProcessResponse(const Status& status) {
@@ -2208,10 +2209,11 @@ void YBClient::Data::CreateCDCStream(
       client, callback, table_id, options, transactional, deadline);
 }
 
-void YBClient::Data::DeleteCDCStream(YBClient* client,
-                                     const CDCStreamId& stream_id,
-                                     CoarseTimePoint deadline,
-                                     StatusCallback callback) {
+void YBClient::Data::DeleteCDCStream(
+    YBClient* client,
+    const xrepl::StreamId& stream_id,
+    CoarseTimePoint deadline,
+    StatusCallback callback) {
   auto rpc = StartRpc<internal::DeleteCDCStreamRpc>(
       client, callback, stream_id, deadline);
 }
@@ -2244,7 +2246,7 @@ void YBClient::Data::GetCDCDBStreamInfo(
 
 void YBClient::Data::GetCDCStream(
     YBClient* client,
-    const CDCStreamId& stream_id,
+    const xrepl::StreamId& stream_id,
     std::shared_ptr<ObjectId> object_id,
     std::shared_ptr<std::unordered_map<std::string, std::string>> options,
     CoarseTimePoint deadline,

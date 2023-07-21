@@ -1,6 +1,5 @@
-import React from 'react';
 import { createMemoryHistory } from 'history';
-import { Route, Router } from 'react-router';
+import { Route, Router } from 'react-router-dom';
 import { render } from '../../../test-utils';
 import { useLoadHAConfiguration } from '../hooks/useLoadHAConfiguration';
 import { StandbyInstanceOverlay } from './StandbyInstanceOverlay';

@@ -45,6 +45,9 @@ YB_DEFINE_HANDLE_TYPE(PgStatement)
 // Handle to an expression.
 YB_DEFINE_HANDLE_TYPE(PgExpr);
 
+// Handle to a postgres function
+YB_DEFINE_HANDLE_TYPE(PgFunction);
+
 // Handle to a table description
 YB_DEFINE_HANDLE_TYPE(PgTableDesc);
 
@@ -303,7 +306,11 @@ typedef struct PgExecParameters {
   uint64_t limit_offset = 0;
   bool limit_use_default = true;
   int rowmark = -1;
-  int wait_policy = 2; // Cast to yb::WaitPolicy for C++ use. (2 is for yb::WAIT_ERROR)
+  // Cast these *_wait_policy fields to yb::WaitPolicy for C++ use. (2 is for yb::WAIT_ERROR)
+  // Note that WAIT_ERROR has a different meaning between pg_wait_policy and docdb_wait_policy.
+  // Please see the WaitPolicy enum in common.proto for details.
+  int pg_wait_policy = 2;
+  int docdb_wait_policy = 2;
   char *bfinstr = NULL;
   uint64_t backfill_read_time = 0;
   uint64_t* stmt_in_txn_limit_ht_for_reads = NULL;
@@ -319,7 +326,11 @@ typedef struct PgExecParameters {
   uint64_t limit_offset;
   bool limit_use_default;
   int rowmark;
-  int wait_policy; // Cast to LockWaitPolicy for C use
+  // Cast these *_wait_policy fields to LockWaitPolicy for C use.
+  // Note that WAIT_ERROR has a different meaning between pg_wait_policy and docdb_wait_policy.
+  // Please see the WaitPolicy enum in common.proto for details.
+  int pg_wait_policy;
+  int docdb_wait_policy;
   char *bfinstr;
   uint64_t backfill_read_time;
   uint64_t* stmt_in_txn_limit_ht_for_reads;
@@ -351,6 +362,10 @@ typedef struct PgCallbacks {
   YBCPgMemctx (*GetCurrentYbMemctx)();
   const char* (*GetDebugQueryString)();
   void (*WriteExecOutParam)(PgExecOutParam *, const YbcPgExecOutParamValue *);
+  /* yb_type.c */
+  int64_t (*PostgresEpochToUnixEpoch)(int64_t);
+  int64_t (*UnixEpochToPostgresEpoch)(int64_t);
+  void (*ConstructTextArrayDatum)(const char **, const int, char **, size_t *);
 } YBCPgCallbacks;
 
 typedef struct PgGFlagsAccessor {
@@ -372,6 +387,7 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_enable_profile;
   const bool*     ysql_disable_global_impact_ddl_statements;
   const bool*     ysql_minimal_catalog_caches_preload;
+  const bool*     ysql_enable_create_database_oid_collision_retry;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {

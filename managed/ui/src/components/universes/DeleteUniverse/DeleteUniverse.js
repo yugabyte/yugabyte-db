@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
 import { browserHistory } from 'react-router';

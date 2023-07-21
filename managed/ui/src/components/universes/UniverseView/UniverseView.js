@@ -342,6 +342,7 @@ export const UniverseView = (props) => {
       .slice((activePage - 1) * pageSize, activePage * pageSize)
       .map((item, idx) => {
         return (
+          // eslint-disable-next-line react/no-unknown-property
           <li className="universe-list-item" key={item.universeUUID} idx={idx}>
             <YBUniverseItem {...props} universe={item} runtimeConfigs={runtimeConfigs} />
           </li>
@@ -586,16 +587,6 @@ export const UniverseView = (props) => {
           searchTerms={searchTokens}
           onSubmitSearchTerms={handleSearchTokenChange}
         />
-        {isNotHidden(currentCustomer.data.features, 'universe.import') && (
-          <Link to="/universes/import">
-            <YBButton
-              btnClass="universe-button btn btn-lg btn-default"
-              disabled={isDisabled(currentCustomer.data.features, 'universe.import')}
-              btnText="Import Universe"
-              btnIcon="fa fa-mail-forward"
-            />
-          </Link>
-        )}
         {isNotHidden(currentCustomer.data.features, 'universe.create') && (
           <Link to="/universes/create">
             <YBButton

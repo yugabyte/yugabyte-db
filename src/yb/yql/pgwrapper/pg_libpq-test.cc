@@ -107,11 +107,11 @@ class PgLibPqTest : public LibPqTestBase {
 
   void TestMultiBankAccount(IsolationLevel isolation, const bool colocation = false);
 
-  void DoIncrement(int key, int num_increments, IsolationLevel isolation);
+  void DoIncrement(int key, int num_increments, IsolationLevel isolation, bool lock_first = false);
 
   void TestParallelCounter(IsolationLevel isolation);
 
-  void TestConcurrentCounter(IsolationLevel isolation);
+  void TestConcurrentCounter(IsolationLevel isolation, bool lock_first = false);
 
   void TestOnConflict(bool kill_master, const MonoDelta& duration);
 
@@ -156,6 +156,8 @@ class PgLibPqTest : public LibPqTestBase {
       GetParentTableTabletLocation getParentTableTabletLocation);
 
   Status TestDuplicateCreateTableRequest(PGConn conn);
+
+  void KillPostmasterProcessOnTservers();
 
  private:
   Result<PGConn> RestartTSAndConnectToPostgres(int ts_idx, const std::string& db_name);
@@ -812,7 +814,8 @@ TEST_F_EX(PgLibPqTest, MultiBankAccountSerializableWithColocation, PgLibPqFailOn
   TestMultiBankAccount(IsolationLevel::SERIALIZABLE_ISOLATION, true /* colocation */);
 }
 
-void PgLibPqTest::DoIncrement(int key, int num_increments, IsolationLevel isolation) {
+void PgLibPqTest::DoIncrement(
+    int key, int num_increments, IsolationLevel isolation, bool lock_first) {
   auto conn = ASSERT_RESULT(Connect());
 
   // Perform increments
@@ -820,6 +823,9 @@ void PgLibPqTest::DoIncrement(int key, int num_increments, IsolationLevel isolat
   while (succeeded_incs < num_increments) {
     ASSERT_OK(conn.StartTransaction(isolation));
     bool committed = false;
+    if (lock_first) {
+      ASSERT_OK(conn.FetchFormat("SELECT * FROM t WHERE key = $0 FOR UPDATE", key));
+    }
     auto exec_status = conn.ExecuteFormat("UPDATE t SET value = value + 1 WHERE key = $0", key);
     if (exec_status.ok()) {
       auto commit_status = conn.Execute("COMMIT");
@@ -875,7 +881,7 @@ TEST_F(PgLibPqTest, TestParallelCounterRepeatableRead) {
   TestParallelCounter(IsolationLevel::SNAPSHOT_ISOLATION);
 }
 
-void PgLibPqTest::TestConcurrentCounter(IsolationLevel isolation) {
+void PgLibPqTest::TestConcurrentCounter(IsolationLevel isolation, bool lock_first) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT, value INT)"));
@@ -888,8 +894,8 @@ void PgLibPqTest::TestConcurrentCounter(IsolationLevel isolation) {
   // Have each thread increment the same already-created counter
   std::vector<std::thread> threads;
   while (threads.size() != kThreads) {
-    threads.emplace_back([this, isolation] {
-      DoIncrement(0, kIncrements, isolation);
+    threads.emplace_back([this, isolation, lock_first] {
+      DoIncrement(0, kIncrements, isolation, lock_first);
     });
   }
 
@@ -906,10 +912,25 @@ void PgLibPqTest::TestConcurrentCounter(IsolationLevel isolation) {
 }
 
 TEST_F_EX(PgLibPqTest, TestConcurrentCounterSerializable, PgLibPqFailOnConflictTest) {
-  // TODO(wait-queues): Re-enable wait-on-conflict behavior in this test. It is currently failing
-  // because concurrent threads repeatedly deadlock with each other. See:
-  // https://github.com/yugabyte/yugabyte-db/issues/18019
+  // Each of the three threads perform the following:
+  // BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+  // UPDATE t SET value = value + 1 WHERE key = 0;
+  // COMMIT;
+  // The UPDATE first does a read and acquires a kStrongRead lock on the key=0 row. So each thread
+  // is able to acquire this lock concurrently. The UPDATE then does a write to the same row and
+  // gets blocked. With fail-on-conflict behavior, one of the threads will win at the second RPC and
+  // progress can be made. But with wait-on-conflict behavior, progress cannot be made since
+  // deadlock is repeatedly encountered by all threads most of the time.
+  //
+  // In order to test a similar scenario with wait-on-conflict behavior,
+  // TestLockedConcurrentCounterSerializable adds a SELECT...FOR UPDATE before the UPDATE, so only
+  // one thread can block the row and deadlocks are not encountered.
   TestConcurrentCounter(IsolationLevel::SERIALIZABLE_ISOLATION);
+}
+
+TEST_F(PgLibPqTest, TestLockedConcurrentCounterSerializable) {
+  // See comment in TestConcurrentCounterSerializable.
+  TestConcurrentCounter(IsolationLevel::SERIALIZABLE_ISOLATION, /* lock_first = */ true);
 }
 
 TEST_F(PgLibPqTest, TestConcurrentCounterRepeatableRead) {
@@ -3008,6 +3029,25 @@ class PgLibPqTestEnumType: public PgLibPqTest {
   }
 };
 
+void PgLibPqTest::KillPostmasterProcessOnTservers() {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ExternalTabletServer* ts = cluster_->tablet_server(i);
+    const string pg_pid_file = JoinPathSegments(ts->GetRootDir(), "pg_data",
+                                                "postmaster.pid");
+
+    LOG(INFO) << "pg_pid_file: " << pg_pid_file;
+    ASSERT_TRUE(Env::Default()->FileExists(pg_pid_file));
+    std::ifstream pg_pid_in;
+    pg_pid_in.open(pg_pid_file, std::ios_base::in);
+    ASSERT_FALSE(pg_pid_in.eof());
+    pid_t pg_pid = 0;
+    pg_pid_in >> pg_pid;
+    ASSERT_GT(pg_pid, 0);
+    LOG(INFO) << "Killing PostgresSQL process: " << pg_pid;
+    ASSERT_EQ(kill(pg_pid, SIGKILL), 0);
+  }
+}
+
 // Make sure that enum type backfill works.
 TEST_F_EX(PgLibPqTest,
           EnumType,
@@ -3055,22 +3095,7 @@ TEST_F_EX(PgLibPqTest,
   // A new PostgreSQL process will be respawned by the tablet server and
   // inherit the new --TEST_do_not_add_enum_sort_order flag from the tablet
   // server.
-  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
-    ExternalTabletServer* ts = cluster_->tablet_server(i);
-    const string pg_pid_file = JoinPathSegments(ts->GetRootDir(), "pg_data",
-                                                "postmaster.pid");
-
-    LOG(INFO) << "pg_pid_file: " << pg_pid_file;
-    ASSERT_TRUE(Env::Default()->FileExists(pg_pid_file));
-    std::ifstream pg_pid_in;
-    pg_pid_in.open(pg_pid_file, std::ios_base::in);
-    ASSERT_FALSE(pg_pid_in.eof());
-    pid_t pg_pid = 0;
-    pg_pid_in >> pg_pid;
-    ASSERT_GT(pg_pid, 0);
-    LOG(INFO) << "Killing PostgresSQL process: " << pg_pid;
-    ASSERT_EQ(kill(pg_pid, SIGKILL), 0);
-  }
+  KillPostmasterProcessOnTservers();
 
   // Reconnect to the database after the new PostgreSQL starts.
   conn = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB(kDatabaseName)));
@@ -3629,6 +3654,54 @@ TEST_F_EX(
     return status_future.wait_for(0s) == std::future_status::ready;
   }, 1s, "Wait for status_future to be available"));
   ASSERT_NOK(status_future.get());
+}
+
+// This test verifies retry solves CREATE DATABASE OID collision issue.
+// Using our current YSQL OID allocation method, we can hit the following OID collision for
+// PG CREATE DATABASE.
+// Connections used in the example:
+// Connection 1 on tserver 0 (Conn1) && Connection 2 on tserver 1 (Conn2)
+// Example:
+// Conn1: CREATE DATABASE db1; -- db1 OID: 16384; OID range: [16384, 16640) on tserver 0
+// -- db2 OID: 16385; db2 is used to trigger the same range of OID allocation on tserver 1
+// Conn1: CREATE DATABASE db2;
+// Conn1: DROP DATABASE db1;
+// Conn2: \c db2
+// Conn2: CREATE DATABASE db3; -- db3 OID: 16384; OID range: [16384, 16640) on tserver 1
+// ERROR:  Keyspace 'db3' already exists
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(RetryCreateDatabasePgOidCollisionFromTservers)) {
+  const string db1 = "db1";
+  const string db2 = "db2";
+  const string db3 = "db3";
+
+  // Tserver 0
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0", db1));
+  ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0", db2));
+  ASSERT_OK(conn1.ExecuteFormat("DROP DATABASE $0", db1));
+
+  // Tserver 1
+  LOG(INFO) << "Make a new connection to a different node at index 1";
+  pg_ts = cluster_->tablet_server(1);
+  auto conn2 = ASSERT_RESULT(ConnectToDB(db2));
+  ASSERT_OK(conn2.ExecuteFormat("CREATE DATABASE $0", db3));
+
+  // Verify internally retry CREATE DATABASE works.
+  int db3_oid = ASSERT_RESULT(conn2.FetchValue<int32_t>(
+      Format("SELECT oid FROM pg_database WHERE datname = \'$0\'", db3)));
+  ASSERT_EQ(db3_oid, 16386);
+
+  // Verify the keyspace already exists issue still exists if we disable retry.
+  // Connection to db3 on Tserver 2 uses 16384 as the next available oid.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_enable_create_database_oid_collision_retry",
+                                        "false"));
+  KillPostmasterProcessOnTservers();
+  pg_ts = cluster_->tablet_server(2);
+  auto conn3 = ASSERT_RESULT(ConnectToDB(db3));
+  Status s = conn3.ExecuteFormat("CREATE DATABASE createdb_oid_collision");
+  ASSERT_NOK(s);
+  ASSERT_TRUE(s.message().ToBuffer().find("Keyspace with id") != std::string::npos);
+  ASSERT_TRUE(s.message().ToBuffer().find("already exists") != std::string::npos);
 }
 
 } // namespace pgwrapper

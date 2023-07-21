@@ -1,4 +1,4 @@
-import React, { ChangeEvent, useState, FC, ReactNode, Fragment } from 'react';
+import { ChangeEvent, useState, FC, ReactNode, Fragment } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { Box } from '@material-ui/core';
@@ -121,12 +121,10 @@ export const RecommendationBox: FC<RecommendationProps> = ({
   const { t } = useTranslation();
 
   const [open, setOpen] = useState(false);
-  // const [resolved1, setResolved] = useState(false);
 
   const handleResolveRecommendation = (event: ChangeEvent<HTMLInputElement>) => {
     const isChecked = event.target.checked;
     onResolve(idKey, isChecked);
-    // setResolved(isChecked);
     if (isChecked) {
       setOpen(false);
     }
@@ -246,7 +244,15 @@ export const RecommendationBox: FC<RecommendationProps> = ({
             checked={resolved}
           />
         </Box>
-        {open ? <img src={TraingleDownIcon} alt="more" /> : <img src={TraingleUpIcon} alt="more" />}
+        {open ? (
+          <img src={TraingleDownIcon} alt="expand" />
+        ) : (
+          <img
+            src={TraingleUpIcon}
+            alt="shrink"
+            className={clsx(resolved && classes.inactiveRecommendation)}
+          />
+        )}
       </Box>
       {open && getRecommendation(type, getSummaryContent(type, data), data)}
     </div>

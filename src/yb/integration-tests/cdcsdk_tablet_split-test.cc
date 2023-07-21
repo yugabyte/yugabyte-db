@@ -28,7 +28,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentPersistencyAfterTabletS
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
 
@@ -69,7 +69,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckpointPersistencyAfterTab
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
 
@@ -129,7 +129,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionInsertAfterTabletS
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
 
@@ -209,7 +209,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetChangesReportsTabletSplitE
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
 
@@ -271,7 +271,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetChangesAfterTabletSplitWit
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
   GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -318,7 +318,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetChangesOnParentTabletAfter
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
   GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -365,8 +365,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetChangesMultipleStreamsTabl
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  CDCStreamId stream_id_1 = ASSERT_RESULT(CreateDBStream(IMPLICIT));
-  CDCStreamId stream_id_2 = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id_1 = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id_2 = ASSERT_RESULT(CreateDBStream(IMPLICIT));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id_1, tablets));
   ASSERT_FALSE(resp.has_error());
   resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id_2, tablets));
@@ -427,7 +427,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSetCDCCheckpointAfterTabletSp
       table, 0, &tablets_before_split, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets_before_split.size(), num_tablets);
 
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
 
   ASSERT_OK(WriteRowsHelper(0, 1000, &test_cluster_, true));
   ASSERT_OK(test_client()->FlushTables(
@@ -466,7 +466,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST(TestTabletSplitBeforeBootstrap)) {
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  ASSERT_RESULT(CreateDBStream(IMPLICIT));
 
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
   ASSERT_OK(WriteRowsHelper(1, 200, &test_cluster_, true));
@@ -527,7 +527,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCStateTableAfterTabletSplit
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
   GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -589,7 +589,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST(TestCDCStateTableAfterTabletSplitReported
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
   GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -711,7 +711,7 @@ TEST_F(
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
   GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -786,8 +786,8 @@ TEST_F(
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
-  CDCStreamId stream_id_1 = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  ASSERT_RESULT(CreateDBStream(IMPLICIT));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
   GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -830,7 +830,7 @@ TEST_F(
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
 
   ASSERT_OK(WriteRowsHelper(1, 200, &test_cluster_, true));
@@ -878,7 +878,7 @@ TEST_F(
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
 
   ASSERT_OK(WriteRowsHelper(1, 200, &test_cluster_, true));
@@ -932,7 +932,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWith
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
   GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -1022,7 +1022,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitOnAddedTableForCDC
   expected_table_ids.reserve(2);
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
   expected_table_ids.push_back(table_id);
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
 
   std::unordered_set<TabletId> expected_tablet_ids;
   for (const auto& tablet : tablets) {
@@ -1084,7 +1084,7 @@ TEST_F(
   expected_table_ids.reserve(2);
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
   expected_table_ids.push_back(table_id);
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
 
   std::unordered_set<TabletId> expected_tablet_ids;
   for (const auto& tablet : tablets) {
@@ -1148,7 +1148,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitDuringSnapshot)) {
   // Table having key:value_1 column
   ASSERT_OK(WriteRows(1 /* start */, 201 /* end */, &test_cluster_));
 
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
   auto set_resp = ASSERT_RESULT(
       SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
   ASSERT_FALSE(set_resp.has_error());
@@ -1211,7 +1211,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionCommitAfterTabletS
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
 
@@ -1297,7 +1297,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitBeforeBootstrapGet
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
   ASSERT_EQ(tablets.size(), num_tablets);
 
-  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
 
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
   ASSERT_OK(WriteRowsHelper(1, 200, &test_cluster_, true));

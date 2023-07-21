@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import { FC } from 'react';
 import { Button, ButtonGroup } from 'react-bootstrap';
 
 import { MetricMeasure } from '../../metrics/constants';

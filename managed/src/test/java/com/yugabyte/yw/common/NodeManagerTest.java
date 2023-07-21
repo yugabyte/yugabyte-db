@@ -128,8 +128,6 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Mock RuntimeConfigFactory runtimeConfigFactory;
 
-  @Mock RuntimeConfGetter mockConfGetter;
-
   @Mock ConfigHelper mockConfigHelper;
 
   @InjectMocks NodeManager nodeManager;
@@ -137,6 +135,10 @@ public class NodeManagerTest extends FakeDBApplication {
   @Mock Config mockConfig;
 
   @Mock NodeAgentClient nodeAgentClient;
+
+  @Mock RuntimeConfGetter mockConfGetter;
+
+  private CertificateHelper certificateHelper;
 
   private final String DOCKER_NETWORK = "yugaware_bridge";
   private final String MASTER_ADDRESSES = "10.0.0.1:7100,10.0.0.2:7100,10.0.0.3:7100";
@@ -314,9 +316,9 @@ public class NodeManagerTest extends FakeDBApplication {
             if (configureParams.rootAndClientRootCASame
                 && configureParams.enableClientToNodeEncrypt) {
               expectedCommand.add("--client_cert_path");
-              expectedCommand.add(CertificateHelper.getClientCertFile(configureParams.rootCA));
+              expectedCommand.add(certificateHelper.getClientCertFile(configureParams.rootCA));
               expectedCommand.add("--client_key_path");
-              expectedCommand.add(CertificateHelper.getClientKeyFile(configureParams.rootCA));
+              expectedCommand.add(certificateHelper.getClientKeyFile(configureParams.rootCA));
             }
             break;
           }
@@ -354,9 +356,9 @@ public class NodeManagerTest extends FakeDBApplication {
             if (configureParams.rootAndClientRootCASame
                 && configureParams.enableClientToNodeEncrypt) {
               expectedCommand.add("--client_cert_path");
-              expectedCommand.add(CertificateHelper.getClientCertFile(configureParams.rootCA));
+              expectedCommand.add(certificateHelper.getClientCertFile(configureParams.rootCA));
               expectedCommand.add("--client_key_path");
-              expectedCommand.add(CertificateHelper.getClientKeyFile(configureParams.rootCA));
+              expectedCommand.add(certificateHelper.getClientKeyFile(configureParams.rootCA));
             }
             break;
           }
@@ -481,7 +483,7 @@ public class NodeManagerTest extends FakeDBApplication {
     } else {
       when(mockConfig.getString("yb.storage.path")).thenReturn(TestHelper.TMP_PATH);
       UUID certUUID =
-          CertificateHelper.createRootCA(mockConfig, "foobar", t.provider.getCustomerUUID());
+          certificateHelper.createRootCA(mockConfig, "foobar", t.provider.getCustomerUUID());
       cert = CertificateInfo.get(certUUID);
     }
 
@@ -497,6 +499,8 @@ public class NodeManagerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     Customer customer = ModelFactory.testCustomer();
+    RuntimeConfGetter confGetter = app.injector().instanceOf(RuntimeConfGetter.class);
+    certificateHelper = new CertificateHelper(confGetter);
     testData = new ArrayList<TestData>();
     testData.addAll(getTestData(customer, Common.CloudType.aws));
     testData.addAll(getTestData(customer, Common.CloudType.gcp));
@@ -527,6 +531,8 @@ public class NodeManagerTest extends FakeDBApplication {
     when(mockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.ybNumReleasesToKeepDefault)))
         .thenReturn(3);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.numCoresToKeep)))
+        .thenReturn(5);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.ansibleStrategy)))
         .thenReturn("linear");
     when(mockConfGetter.getConfForScope(
@@ -548,6 +554,7 @@ public class NodeManagerTest extends FakeDBApplication {
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.ansibleLocalTemp)))
         .thenReturn("/tmp/ansible_tmp/");
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybTmpDirectoryPath))).thenReturn("/tmp");
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.installLocalesDbNodes))).thenReturn(false);
   }
 
   private String getMountPoints(AnsibleConfigureServers.Params taskParam) {
@@ -670,8 +677,8 @@ public class NodeManagerTest extends FakeDBApplication {
       gflags.put("start_cql_proxy", "false");
     }
 
+    gflags.put("cluster_uuid", String.valueOf(configureParams.getUniverseUUID()));
     if (configureParams.isMaster) {
-      gflags.put("cluster_uuid", String.valueOf(configureParams.getUniverseUUID()));
       gflags.put("replication_factor", String.valueOf(userIntent.replicationFactor));
     }
 
@@ -853,9 +860,12 @@ public class NodeManagerTest extends FakeDBApplication {
         break;
       case Configure:
         AnsibleConfigureServers.Params configureParams = (AnsibleConfigureServers.Params) params;
+        Map<String, String> gflags = new TreeMap<>(configureParams.gflags);
 
         expectedCommand.add("--master_addresses_for_tserver");
         expectedCommand.add(MASTER_ADDRESSES);
+        expectedCommand.add("--num_cores_to_keep");
+        expectedCommand.add("5");
         if (!configureParams.isMasterInShellMode) {
           expectedCommand.add("--master_addresses_for_master");
           expectedCommand.add(MASTER_ADDRESSES);
@@ -912,6 +922,10 @@ public class NodeManagerTest extends FakeDBApplication {
             case Install:
               expectedCommand.add("--tags");
               expectedCommand.add("install-software");
+              expectedCommand.add("--tags");
+              expectedCommand.add("override_gflags");
+              expectedCommand.add("--gflags");
+              expectedCommand.add(Json.stringify(Json.toJson(gflags)));
               break;
             case None:
               break;
@@ -922,8 +936,6 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("--num_releases_to_keep");
           expectedCommand.add("3");
         }
-
-        Map<String, String> gflags = new TreeMap<>(configureParams.gflags);
 
         if (configureParams.type == Everything) {
           if ((configureParams.enableNodeToNodeEncrypt
@@ -3293,7 +3305,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
     if (certType == CertConfigType.SelfSigned) {
       when(mockConfig.getString("yb.storage.path")).thenReturn(TestHelper.TMP_PATH);
-      certUUID = CertificateHelper.createRootCA(mockConfig, "foobar", customerUUID);
+      certUUID = certificateHelper.createRootCA(mockConfig, "foobar", customerUUID);
       return CertificateInfo.get(certUUID);
     } else if (certType == CertConfigType.CustomCertHostPath) {
       CertificateParams.CustomCertInfo customCertInfo = new CertificateParams.CustomCertInfo();

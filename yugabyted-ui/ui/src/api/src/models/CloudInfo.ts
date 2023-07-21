@@ -23,13 +23,13 @@ import type { CloudEnum } from './CloudEnum';
  */
 export interface CloudInfo  {
   /**
-   *
+   * 
    * @type {CloudEnum}
    * @memberof CloudInfo
    */
   code: CloudEnum;
   /**
-   *
+   * 
    * @type {string}
    * @memberof CloudInfo
    */

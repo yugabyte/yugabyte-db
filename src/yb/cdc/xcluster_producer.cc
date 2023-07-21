@@ -245,7 +245,7 @@ Status PopulateTransactionRecord(
 // Populate a CDCRecordPB for a tablet split operation. Returns true iff the operation was
 // successfully processed.
 Result<bool> PopulateSplitOpRecord(
-    const std::string& stream_id, const std::string& tablet_id,
+    const xrepl::StreamId& stream_id, const TabletId& tablet_id,
     const consensus::LWReplicateMsg& msg, UpdateOnSplitOpFunc update_on_split_op_func,
     GetChangesResponsePB* resp) {
   SCHECK(
@@ -317,8 +317,8 @@ HybridTime GetSafeTimeForTarget(
 }  // namespace
 
 Status GetChangesForXCluster(
-    const std::string& stream_id,
-    const std::string& tablet_id,
+    const xrepl::StreamId& stream_id,
+    const TabletId& tablet_id,
     const OpId& from_op_id,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     UpdateOnSplitOpFunc update_on_split_op_func,

@@ -11,6 +11,7 @@
 package com.yugabyte.yw.common.config;
 
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.common.LdapUtil.TlsProtocol;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import com.yugabyte.yw.models.Users.Role;
@@ -323,6 +324,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable YBA's custom CA trust-store",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enforceCertVerificationBackupRestore =
+      new ConfKeyInfo<>(
+          "yb.certVerifyBackupRestore.is_enforced",
+          ScopeType.GLOBAL,
+          "Server certificate verification for S3 backup/restore",
+          "Enforce server certificate verification during S3 backup/restore",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> javaxNetSslTrustStore =
       new ConfKeyInfo<>(
           "yb.wellKnownCA.trustStore.path",
@@ -354,6 +363,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable Cert Reload",
           "Enable hot reload of TLS certificates without restart of the DB nodes",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> orgNameSelfSignedCert =
+      new ConfKeyInfo<>(
+          "yb.tlsCertificate.organizationName",
+          ScopeType.GLOBAL,
+          "Organization name for self signed certificates",
+          "Specify an organization name for self signed certificates",
+          ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> cmdOutputDelete =
       new ConfKeyInfo<>(
@@ -569,6 +586,22 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Hidden because this key has dedicated UI",
           ConfDataType.LdapDefaultRoleEnum,
           ImmutableList.of(ConfKeyTags.UIDriven));
+  public static ConfKeyInfo<TlsProtocol> ldapTlsProtocol =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_tls_protocol",
+          ScopeType.GLOBAL,
+          "Which TLS protocol to use for StartTLS or LDAPS",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.LdapTlsProtocol,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static ConfKeyInfo<Boolean> ldapsEnforceCertVerification =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.enforce_server_cert_verification",
+          ScopeType.GLOBAL,
+          "Server certificate verification for LDAPs/LDAP-TLS",
+          "Enforce server certificate verification for LDAPs/LDAP-TLS",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static ConfKeyInfo<Boolean> enableDetailedLogs =
       new ConfKeyInfo<>(
           "yb.security.enable_detailed_logs",
@@ -894,4 +927,21 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " or use value from backend.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> oidcFeatureEnhancements =
+      new ConfKeyInfo<>(
+          "yb.security.oidc_feature_enhancements",
+          ScopeType.GLOBAL,
+          "OIDC feature enhancements",
+          "Enables the OIDC enhancements such as auth_token retrieval, user registration in YBA"
+              + " on login, etc.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Boolean> installLocalesDbNodes =
+      new ConfKeyInfo<>(
+          "yb.install_locales_db_nodes",
+          ScopeType.GLOBAL,
+          "Install Locales DB nodes",
+          "If enabled YBA will install locales on the DB nodes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

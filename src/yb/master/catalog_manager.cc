@@ -83,6 +83,8 @@
 #include "yb/common/common_util.h"
 #include "yb/common/constants.h"
 #include "yb/common/key_encoder.h"
+#include "yb/common/pgsql_error.h"
+#include "yb/common/pg_catversions.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_type_util.h"
 #include "yb/common/schema_pbutil.h"
@@ -208,6 +210,7 @@
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
+#include "yb/util/yb_pg_errcodes.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
@@ -3472,6 +3475,7 @@ Status CatalogManager::GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB*
 Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
                                           const std::vector<scoped_refptr<TableInfo>>& tables,
                                           int64_t term) {
+  if (tables.empty()) return Status::OK();
   const uint32_t database_oid = CHECK_RESULT(GetPgsqlDatabaseOid(namespace_id));
   vector<TableId> source_table_ids;
   vector<TableId> target_table_ids;
@@ -4357,7 +4361,7 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
                      "Need at least $1 tablet servers whereas $2 are alive.",
                      num_replicas, replica_quorum_needed, num_live_tservers);
     LOG(WARNING) << msg
-                 << ". Placement info: " << placement_info.ShortDebugString()
+                 << " Placement info: " << placement_info.ShortDebugString()
                  << ", replication factor flag: " << FLAGS_replication_factor;
     s = STATUS(InvalidArgument, msg);
     return SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s);
@@ -5105,7 +5109,7 @@ std::string CatalogManager::GenerateIdUnlocked(
       case SysRowEntryType::SNAPSHOT:
         return id;
       case SysRowEntryType::CDC_STREAM:
-        if (!CDCStreamExistsUnlocked(id)) return id;
+        if (!CDCStreamExistsUnlocked(CHECK_RESULT(xrepl::StreamId::FromString(id)))) return id;
         break;
       case SysRowEntryType::CLUSTER_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntryType::ROLE: FALLTHROUGH_INTENDED;
@@ -8436,14 +8440,29 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
 
     // Validate the user request.
 
-    // Verify that the namespace does not already exist.
-    ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id()); // Same ID.
-    if (ns == nullptr) {
-      // For PGSQL databases having name uniqueness handled at a different layer, we still need to
-      // verify it to avoid the race condition caused by multiple CreateNamespace requests with the
-      // same db name running in parallel.
-      ns = FindPtrOrNull(namespace_names_mapper_[db_type], req->name());
+    // Verify that the namespace with same id does not already exist.
+    ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id());
+    if (ns != nullptr) {
+      // If PG OID collision happens. Use the PG error code: YB_PG_DUPLICATE_DATABASE to signal PG
+      // backend to retry CREATE DATABASE using the next available OID.
+      // Otherwise, don't set customized error code in the return status.
+      // This is the default behavior of STATUS().
+      resp->set_id(ns->id());
+      auto pg_createdb_oid_collision_errcode = PgsqlError(YBPgErrorCode::YB_PG_DUPLICATE_DATABASE);
+      return_status = STATUS(AlreadyPresent,
+                             Format("Keyspace with id '$0' already exists", req->namespace_id()),
+                             Slice(),
+                             db_type == YQL_DATABASE_PGSQL
+                                ? &pg_createdb_oid_collision_errcode : nullptr);
+      LOG(WARNING) << "Found keyspace: " << ns->id() << ". Failed creating keyspace with error: "
+                   << return_status.ToString() << " Request:\n" << req->DebugString();
+      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_ALREADY_PRESENT,
+                        return_status);
     }
+    // Use the by name namespace map to enforce global uniqueness for both YCQL keyspaces and YSQL
+    // databases.  Although postgres metadata normally enforces db name uniqueness, it fails in
+    // case of concurrent CREATE DATABASE requests in different sessions.
+    ns = FindPtrOrNull(namespace_names_mapper_[db_type], req->name());
     if (ns != nullptr) {
       resp->set_id(ns->id());
       return_status = STATUS_SUBSTITUTE(AlreadyPresent, "Keyspace '$0' already exists",
@@ -8582,15 +8601,12 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
     }
   }
 
-  if ((db_type == YQL_DATABASE_PGSQL && !pgsql_tables.empty()) ||
-      PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_hang_on_namespace_transition))) {
-    // Process the subsequent work in the background thread (normally PGSQL).
+  if (db_type == YQL_DATABASE_PGSQL) {
     LOG(INFO) << "Keyspace create enqueued for later processing: " << ns->ToString();
     RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
         std::bind(&CatalogManager::ProcessPendingNamespace, this, ns->id(), pgsql_tables, txn)));
     return Status::OK();
   } else {
-    // All work is done, it's now safe to online the namespace (normally YQL).
     auto l = ns->LockForWrite();
     SysNamespaceEntryPB& metadata = ns->mutable_metadata()->mutable_dirty()->pb;
     if (metadata.state() == SysNamespaceEntryPB::PREPARING) {
@@ -8646,58 +8662,61 @@ void CatalogManager::ProcessPendingNamespace(
     ns = FindPtrOrNull(namespace_ids_map_, id);
   }
   if (ns == nullptr) {
-    LOG(WARNING) << "Pending Namespace not found to finish creation: " << id;
+    LOG(WARNING) << Format(
+        "Pending namespace with id $0 not found in ids map, cannot finish namespace creation. ",
+        id);
     return;
   }
 
   // Copy the system tables necessary to create this namespace.  This can be time-intensive.
-  bool success = true;
-  if (!template_tables.empty()) {
-    auto s = CopyPgsqlSysTables(ns->id(), template_tables, term);
-    WARN_NOT_OK(s, "Error Copying PGSQL System Tables for Pending Namespace");
-    success = s.ok();
+  Status status = CopyPgsqlSysTables(ns->id(), template_tables, term);
+  // All work is done, change the namespace state regardless of success or failure.
+  auto ns_write_lock = ns->LockForWrite();
+  SysNamespaceEntryPB& metadata = ns->mutable_metadata()->mutable_dirty()->pb;
+  if (metadata.state() != SysNamespaceEntryPB::PREPARING) {
+    LOG(DFATAL) << "Bad keyspace state (" << metadata.state() << "), abandoning creation work for "
+                << ns->ToString();
+    return;
+  }
+  auto cleanup = ScopeExit([this, &status, &ns_write_lock, &ns, &metadata] {
+    if (status.ok()) return;
+    TRACE("Handling failed keyspace creation");
+    // Do not set on-disk state here. The loader treats the PREPARING state as FAILED.
+    metadata.set_state(SysNamespaceEntryPB::FAILED);
+    ns_write_lock.Commit();
+    LOG(WARNING) << status.ToString();
+    LockGuard lock(mutex_);
+    // Remove entry from the by-name map. For YSQL postgres clients cannot issue a DROP
+    // DATABASE command at this point because postgres will not commit the metadata for this
+    // database to its catalogs. So allow users to create a database with the same name.
+    namespace_names_mapper_[ns->database_type()].erase(ns->name());
+  });
+
+  if (!status.ok()) {
+    status = status.CloneAndPrepend("Error copying PGSQL system tables for pending namespace");
+    return;
   }
 
-  // All work is done, change the namespace state regardless of success or failure.
-  {
-    auto l = ns->LockForWrite();
-    SysNamespaceEntryPB& metadata = ns->mutable_metadata()->mutable_dirty()->pb;
-    if (metadata.state() == SysNamespaceEntryPB::PREPARING) {
-      metadata.set_state(success ? SysNamespaceEntryPB::RUNNING : SysNamespaceEntryPB::FAILED);
-      auto s = sys_catalog_->Upsert(term, ns);
-      if (s.ok()) {
-        TRACE("Done processing keyspace");
-        LOG(INFO) << (success ? "Processed" : "Failed") << " keyspace: " << ns->ToString();
-
-        // Verify Transaction gets committed, which occurs after namespace create finishes.
-        if (success && metadata.has_transaction()) {
-          LOG(INFO) << "Enqueuing keyspace for Transaction Verification: " << ns->ToString();
-          std::function<Status(bool)> when_done =
-              std::bind(&CatalogManager::VerifyNamespacePgLayer, this, ns, _1);
-          WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
-              std::bind(&YsqlTransactionDdl::VerifyTransaction, ysql_transaction_.get(),
-                        txn, nullptr /* table */, false /* has_ysql_ddl_state */, when_done)),
-              "Could not submit VerifyTransaction to thread pool");
-        }
-      } else {
-        metadata.set_state(SysNamespaceEntryPB::FAILED);
-        if (s.IsIllegalState() || s.IsAborted()) {
-          s = STATUS(ServiceUnavailable,
-              "operation requested can only be executed on a leader master, but this"
-              " master is no longer the leader", s.ToString());
-        } else {
-          s = s.CloneAndPrepend(Substitute(
-              "An error occurred while modifying keyspace to $0 in sys-catalog: $1",
-              metadata.state(), s.ToString()));
-        }
-        LOG(WARNING) << s.ToString();
-      }
-      // Commit the namespace in-memory state.
-      l.Commit();
-    } else {
-      LOG(WARNING) << "Bad keyspace state (" << metadata.state()
-                   << "), abandoning creation work for " << ns->ToString();
-    }
+  metadata.set_state(SysNamespaceEntryPB::RUNNING);
+  status = sys_catalog_->Upsert(term, ns);
+  if (!status.ok()) {
+    status = status.CloneAndPrepend(Format(
+        "An error occurred while modifying keyspace to $0 in sys-catalog", metadata.state()));
+    return;
+  }
+  TRACE("Done processing keyspace");
+  LOG(INFO) << "Processed keyspace: " << ns->ToString();
+  auto has_transaction = metadata.has_transaction();
+  ns_write_lock.Commit();
+  if (has_transaction) {
+    LOG(INFO) << "Enqueuing keyspace for Transaction Verification: " << ns->ToString();
+    std::function<Status(bool)> when_done =
+        std::bind(&CatalogManager::VerifyNamespacePgLayer, this, ns, _1);
+    WARN_NOT_OK(
+        background_tasks_thread_pool_->SubmitFunc(std::bind(
+            &YsqlTransactionDdl::VerifyTransaction, ysql_transaction_.get(), txn,
+            nullptr /* table */, false /* has_ysql_ddl_state */, when_done)),
+        "Could not submit VerifyTransaction to thread pool");
   }
 }
 
@@ -8739,6 +8758,11 @@ Status CatalogManager::VerifyNamespacePgLayer(
     LOG(INFO) << "Namespace transaction failed, deleting: " << ns->ToString();
     metadata.set_state(SysNamespaceEntryPB::DELETING);
     metadata.clear_transaction();
+    // todo(zdrudi): we seem to name squat here. The failed creation of a db is visible to all
+    // clients because the db's name is still in the map, preventing creation of a new db with the
+    // same name. If the async database cleanup fails then we leak the name until restart.  We
+    // should probably remove the name from the map here, but it's not clear what to do with this db
+    // if we restart without committing the write below.
     RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), ns));
     // Commit the namespace in-memory state.
     l.Commit();
@@ -8950,6 +8974,9 @@ Status CatalogManager::DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
   TRACE("Committing in-memory state");
   l.Commit();
 
+  // todo: Could something with a cached id or name of this namespace try a lookup here and get a
+  // RUNNING namespace that we've removed from the sys catalog?
+
   // Remove the namespace from all CatalogManager mappings.
   {
     LockGuard lock(mutex_);
@@ -8971,81 +8998,9 @@ Status CatalogManager::DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
   return Status::OK();
 }
 
-void CatalogManager::DeleteYcqlDatabaseAsync(scoped_refptr<NamespaceInfo> database) {
-  TRACE("Locking keyspace");
-  auto l = database->LockForWrite();
-
-  // Only empty namespace can be deleted.
-  TRACE("Looking for tables in the keyspace");
-  {
-    SharedLock lock(mutex_);
-    VLOG_WITH_FUNC(3) << "Acquired the catalog manager lock";
-
-    for (const auto& table : tables_->GetAllTables()) {
-      auto ltm = table->LockForRead();
-
-      if (!ltm->started_deleting() && ltm->namespace_id() == database->id()) {
-        LOG(WARNING) << "Cannot delete keyspace which has " << ltm->name()
-          << " with id=" << table->id();
-        return;
-      }
-    }
-  }
-
-  // Only empty namespace can be deleted.
-  TRACE("Looking for types in the keyspace");
-  {
-    SharedLock lock(mutex_);
-    VLOG_WITH_FUNC(3) << "Acquired the catalog manager lock";
-
-    for (const UDTypeInfoMap::value_type& entry : udtype_ids_map_) {
-      auto ltm = entry.second->LockForRead();
-
-      if (ltm->namespace_id() == database->id()) {
-        LOG(WARNING) << "Cannot delete keyspace which has type: " << ltm->name()
-          << " with id=" << entry.second->id();
-        return;
-      }
-    }
-  }
-
-  // [Delete]. Skip the DELETING->DELETED state, since no tables are present in this namespace.
-  TRACE("Updating metadata on disk");
-  // Update sys-catalog.
-  Status s = sys_catalog_->Delete(leader_ready_term(), database);
-  if (!s.ok()) {
-    // The mutation will be aborted when 'l' exits the scope on early return.
-    s = s.CloneAndPrepend(Substitute("An error occurred while updating sys-catalog: $0",
-                                     s.ToString()));
-    LOG(WARNING) << s.ToString();
-    return;
-  }
-
-  // Update the in-memory state.
-  TRACE("Committing in-memory state");
-  l.Commit();
-
-  // Remove the namespace from all CatalogManager mappings.
-  {
-    LockGuard lock(mutex_);
-    namespace_names_mapper_[database->database_type()].erase(database->name());
-    if (namespace_ids_map_.erase(database->id()) < 1) {
-      LOG(WARNING) << Format("Could not remove namespace from maps, id=$1", database->id());
-    }
-  }
-
-  // Delete any permissions granted on this keyspace to any role. See comment in DeleteTable() for
-  // more details.
-  string canonical_resource = get_canonical_keyspace(database->name());
-  DeleteNamespaceResponsePB resp;
-  s = permissions_manager_->RemoveAllPermissionsForResource(canonical_resource, &resp);
-  if (s.ok()) {
-    LOG(INFO) << "Successfully deleted keyspace " << database->ToString();
-  } else {
-    LOG(WARNING) << "Error deleting keyspace " << database->ToString() << ": " << s;
-  }
-}
-
+// N.B. This function is not called by the catalog loader. If there are mutations or checks
+// that should be performed before the loaders delete a ysql database they should be put into
+// DeleteYsqlDatabaseAsync instead of here.
 Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
                                           DeleteNamespaceResponsePB* resp,
                                           rpc::RpcContext* rpc) {
@@ -9078,23 +9033,21 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
   // Set the Namespace to DELETING.
   TRACE("Locking database");
   auto l = database->LockForWrite();
-  SysNamespaceEntryPB &metadata = database->mutable_metadata()->mutable_dirty()->pb;
-  if (metadata.state() == SysNamespaceEntryPB::RUNNING ||
-      metadata.state() == SysNamespaceEntryPB::FAILED) {
-    metadata.set_state(SysNamespaceEntryPB::DELETING);
-    RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), database));
-    TRACE("Marked keyspace for deletion in sys-catalog");
-    // Commit the namespace in-memory state.
-    l.Commit();
-  } else {
-    Status s = STATUS_SUBSTITUTE(IllegalState,
-        "Keyspace ($0) has invalid state ($1), aborting delete",
-        database->name(), metadata.state());
-    return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, s);
+  SysNamespaceEntryPB& metadata = database->mutable_metadata()->mutable_dirty()->pb;
+  if (metadata.state() != SysNamespaceEntryPB::RUNNING &&
+      metadata.state() != SysNamespaceEntryPB::FAILED) {
+    return SetupError(
+        resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR,
+        STATUS_SUBSTITUTE(
+            IllegalState, "Keyspace ($0) has invalid state ($1), aborting delete", database->name(),
+            metadata.state()));
   }
-
+  metadata.set_state(SysNamespaceEntryPB::DELETING);
+  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), database));
+  TRACE("Marked keyspace for deletion in sys-catalog");
+  l.Commit();
   return background_tasks_thread_pool_->SubmitFunc(
-    std::bind(&CatalogManager::DeleteYsqlDatabaseAsync, this, database));
+      std::bind(&CatalogManager::DeleteYsqlDatabaseAsync, this, database));
 }
 
 void CatalogManager::DeleteYsqlDatabaseAsync(scoped_refptr<NamespaceInfo> database) {
@@ -9113,45 +9066,58 @@ void CatalogManager::DeleteYsqlDatabaseAsync(scoped_refptr<NamespaceInfo> databa
     if (!s.ok()) {
       return;
     }
-  } else if (metadata.state() == SysNamespaceEntryPB::DELETING) {
-    // Delete all tables in the database.
-    TRACE("Delete all tables in YSQL database");
-    Status s = DeleteYsqlDBTables(database);
-    WARN_NOT_OK(s, "DeleteYsqlDBTables failed");
-    if (!s.ok()) {
-      // Move to FAILED so DeleteNamespace can be reissued by the user.
-      metadata.set_state(SysNamespaceEntryPB::FAILED);
-      l.Commit();
-      return;
-    }
+  }
 
-    // Once all user-facing data has been offlined, move the Namespace to DELETED state.
-    metadata.set_state(SysNamespaceEntryPB::DELETED);
-    s = sys_catalog_->Upsert(leader_ready_term(), database);
-    WARN_NOT_OK(s, "SysCatalog Update for Namespace");
-    if (!s.ok()) {
-      // Move to FAILED so DeleteNamespace can be reissued by the user.
-      metadata.set_state(SysNamespaceEntryPB::FAILED);
-      l.Commit();
-      return;
-    }
-    TRACE("Marked keyspace as deleted in sys-catalog");
-  } else {
-    LOG(WARNING) << "Keyspace (" << database->name() << ") has invalid state ("
-                 << metadata.state() << "), aborting delete";
+  if (metadata.state() != SysNamespaceEntryPB::DELETING) {
+    LOG(WARNING) << "Keyspace (" << database->name() << ") has invalid state (" << metadata.state()
+                 << "), aborting delete";
     return;
   }
 
-  // Remove namespace from CatalogManager name mapping.  Will remove ID map after all Tables gone.
-  {
-    LockGuard lock(mutex_);
-    if (namespace_names_mapper_[database->database_type()].erase(database->name()) < 1) {
-      LOG(WARNING) << Format("Could not remove namespace from maps, name=$0, id=$1",
-                             database->name(), database->id());
-    }
+  // Delete all tables in the database.
+  TRACE("Delete all tables in YSQL database");
+  Status s = DeleteYsqlDBTables(database);
+  WARN_NOT_OK(s, "DeleteYsqlDBTables failed");
+  if (!s.ok()) {
+    // Move to FAILED so DeleteNamespace can be reissued by the user.
+    metadata.set_state(SysNamespaceEntryPB::FAILED);
+    l.Commit();
+    return;
   }
 
-  // Update the in-memory state.
+  // Once all user-facing data has been offlined, move the Namespace to DELETED state.
+  metadata.set_state(SysNamespaceEntryPB::DELETED);
+  s = sys_catalog_->Upsert(leader_ready_term(), database);
+  WARN_NOT_OK(s, "SysCatalog Update for Namespace");
+  if (!s.ok()) {
+    // Move to FAILED so DeleteNamespace can be reissued by the user.
+    metadata.set_state(SysNamespaceEntryPB::FAILED);
+    l.Commit();
+    return;
+  }
+  TRACE("Marked keyspace as deleted in sys-catalog");
+
+  // Remove namespace from CatalogManager name mapping.
+  {
+    LockGuard lock(mutex_);
+    auto it = namespace_names_mapper_[database->database_type()].find(database->name());
+    if (it == namespace_names_mapper_[database->database_type()].end()) {
+      // Because we remove YSQL namespaces whose async creation failed from the maps,
+      // for such databases this is an expected error.
+      LOG(WARNING) << Format(
+          "Could not remove namespace from maps, name=$0, id=$1", database->name(), database->id());
+    } else if (it->second->id() == database->id()) {
+      // Sanity check we're not removing the wrong database. We don't enforce name uniqueness for
+      // databases whose creation failed.
+      namespace_names_mapper_[database->database_type()].erase(database->name());
+    } else {
+      LOG(WARNING) << Format(
+          "While removing namespace of type $0 with id $1 and name $2 found a different namespace "
+          "in the names map under the same name, with id $3",
+          YQLDatabase_Name(database->database_type()), database->id(), database->name(),
+          it->second->id());
+    }
+  }
   TRACE("Committing in-memory state");
   l.Commit();
 
@@ -9345,8 +9311,6 @@ Status CatalogManager::AlterNamespace(const AlterNamespaceRequestPB* req,
     if (req->namespace_().has_database_type()) {
       ns_identifier.set_database_type(req->namespace_().database_type());
     }
-    // TODO: This check will only work for YSQL once we add support for YSQL namespaces in
-    // namespace_name_map (#1476).
     LockGuard lock(mutex_);
     TRACE("Acquired catalog manager lock");
     auto ns = FindNamespaceUnlocked(ns_identifier);
@@ -9903,8 +9867,9 @@ Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(DbOidToCatalogVersionMap*
   return Status::OK();
 }
 
+// Note: versions and fingerprint are outputs.
 Status CatalogManager::GetYsqlAllDBCatalogVersions(
-    bool use_cache, DbOidToCatalogVersionMap* versions) {
+    bool use_cache, DbOidToCatalogVersionMap* versions, uint64_t* fingerprint) {
   DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
   if (use_cache) {
     SharedLock lock(heartbeat_pg_catalog_versions_cache_mutex_);
@@ -9919,12 +9884,20 @@ Status CatalogManager::GetYsqlAllDBCatalogVersions(
     // make such unit tests happy.
     if (heartbeat_pg_catalog_versions_cache_) {
       *versions = *heartbeat_pg_catalog_versions_cache_;
+      if (fingerprint) {
+        *fingerprint = heartbeat_pg_catalog_versions_cache_fingerprint_;
+      }
       return Status::OK();
     }
   }
   // Cannot use cached data, or the cache has never been initialized yet, read
   // from pg_yb_catalog_version table.
-  return GetYsqlAllDBCatalogVersionsImpl(versions);
+  RETURN_NOT_OK(GetYsqlAllDBCatalogVersionsImpl(versions));
+  if (fingerprint) {
+    *fingerprint = FingerprintCatalogVersions<DbOidToCatalogVersionMap>(*versions);
+    VLOG_WITH_FUNC(2) << "databases: " << versions->size() << ", fingerprint: " << *fingerprint;
+  }
+  return Status::OK();
 }
 
 Status CatalogManager::InitializeTransactionTablesConfig(int64_t term) {
@@ -11669,6 +11642,7 @@ Status CatalogManager::BuildLocationsForTablet(
       TabletLocationsPB_ReplicaPB* replica_pb = locs_pb->add_replicas();
       replica_pb->set_role(replica.second.role);
       replica_pb->set_member_type(replica.second.member_type);
+      replica_pb->set_state(replica.second.state);
       auto tsinfo_pb = replica.second.ts_desc->GetTSInformationPB();
 
       TSInfoPB* out_ts_info = replica_pb->mutable_ts_info();
@@ -13377,31 +13351,35 @@ void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {
   DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
   DCHECK(FLAGS_enable_heartbeat_pg_catalog_versions_cache);
   DCHECK(pg_catalog_versions_bg_task_running_);
-  const bool is_inited_leader = [this] {
+
+  {
     SCOPED_LEADER_SHARED_LOCK(l, this);
-    return l.IsInitializedAndIsLeader();
-  }();
-  if (!is_inited_leader) {
-    VLOG(2) << "No longer the leader, skipping catalog versions task";
-    pg_catalog_versions_bg_task_running_ = false;
-    ResetCachedCatalogVersions();
-    return;
+    if (!l.IsInitializedAndIsLeader()) {
+      VLOG(2) << "No longer the leader, skipping catalog versions task";
+      pg_catalog_versions_bg_task_running_ = false;
+      ResetCachedCatalogVersions();
+      return;
+    }
   }
+
   // Refresh the catalog versions in memory.
-  VLOG(2) << "Running RefreshPgCatalogVersionInfoPeriodically task";
+  VLOG(2) << "Running " << __func__ << " task";
   DbOidToCatalogVersionMap versions;
   Status s = GetYsqlAllDBCatalogVersionsImpl(&versions);
   if (!s.ok()) {
     LOG(WARNING) << "Catalog versions refresh task failed: " << s.ToString();
     ResetCachedCatalogVersions();
   } else {
-    VLOG(2) << "Refreshed catalog versions in memory: " << yb::ToString(versions);
+    VLOG_WITH_FUNC(2) << "Refreshed " << versions.size() << " catalog versions in memory";
+    const auto fingerprint = yb::FingerprintCatalogVersions<DbOidToCatalogVersionMap>(versions);
+    VLOG_WITH_FUNC(2) << "fingerprint: " << fingerprint;
     LockGuard lock(heartbeat_pg_catalog_versions_cache_mutex_);
     if (heartbeat_pg_catalog_versions_cache_) {
       heartbeat_pg_catalog_versions_cache_->swap(versions);
     } else {
       heartbeat_pg_catalog_versions_cache_ = std::move(versions);
     }
+    heartbeat_pg_catalog_versions_cache_fingerprint_ = fingerprint;
   }
   ScheduleRefreshPgCatalogVersionsTask();
 }

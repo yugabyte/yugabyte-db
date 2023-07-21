@@ -70,6 +70,14 @@ DEFINE_UNKNOWN_uint64(pg_client_session_expiration_ms, 60000,
 DEFINE_RUNTIME_bool(pg_client_use_shared_memory, false,
                     "Use shared memory for executing read and write pg client queries");
 
+DEFINE_test_flag(uint64, delay_before_get_old_transactions_heartbeat_intervals, 0,
+                 "When non-zero, we sleep for set transaction heartbeat interval periods before "
+                 "fetching old transactions. This delay is implemented to ensure that the "
+                 "information returned for yb_lock_status is more up-to-date. Currently, the flag "
+                 "is used in tests alone.");
+
+DECLARE_uint64(transaction_heartbeat_usec);
+
 namespace yb {
 namespace tserver {
 
@@ -157,7 +165,10 @@ class PgClientSessionLocker {
 };
 
 using LockablePgClientSessionPtr = std::shared_ptr<LockablePgClientSession>;
+using OldTxnsRespPtr = std::shared_ptr<tserver::GetOldTransactionsResponsePB>;
 using RemoteTabletServerPtr = std::shared_ptr<client::internal::RemoteTabletServer>;
+using OldTransactionMetadataPB = tserver::GetOldTransactionsResponsePB::OldTransactionMetadataPB;
+using OldTransactionMetadataPBPtr = std::shared_ptr<OldTransactionMetadataPB>;
 using client::internal::RemoteTabletPtr;
 
 void GetTablePartitionList(const client::YBTablePtr& table, PgTablePartitionsPB* partition_list) {
@@ -331,32 +342,261 @@ class PgClientServiceImpl::Impl {
     return tserver::CreateSequencesDataTable(&client(), context->GetClientDeadline());
   }
 
+  std::future<Result<std::pair<TabletId, OldTxnsRespPtr>>> DoGetOldTransactionsForTablet(
+      const TabletId& tablet_id, const uint32_t min_txn_age_ms, const uint32_t max_num_txns,
+      const std::shared_ptr<TabletServerServiceProxy>& proxy) {
+    auto req = std::make_shared<tserver::GetOldTransactionsRequestPB>();
+    req->set_tablet_id(tablet_id);
+    req->set_min_txn_age_ms(min_txn_age_ms);
+    req->set_max_num_txns(max_num_txns);
+
+    return MakeFuture<Result<std::pair<TabletId, OldTxnsRespPtr>>>([&](auto callback) {
+      auto resp = std::make_shared<GetOldTransactionsResponsePB>();
+      std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
+      proxy->GetOldTransactionsAsync(
+          *req.get(), resp.get(), controller.get(),
+          [req, callback, controller, resp] {
+        auto s = controller->status();
+        if (!s.ok()) {
+          s = s.CloneAndPrepend(
+              Format("GetOldTransactions request for tablet $0 failed: ", req->tablet_id()));
+          return callback(s);
+        }
+        callback(std::make_pair(req->tablet_id(), std::move(resp)));
+      });
+    });
+  }
+
+  struct OldTransactionComparator {
+    bool operator()(
+        const OldTransactionMetadataPBPtr lhs, const OldTransactionMetadataPBPtr rhs) const {
+      // Order is reversed so that we get transactions with earlier start times first.
+      if (lhs->start_time() != rhs->start_time()) {
+        return lhs->start_time() > rhs->start_time();
+      }
+      return lhs->transaction_id() > rhs->transaction_id();
+    }
+  };
+
   Status GetLockStatus(
       const PgGetLockStatusRequestPB& req, PgGetLockStatusResponsePB* resp,
       rpc::RpcContext* context) {
     std::vector<master::TSInformationPB> live_tservers;
     RETURN_NOT_OK(tablet_server_.GetLiveTServers(&live_tservers));
+    GetLockStatusRequestPB lock_status_req;
+    if (!req.transaction_id().empty()) {
+      // TODO(pglocks): Forward the request to tservers hosting the involved tablets of the txn,
+      // as opposed to broadcasting the request to all live tservers.
+      // https://github.com/yugabyte/yugabyte-db/issues/17886.
+      //
+      // GetLockStatusRequestPB supports providing multiple transaction ids, but postgres sends
+      // only one transaction id in PgGetLockStatusRequestPB for now.
+      lock_status_req.add_transaction_ids(req.transaction_id());
+      return DoGetLockStatus(lock_status_req, resp, context, live_tservers);
+    }
+    const auto& min_txn_age_ms = req.min_txn_age_ms();
+    const auto& max_num_txns = req.max_num_txns();
+    RSTATUS_DCHECK(max_num_txns > 0, InvalidArgument,
+                   "Request must contain max_num_txns > 0, got $0", max_num_txns);
+    // Sleep before fetching old transactions and their involved tablets. This is necessary for
+    // yb_lock_status tests that expect to see complete lock info of respective transaction(s).
+    // Else, the coordinator might not return updated involved tablet(s) and we could end up
+    // returning incomplete lock info for a given transaction.
+    if (PREDICT_FALSE(FLAGS_TEST_delay_before_get_old_transactions_heartbeat_intervals > 0)) {
+      auto delay_usec = FLAGS_TEST_delay_before_get_old_transactions_heartbeat_intervals
+                        * FLAGS_transaction_heartbeat_usec;
+      SleepFor(MonoDelta::FromMicroseconds(delay_usec));
+    }
 
-    // TODO(pglocks): Make use of req.table_id()
+    std::vector<std::future<Result<std::pair<TabletId, OldTxnsRespPtr>>>> res_futures;
+    std::unordered_set<TabletId> status_tablet_ids;
+    for (const auto& live_ts : live_tservers) {
+      const auto& permanent_uuid = live_ts.tserver_instance().permanent_uuid();
+      auto remote_tserver = VERIFY_RESULT(client().GetRemoteTabletServer(permanent_uuid));
+      auto txn_status_tablets = VERIFY_RESULT(
+            client().GetTransactionStatusTablets(remote_tserver->cloud_info_pb()));
+
+      auto proxy = remote_tserver->proxy();
+      for (const auto& tablet : txn_status_tablets.global_tablets) {
+        res_futures.push_back(
+            DoGetOldTransactionsForTablet(tablet, min_txn_age_ms, max_num_txns, proxy));
+        status_tablet_ids.insert(tablet);
+      }
+      for (const auto& tablet : txn_status_tablets.placement_local_tablets) {
+        res_futures.push_back(
+            DoGetOldTransactionsForTablet(tablet, min_txn_age_ms, max_num_txns, proxy));
+        status_tablet_ids.insert(tablet);
+      }
+    }
+    // Limit num transactions to max_num_txns for which lock status is being queried.
+    //
+    // TODO(pglocks): We could end up storing duplicate records for the same transaction in the
+    // priority queue, and end up reporting locks of #transaction < max_num_txns. This will be
+    // fixed once https://github.com/yugabyte/yugabyte-db/issues/18140 is addressed.
+    std::priority_queue<OldTransactionMetadataPBPtr,
+                        std::vector<OldTransactionMetadataPBPtr>,
+                        OldTransactionComparator> old_txns_pq;
+    for (auto it = res_futures.begin(); it != res_futures.end(); ) {
+      auto res = it->get();
+      if (!res.ok()) {
+        return res.status();
+      }
+
+      auto& [status_tablet_id, old_txns_resp] = *res;
+      if (old_txns_resp->has_error()) {
+        // Ignore leadership errors as we broadcast the request to all tservers.
+        if (old_txns_resp->error().code() == TabletServerErrorPB::NOT_THE_LEADER) {
+          it = res_futures.erase(it);
+          continue;
+        }
+        const auto& s = StatusFromPB(old_txns_resp->error().status());
+        StatusToPB(s, resp->mutable_status());
+        return Status::OK();
+      }
+
+      status_tablet_ids.erase(status_tablet_id);
+      for (auto& old_txn : old_txns_resp->txn()) {
+        auto old_txn_ptr = std::make_shared<OldTransactionMetadataPB>(std::move(old_txn));
+        old_txns_pq.push(std::move(old_txn_ptr));
+        while (old_txns_pq.size() > max_num_txns) {
+          old_txns_pq.pop();
+        }
+      }
+      it++;
+    }
+    // Set status and return if we don't get a valid resp for all status tablets at least once.
+    // It's ok if we get more than one resp for a status tablet, as we accumulate received
+    // transactions and their involved tablets.
+    if(!status_tablet_ids.empty()) {
+      StatusToPB(
+          STATUS_FORMAT(IllegalState,
+                        "Couldn't fetch old transactions for the following status tablets: $0",
+                        status_tablet_ids),
+          resp->mutable_status());
+      return Status::OK();
+    }
+
+    while (!old_txns_pq.empty()) {
+      auto& old_txn = old_txns_pq.top();
+      const auto& txn_id = old_txn->transaction_id();
+      auto& node_entry = (*resp->mutable_transactions_by_node())[old_txn->host_node_uuid()];
+      node_entry.add_transaction_ids(txn_id);
+      for (const auto& tablet_id : old_txn->tablets()) {
+        auto& tablet_entry = (*lock_status_req.mutable_transactions_by_tablet())[tablet_id];
+        tablet_entry.add_transaction_ids(txn_id);
+      }
+      old_txns_pq.pop();
+    }
+    return DoGetLockStatus(lock_status_req, resp, context, live_tservers);
+  }
+
+  Status DoGetLockStatus(
+      const GetLockStatusRequestPB& req, PgGetLockStatusResponsePB* resp,
+      rpc::RpcContext* context, const std::vector<master::TSInformationPB>& live_tservers) {
+    if (req.transactions_by_tablet().empty() && req.transaction_ids().empty()) {
+      return Status::OK();
+    }
     // TODO(pglocks): parallelize RPCs
     rpc::RpcController controller;
     for (const auto& live_ts : live_tservers) {
       const auto& permanent_uuid = live_ts.tserver_instance().permanent_uuid();
       auto remote_tserver = VERIFY_RESULT(client().GetRemoteTabletServer(permanent_uuid));
       auto proxy = remote_tserver->proxy();
-      GetLockStatusRequestPB node_req;
-      // GetLockStatusRequestPB supports providing multiple transaction ids, but postgres sends
-      // only one transaction id in PgGetLockStatusRequestPB for now.
-      node_req.add_transaction_ids(req.transaction_id());
       GetLockStatusResponsePB node_resp;
       controller.Reset();
-      RETURN_NOT_OK(proxy->GetLockStatus(node_req, &node_resp, &controller));
-
+      auto s = proxy->GetLockStatus(req, &node_resp, &controller);
+      if (!s.ok()) {
+        resp->Clear();
+        return s;
+      }
+      if (node_resp.has_error()) {
+        resp->Clear();
+        *resp->mutable_status() = node_resp.error().status();
+        return Status::OK();
+      }
       auto* node_locks = resp->add_node_locks();
       node_locks->set_permanent_uuid(permanent_uuid);
       node_locks->mutable_tablet_lock_infos()->Swap(node_resp.mutable_tablet_lock_infos());
     }
 
+    auto s = RefineAccumulatedLockStatusResp(req, resp);
+    if (!s.ok()) {
+      s = s.CloneAndPrepend("Error refining accumulated LockStatus responses.");
+      resp->Clear();
+    }
+    StatusToPB(s, resp->mutable_status());
+    return Status::OK();
+  }
+
+  // Refines PgGetLockStatusResponsePB by dropping duplicate lock responses for a given tablet.
+  // Also ensure that we see a lock status response from all involved tablets of each txn since
+  // returning incomplete/impartial results might be misleading.
+  Status RefineAccumulatedLockStatusResp(
+      const GetLockStatusRequestPB& req, PgGetLockStatusResponsePB* resp) {
+    std::unordered_map<std::string, std::unordered_set<TabletId>> txn_involved_tablets;
+    for (const auto& [tablet_id, involved_txns] : req.transactions_by_tablet()) {
+      for (const auto& txn : involved_txns.transaction_ids()) {
+        auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(txn));
+        txn_involved_tablets[txn_id.ToString()].insert(tablet_id);
+      }
+    }
+
+    // Track the highest seen term for each tablet id.
+    std::map<TabletId, uint64_t> peer_term;
+    for (const auto& node_lock : resp->node_locks()) {
+      for (const auto& tablet_lock_info : node_lock.tablet_lock_infos()) {
+        const auto& tablet_id = tablet_lock_info.tablet_id();
+        peer_term[tablet_id] = std::max(peer_term[tablet_id], tablet_lock_info.term());
+      }
+    }
+
+    std::unordered_set<TabletId> tablets;
+    std::set<TransactionId> seen_transactions;
+    for (auto& node_lock : *resp->mutable_node_locks()) {
+      auto* tablet_lock_infos = node_lock.mutable_tablet_lock_infos();
+      for (auto lock_it = tablet_lock_infos->begin(); lock_it != tablet_lock_infos->end();) {
+        const auto& tablet_id = lock_it->tablet_id();
+        auto max_term_for_tablet = peer_term[tablet_id];
+        if (lock_it->term() < max_term_for_tablet) {
+          LOG(INFO) << "Dropping lock info from stale peer of tablet " << lock_it->tablet_id()
+                    << " from node " << node_lock.permanent_uuid()
+                    << " with term " << lock_it->term()
+                    << " less than highest term seen " << max_term_for_tablet
+                    << ". This should be rare but is not an error otherwise.";
+          lock_it = node_lock.mutable_tablet_lock_infos()->erase(lock_it);
+          continue;
+        }
+        RSTATUS_DCHECK(
+            tablets.emplace(tablet_id).second, IllegalState,
+            "Found tablet $0 more than once in PgGetLockStatusResponsePB", tablet_id);
+        for (auto& [txn, _] : lock_it->transaction_locks()) {
+          seen_transactions.insert(VERIFY_RESULT(TransactionId::FromString(txn)));
+        }
+        lock_it++;
+      }
+    }
+
+    for (const auto& [txn_id, involved_tablets] : txn_involved_tablets) {
+      for (const auto& tablet : involved_tablets) {
+        auto it = tablets.find(tablet);
+        RSTATUS_DCHECK(
+            it != tablets.end(), IllegalState,
+            "Expected to see transaction's $0 involved tablet $1 in PgGetLockStatusResponsePB",
+            txn_id, tablet);
+      }
+    }
+    // Ensure that the response contains host node uuid for all involved transactions.
+    for (const auto& [_, txn_list] : resp->transactions_by_node()) {
+      for (const auto& txn : txn_list.transaction_ids()) {
+        seen_transactions.erase(VERIFY_RESULT(FullyDecodeTransactionId(txn)));
+      }
+    }
+    // TODO(pglocks): We currently don't populate transaction's host node info when the incoming
+    // PgGetLockStatusRequestPB has transaction_id field set. This shouldn't be the case once
+    // https://github.com/yugabyte/yugabyte-db/issues/16913 is addressed. As part of the fix,
+    // remove !req.transaction_ids().empty() in the below check.
+    RSTATUS_DCHECK(seen_transactions.empty() || !req.transaction_ids().empty(), IllegalState,
+           "Host node uuid not set for all involved transactions");
     return Status::OK();
   }
 
@@ -575,7 +815,7 @@ class PgClientServiceImpl::Impl {
 
     for (size_t i = 0 ; i < remote_tservers.size() ; i++) {
       const auto& proxy = remote_tservers[i]->proxy();
-      std::shared_ptr<rpc::RpcController> controller;
+      auto controller = std::make_shared<rpc::RpcController>();
       status_future.push_back(
           MakeFuture<Status>([&, controller](auto callback) {
             proxy->CancelTransactionAsync(
@@ -585,7 +825,7 @@ class PgClientServiceImpl::Impl {
           }));
     }
 
-    auto status = STATUS_FORMAT(NotFound, "Unable to cancel transaction");
+    auto status = STATUS_FORMAT(NotFound, "Transaction not found.");
     resp->Clear();
     for (size_t i = 0 ; i < status_future.size() ; i++) {
       const auto& s = status_future[i].get();

@@ -597,6 +597,7 @@ class ClusterOptions:
         self.force = False
         self.use_cassandra_authentication = False
         self.ysql_hba_conf_csv = None
+        self.ysql_ident_conf_csv = None
         self.ysql_pg_conf_csv = None
         self.node_type = DAEMON_TYPE_TSERVER
         self.is_shell_master = False
@@ -680,6 +681,9 @@ class ClusterOptions:
 
         if hasattr(args, "ysql_hba_conf_csv"):
             self.ysql_hba_conf_csv = args.ysql_hba_conf_csv
+
+        if hasattr(args, "ysql_ident_conf_csv"):
+            self.ysql_ident_conf_csv = args.ysql_ident_conf_csv
 
         if hasattr(args, "ysql_pg_conf_csv"):
             self.ysql_pg_conf_csv = args.ysql_pg_conf_csv
@@ -1169,6 +1173,10 @@ class ClusterControl:
             subparsers[cmd].add_argument("--ysql_hba_conf_csv",
                                          help="Set HBA configuration for YSQL API in CSV format")
 
+            subparsers[cmd].add_argument("--ysql_ident_conf_csv",
+                                         help="Set user name mapping (ident) configuration for "
+                                         "YSQL API in CSV format")
+
             subparsers[cmd].add_argument("--ysql_pg_conf_csv",
                                          help="Set configuration for YSQL API in CSV format")
 
@@ -1402,6 +1410,9 @@ class ClusterControl:
             if (self.options.ysql_hba_conf_csv is not None):
                 command_list.append(
                     "--ysql_hba_conf_csv='{}'".format(self.options.ysql_hba_conf_csv))
+            if (self.options.ysql_ident_conf_csv is not None):
+                command_list.append(
+                    "--ysql_ident_conf_csv='{}'".format(self.options.ysql_ident_conf_csv))
             if (self.options.ysql_pg_conf_csv is not None):
                 command_list.append(
                     "--ysql_pg_conf_csv='{}'".format(self.options.ysql_pg_conf_csv))

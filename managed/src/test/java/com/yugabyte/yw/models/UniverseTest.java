@@ -38,6 +38,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -73,11 +74,13 @@ import play.libs.Json;
 public class UniverseTest extends FakeDBApplication {
   private Provider defaultProvider;
   private Customer defaultCustomer;
+  private CertificateHelper certificateHelper;
 
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
+    certificateHelper = new CertificateHelper(app.injector().instanceOf(RuntimeConfGetter.class));
   }
 
   @Test
@@ -578,7 +581,7 @@ public class UniverseTest extends FakeDBApplication {
   public void testGetUniverses() {
     Config spyConf = spy(app.config());
     doReturn("/tmp/certs").when(spyConf).getString("yb.storage.path");
-    UUID certUUID = CertificateHelper.createRootCA(spyConf, "test", defaultCustomer.getUuid());
+    UUID certUUID = certificateHelper.createRootCA(spyConf, "test", defaultCustomer.getUuid());
     ModelFactory.createUniverse(defaultCustomer.getId(), certUUID);
     Set<Universe> universes =
         Universe.universeDetailsIfCertsExists(certUUID, defaultCustomer.getUuid());
