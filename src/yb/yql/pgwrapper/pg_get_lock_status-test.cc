@@ -329,6 +329,38 @@ TEST_F(PgGetLockStatusTest, TestGetLockStatusLimitNumOldTxns) {
   });
 }
 
+TEST_F(PgGetLockStatusTest, TestWaiterLockContainingColumnId) {
+  const auto table = "foo";
+  const auto key = "1";
+  auto session = ASSERT_RESULT(Init(table, "2"));
+  ASSERT_OK(session.conn->ExecuteFormat("UPDATE $0 SET v=1 WHERE k=$1", table, key));
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  auto status_future = ASSERT_RESULT(
+      ExpectBlockedAsync(&conn, Format("UPDATE $0 SET v=1 WHERE k=$1", table, key)));
+
+  SleepFor(2s * kTimeMultiplier);
+  // Workaround to get the other transaction id, currently can't get it through a pg command.
+  auto tserver_lock_status_resp = ASSERT_RESULT(GetLockStatus(session.first_involved_tablet));
+  auto txns_set = ASSERT_RESULT(GetTxnsInLockStatusResponse(tserver_lock_status_resp));
+  txns_set.erase(session.txn_id);
+  ASSERT_EQ(txns_set.size(), 1);
+  auto other_txn = *txns_set.begin();
+  ASSERT_NE(other_txn, session.txn_id);
+
+  auto res = ASSERT_RESULT(session.conn->FetchValue<int64_t>(
+    Format("SELECT COUNT(*) FROM pg_locks WHERE ybdetails->>'transactionid' = '$0'",
+    other_txn.ToString())));
+  // The waiter acquires 3 locks in total,
+  // 1 {STRONG_READ,STRONG_WRITE} on the column
+  // 1 {WEAK_READ,WEAK_WRITE} on the row
+  // 1 {WEAK_READ,WEAK_WRITE} on the table
+  ASSERT_EQ(res, 3);
+  ASSERT_TRUE(conn.IsBusy());
+  ASSERT_OK(session.conn->Execute("COMMIT"));
+}
+
 TEST_F(PgGetLockStatusTest, TestGetWaitStart) {
   const auto table = "foo";
   const auto locked_key = "2";
