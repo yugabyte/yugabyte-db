@@ -345,12 +345,14 @@ activate_virtualenv() {
 }
 
 create_pymodules_package() {
+  activate_virtualenv
   rm -rf "$YB_PYTHON_MODULES_DIR"
   mkdir -p "$YB_PYTHON_MODULES_DIR"
   extra_install_flags=""
   if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
     extra_install_flags="setuptools<45"
   fi
+  run_pip install --upgrade pip > /dev/null
   # Download the scripts necessary (i.e. ansible). Remove the modules afterwards to avoid
   # system-specific libraries.
   log "Downloading package scripts"
