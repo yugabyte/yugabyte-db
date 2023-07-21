@@ -680,7 +680,7 @@ void TabletPeer::WriteAsync(std::unique_ptr<WriteQuery> query) {
 }
 
 Result<HybridTime> TabletPeer::ReportReadRestart() {
-  tablet_->metrics()->restart_read_requests->Increment();
+  tablet_->metrics()->Increment(TabletCounters::kRestartReadRequests);
   return tablet_->SafeTime(RequireLease::kTrue);
 }
 

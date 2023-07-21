@@ -31,7 +31,7 @@ class SystemTablet : public tablet::AbstractTablet {
   docdb::DocReadContextPtr GetDocReadContext() const override;
   Result<docdb::DocReadContextPtr> GetDocReadContext(const std::string& table_id) const override;
 
-  const docdb::YQLStorageIf& QLStorage() const override;
+  const YQLVirtualTable& YQLTable() const;
 
   TableType table_type() const override;
 
