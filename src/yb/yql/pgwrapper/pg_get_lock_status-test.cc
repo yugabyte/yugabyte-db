@@ -15,6 +15,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/pg_locks_test_base.h"
 
@@ -453,6 +454,48 @@ TEST_F(PgGetLockStatusTest, TestBlockedBy) {
   }, 5s * kTimeMultiplier, "select for update to unblock and execute"));
   th.join();
   ASSERT_OK(waiter_session.conn->CommitTransaction());
+}
+
+TEST_F(PgGetLockStatusTest, TestLocksOfColocatedTables) {
+  const auto tablegroup = "tg";
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.ExecuteFormat("CREATE TABLEGROUP $0", tablegroup));
+
+  std::set<std::string> table_names = {"foo", "bar", "baz"};
+  for (const auto& table_name : table_names) {
+    ASSERT_OK(setup_conn.ExecuteFormat(
+        "CREATE TABLE $0 (k INT PRIMARY KEY, v INT) TABLEGROUP $1", table_name, tablegroup));
+    ASSERT_OK(setup_conn.ExecuteFormat(
+        "INSERT INTO $0 SELECT generate_series(1, 10), 0", table_name));
+  }
+  const auto key = "1";
+  TestThreadHolder thread_holder;
+  CountDownLatch fetched_locks{1};
+  for (const auto& table_name : table_names) {
+    thread_holder.AddThreadFunctor([this, &fetched_locks, table_name, key] {
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=$1 FOR UPDATE", table_name, key));
+      ASSERT_TRUE(fetched_locks.WaitFor(15s * kTimeMultiplier));
+    });
+  }
+
+  SleepFor(5s * kTimeMultiplier);
+  // Each transaction above acquires 2 locks, one {STRONG_READ,STRONG_WRITE} on the primary key
+  // and the other being a {WEAK_READ,WEAK_WRITE} on the table.
+  auto res = ASSERT_RESULT(setup_conn.FetchValue<int64_t>("SELECT COUNT(*) FROM pg_locks"));
+  ASSERT_EQ(res, table_names.size() * 2);
+  // Assert that the locks held belong to tables "foo", "bar", "baz".
+  auto table_names_res = ASSERT_RESULT(setup_conn.FetchFormat(
+    "SELECT relname FROM pg_class WHERE oid IN (SELECT DISTINCT relation FROM pg_locks)"));
+  auto fetched_rows = PQntuples(table_names_res.get());
+  ASSERT_EQ(fetched_rows, 3);
+  for (int i = 0; i < fetched_rows; ++i) {
+    std::string value = ASSERT_RESULT(GetString(table_names_res.get(), i, 0));
+    ASSERT_TRUE(table_names.find(value) != table_names.end());
+  }
+  fetched_locks.CountDown();
+  thread_holder.WaitAndStop(25s * kTimeMultiplier);
 }
 
 } // namespace pgwrapper
