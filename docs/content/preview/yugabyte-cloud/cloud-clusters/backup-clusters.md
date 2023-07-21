@@ -14,6 +14,8 @@ type: docs
 
 YugabyteDB Managed performs full cluster (all namespaces) level backups, and the backups are stored in the same region as your cluster. 100GB/month of basic backup storage is provided for every vCPU; more than that and overage charges apply. Refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 
+{{< youtube id="3qzAdrVFgxc" title="Back up and restore clusters in YugabyteDB Managed" >}}
+
 By default, clusters are backed up automatically every 24 hours, and these automatic backups are retained for 8 days. The first automatic backup is triggered after 24 hours of creating a table, and is scheduled every 24 hours thereafter.
 
 Back up and restore clusters, configure the automatic backup policy, and review previous backups and restores using the cluster **Backups** tab.
