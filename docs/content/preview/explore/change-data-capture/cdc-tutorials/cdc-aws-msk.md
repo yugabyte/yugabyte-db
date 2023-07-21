@@ -188,7 +188,7 @@ Ensure that YugabyteDB is up and running. To install YugabyteDB on your cloud vi
     CREATE TABLE test (id INT PRIMARY KEY, name TEXT);
     ```
 
-1. Enable CDC using the yb-admin [create_change_data_stream](../../../../admin/yb-admin/#create-change-data-stream) command to  enable CDC on all the schemas and tables in the YugabyteDB database as follows:
+1. Enable CDC using the yb-admin [create_change_data_stream](../../../../admin/yb-admin/#create-change-data-stream) command to enable CDC on all the schemas and tables in the YugabyteDB database as follows:
 
     ```sh
     ./yb-admin -master_addresses <master_addresses>:7100 \
