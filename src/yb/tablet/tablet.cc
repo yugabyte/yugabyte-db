@@ -213,8 +213,8 @@ DEFINE_UNKNOWN_bool(tablet_enable_ttl_file_filter, false,
 DEFINE_UNKNOWN_bool(enable_schema_packing_gc, true, "Whether schema packing GC is enabled.");
 
 DEFINE_RUNTIME_bool(batch_tablet_metrics_update, true,
-                    "Batch update of rocksdb metrics to once per request rather than updating "
-                    "immediately.");
+                    "Batch update of rocksdb and tablet metrics to once per request rather than "
+                    "updating immediately.");
 
 DEFINE_test_flag(int32, slowdown_backfill_by_ms, 0,
                  "If set > 0, slows down the backfill process by this amount.");
@@ -320,6 +320,7 @@ bool IsSortedAscendingEncoded(const TransactionId& id1, const TransactionId& id2
 namespace {
 
 thread_local docdb::DocDBStatistics scoped_docdb_statistics;
+thread_local ScopedTabletMetrics scoped_tablet_metrics;
 
 std::string MakeTabletLogPrefix(
     const TabletId& tablet_id, const std::string& log_prefix_suffix) {
@@ -500,7 +501,7 @@ Tablet::Tablet(const TabletInitData& data)
              ? rocksdb::CreateDBStatistics(table_metrics_entity_, tablet_metrics_entity_, true)
              : rocksdb::CreateDBStatistics(nullptr, nullptr, true));
 
-    metrics_.reset(new TabletMetrics(table_metrics_entity_, tablet_metrics_entity_));
+    metrics_.reset(CreateTabletMetrics(table_metrics_entity_, tablet_metrics_entity_).release());
 
     mem_tracker_->SetMetricEntity(tablet_metrics_entity_);
   }
@@ -533,8 +534,8 @@ Tablet::Tablet(const TabletInitData& data)
     transaction_coordinator_ = std::make_unique<TransactionCoordinator>(
         metadata_->fs_manager()->uuid(),
         data.transaction_coordinator_context,
-        metrics_->expired_transactions.get(),
-         DCHECK_NOTNULL(tablet_metrics_entity_));
+        metrics_.get(),
+        DCHECK_NOTNULL(tablet_metrics_entity_));
   }
 
   snapshots_ = std::make_unique<TabletSnapshots>(this);
@@ -1261,10 +1262,10 @@ Status Tablet::ApplyRowOperations(
           // Bootstrap case.
           : *operation->request();
   const auto& put_batch = write_request.write_batch();
-  if (metrics_) {
+  if (metrics()) {
     VLOG(3) << "Applying write batch (write_pairs=" << put_batch.write_pairs().size() << "): "
             << put_batch.ShortDebugString();
-    metrics_->rows_inserted->IncrementBy(put_batch.write_pairs().size());
+    metrics()->IncrementBy(TabletCounters::kRowsInserted, put_batch.write_pairs().size());
   }
 
   return ApplyOperation(
@@ -1513,7 +1514,8 @@ Status Tablet::HandleRedisReadRequest(const docdb::ReadOperationData& read_opera
       read_operation_data.deadline);
   RETURN_NOT_OK(scoped_read_operation);
 
-  ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);
+  ScopedTabletMetricsLatencyTracker metrics_tracker(
+      metrics_.get(), TabletHistograms::kQlReadLatency);
 
   docdb::RedisReadOperation doc_op(redis_read_request, doc_db(), read_operation_data);
   RETURN_NOT_OK(doc_op.Execute());
@@ -1548,7 +1550,8 @@ Status Tablet::HandleQLReadRequest(
   auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart(
       read_operation_data.deadline);
   RETURN_NOT_OK(scoped_read_operation);
-  ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);
+  ScopedTabletMetricsLatencyTracker metrics_tracker(
+      metrics_.get(), TabletHistograms::kQlReadLatency);
 
   bool schema_version_compatible = IsSchemaVersionCompatible(
       metadata()->schema_version(), ql_read_request.schema_version(),
@@ -1560,8 +1563,8 @@ Status Tablet::HandleQLReadRequest(
         CreateTransactionOperationContext(transaction_metadata, /* is_ysql_catalog_table */ false);
     RETURN_NOT_OK(txn_op_ctx);
     status = AbstractTablet::HandleQLReadRequest(
-        read_operation_data, ql_read_request, *txn_op_ctx, scoped_read_operation, result,
-        rows_data);
+        read_operation_data, ql_read_request, *txn_op_ctx, *ql_storage_, scoped_read_operation,
+        result, rows_data);
 
     schema_version_compatible = IsSchemaVersionCompatible(
         metadata()->schema_version(), ql_read_request.schema_version(),
@@ -1638,11 +1641,55 @@ Status Tablet::HandlePgsqlReadRequest(
     const TransactionMetadataPB& transaction_metadata,
     const SubTransactionMetadataPB& subtransaction_metadata,
     PgsqlReadRequestResult* result) {
+
   TRACE(LogPrefix());
   auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart(
       read_operation_data.deadline);
   RETURN_NOT_OK(scoped_read_operation);
-  ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);
+
+  docdb::DocDBStatistics* statistics = nullptr;
+  TabletMetrics* metrics = metrics_.get();
+
+  if (GetAtomicFlag(&FLAGS_batch_tablet_metrics_update)) {
+    scoped_docdb_statistics.SetHistogramContext(regulardb_statistics_, intentsdb_statistics_);
+    statistics = &scoped_docdb_statistics;
+
+    scoped_tablet_metrics.Prepare();
+    scoped_tablet_metrics.SetHistogramContext(metrics);
+    metrics = &scoped_tablet_metrics;
+  }
+
+  auto status = DoHandlePgsqlReadRequest(
+      &scoped_read_operation, statistics, metrics, read_operation_data,
+      is_explicit_request_read_time, pgsql_read_request, transaction_metadata,
+      subtransaction_metadata, result);
+
+  if (statistics) {
+    if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_metrics)) {
+      scoped_docdb_statistics.CopyToPgsqlResponse(&result->response);
+      scoped_tablet_metrics.CopyToPgsqlResponse(&result->response);
+    }
+    scoped_tablet_metrics.MergeAndClear(metrics_.get());
+    statistics->MergeAndClear(regulardb_statistics_.get(), intentsdb_statistics_.get());
+  }
+
+  return status;
+}
+
+Status Tablet::DoHandlePgsqlReadRequest(
+    ScopedRWOperation* scoped_read_operation,
+    docdb::DocDBStatistics* statistics,
+    TabletMetrics* metrics,
+    const docdb::ReadOperationData& read_operation_data,
+    bool is_explicit_request_read_time,
+    const PgsqlReadRequestPB& pgsql_read_request,
+    const TransactionMetadataPB& transaction_metadata,
+    const SubTransactionMetadataPB& subtransaction_metadata,
+    PgsqlReadRequestResult* result) {
+  ScopedTabletMetricsLatencyTracker metrics_tracker(
+      metrics, TabletHistograms::kQlReadLatency);
+
+  docdb::QLRocksDBStorage storage{doc_db(metrics)};
 
   const shared_ptr<tablet::TableInfo> table_info =
       VERIFY_RESULT(metadata_->GetTableInfo(pgsql_read_request.table_id()));
@@ -1652,21 +1699,10 @@ Status Tablet::HandlePgsqlReadRequest(
           table_info->schema().table_properties().is_ysql_catalog_table(),
           &subtransaction_metadata);
 
-  scoped_docdb_statistics.SetHistogramContext(regulardb_statistics_, intentsdb_statistics_);
-  auto* statistics =
-      GetAtomicFlag(&FLAGS_batch_tablet_metrics_update) ? &scoped_docdb_statistics : nullptr;
-
   RETURN_NOT_OK(txn_op_ctx);
   auto status = ProcessPgsqlReadRequest(
-      read_operation_data, is_explicit_request_read_time,
-      pgsql_read_request, table_info, *txn_op_ctx, statistics, scoped_read_operation, result);
-
-  if (statistics) {
-    if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_metrics)) {
-      statistics->CopyToPgsqlResponse(&result->response);
-    }
-    statistics->MergeAndClear(regulardb_statistics_.get(), intentsdb_statistics_.get());
-  }
+      read_operation_data, is_explicit_request_read_time, pgsql_read_request, table_info,
+      *txn_op_ctx, storage, statistics, *scoped_read_operation, result);
 
   // Assert the table is a Postgres table.
   DCHECK_EQ(table_info->table_type, TableType::PGSQL_TABLE_TYPE);
@@ -3985,7 +4021,7 @@ Status Tablet::OpenDbAndCheckIntegrity(const std::string& db_dir) {
     if (st.IsCorruption()) {
       LOG_WITH_PREFIX(WARNING) << "Detected rocksdb data corruption: " << st;
       // TODO: should we bump metric here or in top-level validation or both?
-      metrics()->tablet_data_corruptions->Increment();
+      metrics()->Increment(TabletCounters::kTabletDataCorruptions);
       return st;
     }
 

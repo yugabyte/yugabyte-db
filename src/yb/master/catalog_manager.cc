@@ -12789,7 +12789,7 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table) {
 }
 
 const YQLPartitionsVTable& CatalogManager::GetYqlPartitionsVtable() const {
-  return down_cast<const YQLPartitionsVTable&>(system_partitions_tablet_->QLStorage());
+  return down_cast<const YQLPartitionsVTable&>(system_partitions_tablet_->YQLTable());
 }
 
 void CatalogManager::InitializeTableLoadState(

@@ -241,11 +241,13 @@ void DocRowwiseIteratorBase::FinalizeKeyFoundStats() {
     return;
   }
 
-  doc_db_.metrics->docdb_keys_found->IncrementBy(keys_found_);
+  doc_db_.metrics->IncrementBy(tablet::TabletCounters::kDocDBKeysFound, keys_found_);
   if (obsolete_keys_found_) {
-    doc_db_.metrics->docdb_obsolete_keys_found->IncrementBy(obsolete_keys_found_);
+    doc_db_.metrics->IncrementBy(
+        tablet::TabletCounters::kDocDBObsoleteKeysFound, obsolete_keys_found_);
     if (obsolete_keys_found_past_cutoff_) {
-      doc_db_.metrics->docdb_obsolete_keys_found_past_cutoff->IncrementBy(
+      doc_db_.metrics->IncrementBy(
+          tablet::TabletCounters::kDocDBObsoleteKeysFoundPastCutoff,
           obsolete_keys_found_past_cutoff_);
     }
   }

@@ -567,26 +567,27 @@ TEST_F_EX(CqlTest, DocDBKeyMetrics, CqlRF1Test) {
   ASSERT_OK(session.ExecuteQuery("SELECT * FROM t;"));
 
   // Find the counters for the tablet leader.
-  scoped_refptr<Counter> total_keys;
-  scoped_refptr<Counter> obsolete_keys;
-  scoped_refptr<Counter> obsolete_past_cutoff;
+  tablet::TabletMetrics* tablet_metrics = nullptr;
   for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
     auto* metrics = peer->tablet()->metrics();
-    if (!metrics || metrics->docdb_keys_found->value() == 0) {
+    if (!metrics || metrics->Get(tablet::TabletCounters::kDocDBKeysFound) == 0) {
       continue;
     }
-    total_keys = metrics->docdb_keys_found;
-    obsolete_keys = metrics->docdb_obsolete_keys_found;
-    obsolete_past_cutoff = metrics->docdb_obsolete_keys_found_past_cutoff;
+    tablet_metrics = metrics;
   }
   // Ensure we've found the tablet leader, and that we've seen 10 total keys (no obsolete).
-  ASSERT_NE(total_keys, nullptr);
+  ASSERT_NE(tablet_metrics, nullptr);
   auto expected_total_keys = kNumRows;
   auto expected_obsolete_keys = 0;
   auto expected_obsolete_past_cutoff = 0;
-  ASSERT_EQ(total_keys->value(), expected_total_keys);
-  ASSERT_EQ(obsolete_keys->value(), expected_obsolete_keys);
-  ASSERT_EQ(obsolete_past_cutoff->value(), expected_obsolete_past_cutoff);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBKeysFound), expected_total_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFound),
+      expected_obsolete_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFoundPastCutoff),
+      expected_obsolete_past_cutoff);
 
   // Delete one row, then flush.
   ASSERT_OK(session.ExecuteQuery("DELETE FROM t WHERE i = 1;"));
@@ -598,9 +599,14 @@ TEST_F_EX(CqlTest, DocDBKeyMetrics, CqlRF1Test) {
   // the history cutoff window.
   ASSERT_OK(session.ExecuteQuery("SELECT * FROM t;"));
   expected_total_keys += kNumRows;
-  ASSERT_EQ(total_keys->value(), expected_total_keys);
-  ASSERT_EQ(obsolete_keys->value(), expected_obsolete_keys);
-  ASSERT_EQ(obsolete_past_cutoff->value(), expected_obsolete_past_cutoff);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBKeysFound), expected_total_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFound),
+      expected_obsolete_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFoundPastCutoff),
+      expected_obsolete_past_cutoff);
 
   // Wait 1 second for history retention to expire. Then try reading again. Expect 1 obsolete.
   std::this_thread::sleep_for(1s);
@@ -608,9 +614,14 @@ TEST_F_EX(CqlTest, DocDBKeyMetrics, CqlRF1Test) {
   expected_total_keys += kNumRows;
   expected_obsolete_keys += 1;
   expected_obsolete_past_cutoff += 1;
-  ASSERT_EQ(total_keys->value(), expected_total_keys);
-  ASSERT_EQ(obsolete_keys->value(), expected_obsolete_keys);
-  ASSERT_EQ(obsolete_past_cutoff->value(), expected_obsolete_past_cutoff);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBKeysFound), expected_total_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFound),
+      expected_obsolete_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFoundPastCutoff),
+      expected_obsolete_past_cutoff);
 
   // Set history retention to 900 for the rest of the test to make sure we don't exceed it.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 900;
@@ -622,17 +633,27 @@ TEST_F_EX(CqlTest, DocDBKeyMetrics, CqlRF1Test) {
   ASSERT_OK(cluster_->FlushTablets());
   expected_total_keys += 3;
   expected_obsolete_keys += 1;
-  ASSERT_EQ(total_keys->value(), expected_total_keys);
-  ASSERT_EQ(obsolete_keys->value(), expected_obsolete_keys);
-  ASSERT_EQ(obsolete_past_cutoff->value(), expected_obsolete_past_cutoff);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBKeysFound), expected_total_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFound),
+      expected_obsolete_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFoundPastCutoff),
+      expected_obsolete_past_cutoff);
 
   // Do another full range query. Obsolete keys increases by 3, total keys by 10.
   ASSERT_OK(session.ExecuteQuery("SELECT * FROM t;"));
   expected_total_keys += kNumRows;
   expected_obsolete_keys += 3;
-  ASSERT_EQ(total_keys->value(), expected_total_keys);
-  ASSERT_EQ(obsolete_keys->value(), expected_obsolete_keys);
-  ASSERT_EQ(obsolete_past_cutoff->value(), expected_obsolete_past_cutoff);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBKeysFound), expected_total_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFound),
+      expected_obsolete_keys);
+  ASSERT_EQ(
+      tablet_metrics->Get(tablet::TabletCounters::kDocDBObsoleteKeysFoundPastCutoff),
+      expected_obsolete_past_cutoff);
 }
 
 TEST_F(CqlTest, ManyColumns) {

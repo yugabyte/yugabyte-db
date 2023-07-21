@@ -50,6 +50,8 @@
 
 #include "yb/server/hybrid_clock.h"
 
+#include "yb/tablet/tablet_metrics.h"
+
 #include "yb/util/bitmap.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/enums.h"
@@ -223,8 +225,7 @@ void FilterKeysToLock(LockBatchEntries *keys_locked) {
 Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
-    const scoped_refptr<Histogram>& write_lock_latency,
-    const scoped_refptr<Counter>& failed_batch_lock,
+    tablet::TabletMetrics* tablet_metrics,
     IsolationLevel isolation_level,
     RowMarkType row_mark_type,
     bool transactional_table,
@@ -248,20 +249,22 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   FilterKeysToLock(&determine_keys_to_lock_result.lock_batch);
   VLOG_WITH_FUNC(4) << "filtered determine_keys_to_lock_result="
                     << determine_keys_to_lock_result.ToString();
-  const MonoTime start_time = (write_lock_latency != nullptr) ? MonoTime::Now() : MonoTime();
+  const MonoTime start_time = (tablet_metrics != nullptr) ? MonoTime::Now() : MonoTime();
   result.lock_batch = LockBatch(
       lock_manager, std::move(determine_keys_to_lock_result.lock_batch), deadline);
   auto lock_status = result.lock_batch.status();
   if (!lock_status.ok()) {
-    if (failed_batch_lock != nullptr) {
-      failed_batch_lock->Increment();
+    if (tablet_metrics != nullptr) {
+      tablet_metrics->Increment(tablet::TabletCounters::kFailedBatchLock);
     }
     return lock_status.CloneAndAppend(
         Format("Timeout: $0", deadline - ToCoarse(start_time)));
   }
-  if (write_lock_latency != nullptr) {
+  if (tablet_metrics != nullptr) {
     const MonoDelta elapsed_time = MonoTime::Now().GetDeltaSince(start_time);
-    write_lock_latency->Increment(elapsed_time.ToMicroseconds());
+    tablet_metrics->Increment(
+        tablet::TabletHistograms::kWriteLockLatency,
+        make_unsigned(elapsed_time.ToMicroseconds()));
   }
 
   return result;
