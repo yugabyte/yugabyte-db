@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
@@ -95,6 +96,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected CallbackController mockCallbackController;
   protected PlayCacheSessionStore mockSessionStore;
   protected ApiHelper mockApiHelper;
+  protected NodeUIApiHelper mockNodeUIApiHelper;
   protected MetricQueryHelper mockMetricQueryHelper;
   protected MetricService metricService;
   protected AlertService alertService;
@@ -187,6 +189,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
     mockApiHelper = mock(ApiHelper.class);
+    mockNodeUIApiHelper = mock(NodeUIApiHelper.class);
     mockMetricQueryHelper = mock(MetricQueryHelper.class);
     mockYcqlQueryExecutor = mock(YcqlQueryExecutor.class);
     mockYsqlQueryExecutor = mock(YsqlQueryExecutor.class);
@@ -238,6 +241,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(BackupHelper.class).toInstance(mockBackupHelper))
                 .overrides(
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager))
+                .overrides(bind(NodeUIApiHelper.class).toInstance(mockNodeUIApiHelper))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager)))
         .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
         .build();

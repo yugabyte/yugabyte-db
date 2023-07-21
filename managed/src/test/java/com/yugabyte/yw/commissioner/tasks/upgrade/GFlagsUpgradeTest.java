@@ -76,6 +76,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
           TaskType.SetNodeState,
+          TaskType.CheckUnderReplicatedTablets,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
@@ -88,6 +89,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER =
       ImmutableList.of(
           TaskType.SetNodeState,
+          TaskType.CheckUnderReplicatedTablets,
           TaskType.AnsibleConfigureServers,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
@@ -126,6 +128,10 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("underreplicated_tablets", Json.newArray());
+    when(mockNodeUIApiHelper.getRequest(anyString())).thenReturn(bodyJson);
   }
 
   private UUID addReadReplica() {
@@ -402,7 +408,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     position =
         assertCommonTasks(
             subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_MASTER_ONLY, true);
-    assertEquals(29, position);
+    assertEquals(32, position);
   }
 
   @Test
@@ -425,7 +431,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     position =
         assertCommonTasks(
             subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, true);
-    assertEquals(39, position);
+    assertEquals(42, position);
   }
 
   @Test
@@ -447,7 +453,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
             subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, false);
     position = assertSequence(subTasksByPosition, TSERVER, position, UpgradeOption.ROLLING_UPGRADE);
     position = assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
-    assertEquals(66, position);
+    assertEquals(72, position);
   }
 
   @Test
@@ -497,7 +503,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     position =
         assertCommonTasks(
             subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, true);
-    assertEquals(39, position);
+    assertEquals(42, position);
   }
 
   @Test
@@ -532,7 +538,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     position =
         assertCommonTasks(
             subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_MASTER_ONLY, true);
-    assertEquals(29, position);
+    assertEquals(32, position);
   }
 
   @Test
@@ -588,7 +594,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
                   ? UpgradeType.ROLLING_UPGRADE_MASTER_ONLY
                   : UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY,
               true);
-      assertEquals(serverType == MASTER ? 29 : 39, position);
+      assertEquals(serverType == MASTER ? 32 : 42, position);
     }
   }
 
@@ -1055,6 +1061,8 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
               SpecificGFlags.construct(ImmutableMap.of("master-flag", "m1"), ImmutableMap.of());
           universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
               specificGFlags;
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+              "2.17.1.0-b30";
         });
     expectedUniverseVersion++;
 

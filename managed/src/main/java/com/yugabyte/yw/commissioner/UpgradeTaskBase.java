@@ -287,6 +287,9 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       List<NodeDetails> singletonNodeList = Collections.singletonList(node);
       boolean isLeaderBlacklistValidRF = isLeaderBlacklistValidRF(node.nodeName);
       createSetNodeStateTask(node, nodeState).setSubTaskGroupType(subGroupType);
+
+      createNodePrecheckTasks(node, processTypes, subGroupType);
+
       // Run pre node upgrade hooks
       createHookTriggerTasks(singletonNodeList, true, true);
       if (context.runBeforeStopping) {

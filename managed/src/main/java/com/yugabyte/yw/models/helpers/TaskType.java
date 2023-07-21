@@ -232,6 +232,9 @@ public enum TaskType {
 
   ModifyBlackList(com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList.class),
 
+  CheckUnderReplicatedTablets(
+      com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets.class),
+
   ManipulateDnsRecordTask(
       com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask.class),
 
