@@ -264,6 +264,7 @@ class WaitStateInfo {
 
   void set_state(WaitStateCode c);
   WaitStateCode get_state() const;
+  WaitStateCode get_frozen_state() const;
 
   static WaitStateInfoPtr CurrentWaitState();
   static void SetCurrentWaitState(WaitStateInfoPtr);
@@ -285,7 +286,7 @@ class WaitStateInfo {
   void ToPB(PB *pb) {
     std::lock_guard<simple_spinlock> l(mutex_);
     metadata_.ToPB(pb->mutable_metadata());
-    WaitStateCode code = code_;
+    WaitStateCode code = get_state();
     pb->set_wait_status_code(yb::to_underlying(code));
 #ifndef NDEBUG
     pb->set_wait_status_code_as_string(yb::ToString(code));
@@ -301,8 +302,13 @@ class WaitStateInfo {
 
   std::string ToString() const EXCLUDES(mutex_);
 
+  static void freeze();
+  static void unfreeze();
+
  private:
   std::atomic<WaitStateCode> code_{WaitStateCode::Unused};
+  std::atomic<WaitStateCode> frozen_state_code_{WaitStateCode::Unused};
+  static std::atomic<bool> freeze_;
 
   mutable simple_spinlock mutex_;
   AUHMetadata metadata_ GUARDED_BY(mutex_);

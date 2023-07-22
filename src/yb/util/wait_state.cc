@@ -17,10 +17,12 @@
 
 using yb::util::WaitStateCode;
 
+DEFINE_RUNTIME_bool(freeze_wait_states, true, "Fetches the frozen wait state, as of the time when "
+                    "GetAUHMetadata was called, instead of getting a jagged-edge across different rpcs.");
 namespace yb::util {
 
-// __thread WaitStateInfoPtr WaitStateInfo::threadlocal_wait_state_;
 thread_local WaitStateInfoPtr WaitStateInfo::threadlocal_wait_state_;
+std::atomic<bool> WaitStateInfo::freeze_{false};
 
 std::string AUHAuxInfo::ToString() const {
   return YB_STRUCT_TO_STRING(table_id, tablet_id, method);
@@ -49,8 +51,40 @@ simple_spinlock* WaitStateInfo::get_mutex() {
   return &mutex_;
 };
 
+void WaitStateInfo::freeze() {
+  freeze_ = true;
+}
+
+void WaitStateInfo::unfreeze() {
+  freeze_ = false;
+}
+
+WaitStateCode WaitStateInfo::get_frozen_state() const {
+  if (frozen_state_code_ != WaitStateCode::Unused) {
+    return frozen_state_code_;
+  }
+  return code_;
+}
+`
 void WaitStateInfo::set_state(WaitStateCode c) {
   VLOG(3) << this << " " << ToString() << " setting state to " << util::ToString(c);
+  if (freeze_) {
+    // If this is the first time we are calling set_state after freeze() was called,
+    // we will save the current state before updating it.
+    // If state is not frozen, then we reset frozen_state to Unused.
+    //
+    // This mechanism assumes that when unfreeze is called, the WaitState will be updated at least
+    // once, before the next freeze is called. This should generally be fine as we plan to freeze
+    // when AUHmetadata is pulled -- once every second, while the update should happen more often.
+    // But just something to note. If this is violated, then the 2nd, frozen state will represent
+    // the start of the 1st freeze window, instead of reflecting the start state of the 2nd freeze
+    // window.
+    if (frozen_state_code_ == WaitStateCode::Unused) {
+      frozen_state_code_ = code_.load();
+    }
+  } else {
+    frozen_state_code_ = WaitStateCode::Unused;
+  }
   code_ = c;
   #ifdef TRACK_WAIT_HISTORY
   {
@@ -63,6 +97,9 @@ void WaitStateInfo::set_state(WaitStateCode c) {
 }
 
 WaitStateCode WaitStateInfo::get_state() const {
+  if (GetAtomicFlag(&FLAGS_freeze_wait_states)) {
+    return get_frozen_state();
+  }
   return code_;
 }
 
