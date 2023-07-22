@@ -15,23 +15,32 @@ from yugabyte.command_util import ProgramResult, run_program
 from yugabyte.file_util import delete_file_if_exists
 
 import copy
-
 from typing import Tuple
 
-
 def run_compiler(
-        cmd: CompileCommand,
-        error_ok: bool,
-        log_command: bool = True) -> Tuple[CompileCommand, ProgramResult]:
+    cmd: CompileCommand,
+    error_ok: bool,
+    log_command: bool = True
+) -> Tuple[CompileCommand, ProgramResult]:
     """
     Run the compiler on the given command, and return the exact command line used to do so.
     We don't plan to use the compiler output, only to check that it compiles, so we modify the
     output file name and delete the compilation output file immediately.
+
+    Args:
+        cmd (CompileCommand): The compilation command to run.
+        error_ok (bool): Whether errors during compilation are expected and considered OK.
+        log_command (bool): Whether to log the compilation command.
+
+    Returns:
+        Tuple[CompileCommand, ProgramResult]: A tuple containing the updated compilation command
+        and the result of the compilation process as a ProgramResult object.
     """
     updated_cmd = copy.deepcopy(cmd)
 
     working_dir_path = updated_cmd.dir_path
 
+    # Modify the output path to avoid generating unnecessary compilation output.
     updated_cmd.compiler_args.append_to_output_path('.tmp')
     updated_cmd.compiler_args.remove_dependency_related_flags()
     output_path = updated_cmd.compiler_args.get_output_path()
@@ -44,6 +53,7 @@ def run_compiler(
             error_ok=error_ok,
         )
     finally:
+        # Delete the temporary compilation output file.
         delete_file_if_exists(output_path)
 
     return updated_cmd, preprocessor_result
