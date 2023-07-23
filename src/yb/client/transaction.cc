@@ -112,8 +112,6 @@ METRIC_DEFINE_counter(server, transaction_promotions,
                       yb::MetricUnit::kTransactions,
                       "Number of transactions being promoted to global transactions");
 
-DECLARE_bool(enable_wait_queues);
-
 namespace yb {
 namespace client {
 
