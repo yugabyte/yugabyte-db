@@ -30,6 +30,7 @@ using namespace std::literals;
 DECLARE_int64(transaction_rpc_timeout_ms);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(enable_deadlock_detection);
 
 namespace yb {
 namespace client {
@@ -41,6 +42,7 @@ class SerializableTxnTest
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = false;
     SetIsolationLevel(IsolationLevel::SERIALIZABLE_ISOLATION);
     TransactionTestBase::SetUp();
   }
