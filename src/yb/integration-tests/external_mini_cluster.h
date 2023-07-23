@@ -191,6 +191,8 @@ struct ExternalMiniClusterOptions {
   // of masters in the cluster.
   int replication_factor = 0;
 
+  bool allow_crashes_during_init_db = false;
+
   Status RemovePort(const uint16_t port);
   Status AddPort(const uint16_t port);
 

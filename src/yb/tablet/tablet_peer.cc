@@ -243,7 +243,7 @@ Status TabletPeer::InitTabletPeer(
 
     tablet->SetMemTableFlushFilterFactory([log] {
       auto largest_log_op_index = log->GetLatestEntryOpId().index;
-      return [largest_log_op_index] (const rocksdb::MemTable& memtable) -> Result<bool> {
+      return [largest_log_op_index] (const rocksdb::MemTable& memtable, bool) -> Result<bool> {
         auto frontiers = memtable.Frontiers();
         if (frontiers) {
           const auto largest_memtable_op_index =
