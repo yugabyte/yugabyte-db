@@ -110,8 +110,9 @@ import {
   UPDATE_USER_PROFILE_SUCCESS,
   UPDATE_USER_PROFILE_FAILURE
 } from '../actions/customers';
+import { sortVersion } from '../components/releases';
 
-import { sortVersionStrings, isDefinedNotNull } from '../utils/ObjectUtils';
+import { isDefinedNotNull } from '../utils/ObjectUtils';
 import {
   getInitialState,
   setLoadingState,
@@ -234,7 +235,7 @@ export default function (state = INITIAL_STATE, action) {
     case FETCH_SOFTWARE_VERSIONS:
       return { ...state, softwareVersions: [] };
     case FETCH_SOFTWARE_VERSIONS_SUCCESS:
-      return { ...state, softwareVersions: sortVersionStrings(action.payload.data) };
+      return { ...state, softwareVersions: action.payload.data.sort(sortVersion) };
     case FETCH_SOFTWARE_VERSIONS_FAILURE:
       return { ...state };
     case FETCH_TLS_CERTS:
