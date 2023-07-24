@@ -417,7 +417,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 		 * TODO(#18018): deduplicate with ybc_getnext_heaptuple,
 		 * ybc_getnext_indextuple.
 		 */
-		scan->xs_recheck = (ybscan->nhash_keys > 0 ||
+		scan->xs_recheck = (ybscan->hash_code_keys != NIL ||
 							!ybscan->is_full_cond_bound);
 		if (!ybscan->is_exec_done)
 		{
