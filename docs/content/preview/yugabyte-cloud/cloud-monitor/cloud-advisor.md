@@ -14,6 +14,8 @@ type: docs
 
 Use Performance Advisor to scan your cluster for potential optimizations.
 
+{{< youtube id="8df1leHBLIQ" title="Optimize YugabyteDB Managed clusters with Performance Monitor" >}}
+
 For meaningful results, run your workload for at least an hour before running the advisor.
 
 To monitor clusters in real time, use the performance metrics on the cluster [Overview and Performance](../overview/) tabs.
