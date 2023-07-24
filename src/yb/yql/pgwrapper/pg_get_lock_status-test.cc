@@ -453,6 +453,15 @@ TEST_F(PgGetLockStatusTest, TestBlockedBy) {
     return lock_acquired.load();
   }, 5s * kTimeMultiplier, "select for update to unblock and execute"));
   th.join();
+
+  auto null_blockers_ct = ASSERT_RESULT(session1.conn->FetchValue<int64_t>(
+      Format("SELECT COUNT(*) FROM pg_locks WHERE ybdetails->>'blocked_by' IS NULL")));
+  auto not_null_blockers_ct = ASSERT_RESULT(session1.conn->FetchValue<int64_t>(
+      Format("SELECT COUNT(*) FROM pg_locks WHERE ybdetails->>'blocked_by' IS NOT NULL")));
+
+  EXPECT_GT(null_blockers_ct, 0);
+  EXPECT_EQ(not_null_blockers_ct, 0);
+
   ASSERT_OK(waiter_session.conn->CommitTransaction());
 }
 
