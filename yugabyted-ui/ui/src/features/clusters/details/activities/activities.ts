@@ -43,12 +43,28 @@ export const useActivities = (status: ACTIVITY_STATUS, database?: string) => {
 
   const activityData = useMemo<any[]>(() => {
     return (
-      upstreamActivities?.data.map((data) => ({
-        name: data.name,
-        status:
-          (data.data as any).Phase === "Completed" ? BadgeVariant.Success : BadgeVariant.InProgress,
-        ...data.data,
-      })) ?? []
+      upstreamActivities?.data.map((data) => {
+        const activityData = data.data as any;
+        const isCompletedActivity = activityData.Phase === "Completed";
+
+        return {
+          Name: data.name,
+          status: isCompletedActivity ? BadgeVariant.Success : BadgeVariant.InProgress,
+          ...(isCompletedActivity
+            ? activityData
+            : {
+                Command: activityData.Command,
+                DBName: activityData.DBName,
+                IndexName: activityData.IndexName,
+                tuplesTotal: activityData.TuplesTotal,
+                tuplesDone: activityData.TuplesDone,
+                progress:
+                  activityData.TuplesDone !== undefined && activityData.TuplesTotal
+                    ? Math.round(activityData.TuplesDone / activityData.TuplesTotal)
+                    : 0,
+              }),
+        };
+      }) ?? []
     );
   }, [upstreamActivities]);
 

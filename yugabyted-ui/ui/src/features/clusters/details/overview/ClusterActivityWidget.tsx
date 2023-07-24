@@ -102,7 +102,7 @@ export const ClusterActivityWidget: FC<ClusterActivityWidgetProps> = () => {
               </Typography>
               <Box className={classes.activityContent}>
                 <Typography variant="body2" className={classes.title} noWrap>
-                  {activityData[0].name}
+                  {activityData[0].Name}
                 </Typography>
                 <Box className={classes.statusContainer}>
                   <YBBadge variant={activityData[0].status} text={activityData[0].Phase} />

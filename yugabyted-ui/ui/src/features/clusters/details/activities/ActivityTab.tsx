@@ -1,7 +1,7 @@
 import React, { FC } from "react";
-import { Box, Grid, makeStyles, MenuItem, Typography } from "@material-ui/core";
+import { Box, Grid, makeStyles, MenuItem, Paper, Typography, useTheme } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import { YBTable, YBLoadingBox, YBModal, YBSelect, YBButton } from "@app/components";
+import { YBTable, YBLoadingBox, YBModal, YBSelect, YBButton, YBProgress } from "@app/components";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
 import { useActivities } from "./activities";
@@ -37,11 +37,18 @@ const useStyles = makeStyles((theme) => ({
   selectBox: {
     minWidth: "200px",
   },
-  sectionHeading: {
-    fontWeight: 700,
-    fontSize: "15px",
-    color: theme.palette.grey[900],
-    margin: theme.spacing(3, 0, 1, 0.5),
+  selectBoxWrapper: {
+    margin: theme.spacing(-1, 0, 1.5, 0),
+  },
+  paperContainer: {
+    padding: theme.spacing(3),
+    paddingBottom: theme.spacing(4),
+    marginBottom: theme.spacing(2),
+    border: `1px solid ${theme.palette.grey[200]}`,
+    width: "100%",
+  },
+  heading: {
+    marginBottom: theme.spacing(5),
   },
 }));
 
@@ -56,6 +63,8 @@ const ArrowComponent = (classes: ReturnType<typeof useStyles>) => () => {
 export const ActivityTab: FC = () => {
   const classes = useStyles();
   const { t } = useTranslation();
+
+  const theme = useTheme();
 
   const { data: clusterTablesResponseYsql, refetch: refetchYsql } = useGetClusterTablesQuery({
     api: GetClusterTablesApiEnum.Ysql,
@@ -98,7 +107,7 @@ export const ActivityTab: FC = () => {
 
   const activityColumns = [
     {
-      name: "name",
+      name: "Name",
       label: t("clusterDetail.activity.activity"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
@@ -149,49 +158,40 @@ export const ActivityTab: FC = () => {
 
   return (
     <Box>
-      <Box className={classes.sectionHeading}>
-        {t("clusterDetail.activity.inprogressActivities")}
-      </Box>
-      <Box
-        display="flex"
-        alignItems="end"
-        justifyContent="space-between"
-        pb={2}
-        gridGap={4}
-        flexWrap="wrap"
-      >
-        <Box>
-          {ysqlDBList.length > 0 && (
-            <>
-              <Typography
-                variant="subtitle2"
-                className={classes.label}
-                style={{ marginBottom: 0, marginLeft: 1.5 }}
-              >
-                {t("clusterDetail.activity.database")}
-              </Typography>
-              <YBSelect
-                className={classes.selectBox}
-                value={selectedDB}
-                onChange={(e) => setSelectedDB(e.target.value)}
-              >
-                {ysqlDBList.map((dbName) => {
-                  return (
-                    <MenuItem key={dbName} value={dbName}>
-                      {dbName}
-                    </MenuItem>
-                  );
-                })}
-              </YBSelect>
-            </>
-          )}
+      <Paper className={classes.paperContainer}>
+        <Box display="flex" justifyContent="space-between" alignItems="start">
+          <Typography variant="h4" className={classes.heading}>
+            {t("clusterDetail.activity.inprogressActivities")}
+          </Typography>
+          <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={refetch}>
+            {t("clusterDetail.performance.actions.refresh")}
+          </YBButton>
         </Box>
-        <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={refetch}>
-          {t("clusterDetail.performance.actions.refresh")}
-        </YBButton>
-      </Box>
-      {inProgressActivityData.length ? (
-        <Box pb={5}>
+        {ysqlDBList.length > 0 && (
+          <Box className={classes.selectBoxWrapper}>
+            <Typography
+              variant="subtitle2"
+              className={classes.label}
+              style={{ marginBottom: 0, marginLeft: 1.5, marginTop: 0 }}
+            >
+              {t("clusterDetail.activity.database")}
+            </Typography>
+            <YBSelect
+              className={classes.selectBox}
+              value={selectedDB}
+              onChange={(e) => setSelectedDB(e.target.value)}
+            >
+              {ysqlDBList.map((dbName) => {
+                return (
+                  <MenuItem key={dbName} value={dbName}>
+                    {dbName}
+                  </MenuItem>
+                );
+              })}
+            </YBSelect>
+          </Box>
+        )}
+        {inProgressActivityData.length ? (
           <YBTable
             data={inProgressActivityData}
             columns={activityColumns}
@@ -201,18 +201,18 @@ export const ActivityTab: FC = () => {
               onRowClick: (_, { dataIndex }) =>
                 setDrawerOpenData({ dataList: inProgressActivityData, index: dataIndex }),
             }}
-            touchBorder={false}
+            withBorder={false}
           />
-        </Box>
-      ) : (
-        <YBLoadingBox>{t("clusterDetail.activity.noInprogressActivities")}</YBLoadingBox>
-      )}
+        ) : (
+          <YBLoadingBox>{t("clusterDetail.activity.noInprogressActivities")}</YBLoadingBox>
+        )}
+      </Paper>
 
-      <Box className={classes.sectionHeading}>
-        {t("clusterDetail.activity.completedActivities")}
-      </Box>
-      {completedActivityData.length ? (
-        <Box pb={4}>
+      <Paper className={classes.paperContainer}>
+        <Typography variant="h4" className={classes.heading}>
+          {t("clusterDetail.activity.completedActivities")}
+        </Typography>
+        {completedActivityData.length ? (
           <YBTable
             data={completedActivityData}
             columns={activityColumns}
@@ -222,12 +222,12 @@ export const ActivityTab: FC = () => {
               onRowClick: (_, { dataIndex }) =>
                 setDrawerOpenData({ dataList: completedActivityData, index: dataIndex }),
             }}
-            touchBorder={false}
+            withBorder={false}
           />
-        </Box>
-      ) : (
-        <YBLoadingBox>{t("clusterDetail.activity.noCompletedActivities")}</YBLoadingBox>
-      )}
+        ) : (
+          <YBLoadingBox>{t("clusterDetail.activity.noCompletedActivities")}</YBLoadingBox>
+        )}
+      </Paper>
 
       <YBModal
         open={drawerOpenData !== undefined}
@@ -247,7 +247,7 @@ export const ActivityTab: FC = () => {
                     {t("clusterDetail.activity.details.operationName")}
                   </Typography>
                   <Typography variant="body2" className={classes.value}>
-                    {drawerOpenData.dataList[drawerOpenData.index].name}
+                    {drawerOpenData.dataList[drawerOpenData.index].Name}
                   </Typography>
                 </Grid>
                 <Grid xs={6} item>
@@ -260,10 +260,10 @@ export const ActivityTab: FC = () => {
                   />
                 </Grid>
                 {activityValues?.map(([key, value]) =>
-                  key === "name" || key === "status" ? (
-                    <></>
+                  key.charAt(0).toLowerCase() === key.charAt(0) || key === "Name" ? (
+                    <React.Fragment key={key} />
                   ) : (
-                    <Grid xs={6} item>
+                    <Grid xs={6} item key={key}>
                       <Typography variant="subtitle2" className={classes.label}>
                         {key.split(/(?=[A-Z][^A-Z])/).join(" ")}
                       </Typography>
@@ -273,15 +273,22 @@ export const ActivityTab: FC = () => {
                     </Grid>
                   )
                 )}
-                {/* <Grid xs={12} item>
-                      <Box display="flex" justifyContent="space-between">
-                        <Typography variant="subtitle2" className={classes.label}>
-                          {t("clusterDetail.activity.details.progress")}
-                        </Typography>
-                        22%
-                      </Box>
-                      <YBProgress value={22} color={theme.palette.primary[500]} />
-                    </Grid> */}
+                {drawerOpenData.dataList[drawerOpenData.index].progress !== undefined && (
+                  <Grid xs={12} item>
+                    <Box display="flex" justifyContent="space-between">
+                      <Typography variant="subtitle2" className={classes.label}>
+                        {t("clusterDetail.activity.details.progress")}
+                      </Typography>
+                      {drawerOpenData.dataList[drawerOpenData.index].progress}%
+                    </Box>
+                    <Box mb={1}>
+                      <YBProgress
+                        value={drawerOpenData.dataList[drawerOpenData.index].progress}
+                        color={theme.palette.primary[500]}
+                      />
+                    </Box>
+                  </Grid>
+                )}
               </Grid>
             </Box>
           </>
