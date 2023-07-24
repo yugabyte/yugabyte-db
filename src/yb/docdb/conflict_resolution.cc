@@ -110,6 +110,8 @@ class ConflictResolverContext {
 
   virtual TransactionId transaction_id() const = 0;
 
+  virtual SubTransactionId subtransaction_id() const = 0;
+
   virtual std::string ToString() const = 0;
 
   virtual Result<TabletId> GetStatusTablet(ConflictResolver* resolver) const = 0;
@@ -610,8 +612,8 @@ class WaitOnConflictResolver : public ConflictResolver {
   void TryPreWait() {
     DCHECK(!status_tablet_id_.empty());
     auto did_wait_or_status = wait_queue_->MaybeWaitOnLocks(
-        context_->transaction_id(), lock_batch_, status_tablet_id_, serial_no_,
-        std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
+        context_->transaction_id(), context_->subtransaction_id(), lock_batch_, status_tablet_id_,
+        serial_no_, std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
     if (!did_wait_or_status.ok()) {
       InvokeCallback(did_wait_or_status.status());
     } else if (!*did_wait_or_status) {
@@ -627,8 +629,8 @@ class WaitOnConflictResolver : public ConflictResolver {
            conflict_data_->NumActiveTransactions(), wait_for_iters_);
 
     return wait_queue_->WaitOn(
-        context_->transaction_id(), lock_batch_, ConsumeTransactionDataAndReset(),
-        status_tablet_id_, serial_no_,
+        context_->transaction_id(), context_->subtransaction_id(), lock_batch_,
+        ConsumeTransactionDataAndReset(), status_tablet_id_, serial_no_,
         std::bind(&WaitOnConflictResolver::WaitingDone, shared_from(this), _1, _2));
   }
 
@@ -1120,6 +1122,13 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     return *transaction_id_;
   }
 
+  SubTransactionId subtransaction_id() const override {
+    if (write_batch_.subtransaction().has_subtransaction_id()) {
+      return write_batch_.subtransaction().subtransaction_id();
+    }
+    return kMinSubTransactionId;
+  }
+
   bool IsSingleShardTransaction() const override {
     return false;
   }
@@ -1222,6 +1231,10 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
 
   TransactionId transaction_id() const override {
     return TransactionId::Nil();
+  }
+
+  SubTransactionId subtransaction_id() const override {
+    return kMinSubTransactionId;
   }
 
   bool IsSingleShardTransaction() const override {
