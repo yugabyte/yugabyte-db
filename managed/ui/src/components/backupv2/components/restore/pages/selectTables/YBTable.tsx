@@ -38,6 +38,7 @@ type YBTableProps<T, V extends FieldValues = FieldValues> = {
   name: keyof FieldValues;
   sortFn?: (tables: T[]) => T[];
   setValue: (table: T[]) => void;
+  defaultValues: T[];
 };
 
 type FilterOptions = 'ALL' | 'SELECTED';
@@ -89,10 +90,21 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export const YBTable = <T,>(props: YBTableProps<T>) => {
-  const { tableHeader, table, name, setValue } = props;
+const getDefaultValues = <T,>(allValues: T[], selected: T[]) => {
+  return allValues.reduce((prev, cur, ind) => {
+    if (selected.includes(cur)) {
+      prev[ind] = cur;
+    }
+    return prev;
+  }, {});
+};
 
-  const [selected, { set, reset, setAll, get, remove }] = useMap<typeof table>();
+export const YBTable = <T,>(props: YBTableProps<T>) => {
+  const { tableHeader, table, name, setValue, defaultValues } = props;
+
+  const [selected, { set, setAll, get, remove }] = useMap<typeof table>(
+    (getDefaultValues(table, defaultValues) as unknown) as T[]
+  );
 
   const selectedEntriesCount = Object.keys(selected).length;
 
@@ -130,7 +142,7 @@ export const YBTable = <T,>(props: YBTableProps<T>) => {
                 if (state) {
                   setAll(Object.fromEntries(table.map((obj, i) => [i, obj])) as any);
                 } else {
-                  reset();
+                  setAll([]);
                 }
               }}
               icon={<img src={UnChecked} alt="unchecked" />}
