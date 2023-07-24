@@ -65,10 +65,10 @@ CREATE TABLE order_details (
 );
 ```
 
-Then create an index on `order_updated` using range sharding:
+Then create an index on `order_updated` using HASH sharding:
 
 ```sql
-CREATE INDEX ON order_details (order_updated asc);
+CREATE INDEX ON order_details (order_updated HASH);
 ```
 
 The following query finds the number of orders in a specific time window:
