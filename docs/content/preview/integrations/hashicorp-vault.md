@@ -19,7 +19,7 @@ For more details, refer to [Dynamic secrets](https://github.com/yugabyte/hashico
 
 ## YSQL plugin for Hashicorp Vault
 
-YSQL plugin provides APIs for using the HashiCorp Vault's dynamic secrets for YugabyteDB. The plugin includes APIs which can be used to add YugabyteDB to manage secrets, create new users, and manage [leases](https://developer.hashicorp.com/vault/docs/concepts/lease).
+YSQL plugin provides APIs for using the HashiCorp Vault's dynamic secrets for YugabyteDB. The APIs can be used to add YugabyteDB to manage secrets, create new users, and manage [leases](https://developer.hashicorp.com/vault/docs/concepts/lease).
 
 For more details, refer to [YSQL plugin for Hashicorp Vault](https://github.com/yugabyte/hashicorp-vault-ysql-plugin#ysql-plugin-for-hashicorp-vault-1).
 
@@ -46,7 +46,7 @@ Before using the vault, do the following:
     go build -o <build dir>/ysql-plugin cmd/ysql-plugin/main.go
     ```
 
-1. To the vault in development mode, add the default vault address and vault token as follows:
+1. To use the vault in development mode, add the default vault address and vault token as follows:
 
     ```sh
     export VAULT_ADDR="http://localhost:8200"
