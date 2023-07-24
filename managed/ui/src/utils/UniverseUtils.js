@@ -436,3 +436,11 @@ export const verifyLDAPAttributes = (GFlagInput) => {
   }
   return { isAttributeInvalid, errorMessage, isWarning };
 };
+
+export const optimizeVersion = (version) => {
+  if (parseInt(version[version.length - 1], 10) === 0) {
+    return optimizeVersion(version.slice(0, version.length - 1));
+  } else {
+    return version.join('.');
+  }
+};
