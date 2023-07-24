@@ -79,7 +79,7 @@ Before using the vault, do the following:
         command="ysql-plugin"
     ```
 
-1. You can add the database using one of the two following options:
+1. You can add the database using one of the following options:
 
     * Enter the credentials:
 
