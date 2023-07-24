@@ -345,4 +345,7 @@ extern PGPROC *AuxiliaryPidGetProc(int pid);
 extern void BecomeLockGroupLeader(void);
 extern bool BecomeLockGroupMember(PGPROC *leader, int pid);
 
+extern void RemoveLockGroupLeader(PGPROC *proc);
+extern void ReleaseProcToFreeList(PGPROC *proc);
+
 #endif							/* PROC_H */
