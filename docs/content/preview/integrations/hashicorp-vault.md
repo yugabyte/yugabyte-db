@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-HashiCorp Vault is designed to help organizations manage access to secrets and transmit them safely in an organization.
+[HashiCorp Vault](https://www.hashicorp.com/products/vault) is designed to help organizations manage access to secrets and transmit them safely in an organization.
 
 Secrets are defined as any form of sensitive credentials that need to be tightly controlled and monitored and can be used to unlock sensitive information. Secrets could be in the form of passwords, API keys, SSH keys, RSA tokens, or OTP.
 
