@@ -95,7 +95,7 @@ yugabyte=# CREATE schema schema22;
 CREATE SCHEMA
 ```
 
-Modify the increment value.
+Rename the schema.
 
 ```plpgsql
 yugabyte=# ALTER SCHEMA schema22 RENAME TO schema25;
