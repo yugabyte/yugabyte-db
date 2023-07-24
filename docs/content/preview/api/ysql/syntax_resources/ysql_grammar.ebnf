@@ -1382,7 +1382,7 @@ extension_name = name ;
 
 matview_name = qualified_name ;
 
-new_owner = qualified_name ;
+new_owner = name ;
 alter_fdw_options = ('ADD' | 'SET' | 'DROP' ) option_name [ option_value ] { ',' alter_option } ;
 fdw_name = '<Text Literal>' ;
 handler_name = '<Text Literal>' ;
