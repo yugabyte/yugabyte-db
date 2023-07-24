@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-HashiCorp Vault is designed to help organizations manage access to secrets and transmit them safely.
+[HashiCorp Vault](https://www.hashicorp.com/products/vault) is designed to help organizations manage access to secrets and transmit them safely.
 
 Secrets are any form of sensitive credentials that need to be tightly controlled and monitored and can be used to unlock sensitive information. Secrets can be in the form of passwords, API keys, SSH keys, RSA tokens, or OTP.
 
@@ -25,7 +25,7 @@ For more details, refer to [YSQL plugin for Hashicorp Vault](https://github.com/
 
 ## Setup
 
-Set the following envoronment variables:
+Before using the vault, do the following:
 
 - Add go to the path as follows:
 
