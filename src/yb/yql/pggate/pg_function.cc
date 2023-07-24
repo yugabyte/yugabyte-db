@@ -220,7 +220,8 @@ Result<PgTableRow> AddLock(
     RETURN_NOT_OK(SetColumnValue("column_id", lock.column_id(), schema, &row));
   RETURN_NOT_OK(SetColumnValue("multiple_rows_locked", lock.multiple_rows_locked(), schema, &row));
 
-  RETURN_NOT_OK(SetColumnValue("blocked_by", blocking_txn_ids, schema, &row));
+  if (!blocking_txn_ids.empty())
+    RETURN_NOT_OK(SetColumnValue("blocked_by", blocking_txn_ids, schema, &row));
 
   return row;
 }
