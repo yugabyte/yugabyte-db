@@ -16,7 +16,7 @@ type: docs
 
 Single-region dedicated clusters support multi-node and highly available deployments and are suitable for production deployments.
 
-{{< youtube id="qYMcNzWotkI" title="Deploy a fault tolerant cluster in YugabyteDB Managed" >}}
+{{< youtube id="1eo7YXs3uTw" title="Deploy a fault tolerant cluster in YugabyteDB Managed" >}}
 
 ## Features
 
