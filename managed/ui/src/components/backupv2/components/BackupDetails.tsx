@@ -419,7 +419,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                         }
                       },
                       {
-                        isRestoreEntireBackup: true,
+                        isRestoreEntireBackup: incrementalBackupProps.isRestoreEntireBackup,
                         incrementalBackupUUID: incrementalBackupProps.incrementalBackupUUID,
                         singleKeyspaceRestore: incrementalBackupProps.singleKeyspaceRestore
                       }
