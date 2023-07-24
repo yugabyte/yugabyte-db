@@ -77,14 +77,14 @@
       state: present
     tags: yb-prebuilt-ami
 
+- name: Provision | Ensure proper ownership for mount paths.
+  shell: |
+    chown -R {{ user_name }}:{{ user_name }} {{ item }}
+  with_items: "{{ mount_points.split(',') }}"
+
 - name: Provision | Ensure proper permissions for mount paths.
-  file:
-    mode: 0755
-    path: "{{ item }}"
-    state: directory
-    owner: "{{ user_name }}"
-    group: "{{ user_name }}"
-    recurse: yes
+  shell: |
+    chmod -R 755 {{ item }}
   with_items: "{{ mount_points.split(',') }}"
 
 - name: setup-postgres-cgroups
