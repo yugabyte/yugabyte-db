@@ -88,7 +88,7 @@ Username of current session.
 Create a simple schema.
 
 ```plpgsql
-yugabyte=# CREATE schema schema22;
+yugabyte=# CREATE SCHEMA schema22;
 ```
 
 ```
