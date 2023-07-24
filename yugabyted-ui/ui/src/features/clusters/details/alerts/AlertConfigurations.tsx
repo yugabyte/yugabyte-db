@@ -1,11 +1,23 @@
 import React, { FC, useMemo } from "react";
 import { Box } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import { YBTable, YBLoadingBox, YBToggle } from "@app/components";
+import { YBTable, YBLoadingBox, YBToggle, YBTooltip } from "@app/components";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import type { TFunction } from "i18next";
 import { useLocalStorage } from "react-use";
 import { AlertConfiguration, alertConfigurationsKey, alertList } from "./alerts";
+
+const NameComponent = (dataIndex: number) => {
+  const { name } = alertList[dataIndex];
+  const description = "";
+
+  return (
+    <Box display="flex" alignItems="center" gridGap={1}>
+      {name}
+      {description && <YBTooltip title={description} />}
+    </Box>
+  );
+};
 
 const StatusComponent = (t: TFunction) => (status: BadgeVariant) => {
   const badgeText =
@@ -41,6 +53,7 @@ export const AlertConfigurations: FC = () => {
       name: "name",
       label: t("clusterDetail.alerts.configuration.name"),
       options: {
+        customBodyRenderLite: NameComponent,
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
