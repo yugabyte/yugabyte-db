@@ -15,7 +15,8 @@ import {
   getPrimaryCluster,
   getClusterProviderUUIDs,
   getProviderMetadata,
-  getUniverseNodeCount
+  getUniverseNodeCount,
+  optimizeVersion
 } from '../../../utils/UniverseUtils';
 import { isNotHidden, isDisabled } from '../../../utils/LayoutUtils';
 import { ybFormatDate, YBTimeFormats } from '../../../redesign/helpers/DateUtils';
@@ -104,6 +105,13 @@ class UniverseDisplayItem extends Component {
               </DescriptionItem>
               <DescriptionItem title="Created">
                 <span>{universeCreationDate}</span>
+              </DescriptionItem>
+              <DescriptionItem title="Version">
+                <span>
+                  {optimizeVersion(
+                    primaryCluster?.userIntent.ybSoftwareVersion.split('-')[0].split('.')
+                  )}
+                </span>
               </DescriptionItem>
             </div>
           </div>
