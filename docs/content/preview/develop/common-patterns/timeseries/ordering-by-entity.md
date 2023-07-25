@@ -75,7 +75,7 @@ Distributing the data by the entity(`car`) and ordering the data by timestamp fo
 
 The following section describes a basic method to overcome the hot shard problem.
 
-## Bucketing for distribution
+## Bucket-based distribution
 
 Bucketing allows you to distribute your data on a specific entity and at the same time keep the data ordered in the entity. The idea is to split the entities' data into buckets and distribute the buckets. To understand this, you can modify the above table to add a `bucketid`.
 
