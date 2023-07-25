@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMultiset;
 import com.google.common.collect.Iterables;
 import com.jayway.jsonpath.Configuration;
@@ -119,6 +120,73 @@ public class CommonUtils {
           "KEYSPACETABLELIST",
           // General API field
           "KEYSPACE");
+
+  public static final ImmutableMap<Character, Character> CHAR_MAP =
+      ImmutableMap.<Character, Character>builder()
+          .put('A', '#')
+          .put('B', '@')
+          .put('C', '*')
+          .put('D', '$')
+          .put('E', '%')
+          .put('F', '^')
+          .put('G', '&')
+          .put('H', '!')
+          .put('I', '~')
+          .put('J', '+')
+          .put('K', '-')
+          .put('L', '=')
+          .put('M', ':')
+          .put('N', ';')
+          .put('O', '?')
+          .put('P', '<')
+          .put('Q', '>')
+          .put('R', '(')
+          .put('S', ')')
+          .put('T', '{')
+          .put('U', '}')
+          .put('V', '[')
+          .put('W', ']')
+          .put('X', '/')
+          .put('Y', '|')
+          .put('Z', '.')
+          .put('a', '#')
+          .put('b', '@')
+          .put('c', '*')
+          .put('d', '$')
+          .put('e', '%')
+          .put('f', '^')
+          .put('g', '&')
+          .put('h', '!')
+          .put('i', '~')
+          .put('j', '+')
+          .put('k', '-')
+          .put('l', '=')
+          .put('m', ':')
+          .put('n', ';')
+          .put('o', '?')
+          .put('p', '<')
+          .put('q', '>')
+          .put('r', '(')
+          .put('s', ')')
+          .put('t', '{')
+          .put('u', '}')
+          .put('v', '[')
+          .put('w', ']')
+          .put('x', '/')
+          .put('y', '|')
+          .put('z', '.')
+          .put('0', '\'')
+          .put('1', '\'')
+          .put('2', '\'')
+          .put('3', '\'')
+          .put('4', '\'')
+          .put('5', '\'')
+          .put('6', '\'')
+          .put('7', '\'')
+          .put('8', '\'')
+          .put('9', '\'')
+          .put(' ', '\'')
+          .build();
 
   /**
    * Checks whether the field name represents a field with a sensitive data or not.
@@ -723,6 +791,17 @@ public class CommonUtils {
     return nodeToUse;
   }
 
+  public static String logTableName(String tableName) {
+    if (StringUtils.isBlank(tableName)) {
+      return "";
+    }
+    char[] logTableName = new char[tableName.length() * 2];
+    for (int i = 0; i < tableName.length(); i++) {
+      logTableName[2 * i] = tableName.charAt(i);
+      logTableName[2 * i + 1] = CHAR_MAP.getOrDefault(tableName.charAt(i), tableName.charAt(i));
+    }
+    return new String(logTableName).trim();
+  }
   /**
    * This method extracts the json from shell response where the shell executes a SQL Query that
    * aggregates the response as JSON e.g. select jsonb_agg() The resultant shell output has json

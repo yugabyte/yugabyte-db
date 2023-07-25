@@ -135,7 +135,7 @@ public class MultiTableBackup extends UniverseTaskBase {
               log.info(
                   "Queuing backup for table {}:{}",
                   tableSchema.getNamespace(),
-                  tableSchema.getTableName());
+                  CommonUtils.logTableName(tableSchema.getTableName()));
 
               tablesToBackup.add(
                   String.format("%s:%s", tableSchema.getNamespace(), tableSchema.getTableName()));
@@ -215,10 +215,13 @@ public class MultiTableBackup extends UniverseTaskBase {
                     "Unrecognized table type {} for {}:{}",
                     tableType,
                     tableKeySpace,
-                    table.getName());
+                    CommonUtils.logTableName(table.getName()));
               }
 
-              log.info("Queuing backup for table {}:{}", tableKeySpace, table.getName());
+              log.info(
+                  "Queuing backup for table {}:{}",
+                  tableKeySpace,
+                  CommonUtils.logTableName(table.getName()));
 
               tablesToBackup.add(String.format("%s:%s", tableKeySpace, table.getName()));
             }
