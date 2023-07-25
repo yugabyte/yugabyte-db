@@ -235,6 +235,11 @@ alter_column_constraint = [ 'CONSTRAINT' constraint_name ]
                          | references_clause )
                       [ 'DEFERRABLE' | 'NOT' 'DEFERRABLE' ] [ 'INITIALLY' 'DEFERRED' | 'INITIALLY' 'IMMEDIATE' ] ;
 
+(* 'ALTER' 'SCHEMA' *)
+alter_schema = 'ALTER' 'SCHEMA' schema_name (
+                'RENAME' 'TO' new_name |
+                'OWNER' 'TO' (new_owner | 'CURRENT_USER' | 'SESSION_USER') ) ;
+
 (* 'ALTER' 'USER' *)
 alter_user = 'ALTER' 'USER' role_specification [ [ 'WITH' ] alter_role_option { ',' alter_role_option } ] ;
 
@@ -1377,7 +1382,7 @@ extension_name = name ;
 
 matview_name = qualified_name ;
 
-new_owner = qualified_name ;
+new_owner = name ;
 alter_fdw_options = ('ADD' | 'SET' | 'DROP' ) option_name [ option_value ] { ',' alter_option } ;
 fdw_name = '<Text Literal>' ;
 handler_name = '<Text Literal>' ;
