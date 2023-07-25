@@ -2311,6 +2311,12 @@ static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
         Assert(pnsi != NULL);
         rtindex = list_length(pstate->p_rtable);
         Assert(rtindex == 1); // rte is the only RangeTblEntry in pstate
+        if (rtindex != 1)
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_DATATYPE_MISMATCH),
+                     errmsg("invalid value for rtindex")));
+        }
 
         /*
          * add all the target entries in pnsi to the current target list to pass
@@ -2585,6 +2591,12 @@ static Query *transform_cypher_match_pattern(cypher_parsestate *cpstate,
             rte = pnsi->p_rte;
             rtindex = list_length(pstate->p_rtable);
             Assert(rtindex == 1); // rte is the first RangeTblEntry in pstate
+            if (rtindex != 1)
+            {
+                ereport(ERROR,
+                        (errcode(ERRCODE_DATATYPE_MISMATCH),
+                         errmsg("invalid value for rtindex")));
+            }
 
             /*
              * add all the target entries in rte to the current target list to pass
@@ -6775,6 +6787,12 @@ static void handle_prev_clause(cypher_parsestate *cpstate, Query *query,
     if (first_rte)
     {
         Assert(rtindex == 1);
+        if (rtindex != 1)
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_DATATYPE_MISMATCH),
+                     errmsg("invalid value for rtindex")));
+        }
     }
 
     // add all the rte's attributes to the current queries targetlist
