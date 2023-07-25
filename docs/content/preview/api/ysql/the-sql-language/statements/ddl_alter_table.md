@@ -224,7 +224,6 @@ ALTER TABLE test ALTER COLUMN a TYPE VARCHAR(51);
 ##### Alter type with table rewrite
 
 If the change requires data on disk to change, a full table rewrite will be done and the following semantics apply:
-- This action is unsafe, so concurrent DMLs may be dropped and should not be performed while an alter column type operation is happening.
 - The action creates an entirely new table under the hood, and concurrent DMLs may not be reflected in the new table which can lead to correctness issues.
 - This action is not compatible with partitioned tables, tables with rules, and tables with CDC streams.
 - If the operation fails, it is possible that the existing table is renamed in DocDB. This may lead to issues like yb-admin commands that take table name.
