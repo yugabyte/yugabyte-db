@@ -47,7 +47,7 @@ Use the `ALTER SCHEMA` statement to change the definition of a schema.
 * ALTER SCHEMA changes the definition of a schema.
 * In order to use `ALTER SCHEMA`, you need to be the owner of the schema.
 * Renaming a schema requires having the `CREATE` privilege for the database.
-* If you want to change the owner, you must also be a direct or indirect member of the new owning role, and you need to have the `CREATE` privilege for the database. (It's worth noting that superusers posses these privileges by default.)
+* If you want to change the owner, you must also be a direct or indirect member of the new owning role, and you need to have the `CREATE` privilege for the database. (It's worth noting that superusers possess these privileges by default.)
 
 ### *alter_schema*
 
