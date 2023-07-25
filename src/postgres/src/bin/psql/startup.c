@@ -18,6 +18,7 @@
 
 #include "command.h"
 #include "common.h"
+#include "common/string.h"
 #include "describe.h"
 #include "help.h"
 #include "input.h"
@@ -99,8 +100,7 @@ main(int argc, char *argv[])
 {
 	struct adhoc_opts options;
 	int			successResult;
-	bool		have_password = false;
-	char		password[100];
+	char	   *password = NULL;
 	bool		new_pass;
 
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("psql"));
@@ -211,8 +211,7 @@ main(int argc, char *argv[])
 		 * offer a potentially wrong one.  Typical uses of this option are
 		 * noninteractive anyway.
 		 */
-		simple_prompt("Password: ", password, sizeof(password), false);
-		have_password = true;
+		password = simple_prompt("Password: ", false);
 	}
 
 	/* loop until we have a password if requested by backend */
@@ -229,7 +228,7 @@ main(int argc, char *argv[])
 		keywords[2] = "user";
 		values[2] = options.username;
 		keywords[3] = "password";
-		values[3] = have_password ? password : NULL;
+		values[3] = password;
 		keywords[4] = "dbname"; /* see do_connect() */
 		values[4] = (options.list_dbs && options.dbname == NULL) ?
 			"postgres" : options.dbname;
@@ -247,7 +246,7 @@ main(int argc, char *argv[])
 
 		if (PQstatus(pset.db) == CONNECTION_BAD &&
 			PQconnectionNeedsPassword(pset.db) &&
-			!have_password &&
+			!password &&
 			pset.getPassword != TRI_NO)
 		{
 			/*
@@ -265,9 +264,8 @@ main(int argc, char *argv[])
 				password_prompt = pg_strdup(_("Password: "));
 			PQfinish(pset.db);
 
-			simple_prompt(password_prompt, password, sizeof(password), false);
+			password = simple_prompt(password_prompt, false);
 			free(password_prompt);
-			have_password = true;
 			new_pass = true;
 		}
 	} while (new_pass);
