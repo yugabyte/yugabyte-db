@@ -30,6 +30,7 @@
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
+#include "yb/dockv/pg_key_decoder.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/reader_projection.h"
@@ -222,7 +223,8 @@ Status GetSplitPoints(YBCPgTableDesc table_desc,
         split_datums[split_datum_idx].datum_kind = YB_YQL_DATUM_LIMIT_MAX;
       } else {
         table_row.Reset();
-        RETURN_NOT_OK(table_row.DecodeKey(col_idx, &column_bounds));
+        RETURN_NOT_OK(dockv::PgKeyDecoder::DecodeEntry(
+            &column_bounds, schema.column(col_idx), &table_row, col_idx));
         split_datums[split_datum_idx].datum_kind = YB_YQL_DATUM_STANDARD_VALUE;
 
         auto val = table_row.GetValueByIndex(col_idx);

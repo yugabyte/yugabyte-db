@@ -33,6 +33,7 @@ set(DOCKV_SRCS
     expiration.cc
     intent.cc
     key_bytes.cc
+    pg_key_decoder.cc
     pg_row.cc
     packed_row.cc
     partial_row.cc
