@@ -166,14 +166,14 @@ If this file does not exist, create the following two files:
 
 Ensure that the `plist` files are owned by `root:wheel` and have permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run the following commands:
 
-  ```sh
+```sh
 sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
 sudo launchctl load -w /Library/LaunchDaemons/limit.maxproc.plist
-  ```
+```
 
 You might need to `unload` the service before loading it.
 
-### Download YugabyteDB
+### Download
 
 You download YugabyteDB as follows:
 
@@ -217,70 +217,7 @@ Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally
 
 {{< /tabpane >}}
 
-Expect an output similar to the following:
-
-```output
-+----------------------------------------------------------------------------------------------------------+
-|                                                yugabyted                                                 |
-+----------------------------------------------------------------------------------------------------------+
-| Status              : Running.                                                                           |
-| Replication Factor  : 1                                                                                  |
-| YugabyteDB UI       : http://127.0.0.1:15433                                                             |
-| JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte          |
-| YSQL                : bin/ysqlsh   -U yugabyte -d yugabyte                                               |
-| YCQL                : bin/ycqlsh   -u cassandra                                                          |
-| Data Dir            : /Users/myuser/var/data                                                             |
-| Log Dir             : /Users/myuser/var/logs                                                             |
-| Universe UUID       : 41e54e9f-6f2f-4a46-befe-e0cd65d3056a                                               |
-+----------------------------------------------------------------------------------------------------------+
-```
-
-Execute the following command to check the cluster status at any time:
-
-```sh
-./bin/yugabyted status
-```
-
-## Connect to the database
-
-After the cluster has been created, clients can [connect to the YSQL and YCQL APIs](#connect-to-the-database) at `http://localhost:5433` and `http://localhost:9042` respectively. You can also check `~/var/data` to see the data directory and `~/var/logs` to see the logs directory.
-
-If you have previously installed YugabyteDB version 2.8 or later and created a cluster on the same computer, you may need to [upgrade the YSQL system catalog](../manage/upgrade-deployment/#upgrade-the-ysql-system-catalog) to run the latest features.
-
-Using the YugabyteDB SQL shell, [ysqlsh](../admin/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
-
-To open the YSQL shell, run `ysqlsh`.
-
-```sh
-./bin/ysqlsh
-```
-
-```output
-ysqlsh (11.2-YB-2.1.0.0-b0)
-Type "help" for help.
-
-yugabyte=#
-```
-
-To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](../sample-data/retail-analytics/).
-
-### Use the YugabyteDB UI
-
-When you start a cluster using yugabyted, you can monitor the cluster using the YugabyteDB UI, available at [http://127.0.0.1:15433](http://127.0.0.1:15433).
-
-#### Overview and YB-Master status
-
-The following illustration shows the YB-Master home page with a cluster with a replication factor of 1, a single node, and no tables. The YugabyteDB version is also displayed.
-
-![master-home](/images/admin/master-home-binary-rf1.png)
-
-The **Masters** section displays the 1 YB-Master along with its corresponding cloud, region, and zone placement.
-
-#### YB-TServer status
-
-Click **See all nodes** to open the **Tablet Servers** page that lists the YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats. Because there are no user tables, **User Tablet-Peers / Leaders** is 0. As tables are added, new tablets (also known as shards) will be created automatically and distributed evenly across all the available tablet servers.
-
-![master-home](/images/admin/master-tservers-list-binary-rf1.png)
+{{% includeMarkdown "./include-connect.md" %}}
 
 ## Build an application
 
