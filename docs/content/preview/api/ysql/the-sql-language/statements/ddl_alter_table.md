@@ -212,9 +212,7 @@ A `USING` clause must be included when there is no implicit or assignment cast a
 
 ##### Alter type without table-rewrite
 
-If the change doesn't require data on disk to change, these semantics apply:
-
-- Concurrent DMLs to the table can go through.
+If the change doesn't require data on disk to change, concurrent DMLs to the table can be safely performed.
 
 Example:
 
@@ -228,7 +226,7 @@ ALTER TABLE test ALTER COLUMN a TYPE VARCHAR(51);
 If the change requires data on disk to change, a full table rewrite will be done and the following semantics apply:
 - This action is unsafe, so concurrent DMLs may be dropped and should not be performed while an alter column type operation is happening.
 - The action creates an entirely new table under the hood, and concurrent DMLs may not be reflected in the new table which can lead to correctness issues.
-- This action is not compatible with: partitioned tables, tables with rules, and tables with CDC streams.
+- This action is not compatible with partitioned tables, tables with rules, and tables with CDC streams.
 - If the operation fails, it is possible that the existing table is renamed in DocDB. This may lead to issues like yb-admin commands that take table name.
 - If the operation fails, a new dangling table may exist.
 - Altering the data type of a foreign key column is not supported.
