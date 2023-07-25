@@ -539,6 +539,7 @@ XLogDumpDisplayRecord(XLogDumpConfig *config, XLogReaderState *record)
 	int			block_id;
 	uint8		info = XLogRecGetInfo(record);
 	XLogRecPtr	xl_prev = XLogRecGetPrev(record);
+	StringInfoData s;
 
 	XLogDumpRecordLen(record, &rec_len, &fpi_len);
 
@@ -554,8 +555,10 @@ XLogDumpDisplayRecord(XLogDumpConfig *config, XLogReaderState *record)
 		   (uint32) (xl_prev >> 32), (uint32) xl_prev);
 	printf("desc: %s ", id);
 
-	/* the desc routine will printf the description directly to stdout */
-	desc->rm_desc(NULL, record);
+	initStringInfo(&s);
+	desc->rm_desc(&s, record);
+	printf("%s", s.data);
+	pfree(s.data);
 
 	if (!config->bkp_details)
 	{
