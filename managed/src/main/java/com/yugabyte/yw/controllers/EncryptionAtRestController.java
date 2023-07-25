@@ -130,9 +130,20 @@ public class EncryptionAtRestController extends AuthenticatedController {
         }
         break;
       case HASHICORP:
-        if (formData.get(HashicorpVaultConfigParams.HC_VAULT_ADDRESS) == null
-            || formData.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) == null) {
-          throw new PlatformServiceException(BAD_REQUEST, "Invalid VAULT URL OR TOKEN");
+        if (formData.get(HashicorpVaultConfigParams.HC_VAULT_ADDRESS) == null) {
+          throw new PlatformServiceException(BAD_REQUEST, "Invalid VAULT URL");
+        }
+        if (formData.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) == null
+            && (formData.get(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID) == null
+                || formData.get(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID) == null)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "VAULT TOKEN or AppRole credentials must be provided");
+        }
+        if (formData.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) != null
+            && (formData.get(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID) != null
+                || formData.get(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID) != null)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "One of Vault Token or AppRole credentials must be provided");
         }
         try {
           if (HashicorpEARServiceUtil.getVaultSecretEngine(formData) == null)
@@ -285,12 +296,34 @@ public class EncryptionAtRestController extends AuthenticatedController {
             HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH,
             authConfig.get(HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH));
 
-        if (formData.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) == null
-            && authConfig.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) != null) {
+        if (formData.get(HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE) == null
+            && authConfig.get(HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE) != null) {
           formData.set(
-              HashicorpVaultConfigParams.HC_VAULT_TOKEN,
-              authConfig.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN));
+              HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE,
+              authConfig.get(HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE));
         }
+
+        // all of the credentials (token or approle) are empty, populate the value from auth config
+        if (formData.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) == null
+            && (formData.get(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID) == null
+                && formData.get(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID) == null)) {
+          if (authConfig.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) != null) {
+            formData.set(
+                HashicorpVaultConfigParams.HC_VAULT_TOKEN,
+                authConfig.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN));
+          }
+          if (authConfig.get(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID) != null) {
+            formData.set(
+                HashicorpVaultConfigParams.HC_VAULT_ROLE_ID,
+                authConfig.get(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID));
+          }
+          if (authConfig.get(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID) != null) {
+            formData.set(
+                HashicorpVaultConfigParams.HC_VAULT_SECRET_ID,
+                authConfig.get(HashicorpVaultConfigParams.HC_VAULT_SECRET_ID));
+          }
+        }
+
         break;
       case GCP:
         // All these fields must be kept the same from the old authConfig (if it has)
