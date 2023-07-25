@@ -26,7 +26,7 @@ import static org.mockito.Mockito.when;
 
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
-import com.amazonaws.services.s3.model.ObjectListing;
+import com.amazonaws.services.s3.model.ListObjectsV2Result;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
@@ -314,9 +314,9 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
         .read(any());
 
     List<S3ObjectSummary> objSummaryList = new ArrayList<>();
-    ObjectListing mockObjectListing = mock(ObjectListing.class);
+    ListObjectsV2Result mockObjectListing = mock(ListObjectsV2Result.class);
     when(mockObjectListing.getObjectSummaries()).thenReturn(objSummaryList);
-    when(client.listObjects(bucketName, "")).thenReturn(mockObjectListing);
+    when(client.listObjectsV2(bucketName, fileName)).thenReturn(mockObjectListing);
 
     S3ObjectSummary objSummary = mock(S3ObjectSummary.class);
     when(objSummary.getKey()).thenReturn(fileName);
@@ -453,9 +453,9 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
         .read(any());
 
     List<S3ObjectSummary> objSummaryList = new ArrayList<>();
-    ObjectListing mockObjectListing = mock(ObjectListing.class);
+    ListObjectsV2Result mockObjectListing = mock(ListObjectsV2Result.class);
     when(mockObjectListing.getObjectSummaries()).thenReturn(objSummaryList);
-    when(client.listObjects(bucketName, "")).thenReturn(mockObjectListing);
+    when(client.listObjectsV2(bucketName, fileName)).thenReturn(mockObjectListing);
 
     assertThat(
         () -> customerConfigValidator.validateConfig(config),
@@ -506,9 +506,9 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
         .read(any());
 
     List<S3ObjectSummary> objSummaryList = new ArrayList<>();
-    ObjectListing mockObjectListing = mock(ObjectListing.class);
+    ListObjectsV2Result mockObjectListing = mock(ListObjectsV2Result.class);
     when(mockObjectListing.getObjectSummaries()).thenReturn(objSummaryList);
-    when(client.listObjects(bucketName, "")).thenReturn(mockObjectListing);
+    when(client.listObjectsV2(bucketName, fileName)).thenReturn(mockObjectListing);
 
     S3ObjectSummary objSummary = mock(S3ObjectSummary.class);
     when(objSummary.getKey()).thenReturn(fileName);
