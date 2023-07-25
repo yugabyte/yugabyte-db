@@ -16,14 +16,14 @@
 # limitations under the License.
 #
 
-FROM postgres:13
+FROM postgres:14
 
 RUN apt-get update
 RUN apt-get install --assume-yes --no-install-recommends --no-install-suggests \
   bison \
   build-essential \
   flex \
-  postgresql-server-dev-13
+  postgresql-server-dev-14
 
 COPY . /age
 RUN cd /age && make install

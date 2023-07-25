@@ -1159,7 +1159,7 @@ static void *label_seq_name_graph_cache_hash_search(Name name, Oid graph,
     label_seq_name_graph_cache_key key;
 
     // initialize the hash key for label_seq_name_graph_cache_hash
-    namecpy(&key.name, name);
+    namestrcpy(&key.name, name->data);
     key.graph = graph;
 
     return hash_search(label_seq_name_graph_cache_hash, &key, action, found);
@@ -1197,5 +1197,5 @@ static void fill_label_cache_data(label_cache_data *cache_data,
     // ag_label.seq_name
     value = heap_getattr(tuple, Anum_ag_label_seq_name, tuple_desc, &is_null);
     Assert(!is_null);
-    namecpy(&cache_data->seq_name, DatumGetName(value));
+    namestrcpy(&cache_data->seq_name, DatumGetName(value)->data);
 }

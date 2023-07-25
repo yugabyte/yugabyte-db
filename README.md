@@ -33,8 +33,8 @@
     <img src="https://img.shields.io/badge/Release-v1.3.0-FFA500?labelColor=gray&style=flat&link=https://github.com/apache/age/releases"/>
   </a>
   &nbsp;
-  <a href="https://www.postgresql.org/docs/13/index.html">
-    <img src="https://img.shields.io/badge/Version-PostgreSQL 13-00008B?labelColor=gray&style=flat&link=https://www.postgresql.org/docs/13/index.html"/>
+  <a href="https://www.postgresql.org/docs/14/index.html">
+    <img src="https://img.shields.io/badge/Version-PostgreSQL 14-00008B?labelColor=gray&style=flat&link=https://www.postgresql.org/docs/14/index.html"/>
   </a>
   &nbsp;
   <a href="https://github.com/apache/age/issues">
@@ -76,7 +76,7 @@ There is a strong need for cohesive, easy-to-implement multi-model databases. As
 
 <h2><img height="30" src="/img/tick.svg">&nbsp;&nbsp;Overview</h2>
 
-Apache AGE is : 
+Apache AGE is :
 
 - **Powerful**: adds graph database support to the already popular PostgreSQL database: PostgreSQL is used by organizations including Apple, Spotify, and NASA.
 - **Flexible**: allows you to perform openCypher queries, which makes complex queries much easier to write. It also enables querying multiple graphs at the same time.
@@ -131,7 +131,7 @@ Apache AGE is intended to be simple to install and run. It can be installed with
 &nbsp;Install PostgreSQL
 </h4>
 
-You will need to install an AGE compatible version of Postgres<a>, for now AGE supports Postgres 11, 12, & 13. Supporting the latest versions is on AGE roadmap. 
+You will need to install an AGE compatible version of Postgres<a>, for now AGE supports Postgres 11, 12, 13 & 14. Supporting the latest versions is on AGE roadmap. 
      
 <h4>
 &nbsp;Installation via Package Manager
@@ -142,14 +142,14 @@ You can use a <a href="https://www.postgresql.org/download/">package management 
 <br>
 
 ```bash
-sudo apt install postgresql 
+sudo apt install postgresql
 
 ```
 <h4>
 &nbsp;Installation From Source Code
 </h4>
 
-You can <a href="https://www.postgresql.org/ftp/source/"> download the Postgres </a> source code and install your own instance of Postgres. You can read instructions on how to install from source code for different versions on the <a href="https://www.postgresql.org/docs/13/installation.html">official Postgres Website.</a>
+You can <a href="https://www.postgresql.org/ftp/source/"> download the Postgres </a> source code and install your own instance of Postgres. You can read instructions on how to install from source code for different versions on the <a href="https://www.postgresql.org/docs/14/installation.html">official Postgres Website.</a>
 
 
 
@@ -158,7 +158,7 @@ You can <a href="https://www.postgresql.org/ftp/source/"> download the Postgres 
 
 Clone the <a href="https://github.com/apache/age">github repository</a> or download the <a href="https://github.com/apache/age/releases">download an official release.
 </a>
-Run the pg_config utility and check the version of PostgreSQL. Currently, only PostgreSQL versions 11, 12, & 13 are supported. If you have any other version of Postgres, you will need to install PostgreSQL version 11, 12, or 13.
+Run the pg_config utility and check the version of PostgreSQL. Currently, only PostgreSQL versions 11, 12, 13 & 14 are supported. If you have any other version of Postgres, you will need to install PostgreSQL version 11, 12, 13, or 14.
 <br>
     
 ```bash

@@ -219,7 +219,7 @@ static List *expand_rel_attrs(ParseState *pstate, RangeTblEntry *rte,
         te_list = lappend(te_list, te);
 
         /* Require read access to each column */
-        markVarForSelectPriv(pstate, varnode, rte);
+        markVarForSelectPriv(pstate, varnode);
     }
 
     Assert(name == NULL && var == NULL);    /* lists not the same length? */

@@ -648,7 +648,7 @@ static Datum merge_vertex(cypher_merge_custom_scan_state *css,
      */
     if (CYPHER_TARGET_NODE_INSERT_ENTITY(node->flags))
     {
-        ResultRelInfo *old_estate_es_result_relation_info = NULL;
+        ResultRelInfo **old_estate_es_result_relations = NULL;
         Datum prop;
 
         /*
@@ -659,9 +659,9 @@ static Datum merge_vertex(cypher_merge_custom_scan_state *css,
          */
 
         /* save the old result relation info */
-        old_estate_es_result_relation_info = estate->es_result_relation_info;
+        old_estate_es_result_relations = estate->es_result_relations;
 
-        estate->es_result_relation_info = resultRelInfo;
+        estate->es_result_relations = &resultRelInfo;
 
         ExecClearTuple(elemTupleSlot);
 
@@ -718,7 +718,7 @@ static Datum merge_vertex(cypher_merge_custom_scan_state *css,
         }
 
         /* restore the old result relation info */
-        estate->es_result_relation_info = old_estate_es_result_relation_info;
+        estate->es_result_relations = old_estate_es_result_relations;
 
         /*
          * When the vertex is used by clauses higher in the execution tree
@@ -857,7 +857,7 @@ static void merge_edge(cypher_merge_custom_scan_state *css,
     EState *estate = css->css.ss.ps.state;
     ExprContext *econtext = css->css.ss.ps.ps_ExprContext;
     ResultRelInfo *resultRelInfo = node->resultRelInfo;
-    ResultRelInfo *old_estate_es_result_relation_info = NULL;
+    ResultRelInfo **old_estate_es_result_relations = NULL;
     TupleTableSlot *elemTupleSlot = node->elemTupleSlot;
     Datum id;
     Datum start_id, end_id, next_vertex_id;
@@ -904,9 +904,9 @@ static void merge_edge(cypher_merge_custom_scan_state *css,
      */
 
     /* save the old result relation info */
-    old_estate_es_result_relation_info = estate->es_result_relation_info;
+    old_estate_es_result_relations = estate->es_result_relations;
 
-    estate->es_result_relation_info = resultRelInfo;
+    estate->es_result_relations = &resultRelInfo;
 
     ExecClearTuple(elemTupleSlot);
 
@@ -932,7 +932,7 @@ static void merge_edge(cypher_merge_custom_scan_state *css,
     insert_entity_tuple(resultRelInfo, elemTupleSlot, estate);
 
     /* restore the old result relation info */
-    estate->es_result_relation_info = old_estate_es_result_relation_info;
+    estate->es_result_relations = old_estate_es_result_relations;
 
     /*
      * When the edge is used by clauses higher in the execution tree

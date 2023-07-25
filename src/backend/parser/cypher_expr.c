@@ -289,7 +289,7 @@ static Node *transform_WholeRowRef(ParseState *pstate, ParseNamespaceItem *pnsi,
      result->location = location;
 
      /* mark relation as requiring whole-row SELECT access */
-     markVarForSelectPriv(pstate, result, rte);
+     markVarForSelectPriv(pstate, result);
 
      return (Node *)result;
 }
@@ -1054,7 +1054,7 @@ static Node *transform_cypher_typecast(cypher_parsestate *cpstate,
     }
 
     /* make a function call node */
-    fnode = makeFuncCall(fname, list_make1(ctypecast->expr),
+    fnode = makeFuncCall(fname, list_make1(ctypecast->expr), COERCE_SQL_SYNTAX,
                          ctypecast->location);
 
     /* return the transformed function */

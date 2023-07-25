@@ -1603,11 +1603,19 @@ ERROR:  invalid input syntax for type numeric: "2:71"
 SELECT * FROM cypher('expr', $$
 RETURN ('inf'::numeric)::numeric
 $$) AS r(result agtype);
-ERROR:  invalid input syntax for type numeric: "inf"
+      result       
+-------------------
+ Infinity::numeric
+(1 row)
+
 SELECT * FROM cypher('expr', $$
 RETURN ('infinity'::numeric)::numeric
 $$) AS r(result agtype);
-ERROR:  invalid input syntax for type numeric: "infinity"
+      result       
+-------------------
+ Infinity::numeric
+(1 row)
+
 -- verify that output can be accepted and reproduced correctly via agtype_in
 SELECT agtype_in('2.71::numeric');
    agtype_in   

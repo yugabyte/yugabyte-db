@@ -2166,11 +2166,11 @@ static Node *make_function_expr(List *func_name, List *exprs, int location)
             funcname = func_name;
 
         /* build the function call */
-        fnode = makeFuncCall(funcname, exprs, location);
+        fnode = makeFuncCall(funcname, exprs, COERCE_SQL_SYNTAX, location);
     }
     /* all other functions are passed as is */
     else
-        fnode = makeFuncCall(func_name, exprs, location);
+        fnode = makeFuncCall(func_name, exprs, COERCE_SQL_SYNTAX, location);
 
     /* return the node */
     return (Node *)fnode;
