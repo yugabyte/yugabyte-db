@@ -68,11 +68,11 @@ Status StoreValue(
   return Status::OK();
 }
 
-Status StoreValue(
+/*Status StoreValue(
     const Schema& schema, const dockv::ProjectedColumn& column, size_t col_idx,
     dockv::DocKeyDecoder* decoder, dockv::PgTableRow* row) {
   return row->DecodeKey(col_idx, decoder->mutable_input());
-}
+}*/
 
 } // namespace
 
@@ -379,7 +379,32 @@ Status DocRowwiseIteratorBase::CopyKeyColumnsToRow(
 
 Status DocRowwiseIteratorBase::CopyKeyColumnsToRow(
     const dockv::ReaderProjection& projection, dockv::PgTableRow* row) {
-  return DoCopyKeyColumnsToRow(projection, row);
+//  RETURN_NOT_OK(DoCopyKeyColumnsToRow(projection, row));
+  if (!row) {
+    return Status::OK();
+  }
+  if (!pg_key_decoder_) {
+    pg_key_decoder_.emplace(doc_read_context_.schema(), projection);
+  }
+  return pg_key_decoder_->Decode(
+      row_key_.AsSlice().WithoutPrefix(doc_read_context_.key_prefix_encoded_len()), row);
+/*
+  dockv::PgTableRow temp_row(row->projection());
+  CHECK_OK(doc_read_context_.pg_row_key_decoder().Decode(
+      row_key_.AsSlice().WithoutPrefix(doc_read_context_.key_prefix_encoded_len()),
+      &temp_row));
+  for (size_t i = 0; i != row->projection().num_key_columns; ++i) {
+    auto o1 = row->GetValueByIndex(i);
+    auto o2 = temp_row.GetValueByIndex(i);
+    if (!o1 || !o2) {
+      CHECK(!o1 && !o2) << "index: " << i;
+      continue;
+    }
+    auto v1 = o1->ToQLValuePB(row->projection().columns[i].data_type);
+    auto v2 = o1->ToQLValuePB(row->projection().columns[i].data_type);
+    CHECK_EQ(v1.ShortDebugString(), v2.ShortDebugString()) << "index: " << i;
+  }
+  return Status::OK();*/
 }
 
 template <class Row>
