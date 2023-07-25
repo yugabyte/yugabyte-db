@@ -23,10 +23,8 @@
 #include "yb/client/client.h"
 #include "yb/client/client_error.h"
 #include "yb/client/client_utils.h"
-#include "yb/client/external_transaction.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/table.h"
-#include "yb/client/transaction.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb.h"
 
@@ -64,9 +62,6 @@ DECLARE_int32(cdc_read_rpc_timeout_ms);
 DEFINE_test_flag(bool, xcluster_consumer_fail_after_process_split_op, false,
     "Whether or not to fail after processing a replicated split_op on the consumer.");
 
-DEFINE_test_flag(bool, xcluster_disable_replication_transaction_status_table, false,
-                 "Whether or not to disable replication of txn status table.");
-
 using namespace std::placeholders;
 
 namespace yb {
@@ -75,17 +70,11 @@ namespace tserver {
 class XClusterOutputClient : public XClusterOutputClientIf {
  public:
   XClusterOutputClient(
-      XClusterConsumer* xcluster_consumer,
-      const cdc::ConsumerTabletInfo& consumer_tablet_info,
+      XClusterConsumer* xcluster_consumer, const cdc::ConsumerTabletInfo& consumer_tablet_info,
       const cdc::ProducerTabletInfo& producer_tablet_info,
-      const std::shared_ptr<XClusterClient>& local_client,
-      ThreadPool* thread_pool,
-      rpc::Rpcs* rpcs,
+      const std::shared_ptr<XClusterClient>& local_client, ThreadPool* thread_pool, rpc::Rpcs* rpcs,
       std::function<void(const XClusterOutputClientResponse& response)> apply_changes_clbk,
-      bool use_local_tserver,
-      const std::vector<TabletId>& global_transaction_status_tablets,
-      bool enable_replicate_transaction_status_table,
-      rocksdb::RateLimiter* rate_limiter)
+      bool use_local_tserver, rocksdb::RateLimiter* rate_limiter)
       : xcluster_consumer_(xcluster_consumer),
         consumer_tablet_info_(consumer_tablet_info),
         producer_tablet_info_(producer_tablet_info),
@@ -96,8 +85,6 @@ class XClusterOutputClient : public XClusterOutputClientIf {
         apply_changes_clbk_(std::move(apply_changes_clbk)),
         use_local_tserver_(use_local_tserver),
         all_tablets_result_(STATUS(Uninitialized, "Result has not been initialized.")),
-        global_transaction_status_tablets_(global_transaction_status_tablets),
-        enable_replicate_transaction_status_table_(enable_replicate_transaction_status_table),
         rate_limiter_(rate_limiter) {}
 
   ~XClusterOutputClient() {
@@ -159,8 +146,6 @@ class XClusterOutputClient : public XClusterOutputClientIf {
 
   Status ProcessRecordForLocalTablet(const cdc::CDCRecordPB& record);
 
-  Status ProcessRecordForTransactionStatusTablet(const cdc::CDCRecordPB& record);
-
   Status ProcessRecordForTabletRange(
       const cdc::CDCRecordPB& record,
       const Result<std::vector<client::internal::RemoteTabletPtr>>& tablets);
@@ -176,21 +161,6 @@ class XClusterOutputClient : public XClusterOutputClientIf {
   // Processes the Record and sends the CDCWrite for it.
   Status ProcessRecord(const std::vector<std::string>& tablet_ids, const cdc::CDCRecordPB& record)
       EXCLUDES(lock_);
-
-  Status ProcessCreateRecord(const std::string& status_tablet, const cdc::CDCRecordPB& record)
-      EXCLUDES(lock_);
-
-  Status ProcessCommitRecord(
-      const std::string& status_tablet,
-      const std::vector<std::string>& involved_target_tablet_ids,
-      const cdc::CDCRecordPB& record) EXCLUDES(lock_);
-
-  Result<std::vector<TabletId>> GetInvolvedTargetTabletsFromCommitRecord(
-      const cdc::CDCRecordPB& record);
-
-  Result<TabletId> SelectStatusTabletIdForTransaction(const TransactionId& txn_id);
-
-  Status SendTransactionUpdates();
 
   Status SendUserTableWrites();
 
@@ -231,8 +201,6 @@ class XClusterOutputClient : public XClusterOutputClientIf {
   ThreadPool* thread_pool_;  // Use threadpool so that callbacks aren't run on reactor threads.
   rpc::Rpcs* rpcs_;
   rpc::Rpcs::Handle write_handle_ GUARDED_BY(lock_);
-  // Retain COMMIT rpcs in-flight as these need to be cleaned up on shutdown
-  std::vector<std::shared_ptr<client::ExternalTransaction>> external_transactions_;
   std::function<void(const XClusterOutputClientResponse& response)> apply_changes_clbk_;
 
   bool use_local_tserver_;
@@ -260,13 +228,9 @@ class XClusterOutputClient : public XClusterOutputClientIf {
   // Store the result of the lookup for all the tablets.
   yb::Result<std::vector<scoped_refptr<yb::client::internal::RemoteTablet>>> all_tablets_result_;
 
-  std::vector<TabletId> global_transaction_status_tablets_;
-
   yb::MonoDelta timeout_ms_;
 
   std::unique_ptr<XClusterWriteInterface> write_strategy_ GUARDED_BY(lock_);
-
-  bool enable_replicate_transaction_status_table_;
 
   rocksdb::RateLimiter* rate_limiter_;
 };
@@ -392,9 +356,6 @@ Status XClusterOutputClient::ProcessChangesStartingFromIndex(int start) {
       // then we need to wait until those RPCs are sent out and responses
       // are received, so we break out and wait for callbacks to continue processing.
       break;
-    } else if (table_->table_type() == client::YBTableType::TRANSACTION_STATUS_TABLE_TYPE) {
-      // Handle txn status tablets specially, since we always map them to a specific status tablet.
-      RETURN_NOT_OK(ProcessRecordForTransactionStatusTablet(record));
     } else if (UseLocalTserver()) {
       RETURN_NOT_OK(ProcessRecordForLocalTablet(record));
     } else {
@@ -415,111 +376,8 @@ Status XClusterOutputClient::ProcessChangesStartingFromIndex(int start) {
   }
 
   if (processed_write_record) {
-    if (table_->table_type() == client::YBTableType::TRANSACTION_STATUS_TABLE_TYPE) {
-      return SendTransactionUpdates();
-    } else {
-      return SendUserTableWrites();
-    }
+    return SendUserTableWrites();
   }
-  return Status::OK();
-}
-
-Result<std::vector<TabletId>> XClusterOutputClient::GetInvolvedTargetTabletsFromCommitRecord(
-    const cdc::CDCRecordPB& record) {
-  std::unordered_set<TabletId> involved_target_tablets;
-  auto involved_producer_tablets = std::vector<TabletId>(
-      record.transaction_state().tablets().begin(),
-      record.transaction_state().tablets().end());
-  for (const auto& producer_tablet : involved_producer_tablets) {
-    auto consumer_tablet_info = xcluster_consumer_->GetConsumerTableInfo(producer_tablet);
-    // Ignore records for which we dont have any consumer tablets.
-    if (!consumer_tablet_info.ok()) {
-      if (consumer_tablet_info.status().IsNotFound()) {
-        VLOG_WITH_FUNC(3) << "Ignoring producer tablet '" << producer_tablet
-                          << "' from commit record of transaction '"
-                          << record.transaction_state().transaction_id()
-                          << "' as it is not replicated to our universe";
-        continue;
-      }
-      return consumer_tablet_info.status();
-    }
-    involved_target_tablets.insert(consumer_tablet_info->tablet_id);
-    // TODO(Rahul): Add the n : m case for involved tablets.
-  }
-
-  return std::vector<TabletId>(involved_target_tablets.begin(), involved_target_tablets.end());
-}
-
-Status XClusterOutputClient::SendTransactionUpdates() {
-  std::vector<client::ExternalTransactionMetadata> transaction_metadatas;
-  {
-    std::lock_guard l(lock_);
-    transaction_metadatas = std::move(write_strategy_->GetTransactionMetadatas());
-  }
-  std::vector<std::future<Status>> transaction_update_futures;
-  // Send all CREATEs to the coordinatory, wait till we've replicated all of them, then send all
-  // the COMMITs. This avoids a situation where the COMMMIT is processed by the coordinator before
-  // the CREATE.
-  for (const auto& operation_type : {client::ExternalTransactionMetadata::OperationType::CREATE,
-                                     client::ExternalTransactionMetadata::OperationType::COMMIT}) {
-    for (const auto& transaction_metadata : transaction_metadatas) {
-      if (transaction_metadata.operation_type != operation_type) {
-        continue;
-      }
-      // Create the ExternalTransactions and COMMIT them locally.
-      auto* transaction_manager = xcluster_consumer_->TransactionManager();
-      if (!transaction_manager) {
-        return STATUS(InvalidArgument, "Could not commit transactions");
-      }
-      auto external_transaction =
-          std::make_shared<client::ExternalTransaction>(transaction_manager);
-      external_transactions_.push_back(external_transaction);
-
-      switch (operation_type) {
-        case client::ExternalTransactionMetadata::OperationType::CREATE: {
-          transaction_update_futures.push_back(external_transaction->CreateFuture(
-              transaction_metadata));
-          break;
-        }
-        case client::ExternalTransactionMetadata::OperationType::COMMIT: {
-          transaction_update_futures.push_back(external_transaction->CommitFuture(
-              transaction_metadata));
-          break;
-        }
-        default: {
-          return STATUS(IllegalState, Format("Unsupported OperationType $0",
-                                             transaction_metadata.OperationTypeToString()));
-        }
-      }
-    }
-    for (auto& future : transaction_update_futures) {
-      DCHECK(future.valid());
-      RETURN_NOT_OK(future.get());
-    }
-    transaction_update_futures.clear();
-    external_transactions_.clear();
-  }
-
-  int next_record = 0;
-  {
-    std::lock_guard l(lock_);
-    if (processed_record_count_ < record_count_) {
-      // processed_record_count_ is 1-based, so no need to add 1 to get next record.
-      next_record = processed_record_count_;
-    }
-  }
-
-  if (next_record > 0) {
-    // Process rest of the records.
-    Status s = ProcessChangesStartingFromIndex(next_record);
-    if (!s.ok()) {
-      HandleError(s);
-    }
-  } else {
-    // Last record, return response to caller.
-    HandleResponse();
-  }
-
   return Status::OK();
 }
 
@@ -540,20 +398,6 @@ Status XClusterOutputClient::SendUserTableWrites() {
 
 bool XClusterOutputClient::UseLocalTserver() {
   return use_local_tserver_ && !FLAGS_cdc_force_remote_tserver;
-}
-
-Status XClusterOutputClient::ProcessCreateRecord(
-    const std::string& status_tablet, const cdc::CDCRecordPB& record) {
-  std::lock_guard l(lock_);
-  return write_strategy_->ProcessCreateRecord(status_tablet, record);
-}
-
-Status XClusterOutputClient::ProcessCommitRecord(
-    const std::string& status_tablet,
-    const std::vector<std::string>& involved_target_tablet_ids,
-    const cdc::CDCRecordPB& record) {
-  std::lock_guard l(lock_);
-  return write_strategy_->ProcessCommitRecord(status_tablet, involved_target_tablet_ids, record);
 }
 
 Result<cdc::XClusterSchemaVersionMap> XClusterOutputClient::GetSchemaVersionMap(
@@ -586,18 +430,6 @@ Status XClusterOutputClient::ProcessRecord(
     const std::vector<std::string>& tablet_ids, const cdc::CDCRecordPB& record) {
   std::lock_guard l(lock_);
   for (const auto& tablet_id : tablet_ids) {
-    std::string status_tablet_id;
-    if (enable_replicate_transaction_status_table_ && record.has_transaction_state()) {
-      // This is an intent record and we want to use the txn status table, so get the status tablet
-      // for this txn id.
-      // Always fill this field, since in the uneven tablets case, we might not have previously sent
-      // a batch with the status tablet id to a tablet yet, in which case that tablet would be
-      // unable to find the matching status tablet.
-      auto txn_id =
-          VERIFY_RESULT(FullyDecodeTransactionId(record.transaction_state().transaction_id()));
-      status_tablet_id = VERIFY_RESULT(SelectStatusTabletIdForTransaction(txn_id));
-    }
-
     // Find the last_compatible_consumer_schema_version for each record as it may be different
     // for different records depending on the colocation id.
     cdc::XClusterSchemaVersionMap schema_versions_map;
@@ -608,12 +440,9 @@ Status XClusterOutputClient::ProcessRecord(
         schema_versions_map = VERIFY_RESULT(GetSchemaVersionMap(record));
     }
 
-    auto status = write_strategy_->ProcessRecord(ProcessRecordInfo {
-      .tablet_id = tablet_id,
-      .enable_replicate_transaction_status_table = enable_replicate_transaction_status_table_,
-      .status_tablet_id = status_tablet_id,
-      .schema_versions_map = schema_versions_map
-    }, record);
+    auto status = write_strategy_->ProcessRecord(
+        ProcessRecordInfo{.tablet_id = tablet_id, .schema_versions_map = schema_versions_map},
+        record);
     if (!status.ok()) {
       error_status_ = status;
       return status;
@@ -648,37 +477,6 @@ Status XClusterOutputClient::ProcessRecordForTabletRange(
 
 Status XClusterOutputClient::ProcessRecordForLocalTablet(const cdc::CDCRecordPB& record) {
   return ProcessRecord({consumer_tablet_info_.tablet_id}, record);
-}
-
-Result<TabletId> XClusterOutputClient::SelectStatusTabletIdForTransaction(
-    const TransactionId& txn_id) {
-  // Return a deterministic status tablet for a given txn id. This is done since we only include
-  // the external_status_tablet for the first batch, and are not guaranteed to compute this value
-  // for later batches. Thus, for uneven tablet counts, we require a way to select a status tablet
-  // that is consistent across all consumers.
-  SCHECK(!global_transaction_status_tablets_.empty(), IllegalState, "Found no status tablets");
-  return global_transaction_status_tablets_
-      [hash_value(txn_id) % global_transaction_status_tablets_.size()];
-}
-
-Status XClusterOutputClient::ProcessRecordForTransactionStatusTablet(
-    const cdc::CDCRecordPB& record) {
-  const auto txn_id =
-      VERIFY_RESULT(FullyDecodeTransactionId(record.transaction_state().transaction_id()));
-  const auto status_tablet_id = VERIFY_RESULT(SelectStatusTabletIdForTransaction(txn_id));
-
-  const auto& operation = record.operation();
-  if (operation == cdc::CDCRecordPB::TRANSACTION_COMMITTED) {
-    // TODO handle involved_tablets for uneven tablet counts.
-    auto target_tablet_ids = VERIFY_RESULT(GetInvolvedTargetTabletsFromCommitRecord(record));
-    return ProcessCommitRecord(status_tablet_id, target_tablet_ids, record);
-  }
-
-  if (operation == cdc::CDCRecordPB::TRANSACTION_CREATED) {
-    return ProcessCreateRecord(status_tablet_id, record);
-  }
-
-  return ProcessRecord({status_tablet_id}, record);
 }
 
 bool XClusterOutputClient::IsValidMetaOp(const cdc::CDCRecordPB& record) {
@@ -1063,21 +861,14 @@ bool XClusterOutputClient::IncProcessedRecordCount() {
 }
 
 std::shared_ptr<XClusterOutputClientIf> CreateXClusterOutputClient(
-    XClusterConsumer* xcluster_consumer,
-    const cdc::ConsumerTabletInfo& consumer_tablet_info,
+    XClusterConsumer* xcluster_consumer, const cdc::ConsumerTabletInfo& consumer_tablet_info,
     const cdc::ProducerTabletInfo& producer_tablet_info,
-    const std::shared_ptr<XClusterClient>& local_client,
-    ThreadPool* thread_pool,
-    rpc::Rpcs* rpcs,
+    const std::shared_ptr<XClusterClient>& local_client, ThreadPool* thread_pool, rpc::Rpcs* rpcs,
     std::function<void(const XClusterOutputClientResponse& response)> apply_changes_clbk,
-    bool use_local_tserver,
-    const std::vector<TabletId>& global_transaction_status_tablets,
-    bool enable_replicate_transaction_status_table,
-    rocksdb::RateLimiter* rate_limiter) {
+    bool use_local_tserver, rocksdb::RateLimiter* rate_limiter) {
   return std::make_unique<XClusterOutputClient>(
       xcluster_consumer, consumer_tablet_info, producer_tablet_info, local_client, thread_pool,
-      rpcs, std::move(apply_changes_clbk), use_local_tserver, global_transaction_status_tablets,
-      enable_replicate_transaction_status_table, rate_limiter);
+      rpcs, std::move(apply_changes_clbk), use_local_tserver, rate_limiter);
 }
 
 }  // namespace tserver

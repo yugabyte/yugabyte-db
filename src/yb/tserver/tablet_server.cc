@@ -206,12 +206,6 @@ TAG_FLAG(xcluster_svc_queue_length, advanced);
 DECLARE_string(cert_node_filename);
 DECLARE_bool(ysql_enable_table_mutation_counter);
 
-DEFINE_RUNTIME_bool(xcluster_external_transactions_ignore_safe_time, false,
-    "When enabled, xcluster external transactions will ignore the xCluster safe time. Enabling "
-    "this on can cause consistency issues.");
-TAG_FLAG(xcluster_external_transactions_ignore_safe_time, advanced);
-TAG_FLAG(xcluster_external_transactions_ignore_safe_time, unsafe);
-
 DEFINE_NON_RUNTIME_bool(allow_encryption_at_rest, true,
                         "Whether or not to allow encryption at rest to be enabled. Toggling this "
                         "flag does not turn on or off encryption at rest, but rather allows or "
@@ -1033,18 +1027,6 @@ PgMutationCounter& TabletServer::GetPgNodeLevelMutationCounter() {
 
 void TabletServer::UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map) {
   xcluster_safe_time_map_.Update(safe_time_map);
-}
-
-Result<bool> TabletServer::XClusterSafeTimeCaughtUpToCommitHt(
-    const NamespaceId& namespace_id, HybridTime commit_ht) const {
-  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_xcluster_external_transactions_ignore_safe_time))) {
-    return true;
-  }
-
-  auto safe_time = VERIFY_RESULT(xcluster_safe_time_map_.GetSafeTime(namespace_id));
-  SCHECK(safe_time, TryAgain, "XCluster safe time not found for namespace $0", namespace_id);
-
-  return *safe_time > commit_ht;
 }
 
 Result<cdc::XClusterRole> TabletServer::TEST_GetXClusterRole() const {

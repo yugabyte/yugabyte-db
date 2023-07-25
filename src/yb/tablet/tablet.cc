@@ -1356,43 +1356,6 @@ Status Tablet::WriteTransactionalBatch(
   return Status::OK();
 }
 
-namespace {
-
-std::vector<std::pair<docdb::LWKeyValueWriteBatchPB*, HybridTime>>
-SplitExternalBatchIntoTransactionBatches(
-    const docdb::LWKeyValueWriteBatchPB& put_batch, ThreadSafeArena* arena) {
-  std::map<std::pair<Slice, HybridTime>, docdb::LWKeyValueWriteBatchPB*> map;
-  for (const auto& write_pair : put_batch.write_pairs()) {
-    if (!write_pair.has_transaction()) {
-      continue;
-    }
-    // The write pair has transaction metadata, so it should be part of the transaction write batch.
-    auto transaction_id = write_pair.transaction().transaction_id();
-    auto external_hybrid_time = HybridTime(write_pair.external_hybrid_time());
-    auto& write_batch_ref = map[{transaction_id, external_hybrid_time}];
-    if (!write_batch_ref) {
-      write_batch_ref = arena->NewArenaObject<docdb::LWKeyValueWriteBatchPB>();
-    }
-    auto* write_batch = write_batch_ref;
-    if (!write_batch->has_transaction()) {
-      auto* transaction = write_batch->mutable_transaction();
-      *transaction = write_pair.transaction();
-      transaction->set_external_transaction(true);
-    }
-    auto *new_write_pair = write_batch->add_write_pairs();
-    new_write_pair->ref_key(write_pair.key());
-    new_write_pair->ref_value(write_pair.value());
-  }
-  std::vector<std::pair<docdb::LWKeyValueWriteBatchPB*, HybridTime>> result;
-  result.reserve(map.size());
-  for (auto& entry : map) {
-    result.push_back({entry.second, entry.first.second});
-  }
-  return result;
-}
-
-} // namespace
-
 Status Tablet::ApplyKeyValueRowOperations(
     int64_t batch_idx,
     const docdb::LWKeyValueWriteBatchPB& put_batch,
@@ -1412,23 +1375,6 @@ Status Tablet::ApplyKeyValueRowOperations(
     RETURN_NOT_OK(WriteTransactionalBatch(batch_idx, put_batch, hybrid_time, frontiers));
   } else {
     // See comments for PrepareExternalWriteBatch.
-    if (put_batch.enable_replicate_transaction_status_table()) {
-      if (!metadata_->IsUnderXClusterReplication()) {
-        // The first time the consumer tablet sees an external write batch, set
-        // is_under_xcluster_replication to true.
-        RETURN_NOT_OK(metadata_->SetIsUnderXClusterReplicationAndFlush(true));
-      }
-      ThreadSafeArena arena;
-      auto batches_by_transaction = SplitExternalBatchIntoTransactionBatches(put_batch, &arena);
-      for (const auto& batch_with_hybrid_time : batches_by_transaction) {
-        const auto& write_batch = batch_with_hybrid_time.first;
-        const auto& external_hybrid_time = batch_with_hybrid_time.second;
-        WARN_NOT_OK(WriteTransactionalBatch(
-            batch_idx, *write_batch, external_hybrid_time, frontiers),
-            "Could not write transactional batch");
-      }
-      return Status::OK();
-    }
 
     // This should be only set when we are replicating the transaction status table (since this is
     // only used for UPDATE_TRANSACTION_OP).

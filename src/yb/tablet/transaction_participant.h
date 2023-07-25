@@ -78,7 +78,6 @@ struct TransactionApplyData {
   TabletId status_tablet;
   // Owned by running transaction if non-null.
   const docdb::ApplyTransactionState* apply_state = nullptr;
-  bool is_external = false;
 
   std::string ToString() const;
 };
@@ -135,10 +134,6 @@ class TransactionParticipant : public TransactionStatusManager {
   // he should just append it to appropriate value.
   //
   // Returns boost::none when transaction is unknown.
-  //
-  // When external_transaction is set for xcluster transactions, the function ignores the start time
-  // of the txn when fetching the transaction since the txn status record and intent bach can come
-  // out of order.
   Result<boost::optional<std::pair<IsolationLevel, TransactionalBatchData>>> PrepareBatchData(
       const TransactionId& id, size_t batch_idx,
       boost::container::small_vector_base<uint8_t>* encoded_replicated_batches);
@@ -154,9 +149,6 @@ class TransactionParticipant : public TransactionStatusManager {
   void Abort(const TransactionId& id, TransactionStatusCallback callback) override;
 
   void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term);
-
-  Result<IsExternalTransaction> IsExternalTransactionResult(
-      const TransactionId& transaction_id) override;
 
   Status Cleanup(TransactionIdSet&& set) override;
 

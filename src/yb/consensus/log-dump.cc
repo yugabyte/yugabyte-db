@@ -227,14 +227,6 @@ Status PrintDecodedTransactionStatePB(const string& indent,
     }
     cout << endl;
   }
-  if (update.has_external_hybrid_time()) {
-    HybridTime ht(update.commit_hybrid_time());
-    cout << indent << indent << "external_hybrid_time: " << ht.ToDebugString() << endl;
-  }
-  if (update.has_external_status_tablet_id()) {
-    cout << indent << indent << "external_status_tablet_id: "
-         << update.external_status_tablet_id() << endl;
-  }
   cout << indent << "}" << endl;  // update_transaction {
 
   return Status::OK();

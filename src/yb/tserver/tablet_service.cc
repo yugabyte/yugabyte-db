@@ -1078,28 +1078,6 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   state->set_completion_callback(MakeRpcOperationCompletionCallback(
       std::move(context), resp, server_->Clock()));
 
-  if (req->is_external() && req->state().status() == TransactionStatus::APPLYING) {
-    auto namespace_name = tablet.peer->tablet_metadata()->namespace_name();
-    auto namespace_id_result = tablet.peer->GetNamespaceId();
-    if (!namespace_id_result.ok()) {
-      state->CompleteWithStatus(STATUS(TryAgain, namespace_id_result.status().message()));
-      return;
-    }
-    auto commit_ht = HybridTime(req->state().commit_hybrid_time());
-    auto tablet_caught_up_result =
-        server_->tablet_manager()->server()->XClusterSafeTimeCaughtUpToCommitHt(
-            *namespace_id_result, commit_ht);
-    if (!tablet_caught_up_result.ok()) {
-      state->CompleteWithStatus(STATUS(TryAgain, tablet_caught_up_result.status().message()));
-      return;
-    }
-    if (!*tablet_caught_up_result) {
-      state->CompleteWithStatus(STATUS(TryAgain, Format("Commit time greater than safe "
-                                                        "time for xcluster replication.")));
-      return;
-    }
-  }
-
   if (req->state().status() == TransactionStatus::APPLYING || cleanup) {
     auto* participant = tablet.tablet->transaction_participant();
     if (participant) {
