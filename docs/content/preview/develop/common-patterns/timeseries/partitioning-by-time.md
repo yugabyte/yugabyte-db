@@ -37,7 +37,7 @@ CREATE TABLE part_demo (
 ) PARTITION BY RANGE (ts);
 ```
 
-Create partitions for each month. Also, create a `DEFAULT` partition that would hold data that does that fall into any of the other partitions.
+Create partitions for each month. Also, create a `DEFAULT` partition that would hold data that does not that fall into any of the other partitions.
 
 ```sql
 CREATE TABLE part_7_23 PARTITION OF part_demo
@@ -138,10 +138,6 @@ DROP TABLE part_7_23;
 DROP TABLE
 Time: 103.214 ms
 ```
-
-## Automate partition management
-
-Creation and deletion of partitions can be managed using the [pg_partman](https://github.com/pgpartman/pg_partman) extension or scheduling jobs using [pg_cron](https://github.com/citusdata/pg_cron).
 
 ## Learn more
 
