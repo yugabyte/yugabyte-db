@@ -6,8 +6,8 @@
 
       global:
         # By default, scrape targets every 15 seconds.
-        scrape_interval:     {{ yamlPath "prometheus.scrapeInterval" }}
-        evaluation_interval: {{ yamlPath "prometheus.scrapeInterval" }}
+        scrape_interval:     {{ yamlPath "prometheus.scrapeInterval" }}s
+        evaluation_interval: {{ yamlPath "prometheus.scrapeInterval" }}s
         # scrape_timeout is set to the global default (10s).
 
         # The labels to add to any time series or alerts when communicating with
@@ -23,8 +23,8 @@
       scrape_configs:
 
       - job_name: 'prometheus'
-        scrape_interval: {{ yamlPath "prometheus.scrapeInterval" }}
-        scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}
+        scrape_interval: {{ yamlPath "prometheus.scrapeInterval" }}s
+        scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}s
         static_configs:
           - targets: ['127.0.0.1:{{ yamlPath "prometheus.port" }}']
 
@@ -34,13 +34,13 @@
         tls_config:
           insecure_skip_verify: true
         {{end}}
-        scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}
+        scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}s
         metrics_path: "/api/v1/prometheus_metrics"
         static_configs:
           - targets: ['127.0.0.1:{{ yamlPath "platform.port" }}']
 
       - job_name: 'node-agent'
-        scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}
+        scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}s
         metrics_path: "/metrics"
         file_sd_configs:
           - files:
@@ -178,7 +178,6 @@
       ExecStart=/usr/local/bin/prometheus \
       --config.file {{ .ConfFileLocation }} \
       --storage.tsdb.path {{ .DataDir }}/storage \
-      --storage.tsdb.retention={{ yamlPath "prometheus.retentionTime" }} \
       --web.console.templates={{ .PromDir }}/consoles \
       --web.console.libraries={{ .PromDir }}/console_libraries \
       --web.enable-admin-api \
@@ -186,7 +185,7 @@
       --web.listen-address=:{{ yamlPath "prometheus.port" }} \
       --query.max-concurrency={{ yamlPath "prometheus.maxConcurrency" }} \
       --query.max-samples={{ yamlPath "prometheus.maxSamples" }} \
-      --query.timeout={{ yamlPath "prometheus.timeout" }}
+      --query.timeout={{ yamlPath "prometheus.timeout" }}s
 
       Restart=always
       RestartSec={{ yamlPath "prometheus.restartSeconds"}}

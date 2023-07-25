@@ -147,7 +147,7 @@ services:
         }
         cors {
           pathPrefixes = ["/"]
-          allowedOrigins =  ["https://{{ yamlPath "host" }}", "{{ yamlPath "platform.support_origin_url"}}"]
+          allowedOrigins =  ["https://{{ yamlPath "host" }}"]
           supportsCredentials=true
           allowedHttpMethods = ["GET", "POST", "PUT", "OPTIONS", "DELETE"]
           allowedHttpHeaders = [
