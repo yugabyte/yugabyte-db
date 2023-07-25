@@ -52,12 +52,12 @@ const SelectKeyspaceConfig = () => {
   const { t } = useTranslation();
 
   const forceKeyspaceRename = watch('forceKeyspaceRename');
+  const renameKeyspace = watch('renameKeyspace');
 
   useMount(() => {
     if (
-      !generalSettings?.incrementalBackupProps.isRestoreEntireBackup ||
-      (backupDetails?.hasIncrementalBackups &&
-        generalSettings?.incrementalBackupProps.singleKeyspaceRestore === true)
+      !generalSettings?.incrementalBackupProps.isRestoreEntireBackup &&
+      generalSettings?.incrementalBackupProps.singleKeyspaceRestore
     ) {
       setValue('selectedKeyspace', {
         label: backupDetails!.commonBackupInfo.responseList[0].keyspace,
@@ -93,6 +93,7 @@ const SelectKeyspaceConfig = () => {
                 ? t('newRestoreModal.generalSettings.selectKeyspaceForm.optional')
                 : ''
             })}
+            checked={renameKeyspace}
             control={control}
             name="renameKeyspace"
             disabled={forceKeyspaceRename}
@@ -102,7 +103,7 @@ const SelectKeyspaceConfig = () => {
           {forceKeyspaceRename && (
             <span className={classes.renameKeyspaceHelperText}>
               <Trans
-                i18nKey="newRestoreModal.generalSettings.universeSelection.kmsConfigHelpText"
+                i18nKey="newRestoreModal.generalSettings.selectKeyspaceForm.forceRenameHelpText"
                 components={{ b: <b /> }}
               />
             </span>

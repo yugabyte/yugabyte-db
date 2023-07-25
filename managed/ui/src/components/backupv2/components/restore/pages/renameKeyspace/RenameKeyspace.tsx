@@ -77,9 +77,9 @@ const RenameKeyspace = React.forwardRef<PageRef>((_, forwardRef) => {
   const [
     {
       backupDetails,
-      formData: { generalSettings, preflightResponse }
+      formData: { generalSettings, preflightResponse, renamedKeyspaces }
     },
-    { moveToNextPage, setSubmitLabel, saveRenamedKeyspacesFormData }
+    { moveToNextPage, moveToPrevPage, setSubmitLabel, saveRenamedKeyspacesFormData }
   ] = restoreContext;
 
   const { t } = useTranslation();
@@ -128,7 +128,10 @@ const RenameKeyspace = React.forwardRef<PageRef>((_, forwardRef) => {
 
   const methods = useForm<IRenameKeyspace>({
     defaultValues: {
-      renamedKeyspaces: sortByTableDuplicate
+      renamedKeyspaces:
+        renamedKeyspaces.renamedKeyspaces.length > 0
+          ? renamedKeyspaces.renamedKeyspaces
+          : sortByTableDuplicate
     },
     resolver: yupResolver(
       getValidationSchema(restoreContext[0], keyspacesAvailableInTargetUniverse, t),
@@ -142,8 +145,9 @@ const RenameKeyspace = React.forwardRef<PageRef>((_, forwardRef) => {
   const [searchText, setSearchText] = useState('');
 
   const onNext = useCallback(() => handleSubmit(saveValues)(), [handleSubmit, saveValues]);
+  const onPrev = useCallback(() => moveToPrevPage(), [moveToPrevPage]);
 
-  useImperativeHandle(forwardRef, () => ({ onNext }), [onNext]);
+  useImperativeHandle(forwardRef, () => ({ onNext, onPrev }), [onNext, onPrev]);
 
   useMount(() => {
     if (generalSettings?.tableSelectionType === 'SUBSET_OF_TABLES') {

@@ -11,6 +11,7 @@ import React, { useCallback, useContext, useImperativeHandle } from 'react';
 import { useQuery } from 'react-query';
 import { useMount } from 'react-use';
 import { useTranslation } from 'react-i18next';
+import { noop } from 'lodash';
 import { PageRef, RestoreContextMethods, RestoreFormContext } from '../../RestoreContext';
 import { Backup_States, IBackup, fetchIncrementalBackup } from '../../../..';
 import { YBLoadingCircleIcon } from '../../../../../common/indicators';
@@ -27,7 +28,7 @@ const PrefetchConfigs = React.forwardRef<PageRef>((_, forwardRef) => {
 
   const onNext = useCallback(() => {}, []);
 
-  useImperativeHandle(forwardRef, () => ({ onNext }), [onNext]);
+  useImperativeHandle(forwardRef, () => ({ onNext, onPrev: noop }), [onNext]);
 
   const { t } = useTranslation();
 

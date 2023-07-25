@@ -399,21 +399,27 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               )}
 
               <Col lg={12} className="no-padding">
-                <TableListComponent
+              <TableListComponent
                   backup={backupDetails}
                   keyspaceSearch={searchKeyspaceText}
-                  onRestore={(tablesList: Keyspace_Table[], incrementalBackupProps: IncrementalBackupProps) => {
-                    onRestore({
-                      ...backupDetails,
-                      commonBackupInfo: {
-                        ...backupDetails.commonBackupInfo,
-                        responseList: tablesList
+                  onRestore={(
+                    tablesList: Keyspace_Table[],
+                    incrementalBackupProps: IncrementalBackupProps
+                  ) => {
+                    onRestore(
+                      {
+                        ...backupDetails,
+                        commonBackupInfo: {
+                          ...backupDetails.commonBackupInfo,
+                          responseList: tablesList
+                        }
+                      },
+                      {
+                        isRestoreEntireBackup: incrementalBackupProps.isRestoreEntireBackup,
+                        incrementalBackupUUID: incrementalBackupProps.incrementalBackupUUID,
+                        singleKeyspaceRestore: incrementalBackupProps.singleKeyspaceRestore
                       }
-                    }, {
-                      isRestoreEntireBackup: true,
-                      incrementalBackupUUID: incrementalBackupProps.incrementalBackupUUID,
-                      singleKeyspaceRestore: incrementalBackupProps.singleKeyspaceRestore
-                    });
+                    );
                   }}
                   hideRestore={hideRestore}
                 />

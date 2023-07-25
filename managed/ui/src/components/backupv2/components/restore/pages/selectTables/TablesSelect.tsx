@@ -38,7 +38,7 @@ export const SelectTables = React.forwardRef<PageRef>((_, forwardRef) => {
     {
       formData: { selectedTables, preflightResponse }
     },
-    { saveSelectTablesFormData, moveToNextPage, setSubmitLabel }
+    { saveSelectTablesFormData, moveToNextPage, moveToPrevPage, setSubmitLabel }
   ] = restoreContext;
 
   const { t } = useTranslation();
@@ -53,6 +53,7 @@ export const SelectTables = React.forwardRef<PageRef>((_, forwardRef) => {
     handleSubmit,
     control,
     setValue,
+    getValues,
     formState: { errors }
   } = methods;
 
@@ -66,7 +67,12 @@ export const SelectTables = React.forwardRef<PageRef>((_, forwardRef) => {
 
   const onNext = useCallback(() => handleSubmit(saveValues)(), [handleSubmit, saveValues]);
 
-  useImperativeHandle(forwardRef, () => ({ onNext }), [onNext]);
+  const onPrev = useCallback(() => {
+    saveSelectTablesFormData(getValues());
+    moveToPrevPage();
+  }, [saveSelectTablesFormData, getValues, moveToPrevPage]);
+
+  useImperativeHandle(forwardRef, () => ({ onNext, onPrev }), [onNext, onPrev]);
 
   useMount(() => {
     setSubmitLabel(t('newRestoreModal.generalSettings.restore'));
@@ -87,6 +93,7 @@ export const SelectTables = React.forwardRef<PageRef>((_, forwardRef) => {
       )}
       <YBTable
         name="selectedTables"
+        defaultValues={selectedTables.selectedTables}
         table={tablesInPreflight}
         tableHeader={[t('newRestoreModal.selectTables.table')]}
         control={(control as unknown) as Control<FieldValues>}

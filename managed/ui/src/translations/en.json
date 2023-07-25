@@ -23,7 +23,8 @@
       "remove": "Remove",
       "wrong": "Something went wrong.",
       "areYouSure": "Are you sure ?",
-      "delete": "Delete"
+      "delete": "Delete",
+      "back": "Back"
     },
     "universeActions": {
       "encryptionAtRest": {
