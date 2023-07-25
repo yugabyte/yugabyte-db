@@ -1040,11 +1040,14 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
     case KeyEntryType::kIntentTypeSet: FALLTHROUGH_INTENDED;
     case KeyEntryType::kObsoleteIntentTypeSet: FALLTHROUGH_INTENDED;
     case KeyEntryType::kObsoleteIntentType: {
+      if (slice->empty()) {
+        return STATUS_FORMAT(Corruption, "Not enough bytes to decode a TypeSet");
+      }
+      uint16_t value = static_cast<uint16_t>(slice->consume_byte());
       if (out) {
-        out->uint16_val_ = static_cast<uint16_t>(*slice->data());
+        out->uint16_val_ = value;
       }
       type_ref = type;
-      slice->consume_byte();
       return Status::OK();
     }
 
