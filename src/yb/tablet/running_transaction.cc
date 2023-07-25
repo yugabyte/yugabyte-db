@@ -114,8 +114,7 @@ void RunningTransaction::RequestStatusAt(const StatusRequest& request,
 
   if (last_known_status_hybrid_time_ > HybridTime::kMin) {
     auto transaction_status =
-        GetStatusAt(request.global_limit_ht, last_known_status_hybrid_time_, last_known_status_,
-                    external_transaction());
+        GetStatusAt(request.global_limit_ht, last_known_status_hybrid_time_, last_known_status_);
     // If we don't have status at global_limit_ht, then we should request updated status.
     if (transaction_status) {
       HybridTime last_known_status_hybrid_time = last_known_status_hybrid_time_;
@@ -209,20 +208,10 @@ void RunningTransaction::ScheduleRemoveIntents(
 }
 
 boost::optional<TransactionStatus> RunningTransaction::GetStatusAt(
-    HybridTime time,
-    HybridTime last_known_status_hybrid_time,
-    TransactionStatus last_known_status,
-    bool external_transaction) {
+    HybridTime time, HybridTime last_known_status_hybrid_time,
+    TransactionStatus last_known_status) {
   switch (last_known_status) {
     case TransactionStatus::ABORTED: {
-      if (external_transaction) {
-        // If this is an xcluster/external transaction, it is possible that a transaction with
-        // ABORTED state may later be committed. This can happen when the txn status table is
-        // lagging behind the user table, and the consumer coordinator hasn't yet recieved a CREATED
-        // or COMMITTED record for an intent already present in intents db. To account for this
-        // situation, always re-resolve intents that have state ABORTED.
-        return boost::none;
-      }
       return TransactionStatus::ABORTED;
     }
     case TransactionStatus::COMMITTED:
@@ -398,26 +387,6 @@ void RunningTransaction::DoStatusReceived(const Status& status,
       new_request_id = context_.NextRequestIdUnlocked();
       VLOG_WITH_PREFIX(4) << "Waiters still present, send new status request: " << new_request_id;
     }
-
-    if (external_transaction()) {
-      // The time of the status from a GetStatus resp is typically the non-xcluster safe time on the
-      // coordinator. It is possible that txn COMMIT record comes in at earlier time. The ideal fix
-      // is to use the coordinator's xcluster safe time in the GetStatus response. But the quick fix
-      // is to just use the smallest read time of the waiters as the resolved status time.
-      for (const auto& waiter : status_waiters) {
-        auto status_for_waiter = GetStatusAt(
-            waiter.global_limit_ht, time_of_status, transaction_status, external_transaction());
-        if (status_for_waiter && *status_for_waiter == TransactionStatus::PENDING) {
-          if (last_known_status_hybrid_time_ > waiter.read_ht) {
-            time_of_status = last_known_status_hybrid_time_ = waiter.read_ht;
-          }
-          if (last_known_status_ == TransactionStatus::ABORTED) {
-            context_.NotifyAbortedTransactionDecrement(id());
-          }
-          transaction_status = last_known_status_ = TransactionStatus::PENDING;
-        }
-      }
-    }
   }
   if (new_request_id >= 0) {
     SendStatusRequest(new_request_id, shared_self);
@@ -437,8 +406,7 @@ std::vector<StatusRequest> RunningTransaction::ExtractFinishedStatusWaitersUnloc
   auto w = status_waiters_.begin();
   for (auto it = status_waiters_.begin(); it != status_waiters_.end(); ++it) {
     if (it->serial_no <= serial_no ||
-        GetStatusAt(
-            it->global_limit_ht, time_of_status, transaction_status, external_transaction()) ||
+        GetStatusAt(it->global_limit_ht, time_of_status, transaction_status) ||
         time_of_status < it->read_ht) {
       result.push_back(std::move(*it));
     } else {
@@ -458,8 +426,8 @@ void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_sta
                                        const std::vector<StatusRequest>& status_waiters,
                                        const Status& expected_deadlock_status) {
   for (const auto& waiter : status_waiters) {
-    auto status_for_waiter = GetStatusAt(
-        waiter.global_limit_ht, time_of_status, transaction_status, external_transaction());
+    auto status_for_waiter =
+        GetStatusAt(waiter.global_limit_ht, time_of_status, transaction_status);
     if (status_for_waiter) {
       // We know status at global_limit_ht, so could notify waiter.
       auto result = TransactionStatusResult{*status_for_waiter, time_of_status};

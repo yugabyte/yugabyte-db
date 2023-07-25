@@ -77,10 +77,6 @@ DEFINE_test_flag(bool, enable_db_catalog_version_mode, false,
                  "only be turned on after pg_yb_catalog_version is upgraded to one row per "
                  "database.");
 
-DEFINE_RUNTIME_uint32(external_transaction_retention_window_secs, 60 * 60 * 24,
-                      "Retention window on both the coordinator and participant for uncommitted "
-                      "transactions from a producer.");
-
 DEFINE_RUNTIME_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms, 5000,
     "For a WaitForYsqlBackendsCatalogVersion client-to-master RPC, the amount of time to reserve"
     " out of the RPC timeout to respond back to client. If margin is zero, client will determine"

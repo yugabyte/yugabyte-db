@@ -49,19 +49,11 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
  public:
   XClusterPoller(
       const cdc::ProducerTabletInfo& producer_tablet_info,
-      const cdc::ConsumerTabletInfo& consumer_tablet_info,
-      ThreadPool* thread_pool,
-      rpc::Rpcs* rpcs,
+      const cdc::ConsumerTabletInfo& consumer_tablet_info, ThreadPool* thread_pool, rpc::Rpcs* rpcs,
       const std::shared_ptr<XClusterClient>& local_client,
-      const std::shared_ptr<XClusterClient>& producer_client,
-      XClusterConsumer* xcluster_consumer,
-      bool use_local_tserver,
-      const std::vector<TabletId>& global_transaction_status_tablets,
-      bool enable_replicate_transaction_status_table,
-      SchemaVersion last_compatible_consumer_schema_version,
-      rocksdb::RateLimiter* rate_limiter,
-      std::function<int64_t(const TabletId&)>
-          get_leader_term);
+      const std::shared_ptr<XClusterClient>& producer_client, XClusterConsumer* xcluster_consumer,
+      bool use_local_tserver, SchemaVersion last_compatible_consumer_schema_version,
+      rocksdb::RateLimiter* rate_limiter, std::function<int64_t(const TabletId&)> get_leader_term);
   ~XClusterPoller();
 
   void StartShutdown();

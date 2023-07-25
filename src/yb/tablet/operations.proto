@@ -49,10 +49,8 @@ message TransactionStatePB {
   // Set of subtransaction IDs which are aborted.
   optional SubtxnSetPB aborted = 7;
 
-  // For xcluster writes, the propagated created/commit ht from the source.
-  optional fixed64 external_hybrid_time = 8;
-  // For xcluster writes, the producer side status tablet for the transaction.
-  optional string external_status_tablet_id = 9;
+  // Reserved for deprecated xcluster fields external_hybrid_time and external_status_tablet_id.
+  reserved 8, 9;
 
   // The time at which this transaction started at the client.
   optional fixed64 start_time = 10;

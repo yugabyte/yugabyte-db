@@ -386,8 +386,8 @@ message TransactionMetadataPB {
   // for backwards compatability.
   optional TransactionLocality locality = 7;
 
-  // Whether or not this is metadata for an external/xcluster transaction.
-  optional bool external_transaction = 8;
+  // Reserved for deprecated xcluster field external_transaction.
+  reserved 8;
 }
 
 // See ReadHybridTime for explation of this message.

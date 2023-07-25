@@ -112,19 +112,11 @@ namespace tserver {
 
 XClusterPoller::XClusterPoller(
     const cdc::ProducerTabletInfo& producer_tablet_info,
-    const cdc::ConsumerTabletInfo& consumer_tablet_info,
-    ThreadPool* thread_pool,
-    rpc::Rpcs* rpcs,
+    const cdc::ConsumerTabletInfo& consumer_tablet_info, ThreadPool* thread_pool, rpc::Rpcs* rpcs,
     const std::shared_ptr<XClusterClient>& local_client,
-    const std::shared_ptr<XClusterClient>& producer_client,
-    XClusterConsumer* xcluster_consumer,
-    bool use_local_tserver,
-    const std::vector<TabletId>& global_transaction_status_tablets,
-    bool enable_replicate_transaction_status_table,
-    SchemaVersion last_compatible_consumer_schema_version,
-    rocksdb::RateLimiter* rate_limiter,
-    std::function<int64_t(const TabletId&)>
-        get_leader_term)
+    const std::shared_ptr<XClusterClient>& producer_client, XClusterConsumer* xcluster_consumer,
+    bool use_local_tserver, SchemaVersion last_compatible_consumer_schema_version,
+    rocksdb::RateLimiter* rate_limiter, std::function<int64_t(const TabletId&)> get_leader_term)
     : producer_tablet_info_(producer_tablet_info),
       consumer_tablet_info_(consumer_tablet_info),
       op_id_(consensus::MinimumOpId()),
@@ -132,16 +124,8 @@ XClusterPoller::XClusterPoller(
       last_compatible_consumer_schema_version_(last_compatible_consumer_schema_version),
       get_leader_term_(std::move(get_leader_term)),
       output_client_(CreateXClusterOutputClient(
-          xcluster_consumer,
-          consumer_tablet_info,
-          producer_tablet_info,
-          local_client,
-          thread_pool,
-          rpcs,
-          std::bind(&XClusterPoller::ApplyChangesCallback, this, _1),
-          use_local_tserver,
-          global_transaction_status_tablets,
-          enable_replicate_transaction_status_table,
+          xcluster_consumer, consumer_tablet_info, producer_tablet_info, local_client, thread_pool,
+          rpcs, std::bind(&XClusterPoller::ApplyChangesCallback, this, _1), use_local_tserver,
           rate_limiter)),
       producer_client_(producer_client),
       thread_pool_(thread_pool),
