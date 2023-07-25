@@ -4959,11 +4959,20 @@
         "vaultAddr" : {
           "type" : "string"
         },
+        "vaultAuthNamespace" : {
+          "type" : "string"
+        },
+        "vaultRoleID" : {
+          "type" : "string"
+        },
+        "vaultSecretID" : {
+          "type" : "string"
+        },
         "vaultToken" : {
           "type" : "string"
         }
       },
-      "required" : [ "engine", "mountPath", "role", "vaultAddr", "vaultToken" ],
+      "required" : [ "engine", "mountPath", "role", "vaultAddr" ],
       "type" : "object"
     },
     "HttpLocation" : {
