@@ -261,52 +261,5 @@ Result<std::string> DocDBValueToDebugStr(
   FATAL_INVALID_ENUM_VALUE(KeyType, key_type);
 }
 
-// TODO(mlillibridge): remove this class and the next two functions in part two of
-// [#16665,14308] DocDB: fix logging of RocksDB write batches when packing is used
-class SchemaPackingProviderFromSchemaPackingStorage : public SchemaPackingProvider {
- public:
-  explicit SchemaPackingProviderFromSchemaPackingStorage(
-      const SchemaPackingStorage& schema_packing_storage)
-      : schema_packing_storage_(schema_packing_storage) {}
-
-  Result<CompactionSchemaInfo> CotablePacking(
-      const Uuid& table_id, uint32_t schema_version, HybridTime history_cutoff) override {
-    // ignoring the table_id is not strictly correct but it's what the current code does
-    if (schema_version == kLatestSchemaVersion) {
-      schema_version = 0;
-    }
-    auto& packing = VERIFY_RESULT_REF(schema_packing_storage_.GetPacking(schema_version));
-    return CompactionSchemaInfo{
-        .table_type = TableType::YQL_TABLE_TYPE,
-        .schema_version = schema_version,
-        .schema_packing = std::make_shared<SchemaPacking>(packing),
-        .cotable_id = table_id,
-        .deleted_cols = {},
-        .enabled = PackedRowEnabled(TableType::YQL_TABLE_TYPE, false)};
-  }
-
-  Result<CompactionSchemaInfo> ColocationPacking(
-      ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) override {
-    // this is not strictly correct but it's what the current code does
-    return CotablePacking(Uuid::Nil(), schema_version, history_cutoff);
-  }
-
-  const SchemaPackingStorage& schema_packing_storage_;
-};
-
-Result<std::string> DocDBValueToDebugStr(
-    KeyType key_type, Slice key, Slice value,
-    const SchemaPackingStorage& schema_packing_storage) {
-  SchemaPackingProviderFromSchemaPackingStorage schema_packing_provider{schema_packing_storage};
-  return DocDBValueToDebugStr(key_type, key, value, &schema_packing_provider);
-}
-
-Result<std::string> DocDBValueToDebugStr(
-    Slice key, StorageDbType db_type, Slice value,
-    const SchemaPackingStorage& schema_packing_storage) {
-  SchemaPackingProviderFromSchemaPackingStorage schema_packing_provider{schema_packing_storage};
-  return DocDBValueToDebugStr(key, db_type, value, &schema_packing_provider);
-}
-
 }  // namespace docdb
 }  // namespace yb

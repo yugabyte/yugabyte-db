@@ -155,8 +155,7 @@ void PrintIdOnly(const LogEntryPB& entry) {
   cout << endl;
 }
 
-Status PrintDecodedWriteRequestPB(const string& indent,
-                                  const tablet::WritePB& write) {
+Status PrintDecodedWriteRequestPB(const string& indent, const tablet::WritePB& write) {
   cout << indent << "write {" << endl;
   if (write.has_write_batch()) {
     if (write.has_unused_tablet_id()) {
@@ -164,8 +163,8 @@ Status PrintDecodedWriteRequestPB(const string& indent,
     }
     const ::yb::docdb::KeyValueWriteBatchPB& write_batch = write.write_batch();
     cout << indent << indent << "write_batch {" << endl;
-    cout << indent << indent << indent << "write_pairs_size: "
-         << write_batch.write_pairs_size() << endl;
+    cout << indent << indent << indent << "write_pairs_size: " << write_batch.write_pairs_size()
+         << endl;
     // write tablet id
     for (int i = 0; i < write_batch.write_pairs_size(); i++) {
       cout << indent << indent << indent << "write_pairs {" << endl;
@@ -179,7 +178,8 @@ Status PrintDecodedWriteRequestPB(const string& indent,
       if (kv.has_value()) {
         static docdb::SchemaPackingStorage schema_packing_storage(TableType::YQL_TABLE_TYPE);
         Result<std::string> formatted_value = DocDBValueToDebugStr(
-            kv.key(), ::yb::docdb::StorageDbType::kRegular, kv.value(), schema_packing_storage);
+            kv.key(), ::yb::docdb::StorageDbType::kRegular, kv.value(),
+            nullptr /*schema_packing_provider*/);
         cout << indent << indent << indent << indent << "Value: " << formatted_value << endl;
       }
       cout << indent << indent << indent << "}" << endl;  // write_pairs {

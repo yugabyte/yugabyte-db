@@ -858,10 +858,9 @@ class DocOperationScanTest : public DocOperationTest {
       ASSERT_OK(FlushRocksDbAndWait());
     }
 
-    DumpRocksDBToLog(
-        rocksdb(), doc_read_context().schema_packing_storage, StorageDbType::kRegular);
-    DumpRocksDBToLog(
-        intents_db(), doc_read_context().schema_packing_storage, StorageDbType::kIntents);
+    SchemaPackingProvider* schema_packing_provider = this;
+    DumpRocksDBToLog(rocksdb(), schema_packing_provider, StorageDbType::kRegular);
+    DumpRocksDBToLog(intents_db(), schema_packing_provider, StorageDbType::kIntents);
   }
 
   void PerformScans(const bool is_forward_scan,

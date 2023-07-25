@@ -915,8 +915,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void UnregisterOperationFilterUnlocked(OperationFilter* filter)
     REQUIRES(operation_filters_mutex_);
 
-  std::shared_ptr<docdb::SchemaPackingStorage> PrimarySchemaPackingStorage();
-
   Status AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id);
 
   // Returns true if the tablet was created after a split but it has not yet had data from it's

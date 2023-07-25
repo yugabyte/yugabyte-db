@@ -305,9 +305,9 @@ void DocDBRocksDBUtil::SetTableTTL(uint64_t ttl_msec) {
 }
 
 string DocDBRocksDBUtil::DocDBDebugDumpToStr() {
-  return docdb::DocDBDebugDumpToStr(rocksdb(), doc_read_context().schema_packing_storage) +
+  return docdb::DocDBDebugDumpToStr(rocksdb(), this /*schema_packing_provider*/) +
          docdb::DocDBDebugDumpToStr(
-             intents_db(), doc_read_context().schema_packing_storage, StorageDbType::kIntents);
+             intents_db(), this /*schema_packing_provider*/, StorageDbType::kIntents);
 }
 
 Status DocDBRocksDBUtil::SetPrimitive(
@@ -469,8 +469,7 @@ Status DocDBRocksDBUtil::DeleteSubDoc(
 
 void DocDBRocksDBUtil::DocDBDebugDumpToConsole() {
   DocDBDebugDump(
-      regular_db_.get(), std::cerr, doc_read_context().schema_packing_storage,
-      StorageDbType::kRegular);
+      regular_db_.get(), std::cerr, this /*schema_packing_provider*/, StorageDbType::kRegular);
 }
 
 Status DocDBRocksDBUtil::FlushRocksDbAndWait() {

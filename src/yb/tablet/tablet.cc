@@ -3313,9 +3313,8 @@ Status Tablet::DebugDump(vector<string> *lines) {
 void Tablet::DocDBDebugDump(vector<string> *lines) {
   LOG_STRING(INFO, lines) << "Dumping tablet:";
   LOG_STRING(INFO, lines) << "---------------------------";
-  auto primary_schema_packing_storage = PrimarySchemaPackingStorage();
   docdb::DocDBDebugDump(
-      regular_db_.get(), LOG_STRING(INFO, lines), *primary_schema_packing_storage,
+      regular_db_.get(), LOG_STRING(INFO, lines), &GetSchemaPackingProvider(),
       docdb::StorageDbType::kRegular);
 }
 
@@ -3452,26 +3451,24 @@ Status Tablet::ForceFullRocksDBCompact(rocksdb::CompactionReason compaction_reas
 std::string Tablet::TEST_DocDBDumpStr(IncludeIntents include_intents) {
   if (!regular_db_) return "";
 
-  auto schema_packing_storage = PrimarySchemaPackingStorage();
   if (!include_intents) {
     return docdb::DocDBDebugDumpToStr(doc_db().WithoutIntents(),
-        *schema_packing_storage);
+        &GetSchemaPackingProvider());
   }
 
-  return docdb::DocDBDebugDumpToStr(doc_db(), *schema_packing_storage);
+  return docdb::DocDBDebugDumpToStr(doc_db(), &GetSchemaPackingProvider());
 }
 
 void Tablet::TEST_DocDBDumpToContainer(
     IncludeIntents include_intents, std::unordered_set<std::string>* out) {
   if (!regular_db_) return;
 
-  auto schema_packing_storage = PrimarySchemaPackingStorage();
   if (!include_intents) {
     return docdb::DocDBDebugDumpToContainer(doc_db().WithoutIntents(),
-        *schema_packing_storage, out);
+        &GetSchemaPackingProvider(), out);
   }
 
-  return docdb::DocDBDebugDumpToContainer(doc_db(), *schema_packing_storage, out);
+  return docdb::DocDBDebugDumpToContainer(doc_db(), &GetSchemaPackingProvider(), out);
 }
 
 void Tablet::TEST_DocDBDumpToLog(IncludeIntents include_intents) {
@@ -3480,13 +3477,12 @@ void Tablet::TEST_DocDBDumpToLog(IncludeIntents include_intents) {
     return;
   }
 
-  auto schema_packing_storage = PrimarySchemaPackingStorage();
   docdb::DumpRocksDBToLog(
-      regular_db_.get(), *schema_packing_storage, StorageDbType::kRegular, LogPrefix());
+      regular_db_.get(), &GetSchemaPackingProvider(), StorageDbType::kRegular, LogPrefix());
 
   if (include_intents && intents_db_) {
     docdb::DumpRocksDBToLog(
-        intents_db_.get(), *schema_packing_storage, StorageDbType::kIntents, LogPrefix());
+        intents_db_.get(), &GetSchemaPackingProvider(), StorageDbType::kIntents, LogPrefix());
   }
 }
 
@@ -3752,11 +3748,12 @@ Status Tablet::ReadIntents(std::vector<std::string>* intents) {
   auto intent_iter = std::unique_ptr<rocksdb::Iterator>(
       intents_db_->NewIterator(read_options));
   intent_iter->SeekToFirst();
-  docdb::SchemaPackingStorage schema_packing_storage(table_type());
+  auto* schema_packing_provider = &GetSchemaPackingProvider();
 
   for (; intent_iter->Valid(); intent_iter->Next()) {
-    auto item = EntryToString(intent_iter->key(), intent_iter->value(),
-      schema_packing_storage, docdb::StorageDbType::kIntents);
+    auto item = EntryToString(
+        intent_iter->key(), intent_iter->value(), schema_packing_provider,
+        docdb::StorageDbType::kIntents);
     intents->push_back(item);
   }
 
@@ -4106,12 +4103,6 @@ void Tablet::RegisterOperationFilter(OperationFilter* filter) {
 
 docdb::SchemaPackingProvider& Tablet::GetSchemaPackingProvider() {
   return *metadata_.get();
-}
-
-std::shared_ptr<docdb::SchemaPackingStorage> Tablet::PrimarySchemaPackingStorage() {
-  auto doc_read_context = metadata_->primary_table_info()->doc_read_context;
-  return std::shared_ptr<docdb::SchemaPackingStorage>(doc_read_context,
-      &doc_read_context->schema_packing_storage);
 }
 
 void Tablet::UnregisterOperationFilter(OperationFilter* filter) {
