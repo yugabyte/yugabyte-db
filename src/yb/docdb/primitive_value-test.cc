@@ -321,6 +321,12 @@ TEST(PrimitiveValueTest, TestCorruption) {
   // Invalid varint.
   key_bytes.AppendInt64(std::numeric_limits<int64_t>::max());
   ASSERT_TRUE(decoded.DecodeFromKey(&slice).IsCorruption());
+
+  // kObsoleteIntentType without following byte
+  key_bytes.Clear();
+  key_bytes.AppendKeyEntryType(KeyEntryType::kObsoleteIntentType);
+  slice = key_bytes.AsSlice();
+  ASSERT_TRUE(decoded.DecodeFromKey(&slice).IsCorruption());
 }
 
 TEST(PrimitiveValueTest, TestVarintStorage) {
