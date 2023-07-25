@@ -26,7 +26,7 @@ RUN apt-get install --assume-yes --no-install-recommends --no-install-suggests \
   postgresql-server-dev-14
 
 COPY . /age
-RUN cd /age && make install
+RUN cd /age && make install && make installcheck
 
 COPY docker/docker-entrypoint-initdb.d/00-create-extension-age.sql /docker-entrypoint-initdb.d/00-create-extension-age.sql
 
