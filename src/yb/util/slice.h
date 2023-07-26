@@ -150,6 +150,11 @@ class Slice {
     memcpy(buffer, begin_, size());
   }
 
+  void AppendTo(std::string* out) const;
+  void AssignTo(std::string* out) const;
+
+  void AppendTo(faststring* out) const;
+
   // Truncate the slice to "n" bytes
   void truncate(size_t n);
 
@@ -178,7 +183,7 @@ class Slice {
 
   void CopyToBuffer(std::string* buffer) const;
 
-  explicit operator std::string_view() const { return std::string_view(cdata(), size()); }
+  operator std::string_view() const { return std::string_view(cdata(), size()); }
 
   // Return a string that contains the copy of the referenced data.
   std::string ToBuffer() const;
@@ -250,6 +255,8 @@ class Slice {
 
   size_t DynamicMemoryUsage() const { return 0; }
 
+  bool Contains(const Slice& rhs) const;
+
   // Return a Slice representing bytes for any type which is laid out contiguously in memory.
   template<class T, class = typename std::enable_if<std::is_pod<T>::value, void>::type>
   static Slice FromPod(const T* data) {
@@ -290,34 +297,6 @@ class Slice {
   const uint8_t* end_;
 
   // Intentionally copyable
-};
-
-struct SliceParts {
-  SliceParts(const Slice* _parts, int _num_parts) :
-      parts(_parts), num_parts(_num_parts) { }
-  SliceParts() : parts(nullptr), num_parts(0) {}
-
-  template<size_t N>
-  SliceParts(const std::array<Slice, N>& input) // NOLINT
-      : parts(input.data()), num_parts(N) {
-  }
-
-  std::string ToDebugHexString() const;
-
-  // Sum of sizes of all slices.
-  size_t SumSizes() const;
-
-  // Copy content of all slice to specified buffer.
-  void* CopyAllTo(void* out) const {
-    return CopyAllTo(static_cast<char*>(out));
-  }
-
-  char* CopyAllTo(char* out) const;
-
-  Slice TheOnlyPart() const;
-
-  const Slice* parts;
-  int num_parts;
 };
 
 inline bool operator==(const Slice& x, const Slice& y) {

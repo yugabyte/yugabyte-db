@@ -40,6 +40,7 @@
 
 #include "yb/util/cast.h"
 #include "yb/util/fast_varint.h"
+#include "yb/util/slice_parts.h"
 
 namespace rocksdb {
 
