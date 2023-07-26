@@ -901,6 +901,23 @@ OptSplit *YbGetSplitOptions(Relation rel);
 	} while (0)
 #endif
 
+/*
+ * Increments a tally of sticky objects (TEMP TABLES/WITH HOLD CURSORS) 
+ * maintained for every transaction. 
+ */
+extern void increment_sticky_object_count();
+
+/*
+ * Decrements a tally of sticky objects (TEMP TABLES/WITH HOLD CURSORS) 
+ * maintained for every transaction. 
+ */
+extern void decrement_sticky_object_count();
+
+/*
+ * Check if there exists a database object that requires a sticky connection.
+ */
+extern bool YbIsStickyConnection(int *change);
+
 extern bool yb_is_client_ysqlconnmgr;
 
 #endif /* PG_YB_UTILS_H */
