@@ -115,6 +115,12 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
   </li>
 
   <li>
+    <a href="hashicorp-vault/">
+      <img src="/images/section_icons/develop/ecosystem/hashicorp-vault.png">
+      Hashicorp Vault
+    </a>
+  </li>
+  <li>
     <a href="hasura/">
       <img src="/images/section_icons/develop/ecosystem/hasura.png">
       Hasura
