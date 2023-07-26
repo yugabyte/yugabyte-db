@@ -13,112 +13,80 @@ menu:
 type: indexpage
 ---
 
-<div class="row">
+In YugabyteDB, indexes are stored in a distributed manner just like tables. They are split into tablets and replicated. Updates to indexes are transactional which means that row updates and the corresponding index updates happen as one single transaction. Just like tables, they are stored in [LSM](https://en.wikipedia.org/wiki/Log-structured_merge-tree) format as compared to the B-tree structure in Postgres.
 
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="primary-key-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Primary keys</div>
-      </div>
-      <div class="body">
-          Explore the use of Primary keys in YSQL and YCQL with examples.
-      </div>
-    </a>
-  </div>
+In YSQL API, YugabyteDB supports most of the Postgres semantics and in the YCQL API, most of Cassandra index semantics are supported along with other improvements. Let us look at the different types of indexes and their support across the two APIs.
 
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="foreign-key-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Foreign keys</div>
-      </div>
-      <div class="body">
-          Explore the use of Foreign keys associated with Primary keys in YSQL.
-      </div>
-    </a>
-  </div>
- <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="secondary-indexes/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Secondary indexes</div>
-      </div>
-      <div class="body">
-          Explore Indexes to optimize your database performance.
-      </div>
-    </a>
-  </div>
+## Types of indexes
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="unique-index-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Unique indexes</div>
-      </div>
-      <div class="body">
-          Explore Unique indexes in YSQL and YCQL with examples.
-      </div>
-    </a>
-  </div>
+|                   Type                    |  YSQL   | YCQL |                         Info                         |
+| ----------------------------------------- | ------- | ---- | ---------------------------------------------------- |
+| [Primary Key](primary-key-ysql)           | Yes     | Yes  | Unique Key that indentifies the row                  |
+| [Foreign Key](foreign-key-ysql)           | Yes     | No   | Link to a column in another table                    |
+| [Secondary Index](secondary-indexes)      | Yes     | Yes  | Index on columns other than the primary key          |
+| [Unique Index](unique-index-ysql)         | Yes     | Yes  | Set one or many columns to be unique                 |
+| [Partial Index](partial-index-ysql)       | Yes     | Yes  | Indexes that apply to only some rows of the table    |
+| [Covering Index](covering-index-ysql)     | Yes     | Yes  | Store other columns in the indx for faster retrieval |
+| [Expression Index](expression-index-ysql) | Yes     | No   | Index based on a functional operation on columns     |
+| [GIN Index](gin)                          | Partial | No   | Generalized inverted index for fast text search      |
+| GIST Index                                | No      | No   | For spatial search. Tracked - {{<issue 1337>}}       |
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="partial-index-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Partial indexes</div>
-      </div>
-      <div class="body">
-          Explore Partial indexes in YSQL and YCQL with examples.
-      </div>
-    </a>
-  </div>
+## Learn more
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="expression-index-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Expression indexes</div>
-      </div>
-      <div class="body">
-          Explore Expression indexes in YSQL with examples.
-      </div>
-    </a>
-  </div>
+{{<index/block>}}
 
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="covering-index-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Covering indexes</div>
-      </div>
-      <div class="body">
-          Explore Covering indexes in YSQL with examples.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Primary keys"
+    body="Explore the use of Primary keys in YSQL and YCQL with examples."
+    href="primary-key-ysql/"
+    icon="fa-solid fa-bars">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="gin/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">GIN indexes</div>
-      </div>
-      <div class="body">
-          Use GIN indexes in YSQL to run efficient queries.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Foreign keys"
+    body="Explore the use of Foreign keys associated with Primary keys in YSQL."
+    href="foreign-key-ysql/"
+    icon="fa-solid fa-list-ul">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="other-constraints/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Other constraints</div>
-      </div>
-      <div class="body">
-          Explore CHECK, UNIQUE, and NOT NULL constraints to optimize your database performance.
-      </div>
-    </a>
- </div>
-</div>
+  {{<index/item
+    title="Secondary indexes"
+    body="Explore Indexes to optimize your database performance."
+    href="secondary-indexes/"
+    icon="fa-solid fa-list-ol">}}
+
+  {{<index/item
+    title="Unique indexes"
+    body="Explore Unique indexes in YSQL and YCQL with examples."
+    href="unique-index-ysql/"
+    icon="fa-solid fa-bars-staggered">}}
+
+  {{<index/item
+    title="Partial indexes"
+    body="Explore Partial indexes in YSQL and YCQL with examples."
+    href="partial-index-ysql/"
+    icon="fa-solid fa-list-check">}}
+
+  {{<index/item
+    title="Expression indexes"
+    body="Explore Expression indexes in YSQL with examples."
+    href="expression-index-ysql/"
+    icon="fa-solid fa-percent">}}
+
+   {{<index/item
+    title="Covering indexes"
+    body="Explore Covering indexes in YSQL with examples."
+    href="covering-index-ysql/"
+    icon="fa-solid fa-table-list">}}
+
+  {{<index/item
+    title="GIN indexes"
+    body="Use GIN indexes in YSQL to run efficient queries."
+    href="gin/"
+    icon="fa-solid fa-folder-tree">}}
+
+  {{<index/item
+    title="Other constraints"
+    body="Explore CHECK, UNIQUE, and NOT NULL constraints to optimize your database performance."
+    href="other-constraints/"
+    icon="/images/section_icons/develop/learn.png">}}
+
+{{</index/block>}}
