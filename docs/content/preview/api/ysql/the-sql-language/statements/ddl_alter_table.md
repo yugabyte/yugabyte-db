@@ -246,6 +246,7 @@ HINT:  You might need to specify "USING a::bigint".
 ALTER TABLE test ALTER COLUMN a SET DATA TYPE BIGINT USING a::BIGINT;
 ```
 
+
 #### DROP CONSTRAINT *constraint_name* [ RESTRICT | CASCADE ]
 
 Drop the named constraint from the table.
