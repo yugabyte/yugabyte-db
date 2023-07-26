@@ -236,7 +236,13 @@ Example:
 
 ```sql
 CREATE TABLE test (id BIGSERIAL PRIMARY KEY, a VARCHAR(50));
+INSERT INTO test(a) VALUES ('1234555');
 ALTER TABLE test ALTER COLUMN a TYPE VARCHAR(40);
+-- try to change type to BIGINT
+ALTER TABLE test ALTER COLUMN a TYPE BIGINT;
+ERROR:  column "a" cannot be cast automatically to type bigint
+HINT:  You might need to specify "USING a::bigint".
+-- use USING clause to cast the values
 ALTER TABLE test ALTER COLUMN a SET DATA TYPE BIGINT USING a::BIGINT;
 ```
 
