@@ -101,7 +101,7 @@ export const ClusterNodeWidget: FC<ClusterNodeWidgetProps> = ({ health }) => {
   const healthyNodes = numNodes - deadNodes.length;
 
   return (
-    <Box flex={1}>
+    <Box>
       <Link className={classes.link} component={RouterLink} to="?tab=tabNodes">
         <Box display="flex" alignItems="center">
           <Typography variant="body2" className={classes.title}>{t('clusterDetail.overview.nodes')}</Typography>
