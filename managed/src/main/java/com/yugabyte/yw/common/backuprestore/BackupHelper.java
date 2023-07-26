@@ -39,6 +39,7 @@ import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
@@ -74,6 +75,7 @@ import org.yb.ybc.NamespaceType;
 @Singleton
 public class BackupHelper {
   private static final String VALID_OWNER_REGEX = "^[\\pL_][\\pL\\pM_0-9]*$";
+  private static final int maxRetryCount = 5;
 
   private YbcManager ybcManager;
   private YBClientService ybClientService;
@@ -308,6 +310,47 @@ public class BackupHelper {
       }
     }
     return taskList;
+  }
+
+  public boolean stopBackup(UUID customerUUID, UUID backupUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    Process process = Util.getProcessOrBadRequest(backupUUID);
+    Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
+    if (backup.getState() != Backup.BackupState.InProgress) {
+      log.info("The backup {} you are trying to stop is not in progress.", backupUUID);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "The backup you are trying to stop is not in progress.");
+    }
+    if (process == null) {
+      log.info("The backup {} process you want to stop doesn't exist.", backupUUID);
+      throw new PlatformServiceException(
+          BAD_REQUEST, "The backup process you want to stop doesn't exist.");
+    } else {
+      process.destroyForcibly();
+    }
+    Util.removeProcess(backupUUID);
+    try {
+      waitForTask(backup.getTaskUUID());
+    } catch (InterruptedException e) {
+      log.info("Error while waiting for the backup task to get finished.");
+    }
+    backup.transitionState(BackupState.Stopped);
+    return true;
+  }
+
+  private static void waitForTask(UUID taskUUID) throws InterruptedException {
+    int numRetries = 0;
+    while (numRetries < maxRetryCount) {
+      TaskInfo taskInfo = TaskInfo.get(taskUUID);
+      if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
+        return;
+      }
+      Thread.sleep(1000);
+      numRetries++;
+    }
+    throw new PlatformServiceException(
+        BAD_REQUEST,
+        "WaitFor task exceeded maxRetries! Task state is " + TaskInfo.get(taskUUID).getTaskState());
   }
 
   public void validateStorageConfigOnBackup(Backup backup) {
