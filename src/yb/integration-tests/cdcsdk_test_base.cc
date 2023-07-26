@@ -136,9 +136,8 @@ Status CDCSDKTestBase::InitPostgres(Cluster* cluster) {
 
 // Set up a cluster with the specified parameters.
 Status CDCSDKTestBase::SetUpWithParams(
-    uint32_t replication_factor,
-    uint32_t num_masters,
-    bool colocated) {
+    uint32_t replication_factor, uint32_t num_masters, bool colocated,
+    bool cdc_populate_safepoint_record) {
   master::SetDefaultInitialSysCatalogSnapshotFlags();
   CDCSDKTestBase::SetUp();
   FLAGS_enable_ysql = true;
@@ -148,6 +147,7 @@ Status CDCSDKTestBase::SetUpWithParams(
   FLAGS_cdc_enable_replicate_intents = true;
   FLAGS_replication_factor = replication_factor;
   FLAGS_ysql_enable_pack_full_row_update = true;
+  FLAGS_cdc_populate_safepoint_record = cdc_populate_safepoint_record;
 
   MiniClusterOptions opts;
   opts.num_masters = num_masters;

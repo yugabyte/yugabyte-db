@@ -51,7 +51,7 @@ DEFINE_RUNTIME_bool(
     "Enable packing updates corresponding to a row in single CDC record");
 
 DEFINE_RUNTIME_bool(
-    cdc_populate_safepoint_record, false,
+    cdc_populate_safepoint_record, true,
     "If 'true' we will also send a 'SAFEPOINT' record at the end of each GetChanges call.");
 
 DEFINE_NON_RUNTIME_bool(
