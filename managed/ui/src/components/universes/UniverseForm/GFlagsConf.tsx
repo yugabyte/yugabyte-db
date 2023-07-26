@@ -8,7 +8,14 @@ import { YBButton } from '../../../redesign/components';
 interface GFlagConfProps {
   formProps: any;
   mode: string;
+  serverType: string;
 }
+
+export const GFlagMultilineMode = {
+  EDIT: 'edit',
+  PREVIEW: 'preview'
+} as const;
+export type GFlagMultilineMode = typeof GFlagMultilineMode[keyof typeof GFlagMultilineMode];
 
 export const useStyles = makeStyles(() => ({
   buttons: {
@@ -25,20 +32,17 @@ export const useStyles = makeStyles(() => ({
   }
 }));
 
-export const GFlagsConf: FC<GFlagConfProps> = ({ formProps, mode }) => {
+export const GFlagsConf: FC<GFlagConfProps> = ({ formProps, mode, serverType }) => {
   const classes = useStyles();
   const { t } = useTranslation();
-  const [editClick, setEditClick] = useState<boolean>(true);
-  const [previewClick, setPreviewClick] = useState<boolean>(false);
+  const [currentView, setCurentView] = useState<GFlagMultilineMode>(GFlagMultilineMode.EDIT);
 
   const handleEditClick = () => {
-    setEditClick(true);
-    setPreviewClick(false);
+    setCurentView(GFlagMultilineMode.EDIT);
   };
 
   const handlePreviewClick = () => {
-    setEditClick(false);
-    setPreviewClick(true);
+    setCurentView(GFlagMultilineMode.PREVIEW);
   };
 
   return (
@@ -74,8 +78,12 @@ export const GFlagsConf: FC<GFlagConfProps> = ({ formProps, mode }) => {
         }
       </Box>
       <Box mt={2}>
-        {editClick && <EditGFlagsConf formProps={formProps} mode={mode} />}
-        {previewClick && <PreviewGFlagsConf formProps={formProps} />}
+        {currentView === GFlagMultilineMode.EDIT && (
+          <EditGFlagsConf formProps={formProps} mode={mode} serverType={serverType} />
+        )}
+        {currentView === GFlagMultilineMode.PREVIEW && (
+          <PreviewGFlagsConf formProps={formProps} serverType={serverType} />
+        )}
       </Box>
     </>
   );
