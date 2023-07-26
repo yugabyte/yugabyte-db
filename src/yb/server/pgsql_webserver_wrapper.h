@@ -99,6 +99,12 @@ YBCStatus StartWebserver(struct WebserverWrapper *webserver);
 void RegisterGetYsqlStatStatements(void (*getYsqlStatementStats)(void *));
 void RegisterResetYsqlStatStatements(void (*fn)());
 void WriteStatArrayElemToJson(void *p1, void *p2);
+void WriteStartObjectToJson(void *p1); /* Takes void *cb_arg argument */
+void WriteHistArrayBeginToJson(void *p1); /* Takes void *cb_arg argument */
+/* Takes void *cb_arg, char *buf, int64_t *count arguments */
+void WriteHistElemToJson(void *p1, void *p2, void *p3);
+void WriteHistArrayEndToJson(void* p1); /* Takes void *cb_arg argument */
+void WriteEndObjectToJson(void *p1); /* Takes void *cb_arg argument */
 
 #ifdef __cplusplus
 }  // extern "C"
