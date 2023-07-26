@@ -879,6 +879,23 @@ void YbSetIsBatchedExecution(bool value);
 #endif
 
 void ProcSetNodeUUID(const char *);
-void ProcSetTopRequestId(const char *);
+void ProcSetTopRequestId(const uint64_t *);
+
+static void
+top_level_request_id_uint_to_char(char *top_level_request_id, const uint64_t top_level_request_id_uint[2])
+{
+    uint64_t nth_request_id = top_level_request_id_uint[0];
+    int index = 15;
+    for (; index >= 0; index--)
+    {
+      if (index == 8)
+        nth_request_id = top_level_request_id_uint[1];
+      if (nth_request_id % 16 < 10)
+        top_level_request_id[index] = '0' + (nth_request_id % 16);
+      else
+        top_level_request_id[index] = 'a' + ((nth_request_id % 16) % 10);
+      nth_request_id /= 10;
+    }
+}
 
 #endif /* PG_YB_UTILS_H */

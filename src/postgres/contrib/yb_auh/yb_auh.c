@@ -43,7 +43,7 @@ PG_FUNCTION_INFO_V1(pg_active_universe_history);
 
 typedef struct ybauhEntry {
   TimestampTz auh_sample_time;
-  char top_level_request_id[16];
+  uint64_t top_level_request_id[2];
   long request_id;
   uint32 wait_event;
   char wait_event_aux[16];
@@ -79,7 +79,7 @@ static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
 static void ybauh_startup_hook(void);
 static void pg_active_universe_history_internal(FunctionCallInfo fcinfo);
 static void auh_entry_store(TimestampTz auh_time,
-                            const char* top_level_request_id,
+                            const uint64_t* top_level_request_id,
                             long request_id,
                             uint32 wait_event,
                             const char* wait_event_aux,
@@ -272,7 +272,7 @@ yb_auh_circularBufferIndexSize(void)
 }
 
 static void auh_entry_store(TimestampTz auh_time,
-                            const char* top_level_request_id,
+                            const uint64_t* top_level_request_id,
                             long request_id,
                             uint32 wait_event,
                             const char* wait_event_aux,
@@ -293,11 +293,13 @@ static void auh_entry_store(TimestampTz auh_time,
   AUHEntryArray[inserted].wait_event = wait_event;
   AUHEntryArray[inserted].request_id = request_id;
 
-  int len = Min(strlen(top_level_request_id) + 1, 15);
-  memcpy(AUHEntryArray[inserted].top_level_request_id, top_level_request_id, len);
-  AUHEntryArray[inserted].top_level_request_id[len] = '\0';
 
-  len = Min(strlen(wait_event_aux) + 1, 15);
+  if (top_level_request_id) {
+    AUHEntryArray[inserted].top_level_request_id[0] = top_level_request_id[0];
+    AUHEntryArray[inserted].top_level_request_id[1] = top_level_request_id[1];
+  }
+
+  int len = Min(strlen(wait_event_aux) + 1, 15);
   memcpy(AUHEntryArray[inserted].wait_event_aux, wait_event_aux, len);
   AUHEntryArray[inserted].wait_event_aux[len] = '\0';
 
@@ -391,9 +393,14 @@ pg_active_universe_history_internal(FunctionCallInfo fcinfo)
     else
       break;
 
+    char top_level_request_id[17];
+    top_level_request_id_uint_to_char(top_level_request_id, AUHEntryArray[i].top_level_request_id);
+
+    top_level_request_id[16] = '\0';
+
     // top level request id
     if (AUHEntryArray[i].top_level_request_id[0] != '\0')
-      values[j++] = CStringGetTextDatum(AUHEntryArray[i].top_level_request_id);
+      values[j++] = CStringGetTextDatum(top_level_request_id);
     else
       nulls[j++] = true;
 

@@ -72,6 +72,11 @@ void WaitStateInfo::set_current_request_id(int64_t current_request_id) {
   metadata_.current_request_id = current_request_id;
 }
 
+void WaitStateInfo::set_top_level_request_id(uint64_t top_level_request_id) {
+  std::lock_guard<simple_spinlock> l(mutex_);
+  metadata_.top_level_request_id = {top_level_request_id, top_level_request_id * top_level_request_id};
+}
+
 void WaitStateInfo::UpdateMetadata(const AUHMetadata& meta) {
   std::lock_guard<simple_spinlock> l(mutex_);
   metadata_.UpdateFrom(meta);
