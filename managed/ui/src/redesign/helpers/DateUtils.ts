@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import moment from "moment"
+import moment from "moment-timezone";
 
 export const YBTimeFormats = {
     YB_DEFAULT_TIMESTAMP: 'MMM-DD-YYYY HH:mm:ss ZZ',
@@ -39,6 +39,10 @@ export const convertToISODateString = (d: Date) => {
 
 export const ybFormatDate = (d: Date | string | number, timeFormat = YBTimeFormats.YB_DEFAULT_TIMESTAMP) => {
     return moment(d).format(timeFormat as any);
+}
+
+export const ybFormatDateTimezone = (d: Date | string | number, timezone: string, timeFormat = YBTimeFormats.YB_DEFAULT_TIMESTAMP) => {
+    return moment(d).tz(timezone ?? 'UTC').format(timeFormat as any);
 }
 
 export const dateStrToMoment = (str: string) => {

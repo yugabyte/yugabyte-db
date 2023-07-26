@@ -8,7 +8,7 @@
  */
 
 import { Field, FormikProps } from 'formik';
-import React, { FC, useState } from 'react';
+import { FC, useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { get } from 'lodash';
@@ -16,7 +16,7 @@ import {
   fetchThrottleParameters,
   resetThrottleParameterToDefaults,
   setThrottleParameters
-} from '..';
+} from '../common/BackupAPI';
 import { YBModalForm } from '../../common/forms';
 import { YBButton, YBControlledNumericInput } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';

@@ -206,12 +206,6 @@ TAG_FLAG(xcluster_svc_queue_length, advanced);
 DECLARE_string(cert_node_filename);
 DECLARE_bool(ysql_enable_table_mutation_counter);
 
-DEFINE_RUNTIME_bool(xcluster_external_transactions_ignore_safe_time, false,
-    "When enabled, xcluster external transactions will ignore the xCluster safe time. Enabling "
-    "this on can cause consistency issues.");
-TAG_FLAG(xcluster_external_transactions_ignore_safe_time, advanced);
-TAG_FLAG(xcluster_external_transactions_ignore_safe_time, unsafe);
-
 DEFINE_NON_RUNTIME_bool(allow_encryption_at_rest, true,
                         "Whether or not to allow encryption at rest to be enabled. Toggling this "
                         "flag does not turn on or off encryption at rest, but rather allows or "
@@ -504,7 +498,11 @@ Status TabletServer::InitAutoFlags() {
         options_.HostsString(), *opts_.GetMasterAddresses(), ApplyNonRuntimeAutoFlags::kTrue));
   }
 
-  return Status::OK();
+  return RpcAndWebServerBase::InitAutoFlags();
+}
+
+Result<std::unordered_set<std::string>> TabletServer::GetAvailableAutoFlagsForServer() const {
+  return auto_flags_manager_->GetAvailableAutoFlagsForServer();
 }
 
 uint32_t TabletServer::GetAutoFlagConfigVersion() const {
@@ -779,6 +777,14 @@ Status TabletServer::DisplayRpcIcons(std::stringstream* output) {
       "/statements", FLAGS_pgsql_proxy_bind_address, FLAGS_pgsql_proxy_webserver_port,
       http_addr_host, &sql_all_url));
   DisplayIconTile(output, "fa-tasks", "YSQL All Ops", sql_all_url);
+
+  // YCQL All Ops
+  string cql_all_url;
+  RETURN_NOT_OK(GetDynamicUrlTile(
+      "/statements", FLAGS_cql_proxy_bind_address, FLAGS_cql_proxy_webserver_port,
+      http_addr_host, &cql_all_url));
+  DisplayIconTile(output, "fa-tasks", "YCQL All Ops", cql_all_url);
+
   return Status::OK();
 }
 
@@ -1021,18 +1027,6 @@ PgMutationCounter& TabletServer::GetPgNodeLevelMutationCounter() {
 
 void TabletServer::UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map) {
   xcluster_safe_time_map_.Update(safe_time_map);
-}
-
-Result<bool> TabletServer::XClusterSafeTimeCaughtUpToCommitHt(
-    const NamespaceId& namespace_id, HybridTime commit_ht) const {
-  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_xcluster_external_transactions_ignore_safe_time))) {
-    return true;
-  }
-
-  auto safe_time = VERIFY_RESULT(xcluster_safe_time_map_.GetSafeTime(namespace_id));
-  SCHECK(safe_time, TryAgain, "XCluster safe time not found for namespace $0", namespace_id);
-
-  return *safe_time > commit_ht;
 }
 
 Result<cdc::XClusterRole> TabletServer::TEST_GetXClusterRole() const {

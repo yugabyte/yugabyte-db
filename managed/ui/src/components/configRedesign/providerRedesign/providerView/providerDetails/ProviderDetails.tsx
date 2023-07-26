@@ -4,7 +4,7 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import React, { useState } from 'react';
+import { useState } from 'react';
 import clsx from 'clsx';
 import { Box, Tab, Tabs } from '@material-ui/core';
 import { TabContext, TabPanel } from '@material-ui/lab';
@@ -46,7 +46,7 @@ export const ProviderDetails = ({ linkedUniverses, providerConfig }: ProviderDet
       <Box display="flex">
         <div className={styles.sideNav}>
           <Tabs
-            classes={{ flexContainer: styles.tabGroup }}
+            classes={{ flexContainer: styles.tabGroup, root: styles.noTabBorder }}
             orientation="vertical"
             onChange={handleTabChange}
           >

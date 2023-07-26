@@ -1,5 +1,4 @@
 // Copyright (c) YugaByte, Inc.
-import React from 'react';
 import { isValidObject } from './ObjectUtils';
 import { YBFormattedNumber } from '../components/common/descriptors';
 import { YBLoadingCircleIcon } from '../components/common/indicators';

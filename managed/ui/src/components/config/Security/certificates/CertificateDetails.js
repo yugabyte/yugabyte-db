@@ -1,16 +1,12 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Fragment } from 'react';
+import { Fragment } from 'react';
 import { YBModal } from '../../../common/forms/fields';
 import { ybFormatDate } from '../../../../redesign/helpers/DateUtils';
 
 export const CertificateDetails = ({ certificate, visible, onHide }) => {
-  const certStart = certificate.creationTime
-    ? ybFormatDate(certificate.creationTime)
-    : '';
-  const certExpiry = certificate.expiryDate
-    ? ybFormatDate(certificate.expiryDate)
-    : '';
+  const certStart = certificate.creationTime ? ybFormatDate(certificate.creationTime) : '';
+  const certExpiry = certificate.expiryDate ? ybFormatDate(certificate.expiryDate) : '';
 
   const isVaultCert = certificate.type === 'HashicorpVault';
 

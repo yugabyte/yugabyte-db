@@ -2,7 +2,7 @@
 //
 // Author: Nishant Sharma(nishant.sharma@hashedin.com)
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { YBModal, YBTextInput } from '../../common/forms/fields';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 

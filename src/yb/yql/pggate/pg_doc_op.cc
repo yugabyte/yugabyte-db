@@ -488,7 +488,7 @@ Status PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
   RETURN_NOT_OK(PgDocOp::ExecuteInit(exec_params));
 
   read_op_->read_request().set_return_paging_state(true);
-  SetRequestPrefetchLimit();
+  RETURN_NOT_OK(SetRequestPrefetchLimit());
   SetBackfillSpec();
   SetRowMark();
   SetReadTimeForBackfill();
@@ -1251,7 +1251,7 @@ Status PgDocReadOp::CompleteProcessResponse() {
   return Status::OK();
 }
 
-void PgDocReadOp::SetRequestPrefetchLimit() {
+Status PgDocReadOp::SetRequestPrefetchLimit() {
   // Predict the maximum prefetch-limit using the associated gflags.
   auto& req = read_op_->read_request();
 
@@ -1263,10 +1263,36 @@ void PgDocReadOp::SetRequestPrefetchLimit() {
   auto row_limit = exec_params_.limit_count + exec_params_.limit_offset;
   suppress_next_result_prefetching_ = true;
 
-  if (exec_params_.limit_use_default ||
-      (predicted_row_limit > 0 && predicted_row_limit < row_limit)) {
+  // If in any of these cases we determine that the default row/size based batch size is lower
+  // than the actual requested LIMIT, we enable prefetching. If else, we try
+  // to only get the required data in one RPC without prefetching.
+  if (exec_params_.limit_use_default) {
     row_limit = predicted_row_limit;
     suppress_next_result_prefetching_ = false;
+  } else if (predicted_row_limit > 0 && predicted_row_limit < row_limit) {
+    row_limit = predicted_row_limit;
+    suppress_next_result_prefetching_ = false;
+  } else if (predicted_size_limit > 0) {
+    // Try to estimate the total data size of a LIMIT'd query
+    // Inaccurate in the presence of varlen targets but not possible to fix that without PG stats;
+    size_t row_width = 0;
+    for (const LWPgsqlExpressionPB& target : req.targets()) {
+      if (target.has_column_id()) {
+        const ColumnSchema &col_schema =
+          VERIFY_RESULT(table_->schema().column_by_id(ColumnId(target.column_id())));
+
+        // This size is usually the computed sizeof() of the serialized datatype.
+        // Its computation can be found in yb/common/types.h
+        auto size = col_schema.type_info()->size;
+        row_width += size;
+      }
+    }
+
+    // Prefetch if we expect size limit to occur first, so there will
+    // be multiple RPCs until row_limit is reached
+    if (row_width > 0 && (predicted_size_limit / row_width) < row_limit) {
+      suppress_next_result_prefetching_ = false;
+    }
   }
 
   req.set_limit(row_limit);
@@ -1281,6 +1307,7 @@ void PgDocReadOp::SetRequestPrefetchLimit() {
           << (row_limit == 0 ? " (Unlimited)" : "")
           << " size_limit=" << predicted_size_limit
           << (predicted_size_limit == 0 ? " (Unlimited)" : "");
+  return Status::OK();
 }
 
 void PgDocReadOp::SetRowMark() {

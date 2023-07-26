@@ -17,6 +17,7 @@
 
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/operations/snapshot_operation.h"
+#include "yb/tserver/remote_snapshot_transfer_client.h"
 
 namespace yb {
 namespace tserver {
@@ -96,6 +97,17 @@ class RemoteBootstrapRocksDBClientTest : public RemoteBootstrapClientTest {
     }
   }
 
+  void VerifySnapshotFilesAreValid(const string& rocksdb_dir, const string& top_snapshots_dir) {
+    for (const auto& snapshot_id : snapshot_ids_) {
+      const string snapshot_dir = JoinPathSegments(top_snapshots_dir, snapshot_id);
+      LOG(INFO) << "Checking that dir " << snapshot_dir << " exists";
+      ASSERT_TRUE(env_->FileExists(snapshot_dir));
+
+      const string src_snapshot_dir = JoinPathSegments(src_top_snapshots_dir_, snapshot_id);
+      ASSERT_NO_FATAL_FAILURE(VerifySameSnapshotFiles(src_snapshot_dir, snapshot_dir));
+    }
+  }
+
  protected:
   vector<SnapshotId> snapshot_ids_;
   string src_rocksdb_dir_;
@@ -116,15 +128,7 @@ TEST_F(RemoteBootstrapRocksDBClientTest, TestDownloadSnapshotFiles) {
   ASSERT_OK(client_->FetchAll(&listener));
   ASSERT_TRUE(env_->FileExists(rocksdb_dir));
   ASSERT_TRUE(env_->FileExists(top_snapshots_dir));
-
-  for (const auto& snapshot_id : snapshot_ids_) {
-    const string snapshot_dir = JoinPathSegments(top_snapshots_dir, snapshot_id);
-    LOG(INFO) << "Checking that dir " << snapshot_dir << " exists";
-    ASSERT_TRUE(env_->FileExists(snapshot_dir));
-
-    const string src_snapshot_dir = JoinPathSegments(src_top_snapshots_dir_, snapshot_id);
-    ASSERT_NO_FATAL_FAILURE(VerifySameSnapshotFiles(src_snapshot_dir, snapshot_dir));
-  }
+  VerifySnapshotFilesAreValid(rocksdb_dir, top_snapshots_dir);
 }
 
 // Test that a failure during a download of a snapshot file doesn't cause the remote bootstrap
@@ -173,6 +177,60 @@ TEST_F(RemoteBootstrapRocksDBClientTest, TestDownloadSnapshotFilesFailure) {
     const string src_snapshot_dir = JoinPathSegments(src_top_snapshots_dir_, snapshot_id);
     ASSERT_NO_FATAL_FAILURE(VerifySameSnapshotFiles(src_snapshot_dir, snapshot_dir));
   }
+}
+
+class RemoteSnapshotTransferDocksDBClientTest : public RemoteBootstrapRocksDBClientTest {
+ public:
+  RemoteSnapshotTransferDocksDBClientTest() : RemoteBootstrapRocksDBClientTest() {}
+
+  void SetUpRemoteBootstrapClient() override {
+    // Set custom rocksdb directory, this pattern is from RaftGroupMetadata::CreateNew.
+    auto data_root_dirs = fs_manager_->GetDataRootDirs();
+    CHECK(!data_root_dirs.empty()) << "No data root directories found";
+    auto data_top_dir = data_root_dirs[0];
+
+    rocksdb_dir_ =
+        JoinPathSegments(data_top_dir, FsManager::kRocksDBDirName, "test-tablet-rfts-client-dir");
+
+    // RemoteSnapshotTransferClient expects the metadata value passed in to be non-null
+    meta_ = tablet_peer_->tablet_metadata();
+
+    // Create snapshot.
+    SnapshotId snapshot_id = "snapshot_0";
+    CreateSnapshot(snapshot_id);
+    snapshot_ids_.push_back(std::move(snapshot_id));
+
+    // SetUp RemoteSnapshotTransferClient
+    messenger_ = ASSERT_RESULT(rpc::MessengerBuilder(CURRENT_TEST_NAME()).Build());
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
+
+    client_ = std::make_unique<RemoteSnapshotTransferClient>(GetTabletId(), fs_manager_.get());
+    ASSERT_OK(GetRaftConfigLeader(
+        ASSERT_RESULT(tablet_peer_->GetConsensus())
+            ->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED),
+        &leader_));
+
+    HostPort host_port = HostPortFromPB(leader_.last_known_private_addr()[0]);
+    ASSERT_OK(
+        client_->Start(proxy_cache_.get(), leader_.permanent_uuid(), host_port, rocksdb_dir_));
+  }
+
+ protected:
+  std::unique_ptr<RemoteSnapshotTransferClient> client_;
+  std::string rocksdb_dir_;
+};
+
+// Basic snapshot files download unit test.
+TEST_F(RemoteSnapshotTransferDocksDBClientTest, TestDownloadSnapshotFiles) {
+  ASSERT_NO_FATAL_FAILURE(CheckSnapshotsInSrc());
+  ASSERT_FALSE(env_->FileExists(rocksdb_dir_));
+
+  auto snapshot_id = snapshot_ids_.front();
+  ASSERT_OK(client_->FetchSnapshot(snapshot_id));
+
+  const string top_snapshots_dir = tablet::TabletSnapshots::SnapshotsDirName(rocksdb_dir_);
+  ASSERT_TRUE(env_->FileExists(top_snapshots_dir));
+  VerifySnapshotFilesAreValid(rocksdb_dir_, top_snapshots_dir);
 }
 
 } // namespace tserver

@@ -177,8 +177,7 @@ Master::Master(const MasterOptions& opts)
           METRIC_ENTITY_cluster.Instantiate(metric_registry_.get(), "yb.cluster")),
       master_tablet_server_(new MasterTabletServer(this, metric_entity())) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
-      GetAtomicFlag(&FLAGS_inbound_rpc_memory_limit),
-      mem_tracker()));
+      GetAtomicFlag(&FLAGS_inbound_rpc_memory_limit), mem_tracker()));
 
   LOG(INFO) << "yb::master::Master created at " << this;
   LOG(INFO) << "yb::master::TSManager created at " << ts_manager_.get();
@@ -246,7 +245,11 @@ Status Master::InitAutoFlags() {
     }
   }
 
-  return Status::OK();
+  return RpcAndWebServerBase::InitAutoFlags();
+}
+
+Result<std::unordered_set<std::string>> Master::GetAvailableAutoFlagsForServer() const {
+  return auto_flags_manager_->GetAvailableAutoFlagsForServer();
 }
 
 Status Master::InitAutoFlagsFromMasterLeader(const HostPort& leader_address) {

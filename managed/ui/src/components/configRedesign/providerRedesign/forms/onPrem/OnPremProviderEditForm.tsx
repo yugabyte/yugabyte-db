@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, mixed, object, string } from 'yup';
@@ -431,6 +431,7 @@ const constructDefaultFormValues = (
   regions: providerConfig.regions.map((region) => ({
     fieldId: generateLowerCaseAlphanumericId(),
     code: region.code,
+    name: region.name || region.code,
     location: getOnPremLocationOption(region.latitude, region.longitude),
     zones: region.zones.map((zone) => ({
       code: zone.code
@@ -502,7 +503,7 @@ const constructProviderPayload = async (
             longitude: regionFormValues.location.value.longitude
           }),
           code: regionFormValues.code,
-          name: regionFormValues.code,
+          name: regionFormValues.name,
           zones: [
             ...regionFormValues.zones.map((azFormValues) => {
               const existingZone = findExistingZone<OnPremRegion, OnPremAvailabilityZone>(

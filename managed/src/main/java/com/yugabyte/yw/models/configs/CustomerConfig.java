@@ -239,6 +239,14 @@ public class CustomerConfig extends Model {
     return createConfig(customerUUID, ConfigType.PASSWORD_POLICY, PASSWORD_POLICY, payload);
   }
 
+  public static CustomerConfig createStorageConfig(
+      UUID customerUUID, String name, String configName, JsonNode payload) {
+    // We allow overriding name here because this is used by operator.
+    CustomerConfig c = createConfig(customerUUID, ConfigType.STORAGE, name, payload);
+    c.setConfigName(configName);
+    return c;
+  }
+
   /**
    * Creates customer config of the specified type but doesn't save it into DB.
    *

@@ -172,12 +172,23 @@ Result<google::protobuf::RepeatedPtrField<tablet::FilePB>> ListFiles(const std::
 
 const std::string RemoteBootstrapSession::kCheckpointsDir = "checkpoints";
 
-Status RemoteBootstrapSession::Init() {
+Status RemoteBootstrapSession::InitSnapshotTransferSession() {
+  // Take locks to support re-initialization of the same session.
+  std::lock_guard lock(mutex_);
+
+  RETURN_NOT_OK(ReadSuperblockFromDisk());
+  RETURN_NOT_OK(GetRunningTablet());
+  RETURN_NOT_OK(InitSources());
+
+  start_time_ = MonoTime::Now();
+
+  return Status::OK();
+}
+
+Status RemoteBootstrapSession::InitBootstrapSession() {
   // Take locks to support re-initialization of the same session.
   std::lock_guard lock(mutex_);
   RETURN_NOT_OK(UnregisterAnchorIfNeededUnlocked());
-
-  const string& tablet_id = tablet_peer_->tablet_id();
 
   // Prevent log GC while we grab log segments and Tablet metadata.
   string anchor_owner_token = Substitute("RemoteBootstrap-$0", session_id_);
@@ -185,11 +196,7 @@ Status RemoteBootstrapSession::Init() {
       MinimumOpId().index(), anchor_owner_token, &log_anchor_);
 
   // Read the SuperBlock from disk.
-  const RaftGroupMetadataPtr& metadata = tablet_peer_->tablet_metadata();
-  RETURN_NOT_OK(metadata->Flush(tablet::OnlyIfDirty::kTrue));
-  RETURN_NOT_OK_PREPEND(metadata->ReadSuperBlockFromDisk(&tablet_superblock_),
-                        Substitute("Unable to access superblock for tablet $0",
-                                   tablet_id));
+  RETURN_NOT_OK(ReadSuperblockFromDisk());
 
   if (!tablet_peer_->log_available()) {
     return STATUS(IllegalState, "Tablet is not running (log is uninitialized)");
@@ -197,10 +204,7 @@ Status RemoteBootstrapSession::Init() {
   // Get the latest opid in the log at this point in time so we can re-anchor.
   auto last_logged_opid = tablet_peer_->GetLatestLogEntryOpId();
 
-  auto tablet = tablet_peer_->shared_tablet();
-  if (PREDICT_FALSE(!tablet)) {
-    return STATUS(IllegalState, "Tablet is not running");
-  }
+  auto tablet = VERIFY_RESULT(GetRunningTablet());
 
   MonoTime now = MonoTime::Now();
   auto* kv_store = tablet_superblock_.mutable_kv_store();
@@ -237,11 +241,7 @@ Status RemoteBootstrapSession::Init() {
     }
   }
 
-  for (const auto& source : sources_) {
-    if (source) {
-      RETURN_NOT_OK(source->Init());
-    }
-  }
+  RETURN_NOT_OK(InitSources());
 
   // It's possible that the wal segment is not synced and the retryable requests file
   // is newer than the data of wal file downloaded by remote peer. The remote peer will
@@ -530,6 +530,36 @@ static Status AddImmutableFileToMap(Collection* const cache,
   typedef typename InfoPtr::element_type Info;
   CHECK(cache->emplace(key, std::make_unique<Info>(readable, size)).second);
 
+  return Status::OK();
+}
+
+Status RemoteBootstrapSession::ReadSuperblockFromDisk() {
+  const string& tablet_id = tablet_peer_->tablet_id();
+
+  // Read the SuperBlock from disk.
+  const RaftGroupMetadataPtr& metadata = tablet_peer_->tablet_metadata();
+  RETURN_NOT_OK(metadata->Flush(tablet::OnlyIfDirty::kTrue));
+  RETURN_NOT_OK_PREPEND(
+      metadata->ReadSuperBlockFromDisk(&tablet_superblock_),
+      Substitute("Unable to access superblock for tablet $0", tablet_id));
+
+  return Status::OK();
+}
+
+Result<tablet::TabletPtr> RemoteBootstrapSession::GetRunningTablet() {
+  auto tablet = tablet_peer_->shared_tablet();
+  if (PREDICT_FALSE(!tablet)) {
+    return STATUS(IllegalState, "Tablet is not running");
+  }
+  return tablet;
+}
+
+Status RemoteBootstrapSession::InitSources() {
+  for (const auto& source : sources_) {
+    if (source) {
+      RETURN_NOT_OK(source->Init());
+    }
+  }
   return Status::OK();
 }
 

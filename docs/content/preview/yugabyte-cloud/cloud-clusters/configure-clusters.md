@@ -22,7 +22,7 @@ You can scale the following cluster properties:
 
 Cluster edit operations are performed using the **Edit Infrastructure** option on the cluster **Settings** tab.
 
-{{< youtube id="yL4WR6wpjPs" title="Perform a live infrastructure upgrade in YugabyteDB Managed" >}}
+{{< youtube id="Dhb-R-tlFKM" title="Perform a live infrastructure upgrade in YugabyteDB Managed" >}}
 
 For clusters with Region, Availability Zone, or Node Level fault tolerance, the scaling operation is performed without any downtime, with a rolling restart of the underlying nodes.
 
@@ -44,6 +44,7 @@ The **Regions** section on the cluster **Settings** tab summarizes the cluster c
 - You can't scale single node clusters (fault tolerance none), you can only increase disk size.
 - You can't scale Sandbox clusters.
 - If another [locking cluster operation](../#locking-operations) is already running, you must wait for it to finish.
+- On AWS, you can't make further modifications to disk (size, IOPS) for six hours after changing either disk size or IOPS (this includes a scaling operation that increases the number of vCPUs, as this also increases disk size).
 
 ## Scale and configure clusters
 

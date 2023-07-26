@@ -359,6 +359,15 @@ a:hover .universe-name-cell {
   font-weight: 400;
 }
 
+.inline-flex {
+  display: inline-flex;
+}
+
+.mr-5 {
+  margin-right: 40px;
+}
+
+.universe-create-version-container,
 .universe-create-date-container {
   font-weight: 300;
   color: colors.$YB_TEXT_COLOR;

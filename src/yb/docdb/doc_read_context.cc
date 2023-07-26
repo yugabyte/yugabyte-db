@@ -88,8 +88,10 @@ void DocReadContext::UpdateKeyPrefix() {
     out += sizeof(ColocationId);
   }
   key_prefix_encoded_len_ = out - shared_key_prefix_buffer_.data();
+  bool use_inplace_increment_for_upperbound = false;
   if (schema_.num_hash_key_columns()) {
     *out++ = dockv::KeyEntryTypeAsChar::kUInt16Hash;
+    use_inplace_increment_for_upperbound = true;
     key_prefix_encoded_len_ += 1 + sizeof(uint16_t);
   } else if (schema_.num_key_columns() && out == shared_key_prefix_buffer_.data() &&
              !is_index_ && schema_.columns()[0].kind() == ColumnKind::RANGE_ASC_NULL_FIRST) {
@@ -101,12 +103,20 @@ void DocReadContext::UpdateKeyPrefix() {
       case DataType::INT16: [[fallthrough]];
       case DataType::INT8:
         *out++ = dockv::KeyEntryTypeAsChar::kInt32;
+        use_inplace_increment_for_upperbound = true;
         break;
       default:
         break;
     }
   }
   shared_key_prefix_len_ = out - shared_key_prefix_buffer_.data();
+  upperbound_len_ = shared_key_prefix_len_;
+  memcpy(upperbound_buffer_.data(), shared_key_prefix_buffer_.data(), upperbound_len_);
+  if (use_inplace_increment_for_upperbound) {
+    ++upperbound_buffer_[upperbound_len_ - 1];
+  } else {
+    upperbound_buffer_[upperbound_len_++] = dockv::KeyEntryTypeAsChar::kHighest;
+  }
 }
 
 } // namespace yb::docdb

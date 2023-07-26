@@ -201,7 +201,8 @@ class MemTracker::TrackerMetrics {
           metric_entity_->prototype().name(), std::move(name),
           CreateMetricLabel(mem_tracker), MetricUnit::kBytes,
           CreateMetricDescription(mem_tracker), yb::MetricLevel::kInfo)),
-        mem_tracker.consumption());
+        static_cast<int64_t>(0));
+    metric_->set_value(mem_tracker.consumption());
   }
 
   TrackerMetrics(TrackerMetrics&) = delete;
@@ -813,8 +814,9 @@ void MemTracker::SetMetricEntity(
         << metrics_->metric_entity_->id();
     return;
   }
-  metrics_ = std::make_unique<TrackerMetrics>(metric_entity);
-  metrics_->Init(*this, name_suffix);
+  auto metrics = std::make_unique<TrackerMetrics>(metric_entity);
+  metrics->Init(*this, name_suffix);
+  metrics_ = std::move(metrics);
 }
 
 void MemTracker::TEST_SetReleasedMemorySinceGC(int64_t value) {

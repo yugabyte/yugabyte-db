@@ -32,6 +32,7 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/shared_lock_manager.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/intent.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/thread_annotations.h"
@@ -129,6 +130,8 @@ namespace yb {
 namespace docdb {
 
 using dockv::DecodedIntentValue;
+using dockv::DocKey;
+using dockv::DocKeyPart;
 using dockv::KeyEntryTypeAsChar;
 
 namespace {
@@ -197,6 +200,14 @@ inline auto GetMicros(CoarseMonoClock::Duration duration) {
   return std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
 }
 
+struct WaiterLockStatusInfo {
+  TransactionId id;
+  SubTransactionId subtxn_id;
+  HybridTime wait_start;
+  LockBatchEntries locks;
+  std::vector<BlockerDataPtr> blockers;
+};
+
 // Data for an active transaction which is waiting on some number of other transactions with which
 // it has detected conflicts. The blockers field owns shared_ptr references to BlockerData of
 // pending transactions it's blocked by. These references keep the BlockerData instances alive in
@@ -204,15 +215,17 @@ inline auto GetMicros(CoarseMonoClock::Duration duration) {
 // in blocker_status_ are presumed to no lonber be of concern to any pending waiting transactions
 // and are discarded.
 struct WaiterData : public std::enable_shared_from_this<WaiterData> {
-  WaiterData(const TransactionId id_, LockBatch* const locks_, uint64_t serial_no_,
-             const TabletId& status_tablet_,
+  WaiterData(const TransactionId id_, SubTransactionId subtxn_id_, LockBatch* const locks_,
+             uint64_t serial_no_, HybridTime wait_start_, const TabletId& status_tablet_,
              const std::vector<BlockerDataAndConflictInfo> blockers_,
              const WaitDoneCallback callback_,
              std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration_, rpc::Rpcs* rpcs,
              scoped_refptr<Histogram>* finished_waiting_latency)
       : id(id_),
+        subtxn_id(subtxn_id_),
         locks(locks_),
         serial_no(serial_no_),
+        wait_start(wait_start_),
         status_tablet(status_tablet_),
         blockers(std::move(blockers_)),
         callback(std::move(callback_)),
@@ -228,13 +241,14 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
   }
 
   const TransactionId id;
+  const SubTransactionId subtxn_id;
   LockBatch* const locks;
   const uint64_t serial_no;
+  const HybridTime wait_start;
   const TabletId status_tablet;
   const std::vector<BlockerDataAndConflictInfo> blockers;
   const WaitDoneCallback callback;
   std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration;
-  const CoarseTimePoint created_at = CoarseMonoClock::Now();
 
   void InvokeCallback(const Status& status, HybridTime resume_ht = HybridTime::kInvalid) {
     VLOG_WITH_PREFIX(4) << "Invoking waiter callback " << status;
@@ -245,7 +259,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
           << "be rare.";
       return;
     }
-    finished_waiting_latency_->Increment(GetMicros(CoarseMonoClock::Now() - created_at));
+    finished_waiting_latency_->Increment(MicrosSinceCreation());
     if (!status.ok()) {
       unlocked_ = std::nullopt;
       callback(status, resume_ht);
@@ -312,9 +326,16 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
   }
 
   bool ShouldReRunConflictResolution() {
-    auto refresh_waiter_timeout_ms = GetAtomicFlag(&FLAGS_refresh_waiter_timeout_ms);
-    if (PREDICT_TRUE(refresh_waiter_timeout_ms > 0)) {
-      return CoarseMonoClock::Now() - created_at > refresh_waiter_timeout_ms * 1ms;
+    auto refresh_waiter_timeout = GetAtomicFlag(&FLAGS_refresh_waiter_timeout_ms) * 1ms;
+    if (IsSingleShard()) {
+      if (refresh_waiter_timeout.count() > 0) {
+        refresh_waiter_timeout = std::min(refresh_waiter_timeout, GetMaxSingleShardWaitDuration());
+      } else {
+        refresh_waiter_timeout = GetMaxSingleShardWaitDuration();
+      }
+    }
+    if (PREDICT_TRUE(refresh_waiter_timeout.count() > 0)) {
+      return MicrosSinceCreation() > GetMicros(refresh_waiter_timeout);
     }
     return false;
   }
@@ -324,7 +345,27 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
     return unlocked_ ? unlocked_->Get() : LockBatchEntries{};
   }
 
+  WaiterLockStatusInfo GetWaiterLockStatusInfo() const EXCLUDES(mutex_) {
+    SharedLock lock(mutex_);
+    auto info = WaiterLockStatusInfo {
+      .id = id,
+      .subtxn_id = subtxn_id,
+      .wait_start = wait_start,
+      .locks = unlocked_ ? unlocked_->Get() : LockBatchEntries{},
+      .blockers = {},
+    };
+    info.blockers.reserve(blockers.size());
+    for (const auto& blocker : blockers) {
+      info.blockers.push_back(blocker.first);
+    }
+    return info;
+  }
+
  private:
+  int64_t MicrosSinceCreation() const {
+    return GetCurrentTimeMicros() - wait_start.GetPhysicalValueMicros();
+  }
+
   scoped_refptr<Histogram>& finished_waiting_latency_;
   mutable rw_spinlock mutex_;
   std::optional<UnlockedBatch> unlocked_ GUARDED_BY(mutex_) = std::nullopt;
@@ -343,7 +384,7 @@ class BlockerData {
   BlockerData(const TransactionId& id, const TabletId& status_tablet)
     : id_(id), status_tablet_(status_tablet) {}
 
-  const TransactionId& id() { return id_; }
+  const TransactionId& id() const { return id_; }
 
   const TabletId& status_tablet() EXCLUDES(mutex_) {
     SharedLock r_lock(mutex_);
@@ -685,10 +726,10 @@ class WaitQueue::Impl {
     for (const auto& entry : locks->Get()) {
       auto it = blockers_by_key_.find(entry.key);
       if (it == blockers_by_key_.end()) {
-        VLOG_WITH_PREFIX(5) << "No blockers found for key " << entry.key.ShortDebugString();
+        VLOG_WITH_PREFIX(5) << "No blockers found for key " << entry.key.ToString();
         continue;
       }
-      VLOG_WITH_PREFIX(4) << "Found blockers for key " << entry.key.ShortDebugString();
+      VLOG_WITH_PREFIX(4) << "Found blockers for key " << entry.key.ToString();
 
       for (const auto& blocker_id : it->second) {
         if (blocker_id == waiter_txn_id) {
@@ -742,8 +783,8 @@ class WaitQueue::Impl {
   }
 
   Result<bool> MaybeWaitOnLocks(
-      const TransactionId& waiter_txn_id, LockBatch* locks, const TabletId& status_tablet_id,
-      uint64_t serial_no, WaitDoneCallback callback) {
+      const TransactionId& waiter_txn_id, SubTransactionId subtxn_id, LockBatch* locks,
+      const TabletId& status_tablet_id, uint64_t serial_no, WaitDoneCallback callback) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "waiter_txn_id=" << waiter_txn_id
                                  << " status_tablet_id=" << status_tablet_id;
     bool found_blockers = false;
@@ -772,7 +813,7 @@ class WaitQueue::Impl {
         }
 
         RETURN_NOT_OK(SetupWaiterUnlocked(
-            waiter_txn_id, locks, status_tablet_id, serial_no, std::move(callback),
+            waiter_txn_id, subtxn_id, locks, status_tablet_id, serial_no, std::move(callback),
             std::move(blocker_datas), std::move(blockers)));
         return true;
       } else {
@@ -789,7 +830,7 @@ class WaitQueue::Impl {
   }
 
   Status WaitOn(
-      const TransactionId& waiter_txn_id, LockBatch* locks,
+      const TransactionId& waiter_txn_id, SubTransactionId subtxn_id, LockBatch* locks,
       std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
       uint64_t serial_no, WaitDoneCallback callback) {
     AtomicFlagSleepMs(&FLAGS_TEST_sleep_before_entering_wait_queue_ms);
@@ -855,14 +896,14 @@ class WaitQueue::Impl {
       }
 
       return SetupWaiterUnlocked(
-          waiter_txn_id, locks, status_tablet_id, serial_no, std::move(callback),
+          waiter_txn_id, subtxn_id, locks, status_tablet_id, serial_no, std::move(callback),
           std::move(blocker_datas), std::move(blockers));
     }
   }
 
   Status SetupWaiterUnlocked(
-      const TransactionId& waiter_txn_id, LockBatch* locks, const TabletId& status_tablet_id,
-      uint64_t serial_no, WaitDoneCallback callback,
+      const TransactionId& waiter_txn_id, SubTransactionId subtxn_id, LockBatch* locks,
+      const TabletId& status_tablet_id, uint64_t serial_no, WaitDoneCallback callback,
       std::vector<BlockerDataAndConflictInfo>&& blocker_datas,
       std::shared_ptr<ConflictDataManager> blockers) REQUIRES(mutex_) {
     // TODO(wait-queues): similar to pg, we can wait 1s or so before beginning deadlock detection.
@@ -885,11 +926,12 @@ class WaitQueue::Impl {
     }
 
     auto waiter_data = std::make_shared<WaiterData>(
-        waiter_txn_id, locks, serial_no, status_tablet_id, std::move(blocker_datas),
-        std::move(callback), std::move(scoped_reporter), &rpcs_, &finished_waiting_latency_);
+        waiter_txn_id, subtxn_id, locks, serial_no, clock_->Now(), status_tablet_id,
+        std::move(blocker_datas), std::move(callback), std::move(scoped_reporter), &rpcs_,
+        &finished_waiting_latency_);
     if (waiter_data->IsSingleShard()) {
       DCHECK(single_shard_waiters_.size() == 0 ||
-              waiter_data->created_at >= single_shard_waiters_.front()->created_at);
+             waiter_data->wait_start >= single_shard_waiters_.front()->wait_start);
       single_shard_waiters_.push_front(waiter_data);
     } else {
       waiter_status_[waiter_txn_id] = waiter_data;
@@ -963,7 +1005,7 @@ class WaitQueue::Impl {
         }
       }
       EraseIf([&stale_single_shard_waiters](const auto& waiter) {
-        if (waiter->created_at + GetMaxSingleShardWaitDuration() < CoarseMonoClock::Now()) {
+        if (waiter->ShouldReRunConflictResolution()) {
           stale_single_shard_waiters.push_back(waiter);
           return true;
         }
@@ -974,10 +1016,11 @@ class WaitQueue::Impl {
     }
 
     for (const auto& waiter : waiters) {
-      auto duration = CoarseMonoClock::Now() - waiter->created_at;
-      auto seconds = duration / 1s;
+      auto duration_us =
+          clock_->Now().GetPhysicalValueMicros() - waiter->wait_start.GetPhysicalValueMicros();
+      auto seconds = duration_us * 1us / 1s;
       VLOG_WITH_PREFIX_AND_FUNC(4) << waiter->id << " waiting for " << seconds << " seconds";
-      pending_time_waiting_->Increment(GetMicros(duration));
+      pending_time_waiting_->Increment(duration_us);
       if (waiter->ShouldReRunConflictResolution()) {
         InvokeWaiterCallback(kRefreshWaiterTimeout, waiter);
         continue;
@@ -1198,10 +1241,10 @@ class WaitQueue::Impl {
     MaybeSignalWaitingTransactions(id, res);
   }
 
-  Status GetLockStatus(
-      const std::set<TransactionId>& transaction_ids, SchemaPtr schema_ptr,
-      TabletLockInfoPB* tablet_lock_info) const {
-    std::vector<std::pair<const TransactionId, LockBatchEntries>> waiter_lock_entries;
+  Status GetLockStatus(const std::set<TransactionId>& transaction_ids,
+                       const TableInfoProvider& table_info_provider,
+                       TabletLockInfoPB* tablet_lock_info) const {
+    std::vector<WaiterLockStatusInfo> waiter_lock_entries;
     {
       SharedLock l(mutex_);
       // If the wait-queue is being shutdown, waiter_status_ would  be empty. No need to
@@ -1210,37 +1253,51 @@ class WaitQueue::Impl {
       if (transaction_ids.empty()) {
         // When transaction_ids is empty, return awaiting locks info of all waiters.
         for (const auto& [_, waiter_data] : waiter_status_) {
-          waiter_lock_entries.push_back({waiter_data->id, waiter_data->GetLockBatchEntries()});
+          waiter_lock_entries.push_back(waiter_data->GetWaiterLockStatusInfo());
         }
-        for (const auto& waiter : single_shard_waiters_) {
-          waiter_lock_entries.push_back({TransactionId::Nil(), waiter->GetLockBatchEntries()});
+        for (const auto& waiter_data : single_shard_waiters_) {
+          waiter_lock_entries.push_back(waiter_data->GetWaiterLockStatusInfo());
         }
       } else {
         for (const auto& txn_id : transaction_ids) {
           const auto& it = waiter_status_.find(txn_id);
           if (it != waiter_status_.end()) {
-            waiter_lock_entries.push_back({it->second->id, it->second->GetLockBatchEntries()});
+            waiter_lock_entries.push_back(it->second->GetWaiterLockStatusInfo());
           }
         }
       }
     }
 
-    for (const auto& [txn_id, lock_batch_entries] : waiter_lock_entries) {
-      auto* lock_entry = txn_id.IsNil()
-          ? tablet_lock_info->add_single_shard_waiters()
-          : &(*tablet_lock_info->mutable_transaction_locks())[txn_id.ToString()];
+    for (const auto& lock_status_info : waiter_lock_entries) {
+      const auto& txn_id = lock_status_info.id;
+      TabletLockInfoPB::WaiterInfoPB* waiter_info = nullptr;
+      if (txn_id.IsNil()) {
+        waiter_info = tablet_lock_info->add_single_shard_waiters();
+      } else {
+        auto* lock_entry = &(*tablet_lock_info->mutable_transaction_locks())[txn_id.ToString()];
+        DCHECK(!lock_entry->has_waiting_locks());
+        waiter_info = lock_entry->mutable_waiting_locks();
+      }
 
-      for (const auto& lock_batch_entry : lock_batch_entries) {
+      waiter_info->set_wait_start_ht(lock_status_info.wait_start.ToUint64());
+      for (const auto& blocker : lock_status_info.blockers) {
+        auto& id = blocker->id();
+        waiter_info->add_blocking_txn_ids(id.data(), id.size());
+      }
+
+      for (const auto& lock_batch_entry : lock_status_info.locks) {
         const auto& partial_doc_key_slice = lock_batch_entry.key.as_slice();
-        DCHECK(partial_doc_key_slice.empty() ||
-               !partial_doc_key_slice.ends_with(KeyEntryTypeAsChar::kGroupEnd));
-
-        // kGroupEnd suffix is stripped from RefCntPrefix key(s) as part of conflict resolution.
-        // Append kGroupEnd for the decoder to work as expected and not error out.
         std::string doc_key_str;
         doc_key_str.reserve(partial_doc_key_slice.size() + 1);
         partial_doc_key_slice.AppendTo(&doc_key_str);
-        doc_key_str.append(&KeyEntryTypeAsChar::kGroupEnd);
+        // We shouldn't append kGroupEnd when the sub dockey ends with a column id.
+        if (!DocKey::EncodedSize(partial_doc_key_slice, DocKeyPart::kWholeDocKey).ok()) {
+          DCHECK(partial_doc_key_slice.empty() ||
+                 !partial_doc_key_slice.ends_with(KeyEntryTypeAsChar::kGroupEnd));
+          // kGroupEnd suffix is stripped from the DocKey as part of DetermineKeysToLock.
+          // Append kGroupEnd for the decoder to work as expected and not error out.
+          doc_key_str.append(&KeyEntryTypeAsChar::kGroupEnd, 1);
+        }
 
         auto parsed_intent = ParsedIntent {
           .doc_path = Slice(doc_key_str.c_str(), doc_key_str.size()),
@@ -1249,9 +1306,11 @@ class WaitQueue::Impl {
         };
         // TODO(pglocks): Populate 'subtransaction_id' & 'is_explicit' info of waiter txn(s) in
         // the LockInfoPB response. Currently we don't track either for waiter txn(s).
+        auto* lock = waiter_info->add_locks();
         RETURN_NOT_OK(docdb::PopulateLockInfoFromParsedIntent(
-            parsed_intent, DecodedIntentValue{}, schema_ptr, lock_entry->add_locks(),
+            parsed_intent, DecodedIntentValue{}, table_info_provider, lock,
             /* intent_has_ht */ false));
+        lock->set_subtransaction_id(lock_status_info.subtxn_id);
       }
     }
     return Status::OK();
@@ -1314,13 +1373,14 @@ class WaitQueue::Impl {
     }
     if (resp.status(0) == ABORTED) {
       VLOG_WITH_PREFIX(1) << "Waiter status aborted " << waiter_id;
-      auto s = resp.deadlock_reason(0).code() == AppStatusPB::OK
-          ? STATUS_EC_FORMAT(
-                // Return InternalError so that TabletInvoker does not retry.
-                InternalError, TransactionError(TransactionErrorCode::kConflict),
-                "Transaction $0 was aborted while waiting for locks", waiter_id)
-          : StatusFromPB(resp.deadlock_reason(0));
-      waiter->InvokeCallback(s);
+      if (resp.deadlock_reason().empty() || resp.deadlock_reason(0).code() == AppStatusPB::OK) {
+        waiter->InvokeCallback(
+            // Return InternalError so that TabletInvoker does not retry.
+            STATUS_EC_FORMAT(InternalError, TransactionError(TransactionErrorCode::kConflict),
+                             "Transaction $0 was aborted while waiting for locks", waiter_id));
+      } else {
+        waiter->InvokeCallback(StatusFromPB(resp.deadlock_reason(0)));
+      }
       return;
     }
     LOG(DFATAL) << "Waiting transaction " << waiter_id
@@ -1515,18 +1575,18 @@ WaitQueue::WaitQueue(
 WaitQueue::~WaitQueue() = default;
 
 Status WaitQueue::WaitOn(
-    const TransactionId& waiter, LockBatch* locks,
+    const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
     std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
     uint64_t serial_no, WaitDoneCallback callback) {
   return impl_->WaitOn(
-      waiter, locks, std::move(blockers), status_tablet_id, serial_no, callback);
+      waiter, subtxn_id, locks, std::move(blockers), status_tablet_id, serial_no, callback);
 }
 
 
 Result<bool> WaitQueue::MaybeWaitOnLocks(
-    const TransactionId& waiter, LockBatch* locks, const TabletId& status_tablet_id,
-    uint64_t serial_no, WaitDoneCallback callback) {
-  return impl_->MaybeWaitOnLocks(waiter, locks, status_tablet_id, serial_no, callback);
+    const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
+    const TabletId& status_tablet_id, uint64_t serial_no, WaitDoneCallback callback) {
+  return impl_->MaybeWaitOnLocks(waiter, subtxn_id, locks, status_tablet_id, serial_no, callback);
 }
 
 void WaitQueue::Poll(HybridTime now) {
@@ -1561,10 +1621,10 @@ void WaitQueue::SignalPromoted(const TransactionId& id, TransactionStatusResult&
   return impl_->SignalPromoted(id, std::move(res));
 }
 
-Status WaitQueue::GetLockStatus(
-    const std::set<TransactionId>& transaction_ids, SchemaPtr schema_ptr,
-    TabletLockInfoPB* tablet_lock_info) const {
-  return impl_->GetLockStatus(transaction_ids, schema_ptr, tablet_lock_info);
+Status WaitQueue::GetLockStatus(const std::set<TransactionId>& transaction_ids,
+                                const TableInfoProvider& table_info_provider,
+                                TabletLockInfoPB* tablet_lock_info) const {
+  return impl_->GetLockStatus(transaction_ids, table_info_provider, tablet_lock_info);
 }
 
 }  // namespace docdb

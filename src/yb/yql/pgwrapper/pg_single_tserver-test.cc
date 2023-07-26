@@ -36,6 +36,8 @@ DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Write);
 
+DEFINE_RUNTIME_int32(TEST_scan_reads, 3, "Number of reads in scan tests");
+
 namespace yb::pgwrapper {
 
 class PgSingleTServerTest : public PgMiniTestBase {
@@ -175,14 +177,13 @@ namespace {
 
 constexpr int kScanRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 10000);
 constexpr int kScanBlockSize = 1000;
-constexpr int kScanReads = 3;
 
 }
 
 TEST_F_EX(PgSingleTServerTest, Scan, PgMiniBigPrefetchTest) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = false;
-  Run(kScanRows, kScanBlockSize, kScanReads, /* compact= */ false, /* select= */ true);
+  Run(kScanRows, kScanBlockSize, FLAGS_TEST_scan_reads, /* compact= */ false, /* select= */ true);
 }
 
 TEST_F_EX(PgSingleTServerTest, ScanWithPackedRow, PgMiniBigPrefetchTest) {
@@ -201,12 +202,12 @@ TEST_F_EX(PgSingleTServerTest, ScanWithPackedRow, PgMiniBigPrefetchTest) {
   insert_cmd += ")";
   const std::string select_cmd = "SELECT * FROM t";
   SetupColocatedTableAndRunBenchmark(
-      create_cmd, insert_cmd, select_cmd, kScanRows, kScanBlockSize, kScanReads,
+      create_cmd, insert_cmd, select_cmd, kScanRows, kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
 }
 
 TEST_F_EX(PgSingleTServerTest, ScanWithCompaction, PgMiniBigPrefetchTest) {
-  Run(kScanRows, kScanBlockSize, kScanReads, /* compact= */ true, /* select= */ true);
+  Run(kScanRows, kScanBlockSize, FLAGS_TEST_scan_reads, /* compact= */ true, /* select= */ true);
 }
 
 TEST_F_EX(PgSingleTServerTest, ScanSkipPK, PgMiniBigPrefetchTest) {
@@ -231,7 +232,7 @@ TEST_F_EX(PgSingleTServerTest, ScanSkipPK, PgMiniBigPrefetchTest) {
   insert_cmd += "generate_series($0, $1))";
   const std::string select_cmd = "SELECT value FROM t";
   SetupColocatedTableAndRunBenchmark(
-      create_cmd, insert_cmd, select_cmd, kNumRows, kScanBlockSize, kScanReads,
+      create_cmd, insert_cmd, select_cmd, kNumRows, kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
 }
 
@@ -253,7 +254,33 @@ TEST_F_EX(PgSingleTServerTest, ScanBigPK, PgMiniBigPrefetchTest) {
   insert_cmd += ", generate_series($0, $1))";
   const std::string select_cmd = "SELECT k FROM t";
   SetupColocatedTableAndRunBenchmark(
-      create_cmd, insert_cmd, select_cmd, kNumRows, kScanBlockSize, kScanReads,
+      create_cmd, insert_cmd, select_cmd, kNumRows, kScanBlockSize, FLAGS_TEST_scan_reads,
+      /* compact= */ false, /* aggregate = */ false);
+}
+
+TEST_F_EX(PgSingleTServerTest, ScanComplexPK, PgMiniBigPrefetchTest) {
+  constexpr auto kNumRows = kScanRows / 2;
+  constexpr int kNumKeyColumns = 10;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
+
+  std::string create_cmd = "CREATE TABLE t (";
+  std::string pk = "";
+  std::string insert_cmd = "INSERT INTO t VALUES (generate_series($0, $1)";
+  for (const auto column : Range(kNumKeyColumns)) {
+    create_cmd += Format("r$0 INT, ", column);
+    if (!pk.empty()) {
+      pk += ", ";
+    }
+    pk += Format("r$0", column);
+    insert_cmd += ", trunc(random()*100000000)";
+  }
+  create_cmd += "value INT, PRIMARY KEY (" + pk + "))";
+  insert_cmd += ")";
+  const std::string select_cmd = "SELECT * FROM t";
+  SetupColocatedTableAndRunBenchmark(
+      create_cmd, insert_cmd, select_cmd, kNumRows, kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
 }
 
@@ -278,7 +305,7 @@ TEST_F_EX(PgSingleTServerTest, ScanSkipValues, PgMiniBigPrefetchTest) {
   insert_cmd += ")";
   const std::string select_cmd = "SELECT value FROM t";
   SetupColocatedTableAndRunBenchmark(
-      create_cmd, insert_cmd, select_cmd, kNumRows, kScanBlockSize, kScanReads,
+      create_cmd, insert_cmd, select_cmd, kNumRows, kScanBlockSize, FLAGS_TEST_scan_reads,
       /* compact= */ false, /* aggregate = */ false);
 }
 

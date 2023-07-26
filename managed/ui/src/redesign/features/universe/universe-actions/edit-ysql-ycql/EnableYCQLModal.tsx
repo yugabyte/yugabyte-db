@@ -170,10 +170,10 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({ open, onClose, unive
               </Typography>
               <YBTooltip
                 title={
-                  !primaryCluster?.userIntent?.enableYSQL
+                  !primaryCluster?.userIntent?.enableYSQL && primaryCluster?.userIntent?.enableYCQL // user can disable only one endpoint among YSQL and YCQL
                     ? t('universeForm.securityConfig.authSettings.enableYsqlOrYcql')
                     : rotateYCQLPasswordValue
-                    ? t('universeActions.editYCQLSettings.rotateBothYCQLWarning')
+                    ? t('universeActions.editYCQLSettings.rotateBothYCQLWarning') // user can rotate password only if YCQL and auth is enabled
                     : ''
                 }
                 placement="top-end"
@@ -185,7 +185,11 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({ open, onClose, unive
                       'data-testid': 'EnableYCQLModal-Toggle'
                     }}
                     control={control}
-                    disabled={rotateYCQLPasswordValue || !primaryCluster?.userIntent?.enableYSQL}
+                    disabled={
+                      rotateYCQLPasswordValue ||
+                      (!primaryCluster?.userIntent?.enableYSQL &&
+                        primaryCluster?.userIntent?.enableYCQL) // user can disable only one endpoint among YSQL and YCQL
+                    }
                   />
                 </div>
               </YBTooltip>

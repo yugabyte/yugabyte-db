@@ -1,5 +1,4 @@
 import { fireEvent } from '@testing-library/dom';
-import React from 'react';
 import { render, screen } from '../../../test-utils';
 import { BackupList } from './BackupList';
 
@@ -18,18 +17,13 @@ const backupListProps = {
       },
       inUse: false,
       name: 'S3',
-      type: 'STORAGE',
+      type: 'STORAGE'
     }
   ]
 };
 
 beforeEach(() => {
-  render(
-    <BackupList
-      activeTab={backupListProps.activeTab}
-      data={backupListProps.data}
-    />
-  );
+  render(<BackupList activeTab={backupListProps.activeTab} data={backupListProps.data} />);
 });
 
 describe('Mutliple Backup config', () => {
@@ -47,18 +41,24 @@ describe('Mutliple Backup config', () => {
 
     expect(screen.getAllByRole('menuitem')).toHaveLength(4);
 
-    expect(screen.getAllByText(/Edit Configuration/, {
-      selector: 'a'
-    }));
+    expect(
+      screen.getAllByText(/Edit Configuration/, {
+        selector: 'a'
+      })
+    );
 
     if (status !== 'Used') {
-      expect(screen.getAllByText(/Delete Configuration/, {
-        selector: 'a'
-      }));
+      expect(
+        screen.getAllByText(/Delete Configuration/, {
+          selector: 'a'
+        })
+      );
     }
 
-    expect(screen.getAllByText(/Show Universes/, {
-      selector: 'a'
-    }));
+    expect(
+      screen.getAllByText(/Show Universes/, {
+        selector: 'a'
+      })
+    );
   });
-}); 
+});

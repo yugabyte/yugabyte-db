@@ -37,6 +37,7 @@
 
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_protocol.pb.h"
+#include "yb/common/read_hybrid_time.h"
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/metadata.pb.h"
@@ -86,6 +87,7 @@ struct PgTableReadData {
   TableId table_id;
   tablet::TabletPtr tablet;
   tablet::TableInfoPtr table_info;
+  ReadHybridTime read_hybrid_time;
 
   const Schema& schema() const;
   Result<ColumnId> ColumnByName(const std::string& name) const;
@@ -167,8 +169,10 @@ class SysCatalogTable {
 
   Result<tablet::TabletPtr> Tablet() const;
 
-  Result<PgTableReadData> TableReadData(const TableId& table_id) const;
-  Result<PgTableReadData> TableReadData(uint32_t database_oid, uint32_t table_oid) const;
+  Result<PgTableReadData> TableReadData(
+      const TableId& table_id, const ReadHybridTime& read_ht) const;
+  Result<PgTableReadData> TableReadData(
+      uint32_t database_oid, uint32_t table_oid, const ReadHybridTime& read_ht) const;
 
   // Create a new tablet peer with information from the metadata
   void SetupTabletPeer(const scoped_refptr<tablet::RaftGroupMetadata>& metadata);
@@ -186,6 +190,11 @@ class SysCatalogTable {
       int64_t current_term);
 
   Status Visit(VisitorBase* visitor);
+
+  typedef std::function<Status(const ReadHybridTime&, HybridTime*)> ReadRestartFn;
+  Status ReadWithRestarts(
+      const ReadRestartFn& fn,
+      tablet::RequireLease require_lease = tablet::RequireLease::kTrue) const;
 
   // Read the global ysql catalog version info from the pg_yb_catalog_version catalog table.
   Status ReadYsqlCatalogVersion(const TableId& ysql_catalog_table_id,
@@ -327,6 +336,14 @@ class SysCatalogTable {
   Status ReadYsqlDBCatalogVersionImpl(
       const TableId& ysql_catalog_table_id,
       uint32_t db_oid,
+      uint64_t* catalog_version,
+      uint64_t* last_breaking_version,
+      DbOidToCatalogVersionMap* versions);
+  Status ReadYsqlDBCatalogVersionImplWithReadTime(
+      const TableId& ysql_catalog_table_id,
+      uint32_t db_oid,
+      const ReadHybridTime& read_time,
+      HybridTime* read_restart_ht,
       uint64_t* catalog_version,
       uint64_t* last_breaking_version,
       DbOidToCatalogVersionMap* versions);

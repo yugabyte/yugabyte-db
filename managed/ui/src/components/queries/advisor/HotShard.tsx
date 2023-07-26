@@ -79,8 +79,10 @@ export const HotShard: FC<PerfRecommendationProps> = ({ data, summary }) => {
           </span>
         </div>
       </div>
-      <span className="queryText">{t('clusterDetail.performance.chartTitle.HotShardCount')}</span>
-      <div id="hotShardGraph"></div>
+      <div className="chartBox">
+        <span className="queryText">{t('clusterDetail.performance.chartTitle.HotShardCount')}</span>
+        <div id="hotShardGraph"></div>
+      </div>
     </div>
   );
 };

@@ -19,7 +19,7 @@ import { fetchUniversesList } from '../../../../../../actions/xClusterReplicatio
 import { IUniverse } from '../../../../common/IBackup';
 import { RestoreContextMethods, RestoreFormContext } from '../../RestoreContext';
 import { Badge_Types, StatusBadge } from '../../../../../common/badge/StatusBadge';
-import { getKMSConfigs } from '../../../..';
+import { getKMSConfigs } from '../../../../common/BackupAPI';
 import { YBLabel } from '../../../../../common/descriptors';
 import { isYBCEnabledInUniverse } from '../../RestoreUtils';
 

@@ -84,9 +84,9 @@ export type CloudVendorRegionMutation = AWSRegionMutation | AZURegionMutation | 
 // ---------------------------------------------------------------------------
 interface ProviderBase {
   code: ProviderCode;
+  details: YBProviderDetails | YBProviderDetailsMutation;
   name: string;
   regions: YBRegion[] | YBRegionMutation[];
-  details: YBProviderDetails | YBProviderDetailsMutation;
 
   config?: { [property: string]: string };
   keyPairName?: string;
@@ -114,10 +114,13 @@ export interface AWSProviderMutation extends ProviderMutationBase {
   code: typeof ProviderCode.AWS;
   details: AWSProviderDetailsMutation;
   regions: AWSRegionMutation[];
+
+  imageBundles?: ImageBundle[];
 }
 export interface AWSProvider extends Provider {
   code: typeof ProviderCode.AWS;
   details: AWSProviderDetails;
+  imageBundles: ImageBundle[];
   regions: AWSRegion[];
 }
 
@@ -125,10 +128,13 @@ export interface AZUProviderMutation extends ProviderMutationBase {
   code: typeof ProviderCode.AZU;
   details: AZUProviderDetailsMutation;
   regions: AZURegionMutation[];
+
+  imageBundles?: ImageBundle[];
 }
 export interface AZUProvider extends Provider {
   code: typeof ProviderCode.AZU;
   details: AZUProviderDetails;
+  imageBundles: ImageBundle[];
   regions: AZURegion[];
 }
 
@@ -136,10 +142,13 @@ export interface GCPProviderMutation extends ProviderMutationBase {
   code: typeof ProviderCode.GCP;
   details: GCPProviderDetailsMutation;
   regions: GCPRegionMutation[];
+
+  imageBundles?: ImageBundle[];
 }
 export interface GCPProvider extends Provider {
   code: typeof ProviderCode.GCP;
   details: GCPProviderDetails;
+  imageBundles: ImageBundle[];
   regions: GCPRegion[];
 }
 
@@ -190,6 +199,28 @@ export interface AccessKey {
   creationDate: string;
   idKey: IdKey;
   keyInfo: KeyInfo;
+}
+
+// ---------------------------------------------------------------------------
+// Image Bundle
+// ---------------------------------------------------------------------------
+export interface ImageBundle {
+  details: ImageBundleDetails;
+  name: string;
+  useAsDefault: boolean;
+}
+export interface ImageBundleRegionDetails {
+  [regionCode: string]: {
+    sshPortOverride: number;
+    sshUserOverride: string;
+    ybImage: string;
+  };
+}
+
+interface ImageBundleDetails {
+  arch: ArchitectureType;
+  globalYBImage: string;
+  regions: ImageBundleRegionDetails;
 }
 
 // ---------------------------------------------------------------------------

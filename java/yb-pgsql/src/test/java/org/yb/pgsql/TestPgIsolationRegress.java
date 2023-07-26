@@ -29,6 +29,8 @@ public class TestPgIsolationRegress extends BasePgSQLTest {
     flagMap.put("yb_enable_read_committed_isolation", "true");
     flagMap.put("enable_wait_queues", "false");
     flagMap.put("enable_deadlock_detection", "false");
+    // Setting the below flag stabilizes yb_lock_status tests.
+    flagMap.put("TEST_delay_before_get_old_transactions_heartbeat_intervals", "2");
     return flagMap;
   }
 

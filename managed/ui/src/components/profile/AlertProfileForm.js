@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import {
   YBFormInput,
@@ -29,7 +29,7 @@ const validationSchema = Yup.object().shape({
     is: true,
     then: Yup.object({
       sendAlertsToYb: Yup.boolean().default(false).nullable(),
-      alertingEmail: Yup.string().required("Must specify at least one email address"),
+      alertingEmail: Yup.string().required('Must specify at least one email address'),
       checkIntervalMs: Yup.number().typeError('Must specify a number'),
       statusUpdateIntervalMs: Yup.number().typeError('Must specify a number'),
       activeAlertNotificationIntervalMs: Yup.number().typeError('Must specify a number'),
@@ -42,7 +42,7 @@ const validationSchema = Yup.object().shape({
       statusUpdateIntervalMs: Yup.number().typeError('Must specify a number'),
       activeAlertNotificationIntervalMs: Yup.number().typeError('Must specify a number'),
       reportOnlyErrors: Yup.boolean().default(false).nullable()
-    }),
+    })
   }),
   smtpData: Yup.object().when('emailNotifications', {
     is: true,
@@ -152,7 +152,6 @@ export default class AlertProfileForm extends Component {
           initialValues={initialValues}
           enableReinitialize
           onSubmit={(values, { setSubmitting, resetForm }) => {
-
             const data = _.omit(values, 'emailNotifications'); // don't submit internal helper field
             if (values.emailNotifications) {
               // due to smtp specifics have to remove smtpUsername/smtpPassword props from payload when they are empty
@@ -166,14 +165,18 @@ export default class AlertProfileForm extends Component {
             }
 
             // convert back from minutes to milliseconds and remove helper fields
-            data.alertingData.checkIntervalMs =  data.alertingData.checkIntervalMinutes
-             * MILLISECONDS_IN_MINUTE;
-            data.alertingData.statusUpdateIntervalMs = data.alertingData.statusUpdateIntervalMinutes
-             * MILLISECONDS_IN_MINUTE;
+            data.alertingData.checkIntervalMs =
+              data.alertingData.checkIntervalMinutes * MILLISECONDS_IN_MINUTE;
+            data.alertingData.statusUpdateIntervalMs =
+              data.alertingData.statusUpdateIntervalMinutes * MILLISECONDS_IN_MINUTE;
             data.alertingData.activeAlertNotificationIntervalMs =
               data.alertingData.activeAlertNotificationIntervalMinutes * MILLISECONDS_IN_MINUTE;
-            data.alertingData = _.omit(data.alertingData, 'checkIntervalMinutes',
-             'statusUpdateIntervalMinutes', 'activeAlertNotificationIntervalMinutes');
+            data.alertingData = _.omit(
+              data.alertingData,
+              'checkIntervalMinutes',
+              'statusUpdateIntervalMinutes',
+              'activeAlertNotificationIntervalMinutes'
+            );
 
             updateCustomerDetails(data);
             this.setState({ statusUpdated: true });

@@ -47,8 +47,8 @@
         "modalTitle": "Edit YSQL configuration",
         "ysqlToggleLabel": "Enable YSQL for this Universe ",
         "authToggleLabel": "Enable YSQL Auth",
-        "cannotDisableYSQL": "User cannot disable YSQL once it is enabled",
-        "currentPwdToAuth": "Enter current password to turn off Auth",
+        "cannotEnableYSQL": "You cannot enable YSQL after universe creation",
+        "currentPwdToAuth": "Enter current password to disable Auth",
         "YSQLPwdLabel": "YSQL Password",
         "rotatePwdLabel": "Rotate ysql password",
         "currentPwd": "Enter current password",
@@ -225,6 +225,7 @@
         "hbaLDAPConflocal": "local database user auth-method [auth-options]",
         "hbaLDAPConfHost": "host database user address auth-method [auth-options]",
         "hbaLDAPConfHostSSL": "hostssl database user IP-address auth-method [auth-options]",
+        "InvalidLDAPKey": "Invalid LDAP key or missing '=' between key value pair",
         "LDAPMissingAttributeValue": "Missing value for the attribute",
         "LDAPMissingQuote": "Attribute value should be enclosed in quotes",
         "nonASCIIDetected": "Non-ASCII value detected"
@@ -561,7 +562,7 @@
         "certNameTitle": "Name your CA Certificate",
         "save": "Save CA Certificate",
         "uploadBtnText": "Upload CA Certificate",
-        "uploadBtnSubText": "Upload certificate from private third-party Certificate Authority (CA) or self-signed certificate.\nOnly .crt file allowed.",
+        "uploadBtnSubText": "Upload certificate from private third-party Certificate Authority (CA) or self-signed certificate.",
         "successMsg": "Certificate updated successfully"
       },
       "deleteCACertModal": {

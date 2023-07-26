@@ -46,7 +46,7 @@ Named objects in a schema can be accessed by using the schema name as prefix or 
 
 Where
 
-- `schema_name` is the name of the schema being created. If no schema_name is specified, the `role_name` is used.
+- `schema_name` is the name of the schema being created. If no schema_name is specified, the `role_name` is used. Schema names must not begin with `pg_`. The attempt to create a schema with such a name, or to rename an existing schema to have such a name, causes an error.
 
 - `role_name` is the role who will own the new schema. If omitted, it defaults to the user executing the command. To create a schema owned by another role, you must be a direct or indirect member of that role, or be a superuser.
 
@@ -73,6 +73,8 @@ yugabyte=# CREATE SCHEMA branch AUTHORIZATION john;
 
 ## See also
 
+- [`DROP SCHEMA`](../ddl_drop_schema)
+- [`ALTER SCHEMA`](../ddl_alter_schema)
 - [`CREATE TABLE`](../ddl_create_table)
 - [`CREATE VIEW`](../ddl_create_view)
 - [`CREATE INDEX`](../ddl_create_index/)

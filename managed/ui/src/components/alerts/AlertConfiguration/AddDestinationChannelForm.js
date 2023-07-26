@@ -1,5 +1,5 @@
 import { Field } from 'formik';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { YBModalForm } from '../../common/forms';
 import { YBControlledSelectWithLabel, YBFormInput, YBToggle } from '../../common/forms/fields';
@@ -18,10 +18,11 @@ export const AddDestinationChannelForm = (props) => {
     props.defaultRecipients ? props.defaultRecipients : false
   );
 
-  const [webhookAuthType, setWebhookAuthType] = useState(props.editValues?.webhookAuthType ?? WebHookAuthTypesList[0]);
+  const [webhookAuthType, setWebhookAuthType] = useState(
+    props.editValues?.webhookAuthType ?? WebHookAuthTypesList[0]
+  );
 
-  const isReadOnly = isNonAvailable(
-    customer.data.features, 'alert.channels.actions');
+  const isReadOnly = isNonAvailable(customer.data.features, 'alert.channels.actions');
 
   const channelTypeList = [
     <option key={1} value="email">
@@ -198,13 +199,15 @@ export const AddDestinationChannelForm = (props) => {
 
   const getNotificationTemplateRows = () => {
     if (!enableNotificationTemplates) {
-      return (<span />);
+      return <span />;
     }
-    const defaultNotificationTitle = "YugabyteDB Anywhere {{ $labels.severity }} alert"
-      + " {{ $labels.definition_name }} {{ $labels.alert_state }} for {{ $labels.source_name }}";
-    const defaultNotificationText = "{{ $labels.definition_name }} alert with severity level"
-      + " '{{ $labels.severity }}' for {{ $labels.source_type }} '{{ $labels.source_name }}'"
-      + " is {{ $labels.alert_state }}.\n\n{{ $annotations.message }}";
+    const defaultNotificationTitle =
+      'YugabyteDB Anywhere {{ $labels.severity }} alert' +
+      ' {{ $labels.definition_name }} {{ $labels.alert_state }} for {{ $labels.source_name }}';
+    const defaultNotificationText =
+      '{{ $labels.definition_name }} alert with severity level' +
+      " '{{ $labels.severity }}' for {{ $labels.source_type }} '{{ $labels.source_name }}'" +
+      ' is {{ $labels.alert_state }}.\n\n{{ $annotations.message }}';
     return (
       <>
         <Row>
@@ -378,8 +381,12 @@ export const AddDestinationChannelForm = (props) => {
                   component={YBControlledSelectWithLabel}
                   disabled={isReadOnly}
                   selectVal={webhookAuthType}
-                  onInputChanged={v => setWebhookAuthType(v.target.value)}
-                  options={WebHookAuthTypesList.map((v) => <option key={v} value={v}>{v}</option>)}
+                  onInputChanged={(v) => setWebhookAuthType(v.target.value)}
+                  options={WebHookAuthTypesList.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
                 />
               </Col>
             </Row>
@@ -591,14 +598,21 @@ export const AddDestinationChannelForm = (props) => {
     }
   };
 
-  const title = isReadOnly ? 'Alert channel details' :
-    props.type === 'edit' ? 'Edit alert channel' : 'Create new alert channel';
+  const title = isReadOnly
+    ? 'Alert channel details'
+    : props.type === 'edit'
+    ? 'Edit alert channel'
+    : 'Create new alert channel';
   const validationSchema =
-    channelType === 'email' ? validationSchemaEmail :
-      channelType === 'slack' ? validationSchemaSlack :
-        channelType === 'pagerduty' ? validationSchemaPagerDuty :
-          channelType === 'webhook' ? validationSchemaWebHook :
-            null;
+    channelType === 'email'
+      ? validationSchemaEmail
+      : channelType === 'slack'
+      ? validationSchemaSlack
+      : channelType === 'pagerduty'
+      ? validationSchemaPagerDuty
+      : channelType === 'webhook'
+      ? validationSchemaWebHook
+      : null;
   return (
     <YBModalForm
       formName="alertDestinationForm"
@@ -609,14 +623,18 @@ export const AddDestinationChannelForm = (props) => {
       initialValues={props.editValues || {}}
       submitLabel={props.type === 'edit' ? 'Save' : 'Create'}
       validationSchema={validationSchema}
-      onFormSubmit={!isReadOnly ? (values, { setSubmitting }) => {
-        const payload = {
-          ...values,
-          CHANNEL_TYPE: channelType
-        };
+      onFormSubmit={
+        !isReadOnly
+          ? (values, { setSubmitting }) => {
+              const payload = {
+                ...values,
+                CHANNEL_TYPE: channelType
+              };
 
-        handleAddDestination(payload, setSubmitting);
-      } : null}
+              handleAddDestination(payload, setSubmitting);
+            }
+          : null
+      }
     >
       <Row>
         <Row>

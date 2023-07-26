@@ -82,6 +82,7 @@ import {
   AWSProvider,
   AWSRegion,
   AWSRegionMutation,
+  ImageBundle,
   YBProviderMutation
 } from '../../types';
 import { toast } from 'react-toastify';
@@ -103,6 +104,7 @@ export interface AWSProviderEditFormFieldValues {
   ntpSetupType: NTPSetupType;
   providerCredentialType: AWSProviderCredentialType;
   providerName: string;
+  imageBundles: ImageBundle[];
   regions: CloudVendorRegionField[];
   secretAccessKey: string;
   skipKeyValidateAndUpload: boolean;
@@ -689,6 +691,7 @@ const constructDefaultFormValues = (
   providerCredentialType: providerConfig.details.cloudInfo.aws.awsAccessKeySecret
     ? AWSProviderCredentialType.ACCESS_KEY
     : AWSProviderCredentialType.HOST_INSTANCE_IAM_ROLE,
+  imageBundles: providerConfig.imageBundles,
   regions: providerConfig.regions.map((region) => ({
     fieldId: generateLowerCaseAlphanumericId(),
     code: region.code,
@@ -757,6 +760,7 @@ const constructProviderPayload = async (
       ...(formValues.sshPort && { sshPort: formValues.sshPort }),
       ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
+    imageBundles: formValues.imageBundles,
     regions: [
       ...formValues.regions.map<AWSRegionMutation>((regionFormValues) => {
         const existingRegion = findExistingRegion<AWSProvider, AWSRegion>(

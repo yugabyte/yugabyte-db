@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import copy from 'copy-to-clipboard';
 import clsx from 'clsx';
 import { makeStyles } from '@material-ui/core';
@@ -19,7 +19,7 @@ const useStyles = makeStyles((theme) => ({
     padding: `${theme.spacing(1)}px ${theme.spacing(2)}px`,
 
     border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`,
-    backgroundColor: theme.palette.ybacolors.backgroundGray.light,
+    backgroundColor: theme.palette.ybacolors.backgroundGrayLight,
     borderRadius: '8px',
     '& pre': {
       flexGrow: '1',
@@ -42,7 +42,7 @@ const useStyles = makeStyles((theme) => ({
   copyAvailable: {
     '&:hover': {
       cursor: 'pointer',
-      backgroundColor: theme.palette.ybacolors.backgroundGray.dark
+      backgroundColor: theme.palette.ybacolors.backgroundGrayDark
     }
   },
   copySuccess: {

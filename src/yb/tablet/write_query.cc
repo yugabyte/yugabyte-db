@@ -218,8 +218,8 @@ void WriteQuery::Finished(WriteOperation* operation, const Status& status) {
     TabletMetrics* metrics = tablet->metrics();
     if (metrics) {
       auto op_duration_usec =
-          MonoDelta(CoarseMonoClock::now() - start_time_).ToMicroseconds();
-      metrics->ql_write_latency->Increment(op_duration_usec);
+          make_unsigned(MonoDelta(CoarseMonoClock::now() - start_time_).ToMicroseconds());
+      metrics->Increment(tablet::TabletHistograms::kQlWriteLatency, op_duration_usec);
     }
   }
 
@@ -362,12 +362,8 @@ Result<bool> WriteQuery::CqlPrepareExecute() {
   for (const auto& req : ql_write_batch) {
     QLResponsePB* resp = response_->add_ql_response_batch();
     auto write_op = std::make_unique<docdb::QLWriteOperation>(
-        req,
-        table_info->schema_version,
-        table_info->doc_read_context,
-        table_info->index_map,
-        table_info->unique_index_key_projection,
-        txn_op_ctx);
+        req, table_info->schema_version, table_info->doc_read_context, table_info->index_map,
+        table_info->unique_index_key_projection, txn_op_ctx);
     RETURN_NOT_OK(write_op->Init(resp));
     doc_ops_.emplace_back(std::move(write_op));
   }
@@ -508,8 +504,7 @@ Status WriteQuery::DoExecute() {
 
   dockv::PartialRangeKeyIntents partial_range_key_intents(metadata.UsePartialRangeKeyIntents());
   prepare_result_ = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
-      doc_ops_, write_batch.read_pairs(), tablet->metrics()->write_lock_latency,
-      tablet->metrics()->failed_batch_lock, isolation_level_, row_mark_type,
+      doc_ops_, write_batch.read_pairs(), tablet->metrics(), isolation_level_, row_mark_type,
       transactional_table, write_batch.has_transaction(), deadline(), partial_range_key_intents,
       tablet->shared_lock_manager()));
 
@@ -542,7 +537,7 @@ Status WriteQuery::DoExecute() {
     return docdb::ResolveOperationConflicts(
         doc_ops_, conflict_management_policy, now, tablet->doc_db(),
         partial_range_key_intents, transaction_participant,
-        tablet->metrics()->transaction_conflicts.get(), &prepare_result_.lock_batch,
+        tablet->metrics(), &prepare_result_.lock_batch,
         wait_queue,
         [this, now](const Result<HybridTime>& result) {
           if (!result.ok()) {
@@ -581,7 +576,7 @@ Status WriteQuery::DoExecute() {
       doc_ops_, conflict_management_policy, write_batch, tablet->clock()->Now(),
       read_time_ ? read_time_.read : HybridTime::kMax,
       tablet->doc_db(), partial_range_key_intents,
-      transaction_participant, tablet->metrics()->transaction_conflicts.get(),
+      transaction_participant, tablet->metrics(),
       &prepare_result_.lock_batch, wait_queue,
       [this](const Result<HybridTime>& result) {
         if (!result.ok()) {
@@ -668,10 +663,9 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
       : docdb::InitMarkerBehavior::kOptional;
   for (;;) {
     RETURN_NOT_OK(docdb::AssembleDocWriteBatch(
-        doc_ops_, read_operation_data, tablet->doc_db(), scoped_read_operation_,
-        request().mutable_write_batch(), init_marker_behavior,
-        tablet->monotonic_counter(), &restart_read_ht_,
-        tablet->metadata()->table_name()));
+        doc_ops_, read_operation_data, tablet->doc_db(), &tablet->GetSchemaPackingProvider(),
+        scoped_read_operation_, request().mutable_write_batch(), init_marker_behavior,
+        tablet->monotonic_counter(), &restart_read_ht_, tablet->metadata()->table_name()));
 
     // For serializable isolation we don't fix read time, so could do read restart locally,
     // instead of failing whole transaction.

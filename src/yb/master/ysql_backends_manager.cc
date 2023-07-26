@@ -44,6 +44,9 @@ DEFINE_RUNTIME_uint32(ysql_backends_catalog_version_job_expiration_sec, 120, // 
     " flag.");
 TAG_FLAG(ysql_backends_catalog_version_job_expiration_sec, advanced);
 
+DEFINE_test_flag(bool, assert_no_future_catalog_version, false,
+    "Asserts that the clients are never requesting a catalog version which is higher "
+    "than what is seen at the master. Used to assert that there are no stale master reads.");
 DEFINE_test_flag(bool, block_wait_for_ysql_backends_catalog_version, false, // runtime-settable
     "If true, enable toggleable busy-wait at the beginning of WaitForYsqlBackendsCatalogVersion.");
 DEFINE_test_flag(bool, wait_for_ysql_backends_catalog_version_take_leader_lock, true,
@@ -140,6 +143,9 @@ Status YsqlBackendsManager::WaitForYsqlBackendsCatalogVersion(
     }
   }
   if (master_version < version) {
+    LOG_IF(FATAL, FLAGS_TEST_assert_no_future_catalog_version)
+        << "Possible stale read by the master ."
+        << " master_version " << master_version << " client expected version " << version;
     return SetupError(
         resp->mutable_error(),
         STATUS_FORMAT(

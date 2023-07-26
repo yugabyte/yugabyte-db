@@ -164,9 +164,9 @@ DEFINE_test_flag(bool, cdc_inject_replication_index_update_failure, false,
 DEFINE_test_flag(bool, force_get_checkpoint_from_cdc_state, false,
     "Always bypass the cache and fetch the checkpoint from the cdc state table");
 
-DEFINE_RUNTIME_int32(get_changes_max_send_rate_mbps, 100,
+DEFINE_RUNTIME_int32(xcluster_get_changes_max_send_rate_mbps, 100,
                      "Server-wide max send rate in megabytes per second for GetChanges response "
-                     "traffic. Throttles both xcluster and cdc traffic.");
+                     "traffic. Throttles xcluster but not cdc traffic.");
 
 DECLARE_bool(enable_log_retention_by_op_idx);
 
@@ -684,7 +684,7 @@ CDCServiceImpl::CDCServiceImpl(
       get_changes_rpc_sem_(std::max(
           1.0, floor(FLAGS_rpc_workers_limit * (1 - FLAGS_cdc_get_changes_free_rpc_ratio)))),
       rate_limiter_(std::unique_ptr<rocksdb::RateLimiter>(rocksdb::NewGenericRateLimiter(
-          GetAtomicFlag(&FLAGS_get_changes_max_send_rate_mbps) * 1_MB))),
+          GetAtomicFlag(&FLAGS_xcluster_get_changes_max_send_rate_mbps) * 1_MB))),
       impl_(new Impl(context_.get(), &mutex_)) {
   cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(impl_->async_client_init_.get());
 
@@ -1866,11 +1866,12 @@ void CDCServiceImpl::GetChanges(
         CDCErrorPB::TABLET_SPLIT, &context);
     return;
   }
-
-  LOG_SLOW_EXECUTION_EVERY_N_SECS(INFO, 1 /* n_secs */, 100 /* max_expected_millis */,
-      Format("Rate limiting GetChanges request for tablet $0", req->tablet_id())) {
-    rate_limiter_->Request(resp->ByteSizeLong(), IOPriority::kHigh);
-  };
+  if (record.GetSourceType() == XCLUSTER) {
+    LOG_SLOW_EXECUTION_EVERY_N_SECS(INFO, 1 /* n_secs */, 100 /* max_expected_millis */,
+        Format("Rate limiting GetChanges request for tablet $0", req->tablet_id())) {
+      rate_limiter_->Request(resp->ByteSizeLong(), IOPriority::kHigh);
+    };
+  }
   context.RespondSuccess();
 }
 
@@ -2495,7 +2496,7 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
     const std::set<TabletId>& parent_tablets,
     const std::map<TabletId, TabletId>& child_to_parent_mapping,
     std::vector<std::pair<TabletId, CDCSDKCheckpointPB>>* result) {
-  std::set<TabletId> parents_with_polled_children;
+  std::map<TabletId, uint> parent_to_polled_child_count;
   std::set<TabletId> polled_tablets;
 
   Status iteration_status;
@@ -2526,7 +2527,7 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
 
     auto iter = child_to_parent_mapping.find(tablet_id);
     if (iter != child_to_parent_mapping.end()) {
-      parents_with_polled_children.insert(iter->second);
+      parent_to_polled_child_count[iter->second] += 1;
     }
   }
   RETURN_NOT_OK(iteration_status);
@@ -2553,13 +2554,20 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
 
     auto is_parent = (parent_tablets.find(tablet_id) != parent_tablets.end());
 
+    auto are_both_children_polled = [&](const TabletId& tablet_id) {
+      auto iter = parent_to_polled_child_count.find(tablet_id);
+      if (iter != parent_to_polled_child_count.end() && iter->second == 2) {
+        return true;
+      }
+      return false;
+    };
+
     CDCSDKCheckpointPB checkpoint_pb;
     checkpoint_pb.set_term(entry.checkpoint->term);
     checkpoint_pb.set_index(entry.checkpoint->index);
     if (entry.cdc_sdk_safe_time.has_value()) {
       checkpoint_pb.set_snapshot_time(*entry.cdc_sdk_safe_time);
     }
-    const auto& checkpoint = *entry.checkpoint;
 
     auto is_cur_tablet_polled = entry.last_replication_time.has_value();
 
@@ -2568,13 +2576,13 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
 
     if (is_parent) {
       // This means the current tablet itself was a parent tablet. If we find
-      // that we have already started polling the children, we will not add the parent tablet to
-      // the result set. This situation is only possible within a small window where we have
+      // that we have already started polling both the children, we will not add the parent tablet
+      // to the result set. This situation is only possible within a small window where we have
       // reported the tablet split to the client and but the background thread has not yet deleted
       // the hidden parent tablet.
-      bool is_any_child_polled =
-          (parents_with_polled_children.find(tablet_id) != parents_with_polled_children.end());
-      if (!is_any_child_polled) {
+      bool both_children_polled = are_both_children_polled(tablet_id);
+
+      if (!both_children_polled) {
         // This can occur in two scenarios:
         // 1. The client has just called "GetTabletListToPollForCDC" for the first time, meanwhile
         //    a tablet split has succeded. In this case we will only add the children tablets to
@@ -2596,36 +2604,29 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
       // result set.
       add_to_result = true;
     } else {
-      // This means the current tablet is a child tablet, and not itself a parent tablet.
-      if (checkpoint > OpId::Min() || is_cur_tablet_polled) {
-        // This means the client has started polling on this child tablet already. So we will add
-        // the current child tablet to the result set.
+      // This means the current tablet is a child tablet.If we see that the any ancestor tablet is
+      // also not polled we will add the current child tablet to the result set.
+      bool found_active_ancestor = false;
+      while (parent_iter != child_to_parent_mapping.end()) {
+        const auto& ancestor_tablet_id = parent_iter->second;
+
+        bool both_children_polled = are_both_children_polled(ancestor_tablet_id);
+        bool is_current_polled = (polled_tablets.find(ancestor_tablet_id) != polled_tablets.end());
+        if (is_current_polled && !both_children_polled) {
+          VLOG(1) << "Found polled ancestor tablet: " << ancestor_tablet_id
+                  << ", for un-polled child tablet: " << tablet_id
+                  << ". Hence this tablet is not yet ready to be polled by CDC stream: "
+                  << stream_id;
+          found_active_ancestor = true;
+          break;
+        }
+
+        // Get the iter to the parent of the current tablet.
+        parent_iter = child_to_parent_mapping.find(ancestor_tablet_id);
+      }
+
+      if (!found_active_ancestor) {
         add_to_result = true;
-      } else {
-        // This means the client has not started streaming from the child tablet. If we see that the
-        // any ancestor tablet is also not polled we will add the current child tablet to the result
-        // set.
-        bool found_polled_ancestor = false;
-        while (parent_iter != child_to_parent_mapping.end()) {
-          const auto& ancestor_tablet_id = parent_iter->second;
-          bool is_current_polled =
-              (polled_tablets.find(ancestor_tablet_id) != polled_tablets.end());
-          if (is_current_polled) {
-            VLOG(1) << "Found polled ancestor tablet: " << ancestor_tablet_id
-                    << ", for un-polled child tablet: " << tablet_id
-                    << ". Hence this tablet is not yet ready to be polled by CDC stream: "
-                    << stream_id;
-            found_polled_ancestor = true;
-            break;
-          }
-
-          // Get the iter to the parent of the current tablet.
-          parent_iter = child_to_parent_mapping.find(ancestor_tablet_id);
-        }
-
-        if (!found_polled_ancestor) {
-          add_to_result = true;
-        }
       }
     }
 
@@ -2706,7 +2707,8 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
         DeleteCDCStateTableMetadata(cdc_state_entries_to_delete, failed_tablet_ids),
         "Unable to cleanup CDC State table metadata");
 
-    rate_limiter_->SetBytesPerSecond(GetAtomicFlag(&FLAGS_get_changes_max_send_rate_mbps) * 1_MB);
+    rate_limiter_->SetBytesPerSecond(
+        GetAtomicFlag(&FLAGS_xcluster_get_changes_max_send_rate_mbps) * 1_MB);
 
   } while (sleep_while_not_stopped());
 }
@@ -4208,7 +4210,7 @@ void CDCServiceImpl::IsBootstrapRequired(
         CDCErrorPB::LEADER_NOT_READY, context);
     std::shared_ptr<CDCTabletMetrics> tablet_metric = NULL;
 
-    OpId op_id;
+    OpId op_id = OpId::Invalid();
     if (req->has_stream_id() && !req->stream_id().empty()) {
       auto stream_id = RPC_VERIFY_STRING_TO_STREAM_ID(req->stream_id());
       // Check that requested tablet_id is part of the CDC stream.
@@ -4252,7 +4254,7 @@ Result<bool> CDCServiceImpl::IsBootstrapRequiredForTablet(
   auto log = tablet_peer->log();
   const auto latest_opid = log->GetLatestEntryOpId();
 
-  if (min_op_id.index <= 0) {
+  if (min_op_id.index < 0) {
     // The first index is a NoOp which can be ignored.
     if (latest_opid.index > 1) {
       // Bootstrap is needed if there is any data in the log.

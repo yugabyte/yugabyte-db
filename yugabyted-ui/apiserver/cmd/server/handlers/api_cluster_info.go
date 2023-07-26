@@ -686,78 +686,65 @@ func (c *Container) GetClusterMetric(ctx echo.Context) error {
 
 // GetClusterActivities - Get the cluster activities details
 func (c *Container) GetClusterActivities(ctx echo.Context) error {
-        response := models.ActivitiesResponse{
-                Data: []models.ActivityData{},
-        }
+    response := models.ActivitiesResponse{
+            Data: []models.ActivityData{},
+    }
 
-        activityParam := strings.Split(ctx.QueryParam("activities"), ",")
+    statusParam := ctx.QueryParam("status")
+    activityParam := strings.Split(ctx.QueryParam("activities"), ",")
 
-        for _, activity := range activityParam {
-                switch activity {
-                case "INDEX_BACKFILL":
-                        tablesFuture := make(chan helpers.TablesFuture)
-                        go helpers.GetTablesFuture(helpers.HOST, true, tablesFuture)
-                        tablesListStruct := <-tablesFuture
-                        if tablesListStruct.Error != nil {
-                                return ctx.String(http.StatusInternalServerError,
-                                        tablesListStruct.Error.Error())
-                        }
-                        tablesList := append(tablesListStruct.Tables.User,
-                                tablesListStruct.Tables.Index...)
-                        ysql_databases := make(map[string] struct{})
-                        for _, table := range tablesList {
-                                if table.YsqlOid != "" {
-                                        _, ok := ysql_databases[table.Keyspace]
-                                        if !ok {
-                                                ysql_databases[table.Keyspace] = struct{}{}
-                                        }
-                                }
-                        }
-
-                        indexBackFillInfofutures := []chan helpers.IndexBackFillInfoFuture{}
-
-                        for database := range ysql_databases {
-                                pgConnectionParams := helpers.PgClientConnectionParams{
-                                                User: helpers.DbYsqlUser,
-                                                Password: helpers.DbPassword,
-                                                Host: helpers.HOST,
-                                                Port: helpers.PORT,
-                                                Database: database,
-                                }
-
-                                pgClient, err := helpers.CreatePgClient(c.logger,
-                                        pgConnectionParams)
-                                if err != nil {
-                                        c.logger.Errorf("Error initializing the " +
-                                                "pgx client for database %s.", database)
-                                        return ctx.String(http.StatusInternalServerError,
-                                                err.Error())
-                                }
-                                indexBackFillInfoFuture := make(
-                                        chan helpers.IndexBackFillInfoFuture)
-                                indexBackFillInfofutures = append(indexBackFillInfofutures,
-                                        indexBackFillInfoFuture)
-                                go helpers.GetIndexBackFillInfo(pgClient, indexBackFillInfoFuture)
-                        }
-
-                        for _, future := range indexBackFillInfofutures {
-                                indexBackFillInfoResponse := <-future
-                                if indexBackFillInfoResponse.Error != nil {
-                                        return ctx.String(http.StatusInternalServerError,
-                                                indexBackFillInfoResponse.Error.Error())
-                                }
-                                for _, indexBackFillInfo := range
-                                                indexBackFillInfoResponse.IndexBackFillInfo {
-                                        response.Data = append(response.Data, models.ActivityData{
-                                                Name: activity,
-                                                Data: indexBackFillInfo,
-                                        })
-                                }
-
-                        }
+    for _, activity := range activityParam {
+        switch activity {
+        case "INDEX_BACKFILL":
+            switch statusParam {
+            case "COMPLETED":
+                completedIndexBackFills := helpers.GetCompletedIndexBackFillInfo()
+                if completedIndexBackFills.Error != nil {
+                    return ctx.String(http.StatusInternalServerError,
+                        completedIndexBackFills.Error.Error())
                 }
+                for _, completedActivityInfo := range completedIndexBackFills.IndexBackFillInfo {
+                    response.Data = append(response.Data, models.ActivityData{
+                        Name: activity,
+                        Data: completedActivityInfo,
+                    })
+                }
+            case "IN_PROGRESS":
+                databaseParam := ctx.QueryParam("database")
+                if databaseParam == "" {
+                    databaseParam = "yugabyte"
+                }
+                nodes, err := getNodes()
+                if err != nil {
+                    return ctx.String(http.StatusInternalServerError, err.Error())
+                }
+
+                futures := []chan helpers.IndexBackFillInfoFuture{}
+                for _, nodeHost := range nodes {
+                    conn, err := c.GetConnectionFromMap(nodeHost, databaseParam)
+                    if err == nil {
+                        future := make(chan helpers.IndexBackFillInfoFuture)
+                        futures = append(futures, future)
+                        go helpers.GetIndexBackFillInfo(conn, future)
+                    }
+                }
+                for _, future := range futures {
+                    indexBackFillInfoResponse := <-future
+                    if indexBackFillInfoResponse.Error != nil {
+                        return ctx.String(http.StatusInternalServerError,
+                            indexBackFillInfoResponse.Error.Error())
+                    }
+                    for _, indexBackFillInfo := range indexBackFillInfoResponse.IndexBackFillInfo {
+                        response.Data = append(response.Data, models.ActivityData{
+                            Name: activity,
+                            Data: indexBackFillInfo,
+                        })
+                    }
+                }
+            }
         }
-        return ctx.JSON(http.StatusOK, response)
+    }
+    return ctx.JSON(http.StatusOK, response)
 }
 
 // GetClusterNodes - Get the nodes for a cluster
@@ -1186,12 +1173,19 @@ func (c *Container) GetClusterTablets(ctx echo.Context) error {
         return ctx.String(http.StatusInternalServerError, tabletsList.Error.Error())
     }
     for tabletId, tabletInfo := range tabletsList.Tablets {
+        hasLeader := false
+        for _, obj := range tabletInfo.RaftConfig {
+            if _, ok := obj["LEADER"]; ok {
+                hasLeader = true
+                break
+            }
+        }
         tabletListResponse.Data[tabletId] = models.ClusterTablet{
             Namespace: tabletInfo.Namespace,
             TableName: tabletInfo.TableName,
-            TableUuid: tabletInfo.TableUuid,
+            TableUuid: tabletInfo.TableId,
             TabletId:  tabletId,
-            HasLeader: tabletInfo.HasLeader,
+            HasLeader: hasLeader,
         }
     }
     return ctx.JSON(http.StatusOK, tabletListResponse)

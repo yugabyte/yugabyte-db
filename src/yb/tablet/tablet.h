@@ -42,6 +42,7 @@
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_types.pb.h"
 
+#include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_types.h"
@@ -133,7 +134,9 @@ struct TabletScopedRWOperationPauses {
   }
 };
 
-class Tablet : public AbstractTablet, public TransactionIntentApplier {
+class Tablet : public AbstractTablet,
+               public TransactionIntentApplier,
+               public docdb::TableInfoProvider {
  public:
   class CompactionFaultHooks;
   class FlushCompactCommonHooks;
@@ -386,6 +389,17 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const SubTransactionMetadataPB& subtransaction_metadata,
       PgsqlReadRequestResult* result) override;
 
+  Status DoHandlePgsqlReadRequest(
+      ScopedRWOperation* scoped_read_operation,
+      docdb::DocDBStatistics* statistics,
+      TabletMetrics* metrics,
+      const docdb::ReadOperationData& read_operation_data,
+      bool is_explicit_request_read_time,
+      const PgsqlReadRequestPB& pgsql_read_request,
+      const TransactionMetadataPB& transaction_metadata,
+      const SubTransactionMetadataPB& subtransaction_metadata,
+      PgsqlReadRequestResult* result);
+
   Status CreatePagingStateForRead(
       const PgsqlReadRequestPB& pgsql_read_request, const size_t row_count,
       PgsqlResponsePB* response) const override;
@@ -552,9 +566,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   Schema GetKeySchema(const std::string& table_id = "") const;
 
-  const docdb::YQLStorageIf& QLStorage() const override {
-    return *ql_storage_;
-  }
 
   // Provide a way for write operations to wait when tablet schema is
   // being changed.
@@ -595,13 +606,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Status ForceFullRocksDBCompact(rocksdb::CompactionReason compaction_reason,
       docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
 
-  docdb::DocDB doc_db() const {
+  docdb::DocDB doc_db(TabletMetrics* metrics = nullptr) const {
     return {
         regular_db_.get(),
         intents_db_.get(),
         &key_bounds_,
         retention_policy_.get(),
-        metrics_.get() };
+        metrics ? metrics : metrics_.get() };
   }
 
   // Returns approximate middle key for tablet split:
@@ -846,6 +857,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return external_txn_intents_state_.get();
   }
 
+  // The returned SchemaPackingProvider lives only as long as this.
   docdb::SchemaPackingProvider& GetSchemaPackingProvider();
 
   // 1. Pauses new read/write operations that block RocksDB shutdown and wait for all of those that
@@ -865,6 +877,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const TabletScopedRWOperationPauses& ops_pauses);
 
   Status OpenKeyValueTablet();
+
+  // Returns a pointer to the TableInfo corresponding to the colocated table. When called with
+  // 'kColocationIdNotSet', returns the TableInfo of the parent/primary table.
+  Result<TableInfoPtr> GetTableInfo(ColocationId colocation_id) const override;
 
   // Lock used to serialize the creation of RocksDB checkpoints.
   mutable std::mutex create_checkpoint_lock_;
@@ -1073,7 +1089,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Result<HybridTime> DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const override;
 
-  Result<bool> IntentsDbFlushFilter(const rocksdb::MemTable& memtable);
+  Result<bool> IntentsDbFlushFilter(const rocksdb::MemTable& memtable, bool write_blocked);
 
   template <class Ids>
   Status RemoveIntentsImpl(const RemoveIntentsData& data, RemoveReason reason, const Ids& ids);

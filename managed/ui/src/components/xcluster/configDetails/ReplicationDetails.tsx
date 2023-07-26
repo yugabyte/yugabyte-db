@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { ButtonGroup, Col, DropdownButton, MenuItem, Row, Tab } from 'react-bootstrap';
 import { useMutation, useQueries, useQuery, useQueryClient, UseQueryResult } from 'react-query';
 import { useDispatch, useSelector } from 'react-redux';

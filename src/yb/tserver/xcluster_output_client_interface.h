@@ -49,8 +49,7 @@ class XClusterOutputClientIf : public std::enable_shared_from_this<XClusterOutpu
       const cdc::XClusterSchemaVersionMap& schema_version_map,
       const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map) = 0;
 
-  // Async call for applying changes.
-  virtual Status ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> resp) = 0;
+  virtual void ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> resp) = 0;
 };
 
 }  // namespace yb

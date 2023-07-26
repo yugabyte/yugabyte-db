@@ -30,6 +30,10 @@ type: docs
 
 </ul>
 
+Connect your cluster to an application VPC via AWS PrivateLink.
+
+{{< youtube id="IQ1mfp5XnOQ" title="Set up a private link for clusters deployed in AWS" >}}
+
 To use AWS PrivateLink, you need the following:
 
 - An AWS user account with an IAM user policy that grants permissions to create, modify, describe, and delete endpoints.

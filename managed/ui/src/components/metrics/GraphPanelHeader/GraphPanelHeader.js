@@ -5,7 +5,7 @@ import { Link, withRouter, browserHistory } from 'react-router';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import momentLocalizer from 'react-widgets-moment';
 
-import moment from 'moment';
+import moment from 'moment-timezone';
 import { toast } from 'react-toastify';
 import _ from 'lodash';
 
@@ -23,6 +23,7 @@ import {
 import { YBButton, YBButtonLink } from '../../common/forms/fields';
 import { YBPanelItem } from '../../panels';
 import { FlexContainer, FlexGrow } from '../../common/flexbox/YBFlexBox';
+
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isValidObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { isDedicatedNodePlacement, isKubernetesUniverse } from '../../../utils/UniverseUtils';
@@ -35,6 +36,7 @@ import { MetricsMeasureSelector } from '../MetricsMeasureSelector/MetricsMeasure
 import { OutlierSelector } from '../OutlierSelector/OutlierSelector';
 
 import './GraphPanelHeader.scss';
+import { ybFormatDateTimezone } from '../../../redesign/helpers/DateUtils';
 
 require('react-widgets/dist/css/react-widgets.css');
 
@@ -710,7 +712,7 @@ class GraphPanelHeader extends Component {
                       <div className="timezone">
                         Timezone:{' '}
                         {currentUser.data.timezone
-                          ? moment.tz(currentUser.data.timezone).format('[UTC]ZZ')
+                          ? ybFormatDateTimezone(new Date(), currentUser.data.timezone)
                           : moment().format('[UTC]ZZ')}
                       </div>
                       <div className="graph-interval-container">

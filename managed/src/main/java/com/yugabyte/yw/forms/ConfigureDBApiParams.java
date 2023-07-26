@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.models.Universe;
 import org.apache.commons.lang3.StringUtils;
 
@@ -53,8 +54,9 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
       if (changeInYcql) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot configure YCQL along with YSQL at a time.");
-      } else if (!enableYSQL) {
-        throw new PlatformServiceException(BAD_REQUEST, "cannot disable YSQL once it is enabled.");
+      } else if (enableYSQL && !userIntent.enableYSQL) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot enable YSQL if it was disabled earlier.");
       } else if ((communicationPorts.ysqlServerHttpPort != universePorts.ysqlServerHttpPort
               || communicationPorts.ysqlServerRpcPort != universePorts.ysqlServerRpcPort)
           && userIntent.providerType.equals(CloudType.kubernetes)) {
@@ -94,6 +96,21 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
     } else {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot configure server type " + configureServer.toString());
+    }
+  }
+
+  public void validatePassword(PasswordPolicyService policyService, boolean checkPasswordLeak) {
+    if (enableYSQLAuth && !StringUtils.isEmpty(ysqlPassword)) {
+      policyService.checkPasswordPolicy(null, ysqlPassword);
+      if (checkPasswordLeak) {
+        policyService.validatePasswordNotLeaked("YSQL", ysqlPassword);
+      }
+    }
+    if (enableYCQLAuth && !StringUtils.isEmpty(ycqlPassword)) {
+      policyService.checkPasswordPolicy(null, ycqlPassword);
+      if (checkPasswordLeak) {
+        policyService.validatePasswordNotLeaked("YCQL", ysqlPassword);
+      }
     }
   }
 

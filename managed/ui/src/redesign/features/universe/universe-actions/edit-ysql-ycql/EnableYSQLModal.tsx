@@ -170,8 +170,13 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({ open, onClose, unive
               </Typography>
               <YBTooltip
                 title={
-                  primaryCluster?.userIntent?.enableYSQL
-                    ? t('universeActions.editYSQLSettings.cannotDisableYSQL')
+                  !primaryCluster?.userIntent?.enableYSQL
+                    ? t('universeActions.editYSQLSettings.cannotEnableYSQL') //user cannot enable YSQL post universe creation
+                    : primaryCluster?.userIntent?.enableYSQL &&
+                      !primaryCluster?.userIntent?.enableYCQL
+                    ? t('universeForm.securityConfig.authSettings.enableYsqlOrYcql') // user can disable only one endpoint among YSQL and YCQL
+                    : rotateYSQLPasswordValue
+                    ? t('universeActions.editYSQLSettings.rotateBothYSQLWarning') // user can rotate password only if YSQL and auth is enabled
                     : ''
                 }
                 placement="top-end"
@@ -183,11 +188,35 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({ open, onClose, unive
                       'data-testid': 'EnableYSQLModal-Toggle'
                     }}
                     control={control}
-                    disabled={rotateYSQLPasswordValue || primaryCluster?.userIntent?.enableYSQL}
+                    disabled={
+                      rotateYSQLPasswordValue ||
+                      !primaryCluster?.userIntent?.enableYSQL ||
+                      (primaryCluster?.userIntent?.enableYSQL &&
+                        !primaryCluster?.userIntent?.enableYCQL) // user can disable only one endpoint among YSQL and YCQL
+                    }
                   />
                 </div>
               </YBTooltip>
             </Box>
+            {!enableYSQLValue && primaryCluster?.userIntent?.enableYSQLAuth && (
+              <Box flex={1} mt={2} width="300px">
+                <YBPasswordField
+                  rules={{
+                    required: t('universeForm.validation.required', {
+                      field: t('universeForm.securityConfig.authSettings.ysqlAuthPassword')
+                    }) as string
+                  }}
+                  name={'ysqlPassword'}
+                  control={control}
+                  fullWidth
+                  inputProps={{
+                    autoComplete: 'previous-password',
+                    'data-testid': 'YSQLField-PasswordLabelInput'
+                  }}
+                  placeholder={t('universeActions.editYSQLSettings.currentPwdToAuth')}
+                />
+              </Box>
+            )}
           </Box>
           {enableYSQLValue && (
             <Box className={classes.mainContainer}>

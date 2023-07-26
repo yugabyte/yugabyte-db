@@ -133,7 +133,7 @@ class DocKey {
   void AppendTo(KeyBytes* out) const;
 
   // Encodes DocKey to binary representation returning result as RefCntPrefix.
-  RefCntPrefix EncodeAsRefCntPrefix() const;
+  RefCntPrefix EncodeAsRefCntPrefix(Slice suffix = Slice()) const;
 
   // Resets the state to an empty document key.
   void Clear();
@@ -816,7 +816,7 @@ inline std::ostream& operator <<(std::ostream& out, const SubDocKey& subdoc_key)
 // A best-effort to decode the given sequence of key bytes as either a DocKey or a SubDocKey.
 // If not possible to decode, return the key_bytes directly as a readable string.
 std::string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes);
-std::string BestEffortDocDBKeyToStr(const Slice &slice);
+std::string BestEffortDocDBKeyToStr(Slice slice);
 
 template <class... Args>
 DocKey MakeDocKey(Args&&... args) {
