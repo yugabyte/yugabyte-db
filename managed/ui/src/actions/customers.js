@@ -9,10 +9,6 @@ import { getCustomerEndpoint } from './common';
 export const VALIDATE_FROM_TOKEN = 'VALIDATE_FROM_TOKEN';
 export const VALIDATE_FROM_TOKEN_RESPONSE = 'VALIDATE_FROM_TOKEN_RESPONSE';
 
-// Get OIDC token
-export const FETCH_OIDC_TOKEN = 'FETCH_OIDC_TOKEN';
-export const FETCH_OIDC_TOKEN_RESPONSE = 'FETCH_OIDC_TOKEN_RESPONSE';
-
 // Sign Up Customer
 export const REGISTER = 'REGISTER';
 export const REGISTER_RESPONSE = 'REGISTER_RESPONSE';
@@ -1086,22 +1082,6 @@ export function getYugaByteReleases() {
 export function getYugaByteReleasesResponse(response) {
   return {
     type: GET_RELEASES_RESPONSE,
-    payload: response
-  };
-}
-
-export function fetchOIDCToken(userUUID) {
-  const cUUID = localStorage.getItem('customerId');
-  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/users/${userUUID}/oidc_auth_token`);
-  return {
-    type: FETCH_OIDC_TOKEN,
-    payload: request
-  };
-}
-
-export function fetchOIDCTokenResponse(response) {
-  return {
-    type: FETCH_OIDC_TOKEN_RESPONSE,
     payload: response
   };
 }

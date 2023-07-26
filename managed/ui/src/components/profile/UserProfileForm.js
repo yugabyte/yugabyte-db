@@ -7,7 +7,7 @@ import moment from 'moment';
 import { isEqual } from 'lodash';
 import { Col, Row } from 'react-bootstrap';
 import { FormHelperText } from '@material-ui/core';
-import { YBButton, YBFormInput, YBFormSelect, YBTextArea } from '../common/forms/fields';
+import { YBButton, YBFormInput, YBFormSelect } from '../common/forms/fields';
 import { Field, Form, Formik } from 'formik';
 import { showOrRedirect, isNotHidden, isDisabled, isHidden } from '../../utils/LayoutUtils';
 import { FlexContainer, FlexGrow, FlexShrink } from '../common/flexbox/YBFlexBox';
@@ -29,11 +29,6 @@ export default class UserProfileForm extends Component {
     const { validateRegistration } = this.props;
     validateRegistration();
   }
-
-  getOIDCToken = () => {
-    const { currentUser, fetchOIDCToken } = this.props;
-    fetchOIDCToken(currentUser.data.uuid);
-  };
 
   handleRefreshApiToken = (e) => {
     const { refreshApiToken } = this.props;
@@ -64,8 +59,6 @@ export default class UserProfileForm extends Component {
     const {
       customer = {},
       apiToken,
-      OIDCToken,
-      isOIDCEnhancementEnabled,
       updateCustomerDetails,
       updateUserProfile,
       updateUserPassword,
@@ -73,6 +66,7 @@ export default class UserProfileForm extends Component {
       currentUser
     } = this.props;
     const minPasswordLength = passwordValidationInfo?.minLength || MIN_PASSWORD_LENGTH;
+
     showOrRedirect(customer.data.features, 'main.profile');
 
     const isLDAPUser = !!currentUser?.data?.ldapSpecifiedRole;
@@ -135,18 +129,6 @@ export default class UserProfileForm extends Component {
         .notRequired()
         .oneOf([Yup.ref('password')], "Passwords don't match")
     });
-
-    const waringMessageContent = (
-      <FlexShrink className="token-warning">
-        <FormHelperText className="warning-color">
-          <i className="fa fa-warning" />
-          <span>
-            {<b>{'Note! '}</b>}
-            {'Save the token in a safe place as it’s only temporarily visible.'}
-          </span>
-        </FormHelperText>
-      </FlexShrink>
-    );
 
     return (
       <div className="bottom-bar-padding">
@@ -279,7 +261,7 @@ export default class UserProfileForm extends Component {
                 </Col>
                 {isNotHidden(customer.data.features, 'profile.apiKeyManagement') && (
                   <Col md={6} sm={12}>
-                    <h3>Key management</h3>
+                    <h3>API Key management</h3>
                     <FlexContainer>
                       <FlexGrow className="api-token-component">
                         <Field
@@ -306,35 +288,16 @@ export default class UserProfileForm extends Component {
                         />
                       </FlexShrink>
                     </FlexContainer>
-                    {isNonEmptyString(apiToken.data || customer.data.apiToken) &&
-                      waringMessageContent}
-                    {isOIDCEnhancementEnabled && (
-                      <>
-                        <FlexContainer>
-                          <FlexGrow className="copy-text-field">
-                            <YBTextArea
-                              type="text"
-                              rows={OIDCToken.data.oidcAuthToken ? 5 : 2}
-                              isReadOnly={true}
-                              input={{
-                                value: OIDCToken.data.oidcAuthToken
-                              }}
-                              label="OIDC Token"
-                            />
-                            <YBCopyButton text={OIDCToken.data.oidcAuthToken || ''} />
-                          </FlexGrow>
-                          <FlexShrink>
-                            <YBButton
-                              btnText="Fetch OIDC Token"
-                              btnType="button"
-                              loading={getPromiseState(OIDCToken).isLoading()}
-                              onClick={this.getOIDCToken}
-                              btnClass="btn btn-orange pull-right btn-api-token"
-                            />
-                          </FlexShrink>
-                        </FlexContainer>
-                        {isNonEmptyString(OIDCToken.data.oidcAuthToken) && waringMessageContent}
-                      </>
+                    {isNonEmptyString(apiToken.data || customer.data.apiToken) && (
+                      <FlexShrink className="api-token-warning">
+                        <FormHelperText className="warning-color">
+                          <i className="fa fa-warning" />
+                          <span>
+                            {<b>{'Note! '}</b>}
+                            {'Save the token in a safe place as it’s only temporarily visible.'}
+                          </span>
+                        </FormHelperText>
+                      </FlexShrink>
                     )}
                   </Col>
                 )}
