@@ -27,7 +27,7 @@ Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB Prerequis
 
 Install Hashicorp Vault. See [Installing Vault](https://developer.hashicorp.com/vault/docs/install).
 
-Before using the vault, do the following:
+Before using Vault, do the following:
 
 - Add go to the path as follows:
 
@@ -43,41 +43,41 @@ Before using the vault, do the following:
     export VAULT_TOKEN="root"
     ```
 
-Clone the `hashicorp-vault-ysql-plugin` repository:
+- For production mode, register the plugin as follows:
 
-```sh
-git clone https://github.com/yugabyte/hashicorp-vault-ysql-plugin && cd hashicorp-vault-ysql-plugin
-```
+    ```sh
+    export SHA256=$(sha256sum <build dir>/ysql-plugin  | cut -d' ' -f1)
 
-Build the plugin as follows:
+    vault write sys/plugins/catalog/database/ysql-plugin \
+        sha256=$SHA256 \
+        command="ysql-plugin"
+    ```
 
-```go
-go build -o <build dir>/ysql-plugin cmd/ysql-plugin/main.go
-```
+Install the YSQL plugin for Hashicorp Vault as follows:
 
-For production mode, register the plugin as follows:
+- Clone the `hashicorp-vault-ysql-plugin` repository:
 
-```sh
-export SHA256=$(sha256sum <build dir>/ysql-plugin  | cut -d' ' -f1)
+    ```sh
+    git clone https://github.com/yugabyte/hashicorp-vault-ysql-plugin && cd hashicorp-vault-ysql-plugin
+    ```
 
-vault write sys/plugins/catalog/database/ysql-plugin \
-    sha256=$SHA256 \
-    command="ysql-plugin"
-```
+- Build the plugin as follows:
+
+    ```go
+    go build -o <build dir>/ysql-plugin cmd/ysql-plugin/main.go
+    ```
 
 ## Run and configure the vault server
 
-Start the Vault server using the [server](https://developer.hashicorp.com/vault/docs/commands/server) command.
+Start the Vault server using the [server](https://developer.hashicorp.com/vault/docs/commands/server) command with the following flags:
 
-To run the server in development mode, use the `-dev` flag; development mode makes it easier to experiment with Vault or start a Vault instance for development.
+- To have Vault automatically register the plugin, provide the path to the directory containing the plugin binary using the `-dev-plugin-dir` flag.
+- Set the `-dev-root-token` flag to inform the vault to use the default vault token of root to login (this token is required in production mode).
+- To run the server in development mode, use the `-dev` flag; development mode makes it easier to experiment with Vault or start a Vault instance for development.
 
 {{< warning title="Don't run Development mode in production" >}}
 Never run development mode in production. It is insecure and will lose data on every restart (as it stores data in memory). Development mode is only suitable for development or experimentation.
 {{< /warning >}}
-
-Vault automatically registers the plugin if you provide the path to the directory containing the plugin binary using the `-dev-plugin-dir` flag.
-
-Set the `-dev-root-token` flag to inform the vault to use the default vault token of root to login (this token is required in production mode).
 
 For example, you can start the server as follows:
 
