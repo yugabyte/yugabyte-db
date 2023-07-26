@@ -13,7 +13,6 @@ import {
     YBSelect
 } from '@app/components';
 import { getHumanInterval, getMemorySizeUnits, roundDecimal } from '@app/helpers';
-import { useGetClusterNodesQuery, useGetIsLoadBalancerIdleQuery } from '@app/api/src';
 import { getHumanVersion } from '@app/features/clusters/ClusterDBVersionBadge';
 import { NodeCountWidget } from './NodeCountWidget';
 import type { ClassNameMap } from '@material-ui/styles';
@@ -22,6 +21,7 @@ import EditIcon from '@app/assets/edit.svg';
 import RefreshIcon from '@app/assets/refresh.svg';
 import { StateEnum, StatusEntity, YBSmartStatus } from '@app/components/YBStatus/YBSmartStatus';
 import { StringParam, useQueryParams, withDefault } from 'use-query-params';
+import { useNodes } from './NodeHooks';
 
 const useStyles = makeStyles((theme) => ({
     title: {
@@ -189,15 +189,7 @@ export const NodesTab: FC = () => {
   };
 
   // Get nodes
-  const { data: nodesResponse, isFetching: fetchingNodes, refetch: refetchNodes } =
-    useGetClusterNodesQuery();
-
-  // We get load balancer separately for now since we rely on yb-admin which is slow
-  const {
-    data: isLoadBalancerIdleResponse,
-    isFetching: fetchingIsLoadBalancerIdle,
-    refetch: refetchIsLoadBalancerIdle,
-  } = useGetIsLoadBalancerIdleQuery();
+  const { data: nodesResponse, isFetching: fetchingNodes, refetch: refetchNodes } = useNodes();
 
   // These define which checkboxes are checked by default in the Edit Columns modal
   const defaultValues : Record<string, boolean> = {
@@ -250,20 +242,7 @@ export const NodesTab: FC = () => {
 
   const nodesData = useMemo(() => {
     if (nodesResponse?.data) {
-      return nodesResponse.data.map(node => {
-        node.is_bootstrapping = fetchingIsLoadBalancerIdle
-        ? false
-        : !node.is_node_up || !node.is_master_up
-        ? false
-        : node.metrics.uptime_seconds < 60 && !isLoadBalancerIdleResponse?.is_idle ||
-          (!node.is_read_replica ? 
-            node.metrics.user_tablets_leaders + node.metrics.system_tablets_leaders == 0
-            :
-            node.metrics.user_tablets_total + node.metrics.system_tablets_total == 0
-          );
-        return node;
-      })
-      .filter((node) => {
+      return nodesResponse.data.filter((node) => {
         switch (filter) {
             case 'running':
                 return node.is_node_up;
@@ -342,7 +321,7 @@ export const NodesTab: FC = () => {
       }));
     }
     return [];
-  }, [nodesResponse, fetchingIsLoadBalancerIdle, isLoadBalancerIdleResponse, filter, nodeFilter]);
+  }, [nodesResponse, filter, nodeFilter]);
 
   const hasReadReplica = !!nodesResponse?.data.find(node => node.is_read_replica);
 
@@ -897,10 +876,7 @@ export const NodesTab: FC = () => {
   return (
     <>
       <Box mt={3} mb={2}>
-        <NodeCountWidget
-            nodes={nodesResponse}
-            isLoadBalancerIdle={isLoadBalancerIdleResponse?.is_idle}
-            fetchingIsLoadBalancerIdle={fetchingIsLoadBalancerIdle}/>
+        <NodeCountWidget nodes={nodesResponse} />
       </Box>
       <Box className={classes.filterContainer}>
         <Box className={classes.filterRow}>
@@ -956,7 +932,6 @@ export const NodesTab: FC = () => {
                 startIcon={<RefreshIcon />}
                 onClick={() =>  {
                     refetchNodes();
-                    refetchIsLoadBalancerIdle();
                 }}
                 >
                 {t('clusterDetail.nodes.refresh')}
