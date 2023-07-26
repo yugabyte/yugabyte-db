@@ -229,7 +229,7 @@ If the change requires data on disk to change, a full table rewrite will be done
 - If the operation fails, it is possible that the existing table is renamed in DocDB. This may lead to issues like yb-admin commands that take table name.
 - If the operation fails, a new dangling table may exist.
 - Altering the data type of a foreign key column is not supported.
-- If there might be concurrent DMLs the user can rename the table first to fail the DMLs, alter the column data type, and then rename the table again.
+- If there might be concurrent DMLs, the user can first rename the table to fail the DMLs, alter the column data type, and then rename the table again.
 
 Example:
 
