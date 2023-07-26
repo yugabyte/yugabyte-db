@@ -139,7 +139,7 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
     stream_ids_.emplace_back(
         ASSERT_RESULT(xrepl::StreamId::FromString(stream_resp.streams(0).stream_id())));
 
-    ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), kTabletCount + 1));
+    ASSERT_OK(CorrectlyPollingAllTablets(kTabletCount + 1));
     ASSERT_OK(PostReplicationSetup());
   }
 

@@ -78,7 +78,6 @@ using client::YBTable;
 using client::YBTableName;
 
 using SessionTransactionPair = std::pair<client::YBSessionPtr, client::YBTransactionPtr>;
-using YBTables = std::vector<std::shared_ptr<client::YBTable>>;
 using YBClusters = std::vector<XClusterTestBase::Cluster*>;
 
 struct AdditionalClusters {
@@ -138,15 +137,11 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
     return Status::OK();
   }
 
-  Result<AdditionalClusters> SetUpWithParams(
+  Status SetUpWithParams(
       const std::vector<uint32_t>& num_consumer_tablets,
-      const std::vector<uint32_t>& num_producer_tablets,
-      uint32_t replication_factor,
-      uint32_t num_additional_consumers = 0,
-      uint32_t num_additional_producers = 0,
-      uint32_t num_tablets_per_table = 1,
-      uint32_t num_masters = 1,
-      uint32_t num_tservers = 1) {
+      const std::vector<uint32_t>& num_producer_tablets, uint32_t replication_factor,
+      uint32_t num_additional_consumers = 0, uint32_t num_additional_producers = 0,
+      uint32_t num_tablets_per_table = 1, uint32_t num_masters = 1, uint32_t num_tservers = 1) {
     SetUp();
     num_tservers = std::max(num_tservers, replication_factor);
     MiniClusterOptions opts;
@@ -162,14 +157,13 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
 
     RETURN_NOT_OK(BuildSchemaAndCreateTables(num_consumer_tablets, num_producer_tablets));
 
-    AdditionalClusters additional_clusters;
     for (uint32_t i = 0; i < num_additional_producers; ++i) {
       std::string cluster_id = Format("additional_producer_$0", i);
       std::unique_ptr<Cluster> additional_producer_cluster = VERIFY_RESULT(AddClusterWithTables(
           &producer_clusters_, &(producer_tables_[cluster_id]), cluster_id,
           num_producer_tablets.size(), num_tablets_per_table, /* is_producer= */ true,
           num_tservers));
-      additional_clusters.additional_producer_clusters_.push_back(
+      additional_clusters_.additional_producer_clusters_.push_back(
           std::move(additional_producer_cluster));
     }
 
@@ -178,13 +172,11 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
           &consumer_clusters_, &consumer_tables_, Format("additional_consumer_$0", i),
           num_consumer_tablets.size(), num_tablets_per_table, /* is_producer= */ false,
           num_tservers));
-      additional_clusters.additional_consumer_clusters_.push_back(
+      additional_clusters_.additional_consumer_clusters_.push_back(
           std::move(additional_consumer_cluster));
     }
 
-    RETURN_NOT_OK(WaitForLoadBalancersToStabilizeOnAllClusters());
-
-    return additional_clusters;
+    return WaitForLoadBalancersToStabilizeOnAllClusters();
   }
 
   Status SetupAllUniverseReplication() {
@@ -308,6 +300,8 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
     }
     return Status::OK();
   }
+
+  AdditionalClusters additional_clusters_;
 };
 
 // Testing that a 1:3 replication setup works.
@@ -316,7 +310,7 @@ TEST_F(XClusterTopologiesTest, TestBasicBroadcastTopology) {
   constexpr int kNumTables = 3;
   uint32_t kReplicationFactor = NonTsanVsTsan(3, 1);
   std::vector<uint32_t> tables_vector(kNumTables, kNTabletsPerTable);
-  auto additional_clusters = ASSERT_RESULT(SetUpWithParams(
+  ASSERT_OK(SetUpWithParams(
       tables_vector, tables_vector, kReplicationFactor, /* num_additional_consumers= */ 2,
       /* num_additional_producers= */ 0, kNTabletsPerTable));
   ASSERT_OK(SetupAllUniverseReplication());
@@ -335,7 +329,7 @@ TEST_F(XClusterTopologiesTest, TestNToOneReplicationFails) {
   constexpr int kNumTables = 3;
   uint32_t kReplicationFactor = NonTsanVsTsan(3, 1);
   std::vector<uint32_t> tables_vector(kNumTables, kNTabletsPerTable);
-  auto additional_clusters = ASSERT_RESULT(SetUpWithParams(
+  ASSERT_OK(SetUpWithParams(
       tables_vector, tables_vector, kReplicationFactor, 0 /* num additional consumers */,
       1 /* num additional producers */, kNTabletsPerTable));
 
@@ -382,9 +376,9 @@ TEST_F(XClusterTopologiesTestClusterFailure, TestBroadcastWithConsumerFailure) {
   constexpr int kNumTables = 3;
   uint32_t kReplicationFactor = NonTsanVsTsan(3, 1);
   std::vector<uint32_t> tables_vector(kNumTables, kNTabletsPerTable);
-  auto additional_consumer_clusters = ASSERT_RESULT(SetUpWithParams(
+  ASSERT_OK(SetUpWithParams(
       tables_vector, tables_vector, kReplicationFactor, /* num_additional_consumers= */ 2,
-      /* num_additional_producers= */ 0, kNTabletsPerTable));
+      /* num_additional_producers= */ 0, 0 /*num_additional_producers*/, kNTabletsPerTable));
   ASSERT_OK(SetupAllUniverseReplication());
   SwitchToRetainOnlyByOpId();
 
@@ -418,7 +412,7 @@ TEST_F(XClusterTopologiesTestClusterFailure, TestBroadcastWithProducerFailure) {
   constexpr int kNumTables = 3;
   uint32_t kReplicationFactor = NonTsanVsTsan(3, 1);
   std::vector<uint32_t> tables_vector(kNumTables, kNTabletsPerTable);
-  auto additional_consumer_clusters = ASSERT_RESULT(SetUpWithParams(
+  ASSERT_OK(SetUpWithParams(
       tables_vector, tables_vector, kReplicationFactor, /* num_additional_consumers= */ 2,
       /* num_additional_producers= */ 0, kNTabletsPerTable));
   ASSERT_OK(SetupAllUniverseReplication());

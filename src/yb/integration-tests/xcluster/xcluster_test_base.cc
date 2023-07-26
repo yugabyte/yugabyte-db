@@ -197,48 +197,56 @@ Result<YBTableName> XClusterTestBase::CreateTable(
   return table;
 }
 
-Status XClusterTestBase::SetupUniverseReplication(const std::vector<string>& table_ids) {
+Status XClusterTestBase::SetupUniverseReplication(const std::vector<string>& producer_table_ids) {
   return SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId, table_ids);
+      producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId, producer_table_ids);
 }
 
 Status XClusterTestBase::SetupUniverseReplication(
-    const std::vector<std::shared_ptr<client::YBTable>>& tables, SetupReplicationOptions opts) {
-  return SetupUniverseReplication(kReplicationGroupId, tables, opts);
+    const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
+    const std::vector<xrepl::StreamId>& bootstrap_ids, SetupReplicationOptions opts) {
+  return SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId, producer_tables,
+      bootstrap_ids, opts);
+}
+
+Status XClusterTestBase::SetupUniverseReplication(
+    const std::vector<std::shared_ptr<client::YBTable>>& producer_tables, SetupReplicationOptions opts) {
+  return SetupUniverseReplication(kReplicationGroupId, producer_tables, opts);
 }
 
 Status XClusterTestBase::SetupUniverseReplication(
     const cdc::ReplicationGroupId& replication_group_id,
-    const std::vector<std::shared_ptr<client::YBTable>>& tables, SetupReplicationOptions opts) {
+    const std::vector<std::shared_ptr<client::YBTable>>& producer_tables, SetupReplicationOptions opts) {
   return SetupUniverseReplication(
-      producer_cluster(), consumer_cluster(), consumer_client(), replication_group_id, tables,
+      producer_cluster(), consumer_cluster(), consumer_client(), replication_group_id, producer_tables,
       {} /* bootstrap_ids */, opts);
 }
 
 Status XClusterTestBase::SetupReverseUniverseReplication(
-    const std::vector<std::shared_ptr<client::YBTable>>& tables) {
+    const std::vector<std::shared_ptr<client::YBTable>>& producer_tables) {
   return SetupUniverseReplication(
-      consumer_cluster(), producer_cluster(), producer_client(), kReplicationGroupId, tables);
+      consumer_cluster(), producer_cluster(), producer_client(), kReplicationGroupId, producer_tables);
 }
 
 Status XClusterTestBase::SetupUniverseReplication(
     MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
     const cdc::ReplicationGroupId& replication_group_id,
-    const std::vector<std::shared_ptr<client::YBTable>>& tables,
+    const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
     const std::vector<xrepl::StreamId>& bootstrap_ids, SetupReplicationOptions opts) {
-  std::vector<string> table_ids;
-  for (const auto& table : tables) {
-    table_ids.push_back(table->id());
+  std::vector<string> producer_table_ids;
+  for (const auto& table : producer_tables) {
+    producer_table_ids.push_back(table->id());
   }
 
   return SetupUniverseReplication(
-      producer_cluster, consumer_cluster, consumer_client, replication_group_id, table_ids,
+      producer_cluster, consumer_cluster, consumer_client, replication_group_id, producer_table_ids,
       bootstrap_ids, opts);
 }
 
 Status XClusterTestBase::SetupUniverseReplication(
     MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
-    const cdc::ReplicationGroupId& replication_group_id, const std::vector<TableId>& table_ids,
+    const cdc::ReplicationGroupId& replication_group_id, const std::vector<TableId>& producer_table_ids,
     const std::vector<xrepl::StreamId>& bootstrap_ids, SetupReplicationOptions opts) {
   // If we have certs for encryption in FLAGS_certs_dir then we need to copy it over to the
   // universe_id subdirectory in FLAGS_certs_for_cdc_dir.
@@ -266,15 +274,15 @@ Status XClusterTestBase::SetupUniverseReplication(
   auto hp_vec = VERIFY_RESULT(HostPort::ParseStrings(master_addr, 0));
   HostPortsToPBs(hp_vec, req.mutable_producer_master_addresses());
 
-  req.mutable_producer_table_ids()->Reserve(narrow_cast<int>(table_ids.size()));
-  for (const auto& table_id : table_ids) {
+  req.mutable_producer_table_ids()->Reserve(narrow_cast<int>(producer_table_ids.size()));
+  for (const auto& table_id : producer_table_ids) {
     req.add_producer_table_ids(table_id);
   }
 
   req.set_transactional(opts.transactional);
 
   SCHECK(
-      bootstrap_ids.empty() || bootstrap_ids.size() == table_ids.size(), InvalidArgument,
+      bootstrap_ids.empty() || bootstrap_ids.size() == producer_table_ids.size(), InvalidArgument,
       "Bootstrap Ids for all tables should be provided");
 
   for (const auto& bootstrap_id : bootstrap_ids) {
@@ -296,7 +304,7 @@ Status XClusterTestBase::SetupUniverseReplication(
     SCHECK_EQ(
         resp.entry().producer_id(), replication_group_id, IllegalState,
         "Producer id does not match passed in value");
-    SCHECK_EQ(resp.entry().tables_size(), table_ids.size(), IllegalState,
+    SCHECK_EQ(resp.entry().tables_size(), producer_table_ids.size(), IllegalState,
               "Number of tables do not match");
   }
   return Status::OK();
@@ -562,6 +570,11 @@ Status XClusterTestBase::AlterUniverseReplication(
   return VerifyUniverseReplication(replication_group_id, &get_resp);
 }
 
+Status XClusterTestBase::CorrectlyPollingAllTablets(uint32_t num_producer_tablets) {
+  return cdc::CorrectlyPollingAllTablets(
+      consumer_cluster(), num_producer_tablets, MonoDelta::FromSeconds(kRpcTimeout));
+}
+
 Status XClusterTestBase::CorrectlyPollingAllTablets(
     MiniCluster* cluster, uint32_t num_producer_tablets) {
   return cdc::CorrectlyPollingAllTablets(
@@ -672,6 +685,9 @@ Result<std::vector<xrepl::StreamId>> XClusterTestBase::BootstrapProducer(
   for (auto& bootstrap_id : resp.cdc_bootstrap_ids()) {
     stream_ids.emplace_back(VERIFY_RESULT(xrepl::StreamId::FromString(bootstrap_id)));
   }
+  SCHECK_EQ(
+      stream_ids.size(), table_ids.size(), IllegalState,
+      "Number of bootstrap ids do not match number of tables");
 
   return stream_ids;
 }
