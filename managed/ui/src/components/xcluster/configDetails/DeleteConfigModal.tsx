@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQueryClient } from 'react-query';
 import { browserHistory } from 'react-router';
 import { toast } from 'react-toastify';

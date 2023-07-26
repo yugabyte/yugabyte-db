@@ -228,6 +228,7 @@ libraryDependencies ++= Seq(
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
   "io.grpc" % "grpc-testing" % "1.48.0" % Test,
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
+  "org.springframework" % "spring-test" % "5.3.9" % Test,
 )
 
 // Clear default resolvers.
@@ -472,20 +473,19 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.60-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b6"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.62-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b7"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b30"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
   "io.netty" % "netty-codec-haproxy" % "4.1.89.Final",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
-  "net.minidev" % "json-smart" % "2.4.8",
   "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
 )
 
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.21.7"
-dependencyOverrides += "com.google.guava" % "guava" % "23.0"
+dependencyOverrides += "com.google.guava" % "guava" % "32.1.1-jre"
 // SSO functionality only works on the older version of nimbusds.
 // Azure library upgrade tries to upgrade nimbusds to latest version.
 dependencyOverrides += "com.nimbusds" % "oauth2-oidc-sdk" % "7.1.1"

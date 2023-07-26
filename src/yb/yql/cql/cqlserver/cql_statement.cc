@@ -90,5 +90,13 @@ void StmtCounters::WriteAsJson(
   jw->EndObject();
 }
 
+void StmtCounters::ResetCounters() {
+  this->num_calls = 0;
+  this->total_time_in_msec = 0.;
+  this->min_time_in_msec = 0.;
+  this->max_time_in_msec = 0.;
+  this->sum_var_time_in_msec = 0.;
+}
+
 }  // namespace cqlserver
 }  // namespace yb

@@ -45,7 +45,7 @@ docdb::DocReadContextPtr SystemTablet::GetDocReadContext() const {
   return doc_read_context_;
 }
 
-const docdb::YQLStorageIf& SystemTablet::QLStorage() const {
+const YQLVirtualTable& SystemTablet::YQLTable() const {
   return *yql_virtual_table_;
 }
 
@@ -72,8 +72,8 @@ Status SystemTablet::HandleQLReadRequest(const docdb::ReadOperationData& read_op
   // Passing empty ScopedRWOperation because we don't have underlying RocksDB here.
   auto pending_op = ScopedRWOperation();
   return AbstractTablet::HandleQLReadRequest(
-      read_operation_data, ql_read_request, TransactionOperationContext(), pending_op, result,
-      rows_data);
+      read_operation_data, ql_read_request, TransactionOperationContext(), YQLTable(), pending_op,
+      result, rows_data);
 }
 
 Status SystemTablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,

@@ -511,9 +511,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Work to delete YSQL database tables, handled asynchronously from the User API call.
   void DeleteYsqlDatabaseAsync(scoped_refptr<NamespaceInfo> database);
 
-  // Work to delete YCQL database, handled asynchronously from the User API call.
-  void DeleteYcqlDatabaseAsync(scoped_refptr<NamespaceInfo> database);
-
   // Delete all tables in YSQL database.
   Status DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& database);
 
@@ -900,7 +897,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const NamespaceIdentifierPB& ns_identifier) const REQUIRES_SHARED(mutex_);
 
   Result<scoped_refptr<NamespaceInfo>> FindNamespace(
-      const NamespaceIdentifierPB& ns_identifier) const EXCLUDES(mutex_);
+      const NamespaceIdentifierPB& ns_identifier) const override EXCLUDES(mutex_);
 
   Result<scoped_refptr<NamespaceInfo>> FindNamespaceById(
       const NamespaceId& id) const override EXCLUDES(mutex_);
@@ -1211,6 +1208,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status GetUDTypeMetadata(
       const GetUDTypeMetadataRequestPB* req, GetUDTypeMetadataResponsePB* resp,
       rpc::RpcContext* rpc);
+
+  // Bootstrap namespace and setup replication to consume data from another YB universe.
+  Status SetupNamespaceReplicationWithBootstrap(
+      const SetupNamespaceReplicationWithBootstrapRequestPB* req,
+      SetupNamespaceReplicationWithBootstrapResponsePB* resp, rpc::RpcContext* rpc);
 
   // Setup Universe Replication to consume data from another YB universe.
   Status SetupUniverseReplication(
@@ -1998,6 +2000,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Namespace maps: namespace-id -> NamespaceInfo and namespace-name -> NamespaceInfo
   NamespaceInfoMap namespace_ids_map_ GUARDED_BY(mutex_);
+  // Used to enforce global uniqueness for names for both YSQL and YCQL databases.
+  // Also used to service requests which only include the namespace name and not the id.
   NamespaceNameMapper namespace_names_mapper_ GUARDED_BY(mutex_);
 
   // User-Defined type maps: udtype-id -> UDTypeInfo and udtype-name -> UDTypeInfo
@@ -2550,6 +2554,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     std::unordered_map<TableId, xrepl::StreamId> table_bootstrap_ids;
     bool transactional;
   };
+
+  Status ValidateMasterAddressesBelongToDifferentCluster(
+      const google::protobuf::RepeatedPtrField<HostPortPB>& master_addresses);
 
   // Validates a single table's schema with the corresponding table on the consumer side, and
   // updates consumer_table_id with the new table id. Return the consumer table schema if the

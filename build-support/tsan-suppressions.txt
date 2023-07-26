@@ -179,12 +179,6 @@ race:cass::Metadata::clear_and_update_back
 race:cass::Metadata::update_partitions
 race:cass::Metadata::update_keyspaces
 
-# Data race in 'yb::ql::Executor' on accessing 'ResetAsyncCalls::num_async_calls_'.
-# Github issue: https://github.com/yugabyte/yugabyte-db/issues/16630
-#               [DocDB] TSAN race in CqlIndexTest.TxnPollCleanup
-# The following line should be removed from the supressions after the issue fixing.
-race:yb::ql::Executor::ResetAsyncCalls::Perform
-
 # Races in libuv.so
 race:uv__io_feed
 race:uv__update_time

@@ -63,6 +63,12 @@ class AzureCreateInstancesMethod(CreateInstancesMethod):
                                  help="Desired throughput for ultrassd instance volumes.")
         self.parser.add_argument("--spot_price", default=None,
                                  help="Spot price for each instance")
+        self.parser.add_argument("--custom_vm_params", default=None,
+                                 help="JSON of custom virtual machine options to merge.")
+        self.parser.add_argument("--custom_disk_params", default=None,
+                                 help="JSON of custom data disk options to merge.")
+        self.parser.add_argument("--custom_network_params", default=None,
+                                 help="JSON of custom network interface options to merge.")
 
     def preprocess_args(self, args):
         super(AzureCreateInstancesMethod, self).preprocess_args(args)

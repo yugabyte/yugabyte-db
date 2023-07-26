@@ -5247,7 +5247,7 @@ TEST_F(TestRedisService, RangeScanTimeout) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_timeout) = true;
   DoRedisTestExpectError(__LINE__, {"ZRANGEBYSCORE", "z_key", "-inf", "+inf"},
-                         "Deadline for query passed.");
+                         "TEST: Deadline for query passed");
   SyncClient();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_timeout) = false;
 
@@ -5259,7 +5259,7 @@ TEST_F(TestRedisService, RangeScanTimeout) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_timeout) = true;
   DoRedisTestExpectError(__LINE__, {"TSRANGEBYTIME", "ts_key", "-inf", "+inf"},
-                         "Deadline for query passed.");
+                         "TEST: Deadline for query passed");
   SyncClient();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_timeout) = false;
 

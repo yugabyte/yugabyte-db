@@ -45,6 +45,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 
 DEFINE_UNKNOWN_bool(use_hybrid_clock, true,
@@ -173,6 +174,8 @@ void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec
            (ANNOTATE_UNPROTECTED_READ(FLAGS_clock_skew_force_crash_bound_usec) > 0 &&
             delta_us > ANNOTATE_UNPROTECTED_READ(FLAGS_clock_skew_force_crash_bound_usec))) &&
           clock_skew_control_enabled.load(std::memory_order_acquire)) {
+        TryRunChronycTracking();
+        TryRunChronycSourcestats();
         LOG(FATAL) << "Too big clock skew is detected: " << delta << ", while max allowed is: "
                    << max_allowed << "; clock_skew_force_crash_bound_usec="
                    << ANNOTATE_UNPROTECTED_READ(FLAGS_clock_skew_force_crash_bound_usec);

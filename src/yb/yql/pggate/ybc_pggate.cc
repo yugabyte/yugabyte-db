@@ -1429,6 +1429,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_disable_global_impact_ddl_statements =
           &FLAGS_ysql_disable_global_impact_ddl_statements,
       .ysql_minimal_catalog_caches_preload      = &FLAGS_ysql_minimal_catalog_caches_preload,
+      .ysql_enable_create_database_oid_collision_retry =
+          &FLAGS_ysql_enable_create_database_oid_collision_retry
   };
   return &accessor;
 }

@@ -323,7 +323,7 @@ class TSDescriptor {
                           std::shared_ptr<TProxy>* result_cache);
 
   FRIEND_TEST(TestTSDescriptor, TestReplicaCreationsDecay);
-  template<class ClusterLoadBalancerClass> friend class TestLoadBalancerBase;
+  friend class LoadBalancerMockedBase;
 
   // Uses DNS to resolve registered hosts to a single endpoint.
   Result<HostPort> GetHostPortUnlocked() const;

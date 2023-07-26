@@ -69,20 +69,20 @@ typedef struct YbScanDescData
 	Relation index;
 
 	/*
-	 * In YB ScanKey could be one of two types:
+	 * ScanKey could be one of two types:
 	 *  - key for regular column
 	 *  - key which represents the yb_hash_code function.
-	 * The keys array holds keys of both types.
-	 * All regular keys go before keys for yb_hash_code.
-	 * Keys in range [0, nkeys) are regular keys.
-	 * Keys in range [nkeys, nkeys + nhash_keys) are keys for yb_hash_code
-	 * Such separation allows to process regular and non-regular keys independently.
+	 * keys holds the first type; hash_code_keys holds the second.
 	 */
 	ScanKey keys[YB_MAX_SCAN_KEYS];
-	/* number of regular keys */
+	/* Number of elements in the above array. */
 	int nkeys;
-	/* number of keys which represents the yb_hash_code function */
-	int nhash_keys;
+	/*
+	 * List of ScanKey for keys which represent the yb_hash_code function.
+	 * Prefer List over array because this is likely to have zero or a few
+	 * elements in most cases.
+	 */
+	List *hash_code_keys;
 
 	/* True if all the conditions for this index were bound to pggate. */
 	bool is_full_cond_bound;
@@ -152,7 +152,8 @@ extern HeapScanDesc ybc_remote_beginscan(Relation relation,
 										 Snapshot snapshot,
 										 Scan *pg_scan_plan,
 										 PushdownExprs *pushdown,
-										 List *aggrefs);
+										 List *aggrefs,
+										 YBCPgExecParameters *exec_params);
 
 /* Add targets to the given statement. */
 extern void YbDmlAppendTargetSystem(AttrNumber attnum, YBCPgStatement handle);
@@ -181,7 +182,8 @@ extern YbScanDesc ybcBeginScan(Relation relation,
 							   Scan *pg_scan_plan,
 							   PushdownExprs *rel_pushdown,
 							   PushdownExprs *idx_pushdown,
-							   List *aggrefs);
+							   List *aggrefs,
+							   YBCPgExecParameters *exec_params);
 
 HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
 IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);

@@ -562,7 +562,7 @@
         "certNameTitle": "Name your CA Certificate",
         "save": "Save CA Certificate",
         "uploadBtnText": "Upload CA Certificate",
-        "uploadBtnSubText": "Upload certificate from private third-party Certificate Authority (CA) or self-signed certificate.\nOnly .crt file allowed.",
+        "uploadBtnSubText": "Upload certificate from private third-party Certificate Authority (CA) or self-signed certificate.",
         "successMsg": "Certificate updated successfully"
       },
       "deleteCACertModal": {

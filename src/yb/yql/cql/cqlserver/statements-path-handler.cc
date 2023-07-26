@@ -52,12 +52,27 @@ void StatementsPathHandler(shared_ptr<CQLServiceImpl> service,
   service->DumpStatementMetricsAsJson(&jw);
 }
 
+void ResetStatementsPathHandler(shared_ptr<CQLServiceImpl> service,
+                                const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  JsonWriter jw(output, JsonWriter::PRETTY);
+
+  jw.StartObject();
+  jw.String("statements");
+  service->ResetStatementsCounters();
+  jw.String("CQL Statements reset.");
+  jw.EndObject();
+}
+
 } // anonymous namespace
 
 void AddStatementsPathHandlers(Webserver* webserver, shared_ptr<CQLServiceImpl> service) {
   webserver->RegisterPathHandler(
       "/statements", "CQL Statements", std::bind(StatementsPathHandler, service, _1, _2),
       false, false);
+  webserver->RegisterPathHandler(
+      "/statements-reset", "Reset CQL Statements",
+      std::bind(ResetStatementsPathHandler, service, _1, _2), false, false);
 }
 
 } // namespace yb

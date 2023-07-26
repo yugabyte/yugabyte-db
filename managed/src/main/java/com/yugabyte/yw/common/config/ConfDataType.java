@@ -19,6 +19,7 @@ import com.google.common.collect.SetMultimap;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.VersionCheckMode;
+import com.yugabyte.yw.common.LdapUtil.TlsProtocol;
 import com.yugabyte.yw.common.NodeManager.SkipCertValidationType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
@@ -180,6 +181,19 @@ public class ConfDataType<T> {
               return defaultRole;
             } catch (IllegalArgumentException e) {
               String failMsg = String.format("%s is not a valid Default LDAP role!\n", s);
+              throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
+            }
+          });
+  static ConfDataType<TlsProtocol> LdapTlsProtocol =
+      new ConfDataType<>(
+          "LdapTlsProtocol",
+          TlsProtocol.class,
+          new EnumGetter<>(TlsProtocol.class),
+          (s) -> {
+            try {
+              return TlsProtocol.valueOf(s);
+            } catch (IllegalArgumentException e) {
+              String failMsg = String.format("%s is not a supported LDAP TLS protocol\n", s);
               throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
             }
           });

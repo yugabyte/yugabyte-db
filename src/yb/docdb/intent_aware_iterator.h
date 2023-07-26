@@ -74,7 +74,7 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   // doesn't have hybrid time).
   void SeekForward(Slice key) override;
 
-  void SkipSeekForward(Slice key);
+  void Next();
 
   // Seek past specified subdoc key (it is responsibility of caller to make sure it doesn't have
   // hybrid time).
@@ -131,9 +131,6 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   Result<HybridTime> FindOldestRecord(Slice key_without_ht,
                                       HybridTime min_hybrid_time);
 
-  // Set the upper bound for the iterator.
-  void SetUpperbound(Slice upperbound) override;
-
   size_t NumberOfBytesAppendedDuringSeekForward() const {
     return 1 + encoded_read_time_.global_limit.size();
   }
@@ -143,15 +140,10 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   std::string DebugPosToString() override;
 
  private:
-  friend class IntentAwareIteratorPrefixScope;
+  friend class IntentAwareIteratorUpperboundScope;
 
-  // Assign new value for prefix returning existing one. Expecting that new value is more strict
-  // than existing one.
-  Slice PushPrefix(Slice prefix);
-
-  // Assign new value for prefix. Expecting that new value was returned by previous call to
-  // PushPrefix.
-  void PopPrefix(Slice prefix);
+  // Set the upper bound for the iterator.
+  Slice SetUpperbound(Slice upperbound) final;
 
   void DoSeekForward(Slice key);
 
@@ -313,8 +305,6 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   KeyBuffer resolved_intent_sub_doc_key_encoded_;
   dockv::KeyBytes resolved_intent_value_;
 
-  // Prefix data stored externally and caller should guarantee its lifetime.
-  Slice prefix_;
   TransactionStatusCache transaction_status_cache_;
 
   // Reusable buffer to prepare seek key to avoid reallocating temporary buffers in critical paths.
@@ -331,23 +321,25 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
 #endif
 };
 
-class NODISCARD_CLASS IntentAwareIteratorPrefixScope {
+class NODISCARD_CLASS IntentAwareIteratorUpperboundScope {
  public:
-  IntentAwareIteratorPrefixScope(Slice prefix, IntentAwareIterator* iterator)
-      : iterator_(iterator), prev_prefix_(iterator->PushPrefix(prefix)) {
+  IntentAwareIteratorUpperboundScope(Slice upperbound, IntentAwareIterator* iterator)
+      : iterator_(iterator), prev_(iterator->SetUpperbound(upperbound)) {
   }
 
-  IntentAwareIteratorPrefixScope(const IntentAwareIteratorPrefixScope&) = delete;
-  void operator=(const IntentAwareIteratorPrefixScope&) = delete;
+  IntentAwareIteratorUpperboundScope(const IntentAwareIteratorUpperboundScope&) = delete;
+  void operator=(const IntentAwareIteratorUpperboundScope&) = delete;
 
-  ~IntentAwareIteratorPrefixScope() {
-    iterator_->PopPrefix(prev_prefix_);
+  ~IntentAwareIteratorUpperboundScope() {
+    iterator_->SetUpperbound(prev_);
   }
 
  private:
   IntentAwareIterator* iterator_;
-  Slice prev_prefix_;
+  Slice prev_;
 };
+
+std::string DebugDumpKeyToStr(Slice key);
 
 } // namespace docdb
 } // namespace yb

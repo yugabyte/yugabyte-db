@@ -194,7 +194,7 @@ Status LeaderTabletPeer::FillTerm() {
     auto tablet = peer->shared_tablet();
     if (tablet) {
       // It could happen that tablet becomes nullptr due to shutdown.
-      tablet->metrics()->not_leader_rejections->Increment();
+      tablet->metrics()->Increment(tablet::TabletCounters::kNotLeaderRejections);
     }
     return leader_term_result.status();
   }
@@ -408,7 +408,7 @@ Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer) {
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   auto soft_limit_exceeded_result = tablet->mem_tracker()->AnySoftLimitExceeded(score);
   if (soft_limit_exceeded_result.exceeded) {
-    tablet->metrics()->leader_memory_pressure_rejections->Increment();
+    tablet->metrics()->Increment(tablet::TabletCounters::kLeaderMemoryPressureRejections);
     string msg = StringPrintf(
         "Soft memory limit exceeded for %s (at %.2f%% of capacity), score: %.2f",
         soft_limit_exceeded_result.tracker_path.c_str(),
@@ -430,7 +430,7 @@ Status CheckWriteThrottling(double score, tablet::TabletPeer* tablet_peer) {
     const auto sst_files_hard_limit = FLAGS_sst_files_hard_limit;
     const auto sst_files_full_delta = sst_files_hard_limit - sst_files_soft_limit;
     if (sst_files_used_delta >= sst_files_full_delta * (1 - score)) {
-      tablet->metrics()->majority_sst_files_rejections->Increment();
+      tablet->metrics()->Increment(tablet::TabletCounters::kMajoritySstFilesRejections);
       auto message = Format("SST files limit exceeded $0 against ($1, $2), score: $3",
                             num_sst_files, sst_files_soft_limit, sst_files_hard_limit, score);
       auto overlimit = sst_files_full_delta > 0

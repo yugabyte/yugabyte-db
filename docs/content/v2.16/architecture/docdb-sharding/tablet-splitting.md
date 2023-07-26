@@ -153,7 +153,7 @@ Misuse or overuse of manual tablet splitting (for example, splitting tablets whi
     SELECT count(*) FROM t;
     ```
 
-    <br>Expect the following output:
+    Expect the following output:
 
     ```output
     count
@@ -219,9 +219,13 @@ For details on the architecture design, see [Automatic re-sharding of data with 
 
 ### Enable automatic tablet splitting
 
-To enable automatic tablet splitting, use the `yb-master` [`--enable_automatic_tablet_splitting`](../../../reference/configuration/yb-master/#enable-automatic-tablet-splitting) flag and specify the associated flags to configure when tablets should split, and use `yb-tserver` [`--enable_automatic_tablet_splitting`](../../../reference/configuration/yb-tserver/#enable-automatic-tablet-splitting). The flag usage must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
+When automatic tablet splitting is enabled, newly-created tables with [hash sharding](../../../architecture/docdb-sharding/sharding/#hash-sharding) have one tablet per node by default.
 
-When automatic tablet splitting is enabled, newly-created tables with [hash sharding](../../../architecture/docdb-sharding/sharding/#hash-sharding) have one shard **per _yb-tserver_** by default; from version `2.14.10` such tables have one shard (for servers with up to 2 CPU cores) or two shards (for servers with up to 4 CPU cores) **per _cluster_** by default.
+In addition, from version 2.16.5, for servers with up to 2 CPU cores, newly-created tables have one tablet per cluster, and servers with up to 4 CPU cores have 2 tablets per cluster.
+
+From version 2.18.0, automatic tablet splitting is turned on by default.
+
+To control automatic tablet splitting, use the `yb-master` [`--enable_automatic_tablet_splitting`](../../../reference/configuration/yb-master/#enable-automatic-tablet-splitting) flag and specify the associated flags to configure when tablets should split, and use `yb-tserver` [`--enable_automatic_tablet_splitting`](../../../reference/configuration/yb-tserver/#enable-automatic-tablet-splitting). The flags must match on all `yb-master` and `yb-tserver` configurations of a YugabyteDB cluster.
 
 {{< note title="Note" >}}
 
@@ -241,7 +245,7 @@ In the high phase, each node has fewer than [`tablet_split_high_phase_shard_coun
 
 #### Final Phase
 
-Once the shard count exceeds the high phase count (determined by `tablet_split_high_phase_shard_count_per_node`, 24 by default), YugabyteDB splits tablets larger than [`tablet_force_split_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-force-split-threshold-bytes) (100 GB by default). This will continue until we reach the [`tablet_split_limit_per_table`](../../../reference/configuration/yb-master/#tablet-split-limit-per-table) tablets per table limit (256 tablets by default; if set to 0, there will be no limit).
+When the shard count exceeds the high phase count (determined by `tablet_split_high_phase_shard_count_per_node`, 24 by default), YugabyteDB splits tablets larger than [`tablet_force_split_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-force-split-threshold-bytes) (100 GB by default). This will continue until we reach the [`tablet_split_limit_per_table`](../../../reference/configuration/yb-master/#tablet-split-limit-per-table) tablets per table limit (256 tablets by default; if set to 0, there will be no limit).
 
 ### Post-split compactions
 
@@ -318,7 +322,7 @@ In the following example, a three-node cluster is created and uses a YCSB worklo
 
 ## Limitations
 
-* Tablet splitting is disabled for index tables with range partitioning that are being restored in version `2.14.5` or later from a backup taken in any version prior to `2.14.5`. It is not recommended to use tablet splitting for range partitioned index tables prior to version `2.14.5` to prevent possible data loss for index tables. For details, see [#12190](https://github.com/yugabyte/yugabyte-db/issues/12190) and [#17169](https://github.com/yugabyte/yugabyte-db/issues/17169).
+* Tablet splitting is disabled for index tables with range partitioning that are being restored in version 2.14.5 or later from a backup taken in any version prior to 2.14.5. It is not recommended to use tablet splitting for range partitioned index tables prior to version 2.14.5 to prevent possible data loss for index tables. For details, see [#12190](https://github.com/yugabyte/yugabyte-db/issues/12190) and [#17169](https://github.com/yugabyte/yugabyte-db/issues/17169).
 
 The following known limitations are planned to be resolved in upcoming releases:
 

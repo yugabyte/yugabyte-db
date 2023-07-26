@@ -37,7 +37,6 @@ class AuthenticatedComponent extends Component {
     this.props.fetchCustomerCertificates();
     this.props.fetchCustomerConfigs();
     this.props.fetchRuntimeConfigKeyInfo();
-    this.props.fetchInsecureLogin();
     this.props.fetchUser();
     this.props.fetchAdminNotifications();
   }

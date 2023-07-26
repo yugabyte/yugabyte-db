@@ -4,7 +4,7 @@
 //
 // This file will hold all the destination list of alerts.
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, DropdownButton, MenuItem } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
@@ -31,7 +31,7 @@ const header = (isReadOnly, destinationCount, onAddAlertDestination) => (
       <FlexShrink className="pull-right">
         {!isReadOnly && (
           <Button bsClass="btn btn-orange btn-config" onClick={() => onAddAlertDestination(true)}>
-          Add Destination
+            Add Destination
           </Button>
         )}
       </FlexShrink>
@@ -60,8 +60,7 @@ export const AlertDestinations = (props) => {
     sortName: 'name',
     sortOrder: 'asc'
   });
-  const isReadOnly = isNonAvailable(
-    customer.data.features, 'alert.destinations.actions');
+  const isReadOnly = isNonAvailable(customer.data.features, 'alert.destinations.actions');
 
   const setRsponseObject = () => {
     const result = new Map();
@@ -167,7 +166,7 @@ export const AlertDestinations = (props) => {
 
   // This method will handle all the required actions for the particular row.
 
-  const editActionLabel = isReadOnly ? "Destination Details" : "Edit Destination";
+  const editActionLabel = isReadOnly ? 'Destination Details' : 'Edit Destination';
   const formatConfigActions = (cell, row) => {
     return (
       <>

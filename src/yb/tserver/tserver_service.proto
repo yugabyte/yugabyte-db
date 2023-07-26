@@ -197,7 +197,8 @@ message UpdateTransactionRequestPB {
   optional tablet.TransactionStatePB state = 2;
 
   optional fixed64 propagated_hybrid_time = 3;
-  optional bool is_external = 4;
+  // Reserved for xcluster deprecated field is_external.
+  reserved 4;
   optional fixed64 start_time = 5;
 }
 
@@ -212,7 +213,8 @@ message GetTransactionStatusRequestPB {
   optional bytes tablet_id = 1;
   repeated bytes transaction_id = 2;
   optional fixed64 propagated_hybrid_time = 3;
-  optional fixed64 external_hybrid_time = 4;
+  // Reserved for xcluster deprecated field external_hybrid_time.
+  reserved 4;
 }
 
 message GetTransactionStatusResponsePB {
@@ -260,6 +262,7 @@ message GetOldTransactionsResponsePB {
     repeated bytes tablets = 2;
     optional SubtxnSetPB aborted_subtxn_set = 3;
     optional fixed64 start_time = 4;
+    optional string host_node_uuid = 5;
   }
   repeated OldTransactionMetadataPB txn = 2;
 

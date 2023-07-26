@@ -803,6 +803,53 @@ YbGetIndexAttnum(AttrNumber table_attno, Relation index)
 }
 
 /*
+ * Add regular key to ybScan.
+ */
+static void
+ybAddRegularScanKey(ScanKey key, YbScanDesc ybScan)
+{
+	if (ybScan->nkeys >= YB_MAX_SCAN_KEYS)
+		ereport(ERROR,
+				(errcode(ERRCODE_TOO_MANY_COLUMNS),
+				 errmsg("cannot use more than %d predicates in a table or index scan",
+						YB_MAX_SCAN_KEYS)));
+	ybScan->keys[ybScan->nkeys++] = key;
+}
+
+/*
+ * Extract keys and store to ybScan.
+ */
+static void
+ybExtractScanKeys(ScanKey keys, int nkeys, YbScanDesc ybScan)
+{
+	for (int i = 0; i < nkeys; ++i)
+	{
+		ScanKey key = &keys[i];
+
+		if (YbIsHashCodeSearch(key))
+		{
+			Assert(!YbIsRowHeader(key));
+			ybScan->hash_code_keys = lappend(ybScan->hash_code_keys, key);
+		}
+		else
+		{
+			ybAddRegularScanKey(key, ybScan);
+
+			/* Extract subkeys in case of row comparison. */
+			if (YbIsRowHeader(key))
+			{
+				ScanKey subkey = (ScanKey) key->sk_argument;
+				do
+				{
+					ybAddRegularScanKey(subkey, ybScan);
+				}
+				while (((subkey++)->sk_flags & SK_ROW_END) == 0);
+			}
+		}
+	}
+}
+
+/*
  * Return whether the given conditions are unsatisfiable regardless of the
  * values in the index because of always FALSE or UNKNOWN conditions.
  */
@@ -919,8 +966,8 @@ ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	 * the scan keys if the hash code was explicitly specified as a
 	 * scan key then we also shouldn't be clearing the scan keys
 	 */
-	if (!ybScan->nhash_keys &&
-	    !bms_is_subset(scan_plan->hash_key, scan_plan->sk_cols))
+	if (ybScan->hash_code_keys == NIL &&
+		!bms_is_subset(scan_plan->hash_key, scan_plan->sk_cols))
 	{
 		bms_free(scan_plan->sk_cols);
 		scan_plan->sk_cols = NULL;
@@ -1743,11 +1790,12 @@ YbApplyEndBound(YbRange *range, const YbBound *end)
 static bool
 YbBindHashKeys(YbScanDesc ybScan)
 {
-	YbRange range = {0};
+	ListCell   *lc;
+	YbRange		range = {0};
 
-	for(int i = 0; i < ybScan->nhash_keys; ++i)
+	foreach(lc, ybScan->hash_code_keys)
 	{
-		ScanKey key = ybScan->keys[ybScan->nkeys + i];
+		ScanKey key = (ScanKey) lfirst(lc);
 		Assert(YbIsHashCodeSearch(key));
 		YbBound bound = {
 			.type = YB_YQL_BOUND_VALID,
@@ -1910,7 +1958,7 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 	}
 	YbResetColumnFilter(&filter);
 
-	if (ybScan->nhash_keys)
+	if (ybScan->hash_code_keys != NIL)
 	{
 		/*
 		 * Query uses the yb_hash_code function, all hash key components are
@@ -2191,45 +2239,21 @@ ybcBeginScan(Relation relation,
 			 Scan *pg_scan_plan,
 			 PushdownExprs *rel_pushdown,
 			 PushdownExprs *idx_pushdown,
-			 List *aggrefs)
+			 List *aggrefs,
+			 YBCPgExecParameters *exec_params)
 {
-	if (nkeys > YB_MAX_SCAN_KEYS)
-		ereport(ERROR,
-				(errcode(ERRCODE_TOO_MANY_COLUMNS),
-				 errmsg("cannot use more than %d predicates in a table or index scan",
-						YB_MAX_SCAN_KEYS)));
-
 	/* Set up Yugabyte scan description */
 	YbScanDesc ybScan = (YbScanDesc) palloc0(sizeof(YbScanDescData));
-	for (int i = 0; i < nkeys; ++i)
-	{
-		ScanKey key = &keys[i];
-		/*
-		 * Keys for hash code search should be placed after regular keys.
-		 * For this purpose they are written into keys array from
-		 * right to left.
-		 * We also flatten out row keys
-		 */
-		ybScan->keys[YbIsHashCodeSearch(key)
-			? (nkeys - (++ybScan->nhash_keys))
-			: ybScan->nkeys++] = key;
 
-		if (YbIsRowHeader(&keys[i]))
-		{
-			ScanKey current = (ScanKey) keys[i].sk_argument;
-			do
-			{
-				ybScan->keys[ybScan->nkeys++] = current;
-			}
-			while (((current++)->sk_flags & SK_ROW_END) == 0);
-		}
-	}
+	/* Flatten keys and store the results in ybScan. */
+	ybExtractScanKeys(keys, nkeys, ybScan);
+
 	if (YbIsUnsatisfiableCondition(ybScan->nkeys, ybScan->keys))
 	{
 		ybScan->quit_scan = true;
 		return ybScan;
 	}
-	ybScan->exec_params = NULL;
+	ybScan->exec_params = exec_params;
 	ybScan->relation = relation;
 	ybScan->index = index;
 	ybScan->quit_scan = false;
@@ -2389,7 +2413,7 @@ ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan,
 		return NULL;
 
 	/* In case of yb_hash_code pushdown tuple must be rechecked. */
-	bool tuple_recheck_required = (ybScan->nhash_keys > 0);
+	bool tuple_recheck_required = (ybScan->hash_code_keys != NIL);
 
 	/* If the index is on a function, we need to recheck. */
 	if (ybScan->index)
@@ -2430,7 +2454,7 @@ ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
 	 * If we have a yb_hash_code pushdown or not all conditions were
 	 * bound tuple must be rechecked.
 	 */
-	*recheck = (ybScan->nhash_keys > 0) || !ybScan->is_full_cond_bound;
+	*recheck = (ybScan->hash_code_keys != NIL) || !ybScan->is_full_cond_bound;
 
 	return ybcFetchNextIndexTuple(ybScan, ybScan->index, is_forward_scan);
 }
@@ -2489,7 +2513,8 @@ SysScanDesc ybc_systable_beginscan(Relation relation,
 									 pg_scan_plan,
 									 NULL /* rel_pushdown */,
 									 NULL /* idx_pushdown */,
-									 NULL /* aggrefs */);
+									 NULL /* aggrefs */,
+									 NULL /* exec_params */);
 
 	/* Set up Postgres sys table scan description */
 	SysScanDesc scan_desc = (SysScanDesc) palloc0(sizeof(SysScanDescData));
@@ -2541,7 +2566,8 @@ HeapScanDesc ybc_heap_beginscan(Relation relation,
 									 pg_scan_plan,
 									 NULL /* rel_pushdown */,
 									 NULL /* idx_pushdown */,
-									 NULL /* aggrefs */);
+									 NULL /* aggrefs */,
+									 NULL /* exec_params */);
 
 	/* Set up Postgres sys table scan description */
 	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
@@ -2592,7 +2618,8 @@ ybc_remote_beginscan(Relation relation,
 					 Snapshot snapshot,
 					 Scan *pg_scan_plan,
 					 PushdownExprs *pushdown,
-					 List *aggrefs)
+					 List *aggrefs,
+					 YBCPgExecParameters *exec_params)
 {
 	YbScanDesc ybScan = ybcBeginScan(relation,
 									 NULL /* index */,
@@ -2602,7 +2629,8 @@ ybc_remote_beginscan(Relation relation,
 									 pg_scan_plan,
 									 pushdown /* rel_pushdown */,
 									 NULL /* idx_pushdown */,
-									 aggrefs);
+									 aggrefs,
+									 exec_params);
 
 	/* Set up Postgres sys table scan description */
 	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));

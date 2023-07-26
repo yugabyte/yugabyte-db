@@ -1,4 +1,4 @@
-import React, { ChangeEvent, useState, FC, ReactNode, Fragment } from 'react';
+import { ChangeEvent, useState, FC, ReactNode, Fragment } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { Box } from '@material-ui/core';

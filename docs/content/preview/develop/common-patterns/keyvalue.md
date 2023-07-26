@@ -16,13 +16,13 @@ In the Key-value data model, each key is associated with one and only one value.
 
 ## Functionality
 
-Key-Value stores expose 3 simple apis.
+Key-Value stores expose 3 basic apis.
 
 - `GET` to fetch the value of a key (eg. `GET('name')`)
-- `PUT` to store the value of a key (eg. `PUT('name', 'yugabyte')`)
+- `SET` to store the value of a key (eg. `PUT('name', 'yugabyte')`)
 - `DEL` to delete a key and its value (eg. `DEL('name')`)
 
-With just three simple functionalities, Key-Value stores have carved themselves a nice space in modern infrastructure because of their speed and simplicity.
+With just three simple functionalities, Key-Value stores have carved themselves a niche space in modern infrastructure because of their speed and simplicity.
 
 ## Setup
 
@@ -32,7 +32,7 @@ With just three simple functionalities, Key-Value stores have carved themselves 
 
 For example, to store the details of a user, you can choose to adopt a schema where each attribute is a separate key. For example,
 
-```json
+```json{.nocopy}
 user1.name = "John Wick"
 user1.country = "USA"
 user2.name = "Harry Potter"
@@ -73,7 +73,7 @@ SELECT value FROM kvstore WHERE key = 'user1.name';
  John Wick
 ```
 
-### PUT
+### SET
 
 To store a value for a key, you can do an insert. But as the key could already exist, you should provide an `ON CONFLICT UPDATE` clause.
 
@@ -95,7 +95,7 @@ DELETE FROM kvstore WHERE key = 'user1.name';
 
 ### Cache server
 
-The Key-Value model is best suited for designed cache servers where the cached data is represented by a key. The cached object could be represented in JSON string (to have multiple attributes) and parsed by the application.
+The Key-Value model is best suited for designing cache servers where the cached data is represented by a key. The cached object could be represented in JSON string (to have multiple attributes) and parsed by the application.
 
 ### Telephone directory
 

@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import { components } from 'react-select';
 import { browserHistory } from 'react-router';
@@ -546,7 +546,11 @@ export default class CreateBackup extends Component {
                     {s3StorageSelected && (
                       <Field name="enableSSE" component={YBFormToggle} label={'Encrypt Backup'} />
                     )}
-                    <Field name="useTablespaces" component={YBFormToggle} label={'Use Tablespaces'} />
+                    <Field
+                      name="useTablespaces"
+                      component={YBFormToggle}
+                      label={'Use Tablespaces'}
+                    />
                     <Field
                       name="parallelism"
                       component={YBFormInput}

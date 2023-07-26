@@ -28,8 +28,6 @@ export const FETCH_ADMIN_NOTIFICATIONS_RESPONSE = 'FETCH_ADMIN_NOTIFICATIONS_RES
 // Sign In Customer
 export const LOGIN = 'LOGIN';
 export const LOGIN_RESPONSE = 'LOGIN_RESPONSE';
-export const INSECURE_LOGIN = 'INSECURE_LOGIN';
-export const INSECURE_LOGIN_RESPONSE = 'INSECURE_LOGIN_RESPONSE';
 
 export const RESET_CUSTOMER = 'RESET_CUSTOMER';
 
@@ -284,21 +282,6 @@ export function loginResponse(response) {
   return {
     type: LOGIN_RESPONSE,
     payload: response
-  };
-}
-
-export function insecureLogin() {
-  const request = axios.get(`${ROOT_URL}/insecure_login`);
-  return {
-    type: INSECURE_LOGIN,
-    payload: request
-  };
-}
-
-export function insecureLoginResponse(response) {
-  return {
-    type: INSECURE_LOGIN_RESPONSE,
-    payload: response.payload
   };
 }
 

@@ -40,7 +40,7 @@ The primary key for each row in the table uniquely identifies the location of th
 
 ![Sharding a table into tablets](/images/architecture/partitioning-table-into-tablets.png)
 
-By default, YugabyteDB creates eight tablets per node in the universe for each table and automatically distributes the data across various tablets, which in turn are distributed evenly across the nodes. In the [Examples](#Examples), you explore how automatic sharding is done internally for tables. The system Redis table works in exactly the same way.
+By default, YugabyteDB creates one tablet per node in the universe for each table and automatically distributes the data across them. In the [Examples](#Examples), you explore how automatic sharding is done internally for tables. The system Redis table works in exactly the same way.
 
 ## Sharding strategies
 

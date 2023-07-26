@@ -43,8 +43,6 @@ std::shared_ptr<XClusterOutputClientIf> CreateXClusterOutputClient(
     std::function<void(const XClusterOutputClientResponse& response)>
         apply_changes_clbk,
     bool use_local_tserver,
-    const std::vector<TabletId>& global_transaction_status_tablets,
-    bool enable_replicate_transaction_status_table,
     rocksdb::RateLimiter* rate_limiter);
 
 } // namespace tserver

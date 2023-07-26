@@ -12,8 +12,6 @@ import {
   FETCH_ADMIN_NOTIFICATIONS_RESPONSE,
   LOGIN,
   LOGIN_RESPONSE,
-  INSECURE_LOGIN,
-  INSECURE_LOGIN_RESPONSE,
   INVALID_CUSTOMER_TOKEN,
   RESET_TOKEN_ERROR,
   RESET_CUSTOMER,
@@ -208,17 +206,6 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'apiToken', null);
     case API_TOKEN_RESPONSE:
       return setPromiseResponse(state, 'apiToken', action);
-
-    case INSECURE_LOGIN:
-      return {
-        ...state,
-        INSECURE_apiToken: null
-      };
-    case INSECURE_LOGIN_RESPONSE:
-      return {
-        ...state,
-        INSECURE_apiToken: action.payload.data.apiToken
-      };
     case LOGOUT:
       return { ...state };
     case LOGOUT_SUCCESS:

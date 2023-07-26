@@ -182,7 +182,7 @@ The following examples demonstrate how to set priorities for your transactions a
 
 {{< note title="Internal representation of priorities" >}}
 
-Internally, both the normal and high-priority buckets are mapped to a `unit64_t` space. The 64 bit range is used by the two priority buckets as follows:
+Internally, both the normal and high-priority buckets are mapped to a `uint64_t` space. The 64 bit range is used by the two priority buckets as follows:
 
 1. Normal-priority bucket: `[yb::kRegularTxnLowerBound, yb::kRegularTxnUpperBound]`, that is, 0 to  `uint32_t_max`-1
 

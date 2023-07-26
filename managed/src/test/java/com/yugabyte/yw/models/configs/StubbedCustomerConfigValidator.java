@@ -42,7 +42,7 @@ import java.util.List;
 public class StubbedCustomerConfigValidator extends CustomerConfigValidator
     implements CloudClientsFactory {
 
-  private final AmazonS3Client s3Client = mock(AmazonS3Client.class);
+  public final AmazonS3Client s3Client = mock(AmazonS3Client.class);
 
   private final Storage gcpStorage = mock(Storage.class);
 
@@ -111,7 +111,6 @@ public class StubbedCustomerConfigValidator extends CustomerConfigValidator
               }
               return mock(Page.class);
             });
-    lenient().when(blobContainerClient.exists()).thenReturn(true);
   }
 
   @Override

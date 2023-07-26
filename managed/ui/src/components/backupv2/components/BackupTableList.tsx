@@ -9,14 +9,8 @@
 
 import React, { FC, useState } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import {
-  Backup_States,
-  fetchIncrementalBackup,
-  IBackup,
-  ICommonBackupInfo,
-  deleteIncrementalBackup,
-  Keyspace_Table
-} from '..';
+import { Backup_States, IBackup, ICommonBackupInfo, Keyspace_Table } from '..';
+import { fetchIncrementalBackup, deleteIncrementalBackup } from '../../backupv2/common/BackupAPI';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import copy from 'copy-to-clipboard';
 import { toast } from 'react-toastify';
@@ -96,7 +90,10 @@ export const YSQLTableList: FC<YSQLTableProps> = ({
                     onRestore([row], {
                       isRestoreEntireBackup: false,
                       singleKeyspaceRestore: true,
-                      incrementalBackupUUID: backupType === BackupTypes.INCREMENT_BACKUP ? incrementalBackup?.backupUUID : backup.commonBackupInfo.backupUUID
+                      incrementalBackupUUID:
+                        backupType === BackupTypes.INCREMENT_BACKUP
+                          ? incrementalBackup?.backupUUID
+                          : backup.commonBackupInfo.backupUUID
                     });
                   }}
                 />
@@ -201,7 +198,10 @@ export const YCQLTableList: FC<YSQLTableProps> = ({
                     onRestore([row], {
                       isRestoreEntireBackup: false,
                       singleKeyspaceRestore: true,
-                      incrementalBackupUUID: backupType === BackupTypes.INCREMENT_BACKUP ? incrementalBackup?.backupUUID : backup.commonBackupInfo.backupUUID
+                      incrementalBackupUUID:
+                        backupType === BackupTypes.INCREMENT_BACKUP
+                          ? incrementalBackup?.backupUUID
+                          : backup.commonBackupInfo.backupUUID
                     });
                   }}
                 />
@@ -386,11 +386,10 @@ const IncrementalBackupCard = ({
             onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
               const { onRestore } = rest;
               e.stopPropagation();
-              onRestore(incrementalBackup.responseList, { 
-                isRestoreEntireBackup: false, 
-                incrementalBackupUUID: incrementalBackup.backupUUID, 
-                singleKeyspaceRestore:  false
-              
+              onRestore(incrementalBackup.responseList, {
+                isRestoreEntireBackup: false,
+                incrementalBackupUUID: incrementalBackup.backupUUID,
+                singleKeyspaceRestore: false
               });
             }}
           />

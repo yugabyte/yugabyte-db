@@ -43,4 +43,4 @@ CREATE INDEX NONCONCURRENTLY tenk1_unique2 ON tenk1 USING btree(unique2 int4_ops
 NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
 CREATE INDEX NONCONCURRENTLY tenk1_hundred ON tenk1 USING btree(hundred int4_ops ASC);
 NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
-CREATE INDEX NONCONCURRENTLY tenk1_thous_tenthous ON tenk1 (thousand, tenthous ASC);
+CREATE INDEX NONCONCURRENTLY tenk1_thous_tenthous ON tenk1 (thousand ASC, tenthous ASC);
