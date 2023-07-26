@@ -27,13 +27,13 @@ jobs:
       run: |
         if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
           if [[ "$GITHUB_REF" == "refs/heads/master" ]]; then
-            echo "TAG=PG14_latest" >> $GITHUB_ENV
+            echo "TAG=latest" >> $GITHUB_ENV
           elif [[ "$GITHUB_REF" == "refs/heads/PG14" ]]; then
             echo "TAG=PG14_latest" >> $GITHUB_ENV
           fi
         elif [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
           if [[ "$GITHUB_BASE_REF" == "master" ]]; then
-            echo "TAG=PG14_latest" >> $GITHUB_ENV
+            echo "TAG=latest" >> $GITHUB_ENV
           elif [[ "$GITHUB_BASE_REF" == "PG14" ]]; then
             echo "TAG=PG14_latest" >> $GITHUB_ENV
           fi
