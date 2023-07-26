@@ -163,6 +163,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
       : selectedFlag?.hasOwnProperty('default')
       ? 'default'
       : 'target';
+
     switch (flag?.type) {
       case 'bool':
         return (
@@ -192,7 +193,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
 
       case 'string':
         if (flag?.name === 'ysql_hba_conf_csv' && enableGFlagHBAConf) {
-          return <GFlagsConf formProps={formProps} mode={mode} />;
+          return <GFlagsConf formProps={formProps} mode={mode} serverType={server} />;
         } else {
           return <Field name="flagvalue" type="text" label={valueLabel} component={YBFormInput} />;
         }

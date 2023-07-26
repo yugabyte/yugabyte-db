@@ -1,10 +1,11 @@
-import React, { FC, useState } from 'react';
+import { FC, useState } from 'react';
 import { FieldArray } from 'formik';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { Box, makeStyles, InputAdornment, IconButton } from '@material-ui/core';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import { YBButton, YBInput } from '../../../redesign/components';
+import { TSERVER } from '../../../redesign/features/universe/universe-form/form/fields';
 import { isNonEmptyArray, isNonEmptyString } from '../../../utils/ObjectUtils';
 import {
   CONST_VALUES,
@@ -43,13 +44,16 @@ const useStyles = makeStyles((theme) => ({
 interface EditGFlagConfProps {
   formProps: any;
   mode: string;
+  serverType: string;
 }
 
-interface GFlagRowProps {
+export interface GFlagRowProps {
   id: string;
   index: number;
   content: string;
   error: boolean;
+  errorMessage?: string;
+  isWarning?: boolean;
 }
 
 const getGFlagRows = (rowCount: number) =>
@@ -70,14 +74,18 @@ const reorderGFlagRows = (GFlagRows: any, startIndex: number, endIndex: number) 
   return result;
 };
 
-export const EditGFlagsConf: FC<EditGFlagConfProps> = ({ formProps, mode }) => {
+export const EditGFlagsConf: FC<EditGFlagConfProps> = ({ formProps, mode, serverType }) => {
   let unformattedLDAPConf: string | null = null;
   const GFlagConfData = CONST_VALUES.EMPTY_STRING;
   const { t } = useTranslation();
   const classes = useStyles();
 
   // Define state variables
-  const GFlagValueConfObject = formProps?.values?.flagvalueobject;
+  const GFlagValueConfObject =
+    serverType === TSERVER
+      ? formProps?.values?.tserverFlagDetails?.flagvalueobject
+      : formProps?.values?.masterFlagDetails?.flagvalueobject;
+
   if (mode === GFLAG_EDIT && !GFlagValueConfObject) {
     unformattedLDAPConf = unformatLDAPConf(formProps?.values?.flagvalue);
   }
@@ -88,7 +96,7 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({ formProps, mode }) => {
   const [GFlagRows, setGFlagConfRows] = useState<any>(
     GFlagValueConfObject?.length > 0
       ? GFlagValueConfObject
-      : mode === GFLAG_EDIT
+      : mode === GFLAG_EDIT && isNonEmptyString(formProps?.values?.flagvalue)
       ? unformattedLDAPConf
       : getGFlagRows(rowCount)
   );
@@ -157,12 +165,14 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({ formProps, mode }) => {
       return accumulator + appendChar + GFlagRowContent + endChar;
     }, GFlagConfData);
 
-    isGFlagInvalid
-      ? formProps.setFieldValue('flagvalue', CONST_VALUES.EMPTY_STRING)
-      : formProps.setFieldValue('flagvalue', confData);
-    formProps.setFieldValue('previewFlagValue', confData);
-    formProps.setFieldValue('flagvalueobject', rows);
-    formProps.setFieldValue('previewFlagError', errorMessage);
+    const serverTypeProp = serverType === TSERVER ? 'tserverFlagDetails' : 'masterFlagDetails';
+    const flagDetails = {
+      previewFlagValue: confData,
+      flagvalueobject: rows,
+      previewFlagError: errorMessage
+    };
+    formProps.setFieldValue(serverTypeProp, flagDetails);
+    formProps.setFieldValue('flagvalue', isGFlagInvalid ? CONST_VALUES.EMPTY_STRING : confData);
   };
 
   // Triggered when users enters any value in the text box
@@ -209,7 +219,7 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({ formProps, mode }) => {
 
   return (
     <Box className={classes.numNodesInputField}>
-      <DragDropContext onDragEnd={onDragEnd}>
+      <DragDropContext onDragEnd={onDragEnd} key={serverType}>
         <Droppable droppableId="droppable">
           {(provided, snapshot) => (
             <div {...provided.droppableProps} ref={provided.innerRef}>

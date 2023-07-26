@@ -6,15 +6,20 @@ import { CONST_VALUES, verifyLDAPAttributes } from '../../../utils/UniverseUtils
 
 const CONF_PREFIX = '--ysql_hba_conf_csv=';
 interface PreviewConfFormProps {
-  formProps?: any;
+  formProps: any;
+  serverType: string;
 }
 
-export const PreviewGFlagsConf: FC<PreviewConfFormProps> = ({ formProps }) => {
+export const PreviewGFlagsConf: FC<PreviewConfFormProps> = ({ formProps, serverType }) => {
   const { t } = useTranslation();
+  const flagValue =
+    serverType === 'TSERVER'
+      ? formProps?.values?.tserverFlagDetails?.previewFlagValue ?? formProps?.values?.flagvalue
+      : formProps?.values?.masterFlagDetails?.previewFlagValue ?? formProps?.values?.flagvalue;
   const previewConfValue =
     CONF_PREFIX +
     CONST_VALUES.SINGLE_QUOTES_SEPARATOR +
-    formProps?.values?.previewFlagValue +
+    flagValue +
     CONST_VALUES.SINGLE_QUOTES_SEPARATOR;
   const { isAttributeInvalid, errorMessage, isWarning } = verifyLDAPAttributes(previewConfValue);
 
