@@ -57,7 +57,6 @@ orafce_lpad(PG_FUNCTION_ARGS)
 			hslen,
 			total_blen = 0,
 			s1_width = 0,
-			s2_add_width = 0,
 			s1_add_blen = 0,
 			s2_add_blen = 0;
 	bool	s2_operate = ON,
@@ -147,6 +146,8 @@ orafce_lpad(PG_FUNCTION_ARGS)
 	/* Calculate the length of the portion composed of string2 to use for padding */
 	if (s2_operate)
 	{
+		int			s2_add_width;
+
 		/* remaining part of output_width is composed of string2 */
 		s2_add_width = output_width - s1_width;
 
@@ -287,7 +288,6 @@ orafce_rpad(PG_FUNCTION_ARGS)
 			hslen,
 			total_blen = 0,
 			s1_width = 0,
-			s2_add_width = 0,
 			s1_add_blen = 0,
 			s2_add_blen = 0;
 	bool	s2_operate = ON,
@@ -377,6 +377,8 @@ orafce_rpad(PG_FUNCTION_ARGS)
 	/* Calculate the length of the portion composed of string2 to use for padding */
 	if (s2_operate)
 	{
+		int			s2_add_width;
+
 		/* remaining part of output_width is composed of string2 */
 		s2_add_width = output_width - s1_width;
 

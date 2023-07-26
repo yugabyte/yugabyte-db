@@ -307,17 +307,13 @@ ora_set_nls_sort(PG_FUNCTION_ARGS)
 static text*
 _nls_run_strxfrm(text *string, text *locale)
 {
-	char *string_str;
-	int string_len;
-
-	char *locale_str = NULL;
-	int locale_len = 0;
-
-	text *result;
-	char *tmp = NULL;
-	size_t size = 0;
-	size_t rest = 0;
-	int changed_locale = 0;
+	char	   *string_str;
+	int			string_len;
+	char	   *locale_str = NULL;
+	text		*result;
+	char	   *tmp = NULL;
+	size_t		rest = 0;
+	bool		changed_locale = false;
 
 	/*
 	 * Save the default, server-wide locale setting.
@@ -350,29 +346,29 @@ _nls_run_strxfrm(text *string, text *locale)
 
 	if (locale)
 	{
-		locale_len = VARSIZE_ANY_EXHDR(locale);
-	}
-
-	/*
-	 * If different than default locale is requested, call setlocale.
-	 */
-	if (locale_len > 0
-		&& (strncmp(lc_collate_cache, VARDATA_ANY(locale), locale_len)
-			|| *(lc_collate_cache + locale_len) != '\0'))
-	{
-		locale_str = palloc(locale_len + 1);
-		memcpy(locale_str, VARDATA_ANY(locale), locale_len);
-		*(locale_str + locale_len) = '\0';
+		int			locale_len = VARSIZE_ANY_EXHDR(locale);
 
 		/*
-		 * Try to set correct locales.
-		 * If setlocale failed, we know the default stayed the same,
-		 * co we can safely elog.
+		 * If different than default locale is requested, call setlocale.
 		 */
-		if (!setlocale(LC_COLLATE, locale_str))
-			elog(ERROR, "failed to set the requested LC_COLLATE value [%s]", locale_str);
+		if (locale_len > 0
+			&& (strncmp(lc_collate_cache, VARDATA_ANY(locale), locale_len)
+				|| *(lc_collate_cache + locale_len) != '\0'))
+		{
+			locale_str = palloc(locale_len + 1);
+			memcpy(locale_str, VARDATA_ANY(locale), locale_len);
+			*(locale_str + locale_len) = '\0';
 
-		changed_locale = 1;
+			/*
+			 * Try to set correct locales.
+			 * If setlocale failed, we know the default stayed the same,
+			 * co we can safely elog.
+			 */
+			if (!setlocale(LC_COLLATE, locale_str))
+				elog(ERROR, "failed to set the requested LC_COLLATE value [%s]", locale_str);
+
+			changed_locale = true;
+		}
 	}
 
 	/*
@@ -383,6 +379,7 @@ _nls_run_strxfrm(text *string, text *locale)
 	 */
 	PG_TRY();
 	{
+		size_t		size = 0;
 
 		/*
 		 * Text transformation.

@@ -578,7 +578,6 @@ RE_wchar_execute(regex_t *re, pg_wchar *data, int data_len,
 				 int start_search, int nmatch, regmatch_t *pmatch)
 {
 	int			regexec_result;
-	char		errMsg[100];
 
 	/* Perform RE match and return result */
 	regexec_result = pg_regexec(re,
@@ -592,6 +591,8 @@ RE_wchar_execute(regex_t *re, pg_wchar *data, int data_len,
 
 	if (regexec_result != REG_OKAY && regexec_result != REG_NOMATCH)
 	{
+		char		errMsg[100];
+
 		/* re failed??? */
 		CHECK_FOR_INTERRUPTS();
 		pg_regerror(regexec_result, re, errMsg, sizeof(errMsg));

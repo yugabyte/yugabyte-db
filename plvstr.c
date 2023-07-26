@@ -106,7 +106,6 @@ ora_mb_strlen(text *str, char **sizes, int **positions)
 {
 	int r_len;
 	int cur_size = 0;
-	int sz;
 	char *p;
 	int cur = 0;
 
@@ -120,6 +119,8 @@ ora_mb_strlen(text *str, char **sizes, int **positions)
 
 	while (cur < r_len)
 	{
+		int sz;
+
 		sz = _pg_mblen(p);
 		if (sizes)
 			(*sizes)[cur_size] = sz;
@@ -306,26 +307,25 @@ ora_instr(text *txt, text *pattern, int start, int nth)
 Datum
 plvstr_normalize(PG_FUNCTION_ARGS)
 {
-	text *str = PG_GETARG_TEXT_PP(0);
-	text *result;
-	char *aux, *aux_cur;
-	int i;
+	text	   *str = PG_GETARG_TEXT_PP(0);
+	text	   *result;
+	char	   *aux, *cur, *aux_cur;
+	int			i;
 
 #if defined(_MSC_VER) && (defined(_M_X64) || defined(__amd64__))
 
-	__int64			l;
+	__int64		l;
 
 #else
 
-	int				l;
+	int			l;
 
 #endif
 
-	char c, *cur;
-	bool write_spc = false;
-	bool ignore_stsp = true;
-	bool mb_encode;
-	int sz;
+	bool		write_spc = false;
+	bool		ignore_stsp = true;
+	bool		mb_encode;
+	int			sz;
 
 	mb_encode = pg_database_encoding_max_length() > 1;
 
@@ -337,6 +337,8 @@ plvstr_normalize(PG_FUNCTION_ARGS)
 
 	for (i = 0; i < l; i++)
 	{
+		char		c;
+
 		switch ((c = *cur))
 		{
 			case '\t':
@@ -353,7 +355,7 @@ plvstr_normalize(PG_FUNCTION_ARGS)
 					sz = _pg_mblen(cur);
 					if (sz > 1 || (sz == 1 && c > 32))
 					{
-						int j;
+						int		j;
 
 						if (write_spc)
 						{
@@ -466,17 +468,17 @@ plvstr_instr4 (PG_FUNCTION_ARGS)
 Datum
 plvstr_is_prefix_text (PG_FUNCTION_ARGS)
 {
-	text *str = PG_GETARG_TEXT_PP(0);
-	text *prefix = PG_GETARG_TEXT_PP(1);
-	bool case_sens = PG_GETARG_BOOL(2);
-	bool mb_encode;
+	text	   *str = PG_GETARG_TEXT_PP(0);
+	text	   *prefix = PG_GETARG_TEXT_PP(1);
+	bool		case_sens = PG_GETARG_BOOL(2);
+	bool		mb_encode;
 
-	int str_len = VARSIZE_ANY_EXHDR(str);
-	int pref_len = VARSIZE_ANY_EXHDR(prefix);
+	int			str_len = VARSIZE_ANY_EXHDR(str);
+	int			pref_len = VARSIZE_ANY_EXHDR(prefix);
 
-	int i;
-	char *ap, *bp;
-
+	int			i;
+	char	   *ap,
+			   *bp;
 
 	mb_encode = pg_database_encoding_max_length() > 1;
 
@@ -493,12 +495,13 @@ plvstr_is_prefix_text (PG_FUNCTION_ARGS)
 	{
 		if (i >= str_len)
 			break;
+
 		if (case_sens || mb_encode)
 		{
 			if (*ap++ != *bp++)
 				break;
 		}
-		else if (!mb_encode)
+		else
 		{
 			if (pg_toupper((unsigned char) *ap++) != pg_toupper((unsigned char) *bp++))
 				break;
@@ -511,9 +514,9 @@ plvstr_is_prefix_text (PG_FUNCTION_ARGS)
 Datum
 plvstr_is_prefix_int (PG_FUNCTION_ARGS)
 {
-	int n = PG_GETARG_INT32(0);
-	int prefix = PG_GETARG_INT32(1);
-	bool result = false;
+	int			n = PG_GETARG_INT32(0);
+	int			prefix = PG_GETARG_INT32(1);
+	bool		result = false;
 
 	if (prefix == 0)
 		PG_RETURN_BOOL(n == 0);
@@ -758,19 +761,22 @@ plvstr_rpart (PG_FUNCTION_ARGS)
 Datum
 plvstr_lstrip (PG_FUNCTION_ARGS)
 {
-	text *str = PG_GETARG_TEXT_PP(0);
-	text *pat = PG_GETARG_TEXT_PP(1);
-	int num = PG_GETARG_INT32(2);
-	int count = 0;
-	int len_p, len_s, i;
+	text	   *str = PG_GETARG_TEXT_PP(0);
+	text	   *pat = PG_GETARG_TEXT_PP(1);
+	int			num = PG_GETARG_INT32(2);
+	int			count = 0;
+	int			len_p, len_s;
+	char	   *str_p;
 
-	char *str_p, *aux_str_p, *pat_p;
 	len_p = VARSIZE_ANY_EXHDR(pat);
 	len_s = VARSIZE_ANY_EXHDR(str);
 
 	str_p = VARDATA_ANY(str);
 	while (count < num)
 	{
+		int			i;
+		char	   *aux_str_p, *pat_p;
+
 		pat_p = VARDATA_ANY(pat);
 		aux_str_p = str_p;
 
@@ -814,13 +820,14 @@ plvstr_lstrip (PG_FUNCTION_ARGS)
 Datum
 plvstr_rstrip (PG_FUNCTION_ARGS)
 {
-	text *str = PG_GETARG_TEXT_PP(0);
-	text *pat = PG_GETARG_TEXT_PP(1);
-	int num = PG_GETARG_INT32(2);
-	int count = 0;
-	int len_p, len_s, i;
+	text	   *str = PG_GETARG_TEXT_PP(0);
+	text	   *pat = PG_GETARG_TEXT_PP(1);
+	int			num = PG_GETARG_INT32(2);
+	int			count = 0;
+	int			len_p, len_s, i;
+	char	   *str_p,
+			   *aux_str_p;
 
-	char *str_p, *aux_str_p, *pat_p;
 	len_p = VARSIZE_ANY_EXHDR(pat);
 	len_s = VARSIZE_ANY_EXHDR(str);
 
@@ -828,6 +835,8 @@ plvstr_rstrip (PG_FUNCTION_ARGS)
 
 	while (count < num)
 	{
+		char	   *pat_p;
+
 		pat_p = VARDATA_ANY(pat) + len_p - 1;
 		aux_str_p = str_p;
 

@@ -251,16 +251,16 @@ easter_holidays(DateADT day, int y, int m)
 }
 
 static DateADT
-ora_add_bizdays(DateADT day, int days)
+ora_add_bizdays(DateADT day, int ndays)
 {
 	int d, dx;
 	int y, m, auxd;
 	holiday_desc hd;
 
 	d = j2day(day+POSTGRES_EPOCH_JDATE);
-	dx = days > 0? 1 : -1;
+	dx = ndays > 0? 1 : -1;
 
-	while (days != 0)
+	while (ndays != 0)
 	{
 		d = (d+dx) % 7;
 		d = (d < 0) ? 6:d;
@@ -283,7 +283,7 @@ ora_add_bizdays(DateADT day, int days)
 							sizeof(holiday_desc), holiday_desc_comp))
 			continue;
 
-		days -= dx;
+		ndays -= dx;
 	}
 
 	return day;
@@ -293,23 +293,24 @@ ora_add_bizdays(DateADT day, int days)
 static int
 ora_diff_bizdays(DateADT day1, DateADT day2)
 {
-	int d, days;
+	int d, ndays;
 	int y, m, auxd;
 	holiday_desc hd;
 
 	int loops = 0;
 	bool start_is_bizday = false;
 
-	DateADT aux_day;
 	if (day1 > day2)
 	{
+		DateADT 	aux_day;
+
 		aux_day = day1;
 		day1 = day2; day2 = aux_day;
 	}
 
 	/* d is incremented on start of cycle, so now I have to decrease one */
 	d = j2day(day1+POSTGRES_EPOCH_JDATE-1);
-	days = 0;
+	ndays = 0;
 
 	while (day1 <= day2)
 	{
@@ -339,17 +340,17 @@ ora_diff_bizdays(DateADT day1, DateADT day2)
 		if (loops == 1)
 			start_is_bizday = true;
 
-		days += 1;
+		ndays += 1;
 	}
 
 	/*
 	 * decrease result when first day was bizday, but we don't want
 	 * calculate first day.
 	 */
-	if ( start_is_bizday && !include_start && days > 0)
-		days -= 1;
+	if ( start_is_bizday && !include_start && ndays > 0)
+		ndays -= 1;
 
-	return days;
+	return ndays;
 }
 
 
@@ -357,7 +358,7 @@ ora_diff_bizdays(DateADT day1, DateADT day2)
  * PLVdate.add_bizdays
  *
  * Syntax:
- *   FUNCTION add_bizdays(IN dt DATE, IN days int) RETURNS DATE;
+ *   FUNCTION add_bizdays(IN dt DATE, IN ndays int) RETURNS DATE;
  *
  * Purpose:
  *   Get the date created by adding <n> business days to a date
@@ -369,9 +370,9 @@ Datum
 plvdate_add_bizdays (PG_FUNCTION_ARGS)
 {
 	DateADT day = PG_GETARG_DATEADT(0);
-	int days = PG_GETARG_INT32(1);
+	int ndays = PG_GETARG_INT32(1);
 
-	PG_RETURN_DATEADT(ora_add_bizdays(day,days));
+	PG_RETURN_DATEADT(ora_add_bizdays(day,ndays));
 }
 
 

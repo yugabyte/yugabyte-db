@@ -67,29 +67,33 @@ ParseIdentifierString(char *rawstring)
 	/* At the top of the loop, we are at start of a new identifier. */
 	do
 	{
-		char	   *curname;
-		char	   *endp;
 
 		if (*nextp == '\"')
 		{
+			char	   *endp;
+
 			/* Quoted name --- collapse quote-quote pairs, no downcasing */
-			curname = nextp + 1;
 			for (;;)
 			{
 				endp = strchr(nextp + 1, '\"');
 				if (endp == NULL)
 					return false;		/* mismatched quotes */
+
 				if (endp[1] != '\"')
 					break;		/* found end of quoted name */
+
 				/* Collapse adjacent quotes into one quote, and look again */
 				memmove(endp, endp + 1, strlen(endp));
 				nextp = endp;
 			}
+
 			/* endp now points at the terminating quote */
 			nextp = endp + 1;
 		}
 		else
 		{
+			char	   *curname;
+
 			/* Unquoted name --- extends to separator or whitespace */
 			curname = nextp;
 			while (*nextp && *nextp != '.' &&
@@ -99,7 +103,7 @@ ParseIdentifierString(char *rawstring)
 					return false;
 				nextp++;
 			}
-			endp = nextp;
+
 			if (curname == nextp)
 				return false;	/* empty unquoted name not allowed */
 		}
@@ -326,21 +330,33 @@ check_sql_name(char *cp, int len)
 {
 	if (*cp == '"')
 	{
-		for (cp++, len -= 2; len-- > 0; cp++)
+		char	   *last = cp + len - 1;
+
+		/* don't allow empty identifier */
+		if (len < 3)
+			return false;
+
+		/* last char should be double quote */
+		if (*last != '"')
+			return false;
+
+		cp += 1;
+
+		while (*cp && cp < last)
 		{
-			/* all double quotes have to be paired */
-			if (*cp == '"')
+			if (*cp++ == '"')
 			{
-				if (len-- == 0)
-					return false;
-				/* next char has to be quote */
-				if (*cp != '"')
+				if (cp < last)
+				{
+					if (*cp++ != '"')
+						return false;
+				}
+				else
 					return false;
 			}
-
 		}
-		if (*cp != '"')
-			return false;
+
+		return true;
 	}
 	else
 	{

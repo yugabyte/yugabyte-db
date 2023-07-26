@@ -163,7 +163,7 @@ static void
 pack_field(message_buffer *buffer, message_data_type type,
 			int32 size, void *ptr, Oid tupType)
 {
-	int len;
+	int			len;
 	message_data_item *message;
 
 	len = MAXALIGN(size) + message_data_item_size;
@@ -197,12 +197,12 @@ static void*
 unpack_field(message_buffer *buffer, message_data_type *type,
 				int32 *size, Oid *tupType)
 {
-	void *ptr;
+	void	   *ptr;
 	message_data_item *message;
 
-	Assert(buffer != NULL);
+	Assert(buffer);
 	Assert(buffer->items_count > 0);
-	Assert(buffer->next != NULL);
+	Assert(buffer->next);
 
 	message = buffer->next;
 	*size = message->size;
@@ -223,20 +223,21 @@ unpack_field(message_buffer *buffer, message_data_type *type,
 bool
 ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool reset)
 {
-	int i;
-	bool found;
-
-	sh_memory *sh_mem;
+	bool		found;
 
 	/* reset is always false, really */
 	Assert(!reset);
 
 	if (pipes == NULL)
 	{
+		sh_memory  *sh_mem;
+
 		LWLockAcquire(AddinShmemInitLock, LW_EXCLUSIVE);
 		sh_mem = ShmemInitStruct("dbms_pipe", size, &found);
 		if (!found)
 		{
+			int			i;
+
 			sh_mem->tranche_id = LWLockNewTrancheId();
 			LWLockInitialize(&sh_mem->shmem_lock, sh_mem->tranche_id);
 
@@ -387,7 +388,7 @@ static void*
 remove_first(orafce_pipe *p, bool *found)
 {
 	struct _queue_item *q;
-	void *ptr = NULL;
+	void	   *ptr = NULL;
 
 	*found = false;
 
@@ -424,8 +425,7 @@ static message_buffer*
 get_from_pipe(text *pipe_name, bool *found)
 {
 	orafce_pipe *p;
-	bool created;
-	message_buffer *shm_msg;
+	bool		created;
 	message_buffer *result = NULL;
 
 	if (!ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES, MAX_EVENTS, MAX_LOCKS, false))
@@ -435,6 +435,8 @@ get_from_pipe(text *pipe_name, bool *found)
 	{
 		if (!created)
 		{
+			message_buffer *shm_msg;
+
 			if (NULL != (shm_msg = remove_first(p, found)))
 			{
 				p->size -= shm_msg->size;
@@ -459,7 +461,6 @@ get_from_pipe(text *pipe_name, bool *found)
 static bool
 add_to_pipe(text *pipe_name, message_buffer *ptr, int limit, bool limit_is_valid)
 {
-	orafce_pipe *p;
 	bool created;
 	bool result = false;
 	message_buffer *sh_ptr;
@@ -469,6 +470,8 @@ add_to_pipe(text *pipe_name, message_buffer *ptr, int limit, bool limit_is_valid
 
 	for (;;)
 	{
+		orafce_pipe *p;
+
 		if (NULL != (p = find_pipe(pipe_name, &created, false)))
 		{
 			if (created)
@@ -950,15 +953,15 @@ Datum
 dbms_pipe_unique_session_name (PG_FUNCTION_ARGS)
 {
 	StringInfoData strbuf;
-	text *result;
-
-	float8 endtime;
-	int cycle = 0;
-	int timeout = 10;
+	float8		endtime;
+	int			cycle = 0;
+	int			timeout = 10;
 
 	WATCH_PRE(timeout, endtime, cycle);
 	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
 	{
+		text	   *result;
+
 		initStringInfo(&strbuf);
 		appendStringInfo(&strbuf,"PG$PIPE$%d$%d",sid, MyProcPid);
 
@@ -980,13 +983,12 @@ Datum
 dbms_pipe_list_pipes(PG_FUNCTION_ARGS)
 {
 	FuncCallContext *funcctx;
-	TupleDesc        tupdesc;
-	AttInMetadata   *attinmeta;
-	PipesFctx       *fctx;
-
-	float8 endtime;
-	int cycle = 0;
-	int timeout = 10;
+	TupleDesc	tupdesc;
+	AttInMetadata *attinmeta;
+	PipesFctx  *fctx;
+	float8		endtime;
+	int			cycle;
+	int			timeout = 10;
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -1096,14 +1098,14 @@ dbms_pipe_list_pipes(PG_FUNCTION_ARGS)
 Datum
 dbms_pipe_create_pipe (PG_FUNCTION_ARGS)
 {
-	text *pipe_name = NULL;
-	int   limit = 0;
-	bool  is_private;
-	bool  limit_is_valid = false;
-	bool  created;
-	float8 endtime;
-	int cycle = 0;
-	int timeout = 10;
+	text	   *pipe_name = NULL;
+	int			limit = 0;
+	bool		is_private;
+	bool		limit_is_valid = false;
+	bool		created;
+	float8		endtime;
+	int			cycle;
+	int			timeout = 10;
 
 	if (PG_ARGISNULL(0))
 		ereport(ERROR,

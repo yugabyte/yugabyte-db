@@ -834,7 +834,6 @@ check_secure_locality(const char *path)
 {
 	static SPIPlanPtr	plan = NULL;
 
-	Oid		argtypes[] = {TEXTOID};
 	Datum	values[1];
 	char	nulls[1] = {' '};
 
@@ -856,6 +855,8 @@ check_secure_locality(const char *path)
 
 	if (!plan)
 	{
+		Oid		argtypes[] = {TEXTOID};
+
 		/* Don't use LIKE not to escape '_' and '%' */
 		SPIPlanPtr p = SPI_prepare(
 		    "SELECT 1 FROM utl_file.utl_file_dir"
@@ -892,7 +893,6 @@ safe_named_location(text *location)
 	static SPIPlanPtr	plan = NULL;
 	MemoryContext		old_cxt;
 
-	Oid		argtypes[] = {TEXTOID};
 	Datum	values[1];
 	char	nulls[1] = {' '};
 	char   *result;
@@ -908,6 +908,8 @@ safe_named_location(text *location)
 
 	if (!plan)
 	{
+		Oid		argtypes[] = {TEXTOID};
+
 		/* Don't use LIKE not to escape '_' and '%' */
 		SPIPlanPtr p = SPI_prepare(
 		    "SELECT dir FROM utl_file.utl_file_dir WHERE dirname = $1",

@@ -176,10 +176,9 @@ varchar2(PG_FUNCTION_ARGS)
 	/* error out if value too long unless it's an explicit cast */
 	if (!isExplicit)
 	{
-		if (len > maxlen)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("input value length is %d; too long for type varchar2(%d)",len ,maxlen)));
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("input value length is %d; too long for type varchar2(%d)",len ,maxlen)));
 	}
 
 	PG_RETURN_VARCHAR_P((VarChar *) cstring_to_text_with_len(s_data,maxlen));

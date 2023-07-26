@@ -253,9 +253,9 @@ ora_salloc(size_t size)
 }
 
 void
-ora_sfree(void* ptr)
+ora_sfree(void *ptr)
 {
-	int i;
+	int			i;
 
 /*
 	if (cycle++ % 100 == 0)
@@ -269,13 +269,15 @@ ora_sfree(void* ptr)
 */
 
 	for (i = 0; i < *list_c; i++)
+	{
 		if (list[i].first_byte_ptr == ptr)
 		{
 			list[i].dispossible = true;
 			/* list[i].context = -1; */
-			memset(list[i].first_byte_ptr, '#', list[i].size);
+			memset(ptr, '#', list[i].size);
 			return;
 		}
+	}
 
 	ereport(ERROR,
 			(errcode(ERRCODE_INTERNAL_ERROR),

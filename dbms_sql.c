@@ -359,8 +359,6 @@ static VariableData *
 get_var(CursorData *c, char *refname, int position, bool append)
 {
 	ListCell	   *lc;
-	VariableData   *nvar;
-	MemoryContext	oldcxt;
 
 	foreach(lc, c->variables)
 	{
@@ -372,6 +370,9 @@ get_var(CursorData *c, char *refname, int position, bool append)
 
 	if (append)
 	{
+		VariableData   *nvar;
+		MemoryContext	oldcxt;
+
 		oldcxt = MemoryContextSwitchTo(c->cursor_cxt);
 		nvar = palloc0(sizeof(VariableData));
 
@@ -586,7 +587,6 @@ bind_array(FunctionCallInfo fcinfo, int index1, int index2)
 	char *varname, *varname_downcase;
 	Oid			valtype;
 	Oid			elementtype;
-	bool		is_unknown = false;
 
 	c = get_cursor(fcinfo, true);
 
@@ -630,10 +630,7 @@ bind_array(FunctionCallInfo fcinfo, int index1, int index2)
 
 		oldcxt = MemoryContextSwitchTo(c->cursor_cxt);
 
-		if (is_unknown)
-			var->value = CStringGetTextDatum(DatumGetPointer(PG_GETARG_DATUM(2)));
-		else
-			var->value = datumCopy(PG_GETARG_DATUM(2), var->typbyval, var->typlen);
+		var->value = datumCopy(PG_GETARG_DATUM(2), var->typbyval, var->typlen);
 
 		var->isnull = false;
 
@@ -692,8 +689,6 @@ static ColumnData *
 get_col(CursorData *c, int position, bool append)
 {
 	ListCell	   *lc;
-	ColumnData	   *ncol;
-	MemoryContext	oldcxt;
 
 	foreach(lc, c->columns)
 	{
@@ -705,6 +700,9 @@ get_col(CursorData *c, int position, bool append)
 
 	if (append)
 	{
+		ColumnData	   *ncol;
+		MemoryContext	oldcxt;
+
 		oldcxt = MemoryContextSwitchTo(c->cursor_cxt);
 		ncol = palloc0(sizeof(ColumnData));
 
@@ -1093,7 +1091,6 @@ execute(CursorData *c)
 		bool		has_value = true;
 		int			max_index1 = -1;
 		int			min_index2 = -1;
-		int			max_rows = -1;
 		uint64		result = 0;
 		ListCell   *lc;
 		int			i;
@@ -1194,6 +1191,8 @@ execute(CursorData *c)
 
 		if (has_iterator)
 		{
+			int			max_rows = -1;
+
 			if (has_value)
 			{
 				if (max_index1 != -1)
@@ -1522,7 +1521,9 @@ cast_value(CastCacheData *ccast, Datum value, bool isnull)
 		if (ccast->path == COERCION_PATH_FUNC)
 			value = FunctionCall1(&ccast->finfo, value);
 		else if (ccast->path == COERCION_PATH_RELABELTYPE)
-			value = value;
+		{
+			/* do nothing */
+		}
 		else if (ccast->path == COERCION_PATH_COERCEVIAIO)
 		{
 			char *str;

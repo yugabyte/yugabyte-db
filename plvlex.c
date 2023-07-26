@@ -120,7 +120,6 @@ filterList(List *list, bool skip_spaces, bool qnames)
 {
 	List *result = NIL;
 	ListCell *cell;
-	bool isdot = false;
 	orafce_lexnode *a = NULL;
 	orafce_lexnode *dot = NULL;
 
@@ -130,7 +129,7 @@ filterList(List *list, bool skip_spaces, bool qnames)
 
 		if (qnames)
 		{
-			isdot = (IsType(nd, OTHERS) && (nd->str[0] == '.'));
+			bool		isdot = (IsType(nd, OTHERS) && (nd->str[0] == '.'));
 
 			if (IsType(nd, IDENT) && dot && a)
 			{

@@ -71,15 +71,15 @@ alert_lock *session_lock = NULL;
 static int
 textcmpm(text *txt, char *str)
 {
-	int retval;
-	char *p;
-	int len;
+	char	   *p;
+	int			len;
 
 	len = VARSIZE(txt) - VARHDRSZ;
 	p = VARDATA(txt);
 
 	while (len-- && *p != '\0')
 	{
+		int			retval;
 
 		if (0 != (retval = *p++ - *str++))
 			return retval;
@@ -306,11 +306,13 @@ static void
 unregister_event(int event_id, int sid)
 {
 	alert_event *ev;
-	int i;
 
 	ev = &events[event_id];
+
 	if (ev->receivers_number > 0)
 	{
+		int			i;
+
 		for (i = 0; i < ev->max_receivers; i++)
 		{
 			if (ev->receivers[i] == sid)
@@ -379,7 +381,6 @@ find_and_remove_message_item(int message_id, int sid,
 							 int *sleep, char **event_name)
 {
 	alert_lock *alck;
-	int _message_id;
 
 	char *result = NULL;
 	if (sleep != NULL)
@@ -400,7 +401,9 @@ find_and_remove_message_item(int message_id, int sid,
 
 		while (echo != NULL)
 		{
-			char *message_text;
+			char	   *message_text;
+			int			_message_id;
+
 			bool destroy_msg_item = false;
 
 			if (filter_message && echo->message_id != message_id)
@@ -428,6 +431,7 @@ find_and_remove_message_item(int message_id, int sid,
 				ora_sfree(echo->message->receivers);
 				ora_sfree(echo->message);
 			}
+
 			if (last_echo == NULL)
 			{
 				alck->echo = echo->next_echo;
@@ -440,6 +444,7 @@ find_and_remove_message_item(int message_id, int sid,
 				ora_sfree(echo);
 				echo = last_echo;
 			}
+
 			if (remove_all)
 			{
 				if (message_text != NULL && destroy_msg_item)
@@ -475,10 +480,9 @@ find_and_remove_message_item(int message_id, int sid,
 static void
 create_message(text *event_name, text *message)
 {
-	int event_id;
+	int			event_id;
 	alert_event *ev;
 	message_item *msg_item = NULL;
-	int i,j,k;
 
 	find_event(event_name, false, &event_id);
 
@@ -487,11 +491,14 @@ create_message(text *event_name, text *message)
 	{
 		if (ev->receivers_number > 0)
 		{
+			int		i,j,k;
+
 			msg_item = ev->messages;
 			while (msg_item != NULL)
 			{
 				if (msg_item->message == NULL && message == NULL)
-				    return;
+					return;
+
 				if (msg_item->message != NULL && message != NULL)
 					if (0 == textcmpm(message,msg_item->message))
 						return;
@@ -618,17 +625,17 @@ dbms_alert_register(PG_FUNCTION_ARGS)
 Datum
 dbms_alert_remove(PG_FUNCTION_ARGS)
 {
-	text *name = PG_GETARG_TEXT_P(0);
-
-	alert_event *ev;
-	int ev_id;
-	int cycle = 0;
-	float8 endtime;
-	float8 timeout = 2;
+	text	   *name = PG_GETARG_TEXT_P(0);
+	int			ev_id;
+	int			cycle = 0;
+	float8		endtime;
+	float8		timeout = 2;
 
 	WATCH_PRE(timeout, endtime, cycle);
 	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
 	{
+		alert_event *ev;
+
 		ev = find_event(name, false, &ev_id);
 		if (NULL != ev)
 		{
@@ -656,15 +663,16 @@ dbms_alert_remove(PG_FUNCTION_ARGS)
 Datum
 dbms_alert_removeall(PG_FUNCTION_ARGS)
 {
-	int i;
-	int cycle = 0;
-	float8 endtime;
-	float8 timeout = 2;
-	alert_lock *alck;
+	int			cycle = 0;
+	float8		endtime;
+	float8		timeout = 2;
 
 	WATCH_PRE(timeout, endtime, cycle);
 	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
 	{
+		alert_lock *alck;
+		int			i;
+
 		for (i = 0; i < MAX_EVENTS; i++)
 		{
 			if (events[i].event_name != NULL)
