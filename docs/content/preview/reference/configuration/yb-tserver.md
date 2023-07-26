@@ -1240,7 +1240,7 @@ List of all dashboards to review ongoing operations.
 
 ### Tables
 
-List of all tables managed by this specific instance, sorted by namespace.
+List of all tables managed by this specific instance, sorted by [namespace](../yb-master/#namespaces).
 
 ![tserver-tablets](/images/admin/tserver-tables.png)
 
