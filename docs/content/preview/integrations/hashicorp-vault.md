@@ -161,3 +161,4 @@ vault lease revoke <lease-ID>
 - [Database static roles and credential rotation](https://developer.hashicorp.com/vault/tutorials/db-credentials/database-creds-rotation)
 - [Database root credential rotation](https://developer.hashicorp.com/vault/tutorials/db-credentials/database-root-rotation)
 - [Username templating](https://developer.hashicorp.com/vault/tutorials/secrets-management/username-templating)
+- [YugabyteDB partner page at Hashicorp](https://www.hashicorp.com/partners/tech/yugabyte#all)
