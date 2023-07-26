@@ -79,6 +79,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<Boolean> displayJWTToken =
+      new ConfKeyInfo<>(
+          "yb.security.showJWTInfoOnLogin",
+          ScopeType.GLOBAL,
+          "Display JWT Token on Login Screen",
+          "Display JWT Token on Login Screen",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
   public static final ConfKeyInfo<String> ybClientID =
       new ConfKeyInfo<>(
           "yb.security.clientID",

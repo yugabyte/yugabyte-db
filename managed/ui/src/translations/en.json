@@ -533,6 +533,12 @@
       "unreachableInstanceAgents": "Instance agents are unreachable",
       "contactSupport": "Contact Support"
     },
+    "OIDCJWT": {
+      "emailId": "Email ID",
+      "OIDCJWTToken": "JSON Web Token",
+      "expirationDate": "Token Expiration Date",
+      "ysqlCommandLabel": "Use the following command to authenticate into your database using a JSON web token."
+    },
     "universeSelector": {
       "all": "All Universes",
       "errorMessage": "Failed to fetch list of universes"
