@@ -87,7 +87,7 @@ private:
   std::array<uint64_t, 2> state_{};
 };
 
-class GenerateRandomNumber
+class AUHRandom
 {
 public:
   /**

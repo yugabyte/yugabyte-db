@@ -1000,9 +1000,9 @@ CREATE VIEW pg_replication_origin_status AS
 
 REVOKE ALL ON pg_replication_origin_status FROM public;
 
--- CREATE VIEW tserver_stat_activity AS
---     SELECT *
---     FROM tserver_stat_get_activity();
+CREATE VIEW tserver_stat_activity AS
+    SELECT *
+    FROM tserver_stat_get_activity();
 
 -- All columns of pg_subscription except subconninfo are readable.
 REVOKE ALL ON pg_subscription FROM public;

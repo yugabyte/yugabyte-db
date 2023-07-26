@@ -124,13 +124,13 @@ private:
 
 thread_local FastRandomNumberGenerator TlsRandomNumberGenerator::engine_{};
 
-FastRandomNumberGenerator &GenerateRandomNumber::GetRandomNumberGenerator() noexcept
+FastRandomNumberGenerator &AUHRandom::GetRandomNumberGenerator() noexcept
 {
   static thread_local TlsRandomNumberGenerator random_number_generator{};
   return TlsRandomNumberGenerator::engine();
 }
 
-uint64_t GenerateRandomNumber::GenerateRandom64() noexcept
+uint64_t AUHRandom::GenerateRandom64() noexcept
 {
   return GetRandomNumberGenerator()();
 }
