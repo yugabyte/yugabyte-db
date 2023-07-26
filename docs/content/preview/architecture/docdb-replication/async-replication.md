@@ -116,7 +116,7 @@ Tablet splitting generates a Raft log entry, which is replicated to the target s
 
 These are straightforward: when one of these transaction commits, a single Raft log entry is produced containing all of that transaction's writes and its commit time.  This entry in turn is used to generate part of a batch of changes when the poller requests changes.
 
-Upon receiving the changes, the poller examines each write to see what key it writes to in order to determine which target tablet covers that part of the table then forwards the writes to the appropriate tablets. The commit times of the writes are preserved and the writes are marked as _external_, which prevents them from being further replicated by xCluster, including back in bidirectional cases.
+Upon receiving the changes, the poller examines each write to see what key it writes to in order to determine which target tablet covers that part of the table.  The poller then forwards the writes to the appropriate tablets. The commit times of the writes are preserved and the writes are marked as _external_, which prevents them from being further replicated by xCluster, whether onwards to an additional cluster or back to the cluster they came from in bidirectional cases.
 
 ### Distributed transactions
 
@@ -249,7 +249,7 @@ When the source universe is lost, an explicit decision must be made to switch ov
 
 ### Bootstrapping replication
 
-- Currently, it is your responsibility (see [these instructions](../../../deploy/multi-dc/async-replication/#bootstrap-a-target-universe))   to ensure that a target universe has sufficiently recent updates so   that replication can safely resume.  In the future, bootstrapping the   target universe will be automated, which is tracked in   [#11538](https://github.com/yugabyte/yugabyte-db/issues/11538).
+- Currently, it is your responsibility to ensure that a target universe has sufficiently recent updates so that replication can safely resume (for instructions, refer to [Bootstrap a target universe](../../../deploy/multi-dc/async-replication/#bootstrap-a-target-universe)). In the future, bootstrapping the target universe will be automated, which is tracked in [#11538](https://github.com/yugabyte/yugabyte-db/issues/11538).
 - Bootstrap currently relies on the underlying backup and restore (BAR) mechanism of YugabyteDB.  This means it also inherits all of the limitations of BAR.  For YSQL, currently the scope of BAR is at a database level, while the scope of replication is at table level.  This implies that when you bootstrap a target universe, you automatically bring any tables from the source database to the target database, even the ones that you might not plan to actually configure replication on.  This is tracked in [#11536](https://github.com/yugabyte/yugabyte-db/issues/11536).
 
 ### DDL changes
