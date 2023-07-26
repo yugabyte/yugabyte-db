@@ -1380,6 +1380,8 @@ public class BackupsControllerTest extends FakeDBApplication {
 
   @Test
   public void testStopBackupCompleted() {
+    when(mockBackupHelper.stopBackup(any(), any())).thenCallRealMethod();
+
     defaultBackup.transitionState(BackupState.Completed);
     Result result =
         assertThrows(
@@ -1396,7 +1398,7 @@ public class BackupsControllerTest extends FakeDBApplication {
     ProcessBuilder processBuilderObject = new ProcessBuilder("test");
     Process process = processBuilderObject.start();
     Util.setPID(defaultBackup.getBackupUUID(), process);
-
+    when(mockBackupHelper.stopBackup(any(), any())).thenCallRealMethod();
     taskInfo = new TaskInfo(TaskType.CreateTable);
     taskInfo.setDetails(Json.newObject());
     taskInfo.setOwner("");
