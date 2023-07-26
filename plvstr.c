@@ -15,8 +15,6 @@
 #include "postgres.h"
 #include "utils/builtins.h"
 #include "utils/numeric.h"
-#include "string.h"
-#include "stdlib.h"
 #include "utils/pg_locale.h"
 #include "mb/pg_wchar.h"
 #include "nodes/execnodes.h"
@@ -25,6 +23,9 @@
 #include "libpq/pqformat.h"
 #include "orafce.h"
 #include "builtins.h"
+
+#include <string.h>
+#include <stdlib.h>
 
 PG_FUNCTION_INFO_V1(plvstr_rvrs);
 PG_FUNCTION_INFO_V1(plvstr_normalize);

@@ -7,7 +7,6 @@
 #include "utils/timestamp.h"
 #include "storage/lwlock.h"
 #include "miscadmin.h"
-#include "string.h"
 #include "lib/stringinfo.h"
 #include "catalog/pg_type.h"
 #include "utils/builtins.h"
@@ -18,6 +17,8 @@
 #include "pipe.h"
 #include "orafce.h"
 #include "builtins.h"
+
+#include <string.h>
 
 /*
  * @ Pavel Stehule 2006-2022

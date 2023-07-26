@@ -15,8 +15,6 @@
 #include "postgres.h"
 #include "utils/builtins.h"
 #include "utils/numeric.h"
-#include "string.h"
-#include "stdlib.h"
 #include "utils/pg_locale.h"
 #include "mb/pg_wchar.h"
 #include "lib/stringinfo.h"
@@ -29,6 +27,9 @@
 #include "access/tupmacs.h"
 #include "orafce.h"
 #include "builtins.h"
+
+#include <string.h>
+#include <stdlib.h>
 
 PG_FUNCTION_INFO_V1(plvsubst_string_array);
 PG_FUNCTION_INFO_V1(plvsubst_string_string);

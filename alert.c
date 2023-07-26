@@ -6,7 +6,6 @@
 #include "commands/trigger.h"
 #include "funcapi.h"
 #include "miscadmin.h"
-#include "string.h"
 #include "storage/lwlock.h"
 #include "storage/procarray.h"
 #include "utils/timestamp.h"

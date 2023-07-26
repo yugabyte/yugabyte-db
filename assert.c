@@ -13,8 +13,6 @@
 
 #endif
 
-#include "ctype.h"
-#include "string.h"
 #include "orafce.h"
 #include "builtins.h"
 #include "utils/regproc.h"

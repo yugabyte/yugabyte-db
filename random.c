@@ -10,8 +10,8 @@
 #include "lib/stringinfo.h"
 #include "utils/builtins.h"
 
-#include "stdlib.h"
-#include "time.h"
+#include <stdlib.h>
+#include <time.h>
 #include <math.h>
 #include <errno.h>
 

@@ -7,11 +7,11 @@
 
 #include "postgres.h"
 #include "shmmc.h"
-#include "stdlib.h"
-#include "string.h"
 #include "orafce.h"
 
-#include "stdint.h"
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
 
 #if PG_VERSION_NUM >= 160000
 

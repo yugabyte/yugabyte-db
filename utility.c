@@ -14,12 +14,12 @@
 
 #include <time.h>
 #include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 
 #include "postgres.h"
 #include "utils/builtins.h"
 #include "utils/numeric.h"
-#include "string.h"
-#include "stdlib.h"
 #include "utils/pg_locale.h"
 #include "mb/pg_wchar.h"
 #include "lib/stringinfo.h"
