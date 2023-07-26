@@ -103,6 +103,7 @@ public class TestAllDatatypes extends CDCBaseClass {
   @Before
   public void setUp() throws Exception {
     super.setUp();
+    setServerFlag(getTserverHostAndPort(), CDC_POPULATE_SAFEPOINT_RECORD, "false");
     statement = connection.createStatement();
   }
 
