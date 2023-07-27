@@ -70,9 +70,9 @@ typedef struct YbScanDescData
 
 	/*
 	 * ScanKey could be one of two types:
-	 *  - key for regular column
 	 *  - key which represents the yb_hash_code function.
-	 * keys holds the first type; hash_code_keys holds the second.
+	 *  - otherwise
+	 * hash_code_keys holds the first type; keys holds the second.
 	 */
 	ScanKey keys[YB_MAX_SCAN_KEYS];
 	/* Number of elements in the above array. */
@@ -84,8 +84,12 @@ typedef struct YbScanDescData
 	 */
 	List *hash_code_keys;
 
-	/* True if all the conditions for this index were bound to pggate. */
-	bool is_full_cond_bound;
+	/*
+	 * True if all ordinary (non-yb_hash_code) keys are bound to pggate.  There
+	 * could be false negatives: it could say false when they are in fact all
+	 * bound.
+	 */
+	bool all_ordinary_keys_bound;
 
 	TupleDesc target_desc;
 	AttrNumber target_key_attnums[YB_MAX_SCAN_KEYS];
@@ -184,6 +188,9 @@ extern YbScanDesc ybcBeginScan(Relation relation,
 							   PushdownExprs *idx_pushdown,
 							   List *aggrefs,
 							   YBCPgExecParameters *exec_params);
+
+/* Returns whether the given populated ybScan needs PG-side recheck. */
+extern bool YbNeedsRecheck(YbScanDesc ybScan);
 
 HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
 IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
