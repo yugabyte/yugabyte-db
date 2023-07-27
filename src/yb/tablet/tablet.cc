@@ -489,13 +489,12 @@ Tablet::Tablet(const TabletInitData& data)
     attrs["table_name"] = metadata_->table_name();
     attrs["table_type"] = TableType_Name(metadata_->table_type());
     attrs["namespace_name"] = metadata_->namespace_name();
-    auto metric_mem_tracker = MemTracker::CreateTracker("Metrics", mem_tracker_,
-        AddToParent::kTrue, CreateMetrics::kFalse);
+    metric_mem_tracker_ = MemTracker::CreateTracker(
+        "Metrics", mem_tracker_, AddToParent::kTrue, CreateMetrics::kFalse);
     table_metrics_entity_ =
         METRIC_ENTITY_table.Instantiate(data.metric_registry, metadata_->table_id(), attrs);
-    tablet_metrics_entity_ =
-        METRIC_ENTITY_tablet.Instantiate(
-            data.metric_registry, tablet_id(), attrs, std::move(metric_mem_tracker));
+    tablet_metrics_entity_ = METRIC_ENTITY_tablet.Instantiate(
+            data.metric_registry, tablet_id(), attrs, metric_mem_tracker_);
     // If we are creating a KV table create the metrics callback.
     regulardb_statistics_ =
         rocksdb::CreateDBStatistics(table_metrics_entity_, tablet_metrics_entity_);
@@ -577,6 +576,9 @@ Tablet::~Tablet() {
   }
   if (intentdb_mem_tracker_) {
     intentdb_mem_tracker_->UnregisterFromParent();
+  }
+  if (metric_mem_tracker_) {
+    metric_mem_tracker_->UnregisterFromParent();
   }
   mem_tracker_->UnregisterFromParent();
 }

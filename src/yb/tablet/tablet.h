@@ -992,6 +992,7 @@ class Tablet : public AbstractTablet,
 
   MetricEntityPtr tablet_metrics_entity_;
   MetricEntityPtr table_metrics_entity_;
+  MemTrackerPtr metric_mem_tracker_;
   std::unique_ptr<TabletMetrics> metrics_;
   std::shared_ptr<void> metric_detacher_;
 

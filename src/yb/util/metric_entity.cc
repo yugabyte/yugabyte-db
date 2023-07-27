@@ -165,11 +165,7 @@ MetricEntity::MetricEntity(const MetricEntityPrototype* prototype,
       mem_tracker_(std::move(mem_tracker)) {
 }
 
-MetricEntity::~MetricEntity() {
-  if (mem_tracker_) {
-    mem_tracker_->UnregisterFromParent();
-  }
-}
+MetricEntity::~MetricEntity() = default;
 
 const std::regex& PrometheusNameRegex() {
   return prometheus_name_regex;
@@ -429,6 +425,12 @@ void MetricEntity::SetAttribute(const string& key, const string& val) {
   attributes_[key] = val;
 }
 
+void MetricEntity::AddConsumption(int64_t consumption) {
+  if (auto mem_tracker = mem_tracker_.lock()) {
+    mem_tracker->Consume(consumption);
+  }
+}
+
 scoped_refptr<Counter> MetricEntity::FindOrCreateCounter(
     const CounterPrototype* proto) {
   CheckInstantiation(proto);
@@ -437,9 +439,7 @@ scoped_refptr<Counter> MetricEntity::FindOrCreateCounter(
   if (!m) {
     m = new Counter(proto);
     InsertOrDie(&metric_map_, proto, m);
-    if (mem_tracker_) {
-      mem_tracker_->Consume(sizeof(Counter));
-    }
+    AddConsumption(sizeof(Counter));
   }
   return m;
 }
@@ -452,9 +452,7 @@ scoped_refptr<Counter> MetricEntity::FindOrCreateCounter(
   if (!m) {
     m = new Counter(std::move(proto));
     InsertOrDie(&metric_map_, m->prototype(), m);
-    if (mem_tracker_) {
-      mem_tracker_->Consume(sizeof(Counter));
-    }
+    AddConsumption(sizeof(Counter));
   }
   return m;
 }
@@ -467,9 +465,7 @@ scoped_refptr<MillisLag> MetricEntity::FindOrCreateMillisLag(
   if (!m) {
     m = new MillisLag(proto);
     InsertOrDie(&metric_map_, proto, m);
-    if (mem_tracker_) {
-      mem_tracker_->Consume(sizeof(MillisLag));
-    }
+    AddConsumption(sizeof(MillisLag));
   }
   return m;
 }
@@ -483,9 +479,7 @@ scoped_refptr<AtomicMillisLag> MetricEntity::FindOrCreateAtomicMillisLag(
   if (!m) {
     m = new AtomicMillisLag(proto);
     InsertOrDie(&metric_map_, proto, m);
-    if (mem_tracker_) {
-      mem_tracker_->Consume(sizeof(AtomicMillisLag));
-    }
+    AddConsumption(sizeof(AtomicMillisLag));
   }
   return m;
 }
@@ -498,8 +492,8 @@ scoped_refptr<Histogram> MetricEntity::FindOrCreateHistogram(
   if (!m) {
     m = new Histogram(proto);
     InsertOrDie(&metric_map_, proto, m);
-    if (mem_tracker_) {
-      mem_tracker_->Consume(m->DynamicMemoryUsage());
+    if (auto mem_tracker = mem_tracker_.lock()) {
+      mem_tracker->Consume(m->DynamicMemoryUsage());
     }
   }
   return m;
@@ -517,8 +511,8 @@ scoped_refptr<Histogram> MetricEntity::FindOrCreateHistogram(
     m = new Histogram(std::move(proto), highest_trackable_value, num_significant_digits,
                       export_percentile);
     InsertOrDie(&metric_map_, m->prototype(), m);
-    if (mem_tracker_) {
-      mem_tracker_->Consume(m->DynamicMemoryUsage());
+    if (auto mem_tracker = mem_tracker_.lock()) {
+      mem_tracker->Consume(m->DynamicMemoryUsage());
     }
   }
   return m;
