@@ -30,7 +30,6 @@ import Edit from '../../../../../../assets/edit_pen.svg';
 import Close from '../../../../../../assets/close.svg';
 import Plus from '../../../../../../assets/plus.svg';
 import MoreIcon from '../../../../../../assets/ellipsis.svg';
-import { GFlagRowProps } from '../../../../../../../components/universes/UniverseForm/EditGFlagsConf';
 
 /* TODO : 
 1. Rewrite this file with proper types
