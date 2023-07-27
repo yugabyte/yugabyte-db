@@ -939,6 +939,8 @@ drop_table = 'DROP' 'TABLE' [ 'IF' 'EXISTS' ] table_name { ',' table_name}
 (* 'DROP' 'INDEX' *)
 drop_index = 'DROP' 'INDEX' [ 'IF' 'EXISTS' ] index_name [ 'CASCADE' | 'RESTRICT' ] ;
 
+index_name = name ;
+
 (* 'DROP' 'TYPE' *)
 drop_type = 'DROP' 'TYPE' [ 'IF' 'EXISTS' ] type_name { ',' type_name }
               [ 'CASCADE' | 'RESTRICT' ] ;
@@ -1253,8 +1255,7 @@ within_group_aggregate_fn_invocation =  name \
     'WITHIN' 'GROUP' '(' 'ORDER' 'BY' order_expr { ',' order_expr } ')' \
     [ 'FILTER' '(' 'WHERE' boolean_expression ')' ] ;
 
-window_clause =
-  'WINDOW' ( ( name 'AS' window_definition ) { ',' ( name 'AS' window_definition ) } ) ;
+window_clause = 'WINDOW' ( ( name 'AS' window_definition ) { ',' ( name 'AS' window_definition ) } ) ;
 
 window_definition =
   '(' [ name ] \
@@ -1416,7 +1417,7 @@ extension_name = name ;
 
 matview_name = qualified_name ;
 
-new_owner = qualified_name ;
+new_owner = name ;
 fdw_options = option_and_name_value { ',' option_and_name_value } ;
 option_and_name_value = option_name option_value ;
 alter_fdw_options = alter_option_and_name_value { ',' alter_option_and_name_value } ;
