@@ -27,9 +27,7 @@ Follow the [setup instructions](../../../#set-up-yugabytedb-universe) to start a
 
 Download the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) JAR file (`yb-sample-apps.jar`) using the following command:
 
-```sh
-wget 'https://github.com/yugabyte/yb-sample-apps/releases/download/v1.4.1/yb-sample-apps.jar' -O yb-sample-apps.jar
-```
+{{% yb-sample-apps-path %}}
 
 Run the `CassandraKeyValue` workload application in a separate shell.
 
