@@ -228,10 +228,6 @@ class XClusterTestNoParam : public XClusterTestBase {
     return XClusterTestParams(false /* transactional_table */);
   }
 
-  virtual XClusterTestParams GetTestParam() {
-    return XClusterTestParams(false /* transactional_table */);
-  }
-
   Result<YBTableName> CreateTable(
       YBClient* client, const std::string& namespace_name, const std::string& table_name,
       uint32_t num_tablets) {
