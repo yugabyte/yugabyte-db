@@ -19,13 +19,13 @@ Here is the decomposition of the _plpgsql_stmt_ grammar rule, down to its termin
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar-3" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram-3" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
@@ -33,10 +33,10 @@ Here is the decomposition of the _plpgsql_stmt_ grammar rule, down to its termin
 </ul>
 
 <div class="tab-content">
-  <div id="grammar-3" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/plpgsql_executable_stmt,plpgsql_basic_stmt,plpgsql_compound_stmt.grammar.md" %}}
   </div>
-  <div id="diagram-3" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/plpgsql_executable_stmt,plpgsql_basic_stmt,plpgsql_compound_stmt.diagram.md" %}}
   </div>
 </div>
@@ -45,7 +45,7 @@ Here is the decomposition of the _plpgsql_stmt_ grammar rule, down to its termin
 
 You can use names, in the _executable section_, only if the name can be resolved. If you don't use a qualified identifier, then the name resolution is attempted within the names that the _declaration section_ of the most tightly enclosing block establishes—with the caveat that a matching name must be for an item of the kind that syntactic analysis of the to-be-resolved name has established. If name resolution fails in that most tightly enclosing scope, then it's re-attempted in the next most tightly enclosing scope—finishing (when the outermost block statement is the implementation of a subprogram and not that of a _do_ statement) with the subprogram's list of formal arguments. If a to-be-resolved name remains unresolved after failing in all these scopes, then resolution is attempted in schema scope. This account applies, too, for how the names of block statements are resolved—but, of course, these names must find resolution within the contained scopes of the outermost block statements (before, if resolution finds no match, then escaping to schema scope).
 
-Consider this contrived example. (It relies on the accounts of the [declaration section](#the-declaration-section) and the [exception section](#the-exception-section)). Here, no names escape to schema scope.
+Consider this contrived example. (It relies on the accounts of the [declaration section](../declaration-section) and the [exception section](../exception-section)). Here, no names escape to schema scope.
 
 ```plpgsql
 create function f(x in text)

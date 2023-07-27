@@ -43,7 +43,7 @@ Future versions of the YSQL documentation will explain further such common notio
 
 ### Session and system control
 
-**[Statements in this class allow](./statements/#session-and-system-control)** database parameters to be set at the session or the system level.
+**[Statements in this class](./statements/#session-and-system-control)** allow database parameters to be set at the session or the system level.
 
 ### Performance control
 

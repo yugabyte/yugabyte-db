@@ -92,7 +92,7 @@ end loop;
 Notice these points:
 
 - The _loop variable_ for a _query for loop_ must be explicitly declared.
-- The _loop variable_, _rec_, has the data type _record_. This is a so-called pseudo-type. While you _can_ use it as the data type of a subprogram's formal argument or of a PL/pgSQL variable, you cannot use it as the datatype of, for example, a table's column. The attempt _"create table s.x(k serial primary key, v record)"_ causes the _42P16_ error:
+- The _loop variable_, _rec_, has the data type _record_. This is a so-called pseudo-type. While you _can_ use it as the data type of a subprogram's formal argument or of a PL/pgSQL variable, you cannot use it as the data type of, for example, a table's column. The attempt _"create table s.x(k serial primary key, v record)"_ causes the _42P16_ error:
   ```output
   column "v" has pseudo-type record
   ```
@@ -203,7 +203,7 @@ This is the result:
 
 Notice these points:
 
-- With this form of the _query for loop_ the _loop variable_ is an implicitly declared record. (The first _assert_) confirms this.) You cannot use, say, two ordinarily declared _int_ variables like _k_out_ and _v_out_, even if this would serve your purposes better.
+- With this form of the _query for loop_, the _loop variable_ is an implicitly declared record. (The first _assert_ confirms this.) You cannot use, say, two ordinarily declared _int_ variables, like _k_out_ and _v_out_, even if this would serve your purposes better.
 - The cursor is implicitly opened just before the loop's first iteration. And it's implicitly closed when the loop exits.
 - The parameterization of the bound cursor variable does not allow the use of, say, _(k_lo in int, k_hi in int)_. The _in/out_ mode can only be _in_—and this is simply implied.
 - Even though the spelling of the declaration of the bound refcursor variable, _cur_, seems to declare it as plain _cursor_, the second _assert_ shows that the data type of _cur_ is in fact _refcursor_. The declaration syntax is simply a historical quirk.
@@ -325,7 +325,7 @@ This is the result:
 
 You might think that it could help readability by surrounding the dynamically defined query with parentheses like this:
 
-```plpgql
+```plpgsql
 for k, v in (execute qry using k_lo, k_hi) loop
 ```
 

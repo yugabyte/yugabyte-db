@@ -104,7 +104,7 @@ end;
 $body$;
 ```
 
-It cases the _42601_ syntax error:
+It causes the _42601_ syntax error:
 
 ```output
 EXIT cannot be used outside a loop, unless it has a label
@@ -135,9 +135,7 @@ This is the meaning:
 - Neither the _continue_ statement (without a label) nor the _continue \<label\>_ statement can be used outside a loop.
 - When the _continue \<label\>_ statement is used, as it must be, within a loop, the label must match that of an enclosing _loop_ statement.
 
-There's an example of the legal use of the _continue \<label\>_ statement, where the label matches that of an enclosing _loop_ statement, in the function _s.vowels_from_lines()_ in [Case study #2](../two-case-studies/#case-study-2-compose-a-string-of-a-specified-number-of-vowels-from-each-text-line-in-an-array-until-a-specified-number-of-such-vowel-strings-have-been-composed) in this section:
-
-> [Two case studies: Using the "for" loop, the "foreach" loop, the "infinite" loop, the "exit" statement, and the "continue" statement](../two-case-studies/).
+There's an example of the legal use of the _continue \<label\>_ statement, where the label matches that of an enclosing _loop_ statement, in the function _s.vowels_from_lines()_ on the page  «Two case studies: Using the "for" loop, the "foreach" loop, the "infinite" loop, the "exit" statement, and the "continue" statement» in [Case study #2](../two-case-studies/#case-study-2-compose-a-string-of-a-specified-number-of-vowels-from-each-text-line-in-an-array-until-a-specified-number-of-such-vowel-strings-have-been-composed).
 
 Look for this:
 

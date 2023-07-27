@@ -105,7 +105,7 @@ The heart of the solution is the code that extracts the words from a single line
 
 First create a function to find the first word in a line of text and to return that word together with what remains when it is removed from the text.
 
-```
+```plpgsql
 create type s.first_word_and_remainder as (word text, remainder text);
 
 create function s.split_string(str in text)
@@ -123,10 +123,10 @@ end;
 $body$;
 ```
 
-The design of this function isn't of interest for the present case study's pedagogy. But it's of note that the implementation takes just two lines. Because the words in the text used here happen to use only latin letters and curly apostrophe, the regular expression that defines a word is very short. It would need to be more elaborate it it had to accommodate European languages that use letters like these: _Å Ø å æ ø_. Test it like this.
+The design of this function isn't of interest for the present case study's pedagogy. But it's of note that the implementation takes just two lines. Because the words in the text used here happen to use only latin letters and curly apostrophe, the regular expression that defines a word is very short. It would need to be more elaborate it had to accommodate European languages that use letters like these: _Å Ø å æ ø_. Test it like this.
 
 ```plpgsql
-reate function s.split_string_test_results(str_in in text)
+create function s.split_string_test_results(str_in in text)
   returns text
   set search_path = pg_catalog, pg_temp
   language plpgsql
@@ -201,7 +201,7 @@ end;
 $body$;
 ```
 
-It turns out the using the function _s.tokenized_lines()_ demonstrates another interesting use of a _loop_ statement Look for this:
+It turns out the using the function _s.tokenized_lines()_ demonstrates another interesting use of a _loop_ statement. Look for this:
 
 ```plpgsql
 for z in (select x from s.display(results)) loop
@@ -262,7 +262,7 @@ This is the result:
 
 ## Case study #2: compose a string of a specified number of vowels from each text line in an array until a specified number of such vowel strings have been composed 
 
-This case study doesn't use any kinds of _loop_ statement that case study #1 doesn't use. But it does use the _continue_ statement. Especially, it shows its use with a _label_ to abort the current iteration of an _inner_ loop and then to start the next iteration of an _outer_ loop. You might like to try to rewrite the code without using the _continue_ statement. You'll need to use an _if_ statement or a _case_ statement together with a dedicated guard variable. The result will be cluttered code that, worse that that, is also less efficient than the code that's shown here.
+This case study doesn't use any kinds of _loop_ statement that case study #1 doesn't use. But it does use the _continue_ statement. Especially, it shows its use with a _label_ to abort the current iteration of an _inner_ loop and then to start the next iteration of an _outer_ loop. You might like to try to rewrite the code without using the _continue_ statement. You'll need to use an _if_ statement or a _case_ statement together with a dedicated guard variable. The result will be cluttered code that is also less efficient than the code that's shown here.
 
 ### Problem statement
 

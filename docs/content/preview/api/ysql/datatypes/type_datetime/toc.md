@@ -15,7 +15,7 @@ type: docs
 
 This section is the top of the entire _date-time_ documentation subtree. Its siblings are the top-of-subtree pages for other data types like [JSON data types and functionality](../../type_json/) and [Array data types and functionality](../../type_array/).
 
-It presents a table that summarizes the properties of the _date-time_ data types, and that links to the dedicated sections for each of these. It recommends avoiding the _timetz_ datatype and states that it will not, therefore, be treated in the _data-time_ major section.
+It presents a table that summarizes the properties of the _date-time_ data types, and that links to the dedicated sections for each of these. It recommends avoiding the _timetz_ data type and states that it will not, therefore, be treated in the _data-time_ major section.
 
 For completeness, it presents a table of the special _date-time_ manifest constants and recommends that you avoid using all of these except for _'infinity'_ and _'-infinity'_.
 
@@ -78,9 +78,9 @@ This section defines the semantics of the _date_ data type, the _time_ data type
   - **[Custom domain types for specializing the native interval functionality](../date-time-data-types-semantics/type-interval/custom-interval-domains/)**
   - **[User-defined interval utility functions](../date-time-data-types-semantics/type-interval/interval-utilities/)**
 
-## [Typecasting between values of different date-time datatypes](../typecasting-between-date-time-values/)
+## [Typecasting between values of different date-time data types](../typecasting-between-date-time-values/)
 
-This section presents the five-by-five matrix of all possible conversions between values of the _date-time_ datatypes. Many of the cells are empty because they correspond to operations that aren't supported (or, because the cell is on the diagonal representing the conversion between values of the same data type, it's tautologically uninteresting). This still leaves *twenty* typecasts whose semantics you need to understand. However, many can be understood as combinations of others, and this leaves only a few that demand careful study. The critical conversions are between plain _timestamp_ and _timestamptz_ values in each direction.
+This section presents the five-by-five matrix of all possible conversions between values of the _date-time_ data types. Many of the cells are empty because they correspond to operations that aren't supported (or, because the cell is on the diagonal representing the conversion between values of the same data type, it's tautologically uninteresting). This still leaves *twenty* typecasts whose semantics you need to understand. However, many can be understood as combinations of others, and this leaves only a few that demand careful study. The critical conversions are between plain _timestamp_ and _timestamptz_ values in each direction.
 
 ## [Date and time operators](../operators/)
 

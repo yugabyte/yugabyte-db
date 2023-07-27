@@ -17,13 +17,13 @@ showRightNav: true
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar-3" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram-3" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
@@ -31,10 +31,10 @@ showRightNav: true
 </ul>
 
 <div class="tab-content">
-  <div id="grammar-3" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/plpgsql_if_stmt,plpgsql_elsif_leg.grammar.md" %}}
   </div>
-  <div id="diagram-3" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/plpgsql_if_stmt,plpgsql_elsif_leg.diagram.md" %}}
   </div>
 </div>
@@ -199,7 +199,7 @@ end case;
 
 This is the critical difference:
 
-- The _case_ formulation tells the reader, without requiring analysis of the _guard_expressions_, that if none of the these evaluates to _true_, then the _case not _found_ error will be raised.
+- The _case_ formulation tells the reader, without requiring analysis of the _guard_expressions_, that if none of the these evaluates to _true_, then the _case_not_found_ error will be raised.
 
 - The _if_ formulation requires the reader to look at the joint effect of all the tests in order to determine if they do, or do not, cover all possible values of _i_.
 

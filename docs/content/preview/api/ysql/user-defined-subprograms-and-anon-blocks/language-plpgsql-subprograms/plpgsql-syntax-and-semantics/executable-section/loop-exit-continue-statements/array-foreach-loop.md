@@ -1,5 +1,5 @@
 ---
-title: Array foreach loo" [YSQL]
+title: Array foreach loop [YSQL]
 headerTitle: The "array foreach loop"
 linkTitle: Array foreach loop
 description: Describes the syntax and semantics of the various PL/pgSQL Loop statements. [YSQL]
@@ -107,7 +107,7 @@ This is the result:
 
 These three results, taken together, show that the only meaningful use of the _array foreach loop_ with a one-dimensional array is most compactly written by omitting the _slice_ clause, thus:
 
-```plpgssql
+```plpgsql
 create function s.f_slice_omitted()
   returns table(z text)
   set search_path = pg_catalog, pg_temp
@@ -176,13 +176,13 @@ end;
 $body$;
 ```
 
-Notice how the function uses the _[array_fill()](../../../../../datatypes/type_array/functions-operators/array-fill/)_ SQL function to set up an empty array with the required bounds and whose elements all have the same, required, data type. And notice how it uses the _[array_lower](../../../../../datatypes/type_array/functions-operators/properties/#array-lower)_ and _[array_upper](../../../../../datatypes/type_array/functions-operators/properties/#array-upper)_ SQL functions to read the array's bounds.
+Notice how the function uses the _[array_fill()](../../../../../../datatypes/type_array/functions-operators/array-fill/)_ SQL function to set up an empty array with the required bounds and whose elements all have the same, required, data type. And notice how it uses the _[array_lower](../../../../../../datatypes/type_array/functions-operators/properties/#array-lower)_ and _[array_upper](../../../../../../datatypes/type_array/functions-operators/properties/#array-upper)_ SQL functions to read the array's bounds.
 
 - The first index, _z_, in the expression _arr\[z\]\[y\]\[x\]_ has bounds given by the expressions  _array_lower(arr, 1)_ and _array_upper(arr, 1)_.
 
 - The second index, _y_, in the expression _arr\[z\]\[y\]\[x\]_ has bounds given by the expressions  _array_lower(arr, 2)_ and _array_upper(arr, 2)_.
 
-- The third index, _x_,  in the expression _arr\[z\]\[y\]\[x\]_has bounds given by the expressions  _array_lower(arr, 3)_ and _array_upper(arr, 3)_.
+- The third index, _x_,  in the expression _arr\[z\]\[y\]\[x\]_ has bounds given by the expressions  _array_lower(arr, 3)_ and _array_upper(arr, 3)_.
 
 Before demonstrating the semantics of the _array foreach loop_'s _slice_ clause, it helps to look at the _text_ literal (i.e. the _text_ typecast) for the value that _s.three_dim_array()_ returns for a particular parameterization. Do this:
 
@@ -194,16 +194,16 @@ select s.three_dim_array(
 ```
 
 {{< note title="Array literals." >}}
-See: the section [Creating an array value using a literal](../../../../../datatypes/type_array/literals/); and the subsection [Array Input and Output Syntax](https://www.postgresql.org/docs/11/arrays.html#ARRAYS-IO) in the section [Arrays](https://www.postgresql.org/docs/11/arrays.html) in the PostgreSQL documentation.
+See: the section [Creating an array value using a literal](../../../../../../datatypes/type_array/literals/); and the subsection [Array Input and Output Syntax](https://www.postgresql.org/docs/11/arrays.html#ARRAYS-IO) in the section [Arrays](https://www.postgresql.org/docs/11/arrays.html) in the PostgreSQL documentation.
 {{< /note >}}
 
 The result has no line breaks and so, in a screen window of usual width where line-wrap is turned on, it's very hard to read. Readability is enhanced by adding whitespace manually: line breaks; and a conventional indentation style to line up matching curly braces vertically.
 
 The literal starts by representing the loop bounds, using square bracket pairs. The order is from the first dimension through the highest order dimension. Then an _=_ sign separates this from the list of element values.
 
-The element values themselves are, by definition, listed in storage order. By definition, too, a run of values for the index that changes fastest, _x_, is surrounded by a curly-brace pair. Then, a run of such runs is surrounded by a second curly-brace pair when the index that changes next-fastest, _y_ changes. Finally, the entire list of element values is surrounded by a third curly-brace pair.
+The element values themselves are, by definition, listed in storage order. By definition, too, a run of values for the index that changes fastest, _x_, is surrounded by a curly-brace pair. Then, a run of such runs is surrounded by a second curly-brace pair when the index that changes next-fastest, _y_, changes. Finally, the entire list of element values is surrounded by a third curly-brace pair.
 
-Use the massaged value, now, as the _text[]_ literal input actual for the _[unnest()](../../../../../datatypes/type_array/functions-operators/array-agg-unnest/#unnest)_ SQL function. This serves _both_ to ensure that the massage didn't introduce any typos _and_ to present the original array value in yet another way, thus:
+Use the massaged value, now, as the _text[]_ literal input actual for the _[unnest()](../../../../../../datatypes/type_array/functions-operators/array-agg-unnest/#unnest)_ SQL function. This serves _both_ to ensure that the massage didn't introduce any typos _and_ to present the original array value in yet another way, thus:
 
 ```plpgsql
 select unnest(
@@ -322,14 +322,13 @@ This traversal order is called [_row-major order_](https://en.wikipedia.org/wiki
 
 Here is the complete definition of the _s.without_slice_operator()_ function. Not only does it display the element values from the nested loop, (_over_x_ within _over_y_ within _over_z_); it also adds these sanity tests:
 
-- It concatenates the space-separated element values from the nested loops traversal into a single text value _row_major_order_traversal_.
+- It concatenates the space-separated element values from the nested loops traversal into the single text value, _row_major_order_traversal_.
 - It strips off the array bounds representation from the start of the _text_ literal, _arr_to_text_typecast_; it removes all the curly braces; it removes all the commas; it reduces each run of spaces to just a single space; and it strips off any leading spaces.
-- It concatenates the space-separated element values from the _unnest()_ result as the single _text_ value _unnest_traversal_; and it strips off any leading spaces.
+- It concatenates the space-separated element values from the _unnest()_ result as the single _text_ value, _unnest_traversal_; and it strips off any leading spaces.
 - It does a _foreach_ traversal of the array and concatenates the space-separated element values that this produces into a single text value _foreach_traversal_; and it strips off any leading spaces.
+- Finally, it asserts that all of the _text_ values, _row_major_order_traversal_, _arr_to_text_typecast_, _unnest_traversal_, and _foreach_traversal_, are identical to each other. 
 
-- Finally, it asserts that all of the _text_ values _row_major_order_traversal_, _arr_to_text_typecast_, _unnest_traversal_, and _foreach_traversal_ are identical to each other. 
-
-Create the and execute table function, _s.without_slice_operator()_ thus:
+Create and execute the table function, _s.without_slice_operator()_, thus:
 
 
 ```plpgsql
@@ -428,5 +427,5 @@ The result has already been shown above.
     ...
   end loop;
   ```
-- The _text_ typecast of an array. _arr::text_, also lists the element values in physical storage order.
+- The _text_ typecast of an array, _arr::text_, also lists the element values in physical storage order.
 - Using a three dimensional array as an example, an explicit traversal that uses an _over_x_ loop inside an _over_y_ loop inside an _over_z_ loop. where the elements are addressed using _arr\[z\]\[y\]\[x\]_, also lists the element values in physical storage order.

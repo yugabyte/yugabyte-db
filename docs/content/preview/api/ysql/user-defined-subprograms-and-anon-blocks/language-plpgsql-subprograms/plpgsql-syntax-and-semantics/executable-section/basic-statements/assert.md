@@ -2,7 +2,7 @@
 title: The "assert" statement [YSQL]
 headerTitle: The "assert" statement
 linkTitle: >
-  "assert" statement
+  The "assert" statement
 description: Describes the syntax and semantics of the PL/pgSQL "assert" statement. [YSQL].
 menu:
   preview:
@@ -17,13 +17,13 @@ showRightNav: true
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar-3" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram-3" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
@@ -31,17 +31,17 @@ showRightNav: true
 </ul>
 
 <div class="tab-content">
-  <div id="grammar-3" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/basic-statements/plpgsql_assert_stmt.grammar.md" %}}
   </div>
-  <div id="diagram-3" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/basic-statements/plpgsql_assert_stmt.diagram.md" %}}
   </div>
 </div>
 
 ## Semantics
 
-The _plpgsql_assert_stmt_ evaluates its defining _boolean_expression_. If the result is _true_, then the point of execution moves silently to the next executable statement. But if the result is _false_, then the _'P0004'_ error (_assert_failure_) is caused. If the optional _text_expression_ is omitted, then the system supplied error message _"assertion failed"_ is used (in whatever national language the _lc_messages_ run-time parameter specifies. (See the PostgreSQL documentation section [Locale Support](https://www.postgresql.org/docs/11/locale.html).) If _text_expression_ is defined, then this text is used as the error message.
+The _plpgsql_assert_stmt_ evaluates its defining _boolean_expression_. If the result is _true_, then the point of execution moves silently to the next executable statement. But if the result is _false_, then the _'P0004'_ error (_assert_failure_) is caused. If the optional _text_expression_ is omitted, then the system supplied error message _"assertion failed"_ is used—in whatever national language the _lc_messages_ run-time parameter specifies. (See the PostgreSQL documentation section [Locale Support](https://www.postgresql.org/docs/11/locale.html).) If _text_expression_ is defined, then this text is used as the error message.
 
 If an error occurs while evaluating the _boolean_expression_ or the _text_expression_, then this is reported as a normal error. The _text_expression_ is evaluated only when the assertion fails.
 
@@ -50,7 +50,7 @@ This is a deliberate design. The idea is that these two errors should be unstopp
 
 Testing of assertions can be enabled or disabled via the run-time parameter _plpgsql.check_asserts_, with legal values _on_ (the default) and _off_.
 
-It is _possible_, but generally _unwise_, to catch these two errors explicitly. However, if you implement a scheme to log errors in, for example, a dedicated table then you might want to catch each of these errors, log then, and then re-raise the error. See the [_raise_ statement](../raise/) section.
+It is _possible_, but generally _unwise_, to catch these two errors explicitly. However, if you implement a scheme to log errors in, for example, a dedicated table then you might want to catch each of these errors, log them, and then re-raise the error. See the [_raise_ statement](../raise/) section.
 {{< /tip >}}
 
 ### Catching "assert_failure" explicitly
@@ -175,7 +175,7 @@ Cause the same assertion failure now:
 select s.f('assert');
 ```
 
-This is new result:
+This is the new result:
 
 ```output
 INFO:  Caught "assert_failure".

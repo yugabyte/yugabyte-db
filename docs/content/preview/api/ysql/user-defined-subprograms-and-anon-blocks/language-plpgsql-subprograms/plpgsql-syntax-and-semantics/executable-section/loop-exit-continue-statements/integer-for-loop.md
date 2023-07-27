@@ -62,7 +62,6 @@ begin
 end;
 ```
 
-This rewrite makes it clear that, if _j_ had been earlier declared in an enclosing block statement's _declaration_ section, then the implicitly declared _loop variable_, _j_, would simply shield if from the earlier-declared _i_ in accordance with the normal rules for nested block statements.
+This rewrite makes it clear that, if _j_ had been earlier declared in an enclosing block statement's _declaration_ section, then the implicitly declared _loop variable_, _j_, would simply shield it from the earlier-declared _i_ in accordance with the normal rules for nested block statements.
 
-You can rewrite an example of any of the four other kinds of loop (the _while loop_, the _integer for loop_, the _array foreach loop_, and the _query for loop_) as an _infinite loop_. And sometimes mutual rewrite is possible between other pairs of kinds of _loop_ statement. For example, an _array foreach loop_ can be re-written as an _integer for loop_ over the array's index values.) The present example could have been re-written as a _while loop_ (_while j >= 5_). The _infinite loop_ is the most flexible kind—and therefore you cannot always rewrite this kind of loop as another kind (unless you use an artificial device that adds no value like _while true loop_).
-
+You can rewrite an example of any of the four other kinds of loop (the _while loop_, the _integer for loop_, the _array foreach loop_, and the _query for loop_) as an _infinite loop_. And sometimes mutual rewrite is possible between other pairs of kinds of _loop_ statement. For example, an _array foreach loop_ can be re-written as an _integer for loop_ over the array's index values. The present example could have been re-written as a _while loop_ (_while j >= 5_). The _infinite loop_ is the most flexible kind—and therefore you cannot always rewrite this kind of loop as another kind (unless you use an artificial device that adds no value—like _while true loop_).

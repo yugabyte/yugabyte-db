@@ -1,7 +1,7 @@
 ---
 title: PL/pgSQL exception section [YSQL]
 headerTitle: The PL/pgSQL exception section
-linkTitle: exception section
+linkTitle: Exception section
 description: Describes the syntax and semantics of the PL/pgSQL exception section. [YSQL].
 menu:
   preview:
@@ -82,15 +82,15 @@ This discussion concerns only run-time errors. PL/pgSQL syntax errors most commo
 
 - the _[create procedure](../../../../the-sql-language/statements/ddl_create_procedure/)_ statement
 - the _[create function](../../../../the-sql-language/statements/ddl_create_function/)_ statement
-- the _[do](../../../../the-sql-language/statements/cmd_do/)_ statement (during its syntax analysis phase).
+- the _[do](../../../../the-sql-language/statements/cmd_do/)_ statement (during its syntax analysis phase)
 
 However, PL/pgSQL supports the _execute_ statement (see the _[plpgsql_dynamic_sql_stmt](../../../../syntax_resources/grammar_diagrams/#plpgsql-dynamic-sql-stmt)_ rule)—which can be used only in the _[plpgsql_executable_section](../../../../syntax_resources/grammar_diagrams/#plpgsql-executable-section)_ or the  _[plpgsql_exception_section](../../../../syntax_resources/grammar_diagrams/#plpgsql-exception-section)_. This allows the text of _any_ SQL statement to be defined dynamically and executed from PL/pgSQL code. In such a case, a PL/pgSQL syntax error that a dynamically executed _create procedure_, _create function_ or _do_ statement causes manifests as a run-time error occurring in the _plpgsql_executable_section_, or _plpgsql_exception_section_, from which the DDL is submitted.
 
 An error can therefore occur in any one of these sections:
 
 - the declaration section—in the evaluation of an expression or in the attempt to install the value that the expression computes into the declared variable
-- the executable section—during the execution of any _[plpgsql_executable_stmt](../../../../syntax_resources/grammar_diagrams/#plpgsql-executable-stmt)_.
-- the exception section—during the execution of any _[plpgsql_executable_stmt](../../../../syntax_resources/grammar_diagrams/#plpgsql-executable-stmt)_.
+- the executable section—during the execution of any _[plpgsql_executable_stmt](../../../../syntax_resources/grammar_diagrams/#plpgsql-executable-stmt)_
+- the exception section—during the execution of any _[plpgsql_executable_stmt](../../../../syntax_resources/grammar_diagrams/#plpgsql-executable-stmt)_
 
 #### How to handle run-time errors in PL/pgSQL code
 
@@ -98,7 +98,7 @@ It helps, first, to define the term _top-level PL/pgSQL block statement_. It's t
 
 When an error occurs, it manifests as an exception. An exception is identified (under the covers) by the _error code_ of the error that caused it. The current execution flow is aborted and the search begins for a so-called matching _handler_ (see the _[plpgsql_handler](../../../../syntax_resources/grammar_diagrams/#plpgsql-handler)_ rule). Here "matching" means that one (or more) of the handler's _conditions_ specifies the error code of the to-be-handled exception. The condition might specify the error code explicitly by using the keyword _sqlstate_. Or it might specify it indirectly by using the identifier for the _name_ of the exception. See the section [PostgreSQL Error Codes](https://www.postgresql.org/docs/11/errcodes-appendix.html) in the PostgreSQL documentation. It shows pairs of mappings between an _error code_ and its corresponding _name_. Condition _names_ are interpreted case-insensitively.
 
-The special catch-all condition, denoted by the bare _others_ keyword, matches every possible error _except_ error _'P0004'_ (_assert_failure_) and error _'57014'_ (_query_canceled_). Notice that it is possible, but generally unwise, to catch these two errors explicitly. See the section [Catching "assert_failure" explicitly](../executable-section/assert/#catching-assert-failure-explicitly).
+The special catch-all condition, denoted by the bare _others_ keyword, matches every possible error _except_ error _'P0004'_ (_assert_failure_) and error _'57014'_ (_query_canceled_). Notice that it is possible, but generally unwise, to catch these two errors explicitly. See the section [Catching "assert_failure" explicitly](../executable-section/basic-statements/assert/#catching-assert-failure-explicitly).
 
 - When an error occurs in the executable section of a PL/pgSQL block statement, the search starts in that block's exception section (if present). If no match is found, then the search continues in the exception section (if present) of the containing PL/pgSQL block statement (if this exists).
 - When an error occurs in the declaration section or the exception section of a PL/pgSQL block statement, the search starts in the exception section (if present) of the containing PL/pgSQL block statement (if this exists). Again, if no match is found, then the search continues in the exception section (if present) of the containing PL/pgSQL block statement (if this exists).
@@ -300,9 +300,9 @@ It helps to distinguish between two kinds of error:
 
   The rationale is that it's most reliable to handle the error exactly where it occurs, when all the context information is available. If, instead, the error is allowed to bubble up and to escape to the client code (or even to an exception handler at the end of the top-level PL/pgSQL block statement that implements the subprogram or *do* statement that the client code invoked), then the analysis task is harder and less reliable because there might be many other cases, during the execution of the entire server call, where a _unique_violation_ might occur. You can read Tom Lane's advice to mean that this pattern of exception handler use is perfectly fine.
 
-- **Unexpected errors:** An example of such an error would occur if an attempt is made to change the content of a table that an administrator has carelessly (and recently) set to be _read-only_. Some diagnostic information about an erroring SQL statement is available only in the tightly-enclosing local context from which the statement is issued. For example, actual values that are bound to the statement for execution are no longer available where the block in which they are declared goes out of scope. A maximally defensive approach would be to issue every single SQL statement from its own dedicated tightly enclosing block statement and to provide a _when others_ handler that assembles all available context information into, say, a _jsonb_ value. This implies that every single subprogram must have an _out_ argument to return this value to the caller. The handler must also use the bare _raise_ statement (see the section [When to use the "raise" statement's different syntax variants](../executable-section/raise/#when-to-use-the-raise-statement-s-different-syntax-variants)) when the error report value has been created to stop execution simply blundering on.
+- **Unexpected errors:** An example of such an error would occur if an attempt is made to change the content of a table that an administrator has carelessly (and recently) set to be _read-only_. Some diagnostic information about an erroring SQL statement is available only in the tightly-enclosing local context from which the statement is issued. For example, actual values that are bound to the statement for execution are no longer available where the block in which they are declared goes out of scope. A maximally defensive approach would be to issue every single SQL statement from its own dedicated tightly enclosing block statement and to provide a _when others_ handler that assembles all available context information into, say, a _jsonb_ value. This implies that every single subprogram must have an _out_ argument to return this value to the caller. The handler must also use the bare _raise_ statement (see the section [When to use the "raise" statement's different syntax variants](../executable-section/basic-statements/raise/#when-to-use-the-raise-statement-s-different-syntax-variants)) when the error report value has been created to stop execution simply blundering on.
 
-  However, this approach would lead to verbose, cluttered, code to the extent that it would be very difficult to read and maintain. And, with so vet many savepoints being created and then released during normal, error free, execution, there would be noticeable performance penalty.
+  However, this approach would lead to verbose, cluttered, code to the extent that it would be very difficult to read and maintain. And, with so very many savepoints being created and then released during normal, error free, execution, there would be noticeable performance penalty.
 
   The best, and simplest, way to handle such unexpected errors is in a single _when others_ handler at the end of the top-level PL/pgSQL block statement that implements the subprogram or *do* statement that the client code invoked. This handler can marshal as many facts as are available. These facts include the _context_ which specifies the call stack at the time of the exception. See the account of the _get stacked diagnostics_ statement in the next section. These facts can then be recorded in an _incidents_ table with an auto-generated _ticket_number_ primary key. When this exception section finishes, control returns to the client. This means that there is no need, here, for a bare _raise_ statement to stop execution blundering on. Rather, it's enough to return the fact that such an unexpected error occurred together with the ticket number. The client can then report this outcome in end-user terminology.
   
@@ -315,13 +315,13 @@ The dedicated _[plpgsql_get_stacked_diagnostics_stmt](#plpgsql-get-stacked-diagn
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar-1" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar-2" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram-1" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram-2" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
@@ -329,10 +329,10 @@ The dedicated _[plpgsql_get_stacked_diagnostics_stmt](#plpgsql-get-stacked-diagn
 </ul>
 
 <div class="tab-content">
-  <div id="grammar-1" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar-2" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/plpgsql_get_stacked_diagnostics_stmt,plpgsql_stacked_diagnostics_item,plpgsql_stacked_diagnostics_item_name.grammar.md" %}}
   </div>
-  <div id="diagram-1" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram-2" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/plpgsql_get_stacked_diagnostics_stmt,plpgsql_stacked_diagnostics_item,plpgsql_stacked_diagnostics_item_name.diagram.md" %}}
   </div>
 </div>
@@ -405,7 +405,7 @@ end;
 $body$;
 ```
 
-Now create a function _s.f()_ that will provoke one of a few different contrived errors according to what its input actual argument specifies. One of these is a user-defined error that is caused by the [_raise_ statement](../executable-section/raise). Notice that the exception section defines just a single _others_ handler. This will populate a value of the composite type _s.diagnostics_ that has an attribute for every single available diagnostics item. The function returns the _s.diagnostics_ value so that a caller table function can display each value that _get stacked diagnostics_ populated.
+Now create a function _s.f()_ that will provoke one of a few different contrived errors according to what its input actual argument specifies. One of these is a user-defined error that is caused by the [_raise_ statement](../executable-section/basic-statements/raise). Notice that the exception section defines just a single _others_ handler. This will populate a value of the composite type _s.diagnostics_ that has an attribute for every single available diagnostics item. The function returns the _s.diagnostics_ value so that a caller table function can display each value that _get stacked diagnostics_ populated.
 
 ```plpgsql
 create function s.f(mode in text)

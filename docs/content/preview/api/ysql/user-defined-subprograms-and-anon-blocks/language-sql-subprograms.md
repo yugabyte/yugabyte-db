@@ -1,16 +1,15 @@
 ---
-title: SQL (a.k.a. "language sql") subprograms [YSQL]
-headerTitle: SQL (a.k.a. "language sql") subprograms
+title: SQL subprograms (a.k.a. "language sql" subprograms) [YSQL]
+headerTitle: SQL subprograms (a.k.a. "language sql" subprograms)
 linkTitle: >
   "language sql" subprograms
-description: Describes SQL functions and procedures. These are also known as "language sql" subprograms.)[YSQL].
+description: Describes SQL functions and procedures. These are also known as "language sql" subprograms. [YSQL].
 menu:
   preview:
     identifier: language-sql-subprograms
     parent: user-defined-subprograms-and-anon-blocks
     weight: 20
 type: docs
-
 ---
 
 {{< tip title="Regard the PostgreSQL documentation as the canonical definitional reference on this topic." >}}

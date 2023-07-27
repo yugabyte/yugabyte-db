@@ -2,7 +2,7 @@
 title: The "raise" statement [YSQL]
 headerTitle: The "raise" statement
 linkTitle: >
-  "raise" statement
+  The "raise" statement
 description: Describes the syntax and semantics of the PL/pgSQL "raise" statement. [YSQL].
 menu:
   preview:
@@ -17,13 +17,13 @@ showRightNav: true
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar-3" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram-3" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
@@ -31,10 +31,10 @@ showRightNav: true
 </ul>
 
 <div class="tab-content">
-  <div id="grammar-3" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/basic-statements/plpgsql_raise_stmt,plpgsql_raise_level,plpgsql_raise_shortcut_for_exception_or_message,plpgsql_raise_using_item.grammar.md" %}}
   </div>
-  <div id="diagram-3" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/basic-statements/plpgsql_raise_stmt,plpgsql_raise_level,plpgsql_raise_shortcut_for_exception_or_message,plpgsql_raise_using_item.diagram.md" %}}
   </div>
 </div>
@@ -240,7 +240,7 @@ set client_min_messages = warning;
 call s.p1();
 ```
 
-This finishes silently because tracing isn't yet turn on. Now turn it on and test again:
+This finishes silently because tracing isn't yet turned on. Now turn it on and test again:
 
 ```plpgsql
 set trace.mode = true;
@@ -255,16 +255,16 @@ INFO:  "create table" invoked
 INFO:  "drop table" invoked
 ```
 
-Now turn tracing off on and test again:
+Now turn tracing off and test again:
 
 ```plpgsql
 set trace.mode = 42;
 call s.p1();
 ```
 
-This finishes silently, as intended. (All user-defined run-time parameter setting are observed as _text_ values—and so _42_ has the same effect as _false_.)
+This finishes silently, as intended. (All user-defined run-time parameter settings are observed as _text_ values—and so _42_ has the same effect as _false_.)
 
-It's easy, now, to create a second two-argument overload of _util.trace()_ that adds a _kind_ argument to give more granular control over what is traces and what isn't.
+It's easy, now, to create a second two-argument overload of _util.trace()_ that adds a _kind_ argument to give more granular control over what is traced and what isn't.
 
 ```plpgsql
 create procedure utils.trace(kind in text, msg in text)
@@ -362,7 +362,7 @@ INFO:  Blue message.
 INFO:  Yellow message.
 ```
 
-Finally, turn of all kinds of trace output and test again:
+Finally, turn off all kinds of trace output and test again:
 
 ```plpgsql
 set trace.kinds = '';
@@ -636,7 +636,7 @@ begin
 end;
 ```
 
-This is less cluttered than the general syntax. And, of course, it produces the identical output. (Notice, though, that the special for of the value substitution syntax is less expressive than the _format()_ function supports.) The shortcut syntax is therefore typically preferred for this use-case.
+This is less cluttered than the general syntax. And, of course, it produces the identical output. (Notice, though, that the special form of the value substitution syntax is less expressive than the general substitution syntax that the _format()_ function supports.) Nevertheless, the shortcut syntax is typically preferred for the _raise info_ use-case.
 
 #### "raise exception" with the "shortcut" syntax
 
@@ -798,7 +798,7 @@ However, there's another use case where more than just the bare fact that a regr
 
 Of course, there's a possibility that the client-side check is buggy so that a non-conformant name is sent. This must be seen as an unexpected error. Facts about it must be recorded in an _incidents_ table for offline analysis. But the database code doesn't need to be cluttered by code to communicate the outcome to the client application is it would for a regrettable, but not unexpected error.
 
-The best way to deal with this scenario is at the deep level in the stack where a row with the name is to be inserted or updated. Then, if the conformance check for the name fails, a user-defined exception is raised with not just the dedicated error code for this but also further diagnostic information. The _message_ attribute might be enough. But it might be better to split the diagnostic information between a generic _message_ attribute and a specific _detail_ attribute. Then the API-level subprogram, at the top of the call-stack, that the client application calls will catch this user-defined exception in a _when others_ handler and look after recording the diagnostic information in the _incidents_ table and telling the client just that an unexpected error occurred, together with the incident's ticket number as. (This can be done, for example, using a JSON document as has been discussed above.(
+The best way to deal with this scenario is at the deep level in the stack where a row with the name is to be inserted or updated. Then, if the conformance check for the name fails, a user-defined exception is raised with not just the dedicated error code for this but also further diagnostic information. The _message_ attribute might be enough. But it might be better to split the diagnostic information between a generic _message_ attribute and a specific _detail_ attribute. Then the API-level subprogram, at the top of the call-stack, that the client application calls will catch this user-defined exception in a _when others_ handler and look after recording the diagnostic information in the _incidents_ table and telling the client just that an unexpected error occurred, together with the incident's ticket number as. (This can be done, for example, using a JSON document as has been discussed above.)
 
 The following code illustrates this approach. First, create the procedure _check_name()_ that finishes silently if the check succeeds and that raises an exception if it doesn't:
 

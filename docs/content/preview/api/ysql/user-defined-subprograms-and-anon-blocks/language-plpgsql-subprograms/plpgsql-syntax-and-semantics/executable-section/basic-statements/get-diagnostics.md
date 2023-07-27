@@ -2,7 +2,7 @@
 title: The "get diagnostics" statement [YSQL]
 headerTitle: The "get diagnostics" statement
 linkTitle: >
-  "get diagnostics" statement
+  The "get diagnostics" statement
 description: Describes the syntax and semantics of the PL/pgSQL "get diagnostics" statement. [YSQL].
 menu:
   preview:
@@ -17,13 +17,13 @@ showRightNav: true
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar-3" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram-3" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
@@ -31,10 +31,10 @@ showRightNav: true
 </ul>
 
 <div class="tab-content">
-  <div id="grammar-3" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/basic-statements/plpgsql_get_diagnostics_stmt,plpgsql_diagnostics_item,plpgsql_diagnostics_item_name.grammar.md" %}}
   </div>
-  <div id="diagram-3" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/basic-statements/plpgsql_get_diagnostics_stmt,plpgsql_diagnostics_item,plpgsql_diagnostics_item_name.diagram.md" %}}
   </div>
 </div>
@@ -44,9 +44,9 @@ The PL/pgSQL _get diagnostics_ statement is typically used, for tracing, during 
 
 The _get diagnostics_ syntax specifies three separate run-time facts—all or some of which can, optionally, be read at once:
 
-- _pg_context_: the subprogram call stack from the top-level server call through the execution of the _get diagnostics_ statement itself
-- _row_count_: the number of rows processed by the most recent SQL DML statement invoked by the subprogram or _do_ statement from whose code _get diagnostics_ is invoked.  (DML statements invoked from code that the present subprogram or _do_ statement might invoke are not considered.)
-- _result_oid_: useful only after an _insert_ statement, (nominally) the OID of the most-recently inserted row.
+- _pg_context_: This reports the subprogram call stack from the top-level server call through the execution of the _get diagnostics_ statement itself.
+- _row_count_: This reports the number of rows processed by the most recent SQL DML statement invoked by the subprogram or _do_ statement from whose code _get diagnostics_ is invoked. (DML statements invoked from code that the present subprogram or _do_ statement might invoke are not considered.)
+- _result_oid_: This is useful only after an _insert_ statement, (nominally) the OID of the most-recently inserted row.
 
 {{< note title="The returned value for 'result_oid' is always zero." >}}
 The syntax is accepted; but the returned value for the _result_oid_ item is always zero. The PostgreSQL documentation says that you get a non-zero result only when the _create table_ statement for target table for the insert uses the _with oids_ clause. But YSQL does not support this. (The attempt causes the _0A000_ error: _"OIDs are not supported for user tables."_)
@@ -62,7 +62,7 @@ First, create the function _s.f3()_ that inserts some rows into the table _s.t_ 
 
 - _found_: for the value of the special variable _found_
 - _rows_: for the value from the _get diagnostics_ invocation's _row_count_
-- _ctx_: for the value from the _get diagnostics_ invocation's _pg_context_.
+- _ctx_: for the value from the _get diagnostics_ invocation's _pg_context_
 
 ```plpgsql
 \c :db :u

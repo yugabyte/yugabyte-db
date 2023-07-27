@@ -1,7 +1,8 @@
 ---
 title: Loop, exit, and continue statements [YSQL]
 headerTitle: Loop, exit, and continue statements
-linkTitle: Loop, exit, and continue statements
+linkTitle:
+  The "loop", "exit", and "continue" statements
 description: Describes the syntax and semantics of the various PL/pgSQL Loop statements. [YSQL]
 image: /images/section_icons/api/subsection.png
 menu:
@@ -15,15 +16,17 @@ showRightNav: true
 
 ## Syntax
 
+### The "loop" statement
+
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar-3" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram-3" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
@@ -31,23 +34,25 @@ showRightNav: true
 </ul>
 
 <div class="tab-content">
-  <div id="grammar-3" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/plpgsql_loop_stmt,plpgsql_unbounded_loop_defn,plpgsql_bounded_loop_defn,plpgsql_integer_for_loop_defn,plpgsql_array_foreach_loop_defn,plpgsql_query_for_loop_defn,plpgsql_dynamic_subquery.grammar.md" %}}
   </div>
-  <div id="diagram-3" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/plpgsql_loop_stmt,plpgsql_unbounded_loop_defn,plpgsql_bounded_loop_defn,plpgsql_integer_for_loop_defn,plpgsql_array_foreach_loop_defn,plpgsql_query_for_loop_defn,plpgsql_dynamic_subquery.diagram.md" %}}
   </div>
 </div>
 
+### The "exit" and "continue" statements
+
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar-3" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar-2" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram-3" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram-2" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
@@ -55,17 +60,15 @@ showRightNav: true
 </ul>
 
 <div class="tab-content">
-  <div id="grammar-3" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar-2" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/plpgsql_exit_stmt,plpgsql_continue_stmt.grammar.md" %}}
   </div>
-  <div id="diagram-3" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram-2" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/executable-section/plpgsql_exit_stmt,plpgsql_continue_stmt.diagram.md" %}}
   </div>
 </div>
 
 ## Semantics
-
-The example
 
 There are two kinds of PL/pgSQL loop: the _unbounded loop_; and the (bounded) _for loop_.
 

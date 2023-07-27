@@ -18,13 +18,13 @@ Every identifier that occurs within a PL/pgSQL block statement must be defined. 
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#grammar-3" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram-3" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
@@ -32,10 +32,10 @@ Every identifier that occurs within a PL/pgSQL block statement must be defined. 
 </ul>
 
 <div class="tab-content">
-  <div id="grammar-3" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/plpgsql_declaration,plpgsql_regular_declaration,plpgsql_bound_refcursor_declaration,plpgsql_cursor_arg.grammar.md" %}}
   </div>
-  <div id="diagram-3" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../../syntax_resources/user-defined-subprograms-and-anon-blocks/language-plpgsql-subprograms/plpgsql-syntax-and-semantics/plpgsql_declaration,plpgsql_regular_declaration,plpgsql_bound_refcursor_declaration,plpgsql_cursor_arg.diagram.md" %}}
   </div>
 </div>
@@ -53,7 +53,7 @@ Use any convenient sandbox database and a role that has no special attributes an
 
  Here are enough examples to illustrate all of the syntax possibilities.
 
-```ppgsql
+```plpgsql
 \c :db :u
 drop schema if exists s cascade;
 create schema s;
@@ -127,7 +127,7 @@ Notice that this declaration:
 r  constant refcursor not null := 'cur';
 ```
 
-establishes the variable _r_ as a potential pointer to a _[cursor](../../../cursors/)_ with the fixed name _cur_. A _refcursor_ variable that is declared in this way (using the _plpgsql_regular_declaration_ syntax) is referred to as an _unbound refcursor variable_. Here, _unbound_ captures the idea that the _open_ executable statement can use an arbitrary _[subquery](../../../syntax_resources/grammar_diagrams/#subquery)_ that defines a result set whose shape emerges at run-time, thus:
+establishes the variable _r_ as a potential pointer to a _[cursor](../../../../cursors/)_ with the fixed name _cur_. A _refcursor_ variable that is declared in this way (using the _plpgsql_regular_declaration_ syntax) is referred to as an _unbound refcursor variable_. Here, _unbound_ captures the idea that the _open_ executable statement can use an arbitrary _[subquery](../../../../syntax_resources/grammar_diagrams/#subquery)_ that defines a result set whose shape emerges at run-time, thus:
 
 ```plpgsql
 open r for execute $$
@@ -140,7 +140,7 @@ open r for execute $$
   $$;
 ```
 
-This has the same effect as this top-level _[declare](../../../the-sql-language/statements/dml_declare/)_ SQL statement:
+This has the same effect as this top-level _[declare](../../../../the-sql-language/statements/dml_declare/)_ SQL statement:
 
 ```plpgsql
 declare cur no scroll cursor without hold for
@@ -210,9 +210,9 @@ Notice that the way you list the optional formal arguments in the declaration of
 
 ## Syntax errors and semantics errors in the declare section
 
-A syntax error in the declaration section, when the PL/pgSQL block statement is the argument of a _[do](../../../syntax_resources/grammar_diagrams/#do)_ statement, prevents the attempt to execute it. And a syntax error in the declaration section, when the PL/pgSQL block statement is the argument of a _[create function](../../../../syntax_resources/grammar_diagrams/#create-function)_ or _[create procedure](../../../../syntax_resources/grammar_diagrams/#create-procedure)_ statement (more carefully stated, when it's an [unalterable_fn_attribute](../../../syntax_resources/grammar_diagrams/#unalterable-fn-attribute) or an [unalterable_proc_attribute](../../../syntax_resources/grammar_diagrams/#unalterable-proc-attribute)), prevents the to-be-created subprogram from being recorded in the catalog.
+A syntax error in the declaration section, when the PL/pgSQL block statement is the argument of a _[do](../../../../syntax_resources/grammar_diagrams/#do)_ statement, prevents the attempt to execute it. And a syntax error in the declaration section, when the PL/pgSQL block statement is the argument of a _[create function](../../../../syntax_resources/grammar_diagrams/#create-function)_ or _[create procedure](../../../../syntax_resources/grammar_diagrams/#create-procedure)_ statement (more carefully stated, when it's an [unalterable_fn_attribute](../../../../syntax_resources/grammar_diagrams/#unalterable-fn-attribute) or an [unalterable_proc_attribute](../../../../syntax_resources/grammar_diagrams/#unalterable-proc-attribute)), prevents the to-be-created subprogram from being recorded in the catalog.
 
-A semantic error in the declaration section shows up as a run-time error. Notice that the exception as which the error manifests within PL/pgSQL cannot be handled in the exception section of the _[plpgsql_block_stmt](../../../syntax_resources/grammar_diagrams/#plpgsql-block-stmt)_ that the declaration section introduces. Rather, the exception can be handled only in the exception section of an enclosing _plpgsql_block_stmt_.
+A semantic error in the declaration section shows up as a run-time error. Notice that the exception as which the error manifests within PL/pgSQL cannot be handled in the exception section of the _[plpgsql_block_stmt](../../../../syntax_resources/grammar_diagrams/#plpgsql-block-stmt)_ that the declaration section introduces. Rather, the exception can be handled only in the exception section of an enclosing _plpgsql_block_stmt_.
 
 ### Syntax errors
 
@@ -315,7 +315,7 @@ end;
 $body$;
 ```
 
-No errors are reported—and _s.p()_ is recorded in the catalog. Notice that when _b_ is referenced in the expression that initializes _c_, it has not yet been declared. This happens on the next line. But forward references are not allowed_and such an error is considered to be a semantic error and is therefore not  detected until _call s.p()_ is attempted. The attempt causes this error, attributed to the line that declares _c_:
+No errors are reported—and _s.p()_ is recorded in the catalog. Notice that when _b_ is referenced in the expression that initializes _c_, it has not yet been declared. This happens on the next line. But forward references are not allowed—and such an error is considered to be a semantic error and is therefore not  detected until _call s.p()_ is attempted. The attempt causes this error, attributed to the line that declares _c_:
 
 ```output
 42703: column "b" does not exist
