@@ -621,6 +621,7 @@ message AUHMetadataPB {
 message AUHAuxDataPB {
   optional string tablet_id = 1;
   optional string table_id = 2;
+  optional string method = 3;
 }
 
 message WaitStateInfoPB {

@@ -28,6 +28,7 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/serialization.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -281,9 +282,12 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
   auto wait_state = this->wait_state();
   if (wait_state) {
     wait_state->UpdateMetadata({
-              .current_request_id = header_.call_id,
-              .client_node_ip = yb::ToString(remote_address())
-            });
+      .current_request_id = header_.call_id,
+      .client_node_ip = yb::ToString(remote_address())
+    });
+    wait_state->UpdateAuxInfo({
+      .method = method_name().ToBuffer(),
+    });
   } else {
     LOG(ERROR) << "Wait state is nullptr for " << ToString();
   }

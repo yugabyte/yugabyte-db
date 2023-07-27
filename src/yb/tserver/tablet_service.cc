@@ -2054,7 +2054,13 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   }
 
   if (req->has_auh_metadata()) {
-    util::WaitStateInfo::UpdateMetadataFromPB(req->auh_metadata());
+    auto wait_state = util::WaitStateInfo::CurrentWaitState();
+    if (wait_state && req->has_tablet_id()) {
+      wait_state->UpdateAuxInfo(util::AUHAuxInfo{ .tablet_id = req->tablet_id() });
+    }
+    if (wait_state && req->has_auh_metadata()) {
+      wait_state->UpdateMetadataFromPB(req->auh_metadata());
+    }
   }
   auto status = PerformWrite(req, resp, &context);
   if (!status.ok()) {
@@ -2071,7 +2077,13 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
   }
 
   if (req->has_auh_metadata()) {
-    util::WaitStateInfo::UpdateMetadataFromPB(req->auh_metadata());
+    auto wait_state = util::WaitStateInfo::CurrentWaitState();
+    if (wait_state && req->has_tablet_id()) {
+      wait_state->UpdateAuxInfo(util::AUHAuxInfo{ .tablet_id = req->tablet_id() });
+    }
+    if (wait_state && req->has_auh_metadata()) {
+      wait_state->UpdateMetadataFromPB(req->auh_metadata());
+    }
   }
   PerformRead(server_, this, req, resp, std::move(context));
 }
