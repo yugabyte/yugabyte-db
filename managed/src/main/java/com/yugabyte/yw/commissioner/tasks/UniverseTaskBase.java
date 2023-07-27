@@ -2007,8 +2007,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           if (CollectionUtils.isNotEmpty(keyspaceTable.tableUUIDList)) {
             Set<UUID> tableSet = new HashSet<>(keyspaceTable.tableUUIDList);
             for (UUID tableUUID : tableSet) {
-              GetTableSchemaResponse tableSchema =
-                  client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
+              GetTableSchemaResponse tableSchema = null;
+              try {
+                tableSchema = client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
+              } catch (Exception e) {
+                log.warn(
+                    "Error fetching table with UUID: "
+                        + tableUUID.toString()
+                        + ", skipping backup.");
+                continue;
+              }
               // If table is not REDIS or YCQL, ignore.
               if (tableSchema.getTableType().equals(TableType.PGSQL_TABLE_TYPE)
                   || !tableSchema.getTableType().equals(backupRequestParams.backupType)
@@ -2016,7 +2024,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                   || !keyspaceTable.keyspace.equals(tableSchema.getNamespace())) {
                 log.info(
                     "Skipping backup of table with UUID: "
-                        + tableUUID
+                        + tableUUID.toString()
                         + " and keyspace: "
                         + keyspaceTable.keyspace);
                 continue;
