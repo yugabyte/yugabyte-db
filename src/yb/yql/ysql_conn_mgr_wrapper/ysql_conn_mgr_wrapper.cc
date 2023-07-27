@@ -38,6 +38,10 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_idle_time, 3600,
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_max_client_connections, 10000,
     "Total number of concurrent client connections that the Ysql Connection Manager allows.");
 
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_num_workers, 0,
+  "Number of worker threads used by Ysql Connection Manager. If set as 0 (default value), "
+  "the number of worker threads will be half of the number of CPU cores.");
+
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_pool_size, 70,
     "Total number of concurrent database connections Ysql Connection Manager can create. "
     "Apart from database connections for the global pool, "
