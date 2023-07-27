@@ -4,14 +4,20 @@ import { useTranslation } from 'react-i18next';
 import { YBTextarea } from '../../../redesign/components';
 import { CONST_VALUES, verifyLDAPAttributes } from '../../../utils/UniverseUtils';
 
-const CONF_PREFIX = '--ysql_hba_conf_csv=';
 interface PreviewConfFormProps {
   formProps: any;
   serverType: string;
+  flagName: string;
 }
 
-export const PreviewGFlagsConf: FC<PreviewConfFormProps> = ({ formProps, serverType }) => {
+export const PreviewGFlagsConf: FC<PreviewConfFormProps> = ({
+  formProps,
+  serverType,
+  flagName
+}) => {
   const { t } = useTranslation();
+  const CONF_PREFIX = `--${flagName}=`;
+
   const flagValue =
     serverType === 'TSERVER'
       ? formProps?.values?.tserverFlagDetails?.previewFlagValue ?? formProps?.values?.flagvalue

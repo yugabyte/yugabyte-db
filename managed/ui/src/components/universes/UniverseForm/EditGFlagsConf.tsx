@@ -12,7 +12,8 @@ import {
   GFLAG_EDIT,
   formatLDAPConf,
   verifyLDAPAttributes,
-  unformatLDAPConf
+  unformatLDAPConf,
+  MultilineGFlags
 } from '../../../utils/UniverseUtils';
 import { ReactComponent as DraggableIcon } from '../../../redesign/assets/draggable.svg';
 import { ReactComponent as CloseIcon } from '../../../redesign/assets/close.svg';
@@ -45,6 +46,7 @@ interface EditGFlagConfProps {
   formProps: any;
   mode: string;
   serverType: string;
+  flagName: string;
 }
 
 export interface GFlagRowProps {
@@ -74,7 +76,12 @@ const reorderGFlagRows = (GFlagRows: any, startIndex: number, endIndex: number) 
   return result;
 };
 
-export const EditGFlagsConf: FC<EditGFlagConfProps> = ({ formProps, mode, serverType }) => {
+export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
+  formProps,
+  mode,
+  serverType,
+  flagName
+}) => {
   let unformattedLDAPConf: string | null = null;
   const GFlagConfData = CONST_VALUES.EMPTY_STRING;
   const { t } = useTranslation();
@@ -101,16 +108,20 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({ formProps, mode, server
       : getGFlagRows(rowCount)
   );
 
-  const getPlaceholder = (index: number) => {
+  const getPlaceholder = (index: number, flagName: string) => {
+    if (flagName === MultilineGFlags.YSQL_IDENT_CONF_CSV) {
+      return 'universeForm.gFlags.identConfLocal';
+    }
+
     let message = CONST_VALUES.EMPTY_STRING;
     switch (index) {
       case 0:
-        message = 'universeForm.gFlags.hbaLDAPConflocal';
+        message = 'universeForm.gFlags.hbaLDAPConfLocal';
         break;
       case 1:
         message = 'universeForm.gFlags.hbaLDAPConfHost';
         break;
-      case 2:
+      default:
         message = 'universeForm.gFlags.hbaLDAPConfHostSSL';
         break;
     }
@@ -171,6 +182,7 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({ formProps, mode, server
       flagvalueobject: rows,
       previewFlagError: errorMessage
     };
+
     formProps.setFieldValue(serverTypeProp, flagDetails);
     formProps.setFieldValue('flagvalue', isGFlagInvalid ? CONST_VALUES.EMPTY_STRING : confData);
   };
@@ -245,7 +257,7 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({ formProps, mode, server
                                 multiline={true}
                                 minRows={1}
                                 maxRows={8}
-                                placeholder={t(getPlaceholder(item.index))}
+                                placeholder={t(getPlaceholder(item.index, flagName))}
                                 defaultValue={
                                   isNonEmptyArray(GFlagValueConfObject) ||
                                   isNonEmptyArray(unformattedLDAPConf)
