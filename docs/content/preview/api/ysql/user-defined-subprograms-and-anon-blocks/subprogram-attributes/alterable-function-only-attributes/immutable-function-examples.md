@@ -156,8 +156,8 @@ as $body$
 begin
   if not (v ~ '^[a-z]{5}$') then
     raise exception using
-      errcode = '23514'::text,
-      message = 'Bad "'||v||'" — Must be exactly five lower-case [a-z] characters';
+      errcode := '23514'::text,
+      message := 'Bad "'||v||'" — Must be exactly five lower-case [a-z] characters';
   end if;
   return true;
 end;

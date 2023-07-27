@@ -223,7 +223,7 @@ This is the result:
 
 ## Combining variadic and polymorphic functionality in a single user-defined function
 
-A _variadic_ function can be _polymorphic_ too. Simply declare its last formal argument as _variadic anyarray_.  Argument matching and the determination of the actual result type behave as you'd expect.
+A _variadic_ function can be _polymorphic_ too. Simply declare its last formal argument as _variadic anyarray_. Argument matching, and the determination of the actual result type, behave as you'd expect.
 
 ### Example: _mean()_ for numeric values or single character values
 
