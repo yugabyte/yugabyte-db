@@ -391,6 +391,8 @@ class PgClientServiceImpl::Impl {
       //
       // GetLockStatusRequestPB supports providing multiple transaction ids, but postgres sends
       // only one transaction id in PgGetLockStatusRequestPB for now.
+      // TODO(pglocks): Once we call GetTransactionStatus for involved tablets, ensure we populate
+      // aborted_subtxn_set in the GetLockStatusRequests that we send to involved tablets as well.
       lock_status_req.add_transaction_ids(req.transaction_id());
       return DoGetLockStatus(lock_status_req, resp, context, live_tservers);
     }
@@ -483,7 +485,9 @@ class PgClientServiceImpl::Impl {
       node_entry.add_transaction_ids(txn_id);
       for (const auto& tablet_id : old_txn->tablets()) {
         auto& tablet_entry = (*lock_status_req.mutable_transactions_by_tablet())[tablet_id];
-        tablet_entry.add_transaction_ids(txn_id);
+        auto* transaction = tablet_entry.add_transactions();
+        transaction->set_id(txn_id);
+        transaction->mutable_aborted()->Swap(old_txn->mutable_aborted_subtxn_set());
       }
       old_txns_pq.pop();
     }
@@ -535,8 +539,8 @@ class PgClientServiceImpl::Impl {
       const GetLockStatusRequestPB& req, PgGetLockStatusResponsePB* resp) {
     std::unordered_map<std::string, std::unordered_set<TabletId>> txn_involved_tablets;
     for (const auto& [tablet_id, involved_txns] : req.transactions_by_tablet()) {
-      for (const auto& txn : involved_txns.transaction_ids()) {
-        auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(txn));
+      for (const auto& txn : involved_txns.transactions()) {
+        auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(txn.id()));
         txn_involved_tablets[txn_id.ToString()].insert(tablet_id);
       }
     }

@@ -114,11 +114,18 @@ service TabletServerService {
 // shouldn't be set together nor should be left empty together.
 message GetLockStatusRequestPB {
   message TransactionInfoPB {
-    repeated bytes transaction_ids = 1;
+    optional bytes id = 1;
+    optional SubtxnSetPB aborted = 2;
   }
-  // Tablets to scan. Limit per tablet results to the specified transaction_ids in TransactionInfoPB
-  // when non-empty. If empty, include lock info of all transactions at that tablet.
-  map<string, TransactionInfoPB> transactions_by_tablet = 1;
+
+  message TabletTransactionInfoPB {
+    repeated TransactionInfoPB transactions = 1;
+  }
+
+  // Tablets to scan. Limit per tablet results to the specified transaction_ids in
+  // TabletTransactionInfoPB when non-empty. If empty, include lock info of all transactions at that
+  // tablet.
+  map<string, TabletTransactionInfoPB> transactions_by_tablet = 1;
 
   optional bool include_trace = 2 [ default = false ];
 
