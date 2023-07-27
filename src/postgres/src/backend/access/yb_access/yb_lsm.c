@@ -401,7 +401,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	if (scan->yb_aggrefs)
 	{
 		/*
-		 * TODO(#18018): deduplicate with ybc_getnext_heaptuple,
+		 * TODO(jason): deduplicate with ybc_getnext_heaptuple,
 		 * ybc_getnext_indextuple.
 		 */
 		if (ybscan->quit_scan)
@@ -413,12 +413,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 		 */
 		Assert(ybscan->prepare_params.index_only_scan);
 
-		/*
-		 * TODO(#18018): deduplicate with ybc_getnext_heaptuple,
-		 * ybc_getnext_indextuple.
-		 */
-		scan->xs_recheck = (ybscan->hash_code_keys != NIL ||
-							!ybscan->is_full_cond_bound);
+		scan->xs_recheck = YbNeedsRecheck(ybscan);
 		if (!ybscan->is_exec_done)
 		{
 			HandleYBStatus(YBCPgSetForwardScan(ybscan->handle,
