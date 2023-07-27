@@ -215,6 +215,8 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   // type defined within the metric prototype.
   void CheckInstantiation(const MetricPrototype* proto) const;
 
+  void AddConsumption(int64_t consumption) REQUIRES(lock_);
+
   const MetricEntityPrototype* const prototype_;
   const std::string id_;
 
@@ -226,7 +228,7 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   // The key/value attributes. Protected by lock_
   AttributeMap attributes_;
 
-  std::shared_ptr<MemTracker> mem_tracker_ GUARDED_BY(lock_);
+  std::weak_ptr<MemTracker> mem_tracker_ GUARDED_BY(lock_);
 
   // The set of metrics which should never be retired. Protected by lock_.
   std::vector<scoped_refptr<Metric> > never_retire_metrics_;

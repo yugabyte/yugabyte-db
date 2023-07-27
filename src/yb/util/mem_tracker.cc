@@ -198,10 +198,11 @@ class MemTracker::TrackerMetrics {
     }
     metric_ = metric_entity_->FindOrCreateGauge(
         std::unique_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
-          metric_entity_->prototype().name(), std::move(name),
-          CreateMetricLabel(mem_tracker), MetricUnit::kBytes,
-          CreateMetricDescription(mem_tracker), yb::MetricLevel::kInfo)),
+            metric_entity_->prototype().name(), std::move(name),
+            CreateMetricLabel(mem_tracker), MetricUnit::kBytes,
+            CreateMetricDescription(mem_tracker), yb::MetricLevel::kInfo)),
         static_cast<int64_t>(0));
+    // Consumption could be changed when gauge is created, so set it separately.
     metric_->set_value(mem_tracker.consumption());
   }
 

@@ -1135,9 +1135,7 @@ inline scoped_refptr<AtomicGauge<T>> MetricEntity::FindOrCreateGauge(
   if (it == metric_map_.end()) {
     auto result = new AtomicGauge<T>(proto, initial_value);
     metric_map_.emplace(proto, result);
-    if (mem_tracker_) {
-      mem_tracker_->Consume(sizeof(AtomicGauge<T>));
-    }
+    AddConsumption(sizeof(AtomicGauge<T>));
     return result;
   }
   return down_cast<AtomicGauge<T>*>(it->second.get());
@@ -1155,9 +1153,7 @@ inline scoped_refptr<AtomicGauge<T> > MetricEntity::FindOrCreateGauge(
   }
   auto result = new AtomicGauge<T>(std::move(proto), initial_value);
   metric_map_.emplace(result->prototype(), result);
-  if (mem_tracker_) {
-    mem_tracker_->Consume(sizeof(AtomicGauge<T>));
-  }
+  AddConsumption(sizeof(AtomicGauge<T>));
   return result;
 }
 
@@ -1173,9 +1169,7 @@ inline scoped_refptr<FunctionGauge<T> > MetricEntity::FindOrCreateFunctionGauge(
   }
   auto result = new FunctionGauge<T>(proto, function);
   metric_map_.emplace(proto, result);
-  if (mem_tracker_) {
-     mem_tracker_->Consume(sizeof(FunctionGauge<T>));
-  }
+  AddConsumption(sizeof(FunctionGauge<T>));
   return result;
 }
 
