@@ -2942,7 +2942,7 @@ matview_name ::= qualified_name
 ```output.ebnf
 new_owner ::= name
 ```
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="141" height="35" viewbox="0 0 141 35"><path class="connector" d="M0 22h15m111 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#qualified-name"><rect class="rule" x="15" y="5" width="111" height="25"/><text class="text" x="25" y="22">qualified_name</text></a><polygon points="137,29 141,29 141,15 137,15" style="fill:black;stroke-width:0"/></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="85" height="35" viewbox="0 0 85 35"><path class="connector" d="M0 22h15m55 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#name"><rect class="rule" x="15" y="5" width="55" height="25"/><text class="text" x="25" y="22">name</text></a><polygon points="81,29 85,29 85,15 81,15" style="fill:black;stroke-width:0"/></svg>
 
 ### alter_fdw_options
 ```output.ebnf
