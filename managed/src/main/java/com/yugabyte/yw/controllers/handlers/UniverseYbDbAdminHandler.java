@@ -84,8 +84,10 @@ public class UniverseYbDbAdminHandler {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
     // Only yugbayte customer cloud can modify password for users other than default.
+    boolean isCloudEnabled =
+        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
     if (!StringUtils.isEmpty(dbCreds.ysqlAdminUsername)) {
-      if (!userIntent.enableYSQLAuth) {
+      if (!userIntent.enableYSQLAuth && !isCloudEnabled) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot change password for ysql as its auth is already disabled.");
       } else if (!dbCreds.ysqlAdminUsername.equals(Util.DEFAULT_YSQL_USERNAME)
@@ -94,7 +96,7 @@ public class UniverseYbDbAdminHandler {
       }
     }
     if (!StringUtils.isEmpty(dbCreds.ycqlAdminUsername)) {
-      if (!userIntent.enableYCQLAuth) {
+      if (!userIntent.enableYCQLAuth && !isCloudEnabled) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Cannot change password for ycql as its auth is already disabled.");
       } else if (!dbCreds.ycqlAdminUsername.equals(Util.DEFAULT_YCQL_USERNAME)
