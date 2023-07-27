@@ -2420,7 +2420,9 @@ public class NodeManager extends DevopsBase {
       VmUpgradeTaskType vmUpgradeTaskType,
       boolean useCustomImageByDefault,
       List<String> commandArgs) {
-    if (!cloudType.equals(Common.CloudType.aws) && !cloudType.equals(Common.CloudType.gcp)) {
+    if (!cloudType.equals(Common.CloudType.aws)
+        && !cloudType.equals(Common.CloudType.gcp)
+        && !cloudType.equals(Common.CloudType.azu)) {
       return;
     }
     boolean skipTags = false;
