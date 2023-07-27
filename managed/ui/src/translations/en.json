@@ -544,6 +544,8 @@
     "OIDCJWT": {
       "emailId": "Email ID",
       "OIDCJWTToken": "JSON Web Token",
+      "errorMessage":"Oops, JWT Token has expired, please login via SSO",
+      "redirectLinkText": "Back to home page",
       "expirationDate": "Token Expiration Date",
       "ysqlCommandLabel": "Use the following command to authenticate into your database using a JSON web token."
     },
