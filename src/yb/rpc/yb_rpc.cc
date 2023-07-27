@@ -28,7 +28,6 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/serialization.h"
 
-#include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
