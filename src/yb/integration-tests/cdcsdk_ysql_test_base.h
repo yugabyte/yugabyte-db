@@ -124,6 +124,7 @@ DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
 DECLARE_bool(cdc_enable_consistent_records);
 DECLARE_bool(cdc_populate_end_markers_transactions);
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
+DECLARE_int64(cdc_resolve_intent_lag_threshold_ms);
 
 namespace yb {
 
