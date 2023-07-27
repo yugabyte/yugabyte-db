@@ -309,8 +309,10 @@ using qlexpr::QLTableRow;
 const std::hash<std::string> hash_for_data_root_dir;
 
 // Returns true if the given transaction ids are sorted when compared in encoded string notation.
-bool IsSortedAscendingEncoded(const TransactionId& id1, const TransactionId& id2) {
-  return id1.ToString() <= id2.ToString();
+bool IsSortedAscendingEncoded(
+    const std::pair<TransactionId, SubtxnSet>& id1,
+    const std::pair<TransactionId, SubtxnSet>& id2) {
+  return id1.first.ToString() <= id2.first.ToString();
 }
 
 ////////////////////////////////////////////////////////////
@@ -4195,19 +4197,29 @@ Status Tablet::ApplyAutoFlagsConfig(const AutoFlagsConfigPB& config) {
 
 Status PopulateLockInfoFromIntent(
     Slice key, Slice val, const TableInfoProvider& table_info_provider,
+    const std::map<TransactionId, SubtxnSet>& aborted_subtxn_info,
     ::google::protobuf::Map<std::string, TabletLockInfoPB_TransactionLockInfoPB>* txn_locks) {
   auto parsed_intent = VERIFY_RESULT(docdb::ParseIntentKey(key, val));
   auto decoded_value = VERIFY_RESULT(dockv::DecodeIntentValue(
       val, nullptr /* verify_transaction_id_slice */, HasStrong(parsed_intent.types)));
+
+  if (!aborted_subtxn_info.empty()) {
+    auto aborted_subtxn_set_it = aborted_subtxn_info.find(decoded_value.transaction_id);
+    RSTATUS_DCHECK(
+        aborted_subtxn_set_it != aborted_subtxn_info.end(), IllegalState,
+        "Processing intent for unexpected transaction");
+    if (aborted_subtxn_set_it->second.Test(decoded_value.subtransaction_id)) {
+      return Status::OK();
+    }
+  }
 
   auto& lock_entry = (*txn_locks)[decoded_value.transaction_id.ToString()];
   return docdb::PopulateLockInfoFromParsedIntent(
       parsed_intent, decoded_value, table_info_provider, lock_entry.add_granted_locks());
 }
 
-Status Tablet::GetLockStatus(const std::set<TransactionId>& transaction_ids,
+Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
                              TabletLockInfoPB* tablet_lock_info) const {
-  // TODO(pglocks): Support colocated tables
   if (metadata_->table_type() != PGSQL_TABLE_TYPE) {
     return STATUS_FORMAT(
         InvalidArgument, "Cannot get lock status for non YSQL table $0", metadata_->table_id());
@@ -4230,8 +4242,7 @@ Status Tablet::GetLockStatus(const std::set<TransactionId>& transaction_ids,
   auto intent_iter = std::unique_ptr<rocksdb::Iterator>(intents_db_->NewIterator(read_options));
   intent_iter->SeekToFirst();
 
-  if (transaction_ids.empty()) {
-    // If transaction_ids is empty, iterate over all records in intents_db.
+  if (transactions.empty()) {
     while (intent_iter->Valid()) {
       auto key = intent_iter->key();
 
@@ -4244,28 +4255,28 @@ Status Tablet::GetLockStatus(const std::set<TransactionId>& transaction_ids,
       }
 
       RETURN_NOT_OK(PopulateLockInfoFromIntent(
-          key, intent_iter->value(), *this, tablet_lock_info->mutable_transaction_locks()));
+          key, intent_iter->value(), *this, transactions,
+          tablet_lock_info->mutable_transaction_locks()));
 
       intent_iter->Next();
     }
 
     RETURN_NOT_OK(intent_iter->status());
   } else {
-    DCHECK(!transaction_ids.empty());
-    // While fetching intents of transactions below, we assume that the 'transaction_ids' set is
-    // sorted following the encoded string notation order of TransactionId. This assumption helps us
-    // avoid repeated SeekToFirst calls on the rocksdb iterator and we fetch relevants intents in
-    // one forward pass.
+    DCHECK(!transactions.empty());
+    // While fetching intents of transactions below, we assume that the 'transactions' map is sorted
+    // following the encoded string notation order of TransactionId. This assumption helps us avoid
+    // repeated SeekToFirst calls on the rocksdb iterator so we can fetch relevant intents in one
+    // forward pass.
     DCHECK(std::is_sorted(
-        transaction_ids.begin(), transaction_ids.end(), IsSortedAscendingEncoded));
+        transactions.begin(), transactions.end(), IsSortedAscendingEncoded));
 
-    // If transaction_ids is set, use txn reverse mapping of intents_db to find all intent keys
-    // efficiently.
     std::vector<dockv::KeyBytes> txn_intent_keys;
     static constexpr size_t kReverseKeySize = 1 + sizeof(TransactionId);
     char reverse_key_data[kReverseKeySize];
     reverse_key_data[0] = dockv::KeyEntryTypeAsChar::kTransactionId;
-    for (auto& txn_id : transaction_ids) {
+    for (auto& txn : transactions) {
+      auto& txn_id = txn.first;
       memcpy(&reverse_key_data[1], txn_id.data(), sizeof(TransactionId));
       auto reverse_key = Slice(reverse_key_data, kReverseKeySize);
       intent_iter->Seek(reverse_key);
@@ -4296,13 +4307,13 @@ Status Tablet::GetLockStatus(const std::set<TransactionId>& transaction_ids,
 
       auto val = intent_iter->value();
       RETURN_NOT_OK(PopulateLockInfoFromIntent(
-          key, val, *this, tablet_lock_info->mutable_transaction_locks()));
+          key, val, *this, transactions, tablet_lock_info->mutable_transaction_locks()));
     }
   }
 
   const auto& wait_queue = transaction_participant()->wait_queue();
   if (wait_queue) {
-    RETURN_NOT_OK(wait_queue->GetLockStatus(transaction_ids, *this, tablet_lock_info));
+    RETURN_NOT_OK(wait_queue->GetLockStatus(transactions, *this, tablet_lock_info));
   }
 
   return Status::OK();

@@ -510,6 +510,7 @@ TEST_F(PgGetLockStatusTest, TestLocksOfColocatedTables) {
 TEST_F(PgGetLockStatusTest, ReceivesWaiterSubtransactionId) {
   const auto table = "foo";
   const auto locked_key = "1";
+  constexpr int kMinTxnAgeSeconds = 1;
 
   auto blocker_session = ASSERT_RESULT(Init(table, locked_key));
 
@@ -520,8 +521,9 @@ TEST_F(PgGetLockStatusTest, ReceivesWaiterSubtransactionId) {
         "SELECT * FROM $0 WHERE k=$1 FOR SHARE", table, locked_key));
   });
 
-  // TODO(pglocks): Use flag controlling default min_txn_age or set the session variable explicitly.
-  SleepFor(10s * kTimeMultiplier);
+  ASSERT_OK(blocker_session.conn->ExecuteFormat(
+      "SET yb_locks_min_txn_age='$0s'", kMinTxnAgeSeconds));
+  SleepFor(kMinTxnAgeSeconds * 1s * kTimeMultiplier);
 
   auto waiting_subtxn_id = ASSERT_RESULT(blocker_session.conn->FetchValue<string>(Format(
     "SELECT DISTINCT(ybdetails->>'subtransaction_id') FROM pg_locks "
@@ -540,6 +542,37 @@ TEST_F(PgGetLockStatusTest, ReceivesWaiterSubtransactionId) {
   ASSERT_EQ(waiting_subtxn_id, granted_subtxn_id);
 
   th.join();
+}
+
+TEST_F(PgGetLockStatusTest, HidesLocksFromAbortedSubTransactions) {
+  const auto table = "foo";
+  const auto locked_key = "1";
+  constexpr int kMinTxnAgeSeconds = 1;
+
+  auto session = ASSERT_RESULT(Init(table, locked_key));
+
+  ASSERT_OK(session.conn->Execute("SAVEPOINT s1"));
+  ASSERT_OK(session.conn->FetchFormat("SELECT * FROM $0 WHERE k=2 FOR UPDATE", table));
+  ASSERT_OK(session.conn->Execute("SAVEPOINT s2"));
+  ASSERT_OK(session.conn->FetchFormat("SELECT * FROM $0 WHERE k=3 FOR UPDATE", table));
+
+  auto get_distinct_subtxn_count_query = Format(
+    "SELECT COUNT(DISTINCT(ybdetails->>'subtransaction_id')) FROM pg_locks "
+    "WHERE ybdetails->>'transactionid'='$0'",
+    session.txn_id.ToString());
+
+  ASSERT_OK(session.conn->ExecuteFormat("SET yb_locks_min_txn_age='$0s'", kMinTxnAgeSeconds));
+  SleepFor(kMinTxnAgeSeconds * 1s * kTimeMultiplier);
+
+  EXPECT_EQ(ASSERT_RESULT(session.conn->FetchValue<int64>(get_distinct_subtxn_count_query)), 3);
+
+  ASSERT_OK(session.conn->Execute("ROLLBACK TO s2"));
+
+  EXPECT_EQ(ASSERT_RESULT(session.conn->FetchValue<int64>(get_distinct_subtxn_count_query)), 2);
+
+  ASSERT_OK(session.conn->Execute("ROLLBACK TO s1"));
+
+  EXPECT_EQ(ASSERT_RESULT(session.conn->FetchValue<int64>(get_distinct_subtxn_count_query)), 1);
 }
 
 } // namespace pgwrapper
