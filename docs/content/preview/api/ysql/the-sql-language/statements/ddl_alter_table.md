@@ -202,8 +202,6 @@ Add the specified constraint to the table.
 
 Change the type of an existing column. If data on disk is required to change, a full table rewrite is needed.
 
-The new column type will be applied automatically to indexes and simple table constraints by casting the initially provided expression.
-
 If the optional `COLLATE` clause is not specified, the default collation for the new column type will be used.
 
 If the optional `USING` clause is not provided, the default conversion for the new column value will be the same as an assignment cast from the old type to the new type.
