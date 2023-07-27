@@ -1,0 +1,88 @@
+## Used as VelocityEngine template.
+
+- job_name: 'yba-generated-${kubeconfig_uuid}-k8s-nodes'
+
+  scheme: ${scheme}
+
+  tls_config:
+    ca_file: "${ca_file}"
+  bearer_token_file: "${bearer_token_file}"
+
+  kubernetes_sd_configs:
+  - role: node
+    kubeconfig_file: "${kubeconfig_file}"
+
+  relabel_configs:
+  - action: labelmap
+    regex: __meta_kubernetes_node_label_(.+)
+  - target_label: __address__
+    replacement: ${server_domain}
+  - source_labels: [__meta_kubernetes_node_name]
+    regex: (.+)
+    target_label: __metrics_path__
+    replacement: /api/v1/nodes/${1}/proxy/metrics
+  metric_relabel_configs:
+    # Only keep the metrics which we care about
+    - source_labels: ["__name__"]
+      regex: "kubelet_volume_stats_used_bytes|kubelet_volume_stats_capacity_bytes"
+      action: keep
+    - source_labels: ["persistentvolumeclaim"]
+      regex: "(.*)-yb-(.*)"
+      action: keep
+    # Save the name of the metric so we can group_by since we cannot by __name__ directly...
+    - source_labels: ["__name__"]
+      regex: "(.*)"
+      target_label: "saved_name"
+      replacement: "$1"
+    - source_labels: ["pod"]
+      regex: "(.*)"
+      target_label: "pod_name"
+      replacement: "$1"
+    - source_labels: ["container"]
+      regex: "(.*)"
+      target_label: "container_name"
+      replacement: "$1"
+
+- job_name: 'yba-generated-${kubeconfig_uuid}-k8s-nodes-cadvisor'
+
+  scheme: ${scheme}
+
+  tls_config:
+    ca_file: "${ca_file}"
+  bearer_token_file: "${bearer_token_file}"
+
+  kubernetes_sd_configs:
+  - role: node
+    kubeconfig_file: "${kubeconfig_file}"
+
+  relabel_configs:
+  - action: labelmap
+    regex: __meta_kubernetes_node_label_(.+)
+  - target_label: __address__
+    replacement: ${server_domain}
+  - source_labels: [__meta_kubernetes_node_name]
+    regex: (.+)
+    target_label: __metrics_path__
+    replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+  metric_relabel_configs:
+    # Only keep the metrics which we care about
+    - source_labels: ["__name__"]
+      regex: "container_cpu_usage_seconds_total|container_memory_working_set_bytes"
+      action: keep
+    # Save the name of the metric so we can group_by since we cannot by __name__ directly...
+    - source_labels: ["__name__"]
+      regex: "(.*)"
+      target_label: "saved_name"
+      replacement: "$1"
+    - source_labels: ["pod"]
+      regex: "(.*)"
+      target_label: "pod_name"
+      replacement: "$1"
+    - source_labels: ["container"]
+      regex: "(.*)"
+      target_label: "container_name"
+      replacement: "$1"
+    # Keep metrics from YugabyteDB pods, discard everything else
+    - source_labels: ["pod_name"]
+      regex: "(.*)yb-(.*)"
+      action: keep

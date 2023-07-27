@@ -5,7 +5,9 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.PlacementInfoUtil.isMultiAZ;
 
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
@@ -426,5 +428,36 @@ public class KubernetesUtil {
           "Pod address template generated an invalid DNS, check if placeholders are correct.");
     }
     return template;
+  }
+
+  /**
+   * Gives a map of [provider|region|az]-[UUID] to KubernetesInfo objects for all the Kubernetes
+   * providers. These are only for the active regions and AZs.
+   *
+   * <p>Example: for an AZ the key would be az-4abff05a-9b26-4d25-8a54-562669d587b0.
+   */
+  public static Map<String, KubernetesInfo> getAllKubernetesInfos() {
+    Map<String, KubernetesInfo> k8sInfos = new HashMap<String, KubernetesInfo>();
+    // Go through all the customers, providers, regions, and the
+    // zones.
+    for (Customer customer : Customer.getAll()) {
+      for (Provider provider :
+          Provider.getAll(customer.getUuid(), null, Common.CloudType.kubernetes)) {
+        k8sInfos.put("provider-" + provider.getUuid().toString(), CloudInfoInterface.get(provider));
+        for (Region region : provider.getAllRegions()) {
+          if (!region.isActive()) {
+            continue;
+          }
+          k8sInfos.put("region-" + region.getUuid().toString(), CloudInfoInterface.get(region));
+          for (AvailabilityZone az : region.getAllZones()) {
+            if (!az.isActive()) {
+              continue;
+            }
+            k8sInfos.put("az-" + az.getUuid().toString(), CloudInfoInterface.get(az));
+          }
+        }
+      }
+    }
+    return k8sInfos;
   }
 }

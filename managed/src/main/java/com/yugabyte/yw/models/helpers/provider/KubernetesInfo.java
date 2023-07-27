@@ -75,6 +75,18 @@ public class KubernetesInfo implements CloudInfoInterface {
   @ApiModelProperty(hidden = true)
   private boolean legacyK8sProvider = true;
 
+  // TODO(bhavin192): Should caFile, tokenFile, apiServerEndpoint, and
+  // kubeconfig be part of a subclass named kubeConfigInfo?
+
+  @ApiModelProperty(hidden = true)
+  private String kubeConfigCAFile;
+
+  @ApiModelProperty(hidden = true)
+  private String kubeConfigTokenFile;
+
+  @ApiModelProperty(hidden = true)
+  private String apiServerEndpoint;
+
   @JsonIgnore
   public Map<String, String> getEnvVars() {
     Map<String, String> envVars = new HashMap<>();
@@ -125,6 +137,10 @@ public class KubernetesInfo implements CloudInfoInterface {
     this.kubernetesImagePullSecretName = CommonUtils.getMaskedValue(kubernetesImagePullSecretName);
     this.kubernetesPullSecret = CommonUtils.getMaskedValue(kubernetesPullSecret);
     this.kubernetesPullSecretName = CommonUtils.getMaskedValue(kubernetesPullSecretName);
+    // Fields not accessible to the user
+    this.kubeConfigCAFile = null;
+    this.kubeConfigTokenFile = null;
+    this.apiServerEndpoint = null;
   }
 
   @JsonIgnore
@@ -144,5 +160,9 @@ public class KubernetesInfo implements CloudInfoInterface {
     }
     // We don't want to change it once created.
     this.legacyK8sProvider = kubernetesInfo.legacyK8sProvider;
+    // Restore fields not accessible to the user
+    this.kubeConfigCAFile = kubernetesInfo.kubeConfigCAFile;
+    this.kubeConfigTokenFile = kubernetesInfo.kubeConfigTokenFile;
+    this.apiServerEndpoint = kubernetesInfo.apiServerEndpoint;
   }
 }

@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ExtraMigrationManager;
+import com.yugabyte.yw.common.PrometheusConfigManager;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellLogsManager;
 import com.yugabyte.yw.common.SnapshotCleanup;
@@ -96,6 +97,7 @@ public class AppInit {
       PerfAdvisorGarbageCollector perfRecGC,
       SnapshotCleanup snapshotCleanup,
       FileDataService fileDataService,
+      PrometheusConfigManager prometheusConfigManager,
       @Named("AppStartupTimeMs") Long startupTime)
       throws ReflectiveOperationException {
     log.info("Yugaware Application has started");
@@ -235,6 +237,8 @@ public class AppInit {
       pitrConfigPoller.start();
 
       ybcUpgrade.start();
+
+      prometheusConfigManager.updateK8sScrapeConfigs();
 
       // Add checksums for all certificates that don't have a checksum.
       CertificateHelper.createChecksums();

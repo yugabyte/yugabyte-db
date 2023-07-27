@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
+import com.yugabyte.yw.common.PrometheusConfigManager;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.SwamperHelper;
@@ -109,6 +110,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected ReleaseManager mockReleaseManager;
   protected GFlagsValidation mockGFlagsValidation;
   protected BackupHelper mockBackupHelper;
+  protected PrometheusConfigManager mockPrometheusConfigManager;
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -196,6 +198,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockReleaseManager = mock(ReleaseManager.class);
     mockCloudAPIFactory = mock(CloudAPI.Factory.class);
     mockBackupHelper = mock(BackupHelper.class);
+    mockPrometheusConfigManager = mock(PrometheusConfigManager.class);
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -233,6 +236,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
                 .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))
                 .overrides(bind(BackupHelper.class).toInstance(mockBackupHelper))
+                .overrides(
+                    bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager)))
         .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
         .build();
