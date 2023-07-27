@@ -1,15 +1,19 @@
 import { FC, useState } from 'react';
-import { makeStyles, Box, Typography } from '@material-ui/core';
+import { makeStyles, Box, Typography, Theme } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { EditGFlagsConf } from './EditGFlagsConf';
 import { PreviewGFlagsConf } from './PreviewGFlagsConf';
 import { YBButton } from '../../../redesign/components';
+import { MultilineGFlags } from '../../../utils/UniverseUtils';
 
 interface GFlagConfProps {
   formProps: any;
   mode: string;
   serverType: string;
+  flagName: string;
 }
+
+const POSTGRES_USERNAME_MAP = 'https://www.postgresql.org/docs/current/auth-username-maps.html';
 
 export const GFlagMultilineMode = {
   EDIT: 'edit',
@@ -17,7 +21,7 @@ export const GFlagMultilineMode = {
 } as const;
 export type GFlagMultilineMode = typeof GFlagMultilineMode[keyof typeof GFlagMultilineMode];
 
-export const useStyles = makeStyles(() => ({
+export const useStyles = makeStyles((theme: Theme) => ({
   buttons: {
     float: 'right'
   },
@@ -29,13 +33,30 @@ export const useStyles = makeStyles(() => ({
   },
   previewButton: {
     borderRadius: '0px 8px 8px 0px'
+  },
+  readMoreText: {
+    color: '#44518B'
+  },
+  redirectText: {
+    color: theme.palette.orange[300],
+    textDecoration: 'underline'
   }
 }));
 
-export const GFlagsConf: FC<GFlagConfProps> = ({ formProps, mode, serverType }) => {
+const GFlagDescription = {
+  ysql_hba_conf_csv: 'universeForm.gFlags.hbaConfDescription',
+  ysql_ident_conf_csv: 'universeForm.gFlags.identConfDescriptionFirst'
+} as const;
+
+const GFlagAdditionalDescription = {
+  ysql_ident_conf_csv: 'universeForm.gFlags.identConfDescriptionMore'
+} as const;
+
+export const GFlagsConf: FC<GFlagConfProps> = ({ formProps, mode, serverType, flagName }) => {
   const classes = useStyles();
   const { t } = useTranslation();
   const [currentView, setCurentView] = useState<GFlagMultilineMode>(GFlagMultilineMode.EDIT);
+  const [readMore, setReadMore] = useState<boolean>(false);
 
   const handleEditClick = () => {
     setCurentView(GFlagMultilineMode.EDIT);
@@ -73,16 +94,47 @@ export const GFlagsConf: FC<GFlagConfProps> = ({ formProps, mode, serverType }) 
         </span>
       </Box>
       <Box mt={1}>
-        {
-          'Input each record as a new row, then reorder them. The sequential order of the records are significant as they are searched serially for every connection request.'
-        }
+        <Box mt={1}>
+          {t(GFlagDescription[flagName])}
+          {flagName === MultilineGFlags.YSQL_IDENT_CONF_CSV && (
+            <>
+              <a
+                href={POSTGRES_USERNAME_MAP}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={classes.redirectText}
+              >
+                {t('universeForm.gFlags.identConfPostgreSQL')}
+              </a>
+              {t('universeForm.gFlags.identConfDescriptionSecond')}
+            </>
+          )}
+          {readMore && (
+            <span>
+              <br />
+              <br />
+              {t(GFlagAdditionalDescription[flagName])}
+            </span>
+          )}
+
+          {flagName === MultilineGFlags.YSQL_IDENT_CONF_CSV && (
+            <span className={classes.readMoreText} onClick={() => setReadMore(!readMore)}>
+              {!readMore ? t('universeForm.gFlags.readMore') : t('universeForm.gFlags.readLess')}
+            </span>
+          )}
+        </Box>
       </Box>
       <Box mt={2}>
         {currentView === GFlagMultilineMode.EDIT && (
-          <EditGFlagsConf formProps={formProps} mode={mode} serverType={serverType} />
+          <EditGFlagsConf
+            formProps={formProps}
+            mode={mode}
+            serverType={serverType}
+            flagName={flagName}
+          />
         )}
         {currentView === GFlagMultilineMode.PREVIEW && (
-          <PreviewGFlagsConf formProps={formProps} serverType={serverType} />
+          <PreviewGFlagsConf formProps={formProps} serverType={serverType} flagName={flagName} />
         )}
       </Box>
     </>
