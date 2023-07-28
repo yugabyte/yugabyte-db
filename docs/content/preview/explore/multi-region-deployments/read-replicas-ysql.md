@@ -13,22 +13,47 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+{{<api-tabs>}}
 
-  <li >
-    <a href="../read-replicas-ysql/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
+Applications running in other regions would have to incur cross-region latency to read the latest data from the leader. If a little staleness for reads is okay for the applications running in the other regions, then **Read Replicas** is the pattern to adopt.
 
-  <li >
-    <a href="../read-replicas-ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
+A read replica cluster is a set of follower nodes connected to a primary cluster. These are purely observer nodes - which means that they will not take part in the RAFT consensus and elections. This enables the Read Replica cluster to have a different replication factor than the primary cluster (even numbers OK!)
 
-</ul>
+Let's look into how this can be beneficial for your application.
 
-Documentation for YSQL read replicas is forthcoming.
+## Overview
+
+{{<cluster-setup-tabs>}}
+
+Let's say you have your RF3 cluster set up across in `us-east-1` and `us-east-2`,  with leader preference set to `us-east-1`. Let's say that you want to run other applications in `us-central` and `us-west`. Then the read latencies would be similar to the following illustration.
+
+![Read Replicas - setup](/images/develop/global-apps/global-apps-read-replicas-setup.png)
+
+## Improve read latencies
+
+You can set up separate **Read Replica** clusters in each of the regions where you want to run your application where a little staleness is OK.
+
+This will enable the application to read data from the closest replica instead of going cross-region to the tablet leaders.
+
+![Read Replicas - Reduced latency](/images/develop/global-apps/global-apps-read-replicas-final.png)
+
+Notice that the read latency for the application in `us-west` has drastically dropped to 2 ms from the initial 60 ms and the read latency of the application in `us-central` has also dropped to 2 ms.
+
+As replicas may not be up-to-date with all updates, by design, this might return slightly stale data (default: 30s).
+
+{{<note>}}
+This is only for reads. All writes still go to the leader.
+{{</note>}}
+
+## Failover
+
+When the read replicas in a region fail, the application will redirect its read to the next closest read replica or leader.
+
+![Read Replicas - Failover](/images/develop/global-apps/global-apps-read-replicas-failover.png)
+
+Notice how the application in `us-west` reads from the follower in `us-central` when the read replicas in `us-west` have failed. Even now, the read latency is just 40 ms, much less than the original 60 ms.
+
+## Learn more
+
+- [Read replica architecture](../../../architecture/docdb-replication/read-replicas)
+- [Follower reads](../../ysql-language-features/going-beyond-sql/follower-reads-ycql/) 
