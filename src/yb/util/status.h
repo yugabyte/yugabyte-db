@@ -83,7 +83,19 @@ YB_STRONGLY_TYPED_BOOL(AddRef);
 class StatusErrorCode;
 struct StatusCategoryDescription;
 
-class NODISCARD_CLASS Status {
+class NODISCARD_CLASS Status;
+
+// This class is unsafe version of Status that could be used in low level performance critical
+// libraries to transfer status to the caller.
+// Each single call to Status::UnsafeRelease should end up with single Status instantiation from
+// UnsafeStatus.
+class UnsafeStatus {
+ private:
+  friend class Status;
+  void* state_ = nullptr;
+};
+
+class Status {
  public:
   // Wrapper class for OK status to forbid creation of Result from Status::OK in compile time
   class OK {
@@ -94,6 +106,15 @@ class NODISCARD_CLASS Status {
   };
   // Create a success status.
   Status() {}
+
+  explicit Status(UnsafeStatus source)
+      : state_(static_cast<State*>(source.state_), false) {}
+
+  UnsafeStatus UnsafeRelease() {
+    UnsafeStatus result;
+    result.state_ = state_.detach();
+    return result;
+  }
 
   // Returns true if the status indicates success.
   MUST_USE_RESULT bool ok() const { return state_ == nullptr; }
