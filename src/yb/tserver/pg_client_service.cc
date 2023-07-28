@@ -367,12 +367,13 @@ class PgClientServiceImpl::Impl {
     });
   }
 
+  // Comparator used for maintaining a max heap of old transactions based on their start times.
   struct OldTransactionComparator {
     bool operator()(
         const OldTransactionMetadataPBPtr lhs, const OldTransactionMetadataPBPtr rhs) const {
-      // Order is reversed so that we get transactions with earlier start times first.
+      // Order is reversed so that we pop newer transactions first.
       if (lhs->start_time() != rhs->start_time()) {
-        return lhs->start_time() > rhs->start_time();
+        return lhs->start_time() < rhs->start_time();
       }
       return lhs->transaction_id() > rhs->transaction_id();
     }
