@@ -14,6 +14,7 @@ import _ from 'lodash';
 import { ROOT_URL, isSSOEnabled } from '../../../../config';
 import { clearCredentials } from '../../../../routes';
 import { trimString } from '../../../../utils/ObjectUtils';
+import { LDAP_CA_CERT_ERR_MSG, handleCACertErrMsg } from '../../../customCACerts';
 
 class LoginForm extends Component {
   constructor(props) {
@@ -86,6 +87,8 @@ class LoginForm extends Component {
 
     const showLoginFrom = !isSSOEnabled() || this.state.showLoginFrom;
 
+    const errMsg = handleCACertErrMsg({ message: authToken.error }, { hideToast: true }) ? LDAP_CA_CERT_ERR_MSG : JSON.stringify(authToken.error);
+
     return (
       <div className="container full-height dark-background flex-vertical-middle">
         <div className="col-sm-5 dark-form login-form">
@@ -138,11 +141,10 @@ class LoginForm extends Component {
                     </div>
                   )}
                   <div
-                    className={`alert alert-danger form-error-alert ${
-                      authToken.error ? '' : 'hide'
-                    }`}
+                    className={`alert alert-danger form-error-alert ${authToken.error ? '' : 'hide'
+                      }`}
                   >
-                    {<strong>{JSON.stringify(authToken.error)}</strong>}
+                    {<strong>{errMsg}</strong>}
                   </div>
                   <div className="clearfix login-fields">
                     <Field name="email">
