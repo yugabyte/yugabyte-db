@@ -5690,7 +5690,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIsUnderCDCSDKReplicationField
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
 
-  EnableCDCServiceInAllTserver(1);
+  EnableCDCServiceInAllTserver(3);
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
 
@@ -5715,7 +5715,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIsUnderCDCSDKReplicationField
     ASSERT_OK(test_cluster()->mini_tablet_server(i)->Start());
   }
   LOG(INFO) << "All nodes restarted";
-  EnableCDCServiceInAllTserver(1);
+  EnableCDCServiceInAllTserver(3);
 
   check_is_under_cdc_sdk_replication(true);
 
