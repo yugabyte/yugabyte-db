@@ -28,18 +28,11 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.stream.Collectors;
-import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+
+import javax.inject.Inject;
+import java.util.*;
+import java.util.stream.Collectors;
 
 // Tracks edit intents to the cluster and then performs the sequence of configuration changes on
 // this universe to go from the current set of master/tserver nodes to the final configuration.
@@ -185,7 +178,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       // universe to happen.
       Universe universe = unlockUniverseForUpdate(errorString);
 
-      if (universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")) {
+      if (universe != null
+          && universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")) {
         universe.updateConfig(
             ImmutableMap.of(
                 Universe.USE_CUSTOM_IMAGE,

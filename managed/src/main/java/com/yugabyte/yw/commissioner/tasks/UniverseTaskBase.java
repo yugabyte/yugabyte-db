@@ -2,76 +2,17 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
-import static com.yugabyte.yw.forms.UniverseTaskParams.isFirstTryForTask;
-
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.api.client.util.Objects;
 import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Streams;
 import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.HealthChecker;
-import com.yugabyte.yw.commissioner.TaskExecutor;
+import com.yugabyte.yw.commissioner.*;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
-import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
-import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTable;
-import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTableYb;
-import com.yugabyte.yw.commissioner.tasks.subtasks.BackupUniverseKeys;
-import com.yugabyte.yw.commissioner.tasks.subtasks.BulkImport;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeAdminPassword;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
-import com.yugabyte.yw.commissioner.tasks.subtasks.CreateAlertDefinitions;
-import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteNode;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DestroyEncryptionAtRest;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DisableEncryptionAtRest;
-import com.yugabyte.yw.commissioner.tasks.subtasks.EnableEncryptionAtRest;
-import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
-import com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ResetUniverseVersion;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreBackupYb;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeys;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYb;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlUpgrade;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SetActiveUniverseKeys;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SetFlagInMemory;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeStatus;
-import com.yugabyte.yw.commissioner.tasks.subtasks.SwamperTargetsFileUpdate;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UnivSetCertificate;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateSucceeded;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistGFlags;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDataMove;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForEncryptionKeyInMemory;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForFollowerLag;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeaderBlacklistCompletion;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeadersOnPreferredOnly;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
+import com.yugabyte.yw.commissioner.tasks.subtasks.*;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigUpdateMasterAddresses;
@@ -80,47 +21,14 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.forms.BulkImportParams;
-import com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType;
-import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.forms.RestoreBackupParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.HighAvailabilityConfig;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
-import com.yugabyte.yw.models.XClusterConfig;
-import com.yugabyte.yw.models.helpers.ColumnDetails;
+import com.yugabyte.yw.models.helpers.*;
 import com.yugabyte.yw.models.helpers.ColumnDetails.YQLDataType;
-import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.NodeStatus;
-import com.yugabyte.yw.models.helpers.TableDetails;
-import com.yugabyte.yw.models.helpers.TaskType;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
-import java.util.function.Consumer;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
-import javax.annotation.Nullable;
-import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
 import org.slf4j.MDC;
@@ -133,8 +41,48 @@ import org.yb.util.ServerInfo;
 import play.api.Play;
 import play.libs.Json;
 
+import javax.annotation.Nullable;
+import javax.inject.Inject;
+import java.time.Duration;
+import java.util.*;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
+import static com.yugabyte.yw.forms.UniverseTaskParams.isFirstTryForTask;
+
 @Slf4j
 public abstract class UniverseTaskBase extends AbstractTaskBase {
+
+  // Tasks that modify cluster placement.
+  // If one of such tasks is failed, we should not allow starting most of other tasks,
+  // until failed task is retried.
+  private static final Set<TaskType> PLACEMENT_MODIFICATION_TASKS =
+      ImmutableSet.of(
+          TaskType.AddNodeToUniverse,
+          TaskType.RemoveNodeFromUniverse,
+          TaskType.DeleteNodeFromUniverse,
+          TaskType.EditUniverse,
+          //          TaskType.EditKubernetesUniverse, Cannot use it here as it is not @Retryable.
+          TaskType.ReleaseInstanceFromUniverse,
+          TaskType.StartNodeInUniverse,
+          TaskType.StopNodeInUniverse,
+          TaskType.ResizeNode);
+
+  // Tasks that are allowed to run if cluster placement modification task failed.
+  private static final Set<TaskType> SAFE_TO_RUN_IF_UNIVERSE_BROKEN =
+      ImmutableSet.of(
+          TaskType.CreateBackup,
+          TaskType.BackupUniverse,
+          TaskType.MultiTableBackup,
+          TaskType.RestoreBackup,
+          TaskType.CreateXClusterConfig,
+          TaskType.EditXClusterConfig,
+          TaskType.DeleteXClusterConfig,
+          TaskType.SyncXClusterConfig,
+          TaskType.DestroyUniverse);
 
   protected static final String MIN_WRITE_READ_TABLE_CREATION_RELEASE = "2.6.0.0";
 
@@ -221,7 +169,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Consumer<Universe> callback) {
     TaskType owner = TaskExecutor.getTaskType(getClass());
     if (owner == null) {
-      log.trace("TaskType not found for class " + this.getClass().getCanonicalName());
+      String msg = "TaskType not found for class " + this.getClass().getCanonicalName();
+      log.error(msg);
+      throw new IllegalStateException(msg);
     }
     return new UniverseUpdater() {
       @Override
@@ -243,15 +193,33 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           log.error(msg);
           throw new RuntimeException(msg);
         }
-        // If the task is retried, check if the task UUID is same as the one in the universe.
-        // Check this condition only on retry to retain same behavior as before.
-        if (!isForceUpdate
-            && !universeDetails.updateSucceeded
-            && taskParams().previousTaskUUID != null
-            && !Objects.equal(taskParams().previousTaskUUID, universeDetails.updatingTaskUUID)) {
-          String msg = "Only the last task " + taskParams().previousTaskUUID + " can be retried";
-          log.error(msg);
-          throw new RuntimeException(msg);
+        if (taskParams().previousTaskUUID != null) {
+          // If the task is retried, check if the task UUID is same as the one in the universe.
+          // Check this condition only on retry to retain same behavior as before.
+          boolean isLastTaskOrLastPlacementTaskRetry =
+              Objects.equals(taskParams().previousTaskUUID, universeDetails.updatingTaskUUID)
+                  || Objects.equals(
+                      taskParams().previousTaskUUID, universeDetails.placementModificationTaskUuid);
+          if (!isForceUpdate && !isLastTaskOrLastPlacementTaskRetry) {
+            String msg = "Only the last task " + taskParams().previousTaskUUID + " can be retried";
+            log.error(msg);
+            throw new RuntimeException(msg);
+          }
+        } else {
+          // If we're in the middle of placement modification task (failed and waiting to be
+          // retried)
+          // only allow subset of safe to execute tasks
+          if (universeDetails.placementModificationTaskUuid != null
+              && !SAFE_TO_RUN_IF_UNIVERSE_BROKEN.contains(owner)) {
+            String msg =
+                "Universe "
+                    + taskParams().universeUUID
+                    + " placement update failed - can't run "
+                    + owner.name()
+                    + " task until placement update succeeds";
+            log.error(msg);
+            throw new RuntimeException(msg);
+          }
         }
         markUniverseUpdateInProgress(owner, universe, checkSuccess);
         if (callback != null) {
@@ -268,6 +236,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     universeDetails.updateInProgress = true;
     universeDetails.updatingTask = owner;
     universeDetails.updatingTaskUUID = userTaskUUID;
+    if (PLACEMENT_MODIFICATION_TASKS.contains(owner)) {
+      universeDetails.placementModificationTaskUuid = userTaskUUID;
+    }
     if (checkSuccess) {
       universeDetails.updateSucceeded = false;
     }
@@ -364,7 +335,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             universeDetails.encryptionAtRestConfig = taskParams().encryptionAtRestConfig;
 
             universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled =
-                taskParams().encryptionAtRestConfig.opType.equals(OpType.ENABLE);
+                taskParams()
+                    .encryptionAtRestConfig
+                    .opType
+                    .equals(EncryptionAtRestConfig.OpType.ENABLE);
             universe.setUniverseDetails(universeDetails);
           }
         };
@@ -508,17 +482,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             }
             // Persist the updated information about the universe. Mark it as being edited.
             universeDetails.updateInProgress = false;
-            universeDetails.updatingTask = null;
             universeDetails.errorString = err;
             if (universeDetails.updateSucceeded) {
-              // Clear the task UUID only if the update succeeded.
+              // Clear the task UUIDs only if the update succeeded.
               universeDetails.updatingTaskUUID = null;
               // Do not save the transient state in the universe.
               universeDetails.nodeDetailsSet.forEach(
                   n -> {
                     n.masterState = null;
                   });
+              if (PLACEMENT_MODIFICATION_TASKS.contains(universeDetails.updatingTask)) {
+                universeDetails.placementModificationTaskUuid = null;
+              }
             }
+            universeDetails.updatingTask = null;
             universe.setUniverseDetails(universeDetails);
           }
         };
