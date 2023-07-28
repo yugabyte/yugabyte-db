@@ -2443,7 +2443,10 @@ Status GetChangesForCDCSDK(
         TabletSplit, "Tablet Split on tablet: $0, no more records to stream", tablet_id);
   }
 
-  if (FLAGS_cdc_populate_safepoint_record && !pending_intents) {
+  // We do not populate SAFEPOINT records in two scenarios:
+  // 1. When we are streaming batches of a large transaction
+  // 2. When we are streaming snapshot records
+  if (FLAGS_cdc_populate_safepoint_record && !pending_intents && from_op_id.write_id() != -1) {
     RETURN_NOT_OK(PopulateCDCSDKSafepointOpRecord(
         safe_time.ToUint64(),
         tablet_peer->tablet()->metadata()->table_name(),

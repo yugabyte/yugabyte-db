@@ -6447,7 +6447,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCommitTimeOrderAcrossMultiTab
 
 TEST_F(
     CDCSDKYsqlTest,
-    YB_DISABLE_TEST_IN_TSAN(TestCommitTimeRecordTimeAndSafepointRecordForSnapshot)) {
+    YB_DISABLE_TEST_IN_TSAN(TestCommitTimeRecordTimeAndNoSafepointRecordForSnapshot)) {
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
   FLAGS_cdc_snapshot_batch_size = 10;
 
@@ -6490,7 +6490,7 @@ TEST_F(
         seen_safepoint_record = true;
       }
     }
-    ASSERT_EQ(seen_safepoint_record, true);
+    ASSERT_EQ(seen_safepoint_record, false);
 
     change_resp = change_resp_updated;
     if (change_resp_updated.cdc_sdk_checkpoint().key().empty() &&
