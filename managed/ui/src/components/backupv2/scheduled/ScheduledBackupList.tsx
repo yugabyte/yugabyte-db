@@ -8,7 +8,15 @@
  */
 
 import React, { FC, useMemo, useState } from 'react';
-import { Col, DropdownButton, MenuItem, OverlayTrigger, Popover, Row } from 'react-bootstrap';
+import {
+  Col,
+  DropdownButton,
+  MenuItem,
+  OverlayTrigger,
+  Popover,
+  Row,
+  Tooltip
+} from 'react-bootstrap';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import cronstrue from 'cronstrue';
@@ -22,7 +30,7 @@ import {
   editBackupSchedule,
   getScheduledBackupList
 } from '../common/BackupScheduleAPI';
-import { TableTypeLabel } from '../../../redesign/helpers/dtos';
+import { TableType, TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { IBackupSchedule, IBackupScheduleStatus } from '../common/IBackupSchedule';
 import { BackupCreateModal } from '../components/BackupCreateModal';
 
@@ -30,11 +38,13 @@ import { convertScheduleToFormValues, convertMsecToTimeFrame } from './Scheduled
 
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router';
-import { keyBy } from 'lodash';
+import { find, keyBy } from 'lodash';
 import { ScheduledBackupEmpty } from '../components/BackupEmpty';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import { ITable } from '../common/IBackup';
 import './ScheduledBackupList.scss';
+import WarningIcon from '../../users/icons/warning_icon';
 
 const wrapTableName = (tablesList: string[] | undefined) => {
   if (!Array.isArray(tablesList) || tablesList.length === 0) {
@@ -166,6 +176,7 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
               setShowCreateModal(true);
             }}
             storageConfig={storageConfigsMap[schedule.backupInfo.storageConfigUUID]}
+            tablesInUniverse={tablesInUniverse?.data ?? []}
           />
         ))}
         {isFetchingNextPage && <YBLoading />}
@@ -191,6 +202,7 @@ interface ScheduledBackupCardProps {
   schedule: IBackupSchedule;
   doEditPolicy: (schedule: IBackupSchedule) => void;
   storageConfig: Record<string, string> | undefined;
+  tablesInUniverse: ITable[];
 }
 
 type toogleScheduleProps = Partial<IBackupSchedule> & Pick<IBackupSchedule, 'scheduleUUID'>;
@@ -198,7 +210,8 @@ type toogleScheduleProps = Partial<IBackupSchedule> & Pick<IBackupSchedule, 'sch
 const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
   schedule,
   doEditPolicy,
-  storageConfig
+  storageConfig,
+  tablesInUniverse
 }) => {
   const queryClient = useQueryClient();
   const [showDeleteModal, setShowDeleteModal] = useState('');
@@ -238,6 +251,20 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
       'Every '
     );
   }
+
+  let isTableMissingToDoBackup = false;
+
+  if (
+    schedule.backupInfo.backupType === TableType.YQL_TABLE_TYPE &&
+    !schedule.backupInfo.fullBackup
+  ) {
+    schedule.backupInfo.keyspaceList.forEach((keyspace) => {
+      isTableMissingToDoBackup = !keyspace.tableUUIDList?.every((tableUUID) =>
+        find(tablesInUniverse, { tableUUID, keySpace: keyspace.keyspace })
+      );
+    });
+  }
+
   return (
     <div className="schedule-item">
       <Row className="name-and-actions">
@@ -264,6 +291,22 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
             }}
           />
           <span>{schedule.status === IBackupScheduleStatus.ACTIVE ? 'Enabled' : 'Disabled'}</span>
+          {isTableMissingToDoBackup && (
+            <OverlayTrigger
+              trigger={['hover', 'focus']}
+              placement="top"
+              overlay={
+                <Popover id="more-tables-popover">
+                  One or more of selected tables to backup does not exists in the keyspace.
+                </Popover>
+              }
+            >
+              <span>
+                {' '}
+                <WarningIcon />
+              </span>
+            </OverlayTrigger>
+          )}
         </Col>
         <Col lg={6} className="no-padding">
           <DropdownButton
@@ -342,9 +385,9 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
               <div className="info-val">
                 {schedule.backupInfo?.timeBeforeDelete
                   ? convertMsecToTimeFrame(
-                    schedule.backupInfo.timeBeforeDelete,
-                    schedule.backupInfo.expiryTimeUnit ?? 'DAYS'
-                  )
+                      schedule.backupInfo.timeBeforeDelete,
+                      schedule.backupInfo.expiryTimeUnit ?? 'DAYS'
+                    )
                   : 'Indefinitely'}
               </div>
             </Col>
