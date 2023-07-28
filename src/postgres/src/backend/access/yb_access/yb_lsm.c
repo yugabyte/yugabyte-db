@@ -303,6 +303,13 @@ ybcincanreturn(Relation index, int attno)
 	return !index->rd_index->indisprimary;
 }
 
+static bool
+ybcinmightrecheck(Relation heap, Relation index, bool xs_want_itup,
+				  ScanKey keys, int nkeys)
+{
+	return YbPredetermineNeedsRecheck(heap, index, xs_want_itup, keys, nkeys);
+}
+
 static void
 ybcincostestimate(struct PlannerInfo *root, struct IndexPath *path, double loop_count,
 				  Cost *indexStartupCost, Cost *indexTotalCost, Selectivity *indexSelectivity,
@@ -524,6 +531,7 @@ ybcinhandler(PG_FUNCTION_ARGS)
 	amroutine->yb_aminsert = ybcininsert;
 	amroutine->yb_amdelete = ybcindelete;
 	amroutine->yb_ambackfill = ybcinbackfill;
+	amroutine->yb_ammightrecheck = ybcinmightrecheck;
 
 	PG_RETURN_POINTER(amroutine);
 }

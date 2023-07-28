@@ -1281,9 +1281,15 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 	}
 }
 
+/*
+ * is_for_precheck signifies that the caller only wants to use this for
+ * predetermine-recheck purposes, so don't actually do binds but still
+ * calculate all_ordinary_keys_bound.
+ * TODO(jason): do a proper cleanup.
+ */
 static bool
 YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
-				  int skey_index, bool is_column_bound[],
+				  int skey_index, bool is_for_precheck, bool is_column_bound[],
 				  bool *bail_out)
 {
 	/* based on _bt_preprocess_array_keys() */
@@ -1426,16 +1432,19 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 
 	if (is_row)
 	{
-		AttrNumber attnums[length_of_key];
-		/* Subkeys for this rowkey start at i+1. */
-		for (int j = 1; j <= length_of_key; j++)
+		if (!is_for_precheck)
 		{
-			attnums[j - 1] = scan_plan->bind_key_attnums[i + j];
-		}
+			AttrNumber attnums[length_of_key];
+			/* Subkeys for this rowkey start at i+1. */
+			for (int j = 1; j <= length_of_key; j++)
+			{
+				attnums[j - 1] = scan_plan->bind_key_attnums[i + j];
+			}
 
-		ybcBindTupleExprCondIn(ybScan, scan_plan->bind_desc,
-								length_of_key - 1, attnums,
-								num_elems, elem_values);
+			ybcBindTupleExprCondIn(ybScan, scan_plan->bind_desc,
+									length_of_key - 1, attnums,
+									num_elems, elem_values);
+		}
 
 		for (int j = i + 1; j < i + length_of_key; j++)
 		{
@@ -1444,7 +1453,7 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 			is_column_bound[bound_idx] = true;
 		}
 	}
-	else
+	else if (!is_for_precheck)
 	{
 		ybcBindColumnCondIn(ybScan, scan_plan->bind_desc,
 							scan_plan->bind_key_attnums[i],
@@ -1456,9 +1465,15 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	return true;
 }
 
-/* Use the scan-descriptor and scan-plan to setup binds for the queryplan */
+/*
+ * Use the scan-descriptor and scan-plan to setup binds for the queryplan.
+ * is_for_precheck signifies that the caller only wants to use this for
+ * predetermine-recheck purposes, so don't actually do binds but still
+ * calculate all_ordinary_keys_bound.
+ * TODO(jason): do a proper cleanup.
+ */
 static bool
-YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
+YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 {
 	Relation relation = ybScan->relation;
 	/*
@@ -1533,11 +1548,14 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	{
 		length_of_key = YbGetLengthOfKey(&ybScan->keys[i]);
 		ScanKey key = ybScan->keys[i];
-		/* Check if this is full key row comparison expression */
-		if (YbIsRowHeader(key) &&
-			!YbIsSearchArray(key))
+		if (!is_for_precheck)
 		{
-			YbBindRowComparisonKeys(ybScan, scan_plan, i);
+			/* Check if this is full key row comparison expression */
+			if (YbIsRowHeader(key) &&
+				!YbIsSearchArray(key))
+			{
+				YbBindRowComparisonKeys(ybScan, scan_plan, i);
+			}
 		}
 
 		/* Check if this is primary columns */
@@ -1633,19 +1651,22 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 				if (YbIsBasicOpSearch(key) || YbIsSearchNull(key))
 				{
 					/* Either c = NULL or c IS NULL. */
-					bool is_null = (key->sk_flags & SK_ISNULL) == SK_ISNULL;
-					YbBindColumn(ybScan, scan_plan->bind_desc,
-					             scan_plan->bind_key_attnums[i],
-					             key->sk_argument, is_null);
+					if (!is_for_precheck)
+					{
+						bool is_null = (key->sk_flags & SK_ISNULL) == SK_ISNULL;
+						YbBindColumn(ybScan, scan_plan->bind_desc,
+									 scan_plan->bind_key_attnums[i],
+									 key->sk_argument, is_null);
+					}
 					is_column_bound[idx] = true;
 				}
 				else if (YbIsSearchArray(key))
 				{
 					bool bail_out = false;
-					bool is_bound =
-						YbBindSearchArray(ybScan, scan_plan,
-										  i, is_column_bound,
-									  	  &bail_out);
+					bool is_bound = YbBindSearchArray(ybScan, scan_plan, i,
+													  is_for_precheck,
+													  is_column_bound,
+													  &bail_out);
 					if (bail_out)
 						return false;
 
@@ -1722,22 +1743,62 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 			continue;
 		}
 
-		if (start_valid[idx] || end_valid[idx])
+		if (!is_for_precheck)
 		{
-			YbBindColumnCondBetween(ybScan, scan_plan->bind_desc,
-									YBBmsIndexToAttnum(relation, idx),
-									start_valid[idx], start_inclusive[idx],
-									start[idx], end_valid[idx],
-									end_inclusive[idx], end[idx]);
-		}
-		else if (yb_pushdown_is_not_null)
-		{
-			/* is_not_null[idx] must be true */
-			YbBindColumnNotNull(ybScan, scan_plan->bind_desc,
-								YBBmsIndexToAttnum(relation, idx));
+			if (start_valid[idx] || end_valid[idx])
+			{
+				YbBindColumnCondBetween(ybScan, scan_plan->bind_desc,
+										YBBmsIndexToAttnum(relation, idx),
+										start_valid[idx], start_inclusive[idx],
+										start[idx], end_valid[idx],
+										end_inclusive[idx], end[idx]);
+			}
+			else if (yb_pushdown_is_not_null)
+			{
+				/* is_not_null[idx] must be true */
+				YbBindColumnNotNull(ybScan, scan_plan->bind_desc,
+									YBBmsIndexToAttnum(relation, idx));
+			}
 		}
 	}
 	return true;
+}
+
+/*
+ * Before beginning execution, determine whether recheck is needed.  Use as
+ * little resources as possible to make this determination.  This is largely a
+ * dup of ybcBeginScan minus the unessential parts.
+ * TODO(jason): there may be room for further cleanup/optimization.
+ */
+bool
+YbPredetermineNeedsRecheck(Relation relation,
+						   Relation index,
+						   bool xs_want_itup,
+						   ScanKey keys,
+						   int nkeys)
+{
+	YbScanDescData ybscan;
+	memset(&ybscan, 0, sizeof(YbScanDescData));
+
+	ybExtractScanKeys(keys, nkeys, &ybscan);
+
+	if (YbIsUnsatisfiableCondition(ybscan.nkeys, ybscan.keys))
+		return false;
+
+	ybscan.relation = relation;
+	ybscan.index = index;
+
+	/* Set up the scan plan */
+	YbScanPlanData scan_plan;
+	ybcSetupScanPlan(xs_want_itup, &ybscan, &scan_plan);
+	ybcSetupScanKeys(&ybscan, &scan_plan);
+
+	YbBindScanKeys(&ybscan, &scan_plan, true /* is_for_precheck */);
+
+	/*
+	 * Finally, ybscan has everything needed to determine recheck.  Do it now.
+	 */
+	return YbNeedsRecheck(&ybscan);
 }
 
 typedef struct {
@@ -2288,7 +2349,8 @@ ybcBeginScan(Relation relation,
 								  &ybScan->handle));
 
 	/* Set up binds */
-	if (!YbBindScanKeys(ybScan, &scan_plan) || !YbBindHashKeys(ybScan))
+	if (!YbBindScanKeys(ybScan, &scan_plan, false /* is_for_precheck */) ||
+		!YbBindHashKeys(ybScan))
 	{
 		ybScan->quit_scan = true;
 		bms_free(scan_plan.hash_key);

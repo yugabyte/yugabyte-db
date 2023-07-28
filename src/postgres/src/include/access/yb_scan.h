@@ -191,6 +191,12 @@ extern YbScanDesc ybcBeginScan(Relation relation,
 
 /* Returns whether the given populated ybScan needs PG-side recheck. */
 extern bool YbNeedsRecheck(YbScanDesc ybScan);
+/* The same thing but with less context, used in node init phase. */
+extern bool YbPredetermineNeedsRecheck(Relation relation,
+									   Relation index,
+									   bool xs_want_itup,
+									   ScanKey keys,
+									   int nkeys);
 
 HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
 IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
