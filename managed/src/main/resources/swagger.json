@@ -2499,6 +2499,10 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "placementModificationTaskUuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
         "platformUrl" : {
           "type" : "string"
         },
@@ -3779,6 +3783,10 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "placementModificationTaskUuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
         "platformUrl" : {
           "type" : "string"
         },
@@ -4364,6 +4372,10 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "placementModificationTaskUuid" : {
+          "format" : "uuid",
+          "type" : "string"
         },
         "platformUrl" : {
           "type" : "string"
@@ -6247,6 +6259,10 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "placementModificationTaskUuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
         "platformUrl" : {
           "type" : "string"
         },
@@ -6470,6 +6486,10 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "placementModificationTaskUuid" : {
+          "format" : "uuid",
+          "type" : "string"
         },
         "platformUrl" : {
           "type" : "string"
@@ -7285,6 +7305,10 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "placementModificationTaskUuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
         "platformUrl" : {
           "type" : "string"
         },
@@ -7570,6 +7594,10 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "placementModificationTaskUuid" : {
+          "format" : "uuid",
+          "type" : "string"
         },
         "platformUrl" : {
           "type" : "string"
@@ -8028,6 +8056,10 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "placementModificationTaskUuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
         "platformUrl" : {
           "type" : "string"
         },
@@ -8246,6 +8278,10 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "placementModificationTaskUuid" : {
+          "format" : "uuid",
+          "type" : "string"
         },
         "platformUrl" : {
           "type" : "string"
@@ -8475,6 +8511,10 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "placementModificationTaskUuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
         "platformUrl" : {
           "type" : "string"
         },
@@ -8684,6 +8724,10 @@
         "nodesResizeAvailable" : {
           "type" : "boolean"
         },
+        "placementModificationTaskUuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
         "platformUrl" : {
           "type" : "string"
         },
@@ -8889,6 +8933,10 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "placementModificationTaskUuid" : {
+          "format" : "uuid",
+          "type" : "string"
         },
         "platformUrl" : {
           "type" : "string"
@@ -9264,6 +9312,10 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "placementModificationTaskUuid" : {
+          "format" : "uuid",
+          "type" : "string"
         },
         "platformUrl" : {
           "type" : "string"
@@ -9818,6 +9870,10 @@
         },
         "nodesResizeAvailable" : {
           "type" : "boolean"
+        },
+        "placementModificationTaskUuid" : {
+          "format" : "uuid",
+          "type" : "string"
         },
         "platformUrl" : {
           "type" : "string"

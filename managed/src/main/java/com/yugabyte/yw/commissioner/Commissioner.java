@@ -2,8 +2,6 @@
 
 package com.yugabyte.yw.commissioner;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Strings;
@@ -25,25 +23,20 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.time.Duration;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ThreadFactory;
-import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import play.inject.ApplicationLifecycle;
 import play.libs.Json;
+
+import java.time.Duration;
+import java.util.*;
+import java.util.Map.Entry;
+import java.util.concurrent.*;
+import java.util.function.Consumer;
+
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 @Singleton
 public class Commissioner {
@@ -189,7 +182,7 @@ public class Commissioner {
   }
 
   public Optional<ObjectNode> buildTaskStatus(
-      CustomerTask task, TaskInfo taskInfo, Map<UUID, String> updatingTasks) {
+      CustomerTask task, TaskInfo taskInfo, Map<UUID, Set<String>> updatingTasks) {
     if (task == null || taskInfo == null) {
       return Optional.empty();
     }
@@ -227,7 +220,9 @@ public class Commissioner {
     if (isTaskRetryable(taskInfo.getTaskType())
         && task.getTarget().isUniverseTarget()
         && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())) {
-      retryable = taskInfo.getTaskUUID().toString().equals(updatingTasks.get(task.getTargetUUID()));
+      Set<String> taskUuidsToAllowRetry =
+          updatingTasks.getOrDefault(task.getTargetUUID(), Collections.emptySet());
+      retryable = taskUuidsToAllowRetry.contains(taskInfo.getTaskUUID().toString());
     }
     responseJson.put("retryable", retryable);
     if (pauseLatches.containsKey(taskInfo.getTaskUUID())) {
@@ -247,12 +242,25 @@ public class Commissioner {
       LOG.error("Error fetching task progress for {}. TaskInfo is not found", taskUUID);
       return Optional.empty();
     }
-    Map<UUID, String> updatingTaskByTargetMap = new HashMap<>();
+    Map<UUID, Set<String>> updatingTaskByTargetMap = new HashMap<>();
     Universe.getUniverseDetailsField(
             String.class,
             task.getTargetUUID(),
             UniverseDefinitionTaskParams.UPDATING_TASK_UUID_FIELD)
-        .ifPresent(id -> updatingTaskByTargetMap.put(task.getTargetUUID(), id));
+        .ifPresent(
+            id ->
+                updatingTaskByTargetMap
+                    .computeIfAbsent(task.getTargetUUID(), uuid -> new HashSet<>())
+                    .add(id));
+    Universe.getUniverseDetailsField(
+            String.class,
+            task.getTargetUUID(),
+            UniverseDefinitionTaskParams.PLACEMENT_MODIFICATION_TASK_UUID_FIELD)
+        .ifPresent(
+            id ->
+                updatingTaskByTargetMap
+                    .computeIfAbsent(task.getTargetUUID(), uuid -> new HashSet<>())
+                    .add(id));
     return buildTaskStatus(task, taskInfo, updatingTaskByTargetMap);
   }
 
@@ -260,6 +268,13 @@ public class Commissioner {
   public Map<UUID, String> getUpdatingTaskUUIDsForTargets(Long customerId) {
     return Universe.getUniverseDetailsFields(
         String.class, customerId, UniverseDefinitionTaskParams.UPDATING_TASK_UUID_FIELD);
+  }
+
+  public Map<UUID, String> getPlacementModificationTaskUUIDsForTargets(Long customerId) {
+    return Universe.getUniverseDetailsFields(
+        String.class,
+        customerId,
+        UniverseDefinitionTaskParams.PLACEMENT_MODIFICATION_TASK_UUID_FIELD);
   }
 
   public JsonNode getTaskDetails(UUID taskUUID) {
