@@ -895,8 +895,8 @@ class CreateRootVolumesMethod(AbstractInstancesMethod):
         unique_string = ''.join(random.choice(string.ascii_lowercase) for i in range(6))
         args.search_pattern = "{}-".format(unique_string) + args.search_pattern
         volume_id = self.create_master_volume(args)
-        output = [volume_id]
-        logging.info("Create master volume output {}".format(output))
+        root_volumes = [volume_id]
+        logging.info("Create master volume output {}".format(root_volumes))
         num_disks = int(args.num_disks) - 1
         snapshot_creation_delay = None
         snapshot_creation_max_attempts = None
@@ -915,13 +915,21 @@ class CreateRootVolumesMethod(AbstractInstancesMethod):
         if num_disks > 0:
             logging.info("Cloning {} other disks using volume_id {}".format(num_disks, volume_id))
             if snapshot_creation_delay is not None and snapshot_creation_max_attempts is not None:
-                output.extend(self.cloud.clone_disk(
+                root_volumes.extend(self.cloud.clone_disk(
                     args, volume_id, num_disks,
                     args.snapshot_creation_delay, args.snapshot_creation_max_attempts))
             else:
-                output.extend(self.cloud.clone_disk(args, volume_id, num_disks))
+                root_volumes.extend(self.cloud.clone_disk(args, volume_id, num_disks))
 
-        logging.info("==> Created volumes {}".format(output))
+        logging.info("==> Created volumes {}".format(root_volumes))
+        output = {"boot_disks_per_zone": root_volumes}
+        if self.cloud.name == "aws":
+            root_device_name = self.cloud.get_image_root_label(args)
+            if root_device_name:
+                output["root_device_name"] = root_device_name
+            else:
+                raise YBOpsRuntimeError("Could not determine root device name for {}.".
+                                        format(args.machine_image))
         print(json.dumps(output))
 
 

@@ -172,6 +172,7 @@ public class NodeManagerTest extends FakeDBApplication {
     public final List<String> baseCommand = new ArrayList<>();
     public final String replacementVolume = "test-volume";
     public final String NewInstanceType = "test-c5.2xlarge";
+    public final String rootDeviceName = "/dev/sda1";
 
     public TestData(
         Customer customer,
@@ -793,6 +794,10 @@ public class NodeManagerTest extends FakeDBApplication {
       case Replace_Root_Volume:
         expectedCommand.add("--replacement_disk");
         expectedCommand.add(String.valueOf(testData.replacementVolume));
+        if (cloud.equals(Common.CloudType.aws)) {
+          expectedCommand.add("--root_device_name");
+          expectedCommand.add(String.valueOf(testData.rootDeviceName));
+        }
         break;
       case Create_Root_Volumes:
         CreateRootVolumes.Params crvParams = (CreateRootVolumes.Params) params;
@@ -1341,6 +1346,9 @@ public class NodeManagerTest extends FakeDBApplication {
               createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
       params.replacementDisk = t.replacementVolume;
+      if (t.cloudType.equals(Common.CloudType.aws)) {
+        params.rootDeviceName = t.rootDeviceName;
+      }
 
       runAndVerifyNodeCommand(
           t, params, NodeManager.NodeCommandType.Replace_Root_Volume, NODE_IPS[idx]);
