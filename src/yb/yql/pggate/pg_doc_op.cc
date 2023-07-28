@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <utility>
 
+#include "yb/common/pg_system_attr.h"
 #include "yb/common/row_mark.h"
 
 #include "yb/gutil/casts.h"
@@ -1277,9 +1278,22 @@ Status PgDocReadOp::SetRequestPrefetchLimit() {
     // Inaccurate in the presence of varlen targets but not possible to fix that without PG stats;
     size_t row_width = 0;
     for (const LWPgsqlExpressionPB& target : req.targets()) {
+      // If target is a system column, we it's probably variable size
+      // and we don't have the means to estimate its length.
       if (target.has_column_id()) {
+        auto column_id = target.column_id();
+        if (column_id < 0) {
+            if (column_id == static_cast<int>(PgSystemAttrNum::kObjectId)) {
+              row_width += GetTypeInfo(DataType::UINT32)->size;
+            } else {
+              // System columns are usually variable length which we are
+              // estimating with the size of a Binary DataType for now.
+              row_width += GetTypeInfo(DataType::BINARY)->size;
+            }
+            continue;
+        }
         const ColumnSchema &col_schema =
-          VERIFY_RESULT(table_->schema().column_by_id(ColumnId(target.column_id())));
+          VERIFY_RESULT(table_->schema().column_by_id(ColumnId(column_id)));
 
         // This size is usually the computed sizeof() of the serialized datatype.
         // Its computation can be found in yb/common/types.h
