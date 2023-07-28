@@ -50,6 +50,10 @@ DEFINE_NON_RUNTIME_string(ysql_conn_mgr_username, "yugabyte",
 DEFINE_NON_RUNTIME_string(ysql_conn_mgr_password, "yugabyte",
     "Password to be used by Ysql Connection Manager while creating database connections.");
 
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_dowarmup, true,
+  "Enable precreation of server connections in Ysql Connection Manager. If set false, "
+  "the server connections are created lazily (on-demand) in Ysql Connection Manager.");
+
 namespace {
 
 bool ValidateEnableYsqlConnMgr(const char* flagname, bool value) {
@@ -111,6 +115,8 @@ Status YsqlConnMgrWrapper::Start() {
   if (getenv("YB_YSQL_CONN_MGR_PASSWORD") == NULL) {
     proc_->SetEnv("YB_YSQL_CONN_MGR_PASSWORD", FLAGS_ysql_conn_mgr_password);
   }
+
+  proc_->SetEnv("YB_YSQL_CONN_MGR_DOWARMUP", FLAGS_ysql_conn_mgr_dowarmup ? "true" : "false");
 
   RETURN_NOT_OK(proc_->Start());
 
