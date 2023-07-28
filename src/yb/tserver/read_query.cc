@@ -292,7 +292,7 @@ Status ReadQuery::DoPerform() {
     // Serializable read adds intents, i.e. writes data.
     // We should check for memory pressure in this case.
     RETURN_NOT_OK(CheckWriteThrottling(req_->rejection_score(), leader_peer.peer.get()));
-    abstract_tablet_ = leader_peer.peer->shared_tablet();
+    abstract_tablet_ = VERIFY_RESULT(leader_peer.peer->shared_tablet_safe());
   } else {
     abstract_tablet_ = VERIFY_RESULT(read_tablet_provider_.GetTabletForRead(
         req_->tablet_id(), std::move(peer_tablet.tablet_peer),
@@ -368,8 +368,11 @@ Status ReadQuery::DoPerform() {
   if (serializable_isolation || has_row_mark) {
     auto deadline = context_.GetClientDeadline();
     auto query = std::make_unique<tablet::WriteQuery>(
-        leader_peer.leader_term, deadline, leader_peer.peer.get(),
-        leader_peer.peer->tablet(), nullptr /* response */,
+        leader_peer.leader_term,
+        deadline,
+        leader_peer.peer.get(),
+        leader_peer.tablet.get(),
+        nullptr /* response */,
         docdb::OperationKind::kRead);
 
     auto& write = *query->operation().AllocateRequest();
@@ -388,7 +391,7 @@ Status ReadQuery::DoPerform() {
     }
     // TODO(dtxn) write request id
 
-    RETURN_NOT_OK(leader_peer.peer->tablet()->CreateReadIntents(
+    RETURN_NOT_OK(leader_peer.tablet->CreateReadIntents(
         req_->transaction(), req_->subtransaction(), req_->ql_batch(), req_->pgsql_batch(),
         &write_batch));
 

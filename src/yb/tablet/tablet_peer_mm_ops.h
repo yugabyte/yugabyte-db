@@ -51,7 +51,7 @@ namespace tablet {
 // Only one LogGC op can run at a time.
 class LogGCOp : public MaintenanceOp {
  public:
-  explicit LogGCOp(TabletPeer* tablet_peer);
+  explicit LogGCOp(TabletPeer* tablet_peer, const TabletPtr& tablet);
 
   virtual void UpdateStats(MaintenanceOpStats* stats) override;
 
@@ -64,6 +64,7 @@ class LogGCOp : public MaintenanceOp {
   virtual scoped_refptr<AtomicGauge<uint32_t> > RunningGauge() const override;
 
  private:
+  TabletPtr tablet_;
   TabletPeer *const tablet_peer_;
   scoped_refptr<Histogram> log_gc_duration_;
   scoped_refptr<AtomicGauge<uint32_t> > log_gc_running_;

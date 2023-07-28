@@ -121,6 +121,12 @@ struct TabletOnDiskSizeInfo {
   }
 };
 
+YB_DEFINE_ENUM(
+    TabletObjectState,
+    (kUninitialized)
+    (kAvailable)
+    (kDestroyed));
+
 // A peer is a tablet consensus configuration, which coordinates writes to tablets.
 // Each time Write() is called this class appends a new entry to a replicated
 // state machine through a consensus algorithm, which makes sure that other
@@ -237,14 +243,46 @@ class TabletPeer : public consensus::ConsensusContext,
   std::shared_ptr<consensus::Consensus> shared_consensus() const;
   std::shared_ptr<consensus::RaftConsensus> shared_raft_consensus() const;
 
-  Tablet* tablet() const EXCLUDES(lock_) {
-    std::lock_guard<simple_spinlock> lock(lock_);
-    return tablet_.get();
+  // ----------------------------------------------------------------------------------------------
+  // Functions for accessing the tablet. We need to gradually improve the safety so that all callers
+  // obtain the tablet as a shared pointer (TabletPtr) and hold a refcount to it throughout the
+  // entire time period they are using it. In the meantime, we provide functions that perform some
+  // checking and return a raw pointer.
+  // ----------------------------------------------------------------------------------------------
+
+  // Returns the tablet associated with this TabletPeer as a raw pointer.
+  [[deprecated]] Tablet* tablet() const {
+    return shared_tablet().get();
   }
 
   TabletPtr shared_tablet() const {
-    std::lock_guard<simple_spinlock> lock(lock_);
-    return tablet_;
+    auto tablet_result = shared_tablet_safe();
+    if (tablet_result.ok()) {
+      return *tablet_result;
+    }
+    return nullptr;
+  }
+
+  Result<TabletPtr> shared_tablet_safe() const {
+    // Note that there is still a possible race condition between the time we check the tablet state
+    // and the time we access the tablet shared pointer through the weak pointer.
+    auto tablet_obj_state = tablet_obj_state_.load(std::memory_order_acquire);
+    if (tablet_obj_state != TabletObjectState::kAvailable) {
+      return STATUS_FORMAT(
+          IllegalState,
+          "Tablet not running: tablet object $0 has invalid state $1",
+          tablet_id_, tablet_obj_state);
+    }
+    // The weak pointer is safe to access as long as the state is not kUninitialized, because it
+    // never changes after the state is set to kAvailable. However, we still need to check if
+    // lock() returns nullptr.
+    auto tablet_ptr = tablet_weak_.lock();
+    if (tablet_ptr)
+      return tablet_ptr;
+    return STATUS_FORMAT(
+        IllegalState,
+        "Tablet object $0 has already been destroyed",
+        tablet_id_);
   }
 
   RaftGroupStatePB state() const {
@@ -398,6 +436,8 @@ class TabletPeer : public consensus::ConsensusContext,
 
   TableType table_type();
 
+  TableType TEST_table_type();
+
   // Returns the number of segments in log_.
   size_t GetNumLogSegments() const;
 
@@ -444,6 +484,9 @@ class TabletPeer : public consensus::ConsensusContext,
   std::atomic<log::Log*> log_atomic_{nullptr};
 
   TabletPtr tablet_;
+  TabletWeakPtr tablet_weak_;
+  std::atomic<TabletObjectState> tablet_obj_state_{TabletObjectState::kUninitialized};
+
   rpc::ProxyCache* proxy_cache_;
   std::shared_ptr<consensus::RaftConsensus> consensus_;
   std::unique_ptr<TabletStatusListener> status_listener_;
@@ -504,7 +547,6 @@ class TabletPeer : public consensus::ConsensusContext,
   rpc::Scheduler& scheduler() const override;
   Status CheckOperationAllowed(
       const OpId& op_id, consensus::OperationType op_type) override;
-
   // Return granular types of on-disk size of this tablet replica, in bytes.
   TabletOnDiskSizeInfo GetOnDiskSizeInfo() const REQUIRES(lock_);
 

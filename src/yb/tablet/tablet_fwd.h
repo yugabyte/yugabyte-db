@@ -36,6 +36,7 @@ typedef scoped_refptr<RaftGroupMetadata> RaftGroupMetadataPtr;
 
 class Tablet;
 typedef std::shared_ptr<Tablet> TabletPtr;
+typedef std::weak_ptr<Tablet> TabletWeakPtr;
 
 struct TableInfo;
 typedef std::shared_ptr<TableInfo> TableInfoPtr;

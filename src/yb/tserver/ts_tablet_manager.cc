@@ -354,7 +354,13 @@ void TSTabletManager::VerifyTabletData() {
         LOG_WITH_PREFIX(INFO)
             << Format("Skipped tablet data verification check on $0", peer->tablet_id());
       } else {
-        Status s = peer->tablet()->VerifyDataIntegrity();
+        auto tablet_result = peer->shared_tablet_safe();
+        Status s;
+        if (tablet_result.ok()) {
+          s = (*tablet_result)->VerifyDataIntegrity();
+        } else {
+          s = tablet_result.status();
+        }
         if (!s.ok()) {
           LOG(WARNING) << "Tablet data integrity verification failed on " << peer->tablet_id()
                        << ": " << s;

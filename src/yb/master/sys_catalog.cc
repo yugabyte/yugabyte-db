@@ -669,10 +669,11 @@ Status SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
     return Status::OK();
   }
 
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
   auto latch = std::make_shared<CountDownLatch>(1);
   auto query = std::make_unique<tablet::WriteQuery>(
       writer->leader_term(), CoarseTimePoint::max(), tablet_peer().get(),
-      tablet_peer()->tablet(), resp.get());
+      tablet.get(), resp.get());
   query->set_client_request(writer->req());
   query->set_callback(tablet::MakeLatchOperationCompletionCallback(latch, resp));
 
@@ -862,7 +863,7 @@ Status SysCatalogTable::ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
                                                uint64_t *catalog_version,
                                                uint64_t *last_breaking_version) {
   TRACE_EVENT0("master", "ReadYsqlCatalogVersion");
-  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
+  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
   const auto* meta = tablet->metadata();
   const std::shared_ptr<tablet::TableInfo> ysql_catalog_table_info =
       VERIFY_RESULT(meta->GetTableInfo(ysql_catalog_table_id));
@@ -912,7 +913,7 @@ Status SysCatalogTable::ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
 Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTablespaceInfo() {
   TRACE_EVENT0("master", "ReadPgTablespaceInfo");
 
-  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
+  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
 
   const auto& pg_tablespace_info =
       VERIFY_RESULT(tablet->metadata()->GetTableInfo(kPgTablespaceTableId));
@@ -1021,7 +1022,7 @@ Status SysCatalogTable::ReadTablespaceInfoFromPgYbTablegroup(
   if (!table_tablespace_map)
     return STATUS(InternalError, "tablegroup_tablespace_map not initialized");
 
-  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
+  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
 
   const auto &pg_yb_tablegroup_id = GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid);
   const auto& pg_tablegroup_info =
@@ -1090,7 +1091,7 @@ Status SysCatalogTable::ReadPgClassInfo(
     return STATUS(InternalError, "table_to_tablespace_map not initialized");
   }
 
-  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
+  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
 
   const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
   const auto& table_info = VERIFY_RESULT(
@@ -1227,7 +1228,7 @@ Result<uint32_t> SysCatalogTable::ReadPgClassColumnWithOidValue(const uint32_t d
                                                                 const string& column_name) {
   TRACE_EVENT0("master", "ReadPgClassOidColumn");
 
-  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
+  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
 
   const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
   const auto& table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_table_id));
@@ -1279,7 +1280,7 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_o
                                                        const uint32_t relnamespace_oid) {
   TRACE_EVENT0("master", "ReadPgNamespaceNspname");
 
-  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
+  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
 
   const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgNamespaceTableOid);
   const auto& table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_table_id));
@@ -1332,7 +1333,7 @@ Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgAttributeInf
     const uint32_t database_oid, const uint32_t table_oid) {
   TRACE_EVENT0("master", "ReadPgAttributeInfo");
 
-  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
+  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
 
   const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgAttributeTableOid);
   const auto& table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_table_id));
@@ -1410,7 +1411,7 @@ Result<std::unordered_map<uint32_t, string>> SysCatalogTable::ReadPgEnum(
     const uint32_t database_oid) {
   TRACE_EVENT0("master", "ReadPgEnum");
 
-  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
+  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
   const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgEnumTableOid);
   const auto& table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_table_id));
   const Schema& schema = table_info->schema();
@@ -1460,7 +1461,7 @@ Result<std::unordered_map<uint32_t, string>> SysCatalogTable::ReadPgEnum(
 Result<std::unordered_map<uint32_t, PgTypeInfo>> SysCatalogTable::ReadPgTypeInfo(
     const uint32_t database_oid, vector<uint32_t>* type_oids) {
   TRACE_EVENT0("master", "ReadPgTypeInfo");
-  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
+  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
 
   const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgTypeTableOid);
   const auto& table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_table_id));
@@ -1540,7 +1541,7 @@ Status SysCatalogTable::CopyPgsqlTables(
       "size mismatch between source tables and target tables");
 
   int batch_count = 0, total_count = 0, total_bytes = 0;
-  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
+  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
   const auto* meta = tablet->metadata();
   for (size_t i = 0; i < source_table_ids.size(); ++i) {
     auto& source_table_id = source_table_ids[i];
@@ -1614,10 +1615,7 @@ const docdb::DocReadContext& SysCatalogTable::doc_read_context() {
 }
 
 Status SysCatalogTable::FetchDdlLog(google::protobuf::RepeatedPtrField<DdlLogEntryPB>* entries) {
-  auto tablet = tablet_peer()->shared_tablet();
-  if (!tablet) {
-    return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
-  }
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
 
   return EnumerateSysCatalog(
       tablet.get(), doc_read_context_->schema, SysRowEntryType::DDL_LOG_ENTRY,

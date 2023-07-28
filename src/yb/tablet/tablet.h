@@ -1093,6 +1093,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
 // A helper class to manage read transactions. Grabs and registers a read point with the tablet
 // when created, and deregisters the read point when this object is destructed.
+// TODO: should reference the tablet as a shared pointer (make sure there are no reference cycles.)
 class ScopedReadOperation {
  public:
   ScopedReadOperation() : tablet_(nullptr) {}
