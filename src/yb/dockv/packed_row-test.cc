@@ -16,6 +16,7 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
+#include "yb/dockv/dockv_test_util.h"
 #include "yb/dockv/packed_row.h"
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/schema_packing.h"
@@ -26,19 +27,6 @@
 #include "yb/util/test_macros.h"
 
 namespace yb::dockv {
-
-QLValuePB RandomQLValue(DataType type) {
-  switch (type) {
-    case DataType::INT32:
-      return QLValue::Primitive(RandomUniformInt<int32_t>());
-    case DataType::INT64:
-      return QLValue::Primitive(RandomUniformInt<int64_t>());
-    case DataType::STRING:
-      return QLValue::Primitive(RandomHumanReadableString(RandomUniformInt(0, 32)));
-    default:
-      CHECK(false) << "Not supported data type: " << type;
-  }
-}
 
 void TestRowPacking(const Schema& schema, const std::vector<QLValuePB>& values) {
   ASSERT_EQ(schema.num_columns() - schema.num_key_columns(), values.size());

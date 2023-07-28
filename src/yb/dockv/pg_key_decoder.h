@@ -21,7 +21,8 @@
 
 namespace yb::dockv {
 
-using PgKeyColumnDecoder = Status(*)(const char*, const char*, PgTableRow*, size_t, void*const*);
+using PgKeyColumnDecoder = UnsafeStatus(*)(
+    const char*, const char*, PgTableRow*, size_t, void*const*);
 
 class PgKeyDecoder {
  public:

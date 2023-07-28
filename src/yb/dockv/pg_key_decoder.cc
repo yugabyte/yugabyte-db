@@ -121,10 +121,10 @@ class PrimitiveDecoder {
 };
 
 template <bool kMatchedId, bool kLastColumn>
-Status CallNextDecoder(
+UnsafeStatus CallNextDecoder(
     const char* input, const char* end, PgTableRow* row, size_t index, void*const* chain) {
   if (kLastColumn) {
-    return Status::OK();
+    return UnsafeStatus();
   }
   if (kMatchedId) {
     ++index;
@@ -134,7 +134,7 @@ Status CallNextDecoder(
 }
 
 template <bool kMatchedId, bool kLastColumn, KeyEntryType kEntryType>
-Status HandleDifferentEntryType(
+UnsafeStatus HandleDifferentEntryType(
     const char* input, const char* end, PgTableRow* row, size_t index, void*const* chain,
     KeyEntryType entry_type) {
   if (entry_type == KeyEntryType::kNullLow || entry_type == KeyEntryType::kNullHigh) {
@@ -144,44 +144,83 @@ Status HandleDifferentEntryType(
     return CallNextDecoder<kMatchedId, kLastColumn>(input, end, row, index, chain);
   }
   return STATUS_FORMAT(
-      Corruption, "Wrong key entry type $0 expected but $1 found", kEntryType, entry_type);
+      Corruption, "Wrong key entry type $0 expected but $1 found", kEntryType, entry_type)
+      .UnsafeRelease();
 }
+
+UnsafeStatus BadGroupEnd(char ch) {
+  return STATUS_FORMAT(
+      Corruption, "Group end expected, but $0 found", static_cast<dockv::KeyEntryType>(ch))
+      .UnsafeRelease();
+}
+
+#define CONSUME_GROUP_END() \
+  do { \
+    if (kConsumeGroupEnd) { \
+      if (*input != dockv::KeyEntryTypeAsChar::kGroupEnd) { \
+        return BadGroupEnd(*input); \
+      } \
+      ++input; \
+    } \
+  } while(false)
+
+bool IsOk(const char* input) {
+  return true;
+}
+
+UnsafeStatus ExtractStatus(const char** input) {
+  return UnsafeStatus();
+}
+
+const char* ExtractValue(const char* input) {
+  return input;
+}
+
+bool IsOk(const Result<const char*>& result) {
+  return result.ok();
+}
+
+UnsafeStatus ExtractStatus(Result<const char*>* input) {
+  return std::move(input->status()).UnsafeRelease();
+}
+
+const char* ExtractValue(const Result<const char*>& input) {
+  return *input;
+}
+
+#define PERFORM_DECODE() \
+  do { \
+    auto decode_result = kMatchedId \
+        ? decoder.Decode(input, end, row, index) : decoder.Skip(input, end); \
+    if (PREDICT_FALSE(!IsOk(decode_result))) { \
+      return ExtractStatus(&decode_result); \
+    } \
+    input = ExtractValue(decode_result); \
+  } while (false)
 
 template <bool kConsumeGroupEnd, bool kMatchedId, bool kLastColumn, SortOrder kSortOrder,
           KeyEntryType kEntryType, class Decoder>
-Status DecodeColumn(
+UnsafeStatus DecodeColumn(
     const char* input, const char* end, PgTableRow* row, size_t index, void*const* chain) {
-  constexpr auto kPrefixSize = (kConsumeGroupEnd ? 1 : 0) + 1;
-  auto required_size = kPrefixSize + Decoder::kMinSize;
-  if (PREDICT_FALSE(input + required_size > end)) {
-    return STATUS_FORMAT(
-        Corruption, "Not enough bytes to decode $0: $1", kEntryType, end - input - kPrefixSize);
-  }
-  if (kConsumeGroupEnd) {
-    SCHECK_EQ(*input++, dockv::KeyEntryTypeAsChar::kGroupEnd,
-              Corruption, "Missing group end");
-  }
+  CONSUME_GROUP_END();
   auto entry_type = static_cast<KeyEntryType>(*input++);
   if (PREDICT_FALSE(entry_type != kEntryType)) {
     return HandleDifferentEntryType<kMatchedId, kLastColumn, kEntryType>(
         input, end, row, index, chain, entry_type);
   }
   Decoder decoder;
-  if (kMatchedId) {
-    input = OPTIONAL_VERIFY_RESULT(decoder.Decode(input, end, row, index));
-  } else {
-    input = OPTIONAL_VERIFY_RESULT(decoder.Skip(input, end));
+  PERFORM_DECODE();
+  if (PREDICT_FALSE(input > end)) {
+    return STATUS_FORMAT(
+        Corruption, "Not enough bytes to decode $0", kEntryType).UnsafeRelease();
   }
   return CallNextDecoder<kMatchedId, kLastColumn>(input, end, row, index, chain);
 }
 
 template <bool kConsumeGroupEnd, bool kMatchedId, bool kLastColumn, SortOrder kSortOrder>
-Status DecodeBoolColumn(
+UnsafeStatus DecodeBoolColumn(
     const char* input, const char* end, PgTableRow* row, size_t index, void*const* chain) {
-  if (kConsumeGroupEnd) {
-    SCHECK_EQ(*input++, dockv::KeyEntryTypeAsChar::kGroupEnd,
-              Corruption, "Missing group end");
-  }
+  CONSUME_GROUP_END();
   auto entry_type = static_cast<KeyEntryType>(*input++);
   constexpr auto kTrue = kSortOrder == SortOrder::kAscending
       ? KeyEntryType::kTrue : KeyEntryType::kTrueDescending;
@@ -200,19 +239,17 @@ Status DecodeBoolColumn(
       row->SetNull(index);
     }
   } else {
-    return STATUS_FORMAT(Corruption, "Wrong key entry type $0 for bool column", entry_type);
+    return STATUS_FORMAT(
+        Corruption, "Wrong key entry type $0 for bool column", entry_type).UnsafeRelease();
   }
   return CallNextDecoder<kMatchedId, kLastColumn>(input, end, row, index, chain);
 }
 
 template <bool kConsumeGroupEnd, bool kMatchedId, bool kLastColumn, SortOrder kSortOrder,
           bool kAppendZero>
-Status DecodeStringColumn(
+UnsafeStatus DecodeStringColumn(
     const char* input, const char* end, PgTableRow* row, size_t index, void*const* chain) {
-  if (kConsumeGroupEnd) {
-    SCHECK_EQ(*input++, dockv::KeyEntryTypeAsChar::kGroupEnd,
-              Corruption, "Missing group end");
-  }
+  CONSUME_GROUP_END();
   auto entry_type = static_cast<KeyEntryType>(*input++);
   constexpr auto kRegularString = kSortOrder == SortOrder::kAscending
       ? KeyEntryType::kString : KeyEntryType::kStringDescending;
@@ -225,11 +262,7 @@ Status DecodeStringColumn(
         input, end, row, index, chain, entry_type);
   }
   StringDecoder<kSortOrder, kAppendZero> decoder;
-  if (kMatchedId) {
-    input = OPTIONAL_VERIFY_RESULT(decoder.Decode(input, end, row, index));
-  } else {
-    input = OPTIONAL_VERIFY_RESULT(decoder.Skip(input, end));
-  }
+  PERFORM_DECODE();
   return CallNextDecoder<kMatchedId, kLastColumn>(input, end, row, index, chain);
 }
 
@@ -339,15 +372,15 @@ PgKeyColumnDecoder GetDecoder(
   }
 }
 
-Status NopDecoder(const char*, const char*, PgTableRow*, size_t, void*const*) {
-  return Status::OK();
+UnsafeStatus NopDecoder(const char*, const char*, PgTableRow*, size_t, void*const*) {
+  return UnsafeStatus();
 }
 
-Status UpdateSlice(
+UnsafeStatus UpdateSlice(
   const char* input, const char* end, PgTableRow* row, size_t index, void*const* chain) {
   Slice* slice = static_cast<Slice*>(*chain);
   *slice = Slice(input, end);
-  return Status::OK();
+  return UnsafeStatus();
 }
 
 } // namespace
@@ -374,7 +407,8 @@ PgKeyDecoder::~PgKeyDecoder() = default;
 
 Status PgKeyDecoder::Decode(Slice key, PgTableRow* out) const {
   auto* decoders = decoders_.data();
-  return (*decoders)(key.cdata(), key.cend(), out, 0, reinterpret_cast<void*const*>(decoders + 1));
+  return Status(
+      (*decoders)(key.cdata(), key.cend(), out, 0, reinterpret_cast<void*const*>(decoders + 1)));
 }
 
 Status PgKeyDecoder::DecodeEntry(
@@ -384,7 +418,7 @@ Status PgKeyDecoder::DecodeEntry(
     reinterpret_cast<void*>(UpdateSlice),
     key,
   };
-  return decoder(key->cdata(), key->cend(), out, index, chain);
+  return Status(decoder(key->cdata(), key->cend(), out, index, chain));
 }
 
 }  // namespace yb::dockv
