@@ -1081,5 +1081,5 @@ The following steps assume that you have a running YugabyteDB cluster deployed u
     ./bin/yugabyted configure data_placement \
       --fault_tolerance=zone \
       --constraint_value=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c \
-      -rf=3
+      --rf=3
     ```
