@@ -403,6 +403,7 @@ Result<int32_t> SelectRow(
       LOG(WARNING) << "Error: " << error->status() << ", op: " << error->failed_op().ToString();
     }
   }
+  RETURN_NOT_OK(flush_status.status);
   RETURN_NOT_OK(CheckOp(op.get()));
   auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
   if (rowblock->row_count() == 0) {

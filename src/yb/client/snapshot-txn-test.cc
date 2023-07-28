@@ -153,12 +153,16 @@ void SnapshotTxnTest::TestBankAccountsThread(
           }
           continue;
         }
-        if (result.status().IsTimedOut() || result.status().IsQLError()) {
+        // Transactions could timeout/get aborted when they request for conflicting locks.
+        // Can ignore such errors as there is no correctness issue.
+        if (result.status().IsTimedOut() || result.status().IsQLError() ||
+            result.status().IsIOError() || result.status().IsExpired()) {
+          LOG(WARNING) << Format("TXN: $0 failed with error: $1", txn->id(), result.status());
           txn = nullptr;
           continue;
         }
         ASSERT_TRUE(result.ok())
-            << Format("$0, TXN: $0, key1: $1, key2: $2", result.status(), txn->id(), key1, key2);
+            << Format("$0, TXN: $1, key1: $2, key2: $3", result.status(), txn->id(), key1, key2);
       }
       auto balance2 = *result;
       status = ResultToStatus(WriteRow(session, key1, balance1 - transfer));
