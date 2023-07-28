@@ -32,6 +32,7 @@
 
 #pragma once
 
+#include <array>
 #include <string>
 
 namespace yb {
