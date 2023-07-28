@@ -86,6 +86,20 @@ Note: YugabyteDB Anywhere needs network connectivity to the VMs, service account
 
 - Cloud provider credentials. YugabyteDB Anywhere uses your credentials to automatically provision and de-provision instances that run YugabyteDB. An instance for YugabyteDB includes a compute instance, as well as local or remote disk storage attached to the compute instance.
 
+## Create an instance template (Optional)
+
+GCP offers a way to specify arbitrary parameters via an [instance template](https://cloud.google.com/compute/docs/instance-templates). You can customize your GCP instance template and accept the instance template name as a region level field during provider creation, thereby enabling YBA to use the configuration of the instance template for universe creation.
+
+Note that you require YugabyteDB Anywhere version 2.18.2.0 or higher to create instance templates.
+
+To create an instance template on Google Cloud console with your desired customizations, do the following:
+
+1. Follow the steps on Google Cloud console to [create a new instance template](https://cloud.google.com/compute/docs/instance-templates/create-instance-templates).
+
+    Note that not all customizations will be honored when creating a universe on YBA with the instance template. For details about fields that can't be overridden by a GCP instance template, refer to this [list](https://gist.github.com/chidmuthu/ebe540b102fb4a598260c68d2117a3ad).
+
+1. Ensure that the instance template is created under the right project and choose the correct network and sub-network under **Advanced Options** > **Networking**.
+
 ## Configure GCP
 
 Navigate to **Configs > Infrastructure > Google Cloud Platform** to see a list of all currently configured GCP providers.
@@ -154,6 +168,7 @@ For each region that you want to use for this configuration, do the following:
 - Select the region.
 - Optionally, specify a **Custom Machine Image**. YugabyteDB Anywhere allows you to bring up universes on Ubuntu 18.04 host nodes, assuming you have Python 2 or later installed on the host, as well as the provider created with a custom AMI and custom SSH user.
 - Enter the ID of a shared subnet.
+- Optionally, if you created an [instance template](#create-an-instance-template-optional), specify the template name in the **Instance Template** field.
 
 ### Advanced
 
