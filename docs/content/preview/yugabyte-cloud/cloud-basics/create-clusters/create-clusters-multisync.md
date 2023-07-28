@@ -85,7 +85,9 @@ Set **Data Distribution** to **Replicate across regions**.
 
 **Preferred region**: Optionally, assign one region as [preferred](#preferred-region) to handle all reads and writes.
 
-**Node size**: Enter the number of virtual CPUs per node and the disk size per node (in GB). You must choose the regions before you can set the node size.
+**Node size**: Enter the number of virtual CPUs per node, disk size per node (in GB), and disk input output (I/O) operations per second (IOPS) per node (AWS only). You must choose the regions before you can set the node size.
+
+The node throughput will be scaled according to the IOPS value. For large datasets or clusters with high concurrent transactions, higher IOPS is recommended. As disk IOPS is capped by vCPU, your vCPU and IOPS should be scaled together. Reference your current read and write IOPS performance for an estimation.
 
 Clusters replicated across regions support both horizontal and vertical scaling; you can change the cluster configuration and preferred region after the cluster is created using the **Edit Configuration** settings. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
 
