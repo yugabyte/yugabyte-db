@@ -1992,10 +1992,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumOnRestart)) {
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
+  size_t record_size = 0;
+  GetAllPendingChangesResponse change_resp;
   // Call get changes.
-  auto change_resp = GetAllPendingChangesFromCdc(stream_id, tablets);
-  size_t record_size = change_resp.records.size();
-  ASSERT_GT(record_size, insert_count);
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+          change_resp = GetAllPendingChangesFromCdc(stream_id, tablets);
+          record_size = change_resp.records.size();
+          return static_cast<int> (record_size) > insert_count;
+  }, MonoDelta::FromSeconds(2), "Wait for receiving all the records"));
 
   int expected_key = 0;
   for (uint32_t i = 0; i < record_size; ++i) {
