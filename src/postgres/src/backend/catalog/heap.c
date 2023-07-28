@@ -2097,9 +2097,9 @@ heap_drop_with_catalog(Oid relid)
 	
 	/*
 	 * Schedule unlinking of the relation's physical files at commit.
-	 * If YugaByte is enabled, there aren't any physical files to remove.
+	 * For Yugabyte-backed relations, there aren't any physical files to remove.
 	 */
-	if (!IsYugaByteEnabled() &&
+	if (!IsYBRelation(rel) &&
 		rel->rd_rel->relkind != RELKIND_VIEW &&
 		rel->rd_rel->relkind != RELKIND_COMPOSITE_TYPE &&
 		rel->rd_rel->relkind != RELKIND_FOREIGN_TABLE &&
