@@ -77,14 +77,25 @@
       state: present
     tags: yb-prebuilt-ami
 
+- name: Provision | Ensure mount paths exist.
+  shell: |
+    mkdir -p {{ item }}
+  become: yes
+  become_method: sudo
+  with_items: "{{ mount_points.split(',') }}"
+
 - name: Provision | Ensure proper ownership for mount paths.
   shell: |
     chown -R {{ user_name }}:{{ user_name }} {{ item }}
+  become: yes
+  become_method: sudo
   with_items: "{{ mount_points.split(',') }}"
 
 - name: Provision | Ensure proper permissions for mount paths.
   shell: |
     chmod -R 755 {{ item }}
+  become: yes
+  become_method: sudo
   with_items: "{{ mount_points.split(',') }}"
 
 - name: setup-postgres-cgroups
