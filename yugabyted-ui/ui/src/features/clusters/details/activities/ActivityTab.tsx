@@ -1,16 +1,19 @@
-import React, { FC, useMemo } from 'react';
-import { Box, Grid, makeStyles, Typography, useTheme } from '@material-ui/core';
-import { useTranslation } from 'react-i18next';
-import { YBTable, YBLoadingBox, YBModal, YBProgress, YBCodeBlock } from '@app/components';
-import { BadgeVariant, YBBadge } from '@app/components/YBBadge/YBBadge';
-import ArrowRightIcon from '@app/assets/caret-right-circle.svg';
+import React, { FC } from "react";
+import { Box, Grid, makeStyles, MenuItem, Paper, Typography, useTheme } from "@material-ui/core";
+import { useTranslation } from "react-i18next";
+import { YBTable, YBLoadingBox, YBModal, YBSelect, YBButton, YBProgress } from "@app/components";
+import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
+import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
+import { useActivities } from "./activities";
+import { GetClusterTablesApiEnum, useGetClusterTablesQuery } from "@app/api/src";
+import RefreshIcon from "@app/assets/refresh.svg";
 
 const useStyles = makeStyles((theme) => ({
   arrowComponent: {
-    textAlign: 'end',
-    '& svg': {
+    textAlign: "end",
+    "& svg": {
       marginTop: theme.spacing(0.25),
-    }
+    },
   },
   activityDetailBox: {
     padding: theme.spacing(2),
@@ -22,60 +25,32 @@ const useStyles = makeStyles((theme) => ({
   label: {
     color: theme.palette.grey[600],
     fontWeight: theme.typography.fontWeightMedium as number,
+    marginTop: theme.spacing(1),
     marginBottom: theme.spacing(0.5),
-    textTransform: 'uppercase',
-    textAlign: 'start'
+    textTransform: "uppercase",
+    textAlign: "start",
   },
   value: {
     paddingBottom: theme.spacing(1),
-    textAlign: 'start'
+    textAlign: "start",
   },
-  pre: {
-    lineHeight: 1.8,
+  selectBox: {
+    minWidth: "200px",
   },
-  code: {
-    overflowY: "auto",
-    maxHeight: "480px",
-  }
+  selectBoxWrapper: {
+    margin: theme.spacing(-1, 0, 1.5, 0),
+  },
+  paperContainer: {
+    padding: theme.spacing(3),
+    paddingBottom: theme.spacing(4),
+    marginBottom: theme.spacing(2),
+    border: `1px solid ${theme.palette.grey[200]}`,
+    width: "100%",
+  },
+  heading: {
+    marginBottom: theme.spacing(5),
+  },
 }));
-
-const dummyCode =
-  `{
-  "widget": {
-    "debug": "on",
-    "window": {
-      "title": "Sample Konfabulator Widget",
-      "name": "main_window",
-      "width": 500,
-      "height": 500
-    },
-    "image": {
-      "src": "Images/Sun.png",
-      "name": "sun1",
-      "hOffset": 250,
-      "vOffset": 250,
-      "alignment": "center"
-    },
-    "text": {
-      "data": "Click Here",
-      "size": 36,
-      "style": "bold",
-      "name": "text1",
-      "hOffset": 250,
-      "vOffset": 100,
-      "alignment": "center",
-      "onMouseUp": "sun1.opacity = (sun1.opacity / 100) * 90;"
-    }
-  }
-}`;
-
-const StatusComponent = () => (status: BadgeVariant) => {
-  return (
-    <Box>
-      <YBBadge variant={status} />
-    </Box>
-  );
-}
 
 const ArrowComponent = (classes: ReturnType<typeof useStyles>) => () => {
   return (
@@ -83,157 +58,242 @@ const ArrowComponent = (classes: ReturnType<typeof useStyles>) => () => {
       <ArrowRightIcon />
     </Box>
   );
-}
+};
 
 export const ActivityTab: FC = () => {
   const classes = useStyles();
   const { t } = useTranslation();
-  const theme = useTheme()
 
-  const [drawerOpenIndex, setDrawerOpen] = React.useState<number>();
+  const theme = useTheme();
 
-  const activityData = useMemo(() => [
-    {
-      name: "Index backfill",
-      status: BadgeVariant.InProgress,
-      starttime: "11/07/2022, 09:55",
-      endtime: "-"
-    },
-    {
-      name: "Edit cluster",
-      status: BadgeVariant.InProgress,
-      starttime: "11/01/2022, 09:52",
-      endtime: "-"
-    },
-  ], []);
+  const { data: clusterTablesResponseYsql, refetch: refetchYsql } = useGetClusterTablesQuery({
+    api: GetClusterTablesApiEnum.Ysql,
+  });
+  const ysqlDBList = React.useMemo(
+    () =>
+      Array.from(
+        (clusterTablesResponseYsql?.data ?? []).reduce(
+          (prev, curr) => prev.add(curr.keyspace),
+          new Set<string>()
+        )
+      ),
+    [clusterTablesResponseYsql?.data]
+  );
+
+  const [selectedDB, setSelectedDB] = React.useState<string>(ysqlDBList[0] ?? "");
+  React.useEffect(() => {
+    if (
+      (ysqlDBList.length > 0 && selectedDB === "") ||
+      !ysqlDBList.find((db) => db === selectedDB)
+    ) {
+      setSelectedDB(ysqlDBList[0] ?? "");
+    }
+  }, [ysqlDBList]);
+
+  const { data: inProgressActivityData, refetch: refetchInProgressActivities } = useActivities(
+    "IN_PROGRESS",
+    selectedDB
+  );
+  const { data: completedActivityData, refetch: refetchCompletedActivities } =
+    useActivities("COMPLETED");
+
+  const [drawerOpenData, setDrawerOpenData] = React.useState<{ dataList: any[]; index: number }>();
+
+  const refetch = React.useCallback(() => {
+    refetchInProgressActivities();
+    refetchCompletedActivities();
+    refetchYsql();
+  }, [refetchInProgressActivities, refetchCompletedActivities, refetchYsql]);
 
   const activityColumns = [
     {
-      name: 'name',
-      label: t('clusterDetail.activity.activity'),
+      name: "Name",
+      label: t("clusterDetail.activity.activity"),
       options: {
-        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
-        setCellProps: () => ({ style: { padding: '8px 16px' }}),
-      }
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
     },
     {
-      name: 'status',
-      label: t('clusterDetail.activity.status'),
+      name: "Phase",
+      label: t("clusterDetail.activity.status"),
       options: {
-        customBodyRender: StatusComponent(),
-        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
-        setCellProps: () => ({ style: { padding: '8px 16px' }}),
-      }
+        customBodyRender: (phase: string) => {
+          return (
+            <YBBadge
+              variant={phase === "Completed" ? BadgeVariant.Success : BadgeVariant.InProgress}
+              text={phase}
+            />
+          );
+        },
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
     },
     {
-      name: 'starttime',
-      label: t('clusterDetail.activity.starttime'),
+      name: "IndexName",
+      label: t("clusterDetail.activity.index"),
       options: {
-        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
-        setCellProps: () => ({ style: { padding: '8px 16px' }}),
-      }
+        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
+        setCellProps: () => ({ style: { padding: "8px 16px" } }),
+      },
     },
     {
-      name: 'endtime',
-      label: t('clusterDetail.activity.endtime'),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: '8px 16px' } }),
-        setCellProps: () => ({ style: { padding: '8px 16px' }}),
-      }
-    },
-    {
-      name: '',
-      label: '',
+      name: "",
+      label: "",
       options: {
         sort: false,
         customBodyRender: ArrowComponent(classes),
-      }
+      },
     },
   ];
 
+  const activityValues = React.useMemo(() => {
+    if (drawerOpenData === undefined) {
+      return undefined;
+    }
+
+    return Object.entries<any>(drawerOpenData.dataList[drawerOpenData.index]);
+  }, [drawerOpenData]);
+
   return (
     <Box>
-      {activityData.length ?
-        <Box pb={4} pt={1}>
-          <YBTable
-            data={activityData}
-            columns={activityColumns}
-            options={{ pagination: false, rowHover: true, onRowClick: (_, { dataIndex }) => setDrawerOpen(dataIndex) }}
-            touchBorder={false}
-          />
-          <YBModal
-            open={drawerOpenIndex !== undefined}
-            title={t('clusterDetail.activity.details.title')}
-            onClose={() => setDrawerOpen(undefined)}
-            enableBackdropDismiss
-            titleSeparator
-            cancelLabel={t('common.cancel')}
-            isSidePanel
-          >
-            {drawerOpenIndex !== undefined &&
-              <>
-                <Box className={classes.activityDetailBox}>
-                  <Grid container spacing={2}>
-                    <Grid xs={6} item>
-                      <Typography variant="subtitle2" className={classes.label}>
-                        {t('clusterDetail.activity.details.operationName')}
-                      </Typography>
-                      <Typography variant="body2" className={classes.value}>
-                        {activityData[drawerOpenIndex].name}
-                      </Typography>
-                    </Grid>
-                    <Grid xs={6} item>
-                      <Typography variant="subtitle2" className={classes.label}>
-                        {t('clusterDetail.activity.details.status')}
-                      </Typography>
-                      <YBBadge variant={activityData[drawerOpenIndex].status} />
-                    </Grid>
-                    <Grid xs={6} item>
-                      <Typography variant="subtitle2" className={classes.label}>
-                        {t('clusterDetail.activity.details.jobID')}
-                      </Typography>
-                      <Typography variant="body2" className={classes.value}>
-                        13048203-34
-                      </Typography>
-                    </Grid>
-                    <Grid xs={6} item></Grid>
-                    <Grid xs={6} item>
-                      <Typography variant="subtitle2" className={classes.label}>
-                        {t('clusterDetail.activity.details.startTime')}
-                      </Typography>
-                      <Typography variant="body2" className={classes.value}>
-                        {activityData[drawerOpenIndex].starttime}
-                      </Typography>
-                    </Grid>
-                    <Grid xs={6} item></Grid>
-                    <Grid xs={6} item>
-                      <Typography variant="subtitle2" className={classes.label}>
-                        {t('clusterDetail.activity.details.elapsedTime')}
-                      </Typography>
-                      <Typography variant="body2" className={classes.value}>
-                        3 min 15 sec
-                      </Typography>
-                    </Grid>
-                    <Grid xs={6} item></Grid>
-                    <Grid xs={12} item>
-                      <Box display="flex" justifyContent="space-between">
-                        <Typography variant="subtitle2" className={classes.label}>
-                          {t('clusterDetail.activity.details.progress')}
-                        </Typography>
-                        22%
-                      </Box>
-                      <YBProgress value={22} color={theme.palette.primary[500]} />
-                    </Grid>
-                  </Grid>
-                </Box>
-                <YBCodeBlock text={dummyCode} blockClassName={classes.code}
-                  preClassName={classes.pre} lineClassName={classes.pre} showLineNumbers />
-              </>
-            }
-          </YBModal>
+      <Paper className={classes.paperContainer}>
+        <Box display="flex" justifyContent="space-between" alignItems="start">
+          <Typography variant="h4" className={classes.heading}>
+            {t("clusterDetail.activity.inprogressActivities")}
+          </Typography>
+          <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={refetch}>
+            {t("clusterDetail.performance.actions.refresh")}
+          </YBButton>
         </Box>
-        : <YBLoadingBox>{t('clusterDetail.activity.noactivity')}</YBLoadingBox>
-      }
+        {ysqlDBList.length > 0 && (
+          <Box className={classes.selectBoxWrapper}>
+            <Typography
+              variant="subtitle2"
+              className={classes.label}
+              style={{ marginBottom: 0, marginLeft: 1.5, marginTop: 0 }}
+            >
+              {t("clusterDetail.activity.database")}
+            </Typography>
+            <YBSelect
+              className={classes.selectBox}
+              value={selectedDB}
+              onChange={(e) => setSelectedDB(e.target.value)}
+            >
+              {ysqlDBList.map((dbName) => {
+                return (
+                  <MenuItem key={dbName} value={dbName}>
+                    {dbName}
+                  </MenuItem>
+                );
+              })}
+            </YBSelect>
+          </Box>
+        )}
+        {inProgressActivityData.length ? (
+          <YBTable
+            data={inProgressActivityData}
+            columns={activityColumns}
+            options={{
+              pagination: false,
+              rowHover: true,
+              onRowClick: (_, { dataIndex }) =>
+                setDrawerOpenData({ dataList: inProgressActivityData, index: dataIndex }),
+            }}
+            withBorder={false}
+          />
+        ) : (
+          <YBLoadingBox>{t("clusterDetail.activity.noInprogressActivities")}</YBLoadingBox>
+        )}
+      </Paper>
+
+      <Paper className={classes.paperContainer}>
+        <Typography variant="h4" className={classes.heading}>
+          {t("clusterDetail.activity.completedActivities")}
+        </Typography>
+        {completedActivityData.length ? (
+          <YBTable
+            data={completedActivityData}
+            columns={activityColumns}
+            options={{
+              pagination: false,
+              rowHover: true,
+              onRowClick: (_, { dataIndex }) =>
+                setDrawerOpenData({ dataList: completedActivityData, index: dataIndex }),
+            }}
+            withBorder={false}
+          />
+        ) : (
+          <YBLoadingBox>{t("clusterDetail.activity.noCompletedActivities")}</YBLoadingBox>
+        )}
+      </Paper>
+
+      <YBModal
+        open={drawerOpenData !== undefined}
+        title={t("clusterDetail.activity.details.title")}
+        onClose={() => setDrawerOpenData(undefined)}
+        enableBackdropDismiss
+        titleSeparator
+        cancelLabel={t("common.close")}
+        isSidePanel
+      >
+        {drawerOpenData !== undefined && (
+          <>
+            <Box className={classes.activityDetailBox}>
+              <Grid container spacing={2}>
+                <Grid xs={6} item>
+                  <Typography variant="subtitle2" className={classes.label}>
+                    {t("clusterDetail.activity.details.operationName")}
+                  </Typography>
+                  <Typography variant="body2" className={classes.value}>
+                    {drawerOpenData.dataList[drawerOpenData.index].Name}
+                  </Typography>
+                </Grid>
+                <Grid xs={6} item>
+                  <Typography variant="subtitle2" className={classes.label}>
+                    {t("clusterDetail.activity.details.status")}
+                  </Typography>
+                  <YBBadge
+                    variant={drawerOpenData.dataList[drawerOpenData.index].status}
+                    text={drawerOpenData.dataList[drawerOpenData.index].Phase}
+                  />
+                </Grid>
+                {activityValues?.map(([key, value]) =>
+                  key.charAt(0).toLowerCase() === key.charAt(0) || key === "Name" ? (
+                    <React.Fragment key={key} />
+                  ) : (
+                    <Grid xs={6} item key={key}>
+                      <Typography variant="subtitle2" className={classes.label}>
+                        {key.split(/(?=[A-Z][^A-Z])/).join(" ")}
+                      </Typography>
+                      <Typography variant="body2" className={classes.value}>
+                        {value}
+                      </Typography>
+                    </Grid>
+                  )
+                )}
+                {drawerOpenData.dataList[drawerOpenData.index].progress !== undefined && (
+                  <Grid xs={12} item>
+                    <Box display="flex" justifyContent="space-between">
+                      <Typography variant="subtitle2" className={classes.label}>
+                        {t("clusterDetail.activity.details.progress")}
+                      </Typography>
+                      {drawerOpenData.dataList[drawerOpenData.index].progress}%
+                    </Box>
+                    <Box mb={1}>
+                      <YBProgress
+                        value={drawerOpenData.dataList[drawerOpenData.index].progress}
+                        color={theme.palette.primary[500]}
+                      />
+                    </Box>
+                  </Grid>
+                )}
+              </Grid>
+            </Box>
+          </>
+        )}
+      </YBModal>
     </Box>
-  )
+  );
 };
