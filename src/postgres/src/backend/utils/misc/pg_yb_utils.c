@@ -60,7 +60,9 @@
 #include "catalog/pg_partitioned_table.h"
 #include "catalog/pg_policy.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_range_d.h"
 #include "catalog/pg_rewrite.h"
+#include "catalog/pg_statistic_d.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
@@ -3249,8 +3251,14 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		case RelationRelationId:                          // pg_class
 			sys_table_index_id = ClassNameNspIndexId;
 			break;
+		case RangeRelationId:                             // pg_range
+			sys_only_filter_attr = Anum_pg_range_rngtypid;
+			break;
 		case RewriteRelationId:                           // pg_rewrite
 			sys_table_index_id = RewriteRelRulenameIndexId;
+			break;
+		case StatisticRelationId:                         // pg_statistic
+			sys_only_filter_attr = Anum_pg_statistic_starelid;
 			break;
 		case TriggerRelationId:                           // pg_trigger
 			sys_table_index_id = TriggerRelidNameIndexId;
