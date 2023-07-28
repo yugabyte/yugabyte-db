@@ -64,6 +64,11 @@
 #define YB_CATCACHE_VERSION_UNINITIALIZED (0)
 
 /*
+ * Check if (const char *)FLAG is non-empty.
+ */
+#define IS_NON_EMPTY_STR_FLAG(flag) (flag != NULL && flag[0] != '\0')
+
+/*
  * Utility to get the current cache version that accounts for the fact that
  * during a DDL we automatically apply the pending syscatalog changes to
  * the local cache (of the current session).
