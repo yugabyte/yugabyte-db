@@ -40,6 +40,7 @@ METRIC_DECLARE_counter(pg_response_cache_hits);
 METRIC_DECLARE_counter(pg_response_cache_renew_soft);
 METRIC_DECLARE_counter(pg_response_cache_renew_hard);
 DECLARE_bool(ysql_enable_read_request_caching);
+DECLARE_string(ysql_catalog_preload_additional_table_list);
 DECLARE_uint64(TEST_pg_response_cache_catalog_read_time_usec);
 DECLARE_uint64(TEST_committed_history_cutoff_initial_value_usec);
 DECLARE_uint32(pg_cache_response_renew_soft_lifetime_limit_ms);
@@ -52,11 +53,14 @@ Status EnableCatCacheEventLogging(PGConn* conn) {
   return conn->Execute("SET yb_debug_log_catcache_events = ON");
 }
 
-template<bool CacheEnabled>
+template<bool CacheEnabled, bool AdditionalCatalog = false>
 class ConfigurablePgCatalogPerfTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
     FLAGS_ysql_enable_read_request_caching = CacheEnabled;
+    if (AdditionalCatalog) {
+      FLAGS_ysql_catalog_preload_additional_table_list = "pg_statistic,pg_invalid";
+    }
     PgMiniTestBase::SetUp();
     metrics_.emplace(
         *cluster_->mini_master()->master(), *cluster_->mini_tablet_server(0)->server());
@@ -173,6 +177,7 @@ class ConfigurablePgCatalogPerfTest : public PgMiniTestBase {
 
 using PgCatalogPerfTest = ConfigurablePgCatalogPerfTest<false>;
 using PgCatalogWithCachePerfTest = ConfigurablePgCatalogPerfTest<true>;
+using PgPreloadAdditionalCatalogTest = ConfigurablePgCatalogPerfTest<true, true>;
 
 class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithCachePerfTest {
  protected:
@@ -353,6 +358,20 @@ TEST_F_EX(PgCatalogPerfTest,
   ASSERT_EQ(second_connection_metrics.cache_renew_soft, 1);
   ASSERT_EQ(second_connection_metrics.cache_hits, 1);
   ASSERT_EQ(second_connection_metrics.cache_queries, 6);
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          RPCCountOnStartupAdditionalPreload,
+          PgPreloadAdditionalCatalogTest) {
+  // No failures even there are invalid PG catalog on the flag list.
+  const auto connector = [this] {
+    RETURN_NOT_OK(Connect());
+    return static_cast<Status>(Status::OK());
+  };
+
+  const auto first_connect_rpc_count = ASSERT_RESULT(MetricDeltas(connector)).read_rpc;
+  // This value should be no less than the first connection RPC value in the StartupRPCCount test.
+  ASSERT_EQ(first_connect_rpc_count, 7);
 }
 
 } // namespace pgwrapper

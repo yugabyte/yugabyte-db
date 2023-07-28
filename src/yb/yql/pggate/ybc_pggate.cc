@@ -87,13 +87,33 @@ DEFINE_NON_RUNTIME_bool(ysql_enable_profile, false, "Enable PROFILE feature.");
 TAG_FLAG(ysql_enable_profile, advanced);
 TAG_FLAG(ysql_enable_profile, hidden);
 
-DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
-            "If true, YB catalog preloads additional tables upon "
-            "connection creation and cache refresh.");
+DEPRECATE_FLAG(bool, ysql_catalog_preload_additional_tables, "07_2023");
+
+DEFINE_NON_RUNTIME_string(ysql_catalog_preload_additional_table_list, "",
+    "A list of catalog tables that YSQL preloads additionally upon "
+    "connection start-up and cache refreshes. Catalog table names must start with pg_."
+    "Invalid catalog names are ignored. Comma separated. Example: pg_range,pg_proc");
 
 DEFINE_NON_RUNTIME_bool(ysql_disable_per_tuple_memory_context_in_update_relattrs, false,
             "If true, disable the use of per-tuple memory context in YB catalog "
             "and relcache preloading.");
+
+namespace {
+
+bool PreloadAdditionalCatalogListValidator(const char* flag_name, const std::string& flag_val) {
+  for (const char& c : flag_val) {
+    if (c != '_' && c != ',' && !islower(c)) {
+      LOG(ERROR) << "Found invalid character " << c << " in flag " << flag_name;
+      return false;
+    }
+  }
+
+  return true;
+}
+
+} // namespace
+
+DEFINE_validator(ysql_catalog_preload_additional_table_list, PreloadAdditionalCatalogListValidator);
 
 namespace yb {
 namespace pggate {
@@ -1380,9 +1400,9 @@ uint64_t YBCGetSharedAuthKey() {
 }
 
 const YBCPgGFlagsAccessor* YBCGetGFlags() {
+  // clang-format off
   static YBCPgGFlagsAccessor accessor = {
       .log_ysql_catalog_versions                = &FLAGS_log_ysql_catalog_versions,
-      .ysql_catalog_preload_additional_tables   = &FLAGS_ysql_catalog_preload_additional_tables,
       .ysql_disable_index_backfill              = &FLAGS_ysql_disable_index_backfill,
       .ysql_disable_server_file_access          = &FLAGS_ysql_disable_server_file_access,
       .ysql_enable_reindex                      = &FLAGS_ysql_enable_reindex,
@@ -1401,8 +1421,11 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_disable_per_tuple_memory_context_in_update_relattrs =
           &FLAGS_ysql_disable_per_tuple_memory_context_in_update_relattrs,
       .ysql_enable_create_database_oid_collision_retry =
-          &FLAGS_ysql_enable_create_database_oid_collision_retry
+          &FLAGS_ysql_enable_create_database_oid_collision_retry,
+      .ysql_catalog_preload_additional_table_list =
+          FLAGS_ysql_catalog_preload_additional_table_list.c_str(),
   };
+  // clang-format on
   return &accessor;
 }
 

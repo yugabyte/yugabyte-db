@@ -61,7 +61,9 @@
 #include "catalog/pg_partitioned_table.h"
 #include "catalog/pg_policy.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_range_d.h"
 #include "catalog/pg_rewrite.h"
+#include "catalog/pg_statistic_d.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
@@ -3071,6 +3073,8 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 			sys_table_index_id = AccessMethodOperatorIndexId;
 			break;
 		case PartitionedRelationId:                       // pg_partitioned_table
+		case RangeRelationId:                             // pg_range
+		case StatisticRelationId:                         // pg_statistic
 			break;
 
 		default:
