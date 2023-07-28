@@ -1947,6 +1947,30 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Result<bool> IsCreateTableDone(const TableInfoPtr& table);
 
+  // Functions related to SetupReplicationWithBootstrap
+
+  // Cleanup tasks for SetupReplicationWithBootstrap. Depending on the step of the process, we will
+  // delete replication, snapshots, and or bootstrap streams.
+  void CleanupSetupReplicationWithBootstrap(
+      std::shared_ptr<CDCRpcTasks> cdc_rpc_task,
+      const SetupReplicationWithBootstrapStatePB& state,
+      const std::vector<xrepl::StreamId>& bootstrap_ids,
+      const TxnSnapshotId& old_snapshot_id = TxnSnapshotId::Nil(),
+      const TxnSnapshotId& new_snapshot_id = TxnSnapshotId::Nil());
+
+  Result<std::shared_ptr<CDCRpcTasks>>
+  SetupReplicationWithBootstrapValidateRequestAndConnectToProducer(
+      const SetupNamespaceReplicationWithBootstrapRequestPB* req);
+
+  using TableMetaPB = ImportSnapshotMetaResponsePB::TableMetaPB;
+  Result<std::vector<TableMetaPB>> SetupReplicationWithBootstrapCreateAndImportSnapshot(
+      std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks,
+      std::vector<client::YBTableName>* tables,
+      TxnSnapshotId* old_snapshot_id,
+      TxnSnapshotId* new_snapshot_id,
+      SetupReplicationWithBootstrapStatePB* state,
+      rpc::RpcContext* rpc);
+
   // TODO: the maps are a little wasteful of RAM, since the TableInfo/TabletInfo
   // objects have a copy of the string key. But STL doesn't make it
   // easy to make a "gettable set".
