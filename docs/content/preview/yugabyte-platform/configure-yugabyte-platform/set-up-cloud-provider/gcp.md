@@ -88,15 +88,17 @@ Note: YugabyteDB Anywhere needs network connectivity to the VMs, service account
 
 ## Create an instance template (Optional)
 
-GCP offers a way to specify arbitrary parameters via an [instance template](https://cloud.google.com/compute/docs/instance-templates). You can customize your GCP instance template and accept the instance template name as a region level field during provider creation, thereby enabling YBA to use the configuration of the instance template for universe creation.
+GCP offers a way to specify arbitrary parameters via an [instance template](https://cloud.google.com/compute/docs/instance-templates). You can customize your GCP instance template and accept the instance template name as a region level field during provider creation, thereby enabling YB Anywhere to use the configuration of the instance template for universe creation.
 
+{{< note>}}
 Note that you require YugabyteDB Anywhere version 2.18.2.0 or higher to create instance templates.
+{{< /note >}}
 
 To create an instance template on Google Cloud console with your desired customizations, do the following:
 
 1. Follow the steps on Google Cloud console to [create a new instance template](https://cloud.google.com/compute/docs/instance-templates/create-instance-templates).
 
-    Note that not all customizations will be honored when creating a universe on YBA with the instance template. For details about fields that can't be overridden by a GCP instance template, refer to this [list](https://gist.github.com/chidmuthu/ebe540b102fb4a598260c68d2117a3ad).
+    Note that not all customizations will be honored when creating a universe on YB Anywhere with the instance template. For details about fields that can't be overridden by a GCP instance template, refer to this [list](https://gist.github.com/chidmuthu/ebe540b102fb4a598260c68d2117a3ad).
 
 1. Ensure that the instance template is created under the right project and choose the correct network and sub-network under **Advanced Options** > **Networking**.
 
