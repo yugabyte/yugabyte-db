@@ -65,7 +65,7 @@ extract(epoch from clock_timestamp())
 
 This evaluates to the number of seconds (as a _double precision_ value with microsecond precision) of the specified moment from the so-called start of the epoch (_00:00:00_ on _1-Jan-1970 UTC_). The [plain _timestamp_ and _timestamptz_ data types](../date-time-data-types-semantics/type-timestamp/) section explains, and demonstrates, that the result of _"extract(epoch from timestamptz_value)"_ is insensitive to the session's _TimeZone_ setting. Try this, using the LAX and HEL results from the previous query as the _timestamptz_ literals.
 
-```ppgsql
+```plpgsql
 with c as (
   select
     '2021-07-30 10:26:39 America/Los_Angeles'::timestamptz as t1,
@@ -128,7 +128,7 @@ The implementation and testing of this function are utterly straightforward—bu
 
 ### Create function duration_as_text()
 
-The return data type of the _extract()_ operator is _double precision_. But it’s better to implement _duration_as_text()_ with a _numeric_ input formal parameter because of this datatype’s greater precision and accuracy. This makes behavior with input values that are very close to the units boundaries that the inequality tests define more accurate than if _double precision_ is used. Of course, this doesn’t matter when the function is used for its ultimate purpose because ordinary stochastic timing variability will drown any concerns about the accuracy of the formatting. But testing is helped when results with synthetic data agree reliably with what you expect.
+The return data type of the _extract()_ operator is _double precision_. But it’s better to implement _duration_as_text()_ with a _numeric_ input formal parameter because of the greater precision and accuracy of this data type. This makes behavior with input values that are very close to the units boundaries that the inequality tests define more accurate than if _double precision_ is used. Of course, this doesn’t matter when the function is used for its ultimate purpose because ordinary stochastic timing variability will drown any concerns about the accuracy of the formatting. But testing is helped when results with synthetic data agree reliably with what you expect.
 
 As is often the case with formatting code, the readability benefits from trivial encapsulations of the SQL built-in functions that it uses—in this case _to_char()_ and _ltrim()_. First create this overload-pair of helpers:
 

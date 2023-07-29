@@ -3,7 +3,7 @@ create_composite_type ::= CREATE TYPE type_name AS (
                           [ composite_type_elem [ , ... ] ] )
 
 create_enum_type ::= CREATE TYPE type_name AS ENUM ( 
-                     [ label [ , ... ] ] )
+                     [ name [ , ... ] ] )
 
 create_range_type ::= CREATE TYPE type_name AS RANGE ( SUBTYPE = 
                       subtype [ , range_type_option [ ... ] ] )
