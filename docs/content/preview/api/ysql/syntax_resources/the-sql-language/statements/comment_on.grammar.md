@@ -42,5 +42,5 @@ comment_on ::= COMMENT ON
                  | TEXT SEARCH TEMPLATE object_name
                  | TRIGGER trigger_name ON table_name
                  | TYPE object_name
-                 | VIEW object_name } IS { '<Text Literal>' | NULL }
+                 | VIEW object_name } IS { text_literal | NULL }
 ```

@@ -135,7 +135,7 @@ _x_ and _y_ in the _values_ clause (in syntax spots that could be placeholders i
 
 Test it thus:
 
-```plpgql
+```plpgsql
 call y.x(42);
 select * from y.x order by 1;
 ```

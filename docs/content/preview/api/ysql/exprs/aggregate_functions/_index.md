@@ -3,12 +3,13 @@ title: YSQL aggregate functions
 linkTitle: Aggregate functions
 headerTitle: Aggregate functions
 description: This major section describes the syntax and semantics of all of the aggregate functions that YSQL supports.
-image: /images/section_icons/api/ysql.png
+image: /images/section_icons/api/subsection.png
 menu:
   preview:
     identifier: aggregate-functions
     parent: api-ysql-exprs
 type: indexpage
+showRightNav: true
 ---
 If you are already familiar with aggregate functions, then you can skip straight to the [syntax and semantics](./invocation-syntax-semantics/) section or the section that lists all of [the YSQL aggregate functions](./function-syntax-semantics/) and that links, in turn, to the definitive account of each function.
 
@@ -33,9 +34,9 @@ Notice these differences and similarities between aggregate functions and window
 
 The remaining pages are organized as follows:
 
-### Informal overview of function invocation using the GROUP BY clause: [here](./functionality-overview/)
+### Informal overview of function invocation using the GROUP BY clause
 
-Skip this section entirely if you are already familiar with aggregate functions. It presents code examples that classify the aggregate functions into three kinds according to how they may be invoked:
+**[Here](./functionality-overview/)**. Skip this section entirely if you are already familiar with aggregate functions. It presents code examples that classify the aggregate functions into three kinds according to how they may be invoked:
 
 - [ordinary aggregate functions](./functionality-overview/#ordinary-aggregate-functions)
 
@@ -45,15 +46,15 @@ Skip this section entirely if you are already familiar with aggregate functions.
 
 This section focuses on the _effect_ that each illustrated function has. It leaves formal definitions to the [invocation syntax and semantics](./invocation-syntax-semantics/) section and the [Signature and purpose of each aggregate function](./function-syntax-semantics/) section.
 
-### Aggregate function invocation—SQL syntax and semantics: [here](./invocation-syntax-semantics/)
+### Aggregate function invocation—SQL syntax and semantics
 
-This section presents the formal treatment of the syntax and semantics of how an aggregate function is invoked as a special kind of `SELECT` list item—with the invocation syntax optionally decorated with an `ORDER BY` clause, or a `FILTER` clause. This account also explains the use of the `HAVING` clause which lets you restrict a result set according the value(s) returned by a list of aggregate functions.
+**[Here](./invocation-syntax-semantics/)**. This section presents the formal treatment of the syntax and semantics of how an aggregate function is invoked as a special kind of `SELECT` list item—with the invocation syntax optionally decorated with an `ORDER BY` clause, or a `FILTER` clause. This account also explains the use of the `HAVING` clause which lets you restrict a result set according the value(s) returned by a list of aggregate functions.
 
 There are four variants of the `GROUP BY` invocation style: `GROUP BY <column list>`; `GROUP BY GROUPING SETS`; `GROUP BY ROLLUP`; and `GROUP BY CUBE`. Further, all but the bare `GROUP BY <column list>` allow the use of  a `GROUPING` keyword in the `SELECT` list to label the different `GROUPING SETS`. Because all of this requires a fairly lengthy explanation, this is covered in the dedicated section [`Using the GROUPING SETS, ROLLUP, and CUBE syntax for aggregate function invocation`](./grouping-sets-rollup-cube/).
 
-### Signature and purpose of each aggregate function: [here](./function-syntax-semantics/)
+### Signature and purpose of each aggregate function
 
-The following list groups the thirty-seven aggregate functions in the same way that the sidebar items group them. The rationale for the grouping is explained in the referenced sections.
+**[Here](./function-syntax-semantics/)**. The following list groups the thirty-seven aggregate functions in the same way that the sidebar items group them. The rationale for the grouping is explained in the referenced sections.
 
 &#160;&#160;&#160;&#160;&#160;&#160;[`avg()`](./function-syntax-semantics/avg-count-max-min-sum/#avg)<br>
 &#160;&#160;&#160;&#160;&#160;&#160;[`max()`](./function-syntax-semantics/avg-count-max-min-sum/#max-min)<br>
@@ -100,8 +101,8 @@ The following list groups the thirty-seven aggregate functions in the same way t
 &#160;&#160;&#160;&#160;&#160;&#160;[`percent_rank()`](./function-syntax-semantics/rank-dense-rank-percent-rank-cume-dist/#percent-rank)<br>
 &#160;&#160;&#160;&#160;&#160;&#160;[`cume_dist()`](./function-syntax-semantics/rank-dense-rank-percent-rank-cume-dist/#cume-dist)
 
-### Aggregate functions case study—the "68–95–99.7" rule: [here](./case-study-the-6895997-rule/)
+### Aggregate functions case study—the "68–95–99.7" rule
 
-Regard this section as an optional extra. It shows the use of aggregate functions to demonstrate the so-called "68–95–99.7 rule"—described in [this Wikipedia article](https://en.wikipedia.org/wiki/68%e2%80%9395%e2%80%9399.7_rule). This case-study focuses on just one part of the rule:
+**[Here](./case-study-the-6895997-rule/)**. Regard this section as an optional extra. It shows the use of aggregate functions to demonstrate the so-called "68–95–99.7 rule"—described in [this Wikipedia article](https://en.wikipedia.org/wiki/68%e2%80%9395%e2%80%9399.7_rule). This case-study focuses on just one part of the rule:
 
 > 68.27% of the values in a normal distribution lie within one standard deviation each side of the mean.
