@@ -129,7 +129,10 @@ DEFINE_RUNTIME_int32(update_metrics_interval_ms, kUpdateIntervalMs,
 DEFINE_UNKNOWN_bool(enable_cdc_state_table_caching, true,
     "Enable caching the cdc_state table schema.");
 
-DEFINE_RUNTIME_bool(enable_cdc_client_tablet_caching, true,
+// enable_cdc_client_tablet_caching is disabled because cdc code does notify the meta cache when
+// requests to the peers fail. Also, meta cache does not handle addition of peers, which can cause
+// issues with cdc checkpoint updates.
+DEFINE_RUNTIME_bool(enable_cdc_client_tablet_caching, false,
     "Enable caching the tablets found by client.");
 
 DEFINE_RUNTIME_bool(enable_collect_cdc_metrics, true, "Enable collecting cdc metrics.");
@@ -142,7 +145,7 @@ DEFINE_UNKNOWN_double(cdc_get_changes_free_rpc_ratio, .10,
     "When the TServer only has this percentage of RPCs remaining because the rest are "
     "GetChanges, reject additional requests to throttle/backoff and prevent deadlocks.");
 
-DEFINE_UNKNOWN_bool(enable_update_local_peer_min_index, false,
+DEFINE_UNKNOWN_bool(enable_update_local_peer_min_index, true,
     "Enable each local peer to update its own log checkpoint instead of the leader "
     "updating all peers.");
 
@@ -2521,17 +2524,21 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
 void CDCServiceImpl::UpdateTabletPeersWithMaxCheckpoint(
     const std::unordered_set<TabletId>& tablet_ids_with_max_checkpoint,
     std::unordered_set<TabletId>* failed_tablet_ids) {
-  auto enable_update_local_peer_min_index =
-      GetAtomicFlag(&FLAGS_enable_update_local_peer_min_index);
-
   TabletCDCCheckpointInfo tablet_info;
   tablet_info.cdc_sdk_op_id = OpId::Max();
   tablet_info.cdc_op_id = OpId::Max();
   tablet_info.cdc_sdk_latest_active_time = 0;
 
   for (const auto& tablet_id : tablet_ids_with_max_checkpoint) {
+    // When a CDCSDK Stream is deleted the row will be marked for deletion with OpId::Max(). All
+    // such rows are collected here. We will try set the CDCSDK checkpoint as OpId::Max in all the
+    // tablet peers by sending RPCs , and only if they all succeeded we will delete the
+    // corresponding row from 'cdc_state' table. To ensure the OpId::Max() is set in all tablet
+    // peers before we delete the row from 'cdc_state' table, we are passing
+    // 'enable_update_local_peer_min_index' as false.
     auto s = UpdateTabletPeerWithCheckpoint(
-        tablet_id, &tablet_info, enable_update_local_peer_min_index, false);
+        tablet_id, &tablet_info, false /* enable_update_local_peer_min_index */,
+        false /* ignore_rpc_failures */);
 
     if (!s.ok()) {
       failed_tablet_ids->insert(tablet_id);
