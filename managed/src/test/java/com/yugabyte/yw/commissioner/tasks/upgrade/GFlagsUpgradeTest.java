@@ -1056,7 +1056,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
           universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
               specificGFlags;
           universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
-              "2.17.1.0-b30";
+              "2.18.2.0-b65";
         });
     expectedUniverseVersion++;
 

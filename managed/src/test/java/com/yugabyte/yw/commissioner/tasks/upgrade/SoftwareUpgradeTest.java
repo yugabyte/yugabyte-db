@@ -299,7 +299,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
   @Test
   public void testSoftwareUpgradeWithSameVersion() {
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "2.14.11.0-b34";
+    taskParams.ybSoftwareVersion = "2.14.12.0-b1";
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
 
     TaskInfo taskInfo = submitTask(taskParams);
