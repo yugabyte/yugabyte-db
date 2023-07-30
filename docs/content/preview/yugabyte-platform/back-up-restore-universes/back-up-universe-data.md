@@ -80,12 +80,16 @@ A failed incremental backup, which you can delete, is reported similarly to any 
 
 ## Configure backup performance parameters
 
-If you are using YBA version 2.16 or later to manage universes with YugabyteDB version 2.16 or later, you can tune parallelization and buffer parameters to enhance backup and restore performance.
+If you are using YBA version 2.16 or later to manage universes with YugabyteDB version 2.16 or later, you can manage the speed of backup and restore operations by configuring resource throttling.
 
-To configure throttle parameters, click **... > Configure Throttle Parameters**, as per the following illustration:
+To configure throttle parameters:
 
-![Throttle parameters](/images/yp/backup-throttle-config-button.png)
+1. Navigate to the universe and select the **Backups** tab.
 
-You define throttle parameters using the **Configure Throttle Parameters** dialog shown in the following illustration:
+1. Click **Advanced** and choose **Configure Throttle Parameters** to display the **Configure Resource Throttling** dialog.
 
-![Throttle](/images/yp/backup-restore-throttle.png)
+    ![Throttle](/images/yp/backup-restore-throttle.png)
+
+1. For faster backups and restores, enter higher values. For lower impact on database performance, enter lower values.
+
+1. Click **Save**.
