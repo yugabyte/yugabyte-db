@@ -952,4 +952,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "If enabled YBA will install locales on the DB nodes",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> disableImageBundleValidation =
+      new ConfKeyInfo<>(
+          "yb.edit_provider.new.disable_image_bundle_validations",
+          ScopeType.GLOBAL,
+          "Image Bundle Validation",
+          "Disables Image Bundle Validation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
