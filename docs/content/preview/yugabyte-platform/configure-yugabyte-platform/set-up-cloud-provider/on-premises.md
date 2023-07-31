@@ -74,11 +74,10 @@ With on-premises providers, VMs are _not_ auto-created by YugabyteDB Anywhere; y
 
 Creating an on-premises provider requires the following steps:
 
-- Create the provider configuration
-- Configure the hardware for the node instances
-  - Add instance types
-  - Add instances
-  - Provision the nodes
+- Create the on-premises provider configuration.
+- Configure the hardware for the node instances that the provider will use for deploying YugabyteDB universes.
+  - Add instance types.
+  - Add instances.
 
 ## Configure the on-premises provider
 
@@ -196,6 +195,10 @@ To add an instance type, do the following:
 
 ### Add instances
 
+You can add instance using the YugabyteDB Anywhere UI or, if **Manually Provision Nodes** is enabled in the on-prem provider configuration, you can manually provision instances using the pre-provisioning script.
+
+#### Add instances in YugabyteDB Anywhere
+
 To add the instances, do the following:
 
 1. Click **Add Instances**.
@@ -215,18 +218,17 @@ To add the instances, do the following:
 
 Note that if you provide a hostname, the universe might experience issues communicating. To resolve this, you need to delete the failed universe and then recreate it with the `use_node_hostname_for_local_tserver` flag enabled.
 
-### Provision nodes manually
+This completes the on-premises cloud provider configuration. You can proceed to [Configure the backup target](../../backup-target/) or [Create deployments](../../../create-deployments/).
 
-To provision your nodes manually, you have the following two options:
+#### Provision nodes manually using the pre-provisioning script
 
-1. If the SSH user you provided has sudo privileges but requires a password, you can [run the pre-provisioning script](#run-the-pre-provisioning-script).
-1. If the SSH user does not have any sudo privileges, you need to [set up the database nodes manually](../on-premises-manual/).
+This step is only required if you set **Manually Provision Nodes** to true on your on-prem provider configuration, and the SSH user has sudo privileges which require a password.
 
-#### Run the pre-provisioning script
+{{< note title="Note" >}}
+If the SSH user does not have any sudo privileges, you need to set up the database nodes manually. Refer to [Set up on-premises nodes manually](../on-premises-manual/).
+{{< /note >}}
 
-This step is only required if you set **Manually Provision Nodes** to true on your on-prem provider configuration, and the SSH user has sudo privileges which require a password; otherwise you skip this step.
-
-The pre-provisioning script is displayed under **Instances** on the **Instances** tab of the on-prem configuration you created.
+To provision your nodes you can run the pre-provisioning script. The script is displayed under **Instances** on the **Instances** tab of the on-prem configuration you created.
 
 You can manually provision each node using the pre-provisioning Python script, as follows:
 
@@ -238,7 +240,7 @@ You can manually provision each node using the pre-provisioning Python script, a
     sudo docker exec -it yugaware bash
     ```
 
-1. Copy and paste the Python script from the UI and substitute the following values:
+1. Copy and paste the Python script from the YugabyteDB Anywhere UI and substitute the following values:
 
     - `--install_node_agent` - this flag instructs the script to install the node agent, which is required for YugabyteDB Anywhere to communicate with the instance.
     - `--yba_url` - enter the IP address of the machine where you are running YugabyteDB Anywhere, with the port of 9000.
@@ -275,16 +277,20 @@ You can manually provision each node using the pre-provisioning Python script, a
 
 This completes the on-premises cloud provider configuration. You can proceed to [Configure the backup target](../../backup-target/) or [Create deployments](../../../create-deployments/).
 
-### Use node agents
+## Use node agents
 
 To automate some of the steps outlined in [Provision nodes manually](#provision-nodes-manually), YugabyteDB Anywhere provides a node agent that runs on each node meeting the following requirements:
 
 - The node has already been set up with the `yugabyte` user group and home.
 - The bi-directional communication between the node and YugabyteDB Anywhere has been established (that is, the IP address can reach the host and vice versa).
 
-#### Installation
+The node agents are installed onto instances automatically when adding instances or running the pre-provisioning script using the `--install_node_agent` flag.
 
-You can install a node agent as follows:
+You can also install the node agent manually.
+
+### Install node agent manually
+
+You can install a node agent manually as follows:
 
 1. Download the installer from YugabyteDB Anywhere using the API token of the Super Admin, as follows:
 
@@ -338,9 +344,9 @@ You can install a node agent as follows:
 
 When the installation has been completed, the configurations are saved in the `config.yml` file located in the `node-agent/config/` directory. You should refrain from manually changing values in this file.
 
-#### Registration
+### Manual registration
 
-To enable secured communication, the node agent is automatically registered during its installation so the YugabyteDB Anywhere is aware of its existence. You can also register and unregister the node agent manually during configuration.
+To enable secured communication, the node agent is automatically registered during its installation so YugabyteDB Anywhere is aware of its existence. You can also register and unregister the node agent manually during configuration.
 
 The following is the node agent registration command:
 
@@ -377,7 +383,7 @@ To unregister a node agent, use the following command:
 node-agent node unregister
 ```
 
-#### Operations
+### Node agent operations
 
 Even though the node agent installation, configuration, and registration are sufficient, the following supplementary commands are also supported:
 
@@ -386,7 +392,7 @@ Even though the node agent installation, configuration, and registration are suf
 - `node-agent service start` and `node-agent service stop` are used for starting or stopping the node agent as a gRPC server.
 - `node-agent node preflight-check` is used for checking if a node is configured as a YugabyteDB Anywhere node. After the node agent and the node have been registered with YugabyteDB Anywhere, this command can be run on its own, if the result needs to be published to YugabyteDB Anywhere. For more information, see [Preflight check](#preflight-check).
 
-#### Preflight check
+### Preflight check
 
 After the node agent is installed, configured, and connected to YugabyteDB Anywhere, you can perform a series of preflight checks without sudo privileges by using the following command:
 
