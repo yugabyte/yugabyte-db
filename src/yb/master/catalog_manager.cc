@@ -6470,15 +6470,6 @@ Status CatalogManager::IsDeleteTableDone(const IsDeleteTableDoneRequestPB* req,
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
   }
 
-  // Temporary fix for github issue #5290.
-  // TODO: Wait till deletion completed for tablegroup parent table.
-  if (table->IsTablegroupParentTable()) {
-    LOG(INFO) << "Servicing IsDeleteTableDone request for tablegroup parent table id "
-              << req->table_id() << ": deleting. Skipping wait for DELETED state.";
-    resp->set_done(true);
-    return Status::OK();
-  }
-
   if (l->is_deleted() || l->is_hidden()) {
     LOG(INFO) << "Servicing IsDeleteTableDone request for table id "
               << req->table_id() << ": totally " << (l->is_hidden() ? "hidden" : "deleted");
