@@ -216,6 +216,7 @@ extern double YBCGetTransactionPriority();
 extern TxnPriorityRequirement YBCGetTransactionPriorityType();
 static const char *show_transaction_priority(void);
 
+static void assign_yb_pg_batch_detection_mechanism(int new_value, void *extra);
 static void assign_ysql_upgrade_mode(bool newval, void *extra);
 
 static bool check_max_backoff(int *max_backoff_msecs, void **extra, GucSource source);
@@ -4721,7 +4722,7 @@ static struct config_enum ConfigureNamesEnum[] =
 	},
 
 	  {
-		{"yb_pg_batch_detection_mechanism", PGC_SIGHUP, COMPAT_OPTIONS_CLIENT,
+		{"yb_pg_batch_detection_mechanism", PGC_USERSET, COMPAT_OPTIONS_CLIENT,
 			gettext_noop("The drivers use message protocol to communicate "
 						 "with PG. The driver does not inform PG in advance "
 						 "about a Batch execution. We need to identify a batch " 
@@ -4739,7 +4740,7 @@ static struct config_enum ConfigureNamesEnum[] =
 		&yb_pg_batch_detection_mechanism,
 		IGNORE_BATCH_DELETE_AND_UPDATE_MAY_FAIL,
 		yb_pg_batch_detection_mechanism_options,
-		NULL, NULL, NULL
+		NULL, assign_yb_pg_batch_detection_mechanism, NULL
 	},
 
 	/* End-of-list marker */
@@ -11963,6 +11964,12 @@ show_transaction_priority(void)
 				 "%.9lf (Normal priority transaction)", txn_priority);
 
 	return buf;
+}
+
+static void
+assign_yb_pg_batch_detection_mechanism(int new_value, void *extra)
+{
+	yb_pg_batch_detection_mechanism = new_value;
 }
 
 static void
