@@ -1243,7 +1243,7 @@ class WaitQueue::Impl {
 
   Status GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
                        const TableInfoProvider& table_info_provider,
-                       TabletLockInfoPB* tablet_lock_info) const {
+                       TransactionLockInfoManager* lock_info_manager) const {
     std::vector<WaiterLockStatusInfo> waiter_lock_entries;
     {
       SharedLock l(mutex_);
@@ -1272,9 +1272,9 @@ class WaitQueue::Impl {
       const auto& txn_id = lock_status_info.id;
       TabletLockInfoPB::WaiterInfoPB* waiter_info = nullptr;
       if (txn_id.IsNil()) {
-        waiter_info = tablet_lock_info->add_single_shard_waiters();
+        waiter_info = lock_info_manager->GetSingleShardLockInfo();
       } else {
-        auto* lock_entry = &(*tablet_lock_info->mutable_transaction_locks())[txn_id.ToString()];
+        auto* lock_entry = lock_info_manager->GetOrAddTransactionLockInfo(txn_id);
         DCHECK(!lock_entry->has_waiting_locks());
         waiter_info = lock_entry->mutable_waiting_locks();
       }
@@ -1623,8 +1623,8 @@ void WaitQueue::SignalPromoted(const TransactionId& id, TransactionStatusResult&
 
 Status WaitQueue::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
                                 const TableInfoProvider& table_info_provider,
-                                TabletLockInfoPB* tablet_lock_info) const {
-  return impl_->GetLockStatus(transactions, table_info_provider, tablet_lock_info);
+                                TransactionLockInfoManager* lock_info_manager) const {
+  return impl_->GetLockStatus(transactions, table_info_provider, lock_info_manager);
 }
 
 }  // namespace docdb
