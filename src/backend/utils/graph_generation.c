@@ -83,7 +83,7 @@ Datum create_complete_graph(PG_FUNCTION_ARGS)
     int64 no_vertices;
     int64 i,j,vid = 1, eid, start_vid, end_vid;
 
-    Name vtx_label_name;
+    Name vtx_label_name = NULL;
     Name edge_label_name;
     int32 vtx_label_id;
     int32 edge_label_id;

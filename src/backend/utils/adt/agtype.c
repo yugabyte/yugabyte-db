@@ -182,7 +182,7 @@ static int extract_variadic_args_min(FunctionCallInfo fcinfo,
                                      int variadic_start, bool convert_unknown,
                                      Datum **args, Oid **types, bool **nulls,
                                      int min_num_args);
-static agtype_value* agtype_build_map_as_agtype_value(FunctionCallInfo fcinfo);
+static agtype_value *agtype_build_map_as_agtype_value(FunctionCallInfo fcinfo);
 agtype_value *agtype_composite_to_agtype_value_binary(agtype *a);
 
 /* global storage of  OID for agtype and _agtype */
@@ -2364,7 +2364,7 @@ Datum make_edge(Datum id, Datum startid, Datum endid, Datum label,
                                properties);
 }
 
-static agtype_value* agtype_build_map_as_agtype_value(FunctionCallInfo fcinfo)
+static agtype_value *agtype_build_map_as_agtype_value(FunctionCallInfo fcinfo)
 {
     int nargs;
     int i;
@@ -2377,7 +2377,9 @@ static agtype_value* agtype_build_map_as_agtype_value(FunctionCallInfo fcinfo)
     nargs = extract_variadic_args(fcinfo, 0, true, &args, &types, &nulls);
 
     if (nargs < 0)
-        PG_RETURN_NULL();
+    {
+        return NULL;
+    }
 
     if (nargs % 2 != 0)
     {
@@ -2420,7 +2422,14 @@ PG_FUNCTION_INFO_V1(agtype_build_map);
  */
 Datum agtype_build_map(PG_FUNCTION_ARGS)
 {
-    agtype_value *result= agtype_build_map_as_agtype_value(fcinfo);
+    agtype_value *result = NULL;
+
+    result = agtype_build_map_as_agtype_value(fcinfo);
+    if (result == NULL)
+    {
+        PG_RETURN_NULL();
+    }
+
     PG_RETURN_POINTER(agtype_value_to_agtype(result));
 }
 
@@ -2448,8 +2457,16 @@ PG_FUNCTION_INFO_V1(agtype_build_map_nonull);
  */
 Datum agtype_build_map_nonull(PG_FUNCTION_ARGS)
 {
-    agtype_value *result= agtype_build_map_as_agtype_value(fcinfo);
+    agtype_value *result = NULL;
+
+    result = agtype_build_map_as_agtype_value(fcinfo);
+    if (result == NULL)
+    {
+        PG_RETURN_NULL();
+    }
+
     remove_null_from_agtype_object(result);
+
     PG_RETURN_POINTER(agtype_value_to_agtype(result));
 }
 
@@ -5446,18 +5463,26 @@ Datum age_tointeger(PG_FUNCTION_ARGS)
     if (type != AGTYPEOID)
     {
         if (type == INT2OID)
+        {
             result = (int64) DatumGetInt16(arg);
+        }
         else if (type == INT4OID)
+        {
             result = (int64) DatumGetInt32(arg);
+        }
         else if (type == INT8OID)
+        {
             result = (int64) DatumGetInt64(arg);
+        }
         else if (type == FLOAT4OID)
         {
             float4 f = DatumGetFloat4(arg);
 
             if (isnan(f) || isinf(f) ||
-                f < PG_INT64_MIN || f > PG_INT64_MAX)
+                f < (float4)PG_INT64_MIN || f > (float4)PG_INT64_MAX)
+            {
                 PG_RETURN_NULL();
+            }
 
             result = (int64) f;
         }
@@ -5466,8 +5491,10 @@ Datum age_tointeger(PG_FUNCTION_ARGS)
             float8 f = DatumGetFloat8(arg);
 
             if (isnan(f) || isinf(f) ||
-                f < PG_INT64_MIN || f > PG_INT64_MAX)
+                f < (float8)PG_INT64_MIN || f > (float8)PG_INT64_MAX)
+            {
                 PG_RETURN_NULL();
+            }
 
             result = (int64) f;
         }
@@ -5479,17 +5506,23 @@ Datum age_tointeger(PG_FUNCTION_ARGS)
                 numeric_float8_no_overflow, arg));
 
             if (isnan(f) || isinf(f) ||
-                f < PG_INT64_MIN || f > PG_INT64_MAX)
+                f < (float8)PG_INT64_MIN || f > (float8)PG_INT64_MAX)
+            {
                 PG_RETURN_NULL();
+            }
 
             result = (int64) f;
         }
         else if (type == CSTRINGOID || type == TEXTOID)
         {
             if (type == CSTRINGOID)
+            {
                 string = DatumGetCString(arg);
+            }
             else
+            {
                 string = text_to_cstring(DatumGetTextPP(arg));
+            }
 
             /* convert it if it is a regular integer string */
             is_valid = scanint8(string, true, &result);
@@ -5499,7 +5532,7 @@ Datum age_tointeger(PG_FUNCTION_ARGS)
              */
             if (!is_valid)
             {
-                float f;
+                float8 f;
 
                 f = float8in_internal_null(string, NULL, "double precision",
                                            string, &is_valid);
@@ -5508,16 +5541,20 @@ Datum age_tointeger(PG_FUNCTION_ARGS)
                  * return null.
                  */
                 if (!is_valid || isnan(f) || isinf(f) ||
-                    f < PG_INT64_MIN || f > PG_INT64_MAX)
+                    f < (float8)PG_INT64_MIN || f > (float8)PG_INT64_MAX)
+                {
                     PG_RETURN_NULL();
+                }
 
                 result = (int64) f;
             }
         }
         else
+        {
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                             errmsg("toInteger() unsupported argument type %d",
                                    type)));
+        }
     }
     else
     {
@@ -5537,11 +5574,13 @@ Datum age_tointeger(PG_FUNCTION_ARGS)
             result = agtv_value->val.int_value;
         else if (agtv_value->type == AGTV_FLOAT)
         {
-            float f = agtv_value->val.float_value;
+            float8 f = agtv_value->val.float_value;
 
             if (isnan(f) || isinf(f) ||
-                f < PG_INT64_MIN || f > PG_INT64_MAX)
+                f < (float8)PG_INT64_MIN || f > (float8)PG_INT64_MAX)
+            {
                 PG_RETURN_NULL();
+            }
 
             result = (int64) f;
         }
@@ -5554,8 +5593,10 @@ Datum age_tointeger(PG_FUNCTION_ARGS)
                 numeric_float8_no_overflow, num));
 
             if (isnan(f) || isinf(f) ||
-                f < PG_INT64_MIN || f > PG_INT64_MAX)
+                f < (float8)PG_INT64_MIN || f > (float8)PG_INT64_MAX)
+            {
                 PG_RETURN_NULL();
+            }
 
             result = (int64) f;
         }
@@ -5572,7 +5613,7 @@ Datum age_tointeger(PG_FUNCTION_ARGS)
              */
             if (!is_valid)
             {
-                float f;
+                float8 f;
 
                 f = float8in_internal_null(string, NULL, "double precision",
                                            string, &is_valid);
@@ -5582,18 +5623,24 @@ Datum age_tointeger(PG_FUNCTION_ARGS)
                  * return null.
                  */
                 if (!is_valid || isnan(f) || isinf(f) ||
-                    f < PG_INT64_MIN || f > PG_INT64_MAX)
+                    f < (float8)PG_INT64_MIN || f > (float8)PG_INT64_MAX)
+                {
                     PG_RETURN_NULL();
+                }
 
                 result = (int64) f;
             }
             else
+            {
                 free(string);
+            }
         }
         else
+        {
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                             errmsg("toInteger() unsupported argument agtype %d",
                                    agtv_value->type)));
+        }
     }
 
     /* build the result */
