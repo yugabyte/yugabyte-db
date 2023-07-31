@@ -333,7 +333,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
           if (processType == ServerType.MASTER && context.reconfigureMaster) {
             // Add stopped master to the quorum.
-            createChangeConfigTask(node, true /* isAdd */, subGroupType);
+            createChangeConfigTasks(node, true /* isAdd */, subGroupType);
           }
           createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
               .setSubTaskGroupType(subGroupType);

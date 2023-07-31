@@ -2,25 +2,20 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
-import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.EITHER;
-import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MASTER;
-import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.TSERVER;
+import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.*;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.UniverseModifyBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
@@ -37,13 +32,7 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -134,6 +123,9 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     createInstanceType(defaultProvider.getUuid(), DEFAULT_INSTANCE_TYPE);
     createInstanceType(defaultProvider.getUuid(), NEW_INSTANCE_TYPE);
     createInstanceType(defaultProvider.getUuid(), NEW_READ_ONLY_INSTANCE_TYPE);
+    UniverseModifyBaseTest.mockGetMasterRegistrationResponses(
+        mockClient,
+        ImmutableList.of("10.0.0.1", "10.0.0.2", "10.0.0.3", "1.1.1.1", "1.1.1.2", "1.1.1.3"));
   }
 
   @Override
@@ -1100,6 +1092,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       List<TaskType> startSequence = new ArrayList<>(PROCESS_START_SEQ);
       if (processType == MASTER && waitForMasterLeader) {
         startSequence.add(2, TaskType.ChangeMasterConfig);
+        startSequence.add(3, TaskType.WaitForFollowerLag);
       }
       for (TaskType taskType : startSequence) {
         if (taskType == TaskType.AnsibleClusterServerCtl) {
@@ -1114,6 +1107,8 @@ public class ResizeNodeTest extends UpgradeTaskTest {
                   processType == TSERVER));
         } else if (taskType == TaskType.ChangeMasterConfig) {
           paramsForTask.put(index, ImmutableMap.of("opType", "AddMaster"));
+        } else if (taskType == TaskType.WaitForFollowerLag) {
+          paramsForTask.put(index, ImmutableMap.of());
         } else {
           paramsForTask.put(index, ImmutableMap.of("serverType", processType.name()));
         }
