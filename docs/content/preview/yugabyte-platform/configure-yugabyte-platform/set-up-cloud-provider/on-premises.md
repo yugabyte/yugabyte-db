@@ -72,6 +72,14 @@ A provider configuration describes your cloud environment (such as its regions a
 
 With on-premises providers, VMs are _not_ auto-created by YugabyteDB Anywhere; you must manually create and add them to the free pool of the on-premises provider. Only after VM instances are added can YugabyteDB Anywhere auto-provision or can you manually provision the YugabyteDB database software and create universes from these database nodes.
 
+Creating an on-premises provider requires the following steps:
+
+- Create the provider configuration
+- Configure the hardware for the node instances
+  - Add instance types
+  - Add instances
+  - Provision the nodes
+
 ## Configure the on-premises provider
 
 Navigate to **Configs > Infrastructure > On-Premises Datacenters** to see a list of all currently configured on-premises providers.
@@ -97,6 +105,8 @@ To create an on-premises provider:
 1. Enter the provider details. Refer to [Provider settings](#provider-settings).
 
 1. Click **Create Provider Configuration** when you are done and wait for the configuration to complete.
+
+After the provider is created, configure the provider hardware. Refer to [Configure hardware for YugabyteDB nodes](#configure-hardware-for-yugabytedb-nodes).
 
 ## Provider settings
 
@@ -134,13 +144,13 @@ Use the **SSH Private Key Content** field to upload the private key PEM file ava
 
 Disable the **DB Nodes have public internet access** option if you want the installation to run in an air-gapped mode without expecting any internet access.
 
-Enable the **Manually Provision Nodes** field if you choose to manually set up your database nodes. Otherwise, YugabyteDB Anywhere will use the sudo user to set up YugabyteDB nodes. For manual provisioning, you would be prompted to run a Python script at a later stage or to run a set of commands on the database nodes.
-
-If any of the following statements are applicable to your use case, you need to [provision the nodes manually](#provision-nodes-manually):
+YugabyteDB Anywhere uses the sudo user to set up YugabyteDB nodes. However, if any of the following statements are applicable to your use case, you need to enable the **Manually Provision Nodes** option:
 
 - Pre-provisioned `yugabyte:yugabyte` user and group.
 - Sudo user requires a password.
 - The SSH user is not a sudo user.
+
+For manual provisioning, you are prompted to run a Python provisioning script at a later stage to provision the database instances (refer to [Provision nodes manually](#provision-nodes-manually)).
 
 Optionally, use the **YB Nodes Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
 
@@ -157,7 +167,16 @@ Use the **Node Exporter Port** field to specify the port number for the node exp
 
 ## Configure hardware for YugabyteDB nodes
 
-After the provider has been created, you can configure the hardware for the configuration by navigating to **Configs > Infrastructure > On-Premises Datacenters**, selecting the on-prem configuration you created, and choosing **Instances**. This displays the configured instance types and instances for the selected provider.
+After the provider has been created, you can configure the hardware for the on-premises configuration by navigating to **Configs > Infrastructure > On-Premises Datacenters**, selecting the on-prem configuration you created, and choosing **Instances**. This displays the configured instance types and instances for the selected provider.
+
+![On-prem pre-provisioning script](/images/yb-platform/config/yba-onprem-config-script.png)
+
+To configure the hardware, do the following:
+
+1. [Add instance types](#add-instance-types).
+2. Add instances.
+    - If you are not manually provisioning nodes, [add instances](#add-instances) for each node.
+    - If the **Manually Provision Nodes** option is enabled for the provider configuration, [provision the nodes manually](#provision-nodes-manually).
 
 ### Add instance types
 
@@ -175,11 +194,24 @@ To add an instance type, do the following:
 
 1. Click **Add Instance Type**.
 
-### Add YugabyteDB nodes
+### Add instances
 
-For each node you want to add, click **Add Instances** to add a YugabyteDB node. For each region, select the zone and instance type. You can use DNS names or IP addresses when adding instances (instance ID is an optional user-defined identifier).
+To add the instances, do the following:
 
-Click **Add** to add additional nodes in the region.
+1. Click **Add Instances**.
+
+    ![On-prem Add Instance Types dialog](/images/yb-platform/config/yba-onprem-config-add-instances.png)
+
+1. For each node in each region, provide the following:
+
+    - Select the zone.
+    - Select the instance type
+    - Enter the IP address of the node. You can use DNS names or IP addresses when adding instances.
+    - Optionally, enter an Instance ID; this is a user-defined identifier.
+
+1. Click **+ Add** to add additional nodes in a region.
+
+1. Click **Add** when you are done.
 
 Note that if you provide a hostname, the universe might experience issues communicating. To resolve this, you need to delete the failed universe and then recreate it with the `use_node_hostname_for_local_tserver` flag enabled.
 
@@ -192,11 +224,9 @@ To provision your nodes manually, you have the following two options:
 
 #### Run the pre-provisioning script
 
-This step is only required if you set **Manually Provision Nodes** to true and the SSH user has sudo privileges which require a password; otherwise you skip this step.
+This step is only required if you set **Manually Provision Nodes** to true on your on-prem provider configuration, and the SSH user has sudo privileges which require a password; otherwise you skip this step.
 
 The pre-provisioning script is displayed under **Instances** on the **Instances** tab of the on-prem configuration you created.
-
-![On-prem pre-provisioning script](/images/yb-platform/config/yba-onprem-config-script.png)
 
 You can manually provision each node using the pre-provisioning Python script, as follows:
 
@@ -208,15 +238,31 @@ You can manually provision each node using the pre-provisioning Python script, a
     sudo docker exec -it yugaware bash
     ```
 
-1. Copy and paste the Python script from the UI and substitute the node IP address and mount points.
+1. Copy and paste the Python script from the UI and substitute the following values:
 
-    Optionally, use the `--ask_password` flag if the sudo user requires password authentication, as follows:
+    - `--install_node_agent` - this flag instructs the script to install the node agent, which is required for YugabyteDB Anywhere to communicate with the instance.
+    - `--yba_url` - enter the IP address of the machine where you are running YugabyteDB Anywhere, with the port of 9000.
+    - `--api_token` - enter your API token; you can create an API token by navigating to your User Profile and clicking Generate Key.
+    - `--node_name` - enter a name for the node.
+    - `--instance_type` - enter the name of the node instance type.
+    - `--zone_name` - enter the name of the zone where the node is located.
+    - `--ip` - enter the IP address of the node.
+    - `--mount_points` - enter the mount point configured for the node (typically `/mnt/d0`)
+    - `--ask_password` - this flag instructs the script to prompt for a password (which is required if the sudo user requires password authentication).
+
+    For example:
 
     ```bash
-    /opt/yugabyte/yugaware/data/provision/9cf26f3b-4c7c-451a-880d-593f2f76efce/provision_instance.py --ip 10.9.116.65 --mount_points /data --ask_password
+    /opt/yugabyte/yugaware/data/provision/9cf26f3b-4c7c-451a-880d-593f2f76efce/provision_instance.py \
+        --install_node_agent --yba_url http://100.98.0.40:9000 \
+        --api_token 999bc9db-ddfb-9fec-a33d-4f8f9fd88db7 \
+        --node_name onprem_node1 --instance_type c5.large \
+        --zone_name us-west-2a --ip 10.9.116.65 \
+        --mount_points /data \
+        --ask_password
     ```
 
-    Expect the following output and prompt:
+    Expect the following output and, if you specified `--ask-password`, prompt:
 
     ```output
     Executing provision now for instance with IP 10.9.116.65...
