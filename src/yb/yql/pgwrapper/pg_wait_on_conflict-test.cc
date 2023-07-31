@@ -94,6 +94,10 @@ class PgWaitQueuesTest : public PgMiniTestBase {
   }
 
   void TestDeadlockWithWrites() const;
+
+  virtual IsolationLevel GetIsolationLevel() const {
+    return SNAPSHOT_ISOLATION;
+  }
 };
 
 auto GetBlockerIdx(auto idx, auto cycle_length) {
@@ -188,7 +192,7 @@ void PgWaitQueuesTest::TestDeadlockWithWrites() const {
     thread_holder.AddThreadFunctor(
         [this, i, &first_update, &done, &succeeded_second_update, &succeeded_commit] {
       auto conn = ASSERT_RESULT(Connect());
-      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      ASSERT_OK(conn.StartTransaction(GetIsolationLevel()));
 
       ASSERT_OK(conn.ExecuteFormat("UPDATE foo SET v=$0 WHERE k=$0", i));
       first_update.CountDown();
@@ -1027,6 +1031,17 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(ParallelUpdatesDetectDeadlock))
       did_deadlock.CountDown();
     }
   }
+}
+
+class PgWaitQueuesReadCommittedTest : public PgWaitQueuesTest {
+ protected:
+  IsolationLevel GetIsolationLevel() const override {
+    return IsolationLevel::READ_COMMITTED;
+  }
+};
+
+TEST_F(PgWaitQueuesReadCommittedTest, TestDeadlockSimple) {
+  TestDeadlockWithWrites();
 }
 
 class PgWaitQueuePackedRowTest : public PgWaitQueuesTest {

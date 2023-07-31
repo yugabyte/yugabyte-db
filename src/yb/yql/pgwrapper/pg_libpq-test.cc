@@ -940,6 +940,10 @@ TEST_F(PgLibPqTest, TestConcurrentCounterRepeatableRead) {
   TestConcurrentCounter(IsolationLevel::SNAPSHOT_ISOLATION);
 }
 
+TEST_F(PgLibPqTest, TestConcurrentCounterReadCommitted) {
+  TestConcurrentCounter(IsolationLevel::READ_COMMITTED);
+}
+
 TEST_F(PgLibPqTest, SecondaryIndexInsertSelect) {
   constexpr int kThreads = 4;
 
