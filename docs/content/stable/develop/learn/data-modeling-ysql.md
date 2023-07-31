@@ -7,7 +7,7 @@ menu:
   stable:
     identifier: data-modeling-2-ysql
     parent: learn
-    weight: 562
+    weight: 555
 type: docs
 ---
 
