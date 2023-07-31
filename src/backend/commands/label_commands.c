@@ -516,12 +516,12 @@ static FuncCall *build_id_default_func_expr(char *graph_name, char *label_name,
     label_id_func_name = list_make2(makeString("ag_catalog"),
                                     makeString("_label_id"));
     graph_name_const = makeNode(A_Const);
-    graph_name_const->val.type = T_String;
-    graph_name_const->val.val.str = graph_name;
+    graph_name_const->val.sval.type = T_String;
+    graph_name_const->val.sval.sval = graph_name;
     graph_name_const->location = -1;
     label_name_const = makeNode(A_Const);
-    label_name_const->val.type = T_String;
-    label_name_const->val.val.str = label_name;
+    label_name_const->val.sval.type = T_String;
+    label_name_const->val.sval.sval = label_name;
     label_name_const->location = -1;
     label_id_func_args = list_make2(graph_name_const, label_name_const);
     label_id_func = makeFuncCall(label_id_func_name, label_id_func_args, COERCE_SQL_SYNTAX, -1);
@@ -530,8 +530,8 @@ static FuncCall *build_id_default_func_expr(char *graph_name, char *label_name,
     nextval_func_name = SystemFuncName("nextval");
     qualified_seq_name = quote_qualified_identifier(schema_name, seq_name);
     qualified_seq_name_const = makeNode(A_Const);
-    qualified_seq_name_const->val.type = T_String;
-    qualified_seq_name_const->val.val.str = qualified_seq_name;
+    qualified_seq_name_const->val.sval.type = T_String;
+    qualified_seq_name_const->val.sval.sval = qualified_seq_name;
     qualified_seq_name_const->location = -1;
     regclass_cast = makeNode(TypeCast);
     regclass_cast->typeName = SystemTypeName("regclass");

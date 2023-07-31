@@ -1341,7 +1341,7 @@ static Query *transform_cypher_unwind(cypher_parsestate *cpstate,
                      errmsg("invalid value for rtindex")));
         }
 
-        query->targetList = expandNSItemAttrs(pstate, pnsi, 0, -1);
+        query->targetList = expandNSItemAttrs(pstate, pnsi, 0, true, -1);
     }
 
     target_syntax_loc = exprLocation((const Node *) self->target);
@@ -1400,7 +1400,8 @@ static List *transform_cypher_delete_item_list(cypher_parsestate *cpstate,
     {
         Node *expr = lfirst(lc);
         ColumnRef *col;
-        Value *val, *pos;
+        String *val;
+        Integer *pos;
         int resno;
 
         cypher_delete_item *item = make_ag_node(cypher_delete_item);
@@ -1427,13 +1428,13 @@ static List *transform_cypher_delete_item_list(cypher_parsestate *cpstate,
                     (errmsg_internal("unexpected Node for cypher_clause")));
         }
 
-        resno = get_target_entry_resno(query->targetList, val->val.str);
+        resno = get_target_entry_resno(query->targetList, val->sval);
         if (resno == -1)
         {
             ereport(ERROR,
                     (errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
                      errmsg("undefined reference to variable %s in DELETE clause",
-                            val->val.str),
+                            val->sval),
                      parser_errposition(pstate, col->location)));
         }
 
@@ -1441,7 +1442,7 @@ static List *transform_cypher_delete_item_list(cypher_parsestate *cpstate,
 
         pos = makeInteger(resno);
 
-        item->var_name = val->val.str;
+        item->var_name = val->sval;
         item->entity_position = pos;
 
         items = lappend(items, item);
@@ -1539,7 +1540,7 @@ cypher_update_information *transform_cypher_remove_item_list(
         ColumnRef *ref;
         A_Indirection *ind;
         char *variable_name, *property_name;
-        Value *property_node, *variable_node;
+        String *property_node, *variable_node;
 
         item = make_ag_node(cypher_update_item);
 
@@ -1585,7 +1586,7 @@ cypher_update_information *transform_cypher_remove_item_list(
 
         variable_node = linitial(ref->fields);
 
-        variable_name = variable_node->val.str;
+        variable_name = variable_node->sval;
         item->var_name = variable_name;
 
         item->entity_position = get_target_entry_resno(query->targetList,
@@ -1620,7 +1621,7 @@ cypher_update_information *transform_cypher_remove_item_list(
                      errmsg("REMOVE clause expects a property name"),
                      parser_errposition(pstate, set_item->location)));
         }
-        property_name = property_node->val.str;
+        property_name = property_node->sval;
         item->prop_name = property_name;
 
         info->set_items = lappend(info->set_items, item);
@@ -1648,7 +1649,7 @@ cypher_update_information *transform_cypher_set_item_list(
         ColumnRef *ref;
         A_Indirection *ind;
         char *variable_name, *property_name;
-        Value *property_node, *variable_node;
+        String *property_node, *variable_node;
         int is_entire_prop_update = 0; // true if a map is assigned to variable
 
         // LHS of set_item must be a variable or an indirection.
@@ -1748,7 +1749,7 @@ cypher_update_information *transform_cypher_set_item_list(
                          parser_errposition(pstate, set_item->location)));
             }
 
-            property_name = property_node->val.str;
+            property_name = property_node->sval;
             item->prop_name = property_name;
         }
 
@@ -1762,7 +1763,7 @@ cypher_update_information *transform_cypher_set_item_list(
                      parser_errposition(pstate, set_item->location)));
         }
 
-        variable_name = variable_node->val.str;
+        variable_name = variable_node->sval;
         item->var_name = variable_name;
 
         item->entity_position = get_target_entry_resno(query->targetList,
@@ -2330,7 +2331,7 @@ static Query *transform_cypher_clause_with_where(cypher_parsestate *cpstate,
          * all the variables that are introduced in the previous clause to the
          * next clause
          */
-        query->targetList = expandNSItemAttrs(pstate, pnsi, 0, -1);
+        query->targetList = expandNSItemAttrs(pstate, pnsi, 0, true, -1);
 
         markTargetListOrigins(pstate, query->targetList);
 
@@ -2611,7 +2612,7 @@ static Query *transform_cypher_match_pattern(cypher_parsestate *cpstate,
              * next clause
              */
             pnsi = get_namespace_item(pstate, rte);
-            query->targetList = expandNSItemAttrs(pstate, pnsi, 0, -1);
+            query->targetList = expandNSItemAttrs(pstate, pnsi, 0, true, -1);
         }
 
         transform_match_pattern(cpstate, query, self->pattern, where);
@@ -3049,7 +3050,7 @@ static FuncCall *prevent_duplicate_edges(cypher_parsestate *cpstate,
     List *edges = NIL;
     ListCell *lc;
     List *qualified_function_name;
-    Value *ag_catalog, *edge_fn;
+    String *ag_catalog, *edge_fn;
 
     ag_catalog = makeString("ag_catalog");
     edge_fn = makeString("_ag_enforce_edge_uniqueness");
@@ -3154,8 +3155,8 @@ static List *make_join_condition_for_edge(cypher_parsestate *cpstate,
     {
         Node *left_id = NULL;
         Node *right_id = NULL;
-        Value *ag_catalog = makeString("ag_catalog");
-        Value *func_name;
+        String *ag_catalog = makeString("ag_catalog");
+        String *func_name;
         List *qualified_func_name;
         List *args = NIL;
         List *quals = NIL;
@@ -3205,7 +3206,7 @@ static List *make_join_condition_for_edge(cypher_parsestate *cpstate,
             prev_edge->type == ENT_VLE_EDGE)
         {
             List *qualified_name, *args;
-            Value *match_qual;
+            String *match_qual;
             FuncCall *fc;
 
             match_qual = makeString("age_match_two_vle_edges");
@@ -3348,8 +3349,8 @@ static List *make_join_condition_for_edge(cypher_parsestate *cpstate,
 static Node *make_type_cast_to_agtype(Node *arg)
 {
     TypeCast *n = makeNode(TypeCast);
-    Value *ag_catalog = makeString("ag_catalog");
-    Value *agtype_str = makeString("agtype");
+    String *ag_catalog = makeString("ag_catalog");
+    String *agtype_str = makeString("agtype");
     List *qualified_name = list_make2(ag_catalog, agtype_str);
 
     n->arg = arg;
@@ -3366,8 +3367,8 @@ static Node *make_bool_a_const(bool state)
 {
     A_Const *n = makeNode(A_Const);
 
-    n->val.type = T_String;
-    n->val.val.str = (state ? "true" : "false");
+    n->val.sval.type = T_String;
+    n->val.sval.sval = (state ? "true" : "false");
     n->location = -1;
 
     // typecast to agtype
@@ -3416,7 +3417,7 @@ static List *join_to_entity(cypher_parsestate *cpstate,
     else if (entity->type == ENT_VLE_EDGE)
     {
         List *qualified_name, *args;
-        Value *ag_catalog, *match_qual;
+        String *ag_catalog, *match_qual;
         bool is_left_side;
         FuncCall *fc;
 
@@ -3539,12 +3540,12 @@ static A_Expr *filter_vertices_on_label_id(cypher_parsestate *cpstate,
                                                           cpstate->graph_oid);
     A_Const *n;
     FuncCall *fc;
-    Value *ag_catalog, *extract_label_id;
+    String *ag_catalog, *extract_label_id;
     int32 label_id = lcd->id;
 
     n = makeNode(A_Const);
-    n->val.type = T_Integer;
-    n->val.val.ival = label_id;
+    n->val.ival.type = T_Integer;
+    n->val.ival.ival = label_id;
     n->location = -1;
 
     ag_catalog = makeString("ag_catalog");
@@ -6803,7 +6804,7 @@ static void handle_prev_clause(cypher_parsestate *cpstate, Query *query,
     }
 
     // add all the rte's attributes to the current queries targetlist
-    query->targetList = expandNSItemAttrs(pstate, pnsi, 0, -1);
+    query->targetList = expandNSItemAttrs(pstate, pnsi, 0, true, -1);
 }
 
 ParseNamespaceItem *find_pnsi(cypher_parsestate *cpstate, char *varname)

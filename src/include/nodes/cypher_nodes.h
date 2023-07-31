@@ -393,7 +393,7 @@ typedef struct cypher_delete_information
 typedef struct cypher_delete_item
 {
     ExtensibleNode extensible;
-    Value *entity_position;
+    Integer *entity_position;
     char *var_name;
 } cypher_delete_item;
 

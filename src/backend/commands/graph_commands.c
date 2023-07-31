@@ -148,7 +148,7 @@ static Oid create_schema_for_graph(const Name graph_name)
     integer = SystemTypeName("int4");
     data_type = makeDefElem("as", (Node *)integer, -1);
     maxvalue = makeDefElem("maxvalue", (Node *)makeInteger(LABEL_ID_MAX), -1);
-    cycle = makeDefElem("cycle", (Node *)makeInteger(true), -1);
+    cycle = makeDefElem("cycle", (Node *)makeBoolean(true), -1);
     seq_stmt->options = list_make3(data_type, maxvalue, cycle);
     seq_stmt->ownerId = InvalidOid;
     seq_stmt->for_identity = false;
@@ -198,7 +198,7 @@ Datum drop_graph(PG_FUNCTION_ARGS)
 static void drop_schema_for_graph(char *graph_name_str, const bool cascade)
 {
     DropStmt *drop_stmt;
-    Value *schema_name;
+    String *schema_name;
     List *label_id_seq_name;
     DropBehavior behavior;
 

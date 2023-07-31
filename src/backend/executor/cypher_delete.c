@@ -377,13 +377,13 @@ static void process_delete_list(CustomScanState *node)
         ResultRelInfo *resultRelInfo;
         HeapTuple heap_tuple;
         char *label_name;
-        Value *pos;
+        Integer *pos;
         int entity_position;
 
         item = lfirst(lc);
 
         pos = item->entity_position;
-        entity_position = pos->val.ival;
+        entity_position = pos->ival;
 
         /* skip if the entity is null */
         if (scanTupleSlot->tts_isnull[entity_position - 1])
