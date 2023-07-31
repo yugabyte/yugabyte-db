@@ -1773,6 +1773,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param isAdd whether Master is being added or removed.
    * @param subTask subtask type
    */
+  public void createChangeConfigTasks(
+      NodeDetails node, boolean isAdd, UserTaskDetails.SubTaskGroupType subTask) {
+    createChangeConfigTask(node, isAdd, subTask);
+    if (isAdd) {
+      createWaitForFollowerLagTask(node, ServerType.MASTER);
+    }
+  }
+
   public void createChangeConfigTask(
       NodeDetails node, boolean isAdd, UserTaskDetails.SubTaskGroupType subTask) {
     // Create a new task list for the change config so that it happens one by one.
@@ -2989,7 +2997,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       createServerControlTask(node, processType, "stop").setSubTaskGroupType(subTaskGroupType);
       if (processType == ServerType.MASTER && removeMasterFromQuorum) {
         createWaitForMasterLeaderTask().setSubTaskGroupType(subTaskGroupType);
-        createChangeConfigTask(node, false /* isAdd */, subTaskGroupType);
+        createChangeConfigTasks(node, false /* isAdd */, subTaskGroupType);
       }
     }
   }
@@ -3017,7 +3025,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           .setSubTaskGroupType(subGroupType);
       if (processType == ServerType.MASTER && addMasterToQuorum) {
         // Add stopped master to the quorum.
-        createChangeConfigTask(node, true /* isAdd */, subGroupType);
+        createChangeConfigTasks(node, true /* isAdd */, subGroupType);
       }
       if (sleepTimeFunction != null) {
         createWaitForServerReady(node, processType, sleepTimeFunction.apply(processType))
