@@ -58,11 +58,14 @@ import com.amazonaws.services.elasticloadbalancingv2.model.Listener;
 import com.amazonaws.services.elasticloadbalancingv2.model.LoadBalancer;
 import com.amazonaws.services.elasticloadbalancingv2.model.Matcher;
 import com.amazonaws.services.elasticloadbalancingv2.model.ModifyListenerRequest;
+import com.amazonaws.services.elasticloadbalancingv2.model.ModifyTargetGroupAttributesRequest;
+import com.amazonaws.services.elasticloadbalancingv2.model.ModifyTargetGroupAttributesResult;
 import com.amazonaws.services.elasticloadbalancingv2.model.ModifyTargetGroupRequest;
 import com.amazonaws.services.elasticloadbalancingv2.model.ModifyTargetGroupResult;
 import com.amazonaws.services.elasticloadbalancingv2.model.RegisterTargetsRequest;
 import com.amazonaws.services.elasticloadbalancingv2.model.TargetDescription;
 import com.amazonaws.services.elasticloadbalancingv2.model.TargetGroup;
+import com.amazonaws.services.elasticloadbalancingv2.model.TargetGroupAttribute;
 import com.amazonaws.services.elasticloadbalancingv2.model.TargetGroupNotFoundException;
 import com.amazonaws.services.elasticloadbalancingv2.model.TargetGroupTuple;
 import com.amazonaws.services.elasticloadbalancingv2.model.TargetHealthDescription;
@@ -84,6 +87,7 @@ import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.CloudAPI;
@@ -354,7 +358,8 @@ public class AWSCloudImpl implements CloudAPI {
     return listeners;
   }
 
-  private Listener getListenerByPort(AmazonElasticLoadBalancing lbClient, String lbName, int port) {
+  @VisibleForTesting
+  Listener getListenerByPort(AmazonElasticLoadBalancing lbClient, String lbName, int port) {
     List<Listener> listeners = getListeners(lbClient, lbName);
     for (Listener listener : listeners) {
       if (listener.getPort() == port) return listener;
@@ -515,7 +520,8 @@ public class AWSCloudImpl implements CloudAPI {
    * @param port the listening port.
    * @param instanceIDs the EC2 node instance IDs.
    */
-  private void checkNodeGroup(
+  @VisibleForTesting
+  void checkNodeGroup(
       AmazonElasticLoadBalancing lbClient,
       String targetGroupArn,
       String protocol,
@@ -634,6 +640,39 @@ public class AWSCloudImpl implements CloudAPI {
     return targetGroupArn;
   }
 
+  /**
+   * Since by default target groups do not terminate connections when a node is deregistered, we
+   * ensure that the default value is overriden to true.
+   *
+   * @param lbClient the AWS ELB client for API calls.
+   * @param targetGroupArn the target group arn.
+   */
+  @VisibleForTesting
+  void ensureTargetGroupAttributes(AmazonElasticLoadBalancing lbClient, String targetGroupArn) {
+    ModifyTargetGroupAttributesRequest request =
+        new ModifyTargetGroupAttributesRequest()
+            .withTargetGroupArn(targetGroupArn)
+            .withAttributes(
+                Arrays.asList(
+                    new TargetGroupAttribute()
+                        .withKey("deregistration_delay.connection_termination.enabled")
+                        .withValue("true")));
+    try {
+      ModifyTargetGroupAttributesResult result = lbClient.modifyTargetGroupAttributes(request);
+    } catch (TargetGroupNotFoundException e) {
+      LOG.warn("No such target group with targetGroupArn: " + request.getTargetGroupArn());
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Target group not found: " + request.getTargetGroupArn());
+    } catch (InvalidConfigurationRequestException e) {
+      LOG.warn(
+          "Attempt to set invalid configuration on target group with targetGroupArn: "
+              + request.getTargetGroupArn());
+      LOG.info("Target group attributes: " + request.getAttributes().toString());
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Failed to update attributes of target group.");
+    }
+  }
+
   // Target group methods
   private TargetGroup getTargetGroup(AmazonElasticLoadBalancing lbClient, String targetGroupArn) {
     DescribeTargetGroupsRequest request =
@@ -641,7 +680,8 @@ public class AWSCloudImpl implements CloudAPI {
     return lbClient.describeTargetGroups(request).getTargetGroups().get(0);
   }
 
-  private String getListenerTargetGroup(Listener listener) {
+  @VisibleForTesting
+  String getListenerTargetGroup(Listener listener) {
     List<Action> actions = listener.getDefaultActions();
     for (Action action : actions) {
       if (action.getType().equals(ActionTypeEnum.Forward.toString())) {
@@ -750,7 +790,8 @@ public class AWSCloudImpl implements CloudAPI {
    * @param nodeIDs the node IDs (name, uuid).
    * @return a list. The node instance IDs.
    */
-  private List<String> getInstanceIDs(AmazonEC2 ec2Client, List<NodeID> nodeIDs) throws Exception {
+  @VisibleForTesting
+  List<String> getInstanceIDs(AmazonEC2 ec2Client, List<NodeID> nodeIDs) {
     if (CollectionUtils.isEmpty(nodeIDs)) {
       return new ArrayList<>();
     }
@@ -778,9 +819,12 @@ public class AWSCloudImpl implements CloudAPI {
     for (NodeID id : nodeIDs) {
       List<String> ids = nodeToInstances.getOrDefault(id, Collections.emptyList());
       if (ids.isEmpty()) {
-        throw new Exception("Failure: node instance with name \"" + id.getName() + "\" not found");
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            "Failure: node instance with name \"" + id.getName() + "\" not found");
       } else if (ids.size() > 1) {
-        throw new Exception(
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
             "Failure: multiple nodes with name \"" + id.getName() + "\" and no UUID are found");
       }
       instanceIDs.addAll(ids);
