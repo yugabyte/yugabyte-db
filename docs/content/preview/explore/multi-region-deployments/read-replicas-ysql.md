@@ -17,7 +17,7 @@ type: docs
 
 Applications running in other regions incur cross-region latency to read the latest data from the leader. If a little staleness for reads is acceptable for the applications running in the other regions, then **Read Replicas** is the pattern to adopt.
 
-A read replica cluster is a set of follower nodes connected to a primary cluster. These are purely observer nodes, which means that they don't take part in the RAFT consensus and elections. As a result, read replicas can have a different replication factor (RF) than the primary cluster, and you can have an even number of replicas.
+A read replica cluster is a set of follower nodes connected to a primary cluster. These are purely observer nodes, which means that they don't take part in the [Raft consensus](https://raft.github.io/) and elections. As a result, read replicas can have a different replication factor (RF) than the primary cluster, and you can have an even number of replicas.
 
 Let's look into how this can be beneficial for your application.
 
@@ -56,4 +56,4 @@ Notice how the application in `us-west` reads from the follower in `us-central` 
 ## Learn more
 
 - [Read replica architecture](../../../architecture/docdb-replication/read-replicas)
-- [Follower reads](../../ysql-language-features/going-beyond-sql/follower-reads-ycql/) 
+- [Follower reads](../../ysql-language-features/going-beyond-sql/follower-reads-ysql/)

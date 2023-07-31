@@ -9,7 +9,7 @@ menu:
     name: Read replicas
     identifier: explore-multi-region-deployments-read-replicas-ycql
     parent: explore-multi-region-deployments
-    weight: 750
+    weight: 755
 type: docs
 ---
 
@@ -279,3 +279,8 @@ The following illustration demonstrates that the entire read load moved to the o
 ![Primary cluster with two stopped nodes](/images/explore/multi-region-deployments/read-replicas11.png)
 
 For additional information, see [Fault Tolerance](../../fault-tolerance/macos/).
+
+## Learn more
+
+- [Read replica architecture](../../../architecture/docdb-replication/read-replicas)
+- [Follower reads](../../ysql-language-features/going-beyond-sql/follower-reads-ycql/)
