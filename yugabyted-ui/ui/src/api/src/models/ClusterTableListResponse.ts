@@ -27,7 +27,14 @@ export interface ClusterTableListResponse  {
    * @type {ClusterTable[]}
    * @memberof ClusterTableListResponse
    */
-  data: ClusterTable[];
+  tables: ClusterTable[];
+
+  /**
+   * List of index tables
+   * @type {ClusterTable[]}
+   * @memberof ClusterTableListResponse
+   */
+  indexes: ClusterTable[];
 }
 
 

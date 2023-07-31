@@ -57,7 +57,6 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 type DatabaseListProps = {
-  /* tabletList: ClusterTable[], */
   selectedTableUuid: string;
   onRefetch: () => void;
 };
