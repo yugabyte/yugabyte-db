@@ -574,8 +574,8 @@ class PgClientServiceImpl::Impl {
         RSTATUS_DCHECK(
             tablets.emplace(tablet_id).second, IllegalState,
             "Found tablet $0 more than once in PgGetLockStatusResponsePB", tablet_id);
-        for (auto& [txn, _] : lock_it->transaction_locks()) {
-          seen_transactions.insert(VERIFY_RESULT(TransactionId::FromString(txn)));
+        for (auto& txn : lock_it->transaction_locks()) {
+          seen_transactions.insert(VERIFY_RESULT(FullyDecodeTransactionId(txn.id())));
         }
         lock_it++;
       }
