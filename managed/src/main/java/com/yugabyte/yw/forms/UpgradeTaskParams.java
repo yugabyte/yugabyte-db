@@ -20,6 +20,7 @@ import play.mvc.Http.Status;
 public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
 
   public UpgradeOption upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+  protected RuntimeConfGetter runtimeConfGetter;
 
   public enum UpgradeTaskType {
     Everything,
@@ -79,8 +80,7 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
               + " states.");
     }
 
-    RuntimeConfGetter runtimeConfGetter =
-        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+    runtimeConfGetter = StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
 
     if (upgradeOption == UpgradeOption.NON_ROLLING_UPGRADE
         && universe.nodesInTransit(nodeState)

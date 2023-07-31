@@ -774,4 +774,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Number of expired backups to be deleted in a single GC iteration.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> disableImageBundleValidation =
+      new ConfKeyInfo<>(
+          "yb.edit_provider.new.disable_image_bundle_validations",
+          ScopeType.GLOBAL,
+          "Image Bundle Validation",
+          "Disables Image Bundle Validation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

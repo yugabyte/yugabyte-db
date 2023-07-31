@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.common.CloudProviderHelper;
+import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.handlers.AccessKeyHandler;
 import com.yugabyte.yw.controllers.handlers.ImageBundleHandler;
@@ -46,6 +47,7 @@ public class CloudProviderEdit extends CloudTaskBase {
   private AccessKeyHandler accessKeyHandler;
   private CloudProviderHelper cloudProviderHelper;
   private ImageBundleHandler imageBundleHandler;
+  private ImageBundleUtil imageBundleUtil;
 
   @Inject
   protected CloudProviderEdit(
@@ -53,12 +55,14 @@ public class CloudProviderEdit extends CloudTaskBase {
       RegionHandler regionHandler,
       AccessKeyHandler accessKeyHandler,
       CloudProviderHelper cloudProviderHelper,
-      ImageBundleHandler imageBundleHandler) {
+      ImageBundleHandler imageBundleHandler,
+      ImageBundleUtil imageBundleUtil) {
     super(baseTaskDependencies);
     this.regionHandler = regionHandler;
     this.accessKeyHandler = accessKeyHandler;
     this.cloudProviderHelper = cloudProviderHelper;
     this.imageBundleHandler = imageBundleHandler;
+    this.imageBundleUtil = imageBundleUtil;
   }
 
   @ApiModel(value = "CloudProviderEditParams", description = "Parameters for editing provider")
@@ -250,6 +254,7 @@ public class CloudProviderEdit extends CloudTaskBase {
 
     Map<UUID, ImageBundle> existingImageBundles =
         provider.getImageBundles().stream().collect(Collectors.toMap(iB -> iB.getUuid(), iB -> iB));
+    List<Region> regions = editProviderReq.getRegions();
     for (ImageBundle bundle : editProviderReq.getImageBundles()) {
       if (bundle.getUuid() == null) {
         // Create a new imageBundle.
@@ -259,6 +264,7 @@ public class CloudProviderEdit extends CloudTaskBase {
         if (bundle.isUpdateNeeded(existingBundle)) {
           imageBundleHandler.doEdit(provider, bundle.getUuid(), bundle);
         }
+        imageBundleUtil.updateImageBundleIfRequired(provider, regions, bundle);
         existingImageBundles.remove(bundle.getUuid());
       }
     }
