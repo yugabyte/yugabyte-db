@@ -57,8 +57,8 @@ class PgGetLockStatusTest : public PgLocksTestBase {
 
     TransactionIdSet txn_ids_set;
     for (const auto& tablet_lock_info : resp.tablet_lock_infos()) {
-      for (const auto& txn_lock_pair : tablet_lock_info.transaction_locks()) {
-        auto id = VERIFY_RESULT(TransactionId::FromString(txn_lock_pair.first));
+      for (const auto& txn_lock_info : tablet_lock_info.transaction_locks()) {
+        auto id = VERIFY_RESULT(FullyDecodeTransactionId(txn_lock_info.id()));
         RSTATUS_DCHECK(!id.IsNil(),
                        IllegalState,
                        "Expected to see non-empty transaction id.");
@@ -96,13 +96,12 @@ class PgGetLockStatusTest : public PgLocksTestBase {
         ASSERT_NE(tablet_map_it, expected_tablet_txn_locks.end());
         ASSERT_EQ(tablet_locks.transaction_locks().size(), tablet_map_it->second.size());
 
-        for (const auto& txn_lock_pair : tablet_locks.transaction_locks()) {
-          auto id = ASSERT_RESULT(TransactionId::FromString(txn_lock_pair.first));
+        for (const auto& txn_lock_info : tablet_locks.transaction_locks()) {
+          auto id = ASSERT_RESULT(FullyDecodeTransactionId(txn_lock_info.id()));
           auto txn_map_it = tablet_map_it->second.find(id);
           ASSERT_NE(txn_map_it, tablet_map_it->second.end());
-          const auto& lock_info = txn_lock_pair.second;
           ASSERT_EQ(
-              lock_info.granted_locks_size() + lock_info.waiting_locks().locks_size(),
+              txn_lock_info.granted_locks_size() + txn_lock_info.waiting_locks().locks_size(),
               txn_map_it->second);
           tablet_map_it->second.erase(txn_map_it);
         }
@@ -431,15 +430,15 @@ TEST_F(PgGetLockStatusTest, TestBlockedBy) {
   ASSERT_EQ(resp.node_locks_size(), 1);
   ASSERT_EQ(resp.node_locks(0).tablet_lock_infos_size(), 1);
   ASSERT_EQ(resp.node_locks(0).tablet_lock_infos(0).transaction_locks_size(), 1);
-  for (const auto& [txn_id, txn_lock] :
+  for (const auto& txn_lock_info :
           resp.node_locks(0).tablet_lock_infos(0).transaction_locks()) {
-    auto waiter_txn_id = ASSERT_RESULT(TransactionId::FromString(txn_id));
+    auto waiter_txn_id = ASSERT_RESULT(FullyDecodeTransactionId(txn_lock_info.id()));
     ASSERT_EQ(waiter_txn_id, waiter_session.txn_id);
 
-    ASSERT_EQ(txn_lock.waiting_locks().locks().size(), 2);
+    ASSERT_EQ(txn_lock_info.waiting_locks().locks().size(), 2);
 
     std::set<TransactionId> blockers;
-    for (const auto& blocking_txn_id : txn_lock.waiting_locks().blocking_txn_ids()) {
+    for (const auto& blocking_txn_id : txn_lock_info.waiting_locks().blocking_txn_ids()) {
       auto decoded = ASSERT_RESULT(FullyDecodeTransactionId(blocking_txn_id));
       blockers.insert(decoded);
       ASSERT_TRUE(decoded == session1.txn_id || decoded == session2.txn_id);
