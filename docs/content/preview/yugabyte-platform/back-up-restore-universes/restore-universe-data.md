@@ -34,6 +34,8 @@ You can restore YugabyteDB universe YCQL data from a backup as follows:
 
 1. To rename databases (YSQL) or keyspaces (YCQL), select the **Rename** option.
 
+    If you are restoring a backup to a universe with a existing databases with the same name, you must rename the database.
+
 1. Optionally, specify the number of parallel threads that are allowed to run. This can be any number between `1` and `100`.
 
 1. If you chose to rename databases or keyspaces, click **Next**, then enter new names for the databases or keyspaces that you want to rename.
@@ -62,7 +64,14 @@ To restore, do the following:
 
 1. To rename databases (YSQL) or keyspaces (YCQL), select the **Rename** option.
 
-1. If you selected a YCQL backup, you can choose to select specific tables to restore, by selecting the **Select a subset of tables** option. This option is only available if the backup and the target universe are compatible.
+    If you are restoring a YSQL backup to a universe with an existing database with the same name, you must rename the database.
+
+1. If you selected a YCQL backup, you can choose to select specific tables to restore, by selecting the **Select a subset of tables** option.
+
+    Note that this option is only available if the following conditions are met:
+
+    - The backup was made on a universe running YugabyteDB v2.16.0 or later.
+    - The selected target universe is running YugabyteDB v2.18.0 or later.
 
 1. If you chose to rename databases/keyspaces or select tables, click **Next** to rename keyspaces and, if applicable, select tables.
 
