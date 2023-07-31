@@ -412,6 +412,11 @@ function RestoreChooseUniverseForm({
 }) {
   let sourceUniverseNameAtFirst: IUniverse[] = [];
 
+  const universe = find(universeList, { universeUUID: backup_details.universeUUID });
+  let currentActiveKMS = '';
+  if (universe && universe?.universeDetails?.encryptionAtRestConfig?.encryptionAtRestEnabled)
+    currentActiveKMS = universe?.universeDetails?.encryptionAtRestConfig?.kmsConfigUUID;
+
   //kms config used in the universe while taking backup
   const isEncryptedBackup = has(backup_details.commonBackupInfo, 'kmsConfigUUID');
   const kmsIdDuringBackup = kmsConfigList.find(
@@ -565,11 +570,21 @@ function RestoreChooseUniverseForm({
                       <StatusBadge
                         statusType={Badge_Types.DELETED}
                         customLabel="Used during backup"
-                      />
+                      />{' '}
+                      {props.data.value === currentActiveKMS && (
+                        <StatusBadge statusType={Badge_Types.COMPLETED} customLabel="Active" />
+                      )}
                     </components.Option>
                   );
                 }
-                return <components.Option {...props} />;
+                return (
+                  <components.Option {...props}>
+                    <span>{props.data.label}</span>{' '}
+                    {props.data.value === currentActiveKMS && (
+                      <StatusBadge statusType={Badge_Types.COMPLETED} customLabel="Active" />
+                    )}
+                  </components.Option>
+                );
               },
               SingleValue: ({ data }: { data: any }) => {
                 if (isEncryptedBackup && data.value === kmsIdDuringBackup?.value) {
