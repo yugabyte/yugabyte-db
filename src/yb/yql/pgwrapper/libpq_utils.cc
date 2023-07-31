@@ -680,13 +680,16 @@ std::string PqEscapeIdentifier(const std::string& input) {
 }
 
 bool HasTransactionError(const Status& status) {
+  // TODO: Refactor the function to check for specific error codes instead of checking multiple
+  // errors as few tests that shouldn't encounter a 40P01 would also get through on usage of a
+  // generic check. Refer https://github.com/yugabyte/yugabyte-db/issues/18478 for details.
   static const auto kExpectedErrors = {
-      "could not serialize access due to concurrent update",
-      "Transaction aborted:",
-      "expired or aborted by a conflict:",
-      "Unknown transaction, could be recently aborted:"
+      // ERRCODE_T_R_SERIALIZATION_FAILURE
+      "pgsql error 40001",
+      // ERRCODE_T_R_DEADLOCK_DETECTED
+      "pgsql error 40P01"
   };
-  return HasSubstring(status.message(), kExpectedErrors);
+  return HasSubstring(status.ToString(), kExpectedErrors);
 }
 
 bool IsRetryable(const Status& status) {

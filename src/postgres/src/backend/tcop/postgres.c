@@ -3837,14 +3837,14 @@ static void YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 	*/
 	bool is_read_restart_error = YBCIsRestartReadError(edata->yb_txn_errcode);
 	bool is_conflict_error     = YBCIsTxnConflictError(edata->yb_txn_errcode);
-
+	bool is_deadlock_error	   = YBCIsTxnDeadlockError(edata->yb_txn_errcode);
 	/*
 	 * Note that 'is_dml' could be set for a Select operation on a pg_catalog
 	 * table. Even if it fails due to conflict, a retry is expected to succeed
 	 * without refreshing the cache (as the schema of a PG catalog table cannot
 	 * change).
 	 */
-	if (is_dml && (is_read_restart_error || is_conflict_error))
+	if (is_dml && (is_read_restart_error || is_conflict_error || is_deadlock_error))
 	{
 		return;
 	}
@@ -4163,10 +4163,11 @@ yb_is_restart_possible(const ErrorData* edata,
 			 edata->message, edata->filename, edata->lineno);
 	bool is_read_restart_error = YBCIsRestartReadError(edata->yb_txn_errcode);
 	bool is_conflict_error     = YBCIsTxnConflictError(edata->yb_txn_errcode);
-	if (!is_read_restart_error && !is_conflict_error)
+	bool is_deadlock_error	   = YBCIsTxnDeadlockError(edata->yb_txn_errcode);
+	if (!is_read_restart_error && !is_conflict_error && !is_deadlock_error)
 	{
 		if (yb_debug_log_internal_restarts)
-			elog(LOG, "Restart isn't possible, code %d isn't a read restart/conflict error",
+			elog(LOG, "Restart isn't possible, code %d isn't a read restart/conflict/deadlock error",
 			          edata->yb_txn_errcode);
 		return false;
 	}
@@ -4195,6 +4196,41 @@ yb_is_restart_possible(const ErrorData* edata,
 		if (yb_debug_log_internal_restarts)
 			elog(LOG, "Restart isn't possible, we're out of read restart attempts (%d)",
 			          attempt);
+		*retries_exhausted = true;
+		return false;
+	}
+
+	/*
+	 * For isolation levels other than READ COMMITTED, retries on deadlock are capped at
+	 * ysql_max_write_restart_attempts, given that no data has been sent as part of the transaction.
+	 */
+	if (!IsYBReadCommitted() && is_deadlock_error &&
+		attempt >= *YBCGetGFlags()->ysql_max_write_restart_attempts)
+	{
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "Restart isn't possible, we're out of read/write restart attempts (%d) on deadlock",
+			          attempt);
+		*retries_exhausted = true;
+		return false;
+	}
+	
+	/*
+	 * In case of READ COMMITTED, retries involve restarting the current statement and not the whole
+	 * transaction.
+	 *
+	 * We can't differentiate if locks acquired by this transaction that are part of the deadlock
+	 * cycle were acquired in a previous statement or the current statement. If acquired in a previous
+	 * statement, restarting the current statement is of no use. If acquired in the current statement,
+	 * a restart could help in resolving the deadlock since the acquired locks would be released in an
+	 * attempt to reacquire.
+	 *
+	 * Hence retries on deadlock in READ COMMITTED isolation are performed indefinitely until statement
+	 * timeout only when no data has been sent as part of the transaction (which also subsumes ensuring
+	 * that this was the first statement in the transaction).
+	 */
+	if (IsYBReadCommitted() && is_deadlock_error && YBIsDataSent()) {
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "Restart isn't possible, encountered deadlock in READ COMMITTED isolation");
 		*retries_exhausted = true;
 		return false;
 	}
@@ -4586,7 +4622,8 @@ yb_attempt_to_restart_on_error(int attempt,
 			{
 				HandleYBStatus(YBCPgRestartReadPoint());
 			}
-			else if (YBCIsTxnConflictError(edata->yb_txn_errcode))
+			else if (YBCIsTxnConflictError(edata->yb_txn_errcode) ||
+					 YBCIsTxnDeadlockError(edata->yb_txn_errcode))
 			{
 				HandleYBStatus(YBCPgResetTransactionReadPoint());
 				yb_maybe_sleep_on_txn_conflict(attempt);
@@ -4620,7 +4657,8 @@ yb_attempt_to_restart_on_error(int attempt,
 			{
 				YBCRestartTransaction();
 			}
-			else if (YBCIsTxnConflictError(edata->yb_txn_errcode))
+			else if (YBCIsTxnConflictError(edata->yb_txn_errcode) ||
+					 YBCIsTxnDeadlockError(edata->yb_txn_errcode))
 			{
 				/*
 				 * Recreate the YB state for the transaction. This call preserves the

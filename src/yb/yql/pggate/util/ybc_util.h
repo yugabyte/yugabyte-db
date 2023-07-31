@@ -148,6 +148,7 @@ bool YBCIsRestartReadError(uint16_t txn_errcode);
 
 bool YBCIsTxnConflictError(uint16_t txn_errcode);
 bool YBCIsTxnSkipLockingError(uint16_t txn_errcode);
+bool YBCIsTxnDeadlockError(uint16_t txn_errcode);
 uint16_t YBCGetTxnConflictErrorCode();
 
 void YBCResolveHostname();

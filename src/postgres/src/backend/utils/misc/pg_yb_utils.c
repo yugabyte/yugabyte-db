@@ -558,6 +558,17 @@ GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code,
 			*msg_args = (const char **) palloc(sizeof(const char *));
 			(*msg_args)[0] = FetchUniqueConstraintName(YBCStatusRelationOid(s));
 			break;
+		case ERRCODE_T_R_DEADLOCK_DETECTED:
+			if (YBCIsTxnDeadlockError(txn_err_code)) {
+				*msg_buf = "deadlock detected";
+				*msg_nargs = 0;
+				*msg_args = NULL;
+
+				*detail_buf = status_msg;
+				*detail_nargs = status_nargs;
+				*detail_args = status_args;
+			}
+			break;
 		default:
 			break;
 	}
