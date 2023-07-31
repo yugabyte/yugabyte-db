@@ -77,7 +77,8 @@ struct TableDescription {
 
 struct TabletLeaderLeaseInfo {
   bool initialized = false;
-  consensus::LeaderLeaseStatus leader_lease_status;
+  consensus::LeaderLeaseStatus leader_lease_status =
+      consensus::LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
   MicrosTime ht_lease_expiration = 0;
   // Number of heartbeats that current tablet leader doesn't have a valid lease.
   uint64 heartbeats_without_leader_lease = 0;
