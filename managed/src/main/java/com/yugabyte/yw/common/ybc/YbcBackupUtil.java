@@ -197,7 +197,6 @@ public class YbcBackupUtil {
         public TableType snapshotNamespaceType;
 
         @JsonAlias("namespace_name")
-        @NotNull
         public String snapshotNamespaceName;
       }
 
