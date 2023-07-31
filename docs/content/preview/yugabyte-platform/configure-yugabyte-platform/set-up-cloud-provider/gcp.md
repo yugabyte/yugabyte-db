@@ -94,11 +94,47 @@ GCP offers a way to specify arbitrary parameters via an [instance template](http
 Note that you require YugabyteDB Anywhere version 2.18.2.0 or higher to create instance templates.
 {{< /note >}}
 
+The following list includes (but not limited to) the supported use cases for instance templates:
+
+- Volume disk encryption
+- Startup scripts
+- On host maintenance
+- Sole tenancy
+- Confidential VM Service
+
 To create an instance template on Google Cloud console with your desired customizations, do the following:
 
-1. Follow the steps on Google Cloud console to [create a new instance template](https://cloud.google.com/compute/docs/instance-templates/create-instance-templates).
+1. Follow the steps from the Google Cloud console to [create a new instance template](https://cloud.google.com/compute/docs/instance-templates/create-instance-templates).
 
-    Note that not all customizations will be honored when creating a universe on YB Anywhere with the instance template. For details about fields that can't be overridden by a GCP instance template, refer to this [list](https://gist.github.com/chidmuthu/ebe540b102fb4a598260c68d2117a3ad).
+    Note that not all customizations will be honored when creating a universe on YB Anywhere with the instance template. The following list includes details about fields that can't be overridden by a GCP instance template:
+
+    <!-- | Field | Description |
+    | :---- | :----|
+    | project | |
+    | zone | |
+    | Boot disk (Auto- delete, disk type, and disk image) |
+    | canIPForward |Instance property to enable IP forwarding on an existing VM |
+    | instance type | |
+    | ssh keys | |
+    | block project wide ssh (always true) ||
+    | cloud NAT ||
+    | subnetwork ||
+    | volume type ||
+    | volume size ||
+    | volume source (always None) || -->
+
+    - project
+    - zone
+    - Boot disk (Auto- delete, disk type, and disk image)
+    - canIPForward
+    - instance type
+    - ssh keys
+    - block project wide ssh (always true)
+    - cloud NAT
+    - subnetwork
+    - volume type
+    - volume size
+    - volume source (always None)
 
 1. Ensure that the instance template is created under the right project and choose the correct network and sub-network under **Advanced Options** > **Networking**.
 
