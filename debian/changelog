@@ -1,3 +1,9 @@
+hypopg (1.4.0-1) unstable; urgency=medium
+
+  * New upstream version.
+
+ -- Julien Rouhaud <rjuju123@gmail.com>  Mon, 31 Jul 2023 12:28:46 +0200
+
 hypopg (1.3.1-2) unstable; urgency=medium
 
   * Upload for PostgreSQL 15.

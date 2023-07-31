@@ -1,6 +1,21 @@
 Changelog
 =========
 
+2023-05-27 version 1.4.0:
+-------------------------
+
+  **New features**:
+
+  - Support hypothetically hiding existing indexes, hypothetical or not (github
+    user nutvii and Julien Rouhaud)
+
+  **Miscellaneous**:
+
+  - Have hypopg_relation_size() error out rather than returning 0 if called for
+    an oid that isn't a hypothetical index oid
+  - Slighthly reduce memory usage for hypothetical btree indexes without
+    INCLUDE keys
+
 2021-06-21 version 1.3.1:
 -------------------------
 

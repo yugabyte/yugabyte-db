@@ -8,7 +8,7 @@
  * This program is open source, licensed under the PostgreSQL license.
  * For license terms, see the LICENSE file.
  *
- * Copyright (C) 2015-2021: Julien Rouhaud
+ * Copyright (C) 2015-2023: Julien Rouhaud
  *
  *-------------------------------------------------------------------------
  */
@@ -55,7 +55,6 @@ static bool oid_wraparound = false;
 /*--- Functions --- */
 
 PGDLLEXPORT void _PG_init(void);
-PGDLLEXPORT void _PG_fini(void);
 
 PGDLLEXPORT Datum hypopg_reset(PG_FUNCTION_ARGS);
 
@@ -103,7 +102,7 @@ static void hypo_get_relation_info_hook(PlannerInfo *root,
 static get_relation_info_hook_type prev_get_relation_info_hook = NULL;
 
 static bool hypo_index_match_table(hypoIndex *entry, Oid relid);
-static bool hypo_query_walker(Node *node);
+static bool hypo_is_simple_explain(Node *node);
 
 void
 _PG_init(void)
@@ -123,6 +122,7 @@ _PG_init(void)
 
 	isExplain = false;
 	hypoIndexes = NIL;
+	hypoHiddenIndexes = NIL;
 
 	HypoMemoryContext = AllocSetContextCreate(TopMemoryContext,
 											  "HypoPG context",
@@ -158,17 +158,6 @@ _PG_init(void)
 							 NULL);
 
 	EmitWarningsOnPlaceholders("hypopg");
-}
-
-void
-_PG_fini(void)
-{
-	/* uninstall hooks */
-	ProcessUtility_hook = prev_utility_hook;
-	ExecutorEnd_hook = prev_ExecutorEnd_hook;
-	get_relation_info_hook = prev_get_relation_info_hook;
-	explain_get_index_name_hook = prev_explain_get_index_name_hook;
-
 }
 
 /*---------------------------------
@@ -315,14 +304,13 @@ hypo_utility_hook(
 #endif
 				  )
 {
-	isExplain = query_or_expression_tree_walker(
+	isExplain = hypo_is_simple_explain(
 #if PG_VERSION_NUM >= 100000
-												(Node *) pstmt,
+									   (Node *) pstmt
 #else
-												parsetree,
+									   parsetree
 #endif
-												hypo_query_walker,
-												NULL, 0);
+									   );
 
 	if (prev_utility_hook)
 		prev_utility_hook(
@@ -416,7 +404,7 @@ hypo_index_match_table(hypoIndex *entry, Oid relid)
  * i.e. an EXPLAIN, no ANALYZE
  */
 static bool
-hypo_query_walker(Node *parsetree)
+hypo_is_simple_explain(Node *parsetree)
 {
 	if (parsetree == NULL)
 		return false;
@@ -426,6 +414,7 @@ hypo_query_walker(Node *parsetree)
 	if (parsetree == NULL)
 		return false;
 #endif
+
 	switch (nodeTag(parsetree))
 	{
 		case T_ExplainStmt:
@@ -540,6 +529,8 @@ hypo_get_relation_info_hook(PlannerInfo *root,
 												 inhparent, rel, relation, entry);
 				}
 			}
+
+			hypo_hideIndexes(rel);
 		}
 
 		/* Close the relation release the lock now */

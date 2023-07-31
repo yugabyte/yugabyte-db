@@ -105,6 +105,9 @@ ORDER BY indexrelid;
  f
 (3 rows)
 
+-- Should detect invalid argument
+SELECT hypopg_relation_size(1);
+ERROR:  oid 1 is not a hypothetical index
 -- locally disable hypoopg
 SET hypopg.enabled to false;
 -- no hypothetical index should be used

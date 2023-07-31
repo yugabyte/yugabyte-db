@@ -8,7 +8,7 @@
  * This program is open source, licensed under the PostgreSQL license.
  * For license terms, see the LICENSE file.
  *
- * Copyright (C) 2015-2021: Julien Rouhaud
+ * Copyright (C) 2015-2023: Julien Rouhaud
  *
  *-------------------------------------------------------------------------
  */
@@ -81,6 +81,7 @@ static Oid	BLOOM_AM_OID = InvalidOid;
 
 explain_get_index_name_hook_type prev_explain_get_index_name_hook;
 List	   *hypoIndexes;
+List	   *hypoHiddenIndexes;
 
 /*--- Functions --- */
 
@@ -90,6 +91,10 @@ PG_FUNCTION_INFO_V1(hypopg_drop_index);
 PG_FUNCTION_INFO_V1(hypopg_relation_size);
 PG_FUNCTION_INFO_V1(hypopg_get_indexdef);
 PG_FUNCTION_INFO_V1(hypopg_reset_index);
+PG_FUNCTION_INFO_V1(hypopg_hide_index);
+PG_FUNCTION_INFO_V1(hypopg_unhide_index);
+PG_FUNCTION_INFO_V1(hypopg_unhide_all_indexes);
+PG_FUNCTION_INFO_V1(hypopg_hidden_indexes);
 
 
 static void hypo_addIndex(hypoIndex * entry);
@@ -101,6 +106,7 @@ static void hypo_estimate_index(hypoIndex * entry, RelOptInfo *rel);
 static int	hypo_estimate_index_colsize(hypoIndex * entry, int col);
 static void hypo_index_pfree(hypoIndex * entry);
 static bool hypo_index_remove(Oid indexid);
+static bool hypo_index_unhide(Oid indexid);
 static const hypoIndex *hypo_index_store_parsetree(IndexStmt *node,
 												   const char *queryString);
 static hypoIndex * hypo_newIndex(Oid relid, char *accessMethod, int nkeycolumns,
@@ -350,7 +356,7 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 	/*
 	 * Support for hypothetical BRIN indexes is broken in some minor versions
 	 * of pg10, pg11 and pg12.  For simplicity, check PG_VERSION_NUM rather
-	 * than the real instance version, which should should be right most of the
+	 * than the real instance version, which should be right most of the
 	 * time.  When it's not, the only effect is to have a less user-friendly
 	 * error message.
 	 */
@@ -395,12 +401,13 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 			break;
 #endif
 		default:
-			elog(ERROR, "hypopg: \"%s\" is not a table"
 #if PG_VERSION_NUM >= 90300
-				 " or materialized view"
-#endif
-				 ,
+			elog(ERROR, "hypopg: \"%s\" is not a table or materialized view",
 				 node->relation->relname);
+#else
+			elog(ERROR, "hypopg: \"%s\" is not a table",
+				 node->relation->relname);
+#endif
 	}
 
 	/* Run parse analysis ... */
@@ -921,6 +928,9 @@ hypo_index_remove(Oid indexid)
 {
 	ListCell   *lc;
 
+	/* remove this index from the list of hidden indexes if present */
+	hypo_index_unhide(indexid);
+
 	foreach(lc, hypoIndexes)
 	{
 		hypoIndex  *entry = (hypoIndex *) lfirst(lc);
@@ -932,6 +942,7 @@ hypo_index_remove(Oid indexid)
 			return true;
 		}
 	}
+
 	return false;
 }
 
@@ -1012,21 +1023,17 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 #endif
 
 	index->indexkeys = (int *) palloc(sizeof(int) * ncolumns);
-	index->indexcollations = (Oid *) palloc(sizeof(int) * ncolumns);
-	index->opfamily = (Oid *) palloc(sizeof(int) * ncolumns);
-	index->opcintype = (Oid *) palloc(sizeof(int) * ncolumns);
-
-#if PG_VERSION_NUM >= 90500
-	index->canreturn = (bool *) palloc(sizeof(bool) * ncolumns);
-#endif
+	index->indexcollations = (Oid *) palloc(sizeof(int) * nkeycolumns);
+	index->opfamily = (Oid *) palloc(sizeof(int) * nkeycolumns);
+	index->opcintype = (Oid *) palloc(sizeof(int) * nkeycolumns);
 
 	if ((index->relam == BTREE_AM_OID) || entry->amcanorder)
 	{
 		if (index->relam != BTREE_AM_OID)
-			index->sortopfamily = palloc0(sizeof(Oid) * ncolumns);
+			index->sortopfamily = palloc0(sizeof(Oid) * nkeycolumns);
 
-		index->reverse_sort = (bool *) palloc(sizeof(bool) * ncolumns);
-		index->nulls_first = (bool *) palloc(sizeof(bool) * ncolumns);
+		index->reverse_sort = (bool *) palloc(sizeof(bool) * nkeycolumns);
+		index->nulls_first = (bool *) palloc(sizeof(bool) * nkeycolumns);
 	}
 	else
 	{
@@ -1034,6 +1041,10 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 		index->reverse_sort = NULL;
 		index->nulls_first = NULL;
 	}
+
+#if PG_VERSION_NUM >= 90500
+	index->canreturn = (bool *) palloc(sizeof(bool) * ncolumns);
+#endif
 
 	for (i = 0; i < ncolumns; i++)
 	{
@@ -1045,9 +1056,9 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 
 	for (i = 0; i < nkeycolumns; i++)
 	{
+		index->indexcollations[i] = entry->indexcollations[i];
 		index->opfamily[i] = entry->opfamily[i];
 		index->opcintype[i] = entry->opcintype[i];
-		index->indexcollations[i] = entry->indexcollations[i];
 	}
 
 	/*
@@ -1063,7 +1074,7 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 		 */
 		index->sortopfamily = index->opfamily;
 
-		for (i = 0; i < ncolumns; i++)
+		for (i = 0; i < nkeycolumns; i++)
 		{
 			index->reverse_sort[i] = entry->reverse_sort[i];
 			index->nulls_first[i] = entry->nulls_first[i];
@@ -1073,7 +1084,7 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 	{
 		if (entry->sortopfamily)
 		{
-			for (i = 0; i < ncolumns; i++)
+			for (i = 0; i < nkeycolumns; i++)
 			{
 				index->sortopfamily[i] = entry->sortopfamily[i];
 				index->reverse_sort[i] = entry->reverse_sort[i];
@@ -1290,7 +1301,7 @@ hypopg(PG_FUNCTION_ARGS)
 Datum
 hypopg_create_index(PG_FUNCTION_ARGS)
 {
-	char	   *sql = TextDatumGetCString(PG_GETARG_TEXT_PP(0));
+	char	   *sql = TextDatumGetCString(PG_GETARG_DATUM(0));
 	List	   *parsetree_list;
 	ListCell   *parsetree_item;
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
@@ -1387,6 +1398,7 @@ hypopg_relation_size(PG_FUNCTION_ARGS)
 	double		tuples;
 	Oid			indexid = PG_GETARG_OID(0);
 	ListCell   *lc;
+	bool		found = false;
 
 	pages = 0;
 	tuples = 0;
@@ -1397,8 +1409,13 @@ hypopg_relation_size(PG_FUNCTION_ARGS)
 		if (entry->oid == indexid)
 		{
 			hypo_estimate_index_simple(entry, &pages, &tuples);
+			found = true;
+			break;
 		}
 	}
+
+	if (!found)
+		elog(ERROR, "oid %u is not a hypothetical index", indexid);
 
 	PG_RETURN_INT64(pages * 1.0L * BLCKSZ);
 }
@@ -1419,8 +1436,7 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 	hypoIndex  *entry = NULL;
 	ListCell   *lc;
 	List	   *context;
-	int			keyno,
-				cpt = 0;
+	int			keyno;
 
 	foreach(lc, hypoIndexes)
 	{
@@ -1491,8 +1507,6 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 
 			keycoltype = exprType(indexkey);
 			keycolcollation = exprCollation(indexkey);
-
-			cpt++;
 		}
 
 		/* Add collation, if not default for column */
@@ -1585,6 +1599,189 @@ hypopg_reset_index(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
+/*
+ * Add the given oid for the list of hidden indexes
+ * if it's a valid index (hypothetical or real), and if not hidden already.
+ * Return true if the oid is added to the list, false otherwise.
+ */
+Datum
+hypopg_hide_index(PG_FUNCTION_ARGS)
+{
+	Oid indexid = PG_GETARG_OID(0);
+	MemoryContext old_context;
+	bool is_hypo = false;
+	ListCell *lc;
+
+	/* first check if it is in hypoIndexes */
+	foreach(lc, hypoIndexes)
+	{
+		hypoIndex *entry = (hypoIndex *) lfirst(lc);
+
+		if (entry->oid == indexid)
+		{
+			is_hypo = true;
+			break;
+		}
+	}
+
+	if (!is_hypo)
+	{
+		HeapTuple index_tup = SearchSysCache1(INDEXRELID, ObjectIdGetDatum(indexid));
+
+		if (!HeapTupleIsValid(index_tup))
+			return false;
+
+		ReleaseSysCache(index_tup);
+	}
+
+	if (list_member_oid(hypoHiddenIndexes, indexid))
+		return false;
+
+	old_context = MemoryContextSwitchTo(HypoMemoryContext);
+	hypoHiddenIndexes = lappend_oid(hypoHiddenIndexes, indexid);
+	MemoryContextSwitchTo(old_context);
+
+	return true;
+}
+
+/*
+ * Unhide the given index oid (hypothetical or not) to make it visible to
+ * the planner again.
+ */
+Datum
+hypopg_unhide_index(PG_FUNCTION_ARGS)
+{
+	Oid indexid = PG_GETARG_OID(0);
+
+	PG_RETURN_BOOL(hypo_index_unhide(indexid));
+}
+
+/*
+ * Restore all hidden index.
+ */
+Datum
+hypopg_unhide_all_indexes(PG_FUNCTION_ARGS)
+{
+	list_free(hypoHiddenIndexes);
+	hypoHiddenIndexes = NIL;
+	PG_RETURN_VOID();
+}
+
+/*
+ * Get all hidden index oid.
+ */
+Datum
+hypopg_hidden_indexes(PG_FUNCTION_ARGS)
+{
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	MemoryContext oldcontext;
+	TupleDesc tupdesc;
+	Tuplestorestate *tupstore;
+	ListCell *lc;
+
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("set-valued function called in context that cannot accept a set")));
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("materialize mode required, but it is not " \
+						"allowed in this context")));
+
+	oldcontext = MemoryContextSwitchTo(rsinfo->econtext->ecxt_per_query_memory);
+
+	tupdesc = CreateTemplateTupleDesc(1
+#if PG_VERSION_NUM < 120000
+			, false
+#endif
+			);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "indexid", OIDOID, -1, 0);
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	MemoryContextSwitchTo(oldcontext);
+
+	foreach(lc, hypoHiddenIndexes)
+	{
+		Oid indexid = lfirst_oid(lc);
+		Datum values[HYPO_HIDDEN_INDEX_COLS];
+		bool nulls[HYPO_HIDDEN_INDEX_COLS];
+
+		memset(values, 0, sizeof(values));
+		memset(nulls, 0, sizeof(nulls));
+
+		values[0] = ObjectIdGetDatum(indexid);
+		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+	}
+
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+
+	return (Datum) 0;
+}
+
+/*
+ * Remove the oid to restore this index on EXPLAIN.
+ */
+bool
+hypo_index_unhide(Oid indexid)
+{
+	int prev_length = list_length(hypoHiddenIndexes);
+
+	hypoHiddenIndexes = list_delete_oid(hypoHiddenIndexes, indexid);
+	return prev_length > list_length(hypoHiddenIndexes);
+}
+
+/*
+ * Check rel and delete the same oid index as hypoHiddenIndexes
+ * in rel->indexlist.
+ */
+void
+hypo_hideIndexes(RelOptInfo *rel)
+{
+	ListCell *cell = NULL;
+
+	if (rel == NULL)
+		return;
+
+	if (list_length(rel->indexlist) == 0 || list_length(hypoHiddenIndexes) == 0)
+		return;
+
+	foreach(cell, hypoHiddenIndexes)
+	{
+		Oid oid = lfirst_oid(cell);
+		ListCell *lc = NULL;
+
+#if PG_VERSION_NUM >= 130000
+		foreach(lc, rel->indexlist)
+		{
+			IndexOptInfo *index = (IndexOptInfo *) lfirst(lc);
+
+			if (index->indexoid == oid)
+				rel->indexlist = foreach_delete_current(rel->indexlist, lc);
+		}
+#else
+		ListCell *next;
+		ListCell *prev = NULL;
+
+		for (lc = list_head(rel->indexlist); lc != NULL; lc = next)
+		{
+			IndexOptInfo *index = (IndexOptInfo *) lfirst(lc);
+
+			next = lnext(lc);
+			if (index->indexoid == oid)
+				rel->indexlist = list_delete_cell(rel->indexlist, lc, prev);
+			else
+				prev = lc;
+		}
+#endif
+	}
+}
 
 /* Simple function to set the indexname, dealing with max name length, and the
  * ending \0

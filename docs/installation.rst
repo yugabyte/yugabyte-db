@@ -13,7 +13,7 @@ Packages
 
 Hypopg is available as a package on some GNU/Linux distributions:
 
-- RHEL/Centos
+- RHEL/Rocky Linux
 
   HypoPG is available as a package using `the PGDG packages
   <https://yum.postgresql.org>`_.
@@ -24,6 +24,20 @@ Hypopg is available as a package on some GNU/Linux distributions:
   .. code-block:: bash
 
     yum install hypopg
+
+- Debian / Ubuntu
+
+  HypoPG is available as a package using `the PGDG packages
+  <https://apt.postgresql.org>`_.
+
+  Once the PGDG repository is setup, you just need to install the package.  As
+  root:
+
+  .. code-block:: bash
+
+    apt install postgresql-XY-hypopg
+
+  where XY is the major version for which you want to install hypopg.
 
 - Archlinux
 
