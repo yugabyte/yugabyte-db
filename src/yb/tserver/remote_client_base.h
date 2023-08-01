@@ -33,6 +33,7 @@
 
 #include <string>
 
+#include "yb/common/entity_ids_types.h"
 #include "yb/gutil/macros.h"
 #include "yb/tserver/remote_bootstrap.pb.h"
 #include "yb/tserver/remote_bootstrap_file_downloader.h"
@@ -72,7 +73,7 @@ class RemoteClientBase {
  protected:
   // Construct the remote client base.
   // 'fs_manager' and 'messenger' must remain valid until this object is destroyed.
-  RemoteClientBase(std::string tablet_id, FsManager* fs_manager);
+  RemoteClientBase(const TabletId& tablet_id, FsManager* fs_manager);
 
   // Attempt to clean up resources on the remote end by sending an
   // EndRemoteBootstrapSession() RPC
@@ -98,7 +99,7 @@ class RemoteClientBase {
   static std::atomic<int32_t> remote_clients_started_;
 
   // Set-once members.
-  const std::string tablet_id_;
+  const TabletId tablet_id_;
 
   // State flags that enforce the progress of remote.
   bool started_ = false;  // Session started.
