@@ -1561,6 +1561,9 @@ std::vector<TabletInfoPtr> MasterPathHandlers::GetLeaderlessTablets() {
   auto nonsystem_tablets = GetNonSystemTablets();
 
   for (TabletInfoPtr t : nonsystem_tablets) {
+    if (t.get()->LockForRead()->is_deleted()) {
+      continue;
+    }
     auto rm = t.get()->GetReplicaLocations();
 
     auto has_leader = std::any_of(
