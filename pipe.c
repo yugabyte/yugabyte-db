@@ -52,6 +52,7 @@
 /* in sec 1000 days */
 #define MAXWAIT		86400000
 
+
 PG_FUNCTION_INFO_V1(dbms_pipe_pack_message_text);
 PG_FUNCTION_INFO_V1(dbms_pipe_unpack_message_text);
 PG_FUNCTION_INFO_V1(dbms_pipe_send_message);
@@ -966,8 +967,12 @@ dbms_pipe_receive_message(PG_FUNCTION_ARGS)
 
 #if PG_VERSION_NUM >= 130000
 
-			if (cur_timeout > INT_MAX)
-				cur_timeout = INT_MAX;
+			/*
+			 * Timeout should be less than INT_MAX, but we set 1 sec as protection
+			 * against deadlocks.
+			 */
+			if (cur_timeout > 1000)
+				cur_timeout = 1000;
 
 			if (ConditionVariableTimedSleep(pipe_cv, cur_timeout, PG_WAIT_EXTENSION))
 			{
@@ -1093,8 +1098,8 @@ dbms_pipe_send_message(PG_FUNCTION_ARGS)
 
 #if PG_VERSION_NUM >= 130000
 
-			if (cur_timeout > INT_MAX)
-				cur_timeout = INT_MAX;
+			if (cur_timeout > 1000)
+				cur_timeout = 1000;
 
 			if (ConditionVariableTimedSleep(pipe_cv, cur_timeout, PG_WAIT_EXTENSION))
 			{
