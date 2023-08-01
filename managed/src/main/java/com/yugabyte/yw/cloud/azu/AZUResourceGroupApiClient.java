@@ -39,20 +39,23 @@ public class AZUResourceGroupApiClient {
   public BackendAddressPoolInner createNewBackendPoolForIPs(
       String lbName, Map<String, String> ipToVmName, SubResource virtualNetwork) {
     String backendPoolName = "bp-" + UUID.randomUUID().toString();
-    BackendAddressPoolInner backendPool =
-        new BackendAddressPoolInner().withName(backendPoolName).withVirtualNetwork(virtualNetwork);
-    return updateIPsInBackendPool(lbName, ipToVmName, backendPool);
+    BackendAddressPoolInner backendPool = new BackendAddressPoolInner().withName(backendPoolName);
+    return updateIPsInBackendPool(lbName, ipToVmName, backendPool, virtualNetwork);
   }
 
   public BackendAddressPoolInner updateIPsInBackendPool(
-      String lbName, Map<String, String> ipToVmName, BackendAddressPoolInner backendAddressPool) {
+      String lbName,
+      Map<String, String> ipToVmName,
+      BackendAddressPoolInner backendAddressPool,
+      SubResource virtualNetwork) {
     List<LoadBalancerBackendAddress> loadBalancerAddresses =
         ipToVmName.entrySet().stream()
             .map(
                 ipToName ->
                     (new LoadBalancerBackendAddress())
                         .withName(ipToName.getValue())
-                        .withIpAddress(ipToName.getKey()))
+                        .withIpAddress(ipToName.getKey())
+                        .withVirtualNetwork(virtualNetwork))
             .collect(Collectors.toList());
     backendAddressPool = backendAddressPool.withLoadBalancerBackendAddresses(loadBalancerAddresses);
     return azureResourceManager

@@ -646,3 +646,13 @@ ybgingettuple(IndexScanDesc scan, ScanDirection dir)
 
 	return scan->xs_ctup.t_ybctid != 0;
 }
+
+/*
+ * TODO(jason): don't assume that recheck is needed.
+ */
+bool
+ybginmightrecheck(Relation heapRelation, Relation indexRelation,
+				  bool xs_want_itup, ScanKey keys, int nkeys)
+{
+	return true;
+}

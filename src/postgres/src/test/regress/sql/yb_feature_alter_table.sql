@@ -139,6 +139,7 @@ alter table atacc1 drop constraint checkb2;
 insert into atacc1 values (5, 5, 5);
 alter table atacc1 drop constraint checkb;
 alter table atacc1 drop constraint if exists checkb2;
+alter table atacc1 drop constraint checkb2;
 alter table atacc1 drop constraint if exists checkb3;
 delete from atacc1 where b = 5;
 

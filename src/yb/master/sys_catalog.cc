@@ -927,6 +927,7 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersion(const TableId& ysql_catalog_tab
 
 Status SysCatalogTable::ReadYsqlAllDBCatalogVersions(
     const TableId& ysql_catalog_table_id, DbOidToCatalogVersionMap* versions) {
+  TRACE_EVENT0("master", "ReadYsqlAllDBCatalogVersions");
   return ReadYsqlDBCatalogVersionImpl(
       ysql_catalog_table_id, kInvalidOid, nullptr, nullptr, versions);
 }
@@ -937,7 +938,6 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
     uint64_t* catalog_version,
     uint64_t* last_breaking_version,
     DbOidToCatalogVersionMap* versions) {
-  TRACE_EVENT0("master", "ReadYsqlAllDBCatalogVersions");
   return ReadWithRestarts(
       [this, ysql_catalog_table_id, db_oid, catalog_version, last_breaking_version, versions](
           const ReadHybridTime& read_ht, HybridTime* read_restart_ht) -> Status {
@@ -1046,6 +1046,7 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImplWithReadTime(
       // has db_oid column as primary key in ASC order and we use the row for template1 to store
       // global catalog version. The db_oid of template1 is 1, which is the smallest db_oid.
       // Therefore we only need to read the first row to retrieve the global catalog version.
+      *read_restart_ht = VERIFY_RESULT(iter->RestartReadHt());
       return Status::OK();
     }
   }

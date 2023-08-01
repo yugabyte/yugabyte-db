@@ -16,7 +16,7 @@ type: docs
 
 Single-region dedicated clusters support multi-node and highly available deployments and are suitable for production deployments.
 
-{{< youtube id="qYMcNzWotkI" title="Deploy a fault tolerant cluster in YugabyteDB Managed" >}}
+{{< youtube id="1eo7YXs3uTw" title="Deploy a fault tolerant cluster in YugabyteDB Managed" >}}
 
 ## Features
 
@@ -76,6 +76,8 @@ You can't change the Fault tolerance of a cluster after it's created.
 **vCPU/Node**: Enter the number of virtual CPUs per node.
 
 **Disk size/Node**: Enter the disk size per node in GB.
+
+**Disk IOPS/Node** (AWS only): Enter the disk input output (I/O) operations per second (IOPS) per node. The node throughput will be scaled according to this IOPS value. For large datasets or clusters with high concurrent transactions, higher IOPS is recommended. As disk IOPS is capped by vCPU, your vCPU and IOPS should be scaled together. Reference your current read and write IOPS performance for an estimation.
 
 Dedicated clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
 

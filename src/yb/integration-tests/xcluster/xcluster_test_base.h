@@ -44,6 +44,7 @@ DECLARE_int32(xcluster_safe_time_update_interval_secs);
 namespace yb {
 
 using client::YBClient;
+using YBTables = std::vector<std::shared_ptr<client::YBTable>>;
 
 constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
 static const std::string kUniverseId = "test_universe";
@@ -139,30 +140,36 @@ class XClusterTestBase : public YBTest {
       YBClient* client, const std::string& namespace_name, const std::string& table_name,
       uint32_t num_tablets, const client::YBSchema* schema);
 
-  virtual Status SetupUniverseReplication(const std::vector<std::string>& table_ids);
+  virtual Status SetupUniverseReplication(const std::vector<std::string>& producer_table_ids);
 
   virtual Status SetupUniverseReplication(
-      const std::vector<std::shared_ptr<client::YBTable>>& tables,
+      const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
+      SetupReplicationOptions opts = SetupReplicationOptions());
+
+  Status SetupUniverseReplication(
+      const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
+      const std::vector<xrepl::StreamId>& bootstrap_ids,
       SetupReplicationOptions opts = SetupReplicationOptions());
 
   Status SetupUniverseReplication(
       const cdc::ReplicationGroupId& replication_group_id,
-      const std::vector<std::shared_ptr<client::YBTable>>& tables,
+      const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
       SetupReplicationOptions opts = SetupReplicationOptions());
 
   Status SetupReverseUniverseReplication(
-      const std::vector<std::shared_ptr<client::YBTable>>& tables);
+      const std::vector<std::shared_ptr<client::YBTable>>& producer_tables);
 
   Status SetupUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
       const cdc::ReplicationGroupId& replication_group_id,
-      const std::vector<std::shared_ptr<client::YBTable>>& tables,
+      const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
       const std::vector<xrepl::StreamId>& bootstrap_ids = {},
       SetupReplicationOptions opts = SetupReplicationOptions());
 
   Status SetupUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
-      const cdc::ReplicationGroupId& replication_group_id, const std::vector<TableId>& table_ids,
+      const cdc::ReplicationGroupId& replication_group_id,
+      const std::vector<TableId>& producer_table_ids,
       const std::vector<xrepl::StreamId>& bootstrap_ids = {},
       SetupReplicationOptions opts = SetupReplicationOptions());
 
@@ -219,6 +226,7 @@ class XClusterTestBase : public YBTest {
       const std::vector<std::shared_ptr<client::YBTable>>& tables,
       bool add_tables);
 
+  Status CorrectlyPollingAllTablets(uint32_t num_producer_tablets);
   Status CorrectlyPollingAllTablets(MiniCluster* cluster, uint32_t num_producer_tablets);
 
   Status WaitForSetupUniverseReplicationCleanUp(

@@ -21,6 +21,7 @@
 
 #include "yb/gutil/callback_forward.h"
 #include "yb/util/locks.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/status_fwd.h"
 
@@ -104,7 +105,8 @@ class MetricEntityPrototype {
   scoped_refptr<MetricEntity> Instantiate(
       MetricRegistry* registry,
       const std::string& id,
-      const std::unordered_map<std::string, std::string>& initial_attrs) const;
+      const std::unordered_map<std::string, std::string>& initial_attrs,
+      std::shared_ptr<MemTracker> mem_tracker = nullptr) const;
 
  private:
   const char* const name_;
@@ -204,13 +206,16 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   friend class MetricRegistry;
   friend class RefCountedThreadSafe<MetricEntity>;
 
-  MetricEntity(const MetricEntityPrototype* prototype, std::string id, AttributeMap attributes);
+  MetricEntity(const MetricEntityPrototype* prototype, std::string id, AttributeMap attributes,
+               std::shared_ptr<MemTracker> mem_tracker = nullptr);
   ~MetricEntity();
 
   // Ensure that the given metric prototype is allowed to be instantiated
   // within this entity. This entity's type must match the expected entity
   // type defined within the metric prototype.
   void CheckInstantiation(const MetricPrototype* proto) const;
+
+  void AddConsumption(int64_t consumption) REQUIRES(lock_);
 
   const MetricEntityPrototype* const prototype_;
   const std::string id_;
@@ -222,6 +227,8 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
 
   // The key/value attributes. Protected by lock_
   AttributeMap attributes_;
+
+  std::weak_ptr<MemTracker> mem_tracker_ GUARDED_BY(lock_);
 
   // The set of metrics which should never be retired. Protected by lock_.
   std::vector<scoped_refptr<Metric> > never_retire_metrics_;

@@ -120,6 +120,12 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
   </li>
 
   <li>
+    <a href="hashicorp-vault/">
+      <img src="/images/section_icons/develop/ecosystem/hashicorp-vault.png">
+      Hashicorp Vault
+    </a>
+  </li>
+  <li>
     <a href="hasura/">
       <img src="/images/section_icons/develop/ecosystem/hasura.png">
       Hasura
@@ -174,10 +180,23 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
     </a>
   </li>
 
+  <li>
+    <a href="metacat/">
+      <img src="/images/section_icons/develop/ecosystem/metabase.png">
+      Metacat
+    </a>
+  </li>
+
    <li>
     <a href="mirantis/">
       <img src="/images/section_icons/develop/ecosystem/mirantis.png">
       Mirantis MKE
+    </a>
+  </li>
+   <li>
+    <a href="pgmigrate/">
+      <img src="/images/section_icons/develop/ecosystem/pgmigrate.png">
+      PGmigrate
     </a>
   </li>
   <li>
@@ -200,6 +219,13 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
       RabbitMQ
     </a>
   </li>
+
+  <li>
+    <a href="schema-evolution-mgr/">
+      Schema Evolution Manager
+    </a>
+  </li>
+
   <li>
     <a href="sequelize/">
       <img src="/images/section_icons/develop/ecosystem/sequelize.png">

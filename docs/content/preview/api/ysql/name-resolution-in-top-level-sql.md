@@ -361,7 +361,7 @@ Secondary objects, like columns in tables, are resolved within the namespace tha
 
 For example
 
-```plpgql
+```plpgsql
 select v, f() from t;
 ```
 
@@ -373,7 +373,7 @@ can mean only that:
 
 Similarly:
 
-```plpgql
+```plpgsql
 select s.t.v from t;
 ```
 

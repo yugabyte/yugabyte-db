@@ -1566,6 +1566,10 @@ heap_create_with_catalog(const char *relname,
 		relkind != RELKIND_PARTITIONED_TABLE)
 		heap_create_init_fork(new_rel_desc);
 
+	/* Increment sticky object count if the object is a TEMP TABLE. */
+	if (YbIsClientYsqlConnMgr() && new_rel_desc->rd_islocaltemp)
+		increment_sticky_object_count();
+
 	/*
 	 * ok, the relation has been cataloged, so close our relations and return
 	 * the OID of the newly created relation.
@@ -2087,11 +2091,15 @@ heap_drop_with_catalog(Oid relid)
 	if (relid == defaultPartOid)
 		update_default_partition_oid(parentOid, InvalidOid);
 
+	/* Decrement sticky object count if the relation being dropped is a TEMP TABLE. */
+	if (YbIsClientYsqlConnMgr() && (rel)->rd_islocaltemp)
+		decrement_sticky_object_count();
+	
 	/*
 	 * Schedule unlinking of the relation's physical files at commit.
-	 * If YugaByte is enabled, there aren't any physical files to remove.
+	 * For Yugabyte-backed relations, there aren't any physical files to remove.
 	 */
-	if (!IsYugaByteEnabled() &&
+	if (!IsYBRelation(rel) &&
 		rel->rd_rel->relkind != RELKIND_VIEW &&
 		rel->rd_rel->relkind != RELKIND_COMPOSITE_TYPE &&
 		rel->rd_rel->relkind != RELKIND_FOREIGN_TABLE &&

@@ -460,6 +460,21 @@ public class XClusterConfig extends Model {
   }
 
   @Transactional
+  public void syncTables(Set<String> tableIds) {
+    addTablesIfNotExist(tableIds);
+    removeExtraTables(tableIds);
+  }
+
+  @Transactional
+  public void removeExtraTables(Set<String> tableIds) {
+    Set<String> extraTableIds =
+        this.getTableIds().stream()
+            .filter(tableId -> !tableIds.contains(tableId))
+            .collect(Collectors.toSet());
+    removeTables(extraTableIds);
+  }
+
+  @Transactional
   public void removeTables(Set<String> tableIds) {
     if (this.getTables() == null) {
       log.debug("No tables is set for xCluster config {}", this.getUuid());

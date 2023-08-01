@@ -149,8 +149,6 @@ Status PopulateWriteRecord(
         auto* transaction_state = record->mutable_transaction_state();
         transaction_state->set_transaction_id(batch.transaction().transaction_id().ToBuffer());
         transaction_state->add_tablets(tablet_peer->tablet_id());
-        transaction_state->set_external_status_tablet_id(
-            batch.transaction().status_tablet().ToBuffer());
         if (GetAtomicFlag(&FLAGS_xcluster_enable_subtxn_abort_propagation) &&
             batch.subtransaction().has_subtransaction_id()) {
           record->set_subtransaction_id(batch.subtransaction().subtransaction_id());
@@ -191,11 +189,7 @@ Status PopulateTransactionRecord(
       Format("Update transaction message requires transaction_state: $0", msg.ShortDebugString()));
 
   const auto& transaction_state = msg.transaction_state();
-  const auto& transaction_status = transaction_state.status();
-  if (transaction_status != TransactionStatus::APPLYING &&
-      transaction_status != TransactionStatus::COMMITTED &&
-      transaction_status != TransactionStatus::CREATED &&
-      transaction_status != TransactionStatus::PENDING) {
+  if (transaction_state.status() != TransactionStatus::APPLYING) {
     // This is an unsupported transaction status.
     return Status::OK();
   }
@@ -205,40 +199,15 @@ Status PopulateTransactionRecord(
   auto* txn_state = record->mutable_transaction_state();
   txn_state->set_transaction_id(transaction_state.transaction_id().ToBuffer());
 
-  switch (transaction_status) {
-    case TransactionStatus::APPLYING: {
-      record->set_operation(CDCRecordPB::APPLY);
-      txn_state->set_commit_hybrid_time(transaction_state.commit_hybrid_time());
-      if (GetAtomicFlag(&FLAGS_xcluster_enable_subtxn_abort_propagation)) {
-        auto aborted_subtransactions =
-            VERIFY_RESULT(SubtxnSet::FromPB(transaction_state.aborted().set()));
-        aborted_subtransactions.ToPB(txn_state->mutable_aborted()->mutable_set());
-      }
-      auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
-      tablet->metadata()->partition()->ToPB(record->mutable_partition());
-      break;
-    }
-    case TransactionStatus::COMMITTED: {
-      record->set_operation(CDCRecordPB::TRANSACTION_COMMITTED);
-      for (const auto& tablet : msg.transaction_state().tablets()) {
-        txn_state->mutable_tablets()->Add(tablet.ToBuffer());
-      }
-      break;
-    }
-    case TransactionStatus::PENDING:
-      FALLTHROUGH_INTENDED;
-    // If transaction status tablet log is GCed, or we bootstrap it is possible that that first
-    // record we see for the transaction is the PENDING record. This can be treated as a CREATED
-    // record which is idempotent.
-    case TransactionStatus::CREATED: {
-      record->set_operation(CDCRecordPB::TRANSACTION_CREATED);
-      break;
-    }
-    default:
-      return STATUS(
-          IllegalState,
-          Format("Processing unexpected op type $0", msg.transaction_state().status()));
+  record->set_operation(CDCRecordPB::APPLY);
+  txn_state->set_commit_hybrid_time(transaction_state.commit_hybrid_time());
+  if (GetAtomicFlag(&FLAGS_xcluster_enable_subtxn_abort_propagation)) {
+    auto aborted_subtransactions =
+        VERIFY_RESULT(SubtxnSet::FromPB(transaction_state.aborted().set()));
+    aborted_subtransactions.ToPB(txn_state->mutable_aborted()->mutable_set());
   }
+  auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+  tablet->metadata()->partition()->ToPB(record->mutable_partition());
   return Status::OK();
 }
 

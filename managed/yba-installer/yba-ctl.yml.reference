@@ -15,7 +15,7 @@ host: ""
 # HTTPS server cert and key in PEM format.
 # The certificate SAN/CN must match the host setting above
 # OK to leave empty - a self-signed cert will be generated
-server_cert_path: "" 
+server_cert_path: ""
 server_key_path: ""
 
 # Linux user which will run all services that make up YugabyteDB Anywhere.

@@ -36,6 +36,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/sys_catalog-internal.h"
@@ -107,16 +108,36 @@ DEFINE_test_flag(bool, exit_unfinished_deleting, false,
 DEFINE_test_flag(bool, exit_unfinished_merging, false,
     "Whether to exit part way through the merging universe process.");
 
+DEFINE_test_flag(
+    bool, xcluster_fail_create_consumer_snapshot, false,
+    "In the SetupReplicationWithBootstrap flow, test failure to create snapshot on consumer.");
+
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(master_rpc_timeout_ms);
 
 #define RETURN_ACTION_NOT_OK(expr, action) \
   RETURN_NOT_OK_PREPEND((expr), Format("An error occurred while $0", action))
 
+// This macro assumes the existence of local variables: cdc_rpc_tasks, bootstrap_ids,
+// old_snapshot_id, and new_snapshot_id.
+#define CLEANUP_AND_RETURN_IF_NOT_OK(s, state) \
+  do { \
+    auto&& _s = (s); \
+    if (PREDICT_FALSE(!_s.ok())) { \
+      CleanupSetupReplicationWithBootstrap( \
+          cdc_rpc_tasks, (state), bootstrap_ids, old_snapshot_id, new_snapshot_id); \
+      return MoveStatus(std::move(_s)); \
+    } \
+  } while (false)
+
+#define VERIFY_RESULT_AND_CLEANUP(expr, state) \
+  RESULT_CHECKER_HELPER(expr, CLEANUP_AND_RETURN_IF_NOT_OK(__result, (state)))
+
 namespace yb {
 using client::internal::RemoteTabletServer;
 
 namespace master {
+using TableMetaPB = ImportSnapshotMetaResponsePB::TableMetaPB;
 
 ////////////////////////////////////////////////////////////
 // CDC Stream Loader
@@ -1782,6 +1803,211 @@ CatalogManager::CreateUniverseReplicationInfoForProducer(
   return ri;
 }
 
+Status CatalogManager::ValidateMasterAddressesBelongToDifferentCluster(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& master_addresses) {
+  std::vector<ServerEntryPB> cluster_master_addresses;
+  RETURN_NOT_OK(master_->ListMasters(&cluster_master_addresses));
+  std::unordered_set<HostPort, HostPortHash> cluster_master_hps;
+
+  for (const auto& cluster_elem : cluster_master_addresses) {
+    if (cluster_elem.has_registration()) {
+      auto p_rpc_addresses = cluster_elem.registration().private_rpc_addresses();
+      for (const auto& p_rpc_elem : p_rpc_addresses) {
+        cluster_master_hps.insert(HostPort::FromPB(p_rpc_elem));
+      }
+
+      auto broadcast_addresses = cluster_elem.registration().broadcast_addresses();
+      for (const auto& bc_elem : broadcast_addresses) {
+        cluster_master_hps.insert(HostPort::FromPB(bc_elem));
+      }
+    }
+
+    for (const auto& master_address : master_addresses) {
+      auto master_hp = HostPort::FromPB(master_address);
+      SCHECK(
+          !cluster_master_hps.contains(master_hp), InvalidArgument,
+          "Master address $0 belongs to the target universe", master_hp);
+    }
+  }
+  return Status::OK();
+}
+
+Result<std::shared_ptr<CDCRpcTasks>>
+CatalogManager::SetupReplicationWithBootstrapValidateRequestAndConnectToProducer(
+    const SetupNamespaceReplicationWithBootstrapRequestPB* req) {
+  // PHASE 1: Validating user input.
+  SCHECK(
+      !req->replication_id().empty(), InvalidArgument, "Replication ID must be provided",
+      req->ShortDebugString());
+
+  SCHECK(
+      req->producer_master_addresses_size() > 0, InvalidArgument,
+      "Producer master address must be provided", req->ShortDebugString());
+
+  {
+    auto l = ClusterConfig()->LockForRead();
+    SCHECK(
+        l->pb.cluster_uuid() != req->replication_id(), InvalidArgument,
+        "Replication name cannot be the target universe UUID", req->ShortDebugString());
+  }
+
+  RETURN_NOT_OK_PREPEND(
+      ValidateMasterAddressesBelongToDifferentCluster(req->producer_master_addresses()),
+      req->ShortDebugString());
+
+  // Connect to producer universe.
+  const cdc::ReplicationGroupId replication_id(req->replication_id());
+  std::vector<HostPort> hp;
+  HostPortsFromPBs(req->producer_master_addresses(), &hp);
+  std::string master_addrs = HostPort::ToCommaSeparatedString(hp);
+  return CDCRpcTasks::CreateWithMasterAddrs(replication_id, master_addrs);
+}
+
+Result<std::vector<TableMetaPB>>
+CatalogManager::SetupReplicationWithBootstrapCreateAndImportSnapshot(
+    std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks,
+    std::vector<client::YBTableName>* tables,
+    TxnSnapshotId* old_snapshot_id,
+    TxnSnapshotId* new_snapshot_id,
+    SetupReplicationWithBootstrapStatePB* state,
+    rpc::RpcContext* rpc) {
+  // Create snapshot on producer.
+  *state = SetupReplicationWithBootstrapStatePB::CREATE_PRODUCER_SNAPSHOT;
+  auto snapshot = VERIFY_RESULT(cdc_rpc_tasks->CreateSnapshot(*tables, old_snapshot_id));
+
+  // Import snapshot.
+  *state = SetupReplicationWithBootstrapStatePB::IMPORT_SNAPSHOT;
+  ImportSnapshotMetaRequestPB import_req;
+  ImportSnapshotMetaResponsePB import_resp;
+  import_req.mutable_snapshot()->CopyFrom(snapshot);
+  RETURN_NOT_OK(ImportSnapshotMeta(&import_req, &import_resp, rpc));
+
+  // Create snapshot on consumer.
+  *state = SetupReplicationWithBootstrapStatePB::CREATE_CONSUMER_SNAPSHOT;
+  const auto& tables_meta = import_resp.tables_meta();
+  CreateSnapshotRequestPB snapshot_req;
+  CreateSnapshotResponsePB snapshot_resp;
+
+  for (const auto& table_meta : tables_meta) {
+    SCHECK(
+        ImportSnapshotMetaResponsePB_TableType_IsValid(table_meta.table_type()), InternalError,
+        Format("Found unknown table type: $0", table_meta.table_type()));
+
+    const string& new_table_id = table_meta.table_ids().new_id();
+    RETURN_NOT_OK(WaitForCreateTableToFinish(new_table_id, rpc->GetClientDeadline()));
+
+    snapshot_req.mutable_tables()->Add()->set_table_id(new_table_id);
+  }
+
+  snapshot_req.set_add_indexes(false);
+  snapshot_req.set_transaction_aware(true);
+  snapshot_req.set_imported(true);
+  auto s = CreateSnapshot(&snapshot_req, &snapshot_resp, rpc);
+  if (snapshot_resp.has_snapshot_id())
+    *new_snapshot_id = TryFullyDecodeTxnSnapshotId(snapshot_resp.snapshot_id());
+  if (!s.ok()) return s;
+
+  return std::vector<TableMetaPB>(tables_meta.begin(), tables_meta.end());
+}
+
+void CatalogManager::CleanupSetupReplicationWithBootstrap(
+    std::shared_ptr<CDCRpcTasks> cdc_rpc_task,
+    const SetupReplicationWithBootstrapStatePB& state,
+    const std::vector<xrepl::StreamId>& bootstrap_ids,
+    const TxnSnapshotId& old_snapshot_id,
+    const TxnSnapshotId& new_snapshot_id) {
+  Status s;
+  switch (state) {
+    case SETUP_REPLICATION:
+      FALLTHROUGH_INTENDED;
+    case RESTORE_SNAPSHOT:
+      FALLTHROUGH_INTENDED;
+    case TRANSFER_SNAPSHOT:
+      FALLTHROUGH_INTENDED;
+    case CREATE_CONSUMER_SNAPSHOT: {
+      if (!new_snapshot_id.IsNil()) {
+        auto deadline = CoarseMonoClock::Now() + 30s;
+        s = snapshot_coordinator_.Delete(new_snapshot_id, leader_ready_term(), deadline);
+        if (!s.ok()) {
+          LOG(WARNING) << Format("Failed to delete snapshot on consumer on status: $0", s);
+        }
+      }
+    }
+      FALLTHROUGH_INTENDED;
+    case IMPORT_SNAPSHOT:
+      FALLTHROUGH_INTENDED;
+    case CREATE_PRODUCER_SNAPSHOT: {
+      if (!old_snapshot_id.IsNil()) {
+        DeleteSnapshotResponsePB resp;
+        s = cdc_rpc_task->client()->DeleteSnapshot(old_snapshot_id, &resp);
+        if (!s.ok()) {
+          LOG(WARNING) << Format(
+              "Failed to send delete snapshot request to producer on status: $0", s);
+        }
+        if (resp.has_error()) {
+          LOG(WARNING) << Format(
+              "Failed to delete snapshot on producer with error: $0", resp.error());
+        }
+      }
+    }
+      FALLTHROUGH_INTENDED;
+    case BOOTSTRAP_PRODUCER: {
+      DeleteCDCStreamResponsePB resp;
+      s = cdc_rpc_task->client()->DeleteCDCStream(
+          bootstrap_ids, /* force_delete = */ true, /* ignore_failures = */ false, &resp);
+      if (!s.ok()) {
+        LOG(WARNING) << Format(
+            "Failed to send delete CDC streams request to producer on status: $0", s);
+      }
+      if (resp.has_error()) {
+        LOG(WARNING) << Format(
+            "Failed to delete CDC streams on producer with error: $0", resp.error());
+      }
+    }
+  }
+}
+
+/*
+ * SetupNamespaceReplicationWithBootstrap is setup in _ stages.
+ * 1. Validates user input & connect to producer.
+ * 2. Calls BootstrapProducer with all user tables in namespace.
+ * 3. Create snapshot on producer and import onto consumer.
+ * 4. TODO: Document remaining steps when completed.
+ */
+Status CatalogManager::SetupNamespaceReplicationWithBootstrap(
+    const SetupNamespaceReplicationWithBootstrapRequestPB* req,
+    SetupNamespaceReplicationWithBootstrapResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  LOG(INFO) << "SetupNamespaceReplicationWithBootstrap from " << RequestorString(rpc) << ": "
+            << req->DebugString();
+
+  // PHASE 1: Validate request and connect to producer.
+  auto cdc_rpc_tasks =
+      VERIFY_RESULT(SetupReplicationWithBootstrapValidateRequestAndConnectToProducer(req));
+
+  // PHASE 2: BootstrapProducer
+  auto tables = VERIFY_RESULT(cdc_rpc_tasks->client()->ListUserTables(req->producer_namespace()));
+  auto table_bootstrap_ids =
+      VERIFY_RESULT(cdc_rpc_tasks->BootstrapProducer(req->producer_namespace(), tables));
+  std::vector<xrepl::StreamId> bootstrap_ids;
+  for (const auto& [_, bootstrap_id] : table_bootstrap_ids) {
+    bootstrap_ids.push_back(bootstrap_id);
+  }
+
+  // PHASE 3: Snapshots.
+  TxnSnapshotId old_snapshot_id = TxnSnapshotId::Nil();
+  TxnSnapshotId new_snapshot_id = TxnSnapshotId::Nil();
+  SetupReplicationWithBootstrapStatePB state =
+      SetupReplicationWithBootstrapStatePB::BOOTSTRAP_PRODUCER;
+
+  auto tables_meta = VERIFY_RESULT_AND_CLEANUP(
+      SetupReplicationWithBootstrapCreateAndImportSnapshot(
+          cdc_rpc_tasks, &tables, &old_snapshot_id, &new_snapshot_id, &state, rpc),
+      state);
+
+  return Status::OK();
+}
+
 /*
  * UniverseReplication is setup in 4 stages within the Catalog Manager
  * 1. SetupUniverseReplication: Validates user input & requests Producer schema.
@@ -1825,36 +2051,9 @@ Status CatalogManager::SetupUniverseReplication(
     }
   }
 
-  {
-    auto request_master_addresses = req->producer_master_addresses();
-    std::vector<ServerEntryPB> cluster_master_addresses;
-    RETURN_NOT_OK(master_->ListMasters(&cluster_master_addresses));
-    for (const auto& req_elem : request_master_addresses) {
-      for (const auto& cluster_elem : cluster_master_addresses) {
-        if (cluster_elem.has_registration()) {
-          auto p_rpc_addresses = cluster_elem.registration().private_rpc_addresses();
-          for (const auto& p_rpc_elem : p_rpc_addresses) {
-            if (req_elem.host() == p_rpc_elem.host() && req_elem.port() == p_rpc_elem.port()) {
-              return STATUS(
-                  InvalidArgument,
-                  "Duplicate between request master addresses and private RPC addresses",
-                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
-            }
-          }
-
-          auto broadcast_addresses = cluster_elem.registration().broadcast_addresses();
-          for (const auto& bc_elem : broadcast_addresses) {
-            if (req_elem.host() == bc_elem.host() && req_elem.port() == bc_elem.port()) {
-              return STATUS(
-                  InvalidArgument,
-                  "Duplicate between request master addresses and broadcast addresses",
-                  req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
-            }
-          }
-        }
-      }
-    }
-  }
+  RETURN_NOT_OK_PREPEND(
+      ValidateMasterAddressesBelongToDifferentCluster(req->producer_master_addresses()),
+      req->ShortDebugString());
 
   SetupReplicationInfo setup_info;
   setup_info.transactional = req->transactional();

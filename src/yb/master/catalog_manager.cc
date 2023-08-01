@@ -83,6 +83,7 @@
 #include "yb/common/common_util.h"
 #include "yb/common/constants.h"
 #include "yb/common/key_encoder.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/common/pg_catversions.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_type_util.h"
@@ -209,6 +210,7 @@
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
+#include "yb/util/yb_pg_errcodes.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
@@ -8438,14 +8440,29 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
 
     // Validate the user request.
 
-    // Verify that the namespace does not already exist.
-    ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id()); // Same ID.
-    if (ns == nullptr) {
-      // Use the by name namespace map to enforce global uniqueness for both YCQL keyspaces and YSQL
-      // databases.  Although postgres metadata normally enforces db name uniqueness, it fails in
-      // case of concurrent CREATE DATABASE requests in different sessions.
-      ns = FindPtrOrNull(namespace_names_mapper_[db_type], req->name());
+    // Verify that the namespace with same id does not already exist.
+    ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id());
+    if (ns != nullptr) {
+      // If PG OID collision happens. Use the PG error code: YB_PG_DUPLICATE_DATABASE to signal PG
+      // backend to retry CREATE DATABASE using the next available OID.
+      // Otherwise, don't set customized error code in the return status.
+      // This is the default behavior of STATUS().
+      resp->set_id(ns->id());
+      auto pg_createdb_oid_collision_errcode = PgsqlError(YBPgErrorCode::YB_PG_DUPLICATE_DATABASE);
+      return_status = STATUS(AlreadyPresent,
+                             Format("Keyspace with id '$0' already exists", req->namespace_id()),
+                             Slice(),
+                             db_type == YQL_DATABASE_PGSQL
+                                ? &pg_createdb_oid_collision_errcode : nullptr);
+      LOG(WARNING) << "Found keyspace: " << ns->id() << ". Failed creating keyspace with error: "
+                   << return_status.ToString() << " Request:\n" << req->DebugString();
+      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_ALREADY_PRESENT,
+                        return_status);
     }
+    // Use the by name namespace map to enforce global uniqueness for both YCQL keyspaces and YSQL
+    // databases.  Although postgres metadata normally enforces db name uniqueness, it fails in
+    // case of concurrent CREATE DATABASE requests in different sessions.
+    ns = FindPtrOrNull(namespace_names_mapper_[db_type], req->name());
     if (ns != nullptr) {
       resp->set_id(ns->id());
       return_status = STATUS_SUBSTITUTE(AlreadyPresent, "Keyspace '$0' already exists",
@@ -8630,6 +8647,7 @@ void CatalogManager::ProcessPendingNamespace(
   auto term = leader_ready_term();
 
   if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_hang_on_namespace_transition))) {
+    TEST_SYNC_POINT("CatalogManager::ProcessPendingNamespace:Fail");
     LOG(INFO) << "Artificially waiting (" << FLAGS_catalog_manager_bg_task_wait_ms
               << "ms) on namespace creation for " << id;
     SleepFor(MonoDelta::FromMilliseconds(FLAGS_catalog_manager_bg_task_wait_ms));
@@ -8689,8 +8707,9 @@ void CatalogManager::ProcessPendingNamespace(
   }
   TRACE("Done processing keyspace");
   LOG(INFO) << "Processed keyspace: " << ns->ToString();
+  auto has_transaction = metadata.has_transaction();
   ns_write_lock.Commit();
-  if (metadata.has_transaction()) {
+  if (has_transaction) {
     LOG(INFO) << "Enqueuing keyspace for Transaction Verification: " << ns->ToString();
     std::function<Status(bool)> when_done =
         std::bind(&CatalogManager::VerifyNamespacePgLayer, this, ns, _1);
@@ -8793,6 +8812,12 @@ Status CatalogManager::IsCreateNamespaceDone(const IsCreateNamespaceDoneRequestP
     case SysNamespaceEntryPB::DELETING:
     case SysNamespaceEntryPB::DELETED:
       resp->set_done(true);
+      if (ns->database_type() == YQL_DATABASE_PGSQL) {
+        return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR,
+            STATUS(InternalError,
+                "Namespace Create Failed: The namespace is in process "
+                "of deletion due to internal error."));
+      }
       break;
     // Pending cases.  NOT DONE
     case SysNamespaceEntryPB::PREPARING:
@@ -12764,7 +12789,7 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table) {
 }
 
 const YQLPartitionsVTable& CatalogManager::GetYqlPartitionsVtable() const {
-  return down_cast<const YQLPartitionsVTable&>(system_partitions_tablet_->QLStorage());
+  return down_cast<const YQLPartitionsVTable&>(system_partitions_tablet_->YQLTable());
 }
 
 void CatalogManager::InitializeTableLoadState(

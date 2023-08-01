@@ -28,15 +28,19 @@ public interface CloudUtil extends StorageUtil {
 
   @AllArgsConstructor
   public static class ConfigLocationInfo {
-    String bucket;
-    String cloudPath;
+    public String bucket;
+    public String cloudPath;
   }
 
   public static enum ExtraPermissionToValidate {
     READ,
     LIST,
-    DELETE,
     NULL
+  }
+
+  public static enum Protocol {
+    TCP,
+    HTTP
   }
 
   public static final String KEY_LOCATION_SUFFIX = Util.KEY_LOCATION_SUFFIX;

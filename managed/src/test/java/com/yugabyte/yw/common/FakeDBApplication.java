@@ -79,6 +79,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public YBClient mockYBClient = mock(YBClient.class);
   public SwamperHelper mockSwamperHelper = mock(SwamperHelper.class);
   public FileHelperService mockFileHelperService = mock(FileHelperService.class);
+  public PrometheusConfigManager mockPrometheusConfigManager = mock(PrometheusConfigManager.class);
 
   public MetricService metricService;
   public AlertService alertService;
@@ -143,7 +144,9 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(YbcClientService.class).toInstance(mockYbcClientService))
                 .overrides(bind(YbcManager.class).toInstance(mockYbcManager))
                 .overrides(bind(YbcUpgrade.class).toInstance(mockYbcUpgrade))
-                .overrides(bind(SwamperHelper.class).toInstance(mockSwamperHelper)))
+                .overrides(bind(SwamperHelper.class).toInstance(mockSwamperHelper))
+                .overrides(
+                    bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager)))
         .overrides(bind(FileHelperService.class).toInstance(mockFileHelperService))
         .build();
   }

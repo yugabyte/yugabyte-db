@@ -228,6 +228,7 @@ libraryDependencies ++= Seq(
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
   "io.grpc" % "grpc-testing" % "1.48.0" % Test,
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
+  "org.springframework" % "spring-test" % "5.3.9" % Test,
 )
 
 // Clear default resolvers.
@@ -473,7 +474,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.62-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b6"
+libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b7"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b30"
 
 libraryDependencies ++= Seq(

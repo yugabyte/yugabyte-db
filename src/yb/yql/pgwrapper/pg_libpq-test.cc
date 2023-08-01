@@ -157,6 +157,10 @@ class PgLibPqTest : public LibPqTestBase {
 
   Status TestDuplicateCreateTableRequest(PGConn conn);
 
+  void KillPostmasterProcessOnTservers();
+
+  Result<string> GetSchemaName(const string& relname, PGConn* conn);
+
  private:
   Result<PGConn> RestartTSAndConnectToPostgres(int ts_idx, const std::string& db_name);
 };
@@ -167,6 +171,7 @@ class PgLibPqFailOnConflictTest : public PgLibPqTest {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     options->extra_tserver_flags.push_back("--enable_wait_queues=false");
+    options->extra_tserver_flags.push_back("--enable_deadlock_detection=false");
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -768,6 +773,7 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation, const bool colo
 class PgLibPqFailoverDuringInitDb : public LibPqTestBase {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // Use small clock skew, to decrease number of read restarts.
+    options->allow_crashes_during_init_db = true;
     options->extra_master_flags.push_back("--TEST_fail_initdb_after_snapshot_restore=true");
   }
 
@@ -792,6 +798,7 @@ class PgLibPqSmallClockSkewFailOnConflictTest : public PgLibPqTest {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     options->extra_tserver_flags.push_back("--enable_wait_queues=false");
+    options->extra_tserver_flags.push_back("--enable_deadlock_detection=false");
   }
 };
 
@@ -933,6 +940,10 @@ TEST_F(PgLibPqTest, TestLockedConcurrentCounterSerializable) {
 
 TEST_F(PgLibPqTest, TestConcurrentCounterRepeatableRead) {
   TestConcurrentCounter(IsolationLevel::SNAPSHOT_ISOLATION);
+}
+
+TEST_F(PgLibPqTest, TestConcurrentCounterReadCommitted) {
+  TestConcurrentCounter(IsolationLevel::READ_COMMITTED);
 }
 
 TEST_F(PgLibPqTest, SecondaryIndexInsertSelect) {
@@ -1751,6 +1762,13 @@ Status PgLibPqTest::TestDuplicateCreateTableRequest(PGConn conn) {
   SCHECK_EQ(k, 1, IllegalState, "wrong result");
 
   return Status::OK();
+}
+
+Result<string> PgLibPqTest::GetSchemaName(const string& relname, PGConn* conn) {
+  return conn->FetchValue<std::string>(Format(
+      "SELECT nspname FROM pg_class JOIN pg_namespace "
+      "ON pg_class.relnamespace = pg_namespace.oid WHERE relname = '$0'",
+      relname));
 }
 
 // Ensure if client sends out duplicate create table requests, one create table request can
@@ -3027,6 +3045,25 @@ class PgLibPqTestEnumType: public PgLibPqTest {
   }
 };
 
+void PgLibPqTest::KillPostmasterProcessOnTservers() {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ExternalTabletServer* ts = cluster_->tablet_server(i);
+    const string pg_pid_file = JoinPathSegments(ts->GetRootDir(), "pg_data",
+                                                "postmaster.pid");
+
+    LOG(INFO) << "pg_pid_file: " << pg_pid_file;
+    ASSERT_TRUE(Env::Default()->FileExists(pg_pid_file));
+    std::ifstream pg_pid_in;
+    pg_pid_in.open(pg_pid_file, std::ios_base::in);
+    ASSERT_FALSE(pg_pid_in.eof());
+    pid_t pg_pid = 0;
+    pg_pid_in >> pg_pid;
+    ASSERT_GT(pg_pid, 0);
+    LOG(INFO) << "Killing PostgresSQL process: " << pg_pid;
+    ASSERT_EQ(kill(pg_pid, SIGKILL), 0);
+  }
+}
+
 // Make sure that enum type backfill works.
 TEST_F_EX(PgLibPqTest,
           EnumType,
@@ -3074,22 +3111,7 @@ TEST_F_EX(PgLibPqTest,
   // A new PostgreSQL process will be respawned by the tablet server and
   // inherit the new --TEST_do_not_add_enum_sort_order flag from the tablet
   // server.
-  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
-    ExternalTabletServer* ts = cluster_->tablet_server(i);
-    const string pg_pid_file = JoinPathSegments(ts->GetRootDir(), "pg_data",
-                                                "postmaster.pid");
-
-    LOG(INFO) << "pg_pid_file: " << pg_pid_file;
-    ASSERT_TRUE(Env::Default()->FileExists(pg_pid_file));
-    std::ifstream pg_pid_in;
-    pg_pid_in.open(pg_pid_file, std::ios_base::in);
-    ASSERT_FALSE(pg_pid_in.eof());
-    pid_t pg_pid = 0;
-    pg_pid_in >> pg_pid;
-    ASSERT_GT(pg_pid, 0);
-    LOG(INFO) << "Killing PostgresSQL process: " << pg_pid;
-    ASSERT_EQ(kill(pg_pid, SIGKILL), 0);
-  }
+  KillPostmasterProcessOnTservers();
 
   // Reconnect to the database after the new PostgreSQL starts.
   conn = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB(kDatabaseName)));
@@ -3524,6 +3546,7 @@ class PgLibPqLegacyColocatedDBFailOnConflictTest : public PgLibPqLegacyColocated
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     options->extra_tserver_flags.push_back("--enable_wait_queues=false");
+    options->extra_tserver_flags.push_back("--enable_deadlock_detection=false");
     PgLibPqLegacyColocatedDBTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -3648,6 +3671,129 @@ TEST_F_EX(
     return status_future.wait_for(0s) == std::future_status::ready;
   }, 1s, "Wait for status_future to be available"));
   ASSERT_NOK(status_future.get());
+}
+
+// This test verifies retry solves CREATE DATABASE OID collision issue.
+// Using our current YSQL OID allocation method, we can hit the following OID collision for
+// PG CREATE DATABASE.
+// Connections used in the example:
+// Connection 1 on tserver 0 (Conn1) && Connection 2 on tserver 1 (Conn2)
+// Example:
+// Conn1: CREATE DATABASE db1; -- db1 OID: 16384; OID range: [16384, 16640) on tserver 0
+// -- db2 OID: 16385; db2 is used to trigger the same range of OID allocation on tserver 1
+// Conn1: CREATE DATABASE db2;
+// Conn1: DROP DATABASE db1;
+// Conn2: \c db2
+// Conn2: CREATE DATABASE db3; -- db3 OID: 16384; OID range: [16384, 16640) on tserver 1
+// ERROR:  Keyspace 'db3' already exists
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(RetryCreateDatabasePgOidCollisionFromTservers)) {
+  const string db1 = "db1";
+  const string db2 = "db2";
+  const string db3 = "db3";
+
+  // Tserver 0
+  auto conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0", db1));
+  ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0", db2));
+  ASSERT_OK(conn1.ExecuteFormat("DROP DATABASE $0", db1));
+
+  // Tserver 1
+  LOG(INFO) << "Make a new connection to a different node at index 1";
+  pg_ts = cluster_->tablet_server(1);
+  auto conn2 = ASSERT_RESULT(ConnectToDB(db2));
+  ASSERT_OK(conn2.ExecuteFormat("CREATE DATABASE $0", db3));
+
+  // Verify internally retry CREATE DATABASE works.
+  int db3_oid = ASSERT_RESULT(conn2.FetchValue<int32_t>(
+      Format("SELECT oid FROM pg_database WHERE datname = \'$0\'", db3)));
+  ASSERT_EQ(db3_oid, 16386);
+
+  // Verify the keyspace already exists issue still exists if we disable retry.
+  // Connection to db3 on Tserver 2 uses 16384 as the next available oid.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_enable_create_database_oid_collision_retry",
+                                        "false"));
+  KillPostmasterProcessOnTservers();
+  pg_ts = cluster_->tablet_server(2);
+  auto conn3 = ASSERT_RESULT(ConnectToDB(db3));
+  Status s = conn3.ExecuteFormat("CREATE DATABASE createdb_oid_collision");
+  ASSERT_NOK(s);
+  ASSERT_TRUE(s.message().ToBuffer().find("Keyspace with id") != std::string::npos);
+  ASSERT_TRUE(s.message().ToBuffer().find("already exists") != std::string::npos);
+}
+
+class PgLibPqTempTest: public PgLibPqTest {
+ public:
+  Status TestDeletedByQuery(
+      const std::vector<string>& relnames, const string& query, PGConn* conn) {
+    std::vector<string> filepaths;
+    filepaths.reserve(relnames.size());
+    for (const string& relname : relnames) {
+      string pg_filepath = VERIFY_RESULT(
+          conn->FetchValue<std::string>(Format("SELECT pg_relation_filepath('$0')", relname)));
+      filepaths.push_back(JoinPathSegments(pg_ts->GetRootDir(), "pg_data", pg_filepath));
+    }
+    for (const string& filepath : filepaths) {
+      SCHECK(Env::Default()->FileExists(filepath), IllegalState,
+             Format("File $0 should exist, but does not", filepath));
+    }
+    RETURN_NOT_OK(conn->Execute(query));
+    for (const string& filepath : filepaths) {
+      SCHECK(!Env::Default()->FileExists(filepath), IllegalState,
+             Format("File $0 should not exist, but does", filepath));
+    }
+    return Status::OK();
+  }
+
+  Status TestRemoveTempTable(bool is_drop) {
+    PGConn conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.Execute("CREATE TEMP TABLE foo (k INT PRIMARY KEY, v INT)"));
+    const string schema = VERIFY_RESULT(GetSchemaName("foo", &conn));
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE $0.bar (k INT PRIMARY KEY, v INT)", schema));
+
+    string command = is_drop ? "DROP TABLE foo, bar" : "DISCARD TEMP";
+    RETURN_NOT_OK(TestDeletedByQuery({"foo", "foo_pkey", "bar", "bar_pkey"}, command, &conn));
+    return Status::OK();
+  }
+
+  Status TestRemoveTempSequence(bool is_drop) {
+    PGConn conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.Execute("CREATE TEMP SEQUENCE foo"));
+    const string schema = VERIFY_RESULT(GetSchemaName("foo", &conn));
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE SEQUENCE $0.bar ", schema));
+
+    if (is_drop) {
+      // TODO(#880): use single call to drop both sequences at the same time.
+      RETURN_NOT_OK(TestDeletedByQuery({"foo"}, "DROP SEQUENCE foo", &conn));
+      RETURN_NOT_OK(TestDeletedByQuery({"bar"}, "DROP SEQUENCE bar", &conn));
+    } else {
+      RETURN_NOT_OK(TestDeletedByQuery({"foo", "bar"}, "DISCARD TEMP", &conn));
+    }
+    return Status::OK();
+  }
+};
+
+// Test that the physical storage for a temporary sequence is removed
+// when calling DROP SEQUENCE.
+TEST_F(PgLibPqTempTest, DropTempSequence) {
+  ASSERT_OK(TestRemoveTempSequence(true));
+}
+
+// Test that the physical storage for a temporary sequence is removed
+// when calling DISCARD TEMP.
+TEST_F(PgLibPqTempTest, DiscardTempSequence) {
+  ASSERT_OK(TestRemoveTempSequence(false));
+}
+
+// Test that the physical storage for a temporary table and index are removed
+// when calling DROP TABLE.
+TEST_F(PgLibPqTempTest, DropTempTable) {
+  ASSERT_OK(TestRemoveTempTable(true));
+}
+
+// Test that the physical storage for a temporary table and index are removed
+// when calling DISCARD TEMP.
+TEST_F(PgLibPqTempTest, DiscardTempTable) {
+  ASSERT_OK(TestRemoveTempTable(false));
 }
 
 } // namespace pgwrapper

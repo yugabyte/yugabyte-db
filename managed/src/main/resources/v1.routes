@@ -13,6 +13,7 @@ POST    /api_login                                                             c
 GET     /platform_config                                                       com.yugabyte.yw.controllers.SessionController.getPlatformConfig()
 + forceAudit
 GET     /third_party_login                                                     com.yugabyte.yw.controllers.SessionController.thirdPartyLogin(request: Request)
+GET     /fetch_jwt_token                                                       com.yugabyte.yw.controllers.SessionController.fetchJWTToken(request: Request)
 + forceAudit
 GET     /insecure_login                                                        com.yugabyte.yw.controllers.SessionController.insecure_login(request: Request)
 PUT     /customers/:cUUID/security                                             com.yugabyte.yw.controllers.SessionController.set_security(cUUID: java.util.UUID, request: Request)

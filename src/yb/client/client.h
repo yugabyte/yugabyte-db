@@ -56,6 +56,7 @@
 #include "yb/common/pg_types.h"
 #include "yb/common/retryable_request.h"
 #include "yb/common/schema.h"
+#include "yb/common/snapshot.h"
 #include "yb/common/transaction.h"
 
 #include "yb/encryption/encryption.pb.h"
@@ -117,7 +118,7 @@ class ClientMasterRpcBase;
 using GetTableLocationsCallback =
     std::function<void(const Result<master::GetTableLocationsResponsePB*>&)>;
 using OpenTableAsyncCallback = std::function<void(const Result<YBTablePtr>&)>;
-
+using CreateSnapshotCallback = std::function<void(Result<TxnSnapshotId>)>;
 using MasterAddressSource = std::function<std::vector<std::string>()>;
 
 struct TransactionStatusTablets {
@@ -647,6 +648,8 @@ class YBClient {
                             const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
                             const tserver::LocalTabletServer* local_tserver);
 
+  const internal::RemoteTabletServer* GetLocalTabletServer() const;
+
   // List only those tables whose names pass a substring match on 'filter'.
   //
   // 'tables' is appended to only on success.
@@ -881,6 +884,14 @@ class YBClient {
   std::future<Result<std::vector<internal::RemoteTabletPtr>>> LookupAllTabletsFuture(
       const std::shared_ptr<YBTable>& table,
       CoarseTimePoint deadline);
+
+  Status CreateSnapshot(
+      const std::vector<YBTableName>& tables, CreateSnapshotCallback callback);
+
+  Status DeleteSnapshot(const TxnSnapshotId& snapshot_id, master::DeleteSnapshotResponsePB* resp);
+
+  Result<google::protobuf::RepeatedPtrField<master::SnapshotInfoPB>> ListSnapshots(
+      const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil(), bool prepare_for_backup = false);
 
   rpc::Messenger* messenger() const;
 

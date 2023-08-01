@@ -8,8 +8,27 @@ import { TOAST_AUTO_DISMISS_INTERVAL } from '../../redesign/features/universe/un
 
 const CACertErrorPatterns = [
   'PKIX path building failed',
-  'No trust manager was able to validate this certificate chain'
+  'No trust manager was able to validate this certificate chain',
+  'ERR_04104_NULL_CONNECTION_CANNOT_CONNECT'
 ];
+
+export const LDAP_CA_CERT_ERR_MSG = (
+  <span>
+    Cannot connect to LDAP server. Please ask the Admin to add valid CA cert&nbsp;
+    <a
+      href="/admin/custom-ca-certs"
+      target="_blank"
+      rel="noreferrer noopener"
+      style={{
+        color: 'white',
+        textDecoration: 'underline'
+      }}
+    >
+      here
+    </a>
+  </span>
+);
+
 export const downloadCert = (cert: CACert) => {
   const element = document.createElement('a');
   element.setAttribute(
@@ -24,26 +43,37 @@ export const downloadCert = (cert: CACert) => {
   document.body.removeChild(element);
 };
 
-export const handleCACertErrMsg = (error: any) => {
+export const handleCACertErrMsg = (
+  error: any,
+  options = {
+    hideToast: false
+  }
+) => {
   const errMsg = createErrorMessage(error);
-  if (isDefinedNotNull(errMsg) && isString(errMsg) && CACertErrorPatterns.some(pattern => errMsg.includes(pattern))) {
-    toast.error(
-      <span>
-        External CA is not present in YBA&apos;s trust-store. Please upload the CA cert &nbsp;
-        <a
-          href="/admin/custom-ca-certs"
-          target="_blank"
-          rel="noreferrer noopener"
-          style={{
-            color: 'white',
-            textDecoration: 'underline'
-          }}
-        >
-          here
-        </a>
-      </span>,
-      { autoClose: TOAST_AUTO_DISMISS_INTERVAL }
-    );
+  if (
+    isDefinedNotNull(errMsg) &&
+    isString(errMsg) &&
+    CACertErrorPatterns.some((pattern) => errMsg.includes(pattern))
+  ) {
+    if (!options.hideToast) {
+      toast.error(
+        <span>
+          External CA is not present in YBA&apos;s trust-store. Please upload the CA cert &nbsp;
+          <a
+            href="/admin/custom-ca-certs"
+            target="_blank"
+            rel="noreferrer noopener"
+            style={{
+              color: 'white',
+              textDecoration: 'underline'
+            }}
+          >
+            here
+          </a>
+        </span>,
+        { autoClose: TOAST_AUTO_DISMISS_INTERVAL }
+      );
+    }
     return true;
   }
   return false;

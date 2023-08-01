@@ -1209,6 +1209,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const GetUDTypeMetadataRequestPB* req, GetUDTypeMetadataResponsePB* resp,
       rpc::RpcContext* rpc);
 
+  // Bootstrap namespace and setup replication to consume data from another YB universe.
+  Status SetupNamespaceReplicationWithBootstrap(
+      const SetupNamespaceReplicationWithBootstrapRequestPB* req,
+      SetupNamespaceReplicationWithBootstrapResponsePB* resp, rpc::RpcContext* rpc);
+
   // Setup Universe Replication to consume data from another YB universe.
   Status SetupUniverseReplication(
       const SetupUniverseReplicationRequestPB* req,
@@ -1942,6 +1947,30 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Result<bool> IsCreateTableDone(const TableInfoPtr& table);
 
+  // Functions related to SetupReplicationWithBootstrap
+
+  // Cleanup tasks for SetupReplicationWithBootstrap. Depending on the step of the process, we will
+  // delete replication, snapshots, and or bootstrap streams.
+  void CleanupSetupReplicationWithBootstrap(
+      std::shared_ptr<CDCRpcTasks> cdc_rpc_task,
+      const SetupReplicationWithBootstrapStatePB& state,
+      const std::vector<xrepl::StreamId>& bootstrap_ids,
+      const TxnSnapshotId& old_snapshot_id = TxnSnapshotId::Nil(),
+      const TxnSnapshotId& new_snapshot_id = TxnSnapshotId::Nil());
+
+  Result<std::shared_ptr<CDCRpcTasks>>
+  SetupReplicationWithBootstrapValidateRequestAndConnectToProducer(
+      const SetupNamespaceReplicationWithBootstrapRequestPB* req);
+
+  using TableMetaPB = ImportSnapshotMetaResponsePB::TableMetaPB;
+  Result<std::vector<TableMetaPB>> SetupReplicationWithBootstrapCreateAndImportSnapshot(
+      std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks,
+      std::vector<client::YBTableName>* tables,
+      TxnSnapshotId* old_snapshot_id,
+      TxnSnapshotId* new_snapshot_id,
+      SetupReplicationWithBootstrapStatePB* state,
+      rpc::RpcContext* rpc);
+
   // TODO: the maps are a little wasteful of RAM, since the TableInfo/TabletInfo
   // objects have a copy of the string key. But STL doesn't make it
   // easy to make a "gettable set".
@@ -2549,6 +2578,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     std::unordered_map<TableId, xrepl::StreamId> table_bootstrap_ids;
     bool transactional;
   };
+
+  Status ValidateMasterAddressesBelongToDifferentCluster(
+      const google::protobuf::RepeatedPtrField<HostPortPB>& master_addresses);
 
   // Validates a single table's schema with the corresponding table on the consumer side, and
   // updates consumer_table_id with the new table id. Return the consumer table schema if the

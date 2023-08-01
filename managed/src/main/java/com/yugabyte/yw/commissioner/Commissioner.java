@@ -12,15 +12,12 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
-import com.yugabyte.yw.common.PlatformExecutorFactory;
-import com.yugabyte.yw.common.PlatformScheduler;
-import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.ProviderEditRestrictionManager;
+import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
@@ -30,17 +27,9 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.*;
 import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
@@ -126,7 +115,8 @@ public class Commissioner {
       if (runtimeConfGetter.getGlobalConf(
           GlobalConfKeys.enableTaskAndFailedRequestDetailedLogging)) {
         JsonNode taskParamsJson = Json.toJson(taskParams);
-        JsonNode redactedJson = RedactingService.filterSecretFields(taskParamsJson);
+        JsonNode redactedJson =
+            RedactingService.filterSecretFields(taskParamsJson, RedactionTarget.LOGS);
         log.debug(
             "Executing TaskType {} with params {}", taskType.toString(), redactedJson.toString());
       }
@@ -225,7 +215,7 @@ public class Commissioner {
   public Optional<ObjectNode> buildTaskStatus(
       CustomerTask task,
       TaskInfo taskInfo,
-      Map<UUID, String> updatingTasks,
+      Map<UUID, Set<String>> updatingTasks,
       Map<UUID, CustomerTask> lastTaskByTarget) {
     if (task == null || taskInfo == null) {
       return Optional.empty();
@@ -272,8 +262,9 @@ public class Commissioner {
         CustomerTask lastTask = lastTaskByTarget.get(task.getTargetUUID());
         retryable = lastTask != null && lastTask.getTaskUUID().equals(task.getTaskUUID());
       } else {
-        retryable =
-            taskInfo.getTaskUUID().toString().equals(updatingTasks.get(task.getTargetUUID()));
+        Set<String> taskUuidsToAllowRetry =
+            updatingTasks.getOrDefault(task.getTargetUUID(), Collections.emptySet());
+        retryable = taskUuidsToAllowRetry.contains(taskInfo.getTaskUUID().toString());
       }
     }
     responseJson.put("retryable", retryable);
@@ -294,13 +285,26 @@ public class Commissioner {
       LOG.error("Error fetching task progress for {}. TaskInfo is not found", taskUUID);
       return Optional.empty();
     }
-    Map<UUID, String> updatingTaskByTargetMap = new HashMap<>();
+    Map<UUID, Set<String>> updatingTaskByTargetMap = new HashMap<>();
     Map<UUID, CustomerTask> lastTaskByTargetMap = new HashMap<>();
     Universe.getUniverseDetailsField(
             String.class,
             task.getTargetUUID(),
             UniverseDefinitionTaskParams.UPDATING_TASK_UUID_FIELD)
-        .ifPresent(id -> updatingTaskByTargetMap.put(task.getTargetUUID(), id));
+        .ifPresent(
+            id ->
+                updatingTaskByTargetMap
+                    .computeIfAbsent(task.getTargetUUID(), uuid -> new HashSet<>())
+                    .add(id));
+    Universe.getUniverseDetailsField(
+            String.class,
+            task.getTargetUUID(),
+            UniverseDefinitionTaskParams.PLACEMENT_MODIFICATION_TASK_UUID_FIELD)
+        .ifPresent(
+            id ->
+                updatingTaskByTargetMap
+                    .computeIfAbsent(task.getTargetUUID(), uuid -> new HashSet<>())
+                    .add(id));
     lastTaskByTargetMap.put(
         task.getTargetUUID(), CustomerTask.getLastTaskByTargetUuid(task.getTargetUUID()));
     return buildTaskStatus(task, taskInfo, updatingTaskByTargetMap, lastTaskByTargetMap);
@@ -310,6 +314,13 @@ public class Commissioner {
   public Map<UUID, String> getUpdatingTaskUUIDsForTargets(Long customerId) {
     return Universe.getUniverseDetailsFields(
         String.class, customerId, UniverseDefinitionTaskParams.UPDATING_TASK_UUID_FIELD);
+  }
+
+  public Map<UUID, String> getPlacementModificationTaskUUIDsForTargets(Long customerId) {
+    return Universe.getUniverseDetailsFields(
+        String.class,
+        customerId,
+        UniverseDefinitionTaskParams.PLACEMENT_MODIFICATION_TASK_UUID_FIELD);
   }
 
   public JsonNode getTaskDetails(UUID taskUUID) {

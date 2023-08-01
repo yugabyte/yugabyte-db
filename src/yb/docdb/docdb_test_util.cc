@@ -129,11 +129,6 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     return result;
   }
 
-  Result<IsExternalTransaction> IsExternalTransactionResult(
-      const TransactionId& transaction_id) override {
-    return IsExternalTransaction::kFalse;
-  }
-
   void RecordConflictResolutionKeysScanned(int64_t num_keys) override {}
 
   void RecordConflictResolutionScanLatency(MonoDelta latency) override {}

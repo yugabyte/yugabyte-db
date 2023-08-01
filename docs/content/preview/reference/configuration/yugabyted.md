@@ -138,7 +138,7 @@ Examples:
 : Determines the fault tolerance constraint to be applied on the data placement policy of the YugabyteDB cluster. This flag can accept the following values: none, zone, region, cloud.
 
 --ui *bool*
-: Enable or disable the webserver UI. Default: `false`
+: Enable or disable the webserver UI (available at <http://localhost:15433>). Default: `true`
 
 --secure
 : Enable [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/ysql/) for the node.
@@ -1081,5 +1081,5 @@ The following steps assume that you have a running YugabyteDB cluster deployed u
     ./bin/yugabyted configure data_placement \
       --fault_tolerance=zone \
       --constraint_value=aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c \
-      -rf=3
+      --rf=3
     ```

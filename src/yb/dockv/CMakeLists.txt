@@ -33,6 +33,7 @@ set(DOCKV_SRCS
     expiration.cc
     intent.cc
     key_bytes.cc
+    pg_key_decoder.cc
     pg_row.cc
     packed_row.cc
     partial_row.cc
@@ -68,5 +69,6 @@ ADD_YB_TEST(intent-test)
 ADD_YB_TEST(packed_row-test)
 ADD_YB_TEST(partial_row-test)
 ADD_YB_TEST(partition-test)
+ADD_YB_TEST(pg_row-test)
 ADD_YB_TEST(primitive_value-test)
 ADD_YB_TEST(subdocument-test)

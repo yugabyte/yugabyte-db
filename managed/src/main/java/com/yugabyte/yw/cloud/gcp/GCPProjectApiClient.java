@@ -39,6 +39,7 @@ import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -66,10 +67,10 @@ public class GCPProjectApiClient {
      * @return the error, if any, else {@code null} if there was no error
      */
     public void waitForOperationCompletion(Operation operation) {
-      Long pollingInterval =
+      Duration pollingInterval =
           runtimeConfGetter.getConfForScope(
               provider, ProviderConfKeys.operationStatusPollingInterval);
-      Long timeoutInterval =
+      Duration timeoutInterval =
           runtimeConfGetter.getConfForScope(provider, ProviderConfKeys.operationTimeoutInterval);
       long start = System.currentTimeMillis();
       String zone = CloudAPI.getResourceNameFromResourceUrl(operation.getZone());
@@ -78,9 +79,9 @@ public class GCPProjectApiClient {
       String opId = operation.getName();
       try {
         while (operation != null && !status.equals("DONE")) {
-          Thread.sleep(pollingInterval);
+          Thread.sleep(pollingInterval.toMillis());
           long elapsed = System.currentTimeMillis() - start;
-          if (elapsed >= timeoutInterval) {
+          if (elapsed >= timeoutInterval.toMillis()) {
             throw new InterruptedException("Timed out waiting for operation to complete");
           }
           log.info("Waiting for operation to complete: " + operation.getName());

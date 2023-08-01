@@ -37,7 +37,7 @@ CREATE TABLE part_demo (
 ) PARTITION BY RANGE (ts);
 ```
 
-Create partitions for each month.
+Create partitions for each month. Also, create a `DEFAULT` partition that would hold data that does not that fall into any of the other partitions.
 
 ```sql
 CREATE TABLE part_7_23 PARTITION OF part_demo
@@ -48,6 +48,9 @@ CREATE TABLE part_8_23 PARTITION OF part_demo
 
 CREATE TABLE part_9_23 PARTITION OF part_demo
     FOR VALUES FROM ('2023-09-01') TO ('2023-10-01');
+
+CREATE TABLE def_part_demo PARTITION OF part_demo DEFAULT;
+
 ```
 
 Insert some data into the main table `part_demo`.
@@ -75,7 +78,7 @@ SELECT * FROM part_9_23 LIMIT 4;
  2023-09-01 00:00:23 | car-2 |    33
 ```
 
-## Retrieval from the parent table
+## Fetch data
 
 Although data is stored in different tables as partitions, to access all the data you just need to query the parent table. Take a look at the query plan for a select query as follows:
 
@@ -100,9 +103,9 @@ EXPLAIN ANALYZE SELECT * FROM part_demo;
 
 When querying the parent table, the child partitions are automatically queried.
 
-## Range retrieval
+## Fetch data within a time range
 
-As the data is split based on time, when querying for a specific time range, the query executor fetches data only from the partition that the data is expected to be. For example, see the query plan for fetching data for a specific month.
+As the data is split based on time, when querying for a specific time range, the query executor fetches data only from the partition that the data is expected to be in. For example, see the query plan for fetching data for a specific month.
 
 ```sql
 EXPLAIN ANALYZE SELECT * FROM part_demo WHERE ts > '2023-07-01' AND ts < '2023-08-01';

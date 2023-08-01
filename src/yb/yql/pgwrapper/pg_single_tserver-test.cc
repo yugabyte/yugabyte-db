@@ -258,6 +258,32 @@ TEST_F_EX(PgSingleTServerTest, ScanBigPK, PgMiniBigPrefetchTest) {
       /* compact= */ false, /* aggregate = */ false);
 }
 
+TEST_F_EX(PgSingleTServerTest, ScanComplexPK, PgMiniBigPrefetchTest) {
+  constexpr auto kNumRows = kScanRows / 2;
+  constexpr int kNumKeyColumns = 10;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
+
+  std::string create_cmd = "CREATE TABLE t (";
+  std::string pk = "";
+  std::string insert_cmd = "INSERT INTO t VALUES (generate_series($0, $1)";
+  for (const auto column : Range(kNumKeyColumns)) {
+    create_cmd += Format("r$0 INT, ", column);
+    if (!pk.empty()) {
+      pk += ", ";
+    }
+    pk += Format("r$0", column);
+    insert_cmd += ", trunc(random()*100000000)";
+  }
+  create_cmd += "value INT, PRIMARY KEY (" + pk + "))";
+  insert_cmd += ")";
+  const std::string select_cmd = "SELECT * FROM t";
+  SetupColocatedTableAndRunBenchmark(
+      create_cmd, insert_cmd, select_cmd, kNumRows, kScanBlockSize, FLAGS_TEST_scan_reads,
+      /* compact= */ false, /* aggregate = */ false);
+}
+
 TEST_F_EX(PgSingleTServerTest, ScanSkipValues, PgMiniBigPrefetchTest) {
   constexpr auto kNumRows = kScanRows / 4;
   constexpr auto kNumExtraColumns = 10;

@@ -343,7 +343,7 @@ public class LdapUtil {
             new String[] {ldapConfiguration.getLdapTlsProtocol().getVersionString()});
 
         boolean customCAUploaded = customCAStoreManager.areCustomCAsPresent();
-        if (customCAStoreManager.isEnabled()) {
+        if (customCAStoreManager.isEnabled() && isCertVerificationEnforced()) {
           if (customCAUploaded) {
             log.debug("Using YBA's custom trust-store manager along-with Java defaults");
             KeyStore ybaJavaKeyStore = customCAStoreManager.getYbaAndJavaKeyStore();
@@ -357,7 +357,11 @@ public class LdapUtil {
           }
         } else {
           if (customCAUploaded) {
-            log.warn("Skipping to use YBA's custom trust-store as the feature is disabled");
+            log.warn(
+                "Skipping to use YBA's trust-store as the feature is disabled. CA-store "
+                    + "feature flag: {}, certification-verfication for LDAP: {}",
+                customCAStoreManager.isEnabled(),
+                isCertVerificationEnforced());
           }
           config.setTrustManagers(new NoVerificationTrustManager());
         }
@@ -569,8 +573,7 @@ public class LdapUtil {
       }
     } catch (LdapException e) {
       log.error(String.format("LDAP error while attempting to auth email %s", email), e);
-      String errorMessage = "LDAP parameters are not configured correctly. " + e.getMessage();
-      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+      throw e;
     } catch (Exception e) {
       log.error(String.format("Failed to authenticate with LDAP for email %s", email), e);
       String errorMessage = "Invalid LDAP credentials. " + e.getMessage();
@@ -582,5 +585,9 @@ public class LdapUtil {
       }
     }
     return users;
+  }
+
+  public boolean isCertVerificationEnforced() {
+    return confGetter.getGlobalConf(GlobalConfKeys.ldapsEnforceCertVerification);
   }
 }

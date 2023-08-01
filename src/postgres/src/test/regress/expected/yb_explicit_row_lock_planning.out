@@ -255,6 +255,22 @@ SELECT * FROM yb_locks_t2 WHERE v=4 FOR UPDATE;
   1 |  2 |  3 | 4
 (1 row)
 
+-- Test only the indexed column.
+EXPLAIN (COSTS OFF)
+SELECT v FROM yb_locks_t2 WHERE v=4 FOR UPDATE;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ LockRows
+   ->  Index Scan using yb_locks_t2_v_idx on yb_locks_t2
+         Index Cond: (v = 4)
+(3 rows)
+
+SELECT v FROM yb_locks_t2 WHERE v=4 FOR UPDATE;
+ v 
+---
+ 4
+(1 row)
+
 -- Isolation level SERIALIZABLE still locks with the scan though (no LockRows).
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 EXPLAIN (COSTS OFF)

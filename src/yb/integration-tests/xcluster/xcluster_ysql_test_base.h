@@ -41,9 +41,8 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       const ColocationId colocation_id = 0,
       const bool ranged_partitioned = false);
 
-  Status CreateYsqlTable(
+  Result<client::YBTableName> CreateYsqlTable(
       uint32_t idx, uint32_t num_tablets, Cluster* cluster,
-      std::vector<client::YBTableName>* table_names,
       const boost::optional<std::string>& tablegroup_name = {}, bool colocated = false,
       const bool ranged_partitioned = false);
 
@@ -81,6 +80,10 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   static Result<std::vector<xrepl::StreamId>> BootstrapCluster(
       const std::vector<std::shared_ptr<client::YBTable>>& tables,
       XClusterTestBase::Cluster* cluster);
+
+ protected:
+  YBTables producer_tables_, consumer_tables_;
+  std::shared_ptr<client::YBTable> producer_table_, consumer_table_;
 
  private:
   // Not thread safe. FLAGS_pgsql_proxy_webserver_port is modified each time this is called so this

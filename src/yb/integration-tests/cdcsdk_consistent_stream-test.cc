@@ -11,6 +11,7 @@
 // under the License.
 
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 namespace cdc {
@@ -208,6 +209,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithAbo
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithTserverRestart)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
 
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -950,6 +952,64 @@ TEST_F(
   }
 
   ASSERT_EQ(seen_unique_pk_values.size(), 5000);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMakesProgressWithLongRunningTxn)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_resolve_intent_lag_threshold_ms) = 10 * 1000;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  // Flushed transactions are replayed only if there is a cdc stream.
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
+  ASSERT_FALSE(set_resp.has_error());
+
+  // Initiate a transaction with 'BEGIN' statement. But do not commit it.
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  for (int i = 0; i < 100; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test_table VALUES ($0, $1)", i, i + 1));
+  }
+
+  // Commit another transaction while we still have the previous one open.
+  ASSERT_OK(WriteRowsHelper(100, 200, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
+
+  uint32 seen_insert_records = 0;
+  auto update_insert_count = [&](const GetChangesResponsePB& change_resp) {
+    for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+      if (record.row_message().op() == RowMessage::INSERT) {
+        seen_insert_records += 1;
+      }
+    }
+  };
+
+  // Initially we will not see any records, even though we have a committed transaction, because the
+  // running transaction holds back the consistent_safe_time.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  update_insert_count(change_resp);
+  ASSERT_EQ(seen_insert_records, 0);
+  change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+  update_insert_count(change_resp);
+  ASSERT_EQ(seen_insert_records, 0);
+
+  // Eventually, after FLAGS_cdc_resolve_intent_lag_threshold_ms time we should see the records for
+  // the committed transaction.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp =
+            VERIFY_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+        update_insert_count(change_resp);
+        if (seen_insert_records == 100) return true;
+
+        return false;
+      },
+      MonoDelta::FromSeconds(30), "Did not see all expected records"));
 }
 
 }  // namespace cdc

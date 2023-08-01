@@ -6,8 +6,11 @@ import com.amazonaws.SDKGlobalConfiguration;
 import com.amazonaws.SdkClientException;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
-import com.amazonaws.services.s3.model.ListObjectsV2Result;
+import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.BeanValidator;
+import com.yugabyte.yw.common.CloudUtil.ConfigLocationInfo;
+import com.yugabyte.yw.common.CloudUtil.ExtraPermissionToValidate;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.configs.CloudClientsFactory;
@@ -17,9 +20,12 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.RegionLoc
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
+@Slf4j
 public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValidator {
 
   // Adding http here since S3-compatible storages may use it in endpoint.
@@ -27,17 +33,21 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
       Arrays.asList(new String[] {"http", "https", "s3"});
 
   private final CloudClientsFactory factory;
-
+  private final AWSUtil awsUtil;
   private final RuntimeConfGetter runtimeConfGetter;
+  private final List<ExtraPermissionToValidate> permissions =
+      ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST);
 
   @Inject
   public CustomerConfigStorageS3Validator(
       BeanValidator beanValidator,
       CloudClientsFactory factory,
-      RuntimeConfGetter runtimeConfGetter) {
+      RuntimeConfGetter runtimeConfGetter,
+      AWSUtil awsUtil) {
     super(beanValidator, S3_URL_SCHEMES);
     this.factory = factory;
     this.runtimeConfGetter = runtimeConfGetter;
+    this.awsUtil = awsUtil;
   }
 
   @Override
@@ -104,24 +114,9 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
       throwBeanValidatorError(fieldName, exceptionMsg);
     } else {
       try {
-        s3UriPath = s3UriPath.substring(5);
-        String[] bucketSplit = s3UriPath.split("/", 2);
-        String bucketName = bucketSplit.length > 0 ? bucketSplit[0] : "";
-        String prefix = bucketSplit.length > 1 ? bucketSplit[1] : "";
-
-        // Only the bucket has been given, with no subdir.
-        if (bucketSplit.length == 1) {
-          if (!client.doesBucketExistV2(bucketName)) {
-            String exceptionMsg = "S3 URI path " + s3Uri + " doesn't exist";
-            throwBeanValidatorError(fieldName, exceptionMsg);
-          }
-        } else {
-          ListObjectsV2Result result = client.listObjectsV2(bucketName, prefix);
-          if (result.getKeyCount() == 0) {
-            String exceptionMsg = "S3 URI path " + s3Uri + " doesn't exist";
-            throwBeanValidatorError(fieldName, exceptionMsg);
-          }
-        }
+        ConfigLocationInfo configLocationInfo = awsUtil.getConfigLocationInfo(s3UriPath);
+        awsUtil.validateOnBucket(
+            client, configLocationInfo.bucket, configLocationInfo.cloudPath, permissions);
       } catch (AmazonS3Exception s3Exception) {
         String exceptionMsg = s3Exception.getErrorMessage();
         if (exceptionMsg.contains("Denied") || exceptionMsg.contains("bucket"))

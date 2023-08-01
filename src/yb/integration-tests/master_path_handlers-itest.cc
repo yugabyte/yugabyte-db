@@ -1017,5 +1017,56 @@ TEST_F(MasterPathHandlersItest, TestLeaderlessDeletedTablet) {
   cluster_->Shutdown();
 }
 
+TEST_F(MasterPathHandlersItest, TestVarzAutoFlag) {
+  static const auto kExpectedAutoFlag = "use_parent_table_id_field";
+
+  // In LTO builds yb-master links to all of yb-tserver so it includes all AutoFlags. So test for a
+  // non-AutoFlag instead.
+  static const auto kUnExpectedFlag = "TEST_assert_local_op";
+
+  // Test the HTML endpoint.
+  static const auto kAutoFlagsStart = "<h2>Auto Flags</h2>";
+  static const auto kAutoFlagsEnd = "<h2>Default Flags</h2>";
+  faststring result;
+  TestUrl("/varz", &result);
+  auto result_str = result.ToString();
+
+  auto it_auto_flags_start = result_str.find(kAutoFlagsStart);
+  ASSERT_NE(it_auto_flags_start, std::string::npos);
+  auto it_auto_flags_end = result_str.find(kAutoFlagsEnd);
+  ASSERT_NE(it_auto_flags_end, std::string::npos);
+
+  auto it_expected_flag = result_str.find(kExpectedAutoFlag);
+  ASSERT_GT(it_expected_flag, it_auto_flags_start);
+  ASSERT_LT(it_expected_flag, it_auto_flags_end);
+
+  auto it_unexpected_flag = result_str.find(kUnExpectedFlag);
+  ASSERT_GT(it_unexpected_flag, it_auto_flags_end);
+
+  // Test the JSON API endpoint.
+  TestUrl("/api/v1/varz", &result);
+
+  JsonReader r(result.ToString());
+  ASSERT_OK(r.Init());
+  const rapidjson::Value* json_obj = nullptr;
+  ASSERT_OK(r.ExtractObject(r.root(), NULL, &json_obj));
+  ASSERT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
+  ASSERT_TRUE(json_obj->HasMember("flags"));
+  ASSERT_EQ(rapidjson::kArrayType, (*json_obj)["flags"].GetType());
+  const rapidjson::Value::ConstArray flags = (*json_obj)["flags"].GetArray();
+
+  auto it_expected_json_flag = std::find_if(flags.Begin(), flags.End(), [](const auto& flag) {
+    return flag["name"] == kExpectedAutoFlag;
+  });
+  ASSERT_NE(it_expected_json_flag, flags.End());
+  ASSERT_EQ((*it_expected_json_flag)["type"], "Auto");
+
+  auto it_unexpected_json_flag = std::find_if(
+      flags.Begin(), flags.End(), [](const auto& flag) { return flag["name"] == kUnExpectedFlag; });
+
+  ASSERT_NE(it_unexpected_json_flag, flags.End());
+  ASSERT_EQ((*it_unexpected_json_flag)["type"], "Default");
+}
+
 }  // namespace master
 }  // namespace yb

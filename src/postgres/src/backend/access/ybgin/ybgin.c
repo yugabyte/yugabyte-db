@@ -80,6 +80,7 @@ ybginhandler(PG_FUNCTION_ARGS)
 	amroutine->yb_aminsert = ybgininsert;
 	amroutine->yb_amdelete = ybgindelete;
 	amroutine->yb_ambackfill = ybginbackfill;
+	amroutine->yb_ammightrecheck = ybginmightrecheck;
 
 	PG_RETURN_POINTER(amroutine);
 }

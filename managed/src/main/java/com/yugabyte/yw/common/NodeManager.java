@@ -945,6 +945,19 @@ public class NodeManager extends DevopsBase {
           } else if (taskSubType.equals(UpgradeTaskParams.UpgradeTaskSubType.Install.toString())) {
             subcommand.add("--tags");
             subcommand.add("install-software");
+            subcommand.add("--tags");
+            subcommand.add("override_gflags");
+            Map<String, String> gflags = new TreeMap<>(taskParam.gflags);
+            if (!config.getBoolean("yb.cloud.enabled")) {
+              GFlagsUtil.processUserGFlags(
+                  node,
+                  gflags,
+                  GFlagsUtil.getAllDefaultGFlags(
+                      taskParam, universe, getUserIntentFromParams(taskParam), useHostname, config),
+                  confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride));
+            }
+            subcommand.add("--gflags");
+            subcommand.add(Json.stringify(Json.toJson(gflags)));
           } else if (taskSubType.equals(
               UpgradeTaskParams.UpgradeTaskSubType.YbcInstall.toString())) {
             subcommand.add("--tags");
@@ -1528,6 +1541,14 @@ public class NodeManager extends DevopsBase {
         commandArgs.add("--replacement_disk");
         commandArgs.add(rrvParams.replacementDisk);
         commandArgs.addAll(getAccessKeySpecificCommand(rrvParams, type));
+        if (Common.CloudType.aws.equals(userIntent.providerType)) {
+          if (StringUtils.isNotBlank(rrvParams.rootDeviceName)) {
+            commandArgs.add("--root_device_name");
+            commandArgs.add(rrvParams.rootDeviceName);
+          } else {
+            throw new RuntimeException("ReplaceRootVolume for AWS requires root device name.");
+          }
+        }
         break;
       case Create_Root_Volumes:
         if (!(nodeTaskParam instanceof CreateRootVolumes.Params)) {
@@ -2416,7 +2437,9 @@ public class NodeManager extends DevopsBase {
       VmUpgradeTaskType vmUpgradeTaskType,
       boolean useCustomImageByDefault,
       List<String> commandArgs) {
-    if (!cloudType.equals(Common.CloudType.aws) && !cloudType.equals(Common.CloudType.gcp)) {
+    if (!cloudType.equals(Common.CloudType.aws)
+        && !cloudType.equals(Common.CloudType.gcp)
+        && !cloudType.equals(Common.CloudType.azu)) {
       return;
     }
     boolean skipTags = false;

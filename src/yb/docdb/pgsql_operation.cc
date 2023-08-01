@@ -13,9 +13,11 @@
 
 #include "yb/docdb/pgsql_operation.h"
 
+#include <functional>
 #include <limits>
 #include <string>
 #include <unordered_set>
+#include <variant>
 #include <vector>
 
 #include "yb/common/common.pb.h"
@@ -124,61 +126,132 @@ bool ShouldYsqlPackRow(bool is_colocated) {
 
 namespace {
 
-void AddIntent(
-    const std::string& encoded_key, boost::optional<WaitPolicy> wait_policy,
-    LWKeyValueWriteBatchPB *out) {
+void AddIntent(Slice encoded_key, LWKeyValueWriteBatchPB *out) {
   auto* pair = out->add_read_pairs();
   pair->dup_key(encoded_key);
   pair->dup_value(Slice(&dockv::ValueEntryTypeAsChar::kNullLow, 1));
-  if (wait_policy) {
-    // Since we don't batch read RPCs that lock rows, we can get away with using a singular
-    // wait_policy field. Once we start batching read requests (issue #2495), we will need a
-    // repeated wait policies field.
-    out->set_wait_policy(wait_policy.value());
+}
+
+class DocKeyAccessor {
+ public:
+  explicit DocKeyAccessor(std::reference_wrapper<const Schema> schema)
+      : schema_(schema.get()), source_(std::nullopt), result_holder_(std::nullopt) {}
+
+  Result<Slice> GetEncoded(std::reference_wrapper<const PgsqlExpressionPB> ybctid) {
+    RETURN_NOT_OK(Apply(ybctid.get()));
+    return Encoded();
   }
-}
 
-Status AddIntent(const PgsqlExpressionPB& ybctid, boost::optional<WaitPolicy> wait_policy,
-                 LWKeyValueWriteBatchPB* out) {
-  const auto &val = ybctid.value().binary_value();
-  SCHECK(!val.empty(), InternalError, "empty ybctid");
-  AddIntent(val, wait_policy, out);
-  return Status::OK();
-}
+  Result<Slice> GetEncoded(std::reference_wrapper<const yb::PgsqlReadRequestPB> req) {
+    RETURN_NOT_OK(Apply(req.get()));
+    return Encoded();
+  }
 
-template<class R, class Request, class DocKeyProcessor, class EncodedDocKeyProcessor>
-Result<R> FetchDocKeyImpl(const Schema& schema,
-                          const Request& req,
-                          const DocKeyProcessor& dk_processor,
-                          const EncodedDocKeyProcessor& edk_processor) {
-  // Init DocDB key using either ybctid or partition and range values.
-  if (req.has_ybctid_column_value()) {
-    const auto& ybctid = req.ybctid_column_value().value().binary_value();
-    SCHECK(!ybctid.empty(), InternalError, "empty ybctid");
-    return edk_processor(ybctid);
-  } else {
+  Result<DocKey&> GetDecoded(std::reference_wrapper<const yb::PgsqlWriteRequestPB> req) {
+    RETURN_NOT_OK(Apply(req.get()));
+    return Decoded();
+  }
+
+ private:
+  Result<DocKey&> Decoded() {
+    DCHECK(!std::holds_alternative<std::nullopt_t>(source_));
+    if (std::holds_alternative<DocKey>(source_)) {
+      return std::get<DocKey>(source_);
+    }
+    auto& doc_key = GetResultHolder<DocKey>();
+    RETURN_NOT_OK(doc_key.DecodeFrom(std::get<Slice>(source_)));
+    return doc_key;
+  }
+
+  Result<Slice> Encoded() {
+    DCHECK(!std::holds_alternative<std::nullopt_t>(source_));
+    if (std::holds_alternative<DocKey>(source_)) {
+      return GetResultHolder<EncodedKey>().Append(std::get<DocKey>(source_)).AsSlice();
+    }
+
+    auto& src = std::get<Slice>(source_);
+    if (!schema_.is_colocated()) {
+      return src;
+    }
+    return GetResultHolder<EncodedKey>().Append(src).AsSlice();
+  }
+
+  template<class Req>
+  Status Apply(const Req& req) {
+    // Init DocDB key using either ybctid or partition and range values.
+    if (req.has_ybctid_column_value()) {
+      return Apply(req.ybctid_column_value());
+    }
+
     auto hashed_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
-        req.partition_column_values(), schema, 0 /* start_idx */));
+        req.partition_column_values(), schema_, 0 /* start_idx */));
     auto range_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
-        req.range_column_values(), schema, schema.num_hash_key_columns()));
-    return dk_processor(hashed_components.empty()
-        ? DocKey(schema, std::move(range_components))
-        : DocKey(
-            schema, req.hash_code(), std::move(hashed_components), std::move(range_components)));
+        req.range_column_values(), schema_, schema_.num_hash_key_columns()));
+    if (hashed_components.empty()) {
+      source_.emplace<DocKey>(schema_, std::move(range_components));
+    } else {
+      source_.emplace<DocKey>(
+          schema_, req.hash_code(), std::move(hashed_components), std::move(range_components));
+    }
+    return Status::OK();
   }
-}
 
-template<class T>
-Result<DocKey> FetchDocKey(const Schema& schema, const T& request) {
-  return FetchDocKeyImpl<DocKey>(
-      schema, request,
-      [](const auto& doc_key) { return doc_key; },
-      [&schema](const auto& encoded_doc_key) -> Result<DocKey> {
-        DocKey key(schema);
-        RETURN_NOT_OK(key.DecodeFrom(encoded_doc_key));
-        return key;
-      });
-}
+  Status Apply(const PgsqlExpressionPB& ybctid) {
+    const auto& value = ybctid.value().binary_value();
+    SCHECK(!value.empty(), InternalError, "empty ybctid");
+    source_.emplace<Slice>(value);
+    return Status::OK();
+  }
+
+  template<class T>
+  T& GetResultHolder() {
+    return std::holds_alternative<T>(result_holder_)
+        ? std::get<T>(result_holder_)
+        : result_holder_.emplace<T>(schema_);
+  }
+
+  class EncodedKey {
+   public:
+    explicit EncodedKey(std::reference_wrapper<const Schema> schema)
+        : schema_(schema),
+          prefix_length_(0) {
+      if (schema_.is_colocated()) {
+        DocKey prefix_builder(schema_);
+        prefix_builder.AppendTo(&data_);
+        DCHECK_GT(data_.size(), 1);
+        prefix_length_ = data_.size() - 1;
+        data_.Truncate(prefix_length_);
+      }
+    }
+
+    const dockv::KeyBytes& Append(const DocKey& doc_key) {
+      DCHECK(doc_key.colocation_id() == schema_.colocation_id() &&
+             doc_key.cotable_id() == schema_.cotable_id());
+      // Because doc_key uses same schema all encoded doc key will contain same prefix as generated
+      // in constructor (if any). So it is safe to reuse it in future.
+      data_.Clear();
+      doc_key.AppendTo(&data_);
+      return data_;
+    }
+
+    const dockv::KeyBytes& Append(Slice ybctid) {
+      // Current function must be called only in case ybctid requires prefix.
+      DCHECK(prefix_length_);
+      data_.Truncate(prefix_length_);
+      data_.AppendRawBytes(ybctid);
+      return data_;
+    }
+
+   private:
+    const Schema& schema_;
+    dockv::KeyBytes data_;
+    size_t prefix_length_;
+  };
+
+  const Schema& schema_;
+  std::variant<std::nullopt_t, Slice, DocKey> source_;
+  std::variant<std::nullopt_t, EncodedKey, DocKey> result_holder_;
+};
 
 Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
     const YQLStorageIf& ql_storage,
@@ -346,7 +419,7 @@ class FilteringIterator {
   Result<FetchResult> FetchTuple(const Slice& tuple_id, dockv::PgTableRow* row) {
     iterator_holder_->SeekTuple(tuple_id);
     if (!VERIFY_RESULT(iterator_holder_->PgFetchNext(row)) ||
-        VERIFY_RESULT(iterator_holder_->GetTupleId()) != tuple_id) {
+        iterator_holder_->GetTupleId() != tuple_id) {
       return FetchResult::NotFound;
     }
     return CheckFilter(*row);
@@ -554,9 +627,9 @@ Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
   // Initialize operation inputs.
   response_ = response;
 
-  doc_key_ = VERIFY_RESULT(FetchDocKey(doc_read_context_->schema(), request_));
-  char kHighest = dockv::KeyEntryTypeAsChar::kHighest;
-  encoded_doc_key_ = doc_key_.EncodeAsRefCntPrefix(Slice(&kHighest, 1));
+  DocKeyAccessor accessor(doc_read_context_->schema());
+  doc_key_ = std::move(VERIFY_RESULT_REF(accessor.GetDecoded(request_)));
+  encoded_doc_key_ = doc_key_.EncodeAsRefCntPrefix(Slice(&dockv::KeyEntryTypeAsChar::kHighest, 1));
   encoded_doc_key_.Resize(encoded_doc_key_.size() - 1);
 
   return Status::OK();
@@ -1388,14 +1461,14 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(
       // partition starts to continue populating it's reservoir starting from the numrows' position:
       // the numrows, as well as other sampling state variables is returned and copied over to the
       // next sampling request
-      Slice ybctid = VERIFY_RESULT(table_iter_->GetTupleId());
+      Slice ybctid = table_iter_->GetTupleId();
       reservoir[numrows++].set_binary_value(ybctid.data(), ybctid.size());
     } else {
       // At least targrows tuples have already been collected, now algorithm skips increasing number
       // of row before taking next one into the reservoir
       if (rowstoskip <= 0) {
         // Take ybctid of the current row
-        Slice ybctid = VERIFY_RESULT(table_iter_->GetTupleId());
+        Slice ybctid = table_iter_->GetTupleId();
         // Pick random tuple in the reservoir to replace
         double rvalue;
         int k;
@@ -1595,6 +1668,13 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
     }
   }
 
+  // We limit the response's size.
+  auto response_size_limit = std::numeric_limits<std::size_t>::max();
+
+  if (request_.has_size_limit() && request_.size_limit() > 0) {
+    response_size_limit = request_.size_limit() * 1_KB;
+  }
+
   auto projection = CreateProjection(doc_read_context.schema(), request_);
   dockv::PgTableRow row(projection);
   std::optional<FilteringIterator> iter;
@@ -1628,11 +1708,21 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
         ++row_count;
         break;
     }
+
+    if (result_buffer->size() >= response_size_limit) {
+      VLOG(1) << "Stopped iterator after " << row_count << " rows fetched (out of "
+              << request_.batch_arguments_size() << " matches). Response buffer size: "
+              << result_buffer->size() << ", response size limit: " << response_size_limit;
+      break;
+    }
   }
 
   // Set status for this batch.
-  // Mark all rows were processed even in case some of the ybctids were not found.
-  response_.set_batch_arg_count(request_.batch_arguments_size());
+  if (result_buffer->size() >= response_size_limit)
+    response_.set_batch_arg_count(row_count);
+  else
+    // Mark all rows were processed even in case some of the ybctids were not found.
+    response_.set_batch_arg_count(request_.batch_arguments_size());
 
   return row_count;
 }
@@ -1672,41 +1762,74 @@ Result<bool> PgsqlReadOperation::SetPagingState(
   return true;
 }
 
+void NopEncoder(
+    const dockv::PgTableRow& row, WriteBuffer* buffer, const dockv::PgWireEncoderEntry* chain) {
+}
+
+template <bool kLast>
+void NullEncoder(
+    const dockv::PgTableRow& row, WriteBuffer* buffer, const dockv::PgWireEncoderEntry* chain) {
+  buffer->PushBack(1);
+  dockv::CallNextEncoder<kLast>(row, buffer, chain);
+}
+
+dockv::PgWireEncoderEntry MakeNullEncoder(bool last) {
+  return dockv::PgWireEncoderEntry {
+    .encoder = last ? NullEncoder<true> : NullEncoder<false>,
+    .data = 0,
+  };
+}
+
+template <bool kLast>
+void TupleIdEncoder(
+    const dockv::PgTableRow& row, WriteBuffer* buffer, const dockv::PgWireEncoderEntry* chain) {
+  auto table_iter = reinterpret_cast<YQLRowwiseIteratorIf::UniPtr*>(chain->data)->get();
+  pggate::WriteBinaryColumn(table_iter->GetTupleId(), buffer);
+  dockv::CallNextEncoder<kLast>(row, buffer, chain);
+}
+
+dockv::PgWireEncoderEntry GetEncoder(
+    YQLRowwiseIteratorIf::UniPtr* table_iter, const dockv::PgTableRow& table_row,
+    const PgsqlExpressionPB& expr, bool last) {
+  if (expr.expr_case() == PgsqlExpressionPB::kColumnId) {
+    if (expr.column_id() != to_underlying(PgSystemAttrNum::kYBTupleId)) {
+      auto index = table_row.projection().ColumnIdxById(ColumnId(expr.column_id()));
+      if (index != dockv::ReaderProjection::kNotFoundIndex) {
+        return table_row.GetEncoder(index, last);
+      }
+      return MakeNullEncoder(last);
+    }
+    return dockv::PgWireEncoderEntry {
+      .encoder = last ? TupleIdEncoder<true> : TupleIdEncoder<false>,
+      .data = reinterpret_cast<size_t>(table_iter),
+    };
+  }
+  return MakeNullEncoder(last);
+}
+
 Status PgsqlReadOperation::PopulateResultSet(const dockv::PgTableRow& table_row,
                                              WriteBuffer *result_buffer) {
-  const auto size = request_.targets().size();
-  if (target_index_.empty()) {
-    target_index_.reserve(request_.targets().size());
-    for (const auto& expr : request_.targets()) {
-      if (expr.expr_case() == PgsqlExpressionPB::kColumnId &&
-          expr.column_id() != to_underlying(PgSystemAttrNum::kYBTupleId)) {
-        target_index_.push_back(table_row.projection().ColumnIdxById(ColumnId(expr.column_id())));
-      } else {
-        target_index_.push_back(dockv::ReaderProjection::kNotFoundIndex);
-      }
-    }
-  }
-  QLExprResult result;
-  const char kNullMark = 1;
-  for (int i = 0; i != size; ++i) {
-    auto index = target_index_[i];
-    if (index != dockv::ReaderProjection::kNotFoundIndex) {
-      table_row.AppendValueByIndex(index, result_buffer);
-      continue;
-    }
-    const auto& expr = request_.targets()[i];
-    if (expr.has_column_id()) {
-      const auto column_id = expr.column_id();
-      if (column_id != to_underlying(PgSystemAttrNum::kYBTupleId)) {
-        result_buffer->Append(&kNullMark, 1);
-      } else {
-        pggate::WriteBinaryColumn(VERIFY_RESULT(table_iter_->GetTupleId()), result_buffer);
+  if (target_encoders_.empty()) {
+    const auto& targets = request_.targets();
+    const auto size = targets.size();
+    if (size) {
+      target_encoders_.reserve(size);
+      for (auto it = targets.begin(), end = targets.end();;) {
+        const auto& expr = *it;
+        bool last = ++it == end;
+        target_encoders_.push_back(GetEncoder(&table_iter_, table_row, expr, last));
+        if (last) {
+          break;
+        }
       }
     } else {
-      RETURN_NOT_OK(EvalExpr(expr, table_row, result.Writer()));
-      RETURN_NOT_OK(pggate::WriteColumn(result.Value(), result_buffer));
+      target_encoders_.push_back(dockv::PgWireEncoderEntry {
+        .encoder = NopEncoder,
+        .data = 0,
+      });
     }
   }
+  target_encoders_.front().Invoke(table_row, result_buffer);
   return Status::OK();
 }
 
@@ -1716,7 +1839,7 @@ Status PgsqlReadOperation::GetSpecialColumn(ColumnIdRep column_id, QLValuePB* re
   // might need info to make sure the TupleId by itself is a valid reference to a specific row of
   // a valid table.
   if (column_id == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
-    const Slice tuple_id = VERIFY_RESULT(table_iter_->GetTupleId());
+    const Slice tuple_id = table_iter_->GetTupleId();
     result->set_binary_value(tuple_id.data(), tuple_id.size());
     return Status::OK();
   }
@@ -1746,20 +1869,18 @@ Status PgsqlReadOperation::PopulateAggregate(WriteBuffer *result_buffer) {
 }
 
 Status PgsqlReadOperation::GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out) {
-  boost::optional<WaitPolicy> wait_policy = boost::none;
   if (request_.has_row_mark_type() && IsValidRowMarkType(request_.row_mark_type())) {
     DCHECK(request_.has_wait_policy());
-    wait_policy = request_.wait_policy();
+    out->set_wait_policy(request_.wait_policy());
   }
 
-  if (request_.batch_arguments_size() > 0) {
+  DocKeyAccessor accessor(schema);
+  if (!request_.batch_arguments().empty()) {
     for (const auto& batch_argument : request_.batch_arguments()) {
-      SCHECK(batch_argument.has_ybctid(), InternalError, "ybctid batch argument is expected");
-      RETURN_NOT_OK(AddIntent(batch_argument.ybctid(), wait_policy, out));
+      AddIntent(VERIFY_RESULT(accessor.GetEncoded(batch_argument.ybctid())), out);
     }
   } else {
-    auto doc_key = VERIFY_RESULT(FetchDocKey(schema, request_));
-    AddIntent(doc_key.Encode().ToStringBuffer(), wait_policy, out);
+    AddIntent(VERIFY_RESULT(accessor.GetEncoded(request_)), out);
   }
   return Status::OK();
 }

@@ -367,12 +367,13 @@ class PgClientServiceImpl::Impl {
     });
   }
 
+  // Comparator used for maintaining a max heap of old transactions based on their start times.
   struct OldTransactionComparator {
     bool operator()(
         const OldTransactionMetadataPBPtr lhs, const OldTransactionMetadataPBPtr rhs) const {
-      // Order is reversed so that we get transactions with earlier start times first.
+      // Order is reversed so that we pop newer transactions first.
       if (lhs->start_time() != rhs->start_time()) {
-        return lhs->start_time() > rhs->start_time();
+        return lhs->start_time() < rhs->start_time();
       }
       return lhs->transaction_id() > rhs->transaction_id();
     }
@@ -391,13 +392,13 @@ class PgClientServiceImpl::Impl {
       //
       // GetLockStatusRequestPB supports providing multiple transaction ids, but postgres sends
       // only one transaction id in PgGetLockStatusRequestPB for now.
+      // TODO(pglocks): Once we call GetTransactionStatus for involved tablets, ensure we populate
+      // aborted_subtxn_set in the GetLockStatusRequests that we send to involved tablets as well.
       lock_status_req.add_transaction_ids(req.transaction_id());
       return DoGetLockStatus(lock_status_req, resp, context, live_tservers);
     }
     const auto& min_txn_age_ms = req.min_txn_age_ms();
     const auto& max_num_txns = req.max_num_txns();
-    RSTATUS_DCHECK(min_txn_age_ms >= 0, InvalidArgument,
-                   "Request must contain non-negative min_txn_age_ms, got $0", min_txn_age_ms);
     RSTATUS_DCHECK(max_num_txns > 0, InvalidArgument,
                    "Request must contain max_num_txns > 0, got $0", max_num_txns);
     // Sleep before fetching old transactions and their involved tablets. This is necessary for
@@ -480,9 +481,14 @@ class PgClientServiceImpl::Impl {
 
     while (!old_txns_pq.empty()) {
       auto& old_txn = old_txns_pq.top();
+      const auto& txn_id = old_txn->transaction_id();
+      auto& node_entry = (*resp->mutable_transactions_by_node())[old_txn->host_node_uuid()];
+      node_entry.add_transaction_ids(txn_id);
       for (const auto& tablet_id : old_txn->tablets()) {
         auto& tablet_entry = (*lock_status_req.mutable_transactions_by_tablet())[tablet_id];
-        tablet_entry.add_transaction_ids(old_txn->transaction_id());
+        auto* transaction = tablet_entry.add_transactions();
+        transaction->set_id(txn_id);
+        transaction->mutable_aborted()->Swap(old_txn->mutable_aborted_subtxn_set());
       }
       old_txns_pq.pop();
     }
@@ -534,16 +540,10 @@ class PgClientServiceImpl::Impl {
       const GetLockStatusRequestPB& req, PgGetLockStatusResponsePB* resp) {
     std::unordered_map<std::string, std::unordered_set<TabletId>> txn_involved_tablets;
     for (const auto& [tablet_id, involved_txns] : req.transactions_by_tablet()) {
-      for (const auto& txn : involved_txns.transaction_ids()) {
-        auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(txn));
+      for (const auto& txn : involved_txns.transactions()) {
+        auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(txn.id()));
         txn_involved_tablets[txn_id.ToString()].insert(tablet_id);
       }
-    }
-
-    std::set<std::string> limit_to_txns;
-    for (const auto& txn : req.transaction_ids()) {
-      auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(txn));
-      limit_to_txns.insert(txn_id.ToString());
     }
 
     // Track the highest seen term for each tablet id.
@@ -556,6 +556,7 @@ class PgClientServiceImpl::Impl {
     }
 
     std::unordered_set<TabletId> tablets;
+    std::set<TransactionId> seen_transactions;
     for (auto& node_lock : *resp->mutable_node_locks()) {
       auto* tablet_lock_infos = node_lock.mutable_tablet_lock_infos();
       for (auto lock_it = tablet_lock_infos->begin(); lock_it != tablet_lock_infos->end();) {
@@ -570,10 +571,13 @@ class PgClientServiceImpl::Impl {
           lock_it = node_lock.mutable_tablet_lock_infos()->erase(lock_it);
           continue;
         }
-        lock_it++;
         RSTATUS_DCHECK(
             tablets.emplace(tablet_id).second, IllegalState,
             "Found tablet $0 more than once in PgGetLockStatusResponsePB", tablet_id);
+        for (auto& txn : lock_it->transaction_locks()) {
+          seen_transactions.insert(VERIFY_RESULT(FullyDecodeTransactionId(txn.id())));
+        }
+        lock_it++;
       }
     }
 
@@ -586,6 +590,18 @@ class PgClientServiceImpl::Impl {
             txn_id, tablet);
       }
     }
+    // Ensure that the response contains host node uuid for all involved transactions.
+    for (const auto& [_, txn_list] : resp->transactions_by_node()) {
+      for (const auto& txn : txn_list.transaction_ids()) {
+        seen_transactions.erase(VERIFY_RESULT(FullyDecodeTransactionId(txn)));
+      }
+    }
+    // TODO(pglocks): We currently don't populate transaction's host node info when the incoming
+    // PgGetLockStatusRequestPB has transaction_id field set. This shouldn't be the case once
+    // https://github.com/yugabyte/yugabyte-db/issues/16913 is addressed. As part of the fix,
+    // remove !req.transaction_ids().empty() in the below check.
+    RSTATUS_DCHECK(seen_transactions.empty() || !req.transaction_ids().empty(), IllegalState,
+           "Host node uuid not set for all involved transactions");
     return Status::OK();
   }
 
@@ -799,16 +815,14 @@ class PgClientServiceImpl::Impl {
     }
 
     std::vector<std::future<Status>> status_future;
-    std::vector<std::shared_ptr<tserver::CancelTransactionResponsePB>>
-        node_resp(remote_tservers.size(), std::make_shared<tserver::CancelTransactionResponsePB>());
-
+    std::vector<tserver::CancelTransactionResponsePB> node_resp(remote_tservers.size());
     for (size_t i = 0 ; i < remote_tservers.size() ; i++) {
       const auto& proxy = remote_tservers[i]->proxy();
       auto controller = std::make_shared<rpc::RpcController>();
       status_future.push_back(
           MakeFuture<Status>([&, controller](auto callback) {
             proxy->CancelTransactionAsync(
-                node_req, node_resp[i].get(), controller.get(), [callback, controller] {
+                node_req, &node_resp[i], controller.get(), [callback, controller] {
               callback(controller->status());
             });
           }));
@@ -823,11 +837,11 @@ class PgClientServiceImpl::Impl {
         continue;
       }
 
-      if (node_resp[i]->has_error()) {
+      if (node_resp[i].has_error()) {
         // Errors take precedence over TransactionStatus::ABORTED statuses. This needs to be done to
         // correctly handle cancelation requests of promoted txns. Ignore all NotFound statuses as
         // we collate them, collect all other error types.
-        const auto& status_from_pb = StatusFromPB(node_resp[i]->error().status());
+        const auto& status_from_pb = StatusFromPB(node_resp[i].error().status());
         if (status_from_pb.IsNotFound()) {
           continue;
         }

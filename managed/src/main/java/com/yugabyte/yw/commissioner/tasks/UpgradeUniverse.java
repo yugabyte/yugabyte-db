@@ -84,6 +84,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
   public static class Params extends UpgradeParams {}
 
   private Map<UUID, List<String>> replacementRootVolumes = new ConcurrentHashMap<>();
+  private Map<UUID, String> replacementRootDevices = new ConcurrentHashMap<>();
   private Map<UUID, UUID> nodeToRegion = new HashMap<>();
 
   @Override
@@ -424,6 +425,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     replaceParams.azUuid = node.azUuid;
     replaceParams.setUniverseUUID(taskParams().getUniverseUUID());
     replaceParams.bootDisksPerZone = this.replacementRootVolumes;
+    replaceParams.rootDevicePerZone = this.replacementRootDevices;
 
     ReplaceRootVolume replaceDiskTask = createTask(ReplaceRootVolume.class);
     replaceDiskTask.initialize(replaceParams);
@@ -464,6 +466,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
               params.numVolumes = numVolumes;
               params.setMachineImage(machineImage);
               params.bootDisksPerZone = replacementRootVolumes;
+              params.rootDevicePerZone = replacementRootDevices;
 
               log.info(
                   "Creating {} root volumes using {} in AZ {}",
@@ -586,7 +589,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
           if (currUserIntent.replicationFactor != 1) {
             createWaitForMasterLeaderTask()
                 .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
-            createChangeConfigTask(node, false /* isAdd */, SubTaskGroupType.ChangeInstanceType);
+            createChangeConfigTasks(node, false /* isAdd */, SubTaskGroupType.ChangeInstanceType);
           }
         }
 
@@ -613,7 +616,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
           if (currUserIntent.replicationFactor != 1) {
             // Add stopped master to the quorum.
-            createChangeConfigTask(node, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+            createChangeConfigTasks(node, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
           }
           // If there are no universe keys on the universe, it will have no effect.
           if (EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {

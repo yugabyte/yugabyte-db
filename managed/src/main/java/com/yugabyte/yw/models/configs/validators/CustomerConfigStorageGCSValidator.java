@@ -2,11 +2,12 @@
 
 package com.yugabyte.yw.models.configs.validators;
 
-import com.google.api.gax.paging.Page;
-import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.StorageException;
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.BeanValidator;
+import com.yugabyte.yw.common.CloudUtil.ConfigLocationInfo;
+import com.yugabyte.yw.common.CloudUtil.ExtraPermissionToValidate;
 import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.models.configs.CloudClientsFactory;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
@@ -16,6 +17,7 @@ import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
 import javax.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
 
@@ -25,12 +27,17 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
       Arrays.asList(new String[] {"https", "gs"});
 
   private final CloudClientsFactory factory;
+  private final GCPUtil gcpUtil;
+
+  private final List<ExtraPermissionToValidate> permissions =
+      ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST);
 
   @Inject
   public CustomerConfigStorageGCSValidator(
-      BeanValidator beanValidator, CloudClientsFactory factory) {
+      BeanValidator beanValidator, CloudClientsFactory factory, GCPUtil gcpUtil) {
     super(beanValidator, GCS_URL_SCHEMES);
     this.factory = factory;
+    this.gcpUtil = gcpUtil;
   }
 
   @Override
@@ -74,36 +81,11 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
       String exceptionMsg = "Invalid gsUriPath format: " + gsUriPath;
       throwBeanValidatorError(fieldName, exceptionMsg);
     } else {
-      String[] bucketSplit = GCPUtil.getSplitLocationValue(gsUriPath);
-      String bucketName = bucketSplit.length > 0 ? bucketSplit[0] : "";
-      String prefix = bucketSplit.length > 1 ? bucketSplit[1] : "";
-      boolean blobError = false;
+      ConfigLocationInfo locationInfo = gcpUtil.getConfigLocationInfo(gsUriPath);
       try {
-        // Only the bucket has been given, with no subdir.
-        if (bucketSplit.length == 1) {
-          // Check if the bucket exists by calling a list.
-          // If the bucket exists, the call will return nothing,
-          // If the creds are incorrect, it will throw an exception
-          // saying no access.
-          storage.list(bucketName);
-        } else {
-          Page<Blob> blobs =
-              storage.list(
-                  bucketName,
-                  Storage.BlobListOption.prefix(prefix),
-                  Storage.BlobListOption.currentDirectory());
-          blobError = !blobs.getValues().iterator().hasNext();
-        }
+        gcpUtil.validateOnBucket(storage, locationInfo.bucket, locationInfo.cloudPath, permissions);
       } catch (StorageException exp) {
         throwBeanValidatorError(fieldName, exp.getMessage());
-      } catch (Exception e) {
-        String exceptionMsg = "Invalid GCP Credentials Json.";
-        throwBeanValidatorError(fieldName, exceptionMsg);
-      }
-
-      if (blobError) {
-        String exceptionMsg = "GS Uri path " + gsUriPath + " doesn't exist";
-        throwBeanValidatorError(fieldName, exceptionMsg);
       }
     }
   }
