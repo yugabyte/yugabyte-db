@@ -122,7 +122,7 @@ To create an interface endpoint to connect to your cluster PSE, do the following
 
 1. Under **Subnets**, select the subnets (Availability Zones) to use.
 
-    At least one of the subnets should match the zones in your cluster. The endpoint service can only connect from a subnet in the same availability zone as the PSE; if there isn't a subnet in the same zone, create one. Always verify the [Availability Zone ID](https://docs.aws.amazon.com/ram/latest/userguide/working-with-az-ids.html) as availability zone names can vary across different accounts.
+    At least one of the subnets should match the zones in your cluster. The endpoint service can only connect from a subnet in the same availability zone as the PSE; if there isn't a subnet in the same zone, [create one](https://docs.aws.amazon.com/vpc/latest/userguide/create-subnets.html). Always verify the [Availability Zone ID](https://docs.aws.amazon.com/ram/latest/userguide/working-with-az-ids.html) as availability zone names can vary across different accounts.
 
 1. Under **Security groups**, select the security groups to associate with the endpoint network interfaces.
 
@@ -229,7 +229,7 @@ Replace values as follows:
 
 - `application_vpc_id` - ID of the AWS VPC. Find this value on the VPC dashboard in your AWS account.
 - `pse_service_name` - service name of your PSE, which you noted down when creating the PSE.
-- `subnet_ids` - the subnet IDs, separated by whitespace, that your AWS VPC uses. You can also find these values under **Subnets** in your AWS VPC console. The endpoint service can connect only from a subnet in the same availability zone as the PSE. If there isn't a subnet in the same zone, create one. Always verify the [Availability Zone ID](https://docs.aws.amazon.com/ram/latest/userguide/working-with-az-ids.html) as availability zone names can vary across different accounts.
+- `subnet_ids` - the subnet IDs, separated by whitespace, that your AWS VPC uses. You can also find these values under **Subnets** in your AWS VPC console. The endpoint service can connect only from a subnet in the same availability zone as the PSE. If there isn't a subnet in the same zone, [create one](https://docs.aws.amazon.com/vpc/latest/userguide/create-subnets.html). Always verify the [Availability Zone ID](https://docs.aws.amazon.com/ram/latest/userguide/working-with-az-ids.html) as availability zone names can vary across different accounts.
 - `endpoint_security_group_id` - the security group ID of the endpoint
 
 ## Next steps
