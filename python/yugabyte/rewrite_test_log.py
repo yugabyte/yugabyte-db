@@ -166,11 +166,9 @@ class LogRewriter:
 
     def add_propagated_msg(self, fmt: str, *args: Any) -> None:
         """
-        Add a message printed to the log of this script and also appended to the resulting log file
-        itself so we can discover issues with this script.
+        Add a message appended to the resulting log file itself.
         """
         msg: str = fmt % args
-        logging.info(msg)
         self.propagated_messages.append(msg)
 
     def get_egrep_cmd_line(
