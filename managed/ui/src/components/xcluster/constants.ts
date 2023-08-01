@@ -77,7 +77,7 @@ export const XClusterTableEligibility = {
   // Ineligible statuses:
   // Ineligible - The table in use in another xCluster config
   INELIGIBLE_IN_USE: 'ineligibleInUse',
-  // Inenligible - No table with a matching indentifier (keyspace, table and schema name)
+  // Inenligible - No table with a matching identifier (keyspace, table and schema name)
   //               exists in the target universe
   INELIGIBLE_NO_MATCH: 'ineligibleNoMatch',
 
