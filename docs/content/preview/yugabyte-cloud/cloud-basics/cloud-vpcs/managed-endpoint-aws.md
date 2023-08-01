@@ -201,6 +201,8 @@ Replace values as follows:
 
 #### Create a VPC interface endpoint
 
+Note that the endpoint service can connect only from a subnet in the same availability zone as the PSE. If there isn't a subnet, create one in the same availability zone as the PSE.
+
 Obtain the [subnet](https://docs.aws.amazon.com/vpc/latest/userguide/modify-subnets.html) IDs of the application VPC, as follows:
 
 ```sh
