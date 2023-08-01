@@ -32,6 +32,44 @@
       },
       "type" : "object"
     },
+    "AWSCloudWatchConfig" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/TelemetryProviderConfig"
+      }, {
+        "description" : "AWSCloudWatchConfig Config",
+        "properties" : {
+          "accessKey" : {
+            "description" : "Access Key",
+            "type" : "string"
+          },
+          "endpoint" : {
+            "description" : "End Point",
+            "type" : "string"
+          },
+          "logGroup" : {
+            "description" : "Log Group",
+            "type" : "string"
+          },
+          "logStream" : {
+            "description" : "Log Stream",
+            "type" : "string"
+          },
+          "region" : {
+            "description" : "Region",
+            "type" : "string"
+          },
+          "roleARN" : {
+            "description" : "Role ARN",
+            "type" : "string"
+          },
+          "secretKey" : {
+            "description" : "Secret Key",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      } ]
+    },
     "AWSRegionCloudInfo" : {
       "properties" : {
         "arch" : {
@@ -1288,7 +1326,7 @@
       "properties" : {
         "action" : {
           "description" : "Action",
-          "enum" : [ "Set", "Create", "Edit", "Update", "Delete", "Register", "Refresh", "Upload", "Upgrade", "Import", "Pause", "Resume", "Restart", "Abort", "Retry", "Restore", "Alter", "Drop", "Stop", "Validate", "Acknowledge", "SyncXClusterConfig", "Login", "ApiLogin", "Promote", "Bootstrap", "Configure", "UpdateOptions", "UpdateLoadBalancerConfig", "RefreshPricing", "UpgradeSoftware", "UpgradeGFlags", "UpgradeKubernetesOverrides", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "RebootUniverse", "ResizeNode", "AddMetrics", "CreateKubernetes", "SetupDocker", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "UpsertCustomerFeatures", "CreateSelfSignedCert", "UpdateEmptyCustomerCertificate", "GetRootCertificate", "AddClientCertificate", "SetDBCredentials", "CreateUserInDB", "CreateRestrictedUserInDB", "DropUserInDB", "SetHelm3Compatible", "SetBackupFlag", "SetUniverseKey", "ResetUniverseVersion", "ConfigUniverseAlert", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "BulkImport", "CreateBackup", "RestoreBackup", "CreateSingleTableBackup", "CreateMultiTableBackup", "CreateBackupSchedule", "CreatePitrConfig", "RestoreSnapshotSchedule", "DeletePitrConfig", "EditBackupSchedule", "StartPeriodicBackup", "StopPeriodicBackup", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "ChangeUserRole", "ChangeUserPassword", "SetSecurity", "GenerateApiToken", "ResetSlowQueries", "ExternalScriptSchedule", "StopScheduledScript", "UpdateScheduledScript", "CreateInstanceType", "DeleteInstanceType", "GetUniverseResources", "ThirdpartySoftwareUpgrade", "CreateTableSpaces", "CreateHook", "DeleteHook", "UpdateHook", "CreateHookScope", "DeleteHookScope", "AddHook", "RemoveHook", "RotateAccessKey", "CreateAndRotateAccessKey", "RunHook", "RunApiTriggeredHooks", "AddNodeAgent", "UpdateNodeAgent", "DeleteNodeAgent", "DisableYbc", "UpgradeYbc", "InstallYbc", "SetThrottleParams", "CreateImageBundle", "DeleteImageBundle", "EditImageBundle", "Export", "DeleteMetadata", "Unlock" ],
+          "enum" : [ "Set", "Create", "Edit", "Update", "Delete", "Register", "Refresh", "Upload", "Upgrade", "Import", "Pause", "Resume", "Restart", "Abort", "Retry", "Restore", "Alter", "Drop", "Stop", "Validate", "Acknowledge", "SyncXClusterConfig", "Login", "ApiLogin", "Promote", "Bootstrap", "Configure", "UpdateOptions", "UpdateLoadBalancerConfig", "RefreshPricing", "UpgradeSoftware", "UpgradeGFlags", "CreateTelemetryConfig", "DeleteTelemetryConfig", "UpgradeKubernetesOverrides", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "RebootUniverse", "ResizeNode", "AddMetrics", "CreateKubernetes", "SetupDocker", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "UpsertCustomerFeatures", "CreateSelfSignedCert", "UpdateEmptyCustomerCertificate", "GetRootCertificate", "AddClientCertificate", "SetDBCredentials", "CreateUserInDB", "CreateRestrictedUserInDB", "DropUserInDB", "SetHelm3Compatible", "SetBackupFlag", "SetUniverseKey", "ResetUniverseVersion", "ConfigUniverseAlert", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "BulkImport", "CreateBackup", "RestoreBackup", "CreateSingleTableBackup", "CreateMultiTableBackup", "CreateBackupSchedule", "CreatePitrConfig", "RestoreSnapshotSchedule", "DeletePitrConfig", "EditBackupSchedule", "StartPeriodicBackup", "StopPeriodicBackup", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "ChangeUserRole", "ChangeUserPassword", "SetSecurity", "GenerateApiToken", "ResetSlowQueries", "ExternalScriptSchedule", "StopScheduledScript", "UpdateScheduledScript", "CreateInstanceType", "DeleteInstanceType", "GetUniverseResources", "ThirdpartySoftwareUpgrade", "CreateTableSpaces", "CreateHook", "DeleteHook", "UpdateHook", "CreateHookScope", "DeleteHookScope", "AddHook", "RemoveHook", "RotateAccessKey", "CreateAndRotateAccessKey", "RunHook", "RunApiTriggeredHooks", "AddNodeAgent", "UpdateNodeAgent", "DeleteNodeAgent", "DisableYbc", "UpgradeYbc", "InstallYbc", "SetThrottleParams", "CreateImageBundle", "DeleteImageBundle", "EditImageBundle", "Export", "DeleteMetadata", "Unlock" ],
           "example" : "Create User",
           "readOnly" : true,
           "type" : "string"
@@ -1329,7 +1367,7 @@
         },
         "target" : {
           "description" : "Target",
-          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "CustomCACertificate", "Alert", "AlertTemplateSettings", "AlertTemplateVariables", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "DrConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun", "Role", "RoleBinding" ],
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "CustomCACertificate", "Alert", "AlertTemplateSettings", "AlertTemplateVariables", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "DrConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "TelemetryProvider", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun", "Role", "RoleBinding" ],
           "example" : "User",
           "readOnly" : true,
           "type" : "string"
@@ -4227,6 +4265,24 @@
       },
       "type" : "object"
     },
+    "DataDogConfig" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/TelemetryProviderConfig"
+      }, {
+        "description" : "DataDog Config",
+        "properties" : {
+          "apiKey" : {
+            "description" : "API Key",
+            "type" : "string"
+          },
+          "site" : {
+            "description" : "Site",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      } ]
+    },
     "DatabaseSecurityFormData" : {
       "description" : "Database security properties",
       "properties" : {
@@ -4581,6 +4637,20 @@
         }
       },
       "type" : "object"
+    },
+    "GCPCloudMonitoringConfig" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/TelemetryProviderConfig"
+      }, {
+        "description" : "GCPCloudMonitoringConfig Config",
+        "properties" : {
+          "project" : {
+            "description" : "Project",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      } ]
     },
     "GCPRegionCloudInfo" : {
       "properties" : {
@@ -10085,6 +10155,36 @@
       },
       "type" : "object"
     },
+    "SplunkConfig" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/TelemetryProviderConfig"
+      }, {
+        "description" : "Splunk Config",
+        "properties" : {
+          "endpoint" : {
+            "description" : "End Point",
+            "type" : "string"
+          },
+          "index" : {
+            "description" : "Index",
+            "type" : "string"
+          },
+          "source" : {
+            "description" : "Source",
+            "type" : "string"
+          },
+          "sourceType" : {
+            "description" : "Source Type",
+            "type" : "string"
+          },
+          "token" : {
+            "description" : "Token",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      } ]
+    },
     "StateChangeAuditInfo" : {
       "properties" : {
         "customerId" : {
@@ -10778,6 +10878,66 @@
         }
       },
       "required" : [ "name", "placementBlocks" ],
+      "type" : "object"
+    },
+    "TelemetryProvider" : {
+      "description" : "Telemetry Provider Model",
+      "properties" : {
+        "config" : {
+          "$ref" : "#/definitions/TelemetryProviderConfig",
+          "description" : "configuration"
+        },
+        "createTime" : {
+          "description" : "Creation timestamp",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "customerUuid" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "name" : {
+          "description" : "Name",
+          "type" : "string"
+        },
+        "tags" : {
+          "additionalProperties" : {
+            "type" : "string"
+          },
+          "description" : "Extra Tags",
+          "type" : "object"
+        },
+        "updateTime" : {
+          "description" : "Updation timestamp",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "Telemetry Provider UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        }
+      },
+      "required" : [ "config", "customerUuid", "name", "tags", "uuid" ],
+      "type" : "object"
+    },
+    "TelemetryProviderConfig" : {
+      "description" : "Telemetry Provider Configuration",
+      "discriminator" : "type",
+      "properties" : {
+        "type" : {
+          "description" : "Telemetry Provider Type",
+          "enum" : [ "DATA_DOG", "SPLUNK", "AWS_CLOUDWATCH", "GCP_CLOUD_MONITORING" ],
+          "type" : "string"
+        }
+      },
       "type" : "object"
     },
     "ThirdpartySoftwareUpgradeParams" : {
@@ -20469,6 +20629,136 @@
         "tags" : [ "Customer Tasks" ]
       }
     },
+    "/api/v1/customers/{cUUID}/telemetry_provider" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "listAllTelemetryProviders",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/TelemetryProvider"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List All Telemetry Providers",
+        "tags" : [ "Telemetry Provider" ]
+      },
+      "post" : {
+        "description" : "",
+        "operationId" : "createTelemetry",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "in" : "body",
+          "name" : "providerData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/TelemetryProvider"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/TelemetryProvider"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Create Telemetry Provider",
+        "tags" : [ "Telemetry Provider" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/telemetry_provider/{intUUID}" : {
+      "delete" : {
+        "description" : "",
+        "operationId" : "deleteTelemetryProvider",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "intUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Delete a telemetry provider",
+        "tags" : [ "Telemetry Provider" ]
+      },
+      "get" : {
+        "description" : "",
+        "operationId" : "getTelemetryProvider",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "intUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/TelemetryProvider"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get Telemetry Provider",
+        "tags" : [ "Telemetry Provider" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/universes" : {
       "get" : {
         "description" : "",
@@ -25294,6 +25584,8 @@
     "name" : "Table management"
   }, {
     "name" : "Tablet server management"
+  }, {
+    "name" : "Telemetry Provider"
   }, {
     "name" : "Universe Upgrades Management"
   }, {

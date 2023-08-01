@@ -595,3 +595,9 @@ DELETE /customers/:cUUID/rbac/role/:rUUID                                      c
 # RoleBinding APIs
 GET /customers/:cUUID/rbac/role_binding                                        com.yugabyte.yw.controllers.RBACController.listRoleBinding(cUUID: java.util.UUID, userUUID: java.util.UUID ?= null)
 POST /customers/:cUUID/rbac/role_binding/:userUUID                             com.yugabyte.yw.controllers.RBACController.setRoleBindings(cUUID: java.util.UUID, userUUID: java.util.UUID, request: Request)
+
+# Telemetry Provider APIs 
+GET /customers/:cUUID/telemetry_provider/:intUUID                              com.yugabyte.yw.controllers.TelemetryProviderController.getTelemetryProvider(cUUID: java.util.UUID, intUUID: java.util.UUID)
+GET /customers/:cUUID/telemetry_provider                                       com.yugabyte.yw.controllers.TelemetryProviderController.listTelemetryProviders(cUUID: java.util.UUID)
+POST /customers/:cUUID/telemetry_provider                                      com.yugabyte.yw.controllers.TelemetryProviderController.createTelemetryProvider(cUUID: java.util.UUID, request: Request)
+DELETE /customers/:cUUID/telemetry_provider/:intUUID                           com.yugabyte.yw.controllers.TelemetryProviderController.deleteTelemetryProvider(cUUID: java.util.UUID, intUUID: java.util.UUID, request: Request)
