@@ -527,7 +527,9 @@ public enum TaskType {
 
   YBCBackupSucceeded(com.yugabyte.yw.commissioner.tasks.subtasks.YBCBackupSucceeded.class),
 
-  CloudProviderEdit(com.yugabyte.yw.commissioner.tasks.CloudProviderEdit.class);
+  CloudProviderEdit(com.yugabyte.yw.commissioner.tasks.CloudProviderEdit.class),
+
+  ReprovisionNode(com.yugabyte.yw.commissioner.tasks.ReprovisionNode.class);
 
   private final Class<? extends ITask> taskClass;
 
