@@ -156,6 +156,8 @@ class SchemaPackingStorage {
     return version_to_schema_packing_.size();
   }
 
+  std::optional<SchemaVersion> SingleSchemaVersion() const;
+
   std::string VersionsToString() const;
 
   bool HasVersionBelow(SchemaVersion version) const;
