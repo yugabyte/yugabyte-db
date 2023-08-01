@@ -509,7 +509,9 @@ public enum TaskType {
 
   CloudProviderEdit(com.yugabyte.yw.commissioner.tasks.CloudProviderEdit.class),
 
-  CreateBackupSchedule(com.yugabyte.yw.commissioner.tasks.CreateBackupSchedule.class);
+  CreateBackupSchedule(com.yugabyte.yw.commissioner.tasks.CreateBackupSchedule.class),
+
+  ReprovisionNode(com.yugabyte.yw.commissioner.tasks.ReprovisionNode.class);
 
   private final Class<? extends ITask> taskClass;
 

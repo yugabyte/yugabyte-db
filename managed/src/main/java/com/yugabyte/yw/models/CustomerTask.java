@@ -297,7 +297,10 @@ public class CustomerTask extends Model {
     DisableYbc,
 
     @EnumValue("CreateImageBundle")
-    CreateImageBundle;
+    CreateImageBundle,
+
+    @EnumValue("ReprovisionNode")
+    ReprovisionNode;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -429,6 +432,8 @@ public class CustomerTask extends Model {
           return completed ? "Disabled Ybc" : "Disabling Ybc";
         case CreateImageBundle:
           return completed ? "Created" : "Creating";
+        case ReprovisionNode:
+          return completed ? "Reprovisioned" : "Reprovisioning";
         default:
           return null;
       }
@@ -458,6 +463,8 @@ public class CustomerTask extends Model {
           return "Reboot";
         case RestartUniverse:
           return "Restart";
+        case ReprovisionNode:
+          return "Re-provision";
         default:
           return toFriendlyTypeName();
       }
