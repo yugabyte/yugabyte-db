@@ -236,7 +236,7 @@ When provisioning nodes manually, you will follow one of two procedures, dependi
 
 - SSH user has sudo privileges
 
-    Follow the instructions in [Provision nodes using the pre-provisioning script](#provision-nodes-manually-using-the-pre-provisioning-script). You run the pre-provisioning script on each node to install the YugabyteDB siftware and node agent.
+    Follow the instructions in [Provision nodes using the pre-provisioning script](#provision-nodes-manually-using-the-pre-provisioning-script). You run the pre-provisioning script on each node to install the YugabyteDB software and node agent.
 
 - SSH user does not have sudo privileges |
 
