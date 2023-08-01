@@ -995,7 +995,7 @@ yb-admin \
 
 {{< note title="Note" >}}
 
-The *keyspace* and the *table* can be different from the exported one.
+The *keyspace* can be different from the exported one. The name of the table needs to be the same.
 
 {{< /note >}}
 
