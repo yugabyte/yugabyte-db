@@ -17,6 +17,8 @@ Clusters consist of a primary region and any number of additional secondary regi
 
 Currently, Azure is not supported for partition-by-region clusters (coming soon).
 
+{{< youtube id="9ESTXEa9QZY" title="Create a geo-partitioned cluster in YugabyteDB Managed" >}}
+
 ## Tablespaces
 
 You place data in regions of the cluster using tablespaces. Tables that don't belong to any tablespace are stored in the primary region.

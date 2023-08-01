@@ -18,7 +18,7 @@ Learn how to distribute your entire time-ordered dataset across tablets and retr
 
 {{<cluster-setup-tabs>}}
 
-## Distributing on timestamp
+## Timestamp-based distribution
 
 Consider a speed metrics tracking system that tracks the data from the speed sensor of many cars.
 
@@ -83,7 +83,7 @@ But as the data grows, the tablet splits and one-half moves to a different table
 
 The following section describes how to distribute the ordered data across different tablets.
 
-## Bucketing for distribution
+## Bucket-based distribution
 
 To make sure the ordered data is also distributed, you need to split the data into buckets and distribute the buckets. For this, you would have to modify the table to a `bucketid` field that would have a small range of values and distribute the buckets. For example,
 

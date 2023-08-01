@@ -446,6 +446,10 @@ Status ExternalMiniCluster::Restart() {
 
   RETURN_NOT_OK(WaitForTabletServerCount(tablet_servers_.size(), kTabletServerRegistrationTimeout));
 
+  // Give some more time for the cluster to be ready. If we proceed to run the
+  // unit test prematurely before the master/tserver are fully ready, deadlock
+  // can happen which leads to test flakiness.
+  SleepFor(2s);
   running_ = true;
   return Status::OK();
 }
@@ -1301,6 +1305,10 @@ Status ExternalMiniCluster::WaitForInitDb() {
           return status;
         }
         continue;
+      }
+      LOG_IF(INFO, !status.ok()) << "IsInitDbDone failed: " << status;
+      if (!opts_.allow_crashes_during_init_db && !status.ok() && !masters_[i]->IsProcessAlive()) {
+        return STATUS_FORMAT(RuntimeError, "Master $0 crashed during initdb", i);
       }
       if (resp.has_error() &&
           resp.error().code() != master::MasterErrorPB::NOT_THE_LEADER) {

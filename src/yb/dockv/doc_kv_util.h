@@ -110,6 +110,8 @@ inline std::string ComplementZeroEncodeStr(const Slice& s) {
 //   result - the resulting decoded string
 // Returns OK status if and only if string is properly encoded.
 Status DecodeZeroEncodedStr(Slice* slice, std::string* result);
+Result<const char*> DecodeZeroEncodedStr(const char* begin, const char* end, ValueBuffer* out);
+Result<const char*> SkipZeroEncodedStr(const char* begin, const char* end);
 
 // A version of the above function that ensures the encoding is correct and all characters are
 // consumed.
@@ -124,6 +126,9 @@ Result<std::string> DecodeZeroEncodedStr(const Slice& encoded_str);
 //   result - the resulting decoded string
 // Returns OK status if and only if string is properly encoded.
 Status DecodeComplementZeroEncodedStr(Slice* slice, std::string* result);
+Result<const char*> DecodeComplementZeroEncodedStr(
+    const char* begin, const char* end, ValueBuffer* out);
+Result<const char*> SkipComplementZeroEncodedStr(const char* begin, const char* end);
 
 Result<std::string> DecodeComplementZeroEncodedStr(const Slice& encoded_str);
 

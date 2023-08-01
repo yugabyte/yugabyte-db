@@ -85,7 +85,7 @@ public class CloudProviderApiController extends AuthenticatedController {
     return PlatformResults.withData(provider);
   }
 
-  @ApiOperation(value = "Delete a cloud provider", response = YBPSuccess.class)
+  @ApiOperation(value = "Delete a cloud provider", response = YBPTask.class)
   public Result delete(UUID customerUUID, UUID providerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 

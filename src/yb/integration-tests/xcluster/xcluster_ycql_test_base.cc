@@ -50,6 +50,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/faststring.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
@@ -124,12 +125,20 @@ Status XClusterYcqlTestBase::DoVerifyWrittenRecords(
        cons_client]() -> Result<bool> {
         producer_results = ScanTableToStrings(producer_table, prod_client);
         consumer_results = ScanTableToStrings(consumer_table, cons_client);
+        if (producer_results != consumer_results) {
+          LOG(INFO) << "Intermediate results: Producer records: "
+                    << JoinStrings(producer_results, ",")
+                    << "; Consumer records: " << JoinStrings(consumer_results, ",");
+        }
         return producer_results == consumer_results;
       },
-      MonoDelta::FromSeconds(timeout_secs), "Verify written records");
+      MonoDelta::FromSeconds(timeout_secs),
+      Format(
+          "Verify written records from $0 to $1", producer_table.ToString(),
+          consumer_table.ToString()));
   if (!s.ok()) {
     LOG(ERROR) << "Producer records: " << JoinStrings(producer_results, ",")
-               << ";Consumer records: " << JoinStrings(consumer_results, ",");
+               << "; Consumer records: " << JoinStrings(consumer_results, ",");
   }
   return s;
 }

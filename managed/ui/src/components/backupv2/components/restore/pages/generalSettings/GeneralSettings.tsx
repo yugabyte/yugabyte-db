@@ -9,6 +9,7 @@
 
 import React, { useCallback, useContext, useEffect, useImperativeHandle } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
+import { noop } from 'lodash';
 import { useQuery } from 'react-query';
 import { makeStyles } from '@material-ui/core';
 import { toast } from 'react-toastify';
@@ -108,9 +109,15 @@ export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
   // when the modal's submit button is clicked , save the form values.
   const onNext = useCallback(() => handleSubmit(saveValues)(), [handleSubmit, saveValues]);
 
-  useImperativeHandle(forwardRef, () => ({ onNext }), [onNext]);
+  useImperativeHandle(forwardRef, () => ({ onNext, onPrev: noop }), [onNext]);
 
   const targetUniverseUUID = watch('targetUniverse')?.value;
+
+  useEffect(() => {
+    if (targetUniverseUUID === generalSettings?.targetUniverse?.value) return;
+    methods.setValue('forceKeyspaceRename', false);
+    methods.setValue('renameKeyspace', false);
+  }, [targetUniverseUUID]);
 
   // send the preflight api request , when the user choses the universe
   const { isSuccess } = useQuery(

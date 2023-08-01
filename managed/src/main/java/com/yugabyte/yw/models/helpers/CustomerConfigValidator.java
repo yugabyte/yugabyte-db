@@ -61,7 +61,8 @@ public class CustomerConfigValidator extends BaseBeanValidator {
       BeanValidator beanValidator,
       StorageUtilFactory storageUtilFactory,
       RuntimeConfGetter runtimeConfGetter,
-      AWSUtil awsUtil) {
+      AWSUtil awsUtil,
+      GCPUtil gcpUtil) {
     super(beanValidator);
     this.factory = createCloudFactory();
     this.storageUtilFactory = storageUtilFactory;
@@ -70,10 +71,10 @@ public class CustomerConfigValidator extends BaseBeanValidator {
 
     validators.put(
         CustomerConfigStorageGCSData.class,
-        new CustomerConfigStorageGCSValidator(beanValidator, factory));
+        new CustomerConfigStorageGCSValidator(beanValidator, factory, gcpUtil));
     validators.put(
         CustomerConfigStorageS3Data.class,
-        new CustomerConfigStorageS3Validator(beanValidator, factory, runtimeConfGetter));
+        new CustomerConfigStorageS3Validator(beanValidator, factory, runtimeConfGetter, awsUtil));
     validators.put(
         CustomerConfigStorageNFSData.class, new CustomerConfigStorageNFSValidator(beanValidator));
     validators.put(
@@ -81,7 +82,7 @@ public class CustomerConfigValidator extends BaseBeanValidator {
         new CustomerConfigStorageAzureValidator(beanValidator, factory, storageUtilFactory));
     validators.put(
         CustomerConfigStorageGCSData.class,
-        new CustomerConfigStorageGCSValidator(beanValidator, factory));
+        new CustomerConfigStorageGCSValidator(beanValidator, factory, gcpUtil));
     validators.put(
         CustomerConfigPasswordPolicyData.class,
         new CustomerConfigPasswordPolicyValidator(beanValidator));

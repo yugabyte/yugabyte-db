@@ -64,11 +64,9 @@ For this benchmark, you will set up a three-node YugabyteDB cluster with a repli
 
 We will use the [YugabyteDB Workload Generator](https://github.com/yugabyte/yb-sample-apps) to perform this benchmark.
 
-To get the tool (``yb-sample-apps.jar`), run the following command.
+Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`) as follows:
 
-```sh
-wget 'https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar?raw=true' -O yb-sample-apps.jar
-```
+{{% yb-sample-apps-path %}}
 
 To run the workload generator tool, you must have:
 

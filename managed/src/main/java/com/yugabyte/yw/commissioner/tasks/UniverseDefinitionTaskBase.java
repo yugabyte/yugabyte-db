@@ -29,13 +29,14 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
-import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -615,11 +616,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     createStartMasterProcessTasks(nodeSet);
 
     // Add master to the quorum.
-    createChangeConfigTask(currentNode, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+    createChangeConfigTasks(currentNode, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
 
     if (stoppingNode != null && stoppingNode.isMaster) {
       // Perform master change only after the new master is added.
-      createChangeConfigTask(stoppingNode, false /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+      createChangeConfigTasks(stoppingNode, false /* isAdd */, SubTaskGroupType.ConfigureUniverse);
       if (isStoppable) {
         createStopMasterTasks(Collections.singleton(stoppingNode))
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -693,7 +694,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     NodeDetails newMasterNode = replacementSupplier.get();
     if (newMasterNode == null) {
       log.info("No eligible node found to move master from node {}", currentNode.getNodeName());
-      createChangeConfigTask(
+      createChangeConfigTasks(
           currentNode, false /* isAdd */, SubTaskGroupType.StoppingNodeProcesses);
       // Stop the master process on this node after this current master is removed.
       if (isStoppable) {
@@ -1756,7 +1757,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param taskParams the given task params(details).
    */
   public void updateTaskDetailsInDB(UniverseDefinitionTaskParams taskParams) {
-    getRunnableTask().setTaskDetails(RedactingService.filterSecretFields(Json.toJson(taskParams)));
+    getRunnableTask()
+        .setTaskDetails(
+            RedactingService.filterSecretFields(Json.toJson(taskParams), RedactionTarget.APIS));
   }
 
   /**

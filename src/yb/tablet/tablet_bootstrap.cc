@@ -474,12 +474,6 @@ bool WriteOpHasTransaction(const consensus::LWReplicateMsg& replicate) {
   if (write_batch.has_transaction()) {
     return true;
   }
-  if (write_batch.enable_replicate_transaction_status_table()) {
-    // For external write batches, multiple transactions are grouped into the same batch and so
-    // the transaction field is not set. Instead, use the enable_replicate_transaction_status_table
-    // flag to indicate that this is an external transactional batch.
-    return true;
-  }
   for (const auto& pair : write_batch.write_pairs()) {
     if (!pair.key().empty() && pair.key()[0] == dockv::KeyEntryTypeAsChar::kExternalTransactionId) {
       return true;

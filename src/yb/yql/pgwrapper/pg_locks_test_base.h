@@ -19,6 +19,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
@@ -60,6 +61,9 @@ class PgLocksTestBase : public client::GeoTransactionsTestBase {
   Result<TabletId> GetSingularStatusTablet();
 
   Result<TabletId> CreateTableAndGetTabletId(const string& table_name);
+
+  Result<tserver::GetOldTransactionsResponsePB> GetOldTransactions(
+      const TabletId& status_tablet, uint32_t min_txn_age_ms, uint32_t max_num_txns);
 
   // GetLockStatus helper that hits the pg_client_service endpoint.
   Result<tserver::PgGetLockStatusResponsePB> GetLockStatus(

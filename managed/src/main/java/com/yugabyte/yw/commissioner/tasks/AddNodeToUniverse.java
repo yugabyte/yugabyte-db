@@ -211,7 +211,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         createStartMasterTasks(nodeSet).setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
         // Add it into the master quorum.
-        createChangeConfigTask(currentNode, true, SubTaskGroupType.StartingNodeProcesses);
+        createChangeConfigTasks(currentNode, true, SubTaskGroupType.StartingNodeProcesses);
 
         // Mark node as a master in YW DB.
         // Do this last so that master addresses does not pick up current node.

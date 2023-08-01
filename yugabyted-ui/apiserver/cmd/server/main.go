@@ -94,7 +94,7 @@ func main() {
 
         // We keep a map of pgx connections since we need to
         // connect to all nodes (sql) for slow_queries
-        pgxConnMap := map[string]*pgxpool.Pool{}
+        pgxConnMap := map[helpers.PgClientConnectionParams]*pgxpool.Pool{}
 
         // We don't actually need a pgx connection at startup
         // The only place we use pgx connection is in slow_queries
@@ -129,6 +129,7 @@ func main() {
         defer c.Cleanup()
 
         // Middleware
+        e.Use(middleware.CORS())
         e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
                 LogErrorFunc: func(c echo.Context, err error, stack []byte) error {
                         log.Errorf("[PANIC RECOVER] %v %s\n", err, stack)

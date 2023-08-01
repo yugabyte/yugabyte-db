@@ -19,6 +19,7 @@ import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.Storage.BlobListOption;
 import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.BeanValidator;
+import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
@@ -42,9 +43,9 @@ import java.util.List;
 public class StubbedCustomerConfigValidator extends CustomerConfigValidator
     implements CloudClientsFactory {
 
-  private final AmazonS3Client s3Client = mock(AmazonS3Client.class);
+  public final AmazonS3Client s3Client = mock(AmazonS3Client.class);
 
-  private final Storage gcpStorage = mock(Storage.class);
+  public final Storage gcpStorage = mock(Storage.class);
 
   public final BlobContainerClient blobContainerClient = mock(BlobContainerClient.class);
 
@@ -59,8 +60,9 @@ public class StubbedCustomerConfigValidator extends CustomerConfigValidator
       List<String> allowedBuckets,
       StorageUtilFactory storageUtilFactory,
       RuntimeConfGetter runtimeConfGetter,
-      AWSUtil awsUtil) {
-    super(beanValidator, storageUtilFactory, runtimeConfGetter, awsUtil);
+      AWSUtil awsUtil,
+      GCPUtil gcpUtil) {
+    super(beanValidator, storageUtilFactory, runtimeConfGetter, awsUtil, gcpUtil);
 
     lenient()
         .when(s3Client.doesBucketExistV2(any(String.class)))
@@ -111,7 +113,6 @@ public class StubbedCustomerConfigValidator extends CustomerConfigValidator
               }
               return mock(Page.class);
             });
-    lenient().when(blobContainerClient.exists()).thenReturn(true);
   }
 
   @Override

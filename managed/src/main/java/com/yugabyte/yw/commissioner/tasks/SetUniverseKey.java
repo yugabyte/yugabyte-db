@@ -13,9 +13,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -71,25 +69,6 @@ public class SetUniverseKey extends UniverseTaskBase {
           "Successfully set EAR status {} for universe {} in the DB nodes.",
           taskParams().encryptionAtRestConfig.opType.name(),
           taskParams().getUniverseUUID());
-
-      // Update the state of the universe EAR to the intended state only if above tasks run without
-      // any error.
-      saveUniverseDetails(
-          u -> {
-            log.info(
-                "Setting EAR status to {} for universe {} in the universe details.",
-                taskParams().encryptionAtRestConfig.opType.name(),
-                u.getUniverseUUID());
-            UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
-            universeDetails.encryptionAtRestConfig = taskParams().encryptionAtRestConfig;
-            universeDetails.encryptionAtRestConfig.encryptionAtRestEnabled =
-                taskParams().encryptionAtRestConfig.opType.equals(OpType.ENABLE);
-            u.setUniverseDetails(universeDetails);
-            log.info(
-                "Successfully set EAR status {} for universe {} in the universe details.",
-                taskParams().encryptionAtRestConfig.opType.name(),
-                taskParams().getUniverseUUID());
-          });
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;

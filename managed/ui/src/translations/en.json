@@ -24,7 +24,8 @@
       "wrong": "Something went wrong.",
       "areYouSure": "Are you sure ?",
       "delete": "Delete",
-      "back": "Back"
+      "back": "Back",
+      "selectAll": "Select All"
     },
     "universeActions": {
       "encryptionAtRest": {
@@ -222,13 +223,21 @@
         "inheritRRModalBody": "Apply the same Flags to both Primary Cluster and Read replica? <br /> This will override all the Flags that are currently applied to Read replica<br /> by Primary Cluster’s Flag.",
         "inheritRRModalConfirmMsg": "Are you sure you want to continue with the changes?",
         "validationError": "Fix all the errors shown below to proceed",
-        "hbaLDAPConflocal": "local database user auth-method [auth-options]",
+        "hbaLDAPConfLocal": "local database user auth-method [auth-options]",
         "hbaLDAPConfHost": "host database user address auth-method [auth-options]",
         "hbaLDAPConfHostSSL": "hostssl database user IP-address auth-method [auth-options]",
+        "identConfLocal": "map-name idp-user/group/role database-username",
         "InvalidLDAPKey": "Invalid LDAP key or missing '=' between key value pair",
         "LDAPMissingAttributeValue": "Missing value for the attribute",
         "LDAPMissingQuote": "Attribute value should be enclosed in quotes",
-        "nonASCIIDetected": "Non-ASCII value detected"
+        "nonASCIIDetected": "Non-ASCII value detected",
+        "hbaConfDescription": "Input each record as a new row, then reorder them. The sequential order of the records are significant as they are searched serially for every connection request.",
+        "identConfDescriptionFirst": "The flag's configuration follows ",
+        "identConfPostgreSQL": "PostgreSQL. ",
+        "identConfDescriptionSecond": "Enter each mapping as a new row, comprising the map-name, external user name, and database user name. ",
+        "identConfDescriptionMore": "To incorporate user name mappings from this flag, add them to the authentication methods that use external user names in hba_conf_csv file. ",
+        "readMore": "Read More",
+        "readLess": "Read Less"
       },
       "helmOverrides": {
         "addK8sOverrides": "Add Kubernetes Overrides",
@@ -533,6 +542,14 @@
       "unreachableInstanceAgents": "Instance agents are unreachable",
       "contactSupport": "Contact Support"
     },
+    "OIDCJWT": {
+      "emailId": "Email ID",
+      "OIDCJWTToken": "JSON Web Token",
+      "errorMessage":"Oops, JWT Token has expired, please login via SSO",
+      "redirectLinkText": "Back to home page",
+      "expirationDate": "Token Expiration Date",
+      "ysqlCommandLabel": "Use the following command to authenticate into your database using a JSON web token."
+    },
     "universeSelector": {
       "all": "All Universes",
       "errorMessage": "Failed to fetch list of universes"
@@ -562,7 +579,7 @@
         "certNameTitle": "Name your CA Certificate",
         "save": "Save CA Certificate",
         "uploadBtnText": "Upload CA Certificate",
-        "uploadBtnSubText": "Upload certificate from private third-party Certificate Authority (CA) or self-signed certificate.\nOnly .crt file allowed.",
+        "uploadBtnSubText": "Upload certificate from private third-party Certificate Authority (CA) or self-signed certificate.",
         "successMsg": "Certificate updated successfully"
       },
       "deleteCACertModal": {
@@ -644,6 +661,61 @@
         "generalSettings": "General Settings",
         "selectTables": "Select Tables",
         "renameKeyspaces": "Rename keyspace/s"
+      }
+    },
+    "rbac": {
+      "roles": {
+        "create": {
+          "title": "Add a role",
+          "edit": "Edit a role",
+          "form": {
+            "name": "Name",
+            "namePlaceholder": "Role Name",
+            "description": "Description (Optional)",
+            "descriptionPlaceholder": "Role description",
+            "selectPermissions": "Select Permissions",
+            "selectPermissionSubText": "Select the permissions you want to include in this role.",
+            "permissions": "Permissions",
+            "editSelection": "Edit Selection"
+          },
+          "successMsg": "\"{{role_name}}\" role was created successfully",
+          "editSuccessMsg": "\"{{role_name}}\" role was edited successfully"
+        },
+        "list": {
+          "rowsCount": "{{count}} Roles",
+          "createRole": "Create Role",
+          "search": "Search by role name",
+          "table": {
+            "name": "Name",
+            "description": "Description",
+            "type": "Type",
+            "users": "Users",
+            "actions":"Actions",
+            "moreActions": {
+              "editRole": "Edit Role",
+              "cloneRole": "Clone Role",
+              "viewUsers": "View assigned users",
+              "deleteRole": "Delete Role"
+            }
+          }
+        },
+        "delete": {
+          "title": "Delete Role",
+          "errMsg" : "This operation will delete the following role:<br/><bold>“{{role_name}}”</bold><br/>Enter the role name to continue.",
+          "successMsg": "\"{{role_name}}\" role was deleted successfully"
+        },
+        "edit": {
+          "menu": {
+            "configurations": "Configurations",
+            "users": "Users"
+          },
+          "title": "Edit Role"
+        }
+      },
+      "permissions": {
+        "selectPermissionModal": {
+          "title": "Select Permissions"
+        }
       }
     }
   }

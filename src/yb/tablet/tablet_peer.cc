@@ -243,7 +243,7 @@ Status TabletPeer::InitTabletPeer(
 
     tablet->SetMemTableFlushFilterFactory([log] {
       auto largest_log_op_index = log->GetLatestEntryOpId().index;
-      return [largest_log_op_index] (const rocksdb::MemTable& memtable) -> Result<bool> {
+      return [largest_log_op_index] (const rocksdb::MemTable& memtable, bool) -> Result<bool> {
         auto frontiers = memtable.Frontiers();
         if (frontiers) {
           const auto largest_memtable_op_index =
@@ -680,7 +680,7 @@ void TabletPeer::WriteAsync(std::unique_ptr<WriteQuery> query) {
 }
 
 Result<HybridTime> TabletPeer::ReportReadRestart() {
-  tablet_->metrics()->restart_read_requests->Increment();
+  tablet_->metrics()->Increment(TabletCounters::kRestartReadRequests);
   return tablet_->SafeTime(RequireLease::kTrue);
 }
 

@@ -13,11 +13,15 @@
 
 #include "yb/dockv/pg_row.h"
 
+#include "yb/common/constants.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 #include "yb/common/types.h"
 
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/reader_projection.h"
+#include "yb/dockv/value_packing.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/util/decimal.h"
@@ -155,137 +159,54 @@ Status DoDecodeValue(
       value_type, Slice(original_start, slice.end()).ToDebugHexString(), data_type);
 }
 
-Result<const char*> ExtractPrefix(Slice* slice, size_t required, const char* name) {
-  RSTATUS_DCHECK_GE(
-      slice->size(), required, Corruption,
-      Format("Not enough bytes to decode a $0", name));
-  auto result = slice->cdata();
-  slice->remove_prefix(required);
-  return result;
-}
-
-Status DoDecodeKey(
-    Slice* slice, DataType data_type,
-    bool* is_null, PgValueDatum* value, ValueBuffer* buffer) {
-  // A copy for error reporting.
-  const auto input_slice = *slice;
-
-  RSTATUS_DCHECK(!slice->empty(), Corruption, "Cannot decode the key entry from empty slice");
-  auto type = static_cast<KeyEntryType>(slice->consume_byte());
-  if (type == KeyEntryType::kNullLow || type == KeyEntryType::kNullHigh) {
-    *is_null = true;
-    return Status::OK();
+template <class T, bool kLast>
+void EncodePrimitive(const PgTableRow& row, WriteBuffer* buffer, const PgWireEncoderEntry* chain) {
+  auto index = chain->data;
+  if (PREDICT_FALSE(row.IsNull(index))) {
+    buffer->PushBack(1);
+    CallNextEncoder<kLast>(row, buffer, chain);
+    return;
   }
 
-  *is_null = false;
+  auto datum = row.GetPrimitiveDatum(index);
+  auto value = LoadRaw<T, BigEndian>(&datum);
+  buffer->AppendWithPrefix(0, pointer_cast<const char*>(&value), sizeof(value));
+  CallNextEncoder<kLast>(row, buffer, chain);
+}
 
-  switch (type) {
-    case KeyEntryType::kFalse: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kFalseDescending:
-      *value = 0;
-      return Status::OK();
-    case KeyEntryType::kTrue: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kTrueDescending:
-      *value = 1;
-      return Status::OK();
-
-    case KeyEntryType::kCollStringDescending: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kStringDescending: {
-      *value = buffer->size();
-      std::string result;
-      RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &result)); // TODO GH #17267
-      AppendString(result, buffer, data_type != DataType::BINARY);
-      return Status::OK();
-    }
-
-    case KeyEntryType::kCollString: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kString: {
-      *value = buffer->size();
-      std::string result;
-      RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &result)); // TODO GH #17267
-      AppendString(result, buffer, data_type != DataType::BINARY);
-      return Status::OK();
-    }
-    case KeyEntryType::kDecimalDescending: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kDecimal: {
-      *value = buffer->size();
-      util::Decimal decimal;
-      size_t num_decoded_bytes = 0;
-      RETURN_NOT_OK(decimal.DecodeFromComparable(*slice, &num_decoded_bytes));
-      slice->remove_prefix(num_decoded_bytes);
-
-      if (type == KeyEntryType::kDecimalDescending) {
-        // When we encode a descending decimal, we do a bitwise negation of each byte, which changes
-        // the sign of the number. This way we reverse the sorting order. decimal.Negate() restores
-        // the original sign of the number.
-        decimal.Negate();
-      }
-      AppendString(decimal.EncodeToComparable(), buffer, true);
-      return Status::OK();
-    }
-
-    case KeyEntryType::kInt32Descending: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kInt32: {
-      const auto temp = util::DecodeInt32FromKey(
-          VERIFY_RESULT(ExtractPrefix(slice, sizeof(int32_t), "32-bit integer")));
-      *value = bit_cast<uint32_t>(type == KeyEntryType::kInt32 ? temp : ~temp);
-      return Status::OK();
-    }
-
-    case KeyEntryType::kColocationId: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kSubTransactionId: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kUInt32Descending: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kUInt32: {
-      const auto temp = BigEndian::Load32(VERIFY_RESULT(ExtractPrefix(
-          slice, sizeof(uint32_t), "32-bit unsigned integer")));
-      *value = type != KeyEntryType::kUInt32Descending ? temp : ~temp;
-      return Status::OK();
-    }
-    case KeyEntryType::kUInt64Descending: {
-      *value = ~BigEndian::Load64(VERIFY_RESULT(ExtractPrefix(
-          slice, sizeof(uint64_t), "64-bit unsigned integer")));
-      return Status::OK();
-    }
-    case KeyEntryType::kUInt64:
-      *value = BigEndian::Load64(VERIFY_RESULT(ExtractPrefix(
-          slice, sizeof(uint64_t), "64-bit unsigned integer")));
-      return Status::OK();
-
-    case KeyEntryType::kInt64Descending: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kInt64: {
-      *value = util::DecodeInt64FromKey(
-          VERIFY_RESULT(ExtractPrefix(slice, sizeof(int64_t), "64-bit integer")));
-      if (type == KeyEntryType::kInt64Descending) {
-        *value = ~*value;
-      }
-      return Status::OK();
-    }
-
-    case KeyEntryType::kFloatDescending: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kFloat: {
-      *value = bit_cast<uint32_t>(util::DecodeFloatFromKey(
-          VERIFY_RESULT(ExtractPrefix(slice, sizeof(float), "float")),
-          type == KeyEntryType::kFloatDescending));
-      return Status::OK();
-    }
-
-    case KeyEntryType::kDoubleDescending: FALLTHROUGH_INTENDED;
-    case KeyEntryType::kDouble: {
-      *value = bit_cast<uint64_t>(util::DecodeDoubleFromKey(
-          VERIFY_RESULT(ExtractPrefix(slice, sizeof(double), "double")),
-          type == KeyEntryType::kDoubleDescending));
-      return Status::OK();
-    }
-
-    default:
-      break;
+template <bool kLast>
+void EncodeBinary(const PgTableRow& row, WriteBuffer* buffer, const PgWireEncoderEntry* chain) {
+  auto index = chain->data;
+  if (PREDICT_FALSE(row.IsNull(index))) {
+    buffer->PushBack(1);
+    CallNextEncoder<kLast>(row, buffer, chain);
+    return;
   }
 
-  RSTATUS_DCHECK(
-      false, Corruption,
-      "Cannot decode value type $0 from the key encoding format: $1",
-      type, input_slice.ToDebugString());
+  auto slice = row.GetVarlenSlice(index);
+  buffer->AppendWithPrefix(0, slice);
+  CallNextEncoder<kLast>(row, buffer, chain);
 }
+
+template <bool kLast>
+struct EncoderProvider {
+  template <class T>
+  PgWireEncoder Primitive() const {
+    return EncodePrimitive<T, kLast>;
+  }
+
+  PgWireEncoder Binary() const {
+    return EncodeBinary<kLast>;
+  }
+
+  PgWireEncoder String() const {
+    return Binary();
+  }
+
+  PgWireEncoder Decimal() const {
+    return Binary();
+  }
+};
 
 } // namespace
 
@@ -455,24 +376,13 @@ std::optional<PgValue> PgTableRow::GetValueByIndex(size_t index) const {
   return PgValue(GetDatum(index));
 }
 
-void PgTableRow::AppendValueByIndex(size_t index, WriteBuffer* buffer) const {
-  if (is_null_[index]) {
-    const char kNullMark = 1;
-    buffer->Append(&kNullMark, 1);
-    return;
-  }
-
-  const auto fixed_size = FixedSize(projection_->columns[index].data_type);
-  if (fixed_size) {
-    auto big_endian_value = BigEndian::FromHost64(values_[index]);
-    Slice slice(pointer_cast<const uint8_t*>(&big_endian_value), 8);
-    buffer->AppendWithPrefix(0, slice.Suffix(fixed_size));
-    return;
-  }
-
-  const auto data = pointer_cast<const char*>(buffer_.data()) + values_[index];
-  const auto len = BigEndian::Load64(data);
-  buffer->AppendWithPrefix(0, data, len + 8);
+PgWireEncoderEntry PgTableRow::GetEncoder(size_t index, bool last) const {
+  auto data_type = projection_->columns[index].data_type;
+  return PgWireEncoderEntry {
+    .encoder = !last ? VisitDataType(data_type, EncoderProvider<false>())
+                     : VisitDataType(data_type, EncoderProvider<true>()),
+    .data = index,
+  };
 }
 
 std::optional<PgValue> PgTableRow::GetValueByColumnId(ColumnIdRep column_id) const {
@@ -511,13 +421,6 @@ Status PgTableRow::DecodeValue(size_t column_idx, Slice value) {
       &is_null_[column_idx], &values_[column_idx], &buffer_);
 }
 
-Status PgTableRow::DecodeKey(size_t column_idx, Slice* value) {
-  DCHECK_LT(column_idx, projection_->columns.size());
-  return DoDecodeKey(
-      value, projection_->columns[column_idx].data_type,
-      &is_null_[column_idx], &values_[column_idx], &buffer_);
-}
-
 PgValue PgTableRow::TrimString(size_t idx, size_t skip_prefix, size_t new_len) {
   DCHECK_EQ(projection_->columns[idx].data_type, DataType::STRING);
   auto& value = values_[idx];
@@ -545,6 +448,30 @@ Status PgTableRow::SetValue(ColumnId column_id, const QLValuePB& value) {
     values_[idx] = old_size + pggate::PgWireDataHeader::kSerializedSize;
   }
   return Status::OK();
+}
+
+Result<const char*> PgTableRow::DecodeComparableString(
+    size_t column_idx, const char* input, const char* end, bool append_zero,
+    SortOrder sort_order) {
+  auto old_size = buffer_.size();
+  buffer_.GrowByAtLeast(sizeof(uint64_t));
+  const auto* result = VERIFY_RESULT(sort_order == SortOrder::kAscending
+      ? DecodeZeroEncodedStr(input, end, &buffer_)
+      : DecodeComplementZeroEncodedStr(input, end, &buffer_));
+  if (append_zero) {
+    buffer_.PushBack(0);
+  }
+  BigEndian::Store64(
+      buffer_.mutable_data() + old_size, buffer_.size() - old_size - sizeof(uint64_t));
+  is_null_[column_idx] = false;
+  values_[column_idx] = old_size;
+  return result;
+}
+
+void PgTableRow::SetBinary(size_t column_idx, Slice value, bool append_zero) {
+  is_null_[column_idx] = false;
+  values_[column_idx] = buffer_.size();
+  AppendString(value, &buffer_, append_zero);
 }
 
 }  // namespace yb::dockv

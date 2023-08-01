@@ -4,7 +4,7 @@ create_cast ::= create_cast_with_function
                 | create_cast_with_inout
 
 create_cast_with_function ::= CREATE CAST ( cast_signature ) WITH 
-                              FUNCTION subprogram_name 
+                              FUNCTION  subprogram_name 
                               [ ( subprogram_signature ) ] 
                               [ AS ASSIGNMENT | AS IMPLICIT ]
 

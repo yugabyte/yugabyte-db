@@ -108,6 +108,32 @@ Result<TabletId> PgLocksTestBase::CreateTableAndGetTabletId(const string& table_
   return VERIFY_RESULT(GetSingularTabletOfTable(table_name));
 }
 
+Result<tserver::GetOldTransactionsResponsePB> PgLocksTestBase::GetOldTransactions(
+    const TabletId& status_tablet, uint32_t min_txn_age_ms, uint32_t max_num_txns) {
+  rpc::RpcController controller;
+  controller.set_timeout(kTimeoutMs * 1ms * kTimeMultiplier);
+
+  tserver::GetOldTransactionsRequestPB req;
+  req.set_tablet_id(status_tablet);
+  req.set_min_txn_age_ms(min_txn_age_ms);
+  req.set_max_num_txns(max_num_txns);
+
+  Status s;
+  for (auto& proxy : get_ts_proxies()) {
+    tserver::GetOldTransactionsResponsePB resp;
+    controller.Reset();
+
+    RETURN_NOT_OK(proxy->GetOldTransactions(req, &resp, &controller));
+    if (!resp.has_error()) {
+      return resp;
+    }
+    s = StatusFromPB(resp.error().status()).CloneAndAppend("\n").CloneAndAppend(s.message());
+  }
+
+  return STATUS_FORMAT(IllegalState,
+                       "GetLockStatus request failed: $0", s);
+}
+
 Result<tserver::PgGetLockStatusResponsePB> PgLocksTestBase::GetLockStatus(
     const tserver::PgGetLockStatusRequestPB& req) {
   RSTATUS_DCHECK(!pg_client_service_proxies_.empty(),
@@ -154,7 +180,7 @@ Result<tserver::GetLockStatusResponsePB> PgLocksTestBase::GetLockStatus(
   tserver::GetLockStatusRequestPB req;
   auto& txn_info = (*req.mutable_transactions_by_tablet())[tablet_id];
   for (const auto& txn_id : transactions_ids) {
-    txn_info.add_transaction_ids(txn_id.data(), txn_id.size());
+    txn_info.add_transactions()->set_id(txn_id.data(), txn_id.size());
   }
   return GetLockStatus(req);
 }
@@ -181,10 +207,7 @@ Result<TransactionId> PgLocksTestBase::GetSingularTransactionOnTablet(const Tabl
   RSTATUS_DCHECK(tablet_lock_info.transaction_locks().size() == 1,
                  IllegalState,
                  "Expected to see single transaction, but found more than one.");
-  const auto& it = tablet_lock_info.transaction_locks().begin();
-  std::string txn_id_str = it->first;
-  RSTATUS_DCHECK(!txn_id_str.empty(), IllegalState, "Expected to see one txn, but found none.");
-  return TransactionId::FromString(txn_id_str);
+  return FullyDecodeTransactionId(tablet_lock_info.transaction_locks(0).id());
 }
 
 Result<TransactionId> PgLocksTestBase::OpenTransaction(

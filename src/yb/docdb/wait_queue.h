@@ -74,7 +74,7 @@ class WaitQueue {
   // callback, re-lock the provided locks. If re-locking fails, signal failure to the provided
   // callback.
   Status WaitOn(
-      const TransactionId& waiter, LockBatch* locks,
+      const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
       std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
       uint64_t serial_no, WaitDoneCallback callback);
 
@@ -86,8 +86,8 @@ class WaitQueue {
   // the request is not entered into the wait queue and the callback is never invoked. Returns
   // status in case of some unresolvable error.
   Result<bool> MaybeWaitOnLocks(
-      const TransactionId& waiter, LockBatch* locks, const TabletId& status_tablet_id,
-      uint64_t serial_no, WaitDoneCallback callback);
+      const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
+      const TabletId& status_tablet_id, uint64_t serial_no, WaitDoneCallback callback);
 
   void Poll(HybridTime now);
 
@@ -116,11 +116,11 @@ class WaitQueue {
   void DumpStatusHtml(std::ostream& out);
 
   // Populate tablet_locks_info with awaiting lock information corresponding to waiter transactions
-  // from this wait queue. If transaction_ids is not empty, restrict returned information to locks
-  // which are requested by the given set of transaction_ids.
-  Status GetLockStatus(
-      const std::set<TransactionId>& transaction_ids, SchemaPtr schema_ptr,
-      TabletLockInfoPB* tablet_lock_info) const;
+  // from this wait queue. If transactions is not empty, restrict returned information to locks
+  // which are requested by the given set of transactions.
+  Status GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
+                       const TableInfoProvider& table_info_provider,
+                       TransactionLockInfoManager* lock_info_manager) const;
 
  private:
   class Impl;

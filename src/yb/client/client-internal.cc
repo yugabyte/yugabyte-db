@@ -66,6 +66,7 @@
 #include "yb/gutil/sysinfo.h"
 
 #include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_dcl.proxy.h"
@@ -82,6 +83,7 @@
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/tools/yb-admin_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -265,6 +267,9 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Encryption, GetFullUniverseKeyRegistry);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, AddTransactionStatusTablet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, CreateTransactionStatusTable);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, WaitForYsqlBackendsCatalogVersion);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Backup, CreateSnapshot);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Backup, DeleteSnapshot);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Backup, ListSnapshots);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetIndexBackfillProgress);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTableLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTabletLocations);
@@ -1661,6 +1666,67 @@ void DeleteCDCStreamRpc::ProcessResponse(const Status& status) {
   user_cb_.Run(status);
 }
 
+class CreateSnapshotRpc
+    : public ClientMasterRpc<CreateSnapshotRequestPB, CreateSnapshotResponsePB> {
+ public:
+  CreateSnapshotRpc(YBClient* client, CreateSnapshotCallback user_cb, CoarseTimePoint deadline)
+      : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {}
+
+  Status Init(const std::vector<client::YBTableName>& tables) {
+    SCHECK(!tables.empty(), InvalidArgument, "Table names is empty");
+
+    for (const auto& table : tables) {
+      master::TableIdentifierPB id;
+      table.SetIntoTableIdentifierPB(&id);
+      req_.mutable_tables()->Add()->Swap(&id);
+    }
+    req_.set_transaction_aware(true);
+    return Status::OK();
+  }
+
+  string ToString() const override {
+    return Format("CreateSnapshotRpc(num_attempts: $1)", num_attempts());
+  }
+
+  virtual ~CreateSnapshotRpc() {}
+
+ private:
+  void CallRemoteMethod() override {
+    master_backup_proxy()->CreateSnapshotAsync(
+        req_, &resp_, mutable_retrier()->mutable_controller(),
+        std::bind(&CreateSnapshotRpc::Finished, this, Status::OK()));
+  }
+
+  void ProcessResponse(const Status& status) override {
+    if (!status.ok()) {
+      LOG(WARNING) << ToString() << " failed: " << status.ToString();
+      user_cb_(status);
+      return;
+    }
+
+    auto result = ProcessResponseInternal();
+    if (!result) {
+      LOG(WARNING) << ToString() << " failed: " << result.status().ToString();
+    }
+
+    user_cb_(std::move(result));
+  }
+
+  Result<TxnSnapshotId> ProcessResponseInternal() {
+    if (resp_.has_error()) {
+      return StatusFromPB(resp_.error().status());
+    }
+
+    SCHECK(
+        resp_.has_snapshot_id() && !resp_.snapshot_id().empty(), IllegalState,
+        "Expected non-empty snapshot_id from response");
+
+    return FullyDecodeTxnSnapshotId(resp_.snapshot_id());
+  }
+
+  CreateSnapshotCallback user_cb_;
+};
+
 class BootstrapProducerRpc
     : public ClientMasterRpc<BootstrapProducerRequestPB, BootstrapProducerResponsePB> {
  public:
@@ -2289,6 +2355,8 @@ void YBClient::Data::LeaderMasterDetermined(const Status& status,
       leader_master_hostport_ = host_port;
       master_admin_proxy_ = std::make_shared<master::MasterAdminProxy>(
           proxy_cache_.get(), host_port);
+      master_backup_proxy_ =
+          std::make_shared<master::MasterBackupProxy>(proxy_cache_.get(), host_port);
       master_client_proxy_ = std::make_shared<master::MasterClientProxy>(
           proxy_cache_.get(), host_port);
       master_cluster_proxy_ = std::make_shared<master::MasterClusterProxy>(
@@ -2429,6 +2497,16 @@ Status YBClient::Data::SetMasterAddresses(const string& addrs) {
 Status YBClient::Data::AddMasterAddress(const HostPort& addr) {
   std::lock_guard l(master_server_addrs_lock_);
   master_server_addrs_.push_back(addr.ToString());
+  return Status::OK();
+}
+
+Status YBClient::Data::CreateSnapshot(
+    YBClient* client, const std::vector<YBTableName>& tables, CoarseTimePoint deadline,
+    CreateSnapshotCallback callback) {
+  auto rpc = std::make_shared<internal::CreateSnapshotRpc>(client, std::move(callback), deadline);
+  RETURN_NOT_OK(rpc->Init(tables));
+  rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
+
   return Status::OK();
 }
 
@@ -2632,6 +2710,11 @@ HostPort YBClient::Data::leader_master_hostport() const {
 shared_ptr<master::MasterAdminProxy> YBClient::Data::master_admin_proxy() const {
   std::lock_guard l(leader_master_lock_);
   return master_admin_proxy_;
+}
+
+shared_ptr<master::MasterBackupProxy> YBClient::Data::master_backup_proxy() const {
+  std::lock_guard l(leader_master_lock_);
+  return master_backup_proxy_;
 }
 
 shared_ptr<master::MasterClientProxy> YBClient::Data::master_client_proxy() const {

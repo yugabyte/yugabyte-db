@@ -88,28 +88,35 @@ void SetupKeyValueBatch(const tserver::WriteRequestPB& client_request, LWWritePB
 
 template <class Code, class Resp>
 bool CheckSchemaVersion(
-    TableInfo* table_info, int schema_version, bool compatible_with_previous_version, Code code,
+    TableInfo* table_info, int schema_version,
+    const std::optional<bool>& compatible_with_previous_version, Code code,
     int index, Resp* resp_batch) {
-  if (IsSchemaVersionCompatible(
-          table_info->schema_version, schema_version, compatible_with_previous_version)) {
+  const bool compat = compatible_with_previous_version.has_value() ?
+                      *compatible_with_previous_version : false;
+  if (IsSchemaVersionCompatible(table_info->schema_version, schema_version, compat)) {
     return true;
   }
 
   VLOG(1) << " On " << table_info->table_name
-           << " Setting status for write as YQL_STATUS_SCHEMA_VERSION_MISMATCH tserver's: "
-           << table_info->schema_version << " vs req's : " << schema_version
-           << " is req compatible with prev version: "
-           << compatible_with_previous_version;
+          << " Setting status for write as " << code << " tserver's: "
+          << table_info->schema_version << " vs req's : " << schema_version
+          << " is req compatible with prev version: "
+          << yb::ToString(compatible_with_previous_version);
   while (index >= resp_batch->size()) {
     resp_batch->Add();
   }
   auto resp = resp_batch->Mutable(index);
   resp->Clear();
   resp->set_status(code);
+
+  std::string compat_str;
+  if (compatible_with_previous_version.has_value()) {
+    compat_str = Format(" (compt with prev: $0)", compat);
+  }
   resp->set_error_message(Format(
-      "schema version mismatch for table $0: expected $1, got $2 (compt with prev: $3)",
+      "schema version mismatch for table $0: expected $1, got $2$3",
       table_info->table_id, table_info->schema_version, schema_version,
-      compatible_with_previous_version));
+      compat_str));
   return false;
 }
 
@@ -218,8 +225,8 @@ void WriteQuery::Finished(WriteOperation* operation, const Status& status) {
     TabletMetrics* metrics = tablet->metrics();
     if (metrics) {
       auto op_duration_usec =
-          MonoDelta(CoarseMonoClock::now() - start_time_).ToMicroseconds();
-      metrics->ql_write_latency->Increment(op_duration_usec);
+          make_unsigned(MonoDelta(CoarseMonoClock::now() - start_time_).ToMicroseconds());
+      metrics->Increment(tablet::TabletHistograms::kQlWriteLatency, op_duration_usec);
     }
   }
 
@@ -504,8 +511,7 @@ Status WriteQuery::DoExecute() {
 
   dockv::PartialRangeKeyIntents partial_range_key_intents(metadata.UsePartialRangeKeyIntents());
   prepare_result_ = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
-      doc_ops_, write_batch.read_pairs(), tablet->metrics()->write_lock_latency,
-      tablet->metrics()->failed_batch_lock, isolation_level_, row_mark_type,
+      doc_ops_, write_batch.read_pairs(), tablet->metrics(), isolation_level_, row_mark_type,
       transactional_table, write_batch.has_transaction(), deadline(), partial_range_key_intents,
       tablet->shared_lock_manager()));
 
@@ -538,7 +544,7 @@ Status WriteQuery::DoExecute() {
     return docdb::ResolveOperationConflicts(
         doc_ops_, conflict_management_policy, now, tablet->doc_db(),
         partial_range_key_intents, transaction_participant,
-        tablet->metrics()->transaction_conflicts.get(), &prepare_result_.lock_batch,
+        tablet->metrics(), &prepare_result_.lock_batch,
         wait_queue,
         [this, now](const Result<HybridTime>& result) {
           if (!result.ok()) {
@@ -577,7 +583,7 @@ Status WriteQuery::DoExecute() {
       doc_ops_, conflict_management_policy, write_batch, tablet->clock()->Now(),
       read_time_ ? read_time_.read : HybridTime::kMax,
       tablet->doc_db(), partial_range_key_intents,
-      transaction_participant, tablet->metrics()->transaction_conflicts.get(),
+      transaction_participant, tablet->metrics(),
       &prepare_result_.lock_batch, wait_queue,
       [this](const Result<HybridTime>& result) {
         if (!result.ok()) {
@@ -1057,7 +1063,8 @@ bool WriteQuery::PgsqlCheckSchemaVersion() {
       return false;
     }
     if (!CheckSchemaVersion(
-            table_info->get(), req.schema_version(), /* compatible_with_previous_version= */ false,
+            table_info->get(), req.schema_version(),
+            std::nullopt /* compatible_with_previous_version= */,
             error_code, index, &resp_batch)) {
       ++num_mismatches;
     }

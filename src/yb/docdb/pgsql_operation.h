@@ -27,6 +27,7 @@
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/dockv/doc_key.h"
+#include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
 
 #include "yb/util/operation_counter.h"
@@ -230,7 +231,7 @@ class PgsqlReadOperation : public DocExprExecutor {
   //------------------------------------------------------------------------------------------------
   const PgsqlReadRequestPB& request_;
   const TransactionOperationContext txn_op_context_;
-  boost::container::small_vector<size_t, 0x10> target_index_;
+  boost::container::small_vector<dockv::PgWireEncoderEntry, 0x10> target_encoders_;
   PgsqlResponsePB response_;
   YQLRowwiseIteratorIf::UniPtr table_iter_;
   YQLRowwiseIteratorIf::UniPtr index_iter_;

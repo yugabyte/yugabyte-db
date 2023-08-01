@@ -7,6 +7,7 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 import time
 
+from azure.core.exceptions import HttpResponseError
 from azure.identity import ClientSecretCredential
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
@@ -657,11 +658,13 @@ class AzureCloudAdmin():
                     nic_del.wait()
                     logging.info("[app] Deleted nic {}".format(nic_name))
                     break
-            except CloudError as e:
+            except (CloudError, HttpResponseError) as e:
                 if e.error and e.error.error in ['ResourceNotFound', 'NotFound']:
                     logging.info("[app] Resource nic {} is not found".format(nic_name))
                     break
-                elif e.error and e.error.error == 'NicReservedForAnotherVm':
+                elif e.error and (
+                  (hasattr(e.error, 'error') and e.error.error == 'NicReservedForAnotherVm') or
+                  (hasattr(e.error, 'code') and e.error.code == 'NicReservedForAnotherVm')):
                     # In case VM wasn't created, Azure reserves the NICs for the VMs
                     # for 180 seconds and throws NicReservedForAnotherVm error code,
                     # and suggests to retry after 180 seconds.
@@ -735,8 +738,8 @@ class AzureCloudAdmin():
 
         # Skip OS delete during VM image upgrade so disk can be cloned and remounted.
         if not skip_os_delete:
-            logging.info("[app] Deleting os disk {}".format(os_disk_name))
             os_disk_name = vm.storage_profile.os_disk.name
+            logging.info("[app] Deleting os disk {}".format(os_disk_name))
             disk_del = self.delete_disk(os_disk_name)
             disk_dels[os_disk_name] = disk_del
 

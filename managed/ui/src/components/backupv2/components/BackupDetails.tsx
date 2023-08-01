@@ -105,17 +105,27 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
       }
 
       if (backupDetails!.backupType === TableType.YQL_TABLE_TYPE) {
+
+        const atleastOneTableAvailableForBackup = responseList.every((r) => {
+          if (r.allTables) return true;
+          return r.tableUUIDList?.some((tableUUID) => find(tablesInUniverse, { tableUUID }));
+        });
+
+        if (!atleastOneTableAvailableForBackup) {
+          return Promise.reject({
+            response: {
+              data: { error: `None of selected tables to backup found in the keyspace` }
+            }
+          });
+        }
+
         const allTableAvailableForBackup = responseList.every((r) => {
           if (r.allTables) return true;
           return r.tableUUIDList?.every((tableUUID) => find(tablesInUniverse, { tableUUID }));
         });
 
         if (!allTableAvailableForBackup) {
-          return Promise.reject({
-            response: {
-              data: { error: `One or more of selected tables to backup do not exist in keyspace` }
-            }
-          });
+          toast.warning(`One or more of selected tables to backup do not exist in keyspace. Proceeding backup without non-existent table.`, { autoClose: false });
         }
 
         responseList = responseList.map((r) => {
@@ -129,9 +139,9 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             tableUUIDList: r.allTables
               ? []
               : backupTablesPresentInUniverse.map(
-                  (tableName) =>
-                    find(tablesInUniverse, { tableName, keySpace: r.keyspace })?.tableUUID ?? ''
-                )
+                (tableName) =>
+                  find(tablesInUniverse, { tableName, keySpace: r.keyspace })?.tableUUID ?? ''
+              )
           };
         });
       }
@@ -182,8 +192,8 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
 
   const kmsConfig = kmsConfigs
     ? kmsConfigs.find((config: any) => {
-        return config.metadata.configUUID === backupDetails?.commonBackupInfo?.kmsConfigUUID;
-      })
+      return config.metadata.configUUID === backupDetails?.commonBackupInfo?.kmsConfigUUID;
+    })
     : undefined;
 
   if (!backupDetails) return null;
@@ -419,7 +429,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                         }
                       },
                       {
-                        isRestoreEntireBackup: true,
+                        isRestoreEntireBackup: incrementalBackupProps.isRestoreEntireBackup,
                         incrementalBackupUUID: incrementalBackupProps.incrementalBackupUUID,
                         singleKeyspaceRestore: incrementalBackupProps.singleKeyspaceRestore
                       }

@@ -344,6 +344,10 @@ class YBClient::Data {
 
   bool IsTabletServerLocal(const internal::RemoteTabletServer& rts) const;
 
+  Status CreateSnapshot(
+    YBClient* client, const std::vector<YBTableName>& tables, CoarseTimePoint deadline,
+    CreateSnapshotCallback callback);
+
   // Returns a non-failed replica of the specified tablet based on the provided selection criteria
   // and tablet server blacklist.
   //
@@ -391,6 +395,7 @@ class YBClient::Data {
                               bool wait_for_leader_election = true);
 
   std::shared_ptr<master::MasterAdminProxy> master_admin_proxy() const;
+  std::shared_ptr<master::MasterBackupProxy> master_backup_proxy() const;
   std::shared_ptr<master::MasterClientProxy> master_client_proxy() const;
   std::shared_ptr<master::MasterClusterProxy> master_cluster_proxy() const;
   std::shared_ptr<master::MasterDclProxy> master_dcl_proxy() const;
@@ -504,6 +509,7 @@ class YBClient::Data {
 
   // Proxy to the leader master.
   std::shared_ptr<master::MasterAdminProxy> master_admin_proxy_;
+  std::shared_ptr<master::MasterBackupProxy> master_backup_proxy_;
   std::shared_ptr<master::MasterClientProxy> master_client_proxy_;
   std::shared_ptr<master::MasterClusterProxy> master_cluster_proxy_;
   std::shared_ptr<master::MasterDclProxy> master_dcl_proxy_;

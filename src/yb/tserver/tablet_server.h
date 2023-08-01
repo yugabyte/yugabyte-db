@@ -266,9 +266,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
 
-  Result<bool> XClusterSafeTimeCaughtUpToCommitHt(
-      const NamespaceId& namespace_id, HybridTime commit_ht) const;
-
   Result<cdc::XClusterRole> TEST_GetXClusterRole() const;
 
   Status ListMasterServers(const ListMasterServersRequestPB* req,
@@ -310,6 +307,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) override;
 
   Status SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
+
+  Result<std::unordered_set<std::string>> GetAvailableAutoFlagsForServer() const override;
 
   std::atomic<bool> initted_{false};
 

@@ -13,6 +13,7 @@ menu:
 aliases:
   - /preview/api/ysql/
 type: indexpage
+showRightNav: true
 ---
 
 ## Introduction

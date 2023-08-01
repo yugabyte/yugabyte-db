@@ -67,6 +67,16 @@ INSERT INTO ybaggtest (id, float_4, float_8) VALUES (101, 'NaN', 'NaN');
 \set query 'SELECT COUNT(float_8), SUM(float_8), MAX(float_8), MIN(float_8) FROM ybaggtest'
 :run;
 
+-- In case indexquals are planned to be rechecked, pushdown should be avoided.
+\set query 'SELECT COUNT(*) FROM ybaggtest WHERE float_4 > 0'
+:run;
+\set query 'SELECT COUNT(*) FROM ybaggtest WHERE int_4 > 0 AND float_8 > 0'
+:run;
+\set query 'SELECT COUNT(*) FROM ybaggtest WHERE int_8 = 9223372036854775807'
+:run;
+\set query 'SELECT COUNT(*) FROM ybaggtest WHERE int_8 = 9223372036854775807 AND int_2 = 32767'
+:run;
+
 -- Negative tests - pushdown not supported
 EXPLAIN (COSTS OFF) SELECT int_2, COUNT(*), SUM(int_4) FROM ybaggtest GROUP BY int_2;
 EXPLAIN (COSTS OFF) SELECT DISTINCT int_4 FROM ybaggtest;
@@ -84,7 +94,7 @@ CREATE TABLE ybaggtest2 (
 CREATE INDEX NONCONCURRENTLY ybaggtest2index ON ybaggtest2 ((1)) INCLUDE (a);
 
 -- Insert NULL rows.
-INSERT INTO ybaggtest2 VALUES (NULL), (NULL), (NULL);
+INSERT INTO ybaggtest2 VALUES (NULL), (NULL);
 
 -- Insert regular rows.
 INSERT INTO ybaggtest2 VALUES (1), (2), (3);
@@ -111,6 +121,11 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 \set query 'SELECT SUM(2), MAX(2), MIN(2) FROM ybaggtest2'
 :run;
 \set query 'SELECT SUM(NULL::int), MAX(NULL), MIN(NULL) FROM ybaggtest2'
+:run;
+-- Verify IS NULL, IS NOT NULL quals.
+\set query 'SELECT COUNT(*) FROM ybaggtest2 WHERE a IS NULL'
+:run;
+\set query 'SELECT COUNT(*) FROM ybaggtest2 WHERE a IS NOT NULL'
 :run;
 
 --

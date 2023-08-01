@@ -25,9 +25,6 @@ using namespace std::literals;
 DEFINE_UNKNOWN_int64(transaction_rpc_timeout_ms, 5000 * yb::kTimeMultiplier,
              "Timeout used by transaction related RPCs in milliseconds.");
 
-DEFINE_RUNTIME_int64(external_transaction_rpc_timeout_ms, 30000,
-                     "Timeout for external transactions in milliseconds.");
-
 namespace yb {
 
 YB_STRONGLY_TYPED_UUID_IMPL(TransactionId);
@@ -71,7 +68,6 @@ void DoToPB(const TransactionMetadata& source, PB* dest) {
   dest->set_priority(source.priority);
   dest->set_start_hybrid_time(source.start_time.ToUint64());
   dest->set_locality(source.locality);
-  dest->set_external_transaction(source.external_transaction);
 }
 
 } // namespace
@@ -95,7 +91,6 @@ Result<TransactionMetadata> TransactionMetadata::DoFromPB(const PB& source) {
   } else {
     result.locality = TransactionLocality::GLOBAL;
   }
-  result.external_transaction = IsExternalTransaction(source.external_transaction());
 
   return result;
 }
@@ -178,14 +173,6 @@ CoarseTimePoint TransactionRpcDeadline() {
   return CoarseMonoClock::Now() + TransactionRpcTimeout();
 }
 
-MonoDelta ExternalTransactionRpcTimeout() {
-  return FLAGS_external_transaction_rpc_timeout_ms * 1ms * kTimeMultiplier;
-}
-
-CoarseTimePoint ExternalTransactionRpcDeadline() {
-  return CoarseMonoClock::Now() + ExternalTransactionRpcTimeout();
-}
-
 TransactionOperationContext::TransactionOperationContext()
     : transaction_id(TransactionId::Nil()), txn_status_manager(nullptr) {}
 
@@ -204,6 +191,25 @@ TransactionOperationContext::TransactionOperationContext(
 
 bool TransactionOperationContext::transactional() const {
   return !transaction_id.IsNil();
+}
+
+TransactionLockInfoManager::TransactionLockInfoManager(
+    TabletLockInfoPB* tablet_lock_info): tablet_lock_info_(tablet_lock_info) {}
+
+TabletLockInfoPB::TransactionLockInfoPB* TransactionLockInfoManager::GetOrAddTransactionLockInfo(
+    const TransactionId& id) {
+  auto it = transaction_lock_infos_.find(id);
+  if (it != transaction_lock_infos_.end()) {
+    return it->second;
+  }
+  auto* transaction_lock_info = tablet_lock_info_->add_transaction_locks();
+  transaction_lock_info->set_id(id.data(), id.size());
+  transaction_lock_infos_.emplace(id, transaction_lock_info);
+  return transaction_lock_info;
+}
+
+TabletLockInfoPB::WaiterInfoPB* TransactionLockInfoManager::GetSingleShardLockInfo() {
+  return tablet_lock_info_->add_single_shard_waiters();
 }
 
 } // namespace yb

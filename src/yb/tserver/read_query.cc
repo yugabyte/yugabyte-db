@@ -287,7 +287,8 @@ Status ReadQuery::DoPerform() {
 
   if (req_->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX) {
     if (abstract_tablet_) {
-      tablet()->metrics()->consistent_prefix_read_requests->Increment();
+      tablet()->metrics()->Increment(
+          tablet::TabletCounters::kConsistentPrefixReadRequests);
     }
   }
 
@@ -441,7 +442,9 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
   }
   if (metrics) {
     auto safe_time_wait = MonoTime::Now() - start_time;
-    metrics->read_time_wait->Increment(safe_time_wait.ToMicroseconds());
+    metrics->Increment(
+         tablet::TabletHistograms::kReadTimeWait,
+         make_unsigned(safe_time_wait.ToMicroseconds()));
   }
   return Status::OK();
 }
@@ -486,7 +489,7 @@ Status ReadQuery::Complete() {
           read_time_.local_limit.ToUint64());
       restart_read_time->set_local_limit_ht(read_time_.local_limit.ToUint64());
       // Global limit is ignored by caller, so we don't set it.
-      tablet()->metrics()->restart_read_requests->Increment();
+      tablet()->metrics()->Increment(tablet::TabletCounters::kRestartReadRequests);
       break;
     }
 
@@ -670,7 +673,8 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
 
     if (req_->consistency_level() == YBConsistencyLevel::CONSISTENT_PREFIX &&
         total_num_rows_read > 0) {
-      tablet()->metrics()->pgsql_consistent_prefix_read_rows->IncrementBy(total_num_rows_read);
+      tablet()->metrics()->IncrementBy(
+          tablet::TabletCounters::kPgsqlConsistentPrefixReadRows, total_num_rows_read);
     }
     return ReadHybridTime();
   }

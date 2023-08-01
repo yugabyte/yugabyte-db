@@ -223,6 +223,29 @@ message GetUDTypeMetadataResponsePB {
  repeated PgCompositeInfoPB composites = 3;
 }
 
+enum SetupReplicationWithBootstrapStatePB {
+ BOOTSTRAP_PRODUCER = 1;
+ CREATE_PRODUCER_SNAPSHOT = 2;
+ IMPORT_SNAPSHOT = 3;
+ CREATE_CONSUMER_SNAPSHOT = 4;
+ TRANSFER_SNAPSHOT = 5;
+ RESTORE_SNAPSHOT = 6;
+ SETUP_REPLICATION = 7;
+}
+
+message SetupNamespaceReplicationWithBootstrapRequestPB {
+ required string replication_id = 1;
+ repeated HostPortPB producer_master_addresses = 2;
+ required NamespaceIdentifierPB producer_namespace = 3;
+
+ // Is the created replication group transactionally consistent.
+ optional bool transactional = 4; // [default = false]
+}
+
+message SetupNamespaceReplicationWithBootstrapResponsePB {
+ optional MasterErrorPB error = 1;
+}
+
 message SetupUniverseReplicationRequestPB {
   optional string producer_id = 1;
   repeated HostPortPB producer_master_addresses = 2;
@@ -461,7 +484,9 @@ service MasterReplication {
   rpc GetTableSchemaFromSysCatalog(GetTableSchemaFromSysCatalogRequestPB)
       returns(GetTableSchemaFromSysCatalogResponsePB);
 
-  // Cluster-level Replication.
+  rpc SetupNamespaceReplicationWithBootstrap(
+      SetupNamespaceReplicationWithBootstrapRequestPB)
+      returns (SetupNamespaceReplicationWithBootstrapResponsePB);
   rpc SetupUniverseReplication(SetupUniverseReplicationRequestPB)
       returns (SetupUniverseReplicationResponsePB);
   rpc DeleteUniverseReplication(DeleteUniverseReplicationRequestPB)

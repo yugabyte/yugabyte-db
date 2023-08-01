@@ -112,8 +112,6 @@ METRIC_DEFINE_counter(server, transaction_promotions,
                       yb::MetricUnit::kTransactions,
                       "Number of transactions being promoted to global transactions");
 
-DECLARE_bool(enable_wait_queues);
-
 namespace yb {
 namespace client {
 
@@ -1155,6 +1153,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           state.add_tablets(tablet_id);
         }
       }
+    }
+    auto* local_ts = manager_->client()->GetLocalTabletServer();
+    if (local_ts) {
+      state.set_host_node_uuid(local_ts->permanent_uuid());
     }
 
     if (aborted_set_for_rollback_heartbeat) {

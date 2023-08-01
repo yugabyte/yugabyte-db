@@ -1090,14 +1090,45 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
   }
 
   @Test
-  public void splitInto() throws Exception {
+  public void splitOptions() throws Exception {
     try (Statement stmt = connection.createStatement()) {
-      stmt.executeUpdate("CREATE TABLE nopk (id int) SPLIT INTO 2 TABLETS");
+      // Verify split options are preserved when we add or drop a hash key.
+      stmt.executeUpdate("CREATE TABLE nopk (id int, a int, b text, c float, d timestamp, e money)"
+          + " SPLIT INTO 2 TABLETS");
+      stmt.executeUpdate("CREATE INDEX nopk_idx ON nopk(id) SPLIT INTO 2 TABLETS");
+      stmt.executeUpdate(
+          "CREATE INDEX nopk_idx2 ON nopk(id ASC, a ASC, b ASC, c ASC, d ASC, e ASC)"
+          + " SPLIT AT VALUES ((10, 20, E'test123\"\"''\\\\\\u0068\\u0069',"
+          + " '-Infinity', '1999-01-01', '12.34'), (20, 30,"
+          + " E'test123\"\"''\\\\\\u0068\\u0069z', 'Infinity', '2023-01-01',"
+          + " '56.78'))");
       alterAddPrimaryKey(stmt, "nopk",
           "(id)",
           1 /* expectedNumHashKeyCols */,
           2 /* expectedNumTablets */);
+      assertQuery(stmt, "SELECT num_tablets, num_hash_key_columns"
+        + " FROM yb_table_properties('nopk_idx'::regclass)", new Row(2,1));
+      assertQuery(stmt, "SELECT yb_get_range_split_clause('nopk_idx2'::regclass)",
+          new Row("SPLIT AT VALUES ((10, 20, E'test123\"\"''\\\\hi', '-Infinity',"
+              + " '1999-01-01 00:00:00', '$12.34'), (20, 30, E'test123\"\"''\\\\hiz',"
+              + " 'Infinity', '2023-01-01 00:00:00', '$56.78'))"));
       alterDropPrimaryKey(stmt, "nopk", "nopk_pkey", 2 /* expectedNumTablets */);
+      assertQuery(stmt, "SELECT num_tablets, num_hash_key_columns"
+        + " FROM yb_table_properties('nopk_idx'::regclass)", new Row(2,1));
+      assertQuery(stmt, "SELECT yb_get_range_split_clause('nopk_idx2'::regclass)",
+          new Row("SPLIT AT VALUES ((10, 20, E'test123\"\"''\\\\hi', '-Infinity',"
+              + " '1999-01-01 00:00:00', '$12.34'), (20, 30, E'test123\"\"''\\\\hiz', 'Infinity',"
+              + " '2023-01-01 00:00:00', '$56.78'))"));
+      // Verify split options are not preserved when we add a range key, and only the number of
+      // tablets is preserved when we drop a range key.
+      stmt.executeUpdate("CREATE TABLE nopk2 (id int) SPLIT INTO 5 TABLETS");
+      alterAddPrimaryKey(stmt, "nopk2",
+          "(id ASC)",
+          0 /* expectedNumHashKeyCols */,
+          1 /* expectedNumTablets */);
+      stmt.executeUpdate("CREATE TABLE range_pk (id int, primary key(id asc))"
+          + " SPLIT AT VALUES ((5), (10))");
+      alterDropPrimaryKey(stmt, "range_pk", "range_pk_pkey", 3 /* expectedNumTablets */);
     }
   }
 
