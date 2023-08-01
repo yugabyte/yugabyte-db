@@ -95,7 +95,6 @@ const $ = window.jQuery;
     yugabyteSetLocalStorage('tab-os', activeName);
     yugabyteResetkey(500);
   });
-  triggerTabByStorage('tab-os', 'ul[data-target="operating-system"]', 'yugabyte-active-tab-os');
 
   $(document).on('click', 'ul[data-target="cluster"] li', (event) => {
     const activeName = $(event.currentTarget).text().trim();
@@ -103,7 +102,6 @@ const $ = window.jQuery;
     yugabyteSetLocalStorage('tab-cluster', activeName);
     yugabyteResetkey(500);
   });
-  triggerTabByStorage('tab-cluster', 'ul[data-target="cluster"]', 'yugabyte-active-tab-cl');
 
   $(document).on('click', 'ul[data-target="ybdb"] li', (event) => {
     const activeName = $(event.currentTarget).text().trim();
@@ -111,7 +109,6 @@ const $ = window.jQuery;
     yugabyteSetLocalStorage('tab-ybdb', activeName);
     yugabyteResetkey(500);
   });
-  triggerTabByStorage('tab-ybdb', 'ul[data-target="ybdb"]', 'yugabyte-active-tab-ybdb');
 
   $(document).on('click', 'ul[data-target="sql"] li', (event) => {
     const activeName = $(event.currentTarget).text().trim();
@@ -119,7 +116,6 @@ const $ = window.jQuery;
     yugabyteSetLocalStorage('tab-sql', activeName);
     yugabyteResetkey(500);
   });
-  triggerTabByStorage('tab-sql', 'ul[data-target="sql"]', 'yugabyte-active-tab-sql');
 
   $(document).on('click', 'ul[data-target="driver"] li', (event) => {
     const activeName = $(event.currentTarget).text().trim();
@@ -127,7 +123,6 @@ const $ = window.jQuery;
     yugabyteSetLocalStorage('tab-driver', activeName, 0);
     yugabyteResetkey(500);
   });
-  triggerTabByStorage('tab-driver', 'ul[data-target="driver"]', 'yugabyte-active-tab-driver');
 
   $(document).on('click', 'ul[data-target="common"] li', (event) => {
     const activeName = $(event.currentTarget).text().trim();
@@ -135,10 +130,23 @@ const $ = window.jQuery;
     yugabyteSetLocalStorage('tab-driver', activeName);
     yugabyteResetkey(500);
   });
-  triggerTabByStorage('tab-common', 'ul[data-target="common"]', 'yugabyte-active-tab-common');
+
+  const triggerTabAfterContent = setInterval(() => {
+    const contentLoaded = document.querySelector('.content-area .td-content');
+    if (contentLoaded) {
+      triggerTabByStorage('tab-os', 'ul[data-target="operating-system"]', 'yugabyte-active-tab-os');
+      triggerTabByStorage('tab-cluster', 'ul[data-target="cluster"]', 'yugabyte-active-tab-cl');
+      triggerTabByStorage('tab-ybdb', 'ul[data-target="ybdb"]', 'yugabyte-active-tab-ybdb');
+      triggerTabByStorage('tab-sql', 'ul[data-target="sql"]', 'yugabyte-active-tab-sql');
+      triggerTabByStorage('tab-driver', 'ul[data-target="driver"]', 'yugabyte-active-tab-driver');
+      triggerTabByStorage('tab-common', 'ul[data-target="common"]', 'yugabyte-active-tab-common');
+
+      clearInterval(triggerTabAfterContent);
+    }
+  }, 10);
 
   const activeTabInterval = setInterval(() => {
-    if (clearActiveStorage >= 10) {
+    if (clearActiveStorage >= 20) {
       clearInterval(activeTabInterval);
     }
 

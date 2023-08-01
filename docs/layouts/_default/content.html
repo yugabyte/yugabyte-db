@@ -18,7 +18,6 @@
   {{ partial "earlier-version-warning" . }}
   <!-- Wrap table in div for responsive -->
   {{ .Content | replaceRE "(<table(?:.|\n)+?</table>)" "<div class=table-responsive> ${1} </div>"  | safeHTML }}
-  {{ partial "persist-tabs.html" . }}
 	{{ if (and (not .Params.hide_feedback) (.Site.Params.ui.feedback.enable) (.Site.GoogleAnalytics)) }}
 		{{ partial "feedback.html" .Site.Params.ui.feedback }}
 		<br />
