@@ -24,7 +24,8 @@
       "wrong": "Something went wrong.",
       "areYouSure": "Are you sure ?",
       "delete": "Delete",
-      "back": "Back"
+      "back": "Back",
+      "selectAll": "Select All"
     },
     "universeActions": {
       "encryptionAtRest": {
@@ -660,6 +661,61 @@
         "generalSettings": "General Settings",
         "selectTables": "Select Tables",
         "renameKeyspaces": "Rename keyspace/s"
+      }
+    },
+    "rbac": {
+      "roles": {
+        "create": {
+          "title": "Add a role",
+          "edit": "Edit a role",
+          "form": {
+            "name": "Name",
+            "namePlaceholder": "Role Name",
+            "description": "Description (Optional)",
+            "descriptionPlaceholder": "Role description",
+            "selectPermissions": "Select Permissions",
+            "selectPermissionSubText": "Select the permissions you want to include in this role.",
+            "permissions": "Permissions",
+            "editSelection": "Edit Selection"
+          },
+          "successMsg": "\"{{role_name}}\" role was created successfully",
+          "editSuccessMsg": "\"{{role_name}}\" role was edited successfully"
+        },
+        "list": {
+          "rowsCount": "{{count}} Roles",
+          "createRole": "Create Role",
+          "search": "Search by role name",
+          "table": {
+            "name": "Name",
+            "description": "Description",
+            "type": "Type",
+            "users": "Users",
+            "actions":"Actions",
+            "moreActions": {
+              "editRole": "Edit Role",
+              "cloneRole": "Clone Role",
+              "viewUsers": "View assigned users",
+              "deleteRole": "Delete Role"
+            }
+          }
+        },
+        "delete": {
+          "title": "Delete Role",
+          "errMsg" : "This operation will delete the following role:<br/><bold>“{{role_name}}”</bold><br/>Enter the role name to continue.",
+          "successMsg": "\"{{role_name}}\" role was deleted successfully"
+        },
+        "edit": {
+          "menu": {
+            "configurations": "Configurations",
+            "users": "Users"
+          },
+          "title": "Edit Role"
+        }
+      },
+      "permissions": {
+        "selectPermissionModal": {
+          "title": "Select Permissions"
+        }
       }
     }
   }
