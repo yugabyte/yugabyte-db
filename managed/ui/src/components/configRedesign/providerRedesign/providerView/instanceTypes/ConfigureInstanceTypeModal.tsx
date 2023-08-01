@@ -64,11 +64,11 @@ export const ConfigureInstanceTypeModal = ({
         {...modalProps}
       >
         <div className={classes.formField}>
-          <Typography variant="body2">Machine Type</Typography>
+          <Typography variant="body2">Name</Typography>
           <YBInputField
             control={formMethods.control}
             name="instanceTypeCode"
-            rules={{ required: 'Machine type is required.' }}
+            rules={{ required: 'Instance type name is required.' }}
             fullWidth
           />
         </div>
