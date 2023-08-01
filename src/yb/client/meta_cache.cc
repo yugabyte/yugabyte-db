@@ -330,9 +330,9 @@ RemoteTablet::~RemoteTablet() {
     // Let's verify that none of the replicas are marked as failed. The test should always wait
     // enough time so that the lookup cache can be refreshed after force_lookup_cache_refresh_secs.
     for (const auto& replica : replicas_) {
-      if (replica.Failed()) {
-        LOG_WITH_PREFIX(FATAL) << "Remote tablet server " << replica.ts->ToString()
-                               << " with role " << PeerRole_Name(replica.role)
+      if (replica->Failed()) {
+        LOG_WITH_PREFIX(FATAL) << "Remote tablet server " << replica->ts->ToString()
+                               << " with role " << PeerRole_Name(replica->role)
                                << " is marked as failed";
       }
     }
@@ -347,7 +347,7 @@ void RemoteTablet::Refresh(
   std::vector<std::string> old_uuids;
   old_uuids.reserve(replicas_.size());
   for (const auto& replica : replicas_) {
-    old_uuids.push_back(replica.ts->permanent_uuid());
+    old_uuids.push_back(replica->ts->permanent_uuid());
   }
   std::sort(old_uuids.begin(), old_uuids.end());
   replicas_.clear();
@@ -355,7 +355,7 @@ void RemoteTablet::Refresh(
   for (const TabletLocationsPB_ReplicaPB& r : replicas) {
     auto it = tservers.find(r.ts_info().permanent_uuid());
     CHECK(it != tservers.end());
-    replicas_.emplace_back(it->second.get(), r.role());
+    replicas_.emplace_back(std::make_shared<RemoteReplica>(it->second.get(), r.role()));
     has_new_replica =
         has_new_replica ||
         !std::binary_search(old_uuids.begin(), old_uuids.end(), r.ts_info().permanent_uuid());
@@ -394,9 +394,9 @@ bool RemoteTablet::MarkReplicaFailed(RemoteTabletServer *ts, const Status& statu
   VLOG_WITH_PREFIX(2) << "Current remote replicas in meta cache: "
                       << ReplicasAsStringUnlocked() << ". Replica " << ts->ToString()
                       << " has failed: " << status.ToString();
-  for (RemoteReplica& rep : replicas_) {
-    if (rep.ts == ts) {
-      rep.MarkFailed();
+  for (auto& rep : replicas_) {
+    if (rep->ts == ts) {
+      rep->MarkFailed();
       return true;
     }
   }
@@ -406,8 +406,8 @@ bool RemoteTablet::MarkReplicaFailed(RemoteTabletServer *ts, const Status& statu
 int RemoteTablet::GetNumFailedReplicas() const {
   int failed = 0;
   SharedLock<rw_spinlock> lock(mutex_);
-  for (const RemoteReplica& rep : replicas_) {
-    if (rep.Failed()) {
+  for (const auto& rep : replicas_) {
+    if (rep->Failed()) {
       failed++;
     }
   }
@@ -448,9 +448,9 @@ void RemoteTablet::SetAliveReplicas(int alive_live_replicas, int alive_read_repl
 
 RemoteTabletServer* RemoteTablet::LeaderTServer() const {
   SharedLock<rw_spinlock> lock(mutex_);
-  for (const RemoteReplica& replica : replicas_) {
-    if (!replica.Failed() && replica.role == PeerRole::LEADER) {
-      return replica.ts;
+  for (const auto& replica : replicas_) {
+    if (!replica->Failed() && replica->role == PeerRole::LEADER) {
+      return replica->ts;
     }
   }
   return nullptr;
@@ -464,7 +464,7 @@ void RemoteTablet::GetRemoteTabletServers(
     std::vector<RemoteTabletServer*>* servers, IncludeFailedReplicas include_failed_replicas) {
   DCHECK(servers->empty());
   struct ReplicaUpdate {
-    RemoteReplica* replica;
+    std::shared_ptr<RemoteReplica> replica;
     tablet::RaftGroupStatePB new_state;
     bool clear_failed;
   };
@@ -473,31 +473,31 @@ void RemoteTablet::GetRemoteTabletServers(
     SharedLock<rw_spinlock> lock(mutex_);
     int num_alive_live_replicas = 0;
     int num_alive_read_replicas = 0;
-    for (RemoteReplica& replica : replicas_) {
-      if (replica.Failed()) {
+    for (auto& replica : replicas_) {
+      if (replica->Failed()) {
         if (include_failed_replicas) {
-          servers->push_back(replica.ts);
+          servers->push_back(replica->ts);
           continue;
         }
-        ReplicaUpdate replica_update = {&replica, RaftGroupStatePB::UNKNOWN, false};
+        ReplicaUpdate replica_update = {replica, RaftGroupStatePB::UNKNOWN, false};
         VLOG_WITH_PREFIX(4)
-            << "Replica " << replica.ts->ToString()
-            << " failed, state: " << RaftGroupStatePB_Name(replica.state)
-            << ", is local: " << replica.ts->IsLocal()
-            << ", time since failure: " << (MonoTime::Now() - replica.last_failed_time);
-        switch (replica.state) {
+            << "Replica " << replica->ts->ToString()
+            << " failed, state: " << RaftGroupStatePB_Name(replica->state)
+            << ", is local: " << replica->ts->IsLocal()
+            << ", time since failure: " << (MonoTime::Now() - replica->last_failed_time);
+        switch (replica->state) {
           case RaftGroupStatePB::UNKNOWN: FALLTHROUGH_INTENDED;
           case RaftGroupStatePB::NOT_STARTED: FALLTHROUGH_INTENDED;
           case RaftGroupStatePB::BOOTSTRAPPING: FALLTHROUGH_INTENDED;
           case RaftGroupStatePB::RUNNING:
             // These are non-terminal states that may retry. Check and update failed local replica's
             // current state. For remote replica, just wait for some time before retrying.
-            if (replica.ts->IsLocal()) {
+            if (replica->ts->IsLocal()) {
               tserver::GetTabletStatusRequestPB req;
               tserver::GetTabletStatusResponsePB resp;
               req.set_tablet_id(tablet_id_);
               const Status status =
-                  CHECK_NOTNULL(replica.ts->local_tserver())->GetTabletStatus(&req, &resp);
+                  CHECK_NOTNULL(replica->ts->local_tserver())->GetTabletStatus(&req, &resp);
               if (!status.ok() || resp.has_error()) {
                 LOG_WITH_PREFIX(ERROR)
                     << "Received error from GetTabletStatus: "
@@ -513,21 +513,21 @@ void RemoteTablet::GetRemoteTabletServers(
               DCHECK_EQ(resp.tablet_status().tablet_id(), tablet_id_);
               VLOG_WITH_PREFIX(3) << "GetTabletStatus returned status: "
                                   << tablet::RaftGroupStatePB_Name(resp.tablet_status().state())
-                                  << " for replica " << replica.ts->ToString();
+                                  << " for replica " << replica->ts->ToString();
               replica_update.new_state = resp.tablet_status().state();
               if (replica_update.new_state != tablet::RaftGroupStatePB::RUNNING) {
-                if (replica_update.new_state != replica.state) {
+                if (replica_update.new_state != replica->state) {
                   // Cannot update replica here directly because holding only shared lock on mutex.
                   replica_updates.push_back(replica_update); // Update only state
                 }
                 continue;
               }
-              if (!replica.ts->local_tserver()->LeaderAndReady(
+              if (!replica->ts->local_tserver()->LeaderAndReady(
                       tablet_id_, /* allow_stale */ true)) {
                 // Should continue here because otherwise failed state will be cleared.
                 continue;
               }
-            } else if ((MonoTime::Now() - replica.last_failed_time) <
+            } else if ((MonoTime::Now() - replica->last_failed_time) <
                        FLAGS_retry_failed_replica_ms * 1ms) {
               continue;
             }
@@ -539,19 +539,19 @@ void RemoteTablet::GetRemoteTabletServers(
             continue;
         }
 
-        VLOG_WITH_PREFIX(3) << "Changing state of replica " << replica.ts->ToString()
+        VLOG_WITH_PREFIX(3) << "Changing state of replica " << replica->ts->ToString()
                             << " from failed to not failed";
         replica_update.clear_failed = true;
         // Cannot update replica here directly because holding only shared lock on mutex.
         replica_updates.push_back(replica_update);
       } else {
-        if (replica.role == PeerRole::READ_REPLICA) {
+        if (replica->role == PeerRole::READ_REPLICA) {
           num_alive_read_replicas++;
-        } else if (replica.role == PeerRole::FOLLOWER || replica.role == PeerRole::LEADER) {
+        } else if (replica->role == PeerRole::FOLLOWER || replica->role == PeerRole::LEADER) {
           num_alive_live_replicas++;
         }
       }
-      servers->push_back(replica.ts);
+      servers->push_back(replica->ts);
     }
     SetAliveReplicas(num_alive_live_replicas, num_alive_read_replicas);
   }
@@ -582,12 +582,12 @@ bool RemoteTablet::IsLocalRegion() {
 bool RemoteTablet::MarkTServerAsLeader(const RemoteTabletServer* server) {
   bool found = false;
   std::lock_guard<rw_spinlock> lock(mutex_);
-  for (RemoteReplica& replica : replicas_) {
-    if (replica.ts == server) {
-      replica.role = PeerRole::LEADER;
+  for (auto& replica : replicas_) {
+    if (replica->ts == server) {
+      replica->role = PeerRole::LEADER;
       found = true;
-    } else if (replica.role == PeerRole::LEADER) {
-      replica.role = PeerRole::FOLLOWER;
+    } else if (replica->role == PeerRole::LEADER) {
+      replica->role = PeerRole::FOLLOWER;
     }
   }
   VLOG_WITH_PREFIX(3) << "Latest replicas: " << ReplicasAsStringUnlocked();
@@ -599,9 +599,9 @@ bool RemoteTablet::MarkTServerAsLeader(const RemoteTabletServer* server) {
 void RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
   bool found = false;
   std::lock_guard<rw_spinlock> lock(mutex_);
-  for (RemoteReplica& replica : replicas_) {
-    if (replica.ts == server) {
-      replica.role = PeerRole::FOLLOWER;
+  for (auto& replica : replicas_) {
+    if (replica->ts == server) {
+      replica->role = PeerRole::FOLLOWER;
       found = true;
     }
   }
@@ -618,9 +618,9 @@ std::string RemoteTablet::ReplicasAsString() const {
 std::string RemoteTablet::ReplicasAsStringUnlocked() const {
   DCHECK(mutex_.is_locked());
   string replicas_str;
-  for (const RemoteReplica& rep : replicas_) {
+  for (const auto& rep : replicas_) {
     if (!replicas_str.empty()) replicas_str += ", ";
-    replicas_str += rep.ToString();
+    replicas_str += rep->ToString();
   }
   return replicas_str;
 }
