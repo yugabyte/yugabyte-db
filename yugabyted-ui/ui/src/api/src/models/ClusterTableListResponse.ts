@@ -28,9 +28,8 @@ export interface ClusterTableListResponse  {
    * @memberof ClusterTableListResponse
    */
   tables: ClusterTable[];
-
   /**
-   * List of index tables
+   * List of cluster tables
    * @type {ClusterTable[]}
    * @memberof ClusterTableListResponse
    */
