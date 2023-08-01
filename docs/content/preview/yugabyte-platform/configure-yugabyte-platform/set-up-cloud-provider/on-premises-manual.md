@@ -14,7 +14,7 @@ type: docs
 
 This procedure is only required if both of the following conditions are true:
 
-- You set [Manually Provision Nodes](../on-premises/#provision-nodes-manually) to true in the on-premises provider configuration.
+- You set [Manually Provision Nodes](../on-premises/#advanced) to true in the on-premises provider configuration.
 - The SSH user does not have sudo privileges at all.
 
 If the SSH user configured in the on-premises provider does not have sudo privileges, then you can set up each of the database nodes manually. Note that you need access to a user with sudo privileges in order to complete these steps.

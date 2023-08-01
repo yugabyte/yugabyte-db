@@ -74,10 +74,11 @@ With on-premises providers, VMs are _not_ auto-created by YugabyteDB Anywhere; y
 
 Creating an on-premises provider requires the following steps:
 
+- Create your VMs. You do this using your hypervisor or cloud provider.
 - Create the on-premises provider configuration.
-- Configure the hardware for the node instances that the provider will use for deploying YugabyteDB universes.
-  - Add instance types.
-  - Add instances.
+- Configure the hardware for the node instances that the provider will use for deploying YugabyteDB universes, including
+  - Adding instance types
+  - Adding instances
 
 ## Configure the on-premises provider
 
@@ -195,7 +196,9 @@ To add an instance type, do the following:
 
 ### Add instances
 
-You can add instance using the YugabyteDB Anywhere UI or, if **Manually Provision Nodes** is enabled in the on-prem provider configuration, you can manually provision instances using the pre-provisioning script.
+You can add instances to an on-prem provider using the YugabyteDB Anywhere UI.
+
+If **Manually Provision Nodes** is enabled in the on-prem provider configuration, you must [manually provision instances](#provision-nodes-manually) before adding them.
 
 #### Add instances in YugabyteDB Anywhere
 
@@ -220,12 +223,26 @@ Note that if you provide a hostname, the universe might experience issues commun
 
 This completes the on-premises cloud provider configuration. You can proceed to [Configure the backup target](../../backup-target/) or [Create deployments](../../../create-deployments/).
 
+### Provision nodes manually
+
+When provisioning nodes manually, you will follow one of two procedures, depending on the privileges of your SSH user:
+
+- SSH user has sudo privileges
+
+    Follow the instructions in [Provision nodes using the pre-provisioning script](#provision-nodes-manually-using-the-pre-provisioning-script). You run the pre-provisioning script on each node to install the YugabyteDB siftware and node agent.
+
+- SSH user does not have sudo privileges |
+
+    Follow the instructions in [Set up on-premises nodes manually](../on-premises-manual).
+
+Note that after you have provisioned nodes, including installing the node agent, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
+
 #### Provision nodes manually using the pre-provisioning script
 
 This step is only required if you set **Manually Provision Nodes** to true on your on-prem provider configuration, and the SSH user has sudo privileges which require a password.
 
 {{< note title="Note" >}}
-If the SSH user does not have any sudo privileges, you need to set up the database nodes manually. Refer to [Set up on-premises nodes manually](../on-premises-manual/).
+If the SSH user does not have any sudo privileges, you can't use the script and need to set up the database nodes manually. Refer to [Set up on-premises nodes manually](../on-premises-manual/).
 {{< /note >}}
 
 To provision your nodes you can run the pre-provisioning script. The script is displayed under **Instances** on the **Instances** tab of the on-prem configuration you created.
@@ -270,6 +287,8 @@ You can manually provision each node using the pre-provisioning Python script, a
     Executing provision now for instance with IP 10.9.116.65...
     SUDO password:
     ```
+
+1. Enter your password.
 
 1. Wait for the script to finish successfully.
 
