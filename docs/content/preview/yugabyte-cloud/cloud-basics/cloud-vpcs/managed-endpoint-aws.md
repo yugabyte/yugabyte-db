@@ -120,7 +120,9 @@ To create an interface endpoint to connect to your cluster PSE, do the following
 
 1. In the **VPC** field, enter the ID of the VPC where you want to create the AWS endpoint.
 
-1. Under **Subnets**, select the subnets (Availability Zones) to use. At least one of the subnets should match the zones in your cluster.  Always verify the [Availability Zone ID](https://docs.aws.amazon.com/ram/latest/userguide/working-with-az-ids.html) as availability zone names can vary across different accounts.
+1. Under **Subnets**, select the subnets (Availability Zones) to use.
+
+    At least one of the subnets should match the zones in your cluster. The endpoint service can only connect from a subnet in the same availability zone as the PSE; if there isn't a subnet, create one in the same availability zone as the PSE. Always verify the [Availability Zone ID](https://docs.aws.amazon.com/ram/latest/userguide/working-with-az-ids.html) as availability zone names can vary across different accounts.
 
 1. Under **Security groups**, select the security groups to associate with the endpoint network interfaces.
 
