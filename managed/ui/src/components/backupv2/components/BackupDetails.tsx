@@ -130,7 +130,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
 
         responseList = responseList.map((r) => {
           const backupTablesPresentInUniverse = r.tablesList.filter(
-            (tableName) => find(tablesInUniverse, { tableName, keySpace: r.keyspace })?.tableName
+            (tableName, index) => find(tablesInUniverse, { tableName, keySpace: r.keyspace, tableUUID: r.tableUUIDList?.[index] })?.tableName
           );
 
           return {
