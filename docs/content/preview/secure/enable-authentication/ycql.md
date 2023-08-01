@@ -33,7 +33,7 @@ type: docs
   </li>
 </ul>
 
-YCQL authentication is based on roles. Roles can be created with superuser, non-superuser and login privileges. New roles can be created, and existing ones altered or dropped by administrators using YCQL commands.
+YCQL authentication is based on roles. Roles can be created with superuser, non-superuser, and login privileges. New roles can be created, and existing ones altered or dropped by administrators using YCQL commands.
 
 ## Enable YCQL authentication
 
@@ -168,7 +168,7 @@ For example, to reset the password for the admin superuser created in [Create a 
       --ycql_allow_non_authenticated_password_reset=false
     ```
 
-1. Login to `ycqlsh` with the updated password as follows:
+1. Log in to `ycqlsh` with the updated password as follows:
 
     ```sh
     ./bin/ycqlsh -u admin -p <updatedPassword>
@@ -184,7 +184,7 @@ $ ./bin/ycqlsh -u <username> -p <password>
 
 Alternatively, you can omit the `-p <password>` above and you will be prompted for a password.
 
-As an example of connecting as a user, you can login with the credentials of the user `john` that you created above by running the following command and entering the password when prompted:
+As an example of connecting as a user, you can log in with the credentials of the user `john` that you created above by running the following command and entering the password when prompted:
 
 ```sh
 $ ./bin/ycqlsh -u john
@@ -252,7 +252,7 @@ cassandra@ycqlsh> ALTER ROLE john WITH SUPERUSER = false;
 
 ### Enable and disable login privileges
 
-In the example above, you can verify that `john` is can login to the database by doing the following:
+In the example above, you can verify that `john` can log in to the database by doing the following:
 
 ```cql
 cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles WHERE role='john';
@@ -286,7 +286,7 @@ cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_au
 (1 rows)
 ```
 
-Trying to login as `john` using `ycqlsh` will throw the following error.
+Trying to log in as `john` using `ycqlsh` will throw the following error.
 
 ```sh
 $ ./bin/ycqlsh -u john

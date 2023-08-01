@@ -50,4 +50,4 @@ For information on how to add users, see [Create, modify, and delete users](../.
 Once OIDC is enabled, the user is presented with the following login options:
 
 - **Login with SSO** redirects the user to the appropriate identity provider's login mechanism.
-- **Super Admin Login** allows the user to login into YugabyteDB Anywhere as a local super admin.
+- **Super Admin Login** allows the user to log in to YugabyteDB Anywhere as a local super admin.

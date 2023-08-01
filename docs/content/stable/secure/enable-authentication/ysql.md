@@ -251,7 +251,7 @@ yugabyte=# SELECT rolname, rolsuper, rolcanlogin FROM pg_roles WHERE rolname='jo
 (1 row)
 ```
 
-To grant `SUPERUSER` privileges to `john`, login as a superuser and run the following `ALTER ROLE` command:
+To grant `SUPERUSER` privileges to `john`, log in as a superuser and run the following `ALTER ROLE` command:
 
 ```sql
 yugabyte=# ALTER ROLE john SUPERUSER;
@@ -287,7 +287,7 @@ yugabyte=# ALTER ROLE john WITH NOSUPERUSER;
 
 ### Enable and disable login privileges
 
-To verify that `john` can login to the database, do the following:
+To verify that `john` can log in to the database, do the following:
 
 ```sql
 yugabyte=# SELECT rolname, rolcanlogin FROM pg_roles WHERE rolname='john';
