@@ -4099,7 +4099,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Disk Capacity",
-      "expr" : "sum(node_filesystem_size_bytes{node_prefix=~\"$dbcluster\", mountpoint=~\"/mnt/d[0-9]+\"}) / 1073741824",
+      "expr" : "sum(node_filesystem_size_bytes{node_prefix=~\"$dbcluster\", mountpoint=~\"/mnt/d[0-9]+\", fstype!=\"rootfs\"}) / 1073741824",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -4191,7 +4191,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Disk Usage",
-      "expr" : "sum(node_filesystem_used_bytes{node_prefix=~\"$dbcluster\", mountpoint=~\"/mnt/d[0-9]+\"}) / 1073741824",
+      "expr" : "sum(node_filesystem_used_bytes{node_prefix=~\"$dbcluster\", mountpoint=~\"/mnt/d[0-9]+\", fstype!=\"rootfs\"}) / 1073741824",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -6211,12 +6211,12 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "free",
-      "expr" : "sum({node_prefix=~\"$dbcluster\", saved_name=\"node_filesystem_free_bytes\", mountpoint=~\"/mnt/d[0-9]+\"}) by (saved_name) / 1073741824",
+      "expr" : "sum({node_prefix=~\"$dbcluster\", saved_name=\"node_filesystem_free_bytes\", mountpoint=~\"/mnt/d[0-9]+\", fstype!=\"rootfs\"}) by (saved_name) / 1073741824",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "size",
-      "expr" : "sum({node_prefix=~\"$dbcluster\", saved_name=\"node_filesystem_size_bytes\", mountpoint=~\"/mnt/d[0-9]+\"}) by (saved_name) / 1073741824",
+      "expr" : "sum({node_prefix=~\"$dbcluster\", saved_name=\"node_filesystem_size_bytes\", mountpoint=~\"/mnt/d[0-9]+\", fstype!=\"rootfs\"}) by (saved_name) / 1073741824",
       "refId" : "B"
     } ],
     "gridPos" : {
@@ -6308,7 +6308,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Disk Usage",
-      "expr" : "((sum(node_filesystem_used_bytes{node_prefix=~\"$dbcluster\", mountpoint=~\"/mnt/d[0-9]+\"}) / 1073741824)/(sum(node_filesystem_size_bytes{node_prefix=~\"$dbcluster\", mountpoint=~\"/mnt/d[0-9]+\"}) / 1073741824))*100",
+      "expr" : "((sum(node_filesystem_used_bytes{node_prefix=~\"$dbcluster\", mountpoint=~\"/mnt/d[0-9]+\", fstype!=\"rootfs\"}) / 1073741824)/(sum(node_filesystem_size_bytes{node_prefix=~\"$dbcluster\", mountpoint=~\"/mnt/d[0-9]+\", fstype!=\"rootfs\"}) / 1073741824))*100",
       "refId" : "A"
     } ],
     "gridPos" : {

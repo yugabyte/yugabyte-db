@@ -4,12 +4,7 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.models.AlertConfiguration.Severity.SEVERE;
 import static com.yugabyte.yw.models.AlertConfiguration.Severity.WARNING;
-import static com.yugabyte.yw.models.common.Unit.COUNT;
-import static com.yugabyte.yw.models.common.Unit.DAY;
-import static com.yugabyte.yw.models.common.Unit.MILLISECOND;
-import static com.yugabyte.yw.models.common.Unit.PERCENT;
-import static com.yugabyte.yw.models.common.Unit.SECOND;
-import static com.yugabyte.yw.models.common.Unit.STATUS;
+import static com.yugabyte.yw.models.common.Unit.*;
 
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
@@ -21,11 +16,7 @@ import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import io.swagger.annotations.ApiModel;
-import java.util.ArrayList;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Value;
@@ -292,10 +283,10 @@ public enum AlertTemplate {
       "Node Disk usage percentage is above threshold",
       "count by (node_prefix) (100 - (sum without (saved_name) "
           + "(node_filesystem_free_bytes{mountpoint=~\"/mnt/d[0-9]+\","
-          + " node_prefix=\"__nodePrefix__\"}) "
+          + " node_prefix=\"__nodePrefix__\", fstype!=\"rootfs\"}) "
           + "/ sum without (saved_name) "
           + "(node_filesystem_size_bytes{mountpoint=~\"/mnt/d[0-9]+\","
-          + " node_prefix=\"__nodePrefix__\"}) "
+          + " node_prefix=\"__nodePrefix__\", fstype!=\"rootfs\"}) "
           + "* 100) {{ query_condition }} {{ query_threshold }})",
       "Node disk usage for universe '{{ $labels.source_name }}'"
           + " is above {{ $labels.threshold }}% on {{ $value | printf \\\"%.0f\\\" }} node(s).",
