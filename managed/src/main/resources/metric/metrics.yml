@@ -38,6 +38,8 @@ disk_usage:
   filters:
     saved_name: "node_filesystem_free_bytes|node_filesystem_size_bytes"
     mountpoint: "/mnt/d[0-9]+"
+  exclude_filters:
+    fstype: "rootfs"
   group_by: saved_name
   panel_group: "Node Metrics"
   layout:
@@ -71,6 +73,8 @@ disk_used_size_total:
   operator: "/ 1073741824"
   filters:
     mountpoint: "/mnt/d[0-9]+"
+  exclude_filters:
+    fstype: "rootfs"
   layout:
     title: "Disk Usage"
     xaxis:
@@ -87,6 +91,8 @@ disk_capacity_size_total:
   operator: "/ 1073741824"
   filters:
     mountpoint: "/mnt/d[0-9]+"
+  exclude_filters:
+    fstype: "rootfs"
   layout:
     title: "Disk Capacity"
     xaxis:
