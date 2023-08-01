@@ -384,17 +384,28 @@
             "P90": "P90 Latency",
             "P95": "P95 Latency",
             "P99": "P99 Latency",
+            "appName": "Client Name",
             "calls": "Total Count",
+            "clientHost": "Client Host",
+            "clientPort": "Client Port",
             "datname": "Database",
+            "dbName": "Database",
+            "elapsedMillis": "Elapsed Time",
+            "keyspace": "Keyspace",
             "local_blks_hit": "Tmp tables RAM",
             "local_blks_written": "Tmp tables On Disk",
             "max_time": "Max Exec Time",
             "mean_time": "Avg Exec Time",
             "min_time": "Min Exec Time",
+            "nodeName": "Node Name",
+            "privateIp": "Private IP",
+            "queryStartTime": "Query Start",
             "rolname": "User",
             "rows": "Rows",
+            "sessionStatus": "Session Status",
             "stddev_time": "Stdev Exec Time",
-            "total_time": "Total Time"
+            "total_time": "Total Time",
+            "type": "Type"
           },
           "slowQueryGraph": {
             "title": "Query count by Response Time (ms)"
@@ -545,7 +556,7 @@
     "OIDCJWT": {
       "emailId": "Email ID",
       "OIDCJWTToken": "JSON Web Token",
-      "errorMessage":"Oops, JWT Token has expired, please login via SSO",
+      "errorMessage": "Oops, JWT Token has expired, please login via SSO",
       "redirectLinkText": "Back to home page",
       "expirationDate": "Token Expiration Date",
       "ysqlCommandLabel": "Use the following command to authenticate into your database using a JSON web token."
