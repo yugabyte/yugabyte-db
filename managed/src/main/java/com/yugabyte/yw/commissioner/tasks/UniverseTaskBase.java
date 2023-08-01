@@ -470,6 +470,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         task = createTask(DisableEncryptionAtRest.class);
         DisableEncryptionAtRest.Params disableParams = new DisableEncryptionAtRest.Params();
         disableParams.setUniverseUUID(taskParams().getUniverseUUID());
+        disableParams.encryptionAtRestConfig = taskParams().encryptionAtRestConfig;
         task.initialize(disableParams);
         subTaskGroup.addSubTask(task);
         getRunnableTask().addSubTaskGroup(subTaskGroup);
