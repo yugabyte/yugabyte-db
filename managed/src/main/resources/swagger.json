@@ -4629,6 +4629,24 @@
       "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
       "type" : "object"
     },
+    "MasterInfo" : {
+      "description" : "Information about master",
+      "properties" : {
+        "peerRole" : {
+          "enum" : [ "FOLLOWER", "LEADER", "LEARNER", "NON_PARTICIPANT", "READ_REPLICA", "UNKNOWN_ROLE" ],
+          "type" : "string"
+        },
+        "privateIp" : {
+          "type" : "string"
+        },
+        "uptimeSeconds" : {
+          "format" : "int64",
+          "type" : "integer"
+        }
+      },
+      "required" : [ "peerRole", "privateIp", "uptimeSeconds" ],
+      "type" : "object"
+    },
     "MasterNode" : {
       "properties" : {
         "cloudInfo" : {
@@ -15747,6 +15765,41 @@
         } ],
         "summary" : "Flag a universe as Helm 3-compatible",
         "tags" : [ "Universe management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/master_infos" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getMasterInfos",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/MasterInfo"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get master information list",
+        "tags" : [ "Universe information" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/masters" : {

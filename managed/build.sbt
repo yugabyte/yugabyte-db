@@ -420,7 +420,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b26"
-libraryDependencies += "org.yb" % "yb-client" % "0.8.33.7-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.33.8-SNAPSHOT"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",

@@ -591,11 +591,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     createStartMasterProcessTasks(nodeSet);
 
     // Add master to the quorum.
-    createChangeConfigTask(currentNode, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+    createChangeConfigTasks(currentNode, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
 
     if (stoppedNode != null && stoppedNode.isMaster) {
       // Perform master change only after the new master is added.
-      createChangeConfigTask(stoppedNode, false /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+      createChangeConfigTasks(stoppedNode, false /* isAdd */, SubTaskGroupType.ConfigureUniverse);
       // Update this so that it is not added as a master in config update.
       createUpdateNodeProcessTask(stoppedNode.nodeName, ServerType.MASTER, false)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);

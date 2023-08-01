@@ -264,6 +264,7 @@ GET     /customers/:cUUID/universes/:uniUUID/live_queries                      c
 GET     /customers/:cUUID/universes/:uniUUID/slow_queries                      com.yugabyte.yw.controllers.UniverseInfoController.getSlowQueries(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 DELETE  /customers/:cUUID/universes/:uniUUID/slow_queries                      com.yugabyte.yw.controllers.UniverseInfoController.resetSlowQueries(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/:nodeName/download_logs           com.yugabyte.yw.controllers.UniverseInfoController.downloadNodeLogs(cUUID: java.util.UUID, uniUUID: java.util.UUID, nodeName: String)
+GET     /customers/:cUUID/universes/:uniUUID/master_infos                      com.yugabyte.yw.controllers.UniverseInfoController.getMasterInfos(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Universe CDC Streams
 GET     /customers/:cUUID/universes/:uniUUID/cdc_streams                       com.yugabyte.yw.controllers.UniverseCdcStreamController.listCdcStreams(cUUID: java.util.UUID, uniUUID: java.util.UUID)

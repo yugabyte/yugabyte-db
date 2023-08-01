@@ -1,5 +1,5 @@
 -J-XX:MinHeapFreeRatio=10
 -J-XX:MaxHeapFreeRatio=20
 -J-Xmx2g
--J-XX:MaxMetaspaceSize=700m
--J-XX:MetaspaceSize=200m
+-J-XX:MaxMetaspaceSize=1g
+-J-XX:MetaspaceSize=500m

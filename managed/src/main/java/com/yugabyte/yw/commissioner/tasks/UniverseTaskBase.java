@@ -1537,6 +1537,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param isAdd whether Master is being added or removed.
    * @param subTask subtask type
    */
+  public void createChangeConfigTasks(
+      NodeDetails node, boolean isAdd, UserTaskDetails.SubTaskGroupType subTask) {
+    createChangeConfigTask(node, isAdd, subTask);
+    if (isAdd) {
+      createWaitForFollowerLagTask(node, ServerType.MASTER);
+    }
+  }
+
   public void createChangeConfigTask(
       NodeDetails node, boolean isAdd, UserTaskDetails.SubTaskGroupType subTask) {
     // Create a new task list for the change config so that it happens one by one.

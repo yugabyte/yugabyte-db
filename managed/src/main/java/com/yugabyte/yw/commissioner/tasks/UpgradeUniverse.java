@@ -594,7 +594,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
           if (currUserIntent.replicationFactor != 1) {
             createWaitForMasterLeaderTask()
                 .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
-            createChangeConfigTask(node, false /* isAdd */, SubTaskGroupType.ChangeInstanceType);
+            createChangeConfigTasks(node, false /* isAdd */, SubTaskGroupType.ChangeInstanceType);
           }
         }
 
@@ -621,7 +621,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
           if (currUserIntent.replicationFactor != 1) {
             // Add stopped master to the quorum.
-            createChangeConfigTask(node, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+            createChangeConfigTasks(node, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
           }
         }
 
