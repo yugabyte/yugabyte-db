@@ -934,6 +934,43 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
       }
     }
   }
+  // Execute a WriteQuery to acquire table level lock intents for an ALTER TABLE query
+  if (req->has_table_lock_type()) {
+    auto query = std::make_unique<tablet::WriteQuery>(
+      tablet.leader_term, context.GetClientDeadline(), tablet.peer.get(),
+      tablet.tablet, nullptr);
+    auto& write = *query->operation().AllocateRequest();
+    auto& write_batch = *write.mutable_write_batch();
+    *write_batch.mutable_transaction() = req->transaction();
+    write.mutable_write_batch()->mutable_table_lock()->set_table_lock_type(
+        req->table_lock_type());
+    auto context_ptr = std::make_shared<rpc::RpcContext>(std::move(context));
+    query->set_callback([resp, context_ptr, req, this](const Status& status) {
+      auto tablet = LookupLeaderTabletOrRespond(
+      server_->tablet_peer_lookup(), req->tablet_id(), resp, context_ptr.get());
+      if (!tablet) {
+        return;
+      }
+      if (!status.ok()) {
+        SetupErrorAndRespond(
+          resp->mutable_error(),
+          STATUS(TryAgain, "Could not acquire table level lock"), context_ptr.get());
+        return;
+      } else {
+        // TODO(tablelocks): Consolidate this logic with the code below.
+        auto operation = std::make_unique<ChangeMetadataOperation>(
+            tablet.tablet, tablet.peer->log());
+        operation->AllocateRequest()->CopyFrom(*req);
+
+        operation->set_completion_callback(
+          MakeRpcOperationCompletionCallback(std::move(*context_ptr), resp, server_->Clock()));
+
+        tablet.peer->Submit(std::move(operation), tablet.leader_term);
+      }
+    });
+    tablet.peer->WriteAsync(std::move(query));
+    return;
+  }
   auto operation = std::make_unique<ChangeMetadataOperation>(
       tablet.tablet, tablet.peer->log());
   operation->AllocateRequest()->CopyFrom(*req);

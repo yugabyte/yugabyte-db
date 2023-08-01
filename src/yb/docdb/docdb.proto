@@ -39,6 +39,11 @@ message TableSchemaVersionPB {
   optional uint32 schema_version = 2;
 }
 
+message TableLockPB {
+  optional TableLockType table_lock_type = 1 [default = NONE];
+  // In the future, this message should contain the colocation_ids of the tables we want to lock.
+}
+
 // A set of key/value pairs to be written into RocksDB.
 message KeyValueWriteBatchPB {
   repeated KeyValuePairPB write_pairs = 1;
@@ -69,6 +74,8 @@ message KeyValueWriteBatchPB {
 
   // Reserved for deprecated enable_replicate_transaction_status_table field.
   reserved 12;
+
+  optional TableLockPB table_lock = 13;
 }
 
 message PerDbFilterPB {

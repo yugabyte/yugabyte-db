@@ -449,6 +449,7 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
     // intent_dht_from_same_txn_ or resolved_intent_txn_dht_, which of course are greater than or
     // equal to DocHybridTime::kMin.
     if (result.intent_value.starts_with(dockv::ValueEntryTypeAsChar::kRowLock)) {
+      // TODO(tablelocks): Consider ignoring table locks here as well.
       result.value_time.Assign(EncodedDocHybridTime::kMin);
     } else if (result.same_transaction) {
       const auto aborted = txn_op_context.subtransaction.aborted.Test(decoded_subtxn_id);
