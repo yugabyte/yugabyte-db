@@ -17,7 +17,7 @@ export const YBTimeFormats = {
   YB_HOURS_FIRST_TIMESTAMP: 'HH:mm:ss MMM-DD-YYYY [UTC]ZZ',
   YB_ISO8601_TIMESTAMP: 'YYYY-MM-DD[T]H:mm:ssZZ'
 } as const;
-
+export type YBTimeFormats = typeof YBTimeFormats[keyof typeof YBTimeFormats];
 /**
  * Converts date to RFC3339 format("yyyy-MM-dd'T'HH:mm:ss'Z'")
  * @param d Date
@@ -48,26 +48,32 @@ export const convertToISODateString = (d: Date) => {
   }
 };
 
-type Keys = keyof typeof YBTimeFormats;
-
-type FormatDateProps = {
-  d: Date | string | number;
-  timeFormat: typeof YBTimeFormats[Keys];
+/**
+ * Format the provided datetime string using one of our standard YBA datetime formats.
+ */
+export const formatDatetime = (
+  date: moment.MomentInput,
+  timeFormat: YBTimeFormats = YBTimeFormats.YB_DEFAULT_TIMESTAMP,
+  timezone?: string
+): string => {
+  return timezone ? moment(date).tz(timezone).format(timeFormat) : moment(date).format(timeFormat);
 };
 
-export const YBFormatDate: FC<FormatDateProps> = ({ d, timeFormat }) => {
+type FormatDateProps = {
+  date: Date | string | number;
+  timeFormat: YBTimeFormats;
+};
+
+export const YBFormatDate: FC<FormatDateProps> = ({ date, timeFormat }) => {
   const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
-  if (!currentUserTimezone) {
-    return <>{moment(d).format(timeFormat as any)}</>;
-  }
-  return <>{moment(d).tz(currentUserTimezone).format(timeFormat)}</>;
+  return <>{formatDatetime(date, timeFormat, currentUserTimezone)}</>;
 };
 
 export const ybFormatDate = (
-  d: Date | string | number,
+  date: Date | string | number,
   timeFormat = YBTimeFormats.YB_DEFAULT_TIMESTAMP
 ) => {
-  return <YBFormatDate d={d} timeFormat={timeFormat} />;
+  return <YBFormatDate date={date} timeFormat={timeFormat} />;
 };
 
 export const dateStrToMoment = (str: string) => {
