@@ -12,6 +12,7 @@
 //
 
 #include <chrono>
+#include <memory>
 #include <regex>
 #include <string>
 #include <unordered_set>
@@ -26,7 +27,10 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/partition.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/consensus/consensus_types.pb.h"
 
+#include "yb/gutil/dynamic_annotations.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -35,6 +39,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master-path-handlers.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/master/tasks_tracker.h"
@@ -57,6 +62,7 @@
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_string(TEST_master_extra_list_host_port);
+DECLARE_bool(TEST_tserver_disable_heartbeat);
 
 DECLARE_int32(follower_unavailable_considered_failed_sec);
 
@@ -135,6 +141,19 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
     std::shared_ptr<client::YBTable> table;
     CHECK_OK(client->OpenTable(table_name, &table));
     return table;
+  }
+
+  string GetLeaderlessTabletsString() {
+    faststring result;
+    auto url = "/tablet-replication";
+    TestUrl(url, &result);
+    const string& result_str = result.ToString();
+    size_t pos_leaderless = result_str.find("Leaderless Tablets", 0);
+    size_t pos_underreplicated = result_str.find("Underreplicated Tablets", 0);
+    CHECK_NE(pos_leaderless, string::npos);
+    CHECK_NE(pos_underreplicated, string::npos);
+    CHECK_GT(pos_underreplicated, pos_leaderless);
+    return result_str.substr(pos_leaderless, pos_underreplicated - pos_leaderless);
   }
 
   using YBMiniClusterTestBase<T>::cluster_;
@@ -589,19 +608,6 @@ class MasterPathHandlersLeaderlessITest : public MasterPathHandlersExternalItest
     return "";
   }
 
-  string GetLeaderlessTabletsString() {
-    faststring result;
-    auto url = "/tablet-replication";
-    TestUrl(url, &result);
-    const string& result_str = result.ToString();
-    size_t pos_leaderless = result_str.find("Leaderless Tablets", 0);
-    size_t pos_underreplicated = result_str.find("Underreplicated Tablets", 0);
-    CHECK_NE(pos_leaderless, string::npos);
-    CHECK_NE(pos_underreplicated, string::npos);
-    CHECK_GT(pos_underreplicated, pos_leaderless);
-    return result_str.substr(pos_leaderless, pos_underreplicated - pos_leaderless);
-  }
-
   std::shared_ptr<client::YBTable> table_;
 };
 
@@ -642,6 +648,49 @@ TEST_F(MasterPathHandlersLeaderlessITest, TestHeartbeatsWithoutLeaderLease) {
     string result = GetLeaderlessTabletsString();
     return result.find(tablet_id) == string::npos;
   }, 20s * kTimeMultiplier, "leaderless tablet endpoint becomes empty"));
+}
+
+TEST_F(MasterPathHandlersItest, TestLeaderlessDeletedTablet) {
+  auto table = CreateTestTable(kNumTablets);
+
+  // Prevent heartbeats from overwriting replica locations.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
+
+  auto& catalog_mgr = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto table_info = catalog_mgr.GetTableInfo(table->id());
+  auto tablets = table_info->GetTablets();
+  ASSERT_EQ(tablets.size(), kNumTablets);
+
+  // Make all tablets leaderless.
+  for (auto& tablet : tablets) {
+    auto replicas = std::make_shared<TabletReplicaMap>(*tablet->GetReplicaLocations());
+    for (auto& replica : *replicas) {
+      replica.second.role = PeerRole::FOLLOWER;
+    }
+    tablet->SetReplicaLocations(replicas);
+  }
+  auto running_tablet = tablets[0];
+  auto deleted_tablet = tablets[1];
+  auto replaced_tablet = tablets[2];
+
+  auto deleted_lock = deleted_tablet->LockForWrite();
+  deleted_lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, "");
+  deleted_lock.Commit();
+
+  auto replaced_lock = replaced_tablet->LockForWrite();
+  replaced_lock.mutable_data()->set_state(SysTabletsEntryPB::REPLACED, "");
+  replaced_lock.Commit();
+
+  // Only the RUNNING tablet should be returned in the endpoint.
+  string result = GetLeaderlessTabletsString();
+  LOG(INFO) << result;
+  ASSERT_NE(result.find(running_tablet->id()), string::npos);
+  ASSERT_EQ(result.find(deleted_tablet->id()), string::npos);
+  ASSERT_EQ(result.find(replaced_tablet->id()), string::npos);
+
+  // Shutdown cluster to prevent cluster consistency check from failing because of the edited
+  // tablet states.
+  cluster_->Shutdown();
 }
 
 }  // namespace master
