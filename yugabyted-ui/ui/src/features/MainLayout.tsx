@@ -6,10 +6,10 @@ import { Footer } from '@app/features/Footer';
 import { Sidebar } from '@app/features/Sidebar';
 import { themeVariables } from '@app/theme/variables';
 import { PerformanceRouting } from './clusters/PerformanceRouting';
-import { GettingStarted } from './welcome/GettingStarted';
 import { ClusterRouting } from '@app/features/clusters/ClusterRouting';
 import { DatabasesRouting } from '@app/features/clusters/DatabasesRouting';
 import { AlertsRouting } from './clusters/AlertsRouting';
+import { MigrationRouting } from './clusters/MigrationRouting';
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -91,7 +91,7 @@ export const MainLayout: FC = () => {
               <Route path={'/databases'} component={DatabasesRouting} />
               <Route path={'/performance'} component={PerformanceRouting} />
               <Route path={'/alerts'} component={AlertsRouting} />
-              <Route path={'/debug'} component={GettingStarted} />
+              <Route path={'/migration'} component={MigrationRouting} />
               <Route path={'/'} component={ClusterRouting} />
               {/* <Route exact path={'/'} render={() => {
                     return (

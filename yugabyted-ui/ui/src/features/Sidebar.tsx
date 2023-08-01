@@ -8,7 +8,7 @@ import { browserStorage } from '@app/helpers';
 import YBLogoFull from '@app/assets/yugabyteDB-logo.svg';
 import YBLogo from '@app/assets/yb-logo.svg';
 import RocketIcon from '@app/assets/rocket.svg';
-import SettingsIcon from '@app/assets/cog.svg';
+import MigrateIcon from '@app/assets/schema.svg';
 import DbSecurityIcon from '@app/assets/database-security.svg';
 import MetricsIcon from '@app/assets/stats.svg';
 import DoubleArrowIcon from '@app/assets/double-arrow-left.svg';
@@ -320,15 +320,15 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
         </div>
         <NavLinkWithDisable
           disabled={isDisabled}
-          to={`/debug`}
-          isActive={(_, location) => /^\/debug/.test(location.pathname)}
+          to={`/migration`}
+          isActive={(_, location) => /^\/migration/.test(location.pathname)}
           className={classes.link}
           activeClassName={classes.linkActive}
-          data-testid="SidebarLinkDebug"
+          data-testid="SidebarLinkMigration"
         >
-          <SettingsIcon className={classes.icon} />
+          <MigrateIcon className={classes.icon} />
           <Typography variant="body2" noWrap className={clsx(isCollapsed && classes.fadeOut)}>
-            {t('common.debug')}
+            {t('common.migrations')}
           </Typography>
         </NavLinkWithDisable>
 

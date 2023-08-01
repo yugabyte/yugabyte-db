@@ -65,17 +65,14 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 interface StepperProps {
-  state: string;
 }
 
-export const ProgressStepper: FC<StepperProps> = ({ state }) => {
+export const ProgressStepper: FC<StepperProps> = () => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  let currentStep = 0;
-  if ( state === 'Active') {
-    currentStep = 0;
-  }
+  let currentStep = 1;
+
   // if (state === CLUSTER_STATE.Bootstrap) {
   //   currentStep = 1;
   // } else if (state === CLUSTER_STATE.Provision) {
@@ -105,24 +102,24 @@ export const ProgressStepper: FC<StepperProps> = ({ state }) => {
     <div className={classes.container}>
       <div className={classes.line}></div>
       <div className={classes.step}>
-        <Typography variant="button">{t('clusterDetail.bootstrapping')}</Typography>
+        <Typography variant="button">{t('clusterDetail.voyager.export')}</Typography>
         {currentStep > 1 ? completedCheckIcon : getStepNumberIcon(1)}
         <Typography variant="subtitle1" className={classes.description}>
-          {t('clusterDetail.bootstrappingCopy')}
+          {t('clusterDetail.voyager.exportDesc')}
         </Typography>
       </div>
       <div className={classes.step}>
-        <Typography variant="button">{t('clusterDetail.provisioning')}</Typography>
+        <Typography variant="button">{t('clusterDetail.voyager.analyze')}</Typography>
         {currentStep > 2 ? completedCheckIcon : getStepNumberIcon(2)}
         <Typography variant="subtitle1" className={classes.description}>
-          {t('clusterDetail.provisioningCopy')}
+          {t('clusterDetail.voyager.analyzeDesc')}
         </Typography>
       </div>
       <div className={classes.step}>
-        <Typography variant="button">{t('clusterDetail.configuringCluster')}</Typography>
+        <Typography variant="button">{t('clusterDetail.voyager.import')}</Typography>
         {currentStep > 3 ? completedCheckIcon : getStepNumberIcon(3)}
         <Typography variant="subtitle1" className={classes.description}>
-          {t('clusterDetail.configuringClusterCopy')}
+          {t('clusterDetail.voyager.importDesc')}
         </Typography>
       </div>
     </div>

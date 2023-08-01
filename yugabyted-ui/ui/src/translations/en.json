@@ -11,7 +11,7 @@
       "networkAccess": "Network Access",
       "dbSecurity": "Database Security",
       "admin": "Admin",
-      "debug": "Debug",
+      "migrations": "Migrations",
       "alerts": "Alerts",
       "systemStatus": "System Status",
       "claimTshirt" : "Claim FREE T-shirt",
@@ -802,6 +802,21 @@
         "table": "Table",
         "partition": "Partition",
         "size": "Size"
+      },
+      "voyager": {
+        "migrationOverview": "Migration Overview",
+        "tabMigrations": "Migrations",
+        "tabMigrationHistory": "Migration History",
+        "export": "Export",
+        "exportDesc": "Prepare and export schema",
+        "analyze": "Analyze",
+        "analyzeDesc": "Analyze schema (Modify Schema)",
+        "import": "Import",
+        "importDesc": "Import schema, data, indexes/triggers and verify",
+        "name": "Name",
+        "status": "Status",
+        "starttime": "Start Time",
+        "endtime": "End Time"
       },
       "maintenance": {
         "maintenanceTitle": "Scheduled Maintenance",
