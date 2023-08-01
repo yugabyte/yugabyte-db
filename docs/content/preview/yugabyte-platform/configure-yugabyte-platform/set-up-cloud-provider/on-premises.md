@@ -176,7 +176,7 @@ To configure the hardware, do the following:
 1. [Add instance types](#add-instance-types).
 2. Add instances.
     - If you are not manually provisioning nodes, [add instances](#add-instances) for each node.
-    - If the **Manually Provision Nodes** option is enabled for the provider configuration, [provision the nodes manually](#provision-nodes-manually).
+    - If the **Manually Provision Nodes** option is enabled for the provider configuration, first [provision the nodes manually](#provision-nodes-manually), then add instances.
 
 ### Add instance types
 
@@ -200,6 +200,13 @@ You can add instances to an on-prem provider using the YugabyteDB Anywhere UI.
 
 If **Manually Provision Nodes** is enabled in the on-prem provider configuration, you must [manually provision instances](#provision-nodes-manually) before adding them.
 
+#### Prerequisites
+
+Before you add instances, you need the following:
+
+- The IP addresses of your VMs. Before you can add instances, you need to create your VMs. You do this using your hypervisor or cloud provider.
+- Instance type to assign each instance. The instance types define properties of the instances, along with the mount points. See [Add instance types](#add-instance-types).
+
 #### Add instances in YugabyteDB Anywhere
 
 To add the instances, do the following:
@@ -211,7 +218,7 @@ To add the instances, do the following:
 1. For each node in each region, provide the following:
 
     - Select the zone.
-    - Select the instance type
+    - Select the instance type.
     - Enter the IP address of the node. You can use DNS names or IP addresses when adding instances.
     - Optionally, enter an Instance ID; this is a user-defined identifier.
 
@@ -257,28 +264,30 @@ You can manually provision each node using the pre-provisioning Python script, a
     sudo docker exec -it yugaware bash
     ```
 
-1. Copy and paste the Python script from the YugabyteDB Anywhere UI and substitute the following values:
+1. Copy and paste the Python script command from the YugabyteDB Anywhere UI. Set the flags for the command as follows:
 
+    - `--ask_password` - this flag instructs the script to prompt for a password (which is required if the sudo user requires password authentication).
     - `--install_node_agent` - this flag instructs the script to install the node agent, which is required for YugabyteDB Anywhere to communicate with the instance.
     - `--yba_url` - enter the IP address of the machine where you are running YugabyteDB Anywhere, with the port of 9000.
-    - `--api_token` - enter your API token; you can create an API token by navigating to your User Profile and clicking Generate Key.
+    - `--api_token` - enter your API token; you can create an API token by navigating to your **User Profile** and clicking **Generate Key**.
     - `--node_name` - enter a name for the node.
-    - `--instance_type` - enter the name of the node instance type.
+    - `--instance_type` - enter the name of the [instance type](#add-instance-types) to use for the node.
     - `--zone_name` - enter the name of the zone where the node is located.
     - `--ip` - enter the IP address of the node.
-    - `--mount_points` - enter the mount point configured for the node (typically `/mnt/d0`)
-    - `--ask_password` - this flag instructs the script to prompt for a password (which is required if the sudo user requires password authentication).
+    - `--mount_points` - enter the mount point configured for the node (typically `/data`)
 
     For example:
 
     ```bash
     /opt/yugabyte/yugaware/data/provision/9cf26f3b-4c7c-451a-880d-593f2f76efce/provision_instance.py \
-        --install_node_agent --yba_url http://100.98.0.40:9000 \
+        --ask_password --install_node_agent \
         --api_token 999bc9db-ddfb-9fec-a33d-4f8f9fd88db7 \
-        --node_name onprem_node1 --instance_type c5.large \
-        --zone_name us-west-2a --ip 10.9.116.65 \
+        --yba_url http://100.98.0.40:9000 \
+        --ip 10.9.116.65 \
+        --node_name onprem_node1 \
+        --instance_type c5.large \
+        --zone_name us-west-2a 
         --mount_points /data \
-        --ask_password
     ```
 
     Expect the following output and, if you specified `--ask-password`, prompt:
