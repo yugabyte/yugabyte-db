@@ -19,7 +19,6 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
-import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.Universe;
@@ -36,7 +35,6 @@ import java.util.Set;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.yb.client.YBClient;
 
 @Slf4j
 public class AnsibleConfigureServers extends NodeTaskBase {
@@ -48,7 +46,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
   }
 
   public static class Params extends NodeTaskParams {
-    public UpgradeTaskType type = UpgradeTaskParams.UpgradeTaskType.Everything;
+    public UpgradeTaskType type = UpgradeTaskType.Everything;
     public String ybSoftwareVersion = null;
 
     // Optional params.
@@ -116,7 +114,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         // Reset may be set only if node is not a master.
         // Once isMaster is set, it can be tied to a cluster.
         resetMasterState =
-            isChangeMasterConfigDone(universe, node, true, node.cloudInfo.private_ip);
+            isChangeMasterConfigDone(universe, node, false, node.cloudInfo.private_ip);
       }
     }
     log.debug(
@@ -131,8 +129,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
             .nodeCommand(NodeManager.NodeCommandType.Configure, taskParams())
             .processErrors();
 
-    if (taskParams().type == UpgradeTaskParams.UpgradeTaskType.Everything
-        && !taskParams().updateMasterAddrsOnly) {
+    if (taskParams().type == UpgradeTaskType.Everything && !taskParams().updateMasterAddrsOnly) {
       // Check cronjob status if installing software.
       if (!taskParams().useSystemd) {
         response =
@@ -151,10 +148,9 @@ public class AnsibleConfigureServers extends NodeTaskBase {
                 NodeDetails node = universe.getNode(nodeName);
                 node.cronsActive = false;
                 log.info(
-                    "Updated "
-                        + nodeName
-                        + " cronjob status to inactive from universe "
-                        + taskParams().universeUUID);
+                    "Updated {} cronjob status to inactive from universe {}",
+                    nodeName,
+                    taskParams().universeUUID);
               }
             };
         saveUniverseDetails(updater);
