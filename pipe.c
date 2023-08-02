@@ -224,6 +224,9 @@ unpack_field(message_buffer *buffer, message_data_type *type,
 	Assert(buffer->next);
 
 	message = buffer->next;
+
+	Assert(message);
+
 	*size = message->size;
 	*type = message->type;
 	*tupType = message->tupType;
@@ -1024,7 +1027,7 @@ Datum
 dbms_pipe_send_message(PG_FUNCTION_ARGS)
 {
 	text	   *pipe_name = NULL;
-	int			timeout = MAXWAIT;
+	int			timeout;
 	int			limit = 0;
 	bool		valid_limit;
 	instr_time	start_time;
@@ -1045,9 +1048,6 @@ dbms_pipe_send_message(PG_FUNCTION_ARGS)
 		pipe_name = PG_GETARG_TEXT_P(0);
 
 	output_buffer = check_buffer(output_buffer, LOCALMSGSZ);
-
-	if (!PG_ARGISNULL(1))
-		timeout = PG_GETARG_INT32(1);
 
 	if (!PG_ARGISNULL(1))
 	{
