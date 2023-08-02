@@ -20,7 +20,7 @@ To access all universe backups, navigate to **Backups**.
 
 ## Restore an entire or incremental backup
 
-You can restore YugabyteDB universe YCQL data from a backup as follows:
+You can restore YugabyteDB universe data from a backup as follows:
 
 1. In the **Backups** list, select the backup to restore to display the **Backup Details**.
 

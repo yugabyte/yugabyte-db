@@ -18,7 +18,7 @@ You can use YugabyteDB Anywhere to back up your YugabyteDB universe data. This i
 
 If you are using YBA version 2.16 or later to manage universes with YugabyteDB version 2.16 or later, you can additionally create [incremental backups](#create-incremental-backups) and [configure backup performance parameters](#configure-backup-performance-parameters).
 
-For information on how to schedule backups for a later time or as a recurring task, see [Schedule universe data backups](../schedule-data-backups/).
+For information on how to schedule backups for a later time or as a recurring task, see [Schedule universe backups](../schedule-data-backups/).
 
 Note that non-transactional backups are not supported.
 
