@@ -168,7 +168,7 @@ For example, to reset the password for the admin superuser created in [Create a 
       --ycql_allow_non_authenticated_password_reset=false
     ```
 
-1. Login to `ycqlsh` with the updated password as follows:
+1. Log in to `ycqlsh` with the updated password as follows:
 
     ```sh
     ./bin/ycqlsh -u admin -p <updatedPassword>
