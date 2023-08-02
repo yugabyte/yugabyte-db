@@ -131,7 +131,9 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTableUuid, onRefetch
         })
         .filter(
           (tablet) =>
-            tablet.leaderNode === selectedNode || tablet.followerNodes.includes(selectedNode)
+            selectedNode === "" ||
+            tablet.leaderNode === selectedNode ||
+            tablet.followerNodes.includes(selectedNode)
         ) ?? [],
     [tableInfoData, healthCheckData]
   );
