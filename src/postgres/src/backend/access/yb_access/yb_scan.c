@@ -3348,9 +3348,10 @@ ybFetchSample(YbSample ybSample, HeapTuple *rows)
  * lifetime of that context is appropriate.
  *
  * By default the slot holds a virtual tuple, a heap tuple is only formed if
- * the DocDB returns oid. If heap tuple is formed, its t_tableOid field is
- * updated with provided relid and t_ybctid field is set to returned ybctid
- * value. The heap tuple is allocated in the slot's memory context.
+ * the DocDB returns system columns. Virtual tuple has no storage for system
+ * attributes. If heap tuple is formed, its t_tableOid field is updated with
+ * provided relid and t_ybctid field is set to returned ybctid value. The heap
+ * tuple is allocated in the slot's memory context.
  */
 TupleTableSlot *
 ybFetchNext(YBCPgStatement handle,
@@ -3372,14 +3373,17 @@ ybFetchNext(YBCPgStatement handle,
 								 &has_data));
 	if (has_data)
 	{
+		bool has_syscols;
 		slot->tts_nvalid = tupdesc->natts;
 		slot->tts_isempty = false;
 		slot->tts_ybctid = PointerGetDatum(syscols.ybctid);
-		if (syscols.oid != InvalidOid)
+		HandleYBStatus(YBCPgDmlHasSystemTargets(handle, &has_syscols));
+		if (has_syscols)
 		{
 			MemoryContext oldcontext = MemoryContextSwitchTo(slot->tts_mcxt);
 			HeapTuple tuple = heap_form_tuple(tupdesc, values, nulls);
-			HeapTupleSetOid(tuple, syscols.oid);
+			if (OidIsValid(syscols.oid))
+				HeapTupleSetOid(tuple, syscols.oid);
 			tuple->t_tableOid = relid;
 			tuple->t_ybctid = slot->tts_ybctid;
 			slot = ExecStoreHeapTuple(tuple, slot, true);
