@@ -155,7 +155,7 @@ EXPLAIN EXECUTE t5(1);
          ->  Append  (cost=0.00..5.33 rows=10 width=4)
                ->  Index Scan using lp_p1_a_idx on lp_p1  (cost=0.00..5.28 rows=10 width=4)
                      Index Cond: (a = 1)
-                     Filter: ((c)::text = '1'::text)
+                     Remote Filter: ((c)::text = '1'::text)
 (9 rows)
 
 EXPLAIN EXECUTE t5(1);
@@ -169,7 +169,7 @@ EXPLAIN EXECUTE t5(1);
          ->  Append  (cost=0.00..5.33 rows=10 width=4)
                ->  Index Scan using lp_p1_a_idx on lp_p1  (cost=0.00..5.28 rows=10 width=4)
                      Index Cond: (a = 1)
-                     Filter: ((c)::text = '1'::text)
+                     Remote Filter: ((c)::text = '1'::text)
 (9 rows)
 
 -- CTE on partitioned tables.
@@ -221,7 +221,7 @@ EXPLAIN EXECUTE t7('a');
  Append  (cost=0.00..16.50 rows=100 width=72)
    ->  Index Scan using rp_p1_pkey on rp_p1  (cost=0.00..16.00 rows=100 width=72)
          Index Cond: ((a = 1) AND (b = 1))
-         Filter: ((c)::bpchar = 'a'::bpchar)
+         Remote Filter: ((c)::bpchar = 'a'::bpchar)
 (4 rows)
 
 EXPLAIN EXECUTE t7('a');
@@ -230,7 +230,7 @@ EXPLAIN EXECUTE t7('a');
  Append  (cost=0.00..16.50 rows=100 width=72)
    ->  Index Scan using rp_p1_pkey on rp_p1  (cost=0.00..16.00 rows=100 width=72)
          Index Cond: ((a = 1) AND (b = 1))
-         Filter: ((c)::bpchar = $1)
+         Remote Filter: ((c)::bpchar = $1)
 (4 rows)
 
 PREPARE t8(char) AS UPDATE lp SET d=3 WHERE a=1 AND b=1 AND c=$1;
