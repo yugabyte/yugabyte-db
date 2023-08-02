@@ -474,8 +474,6 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // Functions to call after the limit is reached to free memory.
   std::vector<std::weak_ptr<GarbageCollector>> gcs_;
 
-  ThreadSafeRandom rand_;
-
   // If true, logs to INFO every consume/release called. Used for debugging.
   bool enable_logging_;
 
