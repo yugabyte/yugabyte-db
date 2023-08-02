@@ -189,6 +189,7 @@ struct AUHMetadata {
 struct AUHAuxInfo {
   std::string tablet_id;
   std::string table_id;
+  std::string method;
 
   std::string ToString() const;
 
@@ -198,13 +199,15 @@ struct AUHAuxInfo {
   void ToPB(PB* pb) const {
     pb->set_tablet_id(tablet_id);
     pb->set_table_id(table_id);
+    pb->set_method(method);
   }
 
   template <class PB>
   static AUHAuxInfo FromPB(const PB& pb) {
     return AUHAuxInfo{
       .tablet_id = pb.tablet_id(),
-      .table_id = pb.table_id()
+      .table_id = pb.table_id(),
+      .method = pb.method()
     };
   }
 };

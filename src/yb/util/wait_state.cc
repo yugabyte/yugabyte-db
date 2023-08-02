@@ -23,7 +23,19 @@ namespace yb::util {
 thread_local WaitStateInfoPtr WaitStateInfo::threadlocal_wait_state_;
 
 std::string AUHAuxInfo::ToString() const {
-  return YB_STRUCT_TO_STRING(table_id, tablet_id);
+  return YB_STRUCT_TO_STRING(table_id, tablet_id, method);
+}
+
+void AUHAuxInfo::UpdateFrom(const AUHAuxInfo &other) {
+  if (!other.tablet_id.empty()) {
+    tablet_id = other.tablet_id;
+  }
+  if (!other.table_id.empty()) {
+    table_id = other.table_id;
+  }
+  if (!other.method.empty()) {
+    method = other.method;
+  }
 }
 
 void AUHAuxInfo::UpdateFrom(const AUHAuxInfo &other) {

@@ -408,6 +408,7 @@ typedef struct AUHMetadataDescriptor {
 typedef struct AUHAuxDescriptor {
   const char* table_id;
   const char* tablet_id;
+  const char* method;
 } YBCAUHAuxDescriptor;
 
 typedef struct AUHDescriptor {
