@@ -69,6 +69,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/url-coding.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -195,6 +196,19 @@ Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
     performing_update_lock.release();
   }
   return status;
+}
+
+void Peer::DumpToHtml(std::ostream& out) const {
+  const auto peer_pb_str = EscapeForHtmlToString("Peer PB: " + peer_pb_.DebugString());
+  out << "Peer:" << std::endl;
+  std::lock_guard lock(peer_lock_);
+  out << Format(
+             "<ul><li>$0</li><li>$1</li><li>$2</li><li>$3</li></ul>",
+             EscapeForHtmlToString(Format("State: $0", state_)),
+             EscapeForHtmlToString(Format("Current Heartbeat Id: $0", cur_heartbeat_id_)),
+             EscapeForHtmlToString(Format("Failed Attempts: $0", failed_attempts_)),
+             peer_pb_str)
+      << std::endl;
 }
 
 void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
