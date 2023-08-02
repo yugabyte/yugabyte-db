@@ -274,11 +274,7 @@ func InitViper() {
 
 	// Update the installRoot to home directory for non-root installs. Will honor custom install root.
 	if !HasSudoAccess() && viper.GetString("installRoot") == "/opt/yugabyte" {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			panic(err)
-		}
-		viper.Set("installRoot", filepath.Join(homeDir, "yugabyte"))
+		viper.SetDefault("installRoot", filepath.Join(GetUserHomeDir(), "yugabyte"))
 	}
 	viper.SetConfigFile(InputFile())
 	viper.ReadInConfig()
@@ -296,6 +292,14 @@ func InitViper() {
 // Checks if Postgres is enabled in config.
 func IsPostgresEnabled() bool {
 	return viper.GetBool("postgres.install.enabled") || viper.GetBool("postgres.useExisting.enabled")
+}
+
+func GetUserHomeDir() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		panic(err)
+	}
+	return homeDir
 }
 
 func GetBinaryDir() string {
@@ -444,10 +448,10 @@ func init() {
 // set in viper.
 func UpdateRootInstall(newRoot string) {
 	viper.Set("installRoot", newRoot)
-	setYamlValue(InputFile(), "installRoot", newRoot)
+	SetYamlValue(InputFile(), "installRoot", newRoot)
 }
 
-func setYamlValue(filePath string, yamlPath string, value string) {
+func SetYamlValue(filePath string, yamlPath string, value string) {
 	origYamlBytes, err := os.ReadFile(filePath)
 	if err != nil {
 		log.Fatal("unable to read config file " + filePath)
