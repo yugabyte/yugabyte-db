@@ -144,7 +144,7 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 | {{<icon/yes>}} | Permissions  | [Grant privileges](../../../secure/authorization/ycql-grant-permissions/)      |
 | {{<icon/no>}}  | Users        | Legacy Cassandra feature (_CREATE, DROP, ALTER, LIST_)                          |
 | {{<icon/no>}}  | `LIST ROLES` | But can be done using [query](../../../secure/authorization/create-roles-ycql) |
-| {{<icon/no>}}  | `LIST PERMISSIONS` | But can be done using [query](../../secure/authorization/ycql-grant-permissions/#2-list-permissions-for-roles) |
+| {{<icon/no>}}  | `LIST PERMISSIONS` | But can be done using [query](../../../secure/authorization/ycql-grant-permissions/#2-list-permissions-for-roles) |
 {.sno-1}
 
 ## Other Features
@@ -154,7 +154,7 @@ Yugabyte Cloud Query Language (YCQL) has its roots in the [Cassandra Query Langu
 |   {{<icon/yes>}}   | Aggregates                   | [AVG, COUNT, MAX, MIN, SUM](../../../api/ycql/expr_fcall/#aggregate-functions) |
 |   {{<icon/yes>}}   | Built-in Functions           | [Now, DateOf, CurrentTime, ToTime, UUID ... ](../../../api/ycql/expr_fcall/)   |
 |   {{<icon/yes>}}   | Operators                    | [Binary, Unary, Null operators](../../../api/ycql/expr_ocall/)                 |
-| {{<icon/partial>}} | Batch                        | Only programattically via [BatchStatement](../../../api/ycql/batch/)           |
+| {{<icon/partial>}} | Batch                        | Only programmatically via [BatchStatement](../../../api/ycql/batch/)           |
 |   {{<icon/no>}}    | Materialized Views           |                                                                                |
 |   {{<icon/no>}}    | Triggers                     |                                                                                |
 |   {{<icon/no>}}    | User Defined Aggregates(UDA) |                                                                                |
