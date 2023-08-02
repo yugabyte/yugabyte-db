@@ -3099,11 +3099,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     boolean underReplicatedTabletsCheckEnabled =
         confGetter.getConfForScope(
             getUniverse(), UniverseConfKeys.underReplicatedTabletsCheckEnabled);
-    if (underReplicatedTabletsCheckEnabled) {
+    if (underReplicatedTabletsCheckEnabled && processTypes.contains(ServerType.TSERVER)) {
       createCheckUnderReplicatedTabletsTask(node).setSubTaskGroupType(subGroupType);
     }
-
-    // TODO: Add follower lag tablet level check.
   }
 
   /**
