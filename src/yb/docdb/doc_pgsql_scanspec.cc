@@ -358,12 +358,16 @@ KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_boun
   auto encoder = dockv::DocKeyEncoder(&result).Schema(schema);
 
   bool has_hash_columns = schema.num_hash_key_columns() > 0;
+
+  // The first column in a hash partitioned table is the hash code column.
+  bool has_in_hash_options = has_hash_columns && options_ && !options_->empty()
+      && !(*options_)[schema.get_dockey_component_idx(0)].empty();
   dockv::KeyEntryValues hashed_components;
   hashed_components.reserve(schema.num_hash_key_columns());
 
   int32_t hash_code;
   int32_t max_hash_code;
-  if (hashed_components_->empty() && has_hash_columns && options_ && !options_->empty()) {
+  if (hashed_components_->empty() && has_in_hash_options) {
     for (size_t i = 0; i < schema.num_hash_key_columns(); ++i) {
       DCHECK_GE(options_->size(),
                 schema.num_hash_key_columns() + schema.has_yb_hash_code());

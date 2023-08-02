@@ -31,8 +31,9 @@ using std::vector;
 namespace yb {
 namespace master {
 
-void CatalogManager::ScheduleYsqlTxnVerification(const scoped_refptr<TableInfo>& table,
-                                                 const TransactionMetadata& txn) {
+void CatalogManager::ScheduleYsqlTxnVerification(
+    const scoped_refptr<TableInfo>& table, const TransactionMetadata& txn,
+    const LeaderEpoch& epoch) {
   // Add this transaction to the map containing all the transactions yet to be
   // verified.
   {
@@ -52,7 +53,7 @@ void CatalogManager::ScheduleYsqlTxnVerification(const scoped_refptr<TableInfo>&
             << " id: " << table->id() << " schema version: " << l->pb.version();
   std::function<Status(bool)> when_done =
     std::bind(&CatalogManager::YsqlTableSchemaChecker, this, table,
-              l->pb_transaction_id(), _1);
+              l->pb_transaction_id(), _1, epoch);
   // For now, just print warning if submission to thread pool fails. Fix this as part of
   // #13358.
   WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
@@ -61,20 +62,20 @@ void CatalogManager::ScheduleYsqlTxnVerification(const scoped_refptr<TableInfo>&
       "Could not submit VerifyTransaction to thread pool");
 }
 
-Status CatalogManager::YsqlTableSchemaChecker(scoped_refptr<TableInfo> table,
-                                            const string& txn_id_pb,
-                                            bool txn_rpc_success) {
+Status CatalogManager::YsqlTableSchemaChecker(
+    scoped_refptr<TableInfo> table, const string& txn_id_pb, bool txn_rpc_success,
+    const LeaderEpoch& epoch) {
   if (!txn_rpc_success) {
     return STATUS_FORMAT(IllegalState, "Failed to find Transaction Status for table $0",
                          table->ToString());
   }
   bool is_committed = VERIFY_RESULT(ysql_transaction_->PgSchemaChecker(table));
-  return YsqlDdlTxnCompleteCallback(table, txn_id_pb, is_committed);
+  return YsqlDdlTxnCompleteCallback(table, txn_id_pb, is_committed, epoch);
 }
 
-Status CatalogManager::ReportYsqlDdlTxnStatus(const ReportYsqlDdlTxnStatusRequestPB* req,
-                                              ReportYsqlDdlTxnStatusResponsePB* resp,
-                                              rpc::RpcContext* rpc) {
+Status CatalogManager::ReportYsqlDdlTxnStatus(
+    const ReportYsqlDdlTxnStatusRequestPB* req, ReportYsqlDdlTxnStatusResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
   DCHECK(req);
   const auto& req_txn = req->transaction_id();
   SCHECK(!req_txn.empty(), IllegalState,
@@ -105,10 +106,13 @@ Status CatalogManager::ReportYsqlDdlTxnStatus(const ReportYsqlDdlTxnStatusReques
       // Submit this table for transaction verification.
       LOG(INFO) << "Enqueuing table " << table->ToString()
                 << " for verification of DDL transaction: " << txn;
-      WARN_NOT_OK(background_tasks_thread_pool_->SubmitFunc([this, table, req_txn, is_committed]() {
-        WARN_NOT_OK(YsqlDdlTxnCompleteCallback(table, req_txn, is_committed),
-                    "Transaction verification failed for table " + table->ToString());
-      }), "Could not submit YsqlDdlTxnCompleteCallback to thread pool");
+      WARN_NOT_OK(
+          background_tasks_thread_pool_->SubmitFunc([this, table, req_txn, is_committed, epoch]() {
+            WARN_NOT_OK(
+                YsqlDdlTxnCompleteCallback(table, req_txn, is_committed, epoch),
+                "Transaction verification failed for table " + table->ToString());
+          }),
+          "Could not submit YsqlDdlTxnCompleteCallback to thread pool");
     }
   }
   return Status::OK();
@@ -116,7 +120,8 @@ Status CatalogManager::ReportYsqlDdlTxnStatus(const ReportYsqlDdlTxnStatusReques
 
 Status CatalogManager::YsqlDdlTxnCompleteCallback(scoped_refptr<TableInfo> table,
                                                   const string& txn_id_pb,
-                                                  bool success) {
+                                                  bool success,
+                                                  const LeaderEpoch& epoch) {
   DCHECK(!txn_id_pb.empty());
   DCHECK(table);
   const auto& table_id = table->id();
@@ -149,12 +154,11 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(scoped_refptr<TableInfo> table
               << " is already verified, ignoring";
     return Status::OK();
   }
-  return YsqlDdlTxnCompleteCallbackInternal(table.get(), txn_id, success);
+  return YsqlDdlTxnCompleteCallbackInternal(table.get(), txn_id, success, epoch);
 }
 
-Status CatalogManager::YsqlDdlTxnCompleteCallbackInternal(TableInfo *table,
-                                                          const TransactionId& txn_id,
-                                                          bool success) {
+Status CatalogManager::YsqlDdlTxnCompleteCallbackInternal(
+    TableInfo* table, const TransactionId& txn_id, bool success, const LeaderEpoch& epoch) {
   if (FLAGS_TEST_delay_ysql_ddl_rollback_secs > 0) {
     LOG(INFO) << "YsqlDdlTxnCompleteCallbackInternal: Sleep for "
               << FLAGS_TEST_delay_ysql_ddl_rollback_secs << " seconds";
@@ -176,19 +180,19 @@ Status CatalogManager::YsqlDdlTxnCompleteCallbackInternal(TableInfo *table,
             << l->ysql_ddl_txn_verifier_state().DebugString();
 
   if (success) {
-    RETURN_NOT_OK(HandleSuccessfulYsqlDdlTxn(table, &l));
+    RETURN_NOT_OK(HandleSuccessfulYsqlDdlTxn(table, &l, epoch));
   } else {
-    RETURN_NOT_OK(HandleAbortedYsqlDdlTxn(table, &l));
+    RETURN_NOT_OK(HandleAbortedYsqlDdlTxn(table, &l, epoch));
   }
   return Status::OK();
 }
 
-Status CatalogManager::HandleSuccessfulYsqlDdlTxn(TableInfo *const table,
-                                                  TableInfo::WriteLock* l) {
+Status CatalogManager::HandleSuccessfulYsqlDdlTxn(
+    TableInfo* const table, TableInfo::WriteLock* l, const LeaderEpoch& epoch) {
   // The only DDL operations that roll-forward (i.e. take complete effect after commit) are DROP
   // TABLE and DROP COLUMN.
   if ((*l)->is_being_deleted_by_ysql_ddl_txn()) {
-    return YsqlDdlTxnDropTableHelper(table, l);
+    return YsqlDdlTxnDropTableHelper(table, l, epoch);
   }
 
   vector<string> cols_being_dropped;
@@ -199,7 +203,7 @@ Status CatalogManager::HandleSuccessfulYsqlDdlTxn(TableInfo *const table,
     }
   }
   if (cols_being_dropped.empty()) {
-    return ClearYsqlDdlTxnState(table, l);
+    return ClearYsqlDdlTxnState(table, l, epoch);
   }
   Schema current_schema;
   RETURN_NOT_OK(SchemaFromPB(mutable_pb.schema(), &current_schema));
@@ -215,16 +219,17 @@ Status CatalogManager::HandleSuccessfulYsqlDdlTxn(TableInfo *const table,
           Format("Drop column $0", col));
   }
   SchemaToPB(builder.Build(), mutable_pb.mutable_schema());
-  return YsqlDdlTxnAlterTableHelper(table, l, ddl_log_entries, "" /* new_table_name */);
+  return YsqlDdlTxnAlterTableHelper(table, l, ddl_log_entries, "" /* new_table_name */, epoch);
 }
 
 Status CatalogManager::HandleAbortedYsqlDdlTxn(TableInfo *const table,
-                                               TableInfo::WriteLock* l) {
+                                               TableInfo::WriteLock* l,
+                                               const LeaderEpoch& epoch) {
   auto& mutable_pb = l->mutable_data()->pb;
   const auto& ddl_state = mutable_pb.ysql_ddl_txn_verifier_state(0);
   if (ddl_state.contains_create_table_op()) {
     // This table was created in this aborted transaction. Drop this table.
-    return YsqlDdlTxnDropTableHelper(table, l);
+    return YsqlDdlTxnDropTableHelper(table, l, epoch);
   }
   if (ddl_state.contains_alter_table_op()) {
     LOG(INFO) << "Alter transaction on " << table->id()
@@ -238,20 +243,21 @@ Status CatalogManager::HandleAbortedYsqlDdlTxn(TableInfo *const table,
     mutable_pb.mutable_schema()->CopyFrom(ddl_state.previous_schema());
     const string new_table_name = ddl_state.previous_table_name();
     mutable_pb.set_name(new_table_name);
-    return YsqlDdlTxnAlterTableHelper(table, l, ddl_log_entries, new_table_name);
+    return YsqlDdlTxnAlterTableHelper(table, l, ddl_log_entries, new_table_name, epoch);
   }
 
   // This must be a failed Delete transaction.
   DCHECK(ddl_state.contains_drop_table_op());
-  return ClearYsqlDdlTxnState(table, l);
+  return ClearYsqlDdlTxnState(table, l, epoch);
 }
 
-Status CatalogManager::ClearYsqlDdlTxnState(TableInfo *table, TableInfo::WriteLock* l) {
+Status CatalogManager::ClearYsqlDdlTxnState(
+    TableInfo* table, TableInfo::WriteLock* l, const LeaderEpoch& epoch) {
   auto& pb = l->mutable_data()->pb;
   LOG(INFO) << "Clearing ysql_ddl_txn_verifier_state from table " << table->id();
   pb.clear_ysql_ddl_txn_verifier_state();
   pb.clear_transaction();
-  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table));
+  RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
   l->Commit();
   return Status::OK();
 }
@@ -259,7 +265,8 @@ Status CatalogManager::ClearYsqlDdlTxnState(TableInfo *table, TableInfo::WriteLo
 Status CatalogManager::YsqlDdlTxnAlterTableHelper(TableInfo *table,
                                                   TableInfo::WriteLock* l,
                                                   const std::vector<DdlLogEntry>& ddl_log_entries,
-                                                  const string& new_table_name) {
+                                                  const string& new_table_name,
+                                                  const LeaderEpoch& epoch) {
   auto& table_pb = l->mutable_data()->pb;
   table_pb.set_version(table_pb.version() + 1);
   table_pb.set_updates_only_index_permissions(false);
@@ -276,14 +283,15 @@ Status CatalogManager::YsqlDdlTxnAlterTableHelper(TableInfo *table,
         ddl_log_entries,
         "" /* new_namespace_id */,
         new_table_name,
+        epoch,
         nullptr /* resp */));
   l->Commit();
   LOG(INFO) << "Sending Alter Table request as part of rollback for table " << table->name();
-  return SendAlterTableRequestInternal(table, TransactionId::Nil());
+  return SendAlterTableRequestInternal(table, TransactionId::Nil(), epoch);
 }
 
-Status CatalogManager::YsqlDdlTxnDropTableHelper(TableInfo *table,
-                                                 TableInfo::WriteLock *l) {
+Status CatalogManager::YsqlDdlTxnDropTableHelper(
+    TableInfo* table, TableInfo::WriteLock* l, const LeaderEpoch& epoch) {
   LOG(INFO) << "Dropping " << table->ToString();
   l->Commit();
   DeleteTableRequestPB dtreq;
@@ -292,7 +300,7 @@ Status CatalogManager::YsqlDdlTxnDropTableHelper(TableInfo *table,
   dtreq.mutable_table()->set_table_name(table->name());
   dtreq.mutable_table()->set_table_id(table->id());
   dtreq.set_is_index_table(false);
-  return DeleteTableInternal(&dtreq, &dtresp, nullptr /* rpc */);
+  return DeleteTableInternal(&dtreq, &dtresp, nullptr /* rpc */, epoch);
 }
 
 } // namespace master

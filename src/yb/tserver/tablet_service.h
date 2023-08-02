@@ -189,6 +189,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                          CancelTransactionResponsePB* resp,
                          rpc::RpcContext context) override;
 
+  void StartRemoteSnapshotTransfer(
+      const StartRemoteSnapshotTransferRequestPB* req, StartRemoteSnapshotTransferResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void Shutdown() override;
 
  private:

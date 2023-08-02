@@ -1,11 +1,11 @@
 ```output.ebnf
 select_start ::= SELECT [ ALL | 
                           DISTINCT [ ON { ( expression [ , ... ] ) } ] ] 
-                 [ * | { { expression
-                           | fn_over_window
-                           | ordinary_aggregate_fn_invocation
-                           | within_group_aggregate_fn_invocation } 
-                       [ [ AS ] name ] } [ , ... ] ]
+                  [ * | { { expression
+                            | fn_over_window
+                            | ordinary_aggregate_fn_invocation
+                            | within_group_aggregate_fn_invocation } 
+                        [ [ AS ] name ] } [ , ... ] ]
 
 window_clause ::= WINDOW { { name AS window_definition } [ , ... ] }
 

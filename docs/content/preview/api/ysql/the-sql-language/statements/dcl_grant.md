@@ -33,10 +33,10 @@ Use the `GRANT` statement to grant access privileges on database objects as well
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/grant_table,grant_table_col,grant_seq,grant_db,grant_domain,grant_schema,grant_type,grant_role,grant_role_spec.grammar.md" %}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/grant,grant_table,grant_table_col,grant_seq,grant_db,grant_domain,grant_schema,grant_type,grant_role,grantee_role.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/grant_table,grant_table_col,grant_seq,grant_db,grant_domain,grant_schema,grant_type,grant_role,grant_role_spec.diagram.md" %}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/grant,grant_table,grant_table_col,grant_seq,grant_db,grant_domain,grant_schema,grant_type,grant_role,grantee_role.diagram.md" %}}
   </div>
 </div>
 

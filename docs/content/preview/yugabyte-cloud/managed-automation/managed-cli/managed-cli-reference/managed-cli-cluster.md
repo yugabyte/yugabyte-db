@@ -44,9 +44,9 @@ ybm cluster create \
   --credentials username=admin,password=password123 \
   --cloud-provider AWS \
   --node-config num-cores=2,disk-size-gb=500 \
-  --region-info region=aws.us-east-2.us-east-2a,vpc=aws-us-east-2 \
-  --region-info region=aws.us-east-2.us-east-2b,vpc=aws-us-east-2 \
-  --region-info region=aws.us-east-2.us-east-2c,vpc=aws-us-east-2 \
+  --region-info region=ap-northeast-1,num-nodes=1 \
+  --region-info region=us-west-1,num-nodes=1 \
+  --region-info region=us-west-2,num-nodes=1 \
   --fault-tolerance=zone
 ```
 
@@ -72,7 +72,7 @@ Create a cluster.
 | --cloud-provider | Cloud provider. `AWS` (default) or `GCP`.
 | --cluster-type | Deployment type. `SYNCHRONOUS` or `GEO_PARTITIONED`. |
 | --node-config | Number of vCPUs, disk size, and IOPS per node for the cluster, provided as key-value pairs.<br>Arguments:<ul><li>num-cores - number of vCPUs per node</li><li>disk-size-gb - disk size in GB per node</li><li>disk-iops - disk IOPS per node (AWS only)</li></ul>If specified, num-cores is required and disk-size-gb and disk-iops are optional. |
-| --region-info | Region details for multi-region cluster, provided as key-value pairs.<br>Arguments:<ul><li>region-name - name of the region specified as cloud.region</li><li>num-nodes - number of nodes for the region</li><li>vpc - name of the VPC</li></ul>Specify one `--region-info` flag for each region in the cluster.<br>If specified, region and num-nodes is required, vpc is optional. |
+| --region-info | Region details for multi-region cluster, provided as key-value pairs.<br>Arguments:<ul><li>region - name of the region</li><li>num-nodes - number of nodes for the region</li><li>vpc - name of the VPC</li></ul>Specify one `--region-info` flag for each region in the cluster.<br>If specified, region and num-nodes is required, vpc is optional. |
 | --cluster-tier | Type of cluster. `Sandbox` or `Dedicated`. |
 | --fault-tolerance | Fault tolerance for the cluster. `NONE`, `ZONE`, or `REGION`. |
 | --database-version | Database version to use for the cluster. `Innovation`, `Production`, or `Preview`. |
@@ -161,7 +161,7 @@ Update the specified cluster.
 | --cloud-provider | Cloud provider. `AWS` or `GCP`. |
 | --cluster-type | Deployment type. `SYNCHRONOUS` or `GEO_PARTITIONED`. |
 | --node-config | Number of vCPUs and disk size per node for the cluster, provided as key-value pairs.<br>Arguments:<ul><li>num-cores - number of vCPUs per node</li><li>disk-size-gb - disk size in GB per node</li><li>disk-iops - disk IOPS per node (AWS only)</li></ul>If specified, num-cores is required and disk-size-gb and disk-iops are optional. |
-| --region-info | Region details for multi-region cluster, provided as key-value pairs.<br>Arguments:<ul><li>region-name - name of the region specified as cloud.region</li><li>num-nodes - number of nodes for the region</li><li>vpc - name of the VPC</li></ul>Specify one `--region-info` flag for each region in the cluster.<br>If specified, region and num-nodes is required, vpc is optional. |
+| --region-info | Region details for multi-region cluster, provided as key-value pairs.<br>Arguments:<ul><li>region - name of the region</li><li>num-nodes - number of nodes for the region</li><li>vpc - name of the VPC</li></ul>Specify one `--region-info` flag for each region in the cluster.<br>If specified, region and num-nodes is required, vpc is optional. |
 | --cluster-tier | Type of cluster. `Sandbox` or `Dedicated`. |
 | --fault-tolerance | Fault tolerance for the cluster. `NONE`, `ZONE`, or `REGION`. |
 | --database-version | Database version to use for the cluster. `Stable` or `Preview`. |

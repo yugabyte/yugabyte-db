@@ -390,6 +390,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         task = createTask(DisableEncryptionAtRest.class);
         DisableEncryptionAtRest.Params disableParams = new DisableEncryptionAtRest.Params();
         disableParams.setUniverseUUID(taskParams().getUniverseUUID());
+        disableParams.encryptionAtRestConfig = taskParams().encryptionAtRestConfig;
         task.initialize(disableParams);
         subTaskGroup.addSubTask(task);
         getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -893,39 +894,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  public SubTaskGroup createPersistResizeNodeTask(String instanceType) {
-    return createPersistResizeNodeTask(instanceType, null);
-  }
-
-  /** Create a task to persist changes by ResizeNode task */
-  public SubTaskGroup createPersistResizeNodeTask(String instanceType, Integer volumeSize) {
-    return createPersistResizeNodeTask(
-        instanceType, volumeSize, null, null, null, null, null, null, null);
-  }
-
   /** Create a task to persist changes by ResizeNode task for specific clusters */
-  public SubTaskGroup createPersistResizeNodeTask(
-      String instanceType,
-      Integer volumeSize,
-      Integer volumeIops,
-      Integer volumeThroughput,
-      String masterInstanceType,
-      Integer masterVolumeSize,
-      Integer masterVolumeIops,
-      Integer masterVolumeThroughput,
-      List<UUID> clusterIds) {
+  public SubTaskGroup createPersistResizeNodeTask(UserIntent newUserIntent, UUID clusterUUID) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("PersistResizeNode");
     PersistResizeNode.Params params = new PersistResizeNode.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.instanceType = instanceType;
-    params.volumeSize = volumeSize;
-    params.volumeIops = volumeIops;
-    params.volumeThroughput = volumeThroughput;
-    params.masterInstanceType = masterInstanceType;
-    params.masterVolumeSize = masterVolumeSize;
-    params.masterVolumeIops = masterVolumeIops;
-    params.masterVolumeThroughput = masterVolumeThroughput;
-    params.clusters = clusterIds;
+    params.newUserIntent = newUserIntent;
+    params.clusterUUID = clusterUUID;
     PersistResizeNode task = createTask(PersistResizeNode.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);

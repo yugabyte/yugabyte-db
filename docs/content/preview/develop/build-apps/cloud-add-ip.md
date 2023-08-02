@@ -22,7 +22,7 @@ In addition, if you are using YugabyteDB Managed, you need the following to run 
 
 {{< note title="Note" >}}
 
-To use smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers must be deployed in a VPC that has been peered or linked with the cluster VPC. For information on VPC networking in YugabyteDB Managed, refer to [VPC network](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
+To use smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers must be deployed in a VPC that has been peered with the cluster VPC. For information on VPC networking in YugabyteDB Managed, refer to [VPC network](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/).
 
 For applications that access the cluster from outside the VPC network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from outside the VPC network fall back to the upstream driver behavior automatically.
 

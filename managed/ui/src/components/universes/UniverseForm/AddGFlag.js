@@ -16,7 +16,7 @@ import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import Bulb from '../images/bulb.svg';
 import BookOpen from '../images/book_open.svg';
 
-const AddGFlag = ({ formProps, gFlagProps }) => {
+const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus }) => {
   const featureFlags = useSelector((state) => state.featureFlags);
   const { mode, server, dbVersion, existingFlags } = gFlagProps;
   const [searchVal, setSearchVal] = useState('');
@@ -195,6 +195,7 @@ const AddGFlag = ({ formProps, gFlagProps }) => {
               mode={mode}
               serverType={server}
               flagName={flag?.name}
+              updateJWKSDialogStatus={updateJWKSDialogStatus}
             />
           );
         } else {

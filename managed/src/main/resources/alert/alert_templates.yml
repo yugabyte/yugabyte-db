@@ -119,7 +119,7 @@ templates:
     thresholdReadOnly: true
     annotations:
       summary: >-
-        Failed to delete {{ $value | printf "%.0f" }} backups for 
+        Failed to delete {{ $value | printf "%.0f" }} backups for
         customer {{ $labels.source_name }} in Last GC run - check logs for more details.
 
   BACKUP_SCHEDULE_FAILURE:
@@ -1065,8 +1065,8 @@ templates:
     description: Node Disk usage percentage is above threshold
     queryTemplate: count by (universe_uuid) (count by (universe_uuid, node_name)
       (100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~"/mnt/d[0-9]+",
-      universe_uuid="__universeUuid__"}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~"/mnt/d[0-9]+",
-      universe_uuid="__universeUuid__"}) * 100) {{ query_condition }} {{ query_threshold }}))
+      universe_uuid="__universeUuid__", fstype!="rootfs"}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~"/mnt/d[0-9]+",
+      universe_uuid="__universeUuid__", fstype!="rootfs"}) * 100) {{ query_condition }} {{ query_threshold }}))
     createForNewCustomer: true
     defaultThresholdMap:
       SEVERE:
@@ -1083,8 +1083,8 @@ templates:
       affected_node_names: >-
         {{ range query "count by (universe_uuid, node_name)
         (100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~'/mnt/d[0-9]+',
-        universe_uuid='{{ $labels.universe_uuid }}'}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~'/mnt/d[0-9]+',
-        universe_uuid='{{ $labels.universe_uuid }}'}) * 100) {{ query_condition }} {{ query_threshold }})" }}{{ .Labels.node_name }} {{ end }}
+        universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~'/mnt/d[0-9]+',
+        universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) * 100) {{ query_condition }} {{ query_threshold }})" }}{{ .Labels.node_name }} {{ end }}
     annotations:
       summary: >-
         Node disk usage for universe '{{ $labels.source_name }}' is

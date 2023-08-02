@@ -168,10 +168,7 @@ class PgLibPqTest : public LibPqTestBase {
 class PgLibPqFailOnConflictTest : public PgLibPqTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    // This test depends on fail-on-conflict concurrency control to perform its validation.
-    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    options->extra_tserver_flags.push_back("--enable_wait_queues=false");
-    options->extra_tserver_flags.push_back("--enable_deadlock_detection=false");
+    UpdateMiniClusterFailOnConflict(options);
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -203,125 +200,8 @@ TEST_F(PgLibPqTest, Simple) {
   }
 }
 
-// Test that repeats example from this article:
-// https://blogs.msdn.microsoft.com/craigfr/2007/05/16/serializable-vs-snapshot-isolation-level/
-//
-// Multiple rows with values 0 and 1 are stored in table.
-// Two concurrent transaction fetches all rows from table and does the following.
-// First transaction changes value of all rows with value 0 to 1.
-// Second transaction changes value of all rows with value 1 to 0.
-// As outcome we should have rows with the same value.
-//
-// The described procedure is repeated multiple times to increase probability of catching bug,
-// w/o running test multiple times.
 TEST_F_EX(PgLibPqTest, SerializableColoring, PgLibPqFailOnConflictTest) {
-  constexpr auto kKeys = RegularBuildVsSanitizers(10, 20);
-  constexpr auto kColors = 2;
-  constexpr auto kIterations = 20;
-
-  auto conn = ASSERT_RESULT(Connect());
-
-  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, color INT)"));
-
-  auto iterations_left = kIterations;
-
-  for (int iteration = 0; iterations_left > 0; ++iteration) {
-    auto iteration_title = Format("Iteration: $0", iteration);
-    SCOPED_TRACE(iteration_title);
-    LOG(INFO) << iteration_title;
-
-    auto s = conn.Execute("DELETE FROM t");
-    if (!s.ok()) {
-      ASSERT_TRUE(HasTransactionError(s)) << s;
-      continue;
-    }
-    for (int k = 0; k != kKeys; ++k) {
-      int32_t color = RandomUniformInt(0, kColors - 1);
-      ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (key, color) VALUES ($0, $1)", k, color));
-    }
-
-    std::atomic<int> complete{ 0 };
-    std::vector<std::thread> threads;
-    for (int i = 0; i != kColors; ++i) {
-      int32_t color = i;
-      threads.emplace_back([this, color, kKeys, &complete] {
-        auto connection = ASSERT_RESULT(Connect());
-
-        ASSERT_OK(connection.Execute("BEGIN"));
-        ASSERT_OK(connection.Execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
-
-        auto res = connection.Fetch("SELECT * FROM t");
-        if (!res.ok()) {
-          // res will have failed status here for conflicting transactions as long as we are using
-          // fail-on-conflict concurrency control. Hence this test runs with wait-on-conflict
-          // disabled.
-          ASSERT_TRUE(HasTransactionError(res.status())) << res.status();
-          return;
-        }
-        auto columns = PQnfields(res->get());
-        ASSERT_EQ(2, columns);
-
-        auto lines = PQntuples(res->get());
-        ASSERT_EQ(kKeys, lines);
-        for (int j = 0; j != lines; ++j) {
-          if (ASSERT_RESULT(GetInt32(res->get(), j, 1)) == color) {
-            continue;
-          }
-
-          auto key = ASSERT_RESULT(GetInt32(res->get(), j, 0));
-          auto status = connection.ExecuteFormat(
-              "UPDATE t SET color = $1 WHERE key = $0", key, color);
-          if (!status.ok()) {
-            auto msg = status.message().ToBuffer();
-            ASSERT_TRUE(HasTransactionError(status)) << status;
-            break;
-          }
-        }
-
-        auto status = connection.Execute("COMMIT");
-        if (!status.ok()) {
-          ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << status;
-          return;
-        }
-
-        ++complete;
-      });
-    }
-
-    for (auto& thread : threads) {
-      thread.join();
-    }
-
-    if (complete == 0) {
-      continue;
-    }
-
-    auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
-    auto columns = PQnfields(res.get());
-    ASSERT_EQ(2, columns);
-
-    auto lines = PQntuples(res.get());
-    ASSERT_EQ(kKeys, lines);
-
-    std::vector<int32_t> zeroes, ones;
-    for (int i = 0; i != lines; ++i) {
-      auto key = ASSERT_RESULT(GetInt32(res.get(), i, 0));
-      auto current = ASSERT_RESULT(GetInt32(res.get(), i, 1));
-      if (current == 0) {
-        zeroes.push_back(key);
-      } else {
-        ones.push_back(key);
-      }
-    }
-
-    std::sort(ones.begin(), ones.end());
-    std::sort(zeroes.begin(), zeroes.end());
-
-    LOG(INFO) << "Zeroes: " << yb::ToString(zeroes) << ", ones: " << yb::ToString(ones);
-    ASSERT_TRUE(zeroes.empty() || ones.empty());
-
-    --iterations_left;
-  }
+  SerializableColoringHelper();
 }
 
 TEST_F_EX(PgLibPqTest, SerializableReadWriteConflict, PgLibPqFailOnConflictTest) {
@@ -795,10 +675,7 @@ class PgLibPqSmallClockSkewFailOnConflictTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // Use small clock skew, to decrease number of read restarts.
     options->extra_tserver_flags.push_back("--max_clock_skew_usec=5000");
-    // This test depends on fail-on-conflict concurrency control to perform its validation.
-    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    options->extra_tserver_flags.push_back("--enable_wait_queues=false");
-    options->extra_tserver_flags.push_back("--enable_deadlock_detection=false");
+    UpdateMiniClusterFailOnConflict(options);
   }
 };
 
@@ -3543,10 +3420,7 @@ class PgLibPqLegacyColocatedDBTest : public PgLibPqTest {
 
 class PgLibPqLegacyColocatedDBFailOnConflictTest : public PgLibPqLegacyColocatedDBTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    // This test depends on fail-on-conflict concurrency control to perform its validation.
-    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    options->extra_tserver_flags.push_back("--enable_wait_queues=false");
-    options->extra_tserver_flags.push_back("--enable_deadlock_detection=false");
+    UpdateMiniClusterFailOnConflict(options);
     PgLibPqLegacyColocatedDBTest::UpdateMiniClusterOptions(options);
   }
 };

@@ -47,6 +47,7 @@ namespace master {
 struct SysCatalogLoadingState {
   std::unordered_map<TableId, std::vector<TableId>> parent_to_child_tables;
   std::vector<std::pair<std::function<void()>, std::string>> post_load_tasks;
+  const LeaderEpoch epoch;
 
   void AddPostLoadTask(std::function<void()>&& func, std::string&& msg) {
     post_load_tasks.push_back({std::move(func), std::move(msg)});
@@ -64,9 +65,8 @@ struct SysCatalogLoadingState {
   public: \
     explicit BOOST_PP_CAT(name, Loader)( \
                                          CatalogManager* catalog_manager, \
-                                         SysCatalogLoadingState* state, \
-                                         int64_t term = OpId::kUnknownTerm) \
-      : catalog_manager_(catalog_manager), state_(state), term_(term) {} \
+                                         SysCatalogLoadingState* state) \
+      : catalog_manager_(catalog_manager), state_(state) {} \
     \
   private: \
     Status Visit( \
@@ -76,8 +76,6 @@ struct SysCatalogLoadingState {
     CatalogManager *catalog_manager_; \
     \
     SysCatalogLoadingState* state_; \
-    \
-    int64_t term_; \
     \
     DISALLOW_COPY_AND_ASSIGN(BOOST_PP_CAT(name, Loader)); \
   };

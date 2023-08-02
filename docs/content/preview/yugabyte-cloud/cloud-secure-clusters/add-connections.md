@@ -26,6 +26,8 @@ Add IP allow lists for the following:
 - [Connecting an application](../../cloud-connect/connect-applications/). Add the public IP addresses of the instance running the application.
 - [Connecting a peered application VPC](../../cloud-basics/cloud-vpcs/). Add the CIDR of the application VPC.
 
+Note that you don't need to add an IP allow list if you are connecting an application using [private endpoints](../../cloud-basics/cloud-vpcs/cloud-add-endpoint/) over a private link.
+
 Each entry can either be a single IP address, a CIDR-notated range of addresses, or a comma-delimited list of addresses. For example:
 
 - 172.16.0.0

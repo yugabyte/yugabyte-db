@@ -49,18 +49,20 @@ std::string SnapshotIdToString(const std::string& snapshot_id) {
 
 }
 
-AsyncTabletSnapshotOp::AsyncTabletSnapshotOp(Master *master,
-                                             ThreadPool* callback_pool,
-                                             const scoped_refptr<TabletInfo>& tablet,
-                                             const string& snapshot_id,
-                                             tserver::TabletSnapshotOpRequestPB::Operation op)
-  : RetryingTSRpcTask(
-        master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), tablet->table().get(),
-        /* async_task_throttler */ nullptr),
-    tablet_(tablet),
-    snapshot_id_(snapshot_id),
-    operation_(op) {
-}
+AsyncTabletSnapshotOp::AsyncTabletSnapshotOp(
+    Master* master,
+    ThreadPool* callback_pool,
+    const scoped_refptr<TabletInfo>& tablet,
+    const string& snapshot_id,
+    tserver::TabletSnapshotOpRequestPB::Operation op,
+    LeaderEpoch epoch)
+    : RetryingTSRpcTask(
+          master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), tablet->table().get(),
+          std::move(epoch),
+          /* async_task_throttler */ nullptr),
+      tablet_(tablet),
+      snapshot_id_(snapshot_id),
+      operation_(op) {}
 
 string AsyncTabletSnapshotOp::description() const {
   return Format("$0 Tablet Snapshot Operation $1 RPC $2",

@@ -11,6 +11,7 @@ interface GFlagConfProps {
   mode: string;
   serverType: string;
   flagName: string;
+  updateJWKSDialogStatus: (status: boolean) => void;
 }
 
 const POSTGRES_USERNAME_MAP = 'https://www.postgresql.org/docs/current/auth-username-maps.html';
@@ -52,7 +53,13 @@ const GFlagAdditionalDescription = {
   ysql_ident_conf_csv: 'universeForm.gFlags.identConfDescriptionMore'
 } as const;
 
-export const GFlagsConf: FC<GFlagConfProps> = ({ formProps, mode, serverType, flagName }) => {
+export const GFlagsConf: FC<GFlagConfProps> = ({
+  formProps,
+  mode,
+  serverType,
+  flagName,
+  updateJWKSDialogStatus
+}) => {
   const classes = useStyles();
   const { t } = useTranslation();
   const [currentView, setCurentView] = useState<GFlagMultilineMode>(GFlagMultilineMode.EDIT);
@@ -131,6 +138,7 @@ export const GFlagsConf: FC<GFlagConfProps> = ({ formProps, mode, serverType, fl
             mode={mode}
             serverType={serverType}
             flagName={flagName}
+            updateJWKSDialogStatus={updateJWKSDialogStatus}
           />
         )}
         {currentView === GFlagMultilineMode.PREVIEW && (

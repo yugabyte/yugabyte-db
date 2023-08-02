@@ -974,7 +974,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
               node.isMaster = false;
               node.isTserver = true;
               node.cloudInfo = new CloudSpecificInfo();
-              node.cloudInfo.instance_type = userIntent.instanceType;
+              node.cloudInfo.instance_type = userIntent.getInstanceTypeForNode(node);
               node.cloudInfo.private_ip = "1.2.3." + idx;
               universeDetails.nodeDetailsSet.add(node);
             }
