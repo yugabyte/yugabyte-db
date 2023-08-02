@@ -28,6 +28,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -147,6 +148,11 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       // Update Node State to Stopping
       createSetNodeStateTask(currentNode, NodeState.Stopping)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+
+      if (currentNode.isTserver) {
+        createNodePrecheckTasks(
+            currentNode, EnumSet.of(ServerType.TSERVER), SubTaskGroupType.StoppingNodeProcesses);
+      }
 
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;

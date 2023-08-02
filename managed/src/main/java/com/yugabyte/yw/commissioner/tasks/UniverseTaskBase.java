@@ -3076,11 +3076,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     boolean underReplicatedTabletsCheckEnabled =
         confGetter.getConfForScope(
             getUniverse(), UniverseConfKeys.underReplicatedTabletsCheckEnabled);
-    if (underReplicatedTabletsCheckEnabled) {
-      createCheckUnderReplicatedTabletsTask().setSubTaskGroupType(subGroupType);
+    if (underReplicatedTabletsCheckEnabled && processTypes.contains(ServerType.TSERVER)) {
+      createCheckUnderReplicatedTabletsTask(node).setSubTaskGroupType(subGroupType);
     }
-
-    // TODO: Add follower lag tablet level check.
   }
 
   /**
@@ -3088,13 +3086,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @return the created task group.
    */
-  protected SubTaskGroup createCheckUnderReplicatedTabletsTask() {
+  protected SubTaskGroup createCheckUnderReplicatedTabletsTask(NodeDetails node) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("CheckUnderReplicatedTables");
     Duration maxWaitTime =
         confGetter.getConfForScope(getUniverse(), UniverseConfKeys.underReplicatedTabletsTimeout);
     CheckUnderReplicatedTablets.Params params = new CheckUnderReplicatedTablets.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.maxWaitTime = maxWaitTime;
+    params.nodeName = node.nodeName;
 
     CheckUnderReplicatedTablets checkUnderReplicatedTablets =
         createTask(CheckUnderReplicatedTablets.class);
