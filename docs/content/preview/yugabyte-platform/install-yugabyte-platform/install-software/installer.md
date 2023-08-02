@@ -101,7 +101,7 @@ By default, YBA Installer installs YBA in `/opt/yugabyte` and creates a Linux us
 
 To change these and other default values, edit the `yba-ctl.yml` file, and then re-run the `yba-ctl` command. For a list of options, refer to [Configuration options](#configuration-options).
 
-You can change some configuration options post-installation using the [reconfigure](#reconfigure) command. 
+You can change some configuration options post-installation using the [reconfigure](#reconfigure) command.
 
 ## Install YBA using YBA Installer
 
@@ -338,7 +338,7 @@ You can configure the following YBA configuration options.
 
 | Option | Description |
 | :--- | :--- |
-| `Port` | Specify a custom port for the YBA UI to run on.
+| `port` | Specify a custom port for the YBA UI to run on.
 | `keyStorePassword` | Password for the Java keystore. Auto-generated if left empty.
 | `appSecret` | Play framework crypto secret. Auto-generated if left empty.
 
@@ -353,7 +353,7 @@ OAuth related settings are described in the following table. Only set these fiel
 | `ybOidcDiscoveryUri` | The OIDC Discovery URI corresponding to the OIDC SSO for your YBA installation. Must be a valid URL.
 | `ywWrl` | The Platform IP corresponding to the OIDC SSO for your YBA installation. Must be a valid URL.
 | `ybOidcScope` | The OIDC Scope corresponding to the OIDC SSO for your YBA installation.
-| `ybOidcEmailAtr` | The OIDC Email Attr corresponding to the OIDC SSO for your YBA installation. Must be a valid email address.
+| `ybOidcEmailAtr` | The OIDC Email Attribute corresponding to the OIDC SSO for your YBA installation. Must be a valid email address.
 
 Http and Https proxy settings are described in the following table.
 
@@ -372,7 +372,7 @@ Http and Https proxy settings are described in the following table.
 
 | Option | Description |
 | :--- | :--- |
-| `Port` | External Prometheus port
+| `port` | External Prometheus port
 | `restartSeconds` | Systemd will restart Prometheus after this number of seconds after a crash.
 | `scrapeInterval` | How often Prometheus scrapes for database metrics.
 | `scrapeTimeout` | Timeout for inactivity during scraping.
@@ -395,7 +395,7 @@ These options are mutually exclusive, and can be turned on or off using the _ena
 
 | Option | Description |
 | :--- | :--- |
-| Port | Port PostgreSQL is listening to.
+| port | Port PostgreSQL is listening to.
 | restartSecond | Wait time to restart PostgreSQL if the service crashes.
 | locale | locale is used during initialization of the db.
 
@@ -403,7 +403,7 @@ These options are mutually exclusive, and can be turned on or off using the _ena
 
 | Option | Description |
 | :--- | :--- |
-| Host | IP address/domain name of the PostgreSQL server.
-| Port | Port PostgreSQL is running on.
+| host | IP address/domain name of the PostgreSQL server.
+| port | Port PostgreSQL is running on.
 | Username and password | Used to authenticate with PostgreSQL.
 | Pg_dump_path<br/>pg_restore_path | Required paths to `pgdump` and `pgrestore` on the locale system that are compatible with the version of PostgreSQL you provide. `pgdump` and `pgrestore` are used for backup and restore workflows, and are required for a functioning install.
