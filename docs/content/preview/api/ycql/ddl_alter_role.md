@@ -46,8 +46,6 @@ An error is raised if `role_name` does not exist.
 
 ## Examples
 
-You can do this as shown below.
-
 ```sql
 ycqlsh:example> CREATE ROLE finance;
 ```

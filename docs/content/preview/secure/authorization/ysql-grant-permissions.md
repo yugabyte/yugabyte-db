@@ -131,7 +131,7 @@ Verify that the `engineering` role has `SELECT` privilege on the table using the
 dev_database=# \z
 ```
 
-The output should look similar to below.
+The output should look similar to the following:
 
 ```output
  Schema |       Name        | Type  |     Access privileges     | Column privileges | Policies
