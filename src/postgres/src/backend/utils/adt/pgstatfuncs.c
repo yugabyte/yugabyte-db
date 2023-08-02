@@ -2212,11 +2212,12 @@ yb_wait_metadata(PG_FUNCTION_ARGS)
 		nulls[3] = true;
 	ereport(LOG, (errmsg("Set node uuid: %s", proc->node_uuid)));
 
-	if (strlen(proc->top_level_request_id) > 0)
-		values[4] = CStringGetTextDatum(proc->top_level_request_id);
-	else
-	 	nulls[4] = true;
-	ereport(LOG, (errmsg("Set top level request id: %s", proc->top_level_request_id)));
+    char top_level_request_id[17];
+    top_level_request_id_uint_to_char(top_level_request_id, proc->top_level_request_id);
+    top_level_request_id[16] = '\0';
+    values[4] = CStringGetTextDatum(top_level_request_id);
+
+	ereport(LOG, (errmsg("Set top level request id: %s", top_level_request_id)));
 
 	/* Returns the record as Datum */
 	PG_RETURN_DATUM(HeapTupleGetDatum(
@@ -2280,7 +2281,10 @@ tserver_stat_get_activity(PG_FUNCTION_ARGS)
 		int cntr = funcctx->call_cntr;
 		YBCAUHDescriptor *rpc = (YBCAUHDescriptor *)funcctx->user_fctx + cntr;
 
-		values[0] = CStringGetTextDatum(rpc->metadata.top_level_request_id);
+	    char top_level_request_id[17];
+		top_level_request_id_uint_to_char(top_level_request_id, rpc->metadata.top_level_request_id);
+		top_level_request_id[16] = '\0';
+		values[0] = CStringGetTextDatum(top_level_request_id);
 		values[1] = CStringGetTextDatum(rpc->metadata.client_node_ip);
 		values[2] = CStringGetTextDatum(rpc->metadata.top_level_node_id);
 		values[3] = Int64GetDatum(rpc->metadata.current_request_id);

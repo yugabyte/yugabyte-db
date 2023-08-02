@@ -879,6 +879,9 @@ void YbSetIsBatchedExecution(bool value);
 #endif
 
 void ProcSetNodeUUID(const char *);
-void ProcSetTopRequestId(const char *);
+void ProcSetTopRequestId(const uint64_t *);
+
+void
+top_level_request_id_uint_to_char(char *top_level_request_id, const uint64_t top_level_request_id_uint[2]);
 
 #endif /* PG_YB_UTILS_H */

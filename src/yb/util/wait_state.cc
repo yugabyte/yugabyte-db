@@ -38,6 +38,15 @@ void AUHAuxInfo::UpdateFrom(const AUHAuxInfo &other) {
   }
 }
 
+void AUHAuxInfo::UpdateFrom(const AUHAuxInfo &other) {
+  if (!other.tablet_id.empty()) {
+    tablet_id = other.tablet_id;
+  }
+  if (!other.table_id.empty()) {
+    table_id = other.table_id;
+  }
+}
+
 WaitStateInfo::WaitStateInfo(AUHMetadata meta)
   : metadata_(meta)
 #ifdef TRACK_WAIT_HISTORY
@@ -82,6 +91,11 @@ WaitStateInfoPtr WaitStateInfo::CurrentWaitState() {
 void WaitStateInfo::set_current_request_id(int64_t current_request_id) {
   std::lock_guard<simple_spinlock> l(mutex_);
   metadata_.current_request_id = current_request_id;
+}
+
+void WaitStateInfo::set_top_level_request_id(uint64_t top_level_request_id) {
+  std::lock_guard<simple_spinlock> l(mutex_);
+  metadata_.top_level_request_id = {top_level_request_id, top_level_request_id * top_level_request_id};
 }
 
 void WaitStateInfo::UpdateMetadata(const AUHMetadata& meta) {

@@ -79,6 +79,9 @@ class TabletServerIf : public LocalTabletServer {
   }
 
   virtual std::vector<yb::util::WaitStateInfoPtr> GetThreadpoolWaitStates() const = 0;
+
+  virtual std::vector<WaitStateInfoPB> ActiveUniverseHistory() const = 0;
+
 };
 
 } // namespace tserver

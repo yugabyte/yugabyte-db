@@ -343,7 +343,7 @@ typedef struct PgCallbacks {
   void (*SignalWaitStart)(uint32_t);
   void (*SignalWaitEnd)();
   void (*ProcSetNodeUUID)(const char *);
-  void (*ProcSetTopRequestId)(const char*);
+  void (*ProcSetTopRequestId)(const uint64_t *);
 } YBCPgCallbacks;
 
 typedef struct PgGFlagsAccessor {
@@ -398,7 +398,7 @@ typedef struct PgServerDescriptor {
 } YBCServerDescriptor;
 
 typedef struct AUHMetadataDescriptor {
-  const char* top_level_request_id;
+  const uint64_t* top_level_request_id;
   const char* client_node_ip;
   const char* top_level_node_id;
   int64_t current_request_id;

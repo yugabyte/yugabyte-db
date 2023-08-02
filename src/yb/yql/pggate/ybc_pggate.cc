@@ -1576,7 +1576,7 @@ YBCStatus YBCActiveUniverseHistory(YBCAUHDescriptor **rpcs, size_t* count) {
     for (const auto &info : servers_info) {
       new (dest) YBCAUHDescriptor {
         .metadata = {
-          .top_level_request_id = YBCPAllocStdString(info.metadata.top_level_request_id),
+          .top_level_request_id = &info.metadata.top_level_request_id[0],
           .client_node_ip = YBCPAllocStdString(info.metadata.client_node_ip),
           .top_level_node_id = YBCPAllocStdString(info.metadata.top_level_node_id),
           .current_request_id = info.metadata.current_request_id,

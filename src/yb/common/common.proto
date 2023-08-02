@@ -611,7 +611,7 @@ message PgDatumPB {
 }
 
 message AUHMetadataPB {
-  optional string top_level_request_id = 1;
+  repeated uint64 top_level_request_id = 1;
   optional string client_node_ip = 2;
   optional string top_level_node_id = 3;
   optional int64 current_request_id = 4;

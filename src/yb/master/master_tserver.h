@@ -80,6 +80,8 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   std::vector<yb::util::WaitStateInfoPtr> GetThreadpoolWaitStates() const override;
 
+  std::vector<WaitStateInfoPB> ActiveUniverseHistory() const override;
+
  private:
   Master* master_ = nullptr;
   scoped_refptr<MetricEntity> metric_entity_;

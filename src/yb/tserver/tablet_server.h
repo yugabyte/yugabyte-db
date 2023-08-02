@@ -294,6 +294,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   std::vector<yb::util::WaitStateInfoPtr> GetThreadpoolWaitStates() const override;
 
+  std::vector<WaitStateInfoPB> ActiveUniverseHistory() const override;
+
  protected:
   virtual Status RegisterServices();
 
