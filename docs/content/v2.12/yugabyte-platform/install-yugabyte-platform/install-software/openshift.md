@@ -62,7 +62,7 @@ You can install the Yugabyte Platform Operator via the OpenShift web console or 
 
 You can install the Yugabyte Platform Operator as follows:
 
-- Login to the OpenShift Container Platform (OCP) cluster’s web console using admin credentials (for example, kube:admin).
+- Log in to the OpenShift Container Platform (OCP) cluster’s web console using admin credentials (for example, kube:admin).
 - Navigate to the **Operators > OperatorHub**, search for Yugabyte Platform Operator, and then open it to display details about the operator, as shown in the following illustration:
 
   ![Operator](/images/ee/openshift-operator.png)

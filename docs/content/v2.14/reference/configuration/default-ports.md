@@ -30,7 +30,7 @@ Internode (server-to-server or node-to-node) communication is managed using RPC 
 | yb-master  | 7100 |  [`--rpc_bind_addresses 0.0.0.0:7100`](../yb-master/#rpc-bind-addresses) |
 | yb-tserver | 9100 |  [`--rpc_bind_addresses 0.0.0.0:9100`](../yb-tserver/#rpc-bind-addresses)<br/>[`--tserver_master_addrs 0.0.0.0:7100`](../yb-tserver/#tserver-master-addrs)<br/>[`--server_broadcast_addresses 0.0.0.0:9100`](../yb-tserver/#server-broadcast-addresses) |
 
-To enable login to the machines running these servers, the SSH port 22 should be opened.
+To enable log in to the machines running these servers, the SSH port 22 should be opened.
 
 ## Admin web server
 

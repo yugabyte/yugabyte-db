@@ -1,7 +1,7 @@
 ---
 title: Enable YugabyteDB Anywhere authentication via LDAP
 headerTitle: Enable YugabyteDB Anywhere authentication via LDAP
-description: Use LDAP to enable login to YugabyteDB Anywhere.
+description: Use LDAP to enable log in to YugabyteDB Anywhere.
 linkTitle: Configure authentication
 menu:
   stable_yugabyte-platform:
@@ -124,7 +124,7 @@ To enable LDAP authentication for YugabyteDB Anywhere login, you can perform a n
 
   `CN=`
 
-  Note that YugabyteDB Anywhere combines `ldap_basedn` and `ldap_dn_prefix` with the username provided during login to query the LDAP server. `ldap_basedn` and `ldap_dn_prefix` should be set accordingly.
+  Note that YugabyteDB Anywhere combines `ldap_basedn` and `ldap_dn_prefix` with the username provided during log in to query the LDAP server. `ldap_basedn` and `ldap_dn_prefix` should be set accordingly.
 
 - The universally unique identifier (UUID) `yb.security.ldap.ldap_customeruuid`, if you have a multi-tenant setup, as follows:
 

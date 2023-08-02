@@ -1,7 +1,7 @@
 ---
 title: Enable YugabyteDB Anywhere SSO authentication via OIDC
 headerTitle: Enable YugabyteDB Anywhere SSO authentication via OIDC
-description: Use OIDC to enable SSO login to YugabyteDB Anywhere.
+description: Use OIDC to enable SSO log in to YugabyteDB Anywhere.
 linkTitle: Configure authentication
 menu:
   v2.14_yugabyte-platform:
@@ -50,4 +50,4 @@ For information on how to add users, see [Create, modify, and delete users](../.
 Once OIDC is enabled, the user is presented with the following login options:
 
 - **Login with SSO** redirects the user to the appropriate identity provider's login mechanism.
-- **Super Admin Login** allows the user to login into YugabyteDB Anywhere as a local super admin.
+- **Super Admin Login** allows the user to log in into YugabyteDB Anywhere as a local super admin.

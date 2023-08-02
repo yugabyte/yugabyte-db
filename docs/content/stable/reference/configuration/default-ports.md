@@ -30,7 +30,7 @@ Internode (server-to-server or node-to-node) communication, including xCluster, 
 | YB-Master | 7100 |  [`--rpc_bind_addresses 0.0.0.0:7100`](../yb-master/#rpc-bind-addresses) |
 | YB-TServer | 9100 |  [`--rpc_bind_addresses 0.0.0.0:9100`](../yb-tserver/#rpc-bind-addresses)<br/>[`--tserver_master_addrs 0.0.0.0:7100`](../yb-tserver/#tserver-master-addrs)<br/>[`--server_broadcast_addresses 0.0.0.0:9100`](../yb-tserver/#server-broadcast-addresses) |
 
-To enable login to the machines running these servers, the SSH port 22 should be opened.
+To enable log in to the machines running these servers, the SSH port 22 should be opened.
 
 xCluster uses the YB-Master port 7100 for the initial communication, and then uses the YB-TServer port 9100 to get data changes. Note that YugabyteDB Anywhere obtains the replication lag information using Prometheus metrics from YB-TServer at port 9000. If this port is closed, the xCluster replication is not affected, but YugabyteDB Anywhere would not be able to display the replication lag.
 

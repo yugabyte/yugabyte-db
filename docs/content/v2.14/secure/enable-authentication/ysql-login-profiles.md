@@ -185,7 +185,7 @@ The following table describes the columns and their values:
 | :----- | :--- | :------ | :---------- |
 | `rolprfrole` | OID | | OID of the row in PG_ROLE
 | `rolprfprofile` | OID | | OID of the row in PROFILE
-| `rolprfstatus` | char | o | The status of the account, as follows:<ul><li>`o` (OPEN); allowed to login.</li><li>`t` (LOCKED(TIMED)); locked for a duration of the timestamp stored in `rolprflockeduntil`. (Note that timed locking is not supported.)</li><li>`l` (LOCKED); locked indefinitely and can only be unlocked by the admin.</li></ul>
+| `rolprfstatus` | char | o | The status of the account, as follows:<ul><li>`o` (OPEN); allowed to log in.</li><li>`t` (LOCKED(TIMED)); locked for a duration of the timestamp stored in `rolprflockeduntil`. (Note that timed locking is not supported.)</li><li>`l` (LOCKED); locked indefinitely and can only be unlocked by the admin.</li></ul>
 | `rolprffailedloginattempts` | int | 0 | Number of failed attempts by this role.
 | `rolprflockeduntil` | timestamptz | Null | If `rolprfstatus` is `t`, the duration that the role is locked. Otherwise, the value is NULL and not used.
 
@@ -212,4 +212,4 @@ yugabyte=# \dgP
 - If the cluster SSL mode is `allow` or `prefer`, a single user login attempt can trigger two failed login attempts. For more information on SSL modes in PostgreSQL, refer to [SSL Support](https://www.postgresql.org/docs/11/libpq-ssl.html) in the PostgreSQL documentation.
 - The `\h` and `\dg` meta commands do not currently provide information about PROFILE and ROLE PROFILE catalog objects.
 
-Enhancements to login profiles are tracked in GitHub issue [#15676](https://github.com/yugabyte/yugabyte-db/issues/15676).
+Enhancements to log in profiles are tracked in GitHub issue [#15676](https://github.com/yugabyte/yugabyte-db/issues/15676).
