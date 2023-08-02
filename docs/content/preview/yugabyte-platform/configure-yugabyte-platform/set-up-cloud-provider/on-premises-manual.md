@@ -23,11 +23,12 @@ For each node, perform the following:
 
 - [Set up time synchronization](#set-up-time-synchronization)
 - [Open incoming TCP ports](#open-incoming-tcp-ip-ports)
-- [Pre-provision the node](#preprovision-nodes-manually)
+- [Pre-provision the node](#pre-provision-nodes-manually)
 - [Install Prometheus node exporter](#install-prometheus-node-exporter)
 - [Install backup utilities](#install-backup-utilities)
 - [Set crontab permissions](#set-crontab-permissions)
 - [Install systemd-related database service unit files (optional)](#install-systemd-related-database-service-unit-files)
+- [Install the node agent](#install-node-agent)
 
 ## Set up time synchronization
 
@@ -672,3 +673,61 @@ As an alternative to setting crontab permissions, you can install systemd-specif
     [Install]
     WantedBy=default.target
     ```
+
+## Install node agent
+
+The [node agent](../on-premises/#use-node-agents) is used to manage communication between YugabyteDB Anywhere and the node.
+
+You can install the YugabyteDB node agent manually as follows:
+
+1. Download the installer from YugabyteDB Anywhere using the API token of the Super Admin, as follows:
+
+   ```sh
+   curl https://<yugabytedb_anywhere_address>/api/v1/node_agents/download --fail --header 'X-AUTH-YW-API-TOKEN: <api_token>' > installer.sh && chmod +x installer.sh
+   ```
+
+1. Verify that the installer file contains the script.
+
+1. Run the following command to download the node agent's `.tgz` file which installs and starts the interactive configuration:
+
+   ```sh
+   ./installer.sh -c install -u https://<yugabytedb_anywhere_address> -t <api_token>
+   ```
+
+   For example, if you execute `./installer.sh  -c install -u http://100.98.0.42:9000 -t 301fc382-cf06-4a1b-b5ef-0c8c45273aef`, expect the following output:
+
+   ```output
+   * Starting YB Node Agent install
+   * Creating Node Agent Directory
+   * Changing directory to node agent
+   * Creating Sub Directories
+   * Downloading YB Node Agent build package
+   * Getting Linux/amd64 package
+   * Downloaded Version - 2.17.1.0-PRE_RELEASE
+   * Extracting the build package
+   * The current value of Node IP is not set; Enter new value or enter to skip: 10.9.198.2
+   * The current value of Node Name is not set; Enter new value or enter to skip: Test
+   * Select your Onprem Provider
+   1. Provider ID: 41ac964d-1db2-413e-a517-2a8d840ff5cd, Provider Name: onprem
+           Enter the option number: 1
+   * Select your Instance Type
+   1. Instance Code: c5.large
+           Enter the option number: 1
+   * Select your Region
+   1. Region ID: dc0298f6-21bf-4f90-b061-9c81ed30f79f, Region Code: us-west-2
+           Enter the option number: 1
+   * Select your Zone
+   1. Zone ID: 99c66b32-deb4-49be-85f9-c3ef3a6e04bc, Zone Name: us-west-2c
+           Enter the option number: 1
+           • Completed Node Agent Configuration
+           • Node Agent Registration Successful
+   You can install a systemd service on linux machines by running sudo node-agent-installer.sh -c install-service --user yugabyte (Requires sudo access).
+   ```
+
+1. Run the following command to enable the node agent as a systemd service, which is required for self-upgrade and other functions:
+
+   ```sh
+   sudo node-agent-installer.sh -c install-service --user yugabyte
+   ```
+
+When the installation has been completed, the configurations are saved in the `config.yml` file located in the `node-agent/config/` directory. You should refrain from manually changing values in this file.

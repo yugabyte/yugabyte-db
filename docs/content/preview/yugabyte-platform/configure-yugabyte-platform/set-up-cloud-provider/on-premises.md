@@ -70,15 +70,13 @@ Before you can deploy universes using YugabyteDB Anywhere, you must create a pro
 
 A provider configuration describes your cloud environment (such as its regions and availability zones, NTP server, certificates that may be used to SSH to VMs, whether YugabyteDB database software will be manually installed by the user or auto-provisioned by YugabyteDB Anywhere, and so on). The provider configuration is used as an input when deploying a universe, and can be reused for many universes.
 
-With on-premises providers, VMs are _not_ auto-created by YugabyteDB Anywhere; you must manually create and add them to the free pool of the on-premises provider. Only after VM instances are added can YugabyteDB Anywhere auto-provision or can you manually provision the YugabyteDB database software and create universes from these database nodes.
+With on-premises providers, VMs are _not_ auto-created by YugabyteDB Anywhere; you must manually create your VMs and add them to the free pool of the on-premises provider. Only after VM instances are added can YugabyteDB Anywhere auto-provision or can you manually provision the YugabyteDB database software and create universes from these database nodes.
 
 Creating an on-premises provider requires the following steps:
 
-- Create your VMs. You do this using your hypervisor or cloud provider.
-- Create the on-premises provider configuration.
-- Configure the hardware for the node instances that the provider will use for deploying YugabyteDB universes, including
-  - Adding instance types
-  - Adding instances
+- Create your VMs. Do this using your hypervisor or cloud provider. You will need the IP addresses of the VMs.
+- [Create the on-premises provider configuration](#create-a-provider). The provider configuration includes details such as the SSH user you will use to access your VMs and the regions where the nodes are located.
+- [Configure the hardware](#configure-hardware-for-yugabytedb-nodes). You provision each of the node instances that the provider will use for deploying YugabyteDB universes with the necessary software, and then add them to the pool of nodes.
 
 ## Configure the on-premises provider
 
@@ -132,7 +130,7 @@ To add regions for the provider, do the following:
 
 In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required because to provision on-premises nodes with YugabyteDB, YugabyteDB Anywhere needs SSH access to these nodes. Unless you plan to provision the database nodes manually, the user needs to have password-free sudo permissions to complete a few tasks.
 
-If the SSH user requires a password for sudo access or the SSH user does not have sudo access, follow the steps described in [Provision nodes manually](#provision-nodes-manually).
+If the SSH user requires a password for sudo access or the SSH user does not have sudo access, you must enable the **Manually Provision Nodes** option (under **Advanced**).
 
 In the **SSH Port** field, provide the port number of SSH client connections.
 
@@ -150,7 +148,7 @@ YugabyteDB Anywhere uses the sudo user to set up YugabyteDB nodes. However, if a
 - Sudo user requires a password.
 - The SSH user is not a sudo user.
 
-For manual provisioning, you are prompted to run a Python provisioning script at a later stage to provision the database instances (refer to [Provision nodes manually](#provision-nodes-manually)).
+For manual provisioning, you are prompted to run a Python provisioning script at a later stage to provision the database instances. Refer to [Provision nodes manually](#provision-nodes-manually).
 
 Optionally, use the **YB Nodes Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
 
@@ -174,11 +172,13 @@ After the provider has been created, you can configure the hardware for the on-p
 To configure the hardware, do the following:
 
 1. [Add instance types](#add-instance-types).
-2. Add instances.
+1. Add instances.
     - If you are not manually provisioning nodes, [add instances](#add-instances) for each node.
     - If the **Manually Provision Nodes** option is enabled for the provider configuration, first [provision the nodes manually](#provision-nodes-manually), then add instances.
 
 ### Add instance types
+
+An instance type defines some basic properties of a VM.
 
 To add an instance type, do the following:
 
@@ -222,13 +222,19 @@ To add the instances, do the following:
     - Enter the IP address of the node. You can use DNS names or IP addresses when adding instances.
     - Optionally, enter an Instance ID; this is a user-defined identifier.
 
+    Note that if you provide a hostname, the universe might experience issues communicating. To resolve this, you need to delete the failed universe and then recreate it with the `use_node_hostname_for_local_tserver` flag enabled.
+
 1. Click **+ Add** to add additional nodes in a region.
 
 1. Click **Add** when you are done.
 
-Note that if you provide a hostname, the universe might experience issues communicating. To resolve this, you need to delete the failed universe and then recreate it with the `use_node_hostname_for_local_tserver` flag enabled.
+    The instances are added to the **Instances** list.
 
-This completes the on-premises cloud provider configuration. You can proceed to [Configure the backup target](../../backup-target/) or [Create deployments](../../../create-deployments/).
+1. After the instances are available in the **Instances** list, validate them by performing a preflight check. For each instance, click **Actions**, choose **Perform check**, and click **Apply**.
+
+YugabyteDB Anywhere runs the check and displays the status in the **Preflight Check** column. Click in the column to view details; you can also view the results under **Tasks**.
+
+If all your instances successfully pass the preflight check, your on-premises cloud provider configuration is ready, and you can proceed to [Configure the backup target](../../backup-target/) or [Create deployments](../../../create-deployments/).
 
 ### Provision nodes manually
 
@@ -238,7 +244,7 @@ When provisioning nodes manually, you will follow one of two procedures, dependi
 
     Follow the instructions in [Provision nodes using the pre-provisioning script](#provision-nodes-manually-using-the-pre-provisioning-script). You run the pre-provisioning script on each node to install the YugabyteDB software and node agent.
 
-- SSH user does not have sudo privileges |
+- SSH user does not have sudo privileges
 
     Follow the instructions in [Set up on-premises nodes manually](../on-premises-manual).
 
@@ -267,14 +273,14 @@ You can manually provision each node using the pre-provisioning Python script, a
 1. Copy and paste the Python script command from the YugabyteDB Anywhere UI. Set the flags for the command as follows:
 
     - `--ask_password` - this flag instructs the script to prompt for a password (which is required if the sudo user requires password authentication).
-    - `--install_node_agent` - this flag instructs the script to install the node agent, which is required for YugabyteDB Anywhere to communicate with the instance.
-    - `--yba_url` - enter the IP address of the machine where you are running YugabyteDB Anywhere, with the port of 9000.
-    - `--api_token` - enter your API token; you can create an API token by navigating to your **User Profile** and clicking **Generate Key**.
-    - `--node_name` - enter a name for the node.
-    - `--instance_type` - enter the name of the [instance type](#add-instance-types) to use for the node.
-    - `--zone_name` - enter the name of the zone where the node is located.
     - `--ip` - enter the IP address of the node.
-    - `--mount_points` - enter the mount point configured for the node (typically `/data`)
+    - `--mount_points` - enter the mount point configured for the node (typically `/data`). If you have multiple drives, add these as a comma-separated list, such as, for example, `/mnt/d0,/mnt/d1`.
+    - `--install_node_agent` - this flag instructs the script to install the node agent, which is required for YugabyteDB Anywhere to communicate with the instance.
+    - `--api_token` - enter your API token; you can create an API token by navigating to your **User Profile** and clicking **Generate Key**.
+    - `--yba_url` - enter the URL of the machine where you are running YugabyteDB Anywhere, with port 9000. For example, `http://ybahost.company.com:9000`. The node must be able to communicate with YugabyteDB Anywhere at this address.
+    - `--node_name` - enter a name for the node.
+    - `--instance_type` - enter the name of the [instance type](#add-instance-types) to use for the node. The name must match the name of an existing instance type.
+    - `--zone_name` - enter a zone name for the node.
 
     For example:
 
@@ -301,76 +307,17 @@ You can manually provision each node using the pre-provisioning Python script, a
 
 1. Wait for the script to finish successfully.
 
-1. Repeat step 3 for every node that will participate in the universe.
+1. Repeat step 3 for every node that will participate in the on-prem configuration.
 
-This completes the on-premises cloud provider configuration. You can proceed to [Configure the backup target](../../backup-target/) or [Create deployments](../../../create-deployments/).
+You can proceed to [add instances](#add-instances) to the provider.
 
 ## Use node agents
 
-To automate some of the steps outlined in [Provision nodes manually](#provision-nodes-manually), YugabyteDB Anywhere provides a node agent that runs on each node meeting the following requirements:
-
-- The node has already been set up with the `yugabyte` user group and home.
-- The bi-directional communication between the node and YugabyteDB Anywhere has been established (that is, the IP address can reach the host and vice versa).
+When nodes are provisioned, YugabyteDB Anywhere installs a node agent on each node. YugabyteDB Anywhere uses these node agents to communicate with the nodes, and once installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
 
 The node agents are installed onto instances automatically when adding instances or running the pre-provisioning script using the `--install_node_agent` flag.
 
-You can also install the node agent manually.
-
-### Install node agent manually
-
-You can install a node agent manually as follows:
-
-1. Download the installer from YugabyteDB Anywhere using the API token of the Super Admin, as follows:
-
-   ```sh
-   curl https://<yugabytedb_anywhere_address>/api/v1/node_agents/download --fail --header 'X-AUTH-YW-API-TOKEN: <api_token>' > installer.sh && chmod +x installer.sh
-   ```
-
-1. Verify that the installer file contains the script.
-
-1. Run the following command to download the node agent's `.tgz` file which installs and starts the interactive configuration:
-
-   ```sh
-   ./installer.sh -c install -u https://<yugabytedb_anywhere_address> -t <api_token>
-   ```
-
-   For example, if you execute `./installer.sh  -c install -u http://100.98.0.42:9000 -t 301fc382-cf06-4a1b-b5ef-0c8c45273aef`, expect the following output:
-
-   ```output
-   * Starting YB Node Agent install
-   * Creating Node Agent Directory
-   * Changing directory to node agent
-   * Creating Sub Directories
-   * Downloading YB Node Agent build package
-   * Getting Linux/amd64 package
-   * Downloaded Version - 2.17.1.0-PRE_RELEASE
-   * Extracting the build package
-   * The current value of Node IP is not set; Enter new value or enter to skip: 10.9.198.2
-   * The current value of Node Name is not set; Enter new value or enter to skip: Test
-   * Select your Onprem Provider
-   1. Provider ID: 41ac964d-1db2-413e-a517-2a8d840ff5cd, Provider Name: onprem
-           Enter the option number: 1
-   * Select your Instance Type
-   1. Instance Code: c5.large
-           Enter the option number: 1
-   * Select your Region
-   1. Region ID: dc0298f6-21bf-4f90-b061-9c81ed30f79f, Region Code: us-west-2
-           Enter the option number: 1
-   * Select your Zone
-   1. Zone ID: 99c66b32-deb4-49be-85f9-c3ef3a6e04bc, Zone Name: us-west-2c
-           Enter the option number: 1
-           • Completed Node Agent Configuration
-           • Node Agent Registration Successful
-   You can install a systemd service on linux machines by running sudo node-agent-installer.sh -c install-service --user yugabyte (Requires sudo access).
-   ```
-
-1. Run the following command to enable the node agent as a systemd service, which is required for self-upgrade and other functions:
-
-   ```sh
-   sudo node-agent-installer.sh -c install-service --user yugabyte
-   ```
-
-When the installation has been completed, the configurations are saved in the `config.yml` file located in the `node-agent/config/` directory. You should refrain from manually changing values in this file.
+You can also [install the node agent manually](../on-premises-manual/#install-node-agent).
 
 ### Manual registration
 
