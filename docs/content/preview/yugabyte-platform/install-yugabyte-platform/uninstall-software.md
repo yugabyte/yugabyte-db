@@ -19,7 +19,7 @@ You can manually remove Yugabyte components from existing server images. Before 
 
 ## Uninstall YugabyteDB Anywhere
 
-If you used [YBA Installer](../install-software/installer/) to install YugabyteDB Anywhere, you can use the `clean` command to unistall the software. This removes the YugabyteDB Anywhere software, but keeps any data such as PostgreSQL or Prometheus information. Refer to [Clean](../install-software/installer/#clean-uninstall).
+If you used [YBA Installer](../install-software/installer/) to install YugabyteDB Anywhere, you can use the `clean` command to uninstall the software. This removes the YugabyteDB Anywhere software, but keeps any data such as PostgreSQL or Prometheus information. Refer to [Clean](../install-software/installer/#clean-uninstall).
 
 To completely eliminate all traces of YugabyteDB Anywhere and configuration, you should consider reinstalling the operating system image (or rolling back to a previous image, if available).
 
