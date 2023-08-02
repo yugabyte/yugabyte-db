@@ -103,7 +103,7 @@ set
     from alert_definition_group adg
     where adg.customer_uuid = ad.customer_uuid
       and adg.name = replace(ad.name, ' Alert', '')
-      and replace((adg.target::json#>'{uuids,0}')::text, '"', '') = (select value from alert_definition_label adl where ad.uuid = adl.definition_uuid and adl.name = 'universe_uuid'))
+      and replace((adg.target::json #>'{uuids,0}')::text, '"', '') = (select value from alert_definition_label adl where ad.uuid = adl.definition_uuid and adl.name = 'universe_uuid'))
 where ad.name in ('Replication Lag Alert');
 
 alter table alert_definition drop column if exists name;
