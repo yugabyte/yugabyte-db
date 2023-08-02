@@ -258,7 +258,7 @@ This step is only required if you set **Manually Provision Nodes** to true on yo
 If the SSH user does not have any sudo privileges, you can't use the script and need to set up the database nodes manually. Refer to [Set up on-premises nodes manually](../on-premises-manual/).
 {{< /note >}}
 
-To provision your nodes you can run the pre-provisioning script. The script is displayed under **Instances** on the **Instances** tab of the on-prem configuration you created.
+To provision your nodes you can run the pre-provisioning script (`provision_instance.py`). The script is displayed under **Instances** on the **Instances** tab of the on-prem configuration you created.
 
 You can manually provision each node using the pre-provisioning Python script, as follows:
 
@@ -272,7 +272,7 @@ You can manually provision each node using the pre-provisioning Python script, a
 
 1. Copy and paste the Python script command from the YugabyteDB Anywhere UI. Set the flags for the command as follows:
 
-    - `--ask_password` - this flag instructs the script to prompt for a password (which is required if the sudo user requires password authentication).
+    - `--ask_password` - this flag instructs the script to prompt for a password, which is required if the sudo user requires password authentication.
     - `--ip` - enter the IP address of the node.
     - `--mount_points` - enter the mount point configured for the node (typically `/data`). If you have multiple drives, add these as a comma-separated list, such as, for example, `/mnt/d0,/mnt/d1`.
     - `--install_node_agent` - this flag instructs the script to install the node agent, which is required for YugabyteDB Anywhere to communicate with the instance.
@@ -286,14 +286,15 @@ You can manually provision each node using the pre-provisioning Python script, a
 
     ```bash
     /opt/yugabyte/yugaware/data/provision/9cf26f3b-4c7c-451a-880d-593f2f76efce/provision_instance.py \
-        --ask_password --install_node_agent \
+        --ask_password \
+        --ip 10.9.116.65 \
+        --mount_points /data \
+        --install_node_agent \
         --api_token 999bc9db-ddfb-9fec-a33d-4f8f9fd88db7 \
         --yba_url http://100.98.0.40:9000 \
-        --ip 10.9.116.65 \
         --node_name onprem_node1 \
         --instance_type c5.large \
         --zone_name us-west-2a 
-        --mount_points /data \
     ```
 
     Expect the following output and, if you specified `--ask-password`, prompt:
@@ -310,79 +311,3 @@ You can manually provision each node using the pre-provisioning Python script, a
 1. Repeat step 3 for every node that will participate in the on-prem configuration.
 
 You can proceed to [add instances](#add-instances) to the provider.
-
-## Use node agents
-
-When nodes are provisioned, YugabyteDB Anywhere installs a node agent on each node. YugabyteDB Anywhere uses these node agents to communicate with the nodes, and once installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
-
-The node agents are installed onto instances automatically when adding instances or running the pre-provisioning script using the `--install_node_agent` flag.
-
-You can also [install the node agent manually](../on-premises-manual/#install-node-agent).
-
-### Manual registration
-
-To enable secured communication, the node agent is automatically registered during its installation so YugabyteDB Anywhere is aware of its existence. You can also register and unregister the node agent manually during configuration.
-
-The following is the node agent registration command:
-
-```sh
-node-agent node register --api-token <api_token>
-```
-
-If you need to overwrite any previously configured values, you can use the following parameters in the registration command:
-
-- `--node_ip` represents the node IP address.
-- `--url` represents the YugabyteDB Anywhere address.
-
-For secured communication, YugabyteDB Anywhere generates a key pair (private, public, and server certificate) that is sent to the node agent as part of its registration process.
-
-<!--
-
-You can obtain a list of existing node agents using the following API:
-
-```http
-GET /api/v1/customers/<customer_id>/node_agents
-```
-
-To unregister a node agent, use the following API:
-
-```http
-DELETE /api/v1/customers/<customer_id>/node_agents/<node_agent_id>
-```
-
--->
-
-To unregister a node agent, use the following command:
-
-```sh
-node-agent node unregister
-```
-
-### Node agent operations
-
-Even though the node agent installation, configuration, and registration are sufficient, the following supplementary commands are also supported:
-
-- `node-agent node unregister` is used for un-registering the node and node agent from YugabyteDB Anywhere. This can be done to restart the registration process.
-- `node-agent node register` is used for registering a node and node agent to YugabyteDB Anywhere if they were unregistered manually. Registering an already registered node agent fails as YugabyteDB Anywhere keeps a record of the node agent with this IP.
-- `node-agent service start` and `node-agent service stop` are used for starting or stopping the node agent as a gRPC server.
-- `node-agent node preflight-check` is used for checking if a node is configured as a YugabyteDB Anywhere node. After the node agent and the node have been registered with YugabyteDB Anywhere, this command can be run on its own, if the result needs to be published to YugabyteDB Anywhere. For more information, see [Preflight check](#preflight-check).
-
-### Preflight check
-
-After the node agent is installed, configured, and connected to YugabyteDB Anywhere, you can perform a series of preflight checks without sudo privileges by using the following command:
-
-```sh
-node-agent node preflight-check
-```
-
-The result of the check is forwarded to YugabyteDB Anywhere for validation. The validated information is posted in a tabular form on the terminal. If there is a failure against a required check, you can apply a fix and then rerun the preflight check.
-
-Expect an output similar to the following:
-
-![Result](/images/yp/node-agent-preflight-check.png)
-
-If the preflight check is successful, you would be able to add the node to the provider (if required) by executing the following:
-
-```sh
-node-agent node preflight-check --add_node
-```

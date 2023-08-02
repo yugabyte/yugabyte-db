@@ -11,11 +11,15 @@ menu:
 type: docs
 ---
 
-## Remove YugabyteDB components from the server
+## Remove YugabyteDB components from nodes
 
-As described in [Eliminate an unresponsive node](../../../manage-deployments/remove-nodes/), when a node enters an undesirable state, you can delete the node, with YugabyteDB Anywhere clearing up all the remaining artifacts except the `prometheus` and `yugabyte` user.
+As described in [Eliminate an unresponsive node](../../manage-deployments/remove-nodes/), when a node enters an undesirable state, you can delete the node, with YugabyteDB Anywhere clearing up all the remaining artifacts except the `prometheus` and `yugabyte` user.
 
 You can manually remove Yugabyte components from existing server images. Before attempting this, you have to determine whether or not YugabyteDB Anywhere is operational. If it is, you either need to delete the universe or delete the nodes from the universe.
+
+## Uninstall YugabyteDB Anywhere
+
+If you used [YBA Installer](../install-software/installer/) to install YugabyteDB Anywhere, you can use the `clean` command to unistall the software. This removes the YugabyteDB Anywhere software, but keeps any data such as PostgreSQL or Prometheus information. Refer to [Clean](../install-software/installer/#clean-uninstall).
 
 To completely eliminate all traces of YugabyteDB Anywhere and configuration, you should consider reinstalling the operating system image (or rolling back to a previous image, if available).
 
@@ -29,13 +33,13 @@ You can remove YugabyteDB components and configuration from on-premises provider
 
 1. Execute the following command:
 
-  ```shell
-  ./bin/yb-server-ctl.sh clean-instance
-  ```
+    ```shell
+    ./bin/yb-server-ctl.sh clean-instance
+    ```
 
-  This removes all YugabyteDB code and settings from the node, removing it from the Universe.
+This removes all YugabyteDB code and settings from the node, removing it from the Universe.
 
-  If you cannot find the `bin` directory, it means YugabyteDB Anywhere already cleared it during a successful deletion of the universe.
+If you cannot find the `bin` directory, it means YugabyteDB Anywhere already cleared it during a successful deletion of the universe.
 
 You should also erase the data from the volume mounted under the `/data` subdirectory, unless this volume is to be permanently erased by the underlying storage subsystem when the volume is deleted.
 

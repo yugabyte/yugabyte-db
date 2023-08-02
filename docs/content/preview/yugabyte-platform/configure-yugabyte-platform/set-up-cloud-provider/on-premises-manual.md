@@ -23,7 +23,7 @@ For each node, perform the following:
 
 - [Set up time synchronization](#set-up-time-synchronization)
 - [Open incoming TCP ports](#open-incoming-tcp-ip-ports)
-- [Pre-provision the node](#pre-provision-nodes-manually)
+- [Manually pre-provision the node](#pre-provision-nodes-manually)
 - [Install Prometheus node exporter](#install-prometheus-node-exporter)
 - [Install backup utilities](#install-backup-utilities)
 - [Set crontab permissions](#set-crontab-permissions)
@@ -676,7 +676,9 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 
 ## Install node agent
 
-The [node agent](../on-premises/#use-node-agents) is used to manage communication between YugabyteDB Anywhere and the node.
+The node agent is used to manage communication between YugabyteDB Anywhere and the node. YugabyteDB Anywhere uses node agents to communicate with the nodes, and once installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
+
+(Node agents are installed onto instances automatically when adding instances or running the pre-provisioning script using the `--install_node_agent` flag.)
 
 You can install the YugabyteDB node agent manually as follows:
 
@@ -685,6 +687,8 @@ You can install the YugabyteDB node agent manually as follows:
    ```sh
    curl https://<yugabytedb_anywhere_address>/api/v1/node_agents/download --fail --header 'X-AUTH-YW-API-TOKEN: <api_token>' > installer.sh && chmod +x installer.sh
    ```
+
+    To create an API token, navigate to your **User Profile** and click **Generate Key**.
 
 1. Verify that the installer file contains the script.
 
@@ -731,3 +735,71 @@ You can install the YugabyteDB node agent manually as follows:
    ```
 
 When the installation has been completed, the configurations are saved in the `config.yml` file located in the `node-agent/config/` directory. You should refrain from manually changing values in this file.
+
+### Preflight check
+
+After the node agent is installed, configured, and connected to YugabyteDB Anywhere, you can perform a series of preflight checks without sudo privileges by using the following command:
+
+```sh
+node-agent node preflight-check
+```
+
+The result of the check is forwarded to YugabyteDB Anywhere for validation. The validated information is posted in a tabular form on the terminal. If there is a failure against a required check, you can apply a fix and then rerun the preflight check.
+
+Expect an output similar to the following:
+
+![Result](/images/yp/node-agent-preflight-check.png)
+
+If the preflight check is successful, you add the node to the provider (if required) by executing the following:
+
+```sh
+node-agent node preflight-check --add_node
+```
+
+### Commands
+
+Even though the node agent installation, configuration, and registration are sufficient, the following supplementary commands are also supported:
+
+- `node-agent node unregister` is used for un-registering the node and node agent from YugabyteDB Anywhere. This can be done to restart the registration process.
+- `node-agent node register` is used for registering a node and node agent to YugabyteDB Anywhere if they were unregistered manually. Registering an already registered node agent fails as YugabyteDB Anywhere keeps a record of the node agent with this IP.
+- `node-agent service start` and `node-agent service stop` are used for starting or stopping the node agent as a gRPC server.
+- `node-agent node preflight-check` is used for checking if a node is configured as a YugabyteDB Anywhere node.
+
+#### Manual registration
+
+To enable secured communication, the node agent is automatically registered during its installation so YugabyteDB Anywhere is aware of its existence. You can also register and unregister the node agent manually during configuration.
+
+The following is the node agent registration command:
+
+```sh
+node-agent node register --api-token <api_token>
+```
+
+If you need to overwrite any previously configured values, you can use the following parameters in the registration command:
+
+- `--node_ip` represents the node IP address.
+- `--url` represents the YugabyteDB Anywhere address.
+
+For secured communication, YugabyteDB Anywhere generates a key pair (private, public, and server certificate) that is sent to the node agent as part of its registration process.
+
+<!--
+
+You can obtain a list of existing node agents using the following API:
+
+```http
+GET /api/v1/customers/<customer_id>/node_agents
+```
+
+To unregister a node agent, use the following API:
+
+```http
+DELETE /api/v1/customers/<customer_id>/node_agents/<node_agent_id>
+```
+
+-->
+
+To unregister a node agent, use the following command:
+
+```sh
+node-agent node unregister
+```
