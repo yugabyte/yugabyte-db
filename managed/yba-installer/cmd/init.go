@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
@@ -91,6 +92,11 @@ func writeDefaultConfig() {
 	err = os.Chmod(common.InputFile(), 0644)
 	if err != nil {
 		log.Warn("failed to update config file permissions: " + err.Error())
+	}
+	if !common.HasSudoAccess() {
+		// Update default installRoot to $HOME/yugabyte
+		common.SetYamlValue(common.InputFile(), "installRoot",
+			filepath.Join(common.GetUserHomeDir(), "yugabyte"))
 	}
 }
 
