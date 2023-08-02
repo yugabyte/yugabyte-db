@@ -5199,7 +5199,6 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
 
     size_t count_tablet_streams_to_delete = 0;
     size_t count_streams_already_deleted = 0;
-    vector<xrepl::StreamId> streams_where_parent_unpolled;
 
     for (const auto& stream_id : stream_ids) {
       // Check parent entry, if it doesn't exist, then it was already deleted.
@@ -5231,7 +5230,6 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
             (checkpoint == OpId::Min() && !entry_opt->last_replication_time)) {
           VLOG(2) << "The stream: " << stream_id << ", is not active for tablet: " << tablet_id;
           count_tablet_streams_to_delete++;
-          streams_where_parent_unpolled.push_back(stream_id);
           continue;
         }
       }
@@ -5262,19 +5260,6 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion() {
         // Also delete the parent tablet from cdc_state for all completed streams.
         entries_to_delete.emplace_back(cdc::CDCStateTableKey{tablet_id, stream_id});
         count_tablet_streams_to_delete++;
-      }
-    }
-
-    // Set the checkpoint as -1.-1 for child entries on whose parent's we have not started polling
-    // yet, to prevent unnecessary retention of intents for the children tablets.
-    for (auto& child_tablet_id : hidden_tablet.split_tablets_) {
-      for (const auto& stream_id : streams_where_parent_unpolled) {
-        cdc::CDCStateTableEntry entry(child_tablet_id, stream_id);
-        entry.checkpoint = OpId::Invalid();
-        entries_to_update.push_back(std::move(entry));
-        LOG(INFO) << "Resetting checkpoint of child tablet: " << child_tablet_id << " in stream "
-                  << stream_id << " to -1.-1 ."
-                  << "Reason: Consumer has not started polling on these tablets yet";
       }
     }
 
