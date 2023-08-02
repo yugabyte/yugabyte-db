@@ -139,7 +139,7 @@ $ ycqlsh -u <username> -p <password>
 
 Alternatively, you can omit the `-p <password>` above and you will be prompted for a password.
 
-As an example of connecting as a user, you can login with the credentials of the user `john` that you created above by running the following command and entering the password when prompted:
+As an example of connecting as a user, you can log in with the credentials of the user `john` that you created above by running the following command and entering the password when prompted:
 
 ```sh
 $ ycqlsh -u john
@@ -207,7 +207,7 @@ cassandra@ycqlsh> ALTER ROLE john WITH SUPERUSER = false;
 
 ### Enable and disable login privileges
 
-In the example above, you can verify that `john` is can login to the database by doing the following:
+In the example above, you can verify that `john` can log in to the database by doing the following:
 
 ```sql
 cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles WHERE role='john';
@@ -241,7 +241,7 @@ cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_au
 (1 rows)
 ```
 
-Trying to login as `john` using `ycqlsh` will throw the following error.
+Trying to log in as `john` using `ycqlsh` will throw the following error.
 
 ```sh
 $ ycqlsh -u john
