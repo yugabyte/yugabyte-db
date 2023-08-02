@@ -93,7 +93,7 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
             sourceUniverseMasterAddresses,
             sourceUniverseCertificate,
             Math.max(
-                confGetter.getGlobalConf(GlobalConfKeys.ybcAdminOperationTimeoutMs),
+                confGetter.getGlobalConf(GlobalConfKeys.bootstrapProducerTimeoutMs),
                 MINIMUM_ADMIN_OPERATION_TIMEOUT_MS_FOR_BOOTSTRAP),
             Math.max(
                 confGetter.getGlobalConf(GlobalConfKeys.ybcSocketReadTimeoutMs),
