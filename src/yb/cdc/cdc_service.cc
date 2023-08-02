@@ -2285,7 +2285,7 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
       continue;
     }
 
-    std::string last_replicated_time_str;
+    std::string last_replicated_time_str = "";
     if (entry.last_replication_time) {
       last_replicated_time_str = Timestamp(*entry.last_replication_time).ToFormattedString();
     }
@@ -2342,6 +2342,14 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     // If a tablet_id, stream_id pair is in "uninitialized state", we don't need to send the
     // checkpoint to the tablet peers.
     if (checkpoint == OpId::Invalid() && last_active_time_cdc_state_table == 0) {
+      continue;
+    }
+
+    // If the tablet_id, stream_id pair have OpId::Min() as checkpoint, but the LastReplicatedTime
+    // is not set, we know this was a child tablet (refer: UpdateCDCProducerOnTabletSplit). We will
+    // not update the checkpoint details.
+    if (checkpoint == OpId::Min() && last_replicated_time_str.empty() &&
+        record.GetSourceType() == CDCSDK) {
       continue;
     }
 
