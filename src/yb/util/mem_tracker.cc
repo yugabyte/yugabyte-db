@@ -320,7 +320,6 @@ MemTracker::MemTracker(int64_t byte_limit, const string& id,
       consumption_functor_(std::move(consumption_functor)),
       descr_(Substitute("memory consumption for $0", id)),
       parent_(std::move(parent)),
-      rand_(GetRandomSeed32()),
       enable_logging_(FLAGS_mem_tracker_logging),
       log_stack_(FLAGS_mem_tracker_log_stack_trace),
       add_to_parent_(add_to_parent) {
