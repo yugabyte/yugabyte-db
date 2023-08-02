@@ -23,7 +23,6 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.AlertConfigFormData;
-import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
@@ -97,16 +96,6 @@ public class UniverseActionsHandler {
           }
           break;
         case DISABLE:
-          EncryptionAtRestConfig encryptionAtRestConfig =
-              universe.getUniverseDetails().encryptionAtRestConfig;
-          if (encryptionAtRestConfig.kmsConfigUUID != null) {
-            LOG.debug(
-                "Received KMS config UUID {}, "
-                    + "but updating KMS config UUID {} from universe details.",
-                taskParams.encryptionAtRestConfig.kmsConfigUUID,
-                encryptionAtRestConfig.kmsConfigUUID);
-            taskParams.encryptionAtRestConfig.kmsConfigUUID = encryptionAtRestConfig.kmsConfigUUID;
-          }
           customerTaskType = CustomerTask.TaskType.DisableEncryptionAtRest;
           break;
         default:
