@@ -308,6 +308,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "YBC client timeout in milliseconds for admin operations",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> bootstrapProducerTimeoutMs =
+      new ConfKeyInfo<>(
+          "yb.xcluster.bootstrap_producer_timeout_ms",
+          ScopeType.GLOBAL,
+          "Bootstrap producer timeout",
+          "Bootstrap producer timeout in milliseconds",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> ybcSocketReadTimeoutMs =
       new ConfKeyInfo<>(
           "ybc.timeout.socket_read_timeout_ms",
