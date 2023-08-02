@@ -15,6 +15,7 @@ import {
   YB_HA_WS_RUNTIME_CONFIG_KEY
 } from '../replication/HAReplicationView';
 import { ManagePeerCertsModal } from './ManagePeerCertsModal';
+import { isCertCAEnabledInRuntimeConfig } from '../../customCACerts';
 
 import styles from './AddStandbyInstanceModal.module.scss';
 
@@ -98,6 +99,7 @@ export const AddStandbyInstanceModal: FC<AddStandbyInstanceModalProps> = ({
             .value
         )
       : EMPTY_YB_HA_WEBSERVICE;
+  const isCACertStoreEnabled = isCertCAEnabledInRuntimeConfig(runtimeConfigs?.data);
   const peerCerts = getPeerCerts(ybHAWebService);
   const isMissingPeerCerts = peerCerts.length === 0;
 
@@ -114,7 +116,7 @@ export const AddStandbyInstanceModal: FC<AddStandbyInstanceModalProps> = ({
           visible
           initialValues={INITIAL_VALUES}
           validate={(values: AddStandbyInstanceFormValues) =>
-            validateForm(values, isMissingPeerCerts)
+            validateForm(values, isMissingPeerCerts, isCACertStoreEnabled)
           }
           validateOnChange
           validateOnBlur
@@ -139,7 +141,7 @@ export const AddStandbyInstanceModal: FC<AddStandbyInstanceModalProps> = ({
                   type="text"
                   component={YBFormInput}
                 />
-                {isHTTPS && (
+                {!isCACertStoreEnabled && isHTTPS && (
                   <div className={styles.peerCertsField}>
                     <div>
                       Please add one or more root CA cert needed to connect to each instance in the
@@ -189,7 +191,7 @@ export const AddStandbyInstanceModal: FC<AddStandbyInstanceModalProps> = ({
   }
 };
 
-const validateForm = (values: AddStandbyInstanceFormValues, isMissingPeerCerts: boolean) => {
+const validateForm = (values: AddStandbyInstanceFormValues, isMissingPeerCerts: boolean, isCACertStoreEnabled: boolean) => {
   // Since our formik verision is < 2.0 , we need to throw errors instead of
   // returning them in custom async validation:
   // https://github.com/jaredpalmer/formik/issues/1392#issuecomment-606301031
@@ -199,7 +201,7 @@ const validateForm = (values: AddStandbyInstanceFormValues, isMissingPeerCerts: 
     errors.instanceAddress = 'Required field';
   } else if (!INSTANCE_VALID_ADDRESS_PATTERN.test(values.instanceAddress)) {
     errors.instanceAddress = 'Must be a valid URL';
-  } else if (values.instanceAddress.startsWith('https:') && isMissingPeerCerts) {
+  } else if (!isCACertStoreEnabled && values.instanceAddress.startsWith('https:') && isMissingPeerCerts) {
     errors.peerCerts = 'A peer certificate is required for adding a standby instance over HTTPS';
   }
 
