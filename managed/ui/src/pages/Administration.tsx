@@ -16,6 +16,7 @@ import { HAInstancesContainer } from '../components/ha/instances/HAInstanceConta
 
 import ListCACerts from '../components/customCACerts/ListCACerts';
 import { RBACContainer } from '../redesign/features/rbac/RBACContainer';
+import { isCertCAEnabledInRuntimeConfig } from '../components/customCACerts';
 import './Administration.scss';
 
 // very basic redux store definition, just enough to compile without ts errors
@@ -101,10 +102,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
     ? AdministrationTabs.HA
     : AdministrationTabs.AC;
 
-  const isCustomCaCertsEnabled =
-    globalRuntimeConfigs?.data?.configEntries?.find(
-      (c: any) => c.key === 'yb.customCATrustStore.enabled'
-    )?.value === 'true';
+  const isCustomCaCertsEnabled = isCertCAEnabledInRuntimeConfig(globalRuntimeConfigs?.data);
 
   useEffect(() => {
     showOrRedirect(currentCustomer.data.features, 'menu.administration');
