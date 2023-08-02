@@ -57,7 +57,9 @@
         "reEnterNewPwd": "Re-enter new password",
         "updateSettingsSuccessMsg": "Updating YSQL configuration is in progress",
         "rotatePwdSuccessMsg": "DB credentials for YSQL updated successfully",
-        "rotateBothYSQLWarning": "Rotating YSQL Password and Editing YSQL settings should be performed at different times."
+        "rotateBothYSQLWarning": "Rotating YSQL Password and Editing YSQL settings should be performed at different times.",
+        "disableYSQLWarning1": "Are you sure you want to disable YSQL endpoint ?",
+        "disableYSQLWarning2": "<b>Note :</b> Once you perform this operation, You cannot enable it again."
       },
       "editYCQLSettings": {
         "modalTitle": "Edit YCQL configuration",
@@ -705,7 +707,7 @@
             "description": "Description",
             "type": "Type",
             "users": "Users",
-            "actions":"Actions",
+            "actions": "Actions",
             "moreActions": {
               "editRole": "Edit Role",
               "cloneRole": "Clone Role",
@@ -716,7 +718,7 @@
         },
         "delete": {
           "title": "Delete Role",
-          "errMsg" : "This operation will delete the following role:<br/><bold>“{{role_name}}”</bold><br/>Enter the role name to continue.",
+          "errMsg": "This operation will delete the following role:<br/><bold>“{{role_name}}”</bold><br/>Enter the role name to continue.",
           "successMsg": "\"{{role_name}}\" role was deleted successfully"
         },
         "edit": {
