@@ -6846,26 +6846,35 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTxnWithExplicitStream)) 
   ASSERT_FALSE(set_resp.has_error());
 
   // Number of rows is intentionally kept equal to the value of cdc_max_stream_intent_records.
-  ASSERT_OK(WriteRowsHelper(0, 40, &test_cluster_, true));
+  const int row_count = 40;
+  ASSERT_OK(WriteRowsHelper(0, row_count, &test_cluster_, true));
   ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
 
   const int expected_count[] = {1, 40, 0, 0, 0, 0, 1, 1};
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
-  auto get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
-  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
-    auto record = get_changes_resp.cdc_sdk_proto_records(i);
-    UpdateRecordCount(record, count);
-  }
+  GetChangesResponsePB get_changes_resp;
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto get_changes_resp_result = GetChangesFromCDC(stream_id, tablets);
+        if (get_changes_resp_result.ok()) {
+          get_changes_resp = (*get_changes_resp_result);
+          for (const auto& record : get_changes_resp.cdc_sdk_proto_records()) {
+            UpdateRecordCount(record, count);
+          }
+        }
+        return count[1] == row_count;
+      },
+      MonoDelta::FromSeconds(5), "Wait for getchanges to fetch records"));
 
   const auto& prev_checkpoint = get_changes_resp.cdc_sdk_checkpoint();
   set_resp = ASSERT_RESULT(
       SetCDCCheckpoint(stream_id, tablets, OpId{prev_checkpoint.term(), prev_checkpoint.index()}));
   ASSERT_FALSE(set_resp.has_error());
 
-  get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &prev_checkpoint));
-  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
-    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+  auto get_changes_resp_2 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &prev_checkpoint));
+  for (const auto& record : get_changes_resp_2.cdc_sdk_proto_records()) {
     UpdateRecordCount(record, count);
   }
 
