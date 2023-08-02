@@ -109,7 +109,7 @@ A YugabyteDB cluster with authentication enabled starts with the default admin u
 $ ./bin/ysqlsh -U yugabyte
 ```
 
-You will be prompted to enter the password. Upon successful log in to the YSQL shell, you will see the following:
+You will be prompted to enter the password. After logging in to the YSQL shell, you will see the following:
 
 ```output
 ysqlsh (11.2-YB-2.7.0.0-b0)

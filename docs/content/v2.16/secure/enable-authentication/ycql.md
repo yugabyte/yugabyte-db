@@ -252,7 +252,7 @@ cassandra@ycqlsh> ALTER ROLE john WITH SUPERUSER = false;
 
 ### Enable and disable login privileges
 
-In the example above, you can verify that `john` is can log in to the database by doing the following:
+In the example above, you can verify that `john` can log in to the database by doing the following:
 
 ```cql
 cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles WHERE role='john';
