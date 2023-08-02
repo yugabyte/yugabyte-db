@@ -962,6 +962,26 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Get a gflag's value from a given server.
+   * @param hp the host and port of the server
+   * @param flag the flag to get.
+   * @return string value of flag if valid, else empty string
+   */
+  public String getFlag(HostAndPort hp, String flag) throws Exception {
+    if (flag == null || hp == null) {
+      LOG.warn("Invalid arguments for hp: {}, flag {}", hp.toString(), flag);
+      return "";
+    }
+    Deferred<GetFlagResponse> d = asyncClient.getFlag(hp, flag);
+    GetFlagResponse result = d.join(getDefaultAdminOperationTimeoutMs());
+    if (result.getValid()) {
+      LOG.warn("Invalid flag {}", flag);
+      return result.getValue();
+    }
+    return "";
+  }
+
+  /**
    *  Get the list of master addresses from a given tserver.
    * @param hp the host and port of the server
    * @return a comma separated string containing the list of master addresses
