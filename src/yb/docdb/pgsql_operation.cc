@@ -419,7 +419,7 @@ class FilteringIterator {
   Result<FetchResult> FetchTuple(const Slice& tuple_id, dockv::PgTableRow* row) {
     iterator_holder_->SeekTuple(tuple_id);
     if (!VERIFY_RESULT(iterator_holder_->PgFetchNext(row)) ||
-        VERIFY_RESULT(iterator_holder_->GetTupleId()) != tuple_id) {
+        iterator_holder_->GetTupleId() != tuple_id) {
       return FetchResult::NotFound;
     }
     return CheckFilter(*row);
@@ -1461,14 +1461,14 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(
       // partition starts to continue populating it's reservoir starting from the numrows' position:
       // the numrows, as well as other sampling state variables is returned and copied over to the
       // next sampling request
-      Slice ybctid = VERIFY_RESULT(table_iter_->GetTupleId());
+      Slice ybctid = table_iter_->GetTupleId();
       reservoir[numrows++].set_binary_value(ybctid.data(), ybctid.size());
     } else {
       // At least targrows tuples have already been collected, now algorithm skips increasing number
       // of row before taking next one into the reservoir
       if (rowstoskip <= 0) {
         // Take ybctid of the current row
-        Slice ybctid = VERIFY_RESULT(table_iter_->GetTupleId());
+        Slice ybctid = table_iter_->GetTupleId();
         // Pick random tuple in the reservoir to replace
         double rvalue;
         int k;
@@ -1762,41 +1762,74 @@ Result<bool> PgsqlReadOperation::SetPagingState(
   return true;
 }
 
+void NopEncoder(
+    const dockv::PgTableRow& row, WriteBuffer* buffer, const dockv::PgWireEncoderEntry* chain) {
+}
+
+template <bool kLast>
+void NullEncoder(
+    const dockv::PgTableRow& row, WriteBuffer* buffer, const dockv::PgWireEncoderEntry* chain) {
+  buffer->PushBack(1);
+  dockv::CallNextEncoder<kLast>(row, buffer, chain);
+}
+
+dockv::PgWireEncoderEntry MakeNullEncoder(bool last) {
+  return dockv::PgWireEncoderEntry {
+    .encoder = last ? NullEncoder<true> : NullEncoder<false>,
+    .data = 0,
+  };
+}
+
+template <bool kLast>
+void TupleIdEncoder(
+    const dockv::PgTableRow& row, WriteBuffer* buffer, const dockv::PgWireEncoderEntry* chain) {
+  auto table_iter = reinterpret_cast<YQLRowwiseIteratorIf::UniPtr*>(chain->data)->get();
+  pggate::WriteBinaryColumn(table_iter->GetTupleId(), buffer);
+  dockv::CallNextEncoder<kLast>(row, buffer, chain);
+}
+
+dockv::PgWireEncoderEntry GetEncoder(
+    YQLRowwiseIteratorIf::UniPtr* table_iter, const dockv::PgTableRow& table_row,
+    const PgsqlExpressionPB& expr, bool last) {
+  if (expr.expr_case() == PgsqlExpressionPB::kColumnId) {
+    if (expr.column_id() != to_underlying(PgSystemAttrNum::kYBTupleId)) {
+      auto index = table_row.projection().ColumnIdxById(ColumnId(expr.column_id()));
+      if (index != dockv::ReaderProjection::kNotFoundIndex) {
+        return table_row.GetEncoder(index, last);
+      }
+      return MakeNullEncoder(last);
+    }
+    return dockv::PgWireEncoderEntry {
+      .encoder = last ? TupleIdEncoder<true> : TupleIdEncoder<false>,
+      .data = reinterpret_cast<size_t>(table_iter),
+    };
+  }
+  return MakeNullEncoder(last);
+}
+
 Status PgsqlReadOperation::PopulateResultSet(const dockv::PgTableRow& table_row,
                                              WriteBuffer *result_buffer) {
-  const auto size = request_.targets().size();
-  if (target_index_.empty()) {
-    target_index_.reserve(request_.targets().size());
-    for (const auto& expr : request_.targets()) {
-      if (expr.expr_case() == PgsqlExpressionPB::kColumnId &&
-          expr.column_id() != to_underlying(PgSystemAttrNum::kYBTupleId)) {
-        target_index_.push_back(table_row.projection().ColumnIdxById(ColumnId(expr.column_id())));
-      } else {
-        target_index_.push_back(dockv::ReaderProjection::kNotFoundIndex);
-      }
-    }
-  }
-  QLExprResult result;
-  const char kNullMark = 1;
-  for (int i = 0; i != size; ++i) {
-    auto index = target_index_[i];
-    if (index != dockv::ReaderProjection::kNotFoundIndex) {
-      table_row.AppendValueByIndex(index, result_buffer);
-      continue;
-    }
-    const auto& expr = request_.targets()[i];
-    if (expr.has_column_id()) {
-      const auto column_id = expr.column_id();
-      if (column_id != to_underlying(PgSystemAttrNum::kYBTupleId)) {
-        result_buffer->Append(&kNullMark, 1);
-      } else {
-        pggate::WriteBinaryColumn(VERIFY_RESULT(table_iter_->GetTupleId()), result_buffer);
+  if (target_encoders_.empty()) {
+    const auto& targets = request_.targets();
+    const auto size = targets.size();
+    if (size) {
+      target_encoders_.reserve(size);
+      for (auto it = targets.begin(), end = targets.end();;) {
+        const auto& expr = *it;
+        bool last = ++it == end;
+        target_encoders_.push_back(GetEncoder(&table_iter_, table_row, expr, last));
+        if (last) {
+          break;
+        }
       }
     } else {
-      RETURN_NOT_OK(EvalExpr(expr, table_row, result.Writer()));
-      RETURN_NOT_OK(pggate::WriteColumn(result.Value(), result_buffer));
+      target_encoders_.push_back(dockv::PgWireEncoderEntry {
+        .encoder = NopEncoder,
+        .data = 0,
+      });
     }
   }
+  target_encoders_.front().Invoke(table_row, result_buffer);
   return Status::OK();
 }
 
@@ -1806,7 +1839,7 @@ Status PgsqlReadOperation::GetSpecialColumn(ColumnIdRep column_id, QLValuePB* re
   // might need info to make sure the TupleId by itself is a valid reference to a specific row of
   // a valid table.
   if (column_id == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
-    const Slice tuple_id = VERIFY_RESULT(table_iter_->GetTupleId());
+    const Slice tuple_id = table_iter_->GetTupleId();
     result->set_binary_value(tuple_id.data(), tuple_id.size());
     return Status::OK();
   }

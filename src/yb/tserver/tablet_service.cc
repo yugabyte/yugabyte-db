@@ -2886,6 +2886,32 @@ void TabletServiceImpl::CancelTransaction(
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::StartRemoteSnapshotTransfer(
+    const StartRemoteSnapshotTransferRequestPB* req, StartRemoteSnapshotTransferResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(
+          server_->tablet_manager(), "StartRemoteSnapshotTransfer", req, resp, &context)) {
+    return;
+  }
+
+  Status s = server_->tablet_manager()->StartRemoteSnapshotTransfer(*req);
+  if (!s.ok()) {
+    // Using Status::AlreadyPresent for a remote snapshot transfer operation that is already in
+    // progress.
+    if (s.IsAlreadyPresent()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 30) << "Start remote snapshot transfer failed: " << s;
+      SetupErrorAndRespond(
+          resp->mutable_error(), s, TabletServerErrorPB::ALREADY_IN_PROGRESS, &context);
+      return;
+    } else {
+      LOG(WARNING) << "Start remote snapshot transfer failed: " << s;
+    }
+  }
+
+  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
+  context.RespondSuccess();
+}
+
 void TabletServiceAdminImpl::TestRetry(
     const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) {
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "TestRetry", req, resp, &context)) {

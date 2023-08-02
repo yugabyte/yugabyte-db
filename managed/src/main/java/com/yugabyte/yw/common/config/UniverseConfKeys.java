@@ -702,6 +702,24 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Controls whether or not to perform the checkUnderReplicatedTablets subtask",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Duration> changeMasterConfigCheckTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.change_master_config.timeout",
+          ScopeType.UNIVERSE,
+          "Master config change result check timeout",
+          "Controls the max time out when waiting for master config change to finish",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> changeMasterConfigCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.checks.change_master_config.enabled",
+          ScopeType.UNIVERSE,
+          "Enabling Master config change result check",
+          "Controls whether or not to wait for master config change to finish",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Long> checkMemoryTimeoutSecs =
       new ConfKeyInfo<>(
           "yb.dbmem.checks.timeout",

@@ -63,14 +63,15 @@ class MultiStageAlterTable {
   // INDEX_PERM_DELETE_ONLY -> INDEX_PERM_WRITE_AND_DELETE -> BACKFILL
   static Status LaunchNextTableInfoVersionIfNecessary(
       CatalogManager* mgr, const scoped_refptr<TableInfo>& Info, uint32_t current_version,
-      bool respect_backfill_deferrals = true);
+      const LeaderEpoch& epoch, bool respect_backfill_deferrals = true);
 
   // Clears the fully_applied_* state for the given table and optionally sets it to RUNNING.
   // If the version has changed and does not match the expected version no
   // change is made.
   static Status ClearFullyAppliedAndUpdateState(
       CatalogManager* mgr, const scoped_refptr<TableInfo>& table,
-      boost::optional<uint32_t> expected_version, bool update_state_to_running);
+      boost::optional<uint32_t> expected_version, bool update_state_to_running,
+      const LeaderEpoch& epoch);
 
   // Copies the current schema, schema_version, indexes and index_info
   // into their fully_applied_* equivalents. This is useful to ensure
@@ -84,6 +85,7 @@ class MultiStageAlterTable {
   static Result<bool> UpdateIndexPermission(
       CatalogManager* mgr, const scoped_refptr<TableInfo>& indexed_table,
       const std::unordered_map<TableId, IndexPermissions>& perm_mapping,
+      const LeaderEpoch& epoch,
       boost::optional<uint32_t> current_version = boost::none);
 
   // TODO(jason): make this private when closing issue #6218.
@@ -92,7 +94,8 @@ class MultiStageAlterTable {
   StartBackfillingData(CatalogManager *catalog_manager,
                        const scoped_refptr<TableInfo> &indexed_table,
                        const std::vector<IndexInfoPB>& idx_infos,
-                       boost::optional<uint32_t> expected_version);
+                       boost::optional<uint32_t> expected_version,
+                       const LeaderEpoch& epoch);
 };
 
 class BackfillTablet;
@@ -106,7 +109,8 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   BackfillTable(Master *master, ThreadPool *callback_pool,
                 const scoped_refptr<TableInfo> &indexed_table,
                 std::vector<IndexInfoPB> indexes,
-                const scoped_refptr<NamespaceInfo> &ns_info);
+                const scoped_refptr<NamespaceInfo> &ns_info,
+                LeaderEpoch epoch);
 
   Status Launch();
 
@@ -139,10 +143,6 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
     return read_time_for_backfill_;
   }
 
-  int64_t leader_term() const {
-    return leader_term_;
-  }
-
   const std::string GetNamespaceName() const;
 
   const std::vector<IndexInfoPB>& index_infos() const { return index_infos_; }
@@ -156,6 +156,8 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   Status UpdateRowsProcessedForIndexTable(const uint64_t number_rows_processed);
 
   const uint64_t number_rows_processed() const { return number_rows_processed_; }
+
+  const LeaderEpoch& epoch() const { return epoch_; }
 
  private:
   void LaunchBackfillOrAbort();
@@ -203,7 +205,6 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   const scoped_refptr<TableInfo> indexed_table_;
   const std::vector<IndexInfoPB> index_infos_;
   int32_t schema_version_;
-  int64_t leader_term_;
   std::atomic<uint64> number_rows_processed_;
 
   std::atomic_bool done_{false};
@@ -217,6 +218,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   const std::string requested_index_names_;
 
   const scoped_refptr<NamespaceInfo> ns_info_;
+  LeaderEpoch epoch_;
 };
 
 class BackfillTableJob : public server::MonitoredTask {
@@ -309,10 +311,12 @@ class GetSafeTimeForTablet : public RetryingTSRpcTask {
   GetSafeTimeForTablet(
       std::shared_ptr<BackfillTable> backfill_table,
       const scoped_refptr<TabletInfo>& tablet,
-      HybridTime min_cutoff)
+      HybridTime min_cutoff,
+      LeaderEpoch epoch)
       : RetryingTSRpcTask(
             backfill_table->master(), backfill_table->threadpool(),
             std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), tablet->table().get(),
+            std::move(epoch),
             /* async_task_throttler */ nullptr),
         backfill_table_(backfill_table),
         tablet_(tablet),
@@ -355,7 +359,8 @@ class GetSafeTimeForTablet : public RetryingTSRpcTask {
 class BackfillChunk : public RetryingTSRpcTask {
  public:
   BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,
-                const std::string& start_key);
+                const std::string& start_key,
+                LeaderEpoch epoch);
 
   Status Launch();
 

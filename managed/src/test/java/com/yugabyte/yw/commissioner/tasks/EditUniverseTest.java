@@ -5,15 +5,8 @@ package com.yugabyte.yw.commissioner.tasks;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.EDIT;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -33,23 +26,13 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.yb.client.ChangeConfigResponse;
-import org.yb.client.ChangeMasterClusterConfigResponse;
-import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.ListMastersResponse;
-import org.yb.client.ListTabletServersResponse;
+import org.yb.client.*;
 import org.yb.master.CatalogEntityInfo;
 import play.libs.Json;
 
@@ -81,6 +64,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.ChangeMasterConfig, // Add
+          TaskType.WaitForFollowerLag, // Add
           TaskType.ChangeMasterConfig, // Remove
           TaskType.AnsibleClusterServerCtl, // Stop master
           TaskType.WaitForMasterLeader,
@@ -119,6 +103,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.ChangeMasterConfig, // Add
+          TaskType.WaitForFollowerLag, // Add
           TaskType.ChangeMasterConfig, // Remove
           TaskType.AnsibleClusterServerCtl, // Stop master
           TaskType.WaitForMasterLeader,
@@ -197,6 +182,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
+    mockGetMasterRegistrationResponses(
+        ImmutableList.of("10.9.22.1", "10.9.22.2", "10.9.22.3", "10.9.22.4", "10.9.22.5"));
   }
 
   private TaskInfo submitTask(UniverseDefinitionTaskParams taskParams) {

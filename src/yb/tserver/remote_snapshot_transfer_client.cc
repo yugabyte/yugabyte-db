@@ -51,17 +51,16 @@ DECLARE_int32(remote_bootstrap_begin_session_timeout_ms);
 namespace yb {
 namespace tserver {
 
-using std::string;
 using tablet::RaftGroupMetadataPtr;
 
 RemoteSnapshotTransferClient::RemoteSnapshotTransferClient(
-    std::string tablet_id, FsManager* fs_manager)
+    const TabletId& tablet_id, FsManager* fs_manager)
     : RemoteClientBase(tablet_id, fs_manager) {}
 
 RemoteSnapshotTransferClient::~RemoteSnapshotTransferClient() {}
 
 Status RemoteSnapshotTransferClient::Start(
-    rpc::ProxyCache* proxy_cache, const std::string& source_tablet_uuid,
+    rpc::ProxyCache* proxy_cache, const PeerId& source_peer_uuid,
     const HostPort& source_tablet_addr, const std::string& rocksdb_dir) {
   CHECK(!started_);
 
@@ -95,7 +94,7 @@ Status RemoteSnapshotTransferClient::Start(
   if (!CanServeTabletData(resp.superblock().tablet_data_state())) {
     Status s = STATUS(
         IllegalState,
-        "Remote peer (" + source_tablet_uuid + ")" + " is currently remotely bootstrapping itself!",
+        "Remote peer (" + source_peer_uuid + ")" + " is currently remotely bootstrapping itself!",
         resp.superblock().ShortDebugString());
     LOG_WITH_PREFIX(WARNING) << s.ToString();
     return s;

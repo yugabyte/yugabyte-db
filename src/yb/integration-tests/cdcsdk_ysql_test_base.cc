@@ -695,9 +695,10 @@ namespace cdc {
     yb::master::SplitTabletResponsePB resp;
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromSeconds(30.0) * kTimeMultiplier);
-
-    RETURN_NOT_OK(cluster->mini_cluster_->mini_master()->catalog_manager().SplitTablet(
-        tablet_id, master::ManualSplit::kTrue));
+    auto& cm = cluster->mini_cluster_->mini_master()->catalog_manager();
+    RETURN_NOT_OK(cm.SplitTablet(
+        tablet_id, master::ManualSplit::kTrue,
+        cm.GetLeaderEpochInternal()));
 
     if (resp.has_error()) {
       RETURN_NOT_OK(StatusFromPB(resp.error().status()));

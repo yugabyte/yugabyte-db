@@ -3,41 +3,27 @@ package com.yugabyte.yw.commissioner.tasks;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 import static play.libs.Json.newObject;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Hook;
-import com.yugabyte.yw.models.HookScope;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.Before;
+import org.yb.CommonNet;
+import org.yb.CommonTypes;
+import org.yb.WireProtocol;
+import org.yb.client.GetMasterRegistrationResponse;
 import org.yb.client.YBClient;
 import play.libs.Json;
 
@@ -58,6 +44,8 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
 
   protected Hook hook1, hook2;
   protected HookScope hookScope1, hookScope2;
+
+  private static boolean addMasters = false;
 
   @Override
   @Before
@@ -242,5 +230,76 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     keyInfo.sshPort = 22;
     AccessKey accessKey = AccessKey.create(provider.getUuid(), keyCode, keyInfo);
     return accessKey;
+  }
+
+  protected void mockGetMasterRegistrationResponses(List<String> masterIps) {
+    mockGetMasterRegistrationResponses(mockClient, masterIps);
+  }
+
+  public static void mockGetMasterRegistrationResponses(YBClient client, List<String> masterIps) {
+    when(client.getMasterRegistrationResponseList())
+        .thenAnswer(
+            i -> {
+              addMasters = !addMasters;
+              List<GetMasterRegistrationResponse> responses =
+                  new ArrayList<>(
+                      masterIps.stream()
+                          .map(
+                              ip ->
+                                  new GetMasterRegistrationResponse(
+                                      5,
+                                      "",
+                                      addMasters
+                                          ? CommonTypes.PeerRole.FOLLOWER
+                                          : CommonTypes.PeerRole.NON_PARTICIPANT,
+                                      WireProtocol.ServerRegistrationPB.newBuilder()
+                                          .addPrivateRpcAddresses(
+                                              CommonNet.HostPortPB.newBuilder()
+                                                  .setHost(ip)
+                                                  .setPort(7100)
+                                                  .build())
+                                          .build(),
+                                      null))
+                          .toList());
+              return responses;
+            });
+  }
+
+  public void mockGetMasterRegistrationResponse(List<String> addedIps, List<String> removedIps) {
+    mockGetMasterRegistrationResponse(mockClient, addedIps, removedIps);
+  }
+
+  public static void mockGetMasterRegistrationResponse(
+      YBClient client, List<String> addedIps, List<String> removedIps) {
+    List<GetMasterRegistrationResponse> responses = new ArrayList<>();
+    responses.addAll(
+        addedIps.stream()
+            .map(
+                ip ->
+                    new GetMasterRegistrationResponse(
+                        5,
+                        "",
+                        CommonTypes.PeerRole.FOLLOWER,
+                        WireProtocol.ServerRegistrationPB.newBuilder()
+                            .addPrivateRpcAddresses(
+                                CommonNet.HostPortPB.newBuilder().setHost(ip).setPort(7100).build())
+                            .build(),
+                        null))
+            .toList());
+    responses.addAll(
+        removedIps.stream()
+            .map(
+                ip ->
+                    new GetMasterRegistrationResponse(
+                        5,
+                        "",
+                        CommonTypes.PeerRole.NON_PARTICIPANT,
+                        WireProtocol.ServerRegistrationPB.newBuilder()
+                            .addPrivateRpcAddresses(
+                                CommonNet.HostPortPB.newBuilder().setHost(ip).setPort(7100).build())
+                            .build(),
+                        null))
+            .toList());
+    when(client.getMasterRegistrationResponseList()).thenReturn(responses);
   }
 }

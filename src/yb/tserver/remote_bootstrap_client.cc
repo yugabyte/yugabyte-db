@@ -122,8 +122,7 @@ using tablet::RaftGroupMetadata;
 using tablet::RaftGroupMetadataPtr;
 using tablet::TabletStatusListener;
 
-
-RemoteBootstrapClient::RemoteBootstrapClient(std::string tablet_id, FsManager* fs_manager)
+RemoteBootstrapClient::RemoteBootstrapClient(const TabletId& tablet_id, FsManager* fs_manager)
     : RemoteClientBase(tablet_id, fs_manager) {
   AddComponent<RemoteBootstrapSnapshotsComponent>();
 }

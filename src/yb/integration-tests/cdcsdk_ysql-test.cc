@@ -216,12 +216,10 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCLagMetric)) {
   ASSERT_EQ(tablets.size(), num_tablets);
 
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-  vector<xrepl::StreamId> stream_id;
-  for (int idx = 0; idx < 2; idx++) {
-    stream_id.push_back(ASSERT_RESULT(CreateDBStream(IMPLICIT)));
-  }
 
-  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id[0], tablets));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
 
   const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
@@ -234,7 +232,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCLagMetric)) {
       [&]() -> Result<bool> {
         auto metrics =
             std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-                {{}, stream_id[0], tablets[0].tablet_id()}, nullptr, CDCSDK));
+                {{}, stream_id, tablets[0].tablet_id()}, nullptr, CDCSDK));
         return metrics->cdcsdk_sent_lag_micros->value() == 0;
       },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag == 0"));
@@ -246,25 +244,25 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCLagMetric)) {
       /* is_compaction = */ false));
 
   // Call get changes.
-  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id[0], tablets));
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
   uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
   ASSERT_GT(record_size, 2);
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         auto metrics =
             std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-                {{}, stream_id[0], tablets[0].tablet_id()}, nullptr, CDCSDK));
+                {{}, stream_id, tablets[0].tablet_id()}, nullptr, CDCSDK));
         return metrics->cdcsdk_sent_lag_micros->value() > 0;
       },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag > 0"));
 
   GetChangesResponsePB change_resp_1 =
-      ASSERT_RESULT(GetChangesFromCDC(stream_id[0], tablets, &change_resp.cdc_sdk_checkpoint()));
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         auto metrics =
             std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-                {{}, stream_id[0], tablets[0].tablet_id()}, nullptr, CDCSDK));
+                {{}, stream_id, tablets[0].tablet_id()}, nullptr, CDCSDK));
         return metrics->cdcsdk_sent_lag_micros->value() == 0;
       },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag == 0"));
@@ -281,7 +279,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCLagMetric)) {
       [&]() -> Result<bool> {
         auto metrics =
             std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
-                {{}, stream_id[0], tablets[0].tablet_id()}, nullptr, CDCSDK));
+                {{}, stream_id, tablets[0].tablet_id()}, nullptr, CDCSDK));
         return metrics->cdcsdk_sent_lag_micros->value() >= 5000000;
       },
       MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait for Lag to be around 5 seconds"));
@@ -1992,10 +1990,14 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumOnRestart)) {
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ false));
 
+  size_t record_size = 0;
+  GetAllPendingChangesResponse change_resp;
   // Call get changes.
-  auto change_resp = GetAllPendingChangesFromCdc(stream_id, tablets);
-  size_t record_size = change_resp.records.size();
-  ASSERT_GT(record_size, insert_count);
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+          change_resp = GetAllPendingChangesFromCdc(stream_id, tablets);
+          record_size = change_resp.records.size();
+          return static_cast<int> (record_size) > insert_count;
+  }, MonoDelta::FromSeconds(2), "Wait for receiving all the records"));
 
   int expected_key = 0;
   for (uint32_t i = 0; i < record_size; ++i) {

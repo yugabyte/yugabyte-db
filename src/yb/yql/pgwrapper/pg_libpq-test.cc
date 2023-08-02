@@ -159,6 +159,8 @@ class PgLibPqTest : public LibPqTestBase {
 
   void KillPostmasterProcessOnTservers();
 
+  Result<string> GetSchemaName(const string& relname, PGConn* conn);
+
  private:
   Result<PGConn> RestartTSAndConnectToPostgres(int ts_idx, const std::string& db_name);
 };
@@ -166,10 +168,7 @@ class PgLibPqTest : public LibPqTestBase {
 class PgLibPqFailOnConflictTest : public PgLibPqTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    // This test depends on fail-on-conflict concurrency control to perform its validation.
-    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    options->extra_tserver_flags.push_back("--enable_wait_queues=false");
-    options->extra_tserver_flags.push_back("--enable_deadlock_detection=false");
+    UpdateMiniClusterFailOnConflict(options);
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -201,125 +200,8 @@ TEST_F(PgLibPqTest, Simple) {
   }
 }
 
-// Test that repeats example from this article:
-// https://blogs.msdn.microsoft.com/craigfr/2007/05/16/serializable-vs-snapshot-isolation-level/
-//
-// Multiple rows with values 0 and 1 are stored in table.
-// Two concurrent transaction fetches all rows from table and does the following.
-// First transaction changes value of all rows with value 0 to 1.
-// Second transaction changes value of all rows with value 1 to 0.
-// As outcome we should have rows with the same value.
-//
-// The described procedure is repeated multiple times to increase probability of catching bug,
-// w/o running test multiple times.
 TEST_F_EX(PgLibPqTest, SerializableColoring, PgLibPqFailOnConflictTest) {
-  constexpr auto kKeys = RegularBuildVsSanitizers(10, 20);
-  constexpr auto kColors = 2;
-  constexpr auto kIterations = 20;
-
-  auto conn = ASSERT_RESULT(Connect());
-
-  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, color INT)"));
-
-  auto iterations_left = kIterations;
-
-  for (int iteration = 0; iterations_left > 0; ++iteration) {
-    auto iteration_title = Format("Iteration: $0", iteration);
-    SCOPED_TRACE(iteration_title);
-    LOG(INFO) << iteration_title;
-
-    auto s = conn.Execute("DELETE FROM t");
-    if (!s.ok()) {
-      ASSERT_TRUE(HasTransactionError(s)) << s;
-      continue;
-    }
-    for (int k = 0; k != kKeys; ++k) {
-      int32_t color = RandomUniformInt(0, kColors - 1);
-      ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (key, color) VALUES ($0, $1)", k, color));
-    }
-
-    std::atomic<int> complete{ 0 };
-    std::vector<std::thread> threads;
-    for (int i = 0; i != kColors; ++i) {
-      int32_t color = i;
-      threads.emplace_back([this, color, kKeys, &complete] {
-        auto connection = ASSERT_RESULT(Connect());
-
-        ASSERT_OK(connection.Execute("BEGIN"));
-        ASSERT_OK(connection.Execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
-
-        auto res = connection.Fetch("SELECT * FROM t");
-        if (!res.ok()) {
-          // res will have failed status here for conflicting transactions as long as we are using
-          // fail-on-conflict concurrency control. Hence this test runs with wait-on-conflict
-          // disabled.
-          ASSERT_TRUE(HasTransactionError(res.status())) << res.status();
-          return;
-        }
-        auto columns = PQnfields(res->get());
-        ASSERT_EQ(2, columns);
-
-        auto lines = PQntuples(res->get());
-        ASSERT_EQ(kKeys, lines);
-        for (int j = 0; j != lines; ++j) {
-          if (ASSERT_RESULT(GetInt32(res->get(), j, 1)) == color) {
-            continue;
-          }
-
-          auto key = ASSERT_RESULT(GetInt32(res->get(), j, 0));
-          auto status = connection.ExecuteFormat(
-              "UPDATE t SET color = $1 WHERE key = $0", key, color);
-          if (!status.ok()) {
-            auto msg = status.message().ToBuffer();
-            ASSERT_TRUE(HasTransactionError(status)) << status;
-            break;
-          }
-        }
-
-        auto status = connection.Execute("COMMIT");
-        if (!status.ok()) {
-          ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << status;
-          return;
-        }
-
-        ++complete;
-      });
-    }
-
-    for (auto& thread : threads) {
-      thread.join();
-    }
-
-    if (complete == 0) {
-      continue;
-    }
-
-    auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
-    auto columns = PQnfields(res.get());
-    ASSERT_EQ(2, columns);
-
-    auto lines = PQntuples(res.get());
-    ASSERT_EQ(kKeys, lines);
-
-    std::vector<int32_t> zeroes, ones;
-    for (int i = 0; i != lines; ++i) {
-      auto key = ASSERT_RESULT(GetInt32(res.get(), i, 0));
-      auto current = ASSERT_RESULT(GetInt32(res.get(), i, 1));
-      if (current == 0) {
-        zeroes.push_back(key);
-      } else {
-        ones.push_back(key);
-      }
-    }
-
-    std::sort(ones.begin(), ones.end());
-    std::sort(zeroes.begin(), zeroes.end());
-
-    LOG(INFO) << "Zeroes: " << yb::ToString(zeroes) << ", ones: " << yb::ToString(ones);
-    ASSERT_TRUE(zeroes.empty() || ones.empty());
-
-    --iterations_left;
-  }
+  SerializableColoringHelper();
 }
 
 TEST_F_EX(PgLibPqTest, SerializableReadWriteConflict, PgLibPqFailOnConflictTest) {
@@ -793,10 +675,7 @@ class PgLibPqSmallClockSkewFailOnConflictTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // Use small clock skew, to decrease number of read restarts.
     options->extra_tserver_flags.push_back("--max_clock_skew_usec=5000");
-    // This test depends on fail-on-conflict concurrency control to perform its validation.
-    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    options->extra_tserver_flags.push_back("--enable_wait_queues=false");
-    options->extra_tserver_flags.push_back("--enable_deadlock_detection=false");
+    UpdateMiniClusterFailOnConflict(options);
   }
 };
 
@@ -938,6 +817,10 @@ TEST_F(PgLibPqTest, TestLockedConcurrentCounterSerializable) {
 
 TEST_F(PgLibPqTest, TestConcurrentCounterRepeatableRead) {
   TestConcurrentCounter(IsolationLevel::SNAPSHOT_ISOLATION);
+}
+
+TEST_F(PgLibPqTest, TestConcurrentCounterReadCommitted) {
+  TestConcurrentCounter(IsolationLevel::READ_COMMITTED);
 }
 
 TEST_F(PgLibPqTest, SecondaryIndexInsertSelect) {
@@ -1756,6 +1639,13 @@ Status PgLibPqTest::TestDuplicateCreateTableRequest(PGConn conn) {
   SCHECK_EQ(k, 1, IllegalState, "wrong result");
 
   return Status::OK();
+}
+
+Result<string> PgLibPqTest::GetSchemaName(const string& relname, PGConn* conn) {
+  return conn->FetchValue<std::string>(Format(
+      "SELECT nspname FROM pg_class JOIN pg_namespace "
+      "ON pg_class.relnamespace = pg_namespace.oid WHERE relname = '$0'",
+      relname));
 }
 
 // Ensure if client sends out duplicate create table requests, one create table request can
@@ -3530,10 +3420,7 @@ class PgLibPqLegacyColocatedDBTest : public PgLibPqTest {
 
 class PgLibPqLegacyColocatedDBFailOnConflictTest : public PgLibPqLegacyColocatedDBTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    // This test depends on fail-on-conflict concurrency control to perform its validation.
-    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    options->extra_tserver_flags.push_back("--enable_wait_queues=false");
-    options->extra_tserver_flags.push_back("--enable_deadlock_detection=false");
+    UpdateMiniClusterFailOnConflict(options);
     PgLibPqLegacyColocatedDBTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -3706,6 +3593,81 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(RetryCreateDatabasePgOidCollisionFro
   ASSERT_NOK(s);
   ASSERT_TRUE(s.message().ToBuffer().find("Keyspace with id") != std::string::npos);
   ASSERT_TRUE(s.message().ToBuffer().find("already exists") != std::string::npos);
+}
+
+class PgLibPqTempTest: public PgLibPqTest {
+ public:
+  Status TestDeletedByQuery(
+      const std::vector<string>& relnames, const string& query, PGConn* conn) {
+    std::vector<string> filepaths;
+    filepaths.reserve(relnames.size());
+    for (const string& relname : relnames) {
+      string pg_filepath = VERIFY_RESULT(
+          conn->FetchValue<std::string>(Format("SELECT pg_relation_filepath('$0')", relname)));
+      filepaths.push_back(JoinPathSegments(pg_ts->GetRootDir(), "pg_data", pg_filepath));
+    }
+    for (const string& filepath : filepaths) {
+      SCHECK(Env::Default()->FileExists(filepath), IllegalState,
+             Format("File $0 should exist, but does not", filepath));
+    }
+    RETURN_NOT_OK(conn->Execute(query));
+    for (const string& filepath : filepaths) {
+      SCHECK(!Env::Default()->FileExists(filepath), IllegalState,
+             Format("File $0 should not exist, but does", filepath));
+    }
+    return Status::OK();
+  }
+
+  Status TestRemoveTempTable(bool is_drop) {
+    PGConn conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.Execute("CREATE TEMP TABLE foo (k INT PRIMARY KEY, v INT)"));
+    const string schema = VERIFY_RESULT(GetSchemaName("foo", &conn));
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE $0.bar (k INT PRIMARY KEY, v INT)", schema));
+
+    string command = is_drop ? "DROP TABLE foo, bar" : "DISCARD TEMP";
+    RETURN_NOT_OK(TestDeletedByQuery({"foo", "foo_pkey", "bar", "bar_pkey"}, command, &conn));
+    return Status::OK();
+  }
+
+  Status TestRemoveTempSequence(bool is_drop) {
+    PGConn conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.Execute("CREATE TEMP SEQUENCE foo"));
+    const string schema = VERIFY_RESULT(GetSchemaName("foo", &conn));
+    RETURN_NOT_OK(conn.ExecuteFormat("CREATE SEQUENCE $0.bar ", schema));
+
+    if (is_drop) {
+      // TODO(#880): use single call to drop both sequences at the same time.
+      RETURN_NOT_OK(TestDeletedByQuery({"foo"}, "DROP SEQUENCE foo", &conn));
+      RETURN_NOT_OK(TestDeletedByQuery({"bar"}, "DROP SEQUENCE bar", &conn));
+    } else {
+      RETURN_NOT_OK(TestDeletedByQuery({"foo", "bar"}, "DISCARD TEMP", &conn));
+    }
+    return Status::OK();
+  }
+};
+
+// Test that the physical storage for a temporary sequence is removed
+// when calling DROP SEQUENCE.
+TEST_F(PgLibPqTempTest, DropTempSequence) {
+  ASSERT_OK(TestRemoveTempSequence(true));
+}
+
+// Test that the physical storage for a temporary sequence is removed
+// when calling DISCARD TEMP.
+TEST_F(PgLibPqTempTest, DiscardTempSequence) {
+  ASSERT_OK(TestRemoveTempSequence(false));
+}
+
+// Test that the physical storage for a temporary table and index are removed
+// when calling DROP TABLE.
+TEST_F(PgLibPqTempTest, DropTempTable) {
+  ASSERT_OK(TestRemoveTempTable(true));
+}
+
+// Test that the physical storage for a temporary table and index are removed
+// when calling DISCARD TEMP.
+TEST_F(PgLibPqTempTest, DiscardTempTable) {
+  ASSERT_OK(TestRemoveTempTable(false));
 }
 
 } // namespace pgwrapper

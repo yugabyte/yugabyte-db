@@ -21,6 +21,7 @@
 
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction.h"
+#include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/stl_util.h"
@@ -380,7 +381,7 @@ std::string ConstructDeadlockedMessage(const TransactionId& waiter,
       ss << Format(" -> $0", *id_or_status);
     }
   }
-  ss << Format(" -> $0\n", waiter.ToString());
+  ss << Format(" -> $0 ", waiter.ToString());
   return ss.str();
 }
 
@@ -627,8 +628,10 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
     if (it == recently_deadlocked_txns_info_.end()) {
       return Status::OK();
     }
+    // Deadlock status is currently used in wait-queues alone. It is required that we set status
+    // type as InternalError for pg to decode the error and throw ERRCODE_T_R_DEADLOCK_DETECTED.
     return STATUS_EC_FORMAT(
-        Expired, PgsqlError(YBPgErrorCode::YB_PG_T_R_DEADLOCK_DETECTED), it->second.first);
+        InternalError, TransactionError(TransactionErrorCode::kDeadlock), it->second.first);
   }
 
  private:

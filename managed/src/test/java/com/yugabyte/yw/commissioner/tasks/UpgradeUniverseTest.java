@@ -9,22 +9,9 @@ import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -50,28 +37,13 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.*;
 import io.ebean.DB;
 import io.ebean.SqlUpdate;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import junitparams.JUnitParamsRunner;
@@ -87,12 +59,7 @@ import org.mockito.InjectMocks;
 import org.mockito.MockitoAnnotations;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.IsInitDbDoneResponse;
-import org.yb.client.IsServerReadyResponse;
-import org.yb.client.ListMastersResponse;
-import org.yb.client.UpgradeYsqlResponse;
-import org.yb.client.YBClient;
+import org.yb.client.*;
 import org.yb.master.CatalogEntityInfo.SysClusterConfigEntryPB;
 import play.libs.Json;
 
@@ -444,6 +411,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.ChangeMasterConfig,
+          TaskType.WaitForFollowerLag,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.SetNodeState);
@@ -1006,7 +974,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
               node.isMaster = false;
               node.isTserver = true;
               node.cloudInfo = new CloudSpecificInfo();
-              node.cloudInfo.instance_type = userIntent.instanceType;
+              node.cloudInfo.instance_type = userIntent.getInstanceTypeForNode(node);
               node.cloudInfo.private_ip = "1.2.3." + idx;
               universeDetails.nodeDetailsSet.add(node);
             }
@@ -1092,6 +1060,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           if (rf == 1) {
             // Don't change master config for RF1
             if (RESIZE_NODE_UPGRADE_TASK_SEQUENCE_IS_MASTER.get(j) == TaskType.ChangeMasterConfig
+                || RESIZE_NODE_UPGRADE_TASK_SEQUENCE_IS_MASTER.get(j) == TaskType.WaitForFollowerLag
                 || RESIZE_NODE_UPGRADE_TASK_SEQUENCE_IS_MASTER.get(j)
                     == TaskType.WaitForMasterLeader) {
               continue;
@@ -1144,6 +1113,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testResizeNodeUpgradeRF3() {
+    UniverseModifyBaseTest.mockGetMasterRegistrationResponses(
+        mockClient, ImmutableList.of("10.0.0.1", "10.0.0.2", "10.0.0.3"));
     testResizeNodeUpgrade(3, 29);
   }
 

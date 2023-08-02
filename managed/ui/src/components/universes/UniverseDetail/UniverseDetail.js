@@ -291,6 +291,10 @@ class UniverseDetail extends Component {
       runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.ui.feature_flags.perf_advisor')
         ?.value === 'true';
 
+    const isAuthEnforced =
+      runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.universe.auth.is_enforced')
+        ?.value === 'true';
+
     const type =
       pathname.indexOf('edit') < 0
         ? 'Create'
@@ -350,7 +354,6 @@ class UniverseDetail extends Component {
       currentCustomer.data.features,
       'universes.details.overview.manageEncryption'
     );
-
     const defaultTab = isNotHidden(currentCustomer.data.features, 'universes.details.overview')
       ? 'overview'
       : 'overview';
@@ -983,6 +986,7 @@ class UniverseDetail extends Component {
             this.props.fetchCustomerTasks();
             this.props.getUniverseInfo(currentUniverse.data.universeUUID);
           }}
+          enforceAuth={isAuthEnforced}
           universeData={currentUniverse.data}
         />
         <EnableYCQLModal
@@ -992,6 +996,7 @@ class UniverseDetail extends Component {
             this.props.fetchCustomerTasks();
             this.props.getUniverseInfo(currentUniverse.data.universeUUID);
           }}
+          enforceAuth={isAuthEnforced}
           universeData={currentUniverse.data}
         />
 

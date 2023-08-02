@@ -58,6 +58,7 @@ import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -1108,8 +1109,18 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
 
     UUID fakeTaskUUID = UUID.randomUUID();
-    UUID uUUID = createUniverse(customer.getId()).getUniverseUUID();
-    Universe.saveDetails(uUUID, ApiUtils.mockUniverseUpdater());
+    Universe universe = createUniverse(customer.getId());
+    UUID uUUID = universe.getUniverseUUID();
+    CloudType providerType =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
+    Universe.saveDetails(
+        uUUID,
+        univ -> {
+          ApiUtils.mockUniverseUpdater(providerType).run(univ);
+          univ.getUniverseDetails()
+              .nodeDetailsSet
+              .forEach(node -> node.cloudInfo.instance_type = "i3.xlarge");
+        });
 
     Provider p = ModelFactory.awsProvider(customer);
     ObjectNode bodyJson = setupVMImageUpgradeParams(uUUID, p, "i3.xlarge");
@@ -1786,6 +1797,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   public void testExpandDiskSizeFailureInvalidStorage() {
     Universe u = createUniverse("Test universe", customer.getId(), Common.CloudType.gcp);
     setupDiskUpdateTest(100, "c4.xlarge", PublicCloudConstants.StorageType.Scratch, u);
+    Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater(CloudType.gcp));
     u = Universe.getOrBadRequest(u.getUniverseUUID());
 
     ObjectNode bodyJson = (ObjectNode) Json.toJson(u.getUniverseDetails());
@@ -1807,6 +1819,17 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   public void testExpandDiskSizeFailureInvalidInstance() {
     Universe u = createUniverse(customer.getId());
     setupDiskUpdateTest(100, "i3.xlarge", PublicCloudConstants.StorageType.GP2, u);
+    Universe.saveDetails(
+        u.getUniverseUUID(),
+        univ -> {
+          NodeDetails nodeDetails = new NodeDetails();
+          nodeDetails.placementUuid = univ.getUniverseDetails().getPrimaryCluster().uuid;
+          nodeDetails.cloudInfo = new CloudSpecificInfo();
+          nodeDetails.cloudInfo.instance_type = "i3.xlarge";
+          nodeDetails.azUuid = UUID.randomUUID();
+          nodeDetails.nodeName = "q";
+          univ.getUniverseDetails().nodeDetailsSet = Collections.singleton(nodeDetails);
+        });
     u = Universe.getOrBadRequest(u.getUniverseUUID());
 
     ObjectNode bodyJson = (ObjectNode) Json.toJson(u.getUniverseDetails());

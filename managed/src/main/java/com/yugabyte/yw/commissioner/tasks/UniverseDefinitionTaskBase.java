@@ -616,11 +616,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     createStartMasterProcessTasks(nodeSet);
 
     // Add master to the quorum.
-    createChangeConfigTask(currentNode, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+    createChangeConfigTasks(currentNode, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
 
     if (stoppingNode != null && stoppingNode.isMaster) {
       // Perform master change only after the new master is added.
-      createChangeConfigTask(stoppingNode, false /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+      createChangeConfigTasks(stoppingNode, false /* isAdd */, SubTaskGroupType.ConfigureUniverse);
       if (isStoppable) {
         createStopMasterTasks(Collections.singleton(stoppingNode))
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -694,7 +694,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     NodeDetails newMasterNode = replacementSupplier.get();
     if (newMasterNode == null) {
       log.info("No eligible node found to move master from node {}", currentNode.getNodeName());
-      createChangeConfigTask(
+      createChangeConfigTasks(
           currentNode, false /* isAdd */, SubTaskGroupType.StoppingNodeProcesses);
       // Stop the master process on this node after this current master is removed.
       if (isStoppable) {

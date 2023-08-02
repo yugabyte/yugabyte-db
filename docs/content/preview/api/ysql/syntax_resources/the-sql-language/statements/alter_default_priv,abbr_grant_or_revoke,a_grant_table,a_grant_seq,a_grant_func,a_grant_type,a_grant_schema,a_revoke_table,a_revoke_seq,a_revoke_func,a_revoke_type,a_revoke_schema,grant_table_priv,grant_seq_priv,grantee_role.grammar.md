@@ -17,45 +17,45 @@ abbr_grant_or_revoke ::= a_grant_table
 
 a_grant_table ::= GRANT { grant_table_priv [ , ... ]
                           | ALL [ PRIVILEGES ] } ON TABLES TO 
-                  grant_role_spec [ , ... ] [ WITH GRANT OPTION ]
+                  grantee_role [ , ... ]  [ WITH GRANT OPTION ]
 
 a_grant_seq ::= GRANT { grant_seq_priv [ , ... ]
                         | ALL [ PRIVILEGES ] } ON SEQUENCES TO 
-                grant_role_spec [ , ... ] [ WITH GRANT OPTION ]
+                grantee_role [ , ... ]  [ WITH GRANT OPTION ]
 
 a_grant_func ::= GRANT { EXECUTE | ALL [ PRIVILEGES ] } ON 
-                 { FUNCTIONS | ROUTINES } TO grant_role_spec [ , ... ] 
+                 { FUNCTIONS | ROUTINES } TO grantee_role [ , ... ]  
                  [ WITH GRANT OPTION ]
 
 a_grant_type ::= GRANT { USAGE | ALL [ PRIVILEGES ] } ON TYPES TO 
-                 grant_role_spec [ , ... ] [ WITH GRANT OPTION ]
+                 grantee_role [ , ... ]  [ WITH GRANT OPTION ]
 
 a_grant_schema ::= GRANT { USAGE | CREATE | ALL [ PRIVILEGES ] } ON 
-                   SCHEMAS TO grant_role_spec [ , ... ] 
+                   SCHEMAS TO grantee_role [ , ... ]  
                    [ WITH GRANT OPTION ]
 
 a_revoke_table ::= REVOKE [ GRANT OPTION FOR ] 
                    { grant_table_priv [ , ... ] | ALL [ PRIVILEGES ] } 
-                   ON TABLES FROM grant_role_spec [ , ... ] 
+                   ON TABLES  FROM grantee_role [ , ... ] 
                    [ CASCADE | RESTRICT ]
 
 a_revoke_seq ::= REVOKE [ GRANT OPTION FOR ] 
                  { grant_seq_priv [ , ... ] | ALL [ PRIVILEGES ] } ON 
-                 SEQUENCES FROM grant_role_spec [ , ... ] 
+                 SEQUENCES  FROM grantee_role [ , ... ] 
                  [ CASCADE | RESTRICT ]
 
 a_revoke_func ::= REVOKE [ GRANT OPTION FOR ] 
                   { EXECUTE | ALL [ PRIVILEGES ] } ON 
-                  { FUNCTIONS | ROUTINES } FROM grant_role_spec 
+                  { FUNCTIONS | ROUTINES }  FROM grantee_role 
                   [ , ... ] [ CASCADE | RESTRICT ]
 
 a_revoke_type ::= REVOKE [ GRANT OPTION FOR ] 
-                  { USAGE | ALL [ PRIVILEGES ] } ON TYPES FROM 
-                  grant_role_spec [ , ... ] [ CASCADE | RESTRICT ]
+                  { USAGE | ALL [ PRIVILEGES ] } ON TYPES  FROM 
+                  grantee_role [ , ... ] [ CASCADE | RESTRICT ]
 
 a_revoke_schema ::= REVOKE [ GRANT OPTION FOR ] 
                     { USAGE | CREATE | ALL [ PRIVILEGES ] } ON SCHEMAS 
-                    FROM grant_role_spec [ , ... ] 
+                     FROM grantee_role [ , ... ] 
                     [ CASCADE | RESTRICT ]
 
 grant_table_priv ::= SELECT
@@ -68,8 +68,8 @@ grant_table_priv ::= SELECT
 
 grant_seq_priv ::= USAGE | SELECT | UPDATE
 
-grant_role_spec ::= [ GROUP ] role_name
-                    | PUBLIC
-                    | CURRENT_USER
-                    | SESSION_USER
+grantee_role ::= [ GROUP ] role_name
+                 | PUBLIC
+                 | CURRENT_USER
+                 | SESSION_USER
 ```

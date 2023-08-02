@@ -36,8 +36,10 @@ class LibPqTestBase : public PgWrapperTestBase {
       const std::string& conn_str,
       CoarseTimePoint deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(10),
       bool simple_query_protocol = false);
+  void SerializableColoringHelper(int min_duration_seconds = 0);
   static bool TransactionalFailure(const Status& status);
   static void BumpCatalogVersion(int num_versions, PGConn* conn);
+  static void UpdateMiniClusterFailOnConflict(ExternalMiniClusterOptions* options);
 };
 
 Result<PgOid> GetDatabaseOid(PGConn* conn, const std::string& db_name);

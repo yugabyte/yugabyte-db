@@ -21,6 +21,7 @@
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/reader_projection.h"
+#include "yb/dockv/value_packing.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/util/decimal.h"
@@ -157,6 +158,55 @@ Status DoDecodeValue(
       false, Corruption, "Wrong value type $0 in $1 OR unsupported datatype $2",
       value_type, Slice(original_start, slice.end()).ToDebugHexString(), data_type);
 }
+
+template <class T, bool kLast>
+void EncodePrimitive(const PgTableRow& row, WriteBuffer* buffer, const PgWireEncoderEntry* chain) {
+  auto index = chain->data;
+  if (PREDICT_FALSE(row.IsNull(index))) {
+    buffer->PushBack(1);
+    CallNextEncoder<kLast>(row, buffer, chain);
+    return;
+  }
+
+  auto datum = row.GetPrimitiveDatum(index);
+  auto value = LoadRaw<T, BigEndian>(&datum);
+  buffer->AppendWithPrefix(0, pointer_cast<const char*>(&value), sizeof(value));
+  CallNextEncoder<kLast>(row, buffer, chain);
+}
+
+template <bool kLast>
+void EncodeBinary(const PgTableRow& row, WriteBuffer* buffer, const PgWireEncoderEntry* chain) {
+  auto index = chain->data;
+  if (PREDICT_FALSE(row.IsNull(index))) {
+    buffer->PushBack(1);
+    CallNextEncoder<kLast>(row, buffer, chain);
+    return;
+  }
+
+  auto slice = row.GetVarlenSlice(index);
+  buffer->AppendWithPrefix(0, slice);
+  CallNextEncoder<kLast>(row, buffer, chain);
+}
+
+template <bool kLast>
+struct EncoderProvider {
+  template <class T>
+  PgWireEncoder Primitive() const {
+    return EncodePrimitive<T, kLast>;
+  }
+
+  PgWireEncoder Binary() const {
+    return EncodeBinary<kLast>;
+  }
+
+  PgWireEncoder String() const {
+    return Binary();
+  }
+
+  PgWireEncoder Decimal() const {
+    return Binary();
+  }
+};
 
 } // namespace
 
@@ -326,24 +376,13 @@ std::optional<PgValue> PgTableRow::GetValueByIndex(size_t index) const {
   return PgValue(GetDatum(index));
 }
 
-void PgTableRow::AppendValueByIndex(size_t index, WriteBuffer* buffer) const {
-  if (is_null_[index]) {
-    const char kNullMark = 1;
-    buffer->Append(&kNullMark, 1);
-    return;
-  }
-
-  const auto fixed_size = FixedSize(projection_->columns[index].data_type);
-  if (fixed_size) {
-    auto big_endian_value = BigEndian::FromHost64(values_[index]);
-    Slice slice(pointer_cast<const uint8_t*>(&big_endian_value), 8);
-    buffer->AppendWithPrefix(0, slice.Suffix(fixed_size));
-    return;
-  }
-
-  const auto data = pointer_cast<const char*>(buffer_.data()) + values_[index];
-  const auto len = BigEndian::Load64(data);
-  buffer->AppendWithPrefix(0, data, len + 8);
+PgWireEncoderEntry PgTableRow::GetEncoder(size_t index, bool last) const {
+  auto data_type = projection_->columns[index].data_type;
+  return PgWireEncoderEntry {
+    .encoder = !last ? VisitDataType(data_type, EncoderProvider<false>())
+                     : VisitDataType(data_type, EncoderProvider<true>()),
+    .data = index,
+  };
 }
 
 std::optional<PgValue> PgTableRow::GetValueByColumnId(ColumnIdRep column_id) const {

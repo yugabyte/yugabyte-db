@@ -37,8 +37,8 @@
 | "Enable Node Agent Client" | "yb.node_agent.client.enabled" | "PROVIDER" | "Enable node agent client for communication to DB nodes." | "Boolean" |
 | "Enable Ansible Offloading" | "yb.node_agent.ansible_offloading.enabled" | "PROVIDER" | "Offload ansible tasks to the DB nodes." | "Boolean" |
 | "Remote tmp directory" | "yb.filepaths.remoteTmpDirectory" | "PROVIDER" | "A remote temporary directory should be used for performing operations on nodes within the provider scope." | "String" |
-| "Polling interval for Opertion status" | "yb.gcp.operation_status_polling_interval" | "PROVIDER" | "Interval to poll the status of ongoing resource creation operations." | "Long" |
-| "Operation Timeout interval" | "yb.gcp.operation_timeout_interval" | "PROVIDER" | "Timeout interval to wait for resource creation operations to complete sucessfully." | "Long" |
+| "Polling interval for GCP Opertion status" | "yb.gcp.operations.status_polling_interval" | "PROVIDER" | "Interval to poll the status of an ongoing GCP resource creation operation." | "Duration" |
+| "GCP Operation Timeout interval" | "yb.gcp.operations.timeout_interval" | "PROVIDER" | "Timeout interval to wait for GCP resource creation operations to complete sucessfully." | "Duration" |
 | "Make YBC listen on 0.0.0.0" | "yb.ybc_flags.listen_on_all_interfaces_k8s" | "PROVIDER" | "Makes YBC bind on all network interfaces" | "Boolean" |
 | "Azure Virtual Machine Params blob" | "yb.azure.custom_params.vm" | "PROVIDER" | "Custom JSON of Azure parameters to apply on top of virtual machine creation." | "String" |
 | "Azure Disk Params blob" | "yb.azure.custom_params.disk" | "PROVIDER" | "Custom JSON of Azure parameters to apply on top of data disk creation." | "String" |
@@ -161,6 +161,8 @@
 | "YSQL Upgrade Timeout in seconds" | "yb.upgrade.ysql_upgrade_timeout_sec" | "UNIVERSE" | "Controls the yb-client admin operation timeout when performing the runUpgradeYSQL subtask rpc calls." | "Integer" |
 | "Under replicated tablets check timeout" | "yb.checks.under_replicated_tablets.timeout" | "UNIVERSE" | "Controls the max time out when performing the checkUnderReplicatedTablets subtask" | "Duration" |
 | "Enabling under replicated tablets check" | "yb.checks.under_replicated_tablets.enabled" | "UNIVERSE" | "Controls whether or not to perform the checkUnderReplicatedTablets subtask" | "Boolean" |
+| "Master config change result check timeout" | "yb.checks.change_master_config.timeout" | "UNIVERSE" | "Controls the max time out when waiting for master config change to finish" | "Duration" |
+| "Enabling Master config change result check" | "yb.checks.change_master_config.enabled" | "UNIVERSE" | "Controls whether or not to wait for master config change to finish" | "Boolean" |
 | "Memory check timeout" | "yb.dbmem.checks.timeout" | "UNIVERSE" | "Timeout for memory check in secs" | "Long" |
 | "Wait time before doing restore during xCluster setup task" | "yb.xcluster.sleep_time_before_restore" | "UNIVERSE" | "The amount of time to sleep (wait) before executing restore subtask during xCluster setup; it is useful because xCluster setup also drops the database before restore and the sleep makes sure the drop operation has reached all the nodes" | "Duration" |
 | "Use server broadcast address for yb_backup" | "yb.backup.use_server_broadcast_address_for_yb_backup" | "UNIVERSE" | "Controls whether server_broadcast_address entry should be used during yb_backup.py backup/restore" | "Boolean" |

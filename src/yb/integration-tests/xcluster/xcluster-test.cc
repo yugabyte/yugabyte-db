@@ -57,6 +57,7 @@
 #include "yb/master/mini_master.h"
 #include "yb/master/master_replication.proxy.h"
 
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/cdc_consumer_registry_service.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/server/hybrid_clock.h"
@@ -128,6 +129,9 @@ DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_bool(TEST_xcluster_disable_delete_old_pollers);
 DECLARE_bool(enable_log_retention_by_op_idx);
 DECLARE_bool(TEST_xcluster_disable_poller_term_check);
+DECLARE_bool(TEST_xcluster_fail_to_send_create_snapshot_request);
+DECLARE_bool(TEST_xcluster_fail_create_producer_snapshot);
+DECLARE_bool(TEST_xcluster_fail_create_consumer_snapshot);
 
 namespace yb {
 
@@ -528,49 +532,23 @@ class XClusterTestNoParam : public XClusterTestBase {
     return Status::OK();
   }
 
-  Status TestSetupNamespaceReplicationWithBootstrap(
-      const std::vector<uint32_t>& tables_vector,
-      master::SetupNamespaceReplicationWithBootstrapResponsePB* resp,
-      bool use_invalid_namespace = false) {
-    RETURN_NOT_OK(SetUpWithParams(tables_vector, tables_vector, 3));
+  Result<std::vector<std::shared_ptr<client::YBTable>>> SetupNamespaceReplicationWithBootstrapping(
+      const int& num_tablets_per_table) {
+    // Setup without tables.
+    RETURN_NOT_OK(SetUpWithParams({}, {}, 3));
+    std::vector<std::shared_ptr<client::YBTable>> producer_tables;
 
-    std::unique_ptr<client::YBClient> client;
-    std::unique_ptr<cdc::CDCServiceProxy> producer_cdc_proxy;
-    client = VERIFY_RESULT(consumer_cluster()->CreateClient());
-    producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
-        &client->proxy_cache(),
-        HostPort::FromBoundEndpoint(producer_cluster()->mini_tablet_server(0)->bound_rpc_addr()));
-
-    // 1. Write some data so that we can verify that only new records get replicated
-    for (const auto& producer_table : producer_tables_) {
-      LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
-      RETURN_NOT_OK(InsertRowsInProducer(0, 100));
+    // Only create tables on producer.
+    std::vector<std::string> table_names = {"test_table_0", "test_table_1"};
+    for (uint32_t i = 0; i < table_names.size(); i++) {
+      auto t = VERIFY_RESULT(
+          CreateTable(producer_client(), kNamespaceName, table_names[i], num_tablets_per_table));
+      std::shared_ptr<client::YBTable> producer_table;
+      RETURN_NOT_OK(producer_client()->OpenTable(t, &producer_table));
+      producer_tables.push_back(producer_table);
     }
 
-    master::NamespaceIdentifierPB producer_namespace;
-    if (use_invalid_namespace) {
-      producer_namespace.set_id("invalid_id");
-      producer_namespace.set_name("invalid_name");
-      producer_namespace.set_database_type(::yb::YQLDatabase::YQL_DATABASE_UNKNOWN);
-    } else {
-      SCHECK(!producer_tables_.empty(), IllegalState, "Producer tables are empty");
-      producer_tables_.front()->name().SetIntoNamespaceIdentifierPB(&producer_namespace);
-    }
-
-    rpc::RpcController rpc;
-    master::SetupNamespaceReplicationWithBootstrapRequestPB req;
-    req.set_replication_id(kReplicationGroupId.ToString());
-    req.mutable_producer_namespace()->CopyFrom(producer_namespace);
-    string master_addr = producer_cluster()->GetMasterAddresses();
-    auto hp_vec = VERIFY_RESULT(HostPort::ParseStrings(master_addr, 0));
-    HostPortsToPBs(hp_vec, req.mutable_producer_master_addresses());
-
-    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
-        &consumer_client()->proxy_cache(),
-        VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
-
-    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-    return master_proxy->SetupNamespaceReplicationWithBootstrap(req, resp, &rpc);
+    return producer_tables;
   }
 
   Status VerifyCdcStateTableEntriesExistForTables(
@@ -605,6 +583,14 @@ class XClusterTestNoParam : public XClusterTestBase {
     for (const auto& e : stream_tablet_count) {
       SCHECK_EQ(e.second, tablets_per_table, InternalError, "Expected same num tablets per table");
     }
+    return Status::OK();
+  }
+
+  Status VerifyNumSnapshots(client::YBClient* client, const size_t num_snapshots) {
+    auto snapshots = VERIFY_RESULT(client->ListSnapshots());
+    SCHECK_EQ(
+        snapshots.size(), num_snapshots, IllegalState,
+        Format("Expected $0 snapshots but received $1", num_snapshots, snapshots.size()));
     return Status::OK();
   }
 
@@ -790,23 +776,183 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
 
 TEST_P(XClusterTest, SetupNamespaceReplicationWithBootstrap) {
   constexpr int kNTabletsPerTable = 1;
-  std::vector<uint32_t> tables_vector = {kNTabletsPerTable, kNTabletsPerTable};
-  master::SetupNamespaceReplicationWithBootstrapResponsePB resp;
+  auto producer_tables =
+      ASSERT_RESULT(SetupNamespaceReplicationWithBootstrapping(kNTabletsPerTable));
 
-  ASSERT_OK(TestSetupNamespaceReplicationWithBootstrap(tables_vector, &resp));
+  // Check pre-command state.
+  ASSERT_OK(VerifyNumSnapshots(producer_client(), 0));
+
+  master::NamespaceIdentifierPB producer_namespace;
+  ASSERT_FALSE(producer_tables.empty());
+  producer_tables.front()->name().SetIntoNamespaceIdentifierPB(&producer_namespace);
+
+  rpc::RpcController rpc;
+  master::SetupNamespaceReplicationWithBootstrapRequestPB req;
+  master::SetupNamespaceReplicationWithBootstrapResponsePB resp;
+  req.set_replication_id(kReplicationGroupId.ToString());
+  req.mutable_producer_namespace()->CopyFrom(producer_namespace);
+  string master_addr = producer_cluster()->GetMasterAddresses();
+  auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
+  HostPortsToPBs(hp_vec, req.mutable_producer_master_addresses());
+
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &consumer_client()->proxy_cache(),
+      ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  ASSERT_OK(master_proxy->SetupNamespaceReplicationWithBootstrap(req, &resp, &rpc));
   ASSERT_FALSE(resp.has_error());
-  ASSERT_OK(VerifyCdcStateTableEntriesExistForTables(tables_vector.size(), kNTabletsPerTable));
+  ASSERT_OK(VerifyCdcStateTableEntriesExistForTables(producer_tables.size(), kNTabletsPerTable));
+  ASSERT_OK(VerifyNumSnapshots(producer_client(), /* num_snapshots = */ 1));
+  ASSERT_OK(VerifyNumSnapshots(consumer_client(), /* num_snapshots = */ 1));
   // TODO: Test SetupUniverseReplication once the flow has been completed.
 }
 
-TEST_P(XClusterTest, SetupNamespaceReplicationWithBootstrapFailure) {
-  std::vector<uint32_t> tables_vector;
-  master::SetupNamespaceReplicationWithBootstrapResponsePB resp;
+TEST_P(XClusterTest, SetupNamespaceReplicationWithBootstrapFailures) {
+  constexpr int kNTabletsPerTable = 1;
+  auto producer_tables =
+      ASSERT_RESULT(SetupNamespaceReplicationWithBootstrapping(kNTabletsPerTable));
 
-  ASSERT_OK(TestSetupNamespaceReplicationWithBootstrap(
-      tables_vector, &resp,
-      /* use_invalid_namespace = */ true));
-  ASSERT_TRUE(resp.has_error());
+  rpc::RpcController rpc;
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &consumer_client()->proxy_cache(),
+      ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  master::NamespaceIdentifierPB producer_namespace;
+  producer_namespace.set_id("invalid_id");
+  producer_namespace.set_name("invalid_name");
+  producer_namespace.set_database_type(YQL_DATABASE_UNKNOWN);
+
+  {
+    // Don't provide replication ID.
+    rpc.Reset();
+    master::SetupNamespaceReplicationWithBootstrapRequestPB req;
+    master::SetupNamespaceReplicationWithBootstrapResponsePB resp;
+    req.set_replication_id("");
+    req.mutable_producer_namespace()->CopyFrom(producer_namespace);
+    ASSERT_OK(master_proxy->SetupNamespaceReplicationWithBootstrap(req, &resp, &rpc));
+    ASSERT_TRUE(resp.has_error());
+    std::string substring = "Replication ID must be provided";
+    ASSERT_TRUE(resp.error().status().message().find(substring) != string::npos);
+  }
+
+  {
+    // Don't provide producer master addresses.
+    rpc.Reset();
+    master::SetupNamespaceReplicationWithBootstrapRequestPB req;
+    master::SetupNamespaceReplicationWithBootstrapResponsePB resp;
+    req.set_replication_id(kReplicationGroupId.ToString());
+    req.mutable_producer_namespace()->CopyFrom(producer_namespace);
+    ASSERT_OK(master_proxy->SetupNamespaceReplicationWithBootstrap(req, &resp, &rpc));
+    ASSERT_TRUE(resp.has_error());
+    std::string substring = "Producer master address must be provided";
+    ASSERT_TRUE(resp.error().status().message().find(substring) != string::npos);
+  }
+
+  {
+    // Provide replication name identical to consumer universe UUID.
+    rpc.Reset();
+    master::SetupNamespaceReplicationWithBootstrapRequestPB req;
+    master::SetupNamespaceReplicationWithBootstrapResponsePB resp;
+
+    master::SysClusterConfigEntryPB cluster_info;
+    auto& cm = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
+    CHECK_OK(cm.GetClusterConfig(&cluster_info));
+    req.set_replication_id(cluster_info.cluster_uuid());
+    req.mutable_producer_namespace()->CopyFrom(producer_namespace);
+    string master_addr = producer_cluster()->GetMasterAddresses();
+    auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
+    HostPortsToPBs(hp_vec, req.mutable_producer_master_addresses());
+
+    ASSERT_OK(master_proxy->SetupNamespaceReplicationWithBootstrap(req, &resp, &rpc));
+    ASSERT_TRUE(resp.has_error());
+    std::string substring = "Replication name cannot be the target universe UUID";
+    ASSERT_TRUE(resp.error().status().message().find(substring) != string::npos);
+  }
+
+  {
+    // Provide duplicate addresses between consumer & producer universes.
+    rpc.Reset();
+    master::SetupNamespaceReplicationWithBootstrapRequestPB req;
+    master::SetupNamespaceReplicationWithBootstrapResponsePB resp;
+
+    req.set_replication_id(kReplicationGroupId.ToString());
+    req.mutable_producer_namespace()->CopyFrom(producer_namespace);
+    string master_addr = consumer_cluster()->GetMasterAddresses();
+    auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
+    HostPortsToPBs(hp_vec, req.mutable_producer_master_addresses());
+
+    ASSERT_OK(master_proxy->SetupNamespaceReplicationWithBootstrap(req, &resp, &rpc));
+    ASSERT_TRUE(resp.has_error());
+    std::string substring = "belongs to the target universe";
+    ASSERT_TRUE(resp.error().status().message().find(substring) != string::npos);
+  }
+
+  {
+    // Provide invalid namespace identifier.
+    rpc.Reset();
+    master::SetupNamespaceReplicationWithBootstrapRequestPB req;
+    master::SetupNamespaceReplicationWithBootstrapResponsePB resp;
+
+    req.set_replication_id(kReplicationGroupId.ToString());
+    req.mutable_producer_namespace()->CopyFrom(producer_namespace);
+    string master_addr = producer_cluster()->GetMasterAddresses();
+    auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
+    HostPortsToPBs(hp_vec, req.mutable_producer_master_addresses());
+
+    ASSERT_OK(master_proxy->SetupNamespaceReplicationWithBootstrap(req, &resp, &rpc));
+    ASSERT_TRUE(resp.has_error());
+  }
+
+  // from this point onwards, we want valid requests
+  producer_tables.front()->name().SetIntoNamespaceIdentifierPB(&producer_namespace);
+  master::SetupNamespaceReplicationWithBootstrapRequestPB req;
+  req.set_replication_id(kReplicationGroupId.ToString());
+  req.mutable_producer_namespace()->CopyFrom(producer_namespace);
+  string master_addr = producer_cluster()->GetMasterAddresses();
+  auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
+  HostPortsToPBs(hp_vec, req.mutable_producer_master_addresses());
+
+  {
+    // Fail to send create snapshot request.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_to_send_create_snapshot_request) = true;
+    rpc.Reset();
+    master::SetupNamespaceReplicationWithBootstrapResponsePB resp;
+
+    ASSERT_OK(master_proxy->SetupNamespaceReplicationWithBootstrap(req, &resp, &rpc));
+    ASSERT_TRUE(resp.has_error());
+    ASSERT_NOK(VerifyCdcStateTableEntriesExistForTables(producer_tables.size(), kNTabletsPerTable));
+    ASSERT_OK(VerifyNumSnapshots(producer_client(), 0));
+    ASSERT_OK(VerifyNumSnapshots(consumer_client(), 0));
+  }
+
+  {
+    // Fail to create snapshot on producer.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_to_send_create_snapshot_request) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_create_producer_snapshot) = true;
+    rpc.Reset();
+    master::SetupNamespaceReplicationWithBootstrapResponsePB resp;
+
+    ASSERT_OK(master_proxy->SetupNamespaceReplicationWithBootstrap(req, &resp, &rpc));
+    ASSERT_TRUE(resp.has_error());
+    ASSERT_NOK(VerifyCdcStateTableEntriesExistForTables(producer_tables.size(), kNTabletsPerTable));
+    ASSERT_OK(VerifyNumSnapshots(producer_client(), 0));
+    ASSERT_OK(VerifyNumSnapshots(consumer_client(), 0));
+  }
+
+  {
+    // Fail to create snapshot on producer.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_create_producer_snapshot) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_fail_create_consumer_snapshot) = true;
+    rpc.Reset();
+    master::SetupNamespaceReplicationWithBootstrapResponsePB resp;
+
+    ASSERT_OK(master_proxy->SetupNamespaceReplicationWithBootstrap(req, &resp, &rpc));
+    ASSERT_TRUE(resp.has_error());
+    ASSERT_NOK(VerifyCdcStateTableEntriesExistForTables(producer_tables.size(), kNTabletsPerTable));
+    ASSERT_OK(VerifyNumSnapshots(producer_client(), 0));
+    ASSERT_OK(VerifyNumSnapshots(consumer_client(), 0));
+  }
 }
 
 TEST_P(XClusterTest, SetupUniverseReplicationWithProducerBootstrapId) {

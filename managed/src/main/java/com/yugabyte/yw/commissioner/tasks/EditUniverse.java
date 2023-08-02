@@ -583,18 +583,18 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     // task. So we might do multiple leader stepdown's, which happens automatically in the
     // client code during the task's run.
     for (int idx = 0; idx < numIters; idx++) {
-      createChangeConfigTask(mastersToAdd.get(idx), true, subTask);
-      createChangeConfigTask(mastersToRemove.get(idx), false, subTask);
+      createChangeConfigTasks(mastersToAdd.get(idx), true, subTask);
+      createChangeConfigTasks(mastersToRemove.get(idx), false, subTask);
     }
 
     // Perform any additions still left.
     for (int idx = numIters; idx < newMasters.size(); idx++) {
-      createChangeConfigTask(mastersToAdd.get(idx), true, subTask);
+      createChangeConfigTasks(mastersToAdd.get(idx), true, subTask);
     }
 
     // Perform any removals still left.
     for (int idx = numIters; idx < removeMasters.size(); idx++) {
-      createChangeConfigTask(mastersToRemove.get(idx), false, subTask);
+      createChangeConfigTasks(mastersToRemove.get(idx), false, subTask);
     }
   }
 }

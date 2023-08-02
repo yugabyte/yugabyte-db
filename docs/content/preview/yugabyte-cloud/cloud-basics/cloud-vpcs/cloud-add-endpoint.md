@@ -26,6 +26,7 @@ For more information on how to connect your cluster to an application over a pri
 
 - Currently, PSEs are supported for [AWS PrivateLink](https://docs.aws.amazon.com/vpc/latest/privatelink/what-is-privatelink.html) and [Azure Private Link](https://learn.microsoft.com/en-us/azure/private-link/).
 - Currently, PSEs must be created and managed using [ybm CLI](../../../managed-automation/managed-cli/).
+- You can't use smart driver load balancing features when connecting to clusters over a private link. See [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/).
 
 ## Prerequisites
 

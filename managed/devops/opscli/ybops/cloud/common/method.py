@@ -1855,11 +1855,10 @@ class RebootInstancesMethod(AbstractInstancesMethod):
             # & we will be returned -1.
             if (isinstance(stderr, list) and len(stderr) > 0):
                 raise YBOpsRecoverableError(f"Failed to connect to {args.search_pattern}")
-
-            self.wait_for_host(args, False)
         else:
             server_ports = self.get_server_ports_to_check(args)
             self.cloud.reboot_instance(host_info, server_ports)
+        self.wait_for_host(args, False)
 
 
 class RunHooks(AbstractInstancesMethod):
