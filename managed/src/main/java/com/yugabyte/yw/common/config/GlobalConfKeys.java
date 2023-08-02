@@ -968,4 +968,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Disables Image Bundle Validation",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Duration> devopsCommandTimeout =
+      new ConfKeyInfo<>(
+          "yb.devops.command_timeout",
+          ScopeType.GLOBAL,
+          "Devops command timeout",
+          "Devops command timeout",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
