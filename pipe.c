@@ -95,16 +95,17 @@ typedef struct _queue_item {
 } queue_item;
 
 typedef struct {
-	bool is_valid;
-	bool registered;
-	char *pipe_name;
-	char *creator;
-	Oid  uid;
+	long		identity;
+	bool		is_valid;
+	bool		registered;
+	char	   *pipe_name;
+	char	   *creator;
+	Oid			uid;
 	struct _queue_item *items;
 	struct _queue_item *last_item;
-	int16 count;
-	int16 limit;
-	int size;
+	int16		count;
+	int16		limit;
+	int			size;
 } orafce_pipe;
 
 typedef struct {
@@ -134,8 +135,8 @@ typedef struct PipesFctx {
 
 typedef struct
 {
-	int tranche_id;
-	LWLock shmem_lock;
+	int			tranche_id;
+	LWLock		shmem_lock;
 
 	orafce_pipe *pipes;
 	alert_event *events;
@@ -147,9 +148,10 @@ typedef struct
 
 #endif
 
-	size_t size;
-	int sid;
-	vardata data[1]; /* flexible array member */
+	size_t		size;
+	int			sid;
+	long		identity_seq;
+	vardata		data[1]; /* flexible array member */
 } sh_memory;
 
 #define sh_memory_size			(offsetof(sh_memory, data))
@@ -158,6 +160,8 @@ message_buffer *output_buffer = NULL;
 message_buffer *input_buffer = NULL;
 
 orafce_pipe* pipes = NULL;
+
+long	   *identity_seq = NULL;
 
 #define NOT_INITIALIZED		NULL
 
@@ -263,16 +267,16 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 			sh_mem->tranche_id = LWLockNewTrancheId();
 			LWLockInitialize(&sh_mem->shmem_lock, sh_mem->tranche_id);
 
-			{
+			LWLockRegisterTranche(sh_mem->tranche_id, "orafce");
+			shmem_lockid = &sh_mem->shmem_lock;
 
-				LWLockRegisterTranche(sh_mem->tranche_id, "orafce");
-				shmem_lockid = &sh_mem->shmem_lock;
-			}
+			sh_mem->identity_seq = 0;
 
 			sh_mem->size = size - sh_memory_size;
 			ora_sinit(sh_mem->data, size, true);
 			pipes = sh_mem->pipes = ora_salloc(max_pipes*sizeof(orafce_pipe));
 			sid = sh_mem->sid = 1;
+
 			for (i = 0; i < max_pipes; i++)
 				pipes[i].is_valid = false;
 
@@ -299,6 +303,7 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 
 #endif
 
+			identity_seq = &sh_mem->identity_seq;
 		}
 		else
 		{
@@ -316,6 +321,8 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 			sid = ++(sh_mem->sid);
 			events = sh_mem->events;
 			locks = sh_mem->locks;
+
+			identity_seq = &sh_mem->identity_seq;
 		}
 
 		LWLockRelease(AddinShmemInitLock);
@@ -326,34 +333,54 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 	return true;
 }
 
+#define		NOT_ASSIGNED_IDENTITY			-1
+
 
 /*
  * can be enhanced access/hash.h
  */
 
 static orafce_pipe*
-find_pipe(text* pipe_name, bool* created, bool only_check)
+find_pipe(text* pipe_name,
+		  bool* created,
+		  bool only_check,
+		  long *expected_identity,
+		  bool *identity_alarm)
 {
 	int			i;
 	orafce_pipe *result = NULL;
 
 	*created = false;
+
+	Assert(!expected_identity || identity_alarm);
+
+	if (identity_alarm)
+		*identity_alarm = false;
+
 	for (i = 0; i < MAX_PIPES; i++)
 	{
 		if (pipes[i].is_valid &&
 			strncmp((char*)VARDATA(pipe_name), pipes[i].pipe_name, VARSIZE(pipe_name) - VARHDRSZ) == 0
 			&& (strlen(pipes[i].pipe_name) == (VARSIZE(pipe_name) - VARHDRSZ)))
 		{
-			/* check owner if non public pipe */
+			if (expected_identity && *expected_identity >= 0
+				&& pipes[i].identity != *expected_identity)
+			{
+				*identity_alarm = true;
+				return result;
+			}
 
+			/* check owner if non public pipe */
 			if (pipes[i].creator != NULL && pipes[i].uid != GetUserId())
 			{
-				LWLockRelease(shmem_lockid);
 				ereport(ERROR,
 						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 						 errmsg("insufficient privilege"),
 						 errdetail("Insufficient privilege to access pipe")));
 			}
+
+			if (expected_identity)
+				*expected_identity = pipes[i].identity;
 
 			return &pipes[i];
 		}
@@ -361,6 +388,12 @@ find_pipe(text* pipe_name, bool* created, bool only_check)
 
 	if (only_check)
 		return result;
+
+	if (expected_identity && *expected_identity >= 0)
+	{
+		*identity_alarm = true;
+		return result;
+	}
 
 	for (i = 0; i < MAX_PIPES; i++)
 		if (!pipes[i].is_valid)
@@ -376,6 +409,9 @@ find_pipe(text* pipe_name, bool* created, bool only_check)
 
 				*created = true;
 				result = &pipes[i];
+
+				if (expected_identity)
+					*expected_identity = pipes[i].identity = *identity_seq++;
 			}
 			break;
 		}
@@ -462,7 +498,9 @@ remove_first(orafce_pipe *p, bool *found)
 /* copy message to local memory, if exists */
 
 static message_buffer*
-get_from_pipe(text *pipe_name, bool *found)
+get_from_pipe(text *pipe_name,
+			  bool *found,
+			  long *identity, bool *identity_alarm)
 {
 	orafce_pipe *p;
 	bool		created;
@@ -471,7 +509,7 @@ get_from_pipe(text *pipe_name, bool *found)
 	if (!ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES, MAX_EVENTS, MAX_LOCKS, false))
 		return NULL;
 
-	if (NULL != (p = find_pipe(pipe_name, &created,false)))
+	if (NULL != (p = find_pipe(pipe_name, &created, false, identity, identity_alarm)))
 	{
 		if (!created)
 		{
@@ -499,7 +537,10 @@ get_from_pipe(text *pipe_name, bool *found)
  */
 
 static bool
-add_to_pipe(text *pipe_name, message_buffer *ptr, int limit, bool limit_is_valid)
+add_to_pipe(text *pipe_name,
+			message_buffer *ptr,
+			int limit, bool limit_is_valid,
+			long *identity, bool *identity_alarm)
 {
 	bool		created;
 	bool		result = false;
@@ -512,7 +553,7 @@ add_to_pipe(text *pipe_name, message_buffer *ptr, int limit, bool limit_is_valid
 	{
 		orafce_pipe *p;
 
-		if (NULL != (p = find_pipe(pipe_name, &created, false)))
+		if (NULL != (p = find_pipe(pipe_name, &created, false, identity, identity_alarm)))
 		{
 			if (created)
 				p->registered = ptr == NULL;
@@ -557,7 +598,7 @@ remove_pipe(text *pipe_name, bool purge)
 	orafce_pipe *p;
 	bool		created;
 
-	if (NULL != (p = find_pipe(pipe_name, &created, true)))
+	if (NULL != (p = find_pipe(pipe_name, &created, true, NULL, NULL)))
 	{
 		queue_item *q = p->items;
 		while (q != NULL)
@@ -905,6 +946,8 @@ dbms_pipe_receive_message(PG_FUNCTION_ARGS)
 	bool		found = false;
 	instr_time	start_time;
 	int32		result = RESULT_TIMEOUT;
+	long		identity = NOT_ASSIGNED_IDENTITY;
+	bool		identity_alarm;
 
 #if PG_VERSION_NUM < 130000
 
@@ -946,7 +989,7 @@ dbms_pipe_receive_message(PG_FUNCTION_ARGS)
 
 	for (;;)
 	{
-		input_buffer = get_from_pipe(pipe_name, &found);
+		input_buffer = get_from_pipe(pipe_name, &found, &identity, &identity_alarm);
 		if (found)
 		{
 			if (input_buffer)
@@ -955,6 +998,9 @@ dbms_pipe_receive_message(PG_FUNCTION_ARGS)
 			result = RESULT_DATA;
 			break;
 		}
+
+		if (identity_alarm)
+			break;
 
 		if (timeout > 0)
 		{
@@ -1032,6 +1078,8 @@ dbms_pipe_send_message(PG_FUNCTION_ARGS)
 	bool		valid_limit;
 	instr_time	start_time;
 	int32		result = RESULT_TIMEOUT;
+	long		identity = NOT_ASSIGNED_IDENTITY;
+	bool		identity_alarm;
 
 #if PG_VERSION_NUM < 130000
 
@@ -1078,11 +1126,15 @@ dbms_pipe_send_message(PG_FUNCTION_ARGS)
 	for (;;)
 	{
 		if (add_to_pipe(pipe_name, output_buffer,
-						limit, valid_limit))
+						limit, valid_limit,
+						&identity, &identity_alarm))
 		{
 			result = RESULT_DATA;
 			break;
 		}
+
+		if (identity_alarm)
+			break;
 
 		if (timeout > 0)
 		{
@@ -1327,11 +1379,10 @@ dbms_pipe_create_pipe (PG_FUNCTION_ARGS)
 	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
 	{
 		orafce_pipe *p;
-		if (NULL != (p = find_pipe(pipe_name, &created, false)))
+		if (NULL != (p = find_pipe(pipe_name, &created, false, NULL, NULL)))
 		{
 			if (!created)
 			{
-				LWLockRelease(shmem_lockid);
 				ereport(ERROR,
 						(errcode(ERRCODE_DUPLICATE_OBJECT),
 						 errmsg("pipe creation error"),
