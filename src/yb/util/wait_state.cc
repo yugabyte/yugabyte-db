@@ -38,15 +38,6 @@ void AUHAuxInfo::UpdateFrom(const AUHAuxInfo &other) {
   }
 }
 
-void AUHAuxInfo::UpdateFrom(const AUHAuxInfo &other) {
-  if (!other.tablet_id.empty()) {
-    tablet_id = other.tablet_id;
-  }
-  if (!other.table_id.empty()) {
-    table_id = other.table_id;
-  }
-}
-
 WaitStateInfo::WaitStateInfo(AUHMetadata meta)
   : metadata_(meta)
 #ifdef TRACK_WAIT_HISTORY
