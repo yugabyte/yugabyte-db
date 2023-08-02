@@ -227,7 +227,7 @@ Because of this applications using active-active should avoid `UNIQUE` indexes a
 
 In the future, it may be possible to detect such unsafe constraints and issue a warning, potentially by default.  This is tracked in [#11539](https://github.com/yugabyte/yugabyte-db/issues/11539).
 
-Note that if you attempt to insert the same row on both universes at the same time to a table that does not have a primary key then you will end up with two rows with the same data.  This is the expected Postgres behavior even with only one universe &mdash; tables without primary keys can have multiple rows with the same data.
+Note that if you attempt to insert the same row on both universes at the same time to a table that does not have a primary key then you will end up with two rows with the same data.  This is the expected PostgresSQL behavior &mdash; tables without primary keys can have multiple rows with the same data.
 
 ### Non-transactional&ndash;mode consistency issues
 
