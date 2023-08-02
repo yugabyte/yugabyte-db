@@ -264,10 +264,10 @@ INFO[2023-04-24T23:58:14Z] Uninstalling prometheus
 INFO[2023-04-24T23:58:14Z] Uninstalling postgres
 ```
 
-To delete all data, run `clean` with the `–all` flag as follows:
+To delete all data, run `clean` with the `–-all` flag as follows:
 
 ```sh
-$ sudo yba-ctl clean -all
+$ sudo yba-ctl clean --all
 ```
 
 ```output
