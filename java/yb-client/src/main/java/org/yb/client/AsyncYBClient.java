@@ -367,6 +367,20 @@ public class AsyncYBClient implements AutoCloseable {
     return d;
   }
 
+  public Deferred<GetFlagResponse> getFlag(final HostAndPort hp, String flag) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+    GetFlagRequest rpc = new GetFlagRequest(flag);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    Deferred<GetFlagResponse> d = rpc.getDeferred();
+    rpc.attempt++;
+    client.sendRpc(rpc);
+    return d;
+  }
+
   public Deferred<GetMasterAddressesResponse> getMasterAddresses(final HostAndPort hp) {
     checkIsClosed();
     TabletClient client = newSimpleClient(hp);
