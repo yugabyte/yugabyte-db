@@ -114,7 +114,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         // Reset may be set only if node is not a master.
         // Once isMaster is set, it can be tied to a cluster.
         resetMasterState =
-            isChangeMasterConfigDone(universe, node, true, node.cloudInfo.private_ip);
+            isChangeMasterConfigDone(universe, node, false, node.cloudInfo.private_ip);
       }
     }
     log.debug(
