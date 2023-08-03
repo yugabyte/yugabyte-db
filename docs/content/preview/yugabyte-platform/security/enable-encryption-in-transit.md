@@ -55,7 +55,7 @@ Customize the organization name as follows:
 
     ![Custom Organization name](/images/yp/encryption-in-transit/custom-org-name.png)
 
-1. Click **Actions** > **Edit Configuration** to change the default Config Value (`example.com`), and click **Save**. Make sure to enter a string for the Config Value to have a custom organisation name.
+1. Click **Actions** > **Edit Configuration**, enter a new Config Value, and click **Save**.
 
 #### Validate custom organization name
 
