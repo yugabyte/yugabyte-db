@@ -106,6 +106,12 @@ public class StopNodeInUniverse extends UniverseTaskBase {
                   Arrays.asList(currentNode), false /* isAdd */, true /* isLeaderBlacklist */)
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         }
+        if (currentNode.isMaster) {
+          createStopMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          createWaitForMasterLeaderTask()
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        }
       }
 
       // Update the per process state in YW DB.
@@ -113,16 +119,6 @@ public class StopNodeInUniverse extends UniverseTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
       if (currentNode.isMaster) {
         createChangeConfigTask(currentNode, false /* isAdd */, SubTaskGroupType.ConfigureUniverse);
-
-        // Stop the master process on this node. Stop it only after master config change
-        // to give the process time to clean up master state.
-        if (instanceExists) {
-          createStopMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
-              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          createWaitForMasterLeaderTask()
-              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-        }
-
         createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, false)
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
       }

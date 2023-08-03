@@ -95,11 +95,11 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
           createWaitForMasterLeaderTask()
               .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
           if (masterReachable) {
-            createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration);
             createStopMasterTasks(new HashSet<>(Arrays.asList(currentNode)))
                 .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
             createWaitForMasterLeaderTask()
                 .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+            createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration);
           } else {
             createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration);
           }
