@@ -671,6 +671,14 @@ YBInitPostgresBackend(
 		HandleYBStatus(YBCPgInitSession(db_name ? db_name : user_name,
 										&yb_session_stats.current_state));
 		YBCSetTimeout(StatementTimeout, NULL);
+
+		/*
+		 * Upon completion of the first heartbeat to the local tserver, retrieve
+		 * and store the session ID in shared memory, so that entities
+		 * associated with a session ID (like txn IDs) can be transitively
+		 * mapped to PG backends.
+		 */
+		yb_pgstat_add_session_info(YBCPgGetSessionID());
 	}
 }
 
@@ -2678,6 +2686,30 @@ Datum
 yb_get_effective_transaction_isolation_level(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_CSTRING(yb_fetch_effective_transaction_isolation_level());
+}
+
+Datum
+yb_get_current_transaction(PG_FUNCTION_ARGS)
+{
+	pg_uuid_t *txn_id = NULL;
+	bool is_null = false;
+
+	if (!yb_enable_pg_locks)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("get_current_transaction is unavailable"),
+						errdetail("yb_enable_pg_locks is false or a system "
+								  "upgrade is in progress")));
+	}
+
+	txn_id = (pg_uuid_t *) palloc(sizeof(pg_uuid_t));
+	HandleYBStatus(
+		YBCPgGetSelfActiveTransaction((YBCPgUuid *) txn_id, &is_null));
+
+	if (is_null)
+		PG_RETURN_NULL();
+
+	PG_RETURN_UUID_P(txn_id);
 }
 
 Datum

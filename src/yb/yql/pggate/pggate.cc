@@ -17,6 +17,7 @@
 #include <list>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -541,6 +542,8 @@ Status PgApiImpl::InitSession(const string& database_name, YBCPgExecStatsState* 
   pg_session_.swap(session);
   return Status::OK();
 }
+
+uint64_t PgApiImpl::GetSessionID() const { return pg_client_.SessionID(); }
 
 Status PgApiImpl::InvalidateCache() {
   pg_session_->InvalidateAllTablesCache();
@@ -1918,6 +1921,42 @@ double PgApiImpl::GetTransactionPriority() const {
 
 TxnPriorityRequirement PgApiImpl::GetTransactionPriorityType() const {
   return pg_txn_manager_->GetTransactionPriorityType();
+}
+
+Result<Uuid> PgApiImpl::GetActiveTransaction() const {
+  Uuid result;
+  RETURN_NOT_OK(pg_client_.EnumerateActiveTransactions(
+      make_lw_function(
+          [&result](
+              const tserver::PgGetActiveTransactionListResponsePB_EntryPB& entry, bool is_last) {
+            DCHECK(is_last);
+            result = VERIFY_RESULT(Uuid::FromSlice(Slice(entry.txn_id())));
+            return static_cast<Status>(Status::OK());
+          }),
+      /*for_current_session_only=*/true));
+
+  return result;
+}
+
+Status PgApiImpl::GetActiveTransactions(YBCPgSessionTxnInfo* infos, size_t num_infos) {
+  std::unordered_map<uint64_t, Slice> txns;
+  txns.reserve(num_infos);
+  return pg_client_.EnumerateActiveTransactions(make_lw_function(
+      [&txns, infos, num_infos](
+          const tserver::PgGetActiveTransactionListResponsePB_EntryPB& entry, bool is_last) {
+        txns.emplace(entry.session_id(), entry.txn_id());
+        if (is_last) {
+          for (auto* i = infos, *end = i + num_infos; i != end; ++i) {
+            auto txn = txns.find(i->session_id);
+            if (txn != txns.end()) {
+              auto uuid = VERIFY_RESULT(Uuid::FromSlice(txn->second));
+              uuid.ToBytes(i->txn_id.data);
+              i->is_not_null = true;
+            }
+          }
+        }
+        return static_cast<Status>(Status::OK());
+      }));
 }
 
 void PgApiImpl::ResetCatalogReadTime() {

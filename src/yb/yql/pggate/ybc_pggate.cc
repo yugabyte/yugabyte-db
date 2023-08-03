@@ -339,6 +339,8 @@ YBCStatus YBCPgInitSession(const char* database_name, YBCPgExecStatsState* sessi
   return ToYBCStatus(PgInitSessionImpl(database_name, session_stats));
 }
 
+uint64_t YBCPgGetSessionID() { return pgapi->GetSessionID(); }
+
 YBCPgMemctx YBCPgCreateMemctx() {
   return pgapi->CreateMemctx();
 }
@@ -1343,6 +1345,22 @@ YBCStatus YBCPgSetActiveSubTransaction(uint32_t id) {
 
 YBCStatus YBCPgRollbackToSubTransaction(uint32_t id) {
   return ToYBCStatus(pgapi->RollbackToSubTransaction(id));
+}
+
+YBCStatus YBCPgGetSelfActiveTransaction(YBCPgUuid *txn_id, bool *is_null) {
+  return ExtractValueFromResult(
+      pgapi->GetActiveTransaction(), [txn_id, is_null](const Uuid &value) {
+        if (value.IsNil()) {
+          *is_null = true;
+        } else {
+          *is_null = false;
+          value.ToBytes(txn_id->data);
+        }
+      });
+}
+
+YBCStatus YBCPgActiveTransactions(YBCPgSessionTxnInfo *infos, size_t num_infos) {
+  return ToYBCStatus(pgapi->GetActiveTransactions(infos, num_infos));
 }
 
 //------------------------------------------------------------------------------------------------

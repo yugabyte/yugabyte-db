@@ -182,6 +182,19 @@ void GetTablePartitionList(const client::YBTablePtr& table, PgTablePartitionsPB*
   partition_list->set_version(table_partition_list->version);
 }
 
+void AddTransactionInfo(
+    PgGetActiveTransactionListResponsePB* out, const PgClientSessionLocker& locker) {
+  auto& session = *locker;
+  const auto* txn_id = session.GetTransactionId();
+  if (!txn_id) {
+    return;
+  }
+
+  auto& entry = *out->add_entries();
+  entry.set_session_id(session.id());
+  txn_id->AsSlice().CopyToBuffer(entry.mutable_txn_id());
+}
+
 } // namespace
 
 template <class Extractor>
@@ -792,6 +805,27 @@ class PgClientServiceImpl::Impl {
       remote_tservers.push_back(VERIFY_RESULT(client().GetRemoteTabletServer(permanent_uuid)));
     }
     return remote_tservers;
+  }
+
+  Status GetActiveTransactionList(
+      const PgGetActiveTransactionListRequestPB& req, PgGetActiveTransactionListResponsePB* resp,
+      rpc::RpcContext* context) {
+    if (req.has_session_id()) {
+      AddTransactionInfo(resp, VERIFY_RESULT(GetSession(req.session_id().value())));
+      return Status::OK();
+    }
+
+    decltype(sessions_) sessions_snapshot;
+    {
+      std::lock_guard lock(mutex_);
+      sessions_snapshot = sessions_;
+    }
+
+    for (const auto& session : sessions_snapshot) {
+      AddTransactionInfo(resp, PgClientSessionLocker(session));
+    }
+
+    return Status::OK();
   }
 
   Status CancelTransaction(const PgCancelTransactionRequestPB& req,

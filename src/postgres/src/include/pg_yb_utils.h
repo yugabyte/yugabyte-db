@@ -794,7 +794,7 @@ uint32_t YbGetNumberOfDatabases();
  */
 void YBSetRowLockPolicy(int *docdb_wait_policy, LockWaitPolicy pg_wait_policy);
 
-const char* yb_fetch_current_transaction_priority(void);
+const char *yb_fetch_current_transaction_priority(void);
 
 void GetStatusMsgAndArgumentsByCode(
 	const uint32_t pg_err_code, uint16_t txn_err_code, YBCStatus s,

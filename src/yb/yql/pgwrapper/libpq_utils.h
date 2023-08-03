@@ -14,6 +14,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "libpq-fe.h" // NOLINT
@@ -25,6 +26,7 @@
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/uuid.h"
 
 namespace yb {
 namespace pgwrapper {
@@ -68,8 +70,8 @@ inline constexpr bool IsPGNonNeg = IsPGNonNegImpl<T>::value;
 
 template<class T>
 concept AllowedPGType =
-    IsPGNonNeg<T> || IsPGIntType<T> || IsPGFloatType<T> ||
-    std::is_same_v<T, bool> || std::is_same_v<T, std::string> || std::is_same_v<T, PGOid>;
+    IsPGNonNeg<T> || IsPGIntType<T> || IsPGFloatType<T> || std::is_same_v<T, bool> ||
+    std::is_same_v<T, std::string> || std::is_same_v<T, PGOid> || std::is_same_v<T, Uuid>;
 
 template<AllowedPGType T>
 struct PGTypeTraits {
@@ -97,6 +99,13 @@ using GetValueResult = Result<typename PGTypeTraits<T>::ReturnType>;
 
 template<class T>
 GetValueResult<T> GetValue(PGresult* result, int row, int column);
+
+template<class T>
+using GetOptionalValueResult =
+    Result<std::optional<typename PGTypeTraits<typename T::value_type>::ReturnType>>;
+
+template<class T>
+GetOptionalValueResult<T> GetValue(PGresult* result, int row, int column);
 
 inline Result<int32_t> GetInt32(PGresult* result, int row, int column) {
   return GetValue<int32_t>(result, row, column);
