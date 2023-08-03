@@ -682,7 +682,7 @@ Status Jsonb::ApplyJsonbOperatorToArray(const Slice& jsonb, const QLJsonOperatio
   size_t num_array_entries = GetCount(jsonb_header);
 
   // Retrieve the array index and verify.
-  util::VarInt varint;
+  VarInt varint;
   RETURN_NOT_OK(varint.DecodeFromComparable(json_op.operand().value().varint_value()));
   int64_t array_index = VERIFY_RESULT(varint.ToInt64());
 

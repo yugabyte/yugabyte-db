@@ -328,7 +328,7 @@ Status QLValue::Deserialize(
     case DataType::VARINT: {
       string value;
       RETURN_NOT_OK(CQLDecodeBytes(len, data, &value));
-      util::VarInt varint;
+      VarInt varint;
       RETURN_NOT_OK(varint.DecodeFromTwosComplement(value));
       set_varint_value(varint);
       return Status::OK();
@@ -757,17 +757,17 @@ Uuid QLValue::uuid_value(const LWQLValuePB& pb) {
   return CHECK_RESULT(Uuid::FromSlice(uuid_value_pb(pb)));
 }
 
-util::VarInt QLValue::varint_value(const QLValuePB& pb) {
+VarInt QLValue::varint_value(const QLValuePB& pb) {
   CHECK(pb.has_varint_value()) << "Value: " << pb.ShortDebugString();
-  util::VarInt varint;
+  VarInt varint;
   size_t num_decoded_bytes;
   CHECK_OK(varint.DecodeFromComparable(pb.varint_value(), &num_decoded_bytes));
   return varint;
 }
 
-util::VarInt QLValue::varint_value(const LWQLValuePB& pb) {
+VarInt QLValue::varint_value(const LWQLValuePB& pb) {
   CHECK(pb.has_varint_value()) << "Value: " << pb.ShortDebugString();
-  util::VarInt varint;
+  VarInt varint;
   size_t num_decoded_bytes;
   CHECK_OK(varint.DecodeFromComparable(pb.varint_value(), &num_decoded_bytes));
   return varint;

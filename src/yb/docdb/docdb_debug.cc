@@ -109,7 +109,7 @@ std::string EntryToString(
   } else if (
       value_res.status().IsNotFound() &&
       value_copy.TryConsumeByte(dockv::ValueEntryTypeAsChar::kPackedRow)) {
-    auto version = util::FastDecodeUnsignedVarInt(&value_copy);
+    auto version = FastDecodeUnsignedVarInt(&value_copy);
     if (!version.ok()) {
       value_str = version.status().ToString();
     } else {
