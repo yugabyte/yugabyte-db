@@ -63,7 +63,7 @@ Configurable performance parameters and incremental backups are mediated using t
         <div class="title">Restore universe data</div>
       </div>
       <div class="body">
-        Use YugabyteDB Anywhere to restore universe data.
+        Restore from full and incremental backups.
       </div>
     </a>
   </div>

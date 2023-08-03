@@ -3,6 +3,7 @@ title: Back up universe data
 headerTitle: Back up universe data
 linkTitle: Back up universe data
 description: Use YugabyteDB Anywhere to back up data.
+headContent: Create full and incremental backups
 aliases:
   - /preview/back-up-restore-universes/back-up-universe-data/ycql/
   - /preview/back-up-restore-universes/back-up-universe-data/ysql/
