@@ -39,26 +39,26 @@ The following table describes the **Slow Queries** column values.
 
 You can use the **Slow Queries** dashboard as follows:
 
-- Navigate to the **Universes**, select your universe, then select **Queries > Slow Queries**, as per the following illustration:<br>
+- Navigate to the **Universes**, select your universe, then select **Queries > Slow Queries**, as per the following illustration:
 
-  ![Initial layout](/images/yp/alerts-monitoring/slow-queries/initial-table-view.png)<br>
+  ![Initial layout](/images/yp/alerts-monitoring/slow-queries/initial-table-view.png)
 
-  Note that you might need to enable query monitoring for your universe. If enabled, using **Column Display** allows you to dynamically display specific fields, as per the following illustration:<br>
+  Note that you might need to enable query monitoring for your universe. If enabled, using **Column Display** allows you to dynamically display specific fields, as per the following illustration:
 
-  ![Changing column selection](/images/yp/alerts-monitoring/slow-queries/selecting-columns.png)<br>
+  ![Changing column selection](/images/yp/alerts-monitoring/slow-queries/selecting-columns.png)
 
-- Click the filter field to be able to use a query language for filtering data based on certain fields, as per the following illustration:<br>
+- Click the filter field to be able to use a query language for filtering data based on certain fields, as per the following illustration:
 
-  ![Search dropdown options](/images/yp/alerts-monitoring/slow-queries/search-dropdown-options.png)<br>
+  ![Search dropdown options](/images/yp/alerts-monitoring/slow-queries/search-dropdown-options.png)
 
   Use filtering for comparisons on numbers columns (`Avg Time`) using `>`, `>=`, `<`, and `<=` to search for values that are greater than, greater than or equal to, less than, and less than or equal to another value (`Avg Time: < 30`). You can also use the range syntax `n..m` to search for values within a range, where the first number `n` is the lowest value and the second number `m` is the highest value. The range syntax supports tokens like the following: `n..*` which is equivalent to `>= n`. Or `*..n` which is the same as `<= n`.
 
-- Select a row to open a sidebar with a full view of the query statement, along with all the column data, as per the following illustration:<br>
+- Select a row to open a sidebar with a full view of the query statement, along with all the column data, as per the following illustration:
 
-  ![View query statement](/images/yp/alerts-monitoring/slow-queries/query-info-panel.png)<br>
+  ![View query statement](/images/yp/alerts-monitoring/slow-queries/query-info-panel.png)
 
-  You can find additional prefiltered navigation links from different pages to the **Slow Queries** page. For example, from the **Overview** page to the **Queries** page, when you click the link to Top SQL Statements, as per the following illustration:<br>
+  You can find additional prefiltered navigation links from different pages to the **Slow Queries** page. For example, from the **Overview** page to the **Queries** page, when you click the link to Top SQL Statements, as per the following illustration:
 
-  ![Overview page showing slow queries](/images/yp/alerts-monitoring/slow-queries/overview-showing-link.png)<br>
+  ![Overview page showing slow queries](/images/yp/alerts-monitoring/slow-queries/overview-showing-link.png)
 
   Or, for example, the **Nodes** page's each node **Actions** contains a link to the **Slow Queries** page.
