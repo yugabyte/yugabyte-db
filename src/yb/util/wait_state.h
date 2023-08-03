@@ -152,6 +152,8 @@ struct AUHMetadata {
   int64_t current_request_id = 0;
   std::string client_node_ip;
 
+  void QueryIdHexToUInt(std::string queryId);
+
   std::string ToString() const {
     return yb::Format("{ top_level_node_id: $0, top_level_request_id: $1, query_id: $2, current_request_id: $3, client_node_ip: $4 }",
                       top_level_node_id, top_level_request_id, query_id, current_request_id, client_node_ip);

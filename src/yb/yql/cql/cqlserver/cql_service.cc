@@ -20,6 +20,7 @@
 
 #include <boost/compute/detail/lru_cache.hpp>
 
+#include "yb/client/client.h"
 #include "yb/client/meta_data_cache.h"
 
 #include "yb/gutil/casts.h"
@@ -210,6 +211,7 @@ void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {
     return;
   }
   (**processor).auh_metadata().top_level_request_id = {util::AUHRandom::GenerateRandom64(), util::AUHRandom::GenerateRandom64()};
+  (**processor).auh_metadata().top_level_node_id = yb::ToString(inbound_call->remote_address());
   MonoTime got_processor = MonoTime::Now();
   cql_metrics_->time_to_get_cql_processor_->Increment(
       got_processor.GetDeltaSince(start).ToMicroseconds());
@@ -237,8 +239,7 @@ Result<CQLProcessor*> CQLServiceImpl::GetProcessor() {
   }
 
   *pos = std::make_unique<CQLProcessor>(this, pos);
-  (**pos).auh_metadata().client_node_ip = "cql_ip";
-  (**pos).auh_metadata().top_level_node_id = "cql_node_id";
+  (**pos).auh_metadata().top_level_node_id = VERIFY_RESULT(client()->GetTServerUUID());
   return pos->get();
 }
 

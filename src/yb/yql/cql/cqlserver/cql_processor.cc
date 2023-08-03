@@ -450,7 +450,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
 }
 
 unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const ExecuteRequest& req) {
-  ql_env_.auh_metadata().query_id = std::stoull(req.query_id());
+  ql_env_.auh_metadata().QueryIdHexToUInt(req.query_id());
   VLOG(1) << "EXECUTE " << b2a_hex(req.query_id());
   auto stmt_res = GetPreparedStatement(req.query_id(), req.params().schema_version());
   if (!stmt_res.ok()) {
@@ -464,7 +464,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const ExecuteRequest& req) 
 
 unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const QueryRequest& req) {
   // recalculating query id, expensive?
-  ql_env_.auh_metadata().query_id = std::stoull(CQLStatement::GetQueryId(
+  ql_env_.auh_metadata().QueryIdHexToUInt(CQLStatement::GetQueryId(
       ql_env_.CurrentKeyspace(), req.query()));
   VLOG(1) << "QUERY " << req.query();
   if (service_impl_->system_cache() != nullptr) {
