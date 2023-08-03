@@ -10,7 +10,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - { version: 15,  upgrade_to: "",  update_from: 0.99.0 }
+          - { version: 16,  upgrade_to: "",  update_from: 0.99.0 }
+          - { version: 15,  upgrade_to: 16,  update_from: 0.99.0 }
           - { version: 14,  upgrade_to: 15,  update_from: 0.99.0 }
           - { version: 13,  upgrade_to: 14,  update_from: 0.99.0 }
           - { version: 12,  upgrade_to: 13,  update_from: 0.99.0 }
@@ -22,8 +23,8 @@ jobs:
           - { version: 9.3, upgrade_to: 9.4, update_from: 0.95.0 }
           - { version: 9.2, upgrade_to: 9.3, update_from: "" }     # updatecheck is not supported prior to 9.3
           # Also test pg_upgrade across many versions
-          - { version: 9.2,  upgrade_to: 15, update_from: "", suffix: –15 }
-          - { version: 9.4,  upgrade_to: 15, update_from: "", suffix: –15 }
+          - { version: 9.2,  upgrade_to: 16, update_from: "", suffix: –16 }
+          - { version: 9.4,  upgrade_to: 16, update_from: "", suffix: –16 }
     name: 🐘 PostgreSQL ${{ matrix.version }}${{ matrix.suffix }}
     runs-on: ubuntu-latest
     container: pgxn/pgxn-tools
