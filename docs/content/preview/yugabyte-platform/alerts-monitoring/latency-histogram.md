@@ -16,7 +16,7 @@ Percentile metrics form the core set of metrics that enable users to measure que
 You can view P99, P95, P90, and P50 metrics for every query displayed on the [Slow Queries](../../../yugabyte-platform/alerts-monitoring/slow-queries-dashboard/) dashboard.
 You can view latency histograms for every YSQL query you run on one or multiple nodes of your universe and get an aggregated view of the metrics.
 
-As slow queries are only available for YSQL, this feature is available for YSQL only from YBA version 2.18.2 or later with latency histogram support in YugabyteDB version 2.18.1 (or later), or 2.19.1 (or later).
+Slow queries are only available for YSQL, with percentile metrics available in YBA version 2.18.2 or later, and latency histogram support in YugabyteDB version 2.18.1 (or later), or 2.19.1 (or later).
 
 To view the latency histogram and P99 metrics, access the [Slow Queries](../../../yugabyte-platform/alerts-monitoring/slow-queries-dashboard/) dashboard and run YSQL queries using the following steps:
 
