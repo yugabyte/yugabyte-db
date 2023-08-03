@@ -55,6 +55,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
@@ -954,7 +955,9 @@ public class NodeManager extends DevopsBase {
                   gflags,
                   GFlagsUtil.getAllDefaultGFlags(
                       taskParam, universe, getUserIntentFromParams(taskParam), useHostname, config),
-                  confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride));
+                  confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride),
+                  confGetter,
+                  taskParam);
             }
             subcommand.add("--gflags");
             subcommand.add(Json.stringify(Json.toJson(gflags)));
@@ -1016,7 +1019,26 @@ public class NodeManager extends DevopsBase {
                 gflags,
                 GFlagsUtil.getAllDefaultGFlags(
                     taskParam, universe, getUserIntentFromParams(taskParam), useHostname, config),
-                confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride));
+                confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride),
+                confGetter,
+                taskParam);
+            if (gflags.containsKey(GFlagsUtil.YSQL_HBA_CONF_CSV)) {
+              String hbaConfValue = gflags.get(GFlagsUtil.YSQL_HBA_CONF_CSV);
+              if (hbaConfValue.contains(GFlagsUtil.JWT_AUTH)) {
+                Path tmpDirectoryPath =
+                    FileUtils.getOrCreateTmpDirectory(
+                        confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
+                Path localGflagFilePath = tmpDirectoryPath.resolve(node.getNodeUuid().toString());
+                String providerUUID = userIntent.provider;
+                String ybHomeDir = GFlagsUtil.getYbHomeDir(providerUUID);
+                String remoteGFlagPath = ybHomeDir + GFlagsUtil.GFLAG_REMOTE_FILES_PATH;
+                // Append the path to copy the gFlag file from local to remote host
+                subcommand.add("--local_gflag_files_path");
+                subcommand.add(localGflagFilePath.toString());
+                subcommand.add("--remote_gflag_files_path");
+                subcommand.add(remoteGFlagPath);
+              }
+            }
           }
           subcommand.add("--gflags");
           subcommand.add(Json.stringify(Json.toJson(gflags)));
