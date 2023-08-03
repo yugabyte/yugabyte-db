@@ -13,7 +13,7 @@ menu:
 type: indexpage
 ---
 
-Before you can add Dedicated clusters, you need to create a billing profile and add a payment method. You manage your billing profile and payment methods and review invoices from the **Billing** page.
+Before you can add Dedicated clusters, you need to create a billing profile and add a payment method. You manage your billing profile and payment methods, and review invoices from the **Billing** page.
 
 <div class="row">
 
