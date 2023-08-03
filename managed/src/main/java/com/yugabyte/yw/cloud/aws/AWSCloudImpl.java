@@ -466,8 +466,9 @@ public class AWSCloudImpl implements CloudAPI {
         // If no listener exists for a port, create target group and listener
         // else check target group settings and add/remove nodes from target group
         String targetGroupName = "tg-" + UUID.randomUUID().toString().substring(0, 29);
+        String targetGroupArn = null;
         if (listener == null) {
-          String targetGroupArn =
+          targetGroupArn =
               createNodeGroup(
                   lbClient,
                   lbName,
@@ -479,7 +480,7 @@ public class AWSCloudImpl implements CloudAPI {
           createListener(lbClient, lbName, targetGroupArn, lbProtocol, port);
         } else {
           // Check if listener has target group otherwise create one
-          String targetGroupArn = getListenerTargetGroup(listener);
+          targetGroupArn = getListenerTargetGroup(listener);
           if (targetGroupArn == null) {
             targetGroupArn =
                 createNodeGroup(
@@ -497,6 +498,7 @@ public class AWSCloudImpl implements CloudAPI {
                 lbClient, targetGroupArn, lbProtocol, port, instanceIDs, healthCheckConfiguration);
           }
         }
+        ensureTargetGroupAttributes(lbClient, targetGroupArn);
       }
     } catch (Exception e) {
       String message = "Error executing task {manageNodeGroup()}, error='{}'";
