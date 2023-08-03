@@ -37,4 +37,4 @@ To view the latency histogram and P99 metrics, access the [Slow Queries](../../.
 
 ## Learn more
 
-- [Slow Query dashboard](../../../yugabyte-platform/alerts-monitoring/slow-queries-dashboard/) for details on how to run the queries and view the results based on the available options.
+- [Slow Query dashboard](../../../yugabyte-platform/alerts-monitoring/slow-queries-dashboard/) for details on how to run queries and view the results.
