@@ -574,6 +574,21 @@ TEST_F(PgGetLockStatusTest, HidesLocksFromAbortedSubTransactions) {
   EXPECT_EQ(ASSERT_RESULT(session.conn->FetchValue<int64>(get_distinct_subtxn_count_query)), 1);
 }
 
+TEST_F(PgGetLockStatusTest, TestPgLocksWhileDDLInProgress) {
+  auto status_future = std::async(std::launch::async, [&]() -> Status {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.Execute(
+          "CREATE TABLE foo AS SELECT i AS a, i+1 AS b FROM generate_series(1,10000)i"));
+    return Status::OK();
+  });
+
+  auto conn = ASSERT_RESULT(Connect());
+  while (status_future.wait_for(0ms) != std::future_status::ready) {
+    ASSERT_OK(conn.FetchFormat("SELECT * FROM pg_locks"));
+  }
+  ASSERT_OK(status_future.get());
+}
+
 class PgGetLockStatusTestRF3 : public PgGetLockStatusTest {
   size_t NumTabletServers() override {
     return 3;
