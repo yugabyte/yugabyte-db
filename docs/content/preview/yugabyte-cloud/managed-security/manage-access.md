@@ -5,10 +5,12 @@ linkTitle: Manage account users
 description: Manage access to your YugabyteDB Managed account and your clusters.
 headcontent: Invite team members to your YugabyteDB Managed account
 image: /images/section_icons/secure/create-roles.png
+aliases:
+  - /preview/yugabyte-cloud/cloud-admin/manage-access/
 menu:
   preview_yugabyte-cloud:
     identifier: manage-cloud-access
-    parent: cloud-admin
+    parent: managed-security
     weight: 100
 type: docs
 ---
@@ -21,7 +23,7 @@ You can also manage the login methods available to users for signing in to your 
 
 The **Users** tab displays a list of users that are either active or have been invited, including their email, display name, role, and status.
 
-![Admin Users page](/images/yb-cloud/managed-admin-users.png)
+![Users page](/images/yb-cloud/managed-admin-users.png)
 
 ## Manage login methods
 
