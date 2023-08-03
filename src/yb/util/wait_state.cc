@@ -133,4 +133,53 @@ ScopedWaitStatus::~ScopedWaitStatus() {
     wait_state_->set_state(prev_state_);
   }
 }
+
+// Link to source codes for the classes below
+// https://github.com/open-telemetry/opentelemetry-cpp/blob/main/sdk/src/common/random.cc
+// https://github.com/open-telemetry/opentelemetry-cpp/blob/main/sdk/src/common/platform/fork_unix.cc
+namespace platform
+{
+int AtFork(void (*prepare)(), void (*parent)(), void (*child)()) noexcept
+{
+  return ::pthread_atfork(prepare, parent, child);
+}
+}
+
+class TlsRandomNumberGenerator
+{
+public:
+  TlsRandomNumberGenerator() noexcept
+  {
+    Seed();
+    platform::AtFork(nullptr, nullptr, OnFork);
+  }
+
+  static FastRandomNumberGenerator &engine() noexcept { return engine_; }
+
+private:
+  static thread_local FastRandomNumberGenerator engine_;
+
+  static void OnFork() noexcept { Seed(); }
+
+  static void Seed() noexcept
+  {
+    std::random_device random_device;
+    std::seed_seq seed_seq{random_device(), random_device(), random_device(), random_device()};
+    engine_.seed(seed_seq);
+  }
+};
+
+thread_local FastRandomNumberGenerator TlsRandomNumberGenerator::engine_{};
+
+FastRandomNumberGenerator &AUHRandom::GetRandomNumberGenerator() noexcept
+{
+  static thread_local TlsRandomNumberGenerator random_number_generator{};
+  return TlsRandomNumberGenerator::engine();
+}
+
+uint64_t AUHRandom::GenerateRandom64() noexcept
+{
+  return GetRandomNumberGenerator()();
+}
+
 }
