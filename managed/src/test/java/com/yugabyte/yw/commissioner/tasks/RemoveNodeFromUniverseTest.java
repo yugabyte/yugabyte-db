@@ -29,8 +29,8 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -153,9 +153,9 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
       ImmutableList.of(
           TaskType.SetNodeState,
           TaskType.WaitForMasterLeader,
-          TaskType.ChangeMasterConfig,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForMasterLeader,
+          TaskType.ChangeMasterConfig,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
           TaskType.AnsibleClusterServerCtl,
@@ -168,8 +168,8 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
       ImmutableList.of(
           Json.toJson(ImmutableMap.of("state", "Removing")),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "master", "command", "stop")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
