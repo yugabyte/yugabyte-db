@@ -48,7 +48,7 @@ If you are using YBA version 2.18.2 or later to manage universes with YugabyteDB
 
 Note that, for the change to take effect, you need to set the flag _before_ you run a workflow that generates a self-signed certificate.
 
-You can create a custom organisation name as follows:
+Customize the organization name as follows:
 
 1. In YugabyteDB Anywhere, navigate to **Admin** > **Advanced** and select the **Global Configuration** tab.
 1. In the **Search** bar, enter `yb.tlsCertificate.organizationName` to view the flag, as per the following illustration:
