@@ -46,7 +46,7 @@ YugabyteDB Anywhere creates self-signed certificates in some workflows such as c
 
 If you are using YBA version 2.18.2 or later to manage universes with YugabyteDB version 2.18.2 or later, you can set a custom organization name using the global [runtime configuration](../../administer-yugabyte-platform/manage-runtime-config/) flag, `yb.tlsCertificate.organizationName`.
 
-Note that you need perform this customization before a self-signed certificate creation workflow such as Create universe for the change to take affect.
+Note that, for the change to take effect, you need to set the flag _before_ you run a workflow that generates a self-signed certificate.
 
 You can create a custom organisation name as follows:
 
