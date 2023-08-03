@@ -58,7 +58,7 @@ You can use the **Slow Queries** dashboard as follows:
 
   Use filtering for comparisons on numbers columns (`Avg Time`) using `>`, `>=`, `<`, and `<=` to search for values that are greater than, greater than or equal to, less than, and less than or equal to another value (`Avg Time: < 30`). You can also use the range syntax `n..m` to search for values within a range, where the first number `n` is the lowest value and the second number `m` is the highest value. The range syntax supports tokens like the following: `n..*` which is equivalent to `>= n`. Or `*..n` which is the same as `<= n`.
 
-- Select a row to open a right sidebar (**Query Details**) with a full view of the query statement, along with all the column data, including the Response Time Percentile and [Latency histogram](../../../yugabyte-platform/alerts-monitoring/latency-histogram/) Details as per the following illustrations:
+- Select a row to open the **Query Details** with a full view of the query statement, along with all the column data, including the Response Time Percentile and [Latency histogram](../../../yugabyte-platform/alerts-monitoring/latency-histogram/).
 
   ![View query statement](/images/yp/alerts-monitoring/slow-queries/query-info-panel.png)
 
