@@ -22,6 +22,27 @@ namespace yb::util {
 // __thread WaitStateInfoPtr WaitStateInfo::threadlocal_wait_state_;
 thread_local WaitStateInfoPtr WaitStateInfo::threadlocal_wait_state_;
 
+void AUHMetadata::QueryIdHexToUInt(std::string queryId) {
+  int size = std::min(16, (int)queryId.length());
+  query_id = 0;
+  int bit_position = 0;
+  for (int index = size - 1; index >=  0; index--, bit_position += 4) {
+    int digit;
+    if (queryId[index] >= '0' && queryId[index] <= '9') {
+      digit = queryId[index] - '0';
+    } else if (queryId[index] >= 'a' && queryId[index] <= 'z') {
+      digit = 10 + queryId[index] - 'a';
+    } else {
+      digit = 10 + queryId[index] - 'A';
+    }
+    for (int bit = 0; bit < 4; bit++) {
+      if ((digit >> bit) & 1) {
+        query_id ^= 1 << (bit_position + bit);
+      }
+    }
+  }
+}
+
 std::string AUHAuxInfo::ToString() const {
   return YB_STRUCT_TO_STRING(table_id, tablet_id, method);
 }
