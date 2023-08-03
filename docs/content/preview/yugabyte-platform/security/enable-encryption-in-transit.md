@@ -50,7 +50,7 @@ Note that, for the change to take effect, you need to set the flag _before_ you 
 
 You can create a custom organisation name as follows:
 
-1. From your YugabyteDB Anywhere UI, navigate to **Admin** > **Advanced** and select the **Global Configuration** tab.
+1. In YugabyteDB Anywhere, navigate to **Admin** > **Advanced** and select the **Global Configuration** tab.
 1. In the **Search** bar, enter `yb.tlsCertificate.organizationName` to view the flag, as per the following illustration:
 
     ![Custom Organization name](/images/yp/encryption-in-transit/custom-org-name.png)
