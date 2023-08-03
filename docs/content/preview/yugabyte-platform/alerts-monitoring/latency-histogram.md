@@ -22,7 +22,7 @@ To view the latency histogram and P99 metrics, access the [Slow Queries](../../.
 
 1. Navigate to **Universes**, select your universe, then select **Queries > Slow Queries**.
 1. Enable the **Query monitoring** option.
-1. Run some queries on your YBA universe by clicking on or more query options from the **Slow Queries** tab in the left navigation panel.
+1. Run some queries on your universe by selecting one or more queries in the **Slow Queries** tab.
     \
     You can see the query details listing the P25, P50, P90, P95, and P99 latency metrics as per the following illustration.
 
