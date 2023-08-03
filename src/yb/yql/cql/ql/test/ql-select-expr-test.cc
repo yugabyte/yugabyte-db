@@ -32,7 +32,7 @@ using std::vector;
 using strings::Substitute;
 using yb::util::Decimal;
 using yb::util::DecimalFromComparable;
-using yb::util::VarInt;
+using yb::VarInt;
 using namespace std::chrono_literals;
 
 namespace yb {
