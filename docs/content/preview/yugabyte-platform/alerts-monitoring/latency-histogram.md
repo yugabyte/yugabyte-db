@@ -30,7 +30,7 @@ To view the latency histogram and P99 metrics, access the [Slow Queries](../../.
 
 {{< note title="Note" >}}
 
-- If latency histogram is not reported from YBA, then the **Query Details** listing the **Response Time Percentile** will be omitted from the UI.
+- If latency histogram is not reported from YBA, then the histogram graph is omitted from the Slow Query dashboard.
 - If the P99 latency statistics are not reported from YBA, then `-` placeholder gets displayed for the same in the **Query Details** tab.
 
 {{< /note >}}
