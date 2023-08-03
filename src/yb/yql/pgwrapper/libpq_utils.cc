@@ -171,6 +171,9 @@ Result<T> GetValueImpl(PGresult* result, int row, int column) {
         VERIFY_RESULT(GetValueWithLength(result, row, column, sizeof(uint64_t))));
   } else if constexpr (std::is_same_v<T, std::string>) {
     return std::string(PQgetvalue(result, row, column), PQgetlength(result, row, column));
+  } else if constexpr (std::is_same_v<T, Uuid>) {
+    return Uuid::FromSlice(
+        Slice(PQgetvalue(result, row, column), PQgetlength(result, row, column)));
   }
 }
 
@@ -210,6 +213,14 @@ GetValueResult<T> GetValue(PGresult* result, int row, int column) {
   } else {
     return GetValueImpl<typename PGTypeTraits<T>::ReturnType>(result, row, column);
   }
+}
+
+template<class T>
+GetOptionalValueResult<T> GetValue(PGresult* result, int row, int column) {
+  if (PQgetisnull(result, row, column)) {
+    return std::nullopt;
+  }
+  return GetValue<typename T::value_type>(result, row, column);
 }
 
 void PGConnClose::operator()(PGconn* conn) const {
@@ -597,6 +608,7 @@ Result<std::string> ToString(PGresult* result, int row, int column) {
   constexpr Oid BPCHAROID = 1042;
   constexpr Oid VARCHAROID = 1043;
   constexpr Oid CSTRINGOID = 2275;
+  constexpr Oid UUIDOID = 2950;
 
   if (PQgetisnull(result, row, column)) {
     return "NULL";
@@ -624,6 +636,8 @@ Result<std::string> ToString(PGresult* result, int row, int column) {
       return VERIFY_RESULT(GetValue<std::string>(result, row, column));
     case OIDOID:
       return yb::ToString(VERIFY_RESULT(GetValue<PGOid>(result, row, column)));
+    case UUIDOID:
+      return yb::ToString(VERIFY_RESULT(GetValue<Uuid>(result, row, column)));
     default:
       return Format("Type not supported: $0", type);
   }
@@ -757,6 +771,9 @@ template GetValueResult<double> GetValue<double>(PGresult*, int, int);
 template GetValueResult<bool> GetValue<bool>(PGresult*, int, int);
 template GetValueResult<std::string> GetValue<std::string>(PGresult*, int, int);
 template GetValueResult<PGOid> GetValue<PGOid>(PGresult*, int, int);
+template GetValueResult<Uuid> GetValue<Uuid>(PGresult*, int, int);
+template GetOptionalValueResult<std::optional<Uuid>> GetValue<std::optional<Uuid>>(
+    PGresult*, int, int);
 
 } // namespace pgwrapper
 } // namespace yb

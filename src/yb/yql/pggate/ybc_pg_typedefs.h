@@ -449,13 +449,22 @@ typedef struct PgExecStats {
 
   uint64_t num_flushes;
   uint64_t flush_wait;
-
 } YBCPgExecStats;
 
 typedef struct PgExecStatsState {
   YBCPgExecStats stats;
   bool is_timing_required;
 } YBCPgExecStatsState;
+
+typedef struct PgUuid {
+  unsigned char data[16];
+} YBCPgUuid;
+
+typedef struct PgSessionTxnInfo {
+  uint64_t session_id;
+  YBCPgUuid txn_id;
+  bool is_not_null;
+} YBCPgSessionTxnInfo;
 
 // source:
 // https://github.com/gperftools/gperftools/blob/master/src/gperftools/malloc_extension.h#L154
