@@ -25,7 +25,7 @@ The following table describes the **Slow Queries** column values.
 
 | Column | Description |
 | :----- | :---------- |
-| Query | The query command.<br>Example: `select * from my_keyspace.my_table` |
+| Query | The query command.<br>For example, `select * from my_keyspace.my_table` |
 | Database | The YSQL database used by the query. |
 | User | The name of role used to access YSQL database. |
 | Count/ Total count | The total number of times this type of query has executed. |
