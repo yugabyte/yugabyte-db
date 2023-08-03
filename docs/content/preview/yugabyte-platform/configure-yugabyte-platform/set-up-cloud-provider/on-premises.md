@@ -76,7 +76,8 @@ Creating an on-premises provider requires the following steps:
 
 - Create your VMs. Do this using your hypervisor or cloud provider. You will need the IP addresses of the VMs.
 - [Create the on-premises provider configuration](#create-a-provider). The provider configuration includes details such as the SSH user you will use to access your VMs and the regions where the nodes are located.
-- [Configure the hardware](#configure-hardware-for-yugabytedb-nodes). You provision each of the node instances that the provider will use for deploying YugabyteDB universes with the necessary software, and then add them to the pool of nodes.
+- Specify the compute [instance types](#add-instance-types) that will be used in this provider.
+- [Add the compute instances](#add-instances) by provisioning each of the node instances that the provider will use for deploying YugabyteDB universes with the necessary software, and then adding them to the pool of nodes.
 
 ## Configure the on-premises provider
 
@@ -167,12 +168,12 @@ Use the **Node Exporter Port** field to specify the port number for the node exp
 
 After the provider has been created, you can configure the hardware for the on-premises configuration by navigating to **Configs > Infrastructure > On-Premises Datacenters**, selecting the on-prem configuration you created, and choosing **Instances**. This displays the configured instance types and instances for the selected provider.
 
-![On-prem pre-provisioning script](/images/yb-platform/config/yba-onprem-config-script.png)
+![On-prem pre-provisioning script](/images/yb-platform/config/yba-onprem-config-instances.png)
 
 To configure the hardware, do the following:
 
-1. [Add instance types](#add-instance-types).
-1. Add instances.
+1. Specify the compute [instance types](#add-instance-types) that will be used in this provider.
+1. Add the compute instances.
     - If you are not manually provisioning nodes, [add instances](#add-instances) for each node.
     - If the **Manually Provision Nodes** option is enabled for the provider configuration, first [provision the nodes manually](#provision-nodes-manually), then add instances.
 
@@ -182,7 +183,7 @@ An instance type defines some basic properties of a VM.
 
 To add an instance type, do the following:
 
-1. Click **Add Instance Type**.
+1. On the configuration **Instances** page, click **Add Instance Type**.
 
 1. Complete the **Add Instance Type** dialog fields, as follows:
 
@@ -211,7 +212,7 @@ Before you add instances, you need the following:
 
 To add the instances, do the following:
 
-1. Click **Add Instances**.
+1. On the configuration **Instances** page, click **Add Instances**.
 
     ![On-prem Add Instance Types dialog](/images/yb-platform/config/yba-onprem-config-add-instances.png)
 
@@ -270,7 +271,11 @@ You can manually provision each node using the pre-provisioning Python script, a
     sudo docker exec -it yugaware bash
     ```
 
-1. Copy and paste the Python script command from the YugabyteDB Anywhere UI. Set the flags for the command as follows:
+1. Copy and paste the Python script command from the provider **Instances** page in YugabyteDB Anywhere.
+
+    ![On-prem pre-provisioning script](/images/yb-platform/config/yba-onprem-config-script.png)
+
+    Set the flags for the command as follows:
 
     - `--ask_password` - this flag instructs the script to prompt for a password, which is required if the sudo user requires password authentication.
     - `--ip` - enter the IP address of the node.
