@@ -40,22 +40,22 @@ YugabyteDB Anywhere can create self-signed certificates for each universe. These
 
 YugabyteDB Anywhere retains the root certificate and the root private key for all interactions with the cluster.
 
-### Create custom organization name in self-signed certificates
+### Customize the organization name in self-signed certificates
 
-YugabyteDB Anywhere creates self-signed certificates in some workflows such as create universe, where the organization name in all the certificates is set as `example.com` by default.
+YugabyteDB Anywhere automatically creates self-signed certificates when you run some workflows, such as create universe. The organization name in certificates is set to `example.com` by default.
 
 If you are using YBA version 2.18.2 or later to manage universes with YugabyteDB version 2.18.2 or later, you can set a custom organization name using the global [runtime configuration](../../administer-yugabyte-platform/manage-runtime-config/) flag, `yb.tlsCertificate.organizationName`.
 
-Note that you need perform this customization before a self-signed certificate creation workflow such as Create universe for the change to take affect.
+Note that, for the change to take effect, you need to set the flag _before_ you run a workflow that generates a self-signed certificate.
 
-You can create a custom organisation name as follows:
+Customize the organization name as follows:
 
-1. From your YugabyteDB Anywhere UI, navigate to **Admin** > **Advanced** and select the **Global Configuration** tab.
+1. In YugabyteDB Anywhere, navigate to **Admin** > **Advanced** and select the **Global Configuration** tab.
 1. In the **Search** bar, enter `yb.tlsCertificate.organizationName` to view the flag, as per the following illustration:
 
     ![Custom Organization name](/images/yp/encryption-in-transit/custom-org-name.png)
 
-1. Click **Actions** > **Edit Configuration** to change the default Config Value (`example.com`), and click **Save**. Make sure to enter a string for the Config Value to have a custom organisation name.
+1. Click **Actions** > **Edit Configuration**, enter a new Config Value, and click **Save**.
 
 #### Validate custom organization name
 
