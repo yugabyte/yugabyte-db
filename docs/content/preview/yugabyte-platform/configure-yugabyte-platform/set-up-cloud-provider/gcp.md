@@ -106,37 +106,20 @@ To create an instance template on Google Cloud console with your desired customi
 
 1. Follow the steps from the Google Cloud console to [create a new instance template](https://cloud.google.com/compute/docs/instance-templates/create-instance-templates).
 
-    Note that not all customizations will be honored when creating a universe on YB Anywhere with the instance template. The following list includes details about fields that can't be overridden by a GCP instance template:
-
-    <!-- | Field | Description |
-    | :---- | :----|
-    | project | |
-    | zone | |
-    | Boot disk (Auto- delete, disk type, and disk image) |
-    | canIPForward |Instance property to enable IP forwarding on an existing VM |
-    | instance type | |
-    | ssh keys | |
-    | block project wide ssh (always true) ||
-    | cloud NAT ||
-    | subnetwork ||
-    | volume type ||
-    | volume size ||
-    | volume source (always None) || -->
+    Note that not all customizations will be honored when creating a universe on YB Anywhere with the instance template. The following list includes fields that can't be overridden by a GCP instance template:
 
     - project
     - zone
     - Boot disk (Auto- delete, disk type, and disk image)
-    - canIPForward
+    - IP forwarding
     - instance type
     - ssh keys
-    - block project wide ssh (always true)
+    - Project wide SSH keys (always blocked)
     - cloud NAT
     - subnetwork
-    - volume type
-    - volume size
-    - volume source (always None)
+    - volume (type, size, and source (always None))
 
-1. Ensure that the instance template is created under the right project and choose the correct network and sub-network under **Advanced Options** > **Networking**.
+1. Ensure that the instance template is created under the right project and choose the correct network and subnetwork under **Advanced Options** > **Networking**.
 
 ## Configure GCP
 
