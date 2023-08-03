@@ -2679,6 +2679,7 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
       continue;
     }
     time_since_update_peers = MonoTime::Now();
+    VLOG(2) << "Updating tablet peers with min cdc replicated index";
     {
       YB_LOG_EVERY_N_SECS(INFO, 300)
           << "Started to read minimum replicated indices for all tablets";
