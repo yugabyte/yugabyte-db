@@ -42,7 +42,7 @@ YugabyteDB Anywhere retains the root certificate and the root private key for al
 
 ### Create custom organization name in self-signed certificates
 
-YugabyteDB Anywhere creates self-signed certificates in some workflows such as create universe, where the organization name in all the certificates is set as `example.com` by default.
+YugabyteDB Anywhere automatically creates self-signed certificates when you run some workflows, such as create universe. The organization name in certificates is set to `example.com` by default.
 
 If you are using YBA version 2.18.2 or later to manage universes with YugabyteDB version 2.18.2 or later, you can set a custom organization name using the global [runtime configuration](../../administer-yugabyte-platform/manage-runtime-config/) flag, `yb.tlsCertificate.organizationName`.
 
