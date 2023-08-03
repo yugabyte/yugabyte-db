@@ -83,6 +83,8 @@ service PgClientService {
   rpc GetTserverCatalogVersionInfo(PgGetTserverCatalogVersionInfoRequestPB)
       returns (PgGetTserverCatalogVersionInfoResponsePB);
   rpc CancelTransaction(PgCancelTransactionRequestPB) returns (PgCancelTransactionResponsePB);
+  rpc GetActiveTransactionList(PgGetActiveTransactionListRequestPB)
+      returns (PgGetActiveTransactionListResponsePB);
 }
 
 message PgHeartbeatRequestPB {
@@ -417,6 +419,8 @@ message OptionalUint32PB {
   uint32 value = 1;
 }
 
+message OptionalUint64PB { uint64 value = 1; }
+
 message PgPerformOptionsPB {
   message CachingInfoPB {
     bytes key = 1;
@@ -687,4 +691,15 @@ message PgCancelTransactionRequestPB {
 
 message PgCancelTransactionResponsePB {
   AppStatusPB status = 1;
+}
+
+message PgGetActiveTransactionListRequestPB { OptionalUint64PB session_id = 1; }
+
+message PgGetActiveTransactionListResponsePB {
+  message EntryPB {
+    uint64 session_id = 1;
+    bytes txn_id = 2;
+  }
+  AppStatusPB status = 1;
+  repeated EntryPB entries = 2;
 }

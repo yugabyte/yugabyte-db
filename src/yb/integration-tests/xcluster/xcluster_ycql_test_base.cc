@@ -154,10 +154,12 @@ Status XClusterYcqlTestBase::DoVerifyNumRecords(
 }
 
 Result<std::unique_ptr<XClusterTestBase::Cluster>> XClusterYcqlTestBase::AddCluster(
-    YBClusters* clusters, const std::string& cluster_id, bool is_producer, uint32_t num_tservers) {
-  std::string prefix = is_producer ? "AP" : "AC";
+    YBClusters* clusters, uint32 cluster_id, bool is_producer, uint32_t num_tservers) {
+  auto cluster_id_str =
+      Format("additional_$0_$1", is_producer ? "producer" : "consumer", cluster_id);
+  auto prefix = Format("$0$1", is_producer ? "AP" : "AC", cluster_id);
   std::unique_ptr<Cluster> additional_cluster =
-      VERIFY_RESULT(CreateCluster(cluster_id, prefix, num_tservers));
+      VERIFY_RESULT(CreateCluster(cluster_id_str, prefix, num_tservers));
   additional_cluster->txn_mgr_.emplace(
       additional_cluster->client_.get(), GetClock(), client::LocalTabletFilter());
   clusters->push_back(std::move(additional_cluster.get()));
@@ -177,7 +179,7 @@ Status XClusterYcqlTestBase::CreateAdditionalClusterTables(
 }
 
 Result<std::unique_ptr<XClusterTestBase::Cluster>> XClusterYcqlTestBase::AddClusterWithTables(
-    YBClusters* clusters, YBTables* tables, const std::string& cluster_id, size_t num_tables,
+    YBClusters* clusters, YBTables* tables, uint32 cluster_id, size_t num_tables,
     uint32_t num_tablets_per_table, bool is_producer, uint32_t num_tservers) {
   std::unique_ptr<Cluster> additional_cluster =
       VERIFY_RESULT(AddCluster(clusters, cluster_id, is_producer, num_tservers));

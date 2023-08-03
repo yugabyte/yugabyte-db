@@ -71,7 +71,7 @@ INSERT INTO store.books (id, details) VALUES
 
 ## Query JSON documents
 
-You can list all the row inserted using the command below.
+You can list all the rows inserted using the following command:
 
 ```sql
 ycqlsh> SELECT * FROM store.books;
@@ -219,7 +219,6 @@ ycqlsh> SELECT * FROM store.books WHERE id = 4;
 ----+------------------------------------------------------------------------------------------------------------------------------------------------------
   4 | {"author":{"first_name":"Steve","last_name":"Dickens"},"editors":["Robert","Jack","Melisa"],"genre":"novel","language":"English","name":"Great Expectations","year":1950}
 ```
-
 
 ## Upserts
 

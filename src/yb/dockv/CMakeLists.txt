@@ -36,6 +36,7 @@ set(DOCKV_SRCS
     pg_key_decoder.cc
     pg_row.cc
     packed_row.cc
+    packed_value.cc
     partial_row.cc
     partition.cc
     primitive_value.cc
@@ -44,6 +45,7 @@ set(DOCKV_SRCS
     schema_packing.cc
     subdocument.cc
     value.cc
+    value_packing_v2.cc
     )
 
 set(DOCKV_DEPS dockv_proto yb_common yb_pggate_util yb_util)

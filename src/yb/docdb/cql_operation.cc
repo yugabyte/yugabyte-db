@@ -225,7 +225,7 @@ Status FindMemberForIndex(const QLColumnValuePB& column_value,
 
   int64_t array_index;
   if (document->IsArray()) {
-    util::VarInt varint;
+    VarInt varint;
     RETURN_NOT_OK(varint.DecodeFromComparable(
         column_value.json_args(index).operand().value().varint_value()));
     array_index = VERIFY_RESULT(varint.ToInt64());
@@ -237,7 +237,7 @@ Status FindMemberForIndex(const QLColumnValuePB& column_value,
     std::advance(*valueit, array_index);
   } else if (document->IsObject()) {
     if (!is_insert) {
-      util::VarInt varint;
+      VarInt varint;
       auto status =
         varint.DecodeFromComparable(column_value.json_args(index).operand().value().varint_value());
       if (status.ok()) {

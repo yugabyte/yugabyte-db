@@ -34,7 +34,7 @@ Enable session logging for all commands except MISC and raise audit log messages
 
 ## Example
 
-In this example session audit logging is used for logging DDL and SELECT statements. Note that the insert statement is not logged because the WRITE class is not enabled.
+In this example, session audit logging is used for logging DDL and SELECT statements. Note that the insert statement is not logged because the WRITE class is not enabled.
 
 SQL statements are shown below.
 

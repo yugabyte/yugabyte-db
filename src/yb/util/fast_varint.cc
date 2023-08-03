@@ -21,7 +21,6 @@
 using std::string;
 
 namespace yb {
-namespace util {
 
 namespace {
 
@@ -375,5 +374,34 @@ Result<uint64_t> FastDecodeUnsignedVarInt(const Slice& slice) {
   return result;
 }
 
-}  // namespace util
+uint8_t* EncodeFieldLength(uint32_t len, uint8_t* out) {
+  if (len < 0x80) {
+    *out = len << 1;
+    return ++out;
+  }
+
+#ifdef IS_LITTLE_ENDIAN
+  len = (len << 1) | 1;
+  memcpy(out, &len, sizeof(uint32_t));
+  return out + sizeof(uint32_t);
+#else
+  #error "Big endian not implemented"
+#endif
+}
+
+std::pair<uint32_t, const uint8_t*> DecodeFieldLength(const uint8_t* inp) {
+#ifdef IS_LITTLE_ENDIAN
+  uint32_t result;
+  ANNOTATE_IGNORE_READS_BEGIN();
+  memcpy(&result, inp, sizeof(uint32_t));
+  ANNOTATE_IGNORE_READS_END();
+  if ((result & 1) == 0) {
+    return std::pair((result & 0xff) >> 1, ++inp);
+  }
+  return std::pair(result >> 1, inp + sizeof(uint32_t));
+#else
+  #error "Big endian not implemented"
+#endif
+}
+
 }  // namespace yb

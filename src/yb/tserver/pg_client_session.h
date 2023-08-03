@@ -109,6 +109,8 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
 
   std::shared_ptr<CountDownLatch> ProcessSharedRequest(size_t size, SharedExchange* exchange);
 
+  const TransactionId* GetTransactionId() const;
+
   #define PG_CLIENT_SESSION_METHOD_DECLARE(r, data, method) \
   Status method( \
       const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
@@ -138,7 +140,19 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
   client::YBClient& client();
   client::YBSessionPtr& EnsureSession(PgClientSessionKind kind);
   client::YBSessionPtr& Session(PgClientSessionKind kind);
-  client::YBTransactionPtr& Transaction(PgClientSessionKind kind);
+  template <class T>
+  static auto& DoTransaction(T* that, PgClientSessionKind kind) {
+    return that->sessions_[to_underlying(kind)].transaction;
+  }
+
+  client::YBTransactionPtr& Transaction(PgClientSessionKind kind) {
+    return DoTransaction(this, kind);
+  }
+
+  const client::YBTransactionPtr& Transaction(PgClientSessionKind kind) const {
+    return DoTransaction(this, kind);
+  }
+
   Status CheckPlainSessionReadTime();
 
   // Set the read point to the databases xCluster safe time if consistent reads are enabled

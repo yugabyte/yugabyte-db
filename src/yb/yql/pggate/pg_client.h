@@ -35,6 +35,7 @@
 #include "yb/tserver/pg_client.fwd.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/lw_function.h"
 #include "yb/util/monotime.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
@@ -81,6 +82,8 @@ class PgClient {
   void Shutdown();
 
   void SetTimeout(MonoDelta timeout);
+
+  uint64_t SessionID() const;
 
   Result<PgTableDescPtr> OpenTable(
       const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time);
@@ -170,6 +173,11 @@ class PgClient {
 
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid);
+
+  using ActiveTransactionCallback = LWFunction<Status(
+      const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;
+  Status EnumerateActiveTransactions(
+      const ActiveTransactionCallback& callback, bool for_current_session_only = false) const;
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DECLARE(r, data, method) \
   Status method(                             \

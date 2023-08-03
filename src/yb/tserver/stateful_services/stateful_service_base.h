@@ -115,6 +115,7 @@ class StatefulServiceBase {
   const std::string service_name_;
   const StatefulServiceKind service_kind_;
 
+  std::atomic_bool initialized_ = false;
   std::atomic_bool shutdown_ = false;
   std::atomic_bool is_active_ = false;
   mutable std::shared_mutex service_state_mutex_;

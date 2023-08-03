@@ -12,7 +12,8 @@ from ybops.cloud.common.method import ListInstancesMethod, CreateInstancesMethod
     ProvisionInstancesMethod, DestroyInstancesMethod, AbstractMethod, \
     AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod, AccessDeleteKeyMethod, \
     CreateRootVolumesMethod, ReplaceRootVolumeMethod, ChangeInstanceTypeMethod, \
-    UpdateMountedDisksMethod, ConsoleLoggingErrorHandler, DeleteRootVolumesMethod, UpdateDiskMethod
+    UpdateMountedDisksMethod, ConsoleLoggingErrorHandler, DeleteRootVolumesMethod, \
+    UpdateDiskMethod, HardRebootInstancesMethod
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.cloud.aws.utils import get_yb_sg_name, create_dns_record_set, edit_dns_record_set, \
     delete_dns_record_set, list_dns_record_set, get_root_label
@@ -275,31 +276,11 @@ class AwsResumeInstancesMethod(AbstractInstancesMethod):
         self.cloud.start_instance(host_info, server_ports)
 
 
-class AwsHardRebootInstancesMethod(AbstractInstancesMethod):
+class AwsHardRebootInstancesMethod(HardRebootInstancesMethod):
     def __init__(self, base_command):
-        super(AwsHardRebootInstancesMethod, self).__init__(base_command, "hard_reboot")
-
-    def add_extra_args(self):
-        super(AwsHardRebootInstancesMethod, self).add_extra_args()
-
-    def callback(self, args):
-        instance = self.cloud.get_host_info(args)
-        if not instance:
-            raise YBOpsRuntimeError("Could not find host {} to hard reboot".format(
-                args.search_pattern))
-        host_info = vars(args)
-        host_info.update(instance)
-        instance_state = host_info['instance_state']
-        if instance_state not in ('running', 'stopping', 'stopped', 'pending'):
-            raise YBOpsRuntimeError("Instance is in invalid state '{}' for attempting a hard reboot"
-                                    .format(instance_state))
-        if instance_state in ('running', 'stopping'):
-            logging.info("Stopping instance {}".format(args.search_pattern))
-            self.cloud.stop_instance(host_info)
-        logging.info("Starting instance {}".format(args.search_pattern))
-        self.update_ansible_vars_with_args(args)
-        server_ports = self.get_server_ports_to_check(args)
-        self.cloud.start_instance(host_info, server_ports)
+        super(AwsHardRebootInstancesMethod, self).__init__(base_command)
+        self.valid_states = ('running', 'stopping', 'stopped', 'pending')
+        self.valid_stoppable_states = ('running', 'stopping')
 
 
 class AwsTagsMethod(AbstractInstancesMethod):

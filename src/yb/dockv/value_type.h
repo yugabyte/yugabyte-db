@@ -194,6 +194,7 @@ namespace yb::dockv {
     ((kPackedRow, 'z')) /* ASCII code 122 */ \
     \
     ((kObject, '{'))  /* ASCII code 123 */ \
+    ((kPackedRowV2, '|')) /* ASCII code 124 */ \
     \
     /* This is used for sanity checking. */ \
     ((kInvalid, 127)) \
@@ -301,6 +302,10 @@ inline bool IsMergeRecord(const Slice& value) {
 
 inline bool IsColumnId(KeyEntryType type) {
   return type == KeyEntryType::kColumnId || type == KeyEntryType::kSystemColumnId;
+}
+
+inline bool IsPackedRow(ValueEntryType type) {
+  return type == ValueEntryType::kPackedRow || type == ValueEntryType::kPackedRowV2;
 }
 
 }  // namespace yb::dockv

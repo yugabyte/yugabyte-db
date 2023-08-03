@@ -60,6 +60,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
@@ -556,6 +557,7 @@ public class NodeManagerTest extends FakeDBApplication {
         .thenReturn("/tmp/ansible_tmp/");
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ybTmpDirectoryPath))).thenReturn("/tmp");
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.installLocalesDbNodes))).thenReturn(false);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.oidcFeatureEnhancements))).thenReturn(true);
   }
 
   private String getMountPoints(AnsibleConfigureServers.Params taskParam) {
@@ -2271,7 +2273,16 @@ public class NodeManagerTest extends FakeDBApplication {
         params.gflags.put(
             GFlagsUtil.YSQL_HBA_CONF_CSV,
             "host all all ::1/128 trust,"
-                + "\"adb=\"\"cc,bb,aa\"\" bda=\"\"bb,aa,cc\"\" \""); // will be merged
+                + "\"local adb=\"\"cc,bb,aa\"\" bda=\"\"bb,aa,cc\"\" \","
+                + "\"host all all jwt jwks={\"a\": \"b\"} jwt_audiences=\"yb,yb2\""
+                + " jwt_issuers=\"\"issuers\"\"\","
+                + "host all all jwt jwks={\"c\": \"d\"} jwt_audiences=\"yb1\""
+                + " jwt_issuers=\"issuers1,issuers2\","
+                + "hostgssenc all all jwt jwks={\"c\": \"d\"} jwt_audiences=\"yb1\""
+                + " jwt_issuers=\"\"issuers1\"\","
+                + "host all all all trust,"
+                + "hostssl all all jwt jwks={\"c\": \"d\"} jwt_audiences=\"yb1,yb\""
+                + " jwt_issuers=\"issuers1,issuers2,issuers3\""); // will be merged
         params.gflags.put(GFlagsUtil.UNDEFOK, "use_private_ip"); // will be merged
         params.gflags.put(GFlagsUtil.CSQL_PROXY_BIND_ADDRESS, "0.0.0.0:1990"); // port replace
         params.gflags.put(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, "0.1.2.3"); // port append
@@ -2307,11 +2318,32 @@ public class NodeManagerTest extends FakeDBApplication {
         Map<String, String> gflagsProcessed = extractGFlags(captor.getAllValues().get(1));
         Map<String, String> copy = new TreeMap<>(params.gflags);
         copy.put(GFlagsUtil.UNDEFOK, "use_private_ip,enable_ysql");
+        String jwksFileName1 = "";
+        String jwksFileName2 = "";
+        try {
+          jwksFileName1 = FileUtils.computeHashForAFile("{\"a\": \"b\"}", 10);
+          jwksFileName2 = FileUtils.computeHashForAFile("{\"c\": \"d\"}", 10);
+          jwksFileName1 = "/home/yugabyte" + GFlagsUtil.GFLAG_REMOTE_FILES_PATH + jwksFileName1;
+          jwksFileName2 = "/home/yugabyte" + GFlagsUtil.GFLAG_REMOTE_FILES_PATH + jwksFileName2;
+        } catch (NoSuchAlgorithmException e) {
+          throw new RuntimeException("Error generating fileName " + e.getMessage());
+        }
         copy.put(
             GFlagsUtil.YSQL_HBA_CONF_CSV,
-            "host all all ::1/128 trust,"
-                + "\"adb=\"\"cc,bb,aa\"\" bda=\"\"bb,aa,cc\"\" \","
-                + "local all yugabyte trust");
+            String.format(
+                "host all all ::1/128 trust,"
+                    + "\"local adb=\"\"cc,bb,aa\"\" bda=\"\"bb,aa,cc\"\" \","
+                    + "\"host all all jwt jwt_jwks_path=\"\"%s\"\" jwt_audiences=\"\"yb,yb2\"\""
+                    + " jwt_issuers=\"\"issuers\"\"\","
+                    + "\"host all all jwt jwt_jwks_path=\"\"%s\"\" jwt_audiences=\"\"yb1\"\""
+                    + " jwt_issuers=\"\"issuers1,issuers2\"\"\","
+                    + "\"hostgssenc all all jwt jwt_jwks_path=\"\"%s\"\" jwt_audiences=\"\"yb1\"\""
+                    + " jwt_issuers=\"\"issuers1\"\"\","
+                    + "host all all all trust,"
+                    + "\"hostssl all all jwt jwt_jwks_path=\"\"%s\"\" jwt_audiences=\"\"yb1,yb\"\""
+                    + " jwt_issuers=\"\"issuers1,issuers2,issuers3\"\"\","
+                    + "local all yugabyte trust",
+                jwksFileName1, jwksFileName2, jwksFileName2, jwksFileName2));
         copy.remove(GFlagsUtil.FS_DATA_DIRS);
         copy.put(GFlagsUtil.CSQL_PROXY_BIND_ADDRESS, "0.0.0.0:9042");
         copy.put(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, "0.1.2.3:5433");
@@ -2322,9 +2354,20 @@ public class NodeManagerTest extends FakeDBApplication {
         copy2.put(GFlagsUtil.UNDEFOK, "use_private_ip,enable_ysql");
         copy2.put(
             GFlagsUtil.YSQL_HBA_CONF_CSV,
-            "host all all ::1/128 trust,"
-                + "\"adb=\"\"cc,bb,aa\"\" bda=\"\"bb,aa,cc\"\" \","
-                + "local all yugabyte trust");
+            String.format(
+                "host all all ::1/128 trust,"
+                    + "\"local adb=\"\"cc,bb,aa\"\" bda=\"\"bb,aa,cc\"\" \","
+                    + "\"host all all jwt jwt_jwks_path=\"\"%s\"\" jwt_audiences=\"\"yb,yb2\"\""
+                    + " jwt_issuers=\"\"issuers\"\"\","
+                    + "\"host all all jwt jwt_jwks_path=\"\"%s\"\" jwt_audiences=\"\"yb1\"\""
+                    + " jwt_issuers=\"\"issuers1,issuers2\"\"\","
+                    + "\"hostgssenc all all jwt jwt_jwks_path=\"\"%s\"\" jwt_audiences=\"\"yb1\"\""
+                    + " jwt_issuers=\"\"issuers1\"\"\","
+                    + "host all all all trust,"
+                    + "\"hostssl all all jwt jwt_jwks_path=\"\"%s\"\" jwt_audiences=\"\"yb1,yb\"\""
+                    + " jwt_issuers=\"\"issuers1,issuers2,issuers3\"\"\","
+                    + "local all yugabyte trust",
+                jwksFileName1, jwksFileName2, jwksFileName2, jwksFileName2));
         copy2.put(GFlagsUtil.CSQL_PROXY_BIND_ADDRESS, "0.0.0.0:9042");
         copy2.put(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, "0.1.2.3:5433");
         assertEquals(copy2, new TreeMap<>(gflagsNotFiltered));

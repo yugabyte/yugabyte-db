@@ -620,6 +620,7 @@ The following backup and snapshot commands are available:
 * [**list_snapshot_restorations**](#list-snapshot-restorations) returns a list of all snapshot restorations
 * [**export_snapshot**](#export-snapshot) creates a snapshot metadata file
 * [**import_snapshot**](#import-snapshot) imports a snapshot metadata file
+* [**import_snapshot_selective**](#import-snapshot-selective) imports a specified snapshot metadata file
 * [**delete_snapshot**](#delete-snapshot) deletes a snapshot's information
 * [**create_snapshot_schedule**](#create-snapshot-schedule) sets the schedule for snapshot creation
 * [**list_snapshot_schedules**](#list-snapshot-schedules) returns a list of all snapshot schedules
@@ -951,6 +952,52 @@ The *keyspace* and the *table* can be different from the exported one.
 ./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     import_snapshot test_tb.snapshot ydb test_tb
+```
+
+```output
+Read snapshot meta file test_tb.snapshot
+Importing snapshot 4963ed18fc1e4f1ba38c8fcf4058b295 (COMPLETE)
+Target imported table name: ydb.test_tb
+Table being imported: ydb.test_tb
+Successfully applied snapshot.
+Object            Old ID                            New ID
+Keyspace          c478ed4f570841489dd973aacf0b3799  c478ed4f570841489dd973aacf0b3799
+Table             ff4389ee7a9d47ff897d3cec2f18f720  ff4389ee7a9d47ff897d3cec2f18f720
+Tablet 0          cea3aaac2f10460a880b0b4a2a4b652a  cea3aaac2f10460a880b0b4a2a4b652a
+Tablet 1          e509cf8eedba410ba3b60c7e9138d479  e509cf8eedba410ba3b60c7e9138d479
+Snapshot          4963ed18fc1e4f1ba38c8fcf4058b295  4963ed18fc1e4f1ba38c8fcf4058b295
+```
+
+#### import_snapshot_selective
+
+Imports only the specified tables from the specified snapshot metadata file.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    import_snapshot_selective <file_name> \
+    [<keyspace> <table_name> [<keyspace> <table_name>]...]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *file_name*: The name of the snapshot file to import
+* *keyspace*: The name of the database or keyspace
+* *table_name*: The name of the table
+
+{{< note title="Note" >}}
+
+The *keyspace* can be different from the exported one. The name of the table needs to be the same.
+
+{{< /note >}}
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    import_snapshot_selective test_tb.snapshot ydb test_tb
 ```
 
 ```output

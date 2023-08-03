@@ -856,7 +856,8 @@ Status PgClientSession::FinishTransaction(
     metadata = VERIFY_RESULT(GetDdlTransactionMetadata(true, context->GetClientDeadline()));
     LOG_IF(DFATAL, !metadata) << "metadata is required";
   }
-  const auto txn_value = std::move(txn);
+  client::YBTransactionPtr txn_value;
+  txn.swap(txn_value);
   Session(kind)->SetTransaction(nullptr);
 
   if (req.commit()) {
@@ -1272,6 +1273,18 @@ client::YBClient& PgClientSession::client() {
   return client_;
 }
 
+const TransactionId* PgClientSession::GetTransactionId() const {
+  auto txn = Transaction(PgClientSessionKind::kDdl);
+  if (!txn) {
+    txn = Transaction(PgClientSessionKind::kPlain);
+    if (!txn) {
+      return nullptr;
+    }
+  }
+
+  return &txn->id();
+}
+
 Result<client::YBTransactionPtr> PgClientSession::RestartTransaction(
     client::YBSession* session, client::YBTransaction* transaction) {
   if (!transaction) {
@@ -1609,10 +1622,6 @@ client::YBSessionPtr& PgClientSession::EnsureSession(PgClientSessionKind kind) {
 
 client::YBSessionPtr& PgClientSession::Session(PgClientSessionKind kind) {
   return sessions_[to_underlying(kind)].session;
-}
-
-client::YBTransactionPtr& PgClientSession::Transaction(PgClientSessionKind kind) {
-  return sessions_[to_underlying(kind)].transaction;
 }
 
 Status PgClientSession::CheckPlainSessionReadTime() {
