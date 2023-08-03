@@ -34,6 +34,7 @@
 
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/sys_catalog_constants.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_context.h"
@@ -498,6 +499,10 @@ class PgClientServiceImpl::Impl {
       auto& node_entry = (*resp->mutable_transactions_by_node())[old_txn->host_node_uuid()];
       node_entry.add_transaction_ids(txn_id);
       for (const auto& tablet_id : old_txn->tablets()) {
+        // DDL statements might have master tablet as one of their involved tablets, skip it.
+        if (tablet_id == master::kSysCatalogTabletId) {
+          continue;
+        }
         auto& tablet_entry = (*lock_status_req.mutable_transactions_by_tablet())[tablet_id];
         auto* transaction = tablet_entry.add_transactions();
         transaction->set_id(txn_id);
