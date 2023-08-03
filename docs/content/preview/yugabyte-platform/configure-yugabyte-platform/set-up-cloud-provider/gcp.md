@@ -105,7 +105,7 @@ Using an instance template allows you to customize instance features that are no
 - Sole tenancy
 - Confidential VM service
 
-For instructions on creating an instance template on Google Cloud, refer to [Create a instance templates](https://cloud.google.com/compute/docs/instance-templates/create-instance-templates) in the Google documentation.
+For instructions on creating an instance template on Google Cloud, refer to [Create instance templates](https://cloud.google.com/compute/docs/instance-templates/create-instance-templates) in the Google documentation.
 
 When creating the template, ensure that you create the template under the right project and choose the correct network and subnetwork under **Advanced Options** > **Networking**.
 
