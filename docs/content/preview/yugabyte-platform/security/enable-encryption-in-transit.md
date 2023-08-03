@@ -40,7 +40,7 @@ YugabyteDB Anywhere can create self-signed certificates for each universe. These
 
 YugabyteDB Anywhere retains the root certificate and the root private key for all interactions with the cluster.
 
-### Create custom organization name in self-signed certificates
+### Customize the organization name in self-signed certificates
 
 YugabyteDB Anywhere automatically creates self-signed certificates when you run some workflows, such as create universe. The organization name in certificates is set to `example.com` by default.
 
