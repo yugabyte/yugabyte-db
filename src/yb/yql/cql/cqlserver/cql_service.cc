@@ -211,7 +211,7 @@ void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {
     return;
   }
   (**processor).auh_metadata().top_level_request_id = {util::AUHRandom::GenerateRandom64(), util::AUHRandom::GenerateRandom64()};
-  (**processor).auh_metadata().top_level_node_id = yb::ToString(inbound_call->remote_address());
+  (**processor).auh_metadata().client_node_ip = yb::ToString(inbound_call->remote_address());
   MonoTime got_processor = MonoTime::Now();
   cql_metrics_->time_to_get_cql_processor_->Increment(
       got_processor.GetDeltaSince(start).ToMicroseconds());
