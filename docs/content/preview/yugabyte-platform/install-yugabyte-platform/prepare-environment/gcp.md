@@ -124,7 +124,7 @@ You need to create an instance to run YugabyteDB Anywhere. To do this, from your
 - Specify whether to use the default or your own VPC.
 - Use the **Networking** tab to add `yugabyte-server` as the network tag (or the custom name you chose when setting up the firewall rules).
 
-Once the instance has been created, use the **SSH Keys** tab to add a custom public key and a login user to this instance. To do so, you start by creating a key-pair, as follows:
+After the instance has been created, use the **SSH Keys** tab to add a custom public key and a login user to this instance. To do so, you start by creating a key-pair, as follows:
 
 ```sh
 ssh-keygen -t rsa -f ~/.ssh/yugabyte-1-gcp -C centos
@@ -140,9 +140,9 @@ Enter the contents of `yugabyte-1-gcp.pub` as the value for this field.
 
 For more information, see the following GCP documentation:
 
--  [Cloud Key Management Service](https://cloud.google.com/blog/products/gcp/protect-your-compute-engine-resources-with-keys-managed-in-cloud-key-management-service)
+- [Cloud Key Management Service](https://cloud.google.com/blog/products/gcp/protect-your-compute-engine-resources-with-keys-managed-in-cloud-key-management-service)
 
--  [Choosing an access method](https://cloud.google.com/compute/docs/instances/access-overview#metadatavalues) provides details on how to create a new SSH key pair, as well as the expected format for this field: `ssh-rsa [KEY_VALUE] [USERNAME]`.
+- [Choosing an access method](https://cloud.google.com/compute/docs/instances/access-overview#metadatavalues) provides details on how to create a new SSH key pair, as well as the expected format for this field: `ssh-rsa [KEY_VALUE] [USERNAME]`.
 
 ## Connect to the YugabyteDB Anywhere server
 
