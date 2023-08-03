@@ -44,7 +44,7 @@ The following table describes the **Slow Queries** column values.
 
 You can use the **Slow Queries** dashboard as follows:
 
-- Navigate to the **Universes**, select your universe, then select **Queries > Slow Queries**, as per the following illustration:
+- Navigate to **Universes**, select your universe, then select **Queries > Slow Queries**, as per the following illustration:
 
   ![Initial layout](/images/yp/alerts-monitoring/slow-queries/initial-table-view.png)
 
