@@ -57,7 +57,7 @@ You can use the **Slow Queries** dashboard as follows:
 
   ![View query statement](/images/yp/alerts-monitoring/slow-queries/query-info-panel.png)<br>
 
-  You can find additional prefiltered navigation links from different pages to the **Slow Queries** page. For example, from the **Overview** page to the **Queries** page, when you click the link to Top SQL Statements, as per the folloiwng illustration:<br>
+  You can find additional prefiltered navigation links from different pages to the **Slow Queries** page. For example, from the **Overview** page to the **Queries** page, when you click the link to Top SQL Statements, as per the following illustration:<br>
 
   ![Overview page showing slow queries](/images/yp/alerts-monitoring/slow-queries/overview-showing-link.png)<br>
 
