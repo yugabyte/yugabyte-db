@@ -68,4 +68,4 @@ You can use the **Slow Queries** dashboard as follows:
 
   ![Overview page showing slow queries](/images/yp/alerts-monitoring/slow-queries/overview-showing-link.png)
 
-  Or, for example, the **Nodes** page's each node **Actions** contains a link to the **Slow Queries** page.
+  You can also access slow queries from each node in the **Nodes** page by clicking its **Actions** button.
