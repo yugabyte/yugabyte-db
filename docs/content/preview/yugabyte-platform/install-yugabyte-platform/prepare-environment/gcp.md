@@ -60,7 +60,7 @@ type: docs
 
 ## Create a project (optional)
 
-A project forms the basis for creating, enabling and using all GCP services, managing APIs, enabling billing, adding and removing collaborators, and managing permissions.
+A project forms the basis for creating, enabling, and using all GCP services, managing APIs, enabling billing, adding and removing collaborators, and managing permissions.
 
 For instructions on how to create a project using [GCP cloud resource manager](https://console.cloud.google.com/cloud-resource-manager), see [Create and managing projects](https://cloud.google.com/resource-manager/docs/creating-managing-projects) in the GCP documentation.
 

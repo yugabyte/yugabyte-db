@@ -89,7 +89,9 @@ Note: YugabyteDB Anywhere needs network connectivity to the VMs, service account
 
 ### GCP instance templates
 
-GCP offers [instance templates](https://cloud.google.com/compute/docs/instance-templates) as a way to specify a set of arbitrary instance parameters, which can then be used when creating instances in Google Cloud. Instance templates define the machine type, boot disk image or container image, labels, startup script, and other instance properties. You can optionally add a GCP instance template as a region-level property when creating a GCP provider in YugabyteDB Anywhere. YugabyteDB Anywhere can then use the configuration defined by the template to create the nodes when deploying a universe.
+You can optionally add a GCP [instance template](https://cloud.google.com/compute/docs/instance-templates) as a region-level property when creating a GCP provider in YugabyteDB Anywhere.
+
+Instance templates provide a way to specify a set of arbitrary instance parameters, which can then be used when creating instances in Google Cloud. Instance templates define the machine type, boot disk image or container image, labels, startup script, and other instance properties. When a template is added to a GCP provider, YugabyteDB Anywhere will use most (but not all) of the configuration defined by the template to create the nodes when deploying a universe.
 
 {{< note title="Note" >}}
 Instance templates are only supported in YugabyteDB Anywhere version 2.18.2.0 and later.
@@ -107,7 +109,7 @@ For instructions on creating an instance template on Google Cloud, refer to [Cre
 
 When creating the template, ensure that you create the template under the right project and choose the correct network and sub-network under **Advanced Options** > **Networking**.
 
-Note that not all template customizations are honored by YugabyteDB Anywhere when creating a universe using a provider with a template. The following fields can't be overridden by an instance template:
+Note that not all template customizations are honored by YugabyteDB Anywhere when creating a universe using a provider with a template. The following properties can't be overridden by an instance template:
 
 <!-- | Field | Description |
 | :---- | :----|
