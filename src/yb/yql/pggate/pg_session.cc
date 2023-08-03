@@ -917,7 +917,7 @@ void PgSession::SetQueryId(int64_t query_id) {
 }
 
 void PgSession::SetTopLevelRequestId() {
-  auh_metadata_.top_level_request_id = {yb::AUHRandom::GenerateRandom64(), yb::AUHRandom::GenerateRandom64()};
+  auh_metadata_.top_level_request_id = {util::AUHRandom::GenerateRandom64(), util::AUHRandom::GenerateRandom64()};
   pg_callbacks_.ProcSetTopRequestId(&auh_metadata_.top_level_request_id[0]);
 }
 
