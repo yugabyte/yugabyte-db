@@ -379,6 +379,9 @@ Status FindTabletFollowers(const TabletServerMapUnowned& tablet_servers,
                            const MonoDelta& timeout,
                            std::vector<TServerDetails*>* followers);
 
+Result<std::unordered_set<TServerDetails*>> FindTabletPeers(
+    const TabletServerMap& tablet_servers, const std::string& tablet_id, const MonoDelta& timeout);
+
 // Start an election on the specified tserver.
 // 'timeout' only refers to the RPC asking the peer to start an election. The
 // StartElection() RPC does not block waiting for the results of the election,
