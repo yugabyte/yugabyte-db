@@ -1851,6 +1851,33 @@ class RebootInstancesMethod(AbstractInstancesMethod):
             self.cloud.reboot_instance(host_info, server_ports)
 
 
+class HardRebootInstancesMethod(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(HardRebootInstancesMethod, self).__init__(base_command, "hard_reboot")
+
+    def add_extra_args(self):
+        super(HardRebootInstancesMethod, self).add_extra_args()
+
+    def callback(self, args):
+        instance = self.cloud.get_host_info(args)
+        if not instance:
+            raise YBOpsRuntimeError("Could not find host {} to hard reboot".format(
+                args.search_pattern))
+        host_info = vars(args)
+        host_info.update(instance)
+        instance_state = host_info['instance_state']
+        if instance_state not in self.valid_states:
+            raise YBOpsRuntimeError("Instance is in invalid state '{}' for attempting a hard reboot"
+                                    .format(instance_state))
+        if instance_state in self.valid_stoppable_states:
+            logging.info("Stopping instance {}".format(args.search_pattern))
+            self.cloud.stop_instance(host_info)
+        logging.info("Starting instance {}".format(args.search_pattern))
+        self.update_ansible_vars_with_args(args)
+        server_ports = self.get_server_ports_to_check(args)
+        self.cloud.start_instance(host_info, server_ports)
+
+
 class RunHooks(AbstractInstancesMethod):
     def __init__(self, base_command):
         super(RunHooks, self).__init__(base_command, "runhooks")
