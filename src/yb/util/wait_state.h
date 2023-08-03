@@ -189,20 +189,25 @@ struct AUHMetadata {
 struct AUHAuxInfo {
   std::string tablet_id;
   std::string table_id;
+  std::string method;
 
   std::string ToString() const;
+
+  void UpdateFrom(const AUHAuxInfo &other);
 
   template <class PB>
   void ToPB(PB* pb) const {
     pb->set_tablet_id(tablet_id);
     pb->set_table_id(table_id);
+    pb->set_method(method);
   }
 
   template <class PB>
   static AUHAuxInfo FromPB(const PB& pb) {
     return AUHAuxInfo{
       .tablet_id = pb.tablet_id(),
-      .table_id = pb.table_id()
+      .table_id = pb.table_id(),
+      .method = pb.method()
     };
   }
 };
@@ -223,6 +228,7 @@ class WaitStateInfo {
   static void SetCurrentWaitState(WaitStateInfoPtr);
 
   void UpdateMetadata(const AUHMetadata& meta) EXCLUDES(mutex_);
+  void UpdateAuxInfo(const AUHAuxInfo& aux) EXCLUDES(mutex_);
   void set_current_request_id(int64_t id) EXCLUDES(mutex_);
   void set_top_level_request_id(uint64_t id) EXCLUDES(mutex_);
 

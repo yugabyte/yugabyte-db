@@ -1586,6 +1586,7 @@ YBCStatus YBCActiveUniverseHistory(YBCAUHDescriptor **rpcs, size_t* count) {
         .aux_info = {
           .table_id = YBCPAllocStdString(info.aux_info.table_id),
           .tablet_id = YBCPAllocStdString(info.aux_info.tablet_id),
+          .method = YBCPAllocStdString(info.aux_info.method),
         },
         .wait_status_code_as_string = YBCPAllocStdString(info.wait_status_code_as_string),
       };

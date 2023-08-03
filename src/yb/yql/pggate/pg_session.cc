@@ -908,6 +908,7 @@ Status PgSession::SetAUHMetadata(const char* remote_host, int remote_port) {
   pg_callbacks_.ProcSetNodeUUID(node_uuid.c_str());
   auh_metadata_.top_level_node_id = node_uuid;
   auh_metadata_.client_node_ip = yb::Format("$0:$1", remote_host, remote_port);
+  auh_metadata_.top_level_node_id = node_uuid;
   return Status::OK();
 }
 

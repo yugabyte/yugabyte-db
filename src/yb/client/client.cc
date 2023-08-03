@@ -2211,37 +2211,6 @@ Result<bool> YBClient::CheckIfPitrActive() {
   return data_->CheckIfPitrActive(deadline);
 }
 
-std::vector<WaitStateInfoPB> YBClient::ActiveUniverseHistory() {
-  rpc::DumpRunningRpcsRequestPB dump_req;
-  rpc::DumpRunningRpcsResponsePB dump_resp;
-
-  dump_req.set_include_traces(false);
-  dump_req.set_get_wait_state(true);
-  dump_req.set_dump_timed_out(false);
-
-  WARN_NOT_OK(messenger()->DumpRunningRpcs(dump_req, &dump_resp), "DumpRunningRpcs failed");
-
-  std::vector<WaitStateInfoPB> res;
-  
-  for (auto conns : dump_resp.inbound_connections()) {
-    for (auto call : conns.calls_in_flight()) {
-      if (call.has_header() && call.header().remote_method().method_name() != "ActiveUniverseHistory") {
-        res.push_back(call.wait_state());
-      }
-    }
-  }
-
-  for (auto conns : dump_resp.outbound_connections()) {
-    for (auto call : conns.calls_in_flight()) {
-      if (call.has_header() && call.header().remote_method().method_name() != "ActiveUniverseHistory") {
-        res.push_back(call.wait_state());
-      }
-    }
-  }
-
-  return res;
-}
-
 Result<std::vector<YBTableName>> YBClient::ListTables(const std::string& filter,
                                                       bool exclude_ysql) {
   ListTablesRequestPB req;
