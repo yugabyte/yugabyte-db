@@ -234,6 +234,8 @@ Result<CQLProcessor*> CQLServiceImpl::GetProcessor() {
   }
 
   *pos = std::make_unique<CQLProcessor>(this, pos);
+  (**pos).auh_metadata().client_node_ip = "cql_ip";
+  (**pos).auh_metadata().top_level_node_id = "cql_node_id";
   return pos->get();
 }
 

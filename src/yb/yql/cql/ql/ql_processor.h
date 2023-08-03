@@ -96,6 +96,10 @@ class QLProcessor : public Rescheduler {
   void RunAsync(const std::string& stmt, const StatementParameters& params,
                 StatementExecutedCallback cb, bool reparsed = false);
 
+  util::AUHMetadata& auh_metadata() {
+    return ql_env_.auh_metadata();
+  }
+
  protected:
   void SetCurrentSession(const QLSessionPtr& ql_session) {
     ql_env_.set_ql_session(ql_session);

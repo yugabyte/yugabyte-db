@@ -399,6 +399,8 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
   VLOG(1) << "PREPARE " << req.query();
   const CQLMessage::QueryId query_id = CQLStatement::GetQueryId(
       ql_env_.CurrentKeyspace(), req.query());
+  // Can the CQLMessage::QueryId fit inside a 64 bit uint?
+  ql_env_.auh_metadata().query_id = std::stoull(query_id);
   // To prevent multiple clients from preparing the same new statement in parallel and trying to
   // cache the same statement (a typical "login storm" scenario), each caller will try to allocate
   // the statement in the cached statement first. If it already exists, the existing one will be
@@ -435,6 +437,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
 }
 
 unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const ExecuteRequest& req) {
+  ql_env_.auh_metadata().query_id = std::stoull(req.query_id());
   VLOG(1) << "EXECUTE " << b2a_hex(req.query_id());
   auto stmt_res = GetPreparedStatement(req.query_id(), req.params().schema_version());
   if (!stmt_res.ok()) {
@@ -447,6 +450,9 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const ExecuteRequest& req) 
 }
 
 unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const QueryRequest& req) {
+  // recalculating query id, expensive?
+  ql_env_.auh_metadata().query_id = std::stoull(CQLStatement::GetQueryId(
+      ql_env_.CurrentKeyspace(), req.query()));
   VLOG(1) << "QUERY " << req.query();
   if (service_impl_->system_cache() != nullptr) {
     auto cached_response = service_impl_->system_cache()->Lookup(req.query());
