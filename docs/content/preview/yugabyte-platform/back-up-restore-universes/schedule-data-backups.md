@@ -54,7 +54,7 @@ Before scheduling a backup of your universe data, create a policy, as follows:
 
     You cannot modify any incremental backup-related property in the schedule; to overwrite any incremental backup property, you have to delete the existing schedule and create a new schedule if needed.
 
-1. Optionally, specify the number of threads that should be available for the backup process.
+1. If you are using YBA version prior to 2.16 to manage universes with YugabyteDB version prior to 2.16, you can optionally specify the number of threads that should be available for the backup process.
 
 1. Click **Create**.
 

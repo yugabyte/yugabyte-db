@@ -103,7 +103,7 @@ To perform an advanced restore, do the following:
 
 1. If the backup involved universes that had [encryption at rest enabled](../../security/enable-encryption-at-rest), then select the KMS configuration to use.
 
-1. Optionally, specify the number of parallel threads that are allowed to run. This can be any number between 1 and 100.
+1. If you are using YBA version prior to 2.16 to manage universes with YugabyteDB version prior to 2.16, you can optionally specify the number of parallel threads that are allowed to run. This can be any number between 1 and 100.
 
 1. If you chose to rename databases/keyspaces, click **Next**, then enter new names for the databases/keyspaces that you want to rename.
 

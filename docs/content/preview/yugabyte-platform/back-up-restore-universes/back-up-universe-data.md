@@ -28,9 +28,9 @@ By default, the list displays all the backups generated for the universe regardl
 
 ## Create backups
 
-The **Backups** page allows you to create new backups that start immediately, as follows:
+The universe **Backups** page allows you to create new backups that start immediately, as follows:
 
-1. Click **Backup now** to open the dialog shown in the following illustration:
+1. Navigate to the universe and select **Backups**, then click **Backup now** to open the dialog shown in the following illustration:
 
     ![Backup](/images/yp/create-backup-new-3.png)
 
@@ -44,7 +44,7 @@ The **Backups** page allows you to create new backups that start immediately, as
 
 1. Specify the period of time during which the backup is to be retained. Note that there's an option to never delete the backup.
 
-1. Optionally, specify the number of threads that should be available for the backup process.
+1. If you are using YBA version prior to 2.16 to manage universes with YugabyteDB version prior to 2.16, you can optionally specify the number of threads that should be available for the backup process.
 
 1. Click **Backup**.
 
