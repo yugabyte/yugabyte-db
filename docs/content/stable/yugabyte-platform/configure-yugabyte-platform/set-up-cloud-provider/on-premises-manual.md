@@ -5,7 +5,7 @@ linkTitle: Set up on-prem nodes manually
 description: Provision the on-premises nodes manually.
 headContent: Provision on-prem nodes manually if you don't have sudo access
 menu:
-  preview_yugabyte-platform:
+  stable_yugabyte-platform:
     identifier: on-premises-manual
     parent: configure-yugabyte-platform
     weight: 20
