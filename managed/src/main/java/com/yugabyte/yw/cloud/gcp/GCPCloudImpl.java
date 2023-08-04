@@ -23,6 +23,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.NLBHealthCheckConfiguration;
 import com.yugabyte.yw.models.helpers.NodeID;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import java.io.IOException;
@@ -351,8 +352,9 @@ public class GCPCloudImpl implements CloudAPI {
       String regionCode,
       String lbName,
       Map<AvailabilityZone, Set<NodeID>> azToNodeIDs,
-      String protocol,
-      List<Integer> ports) {
+      List<Integer> ports,
+      NLBHealthCheckConfiguration healthCheckConfig) {
+    String protocol = healthCheckConfig.getHealthCheckProtocol().toString();
     GCPProjectApiClient apiClient = new GCPProjectApiClient(runtimeConfGetter, provider);
     manageNodeGroup(provider, regionCode, lbName, azToNodeIDs, protocol, ports, apiClient);
   }

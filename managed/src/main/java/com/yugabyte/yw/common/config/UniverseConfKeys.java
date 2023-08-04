@@ -12,6 +12,7 @@ package com.yugabyte.yw.common.config;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.VersionCheckMode;
+import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.NodeManager.SkipCertValidationType;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
@@ -758,5 +759,41 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Number of cores to keep",
           "Controls the configuration to set the number of cores to keep in the Ansible layer",
           ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ensureSyncGetReplicationStatus =
+      new ConfKeyInfo<>(
+          "yb.xcluster.ensure_sync_get_replication_status",
+          ScopeType.UNIVERSE,
+          "Whether to check YBA xCluster object is in sync with DB replication group",
+          "It ensures that the YBA XCluster object for tables that are in replication is "
+              + "in sync with replication group in DB. If they are not in sync and this is true, "
+              + "getting the xCluster object will throw an exception and the user has to resync "
+              + "the xCluster config.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> customHealthCheckPort =
+      new ConfKeyInfo<>(
+          "yb.universe.network_load_balancer.custom_health_check_port",
+          ScopeType.UNIVERSE,
+          "Network Load balancer health check port",
+          "Port to use for health checks performed by the network load balancer."
+              + " -1 indicates default port",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Protocol> customHealthCheckProtocol =
+      new ConfKeyInfo<>(
+          "yb.universe.network_load_balancer.custom_health_check_protocol",
+          ScopeType.UNIVERSE,
+          "Network Load balancer health check protocol",
+          "Protocol to use for health checks performed by the network load balancer",
+          ConfDataType.ProtocolEnum,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> customHealthCheckPath =
+      new ConfKeyInfo<>(
+          "yb.universe.network_load_balancer.custom_health_check_path",
+          ScopeType.UNIVERSE,
+          "Network Load balancer health check path",
+          "Path probed by HTTP/HTTPS health checks performed by the network load balancer",
+          ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }
