@@ -363,8 +363,8 @@ void StatefulServiceBase::ProcessTaskPeriodically() {
   StartPeriodicTaskIfNeeded();
 }
 
-Result<std::shared_ptr<client::YBSession>> StatefulServiceBase::GetYBSession() {
-  auto session = GetYBClient()->NewSession();
+Result<std::shared_ptr<client::YBSession>> StatefulServiceBase::GetYBSession(MonoDelta delta) {
+  auto session = GetYBClient()->NewSession(delta);
   session->SetLeaderTerm(VERIFY_RESULT(GetLeaderTerm()));
   return session;
 }

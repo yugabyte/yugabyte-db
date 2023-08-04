@@ -628,7 +628,7 @@ TEST_F(YbAdminSnapshotScheduleTest, TestTruncateDisallowedWithPitr) {
 TEST_F(YbAdminSnapshotScheduleTest, Delete) {
   auto schedule_id = ASSERT_RESULT(PrepareQl(kRetention, kRetention + 1s));
 
-  auto session = client_->NewSession();
+  auto session = client_->NewSession(60s);
   LOG(INFO) << "Create table";
   ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
       client::Transactional::kTrue, 3, client_.get(), &table_));
@@ -839,7 +839,7 @@ TEST_F(YbAdminSnapshotScheduleTest, CreateIntervalLargerThanRetention) {
 void YbAdminSnapshotScheduleTest::TestUndeleteTable(bool restart_masters) {
   auto schedule_id = ASSERT_RESULT(PrepareQl());
 
-  auto session = client_->NewSession();
+  auto session = client_->NewSession(60s);
   LOG(INFO) << "Create table";
   ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
       client::Transactional::kTrue, 3, client_.get(), &table_));
@@ -897,7 +897,7 @@ TEST_F(YbAdminSnapshotScheduleTest, UndeleteTableWithRestart) {
 TEST_F(YbAdminSnapshotScheduleTest, CleanupDeletedTablets) {
   auto schedule_id = ASSERT_RESULT(PrepareQl(kInterval, kInterval + 1s));
 
-  auto session = client_->NewSession();
+  auto session = client_->NewSession(60s);
   LOG(INFO) << "Create table";
   ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
       client::Transactional::kTrue, 3, client_.get(), &table_));
@@ -3231,7 +3231,7 @@ void YbAdminSnapshotScheduleTest::TestGCHiddenTables() {
   const auto retention = 30s * kTimeMultiplier;
   auto schedule_id = ASSERT_RESULT(PrepareQl(interval, retention));
 
-  auto session = client_->NewSession();
+  auto session = client_->NewSession(60s);
   LOG(INFO) << "Create table";
   ASSERT_NO_FATALS(client::kv_table_test::CreateTable(
       client::Transactional::kTrue, 3, client_.get(), &table_));

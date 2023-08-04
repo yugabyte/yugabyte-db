@@ -321,7 +321,7 @@ class XClusterTestNoParam : public XClusterTestBase {
   }
   Result<SessionTransactionPair> CreateSessionWithTransaction(
       YBClient* client, client::TransactionManager* txn_mgr) {
-    auto session = client->NewSession();
+    auto session = client->NewSession(kRpcTimeout * 1s);
     auto transaction = std::make_shared<client::YBTransaction>(txn_mgr);
     ReadHybridTime read_time;
     RETURN_NOT_OK(transaction->Init(IsolationLevel::SNAPSHOT_ISOLATION, read_time));
@@ -605,7 +605,7 @@ class XClusterTestNoParam : public XClusterTestBase {
   Status WriteWorkload(
       uint32_t start, uint32_t end, YBClient* client, const std::shared_ptr<client::YBTable>& table,
       bool delete_op = false) {
-    auto session = client->NewSession();
+    auto session = client->NewSession(kRpcTimeout * 1s);
     client::TableHandle table_handle;
     RETURN_NOT_OK(table_handle.Open(table->name(), client));
     std::vector<client::YBOperationPtr> ops;
@@ -2296,7 +2296,7 @@ TEST_P(XClusterTest, TestAlterDDLBasic) {
 
   // Write some data with the New Schema on the Producer.
   {
-    auto session = producer_client()->NewSession();
+    auto session = producer_client()->NewSession(kRpcTimeout * 1s);
     client::TableHandle table_handle;
     ASSERT_OK(table_handle.Open(producer_table_->name(), producer_client()));
     std::vector<std::shared_ptr<client::YBqlOp>> ops;
@@ -2370,7 +2370,7 @@ TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
 
   // Write some data with the New Schema on the Producer.
   {
-    auto session = producer_client()->NewSession();
+    auto session = producer_client()->NewSession(kRpcTimeout * 1s);
     client::TableHandle table_handle;
     ASSERT_OK(table_handle.Open(producer_table_->name(), producer_client()));
     std::vector<std::shared_ptr<client::YBqlOp>> ops;

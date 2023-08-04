@@ -600,7 +600,7 @@ TEST_F_EX(MasterPathHandlersItest, ShowDeletedTablets, TabletSplitMasterPathHand
   client::TableHandle table;
   ASSERT_OK(table.Open(table_name, client_.get()));
 
-  auto session = client_->NewSession();
+  auto session = client_->NewSession(60s);
   for (int i = 0; i < num_rows_to_insert; i++) {
     auto insert = table.NewInsertOp();
     auto req = insert->mutable_request();

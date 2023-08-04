@@ -113,14 +113,13 @@ DEFINE_UNKNOWN_bool(ycql_serial_operation_in_transaction_block, true,
 
 extern ErrorCode QLStatusToErrorCode(QLResponsePB::QLStatus status);
 
-Executor::Executor(QLEnv* ql_env, AuditLogger* audit_logger, Rescheduler* rescheduler,
-                   const QLMetrics* ql_metrics)
+Executor::Executor(
+    QLEnv* ql_env, AuditLogger* audit_logger, Rescheduler* rescheduler, const QLMetrics* ql_metrics)
     : ql_env_(ql_env),
       audit_logger_(*audit_logger),
       rescheduler_(rescheduler),
-      session_(ql_env_->NewSession()),
-      ql_metrics_(ql_metrics) {
-}
+      session_(ql_env_->NewSession(rescheduler->GetDeadline())),
+      ql_metrics_(ql_metrics) {}
 
 Executor::~Executor() {
   LOG_IF(DFATAL, HasAsyncCalls())

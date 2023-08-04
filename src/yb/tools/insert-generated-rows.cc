@@ -106,8 +106,7 @@ static int WriteRandomDataToTable(int argc, char** argv) {
   CHECK_OK(table.Open(table_name, client.get()));
   YBSchema schema = table->schema();
 
-  shared_ptr<YBSession> session = client->NewSession();
-  session->SetTimeout(5s); // Time out after 5 seconds.
+  auto session = client->NewSession(5s);  // Time out after 5 seconds.
 
   Random random(GetRandomSeed32());
 
