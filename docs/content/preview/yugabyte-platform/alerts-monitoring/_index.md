@@ -83,5 +83,3 @@ To view performance metrics, refer to [Use metrics](../troubleshoot/universe-iss
     </a>
   </div>
 </div>
-
-
