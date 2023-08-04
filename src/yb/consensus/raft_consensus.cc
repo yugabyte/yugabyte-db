@@ -3206,6 +3206,8 @@ void RaftConsensus::DumpStatusHtml(std::ostream& out) const {
     role = state_->GetActiveRoleUnlocked();
   }
   if (role == PeerRole::LEADER) {
+    peer_manager_->DumpToHtml(out);
+    out << "<hr/>" << std::endl;
     out << "<h2>Queue overview</h2>" << std::endl;
     out << "<pre>" << EscapeForHtmlToString(queue_->ToString()) << "</pre>" << std::endl;
     out << "<hr/>" << std::endl;

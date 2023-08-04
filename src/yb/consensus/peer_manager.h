@@ -91,6 +91,8 @@ class PeerManager {
   // Closes connections to those peers that are not in config.
   virtual void ClosePeersNotInConfig(const RaftConfigPB& config);
 
+  virtual void DumpToHtml(std::ostream& out) const;
+
  private:
   std::string LogPrefix() const;
 
