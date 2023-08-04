@@ -264,6 +264,9 @@ DEFINE_RUNTIME_bool(enable_copy_retryable_requests_from_parent, true,
 DEFINE_UNKNOWN_int32(flush_retryable_requests_pool_max_threads, -1,
                      "The maximum number of threads used to flush retryable requests");
 
+DEFINE_test_flag(bool, disable_flush_on_shutdown, false,
+                 "Whether to disable flushing memtable on shutdown.");
+
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(lazily_flush_superblock);
 
@@ -1830,7 +1833,9 @@ void TSTabletManager::StartShutdown() {
 
 void TSTabletManager::CompleteShutdown() {
   for (const TabletPeerPtr& peer : shutting_down_peers_) {
-    peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kFalse);
+    peer->CompleteShutdown(
+        tablet::DisableFlushOnShutdown(FLAGS_TEST_disable_flush_on_shutdown),
+        tablet::AbortOps::kFalse);
   }
 
   // Shut down the apply pool.
