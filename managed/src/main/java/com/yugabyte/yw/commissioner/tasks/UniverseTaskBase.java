@@ -1850,8 +1850,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   public void createChangeConfigTasks(
       NodeDetails node, boolean isAdd, UserTaskDetails.SubTaskGroupType subTask) {
+    boolean followerLagCheckEnabled =
+        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.followerLagCheckEnabled);
     createChangeConfigTask(node, isAdd, subTask);
-    if (isAdd) {
+    if (isAdd && followerLagCheckEnabled) {
       createWaitForFollowerLagTask(node, ServerType.MASTER);
     }
   }

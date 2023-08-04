@@ -70,6 +70,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   protected boolean isLoadBalancerOn = true;
   protected boolean isBlacklistLeaders;
   protected int leaderBacklistWaitTimeMs;
+  protected boolean followerLagCheckEnabled;
   protected boolean hasRollingUpgrade = false;
 
   protected UpgradeTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -95,6 +96,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       leaderBacklistWaitTimeMs =
           confGetter.getConfForScope(
               getUniverse(), UniverseConfKeys.ybUpgradeBlacklistLeaderWaitTimeMs);
+      followerLagCheckEnabled =
+          confGetter.getConfForScope(getUniverse(), UniverseConfKeys.followerLagCheckEnabled);
       checkUniverseVersion();
       // Update the universe DB with the update to be performed and set the
       // 'updateInProgress' flag to prevent other updates from happening.
@@ -359,9 +362,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       }
       if (activeRole) {
         for (ServerType processType : processTypes) {
-          createWaitForFollowerLagTask(node, processType).setSubTaskGroupType(subGroupType);
+          if (followerLagCheckEnabled) {
+            createWaitForFollowerLagTask(node, processType).setSubTaskGroupType(subGroupType);
+          }
         }
-
         if (isYbcPresent) {
           if (!context.skipStartingProcesses) {
             createServerControlTask(node, ServerType.CONTROLLER, "start")
