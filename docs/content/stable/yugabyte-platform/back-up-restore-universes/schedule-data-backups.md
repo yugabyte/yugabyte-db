@@ -1,47 +1,26 @@
 ---
-title: Schedule universe YCQL data backups
-headerTitle: Schedule universe YCQL data backups
+title: Schedule universe backups
+headerTitle: Schedule universe backups
 linkTitle: Schedule data backups
-description: Use YugabyteDB Anywhere to create scheduled backups of universe YCQL data.
+description: Use YugabyteDB Anywhere to create scheduled backups of universe data.
+headContent: Create backup schedules to regularly back up universe data
 menu:
   stable_yugabyte-platform:
-    identifier: schedule-data-backups-2-ycql
+    identifier: schedule-data-backups
     parent: back-up-restore-universes
     weight: 40
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+You can use YugabyteDB Anywhere to perform regularly scheduled backups of YugabyteDB universe data for all tables in a database (YSQL) or keyspace (YCQL) or only the specified tables (YCQL only).
 
-  <li >
-    <a href="{{< relref "./ysql.md" >}}" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
+To back up your universe data immediately, see [Back up universe data](../back-up-universe-data/).
 
-  <li >
-    <a href="{{< relref "./ycql.md" >}}" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-
-</ul>
-
-You can use YugabyteDB Anywhere to perform regularly scheduled backups of YugabyteDB universe data for all YCQL tables in a keyspace or only the specified YCQL tables.
-
-To back up your universe YCQL data immediately, see [Back up universe YCQL data](../../back-up-universe-data/ycql).
+To schedule backups, backups must be enabled for the universe. On the universe **Tables** tab, click **Actions** to verify that backups are enabled. If disabled, click **Enable Backup**.
 
 ## Create a scheduled backup policy
 
-Before scheduling a backup of your universe YCQL data, create a policy, as follows:
-
-1. Navigate to **Universes**.
-
-1. Select the name of the universe for which you want to schedule backups.
-
-1. Select the **Tables** tab and click **Actions** to verify that backups are enabled. If disabled, click **Enable Backup**.
+Before scheduling a backup of your universe data, create a policy, as follows:
 
 1. Select the **Backups** tab and then select **Scheduled Backup Policies**.
 
@@ -51,11 +30,13 @@ Before scheduling a backup of your universe YCQL data, create a policy, as follo
 
 1. Provide the backup policy name.
 
-1. Ensure that the API type is set as YCQL.
+1. Select the API type for the backup.
 
-1. Select the database to back up.
+1. Select the backup storage configuration. The available configurations depend on your existing backup storage configurations. For more information, see [Configure backup storage](../configure-backup-storage/).
 
-1. Specify whether you want to back up all tables in the keyspace to which the database belongs or only certain tables. If you choose **Select a subset of tables**, a **Select Tables** dialog opens allowing you to select one or more tables to back up.
+1. Select the database/keyspace to back up.
+
+1. For YCQL backups, you can choose to back up all tables in the keyspace to which the database belongs or only certain tables. If you choose **Select a subset of tables**, a **Select Tables** dialog opens allowing you to select one or more tables to back up. When finished, click **Confirm**.
 
 1. Specify the period of time during which the backup is to be retained. Note that there's an option to never delete the backup.
 
@@ -71,7 +52,7 @@ Before scheduling a backup of your universe YCQL data, create a policy, as follo
 
     You cannot modify any incremental backup-related property in the schedule; to overwrite any incremental backup property, you have to delete the existing schedule and create a new schedule if needed.
 
-1. Optionally, specify the number of threads that should be available for the backup process.
+1. If you are using YBA version prior to 2.16 to manage universes with YugabyteDB version prior to 2.16, you can optionally specify the number of threads that should be available for the backup process.
 
 1. Click **Create**.
 
@@ -89,6 +70,6 @@ You can disable all backups, including scheduled ones, as follows:
 You can permanently remove a scheduled backup, as follows:
 
 1. Navigate to the universe's **Backups** tab.
-2. Find the scheduled backup in the **Backups** list and click **... > Delete Backup**.
+1. Find the scheduled backup in the **Backups** list and click **... > Delete Backup**.
 
 To delete a policy, select **Scheduled Backup Policies**, find the policy and click its **Actions > Delete Policy**.
