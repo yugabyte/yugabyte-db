@@ -22,18 +22,18 @@ namespace yb::util {
 // __thread WaitStateInfoPtr WaitStateInfo::threadlocal_wait_state_;
 thread_local WaitStateInfoPtr WaitStateInfo::threadlocal_wait_state_;
 
-void AUHMetadata::QueryIdHexToUInt(std::string queryId) {
-  int size = std::min(16, (int)queryId.length());
+void AUHMetadata::SetQueryIdFromHex(std::string query_id_str) {
+  int size = std::min(16, (int)query_id_str.length());
   query_id = 0;
   int bit_position = 0;
   for (int index = size - 1; index >=  0; index--, bit_position += 4) {
     int digit;
-    if (queryId[index] >= '0' && queryId[index] <= '9') {
-      digit = queryId[index] - '0';
-    } else if (queryId[index] >= 'a' && queryId[index] <= 'z') {
-      digit = 10 + queryId[index] - 'a';
+    if (query_id_str[index] >= '0' && query_id_str[index] <= '9') {
+      digit = query_id_str[index] - '0';
+    } else if (query_id_str[index] >= 'a' && query_id_str[index] <= 'z') {
+      digit = 10 + query_id_str[index] - 'a';
     } else {
-      digit = 10 + queryId[index] - 'A';
+      digit = 10 + query_id_str[index] - 'A';
     }
     for (int bit = 0; bit < 4; bit++) {
       if ((digit >> bit) & 1) {
