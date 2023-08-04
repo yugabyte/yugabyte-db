@@ -310,10 +310,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         if (processTypes.contains(ServerType.TSERVER)) {
           removeFromLeaderBlackListIfAvailable(Collections.singletonList(node), subGroupType);
         }
-        for (ServerType processType : processTypes) {
-          createWaitForFollowerLagTask(node, processType).setSubTaskGroupType(subGroupType);
+        if (isFollowerLagCheckEnabled()) {
+          for (ServerType processType : processTypes) {
+            createWaitForFollowerLagTask(node, processType).setSubTaskGroupType(subGroupType);
+          }
         }
-
         if (isYbcPresent) {
           if (!context.skipStartingProcesses) {
             createServerControlTask(node, ServerType.CONTROLLER, "start")

@@ -154,6 +154,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     private Universe universe;
     private final boolean blacklistLeaders;
     private final int leaderBacklistWaitTimeMs;
+    private final boolean followerLagCheckEnabled;
     private boolean loadBalancerOff = false;
     private final Set<UUID> lockedUniversesUuid = ConcurrentHashMap.newKeySet();
 
@@ -164,6 +165,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
       leaderBacklistWaitTimeMs =
           confGetter.getConfForScope(universe, UniverseConfKeys.ybUpgradeBlacklistLeaderWaitTimeMs);
+
+      followerLagCheckEnabled =
+          confGetter.getConfForScope(universe, UniverseConfKeys.followerLagCheckEnabled);
     }
 
     public boolean isLoadBalancerOff() {
@@ -172,6 +176,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     public boolean isBlacklistLeaders() {
       return blacklistLeaders;
+    }
+
+    public boolean isFollowerLagCheckEnabled() {
+      return followerLagCheckEnabled;
     }
 
     public void lockUniverse(UUID universeUUID) {
@@ -1750,8 +1758,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   public void createChangeConfigTasks(
       NodeDetails node, boolean isAdd, UserTaskDetails.SubTaskGroupType subTask) {
+    boolean followerLagCheckEnabled =
+        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.followerLagCheckEnabled);
     createChangeConfigTask(node, isAdd, subTask);
-    if (isAdd) {
+    if (isAdd && followerLagCheckEnabled) {
       createWaitForFollowerLagTask(node, ServerType.MASTER);
     }
   }
@@ -3065,6 +3075,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected boolean isBlacklistLeaders() {
     return getOrCreateExecutionContext().isBlacklistLeaders();
+  }
+
+  protected boolean isFollowerLagCheckEnabled() {
+    return getOrCreateExecutionContext().isFollowerLagCheckEnabled();
   }
 
   /**
