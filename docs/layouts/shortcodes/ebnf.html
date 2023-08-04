@@ -1,0 +1,66 @@
+{{ $statements :=  .Inner }}
+{{ $type := default "tabs" (.Get "type") }}
+{{ $statements = replaceRE " *- *" "" $statements}}
+{{ $statements = replaceRE "\n+" "," $statements}}
+{{ $statements = replaceRE " +" "" $statements}}
+{{ $statements = replaceRE ",+" "," $statements}}
+{{ $statements = trim $statements ","}}
+{{ $local := default "" (.Get "localrefs") }}
+{{ $path := split $.Page.File.Dir "/" }}
+{{ $version := index $path 0 }}
+{{ $depth := add 1 (len $path) }}
+{{ $api := "ysql" }}
+{{ if strings.Contains $.Page.File.Dir "/ycql/" }}{{ $api = "ycql" }}{{ end }}
+{{ $url := "http://localhost:1314/bnf" }}
+{{ $url = printf "%s?depth=%d&api=%s&version=%s&rules=%s" $url $depth $api $version $statements}}
+{{ if $local }}{{ $url = printf "%s&local=%s" $url $local }}{{ end }}
+{{ if $.Site.Params.regenerateDiagrams }}
+{{ $url = printf "%s&ts=%d" $url now.Unix }}
+{{ else }}
+{{ $f := os.Stat (printf "content/%s/api/%s/syntax_resources/%s_grammar.ebnf" $version $api $api) }}
+{{ $url = printf "%s&ts=%d" $url $f.ModTime.Unix }}
+{{ end }}
+
+{{$bnfResponse := ""}}
+{{- if eq $type "tabs" -}}
+    {{- $suffix := "" -}}
+    {{ .Page.Scratch.Add "numdiagrams" 1 }}
+    {{- $suffix = printf "-%d" (.Page.Scratch.Get "numdiagrams") -}}
+
+    <ul class="nav nav-tabs nav-tabs-yb">
+        <li >
+        <a href="#grammar{{$suffix}}" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+            <img src="/icons/file-lines.svg" alt="Grammar Icon">
+            Grammar
+        </a>
+        </li>
+        <li>
+        <a href="#diagram{{$suffix}}" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+            <img src="/icons/diagram.svg" alt="Diagram Icon">
+            Diagram
+        </a>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <div id="grammar{{$suffix}}" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
+            {{- $bnfResponse = resources.GetRemote (printf "%s&mode=grammar" $url) -}}
+            {{- print "```output.ebnf\n" $bnfResponse.Content "\n``` " | markdownify -}}
+        </div>
+        <div id="diagram{{$suffix}}" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
+            {{- $bnfResponse = resources.GetRemote (printf "%s&mode=diagram" $url) -}}
+            {{- print  $bnfResponse.Content | markdownify -}}
+        </div>
+    </div>
+{{- else if eq $type "grammar" -}}
+    {{- $bnfResponse = resources.GetRemote (printf "%s&mode=grammar" $url) -}}
+    {{- print "```output.ebnf\n" $bnfResponse.Content "\n``` " | markdownify -}}
+{{- else if eq $type "diagram" -}}
+    {{- $bnfResponse = resources.GetRemote (printf "%s&mode=diagram" $url) -}}
+    {{- print $bnfResponse.Content | markdownify -}}
+{{- else if eq $type "reference" -}}
+    {{- $bnfResponse = resources.GetRemote (printf "%s&mode=reference" $url) -}}
+    {{- print $bnfResponse.Content | markdownify -}}
+{{- else -}}
+    {{- warnf "invalid type for ebnf : %s" $type }}
+{{- end -}}

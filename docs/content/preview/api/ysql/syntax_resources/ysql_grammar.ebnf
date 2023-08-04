@@ -1237,7 +1237,7 @@ expression_list = expression { ',' expression } ;
 (* For the invocation of a window function, or an aggregate function, in conjunction with the OVER keyword.*)
 (* And for the invocation of an aggregate function, in conjunction with the GROUP BY clause.*)
 
-select_start = 'SELECT' [ 'ALL' | 'DISTINCT' [ 'ON' ( '(' expression { ',' expression } ')' ) ] ]
+select_start = 'SELECT' [ 'ALL' | 'DISTINCT' [ 'ON' ( '(' expression { ',' expression } ')' ) ] ] \
                    [ '*' | ( ( ( expression | fn_over_window | ordinary_aggregate_fn_invocation | within_group_aggregate_fn_invocation ) [ [ 'AS' ] name ] )
                              { ',' ( ( expression | fn_over_window | ordinary_aggregate_fn_invocation | within_group_aggregate_fn_invocation ) [ [ 'AS' ] name ] ) } ) ] ;
 
