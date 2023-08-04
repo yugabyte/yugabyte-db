@@ -40,45 +40,51 @@ namespace yb::util {
 //--------------------------------------------------------------------------------------------------
 // JWK and JWKS.
 
-Result<jwt::jwks<jwt::traits::kazuho_picojson>> ParseJwks(const std::string& key_set);
+Result<jwt::jwks<jwt::traits::kazuho_picojson>> ParseJwks(const std::string& key_set) noexcept;
 
 Result<jwt::jwk<jwt::traits::kazuho_picojson>> GetJwkFromJwks(
-    const jwt::jwks<jwt::traits::kazuho_picojson>& jwks, const std::string& key_id);
+    const jwt::jwks<jwt::traits::kazuho_picojson>& jwks, const std::string& key_id) noexcept;
 
-Result<std::string> GetX5cKeyValueFromJwk(const jwt::jwk<jwt::traits::kazuho_picojson>& jwk);
+Result<std::string> GetX5cKeyValueFromJwk(
+    const jwt::jwk<jwt::traits::kazuho_picojson>& jwk) noexcept;
 
-Result<std::string> GetJwkKeyType(const jwt::jwk<jwt::traits::kazuho_picojson>& jwk);
+Result<std::string> GetJwkKeyType(const jwt::jwk<jwt::traits::kazuho_picojson>& jwk) noexcept;
 
-Result<std::string> GetJwkKeyId(const jwt::jwk<jwt::traits::kazuho_picojson>& jwk);
+Result<std::string> GetJwkKeyId(const jwt::jwk<jwt::traits::kazuho_picojson>& jwk) noexcept;
+
+bool GetJwkHasX5c(const jwt::jwk<jwt::traits::kazuho_picojson>& jwk) noexcept;
 
 Result<std::string> GetJwkClaimAsString(
-    const jwt::jwk<jwt::traits::kazuho_picojson>& jwk, const std::string& key);
+    const jwt::jwk<jwt::traits::kazuho_picojson>& jwk, const std::string& key) noexcept;
 
-Result<std::string> ConvertX5cDerToPem(const std::string& x5c);
+Result<std::string> ConvertX5cDerToPem(const std::string& x5c) noexcept;
 
 //--------------------------------------------------------------------------------------------------
 // JWT.
 
-Result<jwt::decoded_jwt<jwt::traits::kazuho_picojson>> DecodeJwt(const std::string& token);
+Result<jwt::decoded_jwt<jwt::traits::kazuho_picojson>> DecodeJwt(const std::string& token) noexcept;
 
-Result<std::string> GetJwtKeyId(const jwt::decoded_jwt<jwt::traits::kazuho_picojson>& decoded_jwt);
+Result<std::string> GetJwtKeyId(
+    const jwt::decoded_jwt<jwt::traits::kazuho_picojson>& decoded_jwt) noexcept;
 
-Result<std::string> GetJwtIssuer(const jwt::decoded_jwt<jwt::traits::kazuho_picojson>& decoded_jwt);
+Result<std::string> GetJwtIssuer(
+    const jwt::decoded_jwt<jwt::traits::kazuho_picojson>& decoded_jwt) noexcept;
 
 Result<std::set<std::string>> GetJwtAudiences(
-    const jwt::decoded_jwt<jwt::traits::kazuho_picojson>& decoded_jwt);
+    const jwt::decoded_jwt<jwt::traits::kazuho_picojson>& decoded_jwt) noexcept;
 
 Result<std::vector<std::string>> GetJwtClaimAsStringsList(
-    const jwt::decoded_jwt<jwt::traits::kazuho_picojson>& decoded_jwt, const std::string& name);
+    const jwt::decoded_jwt<jwt::traits::kazuho_picojson>& decoded_jwt,
+    const std::string& name) noexcept;
 
 Result<std::string> GetJwtAlgorithm(
-    const jwt::decoded_jwt<jwt::traits::kazuho_picojson>& decoded_jwt);
+    const jwt::decoded_jwt<jwt::traits::kazuho_picojson>& decoded_jwt) noexcept;
 
 Result<jwt::verifier<jwt::default_clock, jwt::traits::kazuho_picojson>> GetJwtVerifier(
-    const std::string& key_pem, const std::string& algo);
+    const std::string& key_pem, const std::string& algo) noexcept;
 
 Status VerifyJwtUsingVerifier(
     const jwt::verifier<jwt::default_clock, jwt::traits::kazuho_picojson>& verifier,
-    const jwt::decoded_jwt<jwt::traits::kazuho_picojson>& decoded_jwt);
+    const jwt::decoded_jwt<jwt::traits::kazuho_picojson>& decoded_jwt) noexcept;
 
 }  // namespace yb::util
