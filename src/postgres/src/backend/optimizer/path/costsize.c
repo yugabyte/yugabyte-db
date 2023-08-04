@@ -5815,7 +5815,7 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
  * index it will aggregate the width of the columns used.
  */
 static int32
-yb_get_index_tuple_width(IndexOptInfo *index, Oid baserel_oid, 
+yb_get_index_tuple_width(IndexOptInfo *index, Oid baserel_oid,
 						 bool is_primary_index)
 {
 	int32		index_tuple_width = 0;
@@ -5830,119 +5830,13 @@ yb_get_index_tuple_width(IndexOptInfo *index, Oid baserel_oid,
 	else
 	{
 		/* Aggregate the width of the columns in the secondary index */
-		for (int i = 0; i < index->nkeycolumns; i++)
+		for (int i = 0; i < index->ncolumns; i++)
 		{
 			index_tuple_width += index->rel->attr_widths[index->indexkeys[i]];
 		}
 		index_tuple_width += HIDDEN_COLUMNS_SIZE;
 	}
 	return index_tuple_width;
-}
-
-/*
- * yb_get_index_correlation
- *	  Estimates the ordering correlation between the index and base table
- */
-static double
-yb_get_index_correlation(struct PlannerInfo *root, IndexOptInfo *index)
-{
-	Oid			relid;
-	AttrNumber	colnum;
-	VariableStatData vardata;
-	double		varCorrelation = 0.0;
-
-	/*
-	 * If we can get an estimate of the first column's ordering correlation C
-	 * from pg_statistic, estimate the index correlation as C for a
-	 * single-column index, or C * 0.75 for multiple columns. (The idea here
-	 * is that multiple columns dilute the importance of the first column's
-	 * ordering, but don't negate it entirely.)
-	 */
-	MemSet(&vardata, 0, sizeof(vardata));
-
-	if (index->indexkeys[0] != 0)
-	{
-		/* Simple variable --- look to stats for the underlying table */
-		RangeTblEntry *rte = planner_rt_fetch(index->rel->relid, root);
-
-		Assert(rte->rtekind == RTE_RELATION);
-		relid = rte->relid;
-		Assert(relid != InvalidOid);
-		colnum = index->indexkeys[0];
-
-		if (get_relation_stats_hook &&
-			(*get_relation_stats_hook) (root, rte, colnum, &vardata))
-		{
-			/*
-			 * The hook took control of acquiring a stats tuple.  If it did
-			 * supply a tuple, it'd better have supplied a freefunc.
-			 */
-			if (HeapTupleIsValid(vardata.statsTuple) && !vardata.freefunc)
-				elog(ERROR, "no function provided to release variable stats "
-					 "with");
-		}
-		else
-		{
-			vardata.statsTuple =
-				SearchSysCache3(STATRELATTINH, ObjectIdGetDatum(relid),
-								Int16GetDatum(colnum), BoolGetDatum(rte->inh));
-			vardata.freefunc = ReleaseSysCache;
-		}
-	}
-	else
-	{
-		/* Expression --- maybe there are stats for the index itself */
-		relid = index->indexoid;
-		colnum = 1;
-
-		if (get_index_stats_hook &&
-			(*get_index_stats_hook) (root, relid, colnum, &vardata))
-		{
-			/*
-			 * The hook took control of acquiring a stats tuple.  If it did
-			 * supply a tuple, it'd better have supplied a freefunc.
-			 */
-			if (HeapTupleIsValid(vardata.statsTuple) && !vardata.freefunc)
-				elog(ERROR, "no function provided to release variable stats "
-					 "with");
-		}
-		else
-		{
-			vardata.statsTuple =
-				SearchSysCache3(STATRELATTINH, ObjectIdGetDatum(relid),
-								Int16GetDatum(colnum), BoolGetDatum(false));
-			vardata.freefunc = ReleaseSysCache;
-		}
-	}
-
-	if (HeapTupleIsValid(vardata.statsTuple))
-	{
-		Oid			sortop;
-		AttStatsSlot sslot;
-
-		sortop = get_opfamily_member(index->opfamily[0], index->opcintype[0],
-									 index->opcintype[0], BTLessStrategyNumber);
-		if (OidIsValid(sortop) &&
-			get_attstatsslot(&sslot, vardata.statsTuple,
-							 STATISTIC_KIND_CORRELATION, sortop,
-							 ATTSTATSSLOT_NUMBERS))
-		{
-			Assert(sslot.nnumbers == 1);
-			varCorrelation = sslot.numbers[0];
-
-			if (index->reverse_sort[0])
-				varCorrelation = -varCorrelation;
-
-			if (index->nkeycolumns > 1)
-				varCorrelation = varCorrelation * 0.75;
-
-			free_attstatsslot(&sslot);
-		}
-	}
-
-	ReleaseVariableStats(vardata);
-
-	return varCorrelation;
 }
 
 /*
@@ -6006,7 +5900,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	Cost		index_startup_cost = 0;
 	Cost		index_total_cost = 0;
 	Selectivity index_selectivity = 0;
-	double		index_correlation = 0;
 	double		index_tuples_fetched = 0;
 	List	   *qinfos;
 	double		num_index_tuples;
@@ -6466,7 +6359,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 												 baserel_oid,
 												 is_primary_index);
 
-	index_total_pages = 
+	index_total_pages =
 		ceil(index->rel->tuples * index_tuple_width / YB_DEFAULT_DOCDB_BLOCK_SIZE);
 	index_pages_fetched = clamp_row_est(index_selectivity * index_total_pages);
 	index_random_pages_fetched =
@@ -6507,54 +6400,13 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 				per_merge_cost;
 		}
 
-		index_correlation = yb_get_index_correlation(root, index);
-		/* After seeking to the first key, DocDB tries to find the next key
-		 * by performing `next` operation 3 times. If the key is not found,
-		 * it resorts to `seek` for the next key. Here we try to model this
-		 * optimization.
+		/* DocDB performs a seek for each lookup in the base table. This may
+		 * be optimized in the future.
 		 */
-		int			num_baserel_seeks;
-		int			num_baserel_nexts;
-		if (path->indexscandir == BackwardScanDirection ||
-			skip_scan_needed)
-		{
-			num_baserel_seeks = num_index_tuples;
-			num_baserel_nexts = 0;
-		}
-		else if (index_correlation > 0.5)
-		{
-			/* If correlation is high, lets assume that we would need the same
-			 * number of seeks and nexts as the index.
-			 */
-			num_baserel_seeks = num_seeks;
-			num_baserel_nexts = num_nexts;
-		}
-		else
-		{
-			/* If selectivity is high, we expect to find the next
-		 	 * key with `next` operations. If selectivity is low, we must use
-			 * `seek` often.
-			 */
-			if (index_selectivity > 0.5)
-			{
-				/* We assume only one seek will be needed. */
-				num_baserel_seeks = 1;
-				num_baserel_nexts = num_index_tuples;
-			}
-			else if (index_selectivity > 0.25)
-			{
-				/* We assume that half of the lookups would need a seek */
-				/* operation */
-				num_baserel_seeks = ceil(num_index_tuples / 2);
-				num_baserel_nexts = floor(num_index_tuples / 2);
-			}
-			else
-			{
-				/* Each lookup would require a seek */
-				num_baserel_seeks = num_index_tuples;
-				num_baserel_nexts = 0;
-			}
-		}
+		int			num_baserel_seeks = num_index_tuples;
+		int			num_baserel_nexts = 0;
+		path->estimated_num_seeks += num_baserel_seeks;
+		path->estimated_num_nexts += num_baserel_nexts;
 
 		startup_cost += baserel_per_seek_cost;
 		run_cost += (baserel_per_seek_cost * num_baserel_seeks) +
