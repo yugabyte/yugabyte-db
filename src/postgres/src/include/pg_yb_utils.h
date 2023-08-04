@@ -925,4 +925,18 @@ extern bool YbIsStickyConnection(int *change);
 
 extern bool yb_is_client_ysqlconnmgr;
 
+/*
+ * Creates a shallow copy of the pointer list.
+ */
+extern void** YbPtrListToArray(const List* str_list, size_t* length);
+
+/*
+ * Reads the contents of the given file assuming that the filename is an
+ * absolute path.
+ *
+ * The file contents are returned as a single palloc'd chunk with an extra \0
+ * byte added to the end.
+ */
+extern char* YbReadWholeFile(const char *filename, int* length, int elevel);
+
 #endif /* PG_YB_UTILS_H */

@@ -181,6 +181,7 @@ set(UTIL_SRCS
   init.cc
   jsonreader.cc
   jsonwriter.cc
+  jwt_util.cc
   jwtcpp_util.cc
   locks.cc
   logging.cc
@@ -362,6 +363,7 @@ ADD_YB_TEST(hash_util-test)
 ADD_YB_TEST(hdr_histogram-test)
 ADD_YB_TEST(inline_slice-test)
 ADD_YB_TEST(jsonreader-test)
+ADD_YB_TEST(jwt_util-test)
 ADD_YB_TEST(jwtcpp_util-test)
 ADD_YB_TEST(lockfree-test)
 ADD_YB_TEST(lru_cache-test)
