@@ -101,11 +101,13 @@ template<class T>
 GetValueResult<T> GetValue(PGresult* result, int row, int column);
 
 template<class T>
-using GetOptionalValueResult =
-    Result<std::optional<typename PGTypeTraits<typename T::value_type>::ReturnType>>;
-
-template<class T>
-GetOptionalValueResult<T> GetValue(PGresult* result, int row, int column);
+Result<std::optional<typename PGTypeTraits<typename T::value_type>::ReturnType>> GetValue(
+    PGresult* result, int row, int column) {
+  if (PQgetisnull(result, row, column)) {
+    return std::nullopt;
+  }
+  return GetValue<typename T::value_type>(result, row, column);
+}
 
 inline Result<int32_t> GetInt32(PGresult* result, int row, int column) {
   return GetValue<int32_t>(result, row, column);
@@ -178,7 +180,7 @@ class PGConn {
       const std::string& row_sep = DefaultRowSeparator());
 
   template<class T>
-  GetValueResult<T> FetchValue(const std::string& command) {
+  auto FetchValue(const std::string& command) -> decltype(GetValue<T>(nullptr, 0, 0)) {
     auto res = VERIFY_RESULT(FetchMatrix(command, 1, 1));
     return GetValue<T>(res.get(), 0, 0);
   }
