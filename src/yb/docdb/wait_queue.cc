@@ -250,24 +250,25 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
   const WaitDoneCallback callback;
   std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration;
 
-  void InvokeCallback(const Status& status, HybridTime resume_ht = HybridTime::kInvalid) {
-    VLOG_WITH_PREFIX(4) << "Invoking waiter callback " << status;
-    UniqueLock l(mutex_);
-    if (!unlocked_) {
-      LOG_WITH_PREFIX(INFO)
-          << "Skipping InvokeCallback for waiter whose callback was already invoked. This should "
-          << "be rare.";
-      return;
-    }
-    finished_waiting_latency_->Increment(MicrosSinceCreation());
-    if (!status.ok()) {
+  void InvokeCallback(const Status& waiter_status, HybridTime resume_ht = HybridTime::kInvalid) {
+    VLOG_WITH_PREFIX(4) << "Invoking waiter callback " << waiter_status;
+    auto status = waiter_status;
+    {
+      UniqueLock l(mutex_);
+      if (!unlocked_) {
+        LOG_WITH_PREFIX(INFO)
+            << "Skipping InvokeCallback for waiter whose callback was already invoked. This should "
+            << "be rare.";
+        return;
+      }
+      finished_waiting_latency_->Increment(MicrosSinceCreation());
+      if (status.ok()) {
+        *locks = std::move(*unlocked_).Lock(GetWaitForRelockUnblockedKeysDeadline());
+        status = locks->status();
+      }
       unlocked_ = std::nullopt;
-      callback(status, resume_ht);
-      return;
     }
-    *locks = std::move(*unlocked_).Lock(GetWaitForRelockUnblockedKeysDeadline());
-    unlocked_ = std::nullopt;
-    callback(locks->status(), resume_ht);
+    callback(status, resume_ht);
   }
 
   std::string LogPrefix() {
