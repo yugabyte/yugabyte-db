@@ -5155,7 +5155,6 @@ Status CatalogManager::DoProcessCDCClusterTabletDeletion(
 
       vector<CDCStreamId> streams_to_delete;
       vector<CDCStreamId> streams_already_deleted;
-      vector<CDCStreamId> streams_where_parent_unpolled;
       for (const auto& stream : streams) {
         // Check parent entry, if it doesn't exist, then it was already deleted.
         // If the entry for the tablet does not exist, then we can go ahead with deletion of the
@@ -5193,7 +5192,6 @@ Status CatalogManager::DoProcessCDCClusterTabletDeletion(
                 (checkpoint == OpId::Min() && row->column(0).IsNull())) {
               VLOG(2) << "The stream: " << stream << ", is not active for tablet: " << tablet_id;
               streams_to_delete.push_back(stream);
-              streams_where_parent_unpolled.push_back(stream);
               continue;
             }
           } else {
@@ -5232,31 +5230,6 @@ Status CatalogManager::DoProcessCDCClusterTabletDeletion(
         }
         if (found_all_children) {
           streams_to_delete.push_back(stream);
-        }
-      }
-
-      // Set the checkpoint as -1.-1 for child entries on whose parent's we have not started polling
-      // yet, to prevent unnecessary retention of intents for the children tablets.
-      if (request_source == cdc::CDCSDK) {
-        for (auto& child_tablet : hidden_tablet.split_tablets_) {
-          for (const auto& stream : streams_where_parent_unpolled) {
-            const auto update_op = cdc_state_table.NewUpdateOp();
-            auto* const update_req = update_op->mutable_request();
-            QLAddStringHashValue(update_req, child_tablet);
-            QLAddStringRangeValue(update_req, stream);
-
-            auto* condition = update_req->mutable_if_expr()->mutable_condition();
-            condition->set_op(QL_OP_EXISTS);
-            QLAddStringCondition(
-                condition, Schema::first_column_id() + master::kCdcCheckpointIdx, QL_OP_EQUAL,
-                OpId::Min().ToString());
-
-            cdc_state_table.AddStringColumnValue(
-                update_req, master::kCdcCheckpoint, OpId::Invalid().ToString());
-            session->Apply(update_op);
-            LOG(INFO) << "Resetting checkpoint of child tablet: " << child_tablet << " to -1.-1 ."
-                      << "Reason: Consumer has not started polling on these tablets yet";
-          }
         }
       }
 
