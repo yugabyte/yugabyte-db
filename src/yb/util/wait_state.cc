@@ -13,6 +13,7 @@
 
 #include "yb/util/wait_state.h"
 
+#include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/util/tostring.h"
 
 using yb::util::WaitStateCode;
@@ -131,6 +132,30 @@ ScopedWaitStatus::ScopedWaitStatus(WaitStateCode state)
 ScopedWaitStatus::~ScopedWaitStatus() {
   if (wait_state_ && wait_state_->get_state() == state_) {
     wait_state_->set_state(prev_state_);
+  }
+}
+
+template <class RequestPB>
+void WaitStateFetcher<RequestPB>::fetch(RequestPB& req, rpc::Messenger* messenger) {
+  rpc::DumpRunningRpcsRequestPB dump_req;
+  rpc::DumpRunningRpcsResponsePB dump_resp;
+
+  dump_req.set_include_traces(false);
+  dump_req.set_get_wait_state(true);
+  dump_req.set_dump_timed_out(false);
+
+  WARN_NOT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp), "DumpRunningRpcs failed");
+
+  for (auto conns : dump_resp.inbound_connections()) {
+    for (auto call : conns.calls_in_flight()) {
+      req.add_wait_states(call.wait_state());
+    }
+  }
+
+  for (auto conns : dump_resp.outbound_connections()) {
+    for (auto call : conns.calls_in_flight()) {
+      req.add_wait_states(call.wait_state());
+    }
   }
 }
 
