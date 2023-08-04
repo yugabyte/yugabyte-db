@@ -229,6 +229,19 @@ INSERT INTO t4 VALUES(1), (2), (3);
 \set query 'SELECT SUM(r) = 6 from (SELECT random() as r from t4) as res'
 :run;
 
+---
+--- SPLIT
+---
+CREATE TABLE rsplit (i int, PRIMARY KEY (i ASC)) SPLIT AT VALUES ((2));
+CREATE INDEX ON rsplit (i ASC) SPLIT AT VALUES ((3));
+INSERT INTO rsplit VALUES (1), (2), (3);
+\set ss '/*+SeqScan(rsplit)*/'
+\set ios '/*+IndexOnlyScan(rsplit rsplit_i_idx)*/'
+\set query 'SELECT SUM(i) FROM rsplit WHERE i = 2'
+:run;
+\set query 'SELECT SUM(i) FROM rsplit WHERE i = 3'
+:run;
+
 --
 -- System tables.
 --
