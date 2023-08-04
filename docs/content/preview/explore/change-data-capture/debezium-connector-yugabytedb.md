@@ -1055,6 +1055,7 @@ Advanced connector configuration properties:
 | tombstones.on.delete | `true` | Controls whether a delete event is followed by a tombstone event.<br/><br/> `true` - a delete operation is represented by a delete event and a subsequent tombstone event.<br/><br/> `false` - only a delete event is emitted.<br/><br/> After a source record is deleted, emitting a tombstone event (the default behavior) allows Kafka to completely delete all events that pertain to the key of the deleted row in case log compaction is enabled for the topic. |
 | auto.add.new.tables | `true` | Controls whether the connector should keep polling the server to check if any new table has been added to the configured change data stream ID. If a new table has been found in the stream ID and if it has been included in the `table.include.list`, the connector will be restarted automatically. |
 | new.table.poll.interval.ms | 300000 | The interval at which the poller thread will poll the server to check if there are any new tables in the configured change data stream ID. |
+| transaction.ordering | `false` | Whether to order transactions by their commit time. |
 
 ### Transformers
 
@@ -1109,6 +1110,40 @@ By default, the YugabyteDB CDC service publishes events with a schema that only 
 However, some sink connectors may not understand the preceding format. `PGCompatible` transforms the payload to a format that is compatible with the format of the standard change data events. Specifically, it transforms column schema and value to remove the set field and collapse the payload such that it only contains the data type schema and value.
 
 PGCompatible differs from `YBExtractNewRecordState` by recursively modifying all the fields in a payload.
+
+## Transaction ordering
+
+In a CDC Stream, events from different transactions in different tablets across tables may appear at different times. This works well in use cases such as archival, or with applications where only eventual consistency is required. There is another class of applications, where the end destination is another OLTP / operational DB. These DBs can have constraints (eg. foreign keys) and strict transactional consistency requirements. Therefore the stream of events cannot be applied as is, as events of the same transaction may appear out of order because transactions in YugabyteDB may span across two tablets.
+
+YugabyteDB source connector supports transaction ordering which guarantees consistent streaming of records in the sorted order based on time. Essentially, it means that this can be used to stream change events while honoring the constraints.
+
+To use this, you need to add the configuration property `transaction.ordering` to `true`. Additionally, a transformer [ByLogicalTableRouter](https://debezium.io/documentation/reference/stable/transformations/topic-routing.html) is required to send all the events to a common topic to ensure that the published change events are published in the same sorted order as they are meant to be.
+
+Some important properties which will be required for transaction ordering to work as intended would be:
+
+| Property | Definition |
+| :--- | :--- |
+| transaction.ordering | Whether to enable ordering of transactions by their commit time. |
+| transforms | Logical name of the transformer being used. In our case, we will be using `Reroute` for example purposes. |
+| transforms.Reroute.topic.regex | Specifies a regular expression that the transformation applies to each change event record to determine if it should be routed to a particular topic. |
+| transforms.Reroute.topic.replacement | A regular expression that represents the destination topic name. |
+| transforms.Reroute.type | Transformer class to be used. |
+| transforms.Reroute.key.field.regex | Specifies a regular expression that the transformation applies to the default destination topic name to capture one or more groups of characters. |
+| transforms.Reroute.key.field.replacement | Specifies a regular expression for determining the value of the inserted key field in terms of those captured groups. |
+| provide.transaction.metadata | Whether to generate events with transaction boundaries. |
+
+For usage example, refer to our [example repository](https://github.com/yugabyte/cdc-examples/tree/main/consistent-streaming).
+
+### Transaction boundaries
+
+The connector publishes metadata which can be used to distinguish transaction boundaries for a downstream application to implement atomicity. Once the configuration property `provide.transaction.metadata` (see [transaction metadata]()) is enabled, the connector will also publish events indicating the beginning and end of the transaction.
+
+### Prerequisites
+* Stream ID should be created in the `EXPLICIT` checkpointing mode. To know more, see [yb-admin create\_change\_data_stream](../../admin/yb-admin#create_change_data_stream).
+* The connector should always be run with a single task i.e. `tasks.max` should always be set to 1.
+
+### Known limitations with transaction ordering
+* Transactional ordering is currently not supported with schema evolution. Issue [18476](https://github.com/yugabyte/yugabyte-db/issues/18476).
 
 ## Monitoring
 
