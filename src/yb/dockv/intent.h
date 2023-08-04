@@ -118,11 +118,35 @@ Result<DecodedIntentValue> DecodeIntentValue(
 // Decodes transaction ID from intent value. Consumes it from intent_value slice.
 Result<TransactionId> DecodeTransactionIdFromIntentValue(Slice* intent_value);
 
-IntentTypeSet GetIntentTypesForRead(IsolationLevel level, RowMarkType row_mark);
+IntentTypeSet GetIntentTypesForRead(IsolationLevel level);
 
 IntentTypeSet GetIntentTypesForWrite(IsolationLevel level);
 
-inline IntentTypeSet MakeWeak(IntentTypeSet inp) {
+IntentTypeSet GetIntentTypes(RowMarkType row_mark);
+
+YB_STRONGLY_TYPED_BOOL(RowLock);
+
+class ReadIntentTypesHolder {
+ public:
+  ReadIntentTypesHolder(IsolationLevel level, RowMarkType row_mark)
+      : read_intents_(GetIntentTypesForRead(level)), row_mark_intents_(GetIntentTypes(row_mark)) {
+    DCHECK(!(read_intents_.None() && row_mark_intents_.None()));
+  }
+
+  [[nodiscard]] const IntentTypeSet& read_intents() const { return read_intents_; }
+  [[nodiscard]] const IntentTypeSet& row_mark_intents() const { return row_mark_intents_; }
+
+ private:
+  IntentTypeSet read_intents_;
+  IntentTypeSet row_mark_intents_;
+};
+
+[[nodiscard]]  inline IntentTypeSet GetIntentTypes(
+    const ReadIntentTypesHolder& holder, RowLock row_lock) {
+  return row_lock ? holder.row_mark_intents() : holder.read_intents();
+}
+
+[[nodiscard]] inline IntentTypeSet MakeWeak(IntentTypeSet inp) {
   static constexpr auto kWeakIntentMask = (1 << kStrongIntentFlag) - 1;
 
   const auto value = inp.ToUIntPtr();
@@ -163,10 +187,10 @@ YB_STRONGLY_TYPED_BOOL(FullDocKey);
 // So, we use boost::function which doesn't have such issue:
 // http://www.boost.org/doc/libs/1_65_1/doc/html/function/misc.html
 using EnumerateIntentsCallback = boost::function<
-    Status(AncestorDocKey, FullDocKey, Slice, KeyBytes*, LastKey)>;
+    Status(AncestorDocKey, FullDocKey, Slice, KeyBytes*, LastKey, RowLock)>;
 
 Status EnumerateIntents(
-    Slice key, const Slice& intent_value, const EnumerateIntentsCallback& functor,
+    Slice key, Slice intent_value, const EnumerateIntentsCallback& functor,
     KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
     LastKey last_key = LastKey::kFalse);
 

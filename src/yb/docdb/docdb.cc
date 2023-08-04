@@ -164,15 +164,14 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
   }
 
   if (!read_pairs.empty()) {
-    const auto read_intent_types = dockv::GetIntentTypesForRead(isolation_level, row_mark_type);
     RETURN_NOT_OK(EnumerateIntents(
         read_pairs,
-        [&result, &read_intent_types](
-            dockv::AncestorDocKey ancestor_doc_key, dockv::FullDocKey, Slice, KeyBytes* key,
-            dockv::LastKey) {
+        [&result, intents = dockv::ReadIntentTypesHolder(isolation_level, row_mark_type)](
+            auto ancestor_doc_key, auto, auto, auto* key, auto, auto row_lock) {
+          auto actual_intents = GetIntentTypes(intents, row_lock);
           return ApplyIntent(
               RefCntPrefix(key->AsSlice()),
-              ancestor_doc_key ? MakeWeak(read_intent_types) : read_intent_types,
+              ancestor_doc_key ? MakeWeak(actual_intents) : actual_intents,
               &result.lock_batch);
         }, partial_range_key_intents));
   }

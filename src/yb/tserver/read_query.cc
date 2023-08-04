@@ -80,6 +80,39 @@ void HandleRedisReadRequestAsync(
   status_cb(tablet->HandleRedisReadRequest(read_operation_data, redis_read_request, response));
 }
 
+Result<IsolationLevel> GetIsolationLevel(
+    const ReadRequestPB& req, TabletServerIf* server, TabletPeerTablet* peer_tablet) {
+  if (!req.has_transaction()) {
+    return IsolationLevel::NON_TRANSACTIONAL;
+  }
+
+  const auto& transaction = req.transaction();
+  IsolationLevel isolation_level;
+  if (transaction.has_isolation()) {
+    // This must be the first request to this tablet by this particular transaction.
+    isolation_level = transaction.isolation();
+  } else {
+    *peer_tablet = VERIFY_RESULT(LookupTabletPeer(
+        server->tablet_peer_lookup(), req.tablet_id()));
+    isolation_level = VERIFY_RESULT(peer_tablet->tablet->GetIsolationLevelFromPB(req));
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_transactional_read_delay_ms > 0)) {
+    LOG(INFO) << "Delaying transactional read for "
+              << FLAGS_TEST_transactional_read_delay_ms << " ms.";
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_transactional_read_delay_ms));
+  }
+
+#if defined(DUMP_READ)
+  if (req->pgsql_batch().size() > 0) {
+    LOG(INFO) << CHECK_RESULT(FullyDecodeTransactionId(req->transaction().transaction_id()))
+              << " READ: " << req->pgsql_batch(0).partition_column_values(0).value().int32_value()
+              << ", " << isolation_level;
+  }
+#endif
+  return isolation_level;
+}
+
 class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::ThreadPoolTask {
  public:
   ReadQuery(
@@ -219,42 +252,17 @@ Status ReadQuery::DoPerform() {
   // serialization anomaly tested by TestOneOrTwoAdmins
   // (https://github.com/yugabyte/yugabyte-db/issues/1572).
 
-  bool serializable_isolation = false;
   TabletPeerTablet peer_tablet;
-  if (req_->has_transaction()) {
-    IsolationLevel isolation_level;
-    if (req_->transaction().has_isolation()) {
-      // This must be the first request to this tablet by this particular transaction.
-      isolation_level = req_->transaction().isolation();
-    } else {
-      peer_tablet = VERIFY_RESULT(LookupTabletPeer(
-          server_.tablet_peer_lookup(), req_->tablet_id()));
-      isolation_level = VERIFY_RESULT(peer_tablet.tablet->GetIsolationLevelFromPB(*req_));
-    }
-    serializable_isolation = isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION;
-
-    if (PREDICT_FALSE(FLAGS_TEST_transactional_read_delay_ms > 0)) {
-      LOG(INFO) << "Delaying transactional read for "
-                << FLAGS_TEST_transactional_read_delay_ms << " ms.";
-      SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_transactional_read_delay_ms));
-    }
-
-#if defined(DUMP_READ)
-    if (req->pgsql_batch().size() > 0) {
-      LOG(INFO) << CHECK_RESULT(FullyDecodeTransactionId(req->transaction().transaction_id()))
-                << " READ: " << req->pgsql_batch(0).partition_column_values(0).value().int32_value()
-                << ", " << isolation_level;
-    }
-#endif
-  }
+  const auto isolation_level = VERIFY_RESULT(GetIsolationLevel(*req_, &server_, &peer_tablet));
+  const auto serializable_isolation = isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION;
 
   // Get the most restrictive row mark present in the batch of PostgreSQL requests.
   // TODO: rather handle individual row marks once we start batching read requests (issue #2495)
-  RowMarkType batch_row_mark = RowMarkType::ROW_MARK_ABSENT;
+  auto batch_row_mark = RowMarkType::ROW_MARK_ABSENT;
   CatalogVersionChecker catalog_version_checker(server_);
   for (const auto& pg_req : req_->pgsql_batch()) {
     RETURN_NOT_OK(catalog_version_checker(pg_req));
-    RowMarkType current_row_mark = GetRowMarkTypeFromPB(pg_req);
+    auto current_row_mark = GetRowMarkTypeFromPB(pg_req);
     if (IsValidRowMarkType(current_row_mark)) {
       if (!req_->has_transaction()) {
         return STATUS(
@@ -264,7 +272,7 @@ Status ReadQuery::DoPerform() {
       batch_row_mark = GetStrongestRowMarkType({current_row_mark, batch_row_mark});
     }
   }
-  const bool has_row_mark = IsValidRowMarkType(batch_row_mark);
+  const auto has_row_mark = IsValidRowMarkType(batch_row_mark);
 
   LeaderTabletPeer leader_peer;
   auto tablet_peer = peer_tablet.tablet_peer;
@@ -391,8 +399,8 @@ Status ReadQuery::DoPerform() {
     // TODO(dtxn) write request id
 
     RETURN_NOT_OK(leader_peer.tablet->CreateReadIntents(
-        req_->transaction(), req_->subtransaction(), req_->ql_batch(), req_->pgsql_batch(),
-        &write_batch));
+        isolation_level, req_->transaction(), req_->subtransaction(),
+        req_->ql_batch(), req_->pgsql_batch(), &write_batch));
 
     query->AdjustYsqlQueryTransactionality(req_->pgsql_batch_size());
 

@@ -27,6 +27,13 @@ DECLARE_int32(ysql_max_read_restart_attempts);
 DECLARE_int32(ysql_max_write_restart_attempts);
 
 namespace yb::pgwrapper {
+namespace {
+
+bool IsTransactionError(const Status& status) {
+  return !status.ok() && HasTransactionError(status);
+}
+
+} // namespace
 
 class PgMiscConflictsTest : public PgMiniTestBase {
   void SetUp() override {
@@ -42,7 +49,7 @@ class PgMiscConflictsTest : public PgMiniTestBase {
 };
 
 // Test checks conflict detection on colocated table in case of explicit row lock
-TEST_F(PgMiscConflictsTest, YB_DISABLE_TEST_IN_TSAN(TablegroupRowLock)) {
+TEST_F(PgMiscConflictsTest, TablegroupRowLock) {
   constexpr auto* kTable = "tbl";
 
   auto conn = ASSERT_RESULT(Connect());
@@ -55,16 +62,15 @@ TEST_F(PgMiscConflictsTest, YB_DISABLE_TEST_IN_TSAN(TablegroupRowLock)) {
   ASSERT_RESULT(conn.FetchFormat("SELECT v FROM $0 WHERE k = 1 FOR SHARE", kTable));
 
   ASSERT_OK(aux_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  auto status = aux_conn.ExecuteFormat("UPDATE $0 SET v = 111 WHERE k = 1", kTable);
-  ASSERT_NOK(status);
-  ASSERT_TRUE(HasTransactionError(status));
+  const auto status = aux_conn.ExecuteFormat("UPDATE $0 SET v = 111 WHERE k = 1", kTable);
+  ASSERT_TRUE(IsTransactionError(status)) << status;
   ASSERT_OK(aux_conn.CommitTransaction());
 
   ASSERT_OK(conn.CommitTransaction());
 }
 
 // Test checks conflict detection on colocated table with FK
-TEST_F(PgMiscConflictsTest, YB_DISABLE_TEST_IN_TSAN(TablegroupFKDelete)) {
+TEST_F(PgMiscConflictsTest, TablegroupFKDelete) {
   constexpr auto* kRefTable = "ref_tbl";
   constexpr auto* kTable = "tbl";
 
@@ -86,6 +92,25 @@ TEST_F(PgMiscConflictsTest, YB_DISABLE_TEST_IN_TSAN(TablegroupFKDelete)) {
   ASSERT_NOK(aux_conn.ExecuteFormat("INSERT INTO $0 VALUES(1, 1)", kTable));
   ASSERT_OK(aux_conn.RollbackTransaction());
 
+  ASSERT_OK(conn.CommitTransaction());
+}
+
+// Test checks that explicit row locking doesn't break conflict detection in case of serializable
+// isolation.
+TEST_F(PgMiscConflictsTest, ExplicitLockingWithSerializableIsolation) {
+  constexpr auto* kTable = "tbl";
+
+  auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
+  auto aux_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTable));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 10)", kTable));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v = 100 WHERE k = 1", kTable));
+  ASSERT_OK(aux_conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  auto status = ResultToStatus(aux_conn.FetchFormat(
+      "SELECT * FROM $0 WHERE k = 1 FOR KEY SHARE", kTable));
+  ASSERT_TRUE(IsTransactionError(status)) << status;
+  ASSERT_OK(aux_conn.RollbackTransaction());
   ASSERT_OK(conn.CommitTransaction());
 }
 
