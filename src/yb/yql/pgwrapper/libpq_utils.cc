@@ -215,14 +215,6 @@ GetValueResult<T> GetValue(PGresult* result, int row, int column) {
   }
 }
 
-template<class T>
-GetOptionalValueResult<T> GetValue(PGresult* result, int row, int column) {
-  if (PQgetisnull(result, row, column)) {
-    return std::nullopt;
-  }
-  return GetValue<typename T::value_type>(result, row, column);
-}
-
 void PGConnClose::operator()(PGconn* conn) const {
   PQfinish(conn);
 }
@@ -772,8 +764,6 @@ template GetValueResult<bool> GetValue<bool>(PGresult*, int, int);
 template GetValueResult<std::string> GetValue<std::string>(PGresult*, int, int);
 template GetValueResult<PGOid> GetValue<PGOid>(PGresult*, int, int);
 template GetValueResult<Uuid> GetValue<Uuid>(PGresult*, int, int);
-template GetOptionalValueResult<std::optional<Uuid>> GetValue<std::optional<Uuid>>(
-    PGresult*, int, int);
 
 } // namespace pgwrapper
 } // namespace yb

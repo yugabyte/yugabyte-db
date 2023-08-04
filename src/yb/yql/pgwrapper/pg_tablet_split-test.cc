@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <optional>
+
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -72,13 +74,6 @@ namespace {
 // Another name as YbTableProperties is a pointer in ybc_pg_typedefs.h, it may be confusing.
 using PgYbTableProperties = YbTablePropertiesData;
 
-// Returns cell value or default value in case of null.
-template<typename T>
-GetValueResult<T> GetValueOrDefault(PGresult* result, int row, int column,
-    typename GetValueResult<T>::ValueType default_value = {}) {
-  return PQgetisnull(result, row, column) ? default_value : GetValue<T>(result, row, column);
-}
-
 // Fetches rows count with a simple request.
 GetValueResult<PGUint64> FetchTableRowsCount(
     PGConn* conn, const std::string& table_name,
@@ -103,8 +98,10 @@ Result<PgYbTableProperties> FetchYbTableProperties(PGConn* conn, Oid table_oid) 
   props.num_tablets = VERIFY_RESULT(GetValue<PGUint64>(res.get(), 0, 0));
   props.num_hash_key_columns = VERIFY_RESULT(GetValue<PGUint64>(res.get(), 0, 1));
   props.is_colocated = VERIFY_RESULT(GetValue<bool>(res.get(), 0, 2));
-  props.tablegroup_oid = VERIFY_RESULT(GetValueOrDefault<PGOid>(res.get(), 0, 3));
-  props.colocation_id = VERIFY_RESULT(GetValueOrDefault<PGOid>(res.get(), 0, 4));
+  props.tablegroup_oid =
+      VERIFY_RESULT(GetValue<std::optional<PGOid>>(res.get(), 0, 3)).value_or(PgOid{});
+  props.colocation_id =
+      VERIFY_RESULT(GetValue<std::optional<PGOid>>(res.get(), 0, 4)).value_or(PgOid{});
   return props;
 }
 

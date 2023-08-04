@@ -12,6 +12,7 @@
 
 #include <chrono>
 #include <map>
+#include <optional>
 #include <vector>
 
 #include "yb/util/backoff_waiter.h"
@@ -49,9 +50,9 @@ class PgStatActivityTest : public PgMiniTestBase {
   size_t NumTabletServers() override { return 1; }
 
   static Result<TxnInfo> GetTransactionInfo(PGConn* conn) {
-    auto txn_id_holder = VERIFY_RESULT(conn->Fetch("SELECT yb_get_current_transaction()"));
-    auto opt_txn_id = VERIFY_RESULT(GetValue<std::optional<Uuid>>(txn_id_holder.get(), 0, 0));
-    return TxnInfo{PQbackendPID(conn->get()), opt_txn_id ? *opt_txn_id : Uuid::Nil()};
+    auto opt_txn_id =
+        VERIFY_RESULT(conn->FetchValue<std::optional<Uuid>>("SELECT yb_get_current_transaction()"));
+    return TxnInfo{PQbackendPID(conn->get()), opt_txn_id.value_or(Uuid::Nil())};
   }
 
   static Result<Uuid> GetTransactionId(PGConn* conn) {
