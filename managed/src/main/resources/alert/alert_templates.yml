@@ -1064,8 +1064,8 @@ templates:
     name: DB node disk usage
     description: Node Disk usage percentage is above threshold
     queryTemplate: count by (universe_uuid) (count by (universe_uuid, node_name)
-      (100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~"/mnt/d[0-9]+",
-      universe_uuid="__universeUuid__", fstype!="rootfs"}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~"/mnt/d[0-9]+",
+      (100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~"__mountPoints__",
+      universe_uuid="__universeUuid__", fstype!="rootfs"}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~"__mountPoints__",
       universe_uuid="__universeUuid__", fstype!="rootfs"}) * 100) {{ query_condition }} {{ query_threshold }}))
     createForNewCustomer: true
     defaultThresholdMap:
@@ -1082,8 +1082,8 @@ templates:
     labels:
       affected_node_names: >-
         {{ range query "count by (universe_uuid, node_name)
-        (100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~'/mnt/d[0-9]+',
-        universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~'/mnt/d[0-9]+',
+        (100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~'{{ $labels.mount_points }}',
+        universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~'{{ $labels.mount_points }}',
         universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) * 100) {{ query_condition }} {{ query_threshold }})" }}{{ .Labels.node_name }} {{ end }}
     annotations:
       summary: >-
