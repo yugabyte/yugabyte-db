@@ -70,7 +70,7 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
         Provider.get(customerUUID, cloudProviderFormData.name, cloudProviderFormData.code);
     if (existingProvider != null) {
       throw new PlatformServiceException(
-          BAD_REQUEST,
+          CONFLICT,
           String.format("Provider with the name %s already exists", cloudProviderFormData.name));
     }
 
