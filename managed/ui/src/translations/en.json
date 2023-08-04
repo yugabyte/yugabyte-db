@@ -567,8 +567,11 @@
           "selectKMSConfig": "KMS Configuration",
           "kmsConfigHelpText": "<b>Note!</b> For a successful restore, the KMS configuration used for restore should be the same KMS configuration used during backup creation.",
           "validationMessages": {
-            "ybcNotEnabled" : "Cannot restore ybc backup to non-ybc universe"
-          }
+            "ybcNotEnabled": "Cannot restore ybc backup to non-ybc universe",
+            "kmsConfigRequired": "Backup was taken using KMS. Valid KMS configuration is needed for restoring."
+          },
+          "activeKMS": "Active",
+          "usedDuringBackup": "Used during backup"
         },
         "selectKeyspaceForm":{
           "title": "Select Keyspace",
