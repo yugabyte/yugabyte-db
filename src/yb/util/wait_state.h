@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include "yb/rpc/messenger.h"
 #include "yb/util/flags.h"
 
 #include "yb/gutil/macros.h"
@@ -299,6 +300,14 @@ class ScopedWaitStatus {
   WaitStateInfoPtr wait_state_;
   const WaitStateCode state_;
   WaitStateCode prev_state_;
+};
+
+template <class RequestPB>
+class WaitStateFetcher {
+ public:
+  WaitStateFetcher() = default;
+
+  void fetch(RequestPB& req, rpc::Messenger* messenger);
 };
 
 // Link to source codes for the classes below
