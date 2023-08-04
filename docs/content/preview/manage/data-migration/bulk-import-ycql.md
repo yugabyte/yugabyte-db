@@ -76,6 +76,7 @@ fi
 for i in $(seq 1 "$1"); do
   timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S.000000+0000")
   echo "customer${i},${i},${timestamp},\"{temp:${i}, humidity:${i}}\"" >> "$2"
+done
 ```
 
 ```output
