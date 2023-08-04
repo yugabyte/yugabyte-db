@@ -245,8 +245,7 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
   }
   auto table = *table_result;
 
-  shared_ptr<YBSession> session = client_->NewSession();
-  session->SetTimeout(options.write_timeout);
+  auto session = client_->NewSession(options.write_timeout);
 
   WaitAllThreads();
 
@@ -387,8 +386,7 @@ void TestWorkload::State::ReadThread(const TestWorkloadOptions& options) {
   }
   auto table = *table_result;
 
-  shared_ptr<YBSession> session = client_->NewSession();
-  session->SetTimeout(options.default_rpc_timeout);
+  auto session = client_->NewSession(options.default_rpc_timeout);
 
   WaitAllThreads();
 

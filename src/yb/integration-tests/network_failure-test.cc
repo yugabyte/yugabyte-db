@@ -100,10 +100,9 @@ TEST_F(NetworkFailureTest, DisconnectMasterLeader) {
 
   std::atomic<int> written(0);
   std::atomic<CoarseTimePoint> prev_report{CoarseTimePoint()};
-  thread_holder.AddThreadFunctor([
-      this, &written, &stop_flag = thread_holder.stop_flag(), &prev_report]() {
-    auto session = client_->NewSession();
-    session->SetTimeout(30s);
+  thread_holder.AddThreadFunctor([this, &written, &stop_flag = thread_holder.stop_flag(),
+                                  &prev_report]() {
+    auto session = client_->NewSession(30s);
 
     std::deque<std::future<client::FlushStatus>> futures;
     std::deque<client::YBOperationPtr> ops;

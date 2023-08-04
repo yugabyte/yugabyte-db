@@ -517,8 +517,8 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
 };
 
 client::YBSessionPtr CreateSession(
-    client::YBClient* client, const scoped_refptr<ClockBase>& clock) {
-  auto result = std::make_shared<client::YBSession>(client, clock);
+    client::YBClient* client, CoarseTimePoint deadline, const scoped_refptr<ClockBase>& clock) {
+  auto result = std::make_shared<client::YBSession>(client, deadline, clock);
   result->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
   result->set_allow_local_calls_in_curr_thread(false);
   return result;
@@ -1081,10 +1081,10 @@ PgClientSession::SetupSession(
            InvalidArgument,
            "Reading catalog from followers is not allowed");
     kind = PgClientSessionKind::kCatalog;
-    EnsureSession(kind);
+    EnsureSession(kind, deadline);
   } else if (options.ddl_mode()) {
     kind = PgClientSessionKind::kDdl;
-    EnsureSession(kind);
+    EnsureSession(kind, deadline);
     RETURN_NOT_OK(GetDdlTransactionMetadata(true /* use_transaction */, deadline));
   } else {
     kind = PgClientSessionKind::kPlain;
@@ -1192,7 +1192,7 @@ Status PgClientSession::BeginTransactionIfNecessary(
   const auto isolation = static_cast<IsolationLevel>(options.isolation());
 
   auto priority = options.priority();
-  auto& session = EnsureSession(PgClientSessionKind::kPlain);
+  auto& session = EnsureSession(PgClientSessionKind::kPlain, deadline);
   auto& txn = Transaction(PgClientSessionKind::kPlain);
   if (txn && txn_serial_no_ != options.txn_serial_no()) {
     VLOG_WITH_PREFIX(2)
@@ -1263,7 +1263,7 @@ Result<const TransactionMetadata*> PgClientSession::GetDdlTransactionMetadata(
     txn = VERIFY_RESULT(transaction_pool_provider_().TakeAndInit(isolation, deadline));
     txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
     ddl_txn_metadata_ = VERIFY_RESULT(Copy(txn->GetMetadata(deadline).get()));
-    EnsureSession(PgClientSessionKind::kDdl)->SetTransaction(txn);
+    EnsureSession(PgClientSessionKind::kDdl, deadline)->SetTransaction(txn);
   }
 
   return &ddl_txn_metadata_;
@@ -1337,8 +1337,7 @@ Status PgClientSession::InsertSequenceTuple(
   column_value->set_column_id(table->schema().ColumnId(kPgSequenceIsCalledColIdx));
   column_value->mutable_expr()->mutable_value()->set_bool_value(req.is_called());
 
-  auto& session = EnsureSession(PgClientSessionKind::kSequence);
-  session->SetDeadline(context->GetClientDeadline());
+  auto& session = EnsureSession(PgClientSessionKind::kSequence, context->GetClientDeadline());
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
   return session->TEST_ApplyAndFlush(std::move(psql_write));
 }
@@ -1395,8 +1394,7 @@ Status PgClientSession::UpdateSequenceTuple(
   write_request->add_col_refs()->set_column_id(
       table->schema().ColumnId(kPgSequenceIsCalledColIdx));
 
-  auto& session = EnsureSession(PgClientSessionKind::kSequence);
-  session->SetDeadline(context->GetClientDeadline());
+  auto& session = EnsureSession(PgClientSessionKind::kSequence, context->GetClientDeadline());
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
   RETURN_NOT_OK(session->TEST_ApplyAndFlush(psql_write));
   resp->set_skipped(psql_write->response().skipped());
@@ -1457,8 +1455,7 @@ Status PgClientSession::FetchSequenceTuple(
   write_request->add_col_refs()->set_column_id(
       table->schema().ColumnId(kPgSequenceIsCalledColIdx));
 
-  auto& session = EnsureSession(PgClientSessionKind::kSequence);
-  session->SetDeadline(context->GetClientDeadline());
+  auto& session = EnsureSession(PgClientSessionKind::kSequence, context->GetClientDeadline());
   session->Apply(std::move(psql_write));
   auto fetch_status = session->FlushFuture().get();
   RETURN_NOT_OK(CombineErrorsToStatus(fetch_status.errors, fetch_status.status));
@@ -1540,8 +1537,7 @@ Status PgClientSession::ReadSequenceTuple(
   read_request->add_col_refs()->set_column_id(
       table->schema().ColumnId(kPgSequenceIsCalledColIdx));
 
-  auto& session = EnsureSession(PgClientSessionKind::kSequence);
-  session->SetDeadline(context->GetClientDeadline());
+  auto& session = EnsureSession(PgClientSessionKind::kSequence, context->GetClientDeadline());
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
   RETURN_NOT_OK(session->TEST_ReadSync(psql_read));
 
@@ -1580,8 +1576,7 @@ Status PgClientSession::DeleteSequenceTuple(
   delete_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
   delete_request->add_partition_column_values()->mutable_value()->set_int64_value(req.seq_oid());
 
-  auto& session = EnsureSession(PgClientSessionKind::kSequence);
-  session->SetDeadline(context->GetClientDeadline());
+  auto& session = EnsureSession(PgClientSessionKind::kSequence, context->GetClientDeadline());
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
   return session->TEST_ApplyAndFlush(std::move(psql_delete));
 }
@@ -1606,16 +1601,16 @@ Status PgClientSession::DeleteDBSequences(
 
   delete_request->add_partition_column_values()->mutable_value()->set_int64_value(req.db_oid());
 
-  auto& session = EnsureSession(PgClientSessionKind::kSequence);
-  session->SetDeadline(context->GetClientDeadline());
+  auto& session = EnsureSession(PgClientSessionKind::kSequence, context->GetClientDeadline());
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
   return session->TEST_ApplyAndFlush(std::move(psql_delete));
 }
 
-client::YBSessionPtr& PgClientSession::EnsureSession(PgClientSessionKind kind) {
+client::YBSessionPtr& PgClientSession::EnsureSession(
+    PgClientSessionKind kind, CoarseTimePoint deadline) {
   auto& session = Session(kind);
   if (!session) {
-    session = CreateSession(&client_, clock_);
+    session = CreateSession(&client_, deadline, clock_);
   }
   return session;
 }

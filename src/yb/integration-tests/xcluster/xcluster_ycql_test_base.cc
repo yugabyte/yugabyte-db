@@ -95,7 +95,7 @@ Status XClusterYcqlTestBase::CreateTable(
 
 void XClusterYcqlTestBase::WriteWorkload(
     uint32_t start, uint32_t end, YBClient* client, const YBTableName& table, bool delete_op) {
-  auto session = client->NewSession();
+  auto session = client->NewSession(kRpcTimeout * 1s);
   client::TableHandle table_handle;
   ASSERT_OK(table_handle.Open(table, client));
   std::vector<std::shared_ptr<client::YBqlOp>> ops;

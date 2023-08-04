@@ -97,7 +97,7 @@ class StatefulServiceBase {
   // Get the term when we last activated and make sure we still have a valid lease.
   Result<int64_t> GetLeaderTerm() EXCLUDES(service_state_mutex_);
 
-  Result<std::shared_ptr<client::YBSession>> GetYBSession();
+  Result<std::shared_ptr<client::YBSession>> GetYBSession(MonoDelta delta);
 
   Result<client::TableHandle*> GetServiceTable() EXCLUDES(table_handle_mutex_);
 

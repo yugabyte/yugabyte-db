@@ -95,7 +95,10 @@ struct NODISCARD_CLASS FlushStatus {
 // This class is not thread-safe.
 class YBSession : public std::enable_shared_from_this<YBSession> {
  public:
-  explicit YBSession(YBClient* client, const scoped_refptr<ClockBase>& clock = nullptr);
+  explicit YBSession(
+      YBClient* client, MonoDelta delta, const scoped_refptr<ClockBase>& clock = nullptr);
+  explicit YBSession(
+      YBClient* client, CoarseTimePoint deadline, const scoped_refptr<ClockBase>& clock = nullptr);
 
   ~YBSession();
 
@@ -251,6 +254,8 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
  private:
   friend class YBClient;
   friend class internal::Batcher;
+
+  YBSession(YBClient* client, const scoped_refptr<ClockBase>& clock);
 
   internal::Batcher& Batcher();
 

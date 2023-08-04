@@ -711,8 +711,7 @@ Status XClusterConsumer::PublishXClusterSafeTime() {
     }
   }
 
-  std::shared_ptr<client::YBSession> session = client->NewSession();
-  session->SetTimeout(client->default_rpc_timeout());
+  auto session = client->NewSession(client->default_rpc_timeout());
   for (auto& safe_time_info : safe_time_map) {
     const auto op = safe_time_table_->NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
     auto* const req = op->mutable_request();

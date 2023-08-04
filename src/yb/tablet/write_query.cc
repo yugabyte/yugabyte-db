@@ -866,8 +866,7 @@ struct UpdateQLIndexesTask {
 
   Status Init(const TabletPtr& tablet, docdb::QLWriteOperation* write_op) {
     client = &tablet->client();
-    session = std::make_shared<client::YBSession>(client);
-    session->SetDeadline(query->deadline());
+    session = client->NewSession(query->deadline());
     if (write_op->request().has_child_transaction_data()) {
       child_transaction_data = &write_op->request().child_transaction_data();
       auto child_data = VERIFY_RESULT(client::ChildTransactionData::FromPB(

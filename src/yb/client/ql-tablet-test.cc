@@ -212,8 +212,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
   }
 
   YBSessionPtr CreateSession() {
-    auto session = client_->NewSession();
-    session->SetTimeout(15s);
+    auto session = client_->NewSession(15s);
     return session;
   }
 
@@ -957,8 +956,7 @@ TEST_F(QLTabletTest, LeaderChange) {
 
   TableHandle table;
   CreateTable(kTable1Name, &table, kNumTablets);
-  auto session = client_->NewSession();
-  session->SetTimeout(60s);
+  auto session = client_->NewSession(60s);
 
   // Write kValue1
   SetValue(session, kKey, kValue1, table);
@@ -1560,8 +1558,7 @@ TEST_F(QLTabletTest, LastAppliedOpIdTracking) {
 
   TableHandle table;
   CreateTable(kTable1Name, &table, /* num_tablets =*/1);
-  auto session = client_->NewSession();
-  session->SetTimeout(60s);
+  auto session = client_->NewSession(60s);
 
   LOG(INFO) << "Writing data...";
   int key = 0;
@@ -1626,8 +1623,7 @@ TEST_F(QLTabletTest, SlowPrepare) {
 
   const int kNumTablets = 1;
 
-  auto session = client_->NewSession();
-  session->SetTimeout(60s);
+  auto session = client_->NewSession(60s);
 
   TestWorkload workload(cluster_.get());
   workload.set_table_name(kTable1Name);
