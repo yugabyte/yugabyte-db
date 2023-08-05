@@ -187,9 +187,5 @@ std::vector<yb::util::WaitStateInfoPtr> MasterTabletServer::GetThreadpoolWaitSta
   return {};
 }
 
-std::vector<WaitStateInfoPB> MasterTabletServer::ActiveUniverseHistory() const {
-  return {};
-}
-
 } // namespace master
 } // namespace yb

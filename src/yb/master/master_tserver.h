@@ -80,7 +80,9 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   std::vector<yb::util::WaitStateInfoPtr> GetThreadpoolWaitStates() const override;
 
-  std::vector<WaitStateInfoPB> ActiveUniverseHistory() const override;
+  void ActiveUniverseHistory(tserver::PgActiveUniverseHistoryResponsePB* resp) const override {}
+
+  void GetCQLServerMessenger(tserver::CQLServerMessenger messenger) override {};
 
  private:
   Master* master_ = nullptr;
