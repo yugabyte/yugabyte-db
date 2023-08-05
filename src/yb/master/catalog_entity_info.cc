@@ -490,6 +490,18 @@ TableType TableInfo::GetTableType() const {
   return LockForRead()->pb.table_type();
 }
 
+bool TableInfo::IsBeingDroppedDueToDdlTxn(const std::string& txn_id_pb, bool txn_success) const {
+  auto l = LockForRead();
+  if (l->pb_transaction_id() != txn_id_pb) {
+    return false;
+  }
+  // The table can be dropped in 2 cases due to a DDL:
+  // 1. This table was created by a transaction that subsequently aborted.
+  // 2. This is a successful transaction that DROPs the table.
+  return (l->is_being_created_by_ysql_ddl_txn() && !txn_success) ||
+         (l->is_being_deleted_by_ysql_ddl_txn() && txn_success);
+}
+
 void TableInfo::AddTablet(const TabletInfoPtr& tablet) {
   std::lock_guard l(lock_);
   AddTabletUnlocked(tablet);

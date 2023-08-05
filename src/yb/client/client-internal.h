@@ -182,7 +182,8 @@ class YBClient::Data {
 
   Status DeleteTablegroup(YBClient* client,
                           CoarseTimePoint deadline,
-                          const std::string& tablegroup_id);
+                          const std::string& tablegroup_id,
+                          const TransactionMetadata* txn);
 
   Status BackfillIndex(YBClient* client,
                        const YBTableName& table_name,

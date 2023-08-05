@@ -341,6 +341,8 @@ YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle);
 
 YBCStatus YBCPgExecDropTable(YBCPgStatement handle);
 
+YBCStatus YBCPgExecDropIndex(YBCPgStatement handle);
+
 YBCStatus YBCPgWaitForBackendsCatalogVersion(
     YBCPgOid dboid,
     uint64_t version,
