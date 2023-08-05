@@ -841,12 +841,16 @@ Status PgApiImpl::ExecCreateTablegroup(PgStatement *handle) {
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
+  pg_session_->SetDdlHasSyscatalogChanges();
   return down_cast<PgCreateTablegroup*>(handle)->Exec();
 }
 
 Status PgApiImpl::NewDropTablegroup(const PgOid database_oid,
                                     const PgOid tablegroup_oid,
                                     PgStatement **handle) {
+  SCHECK(pg_txn_manager_->IsDdlMode(),
+         IllegalState,
+         "Tablegroup is being dropped outside of DDL mode");
   auto stmt = std::make_unique<PgDropTablegroup>(pg_session_, database_oid, tablegroup_oid);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -858,6 +862,7 @@ Status PgApiImpl::ExecDropTablegroup(PgStatement *handle) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
+  pg_session_->SetDdlHasSyscatalogChanges();
   return down_cast<PgDropTablegroup*>(handle)->Exec();
 }
 
@@ -1017,6 +1022,9 @@ Status PgApiImpl::ExecAlterTable(PgStatement *handle) {
 Status PgApiImpl::NewDropTable(const PgObjectId& table_id,
                                bool if_exist,
                                PgStatement **handle) {
+  SCHECK(pg_txn_manager_->IsDdlMode(),
+         IllegalState,
+         "Table is being dropped outside of DDL mode");
   auto stmt = std::make_unique<PgDropTable>(pg_session_, table_id, if_exist);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1175,12 +1183,16 @@ Status PgApiImpl::ExecCreateIndex(PgStatement *handle) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
+  pg_session_->SetDdlHasSyscatalogChanges();
   return down_cast<PgCreateTable*>(handle)->Exec();
 }
 
 Status PgApiImpl::NewDropIndex(const PgObjectId& index_id,
                                bool if_exist,
                                PgStatement **handle) {
+  SCHECK(pg_txn_manager_->IsDdlMode(),
+         IllegalState,
+         "Index is being dropped outside of DDL mode");
   auto stmt = std::make_unique<PgDropIndex>(pg_session_, index_id, if_exist);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1211,6 +1223,14 @@ Status PgApiImpl::ExecDropTable(PgStatement *handle) {
   }
   pg_session_->SetDdlHasSyscatalogChanges();
   return down_cast<PgDropTable*>(handle)->Exec();
+}
+
+Status PgApiImpl::ExecDropIndex(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DROP_INDEX)) {
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  pg_session_->SetDdlHasSyscatalogChanges();
+  return down_cast<PgDropIndex*>(handle)->Exec();
 }
 
 Result<int> PgApiImpl::WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version) {
