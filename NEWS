@@ -1,6 +1,10 @@
 Orafce News - History of user-visible changes
 Copyright (C) 2008-2022  Orafce Global Development Group
 
+Version 4.5.0 - 5 Aug 2023
+* partial rewriting of dbms_pipe. Now, the synchronization is based on signals instead short sleeping.
+  New method is significantly faster.
+
 Version 4.0.0 - 2 Nov 2022
 * removed support for PostgreSQL 9.6 and 10
 * merged orafce_sql project - implementation of dbms_sql package
