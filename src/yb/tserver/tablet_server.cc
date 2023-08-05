@@ -1193,35 +1193,13 @@ std::vector<yb::util::WaitStateInfoPtr> TabletServer::GetThreadpoolWaitStates() 
   return tablet_manager_->GetThreadpoolWaitStates();
 }
 
-std::vector<WaitStateInfoPB> TabletServer::ActiveUniverseHistory() const {
-  rpc::DumpRunningRpcsRequestPB dump_req;
-  rpc::DumpRunningRpcsResponsePB dump_resp;
+void TabletServer::ActiveUniverseHistory(PgActiveUniverseHistoryResponsePB* resp) const {
+  messenger()->GetRPCsWaitStates(resp);
+  cql_server_messenger_()->GetRPCsWaitStates(resp);
+}
 
-  dump_req.set_include_traces(false);
-  dump_req.set_get_wait_state(true);
-  dump_req.set_dump_timed_out(false);
-
-  WARN_NOT_OK(messenger()->DumpRunningRpcs(dump_req, &dump_resp), "DumpRunningRpcs failed");
-
-  std::vector<WaitStateInfoPB> res;
-  
-  for (auto conns : dump_resp.inbound_connections()) {
-    for (auto call : conns.calls_in_flight()) {
-      if (call.has_header() && call.header().remote_method().method_name() != "ActiveUniverseHistory") {
-        res.push_back(call.wait_state());
-      }
-    }
-  }
-
-  for (auto conns : dump_resp.outbound_connections()) {
-    for (auto call : conns.calls_in_flight()) {
-      if (call.has_header() && call.header().remote_method().method_name() != "ActiveUniverseHistory") {
-        res.push_back(call.wait_state());
-      }
-    }
-  }
-
-  return res;
+void TabletServer::GetCQLServerMessenger(CQLServerMessenger messenger) {
+  cql_server_messenger_ = messenger;
 }
 
 }  // namespace tserver

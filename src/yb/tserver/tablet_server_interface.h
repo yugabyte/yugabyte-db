@@ -24,6 +24,8 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/tserver/pg_client.pb.h"
+
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/local_tablet_server.h"
 #include "yb/util/wait_state.h"
@@ -36,6 +38,7 @@ namespace tserver {
 
 using CertificateReloader = std::function<Status(void)>;
 using PgConfigReloader = std::function<Status(void)>;
+using CQLServerMessenger = std::function<rpc::Messenger*(void)>;
 
 class TabletServerIf : public LocalTabletServer {
  public:
@@ -80,8 +83,9 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual std::vector<yb::util::WaitStateInfoPtr> GetThreadpoolWaitStates() const = 0;
 
-  virtual std::vector<WaitStateInfoPB> ActiveUniverseHistory() const = 0;
+  virtual void ActiveUniverseHistory(PgActiveUniverseHistoryResponsePB* resp) const = 0;
 
+  virtual void GetCQLServerMessenger(CQLServerMessenger messenger) = 0;
 };
 
 } // namespace tserver
