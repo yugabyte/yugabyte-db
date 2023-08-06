@@ -62,6 +62,7 @@
 #define YB_PG_WAIT_PERFORM           0xFE000000U
 #define YB_TSERVER_WAIT_RPC          0xEF000000U
 #define YB_FLUSH_AND_COMPACTION      0xEE000000U
+#define YB_CQL_WAIT_STATE            0xED000000U
 
 // For debugging purposes:
 // Uncomment the following line to track state changes in wait events.
@@ -100,6 +101,9 @@ YB_DEFINE_ENUM_TYPE(
     ((StartFlush, YB_FLUSH_AND_COMPACTION))(StartCompaction)
     (OpenFile)(CloseFile)(DeleteFile)(WriteToFile)
     (StartSubcompactionThreads)(WaitOnSubcompactionThreads)
+
+    // CQL Wait Events
+    ((Parse, YB_CQL_WAIT_STATE))(Analyze)(Execute)
 
     // Perform Wait Events
     ((DmlRead, YB_PG_WAIT_PERFORM)) (DmlWrite) (DmlReadWrite)
