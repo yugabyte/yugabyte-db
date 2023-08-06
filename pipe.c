@@ -145,6 +145,7 @@ typedef struct
 #if PG_VERSION_NUM >= 130000
 
 	ConditionVariable pipe_cv;
+	ConditionVariable alert_cv;
 
 #endif
 
@@ -175,6 +176,7 @@ extern alert_lock  *locks;
 #if PG_VERSION_NUM >= 130000
 
 ConditionVariable *pipe_cv = NULL;
+ConditionVariable *alert_cv = NULL;
 
 #endif
 
@@ -299,7 +301,10 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 #if PG_VERSION_NUM >= 130000
 
 			ConditionVariableInit(&sh_mem->pipe_cv);
+			ConditionVariableInit(&sh_mem->alert_cv);
+
 			pipe_cv = &sh_mem->pipe_cv;
+			alert_cv = &sh_mem->alert_cv;
 
 #endif
 
@@ -313,6 +318,7 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 #if PG_VERSION_NUM >= 130000
 
 			pipe_cv = &sh_mem->pipe_cv;
+			alert_cv = &sh_mem->alert_cv;
 
 #endif
 

@@ -2,6 +2,7 @@
 #define __ORAFCE__
 
 #include "postgres.h"
+#include "access/xact.h"
 #include "catalog/catversion.h"
 #include "nodes/pg_list.h"
 #include <sys/time.h>
@@ -34,6 +35,9 @@ extern char *nls_date_format;
 extern char *orafce_timezone;
 
 extern bool orafce_varchar2_null_safe_concat;
+
+extern void orafce_xact_cb(XactEvent event, void *arg);
+
 
 /*
  * Version compatibility

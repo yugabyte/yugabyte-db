@@ -92,6 +92,7 @@ check_sys_guid_source(char **newval, void **extra, GucSource source)
 	return true;
 }
 
+
 void
 _PG_init(void)
 {
@@ -146,4 +147,6 @@ _PG_init(void)
 									check_sys_guid_source, NULL, NULL);
 
 	EmitWarningsOnPlaceholders("orafce");
+
+	RegisterXactCallback(orafce_xact_cb, NULL);
 }
