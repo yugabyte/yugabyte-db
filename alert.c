@@ -38,7 +38,6 @@ PG_FUNCTION_INFO_V1(dbms_alert_waitany);
 PG_FUNCTION_INFO_V1(dbms_alert_waitone);
 PG_FUNCTION_INFO_V1(dbms_alert_waitany_maxwait);
 PG_FUNCTION_INFO_V1(dbms_alert_waitone_maxwait);
-PG_FUNCTION_INFO_V1(dbms_alert_defered_signal);
 
 extern int sid;
 extern LWLockId shmem_lockid;
@@ -734,6 +733,13 @@ _dbms_alert_waitany(int timeout, FunctionCallInfo fcinfo)
 	instr_time	start_time;
 	TupleDesc	btupdesc;
 
+#if PG_VERSION_NUM < 130000
+
+	long		cycle = 0;
+
+#endif
+
+
 	INSTR_TIME_SET_CURRENT(start_time);
 
 	for (;;)
@@ -1096,7 +1102,12 @@ orafce_xact_cb(XactEvent event, void *arg)
 
 			LWLockRelease(shmem_lockid);
 
+#if PG_VERSION_NUM >= 130000
+
 			ConditionVariableBroadcast(alert_cv);
+
+#endif
+
 		}
 	}
 }

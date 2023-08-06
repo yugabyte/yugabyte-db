@@ -1580,12 +1580,6 @@ AS 'MODULE_PATHNAME','dbms_alert_set_defaults'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_alert.set_defaults(float8) IS '';
 
-CREATE FUNCTION dbms_alert.defered_signal()
-RETURNS trigger
-AS 'MODULE_PATHNAME','dbms_alert_defered_signal'
-LANGUAGE C SECURITY DEFINER;
-REVOKE ALL ON FUNCTION dbms_alert.defered_signal() FROM PUBLIC;
-
 CREATE FUNCTION dbms_alert.signal(_event text, _message text)
 RETURNS void
 AS 'MODULE_PATHNAME','dbms_alert_signal'
