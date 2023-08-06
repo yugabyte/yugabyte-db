@@ -101,7 +101,7 @@ textcmpm(text *txt, char *str)
 static void
 purge_shared_alert_mem()
 {
-	int		i;
+	int			i;
 
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
 
@@ -144,8 +144,8 @@ purge_shared_alert_mem()
 static alert_lock*
 find_lock(int sid, bool create)
 {
-	int i;
-	int first_free = NOT_FOUND;
+	int			i;
+	int			first_free = NOT_FOUND;
 
 	if (session_lock != NULL)
 		return session_lock;
@@ -197,7 +197,7 @@ find_lock(int sid, bool create)
 static alert_event*
 find_event(text *event_name, bool create, int *event_id)
 {
-	int i;
+	int			i;
 
 	for (i = 0; i < MAX_EVENTS;i++)
 	{
@@ -243,9 +243,9 @@ static void
 register_event(text *event_name)
 {
 	alert_event *ev;
-	int *new_receivers;
-	int first_free;
-	int i;
+	int		   *new_receivers;
+	int			first_free;
+	int			i;
 
 	find_lock(sid, true);
 	ev = find_event(event_name, true, NULL);
@@ -342,9 +342,9 @@ unregister_event(int event_id, int sid)
 static bool
 remove_receiver(message_item *msg, int sid)
 {
-	int i;
-	bool find_other = false;
-	bool found = false;
+	int			i;
+	bool		find_other = false;
+	bool		found = false;
 
 	for (i = 0; i < msg->receivers_number; i++)
 	{
@@ -491,7 +491,7 @@ create_message(text *event_name, text *message)
 	{
 		if (ev->receivers_number > 0)
 		{
-			int		i,j,k;
+			int			i,j,k;
 
 			msg_item = ev->messages;
 			while (msg_item != NULL)
@@ -557,6 +557,7 @@ create_message(text *event_name, text *message)
 			else
 			{
 				message_item *p;
+
 				p = ev->messages;
 				while (p->next_message != NULL)
 					p = p->next_message;
@@ -595,10 +596,10 @@ pg_usleep(10000L); \
 Datum
 dbms_alert_register(PG_FUNCTION_ARGS)
 {
-	text *name = PG_GETARG_TEXT_P(0);
-	int cycle = 0;
-	float8 endtime;
-	float8 timeout = 2;
+	text	   *name = PG_GETARG_TEXT_P(0);
+	int			cycle = 0;
+	float8		endtime;
+	float8		timeout = 2;
 
 	WATCH_PRE(timeout, endtime, cycle);
 	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES, MAX_EVENTS, MAX_LOCKS, false))
@@ -719,14 +720,14 @@ dbms_alert_removeall(PG_FUNCTION_ARGS)
 Datum
 dbms_alert_waitany(PG_FUNCTION_ARGS)
 {
-	float8 timeout;
-	TupleDesc   tupdesc;
-	AttInMetadata       *attinmeta;
-	HeapTuple   tuple;
-	Datum       result;
-	char *str[3] = {NULL, NULL, "1"};
-	int cycle = 0;
-	float8 endtime;
+	float8		timeout;
+	TupleDesc	tupdesc;
+	AttInMetadata *attinmeta;
+	HeapTuple	tuple;
+	Datum		result;
+	char	   *str[3] = {NULL, NULL, "1"};
+	int			cycle = 0;
+	float8		endtime;
 	TupleDesc	btupdesc;
 
 	if (PG_ARGISNULL(0))
@@ -780,17 +781,17 @@ dbms_alert_waitany(PG_FUNCTION_ARGS)
 Datum
 dbms_alert_waitone(PG_FUNCTION_ARGS)
 {
-	text *name;
-	float8 timeout;
-	TupleDesc   tupdesc;
-	AttInMetadata       *attinmeta;
-	HeapTuple   tuple;
-	Datum       result;
-	int message_id;
-	char *str[2] = {NULL,"1"};
-	char *event_name;
-	int cycle = 0;
-	float8 endtime;
+	text	   *name;
+	float8		timeout;
+	TupleDesc	tupdesc;
+	AttInMetadata *attinmeta;
+	HeapTuple	tuple;
+	Datum		result;
+	int			message_id;
+	char	   *str[2] = {NULL,"1"};
+	char	   *event_name;
+	int			cycle = 0;
+	float8		endtime;
 	TupleDesc	btupdesc;
 
 	if (PG_ARGISNULL(0))
@@ -884,19 +885,19 @@ Datum
 dbms_alert_defered_signal(PG_FUNCTION_ARGS)
 {
 	TriggerData *trigdata = (TriggerData *) fcinfo->context;
-	TupleDesc tupdesc;
-	HeapTuple rettuple;
-	char *relname;
-	text *name;
-	text *message;
-	int event_col;
-	int message_col;
+	TupleDesc	tupdesc;
+	HeapTuple	rettuple;
+	char	   *relname;
+	text	   *name;
+	text	   *message;
+	int			event_col;
+	int			message_col;
 
-	Datum datum;
-	bool isnull;
-	int cycle = 0;
-	float8 endtime;
-	float8 timeout = 2;
+	Datum		datum;
+	bool		isnull;
+	int			cycle = 0;
+	float8		endtime;
+	float8		timeout = 2;
 
 	if (!CALLED_AS_TRIGGER(fcinfo))
 		ereport(ERROR,
@@ -1013,17 +1014,17 @@ $$ LANGUAGE plpgsql VOLATILE SECURITY DEFINER;
 #define SPI_EXEC(cmd,_type_) \
 if (SPI_OK_##_type_ != SPI_exec(cmd, 1)) \
 		ereport(ERROR, \
-    			(errcode(ERRCODE_INTERNAL_ERROR), \
-        		 errmsg("SPI execute error"), \
+				(errcode(ERRCODE_INTERNAL_ERROR), \
+				 errmsg("SPI execute error"), \
 			 errdetail("Can't execute %s.", cmd)));
 
 Datum
 dbms_alert_signal(PG_FUNCTION_ARGS)
 {
-	void *plan;
-	Oid argtypes[] = {TEXTOID, TEXTOID};
-	Datum values[2];
-	char nulls[2] = {' ',' '};
+	void	   *plan;
+	Oid			argtypes[] = {TEXTOID, TEXTOID};
+	Datum		values[2];
+	char		nulls[2] = {' ',' '};
 
 	if (PG_ARGISNULL(0))
 		ereport(ERROR,
