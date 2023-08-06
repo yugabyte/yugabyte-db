@@ -197,6 +197,8 @@ void CQLServiceImpl::Shutdown() {
 
 void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {
   TRACE("Handling the CQL call");
+  SCOPED_ADOPT_WAIT_STATE(inbound_call->wait_state());
+  SET_WAIT_STATUS(util::WaitStateCode::Handling);
   // Collect the call.
   CQLInboundCall* cql_call = down_cast<CQLInboundCall*>(CHECK_NOTNULL(inbound_call.get()));
   DVLOG(4) << "Handling " << cql_call->ToString();
