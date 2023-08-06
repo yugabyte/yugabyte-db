@@ -183,7 +183,6 @@ ConditionVariable *alert_cv = NULL;
 /*
  * write on writer size bytes from ptr
  */
-
 static void
 pack_field(message_buffer *buffer, message_data_type type,
 			int32 size, void *ptr, Oid tupType)
@@ -217,7 +216,6 @@ pack_field(message_buffer *buffer, message_data_type type,
 	buffer->next = message_data_item_next(message);
 }
 
-
 static void*
 unpack_field(message_buffer *buffer, message_data_type *type,
 				int32 *size, Oid *tupType)
@@ -243,11 +241,9 @@ unpack_field(message_buffer *buffer, message_data_type *type,
 	return ptr;
 }
 
-
 /*
  * Add ptr to queue. If pipe doesn't exist, register new pipe
  */
-
 bool
 ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool reset)
 {
@@ -341,11 +337,9 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 
 #define		NOT_ASSIGNED_IDENTITY			-1
 
-
 /*
  * can be enhanced access/hash.h
  */
-
 static orafce_pipe*
 find_pipe(text* pipe_name,
 		  bool* created,
@@ -425,7 +419,6 @@ find_pipe(text* pipe_name,
 	return result;
 }
 
-
 static bool
 new_last(orafce_pipe *p, void *ptr, size_t size)
 {
@@ -464,7 +457,6 @@ new_last(orafce_pipe *p, void *ptr, size_t size)
 	return true;
 }
 
-
 static void*
 remove_first(orafce_pipe *p, bool *found)
 {
@@ -500,9 +492,7 @@ remove_first(orafce_pipe *p, bool *found)
 	return ptr;
 }
 
-
 /* copy message to local memory, if exists */
-
 static message_buffer*
 get_from_pipe(text *pipe_name,
 			  bool *found,
@@ -537,11 +527,9 @@ get_from_pipe(text *pipe_name,
 	return result;
 }
 
-
 /*
  * if ptr is null, then only register pipe
  */
-
 static bool
 add_to_pipe(text *pipe_name,
 			message_buffer *ptr,
@@ -597,7 +585,6 @@ add_to_pipe(text *pipe_name,
 	return result;
 }
 
-
 static void
 remove_pipe(text *pipe_name, bool purge)
 {
@@ -634,13 +621,11 @@ remove_pipe(text *pipe_name, bool purge)
 	}
 }
 
-
 Datum
 dbms_pipe_next_item_type (PG_FUNCTION_ARGS)
 {
 	PG_RETURN_INT32(input_buffer != NULL ? input_buffer->next->type : IT_NO_MORE_ITEMS);
 }
-
 
 static void
 reset_buffer(message_buffer *buffer, int32 size)
@@ -681,7 +666,6 @@ dbms_pipe_pack_message_text(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
-
 Datum
 dbms_pipe_pack_message_date(PG_FUNCTION_ARGS)
 {
@@ -693,7 +677,6 @@ dbms_pipe_pack_message_date(PG_FUNCTION_ARGS)
 
 	PG_RETURN_VOID();
 }
-
 
 Datum
 dbms_pipe_pack_message_timestamp(PG_FUNCTION_ARGS)
@@ -707,7 +690,6 @@ dbms_pipe_pack_message_timestamp(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
-
 Datum
 dbms_pipe_pack_message_number(PG_FUNCTION_ARGS)
 {
@@ -719,7 +701,6 @@ dbms_pipe_pack_message_number(PG_FUNCTION_ARGS)
 
 	PG_RETURN_VOID();
 }
-
 
 Datum
 dbms_pipe_pack_message_bytea(PG_FUNCTION_ARGS)
@@ -757,11 +738,9 @@ init_args_3(FunctionCallInfo info, Datum arg0, Datum arg1, Datum arg2)
 #endif
 }
 
-
 /*
  *  We can serialize only typed record
  */
-
 Datum
 dbms_pipe_pack_message_record(PG_FUNCTION_ARGS)
 {
@@ -779,7 +758,6 @@ dbms_pipe_pack_message_record(PG_FUNCTION_ARGS)
 	FunctionCallInfo info = &info_data;
 
 #endif
-
 
 	tupType = HeapTupleHeaderGetTypeId(rec);
 
@@ -800,7 +778,6 @@ dbms_pipe_pack_message_record(PG_FUNCTION_ARGS)
 
 	PG_RETURN_VOID();
 }
-
 
 static Datum
 dbms_pipe_unpack_message(PG_FUNCTION_ARGS, message_data_type dtype)
@@ -888,13 +865,11 @@ dbms_pipe_unpack_message(PG_FUNCTION_ARGS, message_data_type dtype)
 	PG_RETURN_DATUM(result);
 }
 
-
 Datum
 dbms_pipe_unpack_message_text(PG_FUNCTION_ARGS)
 {
 	return dbms_pipe_unpack_message(fcinfo, IT_VARCHAR);
 }
-
 
 Datum
 dbms_pipe_unpack_message_date(PG_FUNCTION_ARGS)
@@ -908,20 +883,17 @@ dbms_pipe_unpack_message_timestamp(PG_FUNCTION_ARGS)
 	return dbms_pipe_unpack_message(fcinfo, IT_TIMESTAMPTZ);
 }
 
-
 Datum
 dbms_pipe_unpack_message_number(PG_FUNCTION_ARGS)
 {
 	return dbms_pipe_unpack_message(fcinfo, IT_NUMBER);
 }
 
-
 Datum
 dbms_pipe_unpack_message_bytea(PG_FUNCTION_ARGS)
 {
 	return dbms_pipe_unpack_message(fcinfo, IT_BYTEA);
 }
-
 
 Datum
 dbms_pipe_unpack_message_record(PG_FUNCTION_ARGS)
@@ -1074,7 +1046,6 @@ dbms_pipe_receive_message(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(result);
 }
 
-
 Datum
 dbms_pipe_send_message(PG_FUNCTION_ARGS)
 {
@@ -1206,9 +1177,8 @@ dbms_pipe_send_message(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(result);
 }
 
-
 Datum
-dbms_pipe_unique_session_name (PG_FUNCTION_ARGS)
+dbms_pipe_unique_session_name(PG_FUNCTION_ARGS)
 {
 	StringInfoData strbuf;
 	float8		endtime;
@@ -1352,9 +1322,8 @@ dbms_pipe_list_pipes(PG_FUNCTION_ARGS)
  * Registration explicit pipes
  *   dbms_pipe.create_pipe(pipe_name varchar, limit := -1 int, private := false bool);
  */
-
 Datum
-dbms_pipe_create_pipe (PG_FUNCTION_ARGS)
+dbms_pipe_create_pipe(PG_FUNCTION_ARGS)
 {
 	text	   *pipe_name = NULL;
 	int			limit = 0;
@@ -1419,11 +1388,9 @@ dbms_pipe_create_pipe (PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
-
 /*
  * Clean local input, output buffers
  */
-
 Datum
 dbms_pipe_reset_buffer(PG_FUNCTION_ARGS)
 {
@@ -1442,12 +1409,10 @@ dbms_pipe_reset_buffer(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
-
 /*
  * Remove all stored messages in pipe. Remove implicit created
  * pipe.
  */
-
 Datum
 dbms_pipe_purge(PG_FUNCTION_ARGS)
 {
@@ -1480,9 +1445,8 @@ dbms_pipe_purge(PG_FUNCTION_ARGS)
 /*
  * Remove pipe if exists
  */
-
 Datum
-dbms_pipe_remove_pipe (PG_FUNCTION_ARGS)
+dbms_pipe_remove_pipe(PG_FUNCTION_ARGS)
 {
 	text	   *pipe_name = PG_GETARG_TEXT_P(0);
 	float8		endtime;
@@ -1492,7 +1456,6 @@ dbms_pipe_remove_pipe (PG_FUNCTION_ARGS)
 	WATCH_PRE(timeout, endtime, cycle);
 	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
 	{
-
 		remove_pipe(pipe_name, false);
 		LWLockRelease(shmem_lockid);
 
@@ -1510,13 +1473,11 @@ dbms_pipe_remove_pipe (PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
-
 /*
  * Some void udf which I can't wrap in sql
  */
-
 Datum
-dbms_pipe_create_pipe_2 (PG_FUNCTION_ARGS)
+dbms_pipe_create_pipe_2(PG_FUNCTION_ARGS)
 {
 	Datum	arg1;
 	int		limit = -1;
@@ -1541,7 +1502,7 @@ dbms_pipe_create_pipe_2 (PG_FUNCTION_ARGS)
 }
 
 Datum
-dbms_pipe_create_pipe_1 (PG_FUNCTION_ARGS)
+dbms_pipe_create_pipe_1(PG_FUNCTION_ARGS)
 {
 	Datum	arg1;
 
