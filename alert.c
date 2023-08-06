@@ -821,7 +821,7 @@ _dbms_alert_waitany(int timeout, FunctionCallInfo fcinfo)
 	if (str[1])
 		pfree(str[1]);
 
-
+	return result;
 }
 
 /*
