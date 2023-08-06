@@ -30,7 +30,7 @@ OBJS= regexp.o\
 
 EXTENSION = orafce
 
-DATA = orafce--4.5.sql\
+DATA = orafce--4.6.sql\
 		orafce--3.2--3.3.sql\
 		orafce--3.3--3.4.sql\
 		orafce--3.4--3.5.sql\
@@ -59,7 +59,8 @@ DATA = orafce--4.5.sql\
 		orafce--4.1--4.2.sql\
 		orafce--4.2--4.3.sql\
 		orafce--4.3--4.4.sql\
-		orafce--4.4--4.5.sql
+		orafce--4.4--4.5.sql \
+		orafce--4.5--4.6.sql
 
 DOCS = README.asciidoc COPYRIGHT.orafce INSTALL.orafce
 

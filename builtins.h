@@ -56,6 +56,8 @@ extern PGDLLEXPORT Datum dbms_alert_set_defaults(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum dbms_alert_signal(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum dbms_alert_waitany(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum dbms_alert_waitone(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_alert_waitany_maxwait(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum dbms_alert_waitone_maxwait(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum dbms_alert_defered_signal(PG_FUNCTION_ARGS);
 
 /* from assert.c */

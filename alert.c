@@ -36,6 +36,8 @@ PG_FUNCTION_INFO_V1(dbms_alert_set_defaults);
 PG_FUNCTION_INFO_V1(dbms_alert_signal);
 PG_FUNCTION_INFO_V1(dbms_alert_waitany);
 PG_FUNCTION_INFO_V1(dbms_alert_waitone);
+PG_FUNCTION_INFO_V1(dbms_alert_waitany_maxwait);
+PG_FUNCTION_INFO_V1(dbms_alert_waitone_maxwait);
 PG_FUNCTION_INFO_V1(dbms_alert_defered_signal);
 
 extern int sid;
@@ -633,7 +635,6 @@ dbms_alert_register(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
-
 /*
  *
  *  PROCEDURE DBMS_ALERT.REMOVE(name IN VARCHAR2);
@@ -678,7 +679,6 @@ dbms_alert_remove(PG_FUNCTION_ARGS)
  *  Unregisters the calling session from notification of all alerts.
  *
  */
-
 Datum
 dbms_alert_removeall(PG_FUNCTION_ARGS)
 {
@@ -721,21 +721,11 @@ dbms_alert_removeall(PG_FUNCTION_ARGS)
 }
 
 /*
- *
- *  PROCEDURE DBMS_ALERT.WAITANY(name OUT VARCHAR2 ,message OUT VARCHAR2
- *                              ,status OUT INTEGER
- *                              ,timeout IN NUMBER DEFAULT MAXWAIT);
- *
- *  Waits for up to timeout seconds to be notified of any alerts for which
- *  the session is registered. If status = 0 then name and message contain
- *  alert information. If status = 1 then timeout seconds elapsed without
- *  notification of any alert.
- *
+ * workhorse for dbms_alert_waitany and dbms_alert_waitany_maxwait
  */
-Datum
-dbms_alert_waitany(PG_FUNCTION_ARGS)
+static Datum
+_dbms_alert_waitany(int timeout, FunctionCallInfo fcinfo)
 {
-	int			timeout;
 	TupleDesc	tupdesc;
 	AttInMetadata *attinmeta;
 	HeapTuple	tuple;
@@ -743,27 +733,6 @@ dbms_alert_waitany(PG_FUNCTION_ARGS)
 	char	   *str[3] = {NULL, NULL, "1"};
 	instr_time	start_time;
 	TupleDesc	btupdesc;
-
-	if (!PG_ARGISNULL(0))
-	{
-		/*
-		 * cannot to change SQL API now, so use not well choosed
-		 * float.
-		 */
-		timeout = (int) PG_GETARG_FLOAT8(0);
-
-		if (timeout < 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("negative timeout is not allowed")));
-
-		if (timeout > MAXWAIT)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("timeout is too large (maximum: %d)", MAXWAIT)));
-	}
-	else
-		timeout = MAXWAIT;
 
 	INSTR_TIME_SET_CURRENT(start_time);
 
@@ -852,25 +821,63 @@ dbms_alert_waitany(PG_FUNCTION_ARGS)
 	if (str[1])
 		pfree(str[1]);
 
-	return result;
+
 }
 
 /*
  *
- *  PROCEDURE DBMS_ALERT.WAITONE(name IN VARCHAR2, message OUT VARCHAR2
+ *  PROCEDURE DBMS_ALERT.WAITANY(name OUT VARCHAR2 ,message OUT VARCHAR2
  *                              ,status OUT INTEGER
  *                              ,timeout IN NUMBER DEFAULT MAXWAIT);
  *
- *  Waits for up to timeout seconds for notification of alert name. If status = 0
- *  then message contains alert information. If status = 1 then timeout
- *  seconds elapsed without notification.
+ *  Waits for up to timeout seconds to be notified of any alerts for which
+ *  the session is registered. If status = 0 then name and message contain
+ *  alert information. If status = 1 then timeout seconds elapsed without
+ *  notification of any alert.
  *
  */
 Datum
-dbms_alert_waitone(PG_FUNCTION_ARGS)
+dbms_alert_waitany(PG_FUNCTION_ARGS)
 {
-	text	   *name;
 	int			timeout;
+
+	if (!PG_ARGISNULL(0))
+	{
+		/*
+		 * cannot to change SQL API now, so use not well choosed
+		 * float.
+		 */
+		timeout = (int) PG_GETARG_FLOAT8(0);
+
+		if (timeout < 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("negative timeout is not allowed")));
+
+		if (timeout > MAXWAIT)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("timeout is too large (maximum: %d)", MAXWAIT)));
+	}
+	else
+		timeout = MAXWAIT;
+
+
+	return _dbms_alert_waitany(timeout, fcinfo);
+}
+
+Datum
+dbms_alert_waitany_maxwait(PG_FUNCTION_ARGS)
+{
+	return _dbms_alert_waitany(MAXWAIT, fcinfo);
+}
+
+/*
+ * common part of dbms_alert_waitone and dbms_alert_waitone_maxwait
+ */
+static Datum
+_dbms_alert_waitone(text *name, int timeout, FunctionCallInfo fcinfo)
+{
 	TupleDesc	tupdesc;
 	AttInMetadata *attinmeta;
 	HeapTuple	tuple;
@@ -887,36 +894,7 @@ dbms_alert_waitone(PG_FUNCTION_ARGS)
 
 #endif
 
-	if (PG_ARGISNULL(0))
-		ereport(ERROR,
-				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-				 errmsg("event name is NULL"),
-				 errdetail("Eventname may not be NULL.")));
-
-	if (!PG_ARGISNULL(1))
-	{
-		/*
-		 * cannot to change SQL API now, so use not well choosed
-		 * float.
-		 */
-		timeout = (int) PG_GETARG_FLOAT8(1);
-
-		if (timeout < 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("negative timeout is not allowed")));
-
-		if (timeout > MAXWAIT)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("timeout is too large (maximum: %d)", MAXWAIT)));
-	}
-	else
-		timeout = MAXWAIT;
-
 	INSTR_TIME_SET_CURRENT(start_time);
-
-	name = PG_GETARG_TEXT_P(0);
 
 	for (;;)
 	{
@@ -1005,6 +983,71 @@ dbms_alert_waitone(PG_FUNCTION_ARGS)
 		pfree(str[0]);
 
 	return result;
+}
+
+/*
+ *
+ *  PROCEDURE DBMS_ALERT.WAITONE(name IN VARCHAR2, message OUT VARCHAR2
+ *                              ,status OUT INTEGER
+ *                              ,timeout IN NUMBER DEFAULT MAXWAIT);
+ *
+ *  Waits for up to timeout seconds for notification of alert name. If status = 0
+ *  then message contains alert information. If status = 1 then timeout
+ *  seconds elapsed without notification.
+ *
+ */
+Datum
+dbms_alert_waitone(PG_FUNCTION_ARGS)
+{
+	text	   *name;
+	int			timeout;
+
+	if (PG_ARGISNULL(0))
+		ereport(ERROR,
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("event name is NULL"),
+				 errdetail("Eventname may not be NULL.")));
+
+	if (!PG_ARGISNULL(1))
+	{
+		/*
+		 * cannot to change SQL API now, so use not well choosed
+		 * float.
+		 */
+		timeout = (int) PG_GETARG_FLOAT8(1);
+
+		if (timeout < 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("negative timeout is not allowed")));
+
+		if (timeout > MAXWAIT)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("timeout is too large (maximum: %d)", MAXWAIT)));
+	}
+	else
+		timeout = MAXWAIT;
+
+	name = PG_GETARG_TEXT_P(0);
+
+	return _dbms_alert_waitone(name, timeout, fcinfo);
+}
+
+Datum
+dbms_alert_waitone_maxwait(PG_FUNCTION_ARGS)
+{
+	text	   *name;
+
+	if (PG_ARGISNULL(0))
+		ereport(ERROR,
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("event name is NULL"),
+				 errdetail("Eventname may not be NULL.")));
+
+	name = PG_GETARG_TEXT_P(0);
+
+	return _dbms_alert_waitone(name, MAXWAIT, fcinfo);
 }
 
 /*
