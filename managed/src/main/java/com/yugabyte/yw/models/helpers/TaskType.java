@@ -179,6 +179,10 @@ public enum TaskType {
 
   RestartXClusterConfig(com.yugabyte.yw.commissioner.tasks.RestartXClusterConfig.class),
 
+  CreateDrConfig(com.yugabyte.yw.commissioner.tasks.CreateDrConfig.class),
+
+  DeleteDrConfig(com.yugabyte.yw.commissioner.tasks.DeleteDrConfig.class),
+
   // Tasks belonging to subtasks classpath
   AddAuthorizedKey(com.yugabyte.yw.commissioner.tasks.subtasks.AddAuthorizedKey.class),
 
@@ -320,6 +324,8 @@ public enum TaskType {
 
   DeleteXClusterConfigEntry(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterConfigEntry.class),
+
+  DeleteDrConfigEntry(com.yugabyte.yw.commissioner.tasks.subtasks.DeleteDrConfigEntry.class),
 
   ResetXClusterConfigEntry(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ResetXClusterConfigEntry.class),
