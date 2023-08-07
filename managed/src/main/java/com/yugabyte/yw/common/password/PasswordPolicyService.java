@@ -20,18 +20,14 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
-import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.data.validation.ValidationError;
@@ -49,8 +45,6 @@ public class PasswordPolicyService {
   private static final String DEFAULT_MIN_SPECIAL_CHAR_PARAM =
       "yb.pwdpolicy.default_min_special_chars";
   private List<PasswordValidator> validators = new ArrayList<>();
-  private static final String PASSWORD_API_URL = "https://api.pwnedpasswords.com/range/";
-  private static final int PREFIX_LENGTH = 5;
 
   private final Config config;
   private final ApiHelper apiHelper;
@@ -103,25 +97,6 @@ public class PasswordPolicyService {
               .collect(Collectors.joining("; "));
 
       throw new PlatformServiceException(BAD_REQUEST, fullMessage);
-    }
-  }
-
-  // Method to check if password was leaked in a breach
-  public void validatePasswordNotLeaked(String fieldName, String password) {
-    String hash = DigestUtils.sha1Hex(password);
-    Map<String, String> headers = new HashMap<>();
-    headers.put("User-Agent", "YugabyteDB");
-    String response =
-        apiHelper.getBody(
-            PASSWORD_API_URL + hash.substring(0, PREFIX_LENGTH), headers, Duration.ofSeconds(30));
-
-    if (response.contains(hash.substring(PREFIX_LENGTH).toUpperCase())) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format(
-              "The %s  password was leaked in a previous breach and isn't secure. "
-                  + "Please use a different password.",
-              fieldName));
     }
   }
 
