@@ -70,16 +70,19 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
         try {
           const configureResponse = await api.universeConfigure({
             ..._.cloneDeep(resp.universeDetails),
-            clusterOperation: ClusterModes.EDIT
+            clusterOperation: ClusterModes.EDIT,
+            currentClusterType: ClusterType.PRIMARY
           });
           initializeForm({
             clusterType: ClusterType.PRIMARY,
             mode: ClusterModes.EDIT,
             universeConfigureTemplate: _.cloneDeep(configureResponse)
           });
-
           //set Universe Resource Template
-          const resourceResponse = await api.universeResource(_.cloneDeep(resp.universeDetails));
+          const resourceResponse = await api.universeResource({
+            ..._.cloneDeep(resp.universeDetails),
+            currentClusterType: ClusterType.PRIMARY
+          });
           setUniverseResourceTemplate(resourceResponse);
         } catch (error) {
           toast.error(createErrorMessage(error), { autoClose: TOAST_AUTO_DISMISS_INTERVAL });
