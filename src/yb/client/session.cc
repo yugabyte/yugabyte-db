@@ -28,10 +28,11 @@
 #include "yb/tserver/tserver_error.h"
 
 #include "yb/util/debug-util.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
-#include "yb/util/flags.h"
+#include "yb/util/wait_state.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -248,12 +249,14 @@ YBClient* YBSession::client() const {
 }
 
 void YBSession::FlushStarted(internal::BatcherPtr batcher) {
-  std::lock_guard l(lock_);
+  SET_WAIT_STATUS(util::WaitStateCode::Flushing);
+  std::lock_guard<simple_spinlock> l(lock_);
   flushed_batchers_.insert(batcher);
 }
 
 void YBSession::FlushFinished(internal::BatcherPtr batcher) {
-  std::lock_guard l(lock_);
+  SET_WAIT_STATUS(util::WaitStateCode::FlushedWaitingForCB);
+  std::lock_guard<simple_spinlock> l(lock_);
   CHECK_EQ(flushed_batchers_.erase(batcher), 1);
 }
 
