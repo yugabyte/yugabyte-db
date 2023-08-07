@@ -45,6 +45,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 
+#include "yb/util/wait_state.h"
 #include "yb/yql/cql/ql/exec/exec_context.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/parse_tree.h"
@@ -862,6 +863,7 @@ Status Executor::GetOffsetOrLimit(
 //   calls within the same process. These two different cases can be cleaned up later to avoid
 //   confusion.
 Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_context) {
+  SET_WAIT_STATUS(util::WaitStateCode::CQLRead);
   const shared_ptr<client::YBTable>& table = tnode->table();
   if (table == nullptr) {
     // If this is a request for 'system.peers_v2' table make sure that we send the appropriate error
@@ -1266,6 +1268,7 @@ Result<bool> Executor::FetchRowsByKeys(const PTSelectStmt* tnode,
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTInsertStmt *tnode, TnodeContext* tnode_context) {
+  SET_WAIT_STATUS(util::WaitStateCode::CQLWrite);
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
   YBqlWriteOpPtr insert_op(table->NewQLInsert());
@@ -1334,6 +1337,7 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode, TnodeContext* tnode_conte
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTDeleteStmt *tnode, TnodeContext* tnode_context) {
+  SET_WAIT_STATUS(util::WaitStateCode::CQLWrite);
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
   YBqlWriteOpPtr delete_op(table->NewQLDelete());
@@ -1388,6 +1392,7 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode, TnodeContext* tnode_conte
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ExecPTNode(const PTUpdateStmt *tnode, TnodeContext* tnode_context) {
+  SET_WAIT_STATUS(util::WaitStateCode::CQLWrite);
   // Create write request.
   const shared_ptr<client::YBTable>& table = tnode->table();
   YBqlWriteOpPtr update_op(table->NewQLUpdate());

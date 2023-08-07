@@ -54,6 +54,7 @@
  */
 #define YB_PGGATE    0xF0000000U
 #define YB_TSERVER   0xE0000000U
+#define YB_CQL       0xD0000000U
 #define YB_PG        0x00000000U
 /* ----------
  * YB AUH Wait Classes
@@ -62,7 +63,7 @@
 #define YB_PG_WAIT_PERFORM           0xFE000000U
 #define YB_TSERVER_WAIT_RPC          0xEF000000U
 #define YB_FLUSH_AND_COMPACTION      0xEE000000U
-#define YB_CQL_WAIT_STATE            0xED000000U
+#define YB_CQL_WAIT_STATE            0xDF000000U
 
 // For debugging purposes:
 // Uncomment the following line to track state changes in wait events.
@@ -103,7 +104,8 @@ YB_DEFINE_ENUM_TYPE(
     (StartSubcompactionThreads)(WaitOnSubcompactionThreads)
 
     // CQL Wait Events
-    ((Parse, YB_CQL_WAIT_STATE))(Analyze)(Execute)
+    ((Parse, YB_CQL_WAIT_STATE))(Analyze)(Execute)(ExecuteFinished)
+    (CQLRead)(CQLWrite)
 
     // Perform Wait Events
     ((DmlRead, YB_PG_WAIT_PERFORM)) (DmlWrite) (DmlReadWrite)
