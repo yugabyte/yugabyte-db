@@ -28,9 +28,9 @@
     {
       "series": "v2.16",
       "display": "v2.16 (STS)",
-      "version": "2.16.6.0",
+      "version": "2.16.6.1",
       "versionShort": "2.16.6",
-      "appVersion": "2.16.6.0-b43",
+      "appVersion": "2.16.6.1-b1",
       "isStable": true,
       "isLTS": false,
       "isSTS": true,
