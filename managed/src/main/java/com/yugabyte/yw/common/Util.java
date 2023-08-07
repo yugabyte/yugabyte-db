@@ -92,8 +92,6 @@ public class Util {
 
   public static final double EPSILON = 0.000001d;
 
-  public static final String YBC_COMPATIBLE_DB_VERSION = "2.15.0.0-b1";
-
   public static final String K8S_YBC_COMPATIBLE_DB_VERSION = "2.17.3.0-b62";
 
   public static final String AUTO_FLAG_FILENAME = "auto_flags.json";

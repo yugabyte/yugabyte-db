@@ -969,4 +969,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Devops command timeout",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<String> ybcCompatibleDbVersion =
+      new ConfKeyInfo<>(
+          "ybc.compatible_db_version",
+          ScopeType.GLOBAL,
+          "YBC Compatible DB Version",
+          "Minimum YBDB version which supports YBC",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
