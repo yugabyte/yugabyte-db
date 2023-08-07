@@ -3298,12 +3298,26 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return loadBalancerMap;
   }
 
+  public SubTaskGroup createUpdateMasterAddrsInMemoryTasks(
+      Collection<NodeDetails> nodes, ServerType serverType) {
+    return createSetFlagInMemoryTasks(nodes, serverType, true, (node) -> null, true);
+  }
+
   // Subtask to update gflags in memory.
   public SubTaskGroup createSetFlagInMemoryTasks(
       Collection<NodeDetails> nodes,
       ServerType serverType,
       boolean force,
-      Map<String, String> gflags,
+      Map<String, String> gflags) {
+    return createSetFlagInMemoryTasks(nodes, serverType, force, (n) -> gflags, false);
+  }
+
+  // Subtask to update gflags in memory.
+  public SubTaskGroup createSetFlagInMemoryTasks(
+      Collection<NodeDetails> nodes,
+      ServerType serverType,
+      boolean force,
+      Function<NodeDetails, Map<String, String>> gflagsGetter,
       boolean updateMasterAddrs) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("InMemoryGFlagUpdate");
     for (NodeDetails node : nodes) {
@@ -3318,7 +3332,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // If the flags need to be force updated.
       params.force = force;
       // The flags to update.
-      params.gflags = gflags;
+      params.gflags = gflagsGetter.apply(node);
       // If only master addresses need to be updated.
       params.updateMasterAddrs = updateMasterAddrs;
 
