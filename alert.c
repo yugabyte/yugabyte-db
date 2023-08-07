@@ -1082,7 +1082,11 @@ orafce_xact_cb(XactEvent event, void *arg)
 {
 	if (event == XACT_EVENT_PRE_COMMIT)
 	{
-		/* in this time we have valid MyProc->lxid */
+		/*
+		 * In this time we have valid MyProc->lxid, in ACT_EVENT_COMMIT is
+		 * MyProc->lxid already invalided. So we need to invalid pointer to
+		 * obsolete buffer here.
+		 */
 		if (local_buf_lxid != MyProc->lxid)
 			signals = NULL;
 	}
