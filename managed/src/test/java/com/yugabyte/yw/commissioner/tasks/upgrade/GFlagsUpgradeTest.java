@@ -13,6 +13,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
@@ -125,6 +126,11 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("underreplicated_tablets", Json.newArray());
     when(mockNodeUIApiHelper.getRequest(anyString())).thenReturn(bodyJson);
+    try {
+      when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean())).thenReturn(true);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
   }
 
   private UUID addReadReplica() {
@@ -1112,6 +1118,47 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
     taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testGFlagsUpgradeNonRestart() {
+    addReadReplica();
+
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("master-flag", "m1111"), ImmutableMap.of("tserver-flag", "t1111"));
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
+    taskParams.upgradeOption = UpgradeOption.NON_RESTART_UPGRADE;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+
+    subTasks.stream()
+        .filter(t -> t.getTaskType() == TaskType.SetFlagInMemory)
+        .forEach(
+            task -> {
+              ServerType process = ServerType.valueOf(task.getDetails().get("serverType").asText());
+              Map<String, String> gflags =
+                  Json.fromJson(task.getDetails().get("gflags"), Map.class);
+              if (process == MASTER) {
+                assertEquals(specificGFlags.getGFlags(null, MASTER), gflags);
+              } else {
+                assertEquals(specificGFlags.getGFlags(null, TSERVER), gflags);
+              }
+            });
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        specificGFlags,
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags);
+    assertEquals(
+        specificGFlags.getGFlags(null, MASTER),
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.masterGFlags);
+    assertEquals(
+        specificGFlags.getGFlags(null, TSERVER),
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.tserverGFlags);
   }
 
   private Map<String, String> getGflagsForNode(

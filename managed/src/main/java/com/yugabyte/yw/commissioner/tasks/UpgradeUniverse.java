@@ -993,15 +993,14 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
               true,
               processType == ServerType.MASTER
                   ? taskParams().masterGFlags
-                  : taskParams().tserverGFlags,
-              false)
+                  : taskParams().tserverGFlags)
           .setSubTaskGroupType(subGroupType);
     } else if (taskParams().taskType == UpgradeTaskType.ToggleTls) {
       Map<String, String> gflags = new HashMap<>();
       gflags.put(
           "allow_insecure_connections",
           upgradeIteration == UpgradeIteration.Round1 ? "true" : "false");
-      createSetFlagInMemoryTasks(nodes, processType, true, gflags, false)
+      createSetFlagInMemoryTasks(nodes, processType, true, gflags)
           .setSubTaskGroupType(subGroupType);
     }
 
