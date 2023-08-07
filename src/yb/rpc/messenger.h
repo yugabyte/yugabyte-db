@@ -50,6 +50,8 @@
 #include "yb/rpc/proxy_context.h"
 #include "yb/rpc/scheduler.h"
 
+#include "yb/tserver/pg_client.pb.h"
+
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/async_util.h"
@@ -231,6 +233,8 @@ class Messenger : public ProxyContext {
   // Dump the current RPCs into the given protobuf.
   Status DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
                          DumpRunningRpcsResponsePB* resp);
+
+  void GetRPCsWaitStates(tserver::PgActiveUniverseHistoryResponsePB* resp);
 
   void RemoveScheduledTask(ScheduledTaskId task_id);
 

@@ -18,7 +18,6 @@
 #include <string>
 #include <vector>
 
-#include "yb/rpc/messenger.h"
 #include "yb/util/flags.h"
 
 #include "yb/gutil/macros.h"
@@ -302,13 +301,6 @@ class ScopedWaitStatus {
   WaitStateCode prev_state_;
 };
 
-template <class RequestPB>
-class WaitStateFetcher {
- public:
-  WaitStateFetcher() = default;
-
-  void fetch(RequestPB& req, rpc::Messenger* messenger);
-};
 
 // Link to source codes for the classes below
 // https://github.com/open-telemetry/opentelemetry-cpp/blob/main/sdk/src/common/fast_random_number_generator.h
