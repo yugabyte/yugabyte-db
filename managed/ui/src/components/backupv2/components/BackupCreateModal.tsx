@@ -44,7 +44,6 @@ import { IBackupSchedule } from '../common/IBackupSchedule';
 import { MILLISECONDS_IN } from '../scheduled/ScheduledBackupUtils';
 import { components } from 'react-select';
 
-import Close from '../../universes/images/close.svg';
 
 import { ParallelThreads } from '../common/BackupUtils';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
@@ -52,7 +51,9 @@ import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../actions/universe';
 import { QUERY_KEY, api } from '../../../redesign/features/universe/universe-form/utils/api';
 import { RunTimeConfigEntry } from '../../../redesign/features/universe/universe-form/utils/dto';
+import { handleCACertErrMsg } from '../../customCACerts';
 import './BackupCreateModal.scss';
+import Close from '../../universes/images/close.svg';
 
 interface BackupCreateModalProps {
   onHide: Function;
@@ -68,6 +69,8 @@ interface BackupCreateModalProps {
 type ToogleScheduleProps = Partial<IBackupSchedule> & Pick<IBackupSchedule, 'scheduleUUID'>;
 
 const DURATIONS = ['Days', 'Months', 'Years'];
+
+const DEFAULT_MIN_INCREMENTAL_BACKUP_INTERVAL = 1800; //in secs
 
 const TABLES_NOT_PRESENT_MSG = (api: string) => (
   <span className="alert-message warning">
@@ -123,7 +126,7 @@ const STEPS = [
       isEditBackupMode: boolean
     ) => {
       if (isEditBackupMode) {
-        return 'Edit Backup';
+        return 'Change Retention Period';
       }
       if (isScheduledBackup) {
         return `${isEditMode ? 'Edit' : 'Create'} scheduled backup policy`;
@@ -204,6 +207,10 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
 
   const primaryCluster = find(universeDetails?.clusters, { clusterType: 'PRIMARY' });
 
+  const minIncrementalScheduleFrequencyInSecs = runtimeConfigs?.configEntries?.find(
+    (c: RunTimeConfigEntry) => c.key === 'yb.backup.minIncrementalScheduleFrequencyInSecs'
+  );
+
   initialValues['parallel_threads'] =
     Math.min(primaryCluster?.userIntent?.numNodes, ParallelThreads.MAX) || ParallelThreads.MIN;
 
@@ -251,7 +258,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       },
       onError: (err: any) => {
         onHide();
-        toast.error(err.response.data.error);
+        !handleCACertErrMsg(err) && toast.error(err.response.data.error);
       }
     }
   );
@@ -267,7 +274,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       },
       onError: (err: any) => {
         onHide();
-        toast.error(err.response.data.error);
+        !handleCACertErrMsg(err) && toast.error(err.response.data.error);
       }
     }
   );
@@ -296,7 +303,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       },
       onError: (err: any) => {
         onHide();
-        toast.error(err?.response?.data?.error ?? 'An Error occurred');
+        !handleCACertErrMsg(err) && toast.error(err?.response?.data?.error ?? 'An Error occurred');
       }
     }
   );
@@ -317,7 +324,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       },
       onError: (resp: any) => {
         onHide();
-        toast.error(resp?.response?.data?.error ?? 'An error occurred');
+        !handleCACertErrMsg(resp) && toast.error(resp?.response?.data?.error ?? 'An error occurred');
       }
     }
   );
@@ -392,24 +399,47 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
           `Parallel threads should be less than or equal to ${ParallelThreads.MAX}`
         )
     }),
-    incremental_backup_frequency: Yup.number().test({
-      message: 'Incremental backup interval must be less than full backup',
-      test: function (value) {
-        if (
-          !isScheduledBackup ||
-          !this.parent.is_incremental_backup_enabled ||
-          this.parent.use_cron_expression
-        )
-          return true;
+    incremental_backup_frequency: Yup.number()
+      .test({
+        message: 'Incremental backup interval must be less than full backup',
+        test: function (value) {
+          if (
+            !isScheduledBackup ||
+            !this.parent.is_incremental_backup_enabled ||
+            this.parent.use_cron_expression
+          )
+            return true;
 
-        return (
-          value *
-            MILLISECONDS_IN[this.parent.incremental_backup_frequency_type.value.toUpperCase()] <
-          this.parent.policy_interval *
-            MILLISECONDS_IN[this.parent.policy_interval_type.value.toUpperCase()]
-        );
-      }
-    })
+          return (
+            value *
+              MILLISECONDS_IN[this.parent.incremental_backup_frequency_type.value.toUpperCase()] <
+            this.parent.policy_interval *
+              MILLISECONDS_IN[this.parent.policy_interval_type.value.toUpperCase()]
+          );
+        }
+      })
+      .test({
+        message: `Incremental backup should be greater than ${
+          Number(
+            minIncrementalScheduleFrequencyInSecs?.value ?? DEFAULT_MIN_INCREMENTAL_BACKUP_INTERVAL
+          ) / 60
+        } minutes`,
+        test: function (value) {
+          if (minIncrementalScheduleFrequencyInSecs) {
+            if (
+              value *
+                MILLISECONDS_IN[
+                  this.parent.incremental_backup_frequency_type.value.toUpperCase()
+                ] >=
+              parseInt(minIncrementalScheduleFrequencyInSecs.value) * 1000
+            ) {
+              return true;
+            }
+            return false;
+          }
+          return true;
+        }
+      })
   });
 
   return (
@@ -674,6 +704,7 @@ function BackupConfigurationForm({
             options={[ALL_DB_OPTION, ...uniqueKeyspaces]}
             onChange={(_: any, val: any) => {
               setFieldValue('db_to_backup', val);
+              setFieldValue('backup_tables', Backup_Options_Type.ALL);
               if (
                 values['api_type'].value === BACKUP_API_TYPES.YCQL ||
                 values['api_type'].value === BACKUP_API_TYPES.YEDIS

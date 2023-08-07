@@ -35,6 +35,8 @@ void YBCInterruptPgGate();
 // Initialize a session to process statements that come from the same client connection.
 YBCStatus YBCPgInitSession(const char* database_name, YBCPgExecStatsState* session_stats);
 
+uint64_t YBCPgGetSessionID();
+
 // Initialize YBCPgMemCtx.
 // - Postgres uses memory context to hold all of its allocated space. Once all associated operations
 //   are done, the context is destroyed.
@@ -353,6 +355,9 @@ YBCStatus YBCPgBackfillIndex(
 // - INSERT / UPDATE / DELETE ... RETURNING target_expr1, target_expr2, ...
 YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
 
+// Check if any statement target is a system column reference.
+YBCStatus YBCPgDmlHasSystemTargets(YBCPgStatement handle, bool *has_system_cols);
+
 // Add a WHERE clause condition to the statement.
 // Currently only SELECT statement supports WHERE clause conditions.
 // Only serialized Postgres expressions are allowed.
@@ -524,6 +529,19 @@ YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan);
 
 YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec_params);
 
+// Functions----------------------------------------------------------------------------------------
+YBCStatus YBCAddFunctionParam(
+    YBCPgFunction handle, const char *name, const YBCPgTypeEntity *type_entity, uint64_t datum,
+    bool is_null);
+
+YBCStatus YBCAddFunctionTarget(
+    YBCPgFunction handle, const char *attr_name, const YBCPgTypeEntity *type_entity,
+    const YBCPgTypeAttrs type_attrs);
+
+YBCStatus YBCSRFGetNext(YBCPgFunction handle, uint64_t *values, bool *is_nulls, bool *has_data);
+
+YBCStatus YBCFinalizeFunctionTargets(YBCPgFunction handle);
+
 // Transaction control -----------------------------------------------------------------------------
 YBCStatus YBCPgBeginTransaction();
 YBCStatus YBCPgRecreateTransaction();
@@ -545,6 +563,8 @@ YBCStatus YBCPgSetActiveSubTransaction(uint32_t id);
 YBCStatus YBCPgRollbackToSubTransaction(uint32_t id);
 double YBCGetTransactionPriority();
 TxnPriorityRequirement YBCGetTransactionPriorityType();
+YBCStatus YBCPgGetSelfActiveTransaction(YBCPgUuid *txn_id, bool *is_null);
+YBCStatus YBCPgActiveTransactions(YBCPgSessionTxnInfo *infos, size_t num_infos);
 
 // System validation -------------------------------------------------------------------------------
 // Validate placement information
@@ -647,6 +667,8 @@ void* YBCPgGetThreadLocalErrStatus();
 
 void YBCPgResetCatalogReadTime();
 
+YBCStatus YBCNewGetLockStatusDataSRF(YBCPgFunction *handle);
+
 YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, size_t* numservers);
 
 YBCStatus YBCGetIndexBackfillProgress(YBCPgOid* index_oids, YBCPgOid* database_oids,
@@ -676,6 +698,11 @@ YBCStatus YBCPgSetAUHMetadata(const char* remote_host, int remote_port);
 void YBCSetQueryId(int64_t query_id);
 
 void YBCSetTopLevelRequestId();
+
+YBCStatus YBCIsObjectPartOfXRepl(YBCPgOid database_oid, YBCPgOid table_oid,
+                                 bool* is_object_part_of_xrepl);
+
+YBCStatus YBCPgCancelTransaction(const unsigned char* transaction_id);
 
 #ifdef __cplusplus
 }  // extern "C"

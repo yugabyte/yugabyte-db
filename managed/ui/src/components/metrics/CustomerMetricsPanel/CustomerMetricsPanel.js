@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Tab } from 'react-bootstrap';
 import PropTypes from 'prop-types';
 import _ from 'lodash';

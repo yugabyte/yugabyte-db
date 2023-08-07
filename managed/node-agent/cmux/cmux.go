@@ -157,6 +157,7 @@ func (m *cMux) serve(c net.Conn, donec <-chan struct{}, wg *sync.WaitGroup) {
 			matched := matcher(muc)
 			muc.reset()
 			if matched {
+				muc.disableReset()
 				select {
 				case lms.listener.connc <- muc:
 				case <-donec:
@@ -249,6 +250,10 @@ func newMuxConn(c net.Conn) *muxConn {
 
 func (m *muxConn) reset() {
 	m.buffer.Reset()
+}
+
+func (m *muxConn) disableReset() {
+	m.buffer.DisableReset()
 }
 
 // Read implements io.Reader.

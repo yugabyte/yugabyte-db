@@ -22,8 +22,7 @@
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
-#include "yb/integration-tests/xcluster_test_base.h"
-#include "yb/integration-tests/xcluster_ysql_test_base.h"
+#include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_replication.pb.h"
@@ -65,9 +64,9 @@ class XClusterSafeTimeTest : public XClusterTestBase {
  public:
   void SetUp() override {
     // Disable LB as we dont want tablets moving during the test.
-    FLAGS_enable_load_balancing = false;
-    FLAGS_xcluster_safe_time_log_outliers_interval_secs = 10;
-    FLAGS_xcluster_safe_time_slow_tablet_delta_secs = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_safe_time_log_outliers_interval_secs) = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_safe_time_slow_tablet_delta_secs) = 10;
     super::SetUp();
     MiniClusterOptions opts;
     opts.num_masters = kMasterCount;
@@ -76,7 +75,7 @@ class XClusterSafeTimeTest : public XClusterTestBase {
 
     YBSchema schema;
     client::YBSchemaBuilder b;
-    b.AddColumn("c0")->Type(INT32)->NotNull()->HashPrimaryKey();
+    b.AddColumn("c0")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
     ASSERT_OK(b.Build(&schema));
 
     auto producer_cluster_future = std::async(std::launch::async, [&] {
@@ -158,7 +157,7 @@ class XClusterSafeTimeTest : public XClusterTestBase {
   }
 
   Status WaitForSafeTime(HybridTime min_safe_time) {
-    RETURN_NOT_OK(CorrectlyPollingAllTablets(consumer_cluster(), kTabletCount));
+    RETURN_NOT_OK(CorrectlyPollingAllTablets(kTabletCount));
 
     return XClusterTestBase::WaitForSafeTime(namespace_id_, min_safe_time);
   }

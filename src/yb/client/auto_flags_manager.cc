@@ -141,7 +141,7 @@ Result<bool> AutoFlagsManager::LoadFromFile() {
     return true;
   }
 
-  std::lock_guard<decltype(update_mutex_)> update_lock(update_mutex_);
+  std::lock_guard update_lock(update_mutex_);
 
   AutoFlagsConfigPB pb_config;
   auto status = fs_manager_->ReadAutoFlagsConfig(&pb_config);
@@ -154,7 +154,7 @@ Result<bool> AutoFlagsManager::LoadFromFile() {
   }
 
   {
-    std::lock_guard<decltype(config_mutex_)> l(config_mutex_);
+    std::lock_guard l(config_mutex_);
     current_config_ = std::move(pb_config);
   }
 
@@ -234,7 +234,7 @@ Status AutoFlagsManager::LoadFromConfig(
     return Status::OK();
   }
 
-  std::lock_guard<decltype(update_mutex_)> update_lock(update_mutex_);
+  std::lock_guard update_lock(update_mutex_);
 
   {
     SharedLock<rw_spinlock> lock(config_mutex_);
@@ -255,7 +255,7 @@ Status AutoFlagsManager::LoadFromConfig(
   RETURN_NOT_OK(fs_manager_->WriteAutoFlagsConfig(&new_config));
 
   {
-    std::lock_guard<decltype(config_mutex_)> lock(config_mutex_);
+    std::lock_guard lock(config_mutex_);
     current_config_ = std::move(new_config);
   }
 
@@ -323,6 +323,15 @@ Status AutoFlagsManager::ApplyConfig(ApplyNonRuntimeAutoFlags apply_non_runtime)
   }
 
   return Status::OK();
+}
+
+Result<std::unordered_set<std::string>> AutoFlagsManager::GetAvailableAutoFlagsForServer() const {
+  auto all_auto_flags = VERIFY_RESULT(AutoFlagsUtil::GetAvailableAutoFlags());
+  std::unordered_set<std::string> process_auto_flags;
+  for (const auto& flag : all_auto_flags[process_name_]) {
+    process_auto_flags.insert(flag.name);
+  }
+  return process_auto_flags;
 }
 
 }  // namespace yb

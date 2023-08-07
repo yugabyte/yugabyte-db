@@ -63,6 +63,9 @@ using master::SysCDCStreamEntryPB;
 using rpc::RpcController;
 
 namespace {
+
+const string kFakeUuid = "11111111111111111111111111111111";
+
 Result<string> GetRecentStreamId(MiniCluster* cluster, TabletId target_table_id = "") {
   // Return the first stream with tablet_id matching target_table_id using ListCDCStreams.
   // If target_table_id is not specified, return the first stream.
@@ -102,7 +105,7 @@ class XClusterAdminCliTest : public AdminCliTestBase {
 
     // Only create a table on the consumer, producer table may differ in tests.
     CreateTable(Transactional::kTrue);
-    FLAGS_check_bootstrap_required = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_check_bootstrap_required) = false;
 
     // Create the producer cluster.
     opts.num_tablet_servers = num_tablet_servers();
@@ -258,7 +261,7 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationChecksForColumnIdMismat
   // between the producer and consumer versions of the table.
   {
     auto table_alterer = client_.get()->NewTableAlterer(table_name);
-    table_alterer->AddColumn(kValueColumn)->Type(INT32);
+    table_alterer->AddColumn(kValueColumn)->Type(DataType::INT32);
     ASSERT_OK(table_alterer->timeout(MonoDelta::FromSeconds(60 * kTimeMultiplier))->Alter());
   }
 
@@ -356,11 +359,11 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationFailsWithInvalidBootstr
       kProducerClusterId,
       producer_cluster_->GetMasterAddresses(),
       producer_cluster_table->id(),
-      "fake-bootstrap-id"));
+      kFakeUuid));
 
   // Verify that error message has relevant information.
   ASSERT_TRUE(
-      error_msg.find("Could not find CDC stream: stream_id: \"fake-bootstrap-id\"") !=
+      error_msg.find("Could not find CDC stream: stream_id: \"" + kFakeUuid + "\"") !=
       string::npos);
 }
 
@@ -381,7 +384,7 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationCleanupOnFailure) {
       kProducerClusterId,
       producer_cluster_->GetMasterAddresses(),
       producer_cluster_table->id(),
-      "fake-bootstrap-id"));
+      kFakeUuid));
 
   // Wait for the universe to be cleaned up
   ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kProducerClusterId));
@@ -874,7 +877,7 @@ TEST_F(XClusterAdminCliTest, SetupTransactionalReplicationWithYCQLTable) {
 TEST_F(XClusterAdminCliTest, AllowAddTransactionTablet) {
   // We normally disable setting up transactional replication for CQL tables because the
   // implementation isn't quite complete yet.  It's fine to use it in tests, however.
-  FLAGS_allow_ycql_transactional_xcluster = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_ycql_transactional_xcluster) = true;
 
   // Create an identical table on the producer.
   client::TableHandle producer_table;
@@ -928,8 +931,8 @@ TEST_F(XClusterAdminCliTest_Large, TestBootstrapProducerPerformance) {
 
     // Build the table.
     client::YBSchemaBuilder builder;
-    builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
-    builder.AddColumn(kValueColumn)->Type(INT32);
+    builder.AddColumn(kKeyColumn)->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+    builder.AddColumn(kValueColumn)->Type(DataType::INT32);
 
     TableProperties table_properties;
     table_properties.SetTransactional(true);
@@ -960,10 +963,10 @@ TEST_F(XClusterAdminCliTest_Large, TestBootstrapProducerPerformance) {
       "Waiting for load balancer to be idle"));
 
   // Add delays to all rpc calls to simulate live environment.
-  FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms = 5;
-  FLAGS_rpc_throttle_threshold_bytes = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_throttle_threshold_bytes) = 0;
   // Enable parallelized version of BootstrapProducer.
-  FLAGS_parallelize_bootstrap_producer = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_parallelize_bootstrap_producer) = true;
 
   // Check that bootstrap_cdc_producer returns within time limit.
   ASSERT_OK(WaitFor(

@@ -215,6 +215,7 @@ extern void YBCAssignTransactionPriorityUpperBound(double newval, void* extra);
 extern double YBCGetTransactionPriority();
 extern TxnPriorityRequirement YBCGetTransactionPriorityType();
 
+static void assign_yb_pg_batch_detection_mechanism(int new_value, void *extra);
 static void assign_ysql_upgrade_mode(bool newval, void *extra);
 
 static bool check_max_backoff(int *max_backoff_msecs, void **extra, GucSource source);
@@ -1034,6 +1035,17 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_bnl_enable_hashing,
 		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"yb_lock_pk_single_rpc", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Use single RPC to select and lock when PK is specified."),
+			gettext_noop("If possible (no conflicting filters in the plan), use a single RPC to "
+						 "select and lock, when a locking clause is provided, in isolation levels "
+						 "REPEATABLE READ and READ COMMITTED.")
+		},
+		&yb_lock_pk_single_rpc,
+		false,
 		NULL, NULL, NULL
 	},
 	{
@@ -2038,6 +2050,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_pg_locks", PGC_SUSET, LOCK_MANAGEMENT,
+			gettext_noop("Enable the pg_locks view. This view provides information about the locks held by active postgres sessions."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_pg_locks,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_upgrade_mode", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enter a special mode designed specifically for YSQL cluster upgrades. "
 						 "Allows creating new system tables with given relation and type OID. "
@@ -2130,6 +2153,15 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&yb_enable_expression_pushdown,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"yb_enable_distinct_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Push supported DISTINCT operations to DocDB."),
+			NULL
+		},
+		&yb_enable_distinct_pushdown,
 		true,
 		NULL, NULL, NULL
 	},
@@ -2228,6 +2260,17 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_disable_wait_for_backends_catalog_version,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_is_client_ysqlconnmgr", PGC_SU_BACKEND, CUSTOM_OPTIONS,
+			gettext_noop("Identifies that connection is created by "
+						"Ysql Connection Manager."),
+			NULL
+		},
+		&yb_is_client_ysqlconnmgr,
 		false,
 		NULL, NULL, NULL
 	},
@@ -2353,6 +2396,27 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&DeadlockTimeout,
 		1000, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_locks_min_txn_age", PGC_USERSET, LOCK_MANAGEMENT,
+			gettext_noop("Sets the minimum transaction age for results from pg_locks."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_locks_min_txn_age,
+		1000, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_locks_max_transactions", PGC_USERSET, LOCK_MANAGEMENT,
+			gettext_noop("Sets the maximum number of transactions for which to return rows in pg_locks."),
+			NULL
+		},
+		&yb_locks_max_transactions,
+		16, 1, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -4860,10 +4924,10 @@ static struct config_enum ConfigureNamesEnum[] =
 	},
 
 	  {
-		{"yb_pg_batch_detection_mechanism", PGC_SIGHUP, COMPAT_OPTIONS_CLIENT,
+		{"yb_pg_batch_detection_mechanism", PGC_USERSET, COMPAT_OPTIONS_CLIENT,
 			gettext_noop("The drivers use message protocol to communicate "
 						 "with PG. The driver does not inform PG in advance "
-						 "about a Batch execution. We need to identify a batch " 
+						 "about a Batch execution. We need to identify a batch "
 						 "because in that case the single-shard optimization "
 						 "should be disabled. Postgres drivers pipeline "
 						 "messages and we exploit this to peek the message "
@@ -4878,7 +4942,7 @@ static struct config_enum ConfigureNamesEnum[] =
 		&yb_pg_batch_detection_mechanism,
 		DETECT_BY_PEEKING,
 		yb_pg_batch_detection_mechanism_options,
-		NULL, NULL, NULL
+		NULL, assign_yb_pg_batch_detection_mechanism, NULL
 	},
 
 	/* End-of-list marker */
@@ -12101,6 +12165,12 @@ check_transaction_priority_upper_bound(double *newval, void **extra, GucSource s
 	}
 
 	return true;
+}
+
+static void
+assign_yb_pg_batch_detection_mechanism(int new_value, void *extra)
+{
+	yb_pg_batch_detection_mechanism = new_value;
 }
 
 static void

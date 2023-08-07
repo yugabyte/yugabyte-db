@@ -5,19 +5,28 @@ package com.yugabyte.yw.common.certmgmt.castore;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.FileData;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 
 @Singleton
@@ -25,6 +34,16 @@ import lombok.extern.slf4j.Slf4j;
 public class Pkcs12TrustStoreManager implements TrustStoreManager {
 
   public static final String TRUSTSTORE_FILE_NAME = "ybPkcs12CaCerts";
+  private static final String YB_JAVA_HOME_PATHS = "yb.wellKnownCA.trustStore.javaHomePaths";
+
+  private final RuntimeConfGetter runtimeConfGetter;
+
+  @Inject Config config;
+
+  @Inject
+  public Pkcs12TrustStoreManager(RuntimeConfGetter runtimeConfGetter) {
+    this.runtimeConfGetter = runtimeConfGetter;
+  }
 
   /** Creates a trust-store with only custom CA certificates in pkcs12 format. */
   public boolean addCertificate(
@@ -215,5 +234,74 @@ public class Pkcs12TrustStoreManager implements TrustStoreManager {
       }
     }
     return false;
+  }
+
+  // ------------- methods for Java defaults ----------------
+  private Map<String, String> maybeGetJavaxNetSslTrustStore() {
+    String javaxNetSslTrustStore =
+        runtimeConfGetter.getGlobalConf(GlobalConfKeys.javaxNetSslTrustStore);
+    String javaxNetSslTrustStoreType =
+        runtimeConfGetter.getGlobalConf(GlobalConfKeys.javaxNetSslTrustStoreType);
+    String javaxNetSslTrustStorePassword =
+        runtimeConfGetter.getGlobalConf(GlobalConfKeys.javaxNetSslTrustStorePassword);
+    log.debug(
+        "Javax truststore is: {}, type is: {}", javaxNetSslTrustStore, javaxNetSslTrustStoreType);
+    if (!com.cronutils.utils.StringUtils.isEmpty(javaxNetSslTrustStore)
+        && Files.exists(Paths.get(javaxNetSslTrustStore))) {
+      Map<String, String> javaxNetSslMap = new HashMap<>();
+      javaxNetSslMap.put("path", javaxNetSslTrustStore);
+      if (!com.cronutils.utils.StringUtils.isEmpty(javaxNetSslTrustStoreType)) {
+        javaxNetSslMap.put("type", javaxNetSslTrustStoreType);
+      }
+      if (!com.cronutils.utils.StringUtils.isEmpty(javaxNetSslTrustStorePassword)) {
+        javaxNetSslMap.put("password", javaxNetSslTrustStorePassword);
+      }
+      return javaxNetSslMap;
+    }
+    return null;
+  }
+
+  protected Map<String, String> getJavaDefaultConfig() {
+    // Java looks for trust-store in these files by default in this order.
+    // NOTE: If adding any custom path, we must add the ordered default path as well, if they exist.
+    Map<String, String> javaxNetSslMap = maybeGetJavaxNetSslTrustStore();
+    if (javaxNetSslMap != null) {
+      return javaxNetSslMap;
+    }
+
+    Map<String, String> javaSSLConfigMap = new HashMap<>();
+    List<String> javaHomePaths = config.getStringList(YB_JAVA_HOME_PATHS);
+    log.debug("Java home certificate paths are {}", javaHomePaths);
+    for (String javaPath : javaHomePaths) {
+      if (Files.exists(Paths.get(javaPath))) {
+        javaSSLConfigMap.put("path", javaPath);
+        javaSSLConfigMap.put("type", KeyStore.getDefaultType()); // pkcs12
+      }
+    }
+    log.info("Java SSL config is:{}", javaSSLConfigMap);
+    return javaSSLConfigMap;
+  }
+
+  protected KeyStore getJavaDefaultKeystore() {
+    KeyStore javaStore = null;
+    Map<String, String> javaxNetSslMap = maybeGetJavaxNetSslTrustStore();
+
+    // Java looks for trust-store in these files by default in this order.
+    // NOTE: If adding any custom path, we must add the ordered default path as well, if they exist.
+    if (javaxNetSslMap != null) {
+      javaStore =
+          maybeGetTrustStore(
+              javaxNetSslMap.get("path"), javaxNetSslMap.get("password").toCharArray());
+      return javaStore;
+    }
+
+    List<String> javaHomePaths = config.getStringList(YB_JAVA_HOME_PATHS);
+    log.debug("Java home cert paths are {}", javaHomePaths);
+    for (String javaPath : javaHomePaths) {
+      if (Files.exists(Paths.get(javaPath))) {
+        javaStore = maybeGetTrustStore(javaPath, null);
+      }
+    }
+    return javaStore;
   }
 }

@@ -50,7 +50,7 @@ class PgLoadBalancerTest : public PgMiniTestBase {
   }
 };
 
-TEST_F(PgLoadBalancerTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceDuringLongRunningTransaction)) {
+TEST_F(PgLoadBalancerTest, LoadBalanceDuringLongRunningTransaction) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 1000;

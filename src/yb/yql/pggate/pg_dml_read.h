@@ -114,7 +114,7 @@ class PgDmlRead : public PgDml {
 
  protected:
   // Allocate column protobuf.
-  LWPgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) override;
+  Result<LWPgsqlExpressionPB*> AllocColumnBindPB(PgColumn* col, PgExpr* expr) override;
   LWPgsqlExpressionPB *AllocColumnBindConditionExprPB(PgColumn *col);
   LWPgsqlExpressionPB *AllocIndexColumnBindPB(PgColumn *col);
 
@@ -150,13 +150,6 @@ class PgDmlRead : public PgDml {
   Status SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params);
   Result<dockv::DocKey> EncodeRowKeyForBound(
       YBCPgStatement handle, size_t n_col_values, PgExpr **col_values, bool for_lower_bound);
-  Status MoveBoundKeyInOperator(PgColumn* col, const LWPgsqlConditionPB& in_operator);
-  Result<LWQLValuePB*> GetBoundValue(
-      const PgColumn& col, const LWPgsqlExpressionPB& src) const;
-  Result<dockv::KeyEntryValue> BuildKeyColumnValue(
-      const PgColumn& col, const LWPgsqlExpressionPB& src, LWQLValuePB** dest);
-  Result<dockv::KeyEntryValue> BuildKeyColumnValue(
-      const PgColumn& col, const LWPgsqlExpressionPB& src);
 
   // Holds original doc_op_ object after call of the UpgradeDocOp method.
   // Required to prevent structures related to request from being freed.

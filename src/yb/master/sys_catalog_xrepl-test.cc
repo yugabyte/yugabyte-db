@@ -31,9 +31,10 @@ class TestCDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
     streams.clear();
   }
 
-  Status Visit(const CDCStreamId& stream_id, const SysCDCStreamEntryPB& metadata) override {
+  Status Visit(const std::string& stream_id, const SysCDCStreamEntryPB& metadata) override {
     // Setup the CDC stream info.
-    CDCStreamInfo* const stream = new CDCStreamInfo(stream_id);
+    CDCStreamInfo* const stream =
+        new CDCStreamInfo(VERIFY_RESULT(xrepl::StreamId::FromString(stream_id)));
     auto l = stream->LockForWrite();
     l.mutable_data()->pb.CopyFrom(metadata);
     l.Commit();
@@ -82,7 +83,7 @@ TEST_F(SysCatalogTest, TestSysCatalogCDCStreamOperations) {
   ASSERT_OK(sys_catalog->Visit(loader.get()));
 
   // 1. CHECK ADD_CDCSTREAM.
-  auto stream = make_scoped_refptr<CDCStreamInfo>("deadbeafdeadbeafdeadbeafdeadbeaf");
+  auto stream = make_scoped_refptr<CDCStreamInfo>(xrepl::StreamId::GenerateRandom());
   {
     auto l = stream->LockForWrite();
     l.mutable_data()->pb.add_table_id("test_table");

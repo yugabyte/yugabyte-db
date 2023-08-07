@@ -339,7 +339,7 @@ class SessionPool {
   std::shared_ptr<client::YBSession> Take() {
     client::YBSession* result = nullptr;
     if (!queue_.pop(result)) {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       auto session = client_->NewSession();
       session->SetTimeout(
           MonoDelta::FromMilliseconds(FLAGS_redis_service_yb_client_timeout_millis));
@@ -1369,7 +1369,7 @@ void RedisServiceImplData::CleanYBTableFromCacheForDB(const string& db) {
 Status RedisServiceImplData::GetRedisPasswords(vector<string>* passwords) {
   MonoTime now = MonoTime::Now();
 
-  std::lock_guard<std::mutex> lock(redis_password_mutex_);
+  std::lock_guard lock(redis_password_mutex_);
   if (redis_cached_password_validity_expiry_.Initialized() &&
       now < redis_cached_password_validity_expiry_) {
     *passwords = redis_cached_passwords_;

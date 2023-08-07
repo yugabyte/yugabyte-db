@@ -78,7 +78,7 @@ class TransactionTableState {
 
   void UpdateStatusTablets(uint64_t new_version,
                            TransactionStatusTablets&& tablets) EXCLUDES(mutex_) {
-    std::lock_guard<yb::RWMutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (!initialized_.load() || status_tablets_version_ < new_version) {
       tablets_ = std::move(tablets);
       has_placement_local_tablets_.store(!tablets_.placement_local_tablets.empty());
@@ -92,7 +92,7 @@ class TransactionTableState {
   }
 
   uint64_t GetStatusTabletsVersion() EXCLUDES(mutex_) {
-    std::lock_guard<yb::RWMutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     return status_tablets_version_;
   }
 
@@ -260,6 +260,9 @@ class TransactionManager::Impl {
   void UpdateTransactionTablesVersion(
       uint64_t version, UpdateTransactionTablesVersionCallback callback) {
     if (table_state_.GetStatusTabletsVersion() >= version) {
+      if (callback) {
+        callback(Status::OK());
+      }
       return;
     }
 

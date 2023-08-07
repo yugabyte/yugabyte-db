@@ -54,7 +54,7 @@ const Status kUninitializedStatus = STATUS(IllegalState, "Uninitialized");
 class StatefulServiceTest : public MiniClusterTestWithClient<MiniCluster> {
  public:
   void SetUp() override {
-    FLAGS_TEST_echo_service_enabled = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_echo_service_enabled) = true;
     ASSERT_OK(SET_FLAG(vmodule, "stateful_service*=4"));
     YBMiniClusterTestBase::SetUp();
     MiniClusterOptions opts;
@@ -296,7 +296,7 @@ TEST_F(StatefulServiceTest, TestLeadershipChange) {
   // committed data, or make the operation idempotent.
 
   // This is needed for the Batcher to propagate back the errors to the caller.
-  FLAGS_TEST_combine_batcher_errors = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_combine_batcher_errors) = true;
 
   auto service_client =
       ASSERT_RESULT(cluster_->CreateStatefulServiceClient<client::TestEchoServiceClient>());
@@ -356,7 +356,7 @@ TEST_F(StatefulServiceTest, TestWriteDuringLeadershipChange) {
   // unaware of the leader change.
 
   // This is needed for the Batcher to propagate back the errors to the caller.
-  FLAGS_TEST_combine_batcher_errors = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_combine_batcher_errors) = true;
 
   yb::SyncPoint::GetInstance()->LoadDependency(
       {{"TestEchoService::RecordRequestInTable::BeforeApply1",

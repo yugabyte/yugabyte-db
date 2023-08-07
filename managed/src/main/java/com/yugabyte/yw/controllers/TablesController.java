@@ -20,13 +20,13 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceInfo;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceQueryResponse;
 import com.yugabyte.yw.common.TableSpaceUtil;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.FileUtils;
@@ -177,7 +177,7 @@ public class TablesController extends AuthenticatedController {
     LOG.info(
         "Submitted create table for {}:{}, task uuid = {}.",
         taskParams.tableUUID,
-        tableDetails.tableName,
+        CommonUtils.logTableName(tableDetails.tableName),
         taskUUID);
 
     // Add this task uuid to the user universe.
@@ -195,7 +195,7 @@ public class TablesController extends AuthenticatedController {
         taskUUID,
         taskParams.tableUUID,
         tableDetails.keyspace,
-        tableDetails.tableName);
+        CommonUtils.logTableName(tableDetails.tableName));
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -246,7 +246,7 @@ public class TablesController extends AuthenticatedController {
     LOG.info(
         "Submitted delete table for {}:{}, task uuid = {}.",
         taskParams.tableUUID,
-        taskParams.getFullName(),
+        CommonUtils.logTableName(taskParams.getFullName()),
         taskUUID);
 
     CustomerTask.create(
@@ -260,7 +260,7 @@ public class TablesController extends AuthenticatedController {
         "Saved task uuid {} in customer tasks table for table {}:{}",
         taskUUID,
         taskParams.tableUUID,
-        taskParams.getFullName());
+        CommonUtils.logTableName(taskParams.getFullName()));
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -519,7 +519,7 @@ public class TablesController extends AuthenticatedController {
   @ApiModel(description = "Namespace information response")
   @Builder
   @Jacksonized
-  static class NamespaceInfoResp {
+  public static class NamespaceInfoResp {
 
     @ApiModelProperty(value = "Namespace UUID", accessMode = READ_ONLY)
     public final UUID namespaceUUID;
@@ -529,6 +529,11 @@ public class TablesController extends AuthenticatedController {
 
     @ApiModelProperty(value = "Table type")
     public final TableType tableType;
+
+    public static NamespaceInfoResp createFromNamespaceIdentifier(
+        NamespaceIdentifierPB namespaceIdentifier) {
+      return buildResponseFromNamespaceIdentifier(namespaceIdentifier).build();
+    }
   }
 
   @ApiOperation(
@@ -770,7 +775,7 @@ public class TablesController extends AuthenticatedController {
       LOG.info(
           "Submitted backup to be scheduled {}:{}, schedule uuid = {}.",
           tableUUID,
-          taskParams.getTableName(),
+          CommonUtils.logTableName(taskParams.getTableName()),
           scheduleUUID);
       auditService()
           .createAuditEntryWithReqBody(
@@ -784,7 +789,7 @@ public class TablesController extends AuthenticatedController {
       LOG.info(
           "Submitted task to backup table {}:{}, task uuid = {}.",
           tableUUID,
-          taskParams.getTableName(),
+          CommonUtils.logTableName(taskParams.getTableName()),
           taskUUID);
       CustomerTask.create(
           customer,
@@ -798,7 +803,7 @@ public class TablesController extends AuthenticatedController {
           taskUUID,
           tableUUID,
           taskParams.getTableNames(),
-          taskParams.getTableName());
+          CommonUtils.logTableName(taskParams.getTableName()));
       auditService()
           .createAuditEntryWithReqBody(
               request,
@@ -864,7 +869,7 @@ public class TablesController extends AuthenticatedController {
     LOG.info(
         "Submitted import into table for {}:{}, task uuid = {}.",
         tableUUID,
-        taskParams.getTableName(),
+        CommonUtils.logTableName(taskParams.getTableName()),
         taskUUID);
 
     CustomerTask.create(
@@ -878,8 +883,8 @@ public class TablesController extends AuthenticatedController {
         "Saved task uuid {} in customer tasks table for table {}:{}.{}",
         taskUUID,
         tableUUID,
-        taskParams.getTableName(),
-        taskParams.getTableName());
+        CommonUtils.logTableName(taskParams.getTableName()),
+        CommonUtils.logTableName(taskParams.getTableName()));
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -1203,7 +1208,7 @@ public class TablesController extends AuthenticatedController {
     return builder;
   }
 
-  private NamespaceInfoResp.NamespaceInfoRespBuilder buildResponseFromNamespaceIdentifier(
+  private static NamespaceInfoResp.NamespaceInfoRespBuilder buildResponseFromNamespaceIdentifier(
       NamespaceIdentifierPB namespace) {
     String id = namespace.getId().toStringUtf8();
     NamespaceInfoResp.NamespaceInfoRespBuilder builder =

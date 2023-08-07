@@ -379,6 +379,9 @@ Status FindTabletFollowers(const TabletServerMapUnowned& tablet_servers,
                            const MonoDelta& timeout,
                            std::vector<TServerDetails*>* followers);
 
+Result<std::unordered_set<TServerDetails*>> FindTabletPeers(
+    const TabletServerMap& tablet_servers, const std::string& tablet_id, const MonoDelta& timeout);
+
 // Start an election on the specified tserver.
 // 'timeout' only refers to the RPC asking the peer to start an election. The
 // StartElection() RPC does not block waiting for the results of the election,
@@ -461,6 +464,14 @@ Status ListRunningTabletIds(const TServerDetails* ts,
 
 // Get the set of tablet ids across the cluster
 std::set<TabletId> GetClusterTabletIds(MiniCluster* cluster);
+
+// Get the list of tablets for the given table on the given tserver from the Master.
+Result<std::vector<master::TabletLocationsPB::ReplicaPB>>
+GetTabletsOnTsAccordingToMaster(ExternalMiniCluster* cluster,
+                                const TabletServerId& ts_uuid,
+                                const client::YBTableName& table_name,
+                                const MonoDelta& timeout,
+                                const RequireTabletsRunning require_tablets_running);
 
 // Get the list of tablet locations for the specified tablet from the Master.
 Status GetTabletLocations(ExternalMiniCluster* cluster,

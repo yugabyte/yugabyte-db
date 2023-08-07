@@ -50,17 +50,17 @@ using std::string;
 namespace yb {
 
 void TimeSeries::AddValue(double val) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   val_ += val;
 }
 
 void TimeSeries::SetValue(double val) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   val_ = val;
 }
 
 double TimeSeries::value() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   return val_;
 }
 

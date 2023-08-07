@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.CloudProviderHelper.EditableInUseProvider;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.HashMap;
@@ -21,6 +22,7 @@ public class OnPremCloudInfo implements CloudInfoInterface {
 
   @JsonAlias("YB_HOME_DIR")
   @ApiModelProperty
+  @EditableInUseProvider(name = "Yugabyte Home directory", allowed = false)
   public String ybHomeDir;
 
   @JsonIgnore

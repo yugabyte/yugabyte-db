@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { FormikActions, FormikErrors, FormikProps } from 'formik';
 import { toast } from 'react-toastify';
@@ -10,7 +10,7 @@ import { YBButton, YBModal } from '../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import { TableTypeLabel, Universe } from '../../../redesign/helpers/dtos';
-import { api } from '../../../redesign/helpers/api';
+import { api, xClusterQueryKey } from '../../../redesign/helpers/api';
 import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 import {
   fetchTaskUntilItCompletes,
@@ -126,12 +126,12 @@ export const RestartConfigModal = ({
                 </span>
               );
             }
-            queryClient.invalidateQueries(['Xcluster', xClusterConfig.uuid]);
+            queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
           },
           // Invalidate the cached data for current xCluster config. The xCluster config status should change to
           // 'in progress' once the restart config task starts.
           () => {
-            queryClient.invalidateQueries(['Xcluster', xClusterConfig.uuid]);
+            queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
           }
         );
       },

@@ -125,15 +125,15 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
   CreateTableStressTest() {
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(INT32)->NotNull()->HashPrimaryKey();
-    b.AddColumn("v1")->Type(INT64)->NotNull();
-    b.AddColumn("v2")->Type(STRING)->NotNull();
+    b.AddColumn("key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+    b.AddColumn("v1")->Type(DataType::INT64)->NotNull();
+    b.AddColumn("v2")->Type(DataType::STRING)->NotNull();
     CHECK_OK(b.Build(&schema_));
   }
 
   void SetUp() override {
     // Make heartbeats faster to speed test runtime.
-    FLAGS_heartbeat_interval_ms = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = 10;
 
     // Don't preallocate log segments, since we're creating thousands
     // of tablets here. If each preallocates 64M or so, we use
@@ -141,11 +141,11 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
     // sized /tmp dirs.
     // TODO: once we collapse multiple tablets into shared WAL files,
     // this won't be necessary.
-    FLAGS_log_preallocate_segments = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_preallocate_segments) = false;
 
     // Workaround KUDU-941: without this, it's likely that while shutting
     // down tablets, they'll get resuscitated by their existing leaders.
-    FLAGS_TEST_enable_remote_bootstrap = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_remote_bootstrap) = false;
 
     YBMiniClusterTestBase::SetUp();
     MiniClusterOptions opts;
@@ -282,13 +282,13 @@ class CreateMultiHBTableStressTest : public CreateTableStressTest,
     bool is_multiHb = GetParam();
     if (is_multiHb) {
       // 90 Tablets * 3 TS < 300 Tablets
-      FLAGS_tablet_report_limit = 90;
-      FLAGS_num_test_tablets = 300;
-      FLAGS_max_create_tablets_per_ts = FLAGS_num_test_tablets;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_report_limit) = 90;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_test_tablets) = 300;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_create_tablets_per_ts) = FLAGS_num_test_tablets;
       // 1000 ms deadline / 20 ms wait/batch ~= 40 Tablets processed before Master hits deadline
-      FLAGS_TEST_inject_latency_during_tablet_report_ms = 20;
-      FLAGS_heartbeat_rpc_timeout_ms = 1000;
-      FLAGS_catalog_manager_report_batch_size = 1;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_latency_during_tablet_report_ms) = 20;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_rpc_timeout_ms) = 1000;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_report_batch_size) = 1;
     }
     CreateTableStressTest::SetUp();
   }
@@ -394,9 +394,9 @@ TEST_P(CreateMultiHBTableStressTest, RestartServersAfterCreation) {
 class CreateSmallHBTableStressTest : public CreateTableStressTest {
   void SetUp() override {
     // 40 / 3 ~= 13 tablets / server.  2 / report >= 7 reports to finish a heartbeat
-    FLAGS_tablet_report_limit = 2;
-    FLAGS_num_test_tablets = 40;
-    FLAGS_max_create_tablets_per_ts = FLAGS_num_test_tablets;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_report_limit) = 2;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_test_tablets) = 40;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_create_tablets_per_ts) = FLAGS_num_test_tablets;
 
     CreateTableStressTest::SetUp();
   }
@@ -602,7 +602,7 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
   // the tablet leader will initiate a remote bootstrap to create a tablet replica on the tablet
   // peer missing the tablet. We explicitly enable remote bootstraps here so the tablet leader
   // can successfully create the missing replica.
-  FLAGS_TEST_enable_remote_bootstrap = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_remote_bootstrap) = true;
   AtomicBool stop(false);
 
   // Since this test constantly invokes VisitSysCatalog() which is the function
@@ -615,7 +615,11 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
 
   thread reload_metadata_thread([&]() {
     while (!stop.Load()) {
-      master::SysCatalogLoadingState state;
+      master::SysCatalogLoadingState state{
+          .parent_to_child_tables = {},
+          .post_load_tasks = {},
+          .epoch = master::LeaderEpoch(1),
+      };
       CHECK_OK(cluster_->mini_master()->catalog_manager_impl().VisitSysCatalog(0, &state));
       // Give table creation a chance to run.
       SleepFor(MonoDelta::FromMilliseconds(10 * kTimeMultiplier));

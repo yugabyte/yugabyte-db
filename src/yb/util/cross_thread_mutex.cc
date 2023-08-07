@@ -23,7 +23,7 @@ void CrossThreadMutex::lock() {
 
 void CrossThreadMutex::unlock() {
   {
-    std::lock_guard<std::mutex> lk(mutex_);
+    std::lock_guard lk(mutex_);
     is_locked_ = false;
   }
   condition_variable_.notify_one();

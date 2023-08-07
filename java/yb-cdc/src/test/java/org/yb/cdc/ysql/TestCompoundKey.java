@@ -69,6 +69,7 @@ public class TestCompoundKey extends CDCBaseClass {
   @Before
   public void setUp() throws Exception {
     super.setUp();
+    setServerFlag(getTserverHostAndPort(), CDC_POPULATE_SAFEPOINT_RECORD, "false");
     statement = connection.createStatement();
     statement.execute("drop table if exists test;");
     statement.execute("create table test (a int, b int, c int, d int, primary key(a, b));");
@@ -220,6 +221,7 @@ public class TestCompoundKey extends CDCBaseClass {
         new ExpectedRecordCPKProto(-1, -1, -1, -1, Op.COMMIT)
       };
 
+      setServerFlag(getTserverHostAndPort(), CDC_ENABLE_CONSISTENT_RECORDS, "false");
       executeScriptAssertRecords(expectedRecords, "compound_key_tests/cdc_cpk_long_script.sql");
     } catch (Exception e) {
       LOG.error("Test to execute a long script failed with exception: ", e);

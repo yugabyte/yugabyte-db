@@ -10,6 +10,14 @@ import (
     "github.com/jackc/pgx/v4/pgxpool"
 )
 
+type PgClientConnectionParams struct {
+        User     string
+        Password string
+        Host     string
+        Port     int
+        Database string
+}
+
 func CreateGoCqlClient(log logger.Logger) *gocql.ClusterConfig {
 
     // Initialize gocql client
@@ -34,12 +42,14 @@ func CreateGoCqlClient(log logger.Logger) *gocql.ClusterConfig {
     return cluster
 }
 
-func CreatePgClient(log logger.Logger, host string) (*pgxpool.Pool, error) {
+func CreatePgClient(log logger.Logger,
+        connectionParams PgClientConnectionParams) (*pgxpool.Pool, error) {
 
     var url string
 
     url = fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
-            DbYsqlUser, DbPassword, host, PORT, DbName)
+            connectionParams.User, connectionParams.Password, connectionParams.Host,
+            connectionParams.Port, connectionParams.Database)
     if Secure {
             secureOptions := fmt.Sprintf("sslmode=%s", SslMode)
             if SslRootCert != "" {

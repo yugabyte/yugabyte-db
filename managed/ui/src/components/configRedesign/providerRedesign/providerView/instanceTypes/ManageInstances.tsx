@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { makeStyles, Typography } from '@material-ui/core';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { useQuery, useQueryClient } from 'react-query';
 
 import {
@@ -28,6 +29,12 @@ import {
 
 import { InstanceType } from '../../../../../redesign/helpers/dtos';
 import { OnPremProvider } from '../../types';
+import { NodeAgentStatusModal } from './NodeAgentStatusModal';
+import { SortDirection } from '../../../../../redesign/utils/dtos';
+import { NodeAgentAPI, QUERY_KEY } from '../../../../../redesign/features/NodeAgent/api';
+import { isNonEmptyArray } from '../../../../../utils/ObjectUtils';
+import { formatNumberToText } from '../../../../../utils/Formatters';
+import ErrorIcon from '../../../../../redesign/assets/error.svg';
 
 interface ManageInstancesProps {
   providerConfig: OnPremProvider;
@@ -44,6 +51,25 @@ const useStyles = makeStyles((theme) => ({
   },
   subHeading: {
     padding: theme.spacing(3, 0)
+  },
+  nodeAgentStatusContainer: {
+    height: theme.spacing(6),
+    background: 'rgba(231, 62, 54, 0.15)',
+    border: '1px solid rgba(231, 62, 54, 0.25)',
+    borderRadius: theme.spacing(1),
+    padding: '8px 16px',
+    marginBottom: theme.spacing(2)
+  },
+  nodeAgentStatusText: {
+    fontSize: '13px',
+    fontFamily: 'Inter',
+    fontWeight: 600,
+    marginLeft: theme.spacing(0.5),
+    marginRight: theme.spacing(1),
+    color: '#0B1117'
+  },
+  nodeAgentErrorImage: {
+    marginBottom: theme.spacing(0.25)
   }
 }));
 
@@ -52,10 +78,47 @@ export const ManageInstances = ({ providerConfig }: ManageInstancesProps) => {
   const [isDeleteInstanceTypeModalOpen, setIsDeleteInstanceTypeModalOpen] = useState<boolean>(
     false
   );
+  const [isNodeAgentStatusModalOpen, setIsNodeAgentStatusModalOpen] = useState<boolean>(false);
   const [instanceTypeSelection, setInstanceTypeSelection] = useState<InstanceType>();
+  const [isNodeAgentHealthDown, setIsNodeAgentHealthDown] = useState<boolean>(false);
+  const [numNodesHealthDown, setNumNodesHealthDown] = useState<number>(0);
+  const nodeInstanceList = useSelector((state: any) => state.cloud.nodeInstanceList);
+
+  const { t } = useTranslation();
   const classes = useStyles();
   const dispatch = useDispatch();
   const providerUUID = providerConfig.uuid;
+
+  const nodeIPs = nodeInstanceList?.data?.map((nodeInstance: any) => {
+    return nodeInstance.details.ip;
+  });
+  const payload: any = {
+    filter: {
+      nodeIps: nodeIPs
+    },
+    sortBy: 'ip',
+    direction: SortDirection.DESC,
+    offset: 0,
+    limit: 500,
+    needTotalCount: true
+  };
+  const nodeAgentStatusByIPs = useQuery(
+    QUERY_KEY.fetchNodeAgentByIPs,
+    () => NodeAgentAPI.fetchNodeAgentByIPs(payload),
+    {
+      enabled: isNonEmptyArray(nodeIPs),
+      onSuccess: (data: any) => {
+        const nodeAgentOnPremNodes = data.entities;
+        const numNodeAgentsFailed =
+          nodeAgentOnPremNodes?.filter(
+            (nodeAgentOnPremNode: any) => !nodeAgentOnPremNode?.reachable
+          ) ?? [];
+        setNumNodesHealthDown(numNodeAgentsFailed.length);
+        setIsNodeAgentHealthDown(isNonEmptyArray(numNodeAgentsFailed));
+      }
+    }
+  );
+
   useEffect(() => {
     dispatch(getNodeInstancesForProvider(providerUUID) as any).then((response: any) => {
       dispatch(getNodesInstancesForProviderResponse(response.payload));
@@ -129,6 +192,12 @@ export const ManageInstances = ({ providerConfig }: ManageInstancesProps) => {
     });
   };
 
+  const showNodeAgentStatusModal = () => {
+    setIsNodeAgentStatusModalOpen(true);
+  };
+  const hideNodeAgentStatusModal = () => {
+    setIsNodeAgentStatusModalOpen(false);
+  };
   const showAddInstanceTypeFormModal = () => {
     setInstanceTypeSelection(undefined);
     setIsInstanceTypeFormModalOpen(true);
@@ -149,6 +218,18 @@ export const ManageInstances = ({ providerConfig }: ManageInstancesProps) => {
 
   return (
     <div>
+      {isNodeAgentHealthDown && (
+        <div className={classes.nodeAgentStatusContainer}>
+          <img className={classes.nodeAgentErrorImage} src={ErrorIcon} alt="error" />
+          <span className={classes.nodeAgentStatusText}>
+            {`${formatNumberToText(numNodesHealthDown)} `}
+            {t('nodeAgent.unreachableInstanceAgents')}
+          </span>
+          <YBButton variant="secondary" type="button" onClick={showNodeAgentStatusModal}>
+            {t('nodeAgent.viewDetailsButton')}
+          </YBButton>
+        </div>
+      )}
       <div className={classes.actionBar}>
         <YBButton
           style={{ justifySelf: 'flex-end', width: '200px' }}
@@ -184,6 +265,8 @@ export const ManageInstances = ({ providerConfig }: ManageInstancesProps) => {
         selectedProviderUUID={providerUUID}
         isRedesignedView={true}
         currentProvider={providerConfig}
+        nodeAgentStatusByIPs={nodeAgentStatusByIPs}
+        isNodeAgentHealthDown={isNodeAgentHealthDown}
       />
       {isInstanceTypeFormModalOpen && (
         <ConfigureInstanceTypeModal
@@ -199,6 +282,14 @@ export const ManageInstances = ({ providerConfig }: ManageInstancesProps) => {
           onClose={hideDeleteInstanceTypeModal}
           open={isDeleteInstanceTypeModalOpen}
           deleteInstanceType={onDeleteInstanceTypeSubmit}
+        />
+      )}
+      {isNodeAgentStatusModalOpen && (
+        <NodeAgentStatusModal
+          nodeIPs={nodeIPs}
+          onClose={hideNodeAgentStatusModal}
+          open={isNodeAgentStatusModalOpen}
+          isAssignedNodes={false}
         />
       )}
     </div>

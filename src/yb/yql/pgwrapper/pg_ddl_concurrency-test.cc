@@ -53,7 +53,7 @@ class PgDDLConcurrencyTest : public LibPqTestBase {
  * in case transaction can't be committed (due to massive retry errors
  * caused by aggressive running of DDL in parallel).
  */
-TEST_F(PgDDLConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(IndexCreation)) {
+TEST_F(PgDDLConcurrencyTest, IndexCreation) {
   TestThreadHolder thread_holder;
   constexpr size_t kThreadsCount = 3;
   CountDownLatch start_latch(kThreadsCount + 1);

@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-export * from './ICerts'
+export * from './ICerts';
 export * from './ListCACerts';
 export * from './UploadCACertModal';
 export * from './DeleteCACertModal';

@@ -4,7 +4,7 @@ private=true
 +++
 -->
 
-Create a database user and provide the user with READ access to all the resources which need to be migrated. Replace `'localhost'` from the following commands with an appropriate hostname in your setup.
+Create a database user and provide the user with READ access to all the resources which need to be migrated. Replace `<client_IP>` from the following commands with an appropriate hostname in your setup.
 
 1. Create a new user `ybvoyager`.
 

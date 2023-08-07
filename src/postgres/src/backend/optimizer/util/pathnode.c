@@ -17,6 +17,7 @@
 #include <math.h>
 
 #include "miscadmin.h"
+#include "access/xact.h"
 #include "access/yb_scan.h"
 #include "foreign/fdwapi.h"
 #include "nodes/extensible.h"
@@ -942,6 +943,153 @@ add_partial_path_precheck(RelOptInfo *parent_rel, Cost total_cost,
 	return true;
 }
 
+/*
+ * If there are rowMarks and we're in a serializable transaction, we lock
+ * whole prefix ranges during scans instead of locking only the rows
+ * returned to the user. This is required to locks rows that might not yet
+ * have been inserted in the table, which is necessary to block concurrent
+ * transactions from inserting new rows that match the locked predicate.
+ */
+static void
+yb_maybe_set_range_lock_mechanism(List *rowMarks,
+								  YbLockMechanism *yb_lock_mechanism)
+{
+	if (!IsYugaByteEnabled())
+		return;
+
+	if (IsolationIsSerializable() && rowMarks)
+		*yb_lock_mechanism = YB_RANGE_LOCK_ON_SCAN;
+}
+
+/*
+ * Propagate YugabyteDB fields between a parent and a single child.
+ *
+ * Currently there is only one field to propagate, yb_lock_mechanism.
+ * yb_lock_mechanism indicates whether locks can be taken in the same RPC
+ * as a SELECT. This field is unconventional because we let the parent
+ * affect the child, in the case of YB_PK_FOR_UPDATE_LOCK. This is because
+ * we have only one actual scan node that has a flag indicating whether it
+ * can lock, and in some cases, a node above needs to disable such locking
+ * because it would lead to over-locking. (In that case a LockRows node
+ * will be inserted to do the correct locking on exactly the right rows.)
+ * It would be nice if there could be a locked scan node and an unlocked
+ * scan node, with a pruning step eliminating the locked node. However
+ * in practice it's difficult to prune during path creation, and seems error-
+ * prone to traverse the paths to prune them later. Because it's a matter of
+ * correctness in locking, and a single RPC is strictly better than two RPCs
+ * otherwise, this is safe to do without complicating costs.
+ *
+ * Other than this case, Path data generally flows upward, from children to
+ * parents, as the serializable lock information does currently. Therefore this
+ * function is expected to simply copy information from children to parents for
+ * future fields.
+ */
+static void
+yb_propagate_fields(YbPathInfo *parent_fields, YbPathInfo *child_fields)
+{
+	if (!IsYugaByteEnabled())
+		return;
+
+	if (child_fields->yb_lock_mechanism == YB_RANGE_LOCK_ON_SCAN)
+		parent_fields->yb_lock_mechanism = YB_RANGE_LOCK_ON_SCAN;
+	else
+		child_fields->yb_lock_mechanism = YB_NO_SCAN_LOCK;
+}
+
+/*
+ * Propagate YugabyteDB fields between a parent and two children.
+ * See comment for yb_propagate_fields.
+ */
+static void
+yb_propagate_fields2(YbPathInfo *parent_fields, YbPathInfo *child1_fields,
+					 YbPathInfo *child2_fields)
+{
+	if (!IsYugaByteEnabled())
+		return;
+
+	if (child1_fields->yb_lock_mechanism == YB_RANGE_LOCK_ON_SCAN ||
+		child2_fields->yb_lock_mechanism == YB_RANGE_LOCK_ON_SCAN)
+	{
+		Assert(child1_fields->yb_lock_mechanism != YB_LOCK_CLAUSE_ON_PK);
+		Assert(child2_fields->yb_lock_mechanism != YB_LOCK_CLAUSE_ON_PK);
+		parent_fields->yb_lock_mechanism = YB_RANGE_LOCK_ON_SCAN;
+	}
+	else
+		child1_fields->yb_lock_mechanism = child2_fields->yb_lock_mechanism =
+			YB_NO_SCAN_LOCK;
+}
+
+/*
+ * Propagate YugabyteDB fields between a parent and a list of children.
+ * See comment for yb_propagate_fields.
+ */
+static void
+yb_propagate_fields_list(YbPathInfo *parent_fields, List *child_paths)
+{
+	ListCell   *lc;
+	bool		found_serializable_lock = false;
+
+	if (!IsYugaByteEnabled())
+		return;
+
+	foreach(lc, child_paths)
+	{
+		Path   *subpath = (Path *) lfirst(lc);
+
+		if (subpath->yb_path_info.yb_lock_mechanism == YB_RANGE_LOCK_ON_SCAN)
+		{
+			parent_fields->yb_lock_mechanism = YB_RANGE_LOCK_ON_SCAN;
+			found_serializable_lock = true;
+			break;
+		}
+	}
+	foreach(lc, child_paths)
+	{
+		Path   *subpath = (Path *) lfirst(lc);
+		if (!found_serializable_lock)
+			subpath->yb_path_info.yb_lock_mechanism = YB_NO_SCAN_LOCK;
+		else
+			Assert(subpath->yb_path_info.yb_lock_mechanism !=
+				   YB_LOCK_CLAUSE_ON_PK);
+	}
+}
+
+/*
+ * Propagate YugabyteDB fields between a parent and a list of MinMaxAggregate
+ * children.
+ * See comment for yb_propagate_fields.
+ */
+static void
+yb_propagate_mmagg_fields(YbPathInfo *parent_fields, List *mmaggregates)
+{
+	ListCell   *lc;
+	bool		found_serializable_lock = false;
+
+	if (!IsYugaByteEnabled())
+		return;
+
+	foreach(lc, mmaggregates)
+	{
+		MinMaxAggInfo  *mminfo = (MinMaxAggInfo *) lfirst(lc);
+		if (mminfo->path->yb_path_info.yb_lock_mechanism ==
+			YB_RANGE_LOCK_ON_SCAN)
+		{
+			parent_fields->yb_lock_mechanism = YB_RANGE_LOCK_ON_SCAN;
+			found_serializable_lock = true;
+			break;
+		}
+	}
+	foreach(lc, mmaggregates)
+	{
+		MinMaxAggInfo  *mminfo = (MinMaxAggInfo *) lfirst(lc);
+		if (!found_serializable_lock)
+			mminfo->path->yb_path_info.yb_lock_mechanism = YB_NO_SCAN_LOCK;
+		else
+			Assert(mminfo->path->yb_path_info.yb_lock_mechanism !=
+				   YB_LOCK_CLAUSE_ON_PK);
+	}
+}
+
 
 /*****************************************************************************
  *		PATH NODE CREATION ROUTINES
@@ -967,6 +1115,10 @@ create_seqscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_safe = rel->consider_parallel;
 	pathnode->parallel_workers = parallel_workers;
 	pathnode->pathkeys = NIL;	/* seqscan has unordered result */
+
+	yb_maybe_set_range_lock_mechanism(
+		root->parse->rowMarks,
+		&pathnode->yb_path_info.yb_lock_mechanism);
 
 	/*
 	 * The ybcCostEstimate is used to cost a ForeignScan node on YB table,
@@ -1007,6 +1159,10 @@ create_samplescan_path(PlannerInfo *root, RelOptInfo *rel, Relids required_outer
 	pathnode->parallel_safe = rel->consider_parallel;
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = NIL;	/* samplescan has unordered result */
+
+	yb_maybe_set_range_lock_mechanism(
+		root->parse->rowMarks,
+		&pathnode->yb_path_info.yb_lock_mechanism);
 
 	cost_samplescan(pathnode, root, rel, pathnode->param_info);
 
@@ -1066,6 +1222,17 @@ create_index_path(PlannerInfo *root,
 	pathnode->path.parallel_safe = rel->consider_parallel;
 	pathnode->path.parallel_workers = 0;
 	pathnode->path.pathkeys = pathkeys;
+	/*
+	 * In a serializable transaction, the presence of rowMarks tells us that
+	 * this is a locked operation. Therefore we will take locks as part of
+	 * this index scan.
+	 */
+	if (indexclauses != NIL)
+	{
+		yb_maybe_set_range_lock_mechanism(
+			root->parse->rowMarks,
+			&pathnode->path.yb_path_info.yb_lock_mechanism);
+	}
 
 	/* Convert clauses to indexquals the executor can handle */
 	expand_indexqual_conditions(index, indexclauses, indexclausecols,
@@ -1116,6 +1283,9 @@ create_bitmap_heap_path(PlannerInfo *root,
 	pathnode->path.parallel_safe = rel->consider_parallel;
 	pathnode->path.parallel_workers = parallel_degree;
 	pathnode->path.pathkeys = NIL;	/* always unordered */
+
+	yb_propagate_fields(&pathnode->path.yb_path_info,
+						&bitmapqual->yb_path_info);
 
 	pathnode->bitmapqual = bitmapqual;
 
@@ -1170,6 +1340,8 @@ create_bitmap_and_path(PlannerInfo *root,
 
 	pathnode->path.pathkeys = NIL;	/* always unordered */
 
+	yb_propagate_fields_list(&pathnode->path.yb_path_info, bitmapquals);
+
 	pathnode->bitmapquals = bitmapquals;
 
 	/* this sets bitmapselectivity as well as the regular cost fields: */
@@ -1222,6 +1394,8 @@ create_bitmap_or_path(PlannerInfo *root,
 
 	pathnode->path.pathkeys = NIL;	/* always unordered */
 
+	yb_propagate_fields_list(&pathnode->path.yb_path_info, bitmapquals);
+
 	pathnode->bitmapquals = bitmapquals;
 
 	/* this sets bitmapselectivity as well as the regular cost fields: */
@@ -1249,6 +1423,10 @@ create_tidscan_path(PlannerInfo *root, RelOptInfo *rel, List *tidquals,
 	pathnode->path.parallel_safe = rel->consider_parallel;
 	pathnode->path.parallel_workers = 0;
 	pathnode->path.pathkeys = NIL;	/* always unordered */
+
+	yb_maybe_set_range_lock_mechanism(
+		root->parse->rowMarks,
+		&pathnode->path.yb_path_info.yb_lock_mechanism);
 
 	pathnode->tidquals = tidquals;
 
@@ -1343,6 +1521,9 @@ create_append_path(PlannerInfo *root,
 		Assert(bms_equal(PATH_REQ_OUTER(subpath), required_outer));
 	}
 
+	yb_propagate_fields_list(&pathnode->path.yb_path_info,
+							 pathnode->subpaths);
+
 	Assert(!parallel_aware || pathnode->path.parallel_safe);
 
 	cost_append(pathnode);
@@ -1423,6 +1604,7 @@ create_merge_append_path(PlannerInfo *root,
 	pathnode->path.parallel_safe = rel->consider_parallel;
 	pathnode->path.parallel_workers = 0;
 	pathnode->path.pathkeys = pathkeys;
+	yb_propagate_fields_list(&pathnode->path.yb_path_info, subpaths);
 	pathnode->partitioned_rels = list_copy(partitioned_rels);
 	pathnode->subpaths = subpaths;
 
@@ -1554,6 +1736,9 @@ create_material_path(RelOptInfo *rel, Path *subpath)
 	pathnode->path.parallel_workers = subpath->parallel_workers;
 	pathnode->path.pathkeys = subpath->pathkeys;
 
+	yb_propagate_fields(&pathnode->path.yb_path_info,
+						&subpath->yb_path_info);
+
 	pathnode->subpath = subpath;
 
 	cost_material(&pathnode->path,
@@ -1629,6 +1814,9 @@ create_unique_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 	 * to represent it.  (This might get overridden below.)
 	 */
 	pathnode->path.pathkeys = NIL;
+
+	yb_propagate_fields(&pathnode->path.yb_path_info,
+						&subpath->yb_path_info);
 
 	pathnode->subpath = subpath;
 	pathnode->in_operators = sjinfo->semi_operators;
@@ -1816,6 +2004,8 @@ create_gather_merge_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 	pathnode->subpath = subpath;
 	pathnode->num_workers = subpath->parallel_workers;
 	pathnode->path.pathkeys = pathkeys;
+	yb_propagate_fields(&pathnode->path.yb_path_info,
+						&subpath->yb_path_info);
 	pathnode->path.pathtarget = target ? target : rel->reltarget;
 	pathnode->path.rows += subpath->rows;
 
@@ -1904,6 +2094,9 @@ create_gather_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 	pathnode->path.parallel_workers = 0;
 	pathnode->path.pathkeys = NIL;	/* Gather has unordered result */
 
+	yb_propagate_fields(&pathnode->path.yb_path_info,
+						&subpath->yb_path_info);
+
 	pathnode->subpath = subpath;
 	pathnode->num_workers = subpath->parallel_workers;
 	pathnode->single_copy = false;
@@ -1941,6 +2134,8 @@ create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 		subpath->parallel_safe;
 	pathnode->path.parallel_workers = subpath->parallel_workers;
 	pathnode->path.pathkeys = pathkeys;
+	yb_propagate_fields(&pathnode->path.yb_path_info,
+						&subpath->yb_path_info);
 	pathnode->subpath = subpath;
 
 	cost_subqueryscan(pathnode, root, rel, pathnode->path.param_info);
@@ -1969,6 +2164,10 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = pathkeys;
 
+	yb_maybe_set_range_lock_mechanism(
+		root->parse->rowMarks,
+		&pathnode->yb_path_info.yb_lock_mechanism);
+
 	cost_functionscan(pathnode, root, rel, pathnode->param_info);
 
 	return pathnode;
@@ -1994,6 +2193,10 @@ create_tablefuncscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_safe = rel->consider_parallel;
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = NIL;	/* result is always unordered */
+
+	yb_maybe_set_range_lock_mechanism(
+		root->parse->rowMarks,
+		&pathnode->yb_path_info.yb_lock_mechanism);
 
 	cost_tablefuncscan(pathnode, root, rel, pathnode->param_info);
 
@@ -2021,6 +2224,10 @@ create_valuesscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = NIL;	/* result is always unordered */
 
+	yb_maybe_set_range_lock_mechanism(
+		root->parse->rowMarks,
+		&pathnode->yb_path_info.yb_lock_mechanism);
+
 	cost_valuesscan(pathnode, root, rel, pathnode->param_info);
 
 	return pathnode;
@@ -2045,6 +2252,10 @@ create_ctescan_path(PlannerInfo *root, RelOptInfo *rel, Relids required_outer)
 	pathnode->parallel_safe = rel->consider_parallel;
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = NIL;	/* XXX for now, result is always unordered */
+
+	yb_maybe_set_range_lock_mechanism(
+		root->parse->rowMarks,
+		&pathnode->yb_path_info.yb_lock_mechanism);
 
 	cost_ctescan(pathnode, root, rel, pathnode->param_info);
 
@@ -2072,6 +2283,10 @@ create_namedtuplestorescan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = NIL;	/* result is always unordered */
 
+	yb_maybe_set_range_lock_mechanism(
+		root->parse->rowMarks,
+		&pathnode->yb_path_info.yb_lock_mechanism);
+
 	cost_namedtuplestorescan(pathnode, root, rel, pathnode->param_info);
 
 	return pathnode;
@@ -2097,6 +2312,10 @@ create_worktablescan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_safe = rel->consider_parallel;
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = NIL;	/* result is always unordered */
+
+	yb_maybe_set_range_lock_mechanism(
+		root->parse->rowMarks,
+		&pathnode->yb_path_info.yb_lock_mechanism);
 
 	/* Cost is the same as for a regular CTE scan */
 	cost_ctescan(pathnode, root, rel, pathnode->param_info);
@@ -2160,6 +2379,10 @@ create_foreignscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->path.startup_cost = startup_cost;
 	pathnode->path.total_cost = total_cost;
 	pathnode->path.pathkeys = pathkeys;
+
+	yb_maybe_set_range_lock_mechanism(
+		root->parse->rowMarks,
+		&pathnode->path.yb_path_info.yb_lock_mechanism);
 
 	pathnode->fdw_outerpath = fdw_outerpath;
 	pathnode->fdw_private = fdw_private;
@@ -2316,6 +2539,9 @@ create_nestloop_path(PlannerInfo *root,
 	/* This is a foolish way to estimate parallel_workers, but for now... */
 	pathnode->path.parallel_workers = outer_path->parallel_workers;
 	pathnode->path.pathkeys = pathkeys;
+	yb_propagate_fields2(&pathnode->path.yb_path_info,
+						 &inner_path->yb_path_info,
+						 &outer_path->yb_path_info);
 	pathnode->jointype = jointype;
 	pathnode->inner_unique = extra->inner_unique;
 	pathnode->outerjoinpath = outer_path;
@@ -2380,6 +2606,9 @@ create_mergejoin_path(PlannerInfo *root,
 	/* This is a foolish way to estimate parallel_workers, but for now... */
 	pathnode->jpath.path.parallel_workers = outer_path->parallel_workers;
 	pathnode->jpath.path.pathkeys = pathkeys;
+	yb_propagate_fields2(&pathnode->jpath.path.yb_path_info,
+						 &outer_path->yb_path_info,
+						 &inner_path->yb_path_info);
 	pathnode->jpath.jointype = jointype;
 	pathnode->jpath.inner_unique = extra->inner_unique;
 	pathnode->jpath.outerjoinpath = outer_path;
@@ -2457,6 +2686,9 @@ create_hashjoin_path(PlannerInfo *root,
 	 * outer rel than it does now.)
 	 */
 	pathnode->jpath.path.pathkeys = NIL;
+	yb_propagate_fields2(&pathnode->jpath.path.yb_path_info,
+						 &outer_path->yb_path_info,
+						 &inner_path->yb_path_info);
 	pathnode->jpath.jointype = jointype;
 	pathnode->jpath.inner_unique = extra->inner_unique;
 	pathnode->jpath.outerjoinpath = outer_path;
@@ -2515,6 +2747,9 @@ create_projection_path(PlannerInfo *root,
 	pathnode->path.parallel_workers = subpath->parallel_workers;
 	/* Projection does not change the sort order */
 	pathnode->path.pathkeys = subpath->pathkeys;
+
+	yb_propagate_fields(&pathnode->path.yb_path_info,
+						&subpath->yb_path_info);
 
 	pathnode->subpath = subpath;
 
@@ -2698,6 +2933,9 @@ create_set_projection_path(PlannerInfo *root,
 	/* Projection does not change the sort order XXX? */
 	pathnode->path.pathkeys = subpath->pathkeys;
 
+	yb_propagate_fields(&pathnode->path.yb_path_info,
+						&subpath->yb_path_info);
+
 	pathnode->subpath = subpath;
 
 	/*
@@ -2763,6 +3001,9 @@ create_sort_path(PlannerInfo *root,
 	pathnode->path.parallel_workers = subpath->parallel_workers;
 	pathnode->path.pathkeys = pathkeys;
 
+	yb_propagate_fields(&pathnode->path.yb_path_info,
+						&subpath->yb_path_info);
+
 	pathnode->subpath = subpath;
 
 	cost_sort(&pathnode->path, root, pathkeys,
@@ -2808,6 +3049,8 @@ create_group_path(PlannerInfo *root,
 	pathnode->path.parallel_workers = subpath->parallel_workers;
 	/* Group doesn't change sort ordering */
 	pathnode->path.pathkeys = subpath->pathkeys;
+
+	yb_propagate_fields(&pathnode->path.yb_path_info, &subpath->yb_path_info);
 
 	pathnode->subpath = subpath;
 
@@ -2867,6 +3110,9 @@ create_upper_unique_path(PlannerInfo *root,
 	/* Unique doesn't change the input ordering */
 	pathnode->path.pathkeys = subpath->pathkeys;
 
+	yb_propagate_fields(&pathnode->path.yb_path_info,
+						&subpath->yb_path_info);
+
 	pathnode->subpath = subpath;
 	pathnode->numkeys = numCols;
 
@@ -2924,6 +3170,8 @@ create_agg_path(PlannerInfo *root,
 		pathnode->path.pathkeys = subpath->pathkeys;	/* preserves order */
 	else
 		pathnode->path.pathkeys = NIL;	/* output is unordered */
+	yb_propagate_fields(&pathnode->path.yb_path_info,
+						&subpath->yb_path_info);
 	pathnode->subpath = subpath;
 
 	pathnode->aggstrategy = aggstrategy;
@@ -3012,6 +3260,9 @@ create_groupingsets_path(PlannerInfo *root,
 		pathnode->path.pathkeys = root->group_pathkeys;
 	else
 		pathnode->path.pathkeys = NIL;
+
+	yb_propagate_fields(&pathnode->path.yb_path_info,
+						&subpath->yb_path_info);
 
 	pathnode->aggstrategy = aggstrategy;
 	pathnode->rollups = rollups;
@@ -3145,6 +3396,8 @@ create_minmaxagg_path(PlannerInfo *root,
 	pathnode->path.rows = 1;
 	pathnode->path.pathkeys = NIL;
 
+	yb_propagate_mmagg_fields(&pathnode->path.yb_path_info, mmaggregates);
+
 	pathnode->mmaggregates = mmaggregates;
 	pathnode->quals = quals;
 
@@ -3212,6 +3465,9 @@ create_windowagg_path(PlannerInfo *root,
 	pathnode->path.parallel_workers = subpath->parallel_workers;
 	/* WindowAgg preserves the input sort order */
 	pathnode->path.pathkeys = subpath->pathkeys;
+
+	yb_propagate_fields(&pathnode->path.yb_path_info,
+						&subpath->yb_path_info);
 
 	pathnode->subpath = subpath;
 	pathnode->winclause = winclause;
@@ -3281,6 +3537,9 @@ create_setop_path(PlannerInfo *root,
 	pathnode->path.pathkeys =
 		(strategy == SETOP_SORTED) ? subpath->pathkeys : NIL;
 
+	yb_propagate_fields(&pathnode->path.yb_path_info,
+						&subpath->yb_path_info);
+
 	pathnode->subpath = subpath;
 	pathnode->cmd = cmd;
 	pathnode->strategy = strategy;
@@ -3340,6 +3599,10 @@ create_recursiveunion_path(PlannerInfo *root,
 	/* RecursiveUnion result is always unsorted */
 	pathnode->path.pathkeys = NIL;
 
+	yb_propagate_fields2(&pathnode->path.yb_path_info,
+						 &leftpath->yb_path_info,
+						 &rightpath->yb_path_info);
+
 	pathnode->leftpath = leftpath;
 	pathnode->rightpath = rightpath;
 	pathnode->distinctList = distinctList;
@@ -3382,6 +3645,9 @@ create_lockrows_path(PlannerInfo *root, RelOptInfo *rel,
 	 * key columns to be replaced with new values.
 	 */
 	pathnode->path.pathkeys = NIL;
+
+	yb_propagate_fields(&pathnode->path.yb_path_info,
+						&subpath->yb_path_info);
 
 	pathnode->subpath = subpath;
 	pathnode->rowMarks = rowMarks;
@@ -3453,6 +3719,8 @@ create_modifytable_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->path.parallel_safe = false;
 	pathnode->path.parallel_workers = 0;
 	pathnode->path.pathkeys = NIL;
+
+	yb_propagate_fields_list(&pathnode->path.yb_path_info, subpaths);
 
 	/*
 	 * Compute cost & rowcount as sum of subpath costs & rowcounts.
@@ -3545,6 +3813,8 @@ create_limit_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->path.startup_cost = subpath->startup_cost;
 	pathnode->path.total_cost = subpath->total_cost;
 	pathnode->path.pathkeys = subpath->pathkeys;
+	yb_propagate_fields(&pathnode->path.yb_path_info,
+						&subpath->yb_path_info);
 	pathnode->subpath = subpath;
 	pathnode->limitOffset = limitOffset;
 	pathnode->limitCount = limitCount;

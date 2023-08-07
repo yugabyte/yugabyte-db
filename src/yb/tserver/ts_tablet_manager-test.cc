@@ -118,7 +118,7 @@ static const int kDrivesNum = 4;
 class TsTabletManagerTest : public YBTest {
  public:
   TsTabletManagerTest()
-    : schema_({ ColumnSchema("key", UINT32, ColumnKind::RANGE_ASC_NULL_FIRST) }) {
+    : schema_({ ColumnSchema("key", DataType::UINT32, ColumnKind::RANGE_ASC_NULL_FIRST) }) {
   }
 
   string GetDrivePath(int index) {
@@ -137,10 +137,10 @@ class TsTabletManagerTest : public YBTest {
 
     // Disable AutoFlags management as we dont have a master. AutoFlags will be enabled based on
     // FLAGS_TEST_promote_all_auto_flags in test_main.cc.
-    FLAGS_disable_auto_flags_management = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_auto_flags_management) = true;
 
     // Disallow encryption at rest as there is no master.
-    FLAGS_allow_encryption_at_rest = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
 
     mini_server_ = std::make_unique<MiniTabletServer>(paths, paths, 0, *options_result, 0);
   }
@@ -194,7 +194,7 @@ class TsTabletManagerTest : public YBTest {
     RETURN_NOT_OK(tablet_peer->WaitUntilConsensusRunning(
           MonoDelta::FromMilliseconds(kConsensusRunningWaitMs)));
 
-    return tablet_peer->consensus()->EmulateElection();
+    return VERIFY_RESULT(tablet_peer->GetConsensus())->EmulateElection();
   }
 
   void Reload() {
@@ -414,7 +414,7 @@ TEST_F(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered) {
 
 TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
   FlagSaver flag_saver;
-  FLAGS_TEST_pretend_memory_exceeded_enforce_flush = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pretend_memory_exceeded_enforce_flush) = true;
 
   const int kNumTablets = 2;
   const int kNumRestarts = 3;
@@ -432,11 +432,12 @@ TEST_F(TsTabletManagerTest, TestProperBackgroundFlushOnStartup) {
     auto replicate_ptr = rpc::MakeSharedMessage<consensus::LWReplicateMsg>();
     replicate_ptr->set_op_type(consensus::NO_OP);
     replicate_ptr->set_hybrid_time(peer->clock().Now().ToUint64());
-    ConsensusRoundPtr round(new ConsensusRound(peer->consensus(), std::move(replicate_ptr)));
+    auto consensus = ASSERT_RESULT(peer->GetConsensus());
+    ConsensusRoundPtr round(new ConsensusRound(consensus.get(), std::move(replicate_ptr)));
     consensus_rounds.emplace_back(round);
-    round->BindToTerm(peer->raft_consensus()->TEST_LeaderTerm());
+    round->BindToTerm(ASSERT_RESULT(peer->GetRaftConsensus())->TEST_LeaderTerm());
     round->SetCallback(consensus::MakeNonTrackedRoundCallback(round.get(), [](const Status&){}));
-    ASSERT_OK(peer->consensus()->TEST_Replicate(round));
+    ASSERT_OK(ASSERT_RESULT(peer->GetConsensus())->TEST_Replicate(round));
   }
 
   for (int i = 0; i < kNumRestarts; ++i) {

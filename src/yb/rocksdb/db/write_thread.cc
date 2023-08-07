@@ -194,7 +194,7 @@ void WriteThread::SetState(Writer* w, uint8_t new_state) {
       !w->state.compare_exchange_strong(state, new_state)) {
     assert(state == STATE_LOCKED_WAITING);
 
-    std::lock_guard<std::mutex> guard(w->StateMutex());
+    std::lock_guard guard(w->StateMutex());
     assert(w->state.load(std::memory_order_relaxed) != new_state);
     w->state.store(new_state, std::memory_order_relaxed);
     w->StateCV().notify_one();
@@ -346,7 +346,7 @@ bool WriteThread::CompleteParallelWorker(Writer* w) {
 
   auto* pg = w->parallel_group;
   if (!w->status.ok()) {
-    std::lock_guard<std::mutex> guard(w->StateMutex());
+    std::lock_guard guard(w->StateMutex());
     pg->status = w->status;
   }
 

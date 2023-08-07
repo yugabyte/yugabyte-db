@@ -241,7 +241,7 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
       LOG(WARNING) << "Performing a write with row lock " << RowMarkType_Name(row_mark_)
                    << " when only reads are expected";
     }
-    intent_types_ = GetIntentTypeSet(isolation_level_, dockv::OperationKind::kWrite, row_mark_);
+    intent_types_ = dockv::GetIntentTypesForWrite(isolation_level_);
 
     // We cannot recover from failures here, because it means that we cannot apply replicated
     // operation.
@@ -250,7 +250,7 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
   }
 
   if (!put_batch_.read_pairs().empty()) {
-    intent_types_ = GetIntentTypeSet(isolation_level_, dockv::OperationKind::kRead, row_mark_);
+    intent_types_ = dockv::GetIntentTypesForRead(isolation_level_, row_mark_);
     RETURN_NOT_OK(EnumerateIntents(
         put_batch_.read_pairs(), std::ref(*this), partial_range_key_intents_));
   }
@@ -610,7 +610,7 @@ Status FrontierSchemaVersionUpdater::UpdateSchemaVersion(Slice key, Slice value)
     return Status::OK();
   }
   auto schema_version =
-      narrow_cast<SchemaVersion>(VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&value)));
+      narrow_cast<SchemaVersion>(VERIFY_RESULT(FastDecodeUnsignedVarInt(&value)));
   dockv::DocKeyDecoder decoder(key);
   auto cotable_id = Uuid::Nil();
   if (VERIFY_RESULT(decoder.DecodeCotableId(&cotable_id))) {
@@ -684,9 +684,15 @@ ExternalIntentsBatchWriter::ExternalIntentsBatchWriter(
     : FrontierSchemaVersionUpdater(schema_packing_provider),
       put_batch_(put_batch),
       hybrid_time_(hybrid_time),
-      intents_db_(intents_db),
       intents_write_batch_(intents_write_batch),
-      external_txns_intents_state_(external_txns_intents_state) {}
+      external_txns_intents_state_(external_txns_intents_state) {
+  if (put_batch_.apply_external_transactions().size() > 0) {
+    intents_db_iter_ = CreateRocksDBIterator(
+        intents_db, &docdb::KeyBounds::kNoBounds, docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
+        /* user_key_for_filter= */ boost::none, rocksdb::kDefaultQueryId,
+        /* read_filter= */ nullptr, &intents_db_iter_upperbound_);
+  }
+}
 
 bool ExternalIntentsBatchWriter::Empty() const {
   return !put_batch_.write_pairs_size() && !put_batch_.apply_external_transactions_size();
@@ -751,7 +757,7 @@ Status ExternalIntentsBatchWriter::PrepareApplyExternalIntentsBatch(
     return Status::OK();
   }
   for (;;) {
-    auto key_size = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&input_value));
+    auto key_size = VERIFY_RESULT(FastDecodeUnsignedVarInt(&input_value));
     if (key_size == 0) {
       break;
     }
@@ -760,7 +766,7 @@ Status ExternalIntentsBatchWriter::PrepareApplyExternalIntentsBatch(
     }
     auto output_key = input_value.Prefix(key_size);
     input_value.remove_prefix(key_size);
-    auto value_size = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&input_value));
+    auto value_size = VERIFY_RESULT(FastDecodeUnsignedVarInt(&input_value));
     if (input_value.size() < value_size) {
       return NotEnoughBytes(input_value.size(), value_size, original_input_value);
     }
@@ -789,12 +795,6 @@ Status ExternalIntentsBatchWriter::PrepareApplyExternalIntents(
     ExternalTxnApplyState* apply_external_transactions, rocksdb::DirectWriteHandler* handler) {
   KeyBytes key_prefix;
   KeyBytes key_upperbound;
-  Slice key_upperbound_slice;
-
-  auto iter = CreateRocksDBIterator(
-      intents_db_, &KeyBounds::kNoBounds, BloomFilterMode::DONT_USE_BLOOM_FILTER,
-      /* user_key_for_filter= */ boost::none, rocksdb::kDefaultQueryId, /* read_filter= */ nullptr,
-      &key_upperbound_slice);
 
   for (auto& [transaction_id, apply_data] : *apply_external_transactions) {
     key_prefix.Clear();
@@ -803,27 +803,27 @@ Status ExternalIntentsBatchWriter::PrepareApplyExternalIntents(
 
     key_upperbound = key_prefix;
     key_upperbound.AppendKeyEntryType(KeyEntryType::kMaxByte);
-    key_upperbound_slice = key_upperbound.AsSlice();
+    intents_db_iter_upperbound_ = key_upperbound.AsSlice();
 
     IntraTxnWriteId& write_id = apply_data.write_id;
 
-    iter.Seek(key_prefix);
-    while (iter.Valid()) {
-      const Slice input_key(iter.key());
+    intents_db_iter_.Seek(key_prefix);
+    while (intents_db_iter_.Valid()) {
+      const Slice input_key(intents_db_iter_.key());
 
       if (!input_key.starts_with(key_prefix.AsSlice())) {
         break;
       }
 
       RETURN_NOT_OK(PrepareApplyExternalIntentsBatch(
-          apply_data.commit_ht, apply_data.aborted_subtransactions, iter.value(), handler,
-          &write_id));
+          apply_data.commit_ht, apply_data.aborted_subtransactions, intents_db_iter_.value(),
+          handler, &write_id));
 
       intents_write_batch_->SingleDelete(input_key);
 
-      iter.Next();
+      intents_db_iter_.Next();
     }
-    RETURN_NOT_OK(iter.status());
+    RETURN_NOT_OK(intents_db_iter_.status());
   }
 
   return Status::OK();
@@ -884,6 +884,7 @@ Result<bool> ExternalIntentsBatchWriter::AddExternalPairToWriteBatch(
 Status ExternalIntentsBatchWriter::Apply(rocksdb::DirectWriteHandler* handler) {
   auto apply_external_transactions = VERIFY_RESULT(ProcessApplyExternalTransactions(put_batch_));
   if (!apply_external_transactions.empty()) {
+    DCHECK(intents_db_iter_.Initialized());
     RETURN_NOT_OK(PrepareApplyExternalIntents(&apply_external_transactions, handler));
   }
 

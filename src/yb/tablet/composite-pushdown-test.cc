@@ -71,11 +71,11 @@ const char* const kTestHostnames[] = { "foo", "foobar", "baz", nullptr };
 class CompositePushdownTest : public YBTabletTest {
  public:
   CompositePushdownTest()
-      : YBTabletTest(Schema({ ColumnSchema("year", INT16, ColumnKind::HASH),
-                              ColumnSchema("month", INT8, ColumnKind::HASH),
-                              ColumnSchema("day", INT8, ColumnKind::HASH),
-                              ColumnSchema("hostname", STRING, ColumnKind::HASH),
-                              ColumnSchema("data", STRING) })) {
+      : YBTabletTest(Schema({ ColumnSchema("year", DataType::INT16, ColumnKind::HASH),
+                              ColumnSchema("month", DataType::INT8, ColumnKind::HASH),
+                              ColumnSchema("day", DataType::INT8, ColumnKind::HASH),
+                              ColumnSchema("hostname", DataType::STRING, ColumnKind::HASH),
+                              ColumnSchema("data", DataType::STRING) })) {
   }
 
   void SetUp() override {

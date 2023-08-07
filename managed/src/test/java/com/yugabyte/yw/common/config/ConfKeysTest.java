@@ -110,10 +110,13 @@ public class ConfKeysTest extends FakeDBApplication {
     validVals.put(ConfDataType.BytesType, "10 TB");
     validVals.put(ConfDataType.VersionCheckModeEnum, "NEVER");
     validVals.put(ConfDataType.SkipCertValdationEnum, "ALL");
+    validVals.put(ConfDataType.ProtocolEnum, "TCP");
     validVals.put(
         ConfDataType.KeyValuesSetMultimapType,
         "[\"yb_task:task1\",\"yb_task:task2\",\"yb_dev:*\"]");
     validVals.put(ConfDataType.LdapSearchScopeEnum, "SUBTREE");
+    validVals.put(ConfDataType.LdapDefaultRoleEnum, "ReadOnly");
+    validVals.put(ConfDataType.LdapTlsProtocol, "TLSv1_2");
 
     // No data validation for these types yet
     Set<ConfDataType<?>> exceptions =

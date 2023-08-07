@@ -1,10 +1,10 @@
-import React, { FC, useEffect } from 'react';
+import { FC, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePrevious } from 'react-use';
 import _ from 'lodash';
 
 import lightBulbIcon from '../images/lightbulb.svg';
-import { EXTERNAL_LINKS, CONST_VAR } from '../helpers/const';
+import { EXTERNAL_LINKS, CONST_VAR } from '../helpers/constants';
 import { PerfRecommendationProps } from '../../../redesign/utils/dtos';
 import './styles.scss';
 
@@ -79,11 +79,12 @@ export const CpuSkew: FC<PerfRecommendationProps> = ({ data, summary }) => {
           </span>
         </div>
       </div>
-      <span className="queryText">
-        {' '}
-        {t('clusterDetail.performance.chartTitle.CpuUsagePercentage')}
-      </span>
-      <div id="cpuSkewGraph"></div>
+      <div className="chartBox">
+        <span className="queryText">
+          {t('clusterDetail.performance.chartTitle.CpuUsagePercentage')}
+        </span>
+        <div id="cpuSkewGraph"></div>
+      </div>
     </div>
   );
 };

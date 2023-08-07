@@ -125,8 +125,9 @@ void ColumnSchemaToPB(const ColumnSchema& col_schema, ColumnSchemaPB *pb, int fl
   pb->set_is_static(col_schema.is_static());
   pb->set_is_counter(col_schema.is_counter());
   pb->set_order(col_schema.order());
-  pb->set_sorting_type(col_schema.sorting_type());
+  pb->set_sorting_type(to_underlying(col_schema.sorting_type()));
   pb->set_pg_type_oid(col_schema.pg_type_oid());
+  pb->set_marked_for_deletion(col_schema.marked_for_deletion());
   // We only need to process the *hash* primary key here. The regular primary key is set by the
   // conversion for SchemaPB. The reason is that ColumnSchema and ColumnSchemaPB are not matching
   // 1 to 1 as ColumnSchema doesn't have "is_key" field. That was Kudu's code, and we keep it that
@@ -143,7 +144,8 @@ ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
       : pb.is_key() ? SortingTypeToColumnKind(SortingType(pb.sorting_type()))
                     : ColumnKind::VALUE;
   return ColumnSchema(pb.name(), QLType::FromQLTypePB(pb.type()), kind, Nullable(pb.is_nullable()),
-                      pb.is_static(), pb.is_counter(), pb.order(), pb.pg_type_oid());
+                      pb.is_static(), pb.is_counter(), pb.order(), pb.pg_type_oid(),
+                      pb.marked_for_deletion());
 }
 
 Status ColumnPBsToSchema(const google::protobuf::RepeatedPtrField<ColumnSchemaPB>& column_pbs,

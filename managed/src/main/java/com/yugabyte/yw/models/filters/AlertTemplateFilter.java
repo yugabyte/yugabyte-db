@@ -10,7 +10,7 @@
 package com.yugabyte.yw.models.filters;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.yugabyte.yw.common.AlertTemplate;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDescription;
 import com.yugabyte.yw.models.AlertConfiguration;
 import lombok.Builder;
 import lombok.Value;
@@ -22,7 +22,7 @@ public class AlertTemplateFilter {
   AlertConfiguration.TargetType targetType;
 
   @JsonIgnore
-  public boolean matches(AlertTemplate template) {
+  public boolean matches(AlertTemplateDescription template) {
     if (name != null && !template.getName().equals(name)) {
       return false;
     }

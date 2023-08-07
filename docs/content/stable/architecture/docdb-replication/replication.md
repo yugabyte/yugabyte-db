@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Using the Raft distributed consensus protocol, DocDB automatically replicates data synchronously in order to survive failures while maintaining data consistency and avoiding operator intervention.
+Using the Raft distributed consensus protocol, DocDB automatically replicates data synchronously across the primary cluster in order to survive failures while maintaining data consistency and avoiding operator intervention.
 
 ## Concepts
 
@@ -56,7 +56,7 @@ The set of DocDB updates depends on the user-issued write, and involves locking 
 
 After the Raft log is replicated to a majority of tablet-peers and successfully persisted on the majority, the write is applied into the DocDB document storage layer and is subsequently available for reads. After the write is persisted on disk by the document storage layer, the write entries can be purged from the Raft log. This is performed as a controlled background operation without any impact to the foreground operations.
 
-## Replication in a cluster
+## Replication in the primary cluster
 
 The replicas of data can be placed across multiple fault domains. The following examples of a multi-zone deployment with three zones and the replication factor assumed to be 3 demonstrate how replication across fault domains is performed in a cluster.
 

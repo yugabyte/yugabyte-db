@@ -9,7 +9,6 @@ import {
   YAxis
 } from 'recharts';
 import moment from 'moment';
-import React from 'react';
 import { METRIC_COLORS } from '../MetricsConfig';
 import { useSelector } from 'react-redux';
 import { ybFormatDate, YBTimeFormats } from '../../../redesign/helpers/DateUtils';
@@ -52,7 +51,7 @@ export const MetricsComparisonPanel = ({ metricsData, metricsKey, metricsLayout,
     <div className={'metrics-comparison-panel-container ' + side}>
       <div className="metrics-comparison-panel">
         <ResponsiveContainer width="100%" height="100%" debounce={100}>
-          <LineChart data={metricsData?.data} syncId={metricsKey} margin={{left: 15}}>
+          <LineChart data={metricsData?.data} syncId={metricsKey} margin={{ left: 15 }}>
             <CartesianGrid vertical={false} strokeDasharray="2 2" />
             <XAxis
               dataKey="x"
@@ -71,9 +70,11 @@ export const MetricsComparisonPanel = ({ metricsData, metricsKey, metricsLayout,
               width={42}
             />
             <Tooltip
-              labelFormatter={(value) => ybFormatDate(value, YBTimeFormats.YB_HOURS_FIRST_TIMESTAMP)}
+              labelFormatter={(value) =>
+                ybFormatDate(value, YBTimeFormats.YB_HOURS_FIRST_TIMESTAMP)
+              }
             />
-            <Legend align="left"/>
+            <Legend align="left" />
             {chartLines}
           </LineChart>
         </ResponsiveContainer>

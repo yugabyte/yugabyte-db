@@ -106,7 +106,7 @@ void InboundCall::NotifyTransferred(const Status& status, Connection* conn) {
 void InboundCall::EnsureTraceCreated() {
   scoped_refptr<Trace> trace = nullptr;
   {
-    std::lock_guard<simple_spinlock> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (trace_holder_) {
       return;
     }
@@ -233,7 +233,7 @@ bool InboundCall::RespondTimedOutIfPending(const char* message) {
 
 void InboundCall::Clear() {
   {
-    std::lock_guard<simple_spinlock> lock(mutex_);
+    std::lock_guard lock(mutex_);
     cleared_ = true;
   }
   serialized_request_.clear();

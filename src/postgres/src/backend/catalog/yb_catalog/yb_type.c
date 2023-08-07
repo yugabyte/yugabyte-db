@@ -1370,3 +1370,42 @@ void YbGetTypeTable(const YBCPgTypeEntity **type_table, int *count) {
 	*type_table = YbTypeEntityTable;
 	*count = sizeof(YbTypeEntityTable)/sizeof(YBCPgTypeEntity);
 }
+
+int64_t
+YbPostgresEpochToUnixEpoch(int64_t postgres_t)
+{
+	return postgres_t + ((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * USECS_PER_DAY);
+
+}
+
+int64_t
+YbUnixEpochToPostgresEpoch(int64_t unix_t)
+{
+	return unix_t - ((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * USECS_PER_DAY);
+}
+
+/*
+ * This function creates a TEXTARRAY datum from the given array of C strings.
+ * It takes an array of pointers to C strings, the number of elements in the
+ * array, and pointers to store the resulting datum and its length. The
+ * resulting TEXTARRAY datum is palloc'd, and it contains a copy of the input
+ * strings. Therefore, the input strings themselves do not need to be palloc'd.
+ */
+void
+YbConstructTextArrayDatum(const char **strings, const int nelems,
+						  char **datum, size_t *len)
+{
+	ArrayType *array;
+	Datum *elems = NULL;
+
+	if (nelems > 0) {
+		elems = (Datum *) palloc(nelems * sizeof(Datum));
+		for (int i = 0; i < nelems; i++)
+			elems[i] = CStringGetTextDatum(strings[i]);
+	}
+
+	array = construct_array(elems, nelems, TEXTOID, -1, false, 'i');
+
+	*datum = VARDATA_ANY(array);
+	*len = VARSIZE_ANY_EXHDR(array);
+}

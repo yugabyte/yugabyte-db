@@ -16,6 +16,8 @@ import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.GCPUtil;
+import com.yugabyte.yw.common.StorageUtilFactory;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.configs.CloudClientsFactory;
@@ -46,29 +48,41 @@ import org.apache.commons.lang3.StringUtils;
 public class CustomerConfigValidator extends BaseBeanValidator {
 
   private final CloudClientsFactory factory;
+  private final StorageUtilFactory storageUtilFactory;
+
+  private final RuntimeConfGetter runtimeConfGetter;
+  public final AWSUtil awsUtil;
 
   private final Map<Class<? extends CustomerConfigData>, ConfigDataValidator> validators =
       new HashMap<>();
 
   @Inject
-  public CustomerConfigValidator(BeanValidator beanValidator) {
+  public CustomerConfigValidator(
+      BeanValidator beanValidator,
+      StorageUtilFactory storageUtilFactory,
+      RuntimeConfGetter runtimeConfGetter,
+      AWSUtil awsUtil,
+      GCPUtil gcpUtil) {
     super(beanValidator);
     this.factory = createCloudFactory();
+    this.storageUtilFactory = storageUtilFactory;
+    this.runtimeConfGetter = runtimeConfGetter;
+    this.awsUtil = awsUtil;
 
     validators.put(
         CustomerConfigStorageGCSData.class,
-        new CustomerConfigStorageGCSValidator(beanValidator, factory));
+        new CustomerConfigStorageGCSValidator(beanValidator, factory, gcpUtil));
     validators.put(
         CustomerConfigStorageS3Data.class,
-        new CustomerConfigStorageS3Validator(beanValidator, factory));
+        new CustomerConfigStorageS3Validator(beanValidator, factory, runtimeConfGetter, awsUtil));
     validators.put(
         CustomerConfigStorageNFSData.class, new CustomerConfigStorageNFSValidator(beanValidator));
     validators.put(
         CustomerConfigStorageAzureData.class,
-        new CustomerConfigStorageAzureValidator(beanValidator, factory));
+        new CustomerConfigStorageAzureValidator(beanValidator, factory, storageUtilFactory));
     validators.put(
         CustomerConfigStorageGCSData.class,
-        new CustomerConfigStorageGCSValidator(beanValidator, factory));
+        new CustomerConfigStorageGCSValidator(beanValidator, factory, gcpUtil));
     validators.put(
         CustomerConfigPasswordPolicyData.class,
         new CustomerConfigPasswordPolicyValidator(beanValidator));
@@ -162,7 +176,7 @@ public class CustomerConfigValidator extends BaseBeanValidator {
     }
   }
 
-  private static class CloudClientsFactoryImpl implements CloudClientsFactory {
+  private class CloudClientsFactoryImpl implements CloudClientsFactory {
     @Override
     public Storage createGcpStorage(CustomerConfigStorageGCSData configData)
         throws IOException, UnsupportedEncodingException {
@@ -178,7 +192,7 @@ public class CustomerConfigValidator extends BaseBeanValidator {
     @Override
     public AmazonS3 createS3Client(CustomerConfigStorageS3Data configData)
         throws AmazonS3Exception {
-      return AWSUtil.createS3Client(configData);
+      return awsUtil.createS3Client(configData);
     }
   }
 

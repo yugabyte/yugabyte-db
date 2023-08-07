@@ -388,7 +388,7 @@ $(document).ready(() => {
   checkAnchorMultilines();
 
   ((document) => {
-    const $codes = document.querySelectorAll('pre');
+    const $codes = document.querySelectorAll('div:not(.nocopy) > pre');
     const containerChanges = container => {
       if (container.parentElement) {
         container.parentElement.classList.add('can-be-copied');

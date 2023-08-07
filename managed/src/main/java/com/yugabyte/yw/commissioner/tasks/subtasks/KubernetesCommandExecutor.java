@@ -29,6 +29,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
@@ -37,7 +38,6 @@ import com.yugabyte.yw.common.certmgmt.providers.CertificateProviderInterface;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
-import com.yugabyte.yw.common.ybc.YbcBackupUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -163,7 +163,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   private final KubernetesManagerFactory kubernetesManagerFactory;
   private final ReleaseManager releaseManager;
   private final FileHelperService fileHelperService;
-  private final YbcBackupUtil ybcBackupUtil;
+  private final YbcManager ybcManager;
 
   @Inject
   protected KubernetesCommandExecutor(
@@ -171,12 +171,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       KubernetesManagerFactory kubernetesManagerFactory,
       ReleaseManager releaseManager,
       FileHelperService fileHelperService,
-      YbcBackupUtil ybcBackupUtil) {
+      YbcManager ybcManager) {
     super(baseTaskDependencies);
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.releaseManager = releaseManager;
     this.fileHelperService = fileHelperService;
-    this.ybcBackupUtil = ybcBackupUtil;
+    this.ybcManager = ybcManager;
   }
 
   static final Pattern nodeNamePattern = Pattern.compile(".*-n(\\d+)+");
@@ -381,7 +381,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       case COPY_PACKAGE:
         u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
         NodeDetails nodeDetails = u.getNode(taskParams().ybcServerName);
-        ybcBackupUtil.copyYbcPackagesOnK8s(
+        ybcManager.copyYbcPackagesOnK8s(
             config, u, nodeDetails, taskParams().getYbcSoftwareVersion());
         break;
       case YBC_ACTION:
@@ -392,7 +392,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 "/bin/bash",
                 "-c",
                 String.format("/home/yugabyte/tools/k8s_ybc_parent.py %s", taskParams().command));
-        ybcBackupUtil.performActionOnYbcK8sNode(config, nodeDetails, commandArgs);
+        ybcManager.performActionOnYbcK8sNode(config, nodeDetails, commandArgs);
         break;
     }
   }
@@ -561,10 +561,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
               nodeDetail.cloudInfo.region = podVals.get("region_name").asText();
             }
             if (!confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
-              nodeDetail.cloudInfo.instance_type =
+              UserIntent userIntent =
                   taskParams().isReadOnlyCluster
-                      ? u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.instanceType
-                      : u.getUniverseDetails().getPrimaryCluster().userIntent.instanceType;
+                      ? u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent
+                      : u.getUniverseDetails().getPrimaryCluster().userIntent;
+              nodeDetail.cloudInfo.instance_type = userIntent.getInstanceTypeForNode(nodeDetail);
             }
             nodeDetail.azUuid = azUUID;
             nodeDetail.placementUuid = placementUuid;
@@ -653,6 +654,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             ? u.getUniverseDetails().getReadOnlyClusters().get(0)
             : u.getUniverseDetails().getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
+    // TODO Support overriden instance types
     InstanceType instanceType =
         InstanceType.get(UUID.fromString(userIntent.provider), userIntent.instanceType);
     if (instanceType == null && !confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {

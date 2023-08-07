@@ -22,9 +22,9 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.test.Helpers.BAD_REQUEST;
-import static play.test.Helpers.FORBIDDEN;
 import static play.test.Helpers.NOT_FOUND;
 import static play.test.Helpers.OK;
+import static play.test.Helpers.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 
@@ -107,7 +107,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     Result result =
         Helpers.route(
             app, fakeRequest("GET", String.format(LIST_SCOPES, defaultCustomer.getUuid())));
-    assertEquals(FORBIDDEN, result.status());
+    assertEquals(UNAUTHORIZED, result.status());
     assertEquals("Unable To Authenticate User", contentAsString(result));
   }
 

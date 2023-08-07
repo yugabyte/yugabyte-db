@@ -21,16 +21,18 @@ import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
+import com.yugabyte.yw.common.PrometheusConfigManager;
+import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.SwamperHelper;
@@ -41,6 +43,7 @@ import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -94,6 +97,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected CallbackController mockCallbackController;
   protected PlayCacheSessionStore mockSessionStore;
   protected ApiHelper mockApiHelper;
+  protected NodeUIApiHelper mockNodeUIApiHelper;
   protected MetricQueryHelper mockMetricQueryHelper;
   protected MetricService metricService;
   protected AlertService alertService;
@@ -108,7 +112,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected SupportBundleComponentFactory mockSupportBundleComponentFactory;
   protected ReleaseManager mockReleaseManager;
   protected GFlagsValidation mockGFlagsValidation;
-  protected BackupUtil mockBackupUtil;
+  protected ProviderEditRestrictionManager providerEditRestrictionManager;
+  protected BackupHelper mockBackupHelper;
+  protected PrometheusConfigManager mockPrometheusConfigManager;
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -116,6 +122,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected Customer defaultCustomer;
   protected Provider defaultProvider;
   protected Provider gcpProvider;
+  protected Provider azuProvider;
   protected Provider onPremProvider;
   protected Provider kubernetesProvider;
   protected SettableRuntimeConfigFactory factory;
@@ -131,6 +138,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
+    azuProvider = ModelFactory.azuProvider(defaultCustomer);
     onPremProvider = ModelFactory.onpremProvider(defaultCustomer);
     kubernetesProvider = ModelFactory.kubernetesProvider(defaultCustomer);
     metricService = app.injector().instanceOf(MetricService.class);
@@ -139,6 +147,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     RuntimeConfigFactory configFactory = app.injector().instanceOf(RuntimeConfigFactory.class);
     alertConfigurationService = spy(app.injector().instanceOf(AlertConfigurationService.class));
     taskExecutor = app.injector().instanceOf(TaskExecutor.class);
+    providerEditRestrictionManager =
+        app.injector().instanceOf(ProviderEditRestrictionManager.class);
 
     // Enable custom hooks in tests
     factory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
@@ -185,6 +195,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockCallbackController = mock(CallbackController.class);
     mockSessionStore = mock(PlayCacheSessionStore.class);
     mockApiHelper = mock(ApiHelper.class);
+    mockNodeUIApiHelper = mock(NodeUIApiHelper.class);
     mockMetricQueryHelper = mock(MetricQueryHelper.class);
     mockYcqlQueryExecutor = mock(YcqlQueryExecutor.class);
     mockYsqlQueryExecutor = mock(YsqlQueryExecutor.class);
@@ -194,8 +205,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockSupportBundleComponentFactory = mock(SupportBundleComponentFactory.class);
     mockGFlagsValidation = mock(GFlagsValidation.class);
     mockReleaseManager = mock(ReleaseManager.class);
-    mockBackupUtil = mock(BackupUtil.class);
     mockCloudAPIFactory = mock(CloudAPI.Factory.class);
+    mockBackupHelper = mock(BackupHelper.class);
+    mockPrometheusConfigManager = mock(PrometheusConfigManager.class);
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -232,7 +244,10 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                     bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class))
                 .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
                 .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))
-                .overrides(bind(BackupUtil.class).toInstance(mockBackupUtil))
+                .overrides(bind(NodeUIApiHelper.class).toInstance(mockNodeUIApiHelper))
+                .overrides(bind(BackupHelper.class).toInstance(mockBackupHelper))
+                .overrides(
+                    bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager)))
         .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
         .build();

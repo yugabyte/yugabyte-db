@@ -16,6 +16,8 @@
 #include <vector>
 #include <unordered_set>
 
+#include "yb/cdc/cdc_types.h"
+
 #include "yb/master/master_fwd.h"
 
 #include "yb/util/status_fwd.h"
@@ -39,14 +41,14 @@ struct KeyRange {
 };
 
 struct CDCConsumerStreamInfo {
-  std::string stream_id;
-  std::string consumer_table_id;
-  std::string producer_table_id;
+  xrepl::StreamId stream_id = xrepl::StreamId::Nil();
+  TableId consumer_table_id;
+  TableId producer_table_id;
 };
 
 Status InitCDCStream(
-    const std::string& producer_table_id,
-    const std::string& consumer_table_id,
+    const TableId& producer_table_id,
+    const TableId& consumer_table_id,
     const std::map<std::string, KeyRange>& consumer_tablet_keys,
     cdc::StreamEntryPB* stream_entry,
     std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks);

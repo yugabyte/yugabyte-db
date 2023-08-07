@@ -19,14 +19,16 @@
 
 #include "yb/dockv/schema_packing.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
+
+YB_STRONGLY_TYPED_BOOL(Index);
 
 struct DocReadContext {
-  explicit DocReadContext(const std::string& log_prefix, TableType table_type);
+  DocReadContext(
+      const std::string& log_prefix, TableType table_type, Index is_index);
 
   DocReadContext(
-      const std::string& log_prefix, TableType table_type, const Schema& schema,
+      const std::string& log_prefix, TableType table_type, Index is_index, const Schema& schema,
       SchemaVersion schema_version);
 
   DocReadContext(const DocReadContext& rhs, const Schema& schema, SchemaVersion schema_version);
@@ -74,6 +76,10 @@ struct DocReadContext {
     return Slice(shared_key_prefix_buffer_.data(), shared_key_prefix_len_);
   }
 
+  Slice upperbound() const {
+    return Slice(upperbound_buffer_.data(), upperbound_len_);
+  }
+
   void TEST_SetDefaultTimeToLive(uint64_t ttl_msec) {
     schema_.SetDefaultTimeToLive(ttl_msec);
   }
@@ -85,7 +91,8 @@ struct DocReadContext {
   }
 
   static DocReadContext TEST_Create(const Schema& schema) {
-    return DocReadContext("TEST: ", TableType::YQL_TABLE_TYPE, schema, 0);
+    return DocReadContext(
+        "TEST: ", TableType::YQL_TABLE_TYPE, Index::kFalse, schema, 0);
   }
 
   dockv::SchemaPackingStorage schema_packing_storage;
@@ -99,6 +106,7 @@ struct DocReadContext {
     return log_prefix_;
   }
 
+  Index is_index_;
   Schema schema_;
 
   // The data about key prefix shared by all entries of this table.
@@ -109,6 +117,11 @@ struct DocReadContext {
   // in the table, then it will also be present here.
   size_t shared_key_prefix_len_ = 0;
   std::array<uint8_t, 0x20> shared_key_prefix_buffer_;
+
+  // The data about upperbound for this table. I.e. we know that all entries from this table
+  // are before the upperbound. And all entries from next table are after this upperbound.
+  size_t upperbound_len_ = 0;
+  std::array<uint8_t, 0x20> upperbound_buffer_;
 
   // This field contains number of bytes in encoded key before column values.
   // I.e. it is sum of sizes of cotable id, colocation id, hash code.
@@ -121,5 +134,4 @@ struct DocReadContext {
   std::string log_prefix_;
 };
 
-} // namespace docdb
-} // namespace yb
+} // namespace yb::docdb

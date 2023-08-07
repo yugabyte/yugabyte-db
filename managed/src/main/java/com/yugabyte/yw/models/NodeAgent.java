@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.models.filters.NodeAgentFilter;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
+import io.ebean.DB;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -38,6 +39,8 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -301,16 +304,17 @@ public class NodeAgent extends Model {
         .findSet();
   }
 
-  public static ExpressionList<NodeAgent> createQueryByFilter(
-      UUID customerUuid, NodeAgentFilter filter) {
+  public static ExpressionList<NodeAgent> createQuery(UUID customerUuid, Set<UUID> nodeAgentUuids) {
     ExpressionList<NodeAgent> query =
         finder
             .query()
             .setPersistenceContextScope(PersistenceContextScope.QUERY)
             .where()
             .eq("customer_uuid", customerUuid);
-    if (CollectionUtils.isNotEmpty(filter.getNodeIps())) {
-      appendInClause(query, "ip", filter.getNodeIps());
+    if (CollectionUtils.isEmpty(nodeAgentUuids)) {
+      query = query.isNull("uuid");
+    } else {
+      appendInClause(query, "uuid", nodeAgentUuids);
     }
     return query;
   }
@@ -447,5 +451,64 @@ public class NodeAgent extends Model {
       getConfig().setOffloadable(offloadable);
       save();
     }
+  }
+
+  @JsonIgnore
+  public static List<Map<String, Object>> getJoinResults(
+      UUID customerUuid, NodeAgentFilter filter) {
+    StringBuilder sb = new StringBuilder();
+    sb.append("select node_agents.uuid as uuid, universe_uuid, universe_name, provider_uuid,");
+    sb.append(" provider_name, provider_code, region_uuid, region_code, az_uuid, az_code");
+    // Left join node_agents with left join of provider and full join of universe and node_instance.
+    // Node agents can exist without any provider (not yet added).
+    sb.append(" from (select * from node_agent) as node_agents left join");
+    sb.append(" (select p.uuid as provider_uuid, p.name as provider_name,");
+    sb.append(" p.code as provider_code, r.uuid as region_uuid, r.code as region_code,");
+    sb.append(" az.uuid as az_uuid, az.code as az_code");
+    sb.append(" from provider p, region r, availability_zone az");
+    sb.append(" where az.region_uuid = r.uuid and r.provider_uuid = p.uuid) as providers");
+    sb.append(" left join ((select universe_uuid, universe_name,");
+    sb.append(" (node_details->>'azUuid')::uuid as universe_az_uuid,");
+    sb.append(" node_details->'cloudInfo'->>'private_ip' as universe_node_private_ip");
+    sb.append(" from (select universe_uuid as universe_uuid, universe.name as universe_name,");
+    sb.append(" jsonb_array_elements(universe_details_json::jsonb->'nodeDetailsSet')");
+    sb.append(" as node_details from universe) as tmp) as universe_nodes");
+    sb.append(" full join (select zone_uuid, node_details_json::jsonb->>'ip'");
+    sb.append(" as node_instance_ip from node_instance) as node_instances");
+    sb.append(" on node_instance_ip = universe_node_private_ip) as node_instances");
+    sb.append(" on az_uuid = universe_az_uuid or az_uuid = zone_uuid");
+    sb.append(" on node_agents.ip = universe_node_private_ip or node_agents.ip = node_instance_ip");
+    sb.append(" where node_agents.customer_uuid = '").append(customerUuid.toString()).append("'");
+    if (CollectionUtils.isNotEmpty(filter.getNodeIps())) {
+      sb.append(" and node_agents.ip in ('").append(StringUtils.join(filter.getNodeIps(), "','"));
+      sb.append("')");
+    }
+    if (filter.getCloudType() != null) {
+      sb.append(" and provider_code = '").append(filter.getCloudType().name()).append("'");
+    }
+    if (filter.getProviderUuid() != null) {
+      sb.append(" and provider_uuid = '").append(filter.getProviderUuid().toString()).append("'");
+    }
+
+    if (filter.getRegionUuid() != null) {
+      sb.append(" and region_uuid = '").append(filter.getRegionUuid().toString()).append("'");
+    }
+
+    if (filter.getZoneUuid() != null) {
+      sb.append(" and az_uuid = '").append(filter.getZoneUuid().toString()).append("'");
+    }
+    if (filter.getUniverseUuid() != null) {
+      sb.append(" and universe_uuid = '").append(filter.getUniverseUuid().toString()).append("'");
+    }
+    String nodeAgentQuery = sb.toString();
+    log.trace("Running SQL query: {}", nodeAgentQuery);
+    return DB.sqlQuery(nodeAgentQuery).findList().stream()
+        .map(
+            rs ->
+                rs.entrySet().stream()
+                    .filter(e -> e.getValue() != null)
+                    .collect(
+                        Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e2)))
+        .collect(Collectors.toList());
   }
 }

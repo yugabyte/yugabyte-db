@@ -86,7 +86,7 @@ static Status BuildMinMaxTestPool(
 class TestThreadPool : public ::testing::Test {
  public:
   TestThreadPool() {
-    FLAGS_enable_tracing = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = true;
   }
 };
 
@@ -720,7 +720,7 @@ TEST_F(TestThreadPool, TestTokenConcurrency) {
 
   // Fetch a token from 'tokens' at random.
   auto GetRandomToken = [&]() -> shared_ptr<ThreadPoolToken> {
-    std::lock_guard<simple_spinlock> l(lock);
+    std::lock_guard l(lock);
     int idx = rng.Uniform(kNumTokens);
     return tokens[idx];
   };
@@ -729,7 +729,7 @@ TEST_F(TestThreadPool, TestTokenConcurrency) {
   for (int i = 0; i < kNumTokens; i++) {
     ThreadPool::ExecutionMode mode;
     {
-      std::lock_guard<simple_spinlock> l(lock);
+      std::lock_guard l(lock);
       mode = rng.Next() % 2 ?
           ThreadPool::ExecutionMode::SERIAL :
           ThreadPool::ExecutionMode::CONCURRENT;
@@ -754,7 +754,7 @@ TEST_F(TestThreadPool, TestTokenConcurrency) {
       int num_tokens_cycled = 0;
       while (latch.count()) {
         {
-          std::lock_guard<simple_spinlock> l(lock);
+          std::lock_guard l(lock);
           int idx = rng.Uniform(kNumTokens);
           ThreadPool::ExecutionMode mode = rng.Next() % 2 ?
               ThreadPool::ExecutionMode::SERIAL :

@@ -60,7 +60,7 @@ struct ColumnValue {
 
 template <class Col>
 auto GetColumnValue(const Col& col) {
-  CHECK_EQ(col.size(), 2);
+  CHECK_EQ(col.size(), 2) << yb::ToString(col);
   auto it = col.begin();
   using ResultType = ColumnValue<typename std::remove_reference<decltype(it->value())>::type>;
   if (it->expr_case() == decltype(it->expr_case())::kColumnId) {
@@ -379,14 +379,15 @@ void QLScanRange::Init(const Schema& schema, const Cond& condition) {
       return;
     }
 
-    case QL_OP_IS_NULL:     FALLTHROUGH_INTENDED;
-    case QL_OP_IS_TRUE:     FALLTHROUGH_INTENDED;
-    case QL_OP_IS_FALSE:    FALLTHROUGH_INTENDED;
-    case QL_OP_NOT_EQUAL:   FALLTHROUGH_INTENDED;
-    case QL_OP_LIKE:        FALLTHROUGH_INTENDED;
-    case QL_OP_NOT_LIKE:    FALLTHROUGH_INTENDED;
-    case QL_OP_NOT_IN:      FALLTHROUGH_INTENDED;
-    case QL_OP_CONTAINS:    FALLTHROUGH_INTENDED;
+    case QL_OP_IS_NULL:      FALLTHROUGH_INTENDED;
+    case QL_OP_IS_TRUE:      FALLTHROUGH_INTENDED;
+    case QL_OP_IS_FALSE:     FALLTHROUGH_INTENDED;
+    case QL_OP_NOT_EQUAL:    FALLTHROUGH_INTENDED;
+    case QL_OP_LIKE:         FALLTHROUGH_INTENDED;
+    case QL_OP_NOT_LIKE:     FALLTHROUGH_INTENDED;
+    case QL_OP_NOT_IN:       FALLTHROUGH_INTENDED;
+    case QL_OP_CONTAINS:     FALLTHROUGH_INTENDED;
+    case QL_OP_CONTAINS_KEY: FALLTHROUGH_INTENDED;
     case QL_OP_NOT_BETWEEN:
       // No simple range can be deduced from these conditions. So the range will be unbounded.
       return;
@@ -650,9 +651,10 @@ std::vector<const QLValuePB*> GetTuplesSortedByOrdering(
           auto sorting_type =
               col_idxs[i] == kYbHashCodeColId ? SortingType::kAscending
                                               : schema.column(col_idxs[i]).sorting_type();
-          auto is_reverse_order = is_forward_scan ^ (sorting_type == SortingType::kAscending ||
-                                                     sorting_type == kAscendingNullsLast ||
-                                                     sorting_type == kNotSpecified);
+          auto is_reverse_order =
+               is_forward_scan ^ (sorting_type == SortingType::kAscending ||
+                                  sorting_type == SortingType::kAscendingNullsLast ||
+                                  sorting_type == SortingType::kNotSpecified);
           cmp ^= is_reverse_order;
         }
         return cmp;

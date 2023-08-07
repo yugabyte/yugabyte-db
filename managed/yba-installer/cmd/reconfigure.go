@@ -69,6 +69,15 @@ var reconfigureCmd = &cobra.Command{
 	},
 }
 
+var configGenCmd = &cobra.Command{
+	Use:     "generate-config",
+	Short:   "Create the default config file.",
+	Aliases: []string{"gen-config", "create-config"},
+	Run: func(cmd *cobra.Command, args []string) {
+		writeDefaultConfig()
+	},
+}
+
 func init() {
-	rootCmd.AddCommand(reconfigureCmd)
+	rootCmd.AddCommand(reconfigureCmd, configGenCmd)
 }

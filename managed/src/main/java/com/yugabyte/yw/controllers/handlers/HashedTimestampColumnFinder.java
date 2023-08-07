@@ -114,7 +114,7 @@ public class HashedTimestampColumnFinder {
         log.trace(
             "Hashed timestamp indexes for node {}, database {}: {} -- json: {}, json length: {}",
             randomTServer.nodeName,
-            dbname.datname,
+            CommonUtils.logTableName(dbname.datname),
             response.message,
             responseJSON,
             responseJSON.length());
@@ -129,7 +129,7 @@ public class HashedTimestampColumnFinder {
             "Final JSON responses: current_database: {}, "
                 + "table_name: {}, index_name: {}, index_command: {}, description: {}",
             res.currentDatabase,
-            res.tableName,
+            CommonUtils.logTableName(res.tableName),
             res.indexName,
             res.indexCommand,
             res.description);

@@ -35,10 +35,10 @@ Use the `ALTER DEFAULT PRIVILEGES` statement to define the default access privil
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_default_priv,abbr_grant_or_revoke,a_grant_table,a_grant_seq,a_grant_func,a_grant_type,a_grant_schema,a_revoke_table,a_revoke_seq,a_revoke_func,a_revoke_type,a_revoke_schema,grant_table_priv,grant_seq_priv,grant_role_spec.grammar.md" %}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_default_priv,abbr_grant_or_revoke,a_grant_table,a_grant_seq,a_grant_func,a_grant_type,a_grant_schema,a_revoke_table,a_revoke_seq,a_revoke_func,a_revoke_type,a_revoke_schema,grant_table_priv,grant_seq_priv,grantee_role.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_default_priv,abbr_grant_or_revoke,a_grant_table,a_grant_seq,a_grant_func,a_grant_type,a_grant_schema,a_revoke_table,a_revoke_seq,a_revoke_func,a_revoke_type,a_revoke_schema,grant_table_priv,grant_seq_priv,grant_role_spec.diagram.md" %}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_default_priv,abbr_grant_or_revoke,a_grant_table,a_grant_seq,a_grant_func,a_grant_type,a_grant_schema,a_revoke_table,a_revoke_seq,a_revoke_func,a_revoke_type,a_revoke_schema,grant_table_priv,grant_seq_priv,grantee_role.diagram.md" %}}
   </div>
 </div>
 

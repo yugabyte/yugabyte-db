@@ -27,7 +27,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
-import static play.mvc.Http.Status.FORBIDDEN;
+import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -81,7 +81,7 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
     String universesPath = isList ? "/universes" : "/universes/" + UUID.randomUUID();
     String url = "/api/customers/" + invalidCustomerUUID + universesPath + urlSuffix;
     Result result = doRequestWithAuthToken(httpMethod, url, authToken);
-    assertEquals(url, FORBIDDEN, result.status());
+    assertEquals(url, UNAUTHORIZED, result.status());
 
     String resultString = contentAsString(result);
     assertThat(resultString, allOf(notNullValue(), equalTo("Unable To Authenticate User")));

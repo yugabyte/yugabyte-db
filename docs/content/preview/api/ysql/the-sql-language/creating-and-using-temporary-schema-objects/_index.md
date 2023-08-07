@@ -3,6 +3,7 @@ title: Creating and using temporary schema-objects [YSQL]
 headerTitle: Creating and using temporary schema-objects
 linkTitle: Temporary schema-objects
 description: Describes how to create temporary schema-objects of all kinds without needing the dedicated create temporary syntax.
+image: /images/section_icons/api/subsection.png
 menu:
   preview:
     identifier: creating-and-using-temporary-schema-objects

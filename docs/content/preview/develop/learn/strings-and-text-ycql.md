@@ -1,7 +1,7 @@
 ---
 title: Strings and text in YCQL
 headerTitle: String and text data types
-linkTitle: 8. Strings and text
+linkTitle: Strings and text
 description: Learn how to work with string and text data types in YCQL.
 menu:
   preview:

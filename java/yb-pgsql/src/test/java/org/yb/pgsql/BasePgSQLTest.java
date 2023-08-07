@@ -13,7 +13,6 @@
 package org.yb.pgsql;
 
 import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertLessThan;
@@ -24,13 +23,11 @@ import static org.yb.util.BuildTypeUtil.isASAN;
 import static org.yb.util.BuildTypeUtil.isTSAN;
 
 import java.io.File;
-import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -43,7 +40,6 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.Scanner;
@@ -76,7 +72,6 @@ import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.RocksDBMetrics;
 import org.yb.minicluster.YsqlSnapshotVersion;
 import org.yb.util.BuildTypeUtil;
-import org.yb.util.EnvAndSysPropertyUtil;
 import org.yb.util.MiscUtil.ThrowingCallable;
 import org.yb.util.SystemUtil;
 import org.yb.util.ThrowingRunnable;
@@ -109,10 +104,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected final long FIRST_NORMAL_OID = 16384;
 
   // Postgres settings.
-  protected static final String DEFAULT_PG_DATABASE = "yugabyte";
+  // TODO(janand) GH #17899 Deduplicate DEFAULT_PG_DATABASE and TEST_PG_USER (present in
+  // BasePgSQLTest and ConnectionBuilder)
+  // NOTE: Values for DEFAULT_PG_DATABASE and TEST_PG_USER should be same in both
+  // org.yb.pgsql.ConnectionBuilder and org.yb.pgsql.BasePgSQLTest
+  protected static final String DEFAULT_PG_DATABASE = ConnectionBuilder.DEFAULT_PG_DATABASE;
   protected static final String DEFAULT_PG_USER = "yugabyte";
   protected static final String DEFAULT_PG_PASS = "yugabyte";
-  protected static final String TEST_PG_USER = "yugabyte_test";
+  protected static final String TEST_PG_USER = ConnectionBuilder.TEST_PG_USER;
   protected static final String TEST_PG_PASS = "pass";
 
   // Non-standard PSQL states defined in yb_pg_errcodes.h
@@ -267,6 +266,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     flagMap.put("client_read_write_timeout_ms",
         String.valueOf(BuildTypeUtil.adjustTimeout(120000)));
     flagMap.put("memory_limit_hard_bytes", String.valueOf(2L * 1024 * 1024 * 1024));
+    flagMap.put("TEST_assert_no_future_catalog_version", "true");
     return flagMap;
   }
 
@@ -2245,206 +2245,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     Process process = Runtime.getRuntime().exec(String.format("ps -p %d -o rss=", pid));
     try (Scanner scanner = new Scanner(process.getInputStream())) {
       return scanner.nextLong();
-    }
-  }
-
-  public static class ConnectionBuilder implements Cloneable {
-    private static final int MAX_CONNECTION_ATTEMPTS = 15;
-    private static final int INITIAL_CONNECTION_DELAY_MS = 500;
-
-    private final MiniYBCluster miniCluster;
-    private boolean loadBalance;
-
-    private int tserverIndex = 0;
-    private String database = DEFAULT_PG_DATABASE;
-    private String user = TEST_PG_USER;
-    private String password = null;
-    private String preferQueryMode = null;
-    private String sslmode = null;
-    private String sslcert = null;
-    private String sslkey = null;
-    private String sslrootcert = null;
-    private IsolationLevel isolationLevel = IsolationLevel.DEFAULT;
-    private AutoCommit autoCommit = AutoCommit.DEFAULT;
-
-    ConnectionBuilder(MiniYBCluster miniCluster) {
-      this.miniCluster = checkNotNull(miniCluster);
-    }
-
-    ConnectionBuilder withTServer(int tserverIndex) {
-      ConnectionBuilder copy = clone();
-      copy.tserverIndex = tserverIndex;
-      return copy;
-    }
-
-    ConnectionBuilder withDatabase(String database) {
-      ConnectionBuilder copy = clone();
-      copy.database = database;
-      return copy;
-    }
-
-    ConnectionBuilder withUser(String user) {
-      ConnectionBuilder copy = clone();
-      copy.user = user;
-      return copy;
-    }
-
-    ConnectionBuilder withPassword(String password) {
-      ConnectionBuilder copy = clone();
-      copy.password = password;
-      return copy;
-    }
-
-    ConnectionBuilder withIsolationLevel(IsolationLevel isolationLevel) {
-      ConnectionBuilder copy = clone();
-      copy.isolationLevel = isolationLevel;
-      return copy;
-    }
-
-    ConnectionBuilder withAutoCommit(AutoCommit autoCommit) {
-      ConnectionBuilder copy = clone();
-      copy.autoCommit = autoCommit;
-      return copy;
-    }
-
-    ConnectionBuilder withPreferQueryMode(String preferQueryMode) {
-      ConnectionBuilder copy = clone();
-      copy.preferQueryMode = preferQueryMode;
-      return copy;
-    }
-
-    ConnectionBuilder withSslMode(String sslmode) {
-      ConnectionBuilder copy = clone();
-      copy.sslmode = sslmode;
-      return copy;
-    }
-
-    ConnectionBuilder withSslCert(String sslcert) {
-      ConnectionBuilder copy = clone();
-      copy.sslcert = sslcert;
-      return copy;
-    }
-
-    ConnectionBuilder withSslKey(String sslkey) {
-      ConnectionBuilder copy = clone();
-      copy.sslkey = sslkey;
-      return copy;
-    }
-
-    ConnectionBuilder withSslRootCert(String sslrootcert) {
-      ConnectionBuilder copy = clone();
-      copy.sslrootcert = sslrootcert;
-      return copy;
-    }
-
-    @Override
-    protected ConnectionBuilder clone() {
-      try {
-        return (ConnectionBuilder) super.clone();
-      } catch (CloneNotSupportedException ex) {
-        throw new RuntimeException("This can't happen, but to keep compiler happy", ex);
-      }
-    }
-
-    Connection connect() throws Exception {
-      final InetSocketAddress postgresAddress = miniCluster.getPostgresContactPoints()
-          .get(tserverIndex);
-      String url = String.format(
-          "jdbc:yugabytedb://%s:%d/%s",
-          postgresAddress.getHostName(),
-          postgresAddress.getPort(),
-          database
-      );
-
-      Properties props = new Properties();
-      props.setProperty("user", user);
-      if (password != null) {
-        props.setProperty("password", password);
-      }
-      if (preferQueryMode != null) {
-        props.setProperty("preferQueryMode", preferQueryMode);
-      }
-      if (sslmode != null) {
-        props.setProperty("sslmode", sslmode);
-      }
-      if (sslcert != null) {
-        props.setProperty("sslcert", sslcert);
-      }
-      if (sslkey != null) {
-        props.setProperty("sslkey", sslkey);
-      }
-      if (sslrootcert != null) {
-        props.setProperty("sslrootcert", sslrootcert);
-      }
-      if (EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_PG_JDBC_TRACE_LOGGING")) {
-        props.setProperty("loggerLevel", "TRACE");
-      }
-
-      boolean loadBalance = getLoadBalance();
-      String lbValue = loadBalance ? "true" : "false";
-      props.setProperty("load-balance", lbValue);
-      int delayMs = INITIAL_CONNECTION_DELAY_MS;
-      for (int attempt = 1; attempt <= MAX_CONNECTION_ATTEMPTS; ++attempt) {
-        Connection connection = null;
-        try {
-          connection = checkNotNull(DriverManager.getConnection(url, props));
-
-          if (isolationLevel != null) {
-            connection.setTransactionIsolation(isolationLevel.pgIsolationLevel);
-          }
-          if (autoCommit != null) {
-            connection.setAutoCommit(autoCommit.enabled);
-          }
-          return connection;
-        } catch (SQLException sqlEx) {
-          // Close the connection now if we opened it, instead of waiting until the end of the test.
-          if (connection != null) {
-            try {
-              connection.close();
-            } catch (SQLException closingError) {
-              LOG.error("Failure to close connection during failure cleanup before a retry:",
-                  closingError);
-              LOG.error("When handling this exception when opening/setting up connection:", sqlEx);
-            }
-          }
-
-          boolean retry = false;
-
-          if (attempt < MAX_CONNECTION_ATTEMPTS) {
-            if (sqlEx.getMessage().contains("FATAL: the database system is starting up")
-                || sqlEx.getMessage().contains("refused. Check that the hostname and port are " +
-                "correct and that the postmaster is accepting")) {
-              retry = true;
-
-              LOG.info("Postgres is still starting up, waiting for " + delayMs + " ms. " +
-                  "Got message: " + sqlEx.getMessage());
-            } else if (sqlEx.getMessage().contains("the database system is in recovery mode")) {
-              retry = true;
-
-              LOG.info("Postgres is in recovery mode, waiting for " + delayMs + " ms. " +
-                  "Got message: " + sqlEx.getMessage());
-            }
-          }
-
-          if (retry) {
-            Thread.sleep(delayMs);
-            delayMs = Math.min(delayMs + 500, 10000);
-          } else {
-            LOG.error("Exception while trying to create connection (after " + attempt +
-                " attempts): " + sqlEx.getMessage());
-            throw sqlEx;
-          }
-        }
-      }
-      throw new IllegalStateException("Should not be able to reach here");
-    }
-
-    public boolean getLoadBalance() {
-      return loadBalance;
-    }
-
-    public void setLoadBalance(boolean lb) {
-      loadBalance = lb;
     }
   }
 

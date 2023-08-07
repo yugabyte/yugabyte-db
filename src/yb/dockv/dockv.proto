@@ -10,22 +10,27 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-syntax = "proto3";
+syntax = "proto2";
 
 package yb.dockv;
 
 option java_package = "org.yb.dockv";
 
+import "yb/common/value.proto";
+
 message ColumnPackingPB {
-  uint32 id = 1;
-  uint64 num_varlen_columns_before = 2;
-  uint64 offset_after_prev_varlen_column = 3;
-  uint64 size = 4;
-  bool nullable = 5;
+  optional uint32 id = 1;
+  optional uint64 num_varlen_columns_before = 2;
+  optional uint64 offset_after_prev_varlen_column = 3;
+  optional uint64 size = 4;
+  optional bool nullable = 5;
+
+  // Present only in recent versions that were added after V2 implementation.
+  optional PersistentDataType data_type = 6;
 }
 
 message SchemaPackingPB {
-  uint32 schema_version = 1;
+  optional uint32 schema_version = 1;
   repeated ColumnPackingPB columns = 2;
 
   // Columns that present in schema but don't participate in packing.

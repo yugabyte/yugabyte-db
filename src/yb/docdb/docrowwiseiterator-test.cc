@@ -62,7 +62,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   ~DocRowwiseIteratorTest() override {}
 
   void SetUp() override {
-    FLAGS_TEST_docdb_sort_weak_intents = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_sort_weak_intents) = true;
     DocDBTestBase::SetUp();
   }
 
@@ -1610,7 +1610,7 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
       ReadOperationData::TEST_FromReadTimeMicros(1000),
       TransactionOperationContext());
   iter.Seek(DocKey());
-  auto key_data = ASSERT_RESULT(iter.Fetch());
+  auto key_data = ASSERT_RESULT(iter.Fetch()).get();
   ASSERT_TRUE(key_data);
   SubDocKey subdoc_key;
   ASSERT_OK(subdoc_key.FullyDecodeFrom(key_data.key, dockv::HybridTimeRequired::kFalse));
@@ -1659,7 +1659,7 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
       TransactionOperationContext(*txn, &txn_status_manager));
   for (int i = 1; i <= 2; ++i) {
     iter.Seek(DocKey());
-    ASSERT_TRUE(ASSERT_RESULT(iter.Fetch())) << "Seek #" << i << " failed";
+    ASSERT_TRUE(ASSERT_RESULT(iter.Fetch()).get()) << "Seek #" << i << " failed";
   }
 }
 

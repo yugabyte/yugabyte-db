@@ -220,16 +220,19 @@ Test options:
 
   --collect-java-tests
     Collect the set of Java test methods into a file
-  --java-tests, run-java-tests
-    Run the java unit tests when build is enabled.
+  --java-tests, --run-java-tests
+    Run the Java unit tests.
   --java-test <java_test_name>
     Build and run the given Java test. Test name format is e.g.
     org.yb.loadtester.TestRF1Cluster[#testRF1toRF3].
   --run-java-test-methods-separately, --rjtms
     Run each Java test (test method or a parameterized instantiation of a test method) separately
-    as its own top-level Maven invocation, writing output to a separate file.
+    as its own top-level Maven invocation, writing output to a separate file. This is the default
+    when --java-test specifies a particular test method using the [package.]ClassName#testMethod
+    syntax, and only makes a difference when running the entire test suite.
+
   --java-test-args
-    Extra arguments to pass to mvn when running tests. Used with --java-test.
+    Extra arguments to pass to Maven when running tests. Used with --java-test.
 
   --python-tests
     Run various Python tests (doctest, unit test) and exit.
@@ -325,6 +328,8 @@ set_java_test_name() {
     fatal "Only one Java test name can be specified (found '$java_test_name' and '$1')."
   fi
   running_any_tests=true
+  run_java_tests=true
+  build_java=true
   java_test_name=$1
 }
 
@@ -343,6 +348,8 @@ print_report_line() {
   printf '%-32s : '"$format_suffix\n" "$@"
 }
 
+# Report the time taken for a particular operation, based on the start and end time variables.
+# If these variables are not set, then no report line is printed.
 report_time() {
   expect_num_args 2 "$@"
   local description=$1
@@ -384,16 +391,14 @@ print_report() {
       if [[ -n $make_targets_str ]]; then
         print_report_line "%s" "Targets" "$make_targets_str"
       fi
-      report_time "CMake" "cmake"
-      report_time "C++ compilation" "make"
-      if [[ ${run_java_tests} == "true" ]]; then
-        report_time "Java compilation and tests" "java_build"
-      else
-        report_time "Java compilation" "java_build"
-      fi
-      report_time "C++ (one test program)" "cxx_test"
-      report_time "ctest (multiple C++ test programs)" "ctest"
-      report_time "Remote tests" "remote_tests"
+      report_time "CMake"                               cmake
+      report_time "C++ compilation"                     make
+      report_time "Java compilation"                    java_build
+      report_time "C++ (one test program)"              cxx_test
+      report_time "ctest (multiple C++ test programs)"  ctest
+      report_time "Collecting Java tests"               collect_java_tests
+      report_time "Java tests"                          java_tests
+      report_time "Remote tests"                        remote_tests
 
       if [[ ${YB_SKIP_BUILD:-} == "1" ]]; then
         echo
@@ -598,7 +603,7 @@ run_cxx_build() {
   fi
 
   # Don't check for test binary existence in case targets are explicitly specified.
-  if "$test_existence_check" && [[ ${#make_targets[@]} -eq 0 ]]; then
+  if [[ $test_existence_check == "true" && ${#make_targets[@]} -eq 0 ]]; then
     (
       cd "$BUILD_ROOT"
       log "Checking if all test binaries referenced by CMakeLists.txt files exist."
@@ -653,7 +658,7 @@ run_ctest() {
 
 run_tests_remotely() {
   ran_tests_remotely=false
-  if ! "$running_any_tests"; then
+  if [[ $running_any_tests == "false" ]]; then
     # Nothing to run remotely.
     return
   fi
@@ -834,6 +839,7 @@ use_packaged_targets() {
   make_targets+=(
     "${packaged_targets[@]}"
     initial_sys_catalog_snapshot
+    update_ysql_conn_mgr_template
     update_ysql_migrations
   )
 }
@@ -854,7 +860,10 @@ make_opts=()
 force=false
 build_cxx=true
 build_java=true
+
+# We will set this to true if we are running a single Java test or all tests.
 run_java_tests=false
+
 save_log=false
 make_targets=()
 no_tcmalloc=false
@@ -925,6 +934,10 @@ build_fuzz_targets=""
 
 # These will influence what targets to build if invoked with the packaged_targets meta-target.
 build_odyssey="false"
+if is_linux; then
+  build_odyssey="true"
+fi
+
 build_yugabyted_ui="false"
 
 # -------------------------------------------------------------------------------------------------
@@ -1047,6 +1060,7 @@ while [[ $# -gt 0 ]]; do
     ;;
     --no-tcmalloc)
       no_tcmalloc=true
+      use_google_tcmalloc=false
     ;;
     --no-google-tcmalloc|--use-gperftools-tcmalloc|--gperftools-tcmalloc)
       use_google_tcmalloc=false
@@ -1309,6 +1323,7 @@ while [[ $# -gt 0 ]]; do
       # We modify YB_RUN_JAVA_TEST_METHODS_SEPARATELY in a subshell in a few places on purpose.
       # shellcheck disable=SC2031
       export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
+      run_java_tests=true
     ;;
     --rebuild-postgres)
       clean_postgres=true
@@ -1548,7 +1563,7 @@ if [[ ${force_run_cmake} == "true" && ${force_no_run_cmake} == "true" ]]; then
   fatal "--force-run-cmake and --force-no-run-cmake are incompatible"
 fi
 
-if "$cmake_only" && [[ $force_no_run_cmake == "true" || $java_only == "true" ]]; then
+if [[ $cmake_only == "true" && ( $force_no_run_cmake == "true" || $java_only == "true" ) ]]; then
   fatal "--cmake-only is incompatible with --force-no-run-cmake or --java-only"
 fi
 
@@ -1561,7 +1576,7 @@ if [[ ${should_run_ctest} == "true" ]]; then
     fatal "--java-test (running one Java test) is mutually exclusive with " \
           "--ctest (running a number of C++ tests)"
   fi
-  if ! "$run_java_tests"; then
+  if [[ $run_java_tests == "false" ]]; then
     build_java=false
   fi
 fi
@@ -1636,6 +1651,16 @@ fi
 
 if [[ "${should_use_packaged_targets}" == "true" ]]; then
   use_packaged_targets
+fi
+
+if should_run_java_test_methods_separately && [[ -n $java_test_name && $java_test_name != *\#* ]]
+then
+  fatal "--run-java-test-methods-separately is specified, but the Java test name" \
+        "${java_test_name} does not specify a particular test method to run." \
+        "Please specify a test method using the following format: " \
+        "--java-test <class_name>#testMethodName" \
+        " or remove the --run-java-test-methods-separately flag. " \
+        "To run all Java tests, replace --java-test=<test_name> with --java-tests."
 fi
 
 # End of post-processing and validating command-line arguments.
@@ -1744,7 +1769,7 @@ else
   fi
 fi
 
-if "$clean_thirdparty" && using_default_thirdparty_dir; then
+if [[ $clean_thirdparty == "true" ]] && using_default_thirdparty_dir; then
   log "Removing and re-building third-party dependencies (--clean-thirdparty specified)"
   (
     set -x
@@ -1845,7 +1870,8 @@ create_build_root_file
 
 if [[ ${#make_targets[@]} -eq 0 && -n $java_test_name ]]; then
   # Build only a subset of targets when we're only trying to run a Java test.
-  make_targets+=( yb-master yb-tserver gen_auto_flags_json postgres update_ysql_migrations )
+  make_targets+=( yb-master yb-tserver gen_auto_flags_json postgres update_ysql_conn_mgr_template
+      update_ysql_migrations )
 fi
 
 if [[ $build_type == "compilecmds" ]]; then
@@ -1882,61 +1908,71 @@ fi
 
 export YB_JAVA_TEST_OFFLINE_MODE=0
 
-# Check if the Java build is needed, and skip Java unit test runs if requested.
+if [[ -n $user_mvn_opts ]]; then
+  # We do not double-quote $user_mvn_opts on purpose to allow multiple options.
+  # shellcheck disable=SC2206
+  java_build_common_opts=( $user_mvn_opts )
+else
+  java_build_common_opts=()
+fi
+# shellcheck disable=SC2206
+user_mvn_opts_for_java_test=( $user_mvn_opts )
+
+java_build_common_opts+=( install -DbinDir="$BUILD_ROOT/bin" )
+
+# Build Java code and prepare for running the tests, if necessary, but do not run them yet.
 if [[ ${build_java} == "true" ]]; then
   # We'll need this for running Java tests.
   set_sanitizer_runtime_options
   set_mvn_parameters
 
-  java_build_opts=( install )
-  java_build_opts+=( -DbinDir="$BUILD_ROOT/bin" )
-
-  if ! "$run_java_tests" || should_run_java_test_methods_separately; then
-    java_build_opts+=( -DskipTests )
+  java_build_opts=(
+    "${java_build_common_opts[@]}"
+    # Build tests but do not run them. We always run tests as a separate step from building the
+    # code.
+    -DskipTests
+  )
+  if [[ $run_java_tests == "true" && -n $java_test_name ]]; then
+    # Assembly jars are jars that contain all dependencies. It takes a long time to build these,
+    # and in general we don't need them when running tests, so skip them in the most common
+    # development workflow when running a single test.
+    java_build_opts+=( -Dassembly.skipAssembly=true )
   fi
 
   if [[ ${resolve_java_dependencies} == "true" ]]; then
     java_build_opts+=( "${MVN_OPTS_TO_DOWNLOAD_ALL_DEPS[@]}" )
   fi
 
-  # We read variables with names ending with _{start,end}_time_sec in report_time.
-  # shellcheck disable=SC2034
-  java_build_start_time_sec=$(date +%s)
-
+  capture_sec_timestamp java_build_start
   for java_project_dir in "${yb_java_project_dirs[@]}"; do
     time (
       cd "$java_project_dir"
-      # We do not double-quote $user_mvn_opts on purpose to allow multiple options.
-      # shellcheck disable=SC2034,SC2086
-      build_yb_java_code $user_mvn_opts "${java_build_opts[@]}"
+      build_yb_java_code "${java_build_opts[@]}"
     )
   done
   unset java_project_dir
+  capture_sec_timestamp java_build_end
 
-  if "$run_java_tests" && should_run_java_test_methods_separately; then
-    if ! run_all_java_test_methods_separately; then
-      log "Some Java tests failed"
-      global_exit_code=1
-    fi
-  elif should_run_java_test_methods_separately || "$collect_java_tests"; then
+  if [[ $collect_java_tests == "true" ]]; then
+    capture_sec_timestap collect_java_tests_start
     collect_java_tests
+    capture_sec_timestap collect_java_tests_end
   fi
 
-  # We read variables with names ending with _{start,end}_time_sec in report_time.
-  # shellcheck disable=SC2034
-  java_build_end_time_sec=$(date +%s)
   log "Java build finished, total time information above."
 fi
 
 run_tests_remotely
 
 if [[ ${ran_tests_remotely} != "true" ]]; then
+  ensure_test_tmp_dir_is_set
   if [[ -n $cxx_test_name ]]; then
     capture_sec_timestamp cxx_test_start
     run_cxx_test
     capture_sec_timestamp cxx_test_end
   fi
 
+  capture_sec_timestamp java_test_start
   if [[ -n $java_test_name ]]; then
     (
       if [[ $java_test_name == *\#* ]]; then
@@ -1945,7 +1981,30 @@ if [[ ${ran_tests_remotely} != "true" ]]; then
       fi
       resolve_and_run_java_test "$java_test_name"
     )
+  elif [[ $run_java_tests == "true" ]]; then
+    if should_run_java_test_methods_separately; then
+      if ! run_all_java_test_methods_separately; then
+        log "Some Java tests failed"
+        global_exit_code=1
+      fi
+    else
+      java_code_build_purpose="running tests"
+      java_test_opts=(
+        "${java_build_common_opts[@]}"
+        # To keep running tests in all Maven modules even after some tests fail.
+        --fail-never
+      )
+      for java_project_dir in "${yb_java_project_dirs[@]}"; do
+        time (
+          cd "$java_project_dir"
+          build_yb_java_code "${java_test_opts[@]}"
+        )
+      done
+      unset java_project_dir
+      unset java_code_build_purpose
+    fi
   fi
+  capture_sec_timestamp java_test_end
 
   if [[ ${should_run_ctest} == "true" ]]; then
     capture_sec_timestamp ctest_start

@@ -39,12 +39,18 @@ import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/rpc/rpc_header.proto";
 import "yb/tablet/metadata.proto";
+import "yb/util/opid.proto";
 
 // RaftConfig remote bootstrap RPC calls.
 service RemoteBootstrapService {
   // Establish a remote bootstrap session.
   rpc BeginRemoteBootstrapSession(BeginRemoteBootstrapSessionRequestPB)
       returns (BeginRemoteBootstrapSessionResponsePB);
+
+  // Establish a remote snapshot transfer session.
+  rpc BeginRemoteSnapshotTransferSession(
+      BeginRemoteSnapshotTransferSessionRequestPB)
+      returns (BeginRemoteSnapshotTransferSessionResponsePB);
 
   // Check whether the specified session is active.
   rpc CheckRemoteBootstrapSessionActive(CheckRemoteBootstrapSessionActiveRequestPB)
@@ -175,6 +181,28 @@ message BeginRemoteBootstrapSessionResponsePB {
   optional bool retryable_requests_file_flushed = 7 [default = false];
 }
 
+message BeginRemoteSnapshotTransferSessionRequestPB {
+  // permanent_uuid of the requesting peer.
+  required bytes requestor_uuid = 1;
+
+  // tablet_id of the tablet the requester desires to bootstrap from.
+  required bytes tablet_id = 2;
+}
+
+message BeginRemoteSnapshotTransferSessionResponsePB {
+  // Opaque session id assigned by the server.
+  // No guarantees are made as to the format of the session id.
+  required bytes session_id = 1;
+
+  // Maximum session idle timeout between requests.
+  // Learners will have to start over again if they reach this timeout.
+  // A value of 0 means there is no timeout.
+  required uint64 session_idle_timeout_millis = 2;
+
+  // Active superblock at the time of the request.
+  required tablet.RaftGroupReplicaSuperBlockPB superblock = 3;
+}
+
 message CheckRemoteBootstrapSessionActiveRequestPB {
   // Valid Session ID returned by a BeginRemoteBootstrapSession() RPC call.
   required bytes session_id = 1;
@@ -285,8 +313,9 @@ message RegisterLogAnchorRequestPB {
   // tablet_id of the tablet the requester desires to bootstrap from.
   required bytes tablet_id = 2;
 
-  // Log index where the anchor needs to be registered at.
-  required int64 log_index = 3;
+  // The 'index' field of op_id should be set to the log index where the anchor needs to be
+  // registered at. The 'term' field of op_id is ignored.
+  required OpIdPB op_id = 3;
 }
 
 message RegisterLogAnchorResponsePB {}
@@ -296,8 +325,9 @@ message UpdateLogAnchorRequestPB {
   // RemoteBootstrapAnchor request.
   required bytes owner_info = 1;
 
-  // Log index to which the anchor needs to be updated to.
-  required int64 log_index = 2;
+  // The 'index' field of op_id should be set to the log index where the anchor needs to be
+  // updated to. The 'term' field of op_id is ignored.
+  required OpIdPB op_id = 2;
 }
 
 message UpdateLogAnchorResponsePB {}

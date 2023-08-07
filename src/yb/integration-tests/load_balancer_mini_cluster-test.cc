@@ -63,7 +63,7 @@ class StatEmuEnv : public EnvWrapper {
   StatEmuEnv() : EnvWrapper(Env::Default()) { }
 
   virtual Result<FilesystemStats> GetFilesystemStatsBytes(const std::string& f) override {
-    std::lock_guard<std::mutex> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     auto i = stats_.find(f);
     if (i == stats_.end()) {
       return target()->GetFilesystemStatsBytes(f);
@@ -72,7 +72,7 @@ class StatEmuEnv : public EnvWrapper {
   }
 
   void AddPathStats(const std::string& path, const Env::FilesystemStats& stats) {
-    std::lock_guard<std::mutex> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     ASSERT_TRUE(stats_.emplace(path, stats).second);
   }
 

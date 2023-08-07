@@ -64,10 +64,14 @@ public class ExplainAnalyzeUtils {
     PlanCheckerBuilder relationName(String value);
     PlanCheckerBuilder parentRelationship(String value);
     PlanCheckerBuilder actualLoops(ValueChecker<Long> checker);
+    PlanCheckerBuilder actualRows(ValueChecker<Long> checker);
 
     // Table Reads
-    PlanCheckerBuilder storageTableReadRequests(ValueChecker<Long> checker);
-    PlanCheckerBuilder storageTableReadExecutionTime(ValueChecker<Double> checker);
+    // The type of param is Checker and not ValueChecker<> since
+    // we also want to be able to verify the absence of these attrs in tests
+    // This requires a different type of checker than ValueChecker<>
+    PlanCheckerBuilder storageTableReadRequests(Checker checker);
+    PlanCheckerBuilder storageTableReadExecutionTime(Checker checker);
 
     // Table Writes
     PlanCheckerBuilder storageTableWriteRequests(ValueChecker<Long> checker);
@@ -81,6 +85,12 @@ public class ExplainAnalyzeUtils {
 
     // Catalog Reads
     PlanCheckerBuilder storageCatalogReadRequests(ValueChecker<Long> checker);
+
+    // Added to verify that auto_explain.log_analyze works as intended
+    PlanCheckerBuilder startupCost(Checker checker);
+    PlanCheckerBuilder totalCost(Checker checker);
+    PlanCheckerBuilder actualStartupTime(Checker checker);
+    PlanCheckerBuilder actualTotalTime(Checker checker);
   }
 
   private static void testExplain(
@@ -92,6 +102,9 @@ public class ExplainAnalyzeUtils {
     rs.next();
     JsonElement json = JsonParser.parseString(rs.getString(1));
     LOG.info("Response:\n" + JsonUtil.asPrettyString(json));
+    if (checker == null) {
+      return;
+    }
     List<String> conflicts = JsonUtil.findConflicts(json.getAsJsonArray().get(0), checker);
     assertTrue("Json conflicts:\n" + String.join("\n", conflicts),
                conflicts.isEmpty());

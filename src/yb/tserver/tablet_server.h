@@ -38,6 +38,7 @@
 #include <vector>
 #include <atomic>
 
+#include "yb/common/pg_catversions.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/cdc/cdc_fwd.h"
 #include "yb/cdc/cdc_consumer.fwd.h"
@@ -193,7 +194,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void get_ysql_catalog_version(uint64_t* current_version,
                                 uint64_t* last_breaking_version) const override {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     if (current_version) {
       *current_version = ysql_catalog_version_;
     }
@@ -205,7 +206,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void get_ysql_db_catalog_version(uint32_t db_oid,
                                    uint64_t* current_version,
                                    uint64_t* last_breaking_version) const override {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     auto it = ysql_db_catalog_version_map_.find(db_oid);
     bool not_found = it == ysql_db_catalog_version_map_.end();
     // If db_oid represents a newly created database, it may not yet exist in
@@ -265,9 +266,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
 
-  Result<bool> XClusterSafeTimeCaughtUpToCommitHt(
-      const NamespaceId& namespace_id, HybridTime commit_ht) const;
-
   Result<cdc::XClusterRole> TEST_GetXClusterRole() const;
 
   Status ListMasterServers(const ListMasterServersRequestPB* req,
@@ -295,6 +293,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::vector<yb::util::WaitStateInfoPtr> GetThreadpoolWaitStates() const override;
 
   std::vector<WaitStateInfoPB> ActiveUniverseHistory() const override;
+  
+  std::optional<uint64_t> GetCatalogVersionsFingerprint() const {
+    return catalog_versions_fingerprint_.load(std::memory_order_acquire);
+  }
 
  protected:
   virtual Status RegisterServices();
@@ -309,6 +311,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) override;
 
   Status SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
+
+  Result<std::unordered_set<std::string>> GetAvailableAutoFlagsForServer() const override;
 
   std::atomic<bool> initted_{false};
 
@@ -362,6 +366,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   uint64_t ysql_catalog_version_ = 0;
   uint64_t ysql_last_breaking_catalog_version_ = 0;
   tserver::DbOidToCatalogVersionInfoMap ysql_db_catalog_version_map_;
+
+  // Fingerprint of the catalog versions map.
+  std::atomic<std::optional<uint64_t>> catalog_versions_fingerprint_;
 
   // If shared memory array db_catalog_versions_ slot is used by a database OID, the
   // corresponding slot in this boolean array is set to true.

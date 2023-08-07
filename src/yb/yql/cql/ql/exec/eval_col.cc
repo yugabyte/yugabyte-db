@@ -66,6 +66,12 @@ Status Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
       if(VERIFY_RESULT(exec_context_->params().IsBindVariableUnset(bind_pt->name()->c_str(),
                                                                    bind_pt->pos()))) {
         VLOG(3) << "Value unset for column: " << bind_pt->name()->c_str();
+        if (col_desc->is_primary()) {
+          VLOG(3) << "Unexpected value unset for primary key. Current request: "
+                  << req->DebugString();
+          return exec_context_->Error(tnode, ErrorCode::NULL_ARGUMENT_FOR_PRIMARY_KEY);
+        }
+
         continue;
       }
     }

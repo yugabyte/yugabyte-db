@@ -1355,6 +1355,7 @@ TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
 
   std::unique_ptr<Iterator> iter(db_->NewIterator(ReadOptions(), handles_[1]));
   iter->SeekToFirst();
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(0, TestGetTickerCount(options, BLOCK_CACHE_FILTER_MISS));
   ASSERT_EQ(0, TestGetTickerCount(options, BLOCK_CACHE_FILTER_HIT));
   ASSERT_EQ(2 /* index and data block */,

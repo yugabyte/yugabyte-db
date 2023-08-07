@@ -89,10 +89,9 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
     return tablet_id;
   }
 
-  Result<IsExternalTransaction> IsExternalTransactionResult(
-      const TransactionId& transaction_id) override {
-    return IsExternalTransaction::kFalse;
-  }
+  void RecordConflictResolutionKeysScanned(int64_t num_keys) override {}
+
+  void RecordConflictResolutionScanLatency(MonoDelta latency) override {}
 
  private:
   std::unordered_map<TransactionId, HybridTime, TransactionIdHash> txn_commit_time_;

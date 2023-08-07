@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import { FC } from 'react';
 import { createStyles, FormControl, makeStyles, Theme, TextField } from '@material-ui/core';
 import clsx from 'clsx';
 
@@ -7,7 +7,6 @@ const useStyles = makeStyles((theme: Theme) => {
     root: {
       borderRadius: '7px',
       minHeight: '42px',
-      padding: '10px 12px',
       borderColor: '#dedee0',
       fontSize: '14px'
     },

@@ -27,7 +27,7 @@
 #include <glog/logging.h>
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/value.pb.h"
+#include "yb/common/value.messages.h"
 #include "yb/gutil/macros.h"
 #include "yb/util/status_fwd.h"
 
@@ -199,15 +199,16 @@ class QLType {
   // Predicates.
 
   bool IsCollection() const {
-    return id_ == MAP || id_ == SET || id_ == LIST || id_ == TUPLE;
+    return id_ == DataType::MAP || id_ == DataType::SET || id_ == DataType::LIST ||
+           id_ == DataType::TUPLE;
   }
 
   bool IsUserDefined() const {
-    return id_ == USER_DEFINED_TYPE;
+    return id_ == DataType::USER_DEFINED_TYPE;
   }
 
   bool IsFrozen() const {
-    return id_ == FROZEN;
+    return id_ == DataType::FROZEN;
   }
 
   bool IsParametric() const {
@@ -249,13 +250,13 @@ class QLType {
       return params_.empty();
     } else {
       // checking number of params
-      if (id_ == MAP && params_.size() != 2) {
+      if (id_ == DataType::MAP && params_.size() != 2) {
         return false; // expect two type parameters for maps
-      } else if ((id_ == SET || id_ == LIST) && params_.size() != 1) {
+      } else if ((id_ == DataType::SET || id_ == DataType::LIST) && params_.size() != 1) {
         return false; // expect one type parameter for set and list
-      } else if (id_ == TUPLE && params_.size() == 0) {
+      } else if (id_ == DataType::TUPLE && params_.size() == 0) {
         return false; // expect at least one type parameters for tuples
-      } else if (id_ == FROZEN && params_.size() != 1) {
+      } else if (id_ == DataType::FROZEN && params_.size() != 1) {
         return false; // expect one type parameter for frozen
       }
       // recursively checking params
@@ -303,7 +304,7 @@ class QLType {
   //       It must be removed somehow as the QLType objects are stored in various caches and they
   //       must be immutable.
   void add_param(SharedPtr param) {
-    DCHECK(id_ == TUPLE);
+    DCHECK(id_ == DataType::TUPLE);
     params_.push_back(std::move(param));
   }
 
@@ -315,29 +316,21 @@ class QLType {
 
   //------------------------------------------------------------------------------------------------
   // static methods
-  static const int kMaxTypeIndex = DataType::JSONB + 1;
-
-  // When a new type is added in the enum "DataType", kMaxTypeIndex should be updated for this
-  // module to work properly. The DCHECKs in this struct would failed if kMaxTypeIndex is wrong.
-  static bool IsValid(DataType type) {
-    return (type >= 0 && type < kMaxTypeIndex);
-  }
-
   static bool IsInteger(DataType t) {
-    return (t >= INT8 && t <= INT64) || t == VARINT;
+    return (t >= DataType::INT8 && t <= DataType::INT64) || t == DataType::VARINT;
   }
 
   static bool IsJson(DataType t) {
-    return t == JSONB;
+    return t == DataType::JSONB;
   }
 
   static bool IsNumeric(DataType t) {
-    return IsInteger(t) || t == FLOAT || t == DOUBLE || t == DECIMAL;
+    return IsInteger(t) || t == DataType::FLOAT || t == DataType::DOUBLE || t == DataType::DECIMAL;
   }
 
   // NULL_VALUE_TYPE represents type of a null value.
   static bool IsNull(DataType t) {
-    return t == NULL_VALUE_TYPE;
+    return t == DataType::NULL_VALUE_TYPE;
   }
 
   // Type is not yet set (VOID).

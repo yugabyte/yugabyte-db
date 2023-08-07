@@ -40,7 +40,7 @@ The primary key for each row in the table uniquely identifies the location of th
 
 ![Sharding a table into tablets](/images/architecture/partitioning-table-into-tablets.png)
 
-By default, YugabyteDB creates eight tablets per node in the universe for each table and automatically distributes the data across various tablets, which in turn are distributed evenly across the nodes. In the [Examples](#Examples), you explore how automatic sharding is done internally for tables. The system Redis table works in exactly the same way.
+By default, YugabyteDB creates one tablet per node in the universe for each table and automatically distributes the data across them. In the [Examples](#Examples), you explore how automatic sharding is done internally for tables. The system Redis table works in exactly the same way.
 
 ## Sharding strategies
 
@@ -160,7 +160,7 @@ To create a universe, do the following:
 
     `memstore_size_mb=1` sets the total size of memstores on the tablet-servers to `1MB`. This forces a flush of the data to disk when a value greater than 1MB is added, allowing you to observe to which tablets the data is written.
 
-1. Add two more nodes to make this a 3-node by joining them with the previous node. You need to pass the `memstore_size` flag to each of the added YB-TServer servers, as follows:
+1. Add two more nodes to make this a 3-node by joining them with the previous node. (If you are running on macOS, first [configure loopback addresses](../../../reference/configuration/yugabyted/#running-on-macos).) You need to pass the `memstore_size` flag to each of the added YB-TServer servers, as follows:
 
     ```sh
     ./bin/yugabyted start \
@@ -256,9 +256,7 @@ Perform the following:
 
 1. Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`) as follows:
 
-    ```sh
-    wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar
-    ```
+    {{% yb-sample-apps-path %}}
 
 1. Run the `CassandraKeyValue` workload application, as follows:
 

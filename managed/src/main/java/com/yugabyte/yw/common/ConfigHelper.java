@@ -37,6 +37,12 @@ public class ConfigHelper {
     GCPInstanceTypeMetadata(null, "configs/gcp-instance-type-metadata.yml"),
     AZURegionMetadata("Azure Region Metadata", "configs/azu-region-metadata.yml"),
     AZUInstanceTypeMetadata(null),
+    EKSKubernetesRegionMetadata(
+        "EKS Kubernetes Region Metadata", "configs/kubernetes/eks-region-metadata.yml"),
+    AKSKubernetesRegionMetadata(
+        "AKS Kubernetes Region Metadata", "configs/kubernetes/aks-region-metadata.yml"),
+    GKEKubernetesRegionMetadata(
+        "GKE Kubernetes Region Metadata", "configs/kubernetes/gke-region-metadata.yml"),
     DockerRegionMetadata("Docker Region Metadata", "configs/docker-region-metadata.yml"),
     DockerInstanceTypeMetadata(null, "configs/docker-instance-type-metadata.yml"),
     SoftwareReleases("Software Releases"),

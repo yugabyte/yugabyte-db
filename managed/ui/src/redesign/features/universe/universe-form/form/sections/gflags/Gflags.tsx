@@ -1,4 +1,4 @@
-import React, { FC, useContext } from 'react';
+import { FC, useContext } from 'react';
 import _ from 'lodash';
 import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
@@ -6,8 +6,9 @@ import { useWatch, useFormContext } from 'react-hook-form';
 import { Box, Typography, makeStyles } from '@material-ui/core';
 import { GFlagsField } from '../../fields';
 import { YBToggleField } from '../../../../../../components';
-import { ClusterModes, ClusterType, UniverseFormData } from '../../../utils/dto';
+import { CloudType, ClusterModes, ClusterType, UniverseFormData } from '../../../utils/dto';
 import {
+  PROVIDER_FIELD,
   SOFTWARE_VERSION_FIELD,
   GFLAGS_FIELD,
   INHERIT_FLAGS_FROM_PRIMARY
@@ -62,6 +63,7 @@ export const GFlags: FC = () => {
 
   //form Data
   const { control, getValues } = useFormContext<Partial<UniverseFormData>>();
+  const provider = useWatch({ name: PROVIDER_FIELD });
   const dbVersion = useWatch({ name: SOFTWARE_VERSION_FIELD });
   const isInherited = useWatch({ name: INHERIT_FLAGS_FROM_PRIMARY });
 
@@ -71,7 +73,7 @@ export const GFlags: FC = () => {
   return (
     <Box className={classes.sectionContainer} flexDirection="column" data-testid="Gflags-Section">
       <Typography variant="h4">{t('universeForm.gFlags.title')}</Typography>
-      {!isPrimary && enableRRGflags && (
+      {!isPrimary && enableRRGflags && provider?.code !== CloudType.kubernetes && (
         <Box className={gflagClasses.inheritFlagsContainer}>
           <Box flexShrink={1}>
             <YBToggleField
@@ -103,7 +105,11 @@ export const GFlags: FC = () => {
         </Box>
       )}
 
-      {(isPrimary || (enableRRGflags && !isInherited && !isPrimary)) && (
+      {(isPrimary ||
+        (enableRRGflags &&
+          !isInherited &&
+          !isPrimary &&
+          provider?.code !== CloudType.kubernetes)) && (
         <Box display="flex" width={isPrimary ? '1284px' : '1062px'} mt={4}>
           <GFlagsField
             control={control}

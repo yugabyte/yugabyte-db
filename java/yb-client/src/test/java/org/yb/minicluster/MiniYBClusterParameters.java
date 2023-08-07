@@ -47,6 +47,7 @@ public class MiniYBClusterParameters {
   public int defaultTimeoutMs = 50000;
   public int defaultAdminOperationTimeoutMs = DEFAULT_ADMIN_OPERATION_TIMEOUT_MS;
   public int replicationFactor = -1;
+  public boolean startYsqlConnMgr = false;
   public boolean startYsqlProxy = false;
   public boolean pgTransactionsEnabled = false;
   public YsqlSnapshotVersion ysqlSnapshotVersion = YsqlSnapshotVersion.LATEST;

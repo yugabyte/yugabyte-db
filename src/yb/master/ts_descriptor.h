@@ -137,10 +137,9 @@ class TSDescriptor {
   // Returns TSInformationPB for this TSDescriptor.
   const std::shared_ptr<TSInformationPB> GetTSInformationPB() const;
 
-  // Helper function to tell if this TS matches the cloud information provided. For now, we have
-  // no wildcard functionality, so it will have to explicitly match each individual component.
-  // Later, this might be extended to say if this TS is part of some wildcard expression for cloud
-  // information (eg: aws.us-west.* will match any TS in aws.us-west.1a or aws.us-west.1b, etc.).
+  // Helper function to tell if this TS matches the cloud information provided.
+  // The cloud info might be a wildcard expression (e.g. aws.us-west.*, which will match any TS in
+  // aws.us-west.1a or aws.us-west.1b, etc.).
   bool MatchesCloudInfo(const CloudInfoPB& cloud_info) const;
 
   CloudInfoPB GetCloudInfo() const;
@@ -175,7 +174,7 @@ class TSDescriptor {
   // Set the number of live replicas (i.e. running or bootstrapping).
   void set_num_live_replicas(int num_live_replicas) {
     DCHECK_GE(num_live_replicas, 0);
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     num_live_replicas_ = num_live_replicas;
   }
 
@@ -187,7 +186,7 @@ class TSDescriptor {
 
   void set_leader_count(int leader_count) {
     DCHECK_GE(leader_count, 0);
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     leader_count_ = leader_count;
   }
 
@@ -202,7 +201,7 @@ class TSDescriptor {
   }
 
   void set_hybrid_time(HybridTime hybrid_time) {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     hybrid_time_ = hybrid_time;
   }
 
@@ -271,7 +270,7 @@ class TSDescriptor {
   void GetMetrics(TServerMetricsPB* metrics);
 
   void ClearMetrics() {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     ts_metrics_.ClearMetrics();
   }
 
@@ -308,6 +307,9 @@ class TSDescriptor {
 
   virtual bool IsLiveAndHasReported() const;
 
+  // Is the ts in a read-only placement.
+  bool IsReadOnlyTS(const ReplicationInfoPB& replication_info) const;
+
  protected:
   virtual Status RegisterUnlocked(const NodeInstancePB& instance,
                                           const TSRegistrationPB& registration,
@@ -321,15 +323,12 @@ class TSDescriptor {
                           std::shared_ptr<TProxy>* result_cache);
 
   FRIEND_TEST(TestTSDescriptor, TestReplicaCreationsDecay);
-  template<class ClusterLoadBalancerClass> friend class TestLoadBalancerBase;
+  friend class LoadBalancerMockedBase;
 
   // Uses DNS to resolve registered hosts to a single endpoint.
   Result<HostPort> GetHostPortUnlocked() const;
 
   void DecayRecentReplicaCreationsUnlocked();
-
-  // Is the ts in a read-only placement.
-  bool IsReadOnlyTS(const ReplicationInfoPB& replication_info) const;
 
   struct TSMetrics {
 
@@ -429,7 +428,7 @@ template <class TProxy>
 Status TSDescriptor::GetOrCreateProxy(std::shared_ptr<TProxy>* result,
                                       std::shared_ptr<TProxy>* result_cache) {
   {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     if (*result_cache) {
       *result = *result_cache;
       return Status::OK();

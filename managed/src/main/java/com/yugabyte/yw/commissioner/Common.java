@@ -15,7 +15,7 @@ public class Common {
     azu("azu", true, true, true, ConfigHelper.ConfigType.AZURegionMetadata, "centos"),
     docker("docker", false, false, false, ConfigHelper.ConfigType.DockerRegionMetadata),
     onprem("onprem", true, false, true, null),
-    kubernetes("kubernetes", true, false),
+    kubernetes("kubernetes", true, false, true, null),
     local("local"),
     other("other");
 
@@ -105,6 +105,10 @@ public class Common {
     }
 
     public boolean imageBundleSupported() {
+      return this == aws || this == azu || this == gcp;
+    }
+
+    public boolean regionBootstrapSupported() {
       return this == aws || this == azu || this == gcp;
     }
   }

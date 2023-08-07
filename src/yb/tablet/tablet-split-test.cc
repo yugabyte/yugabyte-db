@@ -47,12 +47,12 @@ namespace tablet {
 
 class TabletSplitTest : public YBTabletTest {
  public:
-  TabletSplitTest() : YBTabletTest(Schema({ ColumnSchema("key", INT32, ColumnKind::HASH),
-                                            ColumnSchema("val", STRING) })) {}
+  TabletSplitTest() : YBTabletTest(Schema({ ColumnSchema("key", DataType::INT32, ColumnKind::HASH),
+                                            ColumnSchema("val", DataType::STRING) })) {}
 
   void SetUp() override {
-    FLAGS_db_write_buffer_size = 1_MB;
-    FLAGS_rocksdb_level0_file_num_compaction_trigger = -1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 1_MB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
     YBTabletTest::SetUp();
     writer_.reset(new LocalTabletWriter(tablet()));
   }
@@ -132,7 +132,7 @@ TEST_F(TabletSplitTest, SplitTablet) {
 
   VLOG(1) << "Source tablet:" << std::endl
           << docdb::DocDBDebugDumpToStr(
-                 tablet()->doc_db(), dockv::SchemaPackingStorage(tablet()->table_type()),
+                 tablet()->doc_db(), &tablet()->GetSchemaPackingProvider(),
                  docdb::IncludeBinary::kTrue);
   const auto source_docdb_dump_str = tablet()->TEST_DocDBDumpStr(IncludeIntents::kTrue);
   std::unordered_set<std::string> source_docdb_dump;

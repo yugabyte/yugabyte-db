@@ -80,15 +80,15 @@ class MasterPartitionedTest : public YBMiniClusterTestBase<MiniCluster> {
 
   void SetUp() override {
     // Make heartbeats faster to speed test runtime.
-    FLAGS_heartbeat_interval_ms = kTimeMultiplier * 10;
-    FLAGS_raft_heartbeat_interval_ms = kTimeMultiplier * 200;
-    FLAGS_unresponsive_ts_rpc_timeout_ms = 10000;  // 10 sec.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_heartbeat_interval_ms) = kTimeMultiplier * 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_raft_heartbeat_interval_ms) = kTimeMultiplier * 200;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_unresponsive_ts_rpc_timeout_ms) = 10000;  // 10 sec.
 
-    FLAGS_leader_failure_exp_backoff_max_delta_ms = 5000;
-    FLAGS_TEST_slowdown_master_async_rpc_tasks_by_ms = 100;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_exp_backoff_max_delta_ms) = 5000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_master_async_rpc_tasks_by_ms) = 100;
 
-    FLAGS_TEST_log_consider_all_ops_safe = true;
-    FLAGS_num_test_tablets = RegularBuildVsSanitizers(60, 10);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_log_consider_all_ops_safe) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_test_tablets) = RegularBuildVsSanitizers(60, 10);
 
     YBMiniClusterTestBase::SetUp();
     MiniClusterOptions opts;
@@ -161,7 +161,7 @@ void MasterPartitionedTest::CreateTable(const YBTableName& table_name, int num_t
 }
 
 OpId LastReceivedOpId(master::MiniMaster* master) {
-  auto consensus = master->tablet_peer()->consensus();
+  auto consensus = CHECK_RESULT(master->tablet_peer()->GetConsensus());
   return consensus->GetLastReceivedOpId();
 }
 
@@ -233,7 +233,7 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
     // into the case that we want to test -- where the master leader has to
     // step down because it sees that another master has moved on to a higher
     // term.
-    FLAGS_use_preelection = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_preelection) = false;
 
     consensus::ConsensusStatePB cpb;
     ASSERT_OK(cluster_->mini_master(0)->catalog_manager().GetCurrentConfig(&cpb));
@@ -265,7 +265,7 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
         kTimeout,
         "Wait for master 0 to update its term"));
 
-    FLAGS_use_preelection = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_preelection) = true;
 
     ASSERT_OK(WaitFor(
         master_0_is_leader, kTimeout, "Wait for master 0 to become the leader again"));

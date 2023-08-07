@@ -71,17 +71,14 @@
 #include "yb/util/threadpool.h"
 #include "yb/util/tostring.h"
 #include "yb/util/url-coding.h"
+#include "yb/util/shared_lock.h"
 
 using namespace std::literals;
 using namespace yb::size_literals;
 
 DECLARE_uint64(rpc_max_message_size);
 
-// We expect that consensus_max_batch_size_bytes + 1_KB would be less than rpc_max_message_size.
-// Otherwise such batch would be rejected by RPC layer.
-DEFINE_RUNTIME_uint64(consensus_max_batch_size_bytes, 4_MB,
-    "The maximum per-tablet RPC batch size when updating peers.");
-TAG_FLAG(consensus_max_batch_size_bytes, advanced);
+DECLARE_uint64(consensus_max_batch_size_bytes);
 
 DEFINE_UNKNOWN_int32(follower_unavailable_considered_failed_sec, 900,
              "Seconds that a leader is unable to successfully heartbeat to a "
@@ -141,28 +138,6 @@ DEFINE_test_flag(
     bool, assert_remote_bootstrap_happens_from_same_zone, false,
     "Assert that remote bootstrap is served by a peer in the same zone as the new peer.");
 
-namespace {
-
-constexpr const auto kMinRpcThrottleThresholdBytes = 16;
-
-static bool RpcThrottleThresholdBytesValidator(const char* flagname, int64_t value) {
-  if (value > 0) {
-    if (value < kMinRpcThrottleThresholdBytes) {
-      LOG(ERROR) << "Expect " << flagname << " to be at least " << kMinRpcThrottleThresholdBytes;
-      return false;
-    } else if (implicit_cast<size_t>(value) >= FLAGS_consensus_max_batch_size_bytes) {
-      LOG(ERROR) << "Expect " << flagname << " to be less than consensus_max_batch_size_bytes "
-                 << "value (" << FLAGS_consensus_max_batch_size_bytes << ")";
-      return false;
-    }
-  }
-  return true;
-}
-
-} // namespace
-
-DECLARE_int64(rpc_throttle_threshold_bytes);
-
 namespace yb {
 namespace consensus {
 
@@ -193,10 +168,11 @@ std::string PeerMessageQueue::TrackedPeer::ToString() const {
   return Format(
       "{ peer: $0 is_new: $1 last_received: $2 next_index: $3 last_known_committed_idx: $4 "
       "is_last_exchange_successful: $5 needs_remote_bootstrap: $6 member_type: $7 "
-      "num_sst_files: $8 last_applied: $9 }",
+      "num_sst_files: $8 last_applied: $9 last_successful_communication_time: $10ms ago}",
       uuid, is_new, last_received, next_index, last_known_committed_idx,
       is_last_exchange_successful, needs_remote_bootstrap, PeerMemberType_Name(member_type),
-      num_sst_files, last_applied);
+      num_sst_files, last_applied,
+      MonoTime::Now().GetDeltaSince(last_successful_communication_time).ToMilliseconds());
 }
 
 void PeerMessageQueue::TrackedPeer::ResetLeaderLeases() {
@@ -918,13 +894,13 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
 }
 
 void PeerMessageQueue::UpdateCDCConsumerOpId(const yb::OpId& op_id) {
-  std::lock_guard<rw_spinlock> l(cdc_consumer_lock_);
+  std::lock_guard l(cdc_consumer_lock_);
   cdc_consumer_op_id_ = op_id;
   cdc_consumer_op_id_last_updated_ = CoarseMonoClock::Now();
 }
 
 yb::OpId PeerMessageQueue::GetCDCConsumerOpIdToEvict() {
-  std::shared_lock<rw_spinlock> l(cdc_consumer_lock_);
+  SharedLock l(cdc_consumer_lock_);
   // For log cache eviction, we only want to include CDC consumers that are actively polling.
   // If CDC consumer checkpoint has not been updated recently, we exclude it.
   if (CoarseMonoClock::Now() - cdc_consumer_op_id_last_updated_ <= kCDCConsumerCheckpointInterval) {
@@ -1652,7 +1628,7 @@ void PeerMessageQueue::NotifyObserversOfFailedFollower(const string& uuid,
 }
 
 bool PeerMessageQueue::PeerAcceptedOurLease(const std::string& uuid) const {
-  std::lock_guard<simple_spinlock> lock(queue_lock_);
+  std::lock_guard lock(queue_lock_);
   TrackedPeer* peer = FindPtrOrNull(peers_map_, uuid);
   if (peer == nullptr) {
     return false;
@@ -1662,7 +1638,7 @@ bool PeerMessageQueue::PeerAcceptedOurLease(const std::string& uuid) const {
 }
 
 bool PeerMessageQueue::CanPeerBecomeLeader(const std::string& peer_uuid) const {
-  std::lock_guard<simple_spinlock> lock(queue_lock_);
+  std::lock_guard lock(queue_lock_);
   TrackedPeer* peer = FindPtrOrNull(peers_map_, peer_uuid);
   if (peer == nullptr) {
     LOG(ERROR) << "Invalid peer UUID: " << peer_uuid;
@@ -1678,7 +1654,7 @@ bool PeerMessageQueue::CanPeerBecomeLeader(const std::string& peer_uuid) const {
 }
 
 OpId PeerMessageQueue::PeerLastReceivedOpId(const TabletServerId& uuid) const {
-  std::lock_guard<simple_spinlock> lock(queue_lock_);
+  std::lock_guard lock(queue_lock_);
   TrackedPeer* peer = FindPtrOrNull(peers_map_, uuid);
   if (peer == nullptr) {
     LOG(ERROR) << "Invalid peer UUID: " << uuid;
@@ -1692,7 +1668,7 @@ string PeerMessageQueue::GetUpToDatePeer() const {
   std::vector<std::string> candidates;
 
   {
-    std::lock_guard<simple_spinlock> lock(queue_lock_);
+    std::lock_guard lock(queue_lock_);
     for (const PeersMap::value_type& entry : peers_map_) {
       if (local_peer_uuid_ == entry.first) {
         continue;
@@ -1769,21 +1745,6 @@ void PeerMessageQueue::TrackOperationsMemory(const OpIds& op_ids) {
 Result<OpId> PeerMessageQueue::TEST_GetLastOpIdWithType(
     int64_t max_allowed_index, OperationType op_type) {
   return log_cache_.TEST_GetLastOpIdWithType(max_allowed_index, op_type);
-}
-
-Status ValidateFlags() {
-  // Normally we would have used
-  //   DEFINE_validator(rpc_throttle_threshold_bytes, &RpcThrottleThresholdBytesValidator);
-  // right after defining the rpc_throttle_threshold_bytes flag. However, this leads to a segfault
-  // in the LTO-enabled build, presumably due to indeterminate order of static initialization.
-  // Instead, we invoke this function from master/tserver main() functions when static
-  // initialization is already finished.
-  if (!RpcThrottleThresholdBytesValidator(
-      "rpc_throttle_threshold_bytes", FLAGS_rpc_throttle_threshold_bytes)) {
-    return STATUS(InvalidArgument, "Flag validation failed");
-  }
-
-  return Status::OK();
 }
 
 }  // namespace consensus

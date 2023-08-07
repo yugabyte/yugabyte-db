@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC } from 'react';
+import { FC } from 'react';
 import { OverlayTrigger, Popover } from 'react-bootstrap';
 import { YBButton } from '../../common/forms/fields';
 import clsx from 'clsx';

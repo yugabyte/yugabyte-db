@@ -366,8 +366,9 @@ TEST_F(TestRpc, TestConnectionKeepalive) {
   options.messenger_options = messenger_options;
   // RPC heartbeats shouldn't prevent idle connections from being GCed. To test that we set
   // rpc_connection_timeout less than kGcTimeout.
-  FLAGS_rpc_connection_timeout_ms = MonoDelta(kGcTimeout).ToMilliseconds() / 2;
-  FLAGS_enable_rpc_keepalive = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_connection_timeout_ms) =
+      MonoDelta(kGcTimeout).ToMilliseconds() / 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_rpc_keepalive) = true;
   ASSERT_OK(EnableVerboseLoggingForModule("yb_rpc", 5));
   // Set up server.
   HostPort server_addr;
@@ -437,8 +438,9 @@ TEST_F(TestRpc, TestConnectionHeartbeating) {
   MessengerOptions messenger_options = { 1, kTestTimeout * 100 };
   TestServerOptions options;
   options.messenger_options = messenger_options;
-  FLAGS_num_connections_to_server = 1;
-  FLAGS_rpc_connection_timeout_ms = MonoDelta(kTestTimeout).ToMilliseconds();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_connections_to_server) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_connection_timeout_ms) =
+      MonoDelta(kTestTimeout).ToMilliseconds();
 
   // Set up server.
   HostPort server_addr;
@@ -855,7 +857,7 @@ class DisconnectTask {
   void Done() {
     bool notify;
     {
-      std::lock_guard<std::mutex> lock(share_->mutex);
+      std::lock_guard lock(share_->mutex);
       ++share_->counts[controller_.status().ToString()];
       notify = 0 == --share_->left;
     }
@@ -1015,9 +1017,9 @@ namespace {
 constexpr auto kMemoryLimitHardBytes = 100_MB;
 
 TestServerOptions SetupServerForTestCantAllocateReadBuffer() {
-  FLAGS_binary_call_parser_reject_on_mem_tracker_hard_limit = true;
-  FLAGS_memory_limit_hard_bytes = kMemoryLimitHardBytes;
-  FLAGS_rpc_throttle_threshold_bytes = -1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_binary_call_parser_reject_on_mem_tracker_hard_limit) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_memory_limit_hard_bytes) = kMemoryLimitHardBytes;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_throttle_threshold_bytes) = -1;
   TestServerOptions options;
   options.messenger_options.n_reactors = 1;
   options.messenger_options.num_connections_to_server = 1;
@@ -1031,7 +1033,7 @@ void TestCantAllocateReadBuffer(CalculatorServiceProxy* proxy) {
   // can have other random slow downs in this tests due to large requests processing in reactor
   // thread, so we turn off application level RPC keepalive mechanism to prevent connections from
   // being closed.
-  FLAGS_enable_rpc_keepalive = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_rpc_keepalive) = false;
 
   rpc_test::EchoRequestPB req;
   rpc_test::EchoResponsePB resp;
@@ -1186,6 +1188,32 @@ TEST_F(TestRpcSecure, TLS) {
   RunSecureTest(&TestSimple);
 }
 
+TEST_F(TestRpcSecure, Timeout) {
+  RunSecureTest([](auto* proxy) {
+    for (uint32_t delay_us = 20; delay_us < 100ul * 1000; delay_us *= 2) {
+      auto timeout = MonoDelta::FromMicroseconds(delay_us);
+      rpc_test::SleepRequestPB req;
+      rpc_test::SleepResponsePB resp;
+      req.set_sleep_micros(1000000ul);
+
+      Status s;
+      {
+        // dynamically allocate RpcController to it would NOT get recreated at the same address
+        // on the next iteration.
+        auto c = std::make_unique<RpcController>();
+
+        // Add some trash to instantiate sidecars.
+        c->outbound_sidecars().Start().Append(
+            pointer_cast<const char*>(&delay_us), sizeof(delay_us));
+
+        c->set_timeout(timeout);
+        s = proxy->Sleep(req, &resp, c.get());
+      }
+      ASSERT_NOK(s);
+    }
+  });
+}
+
 void TestBigOp(CalculatorServiceProxy* proxy) {
   RpcController controller;
   controller.set_timeout(5s * kTimeMultiplier);
@@ -1201,7 +1229,7 @@ TEST_F(TestRpcSecure, BigOp) {
 }
 
 TEST_F(TestRpcSecure, BigOpWithSmallBuffer) {
-  FLAGS_rpc_read_buffer_size = 128;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_read_buffer_size) = 128;
   RunSecureTest(&TestBigOp);
 }
 
@@ -1254,7 +1282,7 @@ TEST_F(TestRpcSecure, CantAllocateReadBuffer) {
 class TestRpcCompression : public RpcTestBase, public testing::WithParamInterface<int> {
  public:
   void SetUp() override {
-    FLAGS_stream_compression_algo = GetParam();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_stream_compression_algo) = GetParam();
     RpcTestBase::SetUp();
   }
 
@@ -1287,7 +1315,7 @@ TEST_P(TestRpcCompression, BigOp) {
 }
 
 TEST_P(TestRpcCompression, BigOpWithSmallBuffer) {
-  FLAGS_rpc_read_buffer_size = 128;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_read_buffer_size) = 128;
   RunCompressionTest(&TestBigOp);
 }
 
@@ -1366,7 +1394,7 @@ INSTANTIATE_TEST_CASE_P(, TestRpcCompression, testing::Range(1, 4), CompressionN
 class TestRpcSecureCompression : public TestRpcSecure {
  public:
   void SetUp() override {
-    FLAGS_stream_compression_algo = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_stream_compression_algo) = 1;
     TestRpcSecure::SetUp();
   }
 
@@ -1399,7 +1427,7 @@ TEST_F(TestRpcSecureCompression, BigOp) {
 }
 
 TEST_F(TestRpcSecureCompression, BigOpWithSmallBuffer) {
-  FLAGS_rpc_read_buffer_size = 128;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_read_buffer_size) = 128;
   RunSecureCompressionTest(&TestBigOp);
 }
 

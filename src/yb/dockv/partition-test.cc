@@ -61,7 +61,7 @@ string EncodeRedisKey(const Slice& key) {
 }
 
 TEST(PartitionTest, TestRedisEncoding) {
-  Schema schema({ ColumnSchema("key", STRING, ColumnKind::HASH) }, { ColumnId(0) });
+  Schema schema({ ColumnSchema("key", DataType::STRING, ColumnKind::HASH) }, { ColumnId(0) });
 
   PartitionSchema partition_schema;
   ASSERT_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
@@ -190,8 +190,8 @@ TEST(PartitionTest, Distribution) {
   constexpr auto kMaxNumTablets = RegularBuildVsDebugVsSanitizers(10000, 1000, 1000);
 
   SchemaBuilder builder;
-  ASSERT_OK(builder.AddKeyColumn("key", STRING));
-  ASSERT_OK(builder.AddColumn("val", STRING));
+  ASSERT_OK(builder.AddKeyColumn("key", DataType::STRING));
+  ASSERT_OK(builder.AddColumn("val", DataType::STRING));
   Schema schema = builder.Build();
   PartitionSchemaPB partition_schema_pb;
   partition_schema_pb.set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);

@@ -65,8 +65,12 @@ void YBSession::RestartNonTxnReadPoint(const Restart restart) {
   }
 }
 
-void YBSession::SetReadPoint(const ReadHybridTime& read_time) {
-  read_point()->SetReadTime(read_time, {} /* local_limits */);
+void YBSession::SetReadPoint(const ReadHybridTime& read_time, const TabletId& tablet_id) {
+  ConsistentReadPoint::HybridTimeMap local_limits;
+  if (!tablet_id.empty()) {
+    local_limits.emplace(tablet_id, read_time.local_limit);
+  }
+  read_point()->SetReadTime(read_time, std::move(local_limits));
 }
 
 bool YBSession::IsRestartRequired() {
@@ -180,15 +184,15 @@ void BatcherFlushDone(
 
   internal::BatcherPtr retry_batcher = CreateBatcher(batcher_config);
   retry_batcher->SetDeadline(done_batcher->deadline());
+
   for (auto& error : errors) {
     VLOG_WITH_FUNC(5) << "Retrying " << AsString(error->failed_op())
                       << " due to: " << error->status();
     const auto op = error->shared_failed_op();
     op->ResetTablet();
     // Transmit failed request id to retry_batcher.
-    if (op->request_id().has_value()) {
-      done_batcher->RemoveRequest(op->request_id().value());
-      retry_batcher->RegisterRequest(op->request_id().value());
+    if (op->request_id()) {
+      retry_batcher->MoveRequestDetailsFrom(done_batcher, *op->request_id());
     }
     retry_batcher->Add(op);
   }
@@ -244,12 +248,12 @@ YBClient* YBSession::client() const {
 }
 
 void YBSession::FlushStarted(internal::BatcherPtr batcher) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   flushed_batchers_.insert(batcher);
 }
 
 void YBSession::FlushFinished(internal::BatcherPtr batcher) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   CHECK_EQ(flushed_batchers_.erase(batcher), 1);
 }
 
@@ -303,6 +307,7 @@ internal::Batcher& YBSession::Batcher() {
 
 void YBSession::Apply(YBOperationPtr yb_op) {
   VLOG(5) << "YBSession Apply yb_op: " << yb_op->ToString();
+  yb_op->reset_request_id();
   Batcher().Add(yb_op);
 }
 
@@ -310,7 +315,7 @@ bool YBSession::IsInProgress(YBOperationPtr yb_op) const {
   if (batcher_ && batcher_->Has(yb_op)) {
     return true;
   }
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   for (const auto& b : flushed_batchers_) {
     if (b->Has(yb_op)) {
       return true;
@@ -325,6 +330,7 @@ void YBSession::Apply(const std::vector<YBOperationPtr>& ops) {
   }
   auto& batcher = Batcher();
   for (const auto& op : ops) {
+    op->reset_request_id();
     batcher.Add(op);
   }
 }
@@ -364,7 +370,12 @@ Status YBSession::ApplyAndFlushSync(const std::vector<YBOperationPtr>& ops) {
 
   auto future_status = future.wait_until(deadline);
   SCHECK(future_status == std::future_status::ready, TimedOut, "Timed out waiting for Flush");
-  return future.get().status;
+  auto flush_status = future.get();
+  for (auto& error : flush_status.errors) {
+    VLOG(2) << "Flush of operation " << error->failed_op().ToString()
+            << " failed: " << error->status();
+  }
+  return flush_status.status;
 }
 
 Status YBSession::ApplyAndFlushSync(YBOperationPtr ops) {
@@ -393,7 +404,7 @@ bool YBSession::TEST_HasPendingOperations() const {
   if (batcher_ && batcher_->HasPendingOperations()) {
     return true;
   }
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   for (const auto& b : flushed_batchers_) {
     if (b->HasPendingOperations()) {
       return true;

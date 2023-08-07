@@ -8,10 +8,12 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import java.util.ArrayList;
@@ -31,6 +33,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
@@ -39,24 +42,24 @@ import play.mvc.Http;
 @Singleton
 @Slf4j
 public class ProviderEditRestrictionManager {
-  public static final String EDIT_PROVIDER_NEW_ENABLED_KEY = "yb.edit_provider.new.enabled";
+
   private static final long PROVIDER_LOCK_TIMEOUT_MILLIS = 30_000;
   private static final EnumSet<TaskInfo.State> ACTIVE_STATES =
       EnumSet.of(TaskInfo.State.Initializing, TaskInfo.State.Running, TaskInfo.State.Created);
 
-  private final RuntimeConfigFactory runtimeConfigFactory;
+  private final RuntimeConfGetter runtimeConfGetter;
   private final Map<UUID, ReentrantLock> providerLocks = new ConcurrentHashMap<>();
   private final Map<UUID, UUID> editTaskIdByProvider = new HashMap<>();
-  private final Multimap<UUID, UUID> useTaskIdsByProvider = ArrayListMultimap.create();
+  private final Multimap<UUID, UUID> inUseTaskIdsByProvider = ArrayListMultimap.create();
   private final Map<UUID, Collection<UUID>> providersByTask = new ConcurrentHashMap<>();
 
   @Inject
-  public ProviderEditRestrictionManager(RuntimeConfigFactory runtimeConfigFactory) {
-    this.runtimeConfigFactory = runtimeConfigFactory;
+  public ProviderEditRestrictionManager(RuntimeConfGetter runtimeConfGetter) {
+    this.runtimeConfGetter = runtimeConfGetter;
   }
 
   public void onTaskCreated(UUID taskId, ITask task, ITaskParams params) {
-    log.debug("On task created {}  params {} ", taskId, params.getClass());
+    log.debug("On task created {} params {} ", taskId, params.getClass());
     if (!isEnabled()) {
       return;
     }
@@ -118,7 +121,7 @@ public class ProviderEditRestrictionManager {
             providerUUID,
             () -> {
               if (!editTaskIdByProvider.remove(providerUUID, taskID)) {
-                useTaskIdsByProvider.remove(providerUUID, taskID);
+                inUseTaskIdsByProvider.remove(providerUUID, taskID);
               }
             });
       }
@@ -159,11 +162,22 @@ public class ProviderEditRestrictionManager {
             }
           } else {
             verifyNotUnderEdit(providerUUID);
-            verifyNotUsed(providerUUID);
+            verifyNotUsed(providerUUID, false);
           }
           result.set(action.get());
         });
     return result.get();
+  }
+
+  public Collection<UUID> getTasksInUse(UUID providerUUID) {
+    log.debug("Get tasks in use for {}", providerUUID);
+    final Set<UUID> result = new HashSet<>();
+    doInProviderLock(
+        providerUUID,
+        () -> {
+          result.addAll(inUseTaskIdsByProvider.get(providerUUID));
+        });
+    return result;
   }
 
   private void tryEditProviderWithTask(UUID providerUUID, UUID taskID) {
@@ -172,7 +186,7 @@ public class ProviderEditRestrictionManager {
         providerUUID,
         () -> {
           verifyNotUnderEdit(providerUUID);
-          verifyNotUsed(providerUUID);
+          verifyNotUsed(providerUUID, isAllowAutoTasksBeforeEdit());
           log.debug("Edit provider {} with task {} ", providerUUID, taskID);
           editTaskIdByProvider.put(providerUUID, taskID);
         });
@@ -185,16 +199,26 @@ public class ProviderEditRestrictionManager {
         () -> {
           verifyNotUnderEdit(providerUUID);
           log.debug("Use provider {} with task {} ", providerUUID, taskID);
-          useTaskIdsByProvider.put(providerUUID, taskID);
+          inUseTaskIdsByProvider.put(providerUUID, taskID);
         });
   }
 
-  private void verifyNotUsed(UUID providerUUID) {
-    if (!useTaskIdsByProvider.get(providerUUID).isEmpty()) {
+  private void verifyNotUsed(UUID providerUUID, boolean allowAutoTasks) {
+    Collection<UUID> taskUUIDs = inUseTaskIdsByProvider.get(providerUUID);
+    if (allowAutoTasks) {
+      taskUUIDs = filterUserStartedTasks(taskUUIDs);
+    }
+    if (!taskUUIDs.isEmpty()) {
       throw new PlatformServiceException(
           Http.Status.SERVICE_UNAVAILABLE,
           "Provider " + providerUUID + " resources are currently in use");
     }
+  }
+
+  private Collection<UUID> filterUserStartedTasks(Collection<UUID> taskUUIDs) {
+    return taskUUIDs.stream()
+        .filter(uuid -> ScheduleTask.fetchByTaskUUID(uuid) == null)
+        .collect(Collectors.toList());
   }
 
   private void verifyNotUnderEdit(UUID providerUUID) {
@@ -210,9 +234,9 @@ public class ProviderEditRestrictionManager {
     editTaskIdByProvider.compute(
         providerUUID,
         (key, editTaskUUID) -> checkIfTaskIsActive(editTaskUUID) ? editTaskUUID : null);
-    for (UUID taskUUID : new ArrayList<>(useTaskIdsByProvider.get(providerUUID))) {
+    for (UUID taskUUID : new ArrayList<>(inUseTaskIdsByProvider.get(providerUUID))) {
       if (!checkIfTaskIsActive(taskUUID)) {
-        useTaskIdsByProvider.remove(providerUUID, taskUUID);
+        inUseTaskIdsByProvider.remove(providerUUID, taskUUID);
       }
     }
   }
@@ -254,7 +278,11 @@ public class ProviderEditRestrictionManager {
   }
 
   protected boolean isEnabled() {
-    return runtimeConfigFactory.globalRuntimeConf().getBoolean(EDIT_PROVIDER_NEW_ENABLED_KEY);
+    return runtimeConfGetter.getGlobalConf(GlobalConfKeys.editProviderNewEnabled);
+  }
+
+  public boolean isAllowAutoTasksBeforeEdit() {
+    return runtimeConfGetter.getGlobalConf(GlobalConfKeys.editProviderWaitForTasks);
   }
 
   protected long getLockTimeoutMillis() {

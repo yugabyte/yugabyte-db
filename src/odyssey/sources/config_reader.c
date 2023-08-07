@@ -2420,3 +2420,46 @@ int od_config_reader_import(od_config_t *config, od_rules_t *rules,
 
 	return rc;
 }
+
+void yb_read_conf_from_env_var(od_rules_t *rules, od_config_t *config,
+			       od_logger_t *logger)
+{
+	char *yb_username = getenv("YB_YSQL_CONN_MGR_USER");
+	char *yb_password = getenv("YB_YSQL_CONN_MGR_PASSWORD");
+
+	if ((yb_username == NULL) && (yb_password == NULL))
+		return;
+
+	/* strlen returns 0 if the env var is not set. */
+	const int yb_username_len = strlen(yb_username);
+	const int yb_password_len = strlen(yb_password);
+
+	od_list_t *i;
+	/* rules */
+	od_list_foreach(&rules->rules, i)
+	{
+		od_rule_t *rule;
+		rule = od_container_of(i, od_rule_t, link);
+
+		/* Set storage_user */
+		if (yb_username != NULL) {
+			if (rule->storage_user)
+				free(rule->storage_user);
+			rule->storage_user = (char *)malloc(
+				sizeof(char) * (yb_username_len + 1));
+			strcpy(rule->storage_user, yb_username);
+			rule->storage_user_len = strlen(rule->storage_user);
+		}
+
+		/* Set storage_password */
+		if (yb_password != NULL) {
+			if (rule->storage_password)
+				free(rule->storage_password);
+			rule->storage_password = (char *)malloc(
+				sizeof(char) * (yb_password_len + 1));
+			strcpy(rule->storage_password, yb_password);
+			rule->storage_password_len =
+				strlen(rule->storage_password);
+		}
+	}
+}

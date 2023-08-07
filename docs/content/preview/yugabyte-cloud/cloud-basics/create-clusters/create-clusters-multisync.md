@@ -13,17 +13,9 @@ type: docs
 
 Clusters [replicated across regions](../../create-clusters-topology/#replicate-across-regions) include a minimum of 3 nodes spread across 3 regions with a replication factor (RF) of 3. You can add or remove nodes in increments of 3 (each region has the same number of nodes).
 
-## Features
+Currently, Azure is not supported for replicated across region clusters (coming soon).
 
-Multi-region replicated clusters include the following features:
-
-- Replicated synchronously across 3 regions with a [replication factor](../../../../architecture/docdb-replication/replication/) (RF) of 3.
-- No limit on cluster size - choose any cluster size based on your use case.
-- Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
-- VPC networking required.
-- Automated and on-demand backups.
-- Available in all [regions](../../../release-notes#cloud-provider-regions).
-- Enterprise support.
+{{< youtube id="fCjTB8IuTuA" title="Create a multi-region cluster in YugabyteDB Managed" >}}
 
 ## Preferred region
 
@@ -39,11 +31,23 @@ You can enable [follower reads](../../../../explore/ysql-language-features/going
 
 In cases where the cluster has read replicas and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region.
 
+## Features
+
+Multi-region replicated clusters include the following features:
+
+- Replicated synchronously across 3 regions with a [replication factor](../../../../architecture/docdb-replication/replication/) (RF) of 3.
+- No limit on cluster size - choose any cluster size based on your use case.
+- Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
+- VPC networking required.
+- Automated and on-demand backups.
+- Available in all [regions](../../create-clusters-overview/#cloud-provider-regions).
+- Enterprise support.
+
 ## Prerequisites
 
-- Multi-region clusters must be deployed in VPCs. Create a VPC for each region where you want to deploy the nodes in the cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [Peer VPCs](../../cloud-vpcs/cloud-add-vpc-aws/#create-a-vpc).
-- By default, clusters deployed in VPCs do not expose any publicly-accessible IP addresses. Unless you enable [Public Access](../../../cloud-secure-clusters/add-connections/), you can only connect to multi-region clusters from applications that reside on a peered network, and the peering connection must be Active. Refer to [Peering connections](../../cloud-vpcs/cloud-add-peering).
-- Create a billing profile and add a payment method before you can create a Dedicated cluster. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
+- Multi-region clusters must be deployed in VPCs. Create a VPC for each region where you want to deploy the nodes in the cluster. Refer to [VPC network overview](../../cloud-vpcs/cloud-vpc-intro/).
+- By default, clusters deployed in VPCs do not expose any publicly-accessible IP addresses. Unless you enable [Public Access](../../../cloud-secure-clusters/add-connections/), you can only connect from resources inside the VPC network. Refer to [VPC network overview](../../cloud-vpcs/).
+- A billing profile and payment method. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
 
 ## Create a multi-region replicated cluster
 
@@ -75,13 +79,15 @@ Set **Data Distribution** to **Replicate across regions**.
 
 **Regions**: For each region, choose the following:
 
-- the [region](../../../release-notes#cloud-provider-regions) where the nodes will be located.
+- the [region](../../create-clusters-overview/#cloud-provider-regions) where the nodes will be located.
 - the VPC in which to deploy the nodes. Only VPCs using the selected cloud provider and available in the selected region are listed. For AWS clusters, choose a separate VPC for each region. For GCP clusters, the same VPC is used for all regions. VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
 - The number of nodes to deploy in the regions. Each region has the same number of nodes.
 
 **Preferred region**: Optionally, assign one region as [preferred](#preferred-region) to handle all reads and writes.
 
-**Node size**: Enter the number of virtual CPUs per node and the disk size per node (in GB). You must choose the regions before you can set the node size.
+**Node size**: Enter the number of virtual CPUs per node, disk size per node (in GB), and disk input output (I/O) operations per second (IOPS) per node (AWS only). You must choose the regions before you can set the node size.
+
+The node throughput will be scaled according to the IOPS value. For large datasets or clusters with high concurrent transactions, higher IOPS is recommended. As disk IOPS is capped by vCPU, your vCPU and IOPS should be scaled together. Reference your current read and write IOPS performance for an estimation.
 
 Clusters replicated across regions support both horizontal and vertical scaling; you can change the cluster configuration and preferred region after the cluster is created using the **Edit Configuration** settings. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
 

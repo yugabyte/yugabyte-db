@@ -326,6 +326,7 @@ _outScanInfo(StringInfo str, const Scan *node)
 	_outPlanInfo(str, (const Plan *) node);
 
 	WRITE_UINT_FIELD(scanrelid);
+	WRITE_ENUM_FIELD(yb_lock_mechanism, YbLockMechanism);
 }
 
 /*
@@ -1871,6 +1872,7 @@ _outPathInfo(StringInfo str, const Path *node)
 	WRITE_FLOAT_FIELD(startup_cost, "%.2f");
 	WRITE_FLOAT_FIELD(total_cost, "%.2f");
 	WRITE_NODE_FIELD(pathkeys);
+	WRITE_ENUM_FIELD(yb_path_info.yb_lock_mechanism, YbLockMechanism);
 }
 
 /*

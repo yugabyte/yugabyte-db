@@ -1,11 +1,12 @@
 package cmd
 
 import (
-	"log"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
 func cleanCmd() *cobra.Command {
@@ -36,6 +37,17 @@ func cleanCmd() *cobra.Command {
 			}
 		},
 		Run: func(cmd *cobra.Command, args []string) {
+			state, err := ybactlstate.LoadState()
+			if err != nil {
+				log.Warn("failed to load internal state, continue with uninstall")
+				state = ybactlstate.New()
+			}
+			state.CurrentStatus = ybactlstate.CleaningStatus
+
+			// Ignore errors as we want to clean no matter what
+			if err := ybactlstate.StoreState(state); err != nil {
+				log.Warn("failed to update internal state - continue with uninstall")
+			}
 
 			// TODO: Only clean up per service.
 			// Clean up services in reverse order.
@@ -46,6 +58,14 @@ func cleanCmd() *cobra.Command {
 			}
 
 			common.Uninstall(serviceNames, removeData)
+			// If this is a soft clean, update internal state. Otherwise skip, as there is nothing left to
+			// update.
+			if !removeData {
+				state.CurrentStatus = ybactlstate.SoftCleanStatus
+				if err := ybactlstate.StoreState(state); err != nil {
+					log.Warn("failed to update internal state - continue with uninstall")
+				}
+			}
 		},
 	}
 	clean.Flags().BoolVar(&removeData, "all", false, "also clean out data (default: false)")

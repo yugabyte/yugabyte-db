@@ -2,16 +2,20 @@ package checks
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
+	"github.com/spf13/viper"
 	"github.com/xeipuuv/gojsonschema"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"sigs.k8s.io/yaml"
 )
 
 var ValidateInstallerConfig = &validateConfigCheck{"validate-config", false}
+var ValidateLocaleConfig = &validateLocaleConfig{"validate-locale-config", true}
 
 type validateConfigCheck struct {
 	name        string
@@ -90,5 +94,49 @@ func validateJSONSchema() error {
 	}
 
 	log.Info("Config at " + common.InputFile() + " was found to be valid.")
+	return nil
+}
+
+type validateLocaleConfig struct {
+	name        string
+	skipAllowed bool
+}
+
+func (l validateLocaleConfig) Name() string {
+	return l.name
+}
+
+func (l validateLocaleConfig) SkipAllowed() bool {
+	return l.skipAllowed
+}
+
+func (l validateLocaleConfig) Execute() Result {
+	res := Result{
+		Check:  l.name,
+		Status: StatusPassed,
+	}
+
+	res.Error = validateLocaleExists()
+	if res.Error != nil {
+		res.Status = StatusCritical
+	}
+	return res
+}
+
+// validateLocaleExists ensures that the postgres.install.locale specified exists on the system.
+func validateLocaleExists() error {
+	locale := viper.GetString("postgres.install.locale")
+	// Skip the test of no locale is given.
+	if locale == "" {
+		log.Debug("skipping locale check as non was given")
+		return nil
+	}
+	cmd := fmt.Sprintf("locale -a | grep -i \"^%s$\"", locale)
+	out := shell.RunShell(cmd)
+	if out.ExitCode != 0 {
+		return errors.New(fmt.Sprintf(
+			"locale %s does not exist. install the locale or update %s config to a "+
+				"locale found in 'locale -a'", locale, common.InputFile()))
+	}
 	return nil
 }

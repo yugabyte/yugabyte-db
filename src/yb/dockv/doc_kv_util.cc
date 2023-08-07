@@ -78,6 +78,16 @@ void Xor(Ch* begin, Ch* end) {
   }
 }
 
+template<char kChar, class Out>
+void Xor(Out* out, size_t old_size) {
+  Xor<kChar>(out->data() + old_size, out->data() + out->size());
+}
+
+template<char kChar>
+void Xor(ValueBuffer* out, size_t old_size) {
+  Xor<kChar>(out->mutable_data() + old_size, out->mutable_data() + out->size());
+}
+
 template <bool desc>
 void AppendEncodedStrToKey(const Slice& s, KeyBuffer *dest) {
   const auto* p = s.cdata();
@@ -105,12 +115,10 @@ inline void TerminateEncodedKeyStr(KeyBuffer *dest) {
 }
 
 template<char kEndOfString, class Out>
-Status DecodeEncodedStr(Slice* slice, Out* result) {
+Result<const char*> DecodeEncodedStr(const char* p, const char* end, Out* result) {
   static_assert(kEndOfString == '\0' || kEndOfString == '\xff',
                 "Invalid kEndOfString character. Only '\0' and '\xff' accepted");
   constexpr char kEndOfStringEscape = kEndOfString ^ 1;
-  const char* p = slice->cdata();
-  const char* end = p + slice->size();
   auto old_size = result->size();
 
   // Loop invariant: remaining bytes to be processed are [p, end)
@@ -118,7 +126,7 @@ Status DecodeEncodedStr(Slice* slice, Out* result) {
     auto stop = Find<kEndOfString>(p, end);
     if (PREDICT_FALSE(stop >= end - 1)) {
       if (stop == end) {
-        if (slice->empty()) {
+        if (p == end) {
           return STATUS(Corruption, "Encoded string is empty");
         }
         return STATUS(
@@ -146,8 +154,15 @@ Status DecodeEncodedStr(Slice* slice, Out* result) {
     result->append(p, stop + 1);
     p = stop + 2;
   } while (p != end);
-  slice->remove_prefix(p - slice->cdata());
-  Xor<kEndOfString>(result->data() + old_size, result->data() + result->size());
+  Xor<kEndOfString>(result, old_size);
+  return p;
+}
+
+template<char kEndOfString, class Out>
+Status DecodeEncodedStr(Slice* slice, Out* result) {
+  const auto* begin = VERIFY_RESULT(DecodeEncodedStr<kEndOfString>(
+     slice->cdata(), slice->cend(), result));
+  *slice = Slice(begin, slice->cend());
   return Status::OK();
 }
 
@@ -217,6 +232,25 @@ Status DecodeZeroEncodedStr(Slice* slice, std::string* result) {
     return DecodeEncodedStr<'\0'>(slice, &dev_null);
   }
   return DecodeEncodedStr<'\0'>(slice, result);
+}
+
+Result<const char*> DecodeZeroEncodedStr(const char* begin, const char* end, ValueBuffer* out) {
+  return DecodeEncodedStr<'\0'>(begin, end, out);
+}
+
+Result<const char*> SkipZeroEncodedStr(const char* begin, const char* end) {
+  DevNull dev_null;
+  return DecodeEncodedStr<'\0'>(begin, end, &dev_null);
+}
+
+Result<const char*> DecodeComplementZeroEncodedStr(
+    const char* begin, const char* end, ValueBuffer* out) {
+  return DecodeEncodedStr<'\xff'>(begin, end, out);
+}
+
+Result<const char*> SkipComplementZeroEncodedStr(const char* begin, const char* end) {
+  DevNull dev_null;
+  return DecodeEncodedStr<'\xff'>(begin, end, &dev_null);
 }
 
 Result<std::string> DecodeZeroEncodedStr(const Slice& encoded_str) {

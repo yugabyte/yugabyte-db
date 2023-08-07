@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import axios from 'axios';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBModal, YBButton } from '../../common/forms/fields';

@@ -253,7 +253,7 @@ void YBTable::RefreshPartitions(YBClient* client, StdStatusCallback callback) {
     }
     const auto& partitions = *result;
     {
-      std::lock_guard<rw_spinlock> partitions_lock(mutex_);
+      std::lock_guard partitions_lock(mutex_);
       if (partitions->version < partitions_->version) {
         // This might happen if another split happens after we had fetched partition in the current
         // thread from master leader and partition list has been concurrently updated to version

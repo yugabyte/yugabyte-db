@@ -281,7 +281,8 @@ Status XClusterSafeTimeService::CreateXClusterSafeTimeTableIfNotFound() {
         FLAGS_xcluster_safe_time_table_num_tablets);
   }
 
-  Status status = catalog_manager_->CreateTable(&req, &resp, nullptr /*RpcContext*/);
+  Status status = catalog_manager_->CreateTable(
+      &req, &resp, nullptr /*RpcContext*/, catalog_manager_->GetLeaderEpochInternal());
 
   // We do not lock here so it is technically possible that the table was already created.
   // If so, there is nothing to do so we just ignore the "AlreadyPresent" error.

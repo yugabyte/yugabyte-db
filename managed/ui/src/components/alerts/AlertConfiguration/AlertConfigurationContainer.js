@@ -33,6 +33,7 @@ import { closeDialog, openDialog } from '../../../actions/modal';
 import { fetchUniverseList, fetchUniverseListResponse } from '../../../actions/universe';
 import { AlertConfiguration } from './AlertConfiguration';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
+import { handleCACertErrMsg } from '../../customCACerts';
 
 const mapStateToProps = (state) => {
   return {
@@ -91,6 +92,9 @@ const mapDispatchToProps = (dispatch) => {
     createAlertChannel: (payload) => {
       return dispatch(createAlertChannel(payload)).then((response) => {
         if (response.error) {
+          if(handleCACertErrMsg(response.payload)){
+            return;
+          }
           toast.error(createErrorMessage(response.payload));
         } else {
           toast.success('Successfully created the channel');
@@ -141,6 +145,9 @@ const mapDispatchToProps = (dispatch) => {
       sendTestAlert(uuid).then((response) => {
         toast.success(response.data.message);
       }).catch((error) => {
+        if(handleCACertErrMsg(error)){
+          return;
+        }
         toast.error(createErrorMessage(error));
       });
     },

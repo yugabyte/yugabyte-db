@@ -150,7 +150,7 @@ TEST_F(EMCTest, TestUniquePorts) {
   }
 }
 
-TEST_F(EMCTest, YB_DISABLE_TEST_IN_TSAN(TestYSQLShutdown)) {
+TEST_F(EMCTest, TestYSQLShutdown) {
   ExternalMiniClusterOptions opts;
   opts.num_masters = master_peer_ports_.size();
   opts.num_tablet_servers = 3;

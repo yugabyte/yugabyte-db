@@ -32,7 +32,7 @@ using std::vector;
 using strings::Substitute;
 using yb::util::Decimal;
 using yb::util::DecimalFromComparable;
-using yb::util::VarInt;
+using yb::VarInt;
 using namespace std::chrono_literals;
 
 namespace yb {
@@ -1471,7 +1471,7 @@ TEST_F(QLTestSelectedExpr, TestTserverTimeout) {
   // Make sure a select statement works.
   CHECK_VALID_STMT("SELECT count(*) FROM test_table WHERE h = 1;");
   // Set a flag to simulate tserver timeout and now check that select produces an error.
-  FLAGS_TEST_tserver_timeout = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_timeout) = true;
   CHECK_INVALID_STMT("SELECT count(*) FROM test_table WHERE h = 1;");
 }
 

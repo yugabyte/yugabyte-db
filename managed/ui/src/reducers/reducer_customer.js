@@ -12,8 +12,6 @@ import {
   FETCH_ADMIN_NOTIFICATIONS_RESPONSE,
   LOGIN,
   LOGIN_RESPONSE,
-  INSECURE_LOGIN,
-  INSECURE_LOGIN_RESPONSE,
   INVALID_CUSTOMER_TOKEN,
   RESET_TOKEN_ERROR,
   RESET_CUSTOMER,
@@ -25,6 +23,8 @@ import {
   FETCH_SOFTWARE_VERSIONS,
   FETCH_TLS_CERTS,
   FETCH_TLS_CERTS_RESPONSE,
+  FETCH_OIDC_TOKEN,
+  FETCH_OIDC_TOKEN_RESPONSE,
   ADD_TLS_CERT,
   ADD_TLS_CERT_RESPONSE,
   ADD_TLS_CERT_RESET,
@@ -142,6 +142,7 @@ const INITIAL_STATE = {
   deleteAlertConfig: getInitialState([]),
   hostInfo: null,
   customerCount: {},
+  OIDCToken: getInitialState({}),
   yugawareVersion: getInitialState({}),
   profile: getInitialState({}),
   addConfig: getInitialState({}),
@@ -205,17 +206,6 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'apiToken', null);
     case API_TOKEN_RESPONSE:
       return setPromiseResponse(state, 'apiToken', action);
-
-    case INSECURE_LOGIN:
-      return {
-        ...state,
-        INSECURE_apiToken: null
-      };
-    case INSECURE_LOGIN_RESPONSE:
-      return {
-        ...state,
-        INSECURE_apiToken: action.payload.data.apiToken
-      };
     case LOGOUT:
       return { ...state };
     case LOGOUT_SUCCESS:
@@ -262,6 +252,10 @@ export default function (state = INITIAL_STATE, action) {
     case FETCH_HOST_INFO_FAILURE:
       return { ...state, hostInfo: null };
 
+    case FETCH_OIDC_TOKEN:
+      return setLoadingState(state, 'OIDCToken', {});
+    case FETCH_OIDC_TOKEN_RESPONSE:
+      return setPromiseResponse(state, 'OIDCToken', action);
     case UPDATE_PROFILE:
       return setLoadingState(state, 'profile');
     case UPDATE_PROFILE_SUCCESS:

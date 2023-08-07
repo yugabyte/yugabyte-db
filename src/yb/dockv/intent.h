@@ -13,15 +13,24 @@
 
 #pragma once
 
+#include <ostream>
+#include <string>
+
 #include <boost/function.hpp>
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/transaction.h"
 
 #include "yb/dockv/dockv_fwd.h"
-#include "yb/util/ref_cnt_buffer.h"
 
-namespace yb::dockv {
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+
+namespace yb {
+
+class RefCntPrefix;
+
+namespace dockv {
 
 // We may write intents with empty groups to intents_db, but when interacting with SharedLockManager
 // or WaitQueue, we expect no kGroupEnd markers in keys. This method normalizes the passed in key to
@@ -109,8 +118,9 @@ Result<DecodedIntentValue> DecodeIntentValue(
 // Decodes transaction ID from intent value. Consumes it from intent_value slice.
 Result<TransactionId> DecodeTransactionIdFromIntentValue(Slice* intent_value);
 
-IntentTypeSet GetIntentTypeSet(
-    IsolationLevel level, OperationKind operation_kind, RowMarkType row_mark);
+IntentTypeSet GetIntentTypesForRead(IsolationLevel level, RowMarkType row_mark);
+
+IntentTypeSet GetIntentTypesForWrite(IsolationLevel level);
 
 inline IntentTypeSet MakeWeak(IntentTypeSet inp) {
   static constexpr auto kWeakIntentMask = (1 << kStrongIntentFlag) - 1;
@@ -160,4 +170,5 @@ Status EnumerateIntents(
     KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
     LastKey last_key = LastKey::kFalse);
 
-}  // namespace yb::dockv
+}  // namespace dockv
+}  // namespace yb

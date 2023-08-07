@@ -94,7 +94,7 @@ func main() {
 
         // We keep a map of pgx connections since we need to
         // connect to all nodes (sql) for slow_queries
-        pgxConnMap := map[string]*pgxpool.Pool{}
+        pgxConnMap := map[helpers.PgClientConnectionParams]*pgxpool.Pool{}
 
         // We don't actually need a pgx connection at startup
         // The only place we use pgx connection is in slow_queries
@@ -129,6 +129,7 @@ func main() {
         defer c.Cleanup()
 
         // Middleware
+        e.Use(middleware.CORS())
         e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
                 LogErrorFunc: func(c echo.Context, err error, stack []byte) error {
                         log.Errorf("[PANIC RECOVER] %v %s\n", err, stack)
@@ -184,6 +185,9 @@ func main() {
         // GetClusterMetric - Get a metric for a cluster
         e.GET("/api/metrics", c.GetClusterMetric)
 
+        // GetClusterActivities - Get activity data of a cluster
+        e.GET("/api/activities", c.GetClusterActivities)
+
         // GetClusterNodes - Get the nodes for a cluster
         e.GET("/api/nodes", c.GetClusterNodes)
 
@@ -207,6 +211,15 @@ func main() {
 
         // GetIsLoadBalancerIdle - Check if cluster load balancer is idle
         e.GET("/api/is_load_balancer_idle", c.GetIsLoadBalancerIdle)
+
+        // GetGflagsJson - Retrieve the gflags from Master and Tserver process
+        e.GET("/api/gflags", c.GetGflagsJson)
+
+        // GetClusterAlerts - Get list of any current cluster alerts
+        e.GET("/api/alerts", c.GetClusterAlerts)
+
+        // GetTableInfo - Get info on a single table, given table uuid
+        e.GET("/api/table", c.GetTableInfo)
 
         render_htmls := templates.NewTemplate()
 

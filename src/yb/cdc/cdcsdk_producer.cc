@@ -59,8 +59,17 @@ DEFINE_RUNTIME_bool(
     "Enable packing updates corresponding to a row in single CDC record");
 
 DEFINE_RUNTIME_bool(
-    cdc_populate_safepoint_record, false,
+    cdc_populate_safepoint_record, true,
     "If 'true' we will also send a 'SAFEPOINT' record at the end of each GetChanges call.");
+
+DEFINE_NON_RUNTIME_bool(
+    cdc_enable_consistent_records, true,
+    "If 'true' we will ensure that the records are order by the commit_time.");
+
+DEFINE_RUNTIME_uint64(
+    cdc_stream_records_threshold_size_bytes, 4_MB,
+    "The threshold for the size of the response of a GetChanges call. The actual size may be a "
+    "little higher than this value.");
 
 DEFINE_test_flag(
     bool, cdc_snapshot_failure, false,
@@ -70,6 +79,12 @@ DEFINE_RUNTIME_bool(
     cdc_populate_end_markers_transactions, true,
     "If 'true', we will also send 'BEGIN' and 'COMMIT' records for both single shard and multi "
     "shard transactions");
+
+DEFINE_NON_RUNTIME_int64(
+    cdc_resolve_intent_lag_threshold_ms, 5 * 60 * 1000,
+    "The lag threshold in milli seconds between the hybrid time returned by "
+    "GetMinStartTimeAmongAllRunningTransactions and LeaderSafeTime, when we decide the "
+    "ConsistentStreamSafeTime for CDCSDK by resolving all committed intetns");
 
 DECLARE_bool(ysql_enable_packed_row);
 
@@ -350,16 +365,21 @@ Result<size_t> PopulatePackedRows(
 }
 
 HybridTime GetCDCSDKSafeTimeForTarget(
-    const HybridTime leader_safe_time,
-    HybridTime ht_of_last_returned_message,
-    HaveMoreMessages have_more_messages) {
-  if (have_more_messages) {
-    return ht_of_last_returned_message;
+    const HybridTime leader_safe_time, HybridTime safe_hybrid_time_resp,
+    HaveMoreMessages have_more_messages, const uint64_t& consistent_stream_safe_time,
+    const bool& is_snapshot_op) {
+  if (FLAGS_cdc_enable_consistent_records || is_snapshot_op) {
+    return safe_hybrid_time_resp.is_valid() ? safe_hybrid_time_resp
+                                            : HybridTime(consistent_stream_safe_time);
   }
 
-  if (ht_of_last_returned_message.is_valid()) {
-    if (!leader_safe_time.is_valid() || ht_of_last_returned_message > leader_safe_time) {
-      return ht_of_last_returned_message;
+  if (have_more_messages) {
+    return safe_hybrid_time_resp;
+  }
+
+  if (safe_hybrid_time_resp.is_valid()) {
+    if (!leader_safe_time.is_valid() || safe_hybrid_time_resp > leader_safe_time) {
+      return safe_hybrid_time_resp;
     }
   }
 
@@ -1127,6 +1147,47 @@ Status PopulateCDCSDKWriteRecord(
   return Status::OK();
 }
 
+Status PopulateCDCSDKWriteRecordWithInvalidSchemaRetry(
+    const ReplicateMsgPtr& msg,
+    const StreamMetadata& metadata,
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+    const EnumOidLabelMap& enum_oid_label_map,
+    const CompositeAttsMap& composite_atts_map,
+    SchemaDetailsMap* cached_schema_details,
+    GetChangesResponsePB* resp,
+    client::YBClient* client) {
+  const auto& records_size_before = resp->cdc_sdk_proto_records_size();
+
+  auto status = PopulateCDCSDKWriteRecord(
+      msg, metadata, tablet_peer, enum_oid_label_map, composite_atts_map, cached_schema_details,
+      resp, client);
+
+  if (!status.ok()) {
+    VLOG_WITH_FUNC(1) << "Recevied error status: " << status.ToString()
+                      << ", while prcoessing WRITE_OP, with op_id: " << msg->id().ShortDebugString()
+                      << ", on tablet: " << tablet_peer->tablet_id();
+    // Remove partial remnants created while processing the write record
+    while (resp->cdc_sdk_proto_records_size() > records_size_before) {
+      resp->mutable_cdc_sdk_proto_records()->RemoveLast();
+    }
+
+    // Clear the scheam for all the colocated tables assocaited with the tablet
+    auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+    for (auto const& cur_table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
+      auto it = cached_schema_details->find(cur_table_id);
+      if (it != cached_schema_details->end()) {
+        (*cached_schema_details).erase(it);
+      }
+    }
+
+    auto status = PopulateCDCSDKWriteRecord(
+        msg, metadata, tablet_peer, enum_oid_label_map, composite_atts_map, cached_schema_details,
+        resp, client);
+  }
+
+  return status;
+}
+
 Status PopulateCDCSDKDDLRecord(
     const ReplicateMsgPtr& msg, CDCSDKProtoRecordPB* proto_record, const string& table_name,
     const Schema& schema) {
@@ -1317,8 +1378,6 @@ Status ProcessIntents(
         commit_time, client));
   }
 
-  SetTermIndex(op_id.term, op_id.index, checkpoint);
-
   if (stream_state->key.empty() && stream_state->write_id == 0) {
     if (FLAGS_cdc_populate_end_markers_transactions) {
       FillCommitRecord(op_id, transaction_id, tablet_peer, checkpoint, resp, commit_time);
@@ -1330,6 +1389,56 @@ Status ProcessIntents(
   return Status::OK();
 }
 
+Status PrcoessIntentsWithInvalidSchemaRetry(
+    const OpId& op_id,
+    const TransactionId& transaction_id,
+    const StreamMetadata& metadata,
+    const EnumOidLabelMap& enum_oid_label_map,
+    const CompositeAttsMap& composite_atts_map,
+    GetChangesResponsePB* resp,
+    ScopedTrackedConsumption* consumption,
+    CDCSDKCheckpointPB* checkpoint,
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+    std::vector<docdb::IntentKeyValueForCDC>* keyValueIntents,
+    docdb::ApplyTransactionState* stream_state,
+    client::YBClient* client,
+    SchemaDetailsMap* cached_schema_details,
+    const uint64_t& commit_time) {
+  const auto& records_size_before = resp->cdc_sdk_proto_records_size();
+
+  auto status = ProcessIntents(
+      op_id, transaction_id, metadata, enum_oid_label_map, composite_atts_map, resp, consumption,
+      checkpoint, tablet_peer, keyValueIntents, stream_state, client, cached_schema_details,
+      commit_time);
+
+  if (!status.ok()) {
+    VLOG_WITH_FUNC(1) << "Recevied error status: " << status.ToString()
+                      << ", while prcoessing intents for transaction: " << transaction_id
+                      << ", with APPLY op_id: " << op_id
+                      << ", on tablet: " << tablet_peer->tablet_id();
+    // Remove partial remnants created while processing intents
+    while (resp->cdc_sdk_proto_records_size() > records_size_before) {
+      resp->mutable_cdc_sdk_proto_records()->RemoveLast();
+    }
+
+    // Clear the scheam for all the colocated tables assocaited with the tablet
+    auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
+    for (auto const& cur_table_id : tablet_peer->tablet_metadata()->GetAllColocatedTables()) {
+      auto it = cached_schema_details->find(cur_table_id);
+      if (it != cached_schema_details->end()) {
+        (*cached_schema_details).erase(it);
+      }
+    }
+
+    status = ProcessIntents(
+        op_id, transaction_id, metadata, enum_oid_label_map, composite_atts_map, resp, consumption,
+        checkpoint, tablet_peer, keyValueIntents, stream_state, client, cached_schema_details,
+        commit_time);
+  }
+
+  return status;
+}
+
 Status PopulateCDCSDKSnapshotRecord(
     GetChangesResponsePB* resp,
     const qlexpr::QLTableRow* row,
@@ -1338,6 +1447,8 @@ Status PopulateCDCSDKSnapshotRecord(
     ReadHybridTime time,
     const EnumOidLabelMap& enum_oid_label_map,
     const CompositeAttsMap& composite_atts_map,
+    const CDCSDKCheckpointPB& snapshot_op_id,
+    const std::string& snapshot_record_key,
     bool is_ysql_table) {
   CDCSDKProtoRecordPB* proto_record = nullptr;
   RowMessage* row_message = nullptr;
@@ -1349,6 +1460,10 @@ Status PopulateCDCSDKSnapshotRecord(
   row_message->set_pgschema_name(schema.SchemaName());
   row_message->set_commit_time(time.read.ToUint64());
   row_message->set_record_time(time.read.ToUint64());
+
+  proto_record->mutable_cdc_sdk_op_id()->set_term(snapshot_op_id.term());
+  proto_record->mutable_cdc_sdk_op_id()->set_index(snapshot_op_id.index());
+  proto_record->mutable_cdc_sdk_op_id()->set_write_id_key(snapshot_record_key);
 
   DatumMessagePB* cdc_datum_message = nullptr;
 
@@ -1425,11 +1540,470 @@ bool VerifyTabletSplitOnParentTablet(
 }
 }  // namespace
 
+bool IsWriteOp(const std::shared_ptr<yb::consensus::LWReplicateMsg>& msg) {
+  return msg->op_type() == consensus::OperationType::WRITE_OP;
+}
+
+bool IsIntent(const std::shared_ptr<yb::consensus::LWReplicateMsg>& msg) {
+  return IsWriteOp(msg) && msg->write().write_batch().has_transaction();
+}
+
+bool IsUpdateTransactionOp(const std::shared_ptr<yb::consensus::LWReplicateMsg>& msg) {
+  return msg->op_type() == consensus::OperationType::UPDATE_TRANSACTION_OP;
+}
+
+// Returns the transaction commit time in case of a multi shard transaction, else returns the
+// message hybrid time.
+uint64_t GetTransactionCommitTime(const std::shared_ptr<yb::consensus::LWReplicateMsg>& msg) {
+  return IsUpdateTransactionOp(msg) ? msg->transaction_state().commit_hybrid_time()
+                                    : msg->hybrid_time();
+}
+
+void SortConsistentWALRecords(
+    std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* consistent_wal_records) {
+  std::sort(
+      (*consistent_wal_records).begin(), (*consistent_wal_records).end(),
+      [](const std::shared_ptr<yb::consensus::LWReplicateMsg>& lhs,
+         const std::shared_ptr<yb::consensus::LWReplicateMsg>& rhs) -> bool {
+        const auto& lhs_commit_time = GetTransactionCommitTime(lhs);
+        const auto& rhs_commit_time = GetTransactionCommitTime(rhs);
+        return lhs_commit_time == rhs_commit_time ? lhs->id().index() < rhs->id().index()
+                                                  : lhs_commit_time < rhs_commit_time;
+      });
+}
+
+Status GetConsistentWALRecords(
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const MemTrackerPtr& mem_tracker,
+    consensus::ReplicateMsgsHolder* msgs_holder, ScopedTrackedConsumption* consumption,
+    const uint64_t& consistent_safe_time, const OpId& historical_max_op_id,
+    bool* wait_for_wal_update, OpId* last_seen_op_id, int64_t** last_readable_opid_index,
+    const int64_t& safe_hybrid_time_req, const CoarseTimePoint& deadline,
+    std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* consistent_wal_records,
+    std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* all_checkpoints) {
+  VLOG(2) << "Getting consistent WAL records. safe_hybrid_time_req: " << safe_hybrid_time_req
+          << ", consistent_safe_time: " << consistent_safe_time
+          << ", last_seen_op_id: " << last_seen_op_id->ToString()
+          << ", historical_max_op_id: " << historical_max_op_id;
+  auto consensus = VERIFY_RESULT(tablet_peer->GetConsensus());
+  do {
+    auto read_ops = VERIFY_RESULT(consensus->ReadReplicatedMessagesForCDC(
+        *last_seen_op_id, *last_readable_opid_index, deadline));
+
+    if (read_ops.messages.empty()) {
+      VLOG_WITH_FUNC(1) << "Did not get any messages with current batch of 'read_ops'."
+                        << "last_seen_op_id: " << *last_seen_op_id << ", last_readable_opid_index "
+                        << **last_readable_opid_index;
+      break;
+    }
+
+    if (read_ops.read_from_disk_size && mem_tracker) {
+      (*consumption) = ScopedTrackedConsumption(mem_tracker, read_ops.read_from_disk_size);
+    }
+
+    for (const auto& msg : read_ops.messages) {
+      last_seen_op_id->term = msg->id().term();
+      last_seen_op_id->index = msg->id().index();
+
+      if (IsIntent(msg) || (IsUpdateTransactionOp(msg) &&
+                            msg->transaction_state().status() != TransactionStatus::APPLYING)) {
+        continue;
+      }
+
+      if (VLOG_IS_ON(3) && IsUpdateTransactionOp(msg) &&
+          msg->transaction_state().status() == TransactionStatus::APPLYING) {
+        auto txn_id =
+            VERIFY_RESULT(FullyDecodeTransactionId(msg->transaction_state().transaction_id()));
+        VLOG(3) << "Read transaction in WAL on "
+                << "tablet_id: " << tablet_peer->tablet_id() << ", transaction_id: " << txn_id
+                << ", OpId: " << msg->id().term() << "." << msg->id().index()
+                << ", commit_time: " << GetTransactionCommitTime(msg)
+                << ", consistent safe_time: " << consistent_safe_time
+                << ", safe_hybrid_time_req: " << safe_hybrid_time_req;
+      } else if (VLOG_IS_ON(3)) {
+        VLOG(3) << "Read WAL msg on "
+                << "tablet_id: " << tablet_peer->tablet_id() << ", op_type: " << msg->op_type()
+                << ", OpId: " << msg->id().term() << "." << msg->id().index()
+                << ", commit_time: " << GetTransactionCommitTime(msg)
+                << ", consistent safe_time: " << consistent_safe_time
+                << ", safe_hybrid_time_req: " << safe_hybrid_time_req;
+      }
+
+      all_checkpoints->push_back(msg);
+      consistent_wal_records->push_back(msg);
+    }
+
+    if (read_ops.messages.size() > 0) {
+      *msgs_holder = consensus::ReplicateMsgsHolder(
+          nullptr, std::move(read_ops.messages), std::move((*consumption)));
+    }
+  } while (((*last_readable_opid_index) && last_seen_op_id->index < **last_readable_opid_index));
+
+  // Handle the case where WAL doesn't have the apply record for all the committed transactions.
+  if (historical_max_op_id.valid() && historical_max_op_id > *last_seen_op_id) {
+    (*wait_for_wal_update) = true;
+  }
+
+  SortConsistentWALRecords(consistent_wal_records);
+  VLOG_WITH_FUNC(1) << "Got a total of " << consistent_wal_records->size() << " WAL records "
+                    << "in the current segment";
+  return Status::OK();
+}
+
+Status GetWALRecords(
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const MemTrackerPtr& mem_tracker,
+    consensus::ReplicateMsgsHolder* msgs_holder, ScopedTrackedConsumption* consumption,
+    const uint64_t& consistent_safe_time, OpId* last_seen_op_id, int64_t** last_readable_opid_index,
+    const int64_t& safe_hybrid_time, const CoarseTimePoint& deadline, bool skip_intents,
+    std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* wal_records,
+    std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>* all_checkpoints) {
+  auto consensus = VERIFY_RESULT(tablet_peer->GetConsensus());
+  auto read_ops = VERIFY_RESULT(consensus->ReadReplicatedMessagesForCDC(
+      *last_seen_op_id, *last_readable_opid_index, deadline));
+
+  if (read_ops.messages.empty()) {
+    VLOG_WITH_FUNC(1) << "Did not get any messages with current batch of 'read_ops'."
+                      << "last_seen_op_id: " << last_seen_op_id << ", last_readable_opid_index "
+                      << *last_readable_opid_index;
+    return Status::OK();
+  }
+
+  if (read_ops.read_from_disk_size && mem_tracker) {
+    (*consumption) = ScopedTrackedConsumption(mem_tracker, read_ops.read_from_disk_size);
+  }
+
+  for (const auto& msg : read_ops.messages) {
+    last_seen_op_id->term = msg->id().term();
+    last_seen_op_id->index = msg->id().index();
+
+    bool is_intent_or_invalid_transaction_op =
+        IsIntent(msg) || (IsUpdateTransactionOp(msg) &&
+                          msg->transaction_state().status() != TransactionStatus::APPLYING);
+
+    if (skip_intents && is_intent_or_invalid_transaction_op) {
+      continue;
+    }
+
+    if (!is_intent_or_invalid_transaction_op) {
+      all_checkpoints->push_back(msg);
+    }
+
+    wal_records->push_back(msg);
+  }
+
+  if (read_ops.messages.size() > 0) {
+    *msgs_holder = consensus::ReplicateMsgsHolder(
+        nullptr, std::move(read_ops.messages), std::move((*consumption)));
+  }
+
+  return Status::OK();
+}
+
+// Basic sanity checks on the wal_segment_index recieved from the request.
+int GetWalSegmentIndex(const int& wal_segment_index_req) {
+  if (!FLAGS_cdc_enable_consistent_records) return 0;
+  return wal_segment_index_req >= 0 ? wal_segment_index_req : 0;
+}
+
+// Returns 'true' if we should update the response safe time to the record's commit time.
+uint64_t ShouldUpdateSafeTime(
+    const std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>& wal_records,
+    const size_t& current_index) {
+  const auto& msg = wal_records[current_index];
+
+  if (IsUpdateTransactionOp(msg)) {
+    const auto& txn_id = msg->transaction_state().transaction_id();
+    const auto& commit_time = GetTransactionCommitTime(msg);
+
+    size_t index = current_index + 1;
+    while ((index < wal_records.size()) &&
+           (GetTransactionCommitTime(wal_records[index]) == commit_time)) {
+      // Return false if we find single shard txn, or multi-shard txn with different txn_id.
+      if (!IsUpdateTransactionOp(wal_records[index]) ||
+          wal_records[index]->transaction_state().transaction_id() != txn_id) {
+        return false;
+      }
+      index++;
+    }
+  } else {
+    if (wal_records.size() > (current_index + 1)) {
+      return GetTransactionCommitTime(wal_records[current_index + 1]) !=
+             GetTransactionCommitTime(wal_records[current_index]);
+    }
+  }
+
+  return true;
+}
+
+// Returns 'true' if we know for sure that the split corresponding to the 'split_op_index'
+// had failed.
+bool HasSplitFailed(
+    const std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>& wal_records,
+    const size_t& split_op_index) {
+  // If there is a wal record that can't exist after a successful split we know
+  // that the split_op corresponds to an unsuccesful split attempt.
+  for (size_t index = split_op_index + 1; index < wal_records.size(); ++index) {
+    const auto& msg = wal_records[index];
+    if (msg->op_type() == consensus::OperationType::UPDATE_TRANSACTION_OP ||
+        msg->op_type() == consensus::OperationType::WRITE_OP ||
+        msg->op_type() == consensus::OperationType::CHANGE_METADATA_OP ||
+        msg->op_type() == consensus::OperationType::TRUNCATE_OP ||
+        msg->op_type() == consensus::OperationType::SPLIT_OP) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Checks if based on the order of records and wal msg that we streamed, it is possible to increment
+// the checkpoint op id. It also updates the wal_segment_index accordingly.
+bool CanUpdateCheckpointOpId(
+    const std::shared_ptr<yb::consensus::LWReplicateMsg>& msg, size_t* next_checkpoint_index,
+    const std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>& all_checkpoints,
+    int* wal_segment_index) {
+  bool update_checkpoint = false;
+
+  if (!FLAGS_cdc_enable_consistent_records) {
+    --(*wal_segment_index);
+    ++(*next_checkpoint_index);
+    return true;
+  }
+
+  while ((*next_checkpoint_index) < all_checkpoints.size() &&
+         ((GetTransactionCommitTime(all_checkpoints[*next_checkpoint_index]) <
+           GetTransactionCommitTime(msg)) ||
+          (all_checkpoints[*next_checkpoint_index]->id().index() == msg->id().index()))) {
+    --(*wal_segment_index);
+    ++(*next_checkpoint_index);
+    update_checkpoint = true;
+  }
+  return update_checkpoint;
+}
+
+Result<uint64_t> GetConsistentStreamSafeTime(
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const tablet::TabletPtr& tablet_ptr,
+    const HybridTime& leader_safe_time, const int64_t& safe_hybrid_time_req,
+    const CoarseTimePoint& deadline) {
+  HybridTime consistent_stream_safe_time =
+      tablet_ptr->transaction_participant()->GetMinStartTimeAmongAllRunningTransactions();
+  consistent_stream_safe_time = consistent_stream_safe_time == HybridTime::kInvalid
+                                    ? leader_safe_time
+                                    : consistent_stream_safe_time;
+
+  VLOG_WITH_FUNC(3) << "Getting consistent_stream_safe_time. consistent_stream_safe_time: "
+                    << consistent_stream_safe_time.ToUint64()
+                    << ", safe_hybrid_time_req: " << safe_hybrid_time_req
+                    << ", leader_safe_time: " << leader_safe_time.ToUint64()
+                    << ", tablet_id: " << tablet_peer->tablet_id();
+
+  if (!consistent_stream_safe_time.is_valid()) {
+    VLOG_WITH_FUNC(3) << "We'll use the leader_safe_time as the consistent_stream_safe_time, since "
+                         "GetMinStartTimeAmongAllRunningTransactions returned an invalid "
+                         "value";
+    return leader_safe_time.ToUint64();
+  } else if (
+      (safe_hybrid_time_req > 0 &&
+       consistent_stream_safe_time.ToUint64() < (uint64_t)safe_hybrid_time_req) ||
+      (int64_t)leader_safe_time.GetPhysicalValueMillis() -
+              (int64_t)consistent_stream_safe_time.GetPhysicalValueMillis() >
+          FLAGS_cdc_resolve_intent_lag_threshold_ms) {
+    VLOG_WITH_FUNC(3)
+        << "Calling 'ResolveIntents' since the lag between consistent_stream_safe_time: "
+        << consistent_stream_safe_time << ", and leader_safe_time: " << leader_safe_time
+        << ", is greater than: FLAGS_cdc_resolve_intent_lag_threshold_ms: "
+        << FLAGS_cdc_resolve_intent_lag_threshold_ms;
+
+    RETURN_NOT_OK(
+        tablet_ptr->transaction_participant()->ResolveIntents(leader_safe_time, deadline));
+
+    return leader_safe_time.ToUint64();
+  }
+
+  return safe_hybrid_time_req > 0
+             // It is possible for us to receive a transaction with begin time lower than
+             // a previously fetched leader_safe_time. So, we need a max of safe time from
+             // request and consistent_stream_safe_time here.
+             ? std::max(consistent_stream_safe_time.ToUint64(), (uint64_t)safe_hybrid_time_req)
+             : consistent_stream_safe_time.ToUint64();
+}
+
+void SetSafetimeFromRequestIfInvalid(
+    const int64_t& safe_hybrid_time_req, HybridTime* safe_hybrid_time_resp) {
+  if (!safe_hybrid_time_resp->is_valid()) {
+    *safe_hybrid_time_resp = HybridTime((safe_hybrid_time_req > 0) ? safe_hybrid_time_req : 0);
+  }
+}
+
+void UpdateSafetimeForResponse(
+    const std::shared_ptr<yb::consensus::LWReplicateMsg>& msg, const bool& update_safe_time,
+    const int64_t& safe_hybrid_time_req, HybridTime* safe_hybrid_time_resp) {
+  if (!FLAGS_cdc_enable_consistent_records) {
+    *safe_hybrid_time_resp = HybridTime(GetTransactionCommitTime(msg));
+    return;
+  }
+
+  if (update_safe_time) {
+    const auto& commit_time = GetTransactionCommitTime(msg);
+    if ((int64_t)commit_time >= safe_hybrid_time_req &&
+        (!safe_hybrid_time_resp->is_valid() || safe_hybrid_time_resp->ToUint64() < commit_time)) {
+      *safe_hybrid_time_resp = HybridTime(GetTransactionCommitTime(msg));
+      return;
+    }
+  }
+
+  SetSafetimeFromRequestIfInvalid(safe_hybrid_time_req, safe_hybrid_time_resp);
+}
+
+// Update the response safetime, wal_segmemt_index and checkpoint op id based on the WAL msg
+// that was streamed.
+void AcknowledgeStreamedMsg(
+    const std::shared_ptr<yb::consensus::LWReplicateMsg>& msg, const bool& update_safe_time,
+    const int64_t& safe_hybrid_time_req, size_t* next_checkpoint_index,
+    const std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>& all_checkpoints,
+    CDCSDKCheckpointPB* checkpoint, OpId* last_streamed_op_id, HybridTime* safe_hybrid_time_resp,
+    int* wal_segment_index) {
+  UpdateSafetimeForResponse(msg, update_safe_time, safe_hybrid_time_req, safe_hybrid_time_resp);
+  ++(*wal_segment_index);
+  if (CanUpdateCheckpointOpId(msg, next_checkpoint_index, all_checkpoints, wal_segment_index)) {
+    auto msg = all_checkpoints[(*next_checkpoint_index) - 1];
+    SetCheckpoint(msg->id().term(), msg->id().index(), 0, "", 0, checkpoint, last_streamed_op_id);
+  }
+}
+
+// Update the response safetime, wal_segmemt_index and checkpoint op id considering we streamed
+// a multi-shard transaction.
+void AcknowledgeStreamedMultiShardTxn(
+    const std::shared_ptr<yb::consensus::LWReplicateMsg>& msg, const bool& update_safe_time,
+    const int64_t& safe_hybrid_time_req, size_t* next_checkpoint_index,
+    const std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>>& all_checkpoints,
+    CDCSDKCheckpointPB* checkpoint, OpId* last_streamed_op_id, HybridTime* safe_hybrid_time_resp,
+    int* wal_segment_index) {
+  UpdateSafetimeForResponse(msg, update_safe_time, safe_hybrid_time_req, safe_hybrid_time_resp);
+  ++(*wal_segment_index);
+  if (CanUpdateCheckpointOpId(msg, next_checkpoint_index, all_checkpoints, wal_segment_index)) {
+    const auto& msg = all_checkpoints[(*next_checkpoint_index) - 1];
+    const int64_t& term = msg->id().term();
+    const int64_t& index = msg->id().index();
+    SetTermIndex(term, index, checkpoint);
+    last_streamed_op_id->term = term;
+    last_streamed_op_id->index = index;
+  }
+}
+
+Status HandleGetChangesForSnapshotRequest(
+    const xrepl::StreamId& stream_id, const TabletId& tablet_id,
+    const CDCSDKCheckpointPB& from_op_id, const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+    const EnumOidLabelMap& enum_oid_label_map, const CompositeAttsMap& composite_atts_map,
+    client::YBClient* client, GetChangesResponsePB* resp, SchemaDetailsMap* cached_schema_details,
+    const TableId& colocated_table_id, const tablet::TabletPtr& tablet_ptr, string* table_name,
+    CDCSDKCheckpointPB* checkpoint, bool* checkpoint_updated, HybridTime* safe_hybrid_time_resp) {
+  auto txn_participant = tablet_ptr->transaction_participant();
+  ReadHybridTime time;
+
+  // It is first call in snapshot then take snapshot.
+  if ((from_op_id.key().empty()) && (from_op_id.snapshot_time() == 0)) {
+    tablet::RemoveIntentsData data;
+    RETURN_NOT_OK(tablet_peer->GetLastReplicatedData(&data));
+
+    // Set the checkpoint and communicate to the follower.
+    VLOG(1) << "The first snapshot term " << data.op_id.term << "index  " << data.op_id.index
+            << "time " << data.log_ht.ToUint64();
+    // Update the CDCConsumerOpId.
+    VERIFY_RESULT(tablet_peer->GetConsensus())->UpdateCDCConsumerOpId(data.op_id);
+
+    LOG(INFO) << "CDC snapshot initialization is started, by setting checkpoint as: " << data.op_id
+              << ", for tablet_id: " << tablet_id << " stream_id: " << stream_id;
+    if (txn_participant) {
+      txn_participant->SetIntentRetainOpIdAndTime(
+          data.op_id, MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
+    } else {
+      RETURN_NOT_OK(tablet_peer->SetCDCSDKRetainOpIdAndTime(
+          data.op_id, MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)),
+          data.log_ht));
+    }
+    RETURN_NOT_OK(tablet_peer->GetLastReplicatedData(&data));
+    time = ReadHybridTime::SingleTime(data.log_ht);
+    // Use the last replicated hybrid time as a safe time for snapshot operation. so that
+    // compaction can be restricted during snapshot operation.
+
+    if (time.read.ToUint64() == 0) {
+      // This means there is no data from the sansphot.
+      SetCheckpoint(data.op_id.term, data.op_id.index, 0, "", 0, checkpoint, nullptr);
+    } else {
+      *safe_hybrid_time_resp = data.log_ht;
+      // This should go to cdc_state table.
+      // Below condition update the checkpoint in cdc_state table.
+      SetCheckpoint(
+          data.op_id.term, data.op_id.index, -1, "", time.read.ToUint64(), checkpoint, nullptr);
+    }
+
+    *checkpoint_updated = true;
+  } else {
+    // Snapshot is already taken.
+    HybridTime ht;
+    time = ReadHybridTime::FromUint64(from_op_id.snapshot_time());
+    *safe_hybrid_time_resp = HybridTime(from_op_id.snapshot_time());
+    const auto& next_key = from_op_id.key();
+    VLOG(1) << "The after snapshot term " << from_op_id.term() << "index  " << from_op_id.index()
+            << "key " << from_op_id.key() << "snapshot time " << from_op_id.snapshot_time();
+
+    // This is for test purposes only, to create a snapshot failure scenario from the server.
+    if (PREDICT_FALSE(FLAGS_TEST_cdc_snapshot_failure)) {
+      return STATUS_FORMAT(ServiceUnavailable, "CDC snapshot is failed for tablet: $0 ", tablet_id);
+    }
+
+    const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
+        tablet_peer, std::numeric_limits<uint64_t>::max(), cached_schema_details, client,
+        colocated_table_id.empty() ? tablet_ptr->metadata()->table_id() : colocated_table_id,
+        resp));
+
+    if (!colocated_table_id.empty()) {
+      *table_name = VERIFY_RESULT(GetColocatedTableName(tablet_peer, colocated_table_id));
+    }
+
+    int limit = FLAGS_cdc_snapshot_batch_size;
+    int fetched = 0;
+    std::vector<qlexpr::QLTableRow> rows;
+    qlexpr::QLTableRow row;
+    dockv::ReaderProjection projection(*schema_details.schema);
+    auto iter = VERIFY_RESULT(
+        tablet_ptr->CreateCDCSnapshotIterator(projection, time, next_key, colocated_table_id));
+    while (fetched < limit && VERIFY_RESULT(iter->FetchNext(&row))) {
+      RETURN_NOT_OK(PopulateCDCSDKSnapshotRecord(
+          resp, &row, *schema_details.schema, *table_name, time, enum_oid_label_map,
+          composite_atts_map, from_op_id, next_key, tablet_ptr->table_type() == PGSQL_TABLE_TYPE));
+      fetched++;
+    }
+    dockv::SubDocKey sub_doc_key;
+    RETURN_NOT_OK(iter->GetNextReadSubDocKey(&sub_doc_key));
+
+    // Snapshot ends when next key is empty.
+    if (sub_doc_key.doc_key().empty()) {
+      VLOG(1) << "Setting next sub doc key empty ";
+      LOG(INFO) << "Done with snapshot operation for tablet_id: " << tablet_id
+                << " stream_id: " << stream_id << ", from_op_id: " << from_op_id.DebugString();
+      // Get the checkpoint or read the checkpoint from the table/cache.
+      SetCheckpoint(from_op_id.term(), from_op_id.index(), 0, "", 0, checkpoint, nullptr);
+      *checkpoint_updated = true;
+    } else {
+      VLOG(1) << "Setting next sub doc key is " << sub_doc_key.Encode().ToStringBuffer();
+
+      checkpoint->set_write_id(-1);
+      SetCheckpoint(
+          from_op_id.term(), from_op_id.index(), -1, sub_doc_key.Encode().ToStringBuffer(),
+          time.read.ToUint64(), checkpoint, nullptr);
+      *checkpoint_updated = true;
+    }
+  }
+
+  return Status::OK();
+}
+
 // CDC get changes is different from xCluster as it doesn't need
 // to read intents from WAL.
 
 Status GetChangesForCDCSDK(
-    const CDCStreamId& stream_id,
+    const xrepl::StreamId& stream_id,
     const TabletId& tablet_id,
     const CDCSDKCheckpointPB& from_op_id,
     const StreamMetadata& stream_metadata,
@@ -1443,17 +2017,26 @@ Status GetChangesForCDCSDK(
     uint64_t* commit_timestamp,
     SchemaDetailsMap* cached_schema_details,
     OpId* last_streamed_op_id,
+    const int64_t& safe_hybrid_time_req,
+    const int& wal_segment_index_req,
     int64_t* last_readable_opid_index,
     const TableId& colocated_table_id,
     const CoarseTimePoint deadline) {
   OpId op_id{from_op_id.term(), from_op_id.index()};
-  VLOG(1) << "The from_op_id from GetChanges is  " << op_id << " for tablet_id: " << tablet_id;
+  VLOG(1) << "GetChanges request has from_op_id: " << from_op_id.DebugString()
+          << ", safe_hybrid_time: " << safe_hybrid_time_req
+          << ", wal_segment_index: " << wal_segment_index_req << " for tablet_id: " << tablet_id;
   ScopedTrackedConsumption consumption;
   CDCSDKCheckpointPB checkpoint;
+  // 'checkpoint_updated' decides if the response checkpoint should be copied from
+  // previously declared 'checkpoint' or the 'from_op_id'.
   bool checkpoint_updated = false;
   bool report_tablet_split = false;
   OpId split_op_id = OpId::Invalid();
   bool snapshot_operation = false;
+  bool pending_intents = false;
+  int wal_segment_index = GetWalSegmentIndex(wal_segment_index_req);
+  bool wait_for_wal_update = false;
 
   auto tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
   auto leader_safe_time = tablet_ptr->SafeTime();
@@ -1462,113 +2045,20 @@ Status GetChangesForCDCSDK(
         << "Could not compute safe time: " << leader_safe_time.status();
     leader_safe_time = HybridTime::kInvalid;
   }
+  uint64_t consistent_stream_safe_time = VERIFY_RESULT(GetConsistentStreamSafeTime(
+      tablet_peer, tablet_ptr, leader_safe_time.get(), safe_hybrid_time_req, deadline));
+  OpId historical_max_op_id = tablet_ptr->transaction_participant()->GetHistoricalMaxOpId();
   auto table_name = tablet_ptr->metadata()->table_name();
 
-  auto ht_of_last_returned_message = HybridTime::kInvalid;
+  auto safe_hybrid_time_resp = HybridTime::kInvalid;
   HaveMoreMessages have_more_messages(false);
   // It is snapshot call.
   if (from_op_id.write_id() == -1) {
     snapshot_operation = true;
-    auto txn_participant = tablet_ptr->transaction_participant();
-    ReadHybridTime time;
-    std::string nextKey;
-    // It is first call in snapshot then take snapshot.
-    if ((from_op_id.key().empty()) && (from_op_id.snapshot_time() == 0)) {
-      tablet::RemoveIntentsData data;
-      RETURN_NOT_OK(tablet_peer->GetLastReplicatedData(&data));
-
-      // Set the checkpoint and communicate to the follower.
-      VLOG(1) << "The first snapshot term " << data.op_id.term << "index  " << data.op_id.index
-              << "time " << data.log_ht.ToUint64();
-      // Update the CDCConsumerOpId.
-      std::shared_ptr<consensus::Consensus> shared_consensus = tablet_peer->shared_consensus();
-      shared_consensus->UpdateCDCConsumerOpId(data.op_id);
-
-      LOG(INFO) << "CDC snapshot initialization is started, by setting checkpoint as: "
-                << data.op_id << ", for tablet_id: " << tablet_id << " stream_id: " << stream_id;
-      if (txn_participant) {
-        txn_participant->SetIntentRetainOpIdAndTime(
-            data.op_id, MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
-      } else {
-        RETURN_NOT_OK(tablet_peer->SetCDCSDKRetainOpIdAndTime(
-            data.op_id, MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)),
-            data.log_ht));
-      }
-      RETURN_NOT_OK(tablet_peer->GetLastReplicatedData(&data));
-      time = ReadHybridTime::SingleTime(data.log_ht);
-      // Use the last replicated hybrid time as a safe time for snapshot operation. so that
-      // compaction can be restricted during snapshot operation.
-
-      if (time.read.ToUint64() == 0) {
-        // This means there is no data from the sansphot.
-        SetCheckpoint(data.op_id.term, data.op_id.index, 0, "", 0, &checkpoint, nullptr);
-      } else {
-        *leader_safe_time = data.log_ht;
-        // This should go to cdc_state table.
-        // Below condition update the checkpoint in cdc_state table.
-        SetCheckpoint(
-            data.op_id.term, data.op_id.index, -1, "", time.read.ToUint64(), &checkpoint, nullptr);
-      }
-
-      checkpoint_updated = true;
-    } else {
-      // Snapshot is already taken.
-      HybridTime ht;
-      time = ReadHybridTime::FromUint64(from_op_id.snapshot_time());
-      *leader_safe_time = HybridTime(from_op_id.snapshot_time());
-      nextKey = from_op_id.key();
-      VLOG(1) << "The after snapshot term " << from_op_id.term() << "index  " << from_op_id.index()
-              << "key " << from_op_id.key() << "snapshot time " << from_op_id.snapshot_time();
-
-      // This is for test purposes only, to create a snapshot failure scenario from the server.
-      if (PREDICT_FALSE(FLAGS_TEST_cdc_snapshot_failure)) {
-        return STATUS_FORMAT(
-            ServiceUnavailable, "CDC snapshot is failed for tablet: $0 ", tablet_id);
-      }
-
-      const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
-          tablet_peer, std::numeric_limits<uint64_t>::max(), cached_schema_details, client,
-          colocated_table_id.empty() ? tablet_ptr->metadata()->table_id() : colocated_table_id,
-          resp));
-
-      if (!colocated_table_id.empty()) {
-        table_name = VERIFY_RESULT(GetColocatedTableName(tablet_peer, colocated_table_id));
-      }
-
-      int limit = FLAGS_cdc_snapshot_batch_size;
-      int fetched = 0;
-      std::vector<qlexpr::QLTableRow> rows;
-      qlexpr::QLTableRow row;
-      dockv::ReaderProjection projection(*schema_details.schema);
-      auto iter = VERIFY_RESULT(
-          tablet_ptr->CreateCDCSnapshotIterator(projection, time, nextKey, colocated_table_id));
-      while (fetched < limit && VERIFY_RESULT(iter->FetchNext(&row))) {
-        RETURN_NOT_OK(PopulateCDCSDKSnapshotRecord(
-            resp, &row, *schema_details.schema, table_name, time, enum_oid_label_map,
-            composite_atts_map, tablet_ptr->table_type() == PGSQL_TABLE_TYPE));
-        fetched++;
-      }
-      dockv::SubDocKey sub_doc_key;
-      RETURN_NOT_OK(iter->GetNextReadSubDocKey(&sub_doc_key));
-
-      // Snapshot ends when next key is empty.
-      if (sub_doc_key.doc_key().empty()) {
-        VLOG(1) << "Setting next sub doc key empty ";
-        LOG(INFO) << "Done with snapshot operation for tablet_id: " << tablet_id
-                  << " stream_id: " << stream_id << ", from_op_id: " << from_op_id.DebugString();
-        // Get the checkpoint or read the checkpoint from the table/cache.
-        SetCheckpoint(from_op_id.term(), from_op_id.index(), 0, "", 0, &checkpoint, nullptr);
-        checkpoint_updated = true;
-      } else {
-        VLOG(1) << "Setting next sub doc key is " << sub_doc_key.Encode().ToStringBuffer();
-
-        checkpoint.set_write_id(-1);
-        SetCheckpoint(
-            from_op_id.term(), from_op_id.index(), -1, sub_doc_key.Encode().ToStringBuffer(),
-            time.read.ToUint64(), &checkpoint, nullptr);
-        checkpoint_updated = true;
-      }
-    }
+    RETURN_NOT_OK(HandleGetChangesForSnapshotRequest(
+        stream_id, tablet_id, from_op_id, tablet_peer, enum_oid_label_map, composite_atts_map,
+        client, resp, cached_schema_details, colocated_table_id, tablet_ptr, &table_name,
+        &checkpoint, &checkpoint_updated, &safe_hybrid_time_resp));
   } else if (!from_op_id.key().empty() && from_op_id.write_id() != 0) {
     std::string reverse_index_key = from_op_id.key();
     Slice reverse_index_key_slice(reverse_index_key);
@@ -1579,68 +2069,120 @@ Status GetChangesForCDCSDK(
     OpId last_seen_op_id;
     last_seen_op_id.term = from_op_id.term();
     last_seen_op_id.index = from_op_id.index();
-    consensus::ReadOpsResult read_ops;
     uint64_t commit_timestamp = 0;
 
-    read_ops = VERIFY_RESULT(tablet_peer->consensus()->ReadReplicatedMessagesForCDC(
-        last_seen_op_id, last_readable_opid_index, deadline, true));
+    size_t next_checkpoint_index = 0;
+    std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>> wal_records, all_checkpoints;
+
+    if (FLAGS_cdc_enable_consistent_records)
+      RETURN_NOT_OK(GetConsistentWALRecords(
+          tablet_peer, mem_tracker, msgs_holder, &consumption, consistent_stream_safe_time,
+          historical_max_op_id, &wait_for_wal_update, &last_seen_op_id, &last_readable_opid_index,
+          safe_hybrid_time_req, deadline, &wal_records, &all_checkpoints));
+    else
+      // 'skip_intents' is true here because we want the first transaction to be the partially
+      // streamed transaction.
+      RETURN_NOT_OK(GetWALRecords(
+          tablet_peer, mem_tracker, msgs_holder, &consumption, consistent_stream_safe_time,
+          &last_seen_op_id, &last_readable_opid_index, safe_hybrid_time_req, deadline, true,
+          &wal_records, &all_checkpoints));
+
+    // We don't need to wait for wal to get updated in this case because we will anyways stream
+    // only until we complete this transaction.
+    wait_for_wal_update = false;
+
     have_more_messages = HaveMoreMessages(true);
 
-    if (read_ops.messages.size() != 1) {
-      LOG(WARNING) << "Reading more or less than one raft log message while reading intents, read "
-                   << read_ops.messages.size() << " instead";
-    }
+    if (wal_records.size() > (size_t)wal_segment_index &&
+        wal_records[wal_segment_index]->op_type() ==
+            consensus::OperationType::UPDATE_TRANSACTION_OP &&
+        wal_records[wal_segment_index]->transaction_state().has_commit_hybrid_time()) {
+      const auto& msg = wal_records[wal_segment_index];
+      auto txn_id =
+          VERIFY_RESULT(FullyDecodeTransactionId(msg->transaction_state().transaction_id()));
+      VLOG(3) << "Will stream remaining records for a partially streamed transaction. op_id: "
+              << msg->id().ShortDebugString() << ", tablet_id: " << tablet_id
+              << ", transaction_id: " << txn_id;
+      commit_timestamp = msg->transaction_state().commit_hybrid_time();
 
-    if (read_ops.messages.size() > 0 &&
-        read_ops.messages[0]->op_type() == consensus::OperationType::UPDATE_TRANSACTION_OP &&
-        read_ops.messages[0]->transaction_state().has_commit_hybrid_time()) {
-      commit_timestamp = read_ops.messages[0]->transaction_state().commit_hybrid_time();
+      op_id.term = msg->id().term();
+      op_id.index = msg->id().index();
     } else {
-      LOG(WARNING) << "Unable to read the transaction commit time for tablet_id: " << tablet_id
-                   << " with stream_id: " << stream_id
-                   << " because there is no RAFT log message read from WAL with from_op_id: "
-                   << OpId::FromPB(from_op_id) << ", which can impact the safe time.";
+      LOG(DFATAL) << "Unable to read the transaction commit time for tablet_id: " << tablet_id
+                  << " with stream_id: " << stream_id
+                  << " because there is no RAFT log message read from WAL with from_op_id: "
+                  << OpId::FromPB(from_op_id) << ", which can impact the safe time.";
+      if (wal_records.size() > 0) {
+        VLOG(1) << "Expected message with UPDATE_TRANSACTION_OP but instead received a message"
+                << "with op: " << wal_records[wal_segment_index]->op_type();
+      }
     }
 
     RETURN_NOT_OK(reverse_index_key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kTransactionId));
     auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&reverse_index_key_slice));
 
-    RETURN_NOT_OK(ProcessIntents(
+    RETURN_NOT_OK(PrcoessIntentsWithInvalidSchemaRetry(
         op_id, transaction_id, stream_metadata, enum_oid_label_map, composite_atts_map, resp,
         &consumption, &checkpoint, tablet_peer, &keyValueIntents, &stream_state, client,
         cached_schema_details, commit_timestamp));
-    ht_of_last_returned_message =
-        (resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 1).row_message().op() ==
-         RowMessage_Op_COMMIT)
-            // Commit time won't be populated in the COMMIT record, in which case we will consider
-            // the commit_time of the previous to last record.
-            ? HybridTime(commit_timestamp)
-            : HybridTime::FromPB(resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 1)
-                                     .row_message()
-                                     .record_time());
 
-    if (checkpoint.write_id() == 0 && checkpoint.key().empty()) {
-      last_streamed_op_id->term = checkpoint.term();
-      last_streamed_op_id->index = checkpoint.index();
+    if (checkpoint.write_id() == 0 && checkpoint.key().empty() && wal_records.size()) {
+      AcknowledgeStreamedMultiShardTxn(
+          wal_records[wal_segment_index], ShouldUpdateSafeTime(wal_records, wal_segment_index),
+          safe_hybrid_time_req, &next_checkpoint_index, all_checkpoints, &checkpoint,
+          last_streamed_op_id, &safe_hybrid_time_resp, &wal_segment_index);
+    } else {
+      pending_intents = true;
+      VLOG(1) << "Couldn't stream all records with this GetChanges call for transaction: "
+              << transaction_id.ToString() << ", tablet_id: " << tablet_id
+              << ", commit_time: " << commit_timestamp
+              << ". The remaining records will be streamed in susequent GetChanges calls.";
+      SetSafetimeFromRequestIfInvalid(safe_hybrid_time_req, &safe_hybrid_time_resp);
     }
     checkpoint_updated = true;
   } else {
     RequestScope request_scope;
     OpId last_seen_op_id = op_id;
-    // Last seen OpId of a non-actionable message.
-    OpId last_seen_default_message_op_id = OpId().Invalid();
+    bool saw_non_actionable_message = false;
+    std::unordered_set<std::string> streamed_txns;
 
     // It's possible that a batch of messages in read_ops after fetching from
     // 'ReadReplicatedMessagesForCDC' , will not have any actionable messages. In which case we
     // keep retrying by fetching the next batch, until either we get an actionable message or reach
     // the 'last_readable_opid_index'.
-    consensus::ReadOpsResult read_ops;
     do {
-      read_ops = VERIFY_RESULT(tablet_peer->consensus()->ReadReplicatedMessagesForCDC(
-          last_seen_op_id, last_readable_opid_index, deadline));
+      size_t next_checkpoint_index = 0;
+      std::vector<std::shared_ptr<yb::consensus::LWReplicateMsg>> wal_records, all_checkpoints;
 
-      if (read_ops.read_from_disk_size && mem_tracker) {
-        consumption = ScopedTrackedConsumption(mem_tracker, read_ops.read_from_disk_size);
+      if (FLAGS_cdc_enable_consistent_records)
+        RETURN_NOT_OK(GetConsistentWALRecords(
+            tablet_peer, mem_tracker, msgs_holder, &consumption, consistent_stream_safe_time,
+            historical_max_op_id, &wait_for_wal_update, &last_seen_op_id, &last_readable_opid_index,
+            safe_hybrid_time_req, deadline, &wal_records, &all_checkpoints));
+      else
+        // 'skip_intents' is false otherwise in case the complete wal segment is filled with
+        // intents we will break the loop thinking that WAL has no more records.
+        RETURN_NOT_OK(GetWALRecords(
+            tablet_peer, mem_tracker, msgs_holder, &consumption, consistent_stream_safe_time,
+            &last_seen_op_id, &last_readable_opid_index, safe_hybrid_time_req, deadline, false,
+            &wal_records, &all_checkpoints));
+
+      if (wait_for_wal_update) {
+        VLOG_WITH_FUNC(1)
+            << "Returning an empty response because WAL is not up to date with apply records "
+               "of all comitted transactions. historical_max_op_id: "
+            << historical_max_op_id.ToString()
+            << ", last_seen_op_id: " << last_seen_op_id.ToString();
+        break;
+      }
+
+      if (wal_records.empty()) {
+        VLOG_WITH_FUNC(1) << "Did not get any messages with current batch of 'wal_records'."
+                          << "last_seen_op_id: " << last_seen_op_id << ", last_readable_opid_index "
+                          << *last_readable_opid_index << ", safe_hybrid_time "
+                          << safe_hybrid_time_req << ", consistent_safe_time "
+                          << consistent_stream_safe_time;
+        break;
       }
 
       auto txn_participant = tablet_ptr->transaction_participant();
@@ -1650,18 +2192,58 @@ Status GetChangesForCDCSDK(
       have_more_messages = HaveMoreMessages(true);
 
       Schema current_schema = *tablet_ptr->metadata()->schema();
-      bool pending_intents = false;
+      bool saw_split_op = false;
 
-      if (read_ops.messages.empty()) {
-        VLOG_WITH_FUNC(1) << "Did not get any messages with current batch of 'read_ops'."
-                          << "last_seen_op_id: " << last_seen_op_id << ", last_readable_opid_index "
-                          << *last_readable_opid_index;
-        break;
-      }
+      int resp_num_records = 0;
+      uint64_t resp_records_size = 0;
 
-      for (const auto& msg : read_ops.messages) {
-        last_seen_op_id.term = msg->id().term();
-        last_seen_op_id.index = msg->id().index();
+      for (size_t index = wal_segment_index; index < wal_records.size(); ++index) {
+        for (; resp_num_records < resp->cdc_sdk_proto_records_size(); ++resp_num_records) {
+          resp_records_size += resp->cdc_sdk_proto_records(resp_num_records).ByteSizeLong();
+        }
+
+        if (resp_records_size >= FLAGS_cdc_stream_records_threshold_size_bytes) {
+          VLOG(1) << "Response records size crossed the thresold size. Will stream rest of the "
+                     "records in next GetChanges Call. resp_records_size: "
+                  << resp_records_size
+                  << ", threshold: " << FLAGS_cdc_stream_records_threshold_size_bytes
+                  << ", resp_num_records: " << resp_num_records << ", tablet_id: " << tablet_id;
+          break;
+        }
+
+        const auto& msg = wal_records[index];
+
+        // In case of a connector failure we may get a wal_segment_index that is obsolete.
+        // We should not stream messages we have already streamed again in this case,
+        // except for "SPLIT_OP" messages which can appear with a hybrid_time lower than
+        // safe_hybrid_time_req.
+        if (FLAGS_cdc_enable_consistent_records && safe_hybrid_time_req >= 0 &&
+            GetTransactionCommitTime(msg) <= (uint64_t)safe_hybrid_time_req &&
+            msg->op_type() != yb::consensus::OperationType::SPLIT_OP) {
+          VLOG_WITH_FUNC(2)
+              << "Received a message in wal_segment with commit_time <= request safe time."
+                 " Will ignore this message. consistent_stream_safe_time: "
+              << consistent_stream_safe_time << ", safe_hybrid_time_req: " << safe_hybrid_time_req
+              << ", tablet_id: " << tablet_id << ", wal_msg: " << msg->ShortDebugString();
+          saw_non_actionable_message = true;
+          AcknowledgeStreamedMsg(
+              msg, false, safe_hybrid_time_req, &next_checkpoint_index, all_checkpoints,
+              &checkpoint, last_streamed_op_id, &safe_hybrid_time_resp, &wal_segment_index);
+          continue;
+        }
+
+        // We should break if we have started seeing records with commit_time more than the
+        // consistent_stream_safe_time.
+        if (FLAGS_cdc_enable_consistent_records &&
+            GetTransactionCommitTime(msg) > consistent_stream_safe_time) {
+          VLOG_WITH_FUNC(2)
+              << "Received a message in wal_segment with commit_time > consistent_safe_time."
+                 " Will not process further messages in this GetChanges call. "
+                 "consistent_safe_time: "
+              << consistent_stream_safe_time << "safe_hybrid_time_req: " << safe_hybrid_time_req
+              << ", tablet_id: " << tablet_id << ", wal_msg: " << msg->ShortDebugString();
+          break;
+        }
 
         switch (msg->op_type()) {
           case consensus::OperationType::UPDATE_TRANSACTION_OP:
@@ -1671,40 +2253,71 @@ Status GetChangesForCDCSDK(
               auto txn_id = VERIFY_RESULT(
                   FullyDecodeTransactionId(msg->transaction_state().transaction_id()));
               auto result = GetTransactionStatus(txn_id, tablet_peer->Now(), txn_participant);
+
+              // It is possible for a transaction to have two APPLYs in WAL. This check
+              // prevents us from streaming the same transaction twice in the same GetChanges
+              // call.
+              if (streamed_txns.find(txn_id.ToString()) != streamed_txns.end()) {
+                saw_non_actionable_message = true;
+                AcknowledgeStreamedMultiShardTxn(
+                    msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
+                    &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
+                    &safe_hybrid_time_resp, &wal_segment_index);
+                break;
+              }
+
               std::vector<docdb::IntentKeyValueForCDC> intents;
               docdb::ApplyTransactionState new_stream_state;
 
               *commit_timestamp = msg->transaction_state().commit_hybrid_time();
               op_id.term = msg->id().term();
               op_id.index = msg->id().index();
-              RETURN_NOT_OK(ProcessIntents(
+
+              VLOG(3) << "Will stream records for a multi-shard transaction. op_id: "
+                      << msg->id().ShortDebugString() << ", tablet_id: " << tablet_id
+                      << ", transaction_id: " << txn_id << ", commit_time: " << *commit_timestamp;
+
+              RETURN_NOT_OK(PrcoessIntentsWithInvalidSchemaRetry(
                   op_id, txn_id, stream_metadata, enum_oid_label_map, composite_atts_map, resp,
                   &consumption, &checkpoint, tablet_peer, &intents, &new_stream_state, client,
                   cached_schema_details, msg->transaction_state().commit_hybrid_time()));
+              streamed_txns.insert(txn_id.ToString());
 
               if (new_stream_state.write_id != 0 && !new_stream_state.key.empty()) {
                 pending_intents = true;
-                VLOG(1) << "There are pending intents for the transaction id " << txn_id
-                        << " with apply record OpId: " << op_id;
+                VLOG(1)
+                    << "Couldn't stream all records with this GetChanges call for transaction: "
+                    << txn_id.ToString() << ", tablet_id: " << tablet_id << ", op_id" << op_id
+                    << ", commit_time: " << *commit_timestamp
+                    << ". The remaining records will be streamed in susequent GetChanges calls.";
+                SetSafetimeFromRequestIfInvalid(safe_hybrid_time_req, &safe_hybrid_time_resp);
               } else {
-                last_streamed_op_id->term = msg->id().term();
-                last_streamed_op_id->index = msg->id().index();
+                AcknowledgeStreamedMultiShardTxn(
+                    msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
+                    &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
+                    &safe_hybrid_time_resp, &wal_segment_index);
               }
+              checkpoint_updated = true;
             }
-            checkpoint_updated = true;
             break;
 
           case consensus::OperationType::WRITE_OP: {
             const auto& batch = msg->write().write_batch();
-
             *commit_timestamp = msg->hybrid_time();
+
+            VLOG(3) << "Will stream a single-shard transaction. op_id: "
+                    << msg->id().ShortDebugString() << ", tablet_id: " << tablet_id
+                    << ", hybrid_time: " << *commit_timestamp;
+
             if (!batch.has_transaction()) {
-              RETURN_NOT_OK(PopulateCDCSDKWriteRecord(
+              RETURN_NOT_OK(PopulateCDCSDKWriteRecordWithInvalidSchemaRetry(
                   msg, stream_metadata, tablet_peer, enum_oid_label_map, composite_atts_map,
                   cached_schema_details, resp, client));
 
-              SetCheckpoint(
-                  msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
+              AcknowledgeStreamedMsg(
+                  msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
+                  &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
+                  &safe_hybrid_time_resp, &wal_segment_index);
               checkpoint_updated = true;
             }
           } break;
@@ -1756,8 +2369,10 @@ Status GetChangesForCDCSDK(
                   msg, resp->add_cdc_sdk_proto_records(), table_name, current_schema));
             }
 
-            SetCheckpoint(
-                msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
+            AcknowledgeStreamedMsg(
+                msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
+                &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
+                &safe_hybrid_time_resp, &wal_segment_index);
             checkpoint_updated = true;
           } break;
 
@@ -1765,33 +2380,54 @@ Status GetChangesForCDCSDK(
             if (FLAGS_stream_truncate_record) {
               RETURN_NOT_OK(PopulateCDCSDKTruncateRecord(
                   msg, resp->add_cdc_sdk_proto_records(), current_schema));
-              SetCheckpoint(
-                  msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
               checkpoint_updated = true;
+            } else {
+              saw_non_actionable_message = true;
             }
+
+            AcknowledgeStreamedMsg(
+                msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
+                &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
+                &safe_hybrid_time_resp, &wal_segment_index);
           } break;
 
           case yb::consensus::OperationType::SPLIT_OP: {
-            // It is possible that we found records corresponding to SPLIT_OP even when it failed.
-            // We first verify if a split has indeed occured succesfully on the tablet by checking:
-            // 1. There are two children tablets for the tablet
-            // 2. The split op is the last operation on the tablet
-            // If either of the conditions are false, we will know the splitOp is not succesfull.
             const TableId& table_id = tablet_ptr->metadata()->table_id();
             auto op_id = OpId::FromPB(msg->id());
 
+            // Handle if SPLIT_OP corresponds to the parent tablet or we know that the split_op was
+            // unsuccessful.
+            if (msg->split_request().tablet_id() != tablet_id ||
+                HasSplitFailed(wal_records, index)) {
+              saw_non_actionable_message = true;
+              AcknowledgeStreamedMsg(
+                  msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
+                  &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
+                  &safe_hybrid_time_resp, &wal_segment_index);
+              break;
+            }
+
+            // Set 'saw_split_op' to true only if the split op is for the current tablet.
+            saw_split_op = true;
+
+            // We first verify if a split has indeed occured succesfully by checking if there are
+            // two children tablets for the tablet.
             if (!(VerifyTabletSplitOnParentTablet(table_id, tablet_id, client))) {
               // We could verify the tablet split succeeded. This is possible when the child tablets
               // of a split are not running yet.
               LOG(INFO) << "Found SPLIT_OP record with index: " << op_id
                         << ", but did not find any children tablets for the tablet: " << tablet_id
                         << ". This is possible when the child tablets are not up and running yet.";
+              SetSafetimeFromRequestIfInvalid(safe_hybrid_time_req, &safe_hybrid_time_resp);
             } else {
               if (checkpoint_updated) {
                 // If we have records which are yet to be streamed which we discovered in the same
                 // 'GetChangesForCDCSDK' call, we will not update the checkpoint to the SplitOp
                 // record's OpId and return the records seen till now. Next time the client will
                 // call 'GetChangesForCDCSDK' with the OpId just before the SplitOp's record.
+                //
+                // NOTE: It is fine to not update the checkpoint in this case because this should
+                // be the last actionable record in the WAL.
                 LOG(INFO) << "Found SPLIT_OP record with OpId: " << op_id
                           << ", for parent tablet: " << tablet_id
                           << ", will stream all seen records until now.";
@@ -1804,7 +2440,11 @@ Status GetChangesForCDCSDK(
                           << ", for parent tablet: " << tablet_id
                           << ", and if we did not see any other records we will report the tablet "
                              "split to the client";
-                SetCheckpoint(op_id.term, op_id.index, 0, "", 0, &checkpoint, last_streamed_op_id);
+
+                AcknowledgeStreamedMsg(
+                    msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
+                    &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
+                    &safe_hybrid_time_resp, &wal_segment_index);
                 checkpoint_updated = true;
                 split_op_id = op_id;
               }
@@ -1813,32 +2453,26 @@ Status GetChangesForCDCSDK(
 
           default:
             // Nothing to do for other operation types.
-            last_seen_default_message_op_id = OpId(msg->id().term(), msg->id().index());
+            saw_non_actionable_message = true;
+            AcknowledgeStreamedMsg(
+                msg, ShouldUpdateSafeTime(wal_records, index), safe_hybrid_time_req,
+                &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
+                &safe_hybrid_time_resp, &wal_segment_index);
             VLOG_WITH_FUNC(2) << "Found message of Op type: " << msg->op_type()
                               << ", on tablet: " << tablet_id
                               << ", with OpId: " << msg->id().ShortDebugString();
             break;
         }
 
-        if (pending_intents) {
-          // Incase of pending intents use the last replicated intents commit time.
-          ht_of_last_returned_message =
-              HybridTime::FromPB(resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 1)
-                                     .row_message()
-                                     .record_time());
+        // There can be NO_OP messages after a SPLIT_OP. Ignore them.
+        if (pending_intents || saw_split_op) {
           break;
-        } else {
-          ht_of_last_returned_message = HybridTime(msg->hybrid_time());
         }
-      }
-      if (read_ops.messages.size() > 0) {
-        *msgs_holder = consensus::ReplicateMsgsHolder(
-            nullptr, std::move(read_ops.messages), std::move(consumption));
       }
 
       if (!checkpoint_updated && VLOG_IS_ON(1)) {
         VLOG_WITH_FUNC(1)
-            << "The current batch of 'read_ops' had no actionable message. last_see_op_id: "
+            << "The current batch of 'wal_records' had no actionable message. last_see_op_id: "
             << last_seen_op_id << ", last_readable_opid_index: " << *last_readable_opid_index
             << ". Will retry and get another batch";
       }
@@ -1848,19 +2482,11 @@ Status GetChangesForCDCSDK(
 
     // In case the checkpoint was not updated at-all, we will update the checkpoint using the last
     // seen non-actionable message.
-    if (!checkpoint_updated) {
+    if (saw_non_actionable_message && !checkpoint_updated) {
       have_more_messages = HaveMoreMessages(false);
-      if (last_seen_default_message_op_id != OpId::Invalid()) {
-        SetCheckpoint(
-            last_seen_default_message_op_id.term, last_seen_default_message_op_id.index, 0, "", 0,
-            &checkpoint, last_streamed_op_id);
-        checkpoint_updated = true;
-        VLOG_WITH_FUNC(2)
-            << "The last batch of 'read_ops' had no actionable message"
-            << ", on tablet: " << tablet_id
-            << ". The checkpoint will be updated based on the last message's OpId to: "
-            << last_seen_default_message_op_id;
-      }
+      checkpoint_updated = true;
+      VLOG_WITH_FUNC(2) << "The last batch of 'wal_records' had no actionable message"
+                        << ", on tablet: " << tablet_id << ".";
     }
   }
 
@@ -1876,23 +2502,27 @@ Status GetChangesForCDCSDK(
     consumption.Add(resp->SpaceUsedLong());
   }
 
-  auto safe_time = GetCDCSDKSafeTimeForTarget(
-      leader_safe_time.get(), ht_of_last_returned_message, have_more_messages);
+  // If we need to wait for WAL to get up to date with all committed transactions, we will send the
+  // request safe in the response as well.
+  auto safe_time = wait_for_wal_update
+                       ? HybridTime((safe_hybrid_time_req > 0) ? safe_hybrid_time_req : 0)
+                       : GetCDCSDKSafeTimeForTarget(
+                             leader_safe_time.get(), safe_hybrid_time_resp, have_more_messages,
+                             consistent_stream_safe_time, snapshot_operation);
   resp->set_safe_hybrid_time(safe_time.ToUint64());
+
+  // It is possible in case of a partially streamed transaction.
+  if (checkpoint_updated && !(checkpoint.has_term() && checkpoint.has_index())) {
+    checkpoint.set_term(from_op_id.term());
+    checkpoint.set_index(from_op_id.index());
+  }
 
   checkpoint_updated ? resp->mutable_cdc_sdk_checkpoint()->CopyFrom(checkpoint)
                      : resp->mutable_cdc_sdk_checkpoint()->CopyFrom(from_op_id);
+  resp->set_wal_segment_index(wal_segment_index);
 
   if (last_streamed_op_id->index > 0) {
     last_streamed_op_id->ToPB(resp->mutable_checkpoint()->mutable_op_id());
-  }
-  if (checkpoint_updated) {
-    VLOG(1) << "The cdcsdk checkpoint is updated " << resp->cdc_sdk_checkpoint().ShortDebugString();
-    VLOG(1) << "The checkpoint is updated " << resp->checkpoint().ShortDebugString();
-  } else {
-    VLOG(1) << "The cdcsdk checkpoint is not  updated "
-            << resp->cdc_sdk_checkpoint().ShortDebugString();
-    VLOG(1) << "The checkpoint is not updated " << resp->checkpoint().ShortDebugString();
   }
 
   if (report_tablet_split) {
@@ -1900,7 +2530,10 @@ Status GetChangesForCDCSDK(
         TabletSplit, "Tablet Split on tablet: $0, no more records to stream", tablet_id);
   }
 
-  if (FLAGS_cdc_populate_safepoint_record) {
+  // We do not populate SAFEPOINT records in two scenarios:
+  // 1. When we are streaming batches of a large transaction
+  // 2. When we are streaming snapshot records
+  if (FLAGS_cdc_populate_safepoint_record && !pending_intents && from_op_id.write_id() != -1) {
     RETURN_NOT_OK(PopulateCDCSDKSafepointOpRecord(
         safe_time.ToUint64(),
         tablet_peer->tablet()->metadata()->table_name(),
@@ -1908,6 +2541,21 @@ Status GetChangesForCDCSDK(
         *tablet_peer->tablet()->schema().get()));
     VLOG(2) << "Added Safepoint Record";
   }
+
+  // Populate from_op_id in all cdcsdk records
+  for (auto& record : (*resp->mutable_cdc_sdk_proto_records())) {
+    auto record_from_op_id = record.mutable_from_op_id();
+    SetCDCSDKOpId(
+        from_op_id.term(), from_op_id.index(), from_op_id.write_id(), from_op_id.key(),
+        record_from_op_id);
+  }
+
+  VLOG(1) << "Sending GetChanges response. cdcsdk_checkpoint: "
+          << resp->cdc_sdk_checkpoint().ShortDebugString()
+          << ", safe_hybrid_time: " << resp->safe_hybrid_time()
+          << ", wal_segment_index: " << resp->wal_segment_index()
+          << ", num_records: " << resp->cdc_sdk_proto_records_size()
+          << ", tablet_id: " << tablet_id;
 
   return Status::OK();
 }

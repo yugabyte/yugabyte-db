@@ -100,7 +100,7 @@ using tserver::WriteRequestPB;
 using tserver::WriteResponsePB;
 
 static Schema GetTestSchema() {
-  return Schema({ ColumnSchema("key", INT32, ColumnKind::HASH) });
+  return Schema({ ColumnSchema("key", DataType::INT32, ColumnKind::HASH) });
 }
 
 class TabletPeerTest : public YBTabletTest {
@@ -207,7 +207,7 @@ class TabletPeerTest : public YBTabletTest {
       if (FLAGS_quick_leader_election_on_create) {
         return tablet_peer_->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
       }
-      RETURN_NOT_OK(tablet_peer_->consensus()->EmulateElection());
+      RETURN_NOT_OK(VERIFY_RESULT(tablet_peer_->GetConsensus())->EmulateElection());
       return true;
     }, MonoDelta::FromMilliseconds(500), "If quick leader elections enabled, wait for peer to be a "
                                          "leader, otherwise emulate.");
@@ -325,7 +325,7 @@ class TabletPeerTest : public YBTabletTest {
 
 // Ensure that Log::GC() doesn't delete logs with anchors.
 TEST_F(TabletPeerTest, TestLogAnchorsAndGC) {
-  FLAGS_log_min_seconds_to_retain = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
   ConsensusBootstrapInfo info;
   ASSERT_OK(StartPeer(info));
 
@@ -365,7 +365,7 @@ TEST_F(TabletPeerTest, TestLogAnchorsAndGC) {
 
 // Ensure that Log::GC() doesn't delete logs when the DMS has an anchor.
 TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
-  FLAGS_log_min_seconds_to_retain = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
   ConsensusBootstrapInfo info;
   ASSERT_OK(StartPeer(info));
 
@@ -445,7 +445,7 @@ TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
 
 // Ensure that Log::GC() doesn't compact logs with OpIds of active transactions.
 TEST_F(TabletPeerTest, TestActiveOperationPreventsLogGC) {
-  FLAGS_log_min_seconds_to_retain = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
   ConsensusBootstrapInfo info;
   ASSERT_OK(StartPeer(info));
 
@@ -473,7 +473,7 @@ TEST_F(TabletPeerTest, TestAddTableUpdatesLastChangeMetadataOpId) {
   table_info.set_table_id("00004000000030008000000000004020");
   table_info.set_table_name("test");
   table_info.set_table_type(PGSQL_TABLE_TYPE);
-  ColumnSchema col("a", UINT32, ColumnKind::RANGE_ASC_NULL_FIRST);
+  ColumnSchema col("a", DataType::UINT32, ColumnKind::RANGE_ASC_NULL_FIRST);
   ColumnId col_id(1);
   Schema schema({col}, {col_id});
   SchemaToPB(schema, table_info.mutable_schema());

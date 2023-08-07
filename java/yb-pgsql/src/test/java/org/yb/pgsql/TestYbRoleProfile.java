@@ -21,23 +21,29 @@ import static org.yb.AssertionWrappers.fail;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.junit.After;
+import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.YsqlSnapshotVersion;
-import org.yb.YBTestRunner;
+import org.yb.util.SystemUtil;
+import org.yb.YBParameterizedTestRunner;
 
 import com.yugabyte.util.PSQLException;
 
-@RunWith(value = YBTestRunner.class)
+@RunWith(value = YBParameterizedTestRunner.class)
 public class TestYbRoleProfile extends BasePgSQLTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(TestPgSequences.class);
@@ -56,6 +62,27 @@ public class TestYbRoleProfile extends BasePgSQLTest {
   private static final Pattern NO_HBA_ENTRY_RE = Pattern.compile(
       "FATAL: no pg_hba.conf entry for host .*, user .*, database \"yugabyte\", SSL off");
 
+  private final ConnectionEndpoint connectionEndpoint;
+
+  @Parameterized.Parameters
+  public static List<ConnectionEndpoint> parameters() {
+    if (SystemUtil.IS_LINUX)
+      return Arrays.asList(ConnectionEndpoint.POSTGRES, ConnectionEndpoint.YSQL_CONN_MGR);
+    else
+      return Arrays.asList(ConnectionEndpoint.POSTGRES);
+  }
+
+  public TestYbRoleProfile(ConnectionEndpoint connectionEndpoint) {
+    this.connectionEndpoint = connectionEndpoint;
+  }
+
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+    if (connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR)
+      builder.enableYsqlConnMgr(true);
+      builder.addCommonTServerFlag("ysql_conn_mgr_dowarmup", "false");
+  }
 
   @Override
   protected Map<String, String> getTServerFlags() {
@@ -100,6 +127,7 @@ public class TestYbRoleProfile extends BasePgSQLTest {
     Connection connection = getConnectionBuilder().withTServer(0)
                                                   .withUser(username)
                                                   .withPassword(password)
+                                                  .withConnectionEndpoint(connectionEndpoint)
                                                   .connect();
 
     connection.close();
@@ -223,6 +251,9 @@ public class TestYbRoleProfile extends BasePgSQLTest {
 
   @Test
   public void testProfilesOnOldDbVersion() throws Exception {
+    Assume.assumeFalse("Skipping this test for Ysql Connection Manager",
+        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR);
+
     /*
     * There are two operations that might result in an error if the profile catalogs don't exist:
     *  1. logging in, because auth.c tries to get the user's profile if it exists
@@ -245,6 +276,9 @@ public class TestYbRoleProfile extends BasePgSQLTest {
 
   @Test
   public void testAdminCanChangeUserProfile() throws Exception {
+    Assume.assumeFalse("Skipping this test for Ysql Connection Manager",
+        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR);
+
     assertEquals(PROFILE_1_NAME, getProfileName(USERNAME));
 
     exceedAttempts(PRF_1_FAILED_ATTEMPTS, USERNAME);
@@ -269,6 +303,9 @@ public class TestYbRoleProfile extends BasePgSQLTest {
 
   @Test
   public void testRegularUserCanFailLoginManyTimes() throws Exception {
+    Assume.assumeFalse("Skipping this test for Ysql Connection Manager",
+        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR);
+
     for (int i = 0; i < 10; i++) {
       attemptLogin(TEST_PG_USER, "wrong", AUTHENTICATION_FAILED_RE);
     }
@@ -277,6 +314,9 @@ public class TestYbRoleProfile extends BasePgSQLTest {
 
   @Test
   public void testAdminCanUnlockAfterLockout() throws Exception {
+    Assume.assumeFalse("Skipping this test for Ysql Connection Manager",
+        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR);
+
     exceedAttempts(PRF_1_FAILED_ATTEMPTS, USERNAME);
     assertProfileStateForUser(USERNAME, PRF_1_FAILED_ATTEMPTS, false);
 
@@ -291,6 +331,9 @@ public class TestYbRoleProfile extends BasePgSQLTest {
 
   @Test
   public void testAdminCanLockAndUnlock() throws Exception {
+    Assume.assumeFalse("Skipping this test for Ysql Connection Manager",
+        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR);
+
     /* Make one failed attempt. */
     attemptLogin(USERNAME, "wrong", AUTHENTICATION_FAILED_RE);
     assertProfileStateForUser(USERNAME, 1, true);

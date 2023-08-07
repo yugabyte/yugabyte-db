@@ -48,7 +48,7 @@ Note the following:
 
 You need to set up multi-cloud VPC peering through a VPN tunnel.
 
-YugabyteDB is a distributed SQL database and requires TCP/IP communication across nodes. It also requires a particular [set of firewall ports](../../install-yugabyte-platform/prepare-on-prem-nodes/#ports) to be opened for cluster operations, which you set up in the previous section.
+YugabyteDB is a distributed SQL database and requires TCP/IP communication across nodes. It also requires a particular [set of firewall ports](../../../yugabyte-platform/install-yugabyte-platform/prepare-on-prem-nodes/#ports) to be opened for cluster operations, which you set up in the previous section.
 
 You should use non-overlapping Classless Inter-Domain Routing (CIDR) blocks for each subnet across different clouds.
 

@@ -140,9 +140,9 @@ class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
                      const YBTableName& table_name) {
     YBSchema schema;
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
-    b.AddColumn("int_val")->Type(INT32)->NotNull();
-    b.AddColumn("string_val")->Type(STRING)->NotNull();
+    b.AddColumn("key")->Type(DataType::INT32)->NotNull()->PrimaryKey();
+    b.AddColumn("int_val")->Type(DataType::INT32)->NotNull();
+    b.AddColumn("string_val")->Type(DataType::STRING)->NotNull();
     CHECK_OK(b.Build(&schema));
     std::unique_ptr<YBTableCreator> table_creator(client->NewTableCreator());
     return table_creator->table_name(table_name)

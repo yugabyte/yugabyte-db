@@ -303,7 +303,7 @@ Rpcs::Rpcs(std::mutex* mutex) {
 CoarseTimePoint Rpcs::DoRequestAbortAll(RequestShutdown shutdown) {
   std::vector<Calls::value_type> calls;
   {
-    std::lock_guard<std::mutex> lock(*mutex_);
+    std::lock_guard lock(*mutex_);
     if (!shutdown_) {
       shutdown_ = shutdown;
       calls.reserve(calls_.size());
@@ -344,7 +344,7 @@ void Rpcs::Register(RpcCommandPtr call, Handle* handle) {
 }
 
 Rpcs::Handle Rpcs::Register(RpcCommandPtr call) {
-  std::lock_guard<std::mutex> lock(*mutex_);
+  std::lock_guard lock(*mutex_);
   if (shutdown_) {
     call->Abort();
     return InvalidHandle();
@@ -378,7 +378,7 @@ RpcCommandPtr Rpcs::Unregister(Handle* handle) {
   }
   auto result = **handle;
   {
-    std::lock_guard<std::mutex> lock(*mutex_);
+    std::lock_guard lock(*mutex_);
     calls_.erase(*handle);
     cond_.notify_one();
   }
@@ -387,7 +387,7 @@ RpcCommandPtr Rpcs::Unregister(Handle* handle) {
 }
 
 Rpcs::Handle Rpcs::Prepare() {
-  std::lock_guard<std::mutex> lock(*mutex_);
+  std::lock_guard lock(*mutex_);
   if (shutdown_) {
     return InvalidHandle();
   }

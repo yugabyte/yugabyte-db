@@ -4,9 +4,9 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.UNAUTHORIZED;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.controllers.SessionController;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.LdapDnToYbaRole;
@@ -14,12 +14,15 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
 import io.ebean.DuplicateKeyException;
 import java.nio.charset.Charset;
+import java.security.KeyStore;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
@@ -39,17 +42,15 @@ import org.apache.directory.api.ldap.model.message.SearchScope;
 import org.apache.directory.ldap.client.api.LdapConnectionConfig;
 import org.apache.directory.ldap.client.api.LdapNetworkConnection;
 import org.apache.directory.ldap.client.api.NoVerificationTrustManager;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @Slf4j
 public class LdapUtil {
-
-  public static final Logger LOG = LoggerFactory.getLogger(SessionController.class);
   public static final String windowsAdUserDoesNotExistErrorCode = "data 2030";
   public static final String USERNAME_KEYWORD = "{username}";
 
   @Inject private RuntimeConfGetter confGetter;
+
+  @Inject private CustomCAStoreManager customCAStoreManager;
 
   @Getter
   @Setter
@@ -73,6 +74,18 @@ public class LdapUtil {
     String ldapGroupMemberOfAttribute;
     boolean ldapGroupUseQuery;
     boolean ldapGroupUseRoleMapping;
+    Role ldapDefaultRole;
+    TlsProtocol ldapTlsProtocol;
+  }
+
+  public enum TlsProtocol {
+    TLSv1,
+    TLSv1_1,
+    TLSv1_2;
+
+    public String getVersionString() {
+      return this.toString().replace('_', '.');
+    }
   }
 
   public Users loginWithLdap(CustomerLoginFormData data) throws LdapException {
@@ -85,7 +98,7 @@ public class LdapUtil {
     boolean ldapUseSsl = confGetter.getGlobalConf(GlobalConfKeys.enableLdap);
     boolean ldapUseTls = confGetter.getGlobalConf(GlobalConfKeys.enableLdapStartTls);
     boolean useLdapSearchAndBind = confGetter.getGlobalConf(GlobalConfKeys.ldapUseSearchAndBind);
-    String serviceAccountDistiguishedName =
+    String serviceAccountDistinguishedName =
         confGetter.getGlobalConf(GlobalConfKeys.ldapServiceAccountDistinguishedName);
     String serviceAccountPassword =
         confGetter.getGlobalConf(GlobalConfKeys.ldapServiceAccountPassword);
@@ -100,6 +113,8 @@ public class LdapUtil {
     boolean ldapGroupUseRoleMapping =
         confGetter.getGlobalConf(GlobalConfKeys.ldapGroupUseRoleMapping);
     String ldapGroupSearchBaseDn = confGetter.getGlobalConf(GlobalConfKeys.ldapGroupSearchBaseDn);
+    Role ldapDefaultRole = confGetter.getGlobalConf(GlobalConfKeys.ldapDefaultRole);
+    TlsProtocol ldapTlsProtocol = confGetter.getGlobalConf(GlobalConfKeys.ldapTlsProtocol);
 
     LdapConfiguration ldapConfiguration =
         new LdapConfiguration(
@@ -111,7 +126,7 @@ public class LdapUtil {
             ldapUseSsl,
             ldapUseTls,
             useLdapSearchAndBind,
-            serviceAccountDistiguishedName,
+            serviceAccountDistinguishedName,
             serviceAccountPassword,
             ldapSearchAttribute,
             enabledDetailedLogs,
@@ -120,7 +135,9 @@ public class LdapUtil {
             ldapGroupSearchBaseDn,
             ldapGroupMemberOfAttribute,
             ldapGroupUseQuery,
-            ldapGroupUseRoleMapping);
+            ldapGroupUseRoleMapping,
+            ldapDefaultRole,
+            ldapTlsProtocol);
     Users user = authViaLDAP(data.getEmail(), data.getPassword(), ldapConfiguration);
 
     if (user == null) {
@@ -142,27 +159,27 @@ public class LdapUtil {
       return oldUser.getCustomerUUID();
     }
 
-    Customer cust = null;
+    Customer customer = null;
     if (!ldapCustomerUUID.equals("")) {
       try {
-        UUID custUUID = UUID.fromString(ldapCustomerUUID);
-        cust = Customer.get(custUUID);
+        UUID customerUUID = UUID.fromString(ldapCustomerUUID);
+        customer = Customer.get(customerUUID);
       } catch (Exception e) {
         throw new PlatformServiceException(
-            BAD_REQUEST, "Customer UUID Specified is invalid. " + e.getMessage());
+            BAD_REQUEST, "Customer UUID specified is invalid. " + e.getMessage());
       }
     }
 
-    if (cust == null) {
+    if (customer == null) {
       List<Customer> allCustomers = Customer.getAll();
       if (allCustomers.size() != 1) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Please specify ldap_customeruuid in Multi-Tenant Setup.");
       }
-      cust = allCustomers.get(0);
+      customer = allCustomers.get(0);
     }
 
-    return cust.getUuid();
+    return customer.getUuid();
   }
 
   private void deleteUserAndThrowException(String email) {
@@ -321,7 +338,34 @@ public class LdapUtil {
       config.setLdapHost(ldapConfiguration.getLdapUrl());
       config.setLdapPort(ldapConfiguration.getLdapPort());
       if (ldapConfiguration.isLdapUseSsl() || ldapConfiguration.isLdapUseTls()) {
-        config.setTrustManagers(new NoVerificationTrustManager());
+
+        config.setEnabledProtocols(
+            new String[] {ldapConfiguration.getLdapTlsProtocol().getVersionString()});
+
+        boolean customCAUploaded = customCAStoreManager.areCustomCAsPresent();
+        if (customCAStoreManager.isEnabled() && isCertVerificationEnforced()) {
+          if (customCAUploaded) {
+            log.debug("Using YBA's custom trust-store manager along-with Java defaults");
+            KeyStore ybaJavaKeyStore = customCAStoreManager.getYbaAndJavaKeyStore();
+            TrustManagerFactory trustFactory =
+                TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            trustFactory.init(ybaJavaKeyStore);
+            TrustManager[] ybaJavaTrustManagers = trustFactory.getTrustManagers();
+            config.setTrustManagers(ybaJavaTrustManagers);
+          } else {
+            log.debug("Using Java default trust managers");
+          }
+        } else {
+          if (customCAUploaded) {
+            log.warn(
+                "Skipping to use YBA's trust-store as the feature is disabled. CA-store "
+                    + "feature flag: {}, certification-verfication for LDAP: {}",
+                customCAStoreManager.isEnabled(),
+                isCertVerificationEnforced());
+          }
+          config.setTrustManagers(new NoVerificationTrustManager());
+        }
+
         if (ldapConfiguration.isLdapUseSsl()) {
           config.setUseSsl(true);
         } else {
@@ -401,8 +445,7 @@ public class LdapUtil {
           }
         } catch (Exception e) {
           log.debug(
-              String.format(
-                  "LDAP query failed with {} Defaulting to ReadOnly role. %s", e.getMessage()));
+              String.format("LDAP query for yugabytePlatformRole failed with %s", e.getMessage()));
         }
       }
 
@@ -429,27 +472,47 @@ public class LdapUtil {
         Role roleFromGroupMappings =
             getRoleFromGroupMappings(
                 userEntry, email, connection, ldapConfiguration, users.getCustomerUUID());
+
+        if (roleFromGroupMappings == null) {
+          log.warn("No role mappings from LDAP group membership of user: " + email);
+        }
+
         if (role.isEmpty()) {
           if (roleFromGroupMappings != null) {
             role = roleFromGroupMappings.toString();
+            log.info(
+                "No role found from yugabytePlatformRole, "
+                    + "using role {} found from LDAP group mappings for user: {}",
+                role,
+                email);
+          } else {
+            log.warn(
+                "No role found from either yugabytePlatformRole or "
+                    + "LDAP group mapping for LDAP user: {}",
+                email);
           }
         } else {
           try {
             Role roleEnum = Role.valueOf(role);
             role = Role.union(roleEnum, roleFromGroupMappings).toString();
+            log.info(
+                "Roles from yugabytePlatformRole and LDAP group memberships for LDAP user: "
+                    + "{} combined to assign {}",
+                email,
+                role);
           } catch (IllegalArgumentException e) {
             if (roleFromGroupMappings != null) {
               log.error(
                   "Invalid role: {} obtained from yugabytePlatformRole,"
                       + " attempting to use role mapped to LDAP groups: {}",
                   role,
-                  roleFromGroupMappings.toString());
+                  roleFromGroupMappings);
               role = roleFromGroupMappings.toString();
             } else {
               log.error(
                   "Invalid role: \"{}\" obtained from yugabytePlatformRole, "
-                      + "role mapped to LDAP groups is also null, defaulting to ReadOnly.");
-              role = "ReadOnly";
+                      + "role mapped to LDAP groups is also null.",
+                  role);
             }
           }
         }
@@ -471,21 +534,33 @@ public class LdapUtil {
           roleToAssign = Users.Role.ReadOnly;
           break;
         default:
-          roleToAssign = Users.Role.ReadOnly;
+          roleToAssign = ldapConfiguration.getLdapDefaultRole();
           users.setLdapSpecifiedRole(false);
       }
       Users oldUser = Users.find.query().where().eq("email", email).findOne();
-      if (oldUser != null) {
-        oldUser.setLdapSpecifiedRole(users.isLdapSpecifiedRole());
-      }
 
-      if (oldUser != null
-          && (oldUser.getRole() == roleToAssign || !oldUser.isLdapSpecifiedRole())) {
-        return oldUser;
-      } else if (oldUser != null && (oldUser.getRole() != roleToAssign)) {
-        oldUser.setRole(roleToAssign);
+      if (oldUser != null) {
+        /* If we find a valid role from LDAP then assign that to this user and disallow further
+         * changes by YBA SuperAdmin in User Management.
+         * Otherwise,
+         *  if the last time the role was set via LDAP, we take away that role (meaning assign
+         *    default), and allow YBA SuperAdmin to change this role later in User Management.
+         * Otherwise, this is a user for which the admin has or will set a role, NOOP
+         */
+        if (users.isLdapSpecifiedRole()) {
+          oldUser.setRole(roleToAssign);
+          oldUser.setLdapSpecifiedRole(true);
+        } else if (oldUser.isLdapSpecifiedRole()) {
+          log.warn("No valid role could be ascertained, defaulting to {}.", roleToAssign);
+          oldUser.setRole(roleToAssign);
+          oldUser.setLdapSpecifiedRole(false);
+        }
         return oldUser;
       } else {
+        if (!users.isLdapSpecifiedRole()) {
+          log.warn("No valid role could be ascertained, defaulting to {}.", roleToAssign);
+        }
+
         users.setEmail(email.toLowerCase());
         byte[] passwordLdap = new byte[16];
         new Random().nextBytes(passwordLdap);
@@ -497,13 +572,10 @@ public class LdapUtil {
         users.setRole(roleToAssign);
       }
     } catch (LdapException e) {
-      LOG.error("LDAP error while attempting to auth email {}", email);
-      LOG.debug(e.getMessage());
-      String errorMessage = "LDAP parameters are not configured correctly. " + e.getMessage();
-      throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+      log.error(String.format("LDAP error while attempting to auth email %s", email), e);
+      throw e;
     } catch (Exception e) {
-      LOG.error("Failed to authenticate with LDAP for email {}", email);
-      LOG.debug(e.getMessage());
+      log.error(String.format("Failed to authenticate with LDAP for email %s", email), e);
       String errorMessage = "Invalid LDAP credentials. " + e.getMessage();
       throw new PlatformServiceException(UNAUTHORIZED, errorMessage);
     } finally {
@@ -513,5 +585,9 @@ public class LdapUtil {
       }
     }
     return users;
+  }
+
+  public boolean isCertVerificationEnforced() {
+    return confGetter.getGlobalConf(GlobalConfKeys.ldapsEnforceCertVerification);
   }
 }

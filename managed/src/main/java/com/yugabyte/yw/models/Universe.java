@@ -14,10 +14,11 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.PortType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
-import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -237,7 +238,9 @@ public class Universe extends Model {
     // Create the default universe details. This should be updated after creation.
     universe.universeDetails = taskParams;
     universe.universeDetailsJson =
-        Json.stringify(RedactingService.filterSecretFields(Json.toJson(universe.universeDetails)));
+        Json.stringify(
+            RedactingService.filterSecretFields(
+                Json.toJson(universe.universeDetails), RedactionTarget.APIS));
     universe.swamperConfigWritten = true;
     LOG.info(
         "Created db entry for universe {} [{}]", universe.getName(), universe.getUniverseUUID());
@@ -295,7 +298,15 @@ public class Universe extends Model {
   }
 
   public static Set<Universe> getAllWithoutResources(Customer customer) {
-    List<Universe> rawList = find.query().where().eq("customer_id", customer.getId()).findList();
+    return getAllWithoutResources(customer, null);
+  }
+
+  public static Set<Universe> getAllWithoutResources(Customer customer, UUID uuid) {
+    ExpressionList<Universe> query = find.query().where().eq("customer_id", customer.getId());
+    if (uuid != null) {
+      query.idEq(uuid);
+    }
+    List<Universe> rawList = query.findList();
     return rawList.stream().peek(Universe::fillUniverseDetails).collect(Collectors.toSet());
   }
 
@@ -862,7 +873,9 @@ public class Universe extends Model {
   public void save(boolean incrementVersion) {
     // Update the universe details json.
     this.universeDetailsJson =
-        Json.stringify(RedactingService.filterSecretFields(Json.toJson(universeDetails)));
+        Json.stringify(
+            RedactingService.filterSecretFields(
+                Json.toJson(universeDetails), RedactionTarget.APIS));
     this.setVersion(incrementVersion ? this.getVersion() + 1 : this.getVersion());
     super.save();
   }

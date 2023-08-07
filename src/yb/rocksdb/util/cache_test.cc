@@ -393,7 +393,7 @@ TEST_F(CacheTest, ErasedHandleState) {
 }
 
 TEST_F(CacheTest, EvictionPolicyAllSingleTouch) {
-  FLAGS_cache_single_touch_ratio = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 1;
   const int kCapacity = 100;
   auto cache = NewLRUCache(kCapacity, 0, true);
   Status s;
@@ -409,11 +409,11 @@ TEST_F(CacheTest, EvictionPolicyAllSingleTouch) {
   ASSERT_EQ(kCapacity, cache->GetUsage());
 
   // Returning the flag back.
-  FLAGS_cache_single_touch_ratio = 0.2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.2;
 }
 
 TEST_F(CacheTest, EvictionPolicyNoSingleTouch) {
-  FLAGS_cache_single_touch_ratio = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0;
   const int kCapacity = 100;
   auto cache = NewLRUCache(kCapacity , 0, true);
   Status s;
@@ -429,7 +429,7 @@ TEST_F(CacheTest, EvictionPolicyNoSingleTouch) {
   ASSERT_EQ(kCapacity, cache->GetUsage());
 
   // Returning the flag back.
-  FLAGS_cache_single_touch_ratio = 0.2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.2;
 }
 
 TEST_F(CacheTest, MultiTouch) {
@@ -675,7 +675,7 @@ Status InsertIntoCache(const std::shared_ptr<Cache>& cache, int key, int value,
 }
 
 TEST_F(CacheTest, OverFlowTest) {
-  FLAGS_cache_single_touch_ratio = 0.2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.2;
   size_t cache_size = 10;
   std::shared_ptr<Cache> cache = NewLRUCache(cache_size, 0);
 
@@ -728,7 +728,7 @@ TEST_F(CacheTest, OverFlowTest) {
   AssertCacheSizes(cache.get(), 2, 8);
 
   // Make sure that direct insertion into the multi-touch cache works properly.
-  FLAGS_cache_single_touch_ratio = 0.4;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cache_single_touch_ratio) = 0.4;
   cache_size = 5;
   cache = NewLRUCache(cache_size, 0);
 

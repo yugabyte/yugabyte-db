@@ -385,7 +385,7 @@ TEST_F(CreateTableITest, LegacyColocatedDBTableColocationRemoteBootstrapTest) {
   ASSERT_OK(WaitFor(dirs_exist, MonoDelta::FromSeconds(100), "Create data and wal directories"));
 }
 
-TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TableColocationRemoteBootstrapTest)) {
+TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
   const int kNumReplicas = 3;
   const string kNamespaceName = "colocation_test";
   string parent_table_id;
@@ -452,7 +452,7 @@ TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TableColocationRemoteBootstrapT
 }
 
 // Skipping in TSAN because of an error with initdb in TSAN when ysql is enabled
-TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TablegroupRemoteBootstrapTest)) {
+TEST_F(CreateTableITest, TablegroupRemoteBootstrapTest) {
   const int kNumReplicas = 3;
   string parent_table_id;
   string tablet_id;
@@ -571,7 +571,7 @@ TEST_F(CreateTableITest, TestIsRaftLeaderMetric) {
 // In TSAN, currently, initdb isn't created during build but on first start.
 // As a result transaction table gets created without waiting for the requisite
 // number of TS.
-TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(TestTransactionStatusTableCreation)) {
+TEST_F(CreateTableITest, TestTransactionStatusTableCreation) {
   // Set up an RF 1.
   // Tell the Master leader to wait for 3 TS to join before creating the
   // transaction status table.
@@ -657,8 +657,8 @@ TEST_F(CreateTableITest, TestNumTabletsFlags) {
   const string kTableName3 = "test-table3";
 
   // Set the value of the flags.
-  FLAGS_ycql_num_tablets = 1;
-  FLAGS_yb_num_shards_per_tserver = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_num_tablets) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_num_shards_per_tserver) = 3;
   // Start an RF3.
   ASSERT_NO_FATALS(StartCluster({}, {}, kNumReplicas));
 
@@ -699,7 +699,7 @@ TEST_F(CreateTableITest, TestNumTabletsFlags) {
   ASSERT_EQ(tablets.size(), 1);
 
   // Reset the value of the flag.
-  FLAGS_ycql_num_tablets = -1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_num_tablets) = -1;
 
   // Test 3: Create a table without explicit tablet count.
   YBTableName table_name3(kNamespaceType, kNamespaceName, kTableName3);
@@ -1066,7 +1066,7 @@ void CreateTableITest::TestLazySuperblockFlushPersistence(int num_tables, int it
   }
 }
 
-TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(LazySuperblockFlushSingleTablePersistence)) {
+TEST_F(CreateTableITest, LazySuperblockFlushSingleTablePersistence) {
   std::vector<string> ts_flags;
   // Enable lazy superblock flush.
   ts_flags.push_back("--lazily_flush_superblock=true");
@@ -1074,7 +1074,7 @@ TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(LazySuperblockFlushSingleTableP
   TestLazySuperblockFlushPersistence(1, 1);
 }
 
-TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(LazySuperblockFlushMultiTablePersistence)) {
+TEST_F(CreateTableITest, LazySuperblockFlushMultiTablePersistence) {
   std::vector<string> ts_flags;
   // Enable lazy superblock flush.
   ts_flags.push_back("--lazily_flush_superblock=true");

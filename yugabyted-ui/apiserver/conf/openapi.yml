@@ -28,6 +28,48 @@ tags:
   - name: cluster-info
     description: APIs for getting information about an existing cluster
 paths:
+  /cluster:
+    get:
+      summary: Get a cluster
+      description: Get a Yugabyte Cluster
+      operationId: getCluster
+      tags:
+        - cluster
+      responses:
+        '200':
+          $ref: '#/components/responses/ClusterResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
+    delete:
+      summary: Submit task to delete a cluster
+      description: Submit task to delete a Yugabyte Cluster
+      tags:
+        - cluster
+      responses:
+        '200':
+          description: Successfully submitted delete cluster request
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
+      operationId: deleteCluster
+    put:
+      summary: Submit task to edit a cluster
+      description: Submit task to edit a Yugabyte Cluster
+      operationId: editCluster
+      tags:
+        - cluster
+      requestBody:
+        $ref: '#/components/requestBodies/ClusterSpec'
+      responses:
+        '200':
+          $ref: '#/components/responses/ClusterResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
   /live_queries:
     get:
       summary: Get the live queries in a cluster
@@ -108,6 +150,14 @@ paths:
         explode: false
         schema:
           type: string
+      - name: zone
+        in: query
+        description: Zone to filter for the given cluster
+        required: false
+        style: form
+        explode: false
+        schema:
+          type: string
       - name: start_time
         in: query
         description: Start of range of time series data (in epoch seconds)
@@ -128,6 +178,14 @@ paths:
           type: integer
           format: int64
           minimum: 0
+      - name: cluster_type
+        in: query
+        description: Cluster type (primary or read replica)
+        required: false
+        style: form
+        explode: false
+        schema:
+          type: string
     get:
       summary: Get a metric for a cluster
       description: Get metrics for a Yugabyte cluster
@@ -137,6 +195,45 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/MetricResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
+  /activities:
+    parameters:
+      - name: activities
+        in: query
+        description: Which activities data to retrieve
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+      - name: status
+        in: query
+        description: Completed or In-Progress
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+      - name: database
+        in: query
+        description: Which database's activities data is to be retrived.
+        required: false
+        style: form
+        explode: false
+        schema:
+          type: string
+    get:
+      summary: Get a activities data for a cluster
+      description: Get activities data for a Yugabyte cluster
+      operationId: getClusterActivities
+      tags:
+        - cluster-info
+      responses:
+        '200':
+          $ref: '#/components/responses/ActivityResponse'
         '400':
           $ref: '#/components/responses/ApiError'
         '500':
@@ -163,6 +260,37 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/ClusterTableListResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
+  /table:
+    get:
+      description: Get info on a single table, given table uuid
+      operationId: getTableInfo
+      summary: Get info on a single table, given table uuid
+      tags:
+        - cluster-info
+      parameters:
+        - name: id
+          in: query
+          description: UUID of the table
+          required: true
+          style: form
+          explode: false
+          schema:
+            type: string
+        - name: node_address
+          in: query
+          description: Specify the node ip-address from where the table info is retrieved
+          required: true
+          style: form
+          explode: false
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/TableInfoResponse'
         '400':
           $ref: '#/components/responses/ApiError'
         '500':
@@ -234,50 +362,267 @@ paths:
           $ref: '#/components/responses/ApiError'
         '500':
           $ref: '#/components/responses/ApiError'
-  /cluster:
+  /gflags:
     get:
-      summary: Get a cluster
-      description: Get a Yugabyte Cluster
-      operationId: getCluster
+      summary: Get gflags of master and tserver process
+      description: Retrieve gflags of master and tserver process
+      operationId: getGflags
       tags:
-        - cluster
+        - cluster-info
+      parameters:
+        - name: node_address
+          in: query
+          description: Specify the node ip-address from where gflags are retrieved
+          required: true
+          style: form
+          explode: false
+          schema:
+            type: string
       responses:
         '200':
-          $ref: '#/components/responses/ClusterResponse'
+          $ref: '#/components/responses/GflagsResponse'
         '400':
           $ref: '#/components/responses/ApiError'
         '500':
           $ref: '#/components/responses/ApiError'
-    delete:
-      summary: Submit task to delete a cluster
-      description: Submit task to delete a Yugabyte Cluster
+  /alerts:
+    get:
+      summary: Get any alerts for the cluster
+      description: Get any alerts for the cluster
+      operationId: getClusterAlerts
       tags:
-        - cluster
+        - cluster-info
       responses:
         '200':
-          description: Successfully submitted delete cluster request
-        '400':
-          $ref: '#/components/responses/ApiError'
-        '500':
-          $ref: '#/components/responses/ApiError'
-      operationId: deleteCluster
-    put:
-      summary: Submit task to edit a cluster
-      description: Submit task to edit a Yugabyte Cluster
-      operationId: editCluster
-      tags:
-        - cluster
-      requestBody:
-        $ref: '#/components/requestBodies/ClusterSpec'
-      responses:
-        '200':
-          $ref: '#/components/responses/ClusterResponse'
+          $ref: '#/components/responses/AlertsResponse'
         '400':
           $ref: '#/components/responses/ApiError'
         '500':
           $ref: '#/components/responses/ApiError'
 components:
   schemas:
+    CloudEnum:
+      title: Cloud Enum
+      description: Which cloud the cluster is deployed in
+      type: string
+      default: MANUAL
+      enum:
+        - AWS
+        - GCP
+        - MANUAL
+    CloudInfo:
+      title: Cloud Info
+      description: Cloud deployment information
+      type: object
+      properties:
+        code:
+          $ref: '#/components/schemas/CloudEnum'
+        region:
+          type: string
+          minLength: 1
+          default: us-west2
+      required:
+        - code
+        - region
+    ClusterFaultTolerance:
+      title: Cluster Fault Tolerance
+      description: The level of fault tolerance for the cluster
+      type: string
+      enum:
+        - NONE
+        - NODE
+        - ZONE
+        - REGION
+      default: ZONE
+    ClusterNodeInfo:
+      title: Cluster Node Info
+      description: Node level information
+      type: object
+      properties:
+        memory_mb:
+          description: The total amount of RAM (MB) used by all nodes
+          type: number
+          format: double
+          default: 0
+        disk_size_gb:
+          description: The total size of disk (GB)
+          type: number
+          format: double
+          default: 0
+        disk_size_used_gb:
+          description: The total size of used disk space (GB)
+          type: number
+          format: double
+          default: 0
+        cpu_usage:
+          description: The average CPU usage over all nodes
+          type: number
+          format: double
+          default: 0
+        num_cores:
+          description: The number of CPU cores per node
+          type: integer
+          default: 0
+      required:
+        - num_cores
+        - memory_mb
+        - disk_size_gb
+    ClusterInfo:
+      title: Cluster Info
+      description: Cluster level information
+      type: object
+      properties:
+        num_nodes:
+          description: How many nodes are in the cluster
+          type: integer
+          minimum: 1
+          maximum: 24
+          default: 3
+        fault_tolerance:
+          $ref: '#/components/schemas/ClusterFaultTolerance'
+        replication_factor:
+          description: The replication factor applied on the cluster
+          type: integer
+          minimum: 1
+          maximum: 24
+        node_info:
+          $ref: '#/components/schemas/ClusterNodeInfo'
+        is_production:
+          description: Describes if the cluster is a production cluster
+          type: boolean
+          default: false
+        version:
+          description: cluster data version
+          type: integer
+          nullable: true
+      required:
+        - num_nodes
+        - fault_tolerance
+        - node_info
+        - cluster_tier
+        - is_production
+    PlacementInfo:
+      type: object
+      properties:
+        cloud_info:
+          $ref: '#/components/schemas/CloudInfo'
+        num_nodes:
+          description: How many nodes are in the region
+          type: integer
+          minimum: 1
+          maximum: 24
+          default: 3
+      required:
+        - cloud_info
+        - num_nodes
+    ClusterRegionInfo:
+      title: Cluster Region Info
+      description: Cluster region info list
+      type: object
+      properties:
+        placement_info:
+          $ref: '#/components/schemas/PlacementInfo'
+      required:
+        - placement_info
+    EncryptionInfo:
+      title: Encryption Info
+      description: Cluster encryption info
+      type: object
+      properties:
+        encryption_at_rest:
+          type: boolean
+          default: false
+        encryption_in_transit:
+          type: boolean
+          default: false
+    ClusterSpec:
+      title: Cluster Specification
+      description: Cluster spec
+      type: object
+      properties:
+        name:
+          description: The name of the cluster
+          type: string
+          minLength: 3
+          maxLength: 63
+          pattern: ^(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?)$
+        cloud_info:
+          $ref: '#/components/schemas/CloudInfo'
+        cluster_info:
+          $ref: '#/components/schemas/ClusterInfo'
+        cluster_region_info:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/ClusterRegionInfo'
+          nullable: true
+        encryption_info:
+          $ref: '#/components/schemas/EncryptionInfo'
+      required:
+        - name
+        - cloud_info
+        - cluster_info
+        - network_info
+        - software_info
+        - encryption_info
+    EntityMetadata:
+      title: Entity Metadata
+      description: Common metadata for entities
+      type: object
+      properties:
+        created_on:
+          description: Timestamp when the entity was created (UTC)
+          type: string
+          nullable: true
+        updated_on:
+          description: Timestamp when the entity was last updated (UTC)
+          type: string
+          nullable: true
+    ClusterDataInfo:
+      type: object
+      properties:
+        id:
+          description: The UUID of the cluster
+          type: string
+          format: uuid
+        state:
+          description: The current state of the cluster
+          type: string
+        software_version:
+          description: The current version of YugabyteDB installed on the cluster
+          type: string
+        metadata:
+          $ref: '#/components/schemas/EntityMetadata'
+      required:
+        - id
+        - state
+        - project_id
+        - metadata
+    ClusterData:
+      title: Cluster Data
+      description: Cluster data
+      type: object
+      required:
+        - spec
+        - info
+      properties:
+        spec:
+          $ref: '#/components/schemas/ClusterSpec'
+        info:
+          $ref: '#/components/schemas/ClusterDataInfo'
+    ApiError:
+      title: API Error
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            detail:
+              description: Error message
+              type: string
+            status:
+              description: Error code
+              type: integer
     LiveQueryResponseYSQLQueryItem:
       title: Live Query Response YSQL Query Item
       description: Schema for Live Query Response YSQL Query Item
@@ -368,19 +713,6 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/LiveQueryResponseData'
-    ApiError:
-      title: API Error
-      type: object
-      properties:
-        error:
-          type: object
-          properties:
-            detail:
-              description: Error message
-              type: string
-            status:
-              description: Error code
-              type: integer
     SlowQueryResponseYSQLQueryItem:
       title: Slow Query Response YSQL Query Item
       description: Schema for Slow Query Response YSQL Query Item
@@ -620,6 +952,18 @@ components:
       required:
         - name
         - values
+    ActivityData:
+      title: Activity Data
+      description: Activity Data
+      type: object
+      properties:
+        name:
+          type: string
+        data:
+          type: object
+      required:
+        - name
+        - data
     YbApiEnum:
       title: Yb Api Enum
       description: Type of DB API (YSQL/YCQL)
@@ -640,6 +984,10 @@ components:
           type: string
           minLength: 1
           nullable: false
+        uuid:
+          type: string
+          minLength: 1
+          nullable: false
         type:
           $ref: '#/components/schemas/YbApiEnum'
         size_bytes:
@@ -649,6 +997,7 @@ components:
       required:
         - name
         - keyspace
+        - uuid
         - type
         - size_bytes
     ClusterTableData:
@@ -659,6 +1008,132 @@ components:
       nullable: false
       items:
         $ref: '#/components/schemas/ClusterTable'
+    PlacementCloudInfo:
+      title: Placement Cloud Info
+      description: Placement Cloud Info
+      type: object
+      properties:
+        placement_cloud:
+          type: string
+        placement_region:
+          type: string
+        placement_zone:
+          type: string
+    PlacementBlock:
+      title: Placement Block
+      description: Placement Block
+      type: object
+      properties:
+        cloud_info:
+          $ref: '#/components/schemas/PlacementCloudInfo'
+        min_num_replicas:
+          type: integer
+    TableReplicationInfo:
+      title: TableReplicationInfo
+      description: TableReplicationInfo
+      type: object
+      properties:
+        num_replicas:
+          type: integer
+        placement_blocks:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlacementBlock'
+        placement_uuid:
+          type: string
+          format: uuid
+    ColumnInfo:
+      title: Column Info
+      description: Column Info
+      type: object
+      properties:
+        column:
+          type: string
+        id:
+          type: string
+        type:
+          type: string
+    RaftConfig:
+      title: Raft Config
+      description: Raft Config
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        role:
+          type: string
+        location:
+          type: string
+    TabletInfo:
+      title: Tablet Info
+      description: Tablet Info
+      type: object
+      properties:
+        tablet_id:
+          type: string
+          format: uuid
+        partition:
+          type: string
+        split_depth:
+          type: integer
+        state:
+          type: string
+        hidden:
+          type: boolean
+        message:
+          type: string
+        raft_config:
+          type: array
+          items:
+            $ref: '#/components/schemas/RaftConfig'
+    TableInfo:
+      title: Table Info
+      description: Table Info
+      type: object
+      properties:
+        table_name:
+          type: string
+        table_id:
+          type: string
+          format: uuid
+        table_version:
+          type: integer
+        table_type:
+          type: string
+        table_state:
+          type: string
+        table_state_message:
+          type: string
+        table_tablespace_oid:
+          type: string
+        table_replication_info:
+          type: object
+          properties:
+            live_replicas:
+              $ref: '#/components/schemas/TableReplicationInfo'
+            read_replicas:
+              type: array
+              items:
+                $ref: '#/components/schemas/TableReplicationInfo'
+        columns:
+          type: array
+          items:
+            $ref: '#/components/schemas/ColumnInfo'
+        tablets:
+          type: array
+          items:
+            $ref: '#/components/schemas/TabletInfo'
+      required:
+        - table_name
+        - table_id
+        - table_version
+        - table_type
+        - table_state
+        - table_state_message
+        - table_replication_info
+        - columns
+        - tablets
     HealthCheckInfo:
       title: Health Check Info
       type: object
@@ -716,7 +1191,7 @@ components:
     ClusterTabletData:
       title: Cluster Tablet Data
       description: List of cluster tablets
-      type: array
+      type: object
       additionalProperties:
         $ref: '#/components/schemas/ClusterTablet'
     VersionInfo:
@@ -726,215 +1201,47 @@ components:
       properties:
         version:
           type: string
-    CloudEnum:
-      title: Cloud Enum
-      description: Which cloud the cluster is deployed in
-      type: string
-      default: MANUAL
-      enum:
-        - AWS
-        - GCP
-        - MANUAL
-    CloudInfo:
-      title: Cloud Info
-      description: Cloud deployment information
-      type: object
-      properties:
-        code:
-          $ref: '#/components/schemas/CloudEnum'
-        region:
-          type: string
-          minLength: 1
-          default: us-west2
-      required:
-        - code
-        - region
-    ClusterFaultTolerance:
-      title: Cluster Fault Tolerance
-      description: The level of fault tolerance for the cluster
-      type: string
-      enum:
-        - NONE
-        - NODE
-        - ZONE
-        - REGION
-      default: ZONE
-    ClusterNodeInfo:
-      title: Cluster Node Info
-      description: Node level information
-      type: object
-      properties:
-        memory_mb:
-          description: The total amount of RAM (MB) used by all nodes
-          type: number
-          format: double
-          default: 0
-        disk_size_gb:
-          description: The total size of disk (GB)
-          type: number
-          format: double
-          default: 0
-        disk_size_used_gb:
-          description: The total size of used disk space (GB)
-          type: number
-          format: double
-          default: 0
-        cpu_usage:
-          description: The average CPU usage over all nodes
-          type: number
-          format: double
-          default: 0
-        num_cores:
-          description: The number of CPU cores per node
-          type: integer
-          default: 0
-      required:
-        - num_cores
-        - memory_mb
-        - disk_size_gb
-    ClusterInfo:
-      title: Cluster Info
-      description: Cluster level information
-      type: object
-      properties:
-        num_nodes:
-          description: How many nodes are in the cluster
-          type: integer
-          minimum: 1
-          maximum: 24
-          default: 3
-        fault_tolerance:
-          $ref: '#/components/schemas/ClusterFaultTolerance'
-        replication_factor:
-          description: The replication factor applied on the cluster
-          type: integer
-          minimum: 1
-          maximum: 24
-        node_info:
-          $ref: '#/components/schemas/ClusterNodeInfo'
-        is_production:
-          description: Describes if the cluster is a production cluster
-          type: boolean
-          default: false
-        version:
-          description: cluster data version
-          type: integer
-          nullable: true
-      required:
-        - num_nodes
-        - fault_tolerance
-        - node_info
-        - cluster_tier
-        - is_production
-    PlacementInfo:
-      type: object
-      properties:
-        cloud_info:
-          $ref: '#/components/schemas/CloudInfo'
-        num_nodes:
-          description: How many nodes are in the region
-          type: integer
-          minimum: 1
-          maximum: 24
-          default: 3
-      required:
-        - cloud_info
-        - num_nodes
-    ClusterRegionInfo:
-      title: Cluster Region Info
-      description: Cluster region info list
-      type: object
-      properties:
-        placement_info:
-          $ref: '#/components/schemas/PlacementInfo'
-      required:
-        - placement_info
-    EncryptionInfo:
-      title: Encryption Info
-      description: Cluster encryption info
-      type: object
-      properties:
-        encryption_at_rest:
-          type: boolean
-          default: false
-        encryption_in_transit:
-          type: boolean
-          default: false
-    ClusterSpec:
-      title: Cluster Specification
-      description: Cluster spec
+    Gflag:
+      title: Gflag
+      description: Gflag
       type: object
       properties:
         name:
-          description: The name of the cluster
           type: string
-          minLength: 3
-          maxLength: 63
-          pattern: ^(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?)$
-        cloud_info:
-          $ref: '#/components/schemas/CloudInfo'
-        cluster_info:
-          $ref: '#/components/schemas/ClusterInfo'
-        cluster_region_info:
+        value:
+          type: string
+        type:
+          type: string
+    GflagsInfo:
+      title: Gflags Info
+      description: Gflags Info
+      type: object
+      properties:
+        master_flags:
           type: array
-          uniqueItems: true
           items:
-            $ref: '#/components/schemas/ClusterRegionInfo'
-          nullable: true
-        encryption_info:
-          $ref: '#/components/schemas/EncryptionInfo'
+            $ref: '#/components/schemas/Gflag'
+        tserver_flags:
+          type: array
+          items:
+            $ref: '#/components/schemas/Gflag'
+      required:
+        - master_flags
+        - tserver_flags
+    AlertsInfo:
+      title: Alerts Info
+      description: Alerts Info
+      type: object
+      properties:
+        name:
+          description: Name of alert
+          type: string
+        info:
+          description: Array of alerts
+          type: string
       required:
         - name
-        - cloud_info
-        - cluster_info
-        - network_info
-        - software_info
-        - encryption_info
-    EntityMetadata:
-      title: Entity Metadata
-      description: Common metadata for entities
-      type: object
-      properties:
-        created_on:
-          description: Timestamp when the entity was created (UTC)
-          type: string
-          nullable: true
-        updated_on:
-          description: Timestamp when the entity was last updated (UTC)
-          type: string
-          nullable: true
-    ClusterDataInfo:
-      type: object
-      properties:
-        id:
-          description: The UUID of the cluster
-          type: string
-          format: uuid
-        state:
-          description: The current state of the cluster
-          type: string
-        software_version:
-          description: The current version of YugabyteDB installed on the cluster
-          type: string
-        metadata:
-          $ref: '#/components/schemas/EntityMetadata'
-      required:
-        - id
-        - state
-        - project_id
-        - metadata
-    ClusterData:
-      title: Cluster Data
-      description: Cluster data
-      type: object
-      required:
-        - spec
         - info
-      properties:
-        spec:
-          $ref: '#/components/schemas/ClusterSpec'
-        info:
-          $ref: '#/components/schemas/ClusterDataInfo'
   requestBodies:
     ClusterSpec:
       description: DB Cluster to be updated
@@ -943,18 +1250,28 @@ components:
           schema:
             $ref: '#/components/schemas/ClusterSpec'
   responses:
-    LiveQueryResponse:
-      description: Live Queries of a Cluster
+    ClusterResponse:
+      description: Cluster response
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/LiveQueryResponseSchema'
+            title: Cluster Response
+            type: object
+            properties:
+              data:
+                $ref: '#/components/schemas/ClusterData'
     ApiError:
       description: API Error
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ApiError'
+    LiveQueryResponse:
+      description: Live Queries of a Cluster
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LiveQueryResponseSchema'
     SlowQueryResponse:
       description: Slow Queries of a Cluster
       content:
@@ -1000,6 +1317,20 @@ components:
               - data
               - start_timestamp
               - end_timestamp
+    ActivityResponse:
+      description: Activities Response
+      content:
+        application/json:
+          schema:
+            title: Activities Response
+            type: object
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ActivityData'
+            required:
+              - data
     ClusterTableListResponse:
       description: List of cluster tables
       content:
@@ -1008,10 +1339,19 @@ components:
             title: Cluster table list response
             type: object
             properties:
-              data:
+              tables:
+                $ref: '#/components/schemas/ClusterTableData'
+              indexes:
                 $ref: '#/components/schemas/ClusterTableData'
             required:
-              - data
+              - tables
+              - indexes
+    TableInfoResponse:
+      description: Information for a single table
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TableInfo'
     HealthCheckResponse:
       description: Successful health check response
       content:
@@ -1040,16 +1380,26 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/VersionInfo'
-    ClusterResponse:
-      description: Cluster response
+    GflagsResponse:
+      description: Gflags information
       content:
         application/json:
           schema:
-            title: Cluster Response
+            $ref: '#/components/schemas/GflagsInfo'
+    AlertsResponse:
+      description: Alerts information
+      content:
+        application/json:
+          schema:
+            title: Alerts Response
             type: object
             properties:
               data:
-                $ref: '#/components/schemas/ClusterData'
+                type: array
+                items:
+                  $ref: '#/components/schemas/AlertsInfo'
+            required:
+              - data
   securitySchemes:
     BearerAuthToken:
       type: http

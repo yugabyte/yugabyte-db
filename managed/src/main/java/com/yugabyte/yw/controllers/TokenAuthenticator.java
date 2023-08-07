@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.controllers;
 
-import static play.mvc.Http.Status.UNAUTHORIZED;
+import static play.mvc.Http.Status.FORBIDDEN;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
@@ -173,20 +173,22 @@ public class TokenAuthenticator extends Action.Simple {
       if (user != null) {
         cust = Customer.get(user.getCustomerUUID());
       } else {
-        return CompletableFuture.completedFuture(Results.forbidden("Unable To Authenticate User"));
+        return CompletableFuture.completedFuture(
+            Results.unauthorized("Unable To Authenticate User"));
       }
 
       // Some authenticated calls don't actually need to be authenticated
       // (e.g. /metadata/column_types). Only check auth_token is valid in that case.
       if (cust != null && (custUUID == null || custUUID.equals(cust.getUuid()))) {
-        if (!checkAccessLevel(endPoint, user, requestType)) {
+        if (!checkAccessLevel(endPoint, user, requestType, path)) {
           return CompletableFuture.completedFuture(Results.forbidden("User doesn't have access"));
         }
         RequestContext.put(CUSTOMER, cust);
         RequestContext.put(USER, userService.getUserWithFeatures(cust, user));
       } else {
-        // Send Forbidden Response if Authentication Fails.
-        return CompletableFuture.completedFuture(Results.forbidden("Unable To Authenticate User"));
+        // Send Unauthorized Response if Authentication Fails.
+        return CompletableFuture.completedFuture(
+            Results.unauthorized("Unable To Authenticate User"));
       }
       return delegate.call(request);
     } finally {
@@ -229,7 +231,7 @@ public class TokenAuthenticator extends Action.Simple {
 
   public void adminOrThrow(Http.Request request) {
     if (!adminAuthentication(request)) {
-      throw new PlatformServiceException(UNAUTHORIZED, "Only Admins can perform this operation.");
+      throw new PlatformServiceException(FORBIDDEN, "Only Admins can perform this operation.");
     }
   }
 
@@ -237,7 +239,7 @@ public class TokenAuthenticator extends Action.Simple {
   public void superAdminOrThrow(Http.Request request) {
     if (!superAdminAuthentication(request)) {
       throw new PlatformServiceException(
-          UNAUTHORIZED, "Only Super Admins can perform this operation.");
+          FORBIDDEN, "Only Super Admins can perform this operation.");
     }
   }
 
@@ -261,19 +263,29 @@ public class TokenAuthenticator extends Action.Simple {
   }
 
   // Check role, and if the API call is accessible.
-  private boolean checkAccessLevel(String endPoint, Users user, String requestType) {
-
-    // Allow only superadmins to change LDAP Group Mappings.
-    if (endPoint.endsWith("/ldap_mappings") && requestType.equals("PUT")) {
-      return user.getRole() == Role.SuperAdmin;
-    }
-
+  private boolean checkAccessLevel(String endPoint, Users user, String requestType, String path) {
     // Users should be allowed to change their password.
     // Even admin users should not be allowed to change another
     // user's password.
     if (endPoint.endsWith("/change_password")) {
       UUID userUUID = UUID.fromString(endPoint.split("/")[2]);
       return userUUID.equals(user.getUuid());
+    }
+
+    if (requestType.equals("GET")
+        && (endPoint.endsWith("/users/" + user.getUuid())
+            || path.endsWith("/customers/" + user.getCustomerUUID()))) {
+      return true;
+    }
+
+    // If the user is ConnectOnly, then don't get any further access
+    if (user.getRole() == Role.ConnectOnly) {
+      return false;
+    }
+
+    // Allow only superadmins to change LDAP Group Mappings.
+    if (endPoint.endsWith("/ldap_mappings") && requestType.equals("PUT")) {
+      return user.getRole() == Role.SuperAdmin;
     }
 
     // All users have access to get, metrics and setting an API token.

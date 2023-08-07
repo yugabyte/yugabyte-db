@@ -2,11 +2,11 @@
 
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.common.BackupUtil.K8S_CERT_PATH;
-import static com.yugabyte.yw.common.BackupUtil.VM_CERT_DIR;
 import static com.yugabyte.yw.common.DevopsBase.PY_WRAPPER;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TableManagerYb.CommandSubType.BACKUP;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.K8S_CERT_PATH;
+import static com.yugabyte.yw.common.backuprestore.BackupUtil.VM_CERT_DIR;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
@@ -56,6 +56,8 @@ public class TableManagerYbTest extends FakeDBApplication {
   @Mock ShellProcessHandler shellProcessHandler;
 
   @Mock ReleaseManager releaseManager;
+
+  @Mock StorageUtilFactory storageUtilFactory;
 
   @InjectMocks TableManagerYb tableManagerYb;
 
@@ -230,6 +232,7 @@ public class TableManagerYbTest extends FakeDBApplication {
                   testUniverse.getTServers().stream()
                       .collect(Collectors.toMap(t -> t.cloudInfo.private_ip, t -> pkPath)))));
     }
+    cmd.add("--use_server_broadcast_address");
     cmd.add("--backup_location");
     cmd.add(backupTableParams.storageLocation);
     cmd.add("--storage_type");
@@ -258,6 +261,9 @@ public class TableManagerYbTest extends FakeDBApplication {
   public void setUp() {
     testCustomer = ModelFactory.testCustomer();
     testUniverse = createUniverse("Universe-1", testCustomer.getId());
+    when(storageUtilFactory.getStorageUtil(eq("S3"))).thenReturn(mockAWSUtil);
+    when(storageUtilFactory.getStorageUtil(eq("GCS"))).thenReturn(mockGCPUtil);
+    when(storageUtilFactory.getStorageUtil(eq("NFS"))).thenReturn(mockNfsUtil);
     when(mockruntimeConfigFactory.forUniverse(any())).thenReturn(mockConfigUniverseScope);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.pgBasedBackup)))
         .thenReturn(false);
@@ -265,6 +271,9 @@ public class TableManagerYbTest extends FakeDBApplication {
         .thenReturn(false);
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.enableSSE)))
         .thenReturn(false);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.useServerBroadcastAddressForYbBackup)))
+        .thenReturn(true);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ssh2Enabled))).thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.disableXxHashChecksum))).thenReturn(false);
   }

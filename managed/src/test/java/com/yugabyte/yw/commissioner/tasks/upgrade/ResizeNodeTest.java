@@ -2,31 +2,29 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
-import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.EITHER;
-import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MASTER;
-import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.TSERVER;
+import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.*;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
+import static com.yugabyte.yw.models.helpers.TaskType.AnsibleClusterServerCtl;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.UniverseModifyBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -39,14 +37,7 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
@@ -64,6 +55,7 @@ import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.yb.client.ListMastersResponse;
+import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
 @Slf4j
@@ -85,12 +77,13 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   // Tasks for RF1 configuration do not create sub-tasks for
   // leader blacklisting. So create two PLACEHOLDER indexes
   // as well as two separate base task sequences
-  private static final int PLACEHOLDER_INDEX = 3;
-  private static final int PLACEHOLDER_INDEX_RF1 = 1;
+  private static final int PLACEHOLDER_INDEX = 4;
+  private static final int PLACEHOLDER_INDEX_RF1 = 2;
 
   private static final List<TaskType> TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
+          TaskType.CheckUnderReplicatedTablets,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.WaitForEncryptionKeyInMemory,
@@ -99,7 +92,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
   private static final List<TaskType> PROCESS_START_SEQ =
       ImmutableList.of(
-          TaskType.AnsibleClusterServerCtl, TaskType.WaitForServer, TaskType.WaitForServerReady);
+          AnsibleClusterServerCtl, TaskType.WaitForServer, TaskType.WaitForServerReady);
 
   private static final List<TaskType> RESIZE_VOLUME_SEQ =
       ImmutableList.of(TaskType.InstanceActions);
@@ -138,6 +131,13 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     createInstanceType(defaultProvider.getUuid(), DEFAULT_INSTANCE_TYPE);
     createInstanceType(defaultProvider.getUuid(), NEW_INSTANCE_TYPE);
     createInstanceType(defaultProvider.getUuid(), NEW_READ_ONLY_INSTANCE_TYPE);
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("underreplicated_tablets", Json.newArray());
+    when(mockNodeUIApiHelper.getRequest(anyString())).thenReturn(bodyJson);
+    UniverseModifyBaseTest.mockGetMasterRegistrationResponses(
+        mockClient,
+        ImmutableList.of("10.0.0.1", "10.0.0.2", "10.0.0.3", "1.1.1.1", "1.1.1.2", "1.1.1.3"));
   }
 
   @Override
@@ -155,7 +155,6 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     "aws, 0, 10, m3.medium, c4.medium, true",
     "aws, 0, -10, m3.medium, m3.medium, false", // decrease volume
     "aws, 1, 10, m3.medium, m3.medium, false", // change num of volumes
-    "azu, 0, 10, m3.medium, m3.medium, false", // wrong provider
     "aws, 0, 10, m3.medium, fake_type, false", // unknown instance type
     "aws, 0, 10, i3.instance, m3.medium, false", // ephemeral instance type
     "aws, 0, 10, c5d.instance, m3.medium, false", // ephemeral instance type
@@ -199,11 +198,14 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   }
 
   @Parameters({
-    "10, c3.medium, c3.medium, UltraSSD_LRS, false",
-    "0, c3.medium, c4.medium, UltraSSD_LRS, true",
-    "10, c3.medium, c3.medium, StandardSSD_LRS, true",
-    "10, c3.medium, c4.medium, StandardSSD_LRS, true",
-    "5000, c3.medium, c3.medium, StandardSSD_LRS, false",
+    "10, Standard_DS2_v2, Standard_DS2_v2, UltraSSD_LRS, false",
+    "0, Standard_DS2_v2, Standard_DS4_v2, UltraSSD_LRS, true",
+    "10, Standard_DS2_v2, Standard_DS2_v2, StandardSSD_LRS, true",
+    "10, Standard_DS2_v2, Standard_DS4_v2, StandardSSD_LRS, true",
+    "10, Standard_DS2_v2, Standard_E2as_v5, StandardSSD_LRS, false", // local to no local
+    "10, Standard_E2as_v5, Standard_D32as_v5, StandardSSD_LRS, true", // no local to no local
+    "10, Standard_D32as_v5, Standard_DS2_v5, StandardSSD_LRS, false", // no local to local
+    "5000, Standard_DS2_v2, Standard_DS2_v2, StandardSSD_LRS, false",
   })
   @Test
   public void testResizeNodeAzu(
@@ -212,7 +214,6 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       String targetInstanceTypeCode,
       String volumeType,
       boolean expected) {
-    RuntimeConfigEntry.upsertGlobal("yb.cloud.enabled", "true");
     testResizeNodeAvailable(
         Common.CloudType.azu.toString(),
         0,
@@ -257,7 +258,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertEquals(
         expected,
         ResizeNodeParams.checkResizeIsPossible(
-            UUID.randomUUID(),
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid,
             currentIntent,
             targetIntent,
             defaultUniverse,
@@ -353,6 +354,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       String targetTserverConf,
       String targetMasterConf,
       boolean expected) {
+    Pair<Integer, Integer> counts = modifyToDedicated();
     Common.CloudType cloudType = Common.CloudType.valueOf(cloudTypeStr);
     UniverseDefinitionTaskParams.UserIntent currentIntent = createIntent(cloudType, null, null);
     currentIntent.masterDeviceInfo = currentIntent.deviceInfo.clone();
@@ -367,7 +369,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertEquals(
         expected,
         ResizeNodeParams.checkResizeIsPossible(
-            UUID.randomUUID(),
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid,
             currentIntent,
             targetIntent,
             defaultUniverse,
@@ -431,7 +433,20 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     currentIntent.deviceInfo.numVolumes = 1;
     currentIntent.deviceInfo.storageType = storageType;
     currentIntent.providerType = cloudType;
-    currentIntent.provider = defaultProvider.getUuid().toString();
+    switch (cloudType) {
+      case aws:
+        currentIntent.provider = defaultProvider.getUuid().toString();
+        break;
+      case gcp:
+        currentIntent.provider = gcpProvider.getUuid().toString();
+        break;
+      case azu:
+        currentIntent.provider = azuProvider.getUuid().toString();
+        break;
+      case kubernetes:
+        currentIntent.provider = kubernetesProvider.getUuid().toString();
+        break;
+    }
     currentIntent.instanceType = instanceTypeCode;
     return currentIntent;
   }
@@ -884,7 +899,31 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertTasksSequence(0, subTasks, false, true, true, false, true, true);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(false, true);
-    assertGflags(true, true);
+    assertGflags(true, true, false);
+  }
+
+  @Test
+  public void testChangingOnlyInstanceWithSpecificGFlags() {
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        univ -> {
+          UniverseDefinitionTaskParams.UserIntent primaryIntent =
+              univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          primaryIntent.specificGFlags =
+              SpecificGFlags.construct(primaryIntent.masterGFlags, primaryIntent.tserverGFlags);
+        });
+    ResizeNodeParams taskParams = createResizeParamsForCloud();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.instanceType = NEW_INSTANCE_TYPE;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("masterFlag", "123"), ImmutableMap.of("tserverFlag", "123"));
+    TaskInfo taskInfo = submitTask(taskParams);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    assertTasksSequence(0, subTasks, false, true, true, false, true, true);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertUniverseData(false, true);
+    assertGflags(true, true, true);
   }
 
   @Test
@@ -899,7 +938,32 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertTasksSequence(0, subTasks, false, true, true, false, false, true);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(false, true);
-    assertGflags(false, true);
+    assertGflags(false, true, false);
+  }
+
+  @Test
+  public void testChangingOnlyInstanceWithTserverSpecificGFlags() {
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        univ -> {
+          UniverseDefinitionTaskParams.UserIntent primaryIntent =
+              univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          primaryIntent.specificGFlags =
+              SpecificGFlags.construct(primaryIntent.masterGFlags, primaryIntent.tserverGFlags);
+        });
+    ResizeNodeParams taskParams = createResizeParamsForCloud();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.instanceType = NEW_INSTANCE_TYPE;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            taskParams.getPrimaryCluster().userIntent.masterGFlags,
+            ImmutableMap.of("tserverFlag", "123"));
+    TaskInfo taskInfo = submitTask(taskParams);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    assertTasksSequence(0, subTasks, false, true, true, false, false, true);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertUniverseData(false, true);
+    assertGflags(false, true, true);
   }
 
   @Test
@@ -914,18 +978,54 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertTasksSequence(0, subTasks, false, true, true, false, true, false);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(false, true);
-    assertGflags(true, false);
+    assertGflags(true, false, false);
   }
 
-  private void assertGflags(boolean updateMasterGflags, boolean updateTserverGflags) {
+  @Test
+  public void testChangingOnlyInstanceWithMasterSpecificGFlags() {
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        univ -> {
+          UniverseDefinitionTaskParams.UserIntent primaryIntent =
+              univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          primaryIntent.specificGFlags =
+              SpecificGFlags.construct(primaryIntent.masterGFlags, primaryIntent.tserverGFlags);
+        });
+    ResizeNodeParams taskParams = createResizeParamsForCloud();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.instanceType = NEW_INSTANCE_TYPE;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("masterFlag", "123"),
+            taskParams.getPrimaryCluster().userIntent.tserverGFlags);
+    TaskInfo taskInfo = submitTask(taskParams);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    assertTasksSequence(0, subTasks, false, true, true, false, true, false);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertUniverseData(false, true);
+    assertGflags(true, false, true);
+  }
+
+  private void assertGflags(
+      boolean updateMasterGflags, boolean updateTserverGflags, boolean useSpecificGFlags) {
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent newIntent = primaryCluster.userIntent;
     if (updateMasterGflags) {
+      if (useSpecificGFlags) {
+        assertEquals(
+            newIntent.specificGFlags.getGFlags(null, MASTER),
+            new HashMap<>(ImmutableMap.of("masterFlag", "123")));
+      }
       assertEquals(newIntent.masterGFlags, ImmutableMap.of("masterFlag", "123"));
     }
     if (updateTserverGflags) {
+      if (useSpecificGFlags) {
+        assertEquals(
+            newIntent.specificGFlags.getGFlags(null, TSERVER),
+            new HashMap<>(ImmutableMap.of("tserverFlag", "123")));
+      }
       assertEquals(newIntent.tserverGFlags, ImmutableMap.of("tserverFlag", "123"));
     }
   }
@@ -961,7 +1061,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     int actualChangeInstance = 0;
     int actualResizes = 0;
     for (TaskInfo subTask : subTasks) {
-      if (subTask.getTaskType() == TaskType.AnsibleClusterServerCtl) {
+      if (subTask.getTaskType() == AnsibleClusterServerCtl) {
         actualRestarts++;
       } else if (subTask.getTaskType() == TaskType.ChangeInstanceType) {
         actualChangeInstance++;
@@ -1058,6 +1158,150 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertTasksSequence(1, subTasks, true, true, true, false);
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(true, true);
+  }
+
+  @Test
+  public void testChangeInstanceForAZ() {
+    ResizeNodeParams taskParams = createResizeParamsForCloud();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    UniverseDefinitionTaskParams.UserIntentOverrides userIntentOverrides =
+        new UniverseDefinitionTaskParams.UserIntentOverrides();
+    UniverseDefinitionTaskParams.AZOverrides azOverrides =
+        new UniverseDefinitionTaskParams.AZOverrides();
+    azOverrides.setInstanceType(NEW_INSTANCE_TYPE);
+    userIntentOverrides.setAzOverrides(Collections.singletonMap(az2.getUuid(), azOverrides));
+    taskParams.getPrimaryCluster().userIntent.setUserIntentOverrides(userIntentOverrides);
+    TaskInfo taskInfo = submitTask(taskParams);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    assertEquals(Success, taskInfo.getTaskState());
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+
+    String azNodeName =
+        defaultUniverse.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> n.getAzUuid().equals(az2.getUuid()))
+            .map(n -> n.getNodeName())
+            .findFirst()
+            .get();
+
+    List<TaskType> taskTypes = new ArrayList<>(TASK_SEQUENCE);
+    Map<Integer, Map<String, Object>> paramsForTask = new HashMap<>();
+    createTasksTypesForNode(
+        false, false, false, true, taskTypes, paramsForTask, true, false, false);
+
+    for (int i = 0; i < taskTypes.size(); i++) {
+      TaskType taskType = taskTypes.get(i);
+      Map<String, Object> params = new HashMap<>(paramsForTask.getOrDefault(i, new HashMap<>()));
+      if (!NON_NODE_TASKS.contains(taskType)) {
+        params.put("nodeName", azNodeName);
+      }
+      paramsForTask.put(i, params);
+    }
+    taskTypes.add(TaskType.PersistResizeNode);
+    taskTypes.add(TaskType.UniverseUpdateSucceeded);
+    assertTasksSequence(1, subTasksByPosition, taskTypes, paramsForTask, false);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    for (NodeDetails nodeDetails : defaultUniverse.getUniverseDetails().nodeDetailsSet) {
+      if (nodeDetails.getAzUuid().equals(az2.getUuid())) {
+        assertEquals(azOverrides.getInstanceType(), nodeDetails.cloudInfo.instance_type);
+      } else {
+        assertEquals(DEFAULT_INSTANCE_TYPE, nodeDetails.cloudInfo.instance_type);
+      }
+    }
+  }
+
+  @Test
+  public void testChangeOnlyThroughputForAZ() {
+    ResizeNodeParams taskParams = createResizeParamsForCloud();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    UniverseDefinitionTaskParams.UserIntentOverrides userIntentOverrides =
+        new UniverseDefinitionTaskParams.UserIntentOverrides();
+    UniverseDefinitionTaskParams.AZOverrides azOverrides =
+        new UniverseDefinitionTaskParams.AZOverrides();
+    azOverrides.setDeviceInfo(new DeviceInfo());
+    azOverrides.getDeviceInfo().throughput = NEW_DISK_THROUGHPUT;
+    userIntentOverrides.setAzOverrides(Collections.singletonMap(az2.getUuid(), azOverrides));
+    taskParams.getPrimaryCluster().userIntent.setUserIntentOverrides(userIntentOverrides);
+    TaskInfo taskInfo = submitTask(taskParams);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    assertEquals(Success, taskInfo.getTaskState());
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+
+    String azNodeName =
+        defaultUniverse.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> n.getAzUuid().equals(az2.getUuid()))
+            .map(n -> n.getNodeName())
+            .findFirst()
+            .get();
+    int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.SetNodeState);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.InstanceActions);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.SetNodeState);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.PersistResizeNode);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
+    TaskInfo deviceTask = subTasksByPosition.get(1).get(0);
+    JsonNode params = deviceTask.getDetails();
+    assertEquals(azNodeName, params.get("nodeName").asText());
+    JsonNode deviceParams = params.get("deviceInfo");
+    DeviceInfo deviceInfo =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo;
+    deviceInfo.throughput = NEW_DISK_THROUGHPUT;
+    assertEquals(Json.toJson(deviceInfo), deviceParams);
+  }
+
+  @Test
+  public void testResetInstanceForAZ() {
+    AtomicReference<String> nodeName = new AtomicReference<>();
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            univ -> {
+              UniverseDefinitionTaskParams.UserIntentOverrides userIntentOverrides =
+                  new UniverseDefinitionTaskParams.UserIntentOverrides();
+              UniverseDefinitionTaskParams.AZOverrides azOverrides =
+                  new UniverseDefinitionTaskParams.AZOverrides();
+              azOverrides.setInstanceType(NEW_INSTANCE_TYPE);
+              userIntentOverrides.setAzOverrides(
+                  Collections.singletonMap(az2.getUuid(), azOverrides));
+              UniverseDefinitionTaskParams.Cluster primaryCluster =
+                  univ.getUniverseDetails().getPrimaryCluster();
+              primaryCluster.userIntent.setUserIntentOverrides(userIntentOverrides);
+              univ.getNodesInCluster(primaryCluster.uuid).stream()
+                  .filter(n -> n.getAzUuid().equals(az2.getUuid()))
+                  .peek(n -> nodeName.set(n.getNodeName()))
+                  .forEach(n -> n.cloudInfo.instance_type = NEW_INSTANCE_TYPE);
+            });
+
+    ResizeNodeParams taskParams = createResizeParamsForCloud();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.setUserIntentOverrides(null);
+    TaskInfo taskInfo = submitTask(taskParams);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    assertEquals(Success, taskInfo.getTaskState());
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+
+    List<TaskType> taskTypes = new ArrayList<>(TASK_SEQUENCE);
+    Map<Integer, Map<String, Object>> paramsForTask = new HashMap<>();
+    createTasksTypesForNode(
+        false, false, false, true, taskTypes, paramsForTask, true, false, false);
+
+    for (int i = 0; i < taskTypes.size(); i++) {
+      TaskType taskType = taskTypes.get(i);
+      Map<String, Object> params = new HashMap<>(paramsForTask.getOrDefault(i, new HashMap<>()));
+      if (!NON_NODE_TASKS.contains(taskType)) {
+        params.put("nodeName", nodeName.get());
+      }
+      paramsForTask.put(i, params);
+    }
+    taskTypes.add(TaskType.PersistResizeNode);
+    taskTypes.add(TaskType.UniverseUpdateSucceeded);
+    assertTasksSequence(1, subTasksByPosition, taskTypes, paramsForTask, false);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    for (NodeDetails nodeDetails : defaultUniverse.getUniverseDetails().nodeDetailsSet) {
+      assertEquals(DEFAULT_INSTANCE_TYPE, nodeDetails.cloudInfo.instance_type);
+    }
   }
 
   private void assertUniverseData(boolean increaseVolume, boolean changeInstance) {
@@ -1307,7 +1551,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     for (ServerType processType : processTypes) {
       paramsForTask.put(
           index, ImmutableMap.of("process", processType.name().toLowerCase(), "command", "stop"));
-      taskTypesSequence.add(index++, TaskType.AnsibleClusterServerCtl);
+      taskTypesSequence.add(index++, AnsibleClusterServerCtl);
       if (processType == MASTER && waitForMasterLeader) {
         taskTypesSequence.add(index++, TaskType.WaitForMasterLeader);
         taskTypesSequence.add(index++, TaskType.ChangeMasterConfig);
@@ -1322,9 +1566,10 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       List<TaskType> startSequence = new ArrayList<>(PROCESS_START_SEQ);
       if (processType == MASTER && waitForMasterLeader) {
         startSequence.add(2, TaskType.ChangeMasterConfig);
+        startSequence.add(3, TaskType.WaitForFollowerLag);
       }
       for (TaskType taskType : startSequence) {
-        if (taskType == TaskType.AnsibleClusterServerCtl) {
+        if (taskType == AnsibleClusterServerCtl) {
           paramsForTask.put(
               index,
               ImmutableMap.of(
@@ -1336,6 +1581,8 @@ public class ResizeNodeTest extends UpgradeTaskTest {
                   processType == TSERVER));
         } else if (taskType == TaskType.ChangeMasterConfig) {
           paramsForTask.put(index, ImmutableMap.of("opType", "AddMaster"));
+        } else if (taskType == TaskType.WaitForFollowerLag) {
+          paramsForTask.put(index, ImmutableMap.of());
         } else {
           paramsForTask.put(index, ImmutableMap.of("serverType", processType.name()));
         }

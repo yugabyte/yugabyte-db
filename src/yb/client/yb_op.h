@@ -111,7 +111,7 @@ class YBOperation {
     return succeeded();
   }
 
-  virtual bool should_add_intents(IsolationLevel isolation_level) {
+  virtual bool should_apply_intents(IsolationLevel isolation_level) {
     return !read_only() || isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION;
   }
 
@@ -134,12 +134,8 @@ class YBOperation {
     request_id_ = id;
   }
 
-  std::optional<RetryableRequestId> min_running_request_id() const {
-    return min_running_request_id_;
-  }
-
-  void set_min_running_request_id(RetryableRequestId id) {
-    min_running_request_id_ = id;
+  void reset_request_id() {
+    request_id_.reset();
   }
 
   // Returns the partition key of the operation.
@@ -180,8 +176,9 @@ class YBOperation {
 
   boost::optional<PartitionListVersion> partition_list_version_;
 
+  // Persist retryable request ID across internal retries within the same YBSession
+  // to prevent duplicate writes due to internal retries.
   std::optional<RetryableRequestId> request_id_;
-  std::optional<RetryableRequestId> min_running_request_id_;
 
   DISALLOW_COPY_AND_ASSIGN(YBOperation);
 };
@@ -557,9 +554,10 @@ class YBPgsqlReadOp : public YBPgsqlOp {
   static std::vector<ColumnSchema> MakeColumnSchemasFromColDesc(
       const google::protobuf::RepeatedPtrField<PgsqlRSColDescPB>& rscol_descs);
 
-  bool should_add_intents(IsolationLevel isolation_level) override;
-  void SetUsedReadTime(const ReadHybridTime& used_time);
+  bool should_apply_intents(IsolationLevel isolation_level) override;
+  void SetUsedReadTime(const ReadHybridTime& used_time, const TabletId& tablet);
   const ReadHybridTime& used_read_time() const { return used_read_time_; }
+  const TabletId& used_tablet() const { return used_tablet_; }
 
   Status GetPartitionKey(std::string* partition_key) const override;
 
@@ -574,6 +572,8 @@ class YBPgsqlReadOp : public YBPgsqlOp {
   std::unique_ptr<PgsqlReadRequestPB> request_holder_;
   YBConsistencyLevel yb_consistency_level_ = YBConsistencyLevel::STRONG;
   ReadHybridTime used_read_time_;
+  // The tablet that served this operation.
+  TabletId used_tablet_;
 };
 
 // This class is not thread-safe, though different YBNoOp objects on

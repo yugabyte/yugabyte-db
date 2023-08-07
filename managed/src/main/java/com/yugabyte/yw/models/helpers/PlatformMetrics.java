@@ -57,6 +57,7 @@ public enum PlatformMetrics {
   // Tasks
   CREATE_BACKUP_STATUS("Backup creation task status for universe", Unit.STATUS),
   SCHEDULE_BACKUP_STATUS("Backup schedule status for universe", Unit.STATUS),
+  @Deprecated
   UNIVERSE_INACTIVE_CRON_NODES("Count of nodes with inactive cronjob for universe", Unit.COUNT),
   SSH_KEY_ROTATION_STATUS("SSH Key rotation task status for universe", Unit.STATUS, false),
   PITR_CONFIG_STATUS("PITR Config Status for DB", Unit.STATUS),
@@ -105,7 +106,9 @@ public enum PlatformMetrics {
       "Provisioned throughput for the node disk", Unit.COUNT, false),
   // Used for k8s universes only.
   CONTAINER_RESOURCE_REQUESTS_CPU_CORES(
-      "Requested number of CPU cores for the db process", Unit.COUNT, false);
+      "Requested number of CPU cores for the db process", Unit.COUNT, false),
+  UNIVERSE_NODE_CRON_STATUS("Cron jobs status on the node", Unit.STATUS),
+  UNIVERSE_IS_SYSTEMD("Flag, indicating systemd universe", Unit.STATUS, false);
   private final String help;
   private final Unit unit;
   private final Set<MetricSourceState> validForSourceStates;

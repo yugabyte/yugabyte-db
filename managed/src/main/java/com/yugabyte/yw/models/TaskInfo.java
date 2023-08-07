@@ -246,6 +246,15 @@ public class TaskInfo extends Model {
     return query.findList();
   }
 
+  public static List<TaskInfo> getLatestIncompleteBackupTask() {
+    return find.query()
+        .where()
+        .eq("task_type", TaskType.CreateBackup)
+        .notIn("task_state", COMPLETED_STATES)
+        .orderBy("create_time desc")
+        .findList();
+  }
+
   // Returns  partial object
   public List<TaskInfo> getSubTasks() {
     ExpressionList<TaskInfo> subTaskQuery =

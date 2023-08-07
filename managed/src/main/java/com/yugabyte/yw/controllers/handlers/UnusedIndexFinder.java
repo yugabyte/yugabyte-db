@@ -192,7 +192,7 @@ public class UnusedIndexFinder {
             "Final JSON responses: current_database: {}, table_name: {}, "
                 + "index_name: {}, index_command: {}, description: {}",
             res.currentDatabase,
-            res.tableName,
+            CommonUtils.logTableName(res.tableName),
             res.indexName,
             res.indexCommand,
             res.description);

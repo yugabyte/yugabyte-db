@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static org.yb.Value.DataType;
+import static org.yb.Value.PersistentDataType;
 
 /**
  * Describes all the QLTypes available to build table schemas.
@@ -19,7 +19,7 @@ import static org.yb.Value.DataType;
 
 public class QLType {
 
-  private final DataType main;
+  private final PersistentDataType main;
   private final List<QLType> params;
 
   // These fields are only used for user-defined types.
@@ -30,33 +30,33 @@ public class QLType {
   // Private constructors, called by static methods below.
 
   // Constructor for primitive types
-  private QLType(DataType main, List<QLType> params) {
+  private QLType(PersistentDataType main, List<QLType> params) {
     this.main = main;
     this.params = params;
 
     // For user-defined types the other constructor should be called
-    assert main != DataType.USER_DEFINED_TYPE;
+    assert main != PersistentDataType.USER_DEFINED_TYPE;
     udtypeName = null;
     udtypeKeyspaceName = null;
   }
 
   // Constructor for user-defined types
   private QLType(String udtypeKeyspaceName, String udtypeName) {
-    this.main = DataType.USER_DEFINED_TYPE;
+    this.main = PersistentDataType.USER_DEFINED_TYPE;
     this.params = new ArrayList<>();
     this.udtypeKeyspaceName = udtypeKeyspaceName;
     this.udtypeName = udtypeName;
   }
 
   // Utility constructor for primitive types without parameters
-  private QLType(DataType main) {
+  private QLType(PersistentDataType main) {
     this(main, new ArrayList<>());
   }
 
   //------------------------------------------------------------------------------------------------
   // Getter methods.
 
-  public DataType getMain() {
+  public PersistentDataType getMain() {
     return this.main;
   }
 
@@ -65,7 +65,7 @@ public class QLType {
   }
 
   public boolean isUserDefined() {
-    return main == DataType.USER_DEFINED_TYPE;
+    return main == PersistentDataType.USER_DEFINED_TYPE;
   }
 
   // Expects this is a user-defined type.
@@ -97,7 +97,7 @@ public class QLType {
     return name;
   }
 
-  private static String getDataTypeName(DataType type) {
+  private static String getDataTypeName(PersistentDataType type) {
     switch (type) {
       case INT8: return "int8";
       case INT16: return "int16";
@@ -148,7 +148,7 @@ public class QLType {
    * @return the QLType instance.
    */
   public static QLType createFromQLTypePB(Common.QLTypePB yqlType) {
-    if (yqlType.getMain() == DataType.USER_DEFINED_TYPE) {
+    if (yqlType.getMain() == PersistentDataType.USER_DEFINED_TYPE) {
       return new QLType(yqlType.getUdtypeInfo().getKeyspaceName(),
                          yqlType.getUdtypeInfo().getName());
     }
@@ -169,7 +169,7 @@ public class QLType {
   public static QLType createSetType(QLType elemsType) {
     ArrayList<QLType> params = new ArrayList<>(1);
     params.add(elemsType);
-    return new QLType(DataType.SET, params);
+    return new QLType(PersistentDataType.SET, params);
   }
 
   /**
@@ -184,7 +184,7 @@ public class QLType {
     ArrayList<QLType> params = new ArrayList<>(2);
     params.add(keysType);
     params.add(valuesType);
-    return new QLType(DataType.MAP, params);
+    return new QLType(PersistentDataType.MAP, params);
   }
 
   /**
@@ -197,7 +197,7 @@ public class QLType {
   public static QLType createListType(QLType elemsType) {
     ArrayList<QLType> params = new ArrayList<>(1);
     params.add(elemsType);
-    return new QLType(DataType.LIST, params);
+    return new QLType(PersistentDataType.LIST, params);
   }
 
   /**
@@ -210,7 +210,7 @@ public class QLType {
   public static QLType createFrozenType(QLType argType) {
     ArrayList<QLType> params = new ArrayList<>(1);
     params.add(argType);
-    return new QLType(DataType.FROZEN, params);
+    return new QLType(PersistentDataType.FROZEN, params);
   }
 
   /**
@@ -229,20 +229,20 @@ public class QLType {
   }
 
   // convenience fields for simple QLTypes
-  public static QLType INT8 = new QLType(DataType.INT8);
-  public static QLType INT16 = new QLType(DataType.INT16);
-  public static QLType INT32 = new QLType(DataType.INT32);
-  public static QLType INT64 = new QLType(DataType.INT64);
-  public static QLType STRING = new QLType(DataType.STRING);
-  public static QLType BOOL = new QLType(DataType.BOOL);
-  public static QLType FLOAT = new QLType(DataType.FLOAT);
-  public static QLType DOUBLE = new QLType(DataType.DOUBLE);
-  public static QLType BINARY = new QLType(DataType.BINARY);
-  public static QLType TIMESTAMP = new QLType(DataType.TIMESTAMP);
-  public static QLType DECIMAL = new QLType(DataType.DECIMAL);
-  public static QLType VARINT = new QLType(DataType.VARINT);
-  public static QLType INET = new QLType(DataType.INET);
-  public static QLType UUID = new QLType(DataType.UUID);
-  public static QLType TIMEUUID = new QLType(DataType.TIMEUUID);
+  public static QLType INT8 = new QLType(PersistentDataType.INT8);
+  public static QLType INT16 = new QLType(PersistentDataType.INT16);
+  public static QLType INT32 = new QLType(PersistentDataType.INT32);
+  public static QLType INT64 = new QLType(PersistentDataType.INT64);
+  public static QLType STRING = new QLType(PersistentDataType.STRING);
+  public static QLType BOOL = new QLType(PersistentDataType.BOOL);
+  public static QLType FLOAT = new QLType(PersistentDataType.FLOAT);
+  public static QLType DOUBLE = new QLType(PersistentDataType.DOUBLE);
+  public static QLType BINARY = new QLType(PersistentDataType.BINARY);
+  public static QLType TIMESTAMP = new QLType(PersistentDataType.TIMESTAMP);
+  public static QLType DECIMAL = new QLType(PersistentDataType.DECIMAL);
+  public static QLType VARINT = new QLType(PersistentDataType.VARINT);
+  public static QLType INET = new QLType(PersistentDataType.INET);
+  public static QLType UUID = new QLType(PersistentDataType.UUID);
+  public static QLType TIMEUUID = new QLType(PersistentDataType.TIMEUUID);
 
 }

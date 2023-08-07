@@ -1,4 +1,4 @@
-import React, { FC, useEffect } from 'react';
+import { FC, useEffect } from 'react';
 import { RunTimeConfigScope, RuntimeConfigScopeProps } from '../../../redesign/utils/dtos';
 import { ConfigData } from '../ConfigData';
 

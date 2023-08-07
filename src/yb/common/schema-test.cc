@@ -52,9 +52,9 @@ TEST(TestSchema, TestSchema) {
   Schema empty_schema;
   ASSERT_GT(empty_schema.memory_footprint_excluding_this(), 0);
 
-  ColumnSchema col1("key", STRING, ColumnKind::RANGE_ASC_NULL_FIRST);
-  ColumnSchema col2("uint32val", UINT32, ColumnKind::VALUE, Nullable::kTrue);
-  ColumnSchema col3("int32val", INT32);
+  ColumnSchema col1("key", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST);
+  ColumnSchema col2("uint32val", DataType::UINT32, ColumnKind::VALUE, Nullable::kTrue);
+  ColumnSchema col3("int32val", DataType::INT32);
 
   vector<ColumnSchema> cols = { col1, col2, col3 };
   Schema schema(cols);
@@ -87,8 +87,8 @@ TEST(TestSchema, TestReset) {
   Schema schema;
   ASSERT_FALSE(schema.initialized());
 
-  ASSERT_OK(schema.Reset({ ColumnSchema("col3", UINT32, ColumnKind::RANGE_ASC_NULL_FIRST),
-                           ColumnSchema("col2", STRING) }));
+  ASSERT_OK(schema.Reset({ ColumnSchema("col3", DataType::UINT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+                           ColumnSchema("col2", DataType::STRING) }));
   ASSERT_TRUE(schema.initialized());
 }
 
@@ -98,21 +98,22 @@ TEST(TestSchema, TestEmptyVariant) {
   Slice empty_val("");
   Slice nonempty_val("test");
 
-  Variant v(STRING, &nonempty_val);
+  Variant v(DataType::STRING, &nonempty_val);
   ASSERT_EQ("test", (static_cast<const Slice*>(v.value()))->ToString());
-  v.Reset(STRING, &empty_val);
+  v.Reset(DataType::STRING, &empty_val);
   ASSERT_EQ("", (static_cast<const Slice*>(v.value()))->ToString());
-  v.Reset(STRING, &nonempty_val);
+  v.Reset(DataType::STRING, &nonempty_val);
   ASSERT_EQ("test", (static_cast<const Slice*>(v.value()))->ToString());
 }
 
 TEST(TestSchema, TestProjectSubset) {
-  Schema schema1({ ColumnSchema("col1", STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
-                   ColumnSchema("col2", STRING),
-                   ColumnSchema("col3", UINT32) });
+  Schema schema1({
+      ColumnSchema("col1", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+      ColumnSchema("col2", DataType::STRING),
+      ColumnSchema("col3", DataType::UINT32) });
 
-  Schema schema2({ ColumnSchema("col3", UINT32),
-                   ColumnSchema("col2", STRING) });
+  Schema schema2({ ColumnSchema("col3", DataType::UINT32),
+                   ColumnSchema("col2", DataType::STRING) });
 
   RowProjector row_projector(&schema1, &schema2);
   ASSERT_OK(row_projector.Init());
@@ -131,9 +132,9 @@ TEST(TestSchema, TestProjectSubset) {
 // Test projection when the type of the projected column
 // doesn't match the original type.
 TEST(TestSchema, TestProjectTypeMismatch) {
-  Schema schema1({ ColumnSchema("key", STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
-                   ColumnSchema("val", UINT32) });
-  Schema schema2({ ColumnSchema("val", STRING) });
+  Schema schema1({ ColumnSchema("key", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+                   ColumnSchema("val", DataType::UINT32) });
+  Schema schema2({ ColumnSchema("val", DataType::STRING) });
 
   RowProjector row_projector(&schema1, &schema2);
   Status s = row_projector.Init();
@@ -144,11 +145,13 @@ TEST(TestSchema, TestProjectTypeMismatch) {
 // Test projection when the some columns in the projection
 // are not present in the base schema
 TEST(TestSchema, TestProjectMissingColumn) {
-  Schema schema1({ ColumnSchema("key", STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
-                   ColumnSchema("val", UINT32) });
-  Schema schema2({ ColumnSchema("val", UINT32), ColumnSchema("non_present", STRING) });
-  Schema schema3({ ColumnSchema("val", UINT32),
-                   ColumnSchema("non_present", UINT32, ColumnKind::VALUE, Nullable::kTrue) });
+  Schema schema1({ ColumnSchema("key", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+                   ColumnSchema("val", DataType::UINT32) });
+  Schema schema2({ ColumnSchema("val", DataType::UINT32),
+                   ColumnSchema("non_present", DataType::STRING) });
+  Schema schema3({ ColumnSchema("val", DataType::UINT32),
+                   ColumnSchema("non_present", DataType::UINT32, ColumnKind::VALUE,
+                                Nullable::kTrue) });
 
   RowProjector row_projector(&schema1, &schema2);
   Status s = row_projector.Init();
@@ -171,12 +174,12 @@ TEST(TestSchema, TestProjectMissingColumn) {
 // and a new column added ('non_present')
 TEST(TestSchema, TestProjectRename) {
   SchemaBuilder builder;
-  ASSERT_OK(builder.AddKeyColumn("key", STRING));
-  ASSERT_OK(builder.AddColumn("val", UINT32));
+  ASSERT_OK(builder.AddKeyColumn("key", DataType::STRING));
+  ASSERT_OK(builder.AddColumn("val", DataType::UINT32));
   Schema schema1 = builder.Build();
 
   builder.Reset(schema1);
-  ASSERT_OK(builder.AddNullableColumn("non_present", UINT32));
+  ASSERT_OK(builder.AddNullableColumn("non_present", DataType::UINT32));
   ASSERT_OK(builder.RenameColumn("val", "val_renamed"));
   Schema schema2 = builder.Build();
 
@@ -194,11 +197,11 @@ TEST(TestSchema, TestProjectRename) {
 }
 
 TEST(TestSchema, TestCreateProjection) {
-  Schema schema({ ColumnSchema("col1", STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
-                  ColumnSchema("col2", STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
-                  ColumnSchema("col3", STRING),
-                  ColumnSchema("col4", STRING),
-                  ColumnSchema("col5", STRING) });
+  Schema schema({ ColumnSchema("col1", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+                  ColumnSchema("col2", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+                  ColumnSchema("col3", DataType::STRING),
+                  ColumnSchema("col4", DataType::STRING),
+                  ColumnSchema("col5", DataType::STRING) });
   Schema schema_with_ids = SchemaBuilder(schema).Build();
   Schema partial_schema;
 
@@ -266,9 +269,9 @@ TEST(TestSchema, TestCreateProjection) {
 TEST(TestSchema, TestCopyFrom) {
   TableProperties properties;
   properties.SetDefaultTimeToLive(1000);
-  Schema schema1({ ColumnSchema("col1", STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
-                   ColumnSchema("col2", STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
-                   ColumnSchema("col3", UINT32) }, properties);
+  Schema schema1({ ColumnSchema("col1", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+                   ColumnSchema("col2", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+                   ColumnSchema("col3", DataType::UINT32) }, properties);
   Schema schema2;
   schema2.CopyFrom(schema1);
   ASSERT_EQ(3, schema2.num_columns());
@@ -279,9 +282,9 @@ TEST(TestSchema, TestCopyFrom) {
 TEST(TestSchema, TestSchemaBuilder) {
   TableProperties properties;
   properties.SetDefaultTimeToLive(1000);
-  Schema schema1({ ColumnSchema("col1", STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
-                   ColumnSchema("col2", STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
-                   ColumnSchema("col3", UINT32) }, properties);
+  Schema schema1({ ColumnSchema("col1", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+                   ColumnSchema("col2", DataType::STRING, ColumnKind::RANGE_ASC_NULL_FIRST),
+                   ColumnSchema("col3", DataType::UINT32) }, properties);
   SchemaBuilder builder(schema1);
   Schema schema2 = builder.Build();
   ASSERT_TRUE(schema1.Equals(schema2));

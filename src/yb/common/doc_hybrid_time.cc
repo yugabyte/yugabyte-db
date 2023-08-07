@@ -27,8 +27,8 @@
 
 using std::string;
 
-using yb::util::FastEncodeDescendingSignedVarInt;
-using yb::util::FastDecodeDescendingSignedVarIntUnsafe;
+using yb::FastEncodeDescendingSignedVarInt;
+using yb::FastDecodeDescendingSignedVarIntUnsafe;
 
 using strings::SubstituteAndAppend;
 
@@ -96,7 +96,7 @@ Result<Slice> DocHybridTime::EncodedFromStart(Slice* slice) {
   // 3) Logical part of hybrid time.
   // 4) Write id.
   for (size_t i = 0; i != 4; ++i) {
-    auto size = util::FastDecodeDescendingSignedVarIntSize(*slice);
+    auto size = FastDecodeDescendingSignedVarIntSize(*slice);
     if (size == 0 || size > slice->size()) {
       return STATUS_FORMAT(
           Corruption, "Bad doc hybrid time: $0, step: $1",

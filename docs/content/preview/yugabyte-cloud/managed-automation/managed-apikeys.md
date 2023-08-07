@@ -38,7 +38,7 @@ To create an API key:
 
 1. Enter a name and description for the key.
 
-1. Choose a [role](../../cloud-admin/manage-roles/) for the API Key.
+1. Choose a [role](../../cloud-admin/managed-roles/) for the API Key.
 
 1. Set the key expiration or select **Never expire** to create a key without an expiration.
 

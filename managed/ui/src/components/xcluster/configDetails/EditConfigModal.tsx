@@ -1,4 +1,3 @@
-import React from 'react';
 import * as Yup from 'yup';
 import { Field } from 'formik';
 import { useMutation, useQueryClient } from 'react-query';
@@ -10,11 +9,12 @@ import { XClusterConfig } from '../XClusterTypes';
 import { YBFormInput } from '../../common/forms/fields';
 import { XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN } from '../constants';
 import { handleServerError } from '../../../utils/errorHandlingUtils';
+import { xClusterQueryKey } from '../../../redesign/helpers/api';
 
 interface Props {
   visible: boolean;
   onHide: () => void;
-  replication: XClusterConfig;
+  xClusterConfig: XClusterConfig;
 }
 const validationSchema = Yup.object().shape({
   name: Yup.string()
@@ -26,9 +26,9 @@ const validationSchema = Yup.object().shape({
         value !== null && value !== undefined && !XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN.test(value)
     )
 });
-export function EditConfigModal({ onHide, visible, replication }: Props) {
+export function EditConfigModal({ onHide, visible, xClusterConfig }: Props) {
   const queryClient = useQueryClient();
-  const initialValues: any = { ...replication };
+  const initialValues: any = { ...xClusterConfig };
 
   const modifyXclusterOperation = useMutation(
     (values: XClusterConfig) => {
@@ -36,7 +36,7 @@ export function EditConfigModal({ onHide, visible, replication }: Props) {
     },
     {
       onSuccess: () => {
-        queryClient.invalidateQueries(['Xcluster', replication.uuid]);
+        queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
         onHide();
       },
       onError: (error: Error | AxiosError) =>

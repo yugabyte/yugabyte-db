@@ -36,6 +36,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -107,13 +108,16 @@ void DocRowwiseIterator::InitIterator(
       statistics_);
   InitResult();
 
-  if (is_forward_scan_ && has_bound_key_) {
-    db_iter_->SetUpperbound(bound_key_);
-  }
-
   auto prefix = shared_key_prefix();
-  if (!prefix.empty()) {
-    prefix_scope_.emplace(prefix, db_iter_.get());
+  if (is_forward_scan_ && has_bound_key_ &&
+      bound_key_.data().data()[0] != dockv::KeyEntryTypeAsChar::kHighest) {
+    DCHECK(bound_key_.AsSlice().starts_with(prefix))
+        << "Bound key: " << bound_key_.AsSlice().ToDebugHexString()
+        << ", prefix: " << prefix.ToDebugHexString();
+    upperbound_scope_.emplace(bound_key_, db_iter_.get());
+  } else {
+    DCHECK(!upperbound().empty());
+    upperbound_scope_.emplace(upperbound(), db_iter_.get());
   }
 }
 
@@ -132,12 +136,34 @@ void DocRowwiseIterator::InitResult() {
   }
 }
 
+Result<bool> DocRowwiseIterator::PgFetchRow(Slice key, bool restart, dockv::PgTableRow* table_row) {
+  VLOG_WITH_FUNC(3) << "key: " << key << "/" << dockv::DocKey::DebugSliceToString(key)
+                    << ", restart: " << restart;
+  prev_doc_found_ = DocReaderResult::kNotFound;
+  done_ = false;
+
+  Slice upperbound(key.data(), key.end() + 1);
+  DCHECK_EQ(upperbound.end()[-1], dockv::KeyEntryTypeAsChar::kHighest);
+  IntentAwareIteratorUpperboundScope upperbound_scope(upperbound, db_iter_.get());
+  if (restart) {
+    db_iter_->Seek(key);
+  } else {
+    db_iter_->SeekForward(key);
+  }
+  return PgFetchNext(table_row);
+}
+
 inline void DocRowwiseIterator::Seek(Slice key) {
   VLOG_WITH_FUNC(3) << " Seeking to " << key << "/" << dockv::DocKey::DebugSliceToString(key);
 
   prev_doc_found_ = DocReaderResult::kNotFound;
-  current_entry_.valid = false;
-  if (!key.empty()) {
+
+  // We do not have values before dockv::KeyEntryTypeAsChar::kNullLow, but there is
+  // kLowest = 0 that is used to mark -Inf bound.
+  // Here we could safely interpret any key before kNullLow as empty.
+  // Another option would be changing kLowest value to kNullLow. But there are much more scenarios
+  // that could be affected and should be tested.
+  if (!key.empty() && key[0] >= dockv::KeyEntryTypeAsChar::kNullLow) {
     db_iter_->Seek(key, Full::kTrue);
     return;
   }
@@ -164,15 +190,14 @@ inline void DocRowwiseIterator::PrevDocKey(Slice key) {
 Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow(bool row_finished) {
   if (!IsFetchedRowStatic() &&
       VERIFY_RESULT(scan_choices_->AdvanceToNextRow(&row_key_, db_iter_.get()))) {
-    current_entry_.valid = false;
     return Status::OK();
   }
   if (!is_forward_scan_) {
     VLOG(4) << __PRETTY_FUNCTION__ << " setting as PrevDocKey";
-    current_entry_.valid = false;
     db_iter_->PrevDocKey(row_key_);
-  } else if (!row_finished) {
-    current_entry_.valid = false;
+  } else if (row_finished) {
+    db_iter_->Revalidate();
+  } else {
     db_iter_->SeekOutOfSubDoc(&row_key_);
   }
 
@@ -222,7 +247,6 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     }
   }
 
-  auto& key_data = current_entry_;
   bool first_iteration = true;
   for (;;) {
     if (scan_choices_->Finished()) {
@@ -230,12 +254,10 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
       return false;
     }
 
+    const auto& key_data = VERIFY_RESULT_REF(db_iter_->Fetch());
     if (!key_data) {
-      key_data = VERIFY_RESULT(db_iter_->Fetch());
-      if (!key_data) {
-        done_ = true;
-        return false;
-      }
+      done_ = true;
+      return false;
     }
 
     VLOG(4) << "*fetched_key is " << dockv::SubDocKey::DebugSliceToString(key_data.key);
@@ -275,7 +297,6 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     bool is_static_column = IsFetchedRowStatic();
     if (!is_static_column &&
         !VERIFY_RESULT(scan_choices_->InterestedInRow(&row_key_, db_iter_.get()))) {
-      current_entry_.valid = false;
       continue;
     }
 
@@ -296,7 +317,7 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     }
 
     const auto write_time = key_data.write_time;
-    const auto doc_found = VERIFY_RESULT(FetchRow(&key_data, table_row));
+    const auto doc_found = VERIFY_RESULT(FetchRow(key_data, table_row));
     // Use the write_time of the entire row.
     // May lose some precision by not examining write time of every column.
     IncrementKeyFoundStats(doc_found == DocReaderResult::kNotFound, write_time);
@@ -313,16 +334,16 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
 }
 
 Result<DocReaderResult> DocRowwiseIterator::FetchRow(
-    FetchedEntry* fetched_entry, dockv::PgTableRow* table_row) {
+    const FetchedEntry& fetched_entry, dockv::PgTableRow* table_row) {
   CHECK_NE(doc_mode_, DocMode::kGeneric) << "Table type: " << table_type_;
-  return doc_reader_->GetFlat(row_key_, fetched_entry, table_row);
+  return doc_reader_->GetFlat(row_key_.mutable_data(), fetched_entry, table_row);
 }
 
 Result<DocReaderResult> DocRowwiseIterator::FetchRow(
-    FetchedEntry* fetched_entry, QLTableRowPair table_row) {
+    const FetchedEntry& fetched_entry, QLTableRowPair table_row) {
   return doc_mode_ == DocMode::kFlat
-      ? doc_reader_->GetFlat(row_key_, fetched_entry, table_row.table_row)
-      : doc_reader_->Get(row_key_, fetched_entry, &*row_);
+      ? doc_reader_->GetFlat(row_key_.mutable_data(), fetched_entry, table_row.table_row)
+      : doc_reader_->Get(row_key_.mutable_data(), fetched_entry, &*row_);
 }
 
 Status DocRowwiseIterator::FillRow(dockv::PgTableRow* out) {

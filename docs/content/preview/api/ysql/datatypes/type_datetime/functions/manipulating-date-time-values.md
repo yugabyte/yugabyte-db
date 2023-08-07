@@ -41,7 +41,7 @@ century
 millennium
 ```
 
-If a _date_ value is used for the second argument, then the typecasting rules presented in the [summary table](../../typecasting-between-date-time-values/#summary-table) in the section [Typecasting between values of different date-time datatypes](../../typecasting-between-date-time-values/) are used. However, a _date_ value can be typecast either to a plan _timestamp_ value or to a _timestamptz_ value; so a rule governs the data type of the return value. It can be determined by experiment like this:
+If a _date_ value is used for the second argument, then the typecasting rules presented in the [summary table](../../typecasting-between-date-time-values/#summary-table) in the section [Typecasting between values of different date-time data types](../../typecasting-between-date-time-values/) are used. However, a _date_ value can be typecast either to a plan _timestamp_ value or to a _timestamptz_ value; so a rule governs the data type of the return value. It can be determined by experiment like this:
 
 ```plpgsql
 set timezone = 'UTC';

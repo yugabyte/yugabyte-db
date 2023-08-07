@@ -16,7 +16,7 @@
 -- Display the initial catalog version.
 :display_catalog_version;
 
--- The next CREATE ROLE will increment current_version.
+-- The next CREATE ROLE will not increment current_version.
 CREATE ROLE cv_test_role;
 :display_catalog_version;
 
@@ -24,7 +24,19 @@ CREATE ROLE cv_test_role;
 CREATE ROLE cv_test_role;
 :display_catalog_version;
 
--- The next CREATE DATABASE will increment current_version.
+-- The next CREATE ROLE will increment current_version.
+CREATE ROLE cv_test_role2 IN ROLE cv_test_role;
+:display_catalog_version;
+
+-- The next CREATE ROLE will increment current_version.
+CREATE ROLE cv_test_role3 ADMIN cv_test_role;
+:display_catalog_version;
+
+-- The next CREATE ROLE will increment current_version.
+CREATE ROLE cv_test_role4 ROLE cv_test_role2, cv_test_role3;
+:display_catalog_version;
+
+-- The next CREATE DATABASE will not increment current_version.
 CREATE DATABASE cv_test_database;
 :display_catalog_version;
 

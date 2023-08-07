@@ -110,9 +110,9 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
   void SetUp() override {
     YBMiniClusterTestBase::SetUp();
 
-    FLAGS_log_min_seconds_to_retain = 5;
-    FLAGS_TEST_tablet_verify_flushed_frontier_after_modifying = true;
-    FLAGS_enable_ysql = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 5;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tablet_verify_flushed_frontier_after_modifying) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
 
     MiniClusterOptions opts;
     opts.num_tablet_servers = 3;
@@ -289,7 +289,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
       for (const auto& tablet_peer : ts_tablet_peers) {
         EXPECT_OK(tablet_peer->WaitUntilConsensusRunning(15s));
         last_tablet_op[tablet_peer->tablet_id()].MakeAtLeast(
-            tablet_peer->consensus()->GetLastReceivedOpId());
+            CHECK_RESULT(tablet_peer->GetConsensus())->GetLastReceivedOpId());
       }
     }
 
@@ -314,7 +314,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
         auto last_op_id = last_tablet_op[tablet_peer->tablet_id()];
         ASSERT_OK(WaitFor([tablet_peer, last_op_id]() {
             EXPECT_OK(tablet_peer->WaitUntilConsensusRunning(15s));
-            return tablet_peer->consensus()->GetLastCommittedOpId() >= last_op_id;
+            return CHECK_RESULT(tablet_peer->GetConsensus())->GetLastCommittedOpId() >= last_op_id;
           },
           15s,
           "Wait for op id commit"

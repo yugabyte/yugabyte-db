@@ -570,7 +570,7 @@ class PgDocReadOp : public PgDocOp {
   void ResetInactivePgsqlOps();
 
   // Analyze options and pick the appropriate prefetch limit.
-  void SetRequestPrefetchLimit();
+  Status SetRequestPrefetchLimit();
 
   // Set the backfill_spec field of our read request.
   void SetBackfillSpec();

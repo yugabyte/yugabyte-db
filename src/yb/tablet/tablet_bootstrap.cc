@@ -474,12 +474,6 @@ bool WriteOpHasTransaction(const consensus::LWReplicateMsg& replicate) {
   if (write_batch.has_transaction()) {
     return true;
   }
-  if (write_batch.enable_replicate_transaction_status_table()) {
-    // For external write batches, multiple transactions are grouped into the same batch and so
-    // the transaction field is not set. Instead, use the enable_replicate_transaction_status_table
-    // flag to indicate that this is an external transactional batch.
-    return true;
-  }
   for (const auto& pair : write_batch.write_pairs()) {
     if (!pair.key().empty() && pair.key()[0] == dockv::KeyEntryTypeAsChar::kExternalTransactionId) {
       return true;
@@ -937,7 +931,7 @@ class TabletBootstrap {
              callback_iter != replay_state_->pending_replicates.end();
              callback_iter++) {
           test_hooks_->Overwritten(
-              yb::OpId::FromPB(callback_iter->second.entry->replicate().id()));
+              OpId::FromPB(callback_iter->second.entry->replicate().id()));
         }
       }
       replay_state_->pending_replicates.erase(iter, replay_state_->pending_replicates.end());
@@ -1031,7 +1025,7 @@ class TabletBootstrap {
   Status PlayHistoryCutoffRequest(consensus::LWReplicateMsg* replicate_msg) {
     HistoryCutoffOperation operation(tablet_, replicate_msg->mutable_history_cutoff());
 
-    return operation.Apply(/* leader_term= */ yb::OpId::kUnknownTerm);
+    return operation.Apply(/* leader_term= */ OpId::kUnknownTerm);
   }
 
   Status PlaySplitOpRequest(consensus::LWReplicateMsg* replicate_msg) {
@@ -1422,16 +1416,23 @@ class TabletBootstrap {
     // Find the earliest log segment we need to read, so the rest can be ignored.
     auto iter = should_skip_flushed_entries ? SkipFlushedEntries(&segments) : segments.begin();
 
-    yb::OpId last_committed_op_id;
-    yb::OpId last_read_entry_op_id;
+    OpId last_committed_op_id;
+    OpId last_read_entry_op_id;
+    // All ops covered by retryable requests file are committed.
+    OpId last_op_id_in_retryable_requests =
+        data_.bootstrap_retryable_requests && data_.retryable_requests_manager
+            ? data_.retryable_requests_manager->retryable_requests().GetMaxReplicatedOpId()
+            : OpId::Min();
     RestartSafeCoarseTimePoint last_entry_time;
     for (; iter != segments.end(); ++iter) {
       const scoped_refptr<ReadableLogSegment>& segment = *iter;
 
       auto read_result = segment->ReadEntries();
-      last_committed_op_id = std::max(last_committed_op_id, read_result.committed_op_id);
+      last_committed_op_id = std::max(
+          std::max(last_committed_op_id, read_result.committed_op_id),
+          last_op_id_in_retryable_requests);
       if (!read_result.entries.empty()) {
-        last_read_entry_op_id = yb::OpId::FromPB(read_result.entries.back()->replicate().id());
+        last_read_entry_op_id = OpId::FromPB(read_result.entries.back()->replicate().id());
       }
       for (size_t entry_idx = 0; entry_idx < read_result.entries.size(); ++entry_idx) {
         const Status s = HandleEntry(
@@ -1658,7 +1659,7 @@ class TabletBootstrap {
     operation.set_op_id(op_id);
 
     Status s;
-    RETURN_NOT_OK(operation.Apply(yb::OpId::kUnknownTerm, &s));
+    RETURN_NOT_OK(operation.Apply(OpId::kUnknownTerm, &s));
     return s;
   }
 
@@ -1728,7 +1729,7 @@ class TabletBootstrap {
     auto transaction_participant = tablet_->transaction_participant();
     if (transaction_participant) {
       TransactionParticipant::ReplicatedData replicated_data = {
-        .leader_term = yb::OpId::kUnknownTerm,
+        .leader_term = OpId::kUnknownTerm,
         .state = *operation.request(),
         .op_id = operation.op_id(),
         .hybrid_time = operation.hybrid_time(),
@@ -1745,7 +1746,7 @@ class TabletBootstrap {
           "No transaction coordinator or participant, cannot process a transaction update request");
     }
     TransactionCoordinator::ReplicatedData replicated_data = {
-        .leader_term = yb::OpId::kUnknownTerm,
+        .leader_term = OpId::kUnknownTerm,
         .state = *operation.request(),
         .op_id = operation.op_id(),
         .hybrid_time = operation.hybrid_time(),
@@ -1866,7 +1867,7 @@ class TabletBootstrap {
   bool TEST_collect_replayed_op_ids_;
 
   // This is populated if TEST_collect_replayed_op_ids is true.
-  std::vector<yb::OpId> TEST_replayed_op_ids_;
+  std::vector<OpId> TEST_replayed_op_ids_;
 
   std::shared_ptr<TabletBootstrapTestHooksIf> test_hooks_;
 

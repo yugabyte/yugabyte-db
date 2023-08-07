@@ -22,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
 
 import java.sql.Connection;
+import java.util.Map;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.HashSet;
@@ -30,6 +31,16 @@ import java.util.Set;
 @RunWith(value=YBTestRunner.class)
 public class TestPgForeignKey extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgForeignKey.class);
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    // This test depends on fail-on-conflict concurrency control to perform its validation.
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
+    flagMap.put("enable_wait_queues", "false");
+    flagMap.put("enable_deadlock_detection", "false");
+    return flagMap;
+  }
 
   @Override
   public int getTestMethodTimeoutSec() {

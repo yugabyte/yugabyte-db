@@ -91,6 +91,7 @@ lazy val consoleSetting = settingKey[PlayInteractionMode]("custom console settin
 lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
 
 lazy val buildVenv = taskKey[Int]("Build venv")
+lazy val generateCrdObjects = taskKey[Int]("Generating CRD classes..")
 lazy val buildUI = taskKey[Int]("Build UI")
 lazy val buildModules = taskKey[Int]("Build modules")
 lazy val buildDependentArtifacts = taskKey[Int]("Build dependent artifacts")
@@ -99,6 +100,7 @@ lazy val releaseModulesLocally = taskKey[Int]("Release modules locally")
 lazy val cleanUI = taskKey[Int]("Clean UI")
 lazy val cleanVenv = taskKey[Int]("Clean venv")
 lazy val cleanModules = taskKey[Int]("Clean modules")
+lazy val cleanCrd = taskKey[Int]("Clean CRD")
 
 
 lazy val compileJavaGenClient = taskKey[Int]("Compile generated Java code")
@@ -121,16 +123,9 @@ lazy val root = (project in file("."))
 
 scalaVersion := "2.12.10"
 javacOptions ++= Seq("-source", "17", "-target", "17")
+Compile / managedClasspath += baseDirectory.value / "target/scala-2.12/"
 version := sys.process.Process("cat version.txt").lineStream_!.head
 Global / onChangedBuildSource := ReloadOnSourceChanges
-// These are needed to prevent (reduce possibility?) or incremental compilation infinite loop issue:
-// https://github.com/sbt/sbt/issues/6183
-// https://github.com/sbt/zinc/issues/1120
-incOptions := incOptions.value.withRecompileAllFraction(.1)
-// After 2 transitive steps, do more aggressive invalidation
-// https://github.com/sbt/zinc/issues/911
-incOptions := incOptions.value.withTransitiveStep(2)
-
 
 libraryDependencies ++= Seq(
   javaJdbc,
@@ -142,6 +137,11 @@ libraryDependencies ++= Seq(
   "com.google.inject.extensions" % "guice-assistedinject" % "5.1.0",
   "org.postgresql" % "postgresql" % "42.3.3",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
+  "com.typesafe.akka" %% "akka-actor-typed" % "2.8.3",
+  "com.typesafe.akka" %% "akka-slf4j" % "2.8.3",
+  "com.typesafe.akka" %% "akka-protobuf-v3" % "2.8.3",
+  "com.typesafe.akka" %% "akka-stream" % "2.8.3",
+  "com.typesafe.akka" %% "akka-serialization-jackson" % "2.8.3",
   "org.codehaus.janino" % "janino" % "3.1.9",
   "org.apache.commons" % "commons-compress" % "1.21",
   "org.apache.commons" % "commons-csv" % "1.9.0",
@@ -168,6 +168,7 @@ libraryDependencies ++= Seq(
   "com.azure" % "azure-identity" % "1.6.0",
   "com.azure" % "azure-security-keyvault-keys" % "4.5.0",
   "com.azure" % "azure-storage-blob" % "12.19.1",
+  "com.azure.resourcemanager" % "azure-resourcemanager" % "2.27.0",
   "javax.mail" % "mail" % "1.4.7",
   "javax.validation" % "validation-api" % "2.0.1.Final",
   "io.prometheus" % "simpleclient" % "0.11.0",
@@ -198,10 +199,13 @@ libraryDependencies ++= Seq(
   "org.unix4j" % "unix4j-command" % "0.6",
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
   "org.apache.directory.api" % "api-all" % "2.1.0",
+  "io.fabric8" % "crd-generator-apt" % "6.4.1",
   "io.fabric8" % "kubernetes-client" % "6.4.1",
   "io.fabric8" % "kubernetes-client-api" % "6.4.1",
   "io.fabric8" % "kubernetes-model" % "4.9.2",
   "io.fabric8" % "kubernetes-api" % "3.0.12",
+  "org.modelmapper" % "modelmapper" % "2.4.4",
+
   "io.jsonwebtoken" % "jjwt-api" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5",
@@ -224,6 +228,7 @@ libraryDependencies ++= Seq(
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
   "io.grpc" % "grpc-testing" % "1.48.0" % Test,
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
+  "org.springframework" % "spring-test" % "5.3.9" % Test,
 )
 
 // Clear default resolvers.
@@ -314,6 +319,7 @@ externalResolvers := {
 (Compile / compilePlatform) := {
   (Compile / compile).value
   Def.sequential(
+      generateCrdObjects,
       buildVenv,
       releaseModulesLocally
     ).value
@@ -324,6 +330,7 @@ externalResolvers := {
 cleanPlatform := {
   clean.value
   (swagger / clean).value
+  cleanCrd.value
   cleanVenv.value
   cleanUI.value
   cleanModules.value
@@ -367,7 +374,16 @@ releaseModulesLocally := {
 
 buildDependentArtifacts := {
   ybLog("Building dependencies...")
+  generateCrdObjects.value
   val status = Process("mvn install -P buildDependenciesOnly", baseDirectory.value / "parent-module").!
+  status
+}
+
+generateCrdObjects := {
+  ybLog("Generating crd classes...")
+  val generatedSourcesDirectory = baseDirectory.value / "target/scala-2.12/"
+  val command = s"mvn generate-sources -DoutputDirectory=$generatedSourcesDirectory"
+  val status = Process(command, baseDirectory.value / "src/main/java/com/yugabyte/yw/common/operator/").!
   status
 }
 
@@ -397,6 +413,14 @@ cleanVenv := {
   ybLog("Cleaning virtual env...")
   val venvDir: String = get_venv_dir()
   val status = Process("rm -rf " + venvDir, baseDirectory.value / "devops").!
+  status
+}
+
+cleanCrd := {
+  ybLog("Cleaning CRD generated code...")
+  val generatedSourcesDirectory = baseDirectory.value / "target/scala-2.12/"
+  val command = s"mvn clean -DoutputDirectory=$generatedSourcesDirectory"
+  val status = Process(command, baseDirectory.value / "src/main/java/com/yugabyte/yw/common/operator/").!
   status
 }
 
@@ -449,20 +473,19 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b3"
-libraryDependencies += "org.yb" % "yb-client" % "0.8.56-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.62-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b7"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b30"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
   "io.netty" % "netty-codec-haproxy" % "4.1.89.Final",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
-  "net.minidev" % "json-smart" % "2.4.8",
   "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
 )
 
-dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.21.2"
-dependencyOverrides += "com.google.guava" % "guava" % "23.0"
+dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.21.7"
+dependencyOverrides += "com.google.guava" % "guava" % "32.1.1-jre"
 // SSO functionality only works on the older version of nimbusds.
 // Azure library upgrade tries to upgrade nimbusds to latest version.
 dependencyOverrides += "com.nimbusds" % "oauth2-oidc-sdk" % "7.1.1"

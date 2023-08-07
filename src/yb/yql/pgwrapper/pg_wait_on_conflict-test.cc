@@ -67,13 +67,13 @@ class PgWaitQueuesTest : public PgMiniTestBase {
   static constexpr int kClientStatementTimeoutSeconds = 60;
 
   void SetUp() override {
-    FLAGS_ysql_pg_conf_csv = Format(
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = Format(
         "statement_timeout=$0", kClientStatementTimeoutSeconds * 1ms / 1s);
-    FLAGS_enable_wait_queues = true;
-    FLAGS_enable_deadlock_detection = true;
-    FLAGS_TEST_select_all_status_tablets = true;
-    FLAGS_force_single_shard_waiter_retry_ms = 10000;
-    FLAGS_ysql_max_write_restart_attempts = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_select_all_status_tablets) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_single_shard_waiter_retry_ms) = 10000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_write_restart_attempts) = 0;
     PgMiniTestBase::SetUp();
   }
 
@@ -94,6 +94,10 @@ class PgWaitQueuesTest : public PgMiniTestBase {
   }
 
   void TestDeadlockWithWrites() const;
+
+  virtual IsolationLevel GetIsolationLevel() const {
+    return SNAPSHOT_ISOLATION;
+  }
 };
 
 auto GetBlockerIdx(auto idx, auto cycle_length) {
@@ -188,7 +192,7 @@ void PgWaitQueuesTest::TestDeadlockWithWrites() const {
     thread_holder.AddThreadFunctor(
         [this, i, &first_update, &done, &succeeded_second_update, &succeeded_commit] {
       auto conn = ASSERT_RESULT(Connect());
-      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      ASSERT_OK(conn.StartTransaction(GetIsolationLevel()));
 
       ASSERT_OK(conn.ExecuteFormat("UPDATE foo SET v=$0 WHERE k=$0", i));
       first_update.CountDown();
@@ -238,7 +242,7 @@ class PgWaitQueuesDropParticipantSignal : public PgWaitQueuesTest {
  protected:
 
   void SetUp() override {
-    FLAGS_TEST_drop_participant_signal = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_drop_participant_signal) = true;
     PgWaitQueuesTest::SetUp();
   }
 };
@@ -263,7 +267,7 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockTwoTransactions)) {
   Random r(2912039);
 
   auto get_sleep_time_us = [&mutex, &r]() {
-    std::lock_guard<decltype(mutex)> l(mutex);
+    std::lock_guard l(mutex);
     return r.Next32() % 5000;
   };
 
@@ -744,7 +748,7 @@ TEST_F(PgLeaderChangeWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(StepDownOneServer))
     consensus::LeaderStepDownRequestPB req;
     req.set_tablet_id(peer->tablet_id());
     consensus::LeaderStepDownResponsePB resp;
-    ASSERT_OK(peer->consensus()->StepDown(&req, &resp));
+    ASSERT_OK(ASSERT_RESULT(peer->GetConsensus())->StepDown(&req, &resp));
   }
 
   UnblockWaitersAndValidate(&conn, kNumWaiters);
@@ -754,11 +758,11 @@ class PgTabletSplittingWaitQueuesTest : public PgTabletSplitTestBase,
                                                 public ConcurrentBlockedWaitersTest {
  protected:
   void SetUp() override {
-    FLAGS_rpc_connection_timeout_ms = 60000;
-    FLAGS_enable_wait_queues = true;
-    FLAGS_enable_deadlock_detection = true;
-    FLAGS_enable_automatic_tablet_splitting = false;
-    FLAGS_ysql_max_write_restart_attempts = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_connection_timeout_ms) = 60000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_write_restart_attempts) = 0;
     PgTabletSplitTestBase::SetUp();
   }
 
@@ -849,12 +853,13 @@ class PgWaitQueueContentionStressTest : public PgMiniTestBase {
   static constexpr int kClientStatementTimeoutSeconds = 60;
 
   void SetUp() override {
-    FLAGS_ysql_pg_conf_csv = Format(
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = Format(
         "statement_timeout=$0", kClientStatementTimeoutSeconds * 1ms / 1s);
-    FLAGS_enable_wait_queues = true;
-    FLAGS_wait_queue_poll_interval_ms = 2;
-    FLAGS_transactions_status_poll_interval_ms = 5;
-    FLAGS_ysql_max_write_restart_attempts = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_wait_queue_poll_interval_ms) = 2;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_transactions_status_poll_interval_ms) = 5;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_write_restart_attempts) = 0;
     PgMiniTestBase::SetUp();
   }
 
@@ -1028,9 +1033,20 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(ParallelUpdatesDetectDeadlock))
   }
 }
 
+class PgWaitQueuesReadCommittedTest : public PgWaitQueuesTest {
+ protected:
+  IsolationLevel GetIsolationLevel() const override {
+    return IsolationLevel::READ_COMMITTED;
+  }
+};
+
+TEST_F(PgWaitQueuesReadCommittedTest, TestDeadlockSimple) {
+  TestDeadlockWithWrites();
+}
+
 class PgWaitQueuePackedRowTest : public PgWaitQueuesTest {
   void SetUp() override {
-    FLAGS_ysql_enable_packed_row = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
     PgWaitQueuesTest::SetUp();
   }
 

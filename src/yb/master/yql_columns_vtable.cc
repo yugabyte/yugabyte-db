@@ -38,15 +38,15 @@ namespace {
 
 std::string SortingTypeToString(SortingType sorting_type) {
   switch (sorting_type) {
-    case kNotSpecified:
+    case SortingType::kNotSpecified:
       return "none";
-    case kAscending:
+    case SortingType::kAscending:
       return "asc";
-    case kDescending:
+    case SortingType::kDescending:
       return "desc";
-    case kAscendingNullsLast:
+    case SortingType::kAscendingNullsLast:
       return "asc nulls last";
-    case kDescendingNullsLast:
+    case SortingType::kDescendingNullsLast:
       return "desc nulls last";
   }
   FATAL_INVALID_ENUM_VALUE(SortingType, sorting_type);

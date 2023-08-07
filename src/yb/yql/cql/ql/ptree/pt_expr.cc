@@ -22,6 +22,8 @@
 #include "yb/client/table.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
 #include "yb/qlexpr/index.h"
 #include "yb/qlexpr/index_column.h"
 #include "yb/common/ql_type.h"
@@ -144,7 +146,7 @@ bool PTExpr::CheckIndexColumn(SemContext *sem_context) {
 }
 
 Status PTExpr::CheckOperator(SemContext *sem_context) {
-  // Where clause only allow AND, EQ, LT, LE, GT, GE and CONTAINS operators.
+  // Where clause only allow AND, EQ, LT, LE, GT, GE, CONTAINS AND CONTAINS KEY operators.
   if (sem_context->where_state() != nullptr) {
     switch (ql_op_) {
       case QL_OP_AND:
@@ -156,6 +158,7 @@ Status PTExpr::CheckOperator(SemContext *sem_context) {
       case QL_OP_IN:
       case QL_OP_NOT_IN:
       case QL_OP_NOT_EQUAL:
+      case QL_OP_CONTAINS_KEY:
       case QL_OP_CONTAINS:
       case QL_OP_NOOP:
         break;
@@ -390,7 +393,7 @@ Status PTLiteralString::ToDecimal(string *value, bool negate) const {
 }
 
 Status PTLiteralString::ToVarInt(string *value, bool negate) const {
-  util::VarInt v;
+  VarInt v;
   if (negate) {
     RETURN_NOT_OK(v.FromString(string("-") + value_->c_str()));
   } else {
@@ -519,8 +522,8 @@ Status PTCollectionExpr::Analyze(SemContext *sem_context) {
   size_t i = 0;
   // Checking type parameters.
   switch (expected_type->main()) {
-    case MAP: {
-      if (ql_type_->main() == SET && values_.size() > 0) {
+    case DataType::MAP: {
+      if (ql_type_->main() == DataType::SET && values_.size() > 0) {
         return sem_context->Error(this, ErrorCode::DATATYPE_MISMATCH);
       }
 
@@ -550,7 +553,7 @@ Status PTCollectionExpr::Analyze(SemContext *sem_context) {
       sem_state.ResetContextState();
       break;
     }
-    case SET: {
+    case DataType::SET: {
       // Process values.
       // Referencing column in collection is not allowed.
       SemState sem_state(sem_context);
@@ -568,7 +571,7 @@ Status PTCollectionExpr::Analyze(SemContext *sem_context) {
       break;
     }
 
-    case LIST: {
+    case DataType::LIST: {
       // Process values.
       // Referencing column in collection is not allowed.
       SemState sem_state(sem_context);
@@ -587,7 +590,7 @@ Status PTCollectionExpr::Analyze(SemContext *sem_context) {
       break;
     }
 
-    case USER_DEFINED_TYPE: {
+    case DataType::USER_DEFINED_TYPE: {
       // Process values.
       // Referencing column in collection is not allowed.
       SemState sem_state(sem_context);
@@ -611,8 +614,8 @@ Status PTCollectionExpr::Analyze(SemContext *sem_context) {
       break;
     }
 
-    case FROZEN: {
-      if (ql_type_->main() == FROZEN) {
+    case DataType::FROZEN: {
+      if (ql_type_->main() == DataType::FROZEN) {
         // Already analyzed (e.g. for indexes), just check if type matches.
         if (*ql_type_ != *expected_type) {
           return sem_context->Error(this, ErrorCode::DATATYPE_MISMATCH);
@@ -628,7 +631,7 @@ Status PTCollectionExpr::Analyze(SemContext *sem_context) {
       break;
     }
 
-    case TUPLE:
+    case DataType::TUPLE:
       i = 0;
       if (values_.size() != expected_type->params().size()) {
         return sem_context->Error(
@@ -673,7 +676,7 @@ Status PTCollectionExpr::Analyze(SemContext *sem_context) {
 
 Status PTLogicExpr::SetupSemStateForOp1(SemState *sem_state) {
   // Expect "bool" datatype for logic expression.
-  sem_state->SetExprState(QLType::Create(BOOL), InternalType::kBoolValue);
+  sem_state->SetExprState(QLType::Create(DataType::BOOL), InternalType::kBoolValue);
 
   // Pass down the state variables for IF clause "if_state".
   sem_state->CopyPreviousIfState();
@@ -687,7 +690,7 @@ Status PTLogicExpr::SetupSemStateForOp1(SemState *sem_state) {
 
 Status PTLogicExpr::SetupSemStateForOp2(SemState *sem_state) {
   // Expect "bool" datatype for logic expression.
-  sem_state->SetExprState(QLType::Create(BOOL), InternalType::kBoolValue);
+  sem_state->SetExprState(QLType::Create(DataType::BOOL), InternalType::kBoolValue);
 
   // Pass down the state variables for IF clause "if_state".
   sem_state->CopyPreviousIfState();
@@ -703,7 +706,7 @@ Status PTLogicExpr::AnalyzeOperator(SemContext *sem_context,
                                     PTExpr::SharedPtr op1) {
   switch (ql_op_) {
     case QL_OP_NOT:
-      if (op1->ql_type_id() != BOOL) {
+      if (op1->ql_type_id() != DataType::BOOL) {
         return sem_context->Error(this, "Only boolean value is allowed in this context",
                                   ErrorCode::INVALID_DATATYPE);
       }
@@ -727,11 +730,11 @@ Status PTLogicExpr::AnalyzeOperator(SemContext *sem_context,
   DCHECK(ql_op_ == QL_OP_AND || ql_op_ == QL_OP_OR);
 
   // "op1" and "op2" must have been analyzed before getting here
-  if (op1->ql_type_id() != BOOL) {
+  if (op1->ql_type_id() != DataType::BOOL) {
     return sem_context->Error(op1, "Only boolean value is allowed in this context",
                               ErrorCode::INVALID_DATATYPE);
   }
-  if (op2->ql_type_id() != BOOL) {
+  if (op2->ql_type_id() != DataType::BOOL) {
     return sem_context->Error(op2, "Only boolean value is allowed in this context",
                               ErrorCode::INVALID_DATATYPE);
   }
@@ -836,6 +839,21 @@ Status PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
         default: {} // Use default bindvar name below.
       }
 
+      break;
+    }
+
+    case QL_OP_CONTAINS_KEY: {
+      // We will check for data type mismatch errors in AnalyzeOperator
+      if (operand1->expr_op() == ExprOperator::kRef &&
+          operand1->ql_type()->main() == yb::DataType::MAP) {
+        const PTRef *ref = static_cast<const PTRef *>(operand1.get());
+        auto ql_type = operand1->ql_type()->keys_type();
+        sem_state->SetExprState(
+            ql_type,
+            client::YBColumnSchema::ToInternalDataType(ql_type),
+            ref->bindvar_name(),
+            ref->desc());
+      }
       break;
     }
 
@@ -946,6 +964,7 @@ Status PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
                                   ErrorCode::INCOMPARABLE_DATATYPES);
       }
       break;
+
     case QL_OP_CONTAINS: {
       RETURN_NOT_OK(op1->CheckLhsExpr(sem_context));
       RETURN_NOT_OK(op2->CheckRhsExpr(sem_context));
@@ -964,11 +983,37 @@ Status PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
       // For CONTAINS operator, we check compatibility between op1's value_type and op2's type.
       auto value_type_lhs = op1->ql_type()->values_type();
       if (!sem_context->IsComparable(value_type_lhs->main(), op2->ql_type_id())) {
-        return sem_context->Error(this, "Cannot compare values of these datatypes",
-                                  ErrorCode::INCOMPARABLE_DATATYPES);
+        return sem_context->Error(
+            this, "Cannot compare values of these datatypes", ErrorCode::INCOMPARABLE_DATATYPES);
       }
       break;
     }
+
+    case QL_OP_CONTAINS_KEY: {
+      RETURN_NOT_OK(op1->CheckLhsExpr(sem_context));
+      RETURN_NOT_OK(op2->CheckRhsExpr(sem_context));
+      // We must check if LHS is map
+      if (op1->ql_type()->main() != yb::DataType::MAP) {
+        return sem_context->Error(
+            this,
+            "CONTAINS KEY is only supported for Maps that are not frozen.",
+            ErrorCode::DATATYPE_MISMATCH);
+      }
+
+      if (op2->is_null()) {
+        return sem_context->Error(
+            this, "CONTAINS KEY does not support NULL.", ErrorCode::INVALID_ARGUMENTS);
+      }
+
+      // For CONTAINS KEY operator, we check compatibility between op1's key type and op2's type.
+      auto value_type_lhs = op1->ql_type()->keys_type();
+      if (!sem_context->IsComparable(value_type_lhs->main(), op2->ql_type_id())) {
+        return sem_context->Error(
+            this, "Cannot compare values of these datatypes", ErrorCode::INCOMPARABLE_DATATYPES);
+      }
+      break;
+    }
+
     default:
       return sem_context->Error(this, "Operator not supported yet",
                                 ErrorCode::CQL_STATEMENT_INVALID);
@@ -1171,6 +1216,8 @@ string PTRelationExpr::QLName(QLNameOption option) const {
       return op1()->QLName(option) + " NOT IN " + op2()->QLName(option);
     case QL_OP_CONTAINS:
       return op1()->QLName(option) + " CONTAINS " + op2()->QLName(option);
+    case QL_OP_CONTAINS_KEY:
+      return op1()->QLName(option) + " CONTAINS KEY " + op2()->QLName(option);
 
     // Relation operators that take three operands.
     case QL_OP_BETWEEN:
@@ -1687,7 +1734,7 @@ Status PTBindVar::Analyze(SemContext *sem_context) {
 
   if (sem_context->expr_expected_ql_type()->main() == DataType::UNKNOWN_DATA) {
     // By default bind variables are compatible with any type.
-    ql_type_ = QLType::Create(NULL_VALUE_TYPE);
+    ql_type_ = QLType::Create(DataType::NULL_VALUE_TYPE);
   } else {
     ql_type_ = sem_context->expr_expected_ql_type();
   }

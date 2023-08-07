@@ -12,6 +12,7 @@
 //
 
 #include "yb/master/cdc_rpc_tasks.h"
+#include "yb/tools/yb-admin_util.h"
 
 #include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
@@ -20,6 +21,7 @@
 
 #include "yb/gutil/bind.h"
 
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.pb.h"
 
 #include "yb/rpc/messenger.h"
@@ -27,8 +29,31 @@
 
 #include "yb/server/secure.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
+
+DEFINE_UNKNOWN_int32(
+    list_snapshot_backoff_increment_ms, 1000,
+    "Number of milliseconds added to the delay between retries of fetching state of a snapshot. "
+    "This delay is applied after the RPC reties have been exhausted.");
+TAG_FLAG(list_snapshot_backoff_increment_ms, stable);
+TAG_FLAG(list_snapshot_backoff_increment_ms, advanced);
+
+DEFINE_UNKNOWN_int32(
+    list_snapshot_max_backoff_sec, 10,
+    "Maximum number of seconds to delay between retries of fetching state of a snpashot. This "
+    "delay is applied after the RPC reties have been exhausted.");
+TAG_FLAG(list_snapshot_max_backoff_sec, stable);
+TAG_FLAG(list_snapshot_max_backoff_sec, advanced);
+
+DEFINE_test_flag(
+    bool, xcluster_fail_to_send_create_snapshot_request, false,
+    "Fail to send a CreateSnapshot request to the producer.");
+
+DEFINE_test_flag(
+    bool, xcluster_fail_create_producer_snapshot, false,
+    "In the SetupReplicationWithBootstrap flow, fail to create snapshot on producer.");
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_string(certs_dir);
@@ -38,6 +63,7 @@ DECLARE_string(certs_for_cdc_dir);
 
 namespace yb {
 namespace master {
+using yb::master::SysSnapshotEntryPB_State;
 
 Result<std::shared_ptr<CDCRpcTasks>> CDCRpcTasks::CreateWithMasterAddrs(
     const cdc::ReplicationGroupId& replication_group_id, const std::string& master_addrs) {
@@ -87,13 +113,129 @@ Result<google::protobuf::RepeatedPtrField<TabletLocationsPB>> CDCRpcTasks::GetTa
   return tablets;
 }
 
-Result<std::vector<std::pair<TableId, client::YBTableName>>> CDCRpcTasks::ListTables() {
-  auto tables = VERIFY_RESULT(yb_client_->ListTables());
-  std::vector<std::pair<TableId, client::YBTableName>> result;
-  result.reserve(tables.size());
-  for (auto& t : tables) {
-    auto table_id = t.table_id();
-    result.emplace_back(std::move(table_id), std::move(t));
+Result<TableBootstrapIdsMap> CDCRpcTasks::BootstrapProducer(
+    const NamespaceIdentifierPB& producer_namespace,
+    const std::vector<client::YBTableName>& tables) {
+  SCHECK(!tables.empty(), InvalidArgument, "Empty tables");
+  const auto& db_type = producer_namespace.database_type();
+  const auto& namespace_name = producer_namespace.name();
+  auto has_schema_name = (db_type == YQL_DATABASE_PGSQL);
+  std::vector<std::string> table_names;
+  table_names.reserve(tables.size());
+
+  std::vector<std::string> schema_names;
+  schema_names.reserve(has_schema_name ? tables.size() : 0);
+
+  for (auto& table : tables) {
+    SCHECK_EQ(
+        table.namespace_type(), db_type, IllegalState,
+        Format(
+            "Table db type $0 does not match given db type $1", table.namespace_type(), db_type));
+    SCHECK_EQ(
+        table.namespace_name(), namespace_name, IllegalState,
+        Format(
+            "Table namespace $0 does not match given namespace $1", table.namespace_name(),
+            namespace_name));
+
+    table_names.emplace_back(std::move(table.table_name()));
+    if (has_schema_name) {
+      schema_names.emplace_back(std::move(table.pgschema_name()));
+    }
+  }
+
+  std::promise<Result<TableBootstrapIdsMap>> promise;
+  RETURN_NOT_OK(yb_client_->BootstrapProducer(
+      db_type, namespace_name, schema_names, table_names,
+      [this, &promise](client::BootstrapProducerResult bootstrap_result) {
+        promise.set_value(BootstrapProducerCallback(std::move(bootstrap_result)));
+      }));
+
+  return promise.get_future().get();
+}
+
+Result<TableBootstrapIdsMap> CDCRpcTasks::BootstrapProducerCallback(
+    client::BootstrapProducerResult bootstrap_result) {
+  auto [table_ids, bootstrap_ids, _] = VERIFY_RESULT(std::move(bootstrap_result));
+  SCHECK_EQ(
+      table_ids.size(), bootstrap_ids.size(), IllegalState,
+      Format("Received $0 table ids and $1 bootstrap ids", table_ids.size(), bootstrap_ids.size()));
+
+  TableBootstrapIdsMap table_bootstrap_ids;
+  for (size_t i = 0; i < table_ids.size(); ++i) {
+    auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(bootstrap_ids.at(i)));
+    table_bootstrap_ids.insert_or_assign(table_ids[i], stream_id);
+  }
+
+  return table_bootstrap_ids;
+}
+
+Result<SnapshotInfoPB> CDCRpcTasks::CreateSnapshot(
+    const std::vector<client::YBTableName>& tables, TxnSnapshotId* snapshot_id) {
+  if (PREDICT_FALSE(FLAGS_TEST_xcluster_fail_to_send_create_snapshot_request)) {
+    return STATUS(Aborted, "Test failure");
+  }
+
+  std::promise<Result<SnapshotInfoPB>> promise;
+  RETURN_NOT_OK(yb_client_->CreateSnapshot(
+      tables, [this, &promise, &snapshot_id](Result<TxnSnapshotId> snapshot_result) {
+        if (!snapshot_result.ok()) {
+          promise.set_value(ResultToStatus(snapshot_result));
+          return;
+        }
+        *snapshot_id = std::move(*snapshot_result);
+        promise.set_value(CreateSnapshotCallback(*snapshot_id));
+      }));
+
+  return promise.get_future().get();
+}
+
+Result<SnapshotInfoPB> CDCRpcTasks::CreateSnapshotCallback(const TxnSnapshotId& snapshot_id) {
+  const auto delay_increment =
+      MonoDelta::FromMilliseconds(FLAGS_list_snapshot_backoff_increment_ms);
+  const auto max_delay_time = MonoDelta::FromSeconds(FLAGS_list_snapshot_max_backoff_sec);
+  auto delay_time = delay_increment;
+  uint32_t attempts = 1;
+  auto start_time = CoarseMonoClock::Now();
+
+  SnapshotInfoPB result;
+  while (true) {
+    auto snapshots =
+        VERIFY_RESULT(yb_client_->ListSnapshots(snapshot_id, /* prepare_for_backup = */ true));
+    SCHECK_EQ(
+        snapshots.size(), 1, IllegalState,
+        Format("Received $0 snapshots when expecting 1", snapshots.size()));
+
+    auto& snapshot = *snapshots.begin();
+    auto id = TryFullyDecodeTxnSnapshotId(snapshot.id());
+    SCHECK_EQ(
+        id, snapshot_id, IllegalState,
+        Format("Received snapshot $0 when expecting $1", id, snapshot_id));
+
+    auto state = snapshot.entry().state();
+    if (state == SysSnapshotEntryPB_State_CREATING) {
+      auto total_time = std::to_string((CoarseMonoClock::Now() - start_time).count()) + "ms";
+      YB_LOG_EVERY_N(INFO, 5) << Format(
+          "Snapshot $0 is still running. Attempts: $1, Total Time: $2. Sleeping for $3ms and "
+          "retrying...",
+          snapshot_id, attempts, total_time, delay_time);
+
+      // Delay before retrying so that we don't accidentally DDoS producer.
+      // Time increases linearly by delay_increment up to max_delay.
+      SleepFor(delay_time);
+      delay_time = std::min(max_delay_time, delay_time + delay_increment);
+      attempts++;
+      continue;
+    }
+
+    SCHECK_EQ(
+        state, SysSnapshotEntryPB_State_COMPLETE, IllegalState,
+        Format("Snapshot failed on state: $0", state));
+    result = std::move(snapshot);
+    break;
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_xcluster_fail_create_producer_snapshot)) {
+    return STATUS(Aborted, "Test failure");
   }
   return result;
 }

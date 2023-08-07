@@ -58,7 +58,7 @@ class AreLeadersOnPreferredOnlyTest : public MiniClusterTestWithClient<MiniClust
         yb_table_name->namespace_name(), YQLDatabase::YQL_DATABASE_CQL));
     client::YBSchema schema;
     client::YBSchemaBuilder builder;
-    builder.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
+    builder.AddColumn("key")->Type(DataType::INT32)->NotNull()->PrimaryKey();
     CHECK_OK(builder.Build(&schema));
     std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(table_creator->table_name(client::YBTableName(*yb_table_name))

@@ -25,6 +25,7 @@
 #include "yb/qlexpr/doc_scanspec_util.h"
 #include "yb/dockv/value_type.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 
 namespace yb {
@@ -97,7 +98,8 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     bool is_forward_scan,
     const DocKey& lower_doc_key,
     const DocKey& upper_doc_key,
-    const size_t prefix_length)
+    const size_t prefix_length,
+    AddHighestToUpperDocKey add_highest_to_upper_doc_key)
     : PgsqlScanSpec(
           schema, is_forward_scan, query_id,
           condition ? std::make_unique<qlexpr::QLScanRange>(schema, *condition) : nullptr,
@@ -110,6 +112,9 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
       lower_doc_key_(lower_doc_key.Encode()),
       upper_doc_key_(upper_doc_key.Encode()) {
+  if (add_highest_to_upper_doc_key) {
+    upper_doc_key_.AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType::kHighest);
+  }
 
   if (!hashed_components_->empty() && schema.num_hash_key_columns() > 0) {
     options_ = std::make_shared<std::vector<qlexpr::OptionList>>(schema.num_dockey_components());
@@ -193,9 +198,14 @@ void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
         auto col_id = ColumnId(lhs.column_id());
         auto col_idx = schema().find_column_by_id(col_id);
 
-        // Skip any non-range columns. Hashed columns should always be sent as tuples along with
-        // their yb_hash_code. Hence, for hashed columns lhs should never be a column id.
-        DCHECK(schema().is_range_column(col_idx));
+        // Skip any non-range columns.
+        if (!schema().is_range_column(col_idx)) {
+          // Hashed columns should always be sent as tuples along with their yb_hash_code.
+          // Hence, for hashed columns lhs should never be a column id.
+          YB_LOG_EVERY_N_SECS_OR_VLOG(DFATAL, 60, 1)
+              << "Expected only range column: id=" << col_id << " idx=" << col_idx << THROTTLE_MSG;
+          return;
+        }
 
         auto sortingType = get_sorting_type(col_idx);
 
@@ -348,12 +358,16 @@ KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_boun
   auto encoder = dockv::DocKeyEncoder(&result).Schema(schema);
 
   bool has_hash_columns = schema.num_hash_key_columns() > 0;
+
+  // The first column in a hash partitioned table is the hash code column.
+  bool has_in_hash_options = has_hash_columns && options_ && !options_->empty()
+      && !(*options_)[schema.get_dockey_component_idx(0)].empty();
   dockv::KeyEntryValues hashed_components;
   hashed_components.reserve(schema.num_hash_key_columns());
 
   int32_t hash_code;
   int32_t max_hash_code;
-  if (hashed_components_->empty() && has_hash_columns && options_ && !options_->empty()) {
+  if (hashed_components_->empty() && has_in_hash_options) {
     for (size_t i = 0; i < schema.num_hash_key_columns(); ++i) {
       DCHECK_GE(options_->size(),
                 schema.num_hash_key_columns() + schema.has_yb_hash_code());

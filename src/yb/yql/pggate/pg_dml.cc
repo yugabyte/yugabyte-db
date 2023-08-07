@@ -85,6 +85,10 @@ Status PgDml::AppendTargetPB(PgExpr *target) {
                       IllegalState, "Combining aggregate and non aggregate targets");
   }
 
+  if (target->is_system()) {
+    has_system_targets_ = true;
+  }
+
   if (is_aggregate) {
     auto aggregate = down_cast<PgAggregateOperator*>(target);
     aggregate->set_index(narrow_cast<int>(targets_.size()));
@@ -93,20 +97,9 @@ Status PgDml::AppendTargetPB(PgExpr *target) {
     targets_.push_back(down_cast<PgColumnRef*>(target));
   }
 
-  // Allocate associated protobuf.
-  auto* expr_pb = AllocTargetPB();
-
   // Prepare expression. Except for constants and place_holders, all other expressions can be
-  // evaluate just one time during prepare.
-  RETURN_NOT_OK(target->PrepareForRead(this, expr_pb));
-
-  // Link the given expression "attr_value" with the allocated protobuf. Note that except for
-  // constants and place_holders, all other expressions can be setup just one time during prepare.
-  // Example:
-  // - Bind values for a target of SELECT
-  //   SELECT AVG(col + ?) FROM a_table;
-  expr_binds_[expr_pb] = target;
-  return Status::OK();
+  // evaluated just one time during prepare.
+  return target->PrepareForRead(this, AllocTargetPB());
 }
 
 Status PgDml::AppendQual(PgExpr *qual, bool is_primary) {
@@ -251,38 +244,12 @@ Status PgDml::BindColumn(int attr_num, PgExpr *attr_value) {
               "Attribute value type does not match column type");
   }
 
-  // Alloc the protobuf.
-  auto* bind_pb = column.bind_pb();
-  if (bind_pb == nullptr) {
-    bind_pb = AllocColumnBindPB(&column);
-  } else {
-    if (expr_binds_.count(bind_pb)) {
-      LOG(WARNING) << strings::Substitute("Column $0 is already bound to another value.", attr_num);
-    }
-  }
+  RETURN_NOT_OK(AllocColumnBindPB(&column, attr_value));
 
-  // Link the given expression "attr_value" with the allocated protobuf. Note that except for
-  // constants and place_holders, all other expressions can be setup just one time during prepare.
-  // Examples:
-  // - Bind values for primary columns in where clause.
-  //     WHERE hash = ?
-  // - Bind values for a column in INSERT statement.
-  //     INSERT INTO a_table(hash, key, col) VALUES(?, ?, ?)
-  expr_binds_[bind_pb] = attr_value;
   if (attr_num == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
     CHECK(attr_value->is_constant()) << "Column ybctid must be bound to constant";
     ybctid_bind_ = true;
   }
-  return Status::OK();
-}
-
-Status PgDml::UpdateBindPBs() {
-  for (const auto &entry : expr_binds_) {
-    auto* expr_pb = entry.first;
-    PgExpr *attr_value = entry.second;
-    RETURN_NOT_OK(attr_value->EvalTo(expr_pb));
-  }
-
   return Status::OK();
 }
 
@@ -491,6 +458,10 @@ Result<bool> PgDml::GetNextRow(PgTuple *pg_tuple) {
 
 bool PgDml::has_aggregate_targets() const {
   return has_aggregate_targets_;
+}
+
+bool PgDml::has_system_targets() const {
+  return has_system_targets_;
 }
 
 Result<YBCPgColumnInfo> PgDml::GetColumnInfo(int attr_num) const {

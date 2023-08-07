@@ -5,6 +5,8 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.RegionHandler;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
@@ -38,6 +40,7 @@ import play.mvc.Result;
 public class RegionController extends AuthenticatedController {
 
   @Inject RegionHandler regionHandler;
+  @Inject RuntimeConfGetter runtimeConfGetter;
 
   public static final Logger LOG = LoggerFactory.getLogger(RegionController.class);
   // This constant defines the minimum # of PlacementAZ we need to tag a region as Multi-PlacementAZ
@@ -94,14 +97,21 @@ public class RegionController extends AuthenticatedController {
           name = "region",
           value = "region form data for new region to be created",
           paramType = "body",
-          dataType = "com.yugabyte.yw.forms.RegionFormData",
+          dataType = "com.yugabyte.yw.models.Region",
           required = true))
   public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
-    Provider.getOrBadRequest(customerUUID, providerUUID);
-    Form<RegionFormData> formData =
-        formFactory.getFormDataOrBadRequest(request, RegionFormData.class);
-    RegionFormData form = formData.get();
-    Region region = regionHandler.createRegion(customerUUID, providerUUID, form);
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    Region region = null;
+    if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.useLegacyPayloadForRegionAndAZs)) {
+      Form<RegionFormData> formData =
+          formFactory.getFormDataOrBadRequest(request, RegionFormData.class);
+      RegionFormData form = formData.get();
+      region = regionHandler.createRegion(customerUUID, providerUUID, form);
+    } else {
+      region = formFactory.getFormDataOrBadRequest(request.body().asJson(), Region.class);
+      region.setProviderCode(provider.getCode());
+      region = regionHandler.createRegion(customerUUID, providerUUID, region);
+    }
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -126,13 +136,20 @@ public class RegionController extends AuthenticatedController {
           name = "region",
           value = "region edit form data",
           paramType = "body",
-          dataType = "com.yugabyte.yw.forms.RegionEditFormData",
+          dataType = "com.yugabyte.yw.models.Region",
           required = true))
   public Result edit(UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
-    Provider.getOrBadRequest(customerUUID, providerUUID);
-    RegionEditFormData form =
-        formFactory.getFormDataOrBadRequest(request, RegionEditFormData.class).get();
-    Region region = regionHandler.editRegion(customerUUID, providerUUID, regionUUID, form);
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+    Region region = null;
+    if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.useLegacyPayloadForRegionAndAZs)) {
+      RegionEditFormData form =
+          formFactory.getFormDataOrBadRequest(request, RegionEditFormData.class).get();
+      region = regionHandler.editRegion(customerUUID, providerUUID, regionUUID, form);
+    } else {
+      region = formFactory.getFormDataOrBadRequest(request.body().asJson(), Region.class);
+      region.setProviderCode(provider.getCode());
+      region = regionHandler.editRegion(customerUUID, providerUUID, regionUUID, region);
+    }
 
     auditService()
         .createAuditEntry(

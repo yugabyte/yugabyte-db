@@ -5,32 +5,41 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React from 'react';
 import clsx from 'clsx';
 import { FormHelperText, makeStyles } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, object, string } from 'yup';
+import { useQuery } from 'react-query';
 import { yupResolver } from '@hookform/resolvers/yup';
 
 import {
   ExposedAZProperties,
   ConfigureAvailabilityZoneField
 } from './ConfigureAvailabilityZoneField';
-import { ProviderCode, RegionOperationLabel, VPCSetupType, YBImageType } from '../../constants';
+import {
+  CloudVendorProviders,
+  ProviderCode,
+  RegionOperationLabel,
+  VPCSetupType,
+  YBImageType
+} from '../../constants';
 import { RegionOperation } from './constants';
 import { YBInputField, YBModal, YBModalProps } from '../../../../../redesign/components';
 import {
   ReactSelectOption,
   YBReactSelectField
 } from '../../components/YBReactSelect/YBReactSelectField';
-import { getRegionlabel, getRegionOptions, getZoneOptions } from './utils';
+import { getRegionOption, getRegionOptions } from './utils';
 import { generateLowerCaseAlphanumericId, getIsRegionFormDisabled } from '../utils';
+import { api, regionMetadataQueryKey } from '../../../../../redesign/helpers/api';
+import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
+import { RegionMetadataResponse } from '../../types';
 
 interface ConfigureRegionModalProps extends YBModalProps {
   configuredRegions: CloudVendorRegionField[];
   onRegionSubmit: (region: CloudVendorRegionField) => void;
   onClose: () => void;
-  providerCode: ProviderCode;
+  providerCode: typeof CloudVendorProviders[number];
   regionOperation: RegionOperation;
   isEditProvider: boolean;
   isProviderFormDisabled: boolean;
@@ -49,13 +58,16 @@ export interface ConfigureRegionFormValues {
   fieldId: string;
   regionData: { value: { code: string; zoneOptions: string[] }; label: string };
   zones: Zones;
+
+  instanceTemplate?: string;
   securityGroupId?: string;
+  sharedSubnet?: string;
   vnet?: string;
   ybImage?: string;
-  sharedSubnet?: string;
 }
 export type CloudVendorRegionField = Omit<ConfigureRegionFormValues, 'regionData' | 'zones'> & {
   code: string;
+  name: string;
   zones: ExposedAZProperties[];
 };
 
@@ -87,6 +99,13 @@ export const ConfigureRegionModal = ({
   ybImageType,
   ...modalProps
 }: ConfigureRegionModalProps) => {
+  const regionMetadataQuery = useQuery(
+    regionMetadataQueryKey.detail(providerCode),
+    () => api.fetchRegionMetadata(providerCode),
+    { refetchOnMount: false, refetchOnWindowFocus: false }
+  );
+  const classes = useStyles();
+
   const fieldLabel = {
     region: 'Region',
     vnet: providerCode === ProviderCode.AZU ? 'Virtual Network Name' : 'VPC ID',
@@ -98,18 +117,19 @@ export const ConfigureRegionModal = ({
         : providerCode === ProviderCode.AZU
         ? 'Marketplace Image URN/Shared Gallery Image ID (Optional)'
         : 'Custom Machine Image ID (Optional)',
-    sharedSubnet: 'Shared Subnet'
+    sharedSubnet: 'Shared Subnet',
+    instanceTemplate: 'Instance Template (Optional)'
   };
   const shouldExposeField: Record<keyof ConfigureRegionFormValues, boolean> = {
     fieldId: false,
+    instanceTemplate: providerCode === ProviderCode.GCP,
     regionData: true,
-    vnet: providerCode !== ProviderCode.GCP && vpcSetupType === VPCSetupType.EXISTING,
     securityGroupId: providerCode !== ProviderCode.GCP && vpcSetupType === VPCSetupType.EXISTING,
-    ybImage: providerCode !== ProviderCode.AWS || ybImageType === YBImageType.CUSTOM_AMI,
     sharedSubnet: providerCode === ProviderCode.GCP,
+    vnet: providerCode !== ProviderCode.GCP && vpcSetupType === VPCSetupType.EXISTING,
+    ybImage: providerCode !== ProviderCode.AWS || ybImageType === YBImageType.CUSTOM_AMI,
     zones: providerCode !== ProviderCode.GCP
   };
-
   const validationSchema = object().shape({
     regionData: object().required(`${fieldLabel.region} is required.`),
     vnet: string().when([], {
@@ -140,16 +160,29 @@ export const ConfigureRegionModal = ({
     })
   });
   const formMethods = useForm<ConfigureRegionFormValues>({
-    defaultValues: getDefaultFormValue(providerCode, regionSelection),
+    defaultValues: regionMetadataQuery.data
+      ? getDefaultFormValue(regionSelection, regionMetadataQuery.data)
+      : {},
     resolver: yupResolver(validationSchema)
   });
-  const selectedRegion = formMethods.watch('regionData');
-  const { setValue } = formMethods;
-  const selectedRegionCode = selectedRegion?.value?.code ?? regionSelection?.code;
-  const classes = useStyles();
+
+  if (regionMetadataQuery.isLoading || regionMetadataQuery.isIdle) {
+    return <YBLoading />;
+  }
+  if (regionMetadataQuery.isError) {
+    return <YBErrorIndicator customErrorMessage="Error fetching region metadata." />;
+  }
+  if (
+    formMethods.formState.defaultValues &&
+    Object.keys(formMethods.formState.defaultValues).length === 0
+  ) {
+    // react-hook-form caches the defaultValues on first render.
+    // We need to update the defaultValues with reset() after regionMetadataQuery is successful.
+    formMethods.reset(getDefaultFormValue(regionSelection, regionMetadataQuery.data));
+  }
 
   const configuredRegionCodes = configuredRegions.map((configuredRegion) => configuredRegion.code);
-  const regionOptions = getRegionOptions(providerCode).filter(
+  const regionOptions = getRegionOptions(regionMetadataQuery.data).filter(
     (regionOption) =>
       regionSelection?.code === regionOption.value.code ||
       !configuredRegionCodes.includes(regionOption.value.code)
@@ -164,15 +197,14 @@ export const ConfigureRegionModal = ({
       return;
     }
     const { regionData, zones, ...region } = formValues;
-    const newRegion =
-      regionOperation === RegionOperation.ADD
-        ? {
-            ...region,
-            zones: [] as ExposedAZProperties[],
-            code: regionData.value.code,
-            fieldId: generateLowerCaseAlphanumericId()
-          }
-        : { ...region, zones: [], code: regionData.value.code };
+    const newRegion = {
+      ...region,
+      code: regionData.value.code,
+      name: regionData.label,
+      zones: [] as ExposedAZProperties[],
+      ...(regionOperation === RegionOperation.ADD && { fieldId: generateLowerCaseAlphanumericId() })
+    };
+
     if (shouldExposeField.zones) {
       newRegion.zones = zones.map((zone) => ({
         code: zone.code?.value ?? '',
@@ -189,8 +221,11 @@ export const ConfigureRegionModal = ({
     onClose();
   };
 
+  const selectedRegion = formMethods.watch('regionData');
+  const { setValue } = formMethods;
+  const currentRegionCode = selectedRegion?.value?.code ?? regionSelection?.code;
   const onRegionChange = (data: ReactSelectOption) => {
-    if (data.value.code !== selectedRegionCode) {
+    if (data.value.code !== currentRegionCode) {
       setValue('zones', []);
     }
   };
@@ -280,6 +315,18 @@ export const ConfigureRegionModal = ({
             />
           </div>
         )}
+        {shouldExposeField.instanceTemplate && (
+          <div className={classes.formField}>
+            <div>{fieldLabel.instanceTemplate}</div>
+            <YBInputField
+              control={formMethods.control}
+              name="instanceTemplate"
+              placeholder="Enter..."
+              disabled={isFormDisabled}
+              fullWidth
+            />
+          </div>
+        )}
         {shouldExposeField.zones && (
           <div>
             <ConfigureAvailabilityZoneField
@@ -300,26 +347,20 @@ export const ConfigureRegionModal = ({
 };
 
 const getDefaultFormValue = (
-  providerCode: ProviderCode,
-  regionSelection: CloudVendorRegionField | undefined
-) => {
+  regionSelection: CloudVendorRegionField | undefined,
+  regionMetadataResponse: RegionMetadataResponse
+): Partial<ConfigureRegionFormValues> => {
   if (regionSelection === undefined) {
     return {
       zones: [] as Zones
     };
   }
-  const { code: currentRegionCode, zones, ...currentRegion } = regionSelection;
+  const { name, code, zones, ...currentRegion } = regionSelection;
   return {
     ...currentRegion,
-    regionData: {
-      value: {
-        code: currentRegionCode,
-        zoneOptions: getZoneOptions(providerCode, currentRegionCode)
-      },
-      label: getRegionlabel(providerCode, currentRegionCode)
-    },
+    regionData: getRegionOption(regionSelection.code, regionMetadataResponse),
     zones: zones.map((zone) => ({
-      code: { value: zone.code, label: zone.code, isDiabled: false },
+      code: { value: zone.code, label: zone.code, isDisabled: false },
       subnet: zone.subnet
     }))
   };

@@ -449,7 +449,7 @@ void SubDocument::ToQLValuePB(const shared_ptr<QLType>& ql_type, QLValuePB* ql_v
   }
 
   switch (ql_type->main()) {
-    case MAP: {
+    case DataType::MAP: {
       const shared_ptr<QLType>& keys_type = ql_type->params()[0];
       const shared_ptr<QLType>& values_type = ql_type->params()[1];
       QLMapValuePB *value_pb = ql_value->mutable_map_value();
@@ -461,7 +461,7 @@ void SubDocument::ToQLValuePB(const shared_ptr<QLType>& ql_type, QLValuePB* ql_v
       }
       return;
     }
-    case SET: {
+    case DataType::SET: {
       const shared_ptr<QLType>& elems_type = ql_type->params()[0];
       QLSeqValuePB *value_pb = ql_value->mutable_set_value();
       value_pb->clear_elems();
@@ -471,7 +471,7 @@ void SubDocument::ToQLValuePB(const shared_ptr<QLType>& ql_type, QLValuePB* ql_v
       }
       return;
     }
-    case LIST: {
+    case DataType::LIST: {
       const shared_ptr<QLType>& elems_type = ql_type->params()[0];
       QLSeqValuePB *value_pb = ql_value->mutable_list_value();
       value_pb->clear_elems();
@@ -481,8 +481,8 @@ void SubDocument::ToQLValuePB(const shared_ptr<QLType>& ql_type, QLValuePB* ql_v
       }
       return;
     }
-    case USER_DEFINED_TYPE: {
-      const shared_ptr<QLType>& keys_type = QLType::Create(INT16);
+    case DataType::USER_DEFINED_TYPE: {
+      const shared_ptr<QLType>& keys_type = QLType::Create(DataType::INT16);
       QLMapValuePB *value_pb = ql_value->mutable_map_value();
       value_pb->clear_keys();
       value_pb->clear_values();
@@ -493,7 +493,7 @@ void SubDocument::ToQLValuePB(const shared_ptr<QLType>& ql_type, QLValuePB* ql_v
       }
       return;
     }
-    case TUPLE:
+    case DataType::TUPLE:
       break;
 
     default: {

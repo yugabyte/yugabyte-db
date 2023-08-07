@@ -81,10 +81,14 @@ public class NodeAgentManager {
   private final Config appConfig;
   private final ConfigHelper configHelper;
 
+  private final CertificateHelper certificateHelper;
+
   @Inject
-  public NodeAgentManager(Config appConfig, ConfigHelper configHelper) {
+  public NodeAgentManager(
+      Config appConfig, ConfigHelper configHelper, CertificateHelper certificateHelper) {
     this.appConfig = appConfig;
     this.configHelper = configHelper;
+    this.certificateHelper = certificateHelper;
   }
 
   @Getter
@@ -141,13 +145,13 @@ public class NodeAgentManager {
     return getOrCreateCertDirectory(nodeAgent, String.valueOf(Integer.parseInt(certDir) + 1));
   }
 
-  private static Pair<X509Certificate, KeyPair> createRootCert(
+  private Pair<X509Certificate, KeyPair> createRootCert(
       NodeAgent nodeAgent, String certPath, String keyPath) {
     try {
       String certLabel = nodeAgent.getUuid().toString();
       KeyPair keyPair = CertificateHelper.getKeyPairObject();
       X509Certificate x509 =
-          CertificateHelper.generateCACertificate(certLabel, keyPair, CERT_EXPIRY_YEARS);
+          certificateHelper.generateCACertificate(certLabel, keyPair, CERT_EXPIRY_YEARS);
       CertificateHelper.writeCertFileContentToCertPath(x509, certPath);
       CertificateHelper.writeKeyFileContentToKeyPath(keyPair.getPrivate(), keyPath);
       return new ImmutablePair<>(x509, keyPair);

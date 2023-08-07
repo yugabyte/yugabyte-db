@@ -5,15 +5,8 @@ package com.yugabyte.yw.commissioner.tasks;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.EDIT;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -23,6 +16,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -32,23 +26,13 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.yb.client.ChangeConfigResponse;
-import org.yb.client.ChangeMasterClusterConfigResponse;
-import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.ListMastersResponse;
-import org.yb.client.ListTabletServersResponse;
+import org.yb.client.*;
 import org.yb.master.CatalogEntityInfo;
 import play.libs.Json;
 
@@ -67,9 +51,11 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.SetNodeStatus,
+          TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.ModifyBlackList,
+          TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServer, // check if postgres is up
@@ -78,6 +64,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.ChangeMasterConfig, // Add
+          TaskType.WaitForFollowerLag, // Add
           TaskType.ChangeMasterConfig, // Remove
           TaskType.AnsibleClusterServerCtl, // Stop master
           TaskType.WaitForMasterLeader,
@@ -103,9 +90,11 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.AnsibleConfigureServers, // GFlags
           TaskType.SetNodeStatus,
+          TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.ModifyBlackList,
+          TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.WaitForServer, // check if postgres is up
@@ -114,6 +103,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.ChangeMasterConfig, // Add
+          TaskType.WaitForFollowerLag, // Add
           TaskType.ChangeMasterConfig, // Remove
           TaskType.AnsibleClusterServerCtl, // Stop master
           TaskType.WaitForMasterLeader,
@@ -167,6 +157,24 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
       when(mockClient.waitForAreLeadersOnPreferredOnlyCondition(anyLong())).thenReturn(true);
+      when(mockNodeUniverseManager.runCommand(any(), any(), any()))
+          .thenReturn(
+              ShellResponse.create(
+                  ShellResponse.ERROR_CODE_SUCCESS,
+                  ShellResponse.RUN_COMMAND_OUTPUT_PREFIX
+                      + "Reference ID    : A9FEA9FE (metadata.google.internal)\n"
+                      + "    Stratum         : 3\n"
+                      + "    Ref time (UTC)  : Mon Jun 12 16:18:24 2023\n"
+                      + "    System time     : 0.000000003 seconds slow of NTP time\n"
+                      + "    Last offset     : +0.000019514 seconds\n"
+                      + "    RMS offset      : 0.000011283 seconds\n"
+                      + "    Frequency       : 99.154 ppm slow\n"
+                      + "    Residual freq   : +0.009 ppm\n"
+                      + "    Skew            : 0.106 ppm\n"
+                      + "    Root delay      : 0.000162946 seconds\n"
+                      + "    Root dispersion : 0.000101734 seconds\n"
+                      + "    Update interval : 32.3 seconds\n"
+                      + "    Leap status     : Normal"));
     } catch (Exception e) {
       fail();
     }
@@ -174,6 +182,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
+    mockGetMasterRegistrationResponses(
+        ImmutableList.of("10.9.22.1", "10.9.22.2", "10.9.22.3", "10.9.22.4", "10.9.22.5"));
   }
 
   private TaskInfo submitTask(UniverseDefinitionTaskParams taskParams) {

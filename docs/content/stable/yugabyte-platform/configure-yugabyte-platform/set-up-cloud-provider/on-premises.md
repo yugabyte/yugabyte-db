@@ -192,7 +192,7 @@ This step is only required if you set **Manually Provision Nodes** to true and t
 
 You can manually provision each node using the preprovisioning Python script, as follows:
 
-1. Login to YugabyteDB Anywhere virtual machine via SSH.
+1. Log in to YugabyteDB Anywhere virtual machine via SSH.
 
 1. Access the Docker `yugaware` container, as follows:
 
@@ -270,7 +270,7 @@ This process carries out all provisioning tasks on the database nodes which requ
 
 Physical nodes (or cloud instances) are installed with a standard CentOS 7 server image. The following steps are to be performed on each physical node, prior to universe creation:
 
-1. Login to each database node as a user with sudo enabled (the `centos` user in centos7 images).
+1. Log in to each database node as a user with sudo enabled (the `centos` user in centos7 images).
 
 1. Add the following line to the `/etc/chrony.conf` file:
 
@@ -287,12 +287,20 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
 1. Add a new `yugabyte:yugabyte` user and group with the default login shell `/bin/bash` that you set via the `-s` flag, as follows:
 
     ```bash
-    sudo useradd -s /bin/bash -m yugabyte   # (add user yugabyte and create /home/yugabyte)
+    sudo useradd -s /bin/bash --create-home --home-dir <yugabyte-home> yugabyte  # (add user yugabyte and create its home directory as specified in <yugabyte-home>)
     sudo passwd yugabyte   # (add a password to the yugabyte user)
     sudo su - yugabyte   # (change to yugabyte user for execution of next steps)
     ```
 
+    `yugabyte-home` is the path to the Yugabyte home directory. If you set a custom path for the yugabyte user's home in the YugabyteDB Anywhere UI, you must use the same path here. Otherwise, you can omit the `--home-dir` flag.
+
     Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
+
+1. If the node is running SELinux and the home directory is not the default, set the correct SELinux ssh context, as follows:
+
+    ```bash
+    chcon -R -t ssh_home_t <yugabyte_home>
+    ```
 
 1. Copy the SSH public key to each DB node. This public key should correspond to the private key entered into the YugabyteDB Anywhere provider.
 
@@ -1017,7 +1025,7 @@ To completely eliminate all traces of YugabyteDB Anywhere and configuration, you
 
 You can remove YugabyteDB components and configuration from the database server nodes as follows:
 
-- Login to the server node as the `yugabyte` user.
+- Log in to the server node as the `yugabyte` user.
 
 - Navigate to the `/home/yugabyte/bin` directory that contains a number of scripts including `yb-server-ctl.sh`. The arguments set in this script allow you to perform various functions on the YugabyteDB processes running on the node.
 

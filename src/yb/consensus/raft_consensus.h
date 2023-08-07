@@ -61,9 +61,6 @@ DECLARE_int32(ht_lease_duration_ms);
 
 namespace yb {
 
-typedef std::lock_guard<simple_spinlock> Lock;
-typedef std::unique_ptr<Lock> ScopedLock;
-
 class Counter;
 class HostPort;
 class ThreadPool;
@@ -756,6 +753,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   std::atomic<uint64_t> majority_num_sst_files_{0};
 
   const TabletId split_parent_tablet_id_;
+
+  std::atomic<uint64_t> follower_last_update_received_time_ms_{0};
 
   DISALLOW_COPY_AND_ASSIGN(RaftConsensus);
 };

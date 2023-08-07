@@ -110,7 +110,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   void SetRpcMethodMetrics(std::reference_wrapper<const RpcMethodMetrics> value);
 
   // Return the serialized request parameter protobuf.
-  const Slice &serialized_request() const {
+  Slice serialized_request() const {
     return serialized_request_;
   }
 

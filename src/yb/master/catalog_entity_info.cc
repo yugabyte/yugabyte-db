@@ -111,8 +111,10 @@ void TabletReplica::UpdateDriveInfo(const TabletReplicaDriveInfo& info) {
 }
 
 void TabletReplica::UpdateLeaderLeaseInfo(const TabletLeaderLeaseInfo& info) {
-  bool initialized = leader_lease_info.initialized;
+  const bool initialized = leader_lease_info.initialized;
+  const auto old_lease_exp = leader_lease_info.ht_lease_expiration;
   leader_lease_info = info;
+  leader_lease_info.ht_lease_expiration = std::max(old_lease_exp, info.ht_lease_expiration);
   leader_lease_info.initialized = initialized || info.initialized;
 }
 
@@ -165,7 +167,7 @@ TabletInfo::~TabletInfo() {
 
 void TabletInfo::SetReplicaLocations(
     std::shared_ptr<TabletReplicaMap> replica_locations) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   LeaderChangeReporter leader_change_reporter(this);
   last_update_time_ = MonoTime::Now();
   replica_locations_ = replica_locations;
@@ -217,7 +219,7 @@ Status TabletInfo::GetLeaderNotFoundStatus() const {
 }
 
 Result<TSDescriptor*> TabletInfo::GetLeader() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   auto result = GetLeaderUnlocked();
   if (result) {
     return result;
@@ -226,7 +228,7 @@ Result<TSDescriptor*> TabletInfo::GetLeader() const {
 }
 
 Result<TabletReplicaDriveInfo> TabletInfo::GetLeaderReplicaDriveInfo() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
 
   for (const auto& pair : *replica_locations_) {
     if (pair.second.role == PeerRole::LEADER) {
@@ -239,7 +241,7 @@ Result<TabletReplicaDriveInfo> TabletInfo::GetLeaderReplicaDriveInfo() const {
 // Return leader lease info of the replica with ts_uuid if it's is the current leader.
 Result<TabletLeaderLeaseInfo> TabletInfo::GetLeaderLeaseInfoIfLeader(
     const std::string& ts_uuid) const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
 
   auto it = replica_locations_->find(ts_uuid);
   if (it == replica_locations_->end() || it->second.role != PeerRole::LEADER) {
@@ -258,12 +260,12 @@ TSDescriptor* TabletInfo::GetLeaderUnlocked() const {
 }
 
 std::shared_ptr<const TabletReplicaMap> TabletInfo::GetReplicaLocations() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   return replica_locations_;
 }
 
 void TabletInfo::UpdateReplicaLocations(const TabletReplica& replica) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   LeaderChangeReporter leader_change_reporter(this);
   last_update_time_ = MonoTime::Now();
   // Make a new shared_ptr, copying the data, to ensure we don't race against access to data from
@@ -282,7 +284,7 @@ void TabletInfo::UpdateReplicaLocations(const TabletReplica& replica) {
 void TabletInfo::UpdateReplicaInfo(const std::string& ts_uuid,
                                    const TabletReplicaDriveInfo& drive_info,
                                    const TabletLeaderLeaseInfo& leader_lease_info) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   // Make a new shared_ptr, copying the data, to ensure we don't race against access to data from
   // clients that already have the old shared_ptr.
   replica_locations_ = std::make_shared<TabletReplicaMap>(*replica_locations_);
@@ -294,23 +296,23 @@ void TabletInfo::UpdateReplicaInfo(const std::string& ts_uuid,
   it->second.UpdateLeaderLeaseInfo(leader_lease_info);
 }
 
-std::unordered_map<CDCStreamId, uint64_t>  TabletInfo::GetReplicationStatus() {
-  std::lock_guard<simple_spinlock> l(lock_);
+std::unordered_map<xrepl::StreamId, uint64_t> TabletInfo::GetReplicationStatus() {
+  std::lock_guard l(lock_);
   return replication_stream_to_status_bitmask_;
 }
 
 void TabletInfo::set_last_update_time(const MonoTime& ts) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   last_update_time_ = ts;
 }
 
 MonoTime TabletInfo::last_update_time() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   return last_update_time_;
 }
 
 bool TabletInfo::set_reported_schema_version(const TableId& table_id, uint32_t version) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   if (reported_schema_version_.count(table_id) == 0 ||
       version > reported_schema_version_[table_id]) {
     reported_schema_version_[table_id] = version;
@@ -320,7 +322,7 @@ bool TabletInfo::set_reported_schema_version(const TableId& table_id, uint32_t v
 }
 
 uint32_t TabletInfo::reported_schema_version(const TableId& table_id) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   if (reported_schema_version_.count(table_id) == 0) {
     return 0;
   }
@@ -328,12 +330,12 @@ uint32_t TabletInfo::reported_schema_version(const TableId& table_id) {
 }
 
 void TabletInfo::SetInitiaLeaderElectionProtege(const std::string& protege_uuid) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   initial_leader_election_protege_ = protege_uuid;
 }
 
 std::string TabletInfo::InitiaLeaderElectionProtege() {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   return initial_leader_election_protege_;
 }
 
@@ -348,13 +350,13 @@ string TabletInfo::ToString() const {
 
 void TabletInfo::RegisterLeaderStepDownFailure(const TabletServerId& dest_leader,
                                                MonoDelta time_since_stepdown_failure) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   leader_stepdown_failure_times_[dest_leader] = MonoTime::Now() - time_since_stepdown_failure;
 }
 
 void TabletInfo::GetLeaderStepDownFailureTimes(MonoTime forget_failures_before,
                                                LeaderStepDownFailureTimes* dest) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   for (auto iter = leader_stepdown_failure_times_.begin();
        iter != leader_stepdown_failure_times_.end(); ) {
     if (iter->second < forget_failures_before) {
@@ -368,7 +370,7 @@ void TabletInfo::GetLeaderStepDownFailureTimes(MonoTime forget_failures_before,
 
 void TabletInfo::UpdateReplicaFullCompactionStatus(
     const TabletServerId& ts_uuid, const FullCompactionStatus& full_compaction_status) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   // Make a new shared_ptr, copying the data, to ensure we don't race against access to data from
   // clients that already have the old shared_ptr.
   replica_locations_ = std::make_shared<TabletReplicaMap>(*replica_locations_);
@@ -489,12 +491,12 @@ TableType TableInfo::GetTableType() const {
 }
 
 void TableInfo::AddTablet(const TabletInfoPtr& tablet) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   AddTabletUnlocked(tablet);
 }
 
 void TableInfo::ReplaceTablet(const TabletInfoPtr& old_tablet, const TabletInfoPtr& new_tablet) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   auto it = partitions_.find(old_tablet->metadata().dirty().pb.partition().partition_key_start());
   if (it != partitions_.end() && it->second == old_tablet.get()) {
     partitions_.erase(it);
@@ -504,14 +506,14 @@ void TableInfo::ReplaceTablet(const TabletInfoPtr& old_tablet, const TabletInfoP
 
 
 void TableInfo::AddTablets(const TabletInfos& tablets) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   for (const auto& tablet : tablets) {
     AddTabletUnlocked(tablet);
   }
 }
 
 void TableInfo::ClearTabletMaps(DeactivateOnly deactivate_only) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   partitions_.clear();
   if (!deactivate_only) {
     tablets_.clear();
@@ -519,7 +521,7 @@ void TableInfo::ClearTabletMaps(DeactivateOnly deactivate_only) {
 }
 
 Result<TabletWithSplitPartitions> TableInfo::FindSplittableHashPartitionForStatusTable() const {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
 
   for (const auto& entry : partitions_) {
     const auto& tablet = entry.second;
@@ -537,7 +539,7 @@ Result<TabletWithSplitPartitions> TableInfo::FindSplittableHashPartitionForStatu
 
 void TableInfo::AddStatusTabletViaSplitPartition(
     TabletInfoPtr old_tablet, const dockv::Partition& partition, const TabletInfoPtr& new_tablet) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
 
   const auto& new_dirty = new_tablet->metadata().dirty();
   if (new_dirty.is_deleted()) {
@@ -597,12 +599,12 @@ void TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
 }
 
 bool TableInfo::RemoveTablet(const TabletId& tablet_id, DeactivateOnly deactivate_only) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   return RemoveTabletUnlocked(tablet_id, deactivate_only);
 }
 
 bool TableInfo::RemoveTablets(const TabletInfos& tablets, DeactivateOnly deactivate_only) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   bool all_were_removed = true;
   for (const auto& tablet : tablets) {
     if (!RemoveTabletUnlocked(tablet->id(), deactivate_only)) {
@@ -767,7 +769,7 @@ bool TableInfo::AreAllTabletsRunning(const std::set<TabletId>& new_running_table
 
 Status TableInfo::SetIsBackfilling() {
   const auto table_lock = LockForRead();
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   if (is_backfilling_) {
     return STATUS(AlreadyPresent, "Backfill already in progress", id(),
                   MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS));
@@ -779,7 +781,7 @@ Status TableInfo::SetIsBackfilling() {
 
 void TableInfo::SetCreateTableErrorStatus(const Status& status) {
   VLOG_WITH_FUNC(1) << status;
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   create_table_error_ = status;
 }
 
@@ -819,7 +821,7 @@ bool TableInfo::HasTasks(server::MonitoredTaskType type) const {
 void TableInfo::AddTask(std::shared_ptr<server::MonitoredTask> task) {
   bool abort_task = false;
   {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     if (!closing_) {
       pending_tasks_.insert(task);
       if (tasks_tracker_) {
@@ -839,7 +841,7 @@ void TableInfo::AddTask(std::shared_ptr<server::MonitoredTask> task) {
 bool TableInfo::RemoveTask(const std::shared_ptr<server::MonitoredTask>& task) {
   bool result;
   {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     pending_tasks_.erase(task);
     result = pending_tasks_.empty();
   }
@@ -860,7 +862,7 @@ void TableInfo::AbortTasksAndClose() {
 void TableInfo::AbortTasksAndCloseIfRequested(bool close) {
   std::vector<std::shared_ptr<server::MonitoredTask>> abort_tasks;
   {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     if (close) {
       closing_ = true;
     }
@@ -1045,7 +1047,7 @@ TablespaceId TableInfo::TablespaceIdForTableCreation() const {
 }
 
 void TableInfo::SetTablespaceIdForTableCreation(const TablespaceId& tablespace_id) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   tablespace_id_for_table_creation_ = tablespace_id;
 }
 
@@ -1123,22 +1125,22 @@ DeletedTableInfo::DeletedTableInfo(const TableInfo* table) : table_id_(table->id
 }
 
 std::size_t DeletedTableInfo::NumTablets() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   return tablet_set_.size();
 }
 
 bool DeletedTableInfo::HasTablets() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   return !tablet_set_.empty();
 }
 
 void DeletedTableInfo::DeleteTablet(const TabletKey& key) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   tablet_set_.erase(key);
 }
 
 void DeletedTableInfo::AddTabletsToMap(DeletedTabletMap* tablet_map) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   for (const TabletKey& key : tablet_set_) {
     tablet_map->insert(DeletedTabletMap::value_type(key, this));
   }
@@ -1268,7 +1270,7 @@ Result<std::shared_ptr<CDCRpcTasks>> UniverseReplicationInfo::GetOrCreateCDCRpcT
   HostPortsFromPBs(producer_masters, &hp);
   std::string master_addrs = HostPort::ToCommaSeparatedString(hp);
 
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   if (cdc_rpc_tasks_ != nullptr) {
     // Master Addresses changed, update YBClient with new retry logic.
     if (master_addrs_ != master_addrs) {
@@ -1291,7 +1293,7 @@ std::string UniverseReplicationInfo::ToString() const {
 }
 
 void UniverseReplicationInfo::SetSetupUniverseReplicationErrorStatus(const Status& status) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   setup_universe_replication_error_ = status;
 }
 
@@ -1302,18 +1304,18 @@ Status UniverseReplicationInfo::GetSetupUniverseReplicationErrorStatus() const {
 
 void UniverseReplicationInfo::StoreReplicationError(
     const TableId& consumer_table_id,
-    const CDCStreamId& stream_id,
+    const xrepl::StreamId& stream_id,
     const ReplicationErrorPb error,
     const std::string& error_detail) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
   table_replication_error_map_[consumer_table_id][stream_id][error] = error_detail;
 }
 
 void UniverseReplicationInfo::ClearReplicationError(
     const TableId& consumer_table_id,
-    const CDCStreamId& stream_id,
+    const xrepl::StreamId& stream_id,
     const ReplicationErrorPb error) {
-  std::lock_guard<decltype(lock_)> l(lock_);
+  std::lock_guard l(lock_);
 
   if (table_replication_error_map_.count(consumer_table_id) == 0 ||
       table_replication_error_map_[consumer_table_id].count(stream_id) == 0 ||

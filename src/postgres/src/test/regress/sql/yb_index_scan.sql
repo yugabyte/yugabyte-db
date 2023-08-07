@@ -432,3 +432,20 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_k
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_kv_pkey) */ SELECT 1 FROM t_kv;
 
 DROP TABLE t_kv;
+
+-- Test index SPLIT AT with INCLUDE clause
+CREATE TABLE test_tbl (
+  a INT,
+  b INT,
+  PRIMARY KEY (a ASC)
+) SPLIT AT VALUES((1));
+CREATE INDEX test_idx on test_tbl(
+  b ASC
+) INCLUDE (a) SPLIT AT VALUES ((1));
+INSERT INTO test_tbl VALUES (1, 2),(2, 1),(4, 3),(5, 4);
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT a, b FROM test_tbl WHERE a = 4;
+SELECT a, b FROM test_tbl WHERE a = 4;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT a, b FROM test_tbl WHERE b = 4;
+SELECT a, b FROM test_tbl WHERE b = 4;
+DROP INDEX test_idx;
+DROP TABLE test_tbl;

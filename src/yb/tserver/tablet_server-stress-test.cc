@@ -59,13 +59,13 @@ class TSStressTest : public TabletServerTestBase {
     : start_latch_(FLAGS_num_inserter_threads) {
 
     if (FLAGS_num_inserts_per_thread == 0) {
-      FLAGS_num_inserts_per_thread = AllowSlowTests() ? 100000 : 1000;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_inserts_per_thread) = AllowSlowTests() ? 100000 : 1000;
     }
 
     // Re-enable the maintenance manager which is disabled by default
     // in TS tests. We want to stress the whole system including
     // flushes, etc.
-    FLAGS_enable_maintenance_manager = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_maintenance_manager) = true;
   }
 
   void SetUp() override {

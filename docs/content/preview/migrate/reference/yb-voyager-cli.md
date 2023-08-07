@@ -82,7 +82,7 @@ The valid *arguments* for export schema are described in the following table:
 | [--source-ssl-crl](#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
 | [--source-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--source-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| [--start-clean](#start-clean) | Clean the schema data directories. |
+| [--start-clean](#start-clean) | Clears the exported schema. |
 | [--use-orafce](#use-orafce) | Use the Orafce extension. Oracle migrations only. |
 | [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
@@ -162,7 +162,7 @@ The valid *arguments* for export data are described in the following table:
 | [--source-ssl-crl](#ssl-connectivity) <path> | Path to a file containing the SSL certificate revocation list (CRL).|
 | [--source-ssl-mode](#ssl-connectivity) <SSLmode> | One of `disable`, `allow`, `prefer`(default), `require`, `verify-ca`, or `verify-full`. |
 | [--source-ssl-root-cert](#ssl-connectivity) <path> | Path to a file containing SSL certificate authority (CA) certificate(s). |
-| [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
+| [--start-clean](#start-clean) | Clears the exported data files. |
 | [-y, --yes](#yes) | Answer yes to all prompts during the export schema operation. |
 
 #### Example
@@ -227,7 +227,7 @@ The valid *arguments* for import schema are described in the following table:
 | [-h, --help](#command-line-help) | Command line help. |
 |  [--post-import-data](#post-import-data) | Imports indexes and triggers in the target YugabyteDB database after data import is complete. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
-| [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
+| [--start-clean](#start-clean) | Starts a fresh import of the schema on the target YugabyteDB database. |
 | [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
 | [--target-db-name](#target-db-name) <name> | Target database name. |
 | [--target-db-password](#target-db-password) <password>| Target database password. |
@@ -282,7 +282,7 @@ The valid *arguments* for import data are described in the following table:
 | [-h, --help](#command-line-help) | Command line help. |
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
-| [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
+| [--start-clean](#start-clean) | Starts a fresh import of data after clearing the previous state of import on the target YugabyteDB database. |
 | [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
 | [--target-db-name](#target-db-name) <name> | Target database name. |
 | [--target-db-password](#target-db-password) <password>| Target database password. |
@@ -316,7 +316,7 @@ yb-voyager import data --export-dir /path/to/yb/export/dir \
 
 ### import data file
 
-[Load all your data files](../../migrate-steps/#import-data-file) in CSV or text format directly to the target YugabyteDB. These data files can be located either on a local filesystem or an AWS S3 bucket.
+[Load all your data files](../../migrate-steps/#import-data-file) in CSV or text format directly to the target YugabyteDB. These data files can be located either on a local filesystem, an [AWS S3 bucket](../../migrate-steps/#import-data-file-from-aws-s3), [GCS bucket](../../migrate-steps/#import-data-file-from-gcs-buckets), or [Azure blob](../../migrate-steps/#import-data-file-from-azure-blob-storage-containers).
 
 #### Syntax
 
@@ -329,20 +329,21 @@ The valid *arguments* for import data file are described in the following table:
 | Argument | Description/valid options |
 | :------- | :------------------------ |
 | [--batch-size](#batch-size) <number> | Size of batches generated for ingestion during [import data]. |
-| [--data-dir](#data-dir) <path> | Path to the directory or S3-prefixed URI of the bucket containing the data files to import. |
-| [--delimiter](#delimiter) | Default: comma (,); can be changed to '\t' (tab), pipe(\|), or any other character. |
+| [--data-dir](#data-dir) <path> | Path to the location of the data files to import; this can be a local directory or a URL for a cloud storage location. |
+| [--delimiter](#delimiter) | Character used as delimiter in rows of the table(s). Default: comma (,) for CSV file format and tab (\t) for TEXT file format. |
 | [--disable-pb](#disable-pb) | Hide progress bars. |
-| [--exclude-table-list](#exclude-table-list) <tableNames> | Comma-separated list of tables to exclude while exporting data. |
-| [--file-opts](#file-opts) <string> | Comma-separated string options for CSV file format. |
+| [--escape-char](#escape-char) | Escape character (default double quotes `"`) only applicable to CSV file format. |
+| [--file-opts](#file-opts) <string> | **[Deprecated]** Comma-separated string options for CSV file format. |
 | [--null-string](#null-string) | String that represents null value in the data file. |
-| [--file-table-map](#file-table-map) <filename1:tablename1> | Comma-separated mapping between the files in [data-dir](#data-dir) to the corresponding table in the database. |
+| [--file-table-map](#file-table-map) <filename1:tablename1> | Comma-separated mapping between the files in [data-dir](#data-dir) to the corresponding table in the database. Multiple files can be imported in one table; for example, `foo1.csv:foo,foo2.csv:foo` or `foo*.csv:foo`. |
 | [--format](#format) <format> | One of `CSV` or `text` format of the data file. |
 | [--has-header](#has-header) | Applies only to CSV file type. |
 | [-e, --export-dir](#export-dir) <path> | Path to the directory where the data files will be exported. |
 | [-h, --help](#command-line-help) | Command line help. |
 | [--parallel-jobs](#parallel-jobs) <connectionCount> | Number of parallel COPY commands issued to the target database. |
+| [--quote-char](#quote-char) | Character used to quote the values (default double quotes `"`) only applicable to CSV file format. |
 | [--send-diagnostics](#send-diagnostics) | Send diagnostics information to Yugabyte. |
-| [--start-clean](#start-clean) | Cleans the data directories for already existing files and is applicable during all phases of migration, except analyze-schema. |
+| [--start-clean](#start-clean) | Starts a fresh import of a data file into a table in the target YugabyteDB database. |
 | [--target-db-host](#target-db-host) <hostname> | Hostname of the target database server. |
 | [--target-db-name](#target-db-name) <name> | Target database name. |
 | [--target-db-password](#target-db-password) <password>| Target database password. |
@@ -379,7 +380,6 @@ yb-voyager import data file --export-dir /path/to/yb/export/dir \
         --has-header \
         --file-opts "escape_char=\",quote_char=\"" \
         --format format
-
 ```
 
 ### import data status
@@ -520,28 +520,33 @@ Default: 20,000
 
 ### --data-dir
 
-Path to the directory containing the data files to import. You can also provide an AWS S3 bucket as a path to the data directory. For example,
-
-```sh
-yb-voyager import data file .... \
---data-dir s3://voyager-data
-```
-
-The authentication mechanism for accessing an S3 bucket using yb-voyager is the same as that used by the AWS CLI.
-
-Refer to [Configuring the AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html) for additional details to set up your S3 bucket.
+Path to the directory containing the data files to import. You can also provide an [AWS S3 bucket](../../migrate-steps/#import-data-file-from-aws-s3), [GCS bucket](../../migrate-steps/#import-data-file-from-gcs-buckets), and [Azure blob](../../migrate-steps/#import-data-file-from-azure-blob-storage-containers) as a path to the data directory.
 
 ### --file-table-map
 
 Comma-separated mapping between the files in [data-dir](#data-dir) to the corresponding table in the database.
 
-Default: If this flag isn't used, the `import data file` command imports files from the --data-dir directory matching the `PREFIX_data.csv` pattern, where PREFIX is the name of the table into which the file data is imported.
+Example: `filename1:tablename1,filename2:tablename2[,...]`
 
-Example : `filename1:tablename1,filename2:tablename2[,...]`
+You can import multiple files in one table either by providing one `<fileName>:<tableName>` entry for each file OR by passing a glob expression in place of the file name. For example, `fileName1:tableName,fileName2:tableName` OR `fileName*:tableName`.
 
 ### --delimiter
 
-Default: comma (,); can be changed to '\t' (tab), pipe(|), or any other character.
+Character used as delimiter in rows of the table(s).
+
+Default: comma (,) for CSV file format and tab (\t) for TEXT file format.
+
+### --escape-char
+
+Escape character; only applicable to CSV file format.
+
+Default: double quotes (")
+
+### --quote-char
+
+Quote character; only applicable to CSV file format.
+
+Default: double quotes (")
 
 ### --has-header
 
@@ -553,7 +558,7 @@ Default: false; change to true if the CSV file contains column names as a header
 
 ### --file-opts
 
-Comma-separated string options for CSV file format. The options can include the following:
+**[Deprecated]** Comma-separated string options for CSV file format. The options can include the following:
 
 - `escape_char`: escape character
 
@@ -602,7 +607,13 @@ By default, answer yes to all questions during migration.
 
 ### --start-clean
 
-Cleans the data directories for already existing files and is applicable during all phases of migration, except [analyze-schema](../../migrate-steps/#analyze-schema). For the export phase, this implies cleaning the schema or data directories depending on the current phase of migration. For the import phase, it implies cleaning the contents of the target YugabyteDB database.
+For the export phase, cleans the exported schema/data in the export-dir.
+
+For the import phase, starts a fresh import of schema during import schema and clears the previous state of import data, and starts a fresh import of data on the target database.
+
+For import data file, starts a fresh import of a data file into a table in the target database.
+
+Note: Because Voyager uses upsert mode during data import, if the target tables are not empty and they have a Primary Key, you should have no problems when using this flag, as column values will be updated. For tables with no Primary Key, you should exclude them using `--exlcude-table-list` to avoid duplicate data, if any.
 
 ### --table-list
 
@@ -640,7 +651,7 @@ Default: false
 
 ---
 
-## SSL Connectivity
+## SSL connectivity
 
 You can instruct yb-voyager to connect to the source or target database over an SSL connection. Connecting securely to PostgreSQL, MySQL, and YugabyteDB requires you to pass a similar set of arguments to yb-voyager. Oracle requires a different set of arguments.
 
@@ -651,10 +662,10 @@ The following table summarizes the arguments and options you can pass to yb-voya
 | Database | Arguments | Description |
 | :------- | :------------ | :----------- |
 | PostgreSQL <br /> MySQL | `--source-ssl-mode`| Value of this argument determines whether an encrypted connection is established between yb-voyager and the database server; and whether the certificate of the database server is verified from a CA. <br /> **Options**<ul><li>disable: Only try a non-SSL connection.</li><li>allow: First try a non-SSL connection; if that fails, try an SSL connection. (Not supported for MySQL.)</li><li> prefer (default): First try an SSL connection; if that fails, try a non-SSL connection.</li><li>require: Only try an SSL connection. If a root CA file is present, verify the certificate in the same way as if verify-ca was specified.</li><li> verify-ca: Only try an SSL connection, and verify that the server certificate is issued by a trusted certificate authority (CA).</li><li>verify-full: Only try an SSL connection, verify that the server certificate is issued by a trusted CA and that the requested server host name matches that in the certificate.</li></ul> |
-| | `--source-ssl-cert` <br /> `--source-ssl-key` | These two arguments specify names of the files containing SSL certificate and key, respectively. The `<cert, key>` pair forms the identity of the client. |
+| | `--source-ssl-cert` <br /> `--source-ssl-key` | These two arguments specify names of the files containing SSL certificate and key, respectively. The `<cert, key>` pair forms the identity of the client. Note: If using [accelerated data export](../../migrate-steps/#accelerate-data-export-for-mysql-and-oracle), ensure that the keys are in the PKCS8 standard PEM format. |
 | | `--source-ssl-root-cert` | Specifies the path to a file containing SSL certificate authority (CA) certificate(s). If the file exists, the server's certificate will be verified to be signed by one of these authorities.
-| | `--source-ssl-crl` | Specifies the path to a file containing the SSL certificate revocation list (CRL). Certificates listed in this file, if it exists, will be rejected while attempting to authenticate the server's certificate.
-| Oracle | `--oracle-tns-alias` | A TNS (Transparent Network Substrate) alias that is configured to establish a secure connection with the server is passed to yb-voyager. When you pass [`--oracle-tns-alias`](#ssl-connectivity), you cannot use any other arguments to connect to your Oracle instance including [`--source-db-schema`](#source-db-schema) and [`--oracle-db-sid`](#oracle-db-sid).|
+| | `--source-ssl-crl` | Specifies the path to a file containing the SSL certificate revocation list (CRL). Certificates listed in this file, if it exists, will be rejected while attempting to authenticate the server's certificate. If using [accelerated data export](../../migrate-steps/#accelerate-data-export-for-mysql-and-oracle), this is not supported. |
+| Oracle | `--oracle-tns-alias` | A TNS (Transparent Network Substrate) alias that is configured to establish a secure connection with the server is passed to yb-voyager. When you pass [`--oracle-tns-alias`](#ssl-connectivity), you cannot use any other arguments to connect to your Oracle instance including [`--source-db-schema`](#source-db-schema) and [`--oracle-db-sid`](#oracle-db-sid). Note: By default, the expectation is that the wallet files (.sso, .pk12, and so on) are in the TNS_ADMIN directory (the one containing tnsnames.ora). If the wallet files are in a different directory, ensure that you update the wallet location in the `sqlnet.ora` file. If using [accelerated data export](../../migrate-steps/#accelerate-data-export-for-mysql-and-oracle), to specify a different wallet location, also create a `ojdbc.properties` file in the TNS_ADMIN directory, and add the following: `oracle.net.wallet_location=(SOURCE=(METHOD=FILE)(METHOD_DATA=(DIRECTORY=/path/to/wallet)))`. |
 | YugabyteDB | `--target-ssl-mode` | Value of this argument determines whether an encrypted connection is established between yb-voyager and the database server; and whether the certificate of the database server is verified from a CA. <br /> **Options**<ul><li>disable: Only try a non-SSL connection.</li><li>allow: First try a non-SSL connection; if that fails, try an SSL connection. (Not supported for MySQL.)</li><li> prefer (default): First try an SSL connection; if that fails, try a non-SSL connection.</li><li>require: Only try an SSL connection. If a root CA file is present, verify the certificate in the same way as if verify-ca was specified.</li><li> verify-ca: Only try an SSL connection, and verify that the server certificate is issued by a trusted certificate authority (CA).</li><li>verify-full: Only try an SSL connection, verify that the server certificate is issued by a trusted CA and that the requested server host name matches that in the certificate.</li></ul>
 | | `--target-ssl-cert` <br /> `--target-ssl-key` | These two arguments specify names of the files containing SSL certificate and key, respectively. The `<cert, key>` pair forms the identity of the client. |
 | | `--target-ssl-root-cert` | Specifies the path to a file containing SSL certificate authority (CA) certificate(s). If the file exists, the server's certificate will be verified to be signed by one of these authorities. |

@@ -11,8 +11,10 @@
 package com.yugabyte.yw.common.config;
 
 import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.common.LdapUtil.TlsProtocol;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
+import com.yugabyte.yw.models.Users.Role;
 import java.time.Duration;
 import java.util.List;
 import org.apache.directory.api.ldap.model.message.SearchScope;
@@ -76,6 +78,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "YB Security Type",
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static final ConfKeyInfo<Boolean> displayJWTToken =
+      new ConfKeyInfo<>(
+          "yb.security.showJWTInfoOnLogin",
+          ScopeType.GLOBAL,
+          "Display JWT Token on Login Screen",
+          "Display JWT Token on Login Screen",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.UIDriven));
   public static final ConfKeyInfo<String> ybClientID =
       new ConfKeyInfo<>(
@@ -298,6 +308,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "YBC client timeout in milliseconds for admin operations",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> bootstrapProducerTimeoutMs =
+      new ConfKeyInfo<>(
+          "yb.xcluster.bootstrap_producer_timeout_ms",
+          ScopeType.GLOBAL,
+          "Bootstrap producer timeout",
+          "Bootstrap producer timeout in milliseconds",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> ybcSocketReadTimeoutMs =
       new ConfKeyInfo<>(
           "ybc.timeout.socket_read_timeout_ms",
@@ -313,6 +331,22 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "YBC operation timeout",
           "YBC client timeout in milliseconds for operations",
           ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> customCAStoreEnabled =
+      new ConfKeyInfo<>(
+          "yb.customCATrustStore.enabled",
+          ScopeType.GLOBAL,
+          "Enable YBA's custom CA trust-store",
+          "Enable YBA's custom CA trust-store",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enforceCertVerificationBackupRestore =
+      new ConfKeyInfo<>(
+          "yb.certVerifyBackupRestore.is_enforced",
+          ScopeType.GLOBAL,
+          "Server certificate verification for S3 backup/restore",
+          "Enforce server certificate verification during S3 backup/restore",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> javaxNetSslTrustStore =
       new ConfKeyInfo<>(
@@ -345,6 +379,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable Cert Reload",
           "Enable hot reload of TLS certificates without restart of the DB nodes",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> orgNameSelfSignedCert =
+      new ConfKeyInfo<>(
+          "yb.tlsCertificate.organizationName",
+          ScopeType.GLOBAL,
+          "Organization name for self signed certificates",
+          "Specify an organization name for self signed certificates",
+          ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> cmdOutputDelete =
       new ConfKeyInfo<>(
@@ -552,6 +594,30 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Hidden because this key has dedicated UI",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.UIDriven));
+  public static ConfKeyInfo<Role> ldapDefaultRole =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_default_role",
+          ScopeType.GLOBAL,
+          "Which role to use in case role cannot be discerned via LDAP",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.LdapDefaultRoleEnum,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static ConfKeyInfo<TlsProtocol> ldapTlsProtocol =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_tls_protocol",
+          ScopeType.GLOBAL,
+          "Which TLS protocol to use for StartTLS or LDAPS",
+          "Hidden because this key has dedicated UI",
+          ConfDataType.LdapTlsProtocol,
+          ImmutableList.of(ConfKeyTags.UIDriven));
+  public static ConfKeyInfo<Boolean> ldapsEnforceCertVerification =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.enforce_server_cert_verification",
+          ScopeType.GLOBAL,
+          "Server certificate verification for LDAPs/LDAP-TLS",
+          "Enforce server certificate verification for LDAPs/LDAP-TLS",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static ConfKeyInfo<Boolean> enableDetailedLogs =
       new ConfKeyInfo<>(
           "yb.security.enable_detailed_logs",
@@ -600,15 +666,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "How frequently do we check for completed tasks in database",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  // TODO yury
   public static ConfKeyInfo<Boolean> editProviderNewEnabled =
       new ConfKeyInfo<>(
           "yb.edit_provider.new.enabled",
           ScopeType.GLOBAL,
           "Enable New Edit Provider",
-          "TODO",
+          "Enable new edit provider workflow",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<List> tagList =
       new ConfKeyInfo<>(
           "yb.runtime_conf_ui.tag_filter",
@@ -772,7 +837,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "yb.node_agent.client.token_lifetime",
           ScopeType.GLOBAL,
           "Node Agent Token Lifetime",
-          "Lifetime oftoken used by node agent clients",
+          "Lifetime of token used by node agent clients",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> nodeAgentServerPort =
@@ -782,6 +847,32 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Node Agent Server Port",
           "Listening port for node agent servers",
           ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> waitForProviderTasksTimeoutMs =
+      new ConfKeyInfo<>(
+          "yb.edit_provider.new.wait_for_tasks_timeout_ms",
+          ScopeType.GLOBAL,
+          "Provider edit wait timeout in milliseconds",
+          "Timeout, that is used in edit provider task to wait until concurrent"
+              + " provider tasks are completed",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> waitForProviderTasksStepMs =
+      new ConfKeyInfo<>(
+          "yb.edit_provider.new.wait_for_tasks_step_ms",
+          ScopeType.GLOBAL,
+          "Provider edit wait step in milliseconds",
+          "Time between checks, that is used in edit provider task to wait until"
+              + " concurrent provider tasks are completed ",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> useLegacyPayloadForRegionAndAZs =
+      new ConfKeyInfo<>(
+          "yb.provider.use_legacy_payload_region_zones",
+          ScopeType.GLOBAL,
+          "If required to use v1 api payload for region & az's",
+          "When enabled YBA will expect v1 API payload for region & az's",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> KubernetesOperatorEnabled =
       new ConfKeyInfo<>(
@@ -800,4 +891,90 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "are watched. Requires restart to take effect",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Duration> waitForClockSyncMaxAcceptableClockSkew =
+      new ConfKeyInfo<>(
+          "yb.wait_for_clock_sync.max_acceptable_clock_skew",
+          ScopeType.GLOBAL,
+          "Max acceptable clock skew on the DB nodes",
+          "The maximum clock skew on the DB nodes before the tserver or master process can"
+              + "start",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> waitForClockSyncTimeout =
+      new ConfKeyInfo<>(
+          "yb.wait_for_clock_sync.timeout",
+          ScopeType.GLOBAL,
+          "Timeout for the waitForClockSync subtask",
+          "The amount of time that the waitForClockSync subtask waits for the clocks of the "
+              + "DB nodes to sync; if the sync does not happen within this the time specified in "
+              + "this config value, the subtask will fail",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static ConfKeyInfo<Boolean> editProviderWaitForTasks =
+      new ConfKeyInfo<>(
+          "yb.edit_provider.new.allow_wait",
+          ScopeType.GLOBAL,
+          "Enable wait for autotasks to finish during provider edit",
+          "Enable wait for autotasks to finish during provider edit",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> deleteExpiredBackupMaxGCSize =
+      new ConfKeyInfo<>(
+          "yb.backup.delete_expired_backup_max_gc_size",
+          ScopeType.GLOBAL,
+          "Delete Expired Backup MAX GC Size",
+          "Number of expired backups to be deleted in a single GC iteration.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> metricsExternalUrl =
+      new ConfKeyInfo<>(
+          "yb.metrics.external.url",
+          ScopeType.GLOBAL,
+          "Prometheus external URL",
+          "URL used to generate Prometheus metrics on YBA UI and to set up HA metrics federation.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> metricsLinkUseBrowserFqdn =
+      new ConfKeyInfo<>(
+          "yb.metrics.link.use_browser_fqdn",
+          ScopeType.GLOBAL,
+          "Prometheus link use browser FQDN",
+          "If Prometheus link in browser should point to current FQDN in browser"
+              + " or use value from backend.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> oidcFeatureEnhancements =
+      new ConfKeyInfo<>(
+          "yb.security.oidc_feature_enhancements",
+          ScopeType.GLOBAL,
+          "OIDC feature enhancements",
+          "Enables the OIDC enhancements such as auth_token retrieval, user registration in YBA"
+              + " on login, etc.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Boolean> installLocalesDbNodes =
+      new ConfKeyInfo<>(
+          "yb.install_locales_db_nodes",
+          ScopeType.GLOBAL,
+          "Install Locales DB nodes",
+          "If enabled YBA will install locales on the DB nodes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> disableImageBundleValidation =
+      new ConfKeyInfo<>(
+          "yb.edit_provider.new.disable_image_bundle_validations",
+          ScopeType.GLOBAL,
+          "Image Bundle Validation",
+          "Disables Image Bundle Validation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Duration> devopsCommandTimeout =
+      new ConfKeyInfo<>(
+          "yb.devops.command_timeout",
+          ScopeType.GLOBAL,
+          "Devops command timeout",
+          "Devops command timeout",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

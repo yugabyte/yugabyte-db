@@ -108,7 +108,7 @@ Result<PackedRowToPackingInfoPtrFunc> GetPackedRowToPackingInfoPtrFunc(
   return [schema_packing_provider, cotable_id,
           colocation_id](Slice* packed_row) -> Result<PackingInfoPtr> {
     auto schema_version =
-        narrow_cast<SchemaVersion>(VERIFY_RESULT(util::FastDecodeUnsignedVarInt(packed_row)));
+        narrow_cast<SchemaVersion>(VERIFY_RESULT(FastDecodeUnsignedVarInt(packed_row)));
     if (!schema_packing_provider) {
       return STATUS(NotFound, "No packing information available");
     }
@@ -240,14 +240,14 @@ Result<std::string> DocDBValueToDebugStr(
         RETURN_NOT_OK(value.consume_byte(dockv::KeyEntryTypeAsChar::kExternalIntents));
       }
       for (;;) {
-        auto len = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&value));
+        auto len = VERIFY_RESULT(FastDecodeUnsignedVarInt(&value));
         if (len == 0) {
           break;
         }
         Slice local_key = value.Prefix(len);
         value.remove_prefix(len);
         RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(local_key, dockv::HybridTimeRequired::kFalse));
-        len = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&value));
+        len = VERIFY_RESULT(FastDecodeUnsignedVarInt(&value));
         Slice local_value = value.Prefix(len);
         value.remove_prefix(len);
         intents.push_back(Format(
@@ -267,53 +267,6 @@ Result<std::string> DocDBValueToDebugStr(
     }
   }
   FATAL_INVALID_ENUM_VALUE(KeyType, key_type);
-}
-
-// TODO(mlillibridge): remove this class and the next two functions in part two of
-// [#16665,14308] DocDB: fix logging of RocksDB write batches when packing is used
-class SchemaPackingProviderFromSchemaPackingStorage : public SchemaPackingProvider {
- public:
-  explicit SchemaPackingProviderFromSchemaPackingStorage(
-      const dockv::SchemaPackingStorage& schema_packing_storage)
-      : schema_packing_storage_(schema_packing_storage) {}
-
-  Result<CompactionSchemaInfo> CotablePacking(
-      const Uuid& table_id, uint32_t schema_version, HybridTime history_cutoff) override {
-    // ignoring the table_id is not strictly correct but it's what the current code does
-    if (schema_version == kLatestSchemaVersion) {
-      schema_version = 0;
-    }
-    auto& packing = VERIFY_RESULT_REF(schema_packing_storage_.GetPacking(schema_version));
-    return CompactionSchemaInfo{
-        .table_type = TableType::YQL_TABLE_TYPE,
-        .schema_version = schema_version,
-        .schema_packing = std::make_shared<dockv::SchemaPacking>(packing),
-        .cotable_id = table_id,
-        .deleted_cols = {},
-        .enabled = PackedRowEnabled(TableType::YQL_TABLE_TYPE, false)};
-  }
-
-  Result<CompactionSchemaInfo> ColocationPacking(
-      ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) override {
-    // this is not strictly correct but it's what the current code does
-    return CotablePacking(Uuid::Nil(), schema_version, history_cutoff);
-  }
-
-  const dockv::SchemaPackingStorage& schema_packing_storage_;
-};
-
-Result<std::string> DocDBValueToDebugStr(
-    KeyType key_type, Slice key, Slice value,
-    const dockv::SchemaPackingStorage& schema_packing_storage) {
-  SchemaPackingProviderFromSchemaPackingStorage schema_packing_provider{schema_packing_storage};
-  return DocDBValueToDebugStr(key_type, key, value, &schema_packing_provider);
-}
-
-Result<std::string> DocDBValueToDebugStr(
-    Slice key, StorageDbType db_type, Slice value,
-    const dockv::SchemaPackingStorage& schema_packing_storage) {
-  SchemaPackingProviderFromSchemaPackingStorage schema_packing_provider{schema_packing_storage};
-  return DocDBValueToDebugStr(key, db_type, value, &schema_packing_provider);
 }
 
 }  // namespace docdb

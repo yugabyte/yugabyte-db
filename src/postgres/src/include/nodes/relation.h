@@ -1086,6 +1086,29 @@ typedef struct ParamPathInfo
 
 
 /*
+ * Indicates what kind of locking happens during execution. For locking in
+ * SERIALIZABLE isolation level, the mode is propagated throughout relevant
+ * paths. YB_LOCK_CLAUSE_ON_PK is to lock during SELECT in some locking clause
+ * cases, avoiding a second RPC.
+ */
+typedef enum YbLockMechanism {
+	YB_NO_SCAN_LOCK,		/* no locks taken in this scan */
+	YB_RANGE_LOCK_ON_SCAN,	/* range locks will be taken for SERIALIZABLE */
+	YB_LOCK_CLAUSE_ON_PK,	/* may take locks on PK for locking clause */
+} YbLockMechanism;
+
+/*
+ * Info propagated for YugabyteDB.
+ *
+ * 'yb_lock_mechanism' indicates what kind of lock can or must be taken as part
+ * of a scan.
+ */
+typedef struct YbPathInfo {
+	YbLockMechanism yb_lock_mechanism;	/* what lock as part of a scan */
+} YbPathInfo;
+
+
+/*
  * Type "Path" is used as-is for sequential-scan paths, as well as some other
  * simple plan types that we don't need any extra information in the path for.
  * For other path types it is the first component of a larger struct.
@@ -1113,6 +1136,8 @@ typedef struct ParamPathInfo
  *
  * "pathkeys" is a List of PathKey nodes (see above), describing the sort
  * ordering of the path's output rows.
+ *
+ * 'yb_path_info' contains info propagated for YugabyteDB.
  */
 typedef struct Path
 {
@@ -1136,6 +1161,8 @@ typedef struct Path
 
 	List	   *pathkeys;		/* sort ordering of path's output */
 	/* pathkeys is a List of PathKey nodes; see above */
+
+	YbPathInfo	yb_path_info;	/* fields used for YugabyteDB */
 } Path;
 
 /* Macro for extracting a path's parameterization relids; beware double eval */

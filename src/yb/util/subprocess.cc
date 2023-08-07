@@ -247,7 +247,7 @@ static int pipe2(int pipefd[2], int flags) {
 #endif
 
 Status Subprocess::Start() {
-  std::lock_guard<std::mutex> l(state_lock_);
+  std::lock_guard l(state_lock_);
   SCHECK_EQ(state_, SubprocessState::kNotStarted, IllegalState,
             "Incorrect state when starting the process");
   EnsureSigPipeDisabled();

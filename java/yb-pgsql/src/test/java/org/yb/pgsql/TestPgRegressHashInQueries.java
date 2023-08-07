@@ -16,7 +16,7 @@ package org.yb.pgsql;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 import org.yb.util.RegexMatcher;
 
 import java.sql.Connection;
@@ -27,7 +27,7 @@ import java.util.Set;
 
 import static org.yb.AssertionWrappers.*;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgRegressHashInQueries extends BasePgSQLTest {
 
   @Override

@@ -48,6 +48,10 @@ public class CustomCAStoreController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.CustomCACertParams",
           required = true))
   public Result addCA(UUID customerId, Http.Request request) {
+    if (!customCAStoreManager.isEnabled()) {
+      throw new PlatformServiceException(
+          UNAUTHORIZED, "Custom CA trust-store feature is not enabled on this YBA");
+    }
 
     log.debug("Received call to add CA certificate");
     Customer.getOrBadRequest(customerId);
@@ -108,6 +112,10 @@ public class CustomCAStoreController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.CustomCACertParams",
           required = true))
   public Result updateCA(UUID customerId, UUID oldCertId, Http.Request request) {
+    if (!customCAStoreManager.isEnabled()) {
+      throw new PlatformServiceException(
+          UNAUTHORIZED, "Custom CA trust-store feature is not enabled on this YBA");
+    }
 
     log.debug("Received request to update CA certificate {}", oldCertId);
     Customer.getOrBadRequest(customerId);
@@ -143,6 +151,10 @@ public class CustomCAStoreController extends AuthenticatedController {
       response = YBPSuccess.class,
       nickname = "Delete custom CA certificate")
   public Result deleteCA(UUID customerId, UUID certId, Http.Request request) {
+    if (!customCAStoreManager.isEnabled()) {
+      throw new PlatformServiceException(
+          UNAUTHORIZED, "Custom CA trust-store feature is not enabled on this YBA");
+    }
 
     log.debug("Received request to delete cert {}", certId);
     Customer.getOrBadRequest(customerId);

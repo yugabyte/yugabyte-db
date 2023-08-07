@@ -17,6 +17,7 @@
 #include <initializer_list>
 #include <vector>
 
+#include "yb/common/common_fwd.h"
 #include "yb/common/value.fwd.h"
 #include "yb/common/value.pb.h"
 

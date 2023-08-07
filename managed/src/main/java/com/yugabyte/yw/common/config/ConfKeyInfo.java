@@ -35,7 +35,7 @@ public class ConfKeyInfo<T> {
     INTERNAL,
     // YBM Keys
     YBM,
-    // Keys for which we dont have metadata yet
+    // Keys for which we do not have metadata yet
     BETA,
     // Keys with dedicated UI
     UIDriven

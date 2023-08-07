@@ -26,6 +26,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.AvailabilityZoneEditData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -49,6 +51,7 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
   Users defaultUser;
   Provider defaultProvider;
   Region defaultRegion;
+  SettableRuntimeConfigFactory runtimeConfigFactory;
 
   @Before
   public void setUp() {
@@ -58,6 +61,18 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
     defaultRegion =
         Region.create(
             defaultProvider, "default-region", "Default PlacementRegion", "default-image");
+    runtimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
+    runtimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.useLegacyPayloadForRegionAndAZs.getKey(), "true");
+  }
+
+  private Result createZone(UUID providerUUID, UUID regionUUID, JsonNode body) {
+    String uri =
+        String.format(
+            "/api/customers/%s/providers/%s/regions/%s/zones",
+            defaultCustomer.getUuid(), providerUUID, regionUUID);
+    return doRequestWithBody("POST", uri, body);
   }
 
   @Test
@@ -281,6 +296,36 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
     assertNoKey(response, "secondarySubnet");
     az.refresh();
     assertNull(az.getSecondarySubnet());
+  }
+
+  @Test
+  public void testCreateZoneV2Payload() {
+    // use v2 APIs payload for region creation.
+    runtimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.useLegacyPayloadForRegionAndAZs.getKey(), "false");
+
+    JsonNode azBody = generateAZRequestBody(defaultRegion);
+    Result result = createZone(defaultProvider.getUuid(), defaultRegion.getUuid(), azBody);
+    AvailabilityZone zone =
+        Json.fromJson(Json.parse(contentAsString(result)), AvailabilityZone.class);
+    assertEquals(OK, result.status());
+    assertNotNull("Region not created, empty UUID.", zone.getUuid());
+
+    Region region =
+        Region.getOrBadRequest(
+            defaultCustomer.getUuid(), defaultProvider.getUuid(), defaultRegion.getUuid());
+    assertEquals(1, region.getZones().size());
+  }
+
+  public JsonNode generateAZRequestBody(Region region) {
+    ObjectNode azRequestBody = Json.newObject();
+    azRequestBody.put("code", "us-west-2a");
+    azRequestBody.put("name", "us-west-2a");
+    azRequestBody.put("subnet", "subnet");
+    azRequestBody.set("region", Json.toJson(region));
+
+    return azRequestBody;
   }
 
   private JsonNode doDeleteAZAndVerify(

@@ -94,6 +94,9 @@ public class TestPgConflictWithAbortedSubTxns extends BasePgSQLTest {
     Map<String, String> flags = super.getTServerFlags();
     flags.put("yb_enable_read_committed_isolation", "true");
     flags.put("ysql_pg_conf_csv", "statement_timeout=" + STATEMENT_TIMEOUT_MS);
+    // This test is designed to validate a scenario encountered in RC without wait queues.
+    flags.put("enable_wait_queues", "false");
+    flags.put("enable_deadlock_detection", "false");
     return flags;
   }
 

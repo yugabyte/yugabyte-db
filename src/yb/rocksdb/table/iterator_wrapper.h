@@ -35,9 +35,8 @@ namespace rocksdb {
 // cache locality.
 class IteratorWrapper {
  public:
-  IteratorWrapper() : iter_(nullptr), iters_pinned_(false), valid_(false) {}
-  explicit IteratorWrapper(InternalIterator* _iter)
-      : iter_(nullptr), iters_pinned_(false) {
+  IteratorWrapper() : entry_(&KeyValueEntry::Invalid()) {}
+  explicit IteratorWrapper(InternalIterator* _iter) {
     Set(_iter);
   }
   ~IteratorWrapper() {}
@@ -55,7 +54,7 @@ class IteratorWrapper {
 
     iter_ = _iter;
     if (iter_ == nullptr) {
-      valid_ = false;
+      entry_ = &KeyValueEntry::Invalid();
     } else {
       Update();
       if (iters_pinned_) {
@@ -116,9 +115,22 @@ class IteratorWrapper {
   }
 
   // Iterator interface methods
-  bool Valid() const        { return valid_; }
-  Slice key() const         { assert(Valid()); return key_; }
-  Slice value() const       { assert(Valid()); return iter_->value(); }
+  bool Valid() const {
+    return entry_->Valid();
+  }
+
+  Slice key() const {
+    return entry_->key;
+  }
+
+  Slice value() const {
+    return entry_->value;
+  }
+
+  const KeyValueEntry& Entry() const {
+    return *entry_;
+  }
+
   // Methods below require iter() != nullptr
   Status status() const     { assert(iter_); return iter_->status(); }
   void Next()               { assert(iter_); iter_->Next();        Update(); }
@@ -138,10 +150,7 @@ class IteratorWrapper {
 
  private:
   void Update() {
-    valid_ = iter_->Valid();
-    if (valid_) {
-      key_ = iter_->key();
-    }
+    entry_ = &iter_->Entry();
   }
 
   void DeletePinnedIterators(bool is_arena_mode) {
@@ -159,15 +168,14 @@ class IteratorWrapper {
     }
   }
 
-  InternalIterator* iter_;
+  InternalIterator* iter_ = nullptr;
   // If set to true, current and future iterators wont be deleted.
-  bool iters_pinned_;
+  bool iters_pinned_ = false;
   // List of past iterators that are pinned and wont be deleted as long as
   // iters_pinned_ is true. When we are pinning iterators this set will contain
   // iterators of previous data blocks to keep them from being deleted.
   std::set<InternalIterator*> pinned_iters_;
-  bool valid_;
-  Slice key_;
+  const KeyValueEntry* entry_;
 };
 
 class Arena;

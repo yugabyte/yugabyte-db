@@ -757,7 +757,7 @@ set_mvn_parameters() {
   fi
   if is_jenkins; then
     local m2_repository_in_build_root=$BUILD_ROOT/m2_repository
-    if "$is_run_test_script" && [[ -d $m2_repository_in_build_root ]]; then
+    if [[ $is_run_test_script == "true" && -d $m2_repository_in_build_root ]]; then
       YB_MVN_LOCAL_REPO=$m2_repository_in_build_root
       # Do not use the "shared Maven settings" path even if it is available.
       YB_MVN_SETTINGS_PATH=$YB_DEFAULT_MVN_SETTINGS_PATH
@@ -831,7 +831,12 @@ append_common_mvn_opts() {
 # A utility function called by both 'build_yb_java_code' and 'build_yb_java_code_with_retries'.
 build_yb_java_code_filter_save_output() {
   set_mvn_parameters
-  log "Building Java code in $PWD"
+  local msg_prefix="Building Java code in $PWD"
+  if [[ -n ${java_code_build_purpose:-} ]]; then
+    log "$msg_prefix for $java_code_build_purpose"
+  else
+    log "$msg_prefix"
+  fi
 
   # --batch-mode hides download progress.
   # We are filtering out some patterns from Maven output, e.g.:
@@ -2138,7 +2143,7 @@ handle_predefined_build_root() {
   else
     should_use_ninja=0
   fi
-  if ! "$handle_predefined_build_root_quietly"; then
+  if [[ $handle_predefined_build_root_quietly == "false" ]]; then
     log "Setting YB_USE_NINJA to 1 based on predefined build root ('$basename')"
   fi
   if [[ -n ${YB_USE_NINJA:-} && $YB_USE_NINJA != "$should_use_ninja" ]]; then
@@ -2498,12 +2503,14 @@ lint_java_code() {
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanOrAArch64Mac\.class\)' \
              "$java_test_file" &&
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerReleaseOnly\.class\)' \
+             "$java_test_file" &&
+         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerYsqlConnMgr\.class\)' \
              "$java_test_file"
       then
         log "$log_prefix: neither YBTestRunner, YBParameterizedTestRunner, " \
             "YBTestRunnerNonTsanOnly, YBTestRunnerNonTsanAsan, YBTestRunnerNonSanitizersOrMac, " \
             "YBTestRunnerNonSanOrAArch64Mac, " \
-            "nor YBTestRunnerReleaseOnly are being used in test"
+            "YBTestRunnerReleaseOnly, nor YBTestRunnerYsqlConnMgr are being used in test"
         num_errors+=1
       fi
       if grep -Fq 'import static org.junit.Assert' "$java_test_file" ||

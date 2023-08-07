@@ -12,6 +12,7 @@
 //
 
 #include "yb/common/common_flags.h"
+#include "yb/common/pg_catversions.h"
 
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
@@ -147,7 +148,7 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
 
     if (req->has_tablet_report()) {
       s = server_->catalog_manager_impl()->ProcessTabletReport(
-        ts_desc.get(), req->tablet_report(), resp->mutable_tablet_report(), &rpc);
+          ts_desc.get(), req->tablet_report(), l.epoch(), resp->mutable_tablet_report(), &rpc);
       if (!s.ok()) {
         rpc.RespondFailure(s.CloneAndPrepend("Failed to process tablet report"));
         return;
@@ -211,20 +212,34 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
     // Retrieve the ysql catalog schema version.
     if (FLAGS_TEST_enable_db_catalog_version_mode) {
       DbOidToCatalogVersionMap versions;
+      uint64_t fingerprint; // can only be used when versions is not empty.
       s = server_->catalog_manager_impl()->GetYsqlAllDBCatalogVersions(
-          FLAGS_enable_heartbeat_pg_catalog_versions_cache /* use_cache */, &versions);
-      if (s.ok()) {
-        auto* const mutable_version_data = resp->mutable_db_catalog_version_data();
-        for (const auto& it : versions) {
-          auto* const catalog_version = mutable_version_data->add_db_catalog_versions();
-          catalog_version->set_db_oid(it.first);
-          catalog_version->set_current_version(it.second.first);
-          catalog_version->set_last_breaking_version(it.second.second);
-        }
-        if (FLAGS_log_ysql_catalog_versions) {
-          VLOG_WITH_FUNC(2) << "responding (to ts " << req->common().ts_instance().permanent_uuid()
-                            << ") db catalog versions: "
-                            << resp->db_catalog_version_data().ShortDebugString();
+          FLAGS_enable_heartbeat_pg_catalog_versions_cache /* use_cache */,
+          &versions, &fingerprint);
+      if (s.ok() && !versions.empty()) {
+        // Return versions back via heartbeat response if the tserver does not provide
+        // a fingerprint or the tserver's fingerprint does not match the master's
+        // fingerprint. The tserver does not provide a fingerprint when it has
+        // not received any catalog versions yet after it starts.
+        if (!req->has_ysql_db_catalog_versions_fingerprint() ||
+            req->ysql_db_catalog_versions_fingerprint() != fingerprint) {
+          auto* const mutable_version_data = resp->mutable_db_catalog_version_data();
+          for (const auto& it : versions) {
+            auto* const catalog_version = mutable_version_data->add_db_catalog_versions();
+            catalog_version->set_db_oid(it.first);
+            catalog_version->set_current_version(it.second.current_version);
+            catalog_version->set_last_breaking_version(it.second.last_breaking_version);
+          }
+          if (FLAGS_log_ysql_catalog_versions) {
+            VLOG_WITH_FUNC(2) << "responding (to ts "
+                              << req->common().ts_instance().permanent_uuid()
+                              << ") db catalog versions: "
+                              << resp->db_catalog_version_data().ShortDebugString();
+          }
+        } else if (FLAGS_log_ysql_catalog_versions) {
+          VLOG_WITH_FUNC(2) << "responding (to ts "
+                            << req->common().ts_instance().permanent_uuid()
+                            << ") without db catalog versions: fingerprints matched";
         }
       } else {
         LOG(WARNING) << "Could not get YSQL db catalog versions for heartbeat response: "

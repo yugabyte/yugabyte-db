@@ -80,7 +80,7 @@ uint8_t* ArenaComponent<Traits>::AllocateBytesAligned(const size_t size, const s
 template <class Traits>
 inline void ArenaComponent<Traits>::AsanUnpoison(const void* addr, size_t size) {
 #ifdef ADDRESS_SANITIZER
-  std::lock_guard<mutex_type> l(asan_lock_);
+  std::lock_guard l(asan_lock_);
   ASAN_UNPOISON_MEMORY_REGION(addr, size);
 #endif
 }
@@ -140,7 +140,7 @@ ArenaBase<Traits>::~ArenaBase() {
 
 template <class Traits>
 void *ArenaBase<Traits>::AllocateBytesFallback(const size_t size, const size_t align) {
-  std::lock_guard<mutex_type> lock(component_lock_);
+  std::lock_guard lock(component_lock_);
 
   // It's possible another thread raced with us and already allocated
   // a new component, in which case we should try the "fast path" again
@@ -233,7 +233,7 @@ void ArenaBase<Traits>::AddComponentUnlocked(Buffer buffer, Component* component
 
 template <class Traits>
 void ArenaBase<Traits>::Reset(ResetMode mode) {
-  std::lock_guard<mutex_type> lock(component_lock_);
+  std::lock_guard lock(component_lock_);
 
   Component* current = CHECK_NOTNULL(AcquireLoadCurrent());
   if (mode == ResetMode::kKeepFirst && second_) {
@@ -266,13 +266,13 @@ void ArenaBase<Traits>::Reset(ResetMode mode) {
 
 template <class Traits>
 size_t ArenaBase<Traits>::memory_footprint() const {
-  std::lock_guard<mutex_type> lock(component_lock_);
+  std::lock_guard lock(component_lock_);
   return arena_footprint_;
 }
 
 template <class Traits>
 size_t ArenaBase<Traits>::UsedBytes() {
-  std::lock_guard<mutex_type> lock(component_lock_);
+  std::lock_guard lock(component_lock_);
   return arena_footprint_ - AcquireLoadCurrent()->free_bytes();
 }
 

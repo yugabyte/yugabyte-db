@@ -241,9 +241,9 @@ class AnsibleProcess(object):
             playbook_args["yb_sudo_pass_file"] = sudo_pass_file
 
         if skip_tags is not None:
-            process_args.extend(["--skip-tags", skip_tags])
-        elif tags is not None:
-            process_args.extend(["--tags", tags])
+            process_args.extend(["--skip-tags", ','.join(skip_tags)])
+        if tags is not None:
+            process_args.extend(["--tags", ','.join(tags)])
 
         process_args.extend([
           "--user", ssh_user

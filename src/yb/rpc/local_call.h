@@ -37,7 +37,9 @@ class LocalOutboundCall : public OutboundCall {
                     ResponseCallback callback,
                     ThreadPool* callback_thread_pool);
 
-  Status SetRequestParam(AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker) override;
+  Status SetRequestParam(
+      AnyMessageConstPtr req, std::unique_ptr<Sidecars> sidecars,
+      const MemTrackerPtr& mem_tracker) override;
 
   const std::shared_ptr<LocalYBInboundCall>& CreateLocalInboundCall();
 

@@ -19,9 +19,12 @@ import com.google.common.collect.SetMultimap;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.VersionCheckMode;
+import com.yugabyte.yw.common.CloudUtil.Protocol;
+import com.yugabyte.yw.common.LdapUtil.TlsProtocol;
 import com.yugabyte.yw.common.NodeManager.SkipCertValidationType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
+import com.yugabyte.yw.models.Users.Role;
 import java.time.Duration;
 import java.time.Period;
 import java.util.List;
@@ -124,6 +127,20 @@ public class ConfDataType<T> {
           (config, path) -> getSetMultimap(config.getStringList(path)),
           ConfDataType::parseSetMultimap);
 
+  static ConfDataType<Protocol> ProtocolEnum =
+      new ConfDataType<>(
+          "Protocol",
+          Protocol.class,
+          new EnumGetter<>(Protocol.class),
+          (s) -> {
+            try {
+              return Protocol.valueOf(s);
+            } catch (Exception e) {
+              String failMsg = String.format("%s is not a valid value for desired key\n", s);
+              throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
+            }
+          });
+
   static ConfDataType<VersionCheckMode> VersionCheckModeEnum =
       new ConfDataType<>(
           "VersionCheckMode",
@@ -158,8 +175,40 @@ public class ConfDataType<T> {
           (s) -> {
             try {
               return SearchScope.valueOf(s);
-            } catch (Exception e) {
+            } catch (IllegalArgumentException e) {
               String failMsg = String.format("%s is not a valid LDAP Search Scope\n", s);
+              throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
+            }
+          });
+  static ConfDataType<Role> LdapDefaultRoleEnum =
+      new ConfDataType<>(
+          "LdapDefaultRole",
+          Role.class,
+          new EnumGetter<>(Role.class),
+          (s) -> {
+            try {
+              Role defaultRole = Role.valueOf(s);
+              if (defaultRole != Role.ConnectOnly && defaultRole != Role.ReadOnly) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST,
+                    String.format("%s role cannot be set as default LDAP role!", defaultRole));
+              }
+              return defaultRole;
+            } catch (IllegalArgumentException e) {
+              String failMsg = String.format("%s is not a valid Default LDAP role!\n", s);
+              throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
+            }
+          });
+  static ConfDataType<TlsProtocol> LdapTlsProtocol =
+      new ConfDataType<>(
+          "LdapTlsProtocol",
+          TlsProtocol.class,
+          new EnumGetter<>(TlsProtocol.class),
+          (s) -> {
+            try {
+              return TlsProtocol.valueOf(s);
+            } catch (IllegalArgumentException e) {
+              String failMsg = String.format("%s is not a supported LDAP TLS protocol\n", s);
               throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
             }
           });

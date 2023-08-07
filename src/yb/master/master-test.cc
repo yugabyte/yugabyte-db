@@ -107,6 +107,9 @@ class MasterTest : public MasterTestBase {
 
   Result<TSHeartbeatResponsePB> SendHeartbeat(
       TSToMasterCommonPB common, TSRegistrationPB registration);
+
+  Result<scoped_refptr<NamespaceInfo>> FindNamespaceByName(
+      YQLDatabase db_type, const std::string& name);
 };
 
 Result<TSHeartbeatResponsePB> MasterTest::SendHeartbeat(
@@ -500,7 +503,7 @@ TEST_F(MasterTest, TestReRegisterRemovedUUID) {
 }
 
 TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
-  FLAGS_TEST_simulate_slow_table_create_secs = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_slow_table_create_secs) = 10;
 
   const char *kNamespaceName = "testnamespace";
   CreateNamespaceResponsePB resp;
@@ -508,7 +511,7 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
 
   auto task = [kNamespaceName, this]() {
     const char *kTableName = "testtable";
-    const Schema kTableSchema({ ColumnSchema("key", INT32, ColumnKind::HASH) });
+    const Schema kTableSchema({ ColumnSchema("key", DataType::INT32, ColumnKind::HASH) });
     shared_ptr<RpcController> controller;
     // Set an RPC timeout for the controllers.
     controller = make_shared<RpcController>();
@@ -544,7 +547,7 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
   t.join();
 
   {
-    FLAGS_TEST_return_error_if_namespace_not_found = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_return_error_if_namespace_not_found) = true;
     ListTablesRequestPB req;
     ListTablesResponsePB resp;
     ASSERT_OK(proxy_ddl_->ListTables(req, &resp, ResetAndGetController()));
@@ -554,7 +557,7 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
     ASSERT_TRUE(msg.find("Keyspace identifier not found") != string::npos);
 
     // After turning off this flag, ListTables should skip the table with the error.
-    FLAGS_TEST_return_error_if_namespace_not_found = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_return_error_if_namespace_not_found) = false;
     ASSERT_OK(proxy_ddl_->ListTables(req, &resp, ResetAndGetController()));
     LOG(INFO) << "Finished second ListTables request";
     ASSERT_FALSE(resp.has_error());
@@ -564,9 +567,10 @@ TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
 TEST_F(MasterTest, TestCatalog) {
   const char *kTableName = "testtb";
   const char *kOtherTableName = "tbtest";
-  const Schema kTableSchema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
-                              ColumnSchema("v1", UINT64),
-                              ColumnSchema("v2", STRING) });
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+      ColumnSchema("v1", DataType::UINT64),
+      ColumnSchema("v2", DataType::STRING) });
 
   ASSERT_OK(CreateTable(kTableName, kTableSchema));
 
@@ -709,12 +713,12 @@ TEST_F(MasterTest, TestParentBasedTableToTabletMappingFlag) {
   const std::string kNewSchemaTableName = "newschema";
   const std::string kOldSchemaTableName = "oldschema";
   const Schema kTableSchema(
-      {ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
-       ColumnSchema("v1", UINT64),
-       ColumnSchema("v2", STRING)});
-  FLAGS_use_parent_table_id_field = true;
+      {ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+       ColumnSchema("v1", DataType::UINT64),
+       ColumnSchema("v2", DataType::STRING)});
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_parent_table_id_field) = true;
   ASSERT_OK(CreateTable(kNewSchemaTableName, kTableSchema));
-  FLAGS_use_parent_table_id_field = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_parent_table_id_field) = false;
   ASSERT_OK(CreateTable(kOldSchemaTableName, kTableSchema));
 
   auto tables = mini_master_->catalog_manager_impl().GetTables(GetTablesMode::kAll);
@@ -790,7 +794,8 @@ TEST_F(MasterTest, TestTablegroups) {
   TablegroupId kTablegroupId = GetPgsqlTablegroupId(12345, 67890);
   TableId      kTableId = GetPgsqlTableId(123455, 67891);
   const char*  kTableName = "test_table";
-  const Schema kTableSchema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
   const NamespaceName ns_name = "test_tablegroup_ns";
 
   // Create a new namespace.
@@ -869,7 +874,7 @@ TEST_F(MasterTest, TestCreateTableInvalidSchema) {
   for (int i = 0; i < 2; i++) {
     ColumnSchemaPB* col = req.mutable_schema()->add_columns();
     col->set_name("col");
-    QLType::Create(INT32)->ToQLTypePB(col->mutable_type());
+    QLType::Create(DataType::INT32)->ToQLTypePB(col->mutable_type());
     col->set_is_key(true);
   }
 
@@ -884,7 +889,7 @@ TEST_F(MasterTest, TestCreateTableInvalidSchema) {
 // invalid.
 TEST_F(MasterTest, TestInvalidGetTableLocations) {
   const TableName kTableName = "test";
-  Schema schema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
+  Schema schema({ ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
   ASSERT_OK(CreateTable(kTableName, schema));
   {
     GetTableLocationsRequestPB req;
@@ -907,7 +912,7 @@ TEST_F(MasterTest, TestInvalidGetTableLocations) {
 // the tablespace first before defaulting to cluster config.
 TEST_F(MasterTest, GetNumTabletReplicasChecksTablespace) {
   const TableName kTableName = "test";
-  Schema schema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
+  Schema schema({ ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
   GetMasterClusterConfigRequestPB config_req;
   GetMasterClusterConfigResponsePB config_resp;
   ASSERT_OK(
@@ -961,7 +966,7 @@ TEST_F(MasterTest, GetNumTabletReplicasChecksTablespace) {
 // table level overrides.
 TEST_F(MasterTest, GetNumTabletReplicasDefaultsToClusterConfig) {
   const TableName kTableName = "test";
-  Schema schema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
+  Schema schema({ ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
   GetMasterClusterConfigRequestPB config_req;
   GetMasterClusterConfigResponsePB config_resp;
   ASSERT_OK(
@@ -1009,7 +1014,7 @@ TEST_F(MasterTest, GetNumTabletReplicasDefaultsToClusterConfig) {
 
 TEST_F(MasterTest, TestInvalidPlacementInfo) {
   const TableName kTableName = "test";
-  Schema schema({ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST)});
+  Schema schema({ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST)});
   GetMasterClusterConfigRequestPB config_req;
   GetMasterClusterConfigResponsePB config_resp;
   ASSERT_OK(proxy_cluster_->GetMasterClusterConfig(
@@ -1290,7 +1295,8 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
   // Create a table.
   const TableName kTableName = "testtb";
   const TableName kTableNamePgsql = "testtb_pgsql";
-  const Schema kTableSchema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
 
   ASSERT_OK(CreateTable(other_ns_name, kTableName, kTableSchema));
   ASSERT_OK(CreatePgsqlTable(other_ns_pgsql_id, kTableNamePgsql + "_1", kTableSchema));
@@ -1431,7 +1437,8 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
 
 TEST_F(MasterTest, TestTablesWithNamespace) {
   const TableName kTableName = "testtb";
-  const Schema kTableSchema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
   ListTablesResponsePB tables;
 
   // Create a table with default namespace.
@@ -1639,7 +1646,8 @@ TEST_F(MasterTest, TestNamespaceCreateStates) {
 
   // Test that Basic Access is not allowed to a Namespace while INITIALIZING.
   // 1. CANNOT Create a Table on the namespace.
-  const Schema kTableSchema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
   ASSERT_NOK(CreatePgsqlTable(nsid, "test_table", kTableSchema));
   // 2. CANNOT Alter the namespace.
   {
@@ -1732,6 +1740,8 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
                  });
     ASSERT_NE(pos, namespace_internal.end());
     ASSERT_EQ((*pos)->state(), SysNamespaceEntryPB::PREPARING);
+    // Namespace should be in namespace name map to prevent creation races using the same name.
+    ASSERT_OK(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name));
   }
 
   // Restart the master (Shutdown kills Namespace BG Thread).
@@ -1753,6 +1763,8 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
         });
     ASSERT_NE(pos, namespace_internal.end());
     ASSERT_EQ((*pos)->state(), SysNamespaceEntryPB::DELETING);
+    // Namespace should not be in the by name map.
+    ASSERT_NOK(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name));
   }
 
   // Resume BG thread work and verify that the Namespace is eventually DELETED internally.
@@ -1783,6 +1795,52 @@ TEST_F(MasterTest, TestNamespaceCreateFailure) {
   }, MonoDelta::FromSeconds(10), "Verify Namespace was completely removed"));
 }
 
+TEST_F(MasterTest, TestMultipleNamespacesWithSameName) {
+  NamespaceName test_name = "test_pgsql";
+  SetAtomicFlag(true, &FLAGS_TEST_hang_on_namespace_transition);
+
+  // Create a new PGSQL namespace.
+  CreateNamespaceResponsePB resp;
+  ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
+  NamespaceId failure_nsid = resp.id();
+
+  // Restart the master to fail the creation of the first namespace.
+  // The loader should enqueue an async deletion task.
+  ASSERT_OK(mini_master_->Restart());
+  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+
+  // Create the namespace again. The async deletion task for the first namespace shouldn't have run
+  // yet due to the test flag.
+  ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
+  NamespaceId success_nsid = resp.id();
+
+  // There should now be two namespaces with the same name in the system, one in the FAILED state
+  // and one in the PREPARING state. Allow the async work to run. The first namespace should be
+  // cleaned up and the second namespace should be running.
+  SetAtomicFlag(false, &FLAGS_TEST_hang_on_namespace_transition);
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
+    mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
+    bool failure_deleted = false;
+    bool success_running = false;
+    for (const auto& ns : namespace_internal) {
+      if (ns->id() == failure_nsid) {
+        failure_deleted = ns->state() == SysNamespaceEntryPB::DELETED;
+      } else if (ns->id() == success_nsid) {
+        success_running = ns->state() == SysNamespaceEntryPB::RUNNING;
+      }
+    }
+    LOG(INFO) << Format(
+        "First namespace is deleted: $0, second namespace is running: $1", failure_deleted,
+        success_running);
+    return failure_deleted && success_running;
+  }, MonoDelta::FromSeconds(15), "Timed out waiting for namespaces to enter expected states."));
+
+  // The by-name map should point to the successfully created namespace.
+  auto ns_by_name = ASSERT_RESULT(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, test_name));
+  ASSERT_EQ(ns_by_name->id(), success_nsid);
+}
+
 class LoopedMasterTest : public MasterTest, public testing::WithParamInterface<int> {};
 INSTANTIATE_TEST_CASE_P(Loops, LoopedMasterTest, ::testing::Values(10));
 
@@ -1800,38 +1858,72 @@ TEST_P(LoopedMasterTest, TestNamespaceCreateSysCatalogFailure) {
   int loops = GetParam();
   LOG(INFO) << "Loops = " << loops;
 
+  std::unordered_set<NamespaceId> previously_created_namespaces;
   // Loop this to cover a spread of random failure situations.
   while (failures < loops) {
     // Inject Frequent failures into sys catalog commit.
     // The below code should eventually succeed but require a lot of restarts.
-    FLAGS_TEST_sys_catalog_write_rejection_percentage = 50;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sys_catalog_write_rejection_percentage) = 50;
 
-    // CreateNamespace : Inject IO Errors.
     LOG(INFO) << "Iteration " << ++iter;
+
+    // There are 4 possibilities for the CreateNamespace call below.
+
+    // 1. CreateNamespace RPC returns not-OK status.
+    //    We expect no in-memory state to be persisted.
+    // 2. CreateNamespace RPC returns an OK status. Async namespace creation work fails.
+    //    We expect the namespace to be present in memory but not in the by name map.
+    //    Its status should be FAILED.
+    // 3. CreateNamespace RPC returns an OK status. Async namespace creation work succeeds.
+    //    We expect the namespace to be present in the maps with the state RUNNING.
+    // 4. CreateNamespace RPC returns an OK status. Test times out waiting for async work.
+    //    The test doesn't explicitly handle this case and would fail.
+    //    There may be a bug in production code related to this case as well.
+    //    If the async namespace creation does eventually succeed in CM after pgsql
+    //    times out waiting for it, the namespace might not be visible to pgsql
+    //    but it will exist in yb-master, preventing the creation of a database with that
+    //    name. In this case users will need to delete the database with yb-admin.
     Status s = CreateNamespace(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp);
     if (!s.ok()) {
-      WARN_NOT_OK(s, "CreateNamespace with injected failures");
+      LOG(INFO) << "CreateNamespace with injected failures: " << s;
       ++failures;
     }
 
     // Turn off random failures.
-    FLAGS_TEST_sys_catalog_write_rejection_percentage = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sys_catalog_write_rejection_percentage) = 0;
 
     // Internal search of CatalogManager should reveal whether it was partially created.
     std::vector<scoped_refptr<NamespaceInfo>> namespace_internal;
     mini_master_->catalog_manager().GetAllNamespaces(&namespace_internal, false);
-    auto was_internally_created = std::any_of(namespace_internal.begin(), namespace_internal.end(),
-        [&test_name](const scoped_refptr<NamespaceInfo>& ns) {
-          if (ns && ns->name() == test_name && ns->state() != SysNamespaceEntryPB::DELETED) {
-            LOG(INFO) << "Namespace " << ns->name() << " = " << ns->state();
-            return true;
-          }
-          return false;
+    auto new_ns_it = std::find_if(
+        namespace_internal.begin(), namespace_internal.end(),
+        [&test_name, &previously_created_namespaces](const scoped_refptr<NamespaceInfo>& ns) {
+          return ns && ns->name() == test_name && !previously_created_namespaces.contains(ns->id());
         });
+    scoped_refptr<NamespaceInfo> new_ns;
+    if (new_ns_it != namespace_internal.end()) {
+      // Namespace created. We're in case 2, 3, or 4.
+      new_ns = (*new_ns_it).get();
+      previously_created_namespaces.insert(new_ns->id());
+      ASSERT_TRUE(
+          new_ns->state() == SysNamespaceEntryPB::RUNNING ||
+          new_ns->state() == SysNamespaceEntryPB::PREPARING ||
+          new_ns->state() == SysNamespaceEntryPB::FAILED)
+          << Format(
+                 "Expected RUNNING, PREPARING, or FAILED, got: $0",
+                 SysNamespaceEntryPB::State_Name(new_ns->state()));
+    }
 
-    if (was_internally_created) {
+    // A pgsql connection will only commit state for this new namespace to the pg catalog if
+    // CreateNamespace and WaitForCreateNamespaceDone return OK statuses. Therefore if
+    // there is a failure in the complete create namespace flow any subsequent DROP DATABASE
+    // statement will fail because there is no metadata for the database in the pg catalogs.
+
+    // Because we cannot expect clients to issue a DROP DATABASE in this failure case we must
+    // ensure we can handle a subsequent CREATE DATABASE with the same name.
+    if (s.ok()) {
+      // Case 3.
       ++created;
-      // Ensure we can delete the failed namespace.
       DeleteNamespaceResponsePB del_resp;
       ASSERT_OK(proxy_ddl_->DeleteNamespace(del_req, &del_resp, ResetAndGetController()));
       if (del_resp.has_error()) {
@@ -1839,6 +1931,17 @@ TEST_P(LoopedMasterTest, TestNamespaceCreateSysCatalogFailure) {
       }
       ASSERT_FALSE(del_resp.has_error());
       ASSERT_OK(DeleteNamespaceWait(is_del_req));
+    } else if (s.IsTimedOut()) {
+      // Case 4.
+      // The namespace state should be PREPARING, but the CM is responsible for transitioning it to
+      // another state so asserting state is PREPARING here introduces a race. For now just fail the
+      // test.
+      FAIL() << "Timed out waiting for async namespace creation";
+    } else {
+      // Case 1 or 2.
+      LOG(INFO) << "Namespace should not be in by name map, state: "
+                << (new_ns ? SysNamespaceEntryPB::State_Name(new_ns->state()) : "n/a");
+      ASSERT_NOK(FindNamespaceByName(YQLDatabase::YQL_DATABASE_PGSQL, "default_namespace"));
     }
   }
   ASSERT_EQ(failures, loops);
@@ -1859,16 +1962,14 @@ TEST_P(LoopedMasterTest, TestNamespaceDeleteSysCatalogFailure) {
   int loops = GetParam();
   LOG(INFO) << "Loops = " << loops;
 
-// Loop this to cover a spread of random failure situations.
+  // Loop this to cover a spread of random failure situations.
   while (failures < loops) {
     // CreateNamespace to setup test
     CreateNamespaceResponsePB resp;
-    NamespaceId nsid;
-    ASSERT_OK(CreateNamespaceAsync(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
-    nsid = resp.id();
+    ASSERT_OK(CreateNamespace(test_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
 
     // The below code should eventually succeed but require a lot of restarts.
-    FLAGS_TEST_sys_catalog_write_rejection_percentage = 50;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sys_catalog_write_rejection_percentage) = 50;
 
     // DeleteNamespace : Inject IO Errors.
     LOG(INFO) << "Iteration " << ++iter;
@@ -1889,7 +1990,7 @@ TEST_P(LoopedMasterTest, TestNamespaceDeleteSysCatalogFailure) {
     }
 
     // Turn off random failures.
-    FLAGS_TEST_sys_catalog_write_rejection_percentage = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sys_catalog_write_rejection_percentage) = 0;
 
     if (delete_failed) {
       ++failures;
@@ -1906,7 +2007,8 @@ TEST_P(LoopedMasterTest, TestNamespaceDeleteSysCatalogFailure) {
 
 TEST_F(MasterTest, TestFullTableName) {
   const TableName kTableName = "testtb";
-  const Schema kTableSchema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
   ListTablesResponsePB tables;
 
   // Create a table with the default namespace.
@@ -2078,7 +2180,8 @@ TEST_F(MasterTest, TestGetTableSchema) {
 
   // Create a table with the defined new namespace.
   const TableName kTableName = "testtb";
-  const Schema kTableSchema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST) });
   ASSERT_OK(CreateTable(other_ns_name, kTableName, kTableSchema));
 
   ListTablesResponsePB tables;
@@ -2184,10 +2287,10 @@ TEST_F(MasterTest, TestNetworkErrorOnFirstRun) {
   TearDown();
   mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master-test"),
                                     AllocateFreePort(), AllocateFreePort(), 0));
-  FLAGS_TEST_simulate_port_conflict_error = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_port_conflict_error) = true;
   ASSERT_NOK(mini_master_->Start());
   // Instance file should be properly initialized, but consensus metadata is not initialized.
-  FLAGS_TEST_simulate_port_conflict_error = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_port_conflict_error) = false;
   // Restarting master should succeed.
   ASSERT_OK(mini_master_->Start());
 }
@@ -2269,9 +2372,10 @@ void GetTableSchema(const char* table_name,
 // test ensures that bug does not regress.
 TEST_F(MasterTest, TestGetTableSchemaIsAtomicWithCreateTable) {
   const char *kTableName = "testtb";
-  const Schema kTableSchema({ ColumnSchema("key", INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
-                              ColumnSchema("v1", UINT64),
-                              ColumnSchema("v2", STRING) });
+  const Schema kTableSchema({
+      ColumnSchema("key", DataType::INT32, ColumnKind::RANGE_ASC_NULL_FIRST),
+      ColumnSchema("v1", DataType::UINT64),
+      ColumnSchema("v2", DataType::STRING) });
 
   CountDownLatch started(1);
   AtomicBool done(false);
@@ -2350,6 +2454,14 @@ TEST_P(NamespaceTest, RenameNamespace) {
 INSTANTIATE_TEST_CASE_P(
     DatabaseType, NamespaceTest,
     ::testing::Values(YQLDatabase::YQL_DATABASE_CQL, YQLDatabase::YQL_DATABASE_PGSQL));
+
+Result<scoped_refptr<NamespaceInfo>> MasterTest::FindNamespaceByName(
+    YQLDatabase db_type, const std::string& name) {
+  NamespaceIdentifierPB ns_idpb;
+  ns_idpb.set_name(name);
+  ns_idpb.set_database_type(db_type);
+  return mini_master_->catalog_manager().FindNamespace(ns_idpb);
+}
 
 } // namespace master
 } // namespace yb

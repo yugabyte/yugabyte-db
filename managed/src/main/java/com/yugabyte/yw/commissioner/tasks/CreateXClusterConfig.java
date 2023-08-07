@@ -8,12 +8,12 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Restore;
@@ -23,6 +23,7 @@ import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import java.io.File;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -266,14 +267,21 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
         createDeleteKeySpaceTask(namespaceName, CommonTypes.TableType.PGSQL_TABLE_TYPE);
       }
 
+      // Wait for sometime to make sure the above drop database has reached all the nodes.
+      Duration waitTime =
+          this.confGetter.getConfForScope(
+              targetUniverse, UniverseConfKeys.sleepTimeBeforeRestoreXClusterSetup);
+      if (waitTime.compareTo(Duration.ZERO) > 0) {
+        createWaitForDurationSubtask(targetUniverse, waitTime)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RestoringBackup);
+      }
+
       // Restore to the target universe.
       RestoreBackupParams restoreBackupParams =
           getRestoreBackupParams(sourceUniverse, targetUniverse, backupRequestParams, backup);
       Restore restore =
           createAllRestoreSubtasks(
-              restoreBackupParams,
-              UserTaskDetails.SubTaskGroupType.RestoringBackup,
-              backup.getCategory().equals(BackupCategory.YB_CONTROLLER));
+              restoreBackupParams, UserTaskDetails.SubTaskGroupType.RestoringBackup);
       restoreList.add(restore);
 
       // Assign the created restore UUID for the tables in the DB.

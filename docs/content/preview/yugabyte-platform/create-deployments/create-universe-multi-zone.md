@@ -54,6 +54,8 @@ To create a multi-zone universe using [Google Cloud provider (GCP)](../../config
 
 - For **Instance Configuration**, change the instance type (**n1-standard-8**).
 
+- Optionally, add configuration flags for your YB-Master and YB-TServer nodes. You can also set flags after universe creation. Refer to [Edit configuration flags](../../manage-deployments/edit-config-flags/).
+
 - Click **Create**.
 
 For specific scenarios such as creating large numbers of tables, high rates of DDL change, and so on, consider creating a universe with dedicated nodes for YB-Master processes. Refer to [Create a universe with dedicated nodes](../dedicated-master/) for more details.

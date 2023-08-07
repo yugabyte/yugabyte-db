@@ -73,4 +73,38 @@ find_paths_in_dir() {
   find "$remote_dir_path" -maxdepth "$max_depth" -type "$file_type" > "$temp_file_path"
 }
 
+# Function takes file path list as file input. It returns 1 for file exists
+# and 0 for file does not exist corresponding to each file. Output format
+# is space separated list of files and corresponding boolean value.
+# file_list_text_path = path to the text file containing list of file paths to collect.
+# change_dir = directory to save generated output file.
+# output_filename = name of file generated containing output of files existence.
+bulk_check_files_exist() {
+  file_list_text_path=$1
+  shift
+  change_dir=$1
+  shift
+  output_filename=$1
+  mapfile -t files_list < "$file_list_text_path"
+
+  # Exit if no file paths are passed as arguments
+  if [ ${#files_list[@]} -eq 0 ]
+  then
+    echo "Process exiting: No file names given as input to archive"
+    exit 1
+  fi
+
+  file_list_result=()
+
+  for file_path in "${files_list[@]}"
+  do
+    if [ -s "$file_path" ]
+    then
+      echo "$file_path 1"
+    else
+      echo "$file_path 0"
+    fi
+  done > $change_dir/$output_filename
+}
+
 "$@"

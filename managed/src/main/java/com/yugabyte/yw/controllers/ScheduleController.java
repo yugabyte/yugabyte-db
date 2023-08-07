@@ -3,10 +3,11 @@
 package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.BackupHelper;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.forms.EditBackupScheduleParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -43,11 +44,11 @@ import play.mvc.Result;
 public class ScheduleController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(ScheduleController.class);
 
-  private final BackupUtil backupUtil;
+  private final BackupHelper backupHelper;
 
   @Inject
-  public ScheduleController(BackupUtil backupUtil) {
-    this.backupUtil = backupUtil;
+  public ScheduleController(BackupHelper backupHelper) {
+    this.backupHelper = backupHelper;
   }
 
   @ApiOperation(
@@ -175,7 +176,7 @@ public class ScheduleController extends AuthenticatedController {
               (StringUtils.isEmpty(params.cronExpression))
                   ? params.frequency
                   : BackupUtil.getCronExpressionTimeInterval(params.cronExpression);
-          backupUtil.validateIncrementalScheduleFrequency(
+          backupHelper.validateIncrementalScheduleFrequency(
               params.incrementalBackupFrequency,
               schedulingFrequency,
               Universe.getOrBadRequest(schedule.getOwnerUUID(), customer));

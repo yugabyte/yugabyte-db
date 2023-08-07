@@ -31,6 +31,8 @@
 
 namespace yb::docdb {
 
+YB_STRONGLY_TYPED_BOOL(AddHighestToUpperDocKey);
+
 // DocDB variant of scanspec.
 class DocPgsqlScanSpec : public qlexpr::PgsqlScanSpec {
  public:
@@ -62,7 +64,9 @@ class DocPgsqlScanSpec : public qlexpr::PgsqlScanSpec {
                    bool is_forward_scan = true,
                    const dockv::DocKey& lower_doc_key = DefaultStartDocKey(),
                    const dockv::DocKey& upper_doc_key = DefaultStartDocKey(),
-                   const size_t prefix_length = 0);
+                   const size_t prefix_length = 0,
+                   AddHighestToUpperDocKey add_highest_to_upper_doc_key =
+                       AddHighestToUpperDocKey::kFalse);
 
   //------------------------------------------------------------------------------------------------
   // Filters.

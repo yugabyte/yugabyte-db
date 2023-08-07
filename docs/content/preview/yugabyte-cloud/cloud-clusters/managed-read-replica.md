@@ -14,6 +14,8 @@ type: docs
 
 If your user base is geographically distributed, you can add [read replicas](../../cloud-basics/create-clusters-topology/#read-replicas) to improve read latency in regions that are far from your primary region.
 
+{{< youtube id="aar4vW6Z1Zg" title="Add read replicas to a cluster in YugabyteDB Managed" >}}
+
 Read Replicas are a read-only extension to the primary cluster. With read replicas, the primary data of the cluster is copied across one or more nodes in a different region. Read replicas do not add to write latencies because writes aren't synchronously replicated to replicas - the data is replicated to read replicas asynchronously. To read data from a read replica, you need to enable follower reads for the cluster.
 
 For more information on read replicas and follower reads in YugabyteDB, see the following:
@@ -31,13 +33,14 @@ The **Regions** section on the cluster **Settings** tab summarizes the cluster c
 
 Read replicas require the following:
 
-- Primary cluster that is deployed in a VPC.
+- Primary cluster that is deployed in a VPC, in AWS or GCP.
 - Read replicas must be deployed in a VPC. Create a VPC for each region where you want to deploy a read replica. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 
 ## Limitations
 
 - Partition-by-region clusters do not support read replicas.
 - If another [locking cluster operation](../#locking-operations) is already running, you must wait for it to finish.
+- Currently, Azure is not supported for read replicas (coming soon).
 
 ## Add or edit read replicas
 
@@ -51,7 +54,7 @@ To add or edit read-replicas:
 
 1. For each replica, set the following options:
 
-    **Region** - Choose the [region](../../release-notes#cloud-provider-regions) where you want to deploy the replica.
+    **Region** - Choose the [region](../../cloud-basics/create-clusters-overview/#cloud-provider-regions) where you want to deploy the replica.
 
     **VPC** - Choose the VPC in which to deploy the nodes. You need to create VPCs before deploying a replica. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 
@@ -61,7 +64,7 @@ To add or edit read-replicas:
 
 1. To add a read replica, click **Add Region**. To delete a read replica, click the Trash icon.
 
-1. Enter the vCPUs per node, and disk size in GB per node for the read replicas. Node size is the same for all replicas. Memory per node depends on the [instance type](../../cloud-basics/create-clusters-overview/#instance-types) available for the selected regions.
+1. Enter the vCPUs per node, disk size in GB per node, and disk input output (I/O) operations per second (IOPS) per node (AWS only) for the read replicas. Node size is the same for all replicas. Memory per node depends on the [instance type](../../cloud-basics/create-clusters-overview/#instance-types) available for the selected regions.
 
     Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
 

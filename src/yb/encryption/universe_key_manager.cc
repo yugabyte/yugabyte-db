@@ -36,14 +36,14 @@ Result<std::unique_ptr<UniverseKeyManager>> UniverseKeyManager::FromKey(
 
 void UniverseKeyManager::SetUniverseKeyRegistry(
     const UniverseKeyRegistryPB& universe_key_registry) {
-  std::lock_guard<std::mutex> l(mutex_);
+  std::lock_guard l(mutex_);
   received_universe_key_registry_ = true;
   universe_key_registry_ = universe_key_registry;
 }
 
 Result<EncryptionParamsPtr> UniverseKeyManager::GetUniverseParamsWithVersion(
     const UniverseKeyId& version_id) {
-  std::lock_guard<std::mutex> l(mutex_);
+  std::lock_guard l(mutex_);
   SCHECK(received_universe_key_registry_, IllegalState, "Universe key registry not received");
   auto universe_keys = universe_key_registry_.universe_keys();
   auto it = universe_keys.find(version_id);
@@ -55,7 +55,7 @@ Result<EncryptionParamsPtr> UniverseKeyManager::GetUniverseParamsWithVersion(
 }
 
 Result<UniverseKeyParams> UniverseKeyManager::GetLatestUniverseParams() {
-  std::lock_guard<std::mutex> l(mutex_);
+  std::lock_guard l(mutex_);
   SCHECK(received_universe_key_registry_, IllegalState, "Universe key registry not received");
   auto universe_keys = universe_key_registry_.universe_keys();
   const auto it = universe_keys.find(universe_key_registry_.latest_version_id());
@@ -70,7 +70,7 @@ Result<UniverseKeyParams> UniverseKeyManager::GetLatestUniverseParams() {
 }
 
 Result<bool> UniverseKeyManager::IsEncryptionEnabled() {
-  std::lock_guard<std::mutex> l(mutex_);
+  std::lock_guard l(mutex_);
   SCHECK(received_universe_key_registry_, IllegalState, "Universe key registry not received");
   return universe_key_registry_.encryption_enabled();
 }

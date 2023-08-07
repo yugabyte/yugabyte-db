@@ -183,7 +183,7 @@ void GetLeaderMasterRpc::SendRpc() {
   std::vector<rpc::Rpcs::Handle> handles;
   handles.reserve(size);
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     pending_responses_ = size;
   }
 
@@ -229,7 +229,7 @@ void GetLeaderMasterRpc::Finished(const Status& status) {
   VLOG(4) << "Completed GetLeaderMasterRpc, calling callback with status "
           << status.ToString();
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     // 'completed_' prevents 'user_cb_' from being invoked twice.
     if (completed_) {
       return;
@@ -255,7 +255,7 @@ void GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode(
   // pick the one with the highest term/index as the leader.
   Status new_status = status;
   {
-    std::lock_guard<simple_spinlock> lock(lock_);
+    std::lock_guard lock(lock_);
     --pending_responses_;
     if (completed_) {
       // If 'user_cb_' has been invoked (see Finished above), we can

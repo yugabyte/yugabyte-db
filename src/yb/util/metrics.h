@@ -256,6 +256,7 @@
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/atomic.h"
+#include "yb/util/hdr_histogram.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/metrics_writer.h"
 #include "yb/util/monotime.h"
@@ -488,7 +489,8 @@ class MetricRegistry {
 
   scoped_refptr<MetricEntity> FindOrCreateEntity(const MetricEntityPrototype* prototype,
                                                  const std::string& id,
-                                                 const MetricEntity::AttributeMap& initial_attrs);
+                                                 const MetricEntity::AttributeMap& initial_attrs,
+                                                 std::shared_ptr<MemTracker> mem_tracker = nullptr);
 
   // Writes metrics in this registry to 'writer'.
   //
@@ -526,17 +528,17 @@ class MetricRegistry {
 
   // Return the number of entities in this registry.
   size_t num_entities() const {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     return entities_.size();
   }
 
   void tablets_shutdown_insert(std::string id) {
-    std::lock_guard<std::shared_timed_mutex> l(tablets_shutdown_lock_);
+    std::lock_guard l(tablets_shutdown_lock_);
     tablets_shutdown_.insert(id);
   }
 
   void tablets_shutdown_erase(std::string id) {
-    std::lock_guard<std::shared_timed_mutex> l(tablets_shutdown_lock_);
+    std::lock_guard l(tablets_shutdown_lock_);
     (void)tablets_shutdown_.erase(id);
   }
 
@@ -797,7 +799,7 @@ template <typename T>
 class FunctionGauge : public Gauge {
  public:
   T value() const {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     return function_.Run();
   }
 
@@ -809,7 +811,7 @@ class FunctionGauge : public Gauge {
   // This should be used during destruction. If you want a settable
   // Gauge, use a normal Gauge instead of a FunctionGauge.
   void DetachToConstant(T v) {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     function_ = Bind(&FunctionGauge::Return, v);
   }
 
@@ -1064,6 +1066,8 @@ class Histogram : public Metric {
   //   // is thread safe.
   const HdrHistogram* histogram() const { return histogram_.get(); }
 
+  size_t DynamicMemoryUsage() const { return histogram_->DynamicMemoryUsage() + sizeof(*this); }
+
   uint64_t CountInBucketForValueForTests(uint64_t value) const;
   uint64_t MinValueForTests() const;
   uint64_t MaxValueForTests() const;
@@ -1126,11 +1130,12 @@ inline scoped_refptr<AtomicGauge<T>> MetricEntity::FindOrCreateGauge(
     const GaugePrototype<T>* proto,
     const T& initial_value) {
   CheckInstantiation(proto);
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   auto it = metric_map_.find(proto);
   if (it == metric_map_.end()) {
     auto result = new AtomicGauge<T>(proto, initial_value);
     metric_map_.emplace(proto, result);
+    AddConsumption(sizeof(AtomicGauge<T>));
     return result;
   }
   return down_cast<AtomicGauge<T>*>(it->second.get());
@@ -1141,13 +1146,14 @@ inline scoped_refptr<AtomicGauge<T> > MetricEntity::FindOrCreateGauge(
     std::unique_ptr<GaugePrototype<T>> proto,
     const T& initial_value) {
   CheckInstantiation(proto.get());
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   auto it = metric_map_.find(proto.get());
   if (it != metric_map_.end()) {
     return down_cast<AtomicGauge<T>*>(it->second.get());
   }
   auto result = new AtomicGauge<T>(std::move(proto), initial_value);
   metric_map_.emplace(result->prototype(), result);
+  AddConsumption(sizeof(AtomicGauge<T>));
   return result;
 }
 
@@ -1156,13 +1162,14 @@ inline scoped_refptr<FunctionGauge<T> > MetricEntity::FindOrCreateFunctionGauge(
     const GaugePrototype<T>* proto,
     const Callback<T()>& function) {
   CheckInstantiation(proto);
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   auto it = metric_map_.find(proto);
   if (it != metric_map_.end()) {
     return down_cast<FunctionGauge<T>*>(it->second.get());
   }
   auto result = new FunctionGauge<T>(proto, function);
   metric_map_.emplace(proto, result);
+  AddConsumption(sizeof(FunctionGauge<T>));
   return result;
 }
 

@@ -1,4 +1,3 @@
-import React from 'react';
 import { useSelector } from 'react-redux';
 import UniverseDetail from './UniverseDetail';
 import { UniverseFormContainer } from '../redesign/features/universe/universe-form/UniverseFormContainer';

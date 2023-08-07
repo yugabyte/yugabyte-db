@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Use the `region` resource to query [cloud provider region](../../../../release-notes/#cloud-provider-regions) information.
+Use the `region` resource to query [cloud provider region](../../../../cloud-basics/create-clusters-overview/#cloud-provider-regions) information.
 
 ## Syntax
 

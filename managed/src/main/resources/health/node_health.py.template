@@ -220,6 +220,7 @@ class EntryType:
     LABELS = "labels"
     NODE = "node"
     NODE_NAME = "node_name"
+    NODE_IDENTIFIER = "node_identifier"
     TIMESTAMP = "timestamp_iso"
     MESSAGE = "message"
     DETAILS = "details"
@@ -306,11 +307,13 @@ class Metric:
 
 
 class Entry:
-    def __init__(self, message, node, process=None, node_name=None, metrics_only=False):
+    def __init__(self, message, node, process=None, node_name=None, node_identifier=None,
+                 metrics_only=False):
         self.timestamp = generate_ts()
         self.message = message
         self.node = node
         self.node_name = node_name
+        self.node_identifier = node_identifier
         self.process = process
         self.metrics_only = metrics_only
         self.health_check = True
@@ -344,6 +347,7 @@ class Entry:
         j = {
             EntryType.NODE: self.node,
             EntryType.NODE_NAME: self.node_name or "",
+            EntryType.NODE_IDENTIFIER: self.node_identifier or "",
             EntryType.TIMESTAMP: self.timestamp,
             EntryType.MESSAGE: self.message,
             EntryType.DETAILS: self.details,
@@ -480,13 +484,14 @@ def get_rss_from_statm(statm):
 
 class NodeChecker():
 
-    def __init__(self, node, node_name, master_index, tserver_index, is_k8s, yb_home_dir,
-                 ybc_dir, start_time_ms, ysql_port, ycql_port, redis_port, enable_tls_client,
-                 enable_tls, root_and_client_root_ca_same, ssl_protocol, enable_ysql,
-                 enable_ysql_auth, master_http_port, tserver_http_port, ysql_server_http_port,
-                 node_version, is_ybc_enabled, ybc_port):
+    def __init__(self, node, node_name, node_identifier, master_index, tserver_index, is_k8s,
+                 yb_home_dir, ybc_dir, start_time_ms, ysql_port, ycql_port, redis_port,
+                 enable_tls_client, enable_tls, root_and_client_root_ca_same, ssl_protocol,
+                 enable_ysql, enable_ysql_auth, master_http_port, tserver_http_port,
+                 ysql_server_http_port, node_version, is_ybc_enabled, ybc_port):
         self.node = node
         self.node_name = node_name
+        self.node_identifier = node_identifier
         self.master_index = master_index
         self.tserver_index = tserver_index
         self.start_time_ms = start_time_ms
@@ -511,10 +516,10 @@ class NodeChecker():
         self.additional_info = {}
 
     def _new_entry(self, message, process=None):
-        return Entry(message, self.node, process, self.node_name)
+        return Entry(message, self.node, process, self.node_name, self.node_identifier)
 
     def _new_metric_entry(self, message, process=None):
-        return Entry(message, self.node, process, self.node_name, True)
+        return Entry(message, self.node, process, self.node_name, self.node_identifier, True)
 
     def _check_output(self, cmd, success_statuses=[0]):
         command = wrap_command(cmd)
@@ -1520,6 +1525,7 @@ class NodeInfo:
         self.ybc_dir = data["ybcDir"]
         self.node_host = data["nodeHost"]
         self.node_name = data["nodeName"]
+        self.node_identifier = data["nodeIdentifier"]
         self.node_start_time = data.get("nodeStartTime")
         self.enable_tls = data["enableTls"]
         self.enable_tls_client = data["enableTlsClient"]
@@ -1538,6 +1544,8 @@ class NodeInfo:
         self.ysql_server_http_port = data["ysqlServerHttpPort"]
         self.check_clock = data["checkClock"]
         self.test_read_write = data["testReadWrite"]
+        self.test_ysqlsh_connectivity = data["testYsqlshConnectivity"]
+        self.test_cqlsh_connectivity = data["testCqlshConnectivity"]
         self.universe_uuid = data["universeUuid"]
         self.is_ybc_enabled = data["enableYbc"]
         self.ybc_port = data["ybcPort"]
@@ -1572,10 +1580,10 @@ def main():
         alert_enhancements_version = True
     report = Report()
     checker = NodeChecker(
-        n.node_host, n.node_name, n.master_index, n.tserver_index, n.is_k8s, n.yb_home_dir,
-        n.ybc_dir, n.node_start_time, n.ysql_port, n.ycql_port, n.redis_port, n.enable_tls_client,
-        n.enable_tls, n.root_and_client_root_ca_same, n.ssl_protocol, n.enable_ysql,
-        n.enable_ysql_auth, n.master_http_port, n.tserver_http_port,
+        n.node_host, n.node_name, n.node_identifier, n.master_index, n.tserver_index, n.is_k8s,
+        n.yb_home_dir, n.ybc_dir, n.node_start_time, n.ysql_port, n.ycql_port, n.redis_port,
+        n.enable_tls_client, n.enable_tls, n.root_and_client_root_ca_same, n.ssl_protocol,
+        n.enable_ysql, n.enable_ysql_auth, n.master_http_port, n.tserver_http_port,
         n.ysql_server_http_port, n.yb_version, n.is_ybc_enabled, n.ybc_port)
 
     coordinator.add_precheck(checker, "check_openssl_availability")
@@ -1620,12 +1628,13 @@ def main():
         coordinator.add_check(checker, "check_for_error_logs", TSERVER)
         # Only need to check redis-cli/cqlsh for tserver nodes
         # to be docker/k8s friendly.
-        if n.enable_ycql:
+        if n.enable_ycql and n.test_cqlsh_connectivity:
             coordinator.add_check(checker, "check_cqlsh")
         if n.enable_yedis:
             coordinator.add_check(checker, "check_redis_cli")
         if n.enable_ysql:
-            coordinator.add_check(checker, "check_ysqlsh_connect")
+            if n.test_ysqlsh_connectivity:
+                coordinator.add_check(checker, "check_ysqlsh_connect")
             if n.test_read_write:
                 coordinator.add_check(checker, "check_ysqlsh_read_write")
             coordinator.add_check(checker, "check_postgres_worker_count")

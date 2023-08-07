@@ -27,16 +27,18 @@
 
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/cql_operation.h"
+#include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
-#include "yb/dockv/doc_kv_util.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_types.h"
-#include "yb/dockv/intent.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
+
+#include "yb/dockv/doc_kv_util.h"
+#include "yb/dockv/intent.h"
 #include "yb/dockv/subdocument.h"
 #include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
@@ -47,6 +49,8 @@
 #include "yb/rocksutil/write_batch_formatter.h"
 
 #include "yb/server/hybrid_clock.h"
+
+#include "yb/tablet/tablet_metrics.h"
 
 #include "yb/util/bitmap.h"
 #include "yb/util/bytes_formatter.h"
@@ -105,7 +109,6 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
     IsolationLevel isolation_level,
-    dockv::OperationKind operation_kind,
     RowMarkType row_mark_type,
     bool transactional_table,
     dockv::PartialRangeKeyIntents partial_range_key_intents) {
@@ -113,16 +116,15 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
   boost::container::small_vector<RefCntPrefix, 8> doc_paths;
   boost::container::small_vector<size_t, 32> key_prefix_lengths;
   result.need_read_snapshot = false;
-  for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
+  for (const auto& doc_op : doc_write_ops) {
     doc_paths.clear();
     IsolationLevel level;
     RETURN_NOT_OK(doc_op->GetDocPaths(GetDocPathsMode::kLock, &doc_paths, &level));
     if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
       level = isolation_level;
     }
-    auto intent_types = GetIntentTypeSet(level, operation_kind, row_mark_type);
+    auto intent_types = dockv::GetIntentTypesForWrite(level);
     if (isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION &&
-        operation_kind == dockv::OperationKind::kWrite &&
         doc_op->RequireReadSnapshot()) {
       intent_types = dockv::IntentTypeSet(
           {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite});
@@ -162,7 +164,7 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
   }
 
   if (!read_pairs.empty()) {
-    const auto read_intent_types = GetIntentTypeSet(isolation_level, operation_kind, row_mark_type);
+    const auto read_intent_types = dockv::GetIntentTypesForRead(isolation_level, row_mark_type);
     RETURN_NOT_OK(EnumerateIntents(
         read_pairs,
         [&result, &read_intent_types](
@@ -223,11 +225,9 @@ void FilterKeysToLock(LockBatchEntries *keys_locked) {
 Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
-    const scoped_refptr<Histogram>& write_lock_latency,
-    const scoped_refptr<Counter>& failed_batch_lock,
-    const IsolationLevel isolation_level,
-    const dockv::OperationKind operation_kind,
-    const RowMarkType row_mark_type,
+    tablet::TabletMetrics* tablet_metrics,
+    IsolationLevel isolation_level,
+    RowMarkType row_mark_type,
     bool transactional_table,
     bool write_transaction_metadata,
     CoarseTimePoint deadline,
@@ -236,7 +236,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   PrepareDocWriteOperationResult result;
 
   auto determine_keys_to_lock_result = VERIFY_RESULT(DetermineKeysToLock(
-      doc_write_ops, read_pairs, isolation_level, operation_kind, row_mark_type,
+      doc_write_ops, read_pairs, isolation_level, row_mark_type,
       transactional_table, partial_range_key_intents));
   VLOG_WITH_FUNC(4) << "determine_keys_to_lock_result=" << determine_keys_to_lock_result.ToString();
   if (determine_keys_to_lock_result.lock_batch.empty() && !write_transaction_metadata) {
@@ -249,20 +249,22 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   FilterKeysToLock(&determine_keys_to_lock_result.lock_batch);
   VLOG_WITH_FUNC(4) << "filtered determine_keys_to_lock_result="
                     << determine_keys_to_lock_result.ToString();
-  const MonoTime start_time = (write_lock_latency != nullptr) ? MonoTime::Now() : MonoTime();
+  const MonoTime start_time = (tablet_metrics != nullptr) ? MonoTime::Now() : MonoTime();
   result.lock_batch = LockBatch(
       lock_manager, std::move(determine_keys_to_lock_result.lock_batch), deadline);
   auto lock_status = result.lock_batch.status();
   if (!lock_status.ok()) {
-    if (failed_batch_lock != nullptr) {
-      failed_batch_lock->Increment();
+    if (tablet_metrics != nullptr) {
+      tablet_metrics->Increment(tablet::TabletCounters::kFailedBatchLock);
     }
     return lock_status.CloneAndAppend(
         Format("Timeout: $0", deadline - ToCoarse(start_time)));
   }
-  if (write_lock_latency != nullptr) {
+  if (tablet_metrics != nullptr) {
     const MonoDelta elapsed_time = MonoTime::Now().GetDeltaSince(start_time);
-    write_lock_latency->Increment(elapsed_time.ToMicroseconds());
+    tablet_metrics->Increment(
+        tablet::TabletHistograms::kWriteLockLatency,
+        make_unsigned(elapsed_time.ToMicroseconds()));
   }
 
   return result;
@@ -271,6 +273,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
 Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_ops,
                              const ReadOperationData& read_operation_data,
                              const DocDB& doc_db,
+                             SchemaPackingProvider* schema_packing_provider /*null okay*/,
                              std::reference_wrapper<const ScopedRWOperation> pending_op,
                              LWKeyValueWriteBatchPB* write_batch,
                              InitMarkerBehavior init_marker_behavior,
@@ -279,8 +282,22 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
                              const string& table_name) {
   DCHECK_ONLY_NOTNULL(restart_read_ht);
   DocWriteBatch doc_write_batch(doc_db, init_marker_behavior, pending_op, monotonic_counter);
-  DocOperationApplyData data = {&doc_write_batch, read_operation_data, restart_read_ht};
+
+  DocOperationApplyData data = {
+    .doc_write_batch = &doc_write_batch,
+    .read_operation_data = read_operation_data,
+    .restart_read_ht = restart_read_ht,
+    .iterator = nullptr,
+    .restart_seek = true,
+    .schema_packing_provider = schema_packing_provider,
+  };
+
+  std::optional<DocRowwiseIterator> iterator;
+  DocOperation* prev_operation = nullptr;
+  SingleOperation single_operation(doc_write_ops.size() == 1);
   for (const unique_ptr<DocOperation>& doc_op : doc_write_ops) {
+    RETURN_NOT_OK(doc_op->UpdateIterator(&data, prev_operation, single_operation, &iterator));
+    prev_operation = doc_op.get();
     Status s = doc_op->Apply(data);
     if (s.IsQLError() && doc_op->OpType() == DocOperation::Type::QL_WRITE_OPERATION) {
       std::string error_msg;
@@ -305,27 +322,27 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
 }
 
 IntraTxnWriteId ExternalTxnIntentsState::GetWriteIdAndIncrement(const TransactionId& txn_id) {
-  std::lock_guard<decltype(mutex_)> lock(mutex_);
+  std::lock_guard lock(mutex_);
   return map_[txn_id]++;
 }
 
 void ExternalTxnIntentsState::EraseEntries(
     const ExternalTxnApplyState& apply_external_transactions) {
-  std::lock_guard<decltype(mutex_)> lock(mutex_);
+  std::lock_guard lock(mutex_);
   for (const auto& apply : apply_external_transactions) {
     map_.erase(apply.first);
   }
 }
 
 void ExternalTxnIntentsState::EraseEntries(const TransactionIdSet& transactions) {
-  std::lock_guard<decltype(mutex_)> lock(mutex_);
+  std::lock_guard lock(mutex_);
   for (const auto& transaction : transactions) {
     map_.erase(transaction);
   }
 }
 
 size_t ExternalTxnIntentsState::EntryCount() {
-  std::lock_guard<decltype(mutex_)> lock(mutex_);
+  std::lock_guard lock(mutex_);
   return map_.size();
 }
 

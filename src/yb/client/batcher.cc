@@ -42,6 +42,7 @@
 #include <vector>
 
 #include <boost/optional/optional_io.hpp>
+#include <boost/range/adaptors.hpp>
 #include <glog/logging.h>
 
 #include "yb/client/async_rpc.h"
@@ -589,14 +590,27 @@ const ClientId& Batcher::client_id() const {
   return client_->id();
 }
 
+server::Clock* Batcher::Clock() const {
+  return client_->Clock();
+}
+
 std::pair<RetryableRequestId, RetryableRequestId> Batcher::NextRequestIdAndMinRunningRequestId() {
-  const auto& pair = client_->NextRequestIdAndMinRunningRequestId();
-  RegisterRequest(pair.first);
-  return pair;
+  return client_->NextRequestIdAndMinRunningRequestId();
 }
 
 void Batcher::RequestsFinished() {
-  client_->RequestsFinished(retryable_request_ids_);
+  client_->RequestsFinished(retryable_requests_ | boost::adaptors::map_keys);
+}
+
+void Batcher::MoveRequestDetailsFrom(const BatcherPtr& other, RetryableRequestId id) {
+  auto it = other->retryable_requests_.find(id);
+  if (it == other->retryable_requests_.end()) {
+    // The request id has been moved.
+    DCHECK(retryable_requests_.contains(id));
+    return;
+  }
+  retryable_requests_.insert(std::move(*it));
+  other->retryable_requests_.erase(it);
 }
 
 std::shared_ptr<AsyncRpc> Batcher::CreateRpc(

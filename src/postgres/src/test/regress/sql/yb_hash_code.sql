@@ -200,3 +200,10 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT v1, yb_hash_code(v4
 SELECT v1, yb_hash_code(v4) FROM test_index_only_scan_recheck WHERE v4 IN (1, 2, 3) AND yb_hash_code(v4) < 50000;
 
 DROP TABLE test_index_only_scan_recheck;
+
+-- Issue #17043
+CREATE TABLE t as select x, x as y from generate_series(1, 10) x;
+CREATE INDEX t_x_hash_y_asc_idx ON t (x HASH, y ASC);
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y IN (5, 6);
+SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y IN (5, 6);
+DROP TABLE t;

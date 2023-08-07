@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -32,6 +33,7 @@ import org.mockito.junit.MockitoJUnitRunner;
 public class CertificateInfoTest extends FakeDBApplication {
 
   private Customer customer;
+  private CertificateHelper certificateHelper;
 
   private final List<String> certList = Arrays.asList("test_cert1", "test_cert2", "test_cert3");
   private final List<UUID> certIdList = new ArrayList<>();
@@ -41,9 +43,10 @@ public class CertificateInfoTest extends FakeDBApplication {
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
+    certificateHelper = new CertificateHelper(app.injector().instanceOf(RuntimeConfGetter.class));
     Config spyConf = spy(app.config());
     for (String cert : certList) {
-      certIdList.add(CertificateHelper.createRootCA(spyConf, cert, customer.getUuid()));
+      certIdList.add(certificateHelper.createRootCA(spyConf, cert, customer.getUuid()));
     }
   }
 

@@ -5,8 +5,8 @@ import static com.yugabyte.yw.common.metrics.MetricService.STATUS_OK;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;

@@ -1,4 +1,3 @@
-import React from 'react';
 import * as Yup from 'yup';
 import { Box, MenuItem, IconButton, makeStyles } from '@material-ui/core';
 import { useFieldArray, useForm } from 'react-hook-form';
@@ -14,7 +13,7 @@ const useStyles = makeStyles((theme) => ({
     height: 40
   },
   mapTable: {
-    background: theme.palette.ybacolors.ybBackgroundGray,
+    background: theme.palette.ybacolors.backgroundGrayLightest,
     border: `1px solid #CCCCCC`,
     borderRadius: theme.spacing(1),
     padding: theme.spacing(3)
@@ -120,8 +119,8 @@ export const LDAPMappingModal = ({ open, onClose, onSubmit, values }) => {
         mb={2}
       >
         <Box mt={0.5}>
-          Add LDAP Groups or Users you want to map to the following role. Make sure to add them one
-          at a time.
+          Add LDAP Groups you want to map to the following role. Make sure to add them one at a
+          time.
         </Box>
         <Box mt={1} display="flex" justifyContent="flex-end">
           <YBButton
@@ -167,6 +166,7 @@ export const LDAPMappingModal = ({ open, onClose, onSubmit, values }) => {
                       fullWidth
                       name={`mapping.${index}.distinguishedName`}
                       control={control}
+                      placeholder="Example:  cn = eng , ou = backend, dc = Yugabyte, dc = com"
                     />
                   </Box>
                   <Box display="flex" width={24} mx={1}>

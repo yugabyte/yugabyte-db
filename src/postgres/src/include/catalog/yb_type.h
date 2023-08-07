@@ -62,4 +62,11 @@ bool YbDataTypeIsValidForKey(Oid type_id);
  */
 void YbGetTypeTable(const YBCPgTypeEntity **type_table, int *count);
 
+/*
+ * Callback functions
+ */
+int64_t YbPostgresEpochToUnixEpoch(int64_t postgres_t);
+int64_t YbUnixEpochToPostgresEpoch(int64_t unix_t);
+void	YbConstructTextArrayDatum(const char **strings, const int nelems,
+								  char **datum, size_t *len);
 #endif

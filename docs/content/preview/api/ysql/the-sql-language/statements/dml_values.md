@@ -72,7 +72,7 @@ This is the result:
        1 | 2019-06-25 12:05:30 | dog
        2 | 2020-07-30 13:10:45 | cat
 ```
-If an expression is written without a typecast, then its data type is inferred. For example, _'dog'_ is inferred to have datatype `text` and _4.2_ is inferred to have data type `numeric`.
+If an expression is written without a typecast, then its data type is inferred. For example, _'dog'_ is inferred to have data type `text` and _4.2_ is inferred to have data type `numeric`.
 
 Each successive parenthesized expression list must specify the same number of expressions with the same data types. Try this counter example:
 
