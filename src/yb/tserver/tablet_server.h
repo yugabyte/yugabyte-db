@@ -295,6 +295,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::optional<uint64_t> GetCatalogVersionsFingerprint() const {
     return catalog_versions_fingerprint_.load(std::memory_order_acquire);
   }
+
   void ActiveUniverseHistory(PgActiveUniverseHistoryResponsePB* resp) const override;
 
   void GetCQLServerMessenger(CQLServerMessenger messenger) override;
