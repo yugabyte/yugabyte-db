@@ -29,12 +29,12 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 --    All that said, r1 = r2 AND r2 = 1 is equivalent to r1 = 1 AND r2 = 1.
 -- 3) Another major difference is in the handling of constants. Constants can be completely
 --    eliminated in ORDER BY. For example, r2 = 1 ORDER BY r1, r2 is equivalent to ORDER BY r1
---    since there atmost one distinct value of r2, so no explicit sorting is necessary.
+--    since there at most one distinct value of r2, so no explicit sorting is necessary.
 --    However, the table might have multiple tuples with r2 = 1 and distinct values of r1.
 --    Hence, a unique node is still necessary even when r2 is excluded from the prefix.
 -- 4) Moreover, it is neither necessary nor sufficient for r2 to be equivalent to constant.
 --    Instead, the scan requires that r2 = 1 be an index clause since otherwise the corresponding
---    tuple may be missed by nature of the skip scan. One example is when an index scan occurs
+--    tuple may be missed by nature of the distinct index scan. One example is when an index scan occurs
 --    as part of the inner relation of a nested loop join operation.
 --    More generally, a distinct index scan can be used even with Merge and Hash Joins
 --    when the inner relation tuples must be unique.
@@ -99,7 +99,7 @@ SELECT DISTINCT 0 * r1 AS r FROM t;
 
 -- Do not generate distinct index paths in the presence of volatile expressions.
 -- In general, volatile expressions may have side effects, so they need to be run
--- for each tuple. Cannot use a skip scan in that case.
+-- for each tuple. Cannot use a distinct index scan in that case.
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t WHERE r1 * RANDOM() > 1;
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 * RANDOM() AS r FROM t;
 
@@ -140,7 +140,7 @@ SELECT DISTINCT r1 FROM t WHERE r1 = 1;
 DROP TABLE t;
 
 -- h in th refers to hash table.
-CREATE TABLE th(h1 INT, h2 INT, r1 INT, r2 int, v INT, PRIMARY KEY((h1, h2) HASH, r1 ASC, r2 ASC)) SPLIT INTO 16 TABLETS;
+CREATE TABLE th(h1 INT, h2 INT, r1 INT, r2 INT, v INT, PRIMARY KEY((h1, h2) HASH, r1 ASC, r2 ASC)) SPLIT INTO 16 TABLETS;
 INSERT INTO th (SELECT 1, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 
@@ -205,6 +205,12 @@ SELECT DISTINCT r1 FROM th WHERE h1 = 1 ORDER BY r1;
 -- Hash columns constant.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT h1, h2 FROM th WHERE h1 = 1 AND h2 = 1;
 SELECT DISTINCT h1, h2 FROM th WHERE h1 = 1 AND h2 = 1;
+
+-- Range column constant
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT h1, h2 FROM th WHERE r1 = 1;
+SELECT DISTINCT h1, h2 FROM th WHERE r1 = 1;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM th WHERE r1 = 1;
+SELECT DISTINCT r1 FROM th WHERE r1 = 1;
 
 DROP TABLE th;
 
@@ -273,7 +279,7 @@ INSERT INTO t (SELECT 2, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 -- 1) Unique node added on top of base index scans directly for distinct prefixes
 --    that are range column exclusive, see #18101.
 --    Usually, Unique nodes are added only after all the joins are done but not so here.
--- 2) Unlike sort, distinct keys are simply an union of base relation keys in joins.
+-- 2) Unlike sort, distinct keys are simply a union of base relation keys in joins.
 -- 3) Similarly, unlike sort, distinct can permute its targets.
 -- 4) Unlike sort, a prefix of distinct keys are not distinct.
 

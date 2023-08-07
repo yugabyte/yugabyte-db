@@ -121,6 +121,14 @@ void PgDmlRead::SetForwardScan(const bool is_forward_scan) {
   read_req_->set_is_forward_scan(is_forward_scan);
 }
 
+void PgDmlRead::SetDistinctPrefixLength(const int distinct_prefix_length) {
+  if (secondary_index_query_) {
+    secondary_index_query_->SetDistinctPrefixLength(distinct_prefix_length);
+  } else {
+    read_req_->set_prefix_length(distinct_prefix_length);
+  }
+}
+
 //--------------------------------------------------------------------------------------------------
 // DML support.
 // TODO(neil) WHERE clause is not yet supported. Revisit this function when it is.
@@ -275,16 +283,6 @@ bool PgDmlRead::IsConcreteRowRead() const {
                                   read_req_->range_column_values().size())));
 }
 
-void PgDmlRead::SetDistinctScan(const PgExecParameters *exec_params) {
-  if (exec_params && exec_params->yb_distinct_prefixlen > 0) {
-    if (secondary_index_query_) {
-      return;
-    }
-
-    read_req_->set_prefix_length(exec_params->yb_distinct_prefixlen);
-  }
-}
-
 Status PgDmlRead::Exec(const PgExecParameters *exec_params) {
   // Save IN/OUT parameters from Postgres.
   pg_exec_params_ = exec_params;
@@ -299,7 +297,6 @@ Status PgDmlRead::Exec(const PgExecParameters *exec_params) {
       CanBuildYbctidsFromPrimaryBinds()) {
     RETURN_NOT_OK(SubstitutePrimaryBindsWithYbctids(exec_params));
   } else {
-    SetDistinctScan(exec_params);
     RETURN_NOT_OK(ProcessEmptyPrimaryBinds());
     if (has_doc_op()) {
       if (row_mark_type == RowMarkType::ROW_MARK_KEYSHARE && !IsConcreteRowRead()) {

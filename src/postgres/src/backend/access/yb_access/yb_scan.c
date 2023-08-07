@@ -2323,6 +2323,7 @@ ybcBeginScan(Relation relation,
 			 PushdownExprs *rel_pushdown,
 			 PushdownExprs *idx_pushdown,
 			 List *aggrefs,
+			 int distinct_prefixlen,
 			 YBCPgExecParameters *exec_params)
 {
 	/* Set up Yugabyte scan description */
@@ -2405,6 +2406,10 @@ ybcBeginScan(Relation relation,
 	if (!IsSystemRelation(relation))
 		YbSetCatalogCacheVersion(ybScan->handle,
 								 YbGetCatalogCacheVersion());
+
+	/* Set distinct prefix length. */
+	if (distinct_prefixlen > 0)
+		YBCPgSetDistinctPrefixLength(ybScan->handle, distinct_prefixlen);
 
 	bms_free(scan_plan.hash_key);
 	bms_free(scan_plan.primary_key);
@@ -2629,6 +2634,7 @@ SysScanDesc ybc_systable_beginscan(Relation relation,
 									 NULL /* rel_pushdown */,
 									 NULL /* idx_pushdown */,
 									 NULL /* aggrefs */,
+									 0 /* distinct_prefixlen */,
 									 NULL /* exec_params */);
 
 	/* Set up Postgres sys table scan description */
@@ -2682,6 +2688,7 @@ HeapScanDesc ybc_heap_beginscan(Relation relation,
 									 NULL /* rel_pushdown */,
 									 NULL /* idx_pushdown */,
 									 NULL /* aggrefs */,
+									 0 /* distinct_prefixlen */,
 									 NULL /* exec_params */);
 
 	/* Set up Postgres sys table scan description */
@@ -2745,6 +2752,7 @@ ybc_remote_beginscan(Relation relation,
 									 pushdown /* rel_pushdown */,
 									 NULL /* idx_pushdown */,
 									 aggrefs,
+									 0 /* distinct_prefixlen */,
 									 exec_params);
 
 	/* Set up Postgres sys table scan description */

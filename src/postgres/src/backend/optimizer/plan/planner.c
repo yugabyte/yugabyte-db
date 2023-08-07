@@ -4811,6 +4811,7 @@ create_distinct_paths(PlannerInfo *root,
 	bool		allow_hash;
 	Path	   *path;
 	ListCell   *lc;
+	List	   *yb_distinct_paths;
 
 	/* For now, do all work in the (DISTINCT, NULL) upperrel */
 	distinct_rel = fetch_upper_rel(root, UPPERREL_DISTINCT, NULL);
@@ -4831,6 +4832,24 @@ create_distinct_paths(PlannerInfo *root,
 	distinct_rel->userid = input_rel->userid;
 	distinct_rel->useridiscurrent = input_rel->useridiscurrent;
 	distinct_rel->fdwroutine = input_rel->fdwroutine;
+
+	/* YB: Figure out paths that are already distinct. */
+	yb_distinct_paths = NIL;
+	if (IsYugaByteEnabled())
+	{
+		foreach(lc, input_rel->pathlist)
+		{
+			Path* path = (Path *) lfirst(lc);
+
+			/*
+			 * YB: Do not add these paths to distinct_rel yet because we refer
+			 * to them later on in this function and we don't want add_path()
+			 * to pfree these paths.
+			 */
+			if (yb_has_sufficient_uniqkeys(root, path))
+				yb_distinct_paths = lappend(yb_distinct_paths, path);
+		}
+	}
 
 	/* Estimate number of distinct rows there will be */
 	if (parse->groupClause || parse->groupingSets || parse->hasAggs ||
@@ -4887,69 +4906,23 @@ create_distinct_paths(PlannerInfo *root,
 		{
 			Path	   *path = (Path *) lfirst(lc);
 
-			if (IsYugaByteEnabled() &&
-				path->yb_path_info.yb_uniqpath_provisional)
+			if (pathkeys_contained_in(needed_pathkeys, path->pathkeys))
 			{
-				/*
-				 * YB: Also consider distinct paths pushed to the storage layer.
-				 */
-				Path		 *path = (Path *) lfirst(lc);
-				YbUniqKeysCmp cmp;
-
-				if (input_rel->reloptkind != RELOPT_BASEREL)
-					break;
-
-				cmp = yb_has_sufficient_uniqkeys(root, path);
-
-				/*
-				 * YB: Validated yb_uniqkeys, so it is safe to make this
-				 * a regular path. Now, the path can be considered when
-				 * choosing the best costing path.
-				 */
-				path->yb_path_info.yb_uniqpath_provisional = false;
-
-				/*
-				 * YB: Can use the path when uniqkeys are exactly the same.
-				 * Order does not matter.
-				 *
-				 * It is sufficient that sort_pathkeys are contained
-				 * in path->pathkeys and not the entirety of needed_pathkeys
-				 * since yb_has_uniqkeys_for already verifies DISTINCTness
-				 * requirements.
-				 * Example: SELECT DISTINCT r1, r2
-				 * can be served by a distinct index scan path
-				 * on an index thats ordered ASC by r1 and DESC by r2.
-				 * Such cases would not be allowed if all of needed_pathkeys
-				 * were checked for containment in path->pathkeys.
-				 */
-				if (cmp == YB_UNIQKEYS_EXACT)
+				/* YB: Do not consider paths that are already distinct. */
+				if (!IsYugaByteEnabled() ||
+					!list_member_ptr(yb_distinct_paths, path))
 				{
-					if (pathkeys_contained_in(root->sort_pathkeys,
-											path->pathkeys))
-						add_path(distinct_rel, path);
-					else
-						add_path(distinct_rel, (Path *)
-								create_sort_path(root, distinct_rel, path,
-												root->sort_pathkeys, -1.0));
-				}
+					/* YB: Avoid adding UpperUniquePath twice. */
+					if (IsYugaByteEnabled() && IsA(path, UpperUniquePath))
+						path = ((UpperUniquePath *) path)->subpath;
 
-				/* YB: Update cheapest input path if a cheaper one found */
-				if (cmp == YB_UNIQKEYS_EXCESS &&
-					cheapest_input_path->total_cost > path->total_cost)
-					/*
-					 * YB: Does not match uniqkeys exactly.
-					 * However, a candidate for the cheapest input path.
-					 */
-					cheapest_input_path = path;
-			}
-			else if (pathkeys_contained_in(needed_pathkeys, path->pathkeys))
-			{
-				add_path(distinct_rel, (Path *)
-						 create_upper_unique_path(
-							root, distinct_rel,
-							path,
-							list_length(root->distinct_pathkeys),
-							numDistinctRows));
+					add_path(distinct_rel, (Path *)
+							 create_upper_unique_path(
+								root, distinct_rel,
+								path,
+								list_length(root->distinct_pathkeys),
+								numDistinctRows));
+				}
 			}
 		}
 
@@ -4972,19 +4945,20 @@ create_distinct_paths(PlannerInfo *root,
 											 needed_pathkeys,
 											 -1.0);
 
-		/*
-		 * YB: Sometimes, path has a unique node by virtue of removing
-		 * duplicate rows from PgGate. Do not add another in that case.
-		 */
-		if (IsA(path, UpperUniquePath))
-			add_path(distinct_rel, path);
-		else
+		/* YB: Do not consider paths that are already distinct. */
+		if (!IsYugaByteEnabled() || !list_member_ptr(yb_distinct_paths, path))
+		{
+			/* YB: Avoid adding UpperUniquePath twice. */
+			if (IsYugaByteEnabled() && IsA(path, UpperUniquePath))
+				path = ((UpperUniquePath *) path)->subpath;
+
 			add_path(distinct_rel, (Path *)
-					create_upper_unique_path(
+					 create_upper_unique_path(
 						root, distinct_rel,
 						path,
 						list_length(root->distinct_pathkeys),
 						numDistinctRows));
+		}
 	}
 
 	/*
@@ -5033,6 +5007,13 @@ create_distinct_paths(PlannerInfo *root,
 								 NULL,
 								 numDistinctRows));
 	}
+
+	/*
+	 * YB: Now, add all paths that are already distinct.
+	 * We add these at the end to avoid add_path() from pfree'ing them.
+	 */
+	foreach(lc, yb_distinct_paths)
+		add_path(distinct_rel, (Path *) lfirst(lc));
 
 	/* Give a helpful error if we failed to find any implementation */
 	if (distinct_rel->pathlist == NIL)

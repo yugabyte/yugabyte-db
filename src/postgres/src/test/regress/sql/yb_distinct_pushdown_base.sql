@@ -57,14 +57,14 @@ SELECT DISTINCT r1 FROM ts;
 DROP TABLE ts;
 
 -- Ensure that Distinct Index Scan is not generated for a non-LSM index.
--- Non-LSM indexes such as GIN do not necessarily support skip scan.
+-- Non-LSM indexes such as GIN do not necessarily support distinct index scan.
 CREATE TABLE vectors (v tsvector, k SERIAL PRIMARY KEY);
 INSERT INTO vectors SELECT to_tsvector('simple', 'filler') FROM generate_series(1, 10);
 
 CREATE INDEX NONCONCURRENTLY igin ON vectors USING ybgin (v);
 
 -- Avoid fetching primary key and fetch secondary key instead since
---   there is already an LSM index on the primary key and LSM supports skip scan.
+--   there is already an LSM index on the primary key and LSM supports distinct index scan.
 -- XXX: Explain output also shows memory consumed for sort.
 --      This can be handled using regex but leave it be for readability.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM vectors;
@@ -110,7 +110,7 @@ SELECT DISTINCT r1, r2 FROM tm ORDER BY r1, r2 DESC;
 DROP TABLE tm;
 
 -- Aggregates.
--- Unless the aggregate is pushed down into skip scan,
+-- Unless the aggregate is pushed down into distinct index scan,
 -- cannot currently push down DISTINCT.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, COUNT(r1) FROM t GROUP BY r1;
 SELECT DISTINCT r1, COUNT(r1) FROM t GROUP BY r1;
@@ -121,5 +121,8 @@ EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, COUNT(
 SELECT DISTINCT r1, COUNT(r1) OVER (PARTITION BY r1) FROM t;
 
 SELECT DISTINCT r1 FROM t WHERE r1 = 1 AND r2 IN (0, 1);
+
+-- DISTINCT ON query for regression purposes.
+SELECT DISTINCT ON (r1) r1, r2 FROM t ORDER BY r1, r2;
 
 DROP TABLE t;
