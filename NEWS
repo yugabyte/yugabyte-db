@@ -1,5 +1,10 @@
 Orafce News - History of user-visible changes
-Copyright (C) 2008-2022  Orafce Global Development Group
+Copyright (C) 2008-2023  Orafce Global Development Group
+
+Version 4.6.0 - 
+* emit signal by XactCallback instead deferred trigger, store not yet emmited events in
+  transaction scope memory instead in temporary table. New solution strongly reduces delay
+  (and CPU usage), but ensures visible changes to outside of transaction that emmited signal.
 
 Version 4.5.0 - 5 Aug 2023
 * partial rewriting of dbms_pipe. Now, the synchronization is based on signals instead short sleeping.
