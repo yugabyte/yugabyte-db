@@ -1024,7 +1024,7 @@ The APIs used to fetch the changes are set up to work with TLSv1.2 only. Make su
 If you have a YugabyteDB cluster with SSL enabled, you need to obtain the root certificate and provide the path of the file in the `database.sslrootcert` configuration property. You can follow these links to get the certificates for your universe:
 
 * [Local deployments](../../../secure/tls-encryption/)
-* [YugabyteDB Anywhere](../../../yugabyte-platform/security/enable-encryption-in-transit/#connect-to-a-ysql-endpoint-with-tls)
+* [YugabyteDB Anywhere](../../../yugabyte-platform/security/enable-encryption-in-transit/encryption-in-transit-connect/#connect-to-a-ysql-endpoint-with-tls)
 * [YugabyteDB Managed](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
 
 {{< /note >}}

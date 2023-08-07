@@ -7,7 +7,7 @@ menu:
   preview_yugabyte-platform:
     parent: security
     identifier: network-security
-    weight: 30
+    weight: 50
 type: docs
 ---
 

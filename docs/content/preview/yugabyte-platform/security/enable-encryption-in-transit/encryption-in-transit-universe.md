@@ -1,13 +1,13 @@
 ---
-title: Enable encryption in transit
-headerTitle: Enable encryption in transit
-linkTitle: Enable encryption in transit
-description: Use YugabyteDB Anywhere to enable encryption in transit (TLS) on a YugabyteDB universe and connect to clients.
+title: Use encryption in transit for universes
+headerTitle: Enable encryption in transit for universes
+linkTitle: Encryption in transit for universes
+description: Use YugabyteDB Anywhere to enable encryption in transit (TLS) on a YugabyteDB universe.
 menu:
   preview_yugabyte-platform:
-    parent: security
-    identifier: enable-encryption-in-transit
-    weight: 29
+    parent: enable-encryption-in-transit
+    identifier: eit-universes
+    weight: 10
 type: docs
 ---
 
@@ -441,130 +441,4 @@ kubectl get ClusterIssuer
 
 ```sh
 kubectl -n <namespace> Issuer
-```
-
-## Connecting to clusters
-
-Using TLS, you can connect to the YSQL and YCQL endpoints.
-
-### Connect to a YSQL endpoint with TLS
-
-If you created your universe with the Client-to-Node TLS option enabled, then you must download client certificates to your client computer to establish connection to your database, as follows:
-
-- Navigate to the **Certificates** page and then to your universe's certificate.
-
-- Click **Actions** and select **Download YSQL Cert**, as shown in the following illustration. This triggers the download of the `yugabytedb.crt` and `yugabytedb.key` files.
-
-  ![download-ysql-cert](/images/yp/encryption-in-transit/download-ysql-cert.png)
-
-- Optionally, when connecting to universes that are configured with custom CA-signed certificates, obtain the root CA and client YSQL certificate from your administrator. These certificates are not available on YugabyteDB Anywhere for downloading.
-
-- For testing with a `ysqlsh` client, paste the `yugabytedb.crt` and `yugabytedb.key` files into the `<home-dir>/.yugabytedb` directory and change the permissions to `0600`, as follows:
-
-  ```sh
-  mkdir ~/.yugabytedb; cd ~/.yugabytedb
-  cp <DownloadDir>/yugabytedb.crt .
-  cp <DownloadDir>/yugabytedb.key .
-  chmod 600 yugabytedb.*
-  ```
-
-- Run `ysqlsh` using the `sslmode=require` option, as follows:
-
-  ```sh
-  cd <yugabyte software install directory>
-  bin/ysqlsh -h 172.152.43.78 -p 5433 sslmode=require
-  ```
-
-  ```output
-  ysqlsh (11.2-YB-2.3.3.0-b0)
-  SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
-  Type "help" for help.
-
-  yugabyte=#
-  ```
-
-To use TLS from a different client, consult the client-specific documentation. For example, if you are using a PostgreSQL JDBC driver to connect to YugabyteDB, see [Configuring the client](https://jdbc.postgresql.org/documentation/head/ssl-client.html) for more details.
-
-If you are using PostgreSQL/YugabyteDB JDBC driver with SSL, you need to convert the certificates to DER format. To do this, you need to perform only steps 6 and 7 from [Set up SSL certificates for Java applications](../../../reference/drivers/java/postgres-jdbc-reference/#set-up-ssl-certificates-for-java-applications) section after downloading the certificates.
-
-### Connect to a YCQL endpoint with TLS
-
-If you created your universe with the Client-to-Node TLS option enabled, then you must download client certificates to your client computer to establish connection to your database, as follows:
-
-- Navigate to the **Certificates** page and then to your universe's certificate.
-
-- Click **Actions** and select **Download Root Cert**, as shown in the following illustration. This triggers the download of the `root.crt` file.
-
-  ![download-root-cert](/images/yp/encryption-in-transit/download-root-cert.png)
-
-- Optionally, when connecting to universes that are configured with custom CA-signed certificates, obtain the root CA and client YSQL certificate from your administrator. These certificates are not available on YugabyteDB Anywhere for downloading.
-
-- Set `SSL_CERTFILE` environment variable to point to the location of the downloaded root certificate.
-
-- Run `ycqlsh` using the `-ssl` option, as follows:
-
-  ```sh
-  cp <DownloadDir>/root.crt ~/.yugabytedb/root.crt
-  export SSL_CERTFILE=~/.yugabytedb/root.crt
-  bin/ycqlsh 172.152.43.78 --ssl
-  ```
-
-  ```output
-  Connected to local cluster at 172.152.43.78:9042.
-  [ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
-  Use HELP for help.
-  ycqlsh>
-  ```
-
-To use TLS from a different client, consult the client-specific documentation. For example, if you are using a Cassandra driver to connect to YugabyteDB, see [SSL](https://docs.datastax.com/en/developer/python-driver/3.19/security/#ssl) .
-
-## Validating certificates
-
-When configuring and using certificates, SSL issues may occasionally arise. You can validate your certificates and keys as follows:
-
-1. Verify that the CA CRT and CA private key match by executing the following commands:
-
-   ```shell
-   openssl rsa -noout -modulus -in ca.key | openssl md5
-   openssl x509 -noout -modulus -in ca.crt | openssl md5
-
-   \# outputs should match
-   ```
-
-2. Verify that the CA CRT is actually a certificate authority by executing the following command:
-
-   ```shell
-   openssl x509 -text -noout -in ca.crt
-
-   \# Look for fields
-
-   X509v3 Basic Constraints:
-
-     CA:TRUE
-   ```
-
-3. Verify that certificates and keys are in PEM format (as opposed to the DER or other format). If these artifacts are not in the PEM format and you require assistance with converting them or identifying the format, consult [Converting certificates](https://support.globalsign.com/ssl/ssl-certificates-installation/converting-certificates-openssl).
-
-4. Ensure that the private key does not have a passphrase associated with it. For information on how to identify this condition, see [Decrypt an encrypted SSL RSA private key](https://techjourney.net/how-to-decrypt-an-enrypted-ssl-rsa-private-key-pem-key/).
-
-## Enforcing TLS versions
-
-As TLS 1.0 and 1.1 are no longer accepted by PCI compliance, and considering significant vulnerabilities around these versions of the protocol, it is recommended that you migrate to TLS 1.2 or later versions.
-
-You can set the TLS version for node-to-node and client-node communication. To enforce TLS 1.2, add the following flag for YB-TServer:
-
-```shell
-ssl_protocols = tls12
-```
-
-To enforce the minimum TLS version of 1.2, you need to specify all available subsequent versions for YB-TServer, as follows:
-
-```shell
-ssl_protocols = tls12,tls13
-```
-
-In addition, as the `ssl_protocols` setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the following YB-TServer gflag:
-
-```shell
---ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
 ```
