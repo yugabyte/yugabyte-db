@@ -43,6 +43,7 @@ import io.yugabyte.operator.v1alpha1.YBUniverse;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YcqlPassword;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YsqlPassword;
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -768,6 +769,11 @@ public class KubernetesOperatorController {
     try {
       Pair<Field, UserIntent> kubernetesOperatorVersionUpdate = null;
       for (Field field : fields) {
+        int modifiers = field.getModifiers();
+        if (!Modifier.isPublic(modifiers)) {
+          // ignore private, protected for now;
+          continue;
+        }
         if (field.get(newIntent) != null && field.get(oldIntent) != null) {
           if (!field.get(oldIntent).equals(field.get(newIntent))) {
             if (!field.getName().equals("kubernetesOperatorVersion")) {
