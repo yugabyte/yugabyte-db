@@ -176,6 +176,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     when(mockConfig.getInt("yb.fs_stateless.max_files_count_persist")).thenReturn(100);
     when(mockConfig.getBoolean("yb.fs_stateless.suppress_error")).thenReturn(true);
     when(mockConfig.getLong("yb.fs_stateless.max_file_size_bytes")).thenReturn((long) 10000);
+    when(mockConfig.getString("ybc.compatible_db_version")).thenReturn("2.15.0.0-b1");
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
 
     return new GuiceApplicationBuilder()

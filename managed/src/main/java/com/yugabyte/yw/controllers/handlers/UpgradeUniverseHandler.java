@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -132,7 +133,9 @@ public class UpgradeUniverseHandler {
         requestParams.installYbc = false;
       }
     } else if (Util.compareYbVersions(
-                requestParams.ybSoftwareVersion, Util.YBC_COMPATIBLE_DB_VERSION, true)
+                requestParams.ybSoftwareVersion,
+                confGetter.getGlobalConf(GlobalConfKeys.ybcCompatibleDbVersion),
+                true)
             > 0
         && !universe.isYbcEnabled()
         && requestParams.isEnableYbc()) {

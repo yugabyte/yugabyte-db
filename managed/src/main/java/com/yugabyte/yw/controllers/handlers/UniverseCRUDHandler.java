@@ -519,12 +519,14 @@ public class UniverseCRUDHandler {
                     + Util.K8S_YBC_COMPATIBLE_DB_VERSION);
           }
         } else if (Util.compareYbVersions(
-                userIntent.ybSoftwareVersion, Util.YBC_COMPATIBLE_DB_VERSION, true)
+                userIntent.ybSoftwareVersion,
+                confGetter.getGlobalConf(GlobalConfKeys.ybcCompatibleDbVersion),
+                true)
             < 0) {
           taskParams.setEnableYbc(false);
           LOG.error(
               "Ybc installation is skipped on VM universe with DB version lower than "
-                  + Util.YBC_COMPATIBLE_DB_VERSION);
+                  + confGetter.getGlobalConf(GlobalConfKeys.ybcCompatibleDbVersion));
         } else {
           taskParams.setYbcSoftwareVersion(
               StringUtils.isNotBlank(taskParams.getYbcSoftwareVersion())

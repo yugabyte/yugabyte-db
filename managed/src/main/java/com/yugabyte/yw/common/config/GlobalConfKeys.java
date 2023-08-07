@@ -778,4 +778,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "this config value, the subtask will fail",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<String> ybcCompatibleDbVersion =
+      new ConfKeyInfo<>(
+          "ybc.compatible_db_version",
+          ScopeType.GLOBAL,
+          "YBC Compatible DB Version",
+          "Minimum YBDB version which supports YBC",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
