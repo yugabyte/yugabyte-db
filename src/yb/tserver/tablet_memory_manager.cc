@@ -147,7 +147,11 @@ int64_t GetTargetBlockCacheSize(const int32_t default_block_cache_size_percentag
 }
 
 size_t GetLogCacheSize(tablet::TabletPeer* peer) {
-  return down_cast<consensus::RaftConsensus*>(peer->consensus())->LogCacheSize();
+  auto consensus_result = peer->GetRaftConsensus();
+  if (!consensus_result) {
+    return 0;
+  }
+  return consensus_result.get()->LogCacheSize();
 }
 
 }  // namespace
@@ -266,11 +270,15 @@ void TabletMemoryManager::LogCacheGC(MemTracker* log_cache_mem_tracker, size_t b
 
   size_t total_evicted = 0;
   for (const auto& peer : peers) {
+    auto consensus_result = peer->GetRaftConsensus();
+    if (!consensus_result) {
+      VLOG_WITH_FUNC(3) << "Skipping Peer " << peer->permanent_uuid() << consensus_result.status();
+      continue;
+    }
     if (GetLogCacheSize(peer.get()) <= 0) {
       continue;
     }
-    size_t evicted = down_cast<consensus::RaftConsensus*>(
-        peer->consensus())->EvictLogCache(bytes_to_evict - total_evicted);
+    size_t evicted = consensus_result.get()->EvictLogCache(bytes_to_evict - total_evicted);
     total_evicted += evicted;
     if (total_evicted >= bytes_to_evict) {
       break;

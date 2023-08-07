@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { useState } from 'react';
-import moment from 'moment';
+import { useState } from 'react';
+import moment from 'moment-timezone';
 import { DateTimePicker } from 'react-widgets';
 import AceEditor from 'react-ace';
 import Select from 'react-select';

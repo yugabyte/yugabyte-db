@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertForbiddenWithException;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
@@ -202,7 +203,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
     Result result =
         assertPlatformException(
             () -> createHook("test.py", Python, "NEW\nTEXT\n", false, defaultUser));
-    assertUnauthorized(result, "Only Super Admins can perform this operation.");
+    assertForbiddenWithException(result, "Only Super Admins can perform this operation.");
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
@@ -223,7 +224,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthToken("GET", baseRoute, defaultUser.createAuthToken()));
-    assertUnauthorized(result, "Only Super Admins can perform this operation.");
+    assertForbiddenWithException(result, "Only Super Admins can perform this operation.");
   }
 
   @Test
@@ -246,7 +247,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
     Result deleteResult =
         assertPlatformException(
             () -> doRequestWithAuthToken("DELETE", uri, defaultUser.createAuthToken()));
-    assertUnauthorized(deleteResult, "Only Super Admins can perform this operation.");
+    assertForbiddenWithException(deleteResult, "Only Super Admins can perform this operation.");
     assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
@@ -344,7 +345,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
             () ->
                 doRequestWithAuthTokenAndMultipartData(
                     "PUT", uri, defaultUser.createAuthToken(), bodyData, mat));
-    assertUnauthorized(updateResult, "Only Super Admins can perform this operation.");
+    assertForbiddenWithException(updateResult, "Only Super Admins can perform this operation.");
     assertAuditEntry(1, defaultCustomer.getUuid());
   }
 

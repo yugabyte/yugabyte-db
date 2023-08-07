@@ -181,9 +181,9 @@ struct KeyEncoderTraits<Type,
 };
 
 template<typename Buffer>
-struct KeyEncoderTraits<BINARY, Buffer> {
+struct KeyEncoderTraits<DataType::BINARY, Buffer> {
 
-  static const DataType key_type = BINARY;
+  static const DataType key_type = DataType::BINARY;
 
   static void Encode(const void* key, Buffer* dst) {
     Encode(*reinterpret_cast<const Slice*>(key), dst);
@@ -367,9 +367,9 @@ struct KeyEncoderTraits<BINARY, Buffer> {
 };
 
 template<typename Buffer>
-struct KeyEncoderTraits<BOOL, Buffer> {
+struct KeyEncoderTraits<DataType::BOOL, Buffer> {
 
-  static const DataType key_type = BOOL;
+  static const DataType key_type = DataType::BOOL;
 
   static void Encode(const void* key, Buffer* dst) {
     dst->push_back(*reinterpret_cast<const bool*>(key) ? 1 : 0);

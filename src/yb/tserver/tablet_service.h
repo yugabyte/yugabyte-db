@@ -119,6 +119,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                             GetTransactionStatusResponsePB* resp,
                             rpc::RpcContext context) override;
 
+  void GetOldTransactions(const GetOldTransactionsRequestPB* req,
+                          GetOldTransactionsResponsePB* resp,
+                          rpc::RpcContext context) override;
+
   void GetTransactionStatusAtParticipant(const GetTransactionStatusAtParticipantRequestPB* req,
                                          GetTransactionStatusAtParticipantResponsePB* resp,
                                          rpc::RpcContext context) override;
@@ -184,6 +188,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
   void CancelTransaction(const CancelTransactionRequestPB* req,
                          CancelTransactionResponsePB* resp,
                          rpc::RpcContext context) override;
+
+  void StartRemoteSnapshotTransfer(
+      const StartRemoteSnapshotTransferRequestPB* req, StartRemoteSnapshotTransferResponsePB* resp,
+      rpc::RpcContext context) override;
 
   void Shutdown() override;
 

@@ -437,7 +437,7 @@ class CompactionJobStatsChecker : public EventListener {
       verify_next_comp_io_stats_ = false;
     }
 
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (expected_stats_.size()) {
       Verify(ci.stats, expected_stats_.front());
       expected_stats_.pop();
@@ -502,7 +502,7 @@ class CompactionJobStatsChecker : public EventListener {
   // verify the CompactionJobStats returned by the OnCompactionCompleted()
   // callback.
   void AddExpectedStats(const CompactionJobStats& stats) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     expected_stats_.push(stats);
   }
 

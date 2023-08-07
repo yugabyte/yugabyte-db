@@ -329,67 +329,67 @@ int32_t YBColumnSchema::pg_type_oid() const {
 
 InternalType YBColumnSchema::ToInternalDataType(DataType type) {
   switch (type) {
-    case INT8:
+    case DataType::INT8:
       return InternalType::kInt8Value;
-    case INT16:
+    case DataType::INT16:
       return InternalType::kInt16Value;
-    case INT32:
+    case DataType::INT32:
       return InternalType::kInt32Value;
-    case INT64:
+    case DataType::INT64:
       return InternalType::kInt64Value;
-    case UINT32:
+    case DataType::UINT32:
       return InternalType::kUint32Value;
-    case UINT64:
+    case DataType::UINT64:
       return InternalType::kUint64Value;
-    case FLOAT:
+    case DataType::FLOAT:
       return InternalType::kFloatValue;
-    case DOUBLE:
+    case DataType::DOUBLE:
       return InternalType::kDoubleValue;
-    case DECIMAL:
+    case DataType::DECIMAL:
       return InternalType::kDecimalValue;
-    case STRING:
+    case DataType::STRING:
       return InternalType::kStringValue;
-    case TIMESTAMP:
+    case DataType::TIMESTAMP:
       return InternalType::kTimestampValue;
-    case DATE:
+    case DataType::DATE:
       return InternalType::kDateValue;
-    case TIME:
+    case DataType::TIME:
       return InternalType::kTimeValue;
-    case INET:
+    case DataType::INET:
       return InternalType::kInetaddressValue;
-    case JSONB:
+    case DataType::JSONB:
       return InternalType::kJsonbValue;
-    case UUID:
+    case DataType::UUID:
       return InternalType::kUuidValue;
-    case TIMEUUID:
+    case DataType::TIMEUUID:
       return InternalType::kTimeuuidValue;
-    case BOOL:
+    case DataType::BOOL:
       return InternalType::kBoolValue;
-    case BINARY:
+    case DataType::BINARY:
       return InternalType::kBinaryValue;
-    case USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
-    case MAP:
+    case DataType::USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
+    case DataType::MAP:
       return InternalType::kMapValue;
-    case SET:
+    case DataType::SET:
       return InternalType::kSetValue;
-    case LIST:
+    case DataType::LIST:
       return InternalType::kListValue;
-    case VARINT:
+    case DataType::VARINT:
       return InternalType::kVarintValue;
-    case FROZEN:
+    case DataType::FROZEN:
       return InternalType::kFrozenValue;
-    case GIN_NULL:
+    case DataType::GIN_NULL:
       return InternalType::kGinNullValue;
-    case TUPLE:
+    case DataType::TUPLE:
       return InternalType::kTupleValue;
 
-    case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
-    case UNKNOWN_DATA:
+    case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
+    case DataType::UNKNOWN_DATA:
       return InternalType::VALUE_NOT_SET;
 
-    case TYPEARGS: FALLTHROUGH_INTENDED;
-    case UINT8: FALLTHROUGH_INTENDED;
-    case UINT16:
+    case DataType::TYPEARGS: FALLTHROUGH_INTENDED;
+    case DataType::UINT8: FALLTHROUGH_INTENDED;
+    case DataType::UINT16:
       break;
   }
   LOG(FATAL) << "Internal error: unsupported type " << type;

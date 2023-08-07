@@ -3,7 +3,7 @@
   padding: 20px;
   background: rgba(243, 246, 249, 0.5);
   border-radius: 8px;
-  margin: 24px;
+  margin: 24px 0 24px 0;
   justify-content: center;
   align-items: center;
 
@@ -93,7 +93,7 @@
       }
     }
   }
-  
+
   .learnRecommendationSuggestions {
     margin-left: 4px;
     color: black;
@@ -123,18 +123,24 @@
     font-size: 13px;
   }
   
-  .queryText {
-    font-weight: 600;
-    font-size: 13px;
-    margin-top: 16px;
-    margin-left: 25px;
-    margin-bottom: 16px;
-    font-family: "Inter", sans-serif;
-  }
-  
   #querySkewLoadGraph,
   #cpuSkewGraph,
   #connectionsSkewGraph {
     max-width: 800px;
+  }
+}
+
+.chartBox {
+  border: 1px solid #E9EEF2;
+  padding: 20px;
+  border-radius: 8px;
+
+  .queryText {
+    font-weight: 600;
+    font-size: 13px;
+    margin-top: 16px;
+    margin-left: 4px;
+    margin-bottom: 16px;
+    font-family: "Inter", sans-serif;
   }
 }

@@ -21,6 +21,7 @@ import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
 import com.yugabyte.yw.common.alerts.AlertTemplateVariableServiceTest;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
 import com.yugabyte.yw.common.alerts.impl.AlertChannelBase.Context;
+import com.yugabyte.yw.common.alerts.impl.AlertTemplateService.AlertTemplateDescription;
 import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
@@ -57,6 +58,8 @@ public class AlertChannelBaseTest extends FakeDBApplication {
   private Customer defaultCustomer;
   AlertChannelBase channelBase;
 
+  private AlertTemplateService alertTemplateService;
+
   private AlertTemplateVariableService alertTemplateVariableService;
 
   private AlertChannelTemplateService alertChannelTemplateService;
@@ -66,6 +69,7 @@ public class AlertChannelBaseTest extends FakeDBApplication {
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
+    alertTemplateService = app.injector().instanceOf(AlertTemplateService.class);
     alertTemplateVariableService = app.injector().instanceOf(AlertTemplateVariableService.class);
     alertChannelTemplateService = app.injector().instanceOf(AlertChannelTemplateService.class);
     defaultTemplates =
@@ -213,8 +217,12 @@ public class AlertChannelBaseTest extends FakeDBApplication {
     Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
     alert.setDefinitionUuid(definition.getUuid());
 
+    AlertTemplateDescription alertTemplateDescription =
+        alertTemplateService.getTemplateDescription(configuration.getTemplate());
     List<AlertLabel> labels =
-        definition.getEffectiveLabels(configuration, null, AlertConfiguration.Severity.SEVERE)
+        definition
+            .getEffectiveLabels(
+                alertTemplateDescription, configuration, null, AlertConfiguration.Severity.SEVERE)
             .stream()
             .map(l -> new AlertLabel(l.getName(), l.getValue()))
             .collect(Collectors.toList());

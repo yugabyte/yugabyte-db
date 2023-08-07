@@ -53,7 +53,7 @@ extern Iterator* NewDBIterator(
 // an iterator hierarchy whose memory can be allocated inline. In that way,
 // accessing the iterator tree can be more cache friendly. It is also faster
 // to allocate.
-class ArenaWrappedDBIter : public Iterator {
+class ArenaWrappedDBIter final : public Iterator {
  public:
   virtual ~ArenaWrappedDBIter();
 
@@ -69,14 +69,12 @@ class ArenaWrappedDBIter : public Iterator {
   // a merging iterator.
   virtual void SetIterUnderDBIter(InternalIterator* iter);
 
-  bool Valid() const override;
-  void SeekToFirst() override;
-  void SeekToLast() override;
-  void Seek(const Slice& target) override;
-  void Next() override;
-  void Prev() override;
-  Slice key() const override;
-  Slice value() const override;
+  const KeyValueEntry& Entry() const override;
+  const KeyValueEntry& SeekToFirst() override;
+  const KeyValueEntry& SeekToLast() override;
+  const KeyValueEntry& Seek(Slice target) override;
+  const KeyValueEntry& Next() override;
+  const KeyValueEntry& Prev() override;
   Status status() const override;
   void UseFastNext(bool value) override;
 

@@ -37,6 +37,8 @@ set(PGGATE_SRCS
     pg_dml.cc
     pg_dml_write.cc
     pg_dml_read.cc
+    pg_function.cc
+    pg_function_helpers.cc
     pg_type.cc
     pg_select.cc
     pg_select_index.cc

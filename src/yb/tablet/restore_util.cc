@@ -147,7 +147,7 @@ Status RestorePatch::ProcessExistingOnlyEntry(
         Slice packed_value = last_packed_row_restoring_state_.value.AsSlice();
         const dockv::SchemaPacking& packing = VERIFY_RESULT(
             table_info_->doc_read_context->schema_packing_storage.GetPacking(&packed_value));
-        int64_t column_id_as_int64 = VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(&subkey));
+        int64_t column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(&subkey));
         // Expect only one subkey.
         SCHECK_EQ(subkey.empty(), true, Corruption, "Only one subkey expected");
         ColumnId column_id;

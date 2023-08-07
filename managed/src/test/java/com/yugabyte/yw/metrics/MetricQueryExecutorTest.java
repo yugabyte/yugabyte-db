@@ -15,6 +15,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.MetricConfig;
 import java.util.HashMap;
 import java.util.Map;
@@ -36,6 +38,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
 
   @Mock ApiHelper mockApiHelper;
 
+  @Mock RuntimeConfGetter runtimeConfGetter;
+
   private MetricUrlProvider metricUrlProvider;
   private MetricConfig validMetric;
   private MetricConfig validRangeMetric;
@@ -43,6 +47,9 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
   @Before
   public void setUp() {
     when(mockAppConfig.getString("yb.metrics.url")).thenReturn("foo://bar/api/v1");
+    when(runtimeConfGetter.getStaticConf()).thenReturn(mockAppConfig);
+    when(runtimeConfGetter.getGlobalConf(GlobalConfKeys.metricsLinkUseBrowserFqdn))
+        .thenReturn(true);
 
     JsonNode configJson =
         Json.parse(
@@ -63,7 +70,7 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
     validRangeMetric = MetricConfig.create("valid_range_metric", rangeConfigJson);
     validRangeMetric.save();
 
-    metricUrlProvider = new MetricUrlProvider(mockAppConfig);
+    metricUrlProvider = new MetricUrlProvider(runtimeConfGetter);
   }
 
   @Test
@@ -149,7 +156,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
   @Test
   public void testCustomExternalMetricUrl() {
 
-    when(mockAppConfig.getString("yb.metrics.external.url")).thenReturn("bar://external");
+    when(runtimeConfGetter.getGlobalConf(GlobalConfKeys.metricsExternalUrl))
+        .thenReturn("bar://external");
     HashMap<String, String> params = new HashMap<>();
     params.put("start", "1479281737");
     params.put("queryKey", "valid_range_metric");

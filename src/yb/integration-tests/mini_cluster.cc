@@ -841,7 +841,7 @@ void StepDownAllTablets(MiniCluster* cluster) {
       consensus::LeaderStepDownRequestPB req;
       req.set_tablet_id(peer->tablet_id());
       consensus::LeaderStepDownResponsePB resp;
-      ASSERT_OK(peer->consensus()->StepDown(&req, &resp));
+      ASSERT_OK(ASSERT_RESULT(peer->GetConsensus())->StepDown(&req, &resp));
     }
   }
 }
@@ -854,7 +854,7 @@ void StepDownRandomTablet(MiniCluster* cluster) {
     consensus::LeaderStepDownRequestPB req;
     req.set_tablet_id(peer->tablet_id());
     consensus::LeaderStepDownResponsePB resp;
-    ASSERT_OK(peer->consensus()->StepDown(&req, &resp));
+    ASSERT_OK(ASSERT_RESULT(peer->GetConsensus())->StepDown(&req, &resp));
   }
 }
 
@@ -898,16 +898,18 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(
         if (!filter_transaction_status_tablets(peer)) {
           return false;
         }
-        auto consensus = peer->shared_consensus();
-        return consensus && consensus->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
+        auto consensus_result = peer->GetConsensus();
+        return consensus_result &&
+               consensus_result.get()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
       });
     case ListPeersFilter::kNonLeaders:
       return ListTabletPeers(cluster, [filter_transaction_status_tablets](const auto& peer) {
         if (!filter_transaction_status_tablets(peer)) {
           return false;
         }
-        auto consensus = peer->shared_consensus();
-        return consensus && consensus->GetLeaderStatus() == consensus::LeaderStatus::NOT_LEADER;
+        auto consensus_result = peer->GetConsensus();
+        return consensus_result &&
+               consensus_result.get()->GetLeaderStatus() == consensus::LeaderStatus::NOT_LEADER;
       });
   }
 
@@ -927,10 +929,11 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(
     for (const auto& peer : peers) {
       WARN_NOT_OK(
           WaitFor(
-              [peer] { return peer->consensus() != nullptr || peer->IsShutdownStarted(); }, 5s,
+              [peer] { return peer->GetConsensus() || peer->IsShutdownStarted(); },
+              5s,
               Format("Waiting peer T $0 P $1 ready", peer->tablet_id(), peer->permanent_uuid())),
           "List tablet peers failure");
-      if (peer->consensus() != nullptr && filter(peer)) {
+      if (peer->GetConsensus() && filter(peer)) {
         result.push_back(peer);
       }
     }
@@ -979,7 +982,8 @@ std::vector<tablet::TabletPeerPtr> ListTableActiveTabletLeadersPeers(
     return peer->tablet_metadata() && IsForTable(*peer, table_id) &&
            peer->tablet_metadata()->tablet_data_state() !=
                tablet::TabletDataState::TABLET_DATA_SPLIT_COMPLETED &&
-           peer->consensus()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
+           CHECK_RESULT(peer->GetConsensus())->GetLeaderStatus() !=
+               consensus::LeaderStatus::NOT_LEADER;
   });
 }
 
@@ -1000,7 +1004,7 @@ std::vector<tablet::TabletPeerPtr> ListTableActiveTabletPeers(
 std::vector<tablet::TabletPeerPtr> ListActiveTabletLeadersPeers(MiniCluster* cluster) {
   return ListTabletPeers(cluster, [](const auto& peer) {
     const auto tablet_meta = peer->tablet_metadata();
-    const auto consensus = peer->shared_consensus();
+    const auto consensus = CHECK_RESULT(peer->GetConsensus());
     return tablet_meta && tablet_meta->table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE &&
            IsActive(tablet_meta->tablet_data_state()) &&
            consensus->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
@@ -1041,9 +1045,9 @@ tserver::MiniTabletServer* GetLeaderForTablet(
 Result<tablet::TabletPeerPtr> GetLeaderPeerForTablet(
     MiniCluster* cluster, const std::string& tablet_id) {
   auto leaders = ListTabletPeers(cluster, [&tablet_id](const auto& peer) {
-    auto consensus = peer->shared_consensus();
-    return tablet_id == peer->tablet_id() && consensus &&
-           consensus->GetLeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
+    auto consensus_result = peer->GetConsensus();
+    return tablet_id == peer->tablet_id() && consensus_result &&
+           consensus_result.get()->GetLeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
   });
 
   SCHECK_EQ(
@@ -1069,13 +1073,16 @@ Result<std::vector<tablet::TabletPeerPtr>> WaitForTableActiveTabletLeadersPeers(
 
 Status WaitUntilTabletHasLeader(
     MiniCluster* cluster, const string& tablet_id, MonoTime deadline) {
-  return Wait([cluster, &tablet_id] {
-    auto tablet_peers = ListTabletPeers(cluster, [&tablet_id](auto peer) {
-      return peer->tablet_id() == tablet_id
-          && peer->consensus()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
-    });
-    return tablet_peers.size() == 1;
-  }, deadline, "Waiting for election in tablet " + tablet_id);
+  return Wait(
+      [cluster, &tablet_id] {
+        auto tablet_peers = ListTabletPeers(cluster, [&tablet_id](auto peer) {
+          auto consensus_result = peer->GetConsensus();
+          return peer->tablet_id() == tablet_id && consensus_result &&
+                 consensus_result.get()->GetLeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
+        });
+        return tablet_peers.size() == 1;
+      },
+      deadline, "Waiting for election in tablet " + tablet_id);
 }
 
 Status WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta timeout) {
@@ -1109,7 +1116,7 @@ Status StepDown(
     req.set_force_step_down(true);
   }
   consensus::LeaderStepDownResponsePB resp;
-  RETURN_NOT_OK(leader->consensus()->StepDown(&req, &resp));
+  RETURN_NOT_OK(VERIFY_RESULT(leader->GetConsensus())->StepDown(&req, &resp));
   if (resp.has_error()) {
     return STATUS_FORMAT(RuntimeError, "Step down failed: $0", resp);
   }
@@ -1375,7 +1382,7 @@ Status WaitAllReplicasSynchronizedWithLeader(
   auto leaders = ListTabletPeers(cluster, ListPeersFilter::kLeaders);
   std::unordered_map<TabletId, int64_t> last_committed_idx;
   for (const auto& peer : leaders) {
-    auto idx = peer->consensus()->GetLastCommittedOpId().index;
+    auto idx = VERIFY_RESULT(peer->GetConsensus())->GetLastCommittedOpId().index;
     last_committed_idx.emplace(peer->tablet_id(), idx);
     LOG(INFO) << "Committed op id for " << peer->tablet_id() << ": " << idx;
   }
@@ -1385,11 +1392,12 @@ Status WaitAllReplicasSynchronizedWithLeader(
     if (it == last_committed_idx.end()) {
       return STATUS_FORMAT(IllegalState, "Unknown committed op id for $0", peer->tablet_id());
     }
-    RETURN_NOT_OK(Wait([idx = it->second, peer]() {
-      return peer->consensus()->GetLastCommittedOpId().index >= idx;
-    },
-    deadline, Format("Wait T $0 P $1 commit $2",
-                     peer->tablet_id(), peer->permanent_uuid(), it->second)));
+    RETURN_NOT_OK(Wait(
+        [idx = it->second, peer]() -> Result<bool> {
+          return VERIFY_RESULT(peer->GetConsensus())->GetLastCommittedOpId().index >= idx;
+        },
+        deadline,
+        Format("Wait T $0 P $1 commit $2", peer->tablet_id(), peer->permanent_uuid(), it->second)));
   }
   return Status::OK();
 }

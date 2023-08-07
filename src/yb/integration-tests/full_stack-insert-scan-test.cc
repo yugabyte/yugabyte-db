@@ -262,7 +262,7 @@ const YBTableName FullStackInsertScanTest::kTableName(
     YQL_DATABASE_CQL, "my_keyspace", "full-stack-mrs-test-tbl");
 
 TEST_F(FullStackInsertScanTest, MRSOnlyStressTest) {
-  FLAGS_enable_maintenance_manager = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_maintenance_manager) = false;
   ASSERT_NO_FATALS(CreateTable());
   ASSERT_NO_FATALS(DoConcurrentClientInserts());
   ASSERT_NO_FATALS(DoTestScans());
@@ -354,13 +354,13 @@ void FullStackInsertScanTest::CreateTable() {
                                                 kTableName.namespace_type()));
 
   YBSchemaBuilder b;
-  b.AddColumn("key")->Type(INT64)->NotNull()->HashPrimaryKey();
-  b.AddColumn("string_val")->Type(STRING)->NotNull();
+  b.AddColumn("key")->Type(DataType::INT64)->NotNull()->HashPrimaryKey();
+  b.AddColumn("string_val")->Type(DataType::STRING)->NotNull();
   for (auto& col : Int32ColumnNames()) {
-    b.AddColumn(col)->Type(INT32)->NotNull();
+    b.AddColumn(col)->Type(DataType::INT32)->NotNull();
   }
   for (auto& col : Int64ColumnNames()) {
-    b.AddColumn(col)->Type(INT64)->NotNull();
+    b.AddColumn(col)->Type(DataType::INT64)->NotNull();
   }
   ASSERT_OK(reader_table_.Create(kTableName, CalcNumTablets(1), client_.get(), &b));
   schema_ = reader_table_.schema();

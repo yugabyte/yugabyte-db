@@ -77,14 +77,25 @@
       state: present
     tags: yb-prebuilt-ami
 
+- name: Provision | Ensure mount paths exist.
+  shell: |
+    mkdir -p {{ item }}
+  become: yes
+  become_method: sudo
+  with_items: "{{ mount_points.split(',') }}"
+
+- name: Provision | Ensure proper ownership for mount paths.
+  shell: |
+    chown -R {{ user_name }}:{{ user_name }} {{ item }}
+  become: yes
+  become_method: sudo
+  with_items: "{{ mount_points.split(',') }}"
+
 - name: Provision | Ensure proper permissions for mount paths.
-  file:
-    mode: 0755
-    path: "{{ item }}"
-    state: directory
-    owner: "{{ user_name }}"
-    group: "{{ user_name }}"
-    recurse: yes
+  shell: |
+    chmod -R 755 {{ item }}
+  become: yes
+  become_method: sudo
   with_items: "{{ mount_points.split(',') }}"
 
 - name: setup-postgres-cgroups
@@ -142,6 +153,37 @@
       become_method: sudo
       shell:
         cmd: "loginctl enable-linger {{ user_name }}"
+
+    - block:
+      - name: Set ulimits for user scope in system.conf
+        lineinfile:
+          dest: /etc/systemd/system.conf
+          regexp: '^DefaultLimitNOFILE*'
+          line: 'DefaultLimitNOFILE=1048576'
+          create: yes
+          state: present
+          insertafter: 'EOF'
+
+      - name: Set ulimits for user scope in user.conf
+        lineinfile:
+          dest: /etc/systemd/user.conf
+          regexp: '^DefaultLimitNOFILE*'
+          line: 'DefaultLimitNOFILE=1048576'
+          create: yes
+          state: present
+          insertafter: 'EOF'
+
+      - name: Reboot the system for new ulimits
+        reboot:
+          pre_reboot_delay: 60
+          post_reboot_delay: 60
+          reboot_timeout: 300
+        register: reboot
+
+      - name: Log reboot time
+        debug:
+          msg: System took {{ reboot.elapsed }} seconds to reboot
+      when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '8'
     # Do not configure user scope for setting up systemd in centos7/amazonLinux:2.
     when: ansible_os_family != 'RedHat' or (ansible_distribution_major_version != '7' and not (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2'))
   - block:
@@ -211,7 +253,8 @@
         line: "#includedir /etc/sudoers.d"
         state: present
         validate: "/usr/sbin/visudo -cf %s"
-      when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7'
+      when: (ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7') or
+            (ansible_os_family == 'Amazon' and ansible_distribution_major_version == '2')
 
   - name: setup-postgres-cgroups
     include_role:
@@ -303,16 +346,16 @@
       group: "{{ user_name }}"
       mode: 0644
 
-  - name: Create or Update .bashrc file
+  - name: Create or Update .bashrc file to display systemd mode upon ssh login
     blockinfile:
-      dest: "{{ yb_home_dir }}/.bashrc"
+      dest: "{{ yb_home_dir }}/.bash_profile"
       block: |
         ORANGE='\033[0;33m'
         NC='\033[0m' # No Color
 
         if [[ $- == *i* ]]
             then export PS1="[\u@\h ~]\$ "
-            if [ "$EUID" -e 0 ]
+            if [ "$EUID" -eq 0 ]
                 then echo -e "Use ${ORANGE}'sudo systemctl'${NC} to manage YB software"
                 else echo -e "Use ${ORANGE}'systemctl --user'${NC} to manage YB software"
             fi

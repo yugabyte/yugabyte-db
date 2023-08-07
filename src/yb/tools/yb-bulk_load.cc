@@ -330,16 +330,20 @@ Status BulkLoadTask::InsertRow(const string &row,
   // once we have secondary indexes we probably might need to ensure bulk load builds the indexes
   // as well.
   auto doc_read_context = std::make_shared<docdb::DocReadContext>(
-      "BULK LOAD: ", TableType::YQL_TABLE_TYPE, schema, schema_version);
+      "BULK LOAD: ", TableType::YQL_TABLE_TYPE, docdb::Index::kFalse, schema, schema_version);
   docdb::QLWriteOperation op(
-      req, schema_version, doc_read_context, index_map, /* unique_index_key_projection= */ nullptr,
-      TransactionOperationContext());
+      req, schema_version, doc_read_context, index_map,
+      /* unique_index_key_projection= */ nullptr, TransactionOperationContext());
   RETURN_NOT_OK(op.Init(&resp));
   RETURN_NOT_OK(op.Apply(docdb::DocOperationApplyData{
       .doc_write_batch = doc_write_batch,
       .read_operation_data = docdb::ReadOperationData::FromSingleReadTime(
           HybridTime::FromMicros(kYugaByteMicrosecondEpoch)),
-      .restart_read_ht = nullptr}));
+      .restart_read_ht = nullptr,
+      .iterator = nullptr,
+      .restart_seek = true,
+      .schema_packing_provider = db_fixture,
+  }));
   return Status::OK();
 }
 

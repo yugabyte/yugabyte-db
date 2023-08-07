@@ -244,6 +244,9 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // Gets a shared_ptr to the "root" tracker, creating it if necessary.
   static MemTrackerPtr GetRootTracker();
 
+  // Get the memory consumption from the "root" tracker, creating it if necessary.
+  static int64_t GetRootTrackerConsumption();
+
   // Tries to update consumption from external source.
   // Returns true if consumption was updated, false otherwise.
   //
@@ -406,6 +409,9 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // Creates the root tracker.
   static void CreateRootTracker();
 
+  // Tracks state to ensure that CreateRootTracker is only called once
+  static void InitRootTrackerOnce();
+
   const int64_t limit_;
   const int64_t soft_limit_;
   const std::string id_;
@@ -414,7 +420,7 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   PollChildrenConsumptionFunctors poll_children_consumption_functors_;
   const std::string descr_;
   std::shared_ptr<MemTracker> parent_;
-  CoarseMonoClock::time_point last_consumption_update_ = CoarseMonoClock::time_point::min();
+  CoarseTimePoint next_consumption_update_ = CoarseTimePoint::min();
 
   class TrackerMetrics;
   std::unique_ptr<TrackerMetrics> metrics_;
@@ -438,8 +444,6 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
 
   // Garbage collectors to call after the limit is reached to free memory.
   GarbageCollectorsContainer<std::weak_ptr<GarbageCollector>> gcs_;
-
-  ThreadSafeRandom rand_;
 
   // If true, logs to INFO every consume/release called. Used for debugging.
   bool enable_logging_;

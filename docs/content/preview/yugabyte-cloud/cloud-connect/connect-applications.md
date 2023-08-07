@@ -33,7 +33,7 @@ Before you can connect an application to a YugabyteDB Managed cluster, you need 
 
 To enable inbound network access from your application environment to a cluster, you need to add the IP addresses to the cluster IP allow list.
 
-If your cluster is deployed in a VPC, you need to add the IP addresses of the peered application VPC to the cluster IP allow list.
+If your cluster is deployed in a peered VPC, you need to add the IP addresses of the peered application VPC to the cluster IP allow list.
 
 By default, clusters deployed in a VPC do not expose any publicly-accessible IP addresses. To add public IP addresses, enable **Public Access** on the cluster **Settings** tab.
 
@@ -47,7 +47,7 @@ Clusters deployed in VPCs don't expose public IP addresses unless you explicitly
 
 #### Using smart drivers
 
-To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers _must_ be deployed in a VPC that has been peered with the cluster VPC. For more information on smart drivers and using smart drivers with YugabyteDB Managed, refer to [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/).
+To take advantage of smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications using smart drivers _must_ be deployed in a VPC that has been peered with the cluster VPC. If not deployed in a peered VPC, the smart driver falls back to the upstream driver behavior. For more information on smart drivers and using smart drivers with YugabyteDB Managed, refer to [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/).
 
 ### Cluster certificate
 

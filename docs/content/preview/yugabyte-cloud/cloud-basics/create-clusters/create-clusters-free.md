@@ -24,7 +24,7 @@ Your Sandbox cluster includes the following:
 - Single node.
 - Up to 2 vCPUs, 4 GB memory, and 10 GB of storage, depending on the cloud provider.
 - A [preview release](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB, which provides early access to new features.
-- Available in all [regions](../../../release-notes#cloud-provider-regions).
+- Available in all [regions](../../create-clusters-overview/#cloud-provider-regions).
 
 Share your feedback, questions, and suggestions with other users on the [YugabyteDB Community Slack]({{<slack-invite>}}).
 
@@ -96,7 +96,7 @@ To keep your cluster from being paused, you (or, where applicable, an applicatio
 - You can't pause Sandbox clusters.
 - Sandbox clusters have the following resource limitations:
   - Up to 10 simultaneous connections; more than that will result in increased latencies and dropped connections.
-  - Maximum 500 tables or 12.5 million rows; more than that may result in out-of-memory errors.
+  - Maximum 500 tables or 12.5 million rows; more than that may result in out-of-memory errors. [Large copy operations](../../../cloud-troubleshoot/#connection-dropped-during-copy-operation) (for example, copying many rows of tables with many columns) may also result in out-of-memory errors.
 
 YugabyteDB is a distributed database optimized for deployment across multiple nodes. Because Sandbox clusters are single-node, they are not suitable for proof-of-concept (POC), staging, or performance testing. [Request a free trial](../../../managed-freetrial/) to try out bigger clusters with more resources.
 

@@ -85,7 +85,7 @@ Result<ValueControlFields> DecodeControlFields(Slice* slice, IntentDocHt intent_
   if (entry_type == KeyEntryType::kMergeFlags) {
     slice->consume_byte();
     result.merge_flags = VERIFY_RESULT_PREPEND(
-        util::FastDecodeUnsignedVarInt(slice),
+        FastDecodeUnsignedVarInt(slice),
         Format("Failed to decode merge flags in $0", original.ToDebugHexString()));
     entry_type = GetKeyEntryType(*slice);
   }
@@ -99,7 +99,7 @@ Result<ValueControlFields> DecodeControlFields(Slice* slice, IntentDocHt intent_
   if (entry_type == KeyEntryType::kTtl) {
     slice->consume_byte();
     result.ttl = MonoDelta::FromMilliseconds(VERIFY_RESULT_PREPEND(
-        util::FastDecodeSignedVarIntUnsafe(slice),
+        FastDecodeSignedVarIntUnsafe(slice),
         Format("Failed to decode TTL in $0", original.ToDebugHexString())));
     entry_type = GetKeyEntryType(*slice);
   }
@@ -117,11 +117,11 @@ template <class Out>
 void DoAppendEncoded(const ValueControlFields& fields, Out* out) {
   if (fields.merge_flags) {
     out->push_back(KeyEntryTypeAsChar::kMergeFlags);
-    util::FastAppendUnsignedVarInt(fields.merge_flags, out);
+    FastAppendUnsignedVarInt(fields.merge_flags, out);
   }
   if (!fields.ttl.Equals(ValueControlFields::kMaxTtl)) {
     out->push_back(KeyEntryTypeAsChar::kTtl);
-    util::FastAppendSignedVarIntToBuffer(fields.ttl.ToMilliseconds(), out);
+    FastAppendSignedVarIntToBuffer(fields.ttl.ToMilliseconds(), out);
   }
   if (fields.timestamp != ValueControlFields::kInvalidTimestamp) {
     out->push_back(KeyEntryTypeAsChar::kUserTimestamp);

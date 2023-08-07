@@ -51,7 +51,7 @@ void BackgroundTask::Shutdown() {
 
 Status BackgroundTask::Wake() {
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (closing_) {
       return STATUS(ShutdownInProgress, "Task is shutting down.");
     }

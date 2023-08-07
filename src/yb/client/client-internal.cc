@@ -66,6 +66,7 @@
 #include "yb/gutil/sysinfo.h"
 
 #include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_dcl.proxy.h"
@@ -82,6 +83,7 @@
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/tools/yb-admin_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -265,6 +267,9 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Encryption, GetFullUniverseKeyRegistry);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, AddTransactionStatusTablet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, CreateTransactionStatusTable);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, WaitForYsqlBackendsCatalogVersion);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Backup, CreateSnapshot);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Backup, DeleteSnapshot);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Backup, ListSnapshots);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetIndexBackfillProgress);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTableLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTabletLocations);
@@ -292,6 +297,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetCDCDBStreamInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, ListCDCStreams);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateCDCStream);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsObjectPartOfXRepl);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsBootstrapRequired);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUDTypeMetadata);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetTableSchemaFromSysCatalog);
@@ -802,7 +808,7 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
                               table_name.ToString()));
 
       YBSchemaBuilder schema_builder;
-      schema_builder.AddColumn("parent_column")->Type(BINARY)->PrimaryKey();
+      schema_builder.AddColumn("parent_column")->Type(DataType::BINARY)->PrimaryKey();
       YBSchema ybschema;
       CHECK_OK(schema_builder.Build(&ybschema));
 
@@ -857,8 +863,6 @@ Status YBClient::Data::DeleteTablegroup(YBClient* client,
     return StatusFromPB(resp.error().status());
   }
 
-  // Spin until the table is deleted. Currently only waits till the table reaches DELETING state
-  // See github issue #5290
   RETURN_NOT_OK(WaitForDeleteTableToFinish(client, resp.parent_table_id(), deadline));
 
   LOG(INFO) << "Deleted tablegroup " << tablegroup_id;
@@ -1523,8 +1527,9 @@ void GetColocatedTabletSchemaRpc::CallRemoteMethod() {
 }
 
 string GetColocatedTabletSchemaRpc::ToString() const {
-  return Substitute("GetColocatedTabletSchemaRpc(table_identifier: $0, num_attempts: $1)",
-                    table_identifier_.ShortDebugString(), num_attempts());
+  return Format(
+      "GetColocatedTabletSchemaRpc(table_identifier: $0, num_attempts: $1)",
+      table_identifier_.ShortDebugString(), num_attempts());
 }
 
 void GetColocatedTabletSchemaRpc::ProcessResponse(const Status& status) {
@@ -1602,7 +1607,7 @@ string CreateCDCStreamRpc::ToString() const {
 
 void CreateCDCStreamRpc::ProcessResponse(const Status& status) {
   if (status.ok()) {
-    user_cb_(resp_.stream_id());
+    user_cb_(xrepl::StreamId::FromString(resp_.stream_id()));
   } else {
     LOG(WARNING) << ToString() << " failed: " << status.ToString();
     user_cb_(status);
@@ -1612,10 +1617,11 @@ void CreateCDCStreamRpc::ProcessResponse(const Status& status) {
 class DeleteCDCStreamRpc
     : public ClientMasterRpc<DeleteCDCStreamRequestPB, DeleteCDCStreamResponsePB> {
  public:
-  DeleteCDCStreamRpc(YBClient* client,
-                     StatusCallback user_cb,
-                     const CDCStreamId& stream_id,
-                     CoarseTimePoint deadline);
+  DeleteCDCStreamRpc(
+      YBClient* client,
+      StatusCallback user_cb,
+      const xrepl::StreamId& stream_id,
+      CoarseTimePoint deadline);
 
   string ToString() const override;
 
@@ -1626,17 +1632,16 @@ class DeleteCDCStreamRpc
   void ProcessResponse(const Status& status) override;
 
   StatusCallback user_cb_;
-  std::string stream_id_;
+  xrepl::StreamId stream_id_;
 };
 
-DeleteCDCStreamRpc::DeleteCDCStreamRpc(YBClient* client,
-                                       StatusCallback user_cb,
-                                       const CDCStreamId& stream_id,
-                                       CoarseTimePoint deadline)
-    : ClientMasterRpc(client, deadline),
-      user_cb_(std::move(user_cb)),
-      stream_id_(stream_id) {
-  req_.add_stream_id(stream_id_);
+DeleteCDCStreamRpc::DeleteCDCStreamRpc(
+    YBClient* client,
+    StatusCallback user_cb,
+    const xrepl::StreamId& stream_id,
+    CoarseTimePoint deadline)
+    : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)), stream_id_(stream_id) {
+  req_.add_stream_id(stream_id_.ToString());
 }
 
 DeleteCDCStreamRpc::~DeleteCDCStreamRpc() {
@@ -1649,8 +1654,7 @@ void DeleteCDCStreamRpc::CallRemoteMethod() {
 }
 
 string DeleteCDCStreamRpc::ToString() const {
-  return Substitute("DeleteCDCStream(stream_id: $0, num_attempts: $1)",
-                    stream_id_, num_attempts());
+  return Format("DeleteCDCStream(stream_id: $0, num_attempts: $1)", stream_id_, num_attempts());
 }
 
 void DeleteCDCStreamRpc::ProcessResponse(const Status& status) {
@@ -1659,6 +1663,67 @@ void DeleteCDCStreamRpc::ProcessResponse(const Status& status) {
   }
   user_cb_.Run(status);
 }
+
+class CreateSnapshotRpc
+    : public ClientMasterRpc<CreateSnapshotRequestPB, CreateSnapshotResponsePB> {
+ public:
+  CreateSnapshotRpc(YBClient* client, CreateSnapshotCallback user_cb, CoarseTimePoint deadline)
+      : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {}
+
+  Status Init(const std::vector<client::YBTableName>& tables) {
+    SCHECK(!tables.empty(), InvalidArgument, "Table names is empty");
+
+    for (const auto& table : tables) {
+      master::TableIdentifierPB id;
+      table.SetIntoTableIdentifierPB(&id);
+      req_.mutable_tables()->Add()->Swap(&id);
+    }
+    req_.set_transaction_aware(true);
+    return Status::OK();
+  }
+
+  string ToString() const override {
+    return Format("CreateSnapshotRpc(num_attempts: $1)", num_attempts());
+  }
+
+  virtual ~CreateSnapshotRpc() {}
+
+ private:
+  void CallRemoteMethod() override {
+    master_backup_proxy()->CreateSnapshotAsync(
+        req_, &resp_, mutable_retrier()->mutable_controller(),
+        std::bind(&CreateSnapshotRpc::Finished, this, Status::OK()));
+  }
+
+  void ProcessResponse(const Status& status) override {
+    if (!status.ok()) {
+      LOG(WARNING) << ToString() << " failed: " << status.ToString();
+      user_cb_(status);
+      return;
+    }
+
+    auto result = ProcessResponseInternal();
+    if (!result) {
+      LOG(WARNING) << ToString() << " failed: " << result.status().ToString();
+    }
+
+    user_cb_(std::move(result));
+  }
+
+  Result<TxnSnapshotId> ProcessResponseInternal() {
+    if (resp_.has_error()) {
+      return StatusFromPB(resp_.error().status());
+    }
+
+    SCHECK(
+        resp_.has_snapshot_id() && !resp_.snapshot_id().empty(), IllegalState,
+        "Expected non-empty snapshot_id from response");
+
+    return FullyDecodeTxnSnapshotId(resp_.snapshot_id());
+  }
+
+  CreateSnapshotCallback user_cb_;
+};
 
 class BootstrapProducerRpc
     : public ClientMasterRpc<BootstrapProducerRequestPB, BootstrapProducerResponsePB> {
@@ -1821,12 +1886,13 @@ void GetCDCDBStreamInfoRpc::ProcessResponse(const Status& status) {
 
 class GetCDCStreamRpc : public ClientMasterRpc<GetCDCStreamRequestPB, GetCDCStreamResponsePB> {
  public:
-  GetCDCStreamRpc(YBClient* client,
-                  StdStatusCallback user_cb,
-                  const CDCStreamId& stream_id,
-                  ObjectId* object_id,
-                  std::unordered_map<std::string, std::string>* options,
-                  CoarseTimePoint deadline);
+  GetCDCStreamRpc(
+      YBClient* client,
+      StdStatusCallback user_cb,
+      const xrepl::StreamId& stream_id,
+      ObjectId* object_id,
+      std::unordered_map<std::string, std::string>* options,
+      CoarseTimePoint deadline);
 
   std::string ToString() const override;
 
@@ -1837,23 +1903,24 @@ class GetCDCStreamRpc : public ClientMasterRpc<GetCDCStreamRequestPB, GetCDCStre
   void ProcessResponse(const Status& status) override;
 
   StdStatusCallback user_cb_;
-  std::string stream_id_;
+  xrepl::StreamId stream_id_;
   ObjectId* object_id_;
   std::unordered_map<std::string, std::string>* options_;
 };
 
-GetCDCStreamRpc::GetCDCStreamRpc(YBClient* client,
-                                 StdStatusCallback user_cb,
-                                 const CDCStreamId& stream_id,
-                                 TableId* object_id,
-                                 std::unordered_map<std::string, std::string>* options,
-                                 CoarseTimePoint deadline)
+GetCDCStreamRpc::GetCDCStreamRpc(
+    YBClient* client,
+    StdStatusCallback user_cb,
+    const xrepl::StreamId& stream_id,
+    TableId* object_id,
+    std::unordered_map<std::string, std::string>* options,
+    CoarseTimePoint deadline)
     : ClientMasterRpc(client, deadline),
       user_cb_(std::move(user_cb)),
       stream_id_(stream_id),
       object_id_(DCHECK_NOTNULL(object_id)),
       options_(DCHECK_NOTNULL(options)) {
-  req_.set_stream_id(stream_id_);
+  req_.set_stream_id(stream_id_.ToString());
 }
 
 GetCDCStreamRpc::~GetCDCStreamRpc() {
@@ -1866,8 +1933,7 @@ void GetCDCStreamRpc::CallRemoteMethod() {
 }
 
 string GetCDCStreamRpc::ToString() const {
-  return Substitute("GetCDCStream(stream_id: $0, num_attempts: $1)",
-                    stream_id_, num_attempts());
+  return Format("GetCDCStream(stream_id: $0, num_attempts: $1)", stream_id_, num_attempts());
 }
 
 void GetCDCStreamRpc::ProcessResponse(const Status& status) {
@@ -2207,10 +2273,11 @@ void YBClient::Data::CreateCDCStream(
       client, callback, table_id, options, transactional, deadline);
 }
 
-void YBClient::Data::DeleteCDCStream(YBClient* client,
-                                     const CDCStreamId& stream_id,
-                                     CoarseTimePoint deadline,
-                                     StatusCallback callback) {
+void YBClient::Data::DeleteCDCStream(
+    YBClient* client,
+    const xrepl::StreamId& stream_id,
+    CoarseTimePoint deadline,
+    StatusCallback callback) {
   auto rpc = StartRpc<internal::DeleteCDCStreamRpc>(
       client, callback, stream_id, deadline);
 }
@@ -2243,7 +2310,7 @@ void YBClient::Data::GetCDCDBStreamInfo(
 
 void YBClient::Data::GetCDCStream(
     YBClient* client,
-    const CDCStreamId& stream_id,
+    const xrepl::StreamId& stream_id,
     std::shared_ptr<ObjectId> object_id,
     std::shared_ptr<std::unordered_map<std::string, std::string>> options,
     CoarseTimePoint deadline,
@@ -2279,13 +2346,15 @@ void YBClient::Data::LeaderMasterDetermined(const Status& status,
           << host_port.ToString();
   std::vector<StdStatusCallback> callbacks;
   {
-    std::lock_guard<simple_spinlock> l(leader_master_lock_);
+    std::lock_guard l(leader_master_lock_);
     callbacks.swap(leader_master_callbacks_);
 
     if (status.ok()) {
       leader_master_hostport_ = host_port;
       master_admin_proxy_ = std::make_shared<master::MasterAdminProxy>(
           proxy_cache_.get(), host_port);
+      master_backup_proxy_ =
+          std::make_shared<master::MasterBackupProxy>(proxy_cache_.get(), host_port);
       master_client_proxy_ = std::make_shared<master::MasterClientProxy>(
           proxy_cache_.get(), host_port);
       master_cluster_proxy_ = std::make_shared<master::MasterClusterProxy>(
@@ -2326,7 +2395,7 @@ void YBClient::Data::SetMasterServerProxyAsync(CoarseTimePoint deadline,
 
   bool was_empty;
   {
-    std::lock_guard<simple_spinlock> l(leader_master_lock_);
+    std::lock_guard l(leader_master_lock_);
     was_empty = leader_master_callbacks_.empty();
     leader_master_callbacks_.push_back(callback);
   }
@@ -2345,7 +2414,7 @@ void YBClient::Data::SetMasterServerProxyAsync(CoarseTimePoint deadline,
 Result<server::MasterAddresses> YBClient::Data::ParseMasterAddresses(
     const Status& reinit_status) EXCLUDES(master_server_addrs_lock_) {
   server::MasterAddresses result;
-  std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
+  std::lock_guard l(master_server_addrs_lock_);
   if (!reinit_status.ok() && full_master_server_addrs_.empty()) {
     return reinit_status;
   }
@@ -2404,7 +2473,7 @@ void YBClient::Data::DoSetMasterServerProxy(CoarseTimePoint deadline,
 
 // API to clear and reset master addresses, used during master config change.
 Status YBClient::Data::SetMasterAddresses(const string& addrs) {
-  std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
+  std::lock_guard l(master_server_addrs_lock_);
   if (addrs.empty()) {
     std::ostringstream out;
     out.str("Invalid empty master address cannot be set. Current list is: ");
@@ -2424,8 +2493,18 @@ Status YBClient::Data::SetMasterAddresses(const string& addrs) {
 
 // Add a given master to the master address list.
 Status YBClient::Data::AddMasterAddress(const HostPort& addr) {
-  std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
+  std::lock_guard l(master_server_addrs_lock_);
   master_server_addrs_.push_back(addr.ToString());
+  return Status::OK();
+}
+
+Status YBClient::Data::CreateSnapshot(
+    YBClient* client, const std::vector<YBTableName>& tables, CoarseTimePoint deadline,
+    CreateSnapshotCallback callback) {
+  auto rpc = std::make_shared<internal::CreateSnapshotRpc>(client, std::move(callback), deadline);
+  RETURN_NOT_OK(rpc->Init(tables));
+  rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
+
   return Status::OK();
 }
 
@@ -2462,7 +2541,7 @@ Result<std::string> ReadMasterAddressesFromFlagFile(
 // re-initialize the 'master_server_addrs_' variable.
 Status YBClient::Data::ReinitializeMasterAddresses() {
   Status result;
-  std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
+  std::lock_guard l(master_server_addrs_lock_);
   if (!FLAGS_flagfile.empty() && !skip_master_flagfile_) {
     LOG(INFO) << "Reinitialize master addresses from file: " << FLAGS_flagfile;
     auto master_addrs = ReadMasterAddressesFromFlagFile(
@@ -2506,7 +2585,7 @@ Status YBClient::Data::RemoveMasterAddress(const HostPort& addr) {
 
   {
     auto str = addr.ToString();
-    std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
+    std::lock_guard l(master_server_addrs_lock_);
     auto it = std::find(master_server_addrs_.begin(), master_server_addrs_.end(), str);
     if (it != master_server_addrs_.end()) {
       master_server_addrs_.erase(it, it + str.size());
@@ -2622,42 +2701,47 @@ Result<bool> YBClient::Data::CheckIfPitrActive(CoarseTimePoint deadline) {
 }
 
 HostPort YBClient::Data::leader_master_hostport() const {
-  std::lock_guard<simple_spinlock> l(leader_master_lock_);
+  std::lock_guard l(leader_master_lock_);
   return leader_master_hostport_;
 }
 
 shared_ptr<master::MasterAdminProxy> YBClient::Data::master_admin_proxy() const {
-  std::lock_guard<simple_spinlock> l(leader_master_lock_);
+  std::lock_guard l(leader_master_lock_);
   return master_admin_proxy_;
 }
 
+shared_ptr<master::MasterBackupProxy> YBClient::Data::master_backup_proxy() const {
+  std::lock_guard l(leader_master_lock_);
+  return master_backup_proxy_;
+}
+
 shared_ptr<master::MasterClientProxy> YBClient::Data::master_client_proxy() const {
-  std::lock_guard<simple_spinlock> l(leader_master_lock_);
+  std::lock_guard l(leader_master_lock_);
   return master_client_proxy_;
 }
 
 shared_ptr<master::MasterClusterProxy> YBClient::Data::master_cluster_proxy() const {
-  std::lock_guard<simple_spinlock> l(leader_master_lock_);
+  std::lock_guard l(leader_master_lock_);
   return master_cluster_proxy_;
 }
 
 shared_ptr<master::MasterDclProxy> YBClient::Data::master_dcl_proxy() const {
-  std::lock_guard<simple_spinlock> l(leader_master_lock_);
+  std::lock_guard l(leader_master_lock_);
   return master_dcl_proxy_;
 }
 
 shared_ptr<master::MasterDdlProxy> YBClient::Data::master_ddl_proxy() const {
-  std::lock_guard<simple_spinlock> l(leader_master_lock_);
+  std::lock_guard l(leader_master_lock_);
   return master_ddl_proxy_;
 }
 
 shared_ptr<master::MasterReplicationProxy> YBClient::Data::master_replication_proxy() const {
-  std::lock_guard<simple_spinlock> l(leader_master_lock_);
+  std::lock_guard l(leader_master_lock_);
   return master_replication_proxy_;
 }
 
 shared_ptr<master::MasterEncryptionProxy> YBClient::Data::master_encryption_proxy() const {
-  std::lock_guard<simple_spinlock> l(leader_master_lock_);
+  std::lock_guard l(leader_master_lock_);
   return master_encryption_proxy_;
 }
 
@@ -2675,7 +2759,7 @@ void YBClient::Data::StartShutdown() {
 }
 
 bool YBClient::Data::IsMultiMaster() {
-  std::lock_guard<simple_spinlock> l(master_server_addrs_lock_);
+  std::lock_guard l(master_server_addrs_lock_);
   if (full_master_server_addrs_.size() > 1) {
     return true;
   }

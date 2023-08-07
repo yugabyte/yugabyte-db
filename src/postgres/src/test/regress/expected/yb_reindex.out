@@ -233,7 +233,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed TO on;
 UPDATE pg_yb_catalog_version SET current_version = current_version + 1;
 UPDATE pg_yb_catalog_version SET last_breaking_version = current_version;
 RESET yb_non_ddl_txn_for_sys_tables_allowed;
-SELECT current_version = last_breaking_version from pg_yb_catalog_version;
+SELECT distinct(current_version = last_breaking_version) from pg_yb_catalog_version;
  ?column?
 ----------
  t
@@ -249,7 +249,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed TO on;
 UPDATE pg_yb_catalog_version SET current_version = current_version + 1;
 UPDATE pg_yb_catalog_version SET last_breaking_version = current_version;
 RESET yb_non_ddl_txn_for_sys_tables_allowed;
-SELECT current_version = last_breaking_version from pg_yb_catalog_version;
+SELECT distinct(current_version = last_breaking_version) from pg_yb_catalog_version;
  ?column?
 ----------
  t
@@ -277,7 +277,7 @@ SET yb_non_ddl_txn_for_sys_tables_allowed TO on;
 UPDATE pg_yb_catalog_version SET current_version = current_version + 1;
 UPDATE pg_yb_catalog_version SET last_breaking_version = current_version;
 RESET yb_non_ddl_txn_for_sys_tables_allowed;
-SELECT current_version = last_breaking_version from pg_yb_catalog_version;
+SELECT distinct(current_version = last_breaking_version) from pg_yb_catalog_version;
  ?column?
 ----------
  t

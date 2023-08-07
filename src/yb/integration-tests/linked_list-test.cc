@@ -140,10 +140,10 @@ class LinkedListTester {
         client_(client) {
     client::YBSchemaBuilder b;
 
-    b.AddColumn(kKeyColumnName)->Type(INT64)->NotNull()->HashPrimaryKey();
-    b.AddColumn(kLinkColumnName)->Type(INT64)->NotNull();
-    b.AddColumn(kInsertTsColumnName)->Type(INT64)->NotNull();
-    b.AddColumn(kUpdatedColumnName)->Type(BOOL)->NotNull();
+    b.AddColumn(kKeyColumnName)->Type(DataType::INT64)->NotNull()->HashPrimaryKey();
+    b.AddColumn(kLinkColumnName)->Type(DataType::INT64)->NotNull();
+    b.AddColumn(kInsertTsColumnName)->Type(DataType::INT64)->NotNull();
+    b.AddColumn(kUpdatedColumnName)->Type(DataType::BOOL)->NotNull();
     CHECK_OK(b.Build(&schema_));
   }
 
@@ -1063,8 +1063,8 @@ TEST_F(LinkedListTest, TestLoadWhileOneServerDownAndVerify) {
   FLAGS_ts_flags += "--log_cache_size_limit_mb=2";
   FLAGS_ts_flags += " --global_log_cache_size_limit_mb=4";
 
-  FLAGS_num_tablet_servers = 3;
-  FLAGS_num_tablets = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablets) = 1;
   ASSERT_NO_FATALS(BuildAndStart());
 
   LOG(INFO) << "Load the data with one of the three servers down.";

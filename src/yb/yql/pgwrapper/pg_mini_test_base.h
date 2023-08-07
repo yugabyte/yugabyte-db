@@ -13,24 +13,20 @@
 
 #pragma once
 
-#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/gutil/macros.h"
-
 #include "yb/util/result.h"
+#include "yb/util/status.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
-namespace yb {
-namespace server {
-class RpcServerBase;
-}
-
-namespace pgwrapper {
+namespace yb::pgwrapper {
 
 class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
  protected:
@@ -73,7 +69,7 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
     return pg_host_port_;
   }
 
-  Result<TableId> GetTableIDFromTableName(const std::string table_name);
+  Result<TableId> GetTableIDFromTableName(const std::string& table_name);
 
   Result<master::CatalogManagerIf*> catalog_manager() const;
 
@@ -88,22 +84,4 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
   HostPort pg_host_port_;
 };
 
-class MetricWatcher {
- public:
-  using DeltaFunctor = std::function<Status()>;
-  MetricWatcher(std::reference_wrapper<const server::RpcServerBase> server,
-                std::reference_wrapper<const MetricPrototype> metric);
-
-  Result<size_t> Delta(const DeltaFunctor& functor) const;
-
- private:
-  Result<size_t> GetMetricCount() const;
-
-  const server::RpcServerBase& server_;
-  const MetricPrototype& metric_;
-
-  DISALLOW_COPY_AND_ASSIGN(MetricWatcher);
-};
-
-} // namespace pgwrapper
-} // namespace yb
+} // namespace yb::pgwrapper

@@ -106,58 +106,59 @@ class HashSkipListRep : public MemTableRep {
       }
     }
 
-    // Returns true iff the iterator is positioned at a valid node.
-    bool Valid() const override {
-      return list_ != nullptr && iter_.Valid();
-    }
-
-    // Returns the key at the current position.
-    // REQUIRES: Valid()
-    const char* key() const override {
-      assert(Valid());
-      return iter_.key();
+    // Return current entry, NULL if iterator is invalid.
+    const char* Entry() const override {
+      return list_ != nullptr ? iter_.Entry() : nullptr;
     }
 
     // Advances to the next position.
     // REQUIRES: Valid()
-    void Next() override {
-      assert(Valid());
-      iter_.Next();
+    // Returns the same value as would be returned by Entry after this method is invoked.
+    const char* Next() override {
+      assert(Entry() != nullptr);
+      return iter_.Next();
     }
 
     // Advances to the previous position.
     // REQUIRES: Valid()
-    void Prev() override {
-      assert(Valid());
-      iter_.Prev();
+    const char* Prev() override {
+      assert(Entry() != nullptr);
+      return iter_.Prev();
     }
 
     // Advance to the first entry with a key >= target
-    virtual void Seek(const Slice& internal_key,
-                      const char* memtable_key) override {
-      if (list_ != nullptr) {
-        const char* encoded_key =
-            (memtable_key != nullptr) ?
-                memtable_key : EncodeKey(&tmp_, internal_key);
-        iter_.Seek(encoded_key);
+    const char* Seek(Slice internal_key) override {
+      if (!list_) {
+        return nullptr;
       }
+      return iter_.Seek(EncodeKey(&tmp_, internal_key));
+    }
+
+    const char* SeekMemTableKey(Slice key, const char* memtable_key) override {
+      if (!list_) {
+        return nullptr;
+      }
+      return iter_.Seek(memtable_key);
     }
 
     // Position at the first entry in collection.
     // Final state of iterator is Valid() iff collection is not empty.
-    void SeekToFirst() override {
-      if (list_ != nullptr) {
-        iter_.SeekToFirst();
+    const char* SeekToFirst() override {
+      if (!list_) {
+        return nullptr;
       }
+      return iter_.SeekToFirst();
     }
 
     // Position at the last entry in collection.
     // Final state of iterator is Valid() iff collection is not empty.
-    void SeekToLast() override {
-      if (list_ != nullptr) {
-        iter_.SeekToLast();
+    const char* SeekToLast() override {
+      if (!list_) {
+        return nullptr;
       }
+      return iter_.SeekToLast();
     }
+
    protected:
     void Reset(Bucket* list) {
       if (own_list_) {
@@ -187,28 +188,39 @@ class HashSkipListRep : public MemTableRep {
         memtable_rep_(memtable_rep) {}
 
     // Advance to the first entry with a key >= target
-    void Seek(const Slice& k, const char* memtable_key) override {
-      auto transformed = memtable_rep_.transform_->Transform(ExtractUserKey(k));
-      Reset(memtable_rep_.GetBucket(transformed));
-      HashSkipListRep::Iterator::Seek(k, memtable_key);
+    const char* Seek(Slice k) override {
+      PrepareSeek(k);
+      return HashSkipListRep::Iterator::Seek(k);
+    }
+
+    const char* SeekMemTableKey(Slice k, const char* memtable_key) override {
+      PrepareSeek(k);
+      return HashSkipListRep::Iterator::SeekMemTableKey(k, memtable_key);
     }
 
     // Position at the first entry in collection.
     // Final state of iterator is Valid() iff collection is not empty.
-    void SeekToFirst() override {
+    const char* SeekToFirst() override {
       // Prefix iterator does not support total order.
       // We simply set the iterator to invalid state
       Reset(nullptr);
+      return Entry();
     }
 
     // Position at the last entry in collection.
     // Final state of iterator is Valid() iff collection is not empty.
-    void SeekToLast() override {
+    const char* SeekToLast() override {
       // Prefix iterator does not support total order.
       // We simply set the iterator to invalid state
       Reset(nullptr);
+      return Entry();
     }
    private:
+    void PrepareSeek(Slice k) {
+      auto transformed = memtable_rep_.transform_->Transform(ExtractUserKey(k));
+      Reset(memtable_rep_.GetBucket(transformed));
+    }
+
     // the underlying memtable
     const HashSkipListRep& memtable_rep_;
   };
@@ -218,19 +230,16 @@ class HashSkipListRep : public MemTableRep {
     // instantiating an empty bucket over which to iterate.
    public:
     EmptyIterator() { }
-    bool Valid() const override { return false; }
-    const char* key() const override {
+    const char* Entry() const override {
       assert(false);
       return nullptr;
     }
-    void Next() override {}
-    void Prev() override {}
-    virtual void Seek(const Slice& internal_key,
-                      const char* memtable_key) override {}
-    void SeekToFirst() override {}
-    void SeekToLast() override {}
-
-   private:
+    const char* Next() override { return nullptr; }
+    const char* Prev() override { return nullptr; }
+    const char* Seek(Slice internal_key) override { return nullptr; }
+    const char* SeekMemTableKey(Slice key, const char* memtable_key) override { return nullptr; }
+    const char* SeekToFirst() override { return nullptr; }
+    const char* SeekToLast() override { return nullptr; }
   };
 };
 
@@ -298,9 +307,11 @@ void HashSkipListRep::Get(const LookupKey& k, void* callback_args,
   auto bucket = GetBucket(transformed);
   if (bucket != nullptr) {
     Bucket::Iterator iter(bucket);
-    for (iter.Seek(k.memtable_key().cdata());
-         iter.Valid() && callback_func(callback_args, iter.key());
-         iter.Next()) {
+    for (iter.Seek(k.memtable_key().cdata());; iter.Next()) {
+      const auto* entry = iter.Entry();
+      if (!entry || !callback_func(callback_args, entry)) {
+        break;
+      }
     }
   }
 }
@@ -313,8 +324,12 @@ MemTableRep::Iterator* HashSkipListRep::GetIterator(Arena* arena) {
     auto bucket = GetBucket(i);
     if (bucket != nullptr) {
       Bucket::Iterator itr(bucket);
-      for (itr.SeekToFirst(); itr.Valid(); itr.Next()) {
-        list->Insert(itr.key());
+      for (itr.SeekToFirst();; itr.Next()) {
+        const auto* entry = itr.Entry();
+        if (!entry) {
+          break;
+        }
+        list->Insert(entry);
       }
     }
   }

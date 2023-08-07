@@ -1,4 +1,4 @@
-import React, { FC, useContext } from 'react';
+import { FC, useContext } from 'react';
 import _ from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { useWatch, useFormContext } from 'react-hook-form';
@@ -27,6 +27,8 @@ export const UserTags: FC = () => {
 
   //field data
   const provider = useWatch({ name: PROVIDER_FIELD });
+  const disableEditTags =
+    isAsyncCluster || userTagsDisable || (isEditMode && provider?.code === CloudType.azu);
 
   if (!isUserTagExist && isAsyncCluster) return null;
 
@@ -39,10 +41,7 @@ export const UserTags: FC = () => {
       >
         <Typography variant="h4">{t('universeForm.userTags.title')}</Typography>
         <Box display="flex" width="100%" mt={4}>
-          <UserTagsField
-            disabled={isAsyncCluster || userTagsDisable}
-            isAsyncCluster={isAsyncCluster}
-          />
+          <UserTagsField disabled={disableEditTags} isAsyncCluster={isAsyncCluster} />
         </Box>
       </Box>
     );

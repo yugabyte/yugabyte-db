@@ -151,6 +151,12 @@ std::string ResultAsString(const SubDocument* result) {
 
 YB_STRONGLY_TYPED_BOOL(NeedValue);
 
+Slice AdjustRootDocKey(KeyBuffer* root_doc_key) {
+  // Append kHighest to the root doc key, so it could serve as upperbound.
+  root_doc_key->PushBack(dockv::KeyEntryTypeAsChar::kHighest);
+  return root_doc_key->AsSlice().WithoutSuffix(1);
+}
+
 } // namespace
 
 Result<DocHybridTime> GetTableTombstoneTime(
@@ -174,8 +180,8 @@ Result<DocHybridTime> GetTableTombstoneTime(
       doc_db, BloomFilterMode::USE_BLOOM_FILTER, table_id, rocksdb::kDefaultQueryId, txn_op_context,
       read_operation_data);
   iter->Seek(table_id);
-  auto entry_data = VERIFY_RESULT(iter->Fetch());
-  if (!entry_data || !entry_data.value.TryConsumeByte(dockv::ValueEntryTypeAsChar::kTombstone) ||
+  const auto& entry_data = VERIFY_RESULT_REF(iter->Fetch());
+  if (!entry_data || !entry_data.value.FirstByteIs(dockv::ValueEntryTypeAsChar::kTombstone) ||
       entry_data.key != table_id) {
     return DocHybridTime::kInvalid;
   }
@@ -207,7 +213,7 @@ Result<std::optional<SubDocument>> TEST_GetSubDocument(
                   iter->read_time().ToString());
 
   iter->Seek(sub_doc_key);
-  auto fetched = VERIFY_RESULT(iter->Fetch());
+  const auto& fetched = VERIFY_RESULT_REF(iter->Fetch());
   if (!fetched || !fetched.key.starts_with(sub_doc_key)) {
     return std::nullopt;
   }
@@ -219,7 +225,8 @@ Result<std::optional<SubDocument>> TEST_GetSubDocument(
   RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(VERIFY_RESULT(GetTableTombstoneTime(
       sub_doc_key, doc_db, txn_op_context, read_operation_data))));
   SubDocument result;
-  if (VERIFY_RESULT(doc_reader.Get(sub_doc_key, &fetched, &result)) != DocReaderResult::kNotFound) {
+  KeyBuffer key_buffer(sub_doc_key);
+  if (VERIFY_RESULT(doc_reader.Get(&key_buffer, fetched, &result)) != DocReaderResult::kNotFound) {
     return result;
   }
   return std::nullopt;
@@ -629,10 +636,16 @@ class DocDBTableReader::GetHelperBase {
   static constexpr bool kYsql = ysql;
   static constexpr bool kCheckExistOnly = check_exists_only;
 
-  GetHelperBase(DocDBTableReader* reader, Slice root_doc_key)
-      : reader_(*DCHECK_NOTNULL(reader)), root_doc_key_(root_doc_key) {}
+  GetHelperBase(DocDBTableReader* reader, KeyBuffer* root_doc_key)
+      : reader_(*DCHECK_NOTNULL(reader)),
+        root_doc_key_buffer_(root_doc_key),
+        root_doc_key_(AdjustRootDocKey(root_doc_key)),
+        upperbound_scope_(root_doc_key->AsSlice(), reader_.iter_) {
+  }
 
-  virtual ~GetHelperBase() = default;
+  virtual ~GetHelperBase() {
+    root_doc_key_buffer_->PopBack();
+  }
 
  protected:
   virtual bool CheckForRootValue() = 0;
@@ -643,16 +656,15 @@ class DocDBTableReader::GetHelperBase {
       Slice row_value, LazyDocHybridTime* root_write_time,
       const ValueControlFields& control_fields) = 0;
 
-  Result<DocReaderResult> DoRun(FetchedEntry* fetched_key, LazyDocHybridTime* root_write_time) {
-    IntentAwareIteratorPrefixScope prefix_scope(root_doc_key_, reader_.iter_);
-
-    RETURN_NOT_OK(Prepare(*fetched_key, root_write_time));
+  Result<DocReaderResult> DoRun(
+      const FetchedEntry& prefetched_key, LazyDocHybridTime* root_write_time) {
+    auto& fetched_key = VERIFY_RESULT_REF(Prepare(prefetched_key, root_write_time));
 
     if (kCheckExistOnly) {
       if (found_) {
         return FoundResult(/* iter_valid= */ true);
       }
-      auto iter_valid = VERIFY_RESULT(Scan(fetched_key));
+      auto iter_valid = VERIFY_RESULT(Scan(&fetched_key));
       return found_ ? FoundResult(iter_valid) : DocReaderResult::kNotFound;
     }
 
@@ -661,7 +673,7 @@ class DocDBTableReader::GetHelperBase {
       cannot_scan_columns_ = true;
     }
 
-    auto iter_valid = VERIFY_RESULT(Scan(fetched_key));
+    auto iter_valid = VERIFY_RESULT(Scan(&fetched_key));
 
     if (found_ ||
         CheckForRootValue()) { // Could only happen in tests.
@@ -674,18 +686,20 @@ class DocDBTableReader::GetHelperBase {
   // Scans DocDB for entries related to root_doc_key_.
   // Iterator should already point to the first such entry.
   // Changes nearly all internal state fields.
-  Result<bool> Scan(FetchedEntry* fetched_key) {
+  Result<bool> Scan(const FetchedEntry* fetched_key) {
     DCHECK_ONLY_NOTNULL(fetched_key);
+    if (!*fetched_key) {
+      RETURN_NOT_OK(reader_.deadline_info_.CheckDeadlinePassed());
+      return false;
+    }
     for (;;) {
-      if (reader_.deadline_info_.CheckAndSetDeadlinePassed()) {
-        return STATUS(Expired, "Deadline for query passed");
-      }
+      RETURN_NOT_OK(reader_.deadline_info_.CheckDeadlinePassed());
 
       if (!VERIFY_RESULT(HandleRecord(*fetched_key))) {
         return true;
       }
 
-      *fetched_key = VERIFY_RESULT(reader_.iter_->Fetch());
+      fetched_key = &VERIFY_RESULT_REF(reader_.iter_->Fetch());
       if (!*fetched_key) {
         break;
       }
@@ -770,21 +784,24 @@ class DocDBTableReader::GetHelperBase {
     return true;
   }
 
-  Status Prepare(const FetchedEntry& key_result, LazyDocHybridTime* root_write_time) {
+  Result<const FetchedEntry&> Prepare(
+      const FetchedEntry& key_result, LazyDocHybridTime* root_write_time) {
     DVLOG_WITH_PREFIX_AND_FUNC(4) << "Pos: " << reader_.iter_->DebugPosToString();
 
     root_key_entry_->AppendRawBytes(root_doc_key_);
 
     DCHECK(key_result.key.starts_with(root_doc_key_));
 
-    Slice value;
     root_write_time->Assign(reader_.table_tombstone_time_);
-    if (root_doc_key_.size() == key_result.key.size() &&
-        key_result.write_time >= root_write_time->encoded()) {
-      root_write_time->Assign(key_result.write_time);
-      value = key_result.value;
+    if (root_doc_key_.size() != key_result.key.size() ||
+        key_result.write_time < root_write_time->encoded()) {
+      RETURN_NOT_OK(InitRowValue(Slice(), root_write_time, ValueControlFields()));
+      return key_result;
     }
 
+    root_write_time->Assign(key_result.write_time);
+
+    auto value = key_result.value;
     auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value));
 
     RETURN_NOT_OK(InitRowValue(value, root_write_time, control_fields));
@@ -792,7 +809,8 @@ class DocDBTableReader::GetHelperBase {
     DVLOG_WITH_PREFIX_AND_FUNC(4)
         << "Write time: " << root_write_time->ToString() << ", control fields: "
         << control_fields.ToString();
-    return Status::OK();
+    reader_.iter_->Next();
+    return reader_.iter_->Fetch();
   }
 
   bool IsObsolete(const Expiration& expiration) {
@@ -829,7 +847,9 @@ class DocDBTableReader::GetHelperBase {
   }
 
   DocDBTableReader& reader_;
-  const Slice root_doc_key_;
+  KeyBuffer* root_doc_key_buffer_;
+  Slice old_upperbound_;
+  Slice root_doc_key_;
   // Pointer to root key entry that is owned by subclass. Can't be nullptr.
   dockv::KeyBytes* root_key_entry_;
 
@@ -843,6 +863,8 @@ class DocDBTableReader::GetHelperBase {
 
   // Whether we found row related value or not.
   bool found_ = false;
+
+  IntentAwareIteratorUpperboundScope upperbound_scope_;
 };
 
 // Implements main logic in the reader.
@@ -859,7 +881,7 @@ class DocDBTableReader::GetHelper : public BaseOfGetHelper<ResultType> {
   using Base = BaseOfGetHelper<ResultType>;
   using StateEntry = StateEntryTemplate<ResultType>;
 
-  GetHelper(DocDBTableReader* reader, Slice root_doc_key, ResultType result)
+  GetHelper(DocDBTableReader* reader, KeyBuffer* root_doc_key, ResultType result)
       : Base(reader, root_doc_key), result_(result) {
     state_.emplace_back(StateEntry {
       .key_entry = dockv::KeyBytes(),
@@ -871,7 +893,7 @@ class DocDBTableReader::GetHelper : public BaseOfGetHelper<ResultType> {
     root_key_entry_ = &state_.front().key_entry;
   }
 
-  Result<DocReaderResult> Run(FetchedEntry* fetched_entry) {
+  Result<DocReaderResult> Run(const FetchedEntry& fetched_entry) {
     return Base::DoRun(fetched_entry, &state_.front().write_time);
   }
 
@@ -1123,13 +1145,13 @@ class DocDBTableReader::FlatGetHelper : public BaseOfFlatGetHelper<ResultType> {
   using Base = BaseOfFlatGetHelper<ResultType>;
 
   FlatGetHelper(
-      DocDBTableReader* reader, Slice root_doc_key, ResultType result)
+      DocDBTableReader* reader, KeyBuffer* root_doc_key, ResultType result)
       : Base(reader, root_doc_key), result_(result) {
     row_expiration_ = reader->table_expiration_;
     root_key_entry_ = &row_key_;
   }
 
-  Result<DocReaderResult> Run(FetchedEntry* fetched_entry) {
+  Result<DocReaderResult> Run(const FetchedEntry& fetched_entry) {
     return Base::DoRun(fetched_entry, &row_write_time_);
   }
 
@@ -1201,7 +1223,7 @@ class DocDBTableReader::FlatGetHelper : public BaseOfFlatGetHelper<ResultType> {
 };
 
 Result<DocReaderResult> DocDBTableReader::Get(
-    Slice root_doc_key, FetchedEntry* fetched_entry, SubDocument* out) {
+    KeyBuffer* root_doc_key, const FetchedEntry& fetched_entry, SubDocument* out) {
   {
     GetHelper<SubDocument*> helper(this, root_doc_key, DCHECK_NOTNULL(out));
     auto result = VERIFY_RESULT(helper.Run(fetched_entry));
@@ -1219,19 +1241,19 @@ Result<DocReaderResult> DocDBTableReader::Get(
   // It means that other columns have NULL values, so if such column present, then
   // we should return row consisting of NULLs.
   // Here we check if there are columns values not listed in projection.
-  iter_->Seek(root_doc_key);
-  *fetched_entry = VERIFY_RESULT(iter_->Fetch());
-  if (!*fetched_entry) {
+  iter_->Seek(root_doc_key->AsSlice());
+  const auto& new_fetched_entry = VERIFY_RESULT_REF(iter_->Fetch());
+  if (!new_fetched_entry) {
     return DocReaderResult::kNotFound;
   }
 
   GetHelper<std::nullptr_t> helper(this, root_doc_key, nullptr);
-  return helper.Run(fetched_entry);
+  return helper.Run(new_fetched_entry);
 }
 
 template <class Res>
 Result<DocReaderResult> DocDBTableReader::DoGetFlat(
-    Slice root_doc_key, FetchedEntry* fetched_entry, Res* result) {
+    KeyBuffer* root_doc_key, const FetchedEntry& fetched_entry, Res* result) {
   if (result == nullptr || !projection_->has_value_columns()) {
     FlatGetHelper<std::nullptr_t> helper(this, root_doc_key, nullptr);
     return helper.Run(fetched_entry);
@@ -1242,12 +1264,15 @@ Result<DocReaderResult> DocDBTableReader::DoGetFlat(
 }
 
 Result<DocReaderResult> DocDBTableReader::GetFlat(
-    Slice root_doc_key, FetchedEntry* fetched_entry, qlexpr::QLTableRow* result) {
+    KeyBuffer* root_doc_key, const FetchedEntry& fetched_entry, qlexpr::QLTableRow* result) {
   return DoGetFlat(root_doc_key, fetched_entry, result);
 }
 
 Result<DocReaderResult> DocDBTableReader::GetFlat(
-    Slice root_doc_key, FetchedEntry* fetched_entry, dockv::PgTableRow* result) {
+    KeyBuffer* root_doc_key, const FetchedEntry& fetched_entry, dockv::PgTableRow* result) {
+  if (result) {
+    DCHECK_EQ(result->projection(), *projection_);
+  }
   return DoGetFlat(root_doc_key, fetched_entry, result);
 }
 

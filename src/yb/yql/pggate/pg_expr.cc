@@ -551,7 +551,9 @@ struct PgColumnRefFactory {
 
 InternalType PgExpr::internal_type() const {
   DCHECK(type_entity_) << "Type entity is not set up";
-  return client::YBColumnSchema::ToInternalDataType(static_cast<DataType>(type_entity_->yb_type));
+  // PersistentDataType and DataType has different values so have to use ToLW/ToPB for conversion.
+  return client::YBColumnSchema::ToInternalDataType(ToLW(
+      static_cast<PersistentDataType>(type_entity_->yb_type)));
 }
 
 int PgExpr::get_pg_typid() const {
@@ -567,6 +569,10 @@ int PgExpr::get_pg_collid() const {
   // pass around a collation id. For now, return a dummy value.
   // TODO
   return 0;  /* InvalidOid */
+}
+
+std::string PgExpr::ToString() const {
+  return Format("{ opcode: $0 }", to_underlying(opcode_));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -812,6 +818,10 @@ Result<LWQLValuePB*> PgConstant::Eval() {
   return &ql_value_;
 }
 
+std::string PgConstant::ToString() const {
+  return ql_value_.ShortDebugString();
+}
+
 //--------------------------------------------------------------------------------------------------
 
 PgColumnRef* PgColumnRef::Create(
@@ -834,6 +844,10 @@ PgColumnRef* PgColumnRef::Create(
 
 bool PgColumnRef::is_ybbasetid() const {
   return attr_num_ == static_cast<int>(PgSystemAttrNum::kYBIdxBaseTupleId);
+}
+
+bool PgColumnRef::is_system() const {
+  return attr_num_ < 0;
 }
 
 Status PgColumnRef::PrepareForRead(PgDml *pg_stmt, LWPgsqlExpressionPB *expr_pb) {

@@ -159,3 +159,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [nishantwrp](https://github.com/nishantwrp)
 * [mdbridge](https://github.com/mdbridge)
 * [hbhanawat](https://github.com/hbhanawat)
+* [asrinivasanyb](https://github.com/asrinivasanyb)

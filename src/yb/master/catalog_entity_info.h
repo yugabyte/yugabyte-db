@@ -38,7 +38,7 @@
 
 #include <boost/bimap.hpp>
 
-#include "yb/cdc/cdc_util.h"
+#include "yb/cdc/cdc_types.h"
 #include "yb/common/entity_ids.h"
 #include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
@@ -60,6 +60,7 @@
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/shared_lock.h"
 
 DECLARE_bool(use_parent_table_id_field);
 
@@ -76,7 +77,8 @@ struct TableDescription {
 
 struct TabletLeaderLeaseInfo {
   bool initialized = false;
-  consensus::LeaderLeaseStatus leader_lease_status;
+  consensus::LeaderLeaseStatus leader_lease_status =
+      consensus::LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
   MicrosTime ht_lease_expiration = 0;
   // Number of heartbeats that current tablet leader doesn't have a valid lease.
   uint64 heartbeats_without_leader_lease = 0;
@@ -279,7 +281,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
                          const TabletLeaderLeaseInfo& leader_lease_info);
 
   // Returns the per-stream replication status bitmasks.
-  std::unordered_map<CDCStreamId, uint64_t> GetReplicationStatus();
+  std::unordered_map<xrepl::StreamId, uint64_t> GetReplicationStatus();
 
   // Accessors for the last time the replica locations were updated.
   void set_last_update_time(const MonoTime& ts);
@@ -363,7 +365,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 
   std::atomic<bool> initiated_election_{false};
 
-  std::unordered_map<CDCStreamId, uint64_t> replication_stream_to_status_bitmask_;
+  std::unordered_map<xrepl::StreamId, uint64_t> replication_stream_to_status_bitmask_;
 
   // Transient, in memory list of table ids hosted by this tablet. This is not persisted.
   // Only used when FLAGS_use_parent_table_id_field is set.
@@ -466,6 +468,16 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
   bool is_being_created_by_ysql_ddl_txn() const {
     return has_ysql_ddl_txn_verifier_state() &&
       ysql_ddl_txn_verifier_state().contains_create_table_op();
+  }
+
+  std::vector<std::string> cols_marked_for_deletion() const {
+    std::vector<std::string> columns;
+    for (const auto& col : pb.schema().columns()) {
+      if (col.marked_for_deletion()) {
+        columns.push_back(col.name());
+      }
+    }
+    return columns;
   }
 
   Result<bool> is_being_modified_by_ddl_transaction(const TransactionId& txn) const;
@@ -667,14 +679,14 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Returns true if the table is backfilling an index.
   bool IsBackfilling() const {
-    std::shared_lock<decltype(lock_)> l(lock_);
+    SharedLock l(lock_);
     return is_backfilling_;
   }
 
   Status SetIsBackfilling();
 
   void ClearIsBackfilling() {
-    std::lock_guard<decltype(lock_)> l(lock_);
+    std::lock_guard l(lock_);
     is_backfilling_ = false;
   }
 
@@ -1176,9 +1188,11 @@ struct PersistentCDCStreamInfo : public Persistent<
 class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
                       public MetadataCowWrapper<PersistentCDCStreamInfo> {
  public:
-  explicit CDCStreamInfo(CDCStreamId stream_id) : stream_id_(std::move(stream_id)) {}
+  explicit CDCStreamInfo(const xrepl::StreamId& stream_id)
+      : stream_id_(stream_id), stream_id_str_(stream_id.ToString()) {}
 
-  const CDCStreamId& id() const override { return stream_id_; }
+  const std::string& id() const override { return stream_id_str_; }
+  const xrepl::StreamId& StreamId() const { return stream_id_; }
 
   const google::protobuf::RepeatedPtrField<std::string> table_id() const;
 
@@ -1190,7 +1204,8 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
   friend class RefCountedThreadSafe<CDCStreamInfo>;
   ~CDCStreamInfo() = default;
 
-  const CDCStreamId stream_id_;
+  const xrepl::StreamId stream_id_;
+  const std::string stream_id_str_;
 
   DISALLOW_COPY_AND_ASSIGN(CDCStreamInfo);
 };
@@ -1232,19 +1247,17 @@ class UniverseReplicationInfo : public RefCountedThreadSafe<UniverseReplicationI
   Status GetSetupUniverseReplicationErrorStatus() const;
 
   void StoreReplicationError(
-    const TableId& consumer_table_id,
-    const CDCStreamId& stream_id,
-    ReplicationErrorPb error,
-    const std::string& error_detail);
+      const TableId& consumer_table_id,
+      const xrepl::StreamId& stream_id,
+      ReplicationErrorPb error,
+      const std::string& error_detail);
 
   void ClearReplicationError(
-    const TableId& consumer_table_id,
-    const CDCStreamId& stream_id,
-    ReplicationErrorPb error);
+      const TableId& consumer_table_id, const xrepl::StreamId& stream_id, ReplicationErrorPb error);
 
   // Maps from a table id -> stream id -> replication error -> error detail.
   typedef std::unordered_map<ReplicationErrorPb, std::string> ReplicationErrorMap;
-  typedef std::unordered_map<CDCStreamId, ReplicationErrorMap> StreamReplicationErrorMap;
+  typedef std::unordered_map<xrepl::StreamId, ReplicationErrorMap> StreamReplicationErrorMap;
   typedef std::unordered_map<TableId, StreamReplicationErrorMap> TableReplicationErrorMap;
 
   TableReplicationErrorMap GetReplicationErrors() const;

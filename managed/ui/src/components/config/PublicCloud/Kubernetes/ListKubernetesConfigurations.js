@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import { Button, Row, Col } from 'react-bootstrap';
 import { FlexContainer, FlexShrink } from '../../../common/flexbox/YBFlexBox';

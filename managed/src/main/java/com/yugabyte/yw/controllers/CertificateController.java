@@ -55,6 +55,8 @@ public class CertificateController extends AuthenticatedController {
 
   @Inject private RuntimeConfGetter runtimeConfGetter;
 
+  @Inject private CertificateHelper certificateHelper;
+
   @ApiOperation(value = "Restore a certificate from backup", response = UUID.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -186,7 +188,7 @@ public class CertificateController extends AuthenticatedController {
     String certLabel = jsonData.asText();
     LOG.info("CertificateController: creating self signed certificate with label {}", certLabel);
     UUID certUUID =
-        CertificateHelper.createRootCA(runtimeConfGetter.getStaticConf(), certLabel, customerUUID);
+        certificateHelper.createRootCA(runtimeConfGetter.getStaticConf(), certLabel, customerUUID);
 
     if (certUUID == null) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Root certificate creation failed");

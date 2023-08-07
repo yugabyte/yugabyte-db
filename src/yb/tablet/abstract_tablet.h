@@ -41,8 +41,6 @@ class AbstractTablet {
   virtual docdb::DocReadContextPtr GetDocReadContext() const = 0;
   virtual Result<docdb::DocReadContextPtr> GetDocReadContext(const std::string& table_id) const = 0;
 
-  virtual const docdb::YQLStorageIf& QLStorage() const = 0;
-
   virtual TableType table_type() const = 0;
 
   virtual const std::string& tablet_id() const = 0;
@@ -69,6 +67,7 @@ class AbstractTablet {
       const docdb::ReadOperationData& read_operation_data,
       const QLReadRequestPB& ql_read_request,
       const TransactionOperationContext& txn_op_context,
+      const docdb::YQLStorageIf& ql_storage,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
       QLReadRequestResult* result,
       WriteBuffer* rows_data);
@@ -123,6 +122,7 @@ class AbstractTablet {
                                  const PgsqlReadRequestPB& pgsql_read_request,
                                  const std::shared_ptr<TableInfo>& table_info,
                                  const TransactionOperationContext& txn_op_context,
+                                 const docdb::YQLStorageIf& ql_storage,
                                  const docdb::DocDBStatistics* statistics,
                                  std::reference_wrapper<const ScopedRWOperation> pending_op,
                                  PgsqlReadRequestResult* result);

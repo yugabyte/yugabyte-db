@@ -220,11 +220,16 @@ public class UniverseResourceDetails {
             switch (userIntent.providerType) {
               case aws:
                 spotPair = new Pair<String, String>(nodeDetails.getZone(), instanceType);
+                String providerUUID = userIntent.provider;
                 spotPrice =
                     spotPrices.computeIfAbsent(
                         spotPair,
                         pair -> {
-                          return AWSUtil.getAwsSpotPrice(pair.getFirst(), pair.getSecond());
+                          return AWSUtil.getAwsSpotPrice(
+                              pair.getFirst(),
+                              pair.getSecond(),
+                              providerUUID,
+                              nodeDetails.getRegion());
                         });
                 break;
               case gcp:

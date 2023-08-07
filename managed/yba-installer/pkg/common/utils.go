@@ -45,7 +45,7 @@ var aptList = []string{"Ubuntu", "Debian"}
 
 const GoBinaryName = "yba-ctl"
 
-const versionMetadataJSON = "version_metadata.json"
+const VersionMetadataJSON = "version_metadata.json"
 
 const javaBinaryGlob = "yba_installer-*linux*/OpenJDK17U-jdk_x64_linux_*.tar.gz"
 
@@ -60,7 +60,7 @@ func GetVersion() string {
 	// locate the version metadata json file in the same dir as the yba-ctl
 	// binary
 	var configViper = viper.New()
-	configViper.SetConfigName(versionMetadataJSON)
+	configViper.SetConfigName(VersionMetadataJSON)
 	configViper.SetConfigType("json")
 	configViper.AddConfigPath(GetBinaryDir())
 
@@ -167,6 +167,13 @@ func CreateSymlink(pkgDir string, linkDir string, binary string) error {
 		linkPath, binaryPath))
 
 	out := shell.Run("ln", args...)
+	out.SucceededOrLog()
+	return out.Error
+}
+
+// Symlink implements a more generic symlink utility.
+func Symlink(src string, dest string) error {
+	out := shell.Run("ln", "-sf", src, dest)
 	out.SucceededOrLog()
 	return out.Error
 }
@@ -304,10 +311,6 @@ func GetBinaryDir() string {
 	return filepath.Dir(realPath)
 }
 
-func GetReferenceYaml() string {
-	return filepath.Join(GetBinaryDir(), "yba-ctl.yml.reference")
-}
-
 type YBVersion struct {
 
 	// ex: 2.17.1.0-b235-foo
@@ -435,6 +438,13 @@ func init() {
 		yugabundleBinary = "yugabundle-" + Version + "-centos-x86_64.tar.gz"
 		currentUser = GetCurrentUser()
 	*/
+}
+
+// UpdateRootInstall will update the yaml files .installRoot entry with what is currently
+// set in viper.
+func UpdateRootInstall(newRoot string) {
+	viper.Set("installRoot", newRoot)
+	setYamlValue(InputFile(), "installRoot", newRoot)
 }
 
 func setYamlValue(filePath string, yamlPath string, value string) {

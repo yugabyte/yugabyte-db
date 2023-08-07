@@ -38,6 +38,8 @@ disk_usage:
   filters:
     saved_name: "node_filesystem_free_bytes|node_filesystem_size_bytes"
     mountpoint: "/mnt/d[0-9]+"
+  exclude_filters:
+    fstype: "rootfs"
   group_by: saved_name
   panel_group: "Node Metrics"
   layout:
@@ -70,6 +72,8 @@ disk_used_size_total:
   operator: "/ 1073741824"
   filters:
     mountpoint: "/mnt/d[0-9]+"
+  exclude_filters:
+    fstype: "rootfs"
   layout:
     title: "Disk Usage"
     xaxis:
@@ -85,6 +89,8 @@ disk_capacity_size_total:
   operator: "/ 1073741824"
   filters:
     mountpoint: "/mnt/d[0-9]+"
+  exclude_filters:
+    fstype: "rootfs"
   layout:
     title: "Disk Capacity"
     xaxis:
@@ -1524,20 +1530,20 @@ lsm_rocksdb_latencies_seek:
       ticksuffix: "&nbsp;\u00B5s"
 
 lsm_rocksdb_latencies_mutex:
-  metric: "rocksdb_db_mutex_wait_micros.avg"
+  metric: "rocksdb_db_mutex_wait_micros"
   function: "rate|sum by (exported_instance)|avg"
   range: true
   filters:
     export_type: "tserver_export"
   panel_group: "RocksDB"
   layout:
-    title: "LSM-DB Mutex Wait Latencies"
+    title: "LSM-DB Mutex Wait / Sec / Node"
     xaxis:
       type: "date"
     yaxis:
-      alias:
-        "rocksdb_db_mutex_wait_micros.avg": "Mutex"
       ticksuffix: "&nbsp;\u00B5s"
+      alias:
+        "rocksdb_db_mutex_wait_micros": "Mutex"
 
 lsm_rocksdb_block_cache_hit_miss:
   metric: ""
@@ -1892,54 +1898,6 @@ ysql_sql_advanced_latency:
         "OtherStmts": "Others"
       ticksuffix: "&nbsp;\u00B5s"
 
-ysql_server_rpc_p95:
-  metric: "rpc_latency"
-  function: "quantile_over_time.95|max"
-  range: true
-  filters:
-    export_type: "ysql_export"
-    server_type: "yb_ysqlserver"
-    service_type: "SQLProcessor"
-    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt"
-    quantile: "p95"
-  group_by: "service_method"
-  panel_group: "YSQL Ops & Latency"
-  layout:
-    title: "YSQL Op Latency (P95)"
-    xaxis:
-      type: "date"
-    yaxis:
-      alias:
-        "InsertStmt": "Insert"
-        "SelectStmt": "Select"
-        "UpdateStmt": "Update"
-        "DeleteStmt": "Delete"
-      ticksuffix: "&nbsp;\u00B5s"
-
-ysql_server_rpc_p99:
-  metric: "rpc_latency"
-  function: "quantile_over_time.99|max"
-  range: true
-  filters:
-    export_type: "ysql_export"
-    server_type: "yb_ysqlserver"
-    service_type: "SQLProcessor"
-    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt"
-    quantile: "p99"
-  group_by: "service_method"
-  panel_group: "YSQL Ops & Latency"
-  layout:
-    title: "YSQL Op Latency (P99)"
-    xaxis:
-      type: "date"
-    yaxis:
-      alias:
-        "InsertStmt": "Insert"
-        "SelectStmt": "Select"
-        "UpdateStmt": "Update"
-        "DeleteStmt": "Delete"
-      ticksuffix: "&nbsp;\u00B5s"
-
 #Cassandra Metrics
 cql_server_rpc_per_second:
   metric: "rpc_irate_rps"
@@ -2225,6 +2183,7 @@ tserver_rpc_queue_size_tserver:
         "rpcs_in_queue_yb_tserver_TabletServerAdminService": "Admin"
         "rpcs_in_queue_yb_cdc_CDCService": "CDC"
         "rpcs_in_queue_yb_tserver_PgClientService": "PG Client"
+        "rpcs_in_queue_yb_stateful_service_PgAutoAnalyzeService": "PG AutoAnalyze"
 
 tserver_rpc_queue_size_cql:
   metric: ""

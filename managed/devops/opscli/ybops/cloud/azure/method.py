@@ -9,7 +9,8 @@
 from ybops.cloud.common.method import ListInstancesMethod, CreateInstancesMethod, \
     ChangeInstanceTypeMethod, ProvisionInstancesMethod, DestroyInstancesMethod, AbstractMethod, \
     AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod, \
-    DestroyInstancesMethod, AbstractInstancesMethod, DeleteRootVolumesMethod
+    DestroyInstancesMethod, AbstractInstancesMethod, DeleteRootVolumesMethod, \
+    CreateRootVolumesMethod, ReplaceRootVolumeMethod, HardRebootInstancesMethod
 from ybops.common.exceptions import YBOpsRuntimeError
 import logging
 import json
@@ -62,6 +63,12 @@ class AzureCreateInstancesMethod(CreateInstancesMethod):
                                  help="Desired throughput for ultrassd instance volumes.")
         self.parser.add_argument("--spot_price", default=None,
                                  help="Spot price for each instance")
+        self.parser.add_argument("--custom_vm_params", default=None,
+                                 help="JSON of custom virtual machine options to merge.")
+        self.parser.add_argument("--custom_disk_params", default=None,
+                                 help="JSON of custom data disk options to merge.")
+        self.parser.add_argument("--custom_network_params", default=None,
+                                 help="JSON of custom network interface options to merge.")
 
     def preprocess_args(self, args):
         super(AzureCreateInstancesMethod, self).preprocess_args(args)
@@ -87,6 +94,48 @@ class AzureProvisionInstancesMethod(ProvisionInstancesMethod):
         super(AzureProvisionInstancesMethod, self).update_ansible_vars_with_args(args)
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
         self.extra_vars["mount_points"] = self.cloud.get_mount_points_csv(args)
+
+
+class AzureCreateRootVolumesMethod(CreateRootVolumesMethod):
+    """Subclass for creating root volumes in Azure.
+    """
+    def __init__(self, base_command):
+        super(AzureCreateRootVolumesMethod, self).__init__(base_command)
+        self.create_method = AzureCreateInstancesMethod(base_command)
+
+    def create_master_volume(self, args):
+        # Don't need public IP as we will delete the VM.
+        args.assign_public_ip = False
+        # Also update the ssh user and other Ansible vars used during VM creation.
+        self.create_method.update_ansible_vars_with_args(args)
+        try:
+            self.create_method.run_ansible_create(args)
+        except Exception as e:
+            logging.error("Could not create Azure master volume. Failed with error {}.".format(e))
+            host_info = self.cloud.get_host_info(args)
+            self.delete_instance(args, host_info["node_uuid"], False)
+
+        host_info = self.cloud.get_host_info(args)
+        self.delete_instance(args, host_info["node_uuid"], True)
+        return host_info["root_volume"]
+
+    def delete_instance(self, args, node_uuid, skip_os_delete):
+        self.cloud.get_admin().destroy_instance(args.search_pattern, node_uuid, skip_os_delete)
+
+
+class AzureReplaceRootVolumeMethod(ReplaceRootVolumeMethod):
+    def __init__(self, base_command):
+        super(AzureReplaceRootVolumeMethod, self).__init__(base_command)
+
+    def _mount_root_volume(self, host_info, volume):
+        curr_root_vol = host_info["root_volume"]
+        self.cloud.mount_disk(host_info, volume)
+        disk_del = self.cloud.get_admin().delete_disk(curr_root_vol)
+        disk_del.wait()
+        logging.info("[app] Successfully deleted old OS disk {}".format(curr_root_vol))
+
+    def _host_info_with_current_root_volume(self, args, host_info):
+        return (host_info, host_info.get("root_volume"))
 
 
 class AzureDestroyInstancesMethod(DestroyInstancesMethod):
@@ -277,6 +326,14 @@ class AzurePauseInstancesMethod(AbstractInstancesMethod):
         if host_info is None:
             raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
         self.cloud.stop_instance(host_info)
+
+
+class AzureHardRebootInstancesMethod(HardRebootInstancesMethod):
+    def __init__(self, base_command):
+        super(AzureHardRebootInstancesMethod, self).__init__(base_command)
+        self.valid_states = ('running', 'starting', 'stopped', 'stopping', 'deallocated',
+                             'deallocating')
+        self.valid_stoppable_states = ('running', 'stopping')
 
 
 class AzureResumeInstancesMethod(AbstractInstancesMethod):

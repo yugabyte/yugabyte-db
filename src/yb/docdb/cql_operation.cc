@@ -225,7 +225,7 @@ Status FindMemberForIndex(const QLColumnValuePB& column_value,
 
   int64_t array_index;
   if (document->IsArray()) {
-    util::VarInt varint;
+    VarInt varint;
     RETURN_NOT_OK(varint.DecodeFromComparable(
         column_value.json_args(index).operand().value().varint_value()));
     array_index = VERIFY_RESULT(varint.ToInt64());
@@ -237,7 +237,7 @@ Status FindMemberForIndex(const QLColumnValuePB& column_value,
     std::advance(*valueit, array_index);
   } else if (document->IsObject()) {
     if (!is_insert) {
-      util::VarInt varint;
+      VarInt varint;
       auto status =
         varint.DecodeFromComparable(column_value.json_args(index).operand().value().varint_value());
       if (status.ok()) {
@@ -557,7 +557,7 @@ Status QLWriteOperation::PopulateConditionalDmlRow(
   // (value_map is not empty).
   const bool return_present_values = !should_apply && !table_row.IsEmpty();
   std::vector<ColumnSchema> columns;
-  columns.emplace_back(ColumnSchema("[applied]", BOOL));
+  columns.emplace_back(ColumnSchema("[applied]", DataType::BOOL));
   if (return_present_values) {
     RETURN_NOT_OK(EnumProjectedColumns(
         static_projection, non_static_projection,
@@ -586,8 +586,8 @@ Status QLWriteOperation::PopulateStatusRow(const DocOperationApplyData& data,
                                            const QLTableRow& table_row,
                                            std::unique_ptr<qlexpr::QLRowBlock>* rowblock) {
   std::vector<ColumnSchema> columns;
-  columns.emplace_back(ColumnSchema("[applied]", BOOL));
-  columns.emplace_back(ColumnSchema("[message]", STRING));
+  columns.emplace_back(ColumnSchema("[applied]", DataType::BOOL));
+  columns.emplace_back(ColumnSchema("[message]", DataType::STRING));
   columns.insert(
       columns.end(), doc_read_context_->schema().columns().begin(),
       doc_read_context_->schema().columns().end());
@@ -613,8 +613,7 @@ Status QLWriteOperation::PopulateStatusRow(const DocOperationApplyData& data,
 
 // Check if a duplicate value is inserted into a unique index.
 Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(const DocOperationApplyData& data) {
-  VLOG(3) << "Looking for collisions in\n" << docdb::DocDBDebugDumpToStr(
-      data.doc_write_batch->doc_db(), doc_read_context_->schema_packing_storage);
+  VLOG(3) << "Looking for collisions in\n" << DocDBDebugDumpToStr(data);
   // We need to check backwards only for backfilled entries.
   bool ret =
       VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, data.read_time())) ||
@@ -688,8 +687,7 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
                 << "\nExisting: " << AsString(*existing_value)
                 << " vs New: " << AsString(new_value)
                 << "\nUsed read time as " << AsString(data.read_time());
-        DVLOG(3) << "DocDB is now:\n" << docdb::DocDBDebugDumpToStr(
-            data.doc_write_batch->doc_db(), doc_read_context_->schema_packing_storage);
+        DVLOG(3) << "DocDB is now:\n" << DocDBDebugDumpToStr(data);
         return true;
       }
     }
@@ -706,7 +704,7 @@ Result<HybridTime> QLWriteOperation::FindOldestOverwrittenTimestamp(
   HybridTime result;
   VLOG(3) << "Doing iter->Seek " << *pk_doc_key_;
   iter->Seek(*pk_doc_key_);
-  if (VERIFY_RESULT(iter->Fetch())) {
+  if (VERIFY_RESULT_REF(iter->Fetch())) {
     const auto bytes = sub_doc_key.EncodeWithoutHt();
     const Slice& sub_key_slice = bytes.AsSlice();
     result = VERIFY_RESULT(
@@ -854,7 +852,7 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
   DCHECK(column_value.subscript_args(0).has_value()) << "An index must be a constant";
   auto sub_path = MakeSubPath(column, column_id);
   switch (column.type()->main()) {
-    case MAP: {
+    case DataType::MAP: {
       sub_path.AddSubKey(KeyEntryValue::FromQLValuePB(
           column_value.subscript_args(0).value(), SortingType::kNotSpecified));
       RETURN_NOT_OK(context.data->doc_write_batch->InsertSubDocument(
@@ -862,7 +860,7 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
           request_.query_id(), context.control_fields.ttl, context.control_fields.timestamp));
       break;
     }
-    case LIST: {
+    case DataType::LIST: {
       MonoDelta default_ttl = doc_read_context_->schema().table_properties().HasDefaultTimeToLive()
           ? MonoDelta::FromMilliseconds(
                 doc_read_context_->schema().table_properties().DefaultTimeToLive())
@@ -1264,14 +1262,14 @@ Status QLWriteOperation::DeleteSubscriptedColumnElement(
   LOG_IF(DFATAL, !column_value.subscript_args(0).has_value()) << "An index must be a constant";
   auto sub_path = MakeSubPath(column_schema, column_id);
   switch (column_schema.type()->main()) {
-    case MAP: {
+    case DataType::MAP: {
       sub_path.AddSubKey(KeyEntryValue::FromQLValuePB(
           column_value.subscript_args(0).value(), SortingType::kNotSpecified));
       RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(
           sub_path, data.read_operation_data, request_.query_id(), user_timestamp()));
       break;
     }
-    case LIST: {
+    case DataType::LIST: {
       const MonoDelta default_ttl =
           doc_read_context_->schema().table_properties().HasDefaultTimeToLive()
               ? MonoDelta::FromMilliseconds(

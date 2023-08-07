@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC, useEffect } from 'react';
+import { FC, useEffect } from 'react';
 import * as Yup from 'yup';
 import clsx from 'clsx';
 import { useMutation, useQueryClient } from 'react-query';
@@ -45,7 +45,7 @@ const INITIAL_FORM_VALUE: CustomVariablesForm = {
 const useStyles = makeStyles((theme) => ({
   root: {
     overflow: 'visible',
-    "& .MuiInputLabel-root": {
+    '& .MuiInputLabel-root': {
       textTransform: 'none',
       fontSize: '13px',
       color: theme.palette.common.black
@@ -86,7 +86,12 @@ export const CustomVariableEditorModal: FC<CustomVariableEditorModalProps> = ({
 
   const validationSchema = Yup.object()
     .shape({
-      customVariableName: Yup.string().required(t('common.requiredField')).matches(/^[a-zA-Z0-9_]*$/, t('alertCustomTemplates.customVariables.createNewVariableModal.nameError')),
+      customVariableName: Yup.string()
+        .required(t('common.requiredField'))
+        .matches(
+          /^[a-zA-Z0-9_]*$/,
+          t('alertCustomTemplates.customVariables.createNewVariableModal.nameError')
+        ),
       possibleValues: Yup.array()
         .min(1, t('common.requiredField'))
         .of(
@@ -148,8 +153,9 @@ export const CustomVariableEditorModal: FC<CustomVariableEditorModalProps> = ({
         reset();
         toast.success(
           <Trans
-            i18nKey={`alertCustomTemplates.customVariables.${isEditMode ? 'edit' : 'create'
-              }Success`}
+            i18nKey={`alertCustomTemplates.customVariables.${
+              isEditMode ? 'edit' : 'create'
+            }Success`}
             values={{ variable_name: variables[0].name }}
             components={{ u: <u /> }}
           />
@@ -177,7 +183,7 @@ export const CustomVariableEditorModal: FC<CustomVariableEditorModalProps> = ({
   // if no default value is selected, make the first option as default
   useEffect(() => {
     if (!open || formValues.possibleValues.length == 0) return;
-    const isDefaultAvailable = formValues.possibleValues.some(v => v.isDefault);
+    const isDefaultAvailable = formValues.possibleValues.some((v) => v.isDefault);
     if (!isDefaultAvailable) {
       setValue('possibleValues', [
         ...formValues.possibleValues.map((t, i) => {
@@ -185,7 +191,7 @@ export const CustomVariableEditorModal: FC<CustomVariableEditorModalProps> = ({
         })
       ]);
     }
-  }, [formValues.possibleValues, open])
+  }, [formValues.possibleValues, open]);
 
   if (!open) return null;
 
@@ -259,7 +265,6 @@ export const CustomVariableEditorModal: FC<CustomVariableEditorModalProps> = ({
                     fullWidth
                     name={`possibleValues.${index}.text` as FieldArrayPath<string[]>}
                     data-testid={`custom-variable-input-${index}`}
-
                     control={control}
                   />
                 </Grid>

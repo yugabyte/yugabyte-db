@@ -42,6 +42,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Random;
+import java.util.Map;
+import java.util.TreeMap;
 
 import static org.yb.AssertionWrappers.*;
 
@@ -51,7 +53,12 @@ public class TestPgTransactions extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgTransactions.class);
 
   private static boolean isYBTransactionError(PSQLException ex) {
-    return ex.getSQLState().equals("40001");
+    // TODO: Refactor the function to check for specific error codes instead of checking multiple
+    // errors as few tests that shouldn't encounter a 40P01 would also get through on usage of a
+    // generic check. Refer https://github.com/yugabyte/yugabyte-db/issues/18477 for details.
+    //
+    // Return true on exceptions of kind SERIALIZATION_FAILURE or DEADLOCK_DETECTED.
+    return ex.getSQLState().equals("40001") || ex.getSQLState().equals("40P01");
   }
 
   private static boolean isTransactionAbortedError(PSQLException ex) {
@@ -73,6 +80,16 @@ public class TestPgTransactions extends BasePgSQLTest {
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
     builder.enablePgTransactions(true);
+  }
+
+  void runWithFailOnConflict() throws Exception {
+    // Some of these tests depend on fail-on-conflict concurrency control to perform its validation.
+    // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
+    Map<String, String> disableWaitOnConflict = new TreeMap<String, String>();
+    disableWaitOnConflict.put("enable_wait_queues", "false");
+    disableWaitOnConflict.put("enable_deadlock_detection", "false");
+    markClusterNeedsRecreation();
+    restartClusterWithFlags(disableWaitOnConflict, disableWaitOnConflict);
   }
 
   @Test
@@ -334,6 +351,7 @@ public class TestPgTransactions extends BasePgSQLTest {
 
   @Test
   public void testSerializableWholeHashVsScanConflict() throws Exception {
+    runWithFailOnConflict();
     createSimpleTable("test", "v", PartitioningMode.HASH);
     final IsolationLevel isolation = IsolationLevel.SERIALIZABLE;
     try (
@@ -462,6 +480,7 @@ public class TestPgTransactions extends BasePgSQLTest {
    */
   @Test
   public void testTransactionConflicts() throws Exception {
+    runWithFailOnConflict();
     createSimpleTable("test", "v");
     final IsolationLevel isolation = IsolationLevel.REPEATABLE_READ;
 
@@ -837,6 +856,8 @@ public class TestPgTransactions extends BasePgSQLTest {
 
   @Test
   public void testExplicitLocking() throws Exception {
+    runWithFailOnConflict();
+
     Statement statement = connection.createStatement();
 
     // Set up a simple key-value table.

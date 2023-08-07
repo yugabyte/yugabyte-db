@@ -62,7 +62,7 @@ StatefulServiceBase::StatefulServiceBase(
       client_future_(client_future) {}
 
 StatefulServiceBase::~StatefulServiceBase() {
-  LOG_IF(DFATAL, !shutdown_) << "Shutdown was not called for " << ServiceName();
+  LOG_IF(DFATAL, initialized_ && !shutdown_) << "Shutdown was not called for " << ServiceName();
 }
 
 Status StatefulServiceBase::Init(tserver::TSTabletManager* ts_manager) {
@@ -80,8 +80,10 @@ Status StatefulServiceBase::Init(tserver::TSTabletManager* ts_manager) {
       &FLAGS_stateful_service_periodic_task_interval_ms, ServiceName(),
       [this]() { StartPeriodicTaskIfNeeded(); }));
 
-  return ts_manager->RegisterServiceCallback(
-      ServiceKind(), Bind(&StatefulServiceBase::RaftConfigChangeCallback, Unretained(this)));
+  RETURN_NOT_OK(ts_manager->RegisterServiceCallback(
+      ServiceKind(), Bind(&StatefulServiceBase::RaftConfigChangeCallback, Unretained(this))));
+  initialized_ = true;
+  return Status::OK();
 }
 
 void StatefulServiceBase::Shutdown() {
@@ -240,12 +242,13 @@ int64_t StatefulServiceBase::WaitForLeaderLeaseAndGetTerm(TabletPeerPtr tablet_p
   }
 
   const auto& tablet_id = tablet_peer->tablet_id();
-  auto consensus = tablet_peer->shared_consensus();
-  if (!consensus) {
+  auto consensus_result = tablet_peer->GetConsensus();
+  if (!consensus_result) {
     VLOG(1) << ServiceName() << " Received notification of tablet leader change "
             << "but tablet no longer running. Tablet ID: " << tablet_id;
     return OpId::kUnknownTerm;
   }
+  auto& consensus = consensus_result.get();
 
   auto leader_status = consensus->CheckIsActiveLeaderAndHasLease();
   // The possible outcomes are:

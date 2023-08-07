@@ -104,7 +104,7 @@ class TestQueue {
 
   void Enqueue(RefCntBuffer buffer) {
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       ASSERT_TRUE(buffer);
       // We don't use std::move in this test because we want to check reference counting.
       buffers_.push_back(buffer);
@@ -115,7 +115,7 @@ class TestQueue {
 
   void Interrupt() {
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       interruption_requested_ = true;
     }
     cond_.notify_one();

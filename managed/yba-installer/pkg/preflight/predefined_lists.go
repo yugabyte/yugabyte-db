@@ -14,6 +14,7 @@ var InstallChecks = []Check{
 	checks.DiskAvail,
 	checks.License,
 	checks.DBConfigCheck,
+	checks.ValidateLocaleConfig,
 }
 
 // InstallChecksWithPostgres adds onto the base list with postgres checks
@@ -27,4 +28,11 @@ var UpgradeChecks = []Check{
 	checks.Cpu,
 	checks.Memory,
 	checks.Python,
+}
+
+var ReplicatedMigrateChecks = []Check{
+	checks.InstallNotExists,
+	checks.Python,
+	checks.License,
+	checks.ValidateLocaleConfig,
 }

@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #include "common.h"
+#include "common/string.h"
 #include "fe_utils/connect.h"
 #include "fe_utils/string_utils.h"
 
@@ -72,20 +73,19 @@ connectDatabase(const ConnParams *cparams, const char *progname,
 {
 	PGconn	   *conn;
 	bool		new_pass;
-	static bool have_password = false;
-	static char password[100];
+	static char *password = NULL;
 
 	/* Callers must supply at least dbname; other params can be NULL */
 	Assert(cparams->dbname);
 
-	if (!allow_password_reuse)
-		have_password = false;
-
-	if (cparams->prompt_password == TRI_YES && !have_password)
+	if (!allow_password_reuse && password)
 	{
-		simple_prompt("Password: ", password, sizeof(password), false);
-		have_password = true;
+		free(password);
+		password = NULL;
 	}
+
+	if (!password && cparams->prompt_password == TRI_YES)
+		password = simple_prompt("Password: ", false);
 
 	/*
 	 * Start the connection.  Loop until we have a password if requested by
@@ -109,7 +109,7 @@ connectDatabase(const ConnParams *cparams, const char *progname,
 		keywords[i] = "user";
 		values[i++] = cparams->pguser;
 		keywords[i] = "password";
-		values[i++] = have_password ? password : NULL;
+		values[i++] = password;
 		keywords[i] = "dbname";
 		values[i++] = cparams->dbname;
 		if (cparams->override_dbname)
@@ -141,8 +141,9 @@ connectDatabase(const ConnParams *cparams, const char *progname,
 			cparams->prompt_password != TRI_NO)
 		{
 			PQfinish(conn);
-			simple_prompt("Password: ", password, sizeof(password), false);
-			have_password = true;
+			if (password)
+				free(password);
+			password = simple_prompt("Password: ", false);
 			new_pass = true;
 		}
 	} while (new_pass);
@@ -409,14 +410,21 @@ yesno_prompt(const char *question)
 
 	for (;;)
 	{
-		char		resp[10];
+		char	   *resp;
 
-		simple_prompt(prompt, resp, sizeof(resp), true);
+		resp = simple_prompt(prompt, true);
 
 		if (strcmp(resp, _(PG_YESLETTER)) == 0)
+		{
+			free(resp);
 			return true;
+		}
 		if (strcmp(resp, _(PG_NOLETTER)) == 0)
+		{
+			free(resp);
 			return false;
+		}
+		free(resp);
 
 		printf(_("Please answer \"%s\" or \"%s\".\n"),
 			   _(PG_YESLETTER), _(PG_NOLETTER));

@@ -13,6 +13,7 @@
 
 #include "yb/tserver/pg_response_cache.h"
 
+#include <atomic>
 #include <future>
 #include <mutex>
 #include <utility>
@@ -35,7 +36,9 @@
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/lru_cache.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/write_buffer.h"
 
 METRIC_DEFINE_counter(server, pg_response_cache_hits,
@@ -54,16 +57,35 @@ METRIC_DEFINE_counter(server, pg_response_cache_renew_hard,
                       "PgClientService Response Cache Renewed Hard",
                       yb::MetricUnit::kCacheQueries,
                       "Total number of PgClientService response cache entries renewed hard");
+METRIC_DEFINE_counter(server, pg_response_cache_gc_calls,
+                      "PgClientService Response Cache GC",
+                      yb::MetricUnit::kRequests,
+                      "Number of PgClientService response cache GC calls");
+METRIC_DEFINE_counter(server, pg_response_cache_entries_removed_by_gc,
+                      "PgClientService Response Cache Renewed Hard",
+                      yb::MetricUnit::kEntries,
+                      "Number of PgClientService response cache entries removed by GC calls");
+METRIC_DEFINE_gauge_uint32(server, pg_response_cache_entries,
+                      "PgClientService Response Cache Entries",
+                      yb::MetricUnit::kEntries,
+                      "Number of entries in PgClientService response cache");
 
 DEFINE_NON_RUNTIME_uint64(
     pg_response_cache_capacity, 1024, "PgClientService response cache capacity.");
 
+DEFINE_NON_RUNTIME_uint64(pg_response_cache_size_bytes, 0,
+                          "Size in bytes of the PgClientService response cache. "
+                          "0 value (default) means that cache size is not limited by this flag.");
+
+DEFINE_NON_RUNTIME_uint32(
+    pg_response_cache_size_percentage, 5,
+    "Percentage of total available memory to use by the PgClientService response cache. "
+    "Default value is 5, max is 100, min is 0 means that cache size is not limited by this flag.");
+
 DEFINE_test_flag(uint64, pg_response_cache_catalog_read_time_usec, 0,
                  "Value to substitute original catalog_read_time in cached responses");
 
-namespace yb {
-namespace tserver {
-
+namespace yb::tserver {
 namespace {
 
 void TEST_UpdateCatalogReadTime(
@@ -80,14 +102,78 @@ void TEST_UpdateCatalogReadTime(
   }
 }
 
+[[nodiscard]] bool IsOk(const PgResponseCache::Response& resp) {
+  return !resp.response.has_status();
+}
+
+class MetricContext {
+ public:
+  MetricContext(std::shared_ptr<MemTracker> mem_tracker,
+                scoped_refptr<AtomicGauge<uint32_t>> num_entries)
+      : mem_tracker_(std::move(mem_tracker)),
+        num_entries_(std::move(num_entries)) {}
+
+  MemTracker& mem_tracker() { return *mem_tracker_; }
+  AtomicGauge<uint32_t>& num_entries() {return *num_entries_; }
+
+ private:
+  std::shared_ptr<MemTracker> mem_tracker_;
+  scoped_refptr<AtomicGauge<uint32_t>> num_entries_;
+
+  DISALLOW_COPY_AND_ASSIGN(MetricContext);
+};
+
+class MetricUpdater {
+ public:
+  explicit MetricUpdater(MetricContext* metric_context)
+      : metric_context_(*metric_context) {
+    num_entries().Increment();
+  }
+
+  ~MetricUpdater() {
+    num_entries().Decrement();
+    const auto bytes = consumption();
+    if (bytes) {
+      mem_tracker().Release(bytes);
+    }
+  }
+
+  void Consume(size_t bytes) {
+    DCHECK(bytes);
+    if (mem_tracker().TryConsume(bytes)) {
+      size_t expected = 0;
+      [[maybe_unused]] const auto changed = consumption_.compare_exchange_strong(
+          expected, bytes, std::memory_order::acq_rel);
+      DCHECK(changed);
+    }
+  }
+
+  [[nodiscard]] uint64_t consumption() const {
+    return consumption_.load(std::memory_order_acquire);
+  }
+
+ private:
+  [[nodiscard]] MemTracker& mem_tracker() { return metric_context_.mem_tracker(); }
+  [[nodiscard]] AtomicGauge<uint32_t>& num_entries() {return metric_context_.num_entries(); }
+
+  std::atomic<size_t> consumption_ = {0};
+
+  MetricContext& metric_context_;
+
+  DISALLOW_COPY_AND_ASSIGN(MetricUpdater);
+};
+
 class Data {
  public:
-  explicit Data(const CoarseTimePoint& creation_time, const CoarseTimePoint& readiness_deadline)
-      : creation_time_(creation_time),
+  Data(std::weak_ptr<MetricUpdater> metric_updater,
+       CoarseTimePoint creation_time,
+       CoarseTimePoint readiness_deadline)
+      : metric_updater_(std::move(metric_updater)),
+        creation_time_(creation_time),
         readiness_deadline_(readiness_deadline),
         future_(promise_.get_future()) {}
 
-  Result<const PgResponseCache::Response&> Get(const CoarseTimePoint& deadline) const {
+  Result<const PgResponseCache::Response&> Get(CoarseTimePoint deadline) const {
     const auto& actual_deadline = std::min(deadline, readiness_deadline_);
     if (future_.wait_until(actual_deadline) != std::future_status::timeout) {
       return future_.get();
@@ -103,22 +189,58 @@ class Data {
           ReadHybridTime::SingleTime(HybridTime::FromMicros(
               FLAGS_TEST_pg_response_cache_catalog_read_time_usec)));
     }
+    size_t sz = 0;
+    if (IsOk(value)) {
+      for (const auto& data : value.rows_data) {
+        sz += data.size();
+      }
+    }
     promise_.set_value(std::move(value));
+    if (sz) {
+      auto updater = metric_updater_.lock();
+      if (updater) {
+        updater->Consume(sz);
+      }
+    }
   }
 
-  [[nodiscard]] bool IsValid(const CoarseTimePoint& now) const {
-    return IsReady(future_) ? future_.get().is_ok_status : now < readiness_deadline_;
+  [[nodiscard]] bool IsValid(CoarseTimePoint now) const {
+    return IsReady(future_) ? IsOk(future_.get()) : now < readiness_deadline_;
   }
 
-  [[nodiscard]] const CoarseTimePoint& creation_time() const {
+  [[nodiscard]] CoarseTimePoint creation_time() const {
     return creation_time_;
   }
 
  private:
+  std::weak_ptr<MetricUpdater> metric_updater_;
   const CoarseTimePoint creation_time_;
   const CoarseTimePoint readiness_deadline_;
   std::promise<PgResponseCache::Response> promise_;
   std::shared_future<PgResponseCache::Response> future_;
+
+  DISALLOW_COPY_AND_ASSIGN(Data);
+};
+
+class Value {
+ public:
+  Value() = default;
+  Value(MetricContext* metric_context,
+        CoarseTimePoint creation_time,
+        CoarseTimePoint readiness_deadline)
+      : metric_updater_(std::make_shared<MetricUpdater>(metric_context)),
+        data_(std::make_shared<Data>(metric_updater_, creation_time, readiness_deadline)) {}
+
+  [[nodiscard]] size_t Consumption() const {
+    DCHECK(metric_updater_);
+    return metric_updater_->consumption();
+  }
+
+  [[nodiscard]] const std::shared_ptr<Data>& data() const { return data_; }
+
+ private:
+  std::shared_ptr<MetricUpdater> metric_updater_;
+  std::shared_ptr<Data> data_;
 };
 
 struct Entry {
@@ -126,7 +248,7 @@ struct Entry {
       : key(std::move(key_)) {}
 
   std::string key;
-  std::shared_ptr<Data> data;
+  Value value;
 };
 
 void FillResponse(PgPerformResponsePB* response,
@@ -145,55 +267,73 @@ void FillResponse(PgPerformResponsePB* response,
   }
 }
 
+[[nodiscard]] uint64_t GetCacheSizeLimitInBytes() {
+  uint64_t result = 0;
+  if (FLAGS_pg_response_cache_size_bytes) {
+    result = FLAGS_pg_response_cache_size_bytes;
+  }
+  auto total_memory = MemTracker::GetRootTracker()->limit();
+  if (FLAGS_pg_response_cache_size_percentage && total_memory > 100) {
+    auto percentage = FLAGS_pg_response_cache_size_percentage;
+    CHECK(percentage > 0 && percentage <= 100)
+        << Format(
+            "Flag pg_response_cache_size_percentage must be between 0 and 100. Current value: $0",
+            percentage);
+
+    auto new_limit = static_cast<uint64_t>(total_memory) * percentage / 100;
+    if (!result || new_limit < result) {
+      result = new_limit;
+    }
+  }
+  return result;
+}
+
+[[nodiscard]] std::shared_ptr<MemTracker> GetCacheMemoryTracker(
+    const std::shared_ptr<MemTracker>& parent) {
+  const auto memory_limit = GetCacheSizeLimitInBytes();
+  constexpr auto* kId = "PgResponseCache";
+  if (memory_limit) {
+    VLOG(1) << "Building memory tracker with " << memory_limit << " bytes limit";
+    return MemTracker::FindOrCreateTracker(memory_limit, kId, parent);
+  }
+  VLOG(1) << "Building unlimited memory tracker";
+  return MemTracker::FindOrCreateTracker(kId, parent);
+}
+
 } // namespace
 
-class PgResponseCache::Impl {
-  [[nodiscard]] auto DoGetEntry(
-      PgPerformOptionsPB::CachingInfoPB* cache_info, const CoarseTimePoint& deadline) {
+class PgResponseCache::Impl : private GarbageCollector {
+  [[nodiscard]] auto GetEntryData(PgPerformOptionsPB::CachingInfoPB* cache_info,
+                                  CoarseTimePoint deadline) EXCLUDES(mutex_) {
     auto now = CoarseMonoClock::Now();
+    Counter* renew_metric = nullptr;
+    auto metric_updater = ScopeExit([&renew_metric] {
+      if (renew_metric) {
+        renew_metric->Increment();
+      }
+    });
     std::lock_guard lock(mutex_);
-    const auto& data = entries_.emplace(std::move(*cache_info->mutable_key()))->data;
+    const auto& value = entries_.emplace(std::move(*cache_info->mutable_key()))->value;
+    const auto& data = value.data();
     bool loading_required = false;
     if (!data ||
         !data->IsValid(now) ||
-        (cache_info->has_lifetime_threshold_ms() &&
-         RenewRequired(*data, now, cache_info->lifetime_threshold_ms().value()))) {
-      const_cast<std::shared_ptr<Data>&>(data) = std::make_shared<Data>(now, deadline);
+        IsRenewRequired(data->creation_time(), now, *cache_info, &renew_metric)) {
+      VLOG(5) << "(Re)Building element";
+      const_cast<Value&>(value) = Value(&metric_context_, now, deadline);
       loading_required = true;
     }
     return std::make_pair(data, loading_required);
   }
 
  public:
-  explicit Impl(MetricEntity* metric_entity)
-      : entries_(FLAGS_pg_response_cache_capacity),
-        queries_(METRIC_pg_response_cache_queries.Instantiate(metric_entity)),
-        hits_(METRIC_pg_response_cache_hits.Instantiate(metric_entity)),
-        renew_soft_(METRIC_pg_response_cache_renew_soft.Instantiate(metric_entity)),
-        renew_hard_(METRIC_pg_response_cache_renew_hard.Instantiate(metric_entity)) {
-  }
-
-  [[nodiscard]] bool RenewRequired(
-      const Data& data, const CoarseTimePoint& now, uint32_t lifetime_threshold_ms) {
-      if (lifetime_threshold_ms == 0) {
-        IncrementCounter(renew_hard_);
-        return true;
-      }
-
-      if (data.creation_time() < now - std::chrono::milliseconds(lifetime_threshold_ms)) {
-        IncrementCounter(renew_soft_);
-        return true;
-      }
-      return false;
-  }
-
   Result<PgResponseCache::Setter> Get(
       PgPerformOptionsPB::CachingInfoPB* cache_info, PgPerformResponsePB* response,
-      rpc::Sidecars* sidecars, CoarseTimePoint deadline) {
-    auto [data, loading_required] = DoGetEntry(cache_info, deadline);
-    IncrementCounter(queries_);
+      rpc::Sidecars* sidecars, CoarseTimePoint deadline) EXCLUDES(mutex_) {
+    auto [data, loading_required] = GetEntryData(cache_info, deadline);
+    queries_->Increment();
     if (!loading_required) {
-      IncrementCounter(hits_);
+      hits_->Increment();
       FillResponse(response, sidecars, VERIFY_RESULT_REF(data->Get(deadline)));
       return PgResponseCache::Setter();
     }
@@ -202,20 +342,94 @@ class PgResponseCache::Impl {
     };
   }
 
+  [[nodiscard]] static std::shared_ptr<Impl> Make(
+      const std::shared_ptr<MemTracker>& parent_mem_tracker, MetricEntity* metric_entity) {
+    struct PrivateConstructorAccessor : public Impl {
+      PrivateConstructorAccessor(
+          const std::shared_ptr<MemTracker>& parent_mem_tracker, MetricEntity* metric_entity)
+          : Impl(parent_mem_tracker, metric_entity) {}
+    };
+    auto result = std::make_shared<PrivateConstructorAccessor>(parent_mem_tracker, metric_entity);
+    result->metric_context_.mem_tracker().AddGarbageCollector(
+        std::shared_ptr<GarbageCollector>(result, result.get()));
+    return result;
+  }
+
  private:
+  Impl(const std::shared_ptr<MemTracker>& parent_mem_tracker, MetricEntity* metric_entity)
+      : queries_(METRIC_pg_response_cache_queries.Instantiate(metric_entity)),
+        hits_(METRIC_pg_response_cache_hits.Instantiate(metric_entity)),
+        renew_soft_(METRIC_pg_response_cache_renew_soft.Instantiate(metric_entity)),
+        renew_hard_(METRIC_pg_response_cache_renew_hard.Instantiate(metric_entity)),
+        gc_calls_(METRIC_pg_response_cache_gc_calls.Instantiate(metric_entity)),
+        entries_removed_by_gc_(
+            METRIC_pg_response_cache_entries_removed_by_gc.Instantiate(metric_entity)),
+        metric_context_(
+            GetCacheMemoryTracker(parent_mem_tracker),
+            METRIC_pg_response_cache_entries.Instantiate(metric_entity, 0)),
+        entries_(FLAGS_pg_response_cache_capacity)
+  {}
+
+  void CollectGarbage(size_t required) override {
+    size_t entries_removed = 0;
+    {
+      std::lock_guard lock(mutex_);
+      const auto end = entries_.end();
+      auto i = std::make_reverse_iterator(end);
+      const auto rend = std::make_reverse_iterator(entries_.begin());
+      for (size_t free_amount = 0; free_amount < required && i != rend; ++i) {
+        const auto& entry = *i;
+        free_amount += entry.value.Consumption();
+      }
+      entries_removed = std::distance(i.base(), end);
+      entries_.erase(i.base(), end);
+    }
+    VLOG(1) << entries_removed <<  " entries removed during GC for " << required << " bytes";
+    gc_calls_->Increment();
+    entries_removed_by_gc_->IncrementBy(entries_removed);
+  }
+
+  [[nodiscard]] bool IsRenewRequired(
+      CoarseTimePoint creation_time, CoarseTimePoint now,
+      const PgPerformOptionsPB::CachingInfoPB& cache_info, Counter** renew_metric) const {
+    if (!cache_info.has_lifetime_threshold_ms()) {
+      return false;
+    }
+
+    const auto threshold = cache_info.has_lifetime_threshold_ms();
+    if (!threshold) {
+      *renew_metric = renew_hard_.get();
+      return true;
+    }
+
+    if (creation_time < now - std::chrono::milliseconds(threshold)) {
+      *renew_metric = renew_soft_.get();
+      return true;
+    }
+
+    return false;
+  }
+
+  scoped_refptr<Counter> queries_;
+  scoped_refptr<Counter> hits_;
+  scoped_refptr<Counter> renew_soft_;
+  scoped_refptr<Counter> renew_hard_;
+  scoped_refptr<Counter> gc_calls_;
+  scoped_refptr<Counter> entries_removed_by_gc_;
+  MetricContext metric_context_;
   std::mutex mutex_;
   LRUCache<
       Entry,
       boost::multi_index::member<Entry, std::string, &Entry::key>
   > entries_ GUARDED_BY(mutex_);
-  scoped_refptr<Counter> queries_;
-  scoped_refptr<Counter> hits_;
-  scoped_refptr<Counter> renew_soft_;
-  scoped_refptr<Counter> renew_hard_;
+
+  DISALLOW_COPY_AND_ASSIGN(Impl);
 };
 
-PgResponseCache::PgResponseCache(MetricEntity* metric_entity)
-    : impl_(new Impl(metric_entity)) {
+PgResponseCache::PgResponseCache(
+    const std::shared_ptr<MemTracker>& parent_mem_tracker,
+    MetricEntity* metric_entity)
+    : impl_(Impl::Make(parent_mem_tracker, metric_entity)) {
 }
 
 PgResponseCache::~PgResponseCache() = default;
@@ -227,5 +441,4 @@ Result<PgResponseCache::Setter> PgResponseCache::Get(
   return impl_->Get(cache_info, response, sidecars, deadline);
 }
 
-} // namespace tserver
-} // namespace yb
+} // namespace yb::tserver

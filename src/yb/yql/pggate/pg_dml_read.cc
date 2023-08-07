@@ -125,8 +125,8 @@ void PgDmlRead::SetForwardScan(const bool is_forward_scan) {
 // DML support.
 // TODO(neil) WHERE clause is not yet supported. Revisit this function when it is.
 
-LWPgsqlExpressionPB *PgDmlRead::AllocColumnBindPB(PgColumn *col) {
-  return col->AllocBindPB(read_req_.get());
+Result<LWPgsqlExpressionPB*> PgDmlRead::AllocColumnBindPB(PgColumn* col, PgExpr* expr) {
+  return col->AllocBindPB(read_req_.get(), expr);
 }
 
 LWPgsqlExpressionPB *PgDmlRead::AllocColumnBindConditionExprPB(PgColumn *col) {
@@ -191,13 +191,13 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
   bool preceding_key_column_missed = false;
 
   for (size_t index = 0; index != bind_->num_hash_key_columns(); ++index) {
-    auto expr = bind_.ColumnForIndex(index).bind_pb();
-    auto colid = bind_.ColumnForIndex(index).id();
+    const auto& column = bind_.ColumnForIndex(index);
+    auto expr = column.bind_pb();
+    auto colid = column.id();
     // For IN clause expr->has_condition() returns 'true'.
-    if (!expr || (!expr->has_condition() &&
-                  (expr_binds_.find(expr) == expr_binds_.end()) &&
+    if (!expr || (!expr->has_condition() && !column.ValueBound() &&
                   (std::find(tuple_col_ids.begin(), tuple_col_ids.end(), colid) ==
-                   tuple_col_ids.end()))) {
+                       tuple_col_ids.end()))) {
       miss_partition_columns = true;
       continue;
     } else {
@@ -224,10 +224,6 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
   if (miss_partition_columns) {
     VLOG(1) << "Full scan is needed";
     read_req_->mutable_partition_column_values()->clear();
-    // Reset binding of columns whose values has been deleted.
-    for (size_t i = 0, end = bind_->num_hash_key_columns(); i != end; ++i) {
-      bind_.ColumnForIndex(i).ResetBindPB();
-    }
 
     // Move all range column binds (if any) into the 'condition_expr' field.
     preceding_key_column_missed = true;
@@ -238,40 +234,31 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
   for (auto index = bind_->num_hash_key_columns(); index < bind_->num_key_columns(); ++index) {
     auto& col = bind_.ColumnForIndex(index);
     auto expr = col.bind_pb();
-    const auto expr_bind = expr ? expr_binds_.find(expr) : expr_binds_.end();
     // For IN clause expr->has_condition() returns 'true'.
     if (expr && expr->has_condition()) {
       preceding_key_column_missed = true;
-      RETURN_NOT_OK(MoveBoundKeyInOperator(&col, expr->condition()));
-    } else if (expr_bind == expr_binds_.end()) {
+      RETURN_NOT_OK(col.MoveBoundKeyInOperator(read_req_.get()));
+    } else if (!col.ValueBound()) {
       preceding_key_column_missed = true;
+    } else if (preceding_key_column_missed) {
+      // Move current bind into the 'condition_expr' field.
+      auto* condition_expr_pb = AllocColumnBindConditionExprPB(&col);
+      condition_expr_pb->mutable_condition()->set_op(QL_OP_EQUAL);
+
+      auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
+      auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
+
+      op1_pb->set_column_id(col.id());
+
+      col.MoveBoundValueTo(op2_pb);
     } else {
-      if (preceding_key_column_missed) {
-        // Move current bind into the 'condition_expr' field.
-        auto* condition_expr_pb = AllocColumnBindConditionExprPB(&col);
-        condition_expr_pb->mutable_condition()->set_op(QL_OP_EQUAL);
-
-        auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
-        auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
-
-        op1_pb->set_column_id(col.id());
-
-        auto attr_value = expr_bind->second;
-        RETURN_NOT_OK(attr_value->EvalTo(op2_pb));
-        expr_binds_.erase(expr_bind);
-      } else {
-        ++num_bound_range_columns;
-      }
+      ++num_bound_range_columns;
     }
   }
 
   auto& range_column_values = *read_req_->mutable_range_column_values();
   while (range_column_values.size() > num_bound_range_columns) {
     range_column_values.pop_back();
-  }
-  // Reset binding of columns whose values has been deleted.
-  for (size_t i = num_bound_range_columns, end = bind_->num_columns(); i != end; ++i) {
-    bind_.ColumnForIndex(i).ResetBindPB();
   }
   return Status::OK();
 }
@@ -292,7 +279,7 @@ bool PgDmlRead::IsConcreteRowRead() const {
 }
 
 void PgDmlRead::SetDistinctScan(const PgExecParameters *exec_params) {
-  if (exec_params && exec_params->is_select_distinct) {
+  if (exec_params && exec_params->yb_can_pushdown_distinct) {
     // If we have a nested index requested (due to a colocated index scan), we want
     // to set prefix length based on that nested index scan, not the higher level scan.
     if (secondary_index_query_) {
@@ -304,9 +291,40 @@ void PgDmlRead::SetDistinctScan(const PgExecParameters *exec_params) {
     size_t prefix_length = 0;
     for (const auto& col_ref : read_req_->col_refs()) {
       if (col_ref.has_column_id()) {
-        auto col_idx = CHECK_RESULT(bind_->FindColumn(col_ref.attno()));
-        if (col_idx >= bind_->schema().num_key_columns()) {
+        auto attr_num = col_ref.attno();
+        // Ignore the virtual column when computing the prefix!
+        if (attr_num == to_underlying(PgSystemAttrNum::kYBTupleId)) {
           continue;
+        }
+
+        auto col_idx = CHECK_RESULT(bind_->FindColumn(attr_num));
+
+        // Avoid setting the prefix when there are column references to non-key columns
+        //
+        // Example:
+        // ========
+        // Consider a table T
+        // ------------
+        // r1 | r2 | s
+        // ------------
+        // 1  | 1  | 1
+        // 1  | 2  | 2
+        //
+        // SELECT DISTINCT r1 FROM T WHERE r1 = 1 AND s = 2;
+        //
+        // The query must not skip over the second row simply because
+        // the primary index found an entry with r1 = 1
+        //
+        // It is not immediately obvious why doing this is sufficient but
+        // all the fields required for filtering on both the DocDB side and
+        // the postgres side are registered as column references/target list.
+        //
+        // Alternatively, we cannot simply check for additional where_clauses since
+        // not all of the filters are pushed down! Take join predicates for example.
+        // However, all the columns required by such predicates are part of the column
+        // references
+        if (col_idx >= bind_->schema().num_key_columns()) {
+          return;
         }
 
         prefix_length = std::max(prefix_length, col_idx + 1);
@@ -360,9 +378,6 @@ Status PgDmlRead::Exec(const PgExecParameters *exec_params) {
     // request (PgsqlReadRequestPB::index_request).
     doc_op_->AbandonExecution();
   } else {
-    // Update bind values for constants and placeholders.
-    RETURN_NOT_OK(UpdateBindPBs());
-
     // Execute select statement and prefetching data from DocDB.
     // Note: For SysTable, doc_op_ === null, IndexScan doesn't send separate request.
     if (doc_op_) {
@@ -497,11 +512,8 @@ Status PgDmlRead::BindColumnCondIn(PgExpr *lhs, int n_attr_values, PgExpr **attr
 
   for (const PgColumn &curr_col : cols) {
     // Check primary column bindings
-    if (curr_col.is_primary() && curr_col.bind_pb() != nullptr) {
-      if (expr_binds_.find(curr_col.bind_pb()) != expr_binds_.end()) {
-        LOG(WARNING) << strings::Substitute("Column $0 is already bound to another value.",
-                                            curr_col.attr_num());
-      }
+    if (curr_col.is_primary() && curr_col.ValueBound()) {
+      LOG(DFATAL) << Format("Column $0 is already bound to another value", curr_col.attr_num());
     }
   }
 
@@ -515,8 +527,8 @@ Status PgDmlRead::BindColumnCondIn(PgExpr *lhs, int n_attr_values, PgExpr **attr
   if (col_is_primary) {
     // Alloc the protobuf.
     auto *bind_pb = col.bind_pb();
-    if (bind_pb == nullptr) {
-      bind_pb = AllocColumnBindPB(&col);
+    if (!bind_pb) {
+      bind_pb = VERIFY_RESULT(AllocColumnBindPB(&col, nullptr));
     }
 
     bind_pb->mutable_condition()->set_op(QL_OP_IN);
@@ -524,19 +536,7 @@ Status PgDmlRead::BindColumnCondIn(PgExpr *lhs, int n_attr_values, PgExpr **attr
 
     RETURN_NOT_OK(lhs->PrepareForRead(this, lhs_bind));
 
-    // There's no "list of expressions" field so we simulate it with an artificial nested OR
-    // with repeated operands, one per bind expression.
-    // This is only used for operation unrolling in pg_doc_op and is not understood by DocDB.
-    auto op2_pb = bind_pb->mutable_condition()->add_operands();
-    op2_pb->mutable_condition()->set_op(QL_OP_OR);
-
-    for (int i = 0; i < n_attr_values; i++) {
-      auto *attr_pb = op2_pb->mutable_condition()->add_operands();
-      // Link the expression and protobuf. During execution, expr will write result to the pb.
-      RETURN_NOT_OK(attr_values[i]->PrepareForRead(this, attr_pb));
-
-      expr_binds_[attr_pb] = attr_values[i];
-    }
+    RETURN_NOT_OK(col.SetSubExprs(this, attr_values, n_attr_values));
   } else {
     // Alloc the protobuf.
     auto* condition_expr_pb = AllocColumnBindConditionExprPB(&col);
@@ -705,7 +705,9 @@ Status PgDmlRead::AddRowLowerBound(YBCPgStatement handle,
 
 Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params) {
   const auto ybctids = VERIFY_RESULT(BuildYbctidsFromPrimaryBinds());
-  expr_binds_.clear();
+  for (auto& col : bind_.columns()) {
+    col.UnbindValue();
+  }
   read_req_->mutable_partition_column_values()->clear();
   read_req_->mutable_range_column_values()->clear();
   RETURN_NOT_OK(doc_op_->ExecuteInit(exec_params));
@@ -725,8 +727,7 @@ Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
   range_components.reserve(bind_->num_key_columns() - bind_->num_hash_key_columns());
   for (size_t i = 0; i < bind_->num_hash_key_columns(); ++i) {
     auto& col = bind_.ColumnForIndex(i);
-    hashed_components.push_back(VERIFY_RESULT(
-        BuildKeyColumnValue(col, *col.bind_pb(), hashed_values + i)));
+    hashed_components.push_back(VERIFY_RESULT(col.BuildKeyColumnValue(hashed_values + i)));
   }
 
   DocKeyBuilder dockey_builder;
@@ -740,26 +741,26 @@ Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
     if (expr.has_condition()) {
       const auto prefix_len = range_components.size();
       // Form ybctid for each value in IN clause.
+      size_t count = col.SubExprsCount();
       std::vector<std::string> ybctids;
-      auto it = expr.condition().operands().begin();
-      ++it;
-      for (const auto& in_exp : it->condition().operands()) {
-        range_components.push_back(VERIFY_RESULT(BuildKeyColumnValue(col, in_exp)));
+      ybctids.reserve(count);
+      for (size_t idx = 0; idx != count; ++idx) {
+        range_components.push_back(VERIFY_RESULT(col.BuildSubExprKeyColumnValue(idx)));
         // Range key component has one and only one IN clause,
         // all remains components has explicit values. Add them as is.
         for (size_t j = i + 1; j < bind_->num_key_columns(); ++j) {
+          // TODO don't recalculate other columns.
           auto& suffix_col = bind_.ColumnForIndex(j);
-          range_components.push_back(VERIFY_RESULT(
-              BuildKeyColumnValue(suffix_col, *suffix_col.bind_pb())));
+          range_components.push_back(VERIFY_RESULT(suffix_col.BuildKeyColumnValue()));
         }
         const auto doc_key = dockey_builder(range_components);
         ybctids.push_back(doc_key.Encode().ToStringBuffer());
         range_components.resize(prefix_len);
       }
       return ybctids;
-    } else {
-      range_components.push_back(VERIFY_RESULT(BuildKeyColumnValue(col, expr)));
     }
+
+    range_components.push_back(VERIFY_RESULT(col.BuildKeyColumnValue()));
   }
   return STATUS(IllegalState, "Can't build ybctids, bad preconditions");
 }
@@ -780,7 +781,7 @@ bool PgDmlRead::IsAllPrimaryKeysBound(size_t num_range_components_in_expected) {
         // unsupported IN clause
         return false;
       }
-    } else if (expr_binds_.find(expr) == expr_binds_.end()) {
+    } else if (!col.ValueBound()) {
       // missing key component found
       return false;
     }
@@ -792,54 +793,6 @@ bool PgDmlRead::IsAllPrimaryKeysBound(size_t num_range_components_in_expected) {
 // and all other key components are set.
 bool PgDmlRead::CanBuildYbctidsFromPrimaryBinds() {
   return IsAllPrimaryKeysBound(1 /* num_range_components_in_expected */);
-}
-
-// Moves IN operator bound for range key component into 'condition_expr' field
-Status PgDmlRead::MoveBoundKeyInOperator(PgColumn* col, const LWPgsqlConditionPB& in_operator) {
-  auto* condition_expr_pb = AllocColumnBindConditionExprPB(col);
-  condition_expr_pb->mutable_condition()->set_op(QL_OP_IN);
-
-  auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
-  *op1_pb = *in_operator.operands().begin();
-
-  auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
-  auto it = in_operator.operands().begin();
-  ++it;
-  for (const auto& expr : it->condition().operands()) {
-    auto* value = VERIFY_RESULT(GetBoundValue(*col, expr));
-    auto* out = op2_pb->mutable_value()->mutable_list_value()->add_elems();
-    if (value) {
-      *out = *value;
-    }
-    expr_binds_.erase(expr_binds_.find(&expr));
-  }
-  return Status::OK();
-}
-
-Result<LWQLValuePB*> PgDmlRead::GetBoundValue(
-    const PgColumn& col, const LWPgsqlExpressionPB& src) const {
-  // 'src' expression has no value yet,
-  // it is used as the key to find actual source in 'expr_binds_'.
-  const auto it = expr_binds_.find(&src);
-  if (it == expr_binds_.end()) {
-    return STATUS_FORMAT(IllegalState, "Bind value not found for $0", col.id());
-  }
-  return it->second->Eval();
-}
-
-Result<dockv::KeyEntryValue> PgDmlRead::BuildKeyColumnValue(
-    const PgColumn& col, const LWPgsqlExpressionPB& src, LWQLValuePB** dest) {
-  *dest = VERIFY_RESULT(GetBoundValue(col, src));
-  if (*dest) {
-    return dockv::KeyEntryValue::FromQLValuePB(**dest, col.desc().sorting_type());
-  }
-  return dockv::KeyEntryValue();
-}
-
-Result<dockv::KeyEntryValue> PgDmlRead::BuildKeyColumnValue(
-    const PgColumn& col, const LWPgsqlExpressionPB& src) {
-  LWQLValuePB* temp_value;
-  return BuildKeyColumnValue(col, src, &temp_value);
 }
 
 Status PgDmlRead::BindHashCode(const std::optional<Bound>& start, const std::optional<Bound>& end) {

@@ -1,9 +1,8 @@
 // Copyright (c) YugaByte, Inc.
-import React from 'react';
 import { isValidObject } from './ObjectUtils';
 import { YBFormattedNumber } from '../components/common/descriptors';
 import { YBLoadingCircleIcon } from '../components/common/indicators';
-import { ybFormatDate, YBTimeFormats } from '../redesign/helpers/DateUtils';
+import { formatDatetime, ybFormatDate, YBTimeFormats } from '../redesign/helpers/DateUtils';
 
 export function timeFormatter(cell) {
   if (!isValidObject(cell)) {
@@ -17,7 +16,7 @@ export function timeFormatterISO8601(cell) {
   if (!isValidObject(cell)) {
     return '<span>-</span>';
   } else {
-    return ybFormatDate(cell, YBTimeFormats.YB_ISO8601_TIMESTAMP);
+    return formatDatetime(cell, YBTimeFormats.YB_ISO8601_TIMESTAMP);
   }
 }
 

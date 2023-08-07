@@ -170,7 +170,7 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
   // Get replicas for this tablet.
   auto replica_map = tablet->GetReplicaLocations();
 
-  // Get the size of replica.
+  // Get the number of relevant replicas in the replica map.
   size_t replica_size = GetReplicaSize(replica_map);
 
   // Set state information for both the tablet and the tablet server replicas.
@@ -666,34 +666,33 @@ void PerTableLoadState::SortLoad() {
 }
 
 void PerTableLoadState::SortDriveLoad() {
-  // Sort drives on each ts by the tablets count to use a sorted list while
-  // looking the tablet to move from the drive with the most tablets count.
+  // Sort drives on each ts by the tablets count.
   for (const auto& ts : sorted_load_) {
     auto& ts_meta = per_ts_meta_[ts];
-    std::vector<std::pair<std::string, uint64>> drive_load;
+    vector<std::pair<string, uint64>> drive_loads;
     bool empty_path_found = false;
-    for (const auto& path_to_tablet : ts_meta.path_to_tablets) {
-      if (path_to_tablet.first.empty()) {
+    for (const auto& [path, running_tablets] : ts_meta.path_to_tablets) {
+      if (path.empty()) {
         // TS reported tablet without path (rolling restart case).
         empty_path_found = true;
         continue;
       }
-      int starting_tablets_count = FindWithDefault(ts_meta.path_to_starting_tablets_count,
-                                                   path_to_tablet.first, 0);
-      drive_load.emplace_back(std::pair<std::string, uint>(
-                                {path_to_tablet.first,
-                                 starting_tablets_count + path_to_tablet.second.size()}));
+      int num_starting_tablets = FindWithDefault(ts_meta.path_to_starting_tablets_count, path, 0);
+      drive_loads.emplace_back(path, running_tablets.size() + num_starting_tablets);
     }
 
     // Sort by decreasing load.
-    sort(drive_load.begin(), drive_load.end(),
-          [](const std::pair<std::string, uint64>& l, const std::pair<std::string, uint64>& r) {
-              return l.second > r.second;
-            });
-    ts_meta.sorted_path_load_by_tablets_count.reserve(drive_load.size());
-    std::transform(drive_load.begin(), drive_load.end(),
-                    std::back_inserter(ts_meta.sorted_path_load_by_tablets_count),
-                    [](const std::pair<std::string, uint64>& v) { return v.first;});
+    sort(drive_loads.begin(), drive_loads.end(),
+        [](const std::pair<string, uint64>& l, const std::pair<string, uint64>& r) {
+           return l.second > r.second;
+        });
+
+    // Clear because we call SortDriveLoad multiple times in an LB run.
+    ts_meta.sorted_path_load_by_tablets_count.clear();
+    for (auto& drive_load : drive_loads) {
+      ts_meta.sorted_path_load_by_tablets_count.push_back(drive_load.first);
+    }
+
     if (empty_path_found) {
       // Empty path was found at path_to_tablets, so add the empty path to the
       // end so that it has the lowest priority.
@@ -730,51 +729,50 @@ void PerTableLoadState::SortLeaderLoad() {
 }
 
 void PerTableLoadState::SortDriveLeaderLoad() {
-  // Sort drives on each ts by the leaders count to use a sorted list while
-  // looking the leader to move to the drive with the least leaders count.
+  // Sort drives on each ts by the tablet leaders count.
   for (const auto& leader_set : sorted_leader_load_) {
     for (const auto& ts : leader_set) {
       auto& ts_meta = per_ts_meta_[ts];
-      std::vector<std::pair<std::string, uint64>> drive_load;
+      vector<std::pair<string, uint64>> drive_leader_loads;
       bool empty_path_found = false;
-      // Add drives with leaders
-      for (const auto& path_to_tablet : ts_meta.path_to_leaders) {
-        if (path_to_tablet.first.empty()) {
+
+      // Add drives with leaders.
+      for (const auto& [path, leaders] : ts_meta.path_to_leaders) {
+        if (path.empty()) {
           empty_path_found = true;
           continue;
         }
-        drive_load.emplace_back(
-            std::pair<std::string, uint>({path_to_tablet.first, path_to_tablet.second.size()}));
+        drive_leader_loads.emplace_back(path, leaders.size());
       }
-      // Add drives without leaders, but with tablets
-      for (const auto& path_to_tablet : ts_meta.path_to_tablets) {
-        const auto& path = path_to_tablet.first;
+
+      // Add drives without leaders, but with tablets.
+      for (const auto& [path, tablets] : ts_meta.path_to_tablets) {
         if (path.empty()) {
           continue;
         }
-
-        if (ts_meta.path_to_leaders.find(path) == ts_meta.path_to_leaders.end()) {
-          drive_load.emplace_back(std::pair<std::string, uint>({path_to_tablet.first, 0}));
+        if (!ts_meta.path_to_leaders.contains(path)) {
+          drive_leader_loads.emplace_back(path, 0);
         }
       }
 
-      // Sort by ascending load.
-      sort(
-          drive_load.begin(), drive_load.end(),
-          [](const std::pair<std::string, uint64>& l, const std::pair<std::string, uint64>& r) {
+      // Sort drives by ascending leader load.
+      sort(drive_leader_loads.begin(), drive_leader_loads.end(),
+          [](const std::pair<string, uint64>& l, const std::pair<string, uint64>& r) {
             return l.second < r.second;
           });
+
+      // Clear because we call SortDriveLeaderLoad multiple times in an LB run.
+      ts_meta.sorted_path_load_by_leader_count.clear();
+
       bool add_empty_path = empty_path_found || ts_meta.path_to_leaders.empty();
-      ts_meta.sorted_path_load_by_leader_count.reserve(
-          drive_load.size() + (add_empty_path ? 1 : 0));
       if (add_empty_path) {
         // Empty path was found at path_to_leaders or no leaders on TS, so add the empty path.
         ts_meta.sorted_path_load_by_leader_count.push_back(std::string());
       }
-      std::transform(
-          drive_load.begin(), drive_load.end(),
-          std::back_inserter(ts_meta.sorted_path_load_by_leader_count),
-          [](const std::pair<std::string, uint64>& v) { return v.first; });
+
+      for (auto& drive_leader_load : drive_leader_loads) {
+        ts_meta.sorted_path_load_by_leader_count.push_back(drive_leader_load.first);
+      }
     }
   }
 }

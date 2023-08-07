@@ -28,4 +28,9 @@ public class AlertData {
 
   @ApiModelProperty(value = "Url to alert expression evaluation", accessMode = READ_ONLY)
   private String alertExpressionUrl;
+
+  @ApiModelProperty(
+      value = "Flag, which specifies if metrics link should use browser FQDN",
+      accessMode = READ_ONLY)
+  private Boolean metricsLinkUseBrowserFqdn;
 }

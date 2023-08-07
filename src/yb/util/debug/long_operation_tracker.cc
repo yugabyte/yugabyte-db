@@ -64,7 +64,7 @@ class LongOperationTrackerHelper {
 
   ~LongOperationTrackerHelper() {
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       stop_ = true;
     }
     cond_.notify_one();
@@ -86,7 +86,7 @@ class LongOperationTrackerHelper {
     auto result = std::make_shared<LongOperationTracker::TrackedOperation>(
         Thread::CurrentThreadIdForStack(), message, start, start + duration * kTimeMultiplier);
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::lock_guard lock(mutex_);
       queue_.push(result);
     }
 

@@ -45,7 +45,7 @@ For an existing universe, assigning new YB-Masters will start the new YB-master 
 The dedicated master placement feature:
 
 - applies to universes created via most cloud providers (such as AWS, GCP, Azure, and On-Premises), except the Kubernetes cloud provider.
-- does not apply to Read Replicas, which have only YB-TServers.
+- does not apply to read replicas, which have only YB-TServers.
 {{< /note >}}
 
 ### Enable the Enable dedicated nodes configuration option

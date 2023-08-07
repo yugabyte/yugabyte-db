@@ -1,39 +1,49 @@
-import React from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { Link } from 'react-router';
+import { Box, useTheme } from '@material-ui/core';
+
 import { XClusterConfig } from '../XClusterTypes';
 import { getMasterNodeAddress } from '../ReplicationUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import { usePillStyles } from '../../configRedesign/providerRedesign/utils';
+import { XClusterConfigType } from '../constants';
 
 export function ReplicationOverview({
-  replication,
+  xClusterConfig,
   destinationUniverse
 }: {
-  replication: XClusterConfig;
+  xClusterConfig: XClusterConfig;
   destinationUniverse: any;
 }) {
+  const theme = useTheme();
   const {
     universeDetails: { nodeDetailsSet }
   } = destinationUniverse;
+  const pillClasses = usePillStyles();
 
   return (
     <>
       <Row className="replication-overview">
-        <Col lg={12}>
+        <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
+          <Row>
+            <Col lg={2} className="noLeftPadding replication-label">
+              Replication Type
+            </Col>
+            <Col lg={2}>{xClusterConfig.type}</Col>
+          </Row>
           <Row>
             <Col lg={2} className="noLeftPadding replication-label">
               Replication started
             </Col>
-            <Col lg={2}>{ybFormatDate(replication.createTime)}</Col>
+            <Col lg={2}>{ybFormatDate(xClusterConfig.createTime)}</Col>
           </Row>
-          <div className="replication-divider" />
           <Row>
             <Col lg={2} className="noLeftPadding replication-label">
               Replication last modified
             </Col>
-            <Col lg={2}>{ybFormatDate(replication.modifyTime)}</Col>
+            <Col lg={2}>{ybFormatDate(xClusterConfig.modifyTime)}</Col>
           </Row>
-        </Col>
+        </Box>
       </Row>
       <div className="replication-divider" />
       <Row style={{ paddingLeft: '20px' }}>
@@ -49,13 +59,20 @@ export function ReplicationOverview({
               Name
             </Col>
             <Col lg={3}>
-              <Link
-                to={`/universes/${destinationUniverse.universeUUID}`}
-                className="target-universe-link"
-              >
-                {destinationUniverse.name}
-              </Link>
-              <span className="target-universe-subText">Target</span>
+              <Box display="flex" gridGap="8px">
+                <Link
+                  to={`/universes/${destinationUniverse.universeUUID}`}
+                  className="target-universe-link"
+                >
+                  {destinationUniverse.name}
+                </Link>
+                <div className={pillClasses.pill}>Target</div>
+                {xClusterConfig.type === XClusterConfigType.TXN && (
+                  <div className={pillClasses.pill}>
+                    {xClusterConfig.targetActive ? 'Active' : 'Standby'}
+                  </div>
+                )}
+              </Box>
             </Col>
           </Row>
           <div className="replication-divider" />
@@ -63,7 +80,7 @@ export function ReplicationOverview({
             <Col lg={2} className="replication-label">
               UUID
             </Col>
-            <Col lg={3}>{replication.targetUniverseUUID}</Col>
+            <Col lg={3}>{xClusterConfig.targetUniverseUUID}</Col>
           </Row>
           <div className="replication-divider" />
           <Row>

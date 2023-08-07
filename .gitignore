@@ -117,6 +117,10 @@ submodules/
 managed/yba-installer/bin/yba-ctl
 managed/yba-installer/yba-ctl
 managed/devops/pex/pexEnv/
+managed/src/main/java/com/yugabyte/yw/common/operator/io/*
 
 *.bad_clang_tidy_output.*
 *.compiler_errors.txt
+
+# jenv local version
+**/.java-version

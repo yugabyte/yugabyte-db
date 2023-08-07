@@ -19,6 +19,9 @@
 
 #include "yb/fs/fs_manager.h"
 
+#include "yb/server/server_fwd.h"
+#include "yb/tablet/operations/operation.h"
+
 #include "yb/util/pb_util.h"
 #include "yb/util/restart_safe_clock.h"
 #include "yb/util/status_fwd.h"
@@ -57,6 +60,7 @@ class RetryableRequests {
   // Returns error or false if request with such id is already present.
   Result<bool> Register(
       const ConsensusRoundPtr& round,
+      tablet::IsLeaderSide is_leader_side,
       RestartSafeCoarseTimePoint entry_time = RestartSafeCoarseTimePoint());
 
   // Cleans expires replicated requests and returns min op id of running request.
@@ -81,6 +85,8 @@ class RetryableRequests {
 
   void set_log_prefix(const std::string& log_prefix);
 
+  void SetServerClock(const server::ClockPtr& clock);
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
@@ -95,7 +101,7 @@ class RetryableRequestsManager {
       const TabletId& tablet_id, FsManager* const fs_manager, const std::string& wal_dir) :
       tablet_id_(tablet_id), fs_manager_(fs_manager), dir_(wal_dir) {}
 
-  Status Init();
+  Status Init(const server::ClockPtr& clock);
 
   FsManager* fs_manager() const { return fs_manager_; }
   const RetryableRequests& retryable_requests() const { return retryable_requests_; }

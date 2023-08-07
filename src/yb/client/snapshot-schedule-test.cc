@@ -50,9 +50,9 @@ namespace client {
 class SnapshotScheduleTest : public TransactionTestBase<MiniCluster> {
  public:
   void SetUp() override {
-    FLAGS_enable_history_cutoff_propagation = true;
-    FLAGS_snapshot_coordinator_poll_interval_ms = 250;
-    FLAGS_history_cutoff_propagation_interval_ms = 100;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_history_cutoff_propagation) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_poll_interval_ms) = 250;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_history_cutoff_propagation_interval_ms) = 100;
     num_tablets_ = 1;
     TransactionTestBase<MiniCluster>::SetUp();
     snapshot_util_ = std::make_unique<SnapshotTestUtil>();
@@ -93,7 +93,7 @@ TEST_F(SnapshotScheduleTest, Create) {
 }
 
 TEST_F(SnapshotScheduleTest, Snapshot) {
-  FLAGS_timestamp_history_retention_interval_sec = kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = kTimeMultiplier;
 
   ASSERT_NO_FATALS(WriteData());
   auto schedule_id = ASSERT_RESULT(
@@ -145,7 +145,7 @@ TEST_F(SnapshotScheduleTest, Snapshot) {
 }
 
 TEST_F(SnapshotScheduleTest, GC) {
-  FLAGS_snapshot_coordinator_cleanup_delay_ms = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 100;
   // When retention matches snapshot interval we expect at most 3 snapshots for schedule.
   ASSERT_RESULT(snapshot_util_->CreateSchedule(
       table_, kTableName.namespace_type(), kTableName.namespace_name(), kSnapshotInterval,
@@ -233,7 +233,7 @@ TEST_F(SnapshotScheduleTest, TablegroupGC) {
 }
 
 TEST_F(SnapshotScheduleTest, Index) {
-  FLAGS_timestamp_history_retention_interval_sec = kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = kTimeMultiplier;
 
   auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
     table_, kTableName.namespace_type(), kTableName.namespace_name()));
@@ -359,6 +359,44 @@ TEST_F(SnapshotScheduleTest, RemoveNewTablets) {
     }
     return true;
   }, kRetention + kInterval * 2, "Cleanup obsolete tablets"));
+}
+
+// Tests that deleted namespaces are ignored on restore.
+// Duplicate namespaces can have implications on restore for e.g. if we have
+// 2 dbs with the same name - one DELETED and one RUNNING.
+// Snapshot schedule should also have the namespace id persisted in the filter.
+TEST_F(SnapshotScheduleTest, DeletedNamespace) {
+  const auto kInterval = 1s * kTimeMultiplier;
+  const auto kRetention = kInterval * 2;
+  const std::string db_name = "demo";
+  // Create namespace.
+  int32_t db_oid = 16900;
+  ASSERT_OK(client_->CreateNamespace(db_name, YQL_DATABASE_PGSQL, "" /* creator */,
+                                     GetPgsqlNamespaceId(db_oid), "" /* src_ns_id */,
+                                     boost::none /* next_pg_oid */, nullptr /* txn */, false));
+  // Drop the namespace.
+  ASSERT_OK(client_->DeleteNamespace(db_name, YQL_DATABASE_PGSQL));
+  // Create namespace again.
+  db_oid++;
+  ASSERT_OK(client_->CreateNamespace(db_name, YQL_DATABASE_PGSQL, "" /* creator */,
+                                     GetPgsqlNamespaceId(db_oid), "" /* src_ns_id */,
+                                     boost::none /* next_pg_oid */, nullptr /* txn */, false));
+  // Create schedule and PITR.
+  auto schedule_id = ASSERT_RESULT(snapshot_util_->CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, db_name,
+      WaitSnapshot::kTrue, kInterval, kRetention));
+  // Validate the filter has namespace id set.
+  auto schedule = ASSERT_RESULT(snapshot_util_->ListSchedules(schedule_id));
+  ASSERT_EQ(schedule.size(), 1);
+  ASSERT_EQ(schedule[0].options().filter().tables().tables_size(), 1);
+  ASSERT_TRUE(schedule[0].options().filter().tables().tables(0).namespace_().has_id());
+
+  // Restore should not fatal.
+  auto hybrid_time = cluster_->mini_master(0)->master()->clock()->Now();
+  ASSERT_OK(snapshot_util_->WaitScheduleSnapshot(schedule_id, hybrid_time));
+  auto snapshot_id = ASSERT_RESULT(snapshot_util_->PickSuitableSnapshot(
+      schedule_id, hybrid_time));
+  ASSERT_OK(snapshot_util_->RestoreSnapshot(snapshot_id, hybrid_time));
 }
 
 } // namespace client

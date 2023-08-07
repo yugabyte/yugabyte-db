@@ -6,6 +6,7 @@ import static org.apache.commons.lang3.exception.ExceptionUtils.getStackTrace;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.EXPECTATION_FAILED;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 import com.azure.core.http.rest.PagedIterable;
 import com.azure.core.http.rest.PagedResponse;
@@ -19,8 +20,9 @@ import com.azure.storage.blob.models.ListBlobsOptions;
 import com.azure.storage.blob.specialized.BlobInputStream;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.utils.Pair;
-import com.yugabyte.yw.common.ybc.YbcBackupUtil;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
 import java.io.BufferedReader;
@@ -33,11 +35,14 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.StreamSupport;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
@@ -63,10 +68,47 @@ public class AZUtil implements CloudUtil {
           + "endsWith(productName, 'Series') and "
           + "priceType eq 'Consumption' and contains(meterName, 'Spot')";
 
+  /*
+   * For Azure location like https://azurl.storage.net/testcontainer/suffix,
+   * splitLocation[0] is equal to azurl.storage.net
+   * splitLocation[1] is equal to testcontainer
+   * splitLocation[2] is equal to the suffix part of string
+   */
   public static String[] getSplitLocationValue(String backupLocation) {
     backupLocation = backupLocation.substring(8);
     String[] split = backupLocation.split("/", 3);
     return split;
+  }
+
+  @Override
+  public ConfigLocationInfo getConfigLocationInfo(String location) {
+    String[] splitLocations = getSplitLocationValue(location);
+    String bucket = splitLocations.length > 1 ? splitLocations[1] : "";
+    String cloudPath = splitLocations.length > 2 ? splitLocations[2] : "";
+    return new ConfigLocationInfo(bucket, cloudPath);
+  }
+
+  @Override
+  public void checkStoragePrefixValidity(String configLocation, String backupLocation) {
+    String[] configLocationSplit = getSplitLocationValue(configLocation);
+    String[] backupLocationSplit = getSplitLocationValue(backupLocation);
+
+    // AZ url should be same.
+    if (!StringUtils.equals(configLocationSplit[0], backupLocationSplit[0])) {
+      throw new PlatformServiceException(
+          PRECONDITION_FAILED,
+          String.format(
+              "Config URL %s and backup location URL %s do not match",
+              configLocationSplit[0], backupLocationSplit[0]));
+    }
+    // Container should be same in any case.
+    if (!StringUtils.equals(configLocationSplit[1], backupLocationSplit[1])) {
+      throw new PlatformServiceException(
+          PRECONDITION_FAILED,
+          String.format(
+              "Config container %s and backup location container %s do not match",
+              configLocationSplit[1], backupLocationSplit[1]));
+    }
   }
 
   @Override
@@ -112,7 +154,8 @@ public class AZUtil implements CloudUtil {
   }
 
   @Override
-  public boolean canCredentialListObjects(CustomerConfigData configData, List<String> locations) {
+  public boolean canCredentialListObjects(
+      CustomerConfigData configData, Collection<String> locations) {
     if (CollectionUtils.isEmpty(locations)) {
       return true;
     }
@@ -216,10 +259,11 @@ public class AZUtil implements CloudUtil {
 
   @Override
   public CloudStoreSpec createCloudStoreSpec(
-      String storageLocation,
+      String region,
       String commonDir,
       String previousBackupLocation,
       CustomerConfigData configData) {
+    String storageLocation = getRegionLocationsMap(configData).get(region);
     Pair<String, Map<String, String>> pair = getContainerCredsMapPair(configData, storageLocation);
     String cloudDir = BackupUtil.appendSlash(commonDir);
     String previousCloudDir = "";
@@ -234,10 +278,11 @@ public class AZUtil implements CloudUtil {
 
   @Override
   public CloudStoreSpec createRestoreCloudStoreSpec(
-      String storageLocation, String cloudDir, CustomerConfigData configData, boolean isDsm) {
+      String region, String cloudDir, CustomerConfigData configData, boolean isDsm) {
+    String storageLocation = getRegionLocationsMap(configData).get(region);
     Pair<String, Map<String, String>> pair = getContainerCredsMapPair(configData, storageLocation);
     if (isDsm) {
-      String[] splitValues = getSplitLocationValue(storageLocation);
+      String[] splitValues = getSplitLocationValue(cloudDir);
       String location = BackupUtil.appendSlash(splitValues[2]);
       return YbcBackupUtil.buildCloudStoreSpec(
           pair.getFirst(), location, "", pair.getSecond(), Util.AZ);
@@ -256,7 +301,7 @@ public class AZUtil implements CloudUtil {
     String containerEndpoint = String.format("%s/%s", azureUrl, container);
     String azureSasToken = containerTokenMap.get(containerEndpoint);
     Map<String, String> azCredsMap = createCredsMapYbc(azureSasToken, azureUrl);
-    return new Pair(container, azCredsMap);
+    return new Pair<String, Map<String, String>>(container, azCredsMap);
   }
 
   private Map<String, String> createCredsMapYbc(String azureSasToken, String azureContainerUrl) {
@@ -280,6 +325,7 @@ public class AZUtil implements CloudUtil {
     if (CollectionUtils.isNotEmpty(azData.regionLocations)) {
       azData.regionLocations.stream().forEach(rL -> regionLocationsMap.put(rL.region, rL.location));
     }
+    regionLocationsMap.put(YbcBackupUtil.DEFAULT_REGION_STRING, azData.backupLocation);
     return regionLocationsMap;
   }
 
@@ -287,6 +333,46 @@ public class AZUtil implements CloudUtil {
   public InputStream getCloudFileInputStream(CustomerConfigData configData, String cloudPath)
       throws Exception {
     throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "This method is not implemented yet");
+  }
+
+  @Override
+  /*
+   * For Azure location like https://azurl.storage.net/testcontainer/suffix,
+   * splitLocation[0] is equal to azurl.storage.net
+   * splitLocation[1] is equal to testcontainer
+   * splitLocation[2] is equal to the suffix part of string
+   */
+  public boolean checkFileExists(
+      CustomerConfigData configData,
+      Set<String> locations,
+      String fileName,
+      boolean checkExistsOnAll) {
+    try {
+      CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
+      BlobContainerClient blobContainerClient =
+          createBlobContainerClient(azData.azureSasToken, azData.backupLocation);
+      AtomicInteger count = new AtomicInteger(0);
+      return locations.stream()
+          .map(
+              l -> {
+                String[] splitLocation = getSplitLocationValue(l);
+                String blob = splitLocation.length > 2 ? splitLocation[2] : "";
+
+                // objectSuffix is the exact suffix with file name
+                String objectSuffix =
+                    splitLocation.length > 1
+                        ? BackupUtil.getPathWithPrefixSuffixJoin(blob, fileName)
+                        : fileName;
+                BlobClient blobClient = blobContainerClient.getBlobClient(objectSuffix);
+                if (blobClient.exists()) {
+                  count.incrementAndGet();
+                }
+                return count;
+              })
+          .anyMatch(i -> checkExistsOnAll ? (i.get() == locations.size()) : (i.get() == 1));
+    } catch (Exception e) {
+      throw new RuntimeException("Error checking files on locations", e);
+    }
   }
 
   /**

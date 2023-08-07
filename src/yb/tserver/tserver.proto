@@ -88,7 +88,9 @@ message WriteRequestPB {
 
   optional int64 leader_term = 21;
 
-  optional AUHMetadataPB auh_metadata = 22;
+  optional uint64 start_time_micros = 22;
+  
+  optional AUHMetadataPB auh_metadata = 23;
 }
 
 message WriteResponsePB {

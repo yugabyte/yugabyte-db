@@ -3,10 +3,10 @@ package com.yugabyte.yw.controllers;
 
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.DeletePitrConfig;
-import com.yugabyte.yw.common.BackupUtil;
-import com.yugabyte.yw.common.BackupUtil.ApiType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.common.backuprestore.BackupUtil.ApiType;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.PlatformResults;

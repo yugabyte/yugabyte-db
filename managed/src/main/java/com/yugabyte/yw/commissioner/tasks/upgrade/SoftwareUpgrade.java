@@ -84,8 +84,11 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
           // PreCheck for Available Memory on tserver nodes.
           long memAvailableLimit =
               confGetter.getConfForScope(universe, UniverseConfKeys.dbMemAvailableLimit);
-          createAvailabeMemoryCheck(allNodes, Util.AVAILABLE_MEMORY, memAvailableLimit)
-              .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+          // No need to run the check if the minimum allowed is 0.
+          if (memAvailableLimit > 0) {
+            createAvailabeMemoryCheck(allNodes, Util.AVAILABLE_MEMORY, memAvailableLimit)
+                .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+          }
 
           if (!universe
               .getUniverseDetails()

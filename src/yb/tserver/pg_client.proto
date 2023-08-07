@@ -45,8 +45,8 @@ service PgClientService {
       returns (PgGetCatalogMasterVersionResponsePB);
   rpc GetTServerUUID (PgGetTServerUUIDRequestPB) returns (PgGetTServerUUIDResponsePB);
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
-  rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
   rpc GetLockStatus(PgGetLockStatusRequestPB) returns (PgGetLockStatusResponsePB);
+  rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
   rpc ListLiveTabletServers(PgListLiveTabletServersRequestPB)
       returns (PgListLiveTabletServersResponsePB);
   rpc GetIndexBackfillProgress(PgGetIndexBackfillProgressRequestPB)
@@ -79,11 +79,15 @@ service PgClientService {
   rpc DeleteSequenceTuple(PgDeleteSequenceTupleRequestPB) returns (PgDeleteSequenceTupleResponsePB);
   rpc DeleteDBSequences(PgDeleteDBSequencesRequestPB) returns (PgDeleteDBSequencesResponsePB);
   rpc CheckIfPitrActive(PgCheckIfPitrActiveRequestPB) returns (PgCheckIfPitrActiveResponsePB);
+  rpc IsObjectPartOfXRepl(PgIsObjectPartOfXReplRequestPB)
+      returns (PgIsObjectPartOfXReplResponsePB);
   rpc GetTserverCatalogVersionInfo(PgGetTserverCatalogVersionInfoRequestPB)
       returns (PgGetTserverCatalogVersionInfoResponsePB);
   rpc CancelTransaction(PgCancelTransactionRequestPB) returns (PgCancelTransactionResponsePB);
   rpc ActiveUniverseHistory(PgActiveUniverseHistoryRequestPB)
       returns (PgActiveUniverseHistoryResponsePB);
+  rpc GetActiveTransactionList(PgGetActiveTransactionListRequestPB)
+      returns (PgGetActiveTransactionListResponsePB);
 }
 
 message PgHeartbeatRequestPB {
@@ -313,8 +317,15 @@ message PgGetLockStatusRequestPB {
   // The table to scan. If unset, scan all tables
   bytes table_id = 1;
 
-  // If specified, only read the locks associated with this txn_id.
+  // If set, only read the locks associated with this txn_id and ignore the fields
+  // min_txn_age_ms and max_num_txns.
   bytes transaction_id = 2;
+
+  // Return lock statuses of transactions with age >= 'min_txn_age_ms'
+  uint32 min_txn_age_ms = 3;
+
+  // Limit number of old transactions whose lock info is retrieved.
+  uint32 max_num_txns = 4;
 }
 
 message PgGetLockStatusResponsePB {
@@ -327,6 +338,13 @@ message PgGetLockStatusResponsePB {
   }
 
   repeated NodeLockStatusResponsePB node_locks = 2;
+
+  message TransactionList {
+    repeated bytes transaction_ids = 1;
+  }
+
+  // Map of transactions keyed by the host node uuid.
+  map<string, TransactionList> transactions_by_node = 3;
 }
 
 message PgListLiveTabletServersRequestPB {
@@ -411,6 +429,8 @@ message OptionalFixed64PB {
 message OptionalUint32PB {
   uint32 value = 1;
 }
+
+message OptionalUint64PB { uint64 value = 1; }
 
 message PgPerformOptionsPB {
   message CachingInfoPB {
@@ -636,6 +656,15 @@ message PgCheckIfPitrActiveResponsePB {
   AppStatusPB status = 2;
 }
 
+message PgIsObjectPartOfXReplRequestPB {
+  PgObjectIdPB table_id = 2;
+}
+
+message PgIsObjectPartOfXReplResponsePB {
+  AppStatusPB status = 1;
+  bool is_object_part_of_xrepl = 2;
+}
+
 message PgGetTserverCatalogVersionInfoRequestPB {
   // True if we only want to return the size of the catalog version map from tserver.
   bool size_only = 1;
@@ -681,4 +710,15 @@ message PgActiveUniverseHistoryRequestPB {}
 message PgActiveUniverseHistoryResponsePB {
   AppStatusPB status = 1;
   repeated WaitStateInfoPB wait_states = 2;
+}
+
+message PgGetActiveTransactionListRequestPB { OptionalUint64PB session_id = 1; }
+
+message PgGetActiveTransactionListResponsePB {
+  message EntryPB {
+    uint64 session_id = 1;
+    bytes txn_id = 2;
+  }
+  AppStatusPB status = 1;
+  repeated EntryPB entries = 2;
 }

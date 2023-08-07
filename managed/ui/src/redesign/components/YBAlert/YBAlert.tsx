@@ -1,4 +1,4 @@
-import React, { FC, ReactNode } from 'react';
+import { FC, ReactNode } from 'react';
 import clsx from 'clsx';
 import { makeStyles, Snackbar, Fade, Box } from '@material-ui/core';
 import { Close as CloseIcon } from '@material-ui/icons';

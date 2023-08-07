@@ -50,28 +50,28 @@ void WriteValueToColumn(const client::YBSchema& schema,
   DataType type = schema.Column(col_idx).type()->main();
   char buf[kFastToBufferSize];
   switch (type) {
-    case INT8:
+    case DataType::INT8:
       out->set_int8_value(static_cast<int32_t>(value));
       return;
-    case INT16:
+    case DataType::INT16:
       out->set_int16_value(static_cast<int32_t>(value));
       return;
-    case INT32:
+    case DataType::INT32:
       out->set_int32_value(static_cast<int32_t>(value));
       return;
-    case INT64:
+    case DataType::INT64:
       out->set_int64_value(value);
       return;
-    case FLOAT:
+    case DataType::FLOAT:
       out->set_float_value(value / 123.0);
       return;
-    case DOUBLE:
+    case DataType::DOUBLE:
       out->set_double_value(value / 123.0);
       return;
-    case STRING:
+    case DataType::STRING:
       out->set_string_value(FastHex64ToBuffer(value, buf));
       return;
-    case BOOL:
+    case DataType::BOOL:
       out->set_bool_value(value);
       return;
     default:

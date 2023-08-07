@@ -1,10 +1,10 @@
 import { FormikActions, FormikErrors, FormikProps } from 'formik';
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import { AxiosError } from 'axios';
 
-import { api, universeQueryKey } from '../../../../redesign/helpers/api';
+import { api, universeQueryKey, xClusterQueryKey } from '../../../../redesign/helpers/api';
 import { TableTypeLabel, Universe, YBTable } from '../../../../redesign/helpers/dtos';
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBButton, YBModal } from '../../../common/forms/fields';
@@ -150,12 +150,12 @@ export const AddTableModal = ({
                 </span>
               );
             }
-            queryClient.invalidateQueries(['Xcluster', xClusterConfig.uuid]);
+            queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
           },
           // Invalidate the cached data for current xCluster config. The xCluster config status should change to
           // 'in progress' once the task starts.
           () => {
-            queryClient.invalidateQueries(['Xcluster', xClusterConfig.uuid]);
+            queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
           }
         );
       },

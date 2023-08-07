@@ -23,15 +23,11 @@ DEFINE_RUNTIME_bool(cb_test2, false, "test flag");
 static bool global2_set = false;
 REGISTER_CALLBACK(cb_test2, "Global callback", []() { global2_set = FLAGS_cb_test2; });
 
-DECLARE_bool(TEST_allow_duplicate_flag_callbacks);
-
 namespace yb {
 
 class FlagsCallbackTest : public YBTest {};
 
 TEST(FlagsCallbackTest, TestCallback) {
-  FLAGS_TEST_allow_duplicate_flag_callbacks = false;
-
   ASSERT_TRUE(global1_called);
   ASSERT_FALSE(global2_set);
 

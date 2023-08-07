@@ -95,7 +95,7 @@ TEST_F(PgMasterFailoverTest, YB_DISABLE_TEST_IN_SANITIZERS(DropAllTablesInTableg
 }
 
 void PgMasterFailoverTest::TestNonRespondingMaster(WaitForTS wait_for_ts) {
-  FLAGS_TEST_timeout_non_leader_master_rpcs = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_timeout_non_leader_master_rpcs) = true;
   tools::TmpDirProvider tmp_dir;
 
   auto conn = ASSERT_RESULT(Connect());

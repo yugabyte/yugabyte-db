@@ -35,7 +35,7 @@
 
 #include "yb/yql/cql/cqlserver/cql_server.h"
 #include "yb/yql/cql/cqlserver/cql_service.h"
-#include "yb/yql/cql/cqlserver/statement_metrics.h"
+#include "yb/yql/cql/cqlserver/cql_statement.h"
 
 DECLARE_bool(cql_server_always_send_events);
 DECLARE_bool(use_cassandra_authentication);
@@ -434,7 +434,7 @@ TEST_F(TestCQLService, TestSchemaChangeEvent) {
 class TestCQLServiceWithGFlag : public TestCQLService {
  public:
   void SetUp() override {
-    FLAGS_cql_server_always_send_events = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_server_always_send_events) = true;
     TestCQLService::SetUp();
   }
 };
@@ -474,7 +474,7 @@ TEST_F(TestCQLService, TestReadSystemTable) {
 class TestCQLServiceWithCassAuth : public TestCQLService {
  public:
   void SetUp() override {
-    FLAGS_use_cassandra_authentication = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_cassandra_authentication) = true;
     TestCQLService::SetUp();
   }
 };
@@ -591,38 +591,128 @@ TEST_F(TestCQLService, TestCQLStatementEndpoint) {
   shared_ptr<CQLServiceImpl> cql_service = server()->TEST_cql_service();
   faststring buf;
   EasyCurl curl;
+  Endpoint addr = GetWebServerAddress();
   QLEnv ql_env(cql_service->client(),
                cql_service->metadata_cache(),
                cql_service->clock(),
                std::bind(&CQLServiceImpl::TransactionPool, cql_service));
 
-  cql_service->AllocatePreparedStatement("dummyqueryid", "dummyquery", &ql_env);
+  cql_service->AllocateStatement("dummyqueryid", "dummyquery", &ql_env, IsPrepare::kTrue);
+  cql_service->UpdateStmtCounters("dummyqueryid", 1, IsPrepare::kTrue);
 
-  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements",
-                                               ToString(GetWebServerAddress())), &buf));
+  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addr)), &buf));
   string result = buf.ToString();
   ASSERT_STR_CONTAINS(result, "prepared_statements");
   ASSERT_STR_CONTAINS(result, "dummyquery");
   ASSERT_STR_CONTAINS(result, b2a_hex("dummyqueryid"));
+
+  // reset the counters and verify
+  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements-reset",
+                                              ToString(addr)), &buf));
+  ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements",
+                                              ToString(addr)), &buf));
+
+  JsonReader json_post_reset(buf.ToString());
+  ASSERT_OK(json_post_reset.Init());
+  std::vector<const rapidjson::Value*> stmt_stats_post_reset;
+  ASSERT_OK(json_post_reset.ExtractObjectArray(json_post_reset.root(), "unprepared_statements",
+                                               &stmt_stats_post_reset));
+  ASSERT_EQ(stmt_stats_post_reset.size(), 0);
 }
 
 TEST_F(TestCQLService, TestCQLDumpStatementLimit) {
-  FLAGS_cql_dump_statement_metrics_limit = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_dump_statement_metrics_limit) = 1;
   shared_ptr<CQLServiceImpl> cql_service = server()->TEST_cql_service();
-  std::vector<shared_ptr<StatementMetrics>> metrics;
   QLEnv ql_env(cql_service->client(),
              cql_service->metadata_cache(),
              cql_service->clock(),
              std::bind(&CQLServiceImpl::TransactionPool, cql_service));
   // Create two prepared statements.
-  cql_service->AllocatePreparedStatement("dummyqueryid1", "dummyquery1", &ql_env);
-  cql_service->AllocatePreparedStatement("dummyqueryid2", "dummyquery2", &ql_env);
+  const string dummyqueryid1 = CQLStatement::GetQueryId(ql_env.CurrentKeyspace(), "dummyquery1");
+  const string dummyqueryid2 = CQLStatement::GetQueryId(ql_env.CurrentKeyspace(), "dummyquery2");
+  cql_service->AllocateStatement(dummyqueryid1, "dummyquery1", &ql_env, IsPrepare::kTrue);
+  cql_service->UpdateStmtCounters(dummyqueryid1, 1, IsPrepare::kTrue);
+  cql_service->AllocateStatement(dummyqueryid2, "dummyquery2", &ql_env, IsPrepare::kTrue);
+  cql_service->UpdateStmtCounters(dummyqueryid2, 1, IsPrepare::kTrue);
+
   // Dump should only return one prepared statement.
-  cql_service->GetPreparedStatementMetrics(&metrics);
-  ASSERT_EQ(1, metrics.size());
-  ASSERT_TRUE(metrics[0]->query_id() == "dummyqueryid1"
-    ||  metrics[0]->query_id() == "dummyqueryid2");
+  StmtCountersMap counters = cql_service->GetStatementCountersForMetrics(IsPrepare::kTrue);
+  ASSERT_EQ(1, counters.size());
+  const CQLMessage::QueryId query_id = counters.begin()->first;
+  ASSERT_TRUE(query_id == dummyqueryid1 || query_id == dummyqueryid2);
 }
+
+TEST_F(TestCQLService, TestCQLUpdateStmtCounters) {
+  const std::shared_ptr<CQLServiceImpl> cql_service = server()->TEST_cql_service();
+  QLEnv ql_env(
+      cql_service->client(),
+      cql_service->metadata_cache(),
+      cql_service->clock(),
+      std::bind(&CQLServiceImpl::TransactionPool, cql_service));
+
+  // Store some properties for later comparision.
+  std::shared_ptr<StmtCounters> counters;
+  double select_min_time = INFINITY;
+  double select_max_time = 0.;
+  double insert_min_time = INFINITY;
+  double insert_max_time = 0.;
+
+  // Used to generate a random double.
+  double execute_time_in_msec = 0.;
+
+  // Generates a random double. We use it to assign a value to the query execution time
+  // as the query is not actually being executed.
+  auto RandomDouble = [&]() {
+    static const double lower_bound = 0.5;
+    static const double upper_bound = 20000.;
+    static const int64 max_rand = 1000000;
+    return (lower_bound + (upper_bound - lower_bound)*(random()%max_rand)/max_rand);
+  };
+
+  // Execute query doesn't actually execute the query. Instead of following the whole query path
+  // only the relevant functions that store the prepared statements are invoked. So the methods
+  // GetQueryId and AllocatePreparedStatement are invoked as in the PrepareRequest. Next
+  // UpdateCounters method is invoked as in the ExecuteRequest.
+  auto ExecuteQuery = [&](std::string query_text) {
+    int64 calls = 0;
+    double total_time = 0.;
+    const CQLMessage::QueryId query_id = CQLStatement::GetQueryId(
+        ql_env.CurrentKeyspace(), query_text);
+    // First store the previous values of the counters for that query.
+    counters = cql_service->GetWritablePrepStmtCounters(query_id);
+    if (counters) {
+      calls = counters->num_calls;
+      total_time = counters->total_time_in_msec;
+    } else {
+      cql_service->AllocateStatement(query_id, query_text, &ql_env, IsPrepare::kTrue);
+    }
+    cql_service->UpdateStmtCounters(query_id, execute_time_in_msec, IsPrepare::kTrue);
+    counters = cql_service->GetWritablePrepStmtCounters(query_id); // Store the updated counters.
+    ASSERT_ONLY_NOTNULL(counters.get());
+    ASSERT_EQ(calls + 1, counters->num_calls);
+    ASSERT_EQ(query_text, counters->query);
+    ASSERT_EQ(total_time + execute_time_in_msec, counters->total_time_in_msec);
+  };
+
+  // Randomly choose between insert or select queries.
+  for(int i = 0; i < 10000; i++) {
+    execute_time_in_msec = RandomDouble();
+    if (random()%2) {
+      select_min_time = std::min(select_min_time, execute_time_in_msec);
+      select_max_time = std::max(select_max_time, execute_time_in_msec);
+      ExecuteQuery("SELECT k, v FROM CassandraKeyValue WHERE k = ?;");
+      ASSERT_EQ(select_min_time, counters->min_time_in_msec);
+      ASSERT_EQ(select_max_time, counters->max_time_in_msec);
+    } else {
+      insert_min_time = std::min(insert_min_time, execute_time_in_msec);
+      insert_max_time = std::max(insert_max_time, execute_time_in_msec);
+      ExecuteQuery("INSERT INTO CassandraKeyValue (k, v) VALUES (?, ?);");
+      ASSERT_EQ(insert_min_time, counters->min_time_in_msec);
+      ASSERT_EQ(insert_max_time, counters->max_time_in_msec);
+    }
+  }
+}
+
 
 }  // namespace cqlserver
 }  // namespace yb

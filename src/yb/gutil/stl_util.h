@@ -834,6 +834,12 @@ void Unique(Collection* collection) {
   collection->erase(std::unique(collection->begin(), collection->end()), collection->end());
 }
 
+template <class Collection, class Predicate>
+void Unique(Collection* collection, Predicate predicate) {
+  collection->erase(std::unique(collection->begin(), collection->end(), predicate),
+                    collection->end());
+}
+
 template <class Key, class Value, class Map>
 void MakeAtMost(const Key& key, const Value& value, Map* map) {
   auto it = map->find(key);

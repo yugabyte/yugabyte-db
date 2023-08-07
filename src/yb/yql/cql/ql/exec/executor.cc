@@ -238,6 +238,7 @@ void Executor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCallba
           break;
       }
     }
+
   }
 
   for (const auto& pair : batch) {
@@ -1582,7 +1583,7 @@ Status Executor::ExecPTNode(const PTExplainStmt *tnode) {
   TreeNode::SharedPtr subStmt = tnode->stmt();
   PTDmlStmt *dmlStmt = down_cast<PTDmlStmt *>(subStmt.get());
   const YBTableName explainTable(YQL_DATABASE_CQL, "Explain");
-  ColumnSchema explainColumn("QUERY PLAN", STRING);
+  ColumnSchema explainColumn("QUERY PLAN", DataType::STRING);
   auto explainColumns = std::make_shared<std::vector<ColumnSchema>>(
       std::initializer_list<ColumnSchema>{explainColumn});
   auto explainSchema = std::make_shared<Schema>(*explainColumns);
@@ -1806,7 +1807,7 @@ void Executor::FlushAsyncDone(client::FlushStatus* flush_status, ExecContext* ex
     if (exec_context != nullptr) {
       s = ProcessAsyncStatus(op_errors, exec_context);
       if (!s.ok()) {
-        std::lock_guard<std::mutex> lock(status_mutex_);
+        std::lock_guard lock(status_mutex_);
         async_status_ = s;
       }
     } else {
@@ -1814,14 +1815,14 @@ void Executor::FlushAsyncDone(client::FlushStatus* flush_status, ExecContext* ex
         if (!exec_context.HasTransaction()) {
           s = ProcessAsyncStatus(op_errors, &exec_context);
           if (!s.ok()) {
-            std::lock_guard<std::mutex> lock(status_mutex_);
+            std::lock_guard lock(status_mutex_);
             async_status_ = s;
           }
         }
       }
     }
   } else {
-    std::lock_guard<std::mutex> lock(status_mutex_);
+    std::lock_guard lock(status_mutex_);
     async_status_ = s;
   }
 
@@ -1846,7 +1847,7 @@ void Executor::CommitDone(Status s, ExecContext* exec_context) {
     if (ShouldRestart(s, rescheduler_)) {
       exec_context->Reset(client::Restart::kTrue, rescheduler_);
     } else {
-      std::lock_guard<std::mutex> lock(status_mutex_);
+      std::lock_guard lock(status_mutex_);
       async_status_ = s;
     }
   }
@@ -2701,7 +2702,8 @@ Executor::ResetAsyncCalls::ResetAsyncCalls(ResetAsyncCalls&& rhs)
 }
 
 void Executor::ResetAsyncCalls::operator=(ResetAsyncCalls&& rhs) {
-  Perform();
+  std::lock_guard guard(num_async_calls_mutex_);
+  PerformUnlocked();
   num_async_calls_ = rhs.num_async_calls_;
   rhs.num_async_calls_ = nullptr;
   LOG_IF(DFATAL, num_async_calls_ && num_async_calls_->load(std::memory_order_acquire))
@@ -2709,6 +2711,7 @@ void Executor::ResetAsyncCalls::operator=(ResetAsyncCalls&& rhs) {
 }
 
 void Executor::ResetAsyncCalls::Cancel() {
+  std::lock_guard guard(num_async_calls_mutex_);
   num_async_calls_ = nullptr;
 }
 
@@ -2717,6 +2720,11 @@ Executor::ResetAsyncCalls::~ResetAsyncCalls() {
 }
 
 void Executor::ResetAsyncCalls::Perform() {
+  std::lock_guard guard(num_async_calls_mutex_);
+  PerformUnlocked();
+}
+
+void Executor::ResetAsyncCalls::PerformUnlocked() {
   if (!num_async_calls_) {
     return;
   }

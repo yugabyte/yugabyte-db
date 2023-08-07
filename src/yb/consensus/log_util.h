@@ -462,6 +462,10 @@ class WritableLogSegment {
     return path_;
   }
 
+  void set_path(const std::string& path) {
+    path_ = path;
+  }
+
   int64_t first_entry_offset() const {
     return first_entry_offset_;
   }
@@ -486,7 +490,7 @@ class WritableLogSegment {
   Status WriteIndexBlock(const LogIndexBlock& index_block);
 
   // The path to the log file.
-  const std::string path_;
+  std::string path_;
 
   // The writable file to which this LogSegment will be written.
   const std::shared_ptr<WritableFile> writable_file_;

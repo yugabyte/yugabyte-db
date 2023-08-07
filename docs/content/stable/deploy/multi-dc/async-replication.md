@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Using an xCluster deployment, you can use unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between two universes (aka data centers).
+By default, YugabyteDB provides synchronous replication and strong consistency across geo-distributed data centers. However, many use cases do not require synchronous replication or justify the additional complexity and operating costs associated with managing three or more data centers. A cross-cluster (xCluster) deployment provides asynchronous replication across two data centers or cloud regions. Using an xCluster deployment, you can use unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between two universes (aka data centers).
 
 For information on xCluster deployment architecture and replication scenarios, see [xCluster replication](../../../architecture/docdb-replication/async-replication/).
 
@@ -20,9 +20,9 @@ For information on xCluster deployment architecture and replication scenarios, s
 
 You can create source and target universes as follows:
 
-1. Create the yugabyte-source universe by following the procedure from [Manual deployment](../../manual-deployment/).
+1. Create the source universe by following the procedure from [Manual deployment](../../manual-deployment/).
 1. Create tables for the APIs being used by the source universe.
-1. Create the yugabyte-target universe by following the procedure from [Manual deployment](../../manual-deployment/).
+1. Create the target universe by following the procedure from [Manual deployment](../../manual-deployment/).
 1. Create tables for the APIs being used by the target universe. These should be the same tables as you created for the source universe.
 1. Proceed to setting up [unidirectional](#set-up-unidirectional-replication) or [bidirectional](#set-up-bidirectional-replication) replication.
 
@@ -39,13 +39,13 @@ After you created the required tables, you can set up unidirectional replication
   - To find a table ID, execute the following command as an admin user:
 
       ```sh
-      ./bin/yb-admin -master_addresses <source master ips comma separated> list_tables include_table_id
+      ./bin/yb-admin -master_addresses <source_universe_master_addresses> list_tables include_table_id
       ```
 
       The preceding command lists all the tables, including system tables. To locate a specific table, you can add `grep`, as follows:
 
       ```sh
-      ./bin/yb-admin -master_addresses <source master ips comma separated> list_tables include_table_id | grep table_name
+      ./bin/yb-admin -master_addresses <source_universe_master_addresses> list_tables include_table_id | grep table_name
       ```
 
 - Run the following `yb-admin` [`setup_universe_replication`](../../../admin/yb-admin/#setup-universe-replication) command from the YugabyteDB home directory in the source universe:
@@ -74,7 +74,7 @@ If you need to set up bidirectional replication, see instructions provided in [S
 
 ## Set up bidirectional replication
 
-To set up bidirectional replication, repeat the procedure described in [Set up unidirectional replication](#set-up-unidirectional-replication) applying the steps to the yugabyte-target universe. You need to set up each yugabyte-source to consume data from yugabyte-target.
+To set up bidirectional replication, repeat the procedure described in [Set up unidirectional replication](#set-up-unidirectional-replication) applying the steps to the target universe. You need to set up each source to consume data from target.
 
 When completed, proceed to [Load data](#load-data-into-the-source-universe).
 
@@ -84,7 +84,7 @@ After you have set up replication, load data into the source universe, as follow
 
 - Download the YugabyteDB workload generator JAR file `yb-sample-apps.jar` from [GitHub](https://github.com/yugabyte/yb-sample-apps/releases).
 
-- Start loading data into yugabyte-source by following examples for YSQL or YCQL:
+- Start loading data into source by following examples for YSQL or YCQL:
 
   - YSQL:
 
@@ -100,25 +100,25 @@ After you have set up replication, load data into the source universe, as follow
 
   Note that the IP address needs to correspond to the IP of any T-Servers in the universe.
 
-- For bidirectional replication, repeat the preceding step in the yugabyte-target universe.
+- For bidirectional replication, repeat the preceding step in the target universe.
 
 When completed, proceed to [Verify replication](#verify-replication).
 
 ## Verify replication
 
-You can verify replication by stopping the workload and then using the `COUNT(*)` function on the yugabyte-target to yugabyte-source match.
+You can verify replication by stopping the workload and then using the `COUNT(*)` function on the target to source match.
 
 ### Unidirectional replication
 
-For unidirectional replication, connect to the yugabyte-target universe using the YSQL shell (`ysqlsh`) or the YCQL shell (`ycqlsh`), and confirm that you can see the expected records.
+For unidirectional replication, connect to the target universe using the YSQL shell (`ysqlsh`) or the YCQL shell (`ycqlsh`), and confirm that you can see the expected records.
 
 ### Bidirectional replication
 
 For bidirectional replication, repeat the procedure described in [Unidirectional replication](#unidirectional-replication), but reverse the source and destination information, as follows:
 
-1. Run `yb-admin setup_universe_replication` on the yugabyte-target universe, pointing to yugabyte-source.
-2. Use the workload generator to start loading data into the yugabyte-target universe.
-3. Verify replication from yugabyte-target to yugabyte-source.
+1. Run `yb-admin setup_universe_replication` on the target universe, pointing to source.
+2. Use the workload generator to start loading data into the target universe.
+3. Verify replication from target to source.
 
 To avoid primary key conflict errors, keep the key ranges for the two universes separate. This is done automatically by the applications included in the `yb-sample-apps.jar`.
 
@@ -142,7 +142,7 @@ You can use `yb-admin` to return the current replication status. The `get_replic
     get_replication_status
 ```
 
-```output
+```output.yaml
 statuses {
   table_id: "03ee1455f2134d5b914dd499ccad4377"
   stream_id: "53441ad2dd9f4e44a76dccab74d0a2ac"
@@ -171,11 +171,11 @@ Consider the following example:
 
 When universes use different certificates, you need to store the certificates for the source universe on the target universe, as follows:
 
-1. Ensure that `use_node_to_node_encryption` is set to `true` on all [masters](../../reference/configuration/yb-master/#use-node-to-node-encryption) and [t-servers](../../reference/configuration/yb-tserver/#use-node-to-node-encryption) on both the source and target.
+1. Ensure that `use_node_to_node_encryption` is set to `true` on all [masters](../../../reference/configuration/yb-master/#use-node-to-node-encryption) and [t-servers](../../../reference/configuration/yb-tserver/#use-node-to-node-encryption) on both the source and target.
 
-1. For each master and t-server on the target universe, set the gflag `certs_for_cdc_dir` to the parent directory where you want to store all the source universe's certificates for replication.
+1. For each master and t-server on the target universe, set the flag `certs_for_cdc_dir` to the parent directory where you want to store all the source universe's certificates for replication.
 
-1. Find the certificate authority file used by the source universe (`ca.crt`). This should be stored within the [`--certs_dir`]`/preview/reference/configuration/yb-master/#certs-dir`.
+1. Find the certificate authority file used by the source universe (`ca.crt`). This should be stored in the [`--certs_dir`]`/preview/reference/configuration/yb-master/#certs-dir`.
 
 1. Copy this file to each node on the target. It needs to be copied to a directory named`<certs_for_cdc_dir>/<source_universe_uuid>`.
 
@@ -265,9 +265,9 @@ To create unidirectional replication, perform the following:
 1. Run the replication setup command for the source universe, as follows:
 
     ```sh
-    ./bin/yb-admin -master_addresses <consumer_master_addresses> \
+    ./bin/yb-admin -master_addresses <target_master_addresses> \
     setup_universe_replication <source_universe_UUID>_<replication_stream_name> \
-    <producer_master_addresses> <comma_separated_table_ids>
+    <source_master_addresses> <comma_separated_table_ids>
     ```
 
     Consider the following example:
@@ -384,7 +384,7 @@ You can set up xCluster replication for the following purposes:
 - Enabling replication on a table that has existing data.
 - Catching up an existing stream where the target has fallen too far behind.
 
-To ensure that the WALs are still available, you need to perform the following steps within the [cdc_wal_retention_time_secs](../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) gflag window. If the process is going to take more time than the value defined by this flag, you should increase the value.
+To ensure that the WALs are still available, you need to perform the following steps in the [cdc_wal_retention_time_secs](../../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) flag window. If the process is going to take more time than the value defined by this flag, you should increase the value.
 
 Proceed as follows:
 
@@ -502,7 +502,7 @@ When new tables (or partitions) are created, to ensure that all changes from the
 
 #### Adding indexes
 
-To add a new index to an empty table, follow the same steps as described in [Adding Tables (or Partitions)](#adding-tables).
+To add a new index to an empty table, follow the same steps as described in [Adding Tables (or Partitions)](#adding-tables-or-partitions).
 However, to add a new index to a table that already has data, the following additional steps are required to ensure that the index has all the updates:
 
 1. Create an [index](../../../api/ysql/the-sql-language/statements/ddl_create_index/) - for example, `my_new index` on the source.

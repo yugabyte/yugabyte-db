@@ -35,6 +35,7 @@
 #include "yb/tserver/pg_client.fwd.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/lw_function.h"
 #include "yb/util/monotime.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
@@ -82,6 +83,8 @@ class PgClient {
 
   void SetTimeout(MonoDelta timeout);
 
+  uint64_t SessionID() const;
+
   Result<PgTableDescPtr> OpenTable(
       const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time);
 
@@ -110,6 +113,9 @@ class PgClient {
 
   Status GetIndexBackfillProgress(const std::vector<PgObjectId>& index_ids,
                                   uint64_t** backfill_statuses);
+
+  Result<yb::tserver::PgGetLockStatusResponsePB> GetLockStatusData(
+      const std::string& table_id, const std::string& transaction_id);
 
   Result<int32> TabletServerCount(bool primary_only);
 
@@ -165,10 +171,17 @@ class PgClient {
 
   Result<bool> CheckIfPitrActive();
 
+  Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
+
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid);
 
   Result<client::RpcsInfo> ActiveUniverseHistory();
+  
+  using ActiveTransactionCallback = LWFunction<Status(
+      const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;
+  Status EnumerateActiveTransactions(
+      const ActiveTransactionCallback& callback, bool for_current_session_only = false) const;
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DECLARE(r, data, method) \
   Status method(                             \
@@ -176,6 +189,8 @@ class PgClient {
       CoarseTimePoint deadline);
 
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_SIMPLE_METHOD_DECLARE, ~, YB_PG_CLIENT_SIMPLE_METHODS);
+
+  Status CancelTransaction(const unsigned char* transaction_id);
 
  private:
   class Impl;

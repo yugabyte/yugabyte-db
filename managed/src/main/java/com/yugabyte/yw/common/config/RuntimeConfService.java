@@ -120,7 +120,7 @@ public class RuntimeConfService extends AuthenticatedController {
       String value = fullConfig.getValue(k).render(ConfigRenderOptions.concise());
       value = unwrap(value);
       if (sensitiveKeys.contains(k)) {
-        value = CommonUtils.getMaskedValue(k, value);
+        value = CommonUtils.getEmptiableMaskedValue(k, value);
       }
 
       if (isOverridden) {

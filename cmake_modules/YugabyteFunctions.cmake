@@ -969,6 +969,9 @@ macro(yb_setup_odyssey)
       -Wno-unused-variable
       # This is needed to e.g. have access to pthread_setname_np when including pthread.h.
       -D_GNU_SOURCE
+      # This is needed so that compiler can throw warnings instead of errors
+      # for the uninitialized variables throughout the odyssey code base.
+      -Wno-uninitialized
      )
   if(IS_CLANG)
     list(APPEND OD_EXTRA_COMPILER_FLAGS

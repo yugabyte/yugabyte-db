@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, Fragment } from 'react';
+import { Component, Fragment } from 'react';
 import { Button, DropdownButton, MenuItem } from 'react-bootstrap';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';

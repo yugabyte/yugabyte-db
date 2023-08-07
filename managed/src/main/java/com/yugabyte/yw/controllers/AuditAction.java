@@ -10,16 +10,12 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import play.mvc.Action;
 import play.mvc.Http.Request;
 import play.mvc.Result;
 import play.routing.Router;
 
 public class AuditAction extends Action.Simple {
-
-  public static final Logger LOG = LoggerFactory.getLogger(AuditAction.class);
   private final RuntimeConfGetter confGetter;
 
   @Inject

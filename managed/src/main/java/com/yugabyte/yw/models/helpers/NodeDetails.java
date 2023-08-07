@@ -9,6 +9,7 @@ import static com.yugabyte.yw.common.NodeActionType.QUERY;
 import static com.yugabyte.yw.common.NodeActionType.REBOOT;
 import static com.yugabyte.yw.common.NodeActionType.RELEASE;
 import static com.yugabyte.yw.common.NodeActionType.REMOVE;
+import static com.yugabyte.yw.common.NodeActionType.REPROVISION;
 import static com.yugabyte.yw.common.NodeActionType.START;
 import static com.yugabyte.yw.common.NodeActionType.STOP;
 
@@ -72,7 +73,7 @@ public class NodeDetails {
   @ApiModelProperty(value = "SSH port override for the AMI")
   public Integer sshPortOverride;
 
-  // Indicates that disks in fstab are mounted using using uuid (not as by path).
+  // Indicates that disks in fstab are mounted using uuid (not as by path).
   @ApiModelProperty(value = "Disks are mounted by uuid")
   public boolean disksAreMountedByUUID;
 
@@ -111,7 +112,7 @@ public class NodeDetails {
     // The actions in Stopped state should apply because of the transition from Stopped to Starting.
     Starting(START, REMOVE),
     // Set when node has been stopped and no longer has a master or a tserver running.
-    Stopped(START, REMOVE, QUERY),
+    Stopped(START, REMOVE, QUERY, REPROVISION),
     // Nodes are never set to Unreachable, this is just one of the possible return values in a
     // status query.
     Unreachable(),

@@ -140,10 +140,15 @@ public class PgRegressBuilder {
         String line;
         while ((line = scheduleReader.readLine()) != null) {
           line = line.trim();
-          if (line.equals("test: yb_pg_inet") && !SystemUtil.IS_LINUX) {
-            // We only support IPv6-specific tests in yb_pg_inet.sql on Linux, not on macOS.
-            line = "test: yb_pg_inet_ipv4only";
-          }
+          // If need to make a change for a schedule line, add code here.
+          // For example, we used to check for MacOS (!SystemUtil.IS_LINUX)
+          // and change the schedule line
+          // "test: yb_pg_inet"
+          // to
+          // "test: yb_pg_inet_ipv4only"
+          // This was done in order to run yb_pg_inet.sql on Linux but
+          // yb_pg_inet_ipv4only.sql on MacOS when we only supported
+          // IPv6-specific tests on Linux but not MacOS.
           LOG.info("Schedule output line: " + line);
           scheduleWriter.println(line);
         }

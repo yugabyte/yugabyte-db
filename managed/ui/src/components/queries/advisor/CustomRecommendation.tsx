@@ -1,6 +1,6 @@
-import React, { FC } from 'react';
+import { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-import { EXTERNAL_LINKS } from '../helpers/const';
+import { EXTERNAL_LINKS } from '../helpers/constants';
 import { CustomRecommendation, RecommendationType } from '../../../redesign/utils/dtos';
 import lightBulbIcon from '../images/lightbulb.svg';
 import './styles.scss';

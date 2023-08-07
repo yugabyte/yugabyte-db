@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import frown from './images/frown_img.png';
 import './stylesheets/YBErrorIndicator.scss';
 import { Link } from 'react-router';

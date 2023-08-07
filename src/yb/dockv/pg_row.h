@@ -22,9 +22,11 @@
 #include "yb/common/value.pb.h"
 
 #include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/value_packing.h"
 
 #include "yb/qlexpr/qlexpr_fwd.h"
 
+#include "yb/util/algorithm_util.h"
 #include "yb/util/kv_util.h"
 
 namespace yb {
@@ -73,6 +75,19 @@ class PgValue {
   PgValueDatum value_;
 };
 
+struct PgWireEncoderEntry;
+
+using PgWireEncoder = void(*)(const PgTableRow&, WriteBuffer*, const PgWireEncoderEntry*);
+
+struct PgWireEncoderEntry {
+  PgWireEncoder encoder;
+  size_t data;
+
+  void Invoke(const PgTableRow& row, WriteBuffer* buffer) const {
+    encoder(row, buffer, this);
+  }
+};
+
 class PgTableRow {
  public:
   explicit PgTableRow(std::reference_wrapper<const ReaderProjection> projection);
@@ -85,6 +100,7 @@ class PgTableRow {
   std::string ToString() const;
 
   std::optional<PgValue> GetValueByIndex(size_t index) const;
+  PgWireEncoderEntry GetEncoder(size_t index, bool last) const;
 
   std::optional<PgValue> GetValueByColumnId(ColumnId column_id) const {
     return GetValueByColumnId(column_id.rep());
@@ -97,11 +113,20 @@ class PgTableRow {
   void SetNull();
   void SetNull(size_t column_idx);
 
-  Status DecodeKey(size_t column_idx, Slice* value);
-  Status DecodeValue(size_t column_idx, const Slice& value);
+  Status DecodeValue(size_t column_idx, Slice value);
 
   bool IsNull(size_t index) const {
     return is_null_[index];
+  }
+
+  PgValueDatum GetPrimitiveDatum(size_t index) const {
+    return values_[index];
+  }
+
+  Slice GetVarlenSlice(size_t index) const {
+    const auto data = pointer_cast<const char*>(buffer_.data()) + values_[index];
+    const auto len = BigEndian::Load64(data);
+    return Slice(data, len + 8);
   }
 
   Status SetValue(ColumnId column_id, const QLValuePB& value);
@@ -114,6 +139,16 @@ class PgTableRow {
 
   PgValue TrimString(size_t idx, size_t skip_prefix, size_t new_len);
 
+  void SetDatum(size_t column_idx, PgValueDatum datum) {
+    is_null_[column_idx] = false;
+    values_[column_idx] = datum;
+  }
+
+  Result<const char*> DecodeComparableString(
+      size_t column_idx, const char* input, const char* end, bool append_zero,
+      SortOrder sort_order);
+  void SetBinary(size_t column_idx, Slice value, bool append_zero);
+
  private:
   PgValueDatum GetDatum(size_t idx) const;
 
@@ -122,5 +157,13 @@ class PgTableRow {
   boost::container::small_vector<PgValueDatum, 0x10> values_;
   ValueBuffer buffer_;
 };
+
+template <bool kLast>
+void CallNextEncoder(const PgTableRow& row, WriteBuffer* buffer, const PgWireEncoderEntry* chain) {
+  if (kLast) {
+    return;
+  }
+  (++chain)->Invoke(row, buffer);
+}
 
 }  // namespace yb::dockv

@@ -12,7 +12,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.common.ybc.YbcBackupUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -24,11 +24,12 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class WaitForYbcServer extends UniverseTaskBase {
 
-  @Inject YbcBackupUtil ybcBackupUtil;
+  private final YbcManager ybcManager;
 
   @Inject
-  protected WaitForYbcServer(BaseTaskDependencies baseTaskDependencies) {
+  protected WaitForYbcServer(BaseTaskDependencies baseTaskDependencies, YbcManager ybcManager) {
     super(baseTaskDependencies);
+    this.ybcManager = ybcManager;
   }
 
   public static class Params extends UniverseDefinitionTaskParams {
@@ -44,9 +45,6 @@ public class WaitForYbcServer extends UniverseTaskBase {
   @Override
   public void run() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    String certFile = universe.getCertificateNodetoNode();
-
-    int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     Set<NodeDetails> nodeDetailsSet =
         taskParams().nodeDetailsSet == null
             ? universe.getUniverseDetails().nodeDetailsSet
@@ -54,6 +52,6 @@ public class WaitForYbcServer extends UniverseTaskBase {
                 .map(nodeName -> universe.getNode(nodeName))
                 .collect(Collectors.toSet());
 
-    ybcBackupUtil.waitForYbc(universe, nodeDetailsSet);
+    ybcManager.waitForYbc(universe, nodeDetailsSet);
   }
 }

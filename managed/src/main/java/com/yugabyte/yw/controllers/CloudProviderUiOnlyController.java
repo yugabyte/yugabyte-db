@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.PrometheusConfigManager;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
@@ -39,6 +41,8 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
 
   @Inject private JsonFieldsValidator fieldsValidator;
 
+  @Inject private PrometheusConfigManager prometheusConfigManager;
+
   /**
    * POST UI Only endpoint for creating new providers
    *
@@ -62,6 +66,14 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
     } else {
       reqProvider.setConfigMap(cloudProviderFormData.config);
     }
+    Provider existingProvider =
+        Provider.get(customerUUID, cloudProviderFormData.name, cloudProviderFormData.code);
+    if (existingProvider != null) {
+      throw new PlatformServiceException(
+          CONFLICT,
+          String.format("Provider with the name %s already exists", cloudProviderFormData.name));
+    }
+
     Provider provider =
         cloudProviderHandler.createProvider(
             Customer.getOrBadRequest(customerUUID),
@@ -118,6 +130,7 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
 
     Provider provider =
         cloudProviderHandler.createKubernetes(Customer.getOrBadRequest(customerUUID), formData);
+    prometheusConfigManager.updateK8sScrapeConfigs();
     auditService()
         .createAuditEntryWithReqBody(
             request,

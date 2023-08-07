@@ -13,6 +13,7 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/common/value.pb.h"
 #include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 
@@ -333,10 +334,13 @@ Status Executor::WhereColumnOpToPB(QLConditionPB* condition, const ColumnOp& col
 
   auto status = PTExprToPB(col_op.expr(), expr_pb);
 
-  // When evaluating CONTAINS expression with a bind variable, rhs may potentially be NULL
-  // Detect this case and fail.
-  if (status.ok() && col_op.yb_op() == QL_OP_CONTAINS && IsNull(expr_pb->value())) {
-    status = STATUS_FORMAT(InvalidArgument, "CONTAINS does not support NULL");
+  // When evaluating CONTAINS or CONTAINS KEY expression with a bind variable, rhs may potentially
+  // be NULL. Detect this case and fail.
+  if (status.ok() && (col_op.yb_op() == QL_OP_CONTAINS || col_op.yb_op() == QL_OP_CONTAINS_KEY) &&
+      IsNull(expr_pb->value())) {
+    status = STATUS_FORMAT(
+        InvalidArgument, "CONTAINS$0 does not support NULL",
+        col_op.yb_op() == QL_OP_CONTAINS_KEY ? " KEY" : "");
   }
   return status;
 }

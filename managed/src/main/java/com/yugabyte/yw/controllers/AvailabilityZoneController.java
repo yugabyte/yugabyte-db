@@ -3,6 +3,8 @@
 package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.AvailabilityZoneHandler;
 import com.yugabyte.yw.forms.AvailabilityZoneData;
 import com.yugabyte.yw.forms.AvailabilityZoneEditData;
@@ -36,6 +38,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(AvailabilityZoneController.class);
 
   @Inject private AvailabilityZoneHandler availabilityZoneHandler;
+  @Inject private RuntimeConfGetter runtimeConfGetter;
 
   /**
    * GET endpoint for listing availability zones
@@ -70,29 +73,42 @@ public class AvailabilityZoneController extends AuthenticatedController {
           name = "azFormData",
           value = "Availability zone form data",
           paramType = "body",
-          dataType = "com.yugabyte.yw.forms.AvailabilityZoneFormData",
+          dataType = "com.yugabyte.yw.models.AvailabilityZone",
           required = true))
   public Result create(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
     Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
-    Form<AvailabilityZoneFormData> formData =
-        formFactory.getFormDataOrBadRequest(request, AvailabilityZoneFormData.class);
+    if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.useLegacyPayloadForRegionAndAZs)) {
+      Form<AvailabilityZoneFormData> formData =
+          formFactory.getFormDataOrBadRequest(request, AvailabilityZoneFormData.class);
+      List<AvailabilityZoneData> azDataList = formData.get().availabilityZones;
+      List<String> createdAvailabilityZonesUUID = new ArrayList<>();
+      Map<String, AvailabilityZone> availabilityZones = new HashMap<>();
+      List<AvailabilityZone> createdZones = availabilityZoneHandler.createZones(region, azDataList);
+      for (AvailabilityZone az : createdZones) {
+        availabilityZones.put(az.getCode(), az);
+        createdAvailabilityZonesUUID.add(az.getUuid().toString());
+      }
+      auditService()
+          .createAuditEntryWithReqBody(
+              request,
+              Audit.TargetType.AvailabilityZone,
+              createdAvailabilityZonesUUID.toString(),
+              Audit.ActionType.Create);
+      return PlatformResults.withData(availabilityZones);
+    } else {
+      AvailabilityZone zone =
+          formFactory.getFormDataOrBadRequest(request.body().asJson(), AvailabilityZone.class);
+      zone = availabilityZoneHandler.createZone(region, zone);
 
-    List<AvailabilityZoneData> azDataList = formData.get().availabilityZones;
-    List<String> createdAvailabilityZonesUUID = new ArrayList<>();
-    Map<String, AvailabilityZone> availabilityZones = new HashMap<>();
-    List<AvailabilityZone> createdZones = availabilityZoneHandler.createZones(region, azDataList);
-    for (AvailabilityZone az : createdZones) {
-      availabilityZones.put(az.getCode(), az);
-      createdAvailabilityZonesUUID.add(az.getUuid().toString());
+      auditService()
+          .createAuditEntryWithReqBody(
+              request,
+              Audit.TargetType.AvailabilityZone,
+              zone.getUuid().toString(),
+              Audit.ActionType.Create);
+      return PlatformResults.withData(zone);
     }
-    auditService()
-        .createAuditEntryWithReqBody(
-            request,
-            Audit.TargetType.AvailabilityZone,
-            createdAvailabilityZonesUUID.toString(),
-            Audit.ActionType.Create);
-    return PlatformResults.withData(availabilityZones);
   }
 
   /**
@@ -109,22 +125,36 @@ public class AvailabilityZoneController extends AuthenticatedController {
           name = "azFormData",
           value = "Availability zone edit form data",
           paramType = "body",
-          dataType = "com.yugabyte.yw.forms.AvailabilityZoneEditData",
+          dataType = "com.yugabyte.yw.models.AvailabilityZone",
           required = true))
   public Result edit(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID zoneUUID, Http.Request request) {
     Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
-    AvailabilityZoneEditData azData =
-        formFactory.getFormDataOrBadRequest(request, AvailabilityZoneEditData.class).get();
-
-    AvailabilityZone az =
-        availabilityZoneHandler.editZone(
-            zoneUUID,
-            regionUUID,
-            zone -> {
-              zone.setSubnet(azData.subnet);
-              zone.setSecondarySubnet(azData.secondarySubnet);
-            });
+    AvailabilityZone az;
+    if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.useLegacyPayloadForRegionAndAZs)) {
+      AvailabilityZoneEditData azData =
+          formFactory.getFormDataOrBadRequest(request, AvailabilityZoneEditData.class).get();
+      az =
+          availabilityZoneHandler.editZone(
+              zoneUUID,
+              regionUUID,
+              zone -> {
+                zone.setSubnet(azData.subnet);
+                zone.setSecondarySubnet(azData.secondarySubnet);
+              });
+    } else {
+      AvailabilityZone raz =
+          formFactory.getFormDataOrBadRequest(request.body().asJson(), AvailabilityZone.class);
+      az =
+          availabilityZoneHandler.editZone(
+              zoneUUID,
+              regionUUID,
+              zone -> {
+                zone.setSubnet(raz.getSubnet());
+                zone.setSecondarySubnet(raz.getSecondarySubnet());
+                zone.setDetails(raz.getDetails());
+              });
+    }
 
     auditService()
         .createAuditEntryWithReqBody(

@@ -102,12 +102,12 @@ Status BuildSubDocument(
   VLOG(3) << "BuildSubDocument data: " << data << " read_time: " << iter->read_time()
           << " low_ts: " << low_ts;
   for (;;) {
-    auto key_data = VERIFY_RESULT(iter->Fetch());
+    auto key_data = VERIFY_RESULT_REF(iter->Fetch());
     if (!key_data) {
       break;
     }
-    if (data.deadline_info && data.deadline_info->CheckAndSetDeadlinePassed()) {
-      return STATUS(Expired, "Deadline for query passed.");
+    if (data.deadline_info) {
+      RETURN_NOT_OK(data.deadline_info->CheckDeadlinePassed());
     }
     // Since we modify num_values_observed on recursive calls, we keep a local copy of the value.
     int64 current_values_observed = *num_values_observed;
@@ -214,12 +214,14 @@ Status BuildSubDocument(
     // TODO: what if the key we found is the same as before?
     //       We'll get into an infinite recursion then.
     {
-      IntentAwareIteratorPrefixScope prefix_scope(key, iter);
+      char highest = dockv::KeyEntryTypeAsChar::kHighest;
+      KeyBuffer upperbound_buffer(key, Slice(&highest, 1));
+      IntentAwareIteratorUpperboundScope upperbound_scope(upperbound_buffer.AsSlice(), iter);
       RETURN_NOT_OK(BuildSubDocument(
           iter, data.Adjusted(key, &descendant), low_ts,
           num_values_observed));
-
     }
+    iter->Revalidate();
     if (descendant.value_type() == ValueEntryType::kInvalid) {
       // The document was not found in this level (maybe a tombstone was encountered).
       continue;
@@ -307,7 +309,7 @@ Status FindLastWriteTime(
   Slice value;
   EncodedDocHybridTime pre_doc_ht(*max_overwrite_time);
   RETURN_NOT_OK(iter->FindLatestRecord(key_without_ht, &pre_doc_ht, &value));
-  if (!VERIFY_RESULT(iter->Fetch())) {
+  if (!VERIFY_RESULT_REF(iter->Fetch())) {
     return Status::OK();
   }
 
@@ -415,10 +417,12 @@ Status GetRedisSubDocument(
   auto dockey_size = VERIFY_RESULT(dockv::DocKey::EncodedSize(
       data.subdocument_key, dockv::DocKeyPart::kWholeDocKey));
 
-  Slice key_slice(data.subdocument_key.data(), dockey_size);
+  Slice key_slice = data.subdocument_key.Prefix(dockey_size);
 
+  char highest = dockv::KeyEntryTypeAsChar::kHighest;
+  KeyBuffer upperbound_buffer(key_slice, Slice(&highest, 1));
   // First, check the descendants of the ID level for TTL or more recent writes.
-  IntentAwareIteratorPrefixScope prefix_scope(key_slice, db_iter);
+  IntentAwareIteratorUpperboundScope upperbound_scope(upperbound_buffer.AsSlice(), db_iter);
   if (seek_fwd_suffices) {
     db_iter->SeekForward(key_slice);
   } else {
@@ -433,7 +437,7 @@ Status GetRedisSubDocument(
         break;
       }
       RETURN_NOT_OK(FindLastWriteTime(db_iter, key_slice, &max_overwrite_ht, &data.exp));
-      key_slice = Slice(key_slice.data(), temp_key.data() - key_slice.data());
+      key_slice = Slice(key_slice.data(), temp_key.data());
     }
   }
 
@@ -462,7 +466,11 @@ Status GetRedisSubDocument(
   if (projection == nullptr) {
     *data.result = SubDocument(ValueEntryType::kInvalid);
     int64 num_values_observed = 0;
-    IntentAwareIteratorPrefixScope prefix_scope(key_slice, db_iter);
+    upperbound_buffer.PopBack();
+    upperbound_buffer.Append(key_slice.WithoutPrefix(upperbound_buffer.size()));
+    upperbound_buffer.PushBack(dockv::KeyEntryTypeAsChar::kHighest);
+    IntentAwareIteratorUpperboundScope upperbound_scope2(upperbound_buffer.AsSlice(), db_iter);
+    db_iter->Revalidate();
     RETURN_NOT_OK(BuildSubDocument(db_iter, data, max_overwrite_ht,
                                    &num_values_observed));
     *data.doc_found = data.result->value_type() != ValueEntryType::kInvalid;
@@ -492,14 +500,15 @@ Status GetRedisSubDocument(
     // key_bytes to avoid the internal buffer from getting reallocated and moved by SeekForward()
     // appending the hybrid time, thereby invalidating the buffer pointer saved by prefix_scope.
     subkey.AppendToKey(&key_bytes);
-    key_bytes.Reserve(key_bytes.size() + kMaxBytesPerEncodedHybridTime + 1);
+    key_bytes.AppendKeyEntryType(dockv::KeyEntryType::kHighest);
     // This seek is to initialize the iterator for BuildSubDocument call.
-    IntentAwareIteratorPrefixScope subkey_prefix_scope(key_bytes, db_iter);
-    db_iter->SeekForward(key_bytes);
+    IntentAwareIteratorUpperboundScope subkey_upperbound_scope(key_bytes, db_iter);
+    auto key = key_bytes.AsSlice().WithoutSuffix(1);
+    db_iter->SeekForward(key);
     SubDocument descendant(ValueEntryType::kInvalid);
     int64 num_values_observed = 0;
     RETURN_NOT_OK(BuildSubDocument(
-        db_iter, data.Adjusted(key_bytes, &descendant), max_overwrite_ht,
+        db_iter, data.Adjusted(key, &descendant), max_overwrite_ht,
         &num_values_observed));
     *data.doc_found = descendant.value_type() != ValueEntryType::kInvalid;
     data.result->SetChild(subkey, std::move(descendant));

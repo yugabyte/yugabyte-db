@@ -42,11 +42,11 @@ class QLDmlTTLTest : public QLDmlTestBase<MiniCluster> {
     QLDmlTestBase::SetUp();
 
     YBSchemaBuilder b;
-    b.AddColumn("k")->Type(INT32)->HashPrimaryKey()->NotNull();
-    b.AddColumn("c1")->Type(INT32);
-    b.AddColumn("c2")->Type(STRING);
-    b.AddColumn("c3")->Type(INT32);
-    b.AddColumn("c4")->Type(STRING);
+    b.AddColumn("k")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+    b.AddColumn("c1")->Type(DataType::INT32);
+    b.AddColumn("c2")->Type(DataType::STRING);
+    b.AddColumn("c3")->Type(DataType::INT32);
+    b.AddColumn("c4")->Type(DataType::STRING);
 
     ASSERT_OK(table_.Create(kTableName, CalcNumTablets(3), client_.get(), &b));
   }

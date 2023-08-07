@@ -390,7 +390,8 @@ Result<size_t> GetPeakRootConsumption(const ExternalTabletServer& ts) {
   EXPECT_OK(c.FetchURL(Format("http://$0/mem-trackers?raw=1", ts.bound_http_hostport().ToString()),
                        &buf));
   static const std::regex re(
-      R"#(\s*<td>root</td><td>([0-9.]+\w)(\s+\([0-9.]+\w\))?</td>)#"
+      R"#(\s*<td><span class=\"toggle collapse\"></span>root</td>)#"
+      R"#(<td>([0-9.]+\w)(\s+\([0-9.]+\w\))?</td>)#"
       R"#(<td>([0-9.]+\w)</td><td>([0-9.]+\w)</td>\s*)#");
   const auto str = buf.ToString();
   std::smatch match;

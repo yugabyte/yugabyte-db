@@ -11,7 +11,6 @@
 import logging
 import shlex
 import time
-import traceback
 import uuid
 
 from ansible.module_utils._text import to_native
@@ -26,7 +25,7 @@ from ybops.node_agent.server_pb2_grpc import NodeAgentStub
 
 SERVER_READY_RETRY_LIMIT = 60
 PING_TIMEOUT_SEC = 10
-COMMAND_EXECUTION_TIMEOUT_SEC = 300
+COMMAND_EXECUTION_TIMEOUT_SEC = 900
 FILE_UPLOAD_DOWNLOAD_TIMEOUT_SEC = 1800
 FILE_UPLOAD_CHUNK_BYTES = 524288
 
@@ -67,16 +66,15 @@ class RpcClient(object):
         assert self.port is not None, 'RPC port is required'
         assert self.cert_path is not None, 'RPC cert_path is required'
         assert self.auth_token is not None, 'RPC api_token is required'
+        with open(self.cert_path, mode='rb') as file:
+            self.root_certs = file.read()
 
     def connect(self):
         """
         Create GRPC connection to the node agent.
         :return: None
         """
-
-        with open(self.cert_path, mode='rb') as file:
-            root_certs = file.read()
-        cert_creds = ssl_channel_credentials(root_certificates=root_certs)
+        cert_creds = ssl_channel_credentials(root_certificates=self.root_certs)
         auth_creds = metadata_call_credentials(
                 AuthTokenCallback(self.auth_token), name='auth_creds')
         credentials = composite_channel_credentials(cert_creds, auth_creds)
@@ -129,7 +127,7 @@ class RpcClient(object):
                     cmd_args_list = cmd
             for response in self.stub.ExecuteCommand(
                     ExecuteCommandRequest(user=self.user, command=cmd_args_list),
-                    timeout=timeout_sec):
+                    timeout=timeout_sec, wait_for_ready=True):
                 if response.HasField('error'):
                     output.rc = response.error.code
                     output.stderr = response.error.message
@@ -169,12 +167,12 @@ class RpcClient(object):
             cmd_input = CommandInput(command=cmd_args_list)
             self.stub.SubmitTask(SubmitTaskRequest(user=self.user, taskId=task_id,
                                                    commandInput=cmd_input),
-                                 timeout=timeout_sec)
+                                 timeout=timeout_sec, wait_for_ready=True)
             while True:
                 try:
                     for response in self.stub.DescribeTask(
                             DescribeTaskRequest(taskId=task_id),
-                            timeout=timeout_sec):
+                            timeout=timeout_sec, wait_for_ready=True):
                         if response.HasField('error'):
                             output.rc = response.error.code
                             output.stderr = response.error.message
@@ -205,7 +203,7 @@ class RpcClient(object):
             timeout_sec = kwargs.get('timeout', COMMAND_EXECUTION_TIMEOUT_SEC)
             request = SubmitTaskRequest(user=self.user, taskId=task_id)
             self._set_request_oneof_field(request, param)
-            self.stub.SubmitTask(request, timeout=timeout_sec)
+            self.stub.SubmitTask(request, timeout=timeout_sec, wait_for_ready=True)
             while True:
                 try:
                     for response in self.stub.DescribeTask(
@@ -263,7 +261,7 @@ class RpcClient(object):
         chmod = kwargs.get('chmod', 0)
         timeout_sec = kwargs.get('timeout', FILE_UPLOAD_DOWNLOAD_TIMEOUT_SEC)
         self.stub.UploadFile(self.read_iterfile(self.user, local_path, remote_path, chmod),
-                             timeout=timeout_sec)
+                             timeout=timeout_sec, wait_for_ready=True)
 
     def fetch_file(self, in_path, out_path, **kwargs):
         """
@@ -272,7 +270,8 @@ class RpcClient(object):
 
         timeout_sec = kwargs.get('timeout', FILE_UPLOAD_DOWNLOAD_TIMEOUT_SEC)
         for response in self.stub.DownloadFile(
-                DownloadFileRequest(filename=in_path, user=self.user), timeout=timeout_sec):
+                DownloadFileRequest(filename=in_path, user=self.user),
+                timeout=timeout_sec, wait_for_ready=True):
             with open(out_path, mode="ab") as f:
                 f.write(response.chunkData)
 

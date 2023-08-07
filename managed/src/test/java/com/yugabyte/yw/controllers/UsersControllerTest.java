@@ -16,6 +16,7 @@ import static org.junit.Assert.assertTrue;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.OK;
+import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
@@ -61,7 +62,7 @@ public class UsersControllerTest extends FakeDBApplication {
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken1).build();
     Result result =
         route(fakeRequest("GET", String.format(baseRoute, customer.getUuid())).cookie(validCookie));
-    if (result.status() == FORBIDDEN) {
+    if (result.status() == UNAUTHORIZED) {
       return null;
     }
     JsonNode json = Json.parse(contentAsString(result));

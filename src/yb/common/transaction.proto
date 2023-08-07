@@ -98,31 +98,30 @@ enum LockMode {
 }
 
 message LockInfoPB {
-  // TODO(pglocks): https://github.com/yugabyte/yugabyte-db/issues/15908
-  // We should consider the following potential optimizations:
-  // 1. Group lock information by transaction_id to avoid repeated transaction_ids
-  // 2. Omit prefix locks, which are implied to exist if their fully-qualified forms are present
+  // TODO(pglocks): Omit prefix locks, which are implied to exist if their fully-qualified forms
+  // are present.
   repeated bytes hash_cols = 1;
 
   repeated bytes range_cols = 2;
 
-  optional uint32 column_id = 3;
+  optional int32 attnum = 3;
 
-  optional bool is_full_pk = 4;
+  optional uint32 column_id = 4;
 
-  optional fixed64 wait_start_ht = 5;
+  optional bool multiple_rows_locked = 5;
 
   // If this is set, then the lock has been granted.
   optional fixed64 wait_end_ht = 6;
 
-  // If empty, this is a single-shard transaction.
-  optional bytes transaction_id = 7;
+  optional uint32 subtransaction_id = 7;
 
-  optional uint32 subtransaction_id = 8;
+  optional bool is_explicit = 8;
 
-  optional bool is_explicit = 9;
+  repeated LockMode modes = 9;
 
-  repeated LockMode modes = 10;
+  // Populated only when the lock belongs to a colocated table. When set, TabletLockInfoPB::table_id
+  // should be ignored.
+  optional bytes table_id = 10;
 }
 
 message TabletLockInfoPB {
@@ -130,5 +129,28 @@ message TabletLockInfoPB {
 
   optional bytes tablet_id = 2;
 
-  repeated LockInfoPB locks = 3;
+  message WaiterInfoPB {
+    repeated LockInfoPB locks = 1;
+
+    optional fixed64 wait_start_ht = 2;
+
+    repeated bytes blocking_txn_ids = 3;
+  }
+
+  // Lock info for a given transaction at this tablet.
+  message TransactionLockInfoPB {
+    optional bytes id = 1;
+
+    repeated LockInfoPB granted_locks = 2;
+
+    optional WaiterInfoPB waiting_locks = 3;
+  }
+  repeated TransactionLockInfoPB transaction_locks = 3;
+
+  // Awaiting lock info of single shard waiters.
+  repeated WaiterInfoPB single_shard_waiters = 4;
+
+  // Leader term of the peer populating the response. Used to filter out duplicate responses for
+  // the same tablet and ensure we pick the most recent results.
+  optional uint64 term = 5;
 }

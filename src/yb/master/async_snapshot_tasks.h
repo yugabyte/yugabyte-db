@@ -31,7 +31,8 @@ class AsyncTabletSnapshotOp : public RetryingTSRpcTask {
       ThreadPool* callback_pool,
       const TabletInfoPtr& tablet,
       const std::string& snapshot_id,
-      tserver::TabletSnapshotOpRequestPB::Operation op);
+      tserver::TabletSnapshotOpRequestPB::Operation op,
+      LeaderEpoch epoch);
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kSnapshotOp;

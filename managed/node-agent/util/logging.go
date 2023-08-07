@@ -101,28 +101,36 @@ func (l *AppLogger) getEntry(ctx context.Context) *log.Entry {
 	return entry
 }
 
-func (l *AppLogger) Errorf(ctx context.Context, msg string, v ...interface{}) {
-	l.getEntry(ctx).Errorf(msg, v...)
-}
-
-func (l *AppLogger) Infof(ctx context.Context, msg string, v ...interface{}) {
-	l.getEntry(ctx).Infof(msg, v...)
-}
-
 func (l *AppLogger) Error(ctx context.Context, msg string) {
 	l.getEntry(ctx).Error(msg)
 }
 
+func (l *AppLogger) Errorf(ctx context.Context, msg string, v ...interface{}) {
+	l.getEntry(ctx).Errorf(msg, v...)
+}
+
 func (l *AppLogger) Info(ctx context.Context, msg string) {
-	l.getEntry(ctx).Infof(msg)
+	if l.IsInfoEnabled() {
+		l.getEntry(ctx).Infof(msg)
+	}
+}
+
+func (l *AppLogger) Infof(ctx context.Context, msg string, v ...interface{}) {
+	if l.IsInfoEnabled() {
+		l.getEntry(ctx).Infof(msg, v...)
+	}
 }
 
 func (l *AppLogger) Debug(ctx context.Context, msg string) {
-	l.getEntry(ctx).Debug(msg)
+	if l.IsDebugEnabled() {
+		l.getEntry(ctx).Debug(msg)
+	}
 }
 
 func (l *AppLogger) Debugf(ctx context.Context, msg string, v ...interface{}) {
-	l.getEntry(ctx).Debugf(msg, v...)
+	if l.IsDebugEnabled() {
+		l.getEntry(ctx).Debugf(msg, v...)
+	}
 }
 
 func (l *AppLogger) Warn(ctx context.Context, msg string) {

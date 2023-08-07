@@ -178,6 +178,8 @@ public class RestoreManagerYb extends DevopsBase {
                 backupStorageInfo.oldOwner, backupStorageInfo.newOwner));
       }
     }
+    boolean useServerBroadcastAddress =
+        confGetter.getConfForScope(universe, UniverseConfKeys.useServerBroadcastAddressForYbBackup);
 
     addCommonCommandArgs(
         restoreBackupParams,
@@ -188,7 +190,8 @@ public class RestoreManagerYb extends DevopsBase {
         podAddrToConfig,
         nodeToNodeTlsEnabled,
         ipToSshKeyPath,
-        commandArgs);
+        commandArgs,
+        useServerBroadcastAddress);
     // Update env vars with customer config data after provider config to make sure the correct
     // credentials are used.
     extraVars.putAll(customerConfig.dataAsMap());
@@ -243,7 +246,8 @@ public class RestoreManagerYb extends DevopsBase {
       Map<String, Map<String, String>> podAddrToConfig,
       boolean nodeToNodeTlsEnabled,
       Map<String, String> ipToSshKeyPath,
-      List<String> commandArgs) {
+      List<String> commandArgs,
+      boolean useServerBroadcastAddress) {
 
     BackupStorageInfo backupStorageInfo = restoreBackupParams.backupStorageInfoList.get(0);
     if (region.getProviderCloudCode().equals(CloudType.kubernetes)) {
@@ -258,6 +262,9 @@ public class RestoreManagerYb extends DevopsBase {
         commandArgs.add("--ip_to_ssh_key_path");
         commandArgs.add(Json.stringify(Json.toJson(ipToSshKeyPath)));
       }
+    }
+    if (useServerBroadcastAddress) {
+      commandArgs.add("--use_server_broadcast_address");
     }
     commandArgs.add("--backup_location");
     commandArgs.add(backupStorageInfo.storageLocation);

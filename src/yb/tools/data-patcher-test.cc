@@ -50,7 +50,7 @@ class DataPatcherTest : public CqlTestBase<MiniCluster> {
  protected:
   void SetUp() override {
     server::SkewedClock::Register();
-    FLAGS_time_source = server::SkewedClock::kName;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = server::SkewedClock::kName;
     CqlTestBase<MiniCluster>::SetUp();
   }
 
@@ -169,8 +169,8 @@ TEST_F(DataPatcherTest, AddTimeDelta) {
   constexpr int kDataPatcherConcurrency = 2;
   const MonoDelta kMonoDelta(60min * 24 * 365 * 80);
 
-  FLAGS_fail_on_out_of_range_clock_skew = false;
-  FLAGS_TEST_transaction_ignore_applying_probability = 0.8;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_fail_on_out_of_range_clock_skew) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.8;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   ASSERT_OK(session.ExecuteQuery(

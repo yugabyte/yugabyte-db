@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, mixed, object, string } from 'yup';
@@ -9,6 +9,7 @@ import {
   DEFAULT_NODE_EXPORTER_PORT,
   DEFAULT_NODE_EXPORTER_USER,
   DEFAULT_SSH_PORT,
+  KeyPairManagement,
   NTPSetupType,
   ProviderCode
 } from '../../constants';
@@ -30,7 +31,14 @@ import { RegionOperation } from '../configureRegion/constants';
 import { YBButton } from '../../../../common/forms/fields';
 import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { YBInputField, YBToggleField } from '../../../../../redesign/components';
-import { addItem, deleteItem, editItem, getIsFormDisabled, readFileAsText } from '../utils';
+import {
+  addItem,
+  constructAccessKeysCreatePayload,
+  deleteItem,
+  editItem,
+  getIsFormDisabled,
+  readFileAsText
+} from '../utils';
 
 import { OnPremRegionMutation, YBProviderMutation } from '../../types';
 
@@ -383,19 +391,15 @@ const constructProviderPayload = async (
     throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
   }
 
+  const allAccessKeysPayload = constructAccessKeysCreatePayload(
+    KeyPairManagement.SELF_MANAGED,
+    formValues.sshKeypairName,
+    sshPrivateKeyContent
+  );
   return {
     code: ProviderCode.ON_PREM,
     name: formValues.providerName,
-    allAccessKeys: [
-      {
-        keyInfo: {
-          ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
-          ...(formValues.sshPrivateKeyContent && {
-            sshPrivateKeyContent: sshPrivateKeyContent
-          })
-        }
-      }
-    ],
+    ...allAccessKeysPayload,
     details: {
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
@@ -414,7 +418,7 @@ const constructProviderPayload = async (
     },
     regions: formValues.regions.map<OnPremRegionMutation>((regionFormValues) => ({
       code: regionFormValues.code,
-      name: regionFormValues.code,
+      name: regionFormValues.name,
       latitude: regionFormValues.location.value.latitude,
       longitude: regionFormValues.location.value.longitude,
       zones: regionFormValues.zones.map((zone) => ({ code: zone.code, name: zone.code }))

@@ -60,8 +60,9 @@ using QLTypePtr = std::shared_ptr<QLType>;
 using PgObjectIds = std::vector<PgObjectId>;
 
 enum class PgSystemAttrNum : int;
+enum class DataType;
 
-enum SortingType : uint8_t;
+enum class SortingType;
 
 namespace common {
 

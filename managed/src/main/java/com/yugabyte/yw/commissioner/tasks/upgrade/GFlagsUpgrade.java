@@ -117,7 +117,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                     .filter(
                         n ->
                             applyToAllNodes
-                                || nodeHasGflagsChanges(
+                                || GFlagsUpgradeParams.nodeHasGflagsChanges(
                                     n,
                                     ServerType.MASTER,
                                     curCluster,
@@ -131,7 +131,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                     .filter(
                         n ->
                             applyToAllNodes
-                                || nodeHasGflagsChanges(
+                                || GFlagsUpgradeParams.nodeHasGflagsChanges(
                                     n,
                                     ServerType.TSERVER,
                                     curCluster,
@@ -190,20 +190,6 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
     return !Objects.equals(newIntent.specificGFlags, curIntent.specificGFlags)
         || !Objects.equals(newIntent.masterGFlags, curIntent.masterGFlags)
         || !Objects.equals(newIntent.tserverGFlags, curIntent.tserverGFlags);
-  }
-
-  private boolean nodeHasGflagsChanges(
-      NodeDetails node,
-      ServerType serverType,
-      UniverseDefinitionTaskParams.Cluster curCluster,
-      List<UniverseDefinitionTaskParams.Cluster> curClusters,
-      UniverseDefinitionTaskParams.Cluster newClusterVersion,
-      Collection<UniverseDefinitionTaskParams.Cluster> newClusters) {
-    Map<String, String> newGflags =
-        GFlagsUtil.getGFlagsForNode(node, serverType, newClusterVersion, newClusters);
-    Map<String, String> oldGflags =
-        GFlagsUtil.getGFlagsForNode(node, serverType, curCluster, curClusters);
-    return !newGflags.equals(oldGflags);
   }
 
   private void createGFlagUpgradeTasks(

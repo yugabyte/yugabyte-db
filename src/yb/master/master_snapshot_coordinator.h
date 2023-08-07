@@ -80,11 +80,9 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
       const TxnSnapshotId& snapshot_id, int64_t leader_term, CoarseTimePoint deadline);
 
   // As usual negative leader_term means that this operation was replicated at the follower.
-  Status CreateReplicated(
-      int64_t leader_term, const tablet::SnapshotOperation& operation) override;
+  Status CreateReplicated(int64_t leader_term, const tablet::SnapshotOperation& operation) override;
 
-  Status DeleteReplicated(
-      int64_t leader_term, const tablet::SnapshotOperation& operation) override;
+  Status DeleteReplicated(int64_t leader_term, const tablet::SnapshotOperation& operation) override;
 
   Status RestoreSysCatalogReplicated(
       int64_t leader_term, const tablet::SnapshotOperation& operation,
@@ -132,7 +130,7 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
 
   HybridTime AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata);
 
-  void SysCatalogLoaded(int64_t term);
+  void SysCatalogLoaded(int64_t leader_term);
 
   Result<docdb::KeyValuePairPB> UpdateRestorationAndGetWritePair(
       SnapshotScheduleRestoration* restoration);

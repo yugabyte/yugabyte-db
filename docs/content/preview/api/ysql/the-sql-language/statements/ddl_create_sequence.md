@@ -52,23 +52,23 @@ The sequence name must be distinct from any other sequences, tables, indexes, vi
 
 Using this qualifier will create a temporary sequence. Temporary sequences are visible only in the current client session in which they are created and are automatically dropped at the end of the session. See the section [Creating and using temporary schema-objects](../../creating-and-using-temporary-schema-objects/).
 
-#### INCREMENT BY *increment*
+#### INCREMENT BY *int_literal*
 
 Specify the *increment* value to add to the current sequence value to create a new value. The default value is `1`. A positive number
 
-#### MINVALUE *minvalue* | NO MINVALUE
+#### MINVALUE *int_literal* | NO MINVALUE
 
  Specify the minimum value allowed in the sequence. If this value is reached (in a sequence with a negative increment), `nextval()` will return an error. If `NO MINVALUE` is specified, the default value will be used. Default is 1.
 
-#### MAXVALUE *maxvalue* | NO MAXVALUE
+#### MAXVALUE *int_literal* | NO MAXVALUE
 
 Specify the maximum value allowed in the sequence. If this value is reached, `nextval()` will return an error. If `NO MAXVALUE` is specified, the default will be used. Default is `2⁶³-1`.
 
-#### START WITH *start*
+#### START WITH *int_literal*
 
 Specify the first value in the sequence. `start` cannot be less than `minvalue`. Default is `1`.
 
-#### CACHE *cache*
+#### CACHE *int_literal*
 
 Specify how many numbers from the sequence to cache in the client. Default is `100`.
 

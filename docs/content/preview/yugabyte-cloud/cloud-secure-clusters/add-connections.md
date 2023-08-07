@@ -26,6 +26,8 @@ Add IP allow lists for the following:
 - [Connecting an application](../../cloud-connect/connect-applications/). Add the public IP addresses of the instance running the application.
 - [Connecting a peered application VPC](../../cloud-basics/cloud-vpcs/). Add the CIDR of the application VPC.
 
+Note that you don't need to add an IP allow list if you are connecting an application using [private endpoints](../../cloud-basics/cloud-vpcs/cloud-add-endpoint/) over a private link.
+
 Each entry can either be a single IP address, a CIDR-notated range of addresses, or a comma-delimited list of addresses. For example:
 
 - 172.16.0.0
@@ -38,7 +40,7 @@ The IP allow lists assigned to a cluster are listed under **Network Access** on 
 
 ## Enabling public access
 
-By default, clusters deployed in VPCs do not expose any publicly-accessible IP addresses, and you can only connect from applications that reside in a peered network with an active peering connection.
+By default, clusters deployed in VPCs do not expose any publicly-accessible IP addresses, and you can only connect from resources inside the VPC network.
 
 If you want to connect to a cluster in a VPC from a public IP, you must both add the IP address to the allow list, and enable **Public Access** on the cluster **Settings** tab. When enabled, a public IP address is added to each region of the cluster. You can view the private and public host addresses under **Connection Parameters** on the cluster **Settings** tab.
 

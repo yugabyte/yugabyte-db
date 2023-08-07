@@ -61,7 +61,6 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.epoll.EpollChannelOption;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
@@ -125,6 +124,7 @@ import org.yb.master.MasterClientOuterClass;
 import org.yb.master.MasterClientOuterClass.GetTableLocationsResponsePB;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterReplicationOuterClass;
+import org.yb.master.MasterReplicationOuterClass.ReplicationStatusPB;
 import org.yb.master.MasterTypes.MasterErrorPB;
 import org.yb.util.AsyncUtil;
 import org.yb.util.NetUtil;
@@ -1364,6 +1364,23 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * It returns the replication status of the replication streams.
+   *
+   * @param replicationGroupName A string specifying a specific replication group; if null,
+   *                             all replication streams will be included in the response
+   * @return A deferred object that yields a {@link GetReplicationStatusResponse} which contains
+   *         a list of {@link ReplicationStatusPB} objects
+   */
+  public Deferred<GetReplicationStatusResponse> getReplicationStatus(
+        @Nullable String replicationGroupName) {
+    checkIsClosed();
+    GetReplicationStatusRequest request =
+        new GetReplicationStatusRequest(this.masterTable, replicationGroupName);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
    * It sets the universe role for transactional xClusters.
    *
    * @param role The role to set the universe to
@@ -1455,6 +1472,25 @@ public class AsyncYBClient implements AutoCloseable {
     return sendRpcToTablet(request);
   }
 
+  public Deferred<CreateSnapshotScheduleResponse> createSnapshotSchedule(
+      YQLDatabase databaseType,
+      String keyspaceName,
+      String keyspaceId,
+      long retentionInSecs,
+      long timeIntervalInSecs) {
+    checkIsClosed();
+    CreateSnapshotScheduleRequest request =
+        new CreateSnapshotScheduleRequest(
+            this.masterTable,
+            databaseType,
+            keyspaceName,
+            keyspaceId,
+            retentionInSecs,
+            timeIntervalInSecs);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
   public Deferred<DeleteSnapshotScheduleResponse> deleteSnapshotSchedule(
       UUID snapshotScheduleUUID) {
     checkIsClosed();
@@ -1479,6 +1515,14 @@ public class AsyncYBClient implements AutoCloseable {
     RestoreSnapshotScheduleRequest request =
         new RestoreSnapshotScheduleRequest(this.masterTable, snapshotScheduleUUID,
                                             restoreTimeInMillis);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  public Deferred<ListSnapshotRestorationsResponse> listSnapshotRestorations(UUID restorationUUID) {
+    checkIsClosed();
+    ListSnapshotRestorationsRequest request =
+        new ListSnapshotRestorationsRequest(this.masterTable, restorationUUID);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }
@@ -3604,10 +3648,6 @@ public class AsyncYBClient implements AutoCloseable {
         .option(ChannelOption.TCP_NODELAY, true)
         .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, TCP_CONNECT_TIMEOUT_MILLIS)
         .option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT);
-      if (SystemUtil.IS_LINUX) {
-        // No support for TCP_KEEPIDLE on MacOs
-        bootstrap.option(EpollChannelOption.TCP_KEEPIDLE, TCP_KEEP_IDLE_INTERVALS);
-      }
       return bootstrap;
     }
 

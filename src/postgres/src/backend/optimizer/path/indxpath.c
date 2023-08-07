@@ -19,6 +19,7 @@
 
 #include "access/stratnum.h"
 #include "access/sysattr.h"
+#include "access/xact.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_operator.h"
@@ -42,6 +43,9 @@
 #include "utils/rel.h"
 #include "utils/selfuncs.h"
 
+
+/* GUC flag, whether to attempt single RPC lock+select in RR and RC levels. */
+bool yb_lock_pk_single_rpc = false;
 
 /* XXX see PartCollMatchesExprColl */
 #define IndexCollMatchesExprColl(idxcollation, exprcollation) \
@@ -1010,15 +1014,102 @@ get_index_paths(PlannerInfo *root, RelOptInfo *rel,
 }
 
 /*
+ * Returns whether the given IndexOptInfo represents the primary index in
+ * YugabyteDB (i.e., contains the primary source of truth for the data).
+ */
+static bool
+yb_is_main_table(IndexOptInfo *indexinfo)
+{
+	Relation indrel;
+	bool is_main_table = false;
+
+	if (!IsYugaByteEnabled())
+		return false;
+
+	if (indexinfo->rel->reloptkind != RELOPT_BASEREL)
+		return false;
+
+	indrel = RelationIdGetRelation(indexinfo->indexoid);
+	is_main_table = indrel->rd_index->indisprimary;
+	RelationClose(indrel);
+	return is_main_table;
+}
+
+/* Returns whether the given index_path matches the primary key exactly. */
+static bool
+yb_ipath_matches_pk(IndexPath *index_path) {
+	ListCell   *values;
+	Bitmapset  *primary_key_attrs = NULL;
+	List	   *qinfos = NIL;
+	ListCell   *lc = NULL;
+
+	/*
+	 * Verify no non-primary-key filters are specified. There is one
+	 * indrestrictinfo per query term.
+	 */
+	foreach(values, index_path->indexinfo->indrestrictinfo)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, values);
+
+		/*
+		 * There is one indexquals per key that has a query term. Note this
+		 * means we can't simply compare indrestrictinfo count to indexquals,
+		 * because if there is only one query term, both structures will contain
+		 * one item, even if there are more columns in the primary key.
+		 */
+		if (!list_member_ptr(index_path->indexquals, rinfo))
+			return false;
+	}
+
+	/*
+	 * Check that all WHERE clause conditions in the query use the equality
+	 * operator, and count the number of primary keys used.
+	 */
+	qinfos = deconstruct_indexquals(index_path);
+	foreach(lc, qinfos)
+	{
+		IndexQualInfo *qinfo = (IndexQualInfo *) lfirst(lc);
+		RestrictInfo *rinfo = qinfo->rinfo;
+		Expr	   *clause = rinfo->clause;
+		Oid			clause_op;
+		int			op_strategy;
+
+		if (!IsA(clause, OpExpr))
+			return false;
+
+		clause_op = qinfo->clause_op;
+		if (!OidIsValid(clause_op))
+			return false;
+
+		op_strategy = get_op_opfamily_strategy(
+			clause_op, index_path->indexinfo->opfamily[qinfo->indexcol]);
+		Assert(op_strategy != 0);  /* not a member of opfamily?? */
+		if (op_strategy != BTEqualStrategyNumber)
+			return false;
+		/* Just used for counting, not matching. */
+		primary_key_attrs = bms_add_member(primary_key_attrs, qinfo->indexcol);
+	}
+
+	/*
+	 * After checking all queries are for equality on primary keys, now we just
+	 * have to ensure we've covered all the primary keys.
+	 */
+	return bms_num_members(primary_key_attrs) ==
+		   index_path->indexinfo->nkeycolumns;
+}
+
+/*
  * build_index_paths
  *	  Given an index and a set of index clauses for it, construct zero
  *	  or more IndexPaths. It also constructs zero or more partial IndexPaths.
  *
  * We return a list of paths because (1) this routine checks some cases
- * that should cause us to not generate any IndexPath, and (2) in some
- * cases we want to consider both a forward and a backward scan, so as
- * to obtain both sort orders.  Note that the paths are just returned
- * to the caller and not immediately fed to add_path().
+ * that should cause us to not generate any IndexPath, (2) in some cases
+ * we want to consider both a forward and a backward scan, so as to obtain
+ * both sort orders, and (3) in Yugabyte, we might want to do locks as part
+ * of the read, but sometimes must maintain a non-locking version for
+ * correctness.  Note that the paths are just returned to the caller and not
+ * immediately fed to add_path().
  *
  * At top level, useful_predicate should be exactly the index's predOK flag
  * (ie, true if it has a predicate that was proven from the restriction
@@ -1243,6 +1334,22 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 								  outer_relids,
 								  loop_count,
 								  false);
+		if (IsYugaByteEnabled() && !IsolationIsSerializable())
+		{
+			/*
+			 * If there are rowMarks, then a LockRows node could later take
+			 * the locks, but we check to see if we can avoid the second
+			 * locking RPC by checking if we're trying to lock just one row,
+			 * and set up to do the lock inline in that case. The propagation
+			 * of yb_lock_mechanism will ensure there is no conflicting logic
+			 * that means we shouldn't even lock this one row.
+			 */
+			if (index_clauses != NIL && root->parse->rowMarks &&
+				yb_lock_pk_single_rpc && yb_is_main_table(ipath->indexinfo) &&
+				yb_ipath_matches_pk(ipath))
+				ipath->path.yb_path_info.yb_lock_mechanism = YB_LOCK_CLAUSE_ON_PK;
+		}
+
 		result = lappend(result, ipath);
 
 		/*

@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import { FC } from 'react';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { NodeType } from '../../metrics/constants';
 import { isNonEmptyObject } from '../../../utils/ObjectUtils';

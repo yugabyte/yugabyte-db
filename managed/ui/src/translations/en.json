@@ -23,7 +23,9 @@
       "remove": "Remove",
       "wrong": "Something went wrong.",
       "areYouSure": "Are you sure ?",
-      "delete": "Delete"
+      "delete": "Delete",
+      "back": "Back",
+      "selectAll": "Select All"
     },
     "universeActions": {
       "encryptionAtRest": {
@@ -41,6 +43,37 @@
         "masterKeyRotationSuccess": "Successfully rotated master key.",
         "lastRotatedLabel": "Last rotated: ",
         "lastActiveKMSLabel": "Last active KMS: "
+      },
+      "editYSQLSettings": {
+        "modalTitle": "Edit YSQL configuration",
+        "ysqlToggleLabel": "Enable YSQL for this Universe ",
+        "authToggleLabel": "Enable YSQL Auth",
+        "cannotEnableYSQL": "You cannot enable YSQL after universe creation",
+        "currentPwdToAuth": "Enter current password to disable Auth",
+        "YSQLPwdLabel": "YSQL Password",
+        "rotatePwdLabel": "Rotate ysql password",
+        "currentPwd": "Enter current password",
+        "newPwd": "Enter new password",
+        "reEnterNewPwd": "Re-enter new password",
+        "updateSettingsSuccessMsg": "Updating YSQL configuration is in progress",
+        "rotatePwdSuccessMsg": "DB credentials for YSQL updated successfully",
+        "rotateBothYSQLWarning": "Rotating YSQL Password and Editing YSQL settings should be performed at different times.",
+        "disableYSQLWarning1": "Are you sure you want to disable YSQL endpoint ?",
+        "disableYSQLWarning2": "<b>Note :</b> Once you perform this operation, You cannot enable it again."
+      },
+      "editYCQLSettings": {
+        "modalTitle": "Edit YCQL configuration",
+        "ycqlToggleLabel": "Enable YCQL for this Universe ",
+        "authToggleLabel": "Enable YCQL Auth",
+        "currentPwdToAuth": "Enter current password to disable Auth",
+        "YCQLPwdLabel": "YCQL Password",
+        "rotatePwdLabel": "Rotate ycql password",
+        "currentPwd": "Enter current password",
+        "newPwd": "Enter new password",
+        "reEnterNewPwd": "Re-enter new password",
+        "updateSettingsSuccessMsg": "Updating YCQL configuration is in progress",
+        "rotatePwdSuccessMsg": "DB credentials for YCQL updated successfully",
+        "rotateBothYCQLWarning": "Rotating YCQL Password and Editing YCQL settings should be performed at different times."
       }
     },
     "commonErrors": {
@@ -169,6 +202,8 @@
         "incorrectFlagValue": "Incorrect flag value",
         "incorrectFlagMsg": "Flag name is incorrect. Remove Flag",
         "masterValue": "MASTER VALUE",
+        "JWKSModalTitle": "Paste the JSON web key set(JWKS):",
+        "modalPlaceholder": "e.g. eyJraWQiOiJQQWc0NjVINmxZMC1XR1JwUm1ZbEloeEpXb2s5OG10LVZLcXV3VzNPazg0IiwiYWxnIjoiUlMyNTYifQeyJzdWIiOiIw MHUyYXBxMWNtSFlaM092ZDVkNyIsIm5hbWUiOiJKaW4gWWFuIiwiZW1haWwiOiJqeWFuQHl1Z2FieXRlLmNvbSIsInZlciI6MSwiaXNzIjoi",
         "noFlags": "There are no flags assigned to this universe ",
         "removeFlag": "Remove Flag",
         "removeValue": "Remove Value",
@@ -176,6 +211,7 @@
         "title": "G-Flags",
         "tServerValue": "T-SERVER VALUE",
         "addRow": "Add Row",
+        "addKeyset": "Add JSON web key set(JWKS)",
         "inheritFlagsMsg": "Apply the same Flags to primary cluster and Read Replica.",
         "note": "Note! ",
         "rrWithOnlyTserver": "Read Replicas only have T-Servers",
@@ -192,12 +228,22 @@
         "inheritRRModalBody": "Apply the same Flags to both Primary Cluster and Read replica? <br /> This will override all the Flags that are currently applied to Read replica<br /> by Primary Cluster’s Flag.",
         "inheritRRModalConfirmMsg": "Are you sure you want to continue with the changes?",
         "validationError": "Fix all the errors shown below to proceed",
-        "hbaLDAPConflocal": "local database user auth-method [auth-options]",
+        "hbaLDAPConfLocal": "local database user auth-method [auth-options]",
         "hbaLDAPConfHost": "host database user address auth-method [auth-options]",
         "hbaLDAPConfHostSSL": "hostssl database user IP-address auth-method [auth-options]",
-        "LDAPMissingAttributeValue": "Missing value for the attribute",
-        "LDAPMissingQuote": "Attribute value should be enclosed in quotes",
-        "nonASCIIDetected": "Non-ASCII value detected"
+        "invalidKey": "Invalid attribute key or missing '=' between key value pair",
+        "uploadKeyset": "Need to upload JWKS keyset",
+        "missingAttributeValue": "Missing value for the attribute key",
+        "missingQuoteAttributeValue": "Missing quotes or having spaces within attribute values",
+        "nonASCIIDetected": "Non-ASCII value detected",
+        "identConfLocal": "map-name idp-user/group/role database-username",
+        "hbaConfDescription": "Input each record as a new row, then reorder them. The sequential order of the records are significant as they are searched serially for every connection request.",
+        "identConfDescriptionFirst": "The flag's configuration follows ",
+        "identConfPostgreSQL": "PostgreSQL. ",
+        "identConfDescriptionSecond": "Enter each mapping as a new row, comprising the map-name, external user name, and database user name. ",
+        "identConfDescriptionMore": "To incorporate user name mappings from this flag, add them to the authentication methods that use external user names in hba_conf_csv file. ",
+        "readMore": "Read More",
+        "readLess": "Read Less"
       },
       "helmOverrides": {
         "addK8sOverrides": "Add Kubernetes Overrides",
@@ -328,6 +374,48 @@
           "Hurray": "Hurray",
           "ScanTime": "Last Scanned",
           "DBScanFailed": "Failed to scan the database. Try again later."
+        },
+        "queryDetailsPanel": {
+          "title": "Query Details",
+          "label": {
+            "responseTimePercentile": "Response Time Percentile",
+            "details": "Details"
+          },
+          "aria": {
+            "queryInfoPanelTabs": "Query information panel tabs"
+          },
+          "field": {
+            "P25": "P25 Latency",
+            "P50": "P50 Latency",
+            "P90": "P90 Latency",
+            "P95": "P95 Latency",
+            "P99": "P99 Latency",
+            "appName": "Client Name",
+            "calls": "Total Count",
+            "clientHost": "Client Host",
+            "clientPort": "Client Port",
+            "datname": "Database",
+            "dbName": "Database",
+            "elapsedMillis": "Elapsed Time",
+            "keyspace": "Keyspace",
+            "local_blks_hit": "Tmp tables RAM",
+            "local_blks_written": "Tmp tables On Disk",
+            "max_time": "Max Exec Time",
+            "mean_time": "Avg Exec Time",
+            "min_time": "Min Exec Time",
+            "nodeName": "Node Name",
+            "privateIp": "Private IP",
+            "queryStartTime": "Query Start",
+            "rolname": "User",
+            "rows": "Rows",
+            "sessionStatus": "Session Status",
+            "stddev_time": "Stdev Exec Time",
+            "total_time": "Total Time",
+            "type": "Type"
+          },
+          "slowQueryGraph": {
+            "title": "Query count by Response Time (ms)"
+          }
         },
         "typeTag": {
           "IndexSuggestion": "INDEX SUGGESTION",
@@ -463,6 +551,30 @@
       "variableName": "Variable Name:",
       "variableValUpdateSuccess": "variable updated successfully for policy \"{{policy_name}}\""
     },
+    "nodeAgent": {
+      "title": "Node Agents",
+      "assignedNodesTitle": "Assigned Nodes",
+      "unassignedNodesTitle": "Unassigned Nodes",
+      "viewDetailsButton": "View Details",
+      "unreachableInstanceAgents": "Instance agents are unreachable",
+      "contactSupport": "Contact Support"
+    },
+    "OIDCJWT": {
+      "emailId": "Email ID",
+      "OIDCJWTToken": "JSON Web Token",
+      "errorMessage": "Oops, JWT Token has expired, please login via SSO",
+      "redirectLinkText": "Back to home page",
+      "expirationDate": "Token Expiration Date",
+      "ysqlCommandLabel": "Use the following command to authenticate into your database using a JSON web token."
+    },
+    "universeSelector": {
+      "all": "All Universes",
+      "errorMessage": "Failed to fetch list of universes"
+    },
+    "providerSelector": {
+      "all": "All Providers",
+      "errorMessage": "Failed to fetch list of providers"
+    },
     "customCACerts": {
       "listing": {
         "header": "Trusted CA Certificates",
@@ -473,7 +585,7 @@
           "created": "Created",
           "validFrom": "Valid From",
           "validUntil": "Valid Until",
-          "moreActions":{
+          "moreActions": {
             "download": "Download",
             "updateCert": "Update Certificate"
           }
@@ -484,13 +596,146 @@
         "certNameTitle": "Name your CA Certificate",
         "save": "Save CA Certificate",
         "uploadBtnText": "Upload CA Certificate",
-        "uploadBtnSubText": "Upload certificate from private third-party Certificate Authority (CA) or self-signed certificate.\nOnly .crt file allowed.",
+        "uploadBtnSubText": "Upload certificate from private third-party Certificate Authority (CA) or self-signed certificate.",
         "successMsg": "Certificate updated successfully"
       },
       "deleteCACertModal": {
         "title": "Delete CA Certificate",
         "info": "TLS connections using this CA Certificate will fail. Are you sure you want to delete your CA Certificate? ",
-        "successMsg" : "Certificate deleted successfully"
+        "successMsg": "Certificate deleted successfully"
+      }
+    },
+    "newRestoreModal": {
+      "title": "Restore Backup",
+      "restoreSuccess": "Success. Click <0>here</0> for task details",
+      "allKeyspaces": "All Keyspaces",
+      "preparingRestore": "Preparing Restore...",
+      "backupInfoBanner": {
+        "backupSource": "Backup source (universe name)",
+        "createdAt": "Created at",
+        "numberOfKeyspace": "Number of Keyspaces",
+        "numberOfDatabase": "Number of Databases"
+      },
+      "prefetch": {
+        "loadingText": "Fetching Incremental Backups..."
+      },
+      "generalSettings": {
+        "restore": "Restore",
+        "next": "Next",
+        "universeSelection": {
+          "title": "Select target",
+          "selectTargetUniverse": "Select target universe",
+          "selectKMSConfig": "KMS Configuration",
+          "kmsConfigHelpText": "<b>Note!</b> For a successful restore, the KMS configuration used for restore should be the same KMS configuration used during backup creation.",
+          "validationMessages": {
+            "ybcNotEnabled": "Cannot restore ybc backup to non-ybc universe",
+            "kmsConfigRequired": "Backup was taken using KMS. Valid KMS configuration is needed for restoring."
+          },
+          "activeKMS": "Active",
+          "usedDuringBackup": "Used during backup"
+        },
+        "selectKeyspaceForm": {
+          "title": "Select Keyspace",
+          "selectKeyspace": "Select the keyspace you want to restore",
+          "optional": "(Optional)",
+          "restoreKeyspace": "Rename keyspace/s before restoring {{Optional}}",
+          "forceRenameHelpText": "<b>Note!</b> Renaming is required since the selected target universe contains keyspaces with identical names. You will be able to do this in the next step."
+        },
+        "tablesSelect": {
+          "title": "Select tables",
+          "selectAllTables": "Select all tables in this keyspace",
+          "selectSubsetOfTables": "Select a subset of tables"
+        },
+        "parallelThreads": {
+          "label": "Parallel threads (Optional)"
+        }
+      },
+      "selectTables": {
+        "title": "Select tables you want to restore",
+        "searchTableName": "Search table name",
+        "viewFilter": {
+          "viewAll": "View All",
+          "viewSelected": "View Selected"
+        },
+        "tablesCount": "{{count}} tables",
+        "validationMessages": {
+          "minimumTables": "Atleast one table should be selected"
+        },
+        "table": "Table"
+      },
+      "renameKeyspaces": {
+        "title": "Rename keyspace/s before restoring  (Optional)",
+        "currenyKeyspacename": "Current keyspace name",
+        "assignNewName": "Assign new name",
+        "addNewName": "Add new name",
+        "validationMessages": {
+          "keyspacesAlreadyExists": "Keyspace already exists in the target Universe",
+          "duplicateKeyspaceName": "Duplicate keyspace name given",
+          "invalidKeyspaceName": "Invalid keyspace name"
+        },
+        "keyspace": "Keyspace",
+        "renamedTo": "Renamed To",
+        "loadingMsg": "Fetching keyspaces from target universe..."
+      },
+      "stepper": {
+        "generalSettings": "General Settings",
+        "selectTables": "Select Tables",
+        "renameKeyspaces": "Rename keyspace/s"
+      }
+    },
+    "rbac": {
+      "roles": {
+        "create": {
+          "title": "Add a role",
+          "edit": "Edit a role",
+          "form": {
+            "name": "Name",
+            "namePlaceholder": "Role Name",
+            "description": "Description (Optional)",
+            "descriptionPlaceholder": "Role description",
+            "selectPermissions": "Select Permissions",
+            "selectPermissionSubText": "Select the permissions you want to include in this role.",
+            "permissions": "Permissions",
+            "editSelection": "Edit Selection"
+          },
+          "successMsg": "\"{{role_name}}\" role was created successfully",
+          "editSuccessMsg": "\"{{role_name}}\" role was edited successfully"
+        },
+        "list": {
+          "rowsCount": "{{count}} Roles",
+          "createRole": "Create Role",
+          "search": "Search by role name",
+          "table": {
+            "name": "Name",
+            "description": "Description",
+            "type": "Type",
+            "users": "Users",
+            "actions": "Actions",
+            "moreActions": {
+              "editRole": "Edit Role",
+              "cloneRole": "Clone Role",
+              "viewUsers": "View assigned users",
+              "deleteRole": "Delete Role"
+            }
+          }
+        },
+        "delete": {
+          "title": "Delete Role",
+          "errMsg": "This operation will delete the following role:<br/><bold>“{{role_name}}”</bold><br/>Enter the role name to continue.",
+          "successMsg": "\"{{role_name}}\" role was deleted successfully"
+        },
+        "edit": {
+          "menu": {
+            "configurations": "Configurations",
+            "users": "Users"
+          },
+          "title": "Edit Role"
+        }
+      },
+      "permissions": {
+        "selectPermissionModal": {
+          "title": "Select Permissions"
+        }
       }
     }
   }

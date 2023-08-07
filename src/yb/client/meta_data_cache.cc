@@ -14,6 +14,7 @@
 #include "yb/client/meta_data_cache.h"
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/permissions.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
@@ -128,14 +129,14 @@ struct YBMetaDataCacheEntry {
             consumption_ = ScopedTrackedConsumption(
                 cache->mem_tracker_, table_->DynamicMemoryUsage() + sizeof(*this));
             VLOG(1) << "Consumption for table " << table_->name().ToString() << " is "
-                    << consumption_.consumption()
-                    << ", memtrackerid: " << cache->mem_tracker_->id();
+                  << consumption_.consumption() << ", memtrackerid: " << cache->mem_tracker_->id()
+                  << ", schema version - " << table_->schema().version();
           }
         }
       }
 
       if (open_result.ok()) {
-        std::lock_guard<std::mutex> lock(cache->cached_tables_mutex_);
+        std::lock_guard lock(cache->cached_tables_mutex_);
         const auto& table = **open_result;
         cache->cached_tables_by_name_[table.name()] = self;
         cache->cached_tables_by_id_[table.id()] = self;
@@ -176,7 +177,7 @@ void YBMetaDataCache::DoGetTableAsync(
   std::shared_ptr<YBMetaDataCacheEntry> entry;
   YBTablePtr table;
   {
-    std::lock_guard<std::mutex> lock(cached_tables_mutex_);
+    std::lock_guard lock(cached_tables_mutex_);
     entry = cache->try_emplace(id, LazySharedPtrFactory()).first->second;
     table = entry->GetFetched();
   }
@@ -204,45 +205,63 @@ void YBMetaDataCache::DoGetTableAsync(
 void YBMetaDataCache::RemoveCachedTable(const YBTableName& table_name) {
   RemoveFromCache<YBTableName, TableId>(
       &cached_tables_by_name_, &cached_tables_by_id_, table_name,
-      [](const std::shared_ptr<YBTable>& table) { return table->id(); });
+      [](const std::shared_ptr<YBTable>& table) { return table->id(); },
+      [](const std::shared_ptr<YBTable>& table) { return true; });
 }
 
-void YBMetaDataCache::RemoveCachedTable(const TableId& table_id) {
+void YBMetaDataCache::RemoveCachedTable(const TableId& table_id, SchemaVersion schema_version) {
   RemoveFromCache<TableId, YBTableName>(
       &cached_tables_by_id_, &cached_tables_by_name_, table_id,
-      [](const std::shared_ptr<YBTable>& table) { return table->name(); });
+      [](const std::shared_ptr<YBTable>& table) { return table->name(); },
+      [schema_version](const std::shared_ptr<YBTable>& table) {
+        if (table->schema().version() < schema_version) {
+          VLOG(1) << "Removing table " << table->name().ToString()
+                  << " from cache as cached schema version " << table->schema().version()
+                  << " is older than " << schema_version;
+          return true;
+        }
+        return false;
+      });
 }
 
-template <typename T, typename V, typename F>
+template <typename T, typename V, typename F, typename CanRemoveFunc>
 void YBMetaDataCache::RemoveFromCache(
     std::unordered_map<T, std::shared_ptr<YBMetaDataCacheEntry>, boost::hash<T>>* direct_cache,
     std::unordered_map<V, std::shared_ptr<YBMetaDataCacheEntry>, boost::hash<V>>* indirect_cache,
     const T& direct_key,
-    const F& get_indirect_key) {
+    const F& get_indirect_key,
+    const CanRemoveFunc& can_remove) {
   std::lock_guard<std::mutex> lock(cached_tables_mutex_);
   const auto itr = direct_cache->find(direct_key);
   if (itr != direct_cache->end()) {
-    // It could happen that the entry is present in direct_cache but the data is being
-    // fetched. In this case, indirect_cache might not have the entry.
-    auto is_fetched = false;
+    YBTablePtr table;
     {
       std::unique_lock<std::mutex> table_lock(itr->second->mutex_);
-      is_fetched = itr->second->table_ != nullptr;
+      if (itr->second->table_ != nullptr && can_remove(itr->second->table_)) {
+        table = itr->second->table_;
+      }
     }
 
-    if (is_fetched) {
-      const auto indirect_cache_key = get_indirect_key(itr->second->table_);
+    if (table) {
+      const auto indirect_cache_key = get_indirect_key(table);
       indirect_cache->erase(indirect_cache_key);
+
+      direct_cache->erase(itr);
     }
-    direct_cache->erase(itr);
   }
+}
+
+void YBMetaDataCache::Reset() {
+  std::lock_guard<std::mutex> lock(cached_tables_mutex_);
+  cached_tables_by_id_.clear();
+  cached_tables_by_name_.clear();
 }
 
 Result<std::pair<std::shared_ptr<QLType>, bool>> YBMetaDataCache::GetUDType(
     const string& keyspace_name, const string& type_name) {
   auto type_path = std::make_pair(keyspace_name, type_name);
   {
-    std::lock_guard<std::mutex> lock(cached_types_mutex_);
+    std::lock_guard lock(cached_types_mutex_);
     auto itr = cached_types_.find(type_path);
     if (itr != cached_types_.end()) {
       return std::make_pair(itr->second, true);
@@ -251,7 +270,7 @@ Result<std::pair<std::shared_ptr<QLType>, bool>> YBMetaDataCache::GetUDType(
 
   auto type = VERIFY_RESULT(client_->GetUDType(keyspace_name, type_name));
   {
-    std::lock_guard<std::mutex> lock(cached_types_mutex_);
+    std::lock_guard lock(cached_types_mutex_);
     cached_types_[type_path] = type;
   }
   return std::make_pair(std::move(type), false);
@@ -259,7 +278,7 @@ Result<std::pair<std::shared_ptr<QLType>, bool>> YBMetaDataCache::GetUDType(
 
 void YBMetaDataCache::RemoveCachedUDType(const string& keyspace_name,
                                          const string& type_name) {
-  std::lock_guard<std::mutex> lock(cached_types_mutex_);
+  std::lock_guard lock(cached_types_mutex_);
   cached_types_.erase(std::make_pair(keyspace_name, type_name));
 }
 

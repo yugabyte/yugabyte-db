@@ -69,6 +69,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/url-coding.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -134,7 +135,7 @@ void Peer::TEST_SetTerm(int term, ThreadSafeArena* arena) {
 }
 
 Status Peer::Init() {
-  std::lock_guard<simple_spinlock> lock(peer_lock_);
+  std::lock_guard lock(peer_lock_);
   queue_->TrackPeer(peer_pb_);
   // Capture a weak_ptr reference into the functor so it can safely handle
   // outliving the peer.
@@ -195,6 +196,19 @@ Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
     performing_update_lock.release();
   }
   return status;
+}
+
+void Peer::DumpToHtml(std::ostream& out) const {
+  const auto peer_pb_str = EscapeForHtmlToString("Peer PB: " + peer_pb_.DebugString());
+  out << "Peer:" << std::endl;
+  std::lock_guard lock(peer_lock_);
+  out << Format(
+             "<ul><li>$0</li><li>$1</li><li>$2</li><li>$3</li></ul>",
+             EscapeForHtmlToString(Format("State: $0", state_)),
+             EscapeForHtmlToString(Format("Current Heartbeat Id: $0", cur_heartbeat_id_)),
+             EscapeForHtmlToString(Format("Failed Attempts: $0", failed_attempts_)),
+             peer_pb_str)
+      << std::endl;
 }
 
 void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
@@ -562,7 +576,7 @@ void Peer::Close() {
 
   // If the peer is already closed return.
   {
-    std::lock_guard<simple_spinlock> processing_lock(peer_lock_);
+    std::lock_guard processing_lock(peer_lock_);
     if (using_thread_pool_.load(std::memory_order_acquire) > 0) {
       auto deadline = std::chrono::steady_clock::now() +
                       FLAGS_max_wait_for_processresponse_before_closing_ms * 1ms;
@@ -590,7 +604,7 @@ void Peer::Close() {
 }
 
 Peer::~Peer() {
-  std::lock_guard<simple_spinlock> processing_lock(peer_lock_);
+  std::lock_guard processing_lock(peer_lock_);
   CHECK_EQ(state_, kPeerClosed) << "Peer cannot be implicitly closed";
 }
 

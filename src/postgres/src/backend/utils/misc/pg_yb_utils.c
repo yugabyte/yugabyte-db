@@ -60,7 +60,9 @@
 #include "catalog/pg_partitioned_table.h"
 #include "catalog/pg_policy.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_range_d.h"
 #include "catalog/pg_rewrite.h"
+#include "catalog/pg_statistic_d.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
@@ -83,6 +85,7 @@
 #include "utils/rel.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
+#include "utils/uuid.h"
 #include "fmgr.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
@@ -91,6 +94,7 @@
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pgstat.h"
+#include "nodes/readfuncs.h"
 
 #ifdef __linux__
 #include <sys/prctl.h>
@@ -179,6 +183,12 @@ IsYugaByteEnabled()
 	return YBCPgIsYugaByteEnabled();
 }
 
+bool
+YbIsClientYsqlConnMgr()
+{
+	return IsYugaByteEnabled() && yb_is_client_ysqlconnmgr;
+}
+
 void
 CheckIsYBSupportedRelation(Relation relation)
 {
@@ -256,13 +266,6 @@ bool IsYBSystemColumn(int attrNum)
 	return (attrNum == YBRowIdAttributeNumber ||
 			attrNum == YBIdxBaseTupleIdAttributeNumber ||
 			attrNum == YBUniqueIdxKeySuffixAttributeNumber);
-}
-
-bool
-YBNeedRetryAfterCacheRefresh(ErrorData *edata)
-{
-	// TODO Inspect error code to distinguish retryable errors.
-	return true;
 }
 
 AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation)
@@ -432,10 +435,15 @@ IsYBReadCommitted()
 bool
 YBIsWaitQueueEnabled()
 {
+#ifdef NDEBUG
+  static bool kEnableWaitQueues = false;
+#else
+	static bool kEnableWaitQueues = true;
+#endif
 	static int cached_value = -1;
 	if (cached_value == -1)
 	{
-		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_wait_queues", false);
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_wait_queues", kEnableWaitQueues);
 	}
 	return IsYugaByteEnabled() && cached_value;
 }
@@ -551,6 +559,17 @@ GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code,
 			*msg_args = (const char **) palloc(sizeof(const char *));
 			(*msg_args)[0] = FetchUniqueConstraintName(YBCStatusRelationOid(s));
 			break;
+		case ERRCODE_T_R_DEADLOCK_DETECTED:
+			if (YBCIsTxnDeadlockError(txn_err_code)) {
+				*msg_buf = "deadlock detected";
+				*msg_nargs = 0;
+				*msg_args = NULL;
+
+				*detail_buf = status_msg;
+				*detail_nargs = status_nargs;
+				*detail_args = status_args;
+			}
+			break;
 		default:
 			break;
 	}
@@ -642,6 +661,9 @@ YBInitPostgresBackend(
 		callbacks.SignalWaitEnd = &pgstat_report_wait_end;
 		callbacks.ProcSetNodeUUID = &ProcSetNodeUUID;
 		callbacks.ProcSetTopRequestId = &ProcSetTopRequestId;
+		callbacks.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch;
+		callbacks.PostgresEpochToUnixEpoch= &YbPostgresEpochToUnixEpoch;
+		callbacks.ConstructTextArrayDatum = &YbConstructTextArrayDatum;
 		YBCInitPgGate(type_table, count, callbacks);
 		YBCInstallTxnDdlHook();
 
@@ -654,6 +676,14 @@ YBInitPostgresBackend(
 		HandleYBStatus(YBCPgInitSession(db_name ? db_name : user_name,
 										&yb_session_stats.current_state));
 		YBCSetTimeout(StatementTimeout, NULL);
+
+		/*
+		 * Upon completion of the first heartbeat to the local tserver, retrieve
+		 * and store the session ID in shared memory, so that entities
+		 * associated with a session ID (like txn IDs) can be transitively
+		 * mapped to PG backends.
+		 */
+		yb_pgstat_add_session_info(YBCPgGetSessionID());
 	}
 }
 
@@ -1065,6 +1095,7 @@ PowerWithUpperLimit(double base, int exp, double upper_limit)
 bool yb_enable_create_with_table_oid = false;
 int yb_index_state_flags_update_delay = 1000;
 bool yb_enable_expression_pushdown = true;
+bool yb_enable_distinct_pushdown = true;
 bool yb_enable_optimizer_statistics = false;
 bool yb_bypass_cond_recheck = true;
 bool yb_make_next_ddl_statement_nonbreaking = false;
@@ -1465,6 +1496,34 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 *		  order to correctly invalidate negative cache entries
 			 */
 			*is_breaking_catalog_change = false;
+			if (node_tag == T_CreateRoleStmt) {
+				/*
+				 * If a create role statement does not reference another existing
+				 * role there is no need to increment catalog version.
+				 */
+				CreateRoleStmt *stmt = castNode(CreateRoleStmt, parsetree);
+				int nopts = list_length(stmt->options);
+				if (nopts == 0)
+					*is_catalog_version_increment = false;
+				else
+				{
+					bool reference_other_role = false;
+					ListCell   *lc;
+					foreach(lc, stmt->options)
+					{
+						DefElem *def = (DefElem *) lfirst(lc);
+						if (strcmp(def->defname, "rolemembers") == 0 ||
+							strcmp(def->defname, "adminmembers") == 0 ||
+							strcmp(def->defname, "addroleto") == 0)
+						{
+							reference_other_role = true;
+							break;
+						}
+					}
+					if (!reference_other_role)
+						*is_catalog_version_increment = false;
+				}
+			}
 			break;
 		}
 		case T_CreateStmt:
@@ -1577,7 +1636,6 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_AlterPolicyStmt:
 		case T_AlterPublicationStmt:
 		case T_AlterRoleSetStmt:
-		case T_AlterRoleStmt:
 		case T_AlterSeqStmt:
 		case T_AlterSubscriptionStmt:
 		case T_AlterSystemStmt:
@@ -1593,6 +1651,28 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		/* ALTER .. RENAME TO syntax gets parsed into a T_RenameStmt node. */
 		case T_RenameStmt:
 			break;
+
+		case T_AlterRoleStmt:
+		{
+			/*
+			 * If this is a simple alter role change password statement,
+			 * there is no need to increment catalog version. Password
+			 * is only used for authentication at connection setup time.
+			 * A new password does not affect existing connections that
+			 * were authenticated using the old password.
+			 */
+			AlterRoleStmt *stmt = castNode(AlterRoleStmt, parsetree);
+			if (list_length(stmt->options) == 1)
+			{
+				DefElem *def = (DefElem *) linitial(stmt->options);
+				if (strcmp(def->defname, "password") == 0)
+				{
+					*is_breaking_catalog_change = false;
+					*is_catalog_version_increment = false;
+				}
+			}
+			break;
+		}
 
 		case T_AlterTableStmt:
 		{
@@ -2165,11 +2245,15 @@ yb_table_properties(PG_FUNCTION_ARGS)
 
 /*
  * This function is adapted from code of PQescapeLiteral() in fe-exec.c.
- * Convert a string value to an SQL string literal and append it to
- * the given StringInfo.
+ * If use_quote_strategy_token is false, the string value will be converted
+ * to an SQL string literal and appended to the given StringInfo.
+ * If use_quote_strategy_token is true, the string value will be enclosed in
+ * double quotes, backslashes will be escaped and the value will be appended
+ * to the given StringInfo.
  */
 static void
-appendStringLiteral(StringInfo buf, const char *str, int encoding)
+appendStringToString(StringInfo buf, const char *str, int encoding,
+					 bool use_quote_strategy_token)
 {
 	const char *s;
 	int			num_quotes = 0;
@@ -2180,7 +2264,7 @@ appendStringLiteral(StringInfo buf, const char *str, int encoding)
 	/* Scan the string for characters that must be escaped. */
 	for (s = str; (s - str) < strlen(str) && *s != '\0'; ++s)
 	{
-		if (*s == '\'')
+		if ((*s == '\'' && !use_quote_strategy_token))
 			++num_quotes;
 		else if (*s == '\\')
 			++num_backslashes;
@@ -2210,14 +2294,17 @@ appendStringLiteral(StringInfo buf, const char *str, int encoding)
 	 * If we are escaping a literal that contains backslashes, we use the
 	 * escape string syntax so that the result is correct under either value
 	 * of standard_conforming_strings.
+	 * Note: if we are using double quotes, the string should not have escape
+	 * string syntax.
 	 */
-	if (num_backslashes > 0)
+	if (num_backslashes > 0 && !use_quote_strategy_token)
 	{
 		appendStringInfoChar(buf, 'E');
 	}
 
 	/* Opening quote. */
-	appendStringInfoChar(buf, '\'');
+	use_quote_strategy_token ? appendStringInfoChar(buf, '\"') :
+		appendStringInfoChar(buf, '\'');
 
 	/*
 	 * Use fast path if possible.
@@ -2238,7 +2325,11 @@ appendStringLiteral(StringInfo buf, const char *str, int encoding)
 	{
 		for (s = str; s - str < input_len; ++s)
 		{
-			if (*s == '\'' || *s == '\\')
+			/*
+			 * Note: if we are using double quotes, we do not need to escape
+			 * single quotes.
+			 */
+			if ((*s == '\'' && !use_quote_strategy_token) || *s == '\\')
 			{
 				appendStringInfoChar(buf, *s);
 				appendStringInfoChar(buf, *s);
@@ -2261,7 +2352,8 @@ appendStringLiteral(StringInfo buf, const char *str, int encoding)
 	}
 
 	/* Closing quote. */
-	appendStringInfoChar(buf, '\'');
+	use_quote_strategy_token ? appendStringInfoChar(buf, '\"') :
+		appendStringInfoChar(buf, '\'');
 }
 
 /*
@@ -2274,7 +2366,8 @@ appendStringLiteral(StringInfo buf, const char *str, int encoding)
  * make the generated string look better.
  */
 static void
-appendDatumToString(StringInfo str, uint64_t datum, Oid typid, int encoding)
+appendDatumToString(StringInfo str, uint64_t datum, Oid typid, int encoding,
+					bool use_double_quotes)
 {
 	const char *datum_str = YBDatumToString(datum, typid);
 	switch (typid)
@@ -2293,7 +2386,9 @@ appendDatumToString(StringInfo str, uint64_t datum, Oid typid, int encoding)
 			if (strspn(datum_str, "0123456789 +-eE.") == strlen(datum_str))
 				appendStringInfoString(str, datum_str);
 			else
-				appendStringInfo(str, "'%s'", datum_str);
+				use_double_quotes ?
+					appendStringInfo(str, "\"%s\"", datum_str) :
+					appendStringInfo(str, "'%s'", datum_str);
 			break;
 		/*
 		 * Currently, cannot create tables/indexes with a key containing
@@ -2308,7 +2403,8 @@ appendDatumToString(StringInfo str, uint64_t datum, Oid typid, int encoding)
 			break;
 		default:
 			/* All other types are appended as string literals. */
-			appendStringLiteral(str, datum_str, encoding);
+			appendStringToString(str, datum_str, encoding,
+								 use_double_quotes);
 			break;
 	}
 }
@@ -2438,7 +2534,8 @@ rangeSplitClause(Oid relid, YBCPgTableDesc yb_tabledesc,
 				appendDatumToString(cur_split_point,
 									split_datums[split_datum_idx].datum,
 									pkeys_atttypid[col_idx],
-									pg_get_client_encoding());
+									pg_get_client_encoding(),
+									false /* use_double_quotes */);
 			}
 		}
 		appendStringInfoChar(cur_split_point, ')');
@@ -2467,6 +2564,60 @@ rangeSplitClause(Oid relid, YBCPgTableDesc yb_tabledesc,
 		resetStringInfo(cur_split_point);
 	}
 	appendStringInfoChar(str, ')');
+}
+
+/*
+ * This function is used to retrieve a range partitioned table's split points
+ * as a list of PartitionRangeDatums.
+ */
+static void
+getRangeSplitPointsList(Oid relid, YBCPgTableDesc yb_tabledesc,
+						YbTableProperties yb_table_properties,
+						List **split_points)
+{
+	Assert(yb_table_properties->num_tablets > 1);
+	size_t num_range_key_columns = yb_table_properties->num_range_key_columns;
+	size_t num_splits = yb_table_properties->num_tablets - 1;
+	Oid pkeys_atttypid[num_range_key_columns];
+	YBCPgSplitDatum split_datums[num_splits * num_range_key_columns];
+	bool has_null;
+
+	/* Get Split point values as YBCPgSplitDatum. */
+	getSplitPointsInfo(relid, yb_tabledesc, yb_table_properties,
+					   pkeys_atttypid, split_datums, &has_null);
+
+	/* Construct PartitionRangeDatums split points list. */
+	for (int split_idx = 0; split_idx < num_splits; ++split_idx)
+	{
+		List *split_point = NIL;
+		for (int col_idx = 0; col_idx < num_range_key_columns; ++col_idx)
+		{
+			PartitionRangeDatum *datum = makeNode(PartitionRangeDatum);
+			int split_datum_idx = split_idx * num_range_key_columns + col_idx;
+			switch (split_datums[split_datum_idx].datum_kind)
+			{
+				case YB_YQL_DATUM_LIMIT_MIN:
+					datum->kind = PARTITION_RANGE_DATUM_MINVALUE;
+					break;
+				case YB_YQL_DATUM_LIMIT_MAX:
+					datum->kind = PARTITION_RANGE_DATUM_MAXVALUE;
+					break;
+				default:
+					datum->kind = PARTITION_RANGE_DATUM_VALUE;
+					StringInfo str = makeStringInfo();
+					appendDatumToString(str,
+										split_datums[split_datum_idx].datum,
+										pkeys_atttypid[col_idx],
+										pg_get_client_encoding(),
+										true /* use_double_quotes */);
+					A_Const *value = makeNode(A_Const);
+					value->val = *(Value *) nodeRead(str->data, str->len);
+					datum->value = (Node *) value;
+			}
+			split_point = lappend(split_point, datum);
+		}
+		*split_points = lappend(*split_points, split_point);
+	}
 }
 
 Datum
@@ -2540,6 +2691,50 @@ Datum
 yb_get_effective_transaction_isolation_level(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_CSTRING(yb_fetch_effective_transaction_isolation_level());
+}
+
+Datum
+yb_get_current_transaction(PG_FUNCTION_ARGS)
+{
+	pg_uuid_t *txn_id = NULL;
+	bool is_null = false;
+
+	if (!yb_enable_pg_locks)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("get_current_transaction is unavailable"),
+						errdetail("yb_enable_pg_locks is false or a system "
+								  "upgrade is in progress")));
+	}
+
+	txn_id = (pg_uuid_t *) palloc(sizeof(pg_uuid_t));
+	HandleYBStatus(
+		YBCPgGetSelfActiveTransaction((YBCPgUuid *) txn_id, &is_null));
+
+	if (is_null)
+		PG_RETURN_NULL();
+
+	PG_RETURN_UUID_P(txn_id);
+}
+
+Datum
+yb_cancel_transaction(PG_FUNCTION_ARGS)
+{
+	if (!IsYbDbAdminUser(GetUserId()))
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("permission denied to cancel transaction")));
+
+	pg_uuid_t *id = PG_GETARG_UUID_P(0);
+	YBCStatus status = YBCPgCancelTransaction(id->data);
+	if (status)
+	{
+		ereport(NOTICE,
+				(errmsg("failed to cancel transaction"),
+				 errdetail("%s", YBCMessageAsCString(status))));
+		PG_RETURN_BOOL(false);
+	}
+	PG_RETURN_BOOL(true);
 }
 
 /*
@@ -3104,8 +3299,14 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		case RelationRelationId:                          // pg_class
 			sys_table_index_id = ClassNameNspIndexId;
 			break;
+		case RangeRelationId:                             // pg_range
+			sys_only_filter_attr = Anum_pg_range_rngtypid;
+			break;
 		case RewriteRelationId:                           // pg_rewrite
 			sys_table_index_id = RewriteRelRulenameIndexId;
+			break;
+		case StatisticRelationId:                         // pg_statistic
+			sys_only_filter_attr = Anum_pg_statistic_starelid;
 			break;
 		case TriggerRelationId:                           // pg_trigger
 			sys_table_index_id = TriggerRelidNameIndexId;
@@ -3312,19 +3513,34 @@ uint64_t YbGetSharedCatalogVersion()
 	return version;
 }
 
-void YBUpdateRowLockPolicyForSerializable(
-		int *effectiveWaitPolicy, LockWaitPolicy userLockWaitPolicy)
+void YBSetRowLockPolicy(int *docdb_wait_policy, LockWaitPolicy pg_wait_policy)
 {
-	/*
-	 * TODO(concurrency-control): We don't honour SKIP LOCKED/ NO WAIT yet in serializable isolation
-	 * level.
-	 */
-	if (userLockWaitPolicy == LockWaitSkip || userLockWaitPolicy == LockWaitError)
-		elog(WARNING, "%s clause is not supported yet for SERIALIZABLE isolation (GH issue #11761)",
-			userLockWaitPolicy == LockWaitSkip ? "SKIP LOCKED" : "NO WAIT");
+	if (XactIsoLevel == XACT_REPEATABLE_READ && pg_wait_policy == LockWaitError)
+	{
+		/* The user requested NOWAIT, which isn't allowed in RR. */
+		elog(WARNING, "Setting wait policy to NOWAIT which is not allowed in "
+					  "REPEATABLE READ isolation (GH issue #12166)");
+	}
 
-	*effectiveWaitPolicy = LockWaitBlock;
-	if (!YBIsWaitQueueEnabled())
+	if (IsolationIsSerializable())
+	{
+		/*
+		 * TODO(concurrency-control): We don't honour SKIP LOCKED/ NO WAIT yet in serializable
+		 * isolation level.
+		 */
+		if (pg_wait_policy == LockWaitSkip || pg_wait_policy == LockWaitError)
+			elog(WARNING, "%s clause is not supported yet for SERIALIZABLE isolation "
+						  "(GH issue #11761)",
+						  pg_wait_policy == LockWaitSkip ? "SKIP LOCKED" : "NO WAIT");
+
+		*docdb_wait_policy = LockWaitBlock;
+	}
+	else
+	{
+		*docdb_wait_policy = pg_wait_policy;
+	}
+
+	if (*docdb_wait_policy == LockWaitBlock && !YBIsWaitQueueEnabled())
 	{
 		/*
 		 * If wait-queues are not enabled, we default to the "Fail-on-Conflict" policy which is
@@ -3332,7 +3548,7 @@ void YBUpdateRowLockPolicyForSerializable(
 		 * "Fail-on-Conflict" and the reason why LockWaitError is not mapped to no-wait
 		 * semantics but to Fail-on-Conflict semantics).
 		 */
-		*effectiveWaitPolicy = LockWaitError;
+		*docdb_wait_policy = LockWaitError;
 	}
 }
 
@@ -3347,11 +3563,15 @@ uint32_t YbGetNumberOfDatabases()
 
 static bool yb_is_batched_execution = false;
 
-bool YbIsBatchedExecution() {
+bool YbIsBatchedExecution()
+{
 	return yb_is_batched_execution;
 }
 
-void YbSetIsBatchedExecution(bool value) {
+bool yb_is_client_ysqlconnmgr = false;
+
+void YbSetIsBatchedExecution(bool value)
+{
 	yb_is_batched_execution = value;
 }
 
@@ -3381,3 +3601,72 @@ top_level_request_id_uint_to_char(char *top_level_request_id, const uint64_t top
     }
 }
 
+OptSplit *
+YbGetSplitOptions(Relation rel)
+{
+	OptSplit *split_options = makeNode(OptSplit);
+	split_options->split_type = NUM_TABLETS;
+	split_options->num_tablets = rel->yb_table_properties->num_tablets;
+	/* 
+	 * Copy split points if we have a live range key.
+	 * (RelationGetPrimaryKeyIndex returns InvalidOid if pkey is currently
+	 * being dropped).
+	 */
+	if (rel->yb_table_properties->num_hash_key_columns == 0
+		&& rel->yb_table_properties->num_tablets > 1
+		&& !(rel->rd_rel->relkind == RELKIND_RELATION
+		&& RelationGetPrimaryKeyIndex(rel) == InvalidOid))
+	{
+		split_options->split_type = SPLIT_POINTS;
+		YBCPgTableDesc yb_desc = NULL;
+		HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId,
+						RelationGetRelid(rel), &yb_desc));
+		getRangeSplitPointsList(RelationGetRelid(rel), yb_desc,
+								rel->yb_table_properties,
+								&split_options->split_points);
+	}
+	return split_options;
+}
+
+bool YbIsColumnPartOfKey(Relation rel, const char *column_name)
+{
+	if (column_name)
+	{
+		Bitmapset  *pkey   = YBGetTablePrimaryKeyBms(rel);
+		HeapTuple  attTup =
+			SearchSysCacheCopyAttName(RelationGetRelid(rel), column_name);
+		if (HeapTupleIsValid(attTup))
+		{
+			Form_pg_attribute attform =
+				(Form_pg_attribute) GETSTRUCT(attTup);
+			AttrNumber	attnum = attform->attnum;
+			if (bms_is_member(attnum -
+							  YBGetFirstLowInvalidAttributeNumber(rel), pkey))
+				return true;
+		}
+	}
+	return false;
+}
+
+/*
+ * ```yb_committed_sticky_object_count``` is the count of the database objects
+ * that requires the sticky connection
+ * These objects are
+ * 1. WITH HOLD CURSORS
+ * 2. TEMP TABLE
+ */
+int yb_committed_sticky_object_count = 0;
+
+/*
+ * ```YbIsStickyConnection(int *change)``` updates the number of objects that requires a sticky
+ * connection and returns whether or not the client connection
+ * requires stickiness. i.e. if there is any `WITH HOLD CURSOR` or `TEMP TABLE`
+ * at the end of the transaction.
+ */
+bool YbIsStickyConnection(int *change)
+{
+	yb_committed_sticky_object_count += *change;
+	*change = 0; /* Since it is updated it will be set to 0 */
+	elog(DEBUG5, "Number of sticky objects: %d", yb_committed_sticky_object_count);
+	return (yb_committed_sticky_object_count > 0);
+}

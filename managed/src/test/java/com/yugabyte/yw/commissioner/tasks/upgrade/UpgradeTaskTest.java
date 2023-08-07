@@ -132,7 +132,8 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
           TaskType.WaitForMasterLeader,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
-          TaskType.UpdateClusterUserIntent);
+          TaskType.UpdateClusterUserIntent,
+          TaskType.CheckUnderReplicatedTablets);
 
   @Override
   @Before
@@ -168,7 +169,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     // Create default universe
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
-    userIntent.ybSoftwareVersion = "old-version";
+    userIntent.ybSoftwareVersion = "2.14.12.0-b1";
     userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.providerType = Common.CloudType.valueOf(defaultProvider.getCode());

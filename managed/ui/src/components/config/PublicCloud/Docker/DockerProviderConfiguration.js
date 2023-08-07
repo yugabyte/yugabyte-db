@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Row, Col, Alert } from 'react-bootstrap';
 import { YBButton } from '../../../common/forms/fields';
 import { withRouter } from 'react-router';

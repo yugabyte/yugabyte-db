@@ -218,9 +218,9 @@ class LogTest : public LogTestBase {
 
 void LogTest::DoReuseLastSegmentTest(bool durable_wal_write) {
   // log_->Close() simulates crash now
-  FLAGS_TEST_simulate_abrupt_server_restart = true;
-  FLAGS_TEST_skip_file_close = true;
-  FLAGS_reuse_unclosed_segment_threshold_bytes = 512_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_abrupt_server_restart) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_file_close) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_reuse_unclosed_segment_threshold_bytes) = 512_KB;
   // Restore value options_.durable_wal_write back later.
   bool temp = options_.durable_wal_write;
   options_.durable_wal_write = durable_wal_write;
@@ -256,7 +256,7 @@ void LogTest::DoReuseLastSegmentTest(bool durable_wal_write) {
   ASSERT_EQ(num_entries, num_batches*2);
 
   // Close this segment properly and add another segment.
-  FLAGS_TEST_skip_file_close = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_file_close) = false;
   ASSERT_OK(log_->AllocateSegmentAndRollOver());
   LOG_TIMING(INFO, "Wrote batches to log") {
     AppendReplicateBatchToLog(num_batches);
@@ -266,7 +266,7 @@ void LogTest::DoReuseLastSegmentTest(bool durable_wal_write) {
   ASSERT_EQ(num_entries, num_batches*3);
 
   // Simulate log crashs in the middle of writing an entry.
-  FLAGS_TEST_skip_file_close = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_file_close) = true;
   segment_num_before_crash = segments.size();
   ASSERT_OK(log_->TEST_WriteCorruptedEntryBatchAndSync());
   ASSERT_OK(log_->Close());
@@ -384,8 +384,8 @@ TEST_F(LogTest, TestFsyncInterval) {
 TEST_F(LogTest, TestFsyncIntervalPhysical) {
   int interval = 1;
   options_.interval_durable_wal_write = MonoDelta::FromMilliseconds(interval);
-  FLAGS_never_fsync = false;
-  FLAGS_durable_wal_write = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_durable_wal_write) = false;
   options_.preallocate_segments = false;
   BuildLog();
 
@@ -778,7 +778,7 @@ TEST_F(LogTest, TestGCWithLogRunning) {
   // verify that we don't GC any.
   {
     google::FlagSaver saver;
-    FLAGS_log_min_segments_to_retain = 10;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 10;
     ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
     ASSERT_EQ(0, num_gced_segments);
   }
@@ -820,7 +820,7 @@ TEST_F(LogTest, TestGCWithLogRunning) {
 // we also retain any relevant log index chunks, even if those operations
 // are not necessary for recovery.
 TEST_F(LogTest, TestGCOfIndexChunks) {
-  FLAGS_log_min_segments_to_retain = 4;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 4;
   BuildLog();
 
   const auto entries_per_chunk = TEST_GetEntriesPerIndexChunk();
@@ -849,7 +849,7 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
 
   // If we drop the retention count down to 1, we can now GC, and the log index
   // chunk should also be GCed.
-  FLAGS_log_min_segments_to_retain = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_segments_to_retain) = 1;
   ASSERT_OK(log_->GC(entries_per_chunk + 3, &num_gced_segments));
   ASSERT_EQ(1, num_gced_segments);
 
@@ -928,13 +928,13 @@ TEST_F(LogTest, TestLogReopenAndGC) {
 
   // If we set the min_seconds_to_retain high, then we'll retain the logs even
   // though we could GC them based on our anchoring.
-  FLAGS_log_min_seconds_to_retain = 500;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 500;
   ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
   ASSERT_EQ(0, num_gced_segments);
 
   // Turn off the time-based retention and try GCing again. This time
   // we should succeed.
-  FLAGS_log_min_seconds_to_retain = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 0;
   log_->set_wal_retention_secs(0);
   ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
   ASSERT_EQ(2, num_gced_segments);
@@ -1677,6 +1677,78 @@ TEST_F(LogTest, CopyUpTo) {
     ASSERT_OK(CheckLogIndex(
         log_copy_reader.get(), op_id_with_entry_meta_by_idx, max_included_op_id.index));
   }
+
+  ASSERT_OK(log_->Close());
+}
+
+// This test generate segments with random commits, term changes and some empty segments. We should
+// be able to read older ops that are not in the log cache after a log restart.
+TEST_F(LogTest, TestLogIndex) {
+  google::SetVLOGLevel("log*", 10);
+
+  constexpr auto kNumSegments = 5;
+  constexpr auto kNumBatchesPerSegment = 5;
+  constexpr auto kNumEntriesPerBatch = 5;
+  constexpr auto kNumApproxTermChanges = 10;
+  constexpr auto kNumApproxTermChangesWithIndexRollback = 3;
+  constexpr auto kCommitProbability = 0.1;
+
+  // We will rollover segments manually.
+  options_.segment_size_bytes = std::numeric_limits<size_t>::max();
+
+  auto read_all_indexes = [this](int64_t last_index) -> Status {
+    SCHECK_GT(last_index, 0, IllegalState, "last_index should be > 0");
+    for (auto index = last_index; index > 0; --index) {
+      auto log_index_entry = VERIFY_RESULT(log_->GetLogReader()->TEST_GetIndexEntry(index));
+      SCHECK_EQ(log_index_entry.op_id.index, index, IllegalState, "index mismatch");
+    }
+    return Status::OK();
+  };
+
+  BuildLog();
+
+  auto ops = ASSERT_RESULT(GenerateOpsAndAppendToLog(
+      kNumSegments, kNumBatchesPerSegment, kNumEntriesPerBatch, kCommitProbability,
+      kNumApproxTermChanges, kNumApproxTermChangesWithIndexRollback));
+  ASSERT_GT(ops.size(), 0);
+
+  SegmentSequence segments;
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_EQ(segments.size(), kNumSegments + 1);
+  ASSERT_OK(read_all_indexes(ops.rbegin()->id.index));
+
+  // Restart the log to generate an empty segment.
+  // Closing the log will leave the last segment empty with no replicates and a footer that does not
+  // have max_replicate_index.
+  ASSERT_OK(log_->Close());
+  BuildLog();
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_EQ(segments.size(), kNumSegments + 2);
+  auto read_entries = segments.rbegin()->get()->ReadEntries();
+  ASSERT_EQ(read_entries.entries.size(), 0);
+
+  ASSERT_OK(read_all_indexes(ops.rbegin()->id.index));
+
+  // Write more data so that the empty segment is somewhere in the middle.
+  ops = ASSERT_RESULT(GenerateOpsAndAppendToLog(
+      kNumSegments, kNumBatchesPerSegment, kNumEntriesPerBatch, kCommitProbability,
+      kNumApproxTermChanges, kNumApproxTermChangesWithIndexRollback));
+  ASSERT_GT(ops.size(), 0);
+
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_EQ(segments.size(), 2 * kNumSegments + 2);
+  ASSERT_OK(read_all_indexes(ops.rbegin()->id.index));
+
+  // Restart the log again to generate empty segments at the end.
+  ASSERT_OK(log_->Close());
+  BuildLog();
+
+  ASSERT_OK(log_->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_EQ(segments.size(), 2 * kNumSegments + 3);
+  read_entries = segments.rbegin()->get()->ReadEntries();
+  ASSERT_EQ(read_entries.entries.size(), 0);
+
+  ASSERT_OK(read_all_indexes(ops.rbegin()->id.index));
 
   ASSERT_OK(log_->Close());
 }

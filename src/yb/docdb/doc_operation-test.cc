@@ -25,7 +25,7 @@
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_debug.h"
-#include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/iter_util.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
@@ -152,11 +152,19 @@ class DocOperationTest : public DocDBTestBase {
     SeedRandom();
   }
 
+  void SetUp() override {
+    SetMaxFileSizeForCompaction(0);
+    // Make a function that will always use rocksdb_max_file_size_for_compaction.
+    // Normally, max_file_size_for_compaction is only used for tables with TTL.
+    ANNOTATE_UNPROTECTED_WRITE(max_file_size_for_compaction_) = MakeMaxFileSizeFunction();
+    DocDBTestBase::SetUp();
+  }
+
   Schema CreateSchema() override {
-    ColumnSchema hash_column_schema("k", INT32, ColumnKind::HASH);
-    ColumnSchema column1_schema("c1", INT32);
-    ColumnSchema column2_schema("c2", INT32);
-    ColumnSchema column3_schema("c3", INT32);
+    ColumnSchema hash_column_schema("k", DataType::INT32, ColumnKind::HASH);
+    ColumnSchema column1_schema("c1", DataType::INT32);
+    ColumnSchema column2_schema("c2", DataType::INT32);
+    ColumnSchema column3_schema("c3", DataType::INT32);
     const vector<ColumnSchema> columns({
         hash_column_schema, column1_schema, column2_schema, column3_schema});
     return Schema(columns, CreateColumnIds(columns.size()));
@@ -194,7 +202,14 @@ class DocOperationTest : public DocDBTestBase {
     ASSERT_OK(ql_write_op.Init(ql_writeresp_pb));
     auto doc_write_batch = MakeDocWriteBatch();
     HybridTime restart_read_ht;
-    ASSERT_OK(ql_write_op.Apply({&doc_write_batch, ReadOperationData(), &restart_read_ht}));
+    ASSERT_OK(ql_write_op.Apply({
+      .doc_write_batch = &doc_write_batch,
+      .read_operation_data = ReadOperationData(),
+      .restart_read_ht = &restart_read_ht,
+      .iterator = nullptr,
+      .restart_seek = true,
+      .schema_packing_provider = nullptr,
+    }));
     ASSERT_OK(WriteToRocksDB(doc_write_batch, hybrid_time));
   }
 
@@ -355,9 +370,6 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
 
   void SetMaxFileSizeForCompaction(const uint64_t max_size) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_file_size_for_compaction) = max_size;
-    // Make a function that will always use rocksdb_max_file_size_for_compaction.
-    // Normally, max_file_size_for_compaction is only used for tables with TTL.
-    max_file_size_for_compaction_ = MakeMaxFileSizeFunction();
   }
 
   void TestWriteNulls();
@@ -378,7 +390,11 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   ASSERT_OK(redis_write_operation.Apply(docdb::DocOperationApplyData{
       .doc_write_batch = &doc_write_batch,
       .read_operation_data = {},
-      .restart_read_ht = nullptr}));
+      .restart_read_ht = nullptr,
+      .iterator = nullptr,
+      .restart_seek = true,
+      .schema_packing_provider = nullptr,
+  }));
 
   ASSERT_OK(WriteToRocksDB(doc_write_batch, HybridTime::FromMicros(1000)));
 
@@ -445,15 +461,15 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ <max> w: 2 }]) -> DEL
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 3 }]) -> DEL
       )#",
       R"#(
-SubDocKey(DocKey(0x0000, [1], []), [HT<max>]) -> { 1: DEL 2: DEL 3: DEL }
+SubDocKey(DocKey(0x0000, [1], []), [HT<max>]) -> { 1: NULL 2: NULL 3: NULL }
       )#");
 }
 
 TEST_F(DocOperationTest, WritePackedNulls) {
-  FLAGS_ycql_enable_packed_row = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ycql_enable_packed_row) = true;
   TestWriteNulls();
   AssertDocDbDebugDumpStrEq(R"#(
-SubDocKey(DocKey(0x0000, [1], []), [HT<max>]) -> { 1: DEL 2: DEL 3: DEL }
+SubDocKey(DocKey(0x0000, [1], []), [HT<max>]) -> { 1: NULL 2: NULL 3: NULL }
   )#");
 }
 
@@ -495,10 +511,11 @@ TEST_F(DocOperationTest, TestQLRangeDeleteWithStaticColumnAvoidsFullPartitionKey
   // Define the schema with a partition key, range key, static column, and value.
   SchemaBuilder builder;
   builder.set_next_column_id(ColumnId(0));
-  ASSERT_OK(builder.AddHashKeyColumn("k", INT32));
-  ASSERT_OK(builder.AddKeyColumn("r", INT32));
-  ASSERT_OK(builder.AddColumn(ColumnSchema("s", INT32, ColumnKind::VALUE, Nullable::kTrue)));
-  ASSERT_OK(builder.AddColumn(ColumnSchema("v", INT32)));
+  ASSERT_OK(builder.AddHashKeyColumn("k", DataType::INT32));
+  ASSERT_OK(builder.AddKeyColumn("r", DataType::INT32));
+  ASSERT_OK(builder.AddColumn(
+      ColumnSchema("s", DataType::INT32, ColumnKind::VALUE, Nullable::kTrue)));
+  ASSERT_OK(builder.AddColumn(ColumnSchema("v", DataType::INT32)));
   auto schema = builder.Build();
 
   // Write rows with the same partition key but different range key
@@ -814,9 +831,10 @@ class DocOperationScanTest : public DocOperationTest {
   }
 
   Schema CreateSchema() override {
-    ColumnSchema hash_column("k", INT32, ColumnKind::HASH);
-    ColumnSchema range_column("r", INT32, SortingTypeToColumnKind(range_column_sorting_type_));
-    ColumnSchema value_column("v", INT32);
+    ColumnSchema hash_column("k", DataType::INT32, ColumnKind::HASH);
+    ColumnSchema range_column(
+        "r", DataType::INT32, SortingTypeToColumnKind(range_column_sorting_type_));
+    ColumnSchema value_column("v", DataType::INT32);
     auto columns = { hash_column, range_column, value_column };
     return Schema(columns, CreateColumnIds(columns.size()));
   }
@@ -866,10 +884,9 @@ class DocOperationScanTest : public DocOperationTest {
       ASSERT_OK(FlushRocksDbAndWait());
     }
 
-    DumpRocksDBToLog(
-        rocksdb(), doc_read_context().schema_packing_storage, StorageDbType::kRegular);
-    DumpRocksDBToLog(
-        intents_db(), doc_read_context().schema_packing_storage, StorageDbType::kIntents);
+    SchemaPackingProvider* schema_packing_provider = this;
+    DumpRocksDBToLog(rocksdb(), schema_packing_provider, StorageDbType::kRegular);
+    DumpRocksDBToLog(intents_db(), schema_packing_provider, StorageDbType::kIntents);
   }
 
   void PerformScans(const bool is_forward_scan,
@@ -887,7 +904,7 @@ class DocOperationScanTest : public DocOperationTest {
     std::sort(ordered_rows.begin(), ordered_rows.end());
 
     for (const auto op : operators) {
-      LOG(INFO) << "Testing: " << QLOperator_Name(op);
+      LOG(INFO) << "Testing: " << QLOperator_Name(op) << ", is_forward_scan: " << is_forward_scan;
       for (const auto& row : rows_) {
         QLConditionPB condition;
         condition.add_operands()->set_column_id(1_ColId);
@@ -1213,7 +1230,7 @@ int CountBigFiles(const std::vector<rocksdb::LiveFileMetaData>& files,
     const size_t kMaxFileSize) {
   int num_large_files = 0;
   for (auto file : files) {
-    if (file.uncompressed_size > kMaxFileSize) {
+    if (ANNOTATE_UNPROTECTED_READ(file.uncompressed_size) > kMaxFileSize) {
       num_large_files++;
     }
   }
@@ -1224,7 +1241,9 @@ void WaitCompactionsDone(rocksdb::DB* db) {
   for (;;) {
     std::this_thread::sleep_for(500ms);
     uint64_t value = 0;
+    ANNOTATE_IGNORE_READS_BEGIN();
     ASSERT_TRUE(db->GetIntProperty(rocksdb::DB::Properties::kNumRunningCompactions, &value));
+    ANNOTATE_IGNORE_READS_END();
     if (value == 0) {
       break;
     }
@@ -1266,8 +1285,8 @@ TEST_F(DocOperationTest, MaxFileSizeWithWritesTrigger) {
 
   WaitCompactionsDone(rocksdb());
 
-  FLAGS_rocksdb_level0_slowdown_writes_trigger = 2;
-  FLAGS_rocksdb_level0_stop_writes_trigger = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_slowdown_writes_trigger) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_stop_writes_trigger) = 1;
   ASSERT_OK(ReinitDBOptions());
 
   std::vector<rocksdb::LiveFileMetaData> files;
@@ -1277,8 +1296,10 @@ TEST_F(DocOperationTest, MaxFileSizeWithWritesTrigger) {
   auto handle_impl = down_cast<rocksdb::ColumnFamilyHandleImpl*>(
       regular_db_->DefaultColumnFamily());
   auto stats = handle_impl->cfd()->internal_stats();
+  ANNOTATE_IGNORE_READS_BEGIN();
   ASSERT_EQ(0, stats->GetCFStats(rocksdb::InternalStats::LEVEL0_NUM_FILES_TOTAL));
   ASSERT_EQ(0, stats->GetCFStats(rocksdb::InternalStats::LEVEL0_SLOWDOWN_TOTAL));
+  ANNOTATE_IGNORE_READS_END();
 }
 
 TEST_F(DocOperationTest, MaxFileSizeIgnoredWithFileFilter) {
@@ -1290,7 +1311,8 @@ TEST_F(DocOperationTest, MaxFileSizeIgnoredWithFileFilter) {
   auto expected_files = GenerateFiles(kNumFilesToWrite, this, kBigFileFrequency);
   LOG(INFO) << "Files that would exist without compaction, if no filtering: " << expected_files;
 
-  auto files = rocksdb()->GetLiveFilesMetaData();
+  std::vector<rocksdb::LiveFileMetaData> files;
+  rocksdb()->GetLiveFilesMetaData(&files);
   ASSERT_EQ(kNumFilesToWrite, files.size());
   ASSERT_EQ(kExpectedBigFiles, CountBigFiles(files, kMaxFileSize));
 
@@ -1304,7 +1326,8 @@ TEST_F(DocOperationTest, MaxFileSizeIgnoredWithFileFilter) {
 
   WaitCompactionsDone(rocksdb());
 
-  files = rocksdb()->GetLiveFilesMetaData();
+  files.clear();
+  rocksdb()->GetLiveFilesMetaData(&files);
 
   // We expect all files to be filtered and thus removed, no matter the size.
   ASSERT_EQ(0, files.size());
@@ -1328,7 +1351,8 @@ TEST_F(DocOperationTest, EarlyFilesFilteredBeforeBigFile) {
       " files, first kept big file at " << kBigFileFrequency + 1;
   LOG(INFO) << "Expected files after compaction: " << expected_files;
 
-  auto files = rocksdb()->GetLiveFilesMetaData();
+  std::vector<rocksdb::LiveFileMetaData> files;
+  rocksdb()->GetLiveFilesMetaData(&files);
   ASSERT_EQ(kNumFilesToWrite, files.size());
   ASSERT_EQ(kExpectedBigFiles, CountBigFiles(files, kMaxFileSize));
 
@@ -1347,7 +1371,8 @@ TEST_F(DocOperationTest, EarlyFilesFilteredBeforeBigFile) {
   // Compactions will be kicked off as part of options reinitialization.
   WaitCompactionsDone(rocksdb());
 
-  files = rocksdb()->GetLiveFilesMetaData();
+  files.clear();
+  rocksdb()->GetLiveFilesMetaData(&files);
 
   // We expect three files to expire, one big file and two small ones.
   // The remaining small files should be compacted, leaving 5 files remaining.

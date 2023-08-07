@@ -1,4 +1,4 @@
-import React from 'react';
+import { useState } from 'react';
 import { ButtonGroup, Col, DropdownButton, MenuItem, Row, Tab } from 'react-bootstrap';
 import { useMutation, useQueries, useQuery, useQueryClient, UseQueryResult } from 'react-query';
 import { useDispatch, useSelector } from 'react-redux';
@@ -46,13 +46,15 @@ import { XClusterConfigStatusLabel } from '../XClusterConfigStatusLabel';
 import { DeleteConfigModal } from './DeleteConfigModal';
 import { RestartConfigModal } from '../restartConfig/RestartConfigModal';
 import { YBBanner, YBBannerVariant, YBLabelWithIcon } from '../../common/descriptors';
-import { api, universeQueryKey } from '../../../redesign/helpers/api';
+import { api, universeQueryKey, xClusterQueryKey } from '../../../redesign/helpers/api';
 import { getAlertConfigurations } from '../../../actions/universe';
+import { MenuItemsContainer } from '../../universes/UniverseDetail/compounds/MenuItemsContainer';
 
 import { Metrics, XClusterConfig } from '../XClusterTypes';
 import { TableType, YBTable } from '../../../redesign/helpers/dtos';
 
 import './ReplicationDetails.scss';
+import SyncXClusterConfigModal from './SyncXClusterModal';
 
 interface Props {
   params: {
@@ -61,24 +63,29 @@ interface Props {
   };
 }
 
+const ActionMenu = {
+  ADVANCED: 'advanced'
+} as const;
+
 export function ReplicationDetails({
   params: { uuid: currentUniverseUUID, replicationUUID: xClusterConfigUUID }
 }: Props) {
+  const [isActionDropdownOpen, setIsActionDropdownOpen] = useState(false);
   const { showModal, visibleModal } = useSelector((state: any) => state.modal);
   const dispatch = useDispatch();
   const queryClient = useQueryClient();
 
-  const xClusterConfigQuery = useQuery(['Xcluster', xClusterConfigUUID], () =>
+  const xClusterConfigQuery = useQuery(xClusterQueryKey.detail(xClusterConfigUUID), () =>
     fetchXClusterConfig(xClusterConfigUUID)
   );
   const sourceUniverseQuery = useQuery(
-    ['universe', xClusterConfigQuery.data?.sourceUniverseUUID],
+    universeQueryKey.detail(xClusterConfigQuery.data?.sourceUniverseUUID),
     () => api.fetchUniverse(xClusterConfigQuery.data?.sourceUniverseUUID),
     { enabled: xClusterConfigQuery.data?.sourceUniverseUUID !== undefined }
   );
 
   const targetUniverseQuery = useQuery(
-    ['universe', xClusterConfigQuery.data?.targetUniverseUUID],
+    universeQueryKey.detail(xClusterConfigQuery.data?.targetUniverseUUID),
     () => api.fetchUniverse(xClusterConfigQuery.data?.targetUniverseUUID),
     { enabled: xClusterConfigQuery.data?.targetUniverseUUID !== undefined }
   );
@@ -130,10 +137,10 @@ export function ReplicationDetails({
       );
     },
     {
-      onSuccess: (resp, replication) => {
+      onSuccess: (resp, xClusterConfig) => {
         fetchTaskUntilItCompletes(resp.data.taskUUID, (err: boolean) => {
           if (!err) {
-            queryClient.invalidateQueries(['Xcluster', replication.uuid]);
+            queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
           } else {
             toast.error(
               <span className="alertMsg">
@@ -156,12 +163,12 @@ export function ReplicationDetails({
       xClusterConfigQuery.data !== undefined &&
       _.includes(TRANSITORY_XCLUSTER_CONFIG_STATUSES, xClusterConfigQuery.data.status)
     ) {
-      queryClient.invalidateQueries(['Xcluster', xClusterConfigQuery.data.uuid]);
+      queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfigUUID));
     }
   }, XCLUSTER_METRIC_REFETCH_INTERVAL_MS);
 
   useInterval(() => {
-    queryClient.invalidateQueries(['Xcluster', xClusterConfigQuery.data?.uuid]);
+    queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfigUUID));
   }, XCLUSTER_CONFIG_REFETCH_INTERVAL_MS);
 
   if (xClusterConfigQuery.isLoading || xClusterConfigQuery.isIdle) {
@@ -351,6 +358,8 @@ export function ReplicationDetails({
   const isEditConfigModalVisible = showModal && visibleModal === XClusterModalName.EDIT_CONFIG;
   const isRestartConfigModalVisible =
     showModal && visibleModal === XClusterModalName.RESTART_CONFIG;
+  const isSyncConfigModalVisible =
+    showModal && visibleModal === XClusterModalName.SYNC_XCLUSTER_CONFIG_WITH_DB;
   return (
     <>
       <div className="replication-details">
@@ -391,47 +400,110 @@ export function ReplicationDetails({
                   }}
                 />
                 <ButtonGroup className="more-actions-button">
-                  <DropdownButton pullRight id="alert-mark-as-button" title="Actions">
-                    <MenuItem
-                      eventKey="1"
-                      onClick={(e) => {
-                        if (_.includes(enabledConfigActions, XClusterConfigAction.EDIT)) {
-                          dispatch(openDialog(XClusterModalName.EDIT_CONFIG));
-                        }
+                  <DropdownButton
+                    pullRight
+                    id="alert-mark-as-button"
+                    title="Actions"
+                    onToggle={(isOpen) => setIsActionDropdownOpen(isOpen)}
+                  >
+                    <MenuItemsContainer
+                      parentDropdownOpen={isActionDropdownOpen}
+                      mainMenu={(showSubmenu) => (
+                        <>
+                          <MenuItem
+                            onClick={() => {
+                              if (_.includes(enabledConfigActions, XClusterConfigAction.EDIT)) {
+                                dispatch(openDialog(XClusterModalName.EDIT_CONFIG));
+                              }
+                            }}
+                            disabled={!_.includes(enabledConfigActions, XClusterConfigAction.EDIT)}
+                          >
+                            <YBLabelWithIcon
+                              className="xCluster-dropdown-button"
+                              icon="fa fa-pencil"
+                            >
+                              Edit Replication Name
+                            </YBLabelWithIcon>
+                          </MenuItem>
+                          <MenuItem
+                            onClick={() => {
+                              if (_.includes(enabledConfigActions, XClusterConfigAction.RESTART)) {
+                                dispatch(openDialog(XClusterModalName.RESTART_CONFIG));
+                              }
+                            }}
+                            disabled={
+                              !_.includes(enabledConfigActions, XClusterConfigAction.RESTART)
+                            }
+                          >
+                            <YBLabelWithIcon
+                              className="xCluster-dropdown-button"
+                              icon="fa fa-refresh"
+                            >
+                              Restart Replication
+                            </YBLabelWithIcon>
+                          </MenuItem>
+                          <MenuItem onClick={() => showSubmenu(ActionMenu.ADVANCED)}>
+                            <YBLabelWithIcon className="xCluster-dropdown-button" icon="fa fa-cogs">
+                              Advanced
+                              <span className="pull-right">
+                                <i className="fa fa-chevron-right submenu-icon" />
+                              </span>
+                            </YBLabelWithIcon>
+                          </MenuItem>
+                          <MenuItem divider />
+                          <MenuItem
+                            onClick={() => {
+                              if (_.includes(enabledConfigActions, XClusterConfigAction.DELETE)) {
+                                dispatch(openDialog(XClusterModalName.DELETE_CONFIG));
+                              }
+                            }}
+                            disabled={
+                              !_.includes(enabledConfigActions, XClusterConfigAction.DELETE)
+                            }
+                          >
+                            <YBLabelWithIcon
+                              className="xCluster-dropdown-button"
+                              icon="fa fa-times"
+                            >
+                              Delete Replication
+                            </YBLabelWithIcon>
+                          </MenuItem>
+                        </>
+                      )}
+                      subMenus={{
+                        // eslint-disable-next-line react/display-name
+                        [ActionMenu.ADVANCED]: (navigateToMainMenu) => (
+                          <>
+                            <MenuItem onClick={navigateToMainMenu}>
+                              <YBLabelWithIcon icon="fa fa-chevron-left fa-fw">
+                                Back
+                              </YBLabelWithIcon>
+                            </MenuItem>
+                            <MenuItem
+                              onClick={() => {
+                                if (
+                                  _.includes(enabledConfigActions, XClusterConfigAction.DB_SYNC)
+                                ) {
+                                  dispatch(
+                                    openDialog(XClusterModalName.SYNC_XCLUSTER_CONFIG_WITH_DB)
+                                  );
+                                }
+                              }}
+                              disabled={
+                                !_.includes(enabledConfigActions, XClusterConfigAction.DB_SYNC)
+                              }
+                            >
+                              <YBLabelWithIcon
+                                className="xCluster-dropdown-button"
+                                icon="fa fa-refresh"
+                              >
+                                Reconcile config with DB
+                              </YBLabelWithIcon>
+                            </MenuItem>
+                          </>
+                        )
                       }}
-                      disabled={!_.includes(enabledConfigActions, XClusterConfigAction.EDIT)}
-                    >
-                      <YBLabelWithIcon className="xCluster-dropdown-button" icon="fa fa-pencil">
-                        Edit Replication Name
-                      </YBLabelWithIcon>
-                    </MenuItem>
-                    <MenuItem
-                      eventKey="2"
-                      onClick={() => {
-                        if (_.includes(enabledConfigActions, XClusterConfigAction.RESTART)) {
-                          dispatch(openDialog(XClusterModalName.RESTART_CONFIG));
-                        }
-                      }}
-                      disabled={!_.includes(enabledConfigActions, XClusterConfigAction.RESTART)}
-                    >
-                      <YBLabelWithIcon className="xCluster-dropdown-button" icon="fa fa-refresh">
-                        Restart Replication
-                      </YBLabelWithIcon>
-                    </MenuItem>
-                    <MenuItem divider />
-                    <MenuItem
-                      eventKey="3"
-                      onClick={() => {
-                        if (_.includes(enabledConfigActions, XClusterConfigAction.DELETE)) {
-                          dispatch(openDialog(XClusterModalName.DELETE_CONFIG));
-                        }
-                      }}
-                      disabled={!_.includes(enabledConfigActions, XClusterConfigAction.DELETE)}
-                    >
-                      <YBLabelWithIcon className="xCluster-dropdown-button" icon="fa fa-times">
-                        Delete Replication
-                      </YBLabelWithIcon>
-                    </MenuItem>
+                    />
                   </DropdownButton>
                 </ButtonGroup>
               </Row>
@@ -514,7 +586,7 @@ export function ReplicationDetails({
                 <Tab eventKey={'overview'} title={'Overview'}>
                   {targetUniverse !== undefined && (
                     <ReplicationOverview
-                      replication={xClusterConfig}
+                      xClusterConfig={xClusterConfig}
                       destinationUniverse={targetUniverse}
                     />
                   )}
@@ -543,7 +615,7 @@ export function ReplicationDetails({
         )}
         {isEditConfigModalVisible && (
           <EditConfigModal
-            replication={xClusterConfig}
+            xClusterConfig={xClusterConfig}
             visible={isEditConfigModalVisible}
             onHide={hideModal}
           />
@@ -555,7 +627,7 @@ export function ReplicationDetails({
             xClusterConfigUUID={xClusterConfig.uuid}
             xClusterConfigName={xClusterConfig.name}
             onHide={hideModal}
-            visible={showModal && visibleModal === XClusterModalName.DELETE_CONFIG}
+            visible={isDeleteConfigModalVisible}
             redirectUrl={`/universes/${currentUniverseUUID}/replication`}
           />
         )}
@@ -566,6 +638,9 @@ export function ReplicationDetails({
             onHide={hideModal}
             xClusterConfig={xClusterConfig}
           />
+        )}
+        {isSyncConfigModalVisible && (
+          <SyncXClusterConfigModal xClusterConfig={xClusterConfig} onHide={hideModal} />
         )}
       </div>
     </>

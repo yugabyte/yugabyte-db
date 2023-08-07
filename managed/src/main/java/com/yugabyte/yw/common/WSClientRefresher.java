@@ -10,7 +10,6 @@
 
 package com.yugabyte.yw.common;
 
-import com.cronutils.utils.StringUtils;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
@@ -18,14 +17,8 @@ import com.typesafe.config.ConfigRenderOptions;
 import com.typesafe.config.ConfigValue;
 import com.typesafe.config.ConfigValueFactory;
 import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.security.KeyStore;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,24 +30,19 @@ import play.libs.ws.WSClient;
 @Singleton
 public class WSClientRefresher implements CustomTrustStoreListener {
 
-  private static final String YB_JAVA_HOME_PATHS = "yb.wellKnownCA.trustStore.javaHomePaths";
-
   private final CustomWsClientFactory customWsClientFactory;
   private final RuntimeConfigFactory runtimeConfigFactory;
   private final Map<String, WSClient> customWsClients = new ConcurrentHashMap<>();
   private final CustomCAStoreManager customCAStoreManager;
-  private final RuntimeConfGetter runtimeConfGetter;
 
   @Inject
   public WSClientRefresher(
       CustomWsClientFactory customWsClientFactory,
       RuntimeConfigFactory runtimeConfigFactory,
-      CustomCAStoreManager customCAStoreManager,
-      RuntimeConfGetter runtimeConfGetter) {
+      CustomCAStoreManager customCAStoreManager) {
     this.customWsClientFactory = customWsClientFactory;
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.customCAStoreManager = customCAStoreManager;
-    this.runtimeConfGetter = runtimeConfGetter;
     customCAStoreManager.addListener(this);
   }
 
@@ -85,9 +73,12 @@ public class WSClientRefresher implements CustomTrustStoreListener {
 
     // Add the custom CA truststore config if applicable.
     List<Map<String, String>> ybaStoreConfig = customCAStoreManager.getPemStoreConfig();
-    if (!ybaStoreConfig.isEmpty()) {
+    if (!ybaStoreConfig.isEmpty() && !customCAStoreManager.isEnabled()) {
+      log.warn("Skipping to add YBA's custom trust-store config as the feature is disabled");
+    }
+    if (!ybaStoreConfig.isEmpty() && customCAStoreManager.isEnabled()) {
       // Add JRE default cert paths as well in this case.
-      ybaStoreConfig.add(getJavaDefaultConfig());
+      ybaStoreConfig.add(customCAStoreManager.getJavaDefaultConfig());
 
       Config customWsConfig =
           ConfigFactory.empty()
@@ -114,42 +105,5 @@ public class WSClientRefresher implements CustomTrustStoreListener {
             refreshWsClient(clientKey);
           }
         });
-  }
-
-  private Map<String, String> getJavaDefaultConfig() {
-    // Java looks for trust-store in these files by default in this order.
-    // NOTE: If adding any custom path, we must add the ordered default path as well, if they exist.
-    Map<String, String> javaSSLConfigMap = new HashMap<>();
-
-    String javaxNetSslTrustStore =
-        runtimeConfGetter.getGlobalConf(GlobalConfKeys.javaxNetSslTrustStore);
-    String javaxNetSslTrustStoreType =
-        runtimeConfGetter.getGlobalConf(GlobalConfKeys.javaxNetSslTrustStoreType);
-    String javaxNetSslTrustStorePassword =
-        runtimeConfGetter.getGlobalConf(GlobalConfKeys.javaxNetSslTrustStorePassword);
-    log.debug(
-        "Javax truststore is: {}, type is: {}", javaxNetSslTrustStore, javaxNetSslTrustStoreType);
-    if (!StringUtils.isEmpty(javaxNetSslTrustStore)
-        && Files.exists(Paths.get(javaxNetSslTrustStore))) {
-      javaSSLConfigMap.put("path", javaxNetSslTrustStore);
-      if (!StringUtils.isEmpty(javaxNetSslTrustStoreType)) {
-        javaSSLConfigMap.put("type", javaxNetSslTrustStoreType);
-      }
-      if (!StringUtils.isEmpty(javaxNetSslTrustStorePassword)) {
-        javaSSLConfigMap.put("password", javaxNetSslTrustStorePassword);
-      }
-      return javaSSLConfigMap;
-    }
-
-    List<String> javaHomePaths = config.getStringList(YB_JAVA_HOME_PATHS);
-    log.debug("Java home cert paths are {}", javaHomePaths);
-    for (String javaPath : javaHomePaths) {
-      if (Files.exists(Paths.get(javaPath))) {
-        javaSSLConfigMap.put("path", javaPath);
-        javaSSLConfigMap.put("type", KeyStore.getDefaultType()); // pkcs12
-      }
-    }
-    log.info("Java SSL config is:{}", javaSSLConfigMap);
-    return javaSSLConfigMap;
   }
 }

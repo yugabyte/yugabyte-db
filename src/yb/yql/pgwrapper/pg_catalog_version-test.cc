@@ -11,10 +11,9 @@
 // under the License.
 
 #include "yb/common/wire_protocol.h"
-
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
-
+#include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 
 using std::string;
@@ -33,8 +32,8 @@ class PgCatalogVersionTest : public LibPqTestBase {
     Version last_breaking_version;
   };
 
-  static constexpr auto kYugabyteDatabase = "yugabyte";
-  static constexpr auto kTestDatabase = "test_db";
+  static constexpr auto* kYugabyteDatabase = "yugabyte";
+  static constexpr auto* kTestDatabase = "test_db";
 
   using MasterCatalogVersionMap = std::unordered_map<Oid, CatalogVersion>;
   using ShmCatalogVersionMap = std::unordered_map<Oid, Version>;
@@ -294,10 +293,10 @@ class PgCatalogVersionTest : public LibPqTestBase {
   //   pg_database
   //   pg_tablespace
   void TestDBCatalogVersionGlobalDDLHelper(bool disable_global_ddl) {
-    constexpr auto kTestUser1 = "test_user1";
-    constexpr auto kTestUser2 = "test_user2";
-    constexpr auto kTestGroup = "test_group";
-    constexpr auto kTestTablespace = "test_tsp";
+    constexpr auto* kTestUser1 = "test_user1";
+    constexpr auto* kTestUser2 = "test_user2";
+    constexpr auto* kTestGroup = "test_group";
+    constexpr auto* kTestTablespace = "test_tsp";
     // Test setup.
     auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
     ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte));
@@ -423,7 +422,7 @@ class PgCatalogVersionTest : public LibPqTestBase {
   }
 };
 
-TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion)) {
+TEST_F(PgCatalogVersionTest, DBCatalogVersion) {
   auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte));
   // Remember the number of pre-existing databases.
@@ -579,7 +578,7 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion)) {
  * (2) the yugabyte session drops the database from another node
  * (3) the test session runs its first query
  */
-TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionDropDB)) {
+TEST_F(PgCatalogVersionTest, DBCatalogVersionDropDB) {
   auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte));
   RestartClusterWithDBCatalogVersionMode();
@@ -609,7 +608,7 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionDropDB)) {
 // Test running a SQL script that makes the table pg_yb_catalog_version
 // one row per database when per-database catalog version is prematurely
 // turned on. This should not cause any master CHECK failure.
-TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionPrematureOn)) {
+TEST_F(PgCatalogVersionTest, DBCatalogVersionPrematureOn) {
   // Manually switch back to non-per-db catalog version mode.
   RestartClusterWithoutDBCatalogVersionMode();
   auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
@@ -654,17 +653,17 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionPrematureOn
 }
 
 // Test various global DDL statements in a single-tenant cluster setting.
-TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionGlobalDDL)) {
+TEST_F(PgCatalogVersionTest, DBCatalogVersionGlobalDDL) {
   TestDBCatalogVersionGlobalDDLHelper(false /* disable_global_ddl */);
 }
 
 // Test disabling global DDL statements in a multi-tenant cluster setting.
-TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionDisableGlobalDDL)) {
+TEST_F(PgCatalogVersionTest, DBCatalogVersionDisableGlobalDDL) {
   TestDBCatalogVersionGlobalDDLHelper(true /* disable_global_ddl */);
 }
 
 // Test system procedure yb_increment_all_db_catalog_versions works as expected.
-TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(IncrementAllDBCatalogVersions)) {
+TEST_F(PgCatalogVersionTest, IncrementAllDBCatalogVersions) {
   auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte));
   RestartClusterWithDBCatalogVersionMode();
@@ -705,7 +704,7 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(IncrementAllDBCatalogVersio
 
 // Test yb_fix_catalog_version_table, that will sync up pg_yb_catalog_version
 // with pg_database according to 'per_database_mode' argument.
-TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(FixCatalogVersionTable)) {
+TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   RestartClusterWithDBCatalogVersionMode();
   auto conn_template1 = ASSERT_RESULT(ConnectToDB("template1"));
   // Prepare the table pg_yb_catalog_version for per-db catalog version mode.
@@ -769,7 +768,7 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(FixCatalogVersionTable)) {
 
 // This test exercises the wrap around logic in tserver shared memory free
 // slot allocation algorithm for a newly created database.
-TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(RecyleManyDatabases)) {
+TEST_F(PgCatalogVersionTest, RecycleManyDatabases) {
   RestartClusterWithDBCatalogVersionMode();
   auto conn = ASSERT_RESULT(ConnectToDB("template1"));
   const auto initial_count = ASSERT_RESULT(conn.FetchValue<PGUint64>(
@@ -808,7 +807,179 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(RecyleManyDatabases)) {
   }
 }
 
-TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
+class PgCatalogVersionEnableAuthTest
+    : public PgCatalogVersionTest,
+      public ::testing::WithParamInterface<std::pair<bool, bool>> {
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgCatalogVersionTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--ysql_enable_auth=true");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(PgCatalogVersionEnableAuthTest,
+                        PgCatalogVersionEnableAuthTest,
+                        ::testing::Values(std::make_pair(true, true),
+                                          std::make_pair(true, false),
+                                          std::make_pair(false, true),
+                                          std::make_pair(false, false)));
+
+// This test verifies that changing a user's password does not affect existing
+// this user's existing connection. The user is able to continue in the existing
+// connection that was authenticated using the old password. Making a new
+// connection using the old password will fail.
+TEST_P(PgCatalogVersionEnableAuthTest, ChangeUserPassword) {
+  const bool per_database_mode = GetParam().first;
+  const bool use_tserver_response_cache = GetParam().second;
+  LOG(INFO) << "per_database_mode: " << per_database_mode
+            << ", use_tserver_response_cache: " << use_tserver_response_cache;
+  string conn_str_prefix = Format("host=$0 port=$1 dbname='$2'",
+                                  pg_ts->bind_host(),
+                                  pg_ts->pgsql_rpc_port(),
+                                  kYugabyteDatabase);
+  auto conn_yugabyte = ASSERT_RESULT(PGConnBuilder({
+      .host = pg_ts->bind_host(),
+      .port = pg_ts->pgsql_rpc_port(),
+      .dbname = kYugabyteDatabase,
+      .user = "yugabyte",
+      .password = "yugabyte",
+    }).Connect());
+  constexpr CatalogVersion kInitialCatalogVersion{1, 1};
+  auto expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
+  for (const auto& entry : expected_versions) {
+    ASSERT_OK(CheckMatch(entry.second, kInitialCatalogVersion));
+  }
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte, per_database_mode));
+  std::vector<string> extra_tserver_flags =
+    { Format("--ysql_enable_read_request_caching=$0", use_tserver_response_cache) };
+  RestartClusterSetDBCatalogVersionMode(per_database_mode, extra_tserver_flags);
+  conn_yugabyte = ASSERT_RESULT(PGConnBuilder({
+      .host = pg_ts->bind_host(),
+      .port = pg_ts->pgsql_rpc_port(),
+      .dbname = kYugabyteDatabase,
+      .user = "yugabyte",
+      .password = "yugabyte",
+    }).Connect());
+  constexpr auto* kTestUser = "test_user";
+  constexpr auto* kOldPassword = "123";
+  constexpr auto* kNewPassword = "456";
+  ASSERT_OK(conn_yugabyte.ExecuteFormat(
+      "CREATE USER $0 PASSWORD '$1'", kTestUser, kOldPassword));
+  auto conn_test = ASSERT_RESULT(PGConnBuilder({
+      .host = pg_ts->bind_host(),
+      .port = pg_ts->pgsql_rpc_port(),
+      .dbname = kYugabyteDatabase,
+      .user = kTestUser,
+      .password = kOldPassword,
+    }).Connect());
+  auto res = ASSERT_RESULT(conn_test.Fetch("SELECT * FROM pg_yb_catalog_version"));
+  ASSERT_OK(conn_yugabyte.ExecuteFormat(
+      "ALTER USER $0 PASSWORD '$1'", kTestUser, kNewPassword));
+  WaitForCatalogVersionToPropagate();
+  // The existing connection that was authenticated with the old password is
+  // not affected by the password change.
+  res = ASSERT_RESULT(conn_test.Fetch("SELECT * FROM pg_yb_catalog_version"));
+  // Making a new connection using the old password should fail.
+  auto status = ResultToStatus(PGConnBuilder({
+      .host = pg_ts->bind_host(),
+      .port = pg_ts->pgsql_rpc_port(),
+      .dbname = kYugabyteDatabase,
+      .user = kTestUser,
+      .password = kOldPassword,
+    }).Connect());
+  ASSERT_STR_CONTAINS(status.ToString(), "password authentication failed");
+  // Making a new connection using the new password should succeed. As of
+  // 2023-06-29, pg_authid is not cached in tserver response cache during
+  // the authentication phase when making a new connection. If we ever read
+  // cached pg_authid from tserver response cache during authentication
+  // time, making a new connection with the new password would fail because
+  // tserver cache would have stored the old password.
+  auto conn_test_new = ASSERT_RESULT(PGConnBuilder({
+      .host = pg_ts->bind_host(),
+      .port = pg_ts->pgsql_rpc_port(),
+      .dbname = kYugabyteDatabase,
+      .user = kTestUser,
+      .password = kNewPassword,
+    }).Connect());
+  res = ASSERT_RESULT(conn_test_new.Fetch("SELECT * FROM pg_yb_catalog_version"));
+  // Verify that catalog version does not change.
+  expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
+  for (const auto& entry : expected_versions) {
+    ASSERT_OK(CheckMatch(entry.second, kInitialCatalogVersion));
+  }
+}
+
+class PgCatalogVersionFailOnConflictTest : public PgCatalogVersionTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    UpdateMiniClusterFailOnConflict(options);
+    PgCatalogVersionTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+// This is a sanity test for manual downgrade from per database catalog version mode to
+// global catalog version mode. First the gflag --TEST_enable_db_catalog_version_mode is
+// turned off and cluster is restarted. After that, the cluster will be running in
+// global catalog version mode despite the fact that pg_yb_catalog_version still has
+// multiple rows. At this time, we test that concurrently running DML transactions
+// behave well and will not be affected before and after the user performs the second
+// fix to make pg_yb_catalog_version to have only one row for template1.
+TEST_F_EX(PgCatalogVersionTest, SimulateDowngradeToGlobalMode,
+          PgCatalogVersionFailOnConflictTest) {
+  // Prepare an existing cluster that is in per-database catalog version mode.
+  auto conn_yugabyte = ASSERT_RESULT(Connect());
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte, true /* per_database_mode */));
+  RestartClusterWithDBCatalogVersionMode();
+  conn_yugabyte = ASSERT_RESULT(Connect());
+  auto initial_count = ASSERT_RESULT(conn_yugabyte.FetchValue<PGUint64>(
+      "SELECT COUNT(*) FROM pg_yb_catalog_version"));
+  ASSERT_GT(initial_count, 1);
+
+  // Now simulate downgrading the cluster to global catalog version mode.
+  // We first turn off the gflag, after the cluster restarts, the table
+  // pg_yb_catalog_version still has one row per database.
+  RestartClusterWithoutDBCatalogVersionMode();
+  conn_yugabyte = ASSERT_RESULT(ConnectToDB("yugabyte"));
+  initial_count = ASSERT_RESULT(conn_yugabyte.FetchValue<PGUint64>(
+      "SELECT COUNT(*) FROM pg_yb_catalog_version"));
+  ASSERT_GT(initial_count, 1);
+
+  bool downgraded = false;
+  // This test assumes that the actual downgrade script runs at most this many seconds.
+  constexpr int kMaxDowngradeSec = 5;
+  constexpr int kMaxSleepSec = 10;
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, &downgraded] {
+    // Start a thread to simulate the situation where the user manaully runs the YSQL
+    // downgrade script to make pg_yb_catalog_version one row per database. Wait for
+    // some random time so that it runs concurrently with SerializableColoring().
+    const int sleep_sec = RandomUniformInt(1, kMaxSleepSec);
+    SleepFor(1s * sleep_sec);
+    const string ysql_downgrade_sql =
+        R"#(
+SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;
+SELECT pg_catalog.yb_fix_catalog_version_table(false);
+SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO false;
+        )#";
+    auto conn_ysql_downgrade = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn_ysql_downgrade.Execute(ysql_downgrade_sql));
+    downgraded = true;
+  });
+  // There's no strict guarantee of this, but it should be fine practically because
+  // of the call to SleepFor above.
+  ASSERT_FALSE(downgraded);
+  // Let the test run longer than the maximum time we assume that the downgrade can take.
+  SerializableColoringHelper(kMaxSleepSec + kMaxDowngradeSec);
+  // This can fail if downgrade takes longer than kMaxDowngradeSec but in practice
+  // this won't happen.
+  ASSERT_TRUE(downgraded);
+  const auto current_count = ASSERT_RESULT(conn_yugabyte.FetchValue<PGUint64>(
+      "SELECT COUNT(*) FROM pg_yb_catalog_version"));
+  ASSERT_EQ(current_count, 1);
+  thread_holder.Stop();
+}
+
+TEST_F(PgCatalogVersionTest, NonBreakingDDLMode) {
   const string kDatabaseName = "yugabyte";
 
   auto conn1 = ASSERT_RESULT(ConnectToDB(kDatabaseName));

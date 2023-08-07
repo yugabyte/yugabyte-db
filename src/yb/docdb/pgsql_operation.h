@@ -27,6 +27,7 @@
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/dockv/doc_key.h"
+#include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
 
 #include "yb/util/operation_counter.h"
@@ -77,6 +78,10 @@ class PgsqlWriteOperation :
   // Execute write.
   Status Apply(const DocOperationApplyData& data) override;
 
+  Status UpdateIterator(
+      DocOperationApplyData* data, DocOperation* prev, SingleOperation single_operation,
+      std::optional<DocRowwiseIterator>* iterator) final;
+
  private:
   void ClearResponse() override {
     if (response_) {
@@ -122,7 +127,7 @@ class PgsqlWriteOperation :
   //------------------------------------------------------------------------------------------------
   // Context.
   DocReadContextPtr doc_read_context_;
-  mutable dockv::ReaderProjection projection_;
+  mutable std::optional<dockv::ReaderProjection> projection_;
   const TransactionOperationContext txn_op_context_;
 
   // Input arguments.
@@ -132,7 +137,7 @@ class PgsqlWriteOperation :
   // UPDATE, DELETE, INSERT operations should return total number of new or changed rows.
 
   // Doc key and encoded doc key for the primary key.
-  std::optional<dockv::DocKey> doc_key_;
+  dockv::DocKey doc_key_;
   RefCntPrefix encoded_doc_key_;
 
   // Rows result requested.
@@ -226,7 +231,7 @@ class PgsqlReadOperation : public DocExprExecutor {
   //------------------------------------------------------------------------------------------------
   const PgsqlReadRequestPB& request_;
   const TransactionOperationContext txn_op_context_;
-  boost::container::small_vector<size_t, 0x10> target_index_;
+  boost::container::small_vector<dockv::PgWireEncoderEntry, 0x10> target_encoders_;
   PgsqlResponsePB response_;
   YQLRowwiseIteratorIf::UniPtr table_iter_;
   YQLRowwiseIteratorIf::UniPtr index_iter_;

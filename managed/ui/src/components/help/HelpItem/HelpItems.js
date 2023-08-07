@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { Row, Col } from 'react-bootstrap';
 
 import slackIcon from '../../common/nav_bar/images/slack-monochrome-black.svg';

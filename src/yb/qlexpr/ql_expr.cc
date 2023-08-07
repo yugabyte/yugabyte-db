@@ -7,6 +7,7 @@
 #include "yb/common/jsonb.h"
 #include "yb/common/pgsql_protocol.messages.h"
 #include "yb/common/ql_datatype.h"
+#include "yb/common/value.pb.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
@@ -234,6 +235,22 @@ Status QLExprExecutor::EvalCondition(const QLConditionPB& condition,
   return Status::OK();
 }
 
+Result<bool> Contains(
+    const ::google::protobuf::RepeatedPtrField<::yb::QLValuePB>& elems, const QLValuePB& value) {
+  for (const auto& lhs_element : elems) {
+    if (!Comparable(lhs_element, value)) {
+      return STATUS_FORMAT(
+          RuntimeError, "values not comparable LHS:%s and RHS:%s",
+          InternalTypeToCQLString(lhs_element.value_case()),
+          InternalTypeToCQLString(value.value_case()));
+    }
+    if (lhs_element == value) {
+      return true;
+    }
+  }
+  return false;
+}
+
 template <class Operands, class Row, class Res>
 Result<bool> Contains(
     QLExprExecutor* executor, const Operands& operands, const Row& table_row, Res* lhs) {
@@ -252,21 +269,30 @@ Result<bool> Contains(
         RuntimeError, "value of LHS is not a collection. Received:%s",
         InternalTypeToCQLString(lhs->Value().value_case()));
   }
-  // In case LHS is empty (lhs->Value().type() is QLValuePB::VALUE_NOT_SET)
-  // we fallthrough and return false.
 
-  for(const auto& lhs_element : elems) {
-    if(!Comparable(lhs_element, rhs.Value())) {
-      return STATUS_FORMAT(
-          RuntimeError, "values not comparable LHS:%s and RHS:%s",
-          InternalTypeToCQLString(lhs_element.value_case()),
-          InternalTypeToCQLString(rhs.Value().value_case()));
-    }
-    if (lhs_element == rhs.Value()) {
-      return true;
-    }
+  // In case LHS is empty (lhs->Value().type() is QLValuePB::VALUE_NOT_SET)
+  // elems will be empty and Contains() will return false.
+  return Contains(elems, rhs.Value());
+}
+
+template <class Operands, class Row, class Res>
+Result<bool> ContainsKey(
+    QLExprExecutor* executor, const Operands& operands, const Row& table_row, Res* lhs) {
+  Res rhs(lhs);
+  RETURN_NOT_OK(EvalOperands(executor, operands, table_row, lhs->Writer(), rhs.Writer()));
+  ::google::protobuf::RepeatedPtrField<::yb::QLValuePB> elems;
+
+  if (lhs->Value().has_map_value()) {
+    elems = lhs->Value().map_value().keys();
+  } else if (!IsNull(lhs->Value())) {
+    return STATUS_FORMAT(
+        RuntimeError, "value of LHS is not a Map. Received:%s",
+        InternalTypeToCQLString(lhs->Value().value_case()));
   }
-  return false;
+
+  // In case LHS is empty (lhs->Value().type() is QLValuePB::VALUE_NOT_SET)
+  // elems will be empty and Contains() will return false.
+  return Contains(elems, rhs.Value());
 }
 
 template <class Operands, class Row, class Res>
@@ -450,6 +476,11 @@ Status QLExprExecutor::EvalCondition(const QLConditionPB& condition,
     case QL_OP_NOT_IN:
       CHECK_EQ(operands.size(), 2);
       result->set_bool_value(!VERIFY_RESULT(In(this, operands, table_row, &temp)));
+      return Status::OK();
+
+    case QL_OP_CONTAINS_KEY:
+      CHECK_EQ(operands.size(), 2);
+      result->set_bool_value(VERIFY_RESULT(ContainsKey(this, operands, table_row, &temp)));
       return Status::OK();
 
     case QL_OP_CONTAINS:
@@ -678,6 +709,11 @@ Status QLExprExecutor::EvalCondition(
 
     case QL_OP_NOT_EXISTS:
       result->set_bool_value(!table_row.Exists());
+      return Status::OK();
+
+    case QL_OP_CONTAINS_KEY:
+      CHECK_EQ(operands.size(), 2);
+      result->set_bool_value(VERIFY_RESULT(ContainsKey(this, operands, table_row, &temp)));
       return Status::OK();
 
     case QL_OP_CONTAINS:

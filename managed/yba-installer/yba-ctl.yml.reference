@@ -15,7 +15,7 @@ host: ""
 # HTTPS server cert and key in PEM format.
 # The certificate SAN/CN must match the host setting above
 # OK to leave empty - a self-signed cert will be generated
-server_cert_path: "" 
+server_cert_path: ""
 server_key_path: ""
 
 # Linux user which will run all services that make up YugabyteDB Anywhere.
@@ -144,7 +144,7 @@ postgres:
       enabled: true # yba-ctl will set up its own postgres
       port: 5432
       restartSeconds: 10 # restart interval on exit
-      locale: en_US.UTF-8 # Locale for initdb
+      locale: en_US.UTF8 # Locale for initdb
 
    # Specify the connection parameters to an existing postgres db.
    # A database named 'yugaware' must already be created on this host.

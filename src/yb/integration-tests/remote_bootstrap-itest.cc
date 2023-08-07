@@ -1939,7 +1939,7 @@ void RemoteBootstrapITest::RBSWithLazySuperblockFlush(int num_tables) {
   }
 }
 
-TEST_F(RemoteBootstrapITest, YB_DISABLE_TEST_IN_TSAN(TestRBSWithLazySuperblockFlush)) {
+TEST_F(RemoteBootstrapITest, TestRBSWithLazySuperblockFlush) {
   vector<string> ts_flags;
   // Enable lazy superblock flush.
   ts_flags.push_back("--lazily_flush_superblock=true");
@@ -2028,9 +2028,9 @@ class RemoteBootstrapMiniClusterITest: public YBMiniClusterTestBase<MiniCluster>
 class PersistRetryableRequestsRBSITest: public RemoteBootstrapMiniClusterITest {
  public:
   void SetUp() override {
-    FLAGS_enable_flush_retryable_requests = true;
-    FLAGS_enable_load_balancing = false;
-    FLAGS_retryable_request_timeout_secs = 20;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_timeout_secs) = 20;
     RemoteBootstrapMiniClusterITest::SetUp();
   }
 
@@ -2064,14 +2064,17 @@ class PersistRetryableRequestsRBSITest: public RemoteBootstrapMiniClusterITest {
     ASSERT_OK(itest::WaitForTabletConfigChange(tablet, new_ts_id, consensus::ADD_SERVER));
 
     // Wait until replicated to new tserver and ready for electing it as new leader.
-    ASSERT_OK(WaitFor([&]() -> Result<bool> {
-      return itest::GetNumTabletsOfTableOnTS(
-          new_tserver,
-          table_handle_.table()->id(),
-          [&](tablet::TabletPeerPtr peer) -> bool {
-            return peer->raft_consensus() && peer->raft_consensus()->IsRunning();
-          }) == 1;
-    }, 20s * kTimeMultiplier, "Waiting for new tserver having one tablet."));
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          return itest::GetNumTabletsOfTableOnTS(
+                     new_tserver,
+                     table_handle_.table()->id(),
+                     [&](tablet::TabletPeerPtr peer) -> bool {
+                       auto raft_consensus_result = peer->GetRaftConsensus();
+                       return raft_consensus_result && raft_consensus_result.get()->IsRunning();
+                     }) == 1;
+        },
+        20s * kTimeMultiplier, "Waiting for new tserver having one tablet."));
 
     if (elect_new_replica_as_leader) {
       SleepFor(5s);
@@ -2118,9 +2121,11 @@ TEST_F(PersistRetryableRequestsRBSITest, TestRetryableWrite) {
     CHECK_OK(WriteRow(/* k = */ 1, /* v = */ 1));
   });
 
-  ASSERT_OK(WaitFor([&]() -> bool {
-    return leader_peer->raft_consensus()->GetLastCommittedOpId().index == 2;
-  }, 10s, "the row is replicated"));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(leader_peer->GetRaftConsensus())->GetLastCommittedOpId().index == 2;
+      },
+      10s, "the row is replicated"));
 
   // Rollover the log and should trigger flushing retryable requests.
   ASSERT_OK(leader_peer->log()->AllocateSegmentAndRollOver());

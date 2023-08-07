@@ -277,7 +277,7 @@ TEST(MemTrackerTest, SoftLimitExceeded) {
   const int kNumIters = 100000;
   const int kMemLimit = 1000;
   google::FlagSaver saver;
-  FLAGS_memory_limit_soft_percentage = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_memory_limit_soft_percentage) = 0;
   shared_ptr<MemTracker> m = MemTracker::CreateTracker(kMemLimit, "test");
 
   // Consumption is 0; the soft limit is never exceeded.
@@ -362,7 +362,7 @@ TEST(MemTrackerTest, TcMallocGC) {
   MemTracker::TEST_SetReleasedMemorySinceGC(0);
   shared_ptr<MemTracker> root = MemTracker::GetRootTracker();
   // Set a low GC threshold, so we can manage it easily in the test.
-  FLAGS_mem_tracker_tcmalloc_gc_release_bytes = 1_MB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_mem_tracker_tcmalloc_gc_release_bytes) = 1_MB;
   // Allocate something bigger than the threshold.
   std::unique_ptr<char[]> big_alloc(new char[4_MB]);
   // clang in release mode can optimize out the above allocation unless

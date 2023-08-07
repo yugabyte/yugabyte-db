@@ -1714,7 +1714,7 @@ Result<boost::optional<Expiration>> GetTtl(
     VERIFY_RESULT(DocKey::EncodedSize(encoded_subdoc_key, dockv::DocKeyPart::kWholeDocKey));
   Slice key_slice(encoded_subdoc_key.data(), dockey_size);
   iter->Seek(key_slice);
-  auto key_data = VERIFY_RESULT(iter->Fetch());
+  auto key_data = VERIFY_RESULT_REF(iter->Fetch());
   if (!key_data) {
     return boost::none;
   }
@@ -2038,12 +2038,12 @@ Status RedisReadOperation::ExecuteKeys() {
   SubDocument result;
 
   for (;;) {
-    auto key_data = VERIFY_RESULT(iterator_->Fetch());
+    auto key_data = VERIFY_RESULT_REF(iterator_->Fetch());
     if (!key_data) {
       break;
     }
-    if (deadline_info_.get_ptr() && deadline_info_->CheckAndSetDeadlinePassed()) {
-      return STATUS(Expired, "Deadline for query passed.");
+    if (deadline_info_.get_ptr()) {
+      RETURN_NOT_OK(deadline_info_->CheckDeadlinePassed());
     }
     auto key = key_data.key;
 

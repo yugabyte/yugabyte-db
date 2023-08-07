@@ -17,6 +17,7 @@
 #include <list>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -60,6 +61,7 @@
 #include "yb/yql/pggate/pg_dml.h"
 #include "yb/yql/pggate/pg_dml_read.h"
 #include "yb/yql/pggate/pg_dml_write.h"
+#include "yb/yql/pggate/pg_function.h"
 #include "yb/yql/pggate/pg_insert.h"
 #include "yb/yql/pggate/pg_memctx.h"
 #include "yb/yql/pggate/pg_sample.h"
@@ -541,6 +543,8 @@ Status PgApiImpl::InitSession(const string& database_name, YBCPgExecStatsState* 
   return Status::OK();
 }
 
+uint64_t PgApiImpl::GetSessionID() const { return pg_client_.SessionID(); }
+
 Status PgApiImpl::InvalidateCache() {
   pg_session_->InvalidateAllTablesCache();
   return Status::OK();
@@ -586,6 +590,16 @@ Status PgApiImpl::AddToCurrentPgMemctx(std::unique_ptr<PgStatement> stmt,
                                        PgStatement **handle) {
   *handle = stmt.get();
   pg_callbacks_.GetCurrentYbMemctx()->Register(stmt.release());
+  return Status::OK();
+}
+
+// TODO(tvesely): Figure out how to use an arena for this
+//
+// For now, functions are allocated as ScopedPtr and cached in the memory context. The statements
+// would then be destructed when the context is destroyed and all other references are also cleared.
+Status PgApiImpl::AddToCurrentPgMemctx(std::unique_ptr<PgFunction> func, PgFunction **handle) {
+  *handle = func.get();
+  pg_callbacks_.GetCurrentYbMemctx()->Register(func.release());
   return Status::OK();
 }
 
@@ -791,6 +805,10 @@ Status PgApiImpl::ReserveOids(const PgOid database_oid,
 
 Status PgApiImpl::GetCatalogMasterVersion(uint64_t *version) {
   return pg_session_->GetCatalogMasterVersion(version);
+}
+
+Status PgApiImpl::CancelTransaction(const unsigned char* transaction_id) {
+  return pg_session_->CancelTransaction(transaction_id);
 }
 
 Result<PgTableDescPtr> PgApiImpl::LoadTable(const PgObjectId& table_id) {
@@ -1223,6 +1241,10 @@ Status PgApiImpl::DmlAppendTarget(PgStatement *handle, PgExpr *target) {
   return down_cast<PgDml*>(handle)->AppendTarget(target);
 }
 
+Result<bool> PgApiImpl::DmlHasSystemTargets(PgStatement *handle) {
+  return down_cast<PgDml*>(handle)->has_system_targets();
+}
+
 Status PgApiImpl::DmlAppendQual(PgStatement *handle, PgExpr *qual, bool is_primary) {
   return down_cast<PgDml*>(handle)->AppendQual(qual, is_primary);
 }
@@ -1566,6 +1588,59 @@ Status PgApiImpl::ExecSelect(PgStatement *handle, const PgExecParameters *exec_p
   return dml_read.Exec(exec_params);
 }
 
+
+//--------------------------------------------------------------------------------------------------
+// Functions.
+//--------------------------------------------------------------------------------------------------
+
+Status PgApiImpl::NewSRF(
+    PgFunction **handle, PgFunctionDataProcessor processor) {
+  *handle = nullptr;
+  auto func = std::make_unique<PgFunction>(std::move(processor), pg_session_);
+  RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(func), handle));
+  return Status::OK();
+}
+
+Status PgApiImpl::AddFunctionParam(
+    PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity, uint64_t datum,
+    bool is_null) {
+  if (!handle) {
+    return STATUS(InvalidArgument, "Invalid function handle");
+  }
+
+  return handle->AddParam(name, type_entity, datum, is_null);
+}
+
+Status PgApiImpl::AddFunctionTarget(
+    PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity,
+    const YBCPgTypeAttrs type_attrs) {
+  if (!handle) {
+    return STATUS(InvalidArgument, "Invalid function handle");
+  }
+
+  return handle->AddTarget(name, type_entity, type_attrs);
+}
+
+Status PgApiImpl::FinalizeFunctionTargets(PgFunction *handle) {
+  if (!handle) {
+    return STATUS(InvalidArgument, "Invalid function handle");
+  }
+
+  return handle->FinalizeTargets();
+}
+
+Status PgApiImpl::SRFGetNext(PgFunction *handle, uint64_t *values, bool *is_nulls, bool *has_data) {
+  if (!handle) {
+    return STATUS(InvalidArgument, "Invalid function handle");
+  }
+
+  return handle->GetNext(values, is_nulls, has_data);
+}
+
+Status PgApiImpl::NewGetLockStatusDataSRF(PgFunction **handle) {
+  return NewSRF(handle, PgLockStatusRequestor);
+}
+
 //--------------------------------------------------------------------------------------------------
 // Expressions.
 //--------------------------------------------------------------------------------------------------
@@ -1852,6 +1927,42 @@ TxnPriorityRequirement PgApiImpl::GetTransactionPriorityType() const {
   return pg_txn_manager_->GetTransactionPriorityType();
 }
 
+Result<Uuid> PgApiImpl::GetActiveTransaction() const {
+  Uuid result;
+  RETURN_NOT_OK(pg_client_.EnumerateActiveTransactions(
+      make_lw_function(
+          [&result](
+              const tserver::PgGetActiveTransactionListResponsePB_EntryPB& entry, bool is_last) {
+            DCHECK(is_last);
+            result = VERIFY_RESULT(Uuid::FromSlice(Slice(entry.txn_id())));
+            return static_cast<Status>(Status::OK());
+          }),
+      /*for_current_session_only=*/true));
+
+  return result;
+}
+
+Status PgApiImpl::GetActiveTransactions(YBCPgSessionTxnInfo* infos, size_t num_infos) {
+  std::unordered_map<uint64_t, Slice> txns;
+  txns.reserve(num_infos);
+  return pg_client_.EnumerateActiveTransactions(make_lw_function(
+      [&txns, infos, num_infos](
+          const tserver::PgGetActiveTransactionListResponsePB_EntryPB& entry, bool is_last) {
+        txns.emplace(entry.session_id(), entry.txn_id());
+        if (is_last) {
+          for (auto* i = infos, *end = i + num_infos; i != end; ++i) {
+            auto txn = txns.find(i->session_id);
+            if (txn != txns.end()) {
+              auto uuid = VERIFY_RESULT(Uuid::FromSlice(txn->second));
+              uuid.ToBytes(i->txn_id.data);
+              i->is_not_null = true;
+            }
+          }
+        }
+        return static_cast<Status>(Status::OK());
+      }));
+}
+
 void PgApiImpl::ResetCatalogReadTime() {
   pg_session_->ResetCatalogReadPoint();
 }
@@ -1882,6 +1993,11 @@ void PgApiImpl::AddForeignKeyReference(PgOid table_id, const Slice& ybctid) {
 
 void PgApiImpl::SetTimeout(int timeout_ms) {
   pg_session_->SetTimeout(timeout_ms);
+}
+
+Result<yb::tserver::PgGetLockStatusResponsePB> PgApiImpl::GetLockStatusData(
+    const std::string &table_id, const std::string &transaction_id) {
+  return pg_session_->GetLockStatusData(table_id, transaction_id);
 }
 
 Result<client::TabletServersInfo> PgApiImpl::ListTabletServers() {
@@ -1950,6 +2066,10 @@ void PgApiImpl::SetQueryId(int64_t query_id) {
 
 void PgApiImpl::SetTopLevelRequestId() {
   pg_session_->SetTopLevelRequestId();
+}
+
+Result<bool> PgApiImpl::IsObjectPartOfXRepl(const PgObjectId& table_id) {
+  return pg_session_->IsObjectPartOfXRepl(table_id);
 }
 
 } // namespace pggate

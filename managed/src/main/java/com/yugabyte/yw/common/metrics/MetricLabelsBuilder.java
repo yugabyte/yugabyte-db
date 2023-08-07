@@ -30,6 +30,14 @@ public class MetricLabelsBuilder {
     KnownAlertLabels.SOURCE_TYPE.labelName()
   };
 
+  public static String[] CUSTOMER_LABELS = {
+    KnownAlertLabels.CUSTOMER_UUID.labelName(),
+    KnownAlertLabels.CUSTOMER_NAME.labelName(),
+    KnownAlertLabels.SOURCE_UUID.labelName(),
+    KnownAlertLabels.SOURCE_NAME.labelName(),
+    KnownAlertLabels.SOURCE_TYPE.labelName()
+  };
+
   private final Map<String, String> labels = new HashMap<>();
 
   public static MetricLabelsBuilder create() {

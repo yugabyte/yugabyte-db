@@ -187,6 +187,12 @@ struct ExternalMiniClusterOptions {
   // set to a non-zero value, this value is used instead.
   int transaction_table_num_tablets = 0;
 
+  // Specifies the replication factor for the cluster. If this is not set, default to the number
+  // of masters in the cluster.
+  int replication_factor = 0;
+
+  bool allow_crashes_during_init_db = false;
+
   Status RemovePort(const uint16_t port);
   Status AddPort(const uint16_t port);
 

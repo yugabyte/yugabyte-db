@@ -91,4 +91,4 @@ Create a role and a database user, and provide the user with READ access to all 
        exec rdsadmin.rdsadmin_util.set_configuration('archivelog retention hours',24);
        ```
 
-    1. Verify using archive log list.
+    1. Verify using `archive log list`.

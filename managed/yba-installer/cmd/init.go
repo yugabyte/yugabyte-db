@@ -13,8 +13,11 @@ import (
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/components/ybactl"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 )
+
+const migrateStartCmd = "yba-ctl replicated-migrate start"
 
 // Get the commands that will require yba-ctl.yml to be setup before getting run
 // function because go doesn't support const <slice>
@@ -23,6 +26,7 @@ func cmdsRequireConfigInit() []string {
 		"yba-ctl install",
 		"yba-ctl upgrade",
 		"yba-ctl preflight",
+		migrateStartCmd,
 	}
 }
 
@@ -52,11 +56,42 @@ func initAfterFlagsParsed(cmdName string) {
 
 	common.InitViper()
 
+	if cmdName == migrateStartCmd {
+		currRoot := viper.GetString("installRoot")
+		if currRoot == "/opt/yugabyte" {
+			log.Debug("Install root is the default /opt/yugabyte on migration. Setting to /opt/yba")
+			common.UpdateRootInstall("/opt/yba")
+		} else {
+			prompt := fmt.Sprintf("Do you want to continue the Replicated migration to the custom "+
+				"install root %s", currRoot)
+			if !common.UserConfirm(prompt, common.DefaultYes) {
+				log.Info("Canceling replicated migration")
+				os.Exit(1)
+			}
+		}
+	}
+
 	log.AddOutputFile(common.YbactlLogFile())
 	log.Trace(fmt.Sprintf("yba-ctl started with cmd %s", cmdName))
 
 	initServices(cmdName)
+}
 
+func writeDefaultConfig() {
+	cfgFile, err := os.Create(common.InputFile())
+	if err != nil {
+		log.Fatal("could not create input file: " + err.Error())
+	}
+	defer cfgFile.Close()
+
+	_, err = cfgFile.WriteString(config.ReferenceYbaCtlConfig)
+	if err != nil {
+		log.Fatal("could not create input file: " + err.Error())
+	}
+	err = os.Chmod(common.InputFile(), 0644)
+	if err != nil {
+		log.Warn("failed to update config file permissions: " + err.Error())
+	}
 }
 
 func ensureInstallerConfFile() {
@@ -74,8 +109,7 @@ func ensureInstallerConfFile() {
 			common.DefaultNo)
 
 		// Copy over reference yaml before checking the user choice.
-		common.CopyFile(common.GetReferenceYaml(), common.InputFile())
-		os.Chmod(common.InputFile(), 0600)
+		writeDefaultConfig()
 
 		if !userChoice {
 			log.Info(fmt.Sprintf(
@@ -91,7 +125,7 @@ func initServices(cmdName string) {
 	installPostgres := viper.GetBool("postgres.install.enabled")
 	installYbdb := viper.GetBool("ybdb.install.enabled")
 	services[PostgresServiceName] = NewPostgres("10.23")
-	services[YbdbServiceName] = NewYbdb("2.17.2.0")
+	// services[YbdbServiceName] = NewYbdb("2.17.2.0")
 	services[PrometheusServiceName] = NewPrometheus("2.44.0")
 	services[YbPlatformServiceName] = NewPlatform(common.GetVersion())
 	// serviceOrder = make([]string, len(services))

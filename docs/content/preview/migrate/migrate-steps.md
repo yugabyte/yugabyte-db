@@ -244,7 +244,6 @@ Consider the following caveats before using the feature:
 - You need to perform additional steps when you [prepare the source database](#prepare-the-source-database).
 - Some data types are unsupported. For a detailed list, refer to [datatype mappings](../reference/datatype-mapping-mysql/).
 - [--parallel-jobs](../reference/yb-voyager-cli/#parallel-jobs) argument will have no effect.
-- SSL is unsupported.
 - In MySQL RDS, writes are not allowed during the data export process.
 - For Oracle where sequences are not attached to a column, resume value generation is unsupported.
 
@@ -345,7 +344,29 @@ yb-voyager import data file .... \
         --data-dir s3://voyager-data
 ```
 
-Refer to [import data file](../reference/yb-voyager-cli/#import-data-file) for additional details to set up your S3 bucket with yb-voyager.
+The authentication mechanism for accessing an S3 bucket using yb-voyager is the same as that used by the AWS CLI. Refer to [Configuring the AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-cha) for additional details on setting up your S3 bucket.
+
+#### Import data file from GCS buckets
+
+Import data file also allows you to load directly from your data files stored on GCS buckets. The GCS bucket URI can be provided to the `data-dir` flag as follows:
+
+```sh
+yb-voyager import data file .... \
+        --data-dir gs://voyager-data
+```
+
+The authentication mechanism for accessing a GCS bucket using yb-voyager is the Application Default Credentials (ADC) strategy for GCS. Refer to [Set up Application Default Credentials](https://cloud.google.com/docs/authentication/provide-credentials-adc) for additional details on setting up your GCS buckets.
+
+#### Import data file from Azure blob
+
+Import data file also allows you to load directly from your data files stored on Azure blob storage containers. The Azure container URI can be provided to the `data-dir` flag as follows:
+
+```sh
+yb-voyager import data file .... \
+        --data-dir https://<account_name>.blob.core.windows.net/<container_name>...
+```
+
+The authentication mechanism for accessing blobs using yb-voyager is the same as that used by the Azure CLI. The Azure storage account used for the import should at least have the [Storage Blob Data Reader](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles#storage-blob-data-reader) role assigned to it. Refer to [Sign in with Azure CLI](https://learn.microsoft.com/en-us/cli/azure/authenticate-azure-cli) for additional details on setting up your GCS buckets.
 
 ### Import indexes and triggers
 

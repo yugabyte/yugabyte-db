@@ -28,7 +28,7 @@ import java.util.Iterator;
 import java.util.List;
 
 import org.yb.minicluster.BaseMiniClusterTest;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import com.datastax.spark.connector.cql.CassandraConnector;
 
@@ -42,7 +42,7 @@ import com.datastax.oss.driver.api.core.type.DataTypes;
 import com.datastax.oss.driver.api.core.type.TupleType;
 import com.datastax.oss.driver.api.core.data.TupleValue;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestTupleOperators extends BaseMiniClusterTest {
 
     private static Logger logger = LoggerFactory.getLogger(TestTupleOperators.class);

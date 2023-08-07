@@ -14,6 +14,7 @@
 #include "yb/cdc/cdc_service.h"
 #include "yb/client/session.h"
 #include "yb/gutil/map-util.h"
+#include "yb/util/shared_lock.h"
 
 // If this is the initial load, assign the variable to class local variable of the same name and _
 // suffix. If this is a refresh, validate that the value has not changed.
@@ -43,7 +44,7 @@ std::shared_ptr<StreamMetadata::StreamTabletMetadata> StreamMetadata::GetTabletM
     const TabletId& tablet_id) {
   DCHECK(loaded_);
   {
-    std::shared_lock l(tablet_metadata_map_mutex_);
+    SharedLock l(tablet_metadata_map_mutex_);
     auto metadata = FindPtrOrNull(tablet_metadata_map_, tablet_id);
     if (metadata) {
       return metadata;
@@ -61,7 +62,7 @@ std::shared_ptr<StreamMetadata::StreamTabletMetadata> StreamMetadata::GetTabletM
 }
 
 Status StreamMetadata::InitOrReloadIfNeeded(
-    const std::string& stream_id, RefreshStreamMapOption opts, client::YBClient* client) {
+    const xrepl::StreamId& stream_id, RefreshStreamMapOption opts, client::YBClient* client) {
   std::lock_guard l(load_mutex_);
   if (!loaded_ || opts == RefreshStreamMapOption::kAlways ||
       (opts == RefreshStreamMapOption::kIfInitiatedState &&
@@ -73,7 +74,7 @@ Status StreamMetadata::InitOrReloadIfNeeded(
 }
 
 Status StreamMetadata::GetStreamInfoFromMaster(
-    const std::string& stream_id, client::YBClient* client) {
+    const xrepl::StreamId& stream_id, client::YBClient* client) {
   bool is_refresh = loaded_.load(std::memory_order_acquire);
   // If this is the first time we are loading the metadata then we populate all the fields.
   // If this is a refresh, then only table_ids_, state_, tablet_metadata_map_ and transactional_ are

@@ -40,8 +40,7 @@ class WriteQuery {
              WriteQueryContext* context,
              TabletPtr tablet,
              rpc::RpcContext* rpc_context,
-             tserver::WriteResponsePB *response = nullptr,
-             dockv::OperationKind kind = dockv::OperationKind::kWrite);
+             tserver::WriteResponsePB* response = nullptr);
 
   ~WriteQuery();
 
@@ -69,10 +68,6 @@ class WriteQuery {
   // TODO(neil) These ops must report number of rows that was updated, deleted, or inserted.
   std::vector<std::unique_ptr<docdb::PgsqlWriteOperation>>* pgsql_write_ops() {
     return &pgsql_write_ops_;
-  }
-
-  dockv::OperationKind kind() const {
-    return kind_;
   }
 
   void AdjustYsqlQueryTransactionality(size_t ysql_batch_size);
@@ -216,8 +211,6 @@ class WriteQuery {
   bool allow_immediate_read_restart_ = false;
   std::unique_ptr<tserver::WriteRequestPB> client_request_holder_;
   tserver::WriteResponsePB* response_;
-
-  dockv::OperationKind kind_;
 
   // this transaction's start time
   CoarseTimePoint start_time_;

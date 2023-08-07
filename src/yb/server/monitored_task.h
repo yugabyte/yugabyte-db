@@ -107,7 +107,9 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
   virtual MonoTime start_timestamp() const { return start_timestamp_; }
 
   // Task completion time, may be !Initialized().
-  virtual MonoTime completion_timestamp() const { return completion_timestamp_; }
+  virtual MonoTime completion_timestamp() const {
+    return completion_timestamp_.load(std::memory_order_acquire);
+  }
 
   // Whether task was started by the LB.
   virtual bool started_by_lb() const {
@@ -123,7 +125,7 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
   }
 
  protected:
-  MonoTime start_timestamp_, completion_timestamp_;
+  std::atomic<MonoTime> start_timestamp_, completion_timestamp_;
   std::atomic<server::MonitoredTaskState> state_{server::MonitoredTaskState::kWaiting};
 };
 

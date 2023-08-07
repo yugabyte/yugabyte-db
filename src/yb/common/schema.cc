@@ -77,9 +77,10 @@ ColumnSchema::ColumnSchema(std::string name,
                            bool is_static,
                            bool is_counter,
                            int32_t order,
-                           int32_t pg_type_oid)
+                           int32_t pg_type_oid,
+                           bool marked_for_deletion)
     : ColumnSchema(std::move(name), QLType::Create(type), kind, is_nullable, is_static, is_counter,
-                   order, pg_type_oid) {
+                   order, pg_type_oid, marked_for_deletion) {
 }
 
 const TypeInfo* ColumnSchema::type_info() const {
@@ -149,7 +150,8 @@ bool ColumnSchema::TEST_Equals(const ColumnSchema& lhs, const ColumnSchema& rhs)
                           is_static_,
                           is_counter_,
                           order_,
-                          pg_type_oid_);
+                          pg_type_oid_,
+                          marked_for_deletion_);
 }
 
 SortingType ColumnSchema::sorting_type() const {
@@ -758,9 +760,37 @@ Status SchemaBuilder::SetColumnPGType(const string& name, const uint32_t pg_type
   return STATUS(NotFound, "The specified column does not exist", name);
 }
 
+Status SchemaBuilder::MarkColumnForDeletion(const string& name) {
+  for (size_t i = 0; i < cols_.size(); ++i) {
+    ColumnSchema& col = cols_[i];
+    if (name == col.name()) {
+      SCHECK(i >= num_key_columns_, InvalidArgument, "Cannot mark a key column for deletion", name);
+      col.set_marked_for_deletion(true);
+      return Status::OK();
+    }
+  }
+  return STATUS(NotFound, "The specified column does not exist", name);
+}
+
+Status SchemaBuilder::SetColumnPGTypmod(const std::string& name, const uint32_t pg_typmod) {
+  for (ColumnSchema& col_schema : cols_) {
+    if (name == col_schema.name()) {
+      col_schema.set_pg_typmod(pg_typmod);
+      return Status::OK();
+    }
+  }
+  return STATUS(NotFound, "The specified column does not exist", name);
+}
+
 Status SchemaBuilder::AddColumn(const ColumnSchema& column) {
-  if (ContainsKey(col_names_, column.name())) {
-    return STATUS(AlreadyPresent, "The column already exists", column.name());
+  for (const ColumnSchema& col : cols_) {
+    if (column.name() == col.name()) {
+      if (col.marked_for_deletion()) {
+        return STATUS_FORMAT(AlreadyPresent, "The column $0 is still in process of deletion",
+            column.name());
+      }
+      return STATUS(AlreadyPresent, "The column already exists", column.name());
+    }
   }
 
   col_names_.insert(column.name());

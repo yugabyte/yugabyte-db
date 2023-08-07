@@ -51,7 +51,7 @@ class ScanChoices;
 YB_DEFINE_ENUM(DocMode, (kGeneric)(kFlat)(kAny));
 
 // An SQL-mapped-to-document-DB iterator.
-class DocRowwiseIterator : public DocRowwiseIteratorBase {
+class DocRowwiseIterator final : public DocRowwiseIteratorBase {
  public:
   DocRowwiseIterator(const dockv::ReaderProjection &projection,
                      std::reference_wrapper<const DocReadContext> doc_read_context,
@@ -79,8 +79,13 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
 
   Result<HybridTime> RestartReadHt() override;
 
+  void Seek(Slice key) override;
+
   HybridTime TEST_MaxSeenHt() override;
 
+  // key slice should point to block of memory, that contains kHighest after the end.
+  // So extended slice could be used as upperbound.
+  Result<bool> PgFetchRow(Slice key, bool restart, dockv::PgTableRow* table_row);
   Result<bool> PgFetchNext(dockv::PgTableRow* table_row) override;
 
   bool TEST_is_flat_doc() const {
@@ -107,7 +112,6 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
   template <class TableRow>
   Result<bool> FetchNextImpl(TableRow table_row);
 
-  void Seek(Slice key) override;
   void PrevDocKey(Slice key) override;
 
   void ConfigureForYsql();
@@ -130,14 +134,15 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
     const dockv::ReaderProjection* static_projection;
   };
 
-  Result<DocReaderResult> FetchRow(FetchedEntry* fetched_entry, dockv::PgTableRow* table_row);
-  Result<DocReaderResult> FetchRow(FetchedEntry* fetched_entry, QLTableRowPair table_row);
+  Result<DocReaderResult> FetchRow(const FetchedEntry& fetched_entry, dockv::PgTableRow* table_row);
+  Result<DocReaderResult> FetchRow(const FetchedEntry& fetched_entry, QLTableRowPair table_row);
 
   Status FillRow(QLTableRowPair table_row);
   Status FillRow(dockv::PgTableRow* table_row);
 
   std::unique_ptr<IntentAwareIterator> db_iter_;
-  std::optional<IntentAwareIteratorPrefixScope> prefix_scope_;
+  KeyBuffer prefix_buffer_;
+  std::optional<IntentAwareIteratorUpperboundScope> upperbound_scope_;
 
   DocMode doc_mode_ = DocMode::kGeneric;
 
@@ -148,7 +153,6 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
 
   // DocReader result returned by the previous fetch.
   DocReaderResult prev_doc_found_ = DocReaderResult::kNotFound;
-  FetchedEntry current_entry_;
 
   const DocDBStatistics* statistics_;
 };

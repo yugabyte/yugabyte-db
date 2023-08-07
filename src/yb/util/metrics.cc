@@ -198,7 +198,7 @@ Status MetricRegistry::WriteAsJson(JsonWriter* writer,
                                    const MetricJsonOptions& opts) const {
   EntityMap entities;
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     entities = entities_;
   }
 
@@ -228,7 +228,7 @@ Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
                                           const MetricPrometheusOptions& opts) const {
   EntityMap entities;
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     entities = entities_;
   }
 
@@ -256,7 +256,7 @@ Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
 void MetricRegistry::get_all_prototypes(std::set<std::string>& prototypes) const {
   EntityMap entities;
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     entities = entities_;
   }
   for (const EntityMap::value_type& e : entities) {
@@ -265,7 +265,7 @@ void MetricRegistry::get_all_prototypes(std::set<std::string>& prototypes) const
 }
 
 void MetricRegistry::RetireOldMetrics() {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   for (auto it = entities_.begin(); it != entities_.end();) {
     it->second->RetireOldMetrics();
 
@@ -327,11 +327,12 @@ void MetricPrototype::WriteFields(JsonWriter* writer,
 scoped_refptr<MetricEntity> MetricRegistry::FindOrCreateEntity(
     const MetricEntityPrototype* prototype,
     const std::string& id,
-    const MetricEntity::AttributeMap& initial_attributes) {
-  std::lock_guard<simple_spinlock> l(lock_);
+    const MetricEntity::AttributeMap& initial_attributes,
+    std::shared_ptr<MemTracker> mem_tracker) {
+  std::lock_guard l(lock_);
   scoped_refptr<MetricEntity> e = FindPtrOrNull(entities_, id);
   if (!e) {
-    e = new MetricEntity(prototype, id, initial_attributes);
+    e = new MetricEntity(prototype, id, initial_attributes, std::move(mem_tracker));
     InsertOrDie(&entities_, id, e);
   } else {
     e->SetAttributes(initial_attributes);
@@ -383,12 +384,12 @@ StringGauge::StringGauge(const GaugePrototype<string>* proto,
     : Gauge(proto), value_(std::move(initial_value)) {}
 
 std::string StringGauge::value() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   return value_;
 }
 
 void StringGauge::set_value(const std::string& value) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard l(lock_);
   value_ = value;
 }
 
@@ -628,22 +629,22 @@ Status Histogram::WriteForPrometheus(
 
   // Copy the label map to add the quatiles.
   if (export_percentiles_ && FLAGS_expose_metric_histogram_percentiles) {
+    const char* gauge_type = MetricType::PrometheusType(MetricType::kGauge);
     copy_of_attr["quantile"] = "p50";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
                                            snapshot.ValueAtPercentile(50),
                                            prototype()->aggregation_function(),
-                                           counter_type, description));
+                                           gauge_type, description));
     copy_of_attr["quantile"] = "p95";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
                                            snapshot.ValueAtPercentile(95),
                                            prototype()->aggregation_function(),
-                                           counter_type, description));
+                                           gauge_type, description));
     copy_of_attr["quantile"] = "p99";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
                                            snapshot.ValueAtPercentile(99),
                                            prototype()->aggregation_function(),
-                                           counter_type, description));
-    const char* gauge_type = MetricType::PrometheusType(MetricType::kGauge);
+                                           gauge_type, description));
     copy_of_attr["quantile"] = "mean";
     RETURN_NOT_OK(writer->WriteSingleEntry(copy_of_attr, hist_name,
                                            snapshot.MeanValue(),

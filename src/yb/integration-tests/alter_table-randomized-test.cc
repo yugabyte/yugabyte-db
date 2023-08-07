@@ -239,7 +239,7 @@ struct MirrorTable {
                                                       kTableName.namespace_type()));
     YBSchema schema;
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(INT32)->HashPrimaryKey()->NotNull();
+    b.AddColumn("key")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
     CHECK_OK(b.Build(&schema));
     std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     return table_creator->table_name(kTableName)
@@ -314,7 +314,7 @@ struct MirrorTable {
     // Add to the real table.
     std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
 
-    table_alterer->AddColumn(name)->Type(INT32);
+    table_alterer->AddColumn(name)->Type(DataType::INT32);
     ASSERT_OK(table_alterer->Alter());
 
     // Add to the mirror state.

@@ -60,6 +60,11 @@ extern bool yb_pushdown_strict_inequality;
 extern bool yb_pushdown_is_not_null;
 
 /*
+ * Guc that toggles the pg_locks view on/off.
+ */
+extern bool yb_enable_pg_locks;
+
+/*
  * Guc variable to suppress non-Postgres logs from appearing in Postgres log file.
  */
 extern bool suppress_nonpg_logs;
@@ -73,6 +78,16 @@ extern int ysql_session_max_batch_size;
  * Guc variable to control the max number of in-flight operations from YSQL to tablet server.
  */
 extern int ysql_max_in_flight_ops;
+
+/*
+ * Guc variable that sets the minimum transaction age, in ms, to report when using yb_lock_status().
+ */
+extern int yb_locks_min_txn_age;
+
+/*
+ * Guc variable that sets the number of transactions to return results for in yb_lock_status().
+ */
+extern int yb_locks_max_transactions;
 
 /*
  * Guc variable to enable binary restore from a binary backup of YSQL tables. When doing binary
@@ -133,6 +148,7 @@ bool YBCIsRestartReadError(uint16_t txn_errcode);
 
 bool YBCIsTxnConflictError(uint16_t txn_errcode);
 bool YBCIsTxnSkipLockingError(uint16_t txn_errcode);
+bool YBCIsTxnDeadlockError(uint16_t txn_errcode);
 uint16_t YBCGetTxnConflictErrorCode();
 
 void YBCResolveHostname();

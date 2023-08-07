@@ -91,7 +91,7 @@ class ColumnIdxResolver {
         columns.begin(), columns.end(),
         [attno](const auto& column) { return attno == column.order(); });
     RSTATUS_DCHECK(it != columns.end(), InternalError, Format("Column not found: $0", attno));
-    return GetColumnIdx(schema_.column_id(std::distance(it, columns.begin())));
+    return GetColumnIdx(schema_.column_id(std::distance(columns.begin(), it)));
   }
 
  private:

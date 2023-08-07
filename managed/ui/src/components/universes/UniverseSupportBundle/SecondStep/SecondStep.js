@@ -1,10 +1,11 @@
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { YBCheckBox } from '../../../common/forms/fields';
-import { DropdownButton, MenuItem } from 'react-bootstrap';
+import { Alert, DropdownButton, MenuItem } from 'react-bootstrap';
 import { CustomDateRangePicker } from '../DateRangePicker/DateRangePicker';
 import { useSelector } from 'react-redux';
 import { find } from 'lodash';
 import { convertToISODateString } from '../../../../redesign/helpers/DateUtils';
+import { UniverseState } from '../../helpers/universeHelpers';
 
 const filterTypes = [
   { label: 'Last 24 hrs', type: 'days', value: '1' },
@@ -26,7 +27,7 @@ export const selectionOptions = [
 ];
 
 const YbcLogsOption = { label: 'YB-Controller logs', value: 'YbcLogs' };
-const K8sLogsOption = { label: 'Kubernetes Info', value: 'K8sInfo'};
+const K8sLogsOption = { label: 'Kubernetes Info', value: 'K8sInfo' };
 
 const getBackDateByDay = (day) => {
   return new Date(new Date().setDate(new Date().getDate() - day));
@@ -62,7 +63,7 @@ export const updateOptions = (
   };
 };
 
-export const SecondStep = ({ onOptionsChange, isK8sUniverse }) => {
+export const SecondStep = ({ onOptionsChange, isK8sUniverse, universeStatus }) => {
   const [selectedFilterType, setSelectedFilterType] = useState(filterTypes[0].value);
   const [selectionOptionsValue, setSelectionOptionsValue] = useState(
     selectionOptions.map(() => true)
@@ -87,10 +88,7 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse }) => {
     onOptionsChange(changedOptions);
   }
 
-  if(
-    isK8sUniverse && 
-    !find(selectionOptions, K8sLogsOption)
-  ) {
+  if (isK8sUniverse && !find(selectionOptions, K8sLogsOption)) {
     selectionOptions.push(K8sLogsOption);
     selectionOptionsValue.push(true);
     const changedOptions = updateOptions(
@@ -103,6 +101,12 @@ export const SecondStep = ({ onOptionsChange, isK8sUniverse }) => {
 
   return (
     <div className="universe-support-bundle-step-two">
+      {universeStatus?.state !== UniverseState.GOOD && (
+        <Alert bsStyle="warning">
+          Support bundle creation may fail since universe is not in &ldquo;Ready&rdquo; state
+        </Alert>
+      )}
+
       <p className="subtitle-text">
         Support bundles contain the diagnostic information. This can include log files, config
         files, metadata and etc. You can analyze this information locally on your machine or send

@@ -257,7 +257,7 @@ public class BackupUniverse extends UniverseTaskBase {
     log.info(
         "Submitted task to backup table {}:{}, task uuid = {}.",
         taskParams.tableUUID,
-        taskParams.getTableName(),
+        CommonUtils.logTableName(taskParams.getTableName()),
         taskUUID);
     CustomerTask.create(
         customer,
@@ -271,7 +271,7 @@ public class BackupUniverse extends UniverseTaskBase {
         taskUUID,
         taskParams.tableUUID,
         taskParams.getKeyspace(),
-        taskParams.getTableName());
+        CommonUtils.logTableName(taskParams.getTableName()));
     SCHEDULED_BACKUP_SUCCESS_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     metricService.setOkStatusMetric(
         buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));

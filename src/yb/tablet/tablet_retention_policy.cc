@@ -92,7 +92,7 @@ TabletRetentionPolicy::TabletRetentionPolicy(
 }
 
 HybridTime TabletRetentionPolicy::UpdateCommittedHistoryCutoff(HybridTime value) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   if (!value) {
     return committed_history_cutoff_;
   }
@@ -106,7 +106,7 @@ HybridTime TabletRetentionPolicy::UpdateCommittedHistoryCutoff(HybridTime value)
 HistoryRetentionDirective TabletRetentionPolicy::GetRetentionDirective() {
   HybridTime history_cutoff;
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (FLAGS_enable_history_cutoff_propagation) {
       history_cutoff = SanitizeHistoryCutoff(committed_history_cutoff_);
     } else {
@@ -122,13 +122,13 @@ HistoryRetentionDirective TabletRetentionPolicy::GetRetentionDirective() {
 
 HybridTime TabletRetentionPolicy::ProposedHistoryCutoff() {
   // For proposed history cutoff we don't respect active readers.
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   return FLAGS_enable_history_cutoff_propagation
       ? committed_history_cutoff_ : ClockBasedHistoryCutoff(clock_.get());
 }
 
 Status TabletRetentionPolicy::RegisterReaderTimestamp(HybridTime timestamp) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   if (timestamp < committed_history_cutoff_) {
     return STATUS(
         SnapshotTooOld,
@@ -144,7 +144,7 @@ Status TabletRetentionPolicy::RegisterReaderTimestamp(HybridTime timestamp) {
 }
 
 void TabletRetentionPolicy::UnregisterReaderTimestamp(HybridTime timestamp) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   active_readers_.erase(timestamp);
 }
 
@@ -155,7 +155,7 @@ bool TabletRetentionPolicy::ShouldRetainDeleteMarkersInMajorCompaction() const {
 }
 
 HybridTime TabletRetentionPolicy::HistoryCutoffToPropagate(HybridTime last_write_ht) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
 
   auto now = CoarseMonoClock::now();
 
@@ -212,7 +212,7 @@ HybridTime TabletRetentionPolicy::SanitizeHistoryCutoff(HybridTime proposed_cuto
 }
 
 void TabletRetentionPolicy::EnableHistoryCutoffPropagation(bool value) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   if (value) {
     --disable_counter_;
   } else {

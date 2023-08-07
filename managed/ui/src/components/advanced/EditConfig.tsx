@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import { FC } from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
@@ -38,6 +38,11 @@ export const EditConfig: FC<EditConfigData> = ({
   customerUUID
 }) => {
   const { t } = useTranslation();
+  const initialValues = {
+    config_value:
+      configData.type === 'Boolean' ? configData.configValue === 'true' : configData.configValue
+  };
+
   const handleSubmit = async (
     values: any,
     { setSubmitting }: { setSubmitting: any; setFieldError: any }
@@ -69,6 +74,7 @@ export const EditConfig: FC<EditConfigData> = ({
       visible={true}
       onHide={onHide}
       onFormSubmit={handleSubmit}
+      initialValues={initialValues}
       submitLabel="Save"
       showCancelButton
       render={() => {

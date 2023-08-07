@@ -124,9 +124,9 @@ class PgNamespaceTest : public pgwrapper::PgMiniTestBase {
 };
 
 TEST_F(PgNamespaceTest, CreateNamespaceFromTemplateLeaderFailover) {
-  FLAGS_batch_ysql_system_tables_metadata = false;
-  FLAGS_TEST_pause_before_upsert_ysql_sys_table = true;
-  FLAGS_master_leader_rpc_timeout_ms = 10000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_batch_ysql_system_tables_metadata) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_upsert_ysql_sys_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_leader_rpc_timeout_ms) = 10000;
   // Need to set namespace id to a valid oid. Normally this is done in Postgres, but we can't use
   // Postgres code in this test.
   auto ns_id = "00004000000030008000000000000000";

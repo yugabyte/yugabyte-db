@@ -276,11 +276,11 @@ void PgIndexBackfillTest::TestLargeBackfill(const int num_rows) {
 }
 
 // Make sure that backfill works.
-TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
+TEST_F(PgIndexBackfillTest, Simple) {
   TestSimpleBackfill();
 }
 
-TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(WaitForSplitsToComplete)) {
+TEST_F(PgIndexBackfillTest, WaitForSplitsToComplete) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   constexpr int kTimeoutSec = 3;
   constexpr int kNumRows = 1000;
@@ -325,7 +325,7 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(WaitForSplitsToComplete)) {
 }
 
 // Make sure that partial indexes work for index backfill.
-TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Partial)) {
+TEST_F(PgIndexBackfillTest, Partial) {
   constexpr int kNumRows = 7;
 
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int, j int)", kTableName));
@@ -367,7 +367,7 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Partial)) {
 }
 
 // Make sure that expression indexes work for index backfill.
-TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Expression)) {
+TEST_F(PgIndexBackfillTest, Expression) {
   constexpr int kNumRows = 9;
 
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int, j int)", kTableName));
@@ -406,7 +406,7 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Expression)) {
 }
 
 // Make sure that unique indexes work when index backfill is enabled.
-TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Unique)) {
+TEST_F(PgIndexBackfillTest, Unique) {
   constexpr int kNumRows = 3;
 
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int, j int)", kTableName));
@@ -440,7 +440,7 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Unique)) {
 }
 
 // Make sure that indexes created in postgres nested DDL work and skip backfill (optimization).
-TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(NestedDdl)) {
+TEST_F(PgIndexBackfillTest, NestedDdl) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   constexpr int kNumRows = 3;
 
@@ -472,7 +472,7 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(NestedDdl)) {
 
 // Make sure that drop index works when index backfill is enabled (skips online schema migration for
 // now)
-TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Drop)) {
+TEST_F(PgIndexBackfillTest, Drop) {
   constexpr int kNumRows = 5;
 
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int, j int)", kTableName));
@@ -498,7 +498,7 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Drop)) {
 // necessitate a test, but logic for backfill is special in that it wants nonexistent index deletes
 // to be applied for the backfill process to use them.  This test guards against that logic being
 // implemented incorrectly.
-TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(NonexistentDelete)) {
+TEST_F(PgIndexBackfillTest, NonexistentDelete) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int PRIMARY KEY)", kTableName));
 
   // Delete to nonexistent row should return no rows.
@@ -510,7 +510,7 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(NonexistentDelete)) {
 }
 
 // Make sure that index backfill on large tables backfills all data.
-TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Large)) {
+TEST_F(PgIndexBackfillTest, Large) {
   constexpr int kNumRows = 10000;
   TestLargeBackfill(kNumRows);
   auto expected_calls = cluster_->num_tablet_servers() * kTabletsPerServer;
@@ -608,7 +608,7 @@ Status PgIndexBackfillTest::TestInsertsWhileCreatingIndex(bool expect_missing_ro
   return Status::OK();
 }
 
-TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(InsertsWhileCreatingIndex)) {
+TEST_F(PgIndexBackfillTest, InsertsWhileCreatingIndex) {
   ASSERT_OK(TestInsertsWhileCreatingIndex(false /* expect_missing_row */));
 }
 
@@ -623,7 +623,7 @@ class PgIndexBackfillTestDisableWait : public PgIndexBackfillTest {
 
 TEST_F_EX(
     PgIndexBackfillTest,
-    YB_DISABLE_TEST_IN_TSAN(InsertsWhileCreatingIndexDisableWait),
+    InsertsWhileCreatingIndexDisableWait,
     PgIndexBackfillTestDisableWait) {
   constexpr auto kNumTries = 5;
 
@@ -660,7 +660,7 @@ class PgIndexBackfillTestChunking : public PgIndexBackfillTest {
 //     `BACKFILL INDEX` calls will fetch data from the tserver at least 2 times.
 // Fetch metrics to ensure that there have been > num_tablets rpc's.
 TEST_F_EX(
-    PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(BackfillInChunks), PgIndexBackfillTestChunking) {
+    PgIndexBackfillTest, BackfillInChunks, PgIndexBackfillTestChunking) {
   constexpr int kNumRows = 10000;
   TestLargeBackfill(kNumRows);
 
@@ -699,7 +699,7 @@ class PgIndexBackfillTestThrottled : public PgIndexBackfillTest {
 // Set the backfill batch size and backfill rate
 // Check that the time taken to backfill is no less than what is expected.
 TEST_F_EX(
-    PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(ThrottledBackfill), PgIndexBackfillTestThrottled) {
+    PgIndexBackfillTest, ThrottledBackfill, PgIndexBackfillTestThrottled) {
   constexpr int kNumRows = 10000;
   auto start_time = CoarseMonoClock::Now();
   TestLargeBackfill(kNumRows);
@@ -753,7 +753,7 @@ class PgIndexBackfillTestDeadlines : public PgIndexBackfillTest {
 // below what is set as the timeout.
 TEST_F_EX(
     PgIndexBackfillTest,
-    YB_DISABLE_TEST_IN_TSAN(BackfillRespectsDeadline),
+    BackfillRespectsDeadline,
     PgIndexBackfillTestDeadlines) {
   constexpr int kNumRows = 10000;
   TestLargeBackfill(kNumRows);
@@ -772,7 +772,7 @@ TEST_F_EX(
 }
 
 // Make sure that CREATE INDEX NONCONCURRENTLY doesn't use backfill.
-TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Nonconcurrent)) {
+TEST_F(PgIndexBackfillTest, Nonconcurrent) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
@@ -831,7 +831,7 @@ class PgIndexBackfillTestSimultaneously : public PgIndexBackfillTest {
 
 // Test simultaneous CREATE INDEX.
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously),
+          CreateIndexSimultaneously,
           PgIndexBackfillTestSimultaneously) {
   const std::string query = Format("SELECT * FROM $0 WHERE i = $1", kTableName, 7);
   constexpr int kNumRows = 10;
@@ -974,7 +974,7 @@ TEST_F_EX(PgIndexBackfillTest,
 }
 
 // Make sure that backfill works in a tablegroup.
-TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Tablegroup)) {
+TEST_F(PgIndexBackfillTest, Tablegroup) {
   const std::string kTablegroupName = "test_tgroup";
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLEGROUP $0", kTablegroupName));
 
@@ -982,7 +982,7 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Tablegroup)) {
 }
 
 // Test that retain_delete_markers is properly set after index backfill.
-TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(RetainDeleteMarkers)) {
+TEST_F(PgIndexBackfillTest, RetainDeleteMarkers) {
   TestRetainDeleteMarkers(kDatabaseName);
 }
 
@@ -998,7 +998,7 @@ class PgIndexBackfillAlterSlowly : public PgIndexBackfillTest {
 // Test whether IsCreateTableDone works when creating an index with backfill enabled.  See issue
 // #6234.
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(IsCreateTableDone),
+          IsCreateTableDone,
           PgIndexBackfillAlterSlowly) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
   ASSERT_OK(conn_->ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName));
@@ -1027,7 +1027,7 @@ class PgIndexBackfillAuth : public PgIndexBackfillTest {
 
 // Test backfill on clusters where the yugabyte role has authentication enabled.
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(Auth),
+          Auth,
           PgIndexBackfillAuth) {
   LOG(INFO) << "create " << this->kAuthDbName << " database";
   ASSERT_OK(conn_->ExecuteFormat("CREATE DATABASE $0", this->kAuthDbName));
@@ -1064,7 +1064,7 @@ class PgIndexBackfillLocalTrust : public PgIndexBackfillTest {
 // Make sure backfill works when there exists user-defined HBA configuration with "local".
 // This is for issue (#7705).
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(LocalTrustSimple),
+          LocalTrustSimple,
           PgIndexBackfillLocalTrust) {
   TestSimpleBackfill();
 }
@@ -1080,7 +1080,7 @@ class PgIndexBackfillNoRetry : public PgIndexBackfillTest {
 };
 
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(DropNoRetry),
+          DropNoRetry,
           PgIndexBackfillNoRetry) {
   constexpr int kNumRows = 5;
 
@@ -1181,7 +1181,7 @@ class PgIndexBackfillSnapshotTooOld : public PgIndexBackfillBlockDoBackfill {
 // needed to update this committed history cutoff, and the retention period needs to be low enough
 // so that the cutoff is ahead of backfill's safe read time.  See issue #6333.
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(SnapshotTooOld),
+          SnapshotTooOld,
           PgIndexBackfillSnapshotTooOld) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   constexpr int kTimeoutSec = 3;
@@ -1252,7 +1252,7 @@ TEST_F_EX(PgIndexBackfillTest,
 // write and delete to the index because of permissions.  Since backfill writes with an ancient
 // timestamp, the update should appear to have happened after the backfill.
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(ReadTime),
+          ReadTime,
           PgIndexBackfillBlockDoBackfill) {
   ASSERT_OK(conn_->ExecuteFormat(
       "CREATE TABLE $0 (i int, j int, PRIMARY KEY (i ASC))", kTableName));
@@ -1412,7 +1412,7 @@ TEST_F_EX(PgIndexBackfillTest,
 // it should try to backfill this same row.  Rather than conflicting when we see the row already
 // exists in the index during backfill, check whether the rows match, and don't error if they do.
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(CreateUniqueIndexWithOnlineWrites),
+          CreateUniqueIndexWithOnlineWrites,
           PgIndexBackfillSlow) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
 
@@ -1476,7 +1476,7 @@ TEST_F_EX(PgIndexBackfillTest,
 //   - READ_WRITE_DELETE perm
 // This test is for issue #6208.
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(CreateUniqueIndexWriteAfterSafeTime),
+          CreateUniqueIndexWriteAfterSafeTime,
           PgIndexBackfillBlockIndisreadyAndDoBackfill) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int, j char, PRIMARY KEY (i))", kTableName));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 'a')", kTableName));
@@ -1567,7 +1567,7 @@ TEST_F_EX(PgIndexBackfillTest,
 // it.  If deletes to the index aren't retained, then this test will fail if compactions get rid of
 // the delete before the backfilled row gets written.
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(RetainDeletes),
+          RetainDeletes,
           PgIndexBackfillBlockDoBackfill) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int, j char, PRIMARY KEY (i))", kTableName));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 'a')", kTableName));
@@ -1616,7 +1616,7 @@ TEST_F_EX(PgIndexBackfillTest,
 }
 
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(IndexScanVisibility),
+          IndexScanVisibility,
           PgIndexBackfillBlockDoBackfill) {
   ExternalTabletServer* diff_ts = cluster_->tablet_server(1);
   // Make sure default tserver is 0.  At the time of writing, this is set in
@@ -1700,7 +1700,7 @@ class PgIndexBackfillClientDeadline : public PgIndexBackfillBlockDoBackfill {
 //     - get safe time for read
 //   - (timeout)
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(WaitBackfillTimeout),
+          WaitBackfillTimeout,
           PgIndexBackfillClientDeadline) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
   Status status = conn_->ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName);
@@ -1714,7 +1714,7 @@ TEST_F_EX(PgIndexBackfillTest,
 
 // Make sure that you can still drop an index that failed to fully create.
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(DropAfterFail),
+          DropAfterFail,
           PgIndexBackfillClientDeadline) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -1770,7 +1770,7 @@ class PgIndexBackfillFastClientTimeout : public PgIndexBackfillBlockDoBackfill {
 //     - get safe time for read
 //                                                DROP INDEX
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(DropWhileBackfilling),
+          DropWhileBackfilling,
           PgIndexBackfillFastClientTimeout) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
 
@@ -1821,7 +1821,7 @@ class PgIndexBackfillFastDefaultClientTimeout : public PgIndexBackfillTest {
 // BackfillIndex request from postgres should use the backfill_index_client_rpc_timeout_ms timeout
 // (default 60m) rather than the small yb_client_admin_operation_timeout_sec.
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(LowerDefaultClientTimeout),
+          LowerDefaultClientTimeout,
           PgIndexBackfillFastDefaultClientTimeout) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
   // This should not time out.
@@ -1846,7 +1846,7 @@ class PgIndexBackfillMultiMaster : public PgIndexBackfillFastClientTimeout {
 //                                                master leader stepdown
 // TODO(jason): update this test when handling master leader changes during backfill (issue #6218).
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(MasterLeaderStepdown),
+          MasterLeaderStepdown,
           PgIndexBackfillMultiMaster) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
 
@@ -1894,14 +1894,14 @@ class PgIndexBackfillColocated : public PgIndexBackfillTest {
 
 // Make sure that backfill works when colocation is on.
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(ColocatedSimple),
+          ColocatedSimple,
           PgIndexBackfillColocated) {
   TestSimpleBackfill();
 }
 
 // Make sure that backfill works when there are multiple colocated tables.
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(ColocatedMultipleTables),
+          ColocatedMultipleTables,
           PgIndexBackfillColocated) {
   // Create two tables with the index on the second table.
   const std::string kOtherTable = "yyy";
@@ -1922,14 +1922,14 @@ TEST_F_EX(PgIndexBackfillTest,
 
 // Test that retain_delete_markers is properly set after index backfill for a colocated table.
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(ColocatedRetainDeleteMarkers),
+          ColocatedRetainDeleteMarkers,
           PgIndexBackfillColocated) {
   TestRetainDeleteMarkers(kColoDbName);
 }
 
 // Verify in-progress CREATE INDEX command's entry in pg_stat_progress_create_index.
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(PgStatProgressCreateIndexPhase),
+          PgStatProgressCreateIndexPhase,
           PgIndexBackfillBlockIndisreadyAndDoBackfill) {
   constexpr int kNumRows = 10;
 
@@ -1953,7 +1953,7 @@ TEST_F_EX(PgIndexBackfillTest,
 // Verify in-progress CREATE INDEX command's entries are only partially visible to users that
 // do not have the appropriate role membership.
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(PgStatProgressCreateIndexPermissions),
+          PgStatProgressCreateIndexPermissions,
           PgIndexBackfillBlockDoBackfill) {
   constexpr int kNumRows = 10;
   constexpr auto kUserOne = "user1";
@@ -1996,7 +1996,7 @@ TEST_F_EX(PgIndexBackfillTest,
 // Verify in-progress CREATE INDEX command's entry in pg_stat_progress_create_index is only
 // visible to the local node.
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(PgStatProgressCreateIndexMultiNode),
+          PgStatProgressCreateIndexMultiNode,
           PgIndexBackfillBlockDoBackfill) {
   constexpr int kNumRows = 10;
 
@@ -2027,7 +2027,7 @@ TEST_F_EX(PgIndexBackfillTest,
 // pg_stat_progress_create_index is stable and returns the same values for multiple
 // calls within the same transaction.
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(PgStatProgressCreateIndexCheckVolatility),
+          PgStatProgressCreateIndexCheckVolatility,
           PgIndexBackfillBlockDoBackfill) {
   constexpr int kNumRows = 10;
 
@@ -2147,7 +2147,7 @@ TEST_F(PgIndexBackfillTest,
 // Verify in-progress CREATE INDEX command's entry in pg_stat_progress_create_index
 // for an index created in a different database.
 TEST_F_EX(PgIndexBackfillTest,
-          YB_DISABLE_TEST_IN_TSAN(PgStatProgressCreateIndexDifferentDatabase),
+          PgStatProgressCreateIndexDifferentDatabase,
           PgIndexBackfillBlockDoBackfill) {
   constexpr int kNumRows = 10;
   constexpr auto kTestDatabaseName = "test_db";

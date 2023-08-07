@@ -10,7 +10,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import static com.yugabyte.yw.commissioner.Common.CloudType.kubernetes;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.base.Strings;
@@ -18,22 +17,23 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
+import com.yugabyte.yw.common.CloudProviderHelper;
+import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ProviderEditRestrictionManager;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.controllers.handlers.AccessKeyHandler;
-import com.yugabyte.yw.controllers.handlers.AvailabilityZoneHandler;
-import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.controllers.handlers.ImageBundleHandler;
 import com.yugabyte.yw.controllers.handlers.RegionHandler;
-import com.yugabyte.yw.forms.RegionEditFormData;
 import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import io.swagger.annotations.ApiModel;
-import java.util.ArrayList;
+import java.time.Duration;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -48,25 +48,28 @@ import lombok.extern.slf4j.Slf4j;
 public class CloudProviderEdit extends CloudTaskBase {
 
   private RegionHandler regionHandler;
-  private AvailabilityZoneHandler availabilityZoneHandler;
-  private CloudProviderHandler cloudProviderHandler;
   private AccessKeyHandler accessKeyHandler;
+  private CloudProviderHelper cloudProviderHelper;
   private ImageBundleHandler imageBundleHandler;
+  private ProviderEditRestrictionManager providerEditRestrictionManager;
+  private ImageBundleUtil imageBundleUtil;
 
   @Inject
   protected CloudProviderEdit(
       BaseTaskDependencies baseTaskDependencies,
       RegionHandler regionHandler,
-      AvailabilityZoneHandler availabilityZoneHandler,
-      CloudProviderHandler cloudProviderHandler,
       AccessKeyHandler accessKeyHandler,
-      ImageBundleHandler imageBundleHandler) {
+      CloudProviderHelper cloudProviderHelper,
+      ImageBundleHandler imageBundleHandler,
+      ProviderEditRestrictionManager providerEditRestrictionManager,
+      ImageBundleUtil imageBundleUtil) {
     super(baseTaskDependencies);
     this.regionHandler = regionHandler;
-    this.availabilityZoneHandler = availabilityZoneHandler;
-    this.cloudProviderHandler = cloudProviderHandler;
     this.accessKeyHandler = accessKeyHandler;
+    this.cloudProviderHelper = cloudProviderHelper;
     this.imageBundleHandler = imageBundleHandler;
+    this.providerEditRestrictionManager = providerEditRestrictionManager;
+    this.imageBundleUtil = imageBundleUtil;
   }
 
   @ApiModel(value = "CloudProviderEditParams", description = "Parameters for editing provider")
@@ -86,7 +89,10 @@ public class CloudProviderEdit extends CloudTaskBase {
       Provider editProviderReq = taskParams().newProviderState;
       Provider provider = Provider.getOrBadRequest(taskParams().getProviderUUID());
       provider.setVersion(editProviderReq.getVersion());
-
+      if (providerEditRestrictionManager.isAllowAutoTasksBeforeEdit()
+          && !providerEditRestrictionManager.getTasksInUse(taskParams().providerUUID).isEmpty()) {
+        waitForAutoTasks();
+      }
       updateProviderData(provider, editProviderReq);
       updateAccessKeys(provider, editProviderReq);
       if (editProviderReq.getRegions() != null && !editProviderReq.getRegions().isEmpty()) {
@@ -97,6 +103,7 @@ public class CloudProviderEdit extends CloudTaskBase {
       provider = Provider.getOrBadRequest(taskParams().providerUUID);
       provider.setUsabilityState(Provider.UsabilityState.READY);
       provider.save();
+      cloudProviderHelper.updatePrometheusConfig(provider);
     } catch (RuntimeException e) {
       log.error("Received exception during edit", e);
       Provider p = Provider.getOrBadRequest(taskParams().providerUUID);
@@ -104,6 +111,23 @@ public class CloudProviderEdit extends CloudTaskBase {
       p.save();
       throw e;
     }
+  }
+
+  private void waitForAutoTasks() {
+    long timeout = getMaxWaitMs();
+    long waitTs = getWaitDurationMs();
+    Duration waitDuration = Duration.ofMillis(waitTs);
+    Collection<UUID> taskUUIDs = Collections.emptyList();
+    while (timeout > 0) {
+      taskUUIDs = providerEditRestrictionManager.getTasksInUse(taskParams().providerUUID);
+      if (taskUUIDs.isEmpty()) {
+        return;
+      }
+      waitFor(waitDuration);
+      timeout -= waitTs;
+    }
+    throw new RuntimeException(
+        "Reached timeout of " + getMaxWaitMs() + " ms while waiting for tasks: " + taskUUIDs);
   }
 
   private void updateRegionsAndZones(Provider provider, Provider editProviderReq) {
@@ -118,21 +142,18 @@ public class CloudProviderEdit extends CloudTaskBase {
         if (oldRegion.isUpdateNeeded(region)) {
           log.debug("Editing region {}", region.getCode());
           if (provider.getCloudCode() == Common.CloudType.kubernetes) {
-            cloudProviderHandler.bootstrapKubernetesProvider(
+            cloudProviderHelper.bootstrapKubernetesProvider(
                 provider, editProviderReq, Collections.singletonList(region), true);
           } else {
             regionHandler.editRegion(
-                provider.getCustomerUUID(),
-                provider.getUuid(),
-                oldRegion.getUuid(),
-                RegionEditFormData.fromRegion(region));
+                provider.getCustomerUUID(), provider.getUuid(), oldRegion.getUuid(), region);
           }
         } else if (!region.isActive() && oldRegion.isActive()) {
           log.debug("Deleting region {}", region.getCode());
           regionHandler.deleteRegion(
               provider.getCustomerUUID(), provider.getUuid(), region.getUuid());
         }
-        updateAZs(provider, editProviderReq, region, oldRegion);
+        cloudProviderHelper.updateAZs(provider, editProviderReq, region, oldRegion);
       }
     }
     if (regionsToAdd.size() > 0) {
@@ -143,7 +164,7 @@ public class CloudProviderEdit extends CloudTaskBase {
   public void addRegions(Provider provider, Provider editProviderReq, Set<Region> regionsToAdd) {
     log.debug("Adding regions {} to provider {}", regionsToAdd, provider.getName());
     if (provider.getCloudCode() == Common.CloudType.kubernetes) {
-      editKubernetesProvider(provider, editProviderReq, regionsToAdd);
+      cloudProviderHelper.editKubernetesProvider(provider, editProviderReq, regionsToAdd);
     } else {
       for (Region region : regionsToAdd) {
         CloudBootstrap.Params.PerRegionMetadata metadata =
@@ -172,64 +193,12 @@ public class CloudProviderEdit extends CloudTaskBase {
     }
   }
 
-  private boolean editKubernetesProvider(
-      Provider provider, Provider editProviderReq, Set<Region> regionsToAdd) {
-    if (regionsToAdd == null || regionsToAdd.size() == 0) {
-      return false;
-    }
-    List<Region> regions = new ArrayList<>(regionsToAdd);
-    cloudProviderHandler.bootstrapKubernetesProvider(provider, editProviderReq, regions, true);
-    return true;
-  }
-
   private String getDestVpcId(Provider provider) {
     if (provider.getCloudCode() == Common.CloudType.gcp) {
       GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
       return gcpCloudInfo.getDestVpcId();
     }
     return null;
-  }
-
-  private void updateAZs(
-      Provider provider, Provider editProviderReq, Region region, Region currentRegion) {
-    Map<String, AvailabilityZone> currentAZs =
-        AvailabilityZone.getAZsForRegion(currentRegion.getUuid(), false).stream()
-            .collect(Collectors.toMap(az -> az.getCode(), az -> az));
-    for (AvailabilityZone zone : region.getZones()) {
-      AvailabilityZone currentAZ = currentAZs.get(zone.getCode());
-      if (currentAZ == null || !currentAZ.isActive()) {
-        if (currentAZ != null) {
-          log.debug("Hard deleting zone {}", currentAZ);
-          currentAZ.delete();
-        }
-        log.debug("Creating zone {} in region {}", zone.getCode(), region.getCode());
-        if (provider.getCloudCode().equals(kubernetes)) {
-          cloudProviderHandler.bootstrapKubernetesProvider(
-              provider, editProviderReq, region, Collections.singletonList(zone), true);
-        } else {
-          AvailabilityZone.createOrThrow(
-              region, zone.getCode(), zone.getName(), zone.getSubnet(), zone.getSecondarySubnet());
-        }
-      } else if (!zone.isActive() && currentAZ.isActive()) {
-        log.debug("Deleting zone {} from region {}", currentAZ.getCode(), currentRegion.getCode());
-        availabilityZoneHandler.doDeleteZone(currentAZ.getUuid(), currentRegion.getUuid());
-      } else if (currentAZ.isUpdateNeeded(zone) && currentAZ.isActive()) {
-        log.debug("updating zone {}", zone.getCode());
-        if (provider.getCloudCode().equals(kubernetes)) {
-          cloudProviderHandler.bootstrapKubernetesProvider(
-              provider, editProviderReq, currentRegion, Collections.singletonList(zone), true);
-        } else {
-          availabilityZoneHandler.doEditZone(
-              currentAZ.getUuid(),
-              currentRegion.getUuid(),
-              az -> {
-                az.setAvailabilityZoneDetails(zone.getAvailabilityZoneDetails());
-                az.setSecondarySubnet(zone.getSecondarySubnet());
-                az.setSubnet(zone.getSubnet());
-              });
-        }
-      }
-    }
   }
 
   private boolean updateProviderData(Provider provider, Provider editProviderReq) {
@@ -255,9 +224,9 @@ public class CloudProviderEdit extends CloudTaskBase {
     if (!provider.getDetails().getCloudInfo().equals(editProviderReq.getDetails().getCloudInfo())) {
       provider.getDetails().setCloudInfo(editProviderReq.getDetails().getCloudInfo());
       if (provider.getCloudCode().equals(Common.CloudType.kubernetes)) {
-        cloudProviderHandler.updateKubeConfig(provider, providerConfig, true);
+        cloudProviderHelper.updateKubeConfig(provider, providerConfig, true);
       } else {
-        cloudProviderHandler.maybeUpdateCloudProviderConfig(provider, providerConfig);
+        cloudProviderHelper.maybeUpdateCloudProviderConfig(provider, providerConfig);
       }
       updated = true;
     }
@@ -312,6 +281,7 @@ public class CloudProviderEdit extends CloudTaskBase {
 
     Map<UUID, ImageBundle> existingImageBundles =
         provider.getImageBundles().stream().collect(Collectors.toMap(iB -> iB.getUuid(), iB -> iB));
+    List<Region> regions = editProviderReq.getRegions();
     for (ImageBundle bundle : editProviderReq.getImageBundles()) {
       if (bundle.getUuid() == null) {
         // Create a new imageBundle.
@@ -321,6 +291,7 @@ public class CloudProviderEdit extends CloudTaskBase {
         if (bundle.isUpdateNeeded(existingBundle)) {
           imageBundleHandler.doEdit(provider, bundle.getUuid(), bundle);
         }
+        imageBundleUtil.updateImageBundleIfRequired(provider, regions, bundle);
         existingImageBundles.remove(bundle.getUuid());
       }
     }
@@ -330,5 +301,13 @@ public class CloudProviderEdit extends CloudTaskBase {
         (uuid, bundle) -> {
           imageBundleHandler.doDelete(provider.getUuid(), bundle.getUuid());
         });
+  }
+
+  private long getWaitDurationMs() {
+    return confGetter.getGlobalConf(GlobalConfKeys.waitForProviderTasksStepMs);
+  }
+
+  private long getMaxWaitMs() {
+    return confGetter.getGlobalConf(GlobalConfKeys.waitForProviderTasksTimeoutMs);
   }
 }

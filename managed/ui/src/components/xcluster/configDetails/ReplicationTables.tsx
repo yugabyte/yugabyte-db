@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useDispatch, useSelector } from 'react-redux';
@@ -23,7 +23,7 @@ import DeleteReplicactionTableModal from './DeleteReplicactionTableModal';
 import { ReplicationLagGraphModal } from './ReplicationLagGraphModal';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import ellipsisIcon from '../../common/media/more.svg';
-import { api, universeQueryKey } from '../../../redesign/helpers/api';
+import { api, universeQueryKey, xClusterQueryKey } from '../../../redesign/helpers/api';
 import { XClusterModalName, XClusterTableStatus } from '../constants';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { XClusterTableStatusLabel } from '../XClusterTableStatusLabel';
@@ -62,8 +62,9 @@ export function ReplicationTables({ xClusterConfig }: props) {
       }).then((respone) => respone.data)
   );
 
-  const sourceUniverseQuery = useQuery(['universe', xClusterConfig.sourceUniverseUUID], () =>
-    api.fetchUniverse(xClusterConfig.sourceUniverseUUID)
+  const sourceUniverseQuery = useQuery(
+    universeQueryKey.detail(xClusterConfig.sourceUniverseUUID),
+    () => api.fetchUniverse(xClusterConfig.sourceUniverseUUID)
   );
 
   const removeTableFromXCluster = useMutation(
@@ -71,10 +72,10 @@ export function ReplicationTables({ xClusterConfig }: props) {
       return editXClusterConfigTables(replication.uuid, replication.tables);
     },
     {
-      onSuccess: (resp, replication) => {
+      onSuccess: (resp, xClusterConfig) => {
         fetchTaskUntilItCompletes(resp.data.taskUUID, (err: boolean) => {
           if (!err) {
-            queryClient.invalidateQueries(['Xcluster', replication.uuid]);
+            queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
             dispatch(closeDialog());
             toast.success(`"${deleteTableDetails?.tableName}" table removed successfully`);
           } else {

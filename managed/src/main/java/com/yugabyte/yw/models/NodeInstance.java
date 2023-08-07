@@ -19,6 +19,7 @@ import io.ebean.RawSqlBuilder;
 import io.ebean.SqlUpdate;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -143,10 +144,26 @@ public class NodeInstance extends Model {
 
   public static List<NodeInstance> listByProvider(UUID providerUUID) {
     String nodeQuery =
-        "select DISTINCT n.*   from node_instance n, availability_zone az, region r, provider p "
+        "select DISTINCT n.* from node_instance n, availability_zone az, region r, provider p "
             + " where n.zone_uuid = az.uuid and az.region_uuid = r.uuid and r.provider_uuid = "
             + "'"
             + providerUUID
+            + "'";
+    RawSql rawSql =
+        RawSqlBuilder.unparsed(nodeQuery).columnMapping("node_uuid", "nodeUuid").create();
+    Query<NodeInstance> query = DB.find(NodeInstance.class);
+    query.setRawSql(rawSql);
+    List<NodeInstance> list = query.findList();
+    return list;
+  }
+
+  public static List<NodeInstance> listByCustomer(UUID customerUUID) {
+    String nodeQuery =
+        "select DISTINCT n.*"
+            + " from node_instance n, availability_zone az, region r, provider p, customer c"
+            + " where n.zone_uuid = az.uuid and az.region_uuid = r.uuid and"
+            + " r.provider_uuid = p.uuid and c.uuid = '"
+            + customerUUID
             + "'";
     RawSql rawSql =
         RawSqlBuilder.unparsed(nodeQuery).columnMapping("node_uuid", "nodeUuid").create();
@@ -262,6 +279,13 @@ public class NodeInstance extends Model {
       throw new RuntimeException("Expecting to find a single node with name: " + name);
     }
     return Optional.of(nodes.get(0));
+  }
+
+  public static List<NodeInstance> listByUuids(Collection<UUID> nodeUuids) {
+    if (CollectionUtils.isEmpty(nodeUuids)) {
+      return Collections.emptyList();
+    }
+    return NodeInstance.find.query().where().in("nodeUuid", nodeUuids).findList();
   }
 
   public static List<NodeInstance> getAll() {

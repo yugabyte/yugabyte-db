@@ -33,7 +33,7 @@ namespace rocksdb {
 
 namespace {
 
-class TwoLevelIterator : public InternalIterator {
+class TwoLevelIterator final : public InternalIterator {
  public:
   explicit TwoLevelIterator(TwoLevelIteratorState* state,
                             InternalIterator* first_level_iter,
@@ -49,21 +49,14 @@ class TwoLevelIterator : public InternalIterator {
     }
   }
 
-  void Seek(const Slice& target) override;
-  void SeekToFirst() override;
-  void SeekToLast() override;
-  void Next() override;
-  void Prev() override;
+  const KeyValueEntry& Seek(Slice target) override;
+  const KeyValueEntry& SeekToFirst() override;
+  const KeyValueEntry& SeekToLast() override;
+  const KeyValueEntry& Next() override;
+  const KeyValueEntry& Prev() override;
 
-  bool Valid() const override { return second_level_iter_.Valid(); }
-  Slice key() const override {
-    assert(Valid());
-    return second_level_iter_.key();
-  }
-  Slice value() const override {
-    assert(Valid());
-    return second_level_iter_.value();
-  }
+  const KeyValueEntry& Entry() const override { return second_level_iter_.Entry(); }
+
   Status status() const override {
     // It'd be nice if status() returned a const Status& instead of a Status
     if (!first_level_iter_.status().ok()) {
@@ -75,6 +68,7 @@ class TwoLevelIterator : public InternalIterator {
       return status_;
     }
   }
+
   Status PinData() override { return second_level_iter_.PinData(); }
   Status ReleasePinnedData() override {
     return second_level_iter_.ReleasePinnedData();
@@ -112,11 +106,11 @@ TwoLevelIterator::TwoLevelIterator(TwoLevelIteratorState* state,
       first_level_iter_(first_level_iter),
       need_free_iter_and_state_(need_free_iter_and_state) {}
 
-void TwoLevelIterator::Seek(const Slice& target) {
+const KeyValueEntry& TwoLevelIterator::Seek(Slice target) {
   if (state_->check_prefix_may_match &&
       !state_->PrefixMayMatch(target)) {
     SetSecondLevelIterator(nullptr);
-    return;
+    return Entry();
   }
   first_level_iter_.Seek(target);
 
@@ -125,36 +119,41 @@ void TwoLevelIterator::Seek(const Slice& target) {
     second_level_iter_.Seek(target);
   }
   SkipEmptyDataBlocksForward();
+  return Entry();
 }
 
-void TwoLevelIterator::SeekToFirst() {
+const KeyValueEntry& TwoLevelIterator::SeekToFirst() {
   first_level_iter_.SeekToFirst();
   InitDataBlock();
   if (second_level_iter_.iter() != nullptr) {
     second_level_iter_.SeekToFirst();
   }
   SkipEmptyDataBlocksForward();
+  return Entry();
 }
 
-void TwoLevelIterator::SeekToLast() {
+const KeyValueEntry& TwoLevelIterator::SeekToLast() {
   first_level_iter_.SeekToLast();
   InitDataBlock();
   if (second_level_iter_.iter() != nullptr) {
     second_level_iter_.SeekToLast();
   }
   SkipEmptyDataBlocksBackward();
+  return Entry();
 }
 
-void TwoLevelIterator::Next() {
+const KeyValueEntry& TwoLevelIterator::Next() {
   assert(Valid());
   second_level_iter_.Next();
   SkipEmptyDataBlocksForward();
+  return Entry();
 }
 
-void TwoLevelIterator::Prev() {
+const KeyValueEntry& TwoLevelIterator::Prev() {
   assert(Valid());
   second_level_iter_.Prev();
   SkipEmptyDataBlocksBackward();
+  return Entry();
 }
 
 ScanForwardResult TwoLevelIterator::ScanForward(

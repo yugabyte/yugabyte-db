@@ -13,8 +13,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterUserIntent;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
@@ -261,6 +261,9 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       Set<ServerType> processTypes = typesByNode.get(node);
       List<NodeDetails> singletonNodeList = Collections.singletonList(node);
       createSetNodeStateTask(node, nodeState).setSubTaskGroupType(subGroupType);
+
+      createNodePrecheckTasks(node, processTypes, subGroupType);
+
       // Run pre node upgrade hooks
       createHookTriggerTasks(singletonNodeList, true, true);
       if (context.runBeforeStopping) {
@@ -292,10 +295,15 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
           if (processType == ServerType.MASTER && context.reconfigureMaster) {
             // Add stopped master to the quorum.
-            createChangeConfigTask(node, true /* isAdd */, subGroupType);
+            createChangeConfigTasks(node, true /* isAdd */, subGroupType);
           }
           createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
               .setSubTaskGroupType(subGroupType);
+          // If there are no universe keys on the universe, it will have no effect.
+          if (processType == ServerType.MASTER
+              && EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
+            createSetActiveUniverseKeysTask().setSubTaskGroupType(subGroupType);
+          }
         }
         createWaitForKeyInMemoryTask(node).setSubTaskGroupType(subGroupType);
         // remove leader blacklist
@@ -418,6 +426,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         createWaitForYbcServerTask(new HashSet<NodeDetails>(nodes))
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
+      // If there are no universe keys on the universe, it will have no effect.
+      if (EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
+        createSetActiveUniverseKeysTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
     }
     if (context.postAction != null) {
       nodes.forEach(context.postAction);
@@ -508,41 +520,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
-  }
-
-  protected void createServerConfFileUpdateTasks(
-      UserIntent userIntent,
-      List<NodeDetails> nodes,
-      Set<ServerType> processTypes,
-      Map<String, String> masterGflags,
-      Map<String, String> tserverGflags) {
-    // If the node list is empty, we don't need to do anything.
-    if (nodes.isEmpty()) {
-      return;
-    }
-    String subGroupDescription =
-        String.format(
-            "AnsibleConfigureServers (%s) for: %s",
-            SubTaskGroupType.UpdatingGFlags, taskParams().nodePrefix);
-    SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
-    for (NodeDetails node : nodes) {
-      ServerType processType = getSingle(processTypes);
-      Map<String, String> oldGflags;
-      Map<String, String> newGflags;
-      if (processType == ServerType.MASTER) {
-        newGflags = masterGflags;
-        oldGflags = getUserIntent().masterGFlags;
-      } else if (processType == ServerType.TSERVER) {
-        newGflags = tserverGflags;
-        oldGflags = getUserIntent().tserverGFlags;
-      } else {
-        throw new IllegalStateException("Unknown process type for updating gflags " + processType);
-      }
-      subTaskGroup.addSubTask(
-          getAnsibleConfigureServerTask(userIntent, node, processType, oldGflags, newGflags));
-    }
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   protected AnsibleConfigureServers getAnsibleConfigureServerTask(

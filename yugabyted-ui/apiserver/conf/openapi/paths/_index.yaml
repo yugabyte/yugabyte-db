@@ -1,3 +1,45 @@
+'/cluster':
+  get:
+    summary: Get a cluster
+    description: Get a Yugabyte Cluster
+    operationId: getCluster
+    tags:
+      - cluster
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ClusterResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+  delete:
+    summary: Submit task to delete a cluster
+    description: Submit task to delete a Yugabyte Cluster
+    tags:
+      - cluster
+    responses:
+      '200':
+        description: Successfully submitted delete cluster request
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+    operationId: deleteCluster
+  put:
+    summary: Submit task to edit a cluster
+    description: Submit task to edit a Yugabyte Cluster
+    operationId: editCluster
+    tags:
+      - cluster
+    requestBody:
+      $ref: '../request_bodies/_index.yaml#/ClusterSpec'
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ClusterResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
 '/live_queries':
   get:
     summary: Get the live queries in a cluster
@@ -76,6 +118,14 @@
       explode: false
       schema:
         type: string
+    - name: zone
+      in: query
+      description: Zone to filter for the given cluster
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: string
     - name: start_time
       in: query
       description: Start of range of time series data (in epoch seconds)
@@ -96,6 +146,14 @@
         type: integer
         format: int64
         minimum: 0
+    - name: cluster_type
+      in: query
+      description: Cluster type (primary or read replica)
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: string
   get:
     summary: Get a metric for a cluster
     description: Get metrics for a Yugabyte cluster
@@ -105,6 +163,45 @@
     responses:
       '200':
         $ref: '../responses/_index.yaml#/MetricResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/activities':
+  parameters:
+    - name: activities
+      in: query
+      description: Which activities data to retrieve
+      required: true
+      style: form
+      explode: false
+      schema:
+        type: string
+    - name: status
+      in: query
+      description: Completed or In-Progress
+      required: true
+      style: form
+      explode: false
+      schema:
+        type: string
+    - name: database
+      in: query
+      description: Which database's activities data is to be retrived.
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: string
+  get:
+    summary: Get a activities data for a cluster
+    description: Get activities data for a Yugabyte cluster
+    operationId: getClusterActivities
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ActivityResponse'
       '400':
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
@@ -129,6 +226,37 @@
     responses:
       '200':
         $ref: '../responses/_index.yaml#/ClusterTableListResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/table:
+  get:
+    description: Get info on a single table, given table uuid
+    operationId: getTableInfo
+    summary: Get info on a single table, given table uuid
+    tags:
+      - cluster-info
+    parameters:
+      - name: id
+        in: query
+        description: UUID of the table
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+      - name: node_address
+        in: query
+        description: Specify the node ip-address from where the table info is retrieved
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/TableInfoResponse'
       '400':
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
@@ -200,44 +328,39 @@
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
         $ref: '../responses/_index.yaml#/ApiError'
-'/cluster':
+/gflags:
   get:
-    summary: Get a cluster
-    description: Get a Yugabyte Cluster
-    operationId: getCluster
+    summary: Get gflags of master and tserver process
+    description: Retrieve gflags of master and tserver process
+    operationId: getGflags
     tags:
-      - cluster
+      - cluster-info
+    parameters:
+      - name: node_address
+        in: query
+        description: Specify the node ip-address from where gflags are retrieved
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
     responses:
       '200':
-        $ref: '../responses/_index.yaml#/ClusterResponse'
+        $ref: '../responses/_index.yaml#/GflagsResponse'
       '400':
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
         $ref: '../responses/_index.yaml#/ApiError'
-  delete:
-    summary: Submit task to delete a cluster
-    description: Submit task to delete a Yugabyte Cluster
+/alerts:
+  get:
+    summary: Get any alerts for the cluster
+    description: Get any alerts for the cluster
+    operationId: getClusterAlerts
     tags:
-      - cluster
+      - cluster-info
     responses:
       '200':
-        description: Successfully submitted delete cluster request
-      '400':
-        $ref: '../responses/_index.yaml#/ApiError'
-      '500':
-        $ref: '../responses/_index.yaml#/ApiError'
-    operationId: deleteCluster
-  put:
-    summary: Submit task to edit a cluster
-    description: Submit task to edit a Yugabyte Cluster
-    operationId: editCluster
-    tags:
-      - cluster
-    requestBody:
-      $ref: '../request_bodies/_index.yaml#/ClusterSpec'
-    responses:
-      '200':
-        $ref: '../responses/_index.yaml#/ClusterResponse'
+        $ref: '../responses/_index.yaml#/AlertsResponse'
       '400':
         $ref: '../responses/_index.yaml#/ApiError'
       '500':

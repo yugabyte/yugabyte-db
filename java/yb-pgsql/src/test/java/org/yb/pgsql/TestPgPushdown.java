@@ -1352,18 +1352,29 @@ public class TestPgPushdown extends BasePgSQLTest {
 
   /** Ensure pushing down aggregate functions with constant argument. */
   @Test
-  public void aggregates_const() throws Exception {
-    String tableName = "aggregate";
-    int numRows = 5000;
+  public void aggregatesConst() throws Exception {
+    new AggregatePushdownTester("COUNT(*)").test();
+    new AggregatePushdownTester("COUNT(0)").test();
+    new AggregatePushdownTester("COUNT(NULL)").test();
 
-    new AggregatePushdownTester(tableName, numRows, "COUNT(*)").test();
-    new AggregatePushdownTester(tableName, numRows, "COUNT(0)").test();
-    new AggregatePushdownTester(tableName, numRows, "COUNT(NULL)").test();
-
-    new AggregatePushdownTester(tableName, numRows, "SUM(2)").test();
-    new AggregatePushdownTester(tableName, numRows, "SUM(NULL::int)").test();
+    new AggregatePushdownTester("SUM(2)").test();
+    new AggregatePushdownTester("SUM(NULL::int)").test();
 
     // Postgres optimizes MAX(<const>) or MIN(<const>) so it isn't a real pushdown.
+
+    new AggregatePushdownTester("AVG(1)").test();
+    // TODO(#18002): uncomment the following when avg(null) is pushed down.
+    /*new AggregatePushdownTester("AVG(NULL::int)").test();*/
+  }
+
+  /** Ensure pushing down aggregate functions with variables (columns). */
+  @Test
+  public void aggregatesVar() throws Exception {
+    for (String agg : Arrays.asList("COUNT", "SUM", "MAX", "MIN", "AVG")) {
+      for (String column : Arrays.asList("id", "v")) {
+        new AggregatePushdownTester(String.format("%s(%s)", agg, column)).test();
+      }
+    }
   }
 
   //
@@ -1697,13 +1708,12 @@ public class TestPgPushdown extends BasePgSQLTest {
    * Uses a {@code (id int PRIMARY KEY, v int)} table
    */
   private class AggregatePushdownTester {
-    private final String tableName;
-    private final int numRowsToInsert;
+    private final String tableName = "aggregate";
+    private final String indexName = "aggregate_index";
+    private final int numRowsToInsert = 5000;
     private final String optimizedExpr;
 
-    public AggregatePushdownTester(String tableName, int numRowsToInsert, String optimizedExpr) {
-      this.tableName = tableName;
-      this.numRowsToInsert = numRowsToInsert;
+    public AggregatePushdownTester(String optimizedExpr) {
       this.optimizedExpr = optimizedExpr;
     }
 
@@ -1713,17 +1723,22 @@ public class TestPgPushdown extends BasePgSQLTest {
             "CREATE TABLE %s (id int PRIMARY KEY, v int)",
             tableName));
         stmt.executeUpdate(String.format(
+            "CREATE INDEX %s ON %s (v, id)",
+            indexName, tableName));
+        stmt.executeUpdate(String.format(
             "INSERT INTO %s ("
                 + "SELECT generate_series, generate_series + 1 FROM generate_series(1, %s)"
                 + ");",
             tableName, numRowsToInsert));
-        verifyPushdown(stmt);
+        verifyPushdown(stmt, "" /* hint */);
+        verifyPushdown(stmt, String.format("/*+SeqScan(%s)*/", tableName));
+        verifyPushdown(stmt, String.format("/*+IndexOnlyScan(%s %s)*/", tableName, indexName));
         stmt.executeUpdate(String.format("DROP TABLE %s", tableName));
       }
     }
 
-    private void verifyPushdown(Statement stmt) throws Exception {
-      String query = String.format("SELECT %s FROM %s", optimizedExpr, tableName);
+    private void verifyPushdown(Statement stmt, String hint) throws Exception {
+      String query = String.format("%s SELECT %s FROM %s", hint, optimizedExpr, tableName);
       verifyStatementMetric(
           stmt,
           query,

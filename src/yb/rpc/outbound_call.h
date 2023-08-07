@@ -178,8 +178,7 @@ class CallResponse {
   size_t TransferSidecars(Sidecars* dest);
 
   size_t DynamicMemoryUsage() const {
-    return DynamicMemoryUsageOf(header_, response_data_) +
-           GetFlatDynamicMemoryUsageOf(sidecar_bounds_);
+    return DynamicMemoryUsageOf(header_, response_data_, sidecars_);
   }
 
  private:
@@ -193,13 +192,11 @@ class CallResponse {
   // This slice refers to memory allocated by transfer_
   Slice serialized_response_;
 
-  // Slices of data for rpc sidecars. They point into memory owned by transfer_.
-  // Number of sidecars chould be obtained from header_.
-  boost::container::small_vector<const uint8_t*, kMinBufferForSidecarSlices> sidecar_bounds_;
-
   // The incoming transfer data - retained because serialized_response_
   // and sidecar_slices_ refer into its data.
   CallData response_data_;
+
+  ReceivedSidecars sidecars_;
 
   DISALLOW_COPY_AND_ASSIGN(CallResponse);
 };
@@ -247,7 +244,7 @@ class OutboundCall : public RpcCall {
   // Because the data is fully serialized by this call, 'req' may be
   // subsequently mutated with no ill effects.
   virtual Status SetRequestParam(
-      AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker);
+      AnyMessageConstPtr req, std::unique_ptr<Sidecars> sidecars, const MemTrackerPtr& mem_tracker);
 
   // Serialize the call for the wire. Requires that SetRequestParam()
   // is called first. This is called from the Reactor thread.
@@ -425,6 +422,7 @@ class OutboundCall : public RpcCall {
   // This buffer is written to by the client thread before the call is queued, and read by the
   // reactor thread, so no synchronization is needed.
   RefCntBuffer buffer_;
+  std::unique_ptr<Sidecars> sidecars_;
 
   // Consumption of buffer_. Same synchronization rules as buffer_.
   ScopedTrackedConsumption buffer_consumption_;

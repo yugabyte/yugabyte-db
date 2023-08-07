@@ -86,6 +86,7 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
   struct UsedReadTime {
     simple_spinlock lock;
     ReadHybridTime value;
+    TabletId tablet_id;
   };
 
   struct SessionData {
@@ -107,6 +108,8 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
   Status Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context);
 
   std::shared_ptr<CountDownLatch> ProcessSharedRequest(size_t size, SharedExchange* exchange);
+
+  const TransactionId* GetTransactionId() const;
 
   #define PG_CLIENT_SESSION_METHOD_DECLARE(r, data, method) \
   Status method( \
@@ -131,12 +134,25 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
   Status ProcessResponse(
       const PgClientSessionOperations& operations, const PgPerformRequestPB& req,
       PgPerformResponsePB* resp, rpc::RpcContext* context);
-  void ProcessReadTimeManipulation(ReadTimeManipulation manipulation);
+  Result<PgClientSession::UsedReadTimePtr> ProcessReadTimeManipulation(
+      ReadTimeManipulation manipulation);
 
   client::YBClient& client();
   client::YBSessionPtr& EnsureSession(PgClientSessionKind kind);
   client::YBSessionPtr& Session(PgClientSessionKind kind);
-  client::YBTransactionPtr& Transaction(PgClientSessionKind kind);
+  template <class T>
+  static auto& DoTransaction(T* that, PgClientSessionKind kind) {
+    return that->sessions_[to_underlying(kind)].transaction;
+  }
+
+  client::YBTransactionPtr& Transaction(PgClientSessionKind kind) {
+    return DoTransaction(this, kind);
+  }
+
+  const client::YBTransactionPtr& Transaction(PgClientSessionKind kind) const {
+    return DoTransaction(this, kind);
+  }
+
   Status CheckPlainSessionReadTime();
 
   // Set the read point to the databases xCluster safe time if consistent reads are enabled
@@ -170,6 +186,13 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
 
   template <class DataPtr>
   Status DoPerform(const DataPtr& data, CoarseTimePoint deadline, rpc::RpcContext* context);
+
+  // Resets the session's current read point.
+  //
+  // For kPlain sessions, also reset the plain session used read time since the tserver will pick a
+  // read time and send back as "used read time" in the response for use by future rpcs of the
+  // session.
+  Result<PgClientSession::UsedReadTimePtr> ResetReadPoint(PgClientSessionKind kind);
 
   const uint64_t id_;
   client::YBClient& client_;

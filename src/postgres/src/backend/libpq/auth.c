@@ -57,6 +57,9 @@ static void sendAuthRequest(Port *port, AuthRequest areq, const char *extradata,
 static void auth_failed(Port *port, int status, char *logdetail, bool lockout);
 static char *recv_password_packet(Port *port);
 
+static int YbAuthFailedErrorLevel(const bool auth_passthrough) {
+	return (YbIsClientYsqlConnMgr() && auth_passthrough == true) ? ERROR : FATAL;
+}
 
 /*----------------------------------------------------------------
  * Password-based authentication methods (password, md5, and scram-sha-256)
@@ -350,7 +353,7 @@ auth_failed(Port *port, int status, char *logdetail, bool yb_role_is_locked_out)
 	else
 		logdetail = cdetail;
 
-	ereport(FATAL,
+	ereport(YbAuthFailedErrorLevel(port->yb_is_auth_passthrough_req),
 			(errcode(errcode_return),
 			 (yb_role_is_locked_out ? errmsg("role \"%s\" is locked. Contact"
 											 " your database administrator.",
@@ -372,6 +375,8 @@ ClientAuthentication(Port *port)
 	int			status = STATUS_ERROR;
 	char	   *logdetail = NULL;
 
+	bool 		auth_passthrough = port->yb_is_auth_passthrough_req;
+
 	/*
 	 * Get the authentication method to use for this frontend/database
 	 * combination.  Note: we do not parse the file at this point; this has
@@ -389,11 +394,24 @@ ClientAuthentication(Port *port)
 	 */
 	if (port->hba->clientcert)
 	{
+		if (YbIsClientYsqlConnMgr() && auth_passthrough == true)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
+					 errmsg("Cert authentication is not supported")));
+			return;
+		}
+
+
 		/* If we haven't loaded a root certificate store, fail */
 		if (!secure_loaded_verify_locations())
-			ereport(FATAL,
+		{
+			ereport(YbAuthFailedErrorLevel(auth_passthrough),
 					(errcode(ERRCODE_CONFIG_FILE_ERROR),
 					 errmsg("client certificates can only be checked if a root certificate store is available")));
+			return;
+		}
+
 
 		/*
 		 * If we loaded a root certificate store, and if a certificate is
@@ -402,9 +420,12 @@ ClientAuthentication(Port *port)
 		 * already if it didn't verify ok.
 		 */
 		if (!port->peer_cert_valid)
-			ereport(FATAL,
+		{
+			ereport(YbAuthFailedErrorLevel(auth_passthrough),
 					(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 					 errmsg("connection requires a valid client certificate")));
+			return;
+		}
 	}
 
 	/*
@@ -435,33 +456,37 @@ ClientAuthentication(Port *port)
 				if (am_walsender)
 				{
 #ifdef USE_SSL
-					ereport(FATAL,
+					ereport(YbAuthFailedErrorLevel(auth_passthrough),
 							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 							 errmsg("pg_hba.conf rejects replication connection for host \"%s\", user \"%s\", %s",
 									hostinfo, port->user_name,
 									port->ssl_in_use ? _("SSL on") : _("SSL off"))));
+					return;
 #else
-					ereport(FATAL,
+					ereport(YbAuthFailedErrorLevel(auth_passthrough),
 							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 							 errmsg("pg_hba.conf rejects replication connection for host \"%s\", user \"%s\"",
 									hostinfo, port->user_name)));
+					return;
 #endif
 				}
 				else
 				{
 #ifdef USE_SSL
-					ereport(FATAL,
+					ereport(YbAuthFailedErrorLevel(auth_passthrough),
 							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 							 errmsg("pg_hba.conf rejects connection for host \"%s\", user \"%s\", database \"%s\", %s",
 									hostinfo, port->user_name,
 									port->database_name,
 									port->ssl_in_use ? _("SSL on") : _("SSL off"))));
+					return;
 #else
-					ereport(FATAL,
+					ereport(YbAuthFailedErrorLevel(auth_passthrough),
 							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 							 errmsg("pg_hba.conf rejects connection for host \"%s\", user \"%s\", database \"%s\"",
 									hostinfo, port->user_name,
 									port->database_name)));
+					return;
 #endif
 				}
 				break;
@@ -509,37 +534,41 @@ ClientAuthentication(Port *port)
 				if (am_walsender)
 				{
 #ifdef USE_SSL
-					ereport(FATAL,
+					ereport(YbAuthFailedErrorLevel(auth_passthrough),
 							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 							 errmsg("no pg_hba.conf entry for replication connection from host \"%s\", user \"%s\", %s",
 									hostinfo, port->user_name,
 									port->ssl_in_use ? _("SSL on") : _("SSL off")),
 							 HOSTNAME_LOOKUP_DETAIL(port)));
+					return;
 #else
-					ereport(FATAL,
+					ereport(YbAuthFailedErrorLevel(auth_passthrough),
 							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 							 errmsg("no pg_hba.conf entry for replication connection from host \"%s\", user \"%s\"",
 									hostinfo, port->user_name),
 							 HOSTNAME_LOOKUP_DETAIL(port)));
+					return;
 #endif
 				}
 				else
 				{
 #ifdef USE_SSL
-					ereport(FATAL,
+					ereport(YbAuthFailedErrorLevel(auth_passthrough),
 							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 							 errmsg("no pg_hba.conf entry for host \"%s\", user \"%s\", database \"%s\", %s",
 									hostinfo, port->user_name,
 									port->database_name,
 									port->ssl_in_use ? _("SSL on") : _("SSL off")),
 							 HOSTNAME_LOOKUP_DETAIL(port)));
+					return;
 #else
-					ereport(FATAL,
+					ereport(YbAuthFailedErrorLevel(auth_passthrough),
 							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
 							 errmsg("no pg_hba.conf entry for host \"%s\", user \"%s\", database \"%s\"",
 									hostinfo, port->user_name,
 									port->database_name),
 							 HOSTNAME_LOOKUP_DETAIL(port)));
+					return;
 #endif
 				}
 				break;
@@ -756,7 +785,7 @@ recv_password_packet(Port *port)
 	}
 
 	initStringInfo(&buf);
-	if (pq_getmessage(&buf, 1000))	/* receive password */
+	if (pq_getmessage(&buf, 0)) /* receive password */
 	{
 		/* EOF - pq_getmessage already logged a suitable message */
 		pfree(buf.data);

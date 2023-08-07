@@ -19,6 +19,8 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudSetup;
+import com.yugabyte.yw.common.CloudProviderHelper;
+import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.ImageBundle;
@@ -40,9 +42,18 @@ import play.libs.Json;
 
 @Slf4j
 public class CloudBootstrap extends CloudTaskBase {
+
+  private CloudProviderHandler cloudProviderHandler;
+  private CloudProviderHelper cloudProviderHelper;
+
   @Inject
-  protected CloudBootstrap(BaseTaskDependencies baseTaskDependencies) {
+  protected CloudBootstrap(
+      BaseTaskDependencies baseTaskDependencies,
+      CloudProviderHandler cloudProviderHandler,
+      CloudProviderHelper cloudProviderHelper) {
     super(baseTaskDependencies);
+    this.cloudProviderHandler = cloudProviderHandler;
+    this.cloudProviderHelper = cloudProviderHelper;
   }
 
   @ApiModel(value = "CloudBootstrapParams", description = "Cloud bootstrap parameters")
@@ -53,6 +64,10 @@ public class CloudBootstrap extends CloudTaskBase {
 
     public static Params fromProvider(Provider provider, Provider reqProvider) {
       Params taskParams = new Params();
+      if (provider.getCloudCode() == CloudType.kubernetes) {
+        return taskParams;
+      }
+
       List<Region> regions = reqProvider.getRegions();
       // This is the case of initial provider creation.
       // If user provides his own access keys, we should take the first one in the list.
@@ -252,6 +267,9 @@ public class CloudBootstrap extends CloudTaskBase {
     // used for skipping the key validation & upload for AWS provider.
     // See, AccessKey.KeyInfo for detailed summary on usage.
     public boolean skipKeyValidateAndUpload = false;
+
+    // K8s provider specific params.
+    public Provider reqProviderEbean;
   }
 
   @Override
@@ -266,36 +284,43 @@ public class CloudBootstrap extends CloudTaskBase {
     p.save();
     Common.CloudType cloudType = Common.CloudType.valueOf(p.getCode());
     try {
-      if (cloudType.isRequiresBootstrap() && cloudType != CloudType.onprem) {
-        createCloudSetupTask()
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
-      }
-      taskParams()
-          .perRegionMetadata
-          .forEach(
-              (regionCode, metadata) -> {
-                createRegionSetupTask(regionCode, metadata, taskParams().destVpcId)
-                    .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingRegion);
-              });
-      taskParams()
-          .perRegionMetadata
-          .forEach(
-              (regionCode, metadata) -> {
-                createAccessKeySetupTask(taskParams(), regionCode)
-                    .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreateAccessKey);
-              });
+      if (cloudType != CloudType.kubernetes) {
+        if (cloudType.isRequiresBootstrap() && cloudType != CloudType.onprem) {
+          createCloudSetupTask()
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
+        }
+        taskParams()
+            .perRegionMetadata
+            .forEach(
+                (regionCode, metadata) -> {
+                  createRegionSetupTask(regionCode, metadata, taskParams().destVpcId)
+                      .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingRegion);
+                });
+        taskParams()
+            .perRegionMetadata
+            .forEach(
+                (regionCode, metadata) -> {
+                  createAccessKeySetupTask(taskParams(), regionCode)
+                      .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreateAccessKey);
+                });
 
-      // Need not to init CloudInitializer task for onprem provider.
-      if (!p.getCloudCode().equals(CloudType.onprem)) {
-        createCloudImageBundleSetupTask();
-        createInitializerTask()
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InitializeCloudMetadata);
+        // Need not to init CloudInitializer task for onprem provider.
+        if (!p.getCloudCode().equals(CloudType.onprem)) {
+          createCloudImageBundleSetupTask();
+          createInitializerTask()
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InitializeCloudMetadata);
+        }
+      } else {
+        cloudProviderHandler.createKubernetesNew(
+            taskParams().getProviderUUID(), taskParams().reqProviderEbean);
       }
 
       getRunnableTask().runSubTasks();
       p = Provider.getOrBadRequest(taskParams().providerUUID);
       p.setUsabilityState(Provider.UsabilityState.READY);
       p.save();
+
+      cloudProviderHelper.updatePrometheusConfig(p);
     } catch (RuntimeException e) {
       log.error("Received exception during bootstrap", e);
       p = Provider.getOrBadRequest(taskParams().providerUUID);

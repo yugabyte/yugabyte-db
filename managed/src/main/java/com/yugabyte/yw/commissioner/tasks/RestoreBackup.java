@@ -4,9 +4,8 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.common.ybc.YbcManager;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.forms.RestoreBackupParams;
-import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.RestoreKeyspace;
 import com.yugabyte.yw.models.TaskInfo;
@@ -19,17 +18,18 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class RestoreBackup extends UniverseTaskBase {
 
+  private YbcManager ybcManager;
+
   @Inject
-  protected RestoreBackup(BaseTaskDependencies baseTaskDependencies) {
+  protected RestoreBackup(BaseTaskDependencies baseTaskDependencies, YbcManager ybcManager) {
     super(baseTaskDependencies);
+    this.ybcManager = ybcManager;
   }
 
   @Override
   protected RestoreBackupParams taskParams() {
     return (RestoreBackupParams) taskParams;
   }
-
-  @Inject YbcManager ybcManager;
 
   @Override
   public void run() {
@@ -68,9 +68,7 @@ public class RestoreBackup extends UniverseTaskBase {
 
         restore =
             createAllRestoreSubtasks(
-                taskParams(),
-                UserTaskDetails.SubTaskGroupType.RestoringBackup,
-                taskParams().category.equals(BackupCategory.YB_CONTROLLER));
+                taskParams(), UserTaskDetails.SubTaskGroupType.RestoringBackup);
 
         // Marks the update of this universe as a success only if all the tasks before it succeeded.
         createMarkUniverseUpdateSuccessTasks()

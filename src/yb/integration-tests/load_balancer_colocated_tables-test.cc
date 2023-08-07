@@ -220,8 +220,8 @@ class LoadBalancerTablegroupsTest : public LoadBalancerColocatedTablesTest {
           "" /* tablespace_id */,
           nullptr /* txn */));
       client::YBSchemaBuilder b;
-      b.AddColumn("k")->Type(BINARY)->NotNull()->PrimaryKey();
-      b.AddColumn("v")->Type(BINARY)->NotNull();
+      b.AddColumn("k")->Type(DataType::BINARY)->NotNull()->PrimaryKey();
+      b.AddColumn("v")->Type(DataType::BINARY)->NotNull();
       ASSERT_OK(b.Build(&schema_));
 
       ASSERT_OK(NewTableCreator()
@@ -241,7 +241,7 @@ class LoadBalancerTablegroupsTest : public LoadBalancerColocatedTablesTest {
   }
 };
 
-TEST_F(LoadBalancerTablegroupsTest, YB_DISABLE_TEST_IN_TSAN(GlobalLoadBalancingWithTablegroups)) {
+TEST_F(LoadBalancerTablegroupsTest, GlobalLoadBalancingWithTablegroups) {
   // Start with 3 tables, 1 table per tablegroup.
   TestGlobalLoadBalancingWithColocatedTables();
 }
@@ -275,8 +275,8 @@ class LoadBalancerLegacyColocatedDBColocatedTablesTest : public LoadBalancerColo
                                                     true                /* colocated */));
 
       client::YBSchemaBuilder b;
-      b.AddColumn("k")->Type(BINARY)->NotNull()->PrimaryKey();
-      b.AddColumn("v")->Type(BINARY)->NotNull();
+      b.AddColumn("k")->Type(DataType::BINARY)->NotNull()->PrimaryKey();
+      b.AddColumn("v")->Type(DataType::BINARY)->NotNull();
       ASSERT_OK(b.Build(&schema_));
 
       ASSERT_OK(NewTableCreator()->table_name(tn)
@@ -299,7 +299,7 @@ class LoadBalancerLegacyColocatedDBColocatedTablesTest : public LoadBalancerColo
 };
 
 TEST_F(LoadBalancerLegacyColocatedDBColocatedTablesTest,
-       YB_DISABLE_TEST_IN_TSAN(GlobalLoadBalancingWithLegacyColocatedDBColocatedTables)) {
+       GlobalLoadBalancingWithLegacyColocatedDBColocatedTables) {
   // Start with 3 legacy colocated databases with one table each, so 3 tablets in total.
   TestGlobalLoadBalancingWithColocatedTables();
 }

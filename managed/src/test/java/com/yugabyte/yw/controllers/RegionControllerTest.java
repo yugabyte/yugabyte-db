@@ -20,11 +20,15 @@ import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
@@ -34,6 +38,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.hamcrest.CoreMatchers;
@@ -43,19 +48,27 @@ import org.hamcrest.core.IsInstanceOf;
 import org.hamcrest.core.IsNull;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 import play.mvc.Result;
 
+@RunWith(MockitoJUnitRunner.class)
 public class RegionControllerTest extends FakeDBApplication {
   Provider provider;
   Customer customer;
   Users user;
+  SettableRuntimeConfigFactory runtimeConfigFactory;
 
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     provider = ModelFactory.awsProvider(customer);
+    runtimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
+    runtimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.useLegacyPayloadForRegionAndAZs.getKey(), "true");
   }
 
   private Result listRegions(UUID providerUUID) {
@@ -392,6 +405,95 @@ public class RegionControllerTest extends FakeDBApplication {
     r.refresh();
     assertNull(r.getSecurityGroupId());
     assertEquals(updatedYbImage, r.getYbImage());
+  }
+
+  @Test
+  public void testCreateRegionV2Payload() {
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws, "provider-1");
+    YugawareProperty.addConfigProperty(
+        ConfigHelper.ConfigType.AWSRegionMetadata.toString(),
+        Json.parse("{\"us-west-2\": {\"name\": \"us-west-2\", \"ybImage\": \"yb image\"}}"),
+        ConfigHelper.ConfigType.AWSRegionMetadata.getDescription());
+    // use v2 APIs payload for region creation.
+    runtimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.useLegacyPayloadForRegionAndAZs.getKey(), "false");
+
+    JsonNode regionBody = generateRegionRequestBody();
+    Result result = createRegion(p.getUuid(), regionBody);
+    Region region = Json.fromJson(Json.parse(contentAsString(result)), Region.class);
+    assertEquals(OK, result.status());
+    assertNotNull("Region not created, empty UUID.", region.getUuid());
+
+    p = Provider.getOrBadRequest(customer.getUuid(), p.getUuid());
+    assertEquals(1, p.getRegions().size());
+    assertEquals(1, p.getRegions().get(0).getZones().size());
+  }
+
+  @Test
+  public void testAddZoneV2Payload() {
+    Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws, "provider-1");
+    YugawareProperty.addConfigProperty(
+        ConfigHelper.ConfigType.AWSRegionMetadata.toString(),
+        Json.parse("{\"us-west-2\": {\"name\": \"us-west-2\", \"ybImage\": \"yb image\"}}"),
+        ConfigHelper.ConfigType.AWSRegionMetadata.getDescription());
+    // use v2 APIs payload for region creation.
+    runtimeConfigFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.useLegacyPayloadForRegionAndAZs.getKey(), "false");
+
+    JsonNode regionBody = generateRegionRequestBody();
+    Result result = createRegion(p.getUuid(), regionBody);
+    Region region = Json.fromJson(Json.parse(contentAsString(result)), Region.class);
+    assertEquals(OK, result.status());
+    assertNotNull("Region not created, empty UUID.", region.getUuid());
+
+    p = Provider.getOrBadRequest(customer.getUuid(), p.getUuid());
+    assertEquals(1, p.getRegions().size());
+    assertEquals(1, p.getRegions().get(0).getZones().size());
+
+    List<AvailabilityZone> zones = region.getZones();
+    AvailabilityZone zone = new AvailabilityZone();
+    zone.setName("Zone 2");
+    zone.setCode("zone-2");
+    zones.add(zone);
+    region.setZones(zones);
+    region.getDetails().getCloudInfo().getAws().setSecurityGroupId("Modified group id");
+
+    result = editRegion(p.getUuid(), region.getUuid(), Json.toJson(region));
+    region = Json.fromJson(Json.parse(contentAsString(result)), Region.class);
+    assertEquals(OK, result.status());
+    assertEquals(2, region.getZones().size());
+    assertEquals(
+        "Modified group id", region.getDetails().getCloudInfo().getAws().getSecurityGroupId());
+  }
+
+  public JsonNode generateRegionRequestBody() {
+    ObjectNode regionRequestBody = Json.newObject();
+    regionRequestBody.put("code", "us-west-2");
+    regionRequestBody.put("name", "us-west-2");
+
+    ObjectNode details = Json.newObject();
+    ObjectNode cloudInfo = Json.newObject();
+    ObjectNode awsCloudInfo = Json.newObject();
+
+    awsCloudInfo.put("vnet", "vnet");
+    awsCloudInfo.put("securityGroupId", "sg");
+    awsCloudInfo.put("ybImage", "yb_image");
+
+    cloudInfo.set("aws", awsCloudInfo);
+    details.set("cloudInfo", cloudInfo);
+    regionRequestBody.set("details", details);
+
+    ArrayNode zones = Json.newArray();
+    ObjectNode zone = Json.newObject();
+    zone.put("name", "Zone 1");
+    zone.put("code", "zone-1");
+    zone.put("subnet", "subnet");
+    zones.add(zone);
+
+    regionRequestBody.set("zones", zones);
+    return regionRequestBody;
   }
 
   public Region getFirstRegion() {

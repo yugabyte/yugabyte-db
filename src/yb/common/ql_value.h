@@ -31,16 +31,16 @@
 
 // The list of unsupported datatypes to use in switch statements
 #define QL_UNSUPPORTED_TYPES_IN_SWITCH \
-  case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED; \
-  case TYPEARGS: FALLTHROUGH_INTENDED;  \
-  case UNKNOWN_DATA
+  case DataType::NULL_VALUE_TYPE: FALLTHROUGH_INTENDED; \
+  case DataType::TYPEARGS: FALLTHROUGH_INTENDED;  \
+  case DataType::UNKNOWN_DATA
 
 #define QL_INVALID_TYPES_IN_SWITCH     \
-  case UINT8:  FALLTHROUGH_INTENDED;    \
-  case UINT16: FALLTHROUGH_INTENDED;    \
-  case UINT32: FALLTHROUGH_INTENDED;    \
-  case UINT64: FALLTHROUGH_INTENDED;    \
-  case GIN_NULL
+  case DataType::UINT8:  FALLTHROUGH_INTENDED;    \
+  case DataType::UINT16: FALLTHROUGH_INTENDED;    \
+  case DataType::UINT32: FALLTHROUGH_INTENDED;    \
+  case DataType::UINT64: FALLTHROUGH_INTENDED;    \
+  case DataType::GIN_NULL
 
 namespace yb {
 
@@ -217,14 +217,14 @@ class QLValue {
     return timeuuid_value(pb_);
   }
 
-  static util::VarInt varint_value(const QLValuePB& pb);
-  static util::VarInt varint_value(const LWQLValuePB& pb);
+  static VarInt varint_value(const QLValuePB& pb);
+  static VarInt varint_value(const LWQLValuePB& pb);
 
-  static util::VarInt varint_value(const QLValue& value) {
+  static VarInt varint_value(const QLValue& value) {
     return varint_value(value.pb_);
   }
 
-  util::VarInt varint_value() const {
+  VarInt varint_value() const {
     return varint_value(pb_);
   }
 
@@ -372,7 +372,7 @@ class QLValue {
   static void set_timeuuid_value(const Uuid& val, QLValuePB* out);
   static void set_timeuuid_value(const Uuid& val, QLValue* out);
 
-  void set_varint_value(const util::VarInt& val) {
+  void set_varint_value(const VarInt& val) {
     pb_.set_varint_value(val.EncodeToComparable());
   }
 

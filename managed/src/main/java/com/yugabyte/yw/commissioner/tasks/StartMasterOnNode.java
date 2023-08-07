@@ -20,6 +20,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
+import java.util.Collections;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -117,6 +118,10 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
 
       // Update node state to Starting Master.
       createSetNodeStateTask(currentNode, NodeState.Starting)
+          .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+
+      // Make sure clock skew is low enough on the node.
+      createWaitForClockSyncTasks(universe, Collections.singleton(currentNode))
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
 
       // This starts master and if it fails after setting isMaster=true, this task cannot be run as

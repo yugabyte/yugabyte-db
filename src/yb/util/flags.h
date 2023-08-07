@@ -39,6 +39,8 @@
 #include "yb/util/flags/auto_flags.h"
 
 // Redefine the macro from gflags.h with an unused attribute.
+// Note: This macro should be used in the same file that DEFINEs the flag. Using it any other file
+// can result in segfault due to indeterminate order of static initialization.
 #ifdef DEFINE_validator
 #undef DEFINE_validator
 #endif

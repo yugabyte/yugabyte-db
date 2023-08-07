@@ -314,6 +314,8 @@ class RpcContext {
   std::string ToString() const;
 
   util::WaitStateInfoPtr wait_state();
+  
+  Result<RefCntSlice> ExtractSidecar(size_t idx) const;
 
  private:
   std::shared_ptr<YBInboundCall> call_;

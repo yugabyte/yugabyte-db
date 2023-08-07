@@ -11,6 +11,9 @@ extern int od_config_reader_import(od_config_t *, od_rules_t *, od_error_t *,
 				   od_extention_t *, od_global_t *,
 				   od_hba_rules_t *, char *);
 
+extern void yb_read_conf_from_env_var(od_rules_t *, od_config_t *,
+		      od_logger_t *);
+
 #define OD_READER_ERROR_MAX_LEN 1 << 8
 
 static inline void od_config_reader_error(od_config_reader_t *reader,

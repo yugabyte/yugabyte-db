@@ -30,6 +30,80 @@ tags:
 - description: APIs for getting information about an existing cluster
   name: cluster-info
 paths:
+  /cluster:
+    delete:
+      description: Submit task to delete a Yugabyte Cluster
+      operationId: deleteCluster
+      responses:
+        "200":
+          description: Successfully submitted delete cluster request
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Submit task to delete a cluster
+      tags:
+      - cluster
+    get:
+      description: Get a Yugabyte Cluster
+      operationId: getCluster
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cluster_Response'
+          description: Cluster response
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get a cluster
+      tags:
+      - cluster
+    put:
+      description: Submit task to edit a Yugabyte Cluster
+      operationId: editCluster
+      requestBody:
+        $ref: '#/components/requestBodies/ClusterSpec'
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cluster_Response'
+          description: Cluster response
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Submit task to edit a cluster
+      tags:
+      - cluster
   /live_queries:
     get:
       description: Get the Live Queries in a Yugabyte Cluster
@@ -149,6 +223,14 @@ paths:
         schema:
           type: string
         style: form
+      - description: Zone to filter for the given cluster
+        explode: false
+        in: query
+        name: zone
+        required: false
+        schema:
+          type: string
+        style: form
       - description: Start of range of time series data (in epoch seconds)
         explode: false
         in: query
@@ -168,6 +250,14 @@ paths:
           format: int64
           minimum: 0
           type: integer
+        style: form
+      - description: Cluster type (primary or read replica)
+        explode: false
+        in: query
+        name: cluster_type
+        required: false
+        schema:
+          type: string
         style: form
       responses:
         "200":
@@ -189,6 +279,57 @@ paths:
                 $ref: '#/components/schemas/ApiError'
           description: API Error
       summary: Get a metric for a cluster
+      tags:
+      - cluster-info
+  /activities:
+    get:
+      description: Get activities data for a Yugabyte cluster
+      operationId: getClusterActivities
+      parameters:
+      - description: Which activities data to retrieve
+        explode: false
+        in: query
+        name: activities
+        required: true
+        schema:
+          type: string
+        style: form
+      - description: Completed or In-Progress
+        explode: false
+        in: query
+        name: status
+        required: true
+        schema:
+          type: string
+        style: form
+      - description: Which database's activities data is to be retrived.
+        explode: false
+        in: query
+        name: database
+        required: false
+        schema:
+          type: string
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Activities_Response'
+          description: Activities Response
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get a activities data for a cluster
       tags:
       - cluster-info
   /tables:
@@ -227,6 +368,49 @@ paths:
                 $ref: '#/components/schemas/ApiError'
           description: API Error
       summary: Get list of DB tables per YB API (YCQL/YSQL)
+      tags:
+      - cluster-info
+  /table:
+    get:
+      description: Get info on a single table, given table uuid
+      operationId: getTableInfo
+      parameters:
+      - description: UUID of the table
+        explode: false
+        in: query
+        name: id
+        required: true
+        schema:
+          type: string
+        style: form
+      - description: Specify the node ip-address from where the table info is retrieved
+        explode: false
+        in: query
+        name: node_address
+        required: true
+        schema:
+          type: string
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TableInfo'
+          description: Information for a single table
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get info on a single table, given table uuid
       tags:
       - cluster-info
   /health-check:
@@ -333,38 +517,26 @@ paths:
       summary: Check if cluster load balancer is idle
       tags:
       - cluster-info
-  /cluster:
-    delete:
-      description: Submit task to delete a Yugabyte Cluster
-      operationId: deleteCluster
-      responses:
-        "200":
-          description: Successfully submitted delete cluster request
-        "400":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiError'
-          description: API Error
-        "500":
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiError'
-          description: API Error
-      summary: Submit task to delete a cluster
-      tags:
-      - cluster
+  /gflags:
     get:
-      description: Get a Yugabyte Cluster
-      operationId: getCluster
+      description: Retrieve gflags of master and tserver process
+      operationId: getGflags
+      parameters:
+      - description: Specify the node ip-address from where gflags are retrieved
+        explode: false
+        in: query
+        name: node_address
+        required: true
+        schema:
+          type: string
+        style: form
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Cluster_Response'
-          description: Cluster response
+                $ref: '#/components/schemas/GflagsInfo'
+          description: Gflags information
         "400":
           content:
             application/json:
@@ -377,21 +549,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiError'
           description: API Error
-      summary: Get a cluster
+      summary: Get gflags of master and tserver process
       tags:
-      - cluster
-    put:
-      description: Submit task to edit a Yugabyte Cluster
-      operationId: editCluster
-      requestBody:
-        $ref: '#/components/requestBodies/ClusterSpec'
+      - cluster-info
+  /alerts:
+    get:
+      description: Get any alerts for the cluster
+      operationId: getClusterAlerts
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Cluster_Response'
-          description: Cluster response
+                $ref: '#/components/schemas/Alerts_Response'
+          description: Alerts information
         "400":
           content:
             application/json:
@@ -404,9 +575,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiError'
           description: API Error
-      summary: Submit task to edit a cluster
+      summary: Get any alerts for the cluster
       tags:
-      - cluster
+      - cluster-info
 components:
   requestBodies:
     ClusterSpec:
@@ -416,18 +587,24 @@ components:
             $ref: '#/components/schemas/ClusterSpec'
       description: DB Cluster to be updated
   responses:
-    LiveQueryResponse:
+    ClusterResponse:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/LiveQueryResponseSchema'
-      description: Live Queries of a Cluster
+            $ref: '#/components/schemas/Cluster_Response'
+      description: Cluster response
     ApiError:
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ApiError'
       description: API Error
+    LiveQueryResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LiveQueryResponseSchema'
+      description: Live Queries of a Cluster
     SlowQueryResponse:
       content:
         application/json:
@@ -446,12 +623,24 @@ components:
           schema:
             $ref: '#/components/schemas/Metric_Response'
       description: Metric response
+    ActivityResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Activities_Response'
+      description: Activities Response
     ClusterTableListResponse:
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Cluster_table_list_response'
       description: List of cluster tables
+    TableInfoResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TableInfo'
+      description: Information for a single table
     HealthCheckResponse:
       content:
         application/json:
@@ -470,655 +659,19 @@ components:
           schema:
             $ref: '#/components/schemas/VersionInfo'
       description: Version info for YugabyteDB
-    ClusterResponse:
+    GflagsResponse:
       content:
         application/json:
           schema:
-            $ref: '#/components/schemas/Cluster_Response'
-      description: Cluster response
+            $ref: '#/components/schemas/GflagsInfo'
+      description: Gflags information
+    AlertsResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Alerts_Response'
+      description: Alerts information
   schemas:
-    LiveQueryResponseYSQLQueryItem:
-      description: Schema for Live Query Response YSQL Query Item
-      example:
-        app_name: app_name
-        client_port: client_port
-        db_name: db_name
-        query_start_time: query_start_time
-        query: query
-        node_name: node_name
-        id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-        elapsed_millis: 6
-        session_status: session_status
-        client_host: client_host
-      properties:
-        id:
-          format: uuid
-          type: string
-        node_name:
-          type: string
-        db_name:
-          type: string
-        session_status:
-          type: string
-        query:
-          type: string
-        elapsed_millis:
-          format: int64
-          type: integer
-        query_start_time:
-          type: string
-        app_name:
-          type: string
-        client_host:
-          type: string
-        client_port:
-          type: string
-      title: Live Query Response YSQL Query Item
-      type: object
-    LiveQueryResponseYSQLData:
-      description: Schema for Live Query Response YSQL Data
-      example:
-        error_count: 0
-        queries:
-        - app_name: app_name
-          client_port: client_port
-          db_name: db_name
-          query_start_time: query_start_time
-          query: query
-          node_name: node_name
-          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-          elapsed_millis: 6
-          session_status: session_status
-          client_host: client_host
-        - app_name: app_name
-          client_port: client_port
-          db_name: db_name
-          query_start_time: query_start_time
-          query: query
-          node_name: node_name
-          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-          elapsed_millis: 6
-          session_status: session_status
-          client_host: client_host
-      properties:
-        error_count:
-          description: Count of Errors
-          type: integer
-        queries:
-          items:
-            $ref: '#/components/schemas/LiveQueryResponseYSQLQueryItem'
-          type: array
-      title: Live Query Response YSQL Data
-      type: object
-    LiveQueryResponseYCQLQueryItem:
-      description: Schema for Live Query Response YCQL Query Item
-      example:
-        keyspace: keyspace
-        client_port: client_port
-        query: query
-        node_name: node_name
-        id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-        elapsed_millis: 5
-        type: type
-        client_host: client_host
-      properties:
-        id:
-          format: uuid
-          type: string
-        node_name:
-          type: string
-        keyspace:
-          type: string
-        query:
-          type: string
-        type:
-          type: string
-        elapsed_millis:
-          format: int64
-          type: integer
-        client_host:
-          type: string
-        client_port:
-          type: string
-      title: Live Query Response YCQL Query Item
-      type: object
-    LiveQueryResponseYCQLData:
-      description: Schema for Live Query Response YCQL Data
-      example:
-        error_count: 1
-        queries:
-        - keyspace: keyspace
-          client_port: client_port
-          query: query
-          node_name: node_name
-          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-          elapsed_millis: 5
-          type: type
-          client_host: client_host
-        - keyspace: keyspace
-          client_port: client_port
-          query: query
-          node_name: node_name
-          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-          elapsed_millis: 5
-          type: type
-          client_host: client_host
-      properties:
-        error_count:
-          description: Count of Errors
-          type: integer
-        queries:
-          items:
-            $ref: '#/components/schemas/LiveQueryResponseYCQLQueryItem'
-          type: array
-      title: Live Query Response YCQL Data
-      type: object
-    LiveQueryResponseData:
-      description: Live Query Response Data
-      example:
-        ysql:
-          error_count: 0
-          queries:
-          - app_name: app_name
-            client_port: client_port
-            db_name: db_name
-            query_start_time: query_start_time
-            query: query
-            node_name: node_name
-            id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-            elapsed_millis: 6
-            session_status: session_status
-            client_host: client_host
-          - app_name: app_name
-            client_port: client_port
-            db_name: db_name
-            query_start_time: query_start_time
-            query: query
-            node_name: node_name
-            id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-            elapsed_millis: 6
-            session_status: session_status
-            client_host: client_host
-        ycql:
-          error_count: 1
-          queries:
-          - keyspace: keyspace
-            client_port: client_port
-            query: query
-            node_name: node_name
-            id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-            elapsed_millis: 5
-            type: type
-            client_host: client_host
-          - keyspace: keyspace
-            client_port: client_port
-            query: query
-            node_name: node_name
-            id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-            elapsed_millis: 5
-            type: type
-            client_host: client_host
-      properties:
-        ysql:
-          $ref: '#/components/schemas/LiveQueryResponseYSQLData'
-        ycql:
-          $ref: '#/components/schemas/LiveQueryResponseYCQLData'
-      title: Live Query Response Data
-      type: object
-    LiveQueryResponseSchema:
-      description: Live Query Response Schema
-      example:
-        data:
-          ysql:
-            error_count: 0
-            queries:
-            - app_name: app_name
-              client_port: client_port
-              db_name: db_name
-              query_start_time: query_start_time
-              query: query
-              node_name: node_name
-              id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-              elapsed_millis: 6
-              session_status: session_status
-              client_host: client_host
-            - app_name: app_name
-              client_port: client_port
-              db_name: db_name
-              query_start_time: query_start_time
-              query: query
-              node_name: node_name
-              id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-              elapsed_millis: 6
-              session_status: session_status
-              client_host: client_host
-          ycql:
-            error_count: 1
-            queries:
-            - keyspace: keyspace
-              client_port: client_port
-              query: query
-              node_name: node_name
-              id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-              elapsed_millis: 5
-              type: type
-              client_host: client_host
-            - keyspace: keyspace
-              client_port: client_port
-              query: query
-              node_name: node_name
-              id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-              elapsed_millis: 5
-              type: type
-              client_host: client_host
-      properties:
-        data:
-          $ref: '#/components/schemas/LiveQueryResponseData'
-      title: Live Query Response Schema
-      type: object
-    ApiError:
-      properties:
-        error:
-          $ref: '#/components/schemas/ApiError_error'
-      title: API Error
-      type: object
-    SlowQueryResponseYSQLQueryItem:
-      description: Schema for Slow Query Response YSQL Query Item
-      example:
-        query: query
-        datname: datname
-        local_blks_written: 5
-        rows: 3
-        stddev_time: 2.027123023002322
-        min_time: 9.301444243932576
-        queryid: 6
-        rolname: rolname
-        local_blks_hit: 5
-        calls: 1
-        max_time: 2.3021358869347655
-        mean_time: 7.061401241503109
-        total_time: 4.145608029883936
-      properties:
-        queryid:
-          format: int64
-          type: integer
-        query:
-          type: string
-        rolname:
-          type: string
-        datname:
-          type: string
-        calls:
-          type: integer
-        local_blks_hit:
-          type: integer
-        local_blks_written:
-          type: integer
-        max_time:
-          format: double
-          type: number
-        mean_time:
-          format: double
-          type: number
-        min_time:
-          format: double
-          type: number
-        rows:
-          type: integer
-        stddev_time:
-          format: double
-          type: number
-        total_time:
-          format: double
-          type: number
-      title: Slow Query Response YSQL Query Item
-      type: object
-    SlowQueryResponseYSQLData:
-      description: Schema for Slow Query Response YSQL Data
-      example:
-        error_count: 0
-        queries:
-        - query: query
-          datname: datname
-          local_blks_written: 5
-          rows: 3
-          stddev_time: 2.027123023002322
-          min_time: 9.301444243932576
-          queryid: 6
-          rolname: rolname
-          local_blks_hit: 5
-          calls: 1
-          max_time: 2.3021358869347655
-          mean_time: 7.061401241503109
-          total_time: 4.145608029883936
-        - query: query
-          datname: datname
-          local_blks_written: 5
-          rows: 3
-          stddev_time: 2.027123023002322
-          min_time: 9.301444243932576
-          queryid: 6
-          rolname: rolname
-          local_blks_hit: 5
-          calls: 1
-          max_time: 2.3021358869347655
-          mean_time: 7.061401241503109
-          total_time: 4.145608029883936
-      properties:
-        error_count:
-          description: Count of Errors
-          type: integer
-        queries:
-          items:
-            $ref: '#/components/schemas/SlowQueryResponseYSQLQueryItem'
-          type: array
-      title: Slow Query Response YSQL Data
-      type: object
-    SlowQueryResponseData:
-      description: Slow Query Response Data
-      example:
-        ysql:
-          error_count: 0
-          queries:
-          - query: query
-            datname: datname
-            local_blks_written: 5
-            rows: 3
-            stddev_time: 2.027123023002322
-            min_time: 9.301444243932576
-            queryid: 6
-            rolname: rolname
-            local_blks_hit: 5
-            calls: 1
-            max_time: 2.3021358869347655
-            mean_time: 7.061401241503109
-            total_time: 4.145608029883936
-          - query: query
-            datname: datname
-            local_blks_written: 5
-            rows: 3
-            stddev_time: 2.027123023002322
-            min_time: 9.301444243932576
-            queryid: 6
-            rolname: rolname
-            local_blks_hit: 5
-            calls: 1
-            max_time: 2.3021358869347655
-            mean_time: 7.061401241503109
-            total_time: 4.145608029883936
-      properties:
-        ysql:
-          $ref: '#/components/schemas/SlowQueryResponseYSQLData'
-      title: Slow Query Response Data
-      type: object
-    SlowQueryResponseSchema:
-      description: Slow Query Response Schema
-      example:
-        data:
-          ysql:
-            error_count: 0
-            queries:
-            - query: query
-              datname: datname
-              local_blks_written: 5
-              rows: 3
-              stddev_time: 2.027123023002322
-              min_time: 9.301444243932576
-              queryid: 6
-              rolname: rolname
-              local_blks_hit: 5
-              calls: 1
-              max_time: 2.3021358869347655
-              mean_time: 7.061401241503109
-              total_time: 4.145608029883936
-            - query: query
-              datname: datname
-              local_blks_written: 5
-              rows: 3
-              stddev_time: 2.027123023002322
-              min_time: 9.301444243932576
-              queryid: 6
-              rolname: rolname
-              local_blks_hit: 5
-              calls: 1
-              max_time: 2.3021358869347655
-              mean_time: 7.061401241503109
-              total_time: 4.145608029883936
-      properties:
-        data:
-          $ref: '#/components/schemas/SlowQueryResponseData'
-      title: Slow Query Response Schema
-      type: object
-    NodeData:
-      description: Node data
-      example:
-        is_master_up: true
-        is_master: true
-        is_tserver: true
-        is_read_replica: true
-        is_node_up: true
-        name: name
-        host: host
-        is_bootstrapping: true
-        cloud_info:
-          cloud: cloud
-          zone: zone
-          region: region
-        metrics:
-          system_tablets_total: 0
-          system_tablets_leaders: 0
-          write_ops_per_sec: 5.637376656633329
-          ram_provisioned_bytes: 0
-          time_since_hb_sec: 2.3021358869347655
-          active_connections:
-            ysql: 0
-            ycql: 0
-          total_sst_file_size_bytes: 6
-          uncompressed_sst_file_size_bytes: 1
-          read_ops_per_sec: 5.962133916683182
-          user_tablets_leaders: 0
-          ram_used_bytes: 0
-          memory_used_bytes: 0
-          uptime_seconds: 0
-          user_tablets_total: 0
-          disk_provisioned_bytes: 0
-          master_uptime_us: 0
-        software_version: software_version
-      properties:
-        name:
-          nullable: false
-          type: string
-        host:
-          nullable: false
-          type: string
-        is_node_up:
-          type: boolean
-        is_master:
-          type: boolean
-        is_tserver:
-          type: boolean
-        is_read_replica:
-          type: boolean
-        is_master_up:
-          type: boolean
-        is_bootstrapping:
-          type: boolean
-        metrics:
-          $ref: '#/components/schemas/NodeData_metrics'
-        cloud_info:
-          $ref: '#/components/schemas/NodeData_cloud_info'
-        software_version:
-          type: string
-      required:
-      - cloud_info
-      - host
-      - is_bootstrapping
-      - is_master
-      - is_master_up
-      - is_node_up
-      - is_read_replica
-      - is_tserver
-      - metrics
-      - name
-      - software_version
-      type: object
-    MetricData:
-      description: Metric data
-      example:
-        values:
-        - - 0.8008281904610115
-          - 0.8008281904610115
-        - - 0.8008281904610115
-          - 0.8008281904610115
-        name: name
-      properties:
-        name:
-          description: The name of the metric
-          type: string
-        values:
-          description: Array of (timestamp, value) tuples
-          items:
-            items:
-              format: double
-              type: number
-            maxItems: 2
-            minItems: 2
-            type: array
-          type: array
-      required:
-      - name
-      - values
-      title: Metric Data
-      type: object
-    YbApiEnum:
-      description: Type of DB API (YSQL/YCQL)
-      enum:
-      - YSQL
-      - YCQL
-      title: Yb Api Enum
-      type: string
-    ClusterTable:
-      description: Model representing a DB table
-      example:
-        keyspace: keyspace
-        size_bytes: 0
-        name: name
-      properties:
-        name:
-          minLength: 1
-          nullable: false
-          type: string
-        keyspace:
-          minLength: 1
-          nullable: false
-          type: string
-        type:
-          $ref: '#/components/schemas/YbApiEnum'
-        size_bytes:
-          format: int64
-          minimum: 0
-          type: integer
-      required:
-      - keyspace
-      - name
-      - size_bytes
-      - type
-      title: Cluster Table Object
-      type: object
-    ClusterTableData:
-      description: List of cluster tables
-      items:
-        $ref: '#/components/schemas/ClusterTable'
-      nullable: false
-      title: Cluster Table Data
-      type: array
-      uniqueItems: true
-    HealthCheckInfo:
-      example:
-        most_recent_uptime: 0
-        dead_nodes:
-        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-        leaderless_tablets:
-        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-        under_replicated_tablets:
-        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-      properties:
-        dead_nodes:
-          description: UUIDs of dead nodes
-          items:
-            format: uuid
-            type: string
-          type: array
-        most_recent_uptime:
-          format: int64
-          minimum: 0
-          type: integer
-        under_replicated_tablets:
-          description: UUIDs of under-replicated tablets
-          items:
-            format: uuid
-            type: string
-          type: array
-        leaderless_tablets:
-          description: UUIDs of leaderless tablets
-          items:
-            format: uuid
-            type: string
-          type: array
-      required:
-      - dead_nodes
-      - leaderless_tablets
-      - most_recent_uptime
-      - under_replicated_tablets
-      title: Health Check Info
-      type: object
-    ClusterTablet:
-      description: Model representing a tablet
-      example:
-        tablet_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-        namespace: namespace
-        table_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-        table_name: table_name
-        has_leader: true
-      properties:
-        namespace:
-          type: string
-        table_name:
-          type: string
-        table_uuid:
-          format: uuid
-          type: string
-        tablet_id:
-          format: uuid
-          type: string
-        has_leader:
-          type: boolean
-      required:
-      - has_leader
-      - namespace
-      - table_id
-      - table_name
-      - table_uuid
-      title: Cluster Tablet Object
-      type: object
-    ClusterTabletData:
-      additionalProperties:
-        $ref: '#/components/schemas/ClusterTablet'
-      description: List of cluster tablets
-      title: Cluster Tablet Data
-      type: object
-    VersionInfo:
-      description: YugabyteDB version info
-      example:
-        version: version
-      properties:
-        version:
-          type: string
-      title: YugabyteDB Version Info
-      type: object
     CloudEnum:
       default: MANUAL
       description: Which cloud the cluster is deployed in
@@ -1431,6 +984,1023 @@ components:
       - spec
       title: Cluster Data
       type: object
+    ApiError:
+      properties:
+        error:
+          $ref: '#/components/schemas/ApiError_error'
+      title: API Error
+      type: object
+    LiveQueryResponseYSQLQueryItem:
+      description: Schema for Live Query Response YSQL Query Item
+      example:
+        app_name: app_name
+        client_port: client_port
+        db_name: db_name
+        query_start_time: query_start_time
+        query: query
+        node_name: node_name
+        id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        elapsed_millis: 6
+        session_status: session_status
+        client_host: client_host
+      properties:
+        id:
+          format: uuid
+          type: string
+        node_name:
+          type: string
+        db_name:
+          type: string
+        session_status:
+          type: string
+        query:
+          type: string
+        elapsed_millis:
+          format: int64
+          type: integer
+        query_start_time:
+          type: string
+        app_name:
+          type: string
+        client_host:
+          type: string
+        client_port:
+          type: string
+      title: Live Query Response YSQL Query Item
+      type: object
+    LiveQueryResponseYSQLData:
+      description: Schema for Live Query Response YSQL Data
+      example:
+        error_count: 0
+        queries:
+        - app_name: app_name
+          client_port: client_port
+          db_name: db_name
+          query_start_time: query_start_time
+          query: query
+          node_name: node_name
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          elapsed_millis: 6
+          session_status: session_status
+          client_host: client_host
+        - app_name: app_name
+          client_port: client_port
+          db_name: db_name
+          query_start_time: query_start_time
+          query: query
+          node_name: node_name
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          elapsed_millis: 6
+          session_status: session_status
+          client_host: client_host
+      properties:
+        error_count:
+          description: Count of Errors
+          type: integer
+        queries:
+          items:
+            $ref: '#/components/schemas/LiveQueryResponseYSQLQueryItem'
+          type: array
+      title: Live Query Response YSQL Data
+      type: object
+    LiveQueryResponseYCQLQueryItem:
+      description: Schema for Live Query Response YCQL Query Item
+      example:
+        keyspace: keyspace
+        client_port: client_port
+        query: query
+        node_name: node_name
+        id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        elapsed_millis: 5
+        type: type
+        client_host: client_host
+      properties:
+        id:
+          format: uuid
+          type: string
+        node_name:
+          type: string
+        keyspace:
+          type: string
+        query:
+          type: string
+        type:
+          type: string
+        elapsed_millis:
+          format: int64
+          type: integer
+        client_host:
+          type: string
+        client_port:
+          type: string
+      title: Live Query Response YCQL Query Item
+      type: object
+    LiveQueryResponseYCQLData:
+      description: Schema for Live Query Response YCQL Data
+      example:
+        error_count: 1
+        queries:
+        - keyspace: keyspace
+          client_port: client_port
+          query: query
+          node_name: node_name
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          elapsed_millis: 5
+          type: type
+          client_host: client_host
+        - keyspace: keyspace
+          client_port: client_port
+          query: query
+          node_name: node_name
+          id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          elapsed_millis: 5
+          type: type
+          client_host: client_host
+      properties:
+        error_count:
+          description: Count of Errors
+          type: integer
+        queries:
+          items:
+            $ref: '#/components/schemas/LiveQueryResponseYCQLQueryItem'
+          type: array
+      title: Live Query Response YCQL Data
+      type: object
+    LiveQueryResponseData:
+      description: Live Query Response Data
+      example:
+        ysql:
+          error_count: 0
+          queries:
+          - app_name: app_name
+            client_port: client_port
+            db_name: db_name
+            query_start_time: query_start_time
+            query: query
+            node_name: node_name
+            id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            elapsed_millis: 6
+            session_status: session_status
+            client_host: client_host
+          - app_name: app_name
+            client_port: client_port
+            db_name: db_name
+            query_start_time: query_start_time
+            query: query
+            node_name: node_name
+            id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            elapsed_millis: 6
+            session_status: session_status
+            client_host: client_host
+        ycql:
+          error_count: 1
+          queries:
+          - keyspace: keyspace
+            client_port: client_port
+            query: query
+            node_name: node_name
+            id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            elapsed_millis: 5
+            type: type
+            client_host: client_host
+          - keyspace: keyspace
+            client_port: client_port
+            query: query
+            node_name: node_name
+            id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            elapsed_millis: 5
+            type: type
+            client_host: client_host
+      properties:
+        ysql:
+          $ref: '#/components/schemas/LiveQueryResponseYSQLData'
+        ycql:
+          $ref: '#/components/schemas/LiveQueryResponseYCQLData'
+      title: Live Query Response Data
+      type: object
+    LiveQueryResponseSchema:
+      description: Live Query Response Schema
+      example:
+        data:
+          ysql:
+            error_count: 0
+            queries:
+            - app_name: app_name
+              client_port: client_port
+              db_name: db_name
+              query_start_time: query_start_time
+              query: query
+              node_name: node_name
+              id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+              elapsed_millis: 6
+              session_status: session_status
+              client_host: client_host
+            - app_name: app_name
+              client_port: client_port
+              db_name: db_name
+              query_start_time: query_start_time
+              query: query
+              node_name: node_name
+              id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+              elapsed_millis: 6
+              session_status: session_status
+              client_host: client_host
+          ycql:
+            error_count: 1
+            queries:
+            - keyspace: keyspace
+              client_port: client_port
+              query: query
+              node_name: node_name
+              id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+              elapsed_millis: 5
+              type: type
+              client_host: client_host
+            - keyspace: keyspace
+              client_port: client_port
+              query: query
+              node_name: node_name
+              id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+              elapsed_millis: 5
+              type: type
+              client_host: client_host
+      properties:
+        data:
+          $ref: '#/components/schemas/LiveQueryResponseData'
+      title: Live Query Response Schema
+      type: object
+    SlowQueryResponseYSQLQueryItem:
+      description: Schema for Slow Query Response YSQL Query Item
+      example:
+        query: query
+        datname: datname
+        local_blks_written: 5
+        rows: 3
+        stddev_time: 2.027123023002322
+        min_time: 9.301444243932576
+        queryid: 6
+        rolname: rolname
+        local_blks_hit: 5
+        calls: 1
+        max_time: 2.3021358869347655
+        mean_time: 7.061401241503109
+        total_time: 4.145608029883936
+      properties:
+        queryid:
+          format: int64
+          type: integer
+        query:
+          type: string
+        rolname:
+          type: string
+        datname:
+          type: string
+        calls:
+          type: integer
+        local_blks_hit:
+          type: integer
+        local_blks_written:
+          type: integer
+        max_time:
+          format: double
+          type: number
+        mean_time:
+          format: double
+          type: number
+        min_time:
+          format: double
+          type: number
+        rows:
+          type: integer
+        stddev_time:
+          format: double
+          type: number
+        total_time:
+          format: double
+          type: number
+      title: Slow Query Response YSQL Query Item
+      type: object
+    SlowQueryResponseYSQLData:
+      description: Schema for Slow Query Response YSQL Data
+      example:
+        error_count: 0
+        queries:
+        - query: query
+          datname: datname
+          local_blks_written: 5
+          rows: 3
+          stddev_time: 2.027123023002322
+          min_time: 9.301444243932576
+          queryid: 6
+          rolname: rolname
+          local_blks_hit: 5
+          calls: 1
+          max_time: 2.3021358869347655
+          mean_time: 7.061401241503109
+          total_time: 4.145608029883936
+        - query: query
+          datname: datname
+          local_blks_written: 5
+          rows: 3
+          stddev_time: 2.027123023002322
+          min_time: 9.301444243932576
+          queryid: 6
+          rolname: rolname
+          local_blks_hit: 5
+          calls: 1
+          max_time: 2.3021358869347655
+          mean_time: 7.061401241503109
+          total_time: 4.145608029883936
+      properties:
+        error_count:
+          description: Count of Errors
+          type: integer
+        queries:
+          items:
+            $ref: '#/components/schemas/SlowQueryResponseYSQLQueryItem'
+          type: array
+      title: Slow Query Response YSQL Data
+      type: object
+    SlowQueryResponseData:
+      description: Slow Query Response Data
+      example:
+        ysql:
+          error_count: 0
+          queries:
+          - query: query
+            datname: datname
+            local_blks_written: 5
+            rows: 3
+            stddev_time: 2.027123023002322
+            min_time: 9.301444243932576
+            queryid: 6
+            rolname: rolname
+            local_blks_hit: 5
+            calls: 1
+            max_time: 2.3021358869347655
+            mean_time: 7.061401241503109
+            total_time: 4.145608029883936
+          - query: query
+            datname: datname
+            local_blks_written: 5
+            rows: 3
+            stddev_time: 2.027123023002322
+            min_time: 9.301444243932576
+            queryid: 6
+            rolname: rolname
+            local_blks_hit: 5
+            calls: 1
+            max_time: 2.3021358869347655
+            mean_time: 7.061401241503109
+            total_time: 4.145608029883936
+      properties:
+        ysql:
+          $ref: '#/components/schemas/SlowQueryResponseYSQLData'
+      title: Slow Query Response Data
+      type: object
+    SlowQueryResponseSchema:
+      description: Slow Query Response Schema
+      example:
+        data:
+          ysql:
+            error_count: 0
+            queries:
+            - query: query
+              datname: datname
+              local_blks_written: 5
+              rows: 3
+              stddev_time: 2.027123023002322
+              min_time: 9.301444243932576
+              queryid: 6
+              rolname: rolname
+              local_blks_hit: 5
+              calls: 1
+              max_time: 2.3021358869347655
+              mean_time: 7.061401241503109
+              total_time: 4.145608029883936
+            - query: query
+              datname: datname
+              local_blks_written: 5
+              rows: 3
+              stddev_time: 2.027123023002322
+              min_time: 9.301444243932576
+              queryid: 6
+              rolname: rolname
+              local_blks_hit: 5
+              calls: 1
+              max_time: 2.3021358869347655
+              mean_time: 7.061401241503109
+              total_time: 4.145608029883936
+      properties:
+        data:
+          $ref: '#/components/schemas/SlowQueryResponseData'
+      title: Slow Query Response Schema
+      type: object
+    NodeData:
+      description: Node data
+      example:
+        is_master_up: true
+        is_master: true
+        is_tserver: true
+        is_read_replica: true
+        is_node_up: true
+        name: name
+        host: host
+        is_bootstrapping: true
+        cloud_info:
+          cloud: cloud
+          zone: zone
+          region: region
+        metrics:
+          system_tablets_total: 0
+          system_tablets_leaders: 0
+          write_ops_per_sec: 5.637376656633329
+          ram_provisioned_bytes: 0
+          time_since_hb_sec: 2.3021358869347655
+          active_connections:
+            ysql: 0
+            ycql: 0
+          total_sst_file_size_bytes: 6
+          uncompressed_sst_file_size_bytes: 1
+          read_ops_per_sec: 5.962133916683182
+          user_tablets_leaders: 0
+          ram_used_bytes: 0
+          memory_used_bytes: 0
+          uptime_seconds: 0
+          user_tablets_total: 0
+          disk_provisioned_bytes: 0
+          master_uptime_us: 0
+        software_version: software_version
+      properties:
+        name:
+          nullable: false
+          type: string
+        host:
+          nullable: false
+          type: string
+        is_node_up:
+          type: boolean
+        is_master:
+          type: boolean
+        is_tserver:
+          type: boolean
+        is_read_replica:
+          type: boolean
+        is_master_up:
+          type: boolean
+        is_bootstrapping:
+          type: boolean
+        metrics:
+          $ref: '#/components/schemas/NodeData_metrics'
+        cloud_info:
+          $ref: '#/components/schemas/NodeData_cloud_info'
+        software_version:
+          type: string
+      required:
+      - cloud_info
+      - host
+      - is_bootstrapping
+      - is_master
+      - is_master_up
+      - is_node_up
+      - is_read_replica
+      - is_tserver
+      - metrics
+      - name
+      - software_version
+      type: object
+    MetricData:
+      description: Metric data
+      example:
+        values:
+        - - 0.8008281904610115
+          - 0.8008281904610115
+        - - 0.8008281904610115
+          - 0.8008281904610115
+        name: name
+      properties:
+        name:
+          description: The name of the metric
+          type: string
+        values:
+          description: Array of (timestamp, value) tuples
+          items:
+            items:
+              format: double
+              type: number
+            maxItems: 2
+            minItems: 2
+            type: array
+          type: array
+      required:
+      - name
+      - values
+      title: Metric Data
+      type: object
+    ActivityData:
+      description: Activity Data
+      example:
+        data: '{}'
+        name: name
+      properties:
+        name:
+          type: string
+        data:
+          type: object
+      required:
+      - data
+      - name
+      title: Activity Data
+      type: object
+    YbApiEnum:
+      description: Type of DB API (YSQL/YCQL)
+      enum:
+      - YSQL
+      - YCQL
+      title: Yb Api Enum
+      type: string
+    ClusterTable:
+      description: Model representing a DB table
+      example:
+        keyspace: keyspace
+        size_bytes: 0
+        name: name
+        uuid: uuid
+      properties:
+        name:
+          minLength: 1
+          nullable: false
+          type: string
+        keyspace:
+          minLength: 1
+          nullable: false
+          type: string
+        uuid:
+          minLength: 1
+          nullable: false
+          type: string
+        type:
+          $ref: '#/components/schemas/YbApiEnum'
+        size_bytes:
+          format: int64
+          minimum: 0
+          type: integer
+      required:
+      - keyspace
+      - name
+      - size_bytes
+      - type
+      - uuid
+      title: Cluster Table Object
+      type: object
+    ClusterTableData:
+      description: List of cluster tables
+      items:
+        $ref: '#/components/schemas/ClusterTable'
+      nullable: false
+      title: Cluster Table Data
+      type: array
+      uniqueItems: true
+    PlacementCloudInfo:
+      description: Placement Cloud Info
+      example:
+        placement_region: placement_region
+        placement_zone: placement_zone
+        placement_cloud: placement_cloud
+      properties:
+        placement_cloud:
+          type: string
+        placement_region:
+          type: string
+        placement_zone:
+          type: string
+      title: Placement Cloud Info
+      type: object
+    PlacementBlock:
+      description: Placement Block
+      example:
+        cloud_info:
+          placement_region: placement_region
+          placement_zone: placement_zone
+          placement_cloud: placement_cloud
+        min_num_replicas: 1
+      properties:
+        cloud_info:
+          $ref: '#/components/schemas/PlacementCloudInfo'
+        min_num_replicas:
+          type: integer
+      title: Placement Block
+      type: object
+    TableReplicationInfo:
+      description: TableReplicationInfo
+      example:
+        placement_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        num_replicas: 6
+        placement_blocks:
+        - cloud_info:
+            placement_region: placement_region
+            placement_zone: placement_zone
+            placement_cloud: placement_cloud
+          min_num_replicas: 1
+        - cloud_info:
+            placement_region: placement_region
+            placement_zone: placement_zone
+            placement_cloud: placement_cloud
+          min_num_replicas: 1
+      properties:
+        num_replicas:
+          type: integer
+        placement_blocks:
+          items:
+            $ref: '#/components/schemas/PlacementBlock'
+          type: array
+        placement_uuid:
+          format: uuid
+          type: string
+      title: TableReplicationInfo
+      type: object
+    ColumnInfo:
+      description: Column Info
+      example:
+        column: column
+        id: id
+        type: type
+      properties:
+        column:
+          type: string
+        id:
+          type: string
+        type:
+          type: string
+      title: Column Info
+      type: object
+    RaftConfig:
+      description: Raft Config
+      example:
+        role: role
+        location: location
+        uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+      properties:
+        uuid:
+          format: uuid
+          type: string
+        role:
+          type: string
+        location:
+          type: string
+      title: Raft Config
+      type: object
+    TabletInfo:
+      description: Tablet Info
+      example:
+        tablet_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        partition: partition
+        raft_config:
+        - role: role
+          location: location
+          uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        - role: role
+          location: location
+          uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        hidden: true
+        split_depth: 5
+        state: state
+        message: message
+      properties:
+        tablet_id:
+          format: uuid
+          type: string
+        partition:
+          type: string
+        split_depth:
+          type: integer
+        state:
+          type: string
+        hidden:
+          type: boolean
+        message:
+          type: string
+        raft_config:
+          items:
+            $ref: '#/components/schemas/RaftConfig'
+          type: array
+      title: Tablet Info
+      type: object
+    TableInfo:
+      description: Table Info
+      example:
+        table_tablespace_oid: table_tablespace_oid
+        table_replication_info:
+          live_replicas:
+            placement_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            num_replicas: 6
+            placement_blocks:
+            - cloud_info:
+                placement_region: placement_region
+                placement_zone: placement_zone
+                placement_cloud: placement_cloud
+              min_num_replicas: 1
+            - cloud_info:
+                placement_region: placement_region
+                placement_zone: placement_zone
+                placement_cloud: placement_cloud
+              min_num_replicas: 1
+          read_replicas:
+          - placement_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            num_replicas: 6
+            placement_blocks:
+            - cloud_info:
+                placement_region: placement_region
+                placement_zone: placement_zone
+                placement_cloud: placement_cloud
+              min_num_replicas: 1
+            - cloud_info:
+                placement_region: placement_region
+                placement_zone: placement_zone
+                placement_cloud: placement_cloud
+              min_num_replicas: 1
+          - placement_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            num_replicas: 6
+            placement_blocks:
+            - cloud_info:
+                placement_region: placement_region
+                placement_zone: placement_zone
+                placement_cloud: placement_cloud
+              min_num_replicas: 1
+            - cloud_info:
+                placement_region: placement_region
+                placement_zone: placement_zone
+                placement_cloud: placement_cloud
+              min_num_replicas: 1
+        table_state: table_state
+        table_state_message: table_state_message
+        columns:
+        - column: column
+          id: id
+          type: type
+        - column: column
+          id: id
+          type: type
+        table_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        table_version: 0
+        table_name: table_name
+        tablets:
+        - tablet_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          partition: partition
+          raft_config:
+          - role: role
+            location: location
+            uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          - role: role
+            location: location
+            uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          hidden: true
+          split_depth: 5
+          state: state
+          message: message
+        - tablet_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          partition: partition
+          raft_config:
+          - role: role
+            location: location
+            uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          - role: role
+            location: location
+            uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          hidden: true
+          split_depth: 5
+          state: state
+          message: message
+        table_type: table_type
+      properties:
+        table_name:
+          type: string
+        table_id:
+          format: uuid
+          type: string
+        table_version:
+          type: integer
+        table_type:
+          type: string
+        table_state:
+          type: string
+        table_state_message:
+          type: string
+        table_tablespace_oid:
+          type: string
+        table_replication_info:
+          $ref: '#/components/schemas/TableInfo_table_replication_info'
+        columns:
+          items:
+            $ref: '#/components/schemas/ColumnInfo'
+          type: array
+        tablets:
+          items:
+            $ref: '#/components/schemas/TabletInfo'
+          type: array
+      required:
+      - columns
+      - table_id
+      - table_name
+      - table_replication_info
+      - table_state
+      - table_state_message
+      - table_type
+      - table_version
+      - tablets
+      title: Table Info
+      type: object
+    HealthCheckInfo:
+      example:
+        most_recent_uptime: 0
+        dead_nodes:
+        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        leaderless_tablets:
+        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        under_replicated_tablets:
+        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+      properties:
+        dead_nodes:
+          description: UUIDs of dead nodes
+          items:
+            format: uuid
+            type: string
+          type: array
+        most_recent_uptime:
+          format: int64
+          minimum: 0
+          type: integer
+        under_replicated_tablets:
+          description: UUIDs of under-replicated tablets
+          items:
+            format: uuid
+            type: string
+          type: array
+        leaderless_tablets:
+          description: UUIDs of leaderless tablets
+          items:
+            format: uuid
+            type: string
+          type: array
+      required:
+      - dead_nodes
+      - leaderless_tablets
+      - most_recent_uptime
+      - under_replicated_tablets
+      title: Health Check Info
+      type: object
+    ClusterTablet:
+      description: Model representing a tablet
+      example:
+        tablet_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        namespace: namespace
+        table_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        table_name: table_name
+        has_leader: true
+      properties:
+        namespace:
+          type: string
+        table_name:
+          type: string
+        table_uuid:
+          format: uuid
+          type: string
+        tablet_id:
+          format: uuid
+          type: string
+        has_leader:
+          type: boolean
+      required:
+      - has_leader
+      - namespace
+      - table_id
+      - table_name
+      - table_uuid
+      title: Cluster Tablet Object
+      type: object
+    ClusterTabletData:
+      additionalProperties:
+        $ref: '#/components/schemas/ClusterTablet'
+      description: List of cluster tablets
+      title: Cluster Tablet Data
+      type: object
+    VersionInfo:
+      description: YugabyteDB version info
+      example:
+        version: version
+      properties:
+        version:
+          type: string
+      title: YugabyteDB Version Info
+      type: object
+    Gflag:
+      description: Gflag
+      example:
+        name: name
+        type: type
+        value: value
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+        type:
+          type: string
+      title: Gflag
+      type: object
+    GflagsInfo:
+      description: Gflags Info
+      example:
+        tserver_flags:
+        - name: name
+          type: type
+          value: value
+        - name: name
+          type: type
+          value: value
+        master_flags:
+        - name: name
+          type: type
+          value: value
+        - name: name
+          type: type
+          value: value
+      properties:
+        master_flags:
+          items:
+            $ref: '#/components/schemas/Gflag'
+          type: array
+        tserver_flags:
+          items:
+            $ref: '#/components/schemas/Gflag'
+          type: array
+      required:
+      - master_flags
+      - tserver_flags
+      title: Gflags Info
+      type: object
+    AlertsInfo:
+      description: Alerts Info
+      example:
+        name: name
+        info: info
+      properties:
+        name:
+          description: Name of alert
+          type: string
+        info:
+          description: Array of alerts
+          type: string
+      required:
+      - info
+      - name
+      title: Alerts Info
+      type: object
+    Cluster_Response:
+      example:
+        data:
+          spec:
+            cluster_region_info:
+            - placement_info:
+                cloud_info:
+                  region: us-west2
+                num_nodes: 9
+            - placement_info:
+                cloud_info:
+                  region: us-west2
+                num_nodes: 9
+            name: name
+            cloud_info:
+              region: us-west2
+            encryption_info:
+              encryption_in_transit: false
+              encryption_at_rest: false
+            cluster_info:
+              replication_factor: 14
+              node_info:
+                disk_size_used_gb: 5.637376656633329
+                num_cores: 7
+                memory_mb: 1.4658129805029452
+                cpu_usage: 2.3021358869347655
+                disk_size_gb: 5.962133916683182
+              is_production: false
+              version: 9
+              num_nodes: 2
+          info:
+            metadata:
+              updated_on: updated_on
+              created_on: created_on
+            id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            state: state
+            software_version: software_version
+      properties:
+        data:
+          $ref: '#/components/schemas/ClusterData'
+      title: Cluster Response
+      type: object
     Cluster_Nodes_Response:
       example:
         data:
@@ -1544,17 +2114,52 @@ components:
       - start_timestamp
       title: Metric Response
       type: object
-    Cluster_table_list_response:
+    Activities_Response:
       example:
         data:
-        - keyspace: keyspace
-          size_bytes: 0
+        - data: '{}'
           name: name
-        - keyspace: keyspace
-          size_bytes: 0
+        - data: '{}'
           name: name
       properties:
         data:
+          items:
+            $ref: '#/components/schemas/ActivityData'
+          type: array
+      required:
+      - data
+      title: Activities Response
+      type: object
+    Cluster_table_list_response:
+      example:
+        tables:
+        - keyspace: keyspace
+          size_bytes: 0
+          name: name
+          uuid: uuid
+        - keyspace: keyspace
+          size_bytes: 0
+          name: name
+          uuid: uuid
+        indexes:
+        - keyspace: keyspace
+          size_bytes: 0
+          name: name
+          uuid: uuid
+        - keyspace: keyspace
+          size_bytes: 0
+          name: name
+          uuid: uuid
+      properties:
+        tables:
+          description: List of cluster tables
+          items:
+            $ref: '#/components/schemas/ClusterTable'
+          nullable: false
+          title: Cluster Table Data
+          type: array
+          uniqueItems: true
+        indexes:
           description: List of cluster tables
           items:
             $ref: '#/components/schemas/ClusterTable'
@@ -1563,7 +2168,8 @@ components:
           type: array
           uniqueItems: true
       required:
-      - data
+      - indexes
+      - tables
       title: Cluster table list response
       type: object
     Health_Check_Response:
@@ -1615,47 +2221,21 @@ components:
       - is_idle
       title: Is load balancer idle
       type: object
-    Cluster_Response:
+    Alerts_Response:
       example:
         data:
-          spec:
-            cluster_region_info:
-            - placement_info:
-                cloud_info:
-                  region: us-west2
-                num_nodes: 9
-            - placement_info:
-                cloud_info:
-                  region: us-west2
-                num_nodes: 9
-            name: name
-            cloud_info:
-              region: us-west2
-            encryption_info:
-              encryption_in_transit: false
-              encryption_at_rest: false
-            cluster_info:
-              replication_factor: 14
-              node_info:
-                disk_size_used_gb: 5.637376656633329
-                num_cores: 7
-                memory_mb: 1.4658129805029452
-                cpu_usage: 2.3021358869347655
-                disk_size_gb: 5.962133916683182
-              is_production: false
-              version: 9
-              num_nodes: 2
-          info:
-            metadata:
-              updated_on: updated_on
-              created_on: created_on
-            id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
-            state: state
-            software_version: software_version
+        - name: name
+          info: info
+        - name: name
+          info: info
       properties:
         data:
-          $ref: '#/components/schemas/ClusterData'
-      title: Cluster Response
+          items:
+            $ref: '#/components/schemas/AlertsInfo'
+          type: array
+      required:
+      - data
+      title: Alerts Response
       type: object
     ApiError_error:
       properties:
@@ -1812,6 +2392,57 @@ components:
       required:
       - region
       - zone
+      type: object
+    TableInfo_table_replication_info:
+      example:
+        live_replicas:
+          placement_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          num_replicas: 6
+          placement_blocks:
+          - cloud_info:
+              placement_region: placement_region
+              placement_zone: placement_zone
+              placement_cloud: placement_cloud
+            min_num_replicas: 1
+          - cloud_info:
+              placement_region: placement_region
+              placement_zone: placement_zone
+              placement_cloud: placement_cloud
+            min_num_replicas: 1
+        read_replicas:
+        - placement_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          num_replicas: 6
+          placement_blocks:
+          - cloud_info:
+              placement_region: placement_region
+              placement_zone: placement_zone
+              placement_cloud: placement_cloud
+            min_num_replicas: 1
+          - cloud_info:
+              placement_region: placement_region
+              placement_zone: placement_zone
+              placement_cloud: placement_cloud
+            min_num_replicas: 1
+        - placement_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          num_replicas: 6
+          placement_blocks:
+          - cloud_info:
+              placement_region: placement_region
+              placement_zone: placement_zone
+              placement_cloud: placement_cloud
+            min_num_replicas: 1
+          - cloud_info:
+              placement_region: placement_region
+              placement_zone: placement_zone
+              placement_cloud: placement_cloud
+            min_num_replicas: 1
+      properties:
+        live_replicas:
+          $ref: '#/components/schemas/TableReplicationInfo'
+        read_replicas:
+          items:
+            $ref: '#/components/schemas/TableReplicationInfo'
+          type: array
       type: object
   securitySchemes:
     BearerAuthToken:

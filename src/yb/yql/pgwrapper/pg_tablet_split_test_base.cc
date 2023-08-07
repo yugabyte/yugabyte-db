@@ -129,7 +129,9 @@ Status PgTabletSplitTestBase::SplitSingleTablet(const TableId& table_id) {
     return STATUS_FORMAT(InternalError, "Expected single tablet, found $0.", tablets.size());
   }
   auto tablet_id = tablets.front()->tablet_id();
-  return VERIFY_RESULT(catalog_manager())->SplitTablet(tablet_id, master::ManualSplit::kTrue);
+  auto epoch = VERIFY_RESULT(catalog_manager())->GetLeaderEpochInternal();
+  return VERIFY_RESULT(catalog_manager())
+      ->SplitTablet(tablet_id, master::ManualSplit::kTrue, epoch);
 }
 
 Status PgTabletSplitTestBase::InvokeSplitTabletRpc(const std::string& tablet_id) {

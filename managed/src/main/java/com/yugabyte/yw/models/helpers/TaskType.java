@@ -237,6 +237,9 @@ public enum TaskType {
 
   ModifyBlackList(com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList.class),
 
+  CheckUnderReplicatedTablets(
+      com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets.class),
+
   ManipulateDnsRecordTask(
       com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask.class),
 
@@ -290,6 +293,10 @@ public enum TaskType {
   InstanceActions(com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions.class),
 
   WaitForServerReady(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady.class),
+
+  WaitForClockSync(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForClockSync.class),
+
+  WaitForDuration(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForDuration.class),
 
   RunExternalScript(com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript.class),
 
@@ -520,7 +527,9 @@ public enum TaskType {
 
   YBCBackupSucceeded(com.yugabyte.yw.commissioner.tasks.subtasks.YBCBackupSucceeded.class),
 
-  CloudProviderEdit(com.yugabyte.yw.commissioner.tasks.CloudProviderEdit.class);
+  CloudProviderEdit(com.yugabyte.yw.commissioner.tasks.CloudProviderEdit.class),
+
+  ReprovisionNode(com.yugabyte.yw.commissioner.tasks.ReprovisionNode.class);
 
   private final Class<? extends ITask> taskClass;
 

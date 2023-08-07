@@ -81,4 +81,7 @@ struct PlanState;
 extern bool planstate_tree_walker(struct PlanState *planstate, bool (*walker) (),
 								  void *context);
 
+/* YB additions. */
+extern List **YbPlanStateTryGetAggrefs(struct PlanState *planstate);
+
 #endif							/* NODEFUNCS_H */

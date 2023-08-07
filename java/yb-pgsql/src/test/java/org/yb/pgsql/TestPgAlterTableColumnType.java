@@ -15,6 +15,7 @@ package org.yb.pgsql;
 
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.Arrays;
 
 import org.junit.After;
 import org.junit.Before;
@@ -213,10 +214,14 @@ public class TestPgAlterTableColumnType extends BasePgSQLTest {
       runInvalidQuery(statement, "ALTER TABLE default_table ALTER c2 TYPE int USING length(c2)",
         "default for column \"c2\" cannot be cast automatically to type integer");
 
-      statement.execute("CREATE TABLE default_table2(c1 int, c2 int default 10)");
-      statement.execute("ALTER TABLE default_table2 ALTER c2 TYPE varchar");
+      statement.execute("CREATE TABLE default_table2(c1 int, c2 int default 10,"
+        + " c3 text default 'x')");
+      // DROP a column to change attribute mapping before running alter type.
+      statement.execute("ALTER TABLE default_table2 DROP COLUMN c1");
+      statement.execute("ALTER TABLE default_table2 ADD COLUMN c1 int");
+      statement.execute("ALTER TABLE default_table2 ALTER c2 TYPE varchar(10)");
 
-      statement.execute("INSERT INTO default_table2 VALUES (1)");
+      statement.execute("INSERT INTO default_table2(c1) VALUES (1)");
 
       ResultSet rs = statement.executeQuery("SELECT * from default_table2");
       assertTrue(rs.next());
@@ -224,6 +229,98 @@ public class TestPgAlterTableColumnType extends BasePgSQLTest {
       // The default is converted automatically, not with the cast expression
       // length(c2).
       assertEquals(Integer.toString(10), rs.getString("c2"));
+      assertEquals("x", rs.getString("c3"));
+
+      // Verify that ALTER TYPE + ALTER ... SET DEFAULT works.
+      statement.execute("ALTER TABLE default_table2 ALTER c2 TYPE varchar(3),"
+        + " ALTER c2 SET DEFAULT 'xyz'");
+      statement.execute("INSERT INTO default_table2(c1) VALUES (2)");
+      assertRowList(statement, "SELECT * FROM default_table2 ORDER BY c1", Arrays.asList(
+          new Row("10", "x", 1),
+          new Row("xyz", "x", 2)));
+    }
+  }
+
+  @Test
+  public void testMiscColumnDependencies() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TYPE test_type AS (t text)");
+      statement.execute("CREATE TABLE test_table(c1 int, c2 int, c3 int)");
+      statement.execute("INSERT INTO test_table VALUES(1, 2, 3)");
+      statement.execute("ANALYZE test_table");
+      // DROP a column to change attribute mapping before running alter type.
+      statement.execute("ALTER TABLE test_table DROP COLUMN c1");
+      // Verify that there's a pg_statistic entry for the column we are about to alter.
+      assertQuery(statement, "SELECT count(*) FROM pg_statistic JOIN pg_attribute ON"
+        + " starelid=attrelid AND staattnum=attnum WHERE attrelid='test_table'::regclass AND"
+        + " attname='c2'", new Row(1));
+      statement.execute("ALTER TABLE test_table ALTER c2 TYPE test_type USING"
+        + " ROW(c2)::test_type");
+      // Verify that the pg_statistic entry for the altered column (c2) was removed.
+      assertQuery(statement, "SELECT count(*) FROM pg_statistic JOIN pg_attribute ON"
+        + " starelid=attrelid AND staattnum=attnum WHERE attrelid='test_table'::regclass AND"
+        + " attname='c2'", new Row(0));
+      // Verify that the pg_statistic entry for the other column (c3) still exists.
+      assertQuery(statement, "SELECT count(*) FROM pg_statistic JOIN pg_attribute ON"
+        + " starelid=attrelid AND staattnum=attnum WHERE attrelid='test_table'::regclass AND"
+        + " attname='c3'", new Row(1));
+      // Verify that a dependency between the altered column and the type exists.
+      assertQuery(statement, "SELECT count(*) FROM pg_depend JOIN pg_attribute ON objid=attrelid"
+        + " AND objsubid=attnum AND refobjid=atttypid WHERE attrelid='test_table'::regclass"
+        + " AND attname='c2'", new Row(1));
+      statement.execute("DROP TYPE test_type CASCADE");
+      assertQuery(statement, "SELECT * FROM test_table", new Row(3));
+      statement.execute("ALTER TABLE test_table ALTER c3 TYPE text COLLATE \"en_US\"");
+      // Verify that the pg_statistic entry for the altered column (c3) was removed.
+      assertQuery(statement, "SELECT count(*) FROM pg_statistic JOIN pg_attribute ON"
+        + " starelid=attrelid AND staattnum=attnum WHERE attrelid='test_table'::regclass AND"
+        + " attname='c3'", new Row(0));
+      // Verify that a dependency was created between the altered column and the collation.
+      assertQuery(statement, "SELECT count(*) FROM pg_depend JOIN pg_attribute ON objid=attrelid"
+        + " AND objsubid=attnum AND refobjid=attcollation WHERE attrelid='test_table'::regclass"
+        + " AND attname='c3'", new Row(1));
+      statement.execute("DROP COLLATION \"en_US\" CASCADE");
+      assertQuery(statement, "SELECT * FROM test_table", new Row());
+    }
+  }
+
+  @Test
+  public void testSplitOptions() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test (c1 varchar, c2 varchar) SPLIT INTO 5 TABLETS");
+      statement.execute("CREATE INDEX idx1 ON test(c1) SPLIT INTO 5 TABLETS");
+      statement.execute("CREATE INDEX idx2 ON test(c1 HASH, c2 ASC) SPLIT INTO 5 TABLETS");
+      statement.execute("CREATE INDEX idx3 ON test(c2 ASC) INCLUDE(c1)"
+        + " SPLIT AT VALUES ((E'test123\"\"''\\\\\\u0068\\u0069'))");
+      statement.execute("CREATE INDEX idx4 ON test(c1 ASC) SPLIT AT VALUES (('h'))");
+      statement.execute("ALTER TABLE test ALTER c1 TYPE int USING length(c1)");
+      // Hash split options on the table should be preserved.
+      assertQuery(statement, "SELECT num_tablets, num_hash_key_columns FROM"
+        + " yb_table_properties('test'::regclass)", new Row(5, 1));
+      // Hash split options on the indexes should be preserved.
+      assertQuery(statement, "SELECT num_tablets, num_hash_key_columns FROM"
+        + " yb_table_properties('idx1'::regclass)", new Row(5, 1));
+      assertQuery(statement, "SELECT num_tablets, num_hash_key_columns FROM"
+        + " yb_table_properties('idx2'::regclass)", new Row(5, 1));
+      // Range split options on an index should be preserved only when the altered column
+      // is not a part of the index key.
+      assertQuery(statement, "SELECT yb_get_range_split_clause('idx3'::regclass)",
+          new Row("SPLIT AT VALUES ((E'test123\"\"''\\\\hi'))"));
+      assertQuery(statement, "SELECT yb_get_range_split_clause('idx4'::regclass)",
+          new Row(""));
+
+      statement.execute("CREATE TABLE test2 (c1 varchar, c2 varchar, PRIMARY KEY(c1 ASC, c2 DESC))"
+      + " SPLIT AT VALUES (('h', 20))");
+      statement.execute("ALTER TABLE test2 ALTER c1 TYPE int USING length(c1)");
+      statement.execute("CREATE TABLE test3 (c1 varchar, c2 varchar, PRIMARY KEY(c2 ASC))"
+      + " SPLIT AT VALUES ((E'test123\"\"''\\\\\\u0068\\u0069'))");
+      statement.execute("ALTER TABLE test3 ALTER c1 TYPE int USING length(c1)");
+      // Range split options on the table should be preserved only when the altered column
+      // is not a part of the index key.
+      assertQuery(statement, "SELECT yb_get_range_split_clause('test2'::regclass)",
+          new Row(""));
+      assertQuery(statement, "SELECT yb_get_range_split_clause('test3'::regclass)",
+          new Row("SPLIT AT VALUES ((E'test123\"\"''\\\\hi'))"));
     }
   }
 }

@@ -124,39 +124,39 @@ class RocksDbListener : public rocksdb::EventListener {
  public:
   void OnCompactionCompleted(rocksdb::DB* db,
       const rocksdb::CompactionJobInfo& info) override {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     ++num_compactions_completed_[db];
     input_files_in_compactions_completed_[db] += info.stats.num_input_files;
     input_bytes_in_compactions_completed_[db] += info.stats.total_input_bytes;
   }
 
   size_t GetNumCompactionsCompleted(rocksdb::DB* db) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     return num_compactions_completed_[db];
   }
 
   uint64_t GetInputFilesInCompactionsCompleted(rocksdb::DB* db) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     return input_files_in_compactions_completed_[db];
   }
 
   uint64_t GetInputBytesInCompactionsCompleted(rocksdb::DB* db) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     return input_bytes_in_compactions_completed_[db];
   }
 
   void OnFlushCompleted(rocksdb::DB* db, const rocksdb::FlushJobInfo&) override {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     ++num_flushes_completed_[db];
   }
 
   size_t GetNumFlushesCompleted(rocksdb::DB* db) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     return num_flushes_completed_[db];
   }
 
   void Reset() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     num_compactions_completed_.clear();
     input_files_in_compactions_completed_.clear();
     input_bytes_in_compactions_completed_.clear();
@@ -1700,8 +1700,9 @@ bool FileExpirationWithRF3::AllFilesHaveTTLMetadata() {
 void FileExpirationWithRF3::WaitUntilAllCommittedOpsApplied(const MonoDelta timeout) {
   const auto completion_deadline = MonoTime::Now() + timeout;
   for (auto& peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
-    auto consensus = peer->shared_consensus();
-    if (consensus) {
+    auto consensus_result = peer->GetConsensus();
+    if (consensus_result) {
+      auto* consensus = consensus_result->get();
       ASSERT_OK(Wait([consensus]() -> Result<bool> {
         return consensus->GetLastAppliedOpId() >= consensus->GetLastCommittedOpId();
       }, completion_deadline, "Waiting for all committed ops to be applied"));

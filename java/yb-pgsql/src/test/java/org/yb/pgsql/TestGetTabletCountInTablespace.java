@@ -117,6 +117,92 @@ public class TestGetTabletCountInTablespace extends BasePgSQLTest {
   }
 
   @Test
+  public void testMultiZoneWithNumTabletsFlags1() throws Exception {
+    List<Map<String, String>> placementInfo = Arrays.asList(
+        ImmutableMap.of(
+            "placement_cloud", "c1",
+            "placement_region", "r1",
+            "placement_zone", "z1"),
+        ImmutableMap.of(
+            "placement_cloud", "c1",
+            "placement_region", "r1",
+            "placement_zone", "z2"),
+        ImmutableMap.of(
+            "placement_cloud", "c1",
+            "placement_region", "r1",
+            "placement_zone", "z3"));
+    Consumer<MiniYBClusterBuilder> builder = x -> {
+      x.perTServerFlags(placementInfo);
+      x.numShardsPerTServer(-1);
+      x.addCommonTServerFlag("num_cpus", "4");
+      x.addCommonTServerFlag("ysql_num_tablets", "-1");
+      x.addCommonTServerFlag("ycql_num_tablets", "5");
+    };
+    restartClusterWithClusterBuilder(builder);
+
+    try (Connection conn = getConnectionBuilder().withTServer(0).connect();
+         Statement stmt = conn.createStatement()) {
+       String tablespace = "multi_zone_tablespace_with_ycql_num_tablets";
+       String table ="multi_zone_tablespace_table_with_ycql_num_tablets";
+       String tableSpacePlacementInfo =
+           "{\"num_replicas\": 3, \"placement_blocks\":" +
+               "[{\"cloud\":\"c1\",\"region\":\"r1\"," +
+                 "\"zone\":\"z1\",\"min_num_replicas\":1}," +
+                "{\"cloud\":\"c1\",\"region\":\"r1\"," +
+                 "\"zone\":\"z2\",\"min_num_replicas\":1}," +
+                "{\"cloud\":\"c1\",\"region\":\"r1\"," +
+                 "\"zone\":\"z3\",\"min_num_replicas\":1}]}";
+
+      createTableWithinTablespace(stmt, tablespace, table, tableSpacePlacementInfo);
+      // Adheres to placement info since ysql_num_tablets flag isn't set.
+      // Should not adhere to ycql_num_tablets flag even though it's set.
+      // Since automatic_tablet_splitting_enabled is set,
+      // we take min(2, num_tablets) = min(2, 3) = 2.
+      assertEquals(2, getTabletsLocationsCount(table));
+    }
+  }
+
+  @Test
+  public void testMultiZoneWithNumTabletsFlags2() throws Exception {
+    List<Map<String, String>> placementInfo = Arrays.asList(
+        ImmutableMap.of(
+            "placement_cloud", "c1",
+            "placement_region", "r1",
+            "placement_zone", "z1"),
+        ImmutableMap.of(
+            "placement_cloud", "c1",
+            "placement_region", "r1",
+            "placement_zone", "z2"),
+        ImmutableMap.of(
+            "placement_cloud", "c1",
+            "placement_region", "r1",
+            "placement_zone", "z3"));
+    Consumer<MiniYBClusterBuilder> builder = x -> {
+      x.perTServerFlags(placementInfo);
+      x.numShardsPerTServer(-1);
+      x.addCommonTServerFlag("ysql_num_tablets", "5");
+      x.addCommonTServerFlag("ycql_num_tablets", "1");
+    };
+    restartClusterWithClusterBuilder(builder);
+
+    try (Connection conn = getConnectionBuilder().withTServer(0).connect();
+         Statement stmt = conn.createStatement()) {
+       String tablespace = "multi_zone_tablespace_with_ycql_num_tablets";
+       String table ="multi_zone_tablespace_table_with_ycql_num_tablets";
+       String tableSpacePlacementInfo =
+           "{\"num_replicas\": 2, \"placement_blocks\":" +
+               "[{\"cloud\":\"c1\",\"region\":\"r1\"," +
+                 "\"zone\":\"z1\",\"min_num_replicas\":1}," +
+                "{\"cloud\":\"c1\",\"region\":\"r1\"," +
+                 "\"zone\":\"z2\",\"min_num_replicas\":1}]}";
+
+      createTableWithinTablespace(stmt, tablespace, table, tableSpacePlacementInfo);
+      // Adheres to ysql_num_tablets flag value as it's set.
+      assertEquals(5, getTabletsLocationsCount(table));
+    }
+  }
+
+  @Test
   public void testSingleZone() throws Exception {
     try (Connection conn = getConnectionBuilder().withTServer(0).connect();
          Statement stmt = conn.createStatement()) {

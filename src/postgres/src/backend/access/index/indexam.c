@@ -34,6 +34,8 @@
  *		index_getprocid - get a support procedure OID
  *		index_getprocinfo - get a support procedure's lookup info
  *
+ *		yb_index_might_recheck - could the scan possibly recheck indexquals?
+ *
  * NOTES
  *		This file contains the index_ routines which used
  *		to be a scattered collection of stuff in access/genam.
@@ -80,9 +82,6 @@
 #include "storage/predicate.h"
 #include "utils/snapmgr.h"
 #include "utils/tqual.h"
-
-#include "pg_yb_utils.h"
-#include "access/yb_lsm.h"
 
 /* ----------------------------------------------------------------
  *					macros used in index_ routines
@@ -635,17 +634,8 @@ index_getnext_tid(IndexScanDesc scan, ScanDirection direction)
 HeapTuple
 index_fetch_heap(IndexScanDesc scan)
 {
-	/*
-	 * For YugaByte secondary indexes, there are two scenarios.
-	 * - If YugaByte returns an index-tuple, the returned ybctid value should be used to query data.
-	 * - If YugaByte returns a heap_tuple, all requested data was already selected in the tuple.
-	 */
 	if (IsYBRelation(scan->heapRelation))
-	{
-		if (scan->xs_hitup != 0)
-			return scan->xs_hitup;
-		return YBCFetchTuple(scan->heapRelation, scan->xs_ctup.t_ybctid);
-	}
+		return scan->xs_hitup;
 
 	ItemPointer tid = &scan->xs_ctup.t_self;
 	bool		all_dead = false;
@@ -961,4 +951,17 @@ index_getprocinfo(Relation irel,
 	}
 
 	return locinfo;
+}
+
+bool
+yb_index_might_recheck(Relation heapRelation, Relation indexRelation,
+					   bool xs_want_itup, ScanKey keys, int nkeys)
+{
+	RELATION_CHECKS;
+	CHECK_REL_PROCEDURE(yb_ammightrecheck);
+
+	return indexRelation->rd_amroutine->yb_ammightrecheck(heapRelation,
+														  indexRelation,
+														  xs_want_itup, keys,
+														  nkeys);
 }

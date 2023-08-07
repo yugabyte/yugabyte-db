@@ -4,7 +4,10 @@ package com.yugabyte.yw.commissioner;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.tasks.upgrade.RestartUniverse;
 import com.yugabyte.yw.commissioner.tasks.upgrade.UpgradeTaskTest;
@@ -28,6 +31,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
+import play.libs.Json;
 
 /*
  * Reuses the test code for universe upgrade to test triggering.
@@ -77,6 +81,10 @@ public class HookInserterTest extends UpgradeTaskTest {
     universeScope.addHook(universeHook);
 
     restartUniverse.setUserTaskUUID(UUID.randomUUID());
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("underreplicated_tablets", Json.newArray());
+    when(mockNodeUIApiHelper.getRequest(anyString())).thenReturn(bodyJson);
   }
 
   @Test

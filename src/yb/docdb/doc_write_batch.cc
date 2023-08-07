@@ -116,7 +116,7 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
                     << ", prev_key_prefix_exact: " << prev_key_prefix_exact
                     << ", has_ancestor: " << has_ancestor;
 
-  auto key_data = VERIFY_RESULT(doc_iter->Fetch());
+  auto key_data = VERIFY_RESULT_REF(doc_iter->Fetch());
 
   bool use_packed_row = false;
   Slice recent_value;
@@ -125,7 +125,7 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
     if (!subkeys.empty() && IsColumnId(static_cast<KeyEntryType>(subkeys[0]))) {
       if (key_data.key.empty() || key_data.write_time < packed_row_write_time_) {
         KeyEntryType entry_type = static_cast<KeyEntryType>(subkeys.consume_byte());
-        int64_t column_id_as_int64 = VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(&subkeys));
+        int64_t column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(&subkeys));
         ColumnId column_id_ref;
         RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id_ref));
         if (subkeys.empty()) {
@@ -780,7 +780,7 @@ Status DocWriteBatch::ReplaceCqlInList(
 
   RETURN_NOT_OK(SeekToKeyPrefix(iter.get(), HasAncestor::kFalse));
 
-  auto current_key = VERIFY_RESULT(iter->Fetch());
+  const auto& current_key = VERIFY_RESULT_REF(iter->Fetch());
   if (!current_key) {
     return STATUS(QLError, "Unable to replace items in empty list.");
   }
@@ -793,7 +793,7 @@ Status DocWriteBatch::ReplaceCqlInList(
   // collection item found in DocDB as if there were no higher-level overwrite or invalidation of
   // it.
   auto current_key_is_init_marker = current_key.key.compare(key_prefix_) == 0;
-  const auto& collection_write_time = current_key_is_init_marker
+  auto collection_write_time = current_key_is_init_marker
       ? current_key.write_time : DocHybridTime::EncodedMin();
 
   Slice value_slice;

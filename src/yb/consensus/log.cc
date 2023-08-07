@@ -201,6 +201,9 @@ DEFINE_test_flag(int64, log_fault_after_segment_allocation_min_replicate_index, 
                  "Fault of segment allocation when min replicate index is at least specified. "
                  "0 to disable.");
 
+DEFINE_test_flag(bool, crash_before_wal_header_is_written, false,
+                 "Crash the server before WAL header is written");
+
 DEFINE_UNKNOWN_int64(time_based_wal_gc_clock_delta_usec, 0,
              "A delta in microseconds to add to the clock value used to determine if a WAL "
              "segment is safe to be garbage collected. This is needed for clusters running with a "
@@ -232,7 +235,6 @@ namespace log {
 
 using env_util::OpenFileForRandom;
 using std::shared_ptr;
-using std::shared_lock;
 using std::unique_ptr;
 using std::string;
 using strings::Substitute;
@@ -644,7 +646,7 @@ Log::Log(
 }
 
 Status Log::Init() {
-  std::lock_guard<percpu_rwlock> write_lock(state_lock_);
+  std::lock_guard write_lock(state_lock_);
   CHECK_EQ(kLogInitialized, log_state_);
   // Init the index
   log_index_ = VERIFY_RESULT(LogIndex::NewLogIndex(wal_dir_));
@@ -730,7 +732,7 @@ Status Log::CloseCurrentSegment() {
   footer_builder_.set_close_timestamp_micros(close_timestamp_micros);
   Status status;
   {
-    std::lock_guard<std::mutex> lock(active_segment_mutex_);
+    std::lock_guard lock(active_segment_mutex_);
     status = active_segment_->WriteIndexWithFooterAndClose(log_index_.get(),
                                                            &footer_builder_);
   }
@@ -773,7 +775,7 @@ std::unique_ptr<Log::LogEntryBatch> Log::Reserve(
     LogEntryTypePB type, std::shared_ptr<LWLogEntryBatchPB> entry_batch) {
   TRACE_EVENT0("log", "Log::Reserve");
   {
-    SharedLock<rw_spinlock> read_lock(state_lock_.get_lock());
+    PerCpuRwSharedLock read_lock(state_lock_);
     CHECK_EQ(kLogWriting, log_state_);
   }
 
@@ -807,7 +809,7 @@ Status Log::TEST_ReserveAndAppend(
 Status Log::AsyncAppend(
     std::unique_ptr<LogEntryBatch> entry_batch, const StatusCallback& callback) {
   {
-    SharedLock<rw_spinlock> read_lock(state_lock_.get_lock());
+    PerCpuRwSharedLock read_lock(state_lock_);
     CHECK_EQ(kLogWriting, log_state_);
   }
 
@@ -1024,7 +1026,7 @@ Result<bool> Log::ReuseAsActiveSegment(const scoped_refptr<ReadableLogSegment>& 
                                          recover_segment->first_entry_offset()));
 
   {
-    std::lock_guard<std::mutex> lock(active_segment_mutex_);
+    std::lock_guard lock(active_segment_mutex_);
     active_segment_ = std::move(new_segment);
   }
   LOG(INFO) << "Successfully restored footer_builder_ and log_index_ for segment: "
@@ -1034,7 +1036,7 @@ Result<bool> Log::ReuseAsActiveSegment(const scoped_refptr<ReadableLogSegment>& 
 }
 
 Status Log::EnsureSegmentInitialized() {
-  std::lock_guard<percpu_rwlock> write_lock(state_lock_);
+  std::lock_guard write_lock(state_lock_);
   return EnsureSegmentInitializedUnlocked();
 }
 
@@ -1102,7 +1104,7 @@ Status Log::EnsureSegmentInitializedUnlocked() {
 // might not be necessary. We only call ::DoSync directly before we call ::CloseCurrentSegment
 Status Log::DoSync() {
   // Acquire the lock over active_segment_ to prevent segment rollover in the interim.
-  std::lock_guard<std::mutex> lock(active_segment_mutex_);
+  std::lock_guard lock(active_segment_mutex_);
   if (active_segment_->IsClosed()) {
     return Status::OK();
   }
@@ -1262,7 +1264,7 @@ Status Log::UpdateSegmentReadableOffset() {
   // Update the reader on how far it can read the active segment.
   RETURN_NOT_OK(reader_->UpdateLastSegmentOffset(active_segment_->written_offset()));
   {
-    std::lock_guard<std::mutex> write_lock(last_synced_entry_op_id_mutex_);
+    std::lock_guard write_lock(last_synced_entry_op_id_mutex_);
     last_synced_entry_op_id_.store(last_appended_entry_op_id_, boost::memory_order_release);
     last_synced_entry_op_id_cond_.notify_all();
   }
@@ -1439,7 +1441,7 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
     SegmentSequence segments_to_delete;
 
     {
-      std::lock_guard<percpu_rwlock> l(state_lock_);
+      std::lock_guard l(state_lock_);
       CHECK_EQ(kLogWriting, log_state_);
 
       RETURN_NOT_OK(GetSegmentsToGCUnlocked(min_op_idx, &segments_to_delete));
@@ -1488,7 +1490,7 @@ Status Log::GetGCableDataSize(int64_t min_op_idx, int64_t* total_size) const {
   SegmentSequence segments_to_delete;
   *total_size = 0;
   {
-    SharedLock<rw_spinlock> read_lock(state_lock_.get_lock());
+    PerCpuRwSharedLock read_lock(state_lock_);
     if (log_state_ != kLogWriting) {
       return STATUS_FORMAT(IllegalState, "Invalid log state $0, expected $1",
           log_state_, kLogWriting);
@@ -1510,7 +1512,7 @@ LogReader* Log::GetLogReader() const {
 }
 
 Status Log::GetSegmentsSnapshot(SegmentSequence* segments) const {
-  SharedLock<rw_spinlock> read_lock(state_lock_.get_lock());
+  PerCpuRwSharedLock read_lock(state_lock_);
   if (!reader_) {
     return STATUS(IllegalState, "Log already closed");
   }
@@ -1521,7 +1523,7 @@ Status Log::GetSegmentsSnapshot(SegmentSequence* segments) const {
 uint64_t Log::OnDiskSize() {
   SegmentSequence segments;
   {
-    shared_lock<rw_spinlock> l(state_lock_.get_lock());
+    PerCpuRwSharedLock l(state_lock_);
     // If the log is closed, the tablet is either being deleted or tombstoned,
     // so we don't count the size of its log anymore as it should be deleted.
     if (log_state_ == kLogClosed || !reader_->GetSegmentsSnapshot(&segments).ok()) {
@@ -1539,7 +1541,7 @@ uint64_t Log::OnDiskSize() {
 
 void Log::SetSchemaForNextLogSegment(const Schema& schema,
                                      uint32_t version) {
-  std::lock_guard<rw_spinlock> l(schema_lock_);
+  std::lock_guard l(schema_lock_);
   *schema_ = schema;
   schema_version_ = version;
 }
@@ -1556,7 +1558,7 @@ Status Log::Close() {
   if (PREDICT_FALSE(FLAGS_TEST_simulate_abrupt_server_restart)) {
     return Status::OK();
   }
-  std::lock_guard<percpu_rwlock> l(state_lock_);
+  std::lock_guard l(state_lock_);
   switch (log_state_) {
     case kLogWriting:
       // Appender uses background_sync_threadpool_token_, so we should reset it
@@ -1586,12 +1588,12 @@ Status Log::Close() {
 }
 
 size_t Log::num_segments() const {
-  std::shared_lock<rw_spinlock> read_lock(state_lock_.get_lock());
+  PerCpuRwSharedLock read_lock(state_lock_);
   return reader_ ? reader_->num_segments() : 0;
 }
 
 Result<scoped_refptr<ReadableLogSegment>> Log::GetSegmentBySequenceNumber(const int64_t seq) const {
-  SharedLock<rw_spinlock> read_lock(state_lock_.get_lock());
+  PerCpuRwSharedLock read_lock(state_lock_);
   if (!reader_) {
     return STATUS(NotFound, "LogReader is not initialized");
   }
@@ -1715,16 +1717,16 @@ Status Log::CopyTo(const std::string& dest_wal_dir, const OpId max_included_op_i
   VLOG_WITH_PREFIX_AND_FUNC(1) << "dest_wal_dir: " << dest_wal_dir
                                << " max_included_op_id: " << AsString(max_included_op_id);
   // We mainly need log_copy_mutex_ to simplify managing of log_copy_min_index_.
-  std::lock_guard<decltype(log_copy_mutex_)> log_copy_lock(log_copy_mutex_);
+  std::lock_guard log_copy_lock(log_copy_mutex_);
   auto se = ScopeExit([this]() {
-    std::lock_guard<percpu_rwlock> l(state_lock_);
+    std::lock_guard l(state_lock_);
     log_copy_min_index_ = std::numeric_limits<int64_t>::max();
   });
 
   SegmentSequence segments;
   scoped_refptr<LogIndex> log_index;
   {
-    UniqueLock<percpu_rwlock> l(state_lock_);
+    UniqueLock<PerCpuRwMutex> l(state_lock_);
     if (log_state_ != kLogInitialized) {
       SCHECK_EQ(log_state_, kLogWriting, IllegalState, Format("Invalid log state: $0", log_state_));
       ReverseLock<decltype(l)> rlock(l);
@@ -1825,11 +1827,6 @@ Status Log::SwitchToAllocatedSegment() {
   CHECK_EQ(allocation_state(), SegmentAllocationState::kAllocationFinished);
   // Increment "next" log segment seqno.
   active_segment_sequence_number_++;
-  const string new_segment_path =
-      FsManager::GetWalSegmentFilePath(wal_dir_, active_segment_sequence_number_);
-
-  RETURN_NOT_OK(get_env()->RenameFile(next_segment_path_, new_segment_path));
-  RETURN_NOT_OK(get_env()->SyncDir(wal_dir_));
 
   int64_t fault_after_min_replicate_index =
       FLAGS_TEST_log_fault_after_segment_allocation_min_replicate_index;
@@ -1841,7 +1838,7 @@ Status Log::SwitchToAllocatedSegment() {
 
   // Create a new segment.
   std::unique_ptr<WritableLogSegment> new_segment(
-      new WritableLogSegment(new_segment_path, next_segment_file_));
+      new WritableLogSegment(next_segment_path_, next_segment_file_));
 
   // Set up the new header and footer.
   LogSegmentHeaderPB header;
@@ -1861,12 +1858,27 @@ Status Log::SwitchToAllocatedSegment() {
     header.set_deprecated_schema_version(schema_version_);
   }
 
+  if (PREDICT_FALSE(FLAGS_TEST_crash_before_wal_header_is_written)) {
+    LOG_WITH_PREFIX(FATAL) << "Crash before wal header is written";
+  }
   RETURN_NOT_OK(new_segment->WriteHeader(header));
+  // Calling Sync() here is important because it ensures the file has a complete WAL header
+  // on disk before renaming the file.
+  RETURN_NOT_OK(new_segment->Sync());
+
+  const auto new_segment_path =
+      FsManager::GetWalSegmentFilePath(wal_dir_, active_segment_sequence_number_);
+  // Rename should happen after writing the header and sync. Otherwise, if the server crashes
+  // immediately after the rename, an incomplete WAL headers could cause future tablet bootstrap
+  // to fail repeatedly.
+  RETURN_NOT_OK(get_env()->RenameFile(next_segment_path_, new_segment_path));
+  RETURN_NOT_OK(get_env()->SyncDir(wal_dir_));
+  new_segment->set_path(new_segment_path);
   // Transform the currently-active segment into a readable one, since we need to be able to replay
   // the segments for other peers.
   {
     if (active_segment_.get() != nullptr) {
-      std::lock_guard<decltype(state_lock_)> l(state_lock_);
+      std::lock_guard l(state_lock_);
       CHECK_OK(ReplaceSegmentInReaderUnlocked());
     }
   }
@@ -1882,7 +1894,7 @@ Status Log::SwitchToAllocatedSegment() {
   RETURN_NOT_OK(reader_->AppendEmptySegment(readable_segment));
   // Now set 'active_segment_' to the new segment.
   {
-    std::lock_guard<std::mutex> lock(active_segment_mutex_);
+    std::lock_guard lock(active_segment_mutex_);
     active_segment_ = std::move(new_segment);
   }
 
@@ -1939,7 +1951,7 @@ Status Log::ResetLastSyncedEntryOpId(const OpId& op_id) {
 
   OpId old_value;
   {
-    std::lock_guard<std::mutex> write_lock(last_synced_entry_op_id_mutex_);
+    std::lock_guard write_lock(last_synced_entry_op_id_mutex_);
     old_value = last_synced_entry_op_id_.load(boost::memory_order_acquire);
     last_synced_entry_op_id_.store(op_id, boost::memory_order_release);
     last_synced_entry_op_id_cond_.notify_all();

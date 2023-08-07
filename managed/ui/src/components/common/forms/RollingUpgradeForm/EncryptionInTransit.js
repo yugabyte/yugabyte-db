@@ -1,13 +1,6 @@
 import { Field } from 'formik';
-import React from 'react';
 import { Alert, Col, Row } from 'react-bootstrap';
-import {
-  YBCheckBox,
-  YBControlledSelectWithLabel,
-  YBFormInput,
-  YBFormToggle,
-  YBToggle
-} from '../fields';
+import { YBCheckBox, YBControlledSelectWithLabel, YBFormToggle, YBToggle } from '../fields';
 import YBModalForm from '../YBModalForm/YBModalForm';
 
 import { YBLoading } from '../../indicators';
@@ -147,8 +140,7 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCur
     createNewRootCA: false,
     createNewClientRootCA: false,
     rootAndClientRootCASame: universeDetails.rootAndClientRootCASame,
-    timeDelay: 240,
-    rollingUpgrade: true
+    rollingUpgrade: false
   };
 
   const preparePayload = (formValues, setStatus) => {
@@ -383,26 +375,6 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCur
                     }
                   )}
                 </div>
-                <Row className="rolling-upgrade">
-                  <Col lg={12}>
-                    <Field
-                      name="rollingUpgrade"
-                      component={YBCheckBox}
-                      checkState={initialValues.rollingUpgrade}
-                      label="Rolling Upgrade"
-                    />
-                  </Col>
-                </Row>
-                <Row className="server-delay">
-                  <Col lg={12}>
-                    <Field
-                      name="timeDelay"
-                      type="number"
-                      label="Upgrade Delay Between Servers (seconds)"
-                      component={YBFormInput}
-                    />
-                  </Col>
-                </Row>
               </>
             )}
           </div>

@@ -21,15 +21,18 @@
 
 namespace yb::docdb {
 
-DocReadContext::DocReadContext(const std::string& log_prefix, TableType table_type)
-    : schema_packing_storage(table_type), log_prefix_(log_prefix) {
+DocReadContext::DocReadContext(
+    const std::string& log_prefix, TableType table_type, Index is_index)
+    : schema_packing_storage(table_type), is_index_(is_index),
+      log_prefix_(log_prefix) {
   UpdateKeyPrefix();
 }
 
 DocReadContext::DocReadContext(
-    const std::string& log_prefix, TableType table_type, const Schema& schema,
+    const std::string& log_prefix, TableType table_type, Index is_index, const Schema& schema,
     SchemaVersion schema_version)
-    : schema_packing_storage(table_type), schema_(schema), log_prefix_(log_prefix) {
+    : schema_packing_storage(table_type), is_index_(is_index), schema_(schema),
+      log_prefix_(log_prefix) {
   schema_packing_storage.AddSchema(schema_version, schema_);
   UpdateKeyPrefix();
   LOG_IF_WITH_PREFIX(INFO, schema_version != 0)
@@ -38,7 +41,7 @@ DocReadContext::DocReadContext(
 
 DocReadContext::DocReadContext(
     const DocReadContext& rhs, const Schema& schema, SchemaVersion schema_version)
-    : schema_packing_storage(rhs.schema_packing_storage), schema_(schema),
+    : schema_packing_storage(rhs.schema_packing_storage), is_index_(rhs.is_index_), schema_(schema),
       log_prefix_(rhs.log_prefix_) {
   schema_packing_storage.AddSchema(schema_version, schema_);
   UpdateKeyPrefix();
@@ -48,8 +51,8 @@ DocReadContext::DocReadContext(
 }
 
 DocReadContext::DocReadContext(const DocReadContext& rhs, SchemaVersion min_schema_version)
-    : schema_packing_storage(rhs.schema_packing_storage, min_schema_version), schema_(rhs.schema_),
-      log_prefix_(rhs.log_prefix_) {
+    : schema_packing_storage(rhs.schema_packing_storage, min_schema_version),
+      is_index_(rhs.is_index_), schema_(rhs.schema_), log_prefix_(rhs.log_prefix_) {
   UpdateKeyPrefix();
   LOG_WITH_PREFIX(INFO)
       << "DocReadContext, copy and filter: " << rhs.schema_packing_storage.VersionsToString()
@@ -85,12 +88,13 @@ void DocReadContext::UpdateKeyPrefix() {
     out += sizeof(ColocationId);
   }
   key_prefix_encoded_len_ = out - shared_key_prefix_buffer_.data();
+  bool use_inplace_increment_for_upperbound = false;
   if (schema_.num_hash_key_columns()) {
     *out++ = dockv::KeyEntryTypeAsChar::kUInt16Hash;
+    use_inplace_increment_for_upperbound = true;
     key_prefix_encoded_len_ += 1 + sizeof(uint16_t);
   } else if (schema_.num_key_columns() && out == shared_key_prefix_buffer_.data() &&
-             !schema_.columns()[0].is_nullable() &&
-             schema_.columns()[0].kind() == ColumnKind::RANGE_ASC_NULL_FIRST) {
+             !is_index_ && schema_.columns()[0].kind() == ColumnKind::RANGE_ASC_NULL_FIRST) {
     // TODO support all known combinations of data types for first range column.
     // Currently we start only with this restricted case to be able to filter out cotable entries
     // from sys catalog.
@@ -99,12 +103,20 @@ void DocReadContext::UpdateKeyPrefix() {
       case DataType::INT16: [[fallthrough]];
       case DataType::INT8:
         *out++ = dockv::KeyEntryTypeAsChar::kInt32;
+        use_inplace_increment_for_upperbound = true;
         break;
       default:
         break;
     }
   }
   shared_key_prefix_len_ = out - shared_key_prefix_buffer_.data();
+  upperbound_len_ = shared_key_prefix_len_;
+  memcpy(upperbound_buffer_.data(), shared_key_prefix_buffer_.data(), upperbound_len_);
+  if (use_inplace_increment_for_upperbound) {
+    ++upperbound_buffer_[upperbound_len_ - 1];
+  } else {
+    upperbound_buffer_[upperbound_len_++] = dockv::KeyEntryTypeAsChar::kHighest;
+  }
 }
 
 } // namespace yb::docdb

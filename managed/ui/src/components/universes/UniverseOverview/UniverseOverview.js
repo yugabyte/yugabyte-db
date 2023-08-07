@@ -1,9 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 
 import { Row, Col } from 'react-bootstrap';
-import { UniverseInfoPanelContainer, ResourceStringPanelContainer , YBPanelItem, YBWidget } from '../../panels';
+import {
+  UniverseInfoPanelContainer,
+  ResourceStringPanelContainer,
+  YBPanelItem,
+  YBWidget
+} from '../../panels';
 import { OverviewMetricsContainer } from '../../metrics';
 import { UniverseResources } from '../UniverseResources';
 

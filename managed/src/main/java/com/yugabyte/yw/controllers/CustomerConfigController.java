@@ -6,6 +6,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.DeleteCustomerConfig;
 import com.yugabyte.yw.commissioner.tasks.DeleteCustomerStorageConfig;
 import com.yugabyte.yw.common.CloudUtil;
+import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigUI;
@@ -41,10 +42,13 @@ public class CustomerConfigController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(CustomerConfigController.class);
 
   private final CustomerConfigService customerConfigService;
+  private final CloudUtilFactory cloudUtilFactory;
 
   @Inject
-  public CustomerConfigController(CustomerConfigService customerConfigService) {
+  public CustomerConfigController(
+      CustomerConfigService customerConfigService, CloudUtilFactory cloudUtilFactory) {
     this.customerConfigService = customerConfigService;
+    this.cloudUtilFactory = cloudUtilFactory;
   }
 
   @Inject Commissioner commissioner;
@@ -280,7 +284,7 @@ public class CustomerConfigController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Unsupported cloud type %s", cloud));
     }
-    CloudUtil cloudUtil = CloudUtil.getCloudUtil(cloud);
+    CloudUtil cloudUtil = cloudUtilFactory.getCloudUtil(cloud);
     return PlatformResults.withData(cloudUtil.listBuckets(configData));
   }
 }

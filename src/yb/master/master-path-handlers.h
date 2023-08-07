@@ -209,6 +209,8 @@ class MasterPathHandlers {
   void HandleCatalogManager(const Webserver::WebRequest& req,
                             Webserver::WebResponse* resp,
                             bool only_user_tables = false);
+  void HandleCatalogManagerJSON(const Webserver::WebRequest& req,
+                                Webserver::WebResponse* resp);
   void HandleNamespacesHTML(const Webserver::WebRequest& req,
                             Webserver::WebResponse* resp,
                             bool only_user_namespaces = false);
@@ -252,9 +254,10 @@ class MasterPathHandlers {
   TableType GetTableType(const TableInfo& table);
   std::vector<TabletInfoPtr> GetNonSystemTablets();
 
-  std::vector<TabletInfoPtr> GetLeaderlessTablets();
+  std::vector<std::pair<TabletInfoPtr, std::string>> GetLeaderlessTablets();
 
-  Result<std::vector<TabletInfoPtr>> GetUnderReplicatedTablets();
+  Result<std::vector<std::pair<TabletInfoPtr, std::vector<std::string>>>>
+      GetUnderReplicatedTablets();
 
   // Calculates the YSQL OID of a tablegroup / colocated database parent table
   std::string GetParentTableOid(scoped_refptr<TableInfo> parent_table);

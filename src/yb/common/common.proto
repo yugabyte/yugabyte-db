@@ -65,7 +65,7 @@ import "yb/common/value.proto";
 //                                    field_names = ["firstname", "lastname", "ssn"]}
 
 message QLTypePB {
-  optional DataType main = 1;
+  optional PersistentDataType main = 1;
   repeated QLTypePB params = 2;
 
   // Fields for user-defined types
@@ -102,6 +102,10 @@ message ColumnSchemaPB {
   // To be safe, it's left here for now.
   // JSON attribute (for c->'a'->>'b' case).
   repeated QLJsonOperationPB OBSOLETE_json_operations = 13;
+  // If set, it means that this column is in process of being dropped by an ongoing DDL transaction.
+  // If that DDL transaction commits, this column will be dropped, otherwise this field will be
+  // unset again.
+  optional bool marked_for_deletion = 15;
 }
 
 message ColocatedTableIdentifierPB {
@@ -382,8 +386,8 @@ message TransactionMetadataPB {
   // for backwards compatability.
   optional TransactionLocality locality = 7;
 
-  // Whether or not this is metadata for an external/xcluster transaction.
-  optional bool external_transaction = 8;
+  // Reserved for deprecated xcluster field external_transaction.
+  reserved 8;
 }
 
 // See ReadHybridTime for explation of this message.

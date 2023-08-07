@@ -38,6 +38,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -521,23 +522,9 @@ public class YBClient implements AutoCloseable {
    */
   String getMasterUUID(String host, int port) {
     HostAndPort hostAndPort = HostAndPort.fromParts(host, port);
-    Deferred<GetMasterRegistrationResponse> d;
-    TabletClient clientForHostAndPort = asyncClient.newMasterClient(hostAndPort);
-    if (clientForHostAndPort == null) {
-      String message = "Couldn't resolve master's address at " + hostAndPort.toString();
-      LOG.warn(message);
-    } else {
-      d = asyncClient.getMasterRegistration(clientForHostAndPort);
-      try {
-        GetMasterRegistrationResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
-        return resp.getInstanceId().getPermanentUuid().toStringUtf8();
-      } catch (Exception e) {
-        LOG.warn("Couldn't get registration info for master {} due to error '{}'.",
-                 hostAndPort.toString(), e.getMessage());
-      }
-    }
-
-    return null;
+    return getMasterRegistrationResponse(hostAndPort).map(
+            resp -> resp.getInstanceId().getPermanentUuid().toStringUtf8()
+    ).orElse(null);
   }
 
   /**
@@ -546,26 +533,43 @@ public class YBClient implements AutoCloseable {
    */
   public String getLeaderMasterUUID() {
     for (HostAndPort hostAndPort : asyncClient.getMasterAddresses()) {
-      Deferred<GetMasterRegistrationResponse> d;
-      TabletClient clientForHostAndPort = asyncClient.newMasterClient(hostAndPort);
-      if (clientForHostAndPort == null) {
-        String message = "Couldn't resolve this master's address " + hostAndPort.toString();
-        LOG.warn(message);
-      } else {
-        d = asyncClient.getMasterRegistration(clientForHostAndPort);
-        try {
-          GetMasterRegistrationResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
-          if (resp.getRole() == CommonTypes.PeerRole.LEADER) {
-            return resp.getInstanceId().getPermanentUuid().toStringUtf8();
-          }
-        } catch (Exception e) {
-          LOG.warn("Couldn't get registration info for master {} due to error '{}'.",
-                   hostAndPort.toString(), e.getMessage());
-        }
+      Optional<GetMasterRegistrationResponse> resp = getMasterRegistrationResponse(hostAndPort);
+      if (resp.isPresent() && resp.get().getRole() == CommonTypes.PeerRole.LEADER) {
+        return resp.get().getInstanceId().getPermanentUuid().toStringUtf8();
       }
     }
 
     return null;
+  }
+
+  public List<GetMasterRegistrationResponse> getMasterRegistrationResponseList() {
+    List<GetMasterRegistrationResponse> result = new ArrayList<>();
+    for (HostAndPort hostAndPort : asyncClient.getMasterAddresses()) {
+      Optional<GetMasterRegistrationResponse> resp = getMasterRegistrationResponse(hostAndPort);
+      if (resp.isPresent()) {
+        result.add(resp.get());
+      }
+    }
+    return result;
+  }
+
+  private Optional<GetMasterRegistrationResponse> getMasterRegistrationResponse(
+          HostAndPort hostAndPort) {
+    Deferred<GetMasterRegistrationResponse> d;
+    TabletClient clientForHostAndPort = asyncClient.newMasterClient(hostAndPort);
+    if (clientForHostAndPort == null) {
+      String message = "Couldn't resolve this master's address " + hostAndPort.toString();
+      LOG.warn(message);
+    } else {
+      d = asyncClient.getMasterRegistration(clientForHostAndPort);
+      try {
+        return Optional.of(d.join(getDefaultAdminOperationTimeoutMs()));
+      } catch (Exception e) {
+        LOG.warn("Couldn't get registration info for master {} due to error '{}'.",
+                hostAndPort.toString(), e.getMessage());
+      }
+    }
+    return Optional.empty();
   }
 
   /**
@@ -1944,6 +1948,13 @@ public class YBClient implements AutoCloseable {
     return isBootstrapRequiredList;
   }
 
+  public GetReplicationStatusResponse getReplicationStatus(
+      @Nullable String replicationGroupName) throws Exception {
+    Deferred<GetReplicationStatusResponse> d =
+        asyncClient.getReplicationStatus(replicationGroupName);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
   /**
    * @see AsyncYBClient#listCDCStreams(String, String, MasterReplicationOuterClass.IdTypePB)
    */
@@ -1991,6 +2002,22 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  public CreateSnapshotScheduleResponse createSnapshotSchedule(
+      YQLDatabase databaseType,
+      String keyspaceName,
+      String keyspaceId,
+      long retentionInSecs,
+      long timeIntervalInSecs) throws Exception {
+    Deferred<CreateSnapshotScheduleResponse> d =
+        asyncClient.createSnapshotSchedule(
+            databaseType,
+            keyspaceName,
+            keyspaceId,
+            retentionInSecs,
+            timeIntervalInSecs);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
   public DeleteSnapshotScheduleResponse deleteSnapshotSchedule(
       UUID snapshotScheduleUUID) throws Exception {
     Deferred<DeleteSnapshotScheduleResponse> d =
@@ -2009,6 +2036,13 @@ public class YBClient implements AutoCloseable {
                                                  long restoreTimeInMillis) throws Exception {
     Deferred<RestoreSnapshotScheduleResponse> d =
       asyncClient.restoreSnapshotSchedule(snapshotScheduleUUID, restoreTimeInMillis);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public ListSnapshotRestorationsResponse listSnapshotRestorations(
+      UUID restorationUUID) throws Exception {
+    Deferred<ListSnapshotRestorationsResponse> d =
+      asyncClient.listSnapshotRestorations(restorationUUID);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

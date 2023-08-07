@@ -14,9 +14,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
-import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -42,6 +42,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterTableConfig;
+import com.yugabyte.yw.models.XClusterTableConfig.Status;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
@@ -65,7 +66,10 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes;
+import org.yb.CommonTypes.ReplicationErrorPb;
 import org.yb.master.MasterDdlOuterClass;
+import org.yb.master.MasterReplicationOuterClass.ReplicationStatusErrorPB;
+import org.yb.master.MasterReplicationOuterClass.ReplicationStatusPB;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -78,7 +82,7 @@ public class XClusterConfigController extends AuthenticatedController {
 
   private final Commissioner commissioner;
   private final MetricQueryHelper metricQueryHelper;
-  private final BackupUtil backupUtil;
+  private final BackupHelper backupHelper;
   private final CustomerConfigService customerConfigService;
   private final YBClientService ybService;
   private final RuntimeConfGetter confGetter;
@@ -88,14 +92,14 @@ public class XClusterConfigController extends AuthenticatedController {
   public XClusterConfigController(
       Commissioner commissioner,
       MetricQueryHelper metricQueryHelper,
-      BackupUtil backupUtil,
+      BackupHelper backupHelper,
       CustomerConfigService customerConfigService,
       YBClientService ybService,
       RuntimeConfGetter confGetter,
       XClusterUniverseService xClusterUniverseService) {
     this.commissioner = commissioner;
     this.metricQueryHelper = metricQueryHelper;
-    this.backupUtil = backupUtil;
+    this.backupHelper = backupHelper;
     this.customerConfigService = customerConfigService;
     this.ybService = ybService;
     this.confGetter = confGetter;
@@ -343,49 +347,58 @@ public class XClusterConfigController extends AuthenticatedController {
       lagMetricData = Json.newObject().put("error", errorMsg);
     }
 
-    // Check whether the replication is broken for the tables.
-    Set<String> tableIdsInRunningStatus =
-        xClusterConfig.getTableIdsInStatus(
-            xClusterConfig.getTableIds(), XClusterTableConfig.Status.Running);
     try {
-      Map<String, Boolean> isBootstrapRequiredMap =
-          this.xClusterUniverseService.isBootstrapRequired(
-              tableIdsInRunningStatus,
-              xClusterConfig,
-              xClusterConfig.getSourceUniverseUUID(),
-              true /* ignoreErrors */);
-
-      // If IsBootstrapRequired API returns null, set the statuses to UnableToFetch.
-      if (Objects.isNull(isBootstrapRequiredMap)) {
-        // We do not update the xCluster config object in the DB intentionally because
-        // `UnableToFetch` is only a user facing status.
-        xClusterConfig.getTableDetails().stream()
-            .filter(tableConfig -> tableIdsInRunningStatus.contains(tableConfig.getTableId()))
-            .forEach(
-                tableConfig -> tableConfig.setStatus(XClusterTableConfig.Status.UnableToFetch));
-      } else {
-        Set<String> tableIdsInErrorStatus =
-            isBootstrapRequiredMap.entrySet().stream()
-                .filter(Entry::getValue)
-                .map(Map.Entry::getKey)
-                .collect(Collectors.toSet());
-        // We do not update the xCluster config object in the DB intentionally because `Error` is
-        // only a user facing status.
-        xClusterConfig.getTableDetails().stream()
-            .filter(tableConfig -> tableIdsInErrorStatus.contains(tableConfig.getTableId()))
-            .forEach(tableConfig -> tableConfig.setStatus(XClusterTableConfig.Status.Error));
-
-        // Set the status for the rest of tables where isBootstrapRequired RPC failed.
-        xClusterConfig.getTableDetails().stream()
-            .filter(
-                tableConfig ->
-                    tableIdsInRunningStatus.contains(tableConfig.getTableId())
-                        && !isBootstrapRequiredMap.containsKey(tableConfig.getTableId()))
-            .forEach(
-                tableConfig -> tableConfig.setStatus(XClusterTableConfig.Status.UnableToFetch));
+      Map<String, ReplicationStatusPB> streamIdReplicationStatusMap =
+          this.xClusterUniverseService.getReplicationStatus(xClusterConfig).stream()
+              .collect(
+                  Collectors.toMap(
+                      status -> status.getStreamId().toStringUtf8(), status -> status));
+      for (XClusterTableConfig tableConfig : xClusterConfig.getTableDetails()) {
+        if (tableConfig.getStatus().equals(Status.Running)) {
+          ReplicationStatusPB replicationStatus =
+              streamIdReplicationStatusMap.get(tableConfig.getStreamId());
+          if (Objects.isNull(replicationStatus)) {
+            tableConfig.setStatus(Status.UnableToFetch);
+          } else {
+            List<ReplicationStatusErrorPB> replicationErrors = replicationStatus.getErrorsList();
+            if (replicationErrors.size() > 0) {
+              String errorsString =
+                  replicationErrors.stream()
+                      .map(
+                          replicationError ->
+                              "ErrorCode="
+                                  + replicationError.getError()
+                                  + " ErrorMessage='"
+                                  + replicationError.getErrorDetail()
+                                  + "'")
+                      .collect(Collectors.joining("\n"));
+              log.error(
+                  "Replication stream for the tableId {} (stream id {}) has the following "
+                      + "errors {}",
+                  tableConfig.getTableId(),
+                  tableConfig.getStreamId(),
+                  errorsString);
+              // Only set the status to error for the case of WALs GC-ed (REPLICATION_MISSING_OP_ID)
+              // for UI compatibility.
+              if (replicationErrors.stream()
+                  .anyMatch(
+                      replicationError ->
+                          replicationError
+                              .getError()
+                              .equals(ReplicationErrorPb.REPLICATION_MISSING_OP_ID))) {
+                // We do not update the xCluster config object in the DB intentionally because
+                // `Error` is only a user facing status.
+                tableConfig.setStatus(Status.Error);
+              }
+            }
+          }
+        }
       }
     } catch (Exception e) {
-      log.error("XClusterConfigTaskBase.isBootstrapRequired hit error : {}", e.getMessage());
+      log.error("xClusterUniverseService.getReplicationStatus hit error : {}", e.getMessage());
+      xClusterConfig.getTableDetails().stream()
+          .filter(tableConfig -> tableConfig.getStatus().equals(Status.Running))
+          .forEach(tableConfig -> tableConfig.setStatus(Status.UnableToFetch));
     }
 
     // Wrap XClusterConfig with lag metric data.
@@ -1162,6 +1175,6 @@ public class XClusterConfigController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
     }
-    backupUtil.validateStorageConfig(customerConfig);
+    backupHelper.validateStorageConfig(customerConfig);
   }
 }

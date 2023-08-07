@@ -91,7 +91,7 @@ DEFINE_test_flag(bool, invalidate_last_change_metadata_op, false,
 // The flag is non-runtime so that if it is changed from true to false, the node restarts and the
 // unflushed committed CHANGE_METADATA_OP WAL entries are applied and flushed during the tablet
 // bootstrap.
-DEFINE_NON_RUNTIME_bool(lazily_flush_superblock, false,
+DEFINE_NON_RUNTIME_bool(lazily_flush_superblock, true,
     "Flushes the superblock lazily on metadata update. Only used for colocated table creation "
     "currently.");
 
@@ -133,7 +133,7 @@ const std::string kSnapshotsDirSuffix = ".snapshots";
 
 TableInfo::TableInfo(const std::string& log_prefix_, TableType table_type, PrivateTag)
     : log_prefix(log_prefix_),
-      doc_read_context(new docdb::DocReadContext(log_prefix, table_type)),
+      doc_read_context(new docdb::DocReadContext(log_prefix, table_type, docdb::Index::kFalse)),
       index_map(std::make_shared<IndexMap>()) {
   CompleteInit();
 }
@@ -156,7 +156,8 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
       cotable_id(CHECK_RESULT(ParseCotableId(primary, table_id))),
       log_prefix(MakeTableInfoLogPrefix(tablet_log_prefix, primary, table_id)),
       doc_read_context(std::make_shared<docdb::DocReadContext>(
-          log_prefix, table_type, schema, schema_version)),
+          log_prefix, table_type, docdb::Index(index_info.has_value()), schema,
+          schema_version)),
       index_map(std::make_shared<IndexMap>(index_map)),
       index_info(index_info ? new IndexInfo(*index_info) : nullptr),
       schema_version(schema_version),
@@ -648,7 +649,7 @@ Status MakeColocatedTableNotFound(
 }
 
 Result<TableInfoPtr> RaftGroupMetadata::GetTableInfo(const TableId& table_id) const {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   return GetTableInfoUnlocked(table_id);
 }
 
@@ -677,7 +678,7 @@ Result<TableInfoPtr> RaftGroupMetadata::GetTableInfoUnlocked(ColocationId coloca
 }
 
 Result<TableInfoPtr> RaftGroupMetadata::GetTableInfo(ColocationId colocation_id) const {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   return GetTableInfoUnlocked(colocation_id);
 }
 
@@ -695,7 +696,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
   // We also set the state in our persisted metadata to indicate that
   // we have been deleted.
   {
-    std::lock_guard<MutexType> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     tablet_data_state_ = delete_type;
     if (!last_logged_opid.empty()) {
       tombstone_last_logged_opid_ = last_logged_opid;
@@ -761,7 +762,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
 }
 
 bool RaftGroupMetadata::IsTombstonedWithNoRocksDBData() const {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   const auto& rocksdb_dir = kv_store_.rocksdb_dir;
   const auto intents_dir = rocksdb_dir + kIntentsDBSuffix;
   return tablet_data_state_ == TABLET_DATA_TOMBSTONED &&
@@ -770,7 +771,7 @@ bool RaftGroupMetadata::IsTombstonedWithNoRocksDBData() const {
 }
 
 Status RaftGroupMetadata::DeleteSuperBlock() {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   if (tablet_data_state_ != TABLET_DATA_DELETED) {
     return STATUS(IllegalState,
         Substitute("Tablet $0 is not in TABLET_DATA_DELETED state. "
@@ -853,7 +854,7 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
                       << superblock.DebugString();
 
   {
-    std::lock_guard<MutexType> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
 
     // Verify that the Raft group id matches with the one in the protobuf.
     if (superblock.raft_group_id() != raft_group_id_) {
@@ -956,7 +957,7 @@ Status RaftGroupMetadata::Flush(OnlyIfDirty only_if_dirty) {
   RaftGroupReplicaSuperBlockPB pb;
   OpId last_applied_change_metadata_op_id;
   {
-    std::lock_guard<MutexType> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     SCHECK_FORMAT(
         last_flushed_change_metadata_op_id_ <= last_applied_change_metadata_op_id_, IllegalState,
         "Superblock flush marker $0 ahead of apply marker $1", last_flushed_change_metadata_op_id_,
@@ -974,7 +975,7 @@ Status RaftGroupMetadata::Flush(OnlyIfDirty only_if_dirty) {
   {
     // Update last_flushed_change_metadata_op_id_ only after disk write is complete. This removes
     // the need to hold flush_lock_ for reading last_flushed_change_metadata_op_id_.
-    std::lock_guard<MutexType> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     last_flushed_change_metadata_op_id_ = last_applied_change_metadata_op_id;
   }
   TRACE("Metadata flushed");
@@ -985,7 +986,7 @@ Status RaftGroupMetadata::Flush(OnlyIfDirty only_if_dirty) {
 Status RaftGroupMetadata::SaveTo(const std::string& path) {
   RaftGroupReplicaSuperBlockPB pb;
   {
-    std::lock_guard<MutexType> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     ToSuperBlockUnlocked(&pb);
   }
 
@@ -1027,7 +1028,7 @@ Status RaftGroupMetadata::MergeWithRestored(
     const std::string& path, dockv::OverwriteSchemaPacking overwrite) {
   RaftGroupReplicaSuperBlockPB snapshot_superblock;
   RETURN_NOT_OK(ReadSuperBlockFromDisk(&snapshot_superblock, path));
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   return kv_store_.MergeWithRestored(
       snapshot_superblock.kv_store(), primary_table_id_, colocated_, overwrite);
 }
@@ -1057,7 +1058,7 @@ Status RaftGroupMetadata::ReadSuperBlockFromDisk(
 
 void RaftGroupMetadata::ToSuperBlock(RaftGroupReplicaSuperBlockPB* superblock) const {
   // acquire the lock so that rowsets_ doesn't get changed until we're finished.
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   ToSuperBlockUnlocked(superblock);
 }
 
@@ -1125,7 +1126,7 @@ void RaftGroupMetadata::SetSchema(const Schema& schema,
                                   const SchemaVersion version,
                                   const OpId& op_id,
                                   const TableId& table_id) {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   SetSchemaUnlocked(schema, index_map, deleted_cols, version, op_id, table_id);
 }
 
@@ -1187,7 +1188,7 @@ void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
 }
 
 void RaftGroupMetadata::SetPartitionSchema(const dockv::PartitionSchema& partition_schema) {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   auto& tables = kv_store_.tables;
   auto it = tables.find(primary_table_id_);
   DCHECK(it != tables.end());
@@ -1197,7 +1198,7 @@ void RaftGroupMetadata::SetPartitionSchema(const dockv::PartitionSchema& partiti
 void RaftGroupMetadata::SetTableName(
     const string& namespace_name, const string& table_name,
     const OpId& op_id, const TableId& table_id) {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   SetTableNameUnlocked(namespace_name, table_name, op_id, table_id);
 }
 
@@ -1219,7 +1220,7 @@ void RaftGroupMetadata::SetSchemaAndTableName(
     const std::vector<DeletedColumn>& deleted_cols,
     const SchemaVersion version, const std::string& namespace_name,
     const std::string& table_name, const OpId& op_id, const TableId& table_id) {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   SetSchemaUnlocked(schema, index_map, deleted_cols, version, op_id, table_id);
   SetTableNameUnlocked(namespace_name, table_name, op_id, table_id);
 }
@@ -1254,7 +1255,7 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
       new_table_info->doc_read_context->SetCotableId(new_table_info->cotable_id);
     }
   }
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   auto& tables = kv_store_.tables;
   auto[iter, inserted] = tables.emplace(table_id, new_table_info);
   OnChangeMetadataOperationAppliedUnlocked(op_id);
@@ -1295,7 +1296,7 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
 }
 
 void RaftGroupMetadata::RemoveTable(const TableId& table_id, const OpId& op_id) {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   auto& tables = kv_store_.tables;
   auto it = tables.find(table_id);
   if (it != tables.end()) {
@@ -1337,14 +1338,14 @@ string RaftGroupMetadata::wal_root_dir() const {
 
 Status RaftGroupMetadata::set_namespace_id(const NamespaceId& namespace_id) {
   {
-    std::lock_guard<MutexType> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     primary_table_info_unlocked()->namespace_id = namespace_id;
   }
   return Flush();
 }
 
 void RaftGroupMetadata::set_wal_retention_secs(uint32 wal_retention_secs) {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   auto it = kv_store_.tables.find(primary_table_id_);
   if (it == kv_store_.tables.end()) {
     LOG_WITH_PREFIX(DFATAL) << "Unable to set WAL retention time for primary table "
@@ -1357,7 +1358,7 @@ void RaftGroupMetadata::set_wal_retention_secs(uint32 wal_retention_secs) {
 }
 
 uint32_t RaftGroupMetadata::wal_retention_secs() const {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   auto it = kv_store_.tables.find(primary_table_id_);
   if (it == kv_store_.tables.end()) {
     return 0;
@@ -1367,35 +1368,35 @@ uint32_t RaftGroupMetadata::wal_retention_secs() const {
 
 Status RaftGroupMetadata::set_cdc_min_replicated_index(int64 cdc_min_replicated_index) {
   {
-    std::lock_guard<MutexType> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     cdc_min_replicated_index_ = cdc_min_replicated_index;
   }
   return Flush();
 }
 
 int64_t RaftGroupMetadata::cdc_min_replicated_index() const {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   return cdc_min_replicated_index_;
 }
 
 OpId RaftGroupMetadata::cdc_sdk_min_checkpoint_op_id() const {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   return cdc_sdk_min_checkpoint_op_id_;
 }
 
 HybridTime RaftGroupMetadata::cdc_sdk_safe_time() const {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   return cdc_sdk_safe_time_;
 }
 
 bool RaftGroupMetadata::is_under_cdc_sdk_replication() const {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   return is_under_cdc_sdk_replication_;
 }
 
 Status RaftGroupMetadata::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_min_checkpoint_op_id) {
   {
-    std::lock_guard<MutexType> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     cdc_sdk_min_checkpoint_op_id_ = cdc_min_checkpoint_op_id;
 
     if (cdc_min_checkpoint_op_id == OpId::Max() || cdc_min_checkpoint_op_id == OpId::Invalid()) {
@@ -1411,7 +1412,7 @@ Status RaftGroupMetadata::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_min_c
 
 Status RaftGroupMetadata::set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time) {
   {
-    std::lock_guard<MutexType> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     cdc_sdk_safe_time_ = cdc_sdk_safe_time;
   }
   return Flush();
@@ -1420,39 +1421,39 @@ Status RaftGroupMetadata::set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_t
 Status RaftGroupMetadata::SetIsUnderXClusterReplicationAndFlush(
     bool is_under_xcluster_replication) {
   {
-    std::lock_guard<MutexType> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     is_under_xcluster_replication_ = is_under_xcluster_replication;
   }
   return Flush();
 }
 
 bool RaftGroupMetadata::IsUnderXClusterReplication() const {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   return is_under_xcluster_replication_;
 }
 
 void RaftGroupMetadata::SetHidden(bool value) {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   hidden_ = value;
 }
 
 bool RaftGroupMetadata::hidden() const {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   return hidden_;
 }
 
 void RaftGroupMetadata::SetRestorationHybridTime(HybridTime value) {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   restoration_hybrid_time_ = std::max(restoration_hybrid_time_, value);
 }
 
 HybridTime RaftGroupMetadata::restoration_hybrid_time() const {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   return restoration_hybrid_time_;
 }
 
 void RaftGroupMetadata::set_tablet_data_state(TabletDataState state) {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   tablet_data_state_ = state;
 }
 
@@ -1461,17 +1462,17 @@ const std::string& RaftGroupMetadata::LogPrefix() const {
 }
 
 OpId RaftGroupMetadata::tombstone_last_logged_opid() const {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   return tombstone_last_logged_opid_;
 }
 
 bool RaftGroupMetadata::IsSysCatalog() const {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   return primary_table_id_ == master::kSysCatalogTableId;
 }
 
 bool RaftGroupMetadata::colocated() const {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   return colocated_;
 }
 
@@ -1488,22 +1489,22 @@ LazySuperblockFlushEnabled RaftGroupMetadata::IsLazySuperblockFlushEnabled() con
 }
 
 TabletDataState RaftGroupMetadata::tablet_data_state() const {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   return tablet_data_state_;
 }
 
 std::array<TabletId, kNumSplitParts> RaftGroupMetadata::split_child_tablet_ids() const {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   return split_child_tablet_ids_;
 }
 
 OpId RaftGroupMetadata::split_op_id() const {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   return split_op_id_;
 }
 
 OpId RaftGroupMetadata::GetOpIdToDeleteAfterAllApplied() const {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   if (tablet_data_state_ != TabletDataState::TABLET_DATA_SPLIT_COMPLETED || hidden_) {
     return OpId::Invalid();
   }
@@ -1512,7 +1513,7 @@ OpId RaftGroupMetadata::GetOpIdToDeleteAfterAllApplied() const {
 
 void RaftGroupMetadata::SetSplitDone(
     const OpId& op_id, const TabletId& child1, const TabletId& child2) {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   tablet_data_state_ = TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
   split_op_id_ = op_id;
   split_child_tablet_ids_[0] = child1;
@@ -1520,12 +1521,12 @@ void RaftGroupMetadata::SetSplitDone(
 }
 
 bool RaftGroupMetadata::has_active_restoration() const {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   return !active_restorations_.empty();
 }
 
 void RaftGroupMetadata::RegisterRestoration(const TxnSnapshotRestorationId& restoration_id) {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   if (tablet_data_state_ == TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
     tablet_data_state_ = TabletDataState::TABLET_DATA_READY;
     split_op_id_ = OpId();
@@ -1536,13 +1537,13 @@ void RaftGroupMetadata::RegisterRestoration(const TxnSnapshotRestorationId& rest
 }
 
 void RaftGroupMetadata::UnregisterRestoration(const TxnSnapshotRestorationId& restoration_id) {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   Erase(restoration_id, &active_restorations_);
 }
 
 HybridTime RaftGroupMetadata::CheckCompleteRestorations(
     const RestorationCompleteTimeMap& restoration_complete_time) {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   auto result = HybridTime::kMin;
   for (const auto& restoration_id : active_restorations_) {
     auto it = restoration_complete_time.find(restoration_id);
@@ -1556,7 +1557,7 @@ HybridTime RaftGroupMetadata::CheckCompleteRestorations(
 bool RaftGroupMetadata::CleanupRestorations(
     const RestorationCompleteTimeMap& restoration_complete_time) {
   bool result = false;
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   for (auto it = active_restorations_.begin(); it != active_restorations_.end();) {
     auto known_restoration_it = restoration_complete_time.find(*it);
     if (known_restoration_it == restoration_complete_time.end() || known_restoration_it->second) {
@@ -1570,7 +1571,7 @@ bool RaftGroupMetadata::CleanupRestorations(
 }
 
 std::unordered_set<StatefulServiceKind> RaftGroupMetadata::GetHostedServiceList() const {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   return hosted_services_;
 }
 
@@ -1578,7 +1579,7 @@ Status RaftGroupMetadata::OldSchemaGC(
     const std::unordered_map<Uuid, SchemaVersion, UuidHash>& versions) {
   bool need_flush = false;
   {
-    std::lock_guard<MutexType> lock(data_mutex_);
+    std::lock_guard lock(data_mutex_);
     for (const auto& [table_id, schema_version] : versions) {
       auto it = table_id.IsNil() ? kv_store_.tables.find(primary_table_id_)
                                  : kv_store_.tables.find(table_id.ToHexString());
@@ -1805,7 +1806,7 @@ Result<SchemaVersion> RaftGroupMetadata::schema_version(const Uuid& cotable_id) 
 const std::string& RaftGroupMetadata::indexed_table_id(const TableId& table_id) const {
   DCHECK_NE(state_, kNotLoadedYet);
   static const std::string kEmptyString = "";
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   const TableInfoPtr table_info = table_id.empty() ?
       primary_table_info_unlocked() : CHECK_RESULT(GetTableInfoUnlocked(table_id));
   const auto* index_info = table_info->index_info.get();
@@ -1818,7 +1819,7 @@ bool RaftGroupMetadata::is_index(const TableId& table_id) const {
 
 bool RaftGroupMetadata::is_local_index(const TableId& table_id) const {
   DCHECK_NE(state_, kNotLoadedYet);
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   const TableInfoPtr table_info = table_id.empty() ?
       primary_table_info_unlocked() : CHECK_RESULT(GetTableInfoUnlocked(table_id));
   const auto* index_info = table_info->index_info.get();
@@ -1827,7 +1828,7 @@ bool RaftGroupMetadata::is_local_index(const TableId& table_id) const {
 
 bool RaftGroupMetadata::is_unique_index(const TableId& table_id) const {
   DCHECK_NE(state_, kNotLoadedYet);
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   const TableInfoPtr table_info = table_id.empty() ?
       primary_table_info_unlocked() : CHECK_RESULT(GetTableInfoUnlocked(table_id));
   const auto* index_info = table_info->index_info.get();
@@ -1836,7 +1837,7 @@ bool RaftGroupMetadata::is_unique_index(const TableId& table_id) const {
 
 std::vector<ColumnId> RaftGroupMetadata::index_key_column_ids(const TableId& table_id) const {
   DCHECK_NE(state_, kNotLoadedYet);
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   const TableInfoPtr table_info = table_id.empty() ?
       primary_table_info_unlocked() : CHECK_RESULT(GetTableInfoUnlocked(table_id));
   const auto* index_info = table_info->index_info.get();
@@ -1848,7 +1849,7 @@ bool RaftGroupMetadata::UsePartialRangeKeyIntents() const {
 }
 
 std::vector<TableId> RaftGroupMetadata::GetAllColocatedTables() {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   std::vector<TableId> table_ids;
   for (const auto& id_and_info : kv_store_.tables) {
     table_ids.emplace_back(id_and_info.first);
@@ -1869,12 +1870,12 @@ Status CheckCanServeTabletData(const RaftGroupMetadata& metadata) {
 OpId RaftGroupMetadata::LastFlushedChangeMetadataOperationOpId() const {
   // Since last_flushed_change_metadata_op_id_ is updated only after the superblock is persisted
   // to disk, flush_lock_ is not required to read it.
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   return last_flushed_change_metadata_op_id_;
 }
 
 OpId RaftGroupMetadata::TEST_LastAppliedChangeMetadataOperationOpId() const {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   return last_applied_change_metadata_op_id_;
 }
 
@@ -1889,7 +1890,7 @@ void RaftGroupMetadata::SetLastAppliedChangeMetadataOperationOpIdUnlocked(const 
 }
 
 void RaftGroupMetadata::SetLastAppliedChangeMetadataOperationOpId(const OpId& op_id) {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   SetLastAppliedChangeMetadataOperationOpIdUnlocked(op_id);
 }
 
@@ -1903,7 +1904,7 @@ void RaftGroupMetadata::OnChangeMetadataOperationAppliedUnlocked(const OpId& app
 }
 
 void RaftGroupMetadata::OnChangeMetadataOperationApplied(const OpId& applied_op_id) {
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   OnChangeMetadataOperationAppliedUnlocked(applied_op_id);
 }
 
@@ -1916,7 +1917,7 @@ OpId RaftGroupMetadata::MinUnflushedChangeMetadataOpId() const {
   // flush_lock_ is required because min_unflushed_change_metadata_op_id_ is updated during
   // superblock flush.
   MutexLock l_flush(flush_lock_);
-  std::lock_guard<MutexType> lock(data_mutex_);
+  std::lock_guard lock(data_mutex_);
   return min_unflushed_change_metadata_op_id_;
 }
 

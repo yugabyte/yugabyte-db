@@ -206,22 +206,22 @@ class Trace : public RefCountedThreadSafe<Trace> {
   size_t DynamicMemoryUsage() const;
 
   bool must_print() const {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     return must_print_;
   }
 
   void set_must_print(bool flag) {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     must_print_ = flag;
   }
 
   bool end_to_end_traces_requested() const {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     return end_to_end_traces_requested_;
   }
 
   void set_end_to_end_traces_requested(bool flag) {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard l(lock_);
     end_to_end_traces_requested_ = flag;
   }
 

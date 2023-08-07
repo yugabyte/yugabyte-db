@@ -5,7 +5,6 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React from 'react';
 import clsx from 'clsx';
 import { FormHelperText, makeStyles } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
@@ -38,6 +37,7 @@ export interface OnPremAvailabilityZoneFormValues {
 export interface ConfigureOnPremRegionFormValues {
   fieldId: string;
   code: string;
+  name: string;
   location: { value: { latitude: number; longitude: number }; label: string };
   zones: OnPremAvailabilityZoneFormValues[];
 }
@@ -114,6 +114,7 @@ export const ConfigureOnPremRegionModal = ({
     }
     const newRegion = {
       ...formValues,
+      name: formValues.code,
       fieldId: formValues.fieldId ?? generateLowerCaseAlphanumericId()
     };
     onRegionSubmit(newRegion);

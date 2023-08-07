@@ -192,6 +192,14 @@ public class MiniYBClusterBuilder {
     return this;
   }
 
+  /**
+   * Enable Ysql Connection Manager in tablet servers.
+   */
+  public MiniYBClusterBuilder enableYsqlConnMgr(boolean enableYsqlConnMgr) {
+    this.clusterParameters.startYsqlConnMgr = enableYsqlConnMgr;
+    return this;
+  }
+
   public MiniYBClusterBuilder ysqlSnapshotVersion(YsqlSnapshotVersion ysqlSnapshotVersion) {
     Preconditions.checkState(this.clusterParameters.startYsqlProxy, "YSQL is not enabled");
     this.clusterParameters.ysqlSnapshotVersion = ysqlSnapshotVersion;

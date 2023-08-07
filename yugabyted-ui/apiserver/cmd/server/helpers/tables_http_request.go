@@ -1,91 +1,178 @@
 package helpers
 
 import (
+    "encoding/json"
     "fmt"
     "io/ioutil"
     "net/http"
-    "regexp"
+    "net/url"
+    "strconv"
     "time"
 )
 
+type OnDiskSizeStruct struct {
+    WalFilesSize                 string `json:"wal_files_size"`
+    WalFilesSizeBytes            int64  `json:"wal_files_size_bytes"`
+    SstFilesSize                 string `json:"sst_files_size"`
+    SstFilesSizeBytes            int64  `json:"sst_files_size_bytes"`
+    UncompressedSstFileSize      string `json:"uncompressed_sst_file_size"`
+    UncompressedSstFileSizeBytes int64  `json:"uncompressed_sst_file_size_bytes"`
+    HasMissingSize               bool   `json:"has_missing_size"`
+}
+
+type TableStruct struct {
+    Keyspace       string           `json:"keyspace"`
+    TableName      string           `json:"table_name"`
+    State          string           `json:"state"`
+    Message        string           `json:"message"`
+    Uuid           string           `json:"uuid"`
+    YsqlOid        string           `json:"ysql_oid"`
+    ParentOid      string           `json:"parent_oid"`
+    ColocationId   string           `json:"colocation_id"`
+    OnDiskSize     OnDiskSizeStruct `json:"on_disk_size"`
+    HasMissingSize bool             `json:"has_missing_size"`
+    Hidden         bool             `json:"hidden"`
+}
+
+type TablesResponseStruct struct {
+    User   []TableStruct `json:"user"`
+    Index  []TableStruct `json:"index"`
+    Parent []TableStruct `json:"parent"`
+    System []TableStruct `json:"system"`
+}
+
 type Table struct {
-    Keyspace string
-    Name string
+    Keyspace  string
+    Name      string
     SizeBytes int64
-    IsYsql bool
+    IsYsql    bool
 }
 
 type TablesFuture struct {
-    Tables []Table
-    Error error
+    Tables TablesResponseStruct
+    Error  error
 }
 
-// TODO: replace this with a call to a json endpoint so we don't have to parse html
-func parseTablesFromHtml(body string) ([]Table, error) {
-    tables := []Table{}
-    // Regex for getting table of User tables and Index tables from html
-    userTablesRegex, err := regexp.Compile(`(?ms)User tables</h2></div>.*?</div>`)
-    if err != nil {
-        return tables, err
-    }
-    indexTablesRegex, err := regexp.Compile(`(?ms)Index tables</h2></div>.*?</div>`)
-    if err != nil {
-        return tables, err
-    }
-    userTablesHtml := userTablesRegex.FindString(body)
-    indexTablesHtml := indexTablesRegex.FindString(body)
-    rowRegex, err := regexp.Compile(`<tr>.*?</tr>`)
-    if err != nil {
-        return tables, err
-    }
-    userTableRowMatches := rowRegex.FindAllString(userTablesHtml, -1)
-    indexTableRowMatches := rowRegex.FindAllString(indexTablesHtml, -1)
-    dataRegex, err := regexp.Compile(`<td>(.*?)</td><td><a.*?>(.*?)</a></td><td>.*?</td>`+
-        `<td>.*?</td><td>.*?</td><td>(.*?)</td>(.*?Total:\s*(.*?)<li>)?`)
-    if err != nil {
-        return tables, err
-    }
-    // For each match, group 1 is keyspace, group 2 is table name,
-    // group 3 is the YSQL OID (to distinguish between YSQL and YCQL tables) and
-    // group 5 is total size as a string
-    for _, row := range append(userTableRowMatches, indexTableRowMatches...) {
-        data := dataRegex.FindStringSubmatch(row)
-        sizeBytes, err := GetBytesFromString(data[5])
-        if err != nil {
-            return tables, err
-        }
-        tables = append(tables, Table{
-            Keyspace: data[1],
-            Name: data[2],
-            SizeBytes: sizeBytes,
-            IsYsql: data[3] != "",
-        })
-    }
-    return tables, nil
-}
-
-func GetTablesFuture(nodeHost string, future chan TablesFuture) {
+func GetTablesFuture(nodeHost string, onlyUserTables bool, future chan TablesFuture) {
     tables := TablesFuture{
-        Tables: []Table{},
+        Tables: TablesResponseStruct{},
         Error: nil,
     }
     httpClient := &http.Client{
-        Timeout: time.Second * 10,
+            Timeout: time.Second * 10,
     }
-    url := fmt.Sprintf("http://%s:%s/tables", nodeHost, MasterUIPort)
-    resp, err := httpClient.Get(url)
+    baseUrl := fmt.Sprintf("http://%s:%s/api/v1/tables", nodeHost, MasterUIPort)
+
+    requestUrl, err := url.Parse(baseUrl)
     if err != nil {
         tables.Error = err
         future <- tables
         return
+    }
+
+    // Query params
+    params := url.Values{}
+    params.Add("only_user_tables", strconv.FormatBool(onlyUserTables))
+    requestUrl.RawQuery = params.Encode()
+
+    resp, err := httpClient.Get(requestUrl.String())
+    if err != nil {
+            tables.Error = err
+            future <- tables
+            return
     }
     defer resp.Body.Close()
     body, err := ioutil.ReadAll(resp.Body)
     if err != nil {
-        tables.Error = err
-        future <- tables
+            tables.Error = err
+            future <- tables
+            return
+    }
+    err = json.Unmarshal([]byte(body), &tables.Tables)
+    tables.Error = err
+    future <- tables
+}
+
+// Type alias from cluster_config_http_request.go
+type TableReplicationInfo = ReplicationInfoStruct
+
+type ColumnInfo struct {
+    Column string `json:"column"`
+    Id     string `json:"id"`
+    Type   string `json:"type"`
+}
+
+type RaftConfig struct {
+    Uuid     string `json:"uuid"`
+    Role     string `json:"role"`
+    Location string `json:"location"`
+}
+
+type TableTabletInfo struct {
+    TabletId   string       `json:"tablet_id"`
+    Partition  string       `json:"partition"`
+    SplitDepth int32        `json:"split_depth"`
+    State      string       `json:"state"`
+    Hidden     string       `json:"hidden"`
+    Message    string       `json:"message"`
+    Locations  []RaftConfig `json:"locations"`
+}
+
+type TableInfoStruct struct {
+    TableName            string               `json:"table_name"`
+    TableId              string               `json:"table_id"`
+    TableVersion         int32                `json:"table_version"`
+    TableType            string               `json:"table_type"`
+    TableState           string               `json:"table_state"`
+    TableStateMessage    string               `json:"table_state_message"`
+    TableTablespaceOid   string               `json:"table_tablespace_oid"`
+    TableReplicationInfo TableReplicationInfo `json:"table_replication_info"`
+    Columns              []ColumnInfo         `json:"columns"`
+    Tablets              []TableTabletInfo    `json:"tablets"`
+}
+
+type TableInfoFuture struct {
+    TableInfo TableInfoStruct
+    Error     error
+}
+
+// Get info for a table given the table id
+func GetTableInfoFuture(nodeHost string, id string, future chan TableInfoFuture) {
+    tableInfo := TableInfoFuture{
+        TableInfo: TableInfoStruct{},
+        Error: nil,
+    }
+    httpClient := &http.Client{
+            Timeout: time.Second * 10,
+    }
+    baseUrl := fmt.Sprintf("http://%s:%s/api/v1/table", nodeHost, MasterUIPort)
+
+    requestUrl, err := url.Parse(baseUrl)
+    if err != nil {
+        tableInfo.Error = err
+        future <- tableInfo
         return
     }
-    tables.Tables, tables.Error = parseTablesFromHtml(string(body))
-    future <- tables
+
+    // Query params
+    params := url.Values{}
+    params.Add("id", id)
+    requestUrl.RawQuery = params.Encode()
+
+    resp, err := httpClient.Get(requestUrl.String())
+    if err != nil {
+            tableInfo.Error = err
+            future <- tableInfo
+            return
+    }
+    defer resp.Body.Close()
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+            tableInfo.Error = err
+            future <- tableInfo
+            return
+    }
+    err = json.Unmarshal([]byte(body), &tableInfo.TableInfo)
+    tableInfo.Error = err
+    future <- tableInfo
 }

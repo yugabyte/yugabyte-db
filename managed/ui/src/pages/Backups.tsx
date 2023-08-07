@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import { AccountLevelBackup } from '../components/backupv2';
 
 export default class Backups extends Component {

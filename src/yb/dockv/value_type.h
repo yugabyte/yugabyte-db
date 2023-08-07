@@ -194,11 +194,7 @@ namespace yb::dockv {
     ((kPackedRow, 'z')) /* ASCII code 122 */ \
     \
     ((kObject, '{'))  /* ASCII code 123 */ \
-    \
-    /* Null desc must be higher than the other descending primitive types so that it compares */ \
-    /* as bigger than them. It is used for frozen CQL user-defined types (which can contain */ \
-    /* null elements) on DESC columns. */ \
-    ((kNullHigh, '|')) /* ASCII code 124 */ \
+    ((kPackedRowV2, '|')) /* ASCII code 124 */ \
     \
     /* This is used for sanity checking. */ \
     ((kInvalid, 127)) \
@@ -224,7 +220,7 @@ struct ValueEntryTypeAsChar {
 // All primitive value types fall into this range, but not all value types in this range are
 // primitive (e.g. object and tombstone are not).
 constexpr ValueEntryType kMinPrimitiveValueEntryType = ValueEntryType::kNullLow;
-constexpr ValueEntryType kMaxPrimitiveValueEntryType = ValueEntryType::kNullHigh;
+constexpr ValueEntryType kMaxPrimitiveValueEntryType = ValueEntryType::kObject;
 
 // kArray is handled slightly differently and hence we only have
 // kObject, kRedisTS, kRedisSet, and kRedisList.
@@ -306,6 +302,10 @@ inline bool IsMergeRecord(const Slice& value) {
 
 inline bool IsColumnId(KeyEntryType type) {
   return type == KeyEntryType::kColumnId || type == KeyEntryType::kSystemColumnId;
+}
+
+inline bool IsPackedRow(ValueEntryType type) {
+  return type == ValueEntryType::kPackedRow || type == ValueEntryType::kPackedRowV2;
 }
 
 }  // namespace yb::dockv

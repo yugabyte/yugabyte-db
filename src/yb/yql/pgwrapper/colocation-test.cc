@@ -139,7 +139,7 @@ void ColocationConcurrencyTest::InsertDataIntoTable(
 }
 
 // Concurrent DML on table 1 + truncate table 2, where table 1 & 2 are colocated.
-TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(InsertAndTruncateOnSeparateTables)) {
+TEST_F(ColocationConcurrencyTest, InsertAndTruncateOnSeparateTables) {
   PGConn conn1 = ASSERT_RESULT(CreateColocatedDB(colocated_db_name));
   PGConn conn2 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
   CreateTables(&conn1, 2);
@@ -180,7 +180,7 @@ TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(InsertAndTruncateOnSep
 // colocated.
 TEST_F(
     ColocationConcurrencyTest,
-    YB_DISABLE_TEST_IN_TSAN(InsertUsingGenerateSeriesAndTruncateOnSeparateTables)) {
+    InsertUsingGenerateSeriesAndTruncateOnSeparateTables) {
   PGConn conn1 = ASSERT_RESULT(CreateColocatedDB(colocated_db_name));
   PGConn conn2 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
   CreateTables(&conn1, 2);
@@ -221,7 +221,7 @@ TEST_F(
 }
 
 // Concurrent DML on table 1 + index backfill on table 2, where table 1 & 2 are colocated.
-TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(InsertAndIndexBackfillOnSeparateTables)) {
+TEST_F(ColocationConcurrencyTest, InsertAndIndexBackfillOnSeparateTables) {
   PGConn conn1 = ASSERT_RESULT(CreateColocatedDB(colocated_db_name));
   PGConn conn2 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
   CreateTables(&conn1, 2);
@@ -273,7 +273,7 @@ TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(InsertAndIndexBackfill
 
 // Remove GTEST_SKIP() after #15081 is resolved.
 // Concurrent DML(Insert,Update, delete) + index backfill on same table, where table is colocated.
-TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(UpdateAndIndexBackfillOnSameTable)) {
+TEST_F(ColocationConcurrencyTest, UpdateAndIndexBackfillOnSameTable) {
   GTEST_SKIP();
   PGConn conn1 = ASSERT_RESULT(CreateColocatedDB(colocated_db_name));
   PGConn conn2 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
@@ -330,7 +330,7 @@ TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(UpdateAndIndexBackfill
 }
 
 // Concurrent DDL (Create + Truncate) on different colocated tables.
-TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(CreateAndTruncateOnSeparateTables)) {
+TEST_F(ColocationConcurrencyTest, CreateAndTruncateOnSeparateTables) {
   PGConn conn1 = ASSERT_RESULT(CreateColocatedDB(colocated_db_name));
   PGConn conn2 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
   CreateTables(&conn1, 2);
@@ -370,7 +370,7 @@ TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(CreateAndTruncateOnSep
 }
 
 // Concurrent DMLs (delete, update) on different colocated tables, with unique constraints.
-TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(UpdateAndDeleteOnSeparateTables)) {
+TEST_F(ColocationConcurrencyTest, UpdateAndDeleteOnSeparateTables) {
   PGConn conn1 = ASSERT_RESULT(CreateColocatedDB(colocated_db_name));
   PGConn conn2 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
   ASSERT_OK(conn1.ExecuteFormat("CREATE TABLE t1 (a int, b int, UNIQUE(a,b))"));
@@ -417,7 +417,7 @@ TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(UpdateAndDeleteOnSepar
 
 // TODO: Remove GTEST_SKIP() after 14468 is resolved.
 // Concurrent DDL (create/alter/drop) + DML operation on same colocated table.
-TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(AlterAndUpdateOnSameTable)) {
+TEST_F(ColocationConcurrencyTest, AlterAndUpdateOnSameTable) {
   GTEST_SKIP();
   PGConn conn1 = ASSERT_RESULT(ConnectToDB(database_name));
   ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", colocated_db_name));
@@ -467,7 +467,7 @@ TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(AlterAndUpdateOnSameTa
 }
 
 // Concurrent transactions on different colocated tables.
-TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(TxnsOnSeparateTables)) {
+TEST_F(ColocationConcurrencyTest, TxnsOnSeparateTables) {
   PGConn conn1 = ASSERT_RESULT(ConnectToDB(database_name));
   ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", colocated_db_name));
   conn1 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
@@ -510,7 +510,7 @@ TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(TxnsOnSeparateTables))
 }
 
 // Concurrent DMLs on two tables with Foreign key relationship.
-TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(InsertOnTablesWithFK)) {
+TEST_F(ColocationConcurrencyTest, InsertOnTablesWithFK) {
   PGConn conn1 = ASSERT_RESULT(ConnectToDB(database_name));
   ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", colocated_db_name));
   conn1 = ASSERT_RESULT(ConnectToDB(colocated_db_name));
@@ -569,7 +569,7 @@ TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(InsertOnTablesWithFK))
 }
 
 // Transaction on two tables with FK relationship.
-TEST_F(ColocationConcurrencyTest, YB_DISABLE_TEST_IN_TSAN(TransactionsOnTablesWithFK)) {
+TEST_F(ColocationConcurrencyTest, TransactionsOnTablesWithFK) {
   PGConn conn1 = ASSERT_RESULT(ConnectToDB(database_name));
   ASSERT_OK(conn1.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", colocated_db_name));
   conn1 = ASSERT_RESULT(ConnectToDB(colocated_db_name));

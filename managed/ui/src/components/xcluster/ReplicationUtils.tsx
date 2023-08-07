@@ -1,4 +1,3 @@
-import React from 'react';
 import { useQuery } from 'react-query';
 import moment from 'moment';
 
@@ -342,9 +341,10 @@ export const getEnabledConfigActions = (
     case XClusterConfigStatus.RUNNING:
       return [
         replication.paused ? XClusterConfigAction.RESUME : XClusterConfigAction.PAUSE,
+        XClusterConfigAction.ADD_TABLE,
+        XClusterConfigAction.DB_SYNC,
         XClusterConfigAction.DELETE,
         XClusterConfigAction.EDIT,
-        XClusterConfigAction.ADD_TABLE,
         XClusterConfigAction.RESTART
       ];
     case XClusterConfigStatus.FAILED:
