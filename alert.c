@@ -1201,11 +1201,7 @@ dbms_alert_signal(PG_FUNCTION_ARGS)
 	MemoryContextSwitchTo(oldcxt);
 
 	if (signals)
-	{
-		Assert(last_signal);
-
 		last_signal->next = new_signal;
-	}
 	else
 		signals = new_signal;
 
