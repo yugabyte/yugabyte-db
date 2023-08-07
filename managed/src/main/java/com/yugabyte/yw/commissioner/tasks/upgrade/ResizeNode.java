@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -189,8 +190,21 @@ public class ResizeNode extends UpgradeTaskBase {
                 RUN_BEFORE_STOPPING,
                 taskParams().isYbcInstalled());
             // Update the list of parameter key/values in the universe with the new ones.
-            updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
-                .setSubTaskGroupType(getTaskSubGroupType());
+
+            for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {
+              SpecificGFlags specificGFlags = cluster.userIntent.specificGFlags;
+              if (specificGFlags != null) {
+                // To avoid erasing it, doing this until this class fully support SpecificGFlags.
+                specificGFlags =
+                    SpecificGFlags.construct(taskParams().masterGFlags, taskParams().tserverGFlags);
+              }
+              updateGFlagsPersistTasks(
+                      cluster,
+                      taskParams().masterGFlags,
+                      taskParams().tserverGFlags,
+                      specificGFlags)
+                  .setSubTaskGroupType(getTaskSubGroupType());
+            }
           }
         });
   }

@@ -1461,20 +1461,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
     // Update the master addresses in memory.
-    createSetFlagInMemoryTasks(
-            tserverNodes,
-            ServerType.TSERVER,
-            true /* force flag update */,
-            null /* no gflag to update */,
-            true /* updateMasterAddr */)
+    createUpdateMasterAddrsInMemoryTasks(tserverNodes, ServerType.TSERVER)
         .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
 
-    createSetFlagInMemoryTasks(
-            masterNodes,
-            ServerType.MASTER,
-            true /* force flag update */,
-            null /* no gflag to update */,
-            true /* updateMasterAddr */)
+    createUpdateMasterAddrsInMemoryTasks(masterNodes, ServerType.MASTER)
         .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
 
     // Update the master addresses on the target universes whose source universe belongs to
