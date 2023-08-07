@@ -433,6 +433,7 @@ void QLProcessor::ExecuteAsync(const ParseTree& parse_tree, const StatementParam
   }
   SET_WAIT_STATUS(util::WaitStateCode::Execute);
   executor_.ExecuteAsync(parse_tree, params, std::move(cb));
+  SET_WAIT_STATUS(util::WaitStateCode::ExecuteFinished);
 }
 
 void QLProcessor::ExecuteAsync(const StatementBatch& batch, StatementExecutedCallback cb) {
