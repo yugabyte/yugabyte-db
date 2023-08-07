@@ -548,6 +548,8 @@ class PgApiImpl {
 
   Status SetForwardScan(PgStatement *handle, bool is_forward_scan);
 
+  Status SetDistinctPrefixLength(PgStatement *handle, int distinct_prefix_length);
+
   Status ExecSelect(PgStatement *handle, const PgExecParameters *exec_params);
 
   //------------------------------------------------------------------------------------------------

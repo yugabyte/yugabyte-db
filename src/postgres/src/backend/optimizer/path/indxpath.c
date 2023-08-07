@@ -34,6 +34,7 @@
 #include "optimizer/predtest.h"
 #include "optimizer/prep.h"
 #include "optimizer/restrictinfo.h"
+#include "optimizer/tlist.h"
 #include "optimizer/var.h"
 #include "utils/builtins.h"
 #include "utils/bytea.h"
@@ -190,6 +191,7 @@ static List *network_prefix_quals(Node *leftop, Oid expr_op, Oid opfamily,
 static Datum string_to_datum(const char *str, Oid datatype);
 static Const *string_to_const(const char *str, Oid datatype);
 static bool is_hash_column_in_lsm_index(const IndexOptInfo* index, int columnIndex);
+static bool yb_can_pushdown_distinct(PlannerInfo *root, IndexOptInfo *index);
 
 /*
  * create_index_paths()
@@ -868,7 +870,7 @@ get_join_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			yb_get_batched_index_paths(root, rel, index,&clauseset,
 					bitindexpaths);
 	}
-	
+
 	/*
 	 * YB: With BNL enabled, we still explore NL compatible joins unless
 	 * yb_prefer_bnl to true or CBO is disabled. If yb_prefer_bnl is true,
@@ -1064,10 +1066,9 @@ get_index_paths(PlannerInfo *root, RelOptInfo *rel,
  * result in considering the scan's output to be unordered.
  *
  * YB: Apart from creating index paths for index predicates, and ordering
- * usecases, we also also create distinct index scan (also called skip scan)
- * paths for queries where the elements are expected to be distinct. Such scans
- * allow us to skip reading duplicate values, thus fetching fewer rows from
- * the storage layer.
+ * usecases, we also also create distinct index scan paths for queries where
+ * the elements are expected to be distinct. Such scans allow us to skip
+ * reading duplicate values, thus fetching fewer rows from the storage layer.
  *
  * 'rel' is the index's heap relation
  * 'index' is the index for which we want to generate paths
@@ -1100,11 +1101,8 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	bool		index_is_ordered;
 	bool		index_only_scan;
 	int			indexcol;
-	bool		yb_lsm_index;
-	bool		yb_supports_skipscan;
-	List	   *yb_distinct_prefix;
+	bool		yb_supports_distinct_pushdown;
 	int			yb_distinct_prefixlen;
-	bool		yb_gen_idxpath;
 	int			yb_distinct_nkeys;
 
 	/*
@@ -1126,19 +1124,9 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	}
 
 	/*
-	 * YB: Check whether prefix-based skip scan feature is available.
-	 * We would like to avoid generating distinct index scans when not
-	 * applicable.
-	 *
-	 * YB: We use root->parse->distinctClause and not root->distinct_pathkeys
-	 * because root->distinct_pathkeys can be NULL even for DISTINCT queries.
-	 * This happens when all the requested columns are constant.
+	 * YB: Avoid generating distinct index scans when not applicable.
 	 */
-	yb_lsm_index = IsYugaByteEnabled() && (index->relam == LSM_AM_OID);
-	yb_supports_skipscan = yb_lsm_index &&
-						   yb_enable_distinct_pushdown &&
-						   root->parse->distinctClause != NULL &&
-						   !root->parse->hasAggs;
+	yb_supports_distinct_pushdown = yb_can_pushdown_distinct(root, index);
 
 	/*
 	 * 1. Collect the index clauses into a single list.
@@ -1195,7 +1183,7 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 				 * Moreover, LSM index supports scalar array ops as
 				 * index clauses without sacrificing ordering.
 				 */
-				if (!yb_supports_skipscan && indexcol > 0)
+				if (!yb_supports_distinct_pushdown && indexcol > 0)
 				{
 					if (skip_lower_saop)
 					{
@@ -1229,7 +1217,7 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		 * columns are not optional in hash partioned indexes as they are
 		 * required to determine the appropriate index partition.
 		 */
-		if (yb_supports_skipscan && !found_clause &&
+		if (yb_supports_distinct_pushdown && !found_clause &&
 			indexcol < index->nhashcolumns)
 		{
 			index_clauses = NIL;
@@ -1259,9 +1247,9 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	 * YB: LSM indexes support prefix based scans that can skip duplicate
 	 * values of a prefix entirely. Here, a prefix refers to a contiguous list
 	 * of leading columns on which the index is sorted. Such scans are called
-	 * distinct index scans or skip scans. These paths scan much fewer rows
-	 * than the usual index scans for DISTINCT operations and thus can be
-	 * more efficient for such purposes.
+	 * distinct index scans. These paths scan much fewer rows than the regular
+	 * index scans for DISTINCT operations and thus can be more efficient for
+	 * such purposes.
 	 *
 	 * YB: To generate such a scan,
 	 * First, we compute the minimal prefix that encompasses all the keys
@@ -1269,19 +1257,14 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	 * scans. However, a prefix that is smaller than necessary may lead to
 	 * inaccurate results. The task here is to compute the right prefix length.
 	 *
-	 * XXX: We use the sentinel value 0 to indicate that a distinct index scan
+	 * YB: We use the sentinel value -1 to indicate that a distinct index scan
 	 * is not possible/useful.
 	 */
-	if (yb_supports_skipscan)
-	{
-		yb_distinct_prefix = yb_get_distinct_prefix(index, index_clauses);
-		yb_distinct_prefixlen = list_length(yb_distinct_prefix);
-	}
+	if (yb_supports_distinct_pushdown)
+		yb_distinct_prefixlen = yb_calculate_distinct_prefixlen(index,
+																index_clauses);
 	else
-	{
-		yb_distinct_prefix = NIL;
-		yb_distinct_prefixlen = 0;
-	}
+		yb_distinct_prefixlen = -1;
 
 	pathkeys_possibly_useful = (scantype != ST_BITMAPSCAN &&
 								!found_lower_saop_clause &&
@@ -1308,9 +1291,12 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		 *
 		 * Example: SELECT DISTINCT r1, r2 WHERE r1 = r2
 		 * 			yb_distinct_prefixlen = 2 (Scan prefix)
-		 * 			yb_distinct_nkeys = 1 (num pathkeys for dsitinct).
+		 * 			yb_distinct_nkeys = 1 (num pathkeys for distinct).
+		 *
+		 * YB: Currently, yb_distinct_nkeys is required only for a
+		 * range-partitioned index.
 		 */
-		yb_distinct_nkeys = yb_distinct_prefixlen;
+		yb_distinct_nkeys = index->nhashcolumns ? -1 : yb_distinct_prefixlen;
 		index_pathkeys = build_index_pathkeys(root, index,
 											  ForwardScanDirection,
 											  &yb_distinct_nkeys);
@@ -1355,23 +1341,10 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	 * predicate, OR an index-only scan is possible.
 	 *
 	 * YB: We also generate distinct index paths if there is a valid distinct
-	 * prefix, i.e. 'yb_distinct_prefixlen' > 0. We sometimes generate distinct
-	 * index paths even when we do not generate the usual index paths. As an
-	 * example, this can happen for the query below,
-	 *
-	 * Example: SELECT DISTINCT r2 FROM t;
-	 * 			where r1, r2 are range columns in that order.
-	 *
-	 * YB: Here, there are no index clauses. The index is also not ordered on r2
-	 * alone (instead ordered on r1, r2 together). While the index is not sorted
-	 * by r2, fetching DISTINCT tuples r1, r2 is still useful since that's
-	 * potentially fewer rows fetched. This is an example of a partial DISTINCT
-	 * operation that is not useful for sorting purposes yet
-	 * still worth it for DISTINCT.
+	 * prefix, i.e. 'yb_distinct_prefixlen' >= 0.
 	 */
-	yb_gen_idxpath = (index_clauses != NIL || useful_pathkeys != NIL ||
-					  useful_predicate || index_only_scan);
-	if (yb_gen_idxpath || yb_distinct_prefixlen > 0)
+	if (index_clauses != NIL || useful_pathkeys != NIL || useful_predicate ||
+		index_only_scan || yb_distinct_prefixlen >= 0)
 	{
 		ipath = create_index_path(root, index,
 								  index_clauses,
@@ -1386,27 +1359,32 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 								  outer_relids,
 								  loop_count,
 								  false);
-		if (yb_gen_idxpath)
-			result = lappend(result, ipath);
 
 		/*
 		 * YB: Generate a distinct index path.
 		 * Must be done before generating parallel paths since ipath is reused.
 		 */
-		if (yb_distinct_prefixlen > 0)
+		if (yb_distinct_prefixlen >= 0)
 		{
-			Path *upath =
-				yb_create_skipscan_path(root, index, ipath,
-										yb_distinct_prefix,
-										yb_distinct_nkeys);
-			result = lappend(result, upath);
+			Path *distinct_index_path =
+				yb_create_distinct_index_path(root, index, ipath,
+											  yb_distinct_prefixlen,
+											  yb_distinct_nkeys);
+			result = lappend(result, distinct_index_path);
 		}
+
+		/*
+		 * YB: This append can occur before or after generating the distinct
+		 * index path above. Here, we choose to add the regular path after the
+		 * distinct path since distinct paths are generally cheaper.
+		 */
+		result = lappend(result, ipath);
 
 		/*
 		 * If appropriate, consider parallel index scan.  We don't allow
 		 * parallel index scan for bitmap index scans.
 		 */
-		if (yb_gen_idxpath && index->amcanparallel &&
+		if (index->amcanparallel &&
 			rel->consider_parallel && outer_relids == NULL &&
 			scantype != ST_BITMAPSCAN)
 		{
@@ -1440,7 +1418,11 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	 */
 	if (index_is_ordered && pathkeys_possibly_useful)
 	{
-		yb_distinct_nkeys = yb_distinct_prefixlen;
+		/*
+		 * YB: Currently, yb_distinct_nkeys is required only for a
+		 * range-partitioned index.
+		 */
+		yb_distinct_nkeys = index->nhashcolumns ? -1 : yb_distinct_prefixlen;
 		index_pathkeys = build_index_pathkeys(root, index,
 											  BackwardScanDirection,
 											  &yb_distinct_nkeys);
@@ -1460,21 +1442,22 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 									  outer_relids,
 									  loop_count,
 									  false);
-			result = lappend(result, ipath);
 
 			/*
 			 * YB: Generate a backwards scanning distinct index path.
 			 * Must be done before generating parallel path since ipath is
 			 * reused.
 			 */
-			if (yb_distinct_prefixlen > 0)
+			if (yb_distinct_prefixlen >= 0)
 			{
-				Path *upath =
-					yb_create_skipscan_path(root, index, ipath,
-											yb_distinct_prefix,
-											yb_distinct_nkeys);
-				result = lappend(result, upath);
+				Path *distinct_index_path =
+					yb_create_distinct_index_path(root, index, ipath,
+												  yb_distinct_prefixlen,
+												  yb_distinct_nkeys);
+				result = lappend(result, distinct_index_path);
 			}
+
+			result = lappend(result, ipath);
 
 			/* If appropriate, consider parallel index scan */
 			if (index->amcanparallel &&
@@ -4877,4 +4860,74 @@ static bool
 is_hash_column_in_lsm_index(const IndexOptInfo* index, int columnIndex)
 {
 	return (index->relam == LSM_AM_OID && columnIndex < index->nhashcolumns);
+}
+
+/*
+ * YB: yb_can_pushdown_distinct
+ *
+ * Check if distinct index scan is appropriate for the given relation/index.
+ *
+ * Cannot pushdown distinct if:
+ * - distinct pushdown is disabled by the user
+ * - there is no distinct clause
+ * - index is not YB LSM
+ * - distinct clause does not support distinct pushdown
+ * - any of the relevant join clauses do not support distinct pushdown
+ * - any of the implied join equalities do not support distinct pushdown
+ *
+ * See yb_reject_distinct_pushdown to understand when pushdown is
+ * not supported by clauses/expressions.
+ */
+static bool
+yb_can_pushdown_distinct(PlannerInfo *root, IndexOptInfo *index)
+{
+	Relids	  otherrels;
+	List	 *joininfo;
+	List	 *clause_list;
+	ListCell *lc;
+
+	/*
+	 * Computing the correct relids sets is tricky.
+	 * See check_index_predicates for details.
+	 */
+	if (index->rel->reloptkind == RELOPT_OTHER_MEMBER_REL)
+		otherrels = bms_difference(root->all_baserels,
+								   find_childrel_parents(
+										root, index->rel));
+	else
+		otherrels = bms_difference(root->all_baserels, index->rel->relids);
+
+	/* Collect join clauses and implied join clauses. */
+	joininfo = list_concat(
+		list_copy(index->rel->joininfo),
+		generate_join_implied_equalities(
+			root,
+			bms_union(index->rel->relids, otherrels),
+			otherrels,
+			index->rel));
+
+	clause_list = NIL;
+	foreach(lc, joininfo)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+		clause_list = lappend(clause_list, rinfo->clause);
+	}
+
+	/*
+	 * We use root->parse->distinctClause and not root->distinct_pathkeys
+	 * because root->distinct_pathkeys can be NULL even for DISTINCT queries.
+	 * This happens when all the requested columns are constant.
+	 */
+	return
+		IsYugaByteEnabled() &&
+		yb_enable_distinct_pushdown &&
+		root->parse->distinctClause != NIL &&
+		index->relam == LSM_AM_OID &&
+		!root->parse->hasAggs &&
+		!root->parse->hasWindowFuncs &&
+		!root->parse->hasTargetSRFs &&
+		!yb_reject_distinct_pushdown((Node *)
+			get_sortgrouplist_exprs(root->parse->distinctClause,
+									root->processed_tlist)) &&
+		!yb_reject_distinct_pushdown((Node *) clause_list);
 }

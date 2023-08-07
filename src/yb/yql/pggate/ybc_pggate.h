@@ -533,6 +533,9 @@ YBCStatus YBCPgNewSelect(YBCPgOid database_oid,
 // Set forward/backward scan direction.
 YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan);
 
+// Set prefix length for distinct index scans.
+YBCStatus YBCPgSetDistinctPrefixLength(YBCPgStatement handle, int distinct_prefix_length);
+
 YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec_params);
 
 // Functions----------------------------------------------------------------------------------------

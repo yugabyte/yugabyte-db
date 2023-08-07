@@ -73,6 +73,9 @@ class PgDmlRead : public PgDml {
   // Set forward (or backward) scan.
   void SetForwardScan(const bool is_forward_scan);
 
+  // Set prefix length, in columns, of distinct index scans.
+  void SetDistinctPrefixLength(const int distinct_prefix_length);
+
   // Bind a range column with a BETWEEN condition.
   Status BindColumnCondBetween(int attr_num, PgExpr *attr_value,
                                bool start_inclusive,
@@ -142,7 +145,6 @@ class PgDmlRead : public PgDml {
  private:
   // Indicates that current operation reads concrete row by specifying row's DocKey.
   bool IsConcreteRowRead() const;
-  void SetDistinctScan(const PgExecParameters *exec_params);
   Status ProcessEmptyPrimaryBinds();
   bool IsAllPrimaryKeysBound(size_t num_range_components_in_expected);
   bool CanBuildYbctidsFromPrimaryBinds();

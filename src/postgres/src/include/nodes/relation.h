@@ -1100,17 +1100,11 @@ typedef enum YbLockMechanism
 /*
  * Info propagated for YugabyteDB, for scans.
  *
- * 'yb_uniqpath_provisional' indicates whether the path includes a
- * distinct pushdown scan and whether it is provisional. false by default.
- * XXX: Use caution when using this flag. Paths that are not provisional must
- * must be ignored unless distinct can be pushed down. See set_cheapest.
- * 'yb_uniqkeys' List of exprs that represent the Distinct Index Scan prefix.
- * NIL by default.
+ * 'yb_uniqkeys' Set of exprs that the path is distinct on. NIL by default.
+ * NIL signifies that the set is indeterminate.
  */
-typedef struct YbPathInfo
-{
-	bool	yb_uniqpath_provisional;	/* path is provisional */
-	List   *yb_uniqkeys;				/* list keys that are distinct */
+typedef struct YbPathInfo {
+	List		   *yb_uniqkeys;		/* list keys that are distinct */
 } YbPathInfo;
 
 /*
