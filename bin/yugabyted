@@ -468,6 +468,12 @@ class ControlScript(object):
         datapath = self.configs.saved_data.get("data_dir")
         gen_certs_dir = self.configs.saved_data.get("gen_certs_dir")
         certs_dir = self.configs.saved_data.get("certs_dir")
+        config_path = os.path.dirname(self.conf_file)
+        is_config_passed=False
+        for arg in sys.argv[1:]:
+            if (arg.startswith("--config")):
+                is_config_passed=True
+                break
 
         if (self.conf_file == BREW_CONF_FILE):
             Output.print_out("{} destroy is not supported for brew installations.".format(
@@ -490,9 +496,14 @@ class ControlScript(object):
             shutil.rmtree(certs_dir)
             Output.print_out("Deleted certs at {}.".format(certs_dir))
 
-        if os.path.exists(self.conf_file):
-            os.remove(self.conf_file)
-            Output.print_out("Deleted conf file at {}.".format(self.conf_file))
+        if is_config_passed:
+            if os.path.exists(self.conf_file):
+                os.remove(self.conf_file)
+                Output.print_out("Deleted conf file at {}.".format(self.conf_file))
+        else:
+            if os.path.isdir(config_path):
+                shutil.rmtree(config_path)
+                Output.print_out("Deleted conf at {}.".format(config_path))
 
         sys.exit(0)
 
