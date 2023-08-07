@@ -9791,6 +9791,11 @@
           "description" : "API token",
           "type" : "string"
         },
+        "apiTokenVersion" : {
+          "description" : "API token version",
+          "format" : "int64",
+          "type" : "integer"
+        },
         "authToken" : {
           "description" : "Auth token",
           "type" : "string"
