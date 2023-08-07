@@ -79,6 +79,9 @@ public class CustomerTask extends Model {
     @EnumValue("XCluster Configuration")
     XClusterConfig(true),
 
+    @EnumValue("Disaster Recovery Config")
+    DrConfig(true),
+
     @EnumValue("Universe Key")
     UniverseKey(true),
 

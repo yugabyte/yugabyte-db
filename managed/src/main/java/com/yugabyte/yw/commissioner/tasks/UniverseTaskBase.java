@@ -2545,7 +2545,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected SubTaskGroup createCreatePitrConfigTask(
-      String keyspaceName, TableType tableType, long retentionPeriodSeconds) {
+      String keyspaceName,
+      TableType tableType,
+      long retentionPeriodSeconds,
+      @Nullable XClusterConfig xClusterConfig) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("CreatePitrConfig");
     CreatePitrConfigParams createPitrConfigParams = new CreatePitrConfigParams();
     createPitrConfigParams.setUniverseUUID(taskParams().getUniverseUUID());
@@ -2554,12 +2557,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     createPitrConfigParams.keyspaceName = keyspaceName;
     createPitrConfigParams.tableType = tableType;
     createPitrConfigParams.retentionPeriodInSeconds = retentionPeriodSeconds;
+    createPitrConfigParams.xClusterConfig = xClusterConfig;
 
     CreatePitrConfig task = createTask(CreatePitrConfig.class);
     task.initialize(createPitrConfigParams);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  protected SubTaskGroup createCreatePitrConfigTask(
+      String keyspaceName, TableType tableType, long retentionPeriodSeconds) {
+    return createCreatePitrConfigTask(
+        keyspaceName, tableType, retentionPeriodSeconds, null /* xClusterConfig */);
   }
 
   protected SubTaskGroup createDeletePitrConfigTask(UUID pitrConfigUuid) {

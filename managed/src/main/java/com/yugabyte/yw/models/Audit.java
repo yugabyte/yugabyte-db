@@ -102,6 +102,9 @@ public class Audit extends Model {
     @EnumValue("XCluster Configuration")
     XClusterConfig,
 
+    @EnumValue("Disaster Recovery Configuration")
+    DrConfig,
+
     @EnumValue("Table")
     Table,
 
