@@ -665,7 +665,7 @@ To rotate a certificate in your YugabyteDB Anywhere Trust Store, do the followin
 
 1. Navigate to **Admin > CA Certificates**.
 
-1. Click thew **...** button for the certificate and choose **Update Certificate**.
+1. Click the **...** button for the certificate and choose **Update Certificate**.
 
 1. Enter a name for the certificate.
 
@@ -677,4 +677,4 @@ To delete a certificate in your YugabyteDB Anywhere Trust Store, do the followin
 
 1. Navigate to **Admin > CA Certificates**.
 
-1. Click thew **...** button for the certificate and choose **Delete**, then click **Delete CA Certificate**.
+1. Click the **...** button for the certificate and choose **Delete**, then click **Delete CA Certificate**.
