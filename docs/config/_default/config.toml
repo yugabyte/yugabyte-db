@@ -33,5 +33,3 @@ enableGitInfo = true
 [markup.goldmark.parser.attribute]
     block = true
 
-[security.http]
-mediaTypes = ['^text/plain$', 'text/plain' ]

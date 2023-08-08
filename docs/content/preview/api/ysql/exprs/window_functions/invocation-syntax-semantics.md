@@ -35,11 +35,7 @@ Notice these three different orthography styles:
 The following three diagrams, [`select_start`](../../../syntax_resources/grammar_diagrams/#select-start), [`WINDOW` clause](../../../syntax_resources/grammar_diagrams/#window-clause), and [`fn_over_window`](../../../syntax_resources/grammar_diagrams/#fn-over-window) rule, are reproduced from the section that describes the [`SELECT` statement](../../../the-sql-language/statements/dml_select/).
 
 {{<ebnf localrefs="window_definition">}}
-
-- select_start
-- window_clause
-- fn_over_window
-
+select_start,window_clause,fn_over_window
 {{</ebnf>}}
 
 ### Definition of the window_definition rule
