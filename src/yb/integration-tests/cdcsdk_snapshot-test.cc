@@ -383,7 +383,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCompactionDuringSnapshot)) {
     if (do_update) {
       ASSERT_OK(UpdateRows(200, 2001, &test_cluster_));
       ASSERT_OK(DeleteRows(1, &test_cluster_));
-      ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 5;
       ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
       do_update = false;
     }
