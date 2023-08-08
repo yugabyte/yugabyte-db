@@ -75,6 +75,10 @@ METRIC_DEFINE_coarse_histogram(
     table, read_time_wait, "Read Time Wait", yb::MetricUnit::kMicroseconds,
     "Number of microseconds read queries spend waiting for safe time");
 
+METRIC_DEFINE_coarse_histogram(
+    table, total_wait_queue_time, "Wait Queue Time", yb::MetricUnit::kMicroseconds,
+    "Number of microseconds spent in the wait queue for requests which enter the wait queue");
+
 METRIC_DEFINE_gauge_uint32(tablet, compact_rs_running,
   "RowSet Compactions Running",
   yb::MetricUnit::kMaintenanceOperations,
@@ -220,6 +224,7 @@ TabletMetricsImpl::TabletMetricsImpl(const scoped_refptr<MetricEntity>& table_en
   HISTOGRAM_INIT(table_entity, write_lock_latency, kWriteLockLatency);
   HISTOGRAM_INIT(table_entity, ql_write_latency, kQlWriteLatency);
   HISTOGRAM_INIT(table_entity, read_time_wait, kReadTimeWait);
+  HISTOGRAM_INIT(table_entity, total_wait_queue_time, kTotalWaitQueueTime);
 
   COUNTER_INIT(tablet_entity, not_leader_rejections, kNotLeaderRejections);
   COUNTER_INIT(tablet_entity, leader_memory_pressure_rejections, kLeaderMemoryPressureRejections);
