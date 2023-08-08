@@ -429,12 +429,9 @@ export const verifyAttributes = (GFlagInput, searchTerm, JWKSKeyset) => {
     const keywordIndex = GFlagInput.indexOf(searchTerm);
     const keywordConf = GFlagInput?.substring(keywordIndex + 1 + keywordLength, GFlagInput.length);
     const attributes = keywordConf?.split(CONST_VALUES.SPACE_SEPARATOR);
-    const attributeKeyValue = attributes?.filter((attribute) => attribute.startsWith(searchTerm));
 
-    for (let index = 0; index < attributeKeyValue?.length; index++) {
-      const [attributeKey, ...attributeValues] = attributeKeyValue[index]?.split(
-        CONST_VALUES.EQUALS
-      );
+    for (let index = 0; index < attributes?.length; index++) {
+      const [attributeKey, ...attributeValues] = attributes[index]?.split(CONST_VALUES.EQUALS);
       const attributeValue = attributeValues.join(CONST_VALUES.EQUALS);
 
       const hasNoAndStartQuote =
