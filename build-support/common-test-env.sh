@@ -52,8 +52,9 @@ DEFAULT_TEST_TIMEOUT_SEC=${DEFAULT_TEST_TIMEOUT_SEC:-600}
 INCREASED_TEST_TIMEOUT_SEC=$(( DEFAULT_TEST_TIMEOUT_SEC * 2 ))
 
 # This timeout will be applied by the process_tree_supervisor.py script.
+# By default we allow 32 minutes, slightly more than the 30 minutes inside JUnit.
 # shellcheck disable=SC2034
-PROCESS_TREE_SUPERVISOR_TEST_TIMEOUT_SEC=$(( 30 * 60 ))
+PROCESS_TREE_SUPERVISOR_TEST_TIMEOUT_SEC=$(( 32 * 60 ))
 
 # We grep for these log lines and show them in the main log on test failure. This regular expression
 # is used with "grep -E".

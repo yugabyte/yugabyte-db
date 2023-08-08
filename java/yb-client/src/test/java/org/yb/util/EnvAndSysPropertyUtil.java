@@ -45,40 +45,78 @@ public final class EnvAndSysPropertyUtil {
    * @param defaultValue default value to return if neither environment variable nor the system
    *                     property is defined.
    */
-  public static String getEnvVarOrSystemProperty(String envVarName, String defaultValue) {
-    String systemPropertyName = envVarName.replaceAll("_", ".").toLowerCase();
-    String envVarValue = System.getenv(envVarName);
-    String systemPropertyValue = System.getProperty(systemPropertyName);
-    if (envVarValue != null && systemPropertyValue != null &&
+  public static String getEnvVarOrSystemProperty(
+      String envVarName,
+      String defaultValue,
+      boolean logValue,
+      String detailsForLog) {
+    final String systemPropertyName = envVarName.replaceAll("_", ".").toLowerCase();
+
+    final String envVarValue = System.getenv(envVarName);
+    final String systemPropertyValue = System.getProperty(systemPropertyName);
+    if (envVarValue != null &&
+        systemPropertyValue != null &&
         !envVarValue.equals(systemPropertyValue) &&
         discrepanciesReportedForEnvVars.add(envVarName)) {
-      LOG.warn(
-          String.format(
-              "Conflicting values for environment variable %s (%s) and system property %s (%s)",
-              envVarName, envVarValue, systemPropertyName, systemPropertyValue));
+      LOG.warn(String.format(
+          "Conflicting values for environment variable %s (%s) and system property %s (%s)",
+          envVarName, envVarValue, systemPropertyName, systemPropertyValue));
+    }
+
+    if (logValue) {
+      if (detailsForLog == null) {
+        detailsForLog = "";
+      } else {
+        detailsForLog = " (" + detailsForLog.trim() + ")";
+      }
     }
 
     if (envVarValue != null) {
+      if (logValue) {
+        LOG.info("Environment variable " + envVarName + ": " + envVarValue + detailsForLog);
+      }
       return envVarValue;
     }
 
     if (systemPropertyValue != null) {
+      if (logValue) {
+        LOG.info("System property " + systemPropertyName + ": " + systemPropertyValue +
+                 detailsForLog);
+      }
       return systemPropertyValue;
     }
 
     return defaultValue;
   }
 
+  public static String getEnvVarOrSystemProperty(String envVarName, String defaultValue) {
+    return getEnvVarOrSystemProperty(envVarName, defaultValue, false, null);
+  }
+
   public static String getEnvVarOrSystemProperty(String envVarName) {
     return getEnvVarOrSystemProperty(envVarName, null);
   }
 
-  public static long getLongEnvVarOrSystemProperty(String envVarName, long defaultValue) {
-    String strValue = getEnvVarOrSystemProperty(envVarName);
+  public static long getLongEnvVarOrSystemProperty(
+      String envVarName, long defaultValue, boolean logValue, String detailsForLog) {
+    String strValue = getEnvVarOrSystemProperty(envVarName, null, logValue, detailsForLog);
     if (strValue != null) {
-      return Long.valueOf(strValue);
+      strValue = strValue.trim().toLowerCase();
+      long value;
+      if (strValue.equals("inf") || strValue.equals("+inf") || strValue.equals("+infinity")) {
+        value = Long.MAX_VALUE;
+      } else if (strValue.equals("-inf") || strValue.equals("-infinity")) {
+        value = Long.MIN_VALUE;
+      } else {
+        value = Long.parseLong(strValue.trim());
+      }
+      return value;
     }
+
     return defaultValue;
   }
 
+  public static long getLongEnvVarOrSystemProperty(String envVarName, long defaultValue) {
+    return getLongEnvVarOrSystemProperty(envVarName, defaultValue, false, null);
+  }
 }

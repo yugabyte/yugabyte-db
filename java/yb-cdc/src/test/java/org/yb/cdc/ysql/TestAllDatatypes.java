@@ -22,7 +22,7 @@ import org.yb.cdc.common.CDCBaseClass;
 import org.yb.cdc.common.ExpectedRecordYSQL;
 import org.yb.cdc.common.HelperValues;
 import org.yb.cdc.util.CDCSubscriber;
-import org.yb.cdc.util.TestUtils;
+import org.yb.cdc.util.CDCTestUtils;
 
 import static org.yb.AssertionWrappers.*;
 import org.junit.Before;
@@ -182,7 +182,7 @@ public class TestAllDatatypes extends CDCBaseClass {
       CDCSubscriber udtSub = new CDCSubscriber("testdiscount", getMasterAddresses());
       udtSub.createStream("proto");
 
-      TestUtils.runSqlScript(connection, "sql_datatype_script/complete_datatype_test.sql");
+      CDCTestUtils.runSqlScript(connection, "sql_datatype_script/complete_datatype_test.sql");
 
       // -1 is used as a placeholder only.
       ExpectedRecordYSQL<?>[] expectedRecordsInteger = new ExpectedRecordYSQL[]{
