@@ -135,7 +135,7 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
       const PgClientSessionOperations& operations, const PgPerformRequestPB& req,
       PgPerformResponsePB* resp, rpc::RpcContext* context);
   Result<PgClientSession::UsedReadTimePtr> ProcessReadTimeManipulation(
-      ReadTimeManipulation manipulation);
+      ReadTimeManipulation manipulation, uint64_t txn_serial_no);
 
   client::YBClient& client();
   client::YBSessionPtr& EnsureSession(PgClientSessionKind kind, CoarseTimePoint deadline);

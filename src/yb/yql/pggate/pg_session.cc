@@ -62,8 +62,7 @@ DEFINE_UNKNOWN_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb req
 DEFINE_test_flag(bool, ysql_ignore_add_fk_reference, false,
                  "Don't fill YSQL's internal cache for FK check to force read row from a table");
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 namespace {
 
@@ -382,15 +381,11 @@ size_t TableYbctidHasher::operator()(const TableYbctid& value) const {
 PgSession::PgSession(
     PgClient* pg_client,
     const std::string& database_name,
-    scoped_refptr<PgTxnManager>
-        pg_txn_manager,
-    scoped_refptr<server::HybridClock>
-        clock,
+    scoped_refptr<PgTxnManager> pg_txn_manager,
     const YBCPgCallbacks& pg_callbacks,
     YBCPgExecStatsState* stats_state)
     : pg_client_(*pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
-      clock_(std::move(clock)),
       metrics_(stats_state),
       buffer_(
           std::bind(
@@ -675,7 +670,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     }
     options.set_use_catalog_session(true);
   } else {
-    const auto txn_serial_no = pg_txn_manager_->SetupPerformOptions(&options);
+    pg_txn_manager_->SetupPerformOptions(&options, ops_options.ensure_read_time_is_set);
     if (pg_txn_manager_->IsTxnInProgress()) {
       options.mutable_in_txn_limit_ht()->set_value(ops_options.in_txn_limit.ToUint64());
     }
@@ -683,7 +678,6 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     if (ops_read_time) {
       RETURN_NOT_OK(UpdateReadTime(&options, ops_read_time));
     }
-    ProcessPerformOnTxnSerialNo(txn_serial_no, ops_options.ensure_read_time_is_set, &options);
   }
   bool global_transaction = yb_force_global_transaction;
   for (auto i = ops.operations.begin(); !global_transaction && i != ops.operations.end(); ++i) {
@@ -753,24 +747,6 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     promise->set_value(result);
   });
   return PerformFuture(promise->get_future(), this, std::move(ops.relations));
-}
-
-void PgSession::ProcessPerformOnTxnSerialNo(
-    uint64_t txn_serial_no,
-    EnsureReadTimeIsSet ensure_read_time_set_for_current_txn_serial_no,
-    tserver::PgPerformOptionsPB* options) {
-  if (txn_serial_no != std::get<0>(last_perform_on_txn_serial_no_).txn_serial_no) {
-    last_perform_on_txn_serial_no_.emplace<0>(
-        txn_serial_no,
-        ensure_read_time_set_for_current_txn_serial_no
-            ? ReadHybridTime::FromHybridTimeRange(clock_->NowRange())
-            : ReadHybridTime());
-  }
-  const auto& read_time = std::get<0>(last_perform_on_txn_serial_no_).read_time;
-  if (ensure_read_time_set_for_current_txn_serial_no && read_time && !options->has_read_time()) {
-    read_time.ToPB(options->mutable_read_time());
-  }
-  options->set_trace_requested(pg_txn_manager_->ShouldEnableTracing());
 }
 
 Result<bool> PgSession::ForeignKeyReferenceExists(const LightweightTableYbctid& key,
@@ -890,7 +866,7 @@ Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
   // writes which will be asynchronously written to txn participants.
   RETURN_NOT_OK(FlushBufferedOperations());
   tserver::PgPerformOptionsPB options;
-  pg_txn_manager_->SetupPerformOptions(&options);
+  pg_txn_manager_->SetupPerformOptions(&options, EnsureReadTimeIsSet::kFalse);
   return pg_client_.RollbackToSubTransaction(id, &options);
 }
 
@@ -988,5 +964,4 @@ Result<bool> PgSession::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return pg_client_.IsObjectPartOfXRepl(table_id);
 }
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate
