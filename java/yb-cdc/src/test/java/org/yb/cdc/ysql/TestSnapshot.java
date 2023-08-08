@@ -21,7 +21,7 @@ import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.cdc.common.CDCBaseClass;
 import org.yb.cdc.common.ExpectedRecord3Proto;
 import org.yb.cdc.util.CDCSubscriber;
-import org.yb.cdc.util.TestUtils;
+import org.yb.cdc.util.CDCTestUtils;
 
 import java.util.*;
 
@@ -92,7 +92,7 @@ public class TestSnapshot extends CDCBaseClass {
 
   private CDCSubscriber smallSnapshot() throws Exception {
     // First execute a script to fill the table with some data.
-    TestUtils.runSqlScript(connection, "cdc_snapshot_init.sql");
+    CDCTestUtils.runSqlScript(connection, "cdc_snapshot_init.sql");
 
     // Check for records in snapshot response from CDC.
     List<CdcService.CDCSDKProtoRecordPB> outputList = new ArrayList<>();
@@ -110,7 +110,7 @@ public class TestSnapshot extends CDCBaseClass {
   }
 
   private CDCSubscriber largeSnapshot() throws Exception {
-    TestUtils.runSqlScript(connection, "cdc_large_snapshot.sql");
+    CDCTestUtils.runSqlScript(connection, "cdc_large_snapshot.sql");
 
     List<CdcService.CDCSDKProtoRecordPB> outputList = new ArrayList<>();
     CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
@@ -137,7 +137,7 @@ public class TestSnapshot extends CDCBaseClass {
   public void testDefaultSnapshotBatchSize() {
     try {
       // Default batch size is 250.
-      TestUtils.runSqlScript(connection, "cdc_large_snapshot.sql");
+      CDCTestUtils.runSqlScript(connection, "cdc_large_snapshot.sql");
 
       List<CdcService.CDCSDKProtoRecordPB> outputList = new ArrayList<>();
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
@@ -176,7 +176,7 @@ public class TestSnapshot extends CDCBaseClass {
   @Test
   public void testSnapshotGFlag() {
     try {
-      TestUtils.runSqlScript(connection, "cdc_large_snapshot.sql");
+      CDCTestUtils.runSqlScript(connection, "cdc_large_snapshot.sql");
 
       List<CdcService.CDCSDKProtoRecordPB> outputList = new ArrayList<>();
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
