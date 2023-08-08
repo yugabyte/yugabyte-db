@@ -415,6 +415,7 @@ export const verifyAttributes = (GFlagInput, searchTerm, JWKSKeyset) => {
     return { isAttributeInvalid, errorMessageKey, isWarning };
   }
 
+  // Raise error when there is jwt keyword but is no JWKS keyset associated with it
   if (searchTerm === CONST_VALUES.JWT && (isEmptyString(JWKSKeyset) || !JWKSKeyset)) {
     isAttributeInvalid = true;
     isWarning = false;
@@ -446,7 +447,7 @@ export const verifyAttributes = (GFlagInput, searchTerm, JWKSKeyset) => {
         attributeValue.endsWith(CONST_VALUES.DOUBLE_QUOTES_SEPARATOR);
 
       if (searchTerm === CONST_VALUES.LDAP) {
-        // // Raise error when the attribute key has any spelling mistake
+        // Raise error when the attribute key has any spelling mistake
         if (!LDAP_KEYS.includes(attributeKey)) {
           isAttributeInvalid = true;
           isWarning = false;
@@ -473,13 +474,6 @@ export const verifyAttributes = (GFlagInput, searchTerm, JWKSKeyset) => {
           isAttributeInvalid = true;
           isWarning = false;
           errorMessageKey = 'universeForm.gFlags.missingQuoteAttributeValue';
-          break;
-        }
-        // Raise error when there is no JWKS token
-        if (isEmptyString(JWKSKeyset) || !JWKSKeyset) {
-          isAttributeInvalid = true;
-          isWarning = false;
-          errorMessageKey = 'universeForm.gFlags.uploadKeyset';
           break;
         }
       }
