@@ -785,11 +785,7 @@ TEST_F(PgTabletSplittingWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(SplitTablet)) {
 
   auto table_id = ASSERT_RESULT(GetTableIDFromTableName("foo"));
 
-  ASSERT_OK(SplitSingleTablet(table_id));
-
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size() == 2;
-  }, 15s * kTimeMultiplier, "Wait for split completion."));
+  ASSERT_OK(SplitSingleTabletAndWaitForActiveChildTablets(table_id));
 
   UnblockWaitersAndValidate(&conn, kNumWaiters);
 }
