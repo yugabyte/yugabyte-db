@@ -68,13 +68,13 @@
 
 using std::string;
 
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     server, handler_latency_outbound_call_queue_time, "Time taken to queue the request ",
     yb::MetricUnit::kMicroseconds, "Microseconds spent to queue the request to the reactor");
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     server, handler_latency_outbound_call_send_time, "Time taken to send the request ",
     yb::MetricUnit::kMicroseconds, "Microseconds spent to queue and write the request to the wire");
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     server, handler_latency_outbound_call_time_to_response, "Time taken to get the response ",
     yb::MetricUnit::kMicroseconds,
     "Microseconds spent to send the request and get a response on the wire");

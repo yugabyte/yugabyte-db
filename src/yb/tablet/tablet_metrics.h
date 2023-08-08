@@ -42,13 +42,13 @@ namespace yb {
 class Counter;
 template<class T>
 class AtomicGauge;
-class Histogram;
+class EventStats;
 class MetricEntity;
 class PgsqlResponsePB;
 
 namespace tablet {
 
-YB_DEFINE_ENUM(TabletHistograms,
+YB_DEFINE_ENUM(TabletEventStats,
   (kCommitWaitDuration)
   (kSnapshotReadInflightWaitDuration)
   (kQlReadLatency)
@@ -91,11 +91,11 @@ class TabletMetrics {
 
   virtual void IncrementBy(TabletCounters counter, uint64_t amount) = 0;
 
-  void Increment(TabletHistograms histogram, uint64_t value) {
-    IncrementBy(histogram, value, 1);
+  void Increment(TabletEventStats event_stats, uint64_t value) {
+    IncrementBy(event_stats, value, 1);
   }
 
-  virtual void IncrementBy(TabletHistograms histogram, uint64_t value, uint64_t amount) = 0;
+  virtual void IncrementBy(TabletEventStats event_stats, uint64_t value, uint64_t amount) = 0;
 
  private:
   // Keeps track of the number of instances created for verification that the metrics belong
@@ -116,7 +116,7 @@ class ScopedTabletMetrics final : public TabletMetrics {
 
   void IncrementBy(TabletCounters counter, uint64_t amount) override;
 
-  void IncrementBy(TabletHistograms histogram, uint64_t value, uint64_t amount) override;
+  void IncrementBy(TabletEventStats event_stats, uint64_t value, uint64_t amount) override;
 
   void Prepare();
 
@@ -139,12 +139,12 @@ class ScopedTabletMetrics final : public TabletMetrics {
 
 class ScopedTabletMetricsLatencyTracker {
  public:
-  ScopedTabletMetricsLatencyTracker(TabletMetrics* tablet_metrics, TabletHistograms histogram);
+  ScopedTabletMetricsLatencyTracker(TabletMetrics* tablet_metrics, TabletEventStats event_stats);
   ~ScopedTabletMetricsLatencyTracker();
 
  private:
   TabletMetrics* metrics_;
-  TabletHistograms histogram_;
+  TabletEventStats event_stats_;
   MonoTime start_time_;
 };
 

@@ -263,7 +263,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
   if (tablet_metrics != nullptr) {
     const MonoDelta elapsed_time = MonoTime::Now().GetDeltaSince(start_time);
     tablet_metrics->Increment(
-        tablet::TabletHistograms::kWriteLockLatency,
+        tablet::TabletEventStats::kWriteLockLatency,
         make_unsigned(elapsed_time.ToMicroseconds()));
   }
 

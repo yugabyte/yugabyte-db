@@ -81,7 +81,7 @@ int64_t CountLookups(MiniCluster* cluster) {
   int64_t result = 0;
   for (size_t i = 0; i != cluster->num_masters(); ++i) {
     auto new_leader_master = cluster->mini_master(i);
-    auto histogram = new_leader_master->master()->metric_entity()->FindOrCreateHistogram(
+    auto histogram = new_leader_master->master()->metric_entity()->FindOrCreateMetric<Histogram>(
         &METRIC_handler_latency_yb_master_MasterClient_GetTabletLocations);
     result += histogram->TotalCount();
   }
