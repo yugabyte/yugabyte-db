@@ -61,8 +61,12 @@
  * ----------
  */
 #define YB_PG_WAIT_PERFORM           0xFE000000U
-#define YB_TSERVER_WAIT_RPC          0xEF000000U
+#define YB_RPC                       0xEF000000U
 #define YB_FLUSH_AND_COMPACTION      0xEE000000U
+#define YB_CONSENSUS                 0xED000000U
+#define YB_TABLET_WAIT               0xEC000000U
+#define YB_ROCKSDB                   0xEB000000U
+#define YB_CLIENT                    0xEA000000U
 #define YB_CQL_WAIT_STATE            0xDF000000U
 
 // For debugging purposes:
@@ -75,16 +79,41 @@ YB_DEFINE_ENUM_TYPE(
     WaitStateCode,
     uint32_t,
     ((Unused, 0))
+
     // General states for incoming RPCs
-    ((Created, YB_TSERVER_WAIT_RPC))(Queued)(Handling)(QueueingResponse)(ResponseQueued)
+    ((Created, YB_RPC)) // The rpc has been created.
+       (Queued) // Rpc has been queued. Waiting for Service threads to pick up
+       (Handling) // Rpc handler is currently working on this rpc.
+       (HandlingDone) // Rpc handler is done.
+       (QueueingResponse) // The response is being queued.
+       (ResponseQueued) // The response has been queued, waiting for Reactor to transfer the response.
+       (ResponseTransferred) // Response has been transferred. RPC is done now.
+
     // Writes
-    (AcquiringLocks)(ConflictResolution)(ExecuteWrite)(SubmittingToRaft)
-      // OperationDriver
-      (ExecuteAsync)(PrepareAndStart)(SubmittedToPreparer)(AddedToLeader)(AddedToFollower)(HandleFailure)
-      (Applying)(ApplyDone)
+    ((AcquiringLocks, YB_TABLET_WAIT))  // A write-rpc is acquiring the required locks.
+        (ConflictResolution)            // Doing conflict resolution.
+        (ExecuteWrite)   // Write query is executing
+        (SubmittingToRaft)   // Write query is submitting the write operation to Raft.
+    // Reads
+    (GetSafeTime)(GetSubDoc)(DoRead)
+
+    // OperationDriver
+    ((ExecuteAsync, YB_CONSENSUS))  // Raft request  being enqueued for preparer.
+        (PrepareAndStart) // 
+        (SubmittedToPreparer) // raft-operation has been submitted to preparer.
+        (AddedToLeader) // raft-operation written to the leader's log. Waiting for response from followers.
+        (AddedToFollower) // On the follower side.
+        (HandleFailure) // Ran into some kind of failure.
+      (Applying) // operation has been replicated/acknowledged by a majority. Applying it to the tablet.
+      (ApplyDone) // apply is done.
+
     // UpdateConsensus
-      (Updating)(UpdateReplica)(DoneUpdate)
+      (Updating) // Update rpc is called on a follower
+      (UpdateReplica) // Handling UpdateReplica
+      (DoneUpdate)   // Done update
+
     // Debugging
+    // Various specific operations in SubmittedToPrepare state
       (SubmittedWriteToPreparer)
       (SubmittedChangeMetadataToPreparer)
       (SubmittedUpdateTransactionToPreparer)
@@ -95,8 +124,6 @@ YB_DEFINE_ENUM_TYPE(
       (SubmittedSplitToPreparer)
       (SubmittedChangeAutoFlagsConfigToPreparer)
       (SubmittedUnexpectedToPreparer)
-    // Reads
-    (GetSafeTime)(GetSubDoc)
 
     // Flush and Compaction
     ((StartFlush, YB_FLUSH_AND_COMPACTION))(StartCompaction)
@@ -107,8 +134,21 @@ YB_DEFINE_ENUM_TYPE(
     ((Parse, YB_CQL_WAIT_STATE))(Analyze)(Execute)(WaitingOnCb)
     (CQLRead)(CQLWrite)
 
+    ((RocksDB, YB_ROCKSDB))
+       (BlockCacheLookupInCache)
+       (BlockCacheLookupCompressed)
+       (BlockCacheReadFromDisk)
+
     // Perform Wait Events
     ((DmlRead, YB_PG_WAIT_PERFORM)) (DmlWrite) (DmlReadWrite)
+
+    // YBClient
+    ((Flushing, YB_CLIENT))
+      (FlushedWaitingForCB)
+      (YBClientRpcsSent)
+      (YBCCallbackCalled)
+      (LookingUpTablet)
+      (TabletLookupFinished)
     )
 
 YB_DEFINE_ENUM(MessengerType, (kTserver)(kCQLServer))

@@ -79,6 +79,7 @@ InboundCall::InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
   TRACE_TO(trace(), "Created InboundCall");
   IncrementCounter(rpc_metrics_->inbound_calls_created);
   IncrementGauge(rpc_metrics_->inbound_calls_alive);
+  wait_state_->set_state(util::WaitStateCode::Created);
 }
 
 InboundCall::~InboundCall() {
@@ -92,6 +93,7 @@ InboundCall::~InboundCall() {
 }
 
 void InboundCall::NotifyTransferred(const Status& status, Connection* conn) {
+  wait_state_->set_state(util::WaitStateCode::ResponseTransferred);
   if (status.ok()) {
     TRACE_TO(trace(), "Transfer finished");
   } else {
@@ -157,8 +159,6 @@ void InboundCall::RecordHandlingStarted(scoped_refptr<Histogram> incoming_queue_
   LOG_IF_WITH_PREFIX(DFATAL, timing_.time_handled.Initialized()) << "Already marked as started";
   timing_.time_handled = MonoTime::Now();
   VLOG_WITH_PREFIX(4) << "Handling";
-  // wait_state_.set_state(util::WaitStateCode::Created);
-  wait_state_->set_state(util::WaitStateCode::Created);
   incoming_queue_time->Increment(
       timing_.time_handled.GetDeltaSince(timing_.time_received).ToMicroseconds());
 }
@@ -200,7 +200,6 @@ bool InboundCall::ClientTimedOut() const {
 }
 
 void InboundCall::QueueResponse(bool is_success) {
-  // wait_state_.set_state(util::WaitStateCode::QueueingResponse);
   wait_state_->set_state(util::WaitStateCode::QueueingResponse);
   TRACE_TO(trace(), is_success ? "Queueing success response" : "Queueing failure response");
   LogTrace();
