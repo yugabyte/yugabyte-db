@@ -143,16 +143,16 @@ To create a colocated table, use the following command:
 CREATE TABLE <name> (columns) WITH (COLOCATION = true);
 ```
 
-In a colocated database, all tables are colocated by default. To opt-out a specific table out of colocation, use the following command:
+In a colocated database, all tables are colocated by default. To opt a specific table out of colocation, use the following command:
 
 ```sql
 CREATE TABLE <name> (columns) WITH (COLOCATION = false);
 ```
 
-This will ensure that the table won't be stored on the same tablet as the rest of the tables for this database, but instead have its own set of tablets. Use this option for large tables that need to be scaled out.
+This ensures that the table is not stored on the same tablet as the rest of the tables for this database, but instead has its own set of tablets. Use this option for large tables that need to be scaled out.
 
 {{<note>}}
-Setting `COLOCATION = true` has no effect if the database that this table is part of is not colocated, as currently colocation is supported only at the database level. See [Colocated tables](../../../../../architecture/docdb-sharding/colocated-tables/) for more details.
+Setting `COLOCATION = true` has no effect if the database that the table is part of is not colocated, as currently colocation is supported only at the database level. See [Colocated tables](../../../../../architecture/docdb-sharding/colocated-tables/) for more details.
 {{</note>}}
 
 ### Storage parameters
