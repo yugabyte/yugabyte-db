@@ -24,8 +24,6 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
-#include "yb/tserver/pg_client.pb.h"
-
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/local_tablet_server.h"
 #include "yb/util/wait_state.h"
@@ -83,9 +81,9 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual std::vector<yb::util::WaitStateInfoPtr> GetThreadpoolWaitStates() const = 0;
 
-  virtual void ActiveUniverseHistory(PgActiveUniverseHistoryResponsePB* resp) const = 0;
-
   virtual void GetCQLServerMessenger(CQLServerMessenger messenger) = 0;
+
+  virtual rpc::Messenger* GetMessenger(util::MessengerType messenger_type) const = 0;
 };
 
 } // namespace tserver

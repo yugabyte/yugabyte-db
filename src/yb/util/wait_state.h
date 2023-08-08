@@ -111,6 +111,8 @@ YB_DEFINE_ENUM_TYPE(
     ((DmlRead, YB_PG_WAIT_PERFORM)) (DmlWrite) (DmlReadWrite)
     )
 
+YB_DEFINE_ENUM(MessengerType, (kTserver)(kCQLServer))
+
 struct AUHMetadata {
   std::vector<uint64_t> top_level_request_id;
   std::string top_level_node_id;

@@ -187,5 +187,9 @@ std::vector<yb::util::WaitStateInfoPtr> MasterTabletServer::GetThreadpoolWaitSta
   return {};
 }
 
+rpc::Messenger* MasterTabletServer::GetMessenger(util::MessengerType messenger_type) const {
+  return nullptr;
+}
+
 } // namespace master
 } // namespace yb

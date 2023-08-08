@@ -1235,13 +1235,19 @@ std::vector<yb::util::WaitStateInfoPtr> TabletServer::GetThreadpoolWaitStates() 
   return tablet_manager_->GetThreadpoolWaitStates();
 }
 
-void TabletServer::ActiveUniverseHistory(PgActiveUniverseHistoryResponsePB* resp) const {
-  messenger()->GetRPCsWaitStates(resp);
-  cql_server_messenger_()->GetRPCsWaitStates(resp);
-}
-
 void TabletServer::GetCQLServerMessenger(CQLServerMessenger messenger) {
   cql_server_messenger_ = messenger;
+}
+
+rpc::Messenger* TabletServer::GetMessenger(util::MessengerType messenger_type) const {
+  switch (messenger_type) {
+    case util::MessengerType::kTserver:
+      return messenger();
+    case util::MessengerType::kCQLServer:
+      return cql_server_messenger_();
+    default:
+      LOG(ERROR) << "AUH asking for invalid messenger";
+  }
 }
 
 }  // namespace tserver
