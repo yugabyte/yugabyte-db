@@ -32,9 +32,9 @@ export const useNodes = () => {
           ...node,
           is_bootstrapping: fetchingIsLoadBalancerIdle
             ? false
-            : !node.is_node_up || !node.is_master_up
+            : !node.is_node_up
             ? false
-            : (node.metrics.uptime_seconds < 60 && !isLoadBalancerIdleResponse?.is_idle) ||
+            : (node.metrics.uptime_seconds < 60 && !isLoadBalancerIdleResponse?.is_idle) &&
               (node.metrics.user_tablets_total + node.metrics.system_tablets_total == 0),
         };
       }),
