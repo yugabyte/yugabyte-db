@@ -104,7 +104,7 @@ YB_DEFINE_ENUM_TYPE(
     (StartSubcompactionThreads)(WaitOnSubcompactionThreads)
 
     // CQL Wait Events
-    ((Parse, YB_CQL_WAIT_STATE))(Analyze)(Execute)(ExecuteFinished)
+    ((Parse, YB_CQL_WAIT_STATE))(Analyze)(Execute)(WaitingOnCb)
     (CQLRead)(CQLWrite)
 
     // Perform Wait Events

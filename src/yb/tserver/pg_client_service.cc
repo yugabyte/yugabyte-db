@@ -41,6 +41,7 @@
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/scheduler.h"
 #include "yb/rpc/tasks_pool.h"
+#include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/tserver/pg_client_session.h"
 #include "yb/tserver/pg_create_table.h"

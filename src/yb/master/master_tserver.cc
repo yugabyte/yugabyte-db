@@ -187,7 +187,8 @@ std::vector<yb::util::WaitStateInfoPtr> MasterTabletServer::GetThreadpoolWaitSta
   return {};
 }
 
-rpc::Messenger* MasterTabletServer::GetMessenger(util::MessengerType messenger_type) const {
+rpc::Messenger* MasterTabletServer::GetMessenger(yb::util::MessengerType messenger_type) const {
+  LOG(FATAL) << "Unexpected call of GetMessenger()";
   return nullptr;
 }
 

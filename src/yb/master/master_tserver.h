@@ -82,7 +82,7 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   void GetCQLServerMessenger(tserver::CQLServerMessenger messenger) override {};
 
-  rpc::Messenger* GetMessenger(util::MessengerType messenger_type) const override;
+rpc::Messenger* GetMessenger(yb::util::MessengerType messenger_type) const override;
 
  private:
   Master* master_ = nullptr;
