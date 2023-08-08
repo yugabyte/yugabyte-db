@@ -201,11 +201,11 @@ In addition, ensure the following:
 
 1. Select **CA Signed**, as per the following illustration:
 
-   ![add-cert](/images/yp/encryption-in-transit/add-cert.png)
+    ![add-cert](/images/yp/encryption-in-transit/add-cert.png)
 
 1. Upload the custom CA root certificate as the root certificate.
 
-   If you use an intermediate CA/issuer, but do not have the complete chain of certificates, then you need to create a bundle by executing the `cat intermediate-ca.crt root-ca.crt > bundle.crt` command, and then use this bundle as the root certificate. You might also want to [verify the certificate chain](#verify-certificate-chain).
+    If you use an intermediate CA/issuer, but do not have the complete chain of certificates, then you need to create a bundle by executing the `cat intermediate-ca.crt root-ca.crt > bundle.crt` command, and then use this bundle as the root certificate. You might also want to [verify the certificate chain](#verify-certificate-chain).
 
 1. Enter the file paths for each of the certificates on the nodes. These are the paths from the previous step.
 
@@ -263,7 +263,7 @@ You rotate the existing custom certificates and replace them with new database n
 
 **Step 1**: Follow Step 1 of [Use custom CA-signed certificates to enable TLS](#use-custom-ca-signed-certificates-to-enable-tls) to obtain a new set of certificates for each of the nodes.
 
-**Step 2**: Follow Step 2 of  [Use custom CA-signed certificates to enable TLS](#use-custom-ca-signed-certificates-to-enable-tls) to copy the certificates to the respective nodes.
+**Step 2**: Follow Step 2 of [Use custom CA-signed certificates to enable TLS](#use-custom-ca-signed-certificates-to-enable-tls) to copy the certificates to the respective nodes.
 
 **Step 3**: Follow Step 3 of [Use custom CA-signed certificates to enable TLS](#use-custom-ca-signed-certificates-to-enable-tls) to create a new CA-signed certificate in YugabyteDB Anywhere.
 
@@ -363,7 +363,7 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
 
 - Configure the secret engine, as follows:
 
-  - Create a root CA  or configure the top-level CA.
+  - Create a root CA or configure the top-level CA.
 
   - Optionally, create an intermediate CA chain and sign them.
 
@@ -484,11 +484,11 @@ During the universe creation, you can enable TLS certificates issued by the cert
    - Click **Upload Root Certificate** and select the root certificate file that you prepared.
    - Click **Add** to make the certificate available.
 
-2. Configure the Kubernetes-based cloud provider by following instructions provided in [Configure region and zones](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-region-and-zones). In the **Add new region** dialog shown in the following illustration, you would be able to specify the Issuer name or the ClusterIssuer name for each zone. Because an Issuer Kind is a Kubernetes namespace-scoped resource, the zone definition should also set the **Namespace** field value if an Issuer Kind is selected:
+1. Configure the Kubernetes-based cloud provider by following instructions provided in [Configure region and zones](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-region-and-zones). In the **Add new region** dialog shown in the following illustration, you would be able to specify the Issuer name or the ClusterIssuer name for each zone. Because an Issuer Kind is a Kubernetes namespace-scoped resource, the zone definition should also set the **Namespace** field value if an Issuer Kind is selected:
 
    ![Add new region](/images/yp/security/kubernetes-cert-manager-add-region.png)
 
-3. Create the universe:
+1. Create the universe:
 
    - Navigate to **Universes** and click **Create Universe**.
    - In the **Provider** field, select the cloud provided that you have configured in step 2.
@@ -508,7 +508,7 @@ kubectl get ClusterIssuer
 kubectl -n <namespace> Issuer
 ```
 
-## Connecting to clusters
+## Connect to clusters
 
 Using TLS, you can connect to the YSQL and YCQL endpoints.
 
@@ -583,7 +583,7 @@ If you created your universe with the Client-to-Node TLS option enabled, then yo
 
 To use TLS from a different client, consult the client-specific documentation. For example, if you are using a Cassandra driver to connect to YugabyteDB, see [SSL](https://docs.datastax.com/en/developer/python-driver/3.19/security/#ssl) .
 
-## Validating certificates
+## Validate certificates
 
 When configuring and using certificates, SSL issues may occasionally arise. You can validate your certificates and keys as follows:
 

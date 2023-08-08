@@ -17,6 +17,7 @@ YugabyteDB Anywhere allows you to protect data in transit by using the following
 
 - Server-to-server encryption for intra-node communication between YB-Master and YB-TServer nodes.
 - Client-to-server encryption for communication between clients and nodes when using CLIs, tools, and APIs for YSQL and YCQL.
+- Encryption for communication between YugabytedDB Anywhere and other services, including LDAP, OIDC, Hashicorp Vault, Webhook, and S3 backup storage.
 
 {{< note title="Note" >}}
 
@@ -362,7 +363,7 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
 
 - Configure the secret engine, as follows:
 
-  - Create a root CA  or configure the top-level CA.
+  - Create a root CA or configure the top-level CA.
 
   - Optionally, create an intermediate CA chain and sign them.
 
@@ -507,7 +508,7 @@ kubectl get ClusterIssuer
 kubectl -n <namespace> Issuer
 ```
 
-## Connecting to clusters
+## Connect to clusters
 
 Using TLS, you can connect to the YSQL and YCQL endpoints.
 
