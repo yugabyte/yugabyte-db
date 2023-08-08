@@ -123,13 +123,26 @@ void PgTabletSplitTestBase::SetUp() {
   proxy_cache_ = std::make_unique<rpc::ProxyCache>(client_->messenger());
 }
 
-Status PgTabletSplitTestBase::SplitSingleTablet(const TableId& table_id) {
-  auto tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
-  if (tablets.size() != 1) {
-    return STATUS_FORMAT(InternalError, "Expected single tablet, found $0.", tablets.size());
-  }
-  auto tablet_id = tablets.front()->tablet_id();
+Result<TabletId> PgTabletSplitTestBase::GetOnlyTabletId(const TableId& table_id) {
+  const auto tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  SCHECK_EQ(
+      tablets.size(), 1, InternalError,
+      Format("Expected single tablet, found $0.", tablets.size()));
+  return tablets.front()->tablet_id();
+}
+
+Status PgTabletSplitTestBase::SplitTablet(const TabletId& tablet_id) {
   return VERIFY_RESULT(catalog_manager())->SplitTablet(tablet_id, master::ManualSplit::kTrue);
+}
+
+Status PgTabletSplitTestBase::SplitSingleTablet(const TableId& table_id) {
+  return SplitTablet(VERIFY_RESULT(GetOnlyTabletId(table_id)));
+}
+
+Status PgTabletSplitTestBase::SplitSingleTabletAndWaitForActiveChildTablets(
+    const TableId& table_id) {
+  RETURN_NOT_OK(SplitSingleTablet(table_id));
+  return WaitForSplitCompletion(table_id, /* expected_active_leaders = */ 2);
 }
 
 Status PgTabletSplitTestBase::InvokeSplitTabletRpc(const std::string& tablet_id) {
@@ -196,6 +209,16 @@ Status PgTabletSplitTestBase::DisableCompaction(std::vector<tablet::TabletPeerPt
     }));
   }
   return Status::OK();
+}
+
+Status PgTabletSplitTestBase::WaitForSplitCompletion(
+    const TableId& table_id, const size_t expected_active_leaders) {
+  return WaitFor(
+      [cluster = cluster_.get(), &table_id, expected_active_leaders]() -> Result<bool> {
+        return ListTableActiveTabletLeadersPeers(cluster, table_id).size() ==
+               expected_active_leaders;
+      },
+      15s * kTimeMultiplier, "Wait for split completion.");
 }
 
 size_t PgTabletSplitTestBase::NumTabletServers() {

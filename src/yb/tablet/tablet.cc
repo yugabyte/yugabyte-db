@@ -32,6 +32,8 @@
 
 #include "yb/tablet/tablet.h"
 
+#include <utility>
+
 #include <boost/container/static_vector.hpp>
 
 #include "yb/client/auto_flags_manager.h"
@@ -113,6 +115,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/std_util.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
 #include "yb/util/yb_pg_errcodes.h"
@@ -1646,10 +1649,17 @@ Status Tablet::HandlePgsqlReadRequest(
 // request.
 Result<bool> Tablet::IsQueryOnlyForTablet(
     const PgsqlReadRequestPB& pgsql_read_request, size_t row_count) const {
+  // For cases when neither partition_column_values nor range_column_values are set,
+  // https://github.com/yugabyte/yugabyte-db/commit/57bee5a77d0df959c7fe0f000b65be97de9f90a0 removed
+  // routing to exact tablet containing requested key and ybctid is simply set to lower/upper bound
+  // key in order to have unified approach on setting partition_key.
+
+  // If ybctid is specified without batch_arguments we don't treat it as a single tablet request
+  // automatically, it can be continued until we hit upper bound (scan tablet with upper bound
+  // matching request upper bound).
   if ((!pgsql_read_request.ybctid_column_value().value().binary_value().empty() &&
-       (implicit_cast<size_t>(pgsql_read_request.batch_arguments_size()) == row_count ||
-        pgsql_read_request.batch_arguments_size() == 0)) ||
-       !pgsql_read_request.partition_column_values().empty() ) {
+       std_util::cmp_equal(std::max(pgsql_read_request.batch_arguments_size(), 1), row_count)) ||
+      !pgsql_read_request.partition_column_values().empty()) {
     return true;
   }
 
