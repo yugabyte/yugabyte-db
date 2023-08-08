@@ -442,3 +442,25 @@ kubectl get ClusterIssuer
 ```sh
 kubectl -n <namespace> Issuer
 ```
+
+## Enforce TLS versions
+
+As TLS 1.0 and 1.1 are no longer accepted by PCI compliance, and considering significant vulnerabilities around these versions of the protocol, it is recommended that you migrate to TLS 1.2 or later versions.
+
+You can set the TLS version for node-to-node and client-node communication. To enforce TLS 1.2, add the following flag for YB-TServer:
+
+```shell
+ssl_protocols = tls12
+```
+
+To enforce the minimum TLS version of 1.2, you need to specify all available subsequent versions for YB-TServer, as follows:
+
+```shell
+ssl_protocols = tls12,tls13
+```
+
+In addition, as the `ssl_protocols` setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the following YB-TServer flag:
+
+```shell
+--ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
+```

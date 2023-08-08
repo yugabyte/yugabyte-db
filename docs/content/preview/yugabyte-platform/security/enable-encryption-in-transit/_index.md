@@ -68,13 +68,13 @@ You can enable encryption in transit (TLS) during universe creation and change t
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="encryption-in-transit-validation/">
+    <a class="section-link icon-offset" href="encryption-in-transit-validate/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/tls-encryption.png" aria-hidden="true" />
-        <div class="title">Validation and troubleshooting</div>
+        <div class="title">Validate certificates</div>
       </div>
       <div class="body">
-        Troubleshoot issues and validate certificates.
+        Validate certificates.
       </div>
     </a>
   </div>
