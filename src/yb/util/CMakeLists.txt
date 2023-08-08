@@ -129,6 +129,7 @@ endif()
 
 set(UTIL_SRCS
   ${SEMAPHORE_CC}
+  aggregate_stats.cc
   allocation_tracker.cc
   async_util.cc
   flags/auto_flags.cc
@@ -233,8 +234,8 @@ set(UTIL_SRCS
   spinlock_profiling.cc
   split.cc
   stack_trace.cc
-  stats/perf_level_imp.cc
   stats/iostats_context_imp.cc
+  stats/perf_level_imp.cc
   status.cc
   status_callback.cc
   stol_utils.cc

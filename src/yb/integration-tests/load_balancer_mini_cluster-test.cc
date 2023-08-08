@@ -37,7 +37,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/multi_drive_test_env.h"
 
-METRIC_DECLARE_histogram(load_balancer_duration);
+METRIC_DECLARE_event_stats(load_balancer_duration);
 
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(load_balancer_drive_aware);
@@ -255,18 +255,19 @@ TEST_F(LoadBalancerMiniClusterRf3Test, DurationMetric) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_load_balancer_wait_ms) = 5;
   auto* mini_master = ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster());
   auto master_metric_entity = mini_master->master()->metric_entity();
-  auto hist = master_metric_entity->FindOrCreateHistogram(&METRIC_load_balancer_duration);
+  auto stats = master_metric_entity->FindOrCreateMetric<EventStats>(
+      &METRIC_load_balancer_duration);
   // The metric should get a value.
   ASSERT_OK(WaitFor([&] {
-    return hist->MeanValueForTests() > 0;
+    return stats->MeanValue() > 0;
   }, 10s, "load_balancer_duration gets a value"));
 
   ASSERT_OK(mini_cluster()->StepDownMasterLeader());
 
   // The metric quantiles should be reset by the stepdown.
-  hist = master_metric_entity->FindOrCreateHistogram(&METRIC_load_balancer_duration);
+  stats = master_metric_entity->FindOrCreateMetric<EventStats>(&METRIC_load_balancer_duration);
   ASSERT_OK(WaitFor([&] {
-    return hist->MeanValueForTests() == 0;
+    return stats->MeanValue() == 0;
   }, 10s, "load_balancer_duration value resets"));
 }
 

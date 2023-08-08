@@ -1468,7 +1468,7 @@ Status Tablet::HandleRedisReadRequest(const docdb::ReadOperationData& read_opera
   RETURN_NOT_OK(scoped_read_operation);
 
   ScopedTabletMetricsLatencyTracker metrics_tracker(
-      metrics_.get(), TabletHistograms::kQlReadLatency);
+      metrics_.get(), TabletEventStats::kQlReadLatency);
 
   docdb::RedisReadOperation doc_op(redis_read_request, doc_db(), read_operation_data);
   RETURN_NOT_OK(doc_op.Execute());
@@ -1504,7 +1504,7 @@ Status Tablet::HandleQLReadRequest(
       read_operation_data.deadline);
   RETURN_NOT_OK(scoped_read_operation);
   ScopedTabletMetricsLatencyTracker metrics_tracker(
-      metrics_.get(), TabletHistograms::kQlReadLatency);
+      metrics_.get(), TabletEventStats::kQlReadLatency);
 
   bool schema_version_compatible = IsSchemaVersionCompatible(
       metadata()->schema_version(), ql_read_request.schema_version(),
@@ -1640,7 +1640,7 @@ Status Tablet::DoHandlePgsqlReadRequest(
     const SubTransactionMetadataPB& subtransaction_metadata,
     PgsqlReadRequestResult* result) {
   ScopedTabletMetricsLatencyTracker metrics_tracker(
-      metrics, TabletHistograms::kQlReadLatency);
+      metrics, TabletEventStats::kQlReadLatency);
 
   docdb::QLRocksDBStorage storage{doc_db(metrics)};
 

@@ -101,18 +101,18 @@ DEFINE_test_flag(bool, drop_participant_signal, false,
                  "If true, do nothing with the commit/abort signal from the participant to the "
                  "wait queue.");
 
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     tablet, wait_queue_pending_time_waiting, "Wait Queue - Still Waiting Time",
     yb::MetricUnit::kMicroseconds,
     "The amount of time a still-waiting transaction has been in the wait queue");
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     tablet, wait_queue_finished_waiting_latency, "Wait Queue - Total Waiting Time",
     yb::MetricUnit::kMicroseconds,
     "The amount of time an unblocked transaction spent in the wait queue");
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     tablet, wait_queue_blockers_per_waiter, "Wait Queue - Blockers per Waiter",
     yb::MetricUnit::kTransactions, "The number of blockers a waiter is stuck on in the wait queue");
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     tablet, wait_queue_waiters_per_blocker, "Wait Queue - Waiters per Blocker",
     yb::MetricUnit::kTransactions,
     "The number of waiters stuck on a particular blocker in the wait queue");
@@ -220,7 +220,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
              const std::vector<BlockerDataAndConflictInfo> blockers_,
              const WaitDoneCallback callback_,
              std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration_, rpc::Rpcs* rpcs,
-             scoped_refptr<Histogram>* finished_waiting_latency)
+             scoped_refptr<EventStats>* finished_waiting_latency)
       : id(id_),
         subtxn_id(subtxn_id_),
         locks(locks_),
@@ -367,7 +367,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
     return GetCurrentTimeMicros() - wait_start.GetPhysicalValueMicros();
   }
 
-  scoped_refptr<Histogram>& finished_waiting_latency_;
+  scoped_refptr<EventStats>& finished_waiting_latency_;
   mutable rw_spinlock mutex_;
   std::optional<UnlockedBatch> unlocked_ GUARDED_BY(mutex_) = std::nullopt;
   rpc::Rpcs& rpcs_;
@@ -1554,10 +1554,10 @@ class WaitQueue::Impl {
   const server::ClockPtr& clock_;
   std::unique_ptr<ThreadPoolToken> thread_pool_token_;
   ResumedWaiterRunner waiter_runner_;
-  scoped_refptr<Histogram> pending_time_waiting_;
-  scoped_refptr<Histogram> finished_waiting_latency_;
-  scoped_refptr<Histogram> blockers_per_waiter_;
-  scoped_refptr<Histogram> waiters_per_blocker_;
+  scoped_refptr<EventStats> pending_time_waiting_;
+  scoped_refptr<EventStats> finished_waiting_latency_;
+  scoped_refptr<EventStats> blockers_per_waiter_;
+  scoped_refptr<EventStats> waiters_per_blocker_;
   scoped_refptr<AtomicGauge<uint64_t>> total_waiters_;
   scoped_refptr<AtomicGauge<uint64_t>> total_blockers_;
 };

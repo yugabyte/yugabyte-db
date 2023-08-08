@@ -226,7 +226,7 @@ void WriteQuery::Finished(WriteOperation* operation, const Status& status) {
     if (metrics) {
       auto op_duration_usec =
           make_unsigned(MonoDelta(CoarseMonoClock::now() - start_time_).ToMicroseconds());
-      metrics->Increment(tablet::TabletHistograms::kQlWriteLatency, op_duration_usec);
+      metrics->Increment(tablet::TabletEventStats::kQlWriteLatency, op_duration_usec);
     }
   }
 

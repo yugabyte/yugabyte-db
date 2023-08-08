@@ -220,11 +220,11 @@ DnsResolver::~DnsResolver() {
 
 namespace {
 
-thread_local Histogram* active_metric_ = nullptr;
+thread_local EventStats* active_metric_ = nullptr;
 
 } // anonymous namespace
 
-ScopedDnsTracker::ScopedDnsTracker(const scoped_refptr<Histogram>& metric)
+ScopedDnsTracker::ScopedDnsTracker(const scoped_refptr<EventStats>& metric)
     : old_metric_(active_metric()), metric_(metric) {
   active_metric_ = metric.get();
 }
@@ -234,7 +234,7 @@ ScopedDnsTracker::~ScopedDnsTracker() {
   active_metric_ = old_metric_;
 }
 
-Histogram* ScopedDnsTracker::active_metric() {
+EventStats* ScopedDnsTracker::active_metric() {
   return active_metric_;
 }
 

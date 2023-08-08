@@ -738,7 +738,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   std::mutex leader_lease_wait_mtx_;
   std::condition_variable leader_lease_wait_cond_;
 
-  scoped_refptr<Histogram> update_raft_config_dns_latency_;
+  scoped_refptr<EventStats> update_raft_config_dns_latency_;
 
   // Used only when TEST_follower_reject_update_consensus_requests_seconds is greater than 0.
   // Any requests to update the replica will be rejected until this time. For testing only.

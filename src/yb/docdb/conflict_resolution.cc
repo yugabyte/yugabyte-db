@@ -597,7 +597,7 @@ class WaitOnConflictResolver : public ConflictResolver {
     if (wait_start_time_.Initialized()) {
       const MonoDelta elapsed_time = MonoTime::Now().GetDeltaSince(wait_start_time_);
       context_->GetTabletMetrics()->Increment(
-          tablet::TabletHistograms::kTotalWaitQueueTime,
+          tablet::TabletEventStats::kTotalWaitQueueTime,
           make_unsigned(elapsed_time.ToMicroseconds()));
     }
   }
