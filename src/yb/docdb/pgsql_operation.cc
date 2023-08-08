@@ -233,10 +233,6 @@ Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
   // TODO(neil) Remove the following IF block when it is completely obsolete.
   // The following IF block gets used in the CREATE INDEX codepath.
   if (request.has_ybctid_column_value()) {
-    SCHECK(!request.has_paging_state(),
-           InternalError,
-           "Each ybctid value identifies one row in the table while paging state "
-           "is only used for multi-row queries.");
     RETURN_NOT_OK(ql_storage.GetIterator(
         request.stmt_id(), projection, doc_read_context, txn_op_context,
         deadline, read_time, request.ybctid_column_value().value(),
