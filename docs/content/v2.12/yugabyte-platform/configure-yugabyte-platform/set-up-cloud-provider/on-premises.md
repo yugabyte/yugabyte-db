@@ -178,7 +178,7 @@ This step is only required if you set **Manually Provision Nodes** to true and t
 
 You can manually provision each node using the pre-provisioning Python script, as follows:
 
-1. Login to Yugabyte Platform virtual machine via SSH.
+1. Log in to Yugabyte Platform virtual machine via SSH.
 
 1. Access the docker `yugaware` container, as follows:
 
@@ -255,7 +255,7 @@ This process carries out all provisioning tasks on the database nodes which requ
 
 Physical nodes (or cloud instances) are installed with a standard Centos 7 server image. The following steps are to be performed on each physical node, prior to universe creation:
 
-1. Login to each database node as a user with sudo enabled (the `centos` user in centos7 images).
+1. Log in to each database node as a user with sudo enabled (the `centos` user in centos7 images).
 
 1. Add the following line to `/etc/chrony.conf` (sudo is required):
 

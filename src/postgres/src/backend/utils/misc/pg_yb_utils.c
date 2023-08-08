@@ -28,6 +28,7 @@
 
 #include <assert.h>
 #include <inttypes.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -76,6 +77,7 @@
 #include "commands/variable.h"
 #include "common/pg_yb_common.h"
 #include "lib/stringinfo.h"
+#include "libpq/hba.h"
 #include "optimizer/cost.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
@@ -659,6 +661,7 @@ YBInitPostgresBackend(
 		callbacks.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch;
 		callbacks.PostgresEpochToUnixEpoch= &YbPostgresEpochToUnixEpoch;
 		callbacks.ConstructTextArrayDatum = &YbConstructTextArrayDatum;
+		callbacks.CheckUserMap = &check_usermap;
 		YBCInitPgGate(type_table, count, callbacks);
 		YBCInstallTxnDdlHook();
 
@@ -671,6 +674,14 @@ YBInitPostgresBackend(
 		HandleYBStatus(YBCPgInitSession(db_name ? db_name : user_name,
 										&yb_session_stats.current_state));
 		YBCSetTimeout(StatementTimeout, NULL);
+
+		/*
+		 * Upon completion of the first heartbeat to the local tserver, retrieve
+		 * and store the session ID in shared memory, so that entities
+		 * associated with a session ID (like txn IDs) can be transitively
+		 * mapped to PG backends.
+		 */
+		yb_pgstat_add_session_info(YBCPgGetSessionID());
 	}
 }
 
@@ -2681,6 +2692,30 @@ yb_get_effective_transaction_isolation_level(PG_FUNCTION_ARGS)
 }
 
 Datum
+yb_get_current_transaction(PG_FUNCTION_ARGS)
+{
+	pg_uuid_t *txn_id = NULL;
+	bool is_null = false;
+
+	if (!yb_enable_pg_locks)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("get_current_transaction is unavailable"),
+						errdetail("yb_enable_pg_locks is false or a system "
+								  "upgrade is in progress")));
+	}
+
+	txn_id = (pg_uuid_t *) palloc(sizeof(pg_uuid_t));
+	HandleYBStatus(
+		YBCPgGetSelfActiveTransaction((YBCPgUuid *) txn_id, &is_null));
+
+	if (is_null)
+		PG_RETURN_NULL();
+
+	PG_RETURN_UUID_P(txn_id);
+}
+
+Datum
 yb_cancel_transaction(PG_FUNCTION_ARGS)
 {
 	if (!IsYbDbAdminUser(GetUserId()))
@@ -3606,4 +3641,79 @@ bool YbIsStickyConnection(int *change)
 	*change = 0; /* Since it is updated it will be set to 0 */
 	elog(DEBUG5, "Number of sticky objects: %d", yb_committed_sticky_object_count);
 	return (yb_committed_sticky_object_count > 0);
+}
+
+void**
+YbPtrListToArray(const List* str_list, size_t* length) {
+	void		**buf;
+	ListCell	*lc;
+
+	/* Assumes that the pointer sizes are equal for every type */
+	buf = (void **) palloc(sizeof(void *) * list_length(str_list));
+	*length = 0;
+	foreach (lc, str_list)
+	{
+		buf[(*length)++] = (void *) lfirst(lc);
+	}
+
+	return buf;
+}
+
+/*
+ * This function is almost equivalent to the `read_whole_file` function of
+ * src/postgres/src/backend/commands/extension.c. It differs only in its error
+ * handling. The original read_whole_file function logs errors elevel ERROR
+ * while this function accepts the elevel as the argument for better control
+ * over error handling.
+ */
+char *
+YbReadWholeFile(const char *filename, int* length, int elevel)
+{
+	char	   *buf;
+	FILE	   *file;
+	size_t		bytes_to_read;
+	struct stat fst;
+
+	if (stat(filename, &fst) < 0)
+	{
+		ereport(elevel,
+				(errcode_for_file_access(),
+				 errmsg("could not stat file \"%s\": %m", filename)));
+		return NULL;
+	}
+
+	if (fst.st_size > (MaxAllocSize - 1))
+	{
+		ereport(elevel,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("file \"%s\" is too large", filename)));
+		return NULL;
+	}
+	bytes_to_read = (size_t) fst.st_size;
+
+	if ((file = AllocateFile(filename, PG_BINARY_R)) == NULL)
+	{
+		ereport(elevel,
+				(errcode_for_file_access(),
+				 errmsg("could not open file \"%s\" for reading: %m",
+						filename)));
+		return NULL;
+	}
+
+	buf = (char *) palloc(bytes_to_read + 1);
+
+	*length = fread(buf, 1, bytes_to_read, file);
+
+	if (ferror(file))
+	{
+		ereport(elevel,
+				(errcode_for_file_access(),
+				 errmsg("could not read file \"%s\": %m", filename)));
+		return NULL;
+	}
+
+	FreeFile(file);
+
+	buf[*length] = '\0';
+	return buf;
 }

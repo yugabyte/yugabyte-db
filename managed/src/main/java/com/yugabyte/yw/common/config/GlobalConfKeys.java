@@ -308,6 +308,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "YBC client timeout in milliseconds for admin operations",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> bootstrapProducerTimeoutMs =
+      new ConfKeyInfo<>(
+          "yb.xcluster.bootstrap_producer_timeout_ms",
+          ScopeType.GLOBAL,
+          "Bootstrap producer timeout",
+          "Bootstrap producer timeout in milliseconds",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> ybcSocketReadTimeoutMs =
       new ConfKeyInfo<>(
           "ybc.timeout.socket_read_timeout_ms",
@@ -960,4 +968,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Disables Image Bundle Validation",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Duration> devopsCommandTimeout =
+      new ConfKeyInfo<>(
+          "yb.devops.command_timeout",
+          ScopeType.GLOBAL,
+          "Devops command timeout",
+          "Devops command timeout",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

@@ -11,10 +11,9 @@
 // under the License.
 
 #include "yb/common/wire_protocol.h"
-
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
-
+#include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 
 using std::string;
@@ -908,6 +907,76 @@ TEST_P(PgCatalogVersionEnableAuthTest, ChangeUserPassword) {
   for (const auto& entry : expected_versions) {
     ASSERT_OK(CheckMatch(entry.second, kInitialCatalogVersion));
   }
+}
+
+class PgCatalogVersionFailOnConflictTest : public PgCatalogVersionTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    UpdateMiniClusterFailOnConflict(options);
+    PgCatalogVersionTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+// This is a sanity test for manual downgrade from per database catalog version mode to
+// global catalog version mode. First the gflag --TEST_enable_db_catalog_version_mode is
+// turned off and cluster is restarted. After that, the cluster will be running in
+// global catalog version mode despite the fact that pg_yb_catalog_version still has
+// multiple rows. At this time, we test that concurrently running DML transactions
+// behave well and will not be affected before and after the user performs the second
+// fix to make pg_yb_catalog_version to have only one row for template1.
+TEST_F_EX(PgCatalogVersionTest, SimulateDowngradeToGlobalMode,
+          PgCatalogVersionFailOnConflictTest) {
+  // Prepare an existing cluster that is in per-database catalog version mode.
+  auto conn_yugabyte = ASSERT_RESULT(Connect());
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte, true /* per_database_mode */));
+  RestartClusterWithDBCatalogVersionMode();
+  conn_yugabyte = ASSERT_RESULT(Connect());
+  auto initial_count = ASSERT_RESULT(conn_yugabyte.FetchValue<PGUint64>(
+      "SELECT COUNT(*) FROM pg_yb_catalog_version"));
+  ASSERT_GT(initial_count, 1);
+
+  // Now simulate downgrading the cluster to global catalog version mode.
+  // We first turn off the gflag, after the cluster restarts, the table
+  // pg_yb_catalog_version still has one row per database.
+  RestartClusterWithoutDBCatalogVersionMode();
+  conn_yugabyte = ASSERT_RESULT(ConnectToDB("yugabyte"));
+  initial_count = ASSERT_RESULT(conn_yugabyte.FetchValue<PGUint64>(
+      "SELECT COUNT(*) FROM pg_yb_catalog_version"));
+  ASSERT_GT(initial_count, 1);
+
+  bool downgraded = false;
+  // This test assumes that the actual downgrade script runs at most this many seconds.
+  constexpr int kMaxDowngradeSec = 5;
+  constexpr int kMaxSleepSec = 10;
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, &downgraded] {
+    // Start a thread to simulate the situation where the user manaully runs the YSQL
+    // downgrade script to make pg_yb_catalog_version one row per database. Wait for
+    // some random time so that it runs concurrently with SerializableColoring().
+    const int sleep_sec = RandomUniformInt(1, kMaxSleepSec);
+    SleepFor(1s * sleep_sec);
+    const string ysql_downgrade_sql =
+        R"#(
+SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;
+SELECT pg_catalog.yb_fix_catalog_version_table(false);
+SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO false;
+        )#";
+    auto conn_ysql_downgrade = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn_ysql_downgrade.Execute(ysql_downgrade_sql));
+    downgraded = true;
+  });
+  // There's no strict guarantee of this, but it should be fine practically because
+  // of the call to SleepFor above.
+  ASSERT_FALSE(downgraded);
+  // Let the test run longer than the maximum time we assume that the downgrade can take.
+  SerializableColoringHelper(kMaxSleepSec + kMaxDowngradeSec);
+  // This can fail if downgrade takes longer than kMaxDowngradeSec but in practice
+  // this won't happen.
+  ASSERT_TRUE(downgraded);
+  const auto current_count = ASSERT_RESULT(conn_yugabyte.FetchValue<PGUint64>(
+      "SELECT COUNT(*) FROM pg_yb_catalog_version"));
+  ASSERT_EQ(current_count, 1);
+  thread_holder.Stop();
 }
 
 TEST_F(PgCatalogVersionTest, NonBreakingDDLMode) {

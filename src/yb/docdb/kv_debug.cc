@@ -108,7 +108,7 @@ Result<PackedRowToPackingInfoPtrFunc> GetPackedRowToPackingInfoPtrFunc(
   return [schema_packing_provider, cotable_id,
           colocation_id](Slice* packed_row) -> Result<PackingInfoPtr> {
     auto schema_version =
-        narrow_cast<SchemaVersion>(VERIFY_RESULT(util::FastDecodeUnsignedVarInt(packed_row)));
+        narrow_cast<SchemaVersion>(VERIFY_RESULT(FastDecodeUnsignedVarInt(packed_row)));
     if (!schema_packing_provider) {
       return STATUS(NotFound, "No packing information available");
     }
@@ -240,14 +240,14 @@ Result<std::string> DocDBValueToDebugStr(
         RETURN_NOT_OK(value.consume_byte(dockv::KeyEntryTypeAsChar::kExternalIntents));
       }
       for (;;) {
-        auto len = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&value));
+        auto len = VERIFY_RESULT(FastDecodeUnsignedVarInt(&value));
         if (len == 0) {
           break;
         }
         Slice local_key = value.Prefix(len);
         value.remove_prefix(len);
         RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(local_key, dockv::HybridTimeRequired::kFalse));
-        len = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&value));
+        len = VERIFY_RESULT(FastDecodeUnsignedVarInt(&value));
         Slice local_value = value.Prefix(len);
         value.remove_prefix(len);
         intents.push_back(Format(

@@ -36,8 +36,9 @@ AsyncFlushTablets::AsyncFlushTablets(Master *master,
                                      const scoped_refptr<TableInfo>& table,
                                      const vector<TabletId>& tablet_ids,
                                      const FlushRequestId& flush_id,
-                                     bool is_compaction)
-    : RetrySpecificTSRpcTask(master, callback_pool, ts_uuid, table,
+                                     bool is_compaction,
+                                     LeaderEpoch epoch)
+: RetrySpecificTSRpcTask(master, callback_pool, ts_uuid, table, std::move(epoch),
                              /* async_task_throttler */ nullptr),
       tablet_ids_(tablet_ids),
       flush_id_(flush_id),

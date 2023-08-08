@@ -132,78 +132,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardDMLWithAutoCommit)) {
   CheckCount(expected_count, count);
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestRecordCountsAfterMultipleTabletSplits)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
-
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(SetUpWithParams(3, 1, false));
-  const uint32_t num_tablets = 1;
-
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
-  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
-  ASSERT_EQ(tablets.size(), num_tablets);
-
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
-  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
-  ASSERT_FALSE(resp.has_error());
-
-  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-  ASSERT_OK(WriteRows(1, 200, &test_cluster_));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 100, true));
-  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
-
-  WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
-
-  ASSERT_OK(WriteRows(200, 400, &test_cluster_));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 100, true));
-  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
-
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_first_split;
-  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets_after_first_split, nullptr));
-  ASSERT_EQ(tablets_after_first_split.size(), 2);
-
-  WaitUntilSplitIsSuccesful(tablets_after_first_split.Get(0).tablet_id(), table, 3);
-  WaitUntilSplitIsSuccesful(tablets_after_first_split.Get(1).tablet_id(), table, 4);
-
-  ASSERT_OK(WriteRows(400, 600, &test_cluster_));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 100, true));
-  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
-
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_third_split;
-  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets_after_third_split, nullptr));
-  ASSERT_EQ(tablets_after_third_split.size(), 4);
-
-  WaitUntilSplitIsSuccesful(tablets_after_third_split.Get(1).tablet_id(), table, 5);
-
-  ASSERT_OK(WriteRows(600, 1000, &test_cluster_));
-  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 100, true));
-  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
-
-  const int expected_total_records = 3006;
-  const int expected_total_splits = 4;
-  // The array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in that
-  // order.
-  const int expected_records_count[] = {9, 999, 0, 0, 0, 0, 999, 999};
-
-  int total_records = 0;
-  int total_splits = 0;
-  int record_count[] = {0, 0, 0, 0, 0, 0, 0, 0};
-
-  GetRecordsAndSplitCount(
-      stream_id, tablets[0].tablet_id(), table_id, record_count, &total_records, &total_splits);
-
-  for (int i = 0; i < 8; i++) {
-    ASSERT_EQ(expected_records_count[i], record_count[i]);
-  }
-
-  LOG(INFO) << "Got " << total_records << " records and " << total_splits << " tablet splits";
-  ASSERT_EQ(expected_total_records, total_records);
-  ASSERT_EQ(expected_total_splits, total_splits);
-}
-
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCLagMetric)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
@@ -6846,26 +6774,35 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLargeTxnWithExplicitStream)) 
   ASSERT_FALSE(set_resp.has_error());
 
   // Number of rows is intentionally kept equal to the value of cdc_max_stream_intent_records.
-  ASSERT_OK(WriteRowsHelper(0, 40, &test_cluster_, true));
+  const int row_count = 40;
+  ASSERT_OK(WriteRowsHelper(0, row_count, &test_cluster_, true));
   ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 1000, false));
 
   const int expected_count[] = {1, 40, 0, 0, 0, 0, 1, 1};
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
-  auto get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
-  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
-    auto record = get_changes_resp.cdc_sdk_proto_records(i);
-    UpdateRecordCount(record, count);
-  }
+  GetChangesResponsePB get_changes_resp;
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto get_changes_resp_result = GetChangesFromCDC(stream_id, tablets);
+        if (get_changes_resp_result.ok()) {
+          get_changes_resp = (*get_changes_resp_result);
+          for (const auto& record : get_changes_resp.cdc_sdk_proto_records()) {
+            UpdateRecordCount(record, count);
+          }
+        }
+        return count[1] == row_count;
+      },
+      MonoDelta::FromSeconds(5), "Wait for getchanges to fetch records"));
 
   const auto& prev_checkpoint = get_changes_resp.cdc_sdk_checkpoint();
   set_resp = ASSERT_RESULT(
       SetCDCCheckpoint(stream_id, tablets, OpId{prev_checkpoint.term(), prev_checkpoint.index()}));
   ASSERT_FALSE(set_resp.has_error());
 
-  get_changes_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &prev_checkpoint));
-  for (int i = 0; i < get_changes_resp.cdc_sdk_proto_records_size(); i++) {
-    auto record = get_changes_resp.cdc_sdk_proto_records(i);
+  auto get_changes_resp_2 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &prev_checkpoint));
+  for (const auto& record : get_changes_resp_2.cdc_sdk_proto_records()) {
     UpdateRecordCount(record, count);
   }
 

@@ -54,6 +54,10 @@ YB_DEFINE_HANDLE_TYPE(PgTableDesc);
 // Handle to a memory context.
 YB_DEFINE_HANDLE_TYPE(PgMemctx);
 
+// Represents STATUS_* definitions from src/postgres/src/include/c.h.
+#define YBC_STATUS_OK     (0)
+#define YBC_STATUS_ERROR  (-1)
+
 //--------------------------------------------------------------------------------------------------
 // Other definitions are the same between C++ and C.
 //--------------------------------------------------------------------------------------------------
@@ -366,6 +370,8 @@ typedef struct PgCallbacks {
   int64_t (*PostgresEpochToUnixEpoch)(int64_t);
   int64_t (*UnixEpochToPostgresEpoch)(int64_t);
   void (*ConstructTextArrayDatum)(const char **, const int, char **, size_t *);
+  /* hba.c */
+  int (*CheckUserMap)(const char *, const char *, const char *, bool case_insensitive);
 } YBCPgCallbacks;
 
 typedef struct PgGFlagsAccessor {
@@ -449,13 +455,33 @@ typedef struct PgExecStats {
 
   uint64_t num_flushes;
   uint64_t flush_wait;
-
 } YBCPgExecStats;
 
 typedef struct PgExecStatsState {
   YBCPgExecStats stats;
   bool is_timing_required;
 } YBCPgExecStatsState;
+
+typedef struct PgUuid {
+  unsigned char data[16];
+} YBCPgUuid;
+
+typedef struct PgSessionTxnInfo {
+  uint64_t session_id;
+  YBCPgUuid txn_id;
+  bool is_not_null;
+} YBCPgSessionTxnInfo;
+
+typedef struct PgJwtAuthOptions {
+  char* jwks;
+  char* matching_claim_key;
+  char** allowed_issuers;
+  size_t allowed_issuers_length;
+  char** allowed_audiences;
+  size_t allowed_audiences_length;
+  char* username;
+  char* usermap;
+} YBCPgJwtAuthOptions;
 
 // source:
 // https://github.com/gperftools/gperftools/blob/master/src/gperftools/malloc_extension.h#L154

@@ -22,6 +22,7 @@
 #include "yb/common/schema_pbutil.h"
 
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/leader_epoch.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/mini_master.h"
 

@@ -55,6 +55,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
@@ -954,7 +955,9 @@ public class NodeManager extends DevopsBase {
                   gflags,
                   GFlagsUtil.getAllDefaultGFlags(
                       taskParam, universe, getUserIntentFromParams(taskParam), useHostname, config),
-                  confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride));
+                  confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride),
+                  confGetter,
+                  taskParam);
             }
             subcommand.add("--gflags");
             subcommand.add(Json.stringify(Json.toJson(gflags)));
@@ -1016,7 +1019,26 @@ public class NodeManager extends DevopsBase {
                 gflags,
                 GFlagsUtil.getAllDefaultGFlags(
                     taskParam, universe, getUserIntentFromParams(taskParam), useHostname, config),
-                confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride));
+                confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride),
+                confGetter,
+                taskParam);
+            if (gflags.containsKey(GFlagsUtil.YSQL_HBA_CONF_CSV)) {
+              String hbaConfValue = gflags.get(GFlagsUtil.YSQL_HBA_CONF_CSV);
+              if (hbaConfValue.contains(GFlagsUtil.JWT_AUTH)) {
+                Path tmpDirectoryPath =
+                    FileUtils.getOrCreateTmpDirectory(
+                        confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
+                Path localGflagFilePath = tmpDirectoryPath.resolve(node.getNodeUuid().toString());
+                String providerUUID = userIntent.provider;
+                String ybHomeDir = GFlagsUtil.getYbHomeDir(providerUUID);
+                String remoteGFlagPath = ybHomeDir + GFlagsUtil.GFLAG_REMOTE_FILES_PATH;
+                // Append the path to copy the gFlag file from local to remote host
+                subcommand.add("--local_gflag_files_path");
+                subcommand.add(localGflagFilePath.toString());
+                subcommand.add("--remote_gflag_files_path");
+                subcommand.add(remoteGFlagPath);
+              }
+            }
           }
           subcommand.add("--gflags");
           subcommand.add(Json.stringify(Json.toJson(gflags)));
@@ -2048,21 +2070,8 @@ public class NodeManager extends DevopsBase {
           commandArgs.add("--instance_type");
           commandArgs.add(taskParam.instanceType);
 
-          Integer postgres_max_mem_mb =
-              confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresMaxMemMb);
-
-          // For read replica clusters, use the read replica value if it is >= 0. -1 means to follow
-          // what the primary cluster has set.
-          Integer rr_max_mem_mb =
-              confGetter.getConfForScope(
-                  universe, UniverseConfKeys.dbMemPostgresReadReplicaMaxMemMb);
-          if (universe.getUniverseDetails().getClusterByUuid(taskParam.placementUuid).clusterType
-                  == UniverseDefinitionTaskParams.ClusterType.ASYNC
-              && rr_max_mem_mb >= 0) {
-            postgres_max_mem_mb = rr_max_mem_mb;
-          }
           commandArgs.add("--pg_max_mem_mb");
-          commandArgs.add(Integer.toString(postgres_max_mem_mb));
+          commandArgs.add(Integer.toString(getCGroupSize(confGetter, universe, nodeTaskParam)));
 
           if (taskParam.force) {
             commandArgs.add("--force");
@@ -2279,6 +2288,54 @@ public class NodeManager extends DevopsBase {
         }
       }
     }
+  }
+
+  @VisibleForTesting
+  static int getCGroupSize(
+      RuntimeConfGetter confGetter, Universe universe, NodeTaskParams taskParam) {
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getClusterByUuid(taskParam.placementUuid);
+
+    Integer primarySizeFromIntent =
+        universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .getCGroupSize(taskParam.azUuid);
+    Integer sizeFromIntent = cluster.userIntent.getCGroupSize(taskParam.azUuid);
+
+    if (sizeFromIntent != null || primarySizeFromIntent != null) {
+      // Absence of value (or -1) for read replica means to use value from primary cluster.
+      if (cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC
+          && (sizeFromIntent == null || sizeFromIntent < 0)) {
+        if (primarySizeFromIntent == null) {
+          log.error(
+              "Incorrect state for cgroup: null for primary but {} for replica", sizeFromIntent);
+          return getCGroupSizeFromConfig(confGetter, universe, cluster.clusterType);
+        }
+        return primarySizeFromIntent;
+      }
+      return sizeFromIntent;
+    }
+    return getCGroupSizeFromConfig(confGetter, universe, cluster.clusterType);
+  }
+
+  private static int getCGroupSizeFromConfig(
+      RuntimeConfGetter confGetter,
+      Universe universe,
+      UniverseDefinitionTaskParams.ClusterType clusterType) {
+    log.debug("Falling back to runtime config for cgroup size");
+    Integer postgresMaxMemMb =
+        confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresMaxMemMb);
+
+    // For read replica clusters, use the read replica value if it is >= 0. -1 means to follow
+    // what the primary cluster has set.
+    Integer rrMaxMemMb =
+        confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresReadReplicaMaxMemMb);
+    if (clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC && rrMaxMemMb >= 0) {
+      postgresMaxMemMb = rrMaxMemMb;
+    }
+    return postgresMaxMemMb;
   }
 
   private void appendCertPathsToCheck(

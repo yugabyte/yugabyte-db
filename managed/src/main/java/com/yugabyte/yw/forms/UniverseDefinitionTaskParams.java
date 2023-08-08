@@ -6,6 +6,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.*;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.util.StdConverter;
 import com.google.common.base.Strings;
@@ -32,6 +33,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
 import lombok.Data;
 import lombok.Getter;
@@ -460,13 +462,21 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @Data
   public static class OverridenDetails {
     @ApiModelProperty private String instanceType;
+    @ApiModelProperty private DeviceInfo deviceInfo;
+    @ApiModelProperty private Integer cgroupSize;
 
     public void mergeWith(OverridenDetails other) {
       if (other == null) {
         return;
       }
+      if (other.getDeviceInfo() != null) {
+        this.deviceInfo = other.getDeviceInfo();
+      }
       if (other.getInstanceType() != null) {
         this.instanceType = other.getInstanceType();
+      }
+      if (other.getCgroupSize() != null) {
+        this.cgroupSize = other.getCgroupSize();
       }
     }
 
@@ -655,7 +665,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // New version of gflags. If present - replaces old masterGFlags/tserverGFlags thing
     @ApiModelProperty public SpecificGFlags specificGFlags;
 
+    // Overrides for some of user intent values per AZ or/and process type.
     @Getter @Setter @ApiModelProperty private UserIntentOverrides userIntentOverrides;
+
+    // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)
+    // 0 will not set any cgroup limits.
+    // For read replica null or -1 value means use that of from primary cluster.
+    @Getter @Setter @ApiModelProperty private Integer cgroupSize;
 
     @Override
     public String toString() {
@@ -744,6 +760,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (userIntentOverrides != null) {
         newUserIntent.userIntentOverrides = userIntentOverrides.clone();
       }
+      newUserIntent.cgroupSize = cgroupSize;
       return newUserIntent;
     }
 
@@ -761,6 +778,19 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         }
       }
       return res;
+    }
+
+    public Integer getCGroupSize(@NotNull NodeDetails nodeDetails) {
+      return getCGroupSize(nodeDetails.azUuid);
+    }
+
+    public Integer getCGroupSize(UUID azUUID) {
+      OverridenDetails overridenDetails =
+          getOverridenDetails(UniverseTaskBase.ServerType.TSERVER, azUUID);
+      if (overridenDetails.getCgroupSize() != null) {
+        return overridenDetails.getCgroupSize();
+      }
+      return cgroupSize;
     }
 
     @JsonIgnore
@@ -797,12 +827,25 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     public DeviceInfo getDeviceInfoForNode(NodeDetails nodeDetails) {
-      return getDeviceInfoForProcessType(nodeDetails.dedicatedTo);
-    }
-
-    public DeviceInfo getDeviceInfoForProcessType(@Nullable UniverseTaskBase.ServerType type) {
-      if (type == UniverseTaskBase.ServerType.MASTER && masterDeviceInfo != null) {
+      if (dedicatedNodes
+          && masterDeviceInfo != null
+          && nodeDetails.dedicatedTo == UniverseTaskBase.ServerType.MASTER) {
         return masterDeviceInfo;
+      }
+      OverridenDetails overridenDetails =
+          getOverridenDetails(UniverseTaskBase.ServerType.TSERVER, nodeDetails.getAzUuid());
+      if (overridenDetails.getDeviceInfo() != null) {
+        JsonNode original = Json.toJson(deviceInfo);
+        JsonNode overriden = Json.toJson(overridenDetails.getDeviceInfo());
+        log.debug(
+            "Getting overriden device info {} for az {}",
+            Json.toJson(overriden),
+            nodeDetails.getAzUuid());
+
+        CommonUtils.deepMerge(original, overriden);
+        log.debug("Device info after merging {}", original);
+
+        return Json.fromJson(original, DeviceInfo.class);
       }
       return deviceInfo;
     }

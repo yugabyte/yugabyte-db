@@ -422,7 +422,8 @@ class CDCServiceImpl::Impl {
 
   bool UpdateCheckpoint(
       const ProducerTabletInfo& producer_tablet, const OpId& sent_op_id, const OpId& commit_op_id) {
-    VLOG(1) << "Going to update the checkpoint with " << commit_op_id;
+    VLOG(1) << "T " << producer_tablet.tablet_id << " going to update the checkpoint with "
+            << commit_op_id;
     auto now = CoarseMonoClock::Now();
     auto active_time = GetCurrentTimeMicros();
 
@@ -1751,7 +1752,7 @@ void CDCServiceImpl::GetChanges(
     tablet_metric->is_bootstrap_required->set_value(status.IsNotFound());
   }
 
-  VLOG(1) << "Sending GetChanges response " << resp->ShortDebugString();
+  VLOG(1) << "T " << req->tablet_id() << " sending GetChanges response " << AsString(*resp);
   RPC_STATUS_RETURN_ERROR(
       status,
       resp->mutable_error(),
@@ -2284,7 +2285,7 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
       continue;
     }
 
-    std::string last_replicated_time_str;
+    std::string last_replicated_time_str = "";
     if (entry.last_replication_time) {
       last_replicated_time_str = Timestamp(*entry.last_replication_time).ToFormattedString();
     }
@@ -2341,6 +2342,14 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     // If a tablet_id, stream_id pair is in "uninitialized state", we don't need to send the
     // checkpoint to the tablet peers.
     if (checkpoint == OpId::Invalid() && last_active_time_cdc_state_table == 0) {
+      continue;
+    }
+
+    // If the tablet_id, stream_id pair have OpId::Min() as checkpoint, but the LastReplicatedTime
+    // is not set, we know this was a child tablet (refer: UpdateCDCProducerOnTabletSplit). We will
+    // not update the checkpoint details.
+    if (checkpoint == OpId::Min() && last_replicated_time_str.empty() &&
+        record.GetSourceType() == CDCSDK) {
       continue;
     }
 
@@ -2678,6 +2687,7 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
       continue;
     }
     time_since_update_peers = MonoTime::Now();
+    VLOG(2) << "Updating tablet peers with min cdc replicated index";
     {
       YB_LOG_EVERY_N_SECS(INFO, 300)
           << "Started to read minimum replicated indices for all tablets";

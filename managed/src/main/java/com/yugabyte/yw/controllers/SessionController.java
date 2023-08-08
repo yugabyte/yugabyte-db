@@ -99,6 +99,7 @@ import play.libs.Json;
 import play.libs.ws.WSClient;
 import play.mvc.Http;
 import play.mvc.Http.Cookie;
+import play.mvc.Http.MimeTypes;
 import play.mvc.Result;
 import play.mvc.Results;
 import play.mvc.With;
@@ -374,7 +375,7 @@ public class SessionController extends AbstractPlatformController {
     return withData(sessionInfo);
   }
 
-  @ApiOperation(value = "UI_ONLY", hidden = true)
+  @ApiOperation(value = "UI_ONLY", hidden = true, produces = "application/json")
   public Result getPlatformConfig() {
     boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
     boolean showJWTTokenInfo =
@@ -384,7 +385,7 @@ public class SessionController extends AbstractPlatformController {
     responseJson.put("use_oauth", useOAuth);
     responseJson.put("show_jwt_token_info", showJWTTokenInfo);
     platformConfig = String.format(platformConfig, responseJson.toString());
-    return ok(platformConfig);
+    return ok(platformConfig).as(MimeTypes.JSON);
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
@@ -699,10 +700,10 @@ public class SessionController extends AbstractPlatformController {
     return YBPSuccess.empty().discardingCookie(AUTH_TOKEN);
   }
 
-  @ApiOperation(value = "UI_ONLY", hidden = true)
+  @ApiOperation(value = "UI_ONLY", hidden = true, produces = "text/css")
   public Result getUITheme() {
     try {
-      return Results.ok(environment.resourceAsStream("theme/theme.css"));
+      return Results.ok(environment.resourceAsStream("theme/theme.css")).as(MimeTypes.CSS);
     } catch (NullPointerException ne) {
       throw new PlatformServiceException(BAD_REQUEST, "Theme file doesn't exists.");
     }

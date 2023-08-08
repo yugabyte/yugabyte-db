@@ -25,7 +25,9 @@
 #include "yb/common/column_id.h"
 #include "yb/common/id_mapping.h"
 
+#include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/dockv.fwd.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/util/slice.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -49,6 +51,8 @@ struct ColumnPackingData {
 
   // Whether column is nullable.
   bool nullable;
+
+  DataType data_type;
 
   static ColumnPackingData FromPB(const ColumnPackingPB& pb);
   void ToPB(ColumnPackingPB* out) const;
@@ -83,9 +87,17 @@ class SchemaPacking {
     return varlen_columns_count_ * sizeof(uint32_t);
   }
 
+  size_t NullMaskSize() const {
+    return (columns_.size() + 7) / 8;
+  }
+
   size_t varlen_columns_count() const {
     return varlen_columns_count_;
   }
+
+  // Whether this packing has information about data types.
+  // true for all quite recent packings.
+  bool HasDataType() const;
 
   bool SkippedColumn(ColumnId column_id) const;
   int64_t GetIndex(ColumnId column_id) const;
@@ -174,5 +186,69 @@ class SchemaPackingStorage {
   TableType table_type_;
   std::unordered_map<SchemaVersion, SchemaPacking> version_to_schema_packing_;
 };
+
+class PackedRowDecoderBase {
+ public:
+  PackedRowDecoderBase() = default;
+  explicit PackedRowDecoderBase(std::reference_wrapper<const SchemaPacking> packing)
+      : packing_(&packing.get()) {}
+
+  const SchemaPacking& packing() const {
+    return *packing_;
+  }
+
+ protected:
+  const SchemaPacking* packing_;
+};
+
+class PackedRowDecoderV1 : public PackedRowDecoderBase {
+ public:
+  static constexpr ValueEntryType kValueEntryType = ValueEntryType::kPackedRow;
+
+  PackedRowDecoderV1() = default;
+  PackedRowDecoderV1(
+      std::reference_wrapper<const SchemaPacking> packing, const uint8_t* data);
+
+  PackedValueV1 FetchValue(size_t idx);
+  PackedValueV1 FetchValue(ColumnId column_id);
+
+  // Returns the pointer to the first byte after the specified column in input data.
+  const uint8_t* GetEnd(ColumnId column_id);
+
+ private:
+  bool IsNull(size_t idx) const;
+  Slice DoGetValue(size_t idx);
+
+  // Memory should be retained by the user of this class.
+  const uint8_t* header_ptr_;
+  const uint8_t* data_;
+};
+
+class PackedRowDecoderV2 : public PackedRowDecoderBase {
+ public:
+  static constexpr ValueEntryType kValueEntryType = ValueEntryType::kPackedRowV2;
+
+  PackedRowDecoderV2() = default;
+  PackedRowDecoderV2(std::reference_wrapper<const SchemaPacking> packing, const uint8_t* data);
+
+  PackedValueV2 FetchValue(size_t idx);
+  PackedValueV2 FetchValue(ColumnId column_id);
+
+  // Returns the pointer to the first byte after the specified column in input data.
+  const uint8_t* GetEnd(ColumnId column_id);
+
+ private:
+  bool IsNull(size_t idx) const;
+  Slice DoGetValue(size_t idx);
+
+  // Memory should be retained by the user of this class.
+  const uint8_t* header_ptr_;
+  const uint8_t* data_;
+  size_t next_idx_ = 0;
+};
+
+using PackedRowDecoderVariant = std::variant<PackedRowDecoderV1, PackedRowDecoderV2>;
+
+PackedRowDecoderBase& DecoderBase(PackedRowDecoderVariant* decoder);
 
 } // namespace yb::dockv

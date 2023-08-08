@@ -7,9 +7,10 @@ plpgsql_regular_declaration ::= [ variable_name ] [ CONSTANT ]
                                 [ := expression ] ;
 
 plpgsql_bound_refcursor_declaration ::= plpgsql_bound_refcursor_name 
-                                        [ [ NO ] SCROLL ] CURSOR 
+                                        [ [ NO ] SCROLL ]  CURSOR 
                                         [ ( plpgsql_cursor_arg 
-                                          [ , ... ] ) ] FOR subquery ;
+                                          [ , ... ] ) ]  FOR subquery 
+                                        ;
 
 plpgsql_cursor_arg ::= arg_name arg_type
 ```

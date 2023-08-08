@@ -86,7 +86,7 @@ yugabyte=# \i 'data/reviews.sql'
 
 ## 3. Download and configure Metabase
 
-Detailed steps for setting up Metabase are available in the [Metabase documentation](https://www.metabase.com/docs/latest/setting-up-metabase.html). The following are the minimal setup steps for getting started:
+Detailed steps for setting up Metabase are available in the [Metabase documentation](https://www.metabase.com/docs/latest/setting-up-metabase.html). The following are the minimal steps for getting started:
 
 ```sh
 $ wget http://downloads.metabase.com/v0.30.4/metabase.jar

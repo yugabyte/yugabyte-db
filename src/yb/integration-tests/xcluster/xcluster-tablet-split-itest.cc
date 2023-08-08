@@ -195,7 +195,9 @@ class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest
   }
 
   Result<std::unique_ptr<MiniCluster>> CreateNewUniverseAndTable(
-      const string& cluster_id, client::TableHandle* table) {
+      const string& cluster_id, const string& cluster_prefix, client::TableHandle* table) {
+    TEST_SetThreadPrefixScoped prefix_se(cluster_prefix);
+
     // First create the new cluster.
     MiniClusterOptions opts;
     opts.num_tablet_servers = 3;
@@ -318,10 +320,7 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
     }
 
     // Also create the consumer cluster.
-    {
-      TEST_SetThreadPrefixScoped prefix_se("C");
-      consumer_cluster_ = ASSERT_RESULT(CreateNewUniverseAndTable("consumer", &consumer_table_));
-    }
+    consumer_cluster_ = ASSERT_RESULT(CreateNewUniverseAndTable("consumer", "C", &consumer_table_));
 
     consumer_client_ = ASSERT_RESULT(consumer_cluster_->CreateClient());
 
@@ -375,7 +374,8 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
     auto tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_->id());
     EXPECT_EQ(tablet_ids.size(), cur_num_tablets);
     for (const auto& tablet_id : tablet_ids) {
-      RETURN_NOT_OK(catalog_mgr->SplitTablet(tablet_id, master::ManualSplit::kTrue));
+      RETURN_NOT_OK(catalog_mgr->SplitTablet(
+          tablet_id, master::ManualSplit::kTrue, catalog_mgr->GetLeaderEpochInternal()));
     }
     size_t expected_non_split_tablets = cur_num_tablets * 2;
     size_t expected_split_tablets = parent_tablet_protected_from_deletion
@@ -934,7 +934,7 @@ class XClusterBootstrapTabletSplitITest : public XClusterTabletSplitITest {
     CdcTabletSplitITest::SetUp();
 
     // Create the consumer cluster, but don't setup the universe replication yet.
-    consumer_cluster_ = ASSERT_RESULT(CreateNewUniverseAndTable("consumer", &consumer_table_));
+    consumer_cluster_ = ASSERT_RESULT(CreateNewUniverseAndTable("consumer", "C", &consumer_table_));
     consumer_client_ = ASSERT_RESULT(consumer_cluster_->CreateClient());
     // Since we write transactionally to the consumer, also need to create a txn manager too.
     consumer_transaction_manager_.emplace(
@@ -1051,7 +1051,8 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithBootstrappedStream) {
   // Default cluster_ will be our producer.
   // Create a consumer universe and table, then setup universe replication.
   client::TableHandle consumer_cluster_table;
-  consumer_cluster_ = ASSERT_RESULT(CreateNewUniverseAndTable("consumer", &consumer_cluster_table));
+  consumer_cluster_ =
+      ASSERT_RESULT(CreateNewUniverseAndTable("consumer", "C", &consumer_cluster_table));
 
   const string bootstrap_id = ASSERT_RESULT(BootstrapProducer());
 
@@ -1068,7 +1069,7 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithXClusterReplicationOnProducer)
   // Create a consumer universe and table, then setup universe replication.
   client::TableHandle consumer_cluster_table;
   auto consumer_cluster =
-      ASSERT_RESULT(CreateNewUniverseAndTable("consumer", &consumer_cluster_table));
+      ASSERT_RESULT(CreateNewUniverseAndTable("consumer", "C", &consumer_cluster_table));
 
   ASSERT_OK(tools::RunAdminToolCommand(consumer_cluster->GetMasterAddresses(),
                                        "setup_universe_replication",
@@ -1097,7 +1098,7 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithXClusterReplicationOnConsumer)
   const string kProducerClusterId = "producer";
   client::TableHandle producer_cluster_table;
   auto producer_cluster =
-      ASSERT_RESULT(CreateNewUniverseAndTable(kProducerClusterId, &producer_cluster_table));
+      ASSERT_RESULT(CreateNewUniverseAndTable(kProducerClusterId, "P", &producer_cluster_table));
 
   ASSERT_OK(tools::RunAdminToolCommand(cluster_->GetMasterAddresses(),
                                        "setup_universe_replication",

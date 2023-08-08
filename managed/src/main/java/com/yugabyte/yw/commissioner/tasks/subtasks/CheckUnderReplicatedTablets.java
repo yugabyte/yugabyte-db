@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
 import java.util.Arrays;
@@ -35,7 +36,13 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
 
   private static final String URL_SUFFIX = "/api/v1/tablet-under-replication";
 
-  private static final String MINIMUM_VERSION_UNDERREPLICATED_SUPPORT = "2.14.11.0-b32";
+  private static final String MINIMUM_VERSION_UNDERREPLICATED_SUPPORT_2_14 = "2.14.12.0-b1";
+
+  private static final String MINIMUM_VERSION_UNDERREPLICATED_SUPPORT_2_16 = "2.16.7.0-b1";
+
+  private static final String MINIMUM_VERSION_UNDERREPLICATED_SUPPORT_2_18 = "2.18.2.0-b65";
+
+  private static final String MINIMUM_VERSION_UNDERREPLICATED_SUPPORT = "2.19.1.0-b291";
 
   private final ApiHelper apiHelper;
 
@@ -60,14 +67,12 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
     String softwareVersion =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
 
-    // Skip check for db versions < 2.14.
     if (!supportsUnderReplicatedCheck(universe)) {
       log.debug(
-          "Under-replicated tablets check skipped. Requires db version at least {}. "
-              + "Got {} from universe {}",
-          MINIMUM_VERSION_UNDERREPLICATED_SUPPORT,
-          softwareVersion,
-          universe.getName());
+          "Under-replicated tablets check skipped for universe {}. Universe version {} "
+              + "does not support under-replicated tablets check.",
+          universe.getName(),
+          softwareVersion);
       return;
     }
 
@@ -197,11 +202,17 @@ public class CheckUnderReplicatedTablets extends UniverseTaskBase {
   }
 
   private boolean supportsUnderReplicatedCheck(Universe universe) {
-    return Util.compareYbVersions(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
-            MINIMUM_VERSION_UNDERREPLICATED_SUPPORT,
-            true /* suppressFormatError */)
-        > 0;
+    String ybSoftwareVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+
+    return CommonUtils.isReleaseBetween(
+            MINIMUM_VERSION_UNDERREPLICATED_SUPPORT_2_14, "2.15.0.0-b0", ybSoftwareVersion)
+        || CommonUtils.isReleaseBetween(
+            MINIMUM_VERSION_UNDERREPLICATED_SUPPORT_2_16, "2.17.0.0-b0", ybSoftwareVersion)
+        || CommonUtils.isReleaseBetween(
+            MINIMUM_VERSION_UNDERREPLICATED_SUPPORT_2_18, "2.19.0.0-b0", ybSoftwareVersion)
+        || CommonUtils.isReleaseEqualOrAfter(
+            MINIMUM_VERSION_UNDERREPLICATED_SUPPORT, ybSoftwareVersion);
   }
 
   public static class UnderReplicatedTabletsResp {

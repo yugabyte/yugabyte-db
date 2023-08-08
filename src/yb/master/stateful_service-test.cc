@@ -28,7 +28,8 @@ class StatefulServiceTest : public MasterTestBase {};
 TEST_F(StatefulServiceTest, TestCreateStatefulService) {
   CatalogManager& catalog_manager = mini_master_->catalog_manager_impl();
 
-  ASSERT_OK(catalog_manager.CreateTestEchoService());
+  auto epoch = catalog_manager.GetLeaderEpochInternal();
+  ASSERT_OK(catalog_manager.CreateTestEchoService(epoch));
 
   const auto table_name_prefix = ToLowerCase(StatefulServiceKind_Name(kTestEchoServiceKind));
   auto tables = catalog_manager.GetTables(GetTablesMode::kAll);

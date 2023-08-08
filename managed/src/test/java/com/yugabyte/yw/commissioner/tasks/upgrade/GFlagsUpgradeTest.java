@@ -75,7 +75,6 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
           TaskType.SetNodeState,
-          TaskType.CheckUnderReplicatedTablets,
           TaskType.AnsibleConfigureServers,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
@@ -402,7 +401,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     position =
         assertCommonTasks(
             subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_MASTER_ONLY, true);
-    assertEquals(32, position);
+    assertEquals(29, position);
   }
 
   @Test
@@ -447,7 +446,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
             subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY, false);
     position = assertSequence(subTasksByPosition, TSERVER, position, UpgradeOption.ROLLING_UPGRADE);
     position = assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
-    assertEquals(72, position);
+    assertEquals(69, position);
   }
 
   @Test
@@ -532,7 +531,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     position =
         assertCommonTasks(
             subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE_MASTER_ONLY, true);
-    assertEquals(32, position);
+    assertEquals(29, position);
   }
 
   @Test
@@ -588,7 +587,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
                   ? UpgradeType.ROLLING_UPGRADE_MASTER_ONLY
                   : UpgradeType.ROLLING_UPGRADE_TSERVER_ONLY,
               true);
-      assertEquals(serverType == MASTER ? 32 : 42, position);
+      assertEquals(serverType == MASTER ? 29 : 42, position);
     }
   }
 
@@ -1056,7 +1055,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
           universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
               specificGFlags;
           universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
-              "2.17.1.0-b30";
+              "2.18.2.0-b65";
         });
     expectedUniverseVersion++;
 

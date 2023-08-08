@@ -64,7 +64,7 @@ struct OverwriteData {
 
 Result<SchemaVersion> ParseValueHeader(Slice* value) {
   value->consume_byte(); // TODO(packed_row) control_fields
-  return narrow_cast<SchemaVersion>(VERIFY_RESULT(util::FastDecodeUnsignedVarInt(value)));
+  return narrow_cast<SchemaVersion>(VERIFY_RESULT(FastDecodeUnsignedVarInt(value)));
 }
 
 // Interface to pass packed rows to underlying key value feed.
@@ -846,7 +846,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     if (key_type == dockv::KeyEntryType::kColumnId ||
         key_type == dockv::KeyEntryType::kSystemColumnId) {
       Slice column_id_slice = key.WithoutPrefix(doc_key_size + 1);
-      auto column_id_as_int64 = VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(&column_id_slice));
+      auto column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(&column_id_slice));
       ColumnId column_id;
       RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id));
 

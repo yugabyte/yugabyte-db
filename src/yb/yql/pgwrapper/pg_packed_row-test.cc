@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <optional>
+
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_debug.h"
 
@@ -367,13 +369,13 @@ TEST_F(PgPackedRowTest, SchemaGC) {
         int key = ASSERT_RESULT(GetValue<int>(res.get(), row, 0));
         int idx = 0;
         for (const auto& p : columns) {
-          auto is_null = PQgetisnull(res.get(), row, ++idx);
+          auto opt_value = ASSERT_RESULT(GetValue<std::optional<int>>(res.get(), row, ++idx));
+          const auto is_null = !opt_value;
           ASSERT_EQ(is_null, key < p.second) << ", key: " << key << ", p.second: " << p.second;
           if (is_null) {
             continue;
           }
-          auto value = ASSERT_RESULT(GetValue<int>(res.get(), row, idx));
-          ASSERT_EQ(value, p.first * kModifications + key);
+          ASSERT_EQ(*opt_value, p.first * kModifications + key);
         }
       }
     }
