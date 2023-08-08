@@ -13,7 +13,7 @@ type: docs
 
 For Go Applications, most drivers provide database connectivity through the standard `database/sql` API. YugabyteDB supports the [PGX Driver](https://github.com/jackc/pgx) and the [PQ Driver](https://github.com/lib/pq).
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="driver">
   <li >
     <a href="../yb-pgx/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>

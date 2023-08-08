@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="sql">
 
   <li >
     <a href="{{< relref "./key-value-workload-ysql.md" >}}" class="nav-link active">

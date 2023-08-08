@@ -13,7 +13,7 @@ rightNav:
   hideH4: true
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="sql">
   <li>
     <a href="../debezium-connector-yugabytedb/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>

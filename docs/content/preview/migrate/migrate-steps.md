@@ -23,7 +23,7 @@ This page describes the steps to perform and verify a successful migration to Yu
 
 Prepare your source database by creating a new database user, and provide it with READ access to all the resources which need to be migrated.
 
-<ul class="nav nav-tabs nav-tabs-yb">
+<ul class="nav nav-tabs nav-tabs-yb" data-target="operating-system">
   <li >
     <a href="#postgresql" class="nav-link active" id="postgresql-tab" data-toggle="tab" role="tab" aria-controls="postgresql" aria-selected="true">
       <i class="icon-postgres" aria-hidden="true"></i>

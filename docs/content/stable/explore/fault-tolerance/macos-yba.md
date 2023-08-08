@@ -16,7 +16,7 @@ The following example demonstrates how YugabyteDB can continue to perform reads 
 
 The examples are based on the YB Workload Simulator application, which uses the YugabyteDB JDBC [Smart Driver](../../../drivers-orms/smart-drivers/) configured with connection load balancing. The driver automatically balances application connections across the nodes in a universe and rebalances connections when a node fails.
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="ybdb">
   <li>
     <a href="../macos/" class="nav-link">
       <img src="/icons/database.svg" alt="Server Icon">

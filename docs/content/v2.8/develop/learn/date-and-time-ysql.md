@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="sql">
 
   <li >
     <a href="/preview/develop/learn/date-and-time-ysql" class="nav-link active">

@@ -15,7 +15,7 @@ type: docs
 
 Select your cloud provider to see the steps for configuration of database nodes. Click on the elements to see detailed steps.
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="operating-system">
 
   <li>
     <a href="../aws" class="nav-link active">

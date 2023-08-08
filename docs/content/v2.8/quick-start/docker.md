@@ -8,7 +8,7 @@ aliases:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="cluster">
   <li>
     <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
       Use a cloud cluster
@@ -21,7 +21,7 @@ type: docs
   </li>
 </ul>
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="operating-system">
   <li>
     <a href="../" class="nav-link">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>

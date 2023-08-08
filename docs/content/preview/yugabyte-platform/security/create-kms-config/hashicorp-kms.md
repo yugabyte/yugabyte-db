@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="kms">
   <li >
     <a href="{{< relref "./aws-kms.md" >}}" class="nav-link">
       <i class="fa-brands fa-aws" aria-hidden="true"></i>

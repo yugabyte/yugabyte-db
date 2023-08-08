@@ -48,6 +48,8 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 })(window,document,'script','dataLayer','GTM-5GH7JQS');</script>
 <!-- End Google Tag Manager -->
 
+{{ partial "persist-tabs.html" . }}
+
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-mfizz/2.4.1/font-mfizz.min.css">
 
 {{ with .Site.Params.algolia_docsearch }}

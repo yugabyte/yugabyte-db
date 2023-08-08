@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="operating-system">
   <li>
     <a href="../create-universe-multi-zone/" class="nav-link">
       <i class="fa-solid fa-building" aria-hidden="true"></i>

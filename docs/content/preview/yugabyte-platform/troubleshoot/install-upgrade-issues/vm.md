@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="machine"> 
   <li>
     <a href="../vm/" class="nav-link active">
       <i class="fa-solid fa-building"></i>

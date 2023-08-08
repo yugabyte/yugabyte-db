@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="driver">
  <li >
     <a href="../yugabyte-pg-reference/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>

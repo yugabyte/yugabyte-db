@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb"  data-target="binding">
 
   <li >
     <a href="{{< relref "./ycsb-jdbc.md" >}}" class="nav-link active">

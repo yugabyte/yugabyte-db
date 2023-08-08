@@ -4,6 +4,7 @@ const config = {
   context: path.join(__dirname, 'src'),
   entry: {
     site: './index.js',
+    persistTabs: './persist-tabs.js',
     search: './algolia-search.js',
   },
   output: {
@@ -19,7 +20,8 @@ const config = {
         use: [
           {
             loader: path.join(__dirname, 'node_modules/eslint-loader/index.js'),
-            options: { eslintPath: path.join(__dirname, 'node_modules/eslint/lib/api.js'),
+            options: {
+              eslintPath: path.join(__dirname, 'node_modules/eslint/lib/api.js'),
               ignore: false,
               useEslintrc: true,
             },

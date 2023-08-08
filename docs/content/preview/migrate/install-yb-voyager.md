@@ -47,7 +47,7 @@ YugabyteDB Voyager consists of the yb-voyager command line executable.
 
 Install yb-voyager on a machine which satisfies the [Prerequisites](#prerequisites) using one of the following options:
 
-<ul class="nav nav-tabs nav-tabs-yb">
+<ul class="nav nav-tabs nav-tabs-yb" data-target="operating-system">
   <li>
     <a href="#rhel" class="nav-link active" id="rhel-tab" data-toggle="tab" role="tab" aria-controls="rhel" aria-selected="true">
       <i class="fa-brands fa-redhat" aria-hidden="true"></i>

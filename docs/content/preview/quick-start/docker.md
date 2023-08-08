@@ -10,7 +10,7 @@ type: docs
 unversioned: true
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="cluster">
   <li>
     <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
@@ -27,7 +27,7 @@ unversioned: true
 
 The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../deploy/).
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="operating-system">
   <li>
     <a href="../" class="nav-link">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>

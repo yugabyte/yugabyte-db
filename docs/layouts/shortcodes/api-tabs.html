@@ -8,7 +8,7 @@
 {{- $path = strings.TrimSuffix "-ysql.md" $path -}}
 {{- $path = strings.TrimSuffix "-ycql.md" $path -}}
 {{- $page := default $path (.Get "page") -}}
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="sql">
     {{- if strings.Contains $tabs "ysql" -}}
     <li >
       <a href="{{ print "../" $page "-ysql"}}" class="nav-link {{if (eq $active "ysql")}}active{{end}}">

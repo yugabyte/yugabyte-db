@@ -10,7 +10,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="ybdb">
   <li class="active">
     <a href="../datatype-mapping-mysql/" class="nav-link">
       MySQL to YugabytyeDB

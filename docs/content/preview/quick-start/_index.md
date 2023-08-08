@@ -14,7 +14,7 @@ rightNav:
 unversioned: true
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="cluster">
   <li>
     <a href="../quick-start-yugabytedb-managed/" class="nav-link">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
@@ -31,7 +31,7 @@ unversioned: true
 
 The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../deploy/).
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb"  data-target="operating-system">
   <li class="active">
     <a href="../quick-start/" class="nav-link">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>
@@ -191,8 +191,7 @@ You download YugabyteDB as follows:
 
 ## Create a local cluster
 
-{{< tabpane text=true >}}
-
+{{< tabpane text=true  >}}
   {{% tab header="macOS Pre-Monterey" lang="Pre-Monterey" %}}
 
 On macOS pre-Monterey, create a single-node local cluster with a replication factor (RF) of 1 by running the following command:

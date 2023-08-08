@@ -16,7 +16,7 @@ rightNav:
 ---
 
 <!--
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="sql">
 
   <li >
     <a href="../scaling-transactions/" class="nav-link active">

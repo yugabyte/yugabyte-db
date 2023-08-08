@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="sql">
 
   <li >
     <a href="/preview/explore/multi-region-deployments/synchronous-replication-ysql/" class="nav-link active">

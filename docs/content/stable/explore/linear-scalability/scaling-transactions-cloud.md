@@ -17,7 +17,7 @@ With YugabyteDB, you can add nodes to upscale your cluster (also known as univer
 
 This document demonstrates how YugabyteDB can scale seamlessly while running a read-write workload. Using the [YB Workload Simulator application](https://github.com/YugabyteDB-Samples/yb-workload-simulator) against a three-node cluster with a replication factor of 3, you add a node while the workload is running. Using the built-in metrics, you can observe how the cluster scales out by verifying that the number of read and write IOPS are evenly distributed across all the nodes at all times.
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb"  data-target="ybdb">
   <li>
     <a href="../scaling-transactions/" class="nav-link">
       <img src="/icons/database.svg" alt="Server Icon">

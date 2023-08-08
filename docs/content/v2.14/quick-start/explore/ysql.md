@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="sql">
 
   <li >
     <a href="../ysql/" class="nav-link active">
@@ -41,7 +41,7 @@ The examples in this tutorial use two tables, representing departments and emplo
 
 Using the YugabyteDB SQL shell, [ysqlsh](../../../admin/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
 
-<ul class="nav nav-tabs nav-tabs-yb">
+<ul class="nav nav-tabs nav-tabs-yb" data-target="operating-system">
   <li >
     <a href="#macos" class="nav-link active" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>

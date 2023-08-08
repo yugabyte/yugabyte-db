@@ -41,7 +41,7 @@ You can run examples using a universe set up on your local machine or in a cloud
 - [Created an account](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=Cloud_signup) in YugabyteDB Managed.
 - [Installed](../yugabyte-platform/install-yugabyte-platform/) YugabyteDB Anywhere and [configured](../yugabyte-platform/configure-yugabyte-platform/) it to run in AWS.
 
-<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs" data-target="ybdb">
   <li>
     <a href="#local" class="nav-link active" id="local-tab" data-toggle="tab"
       role="tab" aria-controls="local" aria-selected="true">
@@ -257,7 +257,7 @@ wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/downlo
 
 ## Use the application
 
-<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
+<ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs" data-target="ybdb">
   <li>
     <a href="#localworkload" class="nav-link active" id="local-tab" data-toggle="tab"
       role="tab" aria-controls="local" aria-selected="true">

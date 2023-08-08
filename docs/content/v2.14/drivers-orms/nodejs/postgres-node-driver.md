@@ -10,7 +10,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="driver">
 
   <li >
     <a href="../postgres-node-driver/" class="nav-link active">

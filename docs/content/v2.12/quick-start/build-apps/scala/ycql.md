@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb" data-target="sql">
   <li>
     <a href="../ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>

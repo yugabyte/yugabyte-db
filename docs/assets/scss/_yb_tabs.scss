@@ -1,3 +1,17 @@
+$color_1: #25323d;
+$color_2: #0b1117;
+$color_3: inherit;
+
+@keyframes fadeIn {
+	0% {
+		opacity: 0;
+		width: 0;
+	}
+	100% {
+		opacity: 1;
+		width: 100%;
+	}
+}
 .content-child {
   .td-content .nav-tabs-yb {
     li {
@@ -115,6 +129,14 @@ ul.nav.nav-tabs-yb:not(.yb-pills) {
     position: relative;
     z-index: 1;
 
+    a {
+      &::before {
+        //content: "";
+        //opacity: 0;
+        //width: 0;
+        //transition: opacity 0.5s;
+      }
+    }
     &.active {
       a {
         &::before {
@@ -125,6 +147,9 @@ ul.nav.nav-tabs-yb:not(.yb-pills) {
           width: 100%;
           height: 3px;
           background: #0b1117;
+          //animation: fadeIn 0.5s forwards;
+          //animation-delay: .5s;
+
         }
       }
     }
@@ -213,5 +238,15 @@ ul.nav.nav-tabs-yb:not(.yb-pills) ~ .nav-tabs-yb:not(.yb-pills) {
         }
       }
     }
+  }
+}
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+    width: 0;
+  }
+  100% {
+    opacity: 1;
+    width: 100%;
   }
 }
