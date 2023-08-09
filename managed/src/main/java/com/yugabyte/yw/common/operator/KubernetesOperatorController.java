@@ -685,7 +685,7 @@ public class KubernetesOperatorController {
       Provider autoProvider = null;
       if (!providers.isEmpty()) {
         if (!zonesFilter.isEmpty()) {
-          log.ERROR(
+          LOG.error(
               "Zone filter is not supported with pre-existing providers, ignoring zone filter");
         }
       }
