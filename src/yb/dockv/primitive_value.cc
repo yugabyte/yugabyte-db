@@ -64,7 +64,7 @@ using yb::util::DecodeDoubleFromKey;
     case ValueEntryType::kInvalid: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kJsonb: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kObject: FALLTHROUGH_INTENDED; \
-    case ValueEntryType::kPackedRow: FALLTHROUGH_INTENDED; \
+    case ValueEntryType::kPackedRowV1: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kPackedRowV2: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kRedisList: FALLTHROUGH_INTENDED; \
     case ValueEntryType::kRedisSet: FALLTHROUGH_INTENDED; \
@@ -284,7 +284,7 @@ std::string PrimitiveValue::ValueToString() const {
       return "l";
     case ValueEntryType::kArrayIndex:
       return Substitute("ArrayIndex($0)", int64_val_);
-    case ValueEntryType::kPackedRow:
+    case ValueEntryType::kPackedRowV1:
       return "<PACKED ROW>";
     case ValueEntryType::kPackedRowV2:
       return "<PACKED ROW V2>";
@@ -1335,7 +1335,7 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
     }
 
     case ValueEntryType::kInvalid: [[fallthrough]];
-    case ValueEntryType::kPackedRow: [[fallthrough]];
+    case ValueEntryType::kPackedRowV1: [[fallthrough]];
     case ValueEntryType::kPackedRowV2: [[fallthrough]];
     case ValueEntryType::kMaxByte:
       return STATUS_FORMAT(Corruption, "$0 is not allowed in a RocksDB PrimitiveValue", value_type);
@@ -1558,7 +1558,7 @@ Status PrimitiveValue::DecodeToQLValuePB(
       break;
 
     case ValueEntryType::kInvalid: [[fallthrough]];
-    case ValueEntryType::kPackedRow: [[fallthrough]];
+    case ValueEntryType::kPackedRowV1: [[fallthrough]];
     case ValueEntryType::kPackedRowV2: [[fallthrough]];
     case ValueEntryType::kRowLock: [[fallthrough]];
     case ValueEntryType::kMaxByte:

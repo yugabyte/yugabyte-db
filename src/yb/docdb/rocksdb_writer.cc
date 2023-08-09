@@ -606,9 +606,10 @@ Status FrontierSchemaVersionUpdater::UpdateSchemaVersion(Slice key, Slice value)
     return Status::OK();
   }
   RETURN_NOT_OK(dockv::ValueControlFields::Decode(&value));
-  if (!value.TryConsumeByte(ValueEntryTypeAsChar::kPackedRow)) {
+  if (!IsPackedRow(dockv::DecodeValueEntryType(value))) {
     return Status::OK();
   }
+  value.consume_byte();
   auto schema_version =
       narrow_cast<SchemaVersion>(VERIFY_RESULT(FastDecodeUnsignedVarInt(&value)));
   dockv::DocKeyDecoder decoder(key);

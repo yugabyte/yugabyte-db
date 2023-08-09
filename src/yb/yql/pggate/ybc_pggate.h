@@ -605,7 +605,7 @@ YBCStatus YBCPgUpdateConstInt8(YBCPgExpr expr, int64_t value, bool is_null);
 YBCStatus YBCPgUpdateConstFloat4(YBCPgExpr expr, float value, bool is_null);
 YBCStatus YBCPgUpdateConstFloat8(YBCPgExpr expr, double value, bool is_null);
 YBCStatus YBCPgUpdateConstText(YBCPgExpr expr, const char *value, bool is_null);
-YBCStatus YBCPgUpdateConstChar(YBCPgExpr expr, const char *value, int64_t bytes, bool is_null);
+YBCStatus YBCPgUpdateConstBinary(YBCPgExpr expr, const char *value, int64_t bytes, bool is_null);
 
 // Expressions with operators "=", "+", "between", "in", ...
 YBCStatus YBCPgNewOperator(

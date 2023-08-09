@@ -21,39 +21,6 @@
 
 namespace yb::dockv {
 
-template <class F>
-auto VisitPackValueV2(DataType data_type, const F& f) {
-  switch (data_type) {
-    case DataType::BINARY:
-      return f.Binary();
-    case DataType::BOOL:
-      return f.template Primitive<bool>();
-    case DataType::FLOAT:
-      return f.template Primitive<float>();
-    case DataType::INT8:
-      return f.template Primitive<int8_t>();
-    case DataType::INT16:
-      return f.template Primitive<int16_t>();
-    case DataType::INT32:
-      return f.template Primitive<int32_t>();
-    case DataType::INT64:
-      return f.template Primitive<int64_t>();
-    case DataType::DECIMAL:
-      return f.Decimal();
-    case DataType::STRING:
-      return f.String();
-    case DataType::UINT32:
-      return f.template Primitive<uint32_t>();
-    case DataType::UINT64:
-      return f.template Primitive<uint64_t>();
-    case DataType::DOUBLE:
-      return f.template Primitive<double>();
-    default:
-      break;
-  }
-  FATAL_INVALID_ENUM_VALUE(DataType, data_type);
-}
-
 void PackQLValueV2(const QLValuePB& value, DataType data_type, ValueBuffer* out);
 void PackQLValueV2(const LWQLValuePB& value, DataType data_type, ValueBuffer* out);
 Result<QLValuePB> UnpackQLValue(PackedValueV2 value, DataType data_type);

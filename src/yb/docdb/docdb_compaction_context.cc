@@ -22,6 +22,7 @@
 #include "yb/dockv/doc_ttl_util.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/dockv/packed_row.h"
+#include "yb/dockv/packed_value.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/dockv/schema_packing.h"
 #include "yb/dockv/value.h"
@@ -41,12 +42,12 @@ using std::shared_ptr;
 using std::unique_ptr;
 
 DECLARE_bool(ycql_enable_packed_row);
+DECLARE_bool(ysql_use_packed_row_v2);
 
 DECLARE_uint64(ycql_packed_row_size_limit);
 DECLARE_uint64(ysql_packed_row_size_limit);
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 using dockv::Expiration;
 using dockv::ValueControlFields;
@@ -62,9 +63,16 @@ struct OverwriteData {
   }
 };
 
-Result<SchemaVersion> ParseValueHeader(Slice* value) {
-  value->consume_byte(); // TODO(packed_row) control_fields
-  return narrow_cast<SchemaVersion>(VERIFY_RESULT(FastDecodeUnsignedVarInt(value)));
+Result<std::pair<std::optional<dockv::PackedRowVersion>, SchemaVersion>> ParseValueHeader(
+    Slice* value) {
+  auto packed_row_version = dockv::GetPackedRowVersion(static_cast<dockv::ValueEntryType>(
+      value->consume_byte()));
+  if (!packed_row_version) {
+    return std::pair(packed_row_version, 0);
+  }
+  return std::pair(
+      packed_row_version,
+      narrow_cast<SchemaVersion>(VERIFY_RESULT(FastDecodeUnsignedVarInt(value))));
 }
 
 // Interface to pass packed rows to underlying key value feed.
@@ -100,6 +108,8 @@ class LazyHybridTime {
   std::optional<Result<HybridTime>> value_;
 };
 
+constexpr auto kUnlimitedTail = std::numeric_limits<ssize_t>::min();
+
 class PackedRowData {
  public:
   PackedRowData(PackedRowFeed* feed, SchemaPackingProvider* provider,
@@ -116,7 +126,7 @@ class PackedRowData {
   }
 
   bool can_start_packing() const {
-    return can_start_packing_;
+    return new_packing_.packed_row_version.has_value();
   }
 
   bool ColumnDeleted(ColumnId column_id) const {
@@ -141,13 +151,12 @@ class PackedRowData {
 
   // Handle packed row that was forwarded to underlying feed w/o changes.
   Status ProcessForwardedPackedRow(Slice value) {
-    UsedSchemaVersion(VERIFY_RESULT(ParseValueHeader(&value)));
+    UsedSchemaVersion(VERIFY_RESULT(ParseValueHeader(&value)).second);
     return Status::OK();
   }
 
   Status ProcessPackedRow(
-      const Slice& internal_key, size_t doc_key_size,
-      const Slice& full_value, size_t control_fields_size,
+      Slice internal_key, size_t doc_key_size, Slice full_value, size_t control_fields_size,
       const EncodedDocHybridTime& encoded_row_doc_ht, size_t new_doc_key_serial) {
     VLOG_WITH_FUNC(4)
         << "Key: " << internal_key.ToDebugHexString() << ", full_value: "
@@ -165,7 +174,8 @@ class PackedRowData {
 
     old_value_.Assign(full_value);
     old_value_slice_ = old_value_.AsSlice().WithoutPrefix(control_fields_size);
-    old_schema_version_ = VERIFY_RESULT(ParseValueHeader(&old_value_slice_));
+    std::tie(old_packing_.packed_row_version, old_schema_version_) = VERIFY_RESULT(ParseValueHeader(
+        &old_value_slice_));
     if (old_schema_version_ != new_packing_.schema_version) {
       return StartRepacking();
     }
@@ -198,17 +208,18 @@ class PackedRowData {
   // Returns true if column was processed. Otherwise caller should handle this column.
   // lazy_ht - in/out parameter to access entry hybrid time.
   Result<bool> ProcessColumn(
-      ColumnId column_id, const Slice& value, const EncodedDocHybridTime& column_doc_ht,
+      ColumnId column_id, Slice value, const EncodedDocHybridTime& column_doc_ht,
       const ValueControlFields& control_fields, bool has_intent_doc_ht,
       size_t encoded_control_fields_size, LazyHybridTime* lazy_ht) {
     if (!packing_started_) {
       RETURN_NOT_OK(StartRepacking());
     }
-    auto next_column_id = packer_->NextColumnId();
+    auto& packer_base = PackerBase(&*packer_);
+    auto next_column_id = packer_base.NextColumnId();
     VLOG(4) << "Next column id: " << next_column_id << ", current column id: " << column_id;
     while (next_column_id < column_id) {
       RETURN_NOT_OK(PackOldValue(next_column_id));
-      next_column_id = packer_->NextColumnId();
+      next_column_id = packer_base.NextColumnId();
     }
     if (next_column_id > column_id) {
       if (new_packing_.schema_packing->SkippedColumn(column_id)) {
@@ -223,9 +234,14 @@ class PackedRowData {
 
     size_t tail_size = 0; // As usual, when not specified size is in bytes.
     if (!old_value_slice_.empty()) {
-      auto old_value = old_packing_.schema_packing->GetValue(column_id, old_value_slice_);
-      if (old_value) {
-        tail_size = old_value_slice_.end() - old_value->end();
+      auto* end = std::visit([column_id](auto& decoder) {
+        return decoder.GetEnd(column_id);
+      }, old_row_decoder_);
+      // If end is nullptr, it means that column_id does not present in old packing.
+      // It could happen only to columns that were added after this packing was created.
+      // So we could assume that there is no tail after it.
+      if (end) {
+        tail_size = old_value_slice_.end() - end;
       }
     }
 
@@ -244,31 +260,69 @@ class PackedRowData {
     if (control_fields_copy) {
       control_fields_buffer_.clear();
       control_fields_copy->AppendEncoded(&control_fields_buffer_);
-      return packer_->AddValue(
-          column_id, control_fields_buffer_.AsSlice(),
-          value.WithoutPrefix(encoded_control_fields_size), tail_size);
+      dockv::PackedValueV1 value_v1(value.WithoutPrefix(encoded_control_fields_size));
+      return std::visit([this, column_id, value_v1, tail_size](auto& packer) {
+        return packer.AddValue(column_id, control_fields_buffer_.AsSlice(), value_v1, tail_size);
+      }, *packer_);
     }
-    return packer_->AddValue(column_id, value, tail_size);
+    dockv::PackedValueV1 value_v1(value);
+    return std::visit([column_id, value_v1, tail_size](auto& packer) {
+      return packer.AddValue(column_id, value_v1, tail_size);
+    }, *packer_);
   }
 
   Status StartRepacking() {
     if (old_schema_version_ != old_packing_.schema_version) {
+      auto packed_row_version = old_packing_.packed_row_version;
       old_packing_ = VERIFY_RESULT(schema_packing_provider_->CotablePacking(
           new_packing_.cotable_id, old_schema_version_, history_cutoff_));
+      // CotablePacking returns desired packed row type, so keep type extracted from actual row.
+      old_packing_.packed_row_version = packed_row_version;
     }
     InitPacker();
-    return Status::OK();
+    switch (*old_packing_.packed_row_version) {
+      case dockv::PackedRowVersion::kV1:
+        CreateOldRowDecoderHelper<dockv::PackedRowDecoderV1>();
+        return Status::OK();
+      case dockv::PackedRowVersion::kV2:
+        CreateOldRowDecoderHelper<dockv::PackedRowDecoderV2>();
+        return Status::OK();
+    }
+    return dockv::UnexpectedPackedRowVersionStatus(*old_packing_.packed_row_version);
+  }
+
+  template <class Decoder>
+  void CreateOldRowDecoderHelper() {
+    old_row_decoder_.emplace<Decoder>(*old_packing_.schema_packing, old_value_slice_.data());
   }
 
   void InitPacker() {
     packing_started_ = true;
     if (!packer_) {
-      packer_.emplace(
-          new_packing_.schema_version, *new_packing_.schema_packing, new_packing_.pack_limit(),
-          old_value_.AsSlice().Prefix(control_fields_size_));
+      auto packed_row_version = *new_packing_.packed_row_version;
+      if (packed_row_version == dockv::PackedRowVersion::kV2 &&
+          !new_packing_.schema_packing->HasDataType()) {
+        LOG(DFATAL) << "Attempted to start V2 packing without data type";
+        packed_row_version = dockv::PackedRowVersion::kV1;
+      }
+      switch (packed_row_version) {
+        case dockv::PackedRowVersion::kV1:
+          InitPackerHelper<dockv::RowPackerV1>();
+          break;
+        case dockv::PackedRowVersion::kV2:
+          InitPackerHelper<dockv::RowPackerV2>();
+          break;
+      }
     } else {
-      packer_->Restart();
+      CHECK(false);
     }
+  }
+
+  template <class Packer>
+  void InitPackerHelper() {
+    packer_.emplace(
+        std::in_place_type_t<Packer>(), new_packing_.schema_version, *new_packing_.schema_packing,
+        new_packing_.pack_limit(), old_value_.AsSlice().Prefix(control_fields_size_));
   }
 
   Status Flush() {
@@ -282,14 +336,16 @@ class PackedRowData {
     Slice value_slice;
 
     VLOG_WITH_FUNC(4)
-        << "Has packer: " << (packer_ && !packer_->Empty()) << ", packing_started: "
-        << packing_started_;
+        << "Has packer: " << (packer_ && !dockv::PackerBase(&*packer_).Empty())
+        << ", packing_started: " << packing_started_;
     if (packing_started_) {
-      // TODO(packed_row) control_fields
-      while (!packer_->Finished()) {
-        RETURN_NOT_OK(PackOldValue(packer_->NextColumnId()));
+      auto& base_packer = dockv::PackerBase(&*packer_);
+      while (!base_packer.Finished()) {
+        RETURN_NOT_OK(PackOldValue(base_packer.NextColumnId()));
       }
-      value_slice = VERIFY_RESULT(packer_->Complete());
+      value_slice = VERIFY_RESULT(std::visit([](auto& packer) {
+        return packer.Complete();
+      }, *packer_));
     } else {
       value_slice = old_value_.AsSlice();
     }
@@ -301,21 +357,36 @@ class PackedRowData {
   }
 
   Status PackOldValue(ColumnId column_id) {
-    auto column_value = old_value_slice_.empty()
-        ? std::optional<Slice>()
-        : old_packing_.schema_packing->GetValue(column_id, old_value_slice_);
-    if (!column_value) {
-      const auto& column_data = VERIFY_RESULT_REF(packer_->NextColumnData());
+    if (old_value_slice_.empty()) {
+      return CheckPackOldValueResult(column_id, std::visit([column_id](auto& packer) {
+        return packer.AddValue(
+            column_id, std::remove_reference_t<decltype(packer)>::PackedValue::Null(),
+            kUnlimitedTail);
+      }, *packer_));
+    }
+    return std::visit([this, column_id](auto& decoder) {
+      return DoPackOldValue(column_id, decoder.FetchValue(column_id));
+    }, old_row_decoder_);
+  }
+
+  template <class Value>
+  Status DoPackOldValue(ColumnId column_id, Value column_value) {
+    if (column_value.IsNull()) {
+      const auto& column_data = VERIFY_RESULT_REF(dockv::PackerBase(&*packer_).NextColumnData());
       RSTATUS_DCHECK(column_data.varlen(), Corruption, Format(
           "Don't have value for fixed size column: $0, in $1, schema_version: $2",
           column_id, old_value_slice_.ToDebugHexString(), old_packing_.schema_version));
-      column_value = Slice();
     }
     VLOG(4) << "Keep value for column " << column_id << ": " << column_value->ToDebugHexString();
     // Use min ssize_t value to be sure that packing always succeed.
-    constexpr auto kUnlimitedTail = std::numeric_limits<ssize_t>::min();
-    auto result = VERIFY_RESULT(packer_->AddValue(column_id, *column_value, kUnlimitedTail));
-    RSTATUS_DCHECK(result, Corruption, "Unable to pack old value for $0", column_id);
+    return CheckPackOldValueResult(column_id, std::visit([column_id, column_value](auto& packer) {
+      return packer.AddValue(column_id, column_value, kUnlimitedTail);
+    }, *packer_));
+  }
+
+  Status CheckPackOldValueResult(ColumnId column_id, Result<bool> result) {
+    RETURN_NOT_OK(result);
+    RSTATUS_DCHECK(*result, Corruption, "Unable to pack old value for $0", column_id);
     return Status::OK();
   }
 
@@ -356,7 +427,6 @@ class PackedRowData {
     active_coprefix_ = coprefix;
     active_coprefix_dropped_ = false;
     new_packing_ = *packing;
-    can_start_packing_ = packing->enabled;
     used_schema_versions_it_ = used_schema_versions_.find(new_packing_.cotable_id);
     return Status::OK();
   }
@@ -398,6 +468,7 @@ class PackedRowData {
   Slice old_value_slice_;
   SchemaVersion old_schema_version_;
   CompactionSchemaInfo old_packing_;
+  dockv::PackedRowDecoderVariant old_row_decoder_;
 
   bool packing_started_ = false; // Whether we have started packing the row.
 
@@ -409,8 +480,7 @@ class PackedRowData {
   bool active_coprefix_dropped_ = false;
 
   CompactionSchemaInfo new_packing_;
-  boost::optional<dockv::RowPacker> packer_;
-  bool can_start_packing_ = false; // Whether we could start packing row with current schema.
+  std::optional<dockv::RowPackerVariant> packer_;
 
   HybridTime history_cutoff_;
 
@@ -817,7 +887,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
         << encoded_history_cutoff_.ToString();
     auto value_slice = value;
     RETURN_NOT_OK(ValueControlFields::Decode(&value_slice));
-    if (dockv::DecodeValueEntryType(value_slice) == dockv::ValueEntryType::kPackedRow) {
+    if (IsPackedRow(dockv::DecodeValueEntryType(value_slice))) {
       // Check packed row version for rows left untouched.
       RETURN_NOT_OK(packed_row_.ProcessForwardedPackedRow(value_slice));
     }
@@ -891,8 +961,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   const auto& overwrite_ht = is_ttl_row || prev_overwrite_ht > encoded_doc_ht
       ? prev_overwrite_ht : encoded_doc_ht;
 
-  const auto value_type = static_cast<dockv::ValueEntryType>(
-      value_slice.FirstByteOr(dockv::ValueEntryTypeAsChar::kInvalid));
+  const auto value_type = dockv::DecodeValueEntryType(value_slice);
 
   // If within the merge block.
   //     If the row is a TTL row, delete it.
@@ -968,7 +1037,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     new_value_buffer_.Append(value_slice);
     new_value = new_value_buffer_.AsSlice();
     within_merge_block_ = false;
-  } else if (value_type == dockv::ValueEntryType::kPackedRow) {
+  } else if (IsPackedRow(value_type)) {
     return packed_row_.ProcessPackedRow(
         internal_key, sub_key_ends_.back(), value, value_slice.data() - value.data(),
         encoded_doc_ht, doc_key_serial_);
@@ -1092,15 +1161,22 @@ HybridTime MinHybridTime(const std::vector<rocksdb::FileMetaData*>& inputs) {
 
 } // namespace
 
-bool PackedRowEnabled(TableType table_type, bool is_colocated) {
+std::optional<dockv::PackedRowVersion> PackedRowVersion(TableType table_type, bool is_colocated) {
   switch (table_type) {
     case TableType::YQL_TABLE_TYPE:
-      return FLAGS_ycql_enable_packed_row;
+      if (FLAGS_ycql_enable_packed_row) {
+        return dockv::PackedRowVersion::kV1;
+      }
+      return std::nullopt;
     case TableType::PGSQL_TABLE_TYPE:
-      return ShouldYsqlPackRow(is_colocated);
+      if (!ShouldYsqlPackRow(is_colocated)) {
+        return std::nullopt;
+      }
+      return FLAGS_ysql_use_packed_row_v2 ? dockv::PackedRowVersion::kV2
+                                          : dockv::PackedRowVersion::kV1;
     case TableType::REDIS_TABLE_TYPE: [[fallthrough]];
     case TableType::TRANSACTION_STATUS_TABLE_TYPE:
-      return false;
+      return std::nullopt;
   }
   FATAL_INVALID_ENUM_VALUE(TableType, table_type);
 }
@@ -1175,5 +1251,4 @@ void ManualHistoryRetentionPolicy::SetTableTTLForTests(MonoDelta ttl) {
   table_ttl_.store(ttl, std::memory_order_release);
 }
 
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb
