@@ -4906,8 +4906,10 @@ class Configs(object):
         paths = ["data_dir", "log_dir", "certs_dir", "gen_certs_dir", "ca_cert_file_path"]
         for k, v in configs.saved_data.items():
             if v is not None and k in paths:
-                configs.saved_data[k] = os.path.expanduser(v)
-
+                if "$" in v:
+                    configs.saved_data[k] = os.path.expanduser(os.path.expandvars(v))
+                else:
+                    configs.saved_data[k] = os.path.expanduser(v)
         return configs
 
     @staticmethod
