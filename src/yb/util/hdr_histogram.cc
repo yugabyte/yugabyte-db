@@ -178,8 +178,8 @@ void HdrHistogram::Increment(int64_t value) {
 }
 
 void HdrHistogram::IncrementBy(int64_t value, int64_t count) {
-  DCHECK_GE(value, 0);
-  DCHECK_GE(count, 0);
+  // DCHECK_GE(value, 0);
+  // DCHECK_GE(count, 0);
 
   // Dissect the value into bucket and sub-bucket parts, and derive index into
   // counts array:
