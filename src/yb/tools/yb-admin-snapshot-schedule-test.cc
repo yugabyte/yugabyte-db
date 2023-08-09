@@ -475,7 +475,6 @@ class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
     opts->enable_ysql = true;
     opts->extra_tserver_flags.emplace_back("--ysql_num_shards_per_tserver=1");
     opts->extra_master_flags.emplace_back("--log_ysql_catalog_versions=true");
-    opts->extra_master_flags.emplace_back("--vmodule=master_heartbeat_service=1");
     opts->extra_master_flags.emplace_back("--consensus_rpc_timeout_ms=5000");
     opts->num_masters = 3;
   }

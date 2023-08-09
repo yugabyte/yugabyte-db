@@ -14,6 +14,7 @@
 #pragma once
 
 #include <bitset>
+#include <optional>
 #include <string>
 
 #include <boost/preprocessor/seq/for_each.hpp>
@@ -191,7 +192,7 @@ namespace yb::dockv {
     ((kWriteId, 'w')) /* ASCII code 119 */ \
     ((kTransactionId, 'x')) /* ASCII code 120 */ \
     ((kTableId, 'y')) /* ASCII code 121 */ \
-    ((kPackedRow, 'z')) /* ASCII code 122 */ \
+    ((kPackedRowV1, 'z')) /* ASCII code 122 */ \
     \
     ((kObject, '{'))  /* ASCII code 123 */ \
     ((kPackedRowV2, '|')) /* ASCII code 124 */ \
@@ -304,8 +305,26 @@ inline bool IsColumnId(KeyEntryType type) {
   return type == KeyEntryType::kColumnId || type == KeyEntryType::kSystemColumnId;
 }
 
-inline bool IsPackedRow(ValueEntryType type) {
-  return type == ValueEntryType::kPackedRow || type == ValueEntryType::kPackedRowV2;
+YB_DEFINE_ENUM(PackedRowVersion, (kV1)(kV2));
+
+inline std::optional<PackedRowVersion> GetPackedRowVersion(ValueEntryType type) {
+  if (type == ValueEntryType::kPackedRowV1) {
+    return PackedRowVersion::kV1;
+  }
+  if (type == ValueEntryType::kPackedRowV2) {
+    return PackedRowVersion::kV2;
+  }
+  return std::nullopt;
 }
+
+inline std::optional<PackedRowVersion> GetPackedRowVersion(Slice slice) {
+  return GetPackedRowVersion(DecodeValueEntryType(slice));
+}
+
+inline bool IsPackedRow(ValueEntryType type) {
+  return GetPackedRowVersion(type).has_value();
+}
+
+Status UnexpectedPackedRowVersionStatus(PackedRowVersion version);
 
 }  // namespace yb::dockv

@@ -203,7 +203,7 @@ class PackedRowDecoderBase {
 
 class PackedRowDecoderV1 : public PackedRowDecoderBase {
  public:
-  static constexpr ValueEntryType kValueEntryType = ValueEntryType::kPackedRow;
+  static constexpr ValueEntryType kValueEntryType = ValueEntryType::kPackedRowV1;
 
   PackedRowDecoderV1() = default;
   PackedRowDecoderV1(

@@ -46,7 +46,7 @@ YB_STRONGLY_TYPED_BOOL(ShouldRetainDeleteMarkersInMajorCompaction);
 
 using ColumnIds = std::unordered_set<ColumnId, boost::hash<ColumnId>>;
 
-bool PackedRowEnabled(TableType table_type, bool is_colocated);
+std::optional<dockv::PackedRowVersion> PackedRowVersion(TableType table_type, bool is_colocated);
 
 // A "directive" of how a particular compaction should retain old (overwritten or deleted) values.
 struct HistoryRetentionDirective {
@@ -68,7 +68,7 @@ struct CompactionSchemaInfo {
   std::shared_ptr<const dockv::SchemaPacking> schema_packing;
   Uuid cotable_id;
   ColumnIds deleted_cols;
-  bool enabled;
+  std::optional<dockv::PackedRowVersion> packed_row_version;
 
   size_t pack_limit() const; // As usual, when not specified size is in bytes.
 

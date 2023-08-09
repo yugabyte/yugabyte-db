@@ -320,7 +320,6 @@ SchemaPtr TableInfo::SharedSchema() const {
 Result<docdb::CompactionSchemaInfo> TableInfo::Packing(
     const TableInfoPtr& self, SchemaVersion schema_version, HybridTime history_cutoff) {
   if (schema_version == docdb::kLatestSchemaVersion) {
-    // TODO(packed_row) Don't pick schema changed after retention interval.
     schema_version = self->schema_version;
   }
   auto packing = self->doc_read_context->schema_packing_storage.GetPacking(schema_version);
@@ -340,8 +339,8 @@ Result<docdb::CompactionSchemaInfo> TableInfo::Packing(
     .schema_packing = rpc::SharedField(self, packing.get_ptr()),
     .cotable_id = self->cotable_id,
     .deleted_cols = std::move(deleted_before_history_cutoff),
-    .enabled =
-        docdb::PackedRowEnabled(self->table_type, self->doc_read_context->schema().is_colocated())
+    .packed_row_version = docdb::PackedRowVersion(
+        self->table_type, self->doc_read_context->schema().is_colocated())
   };
 }
 

@@ -1229,7 +1229,7 @@ YBCStatus YBCPgUpdateConstText(YBCPgExpr expr, const char *value, bool is_null) 
   return ToYBCStatus(pgapi->UpdateConstant(expr, value, is_null));
 }
 
-YBCStatus YBCPgUpdateConstChar(YBCPgExpr expr, const char *value,  int64_t bytes, bool is_null) {
+YBCStatus YBCPgUpdateConstBinary(YBCPgExpr expr, const char *value,  int64_t bytes, bool is_null) {
   return ToYBCStatus(pgapi->UpdateConstant(expr, value, bytes, is_null));
 }
 
