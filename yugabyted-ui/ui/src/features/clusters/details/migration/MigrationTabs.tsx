@@ -3,7 +3,6 @@ import { Box, makeStyles, Tab, Tabs } from '@material-ui/core';
 import { generatePath, Link, useRouteMatch } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { MigrationOverview } from './MigrationOverview';
-import { GettingStarted } from '@app/features/welcome/GettingStarted';
 
 const useStyles = makeStyles((theme) => ({
   tabSectionContainer: {
@@ -25,11 +24,6 @@ const tabList: ITabListItem[] = [
     name: 'tabMigrations',
     component: MigrationOverview,
     testId: 'MigrationTabList-Migrations'
-  },
-  {
-    name: 'tabMigrationHistory',
-    component: GettingStarted,
-    testId: 'MigrationTabList-History'
   },
 ];
 

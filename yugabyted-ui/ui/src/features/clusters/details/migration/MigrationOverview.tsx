@@ -1,18 +1,12 @@
-import React, { FC, useMemo } from "react";
-import { Box, Divider, Grid, makeStyles, Paper, Typography } from "@material-ui/core";
-import { ProgressStepper } from "../ProgressStepper";
-import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
+import React, { FC } from "react";
+import { Box, Breadcrumbs, Link, makeStyles, MenuItem, Typography } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
-import { YBTable } from "@app/components";
+import { YBDropdown } from "@app/components";
+import { MigrationList } from "./MigrationList";
+import TriangleDownIcon from "@app/assets/caret-down.svg";
+import { MigrationData } from "./MigrationData";
 
 const useStyles = makeStyles((theme) => ({
-  arrowComponent: {
-    textAlign: "end",
-    "& svg": {
-      marginTop: theme.spacing(0.25),
-    },
-  },
   label: {
     color: theme.palette.grey[600],
     fontWeight: theme.typography.fontWeightMedium as number,
@@ -32,23 +26,53 @@ const useStyles = makeStyles((theme) => ({
   heading: {
     marginBottom: theme.spacing(5),
   },
+  link: {
+    "&:link, &:focus, &:active, &:visited, &:hover": {
+      textDecoration: "none",
+      color: theme.palette.text.primary,
+    },
+  },
+  dropdown: {
+    cursor: "pointer",
+    marginRight: theme.spacing(1),
+    display: "flex",
+    flexDirection: "column"
+  },
+  dropdownContent: {
+    color: "black",
+  },
+  dropdownHeader: {
+    fontWeight: 500,
+    color: theme.palette.grey[500],
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    fontSize: "11.5px",
+    textTransform: "uppercase",
+  },
 }));
 
-const StatusComponent = () => (status: BadgeVariant) => {
-  return (
-    <Box>
-      <YBBadge variant={status} />
-    </Box>
-  );
-};
+const migrationDataList = [
+  {
+    name: "Migration ABC",
+    complexity: "Easy",
+    step: 0,
+    starttime: "11/07/2022, 09:55",
+  },
+  {
+    name: "Migration KLM",
+    complexity: "Medium",
+    step: 1,
+    starttime: "11/07/2022, 09:53",
+  },
+  {
+    name: "Migration XYZ",
+    complexity: "Hard",
+    step: 3,
+    starttime: "11/01/2022, 09:52",
+  },
+];
 
-const ArrowComponent = (classes: ReturnType<typeof useStyles>) => () => {
-  return (
-    <Box className={classes.arrowComponent}>
-      <ArrowRightIcon />
-    </Box>
-  );
-};
+export type Migration = (typeof migrationDataList)[number];
 
 interface MigrationOverviewProps {}
 
@@ -56,157 +80,79 @@ export const MigrationOverview: FC<MigrationOverviewProps> = () => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const migrationData = useMemo(
-    () => [
-      {
-        name: "Migration ABC",
-        status: BadgeVariant.InProgress,
-        starttime: "11/07/2022, 09:55",
-        endtime: "-",
-      },
-      {
-        name: "Migration XYZ",
-        status: BadgeVariant.InProgress,
-        starttime: "11/01/2022, 09:52",
-        endtime: "-",
-      },
-    ],
-    []
-  );
-
-  const migrationColumns = [
-    {
-      name: "name",
-      label: t("clusterDetail.voyager.name"),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
-      },
-    },
-    {
-      name: "status",
-      label: t("clusterDetail.voyager.status"),
-      options: {
-        customBodyRender: StatusComponent(),
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
-      },
-    },
-    {
-      name: "starttime",
-      label: t("clusterDetail.voyager.starttime"),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
-      },
-    },
-    {
-      name: "endtime",
-      label: t("clusterDetail.voyager.endtime"),
-      options: {
-        setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
-        setCellProps: () => ({ style: { padding: "8px 16px" } }),
-      },
-    },
-    {
-      name: "",
-      label: "",
-      options: {
-        sort: false,
-        customBodyRender: ArrowComponent(classes),
-      },
-    },
+  const migrationSteps = [
+    t("clusterDetail.voyager.analyzeSchema"),
+    t("clusterDetail.voyager.exportData"),
+    t("clusterDetail.voyager.importSchema"),
+    t("clusterDetail.voyager.importData"),
+    t("clusterDetail.voyager.verify"),
   ];
 
-  const analyzeColumns = [
-    {
-      name: 'name',
-      label: t('clusterDetail.voyager.name'),
-      options: {
-        setCellProps: () => ({ style: { padding: '8px' } }),
-        setCellHeaderProps: () => ({ style: { padding: '8px' } }),
-      }
-    },
-    {
-      name: 'status',
-      label: t('clusterDetail.voyager.status'),
-      options: {
-        setCellProps: () => ({ style: { padding: '8px' } }),
-        setCellHeaderProps: () => ({ style: { padding: '8px' } }),
-      }
-    },
-    {
-      name: 'schema',
-      label: 'Schema',
-      options: {
-        setCellProps: () => ({ style: { padding: '8px' } }),
-        setCellHeaderProps: () => ({ style: { padding: '8px' } }),
-      }
-    },
-  ];
+  const migrationData = migrationDataList.map((data) => {
+    return {
+      ...data,
+      status: migrationSteps[data.step],
+    };
+  });
+
+  const [selectedMigration, setSelectedMigration] = React.useState<Migration>();
 
   return (
     <Box display="flex" flexDirection="column" gridGap={10}>
-      <YBTable
-        data={migrationData}
-        columns={migrationColumns}
-        options={{ pagination: false, rowHover: true, onRowClick: (_, { dataIndex }) => {} }}
-        touchBorder={false}
-      />
+      <Box>
+        {selectedMigration && (
+          <Breadcrumbs aria-label="breadcrumb">
+            <Link
+              className={classes.link}
+              onClick={() => {
+                setSelectedMigration(undefined);
+              }}
+            >
+              <Typography variant="body2" color="primary">
+                {t("clusterDetail.voyager.migrations")}
+              </Typography>
+            </Link>
+            {selectedMigration && (
+              <YBDropdown
+                origin={
+                  <Box display="flex" alignItems="center" className={classes.dropdownContent}>
+                    {selectedMigration.name}
+                    <TriangleDownIcon />
+                  </Box>
+                }
+                position={"bottom"}
+                growDirection={"right"}
+                className={classes.dropdown}
+              >
+                <Box className={classes.dropdownHeader}>
+                  {t("clusterDetail.voyager.migrations")}
+                </Box>
+                <Box display="flex" flexDirection="column" minWidth="150px">
+                {migrationData.map((migration) => (
+                  <MenuItem
+                    key={migration.name}
+                    selected={migration.name === selectedMigration.name}
+                    onClick={() => setSelectedMigration(migration)}
+                    
+                  >
+                    {migration.name}
+                  </MenuItem>
+                ))}
+                </Box>
+              </YBDropdown>
+            )}
+          </Breadcrumbs>
+        )}
+      </Box>
 
-      <Box mt={2}>
-        <Paper>
-          <ProgressStepper />
-        </Paper>
-      </Box>
-      <Box mt={2}>
-        <Paper>
-          <Box p={4}>
-            <Typography variant="h4" className={classes.heading}>
-              {t("clusterDetail.voyager.migrationOverview")}
-            </Typography>
-            <Grid container spacing={4}>
-              {new Array(4).fill(0).map((_, index) => (
-                <Grid key={index} item xs={3}>
-                  <Typography variant="subtitle2" className={classes.label}>
-                    Data
-                  </Typography>
-                  <Typography variant="body2" className={classes.value}>
-                    Value
-                  </Typography>
-                </Grid>
-              ))}
-              <Divider orientation="horizontal" className={classes.dividerHorizontal} />
-              {new Array(4).fill(0).map((_, index) => (
-                <Grid key={index} item xs={3}>
-                  <Typography variant="subtitle2" className={classes.label}>
-                    Data
-                  </Typography>
-                  <Typography variant="body2" className={classes.value}>
-                    Value
-                  </Typography>
-                </Grid>
-              ))}
-            </Grid>
-          </Box>
-        </Paper>
-      </Box>
-
-      <Box mt={2}>
-        <Paper>
-          <Box p={4}>
-            <Typography variant="h4" className={classes.heading}>
-              {t("clusterDetail.voyager.analyze")}
-            </Typography>
-            <YBTable
-              data={[]}
-              columns={analyzeColumns}
-              options={{ pagination: true }}
-              withBorder={false}
-            />
-          </Box>
-        </Paper>
-      </Box>
+      {!selectedMigration ? (
+        <MigrationList migrationData={migrationData} onSelectMigration={setSelectedMigration} />
+      ) : (
+        <MigrationData
+          steps={migrationSteps}
+          migration={selectedMigration}
+        />
+      )}
     </Box>
   );
 };
