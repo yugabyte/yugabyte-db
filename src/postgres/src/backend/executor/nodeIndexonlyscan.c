@@ -649,10 +649,14 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 	 * references to nonexistent indexes.
 	 *
 	 * YB note: For aggregate pushdown, we need recheck knowledge to determine
-	 * whether aggregates can be pushed down or not.
+	 * whether aggregates can be pushed down or not.  At the time of writing,
+	 * - aggregate pushdown only supports YB relations
+	 * - there cannot be a mix of non-YB tables and YB indexes, and vice versa
+	 * Use those assumptions to avoid the perf hit on EXPLAIN non-YB relations.
 	 */
 	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
-		if (!(IsYugaByteEnabled() && (eflags & EXEC_FLAG_YB_AGG_PARENT)))
+		if (!(IsYBRelation(currentRelation) &&
+			  (eflags & EXEC_FLAG_YB_AGG_PARENT)))
 			return indexstate;
 
 	/*

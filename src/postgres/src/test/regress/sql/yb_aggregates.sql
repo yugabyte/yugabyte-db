@@ -251,6 +251,17 @@ INSERT INTO rsplit VALUES (1), (2), (3);
 :run;
 
 --
+-- Temp tables.
+--
+CREATE TEMP TABLE tmp (i int, j int);
+CREATE INDEX ON tmp (j ASC);
+INSERT INTO tmp SELECT g, -g FROM generate_series(1, 10) g;
+\set ss '/*+SeqScan(tmp)*/'
+\set ios '/*+IndexOnlyScan(tmp tmp_j_idx)*/'
+\set query 'SELECT SUM(j), AVG(j), COUNT(*), MAX(j) FROM tmp'
+:run;
+
+--
 -- Colocation.
 --
 CREATE DATABASE co COLOCATION TRUE;

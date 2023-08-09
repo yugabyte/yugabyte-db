@@ -1932,6 +1932,49 @@ INSERT INTO rsplit VALUES (1), (2), (3);
 (1 row)
 
 --
+-- Temp tables.
+--
+CREATE TEMP TABLE tmp (i int, j int);
+CREATE INDEX ON tmp (j ASC);
+INSERT INTO tmp SELECT g, -g FROM generate_series(1, 10) g;
+\set ss '/*+SeqScan(tmp)*/'
+\set ios '/*+IndexOnlyScan(tmp tmp_j_idx)*/'
+\set query 'SELECT SUM(j), AVG(j), COUNT(*), MAX(j) FROM tmp'
+:run;
+      QUERY PLAN
+-----------------------
+ Aggregate
+   ->  Seq Scan on tmp
+(2 rows)
+
+      QUERY PLAN
+-----------------------
+ Aggregate
+   ->  Seq Scan on tmp
+(2 rows)
+
+                  QUERY PLAN
+----------------------------------------------
+ Aggregate
+   ->  Index Only Scan using tmp_j_idx on tmp
+(2 rows)
+
+ sum |         avg         | count | max
+-----+---------------------+-------+-----
+ -55 | -5.5000000000000000 |    10 |  -1
+(1 row)
+
+ sum |         avg         | count | max
+-----+---------------------+-------+-----
+ -55 | -5.5000000000000000 |    10 |  -1
+(1 row)
+
+ sum |         avg         | count | max
+-----+---------------------+-------+-----
+ -55 | -5.5000000000000000 |    10 |  -1
+(1 row)
+
+--
 -- Colocation.
 --
 CREATE DATABASE co COLOCATION TRUE;
