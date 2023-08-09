@@ -740,12 +740,6 @@ class PgClientServiceImpl::Impl {
         resp->add_wait_states()->CopyFrom(call.wait_state());
       }
     }
-
-    for (auto conns : dump_resp.outbound_connections()) {
-      for (auto call : conns.calls_in_flight()) {
-        resp->add_wait_states()->CopyFrom(call.wait_state());
-      }
-    }
   }
 
   Status ActiveUniverseHistory(
