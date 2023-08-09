@@ -2485,12 +2485,19 @@ YbNeedsRecheck(YbScanDesc ybScan)
 	if (ybScan->hash_code_keys != NIL)
 		return true;
 
+	/*
+	 * In case ordinary keys are bound (and no yb_hash_code pushdown),
+	 * everything is pushed down.
+	 */
+	if (ybScan->all_ordinary_keys_bound)
+		return false;
+
 	if (ybScan->prepare_params.index_only_scan)
 	{
 		/*
 		 * For IndexOnlyScan, always recheck if any ordinary key was not bound.
 		 */
-		return !ybScan->all_ordinary_keys_bound;
+		return true;
 	}
 	else
 	{
