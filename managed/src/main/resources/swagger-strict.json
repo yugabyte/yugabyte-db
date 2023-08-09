@@ -2603,7 +2603,7 @@
       "properties" : {
         "components" : {
           "items" : {
-            "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo" ],
+            "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent" ],
             "type" : "string"
           },
           "type" : "array"
@@ -10144,7 +10144,7 @@
         "components" : {
           "description" : "List of components to be included in the support bundle",
           "items" : {
-            "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo" ],
+            "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent" ],
             "type" : "string"
           },
           "type" : "array"
@@ -19818,7 +19818,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo" ],
+                "enum" : [ "UniverseLogs", "ApplicationLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent" ],
                 "type" : "string"
               },
               "type" : "array"
