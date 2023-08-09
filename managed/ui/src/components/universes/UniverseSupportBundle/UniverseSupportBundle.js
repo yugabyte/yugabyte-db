@@ -39,7 +39,11 @@ export const UniverseSupportBundle = (props) => {
     modal: {showModal, visibleModal},
   } = props;
   const [steps, setSteps] = useState(stepsObj.firstStep);
-  const defaultOptions = updateOptions(filterTypes[0].value, [true, true, true, true, true, true, true, true, true], () =>{});
+  const defaultOptions = updateOptions(
+    filterTypes[0].value,
+    [true, true, true, true, true, true, true, true, true, true],
+    () => {}
+  );
   const [payload, setPayload] = useState(defaultOptions);
 
   const isK8sUniverse = isKubernetesUniverse(props.currentUniverse);
