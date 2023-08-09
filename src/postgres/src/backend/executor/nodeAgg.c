@@ -2580,7 +2580,11 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 
 	/*
 	 * For YB index only scan outer plan, we need to collect recheck
-	 * information, so set that flag for the index only scan.
+	 * information, so set that flag for the index only scan.  Ideally, the
+	 * flag is only set for YB relations since, later on, agg pushdown is
+	 * disabled anyway for non-YB relations, but we don't have that information
+	 * at this point: the relation is opened in the IndexOnlyScan node.  So set
+	 * the flag in all cases, and move the YB-relation check down there.
 	 */
 	int yb_eflags = 0;
 	if (IsYugaByteEnabled() && IsA(outerPlan, IndexOnlyScan))
