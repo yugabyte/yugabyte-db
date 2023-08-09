@@ -871,6 +871,7 @@ class UniverseDetail extends Component {
                               currentCustomer.data.features,
                               'universes.details.overview.pausedUniverse'
                             )}
+                            disabled={universePaused && updateInProgress}
                           >
                             <YBLabelWithIcon
                               icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}
