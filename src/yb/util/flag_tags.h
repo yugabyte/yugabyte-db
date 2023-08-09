@@ -215,6 +215,10 @@ class FlagTagger {
   DEFINE_bool(name, default_value, description); \
   TAG_FLAG(name, runtime);
 
+#define DEFINE_RUNTIME_uint32(name, default_value, description) \
+  DEFINE_uint32(name, default_value, description); \
+  TAG_FLAG(name, runtime);
+
 #define DEFINE_RUNTIME_int32(name, default_value, description) \
   DEFINE_int32(name, default_value, description); \
   TAG_FLAG(name, runtime);
