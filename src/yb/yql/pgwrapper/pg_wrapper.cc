@@ -319,7 +319,7 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   if (!conf_file) {
     return STATUS_FORMAT(
         IOError,
-        "Failed to read default postgres configuration '%s': errno=$0: $1",
+        "Failed to read default postgres configuration '$0': errno=$1: $2",
         default_conf_path,
         errno,
         ErrnoToString(errno));
