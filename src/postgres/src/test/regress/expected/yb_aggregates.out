@@ -572,12 +572,13 @@ EXPLAIN (COSTS OFF) SELECT int_2, COUNT(*), SUM(int_4) FROM ybaggtest GROUP BY i
 (3 rows)
 
 EXPLAIN (COSTS OFF) SELECT DISTINCT int_4 FROM ybaggtest;
-         QUERY PLAN
------------------------------
+                            QUERY PLAN
+------------------------------------------------------------------
  HashAggregate
    Group Key: int_4
-   ->  Seq Scan on ybaggtest
-(3 rows)
+   ->  Distinct Index Only Scan using ybaggtestindex on ybaggtest
+         Distinct Prefix: 4
+(4 rows)
 
 EXPLAIN (COSTS OFF) SELECT COUNT(distinct int_4), SUM(int_4) FROM ybaggtest;
          QUERY PLAN
@@ -1797,6 +1798,94 @@ INSERT INTO t4 VALUES(1), (2), (3);
  ?column?
 ----------
  f
+(1 row)
+
+---
+--- SPLIT
+---
+CREATE TABLE rsplit (i int, PRIMARY KEY (i ASC)) SPLIT AT VALUES ((2));
+CREATE INDEX ON rsplit (i ASC) SPLIT AT VALUES ((3));
+INSERT INTO rsplit VALUES (1), (2), (3);
+\set ss '/*+SeqScan(rsplit)*/'
+\set ios '/*+IndexOnlyScan(rsplit rsplit_i_idx)*/'
+\set query 'SELECT SUM(i) FROM rsplit WHERE i = 2'
+:run;
+                  QUERY PLAN
+----------------------------------------------
+ Aggregate
+   ->  Index Scan using rsplit_pkey on rsplit
+         Index Cond: (i = 2)
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  YB Seq Scan on rsplit
+         Remote Filter: (i = 2)
+         Partial Aggregate: true
+(4 rows)
+
+                     QUERY PLAN
+----------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using rsplit_i_idx on rsplit
+         Index Cond: (i = 2)
+         Partial Aggregate: true
+(4 rows)
+
+ sum
+-----
+   2
+(1 row)
+
+ sum
+-----
+   2
+(1 row)
+
+ sum
+-----
+   2
+(1 row)
+
+\set query 'SELECT SUM(i) FROM rsplit WHERE i = 3'
+:run;
+                  QUERY PLAN
+----------------------------------------------
+ Aggregate
+   ->  Index Scan using rsplit_pkey on rsplit
+         Index Cond: (i = 3)
+(3 rows)
+
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  YB Seq Scan on rsplit
+         Remote Filter: (i = 3)
+         Partial Aggregate: true
+(4 rows)
+
+                     QUERY PLAN
+----------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using rsplit_i_idx on rsplit
+         Index Cond: (i = 3)
+         Partial Aggregate: true
+(4 rows)
+
+ sum
+-----
+   3
+(1 row)
+
+ sum
+-----
+   3
+(1 row)
+
+ sum
+-----
+   3
 (1 row)
 
 --

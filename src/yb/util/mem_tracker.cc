@@ -196,7 +196,7 @@ class MemTracker::TrackerMetrics {
       name += "_";
       name += name_suffix;
     }
-    metric_ = metric_entity_->FindOrCreateGauge(
+    metric_ = metric_entity_->FindOrCreateMetric<AtomicGauge<int64_t>>(
         std::unique_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
             metric_entity_->prototype().name(), std::move(name),
             CreateMetricLabel(mem_tracker), MetricUnit::kBytes,

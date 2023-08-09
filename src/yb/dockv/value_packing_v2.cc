@@ -15,6 +15,7 @@
 
 #include "yb/dockv/packed_value.h"
 #include "yb/dockv/primitive_value.h"
+#include "yb/dockv/value_packing.h"
 
 namespace yb::dockv {
 
@@ -155,16 +156,16 @@ struct UnpackQLValueVisitor {
 
 bool PackedAsVarlen(DataType data_type) {
   return data_type != DataType::NULL_VALUE_TYPE &&
-         VisitPackValueV2(data_type, PackedAsVarlenVisitor());
+         VisitDataType(data_type, PackedAsVarlenVisitor());
 }
 
 void PackQLValueV2(const QLValuePB& value, DataType data_type, ValueBuffer* out) {
-  VisitPackValueV2(
+  VisitDataType(
       data_type, PackQLValueVisitor<QLValuePB> { .value = value, .out = out });
 }
 
 void PackQLValueV2(const LWQLValuePB& value, DataType data_type, ValueBuffer* out) {
-  VisitPackValueV2(
+  VisitDataType(
       data_type, PackQLValueVisitor<LWQLValuePB> { .value = value, .out = out });
 }
 
@@ -172,15 +173,15 @@ Result<QLValuePB> UnpackQLValue(PackedValueV2 value, DataType data_type) {
   if (value.IsNull()) {
     return QLValuePB();
   }
-  return VisitPackValueV2(data_type, UnpackQLValueVisitor { .value = *value });
+  return VisitDataType(data_type, UnpackQLValueVisitor { .value = *value });
 }
 
 ssize_t PackedQLValueSizeV2(const QLValuePB& value, DataType data_type) {
-  return VisitPackValueV2(data_type, PackedQLValueSizeVisitor<QLValuePB> { .value = value });
+  return VisitDataType(data_type, PackedQLValueSizeVisitor<QLValuePB> { .value = value });
 }
 
 ssize_t PackedQLValueSizeV2(const LWQLValuePB& value, DataType data_type) {
-  return VisitPackValueV2(data_type, PackedQLValueSizeVisitor<LWQLValuePB> { .value = value });
+  return VisitDataType(data_type, PackedQLValueSizeVisitor<LWQLValuePB> { .value = value });
 }
 
 }  // namespace yb::dockv

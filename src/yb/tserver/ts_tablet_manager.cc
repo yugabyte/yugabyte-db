@@ -276,43 +276,43 @@ DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 namespace yb {
 namespace tserver {
 
-METRIC_DEFINE_coarse_histogram(server, op_apply_queue_length, "Operation Apply Queue Length",
+METRIC_DEFINE_event_stats(server, op_apply_queue_length, "Operation Apply Queue Length",
                         MetricUnit::kTasks,
                         "Number of operations waiting to be applied to the tablet. "
                         "High queue lengths indicate that the server is unable to process "
                         "operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_coarse_histogram(server, op_apply_queue_time, "Operation Apply Queue Time",
+METRIC_DEFINE_event_stats(server, op_apply_queue_time, "Operation Apply Queue Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent waiting in the apply queue before being "
                         "processed. High queue times indicate that the server is unable to "
                         "process operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_coarse_histogram(server, op_apply_run_time, "Operation Apply Run Time",
+METRIC_DEFINE_event_stats(server, op_apply_run_time, "Operation Apply Run Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent being applied to the tablet. "
                         "High values may indicate that the server is under-provisioned or "
                         "that operations consist of very large batches.");
 
-METRIC_DEFINE_coarse_histogram(server, op_read_queue_length, "Operation Read op Queue Length",
+METRIC_DEFINE_event_stats(server, op_read_queue_length, "Operation Read op Queue Length",
                         MetricUnit::kTasks,
                         "Number of operations waiting to be applied to the tablet. "
                             "High queue lengths indicate that the server is unable to process "
                             "operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_coarse_histogram(server, op_read_queue_time, "Operation Read op Queue Time",
+METRIC_DEFINE_event_stats(server, op_read_queue_time, "Operation Read op Queue Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent waiting in the read queue before being "
                             "processed. High queue times indicate that the server is unable to "
                             "process operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_coarse_histogram(server, op_read_run_time, "Operation Read op Run Time",
+METRIC_DEFINE_event_stats(server, op_read_run_time, "Operation Read op Run Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent being applied to the tablet. "
                             "High values may indicate that the server is under-provisioned or "
                             "that operations consist of very large batches.");
 
-METRIC_DEFINE_coarse_histogram(server, ts_bootstrap_time, "TServer Bootstrap Time",
+METRIC_DEFINE_event_stats(server, ts_bootstrap_time, "TServer Bootstrap Time",
                         MetricUnit::kMicroseconds,
                         "Time that the tablet server takes to bootstrap all of its tablets.");
 
@@ -1568,8 +1568,13 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   consensus::ConsensusBootstrapInfo bootstrap_info;
   bool bootstrap_retryable_requests = true;
 
+  MemTrackerPtr parent_mem_tracker =
+      MemTracker::FindOrCreateTracker("Tablets", server_->mem_tracker());
+
   consensus::RetryableRequestsManager retryable_requests_manager(
-      tablet_id, fs_manager_, meta->wal_dir());
+      tablet_id, fs_manager_, meta->wal_dir(),
+      MemTracker::FindOrCreateTracker(Format("tablet-$0", cmeta->tablet_id()), parent_mem_tracker,
+                                      AddToParent::kTrue, CreateMetrics::kFalse), kLogPrefix);
   s = retryable_requests_manager.Init(server_->Clock());
   if(!s.ok()) {
     LOG(ERROR) << kLogPrefix << "Tablet failed to init retryable requests: " << s;
@@ -1581,7 +1586,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
           cmeta->has_split_parent_tablet_id()) {
     auto parent_tablet_requests = GetTabletRetryableRequests(cmeta->split_parent_tablet_id());
     if (parent_tablet_requests.ok()) {
-      retryable_requests_manager.retryable_requests() = std::move(*parent_tablet_requests);
+      retryable_requests_manager.retryable_requests().CopyFrom(*parent_tablet_requests);
       bootstrap_retryable_requests = false;
     } else {
       LOG(INFO) << kLogPrefix << "Failed to get tablet retryable requests: "
@@ -1621,7 +1626,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .metadata = meta,
         .client_future = server_->client_future(),
         .clock = scoped_refptr<server::Clock>(server_->clock()),
-        .parent_mem_tracker = MemTracker::FindOrCreateTracker("Tablets", server_->mem_tracker()),
+        .parent_mem_tracker = parent_mem_tracker,
         .block_based_table_mem_tracker = mem_manager_->block_based_table_mem_tracker(),
         .metric_registry = metric_registry_,
         .log_anchor_registry = tablet_peer->log_anchor_registry(),

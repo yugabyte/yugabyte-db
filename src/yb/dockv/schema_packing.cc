@@ -21,6 +21,7 @@
 #include "yb/dockv/packed_row.h"
 #include "yb/dockv/packed_value.h"
 #include "yb/dockv/primitive_value.h"
+#include "yb/dockv/value_packing.h"
 #include "yb/dockv/value_packing_v2.h"
 
 #include "yb/gutil/casts.h"
@@ -460,7 +461,7 @@ bool PackedRowDecoderV2::IsNull(size_t idx) const {
 }
 
 Slice PackedRowDecoderV2::DoGetValue(size_t idx) {
-  return VisitPackValueV2(
+  return VisitDataType(
       packing_->column_packing_data(idx).data_type, DoGetValueVisitor { .data = data_ });
 }
 

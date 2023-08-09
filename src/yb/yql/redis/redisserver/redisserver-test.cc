@@ -349,7 +349,8 @@ class TestRedisService : public RedisTableTestBase {
 
   size_t CountSessions(const GaugePrototype<uint64_t>& proto) {
     constexpr uint64_t kInitialValue = 0UL;
-    auto counter = server_->metric_entity()->FindOrCreateGauge(&proto, kInitialValue);
+    auto counter = server_->metric_entity()->FindOrCreateMetric<AtomicGauge<uint64_t>>(
+        &proto, kInitialValue);
     return counter->value();
   }
 

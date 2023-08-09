@@ -101,8 +101,7 @@ class XClusterTabletSplitITestBase : public TabletSplitBase {
     client::TableHandle* consumer_table(
         consumer_cluster_ ? &consumer_table_ : &(TabletSplitBase::table_));
 
-    client::YBSessionPtr consumer_session = consumer_client->NewSession();
-    consumer_session->SetTimeout(timeout);
+    auto consumer_session = consumer_client->NewSession(timeout);
     size_t num_rows = 0;
     Status s = WaitFor([&]() -> Result<bool> {
       auto num_rows_result = CountRows(consumer_session, *consumer_table);
@@ -645,8 +644,7 @@ TEST_F(XClusterTabletSplitITest, SplittingOnProducerAndConsumer) {
     CDSAttacher attacher;
     client::TableHandle producer_table;
     ASSERT_OK(producer_table.Open(table_->name(), client_.get()));
-    auto producer_session = client_->NewSession();
-    producer_session->SetTimeout(60s);
+    auto producer_session = client_->NewSession(60s);
     int32_t key = kDefaultNumRows + 1;
     while (!stop) {
       auto res = client::kv_table_test::WriteRow(
@@ -677,8 +675,7 @@ TEST_F(XClusterTabletSplitITest, SplittingOnProducerAndConsumer) {
   write_thread.join();
 
   // Verify that both sides have the same number of rows.
-  client::YBSessionPtr producer_session = client_->NewSession();
-  producer_session->SetTimeout(60s);
+  client::YBSessionPtr producer_session = client_->NewSession(60s);
   size_t num_rows = ASSERT_RESULT(CountRows(producer_session, table_));
 
   ASSERT_OK(CheckForNumRowsOnConsumer(num_rows));
@@ -892,8 +889,7 @@ TEST_F(XClusterAutomaticTabletSplitITest, AutomaticTabletSplitting) {
     CDSAttacher attacher;
     client::TableHandle producer_table;
     ASSERT_OK(producer_table.Open(table_->name(), client_.get()));
-    auto producer_session = client_->NewSession();
-    producer_session->SetTimeout(60s);
+    auto producer_session = client_->NewSession(60s);
     while (!stop) {
       rows_written = (rows_written + 1);
       ASSERT_RESULT(client::kv_table_test::WriteRow(

@@ -359,7 +359,7 @@ TEST_F_EX(ClientStressTest, MasterQueueFull, ClientStressTestSmallQueueMultiMast
     item.client = ASSERT_RESULT(cluster_->CreateClient());
     item.table = std::make_unique<client::TableHandle>();
     ASSERT_OK(item.table->Open(TestWorkloadOptions::kDefaultTableName, item.client.get()));
-    item.session = std::make_shared<client::YBSession>(item.client.get());
+    item.session = item.client.get()->NewSession(60s);
     items.push_back(std::move(item));
   }
 

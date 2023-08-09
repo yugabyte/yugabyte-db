@@ -150,6 +150,8 @@ class RestorePatch {
   struct KeyValuePair {
     KeyBuffer key;
     ValueBuffer value;
+    // Initialized lazily if we need to actually decode the value.
+    std::optional<dockv::PackedRowDecoderVariant> decoder;
   };
   // Key-Value pair corresponding to the most recent packed row encountered in
   // the restoring state.
@@ -159,52 +161,9 @@ class RestorePatch {
   Status TryUpdateLastPackedRow(const Slice& key, const Slice& value);
 };
 
-void AddKeyValue(const Slice& key, const Slice& value, docdb::DocWriteBatch* write_batch);
-
 void WriteToRocksDB(
     docdb::DocWriteBatch* write_batch, const HybridTime& write_time, const OpId& op_id,
     tablet::Tablet* tablet, const std::optional<docdb::KeyValuePairPB>& restore_kv);
-
-int64_t GetValue(const dockv::Value& value, int64_t* type);
-
-bool GetValue(const dockv::Value& value, bool* type);
-
-template <class ValueType>
-Result<std::optional<ValueType>> GetColumnValuePacked(
-    tablet::TableInfo* table_info, const Slice& packed_value, const std::string& column_name) {
-  auto value_slice = packed_value;
-  RETURN_NOT_OK(dockv::ValueControlFields::Decode(&value_slice));
-  SCHECK(value_slice.TryConsumeByte(dockv::ValueEntryTypeAsChar::kPackedRow),
-          Corruption, "Packed row expected: $0", packed_value.ToDebugHexString());
-  const dockv::SchemaPacking& packing = VERIFY_RESULT(
-      table_info->doc_read_context->schema_packing_storage.GetPacking(&value_slice));
-  auto column_id = VERIFY_RESULT(table_info->schema().ColumnIdByName(column_name));
-  auto value = packing.GetValue(column_id, value_slice);
-  if (value) {
-    dockv::Value column_value;
-    RETURN_NOT_OK(column_value.Decode(*value));
-    return GetValue(column_value, static_cast<ValueType*>(nullptr));
-  }
-  return std::nullopt;
-}
-
-template <class ValueType>
-Result<std::optional<ValueType>> GetColumnValueNotPacked(
-    tablet::TableInfo* table_info, const Slice& value, const std::string& column_name,
-    const dockv::SubDocKey& decoded_sub_doc_key) {
-  SCHECK_EQ(decoded_sub_doc_key.subkeys().size(), 1U, Corruption, "Wrong number of subdoc keys");
-  const auto& first_subkey = decoded_sub_doc_key.subkeys()[0];
-  if (first_subkey.type() == dockv::KeyEntryType::kColumnId) {
-    auto column_id = first_subkey.GetColumnId();
-    const ColumnSchema& column = VERIFY_RESULT(table_info->schema().column_by_id(column_id));
-    if (column.name() == column_name) {
-      dockv::Value column_value;
-      RETURN_NOT_OK(column_value.Decode(value));
-      return GetValue(column_value, static_cast<ValueType*>(nullptr));
-    }
-  }
-  return std::nullopt;
-}
 
 Result<std::optional<int64_t>> GetInt64ColumnValue(
     const dockv::SubDocKey& sub_doc_key, const Slice& value,

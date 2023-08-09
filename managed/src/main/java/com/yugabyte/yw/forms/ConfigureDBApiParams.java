@@ -99,18 +99,12 @@ public class ConfigureDBApiParams extends UpgradeTaskParams {
     }
   }
 
-  public void validatePassword(PasswordPolicyService policyService, boolean checkPasswordLeak) {
+  public void validatePassword(PasswordPolicyService policyService) {
     if (enableYSQLAuth && !StringUtils.isEmpty(ysqlPassword)) {
       policyService.checkPasswordPolicy(null, ysqlPassword);
-      if (checkPasswordLeak) {
-        policyService.validatePasswordNotLeaked("YSQL", ysqlPassword);
-      }
     }
     if (enableYCQLAuth && !StringUtils.isEmpty(ycqlPassword)) {
       policyService.checkPasswordPolicy(null, ycqlPassword);
-      if (checkPasswordLeak) {
-        policyService.validatePasswordNotLeaked("YCQL", ysqlPassword);
-      }
     }
   }
 

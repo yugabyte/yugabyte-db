@@ -18,6 +18,7 @@
 #include "postgres.h"
 
 #include "access/stratnum.h"
+#include "access/sysattr.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/plannodes.h"
@@ -25,6 +26,7 @@
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
 #include "optimizer/tlist.h"
+#include "optimizer/var.h"
 #include "utils/lsyscache.h"
 
 
@@ -471,20 +473,40 @@ get_cheapest_parallel_safe_total_inner(List *paths)
  * that test is just based on the existence of an EquivalenceClass and not
  * on position in pathkey lists, so it's not complete.  Caller should call
  * truncate_useless_pathkeys() to possibly remove more pathkeys.
+ *
+ * YB: 'yb_distinct_nkeys' is an in-out param.
+ * For distinct index scans, we require the set of PathKey's that correspond
+ * to the distinct index prefix. This is necessary for de-duplicating some
+ * edge cases in range partioned columns, see #18101 for more information.
+ * Hence, the function takes the distinct prefix length as input in
+ * 'yb_distinct_nkeys'.
+ * The function returns the set of pathkeys corresponding to the prefix
+ * back again in 'yb_distinct_nkeys'. Since this set is a prefix, we need only
+ * return the prefix length of returned pathkeys in 'yb_distinct_nkeys'.
+ * This field is eventually used in generating a UpperUniquePath node.
+ * This workaround can go away once #18101 is fixed.
  */
 List *
 build_index_pathkeys(PlannerInfo *root,
 					 IndexOptInfo *index,
-					 ScanDirection scandir)
+					 ScanDirection scandir,
+					 int *yb_distinct_nkeys)
 {
 	List	   *retval = NIL;
 	ListCell   *lc;
 	int			i;
+	int			yb_distinct_prefixlen;
 
 	if (index->sortopfamily == NULL)
 		return NIL;				/* non-orderable index */
 
 	i = 0;
+	/*
+	 * YB: Compute the set of pathkeys corresponding to
+	 * the distinct index scan prefix.
+	 */
+	yb_distinct_prefixlen = *yb_distinct_nkeys;
+	*yb_distinct_nkeys = -1;
 	foreach(lc, index->indextlist)
 	{
 		TargetEntry *indextle = (TargetEntry *) lfirst(lc);
@@ -552,17 +574,37 @@ build_index_pathkeys(PlannerInfo *root,
 			 * should stop considering index columns; any lower-order sort
 			 * keys won't be useful either.
 			 */
-			if (!indexcol_is_bool_constant_for_query(index, i) ||	i < index->nhashcolumns)
+			if (!indexcol_is_bool_constant_for_query(index, i) || i < index->nhashcolumns)
 				break;
 		}
 
 		i++;
+		/* YB: For later use in creating a UpperUniquePath node. */
+		if (i == yb_distinct_prefixlen)
+			*yb_distinct_nkeys = list_length(retval);
 	}
 
-  if (i < index->nhashcolumns) {
-    /* All hash columns must have EQ pathkeys. Otherwise, we cannot use the index */
-    return NULL;
-	}
+	/*
+	 * YB: Broadly, index paths are generated either for ordering, index
+	 * access via predicates supported by the index, or for fetching distinct
+	 * tuples from the index.
+	 * Hash columns are not used for ordering, however.
+	 * To use the index, there must be an index clause on each hash column.
+	 * The check below prevents hash columns being used for ordering.
+	 *
+	 * For the purposes of distinct index scans,
+	 * return pathkeys only when all hash columns are requested to be distinct.
+	 * Otherwise, while it may still be useful to generate a
+	 * distinct index scan, that scan alone may still have duplicate values.
+	 * Hence, we return no pathkeys since the result is not actually distinct.
+	 *
+	 * Example: DISTINCT h1 (both h1 and h2 are hash columns).
+	 * We can request a distinct index scan on h1, h2 tuples but there may still
+	 * be some duplicate values of h1 in the result.
+	 */
+	if (i < index->nhashcolumns)
+		/* All hash columns must have EQ pathkeys. Otherwise, we cannot use the index */
+		return NULL;
 	return retval;
 }
 
@@ -865,7 +907,7 @@ build_join_pathkeys(PlannerInfo *root,
 	 * contain pathkeys that were useful for forming this joinrel but are
 	 * uninteresting to higher levels.
 	 */
-	return truncate_useless_pathkeys(root, joinrel, outer_pathkeys);
+	return truncate_useless_pathkeys(root, joinrel, outer_pathkeys, 0);
 }
 
 /****************************************************************************
@@ -1634,11 +1676,29 @@ pathkeys_useful_for_ordering(PlannerInfo *root, List *pathkeys)
 /*
  * truncate_useless_pathkeys
  *		Shorten the given pathkey list to just the useful pathkeys.
+ *
+ * YB: Do NOT truncate pathkeys useful for distinct index scan because
+ * UpperUniquePath nodes require these pathkeys. 'yb_distinct_nkeys' restricts
+ * this.
+ *
+ * YB: Normally, distinct pathkeys are retained in pathkeys_useful_for_ordering
+ * by retaining all query pathkeys (contains both sortkeys and distinct keys).
+ * However, the pathkeys_contained_in function used for determing usefulness
+ * is insufficient for Distinct Index Scans.
+ *
+ * Example: say, r1 is sorted ASC, r2 is sorted DESC in the index.
+ * Then, the query SELECT DISTINCT r1, r2
+ * should be able to generate a distinct index scan for the query since
+ * the precise ordering of keys r1, r2 within the index is immaterial for
+ * the DISTINCT operation. Such queries are unfortunately disallowed by
+ * the pathkeys_contained_in function. This behavior is fixed by
+ * 'yb_distinct_nkeys'.
  */
 List *
 truncate_useless_pathkeys(PlannerInfo *root,
 						  RelOptInfo *rel,
-						  List *pathkeys)
+						  List *pathkeys,
+						  int yb_distinct_nkeys)
 {
 	int			nuseful;
 	int			nuseful2;
@@ -1647,6 +1707,10 @@ truncate_useless_pathkeys(PlannerInfo *root,
 	nuseful2 = pathkeys_useful_for_ordering(root, pathkeys);
 	if (nuseful2 > nuseful)
 		nuseful = nuseful2;
+	Assert(yb_distinct_nkeys <= list_length(pathkeys));
+	/* YB: Use yb_distinct_nkeys and not yb_distinct_prefixlen. */
+	if (yb_distinct_nkeys > nuseful)
+		nuseful = yb_distinct_nkeys;
 
 	/*
 	 * Note: not safe to modify input list destructively, but we can avoid
@@ -1683,4 +1747,636 @@ has_useful_pathkeys(PlannerInfo *root, RelOptInfo *rel)
 	if (root->query_pathkeys != NIL)
 		return true;			/* might be able to use them for ordering */
 	return false;				/* definitely useless */
+}
+
+/*
+ * YB: yb_reject_distinct_pushdown_walker
+ *
+ * Determine if the expression 'node' is compatible with distinct pushdown.
+ * Distinct can seep past most simple operations, this function simply aims
+ * to limit the applicability of distinct pushdown to well known operations
+ * and then slowly extend to other operations as when required.
+ * Distinct operation does not distribute into volatile functions or aggregate
+ * operations. This is captured later on in
+ * yb_pull_varattnos_for_distinct_pushdown.
+ *
+ * Returns false if 'node' is compatible with distinct pushdown.
+ */
+static bool
+yb_reject_distinct_pushdown_walker(Node *node)
+{
+	if (node == NULL)
+		return false;
+
+	switch(nodeTag(node))
+	{
+		case T_Var:
+		case T_Const:
+		case T_CaseTestExpr:
+			return false;
+		case T_Param:
+		case T_SQLValueFunction:
+		case T_CoerceToDomainValue:
+		case T_SetToDefault:
+		case T_CurrentOfExpr:
+		case T_NextValueExpr:
+		case T_RangeTblRef:
+		case T_SortGroupClause:
+		case T_Aggref:
+		case T_WindowClause:
+		case T_MinMaxExpr:
+		case T_ArrayExpr:
+		case T_ArrayCoerceExpr:
+		case T_Query:
+		case T_PlaceHolderVar:
+			return true;
+		default:
+			break;
+	}
+
+	return expression_tree_walker(node, yb_reject_distinct_pushdown_walker,
+								  NULL);
+}
+
+/*
+ * YB: yb_pull_varattnos_for_distinct_pushdown
+ *
+ * Extract Var references from the given expression 'node'.
+ *
+ * Say, we have a table with range columns r1, r2.
+ * For a DISTINCT query with WHERE clause such as r1 * r2 = constant,
+ * we wish to generate a distinct index scan that includes both r1 and r2.
+ * Such paths are useful because the scan with DISTINCT r1, r2 has atleast
+ * as many rows as those satisfying r1 * r2 = constant.
+ *
+ * However, not all expressions can do this.
+ * Example: DISTINCT AVG(r1) must not fetch DISTINCT r1 since skipping
+ * 			duplicate elements while computing the average is incorrect
+ * 			without also fetching the exact counts of each distinct element.
+ * Example: DISTINCT r1 * RANDOM() must not fetch DISTINCT r1 since
+ * 			volatile functions must be run for each tuple because they have
+ * 			side effects.
+ *
+ * Returns true iff Var references can be extracted from the 'node' expression.
+ * Appends these variables to '*colrefs'.
+ * Care must be taken to initialize *colrefs properly so that it is ready
+ * for such appends.
+ */
+static bool
+yb_pull_varattnos_for_distinct_pushdown(Node *node, Index varno,
+										Bitmapset **varattnos,
+										AttrNumber min_attr)
+{
+	if (node == NULL)
+		return false;
+
+	/* Give up when we have volatile functions or aggregate clauses. */
+	if (yb_reject_distinct_pushdown_walker(node) ||
+		contain_volatile_functions(node))
+		return false;
+
+	pull_varattnos_min_attr(node, varno, varattnos, min_attr);
+	return true;
+}
+
+/*
+ * YB: yb_get_colrefs_for_distinct_pushdown
+ *
+ * Determines the list of column references.
+ * Column references determine the set of DISTINCT keys required from
+ * the distinct index scan.
+ */
+static bool
+yb_get_colrefs_for_distinct_pushdown(IndexOptInfo *index, List *index_clauses,
+									 Bitmapset **colrefs)
+{
+	ListCell *lc;
+	List	 *exprs;
+
+	/*
+	 * Collect all exprs that need to be DISTINCT.
+	 * Includes both base relation targets and non-index predicates.
+	 */
+	exprs = NIL;
+
+	/* Target List. */
+	foreach(lc, index->rel->reltarget->exprs)
+		exprs = lappend(exprs, lfirst(lc));
+
+	/*
+	 * Non-Index Predicates.
+	 * Do not include index predicates since they seep past the DISTINCT
+	 * operation.
+	 * Example: consider an index with range columns r1, r2.
+	 * The query SELECT DISTINCT r1 WHERE r2 < 10;
+	 * only has r1 in the prefix since r2 < 10 is supported by the index and
+	 * is done before skipping over duplicate values of r1.
+	 */
+	foreach(lc, index->indrestrictinfo)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+		if (!list_member_ptr(index_clauses, rinfo))
+			exprs = lappend(exprs, rinfo->clause);
+	}
+
+	/*
+	 * Pull Var references from collected exprs.
+	 */
+	*colrefs = NULL;
+	return yb_pull_varattnos_for_distinct_pushdown((Node *) exprs,
+		index->rel->relid, colrefs, YBFirstLowInvalidAttributeNumber+1);
+}
+
+/*
+ * YB: yb_is_const_clause_for_distinct_pushdown
+ *
+ * Determines whether the key at 'indexcol' is a constant as decided
+ * by 'index_clauses'.
+ *
+ * Clauses such as 'WHERE indexkey = constant' implies that 'indexkey' is
+ * a constant after filtering. Do the same for boolean variables, see
+ * indexcol_is_bool_constant_for_query.
+ */
+static bool
+yb_is_const_clause_for_distinct_pushdown(IndexOptInfo *index,
+										 List *index_clauses,
+										 int indexcol,
+				   						 Expr *indexkey)
+{
+	ListCell *lc;
+
+	/* Boolean clauses. */
+	if (indexcol_is_bool_constant_for_query(index, indexcol))
+		return true;
+
+	foreach(lc, index_clauses)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+		Expr		 *clause = rinfo->clause;
+		Node		 *left_op,
+					 *right_op;
+		int			  op_strategy;
+
+		/* Must be a binary operation. */
+		if (!is_opclause(clause))
+			continue;
+
+		left_op = get_leftop(clause);
+		right_op = get_rightop(clause);
+		if (!left_op || !right_op)
+			continue;
+
+		op_strategy = get_op_opfamily_strategy(((OpExpr *) clause)->opno,
+											   index->opfamily[indexcol]);
+		if (op_strategy != BTEqualStrategyNumber)
+			continue;
+
+		/* Check whether the clause is of the form indexkey = constant. */
+		if (equal(indexkey, left_op) &&
+			!bms_is_member(index->rel->relid, rinfo->right_relids) &&
+			!contain_volatile_functions(right_op))
+			return true;
+
+		/* Check whether the indexkey is on the right. */
+		if (equal(indexkey, right_op) &&
+			!bms_is_member(index->rel->relid, rinfo->left_relids) &&
+			!contain_volatile_functions(left_op))
+			return true;
+	}
+
+	return false;
+}
+
+/*
+ * YB: yb_get_const_colrefs_for_distinct_pushdown
+ *
+ * Constant key columns are handled differently since these keys
+ * need not be part of the prefix.
+ *
+ * Example: DISTINCT r1, r2 WHERE r2 = 1
+ * Here, r2 need not be part of the prefix since there is atmost one value of
+ * r2 for each distinct value of r1. Moreover, since r2 = 1 is an index
+ * condition, this filter is applied before skipping duplicate values of r1.
+ *
+ * On the other hand a query such as
+ * DISTINCT r1, r2 WHERE r2 IN (1, 2)
+ * cannot eliminate r2 from the prefix since there can be more than one value
+ * of r2 for each distinct value of r1.
+ *
+ * Returns the set of 'index' key columns that are equal to a constant using
+ * 'index_clauses' as the truth source.
+ */
+static Bitmapset *
+yb_get_const_colrefs_for_distinct_pushdown(IndexOptInfo *index,
+										   List *index_clauses)
+{
+	Bitmapset *const_colrefs;
+	ListCell  *lc;
+	int		   indexcol;
+
+	const_colrefs = NULL;
+	indexcol = 0;
+	foreach(lc, index->indextlist)
+	{
+		TargetEntry *tle = (TargetEntry *) lfirst(lc);
+
+		if (IsA(tle->expr, Var) && yb_is_const_clause_for_distinct_pushdown(
+				index, index_clauses, indexcol, tle->expr))
+			const_colrefs = bms_add_member(const_colrefs,
+				((Var *) tle->expr)->varattno -
+				YBFirstLowInvalidAttributeNumber);
+		indexcol++;
+	}
+
+	return const_colrefs;
+}
+
+/*
+ * YB: yb_find_colref_in_index
+ *
+ * Finds the position of the column reference 'target_colref' in the 'index'.
+ * Updates 'maxlen' using the position thus obtained.
+ * Does not update 'maxlen' if the match is in 'const_colrefs'
+ * Returns true iff a match is found.
+ */
+static bool
+yb_find_colref_in_index(IndexOptInfo *index, Bitmapset *const_colrefs,
+						int target_colref, int *maxlen)
+{
+	ListCell *lc;
+	int		  ordpos;
+
+	ordpos = 0; /* Ordinal position. */
+	foreach(lc, index->indextlist)
+	{
+		TargetEntry *tle = (TargetEntry *) lfirst(lc);
+		int			 colref;
+
+		ordpos++;
+
+		if (!IsA(tle->expr, Var))
+			continue;
+
+		colref = ((Var *) tle->expr)->varattno -
+					YBFirstLowInvalidAttributeNumber;
+
+		/*
+		 * Found a matching index column.
+		 * Do not consider constants for prefix length.
+		 */
+		if (colref == target_colref)
+		{
+			if (*maxlen < ordpos && !bms_is_member(colref, const_colrefs))
+				*maxlen = ordpos;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/*
+ * YB: yb_get_distinct_prefixlen
+ *
+ * Computes the 'index' prefix length required from the distinct index scan.
+ * 'const_colrefs' are not included in the requested prefix.
+ *
+ * Returns the shortest prefix that satisfies all the 'colrefs'.
+ * Returns 0 when 'colrefs' cannot be satisfied by the 'index'.
+ * 'colrefs' modified destructively.
+ */
+static int
+yb_get_distinct_prefixlen(IndexOptInfo *index, Bitmapset *colrefs,
+						  Bitmapset *const_colrefs)
+{
+	int maxlen = 1;
+	int target_colref;
+
+	/*
+	 * Cannot request a prefix smaller than num hash columns.
+	 */
+	if (maxlen < index->nhashcolumns)
+		maxlen = index->nhashcolumns;
+
+	while ((target_colref = bms_first_member(colrefs)) >= 0)
+		if (!yb_find_colref_in_index(index, const_colrefs, target_colref,
+									 &maxlen))
+			return 0;
+
+	return maxlen;
+}
+
+/*
+ * YB: yb_get_target_index_exprs
+ *
+ * Returns all target expressions from the 'index'.
+ * The index is sorted on these expressions, so the keys driving
+ * the distinct index scan form a prefix of these expressions.
+ */
+static List *
+yb_get_target_index_exprs(IndexOptInfo *index)
+{
+	ListCell   *lc;
+	List	   *index_exprs = NIL;
+	int			i = 0;
+
+	foreach(lc, index->indextlist)
+	{
+		TargetEntry *indextle = (TargetEntry *) lfirst(lc);
+
+		/*
+		 * INCLUDE columns are incapable of DISTINCT
+		 */
+		if (i >= index->nkeycolumns)
+			break;
+
+		index_exprs = lappend(index_exprs, indextle->expr);
+		i++;
+	}
+
+	return index_exprs;
+}
+
+/*
+ * YB: yb_get_distinct_prefix
+ *
+ * Returns the list of exprs that represent the distinct prefix of the
+ * scan. These are also referred to as uniqkeys.
+ *
+ * Here, we use exprs directly instead of equivalence classes unlike how
+ * Pg does it for its pathkeys. DISTINCT possesses some key properties that
+ * makes this approach attractive.
+ *
+ * First, the DISTINCT operation on a superset of distinct keys requested by
+ * the query produces at least as many rows as the final result.
+ * Example: SELECT DISTINCT r1, r2 includes all the rows produced by
+ * 			SELECT DISTINCT r2
+ * On the other hand, only prefixes of sort keys can be assumed sorted.
+ * Example: When tuples are sorted by r1, r2, they are also sorted by r1
+ * 			but not r2.
+ * This difference has an important implication: prefix based distinct index
+ * scans are not just useful for DISTINCT operation on prefixes.
+ *
+ * Second, DISTINCT can permute its columns without changing the result.
+ * Example: Tuples ordered by r1, r2 are not equivalent to tuples ordered by
+ * r2, r1. However, DISTINCT r1, r2 is equivalent to DISTINCT r2, r1. The
+ * columns simply have to be rearranged.
+ * Having a separate list of keys lets us avoid being held back by pathkeys
+ * machinery.
+ *
+ * Third, DISTINCT can distribute more easily than sort.
+ * Example: DISTINCT t1.r, t2.r FROM t1, t2 is, in many cases, same as
+ * 			(DISTINCT r FROM t1), (DISTINCT r FROM t2)
+ * Unlike pathkeys, uniqkeys can be propagated across joins using an union
+ * (bar some exceptions).
+ */
+List *
+yb_get_distinct_prefix(IndexOptInfo *index, List *index_clauses)
+{
+	Bitmapset *colrefs;
+	int		   prefixlen;
+	Bitmapset *const_colrefs;
+	List	  *uniqkeys;
+
+	if (!yb_get_colrefs_for_distinct_pushdown(index, index_clauses, &colrefs))
+		return NIL;
+
+	const_colrefs = yb_get_const_colrefs_for_distinct_pushdown(index,
+															   index_clauses);
+	prefixlen = yb_get_distinct_prefixlen(index, colrefs, const_colrefs);
+
+	/* Do not bother generating a distinct index path. */
+	if (prefixlen == 0 || (prefixlen == index->nkeycolumns && index->unique))
+		return NIL;
+
+	uniqkeys = yb_get_target_index_exprs(index);
+	Assert(prefixlen <= list_length(uniqkeys));
+	/*
+	 * Truncated keys are not pfree'd because we don't deep copy the exprs.
+	 */
+	return list_truncate(uniqkeys, prefixlen);
+}
+
+/*
+ * YB: yb_match_uniqkeys_with_expr
+ *
+ * Finds all 'uniqkeys' that match 'expr' and returns the matching set of keys.
+ */
+static Bitmapset *
+yb_match_uniqkeys_with_expr(Node *expr, List *uniqkeys)
+{
+	ListCell  *lc;
+	int		   keycol;
+	Bitmapset *usedkeys;
+
+	keycol = 0;
+	usedkeys = NULL;
+	foreach(lc, uniqkeys)
+	{
+		Node *uniqkey = (Node *) lfirst(lc);
+
+		if (exprCollation(expr) == exprCollation(uniqkey) &&
+			exprType(expr) == exprType(uniqkey) &&
+			equal(expr, uniqkey))
+			usedkeys = bms_add_member(usedkeys, keycol);
+		keycol++;
+	}
+
+	return usedkeys;
+}
+
+/*
+ * YB: yb_match_uniqkeys_with_colrefs
+ *
+ * Returns true only when all Var references in 'expr' are satisfied by 'uniqkeys'.
+ */
+static bool
+yb_match_uniqkeys_with_colrefs(Node *expr, List *uniqkeys)
+{
+	List	  *colrefs;
+	ListCell  *lc;
+
+	if (yb_reject_distinct_pushdown_walker(expr) ||
+		contain_volatile_functions(expr))
+		return false;
+
+	colrefs = pull_var_clause(expr, 0);
+
+	foreach(lc, colrefs)
+	{
+		Node *colref = (Node *) lfirst(lc);
+
+		if (!yb_match_uniqkeys_with_expr(colref, uniqkeys))
+			return false;
+	}
+
+	return true;
+}
+
+/*
+ * YB: yb_match_uniqkeys_with_pathkey
+ *
+ * Matches any expression of 'pathkey->pk_eclass' against 'uniqkeys'.
+ * Collects all matching keycols of uniqkeys in 'usedkeys'.
+ * Returns
+ * - YB_UNIQKEYS_NONE if no matches found.
+ * - YB_UNIQKEYS_EXACT if match found on some original expression.
+ * - YB_UNIQKEYS_EXCESS if no match found on any original expression but
+ * 	 matches found on constituent references. 'usedkeys' is not modified
+ * 	 in this case.
+ * Expects 'usedkeys' to be initialized by the caller.
+ */
+static YbUniqKeysCmp
+yb_match_uniqkeys_with_pathkey(PathKey *pathkey, List *uniqkeys,
+							   Bitmapset **usedkeys)
+{
+	EquivalenceClass *ec;
+	YbUniqKeysCmp	  retval;
+	ListCell		 *lc;
+
+	ec = pathkey->pk_eclass;
+	retval = YB_UNIQKEYS_NONE;
+	foreach(lc, ec->ec_members)
+	{
+		EquivalenceMember *em = (EquivalenceMember *) lfirst(lc);
+		Bitmapset		  *matchkeys;
+
+		if (em->em_is_child)
+			continue;
+
+		if (ec->ec_below_outer_join && em->em_is_const)
+			continue;
+
+		/*
+		 * Browse through uniqkeys to find a match.
+		 * Important that the original expression is tried first since
+		 * a match indicates that the path maybe DISTINCT without further
+		 * DISTINCT'ifying operations on top.
+		 * Cannot say the same after pulling individual references out of
+		 * the expression.
+		 */
+		matchkeys = yb_match_uniqkeys_with_expr((Node *) em->em_expr, uniqkeys);
+		if (matchkeys != NULL)
+		{
+			retval = YB_UNIQKEYS_EXACT;
+			*usedkeys = bms_union(*usedkeys, matchkeys);
+		}
+		else if (retval == YB_UNIQKEYS_NONE)
+		{
+			if (yb_match_uniqkeys_with_colrefs((Node *) em->em_expr, uniqkeys))
+				/*
+				 * Some other expr may match exactly in which case its best
+				 * not to pollute *usedkeys here since thats the matching expr.
+				 * Moreover, *usedkeys is not very relevant when retval is
+				 * already YB_UNIQKEYS_EXCESS.
+				 */
+				retval = YB_UNIQKEYS_EXCESS;
+		}
+	}
+
+	return retval;
+}
+
+/*
+ * YB: yb_match_uniqkeys_with_eclass
+ *
+ * Find the set of keycols in 'uniqkeys' matched by exprs of 'ec'.
+ */
+static Bitmapset *
+yb_match_uniqkeys_with_eclass(EquivalenceClass *ec, List *uniqkeys)
+{
+	Bitmapset *retval;
+	ListCell  *lc;
+
+	retval = NULL;
+	foreach(lc, ec->ec_members)
+	{
+		EquivalenceMember *em = (EquivalenceMember *) lfirst(lc);
+		Bitmapset		  *matchkeys;
+
+		matchkeys = yb_match_uniqkeys_with_expr((Node *) em->em_expr, uniqkeys);
+		retval = bms_union(retval, matchkeys);
+	}
+
+	return retval;
+}
+
+/*
+ * YB: yb_get_constkeys
+ *
+ * Returns keycols of 'uniqkeys' that represent constants.
+ * Constants should be excluded from the list of uniqkeys that are
+ * required to be matched since the pathkeys machinery completely ignores
+ * constants.
+ */
+static Bitmapset *
+yb_get_const_uniqkeys(PlannerInfo *root, List *uniqkeys)
+{
+	Bitmapset *constkeys;
+	ListCell  *lc;
+
+	constkeys = NULL;
+	foreach(lc, root->eq_classes)
+	{
+		EquivalenceClass *ec = (EquivalenceClass *) lfirst(lc);
+		Bitmapset		 *matchkeys;
+
+		/* Only consider constants. */
+		if (!EC_MUST_BE_REDUNDANT(ec))
+			continue;
+
+		matchkeys = yb_match_uniqkeys_with_eclass(ec, uniqkeys);
+		constkeys = bms_union(constkeys, matchkeys);
+	}
+
+	return constkeys;
+}
+
+/*
+ * YB: yb_has_sufficient_uniqkeys
+ *
+ * Determines if 'pathnode' is sufficiently DISTINCT for the query.
+ * Returns
+ * - YB_UNIQKEYS_NONE if the path must be dropped since it skipped some rows.
+ * - YB_UNIQKEYS_EXACT if the pathnode fits the requirements perfectly.
+ * - YB_UNIQKEYS_EXCESS if more DISTINCT'ification is necessary.
+ * 	 Usually the case when
+ * 	 - pathnode is DISTINCT on more keys than necessary.
+ * 	 - DISTINCT clause has compound exprs such as r1 * r2.
+ */
+YbUniqKeysCmp
+yb_has_sufficient_uniqkeys(PlannerInfo *root, Path *pathnode)
+{
+	List		 *pathkeys;
+	List		 *uniqkeys;
+	YbUniqKeysCmp retval;
+	Bitmapset	 *usedkeys;
+	ListCell	 *lc;
+
+	pathkeys = root->distinct_pathkeys;
+	uniqkeys = pathnode->yb_path_info.yb_uniqkeys;
+	retval = YB_UNIQKEYS_EXACT;
+	usedkeys = yb_get_const_uniqkeys(root, uniqkeys);
+	foreach(lc, pathkeys)
+	{
+		PathKey		 *pathkey = (PathKey *) lfirst(lc);
+		YbUniqKeysCmp cmp;
+
+		cmp = yb_match_uniqkeys_with_pathkey(pathkey, uniqkeys, &usedkeys);
+		if (cmp == YB_UNIQKEYS_NONE)
+			/* Exit early. */
+			return YB_UNIQKEYS_NONE;
+		else if (cmp == YB_UNIQKEYS_EXCESS)
+			retval = YB_UNIQKEYS_EXCESS;
+		/* else leave retval as is */
+	}
+
+	/*
+	 * Check if pathnode is DISTINCT on more keys than requested by the query.
+	 */
+	if (bms_num_members(usedkeys) < list_length(uniqkeys))
+		return YB_UNIQKEYS_EXCESS;
+
+	return retval;
 }

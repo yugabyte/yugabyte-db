@@ -771,7 +771,8 @@ class YBClient {
   // Create a new session for interacting with the cluster.
   // User is responsible for destroying the session object.
   // This is a fully local operation (no RPCs or blocking).
-  std::shared_ptr<YBSession> NewSession();
+  std::shared_ptr<YBSession> NewSession(MonoDelta delta);
+  std::shared_ptr<YBSession> NewSession(CoarseTimePoint deadline);
 
   // Return the socket address of the master leader for this client.
   HostPort GetMasterLeaderAddress();

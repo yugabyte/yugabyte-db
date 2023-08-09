@@ -628,8 +628,7 @@ Status XClusterSafeTimeService::CleanupEntriesFromTable(
   DCHECK(safe_time_table_ready_);
   DCHECK(safe_time_table_);
 
-  std::shared_ptr<client::YBSession> session = ybclient->NewSession();
-  session->SetTimeout(ybclient->default_rpc_timeout());
+  auto session = ybclient->NewSession(ybclient->default_rpc_timeout());
 
   std::vector<client::YBOperationPtr> ops;
   ops.reserve(entries_to_delete.size());

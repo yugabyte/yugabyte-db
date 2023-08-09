@@ -110,6 +110,9 @@ DEFINE_test_flag(bool, ysql_suppress_ybctid_corruption_details, false,
 DEFINE_RUNTIME_bool(ysql_enable_pack_full_row_update, false,
                     "Whether to enable packed row for full row update.");
 
+DEFINE_RUNTIME_PREVIEW_bool(ysql_use_packed_row_v2, false,
+                            "Whether to use packed row V2 when row packing is enabled.");
+
 namespace yb::docdb {
 
 using dockv::DocKey;
@@ -549,6 +552,21 @@ struct RowPackerData {
       .packing = VERIFY_RESULT(read_context.schema_packing_storage.GetPacking(schema_version)),
     };
   }
+
+  dockv::RowPackerVariant MakePacker() const {
+    if (FLAGS_ysql_use_packed_row_v2) {
+      return MakePackerHelper<dockv::RowPackerV2>();
+    }
+    return MakePackerHelper<dockv::RowPackerV1>();
+  }
+
+ private:
+  template <class T>
+  dockv::RowPackerVariant MakePackerHelper() const {
+    return dockv::RowPackerVariant(
+        std::in_place_type_t<T>(), schema_version, packing, FLAGS_ysql_packed_row_size_limit,
+        Slice());
+  }
 };
 
 bool IsExpression(const PgsqlColumnValuePB& column_value) {
@@ -599,16 +617,19 @@ class PgsqlWriteOperation::RowPackContext {
       : query_id_(request.stmt_id()),
         data_(data),
         write_id_(data.doc_write_batch->ReserveWriteId()),
-        packer_(packer_data.schema_version, packer_data.packing, FLAGS_ysql_packed_row_size_limit,
-                dockv::ValueControlFields()) {
+        packer_(packer_data.MakePacker()) {
   }
 
   Result<bool> Add(ColumnId column_id, const QLValuePB& value) {
-    return packer_.AddValue(column_id, value);
+    return std::visit([column_id, &value](auto& packer) {
+      return packer.AddValue(column_id, value);
+    }, packer_);
   }
 
   Status Complete(const RefCntPrefix& encoded_doc_key) {
-    auto encoded_value = VERIFY_RESULT(packer_.Complete());
+    auto encoded_value = VERIFY_RESULT(std::visit([](auto& packer) {
+      return packer.Complete();
+    }, packer_));
     return data_.doc_write_batch->SetPrimitive(
         DocPath(encoded_doc_key.as_slice()), dockv::ValueControlFields(),
         ValueRef(encoded_value), data_.read_operation_data, query_id_, write_id_);
@@ -618,7 +639,7 @@ class PgsqlWriteOperation::RowPackContext {
   rocksdb::QueryId query_id_;
   const DocOperationApplyData& data_;
   const IntraTxnWriteId write_id_;
-  dockv::RowPacker packer_;
+  dockv::RowPackerVariant packer_;
 };
 
 //--------------------------------------------------------------------------------------------------

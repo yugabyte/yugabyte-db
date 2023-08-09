@@ -26,8 +26,8 @@ level1: etc
 		t.Fatalf("error writing file %s: %s", filePath, err)
 	}
 
-	setYamlValue(filePath, "level1", "new1")
-	setYamlValue(filePath, "foo.bar.abc", "new2")
+	SetYamlValue(filePath, "level1", "new1")
+	SetYamlValue(filePath, "foo.bar.abc", "new2")
 
 	v := viper.New()
 	v.SetConfigFile(filePath)

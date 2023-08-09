@@ -262,9 +262,7 @@ void YBTableTestBase::DeleteTable() {
 }
 
 shared_ptr<YBSession> YBTableTestBase::NewSession() {
-  shared_ptr<YBSession> session = client_->NewSession();
-  session->SetTimeout(MonoDelta::FromMilliseconds(session_timeout_ms()));
-  return session;
+  return client_->NewSession(MonoDelta::FromMilliseconds(session_timeout_ms()));
 }
 
 Status YBTableTestBase::PutKeyValue(YBSession* session, const string& key, const string& value) {

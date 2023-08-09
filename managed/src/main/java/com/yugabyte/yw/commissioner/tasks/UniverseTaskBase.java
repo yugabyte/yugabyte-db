@@ -154,6 +154,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     private Universe universe;
     private final boolean blacklistLeaders;
     private final int leaderBacklistWaitTimeMs;
+    private final boolean followerLagCheckEnabled;
     private boolean loadBalancerOff = false;
     private final Set<UUID> lockedUniversesUuid = ConcurrentHashMap.newKeySet();
 
@@ -164,6 +165,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
       leaderBacklistWaitTimeMs =
           confGetter.getConfForScope(universe, UniverseConfKeys.ybUpgradeBlacklistLeaderWaitTimeMs);
+
+      followerLagCheckEnabled =
+          confGetter.getConfForScope(universe, UniverseConfKeys.followerLagCheckEnabled);
     }
 
     public boolean isLoadBalancerOff() {
@@ -172,6 +176,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     public boolean isBlacklistLeaders() {
       return blacklistLeaders;
+    }
+
+    public boolean isFollowerLagCheckEnabled() {
+      return followerLagCheckEnabled;
     }
 
     public void lockUniverse(UUID universeUUID) {
@@ -1750,8 +1758,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   public void createChangeConfigTasks(
       NodeDetails node, boolean isAdd, UserTaskDetails.SubTaskGroupType subTask) {
+    boolean followerLagCheckEnabled =
+        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.followerLagCheckEnabled);
     createChangeConfigTask(node, isAdd, subTask);
-    if (isAdd) {
+    if (isAdd && followerLagCheckEnabled) {
       createWaitForFollowerLagTask(node, ServerType.MASTER);
     }
   }
@@ -3067,6 +3077,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return getOrCreateExecutionContext().isBlacklistLeaders();
   }
 
+  protected boolean isFollowerLagCheckEnabled() {
+    return getOrCreateExecutionContext().isFollowerLagCheckEnabled();
+  }
+
   /**
    * Creates a task to add/remove nodes from blacklist on server.
    *
@@ -3284,12 +3298,26 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return loadBalancerMap;
   }
 
+  public SubTaskGroup createUpdateMasterAddrsInMemoryTasks(
+      Collection<NodeDetails> nodes, ServerType serverType) {
+    return createSetFlagInMemoryTasks(nodes, serverType, true, (node) -> null, true);
+  }
+
   // Subtask to update gflags in memory.
   public SubTaskGroup createSetFlagInMemoryTasks(
       Collection<NodeDetails> nodes,
       ServerType serverType,
       boolean force,
-      Map<String, String> gflags,
+      Map<String, String> gflags) {
+    return createSetFlagInMemoryTasks(nodes, serverType, force, (n) -> gflags, false);
+  }
+
+  // Subtask to update gflags in memory.
+  public SubTaskGroup createSetFlagInMemoryTasks(
+      Collection<NodeDetails> nodes,
+      ServerType serverType,
+      boolean force,
+      Function<NodeDetails, Map<String, String>> gflagsGetter,
       boolean updateMasterAddrs) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("InMemoryGFlagUpdate");
     for (NodeDetails node : nodes) {
@@ -3304,7 +3332,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // If the flags need to be force updated.
       params.force = force;
       // The flags to update.
-      params.gflags = gflags;
+      params.gflags = gflagsGetter.apply(node);
       // If only master addresses need to be updated.
       params.updateMasterAddrs = updateMasterAddrs;
 

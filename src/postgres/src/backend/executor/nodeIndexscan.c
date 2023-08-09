@@ -1084,6 +1084,8 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 	indexstate->iss_RuntimeKeysReady = false;
 	indexstate->iss_RuntimeKeys = NULL;
 	indexstate->iss_NumRuntimeKeys = 0;
+	/* YB: Prefix length parameter passed to DocDB. */
+	estate->yb_exec_params.yb_distinct_prefixlen = node->yb_distinct_prefixlen;
 
 	/*
 	 * build the index scan keys from the index qualification
@@ -1239,7 +1241,7 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
  * For now, these cases are generated for batched nested loop joins in
  * yb_zip_batched_exprs() in restrictinfo.c during indexscan
  * plan node generation.
- * 
+ *
  *
  * 5. NullTest ("indexkey IS NULL/IS NOT NULL").  We just fill in the
  * ScanKey properly.
@@ -1586,7 +1588,7 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 			this_scan_key->sk_argument = PointerGetDatum(first_sub_key);
 		}
 		else if (IsA(clause, ScalarArrayOpExpr) &&
-				 (!IsYugaByteEnabled() || 
+				 (!IsYugaByteEnabled() ||
 				  !IsA(yb_get_saop_left_op(clause), RowExpr)))
 		{
 			Assert(!IsYugaByteEnabled() ||
@@ -1766,7 +1768,7 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 				this_key = &first_sub_key[n_sub_key];
 				op_strategy = BTEqualStrategyNumber;
 				op_righttype = InvalidOid;
-				
+
 				if (varattno < 1 || varattno > indnkeyatts)
 					elog(ERROR, "bogus index qualification");
 

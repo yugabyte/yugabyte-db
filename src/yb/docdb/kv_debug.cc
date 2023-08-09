@@ -24,6 +24,7 @@
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/intent.h"
+#include "yb/dockv/packed_value.h"
 #include "yb/dockv/schema_packing.h"
 #include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
@@ -124,6 +125,41 @@ Result<PackedRowToPackingInfoPtrFunc> GetPackedRowToPackingInfoPtrFunc(
   };
 }
 
+Result<dockv::ValueControlFields> DecodeValueControlFields(dockv::PackedValueV1* value) {
+  return dockv::ValueControlFields::Decode(&**value);
+}
+
+Result<dockv::ValueControlFields> DecodeValueControlFields(dockv::PackedValueV2* value) {
+  return dockv::ValueControlFields();
+}
+
+template <class Decoder>
+Result<std::string> PackedRowToString(const dockv::SchemaPacking& packing, Slice value_slice) {
+  Decoder decoder(packing, value_slice.data());
+  std::string result = "{";
+  for (size_t i = 0; i != packing.columns(); ++i) {
+    auto column_value = decoder.FetchValue(i);
+    const auto& column_data = packing.column_packing_data(i);
+    result += " ";
+    result += column_data.id.ToString();
+    result += ": ";
+    auto column_control_fields = DecodeValueControlFields(&column_value);
+    if (column_value.IsNull()) {
+      result += "NULL";
+    } else {
+      auto pv = dockv::UnpackPrimitiveValue(column_value, column_data.data_type);
+      if (!pv.ok()) {
+        result += pv.status().ToString();
+      } else {
+        result += pv->ToString();
+      }
+    }
+    result += column_control_fields.ToString();
+  }
+  result += " }";
+  return result;
+}
+
 Result<std::string> DocDBValueToDebugStrInternal(
     KeyType key_type, Slice key, Slice value_slice,
     SchemaPackingProvider* schema_packing_provider /*null ok*/) {
@@ -153,35 +189,25 @@ Result<std::string> DocDBValueToDebugStrInternal(
   if (!value_slice.empty() || key_type != KeyType::kIntentKey) {
     dockv::Value v;
     auto control_fields = VERIFY_RESULT(dockv::ValueControlFields::Decode(&value_slice));
-    if (!value_slice.TryConsumeByte(dockv::ValueEntryTypeAsChar::kPackedRow)) {
+    auto packed_row_version = dockv::GetPackedRowVersion(value_slice);
+    if (!packed_row_version) {
       RETURN_NOT_OK_PREPEND(
           v.Decode(value_slice, control_fields),
           Format("Error: failed to decode value $0", prefix));
       return prefix + v.ToString();
     } else {
+      value_slice.consume_byte();
       auto packing = VERIFY_RESULT(packed_row_to_packing_info_func(&value_slice));
-      prefix += "{";
-      for (size_t i = 0; i != packing->columns(); ++i) {
-        auto slice = packing->GetValue(i, value_slice);
-        const auto& column_data = packing->column_packing_data(i);
-        prefix += " ";
-        prefix += column_data.id.ToString();
-        prefix += ": ";
-        auto column_control_fields = VERIFY_RESULT(dockv::ValueControlFields::Decode(&slice));
-        if (slice.empty()) {
-          prefix += "NULL";
-        } else {
-          dockv::PrimitiveValue pv;
-          auto status = pv.DecodeFromValue(slice);
-          if (!status.ok()) {
-            prefix += status.ToString();
-          } else {
-            prefix += pv.ToString();
-          }
-        }
-        prefix += column_control_fields.ToString();
+      switch (*packed_row_version) {
+        case dockv::PackedRowVersion::kV1:
+          prefix += VERIFY_RESULT(PackedRowToString<dockv::PackedRowDecoderV1>(
+              *packing, value_slice));
+          break;
+        case dockv::PackedRowVersion::kV2:
+          prefix += VERIFY_RESULT(PackedRowToString<dockv::PackedRowDecoderV2>(
+              *packing, value_slice));
+          break;
       }
-      prefix += " }";
       prefix += control_fields.ToString();
       return prefix;
     }

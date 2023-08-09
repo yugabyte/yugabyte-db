@@ -236,7 +236,7 @@ TEST_F_EX(RetryableRequestTest,
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_update_majority_replicated) = true;
   for (int i = 0; i < kRows; i++) {
     thread_holder.AddThreadFunctor([this, i] {
-      ASSERT_OK(PutKeyValue(client_->NewSession().get(), std::to_string(i), std::to_string(i)));
+      ASSERT_OK(PutKeyValue(client_->NewSession(60s).get(), std::to_string(i), std::to_string(i)));
     });
   }
 

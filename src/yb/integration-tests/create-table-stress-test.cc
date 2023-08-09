@@ -271,7 +271,7 @@ TEST_F(CreateTableStressTest, GetTableLocationsBenchmark) {
 
   LOG(INFO) << "LOCK PROFILE\n" << profile.str();
   LOG(INFO) << "BENCHMARK HISTOGRAM:";
-  hist->histogram()->DumpHumanReadable(&LOG(INFO));
+  hist->underlying()->DumpHumanReadable(&LOG(INFO));
 }
 
 class CreateMultiHBTableStressTest : public CreateTableStressTest,
