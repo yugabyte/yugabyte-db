@@ -310,7 +310,7 @@ To run RabbitMQ with YugabyteDB, do the following:
           String[] nodes = masterAddresses.split(",");
           hostname = nodes[0].split(":")[0];
 
-          streamId = "962c322b60af4b9abd0b195fc6e3f045";
+          streamId = "31dd4440caca46038ba4a9365bb89d36";
 
           tableIncludeList = "public.test";
 
