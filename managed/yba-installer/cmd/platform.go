@@ -100,6 +100,11 @@ func (plat Platform) Name() string {
 	return plat.name
 }
 
+// Version gets the version
+func (plat Platform) Version() string {
+	return plat.version
+}
+
 // Install YBA service.
 func (plat Platform) Install() error {
 	log.Info("Starting Platform install")

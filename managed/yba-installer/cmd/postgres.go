@@ -92,6 +92,12 @@ func (pg Postgres) Name() string {
 	return pg.name
 }
 
+// Version gets the version.
+func (pg Postgres) Version() string {
+	return pg.version
+}
+
+// Version gets the version
 func (pg Postgres) getPgUserName() string {
 	return viper.GetString("postgres.install.username")
 }

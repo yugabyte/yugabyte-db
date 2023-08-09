@@ -78,6 +78,11 @@ func (prom Prometheus) Name() string {
 	return prom.name
 }
 
+// Version gets the version
+func (prom Prometheus) Version() string {
+	return prom.version
+}
+
 // Install the prometheus service.
 func (prom Prometheus) Install() error {
 	log.Info("Starting Prometheus install")
