@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
@@ -78,28 +77,6 @@ func initAfterFlagsParsed(cmdName string) {
 	initServices(cmdName)
 }
 
-func writeDefaultConfig() {
-	cfgFile, err := os.Create(common.InputFile())
-	if err != nil {
-		log.Fatal("could not create input file: " + err.Error())
-	}
-	defer cfgFile.Close()
-
-	_, err = cfgFile.WriteString(config.ReferenceYbaCtlConfig)
-	if err != nil {
-		log.Fatal("could not create input file: " + err.Error())
-	}
-	err = os.Chmod(common.InputFile(), 0644)
-	if err != nil {
-		log.Warn("failed to update config file permissions: " + err.Error())
-	}
-	if !common.HasSudoAccess() {
-		// Update default installRoot to $HOME/yugabyte
-		common.SetYamlValue(common.InputFile(), "installRoot",
-			filepath.Join(common.GetUserHomeDir(), "yugabyte"))
-	}
-}
-
 func ensureInstallerConfFile() {
 	_, err := os.Stat(common.InputFile())
 	if err != nil && !os.IsNotExist(err) {
@@ -115,7 +92,7 @@ func ensureInstallerConfFile() {
 			common.DefaultNo)
 
 		// Copy over reference yaml before checking the user choice.
-		writeDefaultConfig()
+		config.WriteDefaultConfig()
 
 		if !userChoice {
 			log.Info(fmt.Sprintf(
