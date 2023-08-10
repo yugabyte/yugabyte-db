@@ -26,7 +26,7 @@ YugabyteDB Voyager manages the entire lifecycle of a database migration, includi
 - Free and completely open source.
 - Supports widely used databases for migration and doesn't require changes to the [source databases](#source-databases) in most cases.
 - Supports all YugabyteDB products (YugabyteDB stable versions 2.14.5.0 and later, and preview versions 2.17.0.0 and later) as the [target database](#target-database).
-- Provides a unified [CLI](reference/yb-voyager-cli/) experience for all different source databases.
+- Provides a unified [CLI](../reference/yb-voyager-cli/) experience for all different source databases.
 - Auto-tuneable based on workloads, by analyzing the target cluster capacity; runs parallel jobs by default.
 - Monitor the import status, and expected time for data export and import to complete using progress bars.
 - In case of failures, data import can be resumed.
@@ -48,30 +48,30 @@ YugabyteDB Voyager supports migrating schema and data from your existing RDBMS, 
 
 You can migrate data to any one of the three YugabyteDB [products](https://www.yugabyte.com/compare-products/) (YugabyteDB Voyager supports YugabyteDB stable versions 2.14.5.0 and later, and preview versions 2.17.0.0 and later.). To create a cluster:
 
-- Create a local YugabyteDB cluster using the [Quick start](../quick-start/).
-- Deploy a YugabyteDB Anywhere universe; refer to [Create YugabyteDB universe deployments](../yugabyte-platform/create-deployments/).
-- [Deploy a cluster in YugabyteDB Managed](../yugabyte-cloud/cloud-basics/).
+- Create a local YugabyteDB cluster using the [Quick start](../../quick-start/).
+- Deploy a YugabyteDB Anywhere universe; refer to [Create YugabyteDB universe deployments](../../yugabyte-platform/create-deployments/).
+- [Deploy a cluster in YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/).
 
 ## Migration workflow
 
 A typical migration workflow using yb-voyager consists of the following steps:
 
-- [Install yb-voyager](install-yb-voyager/#install-yb-voyager).
-- Prepare the [source](migrate-steps/#prepare-the-source-database) database.
-- Prepare the [target](migrate-steps/#prepare-the-target-database) database.
-- Convert the source database schema to PostgreSQL format using the [`yb-voyager export schema`](migrate-steps/#export-schema) command.
-- Generate a *Schema Analysis Report* using the [`yb-voyager analyze-schema`](migrate-steps/#analyze-schema) command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB.
-- [Manually](migrate-steps/#manually-edit-the-schema) change the exported schema as suggested in the Schema Analysis Report.
-- Dump the source database in the local files on the machine where yb-voyager is installed, using the [`yb-voyager export data`](migrate-steps/#export-data) command.
-- Import the schema to the target YugabyteDB database using the [`yb-voyager import schema`](migrate-steps/#import-schema) command.
-- Import the data to the target YugabyteDB database using the [`yb-voyager import data`](migrate-steps/#import-data) command.
-- Import indexes and triggers to the target YugabyteDB database using the [`yb-voyager import schema`](migrate-steps/#import-indexes-and-triggers) command with an additional `--post-import-data` flag.
+- [Install yb-voyager](../install-yb-voyager/#install-yb-voyager).
+- Prepare the [source](../migrate-steps/#prepare-the-source-database) database.
+- Prepare the [target](../migrate-steps/#prepare-the-target-database) database.
+- Convert the source database schema to PostgreSQL format using the [`yb-voyager export schema`](../migrate-steps/#export-schema) command.
+- Generate a *Schema Analysis Report* using the [`yb-voyager analyze-schema`](../migrate-steps/#analyze-schema) command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB.
+- [Manually](../migrate-steps/#manually-edit-the-schema) change the exported schema as suggested in the Schema Analysis Report.
+- Dump the source database in the local files on the machine where yb-voyager is installed, using the [`yb-voyager export data`](../migrate-steps/#export-data) command.
+- Import the schema to the target YugabyteDB database using the [`yb-voyager import schema`](../migrate-steps/#import-schema) command.
+- Import the data to the target YugabyteDB database using the [`yb-voyager import data`](../migrate-steps/#import-data) command.
+- Import indexes and triggers to the target YugabyteDB database using the [`yb-voyager import schema`](../migrate-steps/#import-indexes-and-triggers) command with an additional `--post-import-data` flag.
 
 ![Migration workflow](/images/migrate/migration-workflow.png)
 
 <div class="row">
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="install-yb-voyager/">
+    <a class="section-link icon-offset" href="../install-yb-voyager/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/checklist.png" aria-hidden="true" />
         <div class="title">Install</div>
@@ -83,7 +83,7 @@ A typical migration workflow using yb-voyager consists of the following steps:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="migrate-steps/">
+    <a class="section-link icon-offset" href="../migrate-steps/">
       <div class="head">
        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
         <div class="title">Migration steps</div>
@@ -94,7 +94,7 @@ A typical migration workflow using yb-voyager consists of the following steps:
     </a>
   </div>
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="performance/">
+    <a class="section-link icon-offset" href="../performance/">
       <div class="head">
        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true">
         <div class="title">Performance</div>
@@ -105,7 +105,7 @@ A typical migration workflow using yb-voyager consists of the following steps:
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="known-issues/">
+    <a class="section-link icon-offset" href="../known-issues/">
       <div class="head">
        <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true">
         <div class="title">Known issues</div>
@@ -116,7 +116,7 @@ A typical migration workflow using yb-voyager consists of the following steps:
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="reference/">
+    <a class="section-link icon-offset" href="../reference/">
       <div class="head">
        <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true">
         <div class="title">Reference</div>
@@ -127,7 +127,7 @@ A typical migration workflow using yb-voyager consists of the following steps:
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="release-notes/">
+    <a class="section-link icon-offset" href="../release-notes/">
       <div class="head">
        <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true">
         <div class="title">What's new</div>
