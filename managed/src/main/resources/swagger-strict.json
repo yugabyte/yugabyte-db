@@ -11969,6 +11969,15 @@
       },
       "type" : "object"
     },
+    "UserOIDCAuthToken" : {
+      "properties" : {
+        "oidcAuthToken" : {
+          "description" : "User OIDC Auth token",
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "UserProfileData" : {
       "description" : "User profile data. The API and UI use this to validate form data.",
       "properties" : {
@@ -12073,6 +12082,10 @@
           "description" : "LDAP Specified Role",
           "type" : "boolean"
         },
+        "oidcJwtAuthToken" : {
+          "readOnly" : true,
+          "type" : "string"
+        },
         "role" : {
           "description" : "User role",
           "enum" : [ "ConnectOnly", "ReadOnly", "BackupAdmin", "Admin", "SuperAdmin" ],
@@ -12132,6 +12145,10 @@
         "ldapSpecifiedRole" : {
           "description" : "LDAP Specified Role",
           "type" : "boolean"
+        },
+        "oidcJwtAuthToken" : {
+          "readOnly" : true,
+          "type" : "string"
         },
         "role" : {
           "description" : "User role",
@@ -22833,6 +22850,42 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Change a user's password",
+        "tags" : [ "User management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/users/{uUUID}/oidc_auth_token" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "retrieveOIDCAuthToken",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UserOIDCAuthToken"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Retrieve OIDC auth token",
         "tags" : [ "User management" ]
       }
     },

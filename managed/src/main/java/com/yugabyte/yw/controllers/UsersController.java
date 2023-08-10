@@ -7,7 +7,8 @@ import static com.yugabyte.yw.models.Users.UserType;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -17,6 +18,8 @@ import com.yugabyte.yw.forms.UserRegisterFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.Role;
+import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
@@ -44,7 +47,7 @@ public class UsersController extends AuthenticatedController {
   private static final List<String> specialCharacters =
       ImmutableList.of("!", "@", "#", "$", "%", "^", "&", "*");
 
-  @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private RuntimeConfGetter confGetter;
 
   private final PasswordPolicyService passwordPolicyService;
   private final UserService userService;
@@ -116,7 +119,7 @@ public class UsersController extends AuthenticatedController {
 
     UserRegisterFormData formData = form.get();
 
-    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth")) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.useOauth)) {
       byte[] passwordOidc = new byte[16];
       new Random().nextBytes(passwordOidc);
       String generatedPassword = new String(passwordOidc, Charset.forName("UTF-8"));
@@ -174,6 +177,30 @@ public class UsersController extends AuthenticatedController {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Unable to delete user UUID: " + userUUID);
     }
+  }
+
+  /**
+   * GET endpoint for retrieving the OIDC auth token for a given user.
+   *
+   * @return JSON response with users OIDC auth token.
+   */
+  @ApiOperation(
+      value = "Retrieve OIDC auth token",
+      nickname = "retrieveOIDCAuthToken",
+      response = Users.UserOIDCAuthToken.class)
+  public Result retrieveOidcAuthToken(UUID customerUUID, UUID userUuid, Http.Request request) {
+    if (!confGetter.getGlobalConf(GlobalConfKeys.oidcFeatureEnhancements)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "yb.security.oidc_feature_enhancements flag is not enabled.");
+    }
+    Customer.getOrBadRequest(customerUUID);
+    Users user = Users.getOrBadRequest(userUuid);
+
+    Users.UserOIDCAuthToken token = new Users.UserOIDCAuthToken(user.getUnmakedOidcJwtAuthToken());
+    auditService()
+        .createAuditEntry(
+            request, Audit.TargetType.User, userUuid.toString(), Audit.ActionType.SetSecurity);
+    return PlatformResults.withData(token);
   }
 
   private void checkUserOwnership(UUID customerUUID, UUID userUUID, Users user) {

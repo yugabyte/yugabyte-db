@@ -33,6 +33,8 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.user.UserService;
@@ -69,9 +71,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -84,6 +88,8 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.input.ReversedLinesFileReader;
+import org.pac4j.core.profile.CommonProfile;
+import org.pac4j.oidc.profile.OidcProfileDefinition;
 import org.pac4j.play.java.Secure;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -129,6 +135,8 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private LoginHandler loginHandler;
 
+  @Inject private RuntimeConfGetter confGetter;
+
   private final ApiHelper apiHelper;
 
   private final RuntimeConfigFactory runtimeConfigFactory;
@@ -138,6 +146,7 @@ public class SessionController extends AbstractPlatformController {
   public static final String CUSTOMER_UUID = "customerUUID";
   private static final Duration FOREVER = Duration.ofSeconds(2147483647);
   public static final String FILTERED_LOGS_SCRIPT = "bin/filtered_logs.sh";
+  private static final String OIDC_TOKEN_EXPIRATION = "expiration";
 
   @Inject
   public SessionController(
@@ -395,6 +404,18 @@ public class SessionController extends AbstractPlatformController {
         null,
         request.remoteAddress());
 
+    try {
+      // Persist the JWT auth token in case of successful login.
+      CommonProfile profile = thirdPartyLoginHandler.getProfile(request);
+      if (profile.containsAttribute("id_token")) {
+        user.setOidcJwtAuthToken((String) profile.getAttribute("id_token"));
+        user.save();
+      }
+    } catch (Exception e) {
+      // Pass
+      log.error(String.format("Failed to retrieve user profile %s", e.getMessage()));
+    }
+
     return thirdPartyLoginHandler
         .redirectTo(request.queryString("orig_url").orElse(null))
         .withCookies(
@@ -405,6 +426,58 @@ public class SessionController extends AbstractPlatformController {
             Cookie.builder("userId", user.getUuid().toString())
                 .withSecure(request.secure())
                 .withHttpOnly(false)
+                .build());
+  }
+
+  @ApiOperation(value = "UI_ONLY", hidden = true)
+  @Secure(clients = "OidcClient")
+  public Result fetchJWTToken(Http.Request request) {
+    if (!confGetter.getGlobalConf(GlobalConfKeys.oidcFeatureEnhancements)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "yb.security.oidc_feature_enhancements flag is not enabled.");
+    }
+
+    String idToken = "";
+    String preferredUsername = thirdPartyLoginHandler.getEmailFromCtx(request);
+    Instant expirationTime = null;
+    try {
+      // Persist the JWT auth token in case of successful login.
+      CommonProfile profile = thirdPartyLoginHandler.getProfile(request);
+      if (profile.containsAttribute(OidcProfileDefinition.ID_TOKEN)) {
+        idToken = (String) profile.getAttribute(OidcProfileDefinition.ID_TOKEN);
+      }
+      if (profile.containsAttribute(OidcProfileDefinition.PREFERRED_USERNAME)) {
+        preferredUsername = (String) profile.getAttribute(OidcProfileDefinition.PREFERRED_USERNAME);
+      }
+      if (profile.containsAttribute(OIDC_TOKEN_EXPIRATION)) {
+        Date expTime = (Date) profile.getAttribute(OIDC_TOKEN_EXPIRATION);
+        expirationTime = expTime.toInstant();
+      }
+    } catch (Exception e) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format("Failed to retrieve user profile %s", e.getMessage()));
+    }
+    Duration maxAgeInSeconds = Duration.ofMinutes(5L);
+    if (expirationTime != null) {
+      maxAgeInSeconds = Duration.between(Instant.now(), expirationTime);
+    }
+    String redirectURI = request.queryString("orig_url").orElse("/");
+
+    return thirdPartyLoginHandler
+        .redirectTo(redirectURI)
+        .withCookies(
+            Cookie.builder("jwt_token", idToken)
+                .withSecure(request.secure())
+                .withHttpOnly(false)
+                .withMaxAge(maxAgeInSeconds)
+                .withPath(redirectURI)
+                .build(),
+            Cookie.builder("email", preferredUsername)
+                .withSecure(request.secure())
+                .withHttpOnly(false)
+                .withMaxAge(maxAgeInSeconds)
+                .withPath(redirectURI)
                 .build());
   }
 

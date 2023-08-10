@@ -17,6 +17,7 @@ import io.ebean.annotation.Encrypted;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import io.swagger.annotations.ApiModelProperty.AccessMode;
 import java.math.BigInteger;
 import java.security.SecureRandom;
 import java.time.Duration;
@@ -29,6 +30,7 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.joda.time.DateTime;
@@ -179,6 +181,20 @@ public class Users extends Model {
   @Column(nullable = false)
   @ApiModelProperty(value = "LDAP Specified Role")
   private boolean ldapSpecifiedRole;
+
+  @Encrypted
+  @Setter
+  @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
+  private String oidcJwtAuthToken;
+
+  public String getOidcJwtAuthToken() {
+    return null;
+  }
+
+  @JsonIgnore
+  public String getUnmakedOidcJwtAuthToken() {
+    return oidcJwtAuthToken;
+  }
 
   public static final Finder<UUID, Users> find = new Finder<UUID, Users>(Users.class) {};
 
@@ -412,5 +428,12 @@ public class Users extends Model {
 
   public static List<Users> getAllReadOnly() {
     return find.query().where().eq("role", Role.ReadOnly).findList();
+  }
+
+  @RequiredArgsConstructor
+  public static class UserOIDCAuthToken {
+
+    @ApiModelProperty(value = "User OIDC Auth token")
+    public final String oidcAuthToken;
   }
 }
