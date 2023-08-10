@@ -1,9 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.forms;
+package com.yugabyte.yw.forms.rbac;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.yugabyte.yw.common.rbac.PermissionInfoIdentifier;
+import com.yugabyte.yw.common.rbac.Permission;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Set;
@@ -21,6 +21,6 @@ public class RoleFormData {
   public String description;
 
   @ApiModelProperty(value = "List of permissions given to the role", required = true)
-  @JsonProperty("permission_list")
-  public Set<PermissionInfoIdentifier> permissionList;
+  @JsonProperty("permissionList")
+  public Set<Permission> permissionList;
 }
