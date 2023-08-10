@@ -975,7 +975,7 @@ TEST_F(TabletSplitYedisTableTest, BlockSplittingYedisTablet) {
         ASSERT_RESULT(this->mini_cluster()->GetLeaderMiniMaster()))->catalog_manager();
 
     auto s = DoSplitTablet(catalog_manager, *peer->shared_tablet());
-    EXPECT_NOT_OK(s);
+    EXPECT_NOK(s);
     EXPECT_TRUE(s.IsNotSupported()) << s.ToString();
   }
 }

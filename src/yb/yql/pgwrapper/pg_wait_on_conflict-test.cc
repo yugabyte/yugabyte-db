@@ -393,7 +393,7 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(SpuriousDeadlockWrites)) {
       ASSERT_TRUE(first_select.WaitFor(5s * kTimeMultiplier));
 
       if (i == 0) {
-        EXPECT_NOT_OK(conn.Execute("UPDATE foo SET v=0 WHERE k=1"));
+        EXPECT_NOK(conn.Execute("UPDATE foo SET v=0 WHERE k=1"));
       } else if (i == 1) {
         EXPECT_OK(conn.Execute("UPDATE foo SET v=1 WHERE k=2"));
         EXPECT_OK(conn.CommitTransaction());

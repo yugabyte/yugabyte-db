@@ -547,7 +547,7 @@ TEST_F(QLTestAnalyzer, TestIndexBasedOnJsonAttribute) {
                            "with transactions = {'enabled':true};"));
 
   EXPECT_OK(processor->Run("CREATE INDEX i1 ON t (j->>'a');"));
-  EXPECT_NOT_OK(processor->Run("CREATE INDEX i2 ON t (j->3);"));
+  EXPECT_NOK(processor->Run("CREATE INDEX i2 ON t (j->3);"));
 }
 
 TEST_F(QLTestAnalyzer, TestTruncate) {
