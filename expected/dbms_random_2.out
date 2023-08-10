@@ -44,7 +44,7 @@ SELECT dbms_random.string('U',5);
 SELECT dbms_random.string('P',2);
  string 
 --------
- fo
+ go
 (1 row)
 
 SELECT dbms_random.string('x',4);
