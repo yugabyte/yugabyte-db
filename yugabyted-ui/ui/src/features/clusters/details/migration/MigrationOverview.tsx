@@ -53,19 +53,19 @@ const useStyles = makeStyles((theme) => ({
 
 const migrationDataList = [
   {
-    name: "Migration ABC",
+    name: "Migration UUID1",
     complexity: "Easy",
     step: 0,
     starttime: "11/07/2022, 09:55",
   },
   {
-    name: "Migration KLM",
+    name: "Migration UUID2",
     complexity: "Medium",
     step: 1,
     starttime: "11/07/2022, 09:53",
   },
   {
-    name: "Migration XYZ",
+    name: "Migration UUID3",
     complexity: "Hard",
     step: 3,
     starttime: "11/01/2022, 09:52",

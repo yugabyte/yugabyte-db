@@ -35,15 +35,15 @@ const CompletionComponent = (theme: Theme) => (completionPercentage: number) => 
       : STATUS_TYPES.IN_PROGRESS;
 
   return (
-    <Box display="flex" alignItems="center" gridGap={theme.spacing(1)} maxWidth={400}>
-      <Box style={{ width: "16px" }}>
+    <Box display="flex" alignItems="center" maxWidth={400}>
+      <Box mr={0.5}>
         <YBStatus type={statusType} />
       </Box>
       {completionPercentage === 100 && <Box>Complete</Box>}
       {completionPercentage === 0 && <Box>Not started</Box>}
       {completionPercentage !== 100 && completionPercentage !== 0 && (
         <>
-          <Box>{completionPercentage}%</Box>
+          <Box mr={1}>{completionPercentage}%</Box>
           <YBProgress value={completionPercentage} color={theme.palette.primary[500]} />
         </>
       )}
