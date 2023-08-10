@@ -40,6 +40,7 @@ METRIC_DECLARE_counter(pg_response_cache_hits);
 METRIC_DECLARE_counter(pg_response_cache_renew_soft);
 METRIC_DECLARE_counter(pg_response_cache_renew_hard);
 DECLARE_bool(ysql_enable_read_request_caching);
+DECLARE_bool(ysql_catalog_preload_additional_tables);
 DECLARE_string(ysql_catalog_preload_additional_table_list);
 DECLARE_uint64(TEST_pg_response_cache_catalog_read_time_usec);
 DECLARE_uint64(TEST_committed_history_cutoff_initial_value_usec);
@@ -53,13 +54,17 @@ Status EnableCatCacheEventLogging(PGConn* conn) {
   return conn->Execute("SET yb_debug_log_catcache_events = ON");
 }
 
-template<bool CacheEnabled, bool AdditionalCatalog = false>
+template<bool CacheEnabled, bool AdditionalCatalogList = false,
+         bool AdditionalCatalogTables = false>
 class ConfigurablePgCatalogPerfTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
     FLAGS_ysql_enable_read_request_caching = CacheEnabled;
-    if (AdditionalCatalog) {
+    if (AdditionalCatalogList) {
       FLAGS_ysql_catalog_preload_additional_table_list = "pg_statistic,pg_invalid";
+    }
+    if (AdditionalCatalogTables) {
+      FLAGS_ysql_catalog_preload_additional_tables = true;
     }
     PgMiniTestBase::SetUp();
     metrics_.emplace(
@@ -177,7 +182,9 @@ class ConfigurablePgCatalogPerfTest : public PgMiniTestBase {
 
 using PgCatalogPerfTest = ConfigurablePgCatalogPerfTest<false>;
 using PgCatalogWithCachePerfTest = ConfigurablePgCatalogPerfTest<true>;
-using PgPreloadAdditionalCatalogTest = ConfigurablePgCatalogPerfTest<true, true>;
+using PgPreloadAdditionalCatalogListTest = ConfigurablePgCatalogPerfTest<true, true>;
+using PgPreloadAdditionalCatalogTablesTest = ConfigurablePgCatalogPerfTest<true, false, true>;
+using PgPreloadAdditionalCatalogBothTest = ConfigurablePgCatalogPerfTest<true, true, true>;
 
 class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithCachePerfTest {
  protected:
@@ -361,9 +368,35 @@ TEST_F_EX(PgCatalogPerfTest,
 }
 
 TEST_F_EX(PgCatalogPerfTest,
-          RPCCountOnStartupAdditionalPreload,
-          PgPreloadAdditionalCatalogTest) {
+          RPCCountOnStartupAdditionalCatListPreload,
+          PgPreloadAdditionalCatalogListTest) {
   // No failures even there are invalid PG catalog on the flag list.
+  const auto connector = [this] {
+    RETURN_NOT_OK(Connect());
+    return static_cast<Status>(Status::OK());
+  };
+
+  const auto first_connect_rpc_count = ASSERT_RESULT(MetricDeltas(connector)).read_rpc;
+  // This value should be no less than the first connection RPC value in the StartupRPCCount test.
+  ASSERT_EQ(first_connect_rpc_count, 7);
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          RPCCountOnStartupAdditionalCatTablesPreload,
+          PgPreloadAdditionalCatalogTablesTest) {
+  const auto connector = [this] {
+    RETURN_NOT_OK(Connect());
+    return static_cast<Status>(Status::OK());
+  };
+
+  const auto first_connect_rpc_count = ASSERT_RESULT(MetricDeltas(connector)).read_rpc;
+  // This value should be no less than the first connection RPC value in the StartupRPCCount test.
+  ASSERT_EQ(first_connect_rpc_count, 7);
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          RPCCountOnStartupAdditionalCatBothPreload,
+          PgPreloadAdditionalCatalogBothTest) {
   const auto connector = [this] {
     RETURN_NOT_OK(Connect());
     return static_cast<Status>(Status::OK());
