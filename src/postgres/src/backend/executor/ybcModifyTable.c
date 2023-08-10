@@ -236,6 +236,7 @@ static void YBCExecWriteStmt(YBCPgStatement ybc_stmt,
 	}
 }
 
+/* YB_TODO: No need to return Oid. */
 /*
  * Utility method to insert a tuple into the relation's backing YugaByte table.
  */
@@ -253,18 +254,6 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 	Bitmapset      *pkey    = YBGetTablePrimaryKeyBms(rel);
 	YBCPgStatement insert_stmt = NULL;
 	bool           is_null  = false;
-
-#ifdef YB_TODO
-	/* YB_TODO(neil@yugabyte)
-	 * - OID is now a regular column
-	 * - Generate a new oid for this row if needed
-	 */
-	if (rel->rd_rel->relhasoids)
-	{
-		if (!OidIsValid(HeapTupleGetOid(tuple)))
-			HeapTupleSetOid(tuple, GetNewOid(rel));
-	}
-#endif
 
 	/* Create the INSERT request and add the values from the tuple. */
 	HandleYBStatus(YBCPgNewInsert(dboid,
@@ -358,6 +347,7 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 	return YbHeapTupleGetOid(tuple);
 }
 
+/* YB_TODO: No need to return Oid. */
 Oid YBCExecuteInsert(Relation rel,
                      TupleDesc tupleDesc,
                      HeapTuple tuple,
@@ -371,6 +361,7 @@ Oid YBCExecuteInsert(Relation rel,
 	                             NULL /* ybctid */);
 }
 
+/* YB_TODO: No need to return Oid. */
 Oid YBCExecuteInsertForDb(Oid dboid,
                           Relation rel,
                           TupleDesc tupleDesc,
@@ -388,6 +379,7 @@ Oid YBCExecuteInsertForDb(Oid dboid,
 	                                ybctid);
 }
 
+/* YB_TODO: Unused function. */
 Oid YBCExecuteNonTxnInsert(Relation rel,
                            TupleDesc tupleDesc,
                            HeapTuple tuple,
@@ -401,6 +393,7 @@ Oid YBCExecuteNonTxnInsert(Relation rel,
 	                                   NULL /* ybctid */);
 }
 
+/* YB_TODO: No need to return Oid. */
 Oid YBCExecuteNonTxnInsertForDb(Oid dboid,
                                 Relation rel,
                                 TupleDesc tupleDesc,
@@ -456,6 +449,7 @@ Oid YBCHeapInsert(ResultRelInfo *resultRelInfo,
 	return YBCHeapInsertForDb(resultRelInfo, dboid, slot, tuple, estate, NULL /* ybctid */);
 }
 
+/* YB_TODO: No need to return Oid. */
 Oid YBCHeapInsertForDb(ResultRelInfo *resultRelInfo,
 					   Oid dboid,
                        TupleTableSlot* slot,
@@ -629,7 +623,7 @@ void YBCExecuteInsertIndexForDb(Oid dboid,
 }
 
 bool YBCExecuteDelete(Relation rel,
-					  TupleTableSlot *slot,
+					  TupleTableSlot *planSlot,
 					  List *returning_columns,
 					  bool target_tuple_fetched,
 					  bool is_single_row_txn,
@@ -659,22 +653,12 @@ bool YBCExecuteDelete(Relation rel,
 	 * from tuple values.
 	 */
 	if (target_tuple_fetched)
-		ybctid = YBCGetYBTupleIdFromSlot(slot);
+		ybctid = YBCGetYBTupleIdFromSlot(planSlot);
 	else
 	{
-		/*
-		 * YB_TODO(neil@yugabyte) Write Yugabyte API to work with slot.
-		 *
-		 * Current Yugabyte API works with HeapTuple instead of slot.
-		 * - Create tuple as a workaround to compile.
-		 * - Pass slot to Yugabyte call once the API is fixed.
-		 *
-		 * Postgres change ExecMaterializeSlot API.
-		 * HeapTuple tuple = ExecMaterializeSlot(slot);
-		 */
 		bool shouldFree = true;
-		HeapTuple tuple = ExecFetchSlotHeapTuple(slot, true, &shouldFree);
-		ybctid = YBCGetYBTupleIdFromTuple(rel, tuple, slot->tts_tupleDescriptor);
+		HeapTuple tuple = ExecFetchSlotHeapTuple(planSlot, true, &shouldFree);
+		ybctid = YBCGetYBTupleIdFromTuple(rel, tuple, planSlot->tts_tupleDescriptor);
 		if (shouldFree)
 			pfree(tuple);
 	}
@@ -784,8 +768,8 @@ bool YBCExecuteDelete(Relation rel,
 		Assert(rows_affected_count == 1);
 		HandleYBStatus(YBCPgDmlFetch(delete_stmt,
 									 tupleDesc->natts,
-									 (uint64_t *) slot->tts_values,
-									 slot->tts_isnull,
+									 (uint64_t *) planSlot->tts_values,
+									 planSlot->tts_isnull,
 									 &syscols,
 									 &has_data));
 		Assert(has_data);
@@ -795,15 +779,15 @@ bool YBCExecuteDelete(Relation rel,
 		 * to ensure that returning_columns contains all the
 		 * attributes that may be referenced during subsequent evaluations.
 		 */
-		slot->tts_nvalid = tupleDesc->natts;
-		slot->tts_flags &= ~TTS_FLAG_EMPTY;
+		planSlot->tts_nvalid = tupleDesc->natts;
+		planSlot->tts_flags &= ~TTS_FLAG_EMPTY;
 
 		/*
 		 * The Result is getting dummy TLEs in place of missing attributes,
 		 * so we should fix the tuple table slot's descriptor before
 		 * the RETURNING clause expressions are evaluated.
 		 */
-		slot->tts_tupleDescriptor = CreateTupleDescCopyConstr(tupleDesc);
+		planSlot->tts_tupleDescriptor = CreateTupleDescCopyConstr(tupleDesc);
 	}
 
 	/* Cleanup. */
@@ -856,41 +840,13 @@ void YBCExecuteDeleteIndex(Relation index,
 	YBCPgDeleteStatement(delete_stmt);
 }
 
-/* YB_REVIEW(neil) Revisit later. */
-bool
-YBCTupleTableExecuteUpdate(Relation rel, ResultRelInfo *resultRelInfo,
-						   TupleTableSlot *slot, HeapTuple oldtuple,
-						   EState *estate, ModifyTable *mt_plan,
-						   bool target_tuple_fetched, bool is_single_row_txn,
-						   Bitmapset *updatedCols, bool canSetTag)
-{
-	bool	  shouldFree = true;
-	HeapTuple tuple = ExecFetchSlotHeapTuple(slot, true, &shouldFree);
-	bool	  result;
-
-	/* Update the tuple with table oid */
-	slot->tts_tableOid = RelationGetRelid(rel);
-	tuple->t_tableOid = slot->tts_tableOid;
-
-	/* Perform the update, and copy the resulting ItemPointer */
-	result = YBCExecuteUpdate(rel, resultRelInfo, slot, oldtuple, tuple, estate,
-							  mt_plan, target_tuple_fetched, is_single_row_txn,
-							  updatedCols, canSetTag);
-	ItemPointerCopy(&tuple->t_self, &slot->tts_tid);
-
-	if (shouldFree)
-		pfree(tuple);
-
-	return result;
-}
-
 /* YB_TODO: relation is present in resultRelInfo:
  * resultRelInfo->ri_RelationDesc*/
 bool YBCExecuteUpdate(Relation rel,
 					  ResultRelInfo *resultRelInfo,
+					  TupleTableSlot *planSlot,
 					  TupleTableSlot *slot,
 					  HeapTuple oldtuple,
-					  HeapTuple tuple,
 					  EState *estate,
 					  ModifyTable *mt_plan,
 					  bool target_tuple_fetched,
@@ -910,6 +866,10 @@ bool YBCExecuteUpdate(Relation rel,
 	/* is_single_row_txn always implies target tuple wasn't fetched. */
 	Assert(!is_single_row_txn || !target_tuple_fetched);
 
+	/* YB_TODO: Should materialize arg be true - check other usages as well that you have introduced? */
+	bool	  shouldFree = true;
+	HeapTuple tuple = ExecFetchSlotHeapTuple(slot, true, &shouldFree);
+
 	/* Create update statement. */
 	HandleYBStatus(YBCPgNewUpdate(dboid,
 								  relid,
@@ -924,7 +884,7 @@ bool YBCExecuteUpdate(Relation rel,
 	 * from tuple values.
 	 */
 	if (target_tuple_fetched)
-		ybctid = YBCGetYBTupleIdFromSlot(slot);
+		ybctid = YBCGetYBTupleIdFromSlot(planSlot);
 	else
 		ybctid = YBCGetYBTupleIdFromTuple(rel, tuple, inputTupleDesc);
 
@@ -1083,8 +1043,8 @@ bool YBCExecuteUpdate(Relation rel,
 	 */
 	if (mt_plan->ybReturningColumns && rows_affected_count > 0)
 	{
-		Datum		   *values    = slot->tts_values;
-		bool		   *isnull    = slot->tts_isnull;
+		Datum		   *values    = planSlot->tts_values;
+		bool		   *isnull    = planSlot->tts_isnull;
 		bool			has_data   = false;
 		YBCPgSysColumns	syscols;
 
@@ -1115,15 +1075,15 @@ bool YBCExecuteUpdate(Relation rel,
 		 * to ensure that mt_plan->ybReturningColumns contains all the
 		 * attributes that may be referenced during subsequent evaluations.
 		 */
-		slot->tts_nvalid = outputTupleDesc->natts;
-		slot->tts_flags &= ~TTS_FLAG_EMPTY;
+		planSlot->tts_nvalid = outputTupleDesc->natts;
+		planSlot->tts_flags &= ~TTS_FLAG_EMPTY;
 
 		/*
 		 * The Result is getting dummy TLEs in place of missing attributes,
 		 * so we should fix the tuple table slot's descriptor before
 		 * the RETURNING clause expressions are evaluated.
 		 */
-		slot->tts_tupleDescriptor = CreateTupleDescCopyConstr(outputTupleDesc);
+		planSlot->tts_tupleDescriptor = CreateTupleDescCopyConstr(outputTupleDesc);
 	}
 
 	/* Cleanup. */
@@ -1134,8 +1094,11 @@ bool YBCExecuteUpdate(Relation rel,
 	 */
 	if (YBRelHasSecondaryIndices(rel))
 	{
-		HEAPTUPLE_YBCTID(tuple) = ybctid;
+		TABLETUPLE_YBCTID(slot) = ybctid;
 	}
+
+	if (shouldFree)
+		pfree(tuple);
 
 	/*
 	 * For batched statements rows_affected_count remains at its initial value:
@@ -1216,48 +1179,36 @@ YBCExecuteUpdateLoginAttempts(Oid roleid,
 	relation_close(rel, AccessShareLock);
 	return rows_affected_count > 0;
 }
-
-/* YB_REVIEW(neil) Revisit later. */
-Oid
-YBCTupleTableExecuteUpdateReplace(Relation rel, TupleTableSlot *slot,
-								  EState *estate)
-{
-	bool	  shouldFree = true;
-	HeapTuple tuple = ExecFetchSlotHeapTuple(slot, true, &shouldFree);
-	Oid		  result;
-
-	/* Update the tuple with table oid */
-	slot->tts_tableOid = RelationGetRelid(rel);
-	tuple->t_tableOid = slot->tts_tableOid;
-
-	/* Perform the update, and copy the resulting ItemPointer */
-	result = YBCExecuteUpdateReplace(rel, slot, tuple, estate);
-	ItemPointerCopy(&tuple->t_self, &slot->tts_tid);
-
-	if (shouldFree)
-		pfree(tuple);
-
-	return result;
-}
-
 /* YB_TODO: No need to return Oid. */
 Oid YBCExecuteUpdateReplace(Relation rel,
+							TupleTableSlot *planSlot,
 							TupleTableSlot *slot,
-							HeapTuple tuple,
 							EState *estate)
 {
 	YBCExecuteDelete(rel,
-					 slot,
+					 planSlot,
 					 NIL /* returning_columns */,
 					 true /* target_tuple_fetched */,
 					 false /* is_single_row_txn */,
 					 false /* changingPart */,
 					 estate);
+	bool	  shouldFree = true;
+	HeapTuple tuple = ExecFetchSlotHeapTuple(slot, true, &shouldFree);
 
-	return YBCExecuteInsert(rel,
+	/* Update the tuple with table oid */
+	slot->tts_tableOid = RelationGetRelid(rel);
+	tuple->t_tableOid = slot->tts_tableOid;
+
+	Oid result = YBCExecuteInsert(rel,
 							RelationGetDescr(rel),
 							tuple,
 							ONCONFLICT_NONE);
+	ItemPointerCopy(&tuple->t_self, &slot->tts_tid);
+	if (shouldFree)
+		pfree(tuple);
+
+	return result;
+
 }
 
 void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
