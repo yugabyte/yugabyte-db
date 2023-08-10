@@ -1451,12 +1451,48 @@
       "required" : [ "name" ],
       "type" : "object"
     },
+    "AvailabilityZoneData" : {
+      "description" : "Details of an availability zone, used by the API and UI to validate data against input constraints",
+      "properties" : {
+        "code" : {
+          "description" : "AZ code",
+          "type" : "string"
+        },
+        "name" : {
+          "description" : "AZ name",
+          "type" : "string"
+        },
+        "secondarySubnet" : {
+          "description" : "AZ secondary subnet",
+          "type" : "string"
+        },
+        "subnet" : {
+          "description" : "AZ subnet",
+          "type" : "string"
+        }
+      },
+      "required" : [ "code", "name" ],
+      "type" : "object"
+    },
     "AvailabilityZoneDetails" : {
       "properties" : {
         "cloudInfo" : {
           "$ref" : "#/definitions/AZCloudInfo"
         }
       },
+      "type" : "object"
+    },
+    "AvailabilityZoneFormData" : {
+      "properties" : {
+        "availabilityZones" : {
+          "description" : "List of availability zones",
+          "items" : {
+            "$ref" : "#/definitions/AvailabilityZoneData"
+          },
+          "type" : "array"
+        }
+      },
+      "required" : [ "availabilityZones" ],
       "type" : "object"
     },
     "AzureCloudInfo" : {
@@ -8075,6 +8111,44 @@
           "$ref" : "#/definitions/RegionCloudInfo"
         }
       },
+      "type" : "object"
+    },
+    "RegionFormData" : {
+      "properties" : {
+        "code" : {
+          "type" : "string"
+        },
+        "destVpcId" : {
+          "type" : "string"
+        },
+        "hostVpcId" : {
+          "type" : "string"
+        },
+        "hostVpcRegion" : {
+          "type" : "string"
+        },
+        "latitude" : {
+          "format" : "double",
+          "type" : "number"
+        },
+        "longitude" : {
+          "format" : "double",
+          "type" : "number"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "securityGroupId" : {
+          "type" : "string"
+        },
+        "vnetName" : {
+          "type" : "string"
+        },
+        "ybImage" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "code", "destVpcId", "hostVpcId", "hostVpcRegion", "latitude", "longitude", "name", "securityGroupId", "vnetName", "ybImage" ],
       "type" : "object"
     },
     "RegionLocations" : {
@@ -18350,6 +18424,209 @@
         "tags" : [ "Node instances" ]
       }
     },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/provider_regions" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "createProviderRegion",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "Specification of Region to be created",
+          "in" : "body",
+          "name" : "region",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/Region"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Region"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Create a new region",
+        "tags" : [ "Region management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/provider_regions/{rUUID}" : {
+      "put" : {
+        "description" : "",
+        "operationId" : "editProviderRegion",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "rUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "Specification of Region to be edited",
+          "in" : "body",
+          "name" : "region",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/Region"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Region"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Modify a region",
+        "tags" : [ "Region management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/provider_regions/{rUUID}/region_zones" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "createZone",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "rUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "Availability Zone to create",
+          "in" : "body",
+          "name" : "azData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/AvailabilityZone"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "$ref" : "#/definitions/AvailabilityZone"
+              },
+              "type" : "object"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Create an availability zone",
+        "tags" : [ "Availability Zones" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/providers/{pUUID}/provider_regions/{rUUID}/region_zones/{azUUID}" : {
+      "put" : {
+        "description" : "",
+        "operationId" : "editZone",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "pUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "rUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "azUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "Availability zone to edit",
+          "in" : "body",
+          "name" : "azData",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/AvailabilityZone"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AvailabilityZone"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Modify an availability zone",
+        "tags" : [ "Availability Zones" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/refresh_pricing" : {
       "put" : {
         "description" : "Refresh provider pricing info",
@@ -18427,6 +18704,7 @@
         "tags" : [ "Region management" ]
       },
       "post" : {
+        "deprecated" : true,
         "description" : "",
         "operationId" : "createRegion",
         "parameters" : [ {
@@ -18451,7 +18729,7 @@
           "name" : "region",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/Region"
+            "$ref" : "#/definitions/RegionFormData"
           }
         } ],
         "responses" : {
@@ -18465,7 +18743,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create a new region",
+        "summary" : "Deprecated: sinceDate=2023-08-07, sinceYBAVersion=2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions instead",
         "tags" : [ "Region management" ]
       }
     },
@@ -18511,6 +18789,7 @@
         "tags" : [ "Region management" ]
       },
       "put" : {
+        "deprecated" : true,
         "description" : "",
         "operationId" : "editRegion",
         "parameters" : [ {
@@ -18541,7 +18820,7 @@
           "name" : "region",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/Region"
+            "$ref" : "#/definitions/RegionFormData"
           }
         } ],
         "responses" : {
@@ -18555,7 +18834,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Modify a region",
+        "summary" : "Deprecated: sinceDate=2023-08-07, sinceYBAVersion=2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions instead",
         "tags" : [ "Region management" ]
       }
     },
@@ -18600,6 +18879,7 @@
         "tags" : [ "Availability Zones" ]
       },
       "post" : {
+        "deprecated" : true,
         "description" : "",
         "operationId" : "createAZ",
         "parameters" : [ {
@@ -18630,7 +18910,7 @@
           "name" : "azFormData",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/AvailabilityZone"
+            "$ref" : "#/definitions/AvailabilityZoneFormData"
           }
         } ],
         "responses" : {
@@ -18647,7 +18927,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Create an availability zone",
+        "summary" : "Deprecated: sinceDate=2023-08-07, sinceYBAVersion=2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions/:rUUID/region_zones instead",
         "tags" : [ "Availability Zones" ]
       }
     },
@@ -18699,6 +18979,7 @@
         "tags" : [ "Availability Zones" ]
       },
       "put" : {
+        "deprecated" : true,
         "description" : "",
         "operationId" : "editAZ",
         "parameters" : [ {
@@ -18735,7 +19016,7 @@
           "name" : "azFormData",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/AvailabilityZone"
+            "$ref" : "#/definitions/AvailabilityZoneFormData"
           }
         } ],
         "responses" : {
@@ -18749,7 +19030,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Modify an availability zone",
+        "summary" : "Deprecated: sinceDate=2023-08-07, sinceYBAVersion=2.18.2.0, Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions/:rUUID/region_zones/:zUUID instead",
         "tags" : [ "Availability Zones" ]
       }
     },

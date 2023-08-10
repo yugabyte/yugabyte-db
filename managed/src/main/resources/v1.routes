@@ -72,11 +72,15 @@ PUT     /customers/:cUUID/providers/:pUUID/access_key_rotation/schedule/:sUUID c
 
 GET     /customers/:cUUID/providers/:pUUID/regions                             com.yugabyte.yw.controllers.RegionController.list(cUUID: java.util.UUID, pUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/:pUUID/regions                             com.yugabyte.yw.controllers.RegionController.create(cUUID: java.util.UUID, pUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/providers/:pUUID/provider_regions                    com.yugabyte.yw.controllers.RegionController.createRegionNew(cUUID: java.util.UUID, pUUID: java.util.UUID, request: Request)
 PUT     /customers/:cUUID/providers/:pUUID/regions/:rUUID                      com.yugabyte.yw.controllers.RegionController.edit(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
+PUT     /customers/:cUUID/providers/:pUUID/provider_regions/:rUUID             com.yugabyte.yw.controllers.RegionController.editRegionNew(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
 DELETE  /customers/:cUUID/providers/:pUUID/regions/:rUUID                      com.yugabyte.yw.controllers.RegionController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
 GET     /customers/:cUUID/providers/:pUUID/regions/:rUUID/zones                com.yugabyte.yw.controllers.AvailabilityZoneController.list(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID)
 POST    /customers/:cUUID/providers/:pUUID/regions/:rUUID/zones                com.yugabyte.yw.controllers.AvailabilityZoneController.create(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/providers/:pUUID/provider_regions/:rUUID/region_zones                com.yugabyte.yw.controllers.AvailabilityZoneController.createZoneNew(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID, request: Request)
 PUT     /customers/:cUUID/providers/:pUUID/regions/:rUUID/zones/:azUUID        com.yugabyte.yw.controllers.AvailabilityZoneController.edit(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID, azUUID: java.util.UUID, request: Request)
+PUT     /customers/:cUUID/providers/:pUUID/provider_regions/:rUUID/region_zones/:azUUID        com.yugabyte.yw.controllers.AvailabilityZoneController.editZoneNew(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID, azUUID: java.util.UUID, request: Request)
 DELETE  /customers/:cUUID/providers/:pUUID/regions/:rUUID/zones/:azUUID        com.yugabyte.yw.controllers.AvailabilityZoneController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, rUUID: java.util.UUID, azUUID: java.util.UUID, request: Request)
 
 GET     /customers/:cUUID/providers/:pUUID/instance_types/:code                com.yugabyte.yw.controllers.InstanceTypeController.index(cUUID: java.util.UUID, pUUID: java.util.UUID, code: String)

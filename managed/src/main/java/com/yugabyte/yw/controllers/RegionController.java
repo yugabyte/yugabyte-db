@@ -5,8 +5,6 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.RegionHandler;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
@@ -40,7 +38,6 @@ import play.mvc.Result;
 public class RegionController extends AuthenticatedController {
 
   @Inject RegionHandler regionHandler;
-  @Inject RuntimeConfGetter runtimeConfGetter;
 
   public static final Logger LOG = LoggerFactory.getLogger(RegionController.class);
   // This constant defines the minimum # of PlacementAZ we need to tag a region as Multi-PlacementAZ
@@ -91,27 +88,56 @@ public class RegionController extends AuthenticatedController {
    *
    * @return JSON response of newly created region
    */
-  @ApiOperation(value = "Create a new region", response = Region.class, nickname = "createRegion")
+  @ApiOperation(
+      value =
+          "Deprecated: sinceDate=2023-08-07, sinceYBAVersion=2.18.2.0, "
+              + "Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions instead",
+      response = Region.class,
+      nickname = "createRegion")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "region",
           value = "region form data for new region to be created",
           paramType = "body",
+          dataType = "com.yugabyte.yw.forms.RegionFormData",
+          required = true))
+  @Deprecated
+  public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
+    Form<RegionFormData> formData =
+        formFactory.getFormDataOrBadRequest(request, RegionFormData.class);
+    RegionFormData form = formData.get();
+    Region region = regionHandler.createRegion(customerUUID, providerUUID, form);
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Region,
+            Objects.toString(region.getUuid(), null),
+            Audit.ActionType.Create);
+    return PlatformResults.withData(region);
+  }
+
+  /**
+   * POST endpoint for creating new region
+   *
+   * @return JSON response of newly created region
+   */
+  @ApiOperation(
+      value = "Create a new region",
+      response = Region.class,
+      nickname = "createProviderRegion")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "region",
+          value = "Specification of Region to be created",
+          paramType = "body",
           dataType = "com.yugabyte.yw.models.Region",
           required = true))
-  public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
+  public Result createRegionNew(UUID customerUUID, UUID providerUUID, Http.Request request) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    Region region = null;
-    if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.useLegacyPayloadForRegionAndAZs)) {
-      Form<RegionFormData> formData =
-          formFactory.getFormDataOrBadRequest(request, RegionFormData.class);
-      RegionFormData form = formData.get();
-      region = regionHandler.createRegion(customerUUID, providerUUID, form);
-    } else {
-      region = formFactory.getFormDataOrBadRequest(request.body().asJson(), Region.class);
-      region.setProviderCode(provider.getCode());
-      region = regionHandler.createRegion(customerUUID, providerUUID, region);
-    }
+    Region region = formFactory.getFormDataOrBadRequest(request.body().asJson(), Region.class);
+    region.setProviderCode(provider.getCode());
+    region = regionHandler.createRegion(customerUUID, providerUUID, region);
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -130,26 +156,54 @@ public class RegionController extends AuthenticatedController {
    * @param regionUUID Region UUID
    * @return JSON response on whether or not the operation was successful.
    */
-  @ApiOperation(value = "Modify a region", response = Object.class, nickname = "editRegion")
+  @ApiOperation(
+      value =
+          "Deprecated: sinceDate=2023-08-07, sinceYBAVersion=2.18.2.0, "
+              + "Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions instead",
+      response = Object.class,
+      nickname = "editRegion")
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "region",
           value = "region edit form data",
           paramType = "body",
+          dataType = "com.yugabyte.yw.forms.RegionFormData",
+          required = true))
+  @Deprecated
+  public Result edit(UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
+    RegionEditFormData form =
+        formFactory.getFormDataOrBadRequest(request, RegionEditFormData.class).get();
+    Region region = regionHandler.editRegion(customerUUID, providerUUID, regionUUID, form);
+
+    auditService()
+        .createAuditEntry(
+            request, Audit.TargetType.Region, regionUUID.toString(), Audit.ActionType.Edit);
+    return PlatformResults.withData(region);
+  }
+
+  /**
+   * PUT endpoint for modifying an existing Region.
+   *
+   * @param customerUUID Customer UUID
+   * @param providerUUID Provider UUID
+   * @param regionUUID Region UUID
+   * @return JSON response on whether or not the operation was successful.
+   */
+  @ApiOperation(value = "Modify a region", response = Region.class, nickname = "editProviderRegion")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "region",
+          value = "Specification of Region to be edited",
+          paramType = "body",
           dataType = "com.yugabyte.yw.models.Region",
           required = true))
-  public Result edit(UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
+  public Result editRegionNew(
+      UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    Region region = null;
-    if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.useLegacyPayloadForRegionAndAZs)) {
-      RegionEditFormData form =
-          formFactory.getFormDataOrBadRequest(request, RegionEditFormData.class).get();
-      region = regionHandler.editRegion(customerUUID, providerUUID, regionUUID, form);
-    } else {
-      region = formFactory.getFormDataOrBadRequest(request.body().asJson(), Region.class);
-      region.setProviderCode(provider.getCode());
-      region = regionHandler.editRegion(customerUUID, providerUUID, regionUUID, region);
-    }
+
+    Region region = formFactory.getFormDataOrBadRequest(request.body().asJson(), Region.class);
+    region.setProviderCode(provider.getCode());
+    region = regionHandler.editRegion(customerUUID, providerUUID, regionUUID, region);
 
     auditService()
         .createAuditEntry(

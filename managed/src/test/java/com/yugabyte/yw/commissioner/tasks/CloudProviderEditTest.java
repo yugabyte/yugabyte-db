@@ -128,11 +128,32 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     return doRequestWithBody("PUT", uri, body);
   }
 
+  private Result editRegionV2(UUID providerUUID, UUID regionUUID, JsonNode body) {
+    String uri =
+        String.format(
+            "/api/customers/%s/providers/%s/provider_regions/%s",
+            defaultCustomer.getUuid(), providerUUID, regionUUID);
+    return doRequestWithBody("PUT", uri, body);
+  }
+
   private Result addRegion(UUID providerUUID, JsonNode regionJson) {
     return FakeApiHelper.doRequestWithAuthTokenAndBody(
         app,
         "POST",
         "/api/customers/" + defaultCustomer.getUuid() + "/providers/" + providerUUID + "/regions",
+        user.createAuthToken(),
+        regionJson);
+  }
+
+  private Result addRegionV2(UUID providerUUID, JsonNode regionJson) {
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        app,
+        "POST",
+        "/api/customers/"
+            + defaultCustomer.getUuid()
+            + "/providers/"
+            + providerUUID
+            + "/provider_regions",
         user.createAuthToken(),
         regionJson);
   }
@@ -911,8 +932,6 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
   @Test
   public void testImageBundleEditRegionAdd() {
     RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.disableImageBundleValidation.getKey(), "true");
-    RuntimeConfigEntry.upsertGlobal(
-        GlobalConfKeys.useLegacyPayloadForRegionAndAZs.getKey(), "false");
     Provider p = ModelFactory.newProvider(defaultCustomer, Common.CloudType.aws);
     Region.create(p, "us-west-1", "us-west-1", "yb-image1");
     ImageBundleDetails details = new ImageBundleDetails();
@@ -924,7 +943,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
     // Ensure adding a region updates the imageBundle
     JsonNode regionBody = getAWSRegionJson();
-    Result region = addRegion(p.getUuid(), regionBody);
+    Result region = addRegionV2(p.getUuid(), regionBody);
     JsonNode bodyJson = (ObjectNode) Json.parse(contentAsString(region));
     Region cRegion = Json.fromJson(bodyJson, Region.class);
 
@@ -939,7 +958,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
     // Ensure editing a region updates the imageBundle.
     cRegion.getDetails().getCloudInfo().getAws().setYbImage("Updated YB Image");
-    region = editRegion(p.getUuid(), cRegion.getUuid(), Json.toJson(cRegion));
+    region = editRegionV2(p.getUuid(), cRegion.getUuid(), Json.toJson(cRegion));
     providerRes = getProvider(p.getUuid());
     bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
     p = Json.fromJson(bodyJson, Provider.class);
