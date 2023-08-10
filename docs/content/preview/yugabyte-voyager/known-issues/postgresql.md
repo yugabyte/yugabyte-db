@@ -4,7 +4,7 @@ linkTitle: PostgreSQL
 headcontent: Known issues when migrating data from PostgreSQL.
 description: Known issues and suggested workarounds for migrating data from PostgreSQL.
 menu:
-  preview:
+  preview_yugabyte-voyager:
     identifier: postgresql-issues
     parent: known-issues
     weight: 102

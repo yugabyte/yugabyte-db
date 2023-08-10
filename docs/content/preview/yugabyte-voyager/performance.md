@@ -3,9 +3,9 @@ title: Performance
 linkTitle: Performance
 description: Performance
 menu:
-  preview:
+  preview_yugabyte-voyager:
     identifier: performance
-    parent: voyager
+    parent: yugabytedb-voyager
     weight: 103
 type: docs
 ---

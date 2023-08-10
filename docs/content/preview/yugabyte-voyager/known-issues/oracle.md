@@ -4,7 +4,7 @@ linkTitle: Oracle
 headcontent: Known issues when migrating data from Oracle.
 description: Known issues and suggested workarounds for migrating data from Oracle.
 menu:
-  preview:
+  preview_yugabyte-voyager:
     identifier: oracle-issues
     parent: known-issues
     weight: 101

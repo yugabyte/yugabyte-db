@@ -11,7 +11,7 @@ resources:
   - title: Deploy
     url: /preview/deploy/
   - title: Migrate to YugabyteDB
-    url: /preview/migrate/
+    url: /preview/yugabyte-voyager/
   - title: Troubleshoot
     url: /preview/troubleshoot/
 ---

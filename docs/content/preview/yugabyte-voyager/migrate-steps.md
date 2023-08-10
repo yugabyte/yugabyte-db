@@ -4,9 +4,9 @@ headerTitle: Migration steps
 linkTitle: Migration steps
 description: Run the steps to ensure a successful migration using YugabyteDB Voyager.
 menu:
-  preview:
+  preview_yugabyte-voyager:
     identifier: migrate-steps
-    parent: voyager
+    parent: yugabytedb-voyager
     weight: 102
 type: docs
 ---
