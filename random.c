@@ -89,7 +89,7 @@ dbms_random_initialize(PG_FUNCTION_ARGS)
 	int seed = PG_GETARG_INT32(0);
 
 	srand(seed);
-	
+
 	PG_RETURN_VOID();
 }
 
@@ -102,7 +102,7 @@ Datum
 dbms_random_normal(PG_FUNCTION_ARGS)
 {
 	float8 result;
-	
+
 	/* need random value from (0..1) */
 	result = ltqnorm(((double) rand() + 1) / ((double) RAND_MAX + 2));
 
@@ -137,7 +137,7 @@ Datum
 dbms_random_seed_int(PG_FUNCTION_ARGS)
 {
 	int seed = PG_GETARG_INT32(0);
-	
+
 	srand(seed);
 
 	PG_RETURN_VOID();
@@ -154,11 +154,11 @@ dbms_random_seed_varchar(PG_FUNCTION_ARGS)
 {
 	text *key = PG_GETARG_TEXT_P(0);
 	Datum seed;
-	
+
 	seed = hash_any((unsigned char *) VARDATA_ANY(key), VARSIZE_ANY_EXHDR(key));
-	
+
 	srand((int) seed);
-					
+
 	PG_RETURN_VOID();
 }
 
@@ -178,15 +178,16 @@ random_string(const char *charset, size_t chrset_size, int len)
 {
 	StringInfo	str;
 	int	i;
-	
+
 	str = makeStringInfo();
 	for (i = 0; i < len; i++)
 	{
-		int pos = (int) ((double) rand() / ((double) RAND_MAX + 1) * chrset_size);
-		
+		double		r = (double) rand();
+		int pos = (int) floor((r / ((double) RAND_MAX + 1)) * chrset_size);
+
 		appendStringInfoChar(str, charset[pos]);
 	}
-	
+
 	return cstring_to_text(str->data);
 }
 
@@ -211,7 +212,7 @@ dbms_random_string(PG_FUNCTION_ARGS)
 
 	option = text_to_cstring(PG_GETARG_TEXT_P(0));
 	len = PG_GETARG_INT32(1);
-	
+
 	switch (option[0])
 	{
 		case 'a':
@@ -249,7 +250,7 @@ dbms_random_string(PG_FUNCTION_ARGS)
 			charset = NULL;
 			chrset_size = 0;
 	}
-	
+
 	PG_RETURN_TEXT_P(random_string(charset, chrset_size, len));
 }
 
@@ -274,10 +275,10 @@ Datum
 dbms_random_value(PG_FUNCTION_ARGS)
 {
 	float8 result;
-	
+
 	/* result [0.0 - 1.0) */
 	result = (double) rand() / ((double) RAND_MAX + 1);
-	
+
 	PG_RETURN_FLOAT8(result);
 }
 
