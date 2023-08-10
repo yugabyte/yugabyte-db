@@ -337,7 +337,9 @@ public class GCPCloudImpl implements CloudAPI {
           case HTTP:
             newHealthCheckUrl =
                 apiClient.createNewHTTPHealthCheckForPort(
-                    region, healthCheckPort, healthCheckConfiguration.getHealthCheckPath());
+                    region,
+                    healthCheckPort,
+                    healthCheckConfiguration.getHealthCheckPortsToPathsMap().get(healthCheckPort));
             break;
         }
         newHealthCheckUrls.add(newHealthCheckUrl);
@@ -359,10 +361,12 @@ public class GCPCloudImpl implements CloudAPI {
         HTTPHealthCheck httpHealthCheck = existingHealthCheckToCheck.getHttpHealthCheck();
         if (!httpHealthCheck
             .getRequestPath()
-            .equals(healthCheckConfiguration.getHealthCheckPath())) {
+            .equals(
+                healthCheckConfiguration.getHealthCheckPortsToPathsMap().get(healthCheckPort))) {
           try {
             httpHealthCheck =
-                httpHealthCheck.setRequestPath(healthCheckConfiguration.getHealthCheckPath());
+                httpHealthCheck.setRequestPath(
+                    healthCheckConfiguration.getHealthCheckPortsToPathsMap().get(healthCheckPort));
             existingHealthCheckToCheck =
                 existingHealthCheckToCheck.setHttpHealthCheck(httpHealthCheck);
             String updatedHealthCheck =
