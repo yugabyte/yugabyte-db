@@ -367,6 +367,7 @@ typedef struct PgCallbacks {
 
 typedef struct PgGFlagsAccessor {
   const bool*     log_ysql_catalog_versions;
+  const bool*     ysql_catalog_preload_additional_tables;
   const bool*     ysql_disable_index_backfill;
   const bool*     ysql_disable_server_file_access;
   const bool*     ysql_enable_reindex;
