@@ -27,7 +27,7 @@ from ybops.utils import get_path_from_yb, \
     YB_SUDO_PASS, DEFAULT_MASTER_HTTP_PORT, DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
     DEFAULT_TSERVER_RPC_PORT, DEFAULT_CQL_PROXY_RPC_PORT, DEFAULT_REDIS_PROXY_RPC_PORT
 from ansible_vault import Vault
-from ybops.utils.remote_shell import copy_to_tmp, wait_for_server, get_host_port_user
+from ybops.utils.remote_shell import copy_to_tmp, wait_for_server, get_host_port_user, RemoteShell
 from ybops.utils.ssh import wait_for_ssh, format_rsa_key, validated_key_file, \
     generate_rsa_keypair, get_public_key_content, \
     get_ssh_host_port, DEFAULT_SSH_USER, DEFAULT_SSH_PORT
@@ -1182,6 +1182,12 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                                  help="Reset master state by deleting old files and directories.",
                                  action="store_true",
                                  default=False)
+        self.parser.add_argument("--local_gflag_files_path",
+                                 required=False,
+                                 help="Path to local directory with the gFlags file.")
+        self.parser.add_argument("--remote_gflag_files_path",
+                                 required=False,
+                                 help="Path to remote directory with the gFlags file.")
 
     def get_ssh_user(self):
         # Force the yugabyte user for configuring instances. The configure step performs YB specific
@@ -1452,6 +1458,24 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                     args.client_key_path,
                     args.certs_location
                 )
+
+        if args.local_gflag_files_path is not None and args.remote_gflag_files_path is not None:
+            # Copy all the files from local gflags file path to remote
+            files = os.listdir(args.local_gflag_files_path)
+            remote_shell = RemoteShell(self.extra_vars)
+            # Delete the gFlag file directory in case already present in remote
+            remote_shell.exec_command("rm -rf {}".format(args.remote_gflag_files_path))
+            # Create the gFlag file directory before copying the file.
+            remote_shell.exec_command("mkdir -p {}".format(args.remote_gflag_files_path))
+            for file in files:
+                src_file = os.path.join(args.local_gflag_files_path, file)
+                dest_file = os.path.join(args.remote_gflag_files_path, file)
+                remote_shell.put_file(src_file, dest_file)
+            # Clean up the local gflag file directory
+            try:
+                os.rmdir(args.local_gflag_files_path)
+            except OSError as e:
+                logging.info("[app] Deletion of local gflag directory failed with {}".format(e))
 
         if args.encryption_key_source_file is not None:
             self.extra_vars["encryption_key_file"] = args.encryption_key_source_file
