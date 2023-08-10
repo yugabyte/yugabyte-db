@@ -197,7 +197,6 @@ preprocess_targetlist(PlannerInfo *root)
 	 * all columns from the table to evaluate the returning expression list.
 	 * TODO(neil) The optimizer should reduce the list to referenced columns.
 	 */
-	tlist = parse->targetList;
 	if ((command_type == CMD_DELETE && IsYBRelation(target_relation) &&
 		 parse->returningList != NULL))
 		tlist = expand_delete_targetlist(tlist, result_relation, target_relation);

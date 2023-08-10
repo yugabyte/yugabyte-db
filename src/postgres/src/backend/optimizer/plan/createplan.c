@@ -898,12 +898,6 @@ static int _exprcol_cmp(const void *a, const void *b, void *cxt)
 static List*
 yb_zip_batched_exprs(PlannerInfo *root, List *b_exprs, bool should_sort)
 {
-	return NULL;
-#ifdef YB_TODO
-	/* YB_TODO(neil)
-	 * - Commenting out for a quick rebase to master.
-	 * - Need to translate some code to Pg15 API.
-	 */
 	if (list_length(b_exprs) <= 1)
 	{
 		return b_exprs;
@@ -932,7 +926,7 @@ yb_zip_batched_exprs(PlannerInfo *root, List *b_exprs, bool should_sort)
 		foreach(lc, b_exprs)
 		{
 			Expr *b_expr = (Expr *) lfirst(lc);
-			Relids req_relids = pull_varnos(get_rightop(b_expr));
+			Relids req_relids = pull_varnos(root, get_rightop(b_expr));
 			if (bms_overlap(req_relids, avail_relids))
 			{
 				exprcols[len] = b_expr;
@@ -1006,7 +1000,6 @@ yb_zip_batched_exprs(PlannerInfo *root, List *b_exprs, bool should_sort)
 	}
 
 	return zipped_exprs;
-#endif
 }
 
 static List *
@@ -3012,8 +3005,6 @@ create_lockrows_plan(PlannerInfo *root, LockRowsPath *best_path,
 	return plan;
 }
 
-#ifdef YB_TODO
-/* YB_TODO(neil@yugabyte) This function might not be needed. */
 static TargetEntry *make_dummy_tle(AttrNumber attr_num, bool is_null)
 {
 	TargetEntry *dummy_tle;
@@ -3109,7 +3100,7 @@ static bool has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *
 				ReleaseSysCache(tp);
 				return true;
 			}
-			DeconstructFkConstraintRow(tp, &numfks, conkey, confkey, NULL, NULL, NULL);
+			DeconstructFkConstraintRow(tp, &numfks, conkey, confkey, NULL, NULL, NULL, NULL, NULL);
 
 			Assert(relid == contup->conrelid || relid == contup->confrelid);
 			bool con_is_base_rel = relid == contup->conrelid;
@@ -3138,7 +3129,6 @@ static bool has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *
 	// on non-updated attributes then it is safe skip triggers.
 	return false;
 }
-#endif
 
 /*
  * yb_single_row_update_or_delete_path
@@ -3192,19 +3182,11 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 									bool *no_row_trigger,
 									List **no_update_index_list)
 {
-	/* YB_TODO(neil@yugabyte). Need rewrite. Not optimize for now.
-	 * - Postgres changes datastructure: "subpaths" and "subroots" were removed.
-	 * - Rewrite pushdown for single row update.
-	 */
-	return false;
-
-#ifdef YB_TODO
 	RelOptInfo *relInfo = NULL;
 	Oid relid;
 	Relation relation;
 	TupleDesc tupDesc;
-	Path *subpath;
-	PlannerInfo *subroot;
+	Path *subpath = path->subpath;
 	IndexPath *index_path;
 	Bitmapset *primary_key_attrs = NULL;
 	ListCell *values;
@@ -3278,10 +3260,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	if (path->onconflict)
 		return false;
 
-	/* Only allow one source. */
-	if (list_length(path->updateColnosLists) != 1)
-		return false;
-
 	/* Only allow at most one returning list. */
 	if (list_length(path->returningLists) > 1)
 		return false;
@@ -3295,8 +3273,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	tupDesc = RelationGetDescr(relation);
 	attr_offset = YBGetFirstLowInvalidAttributeNumber(relation);
 
-	subroot = linitial_node(PlannerInfo, path->subroots);
-	subpath = (Path *) linitial(path->subpaths);
 	index_path = (IndexPath *) subpath;
 
 	if (path->operation == CMD_UPDATE)
@@ -3326,10 +3302,10 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		 * columns. If true user write expression is not a supported single row write expression
 		 * then return false.
 		 */
-		foreach(values, build_path_tlist(subroot, subpath))
+		int update_col_index = 0;
+		foreach(values, build_path_tlist(root, subpath))
 		{
 			TargetEntry *tle = lfirst_node(TargetEntry, values);
-			int resno = tle->resno;
 
 			/* Ignore unspecified columns. */
 			if (IsA(tle->expr, Var))
@@ -3340,13 +3316,27 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				 * (added for YB scan in rewrite handler).
 				 */
 				if (var->varattno == InvalidAttrNumber ||
-					var->varattno == resno ||
+					var->varattno == tle->resno ||
 					(var->varattno == YBTupleIdAttributeNumber &&
 						var->varcollid == InvalidOid))
 				{
 					continue;
 				}
 			}
+			/* The semantic of target list in the UPDATE path has changed in
+			 * PG15. It no longer contains all the attributes in the relation,
+			 * instead just contains the attributes being updated and the junk
+			 * columns. The semantics of resno has changed as well. Previously,
+			 * it used to represent the attribute number, now it is just a
+			 * consecutive number. Now, root->update_colnos represents the
+			 * att_nums of attributes being updated. See preprocess_targetlist
+			 * and extract_update_targetlist_colnos for more details.  */
+			Assert(root->update_colnos->length > update_col_index);
+
+			/* Setting tle resno to attribute number. */
+			int resno = tle->resno =
+				root->update_colnos->elements[update_col_index].int_value;
+			update_col_index++;
 
 			/*
 			 * Verify if the path target matches a table column.
@@ -3487,7 +3477,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	{
 		RestrictInfo *rinfo = lfirst_node(RestrictInfo, values);
 
-		if (!list_member_ptr(index_path->indexquals, rinfo))
+		if (!is_redundant_with_indexclauses(rinfo, index_path->indexclauses))
 		{
 			RelationClose(relation);
 			return false;
@@ -3495,37 +3485,40 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	}
 
 	/* Check that all WHERE clause conditions use equality operator. */
-	List	   *qinfos = NIL;
 	ListCell   *lc = NULL;
-	qinfos = deconstruct_indexquals(index_path);
-	foreach(lc, qinfos)
+	foreach(lc, index_path->indexclauses)
 	{
-		IndexQualInfo *qinfo = (IndexQualInfo *) lfirst(lc);
-		RestrictInfo *rinfo = qinfo->rinfo;
-		Expr	   *clause = rinfo->clause;
-		Oid			clause_op;
-		int			op_strategy;
+		IndexClause *iclause = lfirst_node(IndexClause, lc);
+		ListCell   *lc2;
 
-		if (!IsA(clause, OpExpr))
+		foreach(lc2, iclause->indexquals)
 		{
-			RelationClose(relation);
-			return false;
-		}
+			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc2);
+			Expr	   *clause = rinfo->clause;
+			Oid			clause_op = InvalidOid;
+			int			op_strategy;
 
-		clause_op = qinfo->clause_op;
-		if (!OidIsValid(clause_op))
-		{
-			RelationClose(relation);
-			return false;
-		}
+			if (!IsA(clause, OpExpr))
+			{
+				RelationClose(relation);
+				return false;
+			}
+			OpExpr	   *op = (OpExpr *) clause;
+			clause_op = op->opno;
+			if (!OidIsValid(clause_op))
+			{
+				RelationClose(relation);
+				return false;
+			}
 
-		op_strategy = get_op_opfamily_strategy(clause_op, index_path->indexinfo->opfamily[qinfo->indexcol]);
-		Assert(op_strategy != 0);  /* not a member of opfamily?? */
-		/* Only pushdown equal operators. */
-		if (op_strategy != BTEqualStrategyNumber)
-		{
-			RelationClose(relation);
-			return false;
+			op_strategy = get_op_opfamily_strategy(clause_op, index_path->indexinfo->opfamily[iclause->indexcol]);
+			Assert(op_strategy != 0);  /* not a member of opfamily?? */
+			/* Only pushdown equal operators. */
+			if (op_strategy != BTEqualStrategyNumber)
+			{
+				RelationClose(relation);
+				return false;
+			}
 		}
 	}
 
@@ -3541,7 +3534,10 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	 * We have already checked that all index quals are OpExpr expressions and
 	 * fix_indexqual_references makes sure the expr is on the right hand side.
 	 */
-	foreach(values, fix_indexqual_references(subroot, index_path))
+	List	   *stripped_indexquals;
+	List	   *fixed_indexquals;
+	fix_indexqual_references(root, index_path, &stripped_indexquals, &fixed_indexquals);
+	foreach(values, fixed_indexquals)
 	{
 		Expr *clause;
 		Expr *expr;
@@ -3637,7 +3633,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				*result_tlist = lappend(*result_tlist, subpath_tlist_tle);
 			}
 
-			subpath_tlist_values = lnext(subpath_tlist_values);
+			subpath_tlist_values = lnext(subpath_tlist, subpath_tlist_values);
 		}
 		else
 		{
@@ -3735,7 +3731,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 
 	RelationClose(relation);
 	return true;
-#endif
 }
 
 /*
@@ -3770,14 +3765,8 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 											best_path->operation == CMD_UPDATE ?
 												&no_update_index_list : NULL))
 	{
-		Assert(false);
-		/* YB_TODO(neil@yugabyte). Need rewrite - Code path wouldn't get here.
-		 * Still need to initialize for the compiler: -Wsometimes-uninitialized.
-		 *
-		 * subplan = (Plan *) make_result(result_tlist, NULL, NULL);
-		 * copy_generic_path_info(subplan, linitial(best_path->subpaths));
-		 */
-		subplan = NULL;
+		subplan = (Plan *) make_result(result_tlist, NULL, NULL);
+		copy_generic_path_info(subplan, best_path->subpath);
 	}
 	else
 	{
@@ -4105,16 +4094,6 @@ create_indexscan_plan(PlannerInfo *root,
 	/* it should be a base rel... */
 	Assert(baserelid > 0);
 	Assert(best_path->path.parent->rtekind == RTE_RELATION);
-
-#ifdef YB_TODO
-	/* YB_TODO(neil) Move this code to fix_indexqual_references */
-	stripped_indexquals =
-		!bms_is_empty(root->yb_cur_batched_relids) && IsYugaByteEnabled()
-			? yb_get_actual_batched_clauses(root,
-													  indexquals,
-													  (Path *) best_path)
-		: get_actual_clauses(indexquals);
-#endif
 
 	/*
 	 * Extract the index qual expressions (stripped of RestrictInfos) from the
@@ -5455,29 +5434,6 @@ create_customscan_plan(PlannerInfo *root, CustomPath *best_path,
  *	JOIN METHODS
  *
  *****************************************************************************/
-#ifdef YB_TODO
-/* Check this code. It is deleted in Yugabyte master */
-static Relids
-get_batched_relids(NestPath *nest)
-{
-	ParamPathInfo *innerppi = nest->jpath.innerjoinpath->param_info;
-	ParamPathInfo *outerppi = nest->jpath.outerjoinpath->param_info;
-
-	Relids outer_unbatched = outerppi
-		? outerppi->yb_ppi_req_outer_unbatched : NULL;
-	Relids inner_batched = innerppi ? innerppi->yb_ppi_req_outer_batched : NULL;
-
-	return bms_difference(inner_batched, outer_unbatched);
-}
-
-static inline bool
-is_nestloop_batched(NestPath *nest)
-{
-	Relids batched_relids = get_batched_relids(nest);
-	return bms_overlap(nest->jpath.outerjoinpath->parent->relids,
-					   batched_relids);
-}
-#endif
 
 static NestLoop *
 create_nestloop_plan(PlannerInfo *root,
@@ -6292,43 +6248,41 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 static List *
 yb_get_fixed_batched_indexquals(PlannerInfo *root, IndexPath *index_path)
 {
-	return NULL;
-#ifdef YB_TODO
-	/* YB_TODO(neil)
-	 * - Commenting out for a quick rebase to master.
-	 * - Need to translate some code to Pg15 API.
-	 */
 	List *batched_quals = NIL;
 	if (!bms_is_empty(root->yb_cur_batched_relids))
 	{
-		ListCell *lcc;
-		ListCell *lci;
+		ListCell *lc;
 		
-		forboth(lcc, index_path->indexquals, lci, index_path->indexqualcols)
+		foreach(lc, index_path->indexclauses)
 		{
-			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lcc);
-			RestrictInfo *tmp_batched =
-				yb_get_batched_restrictinfo(rinfo, root->yb_cur_batched_relids,
-													 index_path->indexinfo->rel->relids);
+			IndexClause *iclause = lfirst_node(IndexClause, lc);
+			int			indexcol = iclause->indexcol;
+			ListCell   *lc2;
 
-			if (tmp_batched)
+			foreach(lc2, iclause->indexquals)
 			{
-				int indexcol = lfirst_int(lci);
-				OpExpr *op = (OpExpr *) tmp_batched->clause;
+				RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc2);
+				RestrictInfo *tmp_batched =
+					yb_get_batched_restrictinfo(rinfo, root->yb_cur_batched_relids,
+														index_path->indexinfo->rel->relids);
 
-				if (list_member_ptr(batched_quals, op))
-					continue;
+				if (tmp_batched)
+				{
+					OpExpr *op = (OpExpr *) tmp_batched->clause;
 
-				op = copyObject(op);
-				linitial(op->args) = fix_indexqual_operand(linitial(op->args),
-													index_path->indexinfo,
-													indexcol);
-				batched_quals = lappend(batched_quals, op);
+					if (list_member_ptr(batched_quals, op))
+						continue;
+
+					op = copyObject(op);
+					linitial(op->args) = fix_indexqual_operand(linitial(op->args),
+														index_path->indexinfo,
+														indexcol);
+					batched_quals = lappend(batched_quals, op);
+				}
 			}
 		}
 	}
 	return batched_quals;
-#endif
 }
 
 /*
@@ -6355,149 +6309,66 @@ static void
 fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 						 List **stripped_indexquals_p, List **fixed_indexquals_p)
 {
-#ifdef YB_TODO
-	/* YB_TODO(neil) Remerged this function. Original merge has error */
 	IndexOptInfo *index = index_path->indexinfo;
 	List	   *stripped_indexquals;
 	List	   *fixed_indexquals;
-	ListCell   *lcc,
-			   *lci;
+	ListCell   *lc;
+	List	   *rinfos;
 
-	fixed_indexquals = NIL;
+	stripped_indexquals = fixed_indexquals = NIL;
 
 	List *batched_quals = yb_get_fixed_batched_indexquals(root, index_path);
 	batched_quals = yb_zip_batched_exprs(root, batched_quals, true);
 
-	foreach(lcc, batched_quals)
+	foreach(lc, batched_quals)
 	{
-		Expr *clause = (Expr *) lfirst(lcc);
+		Expr *clause = (Expr *) lfirst(lc);
 		Node *fixed_clause = replace_nestloop_params(root, (Node *) clause);
 		fixed_indexquals = lappend(fixed_indexquals, fixed_clause);
 	}
 
-	forboth(lcc, index_path->indexquals, lci, index_path->indexqualcols)
+	rinfos = NIL;
+	foreach(lc, index_path->indexclauses)
 	{
-		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lcc);
-		RestrictInfo *tmp_batched =
-			yb_get_batched_restrictinfo(rinfo, root->yb_cur_batched_relids,
-									 			 index_path->indexinfo->rel->relids);
-		/*
-		 * YB: We should have already processed this qual in
-		 * get_fixed_batched_indexquals.
-		 */
-		if (tmp_batched)
-			continue;
+		IndexClause *iclause = lfirst_node(IndexClause, lc);
+		int			indexcol = iclause->indexcol;
+		ListCell   *lc2;
 
-		int			indexcol = lfirst_int(lci);
-		Node	   *clause;
-
-		/*
-		 * Replace any outer-relation variables with nestloop params.
-		 *
-		 * This also makes a copy of the clause, so it's safe to modify it
-		 * in-place below.
-		 */
-		clause = replace_nestloop_params(root, (Node *) rinfo->clause);
-
-		if (IsA(clause, OpExpr))
+		foreach(lc2, iclause->indexquals)
 		{
-			OpExpr	   *op = (OpExpr *) clause;
+			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc2);
+			Node	   *clause = (Node *) rinfo->clause;
 
-			if (list_length(op->args) != 2)
-				elog(ERROR, "indexqual clause is not binary opclause");
-
+			RestrictInfo *tmp_batched =
+				yb_get_batched_restrictinfo(rinfo, root->yb_cur_batched_relids,
+													index_path->indexinfo->rel->relids);
 			/*
-			 * Check to see if the indexkey is on the right; if so, commute
-			 * the clause.  The indexkey should be the side that refers to
-			 * (only) the base relation.
-			 */
-			if (!bms_equal(rinfo->left_relids, index->rel->relids))
-				CommuteOpExpr(op);
+			* YB: We should have already processed this qual in
+			* get_fixed_batched_indexquals.
+			*/
+			if (tmp_batched)
+				continue;
 
-			/*
-			 * Now replace the indexkey expression with an index Var.
-			 */
-			linitial(op->args) = fix_indexqual_operand(linitial(op->args),
-													   index,
-													   indexcol);
+			stripped_indexquals = lappend(stripped_indexquals, clause);
+			clause = fix_indexqual_clause(root, index, indexcol,
+										  clause, iclause->indexcols);
+			fixed_indexquals = lappend(fixed_indexquals, clause);
+			rinfos = lappend(rinfos, rinfo);
 		}
-		else if (IsA(clause, RowCompareExpr))
-		{
-			RowCompareExpr *rc = (RowCompareExpr *) clause;
-			Expr	   *newrc;
-			List	   *indexcolnos;
-			bool		var_on_left;
-			ListCell   *lca,
-					   *lcai;
-
-			/*
-			 * Re-discover which index columns are used in the rowcompare.
-			 */
-			newrc = adjust_rowcompare_for_index(rc,
-												index,
-												indexcol,
-												&indexcolnos,
-												&var_on_left);
-
-			/*
-			 * Trouble if adjust_rowcompare_for_index thought the
-			 * RowCompareExpr didn't match the index as-is; the clause should
-			 * have gone through that routine already.
-			 */
-			if (newrc != (Expr *) rc)
-				elog(ERROR, "inconsistent results from adjust_rowcompare_for_index");
-
-			/*
-			 * Check to see if the indexkey is on the right; if so, commute
-			 * the clause.
-			 */
-			if (!var_on_left)
-				CommuteRowCompareExpr(rc);
-
-			/*
-			 * Now replace the indexkey expressions with index Vars.
-			 */
-			Assert(list_length(rc->largs) == list_length(indexcolnos));
-			forboth(lca, rc->largs, lcai, indexcolnos)
-			{
-				lfirst(lca) = fix_indexqual_operand(lfirst(lca),
-													index,
-													lfirst_int(lcai));
-			}
-		}
-		else if (IsA(clause, ScalarArrayOpExpr))
-		{
-			ScalarArrayOpExpr *saop = (ScalarArrayOpExpr *) clause;
-
-			/* Never need to commute... */
-
-			/* Replace the indexkey expression with an index Var. */
-			linitial(saop->args) = fix_indexqual_operand(linitial(saop->args),
-														 index,
-														 indexcol);
-		}
-		else if (IsA(clause, NullTest))
-		{
-			NullTest   *nt = (NullTest *) clause;
-
-			/* Replace the indexkey expression with an index Var. */
-			nt->arg = (Expr *) fix_indexqual_operand((Node *) nt->arg,
-													 index,
-													 indexcol);
-		}
-		else
-			elog(ERROR, "unsupported indexqual type: %d",
-				 (int) nodeTag(clause));
-
-		fixed_indexquals = lappend(fixed_indexquals, clause);
 	}
 
+	if(!bms_is_empty(root->yb_cur_batched_relids) && IsYugaByteEnabled())
+	{
+		stripped_indexquals = yb_get_actual_batched_clauses(root, rinfos, (Path *) index_path);
+	}
+
+	*stripped_indexquals_p = stripped_indexquals;
+	*fixed_indexquals_p = fixed_indexquals;
 	/* YB_TODO(Tanuj@yugabyte)
 	 * - Need to track Tanuj's work on this function and rework. His code needs reimplementation to
 	 *   match Postgres's new code.
 	 * - I removed his work for now.
 	 */
-#endif
 }
 
 /*

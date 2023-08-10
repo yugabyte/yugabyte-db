@@ -2564,13 +2564,13 @@ yb_lreplace:;
 	ModifyTable *plan = (ModifyTable *) context->mtstate->ps.plan;
 	if (is_pk_updated)
 	{
-		YBCTupleTableExecuteUpdateReplace(resultRelationDesc, slot, estate);
+		YBCExecuteUpdateReplace(resultRelationDesc, context->planSlot, slot, estate);
 		row_found = true;
 	}
 	else
-		row_found = YBCTupleTableExecuteUpdate(
-			resultRelationDesc, resultRelInfo, slot, oldtuple, estate, plan,
-			context->mtstate->yb_fetch_target_tuple,
+		row_found = YBCExecuteUpdate(
+			resultRelationDesc, resultRelInfo, context->planSlot, slot,
+			oldtuple, estate, plan, context->mtstate->yb_fetch_target_tuple,
 			estate->yb_es_is_single_row_modify_txn, actualUpdatedCols,
 			canSetTag);
 
@@ -4145,10 +4145,6 @@ ExecPrepareTupleRouting(ModifyTableState *mtstate,
 		slot = execute_attr_map_slot(map->attrMap, slot, new_slot);
 	}
 
-#ifdef YB_TODO
-	/* YB_TODO(neil@yugabyte)
-	 * This code is no longer needed?
-	 */
 	/*
 	 * For a partitioned relation, table constraints (such as FK) are visible on a
 	 * target partition rather than an original insert target.
@@ -4159,7 +4155,6 @@ ExecPrepareTupleRouting(ModifyTableState *mtstate,
 	{
 		estate->yb_es_is_single_row_modify_txn = YBCIsSingleRowTxnCapableRel(partrel);
 	}
-#endif
 
 	*partRelInfo = partrel;
 	return slot;
@@ -4332,8 +4327,9 @@ ExecModifyTable(PlanState *pstate)
 		 * tuple in toto.  Keep this in step with the part of
 		 * ExecInitModifyTable that sets up ri_RowIdAttNo.
 		 */
-		if (operation == CMD_UPDATE || operation == CMD_DELETE ||
-			operation == CMD_MERGE)
+		if ((operation == CMD_UPDATE || operation == CMD_DELETE ||
+			 operation == CMD_MERGE) &&
+			(!IsYBRelation(relation) || node->yb_fetch_target_tuple))
 		{
 			char		relkind;
 			Datum		datum;
@@ -4499,42 +4495,46 @@ ExecModifyTable(PlanState *pstate)
 				break;
 
 			case CMD_UPDATE:
-				/* Initialize projection info if first time for this table */
-				if (unlikely(!resultRelInfo->ri_projectNewInfoValid))
-					ExecInitUpdateProjection(node, resultRelInfo);
+				if (!IsYBRelation(relation) || node->yb_fetch_target_tuple)
+				{
+					/* Initialize projection info if first time for this table */
+					if (unlikely(!resultRelInfo->ri_projectNewInfoValid))
+						ExecInitUpdateProjection(node, resultRelInfo);
 
-				/*
-				 * Make the new tuple by combining plan's output tuple with
-				 * the old tuple being updated.
-				 */
-				oldSlot = resultRelInfo->ri_oldTupleSlot;
-				if (oldtuple != NULL)
-				{
-					/* Use the wholerow junk attr as the old tuple. */
-					ExecForceStoreHeapTuple(oldtuple, oldSlot, false);
-				}
-				else
-				{
-					/* Fetch the most recent version of old tuple. */
-					bool row_found = false;
-					if (IsYBRelation(relation))
+					/*
+					 * Make the new tuple by combining plan's output tuple with
+					 * the old tuple being updated.
+					 */
+					oldSlot = resultRelInfo->ri_oldTupleSlot;
+					if (oldtuple != NULL)
 					{
-						row_found =
-							YbFetchTableSlot(relation, tupleid, oldSlot);
+						/* Use the wholerow junk attr as the old tuple. */
+						ExecForceStoreHeapTuple(oldtuple, oldSlot, false);
 					}
 					else
 					{
-						row_found = table_tuple_fetch_row_version(
-							relation, tupleid, SnapshotAny, oldSlot);
-					}
+						/* Fetch the most recent version of old tuple. */
+						Relation relation = resultRelInfo->ri_RelationDesc;
+						bool row_found = false;
+						if (IsYBRelation(relation))
+						{
+							row_found =
+								YbFetchTableSlot(relation, tupleid, oldSlot);
+						}
+						else
+						{
+							row_found = table_tuple_fetch_row_version(
+								relation, tupleid, SnapshotAny, oldSlot);
+						}
 
-					if (!row_found)
-						elog(ERROR, "failed to fetch tuple being updated");
+						if (!row_found)
+							elog(ERROR, "failed to fetch tuple being updated");
+					}
+					slot = internalGetUpdateNewTuple(resultRelInfo, context.planSlot,
+													 oldSlot, NULL);
+					context.GetUpdateNewTuple = internalGetUpdateNewTuple;
+					context.relaction = NULL;
 				}
-				slot = internalGetUpdateNewTuple(resultRelInfo, context.planSlot,
-												 oldSlot, NULL);
-				context.GetUpdateNewTuple = internalGetUpdateNewTuple;
-				context.relaction = NULL;
 
 				/* Now apply the update. */
 				slot = ExecUpdate(&context, resultRelInfo, tupleid, oldtuple,
@@ -4792,7 +4792,8 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 			relkind = resultRelInfo->ri_RelationDesc->rd_rel->relkind;
 			if (IsYBRelation(resultRelInfo->ri_RelationDesc))
 			{
-				if (!mtstate->yb_fetch_target_tuple) {
+				if (mtstate->yb_fetch_target_tuple)
+				{
 					resultRelInfo->ri_RowIdAttNo =
 						ExecFindJunkAttributeInTlist(subplan->targetlist, "ybctid");
 					if (!AttributeNumberIsValid(resultRelInfo->ri_RowIdAttNo))

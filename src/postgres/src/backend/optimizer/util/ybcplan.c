@@ -204,22 +204,13 @@ bool YbCanSkipFetchingTargetTupleForModifyTable(ModifyTable *modifyTable)
 		modifyTable->operation != CMD_DELETE)
 		return false;
 
-	/* YB_TODO(neil@yugabyte) Make sure that checking resultRelations is similar to checking
-	 * old pg11 attributes "node->plans".
-	 */
-	/* Should only have one data source. */
-	if (list_length(modifyTable->resultRelations) != 1)
-		return false;
-
-#ifdef YB_TODO
-	/* YB_TODO(neil@yugabyte) Make sure that this check is no longer needed */
 	/*
 	 * Verify the single data source is a Result node and does not have outer plan.
 	 * Note that Result node never has inner plan.
 	 */
-	if (!IsA(linitial(modifyTable->plans), Result) || outerPlan(linitial(modifyTable->plans)))
+	if (!IsA(outerPlan(&modifyTable->plan), Result) ||
+		outerPlan(outerPlan(&modifyTable->plan)))
 		return false;
-#endif
 
 	return true;
 }

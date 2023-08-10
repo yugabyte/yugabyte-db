@@ -143,7 +143,7 @@ extern void YBCExecuteInsertIndexForDb(Oid dboid,
  * to anoter.
  */
 extern bool YBCExecuteDelete(Relation rel,
-							 TupleTableSlot *slot,
+							 TupleTableSlot *planSlot,
 							 List *returning_columns,
 							 bool target_tuple_fetched,
 							 bool is_single_row_txn,
@@ -159,15 +159,6 @@ extern void YBCExecuteDeleteIndex(Relation index,
                                   Datum ybctid,
 								  yb_bind_for_write_function callback,
 								  void *indexstate);
-
-extern bool YBCTupleTableExecuteUpdate(Relation		   rel,
-									   ResultRelInfo  *resultRelInfo,
-									   TupleTableSlot *slot, HeapTuple oldtuple,
-									   EState *estate, ModifyTable *mt_plan,
-									   bool		  target_tuple_fetched,
-									   bool		  is_single_row_txn,
-									   Bitmapset *updatedCols, bool canSetTag);
-
 /*
  * Update a row (identified by ybctid) in a YugaByte table.
  * If this is a single row op we will return false in the case that there was
@@ -176,9 +167,9 @@ extern bool YBCTupleTableExecuteUpdate(Relation		   rel,
  */
 extern bool YBCExecuteUpdate(Relation rel,
 							 ResultRelInfo *resultRelInfo,
+							 TupleTableSlot *planSlot,
 							 TupleTableSlot *slot,
 							 HeapTuple oldtuple,
-							 HeapTuple tuple,
 							 EState *estate,
 							 ModifyTable *mt_plan,
 							 bool target_tuple_fetched,
@@ -197,9 +188,6 @@ extern bool YBCExecuteUpdate(Relation rel,
 extern bool YBCExecuteUpdateLoginAttempts(Oid roleid,
 										  int failed_attempts,
 										  char rolprfstatus);
-
-extern Oid YBCTupleTableExecuteUpdateReplace(Relation rel, TupleTableSlot *slot,
-											 EState *estate);
 /*
  * Replace a row in a YugaByte table by first deleting an existing row
  * (identified by ybctid) and then inserting a tuple to replace it.
@@ -208,8 +196,8 @@ extern Oid YBCTupleTableExecuteUpdateReplace(Relation rel, TupleTableSlot *slot,
  * This will change ybctid of a row within a tuple.
  */
 extern Oid YBCExecuteUpdateReplace(Relation rel,
+								   TupleTableSlot *planSlot,
 								   TupleTableSlot *slot,
-								   HeapTuple tuple,
 								   EState *estate);
 
 //------------------------------------------------------------------------------

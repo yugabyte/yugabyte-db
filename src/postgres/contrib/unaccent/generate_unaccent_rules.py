@@ -32,6 +32,8 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 
+yb_original_stdout = sys.stdout
+
 # yb_original_stdout = sys.stdout
 sys.stdout = codecs.getwriter('utf8')(sys.stdout.buffer)
 
@@ -288,4 +290,6 @@ if __name__ == "__main__":
 
 # Doctest throws the following error unless sys.stdout is restored:
 #   AttributeError: '_io.BufferedWriter' object has no attribute 'encoding'
-# sys.stdout = yb_original_stdout
+# original commit: https://github.com/yugabyte/yugabyte-db/commit/7526c698410dc7ba1c21ce0041357eb4444e5abb
+
+sys.stdout = yb_original_stdout

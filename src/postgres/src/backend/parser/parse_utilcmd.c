@@ -2795,7 +2795,9 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 		foreach(lc, constraint->yb_index_params)
 		{
 			IndexElem  *index_elem = (IndexElem *)lfirst(lc);
-			char	   *key = strVal(lfirst(lc));
+			char       *key;
+			if (!IsYugaByteEnabled())
+				key = strVal(lfirst(lc));
 			bool		found = false;
 			bool		forced_not_null = false;
 			ColumnDef  *column = NULL;
