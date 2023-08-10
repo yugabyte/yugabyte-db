@@ -583,6 +583,8 @@ class ReplaceRootVolumeMethod(AbstractInstancesMethod):
                                 old_disk_url, id))
             raise e
         finally:
+            if args.boot_script is not None:
+                self.cloud.update_user_data(args)
             server_ports = self.get_server_ports_to_check(args)
             self.cloud.start_instance(host_info, server_ports)
 
@@ -1091,6 +1093,8 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
             raise YBOpsRuntimeError('error executing \"instance.modify_attribute\": {}'
                                     .format(repr(e)))
         finally:
+            if args.boot_script is not None:
+                self.cloud.update_user_data(args)
             server_ports = self.get_server_ports_to_check(args)
             self.cloud.start_instance(host_info, server_ports)
             logging.info('Instance {} is started'.format(args.search_pattern))

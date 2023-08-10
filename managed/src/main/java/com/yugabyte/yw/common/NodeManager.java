@@ -1493,6 +1493,8 @@ public class NodeManager extends DevopsBase {
       }
     }
     Path bootScriptFile = null;
+    Provider provider = nodeTaskParam.getProvider();
+    String bootScript = confGetter.getConfForScope(provider, ProviderConfKeys.universeBootScript);
     Map<String, String> redactedVals = new HashMap<>();
     Map<String, String> sensitiveData = new HashMap<>();
     switch (type) {
@@ -1512,6 +1514,9 @@ public class NodeManager extends DevopsBase {
           } else {
             throw new RuntimeException("ReplaceRootVolume for AWS requires root device name.");
           }
+        }
+        if (!bootScript.isEmpty()) {
+          bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
         }
         break;
       case Create_Root_Volumes:
@@ -1538,7 +1543,7 @@ public class NodeManager extends DevopsBase {
           if (!(nodeTaskParam instanceof AnsibleCreateServer.Params)) {
             throw new RuntimeException("NodeTaskParams is not AnsibleCreateServer.Params");
           }
-          Config config = this.runtimeConfigFactory.forProvider(nodeTaskParam.getProvider());
+          Config config = this.runtimeConfigFactory.forProvider(provider);
           AnsibleCreateServer.Params taskParam = (AnsibleCreateServer.Params) nodeTaskParam;
           Common.CloudType cloudType = userIntent.providerType;
           if (!cloudType.equals(Common.CloudType.onprem)) {
@@ -1566,7 +1571,6 @@ public class NodeManager extends DevopsBase {
               }
             }
 
-            String bootScript = config.getString(BOOT_SCRIPT_PATH);
             if (!bootScript.isEmpty()) {
               bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
             }
@@ -1734,9 +1738,6 @@ public class NodeManager extends DevopsBase {
             }
           }
 
-          String bootScript =
-              confGetter.getConfForScope(
-                  nodeTaskParam.getProvider(), ProviderConfKeys.universeBootScript);
           if (!bootScript.isEmpty()) {
             bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
           }
@@ -1870,6 +1871,9 @@ public class NodeManager extends DevopsBase {
           addArguments(commandArgs, taskParam.nodeIP, taskParam.instanceType);
           if (taskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(taskParam));
+          }
+          if (!bootScript.isEmpty()) {
+            bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
           }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
@@ -2140,6 +2144,9 @@ public class NodeManager extends DevopsBase {
             throw new RuntimeException("NodeTaskParams is not RebootServer.Params");
           }
           RebootServer.Params taskParam = (RebootServer.Params) nodeTaskParam;
+          if (!bootScript.isEmpty()) {
+            bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
+          }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
 
           if (taskParam.useSSH) {
@@ -2174,6 +2181,9 @@ public class NodeManager extends DevopsBase {
       case Wait_For_Connection:
       case Hard_Reboot:
         {
+          if (!bootScript.isEmpty()) {
+            bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);
+          }
           commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
           break;
         }
