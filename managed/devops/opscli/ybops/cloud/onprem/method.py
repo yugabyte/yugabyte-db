@@ -150,34 +150,49 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
         if not host_info:
             logging.error("Host {} does not exists.".format(args.search_pattern))
             return
+        self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
+
+        # Force db-related commands to use the "yugabyte" user.
+        ssh_user = args.ssh_user
+        args.ssh_user = "yugabyte"
+        self.update_ansible_vars_with_args(args)
+
+        # First stop both tserver and master processes.
+        processes = ["tserver", "master"]
+        logging.info(("[app] Running control script to stop " +
+                      "against master and tserver at {}").format(host_info['name']))
+        self.cloud.run_control_script(processes[0], "stop", args, self.extra_vars, host_info)
+        self.cloud.run_control_script(processes[1], "stop", args, self.extra_vars, host_info)
+
+        # Revert the force using of user yugabyte.
+        args.ssh_user = ssh_user
+        self.update_ansible_vars_with_args(args)
+
+        if args.provisioning_cleanup:
+            self.cloud.run_control_script(
+                "platform-services", "remove-services", args, self.extra_vars, host_info)
 
         # Run non-db related tasks.
-        self.update_ansible_vars_with_args(args)
-        self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
         if args.install_node_exporter and args.provisioning_cleanup:
             logging.info(("[app] Running control script remove-services " +
                           "against thirdparty services at {}").format(host_info['name']))
             self.cloud.run_control_script(
                 "thirdparty", "remove-services", args, self.extra_vars, host_info)
 
-        if args.provisioning_cleanup:
-            self.cloud.run_control_script(
-                "platform-services", "remove-services", args, self.extra_vars, host_info)
-
-        # Force db-related commands to use the "yugabyte" user.
+        # Use "yugabyte" user again to do the cleanups.
         args.ssh_user = "yugabyte"
         self.update_ansible_vars_with_args(args)
-        servers = ["master", "tserver"]
-        commands = ["stop", "clean", "clean-logs"]
-        logging.info(("[app] Running control script stop+clean+clean-logs " +
-                     "against master+tserver at {}").format(host_info['name']))
-        for s in servers:
-            for c in commands:
+        logging.info(("[app] Running control script to clean and clean-logs " +
+                     "against master and tserver at {}").format(host_info['name']))
+        for process in processes:
+            for command in ["clean", "clean-logs"]:
                 self.cloud.run_control_script(
-                    s, c, args, self.extra_vars, host_info)
+                    process, command, args, self.extra_vars, host_info)
 
         # Now clean the instance, we pass "" as the 'process' since this command isn't really
         # specific to any process and needs to be just run on the node.
+        logging.info(("[app] Running control script to clean-instance " +
+                      "against node {}").format(host_info['name']))
         self.cloud.run_control_script("", "clean-instance", args, self.extra_vars, host_info)
 
 
