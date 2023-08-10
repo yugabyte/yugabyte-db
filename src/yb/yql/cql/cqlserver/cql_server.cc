@@ -110,7 +110,7 @@ Status CQLServer::Start() {
                                 boost::asio::placeholders::error));
 
   if (tserver_) {
-    tserver_->GetCQLServerMessenger(std::bind(&CQLServer::messenger, this));
+    tserver_->SetCQLServerMessenger(std::bind(&CQLServer::messenger, this));
   }
 
   return Status::OK();

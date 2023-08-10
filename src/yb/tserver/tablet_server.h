@@ -296,7 +296,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return catalog_versions_fingerprint_.load(std::memory_order_acquire);
   }
 
-  void GetCQLServerMessenger(CQLServerMessenger messenger) override;
+  void SetCQLServerMessenger(CQLServerMessenger messenger) override;
 
   rpc::Messenger* GetMessenger(util::MessengerType messenger_type) const override;
 

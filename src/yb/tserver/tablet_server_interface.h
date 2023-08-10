@@ -81,7 +81,7 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual std::vector<yb::util::WaitStateInfoPtr> GetThreadpoolWaitStates() const = 0;
 
-  virtual void GetCQLServerMessenger(CQLServerMessenger messenger) = 0;
+  virtual void SetCQLServerMessenger(CQLServerMessenger messenger) = 0;
 
   virtual rpc::Messenger* GetMessenger(util::MessengerType messenger_type) const = 0;
 };

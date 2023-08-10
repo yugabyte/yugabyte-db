@@ -1235,7 +1235,7 @@ std::vector<yb::util::WaitStateInfoPtr> TabletServer::GetThreadpoolWaitStates() 
   return tablet_manager_->GetThreadpoolWaitStates();
 }
 
-void TabletServer::GetCQLServerMessenger(CQLServerMessenger messenger) {
+void TabletServer::SetCQLServerMessenger(CQLServerMessenger messenger) {
   cql_server_messenger_ = messenger;
 }
 
