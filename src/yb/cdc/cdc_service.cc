@@ -1606,6 +1606,8 @@ void CDCServiceImpl::GetChanges(
     auto last_checkpoint = RPC_VERIFY_RESULT(
         GetLastCheckpoint(producer_tablet, stream_meta_ptr.get()->GetSourceType()),
         resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+    LOG(WARNING) << "GetChanges called on T " << req->tablet_id() << " S " << req->stream_id()
+                 << " without an index. Using last checkpoint: " << last_checkpoint;
     if (record.GetSourceType() == XCLUSTER) {
       from_op_id = last_checkpoint;
     } else {
@@ -3159,13 +3161,13 @@ Result<GetLatestEntryOpIdResponsePB> CDCServiceImpl::GetLatestEntryOpId(
     const GetLatestEntryOpIdRequestPB& req, CoarseTimePoint deadline) {
   GetLatestEntryOpIdResponsePB resp;
 
-  std::unordered_set<TabletId> tablet_ids;
+  std::vector<TabletId> tablet_ids;
   if (req.has_tablet_id()) {
     // Support backwards compatibility.
-    tablet_ids.insert(req.tablet_id());
+    tablet_ids.push_back(req.tablet_id());
   } else {
     for (int i = 0; i < req.tablet_ids_size(); i++) {
-      tablet_ids.insert(req.tablet_ids(i));
+      tablet_ids.push_back(req.tablet_ids(i));
     }
   }
 
@@ -3511,7 +3513,11 @@ Status CDCServiceImpl::BootstrapProducerHelperParallelized(
 
   // Check that all tablets have a valid op id.
   for (const auto& tablet_op_id_pair : tablet_op_ids) {
-    if (!tablet_op_id_pair.second.valid()) {
+    LOG(WARNING) << "CDC checkpoint for T " << tablet_op_id_pair.first.second << " S "
+                 << tablet_op_id_pair.first.first << " is: " << tablet_op_id_pair.second;
+    // Also check for not empty here, since 0.0 has different behaviour (start from beginning of log
+    // cache), which we don't want for bootstrapping.
+    if (!tablet_op_id_pair.second.is_valid_not_empty()) {
       return STATUS(
           InternalError, "Could not retrieve op id for tablet", tablet_op_id_pair.first.second);
     }
