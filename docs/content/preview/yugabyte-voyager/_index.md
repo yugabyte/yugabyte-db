@@ -34,7 +34,7 @@ Use YugabyteDB Voyager to enable enterprises to achieve database modernization w
   >}}
 {{< /sections/2-boxes >}}
 
-## Use YugabyteDB Anywhere
+## Use YugabyteDB Voyager
 
 {{< sections/3-boxes >}}
   {{< sections/3-box-card
@@ -46,7 +46,7 @@ Use YugabyteDB Voyager to enable enterprises to achieve database modernization w
 
   {{< sections/3-box-card
     title="Migrate"
-    description="Perform database migration using YB Voyager and verify using validation queries."
+    description="Perform database migration using YB Voyager and verify migration using validation queries."
     buttonText="migrate"
     buttonUrl="migrate-steps/"
   >}}
