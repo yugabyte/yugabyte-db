@@ -1,3 +1,5 @@
+// Copyright (c) Yugabyte, Inc.
+
 package com.yugabyte.yw.common.rbac;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -8,10 +10,10 @@ import lombok.NoArgsConstructor;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class PermissionInfoIdentifier {
-  @JsonProperty("resource_type")
+public class Permission {
+  @JsonProperty("resourceType")
   public PermissionInfo.ResourceType resourceType;
 
-  @JsonProperty("permission")
-  public PermissionInfo.Permission permission;
+  @JsonProperty("action")
+  public PermissionInfo.Action action;
 }

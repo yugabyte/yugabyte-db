@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-package com.yugabyte.yw.forms;
+package com.yugabyte.yw.forms.rbac;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.rbac.RoleResourceDefinition;
