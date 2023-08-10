@@ -611,21 +611,22 @@ Status XClusterTestBase::WaitForRoleChangeToPropogateToAllTServers(
 
 Result<std::vector<CDCStreamId>> XClusterTestBase::BootstrapProducer(
     MiniCluster* producer_cluster, YBClient* producer_client,
-    const std::vector<std::shared_ptr<yb::client::YBTable>>& tables) {
+    const std::vector<std::shared_ptr<yb::client::YBTable>>& tables, int proxy_tserver_index) {
   std::vector<string> table_ids;
   for (const auto& table : tables) {
     table_ids.push_back(table->id());
   }
 
-  return BootstrapProducer(producer_cluster, producer_client, table_ids);
+  return BootstrapProducer(producer_cluster, producer_client, table_ids, proxy_tserver_index);
 }
 
 Result<std::vector<CDCStreamId>> XClusterTestBase::BootstrapProducer(
-    MiniCluster* producer_cluster, YBClient* producer_client,
-    const std::vector<string>& table_ids) {
+    MiniCluster* producer_cluster, YBClient* producer_client, const std::vector<string>& table_ids,
+    int proxy_tserver_index) {
   std::unique_ptr<cdc::CDCServiceProxy> producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
       &producer_client->proxy_cache(),
-      HostPort::FromBoundEndpoint(producer_cluster->mini_tablet_server(0)->bound_rpc_addr()));
+      HostPort::FromBoundEndpoint(
+          producer_cluster->mini_tablet_server(proxy_tserver_index)->bound_rpc_addr()));
   cdc::BootstrapProducerRequestPB req;
   cdc::BootstrapProducerResponsePB resp;
 
