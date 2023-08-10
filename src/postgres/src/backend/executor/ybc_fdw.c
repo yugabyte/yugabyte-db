@@ -403,6 +403,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 		YbDmlAppendTargetsAggregate(node->yb_fdw_aggrefs,
 									RelationGetDescr(ss->ss_currentRelation),
 									NULL /* index */,
+									false /* xs_want_itup */,
 									handle);
 
 		/*

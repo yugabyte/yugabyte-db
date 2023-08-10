@@ -1556,6 +1556,7 @@ yb_agg_pushdown_supported(AggState *aggstate)
 	/* Supported outer plan. */
 	if (!(IsA(outerPlanState(aggstate), ForeignScanState) ||
 		  IsA(outerPlanState(aggstate), IndexOnlyScanState) ||
+		  IsA(outerPlanState(aggstate), IndexScanState) ||
 		  IsA(outerPlanState(aggstate), YbSeqScanState)))
 		return;
 	ss = (ScanState *) outerPlanState(aggstate);
@@ -1568,7 +1569,17 @@ yb_agg_pushdown_supported(AggState *aggstate)
 	if (ss->ps.qual)
 		return;
 	/* No indexquals that might be rechecked. */
-	if (IsA(ss, IndexOnlyScanState))
+	if (IsA(ss, IndexScanState))
+	{
+		/* Also check the GUC here. */
+		if (!yb_enable_index_aggregate_pushdown)
+			return;
+
+		IndexScanState *iss = castNode(IndexScanState, ss);
+		if (iss->yb_iss_might_recheck)
+			return;
+	}
+	else if (IsA(ss, IndexOnlyScanState))
 	{
 		IndexOnlyScanState *ioss = castNode(IndexOnlyScanState, ss);
 		if (ioss->yb_ioss_might_recheck)
@@ -2579,15 +2590,16 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	outerPlan = outerPlan(node);
 
 	/*
-	 * For YB index only scan outer plan, we need to collect recheck
-	 * information, so set that flag for the index only scan.  Ideally, the
-	 * flag is only set for YB relations since, later on, agg pushdown is
-	 * disabled anyway for non-YB relations, but we don't have that information
-	 * at this point: the relation is opened in the IndexOnlyScan node.  So set
-	 * the flag in all cases, and move the YB-relation check down there.
+	 * For YB IndexScan/IndexOnlyScan outer plan, we need to collect recheck
+	 * information, so set that eflag.  Ideally, the flag is only set for YB
+	 * relations since, later on, agg pushdown is disabled anyway for non-YB
+	 * relations, but we don't have that information at this point: the
+	 * relation is opened in the IndexScan/IndexOnlyScan node.  So set the flag
+	 * in all cases, and move the YB-relation check down there.
 	 */
 	int yb_eflags = 0;
-	if (IsYugaByteEnabled() && IsA(outerPlan, IndexOnlyScan))
+	if (IsYugaByteEnabled() &&
+		(IsA(outerPlan, IndexScan) || IsA(outerPlan, IndexOnlyScan)))
 		yb_eflags |= EXEC_FLAG_YB_AGG_PARENT;
 
 	outerPlanState(aggstate) = ExecInitNode(outerPlan, estate,

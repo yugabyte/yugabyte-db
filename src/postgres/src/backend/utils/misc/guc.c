@@ -2176,6 +2176,19 @@ static struct config_bool ConfigureNamesBool[] =
 		true,
 		NULL, NULL, NULL
 	},
+
+	{
+		/* Intended for rolling upgrade scenarios; tied to an auto-flag. */
+		{"yb_enable_index_aggregate_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Push supported index aggregate operations to DocDB."),
+			gettext_noop("This affects IndexScan, not IndexOnlyScan."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_index_aggregate_pushdown,
+		true,
+		NULL, NULL, NULL
+	},
+
 	{
 		{"yb_enable_hash_batch_in", PGC_USERSET, QUERY_TUNING_METHOD,
 		gettext_noop("GUC variable that enables batching RPCs of generated for IN queries on hash "
