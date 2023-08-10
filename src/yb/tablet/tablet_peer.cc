@@ -1031,9 +1031,8 @@ Result<std::pair<OpId, HybridTime>> TabletPeer::GetOpIdAndSafeTimeForXReplBootst
     if (index > 0) {
       index--;
     }
-    // Term does not matter, so can be set to 0.
-
-    auto op_id = OpId(0, index);
+    // Term does not matter, set it to 1 so that the opid is not considered empty.
+    auto op_id = OpId(1, index);
     auto bootstrap_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
     return std::make_pair(std::move(op_id), std::move(bootstrap_time));
   }

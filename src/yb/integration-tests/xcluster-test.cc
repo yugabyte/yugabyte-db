@@ -127,6 +127,8 @@ DECLARE_bool(TEST_enable_replicate_transaction_status_table);
 DECLARE_bool(TEST_xcluster_disable_delete_old_pollers);
 DECLARE_bool(enable_log_retention_by_op_idx);
 DECLARE_bool(TEST_xcluster_disable_poller_term_check);
+DECLARE_int32(update_min_cdc_indices_interval_secs);
+DECLARE_bool(enable_update_local_peer_min_index);
 
 namespace yb {
 
@@ -3754,4 +3756,41 @@ TEST_P(XClusterTest, LeaderFailoverTest) {
   ASSERT_OK(VerifyNumRecords(consumer_table->name(), consumer_client(), 3 * kNumWriteRecords));
 }
 
-} // namespace yb
+TEST_P(XClusterTest, FetchBootstrapCheckpointsFromLeaders) {
+  // Setup with many tablets to increase the chance that we hit any ordering issues.
+  const uint32_t kReplicationFactor = 3, kTabletCount = 10, kNumMasters = 1, kNumTservers = 3;
+  auto tables = ASSERT_RESULT(SetUpWithParams(
+      {kTabletCount}, {kTabletCount}, kReplicationFactor, kNumMasters, kNumTservers));
+  const auto& producer_table = tables[0];
+  const auto& consumer_table = tables[1];
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_update_local_peer_min_index) = true;
+
+  WriteWorkload(0, 2, producer_client(), producer_table->name());
+
+  ASSERT_OK(producer_cluster()->AddTabletServer());
+  ASSERT_OK(producer_cluster()->WaitForTabletServerCount(4));
+
+  // Bootstrap producer tables.
+  // Force using the tserver we just added as the cdc service proxy. Since load balancing is off,
+  // this node will not have any tablet peers, so we will have to fetch all the bootstrap ids from
+  // other nodes.
+  auto bootstrap_ids = ASSERT_RESULT(BootstrapProducer(
+      producer_cluster(), producer_client(), {producer_table}, /* proxy_tserver_index */ 3));
+
+  // Set up replication with bootstrap IDs.
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table},
+      bootstrap_ids));
+  master::GetUniverseReplicationResponsePB get_universe_replication_resp;
+  ASSERT_OK(VerifyUniverseReplication(&get_universe_replication_resp));
+
+  // After creating the cluster, make sure all tablets being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), kTabletCount));
+  WriteWorkload(3, 100, producer_client(), producer_table->name());
+  ASSERT_OK(VerifyNumRecords(consumer_table->name(), consumer_client(), 97));
+}
+
+}  // namespace yb
