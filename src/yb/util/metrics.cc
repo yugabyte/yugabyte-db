@@ -718,6 +718,12 @@ Status Histogram::WritePercentilesForPrometheus(
                                          underlying()->MaxValue(),
                                          prototype()->aggregation_function(),
                                          gauge_type, description));
+
+  attr["quantile"] = "min";
+  RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
+                                         underlying()->MinValue(),
+                                         prototype()->aggregation_function(),
+                                         gauge_type, description));
   return Status::OK();
 }
 
