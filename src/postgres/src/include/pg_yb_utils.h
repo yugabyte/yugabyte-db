@@ -444,6 +444,12 @@ extern bool yb_enable_expression_pushdown;
 extern bool yb_enable_distinct_pushdown;
 
 /*
+ * Enables index aggregate pushdown (IndexScan only, not IndexOnlyScan).
+ * If true, request aggregated results from DocDB when possible.
+ */
+extern bool yb_enable_index_aggregate_pushdown;
+
+/*
  * YSQL guc variable that is used to enable the use of Postgres's selectivity
  * functions and YSQL table statistics.
  * e.g. 'SET yb_enable_optimizer_statistics = true'

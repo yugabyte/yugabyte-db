@@ -164,7 +164,8 @@ extern void YbDmlAppendTargetSystem(AttrNumber attnum, YBCPgStatement handle);
 extern void YbDmlAppendTargetRegular(TupleDesc tupdesc, AttrNumber attnum,
 									 YBCPgStatement handle);
 extern void YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc,
-										Relation index, YBCPgStatement handle);
+										Relation index, bool xs_want_itup,
+										YBCPgStatement handle);
 extern void YbDmlAppendTargets(List *colrefs, YBCPgStatement handle);
 /* Add quals to the given statement. */
 extern void YbDmlAppendQuals(List *quals, bool is_primary,
@@ -200,6 +201,8 @@ extern bool YbPredetermineNeedsRecheck(Relation relation,
 
 HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
 IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
+bool ybc_getnext_aggslot(IndexScanDesc scan, YBCPgStatement handle,
+						 bool index_only_scan);
 
 Oid ybc_get_attcollation(TupleDesc bind_desc, AttrNumber attnum);
 
