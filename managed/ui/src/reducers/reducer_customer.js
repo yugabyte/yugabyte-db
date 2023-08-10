@@ -25,6 +25,8 @@ import {
   FETCH_SOFTWARE_VERSIONS,
   FETCH_TLS_CERTS,
   FETCH_TLS_CERTS_RESPONSE,
+  FETCH_OIDC_TOKEN,
+  FETCH_OIDC_TOKEN_RESPONSE,
   ADD_TLS_CERT,
   ADD_TLS_CERT_RESPONSE,
   ADD_TLS_CERT_RESET,
@@ -142,6 +144,7 @@ const INITIAL_STATE = {
   deleteAlertConfig: getInitialState([]),
   hostInfo: null,
   customerCount: {},
+  OIDCToken: getInitialState({}),
   yugawareVersion: getInitialState({}),
   profile: getInitialState({}),
   addConfig: getInitialState({}),
@@ -262,6 +265,10 @@ export default function (state = INITIAL_STATE, action) {
     case FETCH_HOST_INFO_FAILURE:
       return { ...state, hostInfo: null };
 
+    case FETCH_OIDC_TOKEN:
+      return setLoadingState(state, 'OIDCToken', {});
+    case FETCH_OIDC_TOKEN_RESPONSE:
+      return setPromiseResponse(state, 'OIDCToken', action);
     case UPDATE_PROFILE:
       return setLoadingState(state, 'profile');
     case UPDATE_PROFILE_SUCCESS:

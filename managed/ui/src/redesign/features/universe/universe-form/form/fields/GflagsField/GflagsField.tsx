@@ -20,9 +20,11 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBModalForm } from '../../../../../../../components/common/forms';
 import AddGFlag from '../../../../../../../components/universes/UniverseForm/AddGFlag';
 import EditorGFlag from '../../../../../../../components/universes/UniverseForm/EditorGFlag';
+import { GFlagRowProps } from '../../../../../../../components/universes/UniverseForm/EditGFlagsConf';
 import { useWhenMounted } from '../../../../../../helpers/hooks';
 import { validateGFlags } from '../../../../../../../actions/universe';
 import { Gflag } from '../../../utils/dto';
+import { MULTILINE_GFLAGS_ARRAY } from '../../../../../../../utils/UniverseUtils';
 //Icons
 import Edit from '../../../../../../assets/edit_pen.svg';
 import Close from '../../../../../../assets/close.svg';
@@ -51,9 +53,14 @@ interface SelectedOption {
   server: string;
   mode?: string;
   label?: string;
+  tserverFlagDetails?: FlagDetails;
+  masterFlagDetails?: FlagDetails;
   flagname?: string;
   flagvalue?: any;
-  flagvalueobject?: any;
+}
+
+interface FlagDetails {
+  flagvalueobject?: GFlagRowProps[];
   previewFlagValue?: string;
 }
 
@@ -71,8 +78,8 @@ interface GflagValidationResponse {
 export type SERVER = 'MASTER' | 'TSERVER';
 
 //server
-const MASTER = 'MASTER';
-const TSERVER = 'TSERVER';
+export const MASTER = 'MASTER';
+export const TSERVER = 'TSERVER';
 //options
 const FREE_TEXT = 'FREE_TEXT';
 const ADD_GFLAG = 'ADD_GFLAG';
@@ -80,8 +87,17 @@ const ADD_GFLAG = 'ADD_GFLAG';
 const CREATE = 'CREATE';
 const EDIT = 'EDIT';
 
-export type GFlagConf = { ConfValue: any; PreviewConfValue: string };
+export type AddGFlagObject = { [SERVER: string]: any; Name: string };
+export type GFlagConfServerProps = {
+  ConfValue: GFlagRowProps[];
+  PreviewConfValue: string;
+};
+export type GFlagConf = {
+  tserverFlagDetails?: GFlagConfServerProps;
+  masterFlagDetails?: GFlagConfServerProps;
+};
 export type GFlagWithId = Gflag & { id: string } & GFlagConf;
+export type AddGFlagConfObject = AddGFlagObject & GFlagConf;
 
 export const GFlagsField = ({
   dbVersion,
@@ -98,6 +114,7 @@ export const GFlagsField = ({
   });
   const [selectedProps, setSelectedProps] = useState<SelectedOption | null>(null);
   const [toggleModal, setToggleModal] = useState(false);
+  const [isJWKSKeyDialogOpen, setIsJWKSKeyDialogOpen] = useState<boolean>(false);
   const [validationError, setValidationError] = useState([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [versionError, setVersionError] = useState<string | null>(null);
@@ -206,12 +223,26 @@ export const GFlagsField = ({
       }
 
       case ADD_GFLAG: {
-        const obj = {
+        const obj: AddGFlagConfObject = {
           Name: values?.flagname,
-          [values?.server]: values?.flagvalue,
-          ConfValue: values?.flagvalueobject,
-          PreviewConfValue: values?.previewFlagValue
+          [values?.server]: values?.flagvalue
         };
+        if (MULTILINE_GFLAGS_ARRAY.includes(values?.server)) {
+          // In case of any multi-line csv flags, the below variables
+          // will have concatenated string and preview flag value to be displayed
+          if (values?.server === TSERVER) {
+            obj.tserverFlagDetails = {
+              ConfValue: values?.tserverFlagDetails?.flagvalueobject,
+              PreviewConfValue: values?.tserverFlagDetails?.previewFlagValue
+            };
+          } else {
+            obj.masterFlagDetails = {
+              ConfValue: values?.masterFlagDetails?.flagvalueobject,
+              PreviewConfValue: values?.masterFlagDetails?.previewFlagValue
+            };
+          }
+        }
+
         checkExistsAndPush(obj);
         callValidation([obj]);
         setToggleModal(false);
@@ -324,8 +355,14 @@ export const GFlagsField = ({
         ...modalProps,
         flagname: row?.Name,
         flagvalue: row[server],
-        flagvalueobject: row?.ConfValue,
-        previewFlagValue: row?.PreviewConfValue
+        tserverFlagDetails: {
+          flagvalueobject: row?.tserverFlagDetails?.ConfValue,
+          previewFlagValue: row?.tserverFlagDetails?.PreviewConfValue
+        },
+        masterFlagDetails: {
+          flagvalueobject: row?.masterFlagDetails?.ConfValue,
+          previewFlagValue: row?.masterFlagDetails?.PreviewConfValue
+        }
       };
       if (isError) modalProps['errorMsg'] = eInfo[server]?.error;
 
@@ -468,11 +505,20 @@ export const GFlagsField = ({
       }
 
       case ADD_GFLAG:
-        return <AddGFlag formProps={formProps} gFlagProps={{ ...selectedProps, dbVersion }} />;
-
+        return (
+          <AddGFlag
+            formProps={formProps}
+            gFlagProps={{ ...selectedProps, dbVersion, existingFlags: fields }}
+            updateJWKSDialogStatus={updateJWKSDialogStatus}
+          />
+        );
       default:
         return null;
     }
+  };
+
+  const updateJWKSDialogStatus = (status: boolean) => {
+    setIsJWKSKeyDialogOpen(status);
   };
 
   const renderModal = () => {
@@ -514,7 +560,13 @@ export const GFlagsField = ({
         onHide={() => setToggleModal(false)}
         onFormSubmit={handleFormSubmit}
         render={(properties: any) => renderOption(properties)}
-        dialogClassName={toggleModal ? 'gflag-modal modal-fade in' : 'modal-fade'}
+        dialogClassName={
+          toggleModal
+            ? isJWKSKeyDialogOpen
+              ? 'gflag-modal modal-fade partial'
+              : 'gflag-modal modal-fade in'
+            : 'modal-fade'
+        }
         headerClassName="add-flag-header"
         showBackButton={true}
       />

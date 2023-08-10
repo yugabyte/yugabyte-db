@@ -11,7 +11,7 @@ import { browserHistory } from 'react-router';
 import { Field, Form, Formik } from 'formik';
 import * as Yup from 'yup';
 import _ from 'lodash';
-import { ROOT_URL, isSSOEnabled } from '../../../../config';
+import { ROOT_URL, isSSOEnabled, shouldShowJWTTokenInfo } from '../../../../config';
 import { clearCredentials } from '../../../../routes';
 import { trimString } from '../../../../utils/ObjectUtils';
 import { LDAP_CA_CERT_ERR_MSG, handleCACertErrMsg } from '../../../customCACerts';
@@ -51,6 +51,11 @@ class LoginForm extends Component {
         browserHistory.push('/');
       }
     }
+  }
+
+  fetchJWTToken() {
+    const pathToRedirect = '/jwt_token';
+    window.location.replace(`${ROOT_URL}/fetch_jwt_token?orig_url=${pathToRedirect}`);
   }
 
   runSSO() {
@@ -118,6 +123,13 @@ class LoginForm extends Component {
                     }}
                   >
                     Super Admin Login
+                  </div>
+                </div>
+              )}
+              {shouldShowJWTTokenInfo() && (
+                <div>
+                  <div className="align-center link-text" onClick={this.fetchJWTToken}>
+                    Get JSON Web Token
                   </div>
                 </div>
               )}

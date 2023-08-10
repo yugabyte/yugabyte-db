@@ -221,7 +221,8 @@ public class SessionController extends AbstractPlatformController {
     String appHomeDir = config.getString("application.home");
     String logDir = config.getString("log.override.path");
     File file = new File(String.format("%s/application.log", logDir));
-    // TODO(bogdan): This is not really pagination friendly as it re-reads everything all the time.
+    // TODO(bogdan): This is not really pagination friendly as it re-reads
+    // everything all the time.
     // TODO(bogdan): Need to figure out if there's a rotation-friendly log-reader..
     try (ReversedLinesFileReader reader = new ReversedLinesFileReader(file)) {
       int index = 0;
@@ -376,9 +377,12 @@ public class SessionController extends AbstractPlatformController {
   @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result getPlatformConfig() {
     boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
+    boolean showJWTTokenInfo =
+        runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.showJWTInfoOnLogin");
     String platformConfig = "window.YB_Platform_Config = window.YB_Platform_Config || %s";
     ObjectNode responseJson = Json.newObject();
     responseJson.put("use_oauth", useOAuth);
+    responseJson.put("show_jwt_token_info", showJWTTokenInfo);
     platformConfig = String.format(platformConfig, responseJson.toString());
     return ok(platformConfig);
   }
@@ -474,6 +478,12 @@ public class SessionController extends AbstractPlatformController {
                 .withPath(redirectURI)
                 .build(),
             Cookie.builder("email", preferredUsername)
+                .withSecure(request.secure())
+                .withHttpOnly(false)
+                .withMaxAge(maxAgeInSeconds)
+                .withPath(redirectURI)
+                .build(),
+            Cookie.builder("expiration", expirationTime.toString())
                 .withSecure(request.secure())
                 .withHttpOnly(false)
                 .withMaxAge(maxAgeInSeconds)
@@ -730,7 +740,8 @@ public class SessionController extends AbstractPlatformController {
     // Make the request
     String url = "http://" + finalRequestUrl;
 
-    // Accept-Encoding: gzip causes the master/tserver to typically return compressed responses,
+    // Accept-Encoding: gzip causes the master/tserver to typically return
+    // compressed responses,
     // however Play doesn't return gzipped responses right now
     return apiHelper
         .getSimpleRequest(url, ImmutableMap.of(play.mvc.Http.HeaderNames.ACCEPT_ENCODING, "gzip"))

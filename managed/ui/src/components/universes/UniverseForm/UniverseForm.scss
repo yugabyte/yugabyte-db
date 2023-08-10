@@ -547,7 +547,7 @@
   flex-shrink: 1;
   display: flex;
   flex-direction: column;
-  padding: 32px 0px;
+  padding: 32px 0px 8px 0px;
   background-color: colors.$YB_BG_WHITE_2;
 }
 
@@ -780,6 +780,10 @@
 
 .modal-fade.in {
   opacity: 1 !important;
+}
+
+.modal-fade.partial {
+  opacity: 0.7 !important;
 }
 
 .modal-fade {
