@@ -630,16 +630,14 @@ index_getnext_tid(IndexScanDesc scan, ScanDirection direction)
 bool
 index_fetch_heap(IndexScanDesc scan, TupleTableSlot *slot)
 {
+	if (IsYBRelation(scan->heapRelation))
+	{
+		ExecStoreBufferHeapTuple(scan->xs_hitup, slot, InvalidBuffer);
+		return true;
+	}
+
 	bool		all_dead = false;
 	bool		found;
-
-	/*
-	 * For YugaByte secondary indexes, there are two scenarios.
-	 * - If YugaByte returns an index-tuple, the returned ybctid value should be used to query data.
-	 * - If YugaByte returns a heap_tuple, all requested data was already selected in the tuple.
-	 */
-	if (IsYBRelation(scan->heapRelation))
-		return scan->xs_hitup;
 
 	found = table_index_fetch_tuple(scan->xs_heapfetch, &scan->xs_heaptid,
 									scan->xs_snapshot, slot,

@@ -96,7 +96,7 @@ ybcGetForeignRelSize(PlannerInfo *root,
 	}
 	else
 	{
-		if (baserel->tuples == 0)
+		if (baserel->tuples < 0)
 			baserel->tuples = YBC_DEFAULT_NUM_ROWS;
 
 		/*
