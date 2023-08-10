@@ -10,17 +10,11 @@
 
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
-import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
-import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
-import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.common.AssertHelper.*;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -40,7 +34,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
-import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -48,12 +41,6 @@ import play.test.Helpers;
 
 @RunWith(JUnitParamsRunner.class)
 public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase {
-
-  @Override
-  protected GuiceApplicationBuilder appOverrides(GuiceApplicationBuilder applicationBuilder) {
-    // Setting platform type as correct.
-    return applicationBuilder.configure("yb.mode", "OSS");
-  }
 
   @Test
   public void testRunQueryWithInvalidUniverse() throws Exception {
