@@ -246,6 +246,7 @@ public class UniverseActionsHandler {
             mapper.writeValueAsString(universe.getUniverseDetails()), ResumeUniverse.Params.class);
     // There is no staleness of a resume request. Perform it even if the universe has changed.
     taskParams.expectedUniverseVersion = -1;
+    taskParams.customerUUID = customer.getUuid();
 
     // Submit the task to resume the universe.
     TaskType taskType = TaskType.ResumeUniverse;
