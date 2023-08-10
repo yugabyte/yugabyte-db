@@ -662,6 +662,22 @@ class AwsCloud(AbstractCloud):
                 raise YBOpsRuntimeError("Failed to start instance {}: {}".format(
                     host_info["id"], e))
 
+    def update_user_data(self, args):
+        if args.boot_script is None:
+            return
+        new_user_data = ''
+        with open(args.boot_script, 'r') as script:
+            new_user_data = script.read()
+        instance = self.get_host_info(args)
+        logging.info("[app] Updating the user_data for the instance {}".format(instance['id']))
+        try:
+            ec2 = boto3.client('ec2', region_name=instance['region'])
+            ec2.modify_instance_attribute(InstanceId=instance['id'],
+                                          UserData={'Value': new_user_data})
+        except ClientError as e:
+            logging.exception('Failed to update user_data for {}'.format(args.search_pattern))
+            raise e
+
     def get_console_output(self, args):
         instance = self.get_host_info(args)
 
