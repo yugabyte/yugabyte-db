@@ -192,7 +192,6 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus }) => {
           return (
             <GFlagsConf
               formProps={formProps}
-              mode={mode}
               serverType={server}
               flagName={flag?.name}
               updateJWKSDialogStatus={updateJWKSDialogStatus}
