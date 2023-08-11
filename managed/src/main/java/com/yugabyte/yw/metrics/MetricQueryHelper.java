@@ -15,6 +15,8 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -63,10 +65,21 @@ public class MetricQueryHelper {
 
   private static final String DEFAULT_MOUNT_POINTS = "/mnt/d[0-9]+";
 
-  private static final Set<String> DISK_USAGE_METRICS =
+  private static final Set<String> DATA_DISK_USAGE_METRICS =
       ImmutableSet.of(
-          "disk_usage", "disk_usage_percent", "disk_used_size_total", "disk_capacity_size_total");
+          "disk_usage", "disk_used_size_total", "disk_capacity_size_total", "disk_usage_percent");
+
+  private static final Set<String> DISK_USAGE_METRICS =
+      ImmutableSet.<String>builder()
+          .addAll(DATA_DISK_USAGE_METRICS)
+          .add("disk_volume_usage_percent")
+          .add("disk_volume_used")
+          .add("disk_volume_capacity")
+          .build();
+
   private final Config appConfig;
+
+  private final RuntimeConfGetter confGetter;
 
   private final ApiHelper apiHelper;
 
@@ -77,10 +90,12 @@ public class MetricQueryHelper {
   @Inject
   public MetricQueryHelper(
       Config appConfig,
+      RuntimeConfGetter confGetter,
       ApiHelper apiHelper,
       MetricUrlProvider metricUrlProvider,
       PlatformExecutorFactory platformExecutorFactory) {
     this.appConfig = appConfig;
+    this.confGetter = confGetter;
     this.apiHelper = apiHelper;
     this.metricUrlProvider = metricUrlProvider;
     this.platformExecutorFactory = platformExecutorFactory;
@@ -88,7 +103,7 @@ public class MetricQueryHelper {
 
   @VisibleForTesting
   public MetricQueryHelper() {
-    this(null, null, null, null);
+    this(null, null, null, null, null);
   }
 
   /**
@@ -530,8 +545,15 @@ public class MetricQueryHelper {
               nodePrefix);
           return filterOverrides;
         }
+        Universe universe = universes.get(0);
+        String dataMountPoints = getDataMountPoints(universe);
+        String otherMountPoints = getOtherMountPoints(confGetter, universe);
         HashMap<String, String> mountFilters = new HashMap<>();
-        mountFilters.put("mountpoint", getMountPoints(universes.get(0)));
+        if (DATA_DISK_USAGE_METRICS.contains(metricName)) {
+          mountFilters.put("mountpoint", dataMountPoints);
+        } else {
+          mountFilters.put("mountpoint", otherMountPoints + "|" + dataMountPoints);
+        }
         filterOverrides.put(metricName, mountFilters);
       }
     }
@@ -544,7 +566,7 @@ public class MetricQueryHelper {
         && !n.cloudInfo.mount_roots.isEmpty();
   }
 
-  public static String getMountPoints(Universe universe) {
+  public static String getDataMountPoints(Universe universe) {
     if (universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
         == CloudType.onprem) {
       final String mountRoots =
@@ -566,5 +588,18 @@ public class MetricQueryHelper {
       }
     }
     return DEFAULT_MOUNT_POINTS;
+  }
+
+  public static String getOtherMountPoints(RuntimeConfGetter confGetter, Universe universe) {
+    UUID providerUuid =
+        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+    Provider provider = Provider.getOrBadRequest(providerUuid);
+    String otherMountPoints =
+        confGetter.getConfForScope(provider, ProviderConfKeys.monitoredMountRoots);
+    if (StringUtils.isBlank(otherMountPoints)) {
+      // Special value to make sure no metric values are returned for the query
+      return "#";
+    }
+    return otherMountPoints.replaceAll(",", "|");
   }
 }

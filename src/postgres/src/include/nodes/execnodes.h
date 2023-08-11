@@ -1368,6 +1368,11 @@ typedef struct
  *		OrderByTypByVals   is the datatype of order by expression pass-by-value?
  *		OrderByTypLens	   typlens of the datatypes of order by expressions
  *		pscan_len		   size of parallel index scan descriptor
+ *
+ *	YB specific attributes
+ *		might_recheck	   true if the scan might recheck indexquals (currently
+ *						   only used for aggregate pushdown purposes)
+ *		aggrefs			   aggregate pushdown information
  * ----------------
  */
 typedef struct IndexScanState
@@ -1395,6 +1400,10 @@ typedef struct IndexScanState
 	bool	   *iss_OrderByTypByVals;
 	int16	   *iss_OrderByTypLens;
 	Size		iss_PscanLen;
+
+	/* YB specific attributes. */
+	bool		yb_iss_might_recheck;
+	List	   *yb_iss_aggrefs;
 } IndexScanState;
 
 /* ----------------

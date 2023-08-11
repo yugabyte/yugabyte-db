@@ -10,6 +10,8 @@
 package com.yugabyte.yw.common.alerts.impl;
 
 import com.yugabyte.yw.common.AlertTemplate;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertConfiguration.TargetType;
@@ -104,7 +106,17 @@ public class AlertTemplateService {
         query = query.replaceAll("__universeUuid__", universeUuid);
         if (query.contains("__mountPoints__")) {
           Universe universe = Universe.getOrBadRequest(UUID.fromString(universeUuid));
-          query = query.replaceAll("__mountPoints__", MetricQueryHelper.getMountPoints(universe));
+          query =
+              query.replaceAll("__mountPoints__", MetricQueryHelper.getDataMountPoints(universe));
+        }
+        if (query.contains("__systemMountPoints__")) {
+          Universe universe = Universe.getOrBadRequest(UUID.fromString(universeUuid));
+          RuntimeConfGetter confGetter =
+              StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+          query =
+              query.replaceAll(
+                  "__systemMountPoints__",
+                  MetricQueryHelper.getOtherMountPoints(confGetter, universe));
         }
       }
       return replaceThresholdAndCondition(query, threshold);

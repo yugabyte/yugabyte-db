@@ -137,11 +137,23 @@ In the example above, there are three split points and so four tablets will be c
 
 ### COLOCATION
 
-For colocated databases, specify `false` to opt this table out of colocation. This means that the table won't be stored on the same tablet as the rest of the tables for this database, but instead, will have its own set of tablets.
+To create a colocated table, use the following command:
 
-Use this option for large tables that need to be scaled out. See [Colocated tables](../../../../../architecture/docdb-sharding/colocated-tables/) for details on when colocated tables are beneficial.
+```sql
+CREATE TABLE <name> (columns) WITH (COLOCATION = true);
+```
 
-Note that `COLOCATION = true` has no effect if the database that this table is part of is not colocated, as currently colocation is supported only at the database level.
+In a colocated database, all tables are colocated by default. To opt a specific table out of colocation, use the following command:
+
+```sql
+CREATE TABLE <name> (columns) WITH (COLOCATION = false);
+```
+
+This ensures that the table is not stored on the same tablet as the rest of the tables for this database, but instead has its own set of tablets. Use this option for large tables that need to be scaled out.
+
+{{<note>}}
+Setting `COLOCATION = true` has no effect if the database that the table is part of is not colocated, as currently colocation is supported only at the database level. See [Colocated tables](../../../../../architecture/docdb-sharding/colocated-tables/) for more details.
+{{</note>}}
 
 ### Storage parameters
 
@@ -161,7 +173,7 @@ yugabyte=# CREATE TABLE sample(k1 int,
 
 In this example, the first column `k1` will be `HASH`, while second column `k2` will be `ASC`.
 
-```output.sql
+```sql{.nocopy}
 yugabyte=# \d sample
                Table "public.sample"
  Column |  Type   | Collation | Nullable | Default
@@ -225,8 +237,8 @@ yugabyte=# INSERT INTO orders VALUES (1, 1, 3), (2, 1, 3), (3, 2, 2);
 yugabyte=# SELECT o.id AS order_id, p.id as product_id, p.descr, o.amount FROM products p, orders o WHERE o.pid = p.id;
 ```
 
-```output
-order_id | product_id |  descr   | amount
+```sql{.nocopy}
+ order_id | product_id |  descr   | amount
 ----------+------------+----------+--------
         1 |          1 | Phone X  |      3
         2 |          1 | Phone X  |      3
@@ -240,7 +252,7 @@ Inserting a row referencing a non-existent product is not allowed.
 yugabyte=# INSERT INTO orders VALUES (1, 3, 3);
 ```
 
-```output
+```sql{.nocopy}
 ERROR:  insert or update on table "orders" violates foreign key constraint "orders_pid_fkey"
 DETAIL:  Key (pid)=(3) is not present in table "products".
 ```
@@ -252,7 +264,7 @@ yugabyte=# DELETE from products where id = 1;
 yugabyte=# SELECT o.id AS order_id, p.id as product_id, p.descr, o.amount FROM products p, orders o WHERE o.pid = p.id;
 ```
 
-```output
+```sql{.nocopy}
  order_id | product_id |  descr   | amount
 ----------+------------+----------+--------
         3 |          2 | Tablet Z |      2

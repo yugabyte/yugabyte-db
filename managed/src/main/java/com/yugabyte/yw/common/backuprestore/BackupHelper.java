@@ -104,6 +104,23 @@ public class BackupHelper {
     return VALID_OWNER_REGEX;
   }
 
+  public boolean abortBackupTask(UUID taskUUID) {
+    boolean status = commissioner.abortTask(taskUUID);
+    return status;
+  }
+
+  public List<UUID> getBackupUUIDList(UUID taskUUID) {
+    List<Backup> backups = Backup.fetchAllBackupsByTaskUUID(taskUUID);
+    List<UUID> uuidList = new ArrayList<UUID>();
+
+    for (Backup b : backups) {
+      uuidList.add(b.getBackupUUID());
+    }
+    return uuidList;
+  }
+
+  public void scheduleBackupDeletionTasks(List<UUID> backupUUIDList) {}
+
   public void validateIncrementalScheduleFrequency(
       long frequency, long fullBackupFrequency, Universe universe) {
     long minimumIncrementalBackupScheduleFrequency =
@@ -338,7 +355,7 @@ public class BackupHelper {
     return true;
   }
 
-  private static void waitForTask(UUID taskUUID) throws InterruptedException {
+  public static void waitForTask(UUID taskUUID) throws InterruptedException {
     int numRetries = 0;
     while (numRetries < maxRetryCount) {
       TaskInfo taskInfo = TaskInfo.get(taskUUID);

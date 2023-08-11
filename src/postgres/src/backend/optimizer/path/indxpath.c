@@ -584,7 +584,7 @@ consider_index_join_outer_rels(PlannerInfo *root, RelOptInfo *rel,
 	}
 }
 
-static void
+static bool
 yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 						   IndexOptInfo *index, IndexClauseSet *clauses,
 						   List **bitindexpaths)
@@ -602,6 +602,8 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	List *batched_rinfos = NIL;
 
 	Relids inner_relids = bms_make_singleton(index->rel->relid);
+
+	bool batched_paths_added = false;
 
 	for (size_t i = 0; i < INDEX_MAX_KEYS && clauses->nonempty; i++)
 	{
@@ -769,7 +771,10 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		IndexPath  *ipath = (IndexPath *) lfirst(lc);
 
 		if (index->amhasgettuple)
+		{
+			batched_paths_added = true;
 			add_path(rel, (Path *) ipath);
+		}
 
 		if (index->amhasgetbitmap &&
 			(ipath->path.pathkeys == NIL ||
@@ -779,6 +784,8 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 
 	root->yb_cur_batched_relids = NULL;
 	root->yb_cur_unbatched_relids = NULL;
+
+	return batched_paths_added;
 }
 
 /*
@@ -858,14 +865,29 @@ get_join_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	/* We should have found something, else caller passed silly relids */
 	Assert(clauseset.nonempty);
 
-
+	bool yb_batched_paths_exist = false;
 	if (yb_bnl_batch_size > 1)
 	{
-		yb_get_batched_index_paths(root, rel, index, &clauseset, bitindexpaths);
+		yb_batched_paths_exist =
+			yb_get_batched_index_paths(root, rel, index,&clauseset,
+					bitindexpaths);
 	}
-
-	/* Build index path(s) using the collected set of clauses */
-	get_index_paths(root, rel, index, &clauseset, bitindexpaths);
+	
+	/*
+	 * YB: With BNL enabled, we still explore NL compatible joins unless
+	 * yb_prefer_bnl to true or CBO is disabled. If yb_prefer_bnl is true,
+	 * we will never see an NL path that feeds into an index scan on the inner
+	 * side if an equivalent BNL path is available. It is still possible to
+	 * obtain NL paths that don't have BNL equivalents such as ones where the
+	 * inner side is a materialized index/seq scan.
+	 */
+	if (yb_bnl_batch_size <= 1 ||
+		 (yb_enable_optimizer_statistics && !yb_prefer_bnl) ||
+		 !yb_batched_paths_exist)
+	{
+		/* Build index path(s) using the collected set of clauses */
+		get_index_paths(root, rel, index, &clauseset, bitindexpaths);
+	}
 
 	/*
 	 * Remember we considered paths for this set of relids.  We use lcons not
@@ -2420,6 +2442,10 @@ get_loop_count(PlannerInfo *root, Index cur_relid, Relids outer_relids)
 		if (result == 0.0 || result > rowcount)
 			result = rowcount;
 	}
+
+	if (!bms_is_empty(root->yb_cur_batched_relids))
+		result /= yb_bnl_batch_size;
+
 	/* Return 1.0 if we found no valid relations (shouldn't happen) */
 	return (result > 0.0) ? result : 1.0;
 }

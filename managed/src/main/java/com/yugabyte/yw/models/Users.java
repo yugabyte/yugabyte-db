@@ -2,12 +2,14 @@
 
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.common.Util.NULL_UUID;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.encryption.HashBuilder;
 import com.yugabyte.yw.common.encryption.bc.BcOpenBsdHasher;
 import io.ebean.DuplicateKeyException;
@@ -26,13 +28,13 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,6 +51,8 @@ public class Users extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Users.class);
 
   private static final HashBuilder hasher = new BcOpenBsdHasher();
+
+  private static final KeyLock<UUID> usersLock = new KeyLock<>();
 
   /** These are the available user roles */
   public enum Role {
@@ -111,15 +115,12 @@ public class Users extends Model {
 
   // A globally unique UUID for the Users.
   @Id
-  @Column(nullable = false, unique = true)
   @ApiModelProperty(value = "User UUID", accessMode = READ_ONLY)
   private UUID uuid = UUID.randomUUID();
 
-  @Column(nullable = false)
   @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   private UUID customerUUID;
 
-  @Column(length = 256, unique = true, nullable = false)
   @Constraints.Required
   @Constraints.Email
   @ApiModelProperty(
@@ -129,7 +130,6 @@ public class Users extends Model {
   private String email;
 
   @JsonIgnore
-  @Column(length = 256, nullable = false)
   @ApiModelProperty(
       value = "User password hash",
       example = "$2y$10$ABccHWa1DO2VhcF1Ea2L7eOBZRhktsJWbFaB/aEjLfpaplDBIJ8K6")
@@ -139,7 +139,6 @@ public class Users extends Model {
     this.setPasswordHash(Users.hasher.hash(password));
   }
 
-  @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(
       value = "User creation date",
@@ -149,7 +148,6 @@ public class Users extends Model {
 
   @Encrypted @JsonIgnore private String authToken;
 
-  @Column(nullable = true)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(
       value = "UI session token creation date",
@@ -157,28 +155,23 @@ public class Users extends Model {
       accessMode = READ_ONLY)
   private Date authTokenIssueDate;
 
-  @JsonIgnore
-  @Column(nullable = true)
-  private String apiToken;
+  @JsonIgnore private String apiToken;
 
-  @Column(nullable = true)
+  @JsonIgnore private Long apiTokenVersion = 0L;
+
   @ApiModelProperty(value = "User timezone")
   private String timezone;
 
   // The role of the user.
-  @Column(nullable = false)
   @ApiModelProperty(value = "User role")
   private Role role;
 
-  @Column(nullable = false)
   @ApiModelProperty(value = "True if the user is the primary user")
   private boolean isPrimary;
 
-  @Column(nullable = false)
   @ApiModelProperty(value = "User Type")
   private UserType userType;
 
-  @Column(nullable = false)
   @ApiModelProperty(value = "LDAP Specified Role")
   private boolean ldapSpecifiedRole;
 
@@ -352,21 +345,42 @@ public class Users extends Model {
    * @return apiToken
    */
   public String upsertApiToken() {
-    apiToken = UUID.randomUUID().toString();
-    save();
-    return apiToken;
+    return upsertApiToken(null);
+  }
+
+  public String upsertApiToken(Long version) {
+    UUID uuidToLock = uuid != null ? uuid : NULL_UUID;
+    usersLock.acquireLock(uuidToLock);
+    try {
+      if (version != null && apiTokenVersion != null && !version.equals(apiTokenVersion)) {
+        throw new PlatformServiceException(BAD_REQUEST, "API token version has changed");
+      }
+      apiToken = UUID.randomUUID().toString();
+      apiTokenVersion = apiTokenVersion == null ? 1L : apiTokenVersion + 1;
+      save();
+      return apiToken;
+    } finally {
+      usersLock.releaseLock(uuidToLock);
+    }
   }
 
   /**
-   * Get current apiToken.
+   * Get current apiToken or create a new one if not exists.
    *
    * @return apiToken
    */
-  public String getApiToken() {
-    if (apiToken == null) {
-      return upsertApiToken();
+  @JsonIgnore
+  public String getOrCreateApiToken() {
+    UUID uuidToLock = uuid != null ? uuid : NULL_UUID;
+    usersLock.acquireLock(uuidToLock);
+    try {
+      if (StringUtils.isEmpty(apiToken)) {
+        return upsertApiToken();
+      }
+      return apiToken;
+    } finally {
+      usersLock.releaseLock(uuidToLock);
     }
-    return apiToken;
   }
 
   /**

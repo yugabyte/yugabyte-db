@@ -284,8 +284,18 @@ eqsel_internal(PG_FUNCTION_ARGS, bool negate)
 							 ((Const *) other)->constisnull,
 							 varonleft, negate);
 	else
+	{
+		bool yb_is_batched = IsYugaByteEnabled() && IsA(other, YbBatchedExpr);
+
 		selec = var_eq_non_const(&vardata, operator, other,
 								 varonleft, negate);
+
+		if (yb_is_batched)
+		{
+			selec *= yb_batch_expr_size(root, varRelid, other);
+			CLAMP_PROBABILITY(selec);
+		}
+	}
 
 	ReleaseVariableStats(vardata);
 
@@ -6594,6 +6604,16 @@ deconstruct_indexquals(IndexPath *path)
 				   *rightop;
 		IndexQualInfo *qinfo;
 
+		if (IsYugaByteEnabled() && path->path.param_info)
+		{
+			Relids batched = path->path.param_info->yb_ppi_req_outer_batched;
+			RestrictInfo *batched_rinfo =
+				yb_get_batched_restrictinfo(rinfo,
+					batched, path->path.parent->relids);
+			if (batched_rinfo)
+				rinfo = batched_rinfo;
+		}
+
 		clause = rinfo->clause;
 
 		qinfo = (IndexQualInfo *) palloc(sizeof(IndexQualInfo));
@@ -6611,7 +6631,7 @@ deconstruct_indexquals(IndexPath *path)
 				qinfo->varonleft = true;
 				qinfo->other_operand = rightop;
 
-				if (IsA(leftop, FuncExpr))
+				if (IsYugaByteEnabled() && IsA(leftop, FuncExpr))
 				{
 					qinfo->is_hashed =
 						(((FuncExpr*) leftop)->funcid == YB_HASH_CODE_OID);

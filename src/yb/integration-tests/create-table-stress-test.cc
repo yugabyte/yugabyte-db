@@ -620,7 +620,7 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
           .post_load_tasks = {},
           .epoch = master::LeaderEpoch(1),
       };
-      CHECK_OK(cluster_->mini_master()->catalog_manager_impl().VisitSysCatalog(0, &state));
+      CHECK_OK(cluster_->mini_master()->catalog_manager_impl().VisitSysCatalog(&state));
       // Give table creation a chance to run.
       SleepFor(MonoDelta::FromMilliseconds(10 * kTimeMultiplier));
     }

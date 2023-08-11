@@ -444,6 +444,12 @@ extern bool yb_enable_expression_pushdown;
 extern bool yb_enable_distinct_pushdown;
 
 /*
+ * Enables index aggregate pushdown (IndexScan only, not IndexOnlyScan).
+ * If true, request aggregated results from DocDB when possible.
+ */
+extern bool yb_enable_index_aggregate_pushdown;
+
+/*
  * YSQL guc variable that is used to enable the use of Postgres's selectivity
  * functions and YSQL table statistics.
  * e.g. 'SET yb_enable_optimizer_statistics = true'
@@ -498,6 +504,12 @@ extern bool yb_enable_base_scans_cost_model;
  * Total timeout for waiting for backends to have up-to-date catalog version.
  */
 extern int yb_wait_for_backends_catalog_version_timeout;
+
+/*
+ * If true, we will always prefer batched nested loop join plans over nested
+ * loop join plans.
+ */
+extern bool yb_prefer_bnl;
 
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
