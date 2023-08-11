@@ -80,6 +80,10 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   Status Delete(
       const TxnSnapshotId& snapshot_id, int64_t leader_term, CoarseTimePoint deadline);
 
+  Status AbortRestore(
+      const TxnSnapshotRestorationId& restoration_id, int64_t leader_term,
+      CoarseTimePoint deadline);
+
   // As usual negative leader_term means that this operation was replicated at the follower.
   Status CreateReplicated(int64_t leader_term, const tablet::SnapshotOperation& operation) override;
 

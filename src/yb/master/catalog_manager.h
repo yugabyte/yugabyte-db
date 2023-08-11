@@ -1139,7 +1139,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status ListSnapshots(const ListSnapshotsRequestPB* req, ListSnapshotsResponsePB* resp);
 
   Status ListSnapshotRestorations(
-      const ListSnapshotRestorationsRequestPB* req, ListSnapshotRestorationsResponsePB* resp);
+      const ListSnapshotRestorationsRequestPB* req,
+      ListSnapshotRestorationsResponsePB* resp) override;
 
   // API to restore a snapshot.
   Status RestoreSnapshot(
@@ -1150,6 +1151,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status DeleteSnapshot(
       const DeleteSnapshotRequestPB* req, DeleteSnapshotResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
+
+  // API to abort a snapshot restore.
+  Status AbortSnapshotRestore(
+      const AbortSnapshotRestoreRequestPB* req,
+      AbortSnapshotRestoreResponsePB* resp,
+      rpc::RpcContext* rpc);
 
   Status ImportSnapshotMeta(
       const ImportSnapshotMetaRequestPB* req,
