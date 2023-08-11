@@ -3,14 +3,21 @@ import { Box, makeStyles, Paper, Typography, useTheme } from "@material-ui/core"
 import { useTranslation } from "react-i18next";
 import type { Migration } from "./MigrationOverview";
 import { ErrorOutline, Warning } from "@material-ui/icons";
-import { Bar, BarChart, CartesianGrid, Legend, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, LabelList, Tooltip, TooltipProps, XAxis, YAxis } from "recharts";
 import Editor from "@monaco-editor/react";
 import { YBAccordion } from "@app/components";
+import type { NameType, ValueType } from "recharts/types/component/DefaultTooltipContent";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
     marginBottom: theme.spacing(5),
   },
+  tooltip: {
+    backgroundColor: theme.palette.common.white,
+    padding: theme.spacing(1),
+    borderRadius: theme.shape.borderRadius,
+    boxShadow: theme.shadows[2],
+  }
 }));
 
 interface MigrationAnalyzeProps {
@@ -30,11 +37,16 @@ export const MigrationAnalyze: FC<MigrationAnalyzeProps> = ({ heading, migration
   const graphData = React.useMemo(
     () => [
       {
-        xAxis: "SQL Objects",
-        yAxis: "Count",
-        table: 128,
-        index: 77,
-        function: 32,
+        xAxis: "Table",
+        count: 128,
+      },
+      {
+        xAxis: "Index",
+        count: 77,
+      },
+      {
+        xAxis: "Function",
+        count: 32,
       },
     ],
     []
@@ -73,15 +85,20 @@ export const MigrationAnalyze: FC<MigrationAnalyzeProps> = ({ heading, migration
                 left: 20,
                 bottom: 5,
               }}
+              barCategoryGap={30}
             >
-              <CartesianGrid strokeDasharray="3 3" />
+              <defs>
+                <linearGradient id="bar-gradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="20%" stopColor={"#8047F5"} stopOpacity={"0.5"} />
+                  <stop offset="80%" stopColor={"#2B59C3"} stopOpacity={"0.5"} />
+                </linearGradient>
+              </defs>
               <XAxis dataKey="xAxis" />
               <YAxis />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="table" fill="#8884d8" />
-              <Bar dataKey="index" fill="#029f00" />
-              <Bar dataKey="function" fill="#af6f19" />
+              <Tooltip content={<CustomTooltip />} />
+              <Bar dataKey="count" fill="url(#bar-gradient)">
+                <LabelList dataKey="count" position="top" style={{ fill: "black" }} />
+              </Bar>
             </BarChart>
           </YBAccordion>
 
@@ -117,4 +134,18 @@ export const MigrationAnalyze: FC<MigrationAnalyzeProps> = ({ heading, migration
       </Box>
     </Paper>
   );
+};
+
+const CustomTooltip = ({ active, payload, label }: TooltipProps<ValueType, NameType>) => {
+  const classes = useStyles();
+
+  if (active && payload && payload.length) {
+    return (
+      <Box className={classes.tooltip}>
+        {`${label}: ${payload[0].value}`}
+      </Box>
+    );
+  }
+
+  return null;
 };
