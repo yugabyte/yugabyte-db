@@ -17,7 +17,7 @@
     "hugo-server-production": "hugo server --bind 0.0.0.0 --baseURL ${YB_HUGO_BASE:-localhost} --environment production",
     "hugo-server-static": "hugo server --renderStaticToDisk --bind 0.0.0.0 --baseURL ${YB_HUGO_BASE:-localhost}",
     "start-diagrams": "npm install --no-audit --no-fund && java -jar node_modules/yb-rrdiagram/rrdiagram*.jar --server --debug",
-    "stop-diagrams": "curl --silent localhost:1314/shutdown",
+    "stop-diagrams": "curl --silent http://localhost:1314/shutdown",
     "webpack-build": "webpack --mode=production",
     "webpack-watch": "webpack --mode=production -w"
   },

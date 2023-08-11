@@ -1,6 +1,6 @@
 {{/* Get the inner content of the shortcode */}}
 {{ $statements :=  .Inner }}
-{{/* type has to be one of [tabs, grammar, diagram reference] (default:tabs) */}}
+{{/* type has to be one of [tabs, grammar, diagram, reference] (default:tabs) */}}
 {{ $type := default "tabs" (.Get "type") }}
 
 {{/* process inner content to remove whitespaces, newlines, commas, hypens etc */}}
@@ -26,7 +26,7 @@
 {{ if strings.Contains $.Page.File.Dir "/ycql/" }}{{ $api = "ycql" }}{{ end }}
 
 {{/* form the full service url with parameters */}}
-{{ $url := "http://localhost:1314/bnf" }}
+{{ $url := "http://localhost:1314/ebnf" }}
 {{ $url = printf "%s?depth=%d&api=%s&version=%s&rules=%s" $url $depth $api $version $statements}}
 {{ if $local }}{{ $url = printf "%s&local=%s" $url $local }}{{ end }}
 {{/* add a timestamp value to skip the hugo cache and force the request to be fetched */}}
@@ -89,6 +89,6 @@
     {{- print $bnfResponse.Content | markdownify -}}
 
 {{- else -}}
-    {{- errorf "invalid type for ebnf : %s" $type }}
+    {{- errorf "invalid type for ebnf: %s" $type }}
 
 {{- end -}}
