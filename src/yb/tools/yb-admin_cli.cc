@@ -1516,6 +1516,16 @@ Status delete_snapshot_action(
   return Status::OK();
 }
 
+const auto abort_snapshot_restore_args = "[<restoration_id>]";
+Status abort_snapshot_restore_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  auto restoration_id = VERIFY_RESULT(GetOptionalArg<TxnSnapshotRestorationId>(args, 0));
+  RETURN_NOT_OK_PREPEND(
+      client->AbortSnapshotRestore(restoration_id),
+      Format("Unable to abort snapshot restore $0", restoration_id.ToString()));
+  return Status::OK();
+}
+
 const auto list_replica_type_counts_args = "<table>";
 Status list_replica_type_counts_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
@@ -2097,6 +2107,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(import_snapshot);
   REGISTER_COMMAND(import_snapshot_selective);
   REGISTER_COMMAND(delete_snapshot);
+  REGISTER_COMMAND(abort_snapshot_restore);
   REGISTER_COMMAND(list_replica_type_counts);
   REGISTER_COMMAND(set_preferred_zones);
   REGISTER_COMMAND(rotate_universe_key);

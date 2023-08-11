@@ -122,6 +122,7 @@ std::vector<TabletId> StateWithTablets::TabletIdsInState(SysSnapshotEntryPB::Sta
   return result;
 }
 
+
 void StateWithTablets::Done(const TabletId& tablet_id, Status status) {
   VLOG_WITH_PREFIX_AND_FUNC(4) << tablet_id << ", " << status;
 
@@ -132,6 +133,7 @@ void StateWithTablets::Done(const TabletId& tablet_id, Status status) {
         << tablet_id << ": " << status;
     return;
   }
+
   if (!it->running) {
     LOG_WITH_PREFIX(DFATAL)
         << "Finished " << InitialStateName() <<  " at " << tablet_id
@@ -139,15 +141,23 @@ void StateWithTablets::Done(const TabletId& tablet_id, Status status) {
         << ": " << status;
     return;
   }
+
   tablets_.modify(it, [](TabletData& data) { data.running = false; });
+
+  if (it->aborted) {
+    LOG_WITH_PREFIX(INFO) << Format("Tablet $0 was aborted before task finished.", tablet_id);
+    DecrementTablets();
+    return;
+  }
+
   const auto& state = it->state;
   if (state == initial_state_) {
     status = CheckDoneStatus(status);
     if (status.ok()) {
       tablets_.modify(
           it, [terminal_state = InitialStateToTerminalState(initial_state_)](TabletData& data) {
-        data.state = terminal_state;
-      });
+            data.state = terminal_state;
+          });
       LOG_WITH_PREFIX(INFO) << "Finished " << InitialStateName() << " at " << tablet_id << ", "
                             << num_tablets_in_initial_state_ << " was running";
     } else {
@@ -168,8 +178,7 @@ void StateWithTablets::Done(const TabletId& tablet_id, Status status) {
         return;
       }
     }
-    --num_tablets_in_initial_state_;
-    CheckCompleteness();
+    DecrementTablets();
   } else {
     LOG_WITH_PREFIX(DFATAL)
         << "Finished " << InitialStateName() << " at tablet " << tablet_id << " in a wrong state "
