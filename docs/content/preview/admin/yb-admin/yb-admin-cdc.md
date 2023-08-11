@@ -1,8 +1,9 @@
 ---
-title: yb-admin - Change Data Capture commands
-headerTitle: yb-admin Change Data Capture commands
-linkTitle: Change Data Capture commands
-description: yb-admin Change Data Capture commands.
+title: yb-admin - Change Data Capture and xCluster commands
+headerTitle: yb-admin command reference
+linkTitle: CDC and xCluster
+description: yb-admin Change Data Capture and xCluster commands.
+headcontent: Change Data Capture and xCluster commands
 menu:
   preview:
     identifier: yb-admin-cdc
@@ -177,7 +178,55 @@ The above command results in the following response:
 Successfully deleted CDC DB Stream ID: d540f5e4890c4d3b812933cbfd703ed3
 ```
 
-## xCluster Replication commands
+## list_cdc_streams
+
+Lists the CDC streams for the specified YB-Master servers.
+
+{{< note title="Tip" >}}
+
+Use this command when setting up universe replication to verify if any tables are configured for replication. If not, run [`setup_universe_replication`](#setup-universe-replication); if tables are already configured for replication, use [`alter_universe_replication`](#alter-universe-replication) to add more tables.
+
+{{< /note >}}
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    list_cdc_streams
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    list_cdc_streams
+```
+
+## delete_cdc_stream <stream_id> [force_delete]
+
+Deletes underlying CDC stream for the specified YB-Master servers.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    delete_cdc_stream <stream_id [force_delete]>
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *stream_id*: The ID of the CDC stream.
+* `force_delete`: (Optional) Force the delete operation.
+
+{{< note title="Note" >}}
+This command should only be needed for advanced operations, such as doing manual cleanup of old bootstrapped streams that were never fully initialized, or otherwise failed replication streams. For normal xCluster replication cleanup, use [delete_universe_replication](#delete-universe-replication).
+{{< /note >}}
+
+## xCluster replication commands
 
 ### setup_universe_replication
 
@@ -435,85 +484,6 @@ Found undrained replications:
 // ......
 ```
 
-### list_cdc_streams
-
-Lists the CDC streams for the specified YB-Master servers.
-
-{{< note title="Tip" >}}
-
-Use this command when setting up universe replication to verify if any tables are configured for replication. If not, run [`setup_universe_replication`](#setup-universe-replication); if tables are already configured for replication, use [`alter_universe_replication`](#alter-universe-replication) to add more tables.
-
-{{< /note >}}
-
-**Syntax**
-
-```sh
-yb-admin \
-    -master_addresses <master-addresses> \
-    list_cdc_streams
-```
-
-* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-
-**Example**
-
-```sh
-./bin/yb-admin \
-    -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
-    list_cdc_streams
-```
-
-### delete_cdc_stream <stream_id> [force_delete]
-
-Deletes underlying CDC stream for the specified YB-Master servers.
-
-**Syntax**
-
-```sh
-yb-admin \
-    -master_addresses <master-addresses> \
-    delete_cdc_stream <stream_id [force_delete]>
-```
-
-* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *stream_id*: The ID of the CDC stream.
-* `force_delete`: (Optional) Force the delete operation.
-
-{{< note title="Note" >}}
-This command should only be needed for advanced operations, such as doing manual cleanup of old bootstrapped streams that were never fully initialized, or otherwise failed replication streams. For normal xCluster replication cleanup, use [delete_universe_replication](#delete-universe-replication).
-{{< /note >}}
-
-### bootstrap_cdc_producer <comma_separated_list_of_table_ids>
-
-Mark a set of tables in preparation for setting up universe level replication.
-
-**Syntax**
-
-```sh
-yb-admin \
-    -master_addresses <master-addresses> \
-    bootstrap_cdc_producer <comma_separated_list_of_table_ids>
-```
-
-* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
-
-**Example**
-
-```sh
-./bin/yb-admin \
-    -master_addresses 172.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
-    bootstrap_cdc_producer 000030ad000030008000000000004000
-```
-
-```output
-table id: 000030ad000030008000000000004000, CDC bootstrap id: dd5ea73b5d384b2c9ebd6c7b6d05972c
-```
-
-{{< note title="Note" >}}
-The CDC bootstrap ids are the ones that should be used with [`setup_universe_replication`](#setup-universe-replication) and [`alter_universe_replication`](#alter-universe-replication).
-{{< /note >}}
-
 ### get_replication_status
 
 Returns the replication status of all consumer streams. If *producer_universe_uuid* is provided, this will only return streams that belong to an associated universe key.
@@ -545,3 +515,34 @@ statuses {
   }
 }
 ```
+
+### bootstrap_cdc_producer <comma_separated_list_of_table_ids>
+
+Mark a set of tables in preparation for setting up universe level replication.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    bootstrap_cdc_producer <comma_separated_list_of_table_ids>
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses 172.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    bootstrap_cdc_producer 000030ad000030008000000000004000
+```
+
+```output
+table id: 000030ad000030008000000000004000, CDC bootstrap id: dd5ea73b5d384b2c9ebd6c7b6d05972c
+```
+
+{{< note title="Note" >}}
+The CDC bootstrap ids are the ones that should be used with [`setup_universe_replication`](#setup-universe-replication) and [`alter_universe_replication`](#alter-universe-replication).
+{{< /note >}}

@@ -1,8 +1,9 @@
 ---
 title: yb-admin - Backup and snapshot commands
-headerTitle: yb-admin Backup and snapshot commands
-linkTitle: Backup and snapshot commands
+headerTitle: yb-admin command reference
+linkTitle: Backup and snapshot
 description: yb-admin Backup and snapshot commands.
+headcontent: Backup and snapshot commands
 menu:
   preview:
     identifier: yb-admin-backup

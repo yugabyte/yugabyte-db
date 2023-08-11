@@ -1,4 +1,4 @@
----
+<!---
 title: yb-admin - Table commands
 headerTitle: yb-admin Table commands
 linkTitle: Table commands
@@ -9,7 +9,7 @@ menu:
     parent: yb-admin
     weight: 20
 type: docs
----
+--->
 
 ## list_tables
 

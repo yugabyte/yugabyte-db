@@ -68,12 +68,52 @@ To display the online help, run `yb-admin --help` from the YugabyteDB home direc
 
 ### Table
 
-- [list\_tables](yb-admin-table/#list-tables)
-- [compact\_table](yb-admin-table/#compact-table)
-- [compact\_table\_by\_id](yb-admin-table/#compact-table-by-id)
-- [modify\_table\_placement\_info](yb-admin-table/#modify-table-placement-info)
-- [create\_transaction\_table](yb-admin-table/#create-transaction-table)
-- [add\_transaction\_tablet](yb-admin-table/#add-transaction-tablet)
+- [list\_tables](yb-admin-universe/#list-tables)
+- [compact\_table](yb-admin-universe/#compact-table)
+- [compact\_table\_by\_id](yb-admin-universe/#compact-table-by-id)
+- [modify\_table\_placement\_info](yb-admin-universe/#modify-table-placement-info)
+- [create\_transaction\_table](yb-admin-universe/#create-transaction-table)
+- [add\_transaction\_tablet](yb-admin-universe/#add-transaction-tablet)
+
+### Deployment
+
+#### Multi-zone and multi-region
+
+- [modify\_placement\_info](yb-admin-universe/#modify-placement-info)
+- [set\_preferred\_zones](yb-admin-universe/#set-preferred-zones)
+
+#### Read replica
+
+- [add\_read\_replica\_placement\_info](yb-admin-universe/#add-read-replica-placement-info)
+- [modify\_read\_replica\_placement\_info](yb-admin-universe/#modify-read-replica-placement-info)
+- [delete\_read\_replica\_placement\_info](yb-admin-universe/#delete-read-replica-placement-info)
+
+### Encryption at rest
+
+- [add\_universe\_key\_to\_all\_masters](yb-admin-universe/#add-universe-key-to-all-masters)
+- [all\_masters\_have\_universe\_key\_in\_memory](yb-admin-universe/#all-masters-have-universe-key-in-memory)
+- [rotate\_universe\_key\_in\_memory](yb-admin-universe/#rotate-universe-key-in-memory)
+- [disable\_encryption\_in\_memory](yb-admin-universe/#disable-encryption-in-memory)
+- [is\_encryption\_enabled](yb-admin-universe/#is-encryption-enabled)
+
+### Decommissioning
+
+- [get\_leader\_blacklist\_completion](yb-admin-universe/#get-leader-blacklist-completion)
+- [change\_blacklist](yb-admin-universe/#change-blacklist)
+- [change\_leader\_blacklist](yb-admin-universe/#change-leader-blacklist)
+- [leader\_stepdown](yb-admin-universe/#leader-stepdown)
+
+### Rebalancing
+
+- [set\_load\_balancer\_enabled](yb-admin-universe/#set-load-balancer-enabled)
+- [get\_load\_balancer\_state](yb-admin-universe/#get-load-balancer-state)
+- [get\_load\_move\_completion](yb-admin-universe/#get-load-move-completion)
+- [get\_is\_load\_balancer\_idle](yb-admin-universe/#get-is-load-balancer-idle)
+
+### Upgrading
+
+- [promote\_auto\_flags](yb-admin-universe/#promote-auto-flags)
+- [upgrade\_ysql](yb-admin-universe/#upgrade-ysql)
 
 ### Backup and snapshot
 
@@ -92,65 +132,21 @@ To display the online help, run `yb-admin --help` from the YugabyteDB home direc
 - [restore\_snapshot\_schedule](yb-admin-backup/#restore-snapshot-schedule)
 - [delete\_snapshot\_schedule](yb-admin-backup/#delete-snapshot-schedule)
 
-### Deployment
-
-#### Multi-zone and multi-region deployment
-
-- [modify\_placement\_info](yb-admin-deployment/#modify-placement-info)
-- [set\_preferred\_zones](yb-admin-deployment/#set-preferred-zones)
-
-#### Read replica deployment
-
-- [add\_read\_replica\_placement\_info](yb-admin-deployment/#add-read-replica-placement-info)
-- [modify\_read\_replica\_placement\_info](yb-admin-deployment/#modify-read-replica-placement-info)
-- [delete\_read\_replica\_placement\_info](yb-admin-deployment/#delete-read-replica-placement-info)
-
-### Security
-
-- [Encryption at rest commands](yb-admin-security/#encryption-at-rest-commands)
-- [add\_universe\_key\_to\_all\_masters](yb-admin-security/#add_universe_key_to_all_masters)
-- [all\_masters\_have\_universe\_key\_in\_memory](yb-admin-security/#all_masters_have_universe_key_in_memory)
-- [rotate\_universe\_key\_in\_memory](yb-admin-security/#rotate_universe_key_in_memory)
-- [disable\_encryption\_in\_memory](yb-admin-security/#disable-encryption-in-memory)
-- [is\_encryption\_enabled](yb-admin-security/#is-encryption-enabled)
-
-### Change Data Capture (CDC)
+### Change Data Capture (CDC) and xCluster
 
 - [create\_change\_data\_stream](yb-admin-cdc/#create-change-data-stream)
   - [Enabling before image](yb-admin-cdc/#enabling-before-image)
 - [list\_change\_data\_streams](yb-admin-cdc/#list-change-data-streams)
 - [get\_change\_data\_stream\_info](yb-admin-cdc/#get-change-data-stream-info)
 - [delete\_change\_data\_stream](yb-admin-cdc/#delete-change-data-stream)
-
-### xCluster replication
-
-- [setup\_universe\_replication](yb-admin-xcluster/#setup-universe-replication)
-- [alter\_universe\_replication](#yb-admin-xcluster/alter-universe-replication)
-- [delete\_universe\_replication \<source\_universe\_uuid\>](yb-admin-xcluster/#delete-universe-replication-source-universe-uuid)
-- [set\_universe\_replication\_enabled](yb-admin-xcluster/#set-universe-replication-enabled)
-- [change\_xcluster\_role](yb-admin-xcluster/#change-xcluster-role)
-- [get\_xcluster\_safe\_time](yb-admin-xcluster/#get-xcluster-safe-time)
-- [wait\_for\_replication\_drain](yb-admin-xcluster/#wait-for-replication-drain)
-- [list\_cdc\_streams](yb-admin-xcluster/#list-cdc-streams)
-- [delete\_cdc\_stream \<stream\_id\> \[force\_delete\]](yb-admin-xcluster/#delete-cdc-stream-stream-id-force-delete)
-- [bootstrap\_cdc\_producer \<comma\_separated\_list\_of\_table\_ids\>](yb-admin-xcluster/#bootstrap-cdc-producer-comma-separated-list-of-table-ids)
-- [get\_replication\_status](yb-admin-xcluster/#get-replication-status)
-
-### Decommissioning
-
-- [get\_leader\_blacklist\_completion](#get-leader-blacklist-completion)
-- [change\_blacklist](#change-blacklist)
-- [change\_leader\_blacklist](#change-leader-blacklist)
-- [leader\_stepdown](#leader-stepdown)
-
-### Rebalancing
-
-- [set\_load\_balancer\_enabled](#set-load-balancer-enabled)
-- [get\_load\_balancer\_state](#get-load-balancer-state)
-- [get\_load\_move\_completion](#get-load-move-completion)
-- [get\_is\_load\_balancer\_idle](#get-is-load-balancer-idle)
-
-### Upgrade
-
-- [promote\_auto\_flags](#promote-auto-flags)
-- [upgrade\_ysql](#upgrade-ysql)
+- [list\_cdc\_streams](yb-admin-cdc/#list-cdc-streams)
+- [delete\_cdc\_stream \<stream\_id\> \[force\_delete\]](yb-admin-cdc/#delete-cdc-stream-stream-id-force-delete)
+- [setup\_universe\_replication](yb-admin-cdc/#setup-universe-replication)
+- [alter\_universe\_replication](#yb-admin-cdc/alter-universe-replication)
+- [delete\_universe\_replication \<source\_universe\_uuid\>](yb-admin-cdc/#delete-universe-replication-source-universe-uuid)
+- [set\_universe\_replication\_enabled](yb-admin-cdc/#set-universe-replication-enabled)
+- [change\_xcluster\_role](yb-admin-cdc/#change-xcluster-role)
+- [get\_xcluster\_safe\_time](yb-admin-cdc/#get-xcluster-safe-time)
+- [wait\_for\_replication\_drain](yb-admin-cdc/#wait-for-replication-drain)
+- [bootstrap\_cdc\_producer \<comma\_separated\_list\_of\_table\_ids\>](yb-admin-cdc/#bootstrap-cdc-producer-comma-separated-list-of-table-ids)
+- [get\_replication\_status](yb-admin-cdc/#get-replication-status)

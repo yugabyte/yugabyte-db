@@ -1,4 +1,4 @@
----
+<!---
 title: yb-admin - Security commands
 headerTitle: yb-admin Security commands
 linkTitle: Security commands
@@ -9,7 +9,7 @@ menu:
     parent: yb-admin
     weight: 50
 type: docs
----
+--->
 
 ## Encryption at rest commands
 

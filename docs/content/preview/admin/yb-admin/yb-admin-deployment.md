@@ -1,4 +1,4 @@
----
+<!---
 title: yb-admin - Deployment commands
 headerTitle: yb-admin Deployment commands
 linkTitle: Deployment commands
@@ -9,7 +9,7 @@ menu:
     parent: yb-admin
     weight: 40
 type: docs
----
+--->
 
 ## Multi-zone and multi-region deployment commands
 

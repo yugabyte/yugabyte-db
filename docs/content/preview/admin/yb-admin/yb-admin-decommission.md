@@ -1,4 +1,4 @@
----
+<!---
 title: yb-admin - Decommission, rebalance, and update commands
 headerTitle: Decommission, rebalance, and update commands
 linkTitle: Decommission, rebalance, and update commands
@@ -9,7 +9,7 @@ menu:
     parent: yb-admin
     weight: 70
 type: docs
----
+--->
 
 ## Decommissioning commands
 
