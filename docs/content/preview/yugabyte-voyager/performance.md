@@ -1,6 +1,6 @@
 ---
-title: Performance
-linkTitle: Performance
+title: Tune performance
+linkTitle: Tune performance
 description: Performance
 menu:
   preview_yugabyte-voyager:

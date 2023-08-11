@@ -1,7 +1,7 @@
 ---
 title: Steps to migrate your database using YugabyteDB Voyager
 headerTitle: Migration steps
-linkTitle: Migration steps
+linkTitle: Migrate
 description: Run the steps to ensure a successful migration using YugabyteDB Voyager.
 menu:
   preview_yugabyte-voyager:
