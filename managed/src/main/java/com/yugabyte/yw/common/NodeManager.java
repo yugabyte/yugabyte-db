@@ -731,6 +731,25 @@ public class NodeManager extends DevopsBase {
     return subcommandStrings;
   }
 
+  private void processGFlags(
+      Config config,
+      Universe universe,
+      NodeDetails node,
+      AnsibleConfigureServers.Params taskParam,
+      Map<String, String> gflags,
+      boolean useHostname) {
+    if (!config.getBoolean("yb.cloud.enabled")) {
+      GFlagsUtil.processUserGFlags(
+          node,
+          gflags,
+          GFlagsUtil.getAllDefaultGFlags(
+              taskParam, universe, getUserIntentFromParams(taskParam), useHostname, config),
+          confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride),
+          confGetter,
+          taskParam);
+    }
+  }
+
   private List<String> getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
     Universe universe = Universe.getOrBadRequest(taskParam.getUniverseUUID());
     Config config = runtimeConfigFactory.forUniverse(universe);
@@ -949,16 +968,7 @@ public class NodeManager extends DevopsBase {
             subcommand.add("--tags");
             subcommand.add("override_gflags");
             Map<String, String> gflags = new TreeMap<>(taskParam.gflags);
-            if (!config.getBoolean("yb.cloud.enabled")) {
-              GFlagsUtil.processUserGFlags(
-                  node,
-                  gflags,
-                  GFlagsUtil.getAllDefaultGFlags(
-                      taskParam, universe, getUserIntentFromParams(taskParam), useHostname, config),
-                  confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride),
-                  confGetter,
-                  taskParam);
-            }
+            processGFlags(config, universe, node, taskParam, gflags, useHostname);
             subcommand.add("--gflags");
             subcommand.add(Json.stringify(Json.toJson(gflags)));
           } else if (taskSubType.equals(
@@ -1013,15 +1023,8 @@ public class NodeManager extends DevopsBase {
           }
 
           Map<String, String> gflags = new TreeMap<>(taskParam.gflags);
+          processGFlags(config, universe, node, taskParam, gflags, useHostname);
           if (!config.getBoolean("yb.cloud.enabled")) {
-            GFlagsUtil.processUserGFlags(
-                node,
-                gflags,
-                GFlagsUtil.getAllDefaultGFlags(
-                    taskParam, universe, getUserIntentFromParams(taskParam), useHostname, config),
-                confGetter.getConfForScope(universe, UniverseConfKeys.gflagsAllowUserOverride),
-                confGetter,
-                taskParam);
             if (gflags.containsKey(GFlagsUtil.YSQL_HBA_CONF_CSV)) {
               String hbaConfValue = gflags.get(GFlagsUtil.YSQL_HBA_CONF_CSV);
               if (hbaConfValue.contains(GFlagsUtil.JWT_AUTH)) {
@@ -1152,6 +1155,7 @@ public class NodeManager extends DevopsBase {
                         taskParam,
                         universe,
                         Arrays.asList(GFlagsUtil.CERTS_DIR, GFlagsUtil.CERTS_FOR_CLIENT_DIR)));
+                processGFlags(config, universe, node, taskParam, gflags, useHostname);
                 subcommand.add("--gflags");
                 subcommand.add(Json.stringify(Json.toJson(gflags)));
                 subcommand.add("--tags");
@@ -1219,7 +1223,7 @@ public class NodeManager extends DevopsBase {
             } else {
               gflags.putAll(filterCertsAndTlsGFlags(taskParam, universe, tlsGflagsToReplace));
             }
-
+            processGFlags(config, universe, node, taskParam, gflags, useHostname);
             subcommand.add("--gflags");
             subcommand.add(Json.stringify(Json.toJson(gflags)));
 
@@ -1240,6 +1244,7 @@ public class NodeManager extends DevopsBase {
             } else {
               LOG.warn("Round2 upgrade not required when there is no change in node-to-node");
             }
+            processGFlags(config, universe, node, taskParam, gflags, useHostname);
             subcommand.add("--gflags");
             subcommand.add(Json.stringify(Json.toJson(gflags)));
 
