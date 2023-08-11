@@ -46,6 +46,10 @@
 #include <string>
 
 #include <boost/intrusive/list.hpp>
+#include <boost/multi_index_container.hpp>
+#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/member.hpp>
+#include <boost/multi_index/ordered_index.hpp>
 #include <boost/utility.hpp>
 #include <ev++.h> // NOLINT
 #include "yb/util/flags.h"
@@ -128,7 +132,13 @@ class Reactor {
 
   Messenger& messenger() const { return messenger_; }
 
+  // Returns the latest current time updated by this reactor's thread.
   CoarseTimePoint cur_time() const { return cur_time_.load(std::memory_order_acquire); }
+
+  // Returns the latest current time updated by any reactor's thread.
+  static CoarseTimePoint global_cur_time() {
+    return global_cur_time_.load(std::memory_order_acquire);
+  }
 
   // Schedule the given task's Run() method to be called on the reactor thread. If the reactor shuts
   // down before it is run, the Abort method will be called.
@@ -170,7 +180,9 @@ class Reactor {
 
   // Checks that the current thread is this reactor's thread. The check is always performed in
   // debug mode, and in release mode only if FLAGS_reactor_check_current_thread is set.
-  ReactorThreadRoleGuard CheckCurrentThread() const ACQUIRE(ReactorThreadRole::kReactor);
+  // This function should be called from functions that are scheduled on the reactor thread as
+  // callbacks and are not supposed to be called directly.
+  void CheckCurrentThread() const;
 
   // Shut down the given connection, removing it from the connection tracking structures of this
   // reactor.
@@ -209,6 +221,10 @@ class Reactor {
       const ConnectionContextFactoryPtr& factory)
       EXCLUDES_REACTOR_THREAD;
 
+  // Used for detecting stuck outbound calls. Checks if the given call's callback has been invoked
+  // and if so, removes the call from tracked_outbound_calls_.
+  void FinalizeTrackedCall(const OutboundCallPtr& call) ON_REACTOR_THREAD;
+
  private:
   friend class Connection;
   friend class AssignOutboundCallTask;
@@ -241,12 +257,16 @@ class Reactor {
   Status FindOrStartConnection(
       const ConnectionId &conn_id,
       const std::string& hostname,
-      const MonoTime &deadline,
       ConnectionPtr* conn) ON_REACTOR_THREAD;
 
   // Scan any open connections for idle ones that have been idle longer than
   // connection_keepalive_time_
   void ScanIdleConnections() ON_REACTOR_THREAD;
+
+  // Invoked periodically. Scans tracked_outbound_calls_, checks if any calls have completed
+  // (callback has been called) or deleted altogether. For calls that stay in that map for too long,
+  // reports them to the log once in a few seconds.
+  void ScanForStuckOutboundCalls(CoarseTimePoint now) ON_REACTOR_THREAD;
 
   // Assign a new outbound call to the appropriate connection object.
   // If this fails, the call is marked failed and completed.
@@ -382,6 +402,40 @@ class Reactor {
 
   // Tasks moved from pending_tasks_ that are currently being processed by AsyncHandler.
   ReactorTasks pending_tasks_being_processed_ GUARDED_BY_REACTOR_THREAD;
+
+  // ----------------------------------------------------------------------------------------------
+
+  // A subsystem for proactively tracking stuck OutboundCalls where the callback has never been
+  // called. We add calls to tracked_outbound_calls_ in AssignOutboundCall and remove them as soon
+  // as we find out the callback has been invoked. As a catch-all, we have the timer call
+  // the ScanForStuckOutboundCalls function periodically.
+
+  struct TrackedOutboundCall {
+    OutboundCall* call_raw;  // Raw pointer, used as a key even if destroyed.
+    OutboundCallWeakPtr call_weak;  // If this cannot be locked, we remove the entry.
+    CoarseTimePoint next_check_time;  // Next time to check the callback status.
+  };
+
+  class NextCheckTimeTag;
+
+  using TrackedOutboundCalls = boost::multi_index_container<
+      TrackedOutboundCall,
+      boost::multi_index::indexed_by<
+        boost::multi_index::hashed_unique<
+          boost::multi_index::member<TrackedOutboundCall,
+                                     OutboundCall*,
+                                     &TrackedOutboundCall::call_raw>
+        >,
+        boost::multi_index::ordered_non_unique<
+          boost::multi_index::tag<NextCheckTimeTag>,
+          boost::multi_index::member<TrackedOutboundCall,
+                                     CoarseTimePoint,
+                                     &TrackedOutboundCall::next_check_time>
+        >>>;
+  TrackedOutboundCalls tracked_outbound_calls_ GUARDED_BY_REACTOR_THREAD;
+
+  // Global current time updated by all reactor threads.
+  static std::atomic<CoarseTimePoint> global_cur_time_;
 
   DISALLOW_COPY_AND_ASSIGN(Reactor);
 };
