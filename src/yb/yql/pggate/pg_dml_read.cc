@@ -161,9 +161,6 @@ void PgDmlRead::ClearColRefPBs() {
 //   SELECT column_l, column_m, column_n FROM ...
 
 void PgDmlRead::SetColumnRefs() {
-  if (secondary_index_query_) {
-    DCHECK(!has_aggregate_targets()) << "Aggregate pushdown should not happen with index";
-  }
   read_req_->set_is_aggregate(has_aggregate_targets());
   // Populate column references in the read request
   ColRefsToPB();

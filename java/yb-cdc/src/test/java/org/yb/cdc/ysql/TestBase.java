@@ -27,7 +27,7 @@ import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.cdc.common.CDCBaseClass;
 import org.yb.cdc.util.CDCSubscriber;
 import org.yb.cdc.common.ExpectedRecordYSQL;
-import org.yb.cdc.util.TestUtils;
+import org.yb.cdc.util.CDCTestUtils;
 import org.yb.YBTestRunner;
 
 import java.sql.*;
@@ -44,7 +44,7 @@ public class TestBase extends CDCBaseClass {
     testSubscriber.createStream("proto");
 
     if (!sqlScript.isEmpty()) {
-      TestUtils.runSqlScript(connection, sqlScript);
+      CDCTestUtils.runSqlScript(connection, sqlScript);
     } else {
       LOG.info("No SQL script specified...");
     }

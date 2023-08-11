@@ -217,6 +217,21 @@ compare_path_costs_fuzzily(Path *path1, Path *path2, double fuzz_factor)
 #undef CONSIDER_PATH_STARTUP_COST
 }
 
+static BMS_Comparison
+yb_bms_compare_ppi(Path *path1, Path *path2)
+{
+	Relids path1_batchinfo = path1->param_info ?
+		path1->param_info->yb_ppi_req_outer_batched : NULL;
+	
+	Relids path2_batchinfo = path2->param_info ?
+		path2->param_info->yb_ppi_req_outer_batched : NULL;
+	
+	if (bms_is_empty(path1_batchinfo) ^ bms_is_empty(path2_batchinfo))
+		return BMS_DIFFERENT;
+
+	return bms_subset_compare(PATH_REQ_OUTER(path1), PATH_REQ_OUTER(path2));
+}
+
 /*
  * set_cheapest
  *	  Find the minimum-cost paths from among a relation's paths,
@@ -294,8 +309,8 @@ set_cheapest(RelOptInfo *parent_rel)
 				best_param_path = path;
 			else
 			{
-				switch (bms_subset_compare(PATH_REQ_OUTER(path),
-										   PATH_REQ_OUTER(best_param_path)))
+				switch (yb_bms_compare_ppi(path,
+													best_param_path))
 				{
 					case BMS_EQUAL:
 						/* keep the cheaper one */
@@ -546,6 +561,19 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 			old_path_pathkeys = old_path->param_info ? NIL : old_path->pathkeys;
 			keyscmp = compare_pathkeys(new_path_pathkeys,
 									   old_path_pathkeys);
+
+			/*
+			 * YB: If one is batched and the other isn't we consider
+			 * the two parameterizations to be different.
+			 */
+			bool is_new_path_batched = new_path->param_info &&
+				!bms_is_empty(new_path->param_info->yb_ppi_req_outer_batched);
+
+			bool is_old_path_batched = old_path->param_info &&
+				!bms_is_empty(old_path->param_info->yb_ppi_req_outer_batched);
+			bool considering_batchedness =
+				is_new_path_batched || is_old_path_batched;
+
 			if (keyscmp != PATHKEYS_DIFFERENT)
 			{
 				switch (costcmp)
@@ -553,6 +581,13 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 					case COSTS_EQUAL:
 						outercmp = bms_subset_compare(PATH_REQ_OUTER(new_path),
 													  PATH_REQ_OUTER(old_path));
+						if (considering_batchedness)
+						{
+							outercmp = BMS_DIFFERENT;
+							if (!is_new_path_batched)
+								insert_after = p1;
+						}
+
 						if (keyscmp == PATHKEYS_BETTER1)
 						{
 							if ((outercmp == BMS_EQUAL ||
@@ -622,6 +657,14 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 						{
 							outercmp = bms_subset_compare(PATH_REQ_OUTER(new_path),
 														  PATH_REQ_OUTER(old_path));
+							
+							if (considering_batchedness)
+							{
+								outercmp = BMS_DIFFERENT;
+								if (!is_new_path_batched)
+									insert_after = p1;
+							}
+
 							if ((outercmp == BMS_EQUAL ||
 								 outercmp == BMS_SUBSET1) &&
 								new_path->rows <= old_path->rows &&
@@ -634,6 +677,14 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 						{
 							outercmp = bms_subset_compare(PATH_REQ_OUTER(new_path),
 														  PATH_REQ_OUTER(old_path));
+							
+							if (considering_batchedness)
+							{
+								outercmp = BMS_DIFFERENT;
+								if (!is_new_path_batched)
+									insert_after = p1;
+							}
+
 							if ((outercmp == BMS_EQUAL ||
 								 outercmp == BMS_SUBSET2) &&
 								new_path->rows >= old_path->rows &&

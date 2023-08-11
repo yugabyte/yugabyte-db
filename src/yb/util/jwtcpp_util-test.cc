@@ -44,7 +44,7 @@ TEST(JwtCppUtilTest, ParseJwksSuccess) {
 }
 
 TEST(JwtCppUtilTest, ParseJwksInvalid) {
-  ASSERT_NOT_OK(ParseJwks("illformatted_json"));
+  ASSERT_NOK(ParseJwks("illformatted_json"));
 }
 
 TEST(JwtCppUtilTest, GetJwkFromJwksSuccess) {
@@ -55,7 +55,7 @@ TEST(JwtCppUtilTest, GetJwkFromJwksSuccess) {
 
 TEST(JwtCppUtilTest, GetJwkFromJwksInvalid) {
   auto jwks = ASSERT_RESULT(ParseJwks(testing::JWKS));
-  ASSERT_NOT_OK(GetJwkFromJwks(jwks, "missing_keyid"));
+  ASSERT_NOK(GetJwkFromJwks(jwks, "missing_keyid"));
 }
 
 TEST(JwtCppUtilTest, GetX5cKeyValueFromJwkSuccess) {
@@ -101,7 +101,7 @@ TEST(JwtCppUtilTest, GetX5cKeyValueFromJwkInvalid) {
     )";
   auto jwks = ASSERT_RESULT(ParseJwks(jwks_without_x5c));
   auto jwk = ASSERT_RESULT(GetJwkFromJwks(jwks, "ps512_keyid"));
-  ASSERT_NOT_OK(GetX5cKeyValueFromJwk(jwk));
+  ASSERT_NOK(GetX5cKeyValueFromJwk(jwk));
 }
 
 TEST(JwtCppUtilTest, GetJwkClaimAsStringSuccess) {
@@ -130,7 +130,7 @@ TEST(JwtCppUtilTest, GetJwkClaimAsStringInvalidBool) {
   auto jwks = ASSERT_RESULT(ParseJwks(jwks_with_bool_field));
   auto jwk = ASSERT_RESULT(GetJwkFromJwks(jwks, "ps512_keyid"));
   // The claim value was expected to be a string but is a bool.
-  ASSERT_NOT_OK(GetJwkClaimAsString(jwk, "bool_field"));
+  ASSERT_NOK(GetJwkClaimAsString(jwk, "bool_field"));
 }
 
 TEST(JwtCppUtilTest, ConvertX5cDerToPemSuccess) {
@@ -172,7 +172,7 @@ YcjgUQmwmAWD
 }
 
 TEST(JwtCppUtilTest, ConvertX5cDerToPemInvalid) {
-  ASSERT_NOT_OK(ConvertX5cDerToPem("an invalid x5c"));
+  ASSERT_NOK(ConvertX5cDerToPem("an invalid x5c"));
 }
 
 TEST(JwtCppUtilTest, DecodeJwtSuccess) {
@@ -186,7 +186,7 @@ TEST(JwtCppUtilTest, DecodeJwtSuccess) {
 }
 
 TEST(JwtCppUtilTest, DecodeJwtInvalid) {
-  ASSERT_NOT_OK(DecodeJwt("an_invalid_jwt"));
+  ASSERT_NOK(DecodeJwt("an_invalid_jwt"));
 }
 
 TEST(JwtCppUtilTest, GetJwtKeyIdSuccess) {
@@ -210,7 +210,7 @@ TEST(JwtCppUtilTest, GetJwtKeyIdInvalid) {
       "AJ-q-11scFTwcSbopcz8MkhmX76tJawgIPp2_oVjwSSDTUH1WvFPfuN17gSZVw";
   auto decoded_jwt = ASSERT_RESULT(DecodeJwt(jwt_without_key_id));
 
-  ASSERT_NOT_OK(GetJwtKeyId(decoded_jwt));
+  ASSERT_NOK(GetJwtKeyId(decoded_jwt));
 }
 
 TEST(JwtCppUtilTest, GetJwtIssuerSuccess) {
@@ -235,7 +235,7 @@ TEST(JwtCppUtilTest, GetJwtIssuerInvalid) {
   auto decoded_jwt = ASSERT_RESULT(DecodeJwt(jwt));
 
   auto issuer_result = GetJwtIssuer(decoded_jwt);
-  ASSERT_NOT_OK(issuer_result);
+  ASSERT_NOK(issuer_result);
   ASSERT_NE(
       issuer_result.status().message().ToBuffer().find("GetJwtIssuer failed: claim not found"),
       std::string::npos)
@@ -321,7 +321,7 @@ TEST(JwtCppUtilTest, GetJwtAudiencesInvalid) {
   auto decoded_jwt = ASSERT_RESULT(DecodeJwt(jwt));
 
   auto audiences_res = GetJwtAudiences(decoded_jwt);
-  ASSERT_NOT_OK(audiences_res);
+  ASSERT_NOK(audiences_res);
   ASSERT_NE(
       audiences_res.status().message().ToBuffer().find("GetJwtAudiences failed: claim not found"),
       std::string::npos)
@@ -343,7 +343,7 @@ TEST(JwtCppUtilTest, GetJwtVerifierSuccess) {
 
 TEST(JwtCppUtilTest, GetJwtVerifierUnsupported) {
   auto hs256_verifier = GetJwtVerifier("does not matter", "HS256");
-  ASSERT_NOT_OK(hs256_verifier);
+  ASSERT_NOK(hs256_verifier);
   ASSERT_NE(
       hs256_verifier.status().message().ToBuffer().find("Unsupported JWT algorithm: HS256"),
       std::string::npos)
@@ -352,7 +352,7 @@ TEST(JwtCppUtilTest, GetJwtVerifierUnsupported) {
 
 TEST(JwtCppUtilTest, GetJwtVerifierInvalidPublicPEM) {
   auto invalid_verifier = GetJwtVerifier("invalidpem", "RS256");
-  ASSERT_NOT_OK(invalid_verifier);
+  ASSERT_NOK(invalid_verifier);
   ASSERT_NE(
       invalid_verifier.status().message().ToBuffer().find(
           "Constructing JWT verifier for public key: invalidpem and algo: RS256 failed"),

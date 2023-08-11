@@ -451,7 +451,11 @@ func UpdateRootInstall(newRoot string) {
 	SetYamlValue(InputFile(), "installRoot", newRoot)
 }
 
+// SetYamlValue sets the yamlPath to value value in file filePath
 func SetYamlValue(filePath string, yamlPath string, value string) {
+	if strings.TrimSpace(value) == "" {
+		return
+	}
 	origYamlBytes, err := os.ReadFile(filePath)
 	if err != nil {
 		log.Fatal("unable to read config file " + filePath)
@@ -472,7 +476,7 @@ func SetYamlValue(filePath string, yamlPath string, value string) {
 	if len(matchNodes) != 1 {
 		log.Fatal(fmt.Sprintf("yamlPath %s is not accurate", yamlPath))
 	}
-	matchNodes[0].SetString(value)
+	matchNodes[0].Value = value
 
 	finalYaml, err := yaml.Marshal(&root)
 	if err != nil {

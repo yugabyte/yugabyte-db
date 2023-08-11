@@ -53,6 +53,10 @@ spec:
                   type: string
                 providerName:
                   type: string
+                zoneFilter:
+                  type: array
+                  items:
+                    type: string
                 enableYSQLAuth:
                   type: boolean
                 ysqlPassword:

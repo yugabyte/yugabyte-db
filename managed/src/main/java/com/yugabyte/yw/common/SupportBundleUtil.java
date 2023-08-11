@@ -188,7 +188,7 @@ public class SupportBundleUtil {
         if (CollectionUtils.isNotEmpty(volumeDetailsList)) {
           dataDirPath = volumeDetailsList.get(0).mountPath;
         } else {
-          log.info(String.format("Mount point is not defined. Defaulting to %s", dataDirPath));
+          log.info("Mount point is not defined. Defaulting to {}", dataDirPath);
         }
       } catch (Exception e) {
         log.error(String.format("Could not get mount points. Defaulting to %s", dataDirPath), e);
@@ -199,9 +199,9 @@ public class SupportBundleUtil {
 
   public void deleteFile(Path filePath) {
     if (FileUtils.deleteQuietly(new File(filePath.toString()))) {
-      log.info("Successfully deleted file with path: " + filePath.toString());
+      log.info("Successfully deleted file with path: {}", filePath);
     } else {
-      log.info("Failed to delete file with path: " + filePath.toString());
+      log.info("Failed to delete file with path: {}", filePath);
     }
   }
 
@@ -710,9 +710,10 @@ public class SupportBundleUtil {
           unZippedFile.delete();
         } else {
           log.debug(
-              String.format(
-                  "No files exist at the source path '%s' for universe '%s' for component '%s'.",
-                  nodeHomeDir, universe.getName(), componentName));
+              "No files exist at the source path '{}' for universe '{}' for component '{}'.",
+              nodeHomeDir,
+              universe.getName(),
+              componentName);
         }
       } catch (Exception e) {
         log.error(
@@ -750,9 +751,11 @@ public class SupportBundleUtil {
     Path nodeTargetFile = Paths.get(bundlePath.toString(), componentName + ".tar.gz");
 
     log.debug(
-        String.format(
-            "Gathering '%s' for node: '%s', source path: '%s', target path: '%s'.",
-            componentName, nodeName, nodeHomeDir, nodeTargetFile.toString()));
+        "Gathering '{}' for node: '{}', source path: '{}', target path: '{}'.",
+        componentName,
+        nodeName,
+        nodeHomeDir,
+        nodeTargetFile);
 
     // Download all logs batch wise
     batchWiseDownload(

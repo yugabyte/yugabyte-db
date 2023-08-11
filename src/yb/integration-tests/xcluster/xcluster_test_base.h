@@ -242,11 +242,11 @@ class XClusterTestBase : public YBTest {
 
   Result<std::vector<xrepl::StreamId>> BootstrapProducer(
       MiniCluster* producer_cluster, YBClient* producer_client,
-      const std::vector<std::shared_ptr<yb::client::YBTable>>& tables);
+      const std::vector<std::shared_ptr<yb::client::YBTable>>& tables, int proxy_tserver_index = 0);
 
   Result<std::vector<xrepl::StreamId>> BootstrapProducer(
       MiniCluster* producer_cluster, YBClient* producer_client,
-      const std::vector<std::string>& table_ids);
+      const std::vector<std::string>& table_ids, int proxy_tserver_index = 0);
 
   // Wait for replication drain on a list of tables.
   Status WaitForReplicationDrain(

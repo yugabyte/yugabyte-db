@@ -356,29 +356,29 @@ const IncrementalBackupCard = ({
         {[Backup_States.FAILED, Backup_States.FAILED_TO_DELETE, Backup_States.STOPPED].includes(
           incrementalBackup.state
         ) && (
-            <>
-              <YBButton
-                btnIcon="fa fa-trash-o"
-                btnText="Delete"
-                className="incremental-backup-action-button incremental-backup-delete-button"
-                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
-                  e.stopPropagation();
-                  setShowDeleteConfirmDialog(true);
-                }}
-              />
-              <YBModal
-                name="delete-incremental-backup"
-                title="Confirm Delete"
-                className="backup-modal"
-                showCancelButton
-                onFormSubmit={() => doDeleteBackup.mutate()}
-                onHide={() => setShowDeleteConfirmDialog(false)}
-                visible={showDeleteConfirmDialog}
-              >
-                Are you sure you want to delete this incremental backup?
-              </YBModal>
-            </>
-          )}
+          <>
+            <YBButton
+              btnIcon="fa fa-trash-o"
+              btnText="Delete"
+              className="incremental-backup-action-button incremental-backup-delete-button"
+              onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                e.stopPropagation();
+                setShowDeleteConfirmDialog(true);
+              }}
+            />
+            <YBModal
+              name="delete-incremental-backup"
+              title="Confirm Delete"
+              className="backup-modal"
+              showCancelButton
+              onFormSubmit={() => doDeleteBackup.mutate()}
+              onHide={() => setShowDeleteConfirmDialog(false)}
+              visible={showDeleteConfirmDialog}
+            >
+              Are you sure you want to delete this incremental backup?
+            </YBModal>
+          </>
+        )}
         {!rest.hideRestore && incrementalBackup.state === Backup_States.COMPLETED && (
           <YBButton
             btnText="Restore to this point"
@@ -386,11 +386,14 @@ const IncrementalBackupCard = ({
             onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
               const { onRestore } = rest;
               e.stopPropagation();
-              onRestore(incrementalBackup.responseList, {
+              const incrementalBackupProps: IncrementalBackupProps = {
                 isRestoreEntireBackup: false,
                 incrementalBackupUUID: incrementalBackup.backupUUID,
                 singleKeyspaceRestore: false
-              });
+              };
+              if (incrementalBackup.kmsConfigUUID)
+                incrementalBackupProps.kmsConfigUUID = incrementalBackup.kmsConfigUUID;
+              onRestore(incrementalBackup.responseList, incrementalBackup);
             }}
           />
         )}

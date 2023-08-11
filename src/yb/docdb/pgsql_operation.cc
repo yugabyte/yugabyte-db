@@ -272,10 +272,6 @@ Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
   // TODO(neil) Remove the following IF block when it is completely obsolete.
   // The following IF block gets used in the CREATE INDEX codepath.
   if (request.has_ybctid_column_value()) {
-    SCHECK(!request.has_paging_state(),
-           InternalError,
-           "Each ybctid value identifies one row in the table while paging state "
-           "is only used for multi-row queries.");
     RETURN_NOT_OK(ql_storage.GetIteratorForYbctid(
         request.stmt_id(), projection, doc_read_context, txn_op_context, read_operation_data,
         request.ybctid_column_value().value(), request.ybctid_column_value().value(), pending_op,
@@ -1616,6 +1612,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(
   do {
     const auto fetch_result = VERIFY_RESULT(FetchTableRow(
         table_id, &table_iter, index_state ? &*index_state : nullptr, &row));
+    // If changing this code, see also PgsqlReadOperation::ExecuteBatchYbctid.
     if (fetch_result == FetchResult::NotFound) {
       break;
     }
@@ -1700,6 +1697,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
   dockv::PgTableRow row(projection);
   std::optional<FilteringIterator> iter;
   size_t row_count = 0;
+  size_t fetched_rows = 0;
   for (const auto& batch_argument : batch_args) {
     if (!iter) {
       // It can be the case like when there is a tablet split that we still want
@@ -1715,6 +1713,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
           SkipSeek::kTrue));
     }
 
+    // If changing this code, see also PgsqlReadOperation::ExecuteScalar.
     switch (VERIFY_RESULT(
         iter->FetchTuple(batch_argument.ybctid().value().binary_value(), &row))) {
       case FetchResult::NotFound:
@@ -1724,9 +1723,14 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
       case FetchResult::FilteredOut:
         break;
       case FetchResult::Found:
-        RETURN_NOT_OK(PopulateResultSet(row, result_buffer));
-        response_.add_batch_orders(batch_argument.order());
         ++row_count;
+        if (request_.is_aggregate()) {
+          RETURN_NOT_OK(EvalAggregate(row));
+        } else {
+          RETURN_NOT_OK(PopulateResultSet(row, result_buffer));
+          response_.add_batch_orders(batch_argument.order());
+          ++fetched_rows;
+        }
         break;
     }
 
@@ -1738,6 +1742,12 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
     }
   }
 
+  // Output aggregate values accumulated while looping over rows
+  if (request_.is_aggregate() && row_count > 0) {
+    RETURN_NOT_OK(PopulateAggregate(result_buffer));
+    ++fetched_rows;
+  }
+
   // Set status for this batch.
   if (result_buffer->size() >= response_size_limit)
     response_.set_batch_arg_count(row_count);
@@ -1745,7 +1755,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
     // Mark all rows were processed even in case some of the ybctids were not found.
     response_.set_batch_arg_count(request_.batch_arguments_size());
 
-  return row_count;
+  return fetched_rows;
 }
 
 Result<bool> PgsqlReadOperation::SetPagingState(

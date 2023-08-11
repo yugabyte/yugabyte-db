@@ -896,8 +896,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // TODO(asrivastava): This is only public because it is used by a test
   // (CreateTableStressTest.TestConcurrentCreateTableAndReloadMetadata). Can we refactor that test
   // to avoid this call and make this private?
-  Status VisitSysCatalog(int64_t term, SysCatalogLoadingState* state);
-  Status RunLoaders(int64_t term, SysCatalogLoadingState* state) REQUIRES(mutex_);
+  Status VisitSysCatalog(SysCatalogLoadingState* state);
+  Status RunLoaders(SysCatalogLoadingState* state) REQUIRES(mutex_);
 
   // Waits for the worker queue to finish processing, returns OK if worker queue is idle before
   // the provided timeout, TimedOut Status otherwise.
@@ -1956,11 +1956,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status RegisterTsFromRaftConfig(const consensus::RaftPeerPB& peer);
 
   template <class Loader>
-  Status Load(const std::string& title, SysCatalogLoadingState* state, const int64_t term);
+  Status Load(const std::string& title, SysCatalogLoadingState* state);
 
   void Started();
 
-  void SysCatalogLoaded(int64_t term, const SysCatalogLoadingState& state);
+  void SysCatalogLoaded(const SysCatalogLoadingState& state);
 
   // Ensure the sys catalog tablet respects the leader affinity and blacklist configuration.
   // Chooses an unblacklisted master in the highest priority affinity location to step down to. If

@@ -32,8 +32,8 @@ import java.sql.Connection;
 import java.time.Duration;
 import java.util.List;
 
-public class TestUtils {
-  private static final Logger LOG = LoggerFactory.getLogger(TestUtils.class);
+public class CDCTestUtils {
+  private static final Logger LOG = LoggerFactory.getLogger(CDCTestUtils.class);
 
   private static final Path resourcePath = Paths.get("src", "test", "resources");
   private static final String TEST_RESOURCES_PATH = resourcePath.toFile().getAbsolutePath();
