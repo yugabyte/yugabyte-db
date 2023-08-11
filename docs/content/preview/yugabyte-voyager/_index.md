@@ -29,7 +29,7 @@ migration. Voyager safely migrates data from PostgreSQL, MySQL, and Oracle datab
 {{< sections/text-with-right-image
   title="Get Started"
   description="Install YugabyteDB Voyager on different operating systems (RHEL, Ubuntu, macOS), or via environments such as Docker or an Airgapped installation."
-  buttonText="Get started"
+  buttonText="Install"
   buttonUrl="install-yb-voyager/"
   imageAlt="Yugabyte cloud" imageUrl="/images/homepage/follow-proven-path.svg"
 >}}
