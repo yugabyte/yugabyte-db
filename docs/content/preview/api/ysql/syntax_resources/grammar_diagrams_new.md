@@ -5,4 +5,4 @@ type: docs
 private: true
 ---
 
-{{<ebnf type="reference">}}
+{{<ebnf type="reference">}}{{</ebnf>}}
