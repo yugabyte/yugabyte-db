@@ -158,7 +158,7 @@ class WriteOnceWeakPtr {
 
   // Set the pointer to the given value. Return true if successful. Setting the value to a null
   // pointer is never considered successful.
-  bool Set(const std::shared_ptr<T>& p) {
+  MUST_USE_RESULT bool Set(const std::shared_ptr<T>& p) {
     if (!p)
       return false;
     auto expected_state = State::kUnset;
