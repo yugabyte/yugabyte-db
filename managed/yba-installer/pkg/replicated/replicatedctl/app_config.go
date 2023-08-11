@@ -38,14 +38,20 @@ var replicatedToYbaCtl = map[string]string{
 	"java_http_proxy_port": "platform.proxy.java_http_proxy_port",
 	"java_http_proxy_host": "platform.proxy.java_http_proxy_host",
 	"db_external_port": "postgres.install.port",
-	// TODO: Need to allow dbuser customization and also pass it on towards taking dump/LDAP
-	// "prometheus_retention": "prometheus.retentionTime",
+	"dbuser": "postgres.install.username",
+	"dbldapauth": "postgres.install.ldap_enabled",
+	"ldap_server": "postgres.install.ldap_server",
+	"ldap_dn_prefix": "postgres.install.ldap_prefix",
+	"ldap_base_dn": "postgres.install.ldap_suffix",
+	"ldap_port": "postgres.install.ldap_port",
+	"prometheus_retention": "prometheus.retentionTime",
 	"prometheus_query_timeout": "prometheus.timeout",
 	"prometheus_scrape_interval": "prometheus.scrapeInterval",
 	"prometheus_scrape_timeout": "prometheus.scrapeTimeout",
 	"prometheus_query_max_samples": "prometheus.maxSamples",
 	"prometheus_query_concurrency": "prometheus.maxConcurrency",
 	"prometheus_external_port": "prometheus.port",
+	"support_origin_url": "platform.support_origin_url",
 }
 
 // Bool converts the value from a string
@@ -148,16 +154,29 @@ func (r *ReplicatedCtl) AppConfigExport() (AppConfig, error) {
 func (ac *AppConfig) ExportYbaCtl() error {
 	config.WriteDefaultConfig()
 	for _, e := range ac.EntriesAsSlice() {
+		// skip any settings that were not set by replicated
+		if strings.TrimSpace(e.Value) == "" {
+			continue
+		}
 		if ybaCtlPath, ok := replicatedToYbaCtl[e.Name]; ok {
 			if b, err := e.Bool(); err == nil {
-				common.SetYamlValue(common.InputFile(), ybaCtlPath, strconv.FormatBool(b))
+				if err := common.SetYamlValue(common.InputFile(), ybaCtlPath, strconv.FormatBool(b));
+					 err != nil {
+					return fmt.Errorf("Error setting boolean value at %s: %s", ybaCtlPath, err.Error())
+				}
 			} else {
 				i, err := e.Int()
 				if strings.HasSuffix(ybaCtlPath, "port") && err == nil {
-					common.SetYamlValue(common.InputFile(), ybaCtlPath, strconv.Itoa(i + 1))
+					if err := common.SetYamlValue(common.InputFile(), ybaCtlPath, strconv.Itoa(i + 1));
+						 err != nil {
+						return fmt.Errorf("Error setting port value at %s: %s", ybaCtlPath, err.Error())
+					}
 				} else {
 					// TODO: Hack to get around 30s -> 30 conversion in prometheus timing values
-					common.SetYamlValue(common.InputFile(), ybaCtlPath, strings.TrimSuffix(e.Value, "s"))
+					if err := common.SetYamlValue(common.InputFile(), ybaCtlPath,
+						strings.TrimSuffix(e.Value, "s")); err != nil {
+							return fmt.Errorf("Error setting value at %s: %s", ybaCtlPath, err.Error())
+					}
 				}
 			}
 		}
