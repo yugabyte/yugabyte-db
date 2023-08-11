@@ -69,6 +69,7 @@ export const GFlags: FC = () => {
 
   if (isEditPrimary && _.isEmpty(getValues(GFLAGS_FIELD))) return null;
   if (!enableRRGflags && !isPrimary) return null;
+  if (!isPrimary && provider?.code === CloudType.kubernetes) return null;
 
   return (
     <Box className={classes.sectionContainer} flexDirection="column" data-testid="Gflags-Section">
