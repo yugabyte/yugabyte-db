@@ -18,7 +18,7 @@ resources:
   - title: What's new
     url: /preview/yugabyte-voyager/release-notes/
   - title: Download
-    url: https://download.yugabyte.com/migrate#
+    url: https://download.yugabyte.com/migrate
   - title: yugabyte.com
     url: https://www.yugabyte.com/voyager/
 ---
