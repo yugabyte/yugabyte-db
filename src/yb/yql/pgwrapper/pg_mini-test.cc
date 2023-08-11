@@ -1651,7 +1651,7 @@ TEST_F(PgMiniTest, BigInsertWithAbortedIntentsAndRestart) {
 
     auto res = ASSERT_RESULT(conn.FetchFormat("SELECT * FROM t WHERE a = $0", row_num));
     if (should_abort) {
-      EXPECT_NOT_OK(GetInt32(res.get(), 0, 0)) << "Did not expect to find value for: " << row_num;
+      EXPECT_NOK(GetInt32(res.get(), 0, 0)) << "Did not expect to find value for: " << row_num;
     } else {
       int64_t value = EXPECT_RESULT(GetInt32(res.get(), 0, 0));
       EXPECT_EQ(value, row_num) << "Expected to find " << row_num << ", found " << value << ".";

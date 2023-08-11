@@ -71,6 +71,9 @@ public class UserTaskDetails {
     // Deleting all the xCluster replications and cleaning up their states on the universes.
     DeleteXClusterReplication,
 
+    // Deleting DR config.
+    DeleteDrConfig,
+
     // Rotate access key to all nodes of a universe
     RotateAccessKey,
 
@@ -327,6 +330,10 @@ public class UserTaskDetails {
         description =
             "Deleting xCluster replications and cleaning up their corresponding states "
                 + "on the participating universes.";
+        break;
+      case DeleteDrConfig:
+        title = "Deleting Dr Config";
+        description = "Deleting the disaster recovery config.";
         break;
       case InitializeCloudMetadata:
         title = "Initializing Cloud Metadata";

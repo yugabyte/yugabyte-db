@@ -11,6 +11,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.api.gax.paging.Page;
 import com.google.auth.Credentials;
 import com.google.auth.oauth2.GoogleCredentials;
+import com.google.cloud.logging.LogEntry;
+import com.google.cloud.logging.Logging;
+import com.google.cloud.logging.Logging.EntryListOption;
+import com.google.cloud.logging.LoggingOptions;
 import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.BlobId;
 import com.google.cloud.storage.BlobInfo;
@@ -22,13 +26,21 @@ import com.google.cloud.storage.StorageBatchResult;
 import com.google.cloud.storage.StorageException;
 import com.google.cloud.storage.StorageOptions;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.UniverseInterruptionResult.InterruptionStatus;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData.RegionLocations;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -44,6 +56,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.StreamSupport;
 import lombok.extern.slf4j.Slf4j;
@@ -522,5 +535,82 @@ public class GCPUtil implements CloudUtil {
   private String readBlob(Storage storage, String bucketName, String fileName, int bytesToRead) {
     byte[] readBytes = storage.readAllBytes(bucketName, fileName);
     return new String(readBytes);
+  }
+
+  public UniverseInterruptionResult spotInstanceUniverseStatus(Universe universe) {
+    UniverseInterruptionResult result = new UniverseInterruptionResult(universe.getName());
+
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    Provider primaryClusterProvider =
+        Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+    GCPCloudInfo primaryGcpInfo = primaryClusterProvider.getDetails().getCloudInfo().getGcp();
+    String startTime = universe.getCreationDate().toInstant().toString().substring(0, 10);
+    UUID primaryClusterUUID = universe.getUniverseDetails().getPrimaryCluster().uuid;
+
+    // For nodes in primary cluster
+    for (final NodeDetails nodeDetails : universe.getNodesInCluster(primaryClusterUUID)) {
+      result.addNodeStatus(
+          nodeDetails.nodeName,
+          isSpotInstanceInterrupted(
+                  nodeDetails.nodeName, nodeDetails.getZone(), startTime, primaryGcpInfo)
+              ? InterruptionStatus.Interrupted
+              : InterruptionStatus.NotInterrupted);
+    }
+    // For nodes in read replicas
+    for (Cluster cluster : universe.getUniverseDetails().getReadOnlyClusters()) {
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      GCPCloudInfo gcpInfo = provider.getDetails().getCloudInfo().getGcp();
+      for (final NodeDetails nodeDetails : universe.getNodesInCluster(cluster.uuid)) {
+        result.addNodeStatus(
+            nodeDetails.nodeName,
+            isSpotInstanceInterrupted(
+                    nodeDetails.nodeName, nodeDetails.getZone(), startTime, gcpInfo)
+                ? InterruptionStatus.Interrupted
+                : InterruptionStatus.NotInterrupted);
+      }
+    }
+    return result;
+  }
+
+  private boolean isSpotInstanceInterrupted(
+      String instanceName, String zone, String startTime, GCPCloudInfo gcpInfo) {
+    try {
+      String project = gcpInfo.getGceProject();
+      String logName =
+          String.format("logName=projects/%s/logs", project)
+              + "/cloudaudit.googleapis.com%2Fsystem_event";
+      String logFilter =
+          String.format(
+              "resource.labels.zone=%s AND "
+                  + "%s AND "
+                  + "protoPayload.methodName=compute.instances.preempted AND timestamp>=%s "
+                  + "AND protoPayload.resourceName=projects/%s/zones/%s/instances/%s",
+              zone, logName, startTime, project, zone, instanceName);
+
+      String path = gcpInfo.getGceApplicationCredentialsPath();
+      GoogleCredentials creds = GoogleCredentials.fromStream(new FileInputStream(path));
+      try (Logging logging =
+          LoggingOptions.newBuilder()
+              .setProjectId(project)
+              .setCredentials(creds)
+              .build()
+              .getService()) {
+        Page<LogEntry> entries = logging.listLogEntries(EntryListOption.filter(logFilter));
+        while (entries != null) {
+          for (LogEntry logEntry : entries.iterateAll()) {
+            if (logEntry.getPayload().getData().toString().contains("Instance was preempted")) {
+              return true;
+            }
+          }
+          entries = entries.getNextPage();
+        }
+      }
+      return false;
+    } catch (Exception e) {
+      e.printStackTrace();
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          "Fetch interruptions status for GCP instance failed with " + e.getMessage());
+    }
   }
 }

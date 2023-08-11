@@ -241,7 +241,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
             createFormData.bootstrapParams,
             requestedTableInfoList,
             Collections.emptyMap(),
-            Collections.emptySet());
+            Collections.emptyMap());
     try {
       UUID taskUUID = commissioner.submit(TaskType.CreateXClusterConfig, taskParams);
 

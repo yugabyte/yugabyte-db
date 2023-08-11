@@ -1,5 +1,5 @@
 import React, { FC } from 'react';
-import { Divider, makeStyles, Paper } from '@material-ui/core';
+import { Box, Divider, makeStyles, Paper } from '@material-ui/core';
 
 // Local imports
 import type { ClusterData, HealthCheckInfo } from '@app/api/src';
@@ -27,11 +27,17 @@ export const ClusterStatusWidget: FC<ClusterStatusWidgetProps> = ({ cluster, hea
   const classes = useStyles();
   return (
       <Paper className={classes.container}>
-        <ClusterNodeWidget health={health} />
+        <Box flex={2}>
+          <ClusterNodeWidget health={health} />
+        </Box>
         <Divider orientation="vertical" />
-        <ClusterActivityWidget />
+        <Box flex={1}>
+          <ClusterActivityWidget />
+        </Box>
         <Divider orientation="vertical" />
-        <ClusterResourceWidget cluster={cluster} />
+        <Box flex={2}>
+          <ClusterResourceWidget cluster={cluster} />
+        </Box>
       </Paper>
   );
 };

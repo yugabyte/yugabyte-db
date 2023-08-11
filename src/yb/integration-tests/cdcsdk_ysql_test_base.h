@@ -545,6 +545,13 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void AssertSafeTimeAsExpectedInTabletPeers(
       const TabletId& tablet_id, const HybridTime expected_safe_time);
+
+  Status WaitForGetChangesToFetchRecords(
+      GetChangesResponsePB* get_changes_resp, const xrepl::StreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const int& expected_count, const CDCSDKCheckpointPB* cp = nullptr, const int& tablet_idx = 0,
+      const int64& safe_hybrid_time = -1, const int& wal_segment_index = 0,
+      const double& timeout_secs = 5);
 };
 
 }  // namespace cdc

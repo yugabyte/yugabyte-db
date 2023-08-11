@@ -500,6 +500,10 @@ func (pg Postgres) modifyPostgresConf() {
 	if err != nil {
 		log.Fatal(fmt.Sprintf("Error: %s writing new data_directory to %s", err.Error(), pgConfPath))
 	}
+	_, err = confFile.WriteString(fmt.Sprintf("port = %d", viper.GetInt("postgres.install.port")))
+	if err != nil {
+		log.Fatal(fmt.Sprintf("Error: %s writing port to %s", err.Error(), pgConfPath))
+	}
 }
 
 // Move required files from initdb to the new data directory
@@ -553,6 +557,7 @@ func (pg Postgres) createYugawareDatabase() {
 	args := []string{
 		"-h", pg.MountPath,
 		"-U", pg.getPgUserName(),
+		"-p", viper.GetString("postgres.install.port"),
 		"yugaware",
 	}
 	var out *shell.Output

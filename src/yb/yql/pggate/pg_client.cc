@@ -172,6 +172,8 @@ class PgClient::Impl {
     proxy_ = nullptr;
   }
 
+  uint64_t SessionID() { return session_id_; }
+
   void Heartbeat(bool create) {
     {
       bool expected = false;
@@ -693,6 +695,34 @@ class PgClient::Impl {
     return resp.is_object_part_of_xrepl();
   }
 
+  Status EnumerateActiveTransactions(
+      const ActiveTransactionCallback& callback, bool for_current_session_only) {
+    tserver::PgGetActiveTransactionListRequestPB req;
+    tserver::PgGetActiveTransactionListResponsePB resp;
+    if (for_current_session_only) {
+      req.mutable_session_id()->set_value(session_id_);
+    }
+
+    RETURN_NOT_OK(proxy_->GetActiveTransactionList(req, &resp, PrepareController()));
+    RETURN_NOT_OK(ResponseStatus(resp));
+
+    const auto& entries = resp.entries();
+    if (entries.empty()) {
+      return Status::OK();
+    }
+
+    for (auto i = entries.begin(), end = entries.end();;) {
+      const auto& entry = *i;
+      const auto is_last = (++i == end);
+      RETURN_NOT_OK(callback(entry, is_last));
+      if (is_last) {
+        break;
+      }
+    }
+
+    return Status::OK();
+  }
+
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid) {
     tserver::PgGetTserverCatalogVersionInfoRequestPB req;
@@ -791,6 +821,8 @@ void PgClient::Shutdown() {
 void PgClient::SetTimeout(MonoDelta timeout) {
   impl_->SetTimeout(timeout);
 }
+
+uint64_t PgClient::SessionID() const { return impl_->SessionID(); }
 
 Result<PgTableDescPtr> PgClient::OpenTable(
     const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time) {
@@ -952,6 +984,11 @@ Result<bool> PgClient::IsObjectPartOfXRepl(const PgObjectId& table_id) {
 Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCatalogVersionInfo(
     bool size_only, uint32_t db_oid) {
   return impl_->GetTserverCatalogVersionInfo(size_only, db_oid);
+}
+
+Status PgClient::EnumerateActiveTransactions(
+    const ActiveTransactionCallback& callback, bool for_current_session_only) const {
+  return impl_->EnumerateActiveTransactions(callback, for_current_session_only);
 }
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DEFINE(r, data, method) \

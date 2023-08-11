@@ -56,8 +56,7 @@ Status TestEchoService::RecordRequestInTable(const std::string& message) {
   table->AddStringColumnValue(req, master::kTestEchoNodeId, node_uuid_);
   table->AddStringColumnValue(req, master::kTestEchoMessage, message);
 
-  auto session = VERIFY_RESULT(GetYBSession());
-  session->SetTimeout(30s);
+  auto session = VERIFY_RESULT(GetYBSession(30s));
 
   TEST_SYNC_POINT("TestEchoService::RecordRequestInTable::BeforeApply1");
   TEST_SYNC_POINT("TestEchoService::RecordRequestInTable::BeforeApply2");

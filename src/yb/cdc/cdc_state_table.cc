@@ -302,8 +302,7 @@ Result<client::YBClient*> CDCStateTable::GetClient() {
 
 Result<std::shared_ptr<client::YBSession>> CDCStateTable::GetSession() {
   auto* client = VERIFY_RESULT(GetClient());
-  auto session = client->NewSession();
-  session->SetTimeout(client->default_rpc_timeout());
+  auto session = client->NewSession(client->default_rpc_timeout());
   return session;
 }
 

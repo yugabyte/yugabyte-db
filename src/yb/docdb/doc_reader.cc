@@ -31,11 +31,13 @@
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_ttl_util.h"
+#include "yb/dockv/packed_value.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
 #include "yb/dockv/schema_packing.h"
 #include "yb/dockv/subdocument.h"
 #include "yb/dockv/value.h"
+#include "yb/dockv/value_packing_v2.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/qlexpr/ql_expr.h"
@@ -93,11 +95,6 @@ class LazyDocHybridTime {
   EncodedDocHybridTime encoded_;
   mutable DocHybridTime decoded_;
 };
-
-Slice NullSlice() {
-  static char null_column_type = dockv::ValueEntryTypeAsChar::kNullLow;
-  return Slice(&null_column_type, sizeof(null_column_type));
-}
 
 Expiration GetNewExpiration(
     const Expiration& parent_exp, MonoDelta ttl, HybridTime new_write_ht) {
@@ -241,12 +238,22 @@ class DocDBTableReader::PackedRowData {
       : reader_(*DCHECK_NOTNULL(reader)), schema_packing_storage_(schema_packing_storage) {
   }
 
-  Result<ValueControlFields> ObtainControlFields(bool liveness_column, Slice* value) {
+  Result<ValueControlFields> ObtainControlFields(
+      bool liveness_column, dockv::PackedValueV1* value) {
     if (liveness_column) {
       return control_fields_;
     }
 
-    return VERIFY_RESULT(ValueControlFields::Decode(value));
+    return VERIFY_RESULT(ValueControlFields::Decode(&**value));
+  }
+
+  Result<ValueControlFields> ObtainControlFields(
+      bool liveness_column, dockv::PackedValueV2* value) {
+    if (liveness_column) {
+      return control_fields_;
+    }
+
+    return ValueControlFields();
   }
 
   auto GetTimestamp(const ValueControlFields& control_fields) const {
@@ -259,11 +266,12 @@ class DocDBTableReader::PackedRowData {
 
   template <class ColumnDecoder>
   Status Decode(
-      Slice value, const LazyDocHybridTime* doc_ht, const ValueControlFields& control_fields,
-      ColumnDecoder column_decoder) {
+      dockv::PackedRowVersion version, Slice value, const LazyDocHybridTime* doc_ht,
+      const ValueControlFields& control_fields, ColumnDecoder column_decoder) {
     DVLOG_WITH_FUNC(4)
         << "value: " << value.ToDebugHexString() << ", control fields: "
-        << control_fields.ToString() << ", doc_ht: " << doc_ht->ToString();
+        << control_fields.ToString() << ", doc_ht: " << doc_ht->ToString()
+        << ", schema_packing_version: " << schema_packing_version_.AsSlice().ToDebugHexString();
 
     doc_ht_ = doc_ht;
     control_fields_ = control_fields;
@@ -272,12 +280,24 @@ class DocDBTableReader::PackedRowData {
         value.starts_with(schema_packing_version_.AsSlice())) {
       value.remove_prefix(schema_packing_version_.size());
     } else {
-      RETURN_NOT_OK(UpdateSchemaPacking(&value));
+      RETURN_NOT_OK(UpdateSchemaPacking(version, &value));
     }
 
+    switch (version_) {
+      case dockv::PackedRowVersion::kV1:
+        return DoDecode<dockv::PackedRowDecoderV1>(value, column_decoder);
+      case dockv::PackedRowVersion::kV2:
+        return DoDecode<dockv::PackedRowDecoderV2>(value, column_decoder);
+    }
+    return UnexpectedPackedRowVersionStatus(version_);
+  }
+
+  template <class Decoder, class ColumnDecoder>
+  Status DoDecode(Slice value, ColumnDecoder column_decoder) {
     const auto& projection = *DCHECK_NOTNULL(reader_.projection_);
     auto projection_index = projection.num_key_columns;
     auto num_value_columns = projection.num_value_columns();
+    Decoder decoder(*schema_packing_, value.data());
     for (size_t index = 0; index != num_value_columns; ++index, ++projection_index) {
       auto packed_index = packed_index_[index];
       if (packed_index == dockv::SchemaPacking::kSkippedColumnIdx) {
@@ -285,23 +305,19 @@ class DocDBTableReader::PackedRowData {
         column_decoder(projection_index, std::nullopt);
         continue;
       }
-      auto column_value = schema_packing_->GetValue(packed_index, value);
-      DVLOG_WITH_FUNC(4) << "packed index: " << packed_index << ", value: " << column_value;
-      // Remove buggy intent_doc_ht from start of the column. See #16650 for details.
-      if (column_value.TryConsumeByte(dockv::KeyEntryTypeAsChar::kHybridTime)) {
-        RETURN_NOT_OK(DocHybridTime::EncodedFromStart(&column_value));
-      }
-      if (column_value.empty()) {
-        column_value = NullSlice();
-      }
+      auto column_value = decoder.FetchValue(packed_index);
+      DVLOG_WITH_FUNC(4) << "packed index: " << packed_index << ", value: "
+                         << column_value->ToDebugHexString();
+      RETURN_NOT_OK(column_value.FixValue());
       RETURN_NOT_OK(column_decoder(projection_index, column_value));
     }
 
     return Status::OK();
   }
 
-  Status UpdateSchemaPacking(Slice* value) {
+  Status UpdateSchemaPacking(dockv::PackedRowVersion version, Slice* value) {
     const auto* start = value->cdata();
+    version_ = version;
     value->consume_byte();
     schema_packing_ = &VERIFY_RESULT(schema_packing_storage_.GetPacking(value)).get();
     schema_packing_version_.Assign(start, value->cdata());
@@ -311,6 +327,8 @@ class DocDBTableReader::PackedRowData {
     for (const auto& column : reader_.projection_->value_columns()) {
       packed_index_.push_back(schema_packing_->GetIndex(column.id));
     }
+    DVLOG_WITH_FUNC(4)
+        << "value_type: " << version_ << ", packed_index: " << AsString(packed_index_);
     return Status::OK();
   }
 
@@ -318,6 +336,7 @@ class DocDBTableReader::PackedRowData {
   DocDBTableReader& reader_;
   const dockv::SchemaPackingStorage& schema_packing_storage_;
 
+  dockv::PackedRowVersion version_;
   const dockv::SchemaPacking* schema_packing_ = nullptr;
   ByteBuffer<0x10> schema_packing_version_;
   boost::container::small_vector<int64_t, 0x10> packed_index_;
@@ -427,11 +446,13 @@ Out EnsureOut(StateEntryTemplate<Out>* entry) {
   return entry->out;
 }
 
-Status DecodeFromValue(Slice value_slice, dockv::PrimitiveValue* out) {
-  return out->DecodeFromValue(value_slice);
+template <class Value>
+Status DecodeFromValue(Value value, dockv::PrimitiveValue* out) {
+  return out->DecodeFromValue(*value);
 }
 
-Status DecodeFromValue(Slice value_slice, std::nullptr_t out) {
+template <class Value>
+Status DecodeFromValue(Value value, std::nullptr_t out) {
   return Status::OK();
 }
 
@@ -450,8 +471,12 @@ class StateEntryConverter {
     *became_empty_ = DeleteChild(entry_[-1].out, entry_->key_value) || *became_empty_;
   }
 
-  Status Decode(Slice value_slice, DataType) {
-    return DecodeFromValue(value_slice, EnsureOut(entry_));
+  Status Decode(dockv::PackedValueV1 value, DataType) {
+    return DecodeFromValue(value, EnsureOut(entry_));
+  }
+
+  Status Decode(dockv::PackedValueV2 value, DataType) {
+    return DecodeFromValue(value, EnsureOut(entry_));
   }
 
   auto Out() {
@@ -463,29 +488,25 @@ class StateEntryConverter {
   bool* became_empty_;
 };
 
-// Returns true if value is NOT tombstone, false if value is tombstone.
-Result<bool> TryDecodeValueOnly(
-    Slice value_slice, DataType data_type, QLValuePB* out) {
-  if (dockv::DecodeValueEntryType(value_slice) == ValueEntryType::kTombstone) {
-    out->Clear();
-    return false;
-  }
-  if (data_type != DataType::NULL_VALUE_TYPE) {
-    RETURN_NOT_OK(dockv::PrimitiveValue::DecodeToQLValuePB(value_slice, data_type, out));
-  } else {
-    out->Clear();
-  }
-  return true;
-}
-
-Result<bool> TryDecodeValueOnly(
-    Slice value_slice, DataType, dockv::PrimitiveValue* out) {
+Result<bool> TryDecodePrimitiveValueOnly(
+    dockv::PackedValueV1 value, DataType data_type, dockv::PrimitiveValue* out) {
   DCHECK_ONLY_NOTNULL(out);
-  if (dockv::DecodeValueEntryType(value_slice) == ValueEntryType::kTombstone) {
+  if (value.IsNull()) {
     *out = dockv::PrimitiveValue::kTombstone;
     return false;
   }
-  RETURN_NOT_OK(out->DecodeFromValue(value_slice));
+  RETURN_NOT_OK(out->DecodeFromValue(*value));
+  return true;
+}
+
+Result<bool> TryDecodePrimitiveValueOnly(
+    dockv::PackedValueV2 value, DataType data_type, dockv::PrimitiveValue* out) {
+  DCHECK_ONLY_NOTNULL(out);
+  if (value.IsNull()) {
+    *out = dockv::PrimitiveValue::kTombstone;
+    return false;
+  }
+  *out = VERIFY_RESULT(dockv::UnpackPrimitiveValue(value, data_type));
   return true;
 }
 
@@ -504,10 +525,20 @@ class DocDbToQLTableRowConverter {
     row_.MarkTombstoned(column_);
   }
 
-  Status Decode(Slice value_slice, DataType data_type) {
+  Status Decode(dockv::PackedValueV1 value, DataType data_type) {
     if (data_type != DataType::NULL_VALUE_TYPE) {
       return dockv::PrimitiveValue::DecodeToQLValuePB(
-          value_slice, data_type, &row_.AllocColumn(column_).value);
+          *value, data_type, &row_.AllocColumn(column_).value);
+    }
+
+    row_.MarkTombstoned(column_);
+    return Status::OK();
+  }
+
+  Status Decode(dockv::PackedValueV2 value, DataType data_type) {
+    if (data_type != DataType::NULL_VALUE_TYPE) {
+      row_.AllocColumn(column_).value = VERIFY_RESULT(dockv::UnpackQLValue(value, data_type));
+      return Status::OK();
     }
 
     row_.MarkTombstoned(column_);
@@ -543,14 +574,24 @@ class DocDbToPgTableRowConverter {
     row_.SetNull(column_index_);
   }
 
-  Status Decode(Slice value_slice, DataType data_type) {
+  Status Decode(dockv::PackedValueV1 value, DataType data_type) {
     DVLOG_WITH_FUNC(4)
-        << "value: " << value_slice.ToDebugHexString() << ", column index: " << column_index_;
+        << "value: " << value->ToDebugHexString() << ", column index: " << column_index_;
 
     if (data_type == DataType::NULL_VALUE_TYPE) {
       return Status::OK();
     }
-    return row_.DecodeValue(column_index_, value_slice);
+    return row_.DecodeValue(column_index_, value);
+  }
+
+  Status Decode(dockv::PackedValueV2 value, DataType data_type) {
+    DVLOG_WITH_FUNC(4)
+        << "value: " << value->ToDebugHexString() << ", column index: " << column_index_;
+
+    if (data_type == DataType::NULL_VALUE_TYPE) {
+      return Status::OK();
+    }
+    return row_.DecodeValue(column_index_, value);
   }
 
  private:
@@ -563,12 +604,19 @@ inline auto MakeConverter(dockv::PgTableRow* row, size_t column_index, ColumnId)
 }
 
 auto DecodePackedColumn(
-    dockv::PgTableRow* row, size_t index, Slice value, const dockv::ReaderProjection&) {
+    dockv::PgTableRow* row, size_t index, dockv::PackedValueV1 value,
+    const dockv::ReaderProjection&) {
   return row->DecodeValue(index, value);
 }
 
 auto DecodePackedColumn(
-    dockv::PgTableRow* row, size_t index, std::nullopt_t value, const dockv::ReaderProjection&) {
+    dockv::PgTableRow* row, size_t index, dockv::PackedValueV2 value,
+    const dockv::ReaderProjection&) {
+  return row->DecodeValue(index, value);
+}
+
+auto DecodePackedColumn(
+    dockv::PgTableRow* row, size_t index, std::nullopt_t, const dockv::ReaderProjection&) {
   return row->SetNull(index);
 }
 
@@ -577,7 +625,11 @@ class NullPtrRowConverter {
   void Decode(std::nullopt_t, DataType = DataType::NULL_VALUE_TYPE) {
   }
 
-  Status Decode(Slice value_slice, DataType = DataType::NULL_VALUE_TYPE) {
+  Status Decode(dockv::PackedValueV1 value, DataType = DataType::NULL_VALUE_TYPE) {
+    return Status::OK();
+  }
+
+  Status Decode(dockv::PackedValueV2 value, DataType = DataType::NULL_VALUE_TYPE) {
     return Status::OK();
   }
 };
@@ -588,26 +640,25 @@ inline auto MakeConverter(std::nullptr_t row, size_t column_index, ColumnId) {
 
 template <class Value>
 auto DecodePackedColumn(
-    std::nullptr_t row, size_t index, Value value, const dockv::ReaderProjection& projection) {
+    std::nullptr_t, size_t, Value value, const dockv::ReaderProjection& projection) {
   return NullPtrRowConverter().Decode(value);
 }
 
 void SetNullResult(const dockv::ReaderProjection& projection, std::nullptr_t out) {
 }
 
-template <class Converter> requires (!std::is_pointer_v<Converter>)
-Result<bool> TryDecodeValueOnly(
-    Slice value_slice, DataType data_type, Converter converter) {
-  if (dockv::DecodeValueEntryType(value_slice) == ValueEntryType::kTombstone) {
+template <class Value, class Converter> requires (!std::is_pointer_v<Converter>)
+Result<bool> TryDecodeValueOnly(Value value, DataType data_type, Converter converter) {
+  if (value.IsNull()) {
     converter.Decode(std::nullopt, data_type);
     return false;
   }
-  RETURN_NOT_OK(converter.Decode(value_slice, data_type));
+  RETURN_NOT_OK(converter.Decode(value, data_type));
   return true;
 }
 
-Result<bool> TryDecodeValueOnly(Slice value_slice, DataType data_type, std::nullptr_t) {
-  return dockv::DecodeValueEntryType(value_slice) != ValueEntryType::kTombstone;
+Result<bool> TryDecodeValueOnly(dockv::PackedValueV1 value, DataType data_type, std::nullptr_t) {
+  return !value.IsNull();
 }
 
 DocReaderResult FoundResult(bool iter_valid) {
@@ -921,18 +972,22 @@ class DocDBTableReader::GetHelper : public BaseOfGetHelper<ResultType> {
     return ApplyEntryValue(value_slice, control_fields);
   }
 
-  void DecodePackedColumn(
-      std::nullopt_t, const dockv::ProjectedColumn* projected_column) {
+  // We use overloading for DecodePackedColumn, and std::nullptr_t means that user did not
+  // request value itself. I.e. just checking whether row is present.
+  void DecodePackedColumn(std::nullopt_t, const dockv::ProjectedColumn* projected_column) {
     AllocateChild(result_, projected_column->subkey);
   }
 
+  // See comment for DecodePackedColumn.
+  template <class Value>
   Status DoDecodePackedColumn(
-      Slice value, const dockv::ProjectedColumn* projected_column, std::nullptr_t) {
+      Value value, const dockv::ProjectedColumn* projected_column, std::nullptr_t) {
     return Status::OK();
   }
 
+  template <class Value>
   Status DoDecodePackedColumn(
-      Slice value, const dockv::ProjectedColumn* projected_column, SubDocument* out) {
+      Value value, const dockv::ProjectedColumn* projected_column, SubDocument* out) {
     auto control_fields = VERIFY_RESULT(reader_.packed_row_->ObtainControlFields(
         projected_column == &ProjectedLivenessColumn(), &value));
     const auto& write_time = reader_.packed_row_->doc_ht();
@@ -941,7 +996,7 @@ class DocDBTableReader::GetHelper : public BaseOfGetHelper<ResultType> {
           VERIFY_RESULT(write_time.decoded()).hybrid_time());
 
     DVLOG_WITH_PREFIX_AND_FUNC(4)
-        << "column: " << projected_column->ToString() << ", value: " << value.ToDebugHexString()
+        << "column: " << projected_column->ToString() << ", value: " << value->ToDebugHexString()
         << ", control_fields: " << control_fields.ToString() << ", write time: "
         << write_time.decoded().ToString() << ", expiration: " << expiration.ToString()
         << ", obsolete: " << IsObsolete(expiration);
@@ -950,21 +1005,25 @@ class DocDBTableReader::GetHelper : public BaseOfGetHelper<ResultType> {
       return Status::OK();
     }
 
-    RETURN_NOT_OK(TryDecodeValue(
-        reader_.packed_row_->GetTimestamp(control_fields), write_time, expiration, value, out));
+    RETURN_NOT_OK(TryDecodePrimitiveValue(
+        reader_.packed_row_->GetTimestamp(control_fields), write_time, expiration, value,
+        projected_column->data_type, out));
     found_ = true;
     return Status::OK();
   }
 
-  Status DecodePackedColumn(Slice value, const dockv::ProjectedColumn* projected_column) {
+  template <class Value>
+  Status DecodePackedColumn(
+      Value value, const dockv::ProjectedColumn* projected_column) {
     return DoDecodePackedColumn(
         value, projected_column, AllocateChild(result_, projected_column->subkey));
   }
 
-  Result<bool> TryDecodeValue(
+  template <class Value>
+  Result<bool> TryDecodePrimitiveValue(
       UserTimeMicros timestamp, const LazyDocHybridTime& write_time, const Expiration& expiration,
-      Slice value_slice, dockv::SubDocument* out) {
-    if (!VERIFY_RESULT(TryDecodeValueOnly(value_slice, current_column_->data_type, out))) {
+      Value value, DataType data_type, dockv::PrimitiveValue* out) {
+    if (!VERIFY_RESULT(TryDecodePrimitiveValueOnly(value, data_type, out))) {
       return false;
     }
 
@@ -976,8 +1035,8 @@ class DocDBTableReader::GetHelper : public BaseOfGetHelper<ResultType> {
   template <class Out>
   Result<bool> TryDecodeValue(
       UserTimeMicros timestamp, const LazyDocHybridTime& write_time, const Expiration& expiration,
-      Slice value_slice, Out out_provider) {
-    if (!VERIFY_RESULT(TryDecodeValueOnly(value_slice, current_column_->data_type, out_provider))) {
+      dockv::PackedValueV1 value, Out out_provider) {
+    if (!VERIFY_RESULT(TryDecodeValueOnly(value, current_column_->data_type, out_provider))) {
       return false;
     }
 
@@ -1011,20 +1070,22 @@ class DocDBTableReader::GetHelper : public BaseOfGetHelper<ResultType> {
 
   Result<bool> TryDecodeValue(
       UserTimeMicros timestamp, const LazyDocHybridTime& write_time, const Expiration& expiration,
-      Slice value_slice, std::nullptr_t out) {
-    return VERIFY_RESULT(TryDecodeValueOnly(value_slice, current_column_->data_type, out));
+      dockv::PackedValueV1 value, std::nullptr_t out) {
+    return VERIFY_RESULT(TryDecodeValueOnly(value, current_column_->data_type, out));
   }
 
   Status InitRowValue(
       Slice row_value, LazyDocHybridTime* root_write_time,
       const ValueControlFields& control_fields) override {
     auto value_type = dockv::DecodeValueEntryType(row_value);
-    if (value_type == ValueEntryType::kPackedRow) {
+    auto packed_row_version = dockv::GetPackedRowVersion(value_type);
+    if (packed_row_version) {
       RETURN_NOT_OK(reader_.packed_row_->Decode(
-          row_value, root_write_time, control_fields, [this](size_t index, auto value){
+          *packed_row_version, row_value, root_write_time, control_fields,
+          [this](size_t index, auto value){
             return DecodePackedColumn(value, &reader_.projection_->columns[index]);
           }));
-      RETURN_NOT_OK(DecodePackedColumn(NullSlice(), &ProjectedLivenessColumn()));
+      RETURN_NOT_OK(DecodePackedColumn(dockv::PackedValueV1::Null(), &ProjectedLivenessColumn()));
       if (TtlCheckRequired()) {
         auto& root_expiration = state_.front().expiration;
         root_expiration = GetNewExpiration(
@@ -1102,8 +1163,8 @@ class DocDBTableReader::GetHelper : public BaseOfGetHelper<ResultType> {
     StateEntryConverter converter(&current, &became_empty);
     if (!IsObsolete(current.expiration)) {
       if (VERIFY_RESULT(TryDecodeValue(
-              control_fields.timestamp, current.write_time, current.expiration, value_slice,
-              converter))) {
+              control_fields.timestamp, current.write_time, current.expiration,
+              dockv::PackedValueV1(value_slice), converter))) {
         found_ = true;
         return Status::OK();
       }
@@ -1169,10 +1230,12 @@ class DocDBTableReader::FlatGetHelper : public BaseOfFlatGetHelper<ResultType> {
       return Status::OK();
     }
 
+    dockv::PackedValueV1 value(value_slice);
     const auto decode_result = VERIFY_RESULT(column_index_ == kLivenessColumnIndex
-        ? TryDecodeValueOnly(value_slice, current_column_->data_type, /* out= */ nullptr)
+        ? TryDecodeValueOnly(
+              value, current_column_->data_type, /* out= */ nullptr)
         : TryDecodeValueOnly(
-              value_slice, current_column_->data_type,
+              value, current_column_->data_type,
               MakeConverter(
                   result_, reader_.projection_->num_key_columns + column_index_,
                   current_column_->id)));
@@ -1188,8 +1251,8 @@ class DocDBTableReader::FlatGetHelper : public BaseOfFlatGetHelper<ResultType> {
       Slice row_value, LazyDocHybridTime* root_write_time,
       const ValueControlFields& control_fields) override {
     DCHECK_ONLY_NOTNULL(reader_.projection_);
-    auto value_type = dockv::DecodeValueEntryType(row_value);
-    if (value_type != ValueEntryType::kPackedRow) {
+    auto packed_row_version = dockv::GetPackedRowVersion(row_value);
+    if (!packed_row_version) {
       SetNullResult(*reader_.projection_, result_);
       return Status::OK();
     }
@@ -1198,7 +1261,7 @@ class DocDBTableReader::FlatGetHelper : public BaseOfFlatGetHelper<ResultType> {
       return Status::OK();
     }
     return reader_.packed_row_->Decode(
-        row_value, root_write_time, control_fields,
+        *packed_row_version, row_value, root_write_time, control_fields,
         [this](size_t index, auto value) {
       return DecodePackedColumn(result_, index, value, *reader_.projection_);
     });

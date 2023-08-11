@@ -52,7 +52,7 @@ const useStyles = makeStyles((theme) => ({
 
 const ChooseUniverseConfig = () => {
   const { t } = useTranslation();
-  const { control, watch, setError, clearErrors } = useFormContext<IGeneralSettings>();
+  const { control, watch, setError, clearErrors, setValue } = useFormContext<IGeneralSettings>();
   const classes = useStyles();
   const [{ backupDetails }] = (useContext(RestoreFormContext) as unknown) as RestoreContextMethods;
 
@@ -60,7 +60,21 @@ const ChooseUniverseConfig = () => {
     fetchUniversesList().then((res) => res.data as IUniverse[])
   );
 
-  const { data: kmsConfigs } = useQuery(['kms_configs'], () => getKMSConfigs());
+  const { data: kmsConfigs } = useQuery(['kms_configs'], () => getKMSConfigs(), {
+    onSuccess(kmsConfigList) {
+      if (backupDetails?.commonBackupInfo.kmsConfigUUID) {
+        const kmsUsedDuringBackup = kmsConfigList.find(
+          (kms: any) => kms?.metadata.configUUID === backupDetails?.commonBackupInfo.kmsConfigUUID
+        );
+        if (kmsUsedDuringBackup) {
+          setValue('kmsConfig', {
+            value: kmsUsedDuringBackup.metadata.configUUID,
+            label: kmsUsedDuringBackup.metadata.provider + ' - ' + kmsUsedDuringBackup.metadata.name
+          });
+        }
+      }
+    }
+  });
 
   let sourceUniverseNameAtFirst: IUniverse[] = [];
 
@@ -196,13 +210,18 @@ const ChooseUniverseConfig = () => {
         <Controller
           control={control}
           name="kmsConfig"
-          render={({ field: { value, onChange } }) => (
+          render={({ field: { value, onChange }, fieldState: { error } }) => (
             <YBLabel
               label={t('newRestoreModal.generalSettings.universeSelection.selectKMSConfig')}
               classOverrides={classes.kmsConfig}
+              meta={{
+                touched: !!error?.message,
+                error: error?.message
+              }}
             >
               <Select
                 options={kmsConfigList}
+                isClearable
                 value={value}
                 components={{
                   // eslint-disable-next-line react/display-name

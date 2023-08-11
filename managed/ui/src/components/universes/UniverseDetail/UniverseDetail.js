@@ -268,6 +268,11 @@ class UniverseDetail extends Component {
     const { showAlert, alertType, alertMessage } = this.state;
     const universePaused = universe?.currentUniverse?.data?.universeDetails?.universePaused;
     const updateInProgress = universe?.currentUniverse?.data?.universeDetails?.updateInProgress;
+    const backupRestoreInProgress =
+      updateInProgress &&
+      ['BackupTable', 'MultiTableBackup', 'CreateBackup', 'RestoreBackup'].includes(
+        universe?.currentUniverse?.data?.universeDetails?.updatingTask
+      );
     const primaryCluster = getPrimaryCluster(
       universe?.currentUniverse?.data?.universeDetails?.clusters
     );
@@ -785,7 +790,7 @@ class UniverseDetail extends Component {
                           closeModal={closeModal}
                           button={
                             <YBMenuItem
-                              disabled={updateInProgress}
+                              disabled={updateInProgress && !backupRestoreInProgress}
                               onClick={showRunSampleAppsModal}
                             >
                               <YBLabelWithIcon icon="fa fa-terminal">
@@ -866,6 +871,7 @@ class UniverseDetail extends Component {
                               currentCustomer.data.features,
                               'universes.details.overview.pausedUniverse'
                             )}
+                            disabled={universePaused && updateInProgress}
                           >
                             <YBLabelWithIcon
                               icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}

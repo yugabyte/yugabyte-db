@@ -863,8 +863,6 @@ Status YBClient::Data::DeleteTablegroup(YBClient* client,
     return StatusFromPB(resp.error().status());
   }
 
-  // Spin until the table is deleted. Currently only waits till the table reaches DELETING state
-  // See github issue #5290
   RETURN_NOT_OK(WaitForDeleteTableToFinish(client, resp.parent_table_id(), deadline));
 
   LOG(INFO) << "Deleted tablegroup " << tablegroup_id;

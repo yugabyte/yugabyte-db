@@ -190,7 +190,7 @@ Status Executor::EvalSum(const shared_ptr<qlexpr::QLRowBlock>& row_block,
       case DataType::VARINT: {
         int64_t tsum;
         tsum = 0;
-        util::VarInt varint(tsum);
+        VarInt varint(tsum);
         ql_value->set_varint_value(varint);
       }
         break;
@@ -272,12 +272,12 @@ Status Executor::EvalAvg(const shared_ptr<qlexpr::QLRowBlock>& row_block,
       break;
     case DataType::VARINT:
       if (sum.IsNull()) {
-        util::VarInt varint(0);
+        VarInt varint(0);
         ql_value->set_varint_value(varint);
       } else {
         int64_t tsum = VERIFY_RESULT(sum.varint_value().ToInt64());
         int64_t tcount = VERIFY_RESULT(count.varint_value().ToInt64());
-        util::VarInt average(tsum / tcount);
+        VarInt average(tsum / tcount);
         ql_value->set_varint_value(average);
       }
       break;

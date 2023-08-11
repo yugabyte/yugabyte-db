@@ -4,7 +4,6 @@ package com.yugabyte.yw.models;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -86,7 +85,7 @@ public class RoleBindingTest extends FakeDBApplication {
         roleBinding.getResourceGroup().getResourceDefinitionSet()) {
       assertTrue(definition.getResourceType().equals(ResourceType.UNIVERSE));
       assertTrue(definition.isAllowAll());
-      assertNull(definition.getResourceUUIDSet());
+      assertEquals(0, definition.getResourceUUIDSet().size());
     }
 
     Role role2 =
@@ -119,7 +118,7 @@ public class RoleBindingTest extends FakeDBApplication {
         roleBinding.getResourceGroup().getResourceDefinitionSet()) {
       assertTrue(definition.getResourceType().equals(ResourceType.UNIVERSE));
       assertTrue(definition.isAllowAll());
-      assertNull(definition.getResourceUUIDSet());
+      assertEquals(0, definition.getResourceUUIDSet().size());
     }
   }
 }

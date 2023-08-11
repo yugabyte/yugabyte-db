@@ -287,8 +287,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
     client::TableHandle table;
     ASSERT_OK(table.Open(kTableName, client_.get()));
 
-    shared_ptr<YBSession> session = client_->NewSession();
-    session->SetTimeout(60s);
+    auto session = client_->NewSession(60s);
 
     for (int i = 0; i < num_batches; i++) {
       SCOPED_TRACE(Format("Batch: $0", i));

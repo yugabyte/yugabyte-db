@@ -184,6 +184,13 @@ class TabletPeerTest : public YBTabletTest {
                         log_thread_pool_.get(), metadata->cdc_min_replicated_index(), &log,
                         /* pre_log_rollover_callback = */ {}, new_segment_allocation_callback));
 
+    consensus::RetryableRequestsManager retryable_requests_manager(
+        tablet()->tablet_id(),
+        metadata->fs_manager(),
+        metadata->wal_dir(),
+        MemTracker::FindOrCreateTracker(tablet()->tablet_id()),
+        "");
+    ASSERT_OK(retryable_requests_manager.Init(clock()));
     ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
                                            nullptr /* server_mem_tracker */,
@@ -194,7 +201,7 @@ class TabletPeerTest : public YBTabletTest {
                                            tablet_metric_entity_,
                                            raft_pool_.get(),
                                            tablet_prepare_pool_.get(),
-                                           nullptr /* retryable_requests_manager */,
+                                           &retryable_requests_manager,
                                            nullptr /* consensus_meta */,
                                            multi_raft_manager_.get(),
                                            nullptr /* flush_retryable_requests_pool */));

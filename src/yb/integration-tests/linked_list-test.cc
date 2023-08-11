@@ -379,8 +379,7 @@ class ScopedRowUpdater {
 
  private:
   void RowUpdaterThread() {
-    std::shared_ptr<client::YBSession> session(table_.client()->NewSession());
-    session->SetTimeout(15s);
+    auto session = table_.client()->NewSession(15s);
 
     int64_t next_key;
     std::vector<client::YBqlOpPtr> ops;
@@ -568,8 +567,7 @@ Status LinkedListTester::LoadLinkedList(
   auto start = CoarseMonoClock::Now();
   auto deadline = start + run_for.ToSteadyDuration();
 
-  std::shared_ptr<client::YBSession> session = client_->NewSession();
-  session->SetTimeout(30s);
+  auto session = client_->NewSession(30s);
 
   ScopedRowUpdater updater(table);
   std::vector<std::unique_ptr<LinkedListChainGenerator>> chains;

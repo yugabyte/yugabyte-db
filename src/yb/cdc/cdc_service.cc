@@ -422,7 +422,8 @@ class CDCServiceImpl::Impl {
 
   bool UpdateCheckpoint(
       const ProducerTabletInfo& producer_tablet, const OpId& sent_op_id, const OpId& commit_op_id) {
-    VLOG(1) << "Going to update the checkpoint with " << commit_op_id;
+    VLOG(1) << "T " << producer_tablet.tablet_id << " going to update the checkpoint with "
+            << commit_op_id;
     auto now = CoarseMonoClock::Now();
     auto active_time = GetCurrentTimeMicros();
 
@@ -1605,6 +1606,8 @@ void CDCServiceImpl::GetChanges(
     auto last_checkpoint = RPC_VERIFY_RESULT(
         GetLastCheckpoint(producer_tablet, stream_meta_ptr.get()->GetSourceType()),
         resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+    LOG(WARNING) << "GetChanges called on T " << req->tablet_id() << " S " << req->stream_id()
+                 << " without an index. Using last checkpoint: " << last_checkpoint;
     if (record.GetSourceType() == XCLUSTER) {
       from_op_id = last_checkpoint;
     } else {
@@ -1751,7 +1754,7 @@ void CDCServiceImpl::GetChanges(
     tablet_metric->is_bootstrap_required->set_value(status.IsNotFound());
   }
 
-  VLOG(1) << "Sending GetChanges response " << resp->ShortDebugString();
+  VLOG(1) << "T " << req->tablet_id() << " sending GetChanges response " << AsString(*resp);
   RPC_STATUS_RETURN_ERROR(
       status,
       resp->mutable_error(),
@@ -2284,7 +2287,7 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
       continue;
     }
 
-    std::string last_replicated_time_str;
+    std::string last_replicated_time_str = "";
     if (entry.last_replication_time) {
       last_replicated_time_str = Timestamp(*entry.last_replication_time).ToFormattedString();
     }
@@ -2341,6 +2344,14 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     // If a tablet_id, stream_id pair is in "uninitialized state", we don't need to send the
     // checkpoint to the tablet peers.
     if (checkpoint == OpId::Invalid() && last_active_time_cdc_state_table == 0) {
+      continue;
+    }
+
+    // If the tablet_id, stream_id pair have OpId::Min() as checkpoint, but the LastReplicatedTime
+    // is not set, we know this was a child tablet (refer: UpdateCDCProducerOnTabletSplit). We will
+    // not update the checkpoint details.
+    if (checkpoint == OpId::Min() && last_replicated_time_str.empty() &&
+        record.GetSourceType() == CDCSDK) {
       continue;
     }
 
@@ -2678,6 +2689,7 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
       continue;
     }
     time_since_update_peers = MonoTime::Now();
+    VLOG(2) << "Updating tablet peers with min cdc replicated index";
     {
       YB_LOG_EVERY_N_SECS(INFO, 300)
           << "Started to read minimum replicated indices for all tablets";
@@ -3149,13 +3161,13 @@ Result<GetLatestEntryOpIdResponsePB> CDCServiceImpl::GetLatestEntryOpId(
     const GetLatestEntryOpIdRequestPB& req, CoarseTimePoint deadline) {
   GetLatestEntryOpIdResponsePB resp;
 
-  std::unordered_set<TabletId> tablet_ids;
+  std::vector<TabletId> tablet_ids;
   if (req.has_tablet_id()) {
     // Support backwards compatibility.
-    tablet_ids.insert(req.tablet_id());
+    tablet_ids.push_back(req.tablet_id());
   } else {
     for (int i = 0; i < req.tablet_ids_size(); i++) {
-      tablet_ids.insert(req.tablet_ids(i));
+      tablet_ids.push_back(req.tablet_ids(i));
     }
   }
 
@@ -3501,7 +3513,11 @@ Status CDCServiceImpl::BootstrapProducerHelperParallelized(
 
   // Check that all tablets have a valid op id.
   for (const auto& tablet_op_id_pair : tablet_op_ids) {
-    if (!tablet_op_id_pair.second.valid()) {
+    LOG(WARNING) << "CDC checkpoint for T " << tablet_op_id_pair.first.second << " S "
+                 << tablet_op_id_pair.first.first << " is: " << tablet_op_id_pair.second;
+    // Also check for not empty here, since 0.0 has different behaviour (start from beginning of log
+    // cache), which we don't want for bootstrapping.
+    if (!tablet_op_id_pair.second.is_valid_not_empty()) {
       return STATUS(
           InternalError, "Could not retrieve op id for tablet", tablet_op_id_pair.first.second);
     }

@@ -360,7 +360,7 @@ void DocRowwiseIteratorTest::InsertPackedRow(
     SchemaVersion version, std::reference_wrapper<const dockv::SchemaPacking> schema_packing,
     const KeyBytes &doc_key, HybridTime ht,
     std::initializer_list<std::pair<ColumnId, const QLValuePB>> columns) {
-  dockv::RowPacker packer(
+  dockv::RowPackerV1 packer(
       version, schema_packing, /* packed_size_limit= */ std::numeric_limits<int64_t>::max(),
       /* value_control_fields= */ Slice());
 

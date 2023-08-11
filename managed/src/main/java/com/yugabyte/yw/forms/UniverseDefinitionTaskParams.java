@@ -33,6 +33,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
 import lombok.Data;
 import lombok.Getter;
@@ -462,6 +463,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   public static class OverridenDetails {
     @ApiModelProperty private String instanceType;
     @ApiModelProperty private DeviceInfo deviceInfo;
+    @ApiModelProperty private Integer cgroupSize;
 
     public void mergeWith(OverridenDetails other) {
       if (other == null) {
@@ -472,6 +474,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       if (other.getInstanceType() != null) {
         this.instanceType = other.getInstanceType();
+      }
+      if (other.getCgroupSize() != null) {
+        this.cgroupSize = other.getCgroupSize();
       }
     }
 
@@ -660,7 +665,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // New version of gflags. If present - replaces old masterGFlags/tserverGFlags thing
     @ApiModelProperty public SpecificGFlags specificGFlags;
 
+    // Overrides for some of user intent values per AZ or/and process type.
     @Getter @Setter @ApiModelProperty private UserIntentOverrides userIntentOverrides;
+
+    // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)
+    // 0 will not set any cgroup limits.
+    // For read replica null or -1 value means use that of from primary cluster.
+    @Getter @Setter @ApiModelProperty private Integer cgroupSize;
 
     @Override
     public String toString() {
@@ -749,6 +760,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (userIntentOverrides != null) {
         newUserIntent.userIntentOverrides = userIntentOverrides.clone();
       }
+      newUserIntent.cgroupSize = cgroupSize;
       return newUserIntent;
     }
 
@@ -766,6 +778,19 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         }
       }
       return res;
+    }
+
+    public Integer getCGroupSize(@NotNull NodeDetails nodeDetails) {
+      return getCGroupSize(nodeDetails.azUuid);
+    }
+
+    public Integer getCGroupSize(UUID azUUID) {
+      OverridenDetails overridenDetails =
+          getOverridenDetails(UniverseTaskBase.ServerType.TSERVER, azUUID);
+      if (overridenDetails.getCgroupSize() != null) {
+        return overridenDetails.getCgroupSize();
+      }
+      return cgroupSize;
     }
 
     @JsonIgnore

@@ -11,7 +11,6 @@ import { PreviewGFlagJWKS } from './PreviewGFlagJWKS';
 import { isEmptyString, isNonEmptyArray, isNonEmptyString } from '../../../utils/ObjectUtils';
 import {
   CONST_VALUES,
-  GFLAG_EDIT,
   formatConf,
   MultilineGFlags,
   unformatConf,
@@ -54,7 +53,6 @@ const useStyles = makeStyles((theme) => ({
 
 interface EditGFlagConfProps {
   formProps: any;
-  mode: string;
   serverType: string;
   flagName: string;
   updateJWKSDialogStatus: (status: boolean) => void;
@@ -102,7 +100,6 @@ const reorderGFlagRows = (GFlagRows: any, startIndex: number, endIndex: number) 
 
 export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
   formProps,
-  mode,
   serverType,
   flagName,
   updateJWKSDialogStatus
@@ -118,7 +115,7 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
       ? formProps?.values?.tserverFlagDetails?.flagvalueobject
       : formProps?.values?.masterFlagDetails?.flagvalueobject;
 
-  if (mode === GFLAG_EDIT && !GFlagValueConfObject) {
+  if (isNonEmptyString(formProps?.values?.flagvalue) && !GFlagValueConfObject) {
     unformattedLDAPConf = unformatConf(formProps?.values?.flagvalue);
   }
 
@@ -134,7 +131,7 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
   const [GFlagRows, setGFlagConfRows] = useState<any>(
     GFlagValueConfObject?.length > 0
       ? GFlagValueConfObject
-      : mode === GFLAG_EDIT && isNonEmptyString(formProps?.values?.flagvalue)
+      : isNonEmptyString(formProps?.values?.flagvalue)
       ? unformattedLDAPConf
       : getGFlagRows(rowCount)
   );

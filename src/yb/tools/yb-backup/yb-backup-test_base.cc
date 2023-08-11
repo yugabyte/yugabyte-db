@@ -233,7 +233,7 @@ Status YBBackupTest::WaitForTabletFullyCompacted(size_t tserver_idx, const Table
 void YBBackupTest::DoTestYEDISBackup(helpers::TableOp tableOp) {
   ASSERT_TRUE(tableOp == helpers::TableOp::kKeepTable || tableOp == helpers::TableOp::kDropTable);
 
-  auto session = client_->NewSession();
+  auto session = client_->NewSession(60s);
 
   // Create keyspace and table.
   const client::YBTableName table_name(

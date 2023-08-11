@@ -6,6 +6,7 @@ import { YBLabel, YBTextarea } from '../../redesign/components';
 import { YBCopyButton } from '../common/descriptors';
 import YBLogoWithText from '../common/YBLogo/images/yb_yblogo_text.svg';
 import { isEmptyString, isNonEmptyString } from '../../utils/ObjectUtils';
+import { formatDatetime } from '../../redesign/helpers/DateUtils';
 
 const useStyles = makeStyles((theme: Theme) => ({
   oidcJWTInfo: {
@@ -19,17 +20,20 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
   tokenExpiryText: {
     fontFamily: 'Inter',
-    fontWeight: 400,
+    fontWeight: 600,
     fontSize: '13px',
     color: '#67666C'
   },
   ysqlCommand: {
     width: '97%',
-    height: '48px',
+    minHeight: '200px',
+    maxHeight: '248px',
     border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`,
     borderRadius: '8px',
     background: theme.palette.ybacolors.backgroundDisabled,
-    padding: theme.spacing(2),
+    overflow: 'hidden',
+    overflowWrap: 'anywhere',
+    padding: theme.spacing(1.5),
     marginTop: theme.spacing(1)
   },
   ysqlCommandText: {
@@ -47,9 +51,8 @@ export const JWTToken: FC<any> = () => {
   const helperClasses = useStyles();
   const oidcJWTToken = Cookies.get('jwt_token');
   const expiryDate = Cookies.get('expiration');
-  const emailID = Cookies.get('email');
-  const userName = emailID?.split('@')[0];
-  const ysqlCommandText = `ysqlsh  ${userName}/<jwt>`;
+  const ysqlCommandText = `ysqlsh <username>/${oidcJWTToken}`;
+  const localDate = formatDatetime(expiryDate!);
 
   return (
     <>
@@ -66,7 +69,9 @@ export const JWTToken: FC<any> = () => {
                   <Box ml={3}>
                     <Typography variant="h3">{t('OIDCJWT.OIDCJWTToken')}</Typography>
                   </Box>
-                  <YBTextarea minRows={2} maxRows={15} disabled={true} value={oidcJWTToken} />
+                  <Box ml={2}>
+                    <YBTextarea minRows={2} maxRows={20} disabled={true} value={oidcJWTToken} />
+                  </Box>
                   <Box className={helperClasses.tokenExpiryInfo}>
                     <YBLabel
                       dataTestId="OIDCJWTExpiryDate-Label"
@@ -75,10 +80,10 @@ export const JWTToken: FC<any> = () => {
                     >
                       {`${t('OIDCJWT.expirationDate')}: `}
                     </YBLabel>
-                    <span className={helperClasses.tokenExpiryText}>{expiryDate}</span>
+                    <span className={helperClasses.tokenExpiryText}>{localDate}</span>
                   </Box>
                 </Box>
-                <Box>
+                <Box ml={1}>
                   <YBCopyButton text={oidcJWTToken} />
                 </Box>
               </Box>
@@ -99,13 +104,13 @@ export const JWTToken: FC<any> = () => {
               <Box>
                 <Typography variant="h5">{t('OIDCJWT.errorMessage')}</Typography>
               </Box>
-              <Box mt={2}>
-                <a href="/" className={helperClasses.redirectLinkText}>
-                  {t('OIDCJWT.redirectLinkText')}
-                </a>
-              </Box>
             </Box>
           )}
+          <Box mt={2} alignSelf={'center'}>
+            <a href="/" className={helperClasses.redirectLinkText}>
+              {t('OIDCJWT.redirectLinkText')}
+            </a>
+          </Box>
         </Box>
       </Box>
     </>

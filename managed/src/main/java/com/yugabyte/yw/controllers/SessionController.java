@@ -25,12 +25,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.CustomWsClientFactory;
-import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -40,12 +35,8 @@ import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.controllers.handlers.SessionHandler;
 import com.yugabyte.yw.controllers.handlers.ThirdPartyLoginHandler;
-import com.yugabyte.yw.forms.AlertingData;
-import com.yugabyte.yw.forms.CustomerLoginFormData;
-import com.yugabyte.yw.forms.CustomerRegisterFormData;
-import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
-import com.yugabyte.yw.forms.SetSecurityFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Audit.ActionType;
 import com.yugabyte.yw.models.Customer;
@@ -56,14 +47,8 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.ebean.annotation.Transactional;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiImplicitParam;
-import io.swagger.annotations.ApiImplicitParams;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
+import io.swagger.annotations.*;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
-import io.swagger.annotations.ApiOperation;
-import io.swagger.annotations.Authorization;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -73,12 +58,7 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.CompletionStage;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -99,6 +79,7 @@ import play.libs.Json;
 import play.libs.ws.WSClient;
 import play.mvc.Http;
 import play.mvc.Http.Cookie;
+import play.mvc.Http.MimeTypes;
 import play.mvc.Result;
 import play.mvc.Results;
 import play.mvc.With;
@@ -168,6 +149,9 @@ public class SessionController extends AbstractPlatformController {
     @ApiModelProperty(value = "API token")
     public final String apiToken;
 
+    @ApiModelProperty(value = "API token version")
+    public final Long apiTokenVersion;
+
     @ApiModelProperty(value = "Customer UUID")
     public final UUID customerUUID;
 
@@ -188,7 +172,8 @@ public class SessionController extends AbstractPlatformController {
     SessionInfo sessionInfo =
         new SessionInfo(
             authCookie == null ? null : authCookie.value(),
-            user.getApiToken(),
+            user.getOrCreateApiToken(),
+            user.getApiTokenVersion(),
             cust.getUuid(),
             user.getUuid());
     return withData(sessionInfo);
@@ -315,7 +300,8 @@ public class SessionController extends AbstractPlatformController {
     Customer cust = Customer.get(user.getCustomerUUID());
 
     String authToken = user.createAuthToken();
-    SessionInfo sessionInfo = new SessionInfo(authToken, null, cust.getUuid(), user.getUuid());
+    SessionInfo sessionInfo =
+        new SessionInfo(authToken, null, null, cust.getUuid(), user.getUuid());
     RequestContext.put(IS_AUDITED, true);
     Audit.create(
         user,
@@ -358,7 +344,12 @@ public class SessionController extends AbstractPlatformController {
     Customer cust = Customer.get(user.getCustomerUUID());
 
     SessionInfo sessionInfo =
-        new SessionInfo(null, user.getApiToken(), cust.getUuid(), user.getUuid());
+        new SessionInfo(
+            null,
+            user.getOrCreateApiToken(),
+            user.getApiTokenVersion(),
+            cust.getUuid(),
+            user.getUuid());
     RequestContext.put(IS_AUDITED, true);
     Audit.create(
         user,
@@ -374,7 +365,7 @@ public class SessionController extends AbstractPlatformController {
     return withData(sessionInfo);
   }
 
-  @ApiOperation(value = "UI_ONLY", hidden = true)
+  @ApiOperation(value = "UI_ONLY", hidden = true, produces = "application/json")
   public Result getPlatformConfig() {
     boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
     boolean showJWTTokenInfo =
@@ -384,7 +375,7 @@ public class SessionController extends AbstractPlatformController {
     responseJson.put("use_oauth", useOAuth);
     responseJson.put("show_jwt_token_info", showJWTTokenInfo);
     platformConfig = String.format(platformConfig, responseJson.toString());
-    return ok(platformConfig);
+    return ok(platformConfig).as(MimeTypes.JSON);
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
@@ -509,13 +500,11 @@ public class SessionController extends AbstractPlatformController {
       if (user == null) {
         throw new PlatformServiceException(FORBIDDEN, "Invalid User saved.");
       }
-      String apiToken = user.getApiToken();
-      if (apiToken == null || apiToken.isEmpty()) {
-        apiToken = user.upsertApiToken();
-      }
+      String apiToken = user.getOrCreateApiToken();
 
       SessionInfo sessionInfo =
-          new SessionInfo(null, apiToken, user.getCustomerUUID(), user.getUuid());
+          new SessionInfo(
+              null, apiToken, user.getApiTokenVersion(), user.getCustomerUUID(), user.getUuid());
       RequestContext.put(IS_AUDITED, true);
       Audit.create(
           user,
@@ -554,10 +543,7 @@ public class SessionController extends AbstractPlatformController {
     configHelper.loadConfigToDB(Security, ImmutableMap.of("level", data.level));
     if (data.level.equals("insecure")) {
       Users user = CommonUtils.getUserFromContext();
-      String apiToken = user.getApiToken();
-      if (apiToken == null || apiToken.isEmpty()) {
-        user.upsertApiToken();
-      }
+      user.getOrCreateApiToken();
 
       try {
         InputStream featureStream = environment.resourceAsStream("ossFeatureConfig.json");
@@ -579,7 +565,7 @@ public class SessionController extends AbstractPlatformController {
 
   @With(TokenAuthenticator.class)
   @ApiOperation(value = "UI_ONLY", hidden = true, response = SessionInfo.class)
-  public Result api_token(UUID customerUUID, Http.Request request) {
+  public Result api_token(UUID customerUUID, Long apiTokenVersion, Http.Request request) {
     Users user = CommonUtils.getUserFromContext();
 
     if (user == null) {
@@ -587,8 +573,9 @@ public class SessionController extends AbstractPlatformController {
           BAD_REQUEST, "Could not find User from given credentials.");
     }
 
-    String apiToken = user.upsertApiToken();
-    SessionInfo sessionInfo = new SessionInfo(null, apiToken, customerUUID, user.getUuid());
+    String apiToken = user.upsertApiToken(apiTokenVersion);
+    SessionInfo sessionInfo =
+        new SessionInfo(null, apiToken, user.getApiTokenVersion(), customerUUID, user.getUuid());
     auditService()
         .createAuditEntryWithReqBody(
             request,
@@ -668,9 +655,10 @@ public class SessionController extends AbstractPlatformController {
 
     Users user = Users.createPrimary(data.getEmail(), data.getPassword(), role, cust.getUuid());
     String authToken = user.createAuthToken();
-    String apiToken = generateApiToken ? user.upsertApiToken() : null;
+    String apiToken = generateApiToken ? user.getOrCreateApiToken() : null;
     SessionInfo sessionInfo =
-        new SessionInfo(authToken, apiToken, user.getCustomerUUID(), user.getUuid());
+        new SessionInfo(
+            authToken, apiToken, user.getApiTokenVersion(), user.getCustomerUUID(), user.getUuid());
     // When there is no authenticated user in context; we just pretend that the user
     // created himself for auditing purpose.
     RequestContext.putIfAbsent(
@@ -699,10 +687,10 @@ public class SessionController extends AbstractPlatformController {
     return YBPSuccess.empty().discardingCookie(AUTH_TOKEN);
   }
 
-  @ApiOperation(value = "UI_ONLY", hidden = true)
+  @ApiOperation(value = "UI_ONLY", hidden = true, produces = "text/css")
   public Result getUITheme() {
     try {
-      return Results.ok(environment.resourceAsStream("theme/theme.css"));
+      return Results.ok(environment.resourceAsStream("theme/theme.css")).as(MimeTypes.CSS);
     } catch (NullPointerException ne) {
       throw new PlatformServiceException(BAD_REQUEST, "Theme file doesn't exists.");
     }

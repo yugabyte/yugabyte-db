@@ -570,7 +570,7 @@ public class NodeUniverseManager extends DevopsBase {
     findCommandParams.add(fileType);
     findCommandParams.add(remoteTempFilePath);
 
-    ShellResponse shellOutput = runScript(node, universe, NODE_UTILS_SCRIPT, findCommandParams);
+    runScript(node, universe, NODE_UTILS_SCRIPT, findCommandParams);
     // Download the files list.
     copyFileFromNode(node, universe, remoteTempFilePath, localTempFilePath);
 
@@ -578,14 +578,14 @@ public class NodeUniverseManager extends DevopsBase {
     List<String> removeCommand = new ArrayList<>();
     removeCommand.add("rm");
     removeCommand.add(remoteTempFilePath);
-    shellOutput = runCommand(node, universe, removeCommand);
+    runCommand(node, universe, removeCommand);
 
     // Populate the text file into array.
     List<String> nodeFilePathStrings = Arrays.asList();
     try {
       nodeFilePathStrings = Files.readAllLines(Paths.get(localTempFilePath));
     } catch (IOException e) {
-      e.printStackTrace();
+      log.error("Error occurred", e);
     } finally {
       FileUtils.deleteQuietly(new File(localTempFilePath));
     }

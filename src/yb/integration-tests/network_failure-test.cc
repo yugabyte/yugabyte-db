@@ -81,7 +81,7 @@ int64_t CountLookups(MiniCluster* cluster) {
   int64_t result = 0;
   for (size_t i = 0; i != cluster->num_masters(); ++i) {
     auto new_leader_master = cluster->mini_master(i);
-    auto histogram = new_leader_master->master()->metric_entity()->FindOrCreateHistogram(
+    auto histogram = new_leader_master->master()->metric_entity()->FindOrCreateMetric<Histogram>(
         &METRIC_handler_latency_yb_master_MasterClient_GetTabletLocations);
     result += histogram->TotalCount();
   }
@@ -100,10 +100,9 @@ TEST_F(NetworkFailureTest, DisconnectMasterLeader) {
 
   std::atomic<int> written(0);
   std::atomic<CoarseTimePoint> prev_report{CoarseTimePoint()};
-  thread_holder.AddThreadFunctor([
-      this, &written, &stop_flag = thread_holder.stop_flag(), &prev_report]() {
-    auto session = client_->NewSession();
-    session->SetTimeout(30s);
+  thread_holder.AddThreadFunctor([this, &written, &stop_flag = thread_holder.stop_flag(),
+                                  &prev_report]() {
+    auto session = client_->NewSession(30s);
 
     std::deque<std::future<client::FlushStatus>> futures;
     std::deque<client::YBOperationPtr> ops;
