@@ -64,7 +64,7 @@ A typical migration workflow using yb-voyager consists of the steps shown in the
 
 | Step | Description |
 | :--- | :---|
-| [Install yb-voyager](../install-yb-voyager/#install-yb-voyager) | yb-voyager supports RHEL, CentOS, Ubuntu, MacOS, and Docker-based installations. |
+| [Install yb-voyager](../install-yb-voyager/#install-yb-voyager) | yb-voyager supports RHEL, CentOS, Ubuntu, and macOS, as well as airgapped and Docker-based installations. |
 | [Prepare source](../migrate-steps/#prepare-the-source-database) | Create a new database user with READ access to all the resources to be migrated. |
 | [Prepare target](../migrate-steps/#prepare-the-target-database) | Deploy a YugabyteDB database and create a user with superuser privileges. |
 | [Export schema](../migrate-steps/#export-schema) | Convert the database schema to PostgreSQL format using the `yb-voyager export schema` command. |
