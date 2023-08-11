@@ -30,7 +30,9 @@
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/docdb.h"
+
 #include "yb/dockv/doc_key.h"
+#include "yb/dockv/packed_value.h"
 
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_util.h"
@@ -59,7 +61,7 @@ DEFINE_RUNTIME_bool(
     "Enable packing updates corresponding to a row in single CDC record");
 
 DEFINE_RUNTIME_bool(
-    cdc_populate_safepoint_record, false,
+    cdc_populate_safepoint_record, true,
     "If 'true' we will also send a 'SAFEPOINT' record at the end of each GetChanges call.");
 
 DEFINE_NON_RUNTIME_bool(
@@ -79,6 +81,12 @@ DEFINE_RUNTIME_bool(
     cdc_populate_end_markers_transactions, true,
     "If 'true', we will also send 'BEGIN' and 'COMMIT' records for both single shard and multi "
     "shard transactions");
+
+DEFINE_NON_RUNTIME_int64(
+    cdc_resolve_intent_lag_threshold_ms, 5 * 60 * 1000,
+    "The lag threshold in milli seconds between the hybrid time returned by "
+    "GetMinStartTimeAmongAllRunningTransactions and LeaderSafeTime, when we decide the "
+    "ConsistentStreamSafeTime for CDCSDK by resolving all committed intetns");
 
 DECLARE_bool(ysql_enable_packed_row);
 
@@ -331,22 +339,20 @@ Status PopulateBeforeImage(
   return Status::OK();
 }
 
-Result<size_t> PopulatePackedRows(
+template <class Decoder>
+Result<size_t> DoPopulatePackedRows(
     const SchemaPackingStorage& schema_packing_storage, const Schema& schema,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const EnumOidLabelMap& enum_oid_label_map, const CompositeAttsMap& composite_atts_map,
     Slice* value_slice, RowMessage* row_message) {
   const dockv::SchemaPacking& packing =
       VERIFY_RESULT(schema_packing_storage.GetPacking(value_slice));
+  Decoder decoder(packing, value_slice->data());
   for (size_t i = 0; i != packing.columns(); ++i) {
-    auto slice = packing.GetValue(i, *value_slice);
+    auto column_value = decoder.FetchValue(i);
     const auto& column_data = packing.column_packing_data(i);
 
-    PrimitiveValue pv;
-    // Empty slice represent NULL value and is valid.
-    if (!slice.empty()) {
-      RETURN_NOT_OK(pv.DecodeFromValue(slice));
-    }
+    auto pv = VERIFY_RESULT(UnpackPrimitiveValue(column_value, column_data.data_type));
     const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_data.id));
 
     RETURN_NOT_OK(AddColumnToMap(
@@ -356,6 +362,18 @@ Result<size_t> PopulatePackedRows(
   }
 
   return packing.columns();
+}
+
+template <class... Args>
+Result<size_t> PopulatePackedRows(
+    dockv::PackedRowVersion version, Args&&... args) {
+  switch (version) {
+    case dockv::PackedRowVersion::kV1:
+      return DoPopulatePackedRows<dockv::PackedRowDecoderV1>(std::forward<Args>(args)...);
+    case dockv::PackedRowVersion::kV2:
+      return DoPopulatePackedRows<dockv::PackedRowDecoderV2>(std::forward<Args>(args)...);
+  }
+  return UnexpectedPackedRowVersionStatus(version);
 }
 
 HybridTime GetCDCSDKSafeTimeForTarget(
@@ -646,7 +664,7 @@ Status PopulateCDCSDKIntentRecord(
         if (!FLAGS_enable_single_record_update) {
           col_count = schema.num_columns();
         }
-      } else if (value_type == dockv::ValueEntryType::kPackedRow) {
+      } else if (IsPackedRow(value_type)) {
         SetOperation(row_message, OpType::INSERT, schema);
         col_count = schema.num_key_columns();
       } else {
@@ -712,10 +730,10 @@ Status PopulateCDCSDKIntentRecord(
     prev_key = primary_key;
     prev_intent_phy_time = intent.intent_ht.hybrid_time().GetPhysicalValueMicros();
     if (IsInsertOrUpdate(*row_message)) {
-      if (value_type == dockv::ValueEntryType::kPackedRow) {
+      if (auto packed_row_version = GetPackedRowVersion(value_type)) {
         col_count += VERIFY_RESULT(PopulatePackedRows(
-            schema_packing_storage, schema, tablet_peer, enum_oid_label_map, composite_atts_map,
-            &value_slice, row_message));
+            *packed_row_version, schema_packing_storage, schema, tablet_peer, enum_oid_label_map,
+            composite_atts_map, &value_slice, row_message));
       } else {
         if (FLAGS_enable_single_record_update) {
           ++col_count;
@@ -1018,7 +1036,7 @@ Status PopulateCDCSDKWriteRecord(
       // Check whether operation is WRITE or DELETE.
       if (value_type == dockv::ValueEntryType::kTombstone && decoded_key.num_subkeys() == 0) {
         SetOperation(row_message, OpType::DELETE, schema);
-      } else if (value_type == dockv::ValueEntryType::kPackedRow) {
+      } else if (IsPackedRow(value_type)) {
         SetOperation(row_message, OpType::INSERT, schema);
       } else {
         dockv::KeyEntryValue column_id;
@@ -1079,10 +1097,10 @@ Status PopulateCDCSDKWriteRecord(
     DCHECK(proto_record);
 
     if (IsInsertOrUpdate(*row_message)) {
-      if (value_type == dockv::ValueEntryType::kPackedRow) {
+      if (auto version = GetPackedRowVersion(value_type)) {
         RETURN_NOT_OK(PopulatePackedRows(
-            schema_packing_storage, schema, tablet_peer, enum_oid_label_map, composite_atts_map,
-            &value_slice, row_message));
+            *version, schema_packing_storage, schema, tablet_peer, enum_oid_label_map,
+            composite_atts_map, &value_slice, row_message));
       } else {
         dockv::KeyEntryValue column_id;
         Slice key_column = key.WithoutPrefix(key_size);
@@ -1355,7 +1373,7 @@ Status ProcessIntents(
     Slice value_slice = keyValue.value_buf;
     RETURN_NOT_OK(dockv::ValueControlFields::Decode(&value_slice));
     auto value_type = dockv::DecodeValueEntryType(value_slice);
-    if (value_type != dockv::ValueEntryType::kPackedRow) {
+    if (!IsPackedRow(value_type)) {
       dockv::Value decoded_value;
       RETURN_NOT_OK(decoded_value.Decode(Slice(keyValue.value_buf)));
     }
@@ -1774,9 +1792,10 @@ bool CanUpdateCheckpointOpId(
   return update_checkpoint;
 }
 
-uint64_t GetConsistentStreamSafeTime(
+Result<uint64_t> GetConsistentStreamSafeTime(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const tablet::TabletPtr& tablet_ptr,
-    const HybridTime& leader_safe_time, const int64_t& safe_hybrid_time_req) {
+    const HybridTime& leader_safe_time, const int64_t& safe_hybrid_time_req,
+    const CoarseTimePoint& deadline) {
   HybridTime consistent_stream_safe_time =
       tablet_ptr->transaction_participant()->GetMinStartTimeAmongAllRunningTransactions();
   consistent_stream_safe_time = consistent_stream_safe_time == HybridTime::kInvalid
@@ -1788,10 +1807,34 @@ uint64_t GetConsistentStreamSafeTime(
                     << ", safe_hybrid_time_req: " << safe_hybrid_time_req
                     << ", leader_safe_time: " << leader_safe_time.ToUint64()
                     << ", tablet_id: " << tablet_peer->tablet_id();
+
+  if (!consistent_stream_safe_time.is_valid()) {
+    VLOG_WITH_FUNC(3) << "We'll use the leader_safe_time as the consistent_stream_safe_time, since "
+                         "GetMinStartTimeAmongAllRunningTransactions returned an invalid "
+                         "value";
+    return leader_safe_time.ToUint64();
+  } else if (
+      (safe_hybrid_time_req > 0 &&
+       consistent_stream_safe_time.ToUint64() < (uint64_t)safe_hybrid_time_req) ||
+      (int64_t)leader_safe_time.GetPhysicalValueMillis() -
+              (int64_t)consistent_stream_safe_time.GetPhysicalValueMillis() >
+          FLAGS_cdc_resolve_intent_lag_threshold_ms) {
+    VLOG_WITH_FUNC(3)
+        << "Calling 'ResolveIntents' since the lag between consistent_stream_safe_time: "
+        << consistent_stream_safe_time << ", and leader_safe_time: " << leader_safe_time
+        << ", is greater than: FLAGS_cdc_resolve_intent_lag_threshold_ms: "
+        << FLAGS_cdc_resolve_intent_lag_threshold_ms;
+
+    RETURN_NOT_OK(
+        tablet_ptr->transaction_participant()->ResolveIntents(leader_safe_time, deadline));
+
+    return leader_safe_time.ToUint64();
+  }
+
   return safe_hybrid_time_req > 0
              // It is possible for us to receive a transaction with begin time lower than
-             // a previously fetched leader_safe_time. So, we need a max of safe time from request
-             // and consistent_stream_safe_time here.
+             // a previously fetched leader_safe_time. So, we need a max of safe time from
+             // request and consistent_stream_safe_time here.
              ? std::max(consistent_stream_safe_time.ToUint64(), (uint64_t)safe_hybrid_time_req)
              : consistent_stream_safe_time.ToUint64();
 }
@@ -2014,8 +2057,8 @@ Status GetChangesForCDCSDK(
         << "Could not compute safe time: " << leader_safe_time.status();
     leader_safe_time = HybridTime::kInvalid;
   }
-  uint64_t consistent_stream_safe_time = GetConsistentStreamSafeTime(
-      tablet_peer, tablet_ptr, leader_safe_time.get(), safe_hybrid_time_req);
+  uint64_t consistent_stream_safe_time = VERIFY_RESULT(GetConsistentStreamSafeTime(
+      tablet_peer, tablet_ptr, leader_safe_time.get(), safe_hybrid_time_req, deadline));
   OpId historical_max_op_id = tablet_ptr->transaction_participant()->GetHistoricalMaxOpId();
   auto table_name = tablet_ptr->metadata()->table_name();
 
@@ -2499,7 +2542,10 @@ Status GetChangesForCDCSDK(
         TabletSplit, "Tablet Split on tablet: $0, no more records to stream", tablet_id);
   }
 
-  if (FLAGS_cdc_populate_safepoint_record && !pending_intents) {
+  // We do not populate SAFEPOINT records in two scenarios:
+  // 1. When we are streaming batches of a large transaction
+  // 2. When we are streaming snapshot records
+  if (FLAGS_cdc_populate_safepoint_record && !pending_intents && from_op_id.write_id() != -1) {
     RETURN_NOT_OK(PopulateCDCSDKSafepointOpRecord(
         safe_time.ToUint64(),
         tablet_peer->tablet()->metadata()->table_name(),

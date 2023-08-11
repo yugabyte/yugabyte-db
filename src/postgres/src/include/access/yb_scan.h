@@ -70,9 +70,9 @@ typedef struct YbScanDescData
 
 	/*
 	 * ScanKey could be one of two types:
-	 *  - key for regular column
 	 *  - key which represents the yb_hash_code function.
-	 * keys holds the first type; hash_code_keys holds the second.
+	 *  - otherwise
+	 * hash_code_keys holds the first type; keys holds the second.
 	 */
 	ScanKey keys[YB_MAX_SCAN_KEYS];
 	/* Number of elements in the above array. */
@@ -84,8 +84,12 @@ typedef struct YbScanDescData
 	 */
 	List *hash_code_keys;
 
-	/* True if all the conditions for this index were bound to pggate. */
-	bool is_full_cond_bound;
+	/*
+	 * True if all ordinary (non-yb_hash_code) keys are bound to pggate.  There
+	 * could be false negatives: it could say false when they are in fact all
+	 * bound.
+	 */
+	bool all_ordinary_keys_bound;
 
 	TupleDesc target_desc;
 	AttrNumber target_key_attnums[YB_MAX_SCAN_KEYS];
@@ -160,7 +164,8 @@ extern void YbDmlAppendTargetSystem(AttrNumber attnum, YBCPgStatement handle);
 extern void YbDmlAppendTargetRegular(TupleDesc tupdesc, AttrNumber attnum,
 									 YBCPgStatement handle);
 extern void YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc,
-										Relation index, YBCPgStatement handle);
+										Relation index, bool xs_want_itup,
+										YBCPgStatement handle);
 extern void YbDmlAppendTargets(List *colrefs, YBCPgStatement handle);
 /* Add quals to the given statement. */
 extern void YbDmlAppendQuals(List *quals, bool is_primary,
@@ -185,8 +190,19 @@ extern YbScanDesc ybcBeginScan(Relation relation,
 							   List *aggrefs,
 							   YBCPgExecParameters *exec_params);
 
+/* Returns whether the given populated ybScan needs PG-side recheck. */
+extern bool YbNeedsRecheck(YbScanDesc ybScan);
+/* The same thing but with less context, used in node init phase. */
+extern bool YbPredetermineNeedsRecheck(Relation relation,
+									   Relation index,
+									   bool xs_want_itup,
+									   ScanKey keys,
+									   int nkeys);
+
 HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
 IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
+bool ybc_getnext_aggslot(IndexScanDesc scan, YBCPgStatement handle,
+						 bool index_only_scan);
 
 Oid ybc_get_attcollation(TupleDesc bind_desc, AttrNumber attnum);
 
@@ -220,7 +236,8 @@ extern void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 							bool is_backwards_scan, bool is_seq_scan, bool is_uncovered_idx_scan,
 							Cost *startup_cost, Cost *total_cost, Oid index_tablespace_oid);
 extern void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
-								 Selectivity *selectivity, Cost *startup_cost, Cost *total_cost);
+								 			Selectivity *selectivity, Cost *startup_cost,
+											Cost *total_cost);
 
 /*
  * Fetch a single tuple by the ybctid.

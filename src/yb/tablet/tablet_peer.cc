@@ -134,19 +134,19 @@ DECLARE_bool(enable_flush_retryable_requests);
 namespace yb {
 namespace tablet {
 
-METRIC_DEFINE_coarse_histogram(table, op_prepare_queue_length, "Operation Prepare Queue Length",
+METRIC_DEFINE_event_stats(table, op_prepare_queue_length, "Operation Prepare Queue Length",
                         MetricUnit::kTasks,
                         "Number of operations waiting to be prepared within this tablet. "
                         "High queue lengths indicate that the server is unable to process "
                         "operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_coarse_histogram(table, op_prepare_queue_time, "Operation Prepare Queue Time",
+METRIC_DEFINE_event_stats(table, op_prepare_queue_time, "Operation Prepare Queue Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent waiting in the prepare queue before being "
                         "processed. High queue times indicate that the server is unable to "
                         "process operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_coarse_histogram(table, op_prepare_run_time, "Operation Prepare Run Time",
+METRIC_DEFINE_event_stats(table, op_prepare_run_time, "Operation Prepare Run Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent being prepared in the tablet. "
                         "High values may indicate that the server is under-provisioned or "
@@ -377,13 +377,20 @@ Result<HybridTime> TabletPeer::PreparePeerRequest() {
     auto propagated_history_cutoff =
         tablet_->RetentionPolicy()->HistoryCutoffToPropagate(last_write_ht);
 
-    if (propagated_history_cutoff) {
+    if (propagated_history_cutoff.cotables_cutoff_ht ||
+        propagated_history_cutoff.primary_cutoff_ht) {
       VLOG_WITH_PREFIX(2) << "Propagate history cutoff: " << propagated_history_cutoff;
 
       auto operation = std::make_unique<HistoryCutoffOperation>(tablet_);
       auto request = operation->AllocateRequest();
-      request->set_history_cutoff(propagated_history_cutoff.ToUint64());
-
+      if (propagated_history_cutoff.primary_cutoff_ht) {
+        request->set_primary_cutoff_ht(
+            propagated_history_cutoff.primary_cutoff_ht.ToUint64());
+      }
+      if (propagated_history_cutoff.cotables_cutoff_ht) {
+        request->set_cotables_cutoff_ht(
+            propagated_history_cutoff.cotables_cutoff_ht.ToUint64());
+      }
       Submit(std::move(operation), leader_term);
     }
   }

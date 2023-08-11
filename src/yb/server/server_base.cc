@@ -484,7 +484,8 @@ void RpcAndWebServerBase::GenerateInstanceID() {
   instance_pb_->set_permanent_uuid(fs_manager_->uuid());
   auto now = Env::Default()->NowMicros();
 
-  server_uptime_ms_metric_ = metric_entity_->FindOrCreateAtomicMillisLag(&METRIC_server_uptime_ms);
+  server_uptime_ms_metric_ = metric_entity_->FindOrCreateMetric<AtomicMillisLag>(
+      &METRIC_server_uptime_ms);
 
   // TODO: maybe actually bump a sequence number on local disk instead of
   // using time.

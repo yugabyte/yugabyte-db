@@ -1556,6 +1556,7 @@ yb_agg_pushdown_supported(AggState *aggstate)
 	/* Supported outer plan. */
 	if (!(IsA(outerPlanState(aggstate), ForeignScanState) ||
 		  IsA(outerPlanState(aggstate), IndexOnlyScanState) ||
+		  IsA(outerPlanState(aggstate), IndexScanState) ||
 		  IsA(outerPlanState(aggstate), YbSeqScanState)))
 		return;
 	ss = (ScanState *) outerPlanState(aggstate);
@@ -1567,6 +1568,23 @@ yb_agg_pushdown_supported(AggState *aggstate)
 	/* No WHERE quals. */
 	if (ss->ps.qual)
 		return;
+	/* No indexquals that might be rechecked. */
+	if (IsA(ss, IndexScanState))
+	{
+		/* Also check the GUC here. */
+		if (!yb_enable_index_aggregate_pushdown)
+			return;
+
+		IndexScanState *iss = castNode(IndexScanState, ss);
+		if (iss->yb_iss_might_recheck)
+			return;
+	}
+	else if (IsA(ss, IndexOnlyScanState))
+	{
+		IndexOnlyScanState *ioss = castNode(IndexOnlyScanState, ss);
+		if (ioss->yb_ioss_might_recheck)
+			return;
+	}
 
 	check_outer_plan = false;
 
@@ -1788,18 +1806,6 @@ ExecAgg(PlanState *pstate)
 		if (IsYugaByteEnabled())
 		{
 			pstate->state->yb_exec_params.limit_use_default = true;
-
-			// Currently, postgres employs an "optimization" where it requests the
-			// complete heap tuple from the executor whenever possible so as to
-			// avoid unnecessary copies
-			// See the comment in create_scan_plan (create_plan.c) for more info
-			//
-			// However, this "optimization" is not always in effect and here we guard
-			// against any undesirable prefix based filtering in the presence of
-			// aggregate targets. More importantly, the current behavior to
-			// retrieve the complete tuple is not necessarily optimal for
-			// remote storage such as DocDB and this may change in the future
-			pstate->state->yb_exec_params.yb_can_pushdown_distinct = false;
 		}
 
 		/* Dispatch based on strategy */
@@ -2582,7 +2588,22 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	if (node->aggstrategy == AGG_HASHED)
 		eflags &= ~EXEC_FLAG_REWIND;
 	outerPlan = outerPlan(node);
-	outerPlanState(aggstate) = ExecInitNode(outerPlan, estate, eflags);
+
+	/*
+	 * For YB IndexScan/IndexOnlyScan outer plan, we need to collect recheck
+	 * information, so set that eflag.  Ideally, the flag is only set for YB
+	 * relations since, later on, agg pushdown is disabled anyway for non-YB
+	 * relations, but we don't have that information at this point: the
+	 * relation is opened in the IndexScan/IndexOnlyScan node.  So set the flag
+	 * in all cases, and move the YB-relation check down there.
+	 */
+	int yb_eflags = 0;
+	if (IsYugaByteEnabled() &&
+		(IsA(outerPlan, IndexScan) || IsA(outerPlan, IndexOnlyScan)))
+		yb_eflags |= EXEC_FLAG_YB_AGG_PARENT;
+
+	outerPlanState(aggstate) = ExecInitNode(outerPlan, estate,
+											eflags | yb_eflags);
 
 	/*
 	 * initialize source tuple type.

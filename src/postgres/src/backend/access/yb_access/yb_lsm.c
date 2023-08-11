@@ -303,6 +303,13 @@ ybcincanreturn(Relation index, int attno)
 	return !index->rd_index->indisprimary;
 }
 
+static bool
+ybcinmightrecheck(Relation heap, Relation index, bool xs_want_itup,
+				  ScanKey keys, int nkeys)
+{
+	return YbPredetermineNeedsRecheck(heap, index, xs_want_itup, keys, nkeys);
+}
+
 static void
 ybcincostestimate(struct PlannerInfo *root, struct IndexPath *path, double loop_count,
 				  Cost *indexStartupCost, Cost *indexTotalCost, Selectivity *indexSelectivity,
@@ -401,24 +408,13 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	if (scan->yb_aggrefs)
 	{
 		/*
-		 * TODO(#18018): deduplicate with ybc_getnext_heaptuple,
+		 * TODO(jason): deduplicate with ybc_getnext_heaptuple,
 		 * ybc_getnext_indextuple.
 		 */
 		if (ybscan->quit_scan)
 			return NULL;
 
-		/*
-		 * As of 2023-06-28, aggregate pushdown is only implemented for
-		 * IndexOnlyScan, not IndexScan.
-		 */
-		Assert(ybscan->prepare_params.index_only_scan);
-
-		/*
-		 * TODO(#18018): deduplicate with ybc_getnext_heaptuple,
-		 * ybc_getnext_indextuple.
-		 */
-		scan->xs_recheck = (ybscan->hash_code_keys != NIL ||
-							!ybscan->is_full_cond_bound);
+		scan->xs_recheck = YbNeedsRecheck(ybscan);
 		if (!ybscan->is_exec_done)
 		{
 			HandleYBStatus(YBCPgSetForwardScan(ybscan->handle,
@@ -431,17 +427,9 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 		/*
 		 * Aggregate pushdown directly modifies the scan slot rather than
 		 * passing it through xs_hitup or xs_itup.
-		 *
-		 * The index id passed into ybFetchNext is likely not going to be used
-		 * as it is only used for system table scans, which have oid, and there
-		 * shouldn't exist any system table secondary indexes that index the
-		 * oid column.
-		 * TODO(jason): deduplicate with ybcingettuple.
 		 */
-		scan->yb_agg_slot =
-			ybFetchNext(ybscan->handle, scan->yb_agg_slot,
-						RelationGetRelid(scan->indexRelation));
-		return !scan->yb_agg_slot->tts_isempty;
+		return ybc_getnext_aggslot(scan, ybscan->handle,
+								   ybscan->prepare_params.index_only_scan);
 	}
 
 	/*
@@ -529,6 +517,7 @@ ybcinhandler(PG_FUNCTION_ARGS)
 	amroutine->yb_aminsert = ybcininsert;
 	amroutine->yb_amdelete = ybcindelete;
 	amroutine->yb_ambackfill = ybcinbackfill;
+	amroutine->yb_ammightrecheck = ybcinmightrecheck;
 
 	PG_RETURN_POINTER(amroutine);
 }

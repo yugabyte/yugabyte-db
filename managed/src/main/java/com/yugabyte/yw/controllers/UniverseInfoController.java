@@ -12,12 +12,15 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.UniverseInterruptionResult;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -26,6 +29,7 @@ import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.TriggerHealthCheckResult;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck.Details;
@@ -46,6 +50,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Date;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -89,6 +94,26 @@ public class UniverseInfoController extends AuthenticatedController {
     // Get alive status
     JsonNode result = universeInfoHandler.status(universe);
     return PlatformResults.withRawData(result);
+  }
+
+  @ApiOperation(
+      value = "Get a universe's spot instances' status",
+      hidden = true,
+      notes = "This will return a Map of node name to its interruption status in json format",
+      response = UniverseInterruptionResult.class)
+  public Result spotInstanceStatus(UUID customerUUID, UUID universeUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+
+    Set<CloudType> validClouds = ImmutableSet.of(CloudType.aws, CloudType.azu, CloudType.gcp);
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+
+    if (!userIntent.useSpotInstance || !validClouds.contains(userIntent.providerType)) {
+      throw new PlatformServiceException(BAD_REQUEST, "The universe doesn't use spot instances.");
+    }
+
+    UniverseInterruptionResult result = universeInfoHandler.spotUniverseStatus(universe);
+    return PlatformResults.withData(result);
   }
 
   @ApiOperation(

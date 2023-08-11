@@ -848,10 +848,12 @@ class Tablet : public AbstractTablet,
   std::string LogPrefix() const;
 
   // Populate tablet_locks_info with lock information pertaining to locks persisted in intents_db of
-  // this tablet. If transaction_ids is not empty, restrict returned information to locks which are
-  // held or requested by the given set of transaction_ids.
+  // this tablet. If transactions is not empty, restrict returned information to locks which are
+  // held or requested by the given set of transactions and restrict locks to those which are not
+  // present in the associated aborted subtxns.
   Status GetLockStatus(
-      const std::set<TransactionId>& transaction_ids, TabletLockInfoPB* tablet_lock_info) const;
+      const std::map<TransactionId, SubtxnSet>& transactions,
+      TabletLockInfoPB* tablet_lock_info) const;
 
   docdb::ExternalTxnIntentsState* GetExternalTxnIntentsState() const {
     return external_txn_intents_state_.get();
@@ -992,6 +994,7 @@ class Tablet : public AbstractTablet,
 
   MetricEntityPtr tablet_metrics_entity_;
   MetricEntityPtr table_metrics_entity_;
+  MemTrackerPtr metric_mem_tracker_;
   std::unique_ptr<TabletMetrics> metrics_;
   std::shared_ptr<void> metric_detacher_;
 

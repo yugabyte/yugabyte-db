@@ -364,8 +364,7 @@ struct MirrorTable {
 
   Status DoRealOp(const vector<pair<string, int32_t>>& data, OpType op_type) {
     auto deadline = MonoTime::Now() + 15s;
-    shared_ptr<YBSession> session = client_->NewSession();
-    session->SetTimeout(15s);
+    auto session = client_->NewSession(15s);
     shared_ptr<YBTable> table;
     RETURN_NOT_OK(client_->OpenTable(kTableName, &table));
     for (;;) {

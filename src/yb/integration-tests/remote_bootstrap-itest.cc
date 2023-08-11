@@ -2011,12 +2011,12 @@ class RemoteBootstrapMiniClusterITest: public YBMiniClusterTestBase<MiniCluster>
 
  protected:
   Status WriteRow(int32_t k, int32_t v) {
-    VERIFY_RESULT(client::kv_table_test::WriteRow(&table_handle_, client_->NewSession(), k, v));
+    VERIFY_RESULT(client::kv_table_test::WriteRow(&table_handle_, client_->NewSession(60s), k, v));
     return Status::OK();
   }
 
   Result<int32_t> ReadRow(int32_t k) {
-    return client::kv_table_test::SelectRow(&table_handle_, client_->NewSession(), k);
+    return client::kv_table_test::SelectRow(&table_handle_, client_->NewSession(60s), k);
   }
 
   std::unique_ptr<YBClient> client_;

@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include "yb/util/format.h"
 #include "yb/util/tostring.h"
 
 namespace yb {
@@ -24,6 +25,15 @@ std::string MillisecondsToString(int64_t milliseconds) {
   int64_t seconds = milliseconds / 1000;
   milliseconds -= seconds * 1000;
   return StringPrintf("%s%" PRId64 ".%03" PRId64 "s", sign, seconds, milliseconds);
+}
+
+std::string CStringArrayToString(char** elements, size_t length) {
+  std::string result = "[";
+  for (size_t i = 0; i < length; ++i) {
+    result += Format("$0$1", (i) ? "," : "", elements[i]);
+  }
+  result += "]";
+  return result;
 }
 
 } // namespace yb

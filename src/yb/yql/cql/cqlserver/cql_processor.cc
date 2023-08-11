@@ -45,33 +45,33 @@
 
 using namespace std::literals;
 
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_CQLServerService_GetProcessor,
     "Time spent to get a processor for processing a CQL query request.",
     yb::MetricUnit::kMicroseconds,
     "Time spent to get a processor for processing a CQL query request.", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_CQLServerService_ProcessRequest,
     "Time spent processing a CQL query request. From parsing till executing",
     yb::MetricUnit::kMicroseconds,
     "Time spent processing a CQL query request. From parsing till executing", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_CQLServerService_ParseRequest,
     "Time spent parsing CQL query request", yb::MetricUnit::kMicroseconds,
     "Time spent parsing CQL query request", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_CQLServerService_QueueResponse,
     "Time spent to queue the response for a CQL query request back on the network",
     yb::MetricUnit::kMicroseconds,
     "Time spent after computing the CQL response to queue it onto the connection.", 60000000LU, 2);
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_CQLServerService_ExecuteRequest,
     "Time spent executing the CQL query request in the handler", yb::MetricUnit::kMicroseconds,
     "Time spent executing the CQL query request in the handler", 60000000LU, 2);
 METRIC_DEFINE_counter(
     server, yb_cqlserver_CQLServerService_ParsingErrors, "Errors encountered when parsing ",
     yb::MetricUnit::kRequests, "Errors encountered when parsing ");
-METRIC_DEFINE_histogram_with_percentiles(
+METRIC_DEFINE_histogram(
     server, handler_latency_yb_cqlserver_CQLServerService_Any,
     "yb.cqlserver.CQLServerService.AnyMethod RPC Time", yb::MetricUnit::kMicroseconds,
     "Microseconds spent handling "

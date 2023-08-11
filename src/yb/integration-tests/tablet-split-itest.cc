@@ -737,7 +737,7 @@ TEST_F_EX(TabletSplitITest, SplitClientRequestsClean, TabletSplitITestSlowMainen
       // This will set client's request_id_seq for tablets with split depth 1 to > 1^24 (see
       // YBClient::MaybeUpdateMinRunningRequestId) and update min_running_request_id for this
       // client at tserver side.
-      auto session = client->NewSession();
+      auto session = client->NewSession(60s);
       ASSERT_OK(WriteRows(&this->table_, kNumRows, 1, session));
     }
   }
@@ -757,7 +757,7 @@ TEST_F_EX(TabletSplitITest, SplitClientRequestsClean, TabletSplitITestSlowMainen
     }
   }
 
-  auto session = client->NewSession();
+  auto session = client->NewSession(60s);
   // Since client doesn't know about tablets with split depth > 1, it will set request_id_seq for
   // active tablets based on min_running_request_id on leader, but on leader it has been cleaned up.
   // So, request_id_seq will be set to 0 + 1^24 that is less than min_running_request_id on the
@@ -975,7 +975,7 @@ TEST_F(TabletSplitYedisTableTest, BlockSplittingYedisTablet) {
         ASSERT_RESULT(this->mini_cluster()->GetLeaderMiniMaster()))->catalog_manager();
 
     auto s = DoSplitTablet(catalog_manager, *peer->shared_tablet());
-    EXPECT_NOT_OK(s);
+    EXPECT_NOK(s);
     EXPECT_TRUE(s.IsNotSupported()) << s.ToString();
   }
 }

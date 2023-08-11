@@ -66,7 +66,7 @@ select path from paths
 
 The first attempt at the SQL for traversing the present undirected cyclic graph is easily written down just as an obvious paraphrase:
 
-```plpgql
+```plpgsql
 deallocate all;
 
 prepare stmt(text) as

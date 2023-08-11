@@ -27,10 +27,9 @@ import org.yb.cdc.CdcService.RowMessage.Op;
 import org.yb.cdc.common.CDCBaseClass;
 import org.yb.cdc.util.CDCSubscriber;
 import org.yb.cdc.common.ExpectedRecordYSQL;
-import org.yb.cdc.util.TestUtils;
+import org.yb.cdc.util.CDCTestUtils;
 import org.yb.YBTestRunner;
 
-import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -44,7 +43,7 @@ public class TestBeforeImage extends CDCBaseClass {
     testSubscriber.createStream("proto");
 
     if (!sqlScript.isEmpty()) {
-      TestUtils.runSqlScript(connection, sqlScript);
+      CDCTestUtils.runSqlScript(connection, sqlScript);
     } else {
       LOG.info("No SQL script specified...");
     }
@@ -72,6 +71,7 @@ public class TestBeforeImage extends CDCBaseClass {
   @Before
   public void setUp() throws Exception {
     super.setUp();
+    setServerFlag(getTserverHostAndPort(), CDC_POPULATE_SAFEPOINT_RECORD, "false");
     statement = connection.createStatement();
     statement.execute("drop table if exists test;");
     statement.execute("create table test (a int primary key, b text default 'default_val', "

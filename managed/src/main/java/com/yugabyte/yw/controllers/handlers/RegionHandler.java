@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.CloudProviderHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.CloudRegionHelper;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderEditRestrictionManager;
@@ -55,6 +56,8 @@ public class RegionHandler {
 
   @Inject CloudProviderHelper CloudProviderHelper;
 
+  @Inject ImageBundleUtil imageBundleUtil;
+
   @Deprecated
   public Region createRegion(UUID customerUUID, UUID providerUUID, RegionFormData form) {
     return providerEditRestrictionManager.tryEditProvider(
@@ -91,6 +94,7 @@ public class RegionHandler {
 
     existingRegion.setDetails(region.getDetails());
     existingRegion.save();
+    modifyImageBundlesIfRequired(provider, existingRegion);
     CloudProviderHelper.updateAZs(provider, provider, region, existingRegion);
     existingRegion.refresh();
 
@@ -99,13 +103,15 @@ public class RegionHandler {
 
   public Region doEditRegion(
       UUID customerUUID, UUID providerUUID, UUID regionUUID, RegionEditFormData form) {
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
 
     region.setSecurityGroupId(form.securityGroupId);
     region.setVnetName(form.vnetName);
     region.setYbImage(form.ybImage);
-
     region.update();
+    modifyImageBundlesIfRequired(provider, region);
+
     return region;
   }
 
@@ -193,7 +199,7 @@ public class RegionHandler {
           Region.create(
               provider, regionCode, form.name, form.ybImage, form.latitude, form.longitude);
     }
-
+    modifyImageBundlesIfRequired(provider, region);
     return region;
   }
 
@@ -211,6 +217,7 @@ public class RegionHandler {
       }
 
       region = cloudRegionHelper.createRegion(provider, region.getCode(), destVpcId, metadata);
+      modifyImageBundlesIfRequired(provider, region);
     } else {
       // Handle k8s region bootstrap.
       Set<Region> regions = new HashSet<>();
@@ -246,5 +253,16 @@ public class RegionHandler {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Region Bootstrap failed.");
     }
     return vpcInfo;
+  }
+
+  private void modifyImageBundlesIfRequired(Provider provider, Region region) {
+    List<Region> regions = new ArrayList<>();
+    regions.add(region);
+    provider
+        .getImageBundles()
+        .forEach(
+            bundle -> {
+              imageBundleUtil.updateImageBundleIfRequired(provider, regions, bundle);
+            });
   }
 }

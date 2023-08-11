@@ -933,3 +933,21 @@ SELECT v1, yb_hash_code(v4) FROM test_index_only_scan_recheck WHERE v4 IN (1, 2,
 (2 rows)
 
 DROP TABLE test_index_only_scan_recheck;
+-- Issue #17043
+CREATE TABLE t as select x, x as y from generate_series(1, 10) x;
+CREATE INDEX t_x_hash_y_asc_idx ON t (x HASH, y ASC);
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y IN (5, 6);
+                                 QUERY PLAN
+-----------------------------------------------------------------------------
+ Index Only Scan using t_x_hash_y_asc_idx on t (actual rows=1 loops=1)
+   Index Cond: ((yb_hash_code(x) = 2675) AND (y = ANY ('{5,6}'::integer[])))
+   Heap Fetches: 0
+(3 rows)
+
+SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y IN (5, 6);
+ yb_hash_code | y 
+--------------+---
+         2675 | 5
+(1 row)
+
+DROP TABLE t;

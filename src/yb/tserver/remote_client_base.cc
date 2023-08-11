@@ -56,10 +56,9 @@ TAG_FLAG(remote_bootstrap_end_session_timeout_sec, hidden);
 namespace yb {
 namespace tserver {
 
-using std::string;
 using tablet::RaftGroupMetadataPtr;
 
-RemoteClientBase::RemoteClientBase(std::string tablet_id, FsManager* fs_manager)
+RemoteClientBase::RemoteClientBase(const TabletId& tablet_id, FsManager* fs_manager)
     : tablet_id_(std::move(tablet_id)),
       log_prefix_(Format("T $0 P $1: Remote client base: ", tablet_id_, fs_manager->uuid())),
       downloader_(&log_prefix_, fs_manager) {}

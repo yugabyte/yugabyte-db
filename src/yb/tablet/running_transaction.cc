@@ -289,6 +289,11 @@ bool RunningTransaction::UpdateStatus(
   }
   last_known_status_hybrid_time_ = time_of_status;
 
+  // Reset last_known_deadlock_status_ with the latest status. deadlock status is currently
+  // used in wait-queues alone and shouldn't cause any correctness issues.
+  DCHECK(expected_deadlock_status.ok() || transaction_status == TransactionStatus::ABORTED);
+  last_known_deadlock_status_ = expected_deadlock_status;
+
   if (transaction_status == last_known_status_) {
     return false;
   }
@@ -296,8 +301,6 @@ bool RunningTransaction::UpdateStatus(
     context_.NotifyAbortedTransactionDecrement(id());
   }
   last_known_status_ = transaction_status;
-  DCHECK(expected_deadlock_status.ok() || transaction_status == TransactionStatus::ABORTED);
-  last_known_deadlock_status_ = expected_deadlock_status;
 
   return transaction_status == TransactionStatus::ABORTED;
 }

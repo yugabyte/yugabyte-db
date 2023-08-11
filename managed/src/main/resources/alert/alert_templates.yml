@@ -119,7 +119,7 @@ templates:
     thresholdReadOnly: true
     annotations:
       summary: >-
-        Failed to delete {{ $value | printf "%.0f" }} backups for 
+        Failed to delete {{ $value | printf "%.0f" }} backups for
         customer {{ $labels.source_name }} in Last GC run - check logs for more details.
 
   BACKUP_SCHEDULE_FAILURE:
@@ -296,11 +296,13 @@ templates:
         {{ range query "count by (universe_uuid, node_name) (drive_fault{universe_uuid='{{ $labels.universe_uuid }}',
         export_type='tserver_export'}) > 0" }}{{ .Labels.node_name }} {{ end }}
     annotations:
-      summary: |-
+      summary: >-
         DB detected {{ $value | printf "%.0f" }} drive failure(s) for universe '{{ $labels.source_name }}':
 
         {{ range query "drive_fault{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'}" }}
-        {{ .Labels.exported_instance }}:{{ .Labels.drive_path }}\n{{ end }}
+        {{ .Labels.exported_instance }}:{{ .Labels.drive_path }}
+
+        {{ end }}
 
   DB_ERROR_LOGS:
     name: DB error logs
@@ -1061,12 +1063,12 @@ templates:
         Affected nodes: {{ $labels.affected_node_names }}
 
   NODE_DISK_USAGE:
-    name: DB node disk usage
-    description: Node Disk usage percentage is above threshold
+    name: DB node data disk usage
+    description: Node data disk usage percentage is above threshold
     queryTemplate: count by (universe_uuid) (count by (universe_uuid, node_name)
-      (100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~"/mnt/d[0-9]+",
-      universe_uuid="__universeUuid__"}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~"/mnt/d[0-9]+",
-      universe_uuid="__universeUuid__"}) * 100) {{ query_condition }} {{ query_threshold }}))
+      (100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~"__mountPoints__",
+      universe_uuid="__universeUuid__", fstype!="rootfs"}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~"__mountPoints__",
+      universe_uuid="__universeUuid__", fstype!="rootfs"}) * 100) {{ query_condition }} {{ query_threshold }}))
     createForNewCustomer: true
     defaultThresholdMap:
       SEVERE:
@@ -1082,15 +1084,62 @@ templates:
     labels:
       affected_node_names: >-
         {{ range query "count by (universe_uuid, node_name)
-        (100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~'/mnt/d[0-9]+',
-        universe_uuid='{{ $labels.universe_uuid }}'}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~'/mnt/d[0-9]+',
-        universe_uuid='{{ $labels.universe_uuid }}'}) * 100) {{ query_condition }} {{ query_threshold }})" }}{{ .Labels.node_name }} {{ end }}
+        (100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~'{{ $labels.mount_points }}',
+        universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~'{{ $labels.mount_points }}',
+        universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) * 100) {{ query_condition }} {{ query_threshold }})" }}{{ .Labels.node_name }} {{ end }}
+      affected_volumes: >-
+        {{ range query "(100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~'{{ $labels.mount_points }}',
+        universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~'{{ $labels.mount_points }}',
+        universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) * 100) {{ query_condition }} {{ query_threshold }})" }}{{ .Labels.node_name }}:{{ .Labels.mountpoint }}
+
+        {{ end }}
     annotations:
       summary: >-
-        Node disk usage for universe '{{ $labels.source_name }}' is
-        above {{ $labels.threshold }}% on {{ $value | printf "%.0f" }} node(s).
+        Node data disk usage for universe '{{ $labels.source_name }}' is above {{ $labels.threshold }}% on {{ $value | printf "%.0f" }} node(s).
 
-        Affected nodes: {{ $labels.affected_node_names }}
+        Affected volumes:
+
+        {{ $labels.affected_volumes }}
+
+
+  NODE_SYSTEM_DISK_USAGE:
+    name: DB node system disk usage
+    description: Node system disk usage percentage is above threshold
+    queryTemplate: count by (universe_uuid) (count by (universe_uuid, node_name)
+      (100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~"__systemMountPoints__",
+      universe_uuid="__universeUuid__", fstype!="rootfs"}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~"__systemMountPoints__",
+      universe_uuid="__universeUuid__", fstype!="rootfs"}) * 100) {{ query_condition }} {{ query_threshold }}))
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        paramName: yb.alert.max_node_system_disk_usage_pct_severe
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: PERCENT
+    thresholdMaxValue: 100.0
+    thresholdUnitName: '%'
+    testAlertSettings:
+      customValue: 1.0
+      generateValueFromThreshold: false
+    labels:
+      affected_node_names: >-
+        {{ range query "count by (universe_uuid, node_name)
+        (100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~'{{ $labels.system_mount_points }}',
+        universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~'{{ $labels.system_mount_points }}',
+        universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) * 100) {{ query_condition }} {{ query_threshold }})" }}{{ .Labels.node_name }} {{ end }}
+      affected_volumes: >-
+        {{ range query "(100 - (sum without (saved_name) (node_filesystem_free_bytes{mountpoint=~'{{ $labels.system_mount_points }}',
+        universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) / sum without (saved_name) (node_filesystem_size_bytes{mountpoint=~'{{ $labels.system_mount_points }}',
+        universe_uuid='{{ $labels.universe_uuid }}', fstype!='rootfs'}) * 100) {{ query_condition }} {{ query_threshold }})" }}{{ .Labels.node_name }}:{{ .Labels.mountpoint }}
+
+        {{ end }}
+    annotations:
+      summary: >-
+        Node system disk usage for universe '{{ $labels.source_name }}' is above {{ $labels.threshold }}% on {{ $value | printf "%.0f" }} node(s).
+
+        Affected volumes:
+
+        {{ $labels.affected_volumes }}
 
   NODE_FILE_DESCRIPTORS_USAGE:
     name: DB node file descriptors usage

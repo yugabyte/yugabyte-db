@@ -38,6 +38,10 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_idle_time, 3600,
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_max_client_connections, 10000,
     "Total number of concurrent client connections that the Ysql Connection Manager allows.");
 
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_num_workers, 0,
+  "Number of worker threads used by Ysql Connection Manager. If set as 0 (default value), "
+  "the number of worker threads will be half of the number of CPU cores.");
+
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_pool_size, 70,
     "Total number of concurrent database connections Ysql Connection Manager can create. "
     "Apart from database connections for the global pool, "
@@ -49,6 +53,10 @@ DEFINE_NON_RUNTIME_string(ysql_conn_mgr_username, "yugabyte",
 
 DEFINE_NON_RUNTIME_string(ysql_conn_mgr_password, "yugabyte",
     "Password to be used by Ysql Connection Manager while creating database connections.");
+
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_dowarmup, true,
+  "Enable precreation of server connections in Ysql Connection Manager. If set false, "
+  "the server connections are created lazily (on-demand) in Ysql Connection Manager.");
 
 namespace {
 
@@ -111,6 +119,8 @@ Status YsqlConnMgrWrapper::Start() {
   if (getenv("YB_YSQL_CONN_MGR_PASSWORD") == NULL) {
     proc_->SetEnv("YB_YSQL_CONN_MGR_PASSWORD", FLAGS_ysql_conn_mgr_password);
   }
+
+  proc_->SetEnv("YB_YSQL_CONN_MGR_DOWARMUP", FLAGS_ysql_conn_mgr_dowarmup ? "true" : "false");
 
   RETURN_NOT_OK(proc_->Start());
 

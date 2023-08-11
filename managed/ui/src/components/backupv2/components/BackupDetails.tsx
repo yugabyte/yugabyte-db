@@ -40,6 +40,7 @@ export type IncrementalBackupProps = {
   isRestoreEntireBackup?: boolean; // if the restore entire backup button is clicked
   incrementalBackupUUID?: string; // if restore to point button is clicked
   singleKeyspaceRestore?: boolean; // if restore button is clicked inside the incremental backup
+  kmsConfigUUID?: string;
 };
 interface BackupDetailsProps {
   backupDetails: IBackup | null;
@@ -105,22 +106,39 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
       }
 
       if (backupDetails!.backupType === TableType.YQL_TABLE_TYPE) {
+        const atleastOneTableAvailableForBackup = responseList.every((r) => {
+          if (r.allTables) return true;
+          return r.tableUUIDList?.some((tableUUID) => find(tablesInUniverse, { tableUUID }));
+        });
+
+        if (!atleastOneTableAvailableForBackup) {
+          return Promise.reject({
+            response: {
+              data: { error: `None of selected tables to backup found in the keyspace` }
+            }
+          });
+        }
+
         const allTableAvailableForBackup = responseList.every((r) => {
           if (r.allTables) return true;
           return r.tableUUIDList?.every((tableUUID) => find(tablesInUniverse, { tableUUID }));
         });
 
         if (!allTableAvailableForBackup) {
-          return Promise.reject({
-            response: {
-              data: { error: `One or more of selected tables to backup do not exist in keyspace` }
-            }
-          });
+          toast.warning(
+            `One or more of selected tables to backup do not exist in keyspace. Proceeding backup without non-existent table.`,
+            { autoClose: false }
+          );
         }
 
         responseList = responseList.map((r) => {
           const backupTablesPresentInUniverse = r.tablesList.filter(
-            (tableName) => find(tablesInUniverse, { tableName, keySpace: r.keyspace })?.tableName
+            (tableName, index) =>
+              find(tablesInUniverse, {
+                tableName,
+                keySpace: r.keyspace,
+                tableUUID: r.tableUUIDList?.[index]
+              })?.tableName
           );
 
           return {
@@ -320,7 +338,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 <div>
                   {formatBytes(
                     backupDetails.fullChainSizeInBytes ||
-                    backupDetails.commonBackupInfo.totalBackupSizeInBytes
+                      backupDetails.commonBackupInfo.totalBackupSizeInBytes
                   )}
                 </div>
               </div>
@@ -410,13 +428,16 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                     tablesList: Keyspace_Table[],
                     incrementalBackupProps: IncrementalBackupProps
                   ) => {
+                    const commonBackupInfo = {
+                      ...backupDetails.commonBackupInfo,
+                      responseList: tablesList
+                    };
+                    if (incrementalBackupProps.kmsConfigUUID)
+                      commonBackupInfo.kmsConfigUUID = incrementalBackupProps.kmsConfigUUID;
                     onRestore(
                       {
                         ...backupDetails,
-                        commonBackupInfo: {
-                          ...backupDetails.commonBackupInfo,
-                          responseList: tablesList
-                        }
+                        commonBackupInfo
                       },
                       {
                         isRestoreEntireBackup: incrementalBackupProps.isRestoreEntireBackup,

@@ -2,10 +2,13 @@ package replicatedctl
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
-	"errors"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 )
 
 // NilConfigEntry for when no config entry is found for a name
@@ -21,6 +24,28 @@ var ErrorConfigType error = errors.New("invalid type for app config value")
 type ConfigEntry struct {
 	Name  string
 	Value string
+}
+
+var replicatedToYbaCtl = map[string]string{
+	"storage_path": "installRoot",
+	"nginx_custom_port": "platform.port",
+	"enable_proxy": "platform.proxy.enable",
+	"http_proxy": "platform.proxy.http_proxy",
+	"https_proxy": "platform.proxy.https_proxy",
+	"no_proxy": "platform.proxy.no_proxy",
+	"java_https_proxy_port": "platform.proxy.java_https_proxy_port",
+	"java_https_proxy_host": "platform.proxy.java_https_proxy_host",
+	"java_http_proxy_port": "platform.proxy.java_http_proxy_port",
+	"java_http_proxy_host": "platform.proxy.java_http_proxy_host",
+	"db_external_port": "postgres.install.port",
+	// TODO: Need to allow dbuser customization and also pass it on towards taking dump/LDAP
+	// "prometheus_retention": "prometheus.retentionTime",
+	"prometheus_query_timeout": "prometheus.timeout",
+	"prometheus_scrape_interval": "prometheus.scrapeInterval",
+	"prometheus_scrape_timeout": "prometheus.scrapeTimeout",
+	"prometheus_query_max_samples": "prometheus.maxSamples",
+	"prometheus_query_concurrency": "prometheus.maxConcurrency",
+	"prometheus_external_port": "prometheus.port",
 }
 
 // Bool converts the value from a string
@@ -117,4 +142,25 @@ func (r *ReplicatedCtl) AppConfigExport() (AppConfig, error) {
 		return ac, fmt.Errorf("failed to parse exported app config: %w", err)
 	}
 	return ac, err
+}
+
+// ExportYbaCtl writes existing replicated settings to /opt/yba-ctl/yba-ctl.yml
+func (ac *AppConfig) ExportYbaCtl() error {
+	config.WriteDefaultConfig()
+	for _, e := range ac.EntriesAsSlice() {
+		if ybaCtlPath, ok := replicatedToYbaCtl[e.Name]; ok {
+			if b, err := e.Bool(); err == nil {
+				common.SetYamlValue(common.InputFile(), ybaCtlPath, strconv.FormatBool(b))
+			} else {
+				i, err := e.Int()
+				if strings.HasSuffix(ybaCtlPath, "port") && err == nil {
+					common.SetYamlValue(common.InputFile(), ybaCtlPath, strconv.Itoa(i + 1))
+				} else {
+					// TODO: Hack to get around 30s -> 30 conversion in prometheus timing values
+					common.SetYamlValue(common.InputFile(), ybaCtlPath, strings.TrimSuffix(e.Value, "s"))
+				}
+			}
+		}
+	}
+	return nil
 }

@@ -513,6 +513,18 @@ void DocDBRocksDBFixture::FullyCompactHistoryBefore(HybridTime history_cutoff) {
   ASSERT_OK(FullyCompactDB(regular_db_.get()));
 }
 
+void DocDBRocksDBFixture::FullyCompactHistoryBefore(
+    HistoryCutoff history_cutoff) {
+  LOG(INFO) << "Major-compacting history before hybrid_time " << history_cutoff;
+  retention_policy_->SetHistoryCutoff(history_cutoff);
+  auto se = ScopeExit([this] {
+    SetHistoryCutoffHybridTime(HybridTime::kMin);
+  });
+
+  ASSERT_OK(FlushRocksDbAndWait());
+  ASSERT_OK(FullyCompactDB(regular_db_.get()));
+}
+
 void DocDBRocksDBFixture::MinorCompaction(
     HybridTime history_cutoff,
     size_t num_files_to_compact,

@@ -364,6 +364,8 @@ class MemTable {
     }
   }
 
+  // Frontiers accessors might return stale frontiers if invoked after records have been written to
+  // the memtable, but before frontiers are updated.
   UserFrontierPtr GetFrontier(UpdateUserValueType type) const;
 
   const UserFrontiers* Frontiers() const { return frontiers_.get(); }

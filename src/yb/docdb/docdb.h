@@ -77,7 +77,7 @@
 
 namespace yb {
 
-class Histogram;
+class EventStats;
 class Counter;
 
 namespace docdb {

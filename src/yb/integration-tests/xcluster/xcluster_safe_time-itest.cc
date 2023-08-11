@@ -136,7 +136,7 @@ class XClusterSafeTimeTest : public XClusterTestBase {
   }
 
   void WriteWorkload(uint32_t start, uint32_t end, YBClient* client, const YBTableName& table) {
-    auto session = client->NewSession();
+    auto session = client->NewSession(kRpcTimeout * 1s);
     client::TableHandle table_handle;
     ASSERT_OK(table_handle.Open(table, client));
     std::vector<std::shared_ptr<client::YBqlOp>> ops;
@@ -157,7 +157,7 @@ class XClusterSafeTimeTest : public XClusterTestBase {
   }
 
   Status WaitForSafeTime(HybridTime min_safe_time) {
-    RETURN_NOT_OK(CorrectlyPollingAllTablets(consumer_cluster(), kTabletCount));
+    RETURN_NOT_OK(CorrectlyPollingAllTablets(kTabletCount));
 
     return XClusterTestBase::WaitForSafeTime(namespace_id_, min_safe_time);
   }
@@ -191,7 +191,8 @@ class XClusterSafeTimeTest : public XClusterTestBase {
       auto safe_time = *safe_time_result.get();
       for (auto& tablet : tablet_ptrs) {
         if (tablet->metadata()->namespace_id() == namespace_id_) {
-          ASSERT_EQ(safe_time, ts_manager->AllowedHistoryCutoff(tablet->metadata()));
+          ASSERT_EQ(safe_time, ts_manager->AllowedHistoryCutoff(
+              tablet->metadata()).primary_cutoff_ht);
         }
       }
     }

@@ -158,21 +158,18 @@ After changing a `ulimit` setting in `/etc/security/limits.conf`, you will need 
 {{< /note >}}
 
 {{< note title="Note" >}}
-If you're using a desktop-distribution, such as ubuntu-desktop, the settings above may not suffice.
-The OS needs additional steps to change `ulimit` for gui login. In the case of ubuntu-desktop:
+If you're using a desktop-distribution, such as ubuntu-desktop, the settings above may not suffice. The operating system needs additional steps to change `ulimit` for GUI login. In the case of ubuntu-desktop:
 
 In `/etc/systemd/user.conf` and `/etc/systemd/system.conf`, add at the end of file `DefaultLimitNOFILE=64000`.
 
 Something similar may be needed for other distributions.
 {{< /note >}}
 
-
 ## transparent hugepages
 
 Transparent hugepages should be enabled for optimal performance. By default, they are enabled.
 
 You can check with the following command:
-
 
 ```sh
 $ cat /sys/kernel/mm/transparent_hugepage/enabled

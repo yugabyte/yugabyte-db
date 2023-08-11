@@ -13,11 +13,10 @@ import { YBButton, YBModal } from '../../common/forms/fields';
 import InstanceTypeForRegion from '../OnPrem/wizard/InstanceTypeForRegion';
 import { YBBreadcrumb } from '../../common/descriptors';
 import { isDefinedNotNull, isNonEmptyString } from '../../../utils/ObjectUtils';
-import { YBCodeBlock } from '../../common/descriptors/index';
+import { YBCodeBlock, YBCopyButton } from '../../common/descriptors/index';
 import { YBConfirmModal } from '../../modals';
 import { TASK_SHORT_TIMEOUT } from '../../tasks/constants';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
-import { YUGABYTE_TITLE } from '../../../config';
 import { getLatestAccessKey } from '../../configRedesign/providerRedesign/utils';
 import { NodeAgentStatus } from '../../../redesign/features/NodeAgent/NodeAgentStatus';
 
@@ -374,7 +373,7 @@ class OnPremNodesList extends Component {
     };
 
     const onPremSetupReference =
-      'https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/';
+      'https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/#configure-hardware-for-yugabytedb-nodes';
     let provisionMessage = <span />;
     const onPremProvider = this.props.currentProvider ?? this.findProvider();
     if (isDefinedNotNull(onPremProvider)) {
@@ -385,23 +384,41 @@ class OnPremNodesList extends Component {
         onPremProvider.details.skipProvisioning ||
         (isDefinedNotNull(onPremKey) && onPremKey.keyInfo.skipProvisioning)
       ) {
+        const provisionInstanceScript = `${
+          onPremProvider.details.provisionInstanceScript ??
+          onPremKey.keyInfo.provisionInstanceScript
+        } --ask_password --ip <node IP Address> --mount_points <instance type mount points> ${
+          onPremProvider.details.enableNodeAgent
+            ? '--install_node_agent --api_token <API token> --yba_url <YBA URL> --node_name <name for the node> --instance_type <instance type name> --zone_name <name for the zone>'
+            : ''
+        }`;
+
         provisionMessage = (
           <Alert bsStyle="warning" className="pre-provision-message">
-            You need to pre-provision your nodes, If the Provider SSH User has sudo privileges you
-            can execute the following script on the {YUGABYTE_TITLE} <b> yugaware </b>
-            container -or- the YugabyteDB Anywhere host machine depending on your deployment type
-            once for each instance that you add here.
+            <p>
+              This provider is configured for manual provisioning. Before you can add instances, you
+              must provision the nodes.
+            </p>
+            <p>
+              If the SSH user has sudo access, run the provisioning script on each node using the
+              following command:
+            </p>
             <YBCodeBlock>
-              {`${
-                onPremProvider.details.provisionInstanceScript ??
-                onPremKey.keyInfo.provisionInstanceScript
-              } --ip `}
-              <b>{'<IP Address> '}</b>
-              {'--mount_points '}
-              <b>{'<instance type mount points>'}</b>
+              {provisionInstanceScript}
+              <YBCopyButton text={provisionInstanceScript} />
             </YBCodeBlock>
-            See the On-premises Provider <a href={onPremSetupReference}> documentation </a> for more
-            details if the <b> Provider SSH User</b> does not have <b>sudo</b> privileges.
+            {!!onPremProvider.details.enableNodeAgent && (
+              <p>
+                For YBA URL, provide the URL of your YBA machine (e.g.,
+                http://ybahost.company.com:9000). The node must be able to reach YugabyteDB Anywhere
+                at this address.
+              </p>
+            )}
+            <p>
+              If the SSH user does not have sudo access, you must set up each node manually. For
+              information on the script options or setting up nodes manually, see the{' '}
+              <a href={onPremSetupReference}>provider documentation.</a>
+            </p>
           </Alert>
         );
       }
@@ -497,7 +514,7 @@ class OnPremNodesList extends Component {
             >
               <TableHeaderColumn dataField="nodeId" isKey={true} hidden={true} dataSort />
               <TableHeaderColumn dataField="instanceName" dataSort>
-                Identifier
+                Node Name
               </TableHeaderColumn>
               <TableHeaderColumn dataField="ip" dataSort>
                 Address

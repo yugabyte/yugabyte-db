@@ -75,7 +75,7 @@ export const InstanceTypeList = ({
         )}
       >
         <TableHeaderColumn dataField="instanceTypeCode" isKey={true} dataSort={true}>
-          Instance Type
+          Name
         </TableHeaderColumn>
         <TableHeaderColumn dataField="numCores" dataSort={true}>
           Cores

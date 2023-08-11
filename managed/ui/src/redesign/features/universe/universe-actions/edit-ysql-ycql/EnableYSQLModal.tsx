@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import { FC, useState } from 'react';
 import _ from 'lodash';
 import { useMutation } from 'react-query';
 import { useTranslation } from 'react-i18next';
@@ -10,7 +10,9 @@ import {
   YBToggleField,
   YBCheckboxField,
   YBPasswordField,
-  YBTooltip
+  YBTooltip,
+  YBAlert,
+  AlertVariant
 } from '../../../../components';
 import { Universe } from '../../universe-form/utils/dto';
 import { api } from '../../../../utils/api';
@@ -31,20 +33,30 @@ interface EnableYSQLModalProps {
   open: boolean;
   onClose: () => void;
   universeData: Universe;
+  enforceAuth: boolean;
 }
 
 const TOAST_OPTIONS = { autoClose: TOAST_AUTO_DISMISS_INTERVAL };
 
-export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({ open, onClose, universeData }) => {
+export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({
+  open,
+  onClose,
+  universeData,
+  enforceAuth
+}) => {
   const { t } = useTranslation();
   const classes = dbSettingStyles();
   const { universeDetails, universeUUID } = universeData;
   const primaryCluster = _.cloneDeep(getPrimaryCluster(universeDetails));
+  const [warningModalProps, setWarningModalProps] = useState<YSQLFormPayload>();
 
   const formMethods = useForm<YSQLFormFields>({
     defaultValues: {
-      enableYSQL: primaryCluster?.userIntent?.enableYSQL ?? false,
-      enableYSQLAuth: primaryCluster?.userIntent?.enableYSQLAuth ?? false,
+      enableYSQL: primaryCluster?.userIntent?.enableYSQL ?? true,
+      enableYSQLAuth:
+        primaryCluster?.userIntent?.enableYSQL && enforceAuth
+          ? true
+          : primaryCluster?.userIntent?.enableYSQLAuth ?? true,
       ysqlPassword: '',
       ysqlConfirmPassword: '',
       rotateYSQLPassword: false,
@@ -70,7 +82,7 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({ open, onClose, unive
       return api.updateYSQLSettings(universeUUID, values);
     },
     {
-      onSuccess: (response) => {
+      onSuccess: () => {
         toast.success(
           t('universeActions.editYSQLSettings.updateSettingsSuccessMsg'),
           TOAST_OPTIONS
@@ -115,6 +127,7 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({ open, onClose, unive
       }
     } else {
       //Update YSQL settings if it is turned off
+
       let payload: YSQLFormPayload = {
         enableYSQL: values.enableYSQL ?? false,
         enableYSQLAuth: values.enableYSQL && values.enableYSQLAuth ? values.enableYSQLAuth : false,
@@ -124,10 +137,14 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({ open, onClose, unive
           ysqlServerRpcPort: universeDetails.communicationPorts.ysqlServerRpcPort
         }
       };
-      try {
-        await updateYSQLSettings.mutateAsync(payload);
-      } catch (e) {
-        console.log(e);
+      if (primaryCluster?.userIntent?.enableYSQL && !values.enableYSQL) {
+        setWarningModalProps(payload);
+      } else {
+        try {
+          await updateYSQLSettings.mutateAsync(payload);
+        } catch (e) {
+          console.log(e);
+        }
       }
     }
   });
@@ -220,40 +237,42 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({ open, onClose, unive
           </Box>
           {enableYSQLValue && (
             <Box className={classes.mainContainer}>
-              <Box
-                display="flex"
-                flexDirection="row"
-                alignItems="center"
-                justifyContent="space-between"
-              >
-                <Typography variant="h6">
-                  {t('universeActions.editYSQLSettings.authToggleLabel')}&nbsp;
-                  <YBTooltip
-                    title={t('universeForm.securityConfig.authSettings.enableYSQLAuthHelper')}
-                  >
-                    <img alt="Info" src={InfoMessageIcon} />
-                  </YBTooltip>
-                </Typography>
-                <YBTooltip
-                  title={
-                    rotateYSQLPasswordValue
-                      ? t('universeActions.editYSQLSettings.rotateBothYSQLWarning')
-                      : ''
-                  }
-                  placement="top-end"
+              {!enforceAuth && (
+                <Box
+                  display="flex"
+                  flexDirection="row"
+                  alignItems="center"
+                  justifyContent="space-between"
                 >
-                  <div>
-                    <YBToggleField
-                      name={'enableYSQLAuth'}
-                      inputProps={{
-                        'data-testid': 'EnableYSQLModal-AuthToggle'
-                      }}
-                      control={control}
-                      disabled={rotateYSQLPasswordValue}
-                    />
-                  </div>
-                </YBTooltip>
-              </Box>
+                  <Typography variant="h6">
+                    {t('universeActions.editYSQLSettings.authToggleLabel')}&nbsp;
+                    <YBTooltip
+                      title={t('universeForm.securityConfig.authSettings.enableYSQLAuthHelper')}
+                    >
+                      <img alt="Info" src={InfoMessageIcon} />
+                    </YBTooltip>
+                  </Typography>
+                  <YBTooltip
+                    title={
+                      rotateYSQLPasswordValue
+                        ? t('universeActions.editYSQLSettings.rotateBothYSQLWarning')
+                        : ''
+                    }
+                    placement="top-end"
+                  >
+                    <div>
+                      <YBToggleField
+                        name={'enableYSQLAuth'}
+                        inputProps={{
+                          'data-testid': 'EnableYSQLModal-AuthToggle'
+                        }}
+                        control={control}
+                        disabled={rotateYSQLPasswordValue}
+                      />
+                    </div>
+                  </YBTooltip>
+                </Box>
+              )}
               {!enableYSQLAuthValue && primaryCluster?.userIntent?.enableYSQLAuth && (
                 <Box flex={1} mt={2} width="300px">
                   <YBPasswordField
@@ -322,9 +341,11 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({ open, onClose, unive
               )}
               {enableYSQLAuthValue && primaryCluster?.userIntent?.enableYSQLAuth && (
                 <>
-                  <Box mt={2}>
-                    <Divider />
-                  </Box>
+                  {!enforceAuth && (
+                    <Box mt={2}>
+                      <Divider />
+                    </Box>
+                  )}
                   <Box mt={2} display="flex" flexDirection={'column'}>
                     <Typography variant="h6">
                       {t('universeActions.editYSQLSettings.YSQLPwdLabel')}
@@ -419,6 +440,52 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({ open, onClose, unive
               )}
             </Box>
           )}
+          <YBModal
+            titleSeparator
+            open={Boolean(warningModalProps)}
+            size="sm"
+            overrideHeight="auto"
+            cancelLabel={t('common.no')}
+            submitLabel={t('common.yes')}
+            title={t('common.areYouSure')}
+            onClose={() => setWarningModalProps(undefined)}
+            onSubmit={async () => {
+              try {
+                if (warningModalProps) await updateYSQLSettings.mutateAsync(warningModalProps);
+              } catch (e) {
+                console.log(e);
+              }
+            }}
+            submitTestId="EnableYSQLModal-WarninngSubmit"
+            cancelTestId="EnableYSQLModal-WarningClose"
+          >
+            <Box
+              display="flex"
+              width="100%"
+              mt={2}
+              mb={6}
+              flexDirection="column"
+              data-testid="YSQLWarningModal-Container"
+            >
+              <Typography variant="body2">
+                {t('universeActions.editYSQLSettings.disableYSQLWarning1')}
+              </Typography>
+              <Box mt={2}>
+                <YBAlert
+                  open={true}
+                  icon={<></>}
+                  text={
+                    <Box display="flex">
+                      <Typography variant="body2" className={classes.errorNote}>
+                        {t('universeActions.editYSQLSettings.disableYSQLWarning2')}
+                      </Typography>
+                    </Box>
+                  }
+                  variant={AlertVariant.Error}
+                />
+              </Box>
+            </Box>
+          </YBModal>
         </Box>
       </FormProvider>
     </YBModal>

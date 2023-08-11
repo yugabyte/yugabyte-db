@@ -21,12 +21,13 @@ import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
-import com.amazonaws.services.s3.model.ObjectListing;
+import com.amazonaws.services.s3.model.ListObjectsV2Result;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
@@ -39,6 +40,11 @@ import com.azure.storage.blob.specialized.BlobInputStream;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.api.gax.paging.Page;
+import com.google.cloud.storage.Blob;
+import com.google.cloud.storage.BlobId;
+import com.google.cloud.storage.Storage;
+import com.google.cloud.storage.StorageException;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.BeanValidator;
@@ -58,6 +64,7 @@ import java.util.stream.Stream;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.converters.Nullable;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -68,6 +75,7 @@ import org.mockito.junit.MockitoRule;
 import org.mockito.stubbing.Answer;
 import play.libs.Json;
 
+@Slf4j
 @RunWith(JUnitParamsRunner.class)
 public class CustomerConfigValidatorTest extends FakeDBApplication {
 
@@ -85,9 +93,11 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             allowedBuckets,
             mockStorageUtilFactory,
             app.injector().instanceOf(RuntimeConfGetter.class),
-            mockAWSUtil);
+            mockAWSUtil,
+            mockGCPUtil);
     when(mockStorageUtilFactory.getCloudUtil("AZ")).thenReturn(mockAZUtil);
     doCallRealMethod().when(mockAWSUtil).getConfigLocationInfo(any());
+    doCallRealMethod().when(mockGCPUtil).getConfigLocationInfo(any());
   }
 
   @Test
@@ -314,9 +324,9 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
         .read(any());
 
     List<S3ObjectSummary> objSummaryList = new ArrayList<>();
-    ObjectListing mockObjectListing = mock(ObjectListing.class);
+    ListObjectsV2Result mockObjectListing = mock(ListObjectsV2Result.class);
     when(mockObjectListing.getObjectSummaries()).thenReturn(objSummaryList);
-    when(client.listObjects(bucketName, "")).thenReturn(mockObjectListing);
+    when(client.listObjectsV2(bucketName, fileName)).thenReturn(mockObjectListing);
 
     S3ObjectSummary objSummary = mock(S3ObjectSummary.class);
     when(objSummary.getKey()).thenReturn(fileName);
@@ -453,9 +463,9 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
         .read(any());
 
     List<S3ObjectSummary> objSummaryList = new ArrayList<>();
-    ObjectListing mockObjectListing = mock(ObjectListing.class);
+    ListObjectsV2Result mockObjectListing = mock(ListObjectsV2Result.class);
     when(mockObjectListing.getObjectSummaries()).thenReturn(objSummaryList);
-    when(client.listObjects(bucketName, "")).thenReturn(mockObjectListing);
+    when(client.listObjectsV2(bucketName, fileName)).thenReturn(mockObjectListing);
 
     assertThat(
         () -> customerConfigValidator.validateConfig(config),
@@ -506,9 +516,9 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
         .read(any());
 
     List<S3ObjectSummary> objSummaryList = new ArrayList<>();
-    ObjectListing mockObjectListing = mock(ObjectListing.class);
+    ListObjectsV2Result mockObjectListing = mock(ListObjectsV2Result.class);
     when(mockObjectListing.getObjectSummaries()).thenReturn(objSummaryList);
-    when(client.listObjects(bucketName, "")).thenReturn(mockObjectListing);
+    when(client.listObjectsV2(bucketName, fileName)).thenReturn(mockObjectListing);
 
     S3ObjectSummary objSummary = mock(S3ObjectSummary.class);
     when(objSummary.getKey()).thenReturn(fileName);
@@ -566,8 +576,6 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
   }
 
   @Parameters({
-    // BACKUP_LOCATION - incorrect -> disallowed.
-    "https://abc, {}, GS Uri path https://abc doesn't exist, false",
     // Check empty GCP Credentials Json -> disallowed.
     "gs://test, {}, Invalid GCP Credential Json., true",
     // Valid case.
@@ -600,6 +608,235 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
       allowedBuckets.add(backupLocation);
       customerConfigValidator.validateConfig(config);
     }
+  }
+
+  private void setupGCPReadValidation(
+      Storage storage,
+      boolean validationShouldFail,
+      String incorrectData,
+      String bucketName,
+      String fileName)
+      throws IOException {
+    when(storage.readAllBytes(bucketName, fileName))
+        .thenReturn((validationShouldFail ? incorrectData : CloudUtil.DUMMY_DATA).getBytes());
+    doCallRealMethod()
+        .when(mockGCPUtil)
+        .validateOnBucket(
+            storage,
+            bucketName,
+            "",
+            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
+  }
+
+  private CustomerConfig createGcsConfig(String bucketName) {
+    String backupLocation = "gs://" + bucketName;
+    String credentialsJson = "{}";
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, backupLocation);
+    data.put(GCS_CREDENTIALS_JSON_FIELDNAME, credentialsJson);
+    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_GCS, data);
+    return config;
+  }
+
+  private void setupGCPListAndDeleteValidation(
+      Storage storage,
+      String bucketName,
+      String fileName,
+      boolean shouldListValidateFail,
+      boolean shouldDeleteValidateFail) {
+    Page<Blob> mockBlobPage = mock(Page.class);
+    Iterable<Blob> mockIterable = mock(Iterable.class);
+    List<Blob> blobList = new ArrayList<Blob>();
+    when(mockIterable.spliterator()).thenAnswer(invocation -> blobList.spliterator());
+    when(mockBlobPage.iterateAll()).thenReturn(mockIterable);
+    when(storage.list(eq(bucketName), any())).thenReturn(mockBlobPage);
+
+    Blob mockBlob = mock(Blob.class);
+    when(mockBlob.getName()).thenReturn(fileName);
+
+    if (!shouldListValidateFail) {
+      blobList.add(mockBlob);
+      when(storage.get(bucketName, fileName))
+          .thenReturn(shouldDeleteValidateFail ? mockBlob : null);
+      when(storage.delete(any(BlobId.class))).thenReturn(true);
+    }
+  }
+
+  @Test
+  public void
+      testValidateDataContent_Storage_GCSPreflightCheckValidator_RegionLocationCrudSuccess() {
+    UUID myUUID = UUID.randomUUID();
+    String fileName = myUUID.toString() + ".txt";
+    when(mockGCPUtil.getRandomUUID()).thenReturn(myUUID);
+    String bucketName = "test";
+
+    CustomerConfig config = createGcsConfig(bucketName);
+    Storage storage = ((StubbedCustomerConfigValidator) customerConfigValidator).gcpStorage;
+
+    when(storage.readAllBytes(bucketName, fileName)).thenReturn(CloudUtil.DUMMY_DATA.getBytes());
+    doCallRealMethod()
+        .when(mockGCPUtil)
+        .validateOnBucket(
+            storage,
+            bucketName,
+            "",
+            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
+
+    Page<Blob> mockBlobPage = mock(Page.class);
+    Iterable<Blob> mockIterable = mock(Iterable.class);
+    List<Blob> blobList = new ArrayList<Blob>();
+    when(mockIterable.spliterator()).thenAnswer(invocation -> blobList.spliterator());
+    when(mockBlobPage.iterateAll()).thenReturn(mockIterable);
+    when(storage.list(eq(bucketName), any())).thenReturn(mockBlobPage);
+
+    Blob mockBlob = mock(Blob.class);
+    when(mockBlob.getName()).thenReturn(fileName);
+
+    blobList.add(mockBlob);
+    when(storage.get(bucketName, fileName)).thenReturn(null);
+    when(storage.delete(any(BlobId.class))).thenReturn(true);
+
+    customerConfigValidator.validateConfig(config);
+  }
+
+  @Test
+  public void
+      testValidateDataContent_Storage_GCSPreflightCheckValidator_RegionLocationCrudCreateFail() {
+    UUID myUUID = UUID.randomUUID();
+    String fileName = myUUID.toString() + ".txt";
+    when(mockGCPUtil.getRandomUUID()).thenReturn(myUUID);
+    String bucketName = "test";
+
+    CustomerConfig config = createGcsConfig(bucketName);
+    Storage storage = ((StubbedCustomerConfigValidator) customerConfigValidator).gcpStorage;
+
+    doThrow(new StorageException(-1, "Upload failed"))
+        .when(storage)
+        .create(any(), any(byte[].class));
+
+    when(storage.readAllBytes(bucketName, fileName)).thenReturn(CloudUtil.DUMMY_DATA.getBytes());
+    doCallRealMethod()
+        .when(mockGCPUtil)
+        .validateOnBucket(
+            storage,
+            bucketName,
+            "",
+            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
+
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config),
+        thrown(PlatformServiceException.class));
+  }
+
+  @Test
+  public void
+      testValidateDataContent_Storage_GCSPreflightCheckValidator_RegionLocationCrudReadFail() {
+    UUID myUUID = UUID.randomUUID();
+    String fileName = myUUID.toString() + ".txt";
+    when(mockGCPUtil.getRandomUUID()).thenReturn(myUUID);
+    String bucketName = "test";
+
+    CustomerConfig config = createGcsConfig(bucketName);
+    Storage storage = ((StubbedCustomerConfigValidator) customerConfigValidator).gcpStorage;
+
+    String incorrectData = "notdummy";
+    byte[] tmp = new byte[CloudUtil.DUMMY_DATA.getBytes().length];
+    byte[] content = incorrectData.getBytes();
+    System.arraycopy(content, 0, tmp, 0, content.length);
+    when(storage.readAllBytes(bucketName, fileName)).thenReturn(tmp);
+    doCallRealMethod()
+        .when(mockGCPUtil)
+        .validateOnBucket(
+            storage,
+            bucketName,
+            "",
+            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
+
+    assertCloudConfigValidationReadFailure(incorrectData, fileName, config);
+  }
+
+  @Test
+  public void
+      testValidateDataContent_Storage_GCSPreflightCheckValidator_RegionLocationCrudListFail() {
+    UUID myUUID = UUID.randomUUID();
+    String fileName = myUUID.toString() + ".txt";
+    when(mockGCPUtil.getRandomUUID()).thenReturn(myUUID);
+    String bucketName = "test";
+
+    CustomerConfig config = createGcsConfig(bucketName);
+    Storage storage = ((StubbedCustomerConfigValidator) customerConfigValidator).gcpStorage;
+
+    when(storage.readAllBytes(bucketName, fileName)).thenReturn(CloudUtil.DUMMY_DATA.getBytes());
+    doCallRealMethod()
+        .when(mockGCPUtil)
+        .validateOnBucket(
+            storage,
+            bucketName,
+            "",
+            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
+
+    Page<Blob> mockBlobPage = mock(Page.class);
+    Iterable<Blob> mockIterable = mock(Iterable.class);
+    List<Blob> blobList = new ArrayList<Blob>();
+    when(mockIterable.spliterator()).thenAnswer(invocation -> blobList.spliterator());
+    when(mockBlobPage.iterateAll()).thenReturn(mockIterable);
+    when(storage.list(eq(bucketName), any())).thenReturn(mockBlobPage);
+
+    Blob mockBlob = mock(Blob.class);
+    when(mockBlob.getName()).thenReturn(fileName);
+
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config),
+        thrown(
+            PlatformServiceException.class,
+            "Created blob with name \"" + fileName + "\" not found in list."));
+  }
+
+  @Test
+  public void
+      testValidateDataContent_Storage_GCSPreflightCheckValidator_RegionLocationCrudDeleteFail() {
+    UUID myUUID = UUID.randomUUID();
+    String fileName = myUUID.toString() + ".txt";
+    when(mockGCPUtil.getRandomUUID()).thenReturn(myUUID);
+    String bucketName = "test";
+
+    CustomerConfig config = createGcsConfig(bucketName);
+    Storage storage = ((StubbedCustomerConfigValidator) customerConfigValidator).gcpStorage;
+
+    when(storage.readAllBytes(bucketName, fileName)).thenReturn(CloudUtil.DUMMY_DATA.getBytes());
+    doCallRealMethod()
+        .when(mockGCPUtil)
+        .validateOnBucket(
+            storage,
+            bucketName,
+            "",
+            ImmutableList.of(ExtraPermissionToValidate.READ, ExtraPermissionToValidate.LIST));
+
+    Page<Blob> mockBlobPage = mock(Page.class);
+    Iterable<Blob> mockIterable = mock(Iterable.class);
+    List<Blob> blobList = new ArrayList<Blob>();
+    when(mockIterable.spliterator()).thenAnswer(invocation -> blobList.spliterator());
+    when(mockBlobPage.iterateAll()).thenReturn(mockIterable);
+    when(storage.list(eq(bucketName), any())).thenReturn(mockBlobPage);
+
+    Blob mockBlob = mock(Blob.class);
+    when(mockBlob.getName()).thenReturn(fileName);
+
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config),
+        thrown(
+            PlatformServiceException.class,
+            "Created blob with name \"" + fileName + "\" not found in list."));
+
+    blobList.add(mockBlob);
+    when(storage.get(bucketName, fileName)).thenReturn(mockBlob);
+    when(storage.delete(any(BlobId.class))).thenReturn(true);
+
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config),
+        thrown(
+            PlatformServiceException.class,
+            "Deleted blob \"" + fileName + "\" is still in the bucket."));
   }
 
   @Parameters({
@@ -712,22 +949,23 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     }
   }
 
-  private void assertAzureReadFailure(
+  private void assertCloudConfigValidationReadFailure(
       String incorrectData, String fileName, CustomerConfig config) {
     byte[] tmp = new byte[CloudUtil.DUMMY_DATA.getBytes().length];
     byte[] content = incorrectData.getBytes();
     System.arraycopy(content, 0, tmp, 0, content.length);
+    String expectedMsg =
+        "Error reading test blob "
+            + fileName
+            + ", expected: \""
+            + CloudUtil.DUMMY_DATA
+            + "\", got: \""
+            + new String(tmp)
+            + "\"";
+    log.error("SUS {} {}", expectedMsg, expectedMsg.length());
     assertThat(
         () -> customerConfigValidator.validateConfig(config),
-        thrown(
-            PlatformServiceException.class,
-            "Error reading test blob "
-                + fileName
-                + ", expected: \""
-                + CloudUtil.DUMMY_DATA
-                + "\", got: \""
-                + new String(tmp)
-                + "\""));
+        thrown(PlatformServiceException.class, expectedMsg));
   }
 
   public void testValidateDataContent_Storage_AZPreflightCheckValidatorCRUDUnsupportedPermission() {
@@ -787,7 +1025,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
           () -> customerConfigValidator.validateConfig(config),
           thrown(PlatformServiceException.class));
     } else if (shouldReadValidateFail) {
-      assertAzureReadFailure(incorrectData, fileName, config);
+      assertCloudConfigValidationReadFailure(incorrectData, fileName, config);
     } else if (shouldListValidateFail) {
       assertThat(
           () -> customerConfigValidator.validateConfig(config),

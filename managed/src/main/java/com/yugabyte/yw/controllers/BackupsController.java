@@ -9,7 +9,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.TaskInfoManager;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
@@ -34,14 +33,12 @@ import com.yugabyte.yw.forms.paging.BackupPagedApiQuery;
 import com.yugabyte.yw.forms.paging.RestorePagedApiQuery;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Backup.StorageConfigType;
 import com.yugabyte.yw.models.CommonBackupInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Schedule;
-import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
@@ -78,7 +75,6 @@ import play.mvc.Result;
 @Api(value = "Backups", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class BackupsController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(BackupsController.class);
-  private static final int maxRetryCount = 5;
 
   private final Commissioner commissioner;
   private final CustomerConfigService customerConfigService;
@@ -614,34 +610,14 @@ public class BackupsController extends AuthenticatedController {
       nickname = "stopBackup",
       response = YBPSuccess.class)
   public Result stop(UUID customerUUID, UUID backupUUID, Http.Request request) {
-    Customer.getOrBadRequest(customerUUID);
-    Process process = Util.getProcessOrBadRequest(backupUUID);
-    Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
-    if (backup.getState() != Backup.BackupState.InProgress) {
-      LOG.info("The backup {} you are trying to stop is not in progress.", backupUUID);
-      throw new PlatformServiceException(
-          BAD_REQUEST, "The backup you are trying to stop is not in process.");
-    }
-    if (process == null) {
-      LOG.info("The backup {} process you want to stop doesn't exist.", backupUUID);
-      throw new PlatformServiceException(
-          BAD_REQUEST, "The backup process you want to stop doesn't exist.");
-    } else {
-      process.destroyForcibly();
-    }
-    Util.removeProcess(backupUUID);
-    try {
-      waitForTask(backup.getTaskUUID());
-    } catch (InterruptedException e) {
-      LOG.info("Error while waiting for the backup task to get finished.");
-    }
-    backup.transitionState(BackupState.Stopped);
+    backupHelper.stopBackup(customerUUID, backupUUID);
     auditService()
         .createAuditEntry(
             request,
             Audit.TargetType.Backup,
-            Objects.toString(backup.getBackupUUID(), null),
+            Objects.toString(backupUUID, null),
             Audit.ActionType.Stop);
+    // We only reach here if we never encountered an exception above.
     return YBPSuccess.withMessage("Successfully stopped the backup process.");
   }
 
@@ -700,21 +676,6 @@ public class BackupsController extends AuthenticatedController {
             Objects.toString(backup.getBackupUUID(), null),
             Audit.ActionType.Edit);
     return PlatformResults.withData(backup);
-  }
-
-  private static void waitForTask(UUID taskUUID) throws InterruptedException {
-    int numRetries = 0;
-    while (numRetries < maxRetryCount) {
-      TaskInfo taskInfo = TaskInfo.get(taskUUID);
-      if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
-        return;
-      }
-      Thread.sleep(1000);
-      numRetries++;
-    }
-    throw new PlatformServiceException(
-        BAD_REQUEST,
-        "WaitFor task exceeded maxRetries! Task state is " + TaskInfo.get(taskUUID).getTaskState());
   }
 
   private Boolean isStorageLocationMasked(UUID customerUUID) {

@@ -9,20 +9,9 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.fail;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
@@ -36,22 +25,11 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.HighAvailabilityConfig;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
@@ -308,6 +286,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.ChangeMasterConfig, // master done
+          TaskType.WaitForFollowerLag, // master done
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer,
           TaskType.AnsibleClusterServerCtl,
@@ -340,6 +319,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("processType", "MASTER", "isAdd", true)),
           Json.toJson(ImmutableMap.of()),
@@ -467,6 +447,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testAddNodeWithUnderReplicatedMaster() {
+    mockGetMasterRegistrationResponse(ImmutableList.of("10.0.0.1"), Collections.emptyList());
     verify(mockNodeManager, never()).nodeCommand(any(), any());
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),

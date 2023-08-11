@@ -53,8 +53,8 @@ namespace yb::master {
 const auto kDefaultReactorDelay = MonoDelta::FromMilliseconds(200);
 
 AddTableToXClusterTask::AddTableToXClusterTask(
-    CatalogManager* catalog_manager, TableInfoPtr table_info)
-    : catalog_manager_(catalog_manager), table_info_(table_info) {}
+    CatalogManager* catalog_manager, TableInfoPtr table_info, LeaderEpoch epoch)
+    : catalog_manager_(catalog_manager), table_info_(table_info), epoch_(std::move(epoch)) {}
 
 std::string AddTableToXClusterTask::description() const {
   return Format("AddTableToXClusterTask [$0]", table_info_->id());
@@ -209,7 +209,7 @@ void AddTableToXClusterTask::WaitForXClusterSafeTimeCaughtUp() {
 }
 
 void AddTableToXClusterTask::CompleteTableCreation() {
-  FAIL_TASK_AND_RETURN_IF_NOT_OK(catalog_manager_->PromoteTableToRunningState(table_info_));
+  FAIL_TASK_AND_RETURN_IF_NOT_OK(catalog_manager_->PromoteTableToRunningState(table_info_, epoch_));
 
   LOG(INFO) << "Table " << table_info_->ToString()
             << " successfully added to xcluster universe replication";

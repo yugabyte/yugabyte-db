@@ -20,6 +20,7 @@
 
 #include "yb/docdb/docdb.fwd.h"
 
+#include "yb/docdb/docdb_compaction_context.h"
 #include "yb/rocksdb/metadata.h"
 
 #include "yb/util/uuid.h"
@@ -49,8 +50,11 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
     return std::make_unique<ConsensusFrontier>(*this);
   }
   ConsensusFrontier() {}
-  ConsensusFrontier(const OpId& op_id, HybridTime ht, HybridTime history_cutoff)
-      : op_id_(op_id), hybrid_time_(ht), history_cutoff_(NormalizeHistoryCutoff(history_cutoff)) {}
+  ConsensusFrontier(const OpId& op_id, HybridTime ht, HistoryCutoff history_cutoff)
+      : op_id_(op_id), hybrid_time_(ht) {
+    history_cutoff_.primary_cutoff_ht = NormalizeHistoryCutoff(history_cutoff.primary_cutoff_ht);
+    history_cutoff_.cotables_cutoff_ht = NormalizeHistoryCutoff(history_cutoff.cotables_cutoff_ht);
+  }
 
   virtual ~ConsensusFrontier();
 
@@ -81,9 +85,17 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
 
   void SetCoTablesFilter(std::vector<std::pair<uint32_t, HybridTime>> db_oid_to_ht_filter);
 
-  HybridTime history_cutoff() const { return history_cutoff_; }
-  void set_history_cutoff(HybridTime history_cutoff) {
-    history_cutoff_ = NormalizeHistoryCutoff(history_cutoff);
+  HistoryCutoff history_cutoff() const {
+    return history_cutoff_;
+  }
+
+  bool history_cutoff_valid() const {
+    return history_cutoff_.primary_cutoff_ht.is_valid() ||
+           history_cutoff_.cotables_cutoff_ht.is_valid();
+  }
+
+  void set_history_cutoff_information(HistoryCutoff history_cutoff) {
+    history_cutoff_ = history_cutoff;
   }
 
   void AppendGlobalFilter(uint64_t value) {
@@ -126,8 +138,8 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
 
   // We use this to keep track of the maximum history cutoff hybrid time used in any compaction, and
   // refuse to perform reads at a hybrid time at which we don't have a valid snapshot anymore. Only
-  // the largest frontier of this parameter is being used.
-  HybridTime history_cutoff_;
+  // the largest frontier of this parameter is being used..
+  HistoryCutoff history_cutoff_;
 
   // Used to track the boundary expiration timestamp for any doc in the file. Tracks value-level
   // TTL expiration (generated at write-time), table-level TTL is calculated at read-time based
@@ -168,11 +180,6 @@ inline void set_op_id(const OpId& op_id, ConsensusFrontiers* frontiers) {
 inline void set_hybrid_time(HybridTime hybrid_time, ConsensusFrontiers* frontiers) {
   frontiers->Smallest().set_hybrid_time(hybrid_time);
   frontiers->Largest().set_hybrid_time(hybrid_time);
-}
-
-inline void set_history_cutoff(HybridTime history_cutoff, ConsensusFrontiers* frontiers) {
-  frontiers->Smallest().set_history_cutoff(history_cutoff);
-  frontiers->Largest().set_history_cutoff(history_cutoff);
 }
 
 template <class PB>

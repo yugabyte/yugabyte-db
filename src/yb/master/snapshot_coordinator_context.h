@@ -19,6 +19,7 @@
 
 #include "yb/docdb/docdb_fwd.h"
 
+#include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_types.pb.h"
 
@@ -51,7 +52,7 @@ class SnapshotCoordinatorContext {
 
   virtual AsyncTabletSnapshotOpPtr CreateAsyncTabletSnapshotOp(
       const TabletInfoPtr& tablet, const std::string& snapshot_id,
-      tserver::TabletSnapshotOpRequestPB::Operation operation,
+      tserver::TabletSnapshotOpRequestPB::Operation operation, const LeaderEpoch& epoch,
       TabletSnapshotOperationCallback callback) = 0;
 
   virtual void ScheduleTabletSnapshotOp(const AsyncTabletSnapshotOpPtr& operation) = 0;
@@ -66,7 +67,8 @@ class SnapshotCoordinatorContext {
       const std::unordered_map<std::string, SysRowEntryType>& objects,
       const google::protobuf::RepeatedPtrField<TableIdentifierPB>& tables) = 0;
 
-  virtual void CleanupHiddenObjects(const ScheduleMinRestoreTime& schedule_min_restore_time) = 0;
+  virtual void CleanupHiddenObjects(
+      const ScheduleMinRestoreTime& schedule_min_restore_time, const LeaderEpoch& epoch) = 0;
 
   virtual const Schema& schema() = 0;
 
@@ -89,6 +91,8 @@ class SnapshotCoordinatorContext {
   virtual void AddPendingBackFill(const TableId& id) = 0;
 
   virtual ~SnapshotCoordinatorContext() = default;
+
+  virtual PitrCount pitr_count() const = 0;
 };
 
 Result<dockv::KeyBytes> EncodedKey(

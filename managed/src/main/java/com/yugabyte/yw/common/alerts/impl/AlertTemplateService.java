@@ -10,18 +10,19 @@
 package com.yugabyte.yw.common.alerts.impl;
 
 import com.yugabyte.yw.common.AlertTemplate;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertConfiguration.TargetType;
 import com.yugabyte.yw.models.AlertConfigurationThreshold;
 import com.yugabyte.yw.models.AlertDefinition;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import java.text.DecimalFormat;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.Data;
@@ -102,9 +103,21 @@ public class AlertTemplateService {
           queryTemplate.replaceAll("__customerUuid__", definition.getCustomerUUID().toString());
       String universeUuid = definition.getLabelValue(KnownAlertLabels.UNIVERSE_UUID);
       if (StringUtils.isNoneEmpty(universeUuid)) {
-        query =
-            query.replaceAll(
-                "__universeUuid__", definition.getLabelValue(KnownAlertLabels.UNIVERSE_UUID));
+        query = query.replaceAll("__universeUuid__", universeUuid);
+        if (query.contains("__mountPoints__")) {
+          Universe universe = Universe.getOrBadRequest(UUID.fromString(universeUuid));
+          query =
+              query.replaceAll("__mountPoints__", MetricQueryHelper.getDataMountPoints(universe));
+        }
+        if (query.contains("__systemMountPoints__")) {
+          Universe universe = Universe.getOrBadRequest(UUID.fromString(universeUuid));
+          RuntimeConfGetter confGetter =
+              StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+          query =
+              query.replaceAll(
+                  "__systemMountPoints__",
+                  MetricQueryHelper.getOtherMountPoints(confGetter, universe));
+        }
       }
       return replaceThresholdAndCondition(query, threshold);
     }

@@ -947,7 +947,8 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
 // GetClusterTables - Get list of DB tables per YB API (YCQL/YSQL)
 func (c *Container) GetClusterTables(ctx echo.Context) error {
     tableListResponse := models.ClusterTableListResponse{
-        Data: []models.ClusterTable{},
+        Tables: []models.ClusterTable{},
+        Indexes: []models.ClusterTable{},
     }
     tablesFuture := make(chan helpers.TablesFuture)
     go helpers.GetTablesFuture(helpers.HOST, true, tablesFuture)
@@ -956,13 +957,14 @@ func (c *Container) GetClusterTables(ctx echo.Context) error {
         return ctx.String(http.StatusInternalServerError, tablesListStruct.Error.Error())
     }
     // For now, we only show user and index tables.
-    tablesList := append(tablesListStruct.Tables.User, tablesListStruct.Tables.Index...)
+    tablesList := tablesListStruct.Tables.User
+    indexesList := tablesListStruct.Tables.Index
     api := ctx.QueryParam("api")
     switch api {
     case "YSQL":
         for _, table := range tablesList {
             if table.YsqlOid != "" {
-                tableListResponse.Data = append(tableListResponse.Data,
+                tableListResponse.Tables = append(tableListResponse.Tables,
                     models.ClusterTable{
                         Name:      table.TableName,
                         Keyspace:  table.Keyspace,
@@ -973,10 +975,23 @@ func (c *Container) GetClusterTables(ctx echo.Context) error {
                     })
             }
         }
+        for _, index := range indexesList {
+            if index.YsqlOid != "" {
+                tableListResponse.Indexes = append(tableListResponse.Indexes,
+                    models.ClusterTable{
+                        Name:      index.TableName,
+                        Keyspace:  index.Keyspace,
+                        Uuid:      index.Uuid,
+                        Type:      models.YBAPIENUM_YSQL,
+                        SizeBytes: index.OnDiskSize.WalFilesSizeBytes +
+                                   index.OnDiskSize.SstFilesSizeBytes,
+                    })
+            }
+        }
     case "YCQL":
         for _, table := range tablesList {
             if table.YsqlOid == "" {
-                tableListResponse.Data = append(tableListResponse.Data,
+                tableListResponse.Tables = append(tableListResponse.Tables,
                     models.ClusterTable{
                         Name:      table.TableName,
                         Keyspace:  table.Keyspace,

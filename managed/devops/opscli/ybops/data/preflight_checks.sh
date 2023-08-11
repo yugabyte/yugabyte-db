@@ -24,6 +24,12 @@ PROMETHEUS_FREE_SPACE_MB=100
 HOME_FREE_SPACE_MB=2048
 VM_MAX_MAP_COUNT=262144
 PYTHON_EXECUTABLES=('python3.6' 'python3' 'python3.7' 'python3.8' 'python')
+LINUX_OS_NAME=""
+
+set_linux_os_name() {
+  LINUX_OS_NAME=$(awk -F= -v key="NAME" '$1==key {gsub(/"/, "", $2); print $2}'\
+  /etc/os-release 2>/dev/null)
+}
 
 preflight_provision_check() {
   # Check python is installed.
@@ -57,9 +63,14 @@ preflight_provision_check() {
     fi
     update_result_json "(Prometheus) No Pre-existing Node Exporter Running" "$no_node_exporter"
 
-    # Check prometheus files are writable.
     filepaths="/opt/prometheus /etc/prometheus /var/log/prometheus /var/run/prometheus \
-      /var/lib/prometheus /lib/systemd/system/node_exporter.service"
+      /var/lib/prometheus"
+    # Check prometheus files are writable.
+    if [[ $LINUX_OS_NAME = "SLES" ]]; then
+      filepaths="$filepaths /usr/lib/systemd/system/node_exporter.service"
+    else
+      filepaths="$filepaths /lib/systemd/system/node_exporter.service"
+    fi
     for path in $filepaths; do
       check_filepath "Prometheus" "$path" true
     done
@@ -327,6 +338,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+set_linux_os_name
 if [[ "$check_type" == "provision" ]]; then
   preflight_provision_check >/dev/null 2>&1
 else

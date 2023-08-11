@@ -50,7 +50,7 @@ class RemoteBootstrapClient : public RemoteClientBase {
 
   // Construct the remote bootstrap client.
   // 'fs_manager' and 'messenger' must remain valid until this object is destroyed.
-  RemoteBootstrapClient(std::string tablet_id, FsManager* fs_manager);
+  RemoteBootstrapClient(const TabletId& tablet_id, FsManager* fs_manager);
 
   // Attempt to clean up resources on the remote end by sending an
   // EndRemoteBootstrapSession() RPC

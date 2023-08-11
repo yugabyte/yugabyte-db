@@ -50,7 +50,7 @@ Alec Guinness|Lovesick (1983)
 
 The information content is identical to what the _"cast_members"_ table was designed to represent. (See the [`cr-actors-movies-cast-members-tables.sql`](../../bacon-numbers#cr-actors-movies-cast-members-tables-sql) script.) This means that the `ysqlsh` meta-command `\COPY` can be used, straightforwardly, to ingest the downloaded data.
 
-However, as this script creates it, the _"actors"_ and _"movies"_ tables must be populated first so that the foreign key constraints to these from the _"cast_members"_ table will be satisfied when it its populated. Use this script to do the steps in the proper order and display the resulting table counts:
+However, as this script creates it, the _"actors"_ and _"movies"_ tables must be populated first so that the foreign key constraints to these from the _"cast_members"_ table will be satisfied when it it's populated. Use this script to do the steps in the proper order and display the resulting table counts:
 
 ##### `insert-imdb-data.sql`
 

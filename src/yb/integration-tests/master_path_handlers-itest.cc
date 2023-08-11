@@ -38,6 +38,7 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master-path-handlers.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/mini_master.h"
@@ -599,7 +600,7 @@ TEST_F_EX(MasterPathHandlersItest, ShowDeletedTablets, TabletSplitMasterPathHand
   client::TableHandle table;
   ASSERT_OK(table.Open(table_name, client_.get()));
 
-  auto session = client_->NewSession();
+  auto session = client_->NewSession(60s);
   for (int i = 0; i < num_rows_to_insert; i++) {
     auto insert = table.NewInsertOp();
     auto req = insert->mutable_request();
@@ -935,9 +936,10 @@ class MasterPathHandlersLeaderlessITest : public MasterPathHandlersExternalItest
   std::shared_ptr<client::YBTable> table_;
 };
 
-TEST_F(MasterPathHandlersLeaderlessITest, TestHeartbeatsWithoutLeaderLease) {
+TEST_F(MasterPathHandlersLeaderlessITest, TestLeaderlessTabletEndpoint) {
+  ASSERT_OK(cluster_->SetFlagOnMasters("maximum_tablet_leader_lease_expired_secs", "5"));
   ASSERT_OK(cluster_->SetFlagOnMasters("master_maximum_heartbeats_without_lease", "2"));
-  ASSERT_OK(cluster_->SetFlagOnMasters("tserver_heartbeat_metrics_interval_ms", "1000"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("tserver_heartbeat_metrics_interval_ms", "1000"));
   CreateSingleTabletTestTable();
   auto tablet_id = GetSingleTabletId();
 
@@ -946,6 +948,7 @@ TEST_F(MasterPathHandlersLeaderlessITest, TestHeartbeatsWithoutLeaderLease) {
   ASSERT_EQ(result.find(tablet_id), string::npos);
 
   const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
+  const auto leader = cluster_->tablet_server(leader_idx);
   const auto follower_idx = (leader_idx + 1) % 3;
   const auto follower = cluster_->tablet_server(follower_idx);
   const auto other_follower_idx = (leader_idx + 2) % 3;
@@ -961,12 +964,38 @@ TEST_F(MasterPathHandlersLeaderlessITest, TestHeartbeatsWithoutLeaderLease) {
     return result.find(tablet_id) != string::npos;
   }, 20s * kTimeMultiplier, "leaderless tablet endpoint catch the tablet");
 
+  const auto new_leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
+  if (new_leader_idx != leader_idx) {
+    auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(
+        cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>(), &cluster_->proxy_cache()));
+    const auto new_leader = cluster_->tablet_server(new_leader_idx);
+    ASSERT_OK(itest::LeaderStepDown(
+        ts_map[new_leader->uuid()].get(), tablet_id, ts_map[leader->uuid()].get(), 10s));
+  }
+
   ASSERT_OK(other_follower->Resume());
   ASSERT_OK(follower->Resume());
 
-  if (!wait_status.ok()) {
-    ASSERT_OK(wait_status);
-  }
+  ASSERT_OK(wait_status);
+
+  ASSERT_OK(WaitFor([&] {
+    string result = GetLeaderlessTabletsString();
+    return result.find(tablet_id) == string::npos;
+  }, 20s * kTimeMultiplier, "leaderless tablet endpoint becomes empty"));
+
+  ASSERT_OK(other_follower->Pause());
+  ASSERT_OK(leader->Pause());
+
+  // Leaderless endpoint should catch the tablet.
+  wait_status = WaitFor([&] {
+    string result = GetLeaderlessTabletsString();
+    return result.find(tablet_id) != string::npos;
+  }, 20s * kTimeMultiplier, "leaderless tablet endpoint catch the tablet");
+
+  ASSERT_OK(other_follower->Resume());
+  ASSERT_OK(leader->Resume());
+
+  ASSERT_OK(wait_status);
 
   ASSERT_OK(WaitFor([&] {
     string result = GetLeaderlessTabletsString();

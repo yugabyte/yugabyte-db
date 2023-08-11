@@ -40,37 +40,19 @@ const useStyles = makeStyles((theme) => ({
 
 interface NodeCountWidgetProps {
   nodes: ClusterNodesResponse | undefined;
-  isLoadBalancerIdle: boolean | undefined;
-  fetchingIsLoadBalancerIdle: boolean;
 }
 
 export const NodeCountWidget: FC<NodeCountWidgetProps> = ({
     nodes,
-    isLoadBalancerIdle,
-    fetchingIsLoadBalancerIdle
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
   const nodesData = nodes?.data;
 
-  const numNodes = nodesData ? nodesData.length : 0;
-  const deadNodes =
-    nodesData ? nodesData.filter(node => !node.is_node_up) : [];
-  const bootstrappingNodes = nodesData
-    ? nodesData.filter(node => {
-        return fetchingIsLoadBalancerIdle
-        ? false
-        : !node.is_node_up || !node.is_master_up
-        ? false
-        : node.metrics.uptime_seconds < 60 && !isLoadBalancerIdle ||
-          (!node.is_read_replica ? 
-            node.metrics.user_tablets_leaders + node.metrics.system_tablets_leaders == 0
-            :
-            node.metrics.user_tablets_total + node.metrics.system_tablets_total == 0
-          );
-    })
-    : [];
+  const numNodes = nodesData?.length ?? 0;
+  const deadNodes = nodesData?.filter(node => !node.is_node_up) ?? [];
+  const bootstrappingNodes = nodesData?.filter(node => node.is_bootstrapping) ?? [];
   const numHealthyNodes = numNodes - deadNodes.length;
 
   return (

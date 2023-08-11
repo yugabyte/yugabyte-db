@@ -26,6 +26,7 @@ public class TestGFlags extends TestDefaultConfig {
   private final Map<String, String> TSERVER_FLAGS = new HashMap() {
     {
       put("ysql_conn_mgr_max_client_connections", "1000");
+      put("ysql_conn_mgr_num_workers", "8");
       put("ysql_conn_mgr_pool_size", "100");
     }
   };
@@ -35,6 +36,7 @@ public class TestGFlags extends TestDefaultConfig {
       put("client_max", "1000");
       // 90% of total pool size will be assigned to the global pool.
       put("pool_size", "90");
+      put("workers", "8");
     }
   };
 

@@ -6,11 +6,9 @@ const $ = window.jQuery;
  * Create Cookie.
  */
 function setCookie(name, value, monthToLive) {
-  let cookie = name + '=' + encodeURIComponent(value);
-  if (typeof monthToLive !== 'number') {
-    monthToLive = 3;
-  }
-  cookie += '; max-age=' + (monthToLive * 30 * (24 * 60 * 60));
+  let cookie = `${name}=${encodeURIComponent(value)}`;
+
+  cookie += `; max-age=${(monthToLive * 30 * (24 * 60 * 60))}`;
   cookie += '; path=/';
   if (location.hostname !== 'localhost') {
     cookie += '; secure=true';
@@ -26,7 +24,7 @@ function popupOnPills() {
   $('ul.nav.yb-pills li').each(function () {
     if (($(this).find('a').width() + 25) >= $(this).width()) {
       $(this).addClass('text-overlap');
-      $(this).append('<span class="tooltip">' + $(this).find('a').text().trim() + '</span>');
+      $(this).append(`<span class="tooltip">${$(this).find('a').text().trim()}</span>`);
     }
   });
 }
@@ -151,6 +149,8 @@ function yugabyteActiveLeftNav() {
         return false;
       }
     }
+
+    return true;
   });
 }
 
@@ -209,6 +209,7 @@ $(document).ready(() => {
     if (document.querySelector('body').classList.contains('td-searchpage')) {
       document.querySelector('.top-nav').classList.add('open-search-top');
     }
+
     $(document).on('click', '.mobile-search', () => {
       $('.top-nav').toggleClass('open-search-top');
       $('.page-header,.mobile-menu').removeClass('open');
@@ -303,18 +304,20 @@ $(document).ready(() => {
       const imgSrc = img.getAttribute('src');
       let imgAlt = '';
       if (img.hasAttribute('alt')) {
-        imgAlt = ' alt="' + img.getAttribute('alt') + '"';
+        imgAlt = ` alt="${img.getAttribute('alt')}"`;
       }
+
       let imgTitle = '';
       if (img.hasAttribute('title')) {
-        imgTitle = ' title="' + img.getAttribute('title') + '"';
+        imgTitle = ` title="${img.getAttribute('title')}"`;
       }
-      imgPopupData.insertAdjacentHTML('beforeend', '<div class="image-popup" data-popup="' + popupCounter + '"><i class="bg-drop"></i><div class="img-scroll"><i></i><img src="' + imgSrc + '"' + imgAlt + imgTitle + '></div></div>');
-      popupCounter++;
+
+      imgPopupData.insertAdjacentHTML('beforeend', `<div class="image-popup" data-popup="${popupCounter}"><i class="bg-drop"></i><div class="img-scroll"><i></i><img src="${imgSrc}" ${imgAlt} ${imgTitle}></div></div>`);
+      popupCounter += 1;
 
       img.addEventListener('click', (e) => {
         const currentImg = e.target.getAttribute('data-popup');
-        document.querySelector('.image-popup[data-popup="' + currentImg + '"]').classList.add('open');
+        document.querySelector(`.image-popup[data-popup="${currentImg}"]`).classList.add('open');
         document.body.classList.add('image-popped-up');
       });
     });
@@ -360,7 +363,7 @@ $(document).ready(() => {
       if (event.target && event.originalEvent && event.originalEvent.isTrusted) {
         const tabId = event.target.getAttribute('id');
         if (tabId) {
-          $('.td-content .nav-tabs-yb .nav-link.' + tabId).trigger('click');
+          $(`.td-content .nav-tabs-yb .nav-link.${tabId}`).trigger('click');
         }
       }
     });
@@ -384,6 +387,7 @@ $(document).ready(() => {
       }
     });
   })();
+
   popupOnPills();
   checkAnchorMultilines();
 
@@ -404,6 +408,7 @@ $(document).ready(() => {
         }
       }
     };
+
     const addCopyButton = element => {
       const container = element.getElementsByTagName('code')[0];
       if (!container) {
@@ -433,24 +438,23 @@ $(document).ready(() => {
         } else if (languageDescriptor.includes('nocopy')) {
           return;
         }
+
         const button = document.createElement('button');
         button.className = 'copy unclicked';
         button.textContent = '';
         button.addEventListener('click', e => {
           const elem = e.target;
           elem.classList.remove('unclicked');
-          setTimeout(
-            () => {
-              elem.classList.add('unclicked');
-            }, 1500,
-          );
+          setTimeout(() => {
+            elem.classList.add('unclicked');
+          }, 1500);
         });
 
         container.after(button);
         containerChanges(container);
         let text;
         const clip = new Clipboard(button, {
-          text: (trigger) => {
+          text(trigger) {
             text = $(trigger).prev('code').text();
             return text.replace(regExpCopy, '');
           },
@@ -461,6 +465,7 @@ $(document).ready(() => {
         });
       }
     };
+
     for (let i = 0, len = $codes.length; i < len; i += 1) {
       addCopyButton($codes[i]);
     }

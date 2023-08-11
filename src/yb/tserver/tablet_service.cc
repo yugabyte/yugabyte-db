@@ -117,6 +117,7 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/write_buffer.h"
 
@@ -233,6 +234,9 @@ DEFINE_test_flag(bool, skip_aborting_active_transactions_during_schema_change, f
 DEFINE_test_flag(
     bool, skip_force_superblock_flush, false,
     "Used in tests to skip superblock flush on tablet flush.");
+
+DEFINE_test_flag(
+    uint64, wait_row_mark_exclusive_count, 0, "Number of row mark exclusive reads to wait for.");
 
 double TEST_delay_create_transaction_probability = 0;
 
@@ -2055,6 +2059,22 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
 void TabletServiceImpl::Read(const ReadRequestPB* req,
                              ReadResponsePB* resp,
                              rpc::RpcContext context) {
+#ifndef NDEBUG
+  if (PREDICT_FALSE(FLAGS_TEST_wait_row_mark_exclusive_count > 0)) {
+    for (const auto& pgsql_req : req->pgsql_batch()) {
+      if (pgsql_req.has_row_mark_type() &&
+          pgsql_req.row_mark_type() == RowMarkType::ROW_MARK_EXCLUSIVE) {
+        static CountDownLatch row_mark_exclusive_latch(FLAGS_TEST_wait_row_mark_exclusive_count);
+        row_mark_exclusive_latch.CountDown();
+        row_mark_exclusive_latch.Wait();
+        TEST_SYNC_POINT("TabletServiceImpl::Read::RowMarkExclusive:1");
+        TEST_SYNC_POINT("TabletServiceImpl::Read::RowMarkExclusive:2");
+        break;
+      }
+    }
+  }
+#endif // NDEBUG
+
   if (FLAGS_TEST_tserver_noop_read_write) {
     context.RespondSuccess();
     return;
@@ -2717,9 +2737,9 @@ void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
   }
 
   TabletPeers tablet_peers;
-  std::set<TransactionId> limit_resp_to_txns;
+  std::map<TransactionId, SubtxnSet> limit_resp_to_txns;
   for (const auto& [tablet_id, _] : req->transactions_by_tablet()) {
-    // GetLockStatusRequestPB may include tablets that aren't hosted by at this tablet server.
+    // GetLockStatusRequestPB may include tablets that aren't hosted at this tablet server.
     auto res = LookupTabletPeer(server_->tablet_manager(), tablet_id);
     if (!res.ok()) {
       continue;
@@ -2729,6 +2749,8 @@ void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
 
   if (req->transaction_ids().size() > 0) {
     // If this request specifies transaction_ids, then we check every tablet leader at this tserver
+    // TODO(pglocks): We should have involved tablet info in this case as well. See
+    // https://github.com/yugabyte/yugabyte-db/issues/16913
     tablet_peers = server_->tablet_manager()->GetTabletPeers();
   }
   for (auto& txn_id : req->transaction_ids()) {
@@ -2737,7 +2759,8 @@ void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
       SetupErrorAndRespond(resp->mutable_error(), id_or_status.status(), &context);
       return;
     }
-    limit_resp_to_txns.insert(*id_or_status);
+    // TODO(pglocks): Include aborted_subtxn info here as well.
+    limit_resp_to_txns.emplace(std::make_pair(*id_or_status, SubtxnSet()));
   }
 
   for (const auto& tablet_peer : tablet_peers) {
@@ -2748,17 +2771,25 @@ void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
       auto* tablet_lock_info = resp->add_tablet_lock_infos();
       Status s = Status::OK();
       if (req->transactions_by_tablet().count(tablet_id) > 0) {
-        std::set<TransactionId> transaction_ids;
-        for (auto& txn_id : req->transactions_by_tablet().at(tablet_id).transaction_ids()) {
+        std::map<TransactionId, SubtxnSet> transactions;
+        for (auto& txn : req->transactions_by_tablet().at(tablet_id).transactions()) {
+          auto& txn_id = txn.id();
           auto id_or_status = FullyDecodeTransactionId(txn_id);
           if (!id_or_status.ok()) {
             resp->Clear();
             SetupErrorAndRespond(resp->mutable_error(), id_or_status.status(), &context);
             return;
           }
-          transaction_ids.insert(*id_or_status);
+          auto aborted_subtxns_or_status = SubtxnSet::FromPB(txn.aborted().set());
+          if (!aborted_subtxns_or_status.ok()) {
+            resp->Clear();
+            SetupErrorAndRespond(
+                resp->mutable_error(), aborted_subtxns_or_status.status(), &context);
+            return;
+          }
+          transactions.emplace(std::make_pair(*id_or_status, *aborted_subtxns_or_status));
         }
-        s = tablet_peer->shared_tablet()->GetLockStatus(transaction_ids, tablet_lock_info);
+        s = tablet_peer->shared_tablet()->GetLockStatus(transactions, tablet_lock_info);
       } else {
         DCHECK(!limit_resp_to_txns.empty());
         s = tablet_peer->shared_tablet()->GetLockStatus(limit_resp_to_txns, tablet_lock_info);
@@ -2872,6 +2903,32 @@ void TabletServiceImpl::CancelTransaction(
     DCHECK_EQ(res->status, TransactionStatus::ABORTED);
   }
 
+  context.RespondSuccess();
+}
+
+void TabletServiceImpl::StartRemoteSnapshotTransfer(
+    const StartRemoteSnapshotTransferRequestPB* req, StartRemoteSnapshotTransferResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(
+          server_->tablet_manager(), "StartRemoteSnapshotTransfer", req, resp, &context)) {
+    return;
+  }
+
+  Status s = server_->tablet_manager()->StartRemoteSnapshotTransfer(*req);
+  if (!s.ok()) {
+    // Using Status::AlreadyPresent for a remote snapshot transfer operation that is already in
+    // progress.
+    if (s.IsAlreadyPresent()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 30) << "Start remote snapshot transfer failed: " << s;
+      SetupErrorAndRespond(
+          resp->mutable_error(), s, TabletServerErrorPB::ALREADY_IN_PROGRESS, &context);
+      return;
+    } else {
+      LOG(WARNING) << "Start remote snapshot transfer failed: " << s;
+    }
+  }
+
+  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
   context.RespondSuccess();
 }
 

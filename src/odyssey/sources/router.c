@@ -685,9 +685,16 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 
 	client->server = NULL;
 	server->client = NULL;
-	if (od_likely(!server->offline)) {
-		od_pg_server_pool_set(&route->server_pool, server,
-				      OD_SERVER_IDLE);
+	/*
+	 * Drop the server connection if:
+	 * 	a. Server gets OFFLINE.
+	 * 	b. Client connection had used a query which required the connection to be STICKY.
+	 * 	   As of D26669, these queries are:
+	 * 			a. Creating TEMP TABLES.
+	 * 			b. Use of WITH HOLD CURSORS.
+	 */
+	if (od_likely(!server->offline) && server->yb_sticky_connection == false) {
+		od_pg_server_pool_set(&route->server_pool, server, OD_SERVER_IDLE);
 	} else {
 		od_instance_t *instance = server->global->instance;
 		od_debug(&instance->logger, "expire", NULL, server,
