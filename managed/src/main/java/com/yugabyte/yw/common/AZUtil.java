@@ -158,15 +158,18 @@ public class AZUtil implements CloudUtil {
       try {
         BlobContainerClient blobContainerClient =
             createBlobContainerClient(azureUrl, sasToken, container);
-        if (!blobContainerClient.exists()) {
-          log.error("The container {} does not exist.", container);
-          return false;
-        }
         ListBlobsOptions blobsOptions = new ListBlobsOptions().setMaxResultsPerPage(1);
         PagedIterable<BlobItem> blobItems =
             blobContainerClient.listBlobs(blobsOptions, Duration.ofMinutes(5));
         if (blobItems == null) {
           return false;
+        }
+        if (blobItems.iterator().hasNext()) {
+          BlobClient blobClient =
+              blobContainerClient.getBlobClient(blobItems.iterator().next().getName());
+          if (!blobClient.exists()) {
+            return false;
+          }
         }
       } catch (Exception e) {
         log.error(
