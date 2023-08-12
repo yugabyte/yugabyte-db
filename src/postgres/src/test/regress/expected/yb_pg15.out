@@ -1,0 +1,224 @@
+--
+-- Tests for pg15 branch stability.
+--
+-- Basics
+create table t1 (id int, name text);
+create table t2 (id int primary key, name text);
+explain (COSTS OFF) insert into t2 values (1);
+  QUERY PLAN  
+--------------
+ Insert on t2
+   ->  Result
+(2 rows)
+
+insert into t2 values (1);
+explain (COSTS OFF) insert into t2 values (2), (3);
+           QUERY PLAN            
+---------------------------------
+ Insert on t2
+   ->  Values Scan on "*VALUES*"
+(2 rows)
+
+insert into t2 values (2), (3);
+explain (COSTS OFF) select * from t2 where id = 1;
+           QUERY PLAN           
+--------------------------------
+ Index Scan using t2_pkey on t2
+   Index Cond: (id = 1)
+(2 rows)
+
+select * from t2 where id = 1;
+ id | name 
+----+------
+  1 | 
+(1 row)
+
+explain (COSTS OFF) select * from t2 where id > 1;
+        QUERY PLAN         
+---------------------------
+ Seq Scan on t2
+   Remote Filter: (id > 1)
+(2 rows)
+
+select * from t2 where id > 1;
+ id | name 
+----+------
+  2 | 
+  3 | 
+(2 rows)
+
+explain (COSTS OFF) update t2 set name = 'John' where id = 1;
+  QUERY PLAN  
+--------------
+ Update on t2
+   ->  Result
+(2 rows)
+
+update t2 set name = 'John' where id = 1;
+explain (COSTS OFF) update t2 set name = 'John' where id > 1;
+           QUERY PLAN            
+---------------------------------
+ Update on t2
+   ->  Seq Scan on t2
+         Remote Filter: (id > 1)
+(3 rows)
+
+update t2 set name = 'John' where id > 1;
+explain (COSTS OFF) update t2 set id = id + 4 where id = 1;
+              QUERY PLAN              
+--------------------------------------
+ Update on t2
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (id = 1)
+(3 rows)
+
+update t2 set id = id + 4 where id = 1;
+explain (COSTS OFF) update t2 set id = id + 4 where id > 1;
+           QUERY PLAN            
+---------------------------------
+ Update on t2
+   ->  Seq Scan on t2
+         Remote Filter: (id > 1)
+(3 rows)
+
+update t2 set id = id + 4 where id > 1;
+explain (COSTS OFF) delete from t2 where id = 1;
+  QUERY PLAN  
+--------------
+ Delete on t2
+   ->  Result
+(2 rows)
+
+delete from t2 where id = 1;
+explain (COSTS OFF) delete from t2 where id > 1;
+           QUERY PLAN            
+---------------------------------
+ Delete on t2
+   ->  Seq Scan on t2
+         Remote Filter: (id > 1)
+(3 rows)
+
+delete from t2 where id > 1;
+-- Before update trigger test.
+alter table t2 add column count int;
+insert into t2 values (1, 'John', 0);
+CREATE OR REPLACE FUNCTION update_count() RETURNS trigger LANGUAGE plpgsql AS
+$func$
+BEGIN
+   NEW.count := NEW.count+1;
+   RETURN NEW;
+END
+$func$;
+CREATE TRIGGER update_count_trig BEFORE UPDATE ON t2 FOR ROW EXECUTE PROCEDURE update_count();
+update t2 set name = 'Jane' where id = 1;
+select * from t2;
+ id | name | count 
+----+------+-------
+  1 | Jane |     1
+(1 row)
+
+-- Insert with on conflict
+insert into t2 values (1, 'foo') on conflict ON CONSTRAINT t2_pkey do update set id = t2.id+1;
+select * from t2;
+ id | name | count 
+----+------+-------
+  2 | Jane |     2
+(1 row)
+
+-- Batched nested loop join (YB_TODO: if I move it below pushdown test, the test fails)
+CREATE TABLE p1 (a int, b int, c varchar, primary key(a,b));
+INSERT INTO p1 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 2 = 0;
+CREATE TABLE p2 (a int, b int, c varchar, primary key(a,b));
+INSERT INTO p2 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 3 = 0;
+SET enable_hashjoin = off;
+SET enable_mergejoin = off;
+SET enable_seqscan = off;
+SET enable_material = off;
+SET yb_bnl_batch_size = 3;
+EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
+               QUERY PLAN                
+-----------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.a)
+   ->  Seq Scan on p1 t1
+         Remote Filter: (a <= 100)
+   ->  Index Scan using p2_pkey on p2 t2
+         Remote Filter: (a <= 100)
+(6 rows)
+
+-- YB_TODO: Explain has a missing line Index Cond: (a = ANY (ARRAY[t1.a, $1, $2])) under Index Scan
+SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
+ a  | b  |  c   | a  | b  |  c   
+----+----+------+----+----+------
+ 78 |  3 | 0078 | 78 |  3 | 0078
+ 90 | 15 | 0090 | 90 | 15 | 0090
+ 12 | 12 | 0012 | 12 | 12 | 0012
+  6 |  6 | 0006 |  6 |  6 | 0006
+ 96 | 21 | 0096 | 96 | 21 | 0096
+ 42 | 17 | 0042 | 42 | 17 | 0042
+ 48 | 23 | 0048 | 48 | 23 | 0048
+ 60 | 10 | 0060 | 60 | 10 | 0060
+ 72 | 22 | 0072 | 72 | 22 | 0072
+ 36 | 11 | 0036 | 36 | 11 | 0036
+ 54 |  4 | 0054 | 54 |  4 | 0054
+ 18 | 18 | 0018 | 18 | 18 | 0018
+ 66 | 16 | 0066 | 66 | 16 | 0066
+ 30 |  5 | 0030 | 30 |  5 | 0030
+ 84 |  9 | 0084 | 84 |  9 | 0084
+  0 |  0 | 0000 |  0 |  0 | 0000
+ 24 | 24 | 0024 | 24 | 24 | 0024
+(17 rows)
+
+-- Update pushdown test.
+CREATE TABLE single_row_decimal (k int PRIMARY KEY, v1 decimal, v2 decimal(10,2), v3 int);
+CREATE FUNCTION next_v3(int) returns int language sql as $$
+  SELECT v3 + 1 FROM single_row_decimal WHERE k = $1;
+$$;
+INSERT INTO single_row_decimal(k, v1, v2, v3) values (1,1.5,1.5,1), (2,2.5,2.5,2), (3,null, null,null);
+SELECT * FROM single_row_decimal ORDER BY k;
+ k | v1  |  v2  | v3
+---+-----+------+----
+ 1 | 1.5 | 1.50 |  1
+ 2 | 2.5 | 2.50 |  2
+ 3 |     |      |
+(3 rows)
+
+UPDATE single_row_decimal SET v1 = v1 + 1.555, v2 = v2 + 1.555, v3 = v3 + 1 WHERE k = 1;
+-- v2 should be rounded to 2 decimals.
+SELECT * FROM single_row_decimal ORDER BY k;
+ k |  v1   |  v2  | v3
+---+-------+------+----
+ 1 | 3.055 | 3.06 |  2
+ 2 |   2.5 | 2.50 |  2
+ 3 |       |      |
+(3 rows)
+
+UPDATE single_row_decimal SET v1 = v1 + 1.555, v2 = v2 + 1.555, v3 = 3 WHERE k = 1;
+SELECT * FROM single_row_decimal ORDER BY k;
+ k |  v1  |  v2  | v3
+---+------+------+----
+ 1 | 4.61 | 4.62 |  3
+ 2 |  2.5 | 2.50 |  2
+ 3 |      |      |
+(3 rows)
+
+UPDATE single_row_decimal SET v1 = v1 + 1.555, v2 = v2 + 1.555, v3 = next_v3(1) WHERE k = 1;
+SELECT * FROM single_row_decimal ORDER BY k;
+ k |  v1   |  v2  | v3
+---+-------+------+----
+ 1 | 6.165 | 6.18 |  4
+ 2 |   2.5 | 2.50 |  2
+ 3 |       |      |
+(3 rows)
+
+-- Delete with returning
+insert into t2 values (4), (5), (6);
+delete from t2 where id > 2 returning id, name;
+ id | name 
+----+------
+  5 | 
+  6 | 
+  4 | 
+(3 rows)
+
+-- YB_TODO: There's some issue with drop table
